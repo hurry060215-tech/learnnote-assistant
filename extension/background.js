@@ -1,5 +1,6 @@
 const MEDIA_RE = /\.(mp4|m4v|webm|mov|mkv|m3u8|mpd)(\?|#|$)/i;
 const FRAGMENT_RE = /\.(m4s|ts)(\?|#|$)/i;
+const SUBTITLE_RE = /\.(vtt|srt|ass|ssa)(\?|#|$)/i;
 const resourceByTab = new Map();
 const pageStateByTab = new Map();
 
@@ -10,6 +11,7 @@ function classify(url, mime = "") {
   if (type.includes("mpegurl") || lower.includes(".m3u8")) return "hls";
   if (type.includes("dash+xml") || lower.includes(".mpd")) return "dash";
   if (type.includes("video/") || MEDIA_RE.test(lower)) return "video";
+  if (type.includes("text/vtt") || type.includes("subrip") || SUBTITLE_RE.test(lower)) return "subtitle";
   if (FRAGMENT_RE.test(lower)) return "fragment";
   return "unknown";
 }
@@ -20,6 +22,7 @@ function scoreResource(url, mime, source) {
   if (kind === "hls" || kind === "dash") score += 95;
   else if (kind === "video") score += 85;
   else if (kind === "fragment") score += 15;
+  else if (kind === "subtitle") score += 60;
   else if (kind === "blob") score += 5;
   if (source === "webRequest") score += 10;
   if (/chaoxing|xuexitong/i.test(url)) score += 8;

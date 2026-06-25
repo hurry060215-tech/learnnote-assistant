@@ -1,5 +1,6 @@
 const MEDIA_RE = /\.(mp4|m4v|webm|mov|mkv|m3u8|mpd)(\?|#|$)/i;
 const FRAGMENT_RE = /\.(m4s|ts)(\?|#|$)/i;
+const SUBTITLE_RE = /\.(vtt|srt|ass|ssa)(\?|#|$)/i;
 
 function classify(url, mime = "") {
   const lower = String(url || "").toLowerCase();
@@ -8,6 +9,7 @@ function classify(url, mime = "") {
   if (type.includes("mpegurl") || lower.includes(".m3u8")) return "hls";
   if (type.includes("dash+xml") || lower.includes(".mpd")) return "dash";
   if (type.includes("video/") || MEDIA_RE.test(lower)) return "video";
+  if (type.includes("text/vtt") || type.includes("subrip") || SUBTITLE_RE.test(lower)) return "subtitle";
   if (FRAGMENT_RE.test(lower)) return "fragment";
   return "unknown";
 }
@@ -18,6 +20,7 @@ function score(url, mime, source) {
   if (kind === "hls" || kind === "dash") value += 95;
   else if (kind === "video") value += 85;
   else if (kind === "fragment") value += 15;
+  else if (kind === "subtitle") value += 60;
   else if (kind === "blob") value += 5;
   if (source === "dom") value += 8;
   if (source === "activeVideo") value += 16;
@@ -97,9 +100,17 @@ function collectDomResources() {
     for (const source of video.querySelectorAll("source")) {
       resources.push(resource(source.src, "dom", `video source #${index + 1}`, source.type || "", video, isMain));
     }
+    for (const track of video.querySelectorAll("track[src]")) {
+      const label = [track.kind || "subtitle", track.srclang || "", track.label || ""].filter(Boolean).join(" ");
+      resources.push(resource(track.src, "subtitleTrack", label || `subtitle #${index + 1}`, "text/vtt", video, isMain));
+    }
   }
   for (const source of document.querySelectorAll("source[src]")) {
     resources.push(resource(source.src, "dom", "source", source.type || ""));
+  }
+  for (const track of document.querySelectorAll("track[src]")) {
+    const label = [track.kind || "subtitle", track.srclang || "", track.label || ""].filter(Boolean).join(" ");
+    resources.push(resource(track.src, "subtitleTrack", label || "subtitle", "text/vtt"));
   }
   for (const iframe of document.querySelectorAll("iframe[src]")) {
     if (/chaoxing|xuexitong|video|player|course|m3u8|mpd/i.test(iframe.src)) {
@@ -113,7 +124,7 @@ function collectPerformanceResources() {
   const resources = [];
   for (const entry of performance.getEntriesByType("resource")) {
     const name = entry.name || "";
-    if (MEDIA_RE.test(name) || FRAGMENT_RE.test(name) || /m3u8|mpd|video|media/i.test(name)) {
+    if (MEDIA_RE.test(name) || FRAGMENT_RE.test(name) || SUBTITLE_RE.test(name) || /m3u8|mpd|video|media|subtitle|caption/i.test(name)) {
       resources.push(resource(name, "performance", "performance"));
     }
   }

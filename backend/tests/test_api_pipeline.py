@@ -159,6 +159,62 @@ class ApiPipelineTests(unittest.TestCase):
                 server.shutdown()
                 server.server_close()
 
+    def test_current_page_prefers_page_subtitle_over_whisper(self) -> None:
+        with tempfile.TemporaryDirectory(dir=TEST_RUN_DIR) as tmp:
+            root = Path(tmp)
+            video = make_video(root)
+            subtitle = root / "lesson.vtt"
+            subtitle.write_text(
+                "\n".join([
+                    "WEBVTT",
+                    "",
+                    "00:00:00.000 --> 00:00:02.000",
+                    "这是平台字幕第一句。",
+                    "",
+                    "00:00:02.000 --> 00:00:04.000",
+                    "这是平台字幕第二句。",
+                    "",
+                ]),
+                encoding="utf-8",
+            )
+            handler = functools.partial(QuietHandler, directory=str(root))
+            server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                media_url = f"http://127.0.0.1:{server.server_port}/{video.name}"
+                subtitle_url = f"http://127.0.0.1:{server.server_port}/{subtitle.name}"
+                payload = {
+                    "mode": "video",
+                    "page_url": f"http://127.0.0.1:{server.server_port}/lesson.html",
+                    "title": "Subtitle first lesson",
+                    "resources": [
+                        {"url": media_url, "source": "webRequest", "kind": "video", "mime": "video/mp4", "score": 100},
+                        {"url": subtitle_url, "source": "subtitleTrack", "kind": "subtitle", "mime": "text/vtt", "score": 80},
+                    ],
+                    "options": {"visual_understanding": True, "frame_interval": 1},
+                }
+                with patch("app.processor.transcribe_audio", side_effect=AssertionError("Whisper should not run when subtitle is available")):
+                    response = self.client.post("/api/tasks/from-current-page", json=payload)
+
+                self.assertEqual(response.status_code, 200)
+                task_id = response.json()["task_id"]
+                try:
+                    task = self.client.get(f"/api/tasks/{task_id}").json()["task"]
+                    self.assertEqual(task["status"], "success")
+                    self.assertTrue(task["subtitle_path"])
+                    self.assertTrue(any(attempt["strategy"] == "subtitle-file" and attempt["status"] == "success" for attempt in task["download_attempts"]))
+                    transcript = self.client.get(f"/api/tasks/{task_id}/transcript").json()
+                    self.assertEqual(transcript["source"], "page-subtitle")
+                    self.assertIn("这是平台字幕第一句", transcript["full_text"])
+                    note = self.client.get(f"/api/tasks/{task_id}/note").text
+                    self.assertIn("这是平台字幕第二句", note)
+                finally:
+                    shutil.rmtree(task_dir(task_id), ignore_errors=True)
+            finally:
+                server.shutdown()
+                server.server_close()
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -310,6 +310,7 @@ function renderResult() {
           fmtBytes(selected.content_length)
         ].filter(Boolean).join(" · "))}</dd>
         <dt>错误</dt><dd>${escapeHtml(currentTask.error_detail || currentTask.error_code || "-")}</dd>
+        <dt>字幕</dt><dd>${escapeHtml(currentTask.subtitle_path || "-")}</dd>
         <dt>尝试记录</dt><dd>${attemptHtml}</dd>
       </dl>
     `;

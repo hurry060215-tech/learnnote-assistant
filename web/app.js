@@ -281,6 +281,7 @@ async function renderDetail() {
         ].filter(Boolean).join(" · "))}</dd>
         <dt>媒体文件</dt><dd>${escapeHtml(task.media_path || "-")}</dd>
         <dt>音频文件</dt><dd>${escapeHtml(task.audio_path || "-")}</dd>
+        <dt>字幕文件</dt><dd>${escapeHtml(task.subtitle_path || "-")}</dd>
         <dt>处理选项</dt><dd>${escapeHtml(optionText(task) || "-")}</dd>
         <dt>错误</dt><dd>${escapeHtml(task.error_detail || task.error_code || "-")}</dd>
         <dt>尝试记录</dt><dd>${attemptHtml}</dd>

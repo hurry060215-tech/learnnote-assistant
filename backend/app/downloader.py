@@ -16,6 +16,7 @@ from .runtime import ffmpeg_bin
 MEDIA_EXT_RE = re.compile(r"\.(mp4|m4v|webm|mov|mkv)(\?|#|$)", re.I)
 MANIFEST_EXT_RE = re.compile(r"\.(m3u8|mpd)(\?|#|$)", re.I)
 FRAGMENT_EXT_RE = re.compile(r"\.(m4s|ts)(\?|#|$)", re.I)
+SUBTITLE_EXT_RE = re.compile(r"\.(vtt|srt|ass|ssa)(\?|#|$)", re.I)
 
 
 class DownloadError(RuntimeError):
@@ -80,6 +81,8 @@ def classify_resource(url: str, mime: str = "") -> str:
         return "dash"
     if "video/" in mime_lower or MEDIA_EXT_RE.search(lowered):
         return "video"
+    if "text/vtt" in mime_lower or "subrip" in mime_lower or SUBTITLE_EXT_RE.search(lowered):
+        return "subtitle"
     if FRAGMENT_EXT_RE.search(lowered):
         return "fragment"
     return "unknown"
@@ -94,6 +97,8 @@ def score_resource(url: str, mime: str = "", source: str = "") -> int:
         score += 85
     elif kind == "fragment":
         score += 15
+    elif kind == "subtitle":
+        score += 60
     elif kind == "blob":
         score += 5
     if source == "webRequest":
@@ -186,6 +191,29 @@ class MediaDownloader:
             raise last_error
         raise DownloadError("no_media_found", "没有发现可直接下载的视频、HLS 或 DASH 资源。")
 
+    def download_subtitle(
+        self,
+        resources: list[ResourceCandidate],
+        cookies: list[BrowserCookie],
+        referer: str,
+        title: str,
+    ) -> Path | None:
+        candidates = self._subtitle_resources(resources)
+        for candidate in candidates:
+            try:
+                path = self._download_text_file(candidate.url, cookies, referer, title)
+                self._record_attempt(
+                    strategy="subtitle-file",
+                    candidate=candidate,
+                    status="success",
+                    message="检测到页面字幕轨，已优先使用字幕生成转写。",
+                    output_path=path,
+                )
+                return path
+            except DownloadError as exc:
+                self._record_attempt(strategy="subtitle-file", candidate=candidate, status="failed", code=exc.code, message=exc.message)
+        return None
+
     def _candidate_resources(self, resources: list[ResourceCandidate]) -> list[ResourceCandidate]:
         dedup: dict[str, ResourceCandidate] = {}
         for item in resources:
@@ -197,6 +225,19 @@ class MediaDownloader:
             item.score = min(100, max(item.score, score_resource(item.url, item.mime, item.source)) + boost)
             if kind in {"hls", "dash", "video"}:
                 dedup[item.url] = item
+        return sorted(dedup.values(), key=lambda item: item.score, reverse=True)
+
+    def _subtitle_resources(self, resources: list[ResourceCandidate]) -> list[ResourceCandidate]:
+        dedup: dict[str, ResourceCandidate] = {}
+        for item in resources:
+            if not item.url or item.url.startswith(("chrome-extension:", "data:", "blob:")):
+                continue
+            kind = classify_resource(item.url, item.mime)
+            if kind != "subtitle":
+                continue
+            item.kind = kind
+            item.score = min(100, max(item.score, score_resource(item.url, item.mime, item.source)))
+            dedup[item.url] = item
         return sorted(dedup.values(), key=lambda item: item.score, reverse=True)
 
     def _strategy_for_candidate(self, candidate: ResourceCandidate) -> str:
@@ -313,6 +354,35 @@ class MediaDownloader:
             raise DownloadError("download_forbidden", f"直接下载失败：{exc}") from exc
         if output.stat().st_size < 4096:
             raise DownloadError("download_forbidden", "下载文件过小，可能不是有效视频。")
+        return output
+
+    def _download_text_file(self, url: str, cookies: list[BrowserCookie], referer: str, title: str) -> Path:
+        suffix = Path(urlparse(url).path).suffix or ".vtt"
+        output = self.download_dir / f"{_clean_filename(title)}_subtitle{suffix}"
+        headers = {
+            "User-Agent": "Mozilla/5.0 LearnNoteAssistant/0.1",
+            "Referer": referer,
+        }
+        cookie = cookie_header_for_url(cookies, url)
+        if cookie:
+            headers["Cookie"] = cookie
+        try:
+            response = requests.get(url, headers=headers, timeout=30)
+            if response.status_code in {401, 403}:
+                raise DownloadError("auth_required", f"字幕资源返回 HTTP {response.status_code}。")
+            if response.status_code >= 400:
+                raise DownloadError("download_forbidden", f"字幕资源返回 HTTP {response.status_code}。")
+            text = response.content.decode("utf-8-sig", errors="replace")
+            text = re.sub(r"\r+\n", "\n", text)
+            text = re.sub(r"\r+", "\n", text).strip()
+        except DownloadError:
+            raise
+        except Exception as exc:
+            raise DownloadError("download_forbidden", f"字幕下载失败：{exc}") from exc
+        if not text:
+            raise DownloadError("download_forbidden", "字幕文件为空。")
+        with output.open("w", encoding="utf-8", newline="\n") as file:
+            file.write(text + "\n")
         return output
 
     def _download_manifest(self, url: str, cookies: list[BrowserCookie], referer: str, title: str) -> Path:

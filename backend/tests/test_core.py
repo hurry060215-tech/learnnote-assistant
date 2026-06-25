@@ -10,6 +10,7 @@ from app.models import BrowserCookie, FrameGrid, ResourceCandidate, TranscriptRe
 from app.processor import read_note, read_transcript
 from app.summarizer import local_markdown_note
 from app.storage import create_task, task_dir
+from app.transcriber import transcript_from_subtitle
 
 
 class ResourceDetectionTests(unittest.TestCase):
@@ -19,6 +20,7 @@ class ResourceDetectionTests(unittest.TestCase):
         self.assertEqual(classify_resource("https://cdn.example.com/manifest.mpd"), "dash")
         self.assertEqual(classify_resource("blob:https://example.com/abc"), "blob")
         self.assertEqual(classify_resource("https://cdn.example.com/chunk.m4s"), "fragment")
+        self.assertEqual(classify_resource("https://cdn.example.com/captions.vtt"), "subtitle")
 
     def test_scores_manifest_above_plain_video(self) -> None:
         self.assertGreater(
@@ -65,6 +67,31 @@ class SummaryFallbackTests(unittest.TestCase):
         self.assertIn("分段图文摘要", note)
         self.assertIn("http://127.0.0.1/grid.jpg", note)
         self.assertIn("复习问题", note)
+
+
+class SubtitleParsingTests(unittest.TestCase):
+    def test_vtt_subtitle_is_converted_to_transcript(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "lesson.vtt"
+            path.write_text(
+                "\n".join([
+                    "WEBVTT",
+                    "",
+                    "00:00:01.000 --> 00:00:03.000",
+                    "第一段字幕",
+                    "",
+                    "2",
+                    "00:00:04,000 --> 00:00:06,000",
+                    "<b>第二段字幕</b>",
+                    "",
+                ]),
+                encoding="utf-8",
+            )
+            transcript = transcript_from_subtitle(path)
+            self.assertEqual(transcript.source, "page-subtitle")
+            self.assertEqual(len(transcript.segments), 2)
+            self.assertEqual(transcript.segments[0].start, 1.0)
+            self.assertEqual(transcript.segments[1].text, "第二段字幕")
 
 
 class EmptyArtifactTests(unittest.TestCase):

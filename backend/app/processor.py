@@ -9,7 +9,7 @@ from .media import build_frame_grids, extract_audio, extract_frames, normalize_v
 from .models import CurrentPageTaskRequest, TaskOptions, TranscriptResult, model_dump_jsonable
 from .storage import get_task, save_task, task_dir, update_task, write_json
 from .summarizer import summarize, summarize_page_text
-from .transcriber import transcribe_audio
+from .transcriber import transcript_from_subtitle, transcribe_audio
 
 
 def _fail(task_id: str, code: str, detail: str) -> None:
@@ -48,6 +48,7 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
         media_path, selected = downloader.download(request.page_url, request.resources, request.cookies, request.title)
         if selected:
             update_task(task_id, selected_resource=selected)
+        subtitle_path = downloader.download_subtitle(request.resources, request.cookies, request.page_url, request.title)
         update_task(task_id, download_attempts=downloader.attempts)
 
         _process_video_file(
@@ -56,6 +57,7 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
             title=request.title,
             page_url=request.page_url,
             options=request.options,
+            subtitle_path=subtitle_path,
         )
     except DownloadError as exc:
         if "downloader" in locals():
@@ -72,7 +74,14 @@ def process_local_video_task(task_id: str, input_path: Path, title: str, options
         _fail(task_id, "processing_failed", str(exc))
 
 
-def _process_video_file(task_id: str, input_path: Path, title: str, page_url: str, options: TaskOptions) -> None:
+def _process_video_file(
+    task_id: str,
+    input_path: Path,
+    title: str,
+    page_url: str,
+    options: TaskOptions,
+    subtitle_path: Path | None = None,
+) -> None:
     work_dir = task_dir(task_id)
     update_task(task_id, status="running", phase="processing_video", progress=25, message="正在标准化视频")
 
@@ -90,7 +99,13 @@ def _process_video_file(task_id: str, input_path: Path, title: str, page_url: st
     update_task(task_id, audio_path=str(audio_path))
 
     update_task(task_id, phase="transcribing", progress=52, message="正在转写音频")
-    transcript = transcribe_audio(audio_path, options.whisper_model)
+    if subtitle_path:
+        update_task(task_id, subtitle_path=str(subtitle_path), message="已检测到页面字幕，正在解析字幕")
+        transcript = transcript_from_subtitle(subtitle_path)
+        if not transcript.segments:
+            transcript = transcribe_audio(audio_path, options.whisper_model)
+    else:
+        transcript = transcribe_audio(audio_path, options.whisper_model)
     transcript_path = work_dir / "transcript.json"
     transcript_path.write_text(transcript.model_dump_json(indent=2), encoding="utf-8")
     update_task(task_id, transcript_path=str(transcript_path))

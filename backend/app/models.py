@@ -144,6 +144,7 @@ class TaskRecord(BaseModel):
     download_attempts: list[DownloadAttempt] = Field(default_factory=list)
     media_path: str = ""
     audio_path: str = ""
+    subtitle_path: str = ""
     transcript_path: str = ""
     note_path: str = ""
     frame_grids: list[FrameGrid] = Field(default_factory=list)
