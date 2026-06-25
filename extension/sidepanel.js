@@ -54,6 +54,84 @@ function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[ch]));
 }
 
+function inlineMarkdown(value) {
+  return escapeHtml(value)
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+}
+
+function markdownToHtml(markdown) {
+  const lines = String(markdown || "").replace(/\r\n?/g, "\n").split("\n");
+  const html = [];
+  let listType = "";
+  let inCode = false;
+  const closeList = () => {
+    if (listType) {
+      html.push(`</${listType}>`);
+      listType = "";
+    }
+  };
+
+  for (const rawLine of lines) {
+    const line = rawLine.trimEnd();
+    if (line.startsWith("```")) {
+      closeList();
+      if (inCode) {
+        html.push("</code></pre>");
+      } else {
+        html.push("<pre><code>");
+      }
+      inCode = !inCode;
+      continue;
+    }
+    if (inCode) {
+      html.push(escapeHtml(rawLine) + "\n");
+      continue;
+    }
+    if (!line.trim()) {
+      closeList();
+      continue;
+    }
+    const heading = /^(#{1,3})\s+(.+)$/.exec(line);
+    if (heading) {
+      closeList();
+      const level = heading[1].length;
+      html.push(`<h${level}>${inlineMarkdown(heading[2])}</h${level}>`);
+      continue;
+    }
+    const bullet = /^[-*]\s+(.+)$/.exec(line);
+    if (bullet) {
+      if (listType !== "ul") {
+        closeList();
+        html.push("<ul>");
+        listType = "ul";
+      }
+      html.push(`<li>${inlineMarkdown(bullet[1])}</li>`);
+      continue;
+    }
+    const numbered = /^\d+\.\s+(.+)$/.exec(line);
+    if (numbered) {
+      if (listType !== "ol") {
+        closeList();
+        html.push("<ol>");
+        listType = "ol";
+      }
+      html.push(`<li>${inlineMarkdown(numbered[1])}</li>`);
+      continue;
+    }
+    if (line.startsWith(">")) {
+      closeList();
+      html.push(`<blockquote>${inlineMarkdown(line.replace(/^>\s?/, ""))}</blockquote>`);
+      continue;
+    }
+    closeList();
+    html.push(`<p>${inlineMarkdown(line)}</p>`);
+  }
+  closeList();
+  if (inCode) html.push("</code></pre>");
+  return html.join("");
+}
+
 function fmt(sec) {
   sec = Math.max(0, Math.floor(sec || 0));
   return `${String(Math.floor(sec / 3600)).padStart(2, "0")}:${String(Math.floor((sec % 3600) / 60)).padStart(2, "0")}:${String(sec % 60).padStart(2, "0")}`;
@@ -499,7 +577,8 @@ function renderResult() {
   }
   if (selectedTab === "note") {
     els.result.className = "result-body";
-    els.result.innerHTML = `<pre class="note">${escapeHtml(lastNote || currentTask.message || "笔记尚未生成。")}</pre>`;
+    const noteHtml = lastNote ? markdownToHtml(lastNote) : `<p>${escapeHtml(currentTask.message || "笔记尚未生成。")}</p>`;
+    els.result.innerHTML = `<article class="markdown-note">${noteHtml}</article>`;
     return;
   }
   if (selectedTab === "frames") {
