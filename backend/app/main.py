@@ -1,0 +1,118 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
+from fastapi.staticfiles import StaticFiles
+
+from .config import DATA_DIR, STATIC_DIR, UPLOAD_DIR, WEB_DIR, ensure_dirs
+from .models import CurrentPageTaskRequest, TaskOptions
+from .processor import process_current_page_task, process_local_video_task, read_note, read_transcript
+from .runtime import ffmpeg_bin, ffprobe_bin
+from .storage import create_task, get_task, list_tasks, task_dir
+
+ensure_dirs()
+
+app = FastAPI(title="LearnNote Assistant", version="0.1.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origin_regex=r"^(chrome-extension://[a-z]+|moz-extension://[a-z0-9-]+|https?://(localhost|127\.0\.0\.1)(:\d+)?)$",
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.mount("/data", StaticFiles(directory=str(DATA_DIR)), name="data")
+app.mount("/web", StaticFiles(directory=str(WEB_DIR)), name="web")
+
+
+@app.get("/", response_class=HTMLResponse)
+def index() -> HTMLResponse:
+    path = WEB_DIR / "index.html"
+    return HTMLResponse(path.read_text(encoding="utf-8"))
+
+
+@app.get("/health")
+def health() -> dict:
+    ffmpeg = ffmpeg_bin()
+    ffprobe = ffprobe_bin()
+    return {
+        "ok": True,
+        "ffmpeg": bool(ffmpeg),
+        "ffmpeg_path": ffmpeg or "",
+        "ffprobe": bool(ffprobe),
+        "ffprobe_path": ffprobe or "",
+    }
+
+
+@app.post("/api/tasks/from-current-page")
+def create_from_current_page(request: CurrentPageTaskRequest, background_tasks: BackgroundTasks) -> dict:
+    source_type = "page_text" if request.mode == "page_text" else "current_page"
+    task = create_task(source_type=source_type, title=request.title or request.page_url, page_url=request.page_url)
+    background_tasks.add_task(process_current_page_task, task.id, request)
+    return {"task_id": task.id, "task": task}
+
+
+@app.post("/api/tasks/from-local")
+async def create_from_local(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    title: str = Form(""),
+    options: str = Form("{}"),
+) -> dict:
+    safe_name = Path(file.filename or "local-video").name
+    task = create_task(source_type="local", title=title or safe_name)
+    upload_path = UPLOAD_DIR / f"{task.id}_{safe_name}"
+    with upload_path.open("wb") as output:
+        while True:
+            chunk = await file.read(1024 * 1024)
+            if not chunk:
+                break
+            output.write(chunk)
+    try:
+        parsed_options = TaskOptions.model_validate(json.loads(options or "{}"))
+    except Exception:
+        parsed_options = TaskOptions()
+    background_tasks.add_task(process_local_video_task, task.id, upload_path, title or safe_name, parsed_options)
+    return {"task_id": task.id, "task": task}
+
+
+@app.get("/api/tasks")
+def api_list_tasks() -> dict:
+    return {"tasks": list_tasks()}
+
+
+@app.get("/api/tasks/{task_id}")
+def api_get_task(task_id: str) -> dict:
+    try:
+        return {"task": get_task(task_id)}
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Task not found") from exc
+
+
+@app.get("/api/tasks/{task_id}/transcript")
+def api_transcript(task_id: str) -> dict:
+    try:
+        return read_transcript(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Task not found") from exc
+
+
+@app.get("/api/tasks/{task_id}/note", response_class=PlainTextResponse)
+def api_note(task_id: str) -> str:
+    try:
+        return read_note(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Task not found") from exc
+
+
+@app.get("/api/tasks/{task_id}/assets/{filename}")
+def api_asset(task_id: str, filename: str) -> FileResponse:
+    path = task_dir(task_id) / "grids" / Path(filename).name
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Asset not found")
+    return FileResponse(path)

@@ -1,0 +1,266 @@
+from __future__ import annotations
+
+import http.cookiejar
+import os
+import re
+import subprocess
+from pathlib import Path
+from urllib.parse import urlparse
+
+import requests
+
+from .models import BrowserCookie, ResourceCandidate
+from .runtime import ffmpeg_bin
+
+
+MEDIA_EXT_RE = re.compile(r"\.(mp4|m4v|webm|mov|mkv)(\?|#|$)", re.I)
+MANIFEST_EXT_RE = re.compile(r"\.(m3u8|mpd)(\?|#|$)", re.I)
+FRAGMENT_EXT_RE = re.compile(r"\.(m4s|ts)(\?|#|$)", re.I)
+
+
+class DownloadError(RuntimeError):
+    def __init__(self, code: str, message: str):
+        super().__init__(message)
+        self.code = code
+        self.message = message
+
+
+def _clean_filename(value: str) -> str:
+    value = re.sub(r"[^\w\-.]+", "_", value.strip(), flags=re.U)
+    return value[:120] or "media"
+
+
+def _domain_matches(cookie_domain: str, host: str) -> bool:
+    cookie_domain = cookie_domain.lstrip(".").lower()
+    host = host.lower()
+    return host == cookie_domain or host.endswith(f".{cookie_domain}")
+
+
+def cookie_header_for_url(cookies: list[BrowserCookie], url: str) -> str:
+    host = urlparse(url).hostname or ""
+    parts = []
+    for cookie in cookies:
+        if cookie.domain and _domain_matches(cookie.domain, host):
+            parts.append(f"{cookie.name}={cookie.value}")
+    return "; ".join(parts)
+
+
+def write_netscape_cookie_file(cookies: list[BrowserCookie], path: Path) -> Path:
+    lines = ["# Netscape HTTP Cookie File\n"]
+    for cookie in cookies:
+        if not cookie.name:
+            continue
+        domain = cookie.domain or ""
+        include_subdomains = "TRUE" if domain.startswith(".") else "FALSE"
+        secure = "TRUE" if cookie.secure else "FALSE"
+        expires = int(cookie.expirationDate or 0)
+        lines.append(
+            "\t".join([
+                domain,
+                include_subdomains,
+                cookie.path or "/",
+                secure,
+                str(expires),
+                cookie.name,
+                cookie.value,
+            ]) + "\n"
+        )
+    path.write_text("".join(lines), encoding="utf-8")
+    return path
+
+
+def classify_resource(url: str, mime: str = "") -> str:
+    lowered = url.lower()
+    mime_lower = mime.lower()
+    if lowered.startswith("blob:"):
+        return "blob"
+    if "mpegurl" in mime_lower or "m3u8" in lowered:
+        return "hls"
+    if "dash+xml" in mime_lower or ".mpd" in lowered:
+        return "dash"
+    if "video/" in mime_lower or MEDIA_EXT_RE.search(lowered):
+        return "video"
+    if FRAGMENT_EXT_RE.search(lowered):
+        return "fragment"
+    return "unknown"
+
+
+def score_resource(url: str, mime: str = "", source: str = "") -> int:
+    kind = classify_resource(url, mime)
+    score = 0
+    if kind in {"hls", "dash"}:
+        score += 95
+    elif kind == "video":
+        score += 85
+    elif kind == "fragment":
+        score += 15
+    elif kind == "blob":
+        score += 5
+    if source == "webRequest":
+        score += 10
+    if "chaoxing" in url or "xuexitong" in url:
+        score += 8
+    return min(score, 100)
+
+
+class MediaDownloader:
+    def __init__(self, task_path: Path):
+        self.task_path = task_path
+        self.download_dir = task_path / "downloads"
+        self.download_dir.mkdir(parents=True, exist_ok=True)
+
+    def download(
+        self,
+        page_url: str,
+        resources: list[ResourceCandidate],
+        cookies: list[BrowserCookie],
+        title: str,
+    ) -> tuple[Path, ResourceCandidate | None]:
+        if any(item.url.startswith("blob:") for item in resources) and not any(
+            classify_resource(item.url, item.mime) in {"hls", "dash", "video"} for item in resources
+        ):
+            raise DownloadError("drm_or_encrypted", "页面只暴露 blob 媒体地址，未发现可下载 manifest 或视频文件。")
+
+        cookie_file = write_netscape_cookie_file(cookies, self.task_path / "cookies.txt") if cookies else None
+
+        try:
+            return self._download_with_ytdlp(page_url, cookie_file, title), None
+        except DownloadError as exc:
+            if exc.code not in {"unsupported_manifest", "download_forbidden"}:
+                pass
+        except Exception:
+            pass
+
+        candidates = self._candidate_resources(resources)
+        if not candidates:
+            raise DownloadError("no_media_found", "没有发现可直接下载的视频、HLS 或 DASH 资源。")
+
+        last_error: DownloadError | None = None
+        for candidate in candidates:
+            try:
+                return self._download_candidate(candidate, cookies, page_url, title), candidate
+            except DownloadError as exc:
+                last_error = exc
+                continue
+
+        if last_error:
+            raise last_error
+        raise DownloadError("no_media_found", "所有候选资源都无法下载。")
+
+    def _candidate_resources(self, resources: list[ResourceCandidate]) -> list[ResourceCandidate]:
+        dedup: dict[str, ResourceCandidate] = {}
+        for item in resources:
+            if not item.url or item.url.startswith(("chrome-extension:", "data:")):
+                continue
+            kind = classify_resource(item.url, item.mime)
+            item.kind = kind
+            item.score = max(item.score, score_resource(item.url, item.mime, item.source))
+            if kind in {"hls", "dash", "video"}:
+                dedup[item.url] = item
+        return sorted(dedup.values(), key=lambda item: item.score, reverse=True)
+
+    def _download_with_ytdlp(self, page_url: str, cookie_file: Path | None, title: str) -> Path:
+        try:
+            import yt_dlp
+        except Exception as exc:
+            raise DownloadError("unsupported_manifest", "未安装 yt-dlp，跳过页面解析。") from exc
+
+        outtmpl = str(self.download_dir / f"{_clean_filename(title)}.%(ext)s")
+        opts = {
+            "outtmpl": outtmpl,
+            "format": "bestvideo*+bestaudio/best",
+            "merge_output_format": "mp4",
+            "quiet": True,
+            "noprogress": True,
+            "retries": 2,
+            "fragment_retries": 2,
+        }
+        if cookie_file:
+            opts["cookiefile"] = str(cookie_file)
+
+        before = set(self.download_dir.glob("*"))
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                ydl.extract_info(page_url, download=True)
+        except Exception as exc:
+            message = str(exc)
+            if "login" in message.lower() or "cookie" in message.lower():
+                raise DownloadError("auth_required", "yt-dlp 页面下载失败，可能需要登录态 cookie。") from exc
+            raise DownloadError("download_forbidden", f"yt-dlp 无法下载当前页面：{message[:300]}") from exc
+
+        after = [path for path in self.download_dir.glob("*") if path not in before and path.is_file()]
+        media = [path for path in after if path.suffix.lower() in {".mp4", ".webm", ".mkv", ".mov", ".m4v"}]
+        if not media:
+            media = [path for path in self.download_dir.glob("*") if path.suffix.lower() in {".mp4", ".webm", ".mkv", ".mov", ".m4v"}]
+        if not media:
+            raise DownloadError("download_forbidden", "yt-dlp 已运行但没有生成可用视频文件。")
+        return max(media, key=lambda path: path.stat().st_size)
+
+    def _download_candidate(
+        self,
+        candidate: ResourceCandidate,
+        cookies: list[BrowserCookie],
+        referer: str,
+        title: str,
+    ) -> Path:
+        kind = classify_resource(candidate.url, candidate.mime)
+        if kind in {"hls", "dash"}:
+            return self._download_manifest(candidate.url, cookies, referer, title)
+        if kind == "video":
+            return self._download_file(candidate.url, cookies, referer, title)
+        raise DownloadError("unsupported_manifest", f"不支持的候选资源类型：{kind}")
+
+    def _download_file(self, url: str, cookies: list[BrowserCookie], referer: str, title: str) -> Path:
+        suffix = Path(urlparse(url).path).suffix or ".mp4"
+        output = self.download_dir / f"{_clean_filename(title)}_direct{suffix}"
+        headers = {
+            "User-Agent": "Mozilla/5.0 LearnNoteAssistant/0.1",
+            "Referer": referer,
+        }
+        cookie = cookie_header_for_url(cookies, url)
+        if cookie:
+            headers["Cookie"] = cookie
+        try:
+            with requests.get(url, headers=headers, stream=True, timeout=30) as response:
+                if response.status_code in {401, 403}:
+                    raise DownloadError("auth_required", f"媒体资源返回 HTTP {response.status_code}。")
+                if response.status_code >= 400:
+                    raise DownloadError("download_forbidden", f"媒体资源返回 HTTP {response.status_code}。")
+                with output.open("wb") as file:
+                    for chunk in response.iter_content(chunk_size=1024 * 1024):
+                        if chunk:
+                            file.write(chunk)
+        except DownloadError:
+            raise
+        except Exception as exc:
+            raise DownloadError("download_forbidden", f"直接下载失败：{exc}") from exc
+        if output.stat().st_size < 4096:
+            raise DownloadError("download_forbidden", "下载文件过小，可能不是有效视频。")
+        return output
+
+    def _download_manifest(self, url: str, cookies: list[BrowserCookie], referer: str, title: str) -> Path:
+        ffmpeg = ffmpeg_bin()
+        if not ffmpeg:
+            raise DownloadError("unsupported_manifest", "未找到 ffmpeg，无法合并 HLS/DASH。")
+        output = self.download_dir / f"{_clean_filename(title)}_manifest.mp4"
+        headers = []
+        cookie = cookie_header_for_url(cookies, url)
+        if cookie:
+            headers.append(f"Cookie: {cookie}")
+        if referer:
+            headers.append(f"Referer: {referer}")
+        cmd = [ffmpeg, "-y", "-hide_banner", "-loglevel", "error"]
+        if headers:
+            cmd += ["-headers", "\r\n".join(headers) + "\r\n"]
+        cmd += ["-user_agent", "Mozilla/5.0 LearnNoteAssistant/0.1", "-i", url, "-c", "copy", str(output)]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            stderr = (result.stderr or "").lower()
+            if "403" in stderr or "401" in stderr:
+                raise DownloadError("auth_required", "ffmpeg 下载 manifest 失败，可能需要登录态 cookie。")
+            if "encrypted" in stderr or "drm" in stderr or "unable to open key" in stderr:
+                raise DownloadError("drm_or_encrypted", "媒体流疑似加密或 DRM 保护，无法直接下载。")
+            raise DownloadError("unsupported_manifest", f"ffmpeg 无法处理该 manifest：{result.stderr[:300]}")
+        if not output.exists() or output.stat().st_size < 4096:
+            raise DownloadError("download_forbidden", "manifest 合并没有生成有效视频。")
+        return output

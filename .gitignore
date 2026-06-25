@@ -1,0 +1,9 @@
+.venv/
+backend/.venv/
+__pycache__/
+*.pyc
+data/*.mp4
+data/uploads/
+data/tasks/
+data/static/
+extension/.DS_Store

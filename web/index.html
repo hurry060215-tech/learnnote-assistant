@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>LearnNote 本地助手</title>
+    <link rel="stylesheet" href="/web/styles.css">
+  </head>
+  <body>
+    <header class="app-header">
+      <div class="brand">
+        <div class="brand-mark">LN</div>
+        <div>
+          <h1>LearnNote 本地助手</h1>
+          <p>当前页视频直取、本地视频上传、转写与图文总结</p>
+        </div>
+      </div>
+      <div id="health" class="health">检查中</div>
+    </header>
+
+    <main class="layout">
+      <section class="panel upload-panel">
+        <h2>上传本地视频</h2>
+        <p class="muted">支持 mp4 / webm / mov / mkv。上传后会走同一套转写、抽帧、图文总结管线。</p>
+        <label id="dropzone" class="dropzone">
+          <input id="fileInput" type="file" accept="video/*">
+          <span class="upload-icon">↥</span>
+          <strong>拖拽视频文件到此处，或点击选择</strong>
+          <small>默认每 20 秒抽帧，3x3 网格</small>
+        </label>
+        <div class="form-row">
+          <label>任务标题</label>
+          <input id="titleInput" type="text" placeholder="可选，默认使用文件名">
+        </div>
+        <button id="uploadButton" class="primary">上传并总结</button>
+      </section>
+
+      <section class="panel tasks-panel">
+        <div class="panel-title">
+          <h2>任务列表</h2>
+          <button id="refreshButton" class="ghost">刷新</button>
+        </div>
+        <div id="tasks" class="task-list"></div>
+      </section>
+
+      <section class="panel transcript-panel">
+        <div class="tabs">
+          <button class="tab active" data-tab="transcript">转写（字幕）</button>
+          <button class="tab" data-tab="frames">帧预览</button>
+          <button class="tab" data-tab="note">笔记（Markdown）</button>
+        </div>
+        <div id="detail" class="detail empty">选择一个任务查看结果。</div>
+      </section>
+    </main>
+
+    <script src="/web/app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,217 @@
+from __future__ import annotations
+
+import base64
+import hashlib
+import json
+import re
+import subprocess
+from pathlib import Path
+
+from PIL import Image, ImageOps
+
+from .config import BACKEND_ORIGIN
+from .models import FrameGrid
+from .runtime import ffmpeg_bin, ffprobe_bin
+
+
+class MediaProcessingError(RuntimeError):
+    pass
+
+
+def _run(cmd: list[str], message: str) -> None:
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise MediaProcessingError(f"{message}: {result.stderr[:500]}")
+
+
+def require_ffmpeg() -> None:
+    if not ffmpeg_bin():
+        raise MediaProcessingError("未找到 ffmpeg。")
+
+
+def probe_duration(path: Path) -> float:
+    probe = ffprobe_bin()
+    if probe:
+        result = subprocess.run(
+            [
+                probe,
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "json",
+                str(path),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0:
+            try:
+                return float(json.loads(result.stdout)["format"]["duration"])
+            except Exception:
+                pass
+
+    ffmpeg = ffmpeg_bin()
+    if not ffmpeg:
+        return 0
+    result = subprocess.run(
+        [
+            ffmpeg,
+            "-hide_banner",
+            "-i",
+            str(path),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    match = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", result.stderr or "")
+    if not match:
+        return 0
+    hours, minutes, seconds = match.groups()
+    return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+
+
+def normalize_video(input_path: Path, output_path: Path) -> Path:
+    require_ffmpeg()
+    ffmpeg = ffmpeg_bin()
+    if input_path.resolve() == output_path.resolve():
+        return input_path
+    _run(
+        [
+            ffmpeg,
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-i",
+            str(input_path),
+            "-map",
+            "0:v:0?",
+            "-map",
+            "0:a:0?",
+            "-c:v",
+            "copy",
+            "-c:a",
+            "aac",
+            "-movflags",
+            "+faststart",
+            str(output_path),
+        ],
+        "视频标准化失败",
+    )
+    return output_path
+
+
+def extract_audio(video_path: Path, output_path: Path) -> Path:
+    require_ffmpeg()
+    ffmpeg = ffmpeg_bin()
+    _run(
+        [
+            ffmpeg,
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-i",
+            str(video_path),
+            "-vn",
+            "-ac",
+            "1",
+            "-ar",
+            "16000",
+            "-acodec",
+            "pcm_s16le",
+            str(output_path),
+        ],
+        "音频提取失败",
+    )
+    return output_path
+
+
+def _md5(path: Path) -> str:
+    digest = hashlib.md5()
+    digest.update(path.read_bytes())
+    return digest.hexdigest()
+
+
+def extract_frames(video_path: Path, frame_dir: Path, interval: int, max_frames: int = 900) -> list[Path]:
+    require_ffmpeg()
+    ffmpeg = ffmpeg_bin()
+    frame_dir.mkdir(parents=True, exist_ok=True)
+    duration = probe_duration(video_path)
+    if duration <= 0:
+        return []
+    timestamps = list(range(0, int(duration), max(1, interval)))[:max_frames]
+    frames: list[Path] = []
+    last_hash = ""
+    for index, ts in enumerate(timestamps):
+        out = frame_dir / f"frame_{index:04d}_{ts:06d}.jpg"
+        result = subprocess.run(
+            [
+                ffmpeg,
+                "-y",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-ss",
+                str(ts),
+                "-i",
+                str(video_path),
+                "-frames:v",
+                "1",
+                "-q:v",
+                "3",
+                str(out),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0 or not out.exists():
+            continue
+        current_hash = _md5(out)
+        if current_hash == last_hash:
+            out.unlink(missing_ok=True)
+            continue
+        last_hash = current_hash
+        frames.append(out)
+    return frames
+
+
+def build_frame_grids(
+    task_id: str,
+    frames: list[Path],
+    grid_dir: Path,
+    columns: int,
+    rows: int,
+    interval: int,
+) -> list[FrameGrid]:
+    grid_dir.mkdir(parents=True, exist_ok=True)
+    group_size = max(1, columns * rows)
+    grids: list[FrameGrid] = []
+    for idx in range(0, len(frames), group_size):
+        group = frames[idx: idx + group_size]
+        if not group:
+            continue
+        canvas = Image.new("RGB", (columns * 320, rows * 180), "white")
+        for pos, frame in enumerate(group):
+            image = Image.open(frame).convert("RGB")
+            image = ImageOps.contain(image, (320, 180), Image.Resampling.LANCZOS)
+            tile = Image.new("RGB", (320, 180), (8, 13, 23))
+            x = (320 - image.width) // 2
+            y = (180 - image.height) // 2
+            tile.paste(image, (x, y))
+            canvas.paste(tile, ((pos % columns) * 320, (pos // columns) * 180))
+        grid_index = idx // group_size
+        path = grid_dir / f"grid_{grid_index:03d}.jpg"
+        canvas.save(path, quality=82)
+        start = float(idx * interval)
+        end = float((idx + len(group)) * interval)
+        rel_url = f"/api/tasks/{task_id}/assets/{path.name}"
+        grids.append(FrameGrid(path=str(path), url=f"{BACKEND_ORIGIN}{rel_url}", start=start, end=end, frame_count=len(group)))
+    return grids
+
+
+def image_to_data_url(path: Path) -> str:
+    encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+    return f"data:image/jpeg;base64,{encoded}"

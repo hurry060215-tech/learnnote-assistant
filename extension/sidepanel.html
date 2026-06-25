@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>LearnNote</title>
+    <link rel="stylesheet" href="sidepanel.css">
+  </head>
+  <body>
+    <header class="header">
+      <div class="mark">LN</div>
+      <div>
+        <h1>LearnNote 助手</h1>
+        <p id="backendStatus">连接本地后端...</p>
+      </div>
+    </header>
+
+    <section class="section">
+      <h2>当前页面</h2>
+      <strong id="pageTitle">读取中...</strong>
+      <small id="pageUrl"></small>
+    </section>
+
+    <section class="section">
+      <div class="section-title">
+        <h2>检测到的媒体资源</h2>
+        <button id="redetectButton" class="icon-button" title="重新检测资源">↻</button>
+      </div>
+      <div id="resources" class="resource-list"></div>
+    </section>
+
+    <section class="actions">
+      <button id="summarizeButton" class="primary">总结当前视频</button>
+      <button id="uploadButton">上传本地视频</button>
+      <button id="textButton">只总结当前页面文本</button>
+      <input id="fileInput" type="file" accept="video/*">
+    </section>
+
+    <section class="section">
+      <h2>处理进度</h2>
+      <div class="steps">
+        <span>资源检测</span>
+        <span>下载视频</span>
+        <span>AI 总结</span>
+        <span>生成笔记</span>
+      </div>
+      <div class="progress"><span id="progressBar"></span></div>
+      <p id="taskMessage" class="muted">暂无任务。</p>
+    </section>
+
+    <section class="section result">
+      <div class="section-title">
+        <h2>字幕预览</h2>
+      </div>
+      <div id="transcript" class="scroll muted">任务完成后显示字幕。</div>
+    </section>
+
+    <section class="section result">
+      <div class="section-title">
+        <h2>笔记预览（Markdown）</h2>
+        <button id="copyButton" class="icon-button" title="复制笔记">⧉</button>
+      </div>
+      <pre id="note" class="scroll note">任务完成后显示笔记。</pre>
+    </section>
+
+    <footer>
+      <button id="settingsButton" class="link">设置</button>
+      <span>v0.1.0</span>
+    </footer>
+
+    <script src="sidepanel.js"></script>
+  </body>
+</html>
