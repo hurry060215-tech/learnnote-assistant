@@ -45,6 +45,22 @@ def _timeline_lines(transcript: TranscriptResult, grids: list[FrameGrid]) -> lis
     return ["- 暂无字幕或画面窗口。"]
 
 
+def _window_summary_lines(transcript: TranscriptResult, grids: list[FrameGrid]) -> list[str]:
+    if not grids:
+        return ["- 未生成画面窗口。"]
+    lines = []
+    for grid in grids:
+        window = _segments_window(transcript, grid.start, grid.end).replace("\n", " ")
+        if window:
+            lines.append(
+                f"- `{_format_ts(grid.start)} - {_format_ts(grid.end)}` "
+                f"结合画面网格和字幕：{window[:260]}{'...' if len(window) > 260 else ''}"
+            )
+        else:
+            lines.append(f"- `{_format_ts(grid.start)} - {_format_ts(grid.end)}` 仅生成画面网格，需结合截图回看：{grid.url}")
+    return lines
+
+
 def local_markdown_note(title: str, transcript: TranscriptResult, grids: list[FrameGrid], page_url: str = "") -> str:
     lines = [f"# {title or '学习笔记'}", ""]
     if page_url:
@@ -63,6 +79,10 @@ def local_markdown_note(title: str, transcript: TranscriptResult, grids: list[Fr
 
     lines += ["## 时间轴重点", ""]
     lines.extend(_timeline_lines(transcript, grids))
+    lines.append("")
+
+    lines += ["## 分段图文摘要", ""]
+    lines.extend(_window_summary_lines(transcript, grids))
     lines.append("")
 
     lines += ["## 核心概念", ""]
@@ -143,7 +163,14 @@ def summarize_with_llm(
     for grid in grids[:8]:
         path = Path(grid.path)
         if path.exists():
-            content.append({"type": "text", "text": f"画面网格 {_format_ts(grid.start)} - {_format_ts(grid.end)}"})
+            content.append({
+                "type": "text",
+                "text": (
+                    f"画面网格窗口 {_format_ts(grid.start)} - {_format_ts(grid.end)}。\n"
+                    "请只总结这个时间窗口内画面和字幕共同支持的内容；如果画面呈现 PPT、代码、公式、操作步骤或例题，请写进对应时间轴。\n"
+                    f"该窗口字幕：\n{_segments_window(transcript, grid.start, grid.end) or '无对应字幕'}"
+                ),
+            })
             content.append({"type": "image_url", "image_url": {"url": image_to_data_url(path)}})
 
     try:

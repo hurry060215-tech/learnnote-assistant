@@ -395,6 +395,46 @@ select:focus {
   font-size: 12px;
 }
 
+.stage-rail {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 9px;
+}
+
+.stage-rail.compact {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.stage-rail span {
+  min-width: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: #e7edf6;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.stage-rail span.done {
+  background: rgba(21, 153, 71, 0.12);
+  color: var(--success);
+}
+
+.stage-rail span.active {
+  background: var(--surface-strong);
+  color: var(--accent);
+  box-shadow: inset 0 0 0 1px #9db9f8;
+}
+
+.stage-rail span.failed {
+  background: rgba(217, 45, 32, 0.1);
+  color: var(--danger);
+}
+
 .progress {
   height: 6px;
   margin-top: 9px;

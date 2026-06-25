@@ -52,7 +52,7 @@ def health() -> dict:
 @app.post("/api/tasks/from-current-page")
 def create_from_current_page(request: CurrentPageTaskRequest, background_tasks: BackgroundTasks) -> dict:
     source_type = "page_text" if request.mode == "page_text" else "current_page"
-    task = create_task(source_type=source_type, title=request.title or request.page_url, page_url=request.page_url)
+    task = create_task(source_type=source_type, title=request.title or request.page_url, page_url=request.page_url, options=request.options)
     background_tasks.add_task(process_current_page_task, task.id, request)
     return {"task_id": task.id, "task": task}
 
@@ -65,7 +65,11 @@ async def create_from_local(
     options: str = Form("{}"),
 ) -> dict:
     safe_name = Path(file.filename or "local-video").name
-    task = create_task(source_type="local", title=title or safe_name)
+    try:
+        parsed_options = TaskOptions.model_validate(json.loads(options or "{}"))
+    except Exception:
+        parsed_options = TaskOptions()
+    task = create_task(source_type="local", title=title or safe_name, options=parsed_options)
     upload_path = UPLOAD_DIR / f"{task.id}_{safe_name}"
     with upload_path.open("wb") as output:
         while True:
@@ -73,10 +77,6 @@ async def create_from_local(
             if not chunk:
                 break
             output.write(chunk)
-    try:
-        parsed_options = TaskOptions.model_validate(json.loads(options or "{}"))
-    except Exception:
-        parsed_options = TaskOptions()
     background_tasks.add_task(process_local_video_task, task.id, upload_path, title or safe_name, parsed_options)
     return {"task_id": task.id, "task": task}
 

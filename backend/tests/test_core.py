@@ -6,7 +6,7 @@ import shutil
 from pathlib import Path
 
 from app.downloader import DownloadError, MediaDownloader, classify_resource, cookie_header_for_url, score_resource
-from app.models import BrowserCookie, ResourceCandidate, TranscriptResult, TranscriptSegment
+from app.models import BrowserCookie, FrameGrid, ResourceCandidate, TranscriptResult, TranscriptSegment
 from app.processor import read_note, read_transcript
 from app.summarizer import local_markdown_note
 from app.storage import create_task, task_dir
@@ -58,9 +58,12 @@ class SummaryFallbackTests(unittest.TestCase):
             full_text="函数用于封装逻辑。",
             segments=[TranscriptSegment(start=5, end=8, text="函数用于封装逻辑。")],
         )
-        note = local_markdown_note("Python lesson", transcript, [], "https://example.com")
+        grids = [FrameGrid(path="", url="http://127.0.0.1/grid.jpg", start=0, end=20, frame_count=2)]
+        note = local_markdown_note("Python lesson", transcript, grids, "https://example.com")
         self.assertIn("# Python lesson", note)
         self.assertIn("00:00:05", note)
+        self.assertIn("分段图文摘要", note)
+        self.assertIn("http://127.0.0.1/grid.jpg", note)
         self.assertIn("复习问题", note)
 
 

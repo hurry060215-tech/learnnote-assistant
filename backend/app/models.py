@@ -139,6 +139,7 @@ class TaskRecord(BaseModel):
     error_detail: str = ""
     created_at: str
     updated_at: str
+    options: TaskOptions = Field(default_factory=TaskOptions)
     selected_resource: ResourceCandidate | None = None
     download_attempts: list[DownloadAttempt] = Field(default_factory=list)
     media_path: str = ""

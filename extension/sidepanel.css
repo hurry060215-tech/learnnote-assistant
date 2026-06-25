@@ -247,6 +247,40 @@ input[type="file"] {
   background: var(--accent);
 }
 
+.stage-rail {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 5px;
+  margin-top: 9px;
+}
+
+.stage-rail span {
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: #e7edf6;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 18px;
+}
+
+.stage-rail span.done {
+  background: rgba(21, 153, 71, 0.12);
+  color: var(--success);
+}
+
+.stage-rail span.active {
+  background: var(--surface-strong);
+  color: var(--accent);
+  box-shadow: inset 0 0 0 1px #9db9f8;
+}
+
+.stage-rail span.failed {
+  background: rgba(217, 45, 32, 0.1);
+  color: var(--danger);
+}
+
 #taskMessage {
   margin: 8px 0 0;
   color: var(--muted);

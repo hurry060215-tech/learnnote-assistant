@@ -27,6 +27,7 @@ const els = {
   whisperModel: document.querySelector("#whisperModel"),
   noteStyle: document.querySelector("#noteStyle"),
   progressBar: document.querySelector("#progressBar"),
+  stageRail: document.querySelector("#stageRail"),
   taskPhase: document.querySelector("#taskPhase"),
   taskMessage: document.querySelector("#taskMessage"),
   resultTabs: document.querySelectorAll(".result-tab"),
@@ -51,6 +52,46 @@ function fmtBytes(bytes) {
   if (value >= 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`;
   if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`;
   return `${value} B`;
+}
+
+const PIPELINE_STEPS = [
+  { key: "downloading", label: "下载" },
+  { key: "transcribing", label: "识别" },
+  { key: "extracting_frames", label: "切片" },
+  { key: "summarizing", label: "生成" },
+  { key: "completed", label: "完成" }
+];
+
+const DOWNLOAD_ERROR_CODES = new Set(["no_media_found", "auth_required", "drm_or_encrypted", "download_forbidden", "unsupported_manifest"]);
+
+function failedStepIndex(task) {
+  if (DOWNLOAD_ERROR_CODES.has(task.error_code)) return 0;
+  if (task.media_path && !task.transcript_path) return 1;
+  if (task.transcript_path && !task.frame_grids?.length) return 2;
+  return 3;
+}
+
+function stepState(task, step) {
+  if (!task) return "pending";
+  if (task.status === "failed") {
+    const failedIndex = failedStepIndex(task);
+    const stepIndex = PIPELINE_STEPS.findIndex(item => item.key === step.key);
+    if (stepIndex < failedIndex) return "done";
+    if (stepIndex === failedIndex) return "failed";
+    return "pending";
+  }
+  if (task.status === "success" || task.phase === "completed") return "done";
+  const currentIndex = PIPELINE_STEPS.findIndex(item => item.key === task.phase);
+  const stepIndex = PIPELINE_STEPS.findIndex(item => item.key === step.key);
+  if (currentIndex < 0) return stepIndex === 0 && task.status === "running" ? "active" : "pending";
+  if (stepIndex < currentIndex) return "done";
+  if (stepIndex === currentIndex) return "active";
+  return "pending";
+}
+
+function renderStageRail(task) {
+  if (!els.stageRail) return;
+  els.stageRail.innerHTML = PIPELINE_STEPS.map(step => `<span class="${stepState(task, step)}">${step.label}</span>`).join("");
 }
 
 function readOptions() {
@@ -189,6 +230,7 @@ async function pollTask() {
   const data = await fetch(`${backendUrl}/api/tasks/${currentTaskId}`).then(r => r.json());
   currentTask = data.task;
   els.progressBar.style.width = `${currentTask.progress || 0}%`;
+  renderStageRail(currentTask);
   els.taskPhase.textContent = currentTask.phase || "-";
   els.taskMessage.textContent = currentTask.error_detail || currentTask.message || currentTask.phase;
   if (currentTask.status === "success") {

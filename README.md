@@ -8,6 +8,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 
 - Chrome/Edge MV3 extension with a Side Panel.
 - BiliNote-style workspace UI: source selection, processing options, task history, note/transcript/frame/diagnostic result tabs.
+- BiliNote-style task stage rail for download, transcription, frame slicing, note generation, and completion.
 - Current-page media detection from DOM, all-frame content scripts, Performance entries, and `webRequest`.
 - Cookie handoff from the current browser session to the local backend at task start.
 - Local FastAPI backend on `127.0.0.1:8765`.
@@ -31,6 +32,8 @@ This project intentionally does **not** record the browser tab and does **not** 
 - Shared video processing: normalize video, extract audio, transcribe with `faster-whisper` when available, extract frames, generate frame grids, and emit Markdown notes.
 - Configurable slicing: frame interval, grid layout, ASR model, and note style.
 - Web UI and Side Panel diagnostic tabs show the selected resource, browser evidence, and every backend download attempt.
+- Task records retain the frame interval, grid layout, ASR model, note style, and visual-understanding setting used for that run.
+- Multimodal prompts are organized by frame-grid windows, pairing each visual slice with the transcript segment from the same time range.
 - Deterministic fallback notes when no LLM key or ASR model is installed.
 
 ## Quick Start

@@ -66,6 +66,64 @@ function sourceText(task) {
   return task.selected_resource ? `直取 · ${task.selected_resource.kind}` : "页面解析";
 }
 
+const PIPELINE_STEPS = [
+  { key: "downloading", label: "下载" },
+  { key: "transcribing", label: "识别" },
+  { key: "extracting_frames", label: "切片" },
+  { key: "summarizing", label: "生成" },
+  { key: "completed", label: "完成" }
+];
+
+const DOWNLOAD_ERROR_CODES = new Set(["no_media_found", "auth_required", "drm_or_encrypted", "download_forbidden", "unsupported_manifest"]);
+
+function failedStepIndex(task) {
+  if (DOWNLOAD_ERROR_CODES.has(task.error_code)) return 0;
+  if (task.media_path && !task.transcript_path) return 1;
+  if (task.transcript_path && !task.frame_grids?.length) return 2;
+  return 3;
+}
+
+function stepState(task, step) {
+  if (task.status === "failed") {
+    const failedIndex = failedStepIndex(task);
+    const stepIndex = PIPELINE_STEPS.findIndex(item => item.key === step.key);
+    if (stepIndex < failedIndex) return "done";
+    if (stepIndex === failedIndex) return "failed";
+    return "pending";
+  }
+  if (task.status === "success" || task.phase === "completed") return "done";
+  const currentIndex = PIPELINE_STEPS.findIndex(item => item.key === task.phase);
+  const stepIndex = PIPELINE_STEPS.findIndex(item => item.key === step.key);
+  if (currentIndex < 0) return stepIndex === 0 && task.status === "running" ? "active" : "pending";
+  if (stepIndex < currentIndex) return "done";
+  if (stepIndex === currentIndex) return "active";
+  return "pending";
+}
+
+function stageRail(task) {
+  if (task.source_type === "page_text") {
+    const done = task.status === "success";
+    const failed = task.status === "failed";
+    return `<div class="stage-rail compact">
+      <span class="${done ? "done" : failed ? "failed" : "active"}">解析</span>
+      <span class="${done ? "done" : failed ? "failed" : task.phase === "summarizing" ? "active" : "pending"}">总结</span>
+      <span class="${done ? "done" : failed ? "failed" : "pending"}">完成</span>
+    </div>`;
+  }
+  return `<div class="stage-rail">${PIPELINE_STEPS.map(step => `<span class="${stepState(task, step)}">${step.label}</span>`).join("")}</div>`;
+}
+
+function optionText(task) {
+  const options = task.options || {};
+  return [
+    options.frame_interval ? `${options.frame_interval} 秒切片` : "",
+    options.grid_columns && options.grid_rows ? `${options.grid_columns}x${options.grid_rows} 画面网格` : "",
+    options.whisper_model ? `ASR ${options.whisper_model}` : "",
+    options.note_style ? `风格 ${options.note_style}` : "",
+    options.visual_understanding === false ? "未开启视觉理解" : "视觉理解"
+  ].filter(Boolean).join(" · ");
+}
+
 function mediaKind(url) {
   if (HLS_RE.test(url)) return url.toLowerCase().includes(".mpd") ? "dash" : "hls";
   if (MEDIA_RE.test(url)) return "video";
@@ -126,6 +184,7 @@ function renderTasks() {
         <strong>${escapeHtml(task.title || task.id)}</strong>
         <small>${escapeHtml(statusText(task))} · ${escapeHtml(task.phase)}</small>
         <span class="source">${escapeHtml(sourceText(task))}</span>
+        ${stageRail(task)}
         <div class="progress"><span style="width:${task.progress || 0}%"></span></div>
       </div>
       <small>${task.progress || 0}%</small>
@@ -222,6 +281,7 @@ async function renderDetail() {
         ].filter(Boolean).join(" · "))}</dd>
         <dt>媒体文件</dt><dd>${escapeHtml(task.media_path || "-")}</dd>
         <dt>音频文件</dt><dd>${escapeHtml(task.audio_path || "-")}</dd>
+        <dt>处理选项</dt><dd>${escapeHtml(optionText(task) || "-")}</dd>
         <dt>错误</dt><dd>${escapeHtml(task.error_detail || task.error_code || "-")}</dd>
         <dt>尝试记录</dt><dd>${attemptHtml}</dd>
       </dl>

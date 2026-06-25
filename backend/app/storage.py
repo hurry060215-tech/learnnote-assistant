@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import TASK_DIR, ensure_dirs
-from .models import TaskRecord, now_iso
+from .models import TaskOptions, TaskRecord, now_iso
 
 _lock = threading.RLock()
 
@@ -26,13 +26,14 @@ def task_file(task_id: str) -> Path:
     return task_dir(task_id) / "task.json"
 
 
-def create_task(source_type: str, title: str, page_url: str = "") -> TaskRecord:
+def create_task(source_type: str, title: str, page_url: str = "", options: TaskOptions | None = None) -> TaskRecord:
     ensure_dirs()
     record = TaskRecord(
         id=new_task_id(),
         source_type=source_type,  # type: ignore[arg-type]
         title=title or "Untitled",
         page_url=page_url,
+        options=options or TaskOptions(),
         created_at=now_iso(),
         updated_at=now_iso(),
     )

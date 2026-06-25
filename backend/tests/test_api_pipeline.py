@@ -97,6 +97,8 @@ class ApiPipelineTests(unittest.TestCase):
             try:
                 task = self.client.get(f"/api/tasks/{task_id}").json()["task"]
                 self.assertEqual(task["status"], "success")
+                self.assertEqual(task["options"]["frame_interval"], 1)
+                self.assertEqual(task["options"]["visual_understanding"], True)
                 self.assertTrue(Path(task["media_path"]).exists())
                 self.assertTrue(task["frame_grids"])
                 note = self.client.get(f"/api/tasks/{task_id}/note").text
@@ -143,6 +145,7 @@ class ApiPipelineTests(unittest.TestCase):
                 try:
                     task = self.client.get(f"/api/tasks/{task_id}").json()["task"]
                     self.assertEqual(task["status"], "success")
+                    self.assertEqual(task["options"]["frame_interval"], 1)
                     self.assertEqual(task["selected_resource"]["url"], media_url)
                     self.assertEqual(task["download_attempts"][0]["strategy"], "direct-file")
                     self.assertEqual(task["download_attempts"][0]["status"], "success")
