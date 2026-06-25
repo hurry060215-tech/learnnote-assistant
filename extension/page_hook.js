@@ -17,6 +17,9 @@
   const blobPartSourceByObject = new WeakMap();
   const blobSourceByUrl = new Map();
   const blobUrlOrder = [];
+  const mediaSourceMetaByObject = new WeakMap();
+  const mediaSourceUrlByObject = new WeakMap();
+  const sourceBufferMediaSource = new WeakMap();
 
   function normalizeUrl(raw) {
     if (!raw) return "";
@@ -326,6 +329,38 @@
     }]);
   }
 
+  function isMediaSourceObject(value) {
+    if (!value || typeof value !== "object") return false;
+    try {
+      if (typeof window.MediaSource !== "undefined" && value instanceof window.MediaSource) return true;
+    } catch {
+      // Cross-realm MediaSource checks can throw on some pages.
+    }
+    return typeof value.addSourceBuffer === "function" && typeof value.readyState === "string";
+  }
+
+  function rememberMediaSourceMeta(mediaSource, meta) {
+    if (!isMediaSourceObject(mediaSource) || !meta?.url) return;
+    try {
+      const current = mediaSourceMetaByObject.get(mediaSource);
+      if (!current || (meta.score || 0) >= (current.score || 0)) {
+        mediaSourceMetaByObject.set(mediaSource, meta);
+      }
+      const blobUrl = mediaSourceUrlByObject.get(mediaSource);
+      if (!blobUrl) return;
+      emit([{
+        ...meta,
+        source: "pageHookMediaSource",
+        label: "media source",
+        blob_url: blobUrl,
+        playback_match: "blob-source",
+        score: Math.max(meta.score || 0, 98)
+      }]);
+    } catch {
+      // MediaSource objects may come from restricted or cross-realm wrappers.
+    }
+  }
+
   function extractUrlsFromText(text, source, label, mime = "") {
     if (!text) return;
     const resources = extractJsonMediaUrls(text, source, label);
@@ -440,8 +475,12 @@
       const blobUrl = originalCreateObjectURL.apply(this, args);
       try {
         rememberBlobUrl(blobUrl, args[0]);
+        if (isMediaSourceObject(args[0])) {
+          mediaSourceUrlByObject.set(args[0], blobUrl);
+          rememberMediaSourceMeta(args[0], mediaSourceMetaByObject.get(args[0]));
+        }
       } catch {
-        // Ignore non-Blob objects and cross-realm edge cases.
+        // Ignore non-Blob/MediaSource objects and cross-realm edge cases.
       }
       return blobUrl;
     };
@@ -452,6 +491,33 @@
     URL.revokeObjectURL = function (...args) {
       blobSourceByUrl.delete(args[0]);
       return originalRevokeObjectURL.apply(this, args);
+    };
+  }
+
+  if (typeof window.MediaSource !== "undefined" && window.MediaSource.prototype?.addSourceBuffer) {
+    const originalAddSourceBuffer = window.MediaSource.prototype.addSourceBuffer;
+    window.MediaSource.prototype.addSourceBuffer = function (...args) {
+      const sourceBuffer = originalAddSourceBuffer.apply(this, args);
+      try {
+        sourceBufferMediaSource.set(sourceBuffer, this);
+      } catch {
+        // Some SourceBuffer implementations are not extensible WeakMap keys.
+      }
+      return sourceBuffer;
+    };
+  }
+
+  if (typeof window.SourceBuffer !== "undefined" && window.SourceBuffer.prototype?.appendBuffer) {
+    const originalAppendBuffer = window.SourceBuffer.prototype.appendBuffer;
+    window.SourceBuffer.prototype.appendBuffer = function (...args) {
+      try {
+        const meta = blobPartMeta(args[0]);
+        const mediaSource = sourceBufferMediaSource.get(this);
+        rememberMediaSourceMeta(mediaSource, meta);
+      } catch {
+        // Keep MSE playback untouched if a page uses unusual buffer wrappers.
+      }
+      return originalAppendBuffer.apply(this, args);
     };
   }
 
