@@ -13,6 +13,7 @@
   const bufferedResources = [];
   const drmSignals = [];
   const blobSourceByObject = new WeakMap();
+  const blobPartSourceByObject = new WeakMap();
   const blobSourceByUrl = new Map();
   const blobUrlOrder = [];
 
@@ -246,6 +247,25 @@
     }
   }
 
+  function rememberBlobPartObject(part, meta) {
+    if (!part || typeof part !== "object" || !meta?.url) return;
+    try {
+      blobPartSourceByObject.set(part, meta);
+    } catch {
+      // Primitive values and some host objects cannot be WeakMap keys.
+    }
+  }
+
+  function blobPartMeta(part) {
+    if (!part || typeof part !== "object") return null;
+    const direct = blobPartSourceByObject.get(part) || blobSourceByObject.get(part);
+    if (direct) return direct;
+    if (ArrayBuffer.isView?.(part)) {
+      return blobPartSourceByObject.get(part.buffer) || null;
+    }
+    return null;
+  }
+
   function rememberBlobUrl(blobUrl, blob) {
     const meta = blobSourceByObject.get(blob);
     if (!meta) return;
@@ -329,6 +349,50 @@
     };
   }
 
+  if (typeof window.Response !== "undefined" && Response.prototype?.arrayBuffer) {
+    const originalResponseArrayBuffer = Response.prototype.arrayBuffer;
+    Response.prototype.arrayBuffer = async function (...args) {
+      const buffer = await originalResponseArrayBuffer.apply(this, args);
+      try {
+        const mime = this.headers?.get?.("content-type") || "";
+        const meta = blobMeta(this.url || "", mime, "pageHookBlob", "fetch arrayBuffer source");
+        rememberBlobPartObject(buffer, meta);
+      } catch {
+        // Keep the host page's response consumption behavior unchanged.
+      }
+      return buffer;
+    };
+  }
+
+  if (typeof window.Blob === "function" && !window.Blob.__learnNoteOriginalBlob) {
+    const OriginalBlob = window.Blob;
+    function LearnNoteBlob(parts = [], options = {}) {
+      const blob = new OriginalBlob(parts, options);
+      try {
+        const sourceMeta = Array.from(parts || []).map(blobPartMeta).find(Boolean);
+        if (sourceMeta) {
+          rememberBlobObject(blob, {
+            ...sourceMeta,
+            mime: blob.type || options?.type || sourceMeta.mime || "",
+            source: sourceMeta.source || "pageHookBlob",
+            label: sourceMeta.label || "constructed blob source"
+          });
+        }
+      } catch {
+        // Blob construction must remain transparent to the host page.
+      }
+      return blob;
+    }
+    try {
+      Object.setPrototypeOf(LearnNoteBlob, OriginalBlob);
+      LearnNoteBlob.prototype = OriginalBlob.prototype;
+      Object.defineProperty(LearnNoteBlob, "__learnNoteOriginalBlob", { value: OriginalBlob });
+      window.Blob = LearnNoteBlob;
+    } catch {
+      // Some pages lock constructors. Response.blob() and XHR blob tracking still work.
+    }
+  }
+
   if (window.URL?.createObjectURL) {
     const originalCreateObjectURL = URL.createObjectURL;
     URL.createObjectURL = function (...args) {
@@ -366,6 +430,10 @@
         if (typeof Blob !== "undefined" && this.response instanceof Blob) {
           const meta = blobMeta(url, this.response.type || mime, "pageHookBlob", "xhr blob source");
           rememberBlobObject(this.response, meta);
+        }
+        if (typeof ArrayBuffer !== "undefined" && this.response instanceof ArrayBuffer) {
+          const meta = blobMeta(url, mime, "pageHookBlob", "xhr arrayBuffer source");
+          rememberBlobPartObject(this.response, meta);
         }
         if (!TEXT_TYPE_RE.test(mime)) return;
         if (this.responseType && this.responseType !== "text") return;
