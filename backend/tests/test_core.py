@@ -15,6 +15,7 @@ from app.downloader import (
     classify_resource,
     cookie_header_for_url,
     download_headers_for_candidate,
+    fallback_page_urls,
     infer_manifest_url_from_fragment,
     score_resource,
     ytdlp_headers_from_browser_context,
@@ -125,6 +126,37 @@ class ResourceDetectionTests(unittest.TestCase):
         self.assertEqual(headers["Accept"], "*/*")
         self.assertNotIn("Cookie", headers)
         self.assertNotIn("Authorization", headers)
+
+    def test_fallback_page_urls_include_active_iframe_and_referer_context(self) -> None:
+        urls = fallback_page_urls(
+            "https://course.example.com/top",
+            [
+                ResourceCandidate(
+                    url="https://media.example.com/video.mp4",
+                    source="webRequest",
+                    kind="video",
+                    score=90,
+                    frame_url="https://player.example.com/embed/1",
+                    request_headers={"Referer": "https://player.example.com/embed/1?from=referer"},
+                    initiator="https://player.example.com",
+                    is_main_video=True,
+                    playback_match="same-frame",
+                ),
+                ResourceCandidate(
+                    url="https://course.example.com/iframe-player",
+                    source="dom",
+                    kind="unknown",
+                    label="iframe",
+                    score=50,
+                ),
+            ],
+        )
+
+        self.assertEqual(urls[0], "https://course.example.com/top")
+        self.assertIn("https://player.example.com/embed/1", urls)
+        self.assertIn("https://player.example.com/embed/1?from=referer", urls)
+        self.assertIn("https://player.example.com", urls)
+        self.assertIn("https://course.example.com/iframe-player", urls)
 
     def test_ytdlp_subtitle_language_prefers_human_chinese_then_auto(self) -> None:
         info = {
@@ -316,6 +348,44 @@ class DownloaderBoundaryTests(unittest.TestCase):
             self.assertEqual(captured["options"]["http_headers"]["User-Agent"], "Chrome Playback UA")
             self.assertEqual(captured["options"]["http_headers"]["Referer"], "https://course.example.com/lesson/1")
             self.assertEqual(captured["options"]["http_headers"]["Origin"], "https://course.example.com")
+
+    def test_ytdlp_fallback_tries_iframe_page_after_top_page(self) -> None:
+        attempted_urls = []
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            media = root / "iframe.mp4"
+            media.write_bytes(b"0" * 5000)
+            downloader = MediaDownloader(root / "task")
+
+            def fake_ytdlp(page_url, cookie_file, title, resources):
+                attempted_urls.append(page_url)
+                if page_url == "https://player.example.com/embed/1":
+                    return media
+                raise DownloadError("no_media_found", "top page not supported")
+
+            with patch.object(downloader, "_discover_page_resources", return_value=[]), patch.object(downloader, "_download_with_ytdlp", side_effect=fake_ytdlp):
+                media_path, selected = downloader.download(
+                    page_url="https://course.example.com/top",
+                    resources=[
+                        ResourceCandidate(
+                            url="https://cdn.example.com/chunk-1.m4s",
+                            source="webRequest",
+                            kind="fragment",
+                            score=20,
+                            frame_url="https://player.example.com/embed/1",
+                            playback_match="blob-same-frame",
+                        )
+                    ],
+                    cookies=[],
+                    title="iframe fallback",
+                )
+
+            self.assertEqual(media_path, media)
+            self.assertIsNone(selected)
+            self.assertEqual(attempted_urls[:2], ["https://course.example.com/top", "https://player.example.com/embed/1"])
+            self.assertEqual(downloader.attempts[-1].strategy, "page-ytdlp")
+            self.assertEqual(downloader.attempts[-1].url, "https://player.example.com/embed/1")
 
     def test_subtitle_fallback_downloads_platform_caption_with_ytdlp(self) -> None:
         calls = []

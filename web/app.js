@@ -503,6 +503,7 @@ async function renderDetail() {
         <dt>下载策略</dt><dd>${selected.url ? "浏览器候选资源优先" : "页面解析 fallback"}</dd>
         <dt>已选资源</dt><dd>${escapeHtml(selected.url || "未选择直接资源")}</dd>
         <dt>对应 blob</dt><dd>${escapeHtml(selected.blob_url || "-")}</dd>
+        <dt>所在 frame</dt><dd>${escapeHtml(selected.frame_url || "-")}</dd>
         <dt>资源类型</dt><dd>${escapeHtml([
           selected.kind || "-",
           selected.source || "-",

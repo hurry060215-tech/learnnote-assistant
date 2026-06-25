@@ -144,6 +144,8 @@ function mergeResource(previous, incoming) {
   merged.is_main_video = Boolean(previous.is_main_video || incoming.is_main_video);
   merged.playback_match = previous.playback_match || incoming.playback_match || "";
   merged.blob_url = incoming.blob_url || previous.blob_url || "";
+  merged.frame_url = incoming.frame_url || previous.frame_url || "";
+  merged.page_url = incoming.page_url || previous.page_url || "";
   merged.headers = { ...(previous.headers || {}), ...(incoming.headers || {}) };
   merged.request_headers = { ...(previous.request_headers || {}), ...(incoming.request_headers || {}) };
   merged.current_time = incoming.current_time ?? previous.current_time ?? null;
@@ -209,7 +211,12 @@ function normalizePageForFrame(page = {}, frameId = 0, tab = {}) {
     frame_id: frameId
   };
   if (normalized.active_video) normalized.active_video = { ...normalized.active_video, frame_id: frameId };
-  normalized.resources = normalized.resources.map(resource => ({ ...resource, frame_id: resource.frame_id ?? frameId }));
+  normalized.resources = normalized.resources.map(resource => ({
+    ...resource,
+    frame_id: resource.frame_id ?? frameId,
+    frame_url: resource.frame_url || normalized.page_url || "",
+    page_url: resource.page_url || normalized.page_url || ""
+  }));
   return normalized;
 }
 
@@ -268,6 +275,8 @@ function addResource(tabId, resource) {
     is_main_video: Boolean(resource.is_main_video),
     playback_match: resource.playback_match || "",
     blob_url: resource.blob_url || "",
+    frame_url: resource.frame_url || "",
+    page_url: resource.page_url || "",
     tab_id: tabId,
     frame_id: resource.frame_id ?? null,
     current_time: resource.current_time ?? null,
@@ -289,6 +298,8 @@ function addResource(tabId, resource) {
       is_main_video: Boolean(existing.is_main_video || normalized.is_main_video),
       playback_match: existing.playback_match || normalized.playback_match || "",
       blob_url: normalized.blob_url || existing.blob_url || "",
+      frame_url: normalized.frame_url || existing.frame_url || "",
+      page_url: normalized.page_url || existing.page_url || "",
       current_time: normalized.current_time ?? existing.current_time ?? null,
       duration: normalized.duration ?? existing.duration ?? null,
       width: normalized.width ?? existing.width ?? null,

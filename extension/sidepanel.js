@@ -241,6 +241,7 @@ function renderInspector() {
     <strong>${escapeHtml(directnessText(item))}</strong>
     <span>${escapeHtml(requestEvidence(item) || "无请求证据")}</span>
     ${item.blob_url ? `<span>对应 blob：${escapeHtml(item.blob_url)}</span>` : ""}
+    ${item.frame_url ? `<span>所在 frame：${escapeHtml(item.frame_url)}</span>` : ""}
     <span>复用请求头：${escapeHtml(requestHeaderNames(item))}</span>
     ${checked ? `<span>预检：${escapeHtml(checked.downloadable ? "通过" : checked.code || "未通过")} · ${escapeHtml(checked.status_code ? `HTTP ${checked.status_code}` : checked.strategy || "")} · ${escapeHtml(checked.content_type || "")} · ${escapeHtml(fmtBytes(checked.content_length) || `${checked.bytes_checked || 0} B`)}</span>` : ""}
     ${checked?.warnings?.length ? `<span>提示：${escapeHtml(checked.warnings.join("；"))}</span>` : ""}
@@ -511,6 +512,7 @@ function renderResult() {
         <dt>策略</dt><dd>${selected.url ? "浏览器候选资源优先" : "页面解析 fallback"}</dd>
         <dt>资源</dt><dd>${escapeHtml(selected.url || "未选择直接资源")}</dd>
         <dt>对应 blob</dt><dd>${escapeHtml(selected.blob_url || "-")}</dd>
+        <dt>所在 frame</dt><dd>${escapeHtml(selected.frame_url || "-")}</dd>
         <dt>类型</dt><dd>${escapeHtml([
           selected.kind || "-",
           selected.source || "-",

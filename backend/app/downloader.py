@@ -203,6 +203,43 @@ def ytdlp_headers_from_browser_context(page_url: str, resources: list[ResourceCa
     return headers
 
 
+def _is_http_url(url: str) -> bool:
+    return bool(re.match(r"^https?://", url or "", re.I))
+
+
+def fallback_page_urls(page_url: str, resources: list[ResourceCandidate]) -> list[str]:
+    urls: list[str] = []
+    seen: set[str] = set()
+
+    def add(url: str) -> None:
+        value = _safe_header_value(url)
+        if not _is_http_url(value):
+            return
+        if value in seen:
+            return
+        seen.add(value)
+        urls.append(value)
+
+    add(page_url)
+    ordered = sorted(
+        resources,
+        key=lambda item: (
+            1 if item.is_main_video else 0,
+            1 if item.playback_match else 0,
+            item.score or 0,
+        ),
+        reverse=True,
+    )
+    for item in ordered:
+        add(item.frame_url)
+        add(item.page_url)
+        if classify_resource(item.url, item.mime) == "unknown" and (item.source == "dom" or "iframe" in (item.label or "").lower()):
+            add(item.url)
+        add(item.request_headers.get("Referer", ""))
+        add(item.initiator)
+    return urls
+
+
 def write_netscape_cookie_file(cookies: list[BrowserCookie], path: Path) -> Path:
     lines = ["# Netscape HTTP Cookie File\n"]
     for cookie in cookies:
@@ -549,45 +586,48 @@ class MediaDownloader:
                 last_error = exc
                 continue
 
-        page_scan_resources = self._discover_page_resources(page_url, cookies)
-        for candidate in self._candidate_resources(page_scan_resources):
-            if candidate.url in failed_urls:
-                continue
-            strategy = self._strategy_for_candidate(candidate)
+        page_fallbacks = fallback_page_urls(page_url, resources)
+        for fallback_url in page_fallbacks:
+            page_scan_resources = self._discover_page_resources(fallback_url, cookies)
+            for candidate in self._candidate_resources(page_scan_resources):
+                if candidate.url in failed_urls:
+                    continue
+                strategy = self._strategy_for_candidate(candidate)
+                try:
+                    media_path = self._download_candidate(candidate, cookies, fallback_url, title)
+                    self._record_attempt(
+                        strategy=strategy,
+                        candidate=candidate,
+                        status="success",
+                        message="页面文本扫描候选资源直取成功。",
+                        output_path=media_path,
+                    )
+                    return media_path, candidate
+                except DownloadError as exc:
+                    self._record_attempt(strategy=strategy, candidate=candidate, status="failed", code=exc.code, message=exc.message)
+                    failed_urls.add(candidate.url)
+                    last_error = exc
+                    continue
+
+        for fallback_url in page_fallbacks:
             try:
-                media_path = self._download_candidate(candidate, cookies, page_url, title)
+                media_path = self._download_with_ytdlp(fallback_url, cookie_file, title, resources)
                 self._record_attempt(
-                    strategy=strategy,
-                    candidate=candidate,
+                    strategy="page-ytdlp",
+                    url=fallback_url,
                     status="success",
-                    message="页面文本扫描候选资源直取成功。",
+                    message="浏览器候选不可用，yt-dlp 页面解析成功。",
                     output_path=media_path,
                 )
-                return media_path, candidate
+                return media_path, None
             except DownloadError as exc:
-                self._record_attempt(strategy=strategy, candidate=candidate, status="failed", code=exc.code, message=exc.message)
-                failed_urls.add(candidate.url)
-                last_error = exc
-                continue
-
-        try:
-            media_path = self._download_with_ytdlp(page_url, cookie_file, title, resources)
-            self._record_attempt(
-                strategy="page-ytdlp",
-                url=page_url,
-                status="success",
-                message="浏览器候选不可用，yt-dlp 页面解析成功。",
-                output_path=media_path,
-            )
-            return media_path, None
-        except DownloadError as exc:
-            self._record_attempt(strategy="page-ytdlp", url=page_url, status="failed", code=exc.code, message=exc.message)
-            if not last_error:
-                last_error = exc
-        except Exception as exc:
-            self._record_attempt(strategy="page-ytdlp", url=page_url, status="failed", code="download_forbidden", message=str(exc))
-            if not last_error:
-                last_error = DownloadError("download_forbidden", str(exc))
+                self._record_attempt(strategy="page-ytdlp", url=fallback_url, status="failed", code=exc.code, message=exc.message)
+                if not last_error:
+                    last_error = exc
+            except Exception as exc:
+                self._record_attempt(strategy="page-ytdlp", url=fallback_url, status="failed", code="download_forbidden", message=str(exc))
+                if not last_error:
+                    last_error = DownloadError("download_forbidden", str(exc))
 
         if last_error:
             raise last_error
@@ -615,17 +655,23 @@ class MediaDownloader:
             except DownloadError as exc:
                 self._record_attempt(strategy="subtitle-file", candidate=candidate, status="failed", code=exc.code, message=exc.message)
 
-        try:
-            path = self._download_subtitle_with_ytdlp(referer, cookies, title, resources)
-            if path:
-                self._record_attempt(
-                    strategy="subtitle-ytdlp",
-                    url=referer,
-                    status="success",
-                    message="yt-dlp 发现平台字幕，已优先使用字幕生成转写。",
-                    output_path=path,
-                )
-                return path
+        found_platform_subtitle = False
+        for fallback_url in fallback_page_urls(referer, resources):
+            try:
+                path = self._download_subtitle_with_ytdlp(fallback_url, cookies, title, resources)
+                if path:
+                    self._record_attempt(
+                        strategy="subtitle-ytdlp",
+                        url=fallback_url,
+                        status="success",
+                        message="yt-dlp 发现平台字幕，已优先使用字幕生成转写。",
+                        output_path=path,
+                    )
+                    return path
+            except DownloadError as exc:
+                found_platform_subtitle = True
+                self._record_attempt(strategy="subtitle-ytdlp", url=fallback_url, status="failed", code=exc.code, message=exc.message)
+        if not found_platform_subtitle:
             self._record_attempt(
                 strategy="subtitle-ytdlp",
                 url=referer,
@@ -633,8 +679,6 @@ class MediaDownloader:
                 code="no_media_found",
                 message="yt-dlp 没有发现可下载的平台字幕。",
             )
-        except DownloadError as exc:
-            self._record_attempt(strategy="subtitle-ytdlp", url=referer, status="failed", code=exc.code, message=exc.message)
         return None
 
     def _candidate_resources(self, resources: list[ResourceCandidate]) -> list[ResourceCandidate]:
