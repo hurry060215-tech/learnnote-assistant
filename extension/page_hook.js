@@ -17,6 +17,8 @@
   const blobPartSourceByObject = new WeakMap();
   const blobSourceByUrl = new Map();
   const blobUrlOrder = [];
+  const streamSourceByObject = new WeakMap();
+  const streamReaderSourceByObject = new WeakMap();
   const mediaSourceMetaByObject = new WeakMap();
   const mediaSourceUrlByObject = new WeakMap();
   const sourceBufferMediaSource = new WeakMap();
@@ -300,6 +302,35 @@
     }
   }
 
+  function rememberStreamObject(stream, meta) {
+    if (!stream || typeof stream !== "object" || !meta?.url) return;
+    try {
+      streamSourceByObject.set(stream, meta);
+      emit([meta]);
+    } catch {
+      // Some streams may be host objects from restricted realms.
+    }
+  }
+
+  function streamMeta(stream) {
+    if (!stream || typeof stream !== "object") return null;
+    return streamSourceByObject.get(stream) || null;
+  }
+
+  function rememberStreamReader(reader, meta) {
+    if (!reader || typeof reader !== "object" || !meta?.url) return;
+    try {
+      streamReaderSourceByObject.set(reader, meta);
+    } catch {
+      // Keep stream consumption unchanged for pages with unusual reader wrappers.
+    }
+  }
+
+  function streamReaderMeta(reader) {
+    if (!reader || typeof reader !== "object") return null;
+    return streamReaderSourceByObject.get(reader) || null;
+  }
+
   function blobPartMeta(part) {
     if (!part || typeof part !== "object") return null;
     const direct = blobPartSourceByObject.get(part) || blobSourceByObject.get(part);
@@ -400,10 +431,16 @@
     window.fetch = async function (...args) {
       const response = await originalFetch.apply(this, args);
       const url = response.url || requestUrl(args[0]);
-      emit([{ url, source: "pageHookRequest", label: "fetch", mime: response.headers?.get?.("content-type") || "" }]);
+      const mime = response.headers?.get?.("content-type") || "";
+      emit([{ url, source: "pageHookRequest", label: "fetch", mime }]);
+      try {
+        rememberStreamObject(response.body, blobMeta(url, mime, "pageHookStream", "fetch stream source"));
+      } catch {
+        // Accessing body can throw for some synthetic responses.
+      }
       if (shouldInspectResponse(response)) {
         response.clone().text()
-          .then(text => extractUrlsFromText(text.slice(0, MAX_TEXT_BYTES), "pageHookBody", "fetch body", response.headers?.get?.("content-type") || ""))
+          .then(text => extractUrlsFromText(text.slice(0, MAX_TEXT_BYTES), "pageHookBody", "fetch body", mime))
           .catch(() => {});
       }
       return response;
@@ -439,6 +476,42 @@
       return buffer;
     };
   }
+
+  if (typeof window.ReadableStream !== "undefined" && window.ReadableStream.prototype?.getReader) {
+    const originalGetReader = window.ReadableStream.prototype.getReader;
+    window.ReadableStream.prototype.getReader = function (...args) {
+      const reader = originalGetReader.apply(this, args);
+      try {
+        rememberStreamReader(reader, streamMeta(this));
+      } catch {
+        // Keep stream reader creation transparent.
+      }
+      return reader;
+    };
+  }
+
+  function patchStreamReaderRead(ReaderCtor) {
+    if (!ReaderCtor?.prototype?.read || ReaderCtor.prototype.__learnNoteReadPatched) return;
+    const originalRead = ReaderCtor.prototype.read;
+    ReaderCtor.prototype.read = async function (...args) {
+      const result = await originalRead.apply(this, args);
+      try {
+        const meta = streamReaderMeta(this);
+        if (result?.value) rememberBlobPartObject(result.value, meta);
+      } catch {
+        // Keep stream consumption behavior unchanged.
+      }
+      return result;
+    };
+    try {
+      Object.defineProperty(ReaderCtor.prototype, "__learnNoteReadPatched", { value: true });
+    } catch {
+      // Non-extensible prototypes still use the patched read above.
+    }
+  }
+
+  patchStreamReaderRead(window.ReadableStreamDefaultReader);
+  patchStreamReaderRead(window.ReadableStreamBYOBReader);
 
   if (typeof window.Blob === "function" && !window.Blob.__learnNoteOriginalBlob) {
     const OriginalBlob = window.Blob;

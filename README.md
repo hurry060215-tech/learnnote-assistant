@@ -15,7 +15,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - Main-world fetch/XHR hook for media URLs exposed in text, JSON, playlist, or script responses before they appear in `<video>`.
 - JSON/HTML script media-field discovery for extensionless player APIs such as `hls`, `dashUrl`, `playUrl`, or `videoUrl` when sibling metadata or field names identify HLS/DASH/video content.
 - URL-encoded and base64-wrapped media field values are decoded during page scanning and main-world response inspection.
-- Blob/MSE-backed player recovery: when a page fetches an accessible media response as a `Blob` or `ArrayBuffer`, constructs a `Blob`, or appends the buffer to a `MediaSource`/`SourceBuffer`, the extension maps that generated `blob:` playback URL back to the original mp4/HLS/DASH request and ranks it as the current video candidate.
+- Blob/MSE-backed player recovery: when a page fetches an accessible media response as a `Blob`, `ArrayBuffer`, or `ReadableStream` chunk, constructs a `Blob`, or appends the buffer to a `MediaSource`/`SourceBuffer`, the extension maps that generated `blob:` playback URL back to the original mp4/HLS/DASH request and ranks it as the current video candidate.
 - Backend page scanner for manually pasted page URLs, so the local Web UI can try direct media extraction before yt-dlp fallback.
 - Iframe/player-page fallback: when the top course page is only a shell, the backend also tries the active frame URL, candidate page URL, Referer, and initiator as page-scan and yt-dlp fallback targets.
 - EME/DRM signal detection: the extension records `encrypted`, `setMediaKeys`, and `requestMediaKeySystemAccess` evidence so encrypted pages fail with a clear reason instead of pretending a normal direct URL was missed.
@@ -34,7 +34,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 
 - Direct current-page task creation from the extension Side Panel.
 - DOM, iframe-aware content scripts, Performance, active `<video>` state, and `webRequest` resource discovery.
-- Page-network hook discovery for mp4/HLS/DASH/subtitle URLs embedded in fetch/XHR text responses. The hook also records Blob object URL and MediaSource source mappings when the page builds playback from accessible media responses; it does not record playback or inspect binary video payloads.
+- Page-network hook discovery for mp4/HLS/DASH/subtitle URLs embedded in fetch/XHR text responses. The hook also records Blob object URL, fetch stream chunk, and MediaSource source mappings when the page builds playback from accessible media responses; it does not record playback or inspect binary video payloads.
 - Backend page-text scanning for manually submitted URLs: HTML/JSON/script responses are scanned for absolute or relative mp4/HLS/DASH/subtitle URLs before yt-dlp is tried.
 - Extensionless API URL scanning: JSON fields or inline script fields like `hls`, `dashUrl`, `playUrl`, and `videoUrl` can become candidates even when the URL is `/stream?lesson=...` instead of ending in `.m3u8`, `.mpd`, or `.mp4`.
 - Frame-aware context aggregation: the extension asks every reachable frame for page text, active video state, and media resources before ranking candidates.
@@ -45,7 +45,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - Browser-context preflight: selected mp4/HLS/DASH candidates can be checked with a small local backend probe before the full download. The result reports strategy, HTTP status, MIME type, content length, bytes checked, safe request-header names, and structured failure codes.
 - Main-video ranking based on the actively playing `<video>` first, then the largest visible video element.
 - Candidate evidence from `webRequest`, including request type, HTTP status, MIME type, content length, initiator, and frame id when available.
-- Playback-aware candidate ranking: the Side Panel boosts exact current `<video>` sources, same-frame media requests, recoverable Blob/ArrayBuffer/MediaSource source mappings, and recent requests from Blob/MSE-backed players before starting a task.
+- Playback-aware candidate ranking: the Side Panel boosts exact current `<video>` sources, same-frame media requests, recoverable Blob/ArrayBuffer/ReadableStream/MediaSource source mappings, and recent requests from Blob/MSE-backed players before starting a task.
 - DRM-aware failure boundary: if a page triggers EME/DRM signals and exposes no downloadable mp4/HLS/DASH candidate, the task fails early as `drm_or_encrypted` and keeps the key-system/init-data evidence in diagnostics.
 - Recoverable fragment URLs such as `.../master.m3u8/segment.ts` or `.../manifest.mpd/chunk.m4s` are promoted to inferred manifest candidates.
 - Subtitle discovery from `<track>` elements, Performance entries, and `webRequest`.
@@ -155,7 +155,7 @@ node --check web\app.js
 
 ## Boundaries
 
-- `blob:` URLs without an underlying `.m3u8`, `.mpd`, video file request, or recoverable fetch/XHR Blob/ArrayBuffer/MediaSource source mapping are reported as `drm_or_encrypted`.
+- `blob:` URLs without an underlying `.m3u8`, `.mpd`, video file request, or recoverable fetch/XHR Blob/ArrayBuffer/ReadableStream/MediaSource source mapping are reported as `drm_or_encrypted`.
 - Fragment URLs such as isolated `.m4s` or `.ts` segments are not downloaded unless a manifest is also detected.
 - The Learning Tong / Chaoxing first pass is deliberately lightweight: it relies on media URLs exposed to the browser and cookies from your active session.
 - If a course page uses DRM/EME or never exposes a media manifest/video URL to the browser, the app reports a failure and asks you to use the local upload path.
