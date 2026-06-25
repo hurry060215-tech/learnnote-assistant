@@ -3,6 +3,7 @@ uvicorn[standard]>=0.30
 python-multipart>=0.0.9
 requests>=2.32
 pydantic>=2.7
+eval-type-backport>=0.2.2; python_version < "3.10"
 yt-dlp>=2025.6.9
 Pillow>=10.4
 openai>=1.40
