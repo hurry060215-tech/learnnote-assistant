@@ -2,7 +2,7 @@ const API = "";
 const MEDIA_RE = /\.(mp4|m4v|webm|mov|mkv)(\?|#|$)/i;
 const HLS_RE = /\.(m3u8|mpd)(\?|#|$)/i;
 
-let selectedSource = "url";
+let selectedSource = "browser";
 let selectedTaskId = null;
 let selectedTab = "note";
 let lastNote = "";

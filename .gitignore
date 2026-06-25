@@ -3,6 +3,7 @@ backend/.venv/
 __pycache__/
 *.pyc
 data/*.mp4
+data/*.png
 data/model-cache/
 data/pip-cache/
 data/test-runs/

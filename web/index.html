@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>LearnNote 本地学习助手</title>
+    <title>LearnNote 学习视频笔记</title>
     <link rel="icon" href="data:,">
     <link rel="stylesheet" href="/web/styles.css?v=20260625-browser-handoff">
   </head>
@@ -13,7 +13,7 @@
         <div class="brand-mark">LN</div>
         <div>
           <h1>LearnNote</h1>
-          <p>当前页直取 · 本地视频 · 图文切片笔记</p>
+          <p>学习视频笔记工作台</p>
         </div>
       </div>
       <div class="topbar-actions">
@@ -25,6 +25,21 @@
     </header>
 
     <main class="app-shell">
+      <nav class="nav-rail" aria-label="主导航">
+        <a class="nav-item active" href="/" title="首页" aria-label="首页">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></svg>
+        </a>
+        <a class="nav-item" href="#tasks" title="笔记库" aria-label="笔记库">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h11a2 2 0 0 1 2 2v16l-4-2-4 2-4-2-4 2V5a2 2 0 0 1 2-2z"/><path d="M8 8h7M8 12h6"/></svg>
+        </a>
+        <a class="nav-item" href="#tasks" title="历史记录" aria-label="历史记录">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v6h6"/><path d="M12 7v5l3 2"/></svg>
+        </a>
+        <a class="nav-item" href="#settings" title="模板" aria-label="模板">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5z"/><path d="M9 8h6M9 12h6M9 16h3"/></svg>
+        </a>
+      </nav>
+
       <aside class="workspace-panel">
         <div class="panel-heading">
           <span class="eyeless">学习工作台</span>
@@ -32,12 +47,21 @@
         </div>
 
         <div class="source-tabs" role="tablist" aria-label="视频来源">
-          <button class="source-tab active" data-source="url">视频链接</button>
-          <button class="source-tab" data-source="local">本地视频</button>
-          <button class="source-tab" data-source="browser">浏览器当前页</button>
+          <button class="source-tab active" data-source="browser">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4z"/><path d="M4 9h16M9 19V9"/></svg>
+            <span><b>当前页直取</b><small>从扩展侧栏读取正在播放的视频</small></span>
+          </button>
+          <button class="source-tab" data-source="local">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5M4 17v3h16v-3"/></svg>
+            <span><b>本地视频</b><small>拖入 mp4、mkv、webm 等文件</small></span>
+          </button>
+          <button class="source-tab" data-source="url">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.07 0l2.12-2.12a5 5 0 0 0-7.07-7.07L11 4.93"/><path d="M14 11a5 5 0 0 0-7.07 0L4.8 13.12a5 5 0 0 0 7.07 7.07L13 19.07"/></svg>
+            <span><b>链接解析</b><small>解析网页或直接媒体链接</small></span>
+          </button>
         </div>
 
-        <section id="urlSource" class="source-pane active">
+        <section id="urlSource" class="source-pane">
           <label class="field">
             <span>视频或页面 URL</span>
             <input id="urlInput" type="url" placeholder="https://example.com/lesson.mp4">
@@ -65,20 +89,20 @@
           </button>
         </section>
 
-        <section id="browserSource" class="source-pane">
+        <section id="browserSource" class="source-pane active">
           <div class="browser-handoff">
             <div class="browser-handshake">
               <span class="status-dot"></span>
               <div>
-                <strong>Side Panel 当前页直取</strong>
-                <small id="browserBridgeStatus">扩展读取播放状态、媒体请求和一次性 cookie，后端在本机处理。</small>
+              <strong>Side Panel 当前页直取</strong>
+              <small id="browserBridgeStatus">在 Chrome/Edge 扩展侧栏里选择候选资源，后端只下载可访问的媒体 URL。</small>
               </div>
             </div>
 
             <div class="handoff-steps" aria-label="当前页处理流程">
               <span><b>1</b>播放课程页</span>
-              <span><b>2</b>预检候选</span>
-              <span><b>3</b>生成笔记</span>
+              <span><b>2</b>预检资源</span>
+              <span><b>3</b>总结成笔记</span>
             </div>
 
             <div class="capability-grid" aria-label="直取能力">
@@ -100,8 +124,8 @@
             </div>
 
             <div class="boundary-note">
-              <strong>不录制，不刷课，不破解 DRM。</strong>
-              <small>检测不到可访问媒体 URL 时，继续使用本地视频入口。</small>
+              <strong>不录制、不刷课、不绕过 DRM。</strong>
+              <small>检测不到可访问媒体 URL 时，任务会给出失败原因，并保留本地视频入口。</small>
             </div>
           </div>
         </section>

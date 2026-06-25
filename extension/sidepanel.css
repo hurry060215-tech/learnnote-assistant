@@ -1,19 +1,19 @@
 :root {
   color-scheme: light;
-  --bg: #f3f6fb;
+  --bg: #f5f7fb;
   --surface: #ffffff;
-  --surface-soft: #f7f9fc;
-  --surface-strong: #edf4ff;
-  --ink: #111827;
+  --surface-soft: #f8fafc;
+  --surface-strong: #eef5ff;
+  --ink: #101828;
   --muted: #667085;
-  --border: #d9e1ec;
-  --border-strong: #b7c4d7;
-  --accent: #2563eb;
-  --accent-strong: #1d4ed8;
+  --border: #dde5f0;
+  --border-strong: #b9c7da;
+  --accent: #1677ff;
+  --accent-strong: #0f5fd1;
   --success: #14964a;
   --warning: #c47a05;
   --danger: #d92d20;
-  --shadow: 0 10px 28px rgba(17, 24, 39, 0.08);
+  --shadow: 0 1px 2px rgba(16, 24, 40, 0.06);
   font-family: Inter, "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
 }
 
@@ -22,7 +22,7 @@
 }
 
 body {
-  min-width: 330px;
+  min-width: 350px;
   margin: 0;
   background: var(--bg);
   color: var(--ink);
@@ -53,12 +53,12 @@ select {
   position: sticky;
   top: 0;
   z-index: 2;
-  min-height: 62px;
+  min-height: 64px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 11px 12px;
+  padding: 12px 13px;
   border-bottom: 1px solid var(--border);
   background: rgba(255, 255, 255, 0.96);
   backdrop-filter: blur(10px);
@@ -83,7 +83,7 @@ select {
   display: grid;
   place-items: center;
   border-radius: 8px;
-  background: var(--ink);
+  background: linear-gradient(135deg, #0f172a, #1d4ed8);
   color: #fff;
   font-size: 11px;
   font-weight: 850;
@@ -104,7 +104,7 @@ small,
 
 .side-shell {
   display: grid;
-  gap: 10px;
+  gap: 9px;
   padding: 10px;
 }
 
@@ -152,7 +152,7 @@ small,
   min-width: 0;
   margin-top: 3px;
   color: var(--ink);
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.35;
   overflow-wrap: anywhere;
 }
@@ -176,11 +176,11 @@ small,
 }
 
 .playback-card {
-  min-height: 40px;
+  min-height: 42px;
   margin-top: 10px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: linear-gradient(180deg, #fbfdff, #f5f8fc);
+  background: linear-gradient(180deg, #ffffff, #f6f9fe);
   padding: 9px 10px;
   color: var(--muted);
   font-size: 12px;
@@ -199,7 +199,7 @@ small,
   height: 26px;
   display: grid;
   place-items: center;
-  border: 1px solid #c9d9ff;
+  border: 1px solid #c6dcff;
   border-radius: 999px;
   background: var(--surface-strong);
   color: var(--accent);
@@ -215,7 +215,7 @@ small,
 
 .readiness {
   margin-bottom: 8px;
-  border: 1px solid #c9d9ff;
+  border: 1px solid #c6dcff;
   border-radius: 8px;
   background: var(--surface-strong);
   padding: 9px 10px;
@@ -238,7 +238,7 @@ small,
 
 .resource {
   width: 100%;
-  min-height: 62px;
+  min-height: 64px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
@@ -246,7 +246,7 @@ small,
   border: 1px solid var(--border);
   border-radius: 8px;
   background: #fff;
-  padding: 10px;
+  padding: 10px 9px;
   color: var(--ink);
   text-align: left;
   cursor: pointer;
@@ -263,7 +263,7 @@ small,
 
 .resource.selected {
   border-color: #8eb1ff;
-  background: #f3f7ff;
+  background: #f3f8ff;
 }
 
 .resource.non-downloadable {
@@ -306,7 +306,7 @@ small,
   margin-top: 8px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: var(--surface-soft);
+  background: #fbfcff;
   padding: 9px 10px;
   overflow-wrap: anywhere;
   font-size: 11px;
@@ -349,7 +349,7 @@ small,
 
 .option-panel {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -447,7 +447,7 @@ input[type="file"] {
   gap: 9px;
   border: 1px dashed var(--border-strong);
   border-radius: 8px;
-  background: linear-gradient(180deg, #fbfdff, #f5f8fc);
+  background: linear-gradient(180deg, #ffffff, #f6f9fe);
   padding: 10px 11px;
   color: var(--muted);
   cursor: pointer;
@@ -535,7 +535,7 @@ input[type="file"] {
 
 .result-tabs {
   display: grid;
-  grid-template-columns: minmax(64px, 1fr) minmax(46px, 0.8fr) minmax(46px, 0.8fr) minmax(46px, 0.8fr) auto auto;
+  grid-template-columns: minmax(72px, 1fr) minmax(50px, 0.8fr) minmax(50px, 0.8fr) minmax(50px, 0.8fr) auto auto;
   gap: 4px;
   padding: 8px;
   border-bottom: 1px solid var(--border);
@@ -554,9 +554,9 @@ input[type="file"] {
 }
 
 .result-body {
-  max-height: 390px;
+  max-height: 420px;
   overflow: auto;
-  padding: 11px;
+  padding: 12px;
 }
 
 .note {
