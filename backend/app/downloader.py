@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import http.cookiejar
+import html
 import os
 import re
 import subprocess
 from pathlib import Path
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import urljoin, urlparse, urlunparse
 
 import requests
 
@@ -17,6 +18,15 @@ MEDIA_EXT_RE = re.compile(r"\.(mp4|m4v|webm|mov|mkv)(\?|#|$)", re.I)
 MANIFEST_EXT_RE = re.compile(r"\.(m3u8|mpd)(\?|#|$)", re.I)
 FRAGMENT_EXT_RE = re.compile(r"\.(m4s|ts)(\?|#|$)", re.I)
 SUBTITLE_EXT_RE = re.compile(r"\.(vtt|srt|ass|ssa)(\?|#|$)", re.I)
+TEXT_MEDIA_HINT_RE = re.compile(r"\.(mp4|m4v|webm|mov|mkv|m3u8|mpd|vtt|srt|ass|ssa)([?#]|[\"'\s<>]|$)", re.I)
+TEXT_MEDIA_URL_RE = re.compile(
+    r"(?:https?:)?//[^\s\"'<>\\]+\.(?:mp4|m4v|webm|mov|mkv|m3u8|mpd|vtt|srt|ass|ssa)(?:\?[^\s\"'<>\\]*)?"
+    r"|(?:/[^\s\"'<>\\]+)\.(?:mp4|m4v|webm|mov|mkv|m3u8|mpd|vtt|srt|ass|ssa)(?:\?[^\s\"'<>\\]*)?"
+    r"|(?:[A-Za-z0-9._~!$&()*+,;=:@%-]+/)*[A-Za-z0-9._~!$&()*+,;=:@%-]+\.(?:mp4|m4v|webm|mov|mkv|m3u8|mpd|vtt|srt|ass|ssa)(?:\?[^\s\"'<>\\]*)?",
+    re.I,
+)
+TEXT_RESPONSE_RE = re.compile(r"json|text|html|javascript|mpegurl|dash\+xml|xml|x-mpegurl", re.I)
+MAX_PAGE_SCAN_BYTES = 2 * 1024 * 1024
 BROWSER_REQUEST_HEADER_ALLOWLIST = {
     "accept": "Accept",
     "accept-language": "Accept-Language",
@@ -73,6 +83,54 @@ def cookie_header_for_url(cookies: list[BrowserCookie], url: str) -> str:
 
 def _safe_header_value(value: object) -> str:
     return re.sub(r"[\r\n]+", " ", str(value or "")).strip()
+
+
+def normalize_media_url(raw: str, base_url: str) -> str:
+    value = html.unescape(str(raw or ""))
+    value = value.replace("\\/", "/").replace("\\u0026", "&").strip()
+    value = value.rstrip(".,;)")
+    try:
+        return urljoin(base_url, value)
+    except Exception:
+        return ""
+
+
+def extract_media_resources_from_text(text: str, base_url: str, source: str = "page-scan") -> list[ResourceCandidate]:
+    if not text or not TEXT_MEDIA_HINT_RE.search(text):
+        return []
+    resources: list[ResourceCandidate] = []
+    seen: set[str] = set()
+    for match in TEXT_MEDIA_URL_RE.finditer(text):
+        url = normalize_media_url(match.group(0), base_url)
+        if not url or url in seen:
+            continue
+        kind = classify_resource(url)
+        if kind == "unknown":
+            continue
+        mime = ""
+        if kind == "hls":
+            mime = "application/vnd.apple.mpegurl"
+        elif kind == "dash":
+            mime = "application/dash+xml"
+        elif kind == "subtitle":
+            mime = "text/vtt"
+        elif kind == "video":
+            mime = "video/mp4"
+        resources.append(
+            ResourceCandidate(
+                url=url,
+                source=source,
+                kind=kind,
+                mime=mime,
+                score=score_resource(url, mime, source),
+                label="page scan",
+                request_headers={"Referer": base_url},
+            )
+        )
+        seen.add(url)
+        if len(resources) >= 60:
+            break
+    return resources
 
 
 def download_headers_for_candidate(
@@ -207,6 +265,7 @@ class MediaDownloader:
         cookie_file = write_netscape_cookie_file(cookies, self.task_path / "cookies.txt") if cookies else None
 
         candidates = self._candidate_resources(resources)
+        failed_urls: set[str] = set()
         if not candidates:
             for item in resources:
                 kind = classify_resource(item.url, item.mime)
@@ -233,6 +292,28 @@ class MediaDownloader:
                 return media_path, candidate
             except DownloadError as exc:
                 self._record_attempt(strategy=strategy, candidate=candidate, status="failed", code=exc.code, message=exc.message)
+                failed_urls.add(candidate.url)
+                last_error = exc
+                continue
+
+        page_scan_resources = self._discover_page_resources(page_url, cookies)
+        for candidate in self._candidate_resources(page_scan_resources):
+            if candidate.url in failed_urls:
+                continue
+            strategy = self._strategy_for_candidate(candidate)
+            try:
+                media_path = self._download_candidate(candidate, cookies, page_url, title)
+                self._record_attempt(
+                    strategy=strategy,
+                    candidate=candidate,
+                    status="success",
+                    message="页面文本扫描候选资源直取成功。",
+                    output_path=media_path,
+                )
+                return media_path, candidate
+            except DownloadError as exc:
+                self._record_attempt(strategy=strategy, candidate=candidate, status="failed", code=exc.code, message=exc.message)
+                failed_urls.add(candidate.url)
                 last_error = exc
                 continue
 
@@ -295,6 +376,87 @@ class MediaDownloader:
             if kind in {"hls", "dash", "video"}:
                 dedup[item.url] = item
         return sorted(dedup.values(), key=lambda item: item.score, reverse=True)
+
+    def _discover_page_resources(self, page_url: str, cookies: list[BrowserCookie]) -> list[ResourceCandidate]:
+        if not re.match(r"^https?://", page_url, re.I):
+            return []
+        headers = download_headers_for_candidate(None, cookies, page_url, url=page_url)
+        headers.setdefault("Accept", "text/html,application/xhtml+xml,application/json,text/plain,*/*;q=0.8")
+        try:
+            with requests.get(page_url, headers=headers, stream=True, timeout=20) as response:
+                if response.status_code in {401, 403}:
+                    self._record_attempt(
+                        strategy="page-scan",
+                        url=page_url,
+                        status="failed",
+                        code="auth_required",
+                        message=f"页面扫描返回 HTTP {response.status_code}。",
+                    )
+                    return []
+                if response.status_code >= 400:
+                    self._record_attempt(
+                        strategy="page-scan",
+                        url=page_url,
+                        status="failed",
+                        code="download_forbidden",
+                        message=f"页面扫描返回 HTTP {response.status_code}。",
+                    )
+                    return []
+                content_type = response.headers.get("content-type", "")
+                if content_type and not TEXT_RESPONSE_RE.search(content_type):
+                    self._record_attempt(
+                        strategy="page-scan",
+                        url=page_url,
+                        status="skipped",
+                        code="unsupported_manifest",
+                        message=f"页面响应不是可扫描文本：{content_type}",
+                    )
+                    return []
+                content_length = int(response.headers.get("content-length") or 0)
+                if content_length > MAX_PAGE_SCAN_BYTES:
+                    self._record_attempt(
+                        strategy="page-scan",
+                        url=page_url,
+                        status="skipped",
+                        code="unsupported_manifest",
+                        message="页面响应过大，跳过文本媒体 URL 扫描。",
+                    )
+                    return []
+                chunks: list[bytes] = []
+                size = 0
+                for chunk in response.iter_content(chunk_size=64 * 1024):
+                    if not chunk:
+                        continue
+                    size += len(chunk)
+                    if size > MAX_PAGE_SCAN_BYTES:
+                        self._record_attempt(
+                            strategy="page-scan",
+                            url=page_url,
+                            status="skipped",
+                            code="unsupported_manifest",
+                            message="页面响应超过扫描上限，跳过文本媒体 URL 扫描。",
+                        )
+                        return []
+                    chunks.append(chunk)
+                text = b"".join(chunks).decode(response.encoding or "utf-8-sig", errors="replace")
+                resources = extract_media_resources_from_text(text, response.url or page_url, "page-scan")
+                self._record_attempt(
+                    strategy="page-scan",
+                    url=page_url,
+                    status="success" if resources else "skipped",
+                    code="" if resources else "no_media_found",
+                    message=f"页面文本扫描发现 {len(resources)} 个媒体 URL。" if resources else "页面文本扫描没有发现媒体 URL。",
+                )
+                return resources
+        except Exception as exc:
+            self._record_attempt(
+                strategy="page-scan",
+                url=page_url,
+                status="failed",
+                code="download_forbidden",
+                message=f"页面文本扫描失败：{exc}",
+            )
+            return []
 
     def _with_inferred_manifest_resources(self, resources: list[ResourceCandidate]) -> list[ResourceCandidate]:
         enriched = list(resources)
