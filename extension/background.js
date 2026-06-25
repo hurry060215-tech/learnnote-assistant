@@ -493,6 +493,30 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse(await res.json());
       return;
     }
+
+    if (message.type === "preflight-current-resource") {
+      const tab = await activeTab();
+      const page = message.page || await collectPageData(tab);
+      const resource = message.resource;
+      if (!resource?.url) {
+        sendResponse({ error: "没有可预检的候选资源。" });
+        return;
+      }
+      const urls = [page.page_url || tab.url, resource.url];
+      const cookies = await cookiesForUrls(urls);
+      const backendUrl = message.backendUrl || "http://127.0.0.1:8765";
+      const res = await fetch(`${backendUrl}/api/media/preflight`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          page_url: page.page_url || tab.url,
+          resource,
+          cookies
+        })
+      });
+      sendResponse(await res.json());
+      return;
+    }
   })().catch(error => sendResponse({ error: String(error?.message || error) }));
   return true;
 });

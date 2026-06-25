@@ -196,6 +196,42 @@ class ApiPipelineTests(unittest.TestCase):
                 server.shutdown()
                 server.server_close()
 
+    def test_media_preflight_reports_direct_resource_accessible(self) -> None:
+        with tempfile.TemporaryDirectory(dir=TEST_RUN_DIR) as tmp:
+            root = Path(tmp)
+            video = make_video(root)
+            handler = functools.partial(QuietHandler, directory=str(root))
+            server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                media_url = f"http://127.0.0.1:{server.server_port}/{video.name}"
+                response = self.client.post(
+                    "/api/media/preflight",
+                    json={
+                        "page_url": f"http://127.0.0.1:{server.server_port}/lesson.html",
+                        "resource": {
+                            "url": media_url,
+                            "source": "webRequest",
+                            "kind": "video",
+                            "mime": "video/mp4",
+                            "score": 100,
+                        },
+                        "cookies": [],
+                    },
+                )
+                self.assertEqual(response.status_code, 200)
+                preflight = response.json()["preflight"]
+                self.assertTrue(preflight["ok"])
+                self.assertTrue(preflight["downloadable"])
+                self.assertEqual(preflight["strategy"], "direct-file-probe")
+                self.assertEqual(preflight["kind"], "video")
+                self.assertGreater(preflight["bytes_checked"], 0)
+                self.assertNotIn("Cookie", preflight["request_header_names"])
+            finally:
+                server.shutdown()
+                server.server_close()
+
     def test_current_page_hls_manifest_reaches_note_with_frame_grid(self) -> None:
         with tempfile.TemporaryDirectory(dir=TEST_RUN_DIR) as tmp:
             root = Path(tmp)

@@ -90,6 +90,29 @@ class CurrentPageTaskRequest(BaseModel):
     options: TaskOptions = Field(default_factory=TaskOptions)
 
 
+class MediaPreflightRequest(BaseModel):
+    page_url: str = ""
+    resource: ResourceCandidate
+    cookies: list[BrowserCookie] = Field(default_factory=list)
+
+
+class MediaPreflightResult(BaseModel):
+    ok: bool = False
+    downloadable: bool = False
+    strategy: str = ""
+    kind: str = ""
+    url: str = ""
+    resolved_url: str = ""
+    code: str = ""
+    message: str = ""
+    status_code: int | None = None
+    content_type: str = ""
+    content_length: int | None = None
+    bytes_checked: int = 0
+    request_header_names: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
 class TranscriptSegment(BaseModel):
     start: float
     end: float

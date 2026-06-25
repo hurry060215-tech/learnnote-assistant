@@ -11,7 +11,8 @@ from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import DATA_DIR, STATIC_DIR, UPLOAD_DIR, WEB_DIR, ensure_dirs
-from .models import CurrentPageTaskRequest, TaskOptions
+from .downloader import preflight_media_resource
+from .models import CurrentPageTaskRequest, MediaPreflightRequest, TaskOptions
 from .processor import process_current_page_task, process_local_video_task, read_note, read_transcript
 from .runtime import ffmpeg_bin, ffprobe_bin
 from .storage import create_task, get_task, list_tasks, task_dir
@@ -66,6 +67,12 @@ def create_from_current_page(request: CurrentPageTaskRequest, background_tasks: 
     task = create_task(source_type=source_type, title=request.title or request.page_url, page_url=request.page_url, options=request.options)
     background_tasks.add_task(process_current_page_task, task.id, request)
     return {"task_id": task.id, "task": task}
+
+
+@app.post("/api/media/preflight")
+def api_media_preflight(request: MediaPreflightRequest) -> dict:
+    result = preflight_media_resource(request.resource, request.cookies, request.page_url)
+    return {"preflight": result}
 
 
 @app.post("/api/tasks/from-local")

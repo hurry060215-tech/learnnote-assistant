@@ -10,7 +10,7 @@ from urllib.parse import urljoin, urlparse, urlunparse
 
 import requests
 
-from .models import BrowserCookie, DownloadAttempt, ResourceCandidate
+from .models import BrowserCookie, DownloadAttempt, MediaPreflightResult, ResourceCandidate
 from .runtime import ffmpeg_bin
 
 
@@ -222,6 +222,193 @@ def score_resource(url: str, mime: str = "", source: str = "") -> int:
     if "chaoxing" in url or "xuexitong" in url:
         score += 8
     return min(score, 100)
+
+
+def _safe_request_header_names(headers: dict[str, str]) -> list[str]:
+    return sorted(name for name in headers if name.lower() not in {"authorization", "cookie"})
+
+
+def _response_content_length(response: requests.Response) -> int | None:
+    try:
+        value = int(response.headers.get("content-length") or 0)
+    except ValueError:
+        return None
+    return value if value > 0 else None
+
+
+def _read_probe_bytes(response: requests.Response, limit: int = 64 * 1024) -> bytes:
+    chunks: list[bytes] = []
+    total = 0
+    for chunk in response.iter_content(chunk_size=8192):
+        if not chunk:
+            continue
+        chunks.append(chunk)
+        total += len(chunk)
+        if total >= limit:
+            break
+    return b"".join(chunks)[:limit]
+
+
+def _textish_content_type(content_type: str) -> bool:
+    return bool(re.search(r"html|json|text|xml|javascript", content_type or "", re.I))
+
+
+def _looks_like_login_or_error(body: bytes) -> bool:
+    if not body:
+        return False
+    text = body[:8192].decode("utf-8", errors="ignore").lower()
+    return any(marker in text for marker in ["login", "signin", "sign in", "请登录", "登录", "unauthorized", "forbidden"])
+
+
+def preflight_media_resource(
+    candidate: ResourceCandidate,
+    cookies: list[BrowserCookie],
+    referer: str,
+    timeout: int = 12,
+) -> MediaPreflightResult:
+    kind = classify_resource(candidate.url, candidate.mime)
+    resolved_url = candidate.url
+    warnings: list[str] = []
+    if kind == "fragment":
+        inferred = infer_manifest_url_from_fragment(candidate.url)
+        if inferred:
+            resolved_url = inferred
+            kind = classify_resource(inferred, candidate.mime)
+            warnings.append("已从分片 URL 推断 manifest 后预检。")
+
+    if kind == "blob":
+        return MediaPreflightResult(
+            ok=True,
+            downloadable=False,
+            strategy="blob-unrecoverable",
+            kind=kind,
+            url=candidate.url,
+            resolved_url=resolved_url,
+            code="drm_or_encrypted",
+            message="浏览器只暴露 blob URL，后端无法直接下载；需要可见 mp4/m3u8/mpd 或本地视频。",
+        )
+    if kind not in {"video", "hls", "dash"}:
+        return MediaPreflightResult(
+            ok=True,
+            downloadable=False,
+            strategy=f"unsupported-{kind}",
+            kind=kind,
+            url=candidate.url,
+            resolved_url=resolved_url,
+            code="unsupported_manifest",
+            message="该候选不是可独立下载的视频文件或 manifest。",
+        )
+
+    strategy = "manifest-probe" if kind in {"hls", "dash"} else "direct-file-probe"
+    headers = download_headers_for_candidate(candidate, cookies, referer, url=resolved_url)
+    if kind == "video":
+        headers.setdefault("Accept", "*/*")
+        headers.setdefault("Range", "bytes=0-4095")
+    elif kind == "hls":
+        headers.setdefault("Accept", "application/vnd.apple.mpegurl,application/x-mpegURL,text/plain,*/*;q=0.8")
+    else:
+        headers.setdefault("Accept", "application/dash+xml,application/xml,text/xml,*/*;q=0.8")
+
+    try:
+        with requests.get(resolved_url, headers=headers, stream=True, timeout=timeout, allow_redirects=True) as response:
+            body = _read_probe_bytes(response)
+            content_type = response.headers.get("content-type", "")
+            content_length = _response_content_length(response)
+            base = {
+                "strategy": strategy,
+                "kind": kind,
+                "url": candidate.url,
+                "resolved_url": resolved_url,
+                "status_code": response.status_code,
+                "content_type": content_type,
+                "content_length": content_length,
+                "bytes_checked": len(body),
+                "request_header_names": _safe_request_header_names(headers),
+                "warnings": warnings,
+            }
+
+            if response.status_code in {401, 403}:
+                return MediaPreflightResult(
+                    **base,
+                    ok=True,
+                    downloadable=False,
+                    code="auth_required",
+                    message=f"媒体预检返回 HTTP {response.status_code}，可能需要刷新登录态或重新打开页面。",
+                )
+            if response.status_code >= 400:
+                return MediaPreflightResult(
+                    **base,
+                    ok=True,
+                    downloadable=False,
+                    code="download_forbidden",
+                    message=f"媒体预检返回 HTTP {response.status_code}。",
+                )
+            if _textish_content_type(content_type) and _looks_like_login_or_error(body):
+                return MediaPreflightResult(
+                    **base,
+                    ok=True,
+                    downloadable=False,
+                    code="auth_required",
+                    message="媒体预检拿到登录/错误页面，而不是视频或 manifest。",
+                )
+
+            if kind == "hls":
+                text = body.decode("utf-8", errors="ignore")
+                if "#EXTM3U" not in text and "mpegurl" not in content_type.lower():
+                    warnings.append("响应不像标准 HLS manifest，实际下载可能失败。")
+                if re.search(r"#EXT-X-KEY:[^\n]*(SAMPLE-AES|skd://|widevine|fairplay)", text, re.I):
+                    return MediaPreflightResult(
+                        **{**base, "warnings": warnings},
+                        ok=True,
+                        downloadable=False,
+                        code="drm_or_encrypted",
+                        message="HLS manifest 疑似 DRM/加密流，第一版不尝试绕过。",
+                    )
+                if re.search(r"#EXT-X-KEY:[^\n]*METHOD=AES-128", text, re.I):
+                    warnings.append("HLS 使用 AES-128 key，ffmpeg 仍可能因 key 权限失败。")
+
+            if kind == "dash":
+                text = body.decode("utf-8", errors="ignore")
+                if "<MPD" not in text and "dash+xml" not in content_type.lower():
+                    warnings.append("响应不像标准 DASH manifest，实际下载可能失败。")
+                if re.search(r"ContentProtection|widevine|playready|urn:uuid", text, re.I):
+                    return MediaPreflightResult(
+                        **{**base, "warnings": warnings},
+                        ok=True,
+                        downloadable=False,
+                        code="drm_or_encrypted",
+                        message="DASH manifest 含 ContentProtection，疑似 DRM/加密流。",
+                    )
+
+            if kind == "video" and len(body) <= 0:
+                return MediaPreflightResult(
+                    **base,
+                    ok=True,
+                    downloadable=False,
+                    code="download_forbidden",
+                    message="媒体预检没有读到任何视频字节。",
+                )
+
+            return MediaPreflightResult(
+                **{**base, "warnings": warnings},
+                ok=True,
+                downloadable=True,
+                code="",
+                message="后端可以访问该候选资源；正式任务仍会执行完整下载和合并。",
+            )
+    except requests.RequestException as exc:
+        return MediaPreflightResult(
+            ok=False,
+            downloadable=False,
+            strategy=strategy,
+            kind=kind,
+            url=candidate.url,
+            resolved_url=resolved_url,
+            code="download_forbidden",
+            message=f"媒体预检连接失败：{exc}",
+            request_header_names=_safe_request_header_names(headers),
+            warnings=warnings,
+        )
 
 
 class MediaDownloader:

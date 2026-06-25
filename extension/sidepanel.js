@@ -10,6 +10,8 @@ let currentTask = null;
 let selectedTab = "note";
 let transcriptCache = null;
 let lastNote = "";
+let preflight = null;
+let preflightResourceUrl = "";
 
 const els = {
   backendStatus: document.querySelector("#backendStatus"),
@@ -21,6 +23,7 @@ const els = {
   resources: document.querySelector("#resources"),
   resourceInspector: document.querySelector("#resourceInspector"),
   summarizeButton: document.querySelector("#summarizeButton"),
+  preflightButton: document.querySelector("#preflightButton"),
   uploadButton: document.querySelector("#uploadButton"),
   fileInput: document.querySelector("#fileInput"),
   localDrop: document.querySelector("#localDrop"),
@@ -148,6 +151,10 @@ function selectedResource() {
   return resources.find(item => item.url === selectedResourceUrl) || null;
 }
 
+function currentPreflight() {
+  return preflight && preflightResourceUrl === selectedResourceUrl ? preflight : null;
+}
+
 function directnessText(item) {
   if (!item) return "未选择资源";
   if (isDownloadableResource(item)) {
@@ -198,6 +205,14 @@ function renderReadiness() {
   const selected = selectedResource();
   const hasBlob = resources.some(item => item.kind === "blob");
   const hasFragment = resources.some(item => item.kind === "fragment");
+  const checked = currentPreflight();
+  if (checked) {
+    els.readiness.className = checked.downloadable ? "readiness" : checked.code === "drm_or_encrypted" ? "readiness bad" : "readiness warn";
+    els.readiness.textContent = checked.downloadable
+      ? `预检通过：后端可访问 ${checked.kind}，正式任务会完整下载。`
+      : `预检未通过：${checked.message || checked.code || "候选不可直取"}`;
+    return;
+  }
   if (downloadable.length) {
     els.readiness.className = "readiness";
     els.readiness.textContent = `可直取候选 ${downloadable.length} 个；当前选择：${directnessText(selected || downloadable[0])}`;
@@ -214,6 +229,7 @@ function renderReadiness() {
 
 function renderInspector() {
   const item = selectedResource();
+  const checked = currentPreflight();
   if (!item) {
     els.resourceInspector.className = "resource-inspector muted";
     els.resourceInspector.textContent = "选择一个候选资源后显示请求证据。";
@@ -224,6 +240,8 @@ function renderInspector() {
     <strong>${escapeHtml(directnessText(item))}</strong>
     <span>${escapeHtml(requestEvidence(item) || "无请求证据")}</span>
     <span>复用请求头：${escapeHtml(requestHeaderNames(item))}</span>
+    ${checked ? `<span>预检：${escapeHtml(checked.downloadable ? "通过" : checked.code || "未通过")} · ${escapeHtml(checked.status_code ? `HTTP ${checked.status_code}` : checked.strategy || "")} · ${escapeHtml(checked.content_type || "")} · ${escapeHtml(fmtBytes(checked.content_length) || `${checked.bytes_checked || 0} B`)}</span>` : ""}
+    ${checked?.warnings?.length ? `<span>提示：${escapeHtml(checked.warnings.join("；"))}</span>` : ""}
     <code>${escapeHtml(item.url)}</code>
   `;
 }
@@ -280,6 +298,8 @@ async function collect() {
   page = response.page;
   resources = response.resources || [];
   selectedResourceUrl = pickDefaultResourceUrl(resources, selectedResourceUrl);
+  preflight = null;
+  preflightResourceUrl = "";
   renderContext();
 }
 
@@ -357,6 +377,39 @@ async function startTask(mode = "video") {
   transcriptCache = null;
   lastNote = "";
   pollTask();
+}
+
+async function runPreflight() {
+  if (!page) await collect();
+  if (!HAS_EXTENSION_API) {
+    els.taskMessage.textContent = "请在 Chrome/Edge 扩展 Side Panel 中预检当前页视频。";
+    return;
+  }
+  const resource = selectedResource();
+  if (!resource) {
+    els.taskMessage.textContent = "没有可预检的候选资源。";
+    return;
+  }
+  els.preflightButton.disabled = true;
+  els.taskMessage.textContent = "正在预检直取可行性...";
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: "preflight-current-resource",
+      backendUrl,
+      page,
+      resource
+    });
+    if (response.error) {
+      els.taskMessage.textContent = response.error;
+      return;
+    }
+    preflight = response.preflight;
+    preflightResourceUrl = resource.url;
+    els.taskMessage.textContent = preflight.message || (preflight.downloadable ? "预检通过" : "预检未通过");
+    renderContext();
+  } finally {
+    els.preflightButton.disabled = false;
+  }
 }
 
 async function uploadLocal() {
@@ -491,6 +544,7 @@ els.resultTabs.forEach(tab => {
 
 els.redetectButton.onclick = collect;
 els.summarizeButton.onclick = () => startTask("video");
+els.preflightButton.onclick = runPreflight;
 els.textButton.onclick = () => startTask("page_text");
 els.uploadButton.onclick = () => els.fileInput.click();
 els.fileInput.onchange = uploadLocal;

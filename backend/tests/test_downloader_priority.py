@@ -9,7 +9,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import patch
 
-from app.downloader import MediaDownloader
+from app.downloader import MediaDownloader, preflight_media_resource
 from app.models import BrowserCookie, ResourceCandidate
 from app.runtime import ffmpeg_bin
 
@@ -218,6 +218,103 @@ class DownloaderPriorityTests(unittest.TestCase):
             finally:
                 server.shutdown()
                 server.server_close()
+
+    def test_preflight_reuses_browser_headers_and_cookies(self) -> None:
+        ffmpeg = ffmpeg_bin()
+        assert ffmpeg is not None
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            video = root / "preflight.mp4"
+            subprocess.run(
+                [
+                    ffmpeg,
+                    "-y",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "testsrc=duration=2:size=320x180:rate=10",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "sine=frequency=440:duration=2",
+                    "-shortest",
+                    "-pix_fmt",
+                    "yuv420p",
+                    str(video),
+                ],
+                check=True,
+            )
+            server = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(HeaderGateHandler, directory=str(root)))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                media_url = f"http://127.0.0.1:{server.server_port}/{video.name}"
+                result = preflight_media_resource(
+                    ResourceCandidate(
+                        url=media_url,
+                        source="webRequest",
+                        kind="video",
+                        mime="video/mp4",
+                        score=100,
+                        request_headers={
+                            "Origin": HeaderGateHandler.required_origin,
+                            "Referer": HeaderGateHandler.required_referer,
+                            "User-Agent": HeaderGateHandler.required_user_agent,
+                        },
+                    ),
+                    [BrowserCookie(name="AUTH", value="ok", domain="127.0.0.1")],
+                    HeaderGateHandler.required_referer,
+                )
+                self.assertTrue(result.ok)
+                self.assertTrue(result.downloadable)
+                self.assertEqual(result.strategy, "direct-file-probe")
+                self.assertEqual(result.status_code, 200)
+                self.assertIn("Origin", result.request_header_names)
+                self.assertIn("Referer", result.request_header_names)
+                self.assertIn("User-Agent", result.request_header_names)
+                self.assertIn("Range", result.request_header_names)
+                self.assertNotIn("Cookie", result.request_header_names)
+                self.assertGreater(result.bytes_checked, 0)
+            finally:
+                server.shutdown()
+                server.server_close()
+
+    def test_preflight_reports_missing_browser_context(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            video = root / "forbidden.mp4"
+            video.write_bytes(b"not-real-video-but-enough-for-header-gate")
+            server = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(HeaderGateHandler, directory=str(root)))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                media_url = f"http://127.0.0.1:{server.server_port}/{video.name}"
+                result = preflight_media_resource(
+                    ResourceCandidate(url=media_url, source="webRequest", kind="video", mime="video/mp4"),
+                    [],
+                    HeaderGateHandler.required_referer,
+                )
+                self.assertTrue(result.ok)
+                self.assertFalse(result.downloadable)
+                self.assertEqual(result.code, "auth_required")
+                self.assertEqual(result.status_code, 403)
+            finally:
+                server.shutdown()
+                server.server_close()
+
+    def test_preflight_keeps_blob_as_non_downloadable(self) -> None:
+        result = preflight_media_resource(
+            ResourceCandidate(url="blob:https://example.com/abc", source="activeVideo", kind="blob"),
+            [],
+            "https://example.com/lesson",
+        )
+        self.assertTrue(result.ok)
+        self.assertFalse(result.downloadable)
+        self.assertEqual(result.strategy, "blob-unrecoverable")
+        self.assertEqual(result.code, "drm_or_encrypted")
 
 
 if __name__ == "__main__":
