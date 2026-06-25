@@ -326,7 +326,8 @@ select:focus {
 }
 
 .dropzone small,
-.browser-handshake small {
+.browser-handshake small,
+.boundary-note small {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.45;
@@ -337,16 +338,111 @@ select:focus {
   background: var(--surface-strong);
 }
 
+.browser-handoff {
+  display: grid;
+  gap: 10px;
+}
+
 .browser-handshake {
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 10px;
   align-items: start;
-  min-height: 116px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: linear-gradient(180deg, #fbfdff, var(--surface-soft));
   padding: 14px;
+}
+
+.browser-handshake strong,
+.boundary-note strong {
+  display: block;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.handoff-steps,
+.capability-grid,
+.browser-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.handoff-steps {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.handoff-steps span {
+  min-width: 0;
+  min-height: 54px;
+  display: grid;
+  gap: 5px;
+  align-content: center;
+  justify-items: center;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: #fff;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+  text-align: center;
+}
+
+.handoff-steps b {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--surface-strong);
+  color: var(--accent);
+  font-size: 12px;
+}
+
+.capability-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.capability-grid span {
+  min-width: 0;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #c9d9ff;
+  border-radius: 999px;
+  background: #f2f6ff;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.browser-actions {
+  grid-template-columns: 1fr 1fr;
+}
+
+.secondary {
+  border-color: var(--border);
+  background: #fff;
+  color: var(--text);
+}
+
+.secondary:hover {
+  border-color: #9db9f8;
+  color: var(--accent);
+}
+
+.boundary-note {
+  border: 1px solid rgba(196, 122, 5, 0.26);
+  border-radius: 7px;
+  background: rgba(196, 122, 5, 0.07);
+  padding: 10px 11px;
+}
+
+.boundary-note strong {
+  color: #6a4100;
+  font-size: 12px;
 }
 
 .workflow-strip {

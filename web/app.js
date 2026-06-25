@@ -19,6 +19,9 @@ const els = {
   urlInput: document.querySelector("#urlInput"),
   titleInput: document.querySelector("#titleInput"),
   startUrlButton: document.querySelector("#startUrlButton"),
+  copyBackendButton: document.querySelector("#copyBackendButton"),
+  browserRefreshButton: document.querySelector("#browserRefreshButton"),
+  browserBridgeStatus: document.querySelector("#browserBridgeStatus"),
   fileInput: document.querySelector("#fileInput"),
   fileName: document.querySelector("#fileName"),
   dropzone: document.querySelector("#dropzone"),
@@ -165,6 +168,7 @@ function playbackText(match) {
     "source-element": "当前 source",
     "same-frame": "同播放器 frame",
     "blob-same-frame": "blob 同 frame",
+    "blob-source": "blob 来源映射",
     "recent-media-request": "最近播放请求",
     "same-site-request": "同站请求",
     "inferred-from-fragment": "分片推断"
@@ -285,9 +289,17 @@ async function checkHealth() {
     const data = await fetch(`${API}/health`).then(r => r.json());
     els.health.className = data.ffmpeg ? "health ok" : "health bad";
     els.health.textContent = data.ffmpeg ? "本地后端可用" : "ffmpeg 缺失";
+    if (els.browserBridgeStatus) {
+      els.browserBridgeStatus.textContent = data.ffmpeg
+        ? "扩展读取播放状态、媒体请求和一次性 cookie，后端在本机处理。"
+        : "后端已连接，但 ffmpeg 缺失；当前页直取后无法完成合并/切片。";
+    }
   } catch {
     els.health.className = "health bad";
     els.health.textContent = "后端未连接";
+    if (els.browserBridgeStatus) {
+      els.browserBridgeStatus.textContent = "先启动本地后端，再从扩展 Side Panel 创建当前页任务。";
+    }
   }
 }
 
@@ -490,6 +502,7 @@ async function renderDetail() {
         <dt>来源</dt><dd>${escapeHtml(task.page_url || task.source_type)}</dd>
         <dt>下载策略</dt><dd>${selected.url ? "浏览器候选资源优先" : "页面解析 fallback"}</dd>
         <dt>已选资源</dt><dd>${escapeHtml(selected.url || "未选择直接资源")}</dd>
+        <dt>对应 blob</dt><dd>${escapeHtml(selected.blob_url || "-")}</dd>
         <dt>资源类型</dt><dd>${escapeHtml([
           selected.kind || "-",
           selected.source || "-",
@@ -590,6 +603,28 @@ els.resultTabs.forEach(tab => {
 });
 
 els.startUrlButton.onclick = startUrlTask;
+els.copyBackendButton.onclick = async () => {
+  const url = window.location.origin || "http://127.0.0.1:8765";
+  try {
+    await navigator.clipboard.writeText(url);
+  } catch {
+    const input = document.createElement("input");
+    input.value = url;
+    input.setAttribute("readonly", "");
+    input.style.position = "fixed";
+    input.style.opacity = "0";
+    document.body.appendChild(input);
+    input.select();
+    document.execCommand("copy");
+    input.remove();
+  }
+  const previous = els.copyBackendButton.innerHTML;
+  els.copyBackendButton.textContent = "已复制";
+  setTimeout(() => {
+    els.copyBackendButton.innerHTML = previous;
+  }, 1400);
+};
+els.browserRefreshButton.onclick = () => loadTasks();
 els.uploadButton.onclick = uploadSelectedFile;
 els.refreshButton.onclick = () => loadTasks();
 els.taskSearch.oninput = () => {

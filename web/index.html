@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>LearnNote 本地学习助手</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="/web/styles.css?v=20260625-workspace">
+    <link rel="stylesheet" href="/web/styles.css?v=20260625-browser-handoff">
   </head>
   <body>
     <header class="topbar">
@@ -66,11 +66,42 @@
         </section>
 
         <section id="browserSource" class="source-pane">
-          <div class="browser-handshake">
-            <span class="status-dot"></span>
-            <div>
-              <strong>扩展面板接管当前页</strong>
-              <small>从 Chrome/Edge Side Panel 读取正在播放的 HTML5 视频、媒体请求和一次性 cookie。</small>
+          <div class="browser-handoff">
+            <div class="browser-handshake">
+              <span class="status-dot"></span>
+              <div>
+                <strong>Side Panel 当前页直取</strong>
+                <small id="browserBridgeStatus">扩展读取播放状态、媒体请求和一次性 cookie，后端在本机处理。</small>
+              </div>
+            </div>
+
+            <div class="handoff-steps" aria-label="当前页处理流程">
+              <span><b>1</b>播放课程页</span>
+              <span><b>2</b>预检候选</span>
+              <span><b>3</b>生成笔记</span>
+            </div>
+
+            <div class="capability-grid" aria-label="直取能力">
+              <span>MP4/WebM</span>
+              <span>HLS/DASH</span>
+              <span>yt-dlp</span>
+              <span>Blob 来源映射</span>
+            </div>
+
+            <div class="browser-actions">
+              <button id="copyBackendButton" class="secondary action-button" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8h11v13H8zM5 16H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h11a1 1 0 0 1 1 1v1"/></svg>
+                复制后端地址
+              </button>
+              <button id="browserRefreshButton" class="secondary action-button" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 0 1-13.66 5.66M4 12A8 8 0 0 1 17.66 6.34M20 4v6h-6M4 20v-6h6"/></svg>
+                刷新任务
+              </button>
+            </div>
+
+            <div class="boundary-note">
+              <strong>不录制，不刷课，不破解 DRM。</strong>
+              <small>检测不到可访问媒体 URL 时，继续使用本地视频入口。</small>
             </div>
           </div>
         </section>
@@ -172,6 +203,6 @@
       </section>
     </main>
 
-    <script src="/web/app.js?v=20260625-workspace"></script>
+    <script src="/web/app.js?v=20260625-browser-handoff"></script>
   </body>
 </html>
