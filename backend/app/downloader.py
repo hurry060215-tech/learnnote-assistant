@@ -1178,24 +1178,39 @@ class MediaDownloader:
         url = candidate.url
         suffix = Path(urlparse(url).path).suffix or ".mp4"
         output = self.download_dir / f"{_clean_filename(title)}_direct{suffix}"
-        headers = download_headers_for_candidate(candidate, cookies, referer)
-        try:
+        base_headers = download_headers_for_candidate(candidate, cookies, referer)
+
+        def attempt(headers: dict[str, str]) -> Path:
+            if output.exists():
+                output.unlink()
             with requests.get(url, headers=headers, stream=True, timeout=30) as response:
                 if response.status_code in {401, 403}:
                     raise DownloadError("auth_required", f"媒体资源返回 HTTP {response.status_code}。")
+                if response.status_code == 416:
+                    raise DownloadError("download_forbidden", "媒体资源拒绝当前 Range 请求。")
                 if response.status_code >= 400:
                     raise DownloadError("download_forbidden", f"媒体资源返回 HTTP {response.status_code}。")
                 with output.open("wb") as file:
                     for chunk in response.iter_content(chunk_size=1024 * 1024):
                         if chunk:
                             file.write(chunk)
-        except DownloadError:
-            raise
+            if not output.exists() or output.stat().st_size < 4096:
+                raise DownloadError("download_forbidden", "下载文件过小，可能不是有效视频。")
+            return output
+
+        try:
+            return attempt(base_headers)
+        except DownloadError as first_error:
+            if output.exists():
+                output.unlink()
+            range_headers = dict(base_headers)
+            range_headers["Range"] = "bytes=0-"
+            try:
+                return attempt(range_headers)
+            except DownloadError:
+                raise first_error
         except Exception as exc:
             raise DownloadError("download_forbidden", f"直接下载失败：{exc}") from exc
-        if output.stat().st_size < 4096:
-            raise DownloadError("download_forbidden", "下载文件过小，可能不是有效视频。")
-        return output
 
     def _download_text_file(self, candidate: ResourceCandidate, cookies: list[BrowserCookie], referer: str, title: str) -> Path:
         url = candidate.url
