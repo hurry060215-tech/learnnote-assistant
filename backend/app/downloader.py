@@ -29,6 +29,10 @@ TEXT_MEDIA_URL_RE = re.compile(
 TEXT_RESPONSE_RE = re.compile(r"json|text|html|javascript|mpegurl|dash\+xml|xml|x-mpegurl", re.I)
 JSON_MEDIA_KEY_RE = re.compile(r"(url|src|file|play|media|video|stream|source|hls|m3u8|dash|mpd|subtitle|caption)", re.I)
 JSON_MIME_KEY_RE = re.compile(r"(mime|type|format|content.?type|media.?type)", re.I)
+TEXT_MEDIA_FIELD_RE = re.compile(
+    r"(?P<key>[\"']?[A-Za-z_$][A-Za-z0-9_$.-]{0,79}[\"']?)\s*[:=]\s*[\"'](?P<url>[^\"'<>\\\s]{4,})[\"']",
+    re.I,
+)
 MAX_PAGE_SCAN_BYTES = 2 * 1024 * 1024
 SUBTITLE_EXTENSIONS = {".vtt", ".srt", ".ass", ".ssa"}
 SUBTITLE_LANGUAGE_PREFERENCES = ("zh-CN", "zh-Hans", "zh-Hant", "zh", "en", "en-US")
@@ -209,6 +213,44 @@ def extract_media_resources_from_json_text(text: str, base_url: str, source: str
     return _json_media_resources(data, base_url, source, [], set())[:60]
 
 
+def extract_media_resources_from_field_text(
+    text: str,
+    base_url: str,
+    source: str = "page-scan",
+    seen: set[str] | None = None,
+) -> list[ResourceCandidate]:
+    resources: list[ResourceCandidate] = []
+    seen = seen if seen is not None else set()
+    for match in TEXT_MEDIA_FIELD_RE.finditer(text or ""):
+        key = (match.group("key") or "").strip("\"'")
+        if not JSON_MEDIA_KEY_RE.search(key):
+            continue
+        raw_url = match.group("url") or ""
+        if not _looks_like_json_url_candidate(raw_url):
+            continue
+        url = normalize_media_url(raw_url, base_url)
+        if not url or url in seen:
+            continue
+        kind, mime = _json_context_kind([key], url, {})
+        if kind == "unknown":
+            continue
+        resources.append(
+            ResourceCandidate(
+                url=url,
+                source=source,
+                kind=kind,
+                mime=mime,
+                score=score_resource(url, mime, source),
+                label=f"field {key}",
+                request_headers={"Referer": base_url},
+            )
+        )
+        seen.add(url)
+        if len(resources) >= 60:
+            break
+    return resources
+
+
 def extract_media_resources_from_text(text: str, base_url: str, source: str = "page-scan") -> list[ResourceCandidate]:
     if not text:
         return []
@@ -216,6 +258,7 @@ def extract_media_resources_from_text(text: str, base_url: str, source: str = "p
     seen: set[str] = set()
     for resource in resources:
         seen.add(resource.url)
+    resources.extend(extract_media_resources_from_field_text(text, base_url, source, seen))
     if not TEXT_MEDIA_HINT_RE.search(text):
         return resources
     for match in TEXT_MEDIA_URL_RE.finditer(text):

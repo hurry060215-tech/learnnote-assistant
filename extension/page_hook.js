@@ -7,6 +7,7 @@
   const TEXT_TYPE_RE = /json|text|javascript|mpegurl|dash\+xml|xml|x-mpegurl/i;
   const JSON_MEDIA_KEY_RE = /(url|src|file|play|media|video|stream|source|hls|m3u8|dash|mpd|subtitle|caption)/i;
   const JSON_MIME_KEY_RE = /(mime|type|format|content.?type|media.?type)/i;
+  const TEXT_MEDIA_FIELD_RE = /(["']?[A-Za-z_$][A-Za-z0-9_$.-]{0,79}["']?)\s*[:=]\s*["']([^"'<>\\\s]{4,})["']/gi;
   const MAX_TEXT_BYTES = 2 * 1024 * 1024;
   const MAX_BLOB_URLS = 80;
   const bufferedResources = [];
@@ -195,6 +196,32 @@
     }
   }
 
+  function extractFieldMediaUrls(text, source, label, seen = new Set()) {
+    const output = [];
+    TEXT_MEDIA_FIELD_RE.lastIndex = 0;
+    for (const match of String(text || "").matchAll(TEXT_MEDIA_FIELD_RE)) {
+      const key = String(match[1] || "").replace(/^["']|["']$/g, "");
+      if (!JSON_MEDIA_KEY_RE.test(key)) continue;
+      const rawUrl = match[2] || "";
+      if (!looksLikeJsonUrlCandidate(rawUrl)) continue;
+      const url = normalizeUrl(rawUrl);
+      if (!url || seen.has(url)) continue;
+      const { kind, mime } = kindFromJsonContext([key], url, {});
+      if (kind === "unknown") continue;
+      seen.add(url);
+      output.push({
+        url,
+        source,
+        kind,
+        mime,
+        label: `${label} field ${key}`,
+        score: kind === "hls" || kind === "dash" ? 97 : kind === "video" ? 89 : 64
+      });
+      if (output.length >= 40) break;
+    }
+    return output;
+  }
+
   function blobMeta(url, mime, source, label) {
     const normalizedUrl = normalizeUrl(url);
     const kind = mediaKind(normalizedUrl, mime || "");
@@ -242,6 +269,7 @@
     if (!text) return;
     const resources = extractJsonMediaUrls(text, source, label);
     const seen = new Set(resources.map(item => item.url));
+    resources.push(...extractFieldMediaUrls(text, source, label, seen));
     if (MEDIA_HINT_RE.test(text)) {
       for (const match of text.matchAll(MEDIA_URL_RE)) {
         const url = normalizeUrl(match[0]);

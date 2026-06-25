@@ -183,6 +183,28 @@ class ResourceDetectionTests(unittest.TestCase):
         self.assertEqual(by_label["json streams/hls"].mime, "application/vnd.apple.mpegurl")
         self.assertEqual(by_label["json streams/videoUrl"].mime, "video/mp4")
 
+    def test_page_scan_finds_extensionless_media_fields_inside_script(self) -> None:
+        resources = extract_media_resources_from_text(
+            """
+            <script>
+              window.playInfo = {
+                hls: "/stream?lesson=1&token=abc",
+                dashUrl: "/dash/play?id=2",
+                videoUrl: "/api/media/file?id=42"
+              };
+            </script>
+            """,
+            "https://course.example.com/player/index.html",
+            "page-scan",
+        )
+        by_label = {resource.label: resource for resource in resources}
+
+        self.assertEqual(by_label["field hls"].kind, "hls")
+        self.assertEqual(by_label["field dashUrl"].kind, "dash")
+        self.assertEqual(by_label["field videoUrl"].kind, "video")
+        self.assertEqual(by_label["field hls"].url, "https://course.example.com/stream?lesson=1&token=abc")
+        self.assertEqual(by_label["field dashUrl"].mime, "application/dash+xml")
+
     def test_ytdlp_subtitle_language_prefers_human_chinese_then_auto(self) -> None:
         info = {
             "subtitles": {
