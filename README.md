@@ -11,6 +11,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - BiliNote-style task stage rail for download, transcription, frame slicing, note generation, and completion.
 - Markdown note export from both the local Web UI and the browser Side Panel.
 - Current-page media detection from DOM, all-frame content scripts, Performance entries, and `webRequest`.
+- Main-world fetch/XHR hook for media URLs exposed in text, JSON, playlist, or script responses before they appear in `<video>`.
 - Cookie handoff from the current browser session to the local backend at task start.
 - Non-sensitive browser request headers such as `Referer`, `Origin`, `User-Agent`, `Accept`, and `Accept-Language` are captured for media candidates and reused by backend downloads.
 - Local FastAPI backend on `127.0.0.1:8765`.
@@ -25,6 +26,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 
 - Direct current-page task creation from the extension Side Panel.
 - DOM, iframe-aware content scripts, Performance, active `<video>` state, and `webRequest` resource discovery.
+- Page-network hook discovery for mp4/HLS/DASH/subtitle URLs embedded in fetch/XHR text responses. The hook only extracts URLs from small text-like responses and does not read binary video payloads.
 - Frame-aware context aggregation: the extension asks every reachable frame for page text, active video state, and media resources before ranking candidates.
 - Dynamic SPA video detection through MutationObserver, media event binding, periodic rescans, and PerformanceObserver resource updates.
 - Cookie collection at task start for the page URL and detected media URLs.

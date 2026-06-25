@@ -2,9 +2,11 @@ const MEDIA_RE = /\.(mp4|m4v|webm|mov|mkv|m3u8|mpd)(\?|#|$)/i;
 const FRAGMENT_RE = /\.(m4s|ts)(\?|#|$)/i;
 const SUBTITLE_RE = /\.(vtt|srt|ass|ssa)(\?|#|$)/i;
 const boundVideos = new WeakSet();
+const hookResources = [];
 let pendingPushTimer = 0;
 let lastPushAt = 0;
 let lastSignature = "";
+let watchersStarted = false;
 
 function classify(url, mime = "") {
   const lower = String(url || "").toLowerCase();
@@ -48,6 +50,7 @@ function score(url, mime, source) {
   else if (kind === "blob") value += 5;
   if (source === "dom") value += 8;
   if (source === "activeVideo") value += 16;
+  if (String(source || "").startsWith("pageHook")) value += 12;
   if (/chaoxing|xuexitong/i.test(url)) value += 8;
   return Math.min(value, 100);
 }
@@ -80,6 +83,37 @@ function resource(url, source, label, mime = "", video = null, isMainVideo = fal
     width: video ? Number(video.videoWidth || video.clientWidth || 0) : null,
     height: video ? Number(video.videoHeight || video.clientHeight || 0) : null
   };
+}
+
+function rememberHookResource(item) {
+  const normalized = resource(item.url, item.source || "pageHook", item.label || "page hook", item.mime || "");
+  if (!normalized) return;
+  normalized.kind = item.kind || normalized.kind;
+  normalized.score = Math.max(normalized.score, Number(item.score || 0));
+  const existing = hookResources.find(entry => entry.url === normalized.url);
+  if (existing) {
+    Object.assign(existing, normalized, {
+      score: Math.max(existing.score || 0, normalized.score || 0)
+    });
+  } else {
+    hookResources.unshift(normalized);
+  }
+  hookResources.splice(40);
+}
+
+function collectHookResources() {
+  return hookResources.slice(0, 40);
+}
+
+function installPageHookBridge() {
+  window.addEventListener("message", event => {
+    if (event.source !== window || event.data?.source !== "learnnote-page-hook") return;
+    for (const item of event.data.resources || []) rememberHookResource(item);
+    schedulePush(120, true);
+  });
+  window.postMessage({ source: "learnnote-content-ready" }, "*");
+  setTimeout(() => window.postMessage({ source: "learnnote-content-ready" }, "*"), 250);
+  setTimeout(() => window.postMessage({ source: "learnnote-content-ready" }, "*"), 1000);
 }
 
 function collectVideos() {
@@ -166,7 +200,7 @@ function collectCourseText() {
 }
 
 function collectPageData() {
-  const all = [...collectDomResources(), ...collectPerformanceResources()];
+  const all = [...collectDomResources(), ...collectPerformanceResources(), ...collectHookResources()];
   const byUrl = new Map();
   for (const item of all) {
     const previous = byUrl.get(item.url);
@@ -275,11 +309,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   sendResponse(collectPageData());
 });
 
-bindVideos();
-installMutationObserver();
-installPerformanceObserver();
-setTimeout(() => pushDetectedMedia(true), 800);
-setInterval(() => {
+function startWatchers() {
+  if (watchersStarted) return;
+  watchersStarted = true;
   bindVideos();
-  schedulePush(400);
-}, 5000);
+  installMutationObserver();
+  installPerformanceObserver();
+  setTimeout(() => pushDetectedMedia(true), 800);
+  setInterval(() => {
+    bindVideos();
+    schedulePush(400);
+  }, 5000);
+}
+
+installPageHookBridge();
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", startWatchers, { once: true });
+  setTimeout(startWatchers, 1000);
+} else {
+  startWatchers();
+}
