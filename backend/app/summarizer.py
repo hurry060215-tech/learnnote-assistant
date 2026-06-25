@@ -135,6 +135,7 @@ def summarize_with_llm(
             "text": (
                 "你是严谨的课程学习笔记助手。请结合字幕和视频画面，输出 Markdown。"
                 "结构必须包含：课程主题、时间轴重点、核心概念、例题/演示步骤、易错点、复习问题、画面索引。\n\n"
+                f"笔记风格：{options.note_style}；详略程度：{options.summary_depth}。\n"
                 f"标题：{title}\n来源：{page_url}\n\n字幕：\n{transcript.full_text[:60000]}"
             ),
         }

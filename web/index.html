@@ -3,53 +3,150 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>LearnNote 本地助手</title>
+    <title>LearnNote 本地学习助手</title>
+    <link rel="icon" href="data:,">
     <link rel="stylesheet" href="/web/styles.css">
   </head>
   <body>
-    <header class="app-header">
+    <header class="topbar">
       <div class="brand">
         <div class="brand-mark">LN</div>
         <div>
-          <h1>LearnNote 本地助手</h1>
-          <p>当前页视频直取、本地视频上传、转写与图文总结</p>
+          <h1>LearnNote</h1>
+          <p>当前页直取 · 本地视频 · 图文切片笔记</p>
         </div>
       </div>
-      <div id="health" class="health">检查中</div>
+      <div class="topbar-actions">
+        <span id="health" class="health">检查中</span>
+        <button id="refreshButton" class="icon-button" title="刷新任务" aria-label="刷新任务">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 0 1-13.66 5.66M4 12A8 8 0 0 1 17.66 6.34M20 4v6h-6M4 20v-6h6"/></svg>
+        </button>
+      </div>
     </header>
 
-    <main class="layout">
-      <section class="panel upload-panel">
-        <h2>上传本地视频</h2>
-        <p class="muted">支持 mp4 / webm / mov / mkv。上传后会走同一套转写、抽帧、图文总结管线。</p>
-        <label id="dropzone" class="dropzone">
-          <input id="fileInput" type="file" accept="video/*">
-          <span class="upload-icon">↥</span>
-          <strong>拖拽视频文件到此处，或点击选择</strong>
-          <small>默认每 20 秒抽帧，3x3 网格</small>
-        </label>
-        <div class="form-row">
-          <label>任务标题</label>
-          <input id="titleInput" type="text" placeholder="可选，默认使用文件名">
+    <main class="app-shell">
+      <aside class="workspace-panel">
+        <div class="panel-heading">
+          <span class="eyeless">生成笔记</span>
+          <strong>视频来源</strong>
         </div>
-        <button id="uploadButton" class="primary">上传并总结</button>
-      </section>
 
-      <section class="panel tasks-panel">
-        <div class="panel-title">
-          <h2>任务列表</h2>
-          <button id="refreshButton" class="ghost">刷新</button>
+        <div class="source-tabs" role="tablist" aria-label="视频来源">
+          <button class="source-tab active" data-source="url">视频链接</button>
+          <button class="source-tab" data-source="local">本地视频</button>
+          <button class="source-tab" data-source="browser">浏览器当前页</button>
+        </div>
+
+        <section id="urlSource" class="source-pane active">
+          <label class="field">
+            <span>视频或页面 URL</span>
+            <input id="urlInput" type="url" placeholder="https://example.com/lesson.mp4">
+          </label>
+          <label class="field">
+            <span>笔记标题</span>
+            <input id="titleInput" type="text" placeholder="默认使用页面标题或文件名">
+          </label>
+          <button id="startUrlButton" class="primary action-button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+            生成链接笔记
+          </button>
+        </section>
+
+        <section id="localSource" class="source-pane">
+          <label id="dropzone" class="dropzone">
+            <input id="fileInput" type="file" accept="video/*">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5M4 17v3h16v-3"/></svg>
+            <strong>拖入视频文件</strong>
+            <small>mp4 / webm / mov / mkv</small>
+          </label>
+          <button id="uploadButton" class="primary action-button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5M4 17v3h16v-3"/></svg>
+            上传并生成
+          </button>
+        </section>
+
+        <section id="browserSource" class="source-pane">
+          <div class="browser-handshake">
+            <span class="status-dot"></span>
+            <div>
+              <strong>扩展面板接管当前页</strong>
+              <small>当前页媒体、cookie 和播放状态由 Chrome/Edge Side Panel 发送到本地后端。</small>
+            </div>
+          </div>
+        </section>
+
+        <div class="option-grid">
+          <label class="field">
+            <span>切片间隔</span>
+            <select id="frameInterval">
+              <option value="10">10 秒</option>
+              <option value="20" selected>20 秒</option>
+              <option value="30">30 秒</option>
+              <option value="60">60 秒</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>视觉窗口</span>
+            <select id="gridSize">
+              <option value="3x3" selected>3x3 · 约 3 分钟</option>
+              <option value="2x3">2x3 · 紧凑</option>
+              <option value="4x3">4x3 · 长窗口</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>转写模型</span>
+            <select id="whisperModel">
+              <option value="tiny">tiny</option>
+              <option value="small" selected>small</option>
+              <option value="medium">medium</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>笔记风格</span>
+            <select id="noteStyle">
+              <option value="study" selected>学习笔记</option>
+              <option value="outline">大纲梳理</option>
+              <option value="exam">考点复习</option>
+              <option value="code">代码/演示</option>
+            </select>
+          </label>
+        </div>
+      </aside>
+
+      <section class="queue-panel">
+        <div class="panel-heading horizontal">
+          <div>
+            <span class="eyeless">任务队列</span>
+            <strong>处理记录</strong>
+          </div>
+          <span id="taskCount" class="count">0</span>
+        </div>
+        <div class="queue-stats">
+          <span><b id="successCount">0</b>完成</span>
+          <span><b id="runningCount">0</b>运行</span>
+          <span><b id="failedCount">0</b>失败</span>
         </div>
         <div id="tasks" class="task-list"></div>
       </section>
 
-      <section class="panel transcript-panel">
-        <div class="tabs">
-          <button class="tab active" data-tab="transcript">转写（字幕）</button>
-          <button class="tab" data-tab="frames">帧预览</button>
-          <button class="tab" data-tab="note">笔记（Markdown）</button>
+      <section class="result-panel">
+        <div class="result-header">
+          <div>
+            <span id="selectedSource" class="eyeless">结果工作区</span>
+            <h2 id="selectedTitle">选择一个任务</h2>
+          </div>
+          <button id="copyButton" class="icon-button" title="复制笔记" aria-label="复制笔记">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8h11v13H8zM5 16H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h11a1 1 0 0 1 1 1v1"/></svg>
+          </button>
         </div>
-        <div id="detail" class="detail empty">选择一个任务查看结果。</div>
+
+        <div class="result-tabs" role="tablist" aria-label="任务结果">
+          <button class="result-tab active" data-tab="note">笔记</button>
+          <button class="result-tab" data-tab="transcript">字幕</button>
+          <button class="result-tab" data-tab="frames">画面切片</button>
+          <button class="result-tab" data-tab="diagnostics">下载诊断</button>
+        </div>
+        <div id="detail" class="detail empty">任务完成后显示结构化结果。</div>
       </section>
     </main>
 

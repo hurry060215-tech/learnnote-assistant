@@ -123,18 +123,7 @@ class MediaDownloader:
 
         cookie_file = write_netscape_cookie_file(cookies, self.task_path / "cookies.txt") if cookies else None
 
-        try:
-            return self._download_with_ytdlp(page_url, cookie_file, title), None
-        except DownloadError as exc:
-            if exc.code not in {"unsupported_manifest", "download_forbidden"}:
-                pass
-        except Exception:
-            pass
-
         candidates = self._candidate_resources(resources)
-        if not candidates:
-            raise DownloadError("no_media_found", "没有发现可直接下载的视频、HLS 或 DASH 资源。")
-
         last_error: DownloadError | None = None
         for candidate in candidates:
             try:
@@ -143,9 +132,18 @@ class MediaDownloader:
                 last_error = exc
                 continue
 
+        try:
+            return self._download_with_ytdlp(page_url, cookie_file, title), None
+        except DownloadError as exc:
+            if not last_error:
+                last_error = exc
+        except Exception as exc:
+            if not last_error:
+                last_error = DownloadError("download_forbidden", str(exc))
+
         if last_error:
             raise last_error
-        raise DownloadError("no_media_found", "所有候选资源都无法下载。")
+        raise DownloadError("no_media_found", "没有发现可直接下载的视频、HLS 或 DASH 资源。")
 
     def _candidate_resources(self, resources: list[ResourceCandidate]) -> list[ResourceCandidate]:
         dedup: dict[str, ResourceCandidate] = {}

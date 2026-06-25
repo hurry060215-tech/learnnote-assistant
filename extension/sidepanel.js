@@ -1,26 +1,36 @@
 const DEFAULT_BACKEND = "http://127.0.0.1:8765";
+
 let backendUrl = DEFAULT_BACKEND;
 let page = null;
 let resources = [];
 let selectedResourceUrl = "";
 let currentTaskId = "";
+let currentTask = null;
+let selectedTab = "note";
+let transcriptCache = null;
 let lastNote = "";
 
 const els = {
   backendStatus: document.querySelector("#backendStatus"),
   pageTitle: document.querySelector("#pageTitle"),
   pageUrl: document.querySelector("#pageUrl"),
+  activeVideo: document.querySelector("#activeVideo"),
+  resourceCount: document.querySelector("#resourceCount"),
   resources: document.querySelector("#resources"),
   summarizeButton: document.querySelector("#summarizeButton"),
   uploadButton: document.querySelector("#uploadButton"),
   fileInput: document.querySelector("#fileInput"),
   textButton: document.querySelector("#textButton"),
   redetectButton: document.querySelector("#redetectButton"),
+  frameInterval: document.querySelector("#frameInterval"),
+  gridSize: document.querySelector("#gridSize"),
+  whisperModel: document.querySelector("#whisperModel"),
+  noteStyle: document.querySelector("#noteStyle"),
   progressBar: document.querySelector("#progressBar"),
+  taskPhase: document.querySelector("#taskPhase"),
   taskMessage: document.querySelector("#taskMessage"),
-  transcript: document.querySelector("#transcript"),
-  frames: document.querySelector("#frames"),
-  note: document.querySelector("#note"),
+  resultTabs: document.querySelectorAll(".result-tab"),
+  result: document.querySelector("#result"),
   copyButton: document.querySelector("#copyButton"),
   settingsButton: document.querySelector("#settingsButton")
 };
@@ -32,6 +42,18 @@ function escapeHtml(value) {
 function fmt(sec) {
   sec = Math.max(0, Math.floor(sec || 0));
   return `${String(Math.floor(sec / 3600)).padStart(2, "0")}:${String(Math.floor((sec % 3600) / 60)).padStart(2, "0")}:${String(sec % 60).padStart(2, "0")}`;
+}
+
+function readOptions() {
+  const [cols, rows] = els.gridSize.value.split("x").map(Number);
+  return {
+    visual_understanding: true,
+    frame_interval: Number(els.frameInterval.value || 20),
+    grid_columns: cols || 3,
+    grid_rows: rows || 3,
+    whisper_model: els.whisperModel.value || "small",
+    note_style: els.noteStyle.value || "study"
+  };
 }
 
 async function loadSettings() {
@@ -49,13 +71,12 @@ async function saveSettings() {
 
 async function health() {
   try {
-    const response = await fetch(`${backendUrl}/health`);
-    const data = await response.json();
-    els.backendStatus.textContent = data.ffmpeg ? "本地可用" : "后端可用，ffmpeg 缺失";
-    els.backendStatus.style.color = data.ffmpeg ? "#16a34a" : "#d97706";
+    const data = await fetch(`${backendUrl}/health`).then(r => r.json());
+    els.backendStatus.textContent = data.ffmpeg ? "本地后端可用" : "ffmpeg 缺失";
+    els.backendStatus.style.color = data.ffmpeg ? "#159947" : "#c27803";
   } catch {
     els.backendStatus.textContent = "后端未连接";
-    els.backendStatus.style.color = "#dc2626";
+    els.backendStatus.style.color = "#d92d20";
   }
 }
 
@@ -76,18 +97,24 @@ async function collect() {
 function renderContext() {
   els.pageTitle.textContent = page?.title || "Untitled";
   els.pageUrl.textContent = page?.page_url || "";
+  const active = page?.active_video;
+  if (active?.src) {
+    els.activeVideo.innerHTML = `播放状态：${active.paused ? "暂停" : "播放中"} · ${fmt(active.current_time)} / ${fmt(active.duration)} · ${active.width || 0}x${active.height || 0}`;
+  } else {
+    els.activeVideo.textContent = "未读取到 HTML5 播放状态";
+  }
+  els.resourceCount.textContent = String(resources.length);
   if (!resources.length) {
-    els.resources.innerHTML = `<p class="muted">没有检测到可直接下载的视频资源。可尝试“只总结当前页面文本”或上传本地视频。</p>`;
+    els.resources.innerHTML = `<p class="muted">未检测到可直接下载的视频资源。</p>`;
     return;
   }
   els.resources.innerHTML = resources.map(item => `
     <button class="resource ${item.url === selectedResourceUrl ? "selected" : ""}" data-url="${escapeHtml(item.url)}">
-      <span class="play">▶</span>
       <span>
         <strong>${escapeHtml(item.label || item.kind || "media")}</strong>
-        <small>${escapeHtml(item.kind)} · ${escapeHtml(item.source)} · ${escapeHtml(item.mime || "")}</small>
+        <small>${escapeHtml(item.kind)} · ${escapeHtml(item.source)} · ${escapeHtml(item.mime || "unknown")}</small>
       </span>
-      <span class="confidence">置信度：${item.score || 0}%</span>
+      <span class="confidence">${item.score || 0}%</span>
     </button>
   `).join("");
   document.querySelectorAll(".resource").forEach(button => {
@@ -112,13 +139,15 @@ async function startTask(mode = "video") {
     page,
     resources: mode === "video" ? selectedResources() : [],
     mode,
-    options: { visual_understanding: true, frame_interval: 20, grid_columns: 3, grid_rows: 3 }
+    options: readOptions()
   });
   if (response.error) {
     els.taskMessage.textContent = response.error;
     return;
   }
   currentTaskId = response.task_id;
+  transcriptCache = null;
+  lastNote = "";
   pollTask();
 }
 
@@ -128,59 +157,103 @@ async function uploadLocal() {
   const form = new FormData();
   form.append("file", file);
   form.append("title", file.name);
-  form.append("options", JSON.stringify({ visual_understanding: true, frame_interval: 20, grid_columns: 3, grid_rows: 3 }));
+  form.append("options", JSON.stringify(readOptions()));
   els.taskMessage.textContent = "上传本地视频...";
-  const response = await fetch(`${backendUrl}/api/tasks/from-local`, { method: "POST", body: form });
-  const data = await response.json();
+  const data = await fetch(`${backendUrl}/api/tasks/from-local`, { method: "POST", body: form }).then(r => r.json());
   currentTaskId = data.task_id;
+  transcriptCache = null;
+  lastNote = "";
   pollTask();
 }
 
 async function pollTask() {
   if (!currentTaskId) return;
   const data = await fetch(`${backendUrl}/api/tasks/${currentTaskId}`).then(r => r.json());
-  const task = data.task;
-  els.progressBar.style.width = `${task.progress || 0}%`;
-  els.taskMessage.textContent = task.error_detail || task.message || task.phase;
-  if (task.status === "success") {
+  currentTask = data.task;
+  els.progressBar.style.width = `${currentTask.progress || 0}%`;
+  els.taskPhase.textContent = currentTask.phase || "-";
+  els.taskMessage.textContent = currentTask.error_detail || currentTask.message || currentTask.phase;
+  if (currentTask.status === "success") {
     await loadResult();
     return;
   }
-  if (task.status !== "failed") {
+  renderResult();
+  if (currentTask.status !== "failed") {
     setTimeout(pollTask, 2500);
   }
 }
 
 async function loadResult() {
-  const task = await fetch(`${backendUrl}/api/tasks/${currentTaskId}`).then(r => r.json()).then(d => d.task);
-  const transcript = await fetch(`${backendUrl}/api/tasks/${currentTaskId}/transcript`).then(r => r.json());
-  if (transcript.segments?.length) {
-    els.transcript.innerHTML = transcript.segments.slice(0, 80).map(seg => `<div class="line"><time>${fmt(seg.start)}</time><span>${escapeHtml(seg.text)}</span></div>`).join("");
-  } else {
-    els.transcript.textContent = transcript.warning || "没有字幕。";
+  if (!currentTaskId) return;
+  currentTask = await fetch(`${backendUrl}/api/tasks/${currentTaskId}`).then(r => r.json()).then(d => d.task);
+  transcriptCache = await fetch(`${backendUrl}/api/tasks/${currentTaskId}/transcript`).then(r => r.json());
+  lastNote = await fetch(`${backendUrl}/api/tasks/${currentTaskId}/note`).then(r => r.text());
+  renderResult();
+}
+
+function renderResult() {
+  if (!currentTask) {
+    els.result.textContent = "任务完成后显示结果。";
+    return;
   }
-  if (task.frame_grids?.length) {
-    els.frames.classList.remove("muted");
-    els.frames.innerHTML = task.frame_grids.slice(0, 8).map(grid => `
+  if (selectedTab === "note") {
+    els.result.className = "result-body";
+    els.result.innerHTML = `<pre class="note">${escapeHtml(lastNote || currentTask.message || "笔记尚未生成。")}</pre>`;
+    return;
+  }
+  if (selectedTab === "frames") {
+    if (!currentTask.frame_grids?.length) {
+      els.result.className = "result-body muted";
+      els.result.textContent = "画面切片尚未生成。";
+      return;
+    }
+    els.result.className = "result-body";
+    els.result.innerHTML = `<div class="frame-grid">${currentTask.frame_grids.slice(0, 8).map(grid => `
       <figure>
         <img src="${escapeHtml(grid.url)}" alt="frame grid">
         <figcaption>${fmt(grid.start)} - ${fmt(grid.end)}</figcaption>
       </figure>
-    `).join("");
-  } else {
-    els.frames.classList.add("muted");
-    els.frames.textContent = "未生成帧预览。";
+    `).join("")}</div>`;
+    return;
   }
-  lastNote = await fetch(`${backendUrl}/api/tasks/${currentTaskId}/note`).then(r => r.text());
-  els.note.textContent = lastNote || "笔记尚未生成。";
+  if (selectedTab === "diagnostics") {
+    const selected = currentTask.selected_resource || {};
+    els.result.className = "result-body";
+    els.result.innerHTML = `
+      <dl class="diagnostics">
+        <dt>状态</dt><dd>${escapeHtml(currentTask.status)} / ${escapeHtml(currentTask.phase)} / ${currentTask.progress || 0}%</dd>
+        <dt>策略</dt><dd>${selected.url ? "浏览器候选资源优先" : "页面解析 fallback"}</dd>
+        <dt>资源</dt><dd>${escapeHtml(selected.url || "未选择直接资源")}</dd>
+        <dt>类型</dt><dd>${escapeHtml(selected.kind || "-")} · ${escapeHtml(selected.source || "-")}</dd>
+        <dt>错误</dt><dd>${escapeHtml(currentTask.error_detail || currentTask.error_code || "-")}</dd>
+      </dl>
+    `;
+    return;
+  }
+  const transcript = transcriptCache;
+  if (!transcript?.segments?.length) {
+    els.result.className = "result-body muted";
+    els.result.textContent = transcript?.warning || "转写尚未生成。";
+    return;
+  }
+  els.result.className = "result-body";
+  els.result.innerHTML = transcript.segments.slice(0, 100).map(seg => `<div class="line"><time>${fmt(seg.start)}</time><span>${escapeHtml(seg.text)}</span></div>`).join("");
 }
+
+els.resultTabs.forEach(tab => {
+  tab.onclick = () => {
+    selectedTab = tab.dataset.tab;
+    els.resultTabs.forEach(item => item.classList.toggle("active", item === tab));
+    renderResult();
+  };
+});
 
 els.redetectButton.onclick = collect;
 els.summarizeButton.onclick = () => startTask("video");
 els.textButton.onclick = () => startTask("page_text");
 els.uploadButton.onclick = () => els.fileInput.click();
 els.fileInput.onchange = uploadLocal;
-els.copyButton.onclick = () => navigator.clipboard.writeText(lastNote || els.note.textContent || "");
+els.copyButton.onclick = () => navigator.clipboard.writeText(lastNote || "");
 els.settingsButton.onclick = saveSettings;
 
 loadSettings().then(() => Promise.all([health(), collect()]));

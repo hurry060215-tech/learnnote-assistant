@@ -6,7 +6,9 @@ from pathlib import Path
 
 from app.downloader import DownloadError, MediaDownloader, classify_resource, cookie_header_for_url, score_resource
 from app.models import BrowserCookie, ResourceCandidate, TranscriptResult, TranscriptSegment
+from app.processor import read_note, read_transcript
 from app.summarizer import local_markdown_note
+from app.storage import create_task
 
 
 class ResourceDetectionTests(unittest.TestCase):
@@ -57,6 +59,13 @@ class SummaryFallbackTests(unittest.TestCase):
         self.assertIn("# Python lesson", note)
         self.assertIn("00:00:05", note)
         self.assertIn("复习问题", note)
+
+
+class EmptyArtifactTests(unittest.TestCase):
+    def test_empty_artifact_paths_return_empty_results(self) -> None:
+        task = create_task(source_type="page_text", title="empty")
+        self.assertEqual(read_note(task.id), "")
+        self.assertEqual(read_transcript(task.id)["segments"], [])
 
 
 if __name__ == "__main__":

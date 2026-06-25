@@ -1,6 +1,7 @@
 const MEDIA_RE = /\.(mp4|m4v|webm|mov|mkv|m3u8|mpd)(\?|#|$)/i;
 const FRAGMENT_RE = /\.(m4s|ts)(\?|#|$)/i;
 const resourceByTab = new Map();
+const pageStateByTab = new Map();
 
 function classify(url, mime = "") {
   const lower = url.toLowerCase();
@@ -37,6 +38,11 @@ function addResource(tabId, resource) {
     score: Math.max(resource.score || 0, scoreResource(resource.url, resource.mime || "", resource.source || "")),
     label: resource.label || "",
     tab_id: tabId,
+    frame_id: resource.frame_id ?? null,
+    current_time: resource.current_time ?? null,
+    duration: resource.duration ?? null,
+    width: resource.width ?? null,
+    height: resource.height ?? null,
     headers: resource.headers || {}
   };
   if (existing) {
@@ -69,7 +75,10 @@ chrome.webRequest.onCompleted.addListener(
   ["responseHeaders"]
 );
 
-chrome.tabs.onRemoved.addListener(tabId => resourceByTab.delete(tabId));
+chrome.tabs.onRemoved.addListener(tabId => {
+  resourceByTab.delete(tabId);
+  pageStateByTab.delete(tabId);
+});
 chrome.action.onClicked.addListener(tab => {
   if (chrome.sidePanel?.open) chrome.sidePanel.open({ tabId: tab.id });
 });
@@ -83,6 +92,7 @@ async function collectPageData(tabId) {
   try {
     const response = await chrome.tabs.sendMessage(tabId, { type: "collect-page-data" });
     for (const resource of response.resources || []) addResource(tabId, resource);
+    pageStateByTab.set(tabId, response);
     return response;
   } catch {
     const [injected] = await chrome.scripting.executeScript({
@@ -91,6 +101,7 @@ async function collectPageData(tabId) {
         title: document.title,
         page_url: location.href,
         page_text: document.body?.innerText?.slice(0, 60000) || "",
+        active_video: null,
         resources: []
       })
     });
@@ -116,9 +127,20 @@ async function cookiesForUrls(urls) {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   (async () => {
+    if (message.type === "page-media-detected" && sender.tab?.id !== undefined) {
+      const tabId = sender.tab.id;
+      const page = message.page || {};
+      for (const resource of page.resources || []) addResource(tabId, resource);
+      const previous = pageStateByTab.get(tabId) || {};
+      pageStateByTab.set(tabId, { ...previous, ...page });
+      sendResponse({ ok: true });
+      return;
+    }
+
     if (message.type === "get-current-context") {
       const tab = await activeTab();
       const page = await collectPageData(tab.id);
+      const storedPage = pageStateByTab.get(tab.id) || {};
       const sniffed = resourceByTab.get(tab.id) || [];
       const merged = [...(page.resources || []), ...sniffed];
       const byUrl = new Map();
@@ -127,7 +149,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (!previous || (item.score || 0) > (previous.score || 0)) byUrl.set(item.url, item);
       }
       const resources = [...byUrl.values()].sort((a, b) => (b.score || 0) - (a.score || 0)).slice(0, 30);
-      sendResponse({ tab, page, resources });
+      sendResponse({ tab, page: { ...storedPage, ...page, active_video: page.active_video || storedPage.active_video || null }, resources });
       return;
     }
 
@@ -146,6 +168,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           page_url: page.page_url || tab.url,
           title: page.title || tab.title || "",
           page_text: page.page_text || "",
+          active_video: page.active_video || null,
           resources,
           cookies,
           options: message.options || {}

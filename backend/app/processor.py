@@ -121,15 +121,19 @@ def _process_video_file(task_id: str, input_path: Path, title: str, page_url: st
 
 def read_transcript(task_id: str) -> dict:
     record = get_task(task_id)
+    if not record.transcript_path:
+        return TranscriptResult().model_dump(mode="json")
     path = Path(record.transcript_path)
-    if not path.exists():
+    if not path.is_file():
         return TranscriptResult().model_dump(mode="json")
     return json.loads(path.read_text(encoding="utf-8"))
 
 
 def read_note(task_id: str) -> str:
     record = get_task(task_id)
+    if not record.note_path:
+        return ""
     path = Path(record.note_path)
-    if not path.exists():
+    if not path.is_file():
         return ""
     return path.read_text(encoding="utf-8")

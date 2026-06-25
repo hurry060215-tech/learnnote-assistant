@@ -27,6 +27,11 @@ class ResourceCandidate(BaseModel):
     score: int = 0
     label: str = ""
     tab_id: int | None = None
+    frame_id: int | None = None
+    current_time: float | None = None
+    duration: float | None = None
+    width: int | None = None
+    height: int | None = None
     headers: dict[str, str] = Field(default_factory=dict)
 
 
@@ -47,9 +52,22 @@ class TaskOptions(BaseModel):
     frame_interval: int = 20
     grid_columns: int = 3
     grid_rows: int = 3
+    note_style: str = "study"
+    summary_depth: str = "standard"
     llm_base_url: str | None = None
     llm_api_key: str | None = None
     llm_model: str | None = None
+
+
+class ActiveVideoInfo(BaseModel):
+    src: str = ""
+    current_time: float = 0
+    duration: float = 0
+    paused: bool = True
+    width: int = 0
+    height: int = 0
+    frame_id: int | None = None
+    label: str = ""
 
 
 class CurrentPageTaskRequest(BaseModel):
@@ -57,6 +75,7 @@ class CurrentPageTaskRequest(BaseModel):
     page_url: str
     title: str = ""
     page_text: str = ""
+    active_video: ActiveVideoInfo | None = None
     resources: list[ResourceCandidate] = Field(default_factory=list)
     cookies: list[BrowserCookie] = Field(default_factory=list)
     options: TaskOptions = Field(default_factory=TaskOptions)
