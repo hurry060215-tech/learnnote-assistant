@@ -7,6 +7,7 @@ import threading
 import unittest
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import urlparse
 from unittest.mock import patch
 
 from app.downloader import MediaDownloader, preflight_media_resource
@@ -33,6 +34,31 @@ class HeaderGateHandler(QuietHandler):
             or self.headers.get("Cookie") != self.required_cookie
         ):
             self.send_error(403, "missing browser context")
+            return
+        super().do_GET()
+
+
+class ExtensionlessHlsHandler(QuietHandler):
+    playlist_name = "lesson.m3u8"
+
+    def do_GET(self) -> None:
+        path = urlparse(self.path).path
+        if path == "/player.json":
+            body = b'{"streams":{"hls":"/stream?lesson=1","mimeType":"application/vnd.apple.mpegurl"}}'
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        if path == "/stream":
+            playlist = Path(self.directory) / self.playlist_name
+            body = playlist.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/vnd.apple.mpegurl")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
             return
         super().do_GET()
 
@@ -214,6 +240,84 @@ class DownloaderPriorityTests(unittest.TestCase):
                 self.assertEqual(selected.url, media_url)
                 self.assertEqual(selected.source, "page-scan")
                 self.assertEqual([attempt.strategy for attempt in downloader.attempts[:2]], ["page-scan", "direct-file"])
+                self.assertEqual(downloader.attempts[1].status, "success")
+            finally:
+                server.shutdown()
+                server.server_close()
+
+    def test_page_scan_downloads_extensionless_hls_from_json(self) -> None:
+        ffmpeg = ffmpeg_bin()
+        assert ffmpeg is not None
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "source.mp4"
+            subprocess.run(
+                [
+                    ffmpeg,
+                    "-y",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "testsrc=duration=2:size=320x180:rate=10",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "sine=frequency=440:duration=2",
+                    "-shortest",
+                    "-pix_fmt",
+                    "yuv420p",
+                    str(source),
+                ],
+                check=True,
+            )
+            playlist = root / "lesson.m3u8"
+            subprocess.run(
+                [
+                    ffmpeg,
+                    "-y",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-i",
+                    str(source),
+                    "-c",
+                    "copy",
+                    "-f",
+                    "hls",
+                    "-hls_time",
+                    "1",
+                    "-hls_list_size",
+                    "0",
+                    "-hls_segment_filename",
+                    str(root / "lesson_%03d.ts"),
+                    str(playlist),
+                ],
+                check=True,
+            )
+
+            server = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(ExtensionlessHlsHandler, directory=str(root)))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                page_url = f"http://127.0.0.1:{server.server_port}/player.json"
+                hls_url = f"http://127.0.0.1:{server.server_port}/stream?lesson=1"
+                downloader = MediaDownloader(root / "task")
+                with patch.object(downloader, "_download_with_ytdlp") as ytdlp:
+                    media_path, selected = downloader.download(
+                        page_url=page_url,
+                        resources=[],
+                        cookies=[],
+                        title="Extensionless HLS",
+                    )
+                ytdlp.assert_not_called()
+                self.assertTrue(media_path.exists())
+                self.assertIsNotNone(selected)
+                self.assertEqual(selected.url, hls_url)
+                self.assertEqual(selected.kind, "hls")
+                self.assertEqual([attempt.strategy for attempt in downloader.attempts[:2]], ["page-scan", "manifest-ffmpeg"])
                 self.assertEqual(downloader.attempts[1].status, "success")
             finally:
                 server.shutdown()

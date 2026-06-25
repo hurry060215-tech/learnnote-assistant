@@ -15,6 +15,7 @@ from app.downloader import (
     classify_resource,
     cookie_header_for_url,
     download_headers_for_candidate,
+    extract_media_resources_from_text,
     fallback_page_urls,
     infer_manifest_url_from_fragment,
     score_resource,
@@ -157,6 +158,30 @@ class ResourceDetectionTests(unittest.TestCase):
         self.assertIn("https://player.example.com/embed/1?from=referer", urls)
         self.assertIn("https://player.example.com", urls)
         self.assertIn("https://course.example.com/iframe-player", urls)
+
+    def test_page_scan_finds_extensionless_json_media_urls(self) -> None:
+        resources = extract_media_resources_from_text(
+            """
+            {
+              "streams": {
+                "hls": "/api/video/play?lesson=1&token=abc",
+                "dashUrl": "/api/video/dash?lesson=1",
+                "videoUrl": "/api/media/file?id=42",
+                "mimeType": "video/mp4"
+              }
+            }
+            """,
+            "https://course.example.com/player/index.html",
+            "page-scan",
+        )
+        by_label = {resource.label: resource for resource in resources}
+
+        self.assertEqual(by_label["json streams/hls"].kind, "hls")
+        self.assertEqual(by_label["json streams/dashUrl"].kind, "dash")
+        self.assertEqual(by_label["json streams/videoUrl"].kind, "video")
+        self.assertEqual(by_label["json streams/hls"].url, "https://course.example.com/api/video/play?lesson=1&token=abc")
+        self.assertEqual(by_label["json streams/hls"].mime, "application/vnd.apple.mpegurl")
+        self.assertEqual(by_label["json streams/videoUrl"].mime, "video/mp4")
 
     def test_ytdlp_subtitle_language_prefers_human_chinese_then_auto(self) -> None:
         info = {

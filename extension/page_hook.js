@@ -5,6 +5,8 @@
   const MEDIA_URL_RE = /(?:https?:)?\/\/[^\s"'<>\\]+\.(?:mp4|m4v|webm|mov|mkv|m3u8|mpd|vtt|srt|ass|ssa)(?:\?[^\s"'<>\\]*)?|(?:\/[^\s"'<>\\]+)\.(?:mp4|m4v|webm|mov|mkv|m3u8|mpd|vtt|srt|ass|ssa)(?:\?[^\s"'<>\\]*)?|(?:[A-Za-z0-9._~!$&()*+,;=:@%-]+\/)*[A-Za-z0-9._~!$&()*+,;=:@%-]+\.(?:mp4|m4v|webm|mov|mkv|m3u8|mpd|vtt|srt|ass|ssa)(?:\?[^\s"'<>\\]*)?/gi;
   const MEDIA_HINT_RE = /\.(?:mp4|m4v|webm|mov|mkv|m3u8|mpd|vtt|srt|ass|ssa)(?:[?#]|["'\s<>]|$)/i;
   const TEXT_TYPE_RE = /json|text|javascript|mpegurl|dash\+xml|xml|x-mpegurl/i;
+  const JSON_MEDIA_KEY_RE = /(url|src|file|play|media|video|stream|source|hls|m3u8|dash|mpd|subtitle|caption)/i;
+  const JSON_MIME_KEY_RE = /(mime|type|format|content.?type|media.?type)/i;
   const MAX_TEXT_BYTES = 2 * 1024 * 1024;
   const MAX_BLOB_URLS = 80;
   const bufferedResources = [];
@@ -48,7 +50,7 @@
     for (const item of resources || []) {
       const url = normalizeUrl(item.url);
       if (!url || seen.has(url)) continue;
-      const kind = mediaKind(url, item.mime || "");
+      const kind = item.kind || mediaKind(url, item.mime || "");
       if (kind === "unknown") continue;
       seen.add(url);
       deduped.push({
@@ -102,6 +104,97 @@
     post([], [normalized]);
   }
 
+  function mimeForKind(kind) {
+    if (kind === "hls") return "application/vnd.apple.mpegurl";
+    if (kind === "dash") return "application/dash+xml";
+    if (kind === "subtitle") return "text/vtt";
+    if (kind === "video") return "video/mp4";
+    return "";
+  }
+
+  function looksLikeJsonUrlCandidate(value) {
+    const text = String(value || "").trim();
+    if (text.length < 4 || /\s/.test(text)) return false;
+    if (/^(https?:)?\/\//i.test(text)) return true;
+    if (text.startsWith("/")) return true;
+    return text.includes("/") && /[?=&]|api|play|media|video|stream|m3u8|mpd|hls|dash/i.test(text);
+  }
+
+  function jsonContextMime(node) {
+    if (!node || typeof node !== "object" || Array.isArray(node)) return "";
+    const parts = [];
+    for (const [key, value] of Object.entries(node)) {
+      if (JSON_MIME_KEY_RE.test(key) && typeof value === "string") parts.push(value);
+    }
+    return parts.join(" ");
+  }
+
+  function kindFromJsonContext(keys, url, parent) {
+    const urlKind = mediaKind(url, "");
+    if (urlKind !== "unknown") return { kind: urlKind, mime: mimeForKind(urlKind) };
+    const context = [...keys, jsonContextMime(parent)].join(" ").toLowerCase();
+    if (context.includes("mpegurl") || context.includes("x-mpegurl") || context.includes("m3u8") || context.includes("hls")) {
+      return { kind: "hls", mime: "application/vnd.apple.mpegurl" };
+    }
+    if (context.includes("dash+xml") || context.includes("mpd") || context.includes("dash")) {
+      return { kind: "dash", mime: "application/dash+xml" };
+    }
+    if (context.includes("text/vtt") || context.includes("subrip") || context.includes("subtitle") || context.includes("caption")) {
+      return { kind: "subtitle", mime: "text/vtt" };
+    }
+    if (context.includes("video/") || context.includes("mp4") || context.includes("video")) {
+      return { kind: "video", mime: "video/mp4" };
+    }
+    return { kind: "unknown", mime: "" };
+  }
+
+  function collectJsonMediaUrls(node, source, label, keys = [], parent = null, output = [], seen = new Set()) {
+    if (!node || output.length >= 40) return output;
+    if (Array.isArray(node)) {
+      for (let index = 0; index < Math.min(node.length, 120); index += 1) {
+        collectJsonMediaUrls(node[index], source, label, [...keys, String(index)], node, output, seen);
+        if (output.length >= 40) break;
+      }
+      return output;
+    }
+    if (typeof node !== "object") return output;
+    for (const [key, value] of Object.entries(node)) {
+      const nextKeys = [...keys, key];
+      if (typeof value === "string" && JSON_MEDIA_KEY_RE.test(key) && looksLikeJsonUrlCandidate(value)) {
+        const url = normalizeUrl(value);
+        if (url && !seen.has(url)) {
+          const { kind, mime } = kindFromJsonContext(nextKeys, url, node);
+          if (kind !== "unknown") {
+            seen.add(url);
+            output.push({
+              url,
+              source,
+              kind,
+              mime,
+              label: `${label} json ${nextKeys.slice(-3).join("/")}`,
+              score: kind === "hls" || kind === "dash" ? 97 : kind === "video" ? 89 : 64
+            });
+          }
+        }
+      }
+      if (value && typeof value === "object") {
+        collectJsonMediaUrls(value, source, label, nextKeys, node, output, seen);
+      }
+      if (output.length >= 40) break;
+    }
+    return output;
+  }
+
+  function extractJsonMediaUrls(text, source, label) {
+    const trimmed = String(text || "").trim();
+    if (!trimmed || !"{[".includes(trimmed[0])) return [];
+    try {
+      return collectJsonMediaUrls(JSON.parse(trimmed), source, label);
+    } catch {
+      return [];
+    }
+  }
+
   function blobMeta(url, mime, source, label) {
     const normalizedUrl = normalizeUrl(url);
     const kind = mediaKind(normalizedUrl, mime || "");
@@ -146,11 +239,17 @@
   }
 
   function extractUrlsFromText(text, source, label, mime = "") {
-    if (!text || !MEDIA_HINT_RE.test(text)) return;
-    const resources = [];
-    for (const match of text.matchAll(MEDIA_URL_RE)) {
-      resources.push({ url: match[0], source, label, mime });
-      if (resources.length >= 40) break;
+    if (!text) return;
+    const resources = extractJsonMediaUrls(text, source, label);
+    const seen = new Set(resources.map(item => item.url));
+    if (MEDIA_HINT_RE.test(text)) {
+      for (const match of text.matchAll(MEDIA_URL_RE)) {
+        const url = normalizeUrl(match[0]);
+        if (!url || seen.has(url)) continue;
+        resources.push({ url, source, label, mime });
+        seen.add(url);
+        if (resources.length >= 40) break;
+      }
     }
     emit(resources);
   }

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import http.cookiejar
 import html
+import json
 import os
 import re
 import subprocess
@@ -26,6 +27,8 @@ TEXT_MEDIA_URL_RE = re.compile(
     re.I,
 )
 TEXT_RESPONSE_RE = re.compile(r"json|text|html|javascript|mpegurl|dash\+xml|xml|x-mpegurl", re.I)
+JSON_MEDIA_KEY_RE = re.compile(r"(url|src|file|play|media|video|stream|source|hls|m3u8|dash|mpd|subtitle|caption)", re.I)
+JSON_MIME_KEY_RE = re.compile(r"(mime|type|format|content.?type|media.?type)", re.I)
 MAX_PAGE_SCAN_BYTES = 2 * 1024 * 1024
 SUBTITLE_EXTENSIONS = {".vtt", ".srt", ".ass", ".ssa"}
 SUBTITLE_LANGUAGE_PREFERENCES = ("zh-CN", "zh-Hans", "zh-Hant", "zh", "en", "en-US")
@@ -109,11 +112,112 @@ def normalize_media_url(raw: str, base_url: str) -> str:
         return ""
 
 
-def extract_media_resources_from_text(text: str, base_url: str, source: str = "page-scan") -> list[ResourceCandidate]:
-    if not text or not TEXT_MEDIA_HINT_RE.search(text):
-        return []
+def _mime_for_kind(kind: str) -> str:
+    if kind == "hls":
+        return "application/vnd.apple.mpegurl"
+    if kind == "dash":
+        return "application/dash+xml"
+    if kind == "subtitle":
+        return "text/vtt"
+    if kind == "video":
+        return "video/mp4"
+    return ""
+
+
+def _looks_like_json_url_candidate(value: str) -> bool:
+    value = value.strip()
+    if len(value) < 4 or re.search(r"\s", value):
+        return False
+    if re.match(r"^(https?:)?//", value, re.I):
+        return True
+    if value.startswith("/"):
+        return True
+    if "/" in value and re.search(r"[?=&]|api|play|media|video|stream|m3u8|mpd|hls|dash", value, re.I):
+        return True
+    return False
+
+
+def _json_context_mime(value: object) -> str:
+    if not isinstance(value, dict):
+        return ""
+    parts = []
+    for key, item in value.items():
+        if JSON_MIME_KEY_RE.search(str(key)) and isinstance(item, str):
+            parts.append(item)
+    return " ".join(parts)
+
+
+def _json_context_kind(key_path: list[str], url: str, parent: object) -> tuple[str, str]:
+    kind = classify_resource(url)
+    if kind != "unknown":
+        return kind, _mime_for_kind(kind)
+
+    context = " ".join(key_path + [_json_context_mime(parent)]).lower()
+    if "mpegurl" in context or "x-mpegurl" in context or "m3u8" in context or "hls" in context:
+        return "hls", "application/vnd.apple.mpegurl"
+    if "dash+xml" in context or "mpd" in context or "dash" in context:
+        return "dash", "application/dash+xml"
+    if "text/vtt" in context or "subrip" in context or "subtitle" in context or "caption" in context:
+        return "subtitle", "text/vtt"
+    if "video/" in context or "mp4" in context or "video" in context:
+        return "video", "video/mp4"
+    return "unknown", ""
+
+
+def _json_media_resources(node: object, base_url: str, source: str, key_path: list[str], seen: set[str]) -> list[ResourceCandidate]:
     resources: list[ResourceCandidate] = []
+    if isinstance(node, dict):
+        for key, value in node.items():
+            next_path = [*key_path, str(key)]
+            if isinstance(value, str) and JSON_MEDIA_KEY_RE.search(str(key)) and _looks_like_json_url_candidate(value):
+                url = normalize_media_url(value, base_url)
+                if url and url not in seen:
+                    kind, mime = _json_context_kind(next_path, url, node)
+                    if kind != "unknown":
+                        resources.append(
+                            ResourceCandidate(
+                                url=url,
+                                source=source,
+                                kind=kind,
+                                mime=mime,
+                                score=score_resource(url, mime, source),
+                                label=f"json {'/'.join(next_path[-3:])}",
+                                request_headers={"Referer": base_url},
+                            )
+                        )
+                        seen.add(url)
+            if isinstance(value, (dict, list)):
+                resources.extend(_json_media_resources(value, base_url, source, next_path, seen))
+            if len(resources) >= 60:
+                break
+    elif isinstance(node, list):
+        for index, value in enumerate(node[:120]):
+            resources.extend(_json_media_resources(value, base_url, source, [*key_path, str(index)], seen))
+            if len(resources) >= 60:
+                break
+    return resources
+
+
+def extract_media_resources_from_json_text(text: str, base_url: str, source: str = "page-scan") -> list[ResourceCandidate]:
+    stripped = (text or "").strip()
+    if not stripped or stripped[0] not in "{[":
+        return []
+    try:
+        data = json.loads(stripped)
+    except Exception:
+        return []
+    return _json_media_resources(data, base_url, source, [], set())[:60]
+
+
+def extract_media_resources_from_text(text: str, base_url: str, source: str = "page-scan") -> list[ResourceCandidate]:
+    if not text:
+        return []
+    resources: list[ResourceCandidate] = extract_media_resources_from_json_text(text, base_url, source)
     seen: set[str] = set()
+    for resource in resources:
+        seen.add(resource.url)
+    if not TEXT_MEDIA_HINT_RE.search(text):
+        return resources
     for match in TEXT_MEDIA_URL_RE.finditer(text):
         url = normalize_media_url(match.group(0), base_url)
         if not url or url in seen:
@@ -121,15 +225,7 @@ def extract_media_resources_from_text(text: str, base_url: str, source: str = "p
         kind = classify_resource(url)
         if kind == "unknown":
             continue
-        mime = ""
-        if kind == "hls":
-            mime = "application/vnd.apple.mpegurl"
-        elif kind == "dash":
-            mime = "application/dash+xml"
-        elif kind == "subtitle":
-            mime = "text/vtt"
-        elif kind == "video":
-            mime = "video/mp4"
+        mime = _mime_for_kind(kind)
         resources.append(
             ResourceCandidate(
                 url=url,

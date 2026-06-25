@@ -13,6 +13,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - Markdown note export from both the local Web UI and the browser Side Panel.
 - Current-page media detection from DOM, all-frame content scripts, Performance entries, and `webRequest`.
 - Main-world fetch/XHR hook for media URLs exposed in text, JSON, playlist, or script responses before they appear in `<video>`.
+- JSON media-field discovery for extensionless player APIs such as `hls`, `dashUrl`, `playUrl`, or `videoUrl` when sibling metadata or field names identify HLS/DASH/video content.
 - Blob-backed player recovery: when a page fetches an accessible media response as a `Blob` and assigns the generated object URL to `<video>`, the extension maps that `blob:` URL back to the original mp4/HLS/DASH request and ranks it as the current video candidate.
 - Backend page scanner for manually pasted page URLs, so the local Web UI can try direct media extraction before yt-dlp fallback.
 - Iframe/player-page fallback: when the top course page is only a shell, the backend also tries the active frame URL, candidate page URL, Referer, and initiator as page-scan and yt-dlp fallback targets.
@@ -34,6 +35,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - DOM, iframe-aware content scripts, Performance, active `<video>` state, and `webRequest` resource discovery.
 - Page-network hook discovery for mp4/HLS/DASH/subtitle URLs embedded in fetch/XHR text responses. The hook also records Blob object URL source mappings when the page itself creates a Blob from an accessible media response; it does not record playback or inspect binary video payloads.
 - Backend page-text scanning for manually submitted URLs: HTML/JSON/script responses are scanned for absolute or relative mp4/HLS/DASH/subtitle URLs before yt-dlp is tried.
+- Extensionless API URL scanning: JSON fields like `hls`, `dashUrl`, `playUrl`, and `videoUrl` can become candidates even when the URL is `/stream?lesson=...` instead of ending in `.m3u8`, `.mpd`, or `.mp4`.
 - Frame-aware context aggregation: the extension asks every reachable frame for page text, active video state, and media resources before ranking candidates.
 - Frame-aware fallback download: if the outer page cannot be resolved, backend page scanning and yt-dlp fallback are retried against the detected player iframe, candidate page URL, Referer, and request initiator.
 - Dynamic SPA video detection through MutationObserver, media event binding, periodic rescans, and PerformanceObserver resource updates.
