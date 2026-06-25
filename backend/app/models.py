@@ -28,6 +28,7 @@ class ResourceCandidate(BaseModel):
     label: str = ""
     is_main_video: bool = False
     playback_match: str = ""
+    blob_url: str = ""
     tab_id: int | None = None
     frame_id: int | None = None
     current_time: float | None = None

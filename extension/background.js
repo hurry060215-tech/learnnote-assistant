@@ -56,6 +56,8 @@ function scoreResource(url, mime, source) {
   else if (kind === "subtitle") score += 60;
   else if (kind === "blob") score += 5;
   if (source === "webRequest") score += 10;
+  if (String(source || "").startsWith("pageHook")) score += 10;
+  if (source === "pageHookBlobSource") score += 8;
   if (/chaoxing|xuexitong/i.test(url)) score += 8;
   return Math.min(score, 100);
 }
@@ -94,6 +96,12 @@ function withPlaybackHints(resource, page = {}) {
     hinted.is_main_video = true;
   }
 
+  if (activeSrc && hinted.blob_url === activeSrc && isDownloadableKind(kind)) {
+    boost += 24;
+    match = match || "blob-source";
+    hinted.is_main_video = true;
+  }
+
   if (
     activeFrameId !== null &&
     hinted.frame_id !== null &&
@@ -107,6 +115,12 @@ function withPlaybackHints(resource, page = {}) {
   }
 
   const recent = hinted.time_stamp && Date.now() - hinted.time_stamp < 5 * 60 * 1000;
+  if (recent && activeSrc.startsWith("blob:") && /^pageHookBlob/.test(hinted.source || "") && isDownloadableKind(kind)) {
+    boost += 10;
+    match = match || "blob-source";
+    hinted.is_main_video = true;
+  }
+
   if (recent && hinted.source === "webRequest" && isDownloadableKind(kind)) {
     if (activeSrc.startsWith("blob:")) {
       boost += 8;
@@ -129,6 +143,7 @@ function mergeResource(previous, incoming) {
   merged.score = Math.max(previous.score || 0, incoming.score || 0);
   merged.is_main_video = Boolean(previous.is_main_video || incoming.is_main_video);
   merged.playback_match = previous.playback_match || incoming.playback_match || "";
+  merged.blob_url = incoming.blob_url || previous.blob_url || "";
   merged.headers = { ...(previous.headers || {}), ...(incoming.headers || {}) };
   merged.request_headers = { ...(previous.request_headers || {}), ...(incoming.request_headers || {}) };
   merged.current_time = incoming.current_time ?? previous.current_time ?? null;
@@ -252,6 +267,7 @@ function addResource(tabId, resource) {
     label: resource.label || "",
     is_main_video: Boolean(resource.is_main_video),
     playback_match: resource.playback_match || "",
+    blob_url: resource.blob_url || "",
     tab_id: tabId,
     frame_id: resource.frame_id ?? null,
     current_time: resource.current_time ?? null,
@@ -272,6 +288,7 @@ function addResource(tabId, resource) {
       score: Math.max(existing.score || 0, normalized.score),
       is_main_video: Boolean(existing.is_main_video || normalized.is_main_video),
       playback_match: existing.playback_match || normalized.playback_match || "",
+      blob_url: normalized.blob_url || existing.blob_url || "",
       current_time: normalized.current_time ?? existing.current_time ?? null,
       duration: normalized.duration ?? existing.duration ?? null,
       width: normalized.width ?? existing.width ?? null,

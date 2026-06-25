@@ -134,6 +134,7 @@ function playbackText(match) {
     "source-element": "当前 source",
     "same-frame": "同播放器 frame",
     "blob-same-frame": "blob 同 frame",
+    "blob-source": "blob 来源映射",
     "recent-media-request": "最近播放请求",
     "same-site-request": "同站请求",
     "inferred-from-fragment": "分片推断"
@@ -239,6 +240,7 @@ function renderInspector() {
   els.resourceInspector.innerHTML = `
     <strong>${escapeHtml(directnessText(item))}</strong>
     <span>${escapeHtml(requestEvidence(item) || "无请求证据")}</span>
+    ${item.blob_url ? `<span>对应 blob：${escapeHtml(item.blob_url)}</span>` : ""}
     <span>复用请求头：${escapeHtml(requestHeaderNames(item))}</span>
     ${checked ? `<span>预检：${escapeHtml(checked.downloadable ? "通过" : checked.code || "未通过")} · ${escapeHtml(checked.status_code ? `HTTP ${checked.status_code}` : checked.strategy || "")} · ${escapeHtml(checked.content_type || "")} · ${escapeHtml(fmtBytes(checked.content_length) || `${checked.bytes_checked || 0} B`)}</span>` : ""}
     ${checked?.warnings?.length ? `<span>提示：${escapeHtml(checked.warnings.join("；"))}</span>` : ""}

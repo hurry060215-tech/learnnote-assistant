@@ -78,10 +78,12 @@ function resource(url, source, label, mime = "", video = null, isMainVideo = fal
     score: score(absolute, mime, source),
     is_main_video: isMainVideo,
     playback_match: playbackMatch,
+    blob_url: "",
     current_time: video ? Number(video.currentTime || 0) : null,
     duration: video && Number.isFinite(video.duration) ? Number(video.duration || 0) : null,
     width: video ? Number(video.videoWidth || video.clientWidth || 0) : null,
-    height: video ? Number(video.videoHeight || video.clientHeight || 0) : null
+    height: video ? Number(video.videoHeight || video.clientHeight || 0) : null,
+    time_stamp: Date.now()
   };
 }
 
@@ -90,10 +92,32 @@ function rememberHookResource(item) {
   if (!normalized) return;
   normalized.kind = item.kind || normalized.kind;
   normalized.score = Math.max(normalized.score, Number(item.score || 0));
+  normalized.is_main_video = Boolean(item.is_main_video || normalized.is_main_video);
+  normalized.playback_match = item.playback_match || normalized.playback_match || "";
+  normalized.blob_url = absoluteUrl(item.blob_url || "") || "";
+  normalized.request_type = item.request_type || "";
+  normalized.method = item.method || "";
+  normalized.status_code = item.status_code ?? null;
+  normalized.content_length = item.content_length ?? null;
+  normalized.initiator = item.initiator || "";
+  normalized.time_stamp = item.time_stamp ?? normalized.time_stamp ?? Date.now();
+  normalized.headers = item.headers || {};
+  normalized.request_headers = item.request_headers || {};
   const existing = hookResources.find(entry => entry.url === normalized.url);
   if (existing) {
     Object.assign(existing, normalized, {
-      score: Math.max(existing.score || 0, normalized.score || 0)
+      score: Math.max(existing.score || 0, normalized.score || 0),
+      is_main_video: Boolean(existing.is_main_video || normalized.is_main_video),
+      playback_match: existing.playback_match || normalized.playback_match || "",
+      blob_url: normalized.blob_url || existing.blob_url || "",
+      request_type: normalized.request_type || existing.request_type || "",
+      method: normalized.method || existing.method || "",
+      status_code: normalized.status_code ?? existing.status_code ?? null,
+      content_length: normalized.content_length ?? existing.content_length ?? null,
+      initiator: normalized.initiator || existing.initiator || "",
+      time_stamp: Math.max(existing.time_stamp || 0, normalized.time_stamp || 0) || null,
+      headers: { ...(existing.headers || {}), ...(normalized.headers || {}) },
+      request_headers: { ...(existing.request_headers || {}), ...(normalized.request_headers || {}) }
     });
   } else {
     hookResources.unshift(normalized);

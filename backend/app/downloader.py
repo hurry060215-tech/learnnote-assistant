@@ -219,6 +219,10 @@ def score_resource(url: str, mime: str = "", source: str = "") -> int:
         score += 5
     if source == "webRequest":
         score += 10
+    if source.startswith("pageHook"):
+        score += 10
+    if source == "pageHookBlobSource":
+        score += 8
     if "chaoxing" in url or "xuexitong" in url:
         score += 8
     return min(score, 100)
