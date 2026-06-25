@@ -6,8 +6,9 @@ import json
 import os
 import re
 import subprocess
+from base64 import b64decode, urlsafe_b64decode
 from pathlib import Path
-from urllib.parse import urljoin, urlparse, urlunparse
+from urllib.parse import unquote, urljoin, urlparse, urlunparse
 
 import requests
 
@@ -33,6 +34,7 @@ TEXT_MEDIA_FIELD_RE = re.compile(
     r"(?P<key>[\"']?[A-Za-z_$][A-Za-z0-9_$.-]{0,79}[\"']?)\s*[:=]\s*[\"'](?P<url>[^\"'<>\\\s]{4,})[\"']",
     re.I,
 )
+B64ISH_RE = re.compile(r"^[A-Za-z0-9+/_=-]{16,}$")
 MAX_PAGE_SCAN_BYTES = 2 * 1024 * 1024
 SUBTITLE_EXTENSIONS = {".vtt", ".srt", ".ass", ".ssa"}
 SUBTITLE_LANGUAGE_PREFERENCES = ("zh-CN", "zh-Hans", "zh-Hant", "zh", "en", "en-US")
@@ -134,11 +136,44 @@ def _looks_like_json_url_candidate(value: str) -> bool:
         return False
     if re.match(r"^(https?:)?//", value, re.I):
         return True
+    if re.search(r"%2f|%3a|%3f|%3d|%26", value, re.I):
+        return True
     if value.startswith("/"):
         return True
     if "/" in value and re.search(r"[?=&]|api|play|media|video|stream|m3u8|mpd|hls|dash", value, re.I):
         return True
     return False
+
+
+def _decoded_media_values(value: str) -> list[str]:
+    raw = str(value or "").strip()
+    if not raw:
+        return []
+    values = [raw]
+    unquoted = unquote(raw)
+    if unquoted and unquoted != raw:
+        values.append(unquoted)
+
+    compact = raw.strip()
+    if B64ISH_RE.match(compact) and len(compact) % 4 in {0, 2, 3}:
+        padded = compact + "=" * (-len(compact) % 4)
+        for decoder in (urlsafe_b64decode, b64decode):
+            try:
+                decoded = decoder(padded).decode("utf-8", errors="ignore").strip()
+            except Exception:
+                continue
+            if decoded and decoded not in values and not re.search(r"[\x00-\x08\x0e-\x1f]", decoded):
+                if _looks_like_json_url_candidate(decoded) or TEXT_MEDIA_HINT_RE.search(decoded):
+                    values.append(decoded)
+            break
+
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for item in values:
+        if item and item not in seen:
+            seen.add(item)
+            deduped.append(item)
+    return deduped
 
 
 def _json_context_mime(value: object) -> str:
@@ -173,23 +208,26 @@ def _json_media_resources(node: object, base_url: str, source: str, key_path: li
     if isinstance(node, dict):
         for key, value in node.items():
             next_path = [*key_path, str(key)]
-            if isinstance(value, str) and JSON_MEDIA_KEY_RE.search(str(key)) and _looks_like_json_url_candidate(value):
-                url = normalize_media_url(value, base_url)
-                if url and url not in seen:
-                    kind, mime = _json_context_kind(next_path, url, node)
-                    if kind != "unknown":
-                        resources.append(
-                            ResourceCandidate(
-                                url=url,
-                                source=source,
-                                kind=kind,
-                                mime=mime,
-                                score=score_resource(url, mime, source),
-                                label=f"json {'/'.join(next_path[-3:])}",
-                                request_headers={"Referer": base_url},
+            if isinstance(value, str) and JSON_MEDIA_KEY_RE.search(str(key)):
+                for candidate_value in _decoded_media_values(value):
+                    if not _looks_like_json_url_candidate(candidate_value):
+                        continue
+                    url = normalize_media_url(candidate_value, base_url)
+                    if url and url not in seen:
+                        kind, mime = _json_context_kind(next_path, url, node)
+                        if kind != "unknown":
+                            resources.append(
+                                ResourceCandidate(
+                                    url=url,
+                                    source=source,
+                                    kind=kind,
+                                    mime=mime,
+                                    score=score_resource(url, mime, source),
+                                    label=f"json {'/'.join(next_path[-3:])}",
+                                    request_headers={"Referer": base_url},
+                                )
                             )
-                        )
-                        seen.add(url)
+                            seen.add(url)
             if isinstance(value, (dict, list)):
                 resources.extend(_json_media_resources(value, base_url, source, next_path, seen))
             if len(resources) >= 60:
@@ -225,27 +263,28 @@ def extract_media_resources_from_field_text(
         key = (match.group("key") or "").strip("\"'")
         if not JSON_MEDIA_KEY_RE.search(key):
             continue
-        raw_url = match.group("url") or ""
-        if not _looks_like_json_url_candidate(raw_url):
-            continue
-        url = normalize_media_url(raw_url, base_url)
-        if not url or url in seen:
-            continue
-        kind, mime = _json_context_kind([key], url, {})
-        if kind == "unknown":
-            continue
-        resources.append(
-            ResourceCandidate(
-                url=url,
-                source=source,
-                kind=kind,
-                mime=mime,
-                score=score_resource(url, mime, source),
-                label=f"field {key}",
-                request_headers={"Referer": base_url},
+        for raw_url in _decoded_media_values(match.group("url") or ""):
+            if not _looks_like_json_url_candidate(raw_url):
+                continue
+            url = normalize_media_url(raw_url, base_url)
+            if not url or url in seen:
+                continue
+            kind, mime = _json_context_kind([key], url, {})
+            if kind == "unknown":
+                continue
+            resources.append(
+                ResourceCandidate(
+                    url=url,
+                    source=source,
+                    kind=kind,
+                    mime=mime,
+                    score=score_resource(url, mime, source),
+                    label=f"field {key}",
+                    request_headers={"Referer": base_url},
+                )
             )
-        )
-        seen.add(url)
+            seen.add(url)
+            break
         if len(resources) >= 60:
             break
     return resources

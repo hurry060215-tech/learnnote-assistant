@@ -8,6 +8,7 @@
   const JSON_MEDIA_KEY_RE = /(url|src|file|play|media|video|stream|source|hls|m3u8|dash|mpd|subtitle|caption)/i;
   const JSON_MIME_KEY_RE = /(mime|type|format|content.?type|media.?type)/i;
   const TEXT_MEDIA_FIELD_RE = /(["']?[A-Za-z_$][A-Za-z0-9_$.-]{0,79}["']?)\s*[:=]\s*["']([^"'<>\\\s]{4,})["']/gi;
+  const B64ISH_RE = /^[A-Za-z0-9+/_=-]{16,}$/;
   const MAX_TEXT_BYTES = 2 * 1024 * 1024;
   const MAX_BLOB_URLS = 80;
   const bufferedResources = [];
@@ -118,8 +119,42 @@
     const text = String(value || "").trim();
     if (text.length < 4 || /\s/.test(text)) return false;
     if (/^(https?:)?\/\//i.test(text)) return true;
+    if (/%2f|%3a|%3f|%3d|%26/i.test(text)) return true;
     if (text.startsWith("/")) return true;
     return text.includes("/") && /[?=&]|api|play|media|video|stream|m3u8|mpd|hls|dash/i.test(text);
+  }
+
+  function decodedMediaValues(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return [];
+    const values = [raw];
+    try {
+      const decoded = decodeURIComponent(raw);
+      if (decoded && decoded !== raw) values.push(decoded);
+    } catch {
+      // Keep the raw value when percent decoding is invalid.
+    }
+
+    const compact = raw.replace(/\s+/g, "");
+    if (B64ISH_RE.test(compact)) {
+      const padded = compact + "=".repeat((4 - (compact.length % 4)) % 4);
+      try {
+        const decoded = atob(padded.replace(/-/g, "+").replace(/_/g, "/"));
+        const text = decodeURIComponent(escape(decoded)).trim();
+        if (
+          text &&
+          !values.includes(text) &&
+          !/[\u0000-\u0008\u000e-\u001f]/.test(text) &&
+          (looksLikeJsonUrlCandidate(text) || MEDIA_HINT_RE.test(text))
+        ) {
+          values.push(text);
+        }
+      } catch {
+        // Ignore non-text or non-base64 fields.
+      }
+    }
+
+    return values.filter((item, index) => item && values.indexOf(item) === index);
   }
 
   function jsonContextMime(node) {
@@ -162,20 +197,24 @@
     if (typeof node !== "object") return output;
     for (const [key, value] of Object.entries(node)) {
       const nextKeys = [...keys, key];
-      if (typeof value === "string" && JSON_MEDIA_KEY_RE.test(key) && looksLikeJsonUrlCandidate(value)) {
-        const url = normalizeUrl(value);
-        if (url && !seen.has(url)) {
-          const { kind, mime } = kindFromJsonContext(nextKeys, url, node);
-          if (kind !== "unknown") {
-            seen.add(url);
-            output.push({
-              url,
-              source,
-              kind,
-              mime,
-              label: `${label} json ${nextKeys.slice(-3).join("/")}`,
-              score: kind === "hls" || kind === "dash" ? 97 : kind === "video" ? 89 : 64
-            });
+      if (typeof value === "string" && JSON_MEDIA_KEY_RE.test(key)) {
+        for (const candidateValue of decodedMediaValues(value)) {
+          if (!looksLikeJsonUrlCandidate(candidateValue)) continue;
+          const url = normalizeUrl(candidateValue);
+          if (url && !seen.has(url)) {
+            const { kind, mime } = kindFromJsonContext(nextKeys, url, node);
+            if (kind !== "unknown") {
+              seen.add(url);
+              output.push({
+                url,
+                source,
+                kind,
+                mime,
+                label: `${label} json ${nextKeys.slice(-3).join("/")}`,
+                score: kind === "hls" || kind === "dash" ? 97 : kind === "video" ? 89 : 64
+              });
+              break;
+            }
           }
         }
       }
@@ -203,21 +242,23 @@
     for (const match of String(text || "").matchAll(TEXT_MEDIA_FIELD_RE)) {
       const key = String(match[1] || "").replace(/^["']|["']$/g, "");
       if (!JSON_MEDIA_KEY_RE.test(key)) continue;
-      const rawUrl = match[2] || "";
-      if (!looksLikeJsonUrlCandidate(rawUrl)) continue;
-      const url = normalizeUrl(rawUrl);
-      if (!url || seen.has(url)) continue;
-      const { kind, mime } = kindFromJsonContext([key], url, {});
-      if (kind === "unknown") continue;
-      seen.add(url);
-      output.push({
-        url,
-        source,
-        kind,
-        mime,
-        label: `${label} field ${key}`,
-        score: kind === "hls" || kind === "dash" ? 97 : kind === "video" ? 89 : 64
-      });
+      for (const rawUrl of decodedMediaValues(match[2] || "")) {
+        if (!looksLikeJsonUrlCandidate(rawUrl)) continue;
+        const url = normalizeUrl(rawUrl);
+        if (!url || seen.has(url)) continue;
+        const { kind, mime } = kindFromJsonContext([key], url, {});
+        if (kind === "unknown") continue;
+        seen.add(url);
+        output.push({
+          url,
+          source,
+          kind,
+          mime,
+          label: `${label} field ${key}`,
+          score: kind === "hls" || kind === "dash" ? 97 : kind === "video" ? 89 : 64
+        });
+        break;
+      }
       if (output.length >= 40) break;
     }
     return output;

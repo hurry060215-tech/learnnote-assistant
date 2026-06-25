@@ -5,6 +5,8 @@ import unittest
 import shutil
 import sys
 import types
+import json
+from base64 import b64encode
 from pathlib import Path
 from unittest.mock import patch
 
@@ -204,6 +206,24 @@ class ResourceDetectionTests(unittest.TestCase):
         self.assertEqual(by_label["field videoUrl"].kind, "video")
         self.assertEqual(by_label["field hls"].url, "https://course.example.com/stream?lesson=1&token=abc")
         self.assertEqual(by_label["field dashUrl"].mime, "application/dash+xml")
+
+    def test_page_scan_decodes_wrapped_media_field_values(self) -> None:
+        encoded = "https%3A%2F%2Fcdn.example.com%2Fsecure%2Flesson.m3u8%3Ftoken%3Dabc"
+        packed = b64encode(b"https://cdn.example.com/video/lesson.mp4?sign=ok").decode("ascii")
+        resources = extract_media_resources_from_text(
+            json.dumps({
+                "playInfo": {
+                    "hls": encoded,
+                    "videoUrl": packed,
+                }
+            }),
+            "https://course.example.com/player/index.html",
+            "page-scan",
+        )
+        by_kind = {resource.kind: resource for resource in resources}
+
+        self.assertEqual(by_kind["hls"].url, "https://cdn.example.com/secure/lesson.m3u8?token=abc")
+        self.assertEqual(by_kind["video"].url, "https://cdn.example.com/video/lesson.mp4?sign=ok")
 
     def test_ytdlp_subtitle_language_prefers_human_chinese_then_auto(self) -> None:
         info = {

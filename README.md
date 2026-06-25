@@ -14,6 +14,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - Current-page media detection from DOM, all-frame content scripts, Performance entries, and `webRequest`.
 - Main-world fetch/XHR hook for media URLs exposed in text, JSON, playlist, or script responses before they appear in `<video>`.
 - JSON/HTML script media-field discovery for extensionless player APIs such as `hls`, `dashUrl`, `playUrl`, or `videoUrl` when sibling metadata or field names identify HLS/DASH/video content.
+- URL-encoded and base64-wrapped media field values are decoded during page scanning and main-world response inspection.
 - Blob-backed player recovery: when a page fetches an accessible media response as a `Blob` or `ArrayBuffer`, constructs a `Blob`, and assigns the generated object URL to `<video>`, the extension maps that `blob:` URL back to the original mp4/HLS/DASH request and ranks it as the current video candidate.
 - Backend page scanner for manually pasted page URLs, so the local Web UI can try direct media extraction before yt-dlp fallback.
 - Iframe/player-page fallback: when the top course page is only a shell, the backend also tries the active frame URL, candidate page URL, Referer, and initiator as page-scan and yt-dlp fallback targets.
