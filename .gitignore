@@ -3,6 +3,9 @@ backend/.venv/
 __pycache__/
 *.pyc
 data/*.mp4
+data/model-cache/
+data/pip-cache/
+data/test-runs/
 data/uploads/
 data/tasks/
 data/static/

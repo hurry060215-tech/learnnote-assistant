@@ -19,6 +19,7 @@ const els = {
   progressBar: document.querySelector("#progressBar"),
   taskMessage: document.querySelector("#taskMessage"),
   transcript: document.querySelector("#transcript"),
+  frames: document.querySelector("#frames"),
   note: document.querySelector("#note"),
   copyButton: document.querySelector("#copyButton"),
   settingsButton: document.querySelector("#settingsButton")
@@ -151,11 +152,24 @@ async function pollTask() {
 }
 
 async function loadResult() {
+  const task = await fetch(`${backendUrl}/api/tasks/${currentTaskId}`).then(r => r.json()).then(d => d.task);
   const transcript = await fetch(`${backendUrl}/api/tasks/${currentTaskId}/transcript`).then(r => r.json());
   if (transcript.segments?.length) {
     els.transcript.innerHTML = transcript.segments.slice(0, 80).map(seg => `<div class="line"><time>${fmt(seg.start)}</time><span>${escapeHtml(seg.text)}</span></div>`).join("");
   } else {
     els.transcript.textContent = transcript.warning || "没有字幕。";
+  }
+  if (task.frame_grids?.length) {
+    els.frames.classList.remove("muted");
+    els.frames.innerHTML = task.frame_grids.slice(0, 8).map(grid => `
+      <figure>
+        <img src="${escapeHtml(grid.url)}" alt="frame grid">
+        <figcaption>${fmt(grid.start)} - ${fmt(grid.end)}</figcaption>
+      </figure>
+    `).join("");
+  } else {
+    els.frames.classList.add("muted");
+    els.frames.textContent = "未生成帧预览。";
   }
   lastNote = await fetch(`${backendUrl}/api/tasks/${currentTaskId}/note`).then(r => r.text());
   els.note.textContent = lastNote || "笔记尚未生成。";

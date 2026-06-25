@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from .config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
@@ -20,12 +21,38 @@ def _segments_window(transcript: TranscriptResult, start: float, end: float) -> 
     return "\n".join(lines)
 
 
+def _sentences(text: str, limit: int = 8) -> list[str]:
+    cleaned = re.sub(r"\s+", " ", text or "").strip()
+    if not cleaned:
+        return []
+    parts = re.split(r"(?<=[。！？.!?])\s*", cleaned)
+    ranked = sorted((part.strip() for part in parts if part.strip()), key=len, reverse=True)
+    return ranked[:limit]
+
+
+def _timeline_lines(transcript: TranscriptResult, grids: list[FrameGrid]) -> list[str]:
+    if grids:
+        lines = []
+        for grid in grids:
+            window = _segments_window(transcript, grid.start, grid.end)
+            if window:
+                lines.append(f"- `{_format_ts(grid.start)} - {_format_ts(grid.end)}`\n{window}")
+            else:
+                lines.append(f"- `{_format_ts(grid.start)} - {_format_ts(grid.end)}` 参考画面网格：{grid.url}")
+        return lines
+    if transcript.segments:
+        return [f"- `{_format_ts(seg.start)}` {seg.text}" for seg in transcript.segments[:30]]
+    return ["- 暂无字幕或画面窗口。"]
+
+
 def local_markdown_note(title: str, transcript: TranscriptResult, grids: list[FrameGrid], page_url: str = "") -> str:
     lines = [f"# {title or '学习笔记'}", ""]
     if page_url:
         lines += [f"来源：{page_url}", ""]
     if transcript.warning:
         lines += [f"> 转写提示：{transcript.warning}", ""]
+
+    key_sentences = _sentences(transcript.full_text, limit=6)
 
     lines += ["## 课程主题", ""]
     if transcript.full_text and "未安装 faster-whisper" not in transcript.full_text:
@@ -35,11 +62,34 @@ def local_markdown_note(title: str, transcript: TranscriptResult, grids: list[Fr
         lines += ["根据可下载视频画面和可用文本生成初步笔记。", ""]
 
     lines += ["## 时间轴重点", ""]
-    if transcript.segments:
-        for seg in transcript.segments[:30]:
-            lines.append(f"- `{_format_ts(seg.start)}` {seg.text}")
+    lines.extend(_timeline_lines(transcript, grids))
+    lines.append("")
+
+    lines += ["## 核心概念", ""]
+    if key_sentences:
+        for item in key_sentences[:5]:
+            lines.append(f"- {item}")
     else:
-        lines.append("- 暂无字幕。")
+        lines.append("- 当前任务没有可用字幕；请优先查看画面索引，或安装 faster-whisper 后重新处理。")
+    lines.append("")
+
+    lines += ["## 例题 / 演示步骤", ""]
+    if grids:
+        for grid in grids[:8]:
+            window = _segments_window(transcript, grid.start, grid.end).replace("\n", " ")
+            detail = window[:180] + ("..." if len(window) > 180 else "")
+            lines.append(f"- `{_format_ts(grid.start)} - {_format_ts(grid.end)}` 回看画面网格：{grid.url}")
+            if detail:
+                lines.append(f"  相关字幕：{detail}")
+    else:
+        lines.append("- 未生成画面网格，无法定位演示步骤。")
+    lines.append("")
+
+    lines += ["## 易错点", ""]
+    lines.append("- 对照时间轴回看术语首次出现的位置，避免只记结论、不记使用条件。")
+    lines.append("- 对照画面索引回看界面操作、代码演示、PPT 切换等只靠字幕容易遗漏的内容。")
+    if transcript.warning:
+        lines.append("- 当前转写不完整，关键概念需要结合原视频再次确认。")
     lines.append("")
 
     lines += ["## 画面索引", ""]

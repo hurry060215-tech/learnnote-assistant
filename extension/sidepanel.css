@@ -223,6 +223,33 @@ input[type="file"] {
   font-variant-numeric: tabular-nums;
 }
 
+.frame-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.frame-grid figure {
+  margin: 0;
+}
+
+.frame-grid img {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  display: block;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #0f172a;
+}
+
+.frame-grid figcaption {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
 .note {
   white-space: pre-wrap;
   color: var(--text);

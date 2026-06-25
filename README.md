@@ -30,7 +30,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 ## Quick Start
 
 ```powershell
-cd learnnote-assistant
+cd D:\Projects\learnnote-assistant
 .\start-backend.ps1
 ```
 
@@ -48,9 +48,47 @@ Load the browser extension:
 4. Select `learnnote-assistant/extension`.
 5. Open a video page, click the extension icon, then use the Side Panel.
 
+## Local Storage On D
+
+On this machine the project lives at `D:\Projects\learnnote-assistant`. The startup script creates a project-local virtual environment at `backend\.venv` and keeps runtime outputs under the project `data\` directory:
+
+- `data\uploads` for local uploads.
+- `data\tasks` for task artifacts and generated notes.
+- `data\model-cache` for Hugging Face / faster-whisper model cache.
+- `data\pip-cache` for pip downloads.
+- `data\test-runs` for generated local test videos.
+
+To install the optional local ASR dependency into the D-drive project venv:
+
+```powershell
+cd D:\Projects\learnnote-assistant
+.\start-backend.ps1 -InstallAsr
+```
+
+You can override the Python used to create the venv without changing where project dependencies and task data are stored:
+
+```powershell
+$env:LEARNNOTE_BOOTSTRAP_PYTHON="D:\Python312\python.exe"
+.\start-backend.ps1
+```
+
 ## Optional Model Settings
 
 Transcription defaults to `faster-whisper` with the `small` model. If `faster-whisper` is not installed or the model cannot load, the task still completes with a clear transcript warning and visual/text note fallback.
+
+Windows defaults to CPU/int8 for reliability:
+
+```powershell
+$env:LEARNNOTE_WHISPER_DEVICE="cpu"
+$env:LEARNNOTE_WHISPER_COMPUTE_TYPE="int8"
+```
+
+If your CUDA runtime is correctly installed, you can opt into GPU manually:
+
+```powershell
+$env:LEARNNOTE_WHISPER_DEVICE="cuda"
+$env:LEARNNOTE_WHISPER_COMPUTE_TYPE="float16"
+```
 
 For OpenAI-compatible multimodal summary, set:
 
@@ -65,9 +103,10 @@ Without a model key, the backend generates a deterministic local Markdown note f
 ## Development Checks
 
 ```powershell
-cd learnnote-assistant
-python -m compileall backend\app
-python -m unittest discover backend\tests
+cd D:\Projects\learnnote-assistant
+backend\.venv\Scripts\python.exe -m compileall backend\app
+$env:PYTHONPATH="backend"
+backend\.venv\Scripts\python.exe -m unittest discover backend\tests
 node --check extension\background.js
 node --check extension\content.js
 node --check extension\sidepanel.js

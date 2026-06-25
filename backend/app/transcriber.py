@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from .config import DEFAULT_WHISPER_COMPUTE_TYPE, DEFAULT_WHISPER_DEVICE, configure_local_caches
 from .models import TranscriptResult, TranscriptSegment
 
 
 def transcribe_audio(audio_path: Path, model_size: str = "small") -> TranscriptResult:
+    configure_local_caches()
     try:
         from faster_whisper import WhisperModel
     except Exception:
@@ -24,7 +26,7 @@ def transcribe_audio(audio_path: Path, model_size: str = "small") -> TranscriptR
         )
 
     try:
-        model = WhisperModel(model_size, device="auto", compute_type="auto")
+        model = WhisperModel(model_size, device=DEFAULT_WHISPER_DEVICE, compute_type=DEFAULT_WHISPER_COMPUTE_TYPE)
         segments_iter, info = model.transcribe(str(audio_path), vad_filter=True)
         segments: list[TranscriptSegment] = []
         for item in segments_iter:
