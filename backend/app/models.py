@@ -41,6 +41,7 @@ class ResourceCandidate(BaseModel):
     initiator: str = ""
     time_stamp: float | None = None
     headers: dict[str, str] = Field(default_factory=dict)
+    request_headers: dict[str, str] = Field(default_factory=dict)
 
 
 class BrowserCookie(BaseModel):

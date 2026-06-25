@@ -17,6 +17,13 @@ MEDIA_EXT_RE = re.compile(r"\.(mp4|m4v|webm|mov|mkv)(\?|#|$)", re.I)
 MANIFEST_EXT_RE = re.compile(r"\.(m3u8|mpd)(\?|#|$)", re.I)
 FRAGMENT_EXT_RE = re.compile(r"\.(m4s|ts)(\?|#|$)", re.I)
 SUBTITLE_EXT_RE = re.compile(r"\.(vtt|srt|ass|ssa)(\?|#|$)", re.I)
+BROWSER_REQUEST_HEADER_ALLOWLIST = {
+    "accept": "Accept",
+    "accept-language": "Accept-Language",
+    "origin": "Origin",
+    "referer": "Referer",
+    "user-agent": "User-Agent",
+}
 
 
 class DownloadError(RuntimeError):
@@ -62,6 +69,37 @@ def cookie_header_for_url(cookies: list[BrowserCookie], url: str) -> str:
         if cookie.domain and _domain_matches(cookie.domain, host):
             parts.append(f"{cookie.name}={cookie.value}")
     return "; ".join(parts)
+
+
+def _safe_header_value(value: object) -> str:
+    return re.sub(r"[\r\n]+", " ", str(value or "")).strip()
+
+
+def download_headers_for_candidate(
+    candidate: ResourceCandidate | None,
+    cookies: list[BrowserCookie],
+    referer: str,
+    url: str | None = None,
+) -> dict[str, str]:
+    target_url = url or (candidate.url if candidate else "")
+    headers: dict[str, str] = {}
+    for name, value in (candidate.request_headers if candidate else {}).items():
+        lower = str(name).lower()
+        canonical = BROWSER_REQUEST_HEADER_ALLOWLIST.get(lower)
+        if not canonical:
+            continue
+        cleaned = _safe_header_value(value)
+        if cleaned:
+            headers[canonical] = cleaned
+
+    headers.setdefault("User-Agent", "Mozilla/5.0 LearnNoteAssistant/0.1")
+    if referer:
+        headers.setdefault("Referer", _safe_header_value(referer))
+
+    cookie = cookie_header_for_url(cookies, target_url)
+    if cookie:
+        headers["Cookie"] = cookie
+    return headers
 
 
 def write_netscape_cookie_file(cookies: list[BrowserCookie], path: Path) -> Path:
@@ -231,7 +269,7 @@ class MediaDownloader:
         candidates = self._subtitle_resources(resources)
         for candidate in candidates:
             try:
-                path = self._download_text_file(candidate.url, cookies, referer, title)
+                path = self._download_text_file(candidate, cookies, referer, title)
                 self._record_attempt(
                     strategy="subtitle-file",
                     candidate=candidate,
@@ -374,21 +412,16 @@ class MediaDownloader:
     ) -> Path:
         kind = classify_resource(candidate.url, candidate.mime)
         if kind in {"hls", "dash"}:
-            return self._download_manifest(candidate.url, cookies, referer, title)
+            return self._download_manifest(candidate, cookies, referer, title)
         if kind == "video":
-            return self._download_file(candidate.url, cookies, referer, title)
+            return self._download_file(candidate, cookies, referer, title)
         raise DownloadError("unsupported_manifest", f"不支持的候选资源类型：{kind}")
 
-    def _download_file(self, url: str, cookies: list[BrowserCookie], referer: str, title: str) -> Path:
+    def _download_file(self, candidate: ResourceCandidate, cookies: list[BrowserCookie], referer: str, title: str) -> Path:
+        url = candidate.url
         suffix = Path(urlparse(url).path).suffix or ".mp4"
         output = self.download_dir / f"{_clean_filename(title)}_direct{suffix}"
-        headers = {
-            "User-Agent": "Mozilla/5.0 LearnNoteAssistant/0.1",
-            "Referer": referer,
-        }
-        cookie = cookie_header_for_url(cookies, url)
-        if cookie:
-            headers["Cookie"] = cookie
+        headers = download_headers_for_candidate(candidate, cookies, referer)
         try:
             with requests.get(url, headers=headers, stream=True, timeout=30) as response:
                 if response.status_code in {401, 403}:
@@ -407,16 +440,11 @@ class MediaDownloader:
             raise DownloadError("download_forbidden", "下载文件过小，可能不是有效视频。")
         return output
 
-    def _download_text_file(self, url: str, cookies: list[BrowserCookie], referer: str, title: str) -> Path:
+    def _download_text_file(self, candidate: ResourceCandidate, cookies: list[BrowserCookie], referer: str, title: str) -> Path:
+        url = candidate.url
         suffix = Path(urlparse(url).path).suffix or ".vtt"
         output = self.download_dir / f"{_clean_filename(title)}_subtitle{suffix}"
-        headers = {
-            "User-Agent": "Mozilla/5.0 LearnNoteAssistant/0.1",
-            "Referer": referer,
-        }
-        cookie = cookie_header_for_url(cookies, url)
-        if cookie:
-            headers["Cookie"] = cookie
+        headers = download_headers_for_candidate(candidate, cookies, referer)
         try:
             response = requests.get(url, headers=headers, timeout=30)
             if response.status_code in {401, 403}:
@@ -436,21 +464,19 @@ class MediaDownloader:
             file.write(text + "\n")
         return output
 
-    def _download_manifest(self, url: str, cookies: list[BrowserCookie], referer: str, title: str) -> Path:
+    def _download_manifest(self, candidate: ResourceCandidate, cookies: list[BrowserCookie], referer: str, title: str) -> Path:
+        url = candidate.url
         ffmpeg = ffmpeg_bin()
         if not ffmpeg:
             raise DownloadError("unsupported_manifest", "未找到 ffmpeg，无法合并 HLS/DASH。")
         output = self.download_dir / f"{_clean_filename(title)}_manifest.mp4"
-        headers = []
-        cookie = cookie_header_for_url(cookies, url)
-        if cookie:
-            headers.append(f"Cookie: {cookie}")
-        if referer:
-            headers.append(f"Referer: {referer}")
+        request_headers = download_headers_for_candidate(candidate, cookies, referer)
+        user_agent = request_headers.pop("User-Agent", "Mozilla/5.0 LearnNoteAssistant/0.1")
+        headers = [f"{name}: {value}" for name, value in request_headers.items() if value]
         cmd = [ffmpeg, "-y", "-hide_banner", "-loglevel", "error"]
         if headers:
             cmd += ["-headers", "\r\n".join(headers) + "\r\n"]
-        cmd += ["-user_agent", "Mozilla/5.0 LearnNoteAssistant/0.1", "-i", url, "-c", "copy", str(output)]
+        cmd += ["-user_agent", user_agent, "-i", url, "-c", "copy", str(output)]
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0:
             stderr = (result.stderr or "").lower()

@@ -12,6 +12,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - Markdown note export from both the local Web UI and the browser Side Panel.
 - Current-page media detection from DOM, all-frame content scripts, Performance entries, and `webRequest`.
 - Cookie handoff from the current browser session to the local backend at task start.
+- Non-sensitive browser request headers such as `Referer`, `Origin`, `User-Agent`, `Accept`, and `Accept-Language` are captured for media candidates and reused by backend downloads.
 - Local FastAPI backend on `127.0.0.1:8765`.
 - Download order: selected browser/media candidate first, then yt-dlp page resolver fallback.
 - Download diagnostics: every task records the direct-file, manifest-ffmpeg, skipped blob/fragment, and yt-dlp attempts with status, HTTP code, content length, output file, and failure reason.
@@ -27,6 +28,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - Frame-aware context aggregation: the extension asks every reachable frame for page text, active video state, and media resources before ranking candidates.
 - Dynamic SPA video detection through MutationObserver, media event binding, periodic rescans, and PerformanceObserver resource updates.
 - Cookie collection at task start for the page URL and detected media URLs.
+- Browser-context download replay: direct media, subtitles, and ffmpeg HLS/DASH merges reuse the selected resource's safe request headers plus the task-start cookie jar.
 - Main-video ranking based on the actively playing `<video>` first, then the largest visible video element.
 - Candidate evidence from `webRequest`, including request type, HTTP status, MIME type, content length, initiator, and frame id when available.
 - Playback-aware candidate ranking: the Side Panel boosts exact current `<video>` sources, same-frame media requests, and recent requests from blob-backed players before starting a task.
@@ -40,6 +42,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - Transcript priority: page subtitle track first, then local `faster-whisper` fallback.
 - Configurable slicing: frame interval, grid layout, ASR model, and note style.
 - Web UI and Side Panel diagnostic tabs show the selected resource, browser evidence, and every backend download attempt.
+- Diagnostics also show which safe request-header names were available for a selected media candidate without exposing cookie or authorization values. Persisted task debug files redact cookie values and browser request-header values.
 - Blob and media-fragment requests are kept as diagnostic clues instead of being hidden, but they are not treated as independently downloadable video files.
 - Task records retain the frame interval, grid layout, ASR model, note style, and visual-understanding setting used for that run.
 - Multimodal prompts are organized by frame-grid windows, pairing each visual slice with the transcript segment from the same time range.

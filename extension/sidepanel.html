@@ -7,39 +7,48 @@
     <link rel="stylesheet" href="sidepanel.css">
   </head>
   <body>
-    <header class="header">
-      <div class="mark">LN</div>
-      <div>
-        <h1>LearnNote</h1>
-        <p id="backendStatus">连接本地后端...</p>
+    <header class="app-header">
+      <div class="brand">
+        <div class="mark">LN</div>
+        <div>
+          <h1>LearnNote</h1>
+          <p id="backendStatus">连接本地后端...</p>
+        </div>
       </div>
       <button id="settingsButton" class="icon-button" title="后端设置" aria-label="后端设置">
-        <svg viewBox="0 0 24 24"><path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6V20a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-.6 1.7 1.7 0 0 0-1.88.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1H4a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 .6-1 1.7 1.7 0 0 0-.34-1.88l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6V4a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 .6 1.7 1.7 0 0 0 1.88-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c.22.33.42.66.6 1H20a2 2 0 1 1 0 4h-.09c-.18.34-.38.67-.51 1z"/></svg>
+        <svg viewBox="0 0 24 24"><path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6V20a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-.6 1.7 1.7 0 0 0-1.88.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1H4a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 .6-1 1.7 1.7 0 0 0-.34-1.88l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6V4a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 .6 1.7 1.7 0 0 0 1.88-.34l.06-.06A2 2 0 1 1 19.8 7.06l-.06.06A1.7 1.7 0 0 0 19.4 9c.22.33.42.66.6 1H20a2 2 0 1 1 0 4h-.09c-.18.34-.38.67-.51 1z"/></svg>
       </button>
     </header>
 
-    <main>
-      <section class="panel page-panel">
-        <div class="panel-title">
-          <span>浏览器当前页</span>
+    <main class="side-shell">
+      <section class="current-card">
+        <div class="section-head">
+          <div>
+            <span>当前页视频</span>
+            <strong id="pageTitle">读取中...</strong>
+          </div>
           <button id="redetectButton" class="icon-button" title="重新检测" aria-label="重新检测">
             <svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 0 1-13.66 5.66M4 12A8 8 0 0 1 17.66 6.34M20 4v6h-6M4 20v-6h6"/></svg>
           </button>
         </div>
-        <strong id="pageTitle">读取中...</strong>
-        <small id="pageUrl"></small>
-        <div id="activeVideo" class="active-video">等待播放状态</div>
+        <small id="pageUrl" class="page-url"></small>
+        <div id="activeVideo" class="playback-card">等待播放状态</div>
+        <div class="mode-row">
+          <span>资源直取</span>
+          <span>Cookie 一次同步</span>
+          <span>本地处理</span>
+        </div>
       </section>
 
-      <section class="panel">
-        <div class="panel-title">
-          <span>候选视频资源</span>
+      <section class="resource-panel">
+        <div class="section-head compact">
+          <span>候选资源</span>
           <b id="resourceCount">0</b>
         </div>
         <div id="resources" class="resource-list"></div>
       </section>
 
-      <section class="panel options">
+      <section class="option-panel">
         <label>
           <span>切片</span>
           <select id="frameInterval">
@@ -50,7 +59,7 @@
           </select>
         </label>
         <label>
-          <span>网格</span>
+          <span>视觉窗口</span>
           <select id="gridSize">
             <option value="3x3" selected>3x3</option>
             <option value="2x3">2x3</option>
@@ -58,7 +67,7 @@
           </select>
         </label>
         <label>
-          <span>模型</span>
+          <span>转写</span>
           <select id="whisperModel">
             <option value="tiny">tiny</option>
             <option value="small" selected>small</option>
@@ -79,7 +88,7 @@
       <section class="actions">
         <button id="summarizeButton" class="primary">
           <svg viewBox="0 0 24 24"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
-          总结当前视频
+          生成当前视频笔记
         </button>
         <button id="uploadButton">
           <svg viewBox="0 0 24 24"><path d="M12 3v12M7 8l5-5 5 5M4 17v3h16v-3"/></svg>
@@ -92,20 +101,20 @@
         <input id="fileInput" type="file" accept="video/*">
       </section>
 
-      <section class="panel progress-panel">
-        <div class="panel-title">
+      <section class="progress-panel">
+        <div class="section-head compact">
           <span>处理进度</span>
           <b id="taskPhase">-</b>
         </div>
         <div class="progress"><span id="progressBar"></span></div>
         <div id="stageRail" class="stage-rail"></div>
-        <p id="taskMessage">暂无任务。</p>
+        <p id="taskMessage">暂无任务</p>
       </section>
 
-      <section class="panel result-panel">
+      <section class="result-panel">
         <div class="result-tabs">
-          <button class="result-tab active" data-tab="note">笔记</button>
-          <button class="result-tab" data-tab="transcript">字幕</button>
+          <button class="result-tab active" data-tab="note">学习笔记</button>
+          <button class="result-tab" data-tab="transcript">转写</button>
           <button class="result-tab" data-tab="frames">切片</button>
           <button class="result-tab" data-tab="diagnostics">诊断</button>
           <button id="downloadButton" class="icon-button" title="导出 Markdown" aria-label="导出 Markdown">
@@ -115,7 +124,7 @@
             <svg viewBox="0 0 24 24"><path d="M8 8h11v13H8zM5 16H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h11a1 1 0 0 1 1 1v1"/></svg>
           </button>
         </div>
-        <div id="result" class="result-body muted">任务完成后显示结果。</div>
+        <div id="result" class="result-body muted">任务完成后显示结构化结果</div>
       </section>
     </main>
 

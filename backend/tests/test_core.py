@@ -5,9 +5,17 @@ import unittest
 import shutil
 from pathlib import Path
 
-from app.downloader import DownloadError, MediaDownloader, classify_resource, cookie_header_for_url, infer_manifest_url_from_fragment, score_resource
-from app.models import BrowserCookie, FrameGrid, ResourceCandidate, TranscriptResult, TranscriptSegment
-from app.processor import read_note, read_transcript
+from app.downloader import (
+    DownloadError,
+    MediaDownloader,
+    classify_resource,
+    cookie_header_for_url,
+    download_headers_for_candidate,
+    infer_manifest_url_from_fragment,
+    score_resource,
+)
+from app.models import BrowserCookie, CurrentPageTaskRequest, FrameGrid, ResourceCandidate, TranscriptResult, TranscriptSegment
+from app.processor import read_note, read_transcript, redacted_request_dump, redacted_resource
 from app.summarizer import local_markdown_note
 from app.storage import create_task, task_dir
 from app.transcriber import transcript_from_subtitle
@@ -42,6 +50,58 @@ class ResourceDetectionTests(unittest.TestCase):
         ]
         header = cookie_header_for_url(cookies, "https://mooc1.chaoxing.com/video")
         self.assertEqual(header, "SESSDATA=abc")
+
+    def test_download_headers_reuse_browser_context_without_sensitive_values(self) -> None:
+        candidate = ResourceCandidate(
+            url="https://media.cdn.example.com/video.mp4",
+            source="webRequest",
+            kind="video",
+            request_headers={
+                "referer": "https://course.example.com/lesson/1",
+                "origin": "https://course.example.com",
+                "user-agent": "Chrome Test UA",
+                "accept-language": "zh-CN,zh;q=0.9",
+                "range": "bytes=0-",
+                "cookie": "bad=1",
+                "authorization": "Bearer bad",
+            },
+        )
+        cookies = [BrowserCookie(name="SESSION", value="ok", domain=".cdn.example.com")]
+
+        headers = download_headers_for_candidate(candidate, cookies, "https://fallback.example.com/page")
+
+        self.assertEqual(headers["Referer"], "https://course.example.com/lesson/1")
+        self.assertEqual(headers["Origin"], "https://course.example.com")
+        self.assertEqual(headers["User-Agent"], "Chrome Test UA")
+        self.assertEqual(headers["Accept-Language"], "zh-CN,zh;q=0.9")
+        self.assertEqual(headers["Cookie"], "SESSION=ok")
+        self.assertNotIn("Range", headers)
+        self.assertNotIn("Authorization", headers)
+
+    def test_persisted_request_metadata_redacts_cookie_and_header_values(self) -> None:
+        resource = ResourceCandidate(
+            url="https://media.example.com/video.mp4",
+            source="webRequest",
+            kind="video",
+            headers={"content-type": "video/mp4", "set-cookie": "bad=1"},
+            request_headers={"Referer": "https://course.example.com/lesson?token=secret", "User-Agent": "Chrome Test UA"},
+        )
+        request = CurrentPageTaskRequest(
+            page_url="https://course.example.com/lesson",
+            title="Header redaction",
+            resources=[resource],
+            cookies=[BrowserCookie(name="AUTH", value="secret", domain=".example.com")],
+        )
+
+        data = redacted_request_dump(request)
+        self.assertEqual(data["cookies"][0]["value"], "<redacted>")
+        self.assertEqual(data["resources"][0]["request_headers"]["Referer"], "<redacted>")
+        self.assertEqual(data["resources"][0]["request_headers"]["User-Agent"], "<redacted>")
+        self.assertEqual(data["resources"][0]["headers"], {"content-type": "video/mp4"})
+
+        selected = redacted_resource(resource)
+        self.assertEqual(selected.request_headers["Referer"], "<redacted>")
+        self.assertEqual(selected.headers, {"content-type": "video/mp4"})
 
 
 class DownloaderBoundaryTests(unittest.TestCase):

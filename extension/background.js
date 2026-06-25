@@ -3,6 +3,17 @@ const FRAGMENT_RE = /\.(m4s|ts)(\?|#|$)/i;
 const SUBTITLE_RE = /\.(vtt|srt|ass|ssa)(\?|#|$)/i;
 const resourceByTab = new Map();
 const pageStateByTab = new Map();
+const requestHeadersByRequestId = new Map();
+const REQUEST_HEADER_ALLOWLIST = new Set(["accept", "accept-language", "origin", "range", "referer", "user-agent"]);
+const RESPONSE_HEADER_ALLOWLIST = new Set(["accept-ranges", "content-length", "content-range", "content-type"]);
+const REQUEST_HEADER_CANONICAL = {
+  "accept": "Accept",
+  "accept-language": "Accept-Language",
+  "origin": "Origin",
+  "range": "Range",
+  "referer": "Referer",
+  "user-agent": "User-Agent"
+};
 
 function classify(url, mime = "") {
   const lower = url.toLowerCase();
@@ -119,6 +130,7 @@ function mergeResource(previous, incoming) {
   merged.is_main_video = Boolean(previous.is_main_video || incoming.is_main_video);
   merged.playback_match = previous.playback_match || incoming.playback_match || "";
   merged.headers = { ...(previous.headers || {}), ...(incoming.headers || {}) };
+  merged.request_headers = { ...(previous.request_headers || {}), ...(incoming.request_headers || {}) };
   merged.current_time = incoming.current_time ?? previous.current_time ?? null;
   merged.duration = incoming.duration ?? previous.duration ?? null;
   merged.width = incoming.width ?? previous.width ?? null;
@@ -127,6 +139,44 @@ function mergeResource(previous, incoming) {
   merged.content_length = incoming.content_length ?? previous.content_length ?? null;
   merged.time_stamp = Math.max(previous.time_stamp || 0, incoming.time_stamp || 0) || null;
   return merged;
+}
+
+function looksLikeMediaRequest(details) {
+  const url = details?.url || "";
+  if (details?.type === "media") return true;
+  if (classify(url, "") !== "unknown") return true;
+  return /m3u8|mpd|video|media|subtitle|caption/i.test(url);
+}
+
+function normalizeRequestHeaders(requestHeaders = []) {
+  const headers = {};
+  for (const header of requestHeaders || []) {
+    const lower = String(header.name || "").toLowerCase();
+    if (!REQUEST_HEADER_ALLOWLIST.has(lower)) continue;
+    const value = String(header.value || "").replace(/[\r\n]+/g, " ").trim();
+    if (!value) continue;
+    headers[REQUEST_HEADER_CANONICAL[lower] || header.name] = value;
+  }
+  return headers;
+}
+
+function rememberRequestHeaders(details) {
+  if (!details?.requestId || !looksLikeMediaRequest(details)) return;
+  const headers = normalizeRequestHeaders(details.requestHeaders || []);
+  if (!Object.keys(headers).length) return;
+  requestHeadersByRequestId.set(details.requestId, {
+    headers,
+    time: Date.now()
+  });
+  if (requestHeadersByRequestId.size <= 300) return;
+  const oldest = [...requestHeadersByRequestId.entries()].sort((a, b) => a[1].time - b[1].time).slice(0, 60);
+  for (const [requestId] of oldest) requestHeadersByRequestId.delete(requestId);
+}
+
+function takeRequestHeaders(requestId) {
+  const entry = requestHeadersByRequestId.get(requestId);
+  requestHeadersByRequestId.delete(requestId);
+  return entry?.headers || {};
 }
 
 function frameStates(tabId) {
@@ -214,7 +264,8 @@ function addResource(tabId, resource) {
     content_length: resource.content_length ?? null,
     initiator: resource.initiator || "",
     time_stamp: resource.time_stamp ?? null,
-    headers: resource.headers || {}
+    headers: resource.headers || {},
+    request_headers: resource.request_headers || {}
   };
   if (existing) {
     Object.assign(existing, normalized, {
@@ -231,7 +282,8 @@ function addResource(tabId, resource) {
       method: normalized.method || existing.method || "",
       initiator: normalized.initiator || existing.initiator || "",
       time_stamp: normalized.time_stamp ?? existing.time_stamp ?? null,
-      headers: { ...(existing.headers || {}), ...(normalized.headers || {}) }
+      headers: { ...(existing.headers || {}), ...(normalized.headers || {}) },
+      request_headers: { ...(existing.request_headers || {}), ...(normalized.request_headers || {}) }
     });
   } else {
     list.unshift(normalized);
@@ -254,11 +306,27 @@ function addResource(tabId, resource) {
   }
 }
 
+function registerBeforeSendHeadersListener(options) {
+  chrome.webRequest.onBeforeSendHeaders.addListener(
+    rememberRequestHeaders,
+    { urls: ["<all_urls>"] },
+    options
+  );
+}
+
+try {
+  registerBeforeSendHeadersListener(["requestHeaders", "extraHeaders"]);
+} catch {
+  registerBeforeSendHeadersListener(["requestHeaders"]);
+}
+
 chrome.webRequest.onCompleted.addListener(
   details => {
+    const requestHeaders = takeRequestHeaders(details.requestId);
     const headers = {};
     for (const header of details.responseHeaders || []) {
-      headers[header.name.toLowerCase()] = header.value || "";
+      const lower = String(header.name || "").toLowerCase();
+      if (RESPONSE_HEADER_ALLOWLIST.has(lower)) headers[lower] = header.value || "";
     }
     const mime = headers["content-type"] || "";
     const kind = classify(details.url, mime);
@@ -276,11 +344,17 @@ chrome.webRequest.onCompleted.addListener(
       content_length: Number.isFinite(contentLength) && contentLength > 0 ? contentLength : null,
       initiator: details.initiator || "",
       time_stamp: details.timeStamp || null,
+      request_headers: requestHeaders,
       label: kind.toUpperCase()
     });
   },
   { urls: ["<all_urls>"] },
   ["responseHeaders"]
+);
+
+chrome.webRequest.onErrorOccurred.addListener(
+  details => takeRequestHeaders(details.requestId),
+  { urls: ["<all_urls>"] }
 );
 
 chrome.tabs.onRemoved.addListener(tabId => {

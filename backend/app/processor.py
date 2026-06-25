@@ -6,10 +6,13 @@ from pathlib import Path
 
 from .downloader import DownloadError, MediaDownloader
 from .media import build_frame_grids, extract_audio, extract_frames, normalize_video
-from .models import CurrentPageTaskRequest, TaskOptions, TranscriptResult, model_dump_jsonable
+from .models import CurrentPageTaskRequest, ResourceCandidate, TaskOptions, TranscriptResult
 from .storage import get_task, save_task, task_dir, update_task, write_json
 from .summarizer import summarize, summarize_page_text
 from .transcriber import transcript_from_subtitle, transcribe_audio
+
+
+SAFE_RESPONSE_HEADER_NAMES = {"content-type", "content-length", "content-range", "accept-ranges"}
 
 
 def _fail(task_id: str, code: str, detail: str) -> None:
@@ -24,6 +27,32 @@ def _fail(task_id: str, code: str, detail: str) -> None:
     )
 
 
+def _redacted_values(values: dict[str, str]) -> dict[str, str]:
+    return {name: "<redacted>" for name in values}
+
+
+def _safe_response_headers(headers: dict[str, str]) -> dict[str, str]:
+    return {name: value for name, value in headers.items() if str(name).lower() in SAFE_RESPONSE_HEADER_NAMES}
+
+
+def redacted_resource(resource: ResourceCandidate) -> ResourceCandidate:
+    redacted = resource.model_copy(deep=True)
+    redacted.headers = _safe_response_headers(redacted.headers)
+    redacted.request_headers = _redacted_values(redacted.request_headers)
+    return redacted
+
+
+def redacted_request_dump(request: CurrentPageTaskRequest) -> dict:
+    data = request.model_dump(mode="json")
+    for cookie in data.get("cookies", []):
+        if "value" in cookie:
+            cookie["value"] = "<redacted>"
+    for resource in data.get("resources", []):
+        resource["headers"] = _safe_response_headers(resource.get("headers") or {})
+        resource["request_headers"] = _redacted_values(resource.get("request_headers") or {})
+    return data
+
+
 def process_page_text_task(task_id: str, request: CurrentPageTaskRequest) -> None:
     try:
         update_task(task_id, status="running", phase="summarizing", progress=60, message="正在总结当前页面文本")
@@ -36,7 +65,7 @@ def process_page_text_task(task_id: str, request: CurrentPageTaskRequest) -> Non
 
 
 def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> None:
-    write_json(task_id, "request.json", request.model_dump(mode="json"))
+    write_json(task_id, "request.json", redacted_request_dump(request))
     if request.mode == "page_text":
         process_page_text_task(task_id, request)
         return
@@ -47,7 +76,7 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
         downloader = MediaDownloader(work_dir)
         media_path, selected = downloader.download(request.page_url, request.resources, request.cookies, request.title)
         if selected:
-            update_task(task_id, selected_resource=selected)
+            update_task(task_id, selected_resource=redacted_resource(selected))
         subtitle_path = downloader.download_subtitle(request.resources, request.cookies, request.page_url, request.title)
         update_task(task_id, download_attempts=downloader.attempts)
 

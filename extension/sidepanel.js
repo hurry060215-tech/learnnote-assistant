@@ -55,6 +55,13 @@ function fmtBytes(bytes) {
   return `${value} B`;
 }
 
+function requestHeaderNames(resource) {
+  return Object.keys(resource?.request_headers || {})
+    .filter(name => !/cookie|authorization/i.test(name))
+    .sort()
+    .join(", ") || "-";
+}
+
 const PIPELINE_STEPS = [
   { key: "downloading", label: "下载" },
   { key: "transcribing", label: "识别" },
@@ -359,6 +366,7 @@ function renderResult() {
           selected.status_code ? `HTTP ${selected.status_code}` : "",
           fmtBytes(selected.content_length)
         ].filter(Boolean).join(" · "))}</dd>
+        <dt>请求头</dt><dd>${escapeHtml(requestHeaderNames(selected))}</dd>
         <dt>错误</dt><dd>${escapeHtml(currentTask.error_detail || currentTask.error_code || "-")}</dd>
         <dt>字幕</dt><dd>${escapeHtml(currentTask.subtitle_path || "-")}</dd>
         <dt>尝试记录</dt><dd>${attemptHtml}</dd>

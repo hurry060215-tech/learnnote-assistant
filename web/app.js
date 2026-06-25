@@ -55,6 +55,13 @@ function fmtBytes(bytes) {
   return `${value} B`;
 }
 
+function requestHeaderNames(resource) {
+  return Object.keys(resource?.request_headers || {})
+    .filter(name => !/cookie|authorization/i.test(name))
+    .sort()
+    .join(", ") || "-";
+}
+
 function statusText(task) {
   if (task.status === "success") return "已完成";
   if (task.status === "failed") return task.error_code || "失败";
@@ -311,6 +318,7 @@ async function renderDetail() {
           fmtBytes(selected.content_length),
           selected.mime || "-"
         ].filter(Boolean).join(" · "))}</dd>
+        <dt>复用请求头</dt><dd>${escapeHtml(requestHeaderNames(selected))}</dd>
         <dt>媒体文件</dt><dd>${escapeHtml(task.media_path || "-")}</dd>
         <dt>音频文件</dt><dd>${escapeHtml(task.audio_path || "-")}</dd>
         <dt>字幕文件</dt><dd>${escapeHtml(task.subtitle_path || "-")}</dd>
