@@ -24,6 +24,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 
 - Direct current-page task creation from the extension Side Panel.
 - DOM, iframe-aware content scripts, Performance, active `<video>` state, and `webRequest` resource discovery.
+- Frame-aware context aggregation: the extension asks every reachable frame for page text, active video state, and media resources before ranking candidates.
 - Dynamic SPA video detection through MutationObserver, media event binding, periodic rescans, and PerformanceObserver resource updates.
 - Cookie collection at task start for the page URL and detected media URLs.
 - Main-video ranking based on the actively playing `<video>` first, then the largest visible video element.

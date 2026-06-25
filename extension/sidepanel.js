@@ -191,10 +191,11 @@ function renderContext() {
   els.pageTitle.textContent = page?.title || "Untitled";
   els.pageUrl.textContent = page?.page_url || "";
   const active = page?.active_video;
+  const frames = page?.frames || [];
   if (active?.src) {
-    els.activeVideo.innerHTML = `播放状态：${active.paused ? "暂停" : "播放中"} · ${fmt(active.current_time)} / ${fmt(active.duration)} · ${active.width || 0}x${active.height || 0}`;
+    els.activeVideo.innerHTML = `播放状态：${active.paused ? "暂停" : "播放中"} · ${fmt(active.current_time)} / ${fmt(active.duration)} · ${active.width || 0}x${active.height || 0} · frame ${active.frame_id ?? 0}`;
   } else {
-    els.activeVideo.textContent = "未读取到 HTML5 播放状态";
+    els.activeVideo.textContent = frames.length ? `未读取到 HTML5 播放状态 · 已扫描 ${frames.length} 个 frame` : "未读取到 HTML5 播放状态";
   }
   els.resourceCount.textContent = String(resources.length);
   if (!resources.length) {

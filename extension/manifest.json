@@ -8,6 +8,7 @@
     "tabs",
     "scripting",
     "webRequest",
+    "webNavigation",
     "cookies",
     "storage",
     "sidePanel"

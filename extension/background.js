@@ -129,6 +129,66 @@ function mergeResource(previous, incoming) {
   return merged;
 }
 
+function frameStates(tabId) {
+  if (!pageStateByTab.has(tabId)) pageStateByTab.set(tabId, new Map());
+  return pageStateByTab.get(tabId);
+}
+
+function normalizePageForFrame(page = {}, frameId = 0, tab = {}) {
+  const normalized = {
+    title: page.title || tab.title || "",
+    page_url: page.page_url || tab.url || "",
+    page_text: page.page_text || "",
+    active_video: page.active_video || null,
+    resources: Array.isArray(page.resources) ? page.resources : [],
+    frame_id: frameId
+  };
+  if (normalized.active_video) normalized.active_video = { ...normalized.active_video, frame_id: frameId };
+  normalized.resources = normalized.resources.map(resource => ({ ...resource, frame_id: resource.frame_id ?? frameId }));
+  return normalized;
+}
+
+function rememberFramePage(tabId, frameId, page, tab = {}) {
+  const normalized = normalizePageForFrame(page, frameId, tab);
+  frameStates(tabId).set(frameId, normalized);
+  return normalized;
+}
+
+function mergePageContexts(tab = {}, pages = []) {
+  const byFrame = new Map();
+  for (const page of pages) {
+    if (!page) continue;
+    byFrame.set(page.frame_id ?? 0, page);
+  }
+  const ordered = [...byFrame.values()].sort((a, b) => (a.frame_id ?? 0) - (b.frame_id ?? 0));
+  const top = ordered.find(page => (page.frame_id ?? 0) === 0) || ordered[0] || {};
+  const activePage = ordered.find(page => page.active_video?.src && !page.active_video.paused) ||
+    ordered.find(page => page.active_video?.src) ||
+    null;
+  const textParts = [];
+  const seenText = new Set();
+  for (const page of ordered) {
+    const text = (page.page_text || "").trim();
+    if (!text || seenText.has(text)) continue;
+    seenText.add(text);
+    textParts.push(text);
+  }
+  return {
+    title: top.title || activePage?.title || tab.title || "",
+    page_url: top.page_url || tab.url || activePage?.page_url || "",
+    page_text: textParts.join("\n\n--- iframe ---\n\n").slice(0, 60000),
+    active_video: activePage?.active_video || null,
+    resources: ordered.flatMap(page => page.resources || []),
+    frames: ordered.map(page => ({
+      frame_id: page.frame_id ?? 0,
+      title: page.title || "",
+      page_url: page.page_url || "",
+      has_active_video: Boolean(page.active_video?.src),
+      resource_count: (page.resources || []).length
+    }))
+  };
+}
+
 function addResource(tabId, resource) {
   if (tabId < 0 || !resource?.url) return;
   const list = resourceByTab.get(tabId) || [];
@@ -227,6 +287,12 @@ chrome.tabs.onRemoved.addListener(tabId => {
   resourceByTab.delete(tabId);
   pageStateByTab.delete(tabId);
 });
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  if (changeInfo.status === "loading" || changeInfo.url) {
+    resourceByTab.delete(tabId);
+    pageStateByTab.delete(tabId);
+  }
+});
 chrome.action.onClicked.addListener(tab => {
   if (chrome.sidePanel?.open) chrome.sidePanel.open({ tabId: tab.id });
 });
@@ -236,25 +302,52 @@ async function activeTab() {
   return tab;
 }
 
-async function collectPageData(tabId) {
+function getAllFrameInfos(tabId) {
+  return new Promise(resolve => {
+    if (!chrome.webNavigation?.getAllFrames) {
+      resolve([{ frameId: 0 }]);
+      return;
+    }
+    try {
+      const maybePromise = chrome.webNavigation.getAllFrames({ tabId }, frames => resolve(frames || [{ frameId: 0 }]));
+      if (maybePromise?.then) maybePromise.then(frames => resolve(frames || [{ frameId: 0 }])).catch(() => resolve([{ frameId: 0 }]));
+    } catch {
+      resolve([{ frameId: 0 }]);
+    }
+  });
+}
+
+async function collectFramePageData(tab, frameId) {
   try {
-    const response = await chrome.tabs.sendMessage(tabId, { type: "collect-page-data" });
-    for (const resource of response.resources || []) addResource(tabId, resource);
-    pageStateByTab.set(tabId, response);
-    return response;
+    const response = await chrome.tabs.sendMessage(tab.id, { type: "collect-page-data" }, { frameId });
+    const page = rememberFramePage(tab.id, frameId, response, tab);
+    for (const resource of page.resources || []) addResource(tab.id, resource);
+    return page;
   } catch {
-    const [injected] = await chrome.scripting.executeScript({
-      target: { tabId },
-      func: () => ({
-        title: document.title,
-        page_url: location.href,
-        page_text: document.body?.innerText?.slice(0, 60000) || "",
-        active_video: null,
-        resources: []
-      })
-    });
-    return injected.result;
+    try {
+      const [injected] = await chrome.scripting.executeScript({
+        target: { tabId: tab.id, frameIds: [frameId] },
+        func: () => ({
+          title: document.title,
+          page_url: location.href,
+          page_text: document.body?.innerText?.slice(0, 60000) || "",
+          active_video: null,
+          resources: []
+        })
+      });
+      return rememberFramePage(tab.id, frameId, injected.result, tab);
+    } catch {
+      return null;
+    }
   }
+}
+
+async function collectPageData(tab) {
+  const frameInfos = await getAllFrameInfos(tab.id);
+  const frameIds = [...new Set([0, ...(frameInfos || []).map(frame => frame.frameId).filter(frameId => frameId !== undefined)])];
+  await Promise.all(frameIds.map(frameId => collectFramePageData(tab, frameId)));
+  const remembered = [...(pageStateByTab.get(tab.id)?.values() || [])];
+  return mergePageContexts(tab, remembered);
 }
 
 async function cookiesForUrls(urls) {
@@ -277,23 +370,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   (async () => {
     if (message.type === "page-media-detected" && sender.tab?.id !== undefined) {
       const tabId = sender.tab.id;
-      const page = message.page || {};
-      if (page.active_video) page.active_video.frame_id = sender.frameId ?? page.active_video.frame_id ?? null;
+      const frameId = sender.frameId ?? 0;
+      const page = rememberFramePage(tabId, frameId, message.page || {}, sender.tab || {});
       for (const resource of page.resources || []) {
-        addResource(tabId, { ...resource, frame_id: resource.frame_id ?? sender.frameId ?? null });
+        addResource(tabId, resource);
       }
-      const previous = pageStateByTab.get(tabId) || {};
-      pageStateByTab.set(tabId, { ...previous, ...page });
       sendResponse({ ok: true });
       return;
     }
 
     if (message.type === "get-current-context") {
       const tab = await activeTab();
-      const page = await collectPageData(tab.id);
-      const storedPage = pageStateByTab.get(tab.id) || {};
+      const page = await collectPageData(tab);
       const sniffed = resourceByTab.get(tab.id) || [];
-      const activePage = { ...storedPage, ...page, active_video: page.active_video || storedPage.active_video || null };
+      const activePage = page;
       const merged = [...(page.resources || []), ...sniffed].map(item => withPlaybackHints(item, activePage));
       const byUrl = new Map();
       for (const item of merged) {
@@ -307,7 +397,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     if (message.type === "start-current-task") {
       const tab = await activeTab();
-      const page = message.page || await collectPageData(tab.id);
+      const page = message.page || await collectPageData(tab);
       const resources = message.resources || resourceByTab.get(tab.id) || [];
       const urls = [page.page_url || tab.url, ...resources.map(item => item.url)];
       const cookies = await cookiesForUrls(urls);
