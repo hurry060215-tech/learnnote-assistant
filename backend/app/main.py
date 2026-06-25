@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -28,6 +30,15 @@ app.add_middleware(
 
 app.mount("/data", StaticFiles(directory=str(DATA_DIR)), name="data")
 app.mount("/web", StaticFiles(directory=str(WEB_DIR)), name="web")
+
+
+_FILENAME_RESERVED_RE = re.compile(r'[\\/:*?"<>|\r\n]+')
+
+
+def markdown_filename(task_id: str, title: str) -> str:
+    stem = _FILENAME_RESERVED_RE.sub("_", title or "").strip(" ._")
+    stem = stem[:120] or f"learnnote-{task_id}"
+    return f"{stem}.md"
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -108,6 +119,25 @@ def api_note(task_id: str) -> str:
         return read_note(task_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Task not found") from exc
+
+
+@app.get("/api/tasks/{task_id}/exports/markdown")
+def api_export_markdown(task_id: str) -> PlainTextResponse:
+    try:
+        task = get_task(task_id)
+        note = read_note(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Task not found") from exc
+    if not note.strip():
+        raise HTTPException(status_code=404, detail="Note not found")
+    filename = markdown_filename(task.id, task.title)
+    headers = {
+        "Content-Disposition": (
+            f'attachment; filename="learnnote-{task.id}.md"; '
+            f"filename*=UTF-8''{quote(filename)}"
+        )
+    }
+    return PlainTextResponse(note, media_type="text/markdown; charset=utf-8", headers=headers)
 
 
 @app.get("/api/tasks/{task_id}/assets/{filename}")

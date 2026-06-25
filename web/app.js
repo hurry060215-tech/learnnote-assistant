@@ -6,6 +6,7 @@ let selectedSource = "url";
 let selectedTaskId = null;
 let selectedTab = "note";
 let lastNote = "";
+let lastNoteTaskId = "";
 let tasks = [];
 
 const els = {
@@ -32,7 +33,8 @@ const els = {
   selectedTitle: document.querySelector("#selectedTitle"),
   resultTabs: document.querySelectorAll(".result-tab"),
   detail: document.querySelector("#detail"),
-  copyButton: document.querySelector("#copyButton")
+  copyButton: document.querySelector("#copyButton"),
+  downloadButton: document.querySelector("#downloadButton")
 };
 
 function escapeHtml(value) {
@@ -205,6 +207,16 @@ async function taskRecord() {
   return fetch(`${API}/api/tasks/${selectedTaskId}`).then(r => r.json()).then(d => d.task);
 }
 
+async function noteForTask(taskId) {
+  if (!taskId) return "";
+  if (lastNoteTaskId === taskId && lastNote) return lastNote;
+  const response = await fetch(`${API}/api/tasks/${taskId}/note`);
+  if (!response.ok) return "";
+  lastNote = await response.text();
+  lastNoteTaskId = taskId;
+  return lastNote;
+}
+
 async function renderDetail() {
   const task = await taskRecord();
   if (!task) {
@@ -212,15 +224,22 @@ async function renderDetail() {
     els.selectedSource.textContent = "结果工作区";
     els.detail.className = "detail empty";
     els.detail.textContent = "任务完成后显示结构化结果。";
+    lastNote = "";
+    lastNoteTaskId = "";
+    els.copyButton.disabled = true;
+    els.downloadButton.disabled = true;
     return;
   }
 
   els.selectedTitle.textContent = task.title || task.id;
   els.selectedSource.textContent = `${sourceText(task)} · ${statusText(task)}`;
   els.detail.className = "detail";
+  const hasNote = Boolean(task.note_path) || task.status === "success";
+  els.copyButton.disabled = !hasNote;
+  els.downloadButton.disabled = !hasNote;
 
   if (selectedTab === "note") {
-    lastNote = await fetch(`${API}/api/tasks/${task.id}/note`).then(r => r.text());
+    lastNote = await noteForTask(task.id);
     els.detail.innerHTML = `<pre class="note">${escapeHtml(lastNote || "笔记尚未生成。")}</pre>`;
     return;
   }
@@ -370,7 +389,11 @@ els.resultTabs.forEach(tab => {
 els.startUrlButton.onclick = startUrlTask;
 els.uploadButton.onclick = uploadSelectedFile;
 els.refreshButton.onclick = () => loadTasks();
-els.copyButton.onclick = () => navigator.clipboard.writeText(lastNote || "");
+els.copyButton.onclick = async () => navigator.clipboard.writeText(await noteForTask(selectedTaskId) || "");
+els.downloadButton.onclick = () => {
+  if (!selectedTaskId) return;
+  window.location.assign(`${API}/api/tasks/${encodeURIComponent(selectedTaskId)}/exports/markdown`);
+};
 
 els.dropzone.addEventListener("dragover", event => {
   event.preventDefault();

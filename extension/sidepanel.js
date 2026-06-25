@@ -33,6 +33,7 @@ const els = {
   resultTabs: document.querySelectorAll(".result-tab"),
   result: document.querySelector("#result"),
   copyButton: document.querySelector("#copyButton"),
+  downloadButton: document.querySelector("#downloadButton"),
   settingsButton: document.querySelector("#settingsButton")
 };
 
@@ -252,6 +253,9 @@ async function loadResult() {
 }
 
 function renderResult() {
+  const hasNote = Boolean(currentTaskId) && (Boolean(currentTask?.note_path) || currentTask?.status === "success");
+  els.copyButton.disabled = !hasNote;
+  els.downloadButton.disabled = !hasNote;
   if (!currentTask) {
     els.result.textContent = "任务完成后显示结果。";
     return;
@@ -340,6 +344,10 @@ els.textButton.onclick = () => startTask("page_text");
 els.uploadButton.onclick = () => els.fileInput.click();
 els.fileInput.onchange = uploadLocal;
 els.copyButton.onclick = () => navigator.clipboard.writeText(lastNote || "");
+els.downloadButton.onclick = () => {
+  if (!currentTaskId) return;
+  chrome.tabs.create({ url: `${backendUrl}/api/tasks/${encodeURIComponent(currentTaskId)}/exports/markdown` });
+};
 els.settingsButton.onclick = saveSettings;
 
 loadSettings().then(() => Promise.all([health(), collect()]));

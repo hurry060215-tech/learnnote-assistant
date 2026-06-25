@@ -102,6 +102,12 @@ h1 {
   gap: 10px;
 }
 
+.result-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .health {
   color: var(--muted);
   font-size: 12px;
@@ -481,6 +487,12 @@ select:focus {
   border-color: #9db9f8;
 }
 
+.icon-button:disabled,
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
 .result-tabs {
   padding: 10px 18px;
   border-bottom: 1px solid var(--border);
@@ -501,6 +513,8 @@ select:focus {
 .note {
   margin: 0;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   font: 13px/1.7 ui-monospace, SFMono-Regular, Consolas, "Microsoft YaHei", monospace;
 }
 
