@@ -52,6 +52,40 @@ class DownloaderBoundaryTests(unittest.TestCase):
             self.assertEqual(downloader.attempts[0].strategy, "blob-unrecoverable")
             self.assertEqual(downloader.attempts[0].status, "skipped")
 
+    def test_blob_with_fragments_keeps_fragment_diagnostics(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            downloader = MediaDownloader(Path(tmp))
+            with self.assertRaises(DownloadError) as ctx:
+                downloader.download(
+                    page_url="https://course.example/video",
+                    resources=[
+                        ResourceCandidate(url="blob:https://course.example/abc", source="activeVideo", kind="blob"),
+                        ResourceCandidate(url="https://cdn.example.com/chunk-001.m4s", source="webRequest", kind="fragment"),
+                    ],
+                    cookies=[],
+                    title="Blob with fragments",
+                )
+            self.assertEqual(ctx.exception.code, "drm_or_encrypted")
+            self.assertEqual([attempt.strategy for attempt in downloader.attempts], ["blob-unrecoverable", "skip-fragment"])
+
+    def test_playback_matched_candidate_is_prioritized(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            downloader = MediaDownloader(Path(tmp))
+            resources = [
+                ResourceCandidate(url="https://cdn.example.com/background.mp4", source="webRequest", kind="video", mime="video/mp4", score=85),
+                ResourceCandidate(
+                    url="https://cdn.example.com/lesson.m3u8",
+                    source="webRequest",
+                    kind="hls",
+                    mime="application/vnd.apple.mpegurl",
+                    score=90,
+                    playback_match="same-frame",
+                ),
+            ]
+            candidates = downloader._candidate_resources(resources)
+            self.assertEqual(candidates[0].url, "https://cdn.example.com/lesson.m3u8")
+            self.assertEqual(candidates[0].playback_match, "same-frame")
+
 
 class SummaryFallbackTests(unittest.TestCase):
     def test_local_note_contains_timeline_and_frame_index(self) -> None:

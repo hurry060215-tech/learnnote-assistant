@@ -29,6 +29,86 @@ function scoreResource(url, mime, source) {
   return Math.min(score, 100);
 }
 
+function isDownloadableKind(kind) {
+  return kind === "hls" || kind === "dash" || kind === "video";
+}
+
+function urlHost(url) {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return "";
+  }
+}
+
+function sameSite(urlA, urlB) {
+  const hostA = urlHost(urlA);
+  const hostB = urlHost(urlB);
+  if (!hostA || !hostB) return false;
+  return hostA === hostB || hostA.endsWith(`.${hostB}`) || hostB.endsWith(`.${hostA}`);
+}
+
+function withPlaybackHints(resource, page = {}) {
+  const active = page.active_video || {};
+  const activeSrc = active.src || "";
+  const activeFrameId = active.frame_id ?? null;
+  const kind = resource.kind || classify(resource.url || "", resource.mime || "");
+  const hinted = { ...resource, kind };
+  let boost = 0;
+  let match = hinted.playback_match || "";
+
+  if (activeSrc && hinted.url === activeSrc) {
+    boost += 20;
+    match = match || "exact-src";
+    hinted.is_main_video = true;
+  }
+
+  if (
+    activeFrameId !== null &&
+    hinted.frame_id !== null &&
+    hinted.frame_id !== undefined &&
+    hinted.frame_id === activeFrameId &&
+    isDownloadableKind(kind)
+  ) {
+    boost += activeSrc.startsWith("blob:") ? 16 : 12;
+    match = match || (activeSrc.startsWith("blob:") ? "blob-same-frame" : "same-frame");
+    hinted.is_main_video = true;
+  }
+
+  const recent = hinted.time_stamp && Date.now() - hinted.time_stamp < 5 * 60 * 1000;
+  if (recent && hinted.source === "webRequest" && isDownloadableKind(kind)) {
+    if (activeSrc.startsWith("blob:")) {
+      boost += 8;
+      match = match || "recent-media-request";
+    }
+    if (sameSite(hinted.initiator || "", page.page_url || "")) {
+      boost += 4;
+      match = match || "same-site-request";
+    }
+  }
+
+  if (match) hinted.playback_match = match;
+  hinted.score = Math.min(100, Math.max(hinted.score || 0, scoreResource(hinted.url || "", hinted.mime || "", hinted.source || "")) + boost);
+  return hinted;
+}
+
+function mergeResource(previous, incoming) {
+  if (!previous) return incoming;
+  const merged = { ...previous, ...incoming };
+  merged.score = Math.max(previous.score || 0, incoming.score || 0);
+  merged.is_main_video = Boolean(previous.is_main_video || incoming.is_main_video);
+  merged.playback_match = previous.playback_match || incoming.playback_match || "";
+  merged.headers = { ...(previous.headers || {}), ...(incoming.headers || {}) };
+  merged.current_time = incoming.current_time ?? previous.current_time ?? null;
+  merged.duration = incoming.duration ?? previous.duration ?? null;
+  merged.width = incoming.width ?? previous.width ?? null;
+  merged.height = incoming.height ?? previous.height ?? null;
+  merged.status_code = incoming.status_code ?? previous.status_code ?? null;
+  merged.content_length = incoming.content_length ?? previous.content_length ?? null;
+  merged.time_stamp = Math.max(previous.time_stamp || 0, incoming.time_stamp || 0) || null;
+  return merged;
+}
+
 function addResource(tabId, resource) {
   if (tabId < 0 || !resource?.url) return;
   const list = resourceByTab.get(tabId) || [];
@@ -41,6 +121,7 @@ function addResource(tabId, resource) {
     score: Math.max(resource.score || 0, scoreResource(resource.url, resource.mime || "", resource.source || "")),
     label: resource.label || "",
     is_main_video: Boolean(resource.is_main_video),
+    playback_match: resource.playback_match || "",
     tab_id: tabId,
     frame_id: resource.frame_id ?? null,
     current_time: resource.current_time ?? null,
@@ -59,6 +140,7 @@ function addResource(tabId, resource) {
     Object.assign(existing, normalized, {
       score: Math.max(existing.score || 0, normalized.score),
       is_main_video: Boolean(existing.is_main_video || normalized.is_main_video),
+      playback_match: existing.playback_match || normalized.playback_match || "",
       current_time: normalized.current_time ?? existing.current_time ?? null,
       duration: normalized.duration ?? existing.duration ?? null,
       width: normalized.width ?? existing.width ?? null,
@@ -161,6 +243,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === "page-media-detected" && sender.tab?.id !== undefined) {
       const tabId = sender.tab.id;
       const page = message.page || {};
+      if (page.active_video) page.active_video.frame_id = sender.frameId ?? page.active_video.frame_id ?? null;
       for (const resource of page.resources || []) {
         addResource(tabId, { ...resource, frame_id: resource.frame_id ?? sender.frameId ?? null });
       }
@@ -175,14 +258,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const page = await collectPageData(tab.id);
       const storedPage = pageStateByTab.get(tab.id) || {};
       const sniffed = resourceByTab.get(tab.id) || [];
-      const merged = [...(page.resources || []), ...sniffed];
+      const activePage = { ...storedPage, ...page, active_video: page.active_video || storedPage.active_video || null };
+      const merged = [...(page.resources || []), ...sniffed].map(item => withPlaybackHints(item, activePage));
       const byUrl = new Map();
       for (const item of merged) {
         const previous = byUrl.get(item.url);
-        if (!previous || (item.score || 0) > (previous.score || 0)) byUrl.set(item.url, item);
+        byUrl.set(item.url, mergeResource(previous, item));
       }
       const resources = [...byUrl.values()].sort((a, b) => (b.score || 0) - (a.score || 0)).slice(0, 30);
-      sendResponse({ tab, page: { ...storedPage, ...page, active_video: page.active_video || storedPage.active_video || null }, resources });
+      sendResponse({ tab, page: activePage, resources });
       return;
     }
 

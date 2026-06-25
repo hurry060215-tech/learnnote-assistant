@@ -144,9 +144,19 @@ main {
   text-align: left;
 }
 
+.resource.playback {
+  border-color: #8eb1ff;
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
 .resource.selected {
   border-color: #9db9f8;
   background: var(--surface-strong);
+}
+
+.resource.non-downloadable {
+  background: #fbfcff;
+  color: var(--muted);
 }
 
 .resource strong {
@@ -166,6 +176,23 @@ main {
   color: var(--accent);
   font-size: 12px;
   font-weight: 800;
+}
+
+.resource-hint {
+  margin: 0;
+  border: 1px solid #c7d8ff;
+  border-radius: 7px;
+  background: var(--surface-strong);
+  padding: 8px;
+  color: var(--accent);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.resource-hint.warn {
+  border-color: rgba(194, 120, 3, 0.28);
+  background: rgba(194, 120, 3, 0.08);
+  color: var(--warning);
 }
 
 .options {

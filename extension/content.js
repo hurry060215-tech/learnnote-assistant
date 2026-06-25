@@ -38,7 +38,7 @@ function absoluteUrl(url) {
   }
 }
 
-function resource(url, source, label, mime = "", video = null, isMainVideo = false) {
+function resource(url, source, label, mime = "", video = null, isMainVideo = false, playbackMatch = "") {
   const absolute = absoluteUrl(url);
   if (!absolute) return null;
   const kind = classify(absolute, mime);
@@ -50,6 +50,7 @@ function resource(url, source, label, mime = "", video = null, isMainVideo = fal
     label,
     score: score(absolute, mime, source),
     is_main_video: isMainVideo,
+    playback_match: playbackMatch,
     current_time: video ? Number(video.currentTime || 0) : null,
     duration: video && Number.isFinite(video.duration) ? Number(video.duration || 0) : null,
     width: video ? Number(video.videoWidth || video.clientWidth || 0) : null,
@@ -96,9 +97,9 @@ function collectDomResources() {
   const main = pickMainVideo(videos);
   for (const { video, index } of videos) {
     const isMain = main?.video === video;
-    resources.push(resource(video.currentSrc || video.src, "activeVideo", `当前视频 #${index + 1}`, video.type || "", video, isMain));
+    resources.push(resource(video.currentSrc || video.src, "activeVideo", `当前视频 #${index + 1}`, video.type || "", video, isMain, isMain ? "exact-src" : ""));
     for (const source of video.querySelectorAll("source")) {
-      resources.push(resource(source.src, "dom", `video source #${index + 1}`, source.type || "", video, isMain));
+      resources.push(resource(source.src, "dom", `video source #${index + 1}`, source.type || "", video, isMain, isMain ? "source-element" : ""));
     }
     for (const track of video.querySelectorAll("track[src]")) {
       const label = [track.kind || "subtitle", track.srclang || "", track.label || ""].filter(Boolean).join(" ");

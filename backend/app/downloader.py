@@ -126,13 +126,22 @@ class MediaDownloader:
             classify_resource(item.url, item.mime) in {"hls", "dash", "video"} for item in resources
         ):
             for item in resources:
-                if classify_resource(item.url, item.mime) == "blob":
+                kind = classify_resource(item.url, item.mime)
+                if kind == "blob":
                     self._record_attempt(
                         strategy="blob-unrecoverable",
                         candidate=item,
                         status="skipped",
                         code="drm_or_encrypted",
                         message="页面只暴露 blob 媒体地址，未发现可下载的 manifest 或视频文件。",
+                    )
+                elif kind == "fragment":
+                    self._record_attempt(
+                        strategy="skip-fragment",
+                        candidate=item,
+                        status="skipped",
+                        code="unsupported_manifest",
+                        message="检测到媒体分片，但没有对应 manifest，不能作为独立视频下载。",
                     )
             raise DownloadError("drm_or_encrypted", "页面只暴露 blob 媒体地址，未发现可下载 manifest 或视频文件。")
 
@@ -221,7 +230,7 @@ class MediaDownloader:
                 continue
             kind = classify_resource(item.url, item.mime)
             item.kind = kind
-            boost = 8 if item.is_main_video else 0
+            boost = (8 if item.is_main_video else 0) + (10 if item.playback_match else 0)
             item.score = min(100, max(item.score, score_resource(item.url, item.mime, item.source)) + boost)
             if kind in {"hls", "dash", "video"}:
                 dedup[item.url] = item

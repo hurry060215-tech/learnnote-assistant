@@ -68,6 +68,17 @@ function sourceText(task) {
   return task.selected_resource ? `直取 · ${task.selected_resource.kind}` : "页面解析";
 }
 
+function playbackText(match) {
+  return ({
+    "exact-src": "当前 src",
+    "source-element": "当前 source",
+    "same-frame": "同播放器 frame",
+    "blob-same-frame": "blob 同 frame",
+    "recent-media-request": "最近播放请求",
+    "same-site-request": "同站请求"
+  })[match] || match || "";
+}
+
 const PIPELINE_STEPS = [
   { key: "downloading", label: "下载" },
   { key: "transcribing", label: "识别" },
@@ -293,6 +304,7 @@ async function renderDetail() {
           selected.kind || "-",
           selected.source || "-",
           selected.is_main_video ? "主视频" : "",
+          playbackText(selected.playback_match),
           selected.request_type || "",
           selected.status_code ? `HTTP ${selected.status_code}` : "",
           fmtBytes(selected.content_length),

@@ -64,6 +64,7 @@ const PIPELINE_STEPS = [
 ];
 
 const DOWNLOAD_ERROR_CODES = new Set(["no_media_found", "auth_required", "drm_or_encrypted", "download_forbidden", "unsupported_manifest"]);
+const DOWNLOADABLE_KINDS = new Set(["video", "hls", "dash"]);
 
 function failedStepIndex(task) {
   if (DOWNLOAD_ERROR_CODES.has(task.error_code)) return 0;
@@ -107,6 +108,46 @@ function readOptions() {
   };
 }
 
+function isDownloadableResource(item) {
+  return DOWNLOADABLE_KINDS.has(item?.kind);
+}
+
+function playbackText(match) {
+  return ({
+    "exact-src": "当前 src",
+    "source-element": "当前 source",
+    "same-frame": "同播放器 frame",
+    "blob-same-frame": "blob 同 frame",
+    "recent-media-request": "最近播放请求",
+    "same-site-request": "同站请求"
+  })[match] || match || "";
+}
+
+function pickDefaultResourceUrl(items, previousUrl = "") {
+  if (previousUrl && items.some(item => item.url === previousUrl)) return previousUrl;
+  const downloadable = items.filter(isDownloadableResource);
+  const preferred = downloadable.find(item => item.playback_match || item.is_main_video) || downloadable[0];
+  return preferred?.url || items[0]?.url || "";
+}
+
+function resourceHint() {
+  const downloadable = resources.filter(isDownloadableResource).length;
+  const blobCount = resources.filter(item => item.kind === "blob").length;
+  const fragmentCount = resources.filter(item => item.kind === "fragment").length;
+  const playbackMatched = resources.some(item => item.playback_match || item.is_main_video);
+  const activeBlob = page?.active_video?.src?.startsWith("blob:");
+  if (downloadable && activeBlob) {
+    return `<p class="resource-hint">当前播放器是 blob，已按同 frame / 最近媒体请求优先选择可直取候选。</p>`;
+  }
+  if (downloadable && playbackMatched) {
+    return `<p class="resource-hint">已优先选择与当前播放状态匹配的可下载资源。</p>`;
+  }
+  if (!downloadable && (blobCount || fragmentCount)) {
+    return `<p class="resource-hint warn">只检测到 blob 或分片线索，第一版不会录制或破解；可以继续播放几秒后重新检测，或改用本地视频上传。</p>`;
+  }
+  return "";
+}
+
 async function loadSettings() {
   const data = await chrome.storage.local.get({ backendUrl: DEFAULT_BACKEND });
   backendUrl = data.backendUrl || DEFAULT_BACKEND;
@@ -140,8 +181,8 @@ async function collect() {
     return;
   }
   page = response.page;
-  resources = (response.resources || []).filter(item => item.kind !== "fragment");
-  selectedResourceUrl = resources[0]?.url || "";
+  resources = response.resources || [];
+  selectedResourceUrl = pickDefaultResourceUrl(resources, selectedResourceUrl);
   renderContext();
 }
 
@@ -159,12 +200,14 @@ function renderContext() {
     els.resources.innerHTML = `<p class="muted">未检测到可直接下载的视频资源。</p>`;
     return;
   }
-  els.resources.innerHTML = resources.map(item => `
-    <button class="resource ${item.url === selectedResourceUrl ? "selected" : ""}" data-url="${escapeHtml(item.url)}">
+  els.resources.innerHTML = `${resourceHint()}${resources.map(item => `
+    <button class="resource ${item.url === selectedResourceUrl ? "selected" : ""} ${isDownloadableResource(item) ? "" : "non-downloadable"} ${item.playback_match || item.is_main_video ? "playback" : ""}" data-url="${escapeHtml(item.url)}">
       <span>
         <strong>${escapeHtml(item.label || item.kind || "media")}</strong>
         <small>${escapeHtml([
+          isDownloadableResource(item) ? "可直取" : "线索",
           item.is_main_video ? "主视频" : "",
+          playbackText(item.playback_match),
           item.kind,
           item.source,
           item.request_type,
@@ -176,7 +219,7 @@ function renderContext() {
       </span>
       <span class="confidence">${item.score || 0}%</span>
     </button>
-  `).join("");
+  `).join("")}`;
   document.querySelectorAll(".resource").forEach(button => {
     button.onclick = () => {
       selectedResourceUrl = button.dataset.url;
@@ -310,6 +353,7 @@ function renderResult() {
           selected.kind || "-",
           selected.source || "-",
           selected.is_main_video ? "主视频" : "",
+          playbackText(selected.playback_match),
           selected.status_code ? `HTTP ${selected.status_code}` : "",
           fmtBytes(selected.content_length)
         ].filter(Boolean).join(" · "))}</dd>

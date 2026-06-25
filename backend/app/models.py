@@ -27,6 +27,7 @@ class ResourceCandidate(BaseModel):
     score: int = 0
     label: str = ""
     is_main_video: bool = False
+    playback_match: str = ""
     tab_id: int | None = None
     frame_id: int | None = None
     current_time: float | None = None

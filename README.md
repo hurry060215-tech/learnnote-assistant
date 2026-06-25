@@ -27,6 +27,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - Cookie collection at task start for the page URL and detected media URLs.
 - Main-video ranking based on the actively playing `<video>` first, then the largest visible video element.
 - Candidate evidence from `webRequest`, including request type, HTTP status, MIME type, content length, initiator, and frame id when available.
+- Playback-aware candidate ranking: the Side Panel boosts exact current `<video>` sources, same-frame media requests, and recent requests from blob-backed players before starting a task.
 - Subtitle discovery from `<track>` elements, Performance entries, and `webRequest`.
 - Direct video download for exposed MP4/WebM/MOV/MKV URLs.
 - HLS/DASH manifest download through ffmpeg when a manifest URL is visible.
@@ -36,6 +37,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - Transcript priority: page subtitle track first, then local `faster-whisper` fallback.
 - Configurable slicing: frame interval, grid layout, ASR model, and note style.
 - Web UI and Side Panel diagnostic tabs show the selected resource, browser evidence, and every backend download attempt.
+- Blob and media-fragment requests are kept as diagnostic clues instead of being hidden, but they are not treated as independently downloadable video files.
 - Task records retain the frame interval, grid layout, ASR model, note style, and visual-understanding setting used for that run.
 - Multimodal prompts are organized by frame-grid windows, pairing each visual slice with the transcript segment from the same time range.
 - Generated notes can be copied or exported as Markdown files with the task title as the filename.
