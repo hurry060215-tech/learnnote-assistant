@@ -5,7 +5,7 @@ import unittest
 import shutil
 from pathlib import Path
 
-from app.downloader import DownloadError, MediaDownloader, classify_resource, cookie_header_for_url, score_resource
+from app.downloader import DownloadError, MediaDownloader, classify_resource, cookie_header_for_url, infer_manifest_url_from_fragment, score_resource
 from app.models import BrowserCookie, FrameGrid, ResourceCandidate, TranscriptResult, TranscriptSegment
 from app.processor import read_note, read_transcript
 from app.summarizer import local_markdown_note
@@ -27,6 +27,13 @@ class ResourceDetectionTests(unittest.TestCase):
             score_resource("https://cdn.example.com/index.m3u8", "application/vnd.apple.mpegurl", "webRequest"),
             score_resource("https://cdn.example.com/video.mp4", "video/mp4", "dom"),
         )
+
+    def test_infers_manifest_url_from_nested_fragment(self) -> None:
+        fragment = "https://cdn.example.com/live/master.m3u8/segment-001.ts?token=abc"
+        self.assertEqual(classify_resource(fragment), "fragment")
+        self.assertEqual(infer_manifest_url_from_fragment(fragment), "https://cdn.example.com/live/master.m3u8?token=abc")
+        dash_fragment = "https://cdn.example.com/dash/manifest.mpd/chunk-1.m4s"
+        self.assertEqual(infer_manifest_url_from_fragment(dash_fragment), "https://cdn.example.com/dash/manifest.mpd")
 
     def test_cookie_header_matches_parent_domains(self) -> None:
         cookies = [
@@ -85,6 +92,24 @@ class DownloaderBoundaryTests(unittest.TestCase):
             candidates = downloader._candidate_resources(resources)
             self.assertEqual(candidates[0].url, "https://cdn.example.com/lesson.m3u8")
             self.assertEqual(candidates[0].playback_match, "same-frame")
+
+    def test_manifest_candidate_is_inferred_from_fragment_url(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            downloader = MediaDownloader(Path(tmp))
+            resources = [
+                ResourceCandidate(
+                    url="https://cdn.example.com/course/master.m3u8/seg-001.ts?token=abc",
+                    source="webRequest",
+                    kind="fragment",
+                    score=30,
+                    playback_match="blob-same-frame",
+                )
+            ]
+            candidates = downloader._candidate_resources(resources)
+            self.assertEqual(candidates[0].url, "https://cdn.example.com/course/master.m3u8?token=abc")
+            self.assertEqual(candidates[0].kind, "hls")
+            self.assertEqual(candidates[0].source, "inferred-manifest")
+            self.assertEqual(candidates[0].playback_match, "blob-same-frame")
 
 
 class SummaryFallbackTests(unittest.TestCase):

@@ -10,12 +10,32 @@ function classify(url, mime = "") {
   const lower = String(url || "").toLowerCase();
   const type = String(mime || "").toLowerCase();
   if (lower.startsWith("blob:")) return "blob";
+  if (FRAGMENT_RE.test(lower) && inferManifestUrl(url)) return "fragment";
   if (type.includes("mpegurl") || lower.includes(".m3u8")) return "hls";
   if (type.includes("dash+xml") || lower.includes(".mpd")) return "dash";
   if (type.includes("video/") || MEDIA_RE.test(lower)) return "video";
   if (type.includes("text/vtt") || type.includes("subrip") || SUBTITLE_RE.test(lower)) return "subtitle";
   if (FRAGMENT_RE.test(lower)) return "fragment";
   return "unknown";
+}
+
+function inferManifestUrl(url) {
+  try {
+    const parsed = new URL(url, location.href);
+    const lowerPath = parsed.pathname.toLowerCase();
+    for (const ext of [".m3u8", ".mpd"]) {
+      const index = lowerPath.indexOf(ext);
+      if (index < 0) continue;
+      const manifestPath = parsed.pathname.slice(0, index + ext.length);
+      if (manifestPath === parsed.pathname) return "";
+      parsed.pathname = manifestPath;
+      parsed.hash = "";
+      return parsed.href;
+    }
+  } catch {
+    return "";
+  }
+  return "";
 }
 
 function score(url, mime, source) {

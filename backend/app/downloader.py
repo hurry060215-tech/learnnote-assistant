@@ -5,7 +5,7 @@ import os
 import re
 import subprocess
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 
 import requests
 
@@ -29,6 +29,24 @@ class DownloadError(RuntimeError):
 def _clean_filename(value: str) -> str:
     value = re.sub(r"[^\w\-.]+", "_", value.strip(), flags=re.U)
     return value[:120] or "media"
+
+
+def infer_manifest_url_from_fragment(url: str) -> str:
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return ""
+    path = parsed.path or ""
+    lowered = path.lower()
+    for ext in (".m3u8", ".mpd"):
+        index = lowered.find(ext)
+        if index < 0:
+            continue
+        manifest_path = path[: index + len(ext)]
+        if manifest_path == path:
+            return ""
+        return urlunparse(parsed._replace(path=manifest_path, params="", fragment=""))
+    return ""
 
 
 def _domain_matches(cookie_domain: str, host: str) -> bool:
@@ -75,6 +93,8 @@ def classify_resource(url: str, mime: str = "") -> str:
     mime_lower = mime.lower()
     if lowered.startswith("blob:"):
         return "blob"
+    if FRAGMENT_EXT_RE.search(lowered) and infer_manifest_url_from_fragment(url):
+        return "fragment"
     if "mpegurl" in mime_lower or "m3u8" in lowered:
         return "hls"
     if "dash+xml" in mime_lower or ".mpd" in lowered:
@@ -122,6 +142,7 @@ class MediaDownloader:
         cookies: list[BrowserCookie],
         title: str,
     ) -> tuple[Path, ResourceCandidate | None]:
+        resources = self._with_inferred_manifest_resources(resources)
         if any(item.url.startswith("blob:") for item in resources) and not any(
             classify_resource(item.url, item.mime) in {"hls", "dash", "video"} for item in resources
         ):
@@ -224,6 +245,7 @@ class MediaDownloader:
         return None
 
     def _candidate_resources(self, resources: list[ResourceCandidate]) -> list[ResourceCandidate]:
+        resources = self._with_inferred_manifest_resources(resources)
         dedup: dict[str, ResourceCandidate] = {}
         for item in resources:
             if not item.url or item.url.startswith(("chrome-extension:", "data:")):
@@ -235,6 +257,26 @@ class MediaDownloader:
             if kind in {"hls", "dash", "video"}:
                 dedup[item.url] = item
         return sorted(dedup.values(), key=lambda item: item.score, reverse=True)
+
+    def _with_inferred_manifest_resources(self, resources: list[ResourceCandidate]) -> list[ResourceCandidate]:
+        enriched = list(resources)
+        known_urls = {item.url for item in resources if item.url}
+        for item in resources:
+            inferred_url = infer_manifest_url_from_fragment(item.url)
+            if not inferred_url or inferred_url in known_urls:
+                continue
+            inferred = item.model_copy(deep=True)
+            inferred.url = inferred_url
+            inferred.kind = classify_resource(inferred_url, item.mime)
+            inferred.mime = "application/vnd.apple.mpegurl" if inferred.kind == "hls" else "application/dash+xml"
+            inferred.source = "inferred-manifest"
+            inferred.label = item.label or "inferred manifest"
+            inferred.score = min(100, max(item.score, score_resource(inferred.url, inferred.mime, inferred.source)) + 12)
+            if not inferred.playback_match:
+                inferred.playback_match = "inferred-from-fragment"
+            enriched.append(inferred)
+            known_urls.add(inferred_url)
+        return enriched
 
     def _subtitle_resources(self, resources: list[ResourceCandidate]) -> list[ResourceCandidate]:
         dedup: dict[str, ResourceCandidate] = {}

@@ -29,6 +29,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - Main-video ranking based on the actively playing `<video>` first, then the largest visible video element.
 - Candidate evidence from `webRequest`, including request type, HTTP status, MIME type, content length, initiator, and frame id when available.
 - Playback-aware candidate ranking: the Side Panel boosts exact current `<video>` sources, same-frame media requests, and recent requests from blob-backed players before starting a task.
+- Recoverable fragment URLs such as `.../master.m3u8/segment.ts` or `.../manifest.mpd/chunk.m4s` are promoted to inferred manifest candidates.
 - Subtitle discovery from `<track>` elements, Performance entries, and `webRequest`.
 - Direct video download for exposed MP4/WebM/MOV/MKV URLs.
 - HLS/DASH manifest download through ffmpeg when a manifest URL is visible.

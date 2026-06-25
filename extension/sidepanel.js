@@ -119,7 +119,8 @@ function playbackText(match) {
     "same-frame": "同播放器 frame",
     "blob-same-frame": "blob 同 frame",
     "recent-media-request": "最近播放请求",
-    "same-site-request": "同站请求"
+    "same-site-request": "同站请求",
+    "inferred-from-fragment": "分片推断"
   })[match] || match || "";
 }
 

@@ -8,12 +8,32 @@ function classify(url, mime = "") {
   const lower = url.toLowerCase();
   const type = mime.toLowerCase();
   if (lower.startsWith("blob:")) return "blob";
+  if (FRAGMENT_RE.test(lower) && inferManifestUrl(url)) return "fragment";
   if (type.includes("mpegurl") || lower.includes(".m3u8")) return "hls";
   if (type.includes("dash+xml") || lower.includes(".mpd")) return "dash";
   if (type.includes("video/") || MEDIA_RE.test(lower)) return "video";
   if (type.includes("text/vtt") || type.includes("subrip") || SUBTITLE_RE.test(lower)) return "subtitle";
   if (FRAGMENT_RE.test(lower)) return "fragment";
   return "unknown";
+}
+
+function inferManifestUrl(url) {
+  try {
+    const parsed = new URL(url);
+    const lowerPath = parsed.pathname.toLowerCase();
+    for (const ext of [".m3u8", ".mpd"]) {
+      const index = lowerPath.indexOf(ext);
+      if (index < 0) continue;
+      const manifestPath = parsed.pathname.slice(0, index + ext.length);
+      if (manifestPath === parsed.pathname) return "";
+      parsed.pathname = manifestPath;
+      parsed.hash = "";
+      return parsed.href;
+    }
+  } catch {
+    return "";
+  }
+  return "";
 }
 
 function scoreResource(url, mime, source) {
@@ -157,6 +177,21 @@ function addResource(tabId, resource) {
     list.unshift(normalized);
   }
   resourceByTab.set(tabId, list.slice(0, 80));
+
+  const inferredUrl = inferManifestUrl(normalized.url);
+  if (inferredUrl && inferredUrl !== normalized.url) {
+    const inferredKind = classify(inferredUrl, normalized.mime);
+    addResource(tabId, {
+      ...normalized,
+      url: inferredUrl,
+      source: "inferred-manifest",
+      kind: inferredKind,
+      mime: inferredKind === "hls" ? "application/vnd.apple.mpegurl" : "application/dash+xml",
+      label: inferredKind === "hls" ? "Inferred HLS manifest" : "Inferred DASH manifest",
+      score: Math.min(100, (normalized.score || 0) + 24),
+      playback_match: normalized.playback_match || "inferred-from-fragment"
+    });
+  }
 }
 
 chrome.webRequest.onCompleted.addListener(
