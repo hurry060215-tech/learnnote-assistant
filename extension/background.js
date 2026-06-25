@@ -208,6 +208,8 @@ function normalizePageForFrame(page = {}, frameId = 0, tab = {}) {
     page_text: page.page_text || "",
     active_video: page.active_video || null,
     resources: Array.isArray(page.resources) ? page.resources : [],
+    drm_detected: Boolean(page.drm_detected),
+    drm_signals: Array.isArray(page.drm_signals) ? page.drm_signals : [],
     frame_id: frameId
   };
   if (normalized.active_video) normalized.active_video = { ...normalized.active_video, frame_id: frameId };
@@ -216,6 +218,11 @@ function normalizePageForFrame(page = {}, frameId = 0, tab = {}) {
     frame_id: resource.frame_id ?? frameId,
     frame_url: resource.frame_url || normalized.page_url || "",
     page_url: resource.page_url || normalized.page_url || ""
+  }));
+  normalized.drm_signals = normalized.drm_signals.map(signal => ({
+    ...signal,
+    frame_id: signal.frame_id ?? frameId,
+    page_url: signal.page_url || normalized.page_url || ""
   }));
   return normalized;
 }
@@ -239,23 +246,36 @@ function mergePageContexts(tab = {}, pages = []) {
     null;
   const textParts = [];
   const seenText = new Set();
+  const drmSignals = [];
+  const seenDrm = new Set();
   for (const page of ordered) {
     const text = (page.page_text || "").trim();
     if (!text || seenText.has(text)) continue;
     seenText.add(text);
     textParts.push(text);
   }
+  for (const page of ordered) {
+    for (const signal of page.drm_signals || []) {
+      const key = [signal.source, signal.key_system, signal.init_data_type, signal.label, signal.frame_id].join("|");
+      if (seenDrm.has(key)) continue;
+      seenDrm.add(key);
+      drmSignals.push(signal);
+    }
+  }
   return {
     title: top.title || activePage?.title || tab.title || "",
     page_url: top.page_url || tab.url || activePage?.page_url || "",
     page_text: textParts.join("\n\n--- iframe ---\n\n").slice(0, 60000),
     active_video: activePage?.active_video || null,
+    drm_detected: ordered.some(page => page.drm_detected || page.active_video?.drm_detected) || drmSignals.length > 0,
+    drm_signals: drmSignals.slice(0, 20),
     resources: ordered.flatMap(page => page.resources || []),
     frames: ordered.map(page => ({
       frame_id: page.frame_id ?? 0,
       title: page.title || "",
       page_url: page.page_url || "",
       has_active_video: Boolean(page.active_video?.src),
+      drm_detected: Boolean(page.drm_detected || page.active_video?.drm_detected),
       resource_count: (page.resources || []).length
     }))
   };
@@ -434,6 +454,8 @@ async function collectFramePageData(tab, frameId) {
           page_url: location.href,
           page_text: document.body?.innerText?.slice(0, 60000) || "",
           active_video: null,
+          drm_detected: false,
+          drm_signals: [],
           resources: []
         })
       });
@@ -513,6 +535,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           title: page.title || tab.title || "",
           page_text: page.page_text || "",
           active_video: page.active_video || null,
+          drm_detected: Boolean(page.drm_detected),
+          drm_signals: page.drm_signals || [],
           resources,
           cookies,
           options: message.options || {}

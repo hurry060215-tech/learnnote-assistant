@@ -3,6 +3,8 @@ const FRAGMENT_RE = /\.(m4s|ts)(\?|#|$)/i;
 const SUBTITLE_RE = /\.(vtt|srt|ass|ssa)(\?|#|$)/i;
 const boundVideos = new WeakSet();
 const hookResources = [];
+const drmSignals = [];
+const drmByVideo = new WeakMap();
 let pendingPushTimer = 0;
 let lastPushAt = 0;
 let lastSignature = "";
@@ -129,11 +131,43 @@ function collectHookResources() {
   return hookResources.slice(0, 40);
 }
 
+function rememberDrmSignal(signal = {}, video = null) {
+  const normalized = {
+    source: signal.source || "contentEncrypted",
+    key_system: String(signal.key_system || ""),
+    init_data_type: String(signal.init_data_type || ""),
+    label: signal.label || "encrypted media",
+    page_url: location.href,
+    time_stamp: signal.time_stamp ?? Date.now()
+  };
+  if (video) {
+    const previous = drmByVideo.get(video) || {};
+    drmByVideo.set(video, {
+      ...previous,
+      ...normalized,
+      encrypted_events: Number(previous.encrypted_events || 0) + 1
+    });
+  }
+  const signature = [normalized.source, normalized.key_system, normalized.init_data_type, normalized.label].join("|");
+  const existing = drmSignals.find(item => [item.source, item.key_system, item.init_data_type, item.label].join("|") === signature);
+  if (existing) {
+    existing.time_stamp = normalized.time_stamp;
+  } else {
+    drmSignals.unshift(normalized);
+  }
+  drmSignals.splice(20);
+}
+
+function collectDrmSignals() {
+  return drmSignals.slice(0, 20);
+}
+
 function installPageHookBridge() {
   window.addEventListener("message", event => {
     if (event.source !== window || event.data?.source !== "learnnote-page-hook") return;
     for (const item of event.data.resources || []) rememberHookResource(item);
-    schedulePush(120, true);
+    for (const item of event.data.drm || []) rememberDrmSignal(item);
+    if ((event.data.resources || []).length || (event.data.drm || []).length) schedulePush(120, true);
   });
   window.postMessage({ source: "learnnote-content-ready" }, "*");
   setTimeout(() => window.postMessage({ source: "learnnote-content-ready" }, "*"), 250);
@@ -161,6 +195,7 @@ function activeVideoInfo() {
   const withSource = pickMainVideo(videos);
   if (!withSource) return null;
   const { video, index } = withSource;
+  const drm = drmByVideo.get(video) || {};
   return {
     src: absoluteUrl(video.currentSrc || video.src),
     current_time: Number(video.currentTime || 0),
@@ -169,7 +204,10 @@ function activeVideoInfo() {
     width: Number(video.videoWidth || video.clientWidth || 0),
     height: Number(video.videoHeight || video.clientHeight || 0),
     frame_id: 0,
-    label: `video#${index + 1}`
+    label: `video#${index + 1}`,
+    drm_detected: Boolean(drm.encrypted_events || drmSignals.length || video.mediaKeys),
+    drm_key_system: drm.key_system || "",
+    encrypted_events: Number(drm.encrypted_events || 0)
   };
 }
 
@@ -230,11 +268,15 @@ function collectPageData() {
     const previous = byUrl.get(item.url);
     if (!previous || item.score > previous.score) byUrl.set(item.url, item);
   }
+  const active = activeVideoInfo();
+  const drm = collectDrmSignals();
   return {
     title: document.title,
     page_url: location.href,
     page_text: collectCourseText(),
-    active_video: activeVideoInfo(),
+    active_video: active,
+    drm_detected: Boolean(active?.drm_detected || drm.length),
+    drm_signals: drm,
     resources: [...byUrl.values()].sort((a, b) => b.score - a.score).slice(0, 30)
   };
 }
@@ -242,18 +284,21 @@ function collectPageData() {
 function pageSignature(data) {
   const active = data.active_video || {};
   const topResources = (data.resources || []).slice(0, 12).map(item => `${item.url}|${item.kind}|${item.score}`).join(";");
+  const drm = (data.drm_signals || []).map(item => `${item.source}|${item.key_system}|${item.init_data_type}`).join(";");
   return [
     location.href,
     active.src || "",
     Math.floor(active.current_time || 0),
     active.paused ? "paused" : "playing",
+    data.drm_detected ? "drm" : "",
+    drm,
     topResources
   ].join("|");
 }
 
 function pushDetectedMedia(force = false) {
   const data = collectPageData();
-  if (!data.resources.length && !data.active_video) return;
+  if (!data.resources.length && !data.active_video && !data.drm_detected) return;
   const signature = pageSignature(data);
   if (!force && signature === lastSignature) return;
   lastSignature = signature;
@@ -277,6 +322,14 @@ function bindVideo(video) {
   for (const eventName of ["play", "playing", "loadedmetadata", "durationchange", "canplay", "emptied", "error"]) {
     video.addEventListener(eventName, () => schedulePush(eventName === "play" ? 80 : 250), { passive: true });
   }
+  video.addEventListener("encrypted", event => {
+    rememberDrmSignal({
+      source: "contentEncrypted",
+      init_data_type: event.initDataType || "",
+      label: "encrypted event"
+    }, video);
+    schedulePush(80, true);
+  }, { passive: true });
 }
 
 function bindVideos() {

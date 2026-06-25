@@ -16,6 +16,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - Blob-backed player recovery: when a page fetches an accessible media response as a `Blob` and assigns the generated object URL to `<video>`, the extension maps that `blob:` URL back to the original mp4/HLS/DASH request and ranks it as the current video candidate.
 - Backend page scanner for manually pasted page URLs, so the local Web UI can try direct media extraction before yt-dlp fallback.
 - Iframe/player-page fallback: when the top course page is only a shell, the backend also tries the active frame URL, candidate page URL, Referer, and initiator as page-scan and yt-dlp fallback targets.
+- EME/DRM signal detection: the extension records `encrypted`, `setMediaKeys`, and `requestMediaKeySystemAccess` evidence so encrypted pages fail with a clear reason instead of pretending a normal direct URL was missed.
 - Cookie handoff from the current browser session to the local backend at task start.
 - Non-sensitive browser request headers such as `Referer`, `Origin`, `User-Agent`, `Accept`, and `Accept-Language` are captured for media candidates and reused by backend downloads.
 - Local FastAPI backend on `127.0.0.1:8765`.
@@ -42,6 +43,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - Main-video ranking based on the actively playing `<video>` first, then the largest visible video element.
 - Candidate evidence from `webRequest`, including request type, HTTP status, MIME type, content length, initiator, and frame id when available.
 - Playback-aware candidate ranking: the Side Panel boosts exact current `<video>` sources, same-frame media requests, recoverable Blob source mappings, and recent requests from blob-backed players before starting a task.
+- DRM-aware failure boundary: if a page triggers EME/DRM signals and exposes no downloadable mp4/HLS/DASH candidate, the task fails early as `drm_or_encrypted` and keeps the key-system/init-data evidence in diagnostics.
 - Recoverable fragment URLs such as `.../master.m3u8/segment.ts` or `.../manifest.mpd/chunk.m4s` are promoted to inferred manifest candidates.
 - Subtitle discovery from `<track>` elements, Performance entries, and `webRequest`.
 - Direct video download for exposed MP4/WebM/MOV/MKV URLs.

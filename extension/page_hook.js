@@ -8,6 +8,7 @@
   const MAX_TEXT_BYTES = 2 * 1024 * 1024;
   const MAX_BLOB_URLS = 80;
   const bufferedResources = [];
+  const drmSignals = [];
   const blobSourceByObject = new WeakMap();
   const blobSourceByUrl = new Map();
   const blobUrlOrder = [];
@@ -36,9 +37,9 @@
     return "unknown";
   }
 
-  function post(resources) {
-    if (!resources?.length) return;
-    window.postMessage({ source: "learnnote-page-hook", resources }, "*");
+  function post(resources = [], drm = []) {
+    if (!resources?.length && !drm?.length) return;
+    window.postMessage({ source: "learnnote-page-hook", resources, drm }, "*");
   }
 
   function emit(resources) {
@@ -79,6 +80,26 @@
     }
     bufferedResources.splice(100);
     post(deduped);
+  }
+
+  function rememberDrmSignal(signal = {}) {
+    const normalized = {
+      source: signal.source || "pageHookEme",
+      key_system: String(signal.key_system || ""),
+      init_data_type: String(signal.init_data_type || ""),
+      label: signal.label || "encrypted media",
+      page_url: location.href,
+      time_stamp: Date.now()
+    };
+    const signature = [normalized.source, normalized.key_system, normalized.init_data_type, normalized.label].join("|");
+    const existing = drmSignals.find(item => [item.source, item.key_system, item.init_data_type, item.label].join("|") === signature);
+    if (existing) {
+      existing.time_stamp = normalized.time_stamp;
+    } else {
+      drmSignals.unshift(normalized);
+    }
+    drmSignals.splice(20);
+    post([], [normalized]);
   }
 
   function blobMeta(url, mime, source, label) {
@@ -234,8 +255,54 @@
     };
   }
 
+  function installEmeDetection() {
+    try {
+      if (navigator.requestMediaKeySystemAccess && !navigator.__learnNoteRequestMediaKeySystemAccess) {
+        const originalRequestMediaKeySystemAccess = navigator.requestMediaKeySystemAccess.bind(navigator);
+        Object.defineProperty(navigator, "__learnNoteRequestMediaKeySystemAccess", { value: originalRequestMediaKeySystemAccess });
+        navigator.requestMediaKeySystemAccess = function (keySystem, supportedConfigurations) {
+          rememberDrmSignal({
+            source: "pageHookEme",
+            key_system: keySystem,
+            label: "requestMediaKeySystemAccess"
+          });
+          return originalRequestMediaKeySystemAccess(keySystem, supportedConfigurations);
+        };
+      }
+    } catch {
+      // Some pages lock navigator methods. The encrypted event listener below still provides a DRM signal.
+    }
+
+    try {
+      const proto = window.HTMLMediaElement?.prototype;
+      if (proto?.setMediaKeys && !proto.__learnNoteSetMediaKeys) {
+        const originalSetMediaKeys = proto.setMediaKeys;
+        Object.defineProperty(proto, "__learnNoteSetMediaKeys", { value: originalSetMediaKeys });
+        proto.setMediaKeys = function (...args) {
+          rememberDrmSignal({
+            source: "pageHookEme",
+            label: "setMediaKeys"
+          });
+          return originalSetMediaKeys.apply(this, args);
+        };
+      }
+    } catch {
+      // Keep playback untouched if the page prevents patching the media prototype.
+    }
+
+    document.addEventListener("encrypted", event => {
+      rememberDrmSignal({
+        source: "pageHookEme",
+        init_data_type: event.initDataType || "",
+        label: "encrypted event"
+      });
+    }, true);
+  }
+
+  installEmeDetection();
+
   window.addEventListener("message", event => {
     if (event.source !== window || event.data?.source !== "learnnote-content-ready") return;
-    post(bufferedResources);
+    post(bufferedResources, drmSignals);
   });
 })();

@@ -4,9 +4,9 @@ import json
 import shutil
 from pathlib import Path
 
-from .downloader import DownloadError, MediaDownloader
+from .downloader import DownloadError, MediaDownloader, classify_resource, infer_manifest_url_from_fragment
 from .media import build_frame_grids, extract_audio, extract_frames, normalize_video
-from .models import CurrentPageTaskRequest, ResourceCandidate, TaskOptions, TranscriptResult
+from .models import CurrentPageTaskRequest, DownloadAttempt, ResourceCandidate, TaskOptions, TranscriptResult
 from .storage import get_task, save_task, task_dir, update_task, write_json
 from .summarizer import summarize, summarize_page_text
 from .transcriber import transcript_from_subtitle, transcribe_audio
@@ -53,6 +53,29 @@ def redacted_request_dump(request: CurrentPageTaskRequest) -> dict:
     return data
 
 
+def has_downloadable_candidate(resources: list[ResourceCandidate]) -> bool:
+    for resource in resources:
+        kind = classify_resource(resource.url, resource.mime)
+        if kind in {"video", "hls", "dash"}:
+            return True
+        if kind == "fragment" and infer_manifest_url_from_fragment(resource.url):
+            return True
+    return False
+
+
+def drm_failure_message(request: CurrentPageTaskRequest) -> str:
+    signals = request.drm_signals or []
+    key_systems = sorted({signal.key_system for signal in signals if signal.key_system})
+    init_types = sorted({signal.init_data_type for signal in signals if signal.init_data_type})
+    details = []
+    if key_systems:
+        details.append(f"key system: {', '.join(key_systems[:3])}")
+    if init_types:
+        details.append(f"init data: {', '.join(init_types[:3])}")
+    suffix = f"（{'；'.join(details)}）" if details else ""
+    return f"页面触发了 EME/DRM 加密媒体信号{suffix}，且没有发现可直接下载的 mp4/m3u8/mpd；不会录制或绕过 DRM。"
+
+
 def process_page_text_task(task_id: str, request: CurrentPageTaskRequest) -> None:
     try:
         update_task(task_id, status="running", phase="summarizing", progress=60, message="正在总结当前页面文本")
@@ -72,7 +95,23 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
 
     work_dir = task_dir(task_id)
     try:
+        update_task(task_id, drm_detected=bool(request.drm_detected), drm_signals=request.drm_signals)
         update_task(task_id, status="running", phase="downloading", progress=10, message="正在解析并下载当前页视频")
+        if request.drm_detected and not has_downloadable_candidate(request.resources):
+            message = drm_failure_message(request)
+            update_task(
+                task_id,
+                download_attempts=[
+                    DownloadAttempt(
+                        strategy="eme-detected",
+                        status="failed",
+                        code="drm_or_encrypted",
+                        message=message,
+                    )
+                ],
+            )
+            _fail(task_id, "drm_or_encrypted", message)
+            return
         downloader = MediaDownloader(work_dir)
         media_path, selected = downloader.download(request.page_url, request.resources, request.cookies, request.title)
         if selected:

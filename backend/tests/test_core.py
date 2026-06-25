@@ -20,10 +20,10 @@ from app.downloader import (
     score_resource,
     ytdlp_headers_from_browser_context,
 )
-from app.models import BrowserCookie, CurrentPageTaskRequest, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment
-from app.processor import read_note, read_transcript, redacted_request_dump, redacted_resource
+from app.models import BrowserCookie, CurrentPageTaskRequest, DrmSignal, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment
+from app.processor import process_current_page_task, read_note, read_transcript, redacted_request_dump, redacted_resource
 from app.summarizer import local_markdown_note
-from app.storage import create_task, task_dir
+from app.storage import create_task, get_task, task_dir
 from app.transcriber import transcript_from_subtitle
 
 
@@ -202,6 +202,42 @@ class ResourceDetectionTests(unittest.TestCase):
         selected = redacted_resource(resource)
         self.assertEqual(selected.request_headers["Referer"], "<redacted>")
         self.assertEqual(selected.headers, {"content-type": "video/mp4"})
+
+
+class ProcessorBoundaryTests(unittest.TestCase):
+    def test_drm_signal_without_downloadable_candidate_fails_before_downloader(self) -> None:
+        task = create_task("current_page", "DRM lesson", "https://course.example.com/drm")
+        try:
+            request = CurrentPageTaskRequest(
+                page_url="https://course.example.com/drm",
+                title="DRM lesson",
+                drm_detected=True,
+                drm_signals=[
+                    DrmSignal(
+                        source="pageHookEme",
+                        key_system="com.widevine.alpha",
+                        init_data_type="cenc",
+                        label="requestMediaKeySystemAccess",
+                    )
+                ],
+                resources=[ResourceCandidate(url="blob:https://course.example.com/locked", source="activeVideo", kind="blob")],
+            )
+
+            with patch("app.processor.MediaDownloader") as downloader_class:
+                process_current_page_task(task.id, request)
+
+            downloader_class.assert_not_called()
+            record = get_task(task.id)
+            self.assertEqual(record.status, "failed")
+            self.assertEqual(record.error_code, "drm_or_encrypted")
+            self.assertTrue(record.drm_detected)
+            self.assertEqual(record.drm_signals[0].key_system, "com.widevine.alpha")
+            self.assertEqual(record.download_attempts[0].strategy, "eme-detected")
+            self.assertEqual(record.download_attempts[0].code, "drm_or_encrypted")
+            self.assertIn("EME/DRM", record.error_detail)
+            self.assertIn("com.widevine.alpha", record.error_detail)
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
 
 class DownloaderBoundaryTests(unittest.TestCase):

@@ -149,6 +149,15 @@ function requestHeaderNames(resource) {
     .join(", ") || "-";
 }
 
+function drmSignalText(signals = []) {
+  const parts = [];
+  const keySystems = [...new Set(signals.map(item => item.key_system).filter(Boolean))];
+  const initTypes = [...new Set(signals.map(item => item.init_data_type).filter(Boolean))];
+  if (keySystems.length) parts.push(`key system：${keySystems.slice(0, 3).join(", ")}`);
+  if (initTypes.length) parts.push(`init data：${initTypes.slice(0, 3).join(", ")}`);
+  return parts.join(" · ");
+}
+
 function statusText(task) {
   if (task.status === "success") return "已完成";
   if (task.status === "failed") return task.error_code || "失败";
@@ -195,8 +204,8 @@ const ERROR_GUIDES = {
     body: "重新打开课程页面并确认已登录，再从扩展侧边栏创建任务；后端只会在点击任务时同步一次当前域 cookie。"
   },
   drm_or_encrypted: {
-    title: "页面疑似只暴露 blob 或加密流",
-    body: "这个版本不会录制、破解或绕过 DRM。可直取 manifest 不存在时，只能使用本地视频入口。"
+    title: "页面触发了 DRM/EME 加密媒体信号",
+    body: "这个版本不会录制、破解或绕过 DRM。可直取 mp4、m3u8 或 mpd 不存在时，只能使用本地视频入口。"
   },
   download_forbidden: {
     title: "媒体服务器拒绝下载",
@@ -331,6 +340,8 @@ function taskMatchesFilters(task) {
     task.source_type,
     task.error_code,
     task.error_detail,
+    task.drm_detected ? "drm eme encrypted" : "",
+    ...(task.drm_signals || []).map(signal => `${signal.key_system || ""} ${signal.init_data_type || ""}`),
     task.selected_resource?.url,
     task.selected_resource?.source,
     task.selected_resource?.kind
@@ -500,6 +511,7 @@ async function renderDetail() {
         <dt>任务 ID</dt><dd>${escapeHtml(task.id)}</dd>
         <dt>状态</dt><dd>${escapeHtml(task.status)} / ${escapeHtml(task.phase)} / ${task.progress || 0}%</dd>
         <dt>来源</dt><dd>${escapeHtml(task.page_url || task.source_type)}</dd>
+        <dt>DRM/EME</dt><dd>${escapeHtml(task.drm_detected ? (drmSignalText(task.drm_signals || []) || "已检测到") : "-")}</dd>
         <dt>下载策略</dt><dd>${selected.url ? "浏览器候选资源优先" : "页面解析 fallback"}</dd>
         <dt>已选资源</dt><dd>${escapeHtml(selected.url || "未选择直接资源")}</dd>
         <dt>对应 blob</dt><dd>${escapeHtml(selected.blob_url || "-")}</dd>

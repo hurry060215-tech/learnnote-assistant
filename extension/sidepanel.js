@@ -156,6 +156,15 @@ function currentPreflight() {
   return preflight && preflightResourceUrl === selectedResourceUrl ? preflight : null;
 }
 
+function drmSignalText(signals = []) {
+  const parts = [];
+  const keySystems = [...new Set(signals.map(item => item.key_system).filter(Boolean))];
+  const initTypes = [...new Set(signals.map(item => item.init_data_type).filter(Boolean))];
+  if (keySystems.length) parts.push(`key system：${keySystems.slice(0, 3).join(", ")}`);
+  if (initTypes.length) parts.push(`init data：${initTypes.slice(0, 3).join(", ")}`);
+  return parts.join(" · ");
+}
+
 function directnessText(item) {
   if (!item) return "未选择资源";
   if (isDownloadableResource(item)) {
@@ -189,6 +198,11 @@ function resourceHint() {
   const fragmentCount = resources.filter(item => item.kind === "fragment").length;
   const playbackMatched = resources.some(item => item.playback_match || item.is_main_video);
   const activeBlob = page?.active_video?.src?.startsWith("blob:");
+  const drmDetected = page?.drm_detected || page?.active_video?.drm_detected;
+  if (drmDetected) {
+    const detail = drmSignalText(page?.drm_signals || []);
+    return `<p class="resource-hint bad">检测到 EME/DRM 加密媒体信号${detail ? `（${escapeHtml(detail)}）` : ""}；本工具不会录制、破解或绕过 DRM，只会继续尝试页面暴露的可访问 mp4/m3u8/mpd。</p>`;
+  }
   if (downloadable && activeBlob) {
     return `<p class="resource-hint">当前播放器是 blob，已按同 frame / 最近媒体请求优先选择可直取候选。</p>`;
   }
@@ -207,11 +221,17 @@ function renderReadiness() {
   const hasBlob = resources.some(item => item.kind === "blob");
   const hasFragment = resources.some(item => item.kind === "fragment");
   const checked = currentPreflight();
+  const drmDetected = page?.drm_detected || page?.active_video?.drm_detected;
   if (checked) {
     els.readiness.className = checked.downloadable ? "readiness" : checked.code === "drm_or_encrypted" ? "readiness bad" : "readiness warn";
     els.readiness.textContent = checked.downloadable
       ? `预检通过：后端可访问 ${checked.kind}，正式任务会完整下载。`
       : `预检未通过：${checked.message || checked.code || "候选不可直取"}`;
+    return;
+  }
+  if (drmDetected && !downloadable.length) {
+    els.readiness.className = "readiness bad";
+    els.readiness.textContent = "检测到 EME/DRM 加密媒体信号，且当前没有可直取 mp4/m3u8/mpd；不会录制或绕过 DRM，请改用本地视频入口。";
     return;
   }
   if (downloadable.length) {
@@ -312,14 +332,14 @@ function renderContext() {
   const active = page?.active_video;
   const frames = page?.frames || [];
   if (active?.src) {
-    els.activeVideo.innerHTML = `播放状态：${active.paused ? "暂停" : "播放中"} · ${fmt(active.current_time)} / ${fmt(active.duration)} · ${active.width || 0}x${active.height || 0} · frame ${active.frame_id ?? 0}`;
+    els.activeVideo.innerHTML = `播放状态：${active.paused ? "暂停" : "播放中"} · ${fmt(active.current_time)} / ${fmt(active.duration)} · ${active.width || 0}x${active.height || 0} · frame ${active.frame_id ?? 0}${active.drm_detected ? " · DRM/EME" : ""}`;
   } else {
     els.activeVideo.textContent = frames.length ? `未读取到 HTML5 播放状态 · 已扫描 ${frames.length} 个 frame` : "未读取到 HTML5 播放状态";
   }
   els.resourceCount.textContent = String(resources.length);
   renderReadiness();
   if (!resources.length) {
-    els.resources.innerHTML = `<p class="muted">未检测到可直接下载的视频资源。</p>`;
+    els.resources.innerHTML = `${resourceHint()}<p class="muted">未检测到可直接下载的视频资源。</p>`;
     renderInspector();
     return;
   }
@@ -510,6 +530,7 @@ function renderResult() {
       <dl class="diagnostics">
         <dt>状态</dt><dd>${escapeHtml(currentTask.status)} / ${escapeHtml(currentTask.phase)} / ${currentTask.progress || 0}%</dd>
         <dt>策略</dt><dd>${selected.url ? "浏览器候选资源优先" : "页面解析 fallback"}</dd>
+        <dt>DRM/EME</dt><dd>${escapeHtml(currentTask.drm_detected ? (drmSignalText(currentTask.drm_signals || []) || "已检测到") : "-")}</dd>
         <dt>资源</dt><dd>${escapeHtml(selected.url || "未选择直接资源")}</dd>
         <dt>对应 blob</dt><dd>${escapeHtml(selected.blob_url || "-")}</dd>
         <dt>所在 frame</dt><dd>${escapeHtml(selected.frame_url || "-")}</dd>

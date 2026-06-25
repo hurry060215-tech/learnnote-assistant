@@ -47,6 +47,16 @@ class ResourceCandidate(BaseModel):
     request_headers: dict[str, str] = Field(default_factory=dict)
 
 
+class DrmSignal(BaseModel):
+    source: str = "unknown"
+    key_system: str = ""
+    init_data_type: str = ""
+    label: str = ""
+    page_url: str = ""
+    frame_id: int | None = None
+    time_stamp: float | None = None
+
+
 class BrowserCookie(BaseModel):
     name: str
     value: str
@@ -80,6 +90,9 @@ class ActiveVideoInfo(BaseModel):
     height: int = 0
     frame_id: int | None = None
     label: str = ""
+    drm_detected: bool = False
+    drm_key_system: str = ""
+    encrypted_events: int = 0
 
 
 class CurrentPageTaskRequest(BaseModel):
@@ -89,6 +102,8 @@ class CurrentPageTaskRequest(BaseModel):
     page_text: str = ""
     active_video: ActiveVideoInfo | None = None
     resources: list[ResourceCandidate] = Field(default_factory=list)
+    drm_detected: bool = False
+    drm_signals: list[DrmSignal] = Field(default_factory=list)
     cookies: list[BrowserCookie] = Field(default_factory=list)
     options: TaskOptions = Field(default_factory=TaskOptions)
 
@@ -170,6 +185,8 @@ class TaskRecord(BaseModel):
     options: TaskOptions = Field(default_factory=TaskOptions)
     selected_resource: ResourceCandidate | None = None
     download_attempts: list[DownloadAttempt] = Field(default_factory=list)
+    drm_detected: bool = False
+    drm_signals: list[DrmSignal] = Field(default_factory=list)
     media_path: str = ""
     audio_path: str = ""
     subtitle_path: str = ""
