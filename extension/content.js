@@ -5,6 +5,8 @@ const boundVideos = new WeakSet();
 const hookResources = [];
 const drmSignals = [];
 const drmByVideo = new WeakMap();
+const observedMutationRoots = new WeakSet();
+const DEEP_QUERY_LIMIT = 2500;
 let pendingPushTimer = 0;
 let lastPushAt = 0;
 let lastSignature = "";
@@ -174,8 +176,66 @@ function installPageHookBridge() {
   setTimeout(() => window.postMessage({ source: "learnnote-content-ready" }, "*"), 1000);
 }
 
+function safeQueryAll(root, selector) {
+  try {
+    return [...root.querySelectorAll(selector)];
+  } catch {
+    return [];
+  }
+}
+
+function deepQuerySelectorAll(selector, root = document, limit = DEEP_QUERY_LIMIT) {
+  const results = [];
+  const seenRoots = new Set();
+  const seenElements = new WeakSet();
+
+  function add(elements) {
+    for (const element of elements) {
+      if (!element || seenElements.has(element)) continue;
+      seenElements.add(element);
+      results.push(element);
+      if (results.length >= limit) return false;
+    }
+    return true;
+  }
+
+  function visit(searchRoot) {
+    if (!searchRoot || seenRoots.has(searchRoot) || results.length >= limit) return;
+    seenRoots.add(searchRoot);
+    if (!add(safeQueryAll(searchRoot, selector))) return;
+    for (const host of safeQueryAll(searchRoot, "*")) {
+      if (host?.shadowRoot) visit(host.shadowRoot);
+      if (results.length >= limit) return;
+    }
+  }
+
+  visit(root);
+  return results;
+}
+
+function collectShadowTexts(limit = 20000) {
+  const texts = [];
+  const seenRoots = new Set();
+
+  function visit(root, includeText = false) {
+    if (!root || seenRoots.has(root)) return;
+    seenRoots.add(root);
+    if (includeText) {
+      const text = String(root.innerText || root.textContent || "").trim();
+      if (text) texts.push(text);
+    }
+    for (const host of safeQueryAll(root, "*")) {
+      if (host?.shadowRoot) visit(host.shadowRoot, true);
+      if (texts.join("\n").length >= limit) return;
+    }
+  }
+
+  visit(document);
+  return texts.join("\n").slice(0, limit);
+}
+
 function collectVideos() {
-  return [...document.querySelectorAll("video")].map((video, index) => ({ video, index }));
+  return deepQuerySelectorAll("video").map((video, index) => ({ video, index }));
 }
 
 function pickMainVideo(videos = collectVideos()) {
@@ -226,14 +286,14 @@ function collectDomResources() {
       resources.push(resource(track.src, "subtitleTrack", label || `subtitle #${index + 1}`, "text/vtt", video, isMain));
     }
   }
-  for (const source of document.querySelectorAll("source[src]")) {
+  for (const source of deepQuerySelectorAll("source[src]")) {
     resources.push(resource(source.src, "dom", "source", source.type || ""));
   }
-  for (const track of document.querySelectorAll("track[src]")) {
+  for (const track of deepQuerySelectorAll("track[src]")) {
     const label = [track.kind || "subtitle", track.srclang || "", track.label || ""].filter(Boolean).join(" ");
     resources.push(resource(track.src, "subtitleTrack", label || "subtitle", "text/vtt"));
   }
-  for (const iframe of document.querySelectorAll("iframe[src]")) {
+  for (const iframe of deepQuerySelectorAll("iframe[src]")) {
     if (/chaoxing|xuexitong|video|player|course|m3u8|mpd/i.test(iframe.src)) {
       resources.push(resource(iframe.src, "dom", "iframe"));
     }
@@ -254,11 +314,12 @@ function collectPerformanceResources() {
 
 function collectCourseText() {
   const candidates = [
-    ...document.querySelectorAll("h1,h2,h3,.course-title,.chapter-title,.ans-job-icon,.title,.name")
+    ...deepQuerySelectorAll("h1,h2,h3,.course-title,.chapter-title,.ans-job-icon,.title,.name")
   ];
   const headings = candidates.map(el => el.textContent?.trim()).filter(Boolean).slice(0, 40).join("\n");
   const body = document.body?.innerText || "";
-  return [headings, body].filter(Boolean).join("\n\n").slice(0, 60000);
+  const shadowText = collectShadowTexts();
+  return [headings, body, shadowText].filter(Boolean).join("\n\n").slice(0, 60000);
 }
 
 function collectPageData() {
@@ -336,18 +397,46 @@ function bindVideos() {
   for (const { video } of collectVideos()) bindVideo(video);
 }
 
+function isMediaNode(node) {
+  if (!node || node.nodeType !== Node.ELEMENT_NODE) return false;
+  if (node.matches?.("video,source,track,iframe")) return true;
+  if (node.querySelector?.("video,source,track,iframe")) return true;
+  return Boolean(node.shadowRoot && deepQuerySelectorAll("video,source,track,iframe", node.shadowRoot, 20).length);
+}
+
+function observeRoot(observer, root) {
+  if (!root || observedMutationRoots.has(root)) return;
+  try {
+    observer.observe(root, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["src", "currentSrc", "type", "poster", "crossorigin"]
+    });
+    observedMutationRoots.add(root);
+  } catch {
+    // Some roots can disappear while the page is mutating.
+  }
+}
+
+function observeOpenShadowRoots(observer) {
+  for (const host of deepQuerySelectorAll("*")) {
+    if (host?.shadowRoot) observeRoot(observer, host.shadowRoot);
+  }
+}
+
 function installMutationObserver() {
   if (!document.documentElement) return;
   const observer = new MutationObserver(mutations => {
     let relevant = false;
+    observeOpenShadowRoots(observer);
     for (const mutation of mutations) {
       if (mutation.type === "attributes") {
         const target = mutation.target;
         if (target?.matches?.("video,source,track,iframe")) relevant = true;
       }
       for (const node of mutation.addedNodes || []) {
-        if (node.nodeType !== Node.ELEMENT_NODE) continue;
-        if (node.matches?.("video,source,track,iframe") || node.querySelector?.("video,source,track,iframe")) {
+        if (isMediaNode(node)) {
           relevant = true;
         }
       }
@@ -356,12 +445,8 @@ function installMutationObserver() {
     bindVideos();
     schedulePush(250, true);
   });
-  observer.observe(document.documentElement, {
-    childList: true,
-    subtree: true,
-    attributes: true,
-    attributeFilter: ["src", "currentSrc", "type", "poster", "crossorigin"]
-  });
+  observeRoot(observer, document.documentElement);
+  observeOpenShadowRoots(observer);
 }
 
 function installPerformanceObserver() {
