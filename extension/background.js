@@ -57,7 +57,7 @@ function scoreResource(url, mime, source) {
   else if (kind === "blob") score += 5;
   if (source === "webRequest") score += 10;
   if (String(source || "").startsWith("pageHook")) score += 10;
-  if (source === "pageHookBlobSource") score += 8;
+  if (source === "pageHookBlobSource" || source === "pageHookMediaSource") score += 8;
   if (/chaoxing|xuexitong/i.test(url)) score += 8;
   return Math.min(score, 100);
 }
@@ -115,7 +115,7 @@ function withPlaybackHints(resource, page = {}) {
   }
 
   const recent = hinted.time_stamp && Date.now() - hinted.time_stamp < 5 * 60 * 1000;
-  if (recent && activeSrc.startsWith("blob:") && /^pageHookBlob/.test(hinted.source || "") && isDownloadableKind(kind)) {
+  if (recent && activeSrc.startsWith("blob:") && /^pageHook(?:Blob|MediaSource)/.test(hinted.source || "") && isDownloadableKind(kind)) {
     boost += 10;
     match = match || "blob-source";
     hinted.is_main_video = true;

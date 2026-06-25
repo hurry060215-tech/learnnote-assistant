@@ -180,8 +180,8 @@ function playbackText(match) {
     "exact-src": "当前 src",
     "source-element": "当前 source",
     "same-frame": "同播放器 frame",
-    "blob-same-frame": "blob 同 frame",
-    "blob-source": "blob 来源映射",
+    "blob-same-frame": "blob 播放同 frame",
+    "blob-source": "Blob/MSE 来源映射",
     "recent-media-request": "最近播放请求",
     "same-site-request": "同站请求",
     "inferred-from-fragment": "分片推断"
@@ -526,7 +526,7 @@ async function renderDetail() {
         <dt>DRM/EME</dt><dd>${escapeHtml(task.drm_detected ? (drmSignalText(task.drm_signals || []) || "已检测到") : "-")}</dd>
         <dt>下载策略</dt><dd>${selected.url ? "浏览器候选资源优先" : "页面解析 fallback"}</dd>
         <dt>已选资源</dt><dd>${escapeHtml(selected.url || "未选择直接资源")}</dd>
-        <dt>对应 blob</dt><dd>${escapeHtml(selected.blob_url || "-")}</dd>
+        <dt>播放 blob</dt><dd>${escapeHtml(selected.blob_url || "-")}</dd>
         <dt>所在 frame</dt><dd>${escapeHtml(selected.frame_url || "-")}</dd>
         <dt>资源类型</dt><dd>${escapeHtml([
           selected.kind || "-",

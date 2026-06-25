@@ -45,7 +45,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - Browser-context preflight: selected mp4/HLS/DASH candidates can be checked with a small local backend probe before the full download. The result reports strategy, HTTP status, MIME type, content length, bytes checked, safe request-header names, and structured failure codes.
 - Main-video ranking based on the actively playing `<video>` first, then the largest visible video element.
 - Candidate evidence from `webRequest`, including request type, HTTP status, MIME type, content length, initiator, and frame id when available.
-- Playback-aware candidate ranking: the Side Panel boosts exact current `<video>` sources, same-frame media requests, recoverable Blob/ArrayBuffer/MediaSource source mappings, and recent requests from blob-backed players before starting a task.
+- Playback-aware candidate ranking: the Side Panel boosts exact current `<video>` sources, same-frame media requests, recoverable Blob/ArrayBuffer/MediaSource source mappings, and recent requests from Blob/MSE-backed players before starting a task.
 - DRM-aware failure boundary: if a page triggers EME/DRM signals and exposes no downloadable mp4/HLS/DASH candidate, the task fails early as `drm_or_encrypted` and keeps the key-system/init-data evidence in diagnostics.
 - Recoverable fragment URLs such as `.../master.m3u8/segment.ts` or `.../manifest.mpd/chunk.m4s` are promoted to inferred manifest candidates.
 - Subtitle discovery from `<track>` elements, Performance entries, and `webRequest`.

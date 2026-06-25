@@ -145,8 +145,8 @@ function playbackText(match) {
     "exact-src": "当前 src",
     "source-element": "当前 source",
     "same-frame": "同播放器 frame",
-    "blob-same-frame": "blob 同 frame",
-    "blob-source": "blob 来源映射",
+    "blob-same-frame": "blob 播放同 frame",
+    "blob-source": "Blob/MSE 来源映射",
     "recent-media-request": "最近播放请求",
     "same-site-request": "同站请求",
     "inferred-from-fragment": "分片推断"
@@ -184,7 +184,7 @@ function directnessText(item) {
     if (item.kind === "dash") return "DASH manifest，可交给 ffmpeg 合并";
     return "直接视频文件，可下载到本地处理";
   }
-  if (item.kind === "blob") return "blob 线索，不可直接下载";
+  if (item.kind === "blob") return "blob 播放地址线索，不可直接下载";
   if (item.kind === "fragment") return "分片线索，需要对应 manifest";
   if (item.kind === "subtitle") return "字幕轨，可辅助转写";
   return "媒体线索，需继续检测";
@@ -216,13 +216,13 @@ function resourceHint() {
     return `<p class="resource-hint bad">检测到 EME/DRM 加密媒体信号${detail ? `（${escapeHtml(detail)}）` : ""}；本工具不会录制、破解或绕过 DRM，只会继续尝试页面暴露的可访问 mp4/m3u8/mpd。</p>`;
   }
   if (downloadable && activeBlob) {
-    return `<p class="resource-hint">当前播放器是 blob，已按同 frame / 最近媒体请求优先选择可直取候选。</p>`;
+    return `<p class="resource-hint">当前播放器是 blob/MSE，已按同 frame、来源映射和最近媒体请求优先选择可直取候选。</p>`;
   }
   if (downloadable && playbackMatched) {
     return `<p class="resource-hint">已优先选择与当前播放状态匹配的可下载资源。</p>`;
   }
   if (!downloadable && (blobCount || fragmentCount)) {
-    return `<p class="resource-hint warn">只检测到 blob 或分片线索，第一版不会录制或破解；可以继续播放几秒后重新检测，或改用本地视频上传。</p>`;
+    return `<p class="resource-hint warn">只检测到未映射的 blob 或分片线索；不会录制或破解。可以继续播放几秒后重新检测，或改用本地视频上传。</p>`;
   }
   return "";
 }
@@ -253,7 +253,7 @@ function renderReadiness() {
   }
   if (hasBlob || hasFragment) {
     els.readiness.className = "readiness warn";
-    els.readiness.textContent = "只看到 blob 或分片线索；不会录制，继续播放后重新检测，或拖入本地视频。";
+    els.readiness.textContent = "只看到未映射的 blob 或分片线索；不会录制，继续播放后重新检测，或拖入本地视频。";
     return;
   }
   els.readiness.className = "readiness bad";
@@ -272,7 +272,7 @@ function renderInspector() {
   els.resourceInspector.innerHTML = `
     <strong>${escapeHtml(directnessText(item))}</strong>
     <span>${escapeHtml(requestEvidence(item) || "无请求证据")}</span>
-    ${item.blob_url ? `<span>对应 blob：${escapeHtml(item.blob_url)}</span>` : ""}
+    ${item.blob_url ? `<span>播放 blob：${escapeHtml(item.blob_url)}</span>` : ""}
     ${item.frame_url ? `<span>所在 frame：${escapeHtml(item.frame_url)}</span>` : ""}
     <span>复用请求头：${escapeHtml(requestHeaderNames(item))}</span>
     ${checked ? `<span>预检：${escapeHtml(checked.downloadable ? "通过" : checked.code || "未通过")} · ${escapeHtml(checked.status_code ? `HTTP ${checked.status_code}` : checked.strategy || "")} · ${escapeHtml(checked.content_type || "")} · ${escapeHtml(fmtBytes(checked.content_length) || `${checked.bytes_checked || 0} B`)}</span>` : ""}
@@ -544,7 +544,7 @@ function renderResult() {
         <dt>策略</dt><dd>${selected.url ? "浏览器候选资源优先" : "页面解析 fallback"}</dd>
         <dt>DRM/EME</dt><dd>${escapeHtml(currentTask.drm_detected ? (drmSignalText(currentTask.drm_signals || []) || "已检测到") : "-")}</dd>
         <dt>资源</dt><dd>${escapeHtml(selected.url || "未选择直接资源")}</dd>
-        <dt>对应 blob</dt><dd>${escapeHtml(selected.blob_url || "-")}</dd>
+        <dt>播放 blob</dt><dd>${escapeHtml(selected.blob_url || "-")}</dd>
         <dt>所在 frame</dt><dd>${escapeHtml(selected.frame_url || "-")}</dd>
         <dt>类型</dt><dd>${escapeHtml([
           selected.kind || "-",
