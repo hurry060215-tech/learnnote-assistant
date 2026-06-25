@@ -48,6 +48,7 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
         media_path, selected = downloader.download(request.page_url, request.resources, request.cookies, request.title)
         if selected:
             update_task(task_id, selected_resource=selected)
+        update_task(task_id, download_attempts=downloader.attempts)
 
         _process_video_file(
             task_id=task_id,
@@ -57,6 +58,8 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
             options=request.options,
         )
     except DownloadError as exc:
+        if "downloader" in locals():
+            update_task(task_id, download_attempts=downloader.attempts)
         _fail(task_id, exc.code, exc.message)
     except Exception as exc:
         _fail(task_id, "processing_failed", str(exc))

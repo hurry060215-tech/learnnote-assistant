@@ -26,12 +26,19 @@ class ResourceCandidate(BaseModel):
     mime: str = ""
     score: int = 0
     label: str = ""
+    is_main_video: bool = False
     tab_id: int | None = None
     frame_id: int | None = None
     current_time: float | None = None
     duration: float | None = None
     width: int | None = None
     height: int | None = None
+    request_type: str = ""
+    method: str = ""
+    status_code: int | None = None
+    content_length: int | None = None
+    initiator: str = ""
+    time_stamp: float | None = None
     headers: dict[str, str] = Field(default_factory=dict)
 
 
@@ -103,6 +110,22 @@ class FrameGrid(BaseModel):
     frame_count: int
 
 
+class DownloadAttempt(BaseModel):
+    strategy: str
+    url: str = ""
+    source: str = ""
+    kind: str = ""
+    score: int = 0
+    status: Literal["success", "failed", "skipped"] = "failed"
+    code: str = ""
+    message: str = ""
+    output_path: str = ""
+    bytes_downloaded: int | None = None
+    status_code: int | None = None
+    content_length: int | None = None
+    mime: str = ""
+
+
 class TaskRecord(BaseModel):
     id: str
     source_type: Literal["current_page", "local", "page_text"]
@@ -117,6 +140,7 @@ class TaskRecord(BaseModel):
     created_at: str
     updated_at: str
     selected_resource: ResourceCandidate | None = None
+    download_attempts: list[DownloadAttempt] = Field(default_factory=list)
     media_path: str = ""
     audio_path: str = ""
     transcript_path: str = ""

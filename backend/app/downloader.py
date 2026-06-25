@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 
 import requests
 
-from .models import BrowserCookie, ResourceCandidate
+from .models import BrowserCookie, DownloadAttempt, ResourceCandidate
 from .runtime import ffmpeg_bin
 
 
@@ -108,6 +108,7 @@ class MediaDownloader:
         self.task_path = task_path
         self.download_dir = task_path / "downloads"
         self.download_dir.mkdir(parents=True, exist_ok=True)
+        self.attempts: list[DownloadAttempt] = []
 
     def download(
         self,
@@ -119,25 +120,65 @@ class MediaDownloader:
         if any(item.url.startswith("blob:") for item in resources) and not any(
             classify_resource(item.url, item.mime) in {"hls", "dash", "video"} for item in resources
         ):
+            for item in resources:
+                if classify_resource(item.url, item.mime) == "blob":
+                    self._record_attempt(
+                        strategy="blob-unrecoverable",
+                        candidate=item,
+                        status="skipped",
+                        code="drm_or_encrypted",
+                        message="页面只暴露 blob 媒体地址，未发现可下载的 manifest 或视频文件。",
+                    )
             raise DownloadError("drm_or_encrypted", "页面只暴露 blob 媒体地址，未发现可下载 manifest 或视频文件。")
 
         cookie_file = write_netscape_cookie_file(cookies, self.task_path / "cookies.txt") if cookies else None
 
         candidates = self._candidate_resources(resources)
+        if not candidates:
+            for item in resources:
+                kind = classify_resource(item.url, item.mime)
+                if kind in {"fragment", "blob", "unknown"}:
+                    self._record_attempt(
+                        strategy=f"skip-{kind}",
+                        candidate=item,
+                        status="skipped",
+                        code="unsupported_manifest",
+                        message="该资源不是可独立下载的视频文件或 manifest，保留为诊断线索。",
+                    )
         last_error: DownloadError | None = None
         for candidate in candidates:
+            strategy = self._strategy_for_candidate(candidate)
             try:
-                return self._download_candidate(candidate, cookies, page_url, title), candidate
+                media_path = self._download_candidate(candidate, cookies, page_url, title)
+                self._record_attempt(
+                    strategy=strategy,
+                    candidate=candidate,
+                    status="success",
+                    message="浏览器候选资源直取成功。",
+                    output_path=media_path,
+                )
+                return media_path, candidate
             except DownloadError as exc:
+                self._record_attempt(strategy=strategy, candidate=candidate, status="failed", code=exc.code, message=exc.message)
                 last_error = exc
                 continue
 
         try:
-            return self._download_with_ytdlp(page_url, cookie_file, title), None
+            media_path = self._download_with_ytdlp(page_url, cookie_file, title)
+            self._record_attempt(
+                strategy="page-ytdlp",
+                url=page_url,
+                status="success",
+                message="浏览器候选不可用，yt-dlp 页面解析成功。",
+                output_path=media_path,
+            )
+            return media_path, None
         except DownloadError as exc:
+            self._record_attempt(strategy="page-ytdlp", url=page_url, status="failed", code=exc.code, message=exc.message)
             if not last_error:
                 last_error = exc
         except Exception as exc:
+            self._record_attempt(strategy="page-ytdlp", url=page_url, status="failed", code="download_forbidden", message=str(exc))
             if not last_error:
                 last_error = DownloadError("download_forbidden", str(exc))
 
@@ -152,10 +193,48 @@ class MediaDownloader:
                 continue
             kind = classify_resource(item.url, item.mime)
             item.kind = kind
-            item.score = max(item.score, score_resource(item.url, item.mime, item.source))
+            boost = 8 if item.is_main_video else 0
+            item.score = min(100, max(item.score, score_resource(item.url, item.mime, item.source)) + boost)
             if kind in {"hls", "dash", "video"}:
                 dedup[item.url] = item
         return sorted(dedup.values(), key=lambda item: item.score, reverse=True)
+
+    def _strategy_for_candidate(self, candidate: ResourceCandidate) -> str:
+        kind = classify_resource(candidate.url, candidate.mime)
+        if kind in {"hls", "dash"}:
+            return "manifest-ffmpeg"
+        if kind == "video":
+            return "direct-file"
+        return f"unsupported-{kind}"
+
+    def _record_attempt(
+        self,
+        strategy: str,
+        status: str,
+        message: str,
+        candidate: ResourceCandidate | None = None,
+        url: str = "",
+        code: str = "",
+        output_path: Path | None = None,
+    ) -> None:
+        downloaded = output_path.stat().st_size if output_path and output_path.exists() else None
+        self.attempts.append(
+            DownloadAttempt(
+                strategy=strategy,
+                url=candidate.url if candidate else url,
+                source=candidate.source if candidate else "",
+                kind=candidate.kind if candidate else "",
+                score=candidate.score if candidate else 0,
+                status=status,  # type: ignore[arg-type]
+                code=code,
+                message=message,
+                output_path=str(output_path) if output_path else "",
+                bytes_downloaded=downloaded,
+                status_code=candidate.status_code if candidate else None,
+                content_length=candidate.content_length if candidate else None,
+                mime=candidate.mime if candidate else "",
+            )
+        )
 
     def _download_with_ytdlp(self, page_url: str, cookie_file: Path | None, title: str) -> Path:
         try:

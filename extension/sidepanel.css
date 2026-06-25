@@ -343,3 +343,34 @@ input[type="file"] {
   margin: 0;
   word-break: break-all;
 }
+
+.attempt-list {
+  display: grid;
+  gap: 7px;
+}
+
+.attempt {
+  display: grid;
+  gap: 3px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-soft);
+  padding: 8px;
+  word-break: break-word;
+}
+
+.attempt.success {
+  border-color: rgba(21, 153, 71, 0.35);
+}
+
+.attempt.failed {
+  border-color: rgba(217, 45, 32, 0.3);
+}
+
+.attempt strong {
+  font-size: 12px;
+}
+
+.attempt span {
+  color: var(--text);
+}

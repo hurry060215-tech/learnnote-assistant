@@ -44,6 +44,15 @@ function fmt(sec) {
   return `${String(Math.floor(sec / 3600)).padStart(2, "0")}:${String(Math.floor((sec % 3600) / 60)).padStart(2, "0")}:${String(sec % 60).padStart(2, "0")}`;
 }
 
+function fmtBytes(bytes) {
+  const value = Number(bytes || 0);
+  if (!value) return "";
+  if (value >= 1024 * 1024 * 1024) return `${(value / 1024 / 1024 / 1024).toFixed(1)} GB`;
+  if (value >= 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`;
+  if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${value} B`;
+}
+
 function statusText(task) {
   if (task.status === "success") return "已完成";
   if (task.status === "failed") return task.error_code || "失败";
@@ -174,6 +183,27 @@ async function renderDetail() {
 
   if (selectedTab === "diagnostics") {
     const selected = task.selected_resource || {};
+    const attempts = task.download_attempts || [];
+    const attemptHtml = attempts.length ? `
+      <div class="attempt-list">
+        ${attempts.map(attempt => `
+          <div class="attempt ${escapeHtml(attempt.status)}">
+            <div>
+              <strong>${escapeHtml(attempt.strategy)} · ${escapeHtml(attempt.status)}</strong>
+              <small>${escapeHtml([
+                attempt.code,
+                attempt.status_code ? `HTTP ${attempt.status_code}` : "",
+                fmtBytes(attempt.bytes_downloaded || attempt.content_length),
+                attempt.kind,
+                attempt.source
+              ].filter(Boolean).join(" · "))}</small>
+            </div>
+            <p>${escapeHtml(attempt.message || attempt.url || "-")}</p>
+            ${attempt.url ? `<code>${escapeHtml(attempt.url)}</code>` : ""}
+          </div>
+        `).join("")}
+      </div>
+    ` : "暂无下载尝试记录";
     els.detail.innerHTML = `
       <dl class="diagnostics">
         <dt>任务 ID</dt><dd>${escapeHtml(task.id)}</dd>
@@ -181,10 +211,19 @@ async function renderDetail() {
         <dt>来源</dt><dd>${escapeHtml(task.page_url || task.source_type)}</dd>
         <dt>下载策略</dt><dd>${selected.url ? "浏览器候选资源优先" : "页面解析 fallback"}</dd>
         <dt>已选资源</dt><dd>${escapeHtml(selected.url || "未选择直接资源")}</dd>
-        <dt>资源类型</dt><dd>${escapeHtml(selected.kind || "-")} · ${escapeHtml(selected.source || "-")} · ${escapeHtml(selected.mime || "-")}</dd>
+        <dt>资源类型</dt><dd>${escapeHtml([
+          selected.kind || "-",
+          selected.source || "-",
+          selected.is_main_video ? "主视频" : "",
+          selected.request_type || "",
+          selected.status_code ? `HTTP ${selected.status_code}` : "",
+          fmtBytes(selected.content_length),
+          selected.mime || "-"
+        ].filter(Boolean).join(" · "))}</dd>
         <dt>媒体文件</dt><dd>${escapeHtml(task.media_path || "-")}</dd>
         <dt>音频文件</dt><dd>${escapeHtml(task.audio_path || "-")}</dd>
         <dt>错误</dt><dd>${escapeHtml(task.error_detail || task.error_code || "-")}</dd>
+        <dt>尝试记录</dt><dd>${attemptHtml}</dd>
       </dl>
     `;
     return;

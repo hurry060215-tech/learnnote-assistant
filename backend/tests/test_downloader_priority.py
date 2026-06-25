@@ -75,6 +75,9 @@ class DownloaderPriorityTests(unittest.TestCase):
                 self.assertTrue(media_path.exists())
                 self.assertIsNotNone(selected)
                 self.assertEqual(selected.url, media_url)
+                self.assertEqual(downloader.attempts[0].strategy, "direct-file")
+                self.assertEqual(downloader.attempts[0].status, "success")
+                self.assertGreater(downloader.attempts[0].bytes_downloaded or 0, 4096)
             finally:
                 server.shutdown()
                 server.server_close()

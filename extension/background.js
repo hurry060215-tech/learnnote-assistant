@@ -37,16 +37,37 @@ function addResource(tabId, resource) {
     mime: resource.mime || "",
     score: Math.max(resource.score || 0, scoreResource(resource.url, resource.mime || "", resource.source || "")),
     label: resource.label || "",
+    is_main_video: Boolean(resource.is_main_video),
     tab_id: tabId,
     frame_id: resource.frame_id ?? null,
     current_time: resource.current_time ?? null,
     duration: resource.duration ?? null,
     width: resource.width ?? null,
     height: resource.height ?? null,
+    request_type: resource.request_type || "",
+    method: resource.method || "",
+    status_code: resource.status_code ?? null,
+    content_length: resource.content_length ?? null,
+    initiator: resource.initiator || "",
+    time_stamp: resource.time_stamp ?? null,
     headers: resource.headers || {}
   };
   if (existing) {
-    Object.assign(existing, normalized, { score: Math.max(existing.score || 0, normalized.score) });
+    Object.assign(existing, normalized, {
+      score: Math.max(existing.score || 0, normalized.score),
+      is_main_video: Boolean(existing.is_main_video || normalized.is_main_video),
+      current_time: normalized.current_time ?? existing.current_time ?? null,
+      duration: normalized.duration ?? existing.duration ?? null,
+      width: normalized.width ?? existing.width ?? null,
+      height: normalized.height ?? existing.height ?? null,
+      status_code: normalized.status_code ?? existing.status_code ?? null,
+      content_length: normalized.content_length ?? existing.content_length ?? null,
+      request_type: normalized.request_type || existing.request_type || "",
+      method: normalized.method || existing.method || "",
+      initiator: normalized.initiator || existing.initiator || "",
+      time_stamp: normalized.time_stamp ?? existing.time_stamp ?? null,
+      headers: { ...(existing.headers || {}), ...(normalized.headers || {}) }
+    });
   } else {
     list.unshift(normalized);
   }
@@ -62,12 +83,19 @@ chrome.webRequest.onCompleted.addListener(
     const mime = headers["content-type"] || "";
     const kind = classify(details.url, mime);
     if (kind === "unknown") return;
+    const contentLength = Number(headers["content-length"] || 0);
     addResource(details.tabId, {
       url: details.url,
       source: "webRequest",
       kind,
       mime,
       headers,
+      request_type: details.type || "",
+      method: details.method || "",
+      status_code: details.statusCode || null,
+      content_length: Number.isFinite(contentLength) && contentLength > 0 ? contentLength : null,
+      initiator: details.initiator || "",
+      time_stamp: details.timeStamp || null,
       label: kind.toUpperCase()
     });
   },
@@ -130,7 +158,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === "page-media-detected" && sender.tab?.id !== undefined) {
       const tabId = sender.tab.id;
       const page = message.page || {};
-      for (const resource of page.resources || []) addResource(tabId, resource);
+      for (const resource of page.resources || []) {
+        addResource(tabId, { ...resource, frame_id: resource.frame_id ?? sender.frameId ?? null });
+      }
       const previous = pageStateByTab.get(tabId) || {};
       pageStateByTab.set(tabId, { ...previous, ...page });
       sendResponse({ ok: true });

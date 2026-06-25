@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+import shutil
 from pathlib import Path
 
 from app.downloader import DownloadError, MediaDownloader, classify_resource, cookie_header_for_url, score_resource
 from app.models import BrowserCookie, ResourceCandidate, TranscriptResult, TranscriptSegment
 from app.processor import read_note, read_transcript
 from app.summarizer import local_markdown_note
-from app.storage import create_task
+from app.storage import create_task, task_dir
 
 
 class ResourceDetectionTests(unittest.TestCase):
@@ -46,6 +47,8 @@ class DownloaderBoundaryTests(unittest.TestCase):
                     title="Blob only",
                 )
             self.assertEqual(ctx.exception.code, "drm_or_encrypted")
+            self.assertEqual(downloader.attempts[0].strategy, "blob-unrecoverable")
+            self.assertEqual(downloader.attempts[0].status, "skipped")
 
 
 class SummaryFallbackTests(unittest.TestCase):
@@ -64,8 +67,11 @@ class SummaryFallbackTests(unittest.TestCase):
 class EmptyArtifactTests(unittest.TestCase):
     def test_empty_artifact_paths_return_empty_results(self) -> None:
         task = create_task(source_type="page_text", title="empty")
-        self.assertEqual(read_note(task.id), "")
-        self.assertEqual(read_transcript(task.id)["segments"], [])
+        try:
+            self.assertEqual(read_note(task.id), "")
+            self.assertEqual(read_transcript(task.id)["segments"], [])
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
 
 if __name__ == "__main__":

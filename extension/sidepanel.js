@@ -44,6 +44,15 @@ function fmt(sec) {
   return `${String(Math.floor(sec / 3600)).padStart(2, "0")}:${String(Math.floor((sec % 3600) / 60)).padStart(2, "0")}:${String(sec % 60).padStart(2, "0")}`;
 }
 
+function fmtBytes(bytes) {
+  const value = Number(bytes || 0);
+  if (!value) return "";
+  if (value >= 1024 * 1024 * 1024) return `${(value / 1024 / 1024 / 1024).toFixed(1)} GB`;
+  if (value >= 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`;
+  if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${value} B`;
+}
+
 function readOptions() {
   const [cols, rows] = els.gridSize.value.split("x").map(Number);
   return {
@@ -112,7 +121,16 @@ function renderContext() {
     <button class="resource ${item.url === selectedResourceUrl ? "selected" : ""}" data-url="${escapeHtml(item.url)}">
       <span>
         <strong>${escapeHtml(item.label || item.kind || "media")}</strong>
-        <small>${escapeHtml(item.kind)} · ${escapeHtml(item.source)} · ${escapeHtml(item.mime || "unknown")}</small>
+        <small>${escapeHtml([
+          item.is_main_video ? "主视频" : "",
+          item.kind,
+          item.source,
+          item.request_type,
+          item.status_code ? `HTTP ${item.status_code}` : "",
+          fmtBytes(item.content_length),
+          item.frame_id !== null && item.frame_id !== undefined ? `frame ${item.frame_id}` : "",
+          item.mime || "unknown"
+        ].filter(Boolean).join(" · "))}</small>
       </span>
       <span class="confidence">${item.score || 0}%</span>
     </button>
@@ -218,14 +236,39 @@ function renderResult() {
   }
   if (selectedTab === "diagnostics") {
     const selected = currentTask.selected_resource || {};
+    const attempts = currentTask.download_attempts || [];
+    const attemptHtml = attempts.length ? `
+      <div class="attempt-list">
+        ${attempts.map(attempt => `
+          <div class="attempt ${attempt.status}">
+            <strong>${escapeHtml(attempt.strategy)} · ${escapeHtml(attempt.status)}</strong>
+            <small>${escapeHtml([
+              attempt.code,
+              attempt.status_code ? `HTTP ${attempt.status_code}` : "",
+              fmtBytes(attempt.bytes_downloaded || attempt.content_length),
+              attempt.kind,
+              attempt.source
+            ].filter(Boolean).join(" · "))}</small>
+            <span>${escapeHtml(attempt.message || attempt.url || "-")}</span>
+          </div>
+        `).join("")}
+      </div>
+    ` : "暂无下载尝试记录";
     els.result.className = "result-body";
     els.result.innerHTML = `
       <dl class="diagnostics">
         <dt>状态</dt><dd>${escapeHtml(currentTask.status)} / ${escapeHtml(currentTask.phase)} / ${currentTask.progress || 0}%</dd>
         <dt>策略</dt><dd>${selected.url ? "浏览器候选资源优先" : "页面解析 fallback"}</dd>
         <dt>资源</dt><dd>${escapeHtml(selected.url || "未选择直接资源")}</dd>
-        <dt>类型</dt><dd>${escapeHtml(selected.kind || "-")} · ${escapeHtml(selected.source || "-")}</dd>
+        <dt>类型</dt><dd>${escapeHtml([
+          selected.kind || "-",
+          selected.source || "-",
+          selected.is_main_video ? "主视频" : "",
+          selected.status_code ? `HTTP ${selected.status_code}` : "",
+          fmtBytes(selected.content_length)
+        ].filter(Boolean).join(" · "))}</dd>
         <dt>错误</dt><dd>${escapeHtml(currentTask.error_detail || currentTask.error_code || "-")}</dd>
+        <dt>尝试记录</dt><dd>${attemptHtml}</dd>
       </dl>
     `;
     return;

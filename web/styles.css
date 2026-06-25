@@ -519,6 +519,50 @@ select:focus {
   word-break: break-all;
 }
 
+.attempt-list {
+  display: grid;
+  gap: 8px;
+}
+
+.attempt {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-soft);
+  padding: 10px;
+  word-break: break-word;
+}
+
+.attempt.success {
+  border-color: rgba(21, 153, 71, 0.35);
+}
+
+.attempt.failed {
+  border-color: rgba(217, 45, 32, 0.28);
+}
+
+.attempt strong {
+  display: block;
+  font-size: 13px;
+}
+
+.attempt small,
+.attempt p,
+.attempt code {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.attempt p {
+  margin: 0;
+  color: var(--text);
+}
+
+.attempt code {
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 1120px) {
   .app-shell {
     grid-template-columns: 320px minmax(0, 1fr);
@@ -554,5 +598,20 @@ select:focus {
 
   .result-panel {
     grid-column: auto;
+  }
+
+  .diagnostics {
+    grid-template-columns: 1fr;
+    gap: 5px;
+  }
+
+  .diagnostics dt {
+    margin-top: 8px;
+    font-weight: 800;
+  }
+
+  .diagnostics dd {
+    padding-bottom: 4px;
+    border-bottom: 1px solid #edf1f7;
   }
 }

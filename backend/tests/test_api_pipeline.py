@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import functools
 import json
+import shutil
 import subprocess
 import tempfile
 import threading
@@ -17,6 +18,7 @@ from app.downloader import DownloadError
 from app.main import app
 from app.models import TranscriptResult, TranscriptSegment
 from app.runtime import ffmpeg_bin
+from app.storage import task_dir
 
 
 TEST_RUN_DIR = DATA_DIR / "test-runs"
@@ -92,13 +94,16 @@ class ApiPipelineTests(unittest.TestCase):
 
             self.assertEqual(response.status_code, 200)
             task_id = response.json()["task_id"]
-            task = self.client.get(f"/api/tasks/{task_id}").json()["task"]
-            self.assertEqual(task["status"], "success")
-            self.assertTrue(Path(task["media_path"]).exists())
-            self.assertTrue(task["frame_grids"])
-            note = self.client.get(f"/api/tasks/{task_id}/note").text
-            self.assertIn("Local synthetic lesson", note)
-            self.assertIn("画面索引", note)
+            try:
+                task = self.client.get(f"/api/tasks/{task_id}").json()["task"]
+                self.assertEqual(task["status"], "success")
+                self.assertTrue(Path(task["media_path"]).exists())
+                self.assertTrue(task["frame_grids"])
+                note = self.client.get(f"/api/tasks/{task_id}/note").text
+                self.assertIn("Local synthetic lesson", note)
+                self.assertIn("画面索引", note)
+            finally:
+                shutil.rmtree(task_dir(task_id), ignore_errors=True)
 
     def test_current_page_direct_resource_reaches_note_with_frame_grid(self) -> None:
         with tempfile.TemporaryDirectory(dir=TEST_RUN_DIR) as tmp:
@@ -135,13 +140,18 @@ class ApiPipelineTests(unittest.TestCase):
 
                 self.assertEqual(response.status_code, 200)
                 task_id = response.json()["task_id"]
-                task = self.client.get(f"/api/tasks/{task_id}").json()["task"]
-                self.assertEqual(task["status"], "success")
-                self.assertEqual(task["selected_resource"]["url"], media_url)
-                self.assertTrue(task["frame_grids"])
-                note = self.client.get(f"/api/tasks/{task_id}/note").text
-                self.assertIn("Direct resource lesson", note)
-                self.assertIn("这一段课程讲解函数封装", note)
+                try:
+                    task = self.client.get(f"/api/tasks/{task_id}").json()["task"]
+                    self.assertEqual(task["status"], "success")
+                    self.assertEqual(task["selected_resource"]["url"], media_url)
+                    self.assertEqual(task["download_attempts"][0]["strategy"], "direct-file")
+                    self.assertEqual(task["download_attempts"][0]["status"], "success")
+                    self.assertTrue(task["frame_grids"])
+                    note = self.client.get(f"/api/tasks/{task_id}/note").text
+                    self.assertIn("Direct resource lesson", note)
+                    self.assertIn("这一段课程讲解函数封装", note)
+                finally:
+                    shutil.rmtree(task_dir(task_id), ignore_errors=True)
             finally:
                 server.shutdown()
                 server.server_close()

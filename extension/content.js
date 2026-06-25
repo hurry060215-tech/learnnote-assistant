@@ -35,7 +35,7 @@ function absoluteUrl(url) {
   }
 }
 
-function resource(url, source, label, mime = "", video = null) {
+function resource(url, source, label, mime = "", video = null, isMainVideo = false) {
   const absolute = absoluteUrl(url);
   if (!absolute) return null;
   const kind = classify(absolute, mime);
@@ -46,6 +46,7 @@ function resource(url, source, label, mime = "", video = null) {
     mime,
     label,
     score: score(absolute, mime, source),
+    is_main_video: isMainVideo,
     current_time: video ? Number(video.currentTime || 0) : null,
     duration: video && Number.isFinite(video.duration) ? Number(video.duration || 0) : null,
     width: video ? Number(video.videoWidth || video.clientWidth || 0) : null,
@@ -57,10 +58,21 @@ function collectVideos() {
   return [...document.querySelectorAll("video")].map((video, index) => ({ video, index }));
 }
 
+function pickMainVideo(videos = collectVideos()) {
+  const playing = videos.find(({ video }) => !video.paused && !video.ended && video.readyState >= 2);
+  if (playing) return playing;
+  return videos
+    .filter(({ video }) => video.currentSrc || video.src || video.querySelector("source[src]"))
+    .sort((a, b) => {
+      const areaA = Number(a.video.videoWidth || a.video.clientWidth || 0) * Number(a.video.videoHeight || a.video.clientHeight || 0);
+      const areaB = Number(b.video.videoWidth || b.video.clientWidth || 0) * Number(b.video.videoHeight || b.video.clientHeight || 0);
+      return areaB - areaA;
+    })[0] || null;
+}
+
 function activeVideoInfo() {
   const videos = collectVideos();
-  const playing = videos.find(({ video }) => !video.paused && !video.ended && video.readyState >= 2);
-  const withSource = playing || videos.find(({ video }) => video.currentSrc || video.src) || null;
+  const withSource = pickMainVideo(videos);
   if (!withSource) return null;
   const { video, index } = withSource;
   return {
@@ -77,10 +89,13 @@ function activeVideoInfo() {
 
 function collectDomResources() {
   const resources = [];
-  for (const { video, index } of collectVideos()) {
-    resources.push(resource(video.currentSrc || video.src, "activeVideo", `当前视频 #${index + 1}`, video.type || "", video));
+  const videos = collectVideos();
+  const main = pickMainVideo(videos);
+  for (const { video, index } of videos) {
+    const isMain = main?.video === video;
+    resources.push(resource(video.currentSrc || video.src, "activeVideo", `当前视频 #${index + 1}`, video.type || "", video, isMain));
     for (const source of video.querySelectorAll("source")) {
-      resources.push(resource(source.src, "dom", `video source #${index + 1}`, source.type || "", video));
+      resources.push(resource(source.src, "dom", `video source #${index + 1}`, source.type || "", video, isMain));
     }
   }
   for (const source of document.querySelectorAll("source[src]")) {

@@ -12,6 +12,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - Cookie handoff from the current browser session to the local backend at task start.
 - Local FastAPI backend on `127.0.0.1:8765`.
 - Download order: selected browser/media candidate first, then yt-dlp page resolver fallback.
+- Download diagnostics: every task records the direct-file, manifest-ffmpeg, skipped blob/fragment, and yt-dlp attempts with status, HTTP code, content length, output file, and failure reason.
 - Local video upload from both the Side Panel and the local web UI.
 - Shared processing pipeline: normalize video, extract audio, transcribe, slice frames, build frame grids, summarize.
 - Structured failure codes: `no_media_found`, `auth_required`, `drm_or_encrypted`, `download_forbidden`, `unsupported_manifest`, `processing_failed`.
@@ -21,12 +22,15 @@ This project intentionally does **not** record the browser tab and does **not** 
 - Direct current-page task creation from the extension Side Panel.
 - DOM, iframe-aware content scripts, Performance, active `<video>` state, and `webRequest` resource discovery.
 - Cookie collection at task start for the page URL and detected media URLs.
+- Main-video ranking based on the actively playing `<video>` first, then the largest visible video element.
+- Candidate evidence from `webRequest`, including request type, HTTP status, MIME type, content length, initiator, and frame id when available.
 - Direct video download for exposed MP4/WebM/MOV/MKV URLs.
 - HLS/DASH manifest download through ffmpeg when a manifest URL is visible.
 - yt-dlp page URL fallback for supported websites when direct browser resources are not usable.
 - Local video upload from the extension and the local web UI.
 - Shared video processing: normalize video, extract audio, transcribe with `faster-whisper` when available, extract frames, generate frame grids, and emit Markdown notes.
 - Configurable slicing: frame interval, grid layout, ASR model, and note style.
+- Web UI and Side Panel diagnostic tabs show the selected resource, browser evidence, and every backend download attempt.
 - Deterministic fallback notes when no LLM key or ASR model is installed.
 
 ## Quick Start
