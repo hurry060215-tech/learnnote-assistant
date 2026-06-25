@@ -16,6 +16,7 @@ from app.downloader import (
     download_headers_for_candidate,
     infer_manifest_url_from_fragment,
     score_resource,
+    ytdlp_headers_from_browser_context,
 )
 from app.models import BrowserCookie, CurrentPageTaskRequest, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment
 from app.processor import read_note, read_transcript, redacted_request_dump, redacted_resource
@@ -79,6 +80,49 @@ class ResourceDetectionTests(unittest.TestCase):
         self.assertEqual(headers["Accept-Language"], "zh-CN,zh;q=0.9")
         self.assertEqual(headers["Cookie"], "SESSION=ok")
         self.assertNotIn("Range", headers)
+        self.assertNotIn("Authorization", headers)
+
+    def test_ytdlp_headers_prefer_browser_playback_context(self) -> None:
+        resources = [
+            ResourceCandidate(
+                url="https://cdn.example.com/background.mp4",
+                source="webRequest",
+                kind="video",
+                score=90,
+                request_headers={
+                    "User-Agent": "Background UA",
+                    "Referer": "https://course.example.com/background",
+                    "Cookie": "bad=1",
+                    "Authorization": "Bearer bad",
+                },
+            ),
+            ResourceCandidate(
+                url="https://cdn.example.com/lesson.m3u8",
+                source="webRequest",
+                kind="hls",
+                score=88,
+                playback_match="same-frame",
+                is_main_video=True,
+                request_headers={
+                    "User-Agent": "Chrome Playback UA",
+                    "Referer": "https://course.example.com/lesson/1",
+                    "Origin": "https://course.example.com",
+                    "Accept-Language": "zh-CN,zh;q=0.9",
+                    "Accept": "*/*",
+                    "Cookie": "bad=1",
+                    "Authorization": "Bearer bad",
+                },
+            ),
+        ]
+
+        headers = ytdlp_headers_from_browser_context("https://course.example.com/lesson/1", resources)
+
+        self.assertEqual(headers["User-Agent"], "Chrome Playback UA")
+        self.assertEqual(headers["Referer"], "https://course.example.com/lesson/1")
+        self.assertEqual(headers["Origin"], "https://course.example.com")
+        self.assertEqual(headers["Accept-Language"], "zh-CN,zh;q=0.9")
+        self.assertEqual(headers["Accept"], "*/*")
+        self.assertNotIn("Cookie", headers)
         self.assertNotIn("Authorization", headers)
 
     def test_persisted_request_metadata_redacts_cookie_and_header_values(self) -> None:
@@ -198,6 +242,59 @@ class DownloaderBoundaryTests(unittest.TestCase):
             self.assertEqual(candidates[0].kind, "hls")
             self.assertEqual(candidates[0].source, "inferred-manifest")
             self.assertEqual(candidates[0].playback_match, "blob-same-frame")
+
+    def test_ytdlp_fallback_receives_browser_http_headers(self) -> None:
+        captured: dict = {}
+
+        class FakeYoutubeDL:
+            def __init__(self, options):
+                captured["options"] = options
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, traceback):
+                return False
+
+            def extract_info(self, page_url, download):
+                captured["page_url"] = page_url
+                captured["download"] = download
+                output = Path(captured["options"]["outtmpl"].replace("%(ext)s", "mp4"))
+                output.parent.mkdir(parents=True, exist_ok=True)
+                output.write_bytes(b"0" * 5000)
+                return {"title": "fake"}
+
+        fake_module = types.ModuleType("yt_dlp")
+        fake_module.YoutubeDL = FakeYoutubeDL
+
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(sys.modules, {"yt_dlp": fake_module}):
+            downloader = MediaDownloader(Path(tmp))
+            media = downloader._download_with_ytdlp(
+                "https://course.example.com/lesson/1",
+                None,
+                "yt-dlp headers",
+                [
+                    ResourceCandidate(
+                        url="https://cdn.example.com/lesson.m3u8",
+                        source="webRequest",
+                        kind="hls",
+                        playback_match="same-frame",
+                        is_main_video=True,
+                        request_headers={
+                            "User-Agent": "Chrome Playback UA",
+                            "Referer": "https://course.example.com/lesson/1",
+                            "Origin": "https://course.example.com",
+                        },
+                    )
+                ],
+            )
+
+            self.assertTrue(media.exists())
+            self.assertEqual(captured["page_url"], "https://course.example.com/lesson/1")
+            self.assertTrue(captured["download"])
+            self.assertEqual(captured["options"]["http_headers"]["User-Agent"], "Chrome Playback UA")
+            self.assertEqual(captured["options"]["http_headers"]["Referer"], "https://course.example.com/lesson/1")
+            self.assertEqual(captured["options"]["http_headers"]["Origin"], "https://course.example.com")
 
 
 class SummaryFallbackTests(unittest.TestCase):

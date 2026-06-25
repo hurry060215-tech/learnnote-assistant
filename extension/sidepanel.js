@@ -510,6 +510,7 @@ function renderResult() {
         <dt>状态</dt><dd>${escapeHtml(currentTask.status)} / ${escapeHtml(currentTask.phase)} / ${currentTask.progress || 0}%</dd>
         <dt>策略</dt><dd>${selected.url ? "浏览器候选资源优先" : "页面解析 fallback"}</dd>
         <dt>资源</dt><dd>${escapeHtml(selected.url || "未选择直接资源")}</dd>
+        <dt>对应 blob</dt><dd>${escapeHtml(selected.blob_url || "-")}</dd>
         <dt>类型</dt><dd>${escapeHtml([
           selected.kind || "-",
           selected.source || "-",

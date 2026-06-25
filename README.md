@@ -18,7 +18,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - Cookie handoff from the current browser session to the local backend at task start.
 - Non-sensitive browser request headers such as `Referer`, `Origin`, `User-Agent`, `Accept`, and `Accept-Language` are captured for media candidates and reused by backend downloads.
 - Local FastAPI backend on `127.0.0.1:8765`.
-- Download order: selected browser/media candidate first, then yt-dlp page resolver fallback.
+- Download order: selected browser/media candidate first, then yt-dlp page resolver fallback with the current browser session's cookie file and safe request headers.
 - Download diagnostics: every task records the direct-file, manifest-ffmpeg, skipped blob/fragment, and yt-dlp attempts with status, HTTP code, content length, output file, and failure reason.
 - Local video upload from both the Side Panel and the local web UI.
 - Shared processing pipeline: normalize video, extract audio, transcribe, slice frames, build frame grids, summarize.
@@ -35,7 +35,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - Frame-aware context aggregation: the extension asks every reachable frame for page text, active video state, and media resources before ranking candidates.
 - Dynamic SPA video detection through MutationObserver, media event binding, periodic rescans, and PerformanceObserver resource updates.
 - Cookie collection at task start for the page URL and detected media URLs.
-- Browser-context download replay: direct media, subtitles, and ffmpeg HLS/DASH merges reuse the selected resource's safe request headers plus the task-start cookie jar.
+- Browser-context download replay: direct media, subtitles, ffmpeg HLS/DASH merges, and yt-dlp page fallback reuse safe request headers plus the task-start cookie jar where applicable.
 - Browser-context preflight: selected mp4/HLS/DASH candidates can be checked with a small local backend probe before the full download. The result reports strategy, HTTP status, MIME type, content length, bytes checked, safe request-header names, and structured failure codes.
 - Main-video ranking based on the actively playing `<video>` first, then the largest visible video element.
 - Candidate evidence from `webRequest`, including request type, HTTP status, MIME type, content length, initiator, and frame id when available.

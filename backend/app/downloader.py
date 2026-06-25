@@ -34,6 +34,7 @@ BROWSER_REQUEST_HEADER_ALLOWLIST = {
     "referer": "Referer",
     "user-agent": "User-Agent",
 }
+YTDLP_HTTP_HEADER_ORDER = ("User-Agent", "Accept-Language", "Origin", "Referer", "Accept")
 
 
 class DownloadError(RuntimeError):
@@ -133,13 +134,7 @@ def extract_media_resources_from_text(text: str, base_url: str, source: str = "p
     return resources
 
 
-def download_headers_for_candidate(
-    candidate: ResourceCandidate | None,
-    cookies: list[BrowserCookie],
-    referer: str,
-    url: str | None = None,
-) -> dict[str, str]:
-    target_url = url or (candidate.url if candidate else "")
+def browser_request_headers_for_candidate(candidate: ResourceCandidate | None) -> dict[str, str]:
     headers: dict[str, str] = {}
     for name, value in (candidate.request_headers if candidate else {}).items():
         lower = str(name).lower()
@@ -149,6 +144,17 @@ def download_headers_for_candidate(
         cleaned = _safe_header_value(value)
         if cleaned:
             headers[canonical] = cleaned
+    return headers
+
+
+def download_headers_for_candidate(
+    candidate: ResourceCandidate | None,
+    cookies: list[BrowserCookie],
+    referer: str,
+    url: str | None = None,
+) -> dict[str, str]:
+    target_url = url or (candidate.url if candidate else "")
+    headers = browser_request_headers_for_candidate(candidate)
 
     headers.setdefault("User-Agent", "Mozilla/5.0 LearnNoteAssistant/0.1")
     if referer:
@@ -157,6 +163,30 @@ def download_headers_for_candidate(
     cookie = cookie_header_for_url(cookies, target_url)
     if cookie:
         headers["Cookie"] = cookie
+    return headers
+
+
+def ytdlp_headers_from_browser_context(page_url: str, resources: list[ResourceCandidate]) -> dict[str, str]:
+    headers: dict[str, str] = {}
+    ordered = sorted(
+        resources,
+        key=lambda item: (
+            1 if item.is_main_video else 0,
+            1 if item.playback_match else 0,
+            item.score or 0,
+        ),
+        reverse=True,
+    )
+    for candidate in ordered:
+        candidate_headers = browser_request_headers_for_candidate(candidate)
+        for name in YTDLP_HTTP_HEADER_ORDER:
+            value = candidate_headers.get(name)
+            if value and name not in headers:
+                headers[name] = value
+
+    headers.setdefault("User-Agent", "Mozilla/5.0 LearnNoteAssistant/0.1")
+    if page_url:
+        headers.setdefault("Referer", _safe_header_value(page_url))
     return headers
 
 
@@ -509,7 +539,7 @@ class MediaDownloader:
                 continue
 
         try:
-            media_path = self._download_with_ytdlp(page_url, cookie_file, title)
+            media_path = self._download_with_ytdlp(page_url, cookie_file, title, resources)
             self._record_attempt(
                 strategy="page-ytdlp",
                 url=page_url,
@@ -719,12 +749,19 @@ class MediaDownloader:
             )
         )
 
-    def _download_with_ytdlp(self, page_url: str, cookie_file: Path | None, title: str) -> Path:
+    def _download_with_ytdlp(
+        self,
+        page_url: str,
+        cookie_file: Path | None,
+        title: str,
+        resources: list[ResourceCandidate] | None = None,
+    ) -> Path:
         try:
             import yt_dlp
         except Exception as exc:
             raise DownloadError("unsupported_manifest", "未安装 yt-dlp，跳过页面解析。") from exc
 
+        http_headers = ytdlp_headers_from_browser_context(page_url, resources or [])
         outtmpl = str(self.download_dir / f"{_clean_filename(title)}.%(ext)s")
         opts = {
             "outtmpl": outtmpl,
@@ -734,6 +771,7 @@ class MediaDownloader:
             "noprogress": True,
             "retries": 2,
             "fragment_retries": 2,
+            "http_headers": http_headers,
         }
         if cookie_file:
             opts["cookiefile"] = str(cookie_file)
