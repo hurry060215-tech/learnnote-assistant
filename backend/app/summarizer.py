@@ -149,8 +149,10 @@ def local_markdown_note(title: str, transcript: TranscriptResult, grids: list[Fr
 
     lines += ["## 画面索引", ""]
     if grids:
-        for grid in grids:
-            lines.append(f"- `{_format_ts(grid.start)} - {_format_ts(grid.end)}` 帧预览：{grid.url}")
+        for index, grid in enumerate(grids, start=1):
+            label = f"W{index:03d} {_format_ts(grid.start)} - {_format_ts(grid.end)}"
+            lines.append(f"- W{index:03d} `{_format_ts(grid.start)} - {_format_ts(grid.end)}` {grid.frame_count} 帧：{grid.url}")
+            lines.append(f"![{label}]({grid.url})")
     else:
         lines.append("- 未生成帧预览。")
     lines.append("")

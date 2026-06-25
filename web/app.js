@@ -54,6 +54,13 @@ function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[ch]));
 }
 
+function safeNoteMediaUrl(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (/^(https?:\/\/|\/)/i.test(raw)) return escapeHtml(raw);
+  return "";
+}
+
 function inlineMarkdown(value) {
   return escapeHtml(value)
     .replace(/`([^`]+)`/g, "<code>$1</code>")
@@ -90,6 +97,18 @@ function markdownToHtml(markdown) {
     }
     if (!line.trim()) {
       closeList();
+      continue;
+    }
+    const image = /^!\[([^\]]*)\]\(([^)]+)\)$/.exec(line.trim());
+    if (image) {
+      closeList();
+      const src = safeNoteMediaUrl(image[2]);
+      const alt = escapeHtml(image[1] || "frame grid");
+      if (src) {
+        html.push(`<figure class="note-image-frame"><img src="${src}" alt="${alt}"><figcaption>${alt}</figcaption></figure>`);
+      } else {
+        html.push(`<p>${inlineMarkdown(line)}</p>`);
+      }
       continue;
     }
     const heading = /^(#{1,3})\s+(.+)$/.exec(line);

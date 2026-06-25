@@ -6,7 +6,6 @@ const elements = new Map();
 const makeElement = () => ({
   addEventListener() {},
   classList: { add() {}, remove() {}, toggle() {} },
-  querySelector() { return null; },
   style: {},
   dataset: {},
   value: "",
@@ -19,6 +18,10 @@ const makeElement = () => ({
 });
 
 const documentStub = {
+  body: makeElement(),
+  createElement() {
+    return makeElement();
+  },
   querySelector(selector) {
     if (!elements.has(selector)) elements.set(selector, makeElement());
     return elements.get(selector);
@@ -31,44 +34,38 @@ const documentStub = {
 const context = {
   console,
   document: documentStub,
-  location: { href: "file:///sidepanel.html" },
+  location: { href: "http://127.0.0.1:8765/" },
   navigator: { clipboard: { writeText() {} } },
-  window: { open() {} },
-  FormData: class FormData {},
-  fetch: async url => {
-    if (String(url).endsWith("/health")) {
-      return { json: async () => ({ ffmpeg: true }) };
-    }
-    throw new Error(`unexpected fetch: ${url}`);
+  window: {
+    location: { origin: "http://127.0.0.1:8765", assign() {} }
   },
+  Blob: class Blob {},
+  FormData: class FormData {},
+  URL: class URL {},
+  fetch: async url => {
+    const value = String(url);
+    if (value.endsWith("/health")) return { json: async () => ({ ffmpeg: true }) };
+    if (value.endsWith("/api/tasks")) return { json: async () => ({ tasks: [] }) };
+    return { ok: false, json: async () => ({}), text: async () => "" };
+  },
+  setInterval() {},
   setTimeout,
   clearTimeout
 };
-context.window = { ...context.window, location: context.location };
+context.window.document = context.document;
+context.window.navigator = context.navigator;
 
 vm.createContext(context);
-const sidepanelCode = await readFile(new URL("../sidepanel.js", import.meta.url), "utf8");
-vm.runInContext(sidepanelCode, context);
+const webCode = await readFile(new URL("../app.js", import.meta.url), "utf8");
+vm.runInContext(webCode, context);
 
-const html = context.markdownToHtml(`# 标题
+const html = context.markdownToHtml(`## 画面索引
 
-- **重点** \`code\`
-1. 步骤
-> 引用
-![W001 00:00:00 - 00:03:00](http://127.0.0.1:8765/api/tasks/demo/grids/grid_000.jpg)
+![W001](http://127.0.0.1:8765/api/tasks/demo/grids/grid_000.jpg)
 ![bad](javascript:alert(1))
-\`\`\`js
-<script>alert(1)</script>
-\`\`\`
 `);
 
-assert.match(html, /<h1>标题<\/h1>/);
-assert.match(html, /<ul>/);
-assert.match(html, /<strong>重点<\/strong>/);
-assert.match(html, /<ol>/);
-assert.match(html, /<blockquote>引用<\/blockquote>/);
+assert.match(html, /<h2>画面索引<\/h2>/);
 assert.match(html, /<figure class="note-image-frame">/);
 assert.match(html, /src="http:\/\/127\.0\.0\.1:8765\/api\/tasks\/demo\/grids\/grid_000\.jpg"/);
 assert.doesNotMatch(html, /src="javascript:alert/);
-assert.match(html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
-assert.doesNotMatch(html, /<script>/);

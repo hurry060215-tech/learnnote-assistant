@@ -587,6 +587,8 @@ class SummaryFallbackTests(unittest.TestCase):
         self.assertIn("00:00:05", note)
         self.assertIn("分段图文摘要", note)
         self.assertIn("http://127.0.0.1/grid.jpg", note)
+        self.assertIn("W001 `00:00:00 - 00:00:20`", note)
+        self.assertIn("![W001 00:00:00 - 00:00:20](http://127.0.0.1/grid.jpg)", note)
         self.assertIn("复习问题", note)
 
     def test_llm_summary_batches_all_frame_grids_before_merge(self) -> None:
