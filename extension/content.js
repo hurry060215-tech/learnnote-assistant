@@ -1,6 +1,10 @@
 const MEDIA_RE = /\.(mp4|m4v|webm|mov|mkv|m3u8|mpd)(\?|#|$)/i;
 const FRAGMENT_RE = /\.(m4s|ts)(\?|#|$)/i;
 const SUBTITLE_RE = /\.(vtt|srt|ass|ssa)(\?|#|$)/i;
+const boundVideos = new WeakSet();
+let pendingPushTimer = 0;
+let lastPushAt = 0;
+let lastSignature = "";
 
 function classify(url, mime = "") {
   const lower = String(url || "").toLowerCase();
@@ -157,20 +161,105 @@ function collectPageData() {
   };
 }
 
-function pushDetectedMedia() {
+function pageSignature(data) {
+  const active = data.active_video || {};
+  const topResources = (data.resources || []).slice(0, 12).map(item => `${item.url}|${item.kind}|${item.score}`).join(";");
+  return [
+    location.href,
+    active.src || "",
+    Math.floor(active.current_time || 0),
+    active.paused ? "paused" : "playing",
+    topResources
+  ].join("|");
+}
+
+function pushDetectedMedia(force = false) {
   const data = collectPageData();
   if (!data.resources.length && !data.active_video) return;
+  const signature = pageSignature(data);
+  if (!force && signature === lastSignature) return;
+  lastSignature = signature;
+  lastPushAt = Date.now();
   chrome.runtime.sendMessage({ type: "page-media-detected", page: data }).catch(() => {});
+}
+
+function schedulePush(delay = 300, force = false) {
+  if (pendingPushTimer) clearTimeout(pendingPushTimer);
+  const elapsed = Date.now() - lastPushAt;
+  const wait = force || elapsed > 1200 ? delay : Math.max(delay, 1200 - elapsed);
+  pendingPushTimer = setTimeout(() => {
+    pendingPushTimer = 0;
+    pushDetectedMedia(force);
+  }, wait);
+}
+
+function bindVideo(video) {
+  if (!video || boundVideos.has(video)) return;
+  boundVideos.add(video);
+  for (const eventName of ["play", "playing", "loadedmetadata", "durationchange", "canplay", "emptied", "error"]) {
+    video.addEventListener(eventName, () => schedulePush(eventName === "play" ? 80 : 250), { passive: true });
+  }
+}
+
+function bindVideos() {
+  for (const { video } of collectVideos()) bindVideo(video);
+}
+
+function installMutationObserver() {
+  if (!document.documentElement) return;
+  const observer = new MutationObserver(mutations => {
+    let relevant = false;
+    for (const mutation of mutations) {
+      if (mutation.type === "attributes") {
+        const target = mutation.target;
+        if (target?.matches?.("video,source,track,iframe")) relevant = true;
+      }
+      for (const node of mutation.addedNodes || []) {
+        if (node.nodeType !== Node.ELEMENT_NODE) continue;
+        if (node.matches?.("video,source,track,iframe") || node.querySelector?.("video,source,track,iframe")) {
+          relevant = true;
+        }
+      }
+    }
+    if (!relevant) return;
+    bindVideos();
+    schedulePush(250, true);
+  });
+  observer.observe(document.documentElement, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ["src", "currentSrc", "type", "poster", "crossorigin"]
+  });
+}
+
+function installPerformanceObserver() {
+  if (typeof PerformanceObserver === "undefined") return;
+  try {
+    const observer = new PerformanceObserver(list => {
+      const hasMedia = list.getEntries().some(entry => {
+        const name = entry.name || "";
+        return MEDIA_RE.test(name) || FRAGMENT_RE.test(name) || SUBTITLE_RE.test(name) || /m3u8|mpd|video|media|subtitle|caption/i.test(name);
+      });
+      if (hasMedia) schedulePush(500);
+    });
+    observer.observe({ type: "resource", buffered: true });
+  } catch {
+    // Older pages may not support buffered resource observation.
+  }
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type !== "collect-page-data") return;
+  bindVideos();
   sendResponse(collectPageData());
 });
 
-for (const { video } of collectVideos()) {
-  video.addEventListener("play", pushDetectedMedia, { passive: true });
-  video.addEventListener("loadedmetadata", pushDetectedMedia, { passive: true });
-}
-
-setTimeout(pushDetectedMedia, 800);
+bindVideos();
+installMutationObserver();
+installPerformanceObserver();
+setTimeout(() => pushDetectedMedia(true), 800);
+setInterval(() => {
+  bindVideos();
+  schedulePush(400);
+}, 5000);
