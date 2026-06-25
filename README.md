@@ -23,7 +23,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - Local video upload from both the Side Panel and the local web UI.
 - Shared processing pipeline: normalize video, extract audio, transcribe, slice frames, build frame grids, summarize.
 - Multimodal LLM summaries run in visual-window batches and then merge the local window notes into the final Markdown note.
-- Page subtitle tracks (`.vtt`, `.srt`, `.ass`, `.ssa`) are detected and preferred over Whisper when available.
+- Page subtitle tracks and yt-dlp platform subtitles (`.vtt`, `.srt`, `.ass`, `.ssa`) are preferred over Whisper when available.
 - Structured failure codes: `no_media_found`, `auth_required`, `drm_or_encrypted`, `download_forbidden`, `unsupported_manifest`, `processing_failed`.
 
 ## What Works Now
@@ -47,7 +47,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - yt-dlp page URL fallback for supported websites when direct browser resources are not usable.
 - Local video upload from the extension and the local web UI.
 - Shared video processing: normalize video, extract audio, transcribe with `faster-whisper` when available, extract frames, generate frame grids, and emit Markdown notes.
-- Transcript priority: page subtitle track first, then local `faster-whisper` fallback.
+- Transcript priority: page subtitle track first, yt-dlp platform subtitle second, then local `faster-whisper` fallback.
 - Configurable slicing: frame interval, grid layout, ASR model, and note style.
 - Web UI and Side Panel diagnostic tabs show the selected resource, browser evidence, and every backend download attempt.
 - Side Panel direct-extraction console shows whether the selected candidate is a downloadable file, HLS/DASH manifest, subtitle, blob clue, or fragment clue, plus reused request-header names and request evidence.

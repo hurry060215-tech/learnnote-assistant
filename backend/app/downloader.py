@@ -27,6 +27,8 @@ TEXT_MEDIA_URL_RE = re.compile(
 )
 TEXT_RESPONSE_RE = re.compile(r"json|text|html|javascript|mpegurl|dash\+xml|xml|x-mpegurl", re.I)
 MAX_PAGE_SCAN_BYTES = 2 * 1024 * 1024
+SUBTITLE_EXTENSIONS = {".vtt", ".srt", ".ass", ".ssa"}
+SUBTITLE_LANGUAGE_PREFERENCES = ("zh-CN", "zh-Hans", "zh-Hant", "zh", "en", "en-US")
 BROWSER_REQUEST_HEADER_ALLOWLIST = {
     "accept": "Accept",
     "accept-language": "Accept-Language",
@@ -42,6 +44,17 @@ class DownloadError(RuntimeError):
         super().__init__(message)
         self.code = code
         self.message = message
+
+
+class QuietYtdlpLogger:
+    def debug(self, message: str) -> None:
+        return
+
+    def warning(self, message: str) -> None:
+        return
+
+    def error(self, message: str) -> None:
+        return
 
 
 def _clean_filename(value: str) -> str:
@@ -212,6 +225,25 @@ def write_netscape_cookie_file(cookies: list[BrowserCookie], path: Path) -> Path
         )
     path.write_text("".join(lines), encoding="utf-8")
     return path
+
+
+def choose_ytdlp_subtitle_language(info: dict) -> tuple[str, bool]:
+    subtitle_maps = [
+        (info.get("subtitles") or {}, False),
+        (info.get("automatic_captions") or {}, True),
+    ]
+    for subtitles, automatic in subtitle_maps:
+        if not isinstance(subtitles, dict) or not subtitles:
+            continue
+        for preferred in SUBTITLE_LANGUAGE_PREFERENCES:
+            preferred_lower = preferred.lower()
+            for lang in subtitles:
+                lowered = str(lang).lower()
+                if lowered == preferred_lower or lowered.startswith(f"{preferred_lower}-"):
+                    return str(lang), automatic
+        for lang in subtitles:
+            return str(lang), automatic
+    return "", False
 
 
 def classify_resource(url: str, mime: str = "") -> str:
@@ -582,6 +614,27 @@ class MediaDownloader:
                 return path
             except DownloadError as exc:
                 self._record_attempt(strategy="subtitle-file", candidate=candidate, status="failed", code=exc.code, message=exc.message)
+
+        try:
+            path = self._download_subtitle_with_ytdlp(referer, cookies, title, resources)
+            if path:
+                self._record_attempt(
+                    strategy="subtitle-ytdlp",
+                    url=referer,
+                    status="success",
+                    message="yt-dlp 发现平台字幕，已优先使用字幕生成转写。",
+                    output_path=path,
+                )
+                return path
+            self._record_attempt(
+                strategy="subtitle-ytdlp",
+                url=referer,
+                status="skipped",
+                code="no_media_found",
+                message="yt-dlp 没有发现可下载的平台字幕。",
+            )
+        except DownloadError as exc:
+            self._record_attempt(strategy="subtitle-ytdlp", url=referer, status="failed", code=exc.code, message=exc.message)
         return None
 
     def _candidate_resources(self, resources: list[ResourceCandidate]) -> list[ResourceCandidate]:
@@ -749,6 +802,95 @@ class MediaDownloader:
             )
         )
 
+    def _download_subtitle_with_ytdlp(
+        self,
+        page_url: str,
+        cookies: list[BrowserCookie],
+        title: str,
+        resources: list[ResourceCandidate],
+    ) -> Path | None:
+        if not re.match(r"^https?://", page_url or "", re.I):
+            return None
+        try:
+            import yt_dlp
+        except Exception:
+            return None
+
+        cookie_file = write_netscape_cookie_file(cookies, self.task_path / "subtitle_cookies.txt") if cookies else None
+        http_headers = ytdlp_headers_from_browser_context(page_url, resources)
+        probe_opts = {
+            "quiet": True,
+            "no_warnings": True,
+            "logger": QuietYtdlpLogger(),
+            "noprogress": True,
+            "skip_download": True,
+            "http_headers": http_headers,
+        }
+        if cookie_file:
+            probe_opts["cookiefile"] = str(cookie_file)
+
+        try:
+            with yt_dlp.YoutubeDL(probe_opts) as ydl:
+                info = ydl.extract_info(page_url, download=False)
+        except Exception as exc:
+            message = str(exc)
+            if "login" in message.lower() or "cookie" in message.lower():
+                raise DownloadError("auth_required", "yt-dlp 字幕探测失败，可能需要登录态 cookie。") from exc
+            if "404" in message or "not found" in message.lower() or "unsupported url" in message.lower():
+                return None
+            raise DownloadError("download_forbidden", f"yt-dlp 无法探测平台字幕：{message[:300]}") from exc
+
+        lang, automatic = choose_ytdlp_subtitle_language(info or {})
+        if not lang:
+            return None
+
+        outtmpl = str(self.download_dir / f"{_clean_filename(title)}_platform_sub.%(ext)s")
+        opts = {
+            "outtmpl": outtmpl,
+            "skip_download": True,
+            "writesubtitles": not automatic,
+            "writeautomaticsub": automatic,
+            "subtitleslangs": [lang],
+            "subtitlesformat": "vtt/srt/ass/best",
+            "quiet": True,
+            "no_warnings": True,
+            "logger": QuietYtdlpLogger(),
+            "noprogress": True,
+            "http_headers": http_headers,
+        }
+        if cookie_file:
+            opts["cookiefile"] = str(cookie_file)
+
+        before = set(self.download_dir.glob("*"))
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                ydl.extract_info(page_url, download=True)
+        except Exception as exc:
+            message = str(exc)
+            if "login" in message.lower() or "cookie" in message.lower():
+                raise DownloadError("auth_required", "yt-dlp 字幕下载失败，可能需要登录态 cookie。") from exc
+            raise DownloadError("download_forbidden", f"yt-dlp 无法下载平台字幕：{message[:300]}") from exc
+
+        after = [path for path in self.download_dir.glob("*") if path not in before and path.is_file()]
+        subtitles = [path for path in after if path.suffix.lower() in SUBTITLE_EXTENSIONS]
+        if not subtitles:
+            subtitles = [
+                path for path in self.download_dir.glob(f"{_clean_filename(title)}_platform_sub*")
+                if path.is_file() and path.suffix.lower() in SUBTITLE_EXTENSIONS
+            ]
+        if not subtitles:
+            return None
+
+        subtitle = max(subtitles, key=lambda path: path.stat().st_size)
+        text = subtitle.read_text(encoding="utf-8-sig", errors="replace")
+        text = re.sub(r"\r+\n", "\n", text)
+        text = re.sub(r"\r+", "\n", text).strip()
+        if not text:
+            raise DownloadError("download_forbidden", "yt-dlp 下载的平台字幕为空。")
+        with subtitle.open("w", encoding="utf-8", newline="\n") as file:
+            file.write(text + "\n")
+        return subtitle
+
     def _download_with_ytdlp(
         self,
         page_url: str,
@@ -768,6 +910,8 @@ class MediaDownloader:
             "format": "bestvideo*+bestaudio/best",
             "merge_output_format": "mp4",
             "quiet": True,
+            "no_warnings": True,
+            "logger": QuietYtdlpLogger(),
             "noprogress": True,
             "retries": 2,
             "fragment_retries": 2,

@@ -11,6 +11,7 @@ from unittest.mock import patch
 from app.downloader import (
     DownloadError,
     MediaDownloader,
+    choose_ytdlp_subtitle_language,
     classify_resource,
     cookie_header_for_url,
     download_headers_for_candidate,
@@ -124,6 +125,26 @@ class ResourceDetectionTests(unittest.TestCase):
         self.assertEqual(headers["Accept"], "*/*")
         self.assertNotIn("Cookie", headers)
         self.assertNotIn("Authorization", headers)
+
+    def test_ytdlp_subtitle_language_prefers_human_chinese_then_auto(self) -> None:
+        info = {
+            "subtitles": {
+                "en": [{"ext": "vtt"}],
+                "zh-Hans": [{"ext": "vtt"}],
+            },
+            "automatic_captions": {
+                "zh-CN": [{"ext": "vtt"}],
+            },
+        }
+        self.assertEqual(choose_ytdlp_subtitle_language(info), ("zh-Hans", False))
+
+        auto_only = {
+            "automatic_captions": {
+                "en": [{"ext": "vtt"}],
+                "zh-CN": [{"ext": "vtt"}],
+            }
+        }
+        self.assertEqual(choose_ytdlp_subtitle_language(auto_only), ("zh-CN", True))
 
     def test_persisted_request_metadata_redacts_cookie_and_header_values(self) -> None:
         resource = ResourceCandidate(
@@ -295,6 +316,65 @@ class DownloaderBoundaryTests(unittest.TestCase):
             self.assertEqual(captured["options"]["http_headers"]["User-Agent"], "Chrome Playback UA")
             self.assertEqual(captured["options"]["http_headers"]["Referer"], "https://course.example.com/lesson/1")
             self.assertEqual(captured["options"]["http_headers"]["Origin"], "https://course.example.com")
+
+    def test_subtitle_fallback_downloads_platform_caption_with_ytdlp(self) -> None:
+        calls = []
+
+        class FakeYoutubeDL:
+            def __init__(self, options):
+                self.options = options
+                calls.append(options)
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, traceback):
+                return False
+
+            def extract_info(self, page_url, download):
+                if not download:
+                    return {"subtitles": {"zh-CN": [{"ext": "vtt"}]}}
+                output = Path(self.options["outtmpl"].replace("%(ext)s", "zh-CN.vtt"))
+                output.parent.mkdir(parents=True, exist_ok=True)
+                output.write_text(
+                    "WEBVTT\r\n\r\n00:00:00.000 --> 00:00:01.000\r\n平台字幕内容\r\n",
+                    encoding="utf-8",
+                )
+                return {"title": "fake"}
+
+        fake_module = types.ModuleType("yt_dlp")
+        fake_module.YoutubeDL = FakeYoutubeDL
+
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(sys.modules, {"yt_dlp": fake_module}):
+            downloader = MediaDownloader(Path(tmp))
+            subtitle = downloader.download_subtitle(
+                resources=[
+                    ResourceCandidate(
+                        url="https://cdn.example.com/lesson.m3u8",
+                        source="webRequest",
+                        kind="hls",
+                        playback_match="same-frame",
+                        is_main_video=True,
+                        request_headers={
+                            "User-Agent": "Chrome Playback UA",
+                            "Referer": "https://course.example.com/lesson/1",
+                        },
+                    )
+                ],
+                cookies=[BrowserCookie(name="AUTH", value="ok", domain=".example.com")],
+                referer="https://course.example.com/lesson/1",
+                title="Platform subtitle",
+            )
+
+            self.assertIsNotNone(subtitle)
+            assert subtitle is not None
+            self.assertTrue(subtitle.exists())
+            self.assertIn("平台字幕内容", subtitle.read_text(encoding="utf-8"))
+            self.assertEqual(downloader.attempts[-1].strategy, "subtitle-ytdlp")
+            self.assertEqual(downloader.attempts[-1].status, "success")
+            self.assertEqual(calls[-1]["subtitleslangs"], ["zh-CN"])
+            self.assertTrue(calls[-1]["skip_download"])
+            self.assertEqual(calls[-1]["http_headers"]["User-Agent"], "Chrome Playback UA")
 
 
 class SummaryFallbackTests(unittest.TestCase):
