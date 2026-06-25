@@ -8,6 +8,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 
 - Chrome/Edge MV3 extension with a Side Panel.
 - BiliNote-style workspace UI: source selection, processing options, task history, note/transcript/frame/diagnostic result tabs.
+- Richer BiliNote-style reading workspace with task search/filter, status counters, Markdown rendering, frame-grid preview, and failure recovery hints.
 - BiliNote-style task stage rail for download, transcription, frame slicing, note generation, and completion.
 - Markdown note export from both the local Web UI and the browser Side Panel.
 - Current-page media detection from DOM, all-frame content scripts, Performance entries, and `webRequest`.
@@ -47,6 +48,8 @@ This project intentionally does **not** record the browser tab and does **not** 
 - Transcript priority: page subtitle track first, then local `faster-whisper` fallback.
 - Configurable slicing: frame interval, grid layout, ASR model, and note style.
 - Web UI and Side Panel diagnostic tabs show the selected resource, browser evidence, and every backend download attempt.
+- Side Panel direct-extraction console shows whether the selected candidate is a downloadable file, HLS/DASH manifest, subtitle, blob clue, or fragment clue, plus reused request-header names and request evidence.
+- Side Panel supports a local video drop target as the non-recording fallback when the current page only exposes unrecoverable blob/fragment clues.
 - Diagnostics also show which safe request-header names were available for a selected media candidate without exposing cookie or authorization values. Persisted task debug files redact cookie values and browser request-header values.
 - Blob and media-fragment requests are kept as diagnostic clues instead of being hidden, but they are not treated as independently downloadable video files.
 - Task records retain the frame interval, grid layout, ASR model, note style, and visual-understanding setting used for that run.

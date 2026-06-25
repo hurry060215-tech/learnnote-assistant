@@ -8,6 +8,8 @@ let selectedTab = "note";
 let lastNote = "";
 let lastNoteTaskId = "";
 let tasks = [];
+let taskQuery = "";
+let taskStatusFilter = "all";
 
 const els = {
   health: document.querySelector("#health"),
@@ -18,8 +20,11 @@ const els = {
   titleInput: document.querySelector("#titleInput"),
   startUrlButton: document.querySelector("#startUrlButton"),
   fileInput: document.querySelector("#fileInput"),
+  fileName: document.querySelector("#fileName"),
   dropzone: document.querySelector("#dropzone"),
   uploadButton: document.querySelector("#uploadButton"),
+  taskSearch: document.querySelector("#taskSearch"),
+  statusFilter: document.querySelector("#statusFilter"),
   frameInterval: document.querySelector("#frameInterval"),
   gridSize: document.querySelector("#gridSize"),
   whisperModel: document.querySelector("#whisperModel"),
@@ -31,6 +36,7 @@ const els = {
   tasks: document.querySelector("#tasks"),
   selectedSource: document.querySelector("#selectedSource"),
   selectedTitle: document.querySelector("#selectedTitle"),
+  resultMeta: document.querySelector("#resultMeta"),
   resultTabs: document.querySelectorAll(".result-tab"),
   detail: document.querySelector("#detail"),
   copyButton: document.querySelector("#copyButton"),
@@ -39,6 +45,84 @@ const els = {
 
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[ch]));
+}
+
+function inlineMarkdown(value) {
+  return escapeHtml(value)
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+}
+
+function markdownToHtml(markdown) {
+  const lines = String(markdown || "").replace(/\r\n?/g, "\n").split("\n");
+  const html = [];
+  let listType = "";
+  let inCode = false;
+  const closeList = () => {
+    if (listType) {
+      html.push(`</${listType}>`);
+      listType = "";
+    }
+  };
+
+  for (const rawLine of lines) {
+    const line = rawLine.trimEnd();
+    if (line.startsWith("```")) {
+      closeList();
+      if (inCode) {
+        html.push("</code></pre>");
+      } else {
+        html.push("<pre><code>");
+      }
+      inCode = !inCode;
+      continue;
+    }
+    if (inCode) {
+      html.push(escapeHtml(rawLine) + "\n");
+      continue;
+    }
+    if (!line.trim()) {
+      closeList();
+      continue;
+    }
+    const heading = /^(#{1,3})\s+(.+)$/.exec(line);
+    if (heading) {
+      closeList();
+      const level = heading[1].length;
+      html.push(`<h${level}>${inlineMarkdown(heading[2])}</h${level}>`);
+      continue;
+    }
+    const bullet = /^[-*]\s+(.+)$/.exec(line);
+    if (bullet) {
+      if (listType !== "ul") {
+        closeList();
+        html.push("<ul>");
+        listType = "ul";
+      }
+      html.push(`<li>${inlineMarkdown(bullet[1])}</li>`);
+      continue;
+    }
+    const numbered = /^\d+\.\s+(.+)$/.exec(line);
+    if (numbered) {
+      if (listType !== "ol") {
+        closeList();
+        html.push("<ol>");
+        listType = "ol";
+      }
+      html.push(`<li>${inlineMarkdown(numbered[1])}</li>`);
+      continue;
+    }
+    if (line.startsWith(">")) {
+      closeList();
+      html.push(`<blockquote>${inlineMarkdown(line.replace(/^>\s?/, ""))}</blockquote>`);
+      continue;
+    }
+    closeList();
+    html.push(`<p>${inlineMarkdown(line)}</p>`);
+  }
+  closeList();
+  if (inCode) html.push("</code></pre>");
+  return html.join("");
 }
 
 function fmt(sec) {
@@ -96,6 +180,39 @@ const PIPELINE_STEPS = [
 ];
 
 const DOWNLOAD_ERROR_CODES = new Set(["no_media_found", "auth_required", "drm_or_encrypted", "download_forbidden", "unsupported_manifest"]);
+
+const ERROR_GUIDES = {
+  no_media_found: {
+    title: "没有发现可直取的视频资源",
+    body: "可以先让页面视频播放几秒后重新检测；如果仍没有 mp4、m3u8 或 mpd，请改用本地视频上传。"
+  },
+  auth_required: {
+    title: "资源需要登录态",
+    body: "重新打开课程页面并确认已登录，再从扩展侧边栏创建任务；后端只会在点击任务时同步一次当前域 cookie。"
+  },
+  drm_or_encrypted: {
+    title: "页面疑似只暴露 blob 或加密流",
+    body: "这个版本不会录制、破解或绕过 DRM。可直取 manifest 不存在时，只能使用本地视频入口。"
+  },
+  download_forbidden: {
+    title: "媒体服务器拒绝下载",
+    body: "通常是 Referer、cookie 或时效签名不匹配。回到原页面重新播放并立刻开始任务，或选择另一个候选资源。"
+  },
+  unsupported_manifest: {
+    title: "manifest 或分片无法合并",
+    body: "检测到了媒体线索，但它不是完整可下载的视频或播放列表。继续播放后重新检测，优先选择 m3u8/mpd 候选。"
+  },
+  processing_failed: {
+    title: "本地处理失败",
+    body: "下载可能成功，但转音频、转写、抽帧或总结阶段失败。请查看诊断里的阶段和本地 data/tasks 产物。"
+  }
+};
+
+function failureGuide(task) {
+  if (!task || task.status !== "failed") return "";
+  const guide = ERROR_GUIDES[task.error_code] || { title: "任务失败", body: task.error_detail || "请查看下载诊断里的尝试记录。" };
+  return `<div class="failure-guide"><strong>${escapeHtml(guide.title)}</strong>${escapeHtml(guide.body)}</div>`;
+}
 
 function failedStepIndex(task) {
   if (DOWNLOAD_ERROR_CODES.has(task.error_code)) return 0;
@@ -188,18 +305,44 @@ async function loadTasks() {
   await renderDetail();
 }
 
+function taskMatchesFilters(task) {
+  if (taskStatusFilter !== "all") {
+    const running = task.status === "running" || task.status === "queued";
+    if (taskStatusFilter === "running" && !running) return false;
+    if (taskStatusFilter !== "running" && task.status !== taskStatusFilter) return false;
+  }
+  const query = taskQuery.trim().toLowerCase();
+  if (!query) return true;
+  return [
+    task.title,
+    task.page_url,
+    task.source_type,
+    task.error_code,
+    task.error_detail,
+    task.selected_resource?.url,
+    task.selected_resource?.source,
+    task.selected_resource?.kind
+  ].filter(Boolean).join(" ").toLowerCase().includes(query);
+}
+
 function renderTasks() {
   els.taskCount.textContent = String(tasks.length);
   els.successCount.textContent = String(tasks.filter(task => task.status === "success").length);
   els.runningCount.textContent = String(tasks.filter(task => task.status === "running" || task.status === "queued").length);
   els.failedCount.textContent = String(tasks.filter(task => task.status === "failed").length);
 
+  const visibleTasks = tasks.filter(taskMatchesFilters);
+
   if (!tasks.length) {
     els.tasks.innerHTML = `<div class="detail empty">暂无任务。</div>`;
     return;
   }
+  if (!visibleTasks.length) {
+    els.tasks.innerHTML = `<div class="detail empty">没有匹配的任务。</div>`;
+    return;
+  }
 
-  els.tasks.innerHTML = tasks.map(task => `
+  els.tasks.innerHTML = visibleTasks.map(task => `
     <button class="task status-${escapeHtml(task.status)} ${task.id === selectedTaskId ? "selected" : ""}" data-id="${escapeHtml(task.id)}">
       <div>
         <strong>${escapeHtml(task.title || task.id)}</strong>
@@ -236,11 +379,33 @@ async function noteForTask(taskId) {
   return lastNote;
 }
 
+function taskBrief(task) {
+  const selected = task.selected_resource || {};
+  return `<div class="task-brief">
+    <span><b>${escapeHtml(statusText(task))}</b>${escapeHtml(task.phase || "-")} · ${task.progress || 0}%</span>
+    <span><b>${escapeHtml(sourceText(task))}</b>${escapeHtml(selected.kind || task.source_type || "-")}</span>
+    <span><b>${escapeHtml(task.options?.frame_interval || "-")} 秒切片</b>${escapeHtml(task.options?.grid_columns && task.options?.grid_rows ? `${task.options.grid_columns}x${task.options.grid_rows} 视觉窗口` : "未配置视觉窗口")}</span>
+    <span><b>${escapeHtml(task.options?.whisper_model || "-")}</b>${escapeHtml(task.options?.note_style || "study")} · ${task.options?.visual_understanding === false ? "无视觉" : "图文"}</span>
+  </div>`;
+}
+
+function frameStrip(task, limit = 5) {
+  const grids = task.frame_grids || [];
+  if (!grids.length) return "";
+  return `<div class="frame-strip">${grids.slice(0, limit).map(grid => `
+    <figure>
+      <img src="${escapeHtml(grid.url)}" alt="frame grid">
+      <figcaption>${fmt(grid.start)} - ${fmt(grid.end)} · ${grid.frame_count} 帧</figcaption>
+    </figure>
+  `).join("")}</div>`;
+}
+
 async function renderDetail() {
   const task = await taskRecord();
   if (!task) {
     els.selectedTitle.textContent = "选择一个任务";
     els.selectedSource.textContent = "结果工作区";
+    els.resultMeta.textContent = "";
     els.detail.className = "detail empty";
     els.detail.textContent = "任务完成后显示结构化结果。";
     lastNote = "";
@@ -252,6 +417,12 @@ async function renderDetail() {
 
   els.selectedTitle.textContent = task.title || task.id;
   els.selectedSource.textContent = `${sourceText(task)} · ${statusText(task)}`;
+  els.resultMeta.textContent = [
+    task.id,
+    optionText(task),
+    task.selected_resource?.playback_match ? playbackText(task.selected_resource.playback_match) : "",
+    task.selected_resource?.content_length ? fmtBytes(task.selected_resource.content_length) : ""
+  ].filter(Boolean).join(" · ");
   els.detail.className = "detail";
   const hasNote = Boolean(task.note_path) || task.status === "success";
   els.copyButton.disabled = !hasNote;
@@ -259,7 +430,14 @@ async function renderDetail() {
 
   if (selectedTab === "note") {
     lastNote = await noteForTask(task.id);
-    els.detail.innerHTML = `<pre class="note">${escapeHtml(lastNote || "笔记尚未生成。")}</pre>`;
+    els.detail.innerHTML = `
+      <div class="note-shell">
+        ${taskBrief(task)}
+        ${failureGuide(task)}
+        ${frameStrip(task, 5)}
+        <article class="markdown-note">${lastNote ? markdownToHtml(lastNote) : "<p>笔记尚未生成。</p>"}</article>
+      </div>
+    `;
     return;
   }
 
@@ -285,15 +463,18 @@ async function renderDetail() {
       <div class="attempt-list">
         ${attempts.map(attempt => `
           <div class="attempt ${escapeHtml(attempt.status)}">
-            <div>
-              <strong>${escapeHtml(attempt.strategy)} · ${escapeHtml(attempt.status)}</strong>
-              <small>${escapeHtml([
-                attempt.code,
-                attempt.status_code ? `HTTP ${attempt.status_code}` : "",
-                fmtBytes(attempt.bytes_downloaded || attempt.content_length),
-                attempt.kind,
-                attempt.source
-              ].filter(Boolean).join(" · "))}</small>
+            <div class="attempt-header">
+              <div>
+                <strong>${escapeHtml(attempt.strategy)}</strong>
+                <small>${escapeHtml([
+                  attempt.code,
+                  attempt.status_code ? `HTTP ${attempt.status_code}` : "",
+                  fmtBytes(attempt.bytes_downloaded || attempt.content_length),
+                  attempt.kind,
+                  attempt.source
+                ].filter(Boolean).join(" · "))}</small>
+              </div>
+              <span class="attempt-status">${escapeHtml(attempt.status)}</span>
             </div>
             <p>${escapeHtml(attempt.message || attempt.url || "-")}</p>
             ${attempt.url ? `<code>${escapeHtml(attempt.url)}</code>` : ""}
@@ -302,6 +483,7 @@ async function renderDetail() {
       </div>
     ` : "暂无下载尝试记录";
     els.detail.innerHTML = `
+      ${failureGuide(task)}
       <dl class="diagnostics">
         <dt>任务 ID</dt><dd>${escapeHtml(task.id)}</dd>
         <dt>状态</dt><dd>${escapeHtml(task.status)} / ${escapeHtml(task.phase)} / ${task.progress || 0}%</dd>
@@ -391,7 +573,7 @@ async function uploadSelectedFile() {
     await loadTasks();
   } finally {
     els.uploadButton.disabled = false;
-    els.uploadButton.textContent = "上传并生成";
+    els.uploadButton.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5M4 17v3h16v-3"/></svg>上传并生成`;
   }
 }
 
@@ -410,6 +592,14 @@ els.resultTabs.forEach(tab => {
 els.startUrlButton.onclick = startUrlTask;
 els.uploadButton.onclick = uploadSelectedFile;
 els.refreshButton.onclick = () => loadTasks();
+els.taskSearch.oninput = () => {
+  taskQuery = els.taskSearch.value;
+  renderTasks();
+};
+els.statusFilter.onchange = () => {
+  taskStatusFilter = els.statusFilter.value;
+  renderTasks();
+};
 els.copyButton.onclick = async () => navigator.clipboard.writeText(await noteForTask(selectedTaskId) || "");
 els.downloadButton.onclick = () => {
   if (!selectedTaskId) return;
@@ -426,11 +616,15 @@ els.dropzone.addEventListener("drop", event => {
   els.dropzone.classList.remove("drag");
   if (event.dataTransfer.files?.[0]) {
     els.fileInput.files = event.dataTransfer.files;
+    els.fileName.textContent = event.dataTransfer.files[0].name;
     setSource("local");
   }
 });
 
-els.fileInput.onchange = () => setSource("local");
+els.fileInput.onchange = () => {
+  els.fileName.textContent = els.fileInput.files?.[0]?.name || "mp4 / webm / mov / mkv";
+  setSource("local");
+};
 
 checkHealth();
 loadTasks();

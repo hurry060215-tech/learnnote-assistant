@@ -15,9 +15,14 @@
           <p id="backendStatus">连接本地后端...</p>
         </div>
       </div>
-      <button id="settingsButton" class="icon-button" title="后端设置" aria-label="后端设置">
-        <svg viewBox="0 0 24 24"><path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6V20a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-.6 1.7 1.7 0 0 0-1.88.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1H4a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 .6-1 1.7 1.7 0 0 0-.34-1.88l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6V4a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 .6 1.7 1.7 0 0 0 1.88-.34l.06-.06A2 2 0 1 1 19.8 7.06l-.06.06A1.7 1.7 0 0 0 19.4 9c.22.33.42.66.6 1H20a2 2 0 1 1 0 4h-.09c-.18.34-.38.67-.51 1z"/></svg>
-      </button>
+      <div class="header-actions">
+        <button id="openWebButton" class="icon-button" title="打开本地工作台" aria-label="打开本地工作台">
+          <svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z"/><path d="M4 9h16M9 19V9"/></svg>
+        </button>
+        <button id="settingsButton" class="icon-button" title="后端设置" aria-label="后端设置">
+          <svg viewBox="0 0 24 24"><path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6V20a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-.6 1.7 1.7 0 0 0-1.88.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1H4a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 .6-1 1.7 1.7 0 0 0-.34-1.88l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6V4a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 .6 1.7 1.7 0 0 0 1.88-.34l.06-.06A2 2 0 1 1 19.8 7.06l-.06.06A1.7 1.7 0 0 0 19.4 9c.22.33.42.66.6 1H20a2 2 0 1 1 0 4h-.09c-.18.34-.38.67-.51 1z"/></svg>
+        </button>
+      </div>
     </header>
 
     <main class="side-shell">
@@ -45,7 +50,9 @@
           <span>候选资源</span>
           <b id="resourceCount">0</b>
         </div>
+        <div id="readiness" class="readiness">等待检测</div>
         <div id="resources" class="resource-list"></div>
+        <div id="resourceInspector" class="resource-inspector muted"></div>
       </section>
 
       <section class="option-panel">
@@ -100,6 +107,11 @@
         </button>
         <input id="fileInput" type="file" accept="video/*">
       </section>
+
+      <label id="localDrop" class="local-drop">
+        <svg viewBox="0 0 24 24"><path d="M12 3v12M7 8l5-5 5 5M4 17v3h16v-3"/></svg>
+        <span id="localDropText">拖入本地视频作为兜底入口</span>
+      </label>
 
       <section class="progress-panel">
         <div class="section-head compact">

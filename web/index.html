@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>LearnNote 本地学习助手</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="/web/styles.css?v=20260625-polish">
+    <link rel="stylesheet" href="/web/styles.css?v=20260625-workspace">
   </head>
   <body>
     <header class="topbar">
@@ -27,7 +27,7 @@
     <main class="app-shell">
       <aside class="workspace-panel">
         <div class="panel-heading">
-          <span class="eyeless">生成笔记</span>
+          <span class="eyeless">学习工作台</span>
           <strong>视频来源</strong>
         </div>
 
@@ -57,7 +57,7 @@
             <input id="fileInput" type="file" accept="video/*">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5M4 17v3h16v-3"/></svg>
             <strong>拖入视频文件</strong>
-            <small>mp4 / webm / mov / mkv</small>
+            <small id="fileName">mp4 / webm / mov / mkv</small>
           </label>
           <button id="uploadButton" class="primary action-button">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5M4 17v3h16v-3"/></svg>
@@ -70,7 +70,7 @@
             <span class="status-dot"></span>
             <div>
               <strong>扩展面板接管当前页</strong>
-              <small>当前页媒体、cookie 和播放状态由 Chrome/Edge Side Panel 发送到本地后端。</small>
+              <small>从 Chrome/Edge Side Panel 读取正在播放的 HTML5 视频、媒体请求和一次性 cookie。</small>
             </div>
           </div>
         </section>
@@ -111,6 +111,13 @@
             </select>
           </label>
         </div>
+
+        <div class="workflow-strip" aria-label="处理流程">
+          <span>直取</span>
+          <span>转写</span>
+          <span>切片</span>
+          <span>图文总结</span>
+        </div>
       </aside>
 
       <section class="queue-panel">
@@ -120,6 +127,15 @@
             <strong>处理记录</strong>
           </div>
           <span id="taskCount" class="count">0</span>
+        </div>
+        <div class="queue-tools">
+          <input id="taskSearch" type="search" placeholder="搜索标题、来源或错误">
+          <select id="statusFilter" aria-label="任务状态筛选">
+            <option value="all">全部</option>
+            <option value="running">运行中</option>
+            <option value="success">已完成</option>
+            <option value="failed">失败</option>
+          </select>
         </div>
         <div class="queue-stats">
           <span><b id="successCount">0</b>完成</span>
@@ -134,6 +150,7 @@
           <div>
             <span id="selectedSource" class="eyeless">结果工作区</span>
             <h2 id="selectedTitle">选择一个任务</h2>
+            <div id="resultMeta" class="result-meta"></div>
           </div>
           <div class="result-actions">
             <button id="downloadButton" class="icon-button" title="导出 Markdown" aria-label="导出 Markdown">
@@ -155,6 +172,6 @@
       </section>
     </main>
 
-    <script src="/web/app.js?v=20260625-polish"></script>
+    <script src="/web/app.js?v=20260625-workspace"></script>
   </body>
 </html>

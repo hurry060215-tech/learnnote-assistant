@@ -71,6 +71,12 @@ select {
   gap: 10px;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .mark {
   width: 32px;
   height: 32px;
@@ -207,6 +213,29 @@ small,
   gap: 8px;
 }
 
+.readiness {
+  margin-bottom: 8px;
+  border: 1px solid #c9d9ff;
+  border-radius: 8px;
+  background: var(--surface-strong);
+  padding: 9px 10px;
+  color: var(--accent);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.readiness.warn {
+  border-color: rgba(196, 122, 5, 0.32);
+  background: rgba(196, 122, 5, 0.08);
+  color: var(--warning);
+}
+
+.readiness.bad {
+  border-color: rgba(217, 45, 32, 0.24);
+  background: rgba(217, 45, 32, 0.08);
+  color: var(--danger);
+}
+
 .resource {
   width: 100%;
   min-height: 62px;
@@ -260,7 +289,7 @@ small,
 }
 
 .confidence {
-  min-width: 38px;
+  min-width: 42px;
   height: 26px;
   display: grid;
   place-items: center;
@@ -269,6 +298,30 @@ small,
   color: var(--accent);
   font-size: 11px;
   font-weight: 850;
+}
+
+.resource-inspector {
+  display: grid;
+  gap: 5px;
+  margin-top: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  padding: 9px 10px;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.resource-inspector strong {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.resource-inspector code {
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 10px;
 }
 
 .resource-hint {
@@ -378,6 +431,39 @@ button:disabled {
 
 input[type="file"] {
   display: none;
+}
+
+.local-drop {
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 9px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 8px;
+  background: linear-gradient(180deg, #fbfdff, #f5f8fc);
+  padding: 10px 11px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.local-drop svg {
+  width: 22px;
+  height: 22px;
+  color: var(--accent);
+}
+
+.local-drop span {
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.local-drop.drag {
+  border-color: var(--accent);
+  background: var(--surface-strong);
+  color: var(--accent);
 }
 
 .progress {

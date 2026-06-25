@@ -1,4 +1,5 @@
 const DEFAULT_BACKEND = "http://127.0.0.1:8765";
+const HAS_EXTENSION_API = typeof chrome !== "undefined" && Boolean(chrome.runtime?.sendMessage && chrome.storage?.local);
 
 let backendUrl = DEFAULT_BACKEND;
 let page = null;
@@ -16,10 +17,14 @@ const els = {
   pageUrl: document.querySelector("#pageUrl"),
   activeVideo: document.querySelector("#activeVideo"),
   resourceCount: document.querySelector("#resourceCount"),
+  readiness: document.querySelector("#readiness"),
   resources: document.querySelector("#resources"),
+  resourceInspector: document.querySelector("#resourceInspector"),
   summarizeButton: document.querySelector("#summarizeButton"),
   uploadButton: document.querySelector("#uploadButton"),
   fileInput: document.querySelector("#fileInput"),
+  localDrop: document.querySelector("#localDrop"),
+  localDropText: document.querySelector("#localDropText"),
   textButton: document.querySelector("#textButton"),
   redetectButton: document.querySelector("#redetectButton"),
   frameInterval: document.querySelector("#frameInterval"),
@@ -34,6 +39,7 @@ const els = {
   result: document.querySelector("#result"),
   copyButton: document.querySelector("#copyButton"),
   downloadButton: document.querySelector("#downloadButton"),
+  openWebButton: document.querySelector("#openWebButton"),
   settingsButton: document.querySelector("#settingsButton")
 };
 
@@ -138,6 +144,37 @@ function pickDefaultResourceUrl(items, previousUrl = "") {
   return preferred?.url || items[0]?.url || "";
 }
 
+function selectedResource() {
+  return resources.find(item => item.url === selectedResourceUrl) || null;
+}
+
+function directnessText(item) {
+  if (!item) return "未选择资源";
+  if (isDownloadableResource(item)) {
+    if (item.kind === "hls") return "HLS manifest，可交给 ffmpeg 合并";
+    if (item.kind === "dash") return "DASH manifest，可交给 ffmpeg 合并";
+    return "直接视频文件，可下载到本地处理";
+  }
+  if (item.kind === "blob") return "blob 线索，不可直接下载";
+  if (item.kind === "fragment") return "分片线索，需要对应 manifest";
+  if (item.kind === "subtitle") return "字幕轨，可辅助转写";
+  return "媒体线索，需继续检测";
+}
+
+function requestEvidence(item) {
+  if (!item) return "";
+  return [
+    item.source,
+    playbackText(item.playback_match),
+    item.is_main_video ? "主视频" : "",
+    item.request_type,
+    item.status_code ? `HTTP ${item.status_code}` : "",
+    fmtBytes(item.content_length),
+    item.frame_id !== null && item.frame_id !== undefined ? `frame ${item.frame_id}` : "",
+    item.mime || ""
+  ].filter(Boolean).join(" · ");
+}
+
 function resourceHint() {
   const downloadable = resources.filter(isDownloadableResource).length;
   const blobCount = resources.filter(item => item.kind === "blob").length;
@@ -156,7 +193,46 @@ function resourceHint() {
   return "";
 }
 
+function renderReadiness() {
+  const downloadable = resources.filter(isDownloadableResource);
+  const selected = selectedResource();
+  const hasBlob = resources.some(item => item.kind === "blob");
+  const hasFragment = resources.some(item => item.kind === "fragment");
+  if (downloadable.length) {
+    els.readiness.className = "readiness";
+    els.readiness.textContent = `可直取候选 ${downloadable.length} 个；当前选择：${directnessText(selected || downloadable[0])}`;
+    return;
+  }
+  if (hasBlob || hasFragment) {
+    els.readiness.className = "readiness warn";
+    els.readiness.textContent = "只看到 blob 或分片线索；不会录制，继续播放后重新检测，或拖入本地视频。";
+    return;
+  }
+  els.readiness.className = "readiness bad";
+  els.readiness.textContent = "当前页还没有可下载媒体候选；可先播放几秒后重新检测。";
+}
+
+function renderInspector() {
+  const item = selectedResource();
+  if (!item) {
+    els.resourceInspector.className = "resource-inspector muted";
+    els.resourceInspector.textContent = "选择一个候选资源后显示请求证据。";
+    return;
+  }
+  els.resourceInspector.className = "resource-inspector";
+  els.resourceInspector.innerHTML = `
+    <strong>${escapeHtml(directnessText(item))}</strong>
+    <span>${escapeHtml(requestEvidence(item) || "无请求证据")}</span>
+    <span>复用请求头：${escapeHtml(requestHeaderNames(item))}</span>
+    <code>${escapeHtml(item.url)}</code>
+  `;
+}
+
 async function loadSettings() {
+  if (!HAS_EXTENSION_API) {
+    backendUrl = DEFAULT_BACKEND;
+    return;
+  }
   const data = await chrome.storage.local.get({ backendUrl: DEFAULT_BACKEND });
   backendUrl = data.backendUrl || DEFAULT_BACKEND;
 }
@@ -165,7 +241,7 @@ async function saveSettings() {
   const next = prompt("后端地址", backendUrl);
   if (!next) return;
   backendUrl = next.replace(/\/$/, "");
-  await chrome.storage.local.set({ backendUrl });
+  if (HAS_EXTENSION_API) await chrome.storage.local.set({ backendUrl });
   await health();
 }
 
@@ -183,6 +259,19 @@ async function health() {
 async function collect() {
   els.pageTitle.textContent = "读取中...";
   els.resources.innerHTML = `<p class="muted">正在检测媒体资源...</p>`;
+  if (!HAS_EXTENSION_API) {
+    page = {
+      title: "普通浏览器预览",
+      page_url: location.href,
+      page_text: "",
+      active_video: null,
+      frames: []
+    };
+    resources = [];
+    selectedResourceUrl = "";
+    renderContext();
+    return;
+  }
   const response = await chrome.runtime.sendMessage({ type: "get-current-context" });
   if (response.error) {
     els.resources.innerHTML = `<p class="muted">${escapeHtml(response.error)}</p>`;
@@ -205,8 +294,10 @@ function renderContext() {
     els.activeVideo.textContent = frames.length ? `未读取到 HTML5 播放状态 · 已扫描 ${frames.length} 个 frame` : "未读取到 HTML5 播放状态";
   }
   els.resourceCount.textContent = String(resources.length);
+  renderReadiness();
   if (!resources.length) {
     els.resources.innerHTML = `<p class="muted">未检测到可直接下载的视频资源。</p>`;
+    renderInspector();
     return;
   }
   els.resources.innerHTML = `${resourceHint()}${resources.map(item => `
@@ -235,6 +326,7 @@ function renderContext() {
       renderContext();
     };
   });
+  renderInspector();
 }
 
 function selectedResources() {
@@ -245,6 +337,10 @@ function selectedResources() {
 
 async function startTask(mode = "video") {
   if (!page) await collect();
+  if (!HAS_EXTENSION_API) {
+    els.taskMessage.textContent = "请在 Chrome/Edge 扩展 Side Panel 中读取当前页视频。";
+    return;
+  }
   const response = await chrome.runtime.sendMessage({
     type: "start-current-task",
     backendUrl,
@@ -266,6 +362,7 @@ async function startTask(mode = "video") {
 async function uploadLocal() {
   const file = els.fileInput.files?.[0];
   if (!file) return;
+  els.localDropText.textContent = file.name;
   const form = new FormData();
   form.append("file", file);
   form.append("title", file.name);
@@ -397,10 +494,31 @@ els.summarizeButton.onclick = () => startTask("video");
 els.textButton.onclick = () => startTask("page_text");
 els.uploadButton.onclick = () => els.fileInput.click();
 els.fileInput.onchange = uploadLocal;
+els.localDrop.onclick = () => els.fileInput.click();
+els.localDrop.addEventListener("dragover", event => {
+  event.preventDefault();
+  els.localDrop.classList.add("drag");
+});
+els.localDrop.addEventListener("dragleave", () => els.localDrop.classList.remove("drag"));
+els.localDrop.addEventListener("drop", event => {
+  event.preventDefault();
+  els.localDrop.classList.remove("drag");
+  if (event.dataTransfer.files?.[0]) {
+    els.fileInput.files = event.dataTransfer.files;
+    els.localDropText.textContent = event.dataTransfer.files[0].name;
+    uploadLocal();
+  }
+});
 els.copyButton.onclick = () => navigator.clipboard.writeText(lastNote || "");
 els.downloadButton.onclick = () => {
   if (!currentTaskId) return;
-  chrome.tabs.create({ url: `${backendUrl}/api/tasks/${encodeURIComponent(currentTaskId)}/exports/markdown` });
+  const url = `${backendUrl}/api/tasks/${encodeURIComponent(currentTaskId)}/exports/markdown`;
+  if (HAS_EXTENSION_API) chrome.tabs.create({ url });
+  else window.open(url, "_blank", "noopener");
+};
+els.openWebButton.onclick = () => {
+  if (HAS_EXTENSION_API) chrome.tabs.create({ url: backendUrl });
+  else window.open(backendUrl, "_blank", "noopener");
 };
 els.settingsButton.onclick = saveSettings;
 
