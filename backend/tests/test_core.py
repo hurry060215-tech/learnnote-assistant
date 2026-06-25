@@ -3,7 +3,10 @@ from __future__ import annotations
 import tempfile
 import unittest
 import shutil
+import sys
+import types
 from pathlib import Path
+from unittest.mock import patch
 
 from app.downloader import (
     DownloadError,
@@ -14,7 +17,7 @@ from app.downloader import (
     infer_manifest_url_from_fragment,
     score_resource,
 )
-from app.models import BrowserCookie, CurrentPageTaskRequest, FrameGrid, ResourceCandidate, TranscriptResult, TranscriptSegment
+from app.models import BrowserCookie, CurrentPageTaskRequest, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment
 from app.processor import read_note, read_transcript, redacted_request_dump, redacted_resource
 from app.summarizer import local_markdown_note
 from app.storage import create_task, task_dir
@@ -186,6 +189,66 @@ class SummaryFallbackTests(unittest.TestCase):
         self.assertIn("分段图文摘要", note)
         self.assertIn("http://127.0.0.1/grid.jpg", note)
         self.assertIn("复习问题", note)
+
+    def test_llm_summary_batches_all_frame_grids_before_merge(self) -> None:
+        from app.summarizer import summarize_with_llm
+
+        class Message:
+            def __init__(self, content: str):
+                self.content = content
+
+        class Choice:
+            def __init__(self, content: str):
+                self.message = Message(content)
+
+        class Response:
+            def __init__(self, content: str):
+                self.choices = [Choice(content)]
+
+        class FakeCompletions:
+            def __init__(self):
+                self.calls = []
+
+            def create(self, **kwargs):
+                self.calls.append(kwargs)
+                content = kwargs["messages"][0]["content"]
+                if isinstance(content, list):
+                    images = [item for item in content if item.get("type") == "image_url"]
+                    return Response(f"partial with {len(images)} images")
+                return Response("merged note")
+
+        completions = FakeCompletions()
+
+        class FakeOpenAI:
+            def __init__(self, **kwargs):
+                self.chat = types.SimpleNamespace(completions=completions)
+
+        fake_openai = types.ModuleType("openai")
+        fake_openai.OpenAI = FakeOpenAI
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            grids = []
+            for index in range(9):
+                image = root / f"grid_{index}.jpg"
+                image.write_bytes(b"fake-image")
+                grids.append(FrameGrid(path=str(image), url=f"http://127.0.0.1/grid_{index}.jpg", start=index * 180, end=(index + 1) * 180, frame_count=9))
+            transcript = TranscriptResult(
+                full_text="all transcript",
+                segments=[TranscriptSegment(start=index * 180, end=index * 180 + 30, text=f"segment {index}") for index in range(9)],
+            )
+            with patch.dict(sys.modules, {"openai": fake_openai}):
+                note = summarize_with_llm("Long lesson", transcript, grids, TaskOptions(llm_api_key="test-key"), "https://course.example")
+
+        self.assertEqual(note, "merged note")
+        self.assertEqual(len(completions.calls), 4)
+        vision_image_counts = [
+            len([item for item in call["messages"][0]["content"] if item.get("type") == "image_url"])
+            for call in completions.calls[:3]
+        ]
+        self.assertEqual(vision_image_counts, [4, 4, 1])
+        self.assertIn("partial with 4 images", completions.calls[3]["messages"][0]["content"])
+        self.assertIn("partial with 1 images", completions.calls[3]["messages"][0]["content"])
 
 
 class SubtitleParsingTests(unittest.TestCase):

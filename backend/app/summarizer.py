@@ -7,6 +7,9 @@ from .config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
 from .media import image_to_data_url
 from .models import FrameGrid, TaskOptions, TranscriptResult
 
+MAX_GRIDS_PER_VISION_CALL = 4
+MAX_VISION_GRIDS = 80
+
 
 def _format_ts(seconds: float) -> str:
     seconds = int(seconds)
@@ -59,6 +62,26 @@ def _window_summary_lines(transcript: TranscriptResult, grids: list[FrameGrid]) 
         else:
             lines.append(f"- `{_format_ts(grid.start)} - {_format_ts(grid.end)}` 仅生成画面网格，需结合截图回看：{grid.url}")
     return lines
+
+
+def _grid_batches(grids: list[FrameGrid], batch_size: int = MAX_GRIDS_PER_VISION_CALL) -> list[list[FrameGrid]]:
+    if batch_size <= 0:
+        batch_size = MAX_GRIDS_PER_VISION_CALL
+    limited = grids[:MAX_VISION_GRIDS]
+    return [limited[index: index + batch_size] for index in range(0, len(limited), batch_size)]
+
+
+def _grid_window_prompt(transcript: TranscriptResult, grids: list[FrameGrid]) -> str:
+    sections = []
+    for grid in grids:
+        sections.append(
+            "\n".join([
+                f"窗口：{_format_ts(grid.start)} - {_format_ts(grid.end)}",
+                f"对应字幕：\n{_segments_window(transcript, grid.start, grid.end) or '无对应字幕'}",
+                "请结合紧随其后的画面网格，只输出这个窗口的局部学习摘要。",
+            ])
+        )
+    return "\n\n".join(sections)
 
 
 def local_markdown_note(title: str, transcript: TranscriptResult, grids: list[FrameGrid], page_url: str = "") -> str:
@@ -149,29 +172,76 @@ def summarize_with_llm(
 
     client = OpenAI(api_key=api_key, base_url=options.llm_base_url or LLM_BASE_URL)
     model = options.llm_model or LLM_MODEL
+
+    if grids:
+        partials = []
+        for index, batch in enumerate(_grid_batches(grids), start=1):
+            content: list[dict] = [
+                {
+                    "type": "text",
+                    "text": (
+                        "你是严谨的课程学习笔记助手。下面是一批视频画面网格和对应字幕。"
+                        "请先做局部图文总结，不要写完整总笔记。\n"
+                        "每个窗口必须包含：时间范围、画面可见信息、字幕重点、操作/PPT/代码/公式/例题线索、可能的易错点。\n"
+                        f"标题：{title}\n来源：{page_url}\n批次：{index}\n\n"
+                        f"{_grid_window_prompt(transcript, batch)}"
+                    ),
+                }
+            ]
+            for grid in batch:
+                path = Path(grid.path)
+                if path.exists():
+                    content.append({"type": "image_url", "image_url": {"url": image_to_data_url(path)}})
+            if len(content) == 1:
+                continue
+            try:
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=[{"role": "user", "content": content}],
+                    temperature=0.2,
+                )
+                partial = response.choices[0].message.content or ""
+                if partial.strip():
+                    partials.append(partial.strip())
+            except Exception:
+                return None
+
+        if partials:
+            merge_prompt = "\n\n".join(f"### 局部图文摘要 {idx}\n{partial}" for idx, partial in enumerate(partials, start=1))
+            try:
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": (
+                                "你是严谨的课程学习笔记助手。请把下面所有局部图文摘要和字幕合并成一份完整 Markdown 学习笔记。"
+                                "必须覆盖所有时间窗口，不要只总结开头。\n\n"
+                                "结构必须包含：课程主题、时间轴重点、核心概念、例题/演示步骤、易错点、复习问题、画面索引。\n"
+                                f"笔记风格：{options.note_style}；详略程度：{options.summary_depth}。\n"
+                                f"标题：{title}\n来源：{page_url}\n\n"
+                                f"完整字幕节选：\n{transcript.full_text[:60000]}\n\n"
+                                f"{merge_prompt}"
+                            ),
+                        }
+                    ],
+                    temperature=0.2,
+                )
+                return response.choices[0].message.content or None
+            except Exception:
+                return None
+
     content: list[dict] = [
         {
             "type": "text",
             "text": (
-                "你是严谨的课程学习笔记助手。请结合字幕和视频画面，输出 Markdown。"
+                "你是严谨的课程学习笔记助手。请结合字幕输出 Markdown。"
                 "结构必须包含：课程主题、时间轴重点、核心概念、例题/演示步骤、易错点、复习问题、画面索引。\n\n"
                 f"笔记风格：{options.note_style}；详略程度：{options.summary_depth}。\n"
                 f"标题：{title}\n来源：{page_url}\n\n字幕：\n{transcript.full_text[:60000]}"
             ),
         }
     ]
-    for grid in grids[:8]:
-        path = Path(grid.path)
-        if path.exists():
-            content.append({
-                "type": "text",
-                "text": (
-                    f"画面网格窗口 {_format_ts(grid.start)} - {_format_ts(grid.end)}。\n"
-                    "请只总结这个时间窗口内画面和字幕共同支持的内容；如果画面呈现 PPT、代码、公式、操作步骤或例题，请写进对应时间轴。\n"
-                    f"该窗口字幕：\n{_segments_window(transcript, grid.start, grid.end) or '无对应字幕'}"
-                ),
-            })
-            content.append({"type": "image_url", "image_url": {"url": image_to_data_url(path)}})
 
     try:
         response = client.chat.completions.create(

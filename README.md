@@ -20,6 +20,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - Download diagnostics: every task records the direct-file, manifest-ffmpeg, skipped blob/fragment, and yt-dlp attempts with status, HTTP code, content length, output file, and failure reason.
 - Local video upload from both the Side Panel and the local web UI.
 - Shared processing pipeline: normalize video, extract audio, transcribe, slice frames, build frame grids, summarize.
+- Multimodal LLM summaries run in visual-window batches and then merge the local window notes into the final Markdown note.
 - Page subtitle tracks (`.vtt`, `.srt`, `.ass`, `.ssa`) are detected and preferred over Whisper when available.
 - Structured failure codes: `no_media_found`, `auth_required`, `drm_or_encrypted`, `download_forbidden`, `unsupported_manifest`, `processing_failed`.
 
@@ -49,7 +50,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - Diagnostics also show which safe request-header names were available for a selected media candidate without exposing cookie or authorization values. Persisted task debug files redact cookie values and browser request-header values.
 - Blob and media-fragment requests are kept as diagnostic clues instead of being hidden, but they are not treated as independently downloadable video files.
 - Task records retain the frame interval, grid layout, ASR model, note style, and visual-understanding setting used for that run.
-- Multimodal prompts are organized by frame-grid windows, pairing each visual slice with the transcript segment from the same time range.
+- Multimodal prompts are organized by frame-grid windows, pairing each visual slice with the transcript segment from the same time range. Long videos are summarized in batches so later frame grids are not silently dropped.
 - Generated notes can be copied or exported as Markdown files with the task title as the filename.
 - Deterministic fallback notes when no LLM key or ASR model is installed.
 
