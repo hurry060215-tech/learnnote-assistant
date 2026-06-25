@@ -90,6 +90,26 @@
             <option value="code">演示</option>
           </select>
         </label>
+        <label>
+          <span>深度</span>
+          <select id="summaryDepth">
+            <option value="brief">简洁</option>
+            <option value="standard" selected>标准</option>
+            <option value="deep">深入</option>
+          </select>
+        </label>
+        <label>
+          <span>视觉模型</span>
+          <input id="llmModel" type="text" placeholder="gpt-4.1-mini">
+        </label>
+        <label class="wide">
+          <span>Base URL</span>
+          <input id="llmBaseUrl" type="url" placeholder="https://api.openai.com/v1">
+        </label>
+        <label class="wide">
+          <span>API Key（仅本次任务）</span>
+          <input id="llmApiKey" type="password" autocomplete="off" placeholder="留空则本地降级">
+        </label>
       </section>
 
       <section class="actions">

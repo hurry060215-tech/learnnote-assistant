@@ -250,6 +250,30 @@ class ResourceDetectionTests(unittest.TestCase):
         self.assertEqual(selected.request_headers["Referer"], "<redacted>")
         self.assertEqual(selected.headers, {"content-type": "video/mp4"})
 
+    def test_llm_api_key_is_not_persisted_in_task_or_request_snapshot(self) -> None:
+        options = TaskOptions(
+            llm_api_key="sk-secret",
+            llm_base_url="https://models.example/v1",
+            llm_model="vision-model",
+        )
+        task = create_task("page_text", "Secret options", "https://course.example.com", options)
+        try:
+            record = get_task(task.id)
+            self.assertIsNone(record.options.llm_api_key)
+            self.assertEqual(record.options.llm_base_url, "https://models.example/v1")
+            self.assertEqual(record.options.llm_model, "vision-model")
+
+            request = CurrentPageTaskRequest(
+                page_url="https://course.example.com",
+                title="Secret options",
+                options=options,
+            )
+            dumped = redacted_request_dump(request)
+            self.assertEqual(dumped["options"]["llm_api_key"], "<redacted>")
+            self.assertEqual(dumped["options"]["llm_model"], "vision-model")
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
 
 class ProcessorBoundaryTests(unittest.TestCase):
     def test_drm_signal_without_downloadable_candidate_fails_before_downloader(self) -> None:

@@ -165,6 +165,26 @@
               <option value="code">代码/演示</option>
             </select>
           </label>
+          <label class="field">
+            <span>摘要深度</span>
+            <select id="summaryDepth">
+              <option value="brief">简洁</option>
+              <option value="standard" selected>标准</option>
+              <option value="deep">深入</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>视觉模型</span>
+            <input id="llmModel" type="text" placeholder="gpt-4.1-mini">
+          </label>
+          <label class="field wide">
+            <span>OpenAI-compatible Base URL</span>
+            <input id="llmBaseUrl" type="url" placeholder="https://api.openai.com/v1">
+          </label>
+          <label class="field wide">
+            <span>API Key（仅随本次任务发送，不写入任务记录）</span>
+            <input id="llmApiKey" type="password" autocomplete="off" placeholder="留空则使用后端环境变量或本地降级">
+          </label>
         </div>
 
         <div class="workflow-strip" aria-label="处理流程">

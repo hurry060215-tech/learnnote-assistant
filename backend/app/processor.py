@@ -44,6 +44,8 @@ def redacted_resource(resource: ResourceCandidate) -> ResourceCandidate:
 
 def redacted_request_dump(request: CurrentPageTaskRequest) -> dict:
     data = request.model_dump(mode="json")
+    if data.get("options") and data["options"].get("llm_api_key"):
+        data["options"]["llm_api_key"] = "<redacted>"
     for cookie in data.get("cookies", []):
         if "value" in cookie:
             cookie["value"] = "<redacted>"

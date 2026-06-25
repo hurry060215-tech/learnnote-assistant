@@ -32,6 +32,10 @@ const els = {
   gridSize: document.querySelector("#gridSize"),
   whisperModel: document.querySelector("#whisperModel"),
   noteStyle: document.querySelector("#noteStyle"),
+  summaryDepth: document.querySelector("#summaryDepth"),
+  llmModel: document.querySelector("#llmModel"),
+  llmBaseUrl: document.querySelector("#llmBaseUrl"),
+  llmApiKey: document.querySelector("#llmApiKey"),
   taskCount: document.querySelector("#taskCount"),
   successCount: document.querySelector("#successCount"),
   runningCount: document.querySelector("#runningCount"),
@@ -283,14 +287,22 @@ function mediaKind(url) {
 
 function readOptions() {
   const [cols, rows] = els.gridSize.value.split("x").map(Number);
-  return {
+  const options = {
     visual_understanding: true,
     frame_interval: Number(els.frameInterval.value || 20),
     grid_columns: cols || 3,
     grid_rows: rows || 3,
     whisper_model: els.whisperModel.value || "small",
-    note_style: els.noteStyle.value || "study"
+    note_style: els.noteStyle.value || "study",
+    summary_depth: els.summaryDepth.value || "standard"
   };
+  const llmModel = els.llmModel.value.trim();
+  const llmBaseUrl = els.llmBaseUrl.value.trim();
+  const llmApiKey = els.llmApiKey.value.trim();
+  if (llmModel) options.llm_model = llmModel;
+  if (llmBaseUrl) options.llm_base_url = llmBaseUrl;
+  if (llmApiKey) options.llm_api_key = llmApiKey;
+  return options;
 }
 
 async function checkHealth() {

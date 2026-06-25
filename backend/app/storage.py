@@ -26,6 +26,12 @@ def task_file(task_id: str) -> Path:
     return task_dir(task_id) / "task.json"
 
 
+def public_task_options(options: TaskOptions | None) -> TaskOptions:
+    public = (options or TaskOptions()).model_copy(deep=True)
+    public.llm_api_key = None
+    return public
+
+
 def create_task(source_type: str, title: str, page_url: str = "", options: TaskOptions | None = None) -> TaskRecord:
     ensure_dirs()
     record = TaskRecord(
@@ -33,7 +39,7 @@ def create_task(source_type: str, title: str, page_url: str = "", options: TaskO
         source_type=source_type,  # type: ignore[arg-type]
         title=title or "Untitled",
         page_url=page_url,
-        options=options or TaskOptions(),
+        options=public_task_options(options),
         created_at=now_iso(),
         updated_at=now_iso(),
     )
