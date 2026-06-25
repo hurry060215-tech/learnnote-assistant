@@ -71,14 +71,26 @@ def _grid_batches(grids: list[FrameGrid], batch_size: int = MAX_GRIDS_PER_VISION
     return [limited[index: index + batch_size] for index in range(0, len(limited), batch_size)]
 
 
-def _grid_window_prompt(transcript: TranscriptResult, grids: list[FrameGrid]) -> str:
+def _grid_index_lines(grids: list[FrameGrid]) -> list[str]:
+    return [
+        (
+            f"- W{index:03d} `{_format_ts(grid.start)} - {_format_ts(grid.end)}` "
+            f"{grid.frame_count} 帧，画面网格：{grid.url}"
+        )
+        for index, grid in enumerate(grids, start=1)
+    ]
+
+
+def _grid_window_prompt(transcript: TranscriptResult, grids: list[FrameGrid], offset: int = 0) -> str:
     sections = []
-    for grid in grids:
+    for index, grid in enumerate(grids, start=offset + 1):
         sections.append(
             "\n".join([
-                f"窗口：{_format_ts(grid.start)} - {_format_ts(grid.end)}",
+                f"窗口 W{index:03d}：{_format_ts(grid.start)} - {_format_ts(grid.end)}",
+                f"画面网格：{grid.url}",
+                f"帧数：{grid.frame_count}",
                 f"对应字幕：\n{_segments_window(transcript, grid.start, grid.end) or '无对应字幕'}",
-                "请结合紧随其后的画面网格，只输出这个窗口的局部学习摘要。",
+                "请结合紧随其后的画面网格，只输出这个窗口的局部学习摘要，并保留 W 编号。",
             ])
         )
     return "\n\n".join(sections)
@@ -175,7 +187,9 @@ def summarize_with_llm(
 
     if grids:
         partials = []
-        for index, batch in enumerate(_grid_batches(grids), start=1):
+        batches = _grid_batches(grids)
+        for index, batch in enumerate(batches, start=1):
+            batch_offset = (index - 1) * MAX_GRIDS_PER_VISION_CALL
             content: list[dict] = [
                 {
                     "type": "text",
@@ -184,7 +198,7 @@ def summarize_with_llm(
                         "请先做局部图文总结，不要写完整总笔记。\n"
                         "每个窗口必须包含：时间范围、画面可见信息、字幕重点、操作/PPT/代码/公式/例题线索、可能的易错点。\n"
                         f"标题：{title}\n来源：{page_url}\n批次：{index}\n\n"
-                        f"{_grid_window_prompt(transcript, batch)}"
+                        f"{_grid_window_prompt(transcript, batch, batch_offset)}"
                     ),
                 }
             ]
@@ -208,6 +222,7 @@ def summarize_with_llm(
 
         if partials:
             merge_prompt = "\n\n".join(f"### 局部图文摘要 {idx}\n{partial}" for idx, partial in enumerate(partials, start=1))
+            frame_index = "\n".join(_grid_index_lines(grids[:MAX_VISION_GRIDS]))
             try:
                 response = client.chat.completions.create(
                     model=model,
@@ -218,8 +233,10 @@ def summarize_with_llm(
                                 "你是严谨的课程学习笔记助手。请把下面所有局部图文摘要和字幕合并成一份完整 Markdown 学习笔记。"
                                 "必须覆盖所有时间窗口，不要只总结开头。\n\n"
                                 "结构必须包含：课程主题、时间轴重点、核心概念、例题/演示步骤、易错点、复习问题、画面索引。\n"
+                                "画面索引必须保留 W 编号、时间范围和画面网格 URL，方便用户回看截图。\n"
                                 f"笔记风格：{options.note_style}；详略程度：{options.summary_depth}。\n"
                                 f"标题：{title}\n来源：{page_url}\n\n"
+                                f"画面索引清单：\n{frame_index}\n\n"
                                 f"完整字幕节选：\n{transcript.full_text[:60000]}\n\n"
                                 f"{merge_prompt}"
                             ),

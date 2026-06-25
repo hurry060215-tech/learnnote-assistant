@@ -646,6 +646,14 @@ class SummaryFallbackTests(unittest.TestCase):
             for call in completions.calls[:3]
         ]
         self.assertEqual(vision_image_counts, [4, 4, 1])
+        first_prompt = completions.calls[0]["messages"][0]["content"][0]["text"]
+        self.assertIn("窗口 W001", first_prompt)
+        self.assertIn("http://127.0.0.1/grid_0.jpg", first_prompt)
+        merge_content = completions.calls[3]["messages"][0]["content"]
+        self.assertIn("画面索引清单", merge_content)
+        self.assertIn("W001 `00:00:00 - 00:03:00`", merge_content)
+        self.assertIn("W009 `00:24:00 - 00:27:00`", merge_content)
+        self.assertIn("http://127.0.0.1/grid_8.jpg", merge_content)
         self.assertIn("partial with 4 images", completions.calls[3]["messages"][0]["content"])
         self.assertIn("partial with 1 images", completions.calls[3]["messages"][0]["content"])
 
