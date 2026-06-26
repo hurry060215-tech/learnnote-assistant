@@ -332,6 +332,36 @@ small,
   color: var(--muted);
 }
 
+.resource-preflight {
+  width: fit-content;
+  max-width: 100%;
+  display: block;
+  overflow: hidden;
+  margin-top: 6px;
+  border-radius: 6px;
+  padding: 3px 7px;
+  font-size: 10px;
+  font-weight: 850;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resource-preflight.ok {
+  background: rgba(20, 150, 74, 0.12);
+  color: var(--success);
+}
+
+.resource-preflight.warn {
+  background: rgba(196, 122, 5, 0.12);
+  color: var(--warning);
+}
+
+.resource-preflight.bad {
+  background: rgba(217, 45, 32, 0.1);
+  color: var(--danger);
+}
+
 .resource small {
   display: block;
   margin-top: 5px;
