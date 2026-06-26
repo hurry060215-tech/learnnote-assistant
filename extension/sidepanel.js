@@ -234,13 +234,18 @@ function requestHeaderNames(resource) {
 function summaryDiagnosticText(task) {
   const diag = task?.summary_diagnostics || {};
   if (!Object.keys(diag).length) return "-";
+  const visionGridCount = diag.vision_grid_count ?? diag.frame_grid_count ?? 0;
+  const sentImages = diag.vision_image_count ?? 0;
+  const omittedCount = Number(diag.omitted_frame_grid_count || 0);
+  const missingImages = diag.all_sent_grids_had_images === false || diag.all_grids_had_images === false;
   return [
     diag.used_vision_llm ? "已使用视觉 LLM" : diag.used_text_llm ? "已使用文本 LLM" : diag.used_local_template ? "本地模板" : "",
     `模型 ${diag.llm_model || task.summary_source || "-"}`,
     `视觉窗口 ${diag.visual_window_count ?? 0}`,
     `画面网格 ${diag.frame_grid_count ?? 0}`,
-    `已发送图片 ${diag.vision_image_count ?? 0}`,
-    diag.all_grids_had_images === false ? "存在缺失图片" : "",
+    `\u9001\u5165\u89c6\u89c9 ${sentImages}/${visionGridCount}`,
+    omittedCount > 0 ? `\u8d85\u9650\u7701\u7565 ${omittedCount}` : "",
+    missingImages ? "\u5b58\u5728\u7f3a\u5931\u56fe\u7247" : "",
     diag.summary_warning || ""
   ].filter(Boolean).join(" · ");
 }
