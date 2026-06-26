@@ -215,6 +215,10 @@ assert.match(taskOverviewHtml, /\/api\/tasks\/task-web-overview\/exports\/bundle
 assert.match(taskOverviewHtml, /已完成直取下载/);
 assert.doesNotMatch(taskOverviewHtml, /<script>bad/);
 assert.match(taskOverviewHtml, /&lt;script&gt;bad\(\)&lt;\/script&gt; 课程/);
+assert.equal(context.hasTaskBundle({ media_path: "D:/media.mp4" }), true);
+assert.equal(context.hasTaskBundle({ status: "failed", error_code: "download_forbidden" }), true);
+assert.equal(context.hasTaskBundle({ download_attempts: [{ strategy: "direct-file" }] }), true);
+assert.equal(context.hasTaskBundle({}), false);
 
 const summaryDiagnostic = context.summaryDiagnosticText({
   summary_source: "vision-llm",

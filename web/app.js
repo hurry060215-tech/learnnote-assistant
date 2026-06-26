@@ -665,13 +665,24 @@ function taskExportUrl(task, type) {
   return `${API}/api/tasks/${encodeURIComponent(task.id)}/exports/${type}`;
 }
 
+function hasTaskBundle(task) {
+  if (!task) return false;
+  return Boolean(
+    task.note_path ||
+    task.media_path ||
+    task.status === "failed" ||
+    task.download_attempts?.length ||
+    visualWindows(task).length
+  );
+}
+
 function taskOverview(task) {
   const selected = task.selected_resource || {};
   const options = task.options || {};
   const windows = visualWindows(task);
   const hasNote = Boolean(task.note_path);
   const hasMedia = Boolean(task.media_path);
-  const hasBundle = hasNote || windows.length || hasMedia || Boolean(task.download_attempts?.length) || task.status === "failed";
+  const hasBundle = hasTaskBundle(task);
   const statusClass = taskStatusClass(task);
   const resourceLine = [
     sourceText(task),
@@ -835,7 +846,7 @@ async function renderDetail() {
   els.detail.className = "detail";
   const hasNote = Boolean(task.note_path);
   els.copyButton.disabled = !hasNote;
-  els.bundleButton.disabled = !hasNote;
+  els.bundleButton.disabled = !hasTaskBundle(task);
   els.mediaButton.disabled = !task.media_path;
   els.downloadButton.disabled = !hasNote;
 
