@@ -17,6 +17,8 @@ const els = {
   sourceTabs: document.querySelectorAll(".source-tab"),
   panes: document.querySelectorAll(".source-pane"),
   urlInput: document.querySelector("#urlInput"),
+  urlMode: document.querySelector("#urlMode"),
+  urlModeHint: document.querySelector("#urlModeHint"),
   titleInput: document.querySelector("#titleInput"),
   startUrlButton: document.querySelector("#startUrlButton"),
   copyBackendButton: document.querySelector("#copyBackendButton"),
@@ -315,6 +317,48 @@ function mediaKind(url) {
   if (HLS_RE.test(url)) return url.toLowerCase().includes(".mpd") ? "dash" : "hls";
   if (MEDIA_RE.test(url)) return "video";
   return "unknown";
+}
+
+function selectedUrlMode() {
+  return els.urlMode?.value || "auto";
+}
+
+function urlModeDescription(mode = selectedUrlMode()) {
+  return ({
+    auto: "自动识别会优先把 mp4/m3u8/mpd 当作媒体候选，其余 URL 交给页面扫描和 yt-dlp。",
+    page: "按课程网页处理：后端先扫描页面里的媒体地址，再用 yt-dlp 解析，不把这个 URL 当直连文件。",
+    video: "按视频文件直连处理：适合没有后缀但实际返回 video/* 的签名接口或播放接口。",
+    hls: "按 HLS 播放列表处理：后端会用 ffmpeg 合并 m3u8 可访问的分片。",
+    dash: "按 DASH manifest 处理：后端会用 ffmpeg 合并 mpd 可访问的分片。"
+  })[mode] || "";
+}
+
+function resourceKindForUrl(url, mode = selectedUrlMode()) {
+  if (mode === "video" || mode === "hls" || mode === "dash") return mode;
+  if (mode === "page") return "unknown";
+  return mediaKind(url);
+}
+
+function mimeForKind(kind) {
+  if (kind === "video") return "video/mp4";
+  if (kind === "hls") return "application/vnd.apple.mpegurl";
+  if (kind === "dash") return "application/dash+xml";
+  return "";
+}
+
+function labelForUrlResource(kind, mode = selectedUrlMode()) {
+  if (mode === "video") return "手动视频直连";
+  if (mode === "hls") return "手动 HLS";
+  if (mode === "dash") return "手动 DASH";
+  if (kind === "video") return "手动媒体链接";
+  if (kind === "hls") return "手动 HLS";
+  if (kind === "dash") return "手动 DASH";
+  return "手动链接";
+}
+
+function renderUrlModeHint() {
+  if (!els.urlModeHint) return;
+  els.urlModeHint.textContent = urlModeDescription();
 }
 
 function readOptions() {
@@ -627,14 +671,15 @@ async function startUrlTask() {
     els.urlInput.focus();
     return;
   }
-  const kind = mediaKind(url);
+  const kind = resourceKindForUrl(url);
   const resources = kind === "unknown" ? [] : [{
     url,
     source: "manual",
     kind,
-    mime: kind === "video" ? "video/mp4" : "",
-    score: kind === "unknown" ? 0 : 96,
-    label: "手动链接"
+    mime: mimeForKind(kind),
+    score: selectedUrlMode() === "auto" ? 96 : 98,
+    label: labelForUrlResource(kind),
+    request_type: selectedUrlMode() === "auto" ? "manual-auto" : "manual-forced"
   }];
   els.startUrlButton.disabled = true;
   try {
@@ -682,6 +727,11 @@ async function uploadSelectedFile() {
 els.sourceTabs.forEach(tab => {
   tab.onclick = () => setSource(tab.dataset.source);
 });
+
+if (els.urlMode) {
+  els.urlMode.onchange = renderUrlModeHint;
+  renderUrlModeHint();
+}
 
 els.resultTabs.forEach(tab => {
   tab.onclick = () => {
