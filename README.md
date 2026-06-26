@@ -63,6 +63,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - Side Panel supports a local video drop target as the non-recording fallback when the current page only exposes unrecoverable blob/fragment clues.
 - Diagnostics also show which safe request-header names were available for a selected media candidate without exposing cookie or authorization values. Persisted task debug files redact cookie values and browser request-header values.
 - Blob and media-fragment requests are kept as diagnostic clues instead of being hidden, but they are not treated as independently downloadable video files.
+- Extensionless Performance resource entries initiated by `<video>`, `<audio>`, or subtitle tracks are kept as media candidates, so `/play?id=...` style URLs are not missed only because they lack `.mp4` or `.m3u8`.
 - Recent byte-range media requests near the active playhead are treated as stronger evidence for the currently playing video, which helps avoid selecting ads or background preloads.
 - Current-page tasks retain the active player snapshot used at task start, including playback time, duration, frame id, dimensions, source URL, and DRM marker for later diagnostics.
 - Task records retain the frame interval, grid layout, ASR model, note style, and visual-understanding setting used for that run.
