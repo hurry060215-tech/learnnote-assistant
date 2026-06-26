@@ -27,6 +27,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - Local FastAPI backend on `127.0.0.1:8765`.
 - Download order: selected browser/media candidate first, then yt-dlp page resolver fallback with the current browser session's cookie file and safe request headers.
 - Download diagnostics: every task records the direct-file, manifest-ffmpeg, skipped blob/fragment, and yt-dlp attempts with status, HTTP code, content length, output file, and failure reason.
+- Direct-file downloads reject HTTP 200 login/error HTML bodies before they enter the media pipeline, so expired cookies fail as `auth_required` instead of becoming confusing ffmpeg processing errors.
 - Local video upload from both the Side Panel and the local web UI.
 - Shared processing pipeline: normalize every downloaded or uploaded video into project-local `media.mp4`, extract audio, transcribe, slice frames, build frame grids, generate a visual-window index, summarize.
 - Multimodal LLM summaries run in visual-window batches and then merge the local window notes into the final Markdown note.
