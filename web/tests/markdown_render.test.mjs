@@ -135,6 +135,23 @@ assert.match(readingRailHtml, /class="reading-rail"/);
 assert.match(readingRailHtml, /class="note-outline"/);
 assert.match(readingRailHtml, /class="visual-rail"/);
 
+const summaryDiagnostic = context.summaryDiagnosticText({
+  summary_source: "vision-llm",
+  summary_diagnostics: {
+    used_vision_llm: true,
+    llm_model: "vision-model",
+    visual_window_count: 2,
+    frame_grid_count: 2,
+    vision_image_count: 2,
+    all_grids_had_images: true
+  }
+});
+
+assert.match(summaryDiagnostic, /已使用视觉 LLM/);
+assert.match(summaryDiagnostic, /模型 vision-model/);
+assert.match(summaryDiagnostic, /视觉窗口 2/);
+assert.match(summaryDiagnostic, /已发送图片 2/);
+
 const timelineHtml = context.transcriptTimeline({
   segments: [
     { start: 5, end: 8, text: "第一段字幕" },
