@@ -654,6 +654,60 @@ function taskBrief(task) {
   </div>`;
 }
 
+function taskStatusClass(task) {
+  if (task.status === "success") return "success";
+  if (task.status === "failed") return "failed";
+  if (task.status === "running" || task.status === "queued") return "running";
+  return "idle";
+}
+
+function taskExportUrl(task, type) {
+  return `${API}/api/tasks/${encodeURIComponent(task.id)}/exports/${type}`;
+}
+
+function taskOverview(task) {
+  const selected = task.selected_resource || {};
+  const options = task.options || {};
+  const windows = visualWindows(task);
+  const hasNote = Boolean(task.note_path);
+  const hasMedia = Boolean(task.media_path);
+  const statusClass = taskStatusClass(task);
+  const resourceLine = [
+    sourceText(task),
+    selected.kind || task.source_type || "",
+    selected.playback_match ? playbackText(selected.playback_match) : "",
+    selected.content_length ? fmtBytes(selected.content_length) : ""
+  ].filter(Boolean).join(" · ");
+  const actionLinks = [
+    hasNote ? `<a href="${escapeHtml(taskExportUrl(task, "markdown"))}">导出 Markdown</a>` : "",
+    hasMedia ? `<a href="${escapeHtml(taskExportUrl(task, "media"))}">导出本地视频</a>` : "",
+    hasNote || windows.length ? `<a href="${escapeHtml(taskExportUrl(task, "bundle"))}">导出资料包</a>` : ""
+  ].filter(Boolean).join("");
+  const downloadOnly = hasMedia && !hasNote && task.status === "success";
+
+  return `<section class="task-overview status-${statusClass}">
+    <div class="task-overview-main">
+      <span class="eyeless">当前学习任务</span>
+      <strong>${escapeHtml(task.title || task.id)}</strong>
+      <small>${escapeHtml(resourceLine || statusText(task))}</small>
+      ${stageRail(task)}
+    </div>
+    <div class="task-overview-actions">
+      ${actionLinks || `<span>${escapeHtml(statusText(task))}</span>`}
+    </div>
+    <div class="task-overview-metrics">
+      <span><b>${escapeHtml(statusText(task))}</b>${escapeHtml(task.phase || "-")} · ${task.progress || 0}%</span>
+      <span><b>${escapeHtml(options.frame_interval || "-")} 秒切片</b>${escapeHtml(options.grid_columns && options.grid_rows ? `${options.grid_columns}x${options.grid_rows} 视觉窗口` : "未配置视觉窗口")}</span>
+      <span><b>${escapeHtml(task.summary_source || options.whisper_model || "-")}</b>${escapeHtml(task.summary_warning ? "已降级，查看诊断" : `${options.note_style || "study"} · ${options.visual_understanding === false ? "无视觉" : "图文"}`)}</span>
+      <span><b>${windows.length || "-"}</b>${windows.length ? "画面窗口" : "等待画面切片"}</span>
+    </div>
+    ${downloadOnly ? `<div class="download-only-callout">
+      <strong>已完成直取下载</strong>
+      <span>这个任务按“只下载本地”运行，未进入转写、切片和总结。可以先导出 media.mp4，或用同一链接重新创建完整笔记任务。</span>
+    </div>` : ""}
+  </section>`;
+}
+
 function visualRail(task, limit = 8) {
   const windows = visualWindows(task);
   if (!windows.length) return "";
@@ -788,7 +842,7 @@ async function renderDetail() {
     lastNote = await noteForTask(task.id);
     els.detail.innerHTML = `
       <div class="note-shell">
-        ${taskBrief(task)}
+        ${taskOverview(task)}
         ${failureGuide(task)}
         <div class="note-workbench">
           <article class="markdown-note">${lastNote ? markdownToHtml(lastNote) : task.media_path ? "<p>视频已下载到本地。可点击右上角视频按钮导出，不会继续转写、切片或总结。</p>" : "<p>笔记尚未生成。</p>"}</article>
