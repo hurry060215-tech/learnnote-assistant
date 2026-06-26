@@ -50,10 +50,24 @@ function classify(url, mime = "") {
   return "unknown";
 }
 
-function classifyCompletedRequest(details = {}, mime = "") {
+function hasRangeEvidence(requestHeaders = {}, responseHeaders = {}) {
+  const requestRange = Object.entries(requestHeaders || {}).some(([name, value]) =>
+    String(name).toLowerCase() === "range" && /^bytes=/i.test(String(value || "").trim())
+  );
+  const responseRange = Boolean(responseHeaders["content-range"]) ||
+    String(responseHeaders["accept-ranges"] || "").toLowerCase().includes("bytes");
+  return requestRange && responseRange;
+}
+
+function classifyCompletedRequest(details = {}, mime = "", requestHeaders = {}, responseHeaders = {}) {
   const kind = classify(details.url || "", mime);
   if (kind !== "unknown") return kind;
   if (details.type === "media") return "video";
+  const type = String(details.type || "").toLowerCase();
+  const binaryMime = /octet-stream|binary|application\/x-mpegurl/i.test(String(mime || ""));
+  if ((type === "xmlhttprequest" || type === "fetch") && binaryMime && hasRangeEvidence(requestHeaders, responseHeaders)) {
+    return "video";
+  }
   return "unknown";
 }
 
@@ -253,6 +267,12 @@ function looksLikeMediaRequest(details) {
   const url = details?.url || "";
   if (details?.type === "media") return true;
   if (classify(url, "") !== "unknown") return true;
+  if (/^(xmlhttprequest|fetch)$/i.test(String(details?.type || ""))) {
+    const hasRange = (details.requestHeaders || []).some(header =>
+      String(header.name || "").toLowerCase() === "range" && /^bytes=/i.test(String(header.value || "").trim())
+    );
+    if (hasRange) return true;
+  }
   return /m3u8|mpd|video|media|subtitle|caption/i.test(url);
 }
 
@@ -512,7 +532,7 @@ function responseHeadersObject(responseHeaders = []) {
 function recordResponseMedia(details = {}, requestHeaders = {}) {
   const headers = responseHeadersObject(details.responseHeaders || []);
   const mime = headers["content-type"] || "";
-  const kind = classifyCompletedRequest(details, mime);
+  const kind = classifyCompletedRequest(details, mime, requestHeaders, headers);
   if (kind === "unknown") return;
   const contentLength = Number(headers["content-length"] || 0);
   addResource(details.tabId, {
