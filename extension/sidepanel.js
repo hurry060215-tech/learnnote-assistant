@@ -68,9 +68,30 @@ function inlineMarkdown(value) {
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
 }
 
+function plainHeadingText(value) {
+  return String(value || "")
+    .replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/[`*_~#]/g, "")
+    .trim();
+}
+
+function noteHeadingId(value, counts = new Map()) {
+  const plain = plainHeadingText(value);
+  const slug = plain
+    .toLowerCase()
+    .replace(/[^\w\u4e00-\u9fff]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "section";
+  const base = `note-${slug}`;
+  const count = counts.get(base) || 0;
+  counts.set(base, count + 1);
+  return count ? `${base}-${count + 1}` : base;
+}
+
 function markdownToHtml(markdown) {
   const lines = String(markdown || "").replace(/\r\n?/g, "\n").split("\n");
   const html = [];
+  const headingIds = new Map();
   let listType = "";
   let inCode = false;
   const closeList = () => {
@@ -116,7 +137,8 @@ function markdownToHtml(markdown) {
     if (heading) {
       closeList();
       const level = heading[1].length;
-      html.push(`<h${level}>${inlineMarkdown(heading[2])}</h${level}>`);
+      const id = noteHeadingId(heading[2], headingIds);
+      html.push(`<h${level} id="${escapeHtml(id)}">${inlineMarkdown(heading[2])}</h${level}>`);
       continue;
     }
     const bullet = /^[-*]\s+(.+)$/.exec(line);
@@ -150,6 +172,42 @@ function markdownToHtml(markdown) {
   closeList();
   if (inCode) html.push("</code></pre>");
   return html.join("");
+}
+
+function noteOutline(markdown, limit = 10) {
+  const lines = String(markdown || "").replace(/\r\n?/g, "\n").split("\n");
+  const headingIds = new Map();
+  const headings = [];
+  let inCode = false;
+  for (const rawLine of lines) {
+    const line = rawLine.trimEnd();
+    if (line.startsWith("```")) {
+      inCode = !inCode;
+      continue;
+    }
+    if (inCode) continue;
+    const heading = /^(#{1,3})\s+(.+)$/.exec(line);
+    if (!heading) continue;
+    const text = plainHeadingText(heading[2]);
+    if (!text) continue;
+    headings.push({
+      level: heading[1].length,
+      text,
+      id: noteHeadingId(heading[2], headingIds)
+    });
+  }
+  if (!headings.length) return "";
+  return `<nav class="note-outline" aria-label="笔记目录">
+    <div class="note-outline-head">
+      <strong>笔记目录</strong>
+      <span>${headings.length} 节</span>
+    </div>
+    <div class="note-outline-list">
+      ${headings.slice(0, limit).map(heading => `
+        <a class="level-${heading.level}" href="#${escapeHtml(heading.id)}">${escapeHtml(heading.text)}</a>
+      `).join("")}
+    </div>
+  </nav>`;
 }
 
 function fmt(sec) {
@@ -763,7 +821,7 @@ function renderResult() {
   if (selectedTab === "note") {
     els.result.className = "result-body";
     const noteHtml = lastNote ? markdownToHtml(lastNote) : `<p>${escapeHtml(currentTask.message || "笔记尚未生成。")}</p>`;
-    els.result.innerHTML = `<article class="markdown-note">${noteHtml}</article>`;
+    els.result.innerHTML = `${noteOutline(lastNote)}<article class="markdown-note">${noteHtml}</article>`;
     return;
   }
   if (selectedTab === "frames") {

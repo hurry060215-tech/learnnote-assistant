@@ -62,7 +62,7 @@ const html = context.markdownToHtml(`# 标题
 \`\`\`
 `);
 
-assert.match(html, /<h1>标题<\/h1>/);
+assert.match(html, /<h1 id="note-标题">标题<\/h1>/);
 assert.match(html, /<ul>/);
 assert.match(html, /<strong>重点<\/strong>/);
 assert.match(html, /<ol>/);
@@ -72,6 +72,23 @@ assert.match(html, /src="http:\/\/127\.0\.0\.1:8765\/api\/tasks\/demo\/grids\/gr
 assert.doesNotMatch(html, /src="javascript:alert/);
 assert.match(html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
 assert.doesNotMatch(html, /<script>/);
+
+const outlineHtml = context.noteOutline(`# 当前页学习笔记
+
+## 时间轴重点
+### **画面** 解读
+## 时间轴重点
+\`\`\`
+## 不进目录
+\`\`\`
+`);
+
+assert.match(outlineHtml, /class="note-outline"/);
+assert.match(outlineHtml, /href="#note-当前页学习笔记"/);
+assert.match(outlineHtml, /href="#note-时间轴重点"/);
+assert.match(outlineHtml, /href="#note-时间轴重点-2"/);
+assert.match(outlineHtml, /画面 解读/);
+assert.doesNotMatch(outlineHtml, /不进目录/);
 
 const timelineHtml = context.transcriptTimeline({
   segments: [
