@@ -5,7 +5,7 @@ from pathlib import Path
 
 from .downloader import DownloadError, MediaDownloader, classify_resource, infer_manifest_url_from_fragment
 from .media import build_frame_grids, extract_audio, extract_frames, normalize_video
-from .models import CurrentPageTaskRequest, DownloadAttempt, ResourceCandidate, TaskOptions, TranscriptResult
+from .models import CurrentPageTaskRequest, DownloadAttempt, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, VisualWindow
 from .storage import get_task, save_task, task_dir, update_task, write_json
 from .summarizer import build_visual_windows, summarize_page_text, summarize_with_diagnostics
 from .transcriber import transcript_from_subtitle, transcribe_audio
@@ -75,6 +75,39 @@ def drm_failure_message(request: CurrentPageTaskRequest) -> str:
         details.append(f"init data: {', '.join(init_types[:3])}")
     suffix = f"（{'；'.join(details)}）" if details else ""
     return f"页面触发了 EME/DRM 加密媒体信号{suffix}，且没有发现可直接下载的 mp4/m3u8/mpd；不会录制或绕过 DRM。"
+
+
+def build_summary_diagnostics(
+    task_id: str,
+    title: str,
+    page_url: str,
+    options: TaskOptions,
+    grids: list[FrameGrid],
+    visual_windows: list[VisualWindow],
+    summary_source: str,
+    summary_warning: str,
+) -> dict:
+    image_count = sum(1 for grid in grids if grid.path and Path(grid.path).is_file())
+    return {
+        "task_id": task_id,
+        "title": title,
+        "page_url": page_url,
+        "summary_source": summary_source,
+        "summary_warning": summary_warning,
+        "visual_understanding": bool(options.visual_understanding),
+        "llm_model": options.llm_model or "",
+        "llm_base_url": options.llm_base_url or "",
+        "note_style": options.note_style,
+        "summary_depth": options.summary_depth,
+        "frame_grid_count": len(grids),
+        "visual_window_count": len(visual_windows),
+        "vision_image_count": image_count,
+        "used_vision_llm": summary_source == "vision-llm",
+        "used_text_llm": summary_source == "text-llm",
+        "used_local_template": summary_source == "local-template",
+        "all_grids_had_images": image_count == len(grids),
+        "window_ids": [window.id for window in visual_windows],
+    }
 
 
 def process_page_text_task(task_id: str, request: CurrentPageTaskRequest) -> None:
@@ -208,6 +241,17 @@ def _process_video_file(
 
     update_task(task_id, phase="summarizing", progress=84, message="正在生成 Markdown 笔记")
     note, summary_source, summary_warning = summarize_with_diagnostics(title, transcript, grids, options, page_url)
+    summary_diagnostics = build_summary_diagnostics(
+        task_id=task_id,
+        title=title,
+        page_url=page_url,
+        options=options,
+        grids=grids,
+        visual_windows=visual_windows,
+        summary_source=summary_source,
+        summary_warning=summary_warning,
+    )
+    summary_diagnostics_path = write_json(task_id, "summary_diagnostics.json", summary_diagnostics)
     note_path = work_dir / "note.md"
     note_path.write_text(note, encoding="utf-8")
 
@@ -220,6 +264,8 @@ def _process_video_file(
         note_path=str(note_path),
         summary_source=summary_source,
         summary_warning=summary_warning,
+        summary_diagnostics_path=str(summary_diagnostics_path),
+        summary_diagnostics=summary_diagnostics,
     )
 
 
