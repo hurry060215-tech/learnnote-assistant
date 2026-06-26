@@ -239,6 +239,7 @@ assert.doesNotMatch(timelineHtml, /<script>/);
 
 const posts = [];
 const preflights = [];
+let preflightDownloadable = true;
 context.fetch = async (url, options = {}) => {
   const value = String(url);
   if (value.endsWith("/api/tasks/from-current-page")) {
@@ -249,13 +250,18 @@ context.fetch = async (url, options = {}) => {
     preflights.push(JSON.parse(options.body));
     return {
       json: async () => ({
-        preflight: {
+        preflight: preflightDownloadable ? {
           ok: true,
           downloadable: true,
           kind: "video",
           status_code: 206,
           content_length: 123456,
           bytes_checked: 4096
+        } : {
+          ok: false,
+          downloadable: false,
+          code: "download_forbidden",
+          message: "HTTP 403：Referer 或签名已过期"
         }
       })
     };
@@ -299,3 +305,10 @@ assert.equal(preflights[0].resource.request_type, "manual-forced");
 assert.match(elements.get("#urlModeHint").textContent, /预检通过/);
 assert.match(elements.get("#urlModeHint").textContent, /120\.6 KB/);
 assert.equal(elements.get("#preflightUrlButton").disabled, false);
+
+preflightDownloadable = false;
+await context.preflightUrlTask();
+
+assert.equal(preflights.length, 2);
+assert.match(elements.get("#urlModeHint").textContent, /预检未通过/);
+assert.match(elements.get("#urlModeHint").textContent, /HTTP 403/);
