@@ -70,6 +70,13 @@ class ResourceDetectionTests(unittest.TestCase):
                 "origin": "https://course.example.com",
                 "user-agent": "Chrome Test UA",
                 "accept-language": "zh-CN,zh;q=0.9",
+                "sec-fetch-dest": "video",
+                "sec-fetch-mode": "no-cors",
+                "sec-fetch-site": "same-site",
+                "sec-ch-ua": '"Chromium";v="126"',
+                "sec-ch-ua-mobile": "?0",
+                "sec-ch-ua-platform": '"Windows"',
+                "x-requested-with": "XMLHttpRequest",
                 "range": "bytes=0-",
                 "cookie": "bad=1",
                 "authorization": "Bearer bad",
@@ -83,6 +90,13 @@ class ResourceDetectionTests(unittest.TestCase):
         self.assertEqual(headers["Origin"], "https://course.example.com")
         self.assertEqual(headers["User-Agent"], "Chrome Test UA")
         self.assertEqual(headers["Accept-Language"], "zh-CN,zh;q=0.9")
+        self.assertEqual(headers["Sec-Fetch-Dest"], "video")
+        self.assertEqual(headers["Sec-Fetch-Mode"], "no-cors")
+        self.assertEqual(headers["Sec-Fetch-Site"], "same-site")
+        self.assertEqual(headers["Sec-CH-UA"], '"Chromium";v="126"')
+        self.assertEqual(headers["Sec-CH-UA-Mobile"], "?0")
+        self.assertEqual(headers["Sec-CH-UA-Platform"], '"Windows"')
+        self.assertEqual(headers["X-Requested-With"], "XMLHttpRequest")
         self.assertEqual(headers["Cookie"], "SESSION=ok")
         self.assertNotIn("Range", headers)
         self.assertNotIn("Authorization", headers)
@@ -114,6 +128,13 @@ class ResourceDetectionTests(unittest.TestCase):
                     "Origin": "https://course.example.com",
                     "Accept-Language": "zh-CN,zh;q=0.9",
                     "Accept": "*/*",
+                    "Sec-Fetch-Dest": "video",
+                    "Sec-Fetch-Mode": "no-cors",
+                    "Sec-Fetch-Site": "same-site",
+                    "Sec-CH-UA": '"Chromium";v="126"',
+                    "Sec-CH-UA-Mobile": "?0",
+                    "Sec-CH-UA-Platform": '"Windows"',
+                    "X-Requested-With": "XMLHttpRequest",
                     "Cookie": "bad=1",
                     "Authorization": "Bearer bad",
                 },
@@ -127,6 +148,13 @@ class ResourceDetectionTests(unittest.TestCase):
         self.assertEqual(headers["Origin"], "https://course.example.com")
         self.assertEqual(headers["Accept-Language"], "zh-CN,zh;q=0.9")
         self.assertEqual(headers["Accept"], "*/*")
+        self.assertEqual(headers["Sec-Fetch-Dest"], "video")
+        self.assertEqual(headers["Sec-Fetch-Mode"], "no-cors")
+        self.assertEqual(headers["Sec-Fetch-Site"], "same-site")
+        self.assertEqual(headers["Sec-CH-UA"], '"Chromium";v="126"')
+        self.assertEqual(headers["Sec-CH-UA-Mobile"], "?0")
+        self.assertEqual(headers["Sec-CH-UA-Platform"], '"Windows"')
+        self.assertEqual(headers["X-Requested-With"], "XMLHttpRequest")
         self.assertNotIn("Cookie", headers)
         self.assertNotIn("Authorization", headers)
 

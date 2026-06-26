@@ -43,9 +43,29 @@ BROWSER_REQUEST_HEADER_ALLOWLIST = {
     "accept-language": "Accept-Language",
     "origin": "Origin",
     "referer": "Referer",
+    "sec-ch-ua": "Sec-CH-UA",
+    "sec-ch-ua-mobile": "Sec-CH-UA-Mobile",
+    "sec-ch-ua-platform": "Sec-CH-UA-Platform",
+    "sec-fetch-dest": "Sec-Fetch-Dest",
+    "sec-fetch-mode": "Sec-Fetch-Mode",
+    "sec-fetch-site": "Sec-Fetch-Site",
     "user-agent": "User-Agent",
+    "x-requested-with": "X-Requested-With",
 }
-YTDLP_HTTP_HEADER_ORDER = ("User-Agent", "Accept-Language", "Origin", "Referer", "Accept")
+YTDLP_HTTP_HEADER_ORDER = (
+    "User-Agent",
+    "Accept-Language",
+    "Origin",
+    "Referer",
+    "Accept",
+    "Sec-CH-UA",
+    "Sec-CH-UA-Mobile",
+    "Sec-CH-UA-Platform",
+    "Sec-Fetch-Dest",
+    "Sec-Fetch-Mode",
+    "Sec-Fetch-Site",
+    "X-Requested-With",
+)
 
 
 class DownloadError(RuntimeError):

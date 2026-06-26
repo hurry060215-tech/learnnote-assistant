@@ -4,7 +4,21 @@ const SUBTITLE_RE = /\.(vtt|srt|ass|ssa)(\?|#|$)/i;
 const resourceByTab = new Map();
 const pageStateByTab = new Map();
 const requestHeadersByRequestId = new Map();
-const REQUEST_HEADER_ALLOWLIST = new Set(["accept", "accept-language", "origin", "range", "referer", "user-agent"]);
+const REQUEST_HEADER_ALLOWLIST = new Set([
+  "accept",
+  "accept-language",
+  "origin",
+  "range",
+  "referer",
+  "sec-ch-ua",
+  "sec-ch-ua-mobile",
+  "sec-ch-ua-platform",
+  "sec-fetch-dest",
+  "sec-fetch-mode",
+  "sec-fetch-site",
+  "user-agent",
+  "x-requested-with"
+]);
 const RESPONSE_HEADER_ALLOWLIST = new Set(["accept-ranges", "content-length", "content-range", "content-type"]);
 const REQUEST_HEADER_CANONICAL = {
   "accept": "Accept",
@@ -12,7 +26,14 @@ const REQUEST_HEADER_CANONICAL = {
   "origin": "Origin",
   "range": "Range",
   "referer": "Referer",
-  "user-agent": "User-Agent"
+  "sec-ch-ua": "Sec-CH-UA",
+  "sec-ch-ua-mobile": "Sec-CH-UA-Mobile",
+  "sec-ch-ua-platform": "Sec-CH-UA-Platform",
+  "sec-fetch-dest": "Sec-Fetch-Dest",
+  "sec-fetch-mode": "Sec-Fetch-Mode",
+  "sec-fetch-site": "Sec-Fetch-Site",
+  "user-agent": "User-Agent",
+  "x-requested-with": "X-Requested-With"
 };
 
 function classify(url, mime = "") {
