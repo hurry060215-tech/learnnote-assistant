@@ -86,6 +86,14 @@ def transcript_from_browser_subtitles(segments: list[BrowserSubtitleCue]) -> Tra
     )
 
 
+def page_text_with_browser_subtitles(page_text: str, transcript: TranscriptResult) -> str:
+    text = (page_text or "").strip()
+    subtitle_text = (transcript.full_text or "").strip()
+    if text and subtitle_text:
+        return f"{text}\n\n--- 浏览器字幕 ---\n\n{subtitle_text}"
+    return text or subtitle_text
+
+
 def drm_failure_message(request: CurrentPageTaskRequest) -> str:
     signals = request.drm_signals or []
     key_systems = sorted({signal.key_system for signal in signals if signal.key_system})
@@ -142,10 +150,23 @@ def build_summary_diagnostics(
 def process_page_text_task(task_id: str, request: CurrentPageTaskRequest) -> None:
     try:
         update_task(task_id, status="running", phase="summarizing", progress=60, message="正在总结当前页面文本")
-        note = summarize_page_text(request.title, request.page_url, request.page_text, request.options)
+        transcript = transcript_from_browser_subtitles(request.browser_subtitles)
+        transcript_path = ""
+        if transcript.segments:
+            transcript_path = str(write_json(task_id, "transcript.json", transcript.model_dump(mode="json")))
+        page_text = page_text_with_browser_subtitles(request.page_text, transcript)
+        note = summarize_page_text(request.title, request.page_url, page_text, request.options)
         note_path = task_dir(task_id) / "note.md"
         note_path.write_text(note, encoding="utf-8")
-        update_task(task_id, status="success", phase="completed", progress=100, message="页面文本总结完成", note_path=str(note_path))
+        update_task(
+            task_id,
+            status="success",
+            phase="completed",
+            progress=100,
+            message="页面文本总结完成",
+            note_path=str(note_path),
+            transcript_path=transcript_path,
+        )
     except Exception as exc:
         _fail(task_id, "processing_failed", str(exc))
 

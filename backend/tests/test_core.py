@@ -486,6 +486,36 @@ class ProcessorBoundaryTests(unittest.TestCase):
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
+    def test_page_text_mode_includes_browser_subtitles(self) -> None:
+        task = create_task("page_text", "Visible subtitle page", "https://course.example.com/lesson")
+        try:
+            request = CurrentPageTaskRequest(
+                mode="page_text",
+                page_url="https://course.example.com/lesson",
+                title="Visible subtitle page",
+                page_text="页面章节：函数封装",
+                browser_subtitles=[
+                    {"start": 12, "end": 16, "text": "老师讲到参数传递"},
+                    {"start": 16, "end": 20, "text": "然后演示返回值"},
+                ],
+                options=TaskOptions(),
+            )
+
+            process_current_page_task(task.id, request)
+
+            record = get_task(task.id)
+            self.assertEqual(record.status, "success")
+            self.assertTrue(record.transcript_path)
+            transcript = read_transcript(task.id)
+            self.assertEqual(transcript["source"], "browser-subtitle")
+            self.assertEqual([segment["text"] for segment in transcript["segments"]], ["老师讲到参数传递", "然后演示返回值"])
+            note = read_note(task.id)
+            self.assertIn("页面章节：函数封装", note)
+            self.assertIn("老师讲到参数传递", note)
+            self.assertIn("然后演示返回值", note)
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
     def test_drm_signal_without_downloadable_candidate_fails_before_downloader(self) -> None:
         task = create_task("current_page", "DRM lesson", "https://course.example.com/drm")
         try:
