@@ -511,15 +511,27 @@ function taskBrief(task) {
   </div>`;
 }
 
-function frameStrip(task, limit = 5) {
+function visualRail(task, limit = 8) {
   const windows = visualWindows(task);
   if (!windows.length) return "";
-  return `<div class="frame-strip">${windows.slice(0, limit).map(window => `
-    <figure>
-      <img src="${escapeHtml(window.grid_url)}" alt="frame grid">
-      <figcaption>${escapeHtml(window.id)} · ${fmt(window.start)} - ${fmt(window.end)} · ${window.frame_count} 帧</figcaption>
-    </figure>
-  `).join("")}</div>`;
+  return `<aside class="visual-rail" aria-label="画面索引">
+    <div class="visual-rail-head">
+      <strong>画面索引</strong>
+      <span>${windows.length} 个窗口</span>
+    </div>
+    <div class="visual-rail-list">
+      ${windows.slice(0, limit).map(window => `
+        <figure>
+          <img src="${escapeHtml(window.grid_url)}" alt="${escapeHtml(window.id)} frame grid">
+          <figcaption>
+            <strong>${escapeHtml(window.id)}</strong>
+            <span>${fmt(window.start)} - ${fmt(window.end)} · ${window.frame_count} 帧</span>
+            ${window.transcript_excerpt ? `<small>${escapeHtml(window.transcript_excerpt)}</small>` : ""}
+          </figcaption>
+        </figure>
+      `).join("")}
+    </div>
+  </aside>`;
 }
 
 function visualWindows(task) {
@@ -569,8 +581,10 @@ async function renderDetail() {
       <div class="note-shell">
         ${taskBrief(task)}
         ${failureGuide(task)}
-        ${frameStrip(task, 5)}
-        <article class="markdown-note">${lastNote ? markdownToHtml(lastNote) : "<p>笔记尚未生成。</p>"}</article>
+        <div class="note-workbench">
+          <article class="markdown-note">${lastNote ? markdownToHtml(lastNote) : "<p>笔记尚未生成。</p>"}</article>
+          ${visualRail(task)}
+        </div>
       </div>
     `;
     return;
