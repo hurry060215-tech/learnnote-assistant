@@ -135,7 +135,7 @@
     const values = [raw];
     try {
       const decoded = decodeURIComponent(raw);
-      if (decoded && decoded !== raw) values.push(decoded);
+      if (decoded && decoded !== raw) values.unshift(decoded);
     } catch {
       // Keep the raw value when percent decoding is invalid.
     }
@@ -616,6 +616,14 @@
           rememberBlobPartObject(this.response, meta);
         }
         if (!TEXT_TYPE_RE.test(mime)) return;
+        if (this.responseType === "json") {
+          if (this.response && typeof this.response === "object") {
+            emit(collectJsonMediaUrls(this.response, "pageHookBody", "xhr json"));
+          } else if (typeof this.response === "string") {
+            extractUrlsFromText(this.response.slice(0, MAX_TEXT_BYTES), "pageHookBody", "xhr json", mime);
+          }
+          return;
+        }
         if (this.responseType && this.responseType !== "text") return;
         let text = "";
         try {
