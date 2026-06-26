@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+from io import BytesIO
 import json
 import re
+from zipfile import ZIP_DEFLATED, ZipFile
 from pathlib import Path
 from urllib.parse import quote
 
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from .config import DATA_DIR, STATIC_DIR, UPLOAD_DIR, WEB_DIR, ensure_dirs
@@ -40,6 +42,20 @@ def markdown_filename(task_id: str, title: str) -> str:
     stem = _FILENAME_RESERVED_RE.sub("_", title or "").strip(" ._")
     stem = stem[:120] or f"learnnote-{task_id}"
     return f"{stem}.md"
+
+
+def bundle_filename(task_id: str, title: str) -> str:
+    stem = _FILENAME_RESERVED_RE.sub("_", title or "").strip(" ._")
+    stem = stem[:120] or f"learnnote-{task_id}"
+    return f"{stem}.zip"
+
+
+def _write_file_if_exists(archive: ZipFile, path_value: str, archive_name: str) -> None:
+    if not path_value:
+        return
+    path = Path(path_value)
+    if path.is_file():
+        archive.write(path, archive_name)
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -153,6 +169,41 @@ def api_export_markdown(task_id: str) -> PlainTextResponse:
         )
     }
     return PlainTextResponse(note, media_type="text/markdown; charset=utf-8", headers=headers)
+
+
+@app.get("/api/tasks/{task_id}/exports/bundle")
+def api_export_bundle(task_id: str) -> Response:
+    try:
+        task = get_task(task_id)
+        note = read_note(task_id)
+        transcript = read_transcript(task_id)
+        visual_index = read_visual_index(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Task not found") from exc
+
+    has_artifact = bool(note.strip() or transcript.get("segments") or visual_index.get("windows") or task.frame_grids)
+    if not has_artifact:
+        raise HTTPException(status_code=404, detail="Task artifacts not found")
+
+    buffer = BytesIO()
+    with ZipFile(buffer, "w", ZIP_DEFLATED) as archive:
+        if note.strip():
+            archive.writestr("note.md", note)
+        archive.writestr("task.json", json.dumps(task.model_dump(mode="json"), ensure_ascii=False, indent=2))
+        archive.writestr("transcript.json", json.dumps(transcript, ensure_ascii=False, indent=2))
+        archive.writestr("visual_index.json", json.dumps(visual_index, ensure_ascii=False, indent=2))
+        for index, grid in enumerate(task.frame_grids):
+            filename = Path(grid.path).name or f"grid_{index:03d}.jpg"
+            _write_file_if_exists(archive, grid.path, f"grids/{filename}")
+
+    filename = bundle_filename(task.id, task.title)
+    headers = {
+        "Content-Disposition": (
+            f'attachment; filename="learnnote-{task.id}.zip"; '
+            f"filename*=UTF-8''{quote(filename)}"
+        )
+    }
+    return Response(buffer.getvalue(), media_type="application/zip", headers=headers)
 
 
 @app.get("/api/tasks/{task_id}/assets/{filename}")
