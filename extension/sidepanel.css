@@ -237,6 +237,27 @@ small,
   color: var(--danger);
 }
 
+.direct-flow {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+  margin: 0 0 9px;
+}
+
+.direct-flow span {
+  min-width: 0;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #c9d9ff;
+  border-radius: 7px;
+  background: #f2f6ff;
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
 .resource {
   width: 100%;
   min-height: 64px;
@@ -352,6 +373,60 @@ small,
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+}
+
+.options-disclosure {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.options-disclosure summary {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  cursor: pointer;
+  padding: 0 12px;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 850;
+  list-style: none;
+}
+
+.options-disclosure summary::-webkit-details-marker {
+  display: none;
+}
+
+.options-disclosure summary::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(45deg);
+  transition: transform 150ms ease;
+}
+
+.options-disclosure[open] summary::after {
+  transform: translateY(3px) rotate(225deg);
+}
+
+.options-disclosure summary small {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.options-disclosure .option-panel {
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  box-shadow: none;
 }
 
 label {
@@ -1007,6 +1082,11 @@ h1 {
   color: var(--accent);
 }
 
+.direct-flow span {
+  border-radius: 7px;
+  background: #edf5ff;
+}
+
 .resource-list {
   gap: 9px;
 }
@@ -1037,6 +1117,16 @@ h1 {
 .option-panel {
   gap: 9px;
   background: #fff;
+}
+
+.options-disclosure {
+  border-color: var(--border);
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+}
+
+.options-disclosure .option-panel {
+  padding: 12px;
 }
 
 input,

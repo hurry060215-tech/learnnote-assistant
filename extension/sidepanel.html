@@ -51,10 +51,21 @@
           <b id="resourceCount">0</b>
         </div>
         <div id="readiness" class="readiness">等待检测</div>
+        <div class="direct-flow" aria-label="当前页直取流程">
+          <span>检测媒体</span>
+          <span>预检直链</span>
+          <span>下载本地</span>
+          <span>切片总结</span>
+        </div>
         <div id="resources" class="resource-list"></div>
         <div id="resourceInspector" class="resource-inspector muted"></div>
       </section>
 
+      <details id="optionsDisclosure" class="options-disclosure">
+        <summary>
+          <span>处理参数</span>
+          <small>切片、转写、图文总结模型</small>
+        </summary>
       <section class="option-panel">
         <label>
           <span>切片</span>
@@ -111,6 +122,7 @@
           <input id="llmApiKey" type="password" autocomplete="off" placeholder="留空则本地降级">
         </label>
       </section>
+      </details>
 
       <section class="actions">
         <button id="summarizeButton" class="primary">
