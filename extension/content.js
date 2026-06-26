@@ -21,6 +21,8 @@ const STATIC_MEDIA_ATTRS = [
 const STATIC_MEDIA_SELECTOR = STATIC_MEDIA_ATTRS.map(name => `[${name}]`).join(",");
 const STATIC_FIELD_RE = /(["']?[A-Za-z_$][A-Za-z0-9_$.-]{0,79}["']?)\s*[:=]\s*["']([^"'<>\\\s]{4,})["']/gi;
 const STATIC_MEDIA_KEY_RE = /(url|src|file|play|media|video|stream|source|hls|m3u8|dash|mpd|subtitle|caption)/i;
+const VISIBLE_SUBTITLE_HINT_RE = /(subtitle|subtitles|caption|captions|closed.?caption|texttrack|danmu|danmaku|barrage|\bcc\b|字幕|弹幕)/i;
+const VISIBLE_SUBTITLE_ROLE_RE = /^(log|status|marquee)$/i;
 const B64ISH_RE = /^[A-Za-z0-9+/_=-]{16,}$/;
 const boundVideos = new WeakSet();
 const hookResources = [];
@@ -494,6 +496,55 @@ function collectVideoSubtitleCues(video, limit = 1000) {
   return subtitles;
 }
 
+function elementText(element) {
+  return String(element?.innerText || element?.textContent || "").replace(/\s+/g, " ").trim();
+}
+
+function elementHintText(element) {
+  const values = [
+    element?.className,
+    element?.id,
+    readAttribute(element, "class"),
+    readAttribute(element, "id"),
+    readAttribute(element, "role"),
+    readAttribute(element, "aria-live"),
+    readAttribute(element, "aria-label"),
+    readAttribute(element, "title")
+  ];
+  return values.filter(Boolean).join(" ");
+}
+
+function looksLikeVisibleSubtitleElement(element) {
+  const tag = String(element?.tagName || "").toLowerCase();
+  if (!element || ["script", "style", "video", "audio", "source", "track", "iframe"].includes(tag)) return false;
+  const text = elementText(element);
+  if (text.length < 2 || text.length > 260) return false;
+  const hint = elementHintText(element);
+  if (VISIBLE_SUBTITLE_HINT_RE.test(hint)) return true;
+  const role = readAttribute(element, "role");
+  const ariaLive = readAttribute(element, "aria-live");
+  return VISIBLE_SUBTITLE_ROLE_RE.test(role) || Boolean(ariaLive && ariaLive !== "off");
+}
+
+function collectVisibleSubtitleCues(limit = 200) {
+  const active = activeVideoInfo();
+  const base = Number(active?.current_time || 0);
+  const start = Math.max(0, base - 1.5);
+  const end = Math.max(start + 0.5, base + 4.5);
+  const cues = [];
+  const seen = new Set();
+  for (const element of deepQuerySelectorAll("*", document, 1600)) {
+    if (!looksLikeVisibleSubtitleElement(element)) continue;
+    const text = elementText(element);
+    const key = text.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    cues.push({ start, end, text });
+    if (cues.length >= limit) break;
+  }
+  return cues;
+}
+
 function collectBrowserSubtitles(limit = 1200) {
   const videos = collectVideos();
   const main = pickMainVideo(videos);
@@ -508,6 +559,13 @@ function collectBrowserSubtitles(limit = 1200) {
       all.push(cue);
       if (all.length >= limit) return all.sort((a, b) => a.start - b.start || a.end - b.end);
     }
+  }
+  for (const cue of collectVisibleSubtitleCues(limit - all.length)) {
+    const key = `${Math.round(cue.start * 1000)}|${Math.round(cue.end * 1000)}|${cue.text}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    all.push(cue);
+    if (all.length >= limit) break;
   }
   return all.sort((a, b) => a.start - b.start || a.end - b.end);
 }
