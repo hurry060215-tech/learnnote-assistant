@@ -911,6 +911,29 @@ function transcriptLines(segments) {
   return segments.map(seg => `<div class="line"><time>${fmt(seg.start)}</time><span>${escapeHtml(seg.text)}</span></div>`).join("");
 }
 
+function noteVisualRail(task, limit = 4) {
+  const windows = visualWindows(task).filter(window => window.grid_url).slice(0, limit);
+  if (!windows.length) return "";
+  return `<section class="note-visual-rail" aria-label="画面索引">
+    <div class="note-outline-head">
+      <strong>画面索引</strong>
+      <span>${visualWindows(task).length} 个窗口</span>
+    </div>
+    <div class="note-visual-list">
+      ${windows.map(window => `
+        <figure>
+          <img src="${escapeHtml(window.grid_url)}" alt="${escapeHtml(window.id)} frame grid">
+          <figcaption>
+            <strong>${escapeHtml(window.id)}</strong>
+            <span>${fmt(window.start)} - ${fmt(window.end)} · ${window.frame_count || 0} 帧</span>
+            ${window.transcript_excerpt ? `<small>${escapeHtml(window.transcript_excerpt)}</small>` : ""}
+          </figcaption>
+        </figure>
+      `).join("")}
+    </div>
+  </section>`;
+}
+
 function transcriptTimeline(transcript, task, limit = 100) {
   const segments = (transcript?.segments || []).slice(0, limit);
   const windows = visualWindows(task);
@@ -969,7 +992,7 @@ function renderResult() {
   if (selectedTab === "note") {
     els.result.className = "result-body";
     const noteHtml = lastNote ? markdownToHtml(lastNote) : `<p>${escapeHtml(currentTask.message || "笔记尚未生成。")}</p>`;
-    els.result.innerHTML = `${noteOutline(lastNote)}<article class="markdown-note">${noteHtml}</article>`;
+    els.result.innerHTML = `${noteOutline(lastNote)}${noteVisualRail(currentTask)}<article class="markdown-note">${noteHtml}</article>`;
     return;
   }
   if (selectedTab === "frames") {

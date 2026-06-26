@@ -658,6 +658,63 @@ input[type="file"] {
   padding: 9px;
 }
 
+.note-visual-rail {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fbfcff;
+  padding: 9px;
+}
+
+.note-visual-list {
+  display: grid;
+  grid-auto-columns: minmax(132px, 62%);
+  grid-auto-flow: column;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.note-visual-list figure {
+  margin: 0;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  padding: 6px;
+}
+
+.note-visual-list img {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  display: block;
+  object-fit: cover;
+  border-radius: 6px;
+  background: #111827;
+}
+
+.note-visual-list figcaption {
+  display: grid;
+  gap: 2px;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.note-visual-list figcaption strong {
+  color: var(--ink);
+  font-size: 11px;
+}
+
+.note-visual-list figcaption small {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
 .note-outline-head {
   display: flex;
   align-items: center;
