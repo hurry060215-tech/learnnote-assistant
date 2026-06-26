@@ -155,7 +155,14 @@ const context = {
   },
   performance: {
     getEntriesByType() {
-      return [];
+      return [
+        {
+          name: "https://cdn.example.com/api/play?id=shadow",
+          initiatorType: "video",
+          encodedBodySize: 7340032,
+          transferSize: 7341200
+        }
+      ];
     }
   },
   setTimeout() {
@@ -188,5 +195,10 @@ assert.ok(urls.has("https://cdn.example.com/shadow/current.mp4?token=1"));
 assert.ok(urls.has("https://cdn.example.com/shadow/playlist.m3u8?token=1"));
 assert.ok(urls.has("https://cdn.example.com/shadow/captions.vtt"));
 assert.ok(urls.has("https://course.example.com/player?video=shadow"));
+const extensionless = response.resources.find(item => item.url === "https://cdn.example.com/api/play?id=shadow");
+assert.equal(extensionless.kind, "video");
+assert.equal(extensionless.source, "performance");
+assert.equal(extensionless.request_type, "video");
+assert.equal(extensionless.content_length, 7340032);
 assert.match(response.page_text, /Shadow lesson title/);
 assert.ok(observedRoots.includes(shadowRoot), "expected open shadow roots to be observed for later media mutations");
