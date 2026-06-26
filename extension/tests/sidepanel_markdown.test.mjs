@@ -147,3 +147,24 @@ assert.match(timelineHtml, /第一段字幕/);
 assert.match(timelineHtml, /W002/);
 assert.match(timelineHtml, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
 assert.doesNotMatch(timelineHtml, /<script>/);
+
+const railHtml = context.noteVisualRail({
+  visual_windows: [
+    {
+      id: "W001",
+      start: 0,
+      end: 180,
+      frame_count: 9,
+      grid_url: "http://127.0.0.1:8765/api/tasks/demo/grids/grid_000.jpg",
+      transcript_excerpt: "<script>alert(1)</script> 画面摘要"
+    }
+  ]
+});
+
+assert.match(railHtml, /class="note-visual-rail"/);
+assert.match(railHtml, /画面索引/);
+assert.match(railHtml, /W001/);
+assert.match(railHtml, /00:00:00 - 00:03:00/);
+assert.match(railHtml, /src="http:\/\/127\.0\.0\.1:8765\/api\/tasks\/demo\/grids\/grid_000\.jpg"/);
+assert.match(railHtml, /&lt;script&gt;alert\(1\)&lt;\/script&gt; 画面摘要/);
+assert.doesNotMatch(railHtml, /<script>/);
