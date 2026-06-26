@@ -184,6 +184,21 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
         media_path, selected = downloader.download(request.page_url, request.resources, request.cookies, request.title)
         if selected:
             update_task(task_id, selected_resource=redacted_resource(selected))
+        if request.mode == "download_only":
+            update_task(task_id, download_attempts=downloader.attempts)
+            update_task(task_id, phase="processing_video", progress=80, message="正在保存可导出的本地视频")
+            normalized = work_dir / "media.mp4"
+            normalize_video(media_path, normalized)
+            update_task(
+                task_id,
+                status="success",
+                phase="completed",
+                progress=100,
+                message="视频已下载到本地，可直接导出。",
+                media_path=str(normalized),
+                download_attempts=downloader.attempts,
+            )
+            return
         subtitle_path = None
         if not request.browser_subtitles:
             subtitle_path = downloader.download_subtitle(request.resources, request.cookies, request.page_url, request.title)

@@ -762,7 +762,7 @@ async function renderDetail() {
     task.selected_resource?.content_length ? fmtBytes(task.selected_resource.content_length) : ""
   ].filter(Boolean).join(" · ");
   els.detail.className = "detail";
-  const hasNote = Boolean(task.note_path) || task.status === "success";
+  const hasNote = Boolean(task.note_path);
   els.copyButton.disabled = !hasNote;
   els.bundleButton.disabled = !hasNote;
   els.mediaButton.disabled = !task.media_path;
@@ -775,7 +775,7 @@ async function renderDetail() {
         ${taskBrief(task)}
         ${failureGuide(task)}
         <div class="note-workbench">
-          <article class="markdown-note">${lastNote ? markdownToHtml(lastNote) : "<p>笔记尚未生成。</p>"}</article>
+          <article class="markdown-note">${lastNote ? markdownToHtml(lastNote) : task.media_path ? "<p>视频已下载到本地。可点击右上角视频按钮导出，不会继续转写、切片或总结。</p>" : "<p>笔记尚未生成。</p>"}</article>
           ${readingRail(lastNote, task)}
         </div>
       </div>
