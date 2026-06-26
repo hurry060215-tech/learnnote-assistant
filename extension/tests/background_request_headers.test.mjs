@@ -149,3 +149,35 @@ assert.equal(earlyResources[0].kind, "video");
 assert.equal(earlyResources[0].status_code, 206);
 assert.equal(earlyResources[0].request_headers.Range, "bytes=0-");
 assert.equal(earlyResources[0].headers["content-range"], "bytes 0-1048575/8388608");
+
+const cookieUrls = context.cookieUrlsForContext(
+  {
+    page_url: "https://course.example.com/top",
+    active_video: { src: "blob:https://course.example.com/active" }
+  },
+  { url: "https://course.example.com/tab" },
+  [
+    {
+      url: "https://cdn.example.com/live/master.m3u8",
+      page_url: "https://course.example.com/frame-page",
+      frame_url: "https://player.example.com/embed/1",
+      initiator: "https://player.example.com",
+      blob_url: "blob:https://course.example.com/active",
+      request_headers: {
+        Referer: "https://player.example.com/embed/1?lesson=42",
+        Origin: "https://course.example.com"
+      }
+    }
+  ]
+);
+
+assert.deepEqual(Array.from(cookieUrls), [
+  "https://course.example.com/top",
+  "https://course.example.com/tab",
+  "https://cdn.example.com/live/master.m3u8",
+  "https://course.example.com/frame-page",
+  "https://player.example.com/embed/1",
+  "https://player.example.com",
+  "https://player.example.com/embed/1?lesson=42",
+  "https://course.example.com"
+]);

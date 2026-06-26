@@ -579,6 +579,32 @@ async function cookiesForUrls(urls) {
   return [...result.values()];
 }
 
+function cookieUrlsForContext(page = {}, tab = {}, resources = []) {
+  const urls = [];
+  const add = value => {
+    const url = String(value || "").trim();
+    if (!/^https?:\/\//i.test(url)) return;
+    if (!urls.includes(url)) urls.push(url);
+  };
+
+  add(page.page_url);
+  add(tab.url);
+  add(page.active_video?.src);
+
+  for (const resource of resources || []) {
+    add(resource.url);
+    add(resource.page_url);
+    add(resource.frame_url);
+    add(resource.initiator);
+    add(resource.blob_url);
+    const headers = resource.request_headers || {};
+    for (const [name, value] of Object.entries(headers)) {
+      if (/^(referer|origin)$/i.test(name)) add(value);
+    }
+  }
+  return urls;
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   (async () => {
     if (message.type === "page-media-detected" && sender.tab?.id !== undefined) {
@@ -612,8 +638,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const tab = await activeTab();
       const page = message.page || await collectPageData(tab);
       const resources = message.resources || resourceByTab.get(tab.id) || [];
-      const urls = [page.page_url || tab.url, ...resources.map(item => item.url)];
-      const cookies = await cookiesForUrls(urls);
+      const cookies = await cookiesForUrls(cookieUrlsForContext(page, tab, resources));
       const backendUrl = message.backendUrl || "http://127.0.0.1:8765";
       const res = await fetch(`${backendUrl}/api/tasks/from-current-page`, {
         method: "POST",
@@ -643,8 +668,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ error: "没有可预检的候选资源。" });
         return;
       }
-      const urls = [page.page_url || tab.url, resource.url];
-      const cookies = await cookiesForUrls(urls);
+      const cookies = await cookiesForUrls(cookieUrlsForContext(page, tab, [resource]));
       const backendUrl = message.backendUrl || "http://127.0.0.1:8765";
       const res = await fetch(`${backendUrl}/api/media/preflight`, {
         method: "POST",

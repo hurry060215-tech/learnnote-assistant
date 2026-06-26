@@ -23,6 +23,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - Iframe/player-page fallback: when the top course page is only a shell, the backend also tries the active frame URL, candidate page URL, Referer, and initiator as page-scan and yt-dlp fallback targets.
 - EME/DRM signal detection: the extension records `encrypted`, `setMediaKeys`, and `requestMediaKeySystemAccess` evidence so encrypted pages fail with a clear reason instead of pretending a normal direct URL was missed.
 - Cookie handoff from the current browser session to the local backend at task start.
+- Cookie handoff includes the top page, active media URL, player iframe URLs, candidate page/frame URLs, initiator, Referer, and Origin domains so iframe-based course players keep their browser session context.
 - Non-sensitive browser request headers such as `Referer`, `Origin`, `User-Agent`, `Accept`, `Accept-Language`, `Sec-Fetch-*`, `Sec-CH-UA*`, and `X-Requested-With` are captured for media candidates and reused by backend downloads.
 - Local FastAPI backend on `127.0.0.1:8765`.
 - Download order: selected browser/media candidate first, then yt-dlp page resolver fallback with the current browser session's cookie file and safe request headers.
