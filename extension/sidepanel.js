@@ -671,12 +671,12 @@ async function collectContextNow() {
     resources = [];
     selectedResourceUrl = "";
     renderContext();
-    return;
+    return true;
   }
   const response = await chrome.runtime.sendMessage({ type: "get-current-context" });
   if (response.error) {
     els.resources.innerHTML = `<p class="muted">${escapeHtml(response.error)}</p>`;
-    return;
+    return false;
   }
   currentTabId = response.tab?.id ?? null;
   page = response.page;
@@ -685,16 +685,18 @@ async function collectContextNow() {
   preflight = null;
   preflightResourceUrl = "";
   renderContext();
+  return true;
 }
 
 async function collect() {
   if (isCollectingContext) {
     pendingContextRefresh = true;
-    return;
+    return false;
   }
   isCollectingContext = true;
+  let ok = false;
   try {
-    await collectContextNow();
+    ok = await collectContextNow();
   } finally {
     isCollectingContext = false;
     if (pendingContextRefresh) {
@@ -702,6 +704,7 @@ async function collect() {
       scheduleContextRefresh("pending", 150);
     }
   }
+  return ok;
 }
 
 function renderContext() {
@@ -822,15 +825,19 @@ async function preflightBestResource(mode = "video") {
 }
 
 async function startTask(mode = "video") {
-  if (!page) await collect();
   if (!HAS_EXTENSION_API) {
     els.taskMessage.textContent = "请在 Chrome/Edge 扩展 Side Panel 中读取当前页视频。";
     return;
   }
-  const resource = selectedResource();
   els.summarizeButton.disabled = true;
   if (els.downloadOnlyButton) els.downloadOnlyButton.disabled = true;
   try {
+    els.taskMessage.textContent = isMediaTaskMode(mode) ? "正在刷新当前播放页和媒体候选..." : "正在刷新当前页面文本...";
+    const refreshed = await collect();
+    if (!refreshed || !page) {
+      els.taskMessage.textContent = "刷新当前页面失败，无法确认最新播放资源；请重新打开页面或刷新后再试。";
+      return;
+    }
     if (preflightCandidatesForStart(mode).length) {
       const checked = await preflightBestResource(mode);
       if (!checked?.downloadable) {
@@ -863,9 +870,13 @@ async function startTask(mode = "video") {
 }
 
 async function preflightSelectedResource({ silent = false } = {}) {
-  if (!page) await collect();
   if (!HAS_EXTENSION_API) {
     els.taskMessage.textContent = "请在 Chrome/Edge 扩展 Side Panel 中预检当前页视频。";
+    return null;
+  }
+  const refreshed = await collect();
+  if (!refreshed || !page) {
+    els.taskMessage.textContent = "刷新当前页面失败，无法预检最新播放资源；请重新打开页面或刷新后再试。";
     return null;
   }
   const resource = selectedResource();

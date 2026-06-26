@@ -35,15 +35,15 @@ const calls = {
 };
 
 const page = {
-  title: "Course player",
-  page_url: "https://course.example.com/lesson",
-  page_text: "lesson text",
-  active_video: { src: "https://cdn.example.com/api/play?id=1", current_time: 12, duration: 120, paused: false },
+  title: "Old course player",
+  page_url: "https://course.example.com/old-lesson",
+  page_text: "old lesson text",
+  active_video: { src: "https://cdn.example.com/old.mp4", current_time: 12, duration: 120, paused: false },
   frames: []
 };
 
 const resources = [{
-  url: "https://cdn.example.com/api/play?id=1",
+  url: "https://cdn.example.com/old.mp4",
   source: "webRequest",
   kind: "video",
   score: 98,
@@ -81,18 +81,12 @@ const context = {
       async sendMessage(message) {
         if (message.type === "get-current-context") {
           calls.collect += 1;
-          return { page, resources };
+          if (calls.collect === 1) return { page, resources };
+          return { error: "cannot access active tab" };
         }
         if (message.type === "preflight-current-resource") {
           calls.preflight += 1;
-          return {
-            preflight: {
-              ok: false,
-              downloadable: false,
-              code: "download_forbidden",
-              message: "HTTP 403：登录态或 Referer 不匹配"
-            }
-          };
+          return { preflight: { ok: true, downloadable: true } };
         }
         if (message.type === "start-current-task") {
           calls.start += 1;
@@ -118,6 +112,6 @@ await new Promise(resolve => setTimeout(resolve, 0));
 await context.startTask("video");
 
 assert.equal(calls.collect, 2);
-assert.equal(calls.preflight, 1);
+assert.equal(calls.preflight, 0);
 assert.equal(calls.start, 0);
-assert.match(elements.get("#taskMessage").textContent, /HTTP 403/);
+assert.match(elements.get("#taskMessage").textContent, /刷新当前页面失败/);
