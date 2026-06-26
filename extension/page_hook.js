@@ -479,6 +479,22 @@
     };
   }
 
+  if (typeof window.Response !== "undefined" && Response.prototype?.text) {
+    const originalResponseText = Response.prototype.text;
+    Response.prototype.text = async function (...args) {
+      const text = await originalResponseText.apply(this, args);
+      try {
+        const mime = this.headers?.get?.("content-type") || "";
+        if (TEXT_TYPE_RE.test(mime)) {
+          extractUrlsFromText(String(text || "").slice(0, MAX_TEXT_BYTES), "pageHookBody", "fetch text", mime);
+        }
+      } catch {
+        // Keep host page text consumption unchanged.
+      }
+      return text;
+    };
+  }
+
   if (typeof window.Response !== "undefined" && Response.prototype?.arrayBuffer) {
     const originalResponseArrayBuffer = Response.prototype.arrayBuffer;
     Response.prototype.arrayBuffer = async function (...args) {
