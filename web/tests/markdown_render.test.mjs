@@ -70,10 +70,27 @@ const html = context.markdownToHtml(`## 画面索引
 ![bad](javascript:alert(1))
 `);
 
-assert.match(html, /<h2>画面索引<\/h2>/);
+assert.match(html, /<h2 id="note-画面索引">画面索引<\/h2>/);
 assert.match(html, /<figure class="note-image-frame">/);
 assert.match(html, /src="http:\/\/127\.0\.0\.1:8765\/api\/tasks\/demo\/grids\/grid_000\.jpg"/);
 assert.doesNotMatch(html, /src="javascript:alert/);
+
+const outlineHtml = context.noteOutline(`# Smoke Current Page Video
+
+## 画面索引
+### **重点** 片段
+## 画面索引
+\`\`\`
+## 不应进入目录
+\`\`\`
+`);
+
+assert.match(outlineHtml, /class="note-outline"/);
+assert.match(outlineHtml, /href="#note-smoke-current-page-video"/);
+assert.match(outlineHtml, /href="#note-画面索引"/);
+assert.match(outlineHtml, /href="#note-画面索引-2"/);
+assert.match(outlineHtml, /重点 片段/);
+assert.doesNotMatch(outlineHtml, /不应进入目录/);
 
 const resultPanel = elements.get(".result-panel") || documentStub.querySelector(".result-panel");
 context.window.innerWidth = 1280;
@@ -102,6 +119,21 @@ assert.match(railHtml, /00:00:00 - 00:03:00/);
 assert.match(railHtml, /src="http:\/\/127\.0\.0\.1:8765\/api\/tasks\/demo\/grids\/grid_000\.jpg"/);
 assert.doesNotMatch(railHtml, /<script>/);
 assert.match(railHtml, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+
+const readingRailHtml = context.readingRail("## 第一节", {
+  visual_windows: [{
+    id: "W001",
+    start: 0,
+    end: 30,
+    frame_count: 3,
+    grid_url: "http://127.0.0.1:8765/api/tasks/demo/grids/grid_000.jpg",
+    transcript_excerpt: ""
+  }]
+});
+
+assert.match(readingRailHtml, /class="reading-rail"/);
+assert.match(readingRailHtml, /class="note-outline"/);
+assert.match(readingRailHtml, /class="visual-rail"/);
 
 const timelineHtml = context.transcriptTimeline({
   segments: [

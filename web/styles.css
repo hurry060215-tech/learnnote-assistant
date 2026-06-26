@@ -781,6 +781,7 @@ button:disabled {
   min-height: 0;
   overflow: auto;
   padding: 18px 20px 24px;
+  container-type: inline-size;
 }
 
 .detail.empty {
@@ -842,14 +843,24 @@ button:disabled {
 
 .note-workbench {
   display: grid;
-  grid-template-columns: minmax(0, 820px) 280px;
+  grid-template-columns: minmax(0, 820px) 300px;
   align-items: start;
   gap: 18px;
 }
 
-.visual-rail {
+.note-workbench > * {
+  min-width: 0;
+}
+
+.reading-rail {
   position: sticky;
   top: 14px;
+  display: grid;
+  gap: 10px;
+}
+
+.note-outline,
+.visual-rail {
   display: grid;
   gap: 10px;
   border: 1px solid var(--border);
@@ -874,6 +885,41 @@ button:disabled {
   color: var(--muted);
   font-size: 11px;
   font-weight: 800;
+}
+
+.note-outline-list {
+  display: grid;
+  gap: 3px;
+}
+
+.note-outline-list a {
+  min-width: 0;
+  display: block;
+  border-radius: 7px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 760;
+  line-height: 1.35;
+  overflow: hidden;
+  padding: 7px 8px;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.note-outline-list a:hover {
+  background: #eef5ff;
+  color: var(--accent);
+}
+
+.note-outline-list a.level-1 {
+  color: var(--text);
+  font-weight: 850;
+}
+
+.note-outline-list a.level-3 {
+  padding-left: 18px;
+  font-size: 11px;
 }
 
 .visual-rail-list {
@@ -927,6 +973,7 @@ button:disabled {
   color: #111827;
   font-size: 15px;
   line-height: 1.78;
+  overflow-wrap: anywhere;
 }
 
 .markdown-note h1,
@@ -1663,6 +1710,21 @@ select {
   max-width: 960px;
 }
 
+@container (max-width: 960px) {
+  .note-workbench {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .reading-rail {
+    position: static;
+    order: -1;
+  }
+
+  .visual-rail-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 1280px) {
   body {
     min-width: 1040px;
@@ -1685,7 +1747,7 @@ select {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .visual-rail {
+  .reading-rail {
     position: static;
     order: -1;
   }
@@ -1783,7 +1845,7 @@ select {
     grid-template-columns: 1fr;
   }
 
-  .visual-rail {
+  .reading-rail {
     position: static;
     order: -1;
   }
