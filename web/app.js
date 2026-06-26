@@ -507,7 +507,7 @@ function taskBrief(task) {
     <span><b>${escapeHtml(statusText(task))}</b>${escapeHtml(task.phase || "-")} · ${task.progress || 0}%</span>
     <span><b>${escapeHtml(sourceText(task))}</b>${escapeHtml(selected.kind || task.source_type || "-")}</span>
     <span><b>${escapeHtml(task.options?.frame_interval || "-")} 秒切片</b>${escapeHtml(task.options?.grid_columns && task.options?.grid_rows ? `${task.options.grid_columns}x${task.options.grid_rows} 视觉窗口` : "未配置视觉窗口")}</span>
-    <span><b>${escapeHtml(task.options?.whisper_model || "-")}</b>${escapeHtml(task.options?.note_style || "study")} · ${task.options?.visual_understanding === false ? "无视觉" : "图文"}</span>
+    <span><b>${escapeHtml(task.summary_source || task.options?.whisper_model || "-")}</b>${escapeHtml(task.summary_warning ? "已降级，详见诊断" : `${task.options?.note_style || "study"} · ${task.options?.visual_understanding === false ? "无视觉" : "图文"}`)}</span>
   </div>`;
 }
 
@@ -648,6 +648,8 @@ async function renderDetail() {
         <dt>媒体文件</dt><dd>${escapeHtml(task.media_path || "-")}</dd>
         <dt>音频文件</dt><dd>${escapeHtml(task.audio_path || "-")}</dd>
         <dt>字幕文件</dt><dd>${escapeHtml(task.subtitle_path || "-")}</dd>
+        <dt>总结来源</dt><dd>${escapeHtml(task.summary_source || "-")}</dd>
+        <dt>总结提示</dt><dd>${escapeHtml(task.summary_warning || "-")}</dd>
         <dt>处理选项</dt><dd>${escapeHtml(optionText(task) || "-")}</dd>
         <dt>错误</dt><dd>${escapeHtml(task.error_detail || task.error_code || "-")}</dd>
         <dt>尝试记录</dt><dd>${attemptHtml}</dd>
