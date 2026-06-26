@@ -26,7 +26,7 @@ from app.downloader import (
 )
 from app.models import ActiveVideoInfo, BrowserCookie, CurrentPageTaskRequest, DrmSignal, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment
 from app.processor import process_current_page_task, read_note, read_transcript, redacted_request_dump, redacted_resource
-from app.summarizer import build_visual_windows, local_markdown_note
+from app.summarizer import build_visual_windows, local_markdown_note, summarize_with_diagnostics
 from app.storage import create_task, get_task, task_dir
 from app.transcriber import transcript_from_subtitle
 
@@ -688,6 +688,21 @@ class SummaryFallbackTests(unittest.TestCase):
         self.assertIn("W001 `00:00:00 - 00:00:20`", note)
         self.assertIn("![W001 00:00:00 - 00:00:20](http://127.0.0.1/grid.jpg)", note)
         self.assertIn("复习问题", note)
+
+    def test_summary_diagnostics_report_local_fallback_without_api_key(self) -> None:
+        transcript = TranscriptResult(
+            source="unit",
+            full_text="函数用于封装逻辑。",
+            segments=[TranscriptSegment(start=5, end=8, text="函数用于封装逻辑。")],
+        )
+        grids = [FrameGrid(path="", url="http://127.0.0.1/grid.jpg", start=0, end=20, frame_count=2)]
+
+        with patch("app.summarizer.LLM_API_KEY", ""):
+            note, source, warning = summarize_with_diagnostics("Python lesson", transcript, grids, TaskOptions(), "https://example.com")
+
+        self.assertEqual(source, "local-template")
+        self.assertIn("API Key", warning)
+        self.assertIn("画面-字幕对齐索引", note)
 
     def test_llm_summary_batches_all_frame_grids_before_merge(self) -> None:
         from app.summarizer import summarize_with_llm

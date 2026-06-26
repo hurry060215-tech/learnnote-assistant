@@ -312,8 +312,33 @@ def summarize_with_llm(
         return None
 
 
+def summarize_with_diagnostics(
+    title: str,
+    transcript: TranscriptResult,
+    grids: list[FrameGrid],
+    options: TaskOptions,
+    page_url: str = "",
+) -> tuple[str, str, str]:
+    api_key = options.llm_api_key or LLM_API_KEY
+    if not api_key:
+        return (
+            local_markdown_note(title, transcript, grids, page_url),
+            "local-template",
+            "未配置 OpenAI-compatible API Key，已使用本地画面索引模板生成笔记。",
+        )
+    generated = summarize_with_llm(title, transcript, grids, options, page_url)
+    if generated:
+        source = "vision-llm" if grids and options.visual_understanding else "text-llm"
+        return generated, source, ""
+    return (
+        local_markdown_note(title, transcript, grids, page_url),
+        "local-template",
+        "视觉/LLM 总结调用失败或不可用，已降级为本地画面索引模板。",
+    )
+
+
 def summarize(title: str, transcript: TranscriptResult, grids: list[FrameGrid], options: TaskOptions, page_url: str = "") -> str:
-    return summarize_with_llm(title, transcript, grids, options, page_url) or local_markdown_note(title, transcript, grids, page_url)
+    return summarize_with_diagnostics(title, transcript, grids, options, page_url)[0]
 
 
 def summarize_page_text(title: str, page_url: str, page_text: str, options: TaskOptions) -> str:

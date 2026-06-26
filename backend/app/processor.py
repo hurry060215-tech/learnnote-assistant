@@ -8,7 +8,7 @@ from .downloader import DownloadError, MediaDownloader, classify_resource, infer
 from .media import build_frame_grids, extract_audio, extract_frames, normalize_video
 from .models import CurrentPageTaskRequest, DownloadAttempt, ResourceCandidate, TaskOptions, TranscriptResult
 from .storage import get_task, save_task, task_dir, update_task, write_json
-from .summarizer import build_visual_windows, summarize, summarize_page_text
+from .summarizer import build_visual_windows, summarize_page_text, summarize_with_diagnostics
 from .transcriber import transcript_from_subtitle, transcribe_audio
 
 
@@ -212,7 +212,7 @@ def _process_video_file(
     save_task(record)
 
     update_task(task_id, phase="summarizing", progress=84, message="正在生成 Markdown 笔记")
-    note = summarize(title, transcript, grids, options, page_url)
+    note, summary_source, summary_warning = summarize_with_diagnostics(title, transcript, grids, options, page_url)
     note_path = work_dir / "note.md"
     note_path.write_text(note, encoding="utf-8")
 
@@ -223,6 +223,8 @@ def _process_video_file(
         progress=100,
         message="任务完成",
         note_path=str(note_path),
+        summary_source=summary_source,
+        summary_warning=summary_warning,
     )
 
 

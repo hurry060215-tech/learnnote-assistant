@@ -70,6 +70,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - Current-page tasks retain the active player snapshot used at task start, including playback time, duration, frame id, dimensions, source URL, and DRM marker for later diagnostics.
 - Task records retain the frame interval, grid layout, ASR model, note style, and visual-understanding setting used for that run.
 - Multimodal prompts are organized by frame-grid windows, pairing each visual slice with the transcript segment from the same time range. Long videos are summarized in batches so later frame grids are not silently dropped.
+- Task diagnostics record whether the note came from a vision LLM, text LLM, or the local frame-index template, including the downgrade reason when the model call is unavailable.
 - Each completed video task writes `visual_index.json`, exposes `/api/tasks/{task_id}/visual-index`, and returns `visual_windows` in the task record so the UI and future vision-model calls can reuse the same frame-grid/transcript alignment.
 - Generated notes can be copied or exported as Markdown files with the task title as the filename.
 - Deterministic fallback notes when no LLM key or ASR model is installed.
