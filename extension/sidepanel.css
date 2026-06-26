@@ -589,6 +589,14 @@ input[type="file"] {
   color: var(--accent);
 }
 
+.local-drop.uploading {
+  border-style: solid;
+  border-color: #9db9f8;
+  background: #f2f6ff;
+  color: var(--accent);
+  cursor: wait;
+}
+
 .progress {
   height: 7px;
   overflow: hidden;
