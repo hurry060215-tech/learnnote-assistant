@@ -17,6 +17,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - URL-encoded and base64-wrapped media field values are decoded during page scanning and main-world response inspection.
 - Blob/MSE-backed player recovery: when a page fetches an accessible media response as a `Blob`, `ArrayBuffer`, or `ReadableStream` chunk, constructs a `Blob`, or appends the buffer to a `MediaSource`/`SourceBuffer`, the extension maps that generated `blob:` playback URL back to the original mp4/HLS/DASH request and ranks it as the current video candidate.
 - Backend page scanner for manually pasted page URLs, so the local Web UI can try direct media extraction before yt-dlp fallback.
+- Manual URL tasks can explicitly force a pasted extensionless link to be treated as a video file, HLS manifest, or DASH manifest instead of only relying on suffix detection.
 - Iframe/player-page fallback: when the top course page is only a shell, the backend also tries the active frame URL, candidate page URL, Referer, and initiator as page-scan and yt-dlp fallback targets.
 - EME/DRM signal detection: the extension records `encrypted`, `setMediaKeys`, and `requestMediaKeySystemAccess` evidence so encrypted pages fail with a clear reason instead of pretending a normal direct URL was missed.
 - Cookie handoff from the current browser session to the local backend at task start.
