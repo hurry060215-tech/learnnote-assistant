@@ -91,6 +91,26 @@ function resource(url, source, label, mime = "", video = null, isMainVideo = fal
   };
 }
 
+function performanceKind(entry = {}) {
+  const name = entry.name || "";
+  const kind = classify(name, "");
+  if (kind !== "unknown") return kind;
+  const initiator = String(entry.initiatorType || "").toLowerCase();
+  if (initiator === "video" || initiator === "audio") return "video";
+  if (initiator === "track") return "subtitle";
+  return "unknown";
+}
+
+function performanceScore(kind, url) {
+  let value = 0;
+  if (kind === "hls" || kind === "dash") value = 95;
+  else if (kind === "video") value = 88;
+  else if (kind === "subtitle") value = 65;
+  else if (kind === "fragment") value = 20;
+  if (/chaoxing|xuexitong/i.test(url)) value += 8;
+  return Math.min(value, 100);
+}
+
 function rememberHookResource(item) {
   const normalized = resource(item.url, item.source || "pageHook", item.label || "page hook", item.mime || "");
   if (!normalized) return;
@@ -306,8 +326,15 @@ function collectPerformanceResources() {
   const resources = [];
   for (const entry of performance.getEntriesByType("resource")) {
     const name = entry.name || "";
-    if (MEDIA_RE.test(name) || FRAGMENT_RE.test(name) || SUBTITLE_RE.test(name) || /m3u8|mpd|video|media|subtitle|caption/i.test(name)) {
-      resources.push(resource(name, "performance", "performance"));
+    const kind = performanceKind(entry);
+    if (kind !== "unknown" || /m3u8|mpd|video|media|subtitle|caption/i.test(name)) {
+      const item = resource(name, "performance", "performance");
+      if (!item) continue;
+      item.kind = kind !== "unknown" ? kind : item.kind;
+      item.request_type = entry.initiatorType || "";
+      item.content_length = Number(entry.encodedBodySize || entry.transferSize || 0) || null;
+      item.score = Math.max(item.score || 0, performanceScore(item.kind, item.url));
+      resources.push(item);
     }
   }
   return resources.filter(Boolean);
@@ -456,7 +483,7 @@ function installPerformanceObserver() {
     const observer = new PerformanceObserver(list => {
       const hasMedia = list.getEntries().some(entry => {
         const name = entry.name || "";
-        return MEDIA_RE.test(name) || FRAGMENT_RE.test(name) || SUBTITLE_RE.test(name) || /m3u8|mpd|video|media|subtitle|caption/i.test(name);
+        return performanceKind(entry) !== "unknown" || /m3u8|mpd|video|media|subtitle|caption/i.test(name);
       });
       if (hasMedia) schedulePush(500);
     });
