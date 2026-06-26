@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>LearnNote 学习视频笔记</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="/web/styles.css?v=20260626-reading-rail-2">
+    <link rel="stylesheet" href="/web/styles.css?v=20260626-mobile-workbench-1">
   </head>
   <body>
     <header class="topbar">
@@ -143,7 +143,13 @@
           </div>
         </section>
 
-        <div class="option-grid">
+        <details id="optionsDisclosure" class="options-disclosure" open>
+          <summary>
+            <span>处理参数</span>
+            <small>切片、转写、图文总结模型</small>
+          </summary>
+
+          <div class="option-grid">
           <label class="field">
             <span>切片间隔</span>
             <select id="frameInterval">
@@ -206,6 +212,7 @@
           <span>切片</span>
           <span>图文总结</span>
         </div>
+        </details>
       </aside>
 
       <section class="queue-panel">
@@ -263,6 +270,6 @@
       </section>
     </main>
 
-    <script src="/web/app.js?v=20260626-reading-rail-2"></script>
+    <script src="/web/app.js?v=20260626-mobile-workbench-1"></script>
   </body>
 </html>

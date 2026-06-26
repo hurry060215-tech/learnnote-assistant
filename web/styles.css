@@ -541,6 +541,54 @@ select:focus {
   border-top: 1px solid var(--border);
 }
 
+.options-disclosure {
+  margin-top: 18px;
+  border-top: 1px solid var(--border);
+}
+
+.options-disclosure summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 850;
+  list-style: none;
+}
+
+.options-disclosure summary::-webkit-details-marker {
+  display: none;
+}
+
+.options-disclosure summary::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(45deg);
+  transition: transform 150ms ease;
+}
+
+.options-disclosure[open] summary::after {
+  transform: translateY(3px) rotate(225deg);
+}
+
+.options-disclosure summary small {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.options-disclosure .option-grid {
+  margin-top: 0;
+  padding-top: 12px;
+}
+
 .url-mode-grid {
   display: grid;
   grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
@@ -1793,6 +1841,18 @@ select {
     border-radius: 8px;
   }
 
+  .workspace-panel {
+    order: 1;
+  }
+
+  .result-panel {
+    order: 2;
+  }
+
+  .queue-panel {
+    order: 3;
+  }
+
   .workspace-panel,
   .queue-panel {
     padding: 16px 14px;
@@ -1812,6 +1872,26 @@ select {
   .result-panel {
     grid-column: auto;
     min-height: 520px;
+  }
+
+  .options-disclosure {
+    margin-top: 14px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #fbfcff;
+    padding: 0 12px;
+  }
+
+  .options-disclosure summary {
+    min-height: 42px;
+  }
+
+  .options-disclosure summary small {
+    display: none;
+  }
+
+  .options-disclosure .workflow-strip {
+    margin-bottom: 12px;
   }
 
   .result-tabs {
