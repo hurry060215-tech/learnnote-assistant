@@ -439,9 +439,13 @@
         // Accessing body can throw for some synthetic responses.
       }
       if (shouldInspectResponse(response)) {
-        response.clone().text()
-          .then(text => extractUrlsFromText(text.slice(0, MAX_TEXT_BYTES), "pageHookBody", "fetch body", mime))
-          .catch(() => {});
+        try {
+          response.clone().text()
+            .then(text => extractUrlsFromText(text.slice(0, MAX_TEXT_BYTES), "pageHookBody", "fetch body", mime))
+            .catch(() => {});
+        } catch {
+          // Some wrapped responses cannot be cloned; Response.json() remains patched below.
+        }
       }
       return response;
     };
@@ -459,6 +463,19 @@
         // Keep the host page's response consumption behavior unchanged.
       }
       return blob;
+    };
+  }
+
+  if (typeof window.Response !== "undefined" && Response.prototype?.json) {
+    const originalResponseJson = Response.prototype.json;
+    Response.prototype.json = async function (...args) {
+      const data = await originalResponseJson.apply(this, args);
+      try {
+        emit(collectJsonMediaUrls(data, "pageHookBody", "fetch json"));
+      } catch {
+        // Keep host page JSON consumption unchanged.
+      }
+      return data;
     };
   }
 
