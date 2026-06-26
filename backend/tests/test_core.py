@@ -24,7 +24,8 @@ from app.downloader import (
     score_resource,
     ytdlp_headers_from_browser_context,
 )
-from app.models import ActiveVideoInfo, BrowserCookie, CurrentPageTaskRequest, DrmSignal, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
+from app.main import render_diagnostics_markdown
+from app.models import ActiveVideoInfo, BrowserCookie, CurrentPageTaskRequest, DownloadAttempt, DrmSignal, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
 from app.processor import build_summary_diagnostics, process_current_page_task, process_local_video_task, read_note, read_transcript, redacted_request_dump, redacted_resource
 from app.summarizer import MAX_VISION_GRIDS, build_visual_windows, local_markdown_note, summarize_with_diagnostics
 from app.storage import create_task, get_task, task_dir
@@ -375,6 +376,42 @@ class ProcessorBoundaryTests(unittest.TestCase):
             self.assertTrue(record.media_path.endswith("media.mp4"))
             self.assertEqual(Path(record.media_path).read_bytes(), b"normalized mp4")
             self.assertIn("Local mp4 normalize", read_note(task.id))
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
+    def test_diagnostics_report_lists_header_names_without_sensitive_values(self) -> None:
+        task = create_task("current_page", "Diagnostics redaction", "https://course.example.com/lesson")
+        try:
+            record = get_task(task.id)
+            record.selected_resource = ResourceCandidate(
+                url="https://cdn.example.com/lesson.mp4",
+                source="webRequest",
+                kind="video",
+                request_headers={
+                    "Referer": "https://course.example.com/lesson",
+                    "Cookie": "SESSION=secret",
+                    "Authorization": "Bearer secret",
+                },
+            )
+            record.download_attempts = [
+                DownloadAttempt(
+                    strategy="direct-file",
+                    status="failed",
+                    code="download_forbidden",
+                    message="HTTP 403",
+                    url="https://cdn.example.com/lesson.mp4",
+                )
+            ]
+
+            report = render_diagnostics_markdown(record)
+
+            self.assertIn("Referer", report)
+            self.assertIn("direct-file", report)
+            self.assertIn("download_forbidden", report)
+            self.assertNotIn("SESSION=secret", report)
+            self.assertNotIn("Bearer secret", report)
+            self.assertNotIn("Cookie", report.split("可复用请求头名：", 1)[1].splitlines()[0])
+            self.assertNotIn("Authorization", report.split("可复用请求头名：", 1)[1].splitlines()[0])
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 

@@ -671,6 +671,7 @@ function taskOverview(task) {
   const windows = visualWindows(task);
   const hasNote = Boolean(task.note_path);
   const hasMedia = Boolean(task.media_path);
+  const hasBundle = hasNote || windows.length || hasMedia || Boolean(task.download_attempts?.length) || task.status === "failed";
   const statusClass = taskStatusClass(task);
   const resourceLine = [
     sourceText(task),
@@ -681,7 +682,7 @@ function taskOverview(task) {
   const actionLinks = [
     hasNote ? `<a href="${escapeHtml(taskExportUrl(task, "markdown"))}">导出 Markdown</a>` : "",
     hasMedia ? `<a href="${escapeHtml(taskExportUrl(task, "media"))}">导出本地视频</a>` : "",
-    hasNote || windows.length ? `<a href="${escapeHtml(taskExportUrl(task, "bundle"))}">导出资料包</a>` : ""
+    hasBundle ? `<a href="${escapeHtml(taskExportUrl(task, "bundle"))}">导出资料包</a>` : ""
   ].filter(Boolean).join("");
   const downloadOnly = hasMedia && !hasNote && task.status === "success";
 

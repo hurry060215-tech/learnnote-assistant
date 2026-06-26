@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import DATA_DIR, STATIC_DIR, UPLOAD_DIR, WEB_DIR, ensure_dirs
 from .downloader import preflight_media_resource
-from .models import CurrentPageTaskRequest, MediaPreflightRequest, TaskOptions
+from .models import CurrentPageTaskRequest, MediaPreflightRequest, TaskOptions, TaskRecord
 from .processor import process_current_page_task, process_local_video_task, read_note, read_transcript, read_visual_index
 from .runtime import ffmpeg_bin, ffprobe_bin
 from .storage import create_task, get_task, list_tasks, task_dir
@@ -54,6 +54,113 @@ def media_filename(task_id: str, title: str) -> str:
     stem = _FILENAME_RESERVED_RE.sub("_", title or "").strip(" ._")
     stem = stem[:120] or f"learnnote-{task_id}"
     return f"{stem}.mp4"
+
+
+def diagnostics_filename(task_id: str, title: str) -> str:
+    stem = _FILENAME_RESERVED_RE.sub("_", title or "").strip(" ._")
+    stem = stem[:120] or f"learnnote-{task_id}"
+    return f"{stem}-diagnostics.md"
+
+
+def _format_bytes(value: int | None) -> str:
+    if not value:
+        return "-"
+    if value >= 1024 * 1024 * 1024:
+        return f"{value / 1024 / 1024 / 1024:.1f} GB"
+    if value >= 1024 * 1024:
+        return f"{value / 1024 / 1024:.1f} MB"
+    if value >= 1024:
+        return f"{value / 1024:.1f} KB"
+    return f"{value} B"
+
+
+def _safe_header_names(values: dict[str, str]) -> str:
+    names = sorted(name for name in values if "cookie" not in name.lower() and "authorization" not in name.lower())
+    return ", ".join(names) or "-"
+
+
+def render_diagnostics_markdown(task: TaskRecord) -> str:
+    selected = task.selected_resource
+    lines = [
+        "# LearnNote 任务诊断报告",
+        "",
+        f"- 任务：{task.title}",
+        f"- ID：{task.id}",
+        f"- 状态：{task.status} / {task.phase} / {task.progress}%",
+        f"- 来源：{task.source_type}",
+        f"- 页面：{task.page_url or '-'}",
+        f"- 消息：{task.error_detail or task.message or '-'}",
+        f"- 错误码：{task.error_code or '-'}",
+        "",
+        "## 已选资源",
+    ]
+    if selected:
+        lines.extend([
+            f"- 类型：{selected.kind or '-'}",
+            f"- 来源：{selected.source or '-'}",
+            f"- URL：{selected.url or '-'}",
+            f"- 播放匹配：{selected.playback_match or '-'}",
+            f"- Blob：{selected.blob_url or '-'}",
+            f"- Frame：{selected.frame_url or selected.frame_id or '-'}",
+            f"- HTTP：{selected.status_code or '-'}",
+            f"- MIME：{selected.mime or '-'}",
+            f"- 大小：{_format_bytes(selected.content_length)}",
+            f"- 可复用请求头名：{_safe_header_names(selected.request_headers)}",
+        ])
+    else:
+        lines.append("- 未选择直接媒体资源，可能使用页面解析或 yt-dlp fallback。")
+
+    lines.extend(["", "## 下载尝试"])
+    if task.download_attempts:
+        for index, attempt in enumerate(task.download_attempts, start=1):
+            lines.extend([
+                f"### {index}. {attempt.strategy} · {attempt.status}",
+                f"- URL：{attempt.url or '-'}",
+                f"- 类型：{attempt.kind or '-'}",
+                f"- 来源：{attempt.source or '-'}",
+                f"- 错误码：{attempt.code or '-'}",
+                f"- HTTP：{attempt.status_code or '-'}",
+                f"- MIME：{attempt.mime or '-'}",
+                f"- 大小：{_format_bytes(attempt.bytes_downloaded or attempt.content_length)}",
+                f"- 输出：{attempt.output_path or '-'}",
+                f"- 信息：{attempt.message or '-'}",
+                "",
+            ])
+    else:
+        lines.append("- 暂无下载尝试记录。")
+
+    lines.extend([
+        "",
+        "## 处理产物",
+        f"- 媒体：{task.media_path or '-'}",
+        f"- 音频：{task.audio_path or '-'}",
+        f"- 字幕：{task.subtitle_path or '-'}",
+        f"- 转写：{task.transcript_path or '-'}",
+        f"- 视觉索引：{task.visual_index_path or '-'}",
+        f"- 笔记：{task.note_path or '-'}",
+        f"- 画面网格：{len(task.frame_grids)}",
+        f"- 视觉窗口：{len(task.visual_windows)}",
+        "",
+        "## 图文总结",
+        f"- 来源：{task.summary_source or '-'}",
+        f"- 提示：{task.summary_warning or '-'}",
+    ])
+    if task.summary_diagnostics:
+        lines.extend([
+            f"- 视觉窗口数：{task.summary_diagnostics.get('visual_window_count', '-')}",
+            f"- 送入视觉图片：{task.summary_diagnostics.get('vision_image_count', '-')}/{task.summary_diagnostics.get('vision_grid_count', '-')}",
+            f"- 省略网格：{task.summary_diagnostics.get('omitted_frame_grid_count', '-')}",
+        ])
+
+    lines.extend([
+        "",
+        "## 边界说明",
+        "- 本报告不会包含 Cookie 或 Authorization 值。",
+        "- 如果结果是 `drm_or_encrypted`、未映射 `blob:`、孤立分片，当前版本不会录制、破解或绕过 DRM。",
+        "- `media.mp4` 通过单独的“导出本地视频”接口下载，资料包默认不内嵌大视频文件。",
+        "",
+    ])
+    return "\n".join(lines)
 
 
 def _write_file_if_exists(archive: ZipFile, path_value: str, archive_name: str) -> None:
@@ -187,12 +294,22 @@ def api_export_bundle(task_id: str) -> Response:
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Task not found") from exc
 
-    has_artifact = bool(note.strip() or transcript.get("segments") or visual_index.get("windows") or task.frame_grids)
+    diagnostics = render_diagnostics_markdown(task)
+    has_artifact = bool(
+        note.strip()
+        or transcript.get("segments")
+        or visual_index.get("windows")
+        or task.frame_grids
+        or task.media_path
+        or task.download_attempts
+        or task.error_code
+    )
     if not has_artifact:
         raise HTTPException(status_code=404, detail="Task artifacts not found")
 
     buffer = BytesIO()
     with ZipFile(buffer, "w", ZIP_DEFLATED) as archive:
+        archive.writestr("diagnostics.md", diagnostics)
         if note.strip():
             archive.writestr("note.md", note)
         archive.writestr("task.json", json.dumps(task.model_dump(mode="json"), ensure_ascii=False, indent=2))
@@ -212,6 +329,25 @@ def api_export_bundle(task_id: str) -> Response:
         )
     }
     return Response(buffer.getvalue(), media_type="application/zip", headers=headers)
+
+
+@app.get("/api/tasks/{task_id}/exports/diagnostics")
+def api_export_diagnostics(task_id: str) -> PlainTextResponse:
+    try:
+        task = get_task(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Task not found") from exc
+    report = render_diagnostics_markdown(task)
+    if not report.strip():
+        raise HTTPException(status_code=404, detail="Diagnostics not found")
+    filename = diagnostics_filename(task.id, task.title)
+    headers = {
+        "Content-Disposition": (
+            f'attachment; filename="learnnote-{task.id}-diagnostics.md"; '
+            f"filename*=UTF-8''{quote(filename)}"
+        )
+    }
+    return PlainTextResponse(report, media_type="text/markdown; charset=utf-8", headers=headers)
 
 
 @app.get("/api/tasks/{task_id}/exports/media")
