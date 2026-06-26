@@ -507,10 +507,11 @@ function drmSignalText(signals = []) {
 
 function directnessText(item) {
   if (!item) return "未选择资源";
+  const playerSource = playerLibrarySourceText(item);
   if (isDownloadableResource(item)) {
-    if (item.kind === "hls") return "HLS manifest，可交给 ffmpeg 合并";
-    if (item.kind === "dash") return "DASH manifest，可交给 ffmpeg 合并";
-    return "直接视频文件，可下载到本地处理";
+    if (item.kind === "hls") return playerSource ? `${playerSource} HLS manifest，可交给 ffmpeg 合并` : "HLS manifest，可交给 ffmpeg 合并";
+    if (item.kind === "dash") return playerSource ? `${playerSource} DASH manifest，可交给 ffmpeg 合并` : "DASH manifest，可交给 ffmpeg 合并";
+    return playerSource ? `${playerSource} 视频文件，可下载到本地处理` : "直接视频文件，可下载到本地处理";
   }
   if (item.kind === "blob") return "blob 播放地址线索，不可直接下载";
   if (item.kind === "fragment") return "分片线索，需要对应 manifest";
@@ -518,10 +519,28 @@ function directnessText(item) {
   return "媒体线索，需继续检测";
 }
 
+function playerLibrarySourceText(item) {
+  if (item?.source !== "pageHookPlayer") return "";
+  const label = String(item.label || "");
+  if (/hls\.js/i.test(label)) return "hls.js 已加载";
+  if (/dash\.js/i.test(label)) return "dash.js 已加载";
+  if (/shaka/i.test(label)) return "shaka 已加载";
+  if (/video\.js/i.test(label)) return "video.js 已加载";
+  return "播放器已加载";
+}
+
+function resourceSourceText(item) {
+  const playerSource = playerLibrarySourceText(item);
+  if (playerSource) return `${playerSource}源地址`;
+  if (item?.source === "webRequest") return "浏览器请求";
+  if (String(item?.source || "").startsWith("pageHook")) return "页面接口";
+  return item?.source || "";
+}
+
 function requestEvidence(item) {
   if (!item) return "";
   return [
-    item.source,
+    resourceSourceText(item),
     playbackText(item.playback_match),
     item.is_main_video ? "主视频" : "",
     item.request_type,
@@ -558,6 +577,8 @@ function resourceEvidenceTags(item) {
   if (item.kind === "fragment") add("分片线索");
   if (item.blob_url) add("blob/MSE 映射");
   if (item.source === "webRequest") add("浏览器请求");
+  const playerSource = playerLibrarySourceText(item);
+  if (playerSource) add(`${playerSource}源地址`);
   if (String(item.source || "").startsWith("pageHook")) add("页面接口");
   if (item.request_type === "media") add("media 请求");
   if (resourceHasRangeRequest(item)) add("Range 播放请求");
@@ -684,7 +705,7 @@ function selectedResourceLabel(item) {
   if (!item) return "等待媒体候选";
   return [
     item.kind || "media",
-    item.source || "",
+    resourceSourceText(item),
     item.score ? `${item.score}%` : ""
   ].filter(Boolean).join(" · ");
 }
@@ -973,7 +994,7 @@ function renderContext() {
           item.is_main_video ? "主视频" : "",
           playbackText(item.playback_match),
           item.kind,
-          item.source,
+          resourceSourceText(item),
           item.request_type,
           item.status_code ? `HTTP ${item.status_code}` : "",
           fmtBytes(item.content_length),
