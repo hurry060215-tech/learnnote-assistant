@@ -120,4 +120,6 @@ await context.startTask("video");
 assert.equal(calls.collect, 2);
 assert.equal(calls.preflight, 1);
 assert.equal(calls.start, 0);
+assert.match(elements.get("#extractionPlan").innerHTML, /data-step="fallback"/);
+assert.match(elements.get("#extractionPlan").innerHTML, /extraction-step blocked/);
 assert.match(elements.get("#taskMessage").textContent, /HTTP 403/);

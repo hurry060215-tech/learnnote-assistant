@@ -144,4 +144,7 @@ assert.equal(calls.start.mode, "video");
 assert.equal(calls.start.page.page_url, "https://course.example.com/lesson");
 assert.equal(calls.start.resources[0].url, "https://cdn.example.com/protected/play?id=1");
 assert.equal(context.canAttemptBackendPageFallback("video"), true);
+assert.match(elements.get("#extractionPlan").innerHTML, /data-step="fallback"/);
+assert.match(elements.get("#extractionPlan").innerHTML, /extraction-step active/);
+assert.match(elements.get("#extractionPlan").innerHTML, /yt-dlp/);
 assert.match(elements.get("#taskMessage").textContent, /backend fallback attempted|yt-dlp|HTTP 403/);

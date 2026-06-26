@@ -239,6 +239,115 @@ small,
   color: var(--danger);
 }
 
+.extraction-plan {
+  display: grid;
+  gap: 7px;
+  margin: 0 0 9px;
+}
+
+.extraction-step {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  padding: 8px;
+}
+
+.extraction-step > span {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  background: #e7edf6;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.extraction-step div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.extraction-step strong {
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.extraction-step small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.extraction-step em {
+  border-radius: 999px;
+  background: #eef2f7;
+  color: var(--muted);
+  padding: 3px 7px;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.extraction-step.done {
+  border-color: rgba(20, 150, 74, 0.32);
+  background: rgba(20, 150, 74, 0.05);
+}
+
+.extraction-step.done > span,
+.extraction-step.done em {
+  background: rgba(20, 150, 74, 0.12);
+  color: var(--success);
+}
+
+.extraction-step.active {
+  border-color: #9db9f8;
+  background: #f8fbff;
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.extraction-step.active > span,
+.extraction-step.active em {
+  background: var(--surface-strong);
+  color: var(--accent);
+}
+
+.extraction-step.warn {
+  border-color: rgba(196, 122, 5, 0.3);
+  background: rgba(196, 122, 5, 0.06);
+}
+
+.extraction-step.warn > span,
+.extraction-step.warn em {
+  background: rgba(196, 122, 5, 0.12);
+  color: var(--warning);
+}
+
+.extraction-step.blocked {
+  border-color: rgba(217, 45, 32, 0.22);
+  background: rgba(217, 45, 32, 0.04);
+}
+
+.extraction-step.blocked > span,
+.extraction-step.blocked em {
+  background: rgba(217, 45, 32, 0.1);
+  color: var(--danger);
+}
+
 .direct-flow {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1459,6 +1568,8 @@ input[type="file"] {
 
 body {
   min-width: 360px;
+  max-width: 430px;
+  margin: 0 auto;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(246, 248, 252, 0.98) 124px),
     var(--bg);
