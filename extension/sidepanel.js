@@ -315,6 +315,34 @@ function taskSourceText(task = {}) {
   return task.selected_resource ? `直取 · ${task.selected_resource.kind || "media"}` : "当前页";
 }
 
+function taskHistoryChipItems(task = {}) {
+  const selected = task.selected_resource || {};
+  const windows = visualWindows(task);
+  const attempts = task.download_attempts || [];
+  const chips = [
+    taskSourceText(task),
+    selected.playback_match ? playbackText(selected.playback_match) : "",
+    task.media_path ? "本地视频" : "",
+    task.note_path ? "笔记" : "",
+    windows.length ? `${windows.length} 窗口` : "",
+    attempts.length ? `${attempts.length} 次尝试` : "",
+    task.error_code || ""
+  ];
+  const seen = new Set();
+  return chips.filter(value => {
+    const text = String(value || "").trim();
+    if (!text || seen.has(text)) return false;
+    seen.add(text);
+    return true;
+  }).slice(0, 7);
+}
+
+function taskHistoryChipsHtml(task = {}) {
+  const chips = taskHistoryChipItems(task);
+  if (!chips.length) return "";
+  return `<span class="history-task-chips">${chips.map(chip => `<em>${escapeHtml(chip)}</em>`).join("")}</span>`;
+}
+
 function renderTaskHistory() {
   if (!els.taskHistory) return;
   const visible = taskHistory.slice(0, 6);
@@ -329,6 +357,7 @@ function renderTaskHistory() {
       <span>
         <strong>${escapeHtml(task.title || task.id)}</strong>
         <small>${escapeHtml(taskSourceText(task))} · ${escapeHtml(taskStatusText(task))} · ${task.progress || 0}%</small>
+        ${taskHistoryChipsHtml(task)}
       </span>
       <b>${task.status === "success" ? "看" : task.status === "failed" ? "错" : "跑"}</b>
     </button>

@@ -39,7 +39,8 @@ const task = {
   options: {},
   note_path: "note.md",
   media_path: "media.mp4",
-  visual_windows: []
+  download_attempts: [{ strategy: "manifest-ffmpeg" }],
+  visual_windows: [{ id: "W001" }, { id: "W002" }]
 };
 
 const failedTask = {
@@ -53,6 +54,7 @@ const failedTask = {
   error_code: "download_forbidden",
   error_detail: "HTTP 403",
   options: {},
+  download_attempts: [{ strategy: "direct-file", status: "failed" }],
   visual_windows: []
 };
 
@@ -98,6 +100,9 @@ await new Promise(resolve => setTimeout(resolve, 0));
 
 assert.match(elements.get("#taskHistory").innerHTML, /History lesson/);
 assert.match(elements.get("#taskHistory").innerHTML, /直取/);
+assert.match(elements.get("#taskHistory").innerHTML, /history-task-chips/);
+assert.match(elements.get("#taskHistory").innerHTML, /2 窗口/);
+assert.match(elements.get("#taskHistory").innerHTML, /1 次尝试/);
 
 await context.selectHistoryTask("task-history-1");
 
@@ -117,3 +122,4 @@ assert.equal(elements.get("#copyButton").disabled, true);
 assert.equal(elements.get("#diagnosticsButton").disabled, false);
 assert.equal(elements.get("#mediaButton").disabled, true);
 assert.match(elements.get("#taskHistory").innerHTML, /Failed lesson/);
+assert.match(elements.get("#taskHistory").innerHTML, /download_forbidden/);
