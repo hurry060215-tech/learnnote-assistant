@@ -1043,6 +1043,70 @@ button:disabled {
   font-variant-numeric: tabular-nums;
 }
 
+.transcript-timeline {
+  display: grid;
+  gap: 14px;
+  max-width: 960px;
+}
+
+.transcript-window {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  padding: 12px;
+}
+
+.transcript-window figure {
+  margin: 0;
+}
+
+.transcript-window img {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  display: block;
+  object-fit: cover;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: #111827;
+}
+
+.transcript-window figcaption {
+  display: grid;
+  gap: 3px;
+  margin-top: 7px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.transcript-window figcaption strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.transcript-window-lines {
+  min-width: 0;
+}
+
+.transcript-window-lines .line:first-child {
+  padding-top: 0;
+}
+
+.transcript-window-lines p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.transcript-window-orphan {
+  grid-template-columns: 180px minmax(0, 1fr);
+  background: #fbfcff;
+}
+
 .frames {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
@@ -1257,6 +1321,11 @@ button:disabled {
   .diagnostics dd {
     padding-bottom: 4px;
     border-bottom: 1px solid #edf1f7;
+  }
+
+  .transcript-window,
+  .transcript-window-orphan {
+    grid-template-columns: 1fr;
   }
 }
 
