@@ -437,6 +437,14 @@ function cuesToArray(cues) {
   return items;
 }
 
+function ensureReadableTextTrack(track) {
+  try {
+    if (track?.mode === "disabled") track.mode = "hidden";
+  } catch {
+    // Some browser/player wrappers expose read-only track modes.
+  }
+}
+
 function collectVideoSubtitleCues(video, limit = 1000) {
   const subtitles = [];
   const seen = new Set();
@@ -451,6 +459,7 @@ function collectVideoSubtitleCues(video, limit = 1000) {
   }
 
   for (const track of tracks) {
+    ensureReadableTextTrack(track);
     const cueSources = [];
     try {
       if (track.cues) cueSources.push(track.cues);

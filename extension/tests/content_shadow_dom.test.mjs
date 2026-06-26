@@ -86,6 +86,19 @@ class FakeRoot {
   }
 }
 
+const hiddenTrack = {
+  mode: "disabled",
+  get cues() {
+    return this.mode === "hidden" ? [
+      { startTime: 0, endTime: 2.5, text: "Welcome to the lesson" },
+      { startTime: 2.5, endTime: 5, text: "Shadow DOM caption cue" }
+    ] : [];
+  },
+  get activeCues() {
+    return [];
+  }
+};
+
 const video = new FakeElement("video", {
   currentSrc: "https://cdn.example.com/shadow/current.mp4?token=1",
   type: "video/mp4",
@@ -96,15 +109,7 @@ const video = new FakeElement("video", {
   videoWidth: 1280,
   videoHeight: 720,
   textTracks: [
-    {
-      cues: [
-        { startTime: 0, endTime: 2.5, text: "Welcome to the lesson" },
-        { startTime: 2.5, endTime: 5, text: "Shadow DOM caption cue" }
-      ],
-      activeCues: [
-        { startTime: 2.5, endTime: 5, text: "Shadow DOM caption cue" }
-      ]
-    }
+    hiddenTrack
   ]
 }, [
   new FakeElement("source", {
@@ -203,6 +208,7 @@ const urls = new Set(response.resources.map(item => item.url));
 
 assert.equal(response.active_video.src, "https://cdn.example.com/shadow/current.mp4?token=1");
 assert.equal(response.active_video.paused, false);
+assert.equal(hiddenTrack.mode, "hidden");
 assert.deepEqual(JSON.parse(JSON.stringify(response.browser_subtitles)), [
   { start: 0, end: 2.5, text: "Welcome to the lesson" },
   { start: 2.5, end: 5, text: "Shadow DOM caption cue" }
