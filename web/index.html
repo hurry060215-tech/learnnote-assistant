@@ -64,8 +64,21 @@
         <section id="urlSource" class="source-pane">
           <label class="field">
             <span>视频或页面 URL</span>
-            <input id="urlInput" type="url" placeholder="https://example.com/lesson.mp4">
+            <input id="urlInput" type="url" placeholder="https://example.com/api/play?id=lesson">
           </label>
+          <div class="url-mode-grid">
+            <label class="field">
+              <span>链接类型</span>
+              <select id="urlMode">
+                <option value="auto" selected>自动识别</option>
+                <option value="page">网页/平台解析</option>
+                <option value="video">视频直连</option>
+                <option value="hls">HLS m3u8</option>
+                <option value="dash">DASH mpd</option>
+              </select>
+            </label>
+            <div id="urlModeHint" class="mode-hint">自动识别会优先把 mp4/m3u8/mpd 当作媒体候选，其余 URL 交给页面扫描和 yt-dlp。</div>
+          </div>
           <label class="field">
             <span>笔记标题</span>
             <input id="titleInput" type="text" placeholder="默认使用页面标题或文件名">
