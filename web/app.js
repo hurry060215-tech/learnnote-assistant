@@ -24,6 +24,7 @@ const els = {
   optionsDisclosure: document.querySelector("#optionsDisclosure"),
   titleInput: document.querySelector("#titleInput"),
   startUrlButton: document.querySelector("#startUrlButton"),
+  preflightUrlButton: document.querySelector("#preflightUrlButton"),
   downloadUrlButton: document.querySelector("#downloadUrlButton"),
   copyBackendButton: document.querySelector("#copyBackendButton"),
   browserRefreshButton: document.querySelector("#browserRefreshButton"),
@@ -437,6 +438,20 @@ function labelForUrlResource(kind, mode = selectedUrlMode()) {
   if (kind === "hls") return "手动 HLS";
   if (kind === "dash") return "手动 DASH";
   return "手动链接";
+}
+
+function manualUrlResource(url) {
+  const kind = resourceKindForUrl(url);
+  if (kind === "unknown") return null;
+  return {
+    url,
+    source: "manual",
+    kind,
+    mime: mimeForKind(kind),
+    score: selectedUrlMode() === "auto" ? 96 : 98,
+    label: labelForUrlResource(kind),
+    request_type: selectedUrlMode() === "auto" ? "manual-auto" : "manual-forced"
+  };
 }
 
 function renderUrlModeHint() {
@@ -882,17 +897,10 @@ async function startUrlTask(mode = "video") {
     els.urlInput.focus();
     return;
   }
-  const kind = resourceKindForUrl(url);
-  const resources = kind === "unknown" ? [] : [{
-    url,
-    source: "manual",
-    kind,
-    mime: mimeForKind(kind),
-    score: selectedUrlMode() === "auto" ? 96 : 98,
-    label: labelForUrlResource(kind),
-    request_type: selectedUrlMode() === "auto" ? "manual-auto" : "manual-forced"
-  }];
+  const resource = manualUrlResource(url);
+  const resources = resource ? [resource] : [];
   els.startUrlButton.disabled = true;
+  if (els.preflightUrlButton) els.preflightUrlButton.disabled = true;
   if (els.downloadUrlButton) els.downloadUrlButton.disabled = true;
   try {
     const data = await fetch(`${API}/api/tasks/from-current-page`, {
@@ -913,6 +921,43 @@ async function startUrlTask(mode = "video") {
     focusResultPanelOnMobile();
   } finally {
     els.startUrlButton.disabled = false;
+    if (els.preflightUrlButton) els.preflightUrlButton.disabled = false;
+    if (els.downloadUrlButton) els.downloadUrlButton.disabled = false;
+  }
+}
+
+async function preflightUrlTask() {
+  const url = els.urlInput.value.trim();
+  if (!url) {
+    els.urlInput.focus();
+    return;
+  }
+  const resource = manualUrlResource(url);
+  if (!resource) {
+    els.urlModeHint.textContent = "当前链接类型不能直接预检。请切换为视频直连、HLS 或 DASH，或直接创建任务交给页面扫描和 yt-dlp。";
+    return;
+  }
+  els.startUrlButton.disabled = true;
+  if (els.preflightUrlButton) els.preflightUrlButton.disabled = true;
+  if (els.downloadUrlButton) els.downloadUrlButton.disabled = true;
+  els.urlModeHint.textContent = "正在预检链接可访问性...";
+  try {
+    const data = await fetch(`${API}/api/media/preflight`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        page_url: url,
+        resource,
+        cookies: []
+      })
+    }).then(r => r.json());
+    const result = data.preflight || {};
+    els.urlModeHint.textContent = result.downloadable
+      ? `预检通过：${result.kind || resource.kind} 可访问，${result.status_code ? `HTTP ${result.status_code}，` : ""}${fmtBytes(result.content_length) || `${result.bytes_checked || 0} B`}。`
+      : `预检未通过：${result.message || result.code || "该链接暂不可直接下载"}`;
+  } finally {
+    els.startUrlButton.disabled = false;
+    if (els.preflightUrlButton) els.preflightUrlButton.disabled = false;
     if (els.downloadUrlButton) els.downloadUrlButton.disabled = false;
   }
 }
@@ -955,6 +1000,7 @@ els.resultTabs.forEach(tab => {
 });
 
 els.startUrlButton.onclick = () => startUrlTask("video");
+if (els.preflightUrlButton) els.preflightUrlButton.onclick = preflightUrlTask;
 if (els.downloadUrlButton) els.downloadUrlButton.onclick = () => startUrlTask("download_only");
 if (els.toggleHistoryButton) {
   els.toggleHistoryButton.onclick = () => {

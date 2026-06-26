@@ -238,11 +238,27 @@ assert.match(timelineHtml, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
 assert.doesNotMatch(timelineHtml, /<script>/);
 
 const posts = [];
+const preflights = [];
 context.fetch = async (url, options = {}) => {
   const value = String(url);
   if (value.endsWith("/api/tasks/from-current-page")) {
     posts.push(JSON.parse(options.body));
     return { json: async () => ({ task_id: "task-url-direct" }) };
+  }
+  if (value.endsWith("/api/media/preflight")) {
+    preflights.push(JSON.parse(options.body));
+    return {
+      json: async () => ({
+        preflight: {
+          ok: true,
+          downloadable: true,
+          kind: "video",
+          status_code: 206,
+          content_length: 123456,
+          bytes_checked: 4096
+        }
+      })
+    };
   }
   if (value.endsWith("/api/tasks/task-url-direct")) {
     return { json: async () => ({ task: { id: "task-url-direct", status: "queued", phase: "downloading", progress: 0, source_type: "url" } }) };
@@ -274,3 +290,12 @@ assert.equal(posts[1].resources.length, 1);
 assert.equal(posts[1].resources[0].kind, "video");
 assert.equal(posts[1].resources[0].request_type, "manual-forced");
 assert.equal(elements.get("#downloadUrlButton").disabled, false);
+
+await context.preflightUrlTask();
+
+assert.equal(preflights.length, 1);
+assert.equal(preflights[0].resource.kind, "video");
+assert.equal(preflights[0].resource.request_type, "manual-forced");
+assert.match(elements.get("#urlModeHint").textContent, /预检通过/);
+assert.match(elements.get("#urlModeHint").textContent, /120\.6 KB/);
+assert.equal(elements.get("#preflightUrlButton").disabled, false);
