@@ -1,6 +1,26 @@
 const MEDIA_RE = /\.(mp4|m4v|webm|mov|mkv|m3u8|mpd)(\?|#|$)/i;
 const FRAGMENT_RE = /\.(m4s|ts)(\?|#|$)/i;
 const SUBTITLE_RE = /\.(vtt|srt|ass|ssa)(\?|#|$)/i;
+const STATIC_MEDIA_ATTRS = [
+  "src",
+  "href",
+  "data-src",
+  "data-url",
+  "data-video-url",
+  "data-play-url",
+  "data-media-url",
+  "data-stream-url",
+  "data-hls-url",
+  "data-m3u8",
+  "data-mpd",
+  "data-file",
+  "data-source",
+  "data-sources",
+  "value"
+];
+const STATIC_MEDIA_SELECTOR = STATIC_MEDIA_ATTRS.map(name => `[${name}]`).join(",");
+const STATIC_FIELD_RE = /(["']?[A-Za-z_$][A-Za-z0-9_$.-]{0,79}["']?)\s*[:=]\s*["']([^"'<>\\\s]{4,})["']/gi;
+const STATIC_MEDIA_KEY_RE = /(url|src|file|play|media|video|stream|source|hls|m3u8|dash|mpd|subtitle|caption)/i;
 const boundVideos = new WeakSet();
 const hookResources = [];
 const drmSignals = [];
@@ -67,6 +87,54 @@ function absoluteUrl(url) {
   } catch {
     return "";
   }
+}
+
+function decodedValues(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return [];
+  const values = [raw.replace(/&amp;/g, "&").replace(/\\\//g, "/")];
+  try {
+    const decoded = decodeURIComponent(values[0]);
+    if (decoded && decoded !== values[0]) values.unshift(decoded);
+  } catch {
+    // Keep the raw value when percent decoding is invalid.
+  }
+  return values.filter((item, index) => item && values.indexOf(item) === index);
+}
+
+function mimeFromHint(hint = "") {
+  const text = String(hint || "").toLowerCase();
+  if (text.includes("m3u8") || text.includes("hls") || text.includes("mpegurl")) return "application/vnd.apple.mpegurl";
+  if (text.includes("mpd") || text.includes("dash")) return "application/dash+xml";
+  if (text.includes("subtitle") || text.includes("caption") || text.includes("vtt") || text.includes("srt")) return "text/vtt";
+  if (text.includes("video") || text.includes("mp4") || text.includes("media") || text.includes("play") || text.includes("stream")) return "video/mp4";
+  return "";
+}
+
+function looksLikeMediaValue(value, hint = "") {
+  const text = String(value || "").trim();
+  if (text.length < 4 || /\s/.test(text)) return false;
+  if (MEDIA_RE.test(text) || SUBTITLE_RE.test(text) || text.includes(".m3u8") || text.includes(".mpd")) return true;
+  if (/%2f|%3a|%3f|%3d|%26/i.test(text)) return STATIC_MEDIA_KEY_RE.test(hint) || MEDIA_RE.test(decodeURIComponentSafe(text));
+  if (/^(https?:)?\/\//i.test(text) || text.startsWith("/")) return STATIC_MEDIA_KEY_RE.test(hint);
+  return text.includes("/") && /[?=&]|api|play|media|video|stream|m3u8|mpd|hls|dash/i.test(text) && STATIC_MEDIA_KEY_RE.test(hint);
+}
+
+function decodeURIComponentSafe(value) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function resourceFromHint(value, source, label, hint = "", video = null, isMainVideo = false, playbackMatch = "") {
+  for (const candidate of decodedValues(value)) {
+    if (!looksLikeMediaValue(candidate, hint || label)) continue;
+    const item = resource(candidate, source, label, mimeFromHint(`${hint} ${label}`), video, isMainVideo, playbackMatch);
+    if (item && item.kind !== "unknown") return item;
+  }
+  return null;
 }
 
 function resource(url, source, label, mime = "", video = null, isMainVideo = false, playbackMatch = "") {
@@ -233,6 +301,50 @@ function deepQuerySelectorAll(selector, root = document, limit = DEEP_QUERY_LIMI
   return results;
 }
 
+function readAttribute(element, name) {
+  try {
+    if (typeof element.getAttribute === "function") return element.getAttribute(name) || "";
+  } catch {
+    return "";
+  }
+  return element[name] || "";
+}
+
+function collectStaticAttributeResources() {
+  const resources = [];
+  for (const element of deepQuerySelectorAll(STATIC_MEDIA_SELECTOR, document, 1200)) {
+    const tag = String(element.tagName || "element").toLowerCase();
+    for (const attr of STATIC_MEDIA_ATTRS) {
+      const value = readAttribute(element, attr);
+      if (!value) continue;
+      const item = resourceFromHint(value, "domHint", `${tag} ${attr}`, attr);
+      if (item) resources.push(item);
+    }
+  }
+  return resources;
+}
+
+function collectInlineScriptResources() {
+  const resources = [];
+  const seen = new Set();
+  for (const script of deepQuerySelectorAll("script", document, 400)) {
+    const text = String(script.textContent || "").slice(0, 200000);
+    if (!text || !STATIC_MEDIA_KEY_RE.test(text)) continue;
+    STATIC_FIELD_RE.lastIndex = 0;
+    for (const match of text.matchAll(STATIC_FIELD_RE)) {
+      const key = String(match[1] || "").replace(/^["']|["']$/g, "");
+      if (!STATIC_MEDIA_KEY_RE.test(key)) continue;
+      const item = resourceFromHint(match[2], "scriptHint", `script ${key}`, key);
+      if (!item || seen.has(item.url)) continue;
+      seen.add(item.url);
+      item.score = Math.max(item.score || 0, item.kind === "hls" || item.kind === "dash" ? 96 : item.kind === "video" ? 86 : 62);
+      resources.push(item);
+      if (resources.length >= 40) return resources;
+    }
+  }
+  return resources;
+}
+
 function collectShadowTexts(limit = 20000) {
   const texts = [];
   const seenRoots = new Set();
@@ -373,7 +485,7 @@ function collectBrowserSubtitles(limit = 1200) {
 }
 
 function collectDomResources() {
-  const resources = [];
+  const resources = [...collectStaticAttributeResources(), ...collectInlineScriptResources()];
   const videos = collectVideos();
   const main = pickMainVideo(videos);
   for (const { video, index } of videos) {
@@ -511,9 +623,10 @@ function bindVideos() {
 
 function isMediaNode(node) {
   if (!node || node.nodeType !== Node.ELEMENT_NODE) return false;
-  if (node.matches?.("video,source,track,iframe")) return true;
-  if (node.querySelector?.("video,source,track,iframe")) return true;
-  return Boolean(node.shadowRoot && deepQuerySelectorAll("video,source,track,iframe", node.shadowRoot, 20).length);
+  const selector = `video,source,track,iframe,script,${STATIC_MEDIA_SELECTOR}`;
+  if (node.matches?.(selector)) return true;
+  if (node.querySelector?.(selector)) return true;
+  return Boolean(node.shadowRoot && deepQuerySelectorAll(selector, node.shadowRoot, 20).length);
 }
 
 function observeRoot(observer, root) {
@@ -523,7 +636,7 @@ function observeRoot(observer, root) {
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ["src", "currentSrc", "type", "poster", "crossorigin"]
+      attributeFilter: [...STATIC_MEDIA_ATTRS, "currentSrc", "type", "poster", "crossorigin"]
     });
     observedMutationRoots.add(root);
   } catch {
