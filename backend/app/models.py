@@ -208,6 +208,8 @@ class TaskRecord(BaseModel):
     transcript_path: str = ""
     visual_index_path: str = ""
     note_path: str = ""
+    summary_source: str = ""
+    summary_warning: str = ""
     frame_grids: list[FrameGrid] = Field(default_factory=list)
     visual_windows: list[VisualWindow] = Field(default_factory=list)
 
