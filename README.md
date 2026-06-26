@@ -47,6 +47,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - Cookie collection at task start for the page URL and detected media URLs.
 - Browser-context download replay: direct media, subtitles, ffmpeg HLS/DASH merges, and yt-dlp page fallback reuse safe request headers plus the task-start cookie jar where applicable. Captured `Cookie` and `Authorization` headers are never replayed from request metadata; cookies are synced only through the explicit task/preflight handoff.
 - Browser-context preflight: selected mp4/HLS/DASH candidates can be checked with a small local backend probe before the full download. The result reports strategy, HTTP status, MIME type, content length, bytes checked, safe request-header names, and structured failure codes.
+- Side Panel task start now preflights ranked direct-download candidates in order and automatically switches to the first reachable mp4/HLS/DASH resource, so a stale or forbidden top candidate does not stop the workflow when another visible media URL works.
 - Main-video ranking based on the actively playing `<video>` first, then the largest visible video element.
 - Candidate evidence from `webRequest`, including request type, HTTP status, MIME type, content length, initiator, and frame id when available.
 - Long-running media responses are added from `onHeadersReceived`, then merged again on completion if the request later finishes.
