@@ -88,7 +88,8 @@ class ExtensionlessHlsHandler(QuietHandler):
             playlist = Path(self.directory) / self.playlist_name
             body = playlist.read_bytes()
             self.send_response(200)
-            self.send_header("Content-Type", "application/vnd.apple.mpegurl")
+            content_type = "application/octet-stream" if "raw=1" in self.path else "application/vnd.apple.mpegurl"
+            self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
@@ -534,6 +535,85 @@ class DownloaderPriorityTests(unittest.TestCase):
                 self.assertIsNotNone(selected)
                 self.assertEqual(selected.url, hls_url)
                 self.assertEqual(selected.kind, "hls")
+                self.assertEqual([attempt.strategy for attempt in downloader.attempts[:2]], ["page-scan", "manifest-ffmpeg"])
+                self.assertEqual(downloader.attempts[1].status, "success")
+            finally:
+                server.shutdown()
+                server.server_close()
+
+    def test_page_scan_downloads_extensionless_hls_from_manifest_body(self) -> None:
+        ffmpeg = ffmpeg_bin()
+        assert ffmpeg is not None
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "source.mp4"
+            subprocess.run(
+                [
+                    ffmpeg,
+                    "-y",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "testsrc=duration=2:size=320x180:rate=10",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "sine=frequency=440:duration=2",
+                    "-shortest",
+                    "-pix_fmt",
+                    "yuv420p",
+                    str(source),
+                ],
+                check=True,
+            )
+            playlist = root / "lesson.m3u8"
+            subprocess.run(
+                [
+                    ffmpeg,
+                    "-y",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-i",
+                    str(source),
+                    "-c",
+                    "copy",
+                    "-f",
+                    "hls",
+                    "-hls_time",
+                    "1",
+                    "-hls_list_size",
+                    "0",
+                    "-hls_segment_filename",
+                    str(root / "lesson_%03d.ts"),
+                    str(playlist),
+                ],
+                check=True,
+            )
+
+            server = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(ExtensionlessHlsHandler, directory=str(root)))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                hls_url = f"http://127.0.0.1:{server.server_port}/stream?lesson=1&raw=1"
+                downloader = MediaDownloader(root / "task")
+                with patch.object(downloader, "_download_with_ytdlp") as ytdlp:
+                    media_path, selected = downloader.download(
+                        page_url=hls_url,
+                        resources=[],
+                        cookies=[],
+                        title="Manifest body",
+                    )
+                ytdlp.assert_not_called()
+                self.assertTrue(media_path.exists())
+                self.assertIsNotNone(selected)
+                self.assertEqual(selected.url, hls_url)
+                self.assertEqual(selected.kind, "hls")
+                self.assertEqual(selected.mime, "application/vnd.apple.mpegurl")
+                self.assertEqual(selected.label, "response manifest")
                 self.assertEqual([attempt.strategy for attempt in downloader.attempts[:2]], ["page-scan", "manifest-ffmpeg"])
                 self.assertEqual(downloader.attempts[1].status, "success")
             finally:

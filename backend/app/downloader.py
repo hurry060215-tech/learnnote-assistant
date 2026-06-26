@@ -28,6 +28,10 @@ TEXT_MEDIA_URL_RE = re.compile(
     re.I,
 )
 TEXT_RESPONSE_RE = re.compile(r"json|text|html|javascript|mpegurl|dash\+xml|xml|x-mpegurl", re.I)
+MEDIA_ENDPOINT_HINT_RE = re.compile(
+    r"(^|[/?&=._\s-])(api|play|player|stream|video|media|hls|dash|manifest|playlist|master|m3u8|mpd)([/?&=._\s-]|$)",
+    re.I,
+)
 JSON_MEDIA_KEY_RE = re.compile(r"(url|src|file|play|media|video|stream|source|hls|m3u8|dash|mpd|subtitle|caption)", re.I)
 JSON_MIME_KEY_RE = re.compile(r"(mime|type|format|content.?type|media.?type)", re.I)
 TEXT_MEDIA_FIELD_RE = re.compile(
@@ -148,6 +152,27 @@ def _mime_for_kind(kind: str) -> str:
     if kind == "video":
         return "video/mp4"
     return ""
+
+
+def _media_endpoint_hint(url: str) -> bool:
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return False
+    target = " ".join([parsed.path or "", parsed.query or ""])
+    return bool(MEDIA_ENDPOINT_HINT_RE.search(target))
+
+
+def _manifest_kind_from_body(text: str, content_type: str = "") -> tuple[str, str]:
+    head = (text or "")[:8192].lstrip("\ufeff\r\n\t ")
+    lower_head = head[:256].lower()
+    content_type = (content_type or "").lower()
+    looks_html = lower_head.startswith(("<!doctype html", "<html"))
+    if head.startswith("#EXTM3U") or (not looks_html and ("mpegurl" in content_type or "x-mpegurl" in content_type)):
+        return "hls", "application/vnd.apple.mpegurl"
+    if re.search(r"<MPD(?:\s|>)", head, re.I) or (not looks_html and "dash+xml" in content_type):
+        return "dash", "application/dash+xml"
+    return "unknown", ""
 
 
 def _looks_like_json_url_candidate(value: str) -> bool:
@@ -937,7 +962,14 @@ class MediaDownloader:
                     )
                     return []
                 content_type = response.headers.get("content-type", "")
-                if content_type and not TEXT_RESPONSE_RE.search(content_type):
+                final_url = response.url or page_url
+                can_scan_body = (
+                    not content_type
+                    or bool(TEXT_RESPONSE_RE.search(content_type))
+                    or bool(MANIFEST_EXT_RE.search(final_url.lower()))
+                    or _media_endpoint_hint(final_url)
+                )
+                if not can_scan_body:
                     self._record_attempt(
                         strategy="page-scan",
                         url=page_url,
@@ -973,7 +1005,22 @@ class MediaDownloader:
                         return []
                     chunks.append(chunk)
                 text = b"".join(chunks).decode(response.encoding or "utf-8-sig", errors="replace")
-                resources = extract_media_resources_from_text(text, response.url or page_url, "page-scan")
+                base_url = final_url
+                resources = extract_media_resources_from_text(text, base_url, "page-scan")
+                manifest_kind, manifest_mime = _manifest_kind_from_body(text, content_type)
+                if manifest_kind != "unknown" and not any(item.url == final_url for item in resources):
+                    resources.insert(
+                        0,
+                        ResourceCandidate(
+                            url=final_url,
+                            source="page-scan",
+                            kind=manifest_kind,
+                            mime=manifest_mime,
+                            score=score_kind(final_url, "page-scan", manifest_kind),
+                            label="response manifest",
+                            request_headers={"Referer": page_url},
+                        ),
+                    )
                 self._record_attempt(
                     strategy="page-scan",
                     url=page_url,
@@ -1328,11 +1375,14 @@ class MediaDownloader:
         output = self.download_dir / f"{_clean_filename(title)}_manifest.mp4"
         request_headers = download_headers_for_candidate(candidate, cookies, referer)
         self._probe_manifest_before_ffmpeg(candidate, request_headers)
+        kind = effective_resource_kind(candidate)
         user_agent = request_headers.pop("User-Agent", "Mozilla/5.0 LearnNoteAssistant/0.1")
         headers = [f"{name}: {value}" for name, value in request_headers.items() if value]
         cmd = [ffmpeg, "-y", "-hide_banner", "-loglevel", "error"]
         if headers:
             cmd += ["-headers", "\r\n".join(headers) + "\r\n"]
+        if kind in {"hls", "dash"}:
+            cmd += ["-f", kind]
         cmd += ["-user_agent", user_agent, "-i", url, "-c", "copy", str(output)]
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0:
