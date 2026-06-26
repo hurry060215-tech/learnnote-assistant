@@ -102,6 +102,12 @@ vm.createContext(context);
 const webCode = await readFile(new URL("../app.js", import.meta.url), "utf8");
 vm.runInContext(webCode, context);
 
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.match(elements.get("#detail").innerHTML, /class="empty-workbench"/);
+assert.match(elements.get("#detail").innerHTML, /当前页直取/);
+assert.match(elements.get("#detail").innerHTML, /不.*录制页面/);
+assert.equal(elements.get("#copyButton").disabled, true);
+
 const html = context.markdownToHtml(`## 画面索引
 
 ![W001](http://127.0.0.1:8765/api/tasks/demo/grids/grid_000.jpg)

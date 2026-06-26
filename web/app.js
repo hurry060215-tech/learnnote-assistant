@@ -937,6 +937,59 @@ function transcriptTimeline(transcript, task, limit = Infinity) {
   return `<div class="transcript-timeline">${cards.join("")}</div>`;
 }
 
+function emptyResultWorkbench() {
+  return `
+    <section class="empty-workbench" aria-label="学习工作区起始页">
+      <div class="empty-hero">
+        <div>
+          <span>LearnNote 工作区</span>
+          <h3>把正在看的课程视频变成可复习的图文笔记</h3>
+          <p>从扩展 Side Panel 直取当前页可访问的视频资源，或上传本地视频；后端会下载到本机、转写、切片、生成画面网格，再合并成学习笔记。</p>
+        </div>
+        <div class="empty-hero-actions">
+          <button type="button" data-empty-source="browser">当前页直取</button>
+          <button type="button" data-empty-source="local">本地视频</button>
+          <button type="button" data-empty-source="url">链接解析</button>
+        </div>
+      </div>
+
+      <div class="empty-flow" aria-label="处理流程">
+        <span><b>01</b>检测媒体</span>
+        <span><b>02</b>预检下载</span>
+        <span><b>03</b>转写切片</span>
+        <span><b>04</b>图文总结</span>
+      </div>
+
+      <div class="empty-preview-grid">
+        <section class="empty-preview-card primary">
+          <span>当前页直取边界</span>
+          <strong>只下载浏览器已经暴露的资源</strong>
+          <p>支持 MP4/WebM、HLS/DASH manifest、yt-dlp 支持站点、带登录 cookie 的可访问媒体请求；DRM/不可还原 blob 会明确失败，不会录制页面。</p>
+        </section>
+        <section class="empty-preview-card">
+          <span>输出结构</span>
+          <strong>笔记 / 字幕 / 画面切片 / 诊断</strong>
+          <p>任务完成后可在上方标签切换阅读 Markdown、按视觉窗口查看字幕、检查 frame grid 和下载尝试记录。</p>
+        </section>
+        <section class="empty-preview-card">
+          <span>本地兜底</span>
+          <strong>拖入视频走同一套管线</strong>
+          <p>学习通等页面如果没有暴露可下载地址，就把本地视频拖进来，仍然会完成转写、切片和图文总结。</p>
+        </section>
+      </div>
+    </section>
+  `;
+}
+
+function bindEmptyWorkbenchActions() {
+  document.querySelectorAll("[data-empty-source]").forEach(button => {
+    button.onclick = () => {
+      setSource(button.dataset.emptySource);
+      document.querySelector(".workspace-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    };
+  });
+}
+
 async function renderDetail() {
   const task = await taskRecord();
   if (!task) {
@@ -944,7 +997,8 @@ async function renderDetail() {
     els.selectedSource.textContent = "结果工作区";
     els.resultMeta.textContent = "";
     els.detail.className = "detail empty";
-    els.detail.textContent = "任务完成后显示结构化结果。";
+    els.detail.innerHTML = emptyResultWorkbench();
+    bindEmptyWorkbenchActions();
     lastNote = "";
     lastNoteTaskId = "";
     els.copyButton.disabled = true;
