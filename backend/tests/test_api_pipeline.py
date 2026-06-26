@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import functools
+import io
 import json
 import shutil
 import subprocess
 import tempfile
 import threading
 import unittest
+import zipfile
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import patch
@@ -149,6 +151,20 @@ class ApiPipelineTests(unittest.TestCase):
                 self.assertIn("attachment", export.headers["content-disposition"])
                 self.assertIn(".md", export.headers["content-disposition"])
                 self.assertIn("Local synthetic lesson", export.text)
+                bundle = self.client.get(f"/api/tasks/{task_id}/exports/bundle")
+                self.assertEqual(bundle.status_code, 200)
+                self.assertEqual(bundle.headers["content-type"], "application/zip")
+                self.assertIn("attachment", bundle.headers["content-disposition"])
+                with zipfile.ZipFile(io.BytesIO(bundle.content)) as archive:
+                    names = set(archive.namelist())
+                    self.assertIn("note.md", names)
+                    self.assertIn("task.json", names)
+                    self.assertIn("transcript.json", names)
+                    self.assertIn("visual_index.json", names)
+                    self.assertTrue(any(name.startswith("grids/") and name.endswith(".jpg") for name in names))
+                    self.assertIn("Local synthetic lesson", archive.read("note.md").decode("utf-8"))
+                    visual_payload = json.loads(archive.read("visual_index.json").decode("utf-8"))
+                    self.assertEqual(visual_payload["task_id"], task_id)
             finally:
                 shutil.rmtree(task_dir(task_id), ignore_errors=True)
 
