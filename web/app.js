@@ -181,6 +181,18 @@ function drmSignalText(signals = []) {
   return parts.join(" · ");
 }
 
+function activeVideoText(active) {
+  if (!active?.src) return "-";
+  return [
+    active.paused ? "暂停" : "播放中",
+    `${fmt(active.current_time || 0)} / ${fmt(active.duration || 0)}`,
+    `${active.width || 0}x${active.height || 0}`,
+    active.frame_id !== null && active.frame_id !== undefined ? `frame ${active.frame_id}` : "",
+    active.drm_detected ? "DRM/EME" : "",
+    active.src
+  ].filter(Boolean).join(" · ");
+}
+
 function statusText(task) {
   if (task.status === "success") return "已完成";
   if (task.status === "failed") return task.error_code || "失败";
@@ -561,6 +573,7 @@ async function renderDetail() {
         <dt>任务 ID</dt><dd>${escapeHtml(task.id)}</dd>
         <dt>状态</dt><dd>${escapeHtml(task.status)} / ${escapeHtml(task.phase)} / ${task.progress || 0}%</dd>
         <dt>来源</dt><dd>${escapeHtml(task.page_url || task.source_type)}</dd>
+        <dt>播放器快照</dt><dd>${escapeHtml(activeVideoText(task.active_video))}</dd>
         <dt>DRM/EME</dt><dd>${escapeHtml(task.drm_detected ? (drmSignalText(task.drm_signals || []) || "已检测到") : "-")}</dd>
         <dt>下载策略</dt><dd>${selected.url ? "浏览器候选资源优先" : "页面解析 fallback"}</dd>
         <dt>已选资源</dt><dd>${escapeHtml(selected.url || "未选择直接资源")}</dd>

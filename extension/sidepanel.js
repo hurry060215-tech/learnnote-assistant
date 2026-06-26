@@ -302,6 +302,18 @@ function requestEvidence(item) {
   ].filter(Boolean).join(" · ");
 }
 
+function activeVideoText(active) {
+  if (!active?.src) return "-";
+  return [
+    active.paused ? "暂停" : "播放中",
+    `${fmt(active.current_time || 0)} / ${fmt(active.duration || 0)}`,
+    `${active.width || 0}x${active.height || 0}`,
+    active.frame_id !== null && active.frame_id !== undefined ? `frame ${active.frame_id}` : "",
+    active.drm_detected ? "DRM/EME" : "",
+    active.src
+  ].filter(Boolean).join(" · ");
+}
+
 function resourceHint() {
   const downloadable = resources.filter(isDownloadableResource).length;
   const blobCount = resources.filter(item => item.kind === "blob").length;
@@ -659,6 +671,7 @@ function renderResult() {
       <dl class="diagnostics">
         <dt>状态</dt><dd>${escapeHtml(currentTask.status)} / ${escapeHtml(currentTask.phase)} / ${currentTask.progress || 0}%</dd>
         <dt>策略</dt><dd>${selected.url ? "浏览器候选资源优先" : "页面解析 fallback"}</dd>
+        <dt>播放器快照</dt><dd>${escapeHtml(activeVideoText(currentTask.active_video))}</dd>
         <dt>DRM/EME</dt><dd>${escapeHtml(currentTask.drm_detected ? (drmSignalText(currentTask.drm_signals || []) || "已检测到") : "-")}</dd>
         <dt>资源</dt><dd>${escapeHtml(selected.url || "未选择直接资源")}</dd>
         <dt>播放 blob</dt><dd>${escapeHtml(selected.blob_url || "-")}</dd>

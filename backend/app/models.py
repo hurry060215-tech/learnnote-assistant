@@ -201,6 +201,7 @@ class TaskRecord(BaseModel):
     download_attempts: list[DownloadAttempt] = Field(default_factory=list)
     drm_detected: bool = False
     drm_signals: list[DrmSignal] = Field(default_factory=list)
+    active_video: ActiveVideoInfo | None = None
     media_path: str = ""
     audio_path: str = ""
     subtitle_path: str = ""

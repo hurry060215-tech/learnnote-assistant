@@ -97,7 +97,12 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
 
     work_dir = task_dir(task_id)
     try:
-        update_task(task_id, drm_detected=bool(request.drm_detected), drm_signals=request.drm_signals)
+        update_task(
+            task_id,
+            active_video=request.active_video,
+            drm_detected=bool(request.drm_detected),
+            drm_signals=request.drm_signals,
+        )
         update_task(task_id, status="running", phase="downloading", progress=10, message="正在解析并下载当前页视频")
         if request.drm_detected and not has_downloadable_candidate(request.resources):
             message = drm_failure_message(request)

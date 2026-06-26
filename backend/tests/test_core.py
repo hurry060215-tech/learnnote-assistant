@@ -24,7 +24,7 @@ from app.downloader import (
     score_resource,
     ytdlp_headers_from_browser_context,
 )
-from app.models import BrowserCookie, CurrentPageTaskRequest, DrmSignal, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment
+from app.models import ActiveVideoInfo, BrowserCookie, CurrentPageTaskRequest, DrmSignal, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment
 from app.processor import process_current_page_task, read_note, read_transcript, redacted_request_dump, redacted_resource
 from app.summarizer import build_visual_windows, local_markdown_note
 from app.storage import create_task, get_task, task_dir
@@ -341,6 +341,16 @@ class ProcessorBoundaryTests(unittest.TestCase):
             request = CurrentPageTaskRequest(
                 page_url="https://course.example.com/drm",
                 title="DRM lesson",
+                active_video=ActiveVideoInfo(
+                    src="blob:https://course.example.com/locked",
+                    current_time=125,
+                    duration=1800,
+                    paused=False,
+                    width=1280,
+                    height=720,
+                    frame_id=7,
+                    drm_detected=True,
+                ),
                 drm_detected=True,
                 drm_signals=[
                     DrmSignal(
@@ -361,6 +371,11 @@ class ProcessorBoundaryTests(unittest.TestCase):
             self.assertEqual(record.status, "failed")
             self.assertEqual(record.error_code, "drm_or_encrypted")
             self.assertTrue(record.drm_detected)
+            self.assertIsNotNone(record.active_video)
+            assert record.active_video is not None
+            self.assertEqual(record.active_video.src, "blob:https://course.example.com/locked")
+            self.assertEqual(record.active_video.current_time, 125)
+            self.assertEqual(record.active_video.frame_id, 7)
             self.assertEqual(record.drm_signals[0].key_system, "com.widevine.alpha")
             self.assertEqual(record.download_attempts[0].strategy, "eme-detected")
             self.assertEqual(record.download_attempts[0].code, "drm_or_encrypted")
