@@ -297,3 +297,52 @@ assert.match(context.preflightRecoveryText({ code: "auth_required" }), /已登�
 assert.match(context.preflightRecoveryText({ code: "drm_or_encrypted" }), /不会录制/);
 assert.match(context.preflightRecoveryText({ code: "download_forbidden" }), /Referer/);
 assert.match(context.preflightRecoveryText({ downloadable: true, kind: "video" }), /完整总结/);
+
+vm.runInContext(`
+page = {
+  page_url: "https://course.example.com/lesson",
+  active_video: { src: "blob:https://course.example.com/video", drm_detected: false }
+};
+resources = [{
+  url: "https://cdn.example.com/live/master.m3u8",
+  kind: "hls",
+  source: "webRequest",
+  score: 98,
+  label: "<script>bad()</script>",
+  playback_match: "blob-source"
+}];
+selectedResourceUrl = "https://cdn.example.com/live/master.m3u8";
+preflight = null;
+preflightResourceUrl = "";
+preflightResultsByUrl = new Map();
+`, context);
+assert.equal(context.routeSummaryState(), "candidate");
+assert.match(context.routeSummaryCopy("candidate").title, /已找到可直取候选/);
+context.renderRouteSummary();
+assert.match(elements.get("#routeSummary").innerHTML, /待预检/);
+assert.doesNotMatch(elements.get("#routeSummary").innerHTML, /<script>bad/);
+
+vm.runInContext(`
+preflight = { downloadable: true, kind: "hls", code: "", message: "ok" };
+preflightResourceUrl = "https://cdn.example.com/live/master.m3u8";
+preflightResultsByUrl = new Map([["https://cdn.example.com/live/master.m3u8", preflight]]);
+`, context);
+assert.equal(context.routeSummaryState(), "ready");
+context.renderRouteSummary();
+assert.match(elements.get("#routeSummary").innerHTML, /直取路线已验证/);
+assert.match(elements.get("#routeSummary").innerHTML, /预检通过/);
+
+vm.runInContext(`
+page = {
+  page_url: "https://course.example.com/drm",
+  drm_detected: true,
+  active_video: { src: "blob:https://course.example.com/drm", drm_detected: true }
+};
+resources = [];
+selectedResourceUrl = "";
+preflight = null;
+preflightResourceUrl = "";
+preflightResultsByUrl = new Map();
+`, context);
+assert.equal(context.routeSummaryState(), "blocked");
+assert.match(context.routeSummaryCopy("blocked").action, /不会录制/);

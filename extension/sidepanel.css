@@ -243,6 +243,126 @@ small,
   color: var(--danger);
 }
 
+.route-summary {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 9px;
+  border: 1px solid #c9d9ff;
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(22, 119, 255, 0.09), rgba(255, 255, 255, 0) 52%),
+    #ffffff;
+  padding: 10px;
+  box-shadow: 0 10px 24px rgba(16, 24, 40, 0.05);
+}
+
+.route-summary.ready {
+  border-color: rgba(20, 150, 74, 0.34);
+  background:
+    linear-gradient(135deg, rgba(20, 150, 74, 0.08), rgba(255, 255, 255, 0) 52%),
+    #ffffff;
+}
+
+.route-summary.fallback,
+.route-summary.candidate {
+  border-color: rgba(196, 122, 5, 0.3);
+  background:
+    linear-gradient(135deg, rgba(196, 122, 5, 0.08), rgba(255, 255, 255, 0) 52%),
+    #ffffff;
+}
+
+.route-summary.blocked {
+  border-color: rgba(217, 45, 32, 0.24);
+  background:
+    linear-gradient(135deg, rgba(217, 45, 32, 0.07), rgba(255, 255, 255, 0) 52%),
+    #ffffff;
+}
+
+.route-summary-main {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 3px 8px;
+  align-items: center;
+}
+
+.route-summary-main span {
+  grid-row: span 2;
+  min-width: 0;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  background: var(--surface-strong);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.route-summary.ready .route-summary-main span {
+  background: rgba(20, 150, 74, 0.12);
+  color: var(--success);
+}
+
+.route-summary.fallback .route-summary-main span,
+.route-summary.candidate .route-summary-main span {
+  background: rgba(196, 122, 5, 0.12);
+  color: var(--warning);
+}
+
+.route-summary.blocked .route-summary-main span {
+  background: rgba(217, 45, 32, 0.1);
+  color: var(--danger);
+}
+
+.route-summary-main strong {
+  min-width: 0;
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.route-summary-main small,
+.route-summary-detail {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.route-summary-detail {
+  overflow-wrap: anywhere;
+}
+
+.route-summary-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.route-summary-metrics span {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: #fbfcff;
+  padding: 6px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.25;
+  text-align: center;
+}
+
+.route-summary-metrics b {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--ink);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .extraction-plan {
   display: grid;
   gap: 7px;
@@ -375,11 +495,12 @@ small,
 
 .resource {
   width: 100%;
+  height: auto;
   min-height: 64px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
-  align-items: center;
+  align-items: start;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: #fff;
@@ -489,6 +610,7 @@ small,
   height: 26px;
   display: grid;
   place-items: center;
+  align-self: start;
   border-radius: 999px;
   background: var(--surface-strong);
   color: var(--accent);
