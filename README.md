@@ -28,7 +28,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - Download order: selected browser/media candidate first, then yt-dlp page resolver fallback with the current browser session's cookie file and safe request headers.
 - Download diagnostics: every task records the direct-file, manifest-ffmpeg, skipped blob/fragment, and yt-dlp attempts with status, HTTP code, content length, output file, and failure reason.
 - Local video upload from both the Side Panel and the local web UI.
-- Shared processing pipeline: normalize video, extract audio, transcribe, slice frames, build frame grids, generate a visual-window index, summarize.
+- Shared processing pipeline: normalize every downloaded or uploaded video into project-local `media.mp4`, extract audio, transcribe, slice frames, build frame grids, generate a visual-window index, summarize.
 - Multimodal LLM summaries run in visual-window batches and then merge the local window notes into the final Markdown note.
 - Page subtitle tracks and yt-dlp platform subtitles (`.vtt`, `.srt`, `.ass`, `.ssa`) are preferred over Whisper when available.
 - Structured failure codes: `no_media_found`, `auth_required`, `drm_or_encrypted`, `download_forbidden`, `unsupported_manifest`, `processing_failed`.
@@ -59,7 +59,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - HLS/DASH manifest download through ffmpeg when a manifest URL is visible.
 - yt-dlp page URL fallback for supported websites when direct browser resources are not usable.
 - Local video upload from the extension and the local web UI.
-- Shared video processing: normalize video, extract audio, transcribe with `faster-whisper` when available, extract frames, generate frame grids, and emit Markdown notes.
+- Shared video processing: remux/standardize local and downloaded videos to `media.mp4`, extract audio, transcribe with `faster-whisper` when available, extract frames, generate frame grids, and emit Markdown notes.
 - Transcript priority: page subtitle track first, yt-dlp platform subtitle second, then local `faster-whisper` fallback.
 - Configurable slicing: frame interval, grid layout, ASR model, and note style.
 - Web UI and Side Panel diagnostic tabs show the selected resource, browser evidence, and every backend download attempt.
