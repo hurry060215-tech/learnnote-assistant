@@ -349,8 +349,12 @@ select:focus {
 
 .url-actions {
   display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+}
+
+.url-actions .primary {
+  grid-column: 1 / -1;
 }
 
 .primary {
