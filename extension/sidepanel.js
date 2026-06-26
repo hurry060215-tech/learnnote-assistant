@@ -12,6 +12,9 @@ let transcriptCache = null;
 let lastNote = "";
 let preflight = null;
 let preflightResourceUrl = "";
+let contextRefreshTimer = 0;
+let isCollectingContext = false;
+let pendingContextRefresh = false;
 
 const els = {
   backendStatus: document.querySelector("#backendStatus"),
@@ -507,7 +510,19 @@ async function health() {
   }
 }
 
-async function collect() {
+function scheduleContextRefresh(reason = "media", delay = 350) {
+  if (!HAS_EXTENSION_API) return;
+  if (contextRefreshTimer) clearTimeout(contextRefreshTimer);
+  contextRefreshTimer = setTimeout(() => {
+    contextRefreshTimer = 0;
+    if (!currentTaskId && reason !== "pending") {
+      els.taskMessage.textContent = "检测到当前页媒体变化，正在刷新候选资源...";
+    }
+    collect();
+  }, delay);
+}
+
+async function collectContextNow() {
   els.pageTitle.textContent = "读取中...";
   els.resources.innerHTML = `<p class="muted">正在检测媒体资源...</p>`;
   if (!HAS_EXTENSION_API) {
@@ -534,6 +549,23 @@ async function collect() {
   preflight = null;
   preflightResourceUrl = "";
   renderContext();
+}
+
+async function collect() {
+  if (isCollectingContext) {
+    pendingContextRefresh = true;
+    return;
+  }
+  isCollectingContext = true;
+  try {
+    await collectContextNow();
+  } finally {
+    isCollectingContext = false;
+    if (pendingContextRefresh) {
+      pendingContextRefresh = false;
+      scheduleContextRefresh("pending", 150);
+    }
+  }
 }
 
 function renderContext() {
@@ -969,5 +1001,13 @@ els.openWebButton.onclick = () => {
   else window.open(backendUrl, "_blank", "noopener");
 };
 els.settingsButton.onclick = saveSettings;
+
+if (HAS_EXTENSION_API && chrome.runtime.onMessage?.addListener) {
+  chrome.runtime.onMessage.addListener(message => {
+    if (message?.type === "current-context-updated") {
+      scheduleContextRefresh(message.reason || "media");
+    }
+  });
+}
 
 loadSettings().then(() => Promise.all([health(), collect()]));
