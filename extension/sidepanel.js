@@ -641,6 +641,61 @@ function visualWindows(task) {
   }));
 }
 
+function segmentOverlapsWindow(segment, window) {
+  const start = Number(segment.start || 0);
+  const end = Number(segment.end ?? start);
+  return start < Number(window.end || 0) && end >= Number(window.start || 0);
+}
+
+function transcriptLines(segments) {
+  return segments.map(seg => `<div class="line"><time>${fmt(seg.start)}</time><span>${escapeHtml(seg.text)}</span></div>`).join("");
+}
+
+function transcriptTimeline(transcript, task, limit = 100) {
+  const segments = (transcript?.segments || []).slice(0, limit);
+  const windows = visualWindows(task);
+  if (!windows.length) return transcriptLines(segments);
+
+  const used = new Set();
+  const cards = windows.slice(0, 8).map(window => {
+    const matched = segments.filter((segment, index) => {
+      if (!segmentOverlapsWindow(segment, window)) return false;
+      used.add(index);
+      return true;
+    });
+    const body = matched.length
+      ? transcriptLines(matched)
+      : window.transcript_excerpt
+        ? `<p>${escapeHtml(window.transcript_excerpt)}</p>`
+        : `<p class="muted">这个画面窗口没有匹配到字幕段落。</p>`;
+    return `<section class="transcript-window">
+      <figure>
+        ${window.grid_url ? `<img src="${escapeHtml(window.grid_url)}" alt="${escapeHtml(window.id)} frame grid">` : ""}
+        <figcaption>
+          <strong>${escapeHtml(window.id)}</strong>
+          <span>${fmt(window.start)} - ${fmt(window.end)} · ${window.frame_count || 0} 帧</span>
+        </figcaption>
+      </figure>
+      <div class="transcript-window-lines">${body}</div>
+    </section>`;
+  });
+
+  const unmatched = segments.filter((_, index) => !used.has(index));
+  if (unmatched.length) {
+    cards.push(`<section class="transcript-window transcript-window-orphan">
+      <figure>
+        <figcaption>
+          <strong>未归入切片</strong>
+          <span>${unmatched.length} 段字幕</span>
+        </figcaption>
+      </figure>
+      <div class="transcript-window-lines">${transcriptLines(unmatched)}</div>
+    </section>`);
+  }
+
+  return `<div class="transcript-timeline">${cards.join("")}</div>`;
+}
+
 function renderResult() {
   const hasNote = Boolean(currentTaskId) && (Boolean(currentTask?.note_path) || currentTask?.status === "success");
   els.copyButton.disabled = !hasNote;
@@ -730,7 +785,7 @@ function renderResult() {
     return;
   }
   els.result.className = "result-body";
-  els.result.innerHTML = transcript.segments.slice(0, 100).map(seg => `<div class="line"><time>${fmt(seg.start)}</time><span>${escapeHtml(seg.text)}</span></div>`).join("");
+  els.result.innerHTML = transcriptTimeline(transcript, currentTask, 100);
 }
 
 els.resultTabs.forEach(tab => {
