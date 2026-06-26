@@ -125,6 +125,13 @@ function sameSite(urlA, urlB) {
   return hostA === hostB || hostA.endsWith(`.${hostB}`) || hostB.endsWith(`.${hostA}`);
 }
 
+function cookieEligibleUrl(value) {
+  const url = String(value || "").trim();
+  if (/^https?:\/\//i.test(url)) return url;
+  const blob = /^blob:(https?:\/\/[^/]+)/i.exec(url);
+  return blob ? blob[1] : "";
+}
+
 function withPlaybackHints(resource, page = {}) {
   const active = page.active_video || {};
   const activeSrc = active.src || "";
@@ -648,8 +655,8 @@ async function cookiesForUrls(urls) {
 function cookieUrlsForContext(page = {}, tab = {}, resources = []) {
   const urls = [];
   const add = value => {
-    const url = String(value || "").trim();
-    if (!/^https?:\/\//i.test(url)) return;
+    const url = cookieEligibleUrl(value);
+    if (!url) return;
     if (!urls.includes(url)) urls.push(url);
   };
 

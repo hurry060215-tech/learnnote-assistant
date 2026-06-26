@@ -174,10 +174,10 @@ const cookieUrls = context.cookieUrlsForContext(
 assert.deepEqual(Array.from(cookieUrls), [
   "https://course.example.com/top",
   "https://course.example.com/tab",
+  "https://course.example.com",
   "https://cdn.example.com/live/master.m3u8",
   "https://course.example.com/frame-page",
   "https://player.example.com/embed/1",
   "https://player.example.com",
-  "https://player.example.com/embed/1?lesson=42",
-  "https://course.example.com"
+  "https://player.example.com/embed/1?lesson=42"
 ]);
