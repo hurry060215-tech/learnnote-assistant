@@ -342,6 +342,57 @@ assert.match(summaryDiagnostic, /视觉窗口 2/);
 assert.match(summaryDiagnostic, /送入视觉 2\/2/);
 assert.match(summaryDiagnostic, /超限省略 1/);
 
+const routeReadyHtml = context.browserRouteSummaryHtml({
+  id: "route-ready",
+  title: "<script>bad()</script> 课程",
+  source_type: "current_page",
+  status: "success",
+  phase: "completed",
+  progress: 100,
+  media_path: "D:/Projects/learnnote-assistant/data/tasks/route-ready/media.mp4",
+  note_path: "D:/Projects/learnnote-assistant/data/tasks/route-ready/note.md",
+  selected_resource: { kind: "hls" },
+  visual_windows: [{ id: "W001", start: 0, end: 180, frame_count: 9 }],
+  download_attempts: [{ strategy: "manifest-ffmpeg" }]
+});
+assert.match(routeReadyHtml, /browser-route-summary-card ready/);
+assert.match(routeReadyHtml, /最近当前页直取已生成笔记/);
+assert.match(routeReadyHtml, /hls · 1 次下载尝试 · 1 个视觉窗口/);
+assert.doesNotMatch(routeReadyHtml, /<script>bad/);
+
+const routeDownloadedHtml = context.browserRouteSummaryHtml({
+  id: "route-downloaded",
+  source_type: "current_page",
+  status: "success",
+  phase: "completed",
+  progress: 100,
+  media_path: "D:/Projects/learnnote-assistant/data/tasks/route-downloaded/media.mp4",
+  note_path: "",
+  selected_resource: { kind: "video" },
+  download_attempts: [{ strategy: "direct-file" }]
+});
+assert.match(routeDownloadedHtml, /browser-route-summary-card downloaded/);
+assert.match(routeDownloadedHtml, /视频已直取到本地/);
+assert.match(routeDownloadedHtml, /继续切片总结/);
+
+const routeBlockedHtml = context.browserRouteSummaryHtml({
+  id: "route-blocked",
+  source_type: "current_page",
+  status: "failed",
+  phase: "failed",
+  progress: 100,
+  error_code: "drm_or_encrypted",
+  error_detail: "<script>bad()</script> encrypted"
+});
+assert.match(routeBlockedHtml, /browser-route-summary-card blocked/);
+assert.match(routeBlockedHtml, /不会录制或绕过 DRM/);
+assert.match(routeBlockedHtml, /&lt;script&gt;bad\(\)&lt;\/script&gt; encrypted/);
+assert.doesNotMatch(routeBlockedHtml, /<script>bad/);
+
+const routeEmptyHtml = context.browserRouteSummaryHtml(null);
+assert.match(routeEmptyHtml, /等待扩展侧栏创建当前页任务/);
+assert.match(routeEmptyHtml, /不做标签页录制/);
+
 const timelineHtml = context.transcriptTimeline({
   segments: [
     { start: 5, end: 8, text: "第一段字幕" },

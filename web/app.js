@@ -29,6 +29,7 @@ const els = {
   copyBackendButton: document.querySelector("#copyBackendButton"),
   browserRefreshButton: document.querySelector("#browserRefreshButton"),
   browserBridgeStatus: document.querySelector("#browserBridgeStatus"),
+  browserRouteSummary: document.querySelector("#browserRouteSummary"),
   fileInput: document.querySelector("#fileInput"),
   fileName: document.querySelector("#fileName"),
   dropzone: document.querySelector("#dropzone"),
@@ -258,6 +259,109 @@ function summaryDiagnosticText(task) {
     missingImages ? "\u5b58\u5728\u7f3a\u5931\u56fe\u7247" : "",
     diag.summary_warning || ""
   ].filter(Boolean).join(" · ");
+}
+
+function currentPageTasks() {
+  return tasks.filter(task => task.source_type === "current_page");
+}
+
+function latestCurrentPageTask() {
+  return currentPageTasks()[0] || null;
+}
+
+function directRouteState(task) {
+  if (!task) return "empty";
+  if (task.status === "running" || task.status === "queued") return "running";
+  if (task.status === "success" && task.media_path && task.note_path) return "ready";
+  if (task.status === "success" && task.media_path) return "downloaded";
+  if (task.status === "failed") {
+    return ["drm_or_encrypted", "no_media_found", "unsupported_manifest"].includes(task.error_code) ? "blocked" : "failed";
+  }
+  return "empty";
+}
+
+function directRouteCopy(task) {
+  const state = directRouteState(task);
+  const selected = task?.selected_resource || {};
+  const attempts = task?.download_attempts || [];
+  if (state === "ready") {
+    return {
+      badge: "可复习",
+      title: "最近当前页直取已生成笔记",
+      detail: `${selected.kind || "media"} · ${attempts.length || 0} 次下载尝试 · ${visualWindows(task).length || 0} 个视觉窗口`,
+      hint: "在右侧结果区查看笔记、字幕、画面切片和下载诊断。"
+    };
+  }
+  if (state === "downloaded") {
+    return {
+      badge: "已下载",
+      title: "视频已直取到本地",
+      detail: `${selected.kind || "media"} · 可导出 media.mp4`,
+      hint: "选择该任务后点击“继续切片总结”，复用已下载视频生成完整笔记。"
+    };
+  }
+  if (state === "running") {
+    return {
+      badge: "处理中",
+      title: task.status === "queued" ? "当前页任务排队中" : "当前页任务正在处理",
+      detail: `${task.phase || "running"} · ${task.progress || 0}%`,
+      hint: "后端会按下载、转写、切片、图文总结顺序更新进度。"
+    };
+  }
+  if (state === "blocked") {
+    return {
+      badge: "不可直取",
+      title: task.error_code === "drm_or_encrypted" ? "最近任务遇到 DRM/不可还原媒体" : "最近任务没有拿到可下载视频",
+      detail: task.error_detail || task.message || task.error_code || "无法直接下载",
+      hint: "不会录制或绕过 DRM。继续播放后重检，或切到本地视频入口上传文件。"
+    };
+  }
+  if (state === "failed") {
+    return {
+      badge: "需重试",
+      title: "最近当前页任务下载失败",
+      detail: task.error_detail || task.message || task.error_code || "下载失败",
+      hint: "常见原因是登录态、Referer、签名过期；回到原页面播放几秒后重新预检。"
+    };
+  }
+  return {
+    badge: "等待",
+    title: "等待扩展侧栏创建当前页任务",
+    detail: "在课程页打开 Chrome/Edge Side Panel，先预检候选，再开始总结。",
+    hint: "只直取浏览器暴露的 mp4/m3u8/mpd 或 yt-dlp 可解析页面，不做标签页录制。"
+  };
+}
+
+function browserRouteMetrics(task) {
+  const selected = task?.selected_resource || {};
+  const attempts = task?.download_attempts || [];
+  return [
+    { label: "最近资源", value: selected.kind || "-" },
+    { label: "视觉窗口", value: task ? String(visualWindows(task).length || 0) : "-" },
+    { label: "下载尝试", value: task ? String(attempts.length || 0) : "-" },
+    { label: "状态", value: task ? statusText(task) : "等待" }
+  ];
+}
+
+function browserRouteSummaryHtml(task = null) {
+  const state = directRouteState(task);
+  const copy = directRouteCopy(task);
+  return `<section class="browser-route-summary-card ${escapeHtml(state)}">
+    <div class="browser-route-summary-main">
+      <span>${escapeHtml(copy.badge)}</span>
+      <strong>${escapeHtml(copy.title)}</strong>
+      <small>${escapeHtml(copy.hint)}</small>
+    </div>
+    <p>${escapeHtml(copy.detail)}</p>
+    <div class="browser-route-summary-metrics">
+      ${browserRouteMetrics(task).map(item => `<span><b>${escapeHtml(item.value)}</b>${escapeHtml(item.label)}</span>`).join("")}
+    </div>
+  </section>`;
+}
+
+function renderBrowserRouteSummary() {
+  if (!els.browserRouteSummary) return;
+  els.browserRouteSummary.innerHTML = browserRouteSummaryHtml(latestCurrentPageTask());
 }
 
 function drmSignalText(signals = []) {
@@ -566,6 +670,7 @@ async function loadTasks() {
   tasks = data.tasks || [];
   if (!selectedTaskId && tasks[0]) selectedTaskId = tasks[0].id;
   renderTasks();
+  renderBrowserRouteSummary();
   await renderDetail();
 }
 
