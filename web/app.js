@@ -14,6 +14,8 @@ let taskStatusFilter = "all";
 const els = {
   health: document.querySelector("#health"),
   refreshButton: document.querySelector("#refreshButton"),
+  toggleHistoryButton: document.querySelector("#toggleHistoryButton"),
+  readingModeButton: document.querySelector("#readingModeButton"),
   sourceTabs: document.querySelectorAll(".source-tab"),
   panes: document.querySelectorAll(".source-pane"),
   urlInput: document.querySelector("#urlInput"),
@@ -501,6 +503,45 @@ function initializeResponsiveChrome() {
   }
 }
 
+function storedUiFlag(key) {
+  try {
+    return window.localStorage?.getItem(key) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function storeUiFlag(key, value) {
+  try {
+    window.localStorage?.setItem(key, value ? "1" : "0");
+  } catch {
+    // Storage can be unavailable in private contexts or tests.
+  }
+}
+
+function setPressed(button, pressed) {
+  if (!button) return;
+  button.setAttribute?.("aria-pressed", pressed ? "true" : "false");
+  button.classList?.toggle("active", Boolean(pressed));
+}
+
+function setHistoryCollapsed(collapsed, persist = true) {
+  document.body?.classList?.toggle("queue-collapsed", Boolean(collapsed));
+  setPressed(els.toggleHistoryButton, collapsed);
+  if (persist) storeUiFlag("learnnote.historyCollapsed", collapsed);
+}
+
+function setReadingMode(enabled, persist = true) {
+  document.body?.classList?.toggle("reading-mode", Boolean(enabled));
+  setPressed(els.readingModeButton, enabled);
+  if (persist) storeUiFlag("learnnote.readingMode", enabled);
+}
+
+function initializeWorkspaceView() {
+  setHistoryCollapsed(storedUiFlag("learnnote.historyCollapsed"), false);
+  setReadingMode(storedUiFlag("learnnote.readingMode"), false);
+}
+
 async function loadTasks() {
   const data = await fetch(`${API}/api/tasks`).then(r => r.json());
   tasks = data.tasks || [];
@@ -908,6 +949,18 @@ els.resultTabs.forEach(tab => {
 });
 
 els.startUrlButton.onclick = startUrlTask;
+if (els.toggleHistoryButton) {
+  els.toggleHistoryButton.onclick = () => {
+    const collapsed = !document.body?.classList?.contains?.("queue-collapsed");
+    setHistoryCollapsed(collapsed);
+  };
+}
+if (els.readingModeButton) {
+  els.readingModeButton.onclick = () => {
+    const enabled = !document.body?.classList?.contains?.("reading-mode");
+    setReadingMode(enabled);
+  };
+}
 els.copyBackendButton.onclick = async () => {
   const url = window.location.origin || "http://127.0.0.1:8765";
   try {
@@ -971,6 +1024,7 @@ els.fileInput.onchange = () => {
 };
 
 initializeResponsiveChrome();
+initializeWorkspaceView();
 checkHealth();
 loadTasks();
 setInterval(() => {

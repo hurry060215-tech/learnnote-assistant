@@ -18,6 +18,9 @@
       </div>
       <div class="topbar-actions">
         <span id="health" class="health">检查中</span>
+        <button id="toggleHistoryButton" class="icon-button" title="折叠/展开历史栏" aria-label="折叠/展开历史栏" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4z"/><path d="M9 5v14"/><path d="M14 9l3 3-3 3"/></svg>
+        </button>
         <button id="refreshButton" class="icon-button" title="刷新任务" aria-label="刷新任务">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 0 1-13.66 5.66M4 12A8 8 0 0 1 17.66 6.34M20 4v6h-6M4 20v-6h6"/></svg>
         </button>
@@ -248,6 +251,9 @@
             <div id="resultMeta" class="result-meta"></div>
           </div>
           <div class="result-actions">
+            <button id="readingModeButton" class="icon-button" title="阅读专注模式" aria-label="阅读专注模式" aria-pressed="false">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h7a4 4 0 0 1 4 4v10H8a4 4 0 0 0-4 4z"/><path d="M20 5h-7a4 4 0 0 0-4 4v10h7a4 4 0 0 1 4 4z"/></svg>
+            </button>
             <button id="bundleButton" class="icon-button" title="导出资料包" aria-label="导出资料包">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v13H4z"/><path d="M4 7l2-3h12l2 3"/><path d="M9 12h6"/></svg>
             </button>
