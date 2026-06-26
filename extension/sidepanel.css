@@ -815,6 +815,101 @@ input[type="file"] {
   color: var(--danger);
 }
 
+.study-map {
+  display: grid;
+  gap: 9px;
+  border: 1px solid #dbe7f6;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 10px;
+}
+
+.study-map-head {
+  display: grid;
+  gap: 3px;
+}
+
+.study-map-head div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.study-map-head span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.study-map-head strong {
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.study-map-head small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 760;
+  line-height: 1.35;
+}
+
+.study-map-grid {
+  display: grid;
+  gap: 7px;
+}
+
+.study-map-card {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #f9fbff;
+  padding: 9px;
+}
+
+.study-map-card > span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.study-map-card > strong {
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.study-map-card > small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.study-map-action {
+  margin-top: 2px;
+}
+
+.study-map-action button {
+  width: auto;
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #c9d9ff;
+  border-radius: 7px;
+  background: #f2f6ff;
+  color: var(--accent);
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 850;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
 .note-outline {
   display: grid;
   gap: 8px;
