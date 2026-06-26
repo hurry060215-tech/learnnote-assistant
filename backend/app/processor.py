@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import shutil
 from pathlib import Path
 
 from .downloader import DownloadError, MediaDownloader, classify_resource, infer_manifest_url_from_fragment
@@ -161,11 +160,7 @@ def _process_video_file(
     update_task(task_id, status="running", phase="processing_video", progress=25, message="正在标准化视频")
 
     normalized = work_dir / "media.mp4"
-    if input_path.suffix.lower() == ".mp4":
-        if input_path.resolve() != normalized.resolve():
-            shutil.copy2(input_path, normalized)
-    else:
-        normalize_video(input_path, normalized)
+    normalize_video(input_path, normalized)
     update_task(task_id, media_path=str(normalized))
 
     update_task(task_id, phase="processing_video", progress=38, message="正在提取音频")
