@@ -97,7 +97,9 @@ const summaryDiagnostic = context.summaryDiagnosticText({
     llm_model: "vision-model",
     visual_window_count: 2,
     frame_grid_count: 2,
+    vision_grid_count: 2,
     vision_image_count: 2,
+    omitted_frame_grid_count: 1,
     all_grids_had_images: true
   }
 });
@@ -105,7 +107,8 @@ const summaryDiagnostic = context.summaryDiagnosticText({
 assert.match(summaryDiagnostic, /已使用视觉 LLM/);
 assert.match(summaryDiagnostic, /模型 vision-model/);
 assert.match(summaryDiagnostic, /视觉窗口 2/);
-assert.match(summaryDiagnostic, /已发送图片 2/);
+assert.match(summaryDiagnostic, /送入视觉 2\/2/);
+assert.match(summaryDiagnostic, /超限省略 1/);
 
 const timelineHtml = context.transcriptTimeline({
   segments: [
