@@ -25,7 +25,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - Download order: selected browser/media candidate first, then yt-dlp page resolver fallback with the current browser session's cookie file and safe request headers.
 - Download diagnostics: every task records the direct-file, manifest-ffmpeg, skipped blob/fragment, and yt-dlp attempts with status, HTTP code, content length, output file, and failure reason.
 - Local video upload from both the Side Panel and the local web UI.
-- Shared processing pipeline: normalize video, extract audio, transcribe, slice frames, build frame grids, summarize.
+- Shared processing pipeline: normalize video, extract audio, transcribe, slice frames, build frame grids, generate a visual-window index, summarize.
 - Multimodal LLM summaries run in visual-window batches and then merge the local window notes into the final Markdown note.
 - Page subtitle tracks and yt-dlp platform subtitles (`.vtt`, `.srt`, `.ass`, `.ssa`) are preferred over Whisper when available.
 - Structured failure codes: `no_media_found`, `auth_required`, `drm_or_encrypted`, `download_forbidden`, `unsupported_manifest`, `processing_failed`.
@@ -65,6 +65,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - Blob and media-fragment requests are kept as diagnostic clues instead of being hidden, but they are not treated as independently downloadable video files.
 - Task records retain the frame interval, grid layout, ASR model, note style, and visual-understanding setting used for that run.
 - Multimodal prompts are organized by frame-grid windows, pairing each visual slice with the transcript segment from the same time range. Long videos are summarized in batches so later frame grids are not silently dropped.
+- Each completed video task writes `visual_index.json`, exposes `/api/tasks/{task_id}/visual-index`, and returns `visual_windows` in the task record so the UI and future vision-model calls can reuse the same frame-grid/transcript alignment.
 - Generated notes can be copied or exported as Markdown files with the task title as the filename.
 - Deterministic fallback notes when no LLM key or ASR model is installed.
 

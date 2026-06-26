@@ -5,7 +5,7 @@ from pathlib import Path
 
 from .config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
 from .media import image_to_data_url
-from .models import FrameGrid, TaskOptions, TranscriptResult
+from .models import FrameGrid, TaskOptions, TranscriptResult, VisualWindow
 
 MAX_GRIDS_PER_VISION_CALL = 4
 MAX_VISION_GRIDS = 80
@@ -16,12 +16,39 @@ def _format_ts(seconds: float) -> str:
     return f"{seconds // 3600:02d}:{(seconds % 3600) // 60:02d}:{seconds % 60:02d}"
 
 
+def _overlapping_segments(transcript: TranscriptResult, start: float, end: float):
+    return [seg for seg in transcript.segments if seg.end >= start and seg.start <= end]
+
+
 def _segments_window(transcript: TranscriptResult, start: float, end: float) -> str:
     lines = []
-    for seg in transcript.segments:
-        if seg.end >= start and seg.start <= end:
-            lines.append(f"{_format_ts(seg.start)} {seg.text}")
+    for seg in _overlapping_segments(transcript, start, end):
+        lines.append(f"{_format_ts(seg.start)} {seg.text}")
     return "\n".join(lines)
+
+
+def build_visual_windows(transcript: TranscriptResult, grids: list[FrameGrid], excerpt_limit: int = 520) -> list[VisualWindow]:
+    windows: list[VisualWindow] = []
+    for index, grid in enumerate(grids, start=1):
+        segments = _overlapping_segments(transcript, grid.start, grid.end)
+        excerpt = " ".join(f"{_format_ts(seg.start)} {seg.text}" for seg in segments)
+        if len(excerpt) > excerpt_limit:
+            excerpt = excerpt[:excerpt_limit].rstrip() + "..."
+        windows.append(
+            VisualWindow(
+                id=f"W{index:03d}",
+                index=index,
+                start=grid.start,
+                end=grid.end,
+                duration=max(0, grid.end - grid.start),
+                frame_count=grid.frame_count,
+                grid_url=grid.url,
+                grid_path=grid.path,
+                transcript_excerpt=excerpt,
+                segments=segments,
+            )
+        )
+    return windows
 
 
 def _sentences(text: str, limit: int = 8) -> list[str]:
@@ -119,6 +146,18 @@ def local_markdown_note(title: str, transcript: TranscriptResult, grids: list[Fr
     lines += ["## 分段图文摘要", ""]
     lines.extend(_window_summary_lines(transcript, grids))
     lines.append("")
+
+    windows = build_visual_windows(transcript, grids)
+    if windows:
+        lines += ["## 画面-字幕对齐索引", ""]
+        for window in windows:
+            lines.append(
+                f"- {window.id} `{_format_ts(window.start)} - {_format_ts(window.end)}` "
+                f"{window.frame_count} 帧：{window.grid_url}"
+            )
+            if window.transcript_excerpt:
+                lines.append(f"  同步字幕：{window.transcript_excerpt}")
+        lines.append("")
 
     lines += ["## 核心概念", ""]
     if key_sentences:

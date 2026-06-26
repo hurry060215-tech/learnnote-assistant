@@ -710,6 +710,25 @@ input[type="file"] {
   font-size: 11px;
 }
 
+.visual-windows figcaption {
+  display: grid;
+  gap: 3px;
+  line-height: 1.45;
+}
+
+.visual-windows figcaption strong {
+  color: var(--text);
+  font-size: 11px;
+}
+
+.visual-windows figcaption small {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--muted);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
 .diagnostics {
   display: grid;
   grid-template-columns: 86px minmax(0, 1fr);

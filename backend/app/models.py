@@ -153,6 +153,19 @@ class FrameGrid(BaseModel):
     frame_count: int
 
 
+class VisualWindow(BaseModel):
+    id: str
+    index: int
+    start: float
+    end: float
+    duration: float = 0
+    frame_count: int
+    grid_url: str
+    grid_path: str = ""
+    transcript_excerpt: str = ""
+    segments: list[TranscriptSegment] = Field(default_factory=list)
+
+
 class DownloadAttempt(BaseModel):
     strategy: str
     url: str = ""
@@ -191,8 +204,10 @@ class TaskRecord(BaseModel):
     audio_path: str = ""
     subtitle_path: str = ""
     transcript_path: str = ""
+    visual_index_path: str = ""
     note_path: str = ""
     frame_grids: list[FrameGrid] = Field(default_factory=list)
+    visual_windows: list[VisualWindow] = Field(default_factory=list)
 
 
 def now_iso() -> str:

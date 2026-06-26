@@ -26,7 +26,7 @@ from app.downloader import (
 )
 from app.models import BrowserCookie, CurrentPageTaskRequest, DrmSignal, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment
 from app.processor import process_current_page_task, read_note, read_transcript, redacted_request_dump, redacted_resource
-from app.summarizer import local_markdown_note
+from app.summarizer import build_visual_windows, local_markdown_note
 from app.storage import create_task, get_task, task_dir
 from app.transcriber import transcript_from_subtitle
 
@@ -634,6 +634,29 @@ class DownloaderBoundaryTests(unittest.TestCase):
 
 
 class SummaryFallbackTests(unittest.TestCase):
+    def test_visual_windows_align_frame_grids_with_transcript_segments(self) -> None:
+        transcript = TranscriptResult(
+            source="unit",
+            full_text="intro demo recap",
+            segments=[
+                TranscriptSegment(start=0, end=5, text="intro"),
+                TranscriptSegment(start=35, end=48, text="demo steps"),
+                TranscriptSegment(start=80, end=92, text="recap"),
+            ],
+        )
+        grids = [
+            FrameGrid(path="grid0.jpg", url="http://127.0.0.1/grid0.jpg", start=0, end=60, frame_count=9),
+            FrameGrid(path="grid1.jpg", url="http://127.0.0.1/grid1.jpg", start=60, end=120, frame_count=6),
+        ]
+
+        windows = build_visual_windows(transcript, grids)
+
+        self.assertEqual([window.id for window in windows], ["W001", "W002"])
+        self.assertEqual(windows[0].grid_url, "http://127.0.0.1/grid0.jpg")
+        self.assertEqual([segment.text for segment in windows[0].segments], ["intro", "demo steps"])
+        self.assertEqual([segment.text for segment in windows[1].segments], ["recap"])
+        self.assertIn("00:00:35 demo steps", windows[0].transcript_excerpt)
+
     def test_local_note_contains_timeline_and_frame_index(self) -> None:
         transcript = TranscriptResult(
             source="unit",
@@ -645,6 +668,7 @@ class SummaryFallbackTests(unittest.TestCase):
         self.assertIn("# Python lesson", note)
         self.assertIn("00:00:05", note)
         self.assertIn("分段图文摘要", note)
+        self.assertIn("画面-字幕对齐索引", note)
         self.assertIn("http://127.0.0.1/grid.jpg", note)
         self.assertIn("W001 `00:00:00 - 00:00:20`", note)
         self.assertIn("![W001 00:00:00 - 00:00:20](http://127.0.0.1/grid.jpg)", note)

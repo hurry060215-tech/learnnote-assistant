@@ -444,14 +444,27 @@ function taskBrief(task) {
 }
 
 function frameStrip(task, limit = 5) {
-  const grids = task.frame_grids || [];
-  if (!grids.length) return "";
-  return `<div class="frame-strip">${grids.slice(0, limit).map(grid => `
+  const windows = visualWindows(task);
+  if (!windows.length) return "";
+  return `<div class="frame-strip">${windows.slice(0, limit).map(window => `
     <figure>
-      <img src="${escapeHtml(grid.url)}" alt="frame grid">
-      <figcaption>${fmt(grid.start)} - ${fmt(grid.end)} · ${grid.frame_count} 帧</figcaption>
+      <img src="${escapeHtml(window.grid_url)}" alt="frame grid">
+      <figcaption>${escapeHtml(window.id)} · ${fmt(window.start)} - ${fmt(window.end)} · ${window.frame_count} 帧</figcaption>
     </figure>
   `).join("")}</div>`;
+}
+
+function visualWindows(task) {
+  if (task.visual_windows?.length) return task.visual_windows;
+  return (task.frame_grids || []).map((grid, index) => ({
+    id: `W${String(index + 1).padStart(3, "0")}`,
+    index: index + 1,
+    start: grid.start,
+    end: grid.end,
+    frame_count: grid.frame_count,
+    grid_url: grid.url,
+    transcript_excerpt: ""
+  }));
 }
 
 async function renderDetail() {
@@ -496,15 +509,20 @@ async function renderDetail() {
   }
 
   if (selectedTab === "frames") {
-    if (!task.frame_grids?.length) {
+    const windows = visualWindows(task);
+    if (!windows.length) {
       els.detail.className = "detail empty";
       els.detail.textContent = "画面切片尚未生成。";
       return;
     }
-    els.detail.innerHTML = `<div class="frames">${task.frame_grids.map(grid => `
+    els.detail.innerHTML = `<div class="frames visual-windows">${windows.map(window => `
       <figure>
-        <img src="${escapeHtml(grid.url)}" alt="frame grid">
-        <figcaption>${fmt(grid.start)} - ${fmt(grid.end)} · ${grid.frame_count} 帧</figcaption>
+        <img src="${escapeHtml(window.grid_url)}" alt="frame grid">
+        <figcaption>
+          <strong>${escapeHtml(window.id)}</strong>
+          <span>${fmt(window.start)} - ${fmt(window.end)} · ${window.frame_count} 帧</span>
+          ${window.transcript_excerpt ? `<small>${escapeHtml(window.transcript_excerpt)}</small>` : ""}
+        </figcaption>
       </figure>
     `).join("")}</div>`;
     return;

@@ -8,7 +8,7 @@ from .downloader import DownloadError, MediaDownloader, classify_resource, infer
 from .media import build_frame_grids, extract_audio, extract_frames, normalize_video
 from .models import CurrentPageTaskRequest, DownloadAttempt, ResourceCandidate, TaskOptions, TranscriptResult
 from .storage import get_task, save_task, task_dir, update_task, write_json
-from .summarizer import summarize, summarize_page_text
+from .summarizer import build_visual_windows, summarize, summarize_page_text
 from .transcriber import transcript_from_subtitle, transcribe_audio
 
 
@@ -188,8 +188,22 @@ def _process_video_file(
         frames = extract_frames(normalized, frame_dir, max(1, options.frame_interval))
         grids = build_frame_grids(task_id, frames, grid_dir, max(1, options.grid_columns), max(1, options.grid_rows), max(1, options.frame_interval))
 
+    visual_windows = build_visual_windows(transcript, grids)
+    visual_index_path = write_json(
+        task_id,
+        "visual_index.json",
+        {
+            "task_id": task_id,
+            "title": title,
+            "page_url": page_url,
+            "windows": [window.model_dump(mode="json") for window in visual_windows],
+        },
+    )
+
     record = get_task(task_id)
     record.frame_grids = grids
+    record.visual_windows = visual_windows
+    record.visual_index_path = str(visual_index_path)
     save_task(record)
 
     update_task(task_id, phase="summarizing", progress=84, message="正在生成 Markdown 笔记")
@@ -225,3 +239,17 @@ def read_note(task_id: str) -> str:
     if not path.is_file():
         return ""
     return path.read_text(encoding="utf-8")
+
+
+def read_visual_index(task_id: str) -> dict:
+    record = get_task(task_id)
+    if record.visual_index_path:
+        path = Path(record.visual_index_path)
+        if path.is_file():
+            return json.loads(path.read_text(encoding="utf-8"))
+    return {
+        "task_id": task_id,
+        "title": record.title,
+        "page_url": record.page_url,
+        "windows": [window.model_dump(mode="json") for window in record.visual_windows],
+    }

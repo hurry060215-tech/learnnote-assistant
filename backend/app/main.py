@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from .config import DATA_DIR, STATIC_DIR, UPLOAD_DIR, WEB_DIR, ensure_dirs
 from .downloader import preflight_media_resource
 from .models import CurrentPageTaskRequest, MediaPreflightRequest, TaskOptions
-from .processor import process_current_page_task, process_local_video_task, read_note, read_transcript
+from .processor import process_current_page_task, process_local_video_task, read_note, read_transcript, read_visual_index
 from .runtime import ffmpeg_bin, ffprobe_bin
 from .storage import create_task, get_task, list_tasks, task_dir
 
@@ -124,6 +124,14 @@ def api_transcript(task_id: str) -> dict:
 def api_note(task_id: str) -> str:
     try:
         return read_note(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Task not found") from exc
+
+
+@app.get("/api/tasks/{task_id}/visual-index")
+def api_visual_index(task_id: str) -> dict:
+    try:
+        return read_visual_index(task_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Task not found") from exc
 

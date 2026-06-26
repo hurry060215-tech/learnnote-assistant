@@ -586,6 +586,19 @@ async function loadResult() {
   renderResult();
 }
 
+function visualWindows(task) {
+  if (task?.visual_windows?.length) return task.visual_windows;
+  return (task?.frame_grids || []).map((grid, index) => ({
+    id: `W${String(index + 1).padStart(3, "0")}`,
+    index: index + 1,
+    start: grid.start,
+    end: grid.end,
+    frame_count: grid.frame_count,
+    grid_url: grid.url,
+    transcript_excerpt: ""
+  }));
+}
+
 function renderResult() {
   const hasNote = Boolean(currentTaskId) && (Boolean(currentTask?.note_path) || currentTask?.status === "success");
   els.copyButton.disabled = !hasNote;
@@ -601,16 +614,21 @@ function renderResult() {
     return;
   }
   if (selectedTab === "frames") {
-    if (!currentTask.frame_grids?.length) {
+    const windows = visualWindows(currentTask);
+    if (!windows.length) {
       els.result.className = "result-body muted";
       els.result.textContent = "画面切片尚未生成。";
       return;
     }
     els.result.className = "result-body";
-    els.result.innerHTML = `<div class="frame-grid">${currentTask.frame_grids.slice(0, 8).map(grid => `
+    els.result.innerHTML = `<div class="frame-grid visual-windows">${windows.slice(0, 8).map(window => `
       <figure>
-        <img src="${escapeHtml(grid.url)}" alt="frame grid">
-        <figcaption>${fmt(grid.start)} - ${fmt(grid.end)}</figcaption>
+        <img src="${escapeHtml(window.grid_url)}" alt="frame grid">
+        <figcaption>
+          <strong>${escapeHtml(window.id)}</strong>
+          <span>${fmt(window.start)} - ${fmt(window.end)} · ${window.frame_count} 帧</span>
+          ${window.transcript_excerpt ? `<small>${escapeHtml(window.transcript_excerpt)}</small>` : ""}
+        </figcaption>
       </figure>
     `).join("")}</div>`;
     return;
