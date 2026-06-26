@@ -30,25 +30,30 @@ const documentStub = {
 
 const calls = {
   collect: 0,
-  preflight: 0,
-  start: 0
+  preflight: [],
+  start: null
 };
 
 const page = {
   title: "Course player",
-  page_url: "chrome-extension://learnnote/sidepanel.html",
+  page_url: "https://course.example.com/lesson",
   page_text: "lesson text",
-  active_video: { src: "https://cdn.example.com/api/play?id=1", current_time: 12, duration: 120, paused: false },
-  frames: []
+  active_video: { src: "blob:https://course.example.com/player", current_time: 42, duration: 600, paused: false },
+  frames: [{
+    url: "https://course.example.com/player-iframe",
+    title: "Player iframe",
+    frame_id: 9
+  }]
 };
 
 const resources = [{
-  url: "https://cdn.example.com/api/play?id=1",
+  url: "https://cdn.example.com/protected/play?id=1",
   source: "webRequest",
   kind: "video",
   score: 98,
-  label: "VIDEO",
-  request_type: "media"
+  label: "protected VIDEO",
+  request_type: "media",
+  frame_url: "https://course.example.com/player-iframe"
 }];
 
 const context = {
@@ -65,6 +70,20 @@ const context = {
     }
     if (value.endsWith("/api/tasks")) {
       return { json: async () => ({ tasks: [] }) };
+    }
+    if (value.endsWith("/api/tasks/task-fallback")) {
+      return {
+        json: async () => ({
+          task: {
+            id: "task-fallback",
+            status: "failed",
+            phase: "failed",
+            progress: 100,
+            message: "backend fallback attempted",
+            source_type: "current_page"
+          }
+        })
+      };
     }
     throw new Error(`unexpected fetch: ${url}`);
   },
@@ -84,19 +103,20 @@ const context = {
           return { page, resources };
         }
         if (message.type === "preflight-current-resource") {
-          calls.preflight += 1;
+          calls.preflight.push(message.resource.url);
           return {
             preflight: {
               ok: false,
               downloadable: false,
               code: "download_forbidden",
-              message: "HTTP 403：登录态或 Referer 不匹配"
+              status_code: 403,
+              message: "HTTP 403"
             }
           };
         }
         if (message.type === "start-current-task") {
-          calls.start += 1;
-          return { task_id: "should-not-start" };
+          calls.start = message;
+          return { task_id: "task-fallback" };
         }
         throw new Error(`unexpected message: ${message.type}`);
       }
@@ -118,6 +138,10 @@ await new Promise(resolve => setTimeout(resolve, 0));
 await context.startTask("video");
 
 assert.equal(calls.collect, 2);
-assert.equal(calls.preflight, 1);
-assert.equal(calls.start, 0);
-assert.match(elements.get("#taskMessage").textContent, /HTTP 403/);
+assert.deepEqual(calls.preflight, ["https://cdn.example.com/protected/play?id=1"]);
+assert.ok(calls.start, "expected backend task start when page URL can be scanned");
+assert.equal(calls.start.mode, "video");
+assert.equal(calls.start.page.page_url, "https://course.example.com/lesson");
+assert.equal(calls.start.resources[0].url, "https://cdn.example.com/protected/play?id=1");
+assert.equal(context.canAttemptBackendPageFallback("video"), true);
+assert.match(elements.get("#taskMessage").textContent, /backend fallback attempted|yt-dlp|HTTP 403/);

@@ -470,6 +470,17 @@ function preflightBlockMessage(result) {
   return result?.message || result?.code || "当前候选资源预检未通过；请换一个候选、重新检测，或使用本地视频入口。";
 }
 
+function canAttemptBackendPageFallback(mode = "video") {
+  if (!isMediaTaskMode(mode)) return false;
+  const pageUrl = page?.page_url || "";
+  return /^https?:\/\//i.test(pageUrl);
+}
+
+function preflightFallbackStartMessage(result) {
+  const reason = result?.message || result?.code || "直取候选暂不可用";
+  return `${reason}；继续创建任务，交给后端页面扫描、iframe fallback 和 yt-dlp 继续尝试。`;
+}
+
 function preflightRecoveryText(result = {}) {
   const code = result.code || "";
   if (code === "auth_required") return "重新打开课程页并确认已登录，然后播放几秒后重新检测；Cookie 只会在点击任务时同步一次。";
@@ -902,9 +913,12 @@ async function startTask(mode = "video") {
     if (preflightCandidatesForStart(mode).length) {
       const checked = await preflightBestResource(mode);
       if (!checked?.downloadable) {
-        els.taskMessage.textContent = preflightBlockMessage(checked);
-        renderContext();
-        return;
+        if (!canAttemptBackendPageFallback(mode)) {
+          els.taskMessage.textContent = preflightBlockMessage(checked);
+          renderContext();
+          return;
+        }
+        els.taskMessage.textContent = preflightFallbackStartMessage(checked);
       }
     }
     const response = await chrome.runtime.sendMessage({
