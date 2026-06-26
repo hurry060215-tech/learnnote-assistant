@@ -59,8 +59,12 @@ const context = {
   window: { open() {} },
   FormData: class FormData {},
   fetch: async url => {
-    if (String(url).endsWith("/health")) {
+    const value = String(url);
+    if (value.endsWith("/health")) {
       return { json: async () => ({ ffmpeg: true }) };
+    }
+    if (value.endsWith("/api/tasks")) {
+      return { json: async () => ({ tasks: [] }) };
     }
     throw new Error(`unexpected fetch: ${url}`);
   },

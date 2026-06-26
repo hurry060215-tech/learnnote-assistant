@@ -113,6 +113,7 @@ small,
 .resource-panel,
 .option-panel,
 .progress-panel,
+.history-panel,
 .result-panel {
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -123,7 +124,8 @@ small,
 .current-card,
 .resource-panel,
 .option-panel,
-.progress-panel {
+.progress-panel,
+.history-panel {
   padding: 12px;
 }
 
@@ -972,6 +974,78 @@ input[type="file"] {
   color: var(--ink);
 }
 
+.task-history {
+  display: grid;
+  gap: 7px;
+}
+
+.history-task {
+  width: 100%;
+  min-height: 54px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  justify-content: stretch;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  padding: 8px 9px;
+  text-align: left;
+}
+
+.history-task:hover {
+  border-color: var(--border-strong);
+}
+
+.history-task.selected {
+  border-color: var(--accent);
+  background: #f8fbff;
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.history-task strong,
+.history-task small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-task strong {
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.history-task small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.history-task b {
+  width: 26px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  background: #e7edf6;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.history-task.status-success b {
+  background: rgba(20, 150, 74, 0.12);
+  color: var(--success);
+}
+
+.history-task.status-failed b {
+  background: rgba(217, 45, 32, 0.1);
+  color: var(--danger);
+}
+
 @media (max-width: 360px) {
   .option-panel {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1035,6 +1109,7 @@ h1 {
 .resource-panel,
 .option-panel,
 .progress-panel,
+.history-panel,
 .result-panel,
 .local-drop {
   border-color: var(--border);
@@ -1045,7 +1120,8 @@ h1 {
 .current-card,
 .resource-panel,
 .option-panel,
-.progress-panel {
+.progress-panel,
+.history-panel {
   padding: 13px;
 }
 
