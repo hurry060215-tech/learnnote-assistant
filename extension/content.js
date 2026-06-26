@@ -21,6 +21,7 @@ const STATIC_MEDIA_ATTRS = [
 const STATIC_MEDIA_SELECTOR = STATIC_MEDIA_ATTRS.map(name => `[${name}]`).join(",");
 const STATIC_FIELD_RE = /(["']?[A-Za-z_$][A-Za-z0-9_$.-]{0,79}["']?)\s*[:=]\s*["']([^"'<>\\\s]{4,})["']/gi;
 const STATIC_MEDIA_KEY_RE = /(url|src|file|play|media|video|stream|source|hls|m3u8|dash|mpd|subtitle|caption)/i;
+const B64ISH_RE = /^[A-Za-z0-9+/_=-]{16,}$/;
 const boundVideos = new WeakSet();
 const hookResources = [];
 const drmSignals = [];
@@ -98,6 +99,24 @@ function decodedValues(value) {
     if (decoded && decoded !== values[0]) values.unshift(decoded);
   } catch {
     // Keep the raw value when percent decoding is invalid.
+  }
+  const compact = raw.replace(/\s+/g, "");
+  if (B64ISH_RE.test(compact)) {
+    const padded = compact + "=".repeat((4 - (compact.length % 4)) % 4);
+    try {
+      const binary = atob(padded.replace(/-/g, "+").replace(/_/g, "/"));
+      const decoded = decodeURIComponent(escape(binary)).trim().replace(/&amp;/g, "&").replace(/\\\//g, "/");
+      if (
+        decoded &&
+        !values.includes(decoded) &&
+        !/[\u0000-\u0008\u000e-\u001f]/.test(decoded) &&
+        (MEDIA_RE.test(decoded) || SUBTITLE_RE.test(decoded) || decoded.includes(".m3u8") || decoded.includes(".mpd") || looksLikeMediaValue(decoded, "media"))
+      ) {
+        values.push(decoded);
+      }
+    } catch {
+      // Ignore non-text or non-base64 values.
+    }
   }
   return values.filter((item, index) => item && values.indexOf(item) === index);
 }

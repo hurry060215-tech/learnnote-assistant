@@ -61,13 +61,18 @@ class FakeElement {
   addEventListener() {}
 }
 
+const packedDash = Buffer.from("https://cdn.example.com/static/manifest.mpd?token=b64", "utf8").toString("base64");
+
 const player = new FakeElement("div", {
   "data-play-url": "https%3A%2F%2Fcdn.example.com%2Fstatic%2Fmaster.m3u8%3Ftoken%3Dattr"
+});
+const packedPlayer = new FakeElement("div", {
+  "data-video-url": packedDash
 });
 const script = new FakeElement("script", {
   textContent: "window.__player={videoUrl:'https%3A%2F%2Fcdn.example.com%2Fstatic%2Flesson.mp4%3Ftoken%3Dscript'};"
 });
-const html = new FakeElement("html", {}, [player, script]);
+const html = new FakeElement("html", {}, [player, packedPlayer, script]);
 
 let messageListener = null;
 const context = {
@@ -106,6 +111,7 @@ const context = {
       return [];
     }
   },
+  atob: value => Buffer.from(value, "base64").toString("binary"),
   setTimeout() {
     return 0;
   },
@@ -129,12 +135,18 @@ messageListener({ type: "collect-page-data" }, {}, data => {
 });
 
 const hls = response.resources.find(item => item.url === "https://cdn.example.com/static/master.m3u8?token=attr");
+const dash = response.resources.find(item => item.url === "https://cdn.example.com/static/manifest.mpd?token=b64");
 const video = response.resources.find(item => item.url === "https://cdn.example.com/static/lesson.mp4?token=script");
 
 assert.ok(hls, "expected data-play-url media hint to expose encoded HLS URL");
 assert.equal(hls.kind, "hls");
 assert.equal(hls.source, "domHint");
 assert.match(hls.label, /data-play-url/);
+
+assert.ok(dash, "expected base64 data-video-url media hint to expose DASH manifest");
+assert.equal(dash.kind, "dash");
+assert.equal(dash.source, "domHint");
+assert.match(dash.label, /data-video-url/);
 
 assert.ok(video, "expected inline script media hint to expose encoded mp4 URL");
 assert.equal(video.kind, "video");
