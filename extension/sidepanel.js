@@ -244,6 +244,7 @@ function playbackText(match) {
     "same-frame": "同播放器 frame",
     "blob-same-frame": "blob 播放同 frame",
     "blob-source": "Blob/MSE 来源映射",
+    "range-near-playhead": "播放进度附近 Range 请求",
     "recent-media-request": "最近播放请求",
     "same-site-request": "同站请求",
     "inferred-from-fragment": "分片推断"

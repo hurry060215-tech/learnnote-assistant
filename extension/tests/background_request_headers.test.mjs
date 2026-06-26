@@ -84,3 +84,33 @@ assert.ok(
   context.scoreKind("https://cdn.example.com/playback?id=abc", "webRequest", "video") >= 95,
   "expected extensionless browser media requests to rank like video candidates"
 );
+
+const hinted = context.withPlaybackHints(
+  {
+    url: "https://cdn.example.com/playback?id=abc",
+    source: "webRequest",
+    kind: "video",
+    score: 80,
+    frame_id: 9,
+    initiator: "https://course.example.com",
+    time_stamp: Date.now() - 5000,
+    request_headers: {
+      Range: "bytes=800000-"
+    }
+  },
+  {
+    page_url: "https://course.example.com/lesson/1",
+    active_video: {
+      src: "blob:https://course.example.com/active",
+      paused: false,
+      current_time: 420,
+      duration: 1800,
+      frame_id: 9
+    }
+  }
+);
+
+assert.equal(hinted.playback_match, "range-near-playhead");
+assert.equal(hinted.is_main_video, true);
+assert.equal(hinted.current_time, 420);
+assert.ok(hinted.score >= 100, "expected recent range media requests near the active playhead to be top-ranked");

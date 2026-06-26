@@ -267,7 +267,8 @@ function activeVideoInfo() {
     label: `video#${index + 1}`,
     drm_detected: Boolean(drm.encrypted_events || drmSignals.length || video.mediaKeys),
     drm_key_system: drm.key_system || "",
-    encrypted_events: Number(drm.encrypted_events || 0)
+    encrypted_events: Number(drm.encrypted_events || 0),
+    time_stamp: Date.now()
   };
 }
 

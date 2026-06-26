@@ -93,6 +93,7 @@ class ActiveVideoInfo(BaseModel):
     drm_detected: bool = False
     drm_key_system: str = ""
     encrypted_events: int = 0
+    time_stamp: float | None = None
 
 
 class CurrentPageTaskRequest(BaseModel):

@@ -97,6 +97,18 @@ function isDownloadableKind(kind) {
   return kind === "hls" || kind === "dash" || kind === "video";
 }
 
+function requestRangeHeader(resource = {}) {
+  const headers = resource.request_headers || {};
+  for (const [name, value] of Object.entries(headers)) {
+    if (String(name).toLowerCase() === "range") return String(value || "");
+  }
+  return "";
+}
+
+function hasByteRangeRequest(resource = {}) {
+  return /^bytes=\d*-\d*$/i.test(requestRangeHeader(resource).trim());
+}
+
 function urlHost(url) {
   try {
     return new URL(url).hostname;
@@ -150,6 +162,25 @@ function withPlaybackHints(resource, page = {}) {
     boost += 10;
     match = match || "blob-source";
     hinted.is_main_video = true;
+  }
+
+  const veryRecent = hinted.time_stamp && Date.now() - hinted.time_stamp < 45 * 1000;
+  const sameActiveFrame = activeFrameId !== null && hinted.frame_id !== null && hinted.frame_id !== undefined && hinted.frame_id === activeFrameId;
+  const sameActiveSite = sameSite(hinted.initiator || hinted.frame_url || hinted.page_url || "", page.page_url || active.frame_url || "");
+  if (
+    veryRecent &&
+    !active.paused &&
+    Number(active.current_time || 0) > 0 &&
+    hinted.source === "webRequest" &&
+    hasByteRangeRequest(hinted) &&
+    isDownloadableKind(kind) &&
+    (sameActiveFrame || sameActiveSite || activeSrc.startsWith("blob:"))
+  ) {
+    boost += sameActiveFrame ? 22 : 18;
+    match = ["exact-src", "blob-source"].includes(match) ? match : "range-near-playhead";
+    hinted.is_main_video = true;
+    hinted.current_time = active.current_time ?? hinted.current_time ?? null;
+    hinted.duration = active.duration ?? hinted.duration ?? null;
   }
 
   if (recent && hinted.source === "webRequest" && isDownloadableKind(kind)) {
@@ -422,6 +453,9 @@ chrome.webRequest.onCompleted.addListener(
       status_code: details.statusCode || null,
       content_length: Number.isFinite(contentLength) && contentLength > 0 ? contentLength : null,
       initiator: details.initiator || "",
+      frame_id: details.frameId ?? null,
+      frame_url: details.documentUrl || "",
+      page_url: details.documentUrl || details.initiator || "",
       time_stamp: details.timeStamp || null,
       request_headers: requestHeaders,
       label: kind.toUpperCase()
