@@ -424,6 +424,18 @@ function preflightBlockMessage(result) {
   return result?.message || result?.code || "当前候选资源预检未通过；请换一个候选、重新检测，或使用本地视频入口。";
 }
 
+function preflightRecoveryText(result = {}) {
+  const code = result.code || "";
+  if (code === "auth_required") return "重新打开课程页并确认已登录，然后播放几秒后重新检测；Cookie 只会在点击任务时同步一次。";
+  if (code === "drm_or_encrypted") return "当前版本不会录制、破解或绕过 DRM；如果没有可访问 mp4/m3u8/mpd，请改用本地视频入口。";
+  if (code === "download_forbidden") return "通常是 Referer、Cookie 或签名过期；回到原页面继续播放后立刻重新预检，或换一个候选资源。";
+  if (code === "unsupported_manifest") return "检测到的可能只是分片或非完整 manifest；继续播放后重新检测，优先选择 m3u8/mpd 候选。";
+  if (code === "no_media_found") return "当前页还没有暴露可直取资源；先播放几秒，等待媒体请求出现，再重新检测。";
+  if (code === "preflight_failed") return "本地后端或扩展通信没有完成；确认 127.0.0.1 后端可用后重试。";
+  if (result.downloadable) return "可以直接开始完整总结，或先用“下载本地”验证可导出的 media.mp4。";
+  return "可以换一个候选、重新检测，或使用本地视频入口。";
+}
+
 function drmSignalText(signals = []) {
   const parts = [];
   const keySystems = [...new Set(signals.map(item => item.key_system).filter(Boolean))];
@@ -552,8 +564,8 @@ function renderReadiness() {
   if (checked) {
     els.readiness.className = checked.downloadable ? "readiness" : checked.code === "drm_or_encrypted" ? "readiness bad" : "readiness warn";
     els.readiness.textContent = checked.downloadable
-      ? `预检通过：后端可访问 ${checked.kind}，正式任务会完整下载。`
-      : `预检未通过：${checked.message || checked.code || "候选不可直取"}`;
+      ? `预检通过：后端可访问 ${checked.kind}，正式任务会完整下载。${preflightRecoveryText(checked)}`
+      : `预检未通过：${checked.message || checked.code || "候选不可直取"}；${preflightRecoveryText(checked)}`;
     return;
   }
   if (drmDetected && !downloadable.length) {
@@ -592,6 +604,7 @@ function renderInspector() {
     ${item.frame_url ? `<span>所在 frame：${escapeHtml(item.frame_url)}</span>` : ""}
     <span>复用请求头：${escapeHtml(requestHeaderNames(item))}</span>
     ${checked ? `<span>预检：${escapeHtml(checked.downloadable ? "通过" : checked.code || "未通过")} · ${escapeHtml(checked.status_code ? `HTTP ${checked.status_code}` : checked.strategy || "")} · ${escapeHtml(checked.content_type || "")} · ${escapeHtml(fmtBytes(checked.content_length) || `${checked.bytes_checked || 0} B`)}</span>` : ""}
+    ${checked ? `<span>下一步：${escapeHtml(preflightRecoveryText(checked))}</span>` : ""}
     ${checked?.warnings?.length ? `<span>提示：${escapeHtml(checked.warnings.join("；"))}</span>` : ""}
     <code>${escapeHtml(item.url)}</code>
   `;

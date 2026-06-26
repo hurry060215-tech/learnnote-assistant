@@ -240,3 +240,8 @@ assert.match(context.resourceTagHtml({
     Referer: "https://course.example.com/lesson"
   }
 }), /<em>\+5<\/em>/);
+
+assert.match(context.preflightRecoveryText({ code: "auth_required" }), /已登录/);
+assert.match(context.preflightRecoveryText({ code: "drm_or_encrypted" }), /不会录制/);
+assert.match(context.preflightRecoveryText({ code: "download_forbidden" }), /Referer/);
+assert.match(context.preflightRecoveryText({ downloadable: true, kind: "video" }), /完整总结/);
