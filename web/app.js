@@ -49,6 +49,7 @@ const els = {
   resultTabs: document.querySelectorAll(".result-tab"),
   detail: document.querySelector("#detail"),
   copyButton: document.querySelector("#copyButton"),
+  bundleButton: document.querySelector("#bundleButton"),
   downloadButton: document.querySelector("#downloadButton")
 };
 
@@ -613,6 +614,7 @@ async function renderDetail() {
     lastNote = "";
     lastNoteTaskId = "";
     els.copyButton.disabled = true;
+    els.bundleButton.disabled = true;
     els.downloadButton.disabled = true;
     return;
   }
@@ -628,6 +630,7 @@ async function renderDetail() {
   els.detail.className = "detail";
   const hasNote = Boolean(task.note_path) || task.status === "success";
   els.copyButton.disabled = !hasNote;
+  els.bundleButton.disabled = !hasNote;
   els.downloadButton.disabled = !hasNote;
 
   if (selectedTab === "note") {
@@ -846,6 +849,10 @@ els.statusFilter.onchange = () => {
   renderTasks();
 };
 els.copyButton.onclick = async () => navigator.clipboard.writeText(await noteForTask(selectedTaskId) || "");
+els.bundleButton.onclick = () => {
+  if (!selectedTaskId) return;
+  window.location.assign(`${API}/api/tasks/${encodeURIComponent(selectedTaskId)}/exports/bundle`);
+};
 els.downloadButton.onclick = () => {
   if (!selectedTaskId) return;
   window.location.assign(`${API}/api/tasks/${encodeURIComponent(selectedTaskId)}/exports/markdown`);
