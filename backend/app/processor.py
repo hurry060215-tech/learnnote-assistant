@@ -202,20 +202,31 @@ def _process_video_file(
     normalized = work_dir / "media.mp4"
     normalize_video(input_path, normalized)
     update_task(task_id, media_path=str(normalized))
+    audio_warning = ""
 
     update_task(task_id, phase="processing_video", progress=38, message="正在提取音频")
     audio_path = work_dir / "audio.wav"
-    extract_audio(normalized, audio_path)
-    update_task(task_id, audio_path=str(audio_path))
+    try:
+        extract_audio(normalized, audio_path)
+        update_task(task_id, audio_path=str(audio_path))
+    except Exception as exc:
+        audio_path = None
+        audio_warning = f"未能提取可转写音轨：{exc}；已继续使用画面切片生成笔记。"
 
     update_task(task_id, phase="transcribing", progress=52, message="正在转写音频")
     if subtitle_path:
         update_task(task_id, subtitle_path=str(subtitle_path), message="已检测到页面字幕，正在解析字幕")
         transcript = transcript_from_subtitle(subtitle_path)
         if not transcript.segments:
-            transcript = transcribe_audio(audio_path, options.whisper_model)
+            if audio_path:
+                transcript = transcribe_audio(audio_path, options.whisper_model)
+            else:
+                transcript = TranscriptResult(source="no-audio", warning=audio_warning)
     else:
-        transcript = transcribe_audio(audio_path, options.whisper_model)
+        if audio_path:
+            transcript = transcribe_audio(audio_path, options.whisper_model)
+        else:
+            transcript = TranscriptResult(source="no-audio", warning=audio_warning)
     transcript_path = work_dir / "transcript.json"
     transcript_path.write_text(transcript.model_dump_json(indent=2), encoding="utf-8")
     update_task(task_id, transcript_path=str(transcript_path))

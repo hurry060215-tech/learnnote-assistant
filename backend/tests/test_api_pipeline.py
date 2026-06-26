@@ -62,6 +62,32 @@ def make_video(root: Path, name: str = "synthetic.mp4") -> Path:
     return video
 
 
+def make_silent_video(root: Path, name: str = "silent.mp4") -> Path:
+    ffmpeg = ffmpeg_bin()
+    if not ffmpeg:
+        raise unittest.SkipTest("ffmpeg is required for API pipeline tests")
+    root.mkdir(parents=True, exist_ok=True)
+    video = root / name
+    subprocess.run(
+        [
+            ffmpeg,
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc=duration=3:size=320x180:rate=10",
+            "-pix_fmt",
+            "yuv420p",
+            str(video),
+        ],
+        check=True,
+    )
+    return video
+
+
 def make_hls(root: Path, source: Path) -> Path:
     ffmpeg = ffmpeg_bin()
     if not ffmpeg:
@@ -177,6 +203,40 @@ class ApiPipelineTests(unittest.TestCase):
                     summary_payload = json.loads(archive.read("summary_diagnostics.json").decode("utf-8"))
                     self.assertEqual(summary_payload["task_id"], task_id)
                     self.assertEqual(summary_payload["frame_grid_count"], len(task["frame_grids"]))
+            finally:
+                shutil.rmtree(task_dir(task_id), ignore_errors=True)
+
+    def test_silent_local_video_continues_with_frame_grid_without_transcript(self) -> None:
+        with tempfile.TemporaryDirectory(dir=TEST_RUN_DIR) as tmp:
+            video = make_silent_video(Path(tmp))
+            with patch("app.processor.transcribe_audio", side_effect=AssertionError("Whisper should not run without an extracted audio track")):
+                with video.open("rb") as file:
+                    response = self.client.post(
+                        "/api/tasks/from-local",
+                        files={"file": ("silent.mp4", file, "video/mp4")},
+                        data={
+                            "title": "Silent visual lesson",
+                            "options": json.dumps({"visual_understanding": True, "frame_interval": 1}),
+                        },
+                    )
+
+            self.assertEqual(response.status_code, 200)
+            task_id = response.json()["task_id"]
+            try:
+                task = self.client.get(f"/api/tasks/{task_id}").json()["task"]
+                self.assertEqual(task["status"], "success")
+                self.assertTrue(Path(task["media_path"]).exists())
+                self.assertFalse(task["audio_path"])
+                self.assertTrue(task["frame_grids"])
+                self.assertTrue(task["visual_windows"])
+                transcript = self.client.get(f"/api/tasks/{task_id}/transcript").json()
+                self.assertEqual(transcript["source"], "no-audio")
+                self.assertEqual(transcript["segments"], [])
+                self.assertIn("音轨", transcript["warning"])
+                note = self.client.get(f"/api/tasks/{task_id}/note").text
+                self.assertIn("Silent visual lesson", note)
+                self.assertIn("转写提示", note)
+                self.assertIn("画面索引", note)
             finally:
                 shutil.rmtree(task_dir(task_id), ignore_errors=True)
 
