@@ -272,6 +272,34 @@ assert.equal(context.hasTaskBundle({}), false);
 assert.equal(context.hasTaskDiagnostics({ selected_resource: { kind: "video" } }), true);
 assert.equal(context.hasTaskDiagnostics({ summary_diagnostics_path: "summary.json" }), true);
 assert.equal(context.hasTaskDiagnostics({}), false);
+assert.equal(context.canContinueFromDownloadedMedia({
+  id: "task-downloaded",
+  status: "success",
+  media_path: "D:/media.mp4",
+  note_path: ""
+}), true);
+assert.equal(context.canContinueFromDownloadedMedia({
+  id: "task-noted",
+  status: "success",
+  media_path: "D:/media.mp4",
+  note_path: "D:/note.md"
+}), false);
+context.updateContinueFromMediaAction({
+  id: "task-downloaded",
+  status: "success",
+  media_path: "D:/media.mp4",
+  note_path: ""
+});
+assert.equal(elements.get("#continueFromMediaButton").hidden, false);
+assert.equal(elements.get("#continueFromMediaButton").disabled, false);
+context.updateContinueFromMediaAction({
+  id: "task-noted",
+  status: "success",
+  media_path: "D:/media.mp4",
+  note_path: "D:/note.md"
+});
+assert.equal(elements.get("#continueFromMediaButton").hidden, true);
+assert.equal(elements.get("#continueFromMediaButton").disabled, true);
 
 const taskChipsHtml = context.taskChipsHtml({
   title: "<script>bad()</script>",

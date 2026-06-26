@@ -118,9 +118,24 @@ vm.runInContext(sidepanelCode, context);
 
 await new Promise(resolve => setTimeout(resolve, 0));
 await context.startTask("download_only");
+await new Promise(resolve => setTimeout(resolve, 0));
 
 assert.equal(calls.preflight, 1);
 assert.equal(calls.start.mode, "download_only");
 assert.equal(calls.start.resources.length, 1);
 assert.equal(calls.start.resources[0].url, resources[0].url);
 assert.equal(elements.get("#downloadOnlyButton").disabled, false);
+assert.equal(context.canContinueFromDownloadedMedia({
+  id: "download-only-task",
+  status: "success",
+  media_path: "D:/media.mp4",
+  note_path: ""
+}), true);
+assert.equal(context.canContinueFromDownloadedMedia({
+  id: "complete-task",
+  status: "success",
+  media_path: "D:/media.mp4",
+  note_path: "D:/note.md"
+}), false);
+assert.equal(elements.get("#continueFromMediaButton").hidden, false);
+assert.equal(elements.get("#continueFromMediaButton").disabled, false);

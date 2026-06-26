@@ -53,6 +53,7 @@ const els = {
   resultMeta: document.querySelector("#resultMeta"),
   resultTabs: document.querySelectorAll(".result-tab"),
   detail: document.querySelector("#detail"),
+  continueFromMediaButton: document.querySelector("#continueFromMediaButton"),
   copyButton: document.querySelector("#copyButton"),
   bundleButton: document.querySelector("#bundleButton"),
   diagnosticsButton: document.querySelector("#diagnosticsButton"),
@@ -723,6 +724,17 @@ function hasTaskDiagnostics(task) {
   );
 }
 
+function canContinueFromDownloadedMedia(task) {
+  return Boolean(task?.id && task.status === "success" && task.media_path && !task.note_path);
+}
+
+function updateContinueFromMediaAction(task) {
+  if (!els.continueFromMediaButton) return;
+  const canContinue = canContinueFromDownloadedMedia(task);
+  els.continueFromMediaButton.hidden = !canContinue;
+  els.continueFromMediaButton.disabled = !canContinue;
+}
+
 function taskOverview(task) {
   const selected = task.selected_resource || {};
   const options = task.options || {};
@@ -1050,6 +1062,7 @@ async function renderDetail() {
     els.diagnosticsButton.disabled = true;
     els.mediaButton.disabled = true;
     els.downloadButton.disabled = true;
+    updateContinueFromMediaAction(null);
     return;
   }
 
@@ -1068,6 +1081,7 @@ async function renderDetail() {
   els.diagnosticsButton.disabled = !hasTaskDiagnostics(task);
   els.mediaButton.disabled = !task.media_path;
   els.downloadButton.disabled = !hasNote;
+  updateContinueFromMediaAction(task);
 
   if (selectedTab === "note") {
     lastNote = await noteForTask(task.id);
@@ -1330,6 +1344,7 @@ els.statusFilter.onchange = () => {
   renderTasks();
 };
 els.copyButton.onclick = async () => navigator.clipboard.writeText(await noteForTask(selectedTaskId) || "");
+if (els.continueFromMediaButton) els.continueFromMediaButton.onclick = () => rerunTaskFromMedia(selectedTaskId);
 els.bundleButton.onclick = () => {
   if (!selectedTaskId) return;
   window.location.assign(`${API}/api/tasks/${encodeURIComponent(selectedTaskId)}/exports/bundle`);

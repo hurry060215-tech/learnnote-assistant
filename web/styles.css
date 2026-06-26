@@ -24,6 +24,10 @@
   box-sizing: border-box;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 body {
   margin: 0;
   background: var(--bg);
@@ -109,6 +113,24 @@ h1 {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.continue-media-button {
+  width: auto;
+  height: 34px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  padding: 0 11px;
+  font-size: 12px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.continue-media-button:hover {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
 }
 
 .health {
