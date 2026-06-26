@@ -223,6 +223,16 @@
           }
         }
       }
+      if (typeof value === "string" && !JSON_MEDIA_KEY_RE.test(key) && keys.length < 12) {
+        for (const candidateText of decodedMediaValues(value)) {
+          const trimmed = String(candidateText || "").trim();
+          if (!trimmed || trimmed.length > MAX_TEXT_BYTES) continue;
+          if (!"{[".includes(trimmed[0]) && !MEDIA_HINT_RE.test(trimmed) && !JSON_MEDIA_KEY_RE.test(trimmed)) continue;
+          const nested = collectMediaUrlsFromText(trimmed, source, `${label} nested ${nextKeys.slice(-3).join("/")}`, "", seen);
+          output.push(...nested.slice(0, Math.max(0, 40 - output.length)));
+          if (output.length >= 40) break;
+        }
+      }
       if (value && typeof value === "object") {
         collectJsonMediaUrls(value, source, label, nextKeys, node, output, seen);
       }
@@ -231,11 +241,11 @@
     return output;
   }
 
-  function extractJsonMediaUrls(text, source, label) {
+  function extractJsonMediaUrls(text, source, label, seen = new Set()) {
     const trimmed = String(text || "").trim();
     if (!trimmed || !"{[".includes(trimmed[0])) return [];
     try {
-      return collectJsonMediaUrls(JSON.parse(trimmed), source, label);
+      return collectJsonMediaUrls(JSON.parse(trimmed), source, label, [], null, [], seen);
     } catch {
       return [];
     }
@@ -392,10 +402,9 @@
     }
   }
 
-  function extractUrlsFromText(text, source, label, mime = "") {
-    if (!text) return;
-    const resources = extractJsonMediaUrls(text, source, label);
-    const seen = new Set(resources.map(item => item.url));
+  function collectMediaUrlsFromText(text, source, label, mime = "", seen = new Set()) {
+    if (!text) return [];
+    const resources = extractJsonMediaUrls(text, source, label, seen);
     resources.push(...extractFieldMediaUrls(text, source, label, seen));
     if (MEDIA_HINT_RE.test(text)) {
       for (const match of text.matchAll(MEDIA_URL_RE)) {
@@ -406,7 +415,11 @@
         if (resources.length >= 40) break;
       }
     }
-    emit(resources);
+    return resources;
+  }
+
+  function extractUrlsFromText(text, source, label, mime = "") {
+    emit(collectMediaUrlsFromText(text, source, label, mime));
   }
 
   function shouldInspectResponse(response) {
