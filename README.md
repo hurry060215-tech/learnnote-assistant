@@ -10,6 +10,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - BiliNote-style workspace UI: source selection, processing options, task history, note/transcript/frame/diagnostic result tabs.
 - Richer BiliNote-style reading workspace with task search/filter, status counters, Markdown rendering, frame-grid preview, and failure recovery hints.
 - BiliNote-style task stage rail for download, transcription, frame slicing, note generation, and completion.
+- Transcript timeline view aligns each subtitle segment with its frame-grid visual window, so notes can be reviewed by time slice instead of as a flat transcript.
 - Markdown note export from both the local Web UI and the browser Side Panel.
 - Current-page media detection from DOM, all-frame content scripts, Performance entries, and `webRequest`.
 - `webRequest` captures media candidates as soon as response headers arrive, so long-running video/range streams do not have to finish before they can be selected.
@@ -74,6 +75,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - Multimodal prompts are organized by frame-grid windows, pairing each visual slice with the transcript segment from the same time range. Long videos are summarized in batches so later frame grids are not silently dropped.
 - Task diagnostics record whether the note came from a vision LLM, text LLM, or the local frame-index template, including the downgrade reason when the model call is unavailable.
 - Each completed video task writes `visual_index.json`, exposes `/api/tasks/{task_id}/visual-index`, and returns `visual_windows` in the task record so the UI and future vision-model calls can reuse the same frame-grid/transcript alignment.
+- The Web UI and Side Panel render transcript segments grouped under the corresponding `W001`/`W002` visual windows, keeping the frame grid, time range, and subtitle lines together for BiliNote-style review.
 - Generated notes can be copied or exported as Markdown files with the task title as the filename.
 - Deterministic fallback notes when no LLM key or ASR model is installed.
 
