@@ -53,6 +53,7 @@ const els = {
   result: document.querySelector("#result"),
   copyButton: document.querySelector("#copyButton"),
   bundleButton: document.querySelector("#bundleButton"),
+  mediaButton: document.querySelector("#mediaButton"),
   downloadButton: document.querySelector("#downloadButton"),
   openWebButton: document.querySelector("#openWebButton"),
   settingsButton: document.querySelector("#settingsButton")
@@ -959,6 +960,7 @@ function renderResult() {
   const hasNote = Boolean(currentTaskId) && (Boolean(currentTask?.note_path) || currentTask?.status === "success");
   els.copyButton.disabled = !hasNote;
   els.bundleButton.disabled = !hasNote;
+  els.mediaButton.disabled = !currentTask?.media_path;
   els.downloadButton.disabled = !hasNote;
   if (!currentTask) {
     els.result.textContent = "任务完成后显示结果。";
@@ -1083,6 +1085,12 @@ els.copyButton.onclick = () => navigator.clipboard.writeText(lastNote || "");
 els.bundleButton.onclick = () => {
   if (!currentTaskId) return;
   const url = `${backendUrl}/api/tasks/${encodeURIComponent(currentTaskId)}/exports/bundle`;
+  if (HAS_EXTENSION_API) chrome.tabs.create({ url });
+  else window.open(url, "_blank", "noopener");
+};
+els.mediaButton.onclick = () => {
+  if (!currentTaskId) return;
+  const url = `${backendUrl}/api/tasks/${encodeURIComponent(currentTaskId)}/exports/media`;
   if (HAS_EXTENSION_API) chrome.tabs.create({ url });
   else window.open(url, "_blank", "noopener");
 };

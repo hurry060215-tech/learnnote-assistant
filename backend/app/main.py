@@ -50,6 +50,12 @@ def bundle_filename(task_id: str, title: str) -> str:
     return f"{stem}.zip"
 
 
+def media_filename(task_id: str, title: str) -> str:
+    stem = _FILENAME_RESERVED_RE.sub("_", title or "").strip(" ._")
+    stem = stem[:120] or f"learnnote-{task_id}"
+    return f"{stem}.mp4"
+
+
 def _write_file_if_exists(archive: ZipFile, path_value: str, archive_name: str) -> None:
     if not path_value:
         return
@@ -206,6 +212,27 @@ def api_export_bundle(task_id: str) -> Response:
         )
     }
     return Response(buffer.getvalue(), media_type="application/zip", headers=headers)
+
+
+@app.get("/api/tasks/{task_id}/exports/media")
+def api_export_media(task_id: str) -> FileResponse:
+    try:
+        task = get_task(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Task not found") from exc
+    if not task.media_path:
+        raise HTTPException(status_code=404, detail="Media not found")
+    path = Path(task.media_path)
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Media not found")
+    filename = media_filename(task.id, task.title)
+    headers = {
+        "Content-Disposition": (
+            f'attachment; filename="learnnote-{task.id}.mp4"; '
+            f"filename*=UTF-8''{quote(filename)}"
+        )
+    }
+    return FileResponse(path, media_type="video/mp4", headers=headers)
 
 
 @app.get("/api/tasks/{task_id}/assets/{filename}")
