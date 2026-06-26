@@ -531,6 +531,156 @@
     return resources.slice(0, 60);
   }
 
+  function sourceCandidates(value, output = []) {
+    if (!value) return output;
+    if (typeof value === "string") {
+      output.push(value);
+      return output;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) sourceCandidates(item, output);
+      return output;
+    }
+    if (typeof value === "object") {
+      for (const key of ["src", "url", "file", "source", "manifestUri"]) {
+        try {
+          if (typeof value[key] === "string") output.push(value[key]);
+        } catch {
+          // Some player source objects expose throwing getters.
+        }
+      }
+    }
+    return output;
+  }
+
+  function emitPlayerSources(value, fallbackKind, label) {
+    const resources = [];
+    const seen = new Set();
+    for (const candidate of sourceCandidates(value)) {
+      const url = normalizeUrl(candidate);
+      if (!url || seen.has(url)) continue;
+      seen.add(url);
+      const detectedKind = mediaKind(url, "");
+      const kind = detectedKind === "unknown" ? fallbackKind : detectedKind;
+      if (!kind || kind === "unknown") continue;
+      resources.push({
+        url,
+        source: "pageHookPlayer",
+        kind,
+        mime: mimeForKind(kind),
+        label,
+        score: kind === "hls" || kind === "dash" ? 99 : 92
+      });
+    }
+    emit(resources);
+  }
+
+  function patchMethod(target, name, wrap) {
+    if (!target || typeof target[name] !== "function") return false;
+    const marker = `__learnNote${name[0].toUpperCase()}${name.slice(1)}Patched`;
+    try {
+      if (target[marker]) return true;
+      const original = target[name];
+      target[name] = wrap(original);
+      Object.defineProperty(target, marker, { value: true });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function patchHlsJs() {
+    try {
+      const Hls = window.Hls;
+      if (!Hls?.prototype) return;
+      patchMethod(Hls.prototype, "loadSource", original => function (source, ...rest) {
+        emitPlayerSources(source, "hls", "hls.js loadSource");
+        return original.call(this, source, ...rest);
+      });
+    } catch {
+      // hls.js may not be present or may lock its prototype.
+    }
+  }
+
+  function patchDashPlayer(player) {
+    if (!player || typeof player !== "object") return player;
+    patchMethod(player, "attachSource", original => function (source, ...rest) {
+      emitPlayerSources(source, "dash", "dash.js attachSource");
+      return original.call(this, source, ...rest);
+    });
+    patchMethod(player, "initialize", original => function (view, source, ...rest) {
+      if (source) emitPlayerSources(source, "dash", "dash.js initialize");
+      return original.call(this, view, source, ...rest);
+    });
+    return player;
+  }
+
+  function patchDashJs() {
+    try {
+      const dash = window.dashjs;
+      if (!dash || typeof dash.MediaPlayer !== "function" || dash.MediaPlayer.__learnNoteMediaPlayerPatched) return;
+      const originalMediaPlayer = dash.MediaPlayer;
+      function LearnNoteMediaPlayer(...args) {
+        const factory = originalMediaPlayer.apply(this, args);
+        if (factory && typeof factory.create === "function" && !factory.__learnNoteCreatePatched) {
+          const originalCreate = factory.create;
+          factory.create = function (...createArgs) {
+            return patchDashPlayer(originalCreate.apply(this, createArgs));
+          };
+          try {
+            Object.defineProperty(factory, "__learnNoteCreatePatched", { value: true });
+          } catch {
+            // Factory patch still works even if the marker cannot be written.
+          }
+        }
+        return factory;
+      }
+      try {
+        Object.setPrototypeOf(LearnNoteMediaPlayer, originalMediaPlayer);
+        LearnNoteMediaPlayer.prototype = originalMediaPlayer.prototype;
+      } catch {
+        // A plain wrapper is enough for typical dash.js factory usage.
+      }
+      Object.defineProperty(LearnNoteMediaPlayer, "__learnNoteMediaPlayerPatched", { value: true });
+      dash.MediaPlayer = LearnNoteMediaPlayer;
+    } catch {
+      // dash.js may be loaded later; the polling installer retries.
+    }
+  }
+
+  function patchShakaPlayer() {
+    try {
+      const Player = window.shaka?.Player;
+      if (!Player?.prototype) return;
+      patchMethod(Player.prototype, "load", original => function (assetUri, ...rest) {
+        emitPlayerSources(assetUri, "", "shaka Player.load");
+        return original.call(this, assetUri, ...rest);
+      });
+    } catch {
+      // shaka may not be present or may lock its prototype.
+    }
+  }
+
+  function patchVideoJs() {
+    try {
+      const playerProto = window.videojs?.Player?.prototype || window.videoJs?.Player?.prototype;
+      if (!playerProto) return;
+      patchMethod(playerProto, "src", original => function (source, ...rest) {
+        if (source) emitPlayerSources(source, "", "video.js src");
+        return original.call(this, source, ...rest);
+      });
+    } catch {
+      // video.js is optional and best-effort.
+    }
+  }
+
+  function patchKnownPlayerLibraries() {
+    patchHlsJs();
+    patchDashJs();
+    patchShakaPlayer();
+    patchVideoJs();
+  }
+
   function scanGlobalConfig() {
     try {
       emit(collectGlobalConfigResources());
@@ -852,9 +1002,14 @@
   }
 
   installEmeDetection();
+  patchKnownPlayerLibraries();
   scanGlobalConfig();
+  setTimeout(patchKnownPlayerLibraries, 100);
   setTimeout(scanGlobalConfig, 500);
+  setTimeout(patchKnownPlayerLibraries, 500);
+  setTimeout(patchKnownPlayerLibraries, 1500);
   setTimeout(scanGlobalConfig, 2000);
+  setTimeout(patchKnownPlayerLibraries, 3000);
 
   window.addEventListener("message", event => {
     if (event.source !== window || event.data?.source !== "learnnote-content-ready") return;
