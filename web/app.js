@@ -19,6 +19,7 @@ const els = {
   urlInput: document.querySelector("#urlInput"),
   urlMode: document.querySelector("#urlMode"),
   urlModeHint: document.querySelector("#urlModeHint"),
+  optionsDisclosure: document.querySelector("#optionsDisclosure"),
   titleInput: document.querySelector("#titleInput"),
   startUrlButton: document.querySelector("#startUrlButton"),
   copyBackendButton: document.querySelector("#copyBackendButton"),
@@ -494,6 +495,12 @@ function focusResultPanelOnMobile() {
   document.querySelector(".result-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
+function initializeResponsiveChrome() {
+  if (shouldFocusResultPanel() && els.optionsDisclosure) {
+    els.optionsDisclosure.open = false;
+  }
+}
+
 async function loadTasks() {
   const data = await fetch(`${API}/api/tasks`).then(r => r.json());
   tasks = data.tasks || [];
@@ -963,6 +970,7 @@ els.fileInput.onchange = () => {
   setSource("local");
 };
 
+initializeResponsiveChrome();
 checkHealth();
 loadTasks();
 setInterval(() => {
