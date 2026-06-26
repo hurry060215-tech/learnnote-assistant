@@ -183,6 +183,47 @@ assert.match(readingRailHtml, /class="reading-rail"/);
 assert.match(readingRailHtml, /class="note-outline"/);
 assert.match(readingRailHtml, /class="visual-rail"/);
 
+const studyBarHtml = context.noteStudyBar(`# <script>bad()</script> 课程
+
+## 第一节
+### 画面演示
+`, {
+  id: "task-study-map",
+  title: "<script>bad()</script> 课程",
+  status: "success",
+  phase: "completed",
+  progress: 100,
+  source_type: "current_page",
+  media_path: "D:/Projects/learnnote-assistant/data/tasks/task-study-map/media.mp4",
+  transcript_path: "D:/Projects/learnnote-assistant/data/tasks/task-study-map/transcript.json",
+  note_path: "D:/Projects/learnnote-assistant/data/tasks/task-study-map/note.md",
+  options: {
+    transcriber: "faster-whisper",
+    whisper_model: "small"
+  },
+  visual_windows: [{
+    id: "W001",
+    start: 0,
+    end: 180,
+    frame_count: 9,
+    grid_url: "http://127.0.0.1:8765/api/tasks/demo/grids/grid_000.jpg",
+    transcript_excerpt: ""
+  }],
+  download_attempts: [{ strategy: "direct-file" }]
+});
+
+assert.match(studyBarHtml, /class="study-map"/);
+assert.match(studyBarHtml, /笔记目录/);
+assert.match(studyBarHtml, /3 个标题/);
+assert.match(studyBarHtml, /1 个章节 · 1 个小节/);
+assert.match(studyBarHtml, /画面切片/);
+assert.match(studyBarHtml, /00:00:00 - 00:03:00/);
+assert.match(studyBarHtml, /data-switch-result-tab="frames"/);
+assert.match(studyBarHtml, /data-switch-result-tab="transcript"/);
+assert.match(studyBarHtml, /\/api\/tasks\/task-study-map\/exports\/bundle/);
+assert.doesNotMatch(studyBarHtml, /<script>bad/);
+assert.match(studyBarHtml, /&lt;script&gt;bad\(\)&lt;\/script&gt; 课程/);
+
 const taskOverviewHtml = context.taskOverview({
   id: "task-web-overview",
   title: "<script>bad()</script> 课程",
