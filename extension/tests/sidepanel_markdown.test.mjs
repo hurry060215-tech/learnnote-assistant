@@ -313,6 +313,27 @@ assert.deepEqual([...evidenceTags], [
   "HTTP 206"
 ]);
 assert.match(context.resourceReasonText({ kind: "fragment", source: "pageHookFetch" }), /\u5206\u7247\u7ebf\u7d22/);
+assert.match(context.directnessText({
+  kind: "hls",
+  source: "pageHookPlayer",
+  label: "hls.js loadSource"
+}), /hls\.js 已加载 HLS manifest/);
+assert.deepEqual([...context.resourceEvidenceTags({
+  kind: "hls",
+  source: "pageHookPlayer",
+  label: "hls.js loadSource"
+})], ["可合并 manifest", "hls.js 已加载源地址", "页面接口"]);
+assert.match(context.resourceReasonText({
+  kind: "dash",
+  source: "pageHookPlayer",
+  label: "dash.js attachSource"
+}), /dash\.js 已加载源地址/);
+assert.match(context.requestEvidence({
+  kind: "dash",
+  source: "pageHookPlayer",
+  label: "dash.js attachSource",
+  mime: "application/dash+xml"
+}), /dash\.js 已加载源地址/);
 assert.match(context.resourceTagHtml({
   kind: "hls",
   source: "webRequest",
