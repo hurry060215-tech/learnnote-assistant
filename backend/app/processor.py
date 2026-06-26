@@ -94,6 +94,20 @@ def page_text_with_browser_subtitles(page_text: str, transcript: TranscriptResul
     return text or subtitle_text
 
 
+def write_page_text_artifacts(task_id: str, request: CurrentPageTaskRequest, allow_empty: bool = True) -> tuple[str, str, bool]:
+    transcript = transcript_from_browser_subtitles(request.browser_subtitles)
+    page_text = page_text_with_browser_subtitles(request.page_text, transcript)
+    if not allow_empty and not page_text.strip():
+        return "", "", False
+    transcript_path = ""
+    if transcript.segments:
+        transcript_path = str(write_json(task_id, "transcript.json", transcript.model_dump(mode="json")))
+    note = summarize_page_text(request.title, request.page_url, page_text, request.options)
+    note_path = task_dir(task_id) / "note.md"
+    note_path.write_text(note, encoding="utf-8")
+    return str(note_path), transcript_path, True
+
+
 def drm_failure_message(request: CurrentPageTaskRequest) -> str:
     signals = request.drm_signals or []
     key_systems = sorted({signal.key_system for signal in signals if signal.key_system})
@@ -150,25 +164,33 @@ def build_summary_diagnostics(
 def process_page_text_task(task_id: str, request: CurrentPageTaskRequest) -> None:
     try:
         update_task(task_id, status="running", phase="summarizing", progress=60, message="正在总结当前页面文本")
-        transcript = transcript_from_browser_subtitles(request.browser_subtitles)
-        transcript_path = ""
-        if transcript.segments:
-            transcript_path = str(write_json(task_id, "transcript.json", transcript.model_dump(mode="json")))
-        page_text = page_text_with_browser_subtitles(request.page_text, transcript)
-        note = summarize_page_text(request.title, request.page_url, page_text, request.options)
-        note_path = task_dir(task_id) / "note.md"
-        note_path.write_text(note, encoding="utf-8")
+        note_path, transcript_path, _ = write_page_text_artifacts(task_id, request)
         update_task(
             task_id,
             status="success",
             phase="completed",
             progress=100,
             message="页面文本总结完成",
-            note_path=str(note_path),
+            note_path=note_path,
             transcript_path=transcript_path,
         )
     except Exception as exc:
         _fail(task_id, "processing_failed", str(exc))
+
+
+def write_download_failure_fallback(task_id: str, request: CurrentPageTaskRequest) -> bool:
+    try:
+        note_path, transcript_path, created = write_page_text_artifacts(task_id, request, allow_empty=False)
+        if created:
+            update_task(
+                task_id,
+                note_path=note_path,
+                transcript_path=transcript_path,
+                message="视频直取失败，已保留页面文本/浏览器字幕兜底笔记",
+            )
+        return created
+    except Exception:
+        return False
 
 
 def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> None:
@@ -188,6 +210,9 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
         update_task(task_id, status="running", phase="downloading", progress=10, message="正在解析并下载当前页视频")
         if request.drm_detected and not has_downloadable_candidate(request.resources):
             message = drm_failure_message(request)
+            has_fallback = write_download_failure_fallback(task_id, request)
+            if has_fallback:
+                message = f"{message} 已生成页面文本/浏览器字幕兜底笔记。"
             update_task(
                 task_id,
                 download_attempts=[
@@ -237,7 +262,10 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
     except DownloadError as exc:
         if "downloader" in locals():
             update_task(task_id, download_attempts=downloader.attempts)
-        _fail(task_id, exc.code, exc.message)
+        detail = exc.message
+        if write_download_failure_fallback(task_id, request):
+            detail = f"{detail} 已生成页面文本/浏览器字幕兜底笔记。"
+        _fail(task_id, exc.code, detail)
     except Exception as exc:
         _fail(task_id, "processing_failed", str(exc))
 

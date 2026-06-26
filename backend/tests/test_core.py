@@ -516,6 +516,56 @@ class ProcessorBoundaryTests(unittest.TestCase):
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
+    def test_download_failure_keeps_page_text_and_browser_subtitle_fallback_note(self) -> None:
+        task = create_task("current_page", "Fallback lesson", "https://course.example.com/lesson")
+
+        class FailingDownloader:
+            def __init__(self, work_dir: Path):
+                self.work_dir = work_dir
+                self.attempts = [
+                    DownloadAttempt(
+                        strategy="direct-file",
+                        url="https://cdn.example.com/expired.mp4",
+                        status="failed",
+                        code="download_forbidden",
+                        message="signed URL expired",
+                    )
+                ]
+
+            def download(self, page_url, resources, cookies, title):
+                raise DownloadError("download_forbidden", "signed URL expired")
+
+        try:
+            request = CurrentPageTaskRequest(
+                page_url="https://course.example.com/lesson",
+                title="Fallback lesson",
+                page_text="页面章节：条件判断",
+                resources=[ResourceCandidate(url="https://cdn.example.com/expired.mp4", source="webRequest", kind="video")],
+                browser_subtitles=[
+                    {"start": 3, "end": 7, "text": "老师解释 if else 分支"},
+                ],
+                options=TaskOptions(),
+            )
+
+            with patch("app.processor.MediaDownloader", FailingDownloader):
+                process_current_page_task(task.id, request)
+
+            record = get_task(task.id)
+            self.assertEqual(record.status, "failed")
+            self.assertEqual(record.error_code, "download_forbidden")
+            self.assertTrue(record.note_path)
+            self.assertTrue(record.transcript_path)
+            self.assertIn("兜底笔记", record.error_detail)
+            self.assertEqual(record.download_attempts[0].message, "signed URL expired")
+            note = read_note(task.id)
+            self.assertIn("页面章节：条件判断", note)
+            self.assertIn("老师解释 if else 分支", note)
+            transcript = read_transcript(task.id)
+            self.assertEqual(transcript["source"], "browser-subtitle")
+            self.assertEqual(transcript["segments"][0]["text"], "老师解释 if else 分支")
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
     def test_drm_signal_without_downloadable_candidate_fails_before_downloader(self) -> None:
         task = create_task("current_page", "DRM lesson", "https://course.example.com/drm")
         try:
