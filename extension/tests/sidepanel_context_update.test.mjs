@@ -67,6 +67,7 @@ const context = {
         if (message.type === "get-current-context") {
           collectCalls += 1;
           return {
+            tab: { id: 7, url: "https://course.example.com/lesson" },
             page: {
               title: `Course player ${collectCalls}`,
               page_url: "https://course.example.com/lesson",
@@ -100,8 +101,13 @@ vm.runInContext(sidepanelCode, context);
 await new Promise(resolve => setTimeout(resolve, 0));
 assert.equal(collectCalls, 1);
 assert.equal(typeof onMessageListener, "function");
+assert.equal(context.shouldAcceptContextUpdate({ type: "current-context-updated" }), true);
 
-onMessageListener({ type: "current-context-updated", tabId: 1, reason: "media" });
+onMessageListener({ type: "current-context-updated", tabId: 99, reason: "media" });
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.equal(collectCalls, 1);
+
+onMessageListener({ type: "current-context-updated", tabId: 7, reason: "media" });
 await new Promise(resolve => setTimeout(resolve, 0));
 
 assert.equal(collectCalls, 2);
