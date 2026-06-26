@@ -1284,6 +1284,41 @@ class MediaDownloader:
             file.write(text + "\n")
         return output
 
+    def _probe_manifest_before_ffmpeg(
+        self,
+        candidate: ResourceCandidate,
+        headers: dict[str, str],
+    ) -> None:
+        kind = effective_resource_kind(candidate)
+        probe_headers = dict(headers)
+        if kind == "hls":
+            probe_headers.setdefault("Accept", "application/vnd.apple.mpegurl,application/x-mpegURL,text/plain,*/*;q=0.8")
+        elif kind == "dash":
+            probe_headers.setdefault("Accept", "application/dash+xml,application/xml,text/xml,*/*;q=0.8")
+        else:
+            probe_headers.setdefault("Accept", "*/*")
+
+        try:
+            with requests.get(candidate.url, headers=probe_headers, stream=True, timeout=15, allow_redirects=True) as response:
+                body = _read_probe_bytes(response)
+                content_type = response.headers.get("content-type", "")
+                if response.status_code in {401, 403}:
+                    raise DownloadError("auth_required", f"manifest returned HTTP {response.status_code}; refresh login cookies and retry.")
+                if response.status_code >= 400:
+                    raise DownloadError("download_forbidden", f"manifest returned HTTP {response.status_code}.")
+                if _textish_content_type(content_type) and _looks_like_login_or_error(body):
+                    raise DownloadError("auth_required", "manifest URL returned a login/error page instead of an HLS/DASH manifest.")
+
+                text = body.decode("utf-8", errors="ignore")
+                if kind == "hls" and re.search(r"#EXT-X-KEY:[^\n]*(SAMPLE-AES|skd://|widevine|fairplay)", text, re.I):
+                    raise DownloadError("drm_or_encrypted", "HLS manifest appears to use DRM/encrypted streaming.")
+                if kind == "dash" and re.search(r"ContentProtection|widevine|playready|urn:uuid", text, re.I):
+                    raise DownloadError("drm_or_encrypted", "DASH manifest contains ContentProtection and may be DRM protected.")
+        except DownloadError:
+            raise
+        except requests.RequestException as exc:
+            raise DownloadError("download_forbidden", f"manifest preflight failed: {exc}") from exc
+
     def _download_manifest(self, candidate: ResourceCandidate, cookies: list[BrowserCookie], referer: str, title: str) -> Path:
         url = candidate.url
         ffmpeg = ffmpeg_bin()
@@ -1291,6 +1326,7 @@ class MediaDownloader:
             raise DownloadError("unsupported_manifest", "未找到 ffmpeg，无法合并 HLS/DASH。")
         output = self.download_dir / f"{_clean_filename(title)}_manifest.mp4"
         request_headers = download_headers_for_candidate(candidate, cookies, referer)
+        self._probe_manifest_before_ffmpeg(candidate, request_headers)
         user_agent = request_headers.pop("User-Agent", "Mozilla/5.0 LearnNoteAssistant/0.1")
         headers = [f"{name}: {value}" for name, value in request_headers.items() if value]
         cmd = [ffmpeg, "-y", "-hide_banner", "-loglevel", "error"]

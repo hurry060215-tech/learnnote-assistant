@@ -297,6 +297,41 @@ class DownloaderPriorityTests(unittest.TestCase):
                 server.shutdown()
                 server.server_close()
 
+    def test_manifest_candidate_rejects_login_page_body_before_ffmpeg(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            server = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(LoginPageAsMediaHandler, directory=str(root)))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                manifest_url = f"http://127.0.0.1:{server.server_port}/lesson.m3u8"
+                downloader = MediaDownloader(root / "task")
+                with patch("app.downloader.subprocess.run") as ffmpeg_run:
+                    with patch.object(downloader, "_download_with_ytdlp", side_effect=DownloadError("no_media_found", "no fallback")):
+                        with self.assertRaises(DownloadError) as ctx:
+                            downloader.download(
+                                page_url=f"http://127.0.0.1:{server.server_port}/lesson.html",
+                                resources=[
+                                    ResourceCandidate(
+                                        url=manifest_url,
+                                        source="webRequest",
+                                        kind="hls",
+                                        mime="application/vnd.apple.mpegurl",
+                                        score=100,
+                                    )
+                                ],
+                                cookies=[],
+                                title="Login manifest",
+                            )
+                self.assertEqual(ctx.exception.code, "auth_required")
+                ffmpeg_run.assert_not_called()
+                self.assertEqual(downloader.attempts[0].strategy, "manifest-ffmpeg")
+                self.assertEqual(downloader.attempts[0].status, "failed")
+                self.assertEqual(downloader.attempts[0].code, "auth_required")
+            finally:
+                server.shutdown()
+                server.server_close()
+
     def test_page_scan_candidate_is_tried_before_page_resolver(self) -> None:
         ffmpeg = ffmpeg_bin()
         assert ffmpeg is not None
