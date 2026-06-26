@@ -24,9 +24,9 @@ from app.downloader import (
     score_resource,
     ytdlp_headers_from_browser_context,
 )
-from app.models import ActiveVideoInfo, BrowserCookie, CurrentPageTaskRequest, DrmSignal, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment
-from app.processor import process_current_page_task, process_local_video_task, read_note, read_transcript, redacted_request_dump, redacted_resource
-from app.summarizer import build_visual_windows, local_markdown_note, summarize_with_diagnostics
+from app.models import ActiveVideoInfo, BrowserCookie, CurrentPageTaskRequest, DrmSignal, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
+from app.processor import build_summary_diagnostics, process_current_page_task, process_local_video_task, read_note, read_transcript, redacted_request_dump, redacted_resource
+from app.summarizer import MAX_VISION_GRIDS, build_visual_windows, local_markdown_note, summarize_with_diagnostics
 from app.storage import create_task, get_task, task_dir
 from app.transcriber import transcript_from_subtitle
 
@@ -746,6 +746,55 @@ class SummaryFallbackTests(unittest.TestCase):
         self.assertEqual(source, "local-template")
         self.assertIn("API Key", warning)
         self.assertIn("画面-字幕对齐索引", note)
+
+    def test_summary_diagnostics_count_only_grids_eligible_for_vision(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            grids = []
+            for index in range(MAX_VISION_GRIDS + 3):
+                image = root / f"grid_{index}.jpg"
+                image.write_bytes(b"fake-image")
+                grids.append(
+                    FrameGrid(
+                        path=str(image),
+                        url=f"http://127.0.0.1/grid_{index}.jpg",
+                        start=index * 180,
+                        end=(index + 1) * 180,
+                        frame_count=9,
+                    )
+                )
+            (root / "grid_0.jpg").unlink()
+
+            diagnostics = build_summary_diagnostics(
+                "task-1",
+                "Long lesson",
+                "https://course.example",
+                TaskOptions(visual_understanding=True, llm_model="vision-model"),
+                grids,
+                [
+                    VisualWindow(
+                        id="W001",
+                        index=1,
+                        start=0,
+                        end=180,
+                        duration=180,
+                        frame_count=9,
+                        grid_url="http://127.0.0.1/grid_0.jpg",
+                        grid_path=grids[0].path,
+                    )
+                ],
+                "vision-llm",
+                "",
+            )
+
+        self.assertEqual(diagnostics["frame_grid_count"], MAX_VISION_GRIDS + 3)
+        self.assertEqual(diagnostics["available_grid_image_count"], MAX_VISION_GRIDS + 2)
+        self.assertEqual(diagnostics["vision_grid_limit"], MAX_VISION_GRIDS)
+        self.assertEqual(diagnostics["vision_grid_count"], MAX_VISION_GRIDS)
+        self.assertEqual(diagnostics["vision_image_count"], MAX_VISION_GRIDS - 1)
+        self.assertEqual(diagnostics["omitted_frame_grid_count"], 3)
+        self.assertFalse(diagnostics["all_sent_grids_had_images"])
+        self.assertFalse(diagnostics["all_grids_had_images"])
 
     def test_llm_summary_batches_all_frame_grids_before_merge(self) -> None:
         from app.summarizer import summarize_with_llm
