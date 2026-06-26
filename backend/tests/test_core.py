@@ -10,6 +10,7 @@ from base64 import b64encode
 from pathlib import Path
 from unittest.mock import patch
 
+from app.config import DATA_DIR
 from app.downloader import (
     DownloadError,
     MediaDownloader,
@@ -31,8 +32,15 @@ from app.summarizer import MAX_VISION_GRIDS, build_visual_windows, local_markdow
 from app.storage import create_task, get_task, task_dir
 from app.transcriber import transcript_from_subtitle
 
+TEST_RUN_DIR = DATA_DIR / "test-runs"
+TEST_RUN_DIR.mkdir(parents=True, exist_ok=True)
+tempfile.tempdir = str(TEST_RUN_DIR)
+
 
 class ResourceDetectionTests(unittest.TestCase):
+    def test_python_tempdir_uses_project_test_run_dir(self) -> None:
+        self.assertEqual(Path(tempfile.gettempdir()).resolve(), TEST_RUN_DIR.resolve())
+
     def test_classifies_common_media_urls(self) -> None:
         self.assertEqual(classify_resource("https://cdn.example.com/video.mp4"), "video")
         self.assertEqual(classify_resource("https://cdn.example.com/index.m3u8"), "hls")
