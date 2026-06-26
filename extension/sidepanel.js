@@ -12,6 +12,7 @@ let transcriptCache = null;
 let lastNote = "";
 let preflight = null;
 let preflightResourceUrl = "";
+let preflightResultsByUrl = new Map();
 let contextRefreshTimer = 0;
 let isCollectingContext = false;
 let pendingContextRefresh = false;
@@ -407,7 +408,22 @@ function selectedResource() {
 }
 
 function currentPreflight() {
-  return preflight && preflightResourceUrl === selectedResourceUrl ? preflight : null;
+  const item = selectedResource();
+  if (!item?.url) return null;
+  return preflightForResource(item);
+}
+
+function preflightForResource(item) {
+  if (!item?.url) return null;
+  return preflightResultsByUrl.get(item.url) || (preflight && preflightResourceUrl === item.url ? preflight : null);
+}
+
+function rememberPreflightResult(resource, result) {
+  if (!resource?.url || !result) return result;
+  preflight = result;
+  preflightResourceUrl = resource.url;
+  preflightResultsByUrl.set(resource.url, result);
+  return result;
 }
 
 function isMediaTaskMode(mode) {
@@ -517,6 +533,21 @@ function resourceTagHtml(item, limit = 4) {
   const visible = tags.slice(0, limit);
   const overflow = tags.length - visible.length;
   return `<span class="resource-tags">${visible.map(tag => `<em>${escapeHtml(tag)}</em>`).join("")}${overflow > 0 ? `<em>+${overflow}</em>` : ""}</span>`;
+}
+
+function preflightBadgeHtml(item) {
+  const result = preflightForResource(item);
+  if (!result) return "";
+  const state = result.downloadable ? "ok" : result.code === "drm_or_encrypted" ? "bad" : "warn";
+  const label = result.downloadable
+    ? `预检通过 · ${result.kind || item.kind || "media"}`
+    : `预检未过 · ${result.code || result.message || "不可直取"}`;
+  const detail = [
+    result.status_code ? `HTTP ${result.status_code}` : "",
+    result.content_type || "",
+    fmtBytes(result.content_length) || (result.bytes_checked ? `${result.bytes_checked} B` : "")
+  ].filter(Boolean).join(" · ");
+  return `<span class="resource-preflight ${state}">${escapeHtml(detail ? `${label} · ${detail}` : label)}</span>`;
 }
 
 function activeVideoText(active) {
@@ -684,6 +715,7 @@ async function collectContextNow() {
   selectedResourceUrl = pickDefaultResourceUrl(resources, selectedResourceUrl);
   preflight = null;
   preflightResourceUrl = "";
+  preflightResultsByUrl = new Map();
   renderContext();
   return true;
 }
@@ -729,6 +761,7 @@ function renderContext() {
       <span>
         <strong>${escapeHtml(item.label || item.kind || "media")}</strong>
         ${resourceTagHtml(item)}
+        ${preflightBadgeHtml(item)}
         <small>${escapeHtml([
           isDownloadableResource(item) ? "可直取" : "线索",
           item.is_main_video ? "主视频" : "",
@@ -803,9 +836,7 @@ async function preflightBestResource(mode = "video") {
     : "正在预检直取候选...";
 
   for (const candidate of candidates) {
-    const result = await requestResourcePreflight(candidate);
-    preflight = result;
-    preflightResourceUrl = candidate.url;
+    const result = rememberPreflightResult(candidate, await requestResourcePreflight(candidate));
     lastResult = result;
     if (result?.downloadable) {
       selectedResourceUrl = candidate.url;
@@ -887,8 +918,7 @@ async function preflightSelectedResource({ silent = false } = {}) {
   els.preflightButton.disabled = true;
   if (!silent) els.taskMessage.textContent = "正在预检直取可行性...";
   try {
-    preflight = await requestResourcePreflight(resource);
-    preflightResourceUrl = resource.url;
+    preflight = rememberPreflightResult(resource, await requestResourcePreflight(resource));
     els.taskMessage.textContent = preflight.message || (preflight.downloadable ? "预检通过" : "预检未通过");
     renderContext();
     return preflight;

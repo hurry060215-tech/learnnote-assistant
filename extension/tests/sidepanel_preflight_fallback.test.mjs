@@ -161,3 +161,9 @@ assert.ok(calls.start, "expected task start after second candidate passes prefli
 assert.equal(calls.start.resources[0].url, "https://cdn.example.com/live/master.m3u8");
 assert.equal(calls.start.resources[0].kind, "hls");
 assert.match(elements.get("#taskMessage").textContent, /test stop|预检通过/);
+assert.equal(context.preflightForResource(resources[0]).code, "download_forbidden");
+assert.equal(context.preflightForResource(resources[1]).strategy, "manifest-ffmpeg");
+assert.match(elements.get("#resources").innerHTML, /resource-preflight warn/);
+assert.match(elements.get("#resources").innerHTML, /download_forbidden/);
+assert.match(elements.get("#resources").innerHTML, /resource-preflight ok/);
+assert.match(elements.get("#resources").innerHTML, /hls/);
