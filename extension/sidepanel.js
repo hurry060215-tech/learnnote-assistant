@@ -1079,12 +1079,98 @@ async function rerunTaskFromMedia(taskId) {
 }
 
 function bindTaskOverviewActions() {
-  document.querySelectorAll(".task-overview-actions button[data-export]").forEach(button => {
+  document.querySelectorAll("button[data-export]").forEach(button => {
     button.onclick = () => openTaskExport(button.dataset.export);
   });
-  document.querySelectorAll(".task-overview-actions button[data-rerun-from-media]").forEach(button => {
+  document.querySelectorAll("button[data-rerun-from-media]").forEach(button => {
     button.onclick = () => rerunTaskFromMedia(button.dataset.rerunFromMedia);
   });
+  document.querySelectorAll("button[data-switch-result-tab]").forEach(button => {
+    button.onclick = () => switchResultTab(button.dataset.switchResultTab);
+  });
+}
+
+function switchResultTab(tabName) {
+  if (!tabName || selectedTab === tabName) return;
+  selectedTab = tabName;
+  els.resultTabs.forEach(item => item.classList.toggle("active", item.dataset.tab === selectedTab));
+  renderResult();
+}
+
+function noteHeadingStats(markdown) {
+  if (!markdown) return { total: 0, h1: 0, h2: 0, h3: 0 };
+  const stats = { total: 0, h1: 0, h2: 0, h3: 0 };
+  let inFence = false;
+  String(markdown || "").replace(/\r\n?/g, "\n").split("\n").forEach(rawLine => {
+    const line = rawLine.trimEnd();
+    if (line.startsWith("```")) {
+      inFence = !inFence;
+      return;
+    }
+    if (inFence) return;
+    const match = /^(#{1,3})\s+(.+)$/.exec(line);
+    if (!match) return;
+    stats.total += 1;
+    stats[`h${match[1].length}`] += 1;
+  });
+  return stats;
+}
+
+function noteStudyMap(markdown, task) {
+  const headings = noteHeadingStats(markdown);
+  const windows = visualWindows(task);
+  const hasNote = Boolean(task.note_path);
+  const hasTranscript = Boolean(task.transcript_path);
+  const hasMedia = Boolean(task.media_path);
+  const hasBundle = hasTaskBundle(task);
+  const firstWindow = windows[0];
+  const lastWindow = windows[windows.length - 1];
+  const visualRange = windows.length && firstWindow && lastWindow
+    ? `${fmt(firstWindow.start)} - ${fmt(lastWindow.end)}`
+    : "等待切片";
+  const cards = [
+    {
+      label: "笔记目录",
+      value: headings.total ? `${headings.total} 个标题` : hasNote ? "无标题" : "未生成",
+      text: headings.h2 ? `${headings.h2} 个章节 · ${headings.h3} 个小节` : "生成后自动提取目录",
+      action: hasNote ? `<button type="button" data-switch-result-tab="note">阅读笔记</button>` : ""
+    },
+    {
+      label: "画面切片",
+      value: windows.length ? `${windows.length} 个窗口` : "未生成",
+      text: visualRange,
+      action: windows.length ? `<button type="button" data-switch-result-tab="frames">查看画面</button>` : ""
+    },
+    {
+      label: "转写字幕",
+      value: hasTranscript ? "已对齐" : "未生成",
+      text: task.summary_warning ? "有降级提示，建议看诊断" : `${task.options?.whisper_model || "small"} · ${task.options?.transcriber || "ASR"}`,
+      action: hasTranscript ? `<button type="button" data-switch-result-tab="transcript">看字幕</button>` : ""
+    },
+    {
+      label: "本地产物",
+      value: [hasMedia ? "视频" : "", hasBundle ? "资料包" : ""].filter(Boolean).join(" · ") || "等待产物",
+      text: hasMedia ? "可复用 media.mp4 继续处理" : "任务完成后可导出",
+      action: hasBundle ? `<button type="button" data-export="bundle">导出资料包</button>` : ""
+    }
+  ];
+  return `<section class="study-map" aria-label="学习笔记导览">
+    <div class="study-map-head">
+      <div>
+        <span>学习导览</span>
+        <strong>${escapeHtml(task.title || task.id)}</strong>
+      </div>
+      <small>${escapeHtml(taskSourceText(task))} · ${escapeHtml(taskStatusText(task))}</small>
+    </div>
+    <div class="study-map-grid">
+      ${cards.map(card => `<div class="study-map-card">
+        <span>${escapeHtml(card.label)}</span>
+        <strong>${escapeHtml(card.value)}</strong>
+        <small>${escapeHtml(card.text)}</small>
+        ${card.action ? `<div class="study-map-action">${card.action}</div>` : ""}
+      </div>`).join("")}
+    </div>
+  </section>`;
 }
 
 function noteVisualRail(task, limit = 4) {
@@ -1172,7 +1258,7 @@ function renderResult() {
       : currentTask.media_path
         ? `<p>视频已下载到本地。可点击右上角视频按钮导出，不会继续转写、切片或总结。</p>`
         : `<p>${escapeHtml(currentTask.message || "笔记尚未生成。")}</p>`;
-    els.result.innerHTML = `${taskOverview(currentTask)}${noteOutline(lastNote)}${noteVisualRail(currentTask)}<article class="markdown-note">${noteHtml}</article>`;
+    els.result.innerHTML = `${taskOverview(currentTask)}${noteStudyMap(lastNote, currentTask)}${noteOutline(lastNote)}${noteVisualRail(currentTask)}<article class="markdown-note">${noteHtml}</article>`;
     bindTaskOverviewActions();
     return;
   }
@@ -1256,11 +1342,7 @@ function renderResult() {
 }
 
 els.resultTabs.forEach(tab => {
-  tab.onclick = () => {
-    selectedTab = tab.dataset.tab;
-    els.resultTabs.forEach(item => item.classList.toggle("active", item === tab));
-    renderResult();
-  };
+  tab.onclick = () => switchResultTab(tab.dataset.tab);
 });
 
 els.redetectButton.onclick = collect;
