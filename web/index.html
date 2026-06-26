@@ -86,10 +86,16 @@
             <span>笔记标题</span>
             <input id="titleInput" type="text" placeholder="默认使用页面标题或文件名">
           </label>
-          <button id="startUrlButton" class="primary action-button">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
-            生成链接笔记
-          </button>
+          <div class="url-actions">
+            <button id="startUrlButton" class="primary action-button">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+              生成链接笔记
+            </button>
+            <button id="downloadUrlButton" class="secondary action-button" type="button">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11M7 9l5 5 5-5M5 19h14"/></svg>
+              只下载本地
+            </button>
+          </div>
         </section>
 
         <section id="localSource" class="source-pane">
