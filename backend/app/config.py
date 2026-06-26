@@ -10,6 +10,7 @@ UPLOAD_DIR = DATA_DIR / "uploads"
 TASK_DIR = DATA_DIR / "tasks"
 STATIC_DIR = DATA_DIR / "static"
 MODEL_CACHE_DIR = DATA_DIR / "model-cache"
+TEMP_DIR = DATA_DIR / "temp"
 WEB_DIR = PROJECT_ROOT / "web"
 
 BACKEND_ORIGIN = os.getenv("LEARNNOTE_BACKEND_ORIGIN", "http://127.0.0.1:8765")
@@ -29,11 +30,14 @@ def configure_local_caches() -> None:
     os.environ.setdefault("HF_HOME", str(MODEL_CACHE_DIR / "huggingface"))
     os.environ.setdefault("XDG_CACHE_HOME", str(MODEL_CACHE_DIR / "xdg"))
     os.environ.setdefault("TORCH_HOME", str(MODEL_CACHE_DIR / "torch"))
+    os.environ["TMP"] = str(TEMP_DIR)
+    os.environ["TEMP"] = str(TEMP_DIR)
+    os.environ["TMPDIR"] = str(TEMP_DIR)
 
 
 configure_local_caches()
 
 
 def ensure_dirs() -> None:
-    for path in (DATA_DIR, UPLOAD_DIR, TASK_DIR, STATIC_DIR, MODEL_CACHE_DIR):
+    for path in (DATA_DIR, UPLOAD_DIR, TASK_DIR, STATIC_DIR, MODEL_CACHE_DIR, TEMP_DIR):
         path.mkdir(parents=True, exist_ok=True)

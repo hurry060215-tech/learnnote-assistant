@@ -6,11 +6,12 @@ import shutil
 import sys
 import types
 import json
+import os
 from base64 import b64encode
 from pathlib import Path
 from unittest.mock import patch
 
-from app.config import DATA_DIR
+from app.config import DATA_DIR, TEMP_DIR
 from app.downloader import (
     DownloadError,
     MediaDownloader,
@@ -40,6 +41,12 @@ tempfile.tempdir = str(TEST_RUN_DIR)
 class ResourceDetectionTests(unittest.TestCase):
     def test_python_tempdir_uses_project_test_run_dir(self) -> None:
         self.assertEqual(Path(tempfile.gettempdir()).resolve(), TEST_RUN_DIR.resolve())
+
+    def test_backend_process_temp_env_uses_project_data_dir(self) -> None:
+        self.assertEqual(Path(os.environ["TMP"]).resolve(), TEMP_DIR.resolve())
+        self.assertEqual(Path(os.environ["TEMP"]).resolve(), TEMP_DIR.resolve())
+        self.assertEqual(Path(os.environ["TMPDIR"]).resolve(), TEMP_DIR.resolve())
+        self.assertTrue(TEMP_DIR.exists())
 
     def test_classifies_common_media_urls(self) -> None:
         self.assertEqual(classify_resource("https://cdn.example.com/video.mp4"), "video")
