@@ -752,6 +752,91 @@ function bindTaskOverviewActions() {
   document.querySelectorAll(".task-overview-actions button[data-rerun-from-media]").forEach(button => {
     button.onclick = () => rerunTaskFromMedia(button.dataset.rerunFromMedia);
   });
+  document.querySelectorAll("[data-switch-result-tab]").forEach(button => {
+    button.onclick = () => switchResultTab(button.dataset.switchResultTab);
+  });
+}
+
+function switchResultTab(tabName) {
+  if (!tabName || selectedTab === tabName) return;
+  selectedTab = tabName;
+  els.resultTabs.forEach(item => item.classList.toggle("active", item.dataset.tab === selectedTab));
+  renderDetail();
+}
+
+function noteHeadingStats(markdown) {
+  if (!markdown) return { total: 0, h1: 0, h2: 0, h3: 0 };
+  const stats = { total: 0, h1: 0, h2: 0, h3: 0 };
+  const inFence = { value: false };
+  markdown.split(/\r?\n/).forEach(line => {
+    if (/^\s*```/.test(line)) {
+      inFence.value = !inFence.value;
+      return;
+    }
+    if (inFence.value) return;
+    const match = line.match(/^(#{1,3})\s+(.+)/);
+    if (!match) return;
+    stats.total += 1;
+    stats[`h${match[1].length}`] += 1;
+  });
+  return stats;
+}
+
+function noteStudyBar(markdown, task) {
+  const headings = noteHeadingStats(markdown);
+  const windows = visualWindows(task);
+  const hasNote = Boolean(task.note_path);
+  const hasTranscript = Boolean(task.transcript_path);
+  const hasMedia = Boolean(task.media_path);
+  const hasBundle = hasTaskBundle(task);
+  const firstWindow = windows[0];
+  const lastWindow = windows[windows.length - 1];
+  const visualRange = windows.length && firstWindow && lastWindow
+    ? `${fmt(firstWindow.start)} - ${fmt(lastWindow.end)}`
+    : "等待切片";
+  const cards = [
+    {
+      label: "笔记目录",
+      value: headings.total ? `${headings.total} 个标题` : hasNote ? "无标题" : "未生成",
+      text: headings.h2 ? `${headings.h2} 个章节 · ${headings.h3} 个小节` : "生成后自动提取目录",
+      action: hasNote ? `<button type="button" data-switch-result-tab="note">阅读笔记</button>` : ""
+    },
+    {
+      label: "画面切片",
+      value: windows.length ? `${windows.length} 个窗口` : "未生成",
+      text: visualRange,
+      action: windows.length ? `<button type="button" data-switch-result-tab="frames">查看画面</button>` : ""
+    },
+    {
+      label: "转写字幕",
+      value: hasTranscript ? "已对齐" : "未生成",
+      text: task.summary_warning ? "有降级提示，建议看诊断" : `${task.options?.whisper_model || "small"} · ${task.options?.transcriber || "ASR"}`,
+      action: hasTranscript ? `<button type="button" data-switch-result-tab="transcript">看字幕</button>` : ""
+    },
+    {
+      label: "本地产物",
+      value: [hasMedia ? "视频" : "", hasBundle ? "资料包" : ""].filter(Boolean).join(" · ") || "等待产物",
+      text: hasMedia ? "可复用 media.mp4 继续处理" : "任务完成后可导出",
+      action: hasBundle ? `<a href="${escapeHtml(taskExportUrl(task, "bundle"))}">导出资料包</a>` : ""
+    }
+  ];
+  return `<section class="study-map" aria-label="学习笔记导览">
+    <div class="study-map-head">
+      <div>
+        <span>学习导览</span>
+        <strong>${escapeHtml(task.title || task.id)}</strong>
+      </div>
+      <small>${escapeHtml(sourceText(task))} · ${escapeHtml(statusText(task))}</small>
+    </div>
+    <div class="study-map-grid">
+      ${cards.map(card => `<div class="study-map-card">
+        <span>${escapeHtml(card.label)}</span>
+        <strong>${escapeHtml(card.value)}</strong>
+        <small>${escapeHtml(card.text)}</small>
+        ${card.action ? `<div class="study-map-action">${card.action}</div>` : ""}
+      </div>`).join("")}
+    </div>
+  </section>`;
 }
 
 function visualRail(task, limit = 8) {
@@ -890,6 +975,7 @@ async function renderDetail() {
       <div class="note-shell">
         ${taskOverview(task)}
         ${failureGuide(task)}
+        ${noteStudyBar(lastNote, task)}
         <div class="note-workbench">
           <article class="markdown-note">${lastNote ? markdownToHtml(lastNote) : task.media_path ? "<p>视频已下载到本地。可点击右上角视频按钮导出，不会继续转写、切片或总结。</p>" : "<p>笔记尚未生成。</p>"}</article>
           ${readingRail(lastNote, task)}
@@ -1093,11 +1179,7 @@ if (els.urlMode) {
 }
 
 els.resultTabs.forEach(tab => {
-  tab.onclick = () => {
-    selectedTab = tab.dataset.tab;
-    els.resultTabs.forEach(item => item.classList.toggle("active", item === tab));
-    renderDetail();
-  };
+  tab.onclick = () => switchResultTab(tab.dataset.tab);
 });
 
 els.startUrlButton.onclick = () => startUrlTask("video");
