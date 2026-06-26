@@ -233,6 +233,20 @@ function requestHeaderNames(resource) {
     .join(", ") || "-";
 }
 
+function summaryDiagnosticText(task) {
+  const diag = task?.summary_diagnostics || {};
+  if (!Object.keys(diag).length) return "-";
+  return [
+    diag.used_vision_llm ? "已使用视觉 LLM" : diag.used_text_llm ? "已使用文本 LLM" : diag.used_local_template ? "本地模板" : "",
+    `模型 ${diag.llm_model || task.summary_source || "-"}`,
+    `视觉窗口 ${diag.visual_window_count ?? 0}`,
+    `画面网格 ${diag.frame_grid_count ?? 0}`,
+    `已发送图片 ${diag.vision_image_count ?? 0}`,
+    diag.all_grids_had_images === false ? "存在缺失图片" : "",
+    diag.summary_warning || ""
+  ].filter(Boolean).join(" · ");
+}
+
 function drmSignalText(signals = []) {
   const parts = [];
   const keySystems = [...new Set(signals.map(item => item.key_system).filter(Boolean))];
@@ -786,6 +800,7 @@ async function renderDetail() {
         <dt>音频文件</dt><dd>${escapeHtml(task.audio_path || "-")}</dd>
         <dt>字幕文件</dt><dd>${escapeHtml(task.subtitle_path || "-")}</dd>
         <dt>总结来源</dt><dd>${escapeHtml(task.summary_source || "-")}</dd>
+        <dt>图文总结诊断</dt><dd>${escapeHtml(summaryDiagnosticText(task))}</dd>
         <dt>总结提示</dt><dd>${escapeHtml(task.summary_warning || "-")}</dd>
         <dt>处理选项</dt><dd>${escapeHtml(optionText(task) || "-")}</dd>
         <dt>错误</dt><dd>${escapeHtml(task.error_detail || task.error_code || "-")}</dd>
