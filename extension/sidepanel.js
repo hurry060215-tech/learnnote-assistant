@@ -266,6 +266,16 @@ function currentPreflight() {
   return preflight && preflightResourceUrl === selectedResourceUrl ? preflight : null;
 }
 
+function shouldPreflightBeforeStart(mode, item) {
+  if (mode !== "video") return false;
+  if (!item?.url) return false;
+  return ["video", "hls", "dash", "blob", "fragment"].includes(item.kind);
+}
+
+function preflightBlockMessage(result) {
+  return result?.message || result?.code || "当前候选资源预检未通过；请换一个候选、重新检测，或使用本地视频入口。";
+}
+
 function drmSignalText(signals = []) {
   const parts = [];
   const keySystems = [...new Set(signals.map(item => item.key_system).filter(Boolean))];
@@ -506,37 +516,51 @@ async function startTask(mode = "video") {
     els.taskMessage.textContent = "请在 Chrome/Edge 扩展 Side Panel 中读取当前页视频。";
     return;
   }
-  const response = await chrome.runtime.sendMessage({
-    type: "start-current-task",
-    backendUrl,
-    page,
-    resources: mode === "video" ? selectedResources() : [],
-    mode,
-    options: readOptions()
-  });
-  if (response.error) {
-    els.taskMessage.textContent = response.error;
-    return;
+  const resource = selectedResource();
+  els.summarizeButton.disabled = true;
+  try {
+    if (shouldPreflightBeforeStart(mode, resource)) {
+      const checked = currentPreflight() || await preflightSelectedResource({ silent: true });
+      if (!checked?.downloadable) {
+        els.taskMessage.textContent = preflightBlockMessage(checked);
+        renderContext();
+        return;
+      }
+    }
+    const response = await chrome.runtime.sendMessage({
+      type: "start-current-task",
+      backendUrl,
+      page,
+      resources: mode === "video" ? selectedResources() : [],
+      mode,
+      options: readOptions()
+    });
+    if (response.error) {
+      els.taskMessage.textContent = response.error;
+      return;
+    }
+    currentTaskId = response.task_id;
+    transcriptCache = null;
+    lastNote = "";
+    pollTask();
+  } finally {
+    els.summarizeButton.disabled = false;
   }
-  currentTaskId = response.task_id;
-  transcriptCache = null;
-  lastNote = "";
-  pollTask();
 }
 
-async function runPreflight() {
+async function preflightSelectedResource({ silent = false } = {}) {
   if (!page) await collect();
   if (!HAS_EXTENSION_API) {
     els.taskMessage.textContent = "请在 Chrome/Edge 扩展 Side Panel 中预检当前页视频。";
-    return;
+    return null;
   }
   const resource = selectedResource();
   if (!resource) {
     els.taskMessage.textContent = "没有可预检的候选资源。";
-    return;
+    return null;
   }
   els.preflightButton.disabled = true;
-  els.taskMessage.textContent = "正在预检直取可行性...";
+  if (!silent) els.taskMessage.textContent = "正在预检直取可行性...";
   try {
     const response = await chrome.runtime.sendMessage({
       type: "preflight-current-resource",
@@ -546,15 +570,20 @@ async function runPreflight() {
     });
     if (response.error) {
       els.taskMessage.textContent = response.error;
-      return;
+      return null;
     }
     preflight = response.preflight;
     preflightResourceUrl = resource.url;
     els.taskMessage.textContent = preflight.message || (preflight.downloadable ? "预检通过" : "预检未通过");
     renderContext();
+    return preflight;
   } finally {
     els.preflightButton.disabled = false;
   }
+}
+
+async function runPreflight() {
+  await preflightSelectedResource();
 }
 
 async function uploadLocal() {

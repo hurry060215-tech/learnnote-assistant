@@ -61,6 +61,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - Web UI and Side Panel diagnostic tabs show the selected resource, browser evidence, and every backend download attempt.
 - Side Panel direct-extraction console shows whether the selected candidate is a downloadable file, HLS/DASH manifest, subtitle, blob clue, or fragment clue, plus reused request-header names and request evidence.
 - Side Panel has an explicit direct-extraction preflight button: it syncs cookies only when clicked and asks the local backend to verify whether the selected candidate is actually reachable before starting the full task.
+- Side Panel also runs that reachability preflight automatically before `总结当前视频`; if the selected candidate is blocked, expired, DRM-only, or otherwise not directly downloadable, it stops before creating a task and keeps the local upload fallback visible.
 - Side Panel supports a local video drop target as the non-recording fallback when the current page only exposes unrecoverable blob/fragment clues.
 - Diagnostics also show which safe request-header names were available for a selected media candidate without exposing cookie or authorization values. Persisted task debug files redact cookie values and browser request-header values.
 - Blob and media-fragment requests are kept as diagnostic clues instead of being hidden, but they are not treated as independently downloadable video files.
