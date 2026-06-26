@@ -70,9 +70,30 @@ function inlineMarkdown(value) {
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
 }
 
+function plainHeadingText(value) {
+  return String(value || "")
+    .replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/[`*_~#]/g, "")
+    .trim();
+}
+
+function noteHeadingId(value, counts = new Map()) {
+  const plain = plainHeadingText(value);
+  const slug = plain
+    .toLowerCase()
+    .replace(/[^\w\u4e00-\u9fff]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "section";
+  const base = `note-${slug}`;
+  const count = counts.get(base) || 0;
+  counts.set(base, count + 1);
+  return count ? `${base}-${count + 1}` : base;
+}
+
 function markdownToHtml(markdown) {
   const lines = String(markdown || "").replace(/\r\n?/g, "\n").split("\n");
   const html = [];
+  const headingIds = new Map();
   let listType = "";
   let inCode = false;
   const closeList = () => {
@@ -118,7 +139,8 @@ function markdownToHtml(markdown) {
     if (heading) {
       closeList();
       const level = heading[1].length;
-      html.push(`<h${level}>${inlineMarkdown(heading[2])}</h${level}>`);
+      const id = noteHeadingId(heading[2], headingIds);
+      html.push(`<h${level} id="${escapeHtml(id)}">${inlineMarkdown(heading[2])}</h${level}>`);
       continue;
     }
     const bullet = /^[-*]\s+(.+)$/.exec(line);
@@ -152,6 +174,42 @@ function markdownToHtml(markdown) {
   closeList();
   if (inCode) html.push("</code></pre>");
   return html.join("");
+}
+
+function noteOutline(markdown, limit = 12) {
+  const lines = String(markdown || "").replace(/\r\n?/g, "\n").split("\n");
+  const headingIds = new Map();
+  const headings = [];
+  let inCode = false;
+  for (const rawLine of lines) {
+    const line = rawLine.trimEnd();
+    if (line.startsWith("```")) {
+      inCode = !inCode;
+      continue;
+    }
+    if (inCode) continue;
+    const heading = /^(#{1,3})\s+(.+)$/.exec(line);
+    if (!heading) continue;
+    const text = plainHeadingText(heading[2]);
+    if (!text) continue;
+    headings.push({
+      level: heading[1].length,
+      text,
+      id: noteHeadingId(heading[2], headingIds)
+    });
+  }
+  if (!headings.length) return "";
+  return `<section class="note-outline" aria-label="笔记目录">
+    <div class="visual-rail-head">
+      <strong>笔记目录</strong>
+      <span>${headings.length} 节</span>
+    </div>
+    <div class="note-outline-list">
+      ${headings.slice(0, limit).map(heading => `
+        <a class="level-${heading.level}" href="#${escapeHtml(heading.id)}">${escapeHtml(heading.text)}</a>
+      `).join("")}
+    </div>
+  </section>`;
 }
 
 function fmt(sec) {
@@ -515,7 +573,7 @@ function taskBrief(task) {
 function visualRail(task, limit = 8) {
   const windows = visualWindows(task);
   if (!windows.length) return "";
-  return `<aside class="visual-rail" aria-label="画面索引">
+  return `<section class="visual-rail" aria-label="画面索引">
     <div class="visual-rail-head">
       <strong>画面索引</strong>
       <span>${windows.length} 个窗口</span>
@@ -532,7 +590,14 @@ function visualRail(task, limit = 8) {
         </figure>
       `).join("")}
     </div>
-  </aside>`;
+  </section>`;
+}
+
+function readingRail(markdown, task) {
+  const outline = noteOutline(markdown);
+  const visuals = visualRail(task);
+  if (!outline && !visuals) return "";
+  return `<aside class="reading-rail" aria-label="笔记阅读导航">${outline}${visuals}</aside>`;
 }
 
 function visualWindows(task) {
@@ -641,7 +706,7 @@ async function renderDetail() {
         ${failureGuide(task)}
         <div class="note-workbench">
           <article class="markdown-note">${lastNote ? markdownToHtml(lastNote) : "<p>笔记尚未生成。</p>"}</article>
-          ${visualRail(task)}
+          ${readingRail(lastNote, task)}
         </div>
       </div>
     `;
