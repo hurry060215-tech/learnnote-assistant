@@ -613,6 +613,7 @@ function renderTasks() {
         <strong>${escapeHtml(task.title || task.id)}</strong>
         <small>${escapeHtml(statusText(task))} · ${escapeHtml(task.phase)}</small>
         <span class="source">${escapeHtml(sourceText(task))}</span>
+        ${taskChipsHtml(task)}
         ${stageRail(task)}
         <div class="progress"><span style="width:${task.progress || 0}%"></span></div>
       </div>
@@ -628,6 +629,35 @@ function renderTasks() {
       focusResultPanelOnMobile();
     };
   });
+}
+
+function taskChipItems(task) {
+  const selected = task.selected_resource || {};
+  const windows = visualWindows(task);
+  const attempts = task.download_attempts || [];
+  const chips = [
+    sourceText(task),
+    selected.kind || "",
+    selected.playback_match ? playbackText(selected.playback_match) : "",
+    task.media_path ? "本地视频" : "",
+    task.note_path ? "笔记" : "",
+    windows.length ? `${windows.length} 视觉窗口` : "",
+    attempts.length ? `${attempts.length} 次下载尝试` : "",
+    task.error_code || ""
+  ];
+  const seen = new Set();
+  return chips.filter(value => {
+    const text = String(value || "").trim();
+    if (!text || seen.has(text)) return false;
+    seen.add(text);
+    return true;
+  }).slice(0, 8);
+}
+
+function taskChipsHtml(task) {
+  const chips = taskChipItems(task);
+  if (!chips.length) return "";
+  return `<div class="task-chips">${chips.map(chip => `<span>${escapeHtml(chip)}</span>`).join("")}</div>`;
 }
 
 async function taskRecord() {
