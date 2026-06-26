@@ -7,6 +7,25 @@
   const TEXT_TYPE_RE = /json|text|javascript|mpegurl|dash\+xml|xml|x-mpegurl/i;
   const JSON_MEDIA_KEY_RE = /(url|src|file|play|media|video|stream|source|hls|m3u8|dash|mpd|subtitle|caption)/i;
   const JSON_MIME_KEY_RE = /(mime|type|format|content.?type|media.?type)/i;
+  const GLOBAL_MEDIA_NAME_RE = /(^__.*(play|player|media|video|stream|hls|dash|m3u8|mpd))|((play|player|media|video|stream|hls|dash|m3u8|mpd).*(config|info|data|url|source|sources|list)$)/i;
+  const GLOBAL_MEDIA_KEYS = [
+    "__playInfo",
+    "__playerConfig",
+    "__videoInfo",
+    "__videoData",
+    "__INITIAL_STATE__",
+    "__NEXT_DATA__",
+    "playInfo",
+    "playerInfo",
+    "playerConfig",
+    "videoInfo",
+    "videoData",
+    "videoConfig",
+    "mediaInfo",
+    "mediaData",
+    "courseData",
+    "lessonData"
+  ];
   const TEXT_MEDIA_FIELD_RE = /(["']?[A-Za-z_$][A-Za-z0-9_$.-]{0,79}["']?)\s*[:=]\s*["']([^"'<>\\\s]{4,})["']/gi;
   const B64ISH_RE = /^[A-Za-z0-9+/_=-]{16,}$/;
   const MAX_TEXT_BYTES = 2 * 1024 * 1024;
@@ -190,17 +209,43 @@
     return { kind: "unknown", mime: "" };
   }
 
-  function collectJsonMediaUrls(node, source, label, keys = [], parent = null, output = [], seen = new Set()) {
+  function safeObjectEntries(node, limit = 160) {
+    const entries = [];
+    let keys = [];
+    try {
+      keys = Object.keys(node || {}).slice(0, limit);
+    } catch {
+      return entries;
+    }
+    for (const key of keys) {
+      try {
+        entries.push([key, node[key]]);
+      } catch {
+        // Some player objects expose throwing getters.
+      }
+    }
+    return entries;
+  }
+
+  function collectJsonMediaUrls(node, source, label, keys = [], parent = null, output = [], seen = new Set(), visited = new WeakSet()) {
     if (!node || output.length >= 40) return output;
     if (Array.isArray(node)) {
       for (let index = 0; index < Math.min(node.length, 120); index += 1) {
-        collectJsonMediaUrls(node[index], source, label, [...keys, String(index)], node, output, seen);
+        let child = null;
+        try {
+          child = node[index];
+        } catch {
+          child = null;
+        }
+        collectJsonMediaUrls(child, source, label, [...keys, String(index)], node, output, seen, visited);
         if (output.length >= 40) break;
       }
       return output;
     }
     if (typeof node !== "object") return output;
-    for (const [key, value] of Object.entries(node)) {
+    if (visited.has(node)) return output;
+    visited.add(node);
+    for (const [key, value] of safeObjectEntries(node)) {
       const nextKeys = [...keys, key];
       if (typeof value === "string" && JSON_MEDIA_KEY_RE.test(key)) {
         for (const candidateValue of decodedMediaValues(value)) {
@@ -234,7 +279,7 @@
         }
       }
       if (value && typeof value === "object") {
-        collectJsonMediaUrls(value, source, label, nextKeys, node, output, seen);
+        collectJsonMediaUrls(value, source, label, nextKeys, node, output, seen, visited);
       }
       if (output.length >= 40) break;
     }
@@ -420,6 +465,48 @@
 
   function extractUrlsFromText(text, source, label, mime = "") {
     emit(collectMediaUrlsFromText(text, source, label, mime));
+  }
+
+  function collectGlobalConfigResources() {
+    const resources = [];
+    const seen = new Set();
+    const names = [];
+    const addName = name => {
+      if (name && !names.includes(name)) names.push(name);
+    };
+    for (const name of GLOBAL_MEDIA_KEYS) addName(name);
+    try {
+      for (const name of Object.keys(window).slice(0, 1200)) {
+        if (GLOBAL_MEDIA_NAME_RE.test(name)) addName(name);
+        if (names.length >= 90) break;
+      }
+    } catch {
+      // Some pages restrict global enumeration.
+    }
+
+    for (const name of names.slice(0, 90)) {
+      let value;
+      try {
+        value = window[name];
+      } catch {
+        continue;
+      }
+      if (typeof value === "string") {
+        resources.push(...collectMediaUrlsFromText(value.slice(0, MAX_TEXT_BYTES), "pageHookGlobal", `global ${name}`, "", seen));
+      } else if (value && typeof value === "object") {
+        resources.push(...collectJsonMediaUrls(value, "pageHookGlobal", `global ${name}`, [name], null, [], seen));
+      }
+      if (resources.length >= 60) break;
+    }
+    return resources.slice(0, 60);
+  }
+
+  function scanGlobalConfig() {
+    try {
+      emit(collectGlobalConfigResources());
+    } catch {
+      // Global player objects are best-effort evidence only.
+    }
   }
 
   function shouldInspectResponse(response) {
@@ -729,9 +816,13 @@
   }
 
   installEmeDetection();
+  scanGlobalConfig();
+  setTimeout(scanGlobalConfig, 500);
+  setTimeout(scanGlobalConfig, 2000);
 
   window.addEventListener("message", event => {
     if (event.source !== window || event.data?.source !== "learnnote-content-ready") return;
+    scanGlobalConfig();
     post(bufferedResources, drmSignals);
   });
 })();

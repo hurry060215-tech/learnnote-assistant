@@ -42,6 +42,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - Direct current-page task creation from the extension Side Panel.
 - DOM, iframe-aware content scripts, Performance, active `<video>` state, and `webRequest` resource discovery.
 - Page-network hook discovery for mp4/HLS/DASH/subtitle URLs embedded in fetch/XHR text responses. The hook also records Blob object URL, fetch stream chunk, and MediaSource source mappings when the page builds playback from accessible media responses; it does not record playback or inspect binary video payloads.
+- Page-global player config discovery: the page hook scans bounded common globals such as `__playInfo`, `playerConfig`, `videoInfo`, and matching video/player/media keys for mp4/HLS/DASH/subtitle URLs, including encoded fields, without recording playback.
 - Backend page-text scanning for manually submitted URLs: HTML/JSON/script responses are scanned for absolute or relative mp4/HLS/DASH/subtitle URLs before yt-dlp is tried.
 - Extensionless API URL scanning: JSON fields or inline script fields like `hls`, `dashUrl`, `playUrl`, and `videoUrl` can become candidates even when the URL is `/stream?lesson=...` instead of ending in `.m3u8`, `.mpd`, or `.mp4`.
 - Extensionless browser media request capture: if Chrome reports a `webRequest` as `media`, the extension keeps it as a direct video candidate even when the URL is `/play?id=...` and the server only returns a generic MIME type.
