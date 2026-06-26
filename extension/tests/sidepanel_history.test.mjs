@@ -105,6 +105,7 @@ assert.match(elements.get("#result").innerHTML, /History lesson/);
 assert.match(elements.get("#result").innerHTML, /Generated note/);
 assert.equal(elements.get("#copyButton").disabled, false);
 assert.equal(elements.get("#bundleButton").disabled, false);
+assert.equal(elements.get("#diagnosticsButton").disabled, false);
 assert.equal(elements.get("#mediaButton").disabled, false);
 assert.equal(elements.get("#downloadButton").disabled, false);
 assert.match(elements.get("#taskHistory").innerHTML, /selected/);
@@ -113,5 +114,6 @@ await context.selectHistoryTask("task-history-failed");
 
 assert.match(elements.get("#result").innerHTML, /HTTP 403|Download failed/);
 assert.equal(elements.get("#copyButton").disabled, true);
+assert.equal(elements.get("#diagnosticsButton").disabled, false);
 assert.equal(elements.get("#mediaButton").disabled, true);
 assert.match(elements.get("#taskHistory").innerHTML, /Failed lesson/);

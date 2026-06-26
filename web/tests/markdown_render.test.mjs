@@ -260,6 +260,7 @@ assert.match(taskOverviewHtml, /导出资料包/);
 assert.match(taskOverviewHtml, /生成完整笔记/);
 assert.match(taskOverviewHtml, /data-rerun-from-media="task-web-overview"/);
 assert.match(taskOverviewHtml, /\/api\/tasks\/task-web-overview\/exports\/media/);
+assert.match(taskOverviewHtml, /\/api\/tasks\/task-web-overview\/exports\/diagnostics/);
 assert.match(taskOverviewHtml, /\/api\/tasks\/task-web-overview\/exports\/bundle/);
 assert.match(taskOverviewHtml, /已完成直取下载/);
 assert.doesNotMatch(taskOverviewHtml, /<script>bad/);
@@ -268,6 +269,9 @@ assert.equal(context.hasTaskBundle({ media_path: "D:/media.mp4" }), true);
 assert.equal(context.hasTaskBundle({ status: "failed", error_code: "download_forbidden" }), true);
 assert.equal(context.hasTaskBundle({ download_attempts: [{ strategy: "direct-file" }] }), true);
 assert.equal(context.hasTaskBundle({}), false);
+assert.equal(context.hasTaskDiagnostics({ selected_resource: { kind: "video" } }), true);
+assert.equal(context.hasTaskDiagnostics({ summary_diagnostics_path: "summary.json" }), true);
+assert.equal(context.hasTaskDiagnostics({}), false);
 
 const summaryDiagnostic = context.summaryDiagnosticText({
   summary_source: "vision-llm",

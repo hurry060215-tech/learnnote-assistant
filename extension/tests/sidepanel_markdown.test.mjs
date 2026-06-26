@@ -238,6 +238,7 @@ const taskOverviewHtml = context.taskOverview({
 assert.match(taskOverviewHtml, /class="task-overview status-success"/);
 assert.match(taskOverviewHtml, /本地视频/);
 assert.match(taskOverviewHtml, /data-export="media"/);
+assert.match(taskOverviewHtml, /data-export="diagnostics"/);
 assert.match(taskOverviewHtml, /data-export="bundle"/);
 assert.match(taskOverviewHtml, /生成完整笔记/);
 assert.match(taskOverviewHtml, /data-rerun-from-media="side-overview"/);
@@ -248,6 +249,9 @@ assert.equal(context.hasTaskBundle({ media_path: "D:/media.mp4" }), true);
 assert.equal(context.hasTaskBundle({ status: "failed", error_code: "download_forbidden" }), true);
 assert.equal(context.hasTaskBundle({ download_attempts: [{ strategy: "direct-file" }] }), true);
 assert.equal(context.hasTaskBundle({}), false);
+assert.equal(context.hasTaskDiagnostics({ selected_resource: { kind: "video" } }), true);
+assert.equal(context.hasTaskDiagnostics({ summary_diagnostics_path: "summary.json" }), true);
+assert.equal(context.hasTaskDiagnostics({}), false);
 
 const evidenceTags = context.resourceEvidenceTags({
   kind: "hls",
