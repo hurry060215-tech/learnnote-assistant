@@ -169,6 +169,37 @@ assert.match(railHtml, /src="http:\/\/127\.0\.0\.1:8765\/api\/tasks\/demo\/grids
 assert.match(railHtml, /&lt;script&gt;alert\(1\)&lt;\/script&gt; 画面摘要/);
 assert.doesNotMatch(railHtml, /<script>/);
 
+const taskOverviewHtml = context.taskOverview({
+  id: "side-overview",
+  title: "<script>bad()</script> 课程",
+  status: "success",
+  phase: "completed",
+  progress: 100,
+  source_type: "current_page",
+  media_path: "D:/Projects/learnnote-assistant/data/tasks/side-overview/media.mp4",
+  selected_resource: {
+    kind: "video",
+    playback_match: "exact-src",
+    content_length: 2097152
+  },
+  options: {
+    frame_interval: 20,
+    grid_columns: 3,
+    grid_rows: 3,
+    whisper_model: "small",
+    note_style: "study",
+    visual_understanding: true
+  },
+  visual_windows: []
+});
+
+assert.match(taskOverviewHtml, /class="task-overview status-success"/);
+assert.match(taskOverviewHtml, /本地视频/);
+assert.match(taskOverviewHtml, /data-export="media"/);
+assert.match(taskOverviewHtml, /已完成直取下载/);
+assert.doesNotMatch(taskOverviewHtml, /<script>bad/);
+assert.match(taskOverviewHtml, /&lt;script&gt;bad\(\)&lt;\/script&gt; 课程/);
+
 const evidenceTags = context.resourceEvidenceTags({
   kind: "hls",
   source: "webRequest",
