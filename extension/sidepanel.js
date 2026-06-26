@@ -32,6 +32,7 @@ const els = {
   summarizeButton: document.querySelector("#summarizeButton"),
   preflightButton: document.querySelector("#preflightButton"),
   downloadOnlyButton: document.querySelector("#downloadOnlyButton"),
+  continueFromMediaButton: document.querySelector("#continueFromMediaButton"),
   uploadButton: document.querySelector("#uploadButton"),
   fileInput: document.querySelector("#fileInput"),
   localDrop: document.querySelector("#localDrop"),
@@ -1179,6 +1180,17 @@ function hasTaskDiagnostics(task) {
   );
 }
 
+function canContinueFromDownloadedMedia(task = currentTask) {
+  return Boolean(task?.id && task.status === "success" && task.media_path && !task.note_path);
+}
+
+function updateContinueFromMediaAction(task = currentTask) {
+  if (!els.continueFromMediaButton) return;
+  const canContinue = canContinueFromDownloadedMedia(task);
+  els.continueFromMediaButton.hidden = !canContinue;
+  els.continueFromMediaButton.disabled = !canContinue;
+}
+
 function taskOverview(task) {
   const selected = task.selected_resource || {};
   const options = task.options || {};
@@ -1430,6 +1442,7 @@ function renderResult() {
   els.diagnosticsButton.disabled = !hasTaskDiagnostics(currentTask);
   els.mediaButton.disabled = !currentTask?.media_path;
   els.downloadButton.disabled = !hasNote;
+  updateContinueFromMediaAction(currentTask);
   if (!currentTask) {
     els.result.textContent = "任务完成后显示结果。";
     return;
@@ -1532,6 +1545,7 @@ els.redetectButton.onclick = collect;
 els.summarizeButton.onclick = () => startTask("video");
 els.preflightButton.onclick = runPreflight;
 if (els.downloadOnlyButton) els.downloadOnlyButton.onclick = () => startTask("download_only");
+if (els.continueFromMediaButton) els.continueFromMediaButton.onclick = () => rerunTaskFromMedia(currentTask?.id);
 els.textButton.onclick = () => startTask("page_text");
 if (els.refreshHistoryButton) els.refreshHistoryButton.onclick = loadTaskHistory;
 els.uploadButton.onclick = () => els.fileInput.click();
