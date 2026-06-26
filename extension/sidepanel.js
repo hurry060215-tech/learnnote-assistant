@@ -55,6 +55,7 @@ const els = {
   result: document.querySelector("#result"),
   copyButton: document.querySelector("#copyButton"),
   bundleButton: document.querySelector("#bundleButton"),
+  diagnosticsButton: document.querySelector("#diagnosticsButton"),
   mediaButton: document.querySelector("#mediaButton"),
   downloadButton: document.querySelector("#downloadButton"),
   openWebButton: document.querySelector("#openWebButton"),
@@ -1052,6 +1053,18 @@ function hasTaskBundle(task) {
   );
 }
 
+function hasTaskDiagnostics(task) {
+  if (!task) return false;
+  return Boolean(
+    task.status === "failed" ||
+    task.download_attempts?.length ||
+    task.selected_resource ||
+    task.media_path ||
+    task.summary_diagnostics_path ||
+    Object.keys(task.summary_diagnostics || {}).length
+  );
+}
+
 function taskOverview(task) {
   const selected = task.selected_resource || {};
   const options = task.options || {};
@@ -1069,6 +1082,7 @@ function taskOverview(task) {
   const actionLinks = [
     hasNote ? `<button type="button" data-export="markdown">Markdown</button>` : "",
     hasMedia ? `<button type="button" data-export="media">本地视频</button>` : "",
+    hasTaskDiagnostics(task) ? `<button type="button" data-export="diagnostics">诊断</button>` : "",
     hasBundle ? `<button type="button" data-export="bundle">资料包</button>` : ""
   ].filter(Boolean).join("");
   const downloadOnly = hasMedia && !hasNote && task.status === "success";
@@ -1299,6 +1313,7 @@ function renderResult() {
   const hasNote = Boolean(currentTaskId) && Boolean(currentTask?.note_path);
   els.copyButton.disabled = !hasNote;
   els.bundleButton.disabled = !hasTaskBundle(currentTask);
+  els.diagnosticsButton.disabled = !hasTaskDiagnostics(currentTask);
   els.mediaButton.disabled = !currentTask?.media_path;
   els.downloadButton.disabled = !hasNote;
   if (!currentTask) {
@@ -1425,6 +1440,9 @@ els.localDrop.addEventListener("drop", event => {
 els.copyButton.onclick = () => navigator.clipboard.writeText(lastNote || "");
 els.bundleButton.onclick = () => {
   openTaskExport("bundle");
+};
+els.diagnosticsButton.onclick = () => {
+  openTaskExport("diagnostics");
 };
 els.mediaButton.onclick = () => {
   openTaskExport("media");

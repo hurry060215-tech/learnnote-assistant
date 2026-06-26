@@ -55,6 +55,7 @@ const els = {
   detail: document.querySelector("#detail"),
   copyButton: document.querySelector("#copyButton"),
   bundleButton: document.querySelector("#bundleButton"),
+  diagnosticsButton: document.querySelector("#diagnosticsButton"),
   mediaButton: document.querySelector("#mediaButton"),
   downloadButton: document.querySelector("#downloadButton")
 };
@@ -680,6 +681,18 @@ function hasTaskBundle(task) {
   );
 }
 
+function hasTaskDiagnostics(task) {
+  if (!task) return false;
+  return Boolean(
+    task.status === "failed" ||
+    task.download_attempts?.length ||
+    task.selected_resource ||
+    task.media_path ||
+    task.summary_diagnostics_path ||
+    Object.keys(task.summary_diagnostics || {}).length
+  );
+}
+
 function taskOverview(task) {
   const selected = task.selected_resource || {};
   const options = task.options || {};
@@ -699,6 +712,7 @@ function taskOverview(task) {
     downloadOnly ? `<button type="button" data-rerun-from-media="${escapeHtml(task.id)}">生成完整笔记</button>` : "",
     hasNote ? `<a href="${escapeHtml(taskExportUrl(task, "markdown"))}">导出 Markdown</a>` : "",
     hasMedia ? `<a href="${escapeHtml(taskExportUrl(task, "media"))}">导出本地视频</a>` : "",
+    hasTaskDiagnostics(task) ? `<a href="${escapeHtml(taskExportUrl(task, "diagnostics"))}">导出诊断</a>` : "",
     hasBundle ? `<a href="${escapeHtml(taskExportUrl(task, "bundle"))}">导出资料包</a>` : ""
   ].filter(Boolean).join("");
 
@@ -1003,6 +1017,7 @@ async function renderDetail() {
     lastNoteTaskId = "";
     els.copyButton.disabled = true;
     els.bundleButton.disabled = true;
+    els.diagnosticsButton.disabled = true;
     els.mediaButton.disabled = true;
     els.downloadButton.disabled = true;
     return;
@@ -1020,6 +1035,7 @@ async function renderDetail() {
   const hasNote = Boolean(task.note_path);
   els.copyButton.disabled = !hasNote;
   els.bundleButton.disabled = !hasTaskBundle(task);
+  els.diagnosticsButton.disabled = !hasTaskDiagnostics(task);
   els.mediaButton.disabled = !task.media_path;
   els.downloadButton.disabled = !hasNote;
 
@@ -1287,6 +1303,10 @@ els.copyButton.onclick = async () => navigator.clipboard.writeText(await noteFor
 els.bundleButton.onclick = () => {
   if (!selectedTaskId) return;
   window.location.assign(`${API}/api/tasks/${encodeURIComponent(selectedTaskId)}/exports/bundle`);
+};
+els.diagnosticsButton.onclick = () => {
+  if (!selectedTaskId) return;
+  window.location.assign(`${API}/api/tasks/${encodeURIComponent(selectedTaskId)}/exports/diagnostics`);
 };
 els.mediaButton.onclick = () => {
   if (!selectedTaskId) return;
