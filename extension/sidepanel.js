@@ -905,17 +905,30 @@ async function uploadLocal() {
   const file = els.fileInput.files?.[0];
   if (!file) return;
   els.localDropText.textContent = file.name;
+  els.uploadButton.disabled = true;
+  els.localDrop.classList.add("uploading");
   const form = new FormData();
   form.append("file", file);
   form.append("title", file.name);
   form.append("options", JSON.stringify(readOptions()));
   els.taskMessage.textContent = "上传本地视频...";
-  const data = await fetch(`${backendUrl}/api/tasks/from-local`, { method: "POST", body: form }).then(r => r.json());
-  currentTaskId = data.task_id;
-  transcriptCache = null;
-  lastNote = "";
-  await loadTaskHistory();
-  pollTask();
+  try {
+    const response = await fetch(`${backendUrl}/api/tasks/from-local`, { method: "POST", body: form });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.task_id) {
+      const detail = data?.detail?.message || data?.detail || data?.error || "";
+      els.taskMessage.textContent = detail || "本地视频上传失败，请确认后端可用并重试。";
+      return;
+    }
+    currentTaskId = data.task_id;
+    transcriptCache = null;
+    lastNote = "";
+    await loadTaskHistory();
+    pollTask();
+  } finally {
+    els.uploadButton.disabled = false;
+    els.localDrop.classList.remove("uploading");
+  }
 }
 
 async function pollTask() {
