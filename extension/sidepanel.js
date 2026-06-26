@@ -231,6 +231,20 @@ function requestHeaderNames(resource) {
     .join(", ") || "-";
 }
 
+function summaryDiagnosticText(task) {
+  const diag = task?.summary_diagnostics || {};
+  if (!Object.keys(diag).length) return "-";
+  return [
+    diag.used_vision_llm ? "已使用视觉 LLM" : diag.used_text_llm ? "已使用文本 LLM" : diag.used_local_template ? "本地模板" : "",
+    `模型 ${diag.llm_model || task.summary_source || "-"}`,
+    `视觉窗口 ${diag.visual_window_count ?? 0}`,
+    `画面网格 ${diag.frame_grid_count ?? 0}`,
+    `已发送图片 ${diag.vision_image_count ?? 0}`,
+    diag.all_grids_had_images === false ? "存在缺失图片" : "",
+    diag.summary_warning || ""
+  ].filter(Boolean).join(" · ");
+}
+
 const PIPELINE_STEPS = [
   { key: "downloading", label: "下载" },
   { key: "transcribing", label: "识别" },
@@ -884,6 +898,7 @@ function renderResult() {
         ].filter(Boolean).join(" · "))}</dd>
         <dt>请求头</dt><dd>${escapeHtml(requestHeaderNames(selected))}</dd>
         <dt>总结来源</dt><dd>${escapeHtml(currentTask.summary_source || "-")}</dd>
+        <dt>图文总结诊断</dt><dd>${escapeHtml(summaryDiagnosticText(currentTask))}</dd>
         <dt>总结提示</dt><dd>${escapeHtml(currentTask.summary_warning || "-")}</dd>
         <dt>错误</dt><dd>${escapeHtml(currentTask.error_detail || currentTask.error_code || "-")}</dd>
         <dt>字幕</dt><dd>${escapeHtml(currentTask.subtitle_path || "-")}</dd>

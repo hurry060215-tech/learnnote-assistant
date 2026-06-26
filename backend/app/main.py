@@ -192,6 +192,8 @@ def api_export_bundle(task_id: str) -> Response:
         archive.writestr("task.json", json.dumps(task.model_dump(mode="json"), ensure_ascii=False, indent=2))
         archive.writestr("transcript.json", json.dumps(transcript, ensure_ascii=False, indent=2))
         archive.writestr("visual_index.json", json.dumps(visual_index, ensure_ascii=False, indent=2))
+        if task.summary_diagnostics:
+            archive.writestr("summary_diagnostics.json", json.dumps(task.summary_diagnostics, ensure_ascii=False, indent=2))
         for index, grid in enumerate(task.frame_grids):
             filename = Path(grid.path).name or f"grid_{index:03d}.jpg"
             _write_file_if_exists(archive, grid.path, f"grids/{filename}")
