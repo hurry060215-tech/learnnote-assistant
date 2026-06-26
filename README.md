@@ -12,6 +12,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - BiliNote-style task stage rail for download, transcription, frame slicing, note generation, and completion.
 - Markdown note export from both the local Web UI and the browser Side Panel.
 - Current-page media detection from DOM, all-frame content scripts, Performance entries, and `webRequest`.
+- `webRequest` captures media candidates as soon as response headers arrive, so long-running video/range streams do not have to finish before they can be selected.
 - Main-world fetch/XHR hook for media URLs exposed in text, JSON, playlist, or script responses before they appear in `<video>`.
 - JSON/HTML script media-field discovery for extensionless player APIs such as `hls`, `dashUrl`, `playUrl`, or `videoUrl` when sibling metadata or field names identify HLS/DASH/video content.
 - URL-encoded and base64-wrapped media field values are decoded during page scanning and main-world response inspection.
@@ -47,6 +48,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - Browser-context preflight: selected mp4/HLS/DASH candidates can be checked with a small local backend probe before the full download. The result reports strategy, HTTP status, MIME type, content length, bytes checked, safe request-header names, and structured failure codes.
 - Main-video ranking based on the actively playing `<video>` first, then the largest visible video element.
 - Candidate evidence from `webRequest`, including request type, HTTP status, MIME type, content length, initiator, and frame id when available.
+- Long-running media responses are added from `onHeadersReceived`, then merged again on completion if the request later finishes.
 - Playback-aware candidate ranking: the Side Panel boosts exact current `<video>` sources, same-frame media requests, recoverable Blob/ArrayBuffer/ReadableStream/MediaSource source mappings, and recent requests from Blob/MSE-backed players before starting a task.
 - DRM-aware failure boundary: if a page triggers EME/DRM signals and exposes no downloadable mp4/HLS/DASH candidate, the task fails early as `drm_or_encrypted` and keeps the key-system/init-data evidence in diagnostics.
 - Recoverable fragment URLs such as `.../master.m3u8/segment.ts` or `.../manifest.mpd/chunk.m4s` are promoted to inferred manifest candidates.

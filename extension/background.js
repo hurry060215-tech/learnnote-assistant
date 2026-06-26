@@ -258,6 +258,10 @@ function takeRequestHeaders(requestId) {
   return entry?.headers || {};
 }
 
+function peekRequestHeaders(requestId) {
+  return requestHeadersByRequestId.get(requestId)?.headers || {};
+}
+
 function frameStates(tabId) {
   if (!pageStateByTab.has(tabId)) pageStateByTab.set(tabId, new Map());
   return pageStateByTab.get(tabId);
@@ -430,37 +434,57 @@ try {
   registerBeforeSendHeadersListener(["requestHeaders"]);
 }
 
+function responseHeadersObject(responseHeaders = []) {
+  const headers = {};
+  for (const header of responseHeaders || []) {
+    const lower = String(header.name || "").toLowerCase();
+    if (RESPONSE_HEADER_ALLOWLIST.has(lower)) headers[lower] = header.value || "";
+  }
+  return headers;
+}
+
+function recordResponseMedia(details = {}, requestHeaders = {}) {
+  const headers = responseHeadersObject(details.responseHeaders || []);
+  const mime = headers["content-type"] || "";
+  const kind = classifyCompletedRequest(details, mime);
+  if (kind === "unknown") return;
+  const contentLength = Number(headers["content-length"] || 0);
+  addResource(details.tabId, {
+    url: details.url,
+    source: "webRequest",
+    kind,
+    mime,
+    headers,
+    request_type: details.type || "",
+    method: details.method || "",
+    status_code: details.statusCode || null,
+    content_length: Number.isFinite(contentLength) && contentLength > 0 ? contentLength : null,
+    initiator: details.initiator || "",
+    frame_id: details.frameId ?? null,
+    frame_url: details.documentUrl || "",
+    page_url: details.documentUrl || details.initiator || "",
+    time_stamp: details.timeStamp || Date.now(),
+    request_headers: requestHeaders,
+    label: kind.toUpperCase()
+  });
+}
+
+function registerHeadersReceivedListener(options) {
+  chrome.webRequest.onHeadersReceived.addListener(
+    details => recordResponseMedia(details, peekRequestHeaders(details.requestId)),
+    { urls: ["<all_urls>"] },
+    options
+  );
+}
+
+try {
+  registerHeadersReceivedListener(["responseHeaders", "extraHeaders"]);
+} catch {
+  registerHeadersReceivedListener(["responseHeaders"]);
+}
+
 chrome.webRequest.onCompleted.addListener(
-  details => {
-    const requestHeaders = takeRequestHeaders(details.requestId);
-    const headers = {};
-    for (const header of details.responseHeaders || []) {
-      const lower = String(header.name || "").toLowerCase();
-      if (RESPONSE_HEADER_ALLOWLIST.has(lower)) headers[lower] = header.value || "";
-    }
-    const mime = headers["content-type"] || "";
-    const kind = classifyCompletedRequest(details, mime);
-    if (kind === "unknown") return;
-    const contentLength = Number(headers["content-length"] || 0);
-    addResource(details.tabId, {
-      url: details.url,
-      source: "webRequest",
-      kind,
-      mime,
-      headers,
-      request_type: details.type || "",
-      method: details.method || "",
-      status_code: details.statusCode || null,
-      content_length: Number.isFinite(contentLength) && contentLength > 0 ? contentLength : null,
-      initiator: details.initiator || "",
-      frame_id: details.frameId ?? null,
-      frame_url: details.documentUrl || "",
-      page_url: details.documentUrl || details.initiator || "",
-      time_stamp: details.timeStamp || null,
-      request_headers: requestHeaders,
-      label: kind.toUpperCase()
-    });
-  },
+  details => recordResponseMedia(details, takeRequestHeaders(details.requestId)),
   { urls: ["<all_urls>"] },
   ["responseHeaders"]
 );

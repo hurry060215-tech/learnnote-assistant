@@ -18,6 +18,7 @@ const context = {
   chrome: {
     webRequest: {
       onBeforeSendHeaders: listener(),
+      onHeadersReceived: listener(),
       onCompleted: listener(),
       onErrorOccurred: listener()
     },

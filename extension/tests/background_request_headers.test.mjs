@@ -13,6 +13,7 @@ const context = {
   chrome: {
     webRequest: {
       onBeforeSendHeaders: listener(),
+      onHeadersReceived: listener(),
       onCompleted: listener(),
       onErrorOccurred: listener()
     },
@@ -114,3 +115,37 @@ assert.equal(hinted.playback_match, "range-near-playhead");
 assert.equal(hinted.is_main_video, true);
 assert.equal(hinted.current_time, 420);
 assert.ok(hinted.score >= 100, "expected recent range media requests near the active playhead to be top-ranked");
+
+context.rememberRequestHeaders({
+  requestId: "streaming-1",
+  url: "https://cdn.example.com/live/play?id=long",
+  type: "media",
+  requestHeaders: [
+    { name: "Range", value: "bytes=0-" },
+    { name: "Referer", value: "https://course.example.com/lesson" }
+  ]
+});
+context.recordResponseMedia({
+  requestId: "streaming-1",
+  tabId: 17,
+  url: "https://cdn.example.com/live/play?id=long",
+  type: "media",
+  method: "GET",
+  statusCode: 206,
+  frameId: 4,
+  documentUrl: "https://course.example.com/player",
+  initiator: "https://course.example.com",
+  timeStamp: Date.now(),
+  responseHeaders: [
+    { name: "Content-Type", value: "application/octet-stream" },
+    { name: "Content-Range", value: "bytes 0-1048575/8388608" },
+    { name: "Accept-Ranges", value: "bytes" }
+  ]
+}, context.peekRequestHeaders("streaming-1"));
+
+const earlyResources = vm.runInContext("resourceByTab.get(17)", context);
+assert.equal(earlyResources.length, 1);
+assert.equal(earlyResources[0].kind, "video");
+assert.equal(earlyResources[0].status_code, 206);
+assert.equal(earlyResources[0].request_headers.Range, "bytes=0-");
+assert.equal(earlyResources[0].headers["content-range"], "bytes 0-1048575/8388608");
