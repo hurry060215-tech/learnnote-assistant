@@ -510,6 +510,70 @@ function selectedResources() {
   return selected ? [selected, ...rest] : resources;
 }
 
+function preflightCandidatesForStart(mode = "video") {
+  if (mode !== "video") return [];
+  const ordered = selectedResources().filter(item => shouldPreflightBeforeStart(mode, item));
+  const seen = new Set();
+  return ordered.filter(item => {
+    if (!item?.url || seen.has(item.url)) return false;
+    seen.add(item.url);
+    return true;
+  });
+}
+
+async function requestResourcePreflight(resource) {
+  const response = await chrome.runtime.sendMessage({
+    type: "preflight-current-resource",
+    backendUrl,
+    page,
+    resource
+  });
+  if (response.error) {
+    return {
+      ok: false,
+      downloadable: false,
+      code: "preflight_failed",
+      message: response.error,
+      url: resource?.url || ""
+    };
+  }
+  return response.preflight;
+}
+
+async function preflightBestResource(mode = "video") {
+  const candidates = preflightCandidatesForStart(mode);
+  if (!candidates.length) return null;
+
+  const cached = currentPreflight();
+  if (cached?.downloadable) return cached;
+
+  let lastResult = null;
+  els.taskMessage.textContent = candidates.length > 1
+    ? `正在预检 ${candidates.length} 个直取候选...`
+    : "正在预检直取候选...";
+
+  for (const candidate of candidates) {
+    const result = await requestResourcePreflight(candidate);
+    preflight = result;
+    preflightResourceUrl = candidate.url;
+    lastResult = result;
+    if (result?.downloadable) {
+      selectedResourceUrl = candidate.url;
+      els.taskMessage.textContent = `预检通过：已选择 ${candidate.kind || result.kind || "media"} 候选。`;
+      renderContext();
+      return result;
+    }
+  }
+
+  if (lastResult) {
+    els.taskMessage.textContent = candidates.length > 1
+      ? `所有直取候选预检未通过：${preflightBlockMessage(lastResult)}`
+      : preflightBlockMessage(lastResult);
+    renderContext();
+  }
+  return lastResult;
+}
+
 async function startTask(mode = "video") {
   if (!page) await collect();
   if (!HAS_EXTENSION_API) {
@@ -519,8 +583,8 @@ async function startTask(mode = "video") {
   const resource = selectedResource();
   els.summarizeButton.disabled = true;
   try {
-    if (shouldPreflightBeforeStart(mode, resource)) {
-      const checked = currentPreflight() || await preflightSelectedResource({ silent: true });
+    if (preflightCandidatesForStart(mode).length) {
+      const checked = await preflightBestResource(mode);
       if (!checked?.downloadable) {
         els.taskMessage.textContent = preflightBlockMessage(checked);
         renderContext();
@@ -562,17 +626,7 @@ async function preflightSelectedResource({ silent = false } = {}) {
   els.preflightButton.disabled = true;
   if (!silent) els.taskMessage.textContent = "正在预检直取可行性...";
   try {
-    const response = await chrome.runtime.sendMessage({
-      type: "preflight-current-resource",
-      backendUrl,
-      page,
-      resource
-    });
-    if (response.error) {
-      els.taskMessage.textContent = response.error;
-      return null;
-    }
-    preflight = response.preflight;
+    preflight = await requestResourcePreflight(resource);
     preflightResourceUrl = resource.url;
     els.taskMessage.textContent = preflight.message || (preflight.downloadable ? "预检通过" : "预检未通过");
     renderContext();
