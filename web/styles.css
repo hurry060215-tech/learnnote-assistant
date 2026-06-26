@@ -1934,3 +1934,83 @@ select {
     grid-template-columns: 1fr;
   }
 }
+
+/* BiliNote-style focus controls */
+.icon-button.active {
+  border-color: #9db9f8;
+  background: var(--surface-strong);
+  color: var(--accent);
+}
+
+body.queue-collapsed .app-shell {
+  grid-template-columns: 56px 316px 0 minmax(720px, 1fr);
+}
+
+body.queue-collapsed .queue-panel {
+  width: 0;
+  min-width: 0;
+  padding: 0;
+  border-right: 0;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+body.reading-mode .app-shell {
+  grid-template-columns: 56px 0 0 minmax(880px, 1fr);
+}
+
+body.reading-mode .workspace-panel,
+body.reading-mode .queue-panel {
+  width: 0;
+  min-width: 0;
+  padding: 0;
+  border-right: 0;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+body.reading-mode .detail {
+  background: #fbfcff;
+}
+
+body.reading-mode .note-shell {
+  max-width: 1280px;
+}
+
+body.reading-mode .note-workbench {
+  grid-template-columns: minmax(0, 860px) 340px;
+  justify-content: center;
+}
+
+@media (max-width: 1280px) {
+  body.queue-collapsed .app-shell {
+    grid-template-columns: 52px 292px 0 minmax(560px, 1fr);
+  }
+
+  body.reading-mode .app-shell {
+    grid-template-columns: 52px 0 0 minmax(760px, 1fr);
+  }
+
+  body.reading-mode .note-workbench {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  body.queue-collapsed .app-shell,
+  body.reading-mode .app-shell {
+    grid-template-columns: 1fr;
+  }
+
+  body.queue-collapsed .queue-panel,
+  body.reading-mode .workspace-panel,
+  body.reading-mode .queue-panel {
+    display: none;
+  }
+
+  body.reading-mode .note-workbench {
+    grid-template-columns: 1fr;
+  }
+}

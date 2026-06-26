@@ -3,11 +3,34 @@ import { readFile } from "node:fs/promises";
 import vm from "node:vm";
 
 const elements = new Map();
+const makeClassList = () => {
+  const values = new Set();
+  return {
+    values,
+    add(name) {
+      values.add(name);
+    },
+    remove(name) {
+      values.delete(name);
+    },
+    toggle(name, force) {
+      const enabled = force === undefined ? !values.has(name) : Boolean(force);
+      if (enabled) values.add(name);
+      else values.delete(name);
+      return enabled;
+    },
+    contains(name) {
+      return values.has(name);
+    }
+  };
+};
+
 const makeElement = () => ({
   addEventListener() {},
-  classList: { add() {}, remove() {}, toggle() {} },
+  classList: makeClassList(),
   style: {},
   dataset: {},
+  attributes: {},
   value: "",
   textContent: "",
   innerHTML: "",
@@ -18,6 +41,12 @@ const makeElement = () => ({
   scrollCalls: [],
   scrollIntoView(options) {
     this.scrollCalls.push(options || {});
+  },
+  setAttribute(name, value) {
+    this.attributes[name] = String(value);
+  },
+  getAttribute(name) {
+    return this.attributes[name];
   }
 });
 
@@ -42,7 +71,16 @@ const context = {
   navigator: { clipboard: { writeText() {} } },
   window: {
     innerWidth: 1280,
-    location: { origin: "http://127.0.0.1:8765", assign() {} }
+    location: { origin: "http://127.0.0.1:8765", assign() {} },
+    localStorage: {
+      values: new Map(),
+      getItem(key) {
+        return this.values.get(key) || null;
+      },
+      setItem(key, value) {
+        this.values.set(key, String(value));
+      }
+    }
   },
   Blob: class Blob {},
   FormData: class FormData {},
@@ -101,6 +139,16 @@ context.window.innerWidth = 390;
 context.focusResultPanelOnMobile();
 assert.equal(resultPanel.scrollCalls.length, 1);
 assert.equal(resultPanel.scrollCalls[0].block, "start");
+
+context.setHistoryCollapsed(true);
+assert.equal(documentStub.body.classList.contains("queue-collapsed"), true);
+assert.equal(elements.get("#toggleHistoryButton").getAttribute("aria-pressed"), "true");
+assert.equal(context.window.localStorage.getItem("learnnote.historyCollapsed"), "1");
+
+context.setReadingMode(true);
+assert.equal(documentStub.body.classList.contains("reading-mode"), true);
+assert.equal(elements.get("#readingModeButton").getAttribute("aria-pressed"), "true");
+assert.equal(context.window.localStorage.getItem("learnnote.readingMode"), "1");
 
 const railHtml = context.visualRail({
   visual_windows: [{
