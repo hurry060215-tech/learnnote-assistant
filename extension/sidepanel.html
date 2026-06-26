@@ -159,6 +159,16 @@
         <p id="taskMessage">暂无任务</p>
       </section>
 
+      <section class="history-panel">
+        <div class="section-head compact">
+          <span>生成历史</span>
+          <button id="refreshHistoryButton" class="icon-button" title="刷新历史" aria-label="刷新历史">
+            <svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 0 1-13.66 5.66M4 12A8 8 0 0 1 17.66 6.34M20 4v6h-6M4 20v-6h6"/></svg>
+          </button>
+        </div>
+        <div id="taskHistory" class="task-history muted">等待任务生成后显示最近记录</div>
+      </section>
+
       <section class="result-panel">
         <div class="result-tabs">
           <button class="result-tab active" data-tab="note">学习笔记</button>

@@ -16,6 +16,7 @@ let contextRefreshTimer = 0;
 let isCollectingContext = false;
 let pendingContextRefresh = false;
 let currentTabId = null;
+let taskHistory = [];
 
 const els = {
   backendStatus: document.querySelector("#backendStatus"),
@@ -46,6 +47,8 @@ const els = {
   stageRail: document.querySelector("#stageRail"),
   taskPhase: document.querySelector("#taskPhase"),
   taskMessage: document.querySelector("#taskMessage"),
+  refreshHistoryButton: document.querySelector("#refreshHistoryButton"),
+  taskHistory: document.querySelector("#taskHistory"),
   resultTabs: document.querySelectorAll(".result-tab"),
   result: document.querySelector("#result"),
   copyButton: document.querySelector("#copyButton"),
@@ -293,6 +296,63 @@ function stepState(task, step) {
 function renderStageRail(task) {
   if (!els.stageRail) return;
   els.stageRail.innerHTML = PIPELINE_STEPS.map(step => `<span class="${stepState(task, step)}">${step.label}</span>`).join("");
+}
+
+function taskStatusText(task = {}) {
+  if (task.status === "success") return "已完成";
+  if (task.status === "failed") return task.error_code || "失败";
+  if (task.status === "queued") return "排队中";
+  return task.message || task.phase || "处理中";
+}
+
+function taskSourceText(task = {}) {
+  if (task.source_type === "local") return "本地视频";
+  if (task.source_type === "page_text") return "页面文本";
+  return task.selected_resource ? `直取 · ${task.selected_resource.kind || "media"}` : "当前页";
+}
+
+function renderTaskHistory() {
+  if (!els.taskHistory) return;
+  const visible = taskHistory.slice(0, 6);
+  if (!visible.length) {
+    els.taskHistory.className = "task-history muted";
+    els.taskHistory.textContent = "等待任务生成后显示最近记录";
+    return;
+  }
+  els.taskHistory.className = "task-history";
+  els.taskHistory.innerHTML = visible.map(task => `
+    <button class="history-task status-${escapeHtml(task.status || "unknown")} ${task.id === currentTaskId ? "selected" : ""}" data-id="${escapeHtml(task.id)}">
+      <span>
+        <strong>${escapeHtml(task.title || task.id)}</strong>
+        <small>${escapeHtml(taskSourceText(task))} · ${escapeHtml(taskStatusText(task))} · ${task.progress || 0}%</small>
+      </span>
+      <b>${task.status === "success" ? "看" : task.status === "failed" ? "错" : "跑"}</b>
+    </button>
+  `).join("");
+  document.querySelectorAll(".history-task").forEach(button => {
+    button.onclick = () => selectHistoryTask(button.dataset.id);
+  });
+}
+
+async function loadTaskHistory() {
+  if (!els.taskHistory) return;
+  try {
+    const data = await fetch(`${backendUrl}/api/tasks`).then(r => r.json());
+    taskHistory = data.tasks || [];
+    renderTaskHistory();
+  } catch {
+    els.taskHistory.className = "task-history muted";
+    els.taskHistory.textContent = "无法读取本地历史";
+  }
+}
+
+async function selectHistoryTask(taskId) {
+  if (!taskId) return;
+  currentTaskId = taskId;
+  transcriptCache = null;
+  lastNote = "";
+  await loadResult();
+  renderTaskHistory();
 }
 
 function readOptions() {
@@ -725,6 +785,7 @@ async function startTask(mode = "video") {
     currentTaskId = response.task_id;
     transcriptCache = null;
     lastNote = "";
+    await loadTaskHistory();
     pollTask();
   } finally {
     els.summarizeButton.disabled = false;
@@ -772,6 +833,7 @@ async function uploadLocal() {
   currentTaskId = data.task_id;
   transcriptCache = null;
   lastNote = "";
+  await loadTaskHistory();
   pollTask();
 }
 
@@ -779,12 +841,17 @@ async function pollTask() {
   if (!currentTaskId) return;
   const data = await fetch(`${backendUrl}/api/tasks/${currentTaskId}`).then(r => r.json());
   currentTask = data.task;
+  const index = taskHistory.findIndex(task => task.id === currentTask.id);
+  if (index >= 0) taskHistory[index] = currentTask;
+  else taskHistory.unshift(currentTask);
+  renderTaskHistory();
   els.progressBar.style.width = `${currentTask.progress || 0}%`;
   renderStageRail(currentTask);
   els.taskPhase.textContent = currentTask.phase || "-";
   els.taskMessage.textContent = currentTask.error_detail || currentTask.message || currentTask.phase;
   if (currentTask.status === "success") {
     await loadResult();
+    await loadTaskHistory();
     return;
   }
   renderResult();
@@ -796,8 +863,27 @@ async function pollTask() {
 async function loadResult() {
   if (!currentTaskId) return;
   currentTask = await fetch(`${backendUrl}/api/tasks/${currentTaskId}`).then(r => r.json()).then(d => d.task);
-  transcriptCache = await fetch(`${backendUrl}/api/tasks/${currentTaskId}/transcript`).then(r => r.json());
-  lastNote = await fetch(`${backendUrl}/api/tasks/${currentTaskId}/note`).then(r => r.text());
+  transcriptCache = null;
+  lastNote = "";
+  if (currentTask.transcript_path || currentTask.status === "success") {
+    try {
+      const response = await fetch(`${backendUrl}/api/tasks/${currentTaskId}/transcript`);
+      if (response.ok !== false) transcriptCache = await response.json();
+    } catch {
+      transcriptCache = null;
+    }
+  }
+  if (currentTask.note_path || currentTask.status === "success") {
+    try {
+      const response = await fetch(`${backendUrl}/api/tasks/${currentTaskId}/note`);
+      if (response.ok !== false) lastNote = await response.text();
+    } catch {
+      lastNote = "";
+    }
+  }
+  const index = taskHistory.findIndex(task => task.id === currentTask.id);
+  if (index >= 0) taskHistory[index] = currentTask;
+  else taskHistory.unshift(currentTask);
   renderResult();
 }
 
@@ -975,6 +1061,7 @@ els.redetectButton.onclick = collect;
 els.summarizeButton.onclick = () => startTask("video");
 els.preflightButton.onclick = runPreflight;
 els.textButton.onclick = () => startTask("page_text");
+if (els.refreshHistoryButton) els.refreshHistoryButton.onclick = loadTaskHistory;
 els.uploadButton.onclick = () => els.fileInput.click();
 els.fileInput.onchange = uploadLocal;
 els.localDrop.onclick = () => els.fileInput.click();
@@ -1019,4 +1106,4 @@ if (HAS_EXTENSION_API && chrome.runtime.onMessage?.addListener) {
   });
 }
 
-loadSettings().then(() => Promise.all([health(), collect()]));
+loadSettings().then(() => Promise.all([health(), collect(), loadTaskHistory()]));

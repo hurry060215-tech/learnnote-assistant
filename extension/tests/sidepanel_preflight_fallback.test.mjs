@@ -74,6 +74,9 @@ const context = {
     if (value.endsWith("/health")) {
       return { json: async () => ({ ffmpeg: true }) };
     }
+    if (value.endsWith("/api/tasks")) {
+      return { json: async () => ({ tasks: [] }) };
+    }
     if (value.endsWith("/api/tasks/task-ok")) {
       return {
         json: async () => ({
