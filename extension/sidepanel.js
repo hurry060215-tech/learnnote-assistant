@@ -987,13 +987,24 @@ function taskStatusClass(task = {}) {
   return "idle";
 }
 
+function hasTaskBundle(task) {
+  if (!task) return false;
+  return Boolean(
+    task.note_path ||
+    task.media_path ||
+    task.status === "failed" ||
+    task.download_attempts?.length ||
+    visualWindows(task).length
+  );
+}
+
 function taskOverview(task) {
   const selected = task.selected_resource || {};
   const options = task.options || {};
   const windows = visualWindows(task);
   const hasNote = Boolean(task.note_path);
   const hasMedia = Boolean(task.media_path);
-  const hasBundle = hasNote || windows.length || hasMedia || Boolean(task.download_attempts?.length) || task.status === "failed";
+  const hasBundle = hasTaskBundle(task);
   const statusClass = taskStatusClass(task);
   const resourceLine = [
     taskSourceText(task),
@@ -1120,7 +1131,7 @@ function transcriptTimeline(transcript, task, limit = 100) {
 function renderResult() {
   const hasNote = Boolean(currentTaskId) && Boolean(currentTask?.note_path);
   els.copyButton.disabled = !hasNote;
-  els.bundleButton.disabled = !hasNote;
+  els.bundleButton.disabled = !hasTaskBundle(currentTask);
   els.mediaButton.disabled = !currentTask?.media_path;
   els.downloadButton.disabled = !hasNote;
   if (!currentTask) {
