@@ -944,6 +944,7 @@ button:disabled {
 }
 
 .task-overview-actions a,
+.task-overview-actions button,
 .task-overview-actions span {
   min-height: 32px;
   display: inline-flex;
@@ -960,7 +961,14 @@ button:disabled {
   white-space: nowrap;
 }
 
-.task-overview-actions a:hover {
+.task-overview-actions button {
+  width: auto;
+  height: auto;
+  cursor: pointer;
+}
+
+.task-overview-actions a:hover,
+.task-overview-actions button:hover {
   border-color: var(--accent);
   background: #eaf2ff;
 }

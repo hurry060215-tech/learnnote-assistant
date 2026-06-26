@@ -285,6 +285,7 @@ class ApiPipelineTests(unittest.TestCase):
 
                 self.assertEqual(response.status_code, 200)
                 task_id = response.json()["task_id"]
+                rerun_task_id = ""
                 try:
                     task = self.client.get(f"/api/tasks/{task_id}").json()["task"]
                     self.assertEqual(task["status"], "success")
@@ -403,7 +404,39 @@ class ApiPipelineTests(unittest.TestCase):
                     self.assertEqual(self.client.get(f"/api/tasks/{task_id}/exports/markdown").status_code, 404)
                     self.assertEqual(self.client.get(f"/api/tasks/{task_id}/note").text, "")
                     self.assertEqual(self.client.get(f"/api/tasks/{task_id}/transcript").json()["segments"], [])
+
+                    with patch("app.processor.transcribe_audio", side_effect=fake_transcribe_audio):
+                        rerun_response = self.client.post(
+                            f"/api/tasks/{task_id}/rerun-from-media",
+                            json={"visual_understanding": True, "frame_interval": 1},
+                        )
+                    self.assertEqual(rerun_response.status_code, 200)
+                    rerun_payload = rerun_response.json()
+                    rerun_task_id = rerun_payload["task_id"]
+                    self.assertEqual(rerun_payload["source_task_id"], task_id)
+                    rerun_task = self.client.get(f"/api/tasks/{rerun_task_id}").json()["task"]
+                    self.assertEqual(rerun_task["status"], "success")
+                    self.assertEqual(rerun_task["source_type"], "local")
+                    self.assertEqual(rerun_task["page_url"], payload["page_url"])
+                    self.assertEqual(rerun_task["selected_resource"]["url"], media_url)
+                    self.assertEqual(rerun_task["download_attempts"][0]["strategy"], "direct-file")
+                    self.assertTrue(Path(rerun_task["media_path"]).exists())
+                    self.assertTrue(rerun_task["transcript_path"])
+                    self.assertTrue(rerun_task["frame_grids"])
+                    self.assertTrue(rerun_task["visual_windows"])
+                    rerun_note = self.client.get(f"/api/tasks/{rerun_task_id}/note").text
+                    self.assertIn("Download only lesson", rerun_note)
+                    self.assertIn("画面索引", rerun_note)
+                    rerun_bundle = self.client.get(f"/api/tasks/{rerun_task_id}/exports/bundle")
+                    self.assertEqual(rerun_bundle.status_code, 200)
+                    with zipfile.ZipFile(io.BytesIO(rerun_bundle.content)) as archive:
+                        names = set(archive.namelist())
+                        self.assertIn("note.md", names)
+                        self.assertIn("transcript.json", names)
+                        self.assertTrue(any(name.startswith("grids/") and name.endswith(".jpg") for name in names))
                 finally:
+                    if rerun_task_id:
+                        shutil.rmtree(task_dir(rerun_task_id), ignore_errors=True)
                     shutil.rmtree(task_dir(task_id), ignore_errors=True)
             finally:
                 server.shutdown()

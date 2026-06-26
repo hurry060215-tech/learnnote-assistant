@@ -1028,6 +1028,7 @@ function taskOverview(task) {
       <div class="stage-rail inline">${PIPELINE_STEPS.map(step => `<span class="${stepState(task, step)}">${step.label}</span>`).join("")}</div>
     </div>
     <div class="task-overview-actions">
+      ${downloadOnly ? `<button type="button" data-rerun-from-media="${escapeHtml(task.id)}">生成完整笔记</button>` : ""}
       ${actionLinks || `<span>${escapeHtml(taskStatusText(task))}</span>`}
     </div>
     <div class="task-overview-metrics">
@@ -1038,7 +1039,7 @@ function taskOverview(task) {
     </div>
     ${downloadOnly ? `<div class="task-overview-callout">
       <strong>已完成直取下载</strong>
-      <span>这个任务按“下载本地”运行，未进入转写、切片和总结；可导出 media.mp4，或重新点击“总结当前视频”。</span>
+      <span>这个任务按“下载本地”运行，未进入转写、切片和总结；可导出 media.mp4，或直接复用这个本地视频生成完整笔记。</span>
     </div>` : ""}
     ${failed ? `<div class="task-overview-callout failed">
       <strong>${escapeHtml(task.error_code || "任务失败")}</strong>
@@ -1054,9 +1055,35 @@ function openTaskExport(type) {
   else window.open(url, "_blank", "noopener");
 }
 
+async function rerunTaskFromMedia(taskId) {
+  if (!taskId) return;
+  els.taskMessage.textContent = "正在复用已下载视频创建完整笔记任务...";
+  const response = await fetch(`${backendUrl}/api/tasks/${encodeURIComponent(taskId)}/rerun-from-media`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(readOptions())
+  });
+  if (!response.ok) {
+    const detail = await response.json().catch(() => ({}));
+    els.taskMessage.textContent = detail?.detail?.message || detail?.detail || "无法复用已下载视频。";
+    return;
+  }
+  const data = await response.json();
+  currentTaskId = data.task_id;
+  transcriptCache = null;
+  lastNote = "";
+  selectedTab = "note";
+  els.resultTabs.forEach(item => item.classList.toggle("active", item.dataset.tab === selectedTab));
+  await loadTaskHistory();
+  pollTask();
+}
+
 function bindTaskOverviewActions() {
   document.querySelectorAll(".task-overview-actions button[data-export]").forEach(button => {
     button.onclick = () => openTaskExport(button.dataset.export);
+  });
+  document.querySelectorAll(".task-overview-actions button[data-rerun-from-media]").forEach(button => {
+    button.onclick = () => rerunTaskFromMedia(button.dataset.rerunFromMedia);
   });
 }
 
