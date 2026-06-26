@@ -209,7 +209,9 @@ const taskOverviewHtml = context.taskOverview({
 
 assert.match(taskOverviewHtml, /class="task-overview status-success"/);
 assert.match(taskOverviewHtml, /导出本地视频/);
+assert.match(taskOverviewHtml, /导出资料包/);
 assert.match(taskOverviewHtml, /\/api\/tasks\/task-web-overview\/exports\/media/);
+assert.match(taskOverviewHtml, /\/api\/tasks\/task-web-overview\/exports\/bundle/);
 assert.match(taskOverviewHtml, /已完成直取下载/);
 assert.doesNotMatch(taskOverviewHtml, /<script>bad/);
 assert.match(taskOverviewHtml, /&lt;script&gt;bad\(\)&lt;\/script&gt; 课程/);
