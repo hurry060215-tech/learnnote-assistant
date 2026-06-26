@@ -48,6 +48,14 @@ class RangeGateHandler(QuietHandler):
         super().do_GET()
 
 
+class RangeRecordingHandler(QuietHandler):
+    seen_ranges: list[str] = []
+
+    def do_GET(self) -> None:
+        self.__class__.seen_ranges.append(self.headers.get("Range") or "")
+        super().do_GET()
+
+
 class LoginPageAsMediaHandler(QuietHandler):
     def do_GET(self) -> None:
         body = ("<html><title>login</title><body>Please sign in before watching this lesson.</body></html>" * 80).encode()
@@ -203,6 +211,65 @@ class DownloaderPriorityTests(unittest.TestCase):
                 self.assertIsNotNone(selected)
                 self.assertEqual(selected.url, media_url)
                 self.assertEqual(downloader.attempts[0].status, "success")
+            finally:
+                server.shutdown()
+                server.server_close()
+
+    def test_direct_candidate_does_not_reuse_observed_partial_range(self) -> None:
+        ffmpeg = ffmpeg_bin()
+        assert ffmpeg is not None
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            video = root / "full-video.mp4"
+            subprocess.run(
+                [
+                    ffmpeg,
+                    "-y",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "testsrc=duration=2:size=320x180:rate=10",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "sine=frequency=440:duration=2",
+                    "-shortest",
+                    "-pix_fmt",
+                    "yuv420p",
+                    str(video),
+                ],
+                check=True,
+            )
+            RangeRecordingHandler.seen_ranges = []
+            server = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(RangeRecordingHandler, directory=str(root)))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                media_url = f"http://127.0.0.1:{server.server_port}/{video.name}"
+                downloader = MediaDownloader(root / "task")
+                media_path, selected = downloader.download(
+                    page_url=f"http://127.0.0.1:{server.server_port}/lesson.html",
+                    resources=[
+                        ResourceCandidate(
+                            url=media_url,
+                            source="webRequest",
+                            kind="video",
+                            mime="video/mp4",
+                            score=100,
+                            request_headers={"Range": "bytes=100000-"},
+                        )
+                    ],
+                    cookies=[],
+                    title="Full direct",
+                )
+                self.assertTrue(media_path.exists())
+                self.assertIsNotNone(selected)
+                self.assertEqual(selected.url, media_url)
+                self.assertEqual(RangeRecordingHandler.seen_ranges[0], "")
+                self.assertEqual(media_path.stat().st_size, video.stat().st_size)
             finally:
                 server.shutdown()
                 server.server_close()
