@@ -546,7 +546,7 @@ input[type="file"] {
 
 .result-tabs {
   display: grid;
-  grid-template-columns: minmax(72px, 1fr) minmax(50px, 0.8fr) minmax(50px, 0.8fr) minmax(50px, 0.8fr) auto auto;
+  grid-template-columns: minmax(72px, 1fr) minmax(50px, 0.8fr) minmax(50px, 0.8fr) minmax(50px, 0.8fr) auto auto auto;
   gap: 4px;
   padding: 8px;
   border-bottom: 1px solid var(--border);
@@ -1011,7 +1011,7 @@ button.primary {
 }
 
 .result-tabs {
-  grid-template-columns: minmax(78px, 1fr) minmax(50px, 0.8fr) minmax(50px, 0.8fr) minmax(50px, 0.8fr) auto auto;
+  grid-template-columns: minmax(78px, 1fr) minmax(50px, 0.8fr) minmax(50px, 0.8fr) minmax(50px, 0.8fr) auto auto auto;
   padding: 8px;
 }
 
