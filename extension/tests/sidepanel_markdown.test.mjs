@@ -168,3 +168,43 @@ assert.match(railHtml, /00:00:00 - 00:03:00/);
 assert.match(railHtml, /src="http:\/\/127\.0\.0\.1:8765\/api\/tasks\/demo\/grids\/grid_000\.jpg"/);
 assert.match(railHtml, /&lt;script&gt;alert\(1\)&lt;\/script&gt; 画面摘要/);
 assert.doesNotMatch(railHtml, /<script>/);
+
+const evidenceTags = context.resourceEvidenceTags({
+  kind: "hls",
+  source: "webRequest",
+  request_type: "media",
+  status_code: 206,
+  is_main_video: true,
+  playback_match: "blob-source",
+  blob_url: "blob:https://course.example.com/demo",
+  request_headers: {
+    Range: "bytes=100-200",
+    Referer: "https://course.example.com/lesson"
+  }
+});
+
+assert.deepEqual([...evidenceTags], [
+  "\u5f53\u524d\u4e3b\u89c6\u9891",
+  "Blob/MSE \u6765\u6e90\u6620\u5c04",
+  "\u53ef\u5408\u5e76 manifest",
+  "blob/MSE \u6620\u5c04",
+  "\u6d4f\u89c8\u5668\u8bf7\u6c42",
+  "media \u8bf7\u6c42",
+  "Range \u64ad\u653e\u8bf7\u6c42",
+  "\u5e26 Referer/Origin",
+  "HTTP 206"
+]);
+assert.match(context.resourceReasonText({ kind: "fragment", source: "pageHookFetch" }), /\u5206\u7247\u7ebf\u7d22/);
+assert.match(context.resourceTagHtml({
+  kind: "hls",
+  source: "webRequest",
+  request_type: "media",
+  status_code: 206,
+  is_main_video: true,
+  playback_match: "blob-source",
+  blob_url: "blob:https://course.example.com/demo",
+  request_headers: {
+    Range: "bytes=100-200",
+    Referer: "https://course.example.com/lesson"
+  }
+}), /<em>\+5<\/em>/);

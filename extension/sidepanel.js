@@ -455,6 +455,53 @@ function requestEvidence(item) {
   ].filter(Boolean).join(" · ");
 }
 
+function requestHeaderValue(item, targetName) {
+  const target = String(targetName || "").toLowerCase();
+  for (const [name, value] of Object.entries(item?.request_headers || {})) {
+    if (String(name).toLowerCase() === target) return String(value || "");
+  }
+  return "";
+}
+
+function resourceHasRangeRequest(item) {
+  return /^bytes=\d*-\d*$/i.test(requestHeaderValue(item, "range").trim());
+}
+
+function resourceEvidenceTags(item) {
+  if (!item) return [];
+  const tags = [];
+  const add = value => {
+    if (value && !tags.includes(value)) tags.push(value);
+  };
+  if (item.is_main_video) add("当前主视频");
+  add(playbackText(item.playback_match));
+  if (item.kind === "hls" || item.kind === "dash") add("可合并 manifest");
+  if (item.kind === "video") add("可直接下载");
+  if (item.kind === "blob") add("blob 线索");
+  if (item.kind === "fragment") add("分片线索");
+  if (item.blob_url) add("blob/MSE 映射");
+  if (item.source === "webRequest") add("浏览器请求");
+  if (String(item.source || "").startsWith("pageHook")) add("页面接口");
+  if (item.request_type === "media") add("media 请求");
+  if (resourceHasRangeRequest(item)) add("Range 播放请求");
+  if (requestHeaderValue(item, "referer") || requestHeaderValue(item, "origin")) add("带 Referer/Origin");
+  if (item.status_code) add(`HTTP ${item.status_code}`);
+  return tags.slice(0, 9);
+}
+
+function resourceReasonText(item) {
+  const tags = resourceEvidenceTags(item);
+  return tags.length ? tags.join(" · ") : "";
+}
+
+function resourceTagHtml(item, limit = 4) {
+  const tags = resourceEvidenceTags(item);
+  if (!tags.length) return "";
+  const visible = tags.slice(0, limit);
+  const overflow = tags.length - visible.length;
+  return `<span class="resource-tags">${visible.map(tag => `<em>${escapeHtml(tag)}</em>`).join("")}${overflow > 0 ? `<em>+${overflow}</em>` : ""}</span>`;
+}
+
 function activeVideoText(active) {
   if (!active?.src) return "-";
   return [
@@ -534,6 +581,7 @@ function renderInspector() {
   els.resourceInspector.className = "resource-inspector";
   els.resourceInspector.innerHTML = `
     <strong>${escapeHtml(directnessText(item))}</strong>
+    ${resourceReasonText(item) ? `<span>选择依据：${escapeHtml(resourceReasonText(item))}</span>` : ""}
     <span>${escapeHtml(requestEvidence(item) || "无请求证据")}</span>
     ${item.blob_url ? `<span>播放 blob：${escapeHtml(item.blob_url)}</span>` : ""}
     ${item.frame_url ? `<span>所在 frame：${escapeHtml(item.frame_url)}</span>` : ""}
@@ -659,6 +707,7 @@ function renderContext() {
     <button class="resource ${item.url === selectedResourceUrl ? "selected" : ""} ${isDownloadableResource(item) ? "" : "non-downloadable"} ${item.playback_match || item.is_main_video ? "playback" : ""}" data-url="${escapeHtml(item.url)}">
       <span>
         <strong>${escapeHtml(item.label || item.kind || "media")}</strong>
+        ${resourceTagHtml(item)}
         <small>${escapeHtml([
           isDownloadableResource(item) ? "可直取" : "线索",
           item.is_main_video ? "主视频" : "",
