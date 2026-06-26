@@ -26,6 +26,7 @@ const els = {
   activeVideo: document.querySelector("#activeVideo"),
   resourceCount: document.querySelector("#resourceCount"),
   readiness: document.querySelector("#readiness"),
+  extractionPlan: document.querySelector("#extractionPlan"),
   resources: document.querySelector("#resources"),
   resourceInspector: document.querySelector("#resourceInspector"),
   summarizeButton: document.querySelector("#summarizeButton"),
@@ -659,6 +660,75 @@ function renderReadiness() {
   els.readiness.textContent = "当前页还没有可下载媒体候选；可先播放几秒后重新检测。";
 }
 
+function extractionPlanStateClass(state) {
+  if (state === "done") return "done";
+  if (state === "active") return "active";
+  if (state === "warn") return "warn";
+  if (state === "blocked") return "blocked";
+  return "ready";
+}
+
+function extractionPlanStatusText(state) {
+  return {
+    done: "已就绪",
+    active: "进行中",
+    warn: "需兜底",
+    blocked: "不可用",
+    ready: "待命"
+  }[state] || "待命";
+}
+
+function selectedResourceLabel(item) {
+  if (!item) return "等待媒体候选";
+  return [
+    item.kind || "media",
+    item.source || "",
+    item.score ? `${item.score}%` : ""
+  ].filter(Boolean).join(" · ");
+}
+
+function renderExtractionPlan() {
+  if (!els.extractionPlan) return;
+  const selected = selectedResource();
+  const checked = currentPreflight();
+  const downloadableCount = resources.filter(isDownloadableResource).length;
+  const pageFallback = canAttemptBackendPageFallback("video");
+  const drmDetected = page?.drm_detected || page?.active_video?.drm_detected;
+  const directState = checked
+    ? checked.downloadable ? "done" : "warn"
+    : downloadableCount ? "active" : drmDetected ? "blocked" : resources.length ? "warn" : "blocked";
+  const fallbackState = pageFallback
+    ? checked?.downloadable ? "ready" : "active"
+    : "blocked";
+  const localState = "ready";
+  const directDetail = checked
+    ? checked.downloadable
+      ? `${checked.kind || selected?.kind || "media"} 可访问，任务会优先直取。`
+      : `${checked.code || checked.message || "预检未通过"}，会保留证据并尝试兜底。`
+    : selected
+      ? `${selectedResourceLabel(selected)}；${directnessText(selected)}。`
+      : "播放几秒或重新检测后生成候选。";
+  const fallbackDetail = pageFallback
+    ? "当前页、iframe、Referer/Origin 和 yt-dlp 会作为下载兜底。"
+    : "当前上下文没有可扫描的 HTTP(S) 页面 URL。";
+  const localDetail = "本地视频走同一套转写、切片、视觉窗口和笔记管线。";
+  const steps = [
+    { key: "direct", title: "首选直取", state: directState, detail: directDetail },
+    { key: "fallback", title: "页面兜底", state: fallbackState, detail: fallbackDetail },
+    { key: "local", title: "本地入口", state: localState, detail: localDetail }
+  ];
+  els.extractionPlan.innerHTML = steps.map((step, index) => `
+    <section class="extraction-step ${extractionPlanStateClass(step.state)}" data-step="${step.key}">
+      <span>${index + 1}</span>
+      <div>
+        <strong>${escapeHtml(step.title)}</strong>
+        <small>${escapeHtml(step.detail)}</small>
+      </div>
+      <em>${escapeHtml(extractionPlanStatusText(step.state))}</em>
+    </section>
+  `).join("");
+}
+
 function renderInspector() {
   const item = selectedResource();
   const checked = currentPreflight();
@@ -792,6 +862,7 @@ function renderContext() {
   }
   els.resourceCount.textContent = String(resources.length);
   renderReadiness();
+  renderExtractionPlan();
   if (!resources.length) {
     els.resources.innerHTML = `${resourceHint()}<p class="muted">未检测到可直接下载的视频资源。</p>`;
     renderInspector();
