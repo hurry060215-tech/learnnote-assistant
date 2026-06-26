@@ -81,6 +81,18 @@ assert.equal(
   }, "application/octet-stream"),
   "unknown"
 );
+assert.equal(
+  context.classifyCompletedRequest(
+    {
+      url: "https://cdn.example.com/api/range?id=abc",
+      type: "xmlhttprequest"
+    },
+    "application/octet-stream",
+    { Range: "bytes=0-" },
+    { "content-range": "bytes 0-1048575/8388608" }
+  ),
+  "video"
+);
 assert.ok(
   context.scoreKind("https://cdn.example.com/playback?id=abc", "webRequest", "video") >= 95,
   "expected extensionless browser media requests to rank like video candidates"
@@ -149,6 +161,40 @@ assert.equal(earlyResources[0].kind, "video");
 assert.equal(earlyResources[0].status_code, 206);
 assert.equal(earlyResources[0].request_headers.Range, "bytes=0-");
 assert.equal(earlyResources[0].headers["content-range"], "bytes 0-1048575/8388608");
+
+context.rememberRequestHeaders({
+  requestId: "xhr-stream-1",
+  url: "https://cdn.example.com/api/chunk?id=xhr",
+  type: "xmlhttprequest",
+  requestHeaders: [
+    { name: "Range", value: "bytes=1048576-" },
+    { name: "Referer", value: "https://course.example.com/lesson" },
+    { name: "Accept", value: "*/*" }
+  ]
+});
+context.recordResponseMedia({
+  requestId: "xhr-stream-1",
+  tabId: 18,
+  url: "https://cdn.example.com/api/chunk?id=xhr",
+  type: "xmlhttprequest",
+  method: "GET",
+  statusCode: 206,
+  frameId: 4,
+  documentUrl: "https://course.example.com/player",
+  initiator: "https://course.example.com",
+  timeStamp: Date.now(),
+  responseHeaders: [
+    { name: "Content-Type", value: "application/octet-stream" },
+    { name: "Content-Range", value: "bytes 1048576-2097151/8388608" }
+  ]
+}, context.peekRequestHeaders("xhr-stream-1"));
+
+const xhrResources = vm.runInContext("resourceByTab.get(18)", context);
+assert.equal(xhrResources.length, 1);
+assert.equal(xhrResources[0].kind, "video");
+assert.equal(xhrResources[0].request_type, "xmlhttprequest");
+assert.equal(xhrResources[0].request_headers.Range, "bytes=1048576-");
+assert.equal(xhrResources[0].headers["content-range"], "bytes 1048576-2097151/8388608");
 
 const cookieUrls = context.cookieUrlsForContext(
   {
