@@ -10,9 +10,14 @@ from pathlib import Path
 from urllib.parse import urlparse
 from unittest.mock import patch
 
+from app.config import DATA_DIR
 from app.downloader import DownloadError, MediaDownloader, preflight_media_resource
 from app.models import BrowserCookie, ResourceCandidate
 from app.runtime import ffmpeg_bin
+
+TEST_RUN_DIR = DATA_DIR / "test-runs"
+TEST_RUN_DIR.mkdir(parents=True, exist_ok=True)
+tempfile.tempdir = str(TEST_RUN_DIR)
 
 
 class QuietHandler(SimpleHTTPRequestHandler):
