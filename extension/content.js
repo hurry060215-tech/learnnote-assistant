@@ -292,6 +292,86 @@ function activeVideoInfo() {
   };
 }
 
+function cuesToArray(cues) {
+  const items = [];
+  if (!cues) return items;
+  try {
+    for (let index = 0; index < cues.length; index += 1) {
+      const cue = cues[index];
+      if (cue) items.push(cue);
+    }
+  } catch {
+    return [];
+  }
+  return items;
+}
+
+function collectVideoSubtitleCues(video, limit = 1000) {
+  const subtitles = [];
+  const seen = new Set();
+  const tracks = [];
+  try {
+    for (let index = 0; index < (video.textTracks?.length || 0); index += 1) {
+      const track = video.textTracks[index];
+      if (track) tracks.push(track);
+    }
+  } catch {
+    return subtitles;
+  }
+
+  for (const track of tracks) {
+    const cueSources = [];
+    try {
+      if (track.cues) cueSources.push(track.cues);
+    } catch {
+      // Cross-origin or unloaded tracks may deny cue access.
+    }
+    try {
+      if (track.activeCues) cueSources.push(track.activeCues);
+    } catch {
+      // Active cue access can fail independently of the full cue list.
+    }
+
+    for (const cueSource of cueSources) {
+      for (const cue of cuesToArray(cueSource)) {
+        const text = String(cue.text || "").replace(/\s+/g, " ").trim();
+        if (!text) continue;
+        const start = Number(cue.startTime ?? cue.start ?? 0);
+        const end = Number(cue.endTime ?? cue.end ?? start);
+        if (!Number.isFinite(start) || !Number.isFinite(end)) continue;
+        const key = `${Math.round(start * 1000)}|${Math.round(end * 1000)}|${text}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        subtitles.push({
+          start: Math.max(0, start),
+          end: Math.max(start, end),
+          text
+        });
+        if (subtitles.length >= limit) return subtitles;
+      }
+    }
+  }
+  return subtitles;
+}
+
+function collectBrowserSubtitles(limit = 1200) {
+  const videos = collectVideos();
+  const main = pickMainVideo(videos);
+  const ordered = main ? [main, ...videos.filter(item => item.video !== main.video)] : videos;
+  const all = [];
+  const seen = new Set();
+  for (const { video } of ordered) {
+    for (const cue of collectVideoSubtitleCues(video, limit - all.length)) {
+      const key = `${Math.round(cue.start * 1000)}|${Math.round(cue.end * 1000)}|${cue.text}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      all.push(cue);
+      if (all.length >= limit) return all.sort((a, b) => a.start - b.start || a.end - b.end);
+    }
+  }
+  return all.sort((a, b) => a.start - b.start || a.end - b.end);
+}
+
 function collectDomResources() {
   const resources = [];
   const videos = collectVideos();
@@ -359,11 +439,13 @@ function collectPageData() {
   }
   const active = activeVideoInfo();
   const drm = collectDrmSignals();
+  const browserSubtitles = collectBrowserSubtitles();
   return {
     title: document.title,
     page_url: location.href,
     page_text: collectCourseText(),
     active_video: active,
+    browser_subtitles: browserSubtitles,
     drm_detected: Boolean(active?.drm_detected || drm.length),
     drm_signals: drm,
     resources: [...byUrl.values()].sort((a, b) => b.score - a.score).slice(0, 30)
@@ -374,11 +456,13 @@ function pageSignature(data) {
   const active = data.active_video || {};
   const topResources = (data.resources || []).slice(0, 12).map(item => `${item.url}|${item.kind}|${item.score}`).join(";");
   const drm = (data.drm_signals || []).map(item => `${item.source}|${item.key_system}|${item.init_data_type}`).join(";");
+  const subtitleTail = (data.browser_subtitles || []).slice(-3).map(item => `${Math.floor(item.start || 0)}|${item.text}`).join(";");
   return [
     location.href,
     active.src || "",
     Math.floor(active.current_time || 0),
     active.paused ? "paused" : "playing",
+    subtitleTail,
     data.drm_detected ? "drm" : "",
     drm,
     topResources

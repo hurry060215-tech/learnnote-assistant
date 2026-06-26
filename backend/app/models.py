@@ -96,12 +96,19 @@ class ActiveVideoInfo(BaseModel):
     time_stamp: float | None = None
 
 
+class BrowserSubtitleCue(BaseModel):
+    start: float
+    end: float
+    text: str
+
+
 class CurrentPageTaskRequest(BaseModel):
     mode: Literal["video", "page_text"] = "video"
     page_url: str
     title: str = ""
     page_text: str = ""
     active_video: ActiveVideoInfo | None = None
+    browser_subtitles: list[BrowserSubtitleCue] = Field(default_factory=list)
     resources: list[ResourceCandidate] = Field(default_factory=list)
     drm_detected: bool = False
     drm_signals: list[DrmSignal] = Field(default_factory=list)

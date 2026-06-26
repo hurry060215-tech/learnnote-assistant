@@ -378,6 +378,62 @@ class ProcessorBoundaryTests(unittest.TestCase):
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
+    def test_current_page_prefers_browser_subtitles_over_audio_pipeline(self) -> None:
+        task = create_task("current_page", "Browser subtitle lesson", "https://course.example.com/lesson")
+        source_path = task_dir(task.id) / "download.mp4"
+
+        class FakeDownloader:
+            def __init__(self, work_dir: Path):
+                self.work_dir = work_dir
+                self.attempts = []
+
+            def download(self, page_url, resources, cookies, title):
+                source_path.write_bytes(b"downloaded video")
+                return source_path, ResourceCandidate(url="https://cdn.example.com/lesson.mp4", source="webRequest", kind="video")
+
+            def download_subtitle(self, resources, cookies, referer, title):
+                raise AssertionError("download_subtitle should be skipped when browser subtitles are present")
+
+        def fake_normalize(source: Path, target: Path) -> Path:
+            self.assertEqual(source, source_path)
+            target.write_bytes(b"normalized video")
+            return target
+
+        def fake_summary(title, transcript, grids, options, page_url):
+            self.assertEqual(transcript.source, "browser-subtitle")
+            self.assertIn("first browser cue", transcript.full_text)
+            self.assertIn("second browser cue", transcript.full_text)
+            return ("# Browser subtitle lesson\n\nfirst browser cue", "local-template", "")
+
+        try:
+            request = CurrentPageTaskRequest(
+                page_url="https://course.example.com/lesson",
+                title="Browser subtitle lesson",
+                resources=[ResourceCandidate(url="https://cdn.example.com/lesson.mp4", source="webRequest", kind="video")],
+                browser_subtitles=[
+                    {"start": 0, "end": 2, "text": "first browser cue"},
+                    {"start": 2, "end": 4, "text": "second browser cue"},
+                ],
+                options=TaskOptions(visual_understanding=False),
+            )
+
+            with patch("app.processor.MediaDownloader", FakeDownloader), \
+                patch("app.processor.normalize_video", side_effect=fake_normalize), \
+                patch("app.processor.extract_audio", side_effect=AssertionError("audio extraction should be skipped")), \
+                patch("app.processor.transcribe_audio", side_effect=AssertionError("Whisper should be skipped")), \
+                patch("app.processor.summarize_with_diagnostics", side_effect=fake_summary):
+                process_current_page_task(task.id, request)
+
+            record = get_task(task.id)
+            self.assertEqual(record.status, "success")
+            self.assertEqual(record.audio_path, "")
+            transcript = read_transcript(task.id)
+            self.assertEqual(transcript["source"], "browser-subtitle")
+            self.assertEqual([segment["text"] for segment in transcript["segments"]], ["first browser cue", "second browser cue"])
+            self.assertIn("first browser cue", read_note(task.id))
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
     def test_drm_signal_without_downloadable_candidate_fails_before_downloader(self) -> None:
         task = create_task("current_page", "DRM lesson", "https://course.example.com/drm")
         try:

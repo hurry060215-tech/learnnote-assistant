@@ -52,6 +52,7 @@ class FakeElement {
     this.videoHeight = options.videoHeight || 0;
     this.clientWidth = options.clientWidth || 0;
     this.clientHeight = options.clientHeight || 0;
+    this.textTracks = options.textTracks || [];
     this.shadowRoot = null;
     this.listeners = [];
   }
@@ -93,7 +94,18 @@ const video = new FakeElement("video", {
   paused: false,
   readyState: 4,
   videoWidth: 1280,
-  videoHeight: 720
+  videoHeight: 720,
+  textTracks: [
+    {
+      cues: [
+        { startTime: 0, endTime: 2.5, text: "Welcome to the lesson" },
+        { startTime: 2.5, endTime: 5, text: "Shadow DOM caption cue" }
+      ],
+      activeCues: [
+        { startTime: 2.5, endTime: 5, text: "Shadow DOM caption cue" }
+      ]
+    }
+  ]
 }, [
   new FakeElement("source", {
     src: "https://cdn.example.com/shadow/playlist.m3u8?token=1",
@@ -191,6 +203,10 @@ const urls = new Set(response.resources.map(item => item.url));
 
 assert.equal(response.active_video.src, "https://cdn.example.com/shadow/current.mp4?token=1");
 assert.equal(response.active_video.paused, false);
+assert.deepEqual(JSON.parse(JSON.stringify(response.browser_subtitles)), [
+  { start: 0, end: 2.5, text: "Welcome to the lesson" },
+  { start: 2.5, end: 5, text: "Shadow DOM caption cue" }
+]);
 assert.ok(urls.has("https://cdn.example.com/shadow/current.mp4?token=1"));
 assert.ok(urls.has("https://cdn.example.com/shadow/playlist.m3u8?token=1"));
 assert.ok(urls.has("https://cdn.example.com/shadow/captions.vtt"));
