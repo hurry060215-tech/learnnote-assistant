@@ -26,6 +26,7 @@ const els = {
   activeVideo: document.querySelector("#activeVideo"),
   resourceCount: document.querySelector("#resourceCount"),
   readiness: document.querySelector("#readiness"),
+  routeSummary: document.querySelector("#routeSummary"),
   extractionPlan: document.querySelector("#extractionPlan"),
   resources: document.querySelector("#resources"),
   resourceInspector: document.querySelector("#resourceInspector"),
@@ -688,6 +689,97 @@ function selectedResourceLabel(item) {
   ].filter(Boolean).join(" · ");
 }
 
+function routeSummaryState() {
+  const selected = selectedResource();
+  const checked = currentPreflight();
+  const downloadableCount = resources.filter(isDownloadableResource).length;
+  const drmDetected = page?.drm_detected || page?.active_video?.drm_detected;
+  const canFallback = canAttemptBackendPageFallback("video");
+  if (checked?.downloadable) return "ready";
+  if (checked && !checked.downloadable) return canFallback ? "fallback" : "blocked";
+  if (downloadableCount) return "candidate";
+  if (drmDetected) return "blocked";
+  if (resources.length && canFallback) return "fallback";
+  if (resources.length) return "blocked";
+  return "empty";
+}
+
+function routeSummaryCopy(state) {
+  const selected = selectedResource();
+  const checked = currentPreflight();
+  const fallbackText = canAttemptBackendPageFallback("video")
+    ? "后端仍会尝试页面扫描、iframe、Referer/Origin 和 yt-dlp。"
+    : "当前没有可扫描页面 URL，只能继续播放重检或上传本地视频。";
+  if (state === "ready") {
+    return {
+      badge: "可开始",
+      title: "直取路线已验证",
+      action: "点击“总结当前视频”会先下载到本地，再按切片窗口生成图文笔记。",
+      detail: `${checked.kind || selected?.kind || "media"} 预检通过；${preflightRecoveryText(checked)}`
+    };
+  }
+  if (state === "candidate") {
+    return {
+      badge: "待预检",
+      title: "已找到可直取候选",
+      action: "建议先预检资源；也可以直接总结，系统会自动预检并尝试下一个候选。",
+      detail: selected ? `${selectedResourceLabel(selected)}；${directnessText(selected)}。` : "等待选择候选资源。"
+    };
+  }
+  if (state === "fallback") {
+    return {
+      badge: "需兜底",
+      title: "直链不稳，保留后端解析路线",
+      action: "可以继续开始任务；若仍失败，使用本地视频入口走同一套切片总结。",
+      detail: checked ? `${checked.message || checked.code || "预检未通过"}；${fallbackText}` : fallbackText
+    };
+  }
+  if (state === "blocked") {
+    return {
+      badge: "不可直取",
+      title: "当前页还不能直接下载",
+      action: "不会录制或绕过 DRM。继续播放几秒后重检，或拖入本地视频。",
+      detail: checked?.message || (page?.drm_detected || page?.active_video?.drm_detected ? "检测到 DRM/EME 或只有不可还原媒体线索。" : "没有可独立下载的 mp4/m3u8/mpd。")
+    };
+  }
+  return {
+    badge: "等待播放",
+    title: "播放课程后自动识别",
+    action: "先让页面视频播放几秒，再重新检测媒体请求。",
+    detail: "系统只直取浏览器已暴露的可访问资源，不做标签页录制。"
+  };
+}
+
+function routeSummaryMetrics() {
+  const selected = selectedResource();
+  const checked = currentPreflight();
+  const [cols, rows] = String(els.gridSize?.value || "3x3").split("x").map(Number);
+  return [
+    { label: "候选", value: `${resources.filter(isDownloadableResource).length}/${resources.length}` },
+    { label: "选中", value: selected?.kind || "-" },
+    { label: "预检", value: checked ? checked.downloadable ? "通过" : checked.code || "未过" : "未跑" },
+    { label: "切片", value: `${Number(els.frameInterval?.value || 20)}秒 · ${cols || 3}x${rows || 3}` }
+  ];
+}
+
+function renderRouteSummary() {
+  if (!els.routeSummary) return;
+  const state = routeSummaryState();
+  const copy = routeSummaryCopy(state);
+  els.routeSummary.className = `route-summary ${state}`;
+  els.routeSummary.innerHTML = `
+    <div class="route-summary-main">
+      <span>${escapeHtml(copy.badge)}</span>
+      <strong>${escapeHtml(copy.title)}</strong>
+      <small>${escapeHtml(copy.action)}</small>
+    </div>
+    <div class="route-summary-detail">${escapeHtml(copy.detail)}</div>
+    <div class="route-summary-metrics">
+      ${routeSummaryMetrics().map(item => `<span><b>${escapeHtml(item.value)}</b>${escapeHtml(item.label)}</span>`).join("")}
+    </div>
+  `;
+}
+
 function renderExtractionPlan() {
   if (!els.extractionPlan) return;
   const selected = selectedResource();
@@ -863,6 +955,7 @@ function renderContext() {
   }
   els.resourceCount.textContent = String(resources.length);
   renderReadiness();
+  renderRouteSummary();
   renderExtractionPlan();
   if (!resources.length) {
     els.resources.innerHTML = `${resourceHint()}<p class="muted">未检测到可直接下载的视频资源。</p>`;
