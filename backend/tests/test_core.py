@@ -25,7 +25,7 @@ from app.downloader import (
     ytdlp_headers_from_browser_context,
 )
 from app.models import ActiveVideoInfo, BrowserCookie, CurrentPageTaskRequest, DrmSignal, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment
-from app.processor import process_current_page_task, read_note, read_transcript, redacted_request_dump, redacted_resource
+from app.processor import process_current_page_task, process_local_video_task, read_note, read_transcript, redacted_request_dump, redacted_resource
 from app.summarizer import build_visual_windows, local_markdown_note, summarize_with_diagnostics
 from app.storage import create_task, get_task, task_dir
 from app.transcriber import transcript_from_subtitle
@@ -335,6 +335,49 @@ class ResourceDetectionTests(unittest.TestCase):
 
 
 class ProcessorBoundaryTests(unittest.TestCase):
+    def test_local_mp4_is_normalized_instead_of_copied(self) -> None:
+        task = create_task("local", "Local mp4 normalize")
+        input_path = task_dir(task.id) / "upload.mp4"
+        input_path.write_bytes(b"fake mp4")
+        try:
+            def fake_normalize(source: Path, target: Path) -> Path:
+                self.assertEqual(source, input_path)
+                self.assertEqual(target.name, "media.mp4")
+                target.write_bytes(b"normalized mp4")
+                return target
+
+            def fake_extract_audio(video: Path, target: Path) -> Path:
+                self.assertEqual(video.name, "media.mp4")
+                target.write_bytes(b"audio")
+                return target
+
+            with patch("app.processor.normalize_video", side_effect=fake_normalize) as normalize:
+                with patch("app.processor.extract_audio", side_effect=fake_extract_audio):
+                    with patch(
+                        "app.processor.transcribe_audio",
+                        return_value=TranscriptResult(
+                            source="unit",
+                            full_text="normalized transcript",
+                            segments=[TranscriptSegment(start=0, end=1, text="normalized transcript")],
+                        ),
+                    ):
+                        with patch("app.processor.extract_frames", return_value=[]):
+                            with patch("app.processor.build_frame_grids", return_value=[]):
+                                with patch(
+                                    "app.processor.summarize_with_diagnostics",
+                                    return_value=("# Local mp4 normalize", "local-template", ""),
+                                ):
+                                    process_local_video_task(task.id, input_path, "Local mp4 normalize", TaskOptions())
+
+            record = get_task(task.id)
+            normalize.assert_called_once()
+            self.assertEqual(record.status, "success")
+            self.assertTrue(record.media_path.endswith("media.mp4"))
+            self.assertEqual(Path(record.media_path).read_bytes(), b"normalized mp4")
+            self.assertIn("Local mp4 normalize", read_note(task.id))
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
     def test_drm_signal_without_downloadable_candidate_fails_before_downloader(self) -> None:
         task = create_task("current_page", "DRM lesson", "https://course.example.com/drm")
         try:
