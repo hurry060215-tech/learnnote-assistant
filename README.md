@@ -12,6 +12,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - BiliNote-style task stage rail for download, transcription, frame slicing, note generation, and completion.
 - Transcript timeline view aligns each subtitle segment with its frame-grid visual window, so notes can be reviewed by time slice instead of as a flat transcript.
 - Markdown note export from both the local Web UI and the browser Side Panel.
+- Study bundle export from both UIs: Markdown note, task metadata, transcript JSON, visual-window index, and frame-grid screenshots in one zip.
 - Current-page media detection from DOM, all-frame content scripts, Performance entries, and `webRequest`.
 - `webRequest` captures media candidates as soon as response headers arrive, so long-running video/range streams do not have to finish before they can be selected.
 - Main-world fetch/XHR hook for media URLs exposed in text, JSON, playlist, or script responses before they appear in `<video>`.
