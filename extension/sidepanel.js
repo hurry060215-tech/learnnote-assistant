@@ -45,6 +45,7 @@ const els = {
   resultTabs: document.querySelectorAll(".result-tab"),
   result: document.querySelector("#result"),
   copyButton: document.querySelector("#copyButton"),
+  bundleButton: document.querySelector("#bundleButton"),
   downloadButton: document.querySelector("#downloadButton"),
   openWebButton: document.querySelector("#openWebButton"),
   settingsButton: document.querySelector("#settingsButton")
@@ -753,6 +754,7 @@ function transcriptTimeline(transcript, task, limit = 100) {
 function renderResult() {
   const hasNote = Boolean(currentTaskId) && (Boolean(currentTask?.note_path) || currentTask?.status === "success");
   els.copyButton.disabled = !hasNote;
+  els.bundleButton.disabled = !hasNote;
   els.downloadButton.disabled = !hasNote;
   if (!currentTask) {
     els.result.textContent = "任务完成后显示结果。";
@@ -872,6 +874,12 @@ els.localDrop.addEventListener("drop", event => {
   }
 });
 els.copyButton.onclick = () => navigator.clipboard.writeText(lastNote || "");
+els.bundleButton.onclick = () => {
+  if (!currentTaskId) return;
+  const url = `${backendUrl}/api/tasks/${encodeURIComponent(currentTaskId)}/exports/bundle`;
+  if (HAS_EXTENSION_API) chrome.tabs.create({ url });
+  else window.open(url, "_blank", "noopener");
+};
 els.downloadButton.onclick = () => {
   if (!currentTaskId) return;
   const url = `${backendUrl}/api/tasks/${encodeURIComponent(currentTaskId)}/exports/markdown`;
