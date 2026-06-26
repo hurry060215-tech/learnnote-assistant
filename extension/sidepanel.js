@@ -15,6 +15,7 @@ let preflightResourceUrl = "";
 let contextRefreshTimer = 0;
 let isCollectingContext = false;
 let pendingContextRefresh = false;
+let currentTabId = null;
 
 const els = {
   backendStatus: document.querySelector("#backendStatus"),
@@ -522,6 +523,13 @@ function scheduleContextRefresh(reason = "media", delay = 350) {
   }, delay);
 }
 
+function shouldAcceptContextUpdate(message = {}) {
+  if (message?.type !== "current-context-updated") return false;
+  if (currentTabId === null || currentTabId === undefined) return true;
+  if (message.tabId === null || message.tabId === undefined) return true;
+  return message.tabId === currentTabId;
+}
+
 async function collectContextNow() {
   els.pageTitle.textContent = "读取中...";
   els.resources.innerHTML = `<p class="muted">正在检测媒体资源...</p>`;
@@ -543,6 +551,7 @@ async function collectContextNow() {
     els.resources.innerHTML = `<p class="muted">${escapeHtml(response.error)}</p>`;
     return;
   }
+  currentTabId = response.tab?.id ?? null;
   page = response.page;
   resources = response.resources || [];
   selectedResourceUrl = pickDefaultResourceUrl(resources, selectedResourceUrl);
@@ -1004,7 +1013,7 @@ els.settingsButton.onclick = saveSettings;
 
 if (HAS_EXTENSION_API && chrome.runtime.onMessage?.addListener) {
   chrome.runtime.onMessage.addListener(message => {
-    if (message?.type === "current-context-updated") {
+    if (shouldAcceptContextUpdate(message)) {
       scheduleContextRefresh(message.reason || "media");
     }
   });
