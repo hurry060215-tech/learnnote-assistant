@@ -84,3 +84,31 @@ context.window.innerWidth = 390;
 context.focusResultPanelOnMobile();
 assert.equal(resultPanel.scrollCalls.length, 1);
 assert.equal(resultPanel.scrollCalls[0].block, "start");
+
+const posts = [];
+context.fetch = async (url, options = {}) => {
+  const value = String(url);
+  if (value.endsWith("/api/tasks/from-current-page")) {
+    posts.push(JSON.parse(options.body));
+    return { json: async () => ({ task_id: "task-url-direct" }) };
+  }
+  if (value.endsWith("/api/tasks/task-url-direct")) {
+    return { json: async () => ({ task: { id: "task-url-direct", status: "queued", phase: "downloading", progress: 0, source_type: "url" } }) };
+  }
+  if (value.endsWith("/api/tasks")) {
+    return { json: async () => ({ tasks: [{ id: "task-url-direct", status: "queued", phase: "downloading", progress: 0, source_type: "url" }] }) };
+  }
+  return { ok: false, json: async () => ({}), text: async () => "" };
+};
+
+elements.get("#urlInput").value = "https://cdn.example.com/api/play?id=shadow";
+elements.get("#urlMode").value = "video";
+elements.get("#titleInput").value = "无后缀直连课件";
+await context.startUrlTask();
+
+assert.equal(posts.length, 1);
+assert.equal(posts[0].resources.length, 1);
+assert.equal(posts[0].resources[0].kind, "video");
+assert.equal(posts[0].resources[0].source, "manual");
+assert.equal(posts[0].resources[0].request_type, "manual-forced");
+assert.equal(posts[0].resources[0].url, "https://cdn.example.com/api/play?id=shadow");
