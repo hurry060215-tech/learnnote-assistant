@@ -103,6 +103,40 @@ assert.match(railHtml, /src="http:\/\/127\.0\.0\.1:8765\/api\/tasks\/demo\/grids
 assert.doesNotMatch(railHtml, /<script>/);
 assert.match(railHtml, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
 
+const timelineHtml = context.transcriptTimeline({
+  segments: [
+    { start: 5, end: 8, text: "第一段字幕" },
+    { start: 190, end: 196, text: "<script>alert(1)</script>" }
+  ]
+}, {
+  visual_windows: [
+    {
+      id: "W001",
+      start: 0,
+      end: 180,
+      frame_count: 9,
+      grid_url: "http://127.0.0.1:8765/api/tasks/demo/grids/grid_000.jpg",
+      transcript_excerpt: ""
+    },
+    {
+      id: "W002",
+      start: 180,
+      end: 360,
+      frame_count: 9,
+      grid_url: "http://127.0.0.1:8765/api/tasks/demo/grids/grid_001.jpg",
+      transcript_excerpt: ""
+    }
+  ]
+});
+
+assert.match(timelineHtml, /class="transcript-timeline"/);
+assert.match(timelineHtml, /W001/);
+assert.match(timelineHtml, /00:00:00 - 00:03:00/);
+assert.match(timelineHtml, /第一段字幕/);
+assert.match(timelineHtml, /W002/);
+assert.match(timelineHtml, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+assert.doesNotMatch(timelineHtml, /<script>/);
+
 const posts = [];
 context.fetch = async (url, options = {}) => {
   const value = String(url);

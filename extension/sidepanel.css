@@ -684,6 +684,66 @@ input[type="file"] {
   font-variant-numeric: tabular-nums;
 }
 
+.transcript-timeline {
+  display: grid;
+  gap: 9px;
+}
+
+.transcript-window {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  padding: 9px;
+}
+
+.transcript-window figure {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  margin: 0;
+}
+
+.transcript-window img {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  display: block;
+  object-fit: cover;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: #111827;
+}
+
+.transcript-window figcaption {
+  display: grid;
+  gap: 3px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.transcript-window figcaption strong {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.transcript-window-lines .line:first-child {
+  padding-top: 0;
+}
+
+.transcript-window-lines p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.transcript-window-orphan {
+  background: #fbfcff;
+}
+
 .frame-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
