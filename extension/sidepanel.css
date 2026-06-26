@@ -678,6 +678,143 @@ input[type="file"] {
   padding: 12px;
 }
 
+.task-overview {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #dbe7f6;
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(20, 99, 255, 0.08), rgba(255, 255, 255, 0) 48%),
+    #ffffff;
+  padding: 11px;
+  box-shadow: 0 10px 24px rgba(16, 24, 40, 0.05);
+}
+
+.task-overview.status-success {
+  border-color: rgba(20, 150, 74, 0.28);
+}
+
+.task-overview.status-failed {
+  border-color: rgba(217, 45, 32, 0.26);
+  background:
+    linear-gradient(135deg, rgba(217, 45, 32, 0.08), rgba(255, 255, 255, 0) 48%),
+    #ffffff;
+}
+
+.task-overview.status-running {
+  border-color: rgba(20, 99, 255, 0.34);
+}
+
+.task-overview-main {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.task-overview-main > span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.task-overview-main strong {
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.28;
+  overflow-wrap: anywhere;
+}
+
+.task-overview-main small {
+  overflow-wrap: anywhere;
+}
+
+.stage-rail.inline {
+  margin-top: 4px;
+}
+
+.task-overview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.task-overview-actions button,
+.task-overview-actions span {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #c9d9ff;
+  border-radius: 7px;
+  background: #f2f6ff;
+  color: var(--accent);
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 850;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.task-overview-actions button {
+  width: auto;
+  height: auto;
+  cursor: pointer;
+}
+
+.task-overview-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.task-overview-metrics span {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fbfcff;
+  padding: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.task-overview-metrics b {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-overview-callout {
+  display: grid;
+  gap: 3px;
+  border: 1px solid rgba(20, 99, 255, 0.22);
+  border-radius: 8px;
+  background: #f4f8ff;
+  padding: 9px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.task-overview-callout strong {
+  color: var(--accent);
+  font-size: 12px;
+}
+
+.task-overview-callout.failed {
+  border-color: rgba(217, 45, 32, 0.24);
+  background: rgba(217, 45, 32, 0.07);
+}
+
+.task-overview-callout.failed strong {
+  color: var(--danger);
+}
+
 .note-outline {
   display: grid;
   gap: 8px;

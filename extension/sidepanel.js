@@ -967,6 +967,74 @@ function transcriptLines(segments) {
   return segments.map(seg => `<div class="line"><time>${fmt(seg.start)}</time><span>${escapeHtml(seg.text)}</span></div>`).join("");
 }
 
+function taskStatusClass(task = {}) {
+  if (task.status === "success") return "success";
+  if (task.status === "failed") return "failed";
+  if (task.status === "running" || task.status === "queued") return "running";
+  return "idle";
+}
+
+function taskOverview(task) {
+  const selected = task.selected_resource || {};
+  const options = task.options || {};
+  const windows = visualWindows(task);
+  const hasNote = Boolean(task.note_path);
+  const hasMedia = Boolean(task.media_path);
+  const statusClass = taskStatusClass(task);
+  const resourceLine = [
+    taskSourceText(task),
+    selected.kind || task.source_type || "",
+    selected.playback_match ? playbackText(selected.playback_match) : "",
+    selected.content_length ? fmtBytes(selected.content_length) : ""
+  ].filter(Boolean).join(" · ");
+  const actionLinks = [
+    hasNote ? `<button type="button" data-export="markdown">Markdown</button>` : "",
+    hasMedia ? `<button type="button" data-export="media">本地视频</button>` : "",
+    hasNote || windows.length ? `<button type="button" data-export="bundle">资料包</button>` : ""
+  ].filter(Boolean).join("");
+  const downloadOnly = hasMedia && !hasNote && task.status === "success";
+  const failed = task.status === "failed";
+
+  return `<section class="task-overview status-${statusClass}">
+    <div class="task-overview-main">
+      <span>当前学习任务</span>
+      <strong>${escapeHtml(task.title || task.id)}</strong>
+      <small>${escapeHtml(resourceLine || taskStatusText(task))}</small>
+      <div class="stage-rail inline">${PIPELINE_STEPS.map(step => `<span class="${stepState(task, step)}">${step.label}</span>`).join("")}</div>
+    </div>
+    <div class="task-overview-actions">
+      ${actionLinks || `<span>${escapeHtml(taskStatusText(task))}</span>`}
+    </div>
+    <div class="task-overview-metrics">
+      <span><b>${escapeHtml(taskStatusText(task))}</b>${escapeHtml(task.phase || "-")} · ${task.progress || 0}%</span>
+      <span><b>${escapeHtml(options.frame_interval || "-")} 秒切片</b>${escapeHtml(options.grid_columns && options.grid_rows ? `${options.grid_columns}x${options.grid_rows} 视觉窗口` : "未配置视觉窗口")}</span>
+      <span><b>${escapeHtml(task.summary_source || options.whisper_model || "-")}</b>${escapeHtml(task.summary_warning ? "已降级" : `${options.note_style || "study"} · ${options.visual_understanding === false ? "无视觉" : "图文"}`)}</span>
+      <span><b>${windows.length || "-"}</b>${windows.length ? "画面窗口" : "等待切片"}</span>
+    </div>
+    ${downloadOnly ? `<div class="task-overview-callout">
+      <strong>已完成直取下载</strong>
+      <span>这个任务按“下载本地”运行，未进入转写、切片和总结；可导出 media.mp4，或重新点击“总结当前视频”。</span>
+    </div>` : ""}
+    ${failed ? `<div class="task-overview-callout failed">
+      <strong>${escapeHtml(task.error_code || "任务失败")}</strong>
+      <span>${escapeHtml(task.error_detail || "请查看诊断页里的下载尝试和资源证据。")}</span>
+    </div>` : ""}
+  </section>`;
+}
+
+function openTaskExport(type) {
+  if (!currentTaskId) return;
+  const url = `${backendUrl}/api/tasks/${encodeURIComponent(currentTaskId)}/exports/${type}`;
+  if (HAS_EXTENSION_API) chrome.tabs.create({ url });
+  else window.open(url, "_blank", "noopener");
+}
+
+function bindTaskOverviewActions() {
+  document.querySelectorAll(".task-overview-actions button[data-export]").forEach(button => {
+    button.onclick = () => openTaskExport(button.dataset.export);
+  });
+}
+
 function noteVisualRail(task, limit = 4) {
   const windows = visualWindows(task).filter(window => window.grid_url).slice(0, limit);
   if (!windows.length) return "";
@@ -1052,7 +1120,8 @@ function renderResult() {
       : currentTask.media_path
         ? `<p>视频已下载到本地。可点击右上角视频按钮导出，不会继续转写、切片或总结。</p>`
         : `<p>${escapeHtml(currentTask.message || "笔记尚未生成。")}</p>`;
-    els.result.innerHTML = `${noteOutline(lastNote)}${noteVisualRail(currentTask)}<article class="markdown-note">${noteHtml}</article>`;
+    els.result.innerHTML = `${taskOverview(currentTask)}${noteOutline(lastNote)}${noteVisualRail(currentTask)}<article class="markdown-note">${noteHtml}</article>`;
+    bindTaskOverviewActions();
     return;
   }
   if (selectedTab === "frames") {
@@ -1167,22 +1236,13 @@ els.localDrop.addEventListener("drop", event => {
 });
 els.copyButton.onclick = () => navigator.clipboard.writeText(lastNote || "");
 els.bundleButton.onclick = () => {
-  if (!currentTaskId) return;
-  const url = `${backendUrl}/api/tasks/${encodeURIComponent(currentTaskId)}/exports/bundle`;
-  if (HAS_EXTENSION_API) chrome.tabs.create({ url });
-  else window.open(url, "_blank", "noopener");
+  openTaskExport("bundle");
 };
 els.mediaButton.onclick = () => {
-  if (!currentTaskId) return;
-  const url = `${backendUrl}/api/tasks/${encodeURIComponent(currentTaskId)}/exports/media`;
-  if (HAS_EXTENSION_API) chrome.tabs.create({ url });
-  else window.open(url, "_blank", "noopener");
+  openTaskExport("media");
 };
 els.downloadButton.onclick = () => {
-  if (!currentTaskId) return;
-  const url = `${backendUrl}/api/tasks/${encodeURIComponent(currentTaskId)}/exports/markdown`;
-  if (HAS_EXTENSION_API) chrome.tabs.create({ url });
-  else window.open(url, "_blank", "noopener");
+  openTaskExport("markdown");
 };
 els.openWebButton.onclick = () => {
   if (HAS_EXTENSION_API) chrome.tabs.create({ url: backendUrl });
