@@ -820,13 +820,17 @@ button:disabled {
 }
 
 .frame-strip {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
+  display: flex;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
   gap: 8px;
   margin-bottom: 16px;
+  padding: 2px 0 8px;
 }
 
 .frame-strip figure {
+  flex: 0 0 156px;
   margin: 0;
 }
 
@@ -844,6 +848,9 @@ button:disabled {
   margin-top: 5px;
   color: var(--muted);
   font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .markdown-note {
@@ -1486,8 +1493,14 @@ select {
 }
 
 .frame-strip {
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  display: flex;
+  overflow-x: auto;
+  overflow-y: hidden;
   gap: 10px;
+}
+
+.frame-strip figure {
+  flex: 0 0 168px;
 }
 
 .frame-strip img,
@@ -1584,6 +1597,17 @@ select {
   .workspace-panel,
   .queue-panel {
     padding: 16px 14px;
+  }
+
+  .queue-panel {
+    max-height: 640px;
+    overflow: hidden;
+  }
+
+  .queue-panel .task-list {
+    max-height: 430px;
+    overflow-y: auto;
+    padding-right: 2px;
   }
 
   .result-panel {
