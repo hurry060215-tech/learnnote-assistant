@@ -17,6 +17,7 @@ from app.downloader import (
     classify_resource,
     cookie_header_for_url,
     download_headers_for_candidate,
+    effective_resource_kind,
     extract_media_resources_from_text,
     fallback_page_urls,
     infer_manifest_url_from_fragment,
@@ -44,6 +45,16 @@ class ResourceDetectionTests(unittest.TestCase):
             score_resource("https://cdn.example.com/index.m3u8", "application/vnd.apple.mpegurl", "webRequest"),
             score_resource("https://cdn.example.com/video.mp4", "video/mp4", "dom"),
         )
+
+    def test_effective_kind_trusts_browser_media_candidate_when_url_is_extensionless(self) -> None:
+        candidate = ResourceCandidate(
+            url="https://cdn.example.com/playback?id=abc",
+            source="webRequest",
+            kind="video",
+            mime="application/octet-stream",
+        )
+        self.assertEqual(classify_resource(candidate.url, candidate.mime), "unknown")
+        self.assertEqual(effective_resource_kind(candidate), "video")
 
     def test_infers_manifest_url_from_nested_fragment(self) -> None:
         fragment = "https://cdn.example.com/live/master.m3u8/segment-001.ts?token=abc"
@@ -432,6 +443,26 @@ class DownloaderBoundaryTests(unittest.TestCase):
             self.assertEqual(candidates[0].url, "https://cdn.example.com/lesson.mp4")
             self.assertEqual(candidates[0].playback_match, "blob-source")
             self.assertEqual(candidates[0].blob_url, "blob:https://course.example/active-video")
+
+    def test_extensionless_browser_media_candidate_is_downloadable(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            downloader = MediaDownloader(Path(tmp))
+            resources = [
+                ResourceCandidate(
+                    url="https://cdn.example.com/playback?id=abc",
+                    source="webRequest",
+                    kind="video",
+                    mime="application/octet-stream",
+                    score=95,
+                    request_type="media",
+                )
+            ]
+            candidates = downloader._candidate_resources(resources)
+            self.assertEqual(len(candidates), 1)
+            self.assertEqual(candidates[0].url, "https://cdn.example.com/playback?id=abc")
+            self.assertEqual(candidates[0].kind, "video")
+            self.assertGreaterEqual(candidates[0].score, 95)
+            self.assertEqual(downloader._strategy_for_candidate(candidates[0]), "direct-file")
 
     def test_manifest_candidate_is_inferred_from_fragment_url(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

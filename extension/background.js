@@ -49,6 +49,13 @@ function classify(url, mime = "") {
   return "unknown";
 }
 
+function classifyCompletedRequest(details = {}, mime = "") {
+  const kind = classify(details.url || "", mime);
+  if (kind !== "unknown") return kind;
+  if (details.type === "media") return "video";
+  return "unknown";
+}
+
 function inferManifestUrl(url) {
   try {
     const parsed = new URL(url);
@@ -68,8 +75,7 @@ function inferManifestUrl(url) {
   return "";
 }
 
-function scoreResource(url, mime, source) {
-  const kind = classify(url, mime);
+function scoreKind(url, source, kind) {
   let score = 0;
   if (kind === "hls" || kind === "dash") score += 95;
   else if (kind === "video") score += 85;
@@ -81,6 +87,10 @@ function scoreResource(url, mime, source) {
   if (source === "pageHookBlobSource" || source === "pageHookMediaSource") score += 8;
   if (/chaoxing|xuexitong/i.test(url)) score += 8;
   return Math.min(score, 100);
+}
+
+function scoreResource(url, mime, source) {
+  return scoreKind(url, source, classify(url, mime));
 }
 
 function isDownloadableKind(kind) {
@@ -154,7 +164,7 @@ function withPlaybackHints(resource, page = {}) {
   }
 
   if (match) hinted.playback_match = match;
-  hinted.score = Math.min(100, Math.max(hinted.score || 0, scoreResource(hinted.url || "", hinted.mime || "", hinted.source || "")) + boost);
+  hinted.score = Math.min(100, Math.max(hinted.score || 0, scoreKind(hinted.url || "", hinted.source || "", kind)) + boost);
   return hinted;
 }
 
@@ -311,7 +321,7 @@ function addResource(tabId, resource) {
     source: resource.source || "unknown",
     kind: resource.kind || classify(resource.url, resource.mime),
     mime: resource.mime || "",
-    score: Math.max(resource.score || 0, scoreResource(resource.url, resource.mime || "", resource.source || "")),
+    score: Math.max(resource.score || 0, scoreKind(resource.url, resource.source || "", resource.kind || classify(resource.url, resource.mime || ""))),
     label: resource.label || "",
     is_main_video: Boolean(resource.is_main_video),
     playback_match: resource.playback_match || "",
@@ -398,7 +408,7 @@ chrome.webRequest.onCompleted.addListener(
       if (RESPONSE_HEADER_ALLOWLIST.has(lower)) headers[lower] = header.value || "";
     }
     const mime = headers["content-type"] || "";
-    const kind = classify(details.url, mime);
+    const kind = classifyCompletedRequest(details, mime);
     if (kind === "unknown") return;
     const contentLength = Number(headers["content-length"] || 0);
     addResource(details.tabId, {

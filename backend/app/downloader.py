@@ -501,8 +501,17 @@ def classify_resource(url: str, mime: str = "") -> str:
     return "unknown"
 
 
-def score_resource(url: str, mime: str = "", source: str = "") -> int:
-    kind = classify_resource(url, mime)
+def effective_resource_kind(candidate: ResourceCandidate) -> str:
+    inferred = classify_resource(candidate.url, candidate.mime)
+    if inferred != "unknown":
+        return inferred
+    declared = (candidate.kind or "").lower()
+    if declared in {"video", "hls", "dash", "subtitle", "fragment", "blob"}:
+        return declared
+    return "unknown"
+
+
+def score_kind(url: str, source: str, kind: str) -> int:
     score = 0
     if kind in {"hls", "dash"}:
         score += 95
@@ -523,6 +532,14 @@ def score_resource(url: str, mime: str = "", source: str = "") -> int:
     if "chaoxing" in url or "xuexitong" in url:
         score += 8
     return min(score, 100)
+
+
+def score_resource(url: str, mime: str = "", source: str = "") -> int:
+    return score_kind(url, source, classify_resource(url, mime))
+
+
+def score_candidate(candidate: ResourceCandidate) -> int:
+    return score_kind(candidate.url, candidate.source, effective_resource_kind(candidate))
 
 
 def _safe_request_header_names(headers: dict[str, str]) -> list[str]:
@@ -567,7 +584,7 @@ def preflight_media_resource(
     referer: str,
     timeout: int = 12,
 ) -> MediaPreflightResult:
-    kind = classify_resource(candidate.url, candidate.mime)
+    kind = effective_resource_kind(candidate)
     resolved_url = candidate.url
     warnings: list[str] = []
     if kind == "fragment":
@@ -728,10 +745,10 @@ class MediaDownloader:
     ) -> tuple[Path, ResourceCandidate | None]:
         resources = self._with_inferred_manifest_resources(resources)
         if any(item.url.startswith("blob:") for item in resources) and not any(
-            classify_resource(item.url, item.mime) in {"hls", "dash", "video"} for item in resources
+            effective_resource_kind(item) in {"hls", "dash", "video"} for item in resources
         ):
             for item in resources:
-                kind = classify_resource(item.url, item.mime)
+                kind = effective_resource_kind(item)
                 if kind == "blob":
                     self._record_attempt(
                         strategy="blob-unrecoverable",
@@ -756,7 +773,7 @@ class MediaDownloader:
         failed_urls: set[str] = set()
         if not candidates:
             for item in resources:
-                kind = classify_resource(item.url, item.mime)
+                kind = effective_resource_kind(item)
                 if kind in {"fragment", "blob", "unknown"}:
                     self._record_attempt(
                         strategy=f"skip-{kind}",
@@ -885,10 +902,10 @@ class MediaDownloader:
         for item in resources:
             if not item.url or item.url.startswith(("chrome-extension:", "data:")):
                 continue
-            kind = classify_resource(item.url, item.mime)
+            kind = effective_resource_kind(item)
             item.kind = kind
             boost = (8 if item.is_main_video else 0) + (10 if item.playback_match else 0)
-            item.score = min(100, max(item.score, score_resource(item.url, item.mime, item.source)) + boost)
+            item.score = min(100, max(item.score, score_candidate(item)) + boost)
             if kind in {"hls", "dash", "video"}:
                 dedup[item.url] = item
         return sorted(dedup.values(), key=lambda item: item.score, reverse=True)
@@ -987,7 +1004,7 @@ class MediaDownloader:
             inferred.mime = "application/vnd.apple.mpegurl" if inferred.kind == "hls" else "application/dash+xml"
             inferred.source = "inferred-manifest"
             inferred.label = item.label or "inferred manifest"
-            inferred.score = min(100, max(item.score, score_resource(inferred.url, inferred.mime, inferred.source)) + 12)
+            inferred.score = min(100, max(item.score, score_candidate(inferred)) + 12)
             if not inferred.playback_match:
                 inferred.playback_match = "inferred-from-fragment"
             enriched.append(inferred)
@@ -999,16 +1016,16 @@ class MediaDownloader:
         for item in resources:
             if not item.url or item.url.startswith(("chrome-extension:", "data:", "blob:")):
                 continue
-            kind = classify_resource(item.url, item.mime)
+            kind = effective_resource_kind(item)
             if kind != "subtitle":
                 continue
             item.kind = kind
-            item.score = min(100, max(item.score, score_resource(item.url, item.mime, item.source)))
+            item.score = min(100, max(item.score, score_candidate(item)))
             dedup[item.url] = item
         return sorted(dedup.values(), key=lambda item: item.score, reverse=True)
 
     def _strategy_for_candidate(self, candidate: ResourceCandidate) -> str:
-        kind = classify_resource(candidate.url, candidate.mime)
+        kind = effective_resource_kind(candidate)
         if kind in {"hls", "dash"}:
             return "manifest-ffmpeg"
         if kind == "video":
@@ -1187,7 +1204,7 @@ class MediaDownloader:
         referer: str,
         title: str,
     ) -> Path:
-        kind = classify_resource(candidate.url, candidate.mime)
+        kind = effective_resource_kind(candidate)
         if kind in {"hls", "dash"}:
             return self._download_manifest(candidate, cookies, referer, title)
         if kind == "video":

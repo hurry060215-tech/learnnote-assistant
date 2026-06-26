@@ -65,3 +65,22 @@ assert.equal(headers["Sec-CH-UA-Platform"], '"Windows"');
 assert.equal(headers["X-Requested-With"], "XMLHttpRequest");
 assert.equal(headers.Cookie, undefined);
 assert.equal(headers.Authorization, undefined);
+
+assert.equal(
+  context.classifyCompletedRequest({
+    url: "https://cdn.example.com/playback?id=abc",
+    type: "media"
+  }, "application/octet-stream"),
+  "video"
+);
+assert.equal(
+  context.classifyCompletedRequest({
+    url: "https://cdn.example.com/api/player?id=abc",
+    type: "xmlhttprequest"
+  }, "application/octet-stream"),
+  "unknown"
+);
+assert.ok(
+  context.scoreKind("https://cdn.example.com/playback?id=abc", "webRequest", "video") >= 95,
+  "expected extensionless browser media requests to rank like video candidates"
+);

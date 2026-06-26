@@ -37,6 +37,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - Page-network hook discovery for mp4/HLS/DASH/subtitle URLs embedded in fetch/XHR text responses. The hook also records Blob object URL, fetch stream chunk, and MediaSource source mappings when the page builds playback from accessible media responses; it does not record playback or inspect binary video payloads.
 - Backend page-text scanning for manually submitted URLs: HTML/JSON/script responses are scanned for absolute or relative mp4/HLS/DASH/subtitle URLs before yt-dlp is tried.
 - Extensionless API URL scanning: JSON fields or inline script fields like `hls`, `dashUrl`, `playUrl`, and `videoUrl` can become candidates even when the URL is `/stream?lesson=...` instead of ending in `.m3u8`, `.mpd`, or `.mp4`.
+- Extensionless browser media request capture: if Chrome reports a `webRequest` as `media`, the extension keeps it as a direct video candidate even when the URL is `/play?id=...` and the server only returns a generic MIME type.
 - Frame-aware context aggregation: the extension asks every reachable frame for page text, active video state, and media resources before ranking candidates.
 - Frame-aware fallback download: if the outer page cannot be resolved, backend page scanning and yt-dlp fallback are retried against the detected player iframe, candidate page URL, Referer, and request initiator.
 - Dynamic SPA video detection through MutationObserver, media event binding, periodic rescans, and PerformanceObserver resource updates.
