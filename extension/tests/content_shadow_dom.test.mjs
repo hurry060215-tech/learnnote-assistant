@@ -36,6 +36,7 @@ class FakeElement {
     this.nodeType = 1;
     this.children = children;
     this.className = options.className || "";
+    this.id = options.id || "";
     this.textContent = options.textContent || "";
     this.src = options.src || "";
     this.currentSrc = options.currentSrc || "";
@@ -126,7 +127,11 @@ const video = new FakeElement("video", {
 
 const title = new FakeElement("h1", { textContent: "Shadow lesson title" });
 const iframe = new FakeElement("iframe", { src: "https://course.example.com/player?video=shadow" });
-const shadowRoot = new FakeRoot([title, video, iframe], "Shadow lesson title\nChapter 3 notes");
+const overlayCaption = new FakeElement("div", {
+  className: "xgplayer-subtitle captions-layer",
+  textContent: "Visible overlay caption"
+});
+const shadowRoot = new FakeRoot([title, video, iframe, overlayCaption], "Shadow lesson title\nChapter 3 notes");
 const host = new FakeElement("learn-player");
 host.shadowRoot = shadowRoot;
 const html = new FakeElement("html", {}, [host]);
@@ -211,7 +216,8 @@ assert.equal(response.active_video.paused, false);
 assert.equal(hiddenTrack.mode, "hidden");
 assert.deepEqual(JSON.parse(JSON.stringify(response.browser_subtitles)), [
   { start: 0, end: 2.5, text: "Welcome to the lesson" },
-  { start: 2.5, end: 5, text: "Shadow DOM caption cue" }
+  { start: 2.5, end: 5, text: "Shadow DOM caption cue" },
+  { start: 40.5, end: 46.5, text: "Visible overlay caption" }
 ]);
 assert.ok(urls.has("https://cdn.example.com/shadow/current.mp4?token=1"));
 assert.ok(urls.has("https://cdn.example.com/shadow/playlist.m3u8?token=1"));
