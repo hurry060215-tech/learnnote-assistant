@@ -305,11 +305,40 @@ small,
   white-space: nowrap;
 }
 
+.resource-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.resource-tags em {
+  max-width: 100%;
+  border-radius: 999px;
+  background: #eaf2ff;
+  padding: 2px 6px;
+  color: var(--accent);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 850;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resource.non-downloadable .resource-tags em {
+  background: #eef2f7;
+  color: var(--muted);
+}
+
 .resource small {
   display: block;
   margin-top: 5px;
   color: var(--muted);
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .confidence {
