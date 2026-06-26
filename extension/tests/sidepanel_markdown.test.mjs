@@ -169,6 +169,40 @@ assert.match(railHtml, /src="http:\/\/127\.0\.0\.1:8765\/api\/tasks\/demo\/grids
 assert.match(railHtml, /&lt;script&gt;alert\(1\)&lt;\/script&gt; 画面摘要/);
 assert.doesNotMatch(railHtml, /<script>/);
 
+const visualDeckHtml = context.visualStudyDeck({
+  id: "side-visual-deck",
+  title: "<script>bad()</script> 视觉课程",
+  summary_source: "vision-llm",
+  options: { grid_columns: 3, grid_rows: 3 },
+  visual_windows: [
+    {
+      id: "W001",
+      start: 0,
+      end: 180,
+      frame_count: 9,
+      grid_url: "http://127.0.0.1:8765/api/tasks/demo/grids/grid_000.jpg",
+      transcript_excerpt: "<script>alert(1)</script> 画面摘要"
+    },
+    {
+      id: "W002",
+      start: 180,
+      end: 360,
+      frame_count: 9,
+      grid_url: "javascript:alert(1)",
+      transcript_excerpt: ""
+    }
+  ]
+});
+assert.match(visualDeckHtml, /class="side-visual-study"/);
+assert.match(visualDeckHtml, /视觉窗口复习/);
+assert.match(visualDeckHtml, /2 窗口 · 00:00:00 - 00:06:00/);
+assert.match(visualDeckHtml, /src="http:\/\/127\.0\.0\.1:8765\/api\/tasks\/demo\/grids\/grid_000\.jpg"/);
+assert.doesNotMatch(visualDeckHtml, /src="javascript:alert/);
+assert.match(visualDeckHtml, /&lt;script&gt;alert\(1\)&lt;\/script&gt; 画面摘要/);
+assert.match(visualDeckHtml, /data-switch-result-tab="transcript"/);
+assert.match(visualDeckHtml, /data-switch-result-tab="note"/);
+assert.doesNotMatch(visualDeckHtml, /<script>bad/);
+
 const studyMapHtml = context.noteStudyMap(`# <script>bad()</script> 课程
 
 ## 第一节

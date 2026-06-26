@@ -1528,6 +1528,49 @@ function transcriptTimeline(transcript, task, limit = 100) {
   return `<div class="transcript-timeline">${cards.join("")}</div>`;
 }
 
+function visualStudyDeck(task) {
+  const windows = visualWindows(task);
+  if (!windows.length) return "";
+  const firstWindow = windows[0];
+  const lastWindow = windows[windows.length - 1];
+  const range = firstWindow && lastWindow ? `${fmt(firstWindow.start)} - ${fmt(lastWindow.end)}` : "等待切片";
+  return `<section class="side-visual-study" aria-label="视觉窗口复习">
+    <div class="side-visual-study-head">
+      <div>
+        <span>视觉窗口复习</span>
+        <strong>${escapeHtml(task.title || task.id || "画面切片")}</strong>
+      </div>
+      <small>${escapeHtml(`${windows.length} 窗口 · ${range}`)}</small>
+    </div>
+    <div class="side-visual-study-list">
+      ${windows.slice(0, 8).map((window, index) => {
+        const image = safeNoteMediaUrl(window.grid_url || "");
+        const excerpt = window.transcript_excerpt || "暂无字幕摘录，可切到“转写”查看完整时间轴。";
+        return `<article class="side-visual-study-card">
+          <figure>
+            ${image ? `<img src="${image}" alt="${escapeHtml(window.id)} frame grid">` : `<div class="side-visual-placeholder">无画面</div>`}
+            <figcaption>${escapeHtml(window.id || `W${String(index + 1).padStart(3, "0")}`)}</figcaption>
+          </figure>
+          <div>
+            <span>窗口 ${String(index + 1).padStart(2, "0")}</span>
+            <strong>${fmt(window.start)} - ${fmt(window.end)}</strong>
+            <p>${escapeHtml(excerpt)}</p>
+            <div class="side-visual-meta">
+              <em>${Number(window.frame_count || 0)} 帧</em>
+              <em>${escapeHtml(task.options?.grid_columns && task.options?.grid_rows ? `${task.options.grid_columns}x${task.options.grid_rows}` : "网格")}</em>
+              <em>${escapeHtml(task.summary_source || "本地索引")}</em>
+            </div>
+            <div class="side-visual-actions">
+              <button type="button" data-switch-result-tab="transcript">看转写</button>
+              <button type="button" data-switch-result-tab="note">回笔记</button>
+            </div>
+          </div>
+        </article>`;
+      }).join("")}
+    </div>
+  </section>`;
+}
+
 function renderResult() {
   const hasNote = Boolean(currentTaskId) && Boolean(currentTask?.note_path);
   els.copyButton.disabled = !hasNote;
@@ -1559,16 +1602,8 @@ function renderResult() {
       return;
     }
     els.result.className = "result-body";
-    els.result.innerHTML = `<div class="frame-grid visual-windows">${windows.slice(0, 8).map(window => `
-      <figure>
-        <img src="${escapeHtml(window.grid_url)}" alt="frame grid">
-        <figcaption>
-          <strong>${escapeHtml(window.id)}</strong>
-          <span>${fmt(window.start)} - ${fmt(window.end)} · ${window.frame_count} 帧</span>
-          ${window.transcript_excerpt ? `<small>${escapeHtml(window.transcript_excerpt)}</small>` : ""}
-        </figcaption>
-      </figure>
-    `).join("")}</div>`;
+    els.result.innerHTML = visualStudyDeck(currentTask);
+    bindTaskOverviewActions();
     return;
   }
   if (selectedTab === "diagnostics") {
