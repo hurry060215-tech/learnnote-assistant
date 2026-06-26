@@ -66,6 +66,18 @@
     return "unknown";
   }
 
+  function manifestKindFromText(text, mime = "") {
+    const head = String(text || "").slice(0, 4096).trimStart();
+    const type = String(mime || "").toLowerCase();
+    if (head.startsWith("#EXTM3U") || type.includes("mpegurl") || type.includes("x-mpegurl")) return "hls";
+    if (/<MPD[\s>]/i.test(head)) return "dash";
+    return "unknown";
+  }
+
+  function mediaUrlHint(url = "") {
+    return /(^|[/?&=._-])(m3u8|mpd|hls|dash|manifest|playlist|master|stream|play|video|media)([/?&=._-]|$)/i.test(String(url || ""));
+  }
+
   function post(resources = [], drm = []) {
     if (!resources?.length && !drm?.length) return;
     window.postMessage({ source: "learnnote-page-hook", resources, drm }, "*");
@@ -463,8 +475,26 @@
     return resources;
   }
 
-  function extractUrlsFromText(text, source, label, mime = "") {
-    emit(collectMediaUrlsFromText(text, source, label, mime));
+  function collectResponseTextResources(url, text, source, label, mime = "") {
+    const seen = new Set();
+    const resources = collectMediaUrlsFromText(text, source, label, mime, seen);
+    const kind = manifestKindFromText(text, mime);
+    const normalizedUrl = normalizeUrl(url);
+    if (kind !== "unknown" && normalizedUrl && !seen.has(normalizedUrl)) {
+      resources.unshift({
+        url: normalizedUrl,
+        source,
+        kind,
+        mime: mime || mimeForKind(kind),
+        label: `${label} manifest`,
+        score: 99
+      });
+    }
+    return resources;
+  }
+
+  function extractUrlsFromText(text, source, label, mime = "", responseUrl = "") {
+    emit(collectResponseTextResources(responseUrl, text, source, label, mime));
   }
 
   function collectGlobalConfigResources() {
@@ -512,8 +542,13 @@
   function shouldInspectResponse(response) {
     const type = response.headers?.get?.("content-type") || "";
     const length = Number(response.headers?.get?.("content-length") || 0);
-    if (length && length > MAX_TEXT_BYTES) return false;
-    return TEXT_TYPE_RE.test(type);
+    return shouldInspectTextPayload(response.url || "", type, length);
+  }
+
+  function shouldInspectTextPayload(url, contentType = "", contentLength = 0) {
+    if (contentLength && contentLength > MAX_TEXT_BYTES) return false;
+    if (TEXT_TYPE_RE.test(contentType)) return true;
+    return /octet-stream|binary|application\/x-mpegurl/i.test(String(contentType || "")) && mediaUrlHint(url);
   }
 
   function requestUrl(input) {
@@ -541,7 +576,7 @@
       if (shouldInspectResponse(response)) {
         try {
           response.clone().text()
-            .then(text => extractUrlsFromText(text.slice(0, MAX_TEXT_BYTES), "pageHookBody", "fetch body", mime))
+            .then(text => extractUrlsFromText(text.slice(0, MAX_TEXT_BYTES), "pageHookBody", "fetch body", mime, url))
             .catch(() => {});
         } catch {
           // Some wrapped responses cannot be cloned; Response.json() remains patched below.
@@ -585,8 +620,9 @@
       const text = await originalResponseText.apply(this, args);
       try {
         const mime = this.headers?.get?.("content-type") || "";
-        if (TEXT_TYPE_RE.test(mime)) {
-          extractUrlsFromText(String(text || "").slice(0, MAX_TEXT_BYTES), "pageHookBody", "fetch text", mime);
+        const url = this.url || "";
+        if (shouldInspectTextPayload(url, mime, String(text || "").length)) {
+          extractUrlsFromText(String(text || "").slice(0, MAX_TEXT_BYTES), "pageHookBody", "fetch text", mime, url);
         }
       } catch {
         // Keep host page text consumption unchanged.
@@ -748,12 +784,12 @@
           const meta = blobMeta(url, mime, "pageHookBlob", "xhr arrayBuffer source");
           rememberBlobPartObject(this.response, meta);
         }
-        if (!TEXT_TYPE_RE.test(mime)) return;
+        if (!shouldInspectTextPayload(url, mime, 0)) return;
         if (this.responseType === "json") {
           if (this.response && typeof this.response === "object") {
             emit(collectJsonMediaUrls(this.response, "pageHookBody", "xhr json"));
           } else if (typeof this.response === "string") {
-            extractUrlsFromText(this.response.slice(0, MAX_TEXT_BYTES), "pageHookBody", "xhr json", mime);
+            extractUrlsFromText(this.response.slice(0, MAX_TEXT_BYTES), "pageHookBody", "xhr json", mime, url);
           }
           return;
         }
@@ -765,7 +801,7 @@
           text = "";
         }
         if (typeof text !== "string") return;
-        extractUrlsFromText(text.slice(0, MAX_TEXT_BYTES), "pageHookBody", "xhr body", mime);
+        extractUrlsFromText(text.slice(0, MAX_TEXT_BYTES), "pageHookBody", "xhr body", mime, url);
       });
       return originalSend.apply(this, args);
     };
