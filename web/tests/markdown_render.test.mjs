@@ -256,11 +256,21 @@ context.fetch = async (url, options = {}) => {
 elements.get("#urlInput").value = "https://cdn.example.com/api/play?id=shadow";
 elements.get("#urlMode").value = "video";
 elements.get("#titleInput").value = "无后缀直连课件";
-await context.startUrlTask();
+await context.startUrlTask("video");
 
 assert.equal(posts.length, 1);
+assert.equal(posts[0].mode, "video");
 assert.equal(posts[0].resources.length, 1);
 assert.equal(posts[0].resources[0].kind, "video");
 assert.equal(posts[0].resources[0].source, "manual");
 assert.equal(posts[0].resources[0].request_type, "manual-forced");
 assert.equal(posts[0].resources[0].url, "https://cdn.example.com/api/play?id=shadow");
+
+await context.startUrlTask("download_only");
+
+assert.equal(posts.length, 2);
+assert.equal(posts[1].mode, "download_only");
+assert.equal(posts[1].resources.length, 1);
+assert.equal(posts[1].resources[0].kind, "video");
+assert.equal(posts[1].resources[0].request_type, "manual-forced");
+assert.equal(elements.get("#downloadUrlButton").disabled, false);

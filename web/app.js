@@ -24,6 +24,7 @@ const els = {
   optionsDisclosure: document.querySelector("#optionsDisclosure"),
   titleInput: document.querySelector("#titleInput"),
   startUrlButton: document.querySelector("#startUrlButton"),
+  downloadUrlButton: document.querySelector("#downloadUrlButton"),
   copyBackendButton: document.querySelector("#copyBackendButton"),
   browserRefreshButton: document.querySelector("#browserRefreshButton"),
   browserBridgeStatus: document.querySelector("#browserBridgeStatus"),
@@ -875,7 +876,7 @@ async function renderDetail() {
   els.detail.innerHTML = transcriptTimeline(transcript, task);
 }
 
-async function startUrlTask() {
+async function startUrlTask(mode = "video") {
   const url = els.urlInput.value.trim();
   if (!url) {
     els.urlInput.focus();
@@ -892,12 +893,13 @@ async function startUrlTask() {
     request_type: selectedUrlMode() === "auto" ? "manual-auto" : "manual-forced"
   }];
   els.startUrlButton.disabled = true;
+  if (els.downloadUrlButton) els.downloadUrlButton.disabled = true;
   try {
     const data = await fetch(`${API}/api/tasks/from-current-page`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        mode: "video",
+        mode,
         page_url: url,
         title: els.titleInput.value.trim() || url,
         page_text: "",
@@ -911,6 +913,7 @@ async function startUrlTask() {
     focusResultPanelOnMobile();
   } finally {
     els.startUrlButton.disabled = false;
+    if (els.downloadUrlButton) els.downloadUrlButton.disabled = false;
   }
 }
 
@@ -951,7 +954,8 @@ els.resultTabs.forEach(tab => {
   };
 });
 
-els.startUrlButton.onclick = startUrlTask;
+els.startUrlButton.onclick = () => startUrlTask("video");
+if (els.downloadUrlButton) els.downloadUrlButton.onclick = () => startUrlTask("download_only");
 if (els.toggleHistoryButton) {
   els.toggleHistoryButton.onclick = () => {
     const collapsed = !document.body?.classList?.contains?.("queue-collapsed");

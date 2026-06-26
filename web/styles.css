@@ -347,6 +347,12 @@ select:focus {
   font-weight: 850;
 }
 
+.url-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+  gap: 8px;
+}
+
 .primary {
   border-color: var(--accent);
   background: var(--accent);
@@ -1386,6 +1392,7 @@ button:disabled {
 
   .option-grid,
   .url-mode-grid,
+  .url-actions,
   .queue-stats,
   .task-brief {
     grid-template-columns: 1fr;
@@ -1907,6 +1914,7 @@ select {
 
   .option-grid,
   .url-mode-grid,
+  .url-actions,
   .queue-stats,
   .task-brief {
     grid-template-columns: 1fr;
