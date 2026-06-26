@@ -711,6 +711,34 @@ select:focus {
   font-size: 12px;
 }
 
+.task-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.task-chips span {
+  max-width: 100%;
+  overflow: hidden;
+  border: 1px solid #d7e5f8;
+  border-radius: 999px;
+  background: #f3f8ff;
+  color: var(--accent);
+  padding: 3px 7px;
+  font-size: 10px;
+  font-weight: 850;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task.status-failed .task-chips span:last-child {
+  border-color: rgba(217, 45, 32, 0.22);
+  background: rgba(217, 45, 32, 0.08);
+  color: var(--danger);
+}
+
 .stage-rail {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));

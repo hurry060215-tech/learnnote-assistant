@@ -273,6 +273,27 @@ assert.equal(context.hasTaskDiagnostics({ selected_resource: { kind: "video" } }
 assert.equal(context.hasTaskDiagnostics({ summary_diagnostics_path: "summary.json" }), true);
 assert.equal(context.hasTaskDiagnostics({}), false);
 
+const taskChipsHtml = context.taskChipsHtml({
+  title: "<script>bad()</script>",
+  status: "failed",
+  source_type: "current_page",
+  media_path: "D:/media.mp4",
+  note_path: "D:/note.md",
+  error_code: "download_forbidden",
+  selected_resource: {
+    kind: "hls",
+    playback_match: "blob-source"
+  },
+  download_attempts: [{ strategy: "direct-file" }, { strategy: "page-ytdlp" }],
+  visual_windows: [{ id: "W001" }, { id: "W002" }]
+});
+assert.match(taskChipsHtml, /task-chips/);
+assert.match(taskChipsHtml, /hls/);
+assert.match(taskChipsHtml, /2 视觉窗口/);
+assert.match(taskChipsHtml, /2 次下载尝试/);
+assert.match(taskChipsHtml, /download_forbidden/);
+assert.doesNotMatch(taskChipsHtml, /<script>bad/);
+
 const summaryDiagnostic = context.summaryDiagnosticText({
   summary_source: "vision-llm",
   summary_diagnostics: {
