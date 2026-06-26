@@ -7,7 +7,7 @@ from .downloader import DownloadError, MediaDownloader, classify_resource, infer
 from .media import build_frame_grids, extract_audio, extract_frames, normalize_video
 from .models import CurrentPageTaskRequest, DownloadAttempt, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, VisualWindow
 from .storage import get_task, save_task, task_dir, update_task, write_json
-from .summarizer import build_visual_windows, summarize_page_text, summarize_with_diagnostics
+from .summarizer import MAX_VISION_GRIDS, build_visual_windows, summarize_page_text, summarize_with_diagnostics
 from .transcriber import transcript_from_subtitle, transcribe_audio
 
 
@@ -87,7 +87,9 @@ def build_summary_diagnostics(
     summary_source: str,
     summary_warning: str,
 ) -> dict:
-    image_count = sum(1 for grid in grids if grid.path and Path(grid.path).is_file())
+    eligible_grids = grids[:MAX_VISION_GRIDS]
+    total_image_count = sum(1 for grid in grids if grid.path and Path(grid.path).is_file())
+    eligible_image_count = sum(1 for grid in eligible_grids if grid.path and Path(grid.path).is_file())
     return {
         "task_id": task_id,
         "title": title,
@@ -101,11 +103,16 @@ def build_summary_diagnostics(
         "summary_depth": options.summary_depth,
         "frame_grid_count": len(grids),
         "visual_window_count": len(visual_windows),
-        "vision_image_count": image_count,
+        "available_grid_image_count": total_image_count,
+        "vision_grid_limit": MAX_VISION_GRIDS,
+        "vision_grid_count": len(eligible_grids),
+        "vision_image_count": eligible_image_count,
+        "omitted_frame_grid_count": max(0, len(grids) - len(eligible_grids)),
         "used_vision_llm": summary_source == "vision-llm",
         "used_text_llm": summary_source == "text-llm",
         "used_local_template": summary_source == "local-template",
-        "all_grids_had_images": image_count == len(grids),
+        "all_sent_grids_had_images": eligible_image_count == len(eligible_grids),
+        "all_grids_had_images": total_image_count == len(grids),
         "window_ids": [window.id for window in visual_windows],
     }
 
