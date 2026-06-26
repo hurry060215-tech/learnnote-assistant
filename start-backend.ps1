@@ -12,13 +12,17 @@ $venvPython = Join-Path $venvDir "Scripts\python.exe"
 $dataDir = Join-Path $projectRoot "data"
 $modelCacheDir = Join-Path $dataDir "model-cache"
 $pipCacheDir = Join-Path $dataDir "pip-cache"
+$tempDir = Join-Path $dataDir "temp"
 
-New-Item -ItemType Directory -Force -Path $modelCacheDir, $pipCacheDir | Out-Null
+New-Item -ItemType Directory -Force -Path $modelCacheDir, $pipCacheDir, $tempDir | Out-Null
 
 if (-not $env:HF_HOME) { $env:HF_HOME = Join-Path $modelCacheDir "huggingface" }
 if (-not $env:XDG_CACHE_HOME) { $env:XDG_CACHE_HOME = Join-Path $modelCacheDir "xdg" }
 if (-not $env:TORCH_HOME) { $env:TORCH_HOME = Join-Path $modelCacheDir "torch" }
 if (-not $env:PIP_CACHE_DIR) { $env:PIP_CACHE_DIR = $pipCacheDir }
+$env:TMP = $tempDir
+$env:TEMP = $tempDir
+$env:TMPDIR = $tempDir
 
 function Resolve-BootstrapPython {
   if ($env:LEARNNOTE_BOOTSTRAP_PYTHON) {

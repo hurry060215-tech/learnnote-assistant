@@ -115,6 +115,7 @@ On this machine the project lives at `D:\Projects\learnnote-assistant`. The star
 - `data\tasks` for task artifacts and generated notes.
 - `data\model-cache` for Hugging Face / faster-whisper model cache.
 - `data\pip-cache` for pip downloads.
+- `data\temp` for backend process temporary files.
 - `data\test-runs` for generated local test videos.
 
 To install the optional local ASR dependency into the D-drive project venv:
