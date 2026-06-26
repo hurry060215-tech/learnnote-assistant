@@ -362,6 +362,16 @@ function setSource(source) {
   els.panes.forEach(pane => pane.classList.toggle("active", pane.id === `${source}Source`));
 }
 
+function shouldFocusResultPanel() {
+  if (window.matchMedia) return window.matchMedia("(max-width: 760px)").matches;
+  return Number(window.innerWidth || 0) <= 760;
+}
+
+function focusResultPanelOnMobile() {
+  if (!shouldFocusResultPanel()) return;
+  document.querySelector(".result-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
 async function loadTasks() {
   const data = await fetch(`${API}/api/tasks`).then(r => r.json());
   tasks = data.tasks || [];
@@ -423,10 +433,11 @@ function renderTasks() {
   `).join("");
 
   document.querySelectorAll(".task").forEach(button => {
-    button.onclick = () => {
+    button.onclick = async () => {
       selectedTaskId = button.dataset.id;
       renderTasks();
-      renderDetail();
+      await renderDetail();
+      focusResultPanelOnMobile();
     };
   });
 }
@@ -642,6 +653,7 @@ async function startUrlTask() {
     }).then(r => r.json());
     selectedTaskId = data.task_id;
     await loadTasks();
+    focusResultPanelOnMobile();
   } finally {
     els.startUrlButton.disabled = false;
   }
@@ -660,6 +672,7 @@ async function uploadSelectedFile() {
     const data = await fetch(`${API}/api/tasks/from-local`, { method: "POST", body: form }).then(r => r.json());
     selectedTaskId = data.task_id;
     await loadTasks();
+    focusResultPanelOnMobile();
   } finally {
     els.uploadButton.disabled = false;
     els.uploadButton.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5M4 17v3h16v-3"/></svg>上传并生成`;

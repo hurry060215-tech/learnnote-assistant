@@ -14,7 +14,11 @@ const makeElement = () => ({
   disabled: false,
   onclick: null,
   onchange: null,
-  files: []
+  files: [],
+  scrollCalls: [],
+  scrollIntoView(options) {
+    this.scrollCalls.push(options || {});
+  }
 });
 
 const documentStub = {
@@ -37,6 +41,7 @@ const context = {
   location: { href: "http://127.0.0.1:8765/" },
   navigator: { clipboard: { writeText() {} } },
   window: {
+    innerWidth: 1280,
     location: { origin: "http://127.0.0.1:8765", assign() {} }
   },
   Blob: class Blob {},
@@ -69,3 +74,13 @@ assert.match(html, /<h2>画面索引<\/h2>/);
 assert.match(html, /<figure class="note-image-frame">/);
 assert.match(html, /src="http:\/\/127\.0\.0\.1:8765\/api\/tasks\/demo\/grids\/grid_000\.jpg"/);
 assert.doesNotMatch(html, /src="javascript:alert/);
+
+const resultPanel = elements.get(".result-panel") || documentStub.querySelector(".result-panel");
+context.window.innerWidth = 1280;
+context.focusResultPanelOnMobile();
+assert.equal(resultPanel.scrollCalls.length, 0);
+
+context.window.innerWidth = 390;
+context.focusResultPanelOnMobile();
+assert.equal(resultPanel.scrollCalls.length, 1);
+assert.equal(resultPanel.scrollCalls[0].block, "start");
