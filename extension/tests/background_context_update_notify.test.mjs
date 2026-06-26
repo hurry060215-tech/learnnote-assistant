@@ -69,3 +69,28 @@ context.addResource(42, {
 }, false);
 
 assert.equal(messages.length, 0);
+
+const merged = context.mergePageContexts({ title: "Top", url: "https://course.example.com" }, [
+  context.normalizePageForFrame({
+    title: "Top",
+    page_url: "https://course.example.com",
+    browser_subtitles: [
+      { start: 3, end: 5, text: " second cue " },
+      { start: 0, end: 2, text: "first cue" }
+    ]
+  }, 0, {}),
+  context.normalizePageForFrame({
+    title: "Player",
+    page_url: "https://player.example.com",
+    browser_subtitles: [
+      { start: 0, end: 2, text: "first cue" },
+      { start: 6, end: 8, text: "iframe cue" }
+    ]
+  }, 2, {})
+]);
+
+assert.deepEqual(JSON.parse(JSON.stringify(merged.browser_subtitles)), [
+  { start: 0, end: 2, text: "first cue" },
+  { start: 3, end: 5, text: "second cue" },
+  { start: 6, end: 8, text: "iframe cue" }
+]);

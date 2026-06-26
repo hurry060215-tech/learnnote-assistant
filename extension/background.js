@@ -289,12 +289,35 @@ function frameStates(tabId) {
   return pageStateByTab.get(tabId);
 }
 
+function normalizeBrowserSubtitles(items = []) {
+  const normalized = [];
+  const seen = new Set();
+  for (const item of items || []) {
+    const text = String(item?.text || "").replace(/\s+/g, " ").trim();
+    if (!text) continue;
+    const start = Number(item.start ?? 0);
+    const end = Number(item.end ?? start);
+    if (!Number.isFinite(start) || !Number.isFinite(end)) continue;
+    const cue = {
+      start: Math.max(0, start),
+      end: Math.max(start, end),
+      text
+    };
+    const key = `${Math.round(cue.start * 1000)}|${Math.round(cue.end * 1000)}|${cue.text}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    normalized.push(cue);
+  }
+  return normalized.sort((a, b) => a.start - b.start || a.end - b.end);
+}
+
 function normalizePageForFrame(page = {}, frameId = 0, tab = {}) {
   const normalized = {
     title: page.title || tab.title || "",
     page_url: page.page_url || tab.url || "",
     page_text: page.page_text || "",
     active_video: page.active_video || null,
+    browser_subtitles: normalizeBrowserSubtitles(page.browser_subtitles),
     resources: Array.isArray(page.resources) ? page.resources : [],
     drm_detected: Boolean(page.drm_detected),
     drm_signals: Array.isArray(page.drm_signals) ? page.drm_signals : [],
@@ -334,6 +357,8 @@ function mergePageContexts(tab = {}, pages = []) {
     null;
   const textParts = [];
   const seenText = new Set();
+  const browserSubtitles = [];
+  const seenSubtitle = new Set();
   const drmSignals = [];
   const seenDrm = new Set();
   for (const page of ordered) {
@@ -341,6 +366,16 @@ function mergePageContexts(tab = {}, pages = []) {
     if (!text || seenText.has(text)) continue;
     seenText.add(text);
     textParts.push(text);
+  }
+  for (const page of ordered) {
+    for (const cue of normalizeBrowserSubtitles(page.browser_subtitles || [])) {
+      const key = `${Math.round(cue.start * 1000)}|${Math.round(cue.end * 1000)}|${cue.text}`;
+      if (seenSubtitle.has(key)) continue;
+      seenSubtitle.add(key);
+      browserSubtitles.push(cue);
+      if (browserSubtitles.length >= 2000) break;
+    }
+    if (browserSubtitles.length >= 2000) break;
   }
   for (const page of ordered) {
     for (const signal of page.drm_signals || []) {
@@ -355,6 +390,7 @@ function mergePageContexts(tab = {}, pages = []) {
     page_url: top.page_url || tab.url || activePage?.page_url || "",
     page_text: textParts.join("\n\n--- iframe ---\n\n").slice(0, 60000),
     active_video: activePage?.active_video || null,
+    browser_subtitles: browserSubtitles.sort((a, b) => a.start - b.start || a.end - b.end),
     drm_detected: ordered.some(page => page.drm_detected || page.active_video?.drm_detected) || drmSignals.length > 0,
     drm_signals: drmSignals.slice(0, 20),
     resources: ordered.flatMap(page => page.resources || []),
@@ -572,6 +608,7 @@ async function collectFramePageData(tab, frameId) {
           page_url: location.href,
           page_text: document.body?.innerText?.slice(0, 60000) || "",
           active_video: null,
+          browser_subtitles: [],
           drm_detected: false,
           drm_signals: [],
           resources: []
@@ -679,6 +716,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           title: page.title || tab.title || "",
           page_text: page.page_text || "",
           active_video: page.active_video || null,
+          browser_subtitles: page.browser_subtitles || [],
           drm_detected: Boolean(page.drm_detected),
           drm_signals: page.drm_signals || [],
           resources,

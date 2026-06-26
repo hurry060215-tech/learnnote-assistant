@@ -5,7 +5,7 @@ from pathlib import Path
 
 from .downloader import DownloadError, MediaDownloader, classify_resource, infer_manifest_url_from_fragment
 from .media import build_frame_grids, extract_audio, extract_frames, normalize_video
-from .models import CurrentPageTaskRequest, DownloadAttempt, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, VisualWindow
+from .models import BrowserSubtitleCue, CurrentPageTaskRequest, DownloadAttempt, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
 from .storage import get_task, save_task, task_dir, update_task, write_json
 from .summarizer import MAX_VISION_GRIDS, build_visual_windows, summarize_page_text, summarize_with_diagnostics
 from .transcriber import transcript_from_subtitle, transcribe_audio
@@ -62,6 +62,28 @@ def has_downloadable_candidate(resources: list[ResourceCandidate]) -> bool:
         if kind == "fragment" and infer_manifest_url_from_fragment(resource.url):
             return True
     return False
+
+
+def transcript_from_browser_subtitles(segments: list[BrowserSubtitleCue]) -> TranscriptResult:
+    cleaned: list[TranscriptSegment] = []
+    seen: set[tuple[int, int, str]] = set()
+    for cue in sorted(segments, key=lambda item: (item.start, item.end, item.text)):
+        text = " ".join(str(cue.text or "").split())
+        if not text:
+            continue
+        start = max(0.0, float(cue.start or 0))
+        end = max(start, float(cue.end or start))
+        key = (round(start * 1000), round(end * 1000), text)
+        if key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(TranscriptSegment(start=start, end=end, text=text))
+    return TranscriptResult(
+        language="unknown",
+        segments=cleaned,
+        full_text="\n".join(segment.text for segment in cleaned),
+        source="browser-subtitle",
+    )
 
 
 def drm_failure_message(request: CurrentPageTaskRequest) -> str:
@@ -162,7 +184,9 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
         media_path, selected = downloader.download(request.page_url, request.resources, request.cookies, request.title)
         if selected:
             update_task(task_id, selected_resource=redacted_resource(selected))
-        subtitle_path = downloader.download_subtitle(request.resources, request.cookies, request.page_url, request.title)
+        subtitle_path = None
+        if not request.browser_subtitles:
+            subtitle_path = downloader.download_subtitle(request.resources, request.cookies, request.page_url, request.title)
         update_task(task_id, download_attempts=downloader.attempts)
 
         _process_video_file(
@@ -172,6 +196,7 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
             page_url=request.page_url,
             options=request.options,
             subtitle_path=subtitle_path,
+            browser_subtitles=request.browser_subtitles,
         )
     except DownloadError as exc:
         if "downloader" in locals():
@@ -195,6 +220,7 @@ def _process_video_file(
     page_url: str,
     options: TaskOptions,
     subtitle_path: Path | None = None,
+    browser_subtitles: list[BrowserSubtitleCue] | None = None,
 ) -> None:
     work_dir = task_dir(task_id)
     update_task(task_id, status="running", phase="processing_video", progress=25, message="正在标准化视频")
@@ -205,7 +231,13 @@ def _process_video_file(
     audio_warning = ""
     transcript: TranscriptResult | None = None
 
-    if subtitle_path:
+    if browser_subtitles:
+        update_task(task_id, message="已读取浏览器播放器字幕，正在生成带时间戳转写")
+        transcript = transcript_from_browser_subtitles(browser_subtitles)
+        if not transcript.segments:
+            transcript = None
+
+    if transcript is None and subtitle_path:
         update_task(task_id, subtitle_path=str(subtitle_path), message="已检测到页面字幕，正在解析字幕")
         transcript = transcript_from_subtitle(subtitle_path)
         if not transcript.segments:
