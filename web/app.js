@@ -665,6 +665,10 @@ function taskExportUrl(task, type) {
   return `${API}/api/tasks/${encodeURIComponent(task.id)}/exports/${type}`;
 }
 
+function taskRerunUrl(taskId) {
+  return `${API}/api/tasks/${encodeURIComponent(taskId)}/rerun-from-media`;
+}
+
 function hasTaskBundle(task) {
   if (!task) return false;
   return Boolean(
@@ -684,6 +688,7 @@ function taskOverview(task) {
   const hasMedia = Boolean(task.media_path);
   const hasBundle = hasTaskBundle(task);
   const statusClass = taskStatusClass(task);
+  const downloadOnly = hasMedia && !hasNote && task.status === "success";
   const resourceLine = [
     sourceText(task),
     selected.kind || task.source_type || "",
@@ -691,11 +696,11 @@ function taskOverview(task) {
     selected.content_length ? fmtBytes(selected.content_length) : ""
   ].filter(Boolean).join(" · ");
   const actionLinks = [
+    downloadOnly ? `<button type="button" data-rerun-from-media="${escapeHtml(task.id)}">生成完整笔记</button>` : "",
     hasNote ? `<a href="${escapeHtml(taskExportUrl(task, "markdown"))}">导出 Markdown</a>` : "",
     hasMedia ? `<a href="${escapeHtml(taskExportUrl(task, "media"))}">导出本地视频</a>` : "",
     hasBundle ? `<a href="${escapeHtml(taskExportUrl(task, "bundle"))}">导出资料包</a>` : ""
   ].filter(Boolean).join("");
-  const downloadOnly = hasMedia && !hasNote && task.status === "success";
 
   return `<section class="task-overview status-${statusClass}">
     <div class="task-overview-main">
@@ -715,9 +720,38 @@ function taskOverview(task) {
     </div>
     ${downloadOnly ? `<div class="download-only-callout">
       <strong>已完成直取下载</strong>
-      <span>这个任务按“只下载本地”运行，未进入转写、切片和总结。可以先导出 media.mp4，或用同一链接重新创建完整笔记任务。</span>
+      <span>这个任务按“只下载本地”运行，未进入转写、切片和总结。可以先导出 media.mp4，或直接复用这个本地视频生成完整笔记。</span>
     </div>` : ""}
   </section>`;
+}
+
+async function rerunTaskFromMedia(taskId) {
+  if (!taskId) return;
+  els.resultMeta.textContent = "正在复用已下载视频创建完整笔记任务...";
+  const response = await fetch(taskRerunUrl(taskId), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(readOptions())
+  });
+  if (!response.ok) {
+    const detail = await response.json().catch(() => ({}));
+    els.resultMeta.textContent = detail?.detail?.message || detail?.detail || "无法复用已下载视频。";
+    return;
+  }
+  const data = await response.json();
+  selectedTaskId = data.task_id;
+  lastNote = "";
+  lastNoteTaskId = "";
+  selectedTab = "note";
+  els.resultTabs.forEach(item => item.classList.toggle("active", item.dataset.tab === selectedTab));
+  await loadTasks();
+  focusResultPanelOnMobile();
+}
+
+function bindTaskOverviewActions() {
+  document.querySelectorAll(".task-overview-actions button[data-rerun-from-media]").forEach(button => {
+    button.onclick = () => rerunTaskFromMedia(button.dataset.rerunFromMedia);
+  });
 }
 
 function visualRail(task, limit = 8) {
@@ -862,6 +896,7 @@ async function renderDetail() {
         </div>
       </div>
     `;
+    bindTaskOverviewActions();
     return;
   }
 

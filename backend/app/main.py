@@ -7,7 +7,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 from pathlib import Path
 from urllib.parse import quote
 
-from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import BackgroundTasks, Body, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -17,7 +17,7 @@ from .downloader import preflight_media_resource
 from .models import CurrentPageTaskRequest, MediaPreflightRequest, TaskOptions, TaskRecord
 from .processor import process_current_page_task, process_local_video_task, read_note, read_transcript, read_visual_index
 from .runtime import ffmpeg_bin, ffprobe_bin
-from .storage import create_task, get_task, list_tasks, task_dir
+from .storage import create_task, get_task, list_tasks, task_dir, update_task
 
 ensure_dirs()
 
@@ -226,6 +226,43 @@ async def create_from_local(
             output.write(chunk)
     background_tasks.add_task(process_local_video_task, task.id, upload_path, title or safe_name, parsed_options)
     return {"task_id": task.id, "task": task}
+
+
+@app.post("/api/tasks/{task_id}/rerun-from-media")
+def create_from_existing_media(
+    task_id: str,
+    background_tasks: BackgroundTasks,
+    options: TaskOptions | None = Body(default=None),
+) -> dict:
+    try:
+        source = get_task(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Task not found") from exc
+
+    if not source.media_path:
+        raise HTTPException(status_code=404, detail={"code": "media_not_found", "message": "Task has no downloaded media"})
+    media_path = Path(source.media_path)
+    if not media_path.exists():
+        raise HTTPException(status_code=404, detail={"code": "media_not_found", "message": "Downloaded media file is missing"})
+
+    parsed_options = options or source.options or TaskOptions()
+    task = create_task(
+        source_type="local",
+        title=source.title or f"Media from {source.id}",
+        page_url=source.page_url,
+        options=parsed_options,
+    )
+    task = update_task(
+        task.id,
+        selected_resource=source.selected_resource,
+        download_attempts=source.download_attempts,
+        active_video=source.active_video,
+        drm_detected=source.drm_detected,
+        drm_signals=source.drm_signals,
+        message="Queued from downloaded media",
+    )
+    background_tasks.add_task(process_local_video_task, task.id, media_path, task.title, parsed_options, source.page_url)
+    return {"task_id": task.id, "task": task, "source_task_id": source.id}
 
 
 @app.get("/api/tasks")
