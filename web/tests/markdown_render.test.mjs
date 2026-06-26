@@ -183,6 +183,37 @@ assert.match(readingRailHtml, /class="reading-rail"/);
 assert.match(readingRailHtml, /class="note-outline"/);
 assert.match(readingRailHtml, /class="visual-rail"/);
 
+const taskOverviewHtml = context.taskOverview({
+  id: "task-web-overview",
+  title: "<script>bad()</script> 课程",
+  status: "success",
+  phase: "completed",
+  progress: 100,
+  source_type: "current_page",
+  media_path: "D:/Projects/learnnote-assistant/data/tasks/task-web-overview/media.mp4",
+  selected_resource: {
+    kind: "video",
+    playback_match: "exact-src",
+    content_length: 1048576
+  },
+  options: {
+    frame_interval: 20,
+    grid_columns: 3,
+    grid_rows: 3,
+    whisper_model: "small",
+    note_style: "study",
+    visual_understanding: true
+  },
+  visual_windows: []
+});
+
+assert.match(taskOverviewHtml, /class="task-overview status-success"/);
+assert.match(taskOverviewHtml, /导出本地视频/);
+assert.match(taskOverviewHtml, /\/api\/tasks\/task-web-overview\/exports\/media/);
+assert.match(taskOverviewHtml, /已完成直取下载/);
+assert.doesNotMatch(taskOverviewHtml, /<script>bad/);
+assert.match(taskOverviewHtml, /&lt;script&gt;bad\(\)&lt;\/script&gt; 课程/);
+
 const summaryDiagnostic = context.summaryDiagnosticText({
   summary_source: "vision-llm",
   summary_diagnostics: {
