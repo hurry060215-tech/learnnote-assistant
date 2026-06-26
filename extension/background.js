@@ -4,6 +4,7 @@ const SUBTITLE_RE = /\.(vtt|srt|ass|ssa)(\?|#|$)/i;
 const resourceByTab = new Map();
 const pageStateByTab = new Map();
 const requestHeadersByRequestId = new Map();
+const contextUpdateTimers = new Map();
 const REQUEST_HEADER_ALLOWLIST = new Set([
   "accept",
   "accept-language",
@@ -220,6 +221,27 @@ function mergeResource(previous, incoming) {
   return merged;
 }
 
+function notifyContextUpdated(tabId, reason = "media") {
+  if (tabId < 0 || typeof setTimeout !== "function" || typeof clearTimeout !== "function") return;
+  const previous = contextUpdateTimers.get(tabId);
+  if (previous) clearTimeout(previous);
+  const timer = setTimeout(() => {
+    contextUpdateTimers.delete(tabId);
+    try {
+      const sent = chrome.runtime.sendMessage({
+        type: "current-context-updated",
+        tabId,
+        reason,
+        time_stamp: Date.now()
+      });
+      if (sent?.catch) sent.catch(() => {});
+    } catch {
+      // Side Panel may be closed; this is only a live refresh hint.
+    }
+  }, 250);
+  contextUpdateTimers.set(tabId, timer);
+}
+
 function looksLikeMediaRequest(details) {
   const url = details?.url || "";
   if (details?.type === "media") return true;
@@ -347,7 +369,7 @@ function mergePageContexts(tab = {}, pages = []) {
   };
 }
 
-function addResource(tabId, resource) {
+function addResource(tabId, resource, notify = true) {
   if (tabId < 0 || !resource?.url) return;
   const list = resourceByTab.get(tabId) || [];
   const existing = list.find(item => item.url === resource.url);
@@ -416,8 +438,9 @@ function addResource(tabId, resource) {
       label: inferredKind === "hls" ? "Inferred HLS manifest" : "Inferred DASH manifest",
       score: Math.min(100, (normalized.score || 0) + 24),
       playback_match: normalized.playback_match || "inferred-from-fragment"
-    });
+    }, notify);
   }
+  if (notify) notifyContextUpdated(tabId, "media");
 }
 
 function registerBeforeSendHeadersListener(options) {
@@ -497,11 +520,17 @@ chrome.webRequest.onErrorOccurred.addListener(
 chrome.tabs.onRemoved.addListener(tabId => {
   resourceByTab.delete(tabId);
   pageStateByTab.delete(tabId);
+  const timer = contextUpdateTimers.get(tabId);
+  if (timer) clearTimeout(timer);
+  contextUpdateTimers.delete(tabId);
 });
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
   if (changeInfo.status === "loading" || changeInfo.url) {
     resourceByTab.delete(tabId);
     pageStateByTab.delete(tabId);
+    const timer = contextUpdateTimers.get(tabId);
+    if (timer) clearTimeout(timer);
+    contextUpdateTimers.delete(tabId);
   }
 });
 chrome.action.onClicked.addListener(tab => {
@@ -532,7 +561,7 @@ async function collectFramePageData(tab, frameId) {
   try {
     const response = await chrome.tabs.sendMessage(tab.id, { type: "collect-page-data" }, { frameId });
     const page = rememberFramePage(tab.id, frameId, response, tab);
-    for (const resource of page.resources || []) addResource(tab.id, resource);
+    for (const resource of page.resources || []) addResource(tab.id, resource, false);
     return page;
   } catch {
     try {
@@ -614,6 +643,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       for (const resource of page.resources || []) {
         addResource(tabId, resource);
       }
+      notifyContextUpdated(tabId, "page");
       sendResponse({ ok: true });
       return;
     }
