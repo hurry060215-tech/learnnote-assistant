@@ -840,38 +840,83 @@ button:disabled {
   color: #5d3900;
 }
 
-.frame-strip {
+.note-workbench {
+  display: grid;
+  grid-template-columns: minmax(0, 820px) 280px;
+  align-items: start;
+  gap: 18px;
+}
+
+.visual-rail {
+  position: sticky;
+  top: 14px;
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fbfcff;
+  padding: 12px;
+}
+
+.visual-rail-head {
   display: flex;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: thin;
+  align-items: center;
+  justify-content: space-between;
   gap: 8px;
-  margin-bottom: 16px;
-  padding: 2px 0 8px;
 }
 
-.frame-strip figure {
-  flex: 0 0 156px;
+.visual-rail-head strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.visual-rail-head span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.visual-rail-list {
+  display: grid;
+  gap: 10px;
+}
+
+.visual-rail figure {
   margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  padding: 7px;
 }
 
-.frame-strip img {
+.visual-rail img {
   width: 100%;
   aspect-ratio: 16 / 9;
   display: block;
   object-fit: cover;
-  border: 1px solid var(--border);
-  border-radius: 7px;
+  border-radius: 6px;
   background: #111827;
 }
 
-.frame-strip figcaption {
-  margin-top: 5px;
+.visual-rail figcaption {
+  display: grid;
+  gap: 3px;
+  margin-top: 6px;
   color: var(--muted);
   font-size: 11px;
+  line-height: 1.35;
+}
+
+.visual-rail figcaption strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.visual-rail figcaption small {
+  display: -webkit-box;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
 }
 
 .markdown-note {
@@ -1514,18 +1559,6 @@ select {
   background: #fbfcff;
 }
 
-.frame-strip {
-  display: flex;
-  overflow-x: auto;
-  overflow-y: hidden;
-  gap: 10px;
-}
-
-.frame-strip figure {
-  flex: 0 0 168px;
-}
-
-.frame-strip img,
 .frames img,
 .note-image-frame img {
   border-radius: 8px;
@@ -1576,6 +1609,19 @@ select {
   }
 
   .task-brief {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .note-workbench {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .visual-rail {
+    position: static;
+    order: -1;
+  }
+
+  .visual-rail-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -1662,5 +1708,18 @@ select {
   .markdown-note {
     max-width: none;
     padding: 20px 18px;
+  }
+
+  .note-workbench {
+    grid-template-columns: 1fr;
+  }
+
+  .visual-rail {
+    position: static;
+    order: -1;
+  }
+
+  .visual-rail-list {
+    grid-template-columns: 1fr;
   }
 }
