@@ -103,7 +103,7 @@ class BrowserSubtitleCue(BaseModel):
 
 
 class CurrentPageTaskRequest(BaseModel):
-    mode: Literal["video", "page_text"] = "video"
+    mode: Literal["video", "page_text", "download_only"] = "video"
     page_url: str
     title: str = ""
     page_text: str = ""

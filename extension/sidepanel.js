@@ -29,6 +29,7 @@ const els = {
   resourceInspector: document.querySelector("#resourceInspector"),
   summarizeButton: document.querySelector("#summarizeButton"),
   preflightButton: document.querySelector("#preflightButton"),
+  downloadOnlyButton: document.querySelector("#downloadOnlyButton"),
   uploadButton: document.querySelector("#uploadButton"),
   fileInput: document.querySelector("#fileInput"),
   localDrop: document.querySelector("#localDrop"),
@@ -409,8 +410,12 @@ function currentPreflight() {
   return preflight && preflightResourceUrl === selectedResourceUrl ? preflight : null;
 }
 
+function isMediaTaskMode(mode) {
+  return mode === "video" || mode === "download_only";
+}
+
 function shouldPreflightBeforeStart(mode, item) {
-  if (mode !== "video") return false;
+  if (!isMediaTaskMode(mode)) return false;
   if (!item?.url) return false;
   return ["video", "hls", "dash", "blob", "fragment"].includes(item.kind);
 }
@@ -740,7 +745,7 @@ function selectedResources() {
 }
 
 function preflightCandidatesForStart(mode = "video") {
-  if (mode !== "video") return [];
+  if (!isMediaTaskMode(mode)) return [];
   const ordered = selectedResources().filter(item => shouldPreflightBeforeStart(mode, item));
   const seen = new Set();
   return ordered.filter(item => {
@@ -811,6 +816,7 @@ async function startTask(mode = "video") {
   }
   const resource = selectedResource();
   els.summarizeButton.disabled = true;
+  if (els.downloadOnlyButton) els.downloadOnlyButton.disabled = true;
   try {
     if (preflightCandidatesForStart(mode).length) {
       const checked = await preflightBestResource(mode);
@@ -824,7 +830,7 @@ async function startTask(mode = "video") {
       type: "start-current-task",
       backendUrl,
       page,
-      resources: mode === "video" ? selectedResources() : [],
+      resources: isMediaTaskMode(mode) ? selectedResources() : [],
       mode,
       options: readOptions()
     });
@@ -839,6 +845,7 @@ async function startTask(mode = "video") {
     pollTask();
   } finally {
     els.summarizeButton.disabled = false;
+    if (els.downloadOnlyButton) els.downloadOnlyButton.disabled = false;
   }
 }
 
@@ -1029,7 +1036,7 @@ function transcriptTimeline(transcript, task, limit = 100) {
 }
 
 function renderResult() {
-  const hasNote = Boolean(currentTaskId) && (Boolean(currentTask?.note_path) || currentTask?.status === "success");
+  const hasNote = Boolean(currentTaskId) && Boolean(currentTask?.note_path);
   els.copyButton.disabled = !hasNote;
   els.bundleButton.disabled = !hasNote;
   els.mediaButton.disabled = !currentTask?.media_path;
@@ -1040,7 +1047,11 @@ function renderResult() {
   }
   if (selectedTab === "note") {
     els.result.className = "result-body";
-    const noteHtml = lastNote ? markdownToHtml(lastNote) : `<p>${escapeHtml(currentTask.message || "笔记尚未生成。")}</p>`;
+    const noteHtml = lastNote
+      ? markdownToHtml(lastNote)
+      : currentTask.media_path
+        ? `<p>视频已下载到本地。可点击右上角视频按钮导出，不会继续转写、切片或总结。</p>`
+        : `<p>${escapeHtml(currentTask.message || "笔记尚未生成。")}</p>`;
     els.result.innerHTML = `${noteOutline(lastNote)}${noteVisualRail(currentTask)}<article class="markdown-note">${noteHtml}</article>`;
     return;
   }
@@ -1134,6 +1145,7 @@ els.resultTabs.forEach(tab => {
 els.redetectButton.onclick = collect;
 els.summarizeButton.onclick = () => startTask("video");
 els.preflightButton.onclick = runPreflight;
+if (els.downloadOnlyButton) els.downloadOnlyButton.onclick = () => startTask("download_only");
 els.textButton.onclick = () => startTask("page_text");
 if (els.refreshHistoryButton) els.refreshHistoryButton.onclick = loadTaskHistory;
 els.uploadButton.onclick = () => els.fileInput.click();

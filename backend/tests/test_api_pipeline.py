@@ -334,6 +334,64 @@ class ApiPipelineTests(unittest.TestCase):
                 server.shutdown()
                 server.server_close()
 
+    def test_current_page_download_only_stops_after_media_export(self) -> None:
+        with tempfile.TemporaryDirectory(dir=TEST_RUN_DIR) as tmp:
+            root = Path(tmp)
+            video = make_video(root)
+            handler = functools.partial(QuietHandler, directory=str(root))
+            server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                media_url = f"http://127.0.0.1:{server.server_port}/{video.name}"
+                payload = {
+                    "mode": "download_only",
+                    "page_url": f"http://127.0.0.1:{server.server_port}/lesson.html",
+                    "title": "Download only lesson",
+                    "resources": [
+                        {
+                            "url": media_url,
+                            "source": "webRequest",
+                            "kind": "video",
+                            "mime": "video/mp4",
+                            "score": 100,
+                            "label": "unit mp4",
+                        }
+                    ],
+                    "options": {"visual_understanding": True, "frame_interval": 1},
+                }
+                with patch("app.processor.extract_audio", side_effect=AssertionError("download_only should not extract audio")):
+                    with patch("app.processor.transcribe_audio", side_effect=AssertionError("download_only should not transcribe")):
+                        with patch("app.processor.extract_frames", side_effect=AssertionError("download_only should not slice frames")):
+                            with patch("app.processor.summarize_with_diagnostics", side_effect=AssertionError("download_only should not summarize")):
+                                response = self.client.post("/api/tasks/from-current-page", json=payload)
+
+                self.assertEqual(response.status_code, 200)
+                task_id = response.json()["task_id"]
+                try:
+                    task = self.client.get(f"/api/tasks/{task_id}").json()["task"]
+                    self.assertEqual(task["status"], "success")
+                    self.assertEqual(task["phase"], "completed")
+                    self.assertTrue(Path(task["media_path"]).exists())
+                    self.assertFalse(task["audio_path"])
+                    self.assertFalse(task["transcript_path"])
+                    self.assertFalse(task["note_path"])
+                    self.assertEqual(task["frame_grids"], [])
+                    self.assertEqual(task["visual_windows"], [])
+                    self.assertEqual(task["selected_resource"]["url"], media_url)
+                    self.assertEqual(task["download_attempts"][0]["strategy"], "direct-file")
+                    media_export = self.client.get(f"/api/tasks/{task_id}/exports/media")
+                    self.assertEqual(media_export.status_code, 200)
+                    self.assertGreater(len(media_export.content), 1024)
+                    self.assertEqual(self.client.get(f"/api/tasks/{task_id}/exports/markdown").status_code, 404)
+                    self.assertEqual(self.client.get(f"/api/tasks/{task_id}/note").text, "")
+                    self.assertEqual(self.client.get(f"/api/tasks/{task_id}/transcript").json()["segments"], [])
+                finally:
+                    shutil.rmtree(task_dir(task_id), ignore_errors=True)
+            finally:
+                server.shutdown()
+                server.server_close()
+
     def test_current_page_hls_manifest_reaches_note_with_frame_grid(self) -> None:
         with tempfile.TemporaryDirectory(dir=TEST_RUN_DIR) as tmp:
             root = Path(tmp)
