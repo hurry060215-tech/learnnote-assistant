@@ -1098,6 +1098,49 @@ function transcriptTimeline(transcript, task, limit = Infinity) {
   return `<div class="transcript-timeline">${cards.join("")}</div>`;
 }
 
+function visualStudyDeck(task) {
+  const windows = visualWindows(task);
+  if (!windows.length) return "";
+  const firstWindow = windows[0];
+  const lastWindow = windows[windows.length - 1];
+  const range = firstWindow && lastWindow ? `${fmt(firstWindow.start)} - ${fmt(lastWindow.end)}` : "等待切片";
+  return `<section class="visual-study-deck" aria-label="视觉窗口复习">
+    <div class="visual-study-head">
+      <div>
+        <span>视觉窗口复习</span>
+        <strong>${escapeHtml(task.title || task.id || "画面切片")}</strong>
+      </div>
+      <small>${escapeHtml(`${windows.length} 个窗口 · ${range}`)}</small>
+    </div>
+    <div class="visual-study-list">
+      ${windows.map((window, index) => {
+        const image = safeNoteMediaUrl(window.grid_url || "");
+        const excerpt = window.transcript_excerpt || "这个窗口暂无字幕摘录，可切到“字幕”查看完整时间轴。";
+        return `<article class="visual-study-card">
+          <figure>
+            ${image ? `<img src="${image}" alt="${escapeHtml(window.id)} frame grid">` : `<div class="visual-study-placeholder">无画面</div>`}
+            <figcaption>${escapeHtml(window.id || `W${String(index + 1).padStart(3, "0")}`)}</figcaption>
+          </figure>
+          <div class="visual-study-card-body">
+            <span>窗口 ${String(index + 1).padStart(2, "0")}</span>
+            <strong>${fmt(window.start)} - ${fmt(window.end)}</strong>
+            <p>${escapeHtml(excerpt)}</p>
+            <div class="visual-study-meta">
+              <em>${Number(window.frame_count || 0)} 帧</em>
+              <em>${escapeHtml(task.options?.grid_columns && task.options?.grid_rows ? `${task.options.grid_columns}x${task.options.grid_rows}` : "网格")}</em>
+              <em>${escapeHtml(task.summary_source || "本地索引")}</em>
+            </div>
+            <div class="visual-study-actions">
+              <button type="button" data-switch-result-tab="transcript">看对应字幕</button>
+              <button type="button" data-switch-result-tab="note">回到笔记</button>
+            </div>
+          </div>
+        </article>`;
+      }).join("")}
+    </div>
+  </section>`;
+}
+
 function emptyResultWorkbench() {
   return `
     <section class="empty-workbench" aria-label="学习工作区起始页">
@@ -1212,16 +1255,8 @@ async function renderDetail() {
       els.detail.textContent = "画面切片尚未生成。";
       return;
     }
-    els.detail.innerHTML = `<div class="frames visual-windows">${windows.map(window => `
-      <figure>
-        <img src="${escapeHtml(window.grid_url)}" alt="frame grid">
-        <figcaption>
-          <strong>${escapeHtml(window.id)}</strong>
-          <span>${fmt(window.start)} - ${fmt(window.end)} · ${window.frame_count} 帧</span>
-          ${window.transcript_excerpt ? `<small>${escapeHtml(window.transcript_excerpt)}</small>` : ""}
-        </figcaption>
-      </figure>
-    `).join("")}</div>`;
+    els.detail.innerHTML = visualStudyDeck(task);
+    bindTaskOverviewActions();
     return;
   }
 
