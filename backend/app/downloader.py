@@ -1227,8 +1227,19 @@ class MediaDownloader:
                     raise DownloadError("download_forbidden", "媒体资源拒绝当前 Range 请求。")
                 if response.status_code >= 400:
                     raise DownloadError("download_forbidden", f"媒体资源返回 HTTP {response.status_code}。")
+                content_type = response.headers.get("content-type", "")
+                chunks = response.iter_content(chunk_size=1024 * 1024)
+                first_chunk = b""
+                for chunk in chunks:
+                    if chunk:
+                        first_chunk = chunk
+                        break
+                if _textish_content_type(content_type) and _looks_like_login_or_error(first_chunk):
+                    raise DownloadError("auth_required", "媒体资源返回登录/错误页面，而不是视频文件。")
                 with output.open("wb") as file:
-                    for chunk in response.iter_content(chunk_size=1024 * 1024):
+                    if first_chunk:
+                        file.write(first_chunk)
+                    for chunk in chunks:
                         if chunk:
                             file.write(chunk)
             if not output.exists() or output.stat().st_size < 4096:
