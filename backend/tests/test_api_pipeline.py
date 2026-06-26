@@ -415,8 +415,9 @@ class ApiPipelineTests(unittest.TestCase):
                     ],
                     "options": {"visual_understanding": True, "frame_interval": 1},
                 }
-                with patch("app.processor.transcribe_audio", side_effect=AssertionError("Whisper should not run when subtitle is available")):
-                    response = self.client.post("/api/tasks/from-current-page", json=payload)
+                with patch("app.processor.extract_audio", side_effect=AssertionError("Audio extraction should not run when subtitle is available")):
+                    with patch("app.processor.transcribe_audio", side_effect=AssertionError("Whisper should not run when subtitle is available")):
+                        response = self.client.post("/api/tasks/from-current-page", json=payload)
 
                 self.assertEqual(response.status_code, 200)
                 task_id = response.json()["task_id"]
@@ -424,6 +425,7 @@ class ApiPipelineTests(unittest.TestCase):
                     task = self.client.get(f"/api/tasks/{task_id}").json()["task"]
                     self.assertEqual(task["status"], "success")
                     self.assertTrue(task["subtitle_path"])
+                    self.assertFalse(task["audio_path"])
                     self.assertTrue(any(attempt["strategy"] == "subtitle-file" and attempt["status"] == "success" for attempt in task["download_attempts"]))
                     transcript = self.client.get(f"/api/tasks/{task_id}/transcript").json()
                     self.assertEqual(transcript["source"], "page-subtitle")
