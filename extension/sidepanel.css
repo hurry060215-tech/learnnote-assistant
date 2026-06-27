@@ -265,6 +265,121 @@ small,
   white-space: nowrap;
 }
 
+.current-study-card {
+  display: grid;
+  gap: 9px;
+  margin-top: 9px;
+  border: 1px solid #d6e2f2;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 10px;
+}
+
+.current-study-card.ready {
+  border-color: rgba(20, 150, 74, 0.34);
+  background: linear-gradient(180deg, #ffffff, #f3fbf6);
+}
+
+.current-study-card.candidate,
+.current-study-card.fallback,
+.current-study-card.mapping,
+.current-study-card.waiting {
+  border-color: rgba(196, 122, 5, 0.3);
+  background: linear-gradient(180deg, #ffffff, #fffaf0);
+}
+
+.current-study-card.blocked {
+  border-color: rgba(217, 45, 32, 0.24);
+  background: linear-gradient(180deg, #ffffff, #fff7f6);
+}
+
+.current-study-head {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.current-study-head > span {
+  min-width: 0;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  background: var(--surface-strong);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.current-study-card.ready .current-study-head > span {
+  background: rgba(20, 150, 74, 0.12);
+  color: var(--success);
+}
+
+.current-study-card.candidate .current-study-head > span,
+.current-study-card.fallback .current-study-head > span,
+.current-study-card.mapping .current-study-head > span,
+.current-study-card.waiting .current-study-head > span {
+  background: rgba(196, 122, 5, 0.12);
+  color: var(--warning);
+}
+
+.current-study-card.blocked .current-study-head > span {
+  background: rgba(217, 45, 32, 0.1);
+  color: var(--danger);
+}
+
+.current-study-head strong {
+  display: block;
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.current-study-head small,
+.current-study-card p {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.current-study-card p {
+  margin: 0;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.current-study-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.current-study-metrics span {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: #fbfcff;
+  padding: 7px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.current-study-metrics b {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--ink);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .mode-row {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
