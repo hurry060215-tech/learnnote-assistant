@@ -330,7 +330,7 @@ function directRouteCopy(task) {
     badge: "等待",
     title: "等待扩展侧栏创建当前页任务",
     detail: "在课程页打开 Chrome/Edge Side Panel，先预检候选，再开始总结。",
-    hint: "只直取浏览器暴露的 mp4/m3u8/mpd 或 yt-dlp 可解析页面，不做标签页录制。"
+    hint: "只直取浏览器暴露的 mp4/FLV/m3u8/mpd 或 yt-dlp 可解析页面，不做标签页录制。"
   };
 }
 
@@ -427,7 +427,7 @@ const DOWNLOAD_ERROR_CODES = new Set(["no_media_found", "auth_required", "drm_or
 const ERROR_GUIDES = {
   no_media_found: {
     title: "没有发现可直取的视频资源",
-    body: "可以先让页面视频播放几秒后重新检测；如果仍没有 mp4、m3u8 或 mpd，请改用本地视频上传。"
+    body: "可以先让页面视频播放几秒后重新检测；如果仍没有 mp4、FLV、m3u8 或 mpd，请改用本地视频上传。"
   },
   auth_required: {
     title: "资源需要登录态",
@@ -435,7 +435,7 @@ const ERROR_GUIDES = {
   },
   drm_or_encrypted: {
     title: "页面触发了 DRM/EME 加密媒体信号",
-    body: "这个版本不会录制、破解或绕过 DRM。可直取 mp4、m3u8 或 mpd 不存在时，只能使用本地视频入口。"
+    body: "这个版本不会录制、破解或绕过 DRM。可直取 mp4、FLV、m3u8 或 mpd 不存在时，只能使用本地视频入口。"
   },
   download_forbidden: {
     title: "媒体服务器拒绝下载",
@@ -475,7 +475,7 @@ function recoveryStepItems(task) {
     if (text && !steps.includes(text)) steps.push(text);
   };
   if (codes.has("drm_or_encrypted") || task?.drm_detected) {
-    add("不会录制、破解或绕过 DRM；没有可访问 mp4/m3u8/mpd 时，请改用本地视频入口。");
+    add("不会录制、破解或绕过 DRM；没有可访问 mp4/FLV/m3u8/mpd 时，请改用本地视频入口。");
   }
   if (codes.has("auth_required")) {
     add("重新打开课程页并确认登录有效，播放几秒后立刻重新创建任务。");
@@ -559,7 +559,7 @@ function selectedUrlMode() {
 
 function urlModeDescription(mode = selectedUrlMode()) {
   return ({
-    auto: "自动识别会优先把 mp4/m3u8/mpd 当作媒体候选，其余 URL 交给页面扫描和 yt-dlp。",
+    auto: "自动识别会优先把 mp4/FLV/m3u8/mpd 当作媒体候选；无后缀 URL 可切换直连/HLS/DASH 或交给页面扫描和 yt-dlp。",
     page: "按课程网页处理：后端先扫描页面里的媒体地址，再用 yt-dlp 解析，不把这个 URL 当直连文件。",
     video: "按视频文件直连处理：适合没有后缀但实际返回 video/* 的签名接口或播放接口。",
     hls: "按 HLS 播放列表处理：后端会用 ffmpeg 合并 m3u8 可访问的分片。",
@@ -1274,7 +1274,7 @@ function emptyResultWorkbench() {
         <section class="empty-preview-card primary">
           <span>当前页直取边界</span>
           <strong>只下载浏览器已经暴露的资源</strong>
-          <p>支持 MP4/WebM、HLS/DASH manifest、yt-dlp 支持站点、带登录 cookie 的可访问媒体请求；DRM/不可还原 blob 会明确失败，不会录制页面。</p>
+          <p>支持 MP4/FLV/WebM、HLS/DASH manifest、yt-dlp 支持站点、带登录 cookie 的可访问媒体请求；DRM/不可还原 blob 会明确失败，不会录制页面。</p>
         </section>
         <section class="empty-preview-card">
           <span>输出结构</span>
@@ -1627,7 +1627,7 @@ els.dropzone.addEventListener("drop", event => {
 });
 
 els.fileInput.onchange = () => {
-  els.fileName.textContent = els.fileInput.files?.[0]?.name || "mp4 / webm / mov / mkv";
+  els.fileName.textContent = els.fileInput.files?.[0]?.name || "mp4 / flv / webm / mov / mkv";
   setSource("local");
 };
 

@@ -118,7 +118,7 @@ def drm_failure_message(request: CurrentPageTaskRequest) -> str:
     if init_types:
         details.append(f"init data: {', '.join(init_types[:3])}")
     suffix = f"（{'；'.join(details)}）" if details else ""
-    return f"页面触发了 EME/DRM 加密媒体信号{suffix}，且没有发现可直接下载的 mp4/m3u8/mpd；不会录制或绕过 DRM。"
+    return f"页面触发了 EME/DRM 加密媒体信号{suffix}，且没有发现可直接下载的 mp4/FLV/m3u8/mpd；不会录制或绕过 DRM。"
 
 
 def build_summary_diagnostics(
