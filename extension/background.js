@@ -629,6 +629,11 @@ chrome.tabs.onRemoved.addListener(tabId => {
   if (timer) clearTimeout(timer);
   contextUpdateTimers.delete(tabId);
 });
+if (chrome.tabs.onActivated?.addListener) {
+  chrome.tabs.onActivated.addListener(activeInfo => {
+    if (activeInfo?.tabId !== undefined) notifyContextUpdated(activeInfo.tabId, "tab-activated");
+  });
+}
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
   if (changeInfo.status === "loading" || changeInfo.url) {
     resourceByTab.delete(tabId);
@@ -636,6 +641,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
     const timer = contextUpdateTimers.get(tabId);
     if (timer) clearTimeout(timer);
     contextUpdateTimers.delete(tabId);
+    notifyContextUpdated(tabId, "navigation");
   }
 });
 chrome.action.onClicked.addListener(tab => {
