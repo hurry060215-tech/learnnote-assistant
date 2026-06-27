@@ -23,6 +23,7 @@ from app.downloader import (
     extract_media_resources_from_text,
     fallback_page_urls,
     infer_manifest_url_from_fragment,
+    infer_sibling_manifest_urls_from_fragment,
     score_resource,
     ytdlp_headers_from_browser_context,
 )
@@ -80,6 +81,26 @@ class ResourceDetectionTests(unittest.TestCase):
         self.assertEqual(infer_manifest_url_from_fragment(fragment), "https://cdn.example.com/live/master.m3u8?token=abc")
         dash_fragment = "https://cdn.example.com/dash/manifest.mpd/chunk-1.m4s"
         self.assertEqual(infer_manifest_url_from_fragment(dash_fragment), "https://cdn.example.com/dash/manifest.mpd")
+
+    def test_guesses_sibling_manifest_urls_from_plain_fragments(self) -> None:
+        self.assertEqual(
+            infer_sibling_manifest_urls_from_fragment("https://cdn.example.com/live/seg-001.ts?token=abc"),
+            [
+                "https://cdn.example.com/live/index.m3u8?token=abc",
+                "https://cdn.example.com/live/playlist.m3u8?token=abc",
+                "https://cdn.example.com/live/master.m3u8?token=abc",
+            ],
+        )
+        self.assertEqual(
+            infer_sibling_manifest_urls_from_fragment("https://cdn.example.com/dash/chunk-001.m4s?token=abc"),
+            [
+                "https://cdn.example.com/dash/manifest.mpd?token=abc",
+                "https://cdn.example.com/dash/index.mpd?token=abc",
+                "https://cdn.example.com/dash/master.m3u8?token=abc",
+                "https://cdn.example.com/dash/index.m3u8?token=abc",
+            ],
+        )
+        self.assertEqual(infer_sibling_manifest_urls_from_fragment("https://cdn.example.com/live/master.m3u8/seg.ts"), [])
 
     def test_cookie_header_matches_parent_domains(self) -> None:
         cookies = [
@@ -815,6 +836,52 @@ class DownloaderBoundaryTests(unittest.TestCase):
             self.assertEqual(candidates[0].kind, "hls")
             self.assertEqual(candidates[0].source, "inferred-manifest")
             self.assertEqual(candidates[0].playback_match, "blob-same-frame")
+
+    def test_low_confidence_manifest_candidates_are_guessed_from_plain_fragments(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            downloader = MediaDownloader(Path(tmp))
+            resources = [
+                ResourceCandidate(
+                    url="https://cdn.example.com/live/segment-001.ts?token=abc",
+                    source="webRequest",
+                    kind="fragment",
+                    score=25,
+                    request_headers={"Referer": "https://course.example.com/lesson"},
+                )
+            ]
+            candidates = downloader._candidate_resources(resources)
+            urls = {candidate.url: candidate for candidate in candidates}
+            guessed = urls["https://cdn.example.com/live/master.m3u8?token=abc"]
+            self.assertEqual(guessed.kind, "hls")
+            self.assertEqual(guessed.source, "manifest-guess")
+            self.assertEqual(guessed.playback_match, "inferred-from-fragment")
+            self.assertEqual(guessed.request_headers["Referer"], "https://course.example.com/lesson")
+            self.assertLessEqual(guessed.score, 72)
+
+    def test_manifest_guess_does_not_outrank_verified_candidate(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            downloader = MediaDownloader(Path(tmp))
+            resources = [
+                ResourceCandidate(
+                    url="https://cdn.example.com/live/segment-001.ts?token=abc",
+                    source="webRequest",
+                    kind="fragment",
+                    score=25,
+                    playback_match="blob-source",
+                ),
+                ResourceCandidate(
+                    url="https://cdn.example.com/live/verified.m3u8?token=abc",
+                    source="webRequest",
+                    kind="hls",
+                    score=94,
+                    playback_match="blob-source",
+                ),
+            ]
+            candidates = downloader._candidate_resources(resources)
+            self.assertEqual(candidates[0].url, "https://cdn.example.com/live/verified.m3u8?token=abc")
+            guessed_scores = [candidate.score for candidate in candidates if candidate.source == "manifest-guess"]
+            self.assertTrue(guessed_scores)
+            self.assertTrue(all(score <= 72 for score in guessed_scores))
 
     def test_ytdlp_fallback_receives_browser_http_headers(self) -> None:
         captured: dict = {}

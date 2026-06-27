@@ -120,6 +120,30 @@ def infer_manifest_url_from_fragment(url: str) -> str:
     return ""
 
 
+def infer_sibling_manifest_urls_from_fragment(url: str) -> list[str]:
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return []
+    path = parsed.path or ""
+    lowered = path.lower()
+    if not FRAGMENT_EXT_RE.search(path) or ".m3u8" in lowered or ".mpd" in lowered:
+        return []
+    slash = path.rfind("/")
+    directory = path[: slash + 1] if slash >= 0 else "/"
+    names = (
+        ("index.m3u8", "playlist.m3u8", "master.m3u8")
+        if lowered.endswith(".ts")
+        else ("manifest.mpd", "index.mpd", "master.m3u8", "index.m3u8")
+    )
+    results: list[str] = []
+    for name in names:
+        guessed = urlunparse(parsed._replace(path=f"{directory}{name}", params="", fragment=""))
+        if guessed not in results:
+            results.append(guessed)
+    return results
+
+
 def _domain_matches(cookie_domain: str, host: str) -> bool:
     cookie_domain = cookie_domain.lstrip(".").lower()
     host = host.lower()
@@ -974,7 +998,10 @@ class MediaDownloader:
             kind = effective_resource_kind(item)
             item.kind = kind
             boost = (8 if item.is_main_video else 0) + (10 if item.playback_match else 0)
-            item.score = min(100, max(item.score, score_candidate(item)) + boost)
+            if item.source == "manifest-guess":
+                item.score = min(72, max(0, item.score or 0))
+            else:
+                item.score = min(100, max(item.score, score_candidate(item)) + boost)
             if kind in {"hls", "dash", "video"}:
                 dedup[item.url] = item
         return sorted(dedup.values(), key=lambda item: item.score, reverse=True)
@@ -1085,21 +1112,42 @@ class MediaDownloader:
     def _with_inferred_manifest_resources(self, resources: list[ResourceCandidate]) -> list[ResourceCandidate]:
         enriched = list(resources)
         known_urls = {item.url for item in resources if item.url}
+        has_blob_boundary = any(effective_resource_kind(item) == "blob" for item in resources)
         for item in resources:
             inferred_url = infer_manifest_url_from_fragment(item.url)
-            if not inferred_url or inferred_url in known_urls:
+            if inferred_url and inferred_url not in known_urls:
+                inferred = item.model_copy(deep=True)
+                inferred.url = inferred_url
+                inferred.kind = classify_resource(inferred_url, item.mime)
+                inferred.mime = "application/vnd.apple.mpegurl" if inferred.kind == "hls" else "application/dash+xml"
+                inferred.source = "inferred-manifest"
+                inferred.label = item.label or "inferred manifest"
+                inferred.score = min(100, max(item.score, score_candidate(inferred)) + 12)
+                if not inferred.playback_match:
+                    inferred.playback_match = "inferred-from-fragment"
+                enriched.append(inferred)
+                known_urls.add(inferred_url)
                 continue
-            inferred = item.model_copy(deep=True)
-            inferred.url = inferred_url
-            inferred.kind = classify_resource(inferred_url, item.mime)
-            inferred.mime = "application/vnd.apple.mpegurl" if inferred.kind == "hls" else "application/dash+xml"
-            inferred.source = "inferred-manifest"
-            inferred.label = item.label or "inferred manifest"
-            inferred.score = min(100, max(item.score, score_candidate(inferred)) + 12)
-            if not inferred.playback_match:
-                inferred.playback_match = "inferred-from-fragment"
-            enriched.append(inferred)
-            known_urls.add(inferred_url)
+            if inferred_url:
+                continue
+            if has_blob_boundary:
+                continue
+            if effective_resource_kind(item) != "fragment":
+                continue
+            for guessed_url in infer_sibling_manifest_urls_from_fragment(item.url):
+                if guessed_url in known_urls:
+                    continue
+                guessed = item.model_copy(deep=True)
+                guessed.url = guessed_url
+                guessed.kind = classify_resource(guessed_url, "")
+                guessed.mime = "application/vnd.apple.mpegurl" if guessed.kind == "hls" else "application/dash+xml"
+                guessed.source = "manifest-guess"
+                guessed.label = "guessed HLS manifest from segment directory" if guessed.kind == "hls" else "guessed DASH manifest from segment directory"
+                guessed.score = min(72, max(42, (item.score or 0) + 18))
+                if not guessed.playback_match:
+                    guessed.playback_match = "inferred-from-fragment"
+                enriched.append(guessed)
+                known_urls.add(guessed_url)
         return enriched
 
     def _subtitle_resources(self, resources: list[ResourceCandidate]) -> list[ResourceCandidate]:
