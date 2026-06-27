@@ -539,6 +539,8 @@ assert.doesNotMatch(report, /Authorization/);
 await context.copySelectedResourceReport();
 assert.equal(clipboardWrites.at(-1), report);
 assert.equal(elements.get("#taskMessage").textContent, "已复制候选资源证据摘要。");
+vm.runInContext(`currentTaskId = "task-url-direct"; backendUrl = "http://127.0.0.1:8765/";`, context);
+assert.equal(context.workbenchUrl(), "http://127.0.0.1:8765/?task=task-url-direct");
 
 vm.runInContext(`
 preflight = { downloadable: true, kind: "hls", code: "", message: "ok" };

@@ -74,7 +74,19 @@ const context = {
   navigator: { clipboard: { writeText() {} } },
   window: {
     innerWidth: 1280,
-    location: { origin: "http://127.0.0.1:8765", assign() {} },
+    location: { origin: "http://127.0.0.1:8765", href: "http://127.0.0.1:8765/", pathname: "/", search: "", hash: "", assign() {} },
+    history: {
+      replacedUrls: [],
+      replaceState(_state, _title, url) {
+        this.replacedUrls.push(String(url));
+        context.window.location.href = `http://127.0.0.1:8765${url}`;
+        const queryIndex = String(url).indexOf("?");
+        const hashIndex = String(url).indexOf("#");
+        context.window.location.pathname = queryIndex >= 0 ? String(url).slice(0, queryIndex) : String(url);
+        context.window.location.search = queryIndex >= 0 ? String(url).slice(queryIndex, hashIndex >= 0 ? hashIndex : undefined) : "";
+        context.window.location.hash = hashIndex >= 0 ? String(url).slice(hashIndex) : "";
+      }
+    },
     localStorage: {
       values: new Map(),
       getItem(key) {
@@ -138,6 +150,9 @@ assert.match(indexHtml, /当前页直取状态/);
 assert.match(indexHtml, /打开课程页/);
 assert.match(indexHtml, /选择候选资源/);
 assert.match(indexHtml, /accept="video\/\*,\.mp4,\.m4v,\.mov,\.mkv,\.webm,\.flv,\.avi"/);
+context.window.location.search = "?task=task%20from%20url";
+assert.equal(context.taskIdFromCurrentUrl(), "task from url");
+context.window.location.search = "";
 assert.equal(context.isSupportedLocalVideoFile({ name: "lesson.mkv", type: "" }), true);
 assert.equal(context.isSupportedLocalVideoFile({ name: "lesson.flv", type: "" }), true);
 assert.equal(context.isSupportedLocalVideoFile({ name: "lesson.avi", type: "" }), true);
@@ -836,6 +851,7 @@ elements.get("#titleInput").value = "无后缀直连课件";
 await context.startUrlTask("video");
 
 assert.equal(posts.length, 1);
+assert.equal(context.window.history.replacedUrls.at(-1), "/?task=task-url-direct");
 assert.equal(posts[0].mode, "video");
 assert.equal(posts[0].resources.length, 1);
 assert.equal(posts[0].resources[0].kind, "video");
