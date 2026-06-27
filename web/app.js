@@ -380,6 +380,9 @@ function summaryDiagnosticText(task) {
     `\u9001\u5165\u89c6\u89c9 ${sentImages}/${visionGridCount}`,
     omittedCount > 0 ? `\u8d85\u9650\u7701\u7565 ${omittedCount}` : "",
     missingImages ? "\u5b58\u5728\u7f3a\u5931\u56fe\u7247" : "",
+    diag.used_page_text_fallback ? `页面文本 ${diag.page_text_char_count ?? 0} 字` : "",
+    diag.used_page_text_fallback ? `浏览器字幕 ${diag.browser_subtitle_count ?? 0} 条` : "",
+    diag.used_page_text_fallback ? `合并文本 ${diag.combined_text_char_count ?? 0} 字` : "",
     diag.summary_warning || ""
   ].filter(Boolean).join(" · ");
 }

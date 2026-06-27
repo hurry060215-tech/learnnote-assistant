@@ -621,6 +621,11 @@ class ProcessorBoundaryTests(unittest.TestCase):
             self.assertIn("## 兜底学习笔记", note)
             self.assertIn("直取视频不可用时", note)
             self.assertIn("哪些步骤只靠文本还不够", note)
+            report = render_diagnostics_markdown(record)
+            self.assertIn("页面文本字符", report)
+            self.assertIn("浏览器字幕条数：2", report)
+            self.assertIn("合并文本字符", report)
+            self.assertIn("页面文本兜底：是", report)
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
@@ -674,6 +679,10 @@ class ProcessorBoundaryTests(unittest.TestCase):
             self.assertIn("老师解释 if else 分支", note)
             self.assertIn("## 兜底学习笔记", note)
             self.assertIn("回看目标：直取视频不可用时", note)
+            report = render_diagnostics_markdown(record)
+            self.assertIn("页面文本字符", report)
+            self.assertIn("浏览器字幕条数：1", report)
+            self.assertIn("页面文本兜底：是", report)
             transcript = read_transcript(task.id)
             self.assertEqual(transcript["source"], "browser-subtitle")
             self.assertEqual(transcript["segments"][0]["text"], "老师解释 if else 分支")

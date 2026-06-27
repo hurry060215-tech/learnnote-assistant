@@ -108,7 +108,11 @@ const summaryDiagnostic = context.summaryDiagnosticText({
     vision_grid_count: 2,
     vision_image_count: 2,
     omitted_frame_grid_count: 1,
-    all_grids_had_images: true
+    all_grids_had_images: true,
+    used_page_text_fallback: true,
+    page_text_char_count: 18,
+    browser_subtitle_count: 3,
+    combined_text_char_count: 72
   }
 });
 
@@ -117,6 +121,9 @@ assert.match(summaryDiagnostic, /模型 vision-model/);
 assert.match(summaryDiagnostic, /视觉窗口 2/);
 assert.match(summaryDiagnostic, /送入视觉 2\/2/);
 assert.match(summaryDiagnostic, /超限省略 1/);
+assert.match(summaryDiagnostic, /页面文本 18 字/);
+assert.match(summaryDiagnostic, /浏览器字幕 3 条/);
+assert.match(summaryDiagnostic, /合并文本 72 字/);
 
 const timelineHtml = context.transcriptTimeline({
   segments: [

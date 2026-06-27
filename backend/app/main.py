@@ -332,6 +332,13 @@ def render_diagnostics_markdown(task: TaskRecord) -> str:
             f"- 送入视觉图片：{task.summary_diagnostics.get('vision_image_count', '-')}/{task.summary_diagnostics.get('vision_grid_count', '-')}",
             f"- 省略网格：{task.summary_diagnostics.get('omitted_frame_grid_count', '-')}",
         ])
+        if task.summary_diagnostics.get("used_page_text_fallback"):
+            lines.extend([
+                f"- 页面文本字符：{task.summary_diagnostics.get('page_text_char_count', '-')}",
+                f"- 浏览器字幕条数：{task.summary_diagnostics.get('browser_subtitle_count', '-')}",
+                f"- 合并文本字符：{task.summary_diagnostics.get('combined_text_char_count', '-')}",
+                "- 页面文本兜底：是",
+            ])
 
     lines.extend([
         "",
