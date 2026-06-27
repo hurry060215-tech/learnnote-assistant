@@ -202,9 +202,16 @@ class ApiPipelineTests(unittest.TestCase):
                     self.assertIn("task.json", names)
                     self.assertIn("transcript.json", names)
                     self.assertIn("visual_index.json", names)
+                    self.assertIn("visual_windows.md", names)
                     self.assertIn("summary_diagnostics.json", names)
                     self.assertTrue(any(name.startswith("grids/") and name.endswith(".jpg") for name in names))
                     self.assertIn("Local synthetic lesson", archive.read("note.md").decode("utf-8"))
+                    visual_windows_markdown = archive.read("visual_windows.md").decode("utf-8")
+                    expected_grid_name = Path(task["visual_windows"][0]["grid_path"]).name
+                    self.assertIn("LearnNote 画面切片索引", visual_windows_markdown)
+                    self.assertIn("Local synthetic lesson", visual_windows_markdown)
+                    self.assertIn(f"grids/{expected_grid_name}", visual_windows_markdown)
+                    self.assertIn("这一段课程讲解函数封装", visual_windows_markdown)
                     diagnostics_report = archive.read("diagnostics.md").decode("utf-8")
                     self.assertIn("LearnNote 任务诊断报告", diagnostics_report)
                     self.assertIn("Local synthetic lesson", diagnostics_report)
@@ -433,7 +440,11 @@ class ApiPipelineTests(unittest.TestCase):
                         names = set(archive.namelist())
                         self.assertIn("note.md", names)
                         self.assertIn("transcript.json", names)
+                        self.assertIn("visual_windows.md", names)
                         self.assertTrue(any(name.startswith("grids/") and name.endswith(".jpg") for name in names))
+                        visual_windows_markdown = archive.read("visual_windows.md").decode("utf-8")
+                        self.assertIn("Download only lesson", visual_windows_markdown)
+                        self.assertIn("grids/", visual_windows_markdown)
                 finally:
                     if rerun_task_id:
                         shutil.rmtree(task_dir(rerun_task_id), ignore_errors=True)
