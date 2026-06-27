@@ -651,23 +651,24 @@ def preflight_media_resource(
         )
 
     strategy = "manifest-probe" if kind in {"hls", "dash"} else "direct-file-probe"
-    headers = download_headers_for_candidate(candidate, cookies, referer, url=resolved_url)
+    base_headers = download_headers_for_candidate(candidate, cookies, referer, url=resolved_url)
     if kind == "video":
-        headers.setdefault("Accept", "*/*")
-        headers.setdefault("Range", "bytes=0-4095")
+        base_headers.setdefault("Accept", "*/*")
     elif kind == "hls":
-        headers.setdefault("Accept", "application/vnd.apple.mpegurl,application/x-mpegURL,text/plain,*/*;q=0.8")
+        base_headers.setdefault("Accept", "application/vnd.apple.mpegurl,application/x-mpegURL,text/plain,*/*;q=0.8")
     else:
-        headers.setdefault("Accept", "application/dash+xml,application/xml,text/xml,*/*;q=0.8")
+        base_headers.setdefault("Accept", "application/dash+xml,application/xml,text/xml,*/*;q=0.8")
 
-    try:
+    def probe_once(headers: dict[str, str], attempt_warnings: list[str]) -> MediaPreflightResult:
+        probe_kind = kind
+        probe_strategy = strategy
         with requests.get(resolved_url, headers=headers, stream=True, timeout=timeout, allow_redirects=True) as response:
             body = _read_probe_bytes(response)
             content_type = response.headers.get("content-type", "")
             content_length = _response_content_length(response)
             base = {
-                "strategy": strategy,
-                "kind": kind,
+                "strategy": probe_strategy,
+                "kind": probe_kind,
                 "url": candidate.url,
                 "resolved_url": resolved_url,
                 "status_code": response.status_code,
@@ -675,7 +676,7 @@ def preflight_media_resource(
                 "content_length": content_length,
                 "bytes_checked": len(body),
                 "request_header_names": _safe_request_header_names(headers),
-                "warnings": warnings,
+                "warnings": attempt_warnings,
             }
 
             if response.status_code in {401, 403}:
@@ -704,42 +705,42 @@ def preflight_media_resource(
                 )
 
             manifest_kind, manifest_mime = _manifest_kind_from_body(body.decode("utf-8", errors="ignore"), content_type)
-            if kind == "video" and manifest_kind in {"hls", "dash"}:
-                kind = manifest_kind
+            if probe_kind == "video" and manifest_kind in {"hls", "dash"}:
+                probe_kind = manifest_kind
                 base["kind"] = manifest_kind
                 base["content_type"] = manifest_mime or content_type
                 base["strategy"] = "manifest-probe"
-                warnings.append("该视频直连响应实际是 HLS/DASH manifest，正式任务会改用 ffmpeg 合并。")
+                attempt_warnings.append("该视频直连响应实际是 HLS/DASH manifest，正式任务会改用 ffmpeg 合并。")
 
-            if kind == "hls":
+            if probe_kind == "hls":
                 text = body.decode("utf-8", errors="ignore")
                 if "#EXTM3U" not in text and "mpegurl" not in content_type.lower():
-                    warnings.append("响应不像标准 HLS manifest，实际下载可能失败。")
+                    attempt_warnings.append("响应不像标准 HLS manifest，实际下载可能失败。")
                 if re.search(r"#EXT-X-KEY:[^\n]*(SAMPLE-AES|skd://|widevine|fairplay)", text, re.I):
                     return MediaPreflightResult(
-                        **{**base, "warnings": warnings},
+                        **{**base, "warnings": attempt_warnings},
                         ok=True,
                         downloadable=False,
                         code="drm_or_encrypted",
                         message="HLS manifest 疑似 DRM/加密流，第一版不尝试绕过。",
                     )
                 if re.search(r"#EXT-X-KEY:[^\n]*METHOD=AES-128", text, re.I):
-                    warnings.append("HLS 使用 AES-128 key，ffmpeg 仍可能因 key 权限失败。")
+                    attempt_warnings.append("HLS 使用 AES-128 key，ffmpeg 仍可能因 key 权限失败。")
 
-            if kind == "dash":
+            if probe_kind == "dash":
                 text = body.decode("utf-8", errors="ignore")
                 if "<MPD" not in text and "dash+xml" not in content_type.lower():
-                    warnings.append("响应不像标准 DASH manifest，实际下载可能失败。")
+                    attempt_warnings.append("响应不像标准 DASH manifest，实际下载可能失败。")
                 if re.search(r"ContentProtection|widevine|playready|urn:uuid", text, re.I):
                     return MediaPreflightResult(
-                        **{**base, "warnings": warnings},
+                        **{**base, "warnings": attempt_warnings},
                         ok=True,
                         downloadable=False,
                         code="drm_or_encrypted",
                         message="DASH manifest 含 ContentProtection，疑似 DRM/加密流。",
                     )
 
-            if kind == "video" and len(body) <= 0:
+            if probe_kind == "video" and len(body) <= 0:
                 return MediaPreflightResult(
                     **base,
                     ok=True,
@@ -749,12 +750,41 @@ def preflight_media_resource(
                 )
 
             return MediaPreflightResult(
-                **{**base, "warnings": warnings},
+                **{**base, "warnings": attempt_warnings},
                 ok=True,
                 downloadable=True,
                 code="",
                 message="后端可以访问该候选资源；正式任务仍会执行完整下载和合并。",
             )
+
+    probe_variants: list[tuple[dict[str, str], list[str]]] = []
+    if kind == "video":
+        bounded = dict(base_headers)
+        bounded["Range"] = "bytes=0-4095"
+        open_ended = dict(base_headers)
+        open_ended["Range"] = "bytes=0-"
+        no_range = dict(base_headers)
+        no_range.pop("Range", None)
+        probe_variants = [
+            (bounded, []),
+            (open_ended, ["有界 Range 预检未通过，已改用 open-ended Range 重试。"]),
+            (no_range, ["Range 预检未通过，已改用无 Range 请求重试。"]),
+        ]
+    else:
+        probe_variants = [(base_headers, [])]
+
+    first_result: MediaPreflightResult | None = None
+    last_headers = base_headers
+    try:
+        for headers, variant_warnings in probe_variants:
+            last_headers = headers
+            result = probe_once(headers, [*warnings, *variant_warnings])
+            if first_result is None:
+                first_result = result
+            if result.downloadable or result.code == "drm_or_encrypted":
+                return result
+        assert first_result is not None
+        return first_result
     except requests.RequestException as exc:
         return MediaPreflightResult(
             ok=False,
@@ -765,7 +795,7 @@ def preflight_media_resource(
             resolved_url=resolved_url,
             code="download_forbidden",
             message=f"媒体预检连接失败：{exc}",
-            request_header_names=_safe_request_header_names(headers),
+            request_header_names=_safe_request_header_names(last_headers),
             warnings=warnings,
         )
 
