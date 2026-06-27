@@ -28,6 +28,7 @@ const els = {
   activeVideo: document.querySelector("#activeVideo"),
   playbackReadiness: document.querySelector("#playbackReadiness"),
   currentStudyCard: document.querySelector("#currentStudyCard"),
+  launchBar: document.querySelector("#launchBar"),
   resourceCount: document.querySelector("#resourceCount"),
   readiness: document.querySelector("#readiness"),
   routeSummary: document.querySelector("#routeSummary"),
@@ -1172,6 +1173,53 @@ function renderCurrentStudyCard() {
   `;
 }
 
+function launchBarActionsHtml(state) {
+  const hasSelected = Boolean(selectedResource());
+  const actions = [];
+  if (state === "candidate" && hasSelected) {
+    actions.push(`<button type="button" data-route-action="preflight">预检</button>`);
+  }
+  if (state === "ready" || state === "candidate" || state === "fallback") {
+    actions.push(`<button type="button" class="primary" data-route-action="summarize">总结</button>`);
+  }
+  if (hasSelected && state !== "blocked" && state !== "empty") {
+    actions.push(`<button type="button" data-route-action="download">下载</button>`);
+  }
+  if (state === "blocked" || state === "fallback" || state === "mapping" || state === "waiting" || !hasSelected) {
+    actions.push(`<button type="button" data-route-action="local">本地</button>`);
+  }
+  return actions.join("");
+}
+
+function launchBarMeta(state) {
+  const selected = selectedResource();
+  const checked = currentPreflight();
+  const [cols, rows] = String(els.gridSize?.value || "3x3").split("x").map(Number);
+  return [
+    selected ? `${selected.kind || "media"} · ${candidateStrategyText(selected)}` : "等待候选",
+    checked ? checked.downloadable ? "预检通过" : checked.code || "预检未过" : state === "candidate" ? "建议预检" : "未预检",
+    `${Number(els.frameInterval?.value || 20)}秒 · ${cols || 3}x${rows || 3}`,
+    "点击时同步 Cookie"
+  ];
+}
+
+function renderLaunchBar() {
+  if (!els.launchBar) return;
+  const state = routeSummaryState();
+  const copy = routeSummaryCopy(state);
+  els.launchBar.className = `launch-bar ${state}`;
+  els.launchBar.innerHTML = `
+    <div class="launch-bar-main">
+      <span>${escapeHtml(copy.badge)}</span>
+      <strong>${escapeHtml(copy.title)}</strong>
+      <small>${escapeHtml(launchBarMeta(state).join(" · "))}</small>
+    </div>
+    <div class="launch-bar-actions">
+      ${launchBarActionsHtml(state)}
+    </div>
+  `;
+}
+
 function resourceHint() {
   const downloadable = resources.filter(isDownloadableResource).length;
   const blobCount = resources.filter(item => item.kind === "blob").length;
@@ -1591,6 +1639,7 @@ function renderContext() {
   }
   renderPlaybackReadiness();
   renderCurrentStudyCard();
+  renderLaunchBar();
   els.resourceCount.textContent = String(resources.length);
   renderReadiness();
   renderRouteSummary();
@@ -2471,10 +2520,7 @@ els.resources.addEventListener("click", event => {
     startTask("page_text");
   }
 });
-els.routeSummary.addEventListener("click", event => {
-  const button = event.target.closest("[data-route-action]");
-  if (!button) return;
-  const action = button.dataset.routeAction;
+function handleRouteAction(action) {
   if (action === "preflight") {
     preflightSelectedResource();
   } else if (action === "summarize") {
@@ -2484,7 +2530,19 @@ els.routeSummary.addEventListener("click", event => {
   } else if (action === "local") {
     els.fileInput.click();
   }
+}
+els.routeSummary.addEventListener("click", event => {
+  const button = event.target.closest("[data-route-action]");
+  if (!button) return;
+  handleRouteAction(button.dataset.routeAction);
 });
+if (els.launchBar) {
+  els.launchBar.addEventListener("click", event => {
+    const button = event.target.closest("[data-route-action]");
+    if (!button) return;
+    handleRouteAction(button.dataset.routeAction);
+  });
+}
 els.copyButton.onclick = () => navigator.clipboard.writeText(lastNote || "");
 els.bundleButton.onclick = () => {
   openTaskExport("bundle");

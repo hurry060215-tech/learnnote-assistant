@@ -380,6 +380,125 @@ small,
   white-space: nowrap;
 }
 
+.launch-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+  border: 1px solid #d6e2f2;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 9px;
+}
+
+.launch-bar.ready {
+  border-color: rgba(20, 150, 74, 0.34);
+  background: #f5fcf7;
+}
+
+.launch-bar.candidate,
+.launch-bar.fallback,
+.launch-bar.mapping,
+.launch-bar.waiting {
+  border-color: rgba(196, 122, 5, 0.3);
+  background: #fffaf0;
+}
+
+.launch-bar.blocked {
+  border-color: rgba(217, 45, 32, 0.24);
+  background: #fff7f6;
+}
+
+.launch-bar-main {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.launch-bar-main span {
+  width: fit-content;
+  max-width: 100%;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--surface-strong);
+  color: var(--accent);
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.launch-bar.ready .launch-bar-main span {
+  background: rgba(20, 150, 74, 0.12);
+  color: var(--success);
+}
+
+.launch-bar.candidate .launch-bar-main span,
+.launch-bar.fallback .launch-bar-main span,
+.launch-bar.mapping .launch-bar-main span,
+.launch-bar.waiting .launch-bar-main span {
+  background: rgba(196, 122, 5, 0.12);
+  color: var(--warning);
+}
+
+.launch-bar.blocked .launch-bar-main span {
+  background: rgba(217, 45, 32, 0.1);
+  color: var(--danger);
+}
+
+.launch-bar-main strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.launch-bar-main small {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.launch-bar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.launch-bar-actions button {
+  min-width: 40px;
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: #ffffff;
+  color: var(--ink);
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.launch-bar-actions button.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.launch-bar-actions button:hover {
+  border-color: var(--border-strong);
+}
+
 .mode-row {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2583,6 +2702,18 @@ input[type="file"] {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .launch-bar {
+    grid-template-columns: 1fr;
+  }
+
+  .launch-bar-actions {
+    justify-content: stretch;
+  }
+
+  .launch-bar-actions button {
+    flex: 1;
+  }
+
   .mode-row {
     grid-template-columns: 1fr;
   }
@@ -2680,6 +2811,30 @@ h1 {
 
 .playback-card {
   background: linear-gradient(180deg, #fff, #f7faff);
+}
+
+.launch-bar {
+  border-color: #cfe0fb;
+  background: #f8fbff;
+  box-shadow: inset 3px 0 0 var(--accent), 0 1px 2px rgba(16, 24, 40, 0.04);
+}
+
+.launch-bar.ready {
+  box-shadow: inset 3px 0 0 var(--success), 0 1px 2px rgba(16, 24, 40, 0.04);
+}
+
+.launch-bar.candidate,
+.launch-bar.fallback {
+  box-shadow: inset 3px 0 0 var(--warning), 0 1px 2px rgba(16, 24, 40, 0.04);
+}
+
+.launch-bar.blocked {
+  box-shadow: inset 3px 0 0 var(--danger), 0 1px 2px rgba(16, 24, 40, 0.04);
+}
+
+.launch-bar-actions button {
+  border-radius: 7px;
+  box-shadow: none;
 }
 
 .mode-row {

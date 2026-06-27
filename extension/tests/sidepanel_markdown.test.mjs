@@ -543,6 +543,13 @@ assert.match(elements.get("#routeSummary").innerHTML, /data-route-action="prefli
 assert.match(elements.get("#routeSummary").innerHTML, /data-route-action="summarize"/);
 assert.match(elements.get("#routeSummary").innerHTML, /data-route-action="download"/);
 assert.doesNotMatch(elements.get("#routeSummary").innerHTML, /<script>bad/);
+context.renderLaunchBar();
+assert.match(elements.get("#launchBar").className, /candidate/);
+assert.match(elements.get("#launchBar").innerHTML, /data-route-action="preflight"/);
+assert.match(elements.get("#launchBar").innerHTML, /data-route-action="summarize"/);
+assert.match(elements.get("#launchBar").innerHTML, /data-route-action="download"/);
+assert.match(elements.get("#launchBar").innerHTML, /hls/);
+assert.doesNotMatch(elements.get("#launchBar").innerHTML, /Cookie: secret/);
 context.renderContext();
 assert.match(elements.get("#resources").innerHTML, /第 1 顺位/);
 assert.match(elements.get("#resources").innerHTML, /ffmpeg 合并/);
@@ -599,6 +606,11 @@ assert.match(elements.get("#routeSummary").innerHTML, /预检通过/);
 context.renderCurrentStudyCard();
 assert.match(elements.get("#currentStudyCard").className, /ready/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /可以开始当前视频总结/);
+context.renderLaunchBar();
+assert.match(elements.get("#launchBar").className, /ready/);
+assert.match(elements.get("#launchBar").innerHTML, /data-route-action="summarize"/);
+assert.match(elements.get("#launchBar").innerHTML, /data-route-action="download"/);
+assert.doesNotMatch(elements.get("#launchBar").innerHTML, /data-route-action="preflight"/);
 
 vm.runInContext(`
 page = {
@@ -629,3 +641,6 @@ assert.match(elements.get("#resources").innerHTML, /no-resource-guide blocked/);
 assert.match(elements.get("#resources").innerHTML, /data-resource-empty-action="redetect"/);
 assert.match(elements.get("#resources").innerHTML, /data-resource-empty-action="local"/);
 assert.match(elements.get("#resources").innerHTML, /data-resource-empty-action="text"/);
+assert.match(elements.get("#launchBar").className, /blocked/);
+assert.match(elements.get("#launchBar").innerHTML, /data-route-action="local"/);
+assert.doesNotMatch(elements.get("#launchBar").innerHTML, /data-route-action="summarize"/);
