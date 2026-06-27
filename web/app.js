@@ -1366,7 +1366,10 @@ function visualStudyDeck(task, transcript = null) {
         <span>视觉窗口复习</span>
         <strong>${escapeHtml(task.title || task.id || "画面切片")}</strong>
       </div>
-      <small>${escapeHtml(headDetail)}</small>
+      <div class="visual-study-head-actions">
+        <small>${escapeHtml(headDetail)}</small>
+        <a href="${escapeHtml(taskExportUrl(task, "visual-windows"))}">导出切片索引</a>
+      </div>
     </div>
     <div class="visual-study-list">
       ${windows.map((window, index) => {

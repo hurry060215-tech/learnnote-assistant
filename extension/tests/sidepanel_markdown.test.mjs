@@ -213,6 +213,8 @@ const visualDeckHtml = context.visualStudyDeck({
 assert.match(visualDeckHtml, /class="side-visual-study"/);
 assert.match(visualDeckHtml, /视觉窗口复习/);
 assert.match(visualDeckHtml, /2 窗口 · 00:00:00 - 00:06:00/);
+assert.match(visualDeckHtml, /导出切片索引/);
+assert.match(visualDeckHtml, /data-export="visual-windows"/);
 assert.match(visualDeckHtml, /src="http:\/\/127\.0\.0\.1:8765\/api\/tasks\/demo\/grids\/grid_000\.jpg"/);
 assert.doesNotMatch(visualDeckHtml, /src="javascript:alert/);
 assert.match(visualDeckHtml, /&lt;script&gt;alert\(1\)&lt;\/script&gt; 画面摘要/);

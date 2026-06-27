@@ -2246,6 +2246,32 @@ button:disabled {
   white-space: nowrap;
 }
 
+.visual-study-head-actions {
+  display: grid;
+  justify-items: end;
+  gap: 7px;
+}
+
+.visual-study-head-actions a {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #b8d3ff;
+  border-radius: 7px;
+  background: #f2f7ff;
+  color: var(--accent);
+  padding: 0 11px;
+  font-size: 12px;
+  font-weight: 850;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.visual-study-head-actions a:hover {
+  border-color: var(--accent);
+  background: #eaf2ff;
+}
+
 .visual-study-list {
   display: grid;
   gap: 12px;
@@ -3138,6 +3164,10 @@ select {
 
   .visual-study-head small {
     white-space: normal;
+  }
+
+  .visual-study-head-actions {
+    justify-items: start;
   }
 
   .visual-study-card {

@@ -1841,6 +1841,28 @@ input[type="file"] {
   font-weight: 760;
 }
 
+.side-visual-study-head-actions {
+  display: grid;
+  gap: 7px;
+}
+
+.side-visual-study-head-actions button {
+  min-height: 30px;
+  justify-self: start;
+  border: 1px solid #b8d3ff;
+  border-radius: 7px;
+  background: #f2f7ff;
+  color: var(--accent);
+  padding: 0 10px;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.side-visual-study-head-actions button:hover {
+  border-color: var(--accent);
+  background: #eaf2ff;
+}
+
 .side-visual-study-list {
   display: grid;
   gap: 9px;
