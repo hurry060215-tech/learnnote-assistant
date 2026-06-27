@@ -30,6 +30,7 @@
   const B64ISH_RE = /^[A-Za-z0-9+/_=-]{16,}$/;
   const MAX_TEXT_BYTES = 2 * 1024 * 1024;
   const MAX_BLOB_URLS = 80;
+  const RESPONSE_HEADER_ALLOWLIST = ["accept-ranges", "content-disposition", "content-length", "content-range", "content-type"];
   const bufferedResources = [];
   const drmSignals = [];
   const blobSourceByObject = new WeakMap();
@@ -102,6 +103,12 @@
         playback_match: item.playback_match || "",
         is_main_video: Boolean(item.is_main_video),
         blob_url: item.blob_url ? normalizeUrl(item.blob_url) : "",
+        request_type: item.request_type || "",
+        method: item.method || "",
+        status_code: item.status_code ?? null,
+        content_length: item.content_length ?? null,
+        initiator: item.initiator || "",
+        headers: item.headers || {},
         time_stamp: Date.now()
       });
     }
@@ -113,7 +120,13 @@
           score: Math.max(existing.score || 0, item.score || 0),
           playback_match: existing.playback_match || item.playback_match || "",
           is_main_video: Boolean(existing.is_main_video || item.is_main_video),
-          blob_url: item.blob_url || existing.blob_url || ""
+          blob_url: item.blob_url || existing.blob_url || "",
+          request_type: item.request_type || existing.request_type || "",
+          method: item.method || existing.method || "",
+          status_code: item.status_code ?? existing.status_code ?? null,
+          content_length: item.content_length ?? existing.content_length ?? null,
+          initiator: item.initiator || existing.initiator || "",
+          headers: { ...(existing.headers || {}), ...(item.headers || {}) }
         });
       } else {
         bufferedResources.unshift(item);
@@ -149,6 +162,65 @@
     if (kind === "subtitle") return "text/vtt";
     if (kind === "video") return "video/mp4";
     return "";
+  }
+
+  function cleanHeaderValue(value) {
+    return String(value || "").replace(/[\r\n]+/g, " ").trim();
+  }
+
+  function safeResponseHeaders(getHeader) {
+    const headers = {};
+    for (const name of RESPONSE_HEADER_ALLOWLIST) {
+      let value = "";
+      try {
+        value = cleanHeaderValue(getHeader(name));
+      } catch {
+        value = "";
+      }
+      if (value) headers[name] = value;
+    }
+    return headers;
+  }
+
+  function numericHeader(headers, name) {
+    const value = Number(headers?.[name] || 0);
+    return Number.isFinite(value) && value > 0 ? value : null;
+  }
+
+  function fetchResponseMeta(response, url = "") {
+    const headers = safeResponseHeaders(name => response.headers?.get?.(name) || "");
+    return {
+      request_type: "fetch",
+      status_code: response.status ?? null,
+      content_length: numericHeader(headers, "content-length"),
+      initiator: response.url || url || "",
+      headers
+    };
+  }
+
+  function xhrResponseMeta(xhr, url = "") {
+    const headers = safeResponseHeaders(name => xhr.getResponseHeader?.(name) || "");
+    return {
+      request_type: "xmlhttprequest",
+      method: xhr.__learnNoteMethod || "",
+      status_code: xhr.status ?? null,
+      content_length: numericHeader(headers, "content-length"),
+      initiator: xhr.responseURL || url || "",
+      headers
+    };
+  }
+
+  function applyResponseMeta(item, meta = {}) {
+    if (!item || !meta) return item;
+    return {
+      ...item,
+      request_type: item.request_type || meta.request_type || "",
+      method: item.method || meta.method || "",
+      status_code: item.status_code ?? meta.status_code ?? null,
+      content_length: item.content_length ?? meta.content_length ?? null,
+      initiator: item.initiator || meta.initiator || "",
+      headers: { ...(item.headers || {}), ...(meta.headers || {}) }
+    };
   }
 
   function looksLikeJsonUrlCandidate(value) {
@@ -239,7 +311,7 @@
     return entries;
   }
 
-  function collectJsonMediaUrls(node, source, label, keys = [], parent = null, output = [], seen = new Set(), visited = new WeakSet()) {
+  function collectJsonMediaUrls(node, source, label, keys = [], parent = null, output = [], seen = new Set(), visited = new WeakSet(), meta = {}) {
     if (!node || output.length >= 40) return output;
     if (Array.isArray(node)) {
       for (let index = 0; index < Math.min(node.length, 120); index += 1) {
@@ -249,7 +321,7 @@
         } catch {
           child = null;
         }
-        collectJsonMediaUrls(child, source, label, [...keys, String(index)], node, output, seen, visited);
+        collectJsonMediaUrls(child, source, label, [...keys, String(index)], node, output, seen, visited, meta);
         if (output.length >= 40) break;
       }
       return output;
@@ -267,14 +339,14 @@
             const { kind, mime } = kindFromJsonContext(nextKeys, url, node);
             if (kind !== "unknown") {
               seen.add(url);
-              output.push({
+              output.push(applyResponseMeta({
                 url,
                 source,
                 kind,
                 mime,
                 label: `${label} json ${nextKeys.slice(-3).join("/")}`,
                 score: kind === "hls" || kind === "dash" ? 97 : kind === "video" ? 89 : 64
-              });
+              }, meta));
               break;
             }
           }
@@ -285,30 +357,30 @@
           const trimmed = String(candidateText || "").trim();
           if (!trimmed || trimmed.length > MAX_TEXT_BYTES) continue;
           if (!"{[".includes(trimmed[0]) && !MEDIA_HINT_RE.test(trimmed) && !JSON_MEDIA_KEY_RE.test(trimmed)) continue;
-          const nested = collectMediaUrlsFromText(trimmed, source, `${label} nested ${nextKeys.slice(-3).join("/")}`, "", seen);
+          const nested = collectMediaUrlsFromText(trimmed, source, `${label} nested ${nextKeys.slice(-3).join("/")}`, "", seen, meta);
           output.push(...nested.slice(0, Math.max(0, 40 - output.length)));
           if (output.length >= 40) break;
         }
       }
       if (value && typeof value === "object") {
-        collectJsonMediaUrls(value, source, label, nextKeys, node, output, seen, visited);
+        collectJsonMediaUrls(value, source, label, nextKeys, node, output, seen, visited, meta);
       }
       if (output.length >= 40) break;
     }
     return output;
   }
 
-  function extractJsonMediaUrls(text, source, label, seen = new Set()) {
+  function extractJsonMediaUrls(text, source, label, seen = new Set(), meta = {}) {
     const trimmed = String(text || "").trim();
     if (!trimmed || !"{[".includes(trimmed[0])) return [];
     try {
-      return collectJsonMediaUrls(JSON.parse(trimmed), source, label, [], null, [], seen);
+      return collectJsonMediaUrls(JSON.parse(trimmed), source, label, [], null, [], seen, new WeakSet(), meta);
     } catch {
       return [];
     }
   }
 
-  function extractFieldMediaUrls(text, source, label, seen = new Set()) {
+  function extractFieldMediaUrls(text, source, label, seen = new Set(), meta = {}) {
     const output = [];
     TEXT_MEDIA_FIELD_RE.lastIndex = 0;
     for (const match of String(text || "").matchAll(TEXT_MEDIA_FIELD_RE)) {
@@ -321,14 +393,14 @@
         const { kind, mime } = kindFromJsonContext([key], url, {});
         if (kind === "unknown") continue;
         seen.add(url);
-        output.push({
+        output.push(applyResponseMeta({
           url,
           source,
           kind,
           mime,
           label: `${label} field ${key}`,
           score: kind === "hls" || kind === "dash" ? 97 : kind === "video" ? 89 : 64
-        });
+        }, meta));
         break;
       }
       if (output.length >= 40) break;
@@ -459,15 +531,15 @@
     }
   }
 
-  function collectMediaUrlsFromText(text, source, label, mime = "", seen = new Set()) {
+  function collectMediaUrlsFromText(text, source, label, mime = "", seen = new Set(), meta = {}) {
     if (!text) return [];
-    const resources = extractJsonMediaUrls(text, source, label, seen);
-    resources.push(...extractFieldMediaUrls(text, source, label, seen));
+    const resources = extractJsonMediaUrls(text, source, label, seen, meta);
+    resources.push(...extractFieldMediaUrls(text, source, label, seen, meta));
     if (MEDIA_HINT_RE.test(text)) {
       for (const match of text.matchAll(MEDIA_URL_RE)) {
         const url = normalizeUrl(match[0]);
         if (!url || seen.has(url)) continue;
-        resources.push({ url, source, label, mime });
+        resources.push(applyResponseMeta({ url, source, label, mime }, meta));
         seen.add(url);
         if (resources.length >= 40) break;
       }
@@ -475,26 +547,26 @@
     return resources;
   }
 
-  function collectResponseTextResources(url, text, source, label, mime = "") {
+  function collectResponseTextResources(url, text, source, label, mime = "", meta = {}) {
     const seen = new Set();
-    const resources = collectMediaUrlsFromText(text, source, label, mime, seen);
+    const resources = collectMediaUrlsFromText(text, source, label, mime, seen, meta);
     const kind = manifestKindFromText(text, mime);
     const normalizedUrl = normalizeUrl(url);
     if (kind !== "unknown" && normalizedUrl && !seen.has(normalizedUrl)) {
-      resources.unshift({
+      resources.unshift(applyResponseMeta({
         url: normalizedUrl,
         source,
         kind,
         mime: mime || mimeForKind(kind),
         label: `${label} manifest`,
         score: 99
-      });
+      }, meta));
     }
     return resources;
   }
 
-  function extractUrlsFromText(text, source, label, mime = "", responseUrl = "") {
-    emit(collectResponseTextResources(responseUrl, text, source, label, mime));
+  function extractUrlsFromText(text, source, label, mime = "", responseUrl = "", meta = {}) {
+    emit(collectResponseTextResources(responseUrl, text, source, label, mime, meta));
   }
 
   function collectGlobalConfigResources() {
@@ -794,7 +866,8 @@
       const response = await originalFetch.apply(this, args);
       const url = response.url || requestUrl(args[0]);
       const mime = response.headers?.get?.("content-type") || "";
-      emit([{ url, source: "pageHookRequest", label: "fetch", mime }]);
+      const meta = fetchResponseMeta(response, url);
+      emit([applyResponseMeta({ url, source: "pageHookRequest", label: "fetch", mime }, meta)]);
       try {
         rememberStreamObject(response.body, blobMeta(url, mime, "pageHookStream", "fetch stream source"));
       } catch {
@@ -803,7 +876,7 @@
       if (shouldInspectResponse(response)) {
         try {
           response.clone().text()
-            .then(text => extractUrlsFromText(text.slice(0, MAX_TEXT_BYTES), "pageHookBody", "fetch body", mime, url))
+            .then(text => extractUrlsFromText(text.slice(0, MAX_TEXT_BYTES), "pageHookBody", "fetch body", mime, url, meta))
             .catch(() => {});
         } catch {
           // Some wrapped responses cannot be cloned; Response.json() remains patched below.
@@ -833,7 +906,7 @@
     Response.prototype.json = async function (...args) {
       const data = await originalResponseJson.apply(this, args);
       try {
-        emit(collectJsonMediaUrls(data, "pageHookBody", "fetch json"));
+        emit(collectJsonMediaUrls(data, "pageHookBody", "fetch json", [], null, [], new Set(), new WeakSet(), fetchResponseMeta(this, this.url || "")));
       } catch {
         // Keep host page JSON consumption unchanged.
       }
@@ -849,7 +922,7 @@
         const mime = this.headers?.get?.("content-type") || "";
         const url = this.url || "";
         if (shouldInspectTextPayload(url, mime, String(text || "").length)) {
-          extractUrlsFromText(String(text || "").slice(0, MAX_TEXT_BYTES), "pageHookBody", "fetch text", mime, url);
+          extractUrlsFromText(String(text || "").slice(0, MAX_TEXT_BYTES), "pageHookBody", "fetch text", mime, url, fetchResponseMeta(this, url));
         }
       } catch {
         // Keep host page text consumption unchanged.
@@ -1002,7 +1075,8 @@
       this.addEventListener("loadend", () => {
         const url = this.responseURL || this.__learnNoteUrl || "";
         const mime = this.getResponseHeader?.("content-type") || "";
-        emit([{ url, source: "pageHookRequest", label: "xhr", mime }]);
+        const meta = xhrResponseMeta(this, url);
+        emit([applyResponseMeta({ url, source: "pageHookRequest", label: "xhr", mime }, meta)]);
         if (typeof Blob !== "undefined" && this.response instanceof Blob) {
           const meta = blobMeta(url, this.response.type || mime, "pageHookBlob", "xhr blob source");
           rememberBlobObject(this.response, meta);
@@ -1014,9 +1088,9 @@
         if (!shouldInspectTextPayload(url, mime, 0)) return;
         if (this.responseType === "json") {
           if (this.response && typeof this.response === "object") {
-            emit(collectJsonMediaUrls(this.response, "pageHookBody", "xhr json"));
+            emit(collectJsonMediaUrls(this.response, "pageHookBody", "xhr json", [], null, [], new Set(), new WeakSet(), meta));
           } else if (typeof this.response === "string") {
-            extractUrlsFromText(this.response.slice(0, MAX_TEXT_BYTES), "pageHookBody", "xhr json", mime, url);
+            extractUrlsFromText(this.response.slice(0, MAX_TEXT_BYTES), "pageHookBody", "xhr json", mime, url, meta);
           }
           return;
         }
@@ -1028,7 +1102,7 @@
           text = "";
         }
         if (typeof text !== "string") return;
-        extractUrlsFromText(text.slice(0, MAX_TEXT_BYTES), "pageHookBody", "xhr body", mime, url);
+        extractUrlsFromText(text.slice(0, MAX_TEXT_BYTES), "pageHookBody", "xhr body", mime, url, meta);
       });
       return originalSend.apply(this, args);
     };

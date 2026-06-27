@@ -15,6 +15,7 @@ class FakeXHR {
       }
     };
     this.responseURL = "https://course.example.com/api/play-json";
+    this.status = 200;
   }
 
   open(method, url) {
@@ -35,6 +36,7 @@ class FakeXHR {
 
   getResponseHeader(name) {
     if (String(name).toLowerCase() === "content-type") return "application/json";
+    if (String(name).toLowerCase() === "content-length") return "8192";
     return "";
   }
 }
@@ -72,3 +74,10 @@ assert.ok(hls, "expected XHR responseType=json body to expose the encoded HLS UR
 assert.equal(hls.kind, "hls");
 assert.equal(hls.source, "pageHookBody");
 assert.match(hls.label, /xhr json/);
+assert.equal(hls.request_type, "xmlhttprequest");
+assert.equal(hls.method, "GET");
+assert.equal(hls.status_code, 200);
+assert.equal(hls.content_length, 8192);
+assert.equal(hls.initiator, "https://course.example.com/api/play-json");
+assert.equal(hls.headers["content-type"], "application/json");
+assert.equal(hls.headers["content-length"], "8192");

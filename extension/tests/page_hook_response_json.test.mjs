@@ -7,6 +7,7 @@ const messages = [];
 class FakeHeaders {
   get(name) {
     if (String(name).toLowerCase() === "content-type") return "application/json";
+    if (String(name).toLowerCase() === "content-length") return "4096";
     return "";
   }
 }
@@ -16,6 +17,7 @@ class FakeResponse {
     this.data = data;
     this.url = "https://course.example.com/api/play";
     this.headers = new FakeHeaders();
+    this.status = 200;
     this.body = null;
   }
 
@@ -70,3 +72,9 @@ assert.ok(hls, "expected Response.json() body to expose the encoded HLS URL");
 assert.equal(hls.kind, "hls");
 assert.equal(hls.source, "pageHookBody");
 assert.match(hls.label, /fetch json/);
+assert.equal(hls.request_type, "fetch");
+assert.equal(hls.status_code, 200);
+assert.equal(hls.content_length, 4096);
+assert.equal(hls.initiator, "https://course.example.com/api/play");
+assert.equal(hls.headers["content-type"], "application/json");
+assert.equal(hls.headers["content-length"], "4096");
