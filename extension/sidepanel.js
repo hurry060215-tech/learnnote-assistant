@@ -1,6 +1,7 @@
 const DEFAULT_BACKEND = "http://127.0.0.1:8765";
 const HAS_EXTENSION_API = typeof chrome !== "undefined" && Boolean(chrome.runtime?.sendMessage && chrome.storage?.local);
 const LOCAL_VIDEO_EXT_RE = /\.(mp4|m4v|mov|mkv|webm|flv|avi)$/i;
+const RESULT_TAB_NAMES = new Set(["note", "transcript", "frames", "diagnostics"]);
 
 let backendUrl = DEFAULT_BACKEND;
 let page = null;
@@ -292,9 +293,10 @@ function selectedResourceReport(item = selectedResource()) {
   ].join("\n");
 }
 
-function workbenchUrl(taskId = currentTaskId) {
+function workbenchUrl(taskId = currentTaskId, tabName = selectedTab) {
   if (!taskId) return backendUrl;
-  return `${backendUrl.replace(/\/$/, "")}/?task=${encodeURIComponent(taskId)}`;
+  const tab = RESULT_TAB_NAMES.has(tabName) ? tabName : "note";
+  return `${backendUrl.replace(/\/$/, "")}/?task=${encodeURIComponent(taskId)}&tab=${encodeURIComponent(tab)}`;
 }
 
 async function copyTextToClipboard(text, successMessage) {

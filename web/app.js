@@ -2,10 +2,11 @@ const API = "";
 const MEDIA_RE = /\.(mp4|m4v|webm|mov|mkv|flv|avi)(\?|#|$)/i;
 const HLS_RE = /\.(m3u8|mpd)(\?|#|$)/i;
 const LOCAL_VIDEO_EXT_RE = /\.(mp4|m4v|mov|mkv|webm|flv|avi)$/i;
+const RESULT_TAB_NAMES = new Set(["note", "transcript", "frames", "diagnostics"]);
 
 let selectedSource = "browser";
 let selectedTaskId = taskIdFromCurrentUrl();
-let selectedTab = "note";
+let selectedTab = resultTabFromCurrentUrl();
 let lastNote = "";
 let lastNoteTaskId = "";
 let lastTranscript = null;
@@ -70,11 +71,16 @@ function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[ch]));
 }
 
-function taskIdFromCurrentUrl() {
+function currentUrlSearchText() {
   const href = String(window?.location?.href || location?.href || "");
   const explicitSearch = String(window?.location?.search || location?.search || "");
-  const search = explicitSearch || (href.includes("?") ? href.slice(href.indexOf("?")) : "");
-  const match = /[?&](?:task|task_id)=([^&#]+)/.exec(search);
+  return explicitSearch || (href.includes("?") ? href.slice(href.indexOf("?")) : "");
+}
+
+function currentUrlParam(names) {
+  const search = currentUrlSearchText();
+  const pattern = new RegExp(`[?&](?:${names.join("|")})=([^&#]+)`);
+  const match = pattern.exec(search);
   if (!match) return null;
   try {
     return decodeURIComponent(match[1].replace(/\+/g, " ")).trim() || null;
@@ -83,16 +89,26 @@ function taskIdFromCurrentUrl() {
   }
 }
 
+function taskIdFromCurrentUrl() {
+  return currentUrlParam(["task", "task_id"]);
+}
+
+function resultTabFromCurrentUrl() {
+  const tab = currentUrlParam(["tab", "result_tab"]);
+  return RESULT_TAB_NAMES.has(tab) ? tab : "note";
+}
+
 function syncSelectedTaskUrl(taskId) {
   if (!taskId || !window?.history?.replaceState) return;
   const path = window.location?.pathname || "/";
   const hash = window.location?.hash || "";
   if (typeof URLSearchParams === "undefined") {
-    window.history.replaceState(null, "", `${path}?task=${encodeURIComponent(taskId)}${hash}`);
+    window.history.replaceState(null, "", `${path}?task=${encodeURIComponent(taskId)}&tab=${encodeURIComponent(selectedTab)}${hash}`);
     return;
   }
   const params = new URLSearchParams(String(window.location?.search || ""));
   params.set("task", taskId);
+  params.set("tab", selectedTab);
   window.history.replaceState(null, "", `${path}?${params.toString()}${hash}`);
 }
 
@@ -966,9 +982,14 @@ function setReadingMode(enabled, persist = true) {
   if (persist) storeUiFlag("learnnote.readingMode", enabled);
 }
 
+function renderResultTabState() {
+  els.resultTabs.forEach(item => item.classList.toggle("active", item.dataset.tab === selectedTab));
+}
+
 function initializeWorkspaceView() {
   setHistoryCollapsed(storedUiFlag("learnnote.historyCollapsed"), false);
   setReadingMode(storedUiFlag("learnnote.readingMode"), false);
+  renderResultTabState();
 }
 
 async function loadTasks() {
@@ -1267,7 +1288,8 @@ async function rerunTaskFromMedia(taskId) {
   const data = await response.json();
   selectTask(data.task_id);
   selectedTab = "note";
-  els.resultTabs.forEach(item => item.classList.toggle("active", item.dataset.tab === selectedTab));
+  renderResultTabState();
+  syncSelectedTaskUrl(selectedTaskId);
   await loadTasks();
   focusResultPanelOnMobile();
 }
@@ -1282,9 +1304,10 @@ function bindTaskOverviewActions() {
 }
 
 function switchResultTab(tabName) {
-  if (!tabName || selectedTab === tabName) return;
+  if (!RESULT_TAB_NAMES.has(tabName) || selectedTab === tabName) return;
   selectedTab = tabName;
-  els.resultTabs.forEach(item => item.classList.toggle("active", item.dataset.tab === selectedTab));
+  renderResultTabState();
+  syncSelectedTaskUrl(selectedTaskId);
   renderDetail();
 }
 
