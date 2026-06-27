@@ -89,6 +89,7 @@ class FakeRoot {
 
 const hiddenTrack = {
   mode: "disabled",
+  listeners: [],
   get cues() {
     return this.mode === "hidden" ? [
       { startTime: 0, endTime: 2.5, text: "Welcome to the lesson" },
@@ -97,7 +98,16 @@ const hiddenTrack = {
   },
   get activeCues() {
     return [];
+  },
+  addEventListener(name) {
+    this.listeners.push(name);
   }
+};
+
+const textTrackList = [hiddenTrack];
+textTrackList.listeners = [];
+textTrackList.addEventListener = function addEventListener(name) {
+  this.listeners.push(name);
 };
 
 const video = new FakeElement("video", {
@@ -108,9 +118,7 @@ const video = new FakeElement("video", {
   readyState: 4,
   videoWidth: 1280,
   videoHeight: 720,
-  textTracks: [
-    hiddenTrack
-  ]
+  textTracks: textTrackList
 }, [
   new FakeElement("source", {
     src: "https://cdn.example.com/shadow/playlist.m3u8?token=1",
@@ -137,6 +145,7 @@ const html = new FakeElement("html", {}, [host]);
 
 let messageListener = null;
 const observedRoots = [];
+const observeOptions = [];
 const context = {
   console,
   URL,
@@ -170,8 +179,9 @@ const context = {
       this.callback = callback;
     }
 
-    observe(root) {
+    observe(root, options) {
       observedRoots.push(root);
+      observeOptions.push(options);
     }
   },
   performance: {
@@ -213,6 +223,9 @@ const urls = new Set(response.resources.map(item => item.url));
 assert.equal(response.active_video.src, "https://cdn.example.com/api/current?id=shadow&token=1");
 assert.equal(response.active_video.paused, false);
 assert.equal(hiddenTrack.mode, "hidden");
+assert.ok(hiddenTrack.listeners.includes("cuechange"), "expected subtitle cue changes to trigger page context refreshes");
+assert.ok(textTrackList.listeners.includes("addtrack"), "expected newly loaded subtitle tracks to be watched");
+assert.ok(textTrackList.listeners.includes("change"), "expected subtitle track mode changes to refresh context");
 assert.deepEqual(JSON.parse(JSON.stringify(response.browser_subtitles)), [
   { start: 0, end: 2.5, text: "Welcome to the lesson" },
   { start: 2.5, end: 5, text: "Shadow DOM caption cue" },
@@ -233,3 +246,4 @@ assert.equal(extensionless.request_type, "video");
 assert.equal(extensionless.content_length, 7340032);
 assert.match(response.page_text, /Shadow lesson title/);
 assert.ok(observedRoots.includes(shadowRoot), "expected open shadow roots to be observed for later media mutations");
+assert.ok(observeOptions.some(options => options?.characterData), "expected subtitle DOM text changes to refresh context");
