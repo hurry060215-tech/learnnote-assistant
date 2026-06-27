@@ -71,6 +71,21 @@ function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[ch]));
 }
 
+async function fetchJson(url, options = {}) {
+  const response = await fetch(url, options);
+  const contentType = response.headers?.get?.("content-type") || "";
+  if (response.ok === false) {
+    const message = contentType.includes("application/json")
+      ? JSON.stringify(await response.json().catch(() => ({})))
+      : (typeof response.text === "function" ? await response.text().catch(() => "") : "");
+    throw new Error(message || `HTTP ${response.status}`);
+  }
+  if (contentType && !contentType.includes("application/json")) {
+    throw new Error(`Expected JSON from ${url}`);
+  }
+  return response.json();
+}
+
 function currentUrlSearchText() {
   const href = String(window?.location?.href || location?.href || "");
   const explicitSearch = String(window?.location?.search || location?.search || "");
@@ -974,7 +989,7 @@ function readOptions() {
 
 async function checkHealth() {
   try {
-    const data = await fetch(`${API}/health`).then(r => r.json());
+    const data = await fetchJson(`${API}/health`);
     els.health.className = data.ffmpeg ? "health ok" : "health bad";
     els.health.textContent = data.ffmpeg ? "本地后端可用" : "ffmpeg 缺失";
     if (els.browserBridgeStatus) {
@@ -1059,7 +1074,18 @@ function initializeWorkspaceView() {
 }
 
 async function loadTasks() {
-  const data = await fetch(`${API}/api/tasks`).then(r => r.json());
+  let data = { tasks: [] };
+  try {
+    data = await fetchJson(`${API}/api/tasks`);
+  } catch {
+    tasks = [];
+    selectedTaskId = null;
+    renderTasks();
+    renderBrowserRouteSummary();
+    renderSourceWorkflow();
+    await renderDetail();
+    return;
+  }
   tasks = data.tasks || [];
   if (selectedTaskId && !tasks.some(task => task.id === selectedTaskId)) selectedTaskId = null;
   if (!selectedTaskId && tasks[0]) selectTask(tasks[0].id, { clearCaches: false });
@@ -1101,7 +1127,7 @@ function renderTasks() {
   const visibleTasks = tasks.filter(taskMatchesFilters);
 
   if (!tasks.length) {
-    els.tasks.innerHTML = `<div class="detail empty">暂无任务。</div>`;
+    els.tasks.innerHTML = emptyTaskQueueHtml();
     return;
   }
   if (!visibleTasks.length) {
@@ -1132,6 +1158,27 @@ function renderTasks() {
       focusResultPanelOnMobile();
     };
   });
+}
+
+function emptyTaskQueueHtml() {
+  const steps = [
+    ["1", "直取/上传", "当前页候选、链接或本地视频"],
+    ["2", "下载与转写", "ffmpeg / yt-dlp / Whisper"],
+    ["3", "画面切片", "按时间窗生成网格截图"],
+    ["4", "整理笔记", "时间轴、概念、复习题"]
+  ];
+  return `<section class="queue-empty-workflow" aria-label="任务队列空状态">
+    <span>暂无任务</span>
+    <strong>选择左侧入口开始生成学习笔记</strong>
+    <p>任务会在这里形成队列；成功后右侧直接进入笔记、字幕、画面切片和下载诊断。</p>
+    <ol>
+      ${steps.map(([index, title, detail]) => `<li>
+        <b>${escapeHtml(index)}</b>
+        <span>${escapeHtml(title)}</span>
+        <small>${escapeHtml(detail)}</small>
+      </li>`).join("")}
+    </ol>
+  </section>`;
 }
 
 function taskPreviewHtml(task) {
@@ -1942,7 +1989,7 @@ async function startUrlTask(mode = "video") {
   if (els.preflightUrlButton) els.preflightUrlButton.disabled = true;
   if (els.downloadUrlButton) els.downloadUrlButton.disabled = true;
   try {
-    const data = await fetch(`${API}/api/tasks/from-current-page`, {
+    const data = await fetchJson(`${API}/api/tasks/from-current-page`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1954,7 +2001,7 @@ async function startUrlTask(mode = "video") {
         cookies: [],
         options: readOptions()
       })
-    }).then(r => r.json());
+    });
     selectTask(data.task_id);
     await loadTasks();
     focusResultPanelOnMobile();
@@ -1981,7 +2028,7 @@ async function preflightUrlTask() {
   if (els.downloadUrlButton) els.downloadUrlButton.disabled = true;
   els.urlModeHint.textContent = "正在预检链接可访问性...";
   try {
-    const data = await fetch(`${API}/api/media/preflight`, {
+    const data = await fetchJson(`${API}/api/media/preflight`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1989,7 +2036,7 @@ async function preflightUrlTask() {
         resource,
         cookies: []
       })
-    }).then(r => r.json());
+    });
     const result = data.preflight || {};
     els.urlModeHint.textContent = result.downloadable
       ? `预检通过：${result.kind || resource.kind} 可访问，${result.status_code ? `HTTP ${result.status_code}，` : ""}${fmtBytes(result.content_length) || `${result.bytes_checked || 0} B`}。`
