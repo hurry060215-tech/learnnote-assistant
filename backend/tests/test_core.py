@@ -615,6 +615,69 @@ class ProcessorBoundaryTests(unittest.TestCase):
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
+    def test_drm_signal_with_extensionless_browser_candidate_reaches_downloader(self) -> None:
+        task = create_task("current_page", "Signed playback lesson", "https://course.example.com/lesson")
+        source_path = task_dir(task.id) / "signed-download.bin"
+
+        class FakeDownloader:
+            def __init__(self, work_dir: Path):
+                self.work_dir = work_dir
+                self.attempts = [
+                    DownloadAttempt(
+                        strategy="direct-file",
+                        url="https://cdn.example.com/api/play?id=abc",
+                        source="webRequest",
+                        kind="video",
+                        status="success",
+                    )
+                ]
+
+            def download(self, page_url, resources, cookies, title):
+                source_path.write_bytes(b"downloaded signed video")
+                return source_path, resources[0]
+
+        def fake_normalize(source: Path, target: Path) -> Path:
+            self.assertEqual(source, source_path)
+            target.write_bytes(b"normalized video")
+            return target
+
+        try:
+            request = CurrentPageTaskRequest(
+                mode="download_only",
+                page_url="https://course.example.com/lesson",
+                title="Signed playback lesson",
+                active_video=ActiveVideoInfo(
+                    src="blob:https://course.example.com/player",
+                    drm_detected=True,
+                ),
+                drm_detected=True,
+                drm_signals=[DrmSignal(source="pageHookEme", key_system="com.widevine.alpha")],
+                resources=[
+                    ResourceCandidate(
+                        url="https://cdn.example.com/api/play?id=abc",
+                        source="webRequest",
+                        kind="video",
+                        mime="application/octet-stream",
+                        score=96,
+                    )
+                ],
+            )
+
+            with patch("app.processor.MediaDownloader", FakeDownloader), \
+                patch("app.processor.normalize_video", side_effect=fake_normalize):
+                process_current_page_task(task.id, request)
+
+            record = get_task(task.id)
+            self.assertEqual(record.status, "success")
+            self.assertEqual(record.error_code, "")
+            self.assertTrue(record.media_path)
+            self.assertEqual(record.selected_resource.url, "https://cdn.example.com/api/play?id=abc")
+            self.assertEqual(record.selected_resource.kind, "video")
+            self.assertEqual(record.download_attempts[0].strategy, "direct-file")
+            self.assertTrue(record.drm_detected)
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
 
 class DownloaderBoundaryTests(unittest.TestCase):
     def test_blob_only_resources_fail_as_encrypted_or_unrecoverable(self) -> None:
