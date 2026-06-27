@@ -610,20 +610,29 @@ assert.equal(posts[0].resources[0].source, "manual");
 assert.equal(posts[0].resources[0].request_type, "manual-forced");
 assert.equal(posts[0].resources[0].url, "https://cdn.example.com/api/play?id=shadow");
 
-await context.startUrlTask("download_only");
+elements.get("#urlInput").value = "https://cdn.example.com/live/lesson.flv?token=abc";
+elements.get("#urlMode").value = "auto";
+await context.startUrlTask("video");
 
 assert.equal(posts.length, 2);
-assert.equal(posts[1].mode, "download_only");
 assert.equal(posts[1].resources.length, 1);
 assert.equal(posts[1].resources[0].kind, "video");
-assert.equal(posts[1].resources[0].request_type, "manual-forced");
+assert.equal(posts[1].resources[0].url, "https://cdn.example.com/live/lesson.flv?token=abc");
+
+await context.startUrlTask("download_only");
+
+assert.equal(posts.length, 3);
+assert.equal(posts[2].mode, "download_only");
+assert.equal(posts[2].resources.length, 1);
+assert.equal(posts[2].resources[0].kind, "video");
 assert.equal(elements.get("#downloadUrlButton").disabled, false);
 
 await context.preflightUrlTask();
 
 assert.equal(preflights.length, 1);
 assert.equal(preflights[0].resource.kind, "video");
-assert.equal(preflights[0].resource.request_type, "manual-forced");
+assert.equal(preflights[0].resource.request_type, "manual-auto");
+assert.equal(preflights[0].resource.url, "https://cdn.example.com/live/lesson.flv?token=abc");
 assert.match(elements.get("#urlModeHint").textContent, /预检通过/);
 assert.match(elements.get("#urlModeHint").textContent, /120\.6 KB/);
 assert.equal(elements.get("#preflightUrlButton").disabled, false);

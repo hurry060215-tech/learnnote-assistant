@@ -76,6 +76,13 @@ assert.equal(
 );
 assert.equal(
   context.classifyCompletedRequest({
+    url: "https://cdn.example.com/live/lesson.flv?token=abc",
+    type: "xmlhttprequest"
+  }, ""),
+  "video"
+);
+assert.equal(
+  context.classifyCompletedRequest({
     url: "https://cdn.example.com/api/player?id=abc",
     type: "xmlhttprequest"
   }, "application/octet-stream"),
