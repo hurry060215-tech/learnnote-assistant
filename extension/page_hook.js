@@ -531,23 +531,29 @@
     return resources.slice(0, 60);
   }
 
-  function sourceCandidates(value, output = []) {
+  function sourceCandidates(value, output = [], visited = new WeakSet(), depth = 0) {
     if (!value) return output;
     if (typeof value === "string") {
       output.push(value);
       return output;
     }
     if (Array.isArray(value)) {
-      for (const item of value) sourceCandidates(item, output);
+      for (const item of value) sourceCandidates(item, output, visited, depth + 1);
       return output;
     }
     if (typeof value === "object") {
-      for (const key of ["src", "url", "file", "source", "manifestUri"]) {
+      if (visited.has(value) || depth > 4) return output;
+      visited.add(value);
+      for (const key of ["src", "url", "file", "source", "manifestUri", "playUrl", "videoUrl", "flvUrl", "hlsUrl"]) {
         try {
           if (typeof value[key] === "string") output.push(value[key]);
         } catch {
           // Some player source objects expose throwing getters.
         }
+      }
+      for (const [key, child] of safeObjectEntries(value, 80)) {
+        if (!/^(video|media|source|sources|playlist|file|url|config|play|quality|qualities|streams?|hls|dash)$/i.test(key)) continue;
+        sourceCandidates(child, output, visited, depth + 1);
       }
     }
     return output;
@@ -674,11 +680,82 @@
     }
   }
 
+  function patchGenericPlayerInstance(player, label) {
+    if (!player || typeof player !== "object") return player;
+    for (const method of ["src", "url", "load", "setup", "switchVideo", "switchUrl", "switchURL", "changeQuality", "setSrc", "setUrl", "setVideoUrl"]) {
+      patchMethod(player, method, original => function (...args) {
+        for (const arg of args) emitPlayerSources(arg, "", `${label} ${method}`);
+        return original.apply(this, args);
+      });
+    }
+    return player;
+  }
+
+  function patchPlayerConstructorOn(target, name, label) {
+    try {
+      const Original = target?.[name];
+      if (typeof Original !== "function" || Original.__learnNoteConstructorPatched) return;
+      const Wrapped = new Proxy(Original, {
+        construct(constructor, args, newTarget) {
+          for (const arg of args) emitPlayerSources(arg, "", label);
+          return patchGenericPlayerInstance(Reflect.construct(constructor, args, newTarget), label);
+        },
+        apply(constructor, thisArg, args) {
+          for (const arg of args) emitPlayerSources(arg, "", label);
+          return patchGenericPlayerInstance(Reflect.apply(constructor, thisArg, args), label);
+        }
+      });
+      try {
+        Object.setPrototypeOf(Wrapped, Original);
+        Wrapped.prototype = Original.prototype;
+      } catch {
+        // Proxy construct/apply traps are enough for typical global players.
+      }
+      Object.defineProperty(Wrapped, "__learnNoteConstructorPatched", { value: true });
+      target[name] = Wrapped;
+    } catch {
+      // Some player globals are read-only or cross-realm wrappers.
+    }
+  }
+
+  function patchCommonChinesePlayers() {
+    patchPlayerConstructorOn(window, "DPlayer", "DPlayer constructor");
+    patchPlayerConstructorOn(window, "Artplayer", "ArtPlayer constructor");
+    patchPlayerConstructorOn(window, "ArtPlayer", "ArtPlayer constructor");
+    patchPlayerConstructorOn(window, "XGPlayer", "xgplayer constructor");
+    patchPlayerConstructorOn(window, "Aliplayer", "Aliplayer constructor");
+    patchPlayerConstructorOn(window, "TcPlayer", "TcPlayer constructor");
+    patchPlayerConstructorOn(window.xgplayer, "Player", "xgplayer Player constructor");
+  }
+
+  function patchJwPlayer() {
+    try {
+      const original = window.jwplayer;
+      if (typeof original !== "function" || original.__learnNoteJwplayerPatched) return;
+      function LearnNoteJwplayer(...args) {
+        const player = original.apply(this, args);
+        return patchGenericPlayerInstance(player, "jwplayer");
+      }
+      try {
+        Object.setPrototypeOf(LearnNoteJwplayer, original);
+        LearnNoteJwplayer.prototype = original.prototype;
+      } catch {
+        // A plain function wrapper works for jwplayer(id).setup(...).
+      }
+      Object.defineProperty(LearnNoteJwplayer, "__learnNoteJwplayerPatched", { value: true });
+      window.jwplayer = LearnNoteJwplayer;
+    } catch {
+      // jwplayer is optional and may lock its global.
+    }
+  }
+
   function patchKnownPlayerLibraries() {
     patchHlsJs();
     patchDashJs();
     patchShakaPlayer();
     patchVideoJs();
+    patchCommonChinesePlayers();
+    patchJwPlayer();
   }
 
   function scanGlobalConfig() {
