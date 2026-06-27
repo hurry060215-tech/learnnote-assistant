@@ -16,15 +16,15 @@ from .models import BrowserCookie, DownloadAttempt, MediaPreflightResult, Resour
 from .runtime import ffmpeg_bin
 
 
-MEDIA_EXT_RE = re.compile(r"\.(mp4|m4v|webm|mov|mkv)(\?|#|$)", re.I)
+MEDIA_EXT_RE = re.compile(r"\.(mp4|m4v|webm|mov|mkv|flv)(\?|#|$)", re.I)
 MANIFEST_EXT_RE = re.compile(r"\.(m3u8|mpd)(\?|#|$)", re.I)
 FRAGMENT_EXT_RE = re.compile(r"\.(m4s|ts)(\?|#|$)", re.I)
 SUBTITLE_EXT_RE = re.compile(r"\.(vtt|srt|ass|ssa)(\?|#|$)", re.I)
-TEXT_MEDIA_HINT_RE = re.compile(r"\.(mp4|m4v|webm|mov|mkv|m3u8|mpd|vtt|srt|ass|ssa)([?#]|[\"'\s<>]|$)", re.I)
+TEXT_MEDIA_HINT_RE = re.compile(r"\.(mp4|m4v|webm|mov|mkv|flv|m3u8|mpd|vtt|srt|ass|ssa)([?#]|[\"'\s<>]|$)", re.I)
 TEXT_MEDIA_URL_RE = re.compile(
-    r"(?:https?:)?//[^\s\"'<>\\]+\.(?:mp4|m4v|webm|mov|mkv|m3u8|mpd|vtt|srt|ass|ssa)(?:\?[^\s\"'<>\\]*)?"
-    r"|(?:/[^\s\"'<>\\]+)\.(?:mp4|m4v|webm|mov|mkv|m3u8|mpd|vtt|srt|ass|ssa)(?:\?[^\s\"'<>\\]*)?"
-    r"|(?:[A-Za-z0-9._~!$&()*+,;=:@%-]+/)*[A-Za-z0-9._~!$&()*+,;=:@%-]+\.(?:mp4|m4v|webm|mov|mkv|m3u8|mpd|vtt|srt|ass|ssa)(?:\?[^\s\"'<>\\]*)?",
+    r"(?:https?:)?//[^\s\"'<>\\]+\.(?:mp4|m4v|webm|mov|mkv|flv|m3u8|mpd|vtt|srt|ass|ssa)(?:\?[^\s\"'<>\\]*)?"
+    r"|(?:/[^\s\"'<>\\]+)\.(?:mp4|m4v|webm|mov|mkv|flv|m3u8|mpd|vtt|srt|ass|ssa)(?:\?[^\s\"'<>\\]*)?"
+    r"|(?:[A-Za-z0-9._~!$&()*+,;=:@%-]+/)*[A-Za-z0-9._~!$&()*+,;=:@%-]+\.(?:mp4|m4v|webm|mov|mkv|flv|m3u8|mpd|vtt|srt|ass|ssa)(?:\?[^\s\"'<>\\]*)?",
     re.I,
 )
 TEXT_RESPONSE_RE = re.compile(r"json|text|html|javascript|mpegurl|dash\+xml|xml|x-mpegurl", re.I)

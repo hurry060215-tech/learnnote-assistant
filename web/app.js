@@ -1,5 +1,5 @@
 const API = "";
-const MEDIA_RE = /\.(mp4|m4v|webm|mov|mkv)(\?|#|$)/i;
+const MEDIA_RE = /\.(mp4|m4v|webm|mov|mkv|flv)(\?|#|$)/i;
 const HLS_RE = /\.(m3u8|mpd)(\?|#|$)/i;
 
 let selectedSource = "browser";
