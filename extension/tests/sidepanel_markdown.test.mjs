@@ -554,6 +554,9 @@ context.renderContext();
 assert.match(elements.get("#resources").innerHTML, /第 1 顺位/);
 assert.match(elements.get("#resources").innerHTML, /ffmpeg 合并/);
 assert.match(elements.get("#resources").innerHTML, /resource-confidence high/);
+assert.match(elements.get("#resources").innerHTML, /resource-filter-bar/);
+assert.match(elements.get("#resources").innerHTML, /data-resource-filter="downloadable"/);
+assert.match(elements.get("#resources").innerHTML, /data-resource-filter="matched"/);
 assert.match(elements.get("#resources").innerHTML, /resource-attempt-row selected/);
 assert.match(elements.get("#resourceInspector").innerHTML, /候选置信度/);
 assert.match(elements.get("#resourceInspector").innerHTML, /播放匹配/);
@@ -581,6 +584,71 @@ assert.doesNotMatch(report, /Authorization/);
 await context.copySelectedResourceReport();
 assert.equal(clipboardWrites.at(-1), report);
 assert.equal(elements.get("#taskMessage").textContent, "已复制候选资源证据摘要。");
+
+vm.runInContext(`
+resources = [
+  {
+    url: "https://cdn.example.com/live/master.m3u8",
+    kind: "hls",
+    source: "webRequest",
+    score: 98,
+    label: "master",
+    playback_match: "blob-source"
+  },
+  {
+    url: "blob:https://course.example.com/video",
+    kind: "blob",
+    source: "activeVideo",
+    score: 5,
+    label: "blob source"
+  },
+  {
+    url: "https://cdn.example.com/captions.vtt",
+    kind: "subtitle",
+    source: "subtitleTrack",
+    score: 62,
+    label: "caption"
+  }
+];
+selectedResourceUrl = "https://cdn.example.com/live/master.m3u8";
+resourceFilter = "diagnostic";
+`, context);
+context.renderContext();
+assert.equal(context.filteredResources().length, 2);
+assert.equal(context.selectedResource().url, "blob:https://course.example.com/video");
+assert.match(elements.get("#resources").innerHTML, /data-resource-filter="diagnostic"/);
+assert.match(elements.get("#resources").innerHTML, /class="active" data-resource-filter="diagnostic"/);
+assert.match(elements.get("#resourceInspector").innerHTML, /blob 播放地址线索/);
+assert.match(elements.get("#resourceInspector").innerHTML, /blob:https:\/\/course\.example\.com\/video/);
+
+vm.runInContext(`
+resourceFilter = "matched";
+resources = [{
+  url: "https://cdn.example.com/only-caption.vtt",
+  kind: "subtitle",
+  source: "subtitleTrack",
+  score: 62,
+  label: "only caption"
+}];
+selectedResourceUrl = "https://cdn.example.com/only-caption.vtt";
+`, context);
+context.renderContext();
+assert.equal(context.filteredResources().length, 0);
+assert.match(elements.get("#resources").innerHTML, /resource-filter-empty/);
+assert.match(elements.get("#resources").innerHTML, /data-resource-filter="all"/);
+
+vm.runInContext(`
+resources = [{
+  url: "https://cdn.example.com/live/master.m3u8",
+  kind: "hls",
+  source: "webRequest",
+  score: 98,
+  label: "master",
+  playback_match: "blob-source"
+}];
+selectedResourceUrl = "https://cdn.example.com/live/master.m3u8";
+resourceFilter = "all";
+`, context);
 vm.runInContext(`currentTaskId = "task-url-direct"; selectedTab = "frames"; backendUrl = "http://127.0.0.1:8765/";`, context);
 assert.equal(context.workbenchUrl(), "http://127.0.0.1:8765/?task=task-url-direct&tab=frames");
 assert.equal(context.workbenchUrl("task-url-direct", "bad-tab"), "http://127.0.0.1:8765/?task=task-url-direct&tab=note");

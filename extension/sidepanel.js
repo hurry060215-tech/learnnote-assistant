@@ -7,6 +7,7 @@ let backendUrl = DEFAULT_BACKEND;
 let page = null;
 let resources = [];
 let selectedResourceUrl = "";
+let resourceFilter = "all";
 let currentTaskId = "";
 let currentTask = null;
 let selectedTab = "note";
@@ -603,6 +604,62 @@ function pickDefaultResourceUrl(items, previousUrl = "") {
 
 function selectedResource() {
   return resources.find(item => item.url === selectedResourceUrl) || null;
+}
+
+function isPlaybackMatchedResource(item) {
+  return Boolean(item?.playback_match || item?.is_main_video);
+}
+
+function isDiagnosticResource(item) {
+  return !isDownloadableResource(item) || ["blob", "fragment", "subtitle", "unknown"].includes(item?.kind || "");
+}
+
+function resourceFilterOptions() {
+  return [
+    {
+      key: "all",
+      label: "全部",
+      count: resources.length,
+      match: () => true
+    },
+    {
+      key: "downloadable",
+      label: "可直取",
+      count: resources.filter(isDownloadableResource).length,
+      match: isDownloadableResource
+    },
+    {
+      key: "matched",
+      label: "播放匹配",
+      count: resources.filter(isPlaybackMatchedResource).length,
+      match: isPlaybackMatchedResource
+    },
+    {
+      key: "diagnostic",
+      label: "诊断线索",
+      count: resources.filter(isDiagnosticResource).length,
+      match: isDiagnosticResource
+    }
+  ];
+}
+
+function resourceFilterOption(key = resourceFilter) {
+  return resourceFilterOptions().find(item => item.key === key) || resourceFilterOptions()[0];
+}
+
+function filteredResources() {
+  const option = resourceFilterOption();
+  return resources.filter(option.match);
+}
+
+function resourceFilterBarHtml() {
+  if (!resources.length) return "";
+  return `<div class="resource-filter-bar" aria-label="候选资源筛选">
+    ${resourceFilterOptions().map(option => `<button type="button" class="${option.key === resourceFilter ? "active" : ""}" data-resource-filter="${escapeHtml(option.key)}">
+      <span>${escapeHtml(option.label)}</span>
+      <b>${escapeHtml(option.count)}</b>
+    </button>`).join("")}
+  </div>`;
 }
 
 function currentPreflight() {
@@ -1649,7 +1706,17 @@ function renderContext() {
     renderInspector();
     return;
   }
-  els.resources.innerHTML = `${resourceHint()}${resourceAttemptQueueHtml()}${resources.map(item => `
+  const visibleResources = filteredResources();
+  if (visibleResources.length && !visibleResources.some(item => item.url === selectedResourceUrl)) {
+    selectedResourceUrl = pickDefaultResourceUrl(visibleResources, "");
+  }
+  const filterCopy = resourceFilterOption();
+  const emptyFilterHtml = visibleResources.length ? "" : `<section class="resource-filter-empty">
+    <strong>${escapeHtml(filterCopy.label)}没有匹配候选</strong>
+    <small>切回“全部”查看当前页已捕获的资源，或继续播放几秒后重新检测。</small>
+    <button type="button" data-resource-filter="all">查看全部</button>
+  </section>`;
+  els.resources.innerHTML = `${resourceHint()}${resourceAttemptQueueHtml()}${resourceFilterBarHtml()}${emptyFilterHtml}${visibleResources.map(item => `
     <button class="resource ${item.url === selectedResourceUrl ? "selected" : ""} ${isDownloadableResource(item) ? "" : "non-downloadable"} ${item.playback_match || item.is_main_video ? "playback" : ""}" data-url="${escapeHtml(item.url)}">
       <span>
         <strong>${escapeHtml(item.label || item.kind || "media")}</strong>
@@ -2509,6 +2576,16 @@ els.resourceInspector.addEventListener("click", event => {
   }
 });
 els.resources.addEventListener("click", event => {
+  const filterButton = event.target.closest("[data-resource-filter]");
+  if (filterButton) {
+    resourceFilter = filterButton.dataset.resourceFilter || "all";
+    const visible = filteredResources();
+    if (visible.length && !visible.some(item => item.url === selectedResourceUrl)) {
+      selectedResourceUrl = pickDefaultResourceUrl(visible, "");
+    }
+    renderContext();
+    return;
+  }
   const button = event.target.closest("[data-resource-empty-action]");
   if (!button) return;
   const action = button.dataset.resourceEmptyAction;
