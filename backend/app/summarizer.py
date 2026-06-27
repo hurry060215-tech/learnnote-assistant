@@ -429,7 +429,7 @@ def _bullet_lines(items: list[str], fallback: str) -> list[str]:
     return [f"- {item}" for item in items]
 
 
-def summarize_page_text(title: str, page_url: str, page_text: str, options: TaskOptions) -> str:
+def summarize_page_text_with_diagnostics(title: str, page_url: str, page_text: str, options: TaskOptions) -> tuple[str, str, str]:
     transcript = TranscriptResult(
         language="unknown",
         source="page-text",
@@ -438,14 +438,14 @@ def summarize_page_text(title: str, page_url: str, page_text: str, options: Task
     )
     generated = summarize_with_llm(title, transcript, [], options, page_url)
     if generated:
-        return generated
+        return generated, "text-llm", ""
     text = (page_text or "").strip()
     page_body, subtitle_body = _split_page_text_sections(text)
     page_points = _clean_outline_lines(page_body, limit=8)
     subtitle_points = _clean_outline_lines(subtitle_body, limit=8)
     all_points = page_points or subtitle_points
     excerpt = text[:1200] + ("..." if len(text) > 1200 else "")
-    return "\n".join([
+    note = "\n".join([
         f"# {title or '当前页面文本总结'}",
         "",
         f"来源：{page_url}",
@@ -476,3 +476,8 @@ def summarize_page_text(title: str, page_url: str, page_text: str, options: Task
         "4. 如果稍后改用本地视频或直取成功，哪些时间段/章节最值得优先切片复核？",
         "",
     ])
+    return note, "local-template", "文本/LLM 总结调用失败或不可用，已降级为本地页面文本模板。"
+
+
+def summarize_page_text(title: str, page_url: str, page_text: str, options: TaskOptions) -> str:
+    return summarize_page_text_with_diagnostics(title, page_url, page_text, options)[0]
