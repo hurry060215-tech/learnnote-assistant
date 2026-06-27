@@ -264,6 +264,39 @@ function fmtBytes(bytes) {
   return `${value} B`;
 }
 
+function contentDispositionFilename(value = "") {
+  let filename = "";
+  for (const part of String(value || "").split(";")) {
+    const [rawKey, ...rest] = part.trim().split("=");
+    if (!rawKey || !rest.length) continue;
+    const key = rawKey.toLowerCase();
+    let raw = rest.join("=").trim().replace(/^"|"$/g, "");
+    if (key === "filename*") {
+      const marker = raw.indexOf("''");
+      raw = marker >= 0 ? raw.slice(marker + 2) : raw;
+      try {
+        filename = decodeURIComponent(raw);
+      } catch {
+        filename = raw;
+      }
+      break;
+    }
+    if (key === "filename" && raw) {
+      try {
+        filename = decodeURIComponent(raw);
+      } catch {
+        filename = raw;
+      }
+    }
+  }
+  return filename.split(/[\\/]/).pop() || "";
+}
+
+function contentDispositionHint(value = "") {
+  const filename = contentDispositionFilename(value);
+  return filename ? `filename ${filename}` : "";
+}
+
 function requestHeaderNames(resource) {
   return Object.keys(resource?.request_headers || {})
     .filter(name => !/cookie|authorization/i.test(name))
@@ -278,6 +311,7 @@ function resourcePreflightLine(result = null) {
     result.strategy || "",
     result.status_code ? `HTTP ${result.status_code}` : "",
     result.content_type || "",
+    contentDispositionHint(result.content_disposition),
     fmtBytes(result.content_length) || (result.bytes_checked ? `${result.bytes_checked} B` : "")
   ].filter(Boolean).join(" · ");
 }
@@ -752,6 +786,7 @@ function requestEvidence(item) {
     item.request_type,
     item.status_code ? `HTTP ${item.status_code}` : "",
     fmtBytes(item.content_length),
+    contentDispositionHint(item.headers?.["content-disposition"]),
     item.frame_id !== null && item.frame_id !== undefined ? `frame ${item.frame_id}` : "",
     item.mime || ""
   ].filter(Boolean).join(" · ");
@@ -882,6 +917,7 @@ function preflightBadgeHtml(item) {
   const detail = [
     result.status_code ? `HTTP ${result.status_code}` : "",
     result.content_type || "",
+    contentDispositionHint(result.content_disposition),
     fmtBytes(result.content_length) || (result.bytes_checked ? `${result.bytes_checked} B` : "")
   ].filter(Boolean).join(" · ");
   return `<span class="resource-preflight ${state}">${escapeHtml(detail ? `${label} · ${detail}` : label)}</span>`;

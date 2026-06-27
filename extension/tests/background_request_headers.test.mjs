@@ -91,6 +91,18 @@ assert.equal(
 assert.equal(
   context.classifyCompletedRequest(
     {
+      url: "https://cdn.example.com/api/download?id=abc",
+      type: "xmlhttprequest"
+    },
+    "application/octet-stream",
+    {},
+    { "content-disposition": "attachment; filename*=UTF-8''lesson%20download.mp4" }
+  ),
+  "video"
+);
+assert.equal(
+  context.classifyCompletedRequest(
+    {
       url: "https://cdn.example.com/api/range?id=abc",
       type: "xmlhttprequest"
     },
@@ -178,6 +190,42 @@ assert.equal(apiPlayResources[0].kind, "hls");
 assert.equal(apiPlayResources[0].request_headers.Referer, "https://course.example.com/lesson");
 assert.equal(apiPlayResources[0].request_headers.Origin, "https://course.example.com");
 assert.equal(apiPlayResources[0].request_headers["User-Agent"], "Chrome Playback UA");
+
+context.rememberRequestHeaders({
+  requestId: "download-api-video",
+  url: "https://course.example.com/api/download?id=42",
+  type: "xmlhttprequest",
+  requestHeaders: [
+    { name: "Referer", value: "https://course.example.com/lesson" },
+    { name: "Origin", value: "https://course.example.com" },
+    { name: "User-Agent", value: "Chrome Playback UA" }
+  ]
+});
+context.recordResponseMedia({
+  requestId: "download-api-video",
+  tabId: 161,
+  url: "https://course.example.com/api/download?id=42",
+  type: "xmlhttprequest",
+  method: "GET",
+  statusCode: 200,
+  frameId: 0,
+  documentUrl: "https://course.example.com/lesson",
+  initiator: "https://course.example.com",
+  timeStamp: Date.now(),
+  responseHeaders: [
+    { name: "Content-Type", value: "application/octet-stream" },
+    { name: "Content-Disposition", value: "attachment; filename*=UTF-8''lesson%20download.mp4" },
+    { name: "Content-Length", value: "8388608" }
+  ]
+}, context.peekRequestHeaders("download-api-video"));
+
+const downloadApiResources = vm.runInContext("resourceByTab.get(161)", context);
+assert.equal(downloadApiResources.length, 1);
+assert.equal(downloadApiResources[0].kind, "video");
+assert.equal(downloadApiResources[0].headers["content-disposition"], "attachment; filename*=UTF-8''lesson%20download.mp4");
+assert.equal(downloadApiResources[0].content_length, 8388608);
+assert.equal(downloadApiResources[0].request_headers.Referer, "https://course.example.com/lesson");
+assert.equal(downloadApiResources[0].request_headers.Origin, "https://course.example.com");
 
 context.rememberRequestHeaders({
   requestId: "streaming-1",

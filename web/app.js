@@ -310,6 +310,39 @@ function fmtBytes(bytes) {
   return `${value} B`;
 }
 
+function contentDispositionFilename(value = "") {
+  let filename = "";
+  for (const part of String(value || "").split(";")) {
+    const [rawKey, ...rest] = part.trim().split("=");
+    if (!rawKey || !rest.length) continue;
+    const key = rawKey.toLowerCase();
+    let raw = rest.join("=").trim().replace(/^"|"$/g, "");
+    if (key === "filename*") {
+      const marker = raw.indexOf("''");
+      raw = marker >= 0 ? raw.slice(marker + 2) : raw;
+      try {
+        filename = decodeURIComponent(raw);
+      } catch {
+        filename = raw;
+      }
+      break;
+    }
+    if (key === "filename" && raw) {
+      try {
+        filename = decodeURIComponent(raw);
+      } catch {
+        filename = raw;
+      }
+    }
+  }
+  return filename.split(/[\\/]/).pop() || "";
+}
+
+function contentDispositionHint(value = "") {
+  const filename = contentDispositionFilename(value);
+  return filename ? `filename ${filename}` : "";
+}
+
 function requestHeaderNames(resource) {
   return Object.keys(resource?.request_headers || {})
     .filter(name => !/cookie|authorization/i.test(name))
@@ -1268,6 +1301,7 @@ function taskOverview(task) {
     selected.kind || task.source_type || "",
     resourceSourceText(selected),
     selected.playback_match ? playbackText(selected.playback_match) : "",
+    contentDispositionHint(selected.headers?.["content-disposition"]),
     selected.content_length ? fmtBytes(selected.content_length) : ""
   ].filter(Boolean).join(" · ");
   const actionLinks = [
@@ -1869,6 +1903,7 @@ async function renderDetail() {
           selected.request_type || "",
           selected.status_code ? `HTTP ${selected.status_code}` : "",
           fmtBytes(selected.content_length),
+          contentDispositionHint(selected.headers?.["content-disposition"]),
           selected.mime || "-"
         ].filter(Boolean).join(" · "))}</dd>
         <dt>复用请求头</dt><dd>${escapeHtml(requestHeaderNames(selected))}</dd>

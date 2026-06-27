@@ -21,7 +21,7 @@ const REQUEST_HEADER_ALLOWLIST = new Set([
   "user-agent",
   "x-requested-with"
 ]);
-const RESPONSE_HEADER_ALLOWLIST = new Set(["accept-ranges", "content-length", "content-range", "content-type"]);
+const RESPONSE_HEADER_ALLOWLIST = new Set(["accept-ranges", "content-disposition", "content-length", "content-range", "content-type"]);
 const REQUEST_HEADER_CANONICAL = {
   "accept": "Accept",
   "accept-language": "Accept-Language",
@@ -51,6 +51,39 @@ function classify(url, mime = "") {
   return "unknown";
 }
 
+function filenameFromContentDisposition(value = "") {
+  let filename = "";
+  for (const part of String(value || "").split(";")) {
+    const [rawKey, ...rest] = part.trim().split("=");
+    if (!rawKey || !rest.length) continue;
+    const key = rawKey.toLowerCase();
+    let raw = rest.join("=").trim().replace(/^"|"$/g, "");
+    if (key === "filename*") {
+      const marker = raw.indexOf("''");
+      raw = marker >= 0 ? raw.slice(marker + 2) : raw;
+      try {
+        filename = decodeURIComponent(raw);
+      } catch {
+        filename = raw;
+      }
+      break;
+    }
+    if (key === "filename" && raw) {
+      try {
+        filename = decodeURIComponent(raw);
+      } catch {
+        filename = raw;
+      }
+    }
+  }
+  return filename.split(/[\\/]/).pop() || "";
+}
+
+function classifyContentDisposition(contentDisposition = "", mime = "") {
+  const filename = filenameFromContentDisposition(contentDisposition);
+  return filename ? classify(filename, mime) : "unknown";
+}
+
 function hasRangeEvidence(requestHeaders = {}, responseHeaders = {}) {
   const requestRange = Object.entries(requestHeaders || {}).some(([name, value]) =>
     String(name).toLowerCase() === "range" && /^bytes=/i.test(String(value || "").trim())
@@ -63,6 +96,8 @@ function hasRangeEvidence(requestHeaders = {}, responseHeaders = {}) {
 function classifyCompletedRequest(details = {}, mime = "", requestHeaders = {}, responseHeaders = {}) {
   const kind = classify(details.url || "", mime);
   if (kind !== "unknown") return kind;
+  const headerKind = classifyContentDisposition(responseHeaders["content-disposition"] || "", mime);
+  if (headerKind !== "unknown") return headerKind;
   if (details.type === "media") return "video";
   const type = String(details.type || "").toLowerCase();
   const binaryMime = /octet-stream|binary|application\/x-mpegurl/i.test(String(mime || ""));
@@ -297,7 +332,7 @@ function looksLikeMediaRequest(details) {
     );
     if (hasRange) return true;
   }
-  return /m3u8|mpd|video|media|subtitle|caption|stream|hls|dash|manifest|playlist|master|playback|player|\/play(?:[/?#]|$)/i.test(url);
+  return /m3u8|mpd|video|media|subtitle|caption|stream|hls|dash|manifest|playlist|master|playback|player|download|attachment|\/play(?:[/?#]|$)/i.test(url);
 }
 
 function normalizeRequestHeaders(requestHeaders = []) {
@@ -566,7 +601,10 @@ function responseHeadersObject(responseHeaders = []) {
   const headers = {};
   for (const header of responseHeaders || []) {
     const lower = String(header.name || "").toLowerCase();
-    if (RESPONSE_HEADER_ALLOWLIST.has(lower)) headers[lower] = header.value || "";
+    if (RESPONSE_HEADER_ALLOWLIST.has(lower)) {
+      const value = String(header.value || "").replace(/[\r\n]+/g, " ").trim();
+      if (value) headers[lower] = value;
+    }
   }
   return headers;
 }
