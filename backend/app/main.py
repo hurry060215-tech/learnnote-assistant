@@ -95,7 +95,7 @@ def diagnostic_recovery_steps(task: TaskRecord) -> list[str]:
     if "download_forbidden" in codes:
         add("媒体服务器拒绝下载时，优先检查 Referer/Origin、登录态和时效签名；回到原页面继续播放后重新检测，或选择另一个候选资源。")
     if "unsupported_manifest" in codes:
-        add("如果只有分片或无法合并的 manifest，继续播放后重新检测，优先选择完整 m3u8/mpd 候选。")
+        add("如果只有分片或无法合并的 manifest，继续播放后重新检测，优先选择完整 mp4/FLV/m3u8/mpd 候选。")
     if "no_media_found" in codes or (task.status == "failed" and not task.download_attempts):
         add("当前页没有暴露可直取媒体时，先让视频实际播放几秒再重检；仍失败就使用本地视频上传。")
     if task.selected_resource and task.selected_resource.request_headers:

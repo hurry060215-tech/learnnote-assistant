@@ -79,6 +79,13 @@ class DownloadError(RuntimeError):
         self.message = message
 
 
+class ManifestEndpointDetected(RuntimeError):
+    def __init__(self, kind: str, mime: str):
+        super().__init__(kind)
+        self.kind = kind
+        self.mime = mime
+
+
 class QuietYtdlpLogger:
     def debug(self, message: str) -> None:
         return
@@ -629,7 +636,7 @@ def preflight_media_resource(
             url=candidate.url,
             resolved_url=resolved_url,
             code="drm_or_encrypted",
-            message="浏览器只暴露 blob URL，后端无法直接下载；需要可见 mp4/m3u8/mpd 或本地视频。",
+            message="浏览器只暴露 blob URL，后端无法直接下载；需要可见 mp4/FLV/m3u8/mpd 或本地视频。",
         )
     if kind not in {"video", "hls", "dash"}:
         return MediaPreflightResult(
@@ -695,6 +702,14 @@ def preflight_media_resource(
                     code="auth_required",
                     message="媒体预检拿到登录/错误页面，而不是视频或 manifest。",
                 )
+
+            manifest_kind, manifest_mime = _manifest_kind_from_body(body.decode("utf-8", errors="ignore"), content_type)
+            if kind == "video" and manifest_kind in {"hls", "dash"}:
+                kind = manifest_kind
+                base["kind"] = manifest_kind
+                base["content_type"] = manifest_mime or content_type
+                base["strategy"] = "manifest-probe"
+                warnings.append("该视频直连响应实际是 HLS/DASH manifest，正式任务会改用 ffmpeg 合并。")
 
             if kind == "hls":
                 text = body.decode("utf-8", errors="ignore")
@@ -810,11 +825,10 @@ class MediaDownloader:
                     )
         last_error: DownloadError | None = None
         for candidate in candidates:
-            strategy = self._strategy_for_candidate(candidate)
             try:
                 media_path = self._download_candidate(candidate, cookies, page_url, title)
                 self._record_attempt(
-                    strategy=strategy,
+                    strategy=self._strategy_for_candidate(candidate),
                     candidate=candidate,
                     status="success",
                     message="浏览器候选资源直取成功。",
@@ -822,7 +836,7 @@ class MediaDownloader:
                 )
                 return media_path, candidate
             except DownloadError as exc:
-                self._record_attempt(strategy=strategy, candidate=candidate, status="failed", code=exc.code, message=exc.message)
+                self._record_attempt(strategy=self._strategy_for_candidate(candidate), candidate=candidate, status="failed", code=exc.code, message=exc.message)
                 failed_urls.add(candidate.url)
                 last_error = exc
                 continue
@@ -833,11 +847,10 @@ class MediaDownloader:
             for candidate in self._candidate_resources(page_scan_resources):
                 if candidate.url in failed_urls:
                     continue
-                strategy = self._strategy_for_candidate(candidate)
                 try:
                     media_path = self._download_candidate(candidate, cookies, fallback_url, title)
                     self._record_attempt(
-                        strategy=strategy,
+                        strategy=self._strategy_for_candidate(candidate),
                         candidate=candidate,
                         status="success",
                         message="页面文本扫描候选资源直取成功。",
@@ -845,7 +858,7 @@ class MediaDownloader:
                     )
                     return media_path, candidate
                 except DownloadError as exc:
-                    self._record_attempt(strategy=strategy, candidate=candidate, status="failed", code=exc.code, message=exc.message)
+                    self._record_attempt(strategy=self._strategy_for_candidate(candidate), candidate=candidate, status="failed", code=exc.code, message=exc.message)
                     failed_urls.add(candidate.url)
                     last_error = exc
                     continue
@@ -1238,9 +1251,9 @@ class MediaDownloader:
             raise DownloadError("download_forbidden", f"yt-dlp 无法下载当前页面：{message[:300]}") from exc
 
         after = [path for path in self.download_dir.glob("*") if path not in before and path.is_file()]
-        media = [path for path in after if path.suffix.lower() in {".mp4", ".webm", ".mkv", ".mov", ".m4v"}]
+        media = [path for path in after if path.suffix.lower() in {".mp4", ".webm", ".mkv", ".mov", ".m4v", ".flv"}]
         if not media:
-            media = [path for path in self.download_dir.glob("*") if path.suffix.lower() in {".mp4", ".webm", ".mkv", ".mov", ".m4v"}]
+            media = [path for path in self.download_dir.glob("*") if path.suffix.lower() in {".mp4", ".webm", ".mkv", ".mov", ".m4v", ".flv"}]
         if not media:
             raise DownloadError("download_forbidden", "yt-dlp 已运行但没有生成可用视频文件。")
         return max(media, key=lambda path: path.stat().st_size)
@@ -1284,6 +1297,9 @@ class MediaDownloader:
                         break
                 if _textish_content_type(content_type) and _looks_like_login_or_error(first_chunk):
                     raise DownloadError("auth_required", "媒体资源返回登录/错误页面，而不是视频文件。")
+                manifest_kind, manifest_mime = _manifest_kind_from_body(first_chunk.decode("utf-8", errors="ignore"), content_type)
+                if manifest_kind in {"hls", "dash"}:
+                    raise ManifestEndpointDetected(manifest_kind, manifest_mime)
                 with output.open("wb") as file:
                     if first_chunk:
                         file.write(first_chunk)
@@ -1296,6 +1312,12 @@ class MediaDownloader:
 
         try:
             return attempt(base_headers)
+        except ManifestEndpointDetected as detected:
+            if output.exists():
+                output.unlink()
+            candidate.kind = detected.kind
+            candidate.mime = detected.mime
+            return self._download_manifest(candidate, cookies, referer, title)
         except DownloadError as first_error:
             if output.exists():
                 output.unlink()
@@ -1303,6 +1325,12 @@ class MediaDownloader:
             range_headers["Range"] = "bytes=0-"
             try:
                 return attempt(range_headers)
+            except ManifestEndpointDetected as detected:
+                if output.exists():
+                    output.unlink()
+                candidate.kind = detected.kind
+                candidate.mime = detected.mime
+                return self._download_manifest(candidate, cookies, referer, title)
             except DownloadError:
                 raise first_error
         except Exception as exc:

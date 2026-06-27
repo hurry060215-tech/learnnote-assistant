@@ -858,6 +858,38 @@ class DownloaderBoundaryTests(unittest.TestCase):
             self.assertEqual(captured["options"]["http_headers"]["Referer"], "https://course.example.com/lesson/1")
             self.assertEqual(captured["options"]["http_headers"]["Origin"], "https://course.example.com")
 
+    def test_ytdlp_fallback_accepts_flv_output(self) -> None:
+        class FakeYoutubeDL:
+            def __init__(self, options):
+                self.options = options
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, traceback):
+                return False
+
+            def extract_info(self, page_url, download):
+                output = Path(self.options["outtmpl"].replace("%(ext)s", "flv"))
+                output.parent.mkdir(parents=True, exist_ok=True)
+                output.write_bytes(b"0" * 5000)
+                return {"title": "fake flv"}
+
+        fake_module = types.ModuleType("yt_dlp")
+        fake_module.YoutubeDL = FakeYoutubeDL
+
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(sys.modules, {"yt_dlp": fake_module}):
+            downloader = MediaDownloader(Path(tmp))
+            media = downloader._download_with_ytdlp(
+                "https://course.example.com/lesson/1",
+                None,
+                "yt-dlp flv",
+                [],
+            )
+
+            self.assertTrue(media.exists())
+            self.assertEqual(media.suffix, ".flv")
+
     def test_ytdlp_fallback_tries_iframe_page_after_top_page(self) -> None:
         attempted_urls = []
 

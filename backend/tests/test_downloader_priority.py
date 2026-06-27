@@ -541,6 +541,94 @@ class DownloaderPriorityTests(unittest.TestCase):
                 server.shutdown()
                 server.server_close()
 
+    def test_direct_video_candidate_switches_to_manifest_when_response_is_hls(self) -> None:
+        ffmpeg = ffmpeg_bin()
+        assert ffmpeg is not None
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "source.mp4"
+            subprocess.run(
+                [
+                    ffmpeg,
+                    "-y",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "testsrc=duration=2:size=320x180:rate=10",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "sine=frequency=440:duration=2",
+                    "-shortest",
+                    "-pix_fmt",
+                    "yuv420p",
+                    str(source),
+                ],
+                check=True,
+            )
+            playlist = root / "lesson.m3u8"
+            subprocess.run(
+                [
+                    ffmpeg,
+                    "-y",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-i",
+                    str(source),
+                    "-c",
+                    "copy",
+                    "-f",
+                    "hls",
+                    "-hls_time",
+                    "1",
+                    "-hls_list_size",
+                    "0",
+                    "-hls_segment_filename",
+                    str(root / "lesson_%03d.ts"),
+                    str(playlist),
+                ],
+                check=True,
+            )
+
+            server = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(ExtensionlessHlsHandler, directory=str(root)))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                hls_url = f"http://127.0.0.1:{server.server_port}/stream?lesson=1"
+                downloader = MediaDownloader(root / "task")
+                with patch.object(downloader, "_download_with_ytdlp") as ytdlp:
+                    media_path, selected = downloader.download(
+                        page_url=f"http://127.0.0.1:{server.server_port}/lesson.html",
+                        resources=[
+                            ResourceCandidate(
+                                url=hls_url,
+                                source="webRequest",
+                                kind="video",
+                                mime="video/mp4",
+                                score=100,
+                                label="extensionless playback endpoint",
+                            )
+                        ],
+                        cookies=[],
+                        title="Direct endpoint manifest",
+                    )
+                ytdlp.assert_not_called()
+                self.assertTrue(media_path.exists())
+                self.assertIsNotNone(selected)
+                self.assertEqual(selected.url, hls_url)
+                self.assertEqual(selected.kind, "hls")
+                self.assertEqual(selected.mime, "application/vnd.apple.mpegurl")
+                self.assertEqual(downloader.attempts[0].strategy, "manifest-ffmpeg")
+                self.assertEqual(downloader.attempts[0].kind, "hls")
+                self.assertEqual(downloader.attempts[0].status, "success")
+            finally:
+                server.shutdown()
+                server.server_close()
+
     def test_page_scan_downloads_extensionless_hls_from_manifest_body(self) -> None:
         ffmpeg = ffmpeg_bin()
         assert ffmpeg is not None
@@ -679,6 +767,83 @@ class DownloaderPriorityTests(unittest.TestCase):
                 self.assertIn("Range", result.request_header_names)
                 self.assertNotIn("Cookie", result.request_header_names)
                 self.assertGreater(result.bytes_checked, 0)
+            finally:
+                server.shutdown()
+                server.server_close()
+
+    def test_preflight_reports_extensionless_video_response_manifest(self) -> None:
+        ffmpeg = ffmpeg_bin()
+        assert ffmpeg is not None
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "source.mp4"
+            subprocess.run(
+                [
+                    ffmpeg,
+                    "-y",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "testsrc=duration=2:size=320x180:rate=10",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "sine=frequency=440:duration=2",
+                    "-shortest",
+                    "-pix_fmt",
+                    "yuv420p",
+                    str(source),
+                ],
+                check=True,
+            )
+            playlist = root / "lesson.m3u8"
+            subprocess.run(
+                [
+                    ffmpeg,
+                    "-y",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-i",
+                    str(source),
+                    "-c",
+                    "copy",
+                    "-f",
+                    "hls",
+                    "-hls_time",
+                    "1",
+                    "-hls_list_size",
+                    "0",
+                    "-hls_segment_filename",
+                    str(root / "lesson_%03d.ts"),
+                    str(playlist),
+                ],
+                check=True,
+            )
+            server = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(ExtensionlessHlsHandler, directory=str(root)))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                hls_url = f"http://127.0.0.1:{server.server_port}/stream?lesson=1"
+                result = preflight_media_resource(
+                    ResourceCandidate(
+                        url=hls_url,
+                        source="webRequest",
+                        kind="video",
+                        mime="video/mp4",
+                        score=100,
+                    ),
+                    [],
+                    f"http://127.0.0.1:{server.server_port}/lesson.html",
+                )
+                self.assertTrue(result.ok)
+                self.assertTrue(result.downloadable)
+                self.assertEqual(result.kind, "hls")
+                self.assertEqual(result.strategy, "manifest-probe")
+                self.assertIn("正式任务会改用 ffmpeg 合并", " ".join(result.warnings))
             finally:
                 server.shutdown()
                 server.server_close()

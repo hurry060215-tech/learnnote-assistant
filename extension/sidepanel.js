@@ -487,7 +487,7 @@ function preflightFallbackStartMessage(result) {
 function preflightRecoveryText(result = {}) {
   const code = result.code || "";
   if (code === "auth_required") return "重新打开课程页并确认已登录，然后播放几秒后重新检测；Cookie 只会在点击任务时同步一次。";
-  if (code === "drm_or_encrypted") return "当前版本不会录制、破解或绕过 DRM；如果没有可访问 mp4/m3u8/mpd，请改用本地视频入口。";
+  if (code === "drm_or_encrypted") return "当前版本不会录制、破解或绕过 DRM；如果没有可访问 mp4/FLV/m3u8/mpd，请改用本地视频入口。";
   if (code === "download_forbidden") return "通常是 Referer、Cookie 或签名过期；回到原页面继续播放后立刻重新预检，或换一个候选资源。";
   if (code === "unsupported_manifest") return "检测到的可能只是分片或非完整 manifest；继续播放后重新检测，优先选择 m3u8/mpd 候选。";
   if (code === "no_media_found") return "当前页还没有暴露可直取资源；先播放几秒，等待媒体请求出现，再重新检测。";
@@ -658,7 +658,7 @@ function resourceHint() {
   const drmDetected = page?.drm_detected || page?.active_video?.drm_detected;
   if (drmDetected) {
     const detail = drmSignalText(page?.drm_signals || []);
-    return `<p class="resource-hint bad">检测到 EME/DRM 加密媒体信号${detail ? `（${escapeHtml(detail)}）` : ""}；本工具不会录制、破解或绕过 DRM，只会继续尝试页面暴露的可访问 mp4/m3u8/mpd。</p>`;
+    return `<p class="resource-hint bad">检测到 EME/DRM 加密媒体信号${detail ? `（${escapeHtml(detail)}）` : ""}；本工具不会录制、破解或绕过 DRM，只会继续尝试页面暴露的可访问 mp4/FLV/m3u8/mpd。</p>`;
   }
   if (downloadable && activeBlob) {
     return `<p class="resource-hint">当前播放器是 blob/MSE，已按同 frame、来源映射和最近媒体请求优先选择可直取候选。</p>`;
@@ -688,7 +688,7 @@ function renderReadiness() {
   }
   if (drmDetected && !downloadable.length) {
     els.readiness.className = "readiness bad";
-    els.readiness.textContent = "检测到 EME/DRM 加密媒体信号，且当前没有可直取 mp4/m3u8/mpd；不会录制或绕过 DRM，请改用本地视频入口。";
+    els.readiness.textContent = "检测到 EME/DRM 加密媒体信号，且当前没有可直取 mp4/FLV/m3u8/mpd；不会录制或绕过 DRM，请改用本地视频入口。";
     return;
   }
   if (downloadable.length) {
@@ -782,7 +782,7 @@ function routeSummaryCopy(state) {
       badge: "不可直取",
       title: "当前页还不能直接下载",
       action: "不会录制或绕过 DRM。继续播放几秒后重检，或拖入本地视频。",
-      detail: checked?.message || (page?.drm_detected || page?.active_video?.drm_detected ? "检测到 DRM/EME 或只有不可还原媒体线索。" : "没有可独立下载的 mp4/m3u8/mpd。")
+      detail: checked?.message || (page?.drm_detected || page?.active_video?.drm_detected ? "检测到 DRM/EME 或只有不可还原媒体线索。" : "没有可独立下载的 mp4/FLV/m3u8/mpd。")
     };
   }
   return {

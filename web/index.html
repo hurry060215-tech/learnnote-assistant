@@ -56,7 +56,7 @@
           </button>
           <button class="source-tab" data-source="local">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5M4 17v3h16v-3"/></svg>
-            <span><b>本地视频</b><small>拖入 mp4、mkv、webm 等文件</small></span>
+            <span><b>本地视频</b><small>拖入 mp4、flv、mkv、webm 等文件</small></span>
           </button>
           <button class="source-tab" data-source="url">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.07 0l2.12-2.12a5 5 0 0 0-7.07-7.07L11 4.93"/><path d="M14 11a5 5 0 0 0-7.07 0L4.8 13.12a5 5 0 0 0 7.07 7.07L13 19.07"/></svg>
@@ -80,7 +80,7 @@
                 <option value="dash">DASH mpd</option>
               </select>
             </label>
-            <div id="urlModeHint" class="mode-hint">自动识别会优先把 mp4/m3u8/mpd 当作媒体候选，其余 URL 交给页面扫描和 yt-dlp。</div>
+            <div id="urlModeHint" class="mode-hint">自动识别会优先把 mp4/FLV/m3u8/mpd 当作媒体候选；无后缀 URL 可切换直连/HLS/DASH 或交给页面扫描和 yt-dlp。</div>
           </div>
           <label class="field">
             <span>笔记标题</span>
@@ -107,7 +107,7 @@
             <input id="fileInput" type="file" accept="video/*">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5M4 17v3h16v-3"/></svg>
             <strong>拖入视频文件</strong>
-            <small id="fileName">mp4 / webm / mov / mkv</small>
+            <small id="fileName">mp4 / flv / webm / mov / mkv</small>
           </label>
           <button id="uploadButton" class="primary action-button">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5M4 17v3h16v-3"/></svg>
@@ -134,7 +134,7 @@
             </div>
 
             <div class="capability-grid" aria-label="直取能力">
-              <span>MP4/WebM</span>
+              <span>MP4/FLV/WebM</span>
               <span>HLS/DASH</span>
               <span>yt-dlp</span>
               <span>Blob/MSE 来源映射</span>
