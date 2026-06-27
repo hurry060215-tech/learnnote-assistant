@@ -173,10 +173,21 @@ assert.equal(elements.get("#localDrop").classList.contains("uploading"), false);
 assert.match(elements.get("#taskMessage").textContent, /done/);
 
 uploadShouldFail = true;
+elements.get("#fileInput").files = [{ name: "server-reject.mov", size: 10, type: "video/quicktime" }];
+await context.uploadLocal();
+
+assert.equal(uploadBodies.length, 2);
+assert.equal(uploadBodies[1].get("title"), "server-reject.mov");
+assert.equal(elements.get("#localDropText").textContent, "unsupported local file");
+assert.equal(elements.get("#uploadButton").disabled, false);
+assert.equal(elements.get("#localDrop").classList.contains("uploading"), false);
+assert.equal(elements.get("#taskMessage").textContent, "unsupported local file");
+
 elements.get("#fileInput").files = [{ name: "bad.txt", size: 10, type: "text/plain" }];
 await context.uploadLocal();
 
-assert.equal(uploadBodies.length, 1);
+assert.equal(uploadBodies.length, 2);
+assert.match(elements.get("#localDropText").textContent, /mp4 \/ m4v \/ mov/);
 assert.equal(elements.get("#uploadButton").disabled, false);
 assert.equal(elements.get("#localDrop").classList.contains("uploading"), false);
 assert.equal(elements.get("#taskMessage").textContent, "bad.txt 不是支持的视频格式。");

@@ -85,6 +85,15 @@ function isSupportedLocalVideoFile(file) {
   return LOCAL_VIDEO_EXT_RE.test(file.name);
 }
 
+function apiErrorMessage(payload, fallback) {
+  const detail = payload?.detail;
+  if (typeof detail === "string" && detail.trim()) return detail.trim();
+  if (typeof detail?.message === "string" && detail.message.trim()) return detail.message.trim();
+  if (typeof payload?.message === "string" && payload.message.trim()) return payload.message.trim();
+  if (typeof payload?.error === "string" && payload.error.trim()) return payload.error.trim();
+  return fallback;
+}
+
 function inlineMarkdown(value) {
   return escapeHtml(value)
     .replace(/`([^`]+)`/g, "<code>$1</code>")
@@ -1592,7 +1601,7 @@ async function uploadLocal() {
   const file = els.fileInput.files?.[0];
   if (!file) return;
   if (!isSupportedLocalVideoFile(file)) {
-    els.localDropText.textContent = "请选择 mp4 / flv / avi / mkv / webm 等视频文件";
+    els.localDropText.textContent = "请选择 mp4 / m4v / mov / flv / avi / mkv / webm 等视频文件";
     els.taskMessage.textContent = `${file.name} 不是支持的视频格式。`;
     return;
   }
@@ -1608,8 +1617,9 @@ async function uploadLocal() {
     const response = await fetch(`${backendUrl}/api/tasks/from-local`, { method: "POST", body: form });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.task_id) {
-      const detail = data?.detail?.message || data?.detail || data?.error || "";
-      els.taskMessage.textContent = detail || "本地视频上传失败，请确认后端可用并重试。";
+      const message = apiErrorMessage(data, "本地视频上传失败，请确认后端可用并重试。");
+      els.localDropText.textContent = message;
+      els.taskMessage.textContent = message;
       return;
     }
     currentTaskId = data.task_id;
@@ -1617,6 +1627,10 @@ async function uploadLocal() {
     lastNote = "";
     await loadTaskHistory();
     pollTask();
+  } catch (error) {
+    const detail = error?.message ? `本地视频上传失败：${error.message}` : "本地视频上传失败，请确认后端可用并重试。";
+    els.localDropText.textContent = "上传失败，请重试";
+    els.taskMessage.textContent = detail;
   } finally {
     els.uploadButton.disabled = false;
     els.localDrop.classList.remove("uploading");
