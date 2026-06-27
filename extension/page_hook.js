@@ -3,6 +3,7 @@
   window.__learnNotePageHookInstalled = true;
 
   const MEDIA_URL_RE = /(?:https?:)?\/\/[^\s"'<>\\]+\.(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|vtt|srt|ass|ssa)(?:\?[^\s"'<>\\]*)?|(?:\/[^\s"'<>\\]+)\.(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|vtt|srt|ass|ssa)(?:\?[^\s"'<>\\]*)?|(?:[A-Za-z0-9._~!$&()*+,;=:@%-]+\/)*[A-Za-z0-9._~!$&()*+,;=:@%-]+\.(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|vtt|srt|ass|ssa)(?:\?[^\s"'<>\\]*)?/gi;
+  const ENCODED_MEDIA_URL_RE = /https?%3A%2F%2F[^\s"'<>\\]+?(?:\.|%2E)(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|vtt|srt|ass|ssa)(?:[^\s"'<>\\]*)?/gi;
   const MEDIA_HINT_RE = /\.(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|vtt|srt|ass|ssa)(?:[?#]|["'\s<>]|$)/i;
   const TEXT_TYPE_RE = /json|text|javascript|mpegurl|dash\+xml|xml|x-mpegurl/i;
   const JSON_MEDIA_KEY_RE = /(url|src|file|play|media|video|stream|source|hls|m3u8|dash|mpd|subtitle|caption)/i;
@@ -65,6 +66,10 @@
     const cleaned = String(raw)
       .replace(/\\\//g, "/")
       .replace(/\\u0026/g, "&")
+      .replace(/\\u002F/gi, "/")
+      .replace(/\\u003A/gi, ":")
+      .replace(/\\u003F/gi, "?")
+      .replace(/\\u003D/gi, "=")
       .replace(/&amp;/g, "&")
       .trim();
     try {
@@ -479,6 +484,30 @@
     return output;
   }
 
+  function extractEncodedMediaUrls(text, source, label, seen = new Set(), meta = {}) {
+    const output = [];
+    for (const match of String(text || "").matchAll(ENCODED_MEDIA_URL_RE)) {
+      for (const rawUrl of decodedMediaValues(match[0] || "")) {
+        const url = normalizeUrl(rawUrl);
+        if (!url || seen.has(url)) continue;
+        const kind = mediaKind(url, "");
+        if (kind === "unknown") continue;
+        seen.add(url);
+        output.push(applyResponseMeta({
+          url,
+          source,
+          kind,
+          mime: mimeForKind(kind),
+          label: `${label} encoded url`,
+          score: kind === "hls" || kind === "dash" ? 97 : kind === "video" ? 89 : 64
+        }, meta));
+        break;
+      }
+      if (output.length >= 40) break;
+    }
+    return output;
+  }
+
   function blobMeta(url, mime, source, label) {
     const normalizedUrl = normalizeUrl(url);
     const kind = mediaKind(normalizedUrl, mime || "");
@@ -606,6 +635,7 @@
     if (!text) return [];
     const resources = extractJsonMediaUrls(text, source, label, seen, meta);
     resources.push(...extractFieldMediaUrls(text, source, label, seen, meta));
+    resources.push(...extractEncodedMediaUrls(text, source, label, seen, meta));
     if (MEDIA_HINT_RE.test(text)) {
       for (const match of text.matchAll(MEDIA_URL_RE)) {
         const url = normalizeUrl(match[0]);
