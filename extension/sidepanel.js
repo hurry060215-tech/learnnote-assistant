@@ -1385,7 +1385,7 @@ async function uploadLocal() {
   const file = els.fileInput.files?.[0];
   if (!file) return;
   if (!isSupportedLocalVideoFile(file)) {
-    els.localDropText.textContent = "请选择 mp4 / flv / mkv / webm 等视频文件";
+    els.localDropText.textContent = "请选择 mp4 / flv / avi / mkv / webm 等视频文件";
     els.taskMessage.textContent = `${file.name} 不是支持的视频格式。`;
     return;
   }

@@ -119,6 +119,7 @@ assert.doesNotMatch(indexHtml, /id="browserRouteSummary"/);
 assert.match(indexHtml, /accept="video\/\*,\.mp4,\.m4v,\.mov,\.mkv,\.webm,\.flv,\.avi"/);
 assert.equal(context.isSupportedLocalVideoFile({ name: "lesson.mkv", type: "" }), true);
 assert.equal(context.isSupportedLocalVideoFile({ name: "lesson.flv", type: "" }), true);
+assert.equal(context.isSupportedLocalVideoFile({ name: "lesson.avi", type: "" }), true);
 assert.equal(context.isSupportedLocalVideoFile({ name: "bad.txt", type: "text/plain" }), false);
 
 const html = context.markdownToHtml(`## 画面索引
@@ -694,12 +695,22 @@ assert.equal(posts[1].resources.length, 1);
 assert.equal(posts[1].resources[0].kind, "video");
 assert.equal(posts[1].resources[0].url, "https://cdn.example.com/live/lesson.flv?token=abc");
 
-await context.startUrlTask("download_only");
+elements.get("#urlInput").value = "https://cdn.example.com/archive/lesson.avi?token=abc";
+elements.get("#urlMode").value = "auto";
+await context.startUrlTask("video");
 
 assert.equal(posts.length, 3);
-assert.equal(posts[2].mode, "download_only");
 assert.equal(posts[2].resources.length, 1);
 assert.equal(posts[2].resources[0].kind, "video");
+assert.equal(posts[2].resources[0].url, "https://cdn.example.com/archive/lesson.avi?token=abc");
+
+await context.startUrlTask("download_only");
+
+assert.equal(posts.length, 4);
+assert.equal(posts[3].mode, "download_only");
+assert.equal(posts[3].resources.length, 1);
+assert.equal(posts[3].resources[0].kind, "video");
+assert.equal(posts[3].resources[0].url, "https://cdn.example.com/archive/lesson.avi?token=abc");
 assert.equal(elements.get("#downloadUrlButton").disabled, false);
 
 await context.preflightUrlTask();
@@ -707,7 +718,7 @@ await context.preflightUrlTask();
 assert.equal(preflights.length, 1);
 assert.equal(preflights[0].resource.kind, "video");
 assert.equal(preflights[0].resource.request_type, "manual-auto");
-assert.equal(preflights[0].resource.url, "https://cdn.example.com/live/lesson.flv?token=abc");
+assert.equal(preflights[0].resource.url, "https://cdn.example.com/archive/lesson.avi?token=abc");
 assert.match(elements.get("#urlModeHint").textContent, /预检通过/);
 assert.match(elements.get("#urlModeHint").textContent, /120\.6 KB/);
 assert.equal(elements.get("#preflightUrlButton").disabled, false);

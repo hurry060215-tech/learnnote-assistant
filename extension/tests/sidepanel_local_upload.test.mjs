@@ -156,6 +156,7 @@ await new Promise(resolve => setTimeout(resolve, 0));
 assert.match(sidepanelHtml, /accept="video\/\*,\.mp4,\.m4v,\.mov,\.mkv,\.webm,\.flv,\.avi"/);
 assert.equal(context.isSupportedLocalVideoFile({ name: "lesson.mkv", type: "" }), true);
 assert.equal(context.isSupportedLocalVideoFile({ name: "lesson.flv", type: "" }), true);
+assert.equal(context.isSupportedLocalVideoFile({ name: "lesson.avi", type: "" }), true);
 assert.equal(context.isSupportedLocalVideoFile({ name: "bad.txt", type: "text/plain" }), false);
 
 elements.get("#fileInput").files = [lessonFile];

@@ -51,6 +51,7 @@ class ResourceDetectionTests(unittest.TestCase):
     def test_classifies_common_media_urls(self) -> None:
         self.assertEqual(classify_resource("https://cdn.example.com/video.mp4"), "video")
         self.assertEqual(classify_resource("https://cdn.example.com/live/lesson.flv?token=abc"), "video")
+        self.assertEqual(classify_resource("https://cdn.example.com/archive/lesson.avi?token=abc"), "video")
         self.assertEqual(classify_resource("https://cdn.example.com/index.m3u8"), "hls")
         self.assertEqual(classify_resource("https://cdn.example.com/manifest.mpd"), "dash")
         self.assertEqual(classify_resource("blob:https://example.com/abc"), "blob")
@@ -290,6 +291,16 @@ class ResourceDetectionTests(unittest.TestCase):
 
         self.assertEqual(resources[0].kind, "video")
         self.assertEqual(resources[0].url, "https://cdn.example.com/live/lesson.flv?token=abc")
+
+    def test_page_scan_extracts_avi_direct_urls(self) -> None:
+        resources = extract_media_resources_from_text(
+            "window.playUrl='https://cdn.example.com/archive/lesson.avi?token=abc';",
+            "https://course.example.com/player/index.html",
+            "page-scan",
+        )
+
+        self.assertEqual(resources[0].kind, "video")
+        self.assertEqual(resources[0].url, "https://cdn.example.com/archive/lesson.avi?token=abc")
 
     def test_ytdlp_subtitle_language_prefers_human_chinese_then_auto(self) -> None:
         info = {
@@ -889,6 +900,38 @@ class DownloaderBoundaryTests(unittest.TestCase):
 
             self.assertTrue(media.exists())
             self.assertEqual(media.suffix, ".flv")
+
+    def test_ytdlp_fallback_accepts_avi_output(self) -> None:
+        class FakeYoutubeDL:
+            def __init__(self, options):
+                self.options = options
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, traceback):
+                return False
+
+            def extract_info(self, page_url, download):
+                output = Path(self.options["outtmpl"].replace("%(ext)s", "avi"))
+                output.parent.mkdir(parents=True, exist_ok=True)
+                output.write_bytes(b"0" * 5000)
+                return {"title": "fake avi"}
+
+        fake_module = types.ModuleType("yt_dlp")
+        fake_module.YoutubeDL = FakeYoutubeDL
+
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(sys.modules, {"yt_dlp": fake_module}):
+            downloader = MediaDownloader(Path(tmp))
+            media = downloader._download_with_ytdlp(
+                "https://course.example.com/lesson/1",
+                None,
+                "yt-dlp avi",
+                [],
+            )
+
+            self.assertTrue(media.exists())
+            self.assertEqual(media.suffix, ".avi")
 
     def test_ytdlp_fallback_tries_iframe_page_after_top_page(self) -> None:
         attempted_urls = []
