@@ -1442,6 +1442,14 @@ class SummaryFallbackTests(unittest.TestCase):
         first_prompt = completions.calls[0]["messages"][0]["content"][0]["text"]
         self.assertIn("窗口 W001", first_prompt)
         self.assertIn("http://127.0.0.1/grid_0.jpg", first_prompt)
+        self.assertIn("同编号标注的画面网格", first_prompt)
+        first_content = completions.calls[0]["messages"][0]["content"]
+        self.assertEqual(first_content[1]["type"], "text")
+        self.assertIn("下面这张画面网格对应窗口 W001", first_content[1]["text"])
+        self.assertEqual(first_content[2]["type"], "image_url")
+        self.assertEqual(first_content[3]["type"], "text")
+        self.assertIn("下面这张画面网格对应窗口 W002", first_content[3]["text"])
+        self.assertEqual(first_content[4]["type"], "image_url")
         merge_content = completions.calls[3]["messages"][0]["content"]
         self.assertIn("画面索引清单", merge_content)
         self.assertIn("W001 `00:00:00 - 00:03:00`", merge_content)

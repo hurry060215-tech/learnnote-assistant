@@ -170,10 +170,28 @@ def _grid_window_prompt(transcript: TranscriptResult, grids: list[FrameGrid], of
                 f"画面网格：{grid.url}",
                 f"帧数：{grid.frame_count}",
                 f"对应字幕：\n{_segments_window(transcript, grid.start, grid.end) or '无对应字幕'}",
-                "请结合紧随其后的画面网格，只输出这个窗口的局部学习摘要，并保留 W 编号。",
+                "请结合同编号标注的画面网格，只输出这个窗口的局部学习摘要，并保留 W 编号。",
             ])
         )
     return "\n\n".join(sections)
+
+
+def _grid_image_content_items(grids: list[FrameGrid], offset: int = 0) -> list[dict]:
+    items: list[dict] = []
+    for index, grid in enumerate(grids, start=offset + 1):
+        path = Path(grid.path)
+        if not path.exists():
+            continue
+        items.append({
+            "type": "text",
+            "text": (
+                f"下面这张画面网格对应窗口 W{index:03d}："
+                f"{_format_ts(grid.start)} - {_format_ts(grid.end)}；"
+                f"网格 URL：{grid.url}。请把这张图只用于 W{index:03d} 的局部摘要。"
+            ),
+        })
+        items.append({"type": "image_url", "image_url": {"url": image_to_data_url(path)}})
+    return items
 
 
 def local_markdown_note(title: str, transcript: TranscriptResult, grids: list[FrameGrid], page_url: str = "") -> str:
@@ -300,11 +318,8 @@ def summarize_with_llm(
                     ),
                 }
             ]
-            for grid in batch:
-                path = Path(grid.path)
-                if path.exists():
-                    content.append({"type": "image_url", "image_url": {"url": image_to_data_url(path)}})
-            if len(content) == 1:
+            content.extend(_grid_image_content_items(batch, batch_offset))
+            if not any(item.get("type") == "image_url" for item in content):
                 continue
             try:
                 response = client.chat.completions.create(
