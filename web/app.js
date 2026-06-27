@@ -477,6 +477,41 @@ function workflowStepState(task, index) {
   return "pending";
 }
 
+function sourceRouteInsightItems(source, task = null) {
+  const selected = task?.selected_resource || {};
+  const attempts = task?.download_attempts || [];
+  const windows = task ? visualWindows(task) : [];
+  if (source === "local") {
+    return [
+      ["视频入口", "本地文件直进管线", task?.media_path ? "已生成标准 media.mp4" : "拖拽上传后保存在 D 盘 data/uploads"],
+      ["理解方式", "字幕优先，Whisper 兜底", "同样抽帧切片并送入视觉窗口"],
+      ["适用场景", "平台不暴露 URL 时兜底", "DRM、不可还原 blob、过期签名都可改走本地"]
+    ];
+  }
+  if (source === "url") {
+    return [
+      ["解析顺序", "直连优先，页面解析兜底", "手动指定 video/HLS/DASH 可减少误判"],
+      ["下载方式", "yt-dlp / ffmpeg / 直接下载", task ? `${attempts.length || 0} 次下载尝试` : "预检通过后再进入任务"],
+      ["输出产物", "media.mp4 + 图文笔记", windows.length ? `${windows.length} 个视觉窗口` : "生成后可导出资料包"]
+    ];
+  }
+  return [
+    ["浏览器证据", selected.url ? (resourceSourceText(selected) || selected.source || "候选资源") : "Side Panel 嗅探候选", selected.kind ? `${selected.kind} · ${selected.playback_match ? playbackText(selected.playback_match) : "待预检"}` : "播放器、请求、字幕、Cookie 一次性交接"],
+    ["直取边界", "只下载可访问媒体", "不录制、不刷课、不绕过 DRM"],
+    ["学习产物", "转写 + 切片 + 视觉总结", windows.length ? `${windows.length} 个视觉窗口` : task ? statusText(task) : "预检后生成完整笔记"]
+  ];
+}
+
+function sourceRouteInsightsHtml(source, task = null) {
+  return `<div class="source-route-insights" aria-label="路线产物">
+    ${sourceRouteInsightItems(source, task).map(([label, title, detail]) => `<section>
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(title)}</strong>
+      <small>${escapeHtml(detail)}</small>
+    </section>`).join("")}
+  </div>`;
+}
+
 function sourceWorkflowHtml(source = selectedSource, task = workflowTaskForSource(source)) {
   const config = workflowSourceConfig(source, task);
   const state = task ? statusText(task) : "等待开始";
@@ -493,6 +528,7 @@ function sourceWorkflowHtml(source = selectedSource, task = workflowTaskForSourc
         <small>${escapeHtml(detail)}</small>
       </li>`).join("")}
     </ol>
+    ${sourceRouteInsightsHtml(source, task)}
     <footer>
       <span>${escapeHtml(state)}</span>
       ${task ? `<button type="button" data-select-workflow-task="${escapeHtml(task.id)}">查看最近任务</button>` : `<em>选择入口后开始处理</em>`}

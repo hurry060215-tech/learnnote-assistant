@@ -442,6 +442,53 @@ h1 {
   color: var(--danger);
 }
 
+.source-route-insights {
+  display: grid;
+  gap: 7px;
+}
+
+.source-route-insights section {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 70px minmax(0, 1fr);
+  gap: 3px 9px;
+  align-items: start;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.source-route-insights span {
+  grid-row: span 2;
+  width: 70px;
+  min-height: 24px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid #c9d9ff;
+  border-radius: 7px;
+  background: #f2f6ff;
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.source-route-insights strong {
+  min-width: 0;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.source-route-insights small {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.36;
+  overflow-wrap: anywhere;
+}
+
 .source-workflow-card footer {
   display: flex;
   align-items: center;
