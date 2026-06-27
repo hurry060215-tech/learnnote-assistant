@@ -549,6 +549,30 @@ small,
   white-space: nowrap;
 }
 
+.route-summary-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.route-summary-actions button {
+  min-width: 0;
+  min-height: 30px;
+  border: 1px solid #b8d3ff;
+  border-radius: 7px;
+  background: #fff;
+  color: var(--accent);
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 850;
+  line-height: 1.2;
+}
+
+.route-summary-actions button:hover {
+  border-color: var(--accent);
+  background: #f2f7ff;
+}
+
 .extraction-plan {
   display: grid;
   gap: 7px;
