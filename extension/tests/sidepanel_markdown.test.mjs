@@ -398,7 +398,8 @@ assert.match(context.preflightRecoveryText({ downloadable: true, kind: "video" }
 vm.runInContext(`
 page = {
   page_url: "https://course.example.com/lesson",
-  active_video: { src: "blob:https://course.example.com/video", drm_detected: false }
+  active_video: { src: "blob:https://course.example.com/video", drm_detected: false, paused: false },
+  browser_subtitles: [{ start: 0, end: 2, text: "浏览器字幕" }]
 };
 resources = [{
   url: "https://cdn.example.com/live/master.m3u8",
@@ -429,6 +430,10 @@ assert.match(elements.get("#resources").innerHTML, /第 1 顺位/);
 assert.match(elements.get("#resources").innerHTML, /ffmpeg 合并/);
 assert.match(elements.get("#resources").innerHTML, /resource-attempt-row selected/);
 assert.doesNotMatch(elements.get("#resources").innerHTML, /<script>bad/);
+assert.equal(context.playbackReadinessState(), "ready");
+assert.match(elements.get("#playbackReadiness").innerHTML, /已读取当前播放视频/);
+assert.match(elements.get("#playbackReadiness").innerHTML, /1\/1 匹配/);
+assert.match(elements.get("#playbackReadiness").innerHTML, /1 条/);
 
 vm.runInContext(`
 preflight = { downloadable: true, kind: "hls", code: "", message: "ok" };
@@ -445,7 +450,8 @@ vm.runInContext(`
 page = {
   page_url: "https://course.example.com/drm",
   drm_detected: true,
-  active_video: { src: "blob:https://course.example.com/drm", drm_detected: true }
+  active_video: { src: "blob:https://course.example.com/drm", drm_detected: true },
+  browser_subtitles: []
 };
 resources = [];
 selectedResourceUrl = "";
@@ -455,3 +461,7 @@ preflightResultsByUrl = new Map();
 `, context);
 assert.equal(context.routeSummaryState(), "blocked");
 assert.match(context.routeSummaryCopy("blocked").action, /不会录制/);
+context.renderContext();
+assert.equal(context.playbackReadinessState(), "blocked");
+assert.match(elements.get("#playbackReadiness").className, /blocked/);
+assert.match(elements.get("#playbackReadiness").innerHTML, /DRM/);

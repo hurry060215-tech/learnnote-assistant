@@ -24,6 +24,7 @@ const els = {
   pageTitle: document.querySelector("#pageTitle"),
   pageUrl: document.querySelector("#pageUrl"),
   activeVideo: document.querySelector("#activeVideo"),
+  playbackReadiness: document.querySelector("#playbackReadiness"),
   resourceCount: document.querySelector("#resourceCount"),
   readiness: document.querySelector("#readiness"),
   routeSummary: document.querySelector("#routeSummary"),
@@ -721,6 +722,91 @@ function activeVideoText(active) {
   ].filter(Boolean).join(" · ");
 }
 
+function playbackReadinessState() {
+  const active = page?.active_video || null;
+  const frames = page?.frames || [];
+  const subtitles = page?.browser_subtitles || [];
+  const downloadable = resources.filter(isDownloadableResource);
+  const drmDetected = page?.drm_detected || active?.drm_detected;
+  const isBlob = Boolean(active?.src?.startsWith("blob:"));
+  if (drmDetected && !downloadable.length) return "blocked";
+  if (downloadable.length) return "ready";
+  if (active?.src || frames.length) return isBlob ? "mapping" : "waiting";
+  if (subtitles.length) return "waiting";
+  return "empty";
+}
+
+function playbackSourceLabel(active) {
+  if (!active?.src) return "未读取";
+  if (active.src.startsWith("blob:")) return "Blob/MSE";
+  if (/^https?:\/\//i.test(active.src)) return "可见 URL";
+  return "播放器源";
+}
+
+function playbackReadinessCopy(state) {
+  const downloadable = resources.filter(isDownloadableResource).length;
+  const matched = resources.filter(item => item.playback_match || item.is_main_video).length;
+  const subtitleCount = (page?.browser_subtitles || []).length;
+  const frames = page?.frames || [];
+  if (state === "blocked") {
+    return {
+      title: "检测到 DRM/不可还原媒体",
+      detail: "不会录制、破解或绕过 DRM；没有可直取资源时请使用本地视频入口。"
+    };
+  }
+  if (state === "ready") {
+    return {
+      title: "已读取当前播放视频",
+      detail: matched ? `有 ${matched} 个候选与播放器匹配，可先预检再总结。` : `发现 ${downloadable} 个可直取候选，可先预检再总结。`
+    };
+  }
+  if (state === "mapping") {
+    return {
+      title: "播放器是 Blob/MSE，正在找真实媒体",
+      detail: "继续播放几秒后重检，扩展会用 webRequest 和页面接口线索映射真实 URL。"
+    };
+  }
+  if (state === "waiting") {
+    return {
+      title: "已读取页面线索，等待可直取资源",
+      detail: frames.length ? `已扫描 ${frames.length} 个 frame；继续播放或重新检测。` : "继续播放几秒后重新检测媒体请求。"
+    };
+  }
+  return {
+    title: subtitleCount ? "已读取字幕线索，等待视频资源" : "等待播放器信号",
+    detail: subtitleCount ? `已读取 ${subtitleCount} 条浏览器字幕，可作为兜底文本。` : "先播放课程视频，再点击重新检测。"
+  };
+}
+
+function renderPlaybackReadiness() {
+  if (!els.playbackReadiness) return;
+  const active = page?.active_video || null;
+  const subtitles = page?.browser_subtitles || [];
+  const downloadable = resources.filter(isDownloadableResource);
+  const matched = resources.filter(item => item.playback_match || item.is_main_video);
+  const state = playbackReadinessState();
+  const copy = playbackReadinessCopy(state);
+  const playValue = active?.src
+    ? active.paused ? "暂停" : "播放中"
+    : (page?.frames || []).length ? `扫描 ${(page?.frames || []).length} frame` : "等待";
+  const items = [
+    { label: "播放", value: playValue },
+    { label: "源类型", value: playbackSourceLabel(active) },
+    { label: "候选", value: matched.length ? `${matched.length}/${resources.length} 匹配` : `${downloadable.length}/${resources.length}` },
+    { label: "字幕", value: subtitles.length ? `${subtitles.length} 条` : "未读取" }
+  ];
+  els.playbackReadiness.className = `playback-readiness ${state}`;
+  els.playbackReadiness.innerHTML = `
+    <div class="playback-readiness-head">
+      <strong>${escapeHtml(copy.title)}</strong>
+      <small>${escapeHtml(copy.detail)}</small>
+    </div>
+    <div class="playback-readiness-grid">
+      ${items.map(item => `<span><b>${escapeHtml(item.value)}</b>${escapeHtml(item.label)}</span>`).join("")}
+    </div>
+  `;
+}
+
 function resourceHint() {
   const downloadable = resources.filter(isDownloadableResource).length;
   const blobCount = resources.filter(item => item.kind === "blob").length;
@@ -1069,6 +1155,7 @@ function renderContext() {
   } else {
     els.activeVideo.textContent = frames.length ? `未读取到 HTML5 播放状态 · 已扫描 ${frames.length} 个 frame` : "未读取到 HTML5 播放状态";
   }
+  renderPlaybackReadiness();
   els.resourceCount.textContent = String(resources.length);
   renderReadiness();
   renderRouteSummary();
