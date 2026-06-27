@@ -32,6 +32,7 @@ const els = {
   browserRefreshButton: document.querySelector("#browserRefreshButton"),
   browserBridgeStatus: document.querySelector("#browserBridgeStatus"),
   browserRouteSummary: document.querySelector("#browserRouteSummary"),
+  sourceWorkflow: document.querySelector("#sourceWorkflow"),
   fileInput: document.querySelector("#fileInput"),
   fileName: document.querySelector("#fileName"),
   dropzone: document.querySelector("#dropzone"),
@@ -366,6 +367,119 @@ function renderBrowserRouteSummary() {
   els.browserRouteSummary.innerHTML = browserRouteSummaryHtml(latestCurrentPageTask());
 }
 
+function isManualUrlTask(task) {
+  const selected = task?.selected_resource || {};
+  return task?.source_type === "current_page"
+    && (selected.source === "manual" || String(selected.request_type || "").startsWith("manual"));
+}
+
+function workflowTaskForSource(source) {
+  if (source === "local") return tasks.find(task => task.source_type === "local") || null;
+  if (source === "url") return tasks.find(isManualUrlTask) || null;
+  return currentPageTasks().find(task => !isManualUrlTask(task)) || latestCurrentPageTask();
+}
+
+function workflowSourceConfig(source, task = null) {
+  if (source === "local") {
+    return {
+      eyebrow: "本地视频",
+      title: task ? "本地视频正在走完整切片链路" : "拖入本地视频，走同一套图文总结",
+      hint: task ? statusText(task) : "适合 DRM、不可还原 blob 或学习平台不暴露媒体 URL 的课程。",
+      steps: [
+        ["导入文件", "mp4 / flv / mkv / webm"],
+        ["提取音频", "字幕优先，Whisper 兜底"],
+        ["抽帧切片", "按视觉窗口生成网格"],
+        ["整理笔记", "Markdown + 资料包"]
+      ]
+    };
+  }
+  if (source === "url") {
+    return {
+      eyebrow: "链接解析",
+      title: task ? "链接任务已进入处理队列" : "粘贴网页或媒体链接，先预检再处理",
+      hint: task ? statusText(task) : "无后缀播放接口可以手动指定视频直连、HLS 或 DASH。",
+      steps: [
+        ["粘贴链接", "页面 / 直连 / manifest"],
+        ["预检类型", "检查 MIME、大小和策略"],
+        ["下载合并", "yt-dlp 或 ffmpeg"],
+        ["图文笔记", "字幕 + 切片总结"]
+      ]
+    };
+  }
+  const routeCopy = directRouteCopy(task);
+  return {
+    eyebrow: "当前页直取",
+    title: routeCopy.title,
+    hint: routeCopy.hint,
+    steps: [
+      ["读取当前页", "播放器、请求、Cookie"],
+      ["预检资源", "mp4 / FLV / HLS / DASH"],
+      ["切片识别", "字幕和画面网格"],
+      ["生成笔记", "时间轴、复习题、资料包"]
+    ]
+  };
+}
+
+function workflowActiveIndex(task) {
+  if (!task) return -1;
+  if (task.status === "success") return 4;
+  if (task.status === "failed") {
+    if (task.note_path) return 4;
+    if (task.transcript_path || task.visual_windows?.length || task.frame_grids?.length) return 3;
+    if (task.media_path) return 2;
+    return 1;
+  }
+  const phase = task.phase || "queued";
+  if (["queued", "detecting"].includes(phase)) return 0;
+  if (phase === "downloading") return 1;
+  if (["processing_video", "transcribing", "extracting_frames"].includes(phase)) return 2;
+  if (phase === "summarizing") return 3;
+  if (phase === "completed") return 4;
+  return 0;
+}
+
+function workflowStepState(task, index) {
+  if (!task) return "pending";
+  const activeIndex = workflowActiveIndex(task);
+  if (task.status === "failed") {
+    if (index < activeIndex) return "done";
+    if (index === activeIndex) return "blocked";
+    return "pending";
+  }
+  if (task.status === "success" || activeIndex >= 4) return "done";
+  if (index < activeIndex) return "done";
+  if (index === activeIndex) return "active";
+  return "pending";
+}
+
+function sourceWorkflowHtml(source = selectedSource, task = workflowTaskForSource(source)) {
+  const config = workflowSourceConfig(source, task);
+  const state = task ? statusText(task) : "等待开始";
+  return `<section class="source-workflow-card ${escapeHtml(source)}">
+    <header>
+      <span>${escapeHtml(config.eyebrow)}</span>
+      <strong>${escapeHtml(config.title)}</strong>
+      <small>${escapeHtml(config.hint)}</small>
+    </header>
+    <ol class="source-workflow-lane">
+      ${config.steps.map(([title, detail], index) => `<li class="${workflowStepState(task, index)}">
+        <b>${index + 1}</b>
+        <span>${escapeHtml(title)}</span>
+        <small>${escapeHtml(detail)}</small>
+      </li>`).join("")}
+    </ol>
+    <footer>
+      <span>${escapeHtml(state)}</span>
+      ${task ? `<button type="button" data-select-workflow-task="${escapeHtml(task.id)}">查看最近任务</button>` : `<em>选择入口后开始处理</em>`}
+    </footer>
+  </section>`;
+}
+
+function renderSourceWorkflow() {
+  if (!els.sourceWorkflow) return;
+  els.sourceWorkflow.innerHTML = sourceWorkflowHtml();
+}
+
 function drmSignalText(signals = []) {
   const parts = [];
   const keySystems = [...new Set(signals.map(item => item.key_system).filter(Boolean))];
@@ -652,6 +766,7 @@ function setSource(source) {
   selectedSource = source;
   els.sourceTabs.forEach(tab => tab.classList.toggle("active", tab.dataset.source === source));
   els.panes.forEach(pane => pane.classList.toggle("active", pane.id === `${source}Source`));
+  renderSourceWorkflow();
 }
 
 function shouldFocusResultPanel() {
@@ -715,6 +830,7 @@ async function loadTasks() {
   if (!selectedTaskId && tasks[0]) selectedTaskId = tasks[0].id;
   renderTasks();
   renderBrowserRouteSummary();
+  renderSourceWorkflow();
   await renderDetail();
 }
 
@@ -1569,6 +1685,17 @@ els.sourceTabs.forEach(tab => {
   tab.onclick = () => setSource(tab.dataset.source);
 });
 
+if (els.sourceWorkflow) {
+  els.sourceWorkflow.addEventListener("click", event => {
+    const button = event.target.closest("[data-select-workflow-task]");
+    if (!button) return;
+    selectedTaskId = button.dataset.selectWorkflowTask;
+    renderTasks();
+    renderDetail();
+    focusResultPanelOnMobile();
+  });
+}
+
 if (els.urlMode) {
   els.urlMode.onchange = renderUrlModeHint;
   renderUrlModeHint();
@@ -1666,6 +1793,7 @@ els.fileInput.onchange = () => {
 
 initializeResponsiveChrome();
 initializeWorkspaceView();
+renderSourceWorkflow();
 checkHealth();
 loadTasks();
 setInterval(() => {

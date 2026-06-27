@@ -107,6 +107,10 @@ assert.match(elements.get("#detail").innerHTML, /class="empty-workbench"/);
 assert.match(elements.get("#detail").innerHTML, /当前页直取/);
 assert.match(elements.get("#detail").innerHTML, /不.*录制页面/);
 assert.equal(elements.get("#copyButton").disabled, true);
+assert.match(elements.get("#sourceWorkflow").innerHTML, /class="source-workflow-card browser"/);
+assert.match(elements.get("#sourceWorkflow").innerHTML, /学习生产线|当前页直取/);
+assert.match(elements.get("#sourceWorkflow").innerHTML, /读取当前页/);
+assert.match(elements.get("#sourceWorkflow").innerHTML, /预检资源/);
 
 const html = context.markdownToHtml(`## 画面索引
 
@@ -527,6 +531,42 @@ assert.match(routeBlockedHtml, /browser-route-summary-card blocked/);
 assert.match(routeBlockedHtml, /不会录制或绕过 DRM/);
 assert.match(routeBlockedHtml, /&lt;script&gt;bad\(\)&lt;\/script&gt; encrypted/);
 assert.doesNotMatch(routeBlockedHtml, /<script>bad/);
+
+const browserWorkflowHtml = context.sourceWorkflowHtml("browser", {
+  id: "task-workflow-browser",
+  title: "Current page lesson",
+  status: "running",
+  phase: "downloading",
+  progress: 35,
+  source_type: "current_page",
+  selected_resource: { kind: "hls" },
+  download_attempts: [{ strategy: "manifest-ffmpeg" }],
+  visual_windows: []
+});
+assert.match(browserWorkflowHtml, /class="source-workflow-card browser"/);
+assert.match(browserWorkflowHtml, /当前页直取/);
+assert.match(browserWorkflowHtml, /预检资源/);
+assert.match(browserWorkflowHtml, /class="active"/);
+assert.match(browserWorkflowHtml, /data-select-workflow-task="task-workflow-browser"/);
+
+const localWorkflowHtml = context.sourceWorkflowHtml("local", null);
+assert.match(localWorkflowHtml, /本地视频/);
+assert.match(localWorkflowHtml, /导入文件/);
+assert.match(localWorkflowHtml, /选择入口后开始处理/);
+
+const failedWorkflowHtml = context.sourceWorkflowHtml("browser", {
+  id: "task-workflow-failed",
+  title: "Blocked page",
+  status: "failed",
+  phase: "failed",
+  progress: 100,
+  source_type: "current_page",
+  error_code: "drm_or_encrypted",
+  selected_resource: { kind: "blob" },
+  download_attempts: []
+});
+assert.match(failedWorkflowHtml, /class="blocked"/);
+assert.match(failedWorkflowHtml, /DRM/);
 
 const routeEmptyHtml = context.browserRouteSummaryHtml(null);
 assert.match(routeEmptyHtml, /等待扩展侧栏创建当前页任务/);
