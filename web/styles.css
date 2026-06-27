@@ -1374,6 +1374,31 @@ button:disabled {
   color: #5d3900;
 }
 
+.failure-guide p,
+.failure-guide small,
+.failure-guide li {
+  color: #7a4b00;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.failure-guide p {
+  margin: 0;
+}
+
+.failure-guide small {
+  display: block;
+  margin-top: 7px;
+  overflow-wrap: anywhere;
+}
+
+.failure-guide ul {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+
 .study-map {
   display: grid;
   gap: 12px;
