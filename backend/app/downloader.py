@@ -68,6 +68,13 @@ BROWSER_REQUEST_HEADER_ALLOWLIST = {
     "user-agent": "User-Agent",
     "x-requested-with": "X-Requested-With",
 }
+DOWNLOAD_RESPONSE_HEADER_ALLOWLIST = {
+    "accept-ranges",
+    "content-disposition",
+    "content-length",
+    "content-range",
+    "content-type",
+}
 YTDLP_HTTP_HEADER_ORDER = (
     "User-Agent",
     "Accept-Language",
@@ -691,6 +698,24 @@ def _response_content_length(response: requests.Response) -> int | None:
     except ValueError:
         return None
     return value if value > 0 else None
+
+
+def _safe_download_response_headers(response: requests.Response) -> dict[str, str]:
+    headers: dict[str, str] = {}
+    for name, value in response.headers.items():
+        lowered = name.lower()
+        if lowered in DOWNLOAD_RESPONSE_HEADER_ALLOWLIST and value:
+            headers[lowered] = _safe_header_value(value)
+    return headers
+
+
+def _update_candidate_from_download_response(candidate: ResourceCandidate, response: requests.Response) -> None:
+    candidate.status_code = response.status_code
+    candidate.content_length = _response_content_length(response)
+    content_type = response.headers.get("content-type", "")
+    if content_type:
+        candidate.mime = content_type
+    candidate.headers = {**candidate.headers, **_safe_download_response_headers(response)}
 
 
 def _read_probe_bytes(response: requests.Response, limit: int = 64 * 1024) -> bytes:
@@ -1463,6 +1488,7 @@ class MediaDownloader:
 
         def attempt(headers: dict[str, str]) -> Path:
             with requests.get(url, headers=headers, stream=True, timeout=30) as response:
+                _update_candidate_from_download_response(candidate, response)
                 if response.status_code in {401, 403}:
                     raise DownloadError("auth_required", f"媒体资源返回 HTTP {response.status_code}。")
                 if response.status_code == 416:

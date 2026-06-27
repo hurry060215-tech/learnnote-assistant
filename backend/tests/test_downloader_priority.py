@@ -301,6 +301,13 @@ class DownloaderPriorityTests(unittest.TestCase):
                 self.assertEqual(media_path.stat().st_size, video.stat().st_size)
                 self.assertIsNotNone(selected)
                 self.assertEqual(selected.url, media_url)
+                self.assertEqual(selected.status_code, 200)
+                self.assertEqual(selected.content_length, video.stat().st_size)
+                self.assertEqual(selected.mime, "application/octet-stream")
+                self.assertIn("lesson%20download.mp4", selected.headers.get("content-disposition", ""))
+                self.assertEqual(downloader.attempts[0].status_code, 200)
+                self.assertEqual(downloader.attempts[0].content_length, video.stat().st_size)
+                self.assertEqual(downloader.attempts[0].mime, "application/octet-stream")
             finally:
                 server.shutdown()
                 server.server_close()
