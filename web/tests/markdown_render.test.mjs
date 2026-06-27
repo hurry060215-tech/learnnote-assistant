@@ -146,6 +146,10 @@ assert.match(elements.get("#sourceWorkflow").innerHTML, /读取当前页/);
 assert.match(elements.get("#sourceWorkflow").innerHTML, /预检资源/);
 assert.match(indexHtml, /class="side-panel-handoff"/);
 assert.match(indexHtml, /id="browserRouteSummary"/);
+assert.ok(
+  indexHtml.indexOf('id="browserRouteSummary"') < indexHtml.indexOf('id="sourceWorkflow"'),
+  "current-page route summary should appear before the workflow explainer"
+);
 assert.match(indexHtml, /当前页直取状态/);
 assert.match(indexHtml, /打开课程页/);
 assert.match(indexHtml, /选择候选资源/);
