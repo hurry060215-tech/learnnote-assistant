@@ -149,9 +149,15 @@ context.window = { ...context.window, location: context.location };
 
 vm.createContext(context);
 const sidepanelCode = await readFile(new URL("../sidepanel.js", import.meta.url), "utf8");
+const sidepanelHtml = await readFile(new URL("../sidepanel.html", import.meta.url), "utf8");
 vm.runInContext(sidepanelCode, context);
 
 await new Promise(resolve => setTimeout(resolve, 0));
+assert.match(sidepanelHtml, /accept="video\/\*,\.mp4,\.m4v,\.mov,\.mkv,\.webm,\.flv,\.avi"/);
+assert.equal(context.isSupportedLocalVideoFile({ name: "lesson.mkv", type: "" }), true);
+assert.equal(context.isSupportedLocalVideoFile({ name: "lesson.flv", type: "" }), true);
+assert.equal(context.isSupportedLocalVideoFile({ name: "bad.txt", type: "text/plain" }), false);
+
 elements.get("#fileInput").files = [lessonFile];
 await context.uploadLocal();
 await new Promise(resolve => setTimeout(resolve, 0));
@@ -169,7 +175,7 @@ uploadShouldFail = true;
 elements.get("#fileInput").files = [{ name: "bad.txt", size: 10, type: "text/plain" }];
 await context.uploadLocal();
 
-assert.equal(uploadBodies.length, 2);
+assert.equal(uploadBodies.length, 1);
 assert.equal(elements.get("#uploadButton").disabled, false);
 assert.equal(elements.get("#localDrop").classList.contains("uploading"), false);
-assert.equal(elements.get("#taskMessage").textContent, "unsupported local file");
+assert.equal(elements.get("#taskMessage").textContent, "bad.txt 不是支持的视频格式。");

@@ -1,5 +1,6 @@
 const DEFAULT_BACKEND = "http://127.0.0.1:8765";
 const HAS_EXTENSION_API = typeof chrome !== "undefined" && Boolean(chrome.runtime?.sendMessage && chrome.storage?.local);
+const LOCAL_VIDEO_EXT_RE = /\.(mp4|m4v|mov|mkv|webm|flv|avi)$/i;
 
 let backendUrl = DEFAULT_BACKEND;
 let page = null;
@@ -75,6 +76,12 @@ function safeNoteMediaUrl(value) {
   if (!raw) return "";
   if (/^(https?:\/\/|\/)/i.test(raw)) return escapeHtml(raw);
   return "";
+}
+
+function isSupportedLocalVideoFile(file) {
+  if (!file?.name) return false;
+  if (String(file.type || "").startsWith("video/")) return true;
+  return LOCAL_VIDEO_EXT_RE.test(file.name);
 }
 
 function inlineMarkdown(value) {
@@ -1377,6 +1384,11 @@ async function runPreflight() {
 async function uploadLocal() {
   const file = els.fileInput.files?.[0];
   if (!file) return;
+  if (!isSupportedLocalVideoFile(file)) {
+    els.localDropText.textContent = "请选择 mp4 / flv / mkv / webm 等视频文件";
+    els.taskMessage.textContent = `${file.name} 不是支持的视频格式。`;
+    return;
+  }
   els.localDropText.textContent = file.name;
   els.uploadButton.disabled = true;
   els.localDrop.classList.add("uploading");

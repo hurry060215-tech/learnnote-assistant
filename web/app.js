@@ -1,6 +1,7 @@
 const API = "";
 const MEDIA_RE = /\.(mp4|m4v|webm|mov|mkv|flv)(\?|#|$)/i;
 const HLS_RE = /\.(m3u8|mpd)(\?|#|$)/i;
+const LOCAL_VIDEO_EXT_RE = /\.(mp4|m4v|mov|mkv|webm|flv|avi)$/i;
 
 let selectedSource = "browser";
 let selectedTaskId = null;
@@ -74,6 +75,12 @@ function safeNoteMediaUrl(value) {
   if (!raw) return "";
   if (/^(https?:\/\/|\/)/i.test(raw)) return escapeHtml(raw);
   return "";
+}
+
+function isSupportedLocalVideoFile(file) {
+  if (!file?.name) return false;
+  if (String(file.type || "").startsWith("video/")) return true;
+  return LOCAL_VIDEO_EXT_RE.test(file.name);
 }
 
 function inlineMarkdown(value) {
@@ -1666,6 +1673,10 @@ async function preflightUrlTask() {
 async function uploadSelectedFile() {
   const file = els.fileInput.files?.[0];
   if (!file) return;
+  if (!isSupportedLocalVideoFile(file)) {
+    els.fileName.textContent = `${file.name} 暂不支持，请选择 mp4 / flv / mkv / webm 等视频文件`;
+    return;
+  }
   const form = new FormData();
   form.append("file", file);
   form.append("title", els.titleInput.value.trim() || file.name);

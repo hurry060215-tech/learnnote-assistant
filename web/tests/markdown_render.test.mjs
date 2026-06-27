@@ -116,6 +116,10 @@ assert.match(indexHtml, /class="side-panel-handoff"/);
 assert.match(indexHtml, /打开课程页/);
 assert.match(indexHtml, /选择候选资源/);
 assert.doesNotMatch(indexHtml, /id="browserRouteSummary"/);
+assert.match(indexHtml, /accept="video\/\*,\.mp4,\.m4v,\.mov,\.mkv,\.webm,\.flv,\.avi"/);
+assert.equal(context.isSupportedLocalVideoFile({ name: "lesson.mkv", type: "" }), true);
+assert.equal(context.isSupportedLocalVideoFile({ name: "lesson.flv", type: "" }), true);
+assert.equal(context.isSupportedLocalVideoFile({ name: "bad.txt", type: "text/plain" }), false);
 
 const html = context.markdownToHtml(`## 画面索引
 
