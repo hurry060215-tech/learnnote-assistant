@@ -686,6 +686,7 @@ assert.doesNotMatch(elements.get("#launchBar").innerHTML, /data-route-action="pr
 vm.runInContext(`
 page = {
   page_url: "https://course.example.com/drm",
+  page_text: "章节标题 课程说明",
   drm_detected: true,
   active_video: { src: "blob:https://course.example.com/drm", drm_detected: true },
   browser_subtitles: []
@@ -699,6 +700,7 @@ preflightResultsByUrl = new Map();
 assert.equal(context.routeSummaryState(), "blocked");
 assert.match(context.routeSummaryCopy("blocked").action, /不会录制/);
 assert.match(context.routeSummaryActionsHtml("blocked"), /data-route-action="local"/);
+assert.match(context.routeSummaryActionsHtml("blocked"), /data-route-action="text"/);
 assert.equal(context.currentStudyState(), "blocked");
 assert.match(context.currentStudyCopy("blocked").detail, /不会录制/);
 assert.match(context.currentStudyActionText("blocked"), /本地视频上传/);
@@ -714,4 +716,5 @@ assert.match(elements.get("#resources").innerHTML, /data-resource-empty-action="
 assert.match(elements.get("#resources").innerHTML, /data-resource-empty-action="text"/);
 assert.match(elements.get("#launchBar").className, /blocked/);
 assert.match(elements.get("#launchBar").innerHTML, /data-route-action="local"/);
+assert.match(elements.get("#launchBar").innerHTML, /data-route-action="text"/);
 assert.doesNotMatch(elements.get("#launchBar").innerHTML, /data-route-action="summarize"/);

@@ -606,6 +606,11 @@ function selectedResource() {
   return resources.find(item => item.url === selectedResourceUrl) || null;
 }
 
+function hasPageTextFallback() {
+  if ((page?.page_text || "").trim()) return true;
+  return (page?.browser_subtitles || []).some(item => (item?.text || "").trim());
+}
+
 function isPlaybackMatchedResource(item) {
   return Boolean(item?.playback_match || item?.is_main_video);
 }
@@ -1245,6 +1250,9 @@ function launchBarActionsHtml(state) {
   if (state === "blocked" || state === "fallback" || state === "mapping" || state === "waiting" || !hasSelected) {
     actions.push(`<button type="button" data-route-action="local">本地</button>`);
   }
+  if (hasPageTextFallback() && (state === "blocked" || state === "fallback" || state === "empty" || state === "waiting" || !hasSelected)) {
+    actions.push(`<button type="button" data-route-action="text">文本</button>`);
+  }
   return actions.join("");
 }
 
@@ -1486,6 +1494,9 @@ function routeSummaryActionsHtml(state) {
   }
   if (state === "blocked" || state === "fallback" || !hasSelected) {
     actions.push(`<button type="button" data-route-action="local">上传本地视频</button>`);
+  }
+  if (hasPageTextFallback() && (state === "blocked" || state === "fallback" || state === "empty" || !hasSelected)) {
+    actions.push(`<button type="button" data-route-action="text">只总结页面文本</button>`);
   }
   if (!actions.length) return "";
   return `<div class="route-summary-actions">${actions.join("")}</div>`;
@@ -1831,6 +1842,7 @@ async function startTask(mode = "video") {
   }
   els.summarizeButton.disabled = true;
   if (els.downloadOnlyButton) els.downloadOnlyButton.disabled = true;
+  if (els.textButton) els.textButton.disabled = true;
   try {
     els.taskMessage.textContent = isMediaTaskMode(mode) ? "正在刷新当前播放页和媒体候选..." : "正在刷新当前页面文本...";
     const refreshed = await collect();
@@ -1869,6 +1881,7 @@ async function startTask(mode = "video") {
   } finally {
     els.summarizeButton.disabled = false;
     if (els.downloadOnlyButton) els.downloadOnlyButton.disabled = false;
+    if (els.textButton) els.textButton.disabled = false;
   }
 }
 
@@ -2618,6 +2631,8 @@ function handleRouteAction(action) {
     startTask("download_only");
   } else if (action === "local") {
     els.fileInput.click();
+  } else if (action === "text") {
+    startTask("page_text");
   }
 }
 els.routeSummary.addEventListener("click", event => {
