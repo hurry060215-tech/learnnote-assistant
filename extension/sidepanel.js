@@ -1806,7 +1806,10 @@ function visualStudyDeck(task) {
         <span>视觉窗口复习</span>
         <strong>${escapeHtml(task.title || task.id || "画面切片")}</strong>
       </div>
-      <small>${escapeHtml(`${windows.length} 窗口 · ${range}`)}</small>
+      <div class="side-visual-study-head-actions">
+        <small>${escapeHtml(`${windows.length} 窗口 · ${range}`)}</small>
+        <button type="button" data-export="visual-windows">导出切片索引</button>
+      </div>
     </div>
     <div class="side-visual-study-list">
       ${windows.slice(0, 8).map((window, index) => {

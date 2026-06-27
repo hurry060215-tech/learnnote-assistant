@@ -62,6 +62,12 @@ def diagnostics_filename(task_id: str, title: str) -> str:
     return f"{stem}-diagnostics.md"
 
 
+def visual_windows_filename(task_id: str, title: str) -> str:
+    stem = _FILENAME_RESERVED_RE.sub("_", title or "").strip(" ._")
+    stem = stem[:120] or f"learnnote-{task_id}"
+    return f"{stem}-visual-windows.md"
+
+
 def _format_bytes(value: int | None) -> str:
     if not value:
         return "-"
@@ -411,6 +417,25 @@ def api_export_markdown(task_id: str) -> PlainTextResponse:
         )
     }
     return PlainTextResponse(note, media_type="text/markdown; charset=utf-8", headers=headers)
+
+
+@app.get("/api/tasks/{task_id}/exports/visual-windows")
+def api_export_visual_windows(task_id: str) -> PlainTextResponse:
+    try:
+        task = get_task(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Task not found") from exc
+    if not task.visual_windows and not task.frame_grids:
+        raise HTTPException(status_code=404, detail="Visual windows not found")
+    report = render_visual_windows_markdown(task)
+    filename = visual_windows_filename(task.id, task.title)
+    headers = {
+        "Content-Disposition": (
+            f'attachment; filename="learnnote-{task.id}-visual-windows.md"; '
+            f"filename*=UTF-8''{quote(filename)}"
+        )
+    }
+    return PlainTextResponse(report, media_type="text/markdown; charset=utf-8", headers=headers)
 
 
 @app.get("/api/tasks/{task_id}/exports/bundle")
