@@ -1,4 +1,4 @@
-const MEDIA_RE = /\.(mp4|m4v|webm|mov|mkv|flv|m3u8|mpd)(\?|#|$)/i;
+const MEDIA_RE = /\.(mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd)(\?|#|$)/i;
 const FRAGMENT_RE = /\.(m4s|ts)(\?|#|$)/i;
 const SUBTITLE_RE = /\.(vtt|srt|ass|ssa)(\?|#|$)/i;
 const resourceByTab = new Map();

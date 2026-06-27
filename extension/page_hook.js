@@ -2,8 +2,8 @@
   if (window.__learnNotePageHookInstalled) return;
   window.__learnNotePageHookInstalled = true;
 
-  const MEDIA_URL_RE = /(?:https?:)?\/\/[^\s"'<>\\]+\.(?:mp4|m4v|webm|mov|mkv|flv|m3u8|mpd|vtt|srt|ass|ssa)(?:\?[^\s"'<>\\]*)?|(?:\/[^\s"'<>\\]+)\.(?:mp4|m4v|webm|mov|mkv|flv|m3u8|mpd|vtt|srt|ass|ssa)(?:\?[^\s"'<>\\]*)?|(?:[A-Za-z0-9._~!$&()*+,;=:@%-]+\/)*[A-Za-z0-9._~!$&()*+,;=:@%-]+\.(?:mp4|m4v|webm|mov|mkv|flv|m3u8|mpd|vtt|srt|ass|ssa)(?:\?[^\s"'<>\\]*)?/gi;
-  const MEDIA_HINT_RE = /\.(?:mp4|m4v|webm|mov|mkv|flv|m3u8|mpd|vtt|srt|ass|ssa)(?:[?#]|["'\s<>]|$)/i;
+  const MEDIA_URL_RE = /(?:https?:)?\/\/[^\s"'<>\\]+\.(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|vtt|srt|ass|ssa)(?:\?[^\s"'<>\\]*)?|(?:\/[^\s"'<>\\]+)\.(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|vtt|srt|ass|ssa)(?:\?[^\s"'<>\\]*)?|(?:[A-Za-z0-9._~!$&()*+,;=:@%-]+\/)*[A-Za-z0-9._~!$&()*+,;=:@%-]+\.(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|vtt|srt|ass|ssa)(?:\?[^\s"'<>\\]*)?/gi;
+  const MEDIA_HINT_RE = /\.(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|vtt|srt|ass|ssa)(?:[?#]|["'\s<>]|$)/i;
   const TEXT_TYPE_RE = /json|text|javascript|mpegurl|dash\+xml|xml|x-mpegurl/i;
   const JSON_MEDIA_KEY_RE = /(url|src|file|play|media|video|stream|source|hls|m3u8|dash|mpd|subtitle|caption)/i;
   const JSON_MIME_KEY_RE = /(mime|type|format|content.?type|media.?type)/i;
@@ -62,7 +62,7 @@
     if (type.includes("mpegurl") || lower.includes(".m3u8")) return "hls";
     if (type.includes("dash+xml") || lower.includes(".mpd")) return "dash";
     if (type.includes("text/vtt") || type.includes("subrip") || /\.(vtt|srt|ass|ssa)(\?|#|$)/i.test(lower)) return "subtitle";
-    if (type.includes("video/") || /\.(mp4|m4v|webm|mov|mkv|flv)(\?|#|$)/i.test(lower)) return "video";
+    if (type.includes("video/") || /\.(mp4|m4v|webm|mov|mkv|flv|avi)(\?|#|$)/i.test(lower)) return "video";
     return "unknown";
   }
 

@@ -16,15 +16,15 @@ from .models import BrowserCookie, DownloadAttempt, MediaPreflightResult, Resour
 from .runtime import ffmpeg_bin
 
 
-MEDIA_EXT_RE = re.compile(r"\.(mp4|m4v|webm|mov|mkv|flv)(\?|#|$)", re.I)
+MEDIA_EXT_RE = re.compile(r"\.(mp4|m4v|webm|mov|mkv|flv|avi)(\?|#|$)", re.I)
 MANIFEST_EXT_RE = re.compile(r"\.(m3u8|mpd)(\?|#|$)", re.I)
 FRAGMENT_EXT_RE = re.compile(r"\.(m4s|ts)(\?|#|$)", re.I)
 SUBTITLE_EXT_RE = re.compile(r"\.(vtt|srt|ass|ssa)(\?|#|$)", re.I)
-TEXT_MEDIA_HINT_RE = re.compile(r"\.(mp4|m4v|webm|mov|mkv|flv|m3u8|mpd|vtt|srt|ass|ssa)([?#]|[\"'\s<>]|$)", re.I)
+TEXT_MEDIA_HINT_RE = re.compile(r"\.(mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|vtt|srt|ass|ssa)([?#]|[\"'\s<>]|$)", re.I)
 TEXT_MEDIA_URL_RE = re.compile(
-    r"(?:https?:)?//[^\s\"'<>\\]+\.(?:mp4|m4v|webm|mov|mkv|flv|m3u8|mpd|vtt|srt|ass|ssa)(?:\?[^\s\"'<>\\]*)?"
-    r"|(?:/[^\s\"'<>\\]+)\.(?:mp4|m4v|webm|mov|mkv|flv|m3u8|mpd|vtt|srt|ass|ssa)(?:\?[^\s\"'<>\\]*)?"
-    r"|(?:[A-Za-z0-9._~!$&()*+,;=:@%-]+/)*[A-Za-z0-9._~!$&()*+,;=:@%-]+\.(?:mp4|m4v|webm|mov|mkv|flv|m3u8|mpd|vtt|srt|ass|ssa)(?:\?[^\s\"'<>\\]*)?",
+    r"(?:https?:)?//[^\s\"'<>\\]+\.(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|vtt|srt|ass|ssa)(?:\?[^\s\"'<>\\]*)?"
+    r"|(?:/[^\s\"'<>\\]+)\.(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|vtt|srt|ass|ssa)(?:\?[^\s\"'<>\\]*)?"
+    r"|(?:[A-Za-z0-9._~!$&()*+,;=:@%-]+/)*[A-Za-z0-9._~!$&()*+,;=:@%-]+\.(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|vtt|srt|ass|ssa)(?:\?[^\s\"'<>\\]*)?",
     re.I,
 )
 TEXT_RESPONSE_RE = re.compile(r"json|text|html|javascript|mpegurl|dash\+xml|xml|x-mpegurl", re.I)
@@ -1273,9 +1273,9 @@ class MediaDownloader:
             raise DownloadError("download_forbidden", f"yt-dlp 无法下载当前页面：{message[:300]}") from exc
 
         after = [path for path in self.download_dir.glob("*") if path not in before and path.is_file()]
-        media = [path for path in after if path.suffix.lower() in {".mp4", ".webm", ".mkv", ".mov", ".m4v", ".flv"}]
+        media = [path for path in after if path.suffix.lower() in {".mp4", ".webm", ".mkv", ".mov", ".m4v", ".flv", ".avi"}]
         if not media:
-            media = [path for path in self.download_dir.glob("*") if path.suffix.lower() in {".mp4", ".webm", ".mkv", ".mov", ".m4v", ".flv"}]
+            media = [path for path in self.download_dir.glob("*") if path.suffix.lower() in {".mp4", ".webm", ".mkv", ".mov", ".m4v", ".flv", ".avi"}]
         if not media:
             raise DownloadError("download_forbidden", "yt-dlp 已运行但没有生成可用视频文件。")
         return max(media, key=lambda path: path.stat().st_size)
