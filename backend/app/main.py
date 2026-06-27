@@ -233,6 +233,7 @@ def render_diagnostics_markdown(task: TaskRecord) -> str:
             f"- HTTP：{selected.status_code or '-'}",
             f"- MIME：{selected.mime or '-'}",
             f"- 大小：{_format_bytes(selected.content_length)}",
+            f"- Content-Disposition：{selected.headers.get('content-disposition') or '-'}",
             f"- 可复用请求头名：{_safe_header_names(selected.request_headers)}",
         ])
     else:

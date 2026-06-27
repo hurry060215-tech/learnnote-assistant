@@ -446,6 +446,9 @@ class ProcessorBoundaryTests(unittest.TestCase):
                 url="https://cdn.example.com/lesson.mp4",
                 source="webRequest",
                 kind="video",
+                headers={
+                    "content-disposition": "attachment; filename*=UTF-8''lesson%20download.mp4",
+                },
                 request_headers={
                     "Referer": "https://course.example.com/lesson",
                     "Cookie": "SESSION=secret",
@@ -465,6 +468,8 @@ class ProcessorBoundaryTests(unittest.TestCase):
             report = render_diagnostics_markdown(record)
 
             self.assertIn("Referer", report)
+            self.assertIn("Content-Disposition", report)
+            self.assertIn("lesson%20download.mp4", report)
             self.assertIn("direct-file", report)
             self.assertIn("download_forbidden", report)
             self.assertIn("## 下一步建议", report)
@@ -706,6 +711,15 @@ class ProcessorBoundaryTests(unittest.TestCase):
                         kind="video",
                         mime="application/octet-stream",
                         score=96,
+                        headers={
+                            "content-disposition": "attachment; filename*=UTF-8''signed%20lesson.mp4",
+                            "set-cookie": "SESSION=secret",
+                        },
+                        request_headers={
+                            "Referer": "https://course.example.com/lesson",
+                            "Cookie": "SESSION=secret",
+                            "Authorization": "Bearer secret",
+                        },
                     )
                 ],
             )
@@ -720,6 +734,14 @@ class ProcessorBoundaryTests(unittest.TestCase):
             self.assertTrue(record.media_path)
             self.assertEqual(record.selected_resource.url, "https://cdn.example.com/api/play?id=abc")
             self.assertEqual(record.selected_resource.kind, "video")
+            self.assertEqual(
+                record.selected_resource.headers.get("content-disposition"),
+                "attachment; filename*=UTF-8''signed%20lesson.mp4",
+            )
+            self.assertNotIn("set-cookie", record.selected_resource.headers)
+            self.assertEqual(record.selected_resource.request_headers["Referer"], "<redacted>")
+            self.assertEqual(record.selected_resource.request_headers["Cookie"], "<redacted>")
+            self.assertEqual(record.selected_resource.request_headers["Authorization"], "<redacted>")
             self.assertEqual(record.download_attempts[0].strategy, "direct-file")
             self.assertTrue(record.drm_detected)
         finally:

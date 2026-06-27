@@ -11,7 +11,7 @@ from .summarizer import MAX_VISION_GRIDS, build_visual_windows, summarize_page_t
 from .transcriber import transcript_from_subtitle, transcribe_audio
 
 
-SAFE_RESPONSE_HEADER_NAMES = {"content-type", "content-length", "content-range", "accept-ranges"}
+SAFE_RESPONSE_HEADER_NAMES = {"content-type", "content-disposition", "content-length", "content-range", "accept-ranges"}
 
 
 def _fail(task_id: str, code: str, detail: str) -> None:
