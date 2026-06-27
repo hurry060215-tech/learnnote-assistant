@@ -299,6 +299,12 @@ function workbenchUrl(taskId = currentTaskId, tabName = selectedTab) {
   return `${backendUrl.replace(/\/$/, "")}/?task=${encodeURIComponent(taskId)}&tab=${encodeURIComponent(tab)}`;
 }
 
+function openWorkbench(taskId = currentTaskId, tabName = selectedTab) {
+  const url = workbenchUrl(taskId, tabName);
+  if (HAS_EXTENSION_API) chrome.tabs.create({ url });
+  else window.open(url, "_blank", "noopener");
+}
+
 async function copyTextToClipboard(text, successMessage) {
   if (!text) return false;
   try {
@@ -1901,6 +1907,7 @@ function taskOverview(task) {
     selected.content_length ? fmtBytes(selected.content_length) : ""
   ].filter(Boolean).join(" · ");
   const actionLinks = [
+    `<button type="button" data-open-workbench="${escapeHtml(task.id)}">Web 工作台</button>`,
     hasNote ? `<button type="button" data-export="markdown">Markdown</button>` : "",
     hasMedia ? `<button type="button" data-export="media">本地视频</button>` : "",
     hasTaskDiagnostics(task) ? `<button type="button" data-export="diagnostics">诊断</button>` : "",
@@ -1985,6 +1992,9 @@ async function rerunTaskFromMedia(taskId) {
 }
 
 function bindTaskOverviewActions() {
+  document.querySelectorAll("button[data-open-workbench]").forEach(button => {
+    button.onclick = () => openWorkbench(button.dataset.openWorkbench, selectedTab);
+  });
   document.querySelectorAll("button[data-export]").forEach(button => {
     button.onclick = () => openTaskExport(button.dataset.export);
   });
@@ -2376,9 +2386,7 @@ els.downloadButton.onclick = () => {
   openTaskExport("markdown");
 };
 els.openWebButton.onclick = () => {
-  const url = workbenchUrl();
-  if (HAS_EXTENSION_API) chrome.tabs.create({ url });
-  else window.open(url, "_blank", "noopener");
+  openWorkbench();
 };
 els.settingsButton.onclick = saveSettings;
 
