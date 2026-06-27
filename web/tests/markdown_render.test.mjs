@@ -610,6 +610,27 @@ const playerSourceOverview = context.taskOverview({
 assert.match(playerSourceOverview, /DPlayer 已加载源地址/);
 assert.doesNotMatch(playerSourceOverview, /<script>bad/);
 
+const manifestGuessOverview = context.taskOverview({
+  id: "manifest-guess-task",
+  title: "Manifest guess task",
+  source_type: "current_page",
+  status: "failed",
+  phase: "failed",
+  progress: 100,
+  error_code: "unsupported_manifest",
+  selected_resource: {
+    kind: "hls",
+    source: "manifest-guess",
+    label: "Guessed HLS manifest from segment directory",
+    url: "https://cdn.example.com/live/master.m3u8"
+  },
+  options: {},
+  download_attempts: [{ strategy: "manifest-ffmpeg", code: "unsupported_manifest" }],
+  visual_windows: []
+});
+assert.match(manifestGuessOverview, /同目录 manifest 猜测/);
+assert.match(manifestGuessOverview, /unsupported_manifest/);
+
 const routeDownloadedHtml = context.browserRouteSummaryHtml({
   id: "route-downloaded",
   source_type: "current_page",

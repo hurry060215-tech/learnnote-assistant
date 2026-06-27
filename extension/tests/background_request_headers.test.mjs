@@ -104,6 +104,17 @@ assert.ok(
   context.scoreKind("https://cdn.example.com/playback?id=abc", "webRequest", "video") >= 95,
   "expected extensionless browser media requests to rank like video candidates"
 );
+assert.deepEqual(Array.from(context.inferSiblingManifestUrls("https://cdn.example.com/live/seg-001.ts?token=abc")), [
+  "https://cdn.example.com/live/index.m3u8?token=abc",
+  "https://cdn.example.com/live/playlist.m3u8?token=abc",
+  "https://cdn.example.com/live/master.m3u8?token=abc"
+]);
+assert.deepEqual(Array.from(context.inferSiblingManifestUrls("https://cdn.example.com/dash/chunk-001.m4s?token=abc")), [
+  "https://cdn.example.com/dash/manifest.mpd?token=abc",
+  "https://cdn.example.com/dash/index.mpd?token=abc",
+  "https://cdn.example.com/dash/master.m3u8?token=abc",
+  "https://cdn.example.com/dash/index.m3u8?token=abc"
+]);
 
 const hinted = context.withPlaybackHints(
   {
@@ -202,6 +213,26 @@ assert.equal(xhrResources[0].kind, "video");
 assert.equal(xhrResources[0].request_type, "xmlhttprequest");
 assert.equal(xhrResources[0].request_headers.Range, "bytes=1048576-");
 assert.equal(xhrResources[0].headers["content-range"], "bytes 1048576-2097151/8388608");
+
+context.addResource(19, {
+  url: "https://cdn.example.com/hls/segment-0001.ts?token=abc",
+  source: "webRequest",
+  kind: "fragment",
+  mime: "video/mp2t",
+  score: 25,
+  request_headers: {
+    Referer: "https://course.example.com/lesson",
+    Range: "bytes=0-"
+  }
+}, false);
+const fragmentResources = vm.runInContext("resourceByTab.get(19)", context);
+const guessedManifest = fragmentResources.find(item => item.url === "https://cdn.example.com/hls/master.m3u8?token=abc");
+assert.ok(guessedManifest, "expected same-directory HLS manifest guesses for plain .ts segments");
+assert.equal(guessedManifest.source, "manifest-guess");
+assert.equal(guessedManifest.kind, "hls");
+assert.equal(guessedManifest.playback_match, "inferred-from-fragment");
+assert.equal(guessedManifest.request_headers.Referer, "https://course.example.com/lesson");
+assert.ok(guessedManifest.score <= 72, "manifest guesses must stay below verified direct candidates");
 
 const cookieUrls = context.cookieUrlsForContext(
   {

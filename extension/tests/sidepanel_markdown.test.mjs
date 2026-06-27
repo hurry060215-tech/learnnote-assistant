@@ -410,6 +410,16 @@ assert.match(context.resourceReasonText({
   source: "pageHookPlayer",
   label: "xgplayer Player constructor switchUrl"
 }), /xgplayer 已加载源地址/);
+assert.match(context.resourceReasonText({
+  kind: "hls",
+  source: "manifest-guess",
+  label: "Guessed HLS manifest from segment directory"
+}), /同目录 manifest 猜测/);
+assert.match(context.resourceReasonText({
+  kind: "dash",
+  source: "inferred-manifest",
+  label: "Inferred DASH manifest"
+}), /分片路径回推/);
 assert.match(context.requestEvidence({
   kind: "video",
   source: "pageHookPlayer",
