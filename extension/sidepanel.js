@@ -711,6 +711,48 @@ function candidateStrategyText(item) {
   return "后端解析";
 }
 
+function candidateConfidence(item) {
+  if (!item) return { className: "muted", label: "待判断", detail: "等待候选资源。" };
+  if (item.source === "manifest-guess") {
+    return {
+      className: "low",
+      label: "低置信兜底",
+      detail: "由分片同目录猜测 manifest，需要预检确认。"
+    };
+  }
+  if (item.source === "inferred-manifest") {
+    return {
+      className: "medium",
+      label: "路径回推",
+      detail: "从分片 URL 中已有的 manifest 路径回推。"
+    };
+  }
+  if (item.playback_match || item.is_main_video) {
+    return {
+      className: "high",
+      label: "播放匹配",
+      detail: "与当前播放器或最近播放请求匹配，优先预检。"
+    };
+  }
+  if (item.source === "webRequest" || String(item.source || "").startsWith("pageHook")) {
+    return {
+      className: "medium",
+      label: "请求证据",
+      detail: "来自浏览器请求或页面播放器接口。"
+    };
+  }
+  return {
+    className: "muted",
+    label: "待验证",
+    detail: "需要预检判断是否可下载。"
+  };
+}
+
+function candidateConfidenceHtml(item) {
+  const confidence = candidateConfidence(item);
+  return `<span class="resource-confidence ${escapeHtml(confidence.className)}">${escapeHtml(confidence.label)}</span>`;
+}
+
 function candidateTryOrder(item) {
   if (!item?.url) return 0;
   const index = selectedResources().findIndex(candidate => candidate.url === item.url);
@@ -761,6 +803,7 @@ function resourceAttemptQueueHtml(limit = 4) {
         const evidence = [
           item.kind || "media",
           candidateStrategyText(item),
+          candidateConfidence(item).label,
           item.score ? `${item.score}%` : "",
           playbackText(item.playback_match),
           resourceSourceText(item)
@@ -1196,9 +1239,11 @@ function renderInspector() {
     return;
   }
   els.resourceInspector.className = "resource-inspector";
+  const confidence = candidateConfidence(item);
   els.resourceInspector.innerHTML = `
     <strong>${escapeHtml(directnessText(item))}</strong>
     <span>下载顺序：第 ${escapeHtml(candidateTryOrder(item) || "-")} 顺位 · ${escapeHtml(candidateStrategyText(item))}</span>
+    <span>候选置信度：${escapeHtml(confidence.label)} · ${escapeHtml(confidence.detail)}</span>
     ${resourceReasonText(item) ? `<span>选择依据：${escapeHtml(resourceReasonText(item))}</span>` : ""}
     <span>${escapeHtml(requestEvidence(item) || "无请求证据")}</span>
     ${item.blob_url ? `<span>播放 blob：${escapeHtml(item.blob_url)}</span>` : ""}
@@ -1335,6 +1380,7 @@ function renderContext() {
       <span>
         <strong>${escapeHtml(item.label || item.kind || "media")}</strong>
         ${resourcePriorityBadgeHtml(item)}
+        ${candidateConfidenceHtml(item)}
         ${resourceTagHtml(item)}
         ${preflightBadgeHtml(item)}
         <small>${escapeHtml([

@@ -441,6 +441,22 @@ assert.match(context.resourceTagHtml({
 assert.equal(context.candidateStrategyText({ kind: "hls" }), "ffmpeg 合并");
 assert.equal(context.candidateStrategyText({ kind: "video" }), "直接下载");
 assert.equal(context.candidateStrategyText({ kind: "blob" }), "不可直接下载");
+const manifestGuessConfidence = context.candidateConfidence({
+  kind: "hls",
+  source: "manifest-guess"
+});
+assert.equal(manifestGuessConfidence.className, "low");
+assert.equal(manifestGuessConfidence.label, "低置信兜底");
+assert.equal(manifestGuessConfidence.detail, "由分片同目录猜测 manifest，需要预检确认。");
+assert.equal(context.candidateConfidence({
+  kind: "video",
+  source: "webRequest",
+  playback_match: "range-near-playhead"
+}).label, "播放匹配");
+assert.match(context.candidateConfidenceHtml({
+  kind: "hls",
+  source: "manifest-guess"
+}), /resource-confidence low/);
 
 assert.match(context.preflightRecoveryText({ code: "auth_required" }), /已登录/);
 assert.match(context.preflightRecoveryText({ code: "drm_or_encrypted" }), /不会录制/);
@@ -476,8 +492,10 @@ assert.deepEqual(JSON.parse(JSON.stringify(context.currentStudyMetrics().map(ite
 assert.match(context.currentStudyMetrics()[1].value, /hls · ffmpeg 合并/);
 assert.match(context.resourcePriorityBadgeHtml(context.selectedResource()), /第 1 顺位/);
 assert.match(context.resourcePriorityBadgeHtml(context.selectedResource()), /ffmpeg 合并/);
+assert.match(context.candidateConfidenceHtml(context.selectedResource()), /播放匹配/);
 assert.match(context.resourceAttemptQueueHtml(), /resource-attempt-queue/);
 assert.match(context.resourceAttemptQueueHtml(), /下载队列/);
+assert.match(context.resourceAttemptQueueHtml(), /播放匹配/);
 assert.match(context.resourceAttemptQueueHtml(), /待预检/);
 context.renderRouteSummary();
 assert.match(elements.get("#routeSummary").innerHTML, /待预检/);
@@ -485,7 +503,10 @@ assert.doesNotMatch(elements.get("#routeSummary").innerHTML, /<script>bad/);
 context.renderContext();
 assert.match(elements.get("#resources").innerHTML, /第 1 顺位/);
 assert.match(elements.get("#resources").innerHTML, /ffmpeg 合并/);
+assert.match(elements.get("#resources").innerHTML, /resource-confidence high/);
 assert.match(elements.get("#resources").innerHTML, /resource-attempt-row selected/);
+assert.match(elements.get("#resourceInspector").innerHTML, /候选置信度/);
+assert.match(elements.get("#resourceInspector").innerHTML, /播放匹配/);
 assert.doesNotMatch(elements.get("#resources").innerHTML, /<script>bad/);
 assert.match(elements.get("#currentStudyCard").className, /candidate/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /发现当前视频直取候选/);
