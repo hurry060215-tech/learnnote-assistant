@@ -1313,6 +1313,7 @@ function taskOverview(task) {
   const hasMedia = Boolean(task.media_path);
   const hasBundle = hasTaskBundle(task);
   const statusClass = taskStatusClass(task);
+  const fallbackNote = task.status === "failed" && hasNote;
   const resourceLine = [
     taskSourceText(task),
     selected.kind || task.source_type || "",
@@ -1348,6 +1349,10 @@ function taskOverview(task) {
     ${downloadOnly ? `<div class="task-overview-callout">
       <strong>已完成直取下载</strong>
       <span>这个任务按“下载本地”运行，未进入转写、切片和总结；可导出 media.mp4，或直接复用这个本地视频生成完整笔记。</span>
+    </div>` : ""}
+    ${fallbackNote ? `<div class="task-overview-callout">
+      <strong>已生成兜底笔记</strong>
+      <span>视频直取失败，但已用页面文本/浏览器字幕生成可读笔记；诊断页仍保留原始下载错误和资源证据。</span>
     </div>` : ""}
     ${failed ? `<div class="task-overview-callout failed">
       <strong>${escapeHtml(task.error_code || "任务失败")}</strong>

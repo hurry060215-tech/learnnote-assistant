@@ -1348,6 +1348,15 @@ button:disabled {
   font-size: 13px;
 }
 
+.fallback-note-callout {
+  border-color: rgba(20, 150, 74, 0.28);
+  background: rgba(20, 150, 74, 0.08);
+}
+
+.fallback-note-callout strong {
+  color: var(--success);
+}
+
 .failure-guide {
   margin-bottom: 14px;
   border: 1px solid rgba(196, 122, 5, 0.28);

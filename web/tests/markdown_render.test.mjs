@@ -299,6 +299,28 @@ assert.match(taskOverviewHtml, /\/api\/tasks\/task-web-overview\/exports\/bundle
 assert.match(taskOverviewHtml, /已完成直取下载/);
 assert.doesNotMatch(taskOverviewHtml, /<script>bad/);
 assert.match(taskOverviewHtml, /&lt;script&gt;bad\(\)&lt;\/script&gt; 课程/);
+const fallbackTaskOverviewHtml = context.taskOverview({
+  id: "task-web-fallback",
+  title: "直取失败课程",
+  status: "failed",
+  phase: "failed",
+  progress: 100,
+  source_type: "current_page",
+  note_path: "D:/Projects/learnnote-assistant/data/tasks/task-web-fallback/note.md",
+  transcript_path: "D:/Projects/learnnote-assistant/data/tasks/task-web-fallback/transcript.json",
+  error_code: "download_forbidden",
+  error_detail: "signed URL expired 已生成页面文本/浏览器字幕兜底笔记。",
+  options: {
+    frame_interval: 20,
+    grid_columns: 3,
+    grid_rows: 3
+  }
+});
+assert.match(fallbackTaskOverviewHtml, /class="task-overview status-failed"/);
+assert.match(fallbackTaskOverviewHtml, /已生成兜底笔记/);
+assert.match(fallbackTaskOverviewHtml, /导出 Markdown/);
+assert.match(fallbackTaskOverviewHtml, /导出诊断/);
+assert.match(fallbackTaskOverviewHtml, /导出资料包/);
 assert.equal(context.hasTaskBundle({ media_path: "D:/media.mp4" }), true);
 assert.equal(context.hasTaskBundle({ status: "failed", error_code: "download_forbidden" }), true);
 assert.equal(context.hasTaskBundle({ download_attempts: [{ strategy: "direct-file" }] }), true);
