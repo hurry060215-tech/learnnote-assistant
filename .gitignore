@@ -6,6 +6,7 @@ data/*.mp4
 data/*.png
 data/model-cache/
 data/pip-cache/
+data/temp/
 data/test-runs/
 data/uploads/
 data/wheelhouse*/
