@@ -1842,7 +1842,7 @@ async function uploadSelectedFile() {
   }
   const form = new FormData();
   form.append("file", file);
-  form.append("title", els.titleInput.value.trim() || file.name);
+  form.append("title", file.name);
   form.append("options", JSON.stringify(readOptions()));
   els.uploadButton.disabled = true;
   els.uploadButton.textContent = "上传中...";
@@ -1977,6 +1977,7 @@ els.dropzone.addEventListener("drop", event => {
     els.fileInput.files = event.dataTransfer.files;
     els.fileName.textContent = event.dataTransfer.files[0].name;
     setSource("local");
+    uploadSelectedFile();
   }
 });
 

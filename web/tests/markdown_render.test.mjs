@@ -26,7 +26,10 @@ const makeClassList = () => {
 };
 
 const makeElement = () => ({
-  addEventListener() {},
+  listeners: {},
+  addEventListener(type, listener) {
+    this.listeners[type] = listener;
+  },
   classList: makeClassList(),
   style: {},
   dataset: {},
@@ -83,7 +86,17 @@ const context = {
     }
   },
   Blob: class Blob {},
-  FormData: class FormData {},
+  FormData: class FormData {
+    constructor() {
+      this.values = new Map();
+    }
+    append(name, value) {
+      this.values.set(name, value);
+    }
+    get(name) {
+      return this.values.get(name);
+    }
+  },
   URL: class URL {},
   fetch: async url => {
     const value = String(url);
@@ -873,3 +886,42 @@ await context.preflightUrlTask();
 assert.equal(preflights.length, 2);
 assert.match(elements.get("#urlModeHint").textContent, /预检未通过/);
 assert.match(elements.get("#urlModeHint").textContent, /HTTP 403/);
+
+const localUploads = [];
+const droppedFile = { name: "drag-local-lesson.mkv", type: "", size: 456789 };
+context.fetch = async (url, options = {}) => {
+  const value = String(url);
+  if (value.endsWith("/api/tasks/from-local")) {
+    localUploads.push(options.body);
+    return { json: async () => ({ task_id: "task-local-drop" }) };
+  }
+  if (value.endsWith("/api/tasks")) {
+    return {
+      json: async () => ({
+        tasks: [{
+          id: "task-local-drop",
+          title: "drag-local-lesson.mkv",
+          status: "queued",
+          phase: "queued",
+          progress: 0,
+          source_type: "local",
+          visual_windows: []
+        }]
+      })
+    };
+  }
+  return { ok: false, json: async () => ({}), text: async () => "" };
+};
+
+await elements.get("#dropzone").listeners.drop({
+  preventDefault() {},
+  dataTransfer: { files: [droppedFile] }
+});
+await new Promise(resolve => setTimeout(resolve, 0));
+
+assert.equal(localUploads.length, 1);
+assert.equal(localUploads[0].get("file"), droppedFile);
+assert.equal(localUploads[0].get("title"), "drag-local-lesson.mkv");
+assert.match(localUploads[0].get("options"), /"visual_understanding":true/);
+assert.equal(elements.get("#fileName").textContent, "drag-local-lesson.mkv");
+assert.equal(elements.get("#uploadButton").disabled, false);
