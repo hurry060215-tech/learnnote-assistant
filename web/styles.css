@@ -731,6 +731,50 @@ select:focus {
   white-space: nowrap;
 }
 
+.side-panel-handoff {
+  display: grid;
+  gap: 8px;
+}
+
+.side-panel-handoff div {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  gap: 2px 9px;
+  align-items: start;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: #fff;
+  padding: 10px;
+}
+
+.side-panel-handoff span {
+  grid-row: span 2;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--surface-strong);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.side-panel-handoff strong {
+  min-width: 0;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.side-panel-handoff small {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 620;
+  line-height: 1.38;
+}
+
 .handoff-steps,
 .capability-grid,
 .browser-actions {

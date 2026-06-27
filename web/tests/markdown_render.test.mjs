@@ -100,6 +100,7 @@ context.window.navigator = context.navigator;
 
 vm.createContext(context);
 const webCode = await readFile(new URL("../app.js", import.meta.url), "utf8");
+const indexHtml = await readFile(new URL("../index.html", import.meta.url), "utf8");
 vm.runInContext(webCode, context);
 
 await new Promise(resolve => setTimeout(resolve, 0));
@@ -111,6 +112,10 @@ assert.match(elements.get("#sourceWorkflow").innerHTML, /class="source-workflow-
 assert.match(elements.get("#sourceWorkflow").innerHTML, /学习生产线|当前页直取/);
 assert.match(elements.get("#sourceWorkflow").innerHTML, /读取当前页/);
 assert.match(elements.get("#sourceWorkflow").innerHTML, /预检资源/);
+assert.match(indexHtml, /class="side-panel-handoff"/);
+assert.match(indexHtml, /打开课程页/);
+assert.match(indexHtml, /选择候选资源/);
+assert.doesNotMatch(indexHtml, /id="browserRouteSummary"/);
 
 const html = context.markdownToHtml(`## 画面索引
 
