@@ -30,6 +30,21 @@ class LocalUploadValidationTests(unittest.TestCase):
     def setUp(self) -> None:
         self.client = TestClient(app)
 
+    def test_web_index_references_mounted_static_assets(self) -> None:
+        response = self.client.get("/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('/web/styles.css', response.text)
+        self.assertIn('/web/app.js', response.text)
+
+        css = self.client.get("/web/styles.css")
+        script = self.client.get("/web/app.js")
+
+        self.assertEqual(css.status_code, 200)
+        self.assertIn(".app-shell", css.text)
+        self.assertEqual(script.status_code, 200)
+        self.assertIn("loadTasks", script.text)
+
     def test_local_upload_filename_is_sanitized_and_mime_can_supply_extension(self) -> None:
         self.assertEqual(local_upload_filename("..\\course:demo?.mkv", ""), "course_demo.mkv")
         self.assertEqual(local_upload_filename("", "video/mp4"), "local-video.mp4")

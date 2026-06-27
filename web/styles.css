@@ -3563,7 +3563,7 @@ select {
 
   .app-shell {
     width: 100%;
-    max-width: 100vw;
+    max-width: 100%;
     grid-template-columns: 1fr;
     grid-template-rows: auto;
     height: auto;
@@ -3588,7 +3588,7 @@ select {
   .workspace-panel,
   .queue-panel,
   .result-panel {
-    width: calc(100vw - 20px);
+    width: 100%;
     min-width: 0;
     max-width: 100%;
     overflow-x: hidden;
