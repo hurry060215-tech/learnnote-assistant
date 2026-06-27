@@ -26,6 +26,7 @@ const els = {
   pageUrl: document.querySelector("#pageUrl"),
   activeVideo: document.querySelector("#activeVideo"),
   playbackReadiness: document.querySelector("#playbackReadiness"),
+  currentStudyCard: document.querySelector("#currentStudyCard"),
   resourceCount: document.querySelector("#resourceCount"),
   readiness: document.querySelector("#readiness"),
   routeSummary: document.querySelector("#routeSummary"),
@@ -860,6 +861,102 @@ function renderPlaybackReadiness() {
   `;
 }
 
+function currentStudyState() {
+  const state = routeSummaryState();
+  if (state === "ready") return "ready";
+  if (state === "candidate") return "candidate";
+  if (state === "fallback") return "fallback";
+  if (state === "blocked") return "blocked";
+  return playbackReadinessState();
+}
+
+function currentStudyCopy(state) {
+  if (state === "ready") {
+    return {
+      badge: "已验证",
+      title: "可以开始当前视频总结",
+      detail: "已确认后端可访问选中媒体；开始后会先下载到本地，再转写、切片和生成图文笔记。"
+    };
+  }
+  if (state === "candidate") {
+    return {
+      badge: "待预检",
+      title: "发现当前视频直取候选",
+      detail: "建议先预检资源；开始任务时也会自动按队列尝试可下载候选。"
+    };
+  }
+  if (state === "fallback" || state === "mapping") {
+    return {
+      badge: "需兜底",
+      title: "正在把播放器线索映射成真实媒体",
+      detail: "继续播放几秒后重检；若直链失败，后端会尝试页面解析，仍失败则使用本地视频入口。"
+    };
+  }
+  if (state === "blocked") {
+    return {
+      badge: "不可直取",
+      title: "当前页不能直接下载",
+      detail: "不会录制、破解或绕过 DRM。可以继续播放重检，或拖入本地视频走同一套笔记管线。"
+    };
+  }
+  if (state === "waiting") {
+    return {
+      badge: "等待资源",
+      title: "已读到页面线索",
+      detail: "保持课程视频播放几秒，扩展会继续捕获媒体请求和字幕变化。"
+    };
+  }
+  return {
+    badge: "等待播放",
+    title: "播放课程后创建学习任务",
+    detail: "打开课程视频并播放几秒，再让扩展检测可访问的 mp4、FLV、HLS 或 DASH。"
+  };
+}
+
+function currentStudyMetrics() {
+  const active = page?.active_video || null;
+  const selected = selectedResource();
+  const subtitles = page?.browser_subtitles || [];
+  const [cols, rows] = String(els.gridSize?.value || "3x3").split("x").map(Number);
+  const playTime = active?.src
+    ? `${fmt(active.current_time || 0)} / ${fmt(active.duration || 0)}`
+    : (page?.frames || []).length ? `${(page?.frames || []).length} frame` : "-";
+  return [
+    { label: "播放时间", value: playTime },
+    { label: "直取路线", value: selected ? `${selected.kind || "media"} · ${candidateStrategyText(selected)}` : "等待候选" },
+    { label: "字幕兜底", value: subtitles.length ? `${subtitles.length} 条` : "未读取" },
+    { label: "画面切片", value: `${Number(els.frameInterval?.value || 20)}秒 · ${cols || 3}x${rows || 3}` }
+  ];
+}
+
+function currentStudyActionText(state) {
+  if (state === "ready") return "下一步：点击“总结当前视频”生成完整图文笔记。";
+  if (state === "candidate") return "下一步：点击“预检资源”，确认当前候选能被本地后端访问。";
+  if (state === "fallback" || state === "mapping" || state === "waiting") return "下一步：继续播放几秒后重新检测，或直接尝试后端解析。";
+  if (state === "blocked") return "下一步：使用本地视频上传；本工具不会录制或绕过 DRM。";
+  return "下一步：播放课程视频并点击重新检测。";
+}
+
+function renderCurrentStudyCard() {
+  if (!els.currentStudyCard) return;
+  const state = currentStudyState();
+  const copy = currentStudyCopy(state);
+  els.currentStudyCard.className = `current-study-card ${state}`;
+  els.currentStudyCard.innerHTML = `
+    <div class="current-study-head">
+      <span>${escapeHtml(copy.badge)}</span>
+      <div>
+        <strong>${escapeHtml(copy.title)}</strong>
+        <small>${escapeHtml(copy.detail)}</small>
+      </div>
+    </div>
+    <div class="current-study-metrics">
+      ${currentStudyMetrics().map(item => `<span><b>${escapeHtml(item.value)}</b>${escapeHtml(item.label)}</span>`).join("")}
+    </div>
+    <p>${escapeHtml(currentStudyActionText(state))}</p>
+  `;
+}
+
 function resourceHint() {
   const downloadable = resources.filter(isDownloadableResource).length;
   const blobCount = resources.filter(item => item.kind === "blob").length;
@@ -1209,6 +1306,7 @@ function renderContext() {
     els.activeVideo.textContent = frames.length ? `未读取到 HTML5 播放状态 · 已扫描 ${frames.length} 个 frame` : "未读取到 HTML5 播放状态";
   }
   renderPlaybackReadiness();
+  renderCurrentStudyCard();
   els.resourceCount.textContent = String(resources.length);
   renderReadiness();
   renderRouteSummary();
