@@ -1180,6 +1180,45 @@ function resourceHint() {
   return "";
 }
 
+function noResourceGuideHtml() {
+  const drmDetected = page?.drm_detected || page?.active_video?.drm_detected;
+  const hasBlob = resources.some(item => item.kind === "blob");
+  const hasFragment = resources.some(item => item.kind === "fragment");
+  const state = drmDetected ? "blocked" : hasBlob || hasFragment ? "warn" : "empty";
+  const headline = drmDetected
+    ? "当前页没有可直取媒体，且检测到 DRM/EME"
+    : hasBlob || hasFragment
+      ? "只看到 blob 或分片线索，还没还原到 manifest"
+      : "还没有捕获到可下载的视频候选";
+  const detail = drmDetected
+    ? "不会录制、破解或绕过 DRM；可以改用本地视频入口走同一套转写、切片和图文总结。"
+    : hasBlob || hasFragment
+      ? "继续播放几秒后重新检测；如果页面暴露 m3u8/mpd/mp4 请求，候选会自动进入直取队列。"
+      : "先让课程视频真实播放几秒，再重新检测媒体请求；也可以只总结当前页面文本。";
+  const steps = [
+    ["播放几秒", "让浏览器产生真实媒体请求"],
+    ["重新检测", "读取 DOM、Performance 和 webRequest 缓存"],
+    ["本地兜底", "上传视频后仍走切片和图文总结"]
+  ];
+  return `<section class="no-resource-guide ${escapeHtml(state)}" aria-label="无候选资源排障">
+    <span>${escapeHtml(state === "blocked" ? "不可直取" : state === "warn" ? "需要重检" : "等待捕获")}</span>
+    <strong>${escapeHtml(headline)}</strong>
+    <p>${escapeHtml(detail)}</p>
+    <ol>
+      ${steps.map(([title, text], index) => `<li>
+        <b>${index + 1}</b>
+        <span>${escapeHtml(title)}</span>
+        <small>${escapeHtml(text)}</small>
+      </li>`).join("")}
+    </ol>
+    <div class="no-resource-actions">
+      <button type="button" data-resource-empty-action="redetect">重新检测资源</button>
+      <button type="button" data-resource-empty-action="local">上传本地视频</button>
+      <button type="button" data-resource-empty-action="text">只总结页面文本</button>
+    </div>
+  </section>`;
+}
+
 function renderReadiness() {
   const downloadable = resources.filter(isDownloadableResource);
   const selected = selectedResource();
@@ -1541,7 +1580,7 @@ function renderContext() {
   renderRouteSummary();
   renderExtractionPlan();
   if (!resources.length) {
-    els.resources.innerHTML = `${resourceHint()}<p class="muted">未检测到可直接下载的视频资源。</p>`;
+    els.resources.innerHTML = `${resourceHint()}${noResourceGuideHtml()}`;
     renderInspector();
     return;
   }
@@ -2401,6 +2440,18 @@ els.resourceInspector.addEventListener("click", event => {
   }
   if (event.target.closest("[data-copy-resource-report]")) {
     copySelectedResourceReport();
+  }
+});
+els.resources.addEventListener("click", event => {
+  const button = event.target.closest("[data-resource-empty-action]");
+  if (!button) return;
+  const action = button.dataset.resourceEmptyAction;
+  if (action === "redetect") {
+    collect();
+  } else if (action === "local") {
+    els.fileInput.click();
+  } else if (action === "text") {
+    startTask("page_text");
   }
 });
 els.routeSummary.addEventListener("click", event => {

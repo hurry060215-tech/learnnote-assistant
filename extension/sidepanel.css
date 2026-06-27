@@ -1087,6 +1087,140 @@ small,
   color: var(--danger);
 }
 
+.no-resource-guide {
+  display: grid;
+  gap: 11px;
+  border: 1px solid #d4e0f0;
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(22, 119, 255, 0.06), rgba(255, 255, 255, 0) 52%),
+    #fbfdff;
+  padding: 13px;
+}
+
+.no-resource-guide.warn {
+  border-color: rgba(196, 122, 5, 0.28);
+  background:
+    linear-gradient(180deg, rgba(196, 122, 5, 0.08), rgba(255, 255, 255, 0) 56%),
+    #fffdf8;
+}
+
+.no-resource-guide.blocked {
+  border-color: rgba(217, 45, 32, 0.24);
+  background:
+    linear-gradient(180deg, rgba(217, 45, 32, 0.07), rgba(255, 255, 255, 0) 56%),
+    #fffafa;
+}
+
+.no-resource-guide > span {
+  width: max-content;
+  max-width: 100%;
+  border: 1px solid rgba(22, 119, 255, 0.18);
+  border-radius: 7px;
+  background: #eef5ff;
+  color: var(--accent);
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.no-resource-guide.warn > span {
+  border-color: rgba(196, 122, 5, 0.24);
+  background: rgba(196, 122, 5, 0.1);
+  color: var(--warning);
+}
+
+.no-resource-guide.blocked > span {
+  border-color: rgba(217, 45, 32, 0.24);
+  background: rgba(217, 45, 32, 0.1);
+  color: var(--danger);
+}
+
+.no-resource-guide strong {
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.no-resource-guide p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.no-resource-guide ol {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.no-resource-guide li {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  column-gap: 8px;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: #fff;
+  padding: 8px;
+}
+
+.no-resource-guide li b {
+  grid-row: span 2;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  background: var(--surface-strong);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.no-resource-guide li span {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.no-resource-guide li small {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.no-resource-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.no-resource-actions button {
+  min-width: 0;
+  min-height: 32px;
+  border: 1px solid #b8d3ff;
+  border-radius: 7px;
+  background: #f2f7ff;
+  color: var(--accent);
+  padding: 6px 7px;
+  font-size: 11px;
+  font-weight: 850;
+  line-height: 1.25;
+}
+
+.no-resource-actions button:hover {
+  border-color: var(--accent);
+  background: #eaf2ff;
+}
+
 .option-panel {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

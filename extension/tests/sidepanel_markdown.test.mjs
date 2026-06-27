@@ -604,3 +604,7 @@ assert.match(elements.get("#playbackReadiness").className, /blocked/);
 assert.match(elements.get("#playbackReadiness").innerHTML, /DRM/);
 assert.match(elements.get("#currentStudyCard").className, /blocked/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /当前页不能直接下载/);
+assert.match(elements.get("#resources").innerHTML, /no-resource-guide blocked/);
+assert.match(elements.get("#resources").innerHTML, /data-resource-empty-action="redetect"/);
+assert.match(elements.get("#resources").innerHTML, /data-resource-empty-action="local"/);
+assert.match(elements.get("#resources").innerHTML, /data-resource-empty-action="text"/);
