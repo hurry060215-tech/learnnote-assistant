@@ -101,8 +101,7 @@ const hiddenTrack = {
 };
 
 const video = new FakeElement("video", {
-  currentSrc: "https://cdn.example.com/shadow/current.mp4?token=1",
-  type: "video/mp4",
+  currentSrc: "https://cdn.example.com/api/current?id=shadow&token=1",
   currentTime: 42,
   duration: 600,
   paused: false,
@@ -211,7 +210,7 @@ messageListener({ type: "collect-page-data" }, {}, data => {
 
 const urls = new Set(response.resources.map(item => item.url));
 
-assert.equal(response.active_video.src, "https://cdn.example.com/shadow/current.mp4?token=1");
+assert.equal(response.active_video.src, "https://cdn.example.com/api/current?id=shadow&token=1");
 assert.equal(response.active_video.paused, false);
 assert.equal(hiddenTrack.mode, "hidden");
 assert.deepEqual(JSON.parse(JSON.stringify(response.browser_subtitles)), [
@@ -219,10 +218,14 @@ assert.deepEqual(JSON.parse(JSON.stringify(response.browser_subtitles)), [
   { start: 2.5, end: 5, text: "Shadow DOM caption cue" },
   { start: 40.5, end: 46.5, text: "Visible overlay caption" }
 ]);
-assert.ok(urls.has("https://cdn.example.com/shadow/current.mp4?token=1"));
+assert.ok(urls.has("https://cdn.example.com/api/current?id=shadow&token=1"));
 assert.ok(urls.has("https://cdn.example.com/shadow/playlist.m3u8?token=1"));
 assert.ok(urls.has("https://cdn.example.com/shadow/captions.vtt"));
 assert.ok(urls.has("https://course.example.com/player?video=shadow"));
+const activeVideoResource = response.resources.find(item => item.url === "https://cdn.example.com/api/current?id=shadow&token=1");
+assert.equal(activeVideoResource.kind, "video");
+assert.equal(activeVideoResource.mime, "video/mp4");
+assert.equal(activeVideoResource.source, "activeVideo");
 const extensionless = response.resources.find(item => item.url === "https://cdn.example.com/api/play?id=shadow");
 assert.equal(extensionless.kind, "video");
 assert.equal(extensionless.source, "performance");

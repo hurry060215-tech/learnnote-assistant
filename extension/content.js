@@ -161,14 +161,15 @@ function resourceFromHint(value, source, label, hint = "", video = null, isMainV
 function resource(url, source, label, mime = "", video = null, isMainVideo = false, playbackMatch = "") {
   const absolute = absoluteUrl(url);
   if (!absolute) return null;
-  const kind = classify(absolute, mime);
+  const effectiveMime = mime || mimeFromPlaybackElementContext(absolute, source, label, video, playbackMatch);
+  const kind = classify(absolute, effectiveMime);
   return {
     url: absolute,
     source,
     kind,
-    mime,
+    mime: effectiveMime,
     label,
-    score: score(absolute, mime, source),
+    score: score(absolute, effectiveMime, source),
     is_main_video: isMainVideo,
     playback_match: playbackMatch,
     blob_url: "",
@@ -178,6 +179,14 @@ function resource(url, source, label, mime = "", video = null, isMainVideo = fal
     height: video ? Number(video.videoHeight || video.clientHeight || 0) : null,
     time_stamp: Date.now()
   };
+}
+
+function mimeFromPlaybackElementContext(url, source, label, video = null, playbackMatch = "") {
+  if (!video || !/^https?:\/\//i.test(url) || classify(url, "") !== "unknown") return "";
+  if (source === "activeVideo") return "video/mp4";
+  if (source === "dom" && /video source/i.test(label)) return "video/mp4";
+  if (playbackMatch === "source-element") return "video/mp4";
+  return "";
 }
 
 function performanceKind(entry = {}) {
