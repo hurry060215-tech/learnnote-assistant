@@ -72,7 +72,10 @@ const packedPlayer = new FakeElement("div", {
 const script = new FakeElement("script", {
   textContent: "window.__player={videoUrl:'https%3A%2F%2Fcdn.example.com%2Fstatic%2Flesson.mp4%3Ftoken%3Dscript', flvUrl:'https://cdn.example.com/static/live.flv?token=script'};"
 });
-const html = new FakeElement("html", {}, [player, packedPlayer, script]);
+const plainEncodedScript = new FakeElement("script", {
+  textContent: "window.__payload='https%3A%2F%2Fcdn.example.com%2Fstatic%2Fplain-master.m3u8%3Ftoken%3Dplain%26uid%3D1';"
+});
+const html = new FakeElement("html", {}, [player, packedPlayer, script, plainEncodedScript]);
 
 let messageListener = null;
 const context = {
@@ -138,6 +141,7 @@ const hls = response.resources.find(item => item.url === "https://cdn.example.co
 const dash = response.resources.find(item => item.url === "https://cdn.example.com/static/manifest.mpd?token=b64");
 const video = response.resources.find(item => item.url === "https://cdn.example.com/static/lesson.mp4?token=script");
 const flv = response.resources.find(item => item.url === "https://cdn.example.com/static/live.flv?token=script");
+const plainHls = response.resources.find(item => item.url === "https://cdn.example.com/static/plain-master.m3u8?token=plain&uid=1");
 
 assert.ok(hls, "expected data-play-url media hint to expose encoded HLS URL");
 assert.equal(hls.kind, "hls");
@@ -158,3 +162,8 @@ assert.ok(flv, "expected inline script media hint to expose FLV URL");
 assert.equal(flv.kind, "video");
 assert.equal(flv.source, "scriptHint");
 assert.match(flv.label, /flvUrl/);
+
+assert.ok(plainHls, "expected inline script encoded URL scan to expose HLS URL without a media field name");
+assert.equal(plainHls.kind, "hls");
+assert.equal(plainHls.source, "scriptHint");
+assert.match(plainHls.label, /encoded url/);

@@ -1,6 +1,7 @@
 const MEDIA_RE = /\.(mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd)(\?|#|$)/i;
 const FRAGMENT_RE = /\.(m4s|ts)(\?|#|$)/i;
 const SUBTITLE_RE = /\.(vtt|srt|ass|ssa)(\?|#|$)/i;
+const ENCODED_MEDIA_URL_RE = /https?%3A%2F%2F[^\s"'<>\\]+?(?:\.|%2E)(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|vtt|srt|ass|ssa)(?:[^\s"'<>\\]*)?/gi;
 const STATIC_MEDIA_ATTRS = [
   "src",
   "href",
@@ -97,7 +98,14 @@ function absoluteUrl(url) {
 function decodedValues(value) {
   const raw = String(value || "").trim();
   if (!raw) return [];
-  const values = [raw.replace(/&amp;/g, "&").replace(/\\\//g, "/")];
+  const values = [raw
+    .replace(/&amp;/g, "&")
+    .replace(/\\\//g, "/")
+    .replace(/\\u0026/g, "&")
+    .replace(/\\u002F/gi, "/")
+    .replace(/\\u003A/gi, ":")
+    .replace(/\\u003F/gi, "?")
+    .replace(/\\u003D/gi, "=")];
   try {
     const decoded = decodeURIComponent(values[0]);
     if (decoded && decoded !== values[0]) values.unshift(decoded);
@@ -181,6 +189,22 @@ function resource(url, source, label, mime = "", video = null, isMainVideo = fal
     height: video ? Number(video.videoHeight || video.clientHeight || 0) : null,
     time_stamp: Date.now()
   };
+}
+
+function collectEncodedTextResources(text, source, label, seen = new Set()) {
+  const resources = [];
+  for (const match of String(text || "").matchAll(ENCODED_MEDIA_URL_RE)) {
+    for (const candidate of decodedValues(match[0] || "")) {
+      const item = resource(candidate, source, label, mimeFromHint(candidate));
+      if (!item || item.kind === "unknown" || seen.has(item.url)) continue;
+      seen.add(item.url);
+      item.score = Math.max(item.score || 0, item.kind === "hls" || item.kind === "dash" ? 96 : item.kind === "video" ? 86 : 62);
+      resources.push(item);
+      break;
+    }
+    if (resources.length >= 40) break;
+  }
+  return resources;
 }
 
 function mimeFromPlaybackElementContext(url, source, label, video = null, playbackMatch = "") {
@@ -361,7 +385,9 @@ function collectInlineScriptResources() {
   const seen = new Set();
   for (const script of deepQuerySelectorAll("script", document, 400)) {
     const text = String(script.textContent || "").slice(0, 200000);
-    if (!text || !STATIC_MEDIA_KEY_RE.test(text)) continue;
+    ENCODED_MEDIA_URL_RE.lastIndex = 0;
+    if (!text || (!STATIC_MEDIA_KEY_RE.test(text) && !ENCODED_MEDIA_URL_RE.test(text))) continue;
+    ENCODED_MEDIA_URL_RE.lastIndex = 0;
     STATIC_FIELD_RE.lastIndex = 0;
     for (const match of text.matchAll(STATIC_FIELD_RE)) {
       const key = String(match[1] || "").replace(/^["']|["']$/g, "");
@@ -370,6 +396,10 @@ function collectInlineScriptResources() {
       if (!item || seen.has(item.url)) continue;
       seen.add(item.url);
       item.score = Math.max(item.score || 0, item.kind === "hls" || item.kind === "dash" ? 96 : item.kind === "video" ? 86 : 62);
+      resources.push(item);
+      if (resources.length >= 40) return resources;
+    }
+    for (const item of collectEncodedTextResources(text, "scriptHint", "script encoded url", seen)) {
       resources.push(item);
       if (resources.length >= 40) return resources;
     }
