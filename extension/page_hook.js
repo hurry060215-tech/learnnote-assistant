@@ -31,6 +31,22 @@
   const MAX_TEXT_BYTES = 2 * 1024 * 1024;
   const MAX_BLOB_URLS = 80;
   const RESPONSE_HEADER_ALLOWLIST = ["accept-ranges", "content-disposition", "content-length", "content-range", "content-type"];
+  const REQUEST_HEADER_ALLOWLIST = new Set([
+    "accept",
+    "accept-language",
+    "origin",
+    "range",
+    "referer",
+    "x-requested-with"
+  ]);
+  const REQUEST_HEADER_CANONICAL = {
+    "accept": "Accept",
+    "accept-language": "Accept-Language",
+    "origin": "Origin",
+    "range": "Range",
+    "referer": "Referer",
+    "x-requested-with": "X-Requested-With"
+  };
   const bufferedResources = [];
   const drmSignals = [];
   const blobSourceByObject = new WeakMap();
@@ -39,6 +55,7 @@
   const blobUrlOrder = [];
   const streamSourceByObject = new WeakMap();
   const streamReaderSourceByObject = new WeakMap();
+  const responseMetaByObject = new WeakMap();
   const mediaSourceMetaByObject = new WeakMap();
   const mediaSourceUrlByObject = new WeakMap();
   const sourceBufferMediaSource = new WeakMap();
@@ -109,6 +126,7 @@
         content_length: item.content_length ?? null,
         initiator: item.initiator || "",
         headers: item.headers || {},
+        request_headers: item.request_headers || {},
         time_stamp: Date.now()
       });
     }
@@ -126,7 +144,8 @@
           status_code: item.status_code ?? existing.status_code ?? null,
           content_length: item.content_length ?? existing.content_length ?? null,
           initiator: item.initiator || existing.initiator || "",
-          headers: { ...(existing.headers || {}), ...(item.headers || {}) }
+          headers: { ...(existing.headers || {}), ...(item.headers || {}) },
+          request_headers: { ...(existing.request_headers || {}), ...(item.request_headers || {}) }
         });
       } else {
         bufferedResources.unshift(item);
@@ -187,15 +206,65 @@
     return Number.isFinite(value) && value > 0 ? value : null;
   }
 
-  function fetchResponseMeta(response, url = "") {
+  function normalizeRequestHeaderMap(source) {
+    const headers = {};
+    const add = (name, value) => {
+      const lower = String(name || "").toLowerCase();
+      if (!REQUEST_HEADER_ALLOWLIST.has(lower)) return;
+      const cleaned = cleanHeaderValue(value);
+      if (cleaned) headers[REQUEST_HEADER_CANONICAL[lower] || name] = cleaned;
+    };
+    try {
+      if (source?.forEach) {
+        source.forEach((value, name) => add(name, value));
+      } else if (Array.isArray(source)) {
+        for (const pair of source) {
+          if (Array.isArray(pair)) add(pair[0], pair[1]);
+          else add(pair?.name, pair?.value);
+        }
+      } else if (source && typeof source === "object") {
+        for (const [name, value] of Object.entries(source)) add(name, value);
+      }
+    } catch {
+      // Some Headers-like objects can throw while enumerating.
+    }
+    return headers;
+  }
+
+  function fetchRequestHeaders(input, init = {}) {
+    return {
+      ...normalizeRequestHeaderMap(input?.headers),
+      ...normalizeRequestHeaderMap(init?.headers)
+    };
+  }
+
+  function fetchResponseMeta(response, url = "", requestHeaders = {}) {
     const headers = safeResponseHeaders(name => response.headers?.get?.(name) || "");
     return {
       request_type: "fetch",
       status_code: response.status ?? null,
       content_length: numericHeader(headers, "content-length"),
       initiator: response.url || url || "",
-      headers
+      headers,
+      request_headers: requestHeaders
     };
+  }
+
+  function rememberResponseMeta(response, meta) {
+    if (!response || typeof response !== "object" || !meta) return;
+    try {
+      responseMetaByObject.set(response, meta);
+    } catch {
+      // Synthetic response wrappers may not be WeakMap-compatible.
+    }
+  }
+
+  function responseMeta(response, url = "") {
+    try {
+      return responseMetaByObject.get(response) || fetchResponseMeta(response, url);
+    } catch {
+      return fetchResponseMeta(response, url);
+    }
   }
 
   function xhrResponseMeta(xhr, url = "") {
@@ -206,7 +275,8 @@
       status_code: xhr.status ?? null,
       content_length: numericHeader(headers, "content-length"),
       initiator: xhr.responseURL || url || "",
-      headers
+      headers,
+      request_headers: xhr.__learnNoteRequestHeaders || {}
     };
   }
 
@@ -219,7 +289,8 @@
       status_code: item.status_code ?? meta.status_code ?? null,
       content_length: item.content_length ?? meta.content_length ?? null,
       initiator: item.initiator || meta.initiator || "",
-      headers: { ...(item.headers || {}), ...(meta.headers || {}) }
+      headers: { ...(item.headers || {}), ...(meta.headers || {}) },
+      request_headers: { ...(item.request_headers || {}), ...(meta.request_headers || {}) }
     };
   }
 
@@ -866,7 +937,8 @@
       const response = await originalFetch.apply(this, args);
       const url = response.url || requestUrl(args[0]);
       const mime = response.headers?.get?.("content-type") || "";
-      const meta = fetchResponseMeta(response, url);
+      const meta = fetchResponseMeta(response, url, fetchRequestHeaders(args[0], args[1] || {}));
+      rememberResponseMeta(response, meta);
       emit([applyResponseMeta({ url, source: "pageHookRequest", label: "fetch", mime }, meta)]);
       try {
         rememberStreamObject(response.body, blobMeta(url, mime, "pageHookStream", "fetch stream source"));
@@ -906,7 +978,7 @@
     Response.prototype.json = async function (...args) {
       const data = await originalResponseJson.apply(this, args);
       try {
-        emit(collectJsonMediaUrls(data, "pageHookBody", "fetch json", [], null, [], new Set(), new WeakSet(), fetchResponseMeta(this, this.url || "")));
+        emit(collectJsonMediaUrls(data, "pageHookBody", "fetch json", [], null, [], new Set(), new WeakSet(), responseMeta(this, this.url || "")));
       } catch {
         // Keep host page JSON consumption unchanged.
       }
@@ -922,7 +994,7 @@
         const mime = this.headers?.get?.("content-type") || "";
         const url = this.url || "";
         if (shouldInspectTextPayload(url, mime, String(text || "").length)) {
-          extractUrlsFromText(String(text || "").slice(0, MAX_TEXT_BYTES), "pageHookBody", "fetch text", mime, url, fetchResponseMeta(this, url));
+          extractUrlsFromText(String(text || "").slice(0, MAX_TEXT_BYTES), "pageHookBody", "fetch text", mime, url, responseMeta(this, url));
         }
       } catch {
         // Keep host page text consumption unchanged.
@@ -1066,11 +1138,24 @@
   if (typeof window.XMLHttpRequest === "function") {
     const originalOpen = XMLHttpRequest.prototype.open;
     const originalSend = XMLHttpRequest.prototype.send;
+    const originalSetRequestHeader = XMLHttpRequest.prototype.setRequestHeader;
     XMLHttpRequest.prototype.open = function (method, url, ...rest) {
       this.__learnNoteUrl = url;
       this.__learnNoteMethod = method;
+      this.__learnNoteRequestHeaders = {};
       return originalOpen.call(this, method, url, ...rest);
     };
+    if (typeof originalSetRequestHeader === "function") {
+      XMLHttpRequest.prototype.setRequestHeader = function (name, value) {
+        try {
+          const normalized = normalizeRequestHeaderMap({ [name]: value });
+          this.__learnNoteRequestHeaders = { ...(this.__learnNoteRequestHeaders || {}), ...normalized };
+        } catch {
+          // Keep host XHR untouched if header inspection fails.
+        }
+        return originalSetRequestHeader.call(this, name, value);
+      };
+    }
     XMLHttpRequest.prototype.send = function (...args) {
       this.addEventListener("loadend", () => {
         const url = this.responseURL || this.__learnNoteUrl || "";

@@ -34,6 +34,11 @@ class FakeXHR {
     this.listeners.get(name).push(listener);
   }
 
+  setRequestHeader(name, value) {
+    this.headers ||= {};
+    this.headers[name] = value;
+  }
+
   getResponseHeader(name) {
     if (String(name).toLowerCase() === "content-type") return "application/json";
     if (String(name).toLowerCase() === "content-length") return "8192";
@@ -65,6 +70,9 @@ vm.runInContext(hookCode, context);
 
 const xhr = new context.XMLHttpRequest();
 xhr.open("GET", "https://course.example.com/api/play-json");
+xhr.setRequestHeader("Accept", "application/json");
+xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
+xhr.setRequestHeader("Cookie", "secret=bad");
 xhr.send();
 
 const resources = messages.flatMap(message => message.resources || []);
@@ -81,3 +89,6 @@ assert.equal(hls.content_length, 8192);
 assert.equal(hls.initiator, "https://course.example.com/api/play-json");
 assert.equal(hls.headers["content-type"], "application/json");
 assert.equal(hls.headers["content-length"], "8192");
+assert.equal(hls.request_headers.Accept, "application/json");
+assert.equal(hls.request_headers["X-Requested-With"], "XMLHttpRequest");
+assert.equal(hls.request_headers.Cookie, undefined);

@@ -60,7 +60,13 @@ vm.createContext(context);
 const hookCode = await readFile(new URL("../page_hook.js", import.meta.url), "utf8");
 vm.runInContext(hookCode, context);
 
-const response = await context.fetch("https://course.example.com/api/play");
+const response = await context.fetch("https://course.example.com/api/play", {
+  headers: {
+    Accept: "application/json",
+    "X-Requested-With": "XMLHttpRequest",
+    Cookie: "secret=bad"
+  }
+});
 const data = await response.json();
 
 assert.equal(data.stream.mimeType, "application/vnd.apple.mpegurl");
@@ -78,3 +84,6 @@ assert.equal(hls.content_length, 4096);
 assert.equal(hls.initiator, "https://course.example.com/api/play");
 assert.equal(hls.headers["content-type"], "application/json");
 assert.equal(hls.headers["content-length"], "4096");
+assert.equal(hls.request_headers.Accept, "application/json");
+assert.equal(hls.request_headers["X-Requested-With"], "XMLHttpRequest");
+assert.equal(hls.request_headers.Cookie, undefined);
