@@ -292,6 +292,11 @@ function selectedResourceReport(item = selectedResource()) {
   ].join("\n");
 }
 
+function workbenchUrl(taskId = currentTaskId) {
+  if (!taskId) return backendUrl;
+  return `${backendUrl.replace(/\/$/, "")}/?task=${encodeURIComponent(taskId)}`;
+}
+
 async function copyTextToClipboard(text, successMessage) {
   if (!text) return false;
   try {
@@ -2313,8 +2318,9 @@ els.downloadButton.onclick = () => {
   openTaskExport("markdown");
 };
 els.openWebButton.onclick = () => {
-  if (HAS_EXTENSION_API) chrome.tabs.create({ url: backendUrl });
-  else window.open(backendUrl, "_blank", "noopener");
+  const url = workbenchUrl();
+  if (HAS_EXTENSION_API) chrome.tabs.create({ url });
+  else window.open(url, "_blank", "noopener");
 };
 els.settingsButton.onclick = saveSettings;
 

@@ -4,7 +4,7 @@ const HLS_RE = /\.(m3u8|mpd)(\?|#|$)/i;
 const LOCAL_VIDEO_EXT_RE = /\.(mp4|m4v|mov|mkv|webm|flv|avi)$/i;
 
 let selectedSource = "browser";
-let selectedTaskId = null;
+let selectedTaskId = taskIdFromCurrentUrl();
 let selectedTab = "note";
 let lastNote = "";
 let lastNoteTaskId = "";
@@ -68,6 +68,40 @@ const els = {
 
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[ch]));
+}
+
+function taskIdFromCurrentUrl() {
+  const href = String(window?.location?.href || location?.href || "");
+  const explicitSearch = String(window?.location?.search || location?.search || "");
+  const search = explicitSearch || (href.includes("?") ? href.slice(href.indexOf("?")) : "");
+  const match = /[?&](?:task|task_id)=([^&#]+)/.exec(search);
+  if (!match) return null;
+  try {
+    return decodeURIComponent(match[1].replace(/\+/g, " ")).trim() || null;
+  } catch {
+    return match[1].trim() || null;
+  }
+}
+
+function syncSelectedTaskUrl(taskId) {
+  if (!taskId || !window?.history?.replaceState) return;
+  const path = window.location?.pathname || "/";
+  const hash = window.location?.hash || "";
+  if (typeof URLSearchParams === "undefined") {
+    window.history.replaceState(null, "", `${path}?task=${encodeURIComponent(taskId)}${hash}`);
+    return;
+  }
+  const params = new URLSearchParams(String(window.location?.search || ""));
+  params.set("task", taskId);
+  window.history.replaceState(null, "", `${path}?${params.toString()}${hash}`);
+}
+
+function selectTask(taskId, { clearCaches = true, syncUrl = true } = {}) {
+  if (!taskId) return;
+  const changed = selectedTaskId !== taskId;
+  selectedTaskId = taskId;
+  if (changed && clearCaches) clearTaskCaches();
+  if (syncUrl) syncSelectedTaskUrl(taskId);
 }
 
 function safeNoteMediaUrl(value) {
@@ -940,7 +974,9 @@ function initializeWorkspaceView() {
 async function loadTasks() {
   const data = await fetch(`${API}/api/tasks`).then(r => r.json());
   tasks = data.tasks || [];
-  if (!selectedTaskId && tasks[0]) selectedTaskId = tasks[0].id;
+  if (selectedTaskId && !tasks.some(task => task.id === selectedTaskId)) selectedTaskId = null;
+  if (!selectedTaskId && tasks[0]) selectTask(tasks[0].id, { clearCaches: false });
+  else if (selectedTaskId) syncSelectedTaskUrl(selectedTaskId);
   renderTasks();
   renderBrowserRouteSummary();
   renderSourceWorkflow();
@@ -1003,8 +1039,7 @@ function renderTasks() {
 
   document.querySelectorAll(".task").forEach(button => {
     button.onclick = async () => {
-      selectedTaskId = button.dataset.id;
-      clearTaskCaches();
+      selectTask(button.dataset.id);
       renderTasks();
       await renderDetail();
       focusResultPanelOnMobile();
@@ -1230,8 +1265,7 @@ async function rerunTaskFromMedia(taskId) {
     return;
   }
   const data = await response.json();
-  selectedTaskId = data.task_id;
-  clearTaskCaches();
+  selectTask(data.task_id);
   selectedTab = "note";
   els.resultTabs.forEach(item => item.classList.toggle("active", item.dataset.tab === selectedTab));
   await loadTasks();
@@ -1794,8 +1828,7 @@ async function startUrlTask(mode = "video") {
         options: readOptions()
       })
     }).then(r => r.json());
-    selectedTaskId = data.task_id;
-    clearTaskCaches();
+    selectTask(data.task_id);
     await loadTasks();
     focusResultPanelOnMobile();
   } finally {
@@ -1861,8 +1894,7 @@ async function uploadSelectedFile() {
       els.fileName.textContent = apiErrorMessage(data, "本地视频上传失败，请确认文件格式和后端状态。");
       return;
     }
-    selectedTaskId = data.task_id;
-    clearTaskCaches();
+    selectTask(data.task_id);
     await loadTasks();
     focusResultPanelOnMobile();
   } finally {
@@ -1879,7 +1911,7 @@ if (els.sourceWorkflow) {
   els.sourceWorkflow.addEventListener("click", event => {
     const button = event.target.closest("[data-select-workflow-task]");
     if (!button) return;
-    selectedTaskId = button.dataset.selectWorkflowTask;
+    selectTask(button.dataset.selectWorkflowTask);
     renderTasks();
     renderDetail();
     focusResultPanelOnMobile();
@@ -1890,7 +1922,7 @@ if (els.browserRouteSummary) {
   els.browserRouteSummary.addEventListener("click", async event => {
     const selectButton = event.target.closest("[data-select-browser-task]");
     if (selectButton) {
-      selectedTaskId = selectButton.dataset.selectBrowserTask;
+      selectTask(selectButton.dataset.selectBrowserTask);
       renderTasks();
       await renderDetail();
       focusResultPanelOnMobile();
