@@ -1,6 +1,7 @@
 const MEDIA_RE = /\.(mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd)(\?|#|$)/i;
 const FRAGMENT_RE = /\.(m4s|ts)(\?|#|$)/i;
 const SUBTITLE_RE = /\.(vtt|srt|ass|ssa)(\?|#|$)/i;
+const MEDIA_URL_RE = /(?:https?:)?\/\/[^\s"'<>\\]+\.(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|vtt|srt|ass|ssa)(?:\?[^\s"'<>\\]*)?|(?:\/[^\s"'<>\\]+)\.(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|vtt|srt|ass|ssa)(?:\?[^\s"'<>\\]*)?|(?:[A-Za-z0-9._~!$&()*+,;=:@%-]+\/)*[A-Za-z0-9._~!$&()*+,;=:@%-]+\.(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|vtt|srt|ass|ssa)(?:\?[^\s"'<>\\]*)?/gi;
 const ENCODED_MEDIA_URL_RE = /https?%3A%2F%2F[^\s"'<>\\]+?(?:\.|%2E)(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|vtt|srt|ass|ssa)(?:[^\s"'<>\\]*)?/gi;
 const STATIC_MEDIA_ATTRS = [
   "src",
@@ -221,6 +222,24 @@ function collectEncodedTextResources(text, source, label, seen = new Set()) {
   return resources;
 }
 
+function collectTextMediaResources(text, source, label, seen = new Set()) {
+  const resources = [];
+  MEDIA_URL_RE.lastIndex = 0;
+  for (const match of String(text || "").matchAll(MEDIA_URL_RE)) {
+    for (const candidate of decodedValues(match[0] || "")) {
+      const item = resource(candidate, source, label, mimeFromHint(candidate));
+      if (!item || item.kind === "unknown" || seen.has(item.url)) continue;
+      seen.add(item.url);
+      item.score = Math.max(item.score || 0, item.kind === "hls" || item.kind === "dash" ? 96 : item.kind === "video" ? 86 : 62);
+      resources.push(item);
+      break;
+    }
+    if (resources.length >= 40) break;
+  }
+  MEDIA_URL_RE.lastIndex = 0;
+  return resources;
+}
+
 function mimeFromPlaybackElementContext(url, source, label, video = null, playbackMatch = "") {
   if (!video || !/^https?:\/\//i.test(url) || classify(url, "") !== "unknown") return "";
   if (source === "activeVideo") return "video/mp4";
@@ -393,6 +412,9 @@ function collectStaticAttributeResources() {
         seen.add(item.url);
         resources.push(item);
       }
+      for (const textItem of collectTextMediaResources(value, "domHint", `${tag} ${attr} media url`, seen)) {
+        resources.push(textItem);
+      }
       for (const encodedItem of collectEncodedTextResources(value, "domHint", `${tag} ${attr} encoded url`, seen)) {
         resources.push(encodedItem);
       }
@@ -407,8 +429,10 @@ function collectInlineScriptResources() {
   for (const script of deepQuerySelectorAll("script", document, 400)) {
     const text = String(script.textContent || "").slice(0, 200000);
     ENCODED_MEDIA_URL_RE.lastIndex = 0;
-    if (!text || (!STATIC_MEDIA_KEY_RE.test(text) && !ENCODED_MEDIA_URL_RE.test(text))) continue;
+    MEDIA_URL_RE.lastIndex = 0;
+    if (!text || (!STATIC_MEDIA_KEY_RE.test(text) && !ENCODED_MEDIA_URL_RE.test(text) && !MEDIA_URL_RE.test(text))) continue;
     ENCODED_MEDIA_URL_RE.lastIndex = 0;
+    MEDIA_URL_RE.lastIndex = 0;
     STATIC_FIELD_RE.lastIndex = 0;
     for (const match of text.matchAll(STATIC_FIELD_RE)) {
       const key = String(match[1] || "").replace(/^["']|["']$/g, "");
@@ -417,6 +441,10 @@ function collectInlineScriptResources() {
       if (!item || seen.has(item.url)) continue;
       seen.add(item.url);
       item.score = Math.max(item.score || 0, item.kind === "hls" || item.kind === "dash" ? 96 : item.kind === "video" ? 86 : 62);
+      resources.push(item);
+      if (resources.length >= 40) return resources;
+    }
+    for (const item of collectTextMediaResources(text, "scriptHint", "script media url", seen)) {
       resources.push(item);
       if (resources.length >= 40) return resources;
     }
