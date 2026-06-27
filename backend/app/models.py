@@ -133,6 +133,7 @@ class MediaPreflightResult(BaseModel):
     message: str = ""
     status_code: int | None = None
     content_type: str = ""
+    content_disposition: str = ""
     content_length: int | None = None
     bytes_checked: int = 0
     request_header_names: list[str] = Field(default_factory=list)

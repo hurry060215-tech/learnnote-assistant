@@ -97,6 +97,24 @@ class ExtensionlessHlsHandler(QuietHandler):
         super().do_GET()
 
 
+class ContentDispositionMediaHandler(QuietHandler):
+    media_name = "source.mp4"
+
+    def do_GET(self) -> None:
+        path = urlparse(self.path).path
+        if path == "/download":
+            media = Path(self.directory) / self.media_name
+            body = media.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Content-Disposition", "attachment; filename*=UTF-8''lesson%20download.mp4")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        super().do_GET()
+
+
 @unittest.skipUnless(ffmpeg_bin(), "ffmpeg is required for downloader priority tests")
 class DownloaderPriorityTests(unittest.TestCase):
     def test_direct_browser_candidate_is_tried_before_page_resolver(self) -> None:
@@ -221,6 +239,68 @@ class DownloaderPriorityTests(unittest.TestCase):
                 self.assertIn("请求头 Origin, Referer, User-Agent", downloader.attempts[0].message)
                 self.assertNotIn("AUTH=ok", downloader.attempts[0].message)
                 self.assertNotIn(HeaderGateHandler.required_user_agent, downloader.attempts[0].message)
+            finally:
+                server.shutdown()
+                server.server_close()
+
+    def test_extensionless_content_disposition_video_download(self) -> None:
+        ffmpeg = ffmpeg_bin()
+        assert ffmpeg is not None
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            video = root / ContentDispositionMediaHandler.media_name
+            subprocess.run(
+                [
+                    ffmpeg,
+                    "-y",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "testsrc=duration=2:size=320x180:rate=10",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "sine=frequency=440:duration=2",
+                    "-shortest",
+                    "-pix_fmt",
+                    "yuv420p",
+                    str(video),
+                ],
+                check=True,
+            )
+            server = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(ContentDispositionMediaHandler, directory=str(root)))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                media_url = f"http://127.0.0.1:{server.server_port}/download?id=lesson"
+                candidate = ResourceCandidate(
+                    url=media_url,
+                    source="webRequest",
+                    kind="video",
+                    mime="application/octet-stream",
+                    score=100,
+                )
+                result = preflight_media_resource(candidate, [], f"http://127.0.0.1:{server.server_port}/lesson.html")
+                self.assertTrue(result.ok)
+                self.assertTrue(result.downloadable)
+                self.assertEqual(result.resolved_url, media_url)
+                self.assertIn("lesson%20download.mp4", result.content_disposition)
+
+                downloader = MediaDownloader(root / "task")
+                media_path, selected = downloader.download(
+                    page_url=f"http://127.0.0.1:{server.server_port}/lesson.html",
+                    resources=[candidate],
+                    cookies=[],
+                    title="Header named",
+                )
+                self.assertTrue(media_path.exists())
+                self.assertEqual(media_path.suffix, ".mp4")
+                self.assertEqual(media_path.stat().st_size, video.stat().st_size)
+                self.assertIsNotNone(selected)
+                self.assertEqual(selected.url, media_url)
             finally:
                 server.shutdown()
                 server.server_close()

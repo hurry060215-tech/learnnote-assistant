@@ -41,6 +41,17 @@ TEXT_MEDIA_FIELD_RE = re.compile(
 )
 B64ISH_RE = re.compile(r"^[A-Za-z0-9+/_=-]{16,}$")
 MAX_PAGE_SCAN_BYTES = 2 * 1024 * 1024
+DIRECT_MEDIA_SUFFIXES = {".mp4", ".m4v", ".webm", ".mov", ".mkv", ".flv", ".avi"}
+MEDIA_CONTENT_TYPE_SUFFIXES = {
+    "video/mp4": ".mp4",
+    "video/x-m4v": ".m4v",
+    "video/webm": ".webm",
+    "video/quicktime": ".mov",
+    "video/x-matroska": ".mkv",
+    "video/x-flv": ".flv",
+    "video/flv": ".flv",
+    "video/x-msvideo": ".avi",
+}
 SUBTITLE_EXTENSIONS = {".vtt", ".srt", ".ass", ".ssa"}
 SUBTITLE_LANGUAGE_PREFERENCES = ("zh-CN", "zh-Hans", "zh-Hant", "zh", "en", "en-US")
 BROWSER_REQUEST_HEADER_ALLOWLIST = {
@@ -101,6 +112,46 @@ class QuietYtdlpLogger:
 def _clean_filename(value: str) -> str:
     value = re.sub(r"[^\w\-.]+", "_", value.strip(), flags=re.U)
     return value[:120] or "media"
+
+
+def _filename_from_content_disposition(value: str) -> str:
+    if not value:
+        return ""
+    filename = ""
+    for part in value.split(";"):
+        key, sep, raw = part.strip().partition("=")
+        if not sep:
+            continue
+        key = key.lower()
+        raw = raw.strip().strip('"')
+        if key == "filename*":
+            charset, marker, encoded = raw.partition("''")
+            try:
+                filename = unquote(encoded if marker else raw, encoding=charset or "utf-8", errors="replace")
+            except LookupError:
+                filename = unquote(encoded if marker else raw, errors="replace")
+            break
+        if key == "filename" and raw:
+            filename = unquote(raw, errors="replace")
+    if not filename:
+        return ""
+    return Path(filename.replace("\\", "/")).name
+
+
+def _media_suffix_from_response(url: str, content_type: str = "", content_disposition: str = "") -> str:
+    url_suffix = Path(unquote(urlparse(url).path)).suffix.lower()
+    if url_suffix in DIRECT_MEDIA_SUFFIXES:
+        return url_suffix
+
+    disposition_name = _filename_from_content_disposition(content_disposition)
+    disposition_suffix = Path(disposition_name).suffix.lower()
+    if disposition_suffix in DIRECT_MEDIA_SUFFIXES:
+        return disposition_suffix
+
+    mime = (content_type or "").split(";", 1)[0].strip().lower()
+    if mime in MEDIA_CONTENT_TYPE_SUFFIXES:
+        return MEDIA_CONTENT_TYPE_SUFFIXES[mime]
+    return ".mp4"
 
 
 def infer_manifest_url_from_fragment(url: str) -> str:
@@ -720,14 +771,17 @@ def preflight_media_resource(
         with requests.get(resolved_url, headers=headers, stream=True, timeout=timeout, allow_redirects=True) as response:
             body = _read_probe_bytes(response)
             content_type = response.headers.get("content-type", "")
+            content_disposition = response.headers.get("content-disposition", "")
             content_length = _response_content_length(response)
+            final_url = response.url or resolved_url
             base = {
                 "strategy": probe_strategy,
                 "kind": probe_kind,
                 "url": candidate.url,
-                "resolved_url": resolved_url,
+                "resolved_url": final_url,
                 "status_code": response.status_code,
                 "content_type": content_type,
+                "content_disposition": content_disposition,
                 "content_length": content_length,
                 "bytes_checked": len(body),
                 "request_header_names": _safe_request_header_names(headers),
@@ -1405,13 +1459,9 @@ class MediaDownloader:
 
     def _download_file(self, candidate: ResourceCandidate, cookies: list[BrowserCookie], referer: str, title: str) -> Path:
         url = candidate.url
-        suffix = Path(urlparse(url).path).suffix or ".mp4"
-        output = self.download_dir / f"{_clean_filename(title)}_direct{suffix}"
         base_headers = download_headers_for_candidate(candidate, cookies, referer)
 
         def attempt(headers: dict[str, str]) -> Path:
-            if output.exists():
-                output.unlink()
             with requests.get(url, headers=headers, stream=True, timeout=30) as response:
                 if response.status_code in {401, 403}:
                     raise DownloadError("auth_required", f"媒体资源返回 HTTP {response.status_code}。")
@@ -1420,6 +1470,7 @@ class MediaDownloader:
                 if response.status_code >= 400:
                     raise DownloadError("download_forbidden", f"媒体资源返回 HTTP {response.status_code}。")
                 content_type = response.headers.get("content-type", "")
+                content_disposition = response.headers.get("content-disposition", "")
                 chunks = response.iter_content(chunk_size=1024 * 1024)
                 first_chunk = b""
                 for chunk in chunks:
@@ -1431,6 +1482,10 @@ class MediaDownloader:
                 manifest_kind, manifest_mime = _manifest_kind_from_body(first_chunk.decode("utf-8", errors="ignore"), content_type)
                 if manifest_kind in {"hls", "dash"}:
                     raise ManifestEndpointDetected(manifest_kind, manifest_mime)
+                suffix = _media_suffix_from_response(response.url or url, content_type, content_disposition)
+                output = self.download_dir / f"{_clean_filename(title)}_direct{suffix}"
+                if output.exists():
+                    output.unlink()
                 with output.open("wb") as file:
                     if first_chunk:
                         file.write(first_chunk)
@@ -1438,27 +1493,22 @@ class MediaDownloader:
                         if chunk:
                             file.write(chunk)
             if not output.exists() or output.stat().st_size < 4096:
+                output.unlink(missing_ok=True)
                 raise DownloadError("download_forbidden", "下载文件过小，可能不是有效视频。")
             return output
 
         try:
             return attempt(base_headers)
         except ManifestEndpointDetected as detected:
-            if output.exists():
-                output.unlink()
             candidate.kind = detected.kind
             candidate.mime = detected.mime
             return self._download_manifest(candidate, cookies, referer, title)
         except DownloadError as first_error:
-            if output.exists():
-                output.unlink()
             range_headers = dict(base_headers)
             range_headers["Range"] = "bytes=0-"
             try:
                 return attempt(range_headers)
             except ManifestEndpointDetected as detected:
-                if output.exists():
-                    output.unlink()
                 candidate.kind = detected.kind
                 candidate.mime = detected.mime
                 return self._download_manifest(candidate, cookies, referer, title)
