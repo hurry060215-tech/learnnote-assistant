@@ -655,7 +655,26 @@ function diagnosticRecoveryHtml(task) {
   return `<section class="diagnostic-recovery" aria-label="恢复建议">
     <strong>下一步建议</strong>
     <ul>${steps.map(step => `<li>${escapeHtml(step)}</li>`).join("")}</ul>
+    ${recoveryActionsHtml(task)}
   </section>`;
+}
+
+function recoveryActionsHtml(task) {
+  if (!task) return "";
+  const actions = [
+    `<button type="button" data-recovery-local>上传本地视频</button>`,
+    `<button type="button" data-switch-result-tab="diagnostics">查看诊断</button>`
+  ];
+  if (hasTaskDiagnostics(task)) {
+    actions.push(`<button type="button" data-export="diagnostics">导出诊断</button>`);
+  }
+  if (canContinueFromDownloadedMedia(task)) {
+    actions.push(`<button type="button" data-rerun-from-media="${escapeHtml(task.id)}">继续切片总结</button>`);
+  }
+  if (task.note_path) {
+    actions.push(`<button type="button" data-export="markdown">导出 Markdown</button>`);
+  }
+  return `<div class="recovery-actions">${actions.join("")}</div>`;
 }
 
 function drmSignalText(signals = []) {
@@ -1954,6 +1973,9 @@ function bindTaskOverviewActions() {
   });
   document.querySelectorAll("button[data-switch-result-tab]").forEach(button => {
     button.onclick = () => switchResultTab(button.dataset.switchResultTab);
+  });
+  document.querySelectorAll("button[data-recovery-local]").forEach(button => {
+    button.onclick = () => els.fileInput.click();
   });
 }
 
