@@ -144,6 +144,15 @@ def _format_cookie_summary(summary: dict) -> list[str]:
     ]
 
 
+def _format_id_list(values: list[str] | tuple[str, ...] | None, limit: int = 12) -> str:
+    ids = [str(value) for value in (values or []) if str(value)]
+    if not ids:
+        return "-"
+    visible = ids[:limit]
+    suffix = f" 等 {len(ids)} 个" if len(ids) > limit else ""
+    return f"{', '.join(visible)}{suffix}"
+
+
 def _format_timestamp(seconds: float | int | None) -> str:
     total = max(0, int(seconds or 0))
     hours, remainder = divmod(total, 3600)
@@ -331,6 +340,9 @@ def render_diagnostics_markdown(task: TaskRecord) -> str:
             f"- 视觉窗口数：{task.summary_diagnostics.get('visual_window_count', '-')}",
             f"- 送入视觉图片：{task.summary_diagnostics.get('vision_image_count', '-')}/{task.summary_diagnostics.get('vision_grid_count', '-')}",
             f"- 省略网格：{task.summary_diagnostics.get('omitted_frame_grid_count', '-')}",
+            f"- 已送入视觉窗口：{_format_id_list(task.summary_diagnostics.get('vision_image_window_ids'))}",
+            f"- 缺少图片窗口：{_format_id_list(task.summary_diagnostics.get('missing_vision_image_window_ids'))}",
+            f"- 超限省略窗口：{_format_id_list(task.summary_diagnostics.get('omitted_vision_window_ids'))}",
         ])
         if task.summary_diagnostics.get("used_page_text_fallback"):
             lines.extend([

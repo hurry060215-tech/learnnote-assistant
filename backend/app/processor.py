@@ -189,6 +189,26 @@ def build_summary_diagnostics(
     summary_warning: str,
 ) -> dict:
     eligible_grids = grids[:MAX_VISION_GRIDS]
+    def window_id(index: int) -> str:
+        if index < len(visual_windows) and visual_windows[index].id:
+            return visual_windows[index].id
+        return f"W{index + 1:03d}"
+
+    eligible_window_ids = [window_id(index) for index in range(len(eligible_grids))]
+    vision_image_window_ids = [
+        window_id(index)
+        for index, grid in enumerate(eligible_grids)
+        if grid.path and Path(grid.path).is_file()
+    ]
+    missing_vision_image_window_ids = [
+        window_id(index)
+        for index, grid in enumerate(eligible_grids)
+        if not (grid.path and Path(grid.path).is_file())
+    ]
+    omitted_vision_window_ids = [
+        window_id(index)
+        for index in range(len(eligible_grids), len(grids))
+    ]
     total_image_count = sum(1 for grid in grids if grid.path and Path(grid.path).is_file())
     eligible_image_count = sum(1 for grid in eligible_grids if grid.path and Path(grid.path).is_file())
     return {
@@ -208,6 +228,10 @@ def build_summary_diagnostics(
         "vision_grid_limit": MAX_VISION_GRIDS,
         "vision_grid_count": len(eligible_grids),
         "vision_image_count": eligible_image_count,
+        "vision_window_ids": eligible_window_ids,
+        "vision_image_window_ids": vision_image_window_ids,
+        "missing_vision_image_window_ids": missing_vision_image_window_ids,
+        "omitted_vision_window_ids": omitted_vision_window_ids,
         "omitted_frame_grid_count": max(0, len(grids) - len(eligible_grids)),
         "used_vision_llm": summary_source == "vision-llm",
         "used_text_llm": summary_source == "text-llm",

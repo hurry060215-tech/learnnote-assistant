@@ -1363,9 +1363,24 @@ class SummaryFallbackTests(unittest.TestCase):
         self.assertEqual(diagnostics["vision_grid_limit"], MAX_VISION_GRIDS)
         self.assertEqual(diagnostics["vision_grid_count"], MAX_VISION_GRIDS)
         self.assertEqual(diagnostics["vision_image_count"], MAX_VISION_GRIDS - 1)
+        self.assertEqual(diagnostics["vision_window_ids"][0], "W001")
+        self.assertNotIn("W001", diagnostics["vision_image_window_ids"])
+        self.assertIn("W001", diagnostics["missing_vision_image_window_ids"])
+        self.assertEqual(diagnostics["omitted_vision_window_ids"], ["W081", "W082", "W083"])
         self.assertEqual(diagnostics["omitted_frame_grid_count"], 3)
         self.assertFalse(diagnostics["all_sent_grids_had_images"])
         self.assertFalse(diagnostics["all_grids_had_images"])
+
+        task = create_task("local", "Long lesson", "https://course.example")
+        try:
+            record = get_task(task.id)
+            record.summary_diagnostics = diagnostics
+            report = render_diagnostics_markdown(record)
+            self.assertIn("已送入视觉窗口", report)
+            self.assertIn("缺少图片窗口：W001", report)
+            self.assertIn("超限省略窗口：W081, W082, W083", report)
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
     def test_llm_summary_batches_all_frame_grids_before_merge(self) -> None:
         from app.summarizer import summarize_with_llm

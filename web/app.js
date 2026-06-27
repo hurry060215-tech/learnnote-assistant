@@ -365,6 +365,13 @@ function requestHeaderNames(resource) {
     .join(", ") || "-";
 }
 
+function compactIdList(values, limit = 3) {
+  const ids = (values || []).map(value => String(value || "").trim()).filter(Boolean);
+  if (!ids.length) return "";
+  const suffix = ids.length > limit ? ` 等 ${ids.length} 个` : "";
+  return `${ids.slice(0, limit).join(", ")}${suffix}`;
+}
+
 function summaryDiagnosticText(task) {
   const diag = task?.summary_diagnostics || {};
   if (!Object.keys(diag).length) return "-";
@@ -372,6 +379,8 @@ function summaryDiagnosticText(task) {
   const sentImages = diag.vision_image_count ?? 0;
   const omittedCount = Number(diag.omitted_frame_grid_count || 0);
   const missingImages = diag.all_sent_grids_had_images === false || diag.all_grids_had_images === false;
+  const missingWindowIds = compactIdList(diag.missing_vision_image_window_ids);
+  const omittedWindowIds = compactIdList(diag.omitted_vision_window_ids);
   return [
     diag.used_vision_llm ? "已使用视觉 LLM" : diag.used_text_llm ? "已使用文本 LLM" : diag.used_local_template ? "本地模板" : "",
     `模型 ${diag.llm_model || task.summary_source || "-"}`,
@@ -379,6 +388,8 @@ function summaryDiagnosticText(task) {
     `画面网格 ${diag.frame_grid_count ?? 0}`,
     `\u9001\u5165\u89c6\u89c9 ${sentImages}/${visionGridCount}`,
     omittedCount > 0 ? `\u8d85\u9650\u7701\u7565 ${omittedCount}` : "",
+    missingWindowIds ? `缺图 ${missingWindowIds}` : "",
+    omittedWindowIds ? `省略窗口 ${omittedWindowIds}` : "",
     missingImages ? "\u5b58\u5728\u7f3a\u5931\u56fe\u7247" : "",
     diag.used_page_text_fallback ? `页面文本 ${diag.page_text_char_count ?? 0} 字` : "",
     diag.used_page_text_fallback ? `浏览器字幕 ${diag.browser_subtitle_count ?? 0} 条` : "",
