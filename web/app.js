@@ -353,6 +353,23 @@ function browserRouteMetrics(task) {
   ];
 }
 
+function browserRouteActions(task) {
+  if (!task?.id) return "";
+  const actions = [
+    `<button type="button" data-select-browser-task="${escapeHtml(task.id)}">查看任务</button>`
+  ];
+  if (canContinueFromDownloadedMedia(task)) {
+    actions.push(`<button type="button" data-rerun-browser-task="${escapeHtml(task.id)}">继续切片总结</button>`);
+  }
+  if (task.media_path) {
+    actions.push(`<a href="${escapeHtml(taskExportUrl(task, "media"))}">导出本地视频</a>`);
+  }
+  if (hasTaskDiagnostics(task)) {
+    actions.push(`<a href="${escapeHtml(taskExportUrl(task, "diagnostics"))}">下载诊断</a>`);
+  }
+  return `<div class="browser-route-actions">${actions.join("")}</div>`;
+}
+
 function browserRouteSummaryHtml(task = null) {
   const state = directRouteState(task);
   const copy = directRouteCopy(task);
@@ -366,6 +383,7 @@ function browserRouteSummaryHtml(task = null) {
     <div class="browser-route-summary-metrics">
       ${browserRouteMetrics(task).map(item => `<span><b>${escapeHtml(item.value)}</b>${escapeHtml(item.label)}</span>`).join("")}
     </div>
+    ${browserRouteActions(task)}
   </section>`;
 }
 
@@ -1707,6 +1725,23 @@ if (els.sourceWorkflow) {
     renderTasks();
     renderDetail();
     focusResultPanelOnMobile();
+  });
+}
+
+if (els.browserRouteSummary) {
+  els.browserRouteSummary.addEventListener("click", async event => {
+    const selectButton = event.target.closest("[data-select-browser-task]");
+    if (selectButton) {
+      selectedTaskId = selectButton.dataset.selectBrowserTask;
+      renderTasks();
+      await renderDetail();
+      focusResultPanelOnMobile();
+      return;
+    }
+    const rerunButton = event.target.closest("[data-rerun-browser-task]");
+    if (rerunButton) {
+      await rerunTaskFromMedia(rerunButton.dataset.rerunBrowserTask);
+    }
   });
 }
 

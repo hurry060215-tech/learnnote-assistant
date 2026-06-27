@@ -265,6 +265,8 @@ h1 {
 
 .source-tab {
   position: relative;
+  width: 100%;
+  min-width: 0;
   min-height: 68px;
   justify-content: flex-start;
   gap: 12px;
@@ -306,6 +308,7 @@ h1 {
   font-size: 11px;
   font-weight: 600;
   line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .source-tab.active {
@@ -729,6 +732,60 @@ select:focus {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.browser-route-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.browser-route-actions a,
+.browser-route-actions button {
+  width: auto;
+  min-height: 30px;
+  height: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #c9d9ff;
+  border-radius: 7px;
+  background: #f2f6ff;
+  color: var(--accent);
+  padding: 0 9px;
+  font-size: 11px;
+  font-weight: 850;
+  line-height: 1.2;
+  text-decoration: none;
+}
+
+.browser-route-actions a:hover,
+.browser-route-actions button:hover {
+  border-color: var(--accent);
+  background: #eaf2ff;
+}
+
+.browser-route-summary-card.downloaded .browser-route-actions a,
+.browser-route-summary-card.downloaded .browser-route-actions button,
+.browser-route-summary-card.ready .browser-route-actions a,
+.browser-route-summary-card.ready .browser-route-actions button {
+  border-color: rgba(20, 150, 74, 0.24);
+  background: rgba(20, 150, 74, 0.08);
+  color: var(--success);
+}
+
+.browser-route-summary-card.failed .browser-route-actions a,
+.browser-route-summary-card.failed .browser-route-actions button {
+  border-color: rgba(196, 122, 5, 0.24);
+  background: rgba(196, 122, 5, 0.08);
+  color: var(--warning);
+}
+
+.browser-route-summary-card.blocked .browser-route-actions a,
+.browser-route-summary-card.blocked .browser-route-actions button {
+  border-color: rgba(217, 45, 32, 0.2);
+  background: rgba(217, 45, 32, 0.07);
+  color: var(--danger);
 }
 
 .side-panel-handoff {
@@ -3005,6 +3062,13 @@ select {
 }
 
 @media (max-width: 760px) {
+  html,
+  body {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
   body {
     min-width: 0;
   }
@@ -3016,12 +3080,18 @@ select {
   }
 
   .app-shell {
+    width: 100%;
+    max-width: 100vw;
     grid-template-columns: 1fr;
     grid-template-rows: auto;
     height: auto;
     min-height: calc(100vh - 68px);
     gap: 10px;
     padding: 10px;
+  }
+
+  .app-shell > * {
+    min-width: 0;
   }
 
   .nav-rail {
@@ -3036,8 +3106,44 @@ select {
   .workspace-panel,
   .queue-panel,
   .result-panel {
+    width: calc(100vw - 20px);
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: hidden;
     border: 1px solid var(--border);
     border-radius: 8px;
+  }
+
+  .source-tab,
+  .source-workflow-card,
+  .browser-route-summary-card,
+  .side-panel-handoff div,
+  .boundary-note {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .source-tab {
+    white-space: normal;
+  }
+
+  .source-workflow-card footer {
+    flex-wrap: wrap;
+    align-items: stretch;
+  }
+
+  .source-workflow-card footer button {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .browser-route-summary-main {
+    grid-template-columns: minmax(52px, auto) minmax(0, 1fr);
+  }
+
+  .browser-route-actions a,
+  .browser-route-actions button {
+    flex: 1 1 120px;
   }
 
   .workspace-panel {
