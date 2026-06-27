@@ -3,6 +3,7 @@ from __future__ import annotations
 from io import BytesIO
 import json
 import re
+from uuid import uuid4
 from zipfile import ZIP_DEFLATED, ZipFile
 from pathlib import Path
 from urllib.parse import quote
@@ -14,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import DATA_DIR, STATIC_DIR, UPLOAD_DIR, WEB_DIR, ensure_dirs
 from .downloader import preflight_media_resource
+from .media import probe_duration
 from .models import CurrentPageTaskRequest, MediaPreflightRequest, TaskOptions, TaskRecord
 from .processor import process_current_page_task, process_local_video_task, read_note, read_transcript, read_visual_index
 from .runtime import ffmpeg_bin, ffprobe_bin
@@ -47,6 +49,7 @@ LOCAL_VIDEO_MIME_EXTENSIONS = {
     "video/avi": ".avi",
     "video/x-msvideo": ".avi",
 }
+LOCAL_UPLOAD_CHUNK_SIZE = 1024 * 1024
 
 
 def local_upload_filename(filename: str | None, content_type: str | None = "") -> str:
@@ -67,6 +70,19 @@ def local_upload_filename(filename: str | None, content_type: str | None = "") -
         )
     stem = Path(safe_name).stem[:120].strip(" ._") or "local-video"
     return f"{stem}{suffix}"
+
+
+def local_upload_error(code: str, message: str, status_code: int = 400) -> HTTPException:
+    return HTTPException(status_code=status_code, detail={"code": code, "message": message})
+
+
+def validate_local_upload_file(path: Path) -> None:
+    if not path.exists() or path.stat().st_size <= 0:
+        raise local_upload_error("empty_local_file", "本地视频文件为空，请重新选择有效的视频文件。")
+    if ffprobe_bin() or ffmpeg_bin():
+        duration = probe_duration(path)
+        if duration <= 0:
+            raise local_upload_error("invalid_local_video", "无法读取本地视频时长，请确认文件不是空壳或损坏的视频。")
 
 
 def markdown_filename(task_id: str, title: str) -> str:
@@ -348,14 +364,25 @@ async def create_from_local(
         parsed_options = TaskOptions.model_validate(json.loads(options or "{}"))
     except Exception:
         parsed_options = TaskOptions()
+    pending_path = UPLOAD_DIR / f"pending_{uuid4().hex}_{safe_name}"
+    try:
+        with pending_path.open("wb") as output:
+            while True:
+                chunk = await file.read(LOCAL_UPLOAD_CHUNK_SIZE)
+                if not chunk:
+                    break
+                output.write(chunk)
+        validate_local_upload_file(pending_path)
+    except HTTPException:
+        pending_path.unlink(missing_ok=True)
+        raise
+    except Exception as exc:
+        pending_path.unlink(missing_ok=True)
+        raise local_upload_error("local_upload_failed", f"保存本地视频失败：{exc}", status_code=500) from exc
+
     task = create_task(source_type="local", title=title or safe_name, options=parsed_options)
     upload_path = UPLOAD_DIR / f"{task.id}_{safe_name}"
-    with upload_path.open("wb") as output:
-        while True:
-            chunk = await file.read(1024 * 1024)
-            if not chunk:
-                break
-            output.write(chunk)
+    pending_path.replace(upload_path)
     background_tasks.add_task(process_local_video_task, task.id, upload_path, title or safe_name, parsed_options)
     return {"task_id": task.id, "task": task}
 

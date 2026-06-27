@@ -44,6 +44,29 @@ class LocalUploadValidationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()["detail"]["code"], "unsupported_local_file")
 
+    def test_local_upload_rejects_empty_video_before_task_creation(self) -> None:
+        response = self.client.post(
+            "/api/tasks/from-local",
+            files={"file": ("empty.mp4", io.BytesIO(b""), "video/mp4")},
+            data={"title": "empty local file"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["detail"]["code"], "empty_local_file")
+        self.assertFalse(list((DATA_DIR / "uploads").glob("pending_*empty.mp4")))
+
+    @unittest.skipUnless(ffmpeg_bin(), "ffmpeg or ffprobe is required for local upload content validation")
+    def test_local_upload_rejects_fake_video_before_task_creation(self) -> None:
+        response = self.client.post(
+            "/api/tasks/from-local",
+            files={"file": ("fake.mp4", io.BytesIO(b"not a real mp4"), "video/mp4")},
+            data={"title": "fake local file"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["detail"]["code"], "invalid_local_video")
+        self.assertFalse(list((DATA_DIR / "uploads").glob("pending_*fake.mp4")))
+
 
 class QuietHandler(SimpleHTTPRequestHandler):
     def log_message(self, format: str, *args: object) -> None:
