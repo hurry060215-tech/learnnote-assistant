@@ -297,7 +297,7 @@ function looksLikeMediaRequest(details) {
     );
     if (hasRange) return true;
   }
-  return /m3u8|mpd|video|media|subtitle|caption/i.test(url);
+  return /m3u8|mpd|video|media|subtitle|caption|stream|hls|dash|manifest|playlist|master|playback|player|\/play(?:[/?#]|$)/i.test(url);
 }
 
 function normalizeRequestHeaders(requestHeaders = []) {
