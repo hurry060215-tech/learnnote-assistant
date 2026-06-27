@@ -91,6 +91,30 @@ def _window_summary_lines(transcript: TranscriptResult, grids: list[FrameGrid]) 
     return lines
 
 
+def _window_learning_card_lines(windows: list[VisualWindow]) -> list[str]:
+    if not windows:
+        return ["- 未生成视觉切片。"]
+
+    lines: list[str] = []
+    for window in windows:
+        excerpt = window.transcript_excerpt.strip()
+        lines.extend([
+            f"### {window.id} `{_format_ts(window.start)} - {_format_ts(window.end)}`",
+            f"- 画面网格：{window.grid_url}",
+            f"- 切片范围：约 {int(window.duration)} 秒，{window.frame_count} 帧。",
+        ])
+        if excerpt:
+            lines.append(f"- 字幕线索：{excerpt}")
+            lines.append("- 回看目标：对照画面确认本段的板书、PPT 切换、代码/界面操作和例题步骤是否被字幕完整覆盖。")
+            lines.append("- 复习动作：用自己的话复述这一窗口的结论，再回到截图核对关键术语和操作顺序。")
+        else:
+            lines.append("- 字幕线索：本窗口没有匹配到字幕。")
+            lines.append("- 回看目标：重点检查画面里的 PPT 标题、板书、公式、代码、界面状态或演示步骤。")
+            lines.append("- 复习动作：先根据截图补一句本段主题，再和前后窗口串起来复盘。")
+        lines.append("")
+    return lines
+
+
 def _grid_batches(grids: list[FrameGrid], batch_size: int = MAX_GRIDS_PER_VISION_CALL) -> list[list[FrameGrid]]:
     if batch_size <= 0:
         batch_size = MAX_GRIDS_PER_VISION_CALL
@@ -148,6 +172,10 @@ def local_markdown_note(title: str, transcript: TranscriptResult, grids: list[Fr
     lines.append("")
 
     windows = build_visual_windows(transcript, grids)
+    if windows:
+        lines += ["## 视觉切片学习卡", ""]
+        lines.extend(_window_learning_card_lines(windows))
+
     if windows:
         lines += ["## 画面-字幕对齐索引", ""]
         for window in windows:
