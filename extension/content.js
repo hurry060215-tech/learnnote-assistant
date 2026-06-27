@@ -102,14 +102,36 @@ function absoluteUrl(url) {
   if (!url) return "";
   if (url.startsWith("blob:")) return url;
   try {
-    return new URL(url, location.href).href;
+    return new URL(stripUrlTail(url), location.href).href;
   } catch {
     return "";
   }
 }
 
+function stripUrlTail(value) {
+  let text = String(value || "").trim();
+  const absoluteIndex = text.search(/https?:\/\//i);
+  if (absoluteIndex > 0) text = text.slice(absoluteIndex);
+  if (!/^(https?:)?\/\//i.test(text)) {
+    const rootRelativeIndex = text.search(/\/[^\s"'<>\\]+\.(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|vtt|srt|ass|ssa)(?:[?#]|$)/i);
+    if (rootRelativeIndex > 0) text = text.slice(rootRelativeIndex);
+  }
+  while (/[;,]/.test(text.at(-1) || "")) text = text.slice(0, -1);
+  const pairs = { ")": "(", "]": "[", "}": "{" };
+  while (text) {
+    const close = text.at(-1);
+    const open = pairs[close];
+    if (!open) break;
+    const opens = text.split(open).length - 1;
+    const closes = text.split(close).length - 1;
+    if (closes <= opens) break;
+    text = text.slice(0, -1);
+  }
+  return text;
+}
+
 function decodedValues(value) {
-  const raw = String(value || "").trim();
+  const raw = stripUrlTail(value);
   if (!raw) return [];
   const values = [raw
     .replace(/&amp;/g, "&")

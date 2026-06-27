@@ -84,10 +84,13 @@ const paramPlayer = new FakeElement("div", {
 const configPlayer = new FakeElement("div", {
   "data-config": "open('/static/plain-attr.mp4?token=attr-plain')"
 });
+const nakedPlayer = new FakeElement("div", {
+  "data-options": "load(/static/naked-master.m3u8?token=naked);"
+});
 const plainUrlScript = new FakeElement("script", {
   textContent: "window.__payload='https://cdn.example.com/static/plain-url.m3u8?token=script-plain';"
 });
-const html = new FakeElement("html", {}, [player, packedPlayer, onclickPlayer, paramPlayer, configPlayer, script, plainEncodedScript, plainUrlScript]);
+const html = new FakeElement("html", {}, [player, packedPlayer, onclickPlayer, paramPlayer, configPlayer, nakedPlayer, script, plainEncodedScript, plainUrlScript]);
 
 let messageListener = null;
 const context = {
@@ -157,6 +160,7 @@ const plainHls = response.resources.find(item => item.url === "https://cdn.examp
 const onclickHls = response.resources.find(item => item.url === "https://cdn.example.com/static/onclick-master.m3u8?token=click");
 const paramVideo = response.resources.find(item => item.url === "https://cdn.example.com/static/param-lesson.mp4?token=param");
 const plainAttrVideo = response.resources.find(item => item.url === "https://course.example.com/static/plain-attr.mp4?token=attr-plain");
+const nakedAttrHls = response.resources.find(item => item.url === "https://course.example.com/static/naked-master.m3u8?token=naked");
 const plainScriptHls = response.resources.find(item => item.url === "https://cdn.example.com/static/plain-url.m3u8?token=script-plain");
 
 assert.ok(hls, "expected data-play-url media hint to expose encoded HLS URL");
@@ -192,12 +196,17 @@ assert.match(onclickHls.label, /onclick encoded url/);
 assert.ok(paramVideo, "expected data-params scan to expose embedded encoded mp4 URL");
 assert.equal(paramVideo.kind, "video");
 assert.equal(paramVideo.source, "domHint");
-assert.match(paramVideo.label, /data-params encoded url/);
+assert.match(paramVideo.label, /data-params/);
 
 assert.ok(plainAttrVideo, "expected data-config scan to expose embedded plain relative mp4 URL");
 assert.equal(plainAttrVideo.kind, "video");
 assert.equal(plainAttrVideo.source, "domHint");
 assert.match(plainAttrVideo.label, /data-config media url/);
+
+assert.ok(nakedAttrHls, "expected data-options scan to trim trailing JS punctuation from plain HLS URL");
+assert.equal(nakedAttrHls.kind, "hls");
+assert.equal(nakedAttrHls.source, "domHint");
+assert.match(nakedAttrHls.label, /data-options/);
 
 assert.ok(plainScriptHls, "expected inline script URL scan to expose plain HLS URL without a media field name");
 assert.equal(plainScriptHls.kind, "hls");

@@ -48,7 +48,7 @@ const context = {
   URL,
   atob: value => Buffer.from(value, "base64").toString("binary"),
   fetch: async () => new FakeResponse(
-    `<a href="/player?objectid=${encodedHls}">open player</a>`,
+    `<a href="/player?objectid=${encodedHls}">open player</a><script>load(https://cdn.example.com/plain/naked.m3u8?token=naked);</script>`,
     {
       url: "https://course.example.com/lesson/index.html",
       headers: { "content-type": "text/html" },
@@ -73,6 +73,7 @@ await new Promise(resolve => setTimeout(resolve, 20));
 
 const resources = messages.flatMap(message => message.resources || []);
 const hls = resources.find(resource => resource.url === "https://cdn.example.com/secure/lesson.m3u8?token=abc&uid=1");
+const nakedHls = resources.find(resource => resource.url === "https://cdn.example.com/plain/naked.m3u8?token=naked");
 
 assert.ok(hls, "expected page hook to decode encoded media URL from plain HTML text");
 assert.equal(hls.kind, "hls");
@@ -81,3 +82,8 @@ assert.equal(hls.source, "pageHookBody");
 assert.match(hls.label, /encoded url/);
 assert.equal(hls.request_type, "fetch");
 assert.equal(hls.status_code, 200);
+
+assert.ok(nakedHls, "expected page hook to trim trailing JS punctuation from plain media URL");
+assert.equal(nakedHls.kind, "hls");
+assert.equal(nakedHls.source, "pageHookBody");
+assert.equal(nakedHls.request_type, "fetch");
