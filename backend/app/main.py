@@ -132,6 +132,18 @@ def _safe_header_names(values: dict[str, str]) -> str:
     return ", ".join(names) or "-"
 
 
+def _format_cookie_summary(summary: dict) -> list[str]:
+    if not summary or not summary.get("total"):
+        return ["- Cookie：未同步或未匹配到当前页/媒体域 Cookie"]
+    domains = summary.get("domains") or {}
+    domain_text = ", ".join(f"{domain} ({count})" for domain, count in sorted(domains.items())) or "-"
+    return [
+        f"- Cookie 总数：{summary.get('total', 0)}",
+        f"- Cookie 域：{domain_text}",
+        f"- Secure / HttpOnly：{summary.get('secure_count', 0)} / {summary.get('http_only_count', 0)}",
+    ]
+
+
 def _format_timestamp(seconds: float | int | None) -> str:
     total = max(0, int(seconds or 0))
     hours, remainder = divmod(total, 3600)
@@ -254,6 +266,9 @@ def render_diagnostics_markdown(task: TaskRecord) -> str:
         ])
     else:
         lines.append("- 未选择直接媒体资源，可能使用页面解析或 yt-dlp fallback。")
+
+    lines.extend(["", "## Cookie 同步"])
+    lines.extend(_format_cookie_summary(task.cookie_summary))
 
     lines.extend(["", "## 下载尝试"])
     if task.download_attempts:

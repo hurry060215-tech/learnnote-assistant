@@ -94,6 +94,26 @@ def page_text_with_browser_subtitles(page_text: str, transcript: TranscriptResul
     return text or subtitle_text
 
 
+def cookie_sync_summary(cookies: list) -> dict:
+    domains: dict[str, int] = {}
+    secure_count = 0
+    http_only_count = 0
+    for cookie in cookies or []:
+        domain = (getattr(cookie, "domain", "") or "").strip() or "(no domain)"
+        domains[domain] = domains.get(domain, 0) + 1
+        if getattr(cookie, "secure", False):
+            secure_count += 1
+        if getattr(cookie, "httpOnly", False):
+            http_only_count += 1
+    return {
+        "total": sum(domains.values()),
+        "domains": dict(sorted(domains.items())),
+        "domain_count": len(domains),
+        "secure_count": secure_count,
+        "http_only_count": http_only_count,
+    }
+
+
 def write_page_text_artifacts(task_id: str, request: CurrentPageTaskRequest, allow_empty: bool = True) -> tuple[str, str, bool]:
     transcript = transcript_from_browser_subtitles(request.browser_subtitles)
     page_text = page_text_with_browser_subtitles(request.page_text, transcript)
@@ -204,6 +224,7 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
         update_task(
             task_id,
             active_video=request.active_video,
+            cookie_summary=cookie_sync_summary(request.cookies),
             drm_detected=bool(request.drm_detected),
             drm_signals=request.drm_signals,
         )

@@ -30,7 +30,7 @@ from app.downloader import (
 )
 from app.main import render_diagnostics_markdown
 from app.models import ActiveVideoInfo, BrowserCookie, CurrentPageTaskRequest, DownloadAttempt, DrmSignal, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
-from app.processor import build_summary_diagnostics, process_current_page_task, process_local_video_task, read_note, read_transcript, redacted_request_dump, redacted_resource
+from app.processor import build_summary_diagnostics, cookie_sync_summary, process_current_page_task, process_local_video_task, read_note, read_transcript, redacted_request_dump, redacted_resource
 from app.summarizer import MAX_VISION_GRIDS, build_visual_windows, local_markdown_note, summarize_with_diagnostics
 from app.storage import create_task, get_task, task_dir
 from app.transcriber import transcript_from_subtitle
@@ -482,6 +482,27 @@ class ProcessorBoundaryTests(unittest.TestCase):
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
+    def test_diagnostics_report_lists_cookie_domains_without_values(self) -> None:
+        task = create_task("current_page", "Cookie diagnostics", "https://course.example.com/lesson")
+        try:
+            record = get_task(task.id)
+            record.cookie_summary = cookie_sync_summary([
+                BrowserCookie(name="SESSION", value="secret-session", domain=".course.example.com", secure=True, httpOnly=True),
+                BrowserCookie(name="CDN_TOKEN", value="secret-cdn", domain=".cdn.example.com", secure=True),
+            ])
+
+            report = render_diagnostics_markdown(record)
+
+            self.assertIn(".course.example.com (1)", report)
+            self.assertIn(".cdn.example.com (1)", report)
+            self.assertIn("2", report)
+            self.assertNotIn("secret-session", report)
+            self.assertNotIn("secret-cdn", report)
+            self.assertNotIn("SESSION", report)
+            self.assertNotIn("CDN_TOKEN", report)
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
     def test_current_page_prefers_browser_subtitles_over_audio_pipeline(self) -> None:
         task = create_task("current_page", "Browser subtitle lesson", "https://course.example.com/lesson")
         source_path = task_dir(task.id) / "download.mp4"
@@ -518,6 +539,10 @@ class ProcessorBoundaryTests(unittest.TestCase):
                     {"start": 0, "end": 2, "text": "first browser cue"},
                     {"start": 2, "end": 4, "text": "second browser cue"},
                 ],
+                cookies=[
+                    BrowserCookie(name="COURSE", value="secret-course", domain=".course.example.com", secure=True),
+                    BrowserCookie(name="CDN", value="secret-cdn", domain=".cdn.example.com"),
+                ],
                 options=TaskOptions(visual_understanding=False),
             )
 
@@ -531,6 +556,9 @@ class ProcessorBoundaryTests(unittest.TestCase):
             record = get_task(task.id)
             self.assertEqual(record.status, "success")
             self.assertEqual(record.audio_path, "")
+            self.assertEqual(record.cookie_summary["total"], 2)
+            self.assertEqual(record.cookie_summary["domains"][".course.example.com"], 1)
+            self.assertEqual(record.cookie_summary["domains"][".cdn.example.com"], 1)
             transcript = read_transcript(task.id)
             self.assertEqual(transcript["source"], "browser-subtitle")
             self.assertEqual([segment["text"] for segment in transcript["segments"]], ["first browser cue", "second browser cue"])

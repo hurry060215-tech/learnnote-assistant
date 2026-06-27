@@ -209,6 +209,7 @@ class TaskRecord(BaseModel):
     options: TaskOptions = Field(default_factory=TaskOptions)
     selected_resource: ResourceCandidate | None = None
     download_attempts: list[DownloadAttempt] = Field(default_factory=list)
+    cookie_summary: dict[str, Any] = Field(default_factory=dict)
     drm_detected: bool = False
     drm_signals: list[DrmSignal] = Field(default_factory=list)
     active_video: ActiveVideoInfo | None = None
