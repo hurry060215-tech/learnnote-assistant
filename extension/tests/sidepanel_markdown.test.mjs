@@ -29,13 +29,14 @@ const documentStub = {
 };
 
 const clipboardWrites = [];
+const openedTabs = [];
 
 const context = {
   console,
   document: documentStub,
   location: { href: "file:///sidepanel.html" },
   navigator: { clipboard: { writeText(value) { clipboardWrites.push(value); } } },
-  window: { open() {} },
+  window: { open(url, target, features) { openedTabs.push({ url, target, features }); } },
   FormData: class FormData {},
   fetch: async url => {
     const value = String(url);
@@ -293,6 +294,8 @@ const taskOverviewHtml = context.taskOverview({
 
 assert.match(taskOverviewHtml, /class="task-overview status-success"/);
 assert.match(taskOverviewHtml, /本地视频/);
+assert.match(taskOverviewHtml, /data-open-workbench="side-overview"/);
+assert.match(taskOverviewHtml, /Web 工作台/);
 assert.match(taskOverviewHtml, /data-export="media"/);
 assert.match(taskOverviewHtml, /data-export="diagnostics"/);
 assert.match(taskOverviewHtml, /data-export="bundle"/);
@@ -550,6 +553,12 @@ assert.equal(elements.get("#taskMessage").textContent, "已复制候选资源证
 vm.runInContext(`currentTaskId = "task-url-direct"; selectedTab = "frames"; backendUrl = "http://127.0.0.1:8765/";`, context);
 assert.equal(context.workbenchUrl(), "http://127.0.0.1:8765/?task=task-url-direct&tab=frames");
 assert.equal(context.workbenchUrl("task-url-direct", "bad-tab"), "http://127.0.0.1:8765/?task=task-url-direct&tab=note");
+context.openWorkbench("task-url-direct", "frames");
+assert.deepEqual(JSON.parse(JSON.stringify(openedTabs.at(-1))), {
+  url: "http://127.0.0.1:8765/?task=task-url-direct&tab=frames",
+  target: "_blank",
+  features: "noopener"
+});
 
 vm.runInContext(`
 preflight = { downloadable: true, kind: "hls", code: "", message: "ok" };
