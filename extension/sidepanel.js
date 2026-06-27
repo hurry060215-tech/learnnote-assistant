@@ -609,10 +609,20 @@ function directnessText(item) {
 function playerLibrarySourceText(item) {
   if (item?.source !== "pageHookPlayer") return "";
   const label = String(item.label || "");
-  if (/hls\.js/i.test(label)) return "hls.js 已加载";
-  if (/dash\.js/i.test(label)) return "dash.js 已加载";
-  if (/shaka/i.test(label)) return "shaka 已加载";
-  if (/video\.js/i.test(label)) return "video.js 已加载";
+  const libraries = [
+    [/hls\.js/i, "hls.js"],
+    [/dash\.js/i, "dash.js"],
+    [/shaka/i, "shaka"],
+    [/video\.js/i, "video.js"],
+    [/DPlayer/i, "DPlayer"],
+    [/ArtPlayer/i, "ArtPlayer"],
+    [/\bxgplayer\b|XGPlayer/i, "xgplayer"],
+    [/Aliplayer/i, "Aliplayer"],
+    [/TcPlayer/i, "TcPlayer"],
+    [/jwplayer/i, "jwplayer"]
+  ];
+  const match = libraries.find(([pattern]) => pattern.test(label));
+  if (match) return `${match[1]} 已加载`;
   return "播放器已加载";
 }
 

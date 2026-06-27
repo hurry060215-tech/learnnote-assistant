@@ -400,6 +400,21 @@ assert.match(context.requestEvidence({
   label: "dash.js attachSource",
   mime: "application/dash+xml"
 }), /dash\.js 已加载源地址/);
+assert.match(context.directnessText({
+  kind: "video",
+  source: "pageHookPlayer",
+  label: "DPlayer constructor switchVideo"
+}), /DPlayer 已加载 视频文件/);
+assert.match(context.resourceReasonText({
+  kind: "hls",
+  source: "pageHookPlayer",
+  label: "xgplayer Player constructor switchUrl"
+}), /xgplayer 已加载源地址/);
+assert.match(context.requestEvidence({
+  kind: "video",
+  source: "pageHookPlayer",
+  label: "jwplayer setup"
+}), /jwplayer 已加载源地址/);
 assert.match(context.resourceTagHtml({
   kind: "hls",
   source: "webRequest",

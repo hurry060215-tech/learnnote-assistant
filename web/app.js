@@ -539,6 +539,34 @@ function sourceText(task) {
   return task.selected_resource ? `直取 · ${task.selected_resource.kind}` : "页面解析";
 }
 
+function playerLibrarySourceText(resource) {
+  if (resource?.source !== "pageHookPlayer") return "";
+  const label = String(resource.label || "");
+  const libraries = [
+    [/hls\.js/i, "hls.js"],
+    [/dash\.js/i, "dash.js"],
+    [/shaka/i, "shaka"],
+    [/video\.js/i, "video.js"],
+    [/DPlayer/i, "DPlayer"],
+    [/ArtPlayer/i, "ArtPlayer"],
+    [/\bxgplayer\b|XGPlayer/i, "xgplayer"],
+    [/Aliplayer/i, "Aliplayer"],
+    [/TcPlayer/i, "TcPlayer"],
+    [/jwplayer/i, "jwplayer"]
+  ];
+  const match = libraries.find(([pattern]) => pattern.test(label));
+  if (match) return `${match[1]} 已加载`;
+  return "播放器已加载";
+}
+
+function resourceSourceText(resource) {
+  const playerSource = playerLibrarySourceText(resource);
+  if (playerSource) return `${playerSource}源地址`;
+  if (resource?.source === "webRequest") return "浏览器请求";
+  if (String(resource?.source || "").startsWith("pageHook")) return "页面接口";
+  return resource?.source || "";
+}
+
 function playbackText(match) {
   return ({
     "exact-src": "当前 src",
@@ -1103,6 +1131,7 @@ function taskOverview(task) {
   const resourceLine = [
     sourceText(task),
     selected.kind || task.source_type || "",
+    resourceSourceText(selected),
     selected.playback_match ? playbackText(selected.playback_match) : "",
     selected.content_length ? fmtBytes(selected.content_length) : ""
   ].filter(Boolean).join(" · ");
@@ -1620,7 +1649,7 @@ async function renderDetail() {
         <dt>所在 frame</dt><dd>${escapeHtml(selected.frame_url || "-")}</dd>
         <dt>资源类型</dt><dd>${escapeHtml([
           selected.kind || "-",
-          selected.source || "-",
+          resourceSourceText(selected) || selected.source || "-",
           selected.is_main_video ? "主视频" : "",
           playbackText(selected.playback_match),
           selected.request_type || "",

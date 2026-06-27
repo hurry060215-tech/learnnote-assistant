@@ -589,6 +589,27 @@ assert.match(routeReadyHtml, /最近当前页直取已生成笔记/);
 assert.match(routeReadyHtml, /hls · 1 次下载尝试 · 1 个视觉窗口/);
 assert.doesNotMatch(routeReadyHtml, /<script>bad/);
 
+const playerSourceOverview = context.taskOverview({
+  id: "player-source-task",
+  title: "播放器来源任务",
+  source_type: "current_page",
+  status: "success",
+  phase: "completed",
+  progress: 100,
+  media_path: "D:/Projects/learnnote-assistant/data/tasks/player-source-task/media.mp4",
+  note_path: "D:/Projects/learnnote-assistant/data/tasks/player-source-task/note.md",
+  selected_resource: {
+    kind: "video",
+    source: "pageHookPlayer",
+    label: "DPlayer constructor switchVideo",
+    url: "https://cdn.example.com/lesson.mp4?<script>bad()</script>"
+  },
+  options: {},
+  visual_windows: []
+});
+assert.match(playerSourceOverview, /DPlayer 已加载源地址/);
+assert.doesNotMatch(playerSourceOverview, /<script>bad/);
+
 const routeDownloadedHtml = context.browserRouteSummaryHtml({
   id: "route-downloaded",
   source_type: "current_page",
