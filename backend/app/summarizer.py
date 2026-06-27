@@ -398,6 +398,37 @@ def summarize(title: str, transcript: TranscriptResult, grids: list[FrameGrid], 
     return summarize_with_diagnostics(title, transcript, grids, options, page_url)[0]
 
 
+def _split_page_text_sections(text: str) -> tuple[str, str]:
+    parts = re.split(r"\n+\s*---\s*浏览器字幕\s*---\s*\n+", text or "", maxsplit=1)
+    if len(parts) == 2:
+        return parts[0].strip(), parts[1].strip()
+    return (text or "").strip(), ""
+
+
+def _clean_outline_lines(text: str, limit: int = 8) -> list[str]:
+    lines = []
+    seen = set()
+    for raw in re.split(r"[\r\n]+", text or ""):
+        cleaned = re.sub(r"\s+", " ", raw).strip(" -•\t")
+        if not cleaned or cleaned in seen:
+            continue
+        seen.add(cleaned)
+        if len(cleaned) > 120:
+            cleaned = cleaned[:120].rstrip() + "..."
+        lines.append(cleaned)
+        if len(lines) >= limit:
+            break
+    if lines:
+        return lines
+    return _sentences(text, limit=limit)
+
+
+def _bullet_lines(items: list[str], fallback: str) -> list[str]:
+    if not items:
+        return [f"- {fallback}"]
+    return [f"- {item}" for item in items]
+
+
 def summarize_page_text(title: str, page_url: str, page_text: str, options: TaskOptions) -> str:
     transcript = TranscriptResult(
         language="unknown",
@@ -409,20 +440,39 @@ def summarize_page_text(title: str, page_url: str, page_text: str, options: Task
     if generated:
         return generated
     text = (page_text or "").strip()
+    page_body, subtitle_body = _split_page_text_sections(text)
+    page_points = _clean_outline_lines(page_body, limit=8)
+    subtitle_points = _clean_outline_lines(subtitle_body, limit=8)
+    all_points = page_points or subtitle_points
     excerpt = text[:1200] + ("..." if len(text) > 1200 else "")
     return "\n".join([
         f"# {title or '当前页面文本总结'}",
         "",
         f"来源：{page_url}",
         "",
-        "## 页面摘要",
+        "## 页面要点",
+        "",
+        *_bullet_lines(page_points, "当前页面没有提取到明确章节文本，可结合浏览器字幕或原页面继续确认。"),
+        "",
+        "## 浏览器字幕线索",
+        "",
+        *_bullet_lines(subtitle_points, "没有同步到浏览器字幕；如果页面正在播放课程，可回到扩展侧栏重新检测或改用视频直取/本地上传。"),
+        "",
+        "## 兜底学习笔记",
+        "",
+        f"- 主题判断：{all_points[0] if all_points else title or '当前页面内容'}",
+        "- 回看目标：直取视频不可用时，先用页面标题、章节文本和浏览器字幕建立知识框架，再用原页面或本地视频补齐画面演示。",
+        "- 复习动作：把页面要点整理成 3-5 条概念卡片；如果后续拿到视频，再用画面切片核对 PPT、板书、代码或操作步骤。",
+        "",
+        "## 页面摘录",
         "",
         excerpt or "当前页面没有提取到可用文本。",
         "",
         "## 复习问题",
         "",
-        "1. 本页最重要的概念是什么？",
-        "2. 哪些内容需要结合课程视频再确认？",
-        "3. 哪些术语或步骤需要做成卡片复习？",
+        "1. 本页标题、章节文本和字幕共同指向的核心概念是什么？",
+        "2. 哪些步骤只靠文本还不够，需要回到视频画面确认 PPT、板书、代码或界面操作？",
+        "3. 哪些术语、公式、例题或演示流程应该做成卡片复习？",
+        "4. 如果稍后改用本地视频或直取成功，哪些时间段/章节最值得优先切片复核？",
         "",
     ])
