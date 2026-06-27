@@ -152,6 +152,7 @@ def render_visual_windows_markdown(task: TaskRecord) -> str:
                 f"## {label} `{_format_timestamp(window.start)} - {_format_timestamp(window.end)}`",
                 f"- 画面网格：{grid_ref}",
                 f"- 帧数：{window.frame_count}",
+                f"- 帧时间：{', '.join(_format_timestamp(value) for value in window.frame_timestamps) or '-'}",
             ])
             if window.transcript_excerpt.strip():
                 lines.extend(["", window.transcript_excerpt.strip()])
@@ -167,6 +168,7 @@ def render_visual_windows_markdown(task: TaskRecord) -> str:
                 f"## {label} `{_format_timestamp(grid.start)} - {_format_timestamp(grid.end)}`",
                 f"- 画面网格：{_bundle_grid_ref(grid.path, grid.url)}",
                 f"- 帧数：{grid.frame_count}",
+                f"- 帧时间：{', '.join(_format_timestamp(value) for value in grid.frame_timestamps) or '-'}",
                 "",
             ])
         return "\n".join(lines).rstrip() + "\n"

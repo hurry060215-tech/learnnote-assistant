@@ -1176,14 +1176,15 @@ class SummaryFallbackTests(unittest.TestCase):
             ],
         )
         grids = [
-            FrameGrid(path="grid0.jpg", url="http://127.0.0.1/grid0.jpg", start=0, end=60, frame_count=9),
-            FrameGrid(path="grid1.jpg", url="http://127.0.0.1/grid1.jpg", start=60, end=120, frame_count=6),
+            FrameGrid(path="grid0.jpg", url="http://127.0.0.1/grid0.jpg", start=0, end=60, frame_count=9, frame_timestamps=[0, 20, 40]),
+            FrameGrid(path="grid1.jpg", url="http://127.0.0.1/grid1.jpg", start=60, end=120, frame_count=6, frame_timestamps=[60, 80, 100]),
         ]
 
         windows = build_visual_windows(transcript, grids)
 
         self.assertEqual([window.id for window in windows], ["W001", "W002"])
         self.assertEqual(windows[0].grid_url, "http://127.0.0.1/grid0.jpg")
+        self.assertEqual(windows[0].frame_timestamps, [0, 20, 40])
         self.assertEqual([segment.text for segment in windows[0].segments], ["intro", "demo steps"])
         self.assertEqual([segment.text for segment in windows[1].segments], ["recap"])
         self.assertIn("00:00:35 demo steps", windows[0].transcript_excerpt)

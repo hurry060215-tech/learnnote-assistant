@@ -159,6 +159,7 @@ class FrameGrid(BaseModel):
     start: float
     end: float
     frame_count: int
+    frame_timestamps: list[float] = Field(default_factory=list)
 
 
 class VisualWindow(BaseModel):
@@ -168,6 +169,7 @@ class VisualWindow(BaseModel):
     end: float
     duration: float = 0
     frame_count: int
+    frame_timestamps: list[float] = Field(default_factory=list)
     grid_url: str
     grid_path: str = ""
     transcript_excerpt: str = ""

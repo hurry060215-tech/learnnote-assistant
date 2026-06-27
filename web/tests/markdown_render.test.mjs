@@ -306,6 +306,7 @@ const visualDeckHtml = context.visualStudyDeck({
       start: 0,
       end: 180,
       frame_count: 9,
+      frame_timestamps: [0, 20, 40, 60, 80],
       grid_url: "http://127.0.0.1:8765/api/tasks/demo/grids/grid_000.jpg",
       transcript_excerpt: "<script>alert(1)</script> PPT 演示"
     },
@@ -327,6 +328,7 @@ assert.match(visualDeckHtml, /\/api\/tasks\/task-visual-deck\/exports\/visual-wi
 assert.match(visualDeckHtml, /src="http:\/\/127\.0\.0\.1:8765\/api\/tasks\/demo\/grids\/grid_000\.jpg"/);
 assert.match(visualDeckHtml, /学习动作/);
 assert.match(visualDeckHtml, /复述这一窗口的结论/);
+assert.match(visualDeckHtml, /00:00:00 \/ 00:00:20 \/ 00:00:40 \/ 00:01:00\.\.\./);
 assert.doesNotMatch(visualDeckHtml, /src="javascript:alert/);
 assert.match(visualDeckHtml, /&lt;script&gt;alert\(1\)&lt;\/script&gt; PPT 演示/);
 assert.match(visualDeckHtml, /data-switch-result-tab="transcript"/);

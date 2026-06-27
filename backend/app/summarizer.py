@@ -42,6 +42,7 @@ def build_visual_windows(transcript: TranscriptResult, grids: list[FrameGrid], e
                 end=grid.end,
                 duration=max(0, grid.end - grid.start),
                 frame_count=grid.frame_count,
+                frame_timestamps=grid.frame_timestamps,
                 grid_url=grid.url,
                 grid_path=grid.path,
                 transcript_excerpt=excerpt,

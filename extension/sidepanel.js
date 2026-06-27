@@ -248,6 +248,13 @@ function fmt(sec) {
   return `${String(Math.floor(sec / 3600)).padStart(2, "0")}:${String(Math.floor((sec % 3600) / 60)).padStart(2, "0")}:${String(sec % 60).padStart(2, "0")}`;
 }
 
+function frameTimestampText(window, limit = 4) {
+  const values = (window?.frame_timestamps || []).slice(0, limit).map(value => fmt(value));
+  if (!values.length) return "";
+  const suffix = (window.frame_timestamps || []).length > values.length ? "..." : "";
+  return `${values.join(" / ")}${suffix}`;
+}
+
 function fmtBytes(bytes) {
   const value = Number(bytes || 0);
   if (!value) return "";
@@ -1810,6 +1817,7 @@ function visualWindows(task) {
     start: grid.start,
     end: grid.end,
     frame_count: grid.frame_count,
+    frame_timestamps: grid.frame_timestamps || [],
     grid_url: grid.url,
     transcript_excerpt: ""
   }));
@@ -2195,6 +2203,7 @@ function visualStudyDeck(task) {
             ${sideVisualStudyChecklistHtml(window)}
             <div class="side-visual-meta">
               <em>${Number(window.frame_count || 0)} 帧</em>
+              ${frameTimestampText(window) ? `<em>${escapeHtml(frameTimestampText(window))}</em>` : ""}
               <em>${escapeHtml(task.options?.grid_columns && task.options?.grid_rows ? `${task.options.grid_columns}x${task.options.grid_rows}` : "网格")}</em>
               <em>${escapeHtml(task.summary_source || "本地索引")}</em>
             </div>

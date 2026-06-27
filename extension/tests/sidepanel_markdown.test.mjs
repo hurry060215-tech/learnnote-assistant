@@ -176,6 +176,7 @@ const railHtml = context.noteVisualRail({
       start: 0,
       end: 180,
       frame_count: 9,
+      frame_timestamps: [0, 20, 40, 60, 80],
       grid_url: "http://127.0.0.1:8765/api/tasks/demo/grids/grid_000.jpg",
       transcript_excerpt: "<script>alert(1)</script> 画面摘要"
     }
@@ -201,6 +202,7 @@ const visualDeckHtml = context.visualStudyDeck({
       start: 0,
       end: 180,
       frame_count: 9,
+      frame_timestamps: [0, 20, 40, 60, 80],
       grid_url: "http://127.0.0.1:8765/api/tasks/demo/grids/grid_000.jpg",
       transcript_excerpt: "<script>alert(1)</script> 画面摘要"
     },
@@ -220,6 +222,7 @@ assert.match(visualDeckHtml, /2 窗口 · 00:00:00 - 00:06:00/);
 assert.match(visualDeckHtml, /导出切片索引/);
 assert.match(visualDeckHtml, /data-export="visual-windows"/);
 assert.match(visualDeckHtml, /src="http:\/\/127\.0\.0\.1:8765\/api\/tasks\/demo\/grids\/grid_000\.jpg"/);
+assert.match(visualDeckHtml, /00:00:00 \/ 00:00:20 \/ 00:00:40 \/ 00:01:00\.\.\./);
 assert.doesNotMatch(visualDeckHtml, /src="javascript:alert/);
 assert.match(visualDeckHtml, /&lt;script&gt;alert\(1\)&lt;\/script&gt; 画面摘要/);
 assert.match(visualDeckHtml, /data-switch-result-tab="transcript"/);

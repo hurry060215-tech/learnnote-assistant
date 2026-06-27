@@ -5,6 +5,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from PIL import Image
+
 from app.config import DATA_DIR
 from app.media import build_frame_grids, extract_audio, extract_frames, probe_duration
 from app.runtime import ffmpeg_bin
@@ -57,6 +59,11 @@ class MediaPipelineTests(unittest.TestCase):
             grids = build_frame_grids("unit", frames, root / "grids", columns=3, rows=3, interval=1)
             self.assertEqual(len(grids), 1)
             self.assertTrue(Path(grids[0].path).exists())
+            self.assertEqual(grids[0].frame_timestamps[:2], [0.0, 1.0])
+            with Image.open(grids[0].path) as image:
+                label_area = image.crop((4, 154, 92, 178))
+                dark_pixels = sum(1 for pixel in label_area.getdata() if sum(pixel[:3]) < 180)
+                self.assertGreater(dark_pixels, 20)
 
 
 if __name__ == "__main__":

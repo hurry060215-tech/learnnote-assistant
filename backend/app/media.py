@@ -7,7 +7,7 @@ import re
 import subprocess
 from pathlib import Path
 
-from PIL import Image, ImageOps
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 from .config import BACKEND_ORIGIN
 from .models import FrameGrid
@@ -178,6 +178,40 @@ def extract_frames(video_path: Path, frame_dir: Path, interval: int, max_frames:
     return frames
 
 
+def _format_timestamp_label(seconds: float | int) -> str:
+    value = max(0, int(seconds or 0))
+    return f"{value // 3600:02d}:{(value % 3600) // 60:02d}:{value % 60:02d}"
+
+
+def _timestamp_from_frame_path(path: Path, fallback: float) -> float:
+    match = re.search(r"_(\d{6})(?:\D|$)", path.stem)
+    if not match:
+        return fallback
+    try:
+        return float(int(match.group(1)))
+    except ValueError:
+        return fallback
+
+
+def _draw_tile_timestamp(tile: Image.Image, timestamp: float) -> None:
+    label = _format_timestamp_label(timestamp)
+    draw = ImageDraw.Draw(tile, "RGBA")
+    font = ImageFont.load_default()
+    left = 8
+    bottom = tile.height - 8
+    bbox = draw.textbbox((left, bottom), label, font=font, anchor="ls")
+    pad_x = 6
+    pad_y = 4
+    rect = (
+        max(0, bbox[0] - pad_x),
+        max(0, bbox[1] - pad_y),
+        min(tile.width, bbox[2] + pad_x),
+        min(tile.height, bbox[3] + pad_y),
+    )
+    draw.rounded_rectangle(rect, radius=4, fill=(8, 13, 23, 196))
+    draw.text((left, bottom), label, font=font, fill=(255, 255, 255, 236), anchor="ls")
+
+
 def build_frame_grids(
     task_id: str,
     frames: list[Path],
@@ -194,6 +228,10 @@ def build_frame_grids(
         if not group:
             continue
         canvas = Image.new("RGB", (columns * 320, rows * 180), "white")
+        timestamps = [
+            _timestamp_from_frame_path(frame, float((idx + pos) * interval))
+            for pos, frame in enumerate(group)
+        ]
         for pos, frame in enumerate(group):
             image = Image.open(frame).convert("RGB")
             image = ImageOps.contain(image, (320, 180), Image.Resampling.LANCZOS)
@@ -201,14 +239,24 @@ def build_frame_grids(
             x = (320 - image.width) // 2
             y = (180 - image.height) // 2
             tile.paste(image, (x, y))
+            _draw_tile_timestamp(tile, timestamps[pos])
             canvas.paste(tile, ((pos % columns) * 320, (pos // columns) * 180))
         grid_index = idx // group_size
         path = grid_dir / f"grid_{grid_index:03d}.jpg"
         canvas.save(path, quality=82)
-        start = float(idx * interval)
-        end = float((idx + len(group)) * interval)
+        start = min(timestamps) if timestamps else float(idx * interval)
+        end = max(timestamp + max(1, interval) for timestamp in timestamps) if timestamps else float((idx + len(group)) * interval)
         rel_url = f"/api/tasks/{task_id}/assets/{path.name}"
-        grids.append(FrameGrid(path=str(path), url=f"{BACKEND_ORIGIN}{rel_url}", start=start, end=end, frame_count=len(group)))
+        grids.append(
+            FrameGrid(
+                path=str(path),
+                url=f"{BACKEND_ORIGIN}{rel_url}",
+                start=start,
+                end=end,
+                frame_count=len(group),
+                frame_timestamps=timestamps,
+            )
+        )
     return grids
 
 
