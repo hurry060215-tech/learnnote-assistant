@@ -147,6 +147,39 @@ assert.equal(hinted.current_time, 420);
 assert.ok(hinted.score >= 100, "expected recent range media requests near the active playhead to be top-ranked");
 
 context.rememberRequestHeaders({
+  requestId: "api-play-hls",
+  url: "https://course.example.com/api/play?lesson=42",
+  type: "xmlhttprequest",
+  requestHeaders: [
+    { name: "Referer", value: "https://course.example.com/lesson" },
+    { name: "Origin", value: "https://course.example.com" },
+    { name: "User-Agent", value: "Chrome Playback UA" }
+  ]
+});
+context.recordResponseMedia({
+  requestId: "api-play-hls",
+  tabId: 16,
+  url: "https://course.example.com/api/play?lesson=42",
+  type: "xmlhttprequest",
+  method: "GET",
+  statusCode: 200,
+  frameId: 0,
+  documentUrl: "https://course.example.com/lesson",
+  initiator: "https://course.example.com",
+  timeStamp: Date.now(),
+  responseHeaders: [
+    { name: "Content-Type", value: "application/vnd.apple.mpegurl" }
+  ]
+}, context.peekRequestHeaders("api-play-hls"));
+
+const apiPlayResources = vm.runInContext("resourceByTab.get(16)", context);
+assert.equal(apiPlayResources.length, 1);
+assert.equal(apiPlayResources[0].kind, "hls");
+assert.equal(apiPlayResources[0].request_headers.Referer, "https://course.example.com/lesson");
+assert.equal(apiPlayResources[0].request_headers.Origin, "https://course.example.com");
+assert.equal(apiPlayResources[0].request_headers["User-Agent"], "Chrome Playback UA");
+
+context.rememberRequestHeaders({
   requestId: "streaming-1",
   url: "https://cdn.example.com/live/play?id=long",
   type: "media",
