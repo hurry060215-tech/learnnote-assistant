@@ -727,6 +727,7 @@ function failureGuide(task) {
     <ul>
       ${steps.map(step => `<li>${escapeHtml(step)}</li>`).join("")}
     </ul>
+    ${recoveryActionsHtml(task)}
   </div>`;
 }
 
@@ -773,7 +774,26 @@ function diagnosticRecoveryHtml(task) {
   return `<section class="diagnostic-recovery" aria-label="恢复建议">
     <strong>下一步建议</strong>
     <ul>${steps.map(step => `<li>${escapeHtml(step)}</li>`).join("")}</ul>
+    ${recoveryActionsHtml(task)}
   </section>`;
+}
+
+function recoveryActionsHtml(task) {
+  if (!task) return "";
+  const actions = [
+    `<button type="button" data-recovery-source="local">上传本地视频</button>`,
+    `<button type="button" data-switch-result-tab="diagnostics">查看诊断</button>`
+  ];
+  if (hasTaskDiagnostics(task)) {
+    actions.push(`<a href="${escapeHtml(taskExportUrl(task, "diagnostics"))}">导出诊断</a>`);
+  }
+  if (canContinueFromDownloadedMedia(task)) {
+    actions.push(`<button type="button" data-rerun-from-media="${escapeHtml(task.id)}">继续切片总结</button>`);
+  }
+  if (task.note_path) {
+    actions.push(`<a href="${escapeHtml(taskExportUrl(task, "markdown"))}">导出 Markdown</a>`);
+  }
+  return `<div class="recovery-actions">${actions.join("")}</div>`;
 }
 
 function failedStepIndex(task) {
@@ -1295,11 +1315,17 @@ async function rerunTaskFromMedia(taskId) {
 }
 
 function bindTaskOverviewActions() {
-  document.querySelectorAll(".task-overview-actions button[data-rerun-from-media]").forEach(button => {
+  document.querySelectorAll("[data-rerun-from-media]").forEach(button => {
     button.onclick = () => rerunTaskFromMedia(button.dataset.rerunFromMedia);
   });
   document.querySelectorAll("[data-switch-result-tab]").forEach(button => {
     button.onclick = () => switchResultTab(button.dataset.switchResultTab);
+  });
+  document.querySelectorAll("[data-recovery-source]").forEach(button => {
+    button.onclick = () => {
+      setSource(button.dataset.recoverySource);
+      document.querySelector(".workspace-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    };
   });
 }
 

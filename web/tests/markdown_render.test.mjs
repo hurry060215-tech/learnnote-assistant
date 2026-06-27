@@ -483,6 +483,10 @@ assert.match(failureGuideHtml, /最近尝试：page-ytdlp · download_forbidden 
 assert.match(failureGuideHtml, /后端已尝试 2 条路线/);
 assert.match(failureGuideHtml, /已生成兜底笔记/);
 assert.match(failureGuideHtml, /<ul>/);
+assert.match(failureGuideHtml, /class="recovery-actions"/);
+assert.match(failureGuideHtml, /data-recovery-source="local"/);
+assert.match(failureGuideHtml, /data-switch-result-tab="diagnostics"/);
+assert.match(failureGuideHtml, /导出 Markdown/);
 assert.doesNotMatch(failureGuideHtml, /<script>bad/);
 const diagnosticRecoveryHtml = context.diagnosticRecoveryHtml({
   id: "task-recovery",
@@ -508,6 +512,9 @@ assert.match(diagnosticRecoveryHtml, /Referer/);
 assert.match(diagnosticRecoveryHtml, /Cookie/);
 assert.doesNotMatch(diagnosticRecoveryHtml, /secret=bad/);
 assert.match(diagnosticRecoveryHtml, /继续切片总结/);
+assert.match(diagnosticRecoveryHtml, /data-rerun-from-media="task-recovery"/);
+assert.match(diagnosticRecoveryHtml, /\/api\/tasks\/task-recovery\/exports\/diagnostics/);
+assert.match(diagnosticRecoveryHtml, /data-recovery-source="local"/);
 assert.doesNotMatch(diagnosticRecoveryHtml, /<script>bad/);
 assert.equal(context.hasTaskBundle({ media_path: "D:/media.mp4" }), true);
 assert.equal(context.hasTaskBundle({ status: "failed", error_code: "download_forbidden" }), true);

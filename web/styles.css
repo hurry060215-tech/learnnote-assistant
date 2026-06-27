@@ -2022,6 +2022,36 @@ button:disabled {
   padding-left: 18px;
 }
 
+.recovery-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.recovery-actions a,
+.recovery-actions button {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #b8d3ff;
+  border-radius: 7px;
+  background: #fff;
+  color: var(--accent);
+  padding: 0 10px;
+  font-size: 11px;
+  font-weight: 850;
+  line-height: 1.2;
+  text-decoration: none;
+}
+
+.recovery-actions a:hover,
+.recovery-actions button:hover {
+  border-color: var(--accent);
+  background: #f2f7ff;
+}
+
 .diagnostic-recovery {
   display: grid;
   gap: 8px;
