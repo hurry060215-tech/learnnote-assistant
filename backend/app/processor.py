@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from .downloader import DownloadError, MediaDownloader, classify_resource, infer_manifest_url_from_fragment
+from .downloader import DownloadError, MediaDownloader, effective_resource_kind, infer_manifest_url_from_fragment
 from .media import build_frame_grids, extract_audio, extract_frames, normalize_video
 from .models import BrowserSubtitleCue, CurrentPageTaskRequest, DownloadAttempt, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
 from .storage import get_task, save_task, task_dir, update_task, write_json
@@ -56,7 +56,7 @@ def redacted_request_dump(request: CurrentPageTaskRequest) -> dict:
 
 def has_downloadable_candidate(resources: list[ResourceCandidate]) -> bool:
     for resource in resources:
-        kind = classify_resource(resource.url, resource.mime)
+        kind = effective_resource_kind(resource)
         if kind in {"video", "hls", "dash"}:
             return True
         if kind == "fragment" and infer_manifest_url_from_fragment(resource.url):
