@@ -629,6 +629,8 @@ function playerLibrarySourceText(item) {
 function resourceSourceText(item) {
   const playerSource = playerLibrarySourceText(item);
   if (playerSource) return `${playerSource}源地址`;
+  if (item?.source === "manifest-guess") return "同目录 manifest 猜测";
+  if (item?.source === "inferred-manifest") return "分片路径回推 manifest";
   if (item?.source === "webRequest") return "浏览器请求";
   if (String(item?.source || "").startsWith("pageHook")) return "页面接口";
   return item?.source || "";
@@ -676,6 +678,8 @@ function resourceEvidenceTags(item) {
   if (item.source === "webRequest") add("浏览器请求");
   const playerSource = playerLibrarySourceText(item);
   if (playerSource) add(`${playerSource}源地址`);
+  if (item.source === "manifest-guess") add("同目录 manifest 猜测");
+  if (item.source === "inferred-manifest") add("分片路径回推");
   if (String(item.source || "").startsWith("pageHook")) add("页面接口");
   if (item.request_type === "media") add("media 请求");
   if (resourceHasRangeRequest(item)) add("Range 播放请求");

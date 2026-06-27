@@ -91,6 +91,29 @@ function inferManifestUrl(url) {
   return "";
 }
 
+function inferSiblingManifestUrls(url) {
+  try {
+    const parsed = new URL(url);
+    const lowerPath = parsed.pathname.toLowerCase();
+    if (!FRAGMENT_RE.test(parsed.pathname) || lowerPath.includes(".m3u8") || lowerPath.includes(".mpd")) return [];
+    const slash = parsed.pathname.lastIndexOf("/");
+    const directory = slash >= 0 ? parsed.pathname.slice(0, slash + 1) : "/";
+    const names = lowerPath.endsWith(".ts")
+      ? ["index.m3u8", "playlist.m3u8", "master.m3u8"]
+      : ["manifest.mpd", "index.mpd", "master.m3u8", "index.m3u8"];
+    const results = [];
+    for (const name of names) {
+      parsed.pathname = directory + name;
+      parsed.hash = "";
+      const href = parsed.href;
+      if (!results.includes(href)) results.push(href);
+    }
+    return results;
+  } catch {
+    return [];
+  }
+}
+
 function scoreKind(url, source, kind) {
   let score = 0;
   if (kind === "hls" || kind === "dash") score += 95;
@@ -442,7 +465,9 @@ function addResource(tabId, resource, notify = true) {
     source: resource.source || "unknown",
     kind: resource.kind || classify(resource.url, resource.mime),
     mime: resource.mime || "",
-    score: Math.max(resource.score || 0, scoreKind(resource.url, resource.source || "", resource.kind || classify(resource.url, resource.mime || ""))),
+    score: resource.source === "manifest-guess"
+      ? Math.min(72, Math.max(0, Number(resource.score || 0)))
+      : Math.max(resource.score || 0, scoreKind(resource.url, resource.source || "", resource.kind || classify(resource.url, resource.mime || ""))),
     label: resource.label || "",
     is_main_video: Boolean(resource.is_main_video),
     playback_match: resource.playback_match || "",
@@ -503,6 +528,22 @@ function addResource(tabId, resource, notify = true) {
       score: Math.min(100, (normalized.score || 0) + 24),
       playback_match: normalized.playback_match || "inferred-from-fragment"
     }, notify);
+  }
+  if (normalized.kind === "fragment" && !inferredUrl) {
+    for (const guessedUrl of inferSiblingManifestUrls(normalized.url)) {
+      const guessedKind = classify(guessedUrl, "");
+      addResource(tabId, {
+        ...normalized,
+        url: guessedUrl,
+        source: "manifest-guess",
+        kind: guessedKind,
+        mime: guessedKind === "hls" ? "application/vnd.apple.mpegurl" : "application/dash+xml",
+        label: guessedKind === "hls" ? "Guessed HLS manifest from segment directory" : "Guessed DASH manifest from segment directory",
+        score: Math.min(72, Math.max(42, (normalized.score || 0) + 18)),
+        playback_match: normalized.playback_match || "inferred-from-fragment",
+        request_type: normalized.request_type || "fragment-guess"
+      }, notify);
+    }
   }
   if (notify) notifyContextUpdated(tabId, "media");
 }

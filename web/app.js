@@ -598,6 +598,8 @@ function playerLibrarySourceText(resource) {
 function resourceSourceText(resource) {
   const playerSource = playerLibrarySourceText(resource);
   if (playerSource) return `${playerSource}源地址`;
+  if (resource?.source === "manifest-guess") return "同目录 manifest 猜测";
+  if (resource?.source === "inferred-manifest") return "分片路径回推 manifest";
   if (resource?.source === "webRequest") return "浏览器请求";
   if (String(resource?.source || "").startsWith("pageHook")) return "页面接口";
   return resource?.source || "";
