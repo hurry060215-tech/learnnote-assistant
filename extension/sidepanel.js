@@ -536,6 +536,52 @@ function preflightRecoveryText(result = {}) {
   return "可以换一个候选、重新检测，或使用本地视频入口。";
 }
 
+function recoveryStepItems(task) {
+  const attempts = task?.download_attempts || [];
+  const codes = new Set([task?.error_code, ...attempts.map(attempt => attempt.code)].filter(Boolean));
+  const steps = [];
+  const add = text => {
+    if (text && !steps.includes(text)) steps.push(text);
+  };
+  if (codes.has("drm_or_encrypted") || task?.drm_detected) {
+    add("不会录制、破解或绕过 DRM；没有可访问 mp4/FLV/m3u8/mpd 时，请改用本地视频入口。");
+  }
+  if (codes.has("auth_required")) {
+    add("重新打开课程页并确认登录有效，播放几秒后立刻重新创建任务。");
+  }
+  if (codes.has("download_forbidden")) {
+    add("回到原页面继续播放后重新检测，优先选择带 Referer/Origin 或当前播放匹配的候选。");
+  }
+  if (codes.has("unsupported_manifest")) {
+    add("继续播放后重新检测，优先选择完整 m3u8/mpd，而不是孤立 ts/m4s 分片。");
+  }
+  if (codes.has("no_media_found") || (!attempts.length && task?.status === "failed")) {
+    add("先让视频实际播放几秒再重新检测；仍没有候选时上传本地视频。");
+  }
+  if (attempts.length > 1) {
+    add(`后端已尝试 ${attempts.length} 条路线；打开诊断查看每次失败的 URL、状态码和策略。`);
+  }
+  if (task?.selected_resource?.request_headers && Object.keys(task.selected_resource.request_headers).length) {
+    add(`已捕获可复用请求头名：${requestHeaderNames(task.selected_resource)}；不会保存 Cookie 或 Authorization 值。`);
+  }
+  if (canContinueFromDownloadedMedia(task)) {
+    add("这个任务已把视频下载到本地，可先导出 media.mp4，或点击“继续切片总结”复用本地视频生成完整笔记。");
+  }
+  if (task?.note_path) {
+    add("已生成兜底笔记时，可以先导出 Markdown/资料包复习，再按诊断重新尝试直取。");
+  }
+  if (!steps.length) add("打开诊断查看下载尝试记录；当前页直取不稳定时可改用本地视频入口。");
+  return steps;
+}
+
+function diagnosticRecoveryHtml(task) {
+  const steps = recoveryStepItems(task);
+  return `<section class="diagnostic-recovery" aria-label="恢复建议">
+    <strong>下一步建议</strong>
+    <ul>${steps.map(step => `<li>${escapeHtml(step)}</li>`).join("")}</ul>
+  </section>`;
+}
+
 function drmSignalText(signals = []) {
   const parts = [];
   const keySystems = [...new Set(signals.map(item => item.key_system).filter(Boolean))];
@@ -1922,6 +1968,7 @@ function renderResult() {
     ` : "暂无下载尝试记录";
     els.result.className = "result-body";
     els.result.innerHTML = `
+      ${diagnosticRecoveryHtml(currentTask)}
       <dl class="diagnostics">
         <dt>状态</dt><dd>${escapeHtml(currentTask.status)} / ${escapeHtml(currentTask.phase)} / ${currentTask.progress || 0}%</dd>
         <dt>策略</dt><dd>${selected.url ? "浏览器候选资源优先" : "页面解析 fallback"}</dd>

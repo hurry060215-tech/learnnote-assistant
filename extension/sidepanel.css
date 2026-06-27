@@ -1979,6 +1979,34 @@ input[type="file"] {
   word-break: break-all;
 }
 
+.diagnostic-recovery {
+  display: grid;
+  gap: 7px;
+  margin-bottom: 10px;
+  border: 1px solid #c9d9ff;
+  border-radius: 8px;
+  background: #f4f8ff;
+  padding: 10px;
+}
+
+.diagnostic-recovery strong {
+  color: var(--accent);
+  font-size: 12px;
+}
+
+.diagnostic-recovery ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 17px;
+}
+
+.diagnostic-recovery li {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.48;
+}
+
 .attempt-list {
   display: grid;
   gap: 7px;
