@@ -25,6 +25,8 @@ const VISIBLE_SUBTITLE_HINT_RE = /(subtitle|subtitles|caption|captions|closed.?c
 const VISIBLE_SUBTITLE_ROLE_RE = /^(log|status|marquee)$/i;
 const B64ISH_RE = /^[A-Za-z0-9+/_=-]{16,}$/;
 const boundVideos = new WeakSet();
+const boundTextTracks = new WeakSet();
+const boundTextTrackLists = new WeakSet();
 const hookResources = [];
 const drmSignals = [];
 const drmByVideo = new WeakMap();
@@ -554,6 +556,18 @@ function collectVisibleSubtitleCues(limit = 200) {
   return cues;
 }
 
+function isVisibleSubtitleNode(node) {
+  if (!node) return false;
+  if (node.nodeType === 3) return looksLikeVisibleSubtitleElement(node.parentElement || node.parentNode);
+  if (node.nodeType !== Node.ELEMENT_NODE) return false;
+  if (looksLikeVisibleSubtitleElement(node)) return true;
+  try {
+    return deepQuerySelectorAll("*", node, 40).some(looksLikeVisibleSubtitleElement);
+  } catch {
+    return false;
+  }
+}
+
 function collectBrowserSubtitles(limit = 1200) {
   const videos = collectVideos();
   const main = pickMainVideo(videos);
@@ -577,6 +591,49 @@ function collectBrowserSubtitles(limit = 1200) {
     if (all.length >= limit) break;
   }
   return all.sort((a, b) => a.start - b.start || a.end - b.end);
+}
+
+function bindTextTrack(track) {
+  if (!track || boundTextTracks.has(track)) return;
+  boundTextTracks.add(track);
+  ensureReadableTextTrack(track);
+  try {
+    track.addEventListener?.("cuechange", () => schedulePush(120, true));
+  } catch {
+    // Some player-provided TextTrack objects are not EventTargets.
+  }
+}
+
+function bindTextTrackList(trackList) {
+  if (!trackList || boundTextTrackLists.has(trackList)) return;
+  boundTextTrackLists.add(trackList);
+  try {
+    trackList.addEventListener?.("addtrack", event => {
+      bindTextTrack(event?.track);
+      schedulePush(180, true);
+    });
+    trackList.addEventListener?.("removetrack", () => schedulePush(180, true));
+    trackList.addEventListener?.("change", () => schedulePush(180, true));
+  } catch {
+    // Older Chromium wrappers may expose TextTrackList without listener methods.
+  }
+}
+
+function bindVideoTextTracks(video) {
+  let tracks = null;
+  try {
+    tracks = video?.textTracks || null;
+  } catch {
+    return;
+  }
+  bindTextTrackList(tracks);
+  try {
+    for (let index = 0; index < (tracks?.length || 0); index += 1) {
+      bindTextTrack(tracks[index]);
+    }
+  } catch {
+    // Track enumeration can fail for detached or cross-realm media elements.
+  }
 }
 
 function collectDomResources() {
@@ -702,6 +759,7 @@ function bindVideo(video) {
   for (const eventName of ["play", "playing", "loadedmetadata", "durationchange", "canplay", "emptied", "error"]) {
     video.addEventListener(eventName, () => schedulePush(eventName === "play" ? 80 : 250), { passive: true });
   }
+  bindVideoTextTracks(video);
   video.addEventListener("encrypted", event => {
     rememberDrmSignal({
       source: "contentEncrypted",
@@ -713,7 +771,10 @@ function bindVideo(video) {
 }
 
 function bindVideos() {
-  for (const { video } of collectVideos()) bindVideo(video);
+  for (const { video } of collectVideos()) {
+    bindVideo(video);
+    bindVideoTextTracks(video);
+  }
 }
 
 function isMediaNode(node) {
@@ -731,6 +792,7 @@ function observeRoot(observer, root) {
       childList: true,
       subtree: true,
       attributes: true,
+      characterData: true,
       attributeFilter: [...STATIC_MEDIA_ATTRS, "currentSrc", "type", "poster", "crossorigin"]
     });
     observedMutationRoots.add(root);
@@ -749,21 +811,29 @@ function installMutationObserver() {
   if (!document.documentElement) return;
   const observer = new MutationObserver(mutations => {
     let relevant = false;
+    let subtitleRelevant = false;
     observeOpenShadowRoots(observer);
     for (const mutation of mutations) {
       if (mutation.type === "attributes") {
         const target = mutation.target;
         if (target?.matches?.("video,source,track,iframe")) relevant = true;
+        if (isVisibleSubtitleNode(target)) subtitleRelevant = true;
+      }
+      if (mutation.type === "characterData" && isVisibleSubtitleNode(mutation.target)) {
+        subtitleRelevant = true;
       }
       for (const node of mutation.addedNodes || []) {
         if (isMediaNode(node)) {
           relevant = true;
         }
+        if (isVisibleSubtitleNode(node)) {
+          subtitleRelevant = true;
+        }
       }
     }
-    if (!relevant) return;
-    bindVideos();
-    schedulePush(250, true);
+    if (!relevant && !subtitleRelevant) return;
+    if (relevant) bindVideos();
+    schedulePush(subtitleRelevant ? 160 : 250, true);
   });
   observeRoot(observer, document.documentElement);
   observeOpenShadowRoots(observer);
