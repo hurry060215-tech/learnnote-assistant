@@ -161,6 +161,21 @@ def _bundle_grid_ref(path_value: str, fallback_url: str = "") -> str:
     return fallback_url or "-"
 
 
+def _visual_window_checkpoint_lines(window, limit: int = 3) -> list[str]:
+    segments = getattr(window, "segments", []) or []
+    lines: list[str] = []
+    for segment in segments[:limit]:
+        text = " ".join(str(getattr(segment, "text", "") or "").split())
+        if not text:
+            continue
+        if len(text) > 96:
+            text = text[:96].rstrip() + "..."
+        lines.append(
+            f"  - `{_format_timestamp(getattr(segment, 'start', 0) or 0)}` {text}；对照画面确认对应的板书、PPT、代码或操作步骤。"
+        )
+    return lines or ["  - 无同步字幕；先描述画面网格中的标题、公式、代码或界面状态，再回看原视频确认上下文。"]
+
+
 def render_visual_windows_markdown(task: TaskRecord) -> str:
     lines = [
         "# LearnNote 画面切片索引",
@@ -186,6 +201,9 @@ def render_visual_windows_markdown(task: TaskRecord) -> str:
                 lines.extend(["", window.transcript_excerpt.strip()])
             else:
                 lines.append("- 字幕摘录：-")
+            lines.append("")
+            lines.append("- 回看检查点：")
+            lines.extend(_visual_window_checkpoint_lines(window))
             lines.append("")
         return "\n".join(lines).rstrip() + "\n"
 

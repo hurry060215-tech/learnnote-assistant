@@ -108,12 +108,40 @@ def _window_learning_card_lines(windows: list[VisualWindow]) -> list[str]:
             lines.append(f"- 字幕线索：{excerpt}")
             lines.append("- 回看目标：对照画面确认本段的板书、PPT 切换、代码/界面操作和例题步骤是否被字幕完整覆盖。")
             lines.append("- 复习动作：用自己的话复述这一窗口的结论，再回到截图核对关键术语和操作顺序。")
+            lines.append("- 窗口检查点：")
+            lines.extend(_window_checkpoint_lines(window))
         else:
             lines.append("- 字幕线索：本窗口没有匹配到字幕。")
             lines.append("- 回看目标：重点检查画面里的 PPT 标题、板书、公式、代码、界面状态或演示步骤。")
             lines.append("- 复习动作：先根据截图补一句本段主题，再和前后窗口串起来复盘。")
+            lines.append("- 窗口检查点：")
+            lines.extend(_window_checkpoint_lines(window))
         lines.append("")
     return lines
+
+
+def _checkpoint_text(text: str, limit: int = 96) -> str:
+    cleaned = re.sub(r"\s+", " ", text or "").strip()
+    if len(cleaned) <= limit:
+        return cleaned
+    return cleaned[:limit].rstrip() + "..."
+
+
+def _window_checkpoint_lines(window: VisualWindow, limit: int = 3) -> list[str]:
+    if window.segments:
+        lines = []
+        for segment in window.segments[:limit]:
+            text = _checkpoint_text(segment.text)
+            if not text:
+                continue
+            lines.append(
+                f"  - `{_format_ts(segment.start)}` {text}；对照画面确认对应的板书、PPT、代码或操作步骤。"
+            )
+        if lines:
+            return lines
+    return [
+        "  - 无同步字幕；先描述画面网格中的标题、公式、代码或界面状态，再回看原视频确认上下文。"
+    ]
 
 
 def _grid_batches(grids: list[FrameGrid], batch_size: int = MAX_GRIDS_PER_VISION_CALL) -> list[list[FrameGrid]]:
