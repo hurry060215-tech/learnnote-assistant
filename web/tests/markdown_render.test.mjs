@@ -437,6 +437,30 @@ assert.match(taskChipsHtml, /2 次下载尝试/);
 assert.match(taskChipsHtml, /download_forbidden/);
 assert.doesNotMatch(taskChipsHtml, /<script>bad/);
 
+const taskPreviewWithImage = context.taskPreviewHtml({
+  status: "success",
+  source_type: "current_page",
+  visual_windows: [{
+    id: "W001",
+    start: 0,
+    end: 180,
+    frame_count: 9,
+    grid_url: "/api/tasks/task-preview/assets/grid_000.jpg"
+  }]
+});
+assert.match(taskPreviewWithImage, /class="task-preview status-success"/);
+assert.match(taskPreviewWithImage, /<img src="\/api\/tasks\/task-preview\/assets\/grid_000.jpg"/);
+assert.match(taskPreviewWithImage, /00:00:00 - 00:03:00/);
+
+const taskPreviewFallback = context.taskPreviewHtml({
+  status: "failed",
+  source_type: "current_page",
+  error_code: "drm_or_encrypted",
+  selected_resource: { kind: "blob" }
+});
+assert.match(taskPreviewFallback, /class="task-preview status-failed empty"/);
+assert.match(taskPreviewFallback, /drm_or_encrypted/);
+
 const summaryDiagnostic = context.summaryDiagnosticText({
   summary_source: "vision-llm",
   summary_diagnostics: {

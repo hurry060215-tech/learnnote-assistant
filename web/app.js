@@ -759,6 +759,7 @@ function renderTasks() {
 
   els.tasks.innerHTML = visibleTasks.map(task => `
     <button class="task status-${escapeHtml(task.status)} ${task.id === selectedTaskId ? "selected" : ""}" data-id="${escapeHtml(task.id)}">
+      ${taskPreviewHtml(task)}
       <div>
         <strong>${escapeHtml(task.title || task.id)}</strong>
         <small>${escapeHtml(statusText(task))} · ${escapeHtml(task.phase)}</small>
@@ -780,6 +781,38 @@ function renderTasks() {
       focusResultPanelOnMobile();
     };
   });
+}
+
+function taskPreviewHtml(task) {
+  const windows = visualWindows(task);
+  const firstWindow = windows[0];
+  const selected = task.selected_resource || {};
+  const status = taskStatusClass(task);
+  const label = firstWindow
+    ? firstWindow.id || "切片"
+    : selected.kind || (task.media_path ? "视频" : task.error_code ? "诊断" : "任务");
+  const detail = firstWindow
+    ? `${fmt(firstWindow.start)} - ${fmt(firstWindow.end)}`
+    : task.media_path
+      ? "media.mp4"
+      : task.error_code || statusText(task);
+  if (firstWindow?.grid_url) {
+    return `<figure class="task-preview status-${escapeHtml(status)}">
+      <img src="${escapeHtml(firstWindow.grid_url)}" alt="${escapeHtml(firstWindow.id || "frame grid")}">
+      <figcaption><b>${escapeHtml(label)}</b><span>${escapeHtml(detail)}</span></figcaption>
+    </figure>`;
+  }
+  return `<figure class="task-preview status-${escapeHtml(status)} empty">
+    <div>${taskPreviewIcon(status)}</div>
+    <figcaption><b>${escapeHtml(label)}</b><span>${escapeHtml(detail)}</span></figcaption>
+  </figure>`;
+}
+
+function taskPreviewIcon(status) {
+  if (status === "success") return "✓";
+  if (status === "failed") return "!";
+  if (status === "running") return "…";
+  return "LN";
 }
 
 function taskChipItems(task) {
