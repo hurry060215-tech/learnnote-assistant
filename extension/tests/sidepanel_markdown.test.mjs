@@ -125,6 +125,57 @@ assert.match(summaryDiagnostic, /页面文本 18 字/);
 assert.match(summaryDiagnostic, /浏览器字幕 3 条/);
 assert.match(summaryDiagnostic, /合并文本 72 字/);
 
+const routeEvidenceItems = context.taskRouteEvidenceItems({
+  source_type: "current_page",
+  status: "failed",
+  phase: "failed",
+  error_code: "download_forbidden",
+  selected_resource: {
+    kind: "video",
+    source: "webRequest",
+    playback_match: "same-frame",
+    mime: "video/mp4",
+    content_length: 1048576,
+    request_headers: {
+      Referer: "https://course.example.com/lesson",
+      Cookie: "secret=bad",
+      Authorization: "Bearer bad"
+    }
+  },
+  download_attempts: [
+    { strategy: "direct-file", code: "download_forbidden", message: "<script>bad()</script>" }
+  ],
+  summary_source: "local-template",
+  summary_diagnostics: {
+    used_local_template: true,
+    used_page_text_fallback: true,
+    page_text_char_count: 24,
+    browser_subtitle_count: 2,
+    combined_text_char_count: 80
+  }
+});
+assert.equal(routeEvidenceItems.length, 4);
+assert.equal(routeEvidenceItems[2].value, "Referer");
+assert.doesNotMatch(JSON.stringify(routeEvidenceItems), /secret=bad|Bearer bad/);
+assert.match(context.taskRouteEvidenceHtml({
+  source_type: "current_page",
+  selected_resource: { kind: "video", source: "webRequest" },
+  note_path: "D:/note.md",
+  download_attempts: [{ strategy: "direct-file", code: "download_forbidden" }]
+}), /task-route-evidence/);
+assert.match(context.taskRouteEvidenceHtml({
+  source_type: "current_page",
+  selected_resource: { kind: "video", source: "webRequest" },
+  note_path: "D:/note.md",
+  download_attempts: []
+}), /已有笔记/);
+assert.match(context.taskRouteEvidenceHtml({
+  source_type: "current_page",
+  selected_resource: { kind: "video", source: "webRequest" },
+  note_path: "D:/note.md",
+  download_attempts: []
+}), /未记录总结诊断/);
+
 const timelineHtml = context.transcriptTimeline({
   segments: [
     { start: 4, end: 8, text: "第一段字幕" },

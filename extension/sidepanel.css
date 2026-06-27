@@ -1826,6 +1826,49 @@ input[type="file"] {
   white-space: nowrap;
 }
 
+.task-route-evidence {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.task-route-evidence span {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  border: 1px solid #d6e2f2;
+  border-radius: 7px;
+  background: #fff;
+  padding: 8px;
+}
+
+.task-route-evidence b {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 850;
+  line-height: 1.1;
+}
+
+.task-route-evidence strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 11px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-route-evidence small {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .task-overview-callout {
   display: grid;
   gap: 3px;
@@ -2846,6 +2889,10 @@ input[type="file"] {
   }
 
   .mode-row {
+    grid-template-columns: 1fr;
+  }
+
+  .task-route-evidence {
     grid-template-columns: 1fr;
   }
 }
