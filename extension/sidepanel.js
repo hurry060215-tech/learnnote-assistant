@@ -1264,6 +1264,25 @@ function routeSummaryMetrics() {
   ];
 }
 
+function routeSummaryActionsHtml(state) {
+  const hasSelected = Boolean(selectedResource());
+  const actions = [];
+  if (hasSelected && state !== "ready") {
+    actions.push(`<button type="button" data-route-action="preflight">预检候选</button>`);
+  }
+  if (state === "ready" || state === "candidate" || state === "fallback") {
+    actions.push(`<button type="button" data-route-action="summarize">总结当前视频</button>`);
+  }
+  if (hasSelected && state !== "blocked") {
+    actions.push(`<button type="button" data-route-action="download">下载本地</button>`);
+  }
+  if (state === "blocked" || state === "fallback" || !hasSelected) {
+    actions.push(`<button type="button" data-route-action="local">上传本地视频</button>`);
+  }
+  if (!actions.length) return "";
+  return `<div class="route-summary-actions">${actions.join("")}</div>`;
+}
+
 function renderRouteSummary() {
   if (!els.routeSummary) return;
   const state = routeSummaryState();
@@ -1279,6 +1298,7 @@ function renderRouteSummary() {
     <div class="route-summary-metrics">
       ${routeSummaryMetrics().map(item => `<span><b>${escapeHtml(item.value)}</b>${escapeHtml(item.label)}</span>`).join("")}
     </div>
+    ${routeSummaryActionsHtml(state)}
   `;
 }
 
@@ -2326,6 +2346,20 @@ els.resourceInspector.addEventListener("click", event => {
   }
   if (event.target.closest("[data-copy-resource-report]")) {
     copySelectedResourceReport();
+  }
+});
+els.routeSummary.addEventListener("click", event => {
+  const button = event.target.closest("[data-route-action]");
+  if (!button) return;
+  const action = button.dataset.routeAction;
+  if (action === "preflight") {
+    preflightSelectedResource();
+  } else if (action === "summarize") {
+    startTask("video");
+  } else if (action === "download") {
+    startTask("download_only");
+  } else if (action === "local") {
+    els.fileInput.click();
   }
 });
 els.copyButton.onclick = () => navigator.clipboard.writeText(lastNote || "");
