@@ -653,13 +653,34 @@ const browserWorkflowHtml = context.sourceWorkflowHtml("browser", {
 assert.match(browserWorkflowHtml, /class="source-workflow-card browser"/);
 assert.match(browserWorkflowHtml, /当前页直取/);
 assert.match(browserWorkflowHtml, /预检资源/);
+assert.match(browserWorkflowHtml, /source-route-insights/);
+assert.match(browserWorkflowHtml, /浏览器证据/);
+assert.match(browserWorkflowHtml, /ffmpeg 合并|页面接口|候选资源|HLS|hls/);
+assert.match(browserWorkflowHtml, /不录制、不刷课、不绕过 DRM/);
 assert.match(browserWorkflowHtml, /class="active"/);
 assert.match(browserWorkflowHtml, /data-select-workflow-task="task-workflow-browser"/);
 
 const localWorkflowHtml = context.sourceWorkflowHtml("local", null);
 assert.match(localWorkflowHtml, /本地视频/);
 assert.match(localWorkflowHtml, /导入文件/);
+assert.match(localWorkflowHtml, /本地文件直进管线/);
+assert.match(localWorkflowHtml, /平台不暴露 URL 时兜底/);
 assert.match(localWorkflowHtml, /选择入口后开始处理/);
+
+const urlWorkflowHtml = context.sourceWorkflowHtml("url", {
+  id: "task-workflow-url",
+  title: "Manual lesson",
+  status: "success",
+  phase: "completed",
+  progress: 100,
+  source_type: "current_page",
+  selected_resource: { kind: "dash", source: "manual", request_type: "manual-forced" },
+  download_attempts: [{ strategy: "manifest-ffmpeg" }, { strategy: "direct-file" }],
+  visual_windows: [{ id: "W001" }, { id: "W002" }]
+});
+assert.match(urlWorkflowHtml, /链接解析/);
+assert.match(urlWorkflowHtml, /2 次下载尝试/);
+assert.match(urlWorkflowHtml, /2 个视觉窗口/);
 
 const failedWorkflowHtml = context.sourceWorkflowHtml("browser", {
   id: "task-workflow-failed",
