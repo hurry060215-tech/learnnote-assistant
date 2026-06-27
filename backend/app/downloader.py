@@ -28,6 +28,10 @@ TEXT_MEDIA_URL_RE = re.compile(
     r"|(?:[A-Za-z0-9._~!$&()*+,;=:@%-]+/)*[A-Za-z0-9._~!$&()*+,;=:@%-]+\.(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|vtt|srt|ass|ssa)(?:\?[^\s\"'<>\\]*)?",
     re.I,
 )
+ENCODED_MEDIA_URL_RE = re.compile(
+    r"https?%3A%2F%2F[^\s\"'<>\\]+?(?:\.|%2E)(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|vtt|srt|ass|ssa)(?:[^\s\"'<>\\]*)?",
+    re.I,
+)
 TEXT_RESPONSE_RE = re.compile(r"json|text|html|javascript|mpegurl|dash\+xml|xml|x-mpegurl", re.I)
 MEDIA_ENDPOINT_HINT_RE = re.compile(
     r"(^|[/?&=._\s-])(api|play|player|stream|video|media|hls|dash|manifest|playlist|master|m3u8|mpd)([/?&=._\s-]|$)",
@@ -254,7 +258,19 @@ def _safe_header_value(value: object) -> str:
 
 def normalize_media_url(raw: str, base_url: str) -> str:
     value = html.unescape(str(raw or ""))
-    value = value.replace("\\/", "/").replace("\\u0026", "&").strip()
+    value = (
+        value.replace("\\/", "/")
+        .replace("\\u0026", "&")
+        .replace("\\u002F", "/")
+        .replace("\\u002f", "/")
+        .replace("\\u003A", ":")
+        .replace("\\u003a", ":")
+        .replace("\\u003F", "?")
+        .replace("\\u003f", "?")
+        .replace("\\u003D", "=")
+        .replace("\\u003d", "=")
+        .strip()
+    )
     value = value.rstrip(".,;)")
     try:
         return urljoin(base_url, value)
@@ -455,6 +471,41 @@ def extract_media_resources_from_field_text(
     return resources
 
 
+def extract_media_resources_from_encoded_url_text(
+    text: str,
+    base_url: str,
+    source: str = "page-scan",
+    seen: set[str] | None = None,
+) -> list[ResourceCandidate]:
+    resources: list[ResourceCandidate] = []
+    seen = seen if seen is not None else set()
+    for match in ENCODED_MEDIA_URL_RE.finditer(text or ""):
+        for raw_url in _decoded_media_values(match.group(0)):
+            url = normalize_media_url(unquote(raw_url), base_url)
+            if not url or url in seen:
+                continue
+            kind = classify_resource(url)
+            if kind == "unknown":
+                continue
+            mime = _mime_for_kind(kind)
+            resources.append(
+                ResourceCandidate(
+                    url=url,
+                    source=source,
+                    kind=kind,
+                    mime=mime,
+                    score=score_resource(url, mime, source),
+                    label="encoded page scan",
+                    request_headers={"Referer": base_url},
+                )
+            )
+            seen.add(url)
+            break
+        if len(resources) >= 60:
+            break
+    return resources
+
+
 def extract_media_resources_from_text(text: str, base_url: str, source: str = "page-scan") -> list[ResourceCandidate]:
     if not text:
         return []
@@ -463,6 +514,7 @@ def extract_media_resources_from_text(text: str, base_url: str, source: str = "p
     for resource in resources:
         seen.add(resource.url)
     resources.extend(extract_media_resources_from_field_text(text, base_url, source, seen))
+    resources.extend(extract_media_resources_from_encoded_url_text(text, base_url, source, seen))
     if not TEXT_MEDIA_HINT_RE.search(text):
         return resources
     for match in TEXT_MEDIA_URL_RE.finditer(text):

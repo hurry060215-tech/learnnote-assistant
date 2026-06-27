@@ -304,6 +304,23 @@ class ResourceDetectionTests(unittest.TestCase):
         self.assertEqual(by_kind["hls"].url, "https://cdn.example.com/secure/lesson.m3u8?token=abc")
         self.assertEqual(by_kind["video"].url, "https://cdn.example.com/video/lesson.mp4?sign=ok")
 
+    def test_page_scan_decodes_encoded_media_urls_outside_media_fields(self) -> None:
+        resources = extract_media_resources_from_text(
+            """
+            <a href="/player?objectid=https%3A%2F%2Fcdn.example.com%2Fsecure%2Flesson.m3u8%3Ftoken%3Dabc%26uid%3D1">
+              open player
+            </a>
+            """,
+            "https://course.example.com/lesson/index.html",
+            "page-scan",
+        )
+
+        self.assertEqual(len(resources), 1)
+        self.assertEqual(resources[0].kind, "hls")
+        self.assertEqual(resources[0].label, "encoded page scan")
+        self.assertEqual(resources[0].url, "https://cdn.example.com/secure/lesson.m3u8?token=abc&uid=1")
+        self.assertEqual(resources[0].request_headers["Referer"], "https://course.example.com/lesson/index.html")
+
     def test_page_scan_extracts_flv_direct_urls(self) -> None:
         resources = extract_media_resources_from_text(
             "window.playUrl='https://cdn.example.com/live/lesson.flv?token=abc';",
