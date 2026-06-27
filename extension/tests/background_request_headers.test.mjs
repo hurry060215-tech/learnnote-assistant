@@ -318,7 +318,15 @@ assert.ok(guessedManifest.score <= 72, "manifest guesses must stay below verifie
 const cookieUrls = context.cookieUrlsForContext(
   {
     page_url: "https://course.example.com/top",
-    active_video: { src: "blob:https://course.example.com/active" }
+    active_video: {
+      src: "blob:https://course.example.com/active",
+      frame_url: "https://player.example.com/embed/active"
+    },
+    frames: [
+      { frame_id: 0, page_url: "https://course.example.com/top" },
+      { frame_id: 7, page_url: "https://player.example.com/embed/1" },
+      { frame_id: 9, page_url: "about:blank" }
+    ]
   },
   { url: "https://course.example.com/tab" },
   [
@@ -331,6 +339,10 @@ const cookieUrls = context.cookieUrlsForContext(
       request_headers: {
         Referer: "https://player.example.com/embed/1?lesson=42",
         Origin: "https://course.example.com"
+      },
+      headers: {
+        Location: "https://media.example.net/redirected/master.m3u8",
+        "content-location": "/relative/media.mp4"
       }
     }
   ]
@@ -340,9 +352,11 @@ assert.deepEqual(Array.from(cookieUrls), [
   "https://course.example.com/top",
   "https://course.example.com/tab",
   "https://course.example.com",
+  "https://player.example.com/embed/active",
+  "https://player.example.com/embed/1",
   "https://cdn.example.com/live/master.m3u8",
   "https://course.example.com/frame-page",
-  "https://player.example.com/embed/1",
   "https://player.example.com",
-  "https://player.example.com/embed/1?lesson=42"
+  "https://player.example.com/embed/1?lesson=42",
+  "https://media.example.net/redirected/master.m3u8"
 ]);

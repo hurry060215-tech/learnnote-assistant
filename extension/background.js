@@ -769,6 +769,10 @@ function cookieUrlsForContext(page = {}, tab = {}, resources = []) {
   add(page.page_url);
   add(tab.url);
   add(page.active_video?.src);
+  add(page.active_video?.frame_url);
+  for (const frame of page.frames || []) {
+    add(frame.page_url);
+  }
 
   for (const resource of resources || []) {
     add(resource.url);
@@ -779,6 +783,10 @@ function cookieUrlsForContext(page = {}, tab = {}, resources = []) {
     const headers = resource.request_headers || {};
     for (const [name, value] of Object.entries(headers)) {
       if (/^(referer|origin)$/i.test(name)) add(value);
+    }
+    const responseHeaders = resource.headers || {};
+    for (const [name, value] of Object.entries(responseHeaders)) {
+      if (/^(location|content-location)$/i.test(name)) add(value);
     }
   }
   return urls;
