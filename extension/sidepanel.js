@@ -329,6 +329,7 @@ function selectedResourceReport(item = selectedResource()) {
     `置信度: ${confidence.label} - ${confidence.detail}`,
     `选择依据: ${resourceReasonText(item) || requestEvidence(item) || "-"}`,
     `请求证据: ${requestEvidence(item) || "-"}`,
+    `响应证据: ${responseEvidenceLine(item) || "-"}`,
     `复用请求头: ${requestHeaderNames(item)}`,
     `预检: ${resourcePreflightLine(checked)}`
   ].join("\n");
@@ -789,6 +790,20 @@ function requestEvidence(item) {
     contentDispositionHint(item.headers?.["content-disposition"]),
     item.frame_id !== null && item.frame_id !== undefined ? `frame ${item.frame_id}` : "",
     item.mime || ""
+  ].filter(Boolean).join(" · ");
+}
+
+function responseEvidenceLine(item) {
+  if (!item) return "";
+  const headers = item.headers || {};
+  const contentType = headers["content-type"] || item.mime || "";
+  return [
+    item.status_code ? `HTTP ${item.status_code}` : "",
+    contentType,
+    contentDispositionHint(headers["content-disposition"]),
+    fmtBytes(item.content_length),
+    headers["content-range"] ? `range ${headers["content-range"]}` : "",
+    headers["accept-ranges"] ? `accept-ranges ${headers["accept-ranges"]}` : ""
   ].filter(Boolean).join(" · ");
 }
 
@@ -1452,6 +1467,7 @@ function renderInspector() {
     <span>候选置信度：${escapeHtml(confidence.label)} · ${escapeHtml(confidence.detail)}</span>
     ${resourceReasonText(item) ? `<span>选择依据：${escapeHtml(resourceReasonText(item))}</span>` : ""}
     <span>${escapeHtml(requestEvidence(item) || "无请求证据")}</span>
+    ${responseEvidenceLine(item) ? `<span>响应证据：${escapeHtml(responseEvidenceLine(item))}</span>` : ""}
     ${item.blob_url ? `<span>播放 blob：${escapeHtml(item.blob_url)}</span>` : ""}
     ${item.frame_url ? `<span>所在 frame：${escapeHtml(item.frame_url)}</span>` : ""}
     <span>复用请求头：${escapeHtml(requestHeaderNames(item))}</span>
@@ -1604,6 +1620,7 @@ function renderContext() {
           item.frame_id !== null && item.frame_id !== undefined ? `frame ${item.frame_id}` : "",
           item.mime || "unknown"
         ].filter(Boolean).join(" · "))}</small>
+        ${responseEvidenceLine(item) ? `<small class="resource-response-evidence">${escapeHtml(responseEvidenceLine(item))}</small>` : ""}
       </span>
       <span class="confidence">${item.score || 0}%</span>
     </button>

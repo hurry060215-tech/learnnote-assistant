@@ -439,6 +439,27 @@ assert.match(context.requestEvidence({
   source: "pageHookPlayer",
   label: "jwplayer setup"
 }), /jwplayer 已加载源地址/);
+assert.match(context.responseEvidenceLine({
+  status_code: 200,
+  mime: "application/octet-stream",
+  content_length: 123456,
+  headers: {
+    "content-disposition": "attachment; filename*=UTF-8''lesson%20download.mp4",
+    "content-range": "bytes 0-123455/123456"
+  }
+}), /HTTP 200.*application\/octet-stream.*filename lesson download\.mp4.*120\.6 KB.*range bytes 0-123455\/123456/);
+assert.match(context.selectedResourceReport({
+  kind: "video",
+  source: "webRequest",
+  label: "header named",
+  url: "https://cdn.example.com/download?id=1",
+  mime: "application/octet-stream",
+  status_code: 200,
+  content_length: 123456,
+  headers: {
+    "content-disposition": "attachment; filename*=UTF-8''lesson%20download.mp4"
+  }
+}), /HTTP 200.*filename lesson download\.mp4/);
 assert.match(context.resourceTagHtml({
   kind: "hls",
   source: "webRequest",

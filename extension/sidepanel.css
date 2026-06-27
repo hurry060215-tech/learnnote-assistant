@@ -1005,6 +1005,11 @@ small,
   white-space: nowrap;
 }
 
+.resource-response-evidence {
+  color: var(--ink);
+  opacity: 0.82;
+}
+
 .confidence {
   min-width: 42px;
   height: 26px;
