@@ -2152,6 +2152,15 @@ button:disabled {
   color: var(--success);
 }
 
+.failed-media-callout {
+  border-color: rgba(217, 45, 32, 0.24);
+  background: rgba(217, 45, 32, 0.07);
+}
+
+.failed-media-callout strong {
+  color: var(--danger);
+}
+
 .failure-guide {
   margin-bottom: 14px;
   border: 1px solid rgba(196, 122, 5, 0.28);

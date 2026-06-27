@@ -372,6 +372,25 @@ assert.match(taskOverviewHtml, /data-rerun-from-media="side-overview"/);
 assert.match(taskOverviewHtml, /已完成直取下载/);
 assert.doesNotMatch(taskOverviewHtml, /<script>bad/);
 assert.match(taskOverviewHtml, /&lt;script&gt;bad\(\)&lt;\/script&gt; 课程/);
+
+const failedMediaOverviewHtml = context.taskOverview({
+  id: "side-failed-media",
+  title: "Downloaded but processing failed",
+  source_type: "current_page",
+  status: "failed",
+  phase: "failed",
+  progress: 100,
+  media_path: "D:/media.mp4",
+  note_path: "",
+  error_code: "processing_failed",
+  error_detail: "Whisper failed",
+  selected_resource: { kind: "video", source: "webRequest" },
+  options: {},
+  visual_windows: []
+});
+assert.match(failedMediaOverviewHtml, /data-rerun-from-media="side-failed-media"/);
+assert.match(failedMediaOverviewHtml, /Whisper failed/);
+
 const fallbackOverviewHtml = context.taskOverview({
   id: "side-fallback",
   title: "直取失败课程",
@@ -401,6 +420,18 @@ assert.equal(context.hasTaskBundle({}), false);
 assert.equal(context.hasTaskDiagnostics({ selected_resource: { kind: "video" } }), true);
 assert.equal(context.hasTaskDiagnostics({ summary_diagnostics_path: "summary.json" }), true);
 assert.equal(context.hasTaskDiagnostics({}), false);
+assert.equal(context.canContinueFromDownloadedMedia({
+  id: "side-failed-media",
+  status: "failed",
+  media_path: "D:/media.mp4",
+  note_path: ""
+}), true);
+assert.equal(context.canContinueFromDownloadedMedia({
+  id: "side-running-media",
+  status: "running",
+  media_path: "D:/media.mp4",
+  note_path: ""
+}), false);
 const diagnosticRecoveryHtml = context.diagnosticRecoveryHtml({
   id: "side-recovery",
   status: "success",

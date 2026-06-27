@@ -548,6 +548,18 @@ assert.equal(context.canContinueFromDownloadedMedia({
   note_path: ""
 }), true);
 assert.equal(context.canContinueFromDownloadedMedia({
+  id: "task-processing-failed",
+  status: "failed",
+  media_path: "D:/media.mp4",
+  note_path: ""
+}), true);
+assert.equal(context.canContinueFromDownloadedMedia({
+  id: "task-running",
+  status: "running",
+  media_path: "D:/media.mp4",
+  note_path: ""
+}), false);
+assert.equal(context.canContinueFromDownloadedMedia({
   id: "task-noted",
   status: "success",
   media_path: "D:/media.mp4",
@@ -569,6 +581,24 @@ context.updateContinueFromMediaAction({
 });
 assert.equal(elements.get("#continueFromMediaButton").hidden, true);
 assert.equal(elements.get("#continueFromMediaButton").disabled, true);
+
+const failedMediaOverviewHtml = context.taskOverview({
+  id: "task-failed-media",
+  title: "Downloaded but processing failed",
+  source_type: "current_page",
+  status: "failed",
+  phase: "failed",
+  progress: 100,
+  media_path: "D:/media.mp4",
+  note_path: "",
+  error_code: "processing_failed",
+  error_detail: "Whisper failed",
+  selected_resource: { kind: "video", source: "webRequest" },
+  options: {},
+  visual_windows: []
+});
+assert.match(failedMediaOverviewHtml, /data-rerun-from-media="task-failed-media"/);
+assert.match(failedMediaOverviewHtml, /Whisper failed/);
 
 const taskChipsHtml = context.taskChipsHtml({
   title: "<script>bad()</script>",

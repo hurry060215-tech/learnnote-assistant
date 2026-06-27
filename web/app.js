@@ -1337,7 +1337,8 @@ function hasTaskDiagnostics(task) {
 }
 
 function canContinueFromDownloadedMedia(task) {
-  return Boolean(task?.id && task.status === "success" && task.media_path && !task.note_path);
+  const finished = task?.status === "success" || task?.status === "failed";
+  return Boolean(task?.id && finished && task.media_path && !task.note_path);
 }
 
 function updateContinueFromMediaAction(task) {
@@ -1356,7 +1357,9 @@ function taskOverview(task) {
   const hasBundle = hasTaskBundle(task);
   const statusClass = taskStatusClass(task);
   const downloadOnly = hasMedia && !hasNote && task.status === "success";
+  const canContinueMedia = canContinueFromDownloadedMedia(task);
   const fallbackNote = task.status === "failed" && hasNote;
+  const failedWithoutFallback = task.status === "failed" && !fallbackNote;
   const resourceLine = [
     sourceText(task),
     selected.kind || task.source_type || "",
@@ -1366,7 +1369,7 @@ function taskOverview(task) {
     selected.content_length ? fmtBytes(selected.content_length) : ""
   ].filter(Boolean).join(" · ");
   const actionLinks = [
-    downloadOnly ? `<button type="button" data-rerun-from-media="${escapeHtml(task.id)}">生成完整笔记</button>` : "",
+    canContinueMedia ? `<button type="button" data-rerun-from-media="${escapeHtml(task.id)}">生成完整笔记</button>` : "",
     hasNote ? `<a href="${escapeHtml(taskExportUrl(task, "markdown"))}">导出 Markdown</a>` : "",
     hasMedia ? `<a href="${escapeHtml(taskExportUrl(task, "media"))}">导出本地视频</a>` : "",
     hasTaskDiagnostics(task) ? `<a href="${escapeHtml(taskExportUrl(task, "diagnostics"))}">导出诊断</a>` : "",
@@ -1397,6 +1400,10 @@ function taskOverview(task) {
     ${fallbackNote ? `<div class="download-only-callout fallback-note-callout">
       <strong>已生成兜底笔记</strong>
       <span>视频直取失败，但已用页面文本/浏览器字幕生成可读笔记；诊断仍保留原始下载错误和资源证据。</span>
+    </div>` : ""}
+    ${failedWithoutFallback ? `<div class="download-only-callout failed-media-callout">
+      <strong>${escapeHtml(task.error_code || "任务失败")}</strong>
+      <span>${escapeHtml(task.error_detail || "请查看诊断里的下载尝试和处理日志。")}</span>
     </div>` : ""}
   </section>`;
 }

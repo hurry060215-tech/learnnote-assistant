@@ -2124,7 +2124,8 @@ function hasTaskDiagnostics(task) {
 }
 
 function canContinueFromDownloadedMedia(task = currentTask) {
-  return Boolean(task?.id && task.status === "success" && task.media_path && !task.note_path);
+  const finished = task?.status === "success" || task?.status === "failed";
+  return Boolean(task?.id && finished && task.media_path && !task.note_path);
 }
 
 function updateContinueFromMediaAction(task = currentTask) {
@@ -2143,6 +2144,7 @@ function taskOverview(task) {
   const hasBundle = hasTaskBundle(task);
   const statusClass = taskStatusClass(task);
   const fallbackNote = task.status === "failed" && hasNote;
+  const canContinueMedia = canContinueFromDownloadedMedia(task);
   const resourceLine = [
     taskSourceText(task),
     selected.kind || task.source_type || "",
@@ -2167,7 +2169,7 @@ function taskOverview(task) {
       <div class="stage-rail inline">${PIPELINE_STEPS.map(step => `<span class="${stepState(task, step)}">${step.label}</span>`).join("")}</div>
     </div>
     <div class="task-overview-actions">
-      ${downloadOnly ? `<button type="button" data-rerun-from-media="${escapeHtml(task.id)}">生成完整笔记</button>` : ""}
+      ${canContinueMedia ? `<button type="button" data-rerun-from-media="${escapeHtml(task.id)}">生成完整笔记</button>` : ""}
       ${actionLinks || `<span>${escapeHtml(taskStatusText(task))}</span>`}
     </div>
     <div class="task-overview-metrics">
