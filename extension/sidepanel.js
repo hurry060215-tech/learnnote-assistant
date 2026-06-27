@@ -1347,7 +1347,31 @@ async function preflightSelectedResource({ silent = false } = {}) {
 }
 
 async function runPreflight() {
-  await preflightSelectedResource();
+  if (!HAS_EXTENSION_API) {
+    els.taskMessage.textContent = "请在 Chrome/Edge 扩展 Side Panel 中预检当前页视频。";
+    return null;
+  }
+  els.preflightButton.disabled = true;
+  els.summarizeButton.disabled = true;
+  if (els.downloadOnlyButton) els.downloadOnlyButton.disabled = true;
+  try {
+    els.taskMessage.textContent = "正在刷新当前播放页和媒体候选...";
+    const refreshed = await collect();
+    if (!refreshed || !page) {
+      els.taskMessage.textContent = "刷新当前页面失败，无法预检最新播放资源；请重新打开页面或刷新后再试。";
+      return null;
+    }
+    const candidates = preflightCandidatesForStart("video");
+    if (!candidates.length) {
+      els.taskMessage.textContent = "没有可预检的直取候选；继续播放几秒后重新检测，或上传本地视频。";
+      return null;
+    }
+    return await preflightBestResource("video");
+  } finally {
+    els.preflightButton.disabled = false;
+    els.summarizeButton.disabled = false;
+    if (els.downloadOnlyButton) els.downloadOnlyButton.disabled = false;
+  }
 }
 
 async function uploadLocal() {
