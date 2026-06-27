@@ -776,6 +776,41 @@ small,
   color: var(--muted);
 }
 
+.resource-confidence {
+  width: fit-content;
+  max-width: 100%;
+  display: block;
+  overflow: hidden;
+  margin-top: 5px;
+  border-radius: 6px;
+  padding: 3px 7px;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resource-confidence.high {
+  background: rgba(20, 150, 74, 0.12);
+  color: var(--success);
+}
+
+.resource-confidence.medium {
+  background: #eaf2ff;
+  color: var(--accent);
+}
+
+.resource-confidence.low {
+  background: rgba(196, 122, 5, 0.12);
+  color: var(--warning);
+}
+
+.resource-confidence.muted {
+  background: #eef2f7;
+  color: var(--muted);
+}
+
 .resource-attempt-queue {
   display: grid;
   gap: 7px;
