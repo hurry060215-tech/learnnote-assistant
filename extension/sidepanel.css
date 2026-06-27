@@ -1793,10 +1793,11 @@ input[type="file"] {
 
 .history-task {
   width: 100%;
-  min-height: 54px;
+  min-height: 84px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: 76px minmax(0, 1fr);
   gap: 8px;
+  align-items: start;
   justify-content: stretch;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -1813,6 +1814,76 @@ input[type="file"] {
   border-color: var(--accent);
   background: #f8fbff;
   box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.history-task-preview {
+  position: relative;
+  width: 76px;
+  height: 58px;
+  overflow: hidden;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.history-task-preview img,
+.history-task-preview > div {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  object-fit: cover;
+}
+
+.history-task-preview > div {
+  background:
+    linear-gradient(135deg, rgba(22, 119, 255, 0.12), rgba(20, 150, 74, 0.08)),
+    #f8fafc;
+  color: var(--accent);
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.history-task-preview.status-failed > div {
+  background: rgba(217, 45, 32, 0.08);
+  color: var(--danger);
+}
+
+.history-task-preview.status-running > div {
+  background: rgba(196, 122, 5, 0.1);
+  color: var(--warning);
+}
+
+.history-task-preview figcaption {
+  position: absolute;
+  inset: auto 4px 4px;
+  display: grid;
+  gap: 1px;
+  border-radius: 6px;
+  background: rgba(16, 24, 40, 0.74);
+  padding: 3px 4px;
+  color: #fff;
+  line-height: 1.12;
+}
+
+.history-task-preview figcaption b,
+.history-task-preview figcaption span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-task-preview figcaption b {
+  font-size: 9px;
+  font-weight: 900;
+}
+
+.history-task-preview figcaption span {
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 8px;
+  font-weight: 760;
 }
 
 .history-task strong,
@@ -1860,27 +1931,6 @@ input[type="file"] {
 }
 
 .history-task.status-failed .history-task-chips em:last-child {
-  background: rgba(217, 45, 32, 0.1);
-  color: var(--danger);
-}
-
-.history-task b {
-  width: 26px;
-  height: 24px;
-  display: grid;
-  place-items: center;
-  border-radius: 7px;
-  background: #e7edf6;
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.history-task.status-success b {
-  background: rgba(20, 150, 74, 0.12);
-  color: var(--success);
-}
-
-.history-task.status-failed b {
   background: rgba(217, 45, 32, 0.1);
   color: var(--danger);
 }

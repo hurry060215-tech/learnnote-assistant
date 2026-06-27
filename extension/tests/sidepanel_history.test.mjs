@@ -40,7 +40,10 @@ const task = {
   note_path: "note.md",
   media_path: "media.mp4",
   download_attempts: [{ strategy: "manifest-ffmpeg" }],
-  visual_windows: [{ id: "W001" }, { id: "W002" }]
+  visual_windows: [
+    { id: "W001", start: 0, end: 180, frame_count: 9, grid_url: "/api/tasks/task-history-1/assets/grid_000.jpg" },
+    { id: "W002", start: 180, end: 360, frame_count: 9, grid_url: "/api/tasks/task-history-1/assets/grid_001.jpg" }
+  ]
 };
 
 const failedTask = {
@@ -100,6 +103,9 @@ await new Promise(resolve => setTimeout(resolve, 0));
 
 assert.match(elements.get("#taskHistory").innerHTML, /History lesson/);
 assert.match(elements.get("#taskHistory").innerHTML, /直取/);
+assert.match(elements.get("#taskHistory").innerHTML, /history-task-preview status-success/);
+assert.match(elements.get("#taskHistory").innerHTML, /\/api\/tasks\/task-history-1\/assets\/grid_000.jpg/);
+assert.match(elements.get("#taskHistory").innerHTML, /00:00:00 - 00:03:00/);
 assert.match(elements.get("#taskHistory").innerHTML, /history-task-chips/);
 assert.match(elements.get("#taskHistory").innerHTML, /2 窗口/);
 assert.match(elements.get("#taskHistory").innerHTML, /1 次尝试/);
@@ -122,4 +128,5 @@ assert.equal(elements.get("#copyButton").disabled, true);
 assert.equal(elements.get("#diagnosticsButton").disabled, false);
 assert.equal(elements.get("#mediaButton").disabled, true);
 assert.match(elements.get("#taskHistory").innerHTML, /Failed lesson/);
+assert.match(elements.get("#taskHistory").innerHTML, /history-task-preview status-failed empty/);
 assert.match(elements.get("#taskHistory").innerHTML, /download_forbidden/);

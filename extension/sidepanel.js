@@ -346,6 +346,38 @@ function taskHistoryChipsHtml(task = {}) {
   return `<span class="history-task-chips">${chips.map(chip => `<em>${escapeHtml(chip)}</em>`).join("")}</span>`;
 }
 
+function taskHistoryPreviewIcon(status) {
+  if (status === "success") return "看";
+  if (status === "failed") return "错";
+  if (status === "running" || status === "queued") return "跑";
+  return "LN";
+}
+
+function taskHistoryPreviewHtml(task = {}) {
+  const windows = visualWindows(task);
+  const firstWindow = windows[0];
+  const selected = task.selected_resource || {};
+  const status = taskStatusClass(task);
+  const label = firstWindow
+    ? firstWindow.id || "切片"
+    : selected.kind || (task.media_path ? "视频" : task.error_code ? "诊断" : "任务");
+  const detail = firstWindow
+    ? `${fmt(firstWindow.start)} - ${fmt(firstWindow.end)}`
+    : task.media_path
+      ? "media.mp4"
+      : task.error_code || taskStatusText(task);
+  if (firstWindow?.grid_url) {
+    return `<figure class="history-task-preview status-${escapeHtml(status)}">
+      <img src="${escapeHtml(firstWindow.grid_url)}" alt="${escapeHtml(firstWindow.id || "frame grid")}">
+      <figcaption><b>${escapeHtml(label)}</b><span>${escapeHtml(detail)}</span></figcaption>
+    </figure>`;
+  }
+  return `<figure class="history-task-preview status-${escapeHtml(status)} empty">
+    <div>${escapeHtml(taskHistoryPreviewIcon(task.status))}</div>
+    <figcaption><b>${escapeHtml(label)}</b><span>${escapeHtml(detail)}</span></figcaption>
+  </figure>`;
+}
+
 function renderTaskHistory() {
   if (!els.taskHistory) return;
   const visible = taskHistory.slice(0, 6);
@@ -357,12 +389,12 @@ function renderTaskHistory() {
   els.taskHistory.className = "task-history";
   els.taskHistory.innerHTML = visible.map(task => `
     <button class="history-task status-${escapeHtml(task.status || "unknown")} ${task.id === currentTaskId ? "selected" : ""}" data-id="${escapeHtml(task.id)}">
+      ${taskHistoryPreviewHtml(task)}
       <span>
         <strong>${escapeHtml(task.title || task.id)}</strong>
         <small>${escapeHtml(taskSourceText(task))} · ${escapeHtml(taskStatusText(task))} · ${task.progress || 0}%</small>
         ${taskHistoryChipsHtml(task)}
       </span>
-      <b>${task.status === "success" ? "看" : task.status === "failed" ? "错" : "跑"}</b>
     </button>
   `).join("");
   document.querySelectorAll(".history-task").forEach(button => {
