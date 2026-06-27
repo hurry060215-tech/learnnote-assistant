@@ -824,10 +824,11 @@ select:focus {
 
 .task {
   width: 100%;
-  min-height: 100px;
+  min-height: 116px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
+  grid-template-columns: 92px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
   padding: 12px;
   text-align: left;
 }
@@ -840,6 +841,76 @@ select:focus {
   border-color: #8eb1ff;
   background: #f3f8ff;
   box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.task-preview {
+  position: relative;
+  width: 92px;
+  height: 72px;
+  overflow: hidden;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.task-preview img,
+.task-preview > div {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  object-fit: cover;
+}
+
+.task-preview > div {
+  background:
+    linear-gradient(135deg, rgba(22, 119, 255, 0.12), rgba(20, 150, 74, 0.08)),
+    #f8fafc;
+  color: var(--accent);
+  font-size: 24px;
+  font-weight: 900;
+}
+
+.task-preview.status-failed > div {
+  background: rgba(217, 45, 32, 0.08);
+  color: var(--danger);
+}
+
+.task-preview.status-running > div {
+  background: rgba(196, 122, 5, 0.1);
+  color: var(--warning);
+}
+
+.task-preview figcaption {
+  position: absolute;
+  inset: auto 5px 5px;
+  display: grid;
+  gap: 1px;
+  border-radius: 6px;
+  background: rgba(16, 24, 40, 0.74);
+  padding: 4px 5px;
+  color: #fff;
+  line-height: 1.15;
+}
+
+.task-preview figcaption b,
+.task-preview figcaption span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-preview figcaption b {
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.task-preview figcaption span {
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 9px;
+  font-weight: 760;
 }
 
 .task strong {
@@ -2515,9 +2586,21 @@ select {
 
 .task {
   min-height: 112px;
+  grid-template-columns: 96px minmax(0, 1fr) auto;
   padding: 13px;
   background: #fff;
   transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+}
+
+.task-preview {
+  width: 96px;
+  height: 74px;
+  border-color: #dbe5f0;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.38);
+}
+
+.task-preview img {
+  filter: saturate(1.02) contrast(1.02);
 }
 
 .task:hover {
@@ -2757,6 +2840,16 @@ select {
     max-height: 430px;
     overflow-y: auto;
     padding-right: 2px;
+  }
+
+  .task {
+    grid-template-columns: 78px minmax(0, 1fr) auto;
+    gap: 10px;
+  }
+
+  .task-preview {
+    width: 78px;
+    height: 62px;
   }
 
   .result-panel {
