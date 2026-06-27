@@ -1583,6 +1583,7 @@ class MediaDownloader:
 
         try:
             with requests.get(candidate.url, headers=probe_headers, stream=True, timeout=15, allow_redirects=True) as response:
+                _update_candidate_from_download_response(candidate, response)
                 body = _read_probe_bytes(response)
                 content_type = response.headers.get("content-type", "")
                 if response.status_code in {401, 403}:
@@ -1593,6 +1594,10 @@ class MediaDownloader:
                     raise DownloadError("auth_required", "manifest URL returned a login/error page instead of an HLS/DASH manifest.")
 
                 text = body.decode("utf-8", errors="ignore")
+                manifest_kind, manifest_mime = _manifest_kind_from_body(text, content_type)
+                if manifest_kind == kind:
+                    candidate.kind = manifest_kind
+                    candidate.mime = manifest_mime or candidate.mime
                 if kind == "hls" and re.search(r"#EXT-X-KEY:[^\n]*(SAMPLE-AES|skd://|widevine|fairplay)", text, re.I):
                     raise DownloadError("drm_or_encrypted", "HLS manifest appears to use DRM/encrypted streaming.")
                 if kind == "dash" and re.search(r"ContentProtection|widevine|playready|urn:uuid", text, re.I):
