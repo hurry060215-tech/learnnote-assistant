@@ -263,6 +263,65 @@ function requestHeaderNames(resource) {
     .join(", ") || "-";
 }
 
+function resourcePreflightLine(result = null) {
+  if (!result) return "未预检";
+  return [
+    result.downloadable ? "通过" : result.code || "未通过",
+    result.strategy || "",
+    result.status_code ? `HTTP ${result.status_code}` : "",
+    result.content_type || "",
+    fmtBytes(result.content_length) || (result.bytes_checked ? `${result.bytes_checked} B` : "")
+  ].filter(Boolean).join(" · ");
+}
+
+function selectedResourceReport(item = selectedResource()) {
+  if (!item) return "";
+  const confidence = candidateConfidence(item);
+  const checked = preflightForResource(item);
+  return [
+    `LearnNote 候选资源：${item.label || item.kind || "media"}`,
+    `URL: ${item.url}`,
+    `类型: ${item.kind || "unknown"}`,
+    `下载策略: ${candidateStrategyText(item)}`,
+    `下载顺序: 第 ${candidateTryOrder(item) || "-"} 顺位`,
+    `置信度: ${confidence.label} - ${confidence.detail}`,
+    `选择依据: ${resourceReasonText(item) || requestEvidence(item) || "-"}`,
+    `请求证据: ${requestEvidence(item) || "-"}`,
+    `复用请求头: ${requestHeaderNames(item)}`,
+    `预检: ${resourcePreflightLine(checked)}`
+  ].join("\n");
+}
+
+async function copyTextToClipboard(text, successMessage) {
+  if (!text) return false;
+  try {
+    await navigator.clipboard.writeText(text);
+    els.taskMessage.textContent = successMessage;
+    return true;
+  } catch (error) {
+    els.taskMessage.textContent = error?.message ? `复制失败：${error.message}` : "复制失败，请手动复制。";
+    return false;
+  }
+}
+
+async function copySelectedResourceUrl() {
+  const item = selectedResource();
+  if (!item?.url) {
+    els.taskMessage.textContent = "没有可复制的候选资源。";
+    return false;
+  }
+  return copyTextToClipboard(item.url, "已复制候选资源 URL。");
+}
+
+async function copySelectedResourceReport() {
+  const report = selectedResourceReport();
+  if (!report) {
+    els.taskMessage.textContent = "没有可复制的候选证据。";
+    return false;
+  }
+  return copyTextToClipboard(report, "已复制候选资源证据摘要。");
+}
+
 function summaryDiagnosticText(task) {
   const diag = task?.summary_diagnostics || {};
   if (!Object.keys(diag).length) return "-";
@@ -1251,6 +1310,10 @@ function renderInspector() {
   const confidence = candidateConfidence(item);
   els.resourceInspector.innerHTML = `
     <strong>${escapeHtml(directnessText(item))}</strong>
+    <div class="resource-inspector-actions">
+      <button type="button" data-copy-resource-url>复制链接</button>
+      <button type="button" data-copy-resource-report>复制证据</button>
+    </div>
     <span>下载顺序：第 ${escapeHtml(candidateTryOrder(item) || "-")} 顺位 · ${escapeHtml(candidateStrategyText(item))}</span>
     <span>候选置信度：${escapeHtml(confidence.label)} · ${escapeHtml(confidence.detail)}</span>
     ${resourceReasonText(item) ? `<span>选择依据：${escapeHtml(resourceReasonText(item))}</span>` : ""}
@@ -1258,7 +1321,7 @@ function renderInspector() {
     ${item.blob_url ? `<span>播放 blob：${escapeHtml(item.blob_url)}</span>` : ""}
     ${item.frame_url ? `<span>所在 frame：${escapeHtml(item.frame_url)}</span>` : ""}
     <span>复用请求头：${escapeHtml(requestHeaderNames(item))}</span>
-    ${checked ? `<span>预检：${escapeHtml(checked.downloadable ? "通过" : checked.code || "未通过")} · ${escapeHtml(checked.status_code ? `HTTP ${checked.status_code}` : checked.strategy || "")} · ${escapeHtml(checked.content_type || "")} · ${escapeHtml(fmtBytes(checked.content_length) || `${checked.bytes_checked || 0} B`)}</span>` : ""}
+    ${checked ? `<span>预检：${escapeHtml(resourcePreflightLine(checked))}</span>` : ""}
     ${checked ? `<span>下一步：${escapeHtml(preflightRecoveryText(checked))}</span>` : ""}
     ${checked?.warnings?.length ? `<span>提示：${escapeHtml(checked.warnings.join("；"))}</span>` : ""}
     <code>${escapeHtml(item.url)}</code>
@@ -2225,6 +2288,15 @@ els.localDrop.addEventListener("drop", event => {
     els.fileInput.files = event.dataTransfer.files;
     els.localDropText.textContent = event.dataTransfer.files[0].name;
     uploadLocal();
+  }
+});
+els.resourceInspector.addEventListener("click", event => {
+  if (event.target.closest("[data-copy-resource-url]")) {
+    copySelectedResourceUrl();
+    return;
+  }
+  if (event.target.closest("[data-copy-resource-report]")) {
+    copySelectedResourceReport();
   }
 });
 els.copyButton.onclick = () => navigator.clipboard.writeText(lastNote || "");
