@@ -75,7 +75,13 @@ const script = new FakeElement("script", {
 const plainEncodedScript = new FakeElement("script", {
   textContent: "window.__payload='https%3A%2F%2Fcdn.example.com%2Fstatic%2Fplain-master.m3u8%3Ftoken%3Dplain%26uid%3D1';"
 });
-const html = new FakeElement("html", {}, [player, packedPlayer, script, plainEncodedScript]);
+const onclickPlayer = new FakeElement("button", {
+  onclick: "openPlayer('https%3A%2F%2Fcdn.example.com%2Fstatic%2Fonclick-master.m3u8%3Ftoken%3Dclick')"
+});
+const paramPlayer = new FakeElement("div", {
+  "data-params": "objectid=ignored&play=https%3A%2F%2Fcdn.example.com%2Fstatic%2Fparam-lesson.mp4%3Ftoken%3Dparam"
+});
+const html = new FakeElement("html", {}, [player, packedPlayer, onclickPlayer, paramPlayer, script, plainEncodedScript]);
 
 let messageListener = null;
 const context = {
@@ -142,6 +148,8 @@ const dash = response.resources.find(item => item.url === "https://cdn.example.c
 const video = response.resources.find(item => item.url === "https://cdn.example.com/static/lesson.mp4?token=script");
 const flv = response.resources.find(item => item.url === "https://cdn.example.com/static/live.flv?token=script");
 const plainHls = response.resources.find(item => item.url === "https://cdn.example.com/static/plain-master.m3u8?token=plain&uid=1");
+const onclickHls = response.resources.find(item => item.url === "https://cdn.example.com/static/onclick-master.m3u8?token=click");
+const paramVideo = response.resources.find(item => item.url === "https://cdn.example.com/static/param-lesson.mp4?token=param");
 
 assert.ok(hls, "expected data-play-url media hint to expose encoded HLS URL");
 assert.equal(hls.kind, "hls");
@@ -167,3 +175,13 @@ assert.ok(plainHls, "expected inline script encoded URL scan to expose HLS URL w
 assert.equal(plainHls.kind, "hls");
 assert.equal(plainHls.source, "scriptHint");
 assert.match(plainHls.label, /encoded url/);
+
+assert.ok(onclickHls, "expected onclick handler scan to expose embedded encoded HLS URL");
+assert.equal(onclickHls.kind, "hls");
+assert.equal(onclickHls.source, "domHint");
+assert.match(onclickHls.label, /onclick encoded url/);
+
+assert.ok(paramVideo, "expected data-params scan to expose embedded encoded mp4 URL");
+assert.equal(paramVideo.kind, "video");
+assert.equal(paramVideo.source, "domHint");
+assert.match(paramVideo.label, /data-params encoded url/);

@@ -12,11 +12,23 @@ const STATIC_MEDIA_ATTRS = [
   "data-media-url",
   "data-stream-url",
   "data-hls-url",
+  "data-player",
+  "data-player-config",
+  "data-config",
+  "data-options",
+  "data-param",
+  "data-params",
+  "data-info",
+  "data-other",
+  "data-otherinfo",
+  "data-objectid",
+  "data-dtoken",
   "data-m3u8",
   "data-mpd",
   "data-file",
   "data-source",
   "data-sources",
+  "onclick",
   "value"
 ];
 const STATIC_MEDIA_SELECTOR = STATIC_MEDIA_ATTRS.map(name => `[${name}]`).join(",");
@@ -193,6 +205,7 @@ function resource(url, source, label, mime = "", video = null, isMainVideo = fal
 
 function collectEncodedTextResources(text, source, label, seen = new Set()) {
   const resources = [];
+  ENCODED_MEDIA_URL_RE.lastIndex = 0;
   for (const match of String(text || "").matchAll(ENCODED_MEDIA_URL_RE)) {
     for (const candidate of decodedValues(match[0] || "")) {
       const item = resource(candidate, source, label, mimeFromHint(candidate));
@@ -204,6 +217,7 @@ function collectEncodedTextResources(text, source, label, seen = new Set()) {
     }
     if (resources.length >= 40) break;
   }
+  ENCODED_MEDIA_URL_RE.lastIndex = 0;
   return resources;
 }
 
@@ -368,13 +382,20 @@ function readAttribute(element, name) {
 
 function collectStaticAttributeResources() {
   const resources = [];
+  const seen = new Set();
   for (const element of deepQuerySelectorAll(STATIC_MEDIA_SELECTOR, document, 1200)) {
     const tag = String(element.tagName || "element").toLowerCase();
     for (const attr of STATIC_MEDIA_ATTRS) {
       const value = readAttribute(element, attr);
       if (!value) continue;
       const item = resourceFromHint(value, "domHint", `${tag} ${attr}`, attr);
-      if (item) resources.push(item);
+      if (item && !seen.has(item.url)) {
+        seen.add(item.url);
+        resources.push(item);
+      }
+      for (const encodedItem of collectEncodedTextResources(value, "domHint", `${tag} ${attr} encoded url`, seen)) {
+        resources.push(encodedItem);
+      }
     }
   }
   return resources;
