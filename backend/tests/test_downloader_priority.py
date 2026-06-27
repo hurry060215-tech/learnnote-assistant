@@ -217,6 +217,10 @@ class DownloaderPriorityTests(unittest.TestCase):
                 self.assertIsNotNone(selected)
                 self.assertEqual(selected.url, media_url)
                 self.assertEqual(downloader.attempts[0].status, "success")
+                self.assertIn("候选证据", downloader.attempts[0].message)
+                self.assertIn("请求头 Origin, Referer, User-Agent", downloader.attempts[0].message)
+                self.assertNotIn("AUTH=ok", downloader.attempts[0].message)
+                self.assertNotIn(HeaderGateHandler.required_user_agent, downloader.attempts[0].message)
             finally:
                 server.shutdown()
                 server.server_close()

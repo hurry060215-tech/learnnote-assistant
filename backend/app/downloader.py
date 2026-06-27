@@ -1093,6 +1093,28 @@ class MediaDownloader:
             return "direct-file"
         return f"unsupported-{kind}"
 
+    def _candidate_evidence_summary(self, candidate: ResourceCandidate | None) -> str:
+        if not candidate:
+            return ""
+        parts = [
+            candidate.is_main_video and "主视频候选",
+            candidate.playback_match and f"播放匹配 {candidate.playback_match}",
+            candidate.frame_id is not None and f"frame {candidate.frame_id}",
+            candidate.status_code and f"HTTP {candidate.status_code}",
+            candidate.mime and f"MIME {candidate.mime}",
+            candidate.content_length and f"大小 {candidate.content_length}B",
+        ]
+        header_names = _safe_request_header_names(browser_request_headers_for_candidate(candidate))
+        if header_names:
+            parts.append(f"请求头 {', '.join(header_names)}")
+        return "；".join(str(part) for part in parts if part)
+
+    def _attempt_message(self, message: str, candidate: ResourceCandidate | None) -> str:
+        evidence = self._candidate_evidence_summary(candidate)
+        if not evidence:
+            return message
+        return f"{message}（候选证据：{evidence}）"
+
     def _record_attempt(
         self,
         strategy: str,
@@ -1113,7 +1135,7 @@ class MediaDownloader:
                 score=candidate.score if candidate else 0,
                 status=status,  # type: ignore[arg-type]
                 code=code,
-                message=message,
+                message=self._attempt_message(message, candidate),
                 output_path=str(output_path) if output_path else "",
                 bytes_downloaded=downloaded,
                 status_code=candidate.status_code if candidate else None,
