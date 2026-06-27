@@ -22,6 +22,7 @@ from app.downloader import (
     effective_resource_kind,
     extract_media_resources_from_text,
     fallback_page_urls,
+    ffmpeg_cookies_option,
     infer_manifest_url_from_fragment,
     infer_sibling_manifest_urls_from_fragment,
     score_resource,
@@ -935,6 +936,71 @@ class DownloaderBoundaryTests(unittest.TestCase):
             self.assertEqual(captured["options"]["http_headers"]["User-Agent"], "Chrome Playback UA")
             self.assertEqual(captured["options"]["http_headers"]["Referer"], "https://course.example.com/lesson/1")
             self.assertEqual(captured["options"]["http_headers"]["Origin"], "https://course.example.com")
+
+    def test_ffmpeg_cookie_option_keeps_domain_scoped_cookies(self) -> None:
+        cookie_text = ffmpeg_cookies_option(
+            [
+                BrowserCookie(name="COURSE", value="ok", domain=".course.example.com", path="/"),
+                BrowserCookie(name="CDN", value="token", domain=".cdn.example.com", path="/hls", secure=True),
+                BrowserCookie(name="BAD", value="a\nb", domain=".cdn.example.com", path="/"),
+                BrowserCookie(name="NO_DOMAIN", value="fallback", domain="", path="/"),
+            ],
+            "https://media.example.com/master.m3u8",
+        )
+
+        self.assertIn("COURSE=ok; domain=.course.example.com; path=/", cookie_text)
+        self.assertIn("CDN=token; domain=.cdn.example.com; path=/hls; secure", cookie_text)
+        self.assertIn("NO_DOMAIN=fallback; domain=media.example.com; path=/", cookie_text)
+        self.assertNotIn("BAD=", cookie_text)
+
+    def test_manifest_ffmpeg_receives_cookie_jar_and_browser_headers(self) -> None:
+        captured: dict = {}
+
+        def fake_run(cmd, capture_output, text):
+            captured["cmd"] = cmd
+            output = Path(cmd[-1])
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_bytes(b"0" * 5000)
+            return types.SimpleNamespace(returncode=0, stderr="")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            downloader = MediaDownloader(Path(tmp))
+            candidate = ResourceCandidate(
+                url="https://cdn.example.com/course/master.m3u8",
+                source="webRequest",
+                kind="hls",
+                request_headers={
+                    "User-Agent": "Chrome Playback UA",
+                    "Referer": "https://course.example.com/lesson/1",
+                    "Origin": "https://course.example.com",
+                },
+            )
+            with (
+                patch("app.downloader.ffmpeg_bin", return_value="ffmpeg"),
+                patch("app.downloader.subprocess.run", side_effect=fake_run),
+                patch.object(downloader, "_probe_manifest_before_ffmpeg"),
+            ):
+                media = downloader._download_manifest(
+                    candidate,
+                    [
+                        BrowserCookie(name="AUTH", value="ok", domain=".cdn.example.com", path="/"),
+                        BrowserCookie(name="PLAYER", value="session", domain=".media.example.com", path="/hls"),
+                    ],
+                    "https://course.example.com/lesson/1",
+                    "ffmpeg cookies",
+                )
+                self.assertTrue(media.exists())
+
+        cmd = captured["cmd"]
+        self.assertIn("-cookies", cmd)
+        cookies_arg = cmd[cmd.index("-cookies") + 1]
+        self.assertIn("AUTH=ok; domain=.cdn.example.com; path=/", cookies_arg)
+        self.assertIn("PLAYER=session; domain=.media.example.com; path=/hls", cookies_arg)
+        headers_arg = cmd[cmd.index("-headers") + 1]
+        self.assertIn("Referer: https://course.example.com/lesson/1", headers_arg)
+        self.assertIn("Origin: https://course.example.com", headers_arg)
+        self.assertNotIn("Cookie:", headers_arg)
+        self.assertEqual(cmd[cmd.index("-user_agent") + 1], "Chrome Playback UA")
 
     def test_ytdlp_fallback_accepts_flv_output(self) -> None:
         class FakeYoutubeDL:
