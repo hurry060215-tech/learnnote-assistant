@@ -679,6 +679,9 @@ const playerSourceOverview = context.taskOverview({
   visual_windows: []
 });
 assert.match(playerSourceOverview, /DPlayer 已加载源地址/);
+assert.match(playerSourceOverview, /直取来源/);
+assert.match(playerSourceOverview, /浏览器证据/);
+assert.match(playerSourceOverview, /总结证据/);
 assert.doesNotMatch(playerSourceOverview, /<script>bad/);
 
 const manifestGuessOverview = context.taskOverview({
@@ -701,6 +704,59 @@ const manifestGuessOverview = context.taskOverview({
 });
 assert.match(manifestGuessOverview, /同目录 manifest 猜测/);
 assert.match(manifestGuessOverview, /unsupported_manifest/);
+assert.match(manifestGuessOverview, /下载路线/);
+assert.match(manifestGuessOverview, /manifest-ffmpeg/);
+
+const routeEvidenceItems = context.taskRouteEvidenceItems({
+  source_type: "current_page",
+  status: "failed",
+  phase: "failed",
+  error_code: "download_forbidden",
+  selected_resource: {
+    kind: "video",
+    source: "webRequest",
+    playback_match: "same-frame",
+    mime: "video/mp4",
+    content_length: 1048576,
+    request_headers: {
+      Referer: "https://course.example.com/lesson",
+      Cookie: "secret=bad",
+      Authorization: "Bearer bad"
+    }
+  },
+  download_attempts: [
+    { strategy: "direct-file", code: "download_forbidden", message: "<script>bad()</script>" }
+  ],
+  summary_source: "local-template",
+  summary_diagnostics: {
+    used_local_template: true,
+    used_page_text_fallback: true,
+    page_text_char_count: 24,
+    browser_subtitle_count: 2,
+    combined_text_char_count: 80
+  }
+});
+assert.equal(routeEvidenceItems.length, 4);
+assert.equal(routeEvidenceItems[2].value, "Referer");
+assert.doesNotMatch(JSON.stringify(routeEvidenceItems), /secret=bad|Bearer bad/);
+assert.match(context.taskRouteEvidenceHtml({
+  source_type: "current_page",
+  selected_resource: { kind: "video", source: "webRequest" },
+  note_path: "D:/note.md",
+  download_attempts: [{ strategy: "direct-file", code: "download_forbidden" }]
+}), /route-evidence-strip/);
+assert.match(context.taskRouteEvidenceHtml({
+  source_type: "current_page",
+  selected_resource: { kind: "video", source: "webRequest" },
+  note_path: "D:/note.md",
+  download_attempts: []
+}), /已有笔记/);
+assert.match(context.taskRouteEvidenceHtml({
+  source_type: "current_page",
+  selected_resource: { kind: "video", source: "webRequest" },
+  note_path: "D:/note.md",
+  download_attempts: []
+}), /未记录总结诊断/);
 
 const routeDownloadedHtml = context.browserRouteSummaryHtml({
   id: "route-downloaded",

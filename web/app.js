@@ -1378,6 +1378,7 @@ function taskOverview(task) {
       <span><b>${escapeHtml(task.summary_source || options.whisper_model || "-")}</b>${escapeHtml(task.summary_warning ? "已降级，查看诊断" : `${options.note_style || "study"} · ${options.visual_understanding === false ? "无视觉" : "图文"}`)}</span>
       <span><b>${windows.length || "-"}</b>${windows.length ? "画面窗口" : "等待画面切片"}</span>
     </div>
+    ${taskRouteEvidenceHtml(task)}
     ${downloadOnly ? `<div class="download-only-callout">
       <strong>已完成直取下载</strong>
       <span>这个任务按“只下载本地”运行，未进入转写、切片和总结。可以先导出 media.mp4，或直接复用这个本地视频生成完整笔记。</span>
@@ -1387,6 +1388,63 @@ function taskOverview(task) {
       <span>视频直取失败，但已用页面文本/浏览器字幕生成可读笔记；诊断仍保留原始下载错误和资源证据。</span>
     </div>` : ""}
   </section>`;
+}
+
+function lastDownloadAttempt(task) {
+  const attempts = task?.download_attempts || [];
+  return attempts.length ? attempts[attempts.length - 1] : null;
+}
+
+function taskRouteEvidenceItems(task) {
+  const selected = task?.selected_resource || {};
+  const attempts = task?.download_attempts || [];
+  const lastAttempt = lastDownloadAttempt(task);
+  const headers = requestHeaderNames(selected);
+  const diag = task?.summary_diagnostics || {};
+  const summaryText = summaryDiagnosticText(task);
+  const summaryValue = task.summary_source || (diag.used_page_text_fallback ? "页面文本兜底" : task.note_path ? "已有笔记" : "待生成");
+  const summaryDetail = summaryText === "-"
+    ? (task.summary_warning || (task.note_path ? "未记录总结诊断" : "等待图文总结"))
+    : summaryText;
+  const items = [
+    {
+      label: "直取来源",
+      value: selected.kind ? `${selected.kind} · ${resourceSourceText(selected) || selected.source || "候选资源"}` : sourceText(task),
+      detail: selected.playback_match ? playbackText(selected.playback_match) : (selected.label || "页面/本地任务")
+    },
+    {
+      label: "下载路线",
+      value: attempts.length ? `${attempts.length} 次尝试` : task.media_path ? "已有本地媒体" : "等待下载",
+      detail: lastAttempt ? `${lastAttempt.strategy || "-"} · ${lastAttempt.code || lastAttempt.status || "-"}` : (task.error_code || task.phase || "-")
+    },
+    {
+      label: "浏览器证据",
+      value: headers !== "-" ? headers : selected.status_code ? `HTTP ${selected.status_code}` : "无可复用请求头",
+      detail: [
+        selected.mime || "",
+        selected.content_length ? fmtBytes(selected.content_length) : "",
+        selected.request_type || ""
+      ].filter(Boolean).join(" · ") || "Cookie 仅任务启动时同步"
+    },
+    {
+      label: "总结证据",
+      value: summaryValue,
+      detail: summaryDetail
+    }
+  ];
+  return items.filter(item => item.value || item.detail);
+}
+
+function taskRouteEvidenceHtml(task) {
+  const items = taskRouteEvidenceItems(task);
+  if (!items.length) return "";
+  return `<div class="route-evidence-strip" aria-label="直取和总结证据">
+    ${items.map(item => `<span>
+      <b>${escapeHtml(item.label)}</b>
+      <strong>${escapeHtml(item.value || "-")}</strong>
+      <small>${escapeHtml(item.detail || "-")}</small>
+    </span>`).join("")}
+  </div>`;
 }
 
 async function rerunTaskFromMedia(taskId) {
