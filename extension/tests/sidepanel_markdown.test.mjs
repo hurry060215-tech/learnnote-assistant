@@ -386,6 +386,9 @@ assert.match(context.resourceTagHtml({
     Referer: "https://course.example.com/lesson"
   }
 }), /<em>\+5<\/em>/);
+assert.equal(context.candidateStrategyText({ kind: "hls" }), "ffmpeg 合并");
+assert.equal(context.candidateStrategyText({ kind: "video" }), "直接下载");
+assert.equal(context.candidateStrategyText({ kind: "blob" }), "不可直接下载");
 
 assert.match(context.preflightRecoveryText({ code: "auth_required" }), /已登录/);
 assert.match(context.preflightRecoveryText({ code: "drm_or_encrypted" }), /不会录制/);
@@ -412,9 +415,16 @@ preflightResultsByUrl = new Map();
 `, context);
 assert.equal(context.routeSummaryState(), "candidate");
 assert.match(context.routeSummaryCopy("candidate").title, /已找到可直取候选/);
+assert.equal(context.candidateTryOrder(context.selectedResource()), 1);
+assert.match(context.resourcePriorityBadgeHtml(context.selectedResource()), /第 1 顺位/);
+assert.match(context.resourcePriorityBadgeHtml(context.selectedResource()), /ffmpeg 合并/);
 context.renderRouteSummary();
 assert.match(elements.get("#routeSummary").innerHTML, /待预检/);
 assert.doesNotMatch(elements.get("#routeSummary").innerHTML, /<script>bad/);
+context.renderContext();
+assert.match(elements.get("#resources").innerHTML, /第 1 顺位/);
+assert.match(elements.get("#resources").innerHTML, /ffmpeg 合并/);
+assert.doesNotMatch(elements.get("#resources").innerHTML, /<script>bad/);
 
 vm.runInContext(`
 preflight = { downloadable: true, kind: "hls", code: "", message: "ok" };

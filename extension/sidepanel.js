@@ -600,6 +600,28 @@ function resourceTagHtml(item, limit = 4) {
   return `<span class="resource-tags">${visible.map(tag => `<em>${escapeHtml(tag)}</em>`).join("")}${overflow > 0 ? `<em>+${overflow}</em>` : ""}</span>`;
 }
 
+function candidateStrategyText(item) {
+  if (!item) return "等待检测";
+  if (item.kind === "hls" || item.kind === "dash") return "ffmpeg 合并";
+  if (item.kind === "video") return "直接下载";
+  if (item.kind === "fragment") return "尝试推断 manifest";
+  if (item.kind === "blob") return "不可直接下载";
+  if (item.kind === "subtitle") return "字幕辅助";
+  return "后端解析";
+}
+
+function candidateTryOrder(item) {
+  if (!item?.url) return 0;
+  const index = selectedResources().findIndex(candidate => candidate.url === item.url);
+  return index >= 0 ? index + 1 : 0;
+}
+
+function resourcePriorityBadgeHtml(item) {
+  const order = candidateTryOrder(item);
+  const label = order ? `第 ${order} 顺位` : "未排序";
+  return `<span class="resource-priority">${escapeHtml(label)} · ${escapeHtml(candidateStrategyText(item))}</span>`;
+}
+
 function preflightBadgeHtml(item) {
   const result = preflightForResource(item);
   if (!result) return "";
@@ -854,6 +876,7 @@ function renderInspector() {
   els.resourceInspector.className = "resource-inspector";
   els.resourceInspector.innerHTML = `
     <strong>${escapeHtml(directnessText(item))}</strong>
+    <span>下载顺序：第 ${escapeHtml(candidateTryOrder(item) || "-")} 顺位 · ${escapeHtml(candidateStrategyText(item))}</span>
     ${resourceReasonText(item) ? `<span>选择依据：${escapeHtml(resourceReasonText(item))}</span>` : ""}
     <span>${escapeHtml(requestEvidence(item) || "无请求证据")}</span>
     ${item.blob_url ? `<span>播放 blob：${escapeHtml(item.blob_url)}</span>` : ""}
@@ -987,6 +1010,7 @@ function renderContext() {
     <button class="resource ${item.url === selectedResourceUrl ? "selected" : ""} ${isDownloadableResource(item) ? "" : "non-downloadable"} ${item.playback_match || item.is_main_video ? "playback" : ""}" data-url="${escapeHtml(item.url)}">
       <span>
         <strong>${escapeHtml(item.label || item.kind || "media")}</strong>
+        ${resourcePriorityBadgeHtml(item)}
         ${resourceTagHtml(item)}
         ${preflightBadgeHtml(item)}
         <small>${escapeHtml([
