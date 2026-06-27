@@ -566,6 +566,30 @@ small,
   color: var(--muted);
 }
 
+.resource-priority {
+  width: fit-content;
+  max-width: 100%;
+  display: block;
+  overflow: hidden;
+  margin-top: 6px;
+  border: 1px solid rgba(22, 119, 255, 0.16);
+  border-radius: 6px;
+  background: #f2f7ff;
+  padding: 3px 7px;
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resource.non-downloadable .resource-priority {
+  border-color: var(--border);
+  background: #f3f5f8;
+  color: var(--muted);
+}
+
 .resource-preflight {
   width: fit-content;
   max-width: 100%;
