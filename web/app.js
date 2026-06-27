@@ -83,6 +83,14 @@ function isSupportedLocalVideoFile(file) {
   return LOCAL_VIDEO_EXT_RE.test(file.name);
 }
 
+function apiErrorMessage(payload, fallback) {
+  const detail = payload?.detail;
+  if (typeof detail === "string" && detail.trim()) return detail.trim();
+  if (typeof detail?.message === "string" && detail.message.trim()) return detail.message.trim();
+  if (typeof payload?.message === "string" && payload.message.trim()) return payload.message.trim();
+  return fallback;
+}
+
 function inlineMarkdown(value) {
   return escapeHtml(value)
     .replace(/`([^`]+)`/g, "<code>$1</code>")
@@ -1837,7 +1845,7 @@ async function uploadSelectedFile() {
   const file = els.fileInput.files?.[0];
   if (!file) return;
   if (!isSupportedLocalVideoFile(file)) {
-    els.fileName.textContent = `${file.name} 暂不支持，请选择 mp4 / flv / avi / mkv / webm 等视频文件`;
+    els.fileName.textContent = `${file.name} 暂不支持，请选择 mp4 / m4v / mov / flv / avi / mkv / webm 等视频文件`;
     return;
   }
   const form = new FormData();
@@ -1847,7 +1855,12 @@ async function uploadSelectedFile() {
   els.uploadButton.disabled = true;
   els.uploadButton.textContent = "上传中...";
   try {
-    const data = await fetch(`${API}/api/tasks/from-local`, { method: "POST", body: form }).then(r => r.json());
+    const response = await fetch(`${API}/api/tasks/from-local`, { method: "POST", body: form });
+    const data = await response.json().catch(() => ({}));
+    if (response.ok === false || !data?.task_id) {
+      els.fileName.textContent = apiErrorMessage(data, "本地视频上传失败，请确认文件格式和后端状态。");
+      return;
+    }
     selectedTaskId = data.task_id;
     clearTaskCaches();
     await loadTasks();

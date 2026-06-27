@@ -925,3 +925,40 @@ assert.equal(localUploads[0].get("title"), "drag-local-lesson.mkv");
 assert.match(localUploads[0].get("options"), /"visual_understanding":true/);
 assert.equal(elements.get("#fileName").textContent, "drag-local-lesson.mkv");
 assert.equal(elements.get("#uploadButton").disabled, false);
+
+let rejectedUploadCalled = false;
+context.fetch = async url => {
+  const value = String(url);
+  if (value.endsWith("/api/tasks/from-local")) {
+    rejectedUploadCalled = true;
+    return {
+      ok: false,
+      json: async () => ({
+        detail: {
+          code: "unsupported_local_file",
+          message: "本地视频仅支持 mp4、m4v、mov、mkv、webm、flv、avi。"
+        }
+      })
+    };
+  }
+  return { ok: false, json: async () => ({}), text: async () => "" };
+};
+
+elements.get("#fileInput").files = [{ name: "server-reject.mov", type: "video/quicktime", size: 128 }];
+await context.uploadSelectedFile();
+
+assert.equal(rejectedUploadCalled, true);
+assert.match(elements.get("#fileName").textContent, /本地视频仅支持/);
+assert.equal(elements.get("#uploadButton").disabled, false);
+
+let unsupportedFetchCalled = false;
+context.fetch = async () => {
+  unsupportedFetchCalled = true;
+  return { ok: false, json: async () => ({}), text: async () => "" };
+};
+
+elements.get("#fileInput").files = [{ name: "notes.txt", type: "text/plain", size: 64 }];
+await context.uploadSelectedFile();
+
+assert.equal(unsupportedFetchCalled, false);
+assert.match(elements.get("#fileName").textContent, /暂不支持/);
