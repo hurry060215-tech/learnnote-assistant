@@ -105,7 +105,10 @@ vm.runInContext(webCode, context);
 
 await new Promise(resolve => setTimeout(resolve, 0));
 assert.match(elements.get("#detail").innerHTML, /class="empty-workbench"/);
+assert.match(elements.get("#detail").innerHTML, /class="empty-demo-board"/);
 assert.match(elements.get("#detail").innerHTML, /当前页直取/);
+assert.match(elements.get("#detail").innerHTML, /直取候选 · HLS/);
+assert.match(elements.get("#detail").innerHTML, /浏览器字幕和转写片段会按视觉窗口对齐/);
 assert.match(elements.get("#detail").innerHTML, /不.*录制页面/);
 assert.equal(elements.get("#copyButton").disabled, true);
 assert.match(elements.get("#sourceWorkflow").innerHTML, /class="source-workflow-card browser"/);
