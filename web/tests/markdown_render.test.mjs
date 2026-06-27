@@ -223,6 +223,36 @@ assert.match(visualDeckHtml, /data-switch-result-tab="transcript"/);
 assert.match(visualDeckHtml, /data-switch-result-tab="note"/);
 assert.doesNotMatch(visualDeckHtml, /<script>bad/);
 
+const visualDeckWithTranscriptHtml = context.visualStudyDeck({
+  id: "task-visual-transcript",
+  title: "带字幕切片",
+  summary_source: "vision-llm",
+  options: { grid_columns: 3, grid_rows: 3 },
+  visual_windows: [
+    {
+      id: "W001",
+      start: 0,
+      end: 180,
+      frame_count: 9,
+      grid_url: "http://127.0.0.1:8765/api/tasks/demo/grids/grid_000.jpg",
+      transcript_excerpt: ""
+    }
+  ]
+}, {
+  segments: [
+    { start: 12, end: 18, text: "老师讲解概念定义" },
+    { start: 45, end: 52, text: "<script>alert(1)</script> 例题演示" },
+    { start: 220, end: 230, text: "不属于这个窗口" }
+  ]
+});
+assert.match(visualDeckWithTranscriptHtml, /1 个窗口 · 2 段字幕已同步/);
+assert.match(visualDeckWithTranscriptHtml, /class="visual-study-cues"/);
+assert.match(visualDeckWithTranscriptHtml, /00:00:12/);
+assert.match(visualDeckWithTranscriptHtml, /老师讲解概念定义/);
+assert.match(visualDeckWithTranscriptHtml, /&lt;script&gt;alert\(1\)&lt;\/script&gt; 例题演示/);
+assert.doesNotMatch(visualDeckWithTranscriptHtml, /不属于这个窗口/);
+assert.doesNotMatch(visualDeckWithTranscriptHtml, /<script>/);
+
 const studyBarHtml = context.noteStudyBar(`# <script>bad()</script> 课程
 
 ## 第一节

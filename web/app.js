@@ -7,6 +7,8 @@ let selectedTaskId = null;
 let selectedTab = "note";
 let lastNote = "";
 let lastNoteTaskId = "";
+let lastTranscript = null;
+let lastTranscriptTaskId = "";
 let tasks = [];
 let taskQuery = "";
 let taskStatusFilter = "all";
@@ -730,6 +732,7 @@ function renderTasks() {
   document.querySelectorAll(".task").forEach(button => {
     button.onclick = async () => {
       selectedTaskId = button.dataset.id;
+      clearTaskCaches();
       renderTasks();
       await renderDetail();
       focusResultPanelOnMobile();
@@ -779,6 +782,23 @@ async function noteForTask(taskId) {
   lastNote = await response.text();
   lastNoteTaskId = taskId;
   return lastNote;
+}
+
+function clearTaskCaches() {
+  lastNote = "";
+  lastNoteTaskId = "";
+  lastTranscript = null;
+  lastTranscriptTaskId = "";
+}
+
+async function transcriptForTask(task) {
+  if (!task?.id || !task.transcript_path) return null;
+  if (lastTranscriptTaskId === task.id && lastTranscript) return lastTranscript;
+  const response = await fetch(`${API}/api/tasks/${task.id}/transcript`);
+  if (!response.ok) return null;
+  lastTranscript = await response.json();
+  lastTranscriptTaskId = task.id;
+  return lastTranscript;
 }
 
 function taskBrief(task) {
@@ -906,8 +926,7 @@ async function rerunTaskFromMedia(taskId) {
   }
   const data = await response.json();
   selectedTaskId = data.task_id;
-  lastNote = "";
-  lastNoteTaskId = "";
+  clearTaskCaches();
   selectedTab = "note";
   els.resultTabs.forEach(item => item.classList.toggle("active", item.dataset.tab === selectedTab));
   await loadTasks();
@@ -1130,24 +1149,37 @@ function transcriptTimeline(transcript, task, limit = Infinity) {
   return `${transcriptOverview(transcript, task)}<div class="transcript-timeline">${cards.join("")}</div>`;
 }
 
-function visualStudyDeck(task) {
+function visualStudyCueHtml(window, transcript) {
+  const segments = transcript?.segments || [];
+  const matched = segments.filter(segment => segmentOverlapsWindow(segment, window)).slice(0, 4);
+  if (matched.length) {
+    return `<div class="visual-study-cues">
+      ${matched.map(segment => `<div><time>${fmt(segment.start)}</time><span>${escapeHtml(segment.text)}</span></div>`).join("")}
+    </div>`;
+  }
+  const excerpt = window.transcript_excerpt || "这个窗口暂无字幕摘录，可切到“字幕”查看完整时间轴。";
+  return `<p>${escapeHtml(excerpt)}</p>`;
+}
+
+function visualStudyDeck(task, transcript = null) {
   const windows = visualWindows(task);
   if (!windows.length) return "";
   const firstWindow = windows[0];
   const lastWindow = windows[windows.length - 1];
   const range = firstWindow && lastWindow ? `${fmt(firstWindow.start)} - ${fmt(lastWindow.end)}` : "等待切片";
+  const matchedCueCount = (transcript?.segments || []).filter(segment => windows.some(window => segmentOverlapsWindow(segment, window))).length;
+  const headDetail = matchedCueCount ? `${windows.length} 个窗口 · ${matchedCueCount} 段字幕已同步` : `${windows.length} 个窗口 · ${range}`;
   return `<section class="visual-study-deck" aria-label="视觉窗口复习">
     <div class="visual-study-head">
       <div>
         <span>视觉窗口复习</span>
         <strong>${escapeHtml(task.title || task.id || "画面切片")}</strong>
       </div>
-      <small>${escapeHtml(`${windows.length} 个窗口 · ${range}`)}</small>
+      <small>${escapeHtml(headDetail)}</small>
     </div>
     <div class="visual-study-list">
       ${windows.map((window, index) => {
         const image = safeNoteMediaUrl(window.grid_url || "");
-        const excerpt = window.transcript_excerpt || "这个窗口暂无字幕摘录，可切到“字幕”查看完整时间轴。";
         return `<article class="visual-study-card">
           <figure>
             ${image ? `<img src="${image}" alt="${escapeHtml(window.id)} frame grid">` : `<div class="visual-study-placeholder">无画面</div>`}
@@ -1156,7 +1188,7 @@ function visualStudyDeck(task) {
           <div class="visual-study-card-body">
             <span>窗口 ${String(index + 1).padStart(2, "0")}</span>
             <strong>${fmt(window.start)} - ${fmt(window.end)}</strong>
-            <p>${escapeHtml(excerpt)}</p>
+            ${visualStudyCueHtml(window, transcript)}
             <div class="visual-study-meta">
               <em>${Number(window.frame_count || 0)} 帧</em>
               <em>${escapeHtml(task.options?.grid_columns && task.options?.grid_rows ? `${task.options.grid_columns}x${task.options.grid_rows}` : "网格")}</em>
@@ -1287,7 +1319,8 @@ async function renderDetail() {
       els.detail.textContent = "画面切片尚未生成。";
       return;
     }
-    els.detail.innerHTML = visualStudyDeck(task);
+    const transcript = await transcriptForTask(task);
+    els.detail.innerHTML = visualStudyDeck(task, transcript);
     bindTaskOverviewActions();
     return;
   }
@@ -1355,7 +1388,7 @@ async function renderDetail() {
     return;
   }
 
-  const transcript = await fetch(`${API}/api/tasks/${task.id}/transcript`).then(r => r.json());
+  const transcript = await transcriptForTask(task) || {};
   if (!transcript.segments?.length) {
     els.detail.className = "detail empty";
     els.detail.textContent = transcript.warning || "转写尚未生成。";
@@ -1390,6 +1423,7 @@ async function startUrlTask(mode = "video") {
       })
     }).then(r => r.json());
     selectedTaskId = data.task_id;
+    clearTaskCaches();
     await loadTasks();
     focusResultPanelOnMobile();
   } finally {
@@ -1447,6 +1481,7 @@ async function uploadSelectedFile() {
   try {
     const data = await fetch(`${API}/api/tasks/from-local`, { method: "POST", body: form }).then(r => r.json());
     selectedTaskId = data.task_id;
+    clearTaskCaches();
     await loadTasks();
     focusResultPanelOnMobile();
   } finally {
