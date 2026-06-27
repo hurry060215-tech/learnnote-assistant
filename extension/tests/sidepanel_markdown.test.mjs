@@ -354,6 +354,11 @@ assert.match(diagnosticRecoveryHtml, /Referer/);
 assert.match(diagnosticRecoveryHtml, /Cookie/);
 assert.doesNotMatch(diagnosticRecoveryHtml, /secret=bad/);
 assert.match(diagnosticRecoveryHtml, /继续切片总结/);
+assert.match(diagnosticRecoveryHtml, /class="recovery-actions"/);
+assert.match(diagnosticRecoveryHtml, /data-recovery-local/);
+assert.match(diagnosticRecoveryHtml, /data-switch-result-tab="diagnostics"/);
+assert.match(diagnosticRecoveryHtml, /data-export="diagnostics"/);
+assert.match(diagnosticRecoveryHtml, /data-rerun-from-media="side-recovery"/);
 assert.doesNotMatch(diagnosticRecoveryHtml, /<script>bad/);
 
 const evidenceTags = context.resourceEvidenceTags({
