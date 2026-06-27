@@ -1012,6 +1012,28 @@ small,
   font-size: 12px;
 }
 
+.resource-inspector-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.resource-inspector-actions button {
+  min-width: 0;
+  height: 28px;
+  border: 1px solid #b8d3ff;
+  border-radius: 7px;
+  background: #f2f7ff;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.resource-inspector-actions button:hover {
+  border-color: var(--accent);
+  background: #eaf2ff;
+}
+
 .resource-inspector code {
   color: var(--muted);
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;

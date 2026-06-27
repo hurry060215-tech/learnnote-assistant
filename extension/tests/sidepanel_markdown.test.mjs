@@ -28,11 +28,13 @@ const documentStub = {
   }
 };
 
+const clipboardWrites = [];
+
 const context = {
   console,
   document: documentStub,
   location: { href: "file:///sidepanel.html" },
-  navigator: { clipboard: { writeText() {} } },
+  navigator: { clipboard: { writeText(value) { clipboardWrites.push(value); } } },
   window: { open() {} },
   FormData: class FormData {},
   fetch: async url => {
@@ -53,6 +55,7 @@ context.window = { ...context.window, location: context.location };
 vm.createContext(context);
 const sidepanelCode = await readFile(new URL("../sidepanel.js", import.meta.url), "utf8");
 vm.runInContext(sidepanelCode, context);
+await new Promise(resolve => setTimeout(resolve, 0));
 
 const html = context.markdownToHtml(`# 标题
 
@@ -475,7 +478,12 @@ resources = [{
   source: "webRequest",
   score: 98,
   label: "<script>bad()</script>",
-  playback_match: "blob-source"
+  playback_match: "blob-source",
+  request_headers: {
+    Referer: "https://course.example.com/lesson",
+    Cookie: "secret=1",
+    Authorization: "Bearer secret"
+  }
 }];
 selectedResourceUrl = "https://cdn.example.com/live/master.m3u8";
 preflight = null;
@@ -507,6 +515,8 @@ assert.match(elements.get("#resources").innerHTML, /resource-confidence high/);
 assert.match(elements.get("#resources").innerHTML, /resource-attempt-row selected/);
 assert.match(elements.get("#resourceInspector").innerHTML, /候选置信度/);
 assert.match(elements.get("#resourceInspector").innerHTML, /播放匹配/);
+assert.match(elements.get("#resourceInspector").innerHTML, /复制链接/);
+assert.match(elements.get("#resourceInspector").innerHTML, /复制证据/);
 assert.doesNotMatch(elements.get("#resources").innerHTML, /<script>bad/);
 assert.match(elements.get("#currentStudyCard").className, /candidate/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /发现当前视频直取候选/);
@@ -516,6 +526,19 @@ assert.equal(context.playbackReadinessState(), "ready");
 assert.match(elements.get("#playbackReadiness").innerHTML, /已读取当前播放视频/);
 assert.match(elements.get("#playbackReadiness").innerHTML, /1\/1 匹配/);
 assert.match(elements.get("#playbackReadiness").innerHTML, /1 条/);
+
+await context.copySelectedResourceUrl();
+assert.equal(clipboardWrites.at(-1), "https://cdn.example.com/live/master.m3u8");
+assert.equal(elements.get("#taskMessage").textContent, "已复制候选资源 URL。");
+
+const report = vm.runInContext("selectedResourceReport()", context);
+assert.match(report, /下载策略: ffmpeg 合并/);
+assert.match(report, /复用请求头: Referer/);
+assert.doesNotMatch(report, /Cookie/);
+assert.doesNotMatch(report, /Authorization/);
+await context.copySelectedResourceReport();
+assert.equal(clipboardWrites.at(-1), report);
+assert.equal(elements.get("#taskMessage").textContent, "已复制候选资源证据摘要。");
 
 vm.runInContext(`
 preflight = { downloadable: true, kind: "hls", code: "", message: "ok" };
