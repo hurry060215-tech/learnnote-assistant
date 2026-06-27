@@ -36,6 +36,37 @@ app.mount("/web", StaticFiles(directory=str(WEB_DIR)), name="web")
 
 
 _FILENAME_RESERVED_RE = re.compile(r'[\\/:*?"<>|\r\n]+')
+LOCAL_VIDEO_EXTENSIONS = {".mp4", ".m4v", ".mov", ".mkv", ".webm", ".flv", ".avi"}
+LOCAL_VIDEO_MIME_EXTENSIONS = {
+    "video/mp4": ".mp4",
+    "video/x-m4v": ".m4v",
+    "video/quicktime": ".mov",
+    "video/x-matroska": ".mkv",
+    "video/webm": ".webm",
+    "video/x-flv": ".flv",
+    "video/avi": ".avi",
+    "video/x-msvideo": ".avi",
+}
+
+
+def local_upload_filename(filename: str | None, content_type: str | None = "") -> str:
+    raw_name = Path(filename or "").name or "local-video"
+    safe_name = _FILENAME_RESERVED_RE.sub("_", raw_name).strip(" ._") or "local-video"
+    suffix = Path(safe_name).suffix.lower()
+    if not suffix:
+        suffix = LOCAL_VIDEO_MIME_EXTENSIONS.get((content_type or "").split(";")[0].lower(), "")
+        if suffix:
+            safe_name = f"{safe_name}{suffix}"
+    if suffix not in LOCAL_VIDEO_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "unsupported_local_file",
+                "message": "本地视频仅支持 mp4、m4v、mov、mkv、webm、flv、avi。",
+            },
+        )
+    stem = Path(safe_name).stem[:120].strip(" ._") or "local-video"
+    return f"{stem}{suffix}"
 
 
 def markdown_filename(task_id: str, title: str) -> str:
@@ -309,7 +340,7 @@ async def create_from_local(
     title: str = Form(""),
     options: str = Form("{}"),
 ) -> dict:
-    safe_name = Path(file.filename or "local-video").name
+    safe_name = local_upload_filename(file.filename, file.content_type)
     try:
         parsed_options = TaskOptions.model_validate(json.loads(options or "{}"))
     except Exception:

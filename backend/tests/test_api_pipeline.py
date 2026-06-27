@@ -17,13 +17,32 @@ from fastapi.testclient import TestClient
 
 from app.config import DATA_DIR
 from app.downloader import DownloadError
-from app.main import app
+from app.main import app, local_upload_filename
 from app.models import TranscriptResult, TranscriptSegment
 from app.runtime import ffmpeg_bin
 from app.storage import task_dir
 
 
 TEST_RUN_DIR = DATA_DIR / "test-runs"
+
+
+class LocalUploadValidationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.client = TestClient(app)
+
+    def test_local_upload_filename_is_sanitized_and_mime_can_supply_extension(self) -> None:
+        self.assertEqual(local_upload_filename("..\\course:demo?.mkv", ""), "course_demo.mkv")
+        self.assertEqual(local_upload_filename("", "video/mp4"), "local-video.mp4")
+
+    def test_local_upload_rejects_unsupported_extension_before_task_creation(self) -> None:
+        response = self.client.post(
+            "/api/tasks/from-local",
+            files={"file": ("notes.txt", io.BytesIO(b"not a video"), "text/plain")},
+            data={"title": "bad local file"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["detail"]["code"], "unsupported_local_file")
 
 
 class QuietHandler(SimpleHTTPRequestHandler):
