@@ -1420,6 +1420,60 @@ input[type="file"] {
   gap: 9px;
 }
 
+.transcript-overview {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 9px;
+  border: 1px solid #dbe7f6;
+  border-radius: 8px;
+  background: #f8fbff;
+  padding: 10px;
+}
+
+.transcript-overview > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.transcript-overview span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.transcript-overview strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.transcript-overview small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.transcript-overview-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.transcript-overview-metrics span {
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: #fff;
+  padding: 7px;
+}
+
+.transcript-overview-metrics b {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--ink);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .transcript-window {
   display: grid;
   gap: 8px;

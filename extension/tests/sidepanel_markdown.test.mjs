@@ -141,12 +141,29 @@ const timelineHtml = context.transcriptTimeline({
 });
 
 assert.match(timelineHtml, /class="transcript-timeline"/);
+assert.match(timelineHtml, /字幕时间轴/);
+assert.match(timelineHtml, /已按画面窗口对齐/);
+assert.match(timelineHtml, /2<\/b>段字幕/);
 assert.match(timelineHtml, /W001/);
 assert.match(timelineHtml, /00:00:00 - 00:03:00/);
 assert.match(timelineHtml, /第一段字幕/);
 assert.match(timelineHtml, /W002/);
 assert.match(timelineHtml, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
 assert.doesNotMatch(timelineHtml, /<script>/);
+
+const plainTimelineHtml = context.transcriptTimeline({
+  source: "browser-subtitle",
+  segments: [
+    { start: 10, end: 13, text: "兜底字幕一" },
+    { start: 20, end: 25, text: "兜底字幕二" }
+  ]
+}, {
+  visual_windows: []
+});
+assert.match(plainTimelineHtml, /浏览器字幕/);
+assert.match(plainTimelineHtml, /独立字幕时间轴/);
+assert.match(plainTimelineHtml, /无切片/);
+assert.match(plainTimelineHtml, /兜底字幕一/);
 
 const railHtml = context.noteVisualRail({
   visual_windows: [
