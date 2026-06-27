@@ -6,6 +6,7 @@ import json
 import os
 import re
 import subprocess
+import time
 from base64 import b64decode, urlsafe_b64decode
 from pathlib import Path
 from urllib.parse import unquote, urljoin, urlparse, urlunparse
@@ -157,6 +158,36 @@ def cookie_header_for_url(cookies: list[BrowserCookie], url: str) -> str:
         if cookie.domain and _domain_matches(cookie.domain, host):
             parts.append(f"{cookie.name}={cookie.value}")
     return "; ".join(parts)
+
+
+def _safe_cookie_field(value: str) -> str:
+    text = str(value or "").strip()
+    if not text or any(char in text for char in "\r\n;"):
+        return ""
+    return text
+
+
+def ffmpeg_cookies_option(cookies: list[BrowserCookie], target_url: str = "") -> str:
+    fallback_domain = urlparse(target_url).hostname or ""
+    now = time.time()
+    fields: list[str] = []
+    seen: set[tuple[str, str, str]] = set()
+    for cookie in cookies:
+        if cookie.expirationDate and cookie.expirationDate < now:
+            continue
+        name = _safe_cookie_field(cookie.name)
+        value = _safe_cookie_field(cookie.value)
+        domain = _safe_cookie_field(cookie.domain or fallback_domain)
+        path = _safe_cookie_field(cookie.path or "/") or "/"
+        if not name or not value or not domain:
+            continue
+        key = (domain.lower(), path, name)
+        if key in seen:
+            continue
+        seen.add(key)
+        secure = "; secure" if cookie.secure else ""
+        fields.append(f"{name}={value}; domain={domain}; path={path}{secure}")
+    return "\n".join(fields)
 
 
 def _safe_header_value(value: object) -> str:
@@ -1505,10 +1536,15 @@ class MediaDownloader:
         self._probe_manifest_before_ffmpeg(candidate, request_headers)
         kind = effective_resource_kind(candidate)
         user_agent = request_headers.pop("User-Agent", "Mozilla/5.0 LearnNoteAssistant/0.1")
+        ffmpeg_cookies = ffmpeg_cookies_option(cookies, candidate.url)
+        if ffmpeg_cookies:
+            request_headers.pop("Cookie", None)
         headers = [f"{name}: {value}" for name, value in request_headers.items() if value]
         cmd = [ffmpeg, "-y", "-hide_banner", "-loglevel", "error"]
         if headers:
             cmd += ["-headers", "\r\n".join(headers) + "\r\n"]
+        if ffmpeg_cookies:
+            cmd += ["-cookies", ffmpeg_cookies]
         if kind in {"hls", "dash"}:
             cmd += ["-f", kind]
         cmd += ["-user_agent", user_agent, "-i", url, "-c", "copy", str(output)]
