@@ -1442,15 +1442,36 @@ function emptyResultWorkbench() {
   return `
     <section class="empty-workbench" aria-label="学习工作区起始页">
       <div class="empty-hero">
-        <div>
+        <div class="empty-hero-copy">
           <span>LearnNote 工作区</span>
           <h3>把正在看的课程视频变成可复习的图文笔记</h3>
           <p>从扩展 Side Panel 直取当前页可访问的视频资源，或上传本地视频；后端会下载到本机、转写、切片、生成画面网格，再合并成学习笔记。</p>
+          <div class="empty-hero-actions">
+            <button type="button" data-empty-source="browser">当前页直取</button>
+            <button type="button" data-empty-source="local">本地视频</button>
+            <button type="button" data-empty-source="url">链接解析</button>
+          </div>
         </div>
-        <div class="empty-hero-actions">
-          <button type="button" data-empty-source="browser">当前页直取</button>
-          <button type="button" data-empty-source="local">本地视频</button>
-          <button type="button" data-empty-source="url">链接解析</button>
+        <div class="empty-demo-board" aria-label="图文笔记生成预览">
+          <header>
+            <strong>当前页课程</strong>
+            <span>直取候选 · HLS</span>
+          </header>
+          <div class="empty-demo-video">
+            <div class="empty-demo-play"></div>
+            <span>00:12:48</span>
+          </div>
+          <div class="empty-demo-caption">
+            <time>12:48</time>
+            <span>浏览器字幕和转写片段会按视觉窗口对齐。</span>
+          </div>
+          <div class="empty-demo-grids">
+            ${Array.from({ length: 9 }).map(() => "<i></i>").join("")}
+          </div>
+          <div class="empty-demo-note">
+            <b>生成笔记</b>
+            <span>课程主题、时间轴重点、画面索引、易错点、复习题</span>
+          </div>
         </div>
       </div>
 
