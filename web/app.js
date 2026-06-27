@@ -1458,6 +1458,23 @@ function visualStudyCueHtml(window, transcript) {
   return `<p>${escapeHtml(excerpt)}</p>`;
 }
 
+function visualStudyChecklistHtml(window, transcript) {
+  const hasCue = Boolean(window.transcript_excerpt) || (transcript?.segments || []).some(segment => segmentOverlapsWindow(segment, window));
+  const target = hasCue
+    ? "核对截图里的板书、PPT 切换、代码/界面状态是否已被字幕覆盖。"
+    : "先从截图判断这一段的主题，重点看标题、公式、代码和演示状态。";
+  const action = hasCue
+    ? "复述这一窗口的结论，再按画面顺序补齐遗漏步骤。"
+    : "补一句本段主题，再和前后窗口串成完整时间线。";
+  return `<div class="visual-study-checklist">
+    <span>学习动作</span>
+    <ul>
+      <li>${escapeHtml(target)}</li>
+      <li>${escapeHtml(action)}</li>
+    </ul>
+  </div>`;
+}
+
 function visualStudyDeck(task, transcript = null) {
   const windows = visualWindows(task);
   if (!windows.length) return "";
@@ -1489,6 +1506,7 @@ function visualStudyDeck(task, transcript = null) {
             <span>窗口 ${String(index + 1).padStart(2, "0")}</span>
             <strong>${fmt(window.start)} - ${fmt(window.end)}</strong>
             ${visualStudyCueHtml(window, transcript)}
+            ${visualStudyChecklistHtml(window, transcript)}
             <div class="visual-study-meta">
               <em>${Number(window.frame_count || 0)} 帧</em>
               <em>${escapeHtml(task.options?.grid_columns && task.options?.grid_rows ? `${task.options.grid_columns}x${task.options.grid_rows}` : "网格")}</em>

@@ -2079,6 +2079,34 @@ input[type="file"] {
   overflow-wrap: anywhere;
 }
 
+.side-visual-study-checklist {
+  display: grid;
+  gap: 5px;
+  border: 1px solid #dbe7f6;
+  border-radius: 7px;
+  background: #f8fbff;
+  padding: 7px 8px;
+}
+
+.side-visual-study-checklist span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.side-visual-study-checklist ul {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding-left: 15px;
+}
+
+.side-visual-study-checklist li {
+  color: #25324a;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
 .side-visual-meta,
 .side-visual-actions {
   display: flex;
