@@ -454,7 +454,49 @@ const ERROR_GUIDES = {
 function failureGuide(task) {
   if (!task || task.status !== "failed") return "";
   const guide = ERROR_GUIDES[task.error_code] || { title: "任务失败", body: task.error_detail || "请查看下载诊断里的尝试记录。" };
-  return `<div class="failure-guide"><strong>${escapeHtml(guide.title)}</strong>${escapeHtml(guide.body)}</div>`;
+  const attempts = task.download_attempts || [];
+  const lastAttempt = attempts[attempts.length - 1] || null;
+  const steps = recoveryStepItems(task);
+  return `<div class="failure-guide">
+    <strong>${escapeHtml(guide.title)}</strong>
+    <p>${escapeHtml(guide.body)}</p>
+    ${lastAttempt ? `<small>最近尝试：${escapeHtml([lastAttempt.strategy, lastAttempt.code, lastAttempt.status_code ? `HTTP ${lastAttempt.status_code}` : "", lastAttempt.message].filter(Boolean).join(" · "))}</small>` : ""}
+    <ul>
+      ${steps.map(step => `<li>${escapeHtml(step)}</li>`).join("")}
+    </ul>
+  </div>`;
+}
+
+function recoveryStepItems(task) {
+  const attempts = task?.download_attempts || [];
+  const codes = new Set([task?.error_code, ...attempts.map(attempt => attempt.code)].filter(Boolean));
+  const steps = [];
+  const add = text => {
+    if (text && !steps.includes(text)) steps.push(text);
+  };
+  if (codes.has("drm_or_encrypted") || task?.drm_detected) {
+    add("不会录制、破解或绕过 DRM；没有可访问 mp4/m3u8/mpd 时，请改用本地视频入口。");
+  }
+  if (codes.has("auth_required")) {
+    add("重新打开课程页并确认登录有效，播放几秒后立刻重新创建任务。");
+  }
+  if (codes.has("download_forbidden")) {
+    add("回到原页面继续播放后重新检测，优先选择带 Referer/Origin 或当前播放匹配的候选。");
+  }
+  if (codes.has("unsupported_manifest")) {
+    add("继续播放后重新检测，优先选择完整 m3u8/mpd，而不是孤立 ts/m4s 分片。");
+  }
+  if (codes.has("no_media_found") || (!attempts.length && task?.status === "failed")) {
+    add("先让视频实际播放几秒再重新检测；仍没有候选时上传本地视频。");
+  }
+  if (attempts.length > 1) {
+    add(`后端已尝试 ${attempts.length} 条路线；打开诊断查看每次失败的 URL、状态码和策略。`);
+  }
+  if (task?.note_path) {
+    add("已生成兜底笔记时，可以先导出 Markdown/资料包复习，再按诊断重新尝试直取。");
+  }
+  if (!steps.length) add("打开诊断查看下载尝试记录；当前页直取不稳定时可改用本地视频入口。");
+  return steps;
 }
 
 function failedStepIndex(task) {

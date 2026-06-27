@@ -340,6 +340,21 @@ const fallbackTaskOverviewHtml = context.taskOverview({
   transcript_path: "D:/Projects/learnnote-assistant/data/tasks/task-web-fallback/transcript.json",
   error_code: "download_forbidden",
   error_detail: "signed URL expired 已生成页面文本/浏览器字幕兜底笔记。",
+  download_attempts: [
+    {
+      strategy: "direct-file",
+      status: "failed",
+      code: "download_forbidden",
+      status_code: 403,
+      message: "HTTP 403：Referer 或签名过期"
+    },
+    {
+      strategy: "page-ytdlp",
+      status: "failed",
+      code: "download_forbidden",
+      message: "yt-dlp no video"
+    }
+  ],
   options: {
     frame_interval: 20,
     grid_columns: 3,
@@ -351,6 +366,20 @@ assert.match(fallbackTaskOverviewHtml, /已生成兜底笔记/);
 assert.match(fallbackTaskOverviewHtml, /导出 Markdown/);
 assert.match(fallbackTaskOverviewHtml, /导出诊断/);
 assert.match(fallbackTaskOverviewHtml, /导出资料包/);
+const failureGuideHtml = context.failureGuide({
+  status: "failed",
+  error_code: "download_forbidden",
+  note_path: "D:/note.md",
+  download_attempts: [
+    { strategy: "direct-file", code: "download_forbidden", status_code: 403, message: "<script>bad()</script> Referer expired" },
+    { strategy: "page-ytdlp", code: "download_forbidden", message: "no fallback" }
+  ]
+});
+assert.match(failureGuideHtml, /最近尝试：page-ytdlp · download_forbidden · no fallback/);
+assert.match(failureGuideHtml, /后端已尝试 2 条路线/);
+assert.match(failureGuideHtml, /已生成兜底笔记/);
+assert.match(failureGuideHtml, /<ul>/);
+assert.doesNotMatch(failureGuideHtml, /<script>bad/);
 assert.equal(context.hasTaskBundle({ media_path: "D:/media.mp4" }), true);
 assert.equal(context.hasTaskBundle({ status: "failed", error_code: "download_forbidden" }), true);
 assert.equal(context.hasTaskBundle({ download_attempts: [{ strategy: "direct-file" }] }), true);

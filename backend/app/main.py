@@ -79,6 +79,36 @@ def _safe_header_names(values: dict[str, str]) -> str:
     return ", ".join(names) or "-"
 
 
+def diagnostic_recovery_steps(task: TaskRecord) -> list[str]:
+    codes = {task.error_code} if task.error_code else set()
+    codes.update(attempt.code for attempt in task.download_attempts if attempt.code)
+    steps: list[str] = []
+
+    def add(text: str) -> None:
+        if text and text not in steps:
+            steps.append(text)
+
+    if "drm_or_encrypted" in codes or task.drm_detected:
+        add("页面触发 DRM/EME 或只暴露不可还原 blob 时，本工具不会录制、破解或绕过 DRM；请改用本地视频入口。")
+    if "auth_required" in codes:
+        add("重新打开课程页面并确认登录有效，播放几秒后立刻从扩展侧栏重新创建任务，让 Cookie 和媒体请求保持新鲜。")
+    if "download_forbidden" in codes:
+        add("媒体服务器拒绝下载时，优先检查 Referer/Origin、登录态和时效签名；回到原页面继续播放后重新检测，或选择另一个候选资源。")
+    if "unsupported_manifest" in codes:
+        add("如果只有分片或无法合并的 manifest，继续播放后重新检测，优先选择完整 m3u8/mpd 候选。")
+    if "no_media_found" in codes or (task.status == "failed" and not task.download_attempts):
+        add("当前页没有暴露可直取媒体时，先让视频实际播放几秒再重检；仍失败就使用本地视频上传。")
+    if task.selected_resource and task.selected_resource.request_headers:
+        add(f"已捕获可复用请求头名：{_safe_header_names(task.selected_resource.request_headers)}；诊断中不会保存 Cookie 或 Authorization 值。")
+    if len(task.download_attempts) > 1:
+        add(f"后端已尝试 {len(task.download_attempts)} 条路线；查看上方下载尝试，优先处理第一个失败的直接媒体候选。")
+    if task.status == "failed" and task.note_path:
+        add("视频直取失败但已有兜底笔记时，可先导出 Markdown/资料包复习，再根据诊断重新尝试直取。")
+    if not steps:
+        add("如果任务未完成，先查看下载尝试的错误码；当前页直取失败时可以改用本地视频入口走同一套切片总结。")
+    return steps
+
+
 def render_diagnostics_markdown(task: TaskRecord) -> str:
     selected = task.selected_resource
     lines = [
@@ -128,6 +158,9 @@ def render_diagnostics_markdown(task: TaskRecord) -> str:
             ])
     else:
         lines.append("- 暂无下载尝试记录。")
+
+    lines.extend(["", "## 下一步建议"])
+    lines.extend(f"- {step}" for step in diagnostic_recovery_steps(task))
 
     lines.extend([
         "",
