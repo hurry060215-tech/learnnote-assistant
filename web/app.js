@@ -1567,21 +1567,45 @@ function emptyResultWorkbench() {
         <span><b>04</b>图文总结</span>
       </div>
 
-      <div class="empty-preview-grid">
-        <section class="empty-preview-card primary">
-          <span>当前页直取边界</span>
-          <strong>只下载浏览器已经暴露的资源</strong>
-          <p>支持 MP4/FLV/WebM、HLS/DASH manifest、yt-dlp 支持站点、带登录 cookie 的可访问媒体请求；DRM/不可还原 blob 会明确失败，不会录制页面。</p>
+      <div class="empty-route-grid" aria-label="开始路线">
+        <section class="empty-route-card primary">
+          <div>
+            <span>当前页直取</span>
+            <strong>读取正在播放的视频</strong>
+            <p>扩展侧栏嗅探 MP4/FLV/WebM、HLS/DASH、yt-dlp 支持页面和可复用请求头；失败时给出原因，不录制页面。</p>
+          </div>
+          <div class="empty-route-tags">
+            <em>主视频匹配</em>
+            <em>Cookie 直取</em>
+            <em>DRM 边界</em>
+          </div>
+          <button type="button" data-empty-source="browser">打开当前页路线</button>
         </section>
-        <section class="empty-preview-card">
-          <span>输出结构</span>
-          <strong>笔记 / 字幕 / 画面切片 / 诊断</strong>
-          <p>任务完成后可在上方标签切换阅读 Markdown、按视觉窗口查看字幕、检查 frame grid 和下载尝试记录。</p>
+        <section class="empty-route-card">
+          <div>
+            <span>本地视频</span>
+            <strong>拖入文件直接切片</strong>
+            <p>mp4、mkv、webm、flv、avi 等文件走同一套转写、抽帧、视觉窗口和图文总结管线。</p>
+          </div>
+          <div class="empty-route-tags">
+            <em>离线处理</em>
+            <em>视觉切片</em>
+            <em>资料包导出</em>
+          </div>
+          <button type="button" data-empty-source="local">选择本地视频</button>
         </section>
-        <section class="empty-preview-card">
-          <span>本地兜底</span>
-          <strong>拖入视频走同一套管线</strong>
-          <p>学习通等页面如果没有暴露可下载地址，就把本地视频拖进来，仍然会完成转写、切片和图文总结。</p>
+        <section class="empty-route-card">
+          <div>
+            <span>链接解析</span>
+            <strong>粘贴页面或媒体链接</strong>
+            <p>可预检 mp4、m3u8、mpd 或平台页面；适合先验证能否下载，再进入完整总结。</p>
+          </div>
+          <div class="empty-route-tags">
+            <em>预检下载</em>
+            <em>只下载本地</em>
+            <em>继续总结</em>
+          </div>
+          <button type="button" data-empty-source="url">粘贴链接</button>
         </section>
       </div>
     </section>
