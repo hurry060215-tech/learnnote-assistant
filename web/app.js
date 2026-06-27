@@ -1058,10 +1058,37 @@ function transcriptLines(segments) {
   return segments.map(seg => `<div class="line"><time>${fmt(seg.start)}</time><span>${escapeHtml(seg.text)}</span></div>`).join("");
 }
 
+function transcriptOverview(transcript, task) {
+  const segments = transcript?.segments || [];
+  const windows = visualWindows(task);
+  const first = segments[0];
+  const last = segments[segments.length - 1];
+  const range = first && last ? `${fmt(first.start)} - ${fmt(last.end ?? last.start)}` : "无时间轴";
+  const source = transcript?.source === "browser-subtitle"
+    ? "浏览器字幕"
+    : transcript?.source === "page-subtitle"
+      ? "页面字幕"
+      : transcript?.source || "转写";
+  return `<section class="transcript-overview" aria-label="字幕概览">
+    <div>
+      <span>字幕时间轴</span>
+      <strong>${escapeHtml(source)}</strong>
+      <small>${escapeHtml(windows.length ? "已按画面窗口对齐" : "独立字幕时间轴")}</small>
+    </div>
+    <div class="transcript-overview-metrics">
+      <span><b>${segments.length}</b>段字幕</span>
+      <span><b>${escapeHtml(range)}</b>时间范围</span>
+      <span><b>${windows.length || "-"}</b>${windows.length ? "视觉窗口" : "无切片"}</span>
+    </div>
+  </section>`;
+}
+
 function transcriptTimeline(transcript, task, limit = Infinity) {
   const segments = (transcript?.segments || []).slice(0, limit);
   const windows = visualWindows(task);
-  if (!windows.length) return transcriptLines(segments);
+  if (!windows.length) {
+    return `${transcriptOverview(transcript, task)}<div class="transcript-timeline transcript-timeline-plain">${transcriptLines(segments)}</div>`;
+  }
 
   const used = new Set();
   const cards = windows.map(window => {
@@ -1100,7 +1127,7 @@ function transcriptTimeline(transcript, task, limit = Infinity) {
     </section>`);
   }
 
-  return `<div class="transcript-timeline">${cards.join("")}</div>`;
+  return `${transcriptOverview(transcript, task)}<div class="transcript-timeline">${cards.join("")}</div>`;
 }
 
 function visualStudyDeck(task) {
