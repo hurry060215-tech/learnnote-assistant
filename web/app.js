@@ -412,18 +412,24 @@ function browserRouteMetrics(task) {
 }
 
 function browserRouteActions(task) {
-  if (!task?.id) return "";
-  const actions = [
-    `<button type="button" data-select-browser-task="${escapeHtml(task.id)}">查看任务</button>`
-  ];
-  if (canContinueFromDownloadedMedia(task)) {
+  const state = directRouteState(task);
+  const actions = [];
+  if (task?.id) {
+    actions.push(`<button type="button" data-select-browser-task="${escapeHtml(task.id)}">查看任务</button>`);
+  }
+  if (task?.id && canContinueFromDownloadedMedia(task)) {
     actions.push(`<button type="button" data-rerun-browser-task="${escapeHtml(task.id)}">继续切片总结</button>`);
   }
-  if (task.media_path) {
+  if (task?.media_path) {
     actions.push(`<a href="${escapeHtml(taskExportUrl(task, "media"))}">导出本地视频</a>`);
   }
   if (hasTaskDiagnostics(task)) {
     actions.push(`<a href="${escapeHtml(taskExportUrl(task, "diagnostics"))}">下载诊断</a>`);
+  }
+  actions.push(`<button type="button" data-browser-route-action="refresh">刷新任务</button>`);
+  actions.push(`<button type="button" data-browser-route-action="copy-backend">复制后端地址</button>`);
+  if (!task?.id || state === "blocked" || state === "failed" || state === "empty") {
+    actions.push(`<button type="button" data-browser-route-action="local-video">本地视频兜底</button>`);
   }
   return `<div class="browser-route-actions">${actions.join("")}</div>`;
 }
@@ -1314,6 +1320,34 @@ async function rerunTaskFromMedia(taskId) {
   focusResultPanelOnMobile();
 }
 
+async function copyBackendUrl(feedbackButton = els.copyBackendButton) {
+  const url = window.location.origin || "http://127.0.0.1:8765";
+  try {
+    await navigator.clipboard.writeText(url);
+  } catch {
+    const input = document.createElement("input");
+    input.value = url;
+    input.setAttribute("readonly", "");
+    input.style.position = "fixed";
+    input.style.opacity = "0";
+    document.body.appendChild(input);
+    input.select();
+    document.execCommand("copy");
+    input.remove();
+  }
+  if (els.browserBridgeStatus) {
+    els.browserBridgeStatus.textContent = `后端地址已复制：${url}`;
+  }
+  if (feedbackButton) {
+    const previous = feedbackButton.innerHTML;
+    feedbackButton.textContent = "已复制";
+    setTimeout(() => {
+      feedbackButton.innerHTML = previous;
+    }, 1400);
+  }
+  return url;
+}
+
 function bindTaskOverviewActions() {
   document.querySelectorAll("[data-rerun-from-media]").forEach(button => {
     button.onclick = () => rerunTaskFromMedia(button.dataset.rerunFromMedia);
@@ -1980,6 +2014,26 @@ if (els.browserRouteSummary) {
     const rerunButton = event.target.closest("[data-rerun-browser-task]");
     if (rerunButton) {
       await rerunTaskFromMedia(rerunButton.dataset.rerunBrowserTask);
+      return;
+    }
+    const routeAction = event.target.closest("[data-browser-route-action]");
+    if (!routeAction) return;
+    if (routeAction.dataset.browserRouteAction === "refresh") {
+      routeAction.disabled = true;
+      try {
+        await loadTasks();
+      } finally {
+        routeAction.disabled = false;
+      }
+      return;
+    }
+    if (routeAction.dataset.browserRouteAction === "copy-backend") {
+      await copyBackendUrl(routeAction);
+      return;
+    }
+    if (routeAction.dataset.browserRouteAction === "local-video") {
+      setSource("local");
+      document.querySelector(".workspace-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   });
 }
@@ -2008,27 +2062,7 @@ if (els.readingModeButton) {
     setReadingMode(enabled);
   };
 }
-els.copyBackendButton.onclick = async () => {
-  const url = window.location.origin || "http://127.0.0.1:8765";
-  try {
-    await navigator.clipboard.writeText(url);
-  } catch {
-    const input = document.createElement("input");
-    input.value = url;
-    input.setAttribute("readonly", "");
-    input.style.position = "fixed";
-    input.style.opacity = "0";
-    document.body.appendChild(input);
-    input.select();
-    document.execCommand("copy");
-    input.remove();
-  }
-  const previous = els.copyBackendButton.innerHTML;
-  els.copyBackendButton.textContent = "已复制";
-  setTimeout(() => {
-    els.copyBackendButton.innerHTML = previous;
-  }, 1400);
-};
+els.copyBackendButton.onclick = () => copyBackendUrl(els.copyBackendButton);
 els.browserRefreshButton.onclick = () => loadTasks();
 els.uploadButton.onclick = uploadSelectedFile;
 els.refreshButton.onclick = () => loadTasks();

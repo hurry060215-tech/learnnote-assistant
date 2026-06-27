@@ -186,6 +186,8 @@ assert.match(routeSummaryHtml, /视频已直取到本地/);
 assert.match(routeSummaryHtml, /继续切片总结/);
 assert.match(routeSummaryHtml, /data-select-browser-task="task-route-summary"/);
 assert.match(routeSummaryHtml, /data-rerun-browser-task="task-route-summary"/);
+assert.match(routeSummaryHtml, /data-browser-route-action="refresh"/);
+assert.match(routeSummaryHtml, /data-browser-route-action="copy-backend"/);
 assert.match(routeSummaryHtml, /\/api\/tasks\/task-route-summary\/exports\/media/);
 assert.match(routeSummaryHtml, /\/api\/tasks\/task-route-summary\/exports\/diagnostics/);
 assert.match(routeSummaryHtml, /视觉窗口/);
@@ -203,6 +205,7 @@ const blockedRouteSummaryHtml = context.browserRouteSummaryHtml({
 
 assert.match(blockedRouteSummaryHtml, /class="browser-route-summary-card blocked"/);
 assert.match(blockedRouteSummaryHtml, /不可直取/);
+assert.match(blockedRouteSummaryHtml, /data-browser-route-action="local-video"/);
 assert.match(blockedRouteSummaryHtml, /&lt;script&gt;bad\(\)&lt;\/script&gt; DRM/);
 assert.doesNotMatch(blockedRouteSummaryHtml, /导出本地视频/);
 assert.doesNotMatch(blockedRouteSummaryHtml, /<script>bad/);
@@ -703,6 +706,7 @@ const routeBlockedHtml = context.browserRouteSummaryHtml({
 });
 assert.match(routeBlockedHtml, /browser-route-summary-card blocked/);
 assert.match(routeBlockedHtml, /不会录制或绕过 DRM/);
+assert.match(routeBlockedHtml, /本地视频兜底/);
 assert.match(routeBlockedHtml, /&lt;script&gt;bad\(\)&lt;\/script&gt; encrypted/);
 assert.doesNotMatch(routeBlockedHtml, /<script>bad/);
 
@@ -766,6 +770,9 @@ assert.match(failedWorkflowHtml, /DRM/);
 const routeEmptyHtml = context.browserRouteSummaryHtml(null);
 assert.match(routeEmptyHtml, /等待扩展侧栏创建当前页任务/);
 assert.match(routeEmptyHtml, /不做标签页录制/);
+assert.match(routeEmptyHtml, /data-browser-route-action="refresh"/);
+assert.match(routeEmptyHtml, /data-browser-route-action="copy-backend"/);
+assert.match(routeEmptyHtml, /data-browser-route-action="local-video"/);
 
 const timelineHtml = context.transcriptTimeline({
   segments: [
