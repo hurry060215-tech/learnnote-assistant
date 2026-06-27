@@ -2909,6 +2909,53 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
+.visual-study-checkpoints {
+  display: grid;
+  gap: 7px;
+  border: 1px solid #d7e5ff;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #f8fbff, #fff);
+  padding: 9px 10px;
+}
+
+.visual-study-checkpoints > span {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.visual-study-checkpoints ol {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.visual-study-checkpoints li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 7px;
+  align-items: start;
+  color: #25324a;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.visual-study-checkpoints time {
+  border-radius: 6px;
+  background: #eaf2ff;
+  color: var(--accent);
+  padding: 2px 5px;
+  font-size: 10px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.visual-study-checkpoints li > span {
+  overflow-wrap: anywhere;
+}
+
 .visual-study-checklist {
   display: grid;
   gap: 6px;

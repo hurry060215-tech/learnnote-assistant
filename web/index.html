@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>LearnNote 学习视频笔记</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="/web/styles.css?v=20260627-current-page-capture-1">
+    <link rel="stylesheet" href="/web/styles.css?v=20260627-visual-checkpoints-1">
   </head>
   <body>
     <header class="topbar">
@@ -80,7 +80,7 @@
                 <option value="dash">DASH mpd</option>
               </select>
             </label>
-            <div id="urlModeHint" class="mode-hint">自动识别会优先把 mp4/FLV/m3u8/mpd 当作媒体候选；无后缀 URL 可切换直连/HLS/DASH 或交给页面扫描和 yt-dlp。</div>
+            <div id="urlModeHint" class="mode-hint">自动识别会优先把 mp4/FLV/m3u8/mpd 当作媒体候选；无后缀 URL 可切换直连、HLS/DASH，或交给页面扫描和 yt-dlp。</div>
           </div>
           <label class="field">
             <span>笔记标题</span>
@@ -184,68 +184,68 @@
           </summary>
 
           <div class="option-grid">
-          <label class="field">
-            <span>切片间隔</span>
-            <select id="frameInterval">
-              <option value="10">10 秒</option>
-              <option value="20" selected>20 秒</option>
-              <option value="30">30 秒</option>
-              <option value="60">60 秒</option>
-            </select>
-          </label>
-          <label class="field">
-            <span>视觉窗口</span>
-            <select id="gridSize">
-              <option value="3x3" selected>3x3 · 约 3 分钟</option>
-              <option value="2x3">2x3 · 紧凑</option>
-              <option value="4x3">4x3 · 长窗口</option>
-            </select>
-          </label>
-          <label class="field">
-            <span>转写模型</span>
-            <select id="whisperModel">
-              <option value="tiny">tiny</option>
-              <option value="small" selected>small</option>
-              <option value="medium">medium</option>
-            </select>
-          </label>
-          <label class="field">
-            <span>笔记风格</span>
-            <select id="noteStyle">
-              <option value="study" selected>学习笔记</option>
-              <option value="outline">大纲梳理</option>
-              <option value="exam">考点复习</option>
-              <option value="code">代码/演示</option>
-            </select>
-          </label>
-          <label class="field">
-            <span>摘要深度</span>
-            <select id="summaryDepth">
-              <option value="brief">简洁</option>
-              <option value="standard" selected>标准</option>
-              <option value="deep">深入</option>
-            </select>
-          </label>
-          <label class="field">
-            <span>视觉模型</span>
-            <input id="llmModel" type="text" placeholder="gpt-4.1-mini">
-          </label>
-          <label class="field wide">
-            <span>OpenAI-compatible Base URL</span>
-            <input id="llmBaseUrl" type="url" placeholder="https://api.openai.com/v1">
-          </label>
-          <label class="field wide">
-            <span>API Key（仅随本次任务发送，不写入任务记录）</span>
-            <input id="llmApiKey" type="password" autocomplete="off" placeholder="留空则使用后端环境变量或本地降级">
-          </label>
-        </div>
+            <label class="field">
+              <span>切片间隔</span>
+              <select id="frameInterval">
+                <option value="10">10 秒</option>
+                <option value="20" selected>20 秒</option>
+                <option value="30">30 秒</option>
+                <option value="60">60 秒</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>视觉窗口</span>
+              <select id="gridSize">
+                <option value="3x3" selected>3x3 · 约 3 分钟</option>
+                <option value="2x3">2x3 · 紧凑</option>
+                <option value="4x3">4x3 · 长窗口</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>转写模型</span>
+              <select id="whisperModel">
+                <option value="tiny">tiny</option>
+                <option value="small" selected>small</option>
+                <option value="medium">medium</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>笔记风格</span>
+              <select id="noteStyle">
+                <option value="study" selected>学习笔记</option>
+                <option value="outline">大纲梳理</option>
+                <option value="exam">考点复习</option>
+                <option value="code">代码/演示</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>摘要深度</span>
+              <select id="summaryDepth">
+                <option value="brief">简洁</option>
+                <option value="standard" selected>标准</option>
+                <option value="deep">深入</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>视觉模型</span>
+              <input id="llmModel" type="text" placeholder="gpt-4.1-mini">
+            </label>
+            <label class="field wide">
+              <span>OpenAI-compatible Base URL</span>
+              <input id="llmBaseUrl" type="url" placeholder="https://api.openai.com/v1">
+            </label>
+            <label class="field wide">
+              <span>API Key（仅随本次任务发送，不写入任务记录）</span>
+              <input id="llmApiKey" type="password" autocomplete="off" placeholder="留空则使用后端环境变量或本地降级">
+            </label>
+          </div>
 
-        <div class="workflow-strip" aria-label="处理流程">
-          <span>直取</span>
-          <span>转写</span>
-          <span>切片</span>
-          <span>图文总结</span>
-        </div>
+          <div class="workflow-strip" aria-label="处理流程">
+            <span>直取</span>
+            <span>转写</span>
+            <span>切片</span>
+            <span>图文总结</span>
+          </div>
         </details>
       </aside>
 
@@ -317,6 +317,6 @@
       </section>
     </main>
 
-    <script src="/web/app.js?v=20260627-current-page-capture-1"></script>
+    <script src="/web/app.js?v=20260627-visual-checkpoints-1"></script>
   </body>
 </html>

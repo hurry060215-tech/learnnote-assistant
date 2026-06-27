@@ -2408,6 +2408,7 @@ function visualStudyDeck(task) {
             <span>窗口 ${String(index + 1).padStart(2, "0")}</span>
             <strong>${fmt(window.start)} - ${fmt(window.end)}</strong>
             <p>${escapeHtml(excerpt)}</p>
+            ${sideVisualStudyCheckpointHtml(window)}
             ${sideVisualStudyChecklistHtml(window)}
             <div class="side-visual-meta">
               <em>${Number(window.frame_count || 0)} 帧</em>
@@ -2424,6 +2425,17 @@ function visualStudyDeck(task) {
       }).join("")}
     </div>
   </section>`;
+}
+
+function sideVisualStudyCheckpointHtml(window) {
+  const excerpt = String(window.transcript_excerpt || "").replace(/\s+/g, " ").trim();
+  const item = excerpt
+    ? `<li><time>${fmt(window.start || 0)}</time><span>${escapeHtml(excerpt.length > 96 ? `${excerpt.slice(0, 96).trim()}...` : excerpt)}；对照画面确认对应的板书、PPT、代码或操作步骤。</span></li>`
+    : `<li><span>无同步字幕；先描述画面网格中的标题、公式、代码或界面状态，再回看原视频确认上下文。</span></li>`;
+  return `<div class="side-visual-study-checkpoints">
+    <span>回看检查点</span>
+    <ol>${item}</ol>
+  </div>`;
 }
 
 function sideVisualStudyChecklistHtml(window) {

@@ -332,6 +332,9 @@ assert.match(visualDeckHtml, /\/api\/tasks\/task-visual-deck\/exports\/visual-wi
 assert.match(visualDeckHtml, /src="http:\/\/127\.0\.0\.1:8765\/api\/tasks\/demo\/grids\/grid_000\.jpg"/);
 assert.match(visualDeckHtml, /学习动作/);
 assert.match(visualDeckHtml, /复述这一窗口的结论/);
+assert.match(visualDeckHtml, /回看检查点/);
+assert.match(visualDeckHtml, /00:00:00/);
+assert.match(visualDeckHtml, /对照画面确认对应的板书、PPT、代码或操作步骤/);
 assert.match(visualDeckHtml, /00:00:00 \/ 00:00:20 \/ 00:00:40 \/ 00:01:00\.\.\./);
 assert.doesNotMatch(visualDeckHtml, /src="javascript:alert/);
 assert.match(visualDeckHtml, /&lt;script&gt;alert\(1\)&lt;\/script&gt; PPT 演示/);
@@ -366,6 +369,8 @@ assert.match(visualDeckWithTranscriptHtml, /class="visual-study-cues"/);
 assert.match(visualDeckWithTranscriptHtml, /00:00:12/);
 assert.match(visualDeckWithTranscriptHtml, /老师讲解概念定义/);
 assert.match(visualDeckWithTranscriptHtml, /&lt;script&gt;alert\(1\)&lt;\/script&gt; 例题演示/);
+assert.match(visualDeckWithTranscriptHtml, /回看检查点/);
+assert.match(visualDeckWithTranscriptHtml, /对照画面确认对应的板书、PPT、代码或操作步骤/);
 assert.match(visualDeckWithTranscriptHtml, /核对截图里的板书/);
 assert.doesNotMatch(visualDeckWithTranscriptHtml, /不属于这个窗口/);
 assert.doesNotMatch(visualDeckWithTranscriptHtml, /<script>/);

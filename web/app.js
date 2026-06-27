@@ -1689,6 +1689,27 @@ function visualStudyChecklistHtml(window, transcript) {
   </div>`;
 }
 
+function visualStudyCheckpointHtml(window, transcript) {
+  const segments = (transcript?.segments || [])
+    .filter(segment => segmentOverlapsWindow(segment, window))
+    .slice(0, 3)
+    .map(segment => ({ time: fmt(segment.start), text: String(segment.text || "").replace(/\s+/g, " ").trim() }))
+    .filter(item => item.text);
+  if (!segments.length && window.transcript_excerpt) {
+    segments.push({
+      time: fmt(window.start || 0),
+      text: String(window.transcript_excerpt || "").replace(/\s+/g, " ").trim()
+    });
+  }
+  const items = segments.length
+    ? segments.map(item => `<li><time>${escapeHtml(item.time)}</time><span>${escapeHtml(item.text.length > 96 ? `${item.text.slice(0, 96).trim()}...` : item.text)}；对照画面确认对应的板书、PPT、代码或操作步骤。</span></li>`)
+    : [`<li><span>无同步字幕；先描述画面网格中的标题、公式、代码或界面状态，再回看原视频确认上下文。</span></li>`];
+  return `<div class="visual-study-checkpoints">
+    <span>回看检查点</span>
+    <ol>${items.join("")}</ol>
+  </div>`;
+}
+
 function visualStudyDeck(task, transcript = null) {
   const windows = visualWindows(task);
   if (!windows.length) return "";
@@ -1720,6 +1741,7 @@ function visualStudyDeck(task, transcript = null) {
             <span>窗口 ${String(index + 1).padStart(2, "0")}</span>
             <strong>${fmt(window.start)} - ${fmt(window.end)}</strong>
             ${visualStudyCueHtml(window, transcript)}
+            ${visualStudyCheckpointHtml(window, transcript)}
             ${visualStudyChecklistHtml(window, transcript)}
             <div class="visual-study-meta">
               <em>${Number(window.frame_count || 0)} 帧</em>

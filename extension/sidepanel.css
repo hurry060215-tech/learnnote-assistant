@@ -2467,6 +2467,53 @@ input[type="file"] {
   overflow-wrap: anywhere;
 }
 
+.side-visual-study-checkpoints {
+  display: grid;
+  gap: 5px;
+  border: 1px solid #d7e5ff;
+  border-radius: 7px;
+  background: linear-gradient(180deg, #f8fbff, #fff);
+  padding: 7px 8px;
+}
+
+.side-visual-study-checkpoints > span {
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.side-visual-study-checkpoints ol {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.side-visual-study-checkpoints li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px;
+  align-items: start;
+  color: #25324a;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.side-visual-study-checkpoints time {
+  border-radius: 6px;
+  background: #eaf2ff;
+  color: var(--accent);
+  padding: 2px 5px;
+  font-size: 10px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.side-visual-study-checkpoints li > span {
+  overflow-wrap: anywhere;
+}
+
 .side-visual-study-checklist {
   display: grid;
   gap: 5px;
