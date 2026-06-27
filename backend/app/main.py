@@ -79,6 +79,65 @@ def _safe_header_names(values: dict[str, str]) -> str:
     return ", ".join(names) or "-"
 
 
+def _format_timestamp(seconds: float | int | None) -> str:
+    total = max(0, int(seconds or 0))
+    hours, remainder = divmod(total, 3600)
+    minutes, secs = divmod(remainder, 60)
+    if hours:
+        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+    return f"{minutes:02d}:{secs:02d}"
+
+
+def _bundle_grid_ref(path_value: str, fallback_url: str = "") -> str:
+    if path_value:
+        filename = Path(path_value).name
+        if filename:
+            return f"grids/{filename}"
+    return fallback_url or "-"
+
+
+def render_visual_windows_markdown(task: TaskRecord) -> str:
+    lines = [
+        "# LearnNote 画面切片索引",
+        "",
+        f"- 任务：{task.title}",
+        f"- ID：{task.id}",
+        f"- 页面：{task.page_url or '-'}",
+        "- 说明：本索引对应资料包 `grids/` 目录中的网格图，可和 `transcript.json`、`visual_index.json` 交叉回看。",
+        "",
+    ]
+
+    if task.visual_windows:
+        for index, window in enumerate(task.visual_windows, start=1):
+            label = window.id or f"W{index:03d}"
+            grid_ref = _bundle_grid_ref(window.grid_path, window.grid_url)
+            lines.extend([
+                f"## {label} `{_format_timestamp(window.start)} - {_format_timestamp(window.end)}`",
+                f"- 画面网格：{grid_ref}",
+                f"- 帧数：{window.frame_count}",
+            ])
+            if window.transcript_excerpt.strip():
+                lines.extend(["", window.transcript_excerpt.strip()])
+            else:
+                lines.append("- 字幕摘录：-")
+            lines.append("")
+        return "\n".join(lines).rstrip() + "\n"
+
+    if task.frame_grids:
+        for index, grid in enumerate(task.frame_grids, start=1):
+            label = f"W{index:03d}"
+            lines.extend([
+                f"## {label} `{_format_timestamp(grid.start)} - {_format_timestamp(grid.end)}`",
+                f"- 画面网格：{_bundle_grid_ref(grid.path, grid.url)}",
+                f"- 帧数：{grid.frame_count}",
+                "",
+            ])
+        return "\n".join(lines).rstrip() + "\n"
+
+    lines.append("- 暂无画面切片。")
+    return "\n".join(lines) + "\n"
+
+
 def diagnostic_recovery_steps(task: TaskRecord) -> list[str]:
     codes = {task.error_code} if task.error_code else set()
     codes.update(attempt.code for attempt in task.download_attempts if attempt.code)
@@ -365,6 +424,7 @@ def api_export_bundle(task_id: str) -> Response:
         raise HTTPException(status_code=404, detail="Task not found") from exc
 
     diagnostics = render_diagnostics_markdown(task)
+    visual_windows = render_visual_windows_markdown(task)
     has_artifact = bool(
         note.strip()
         or transcript.get("segments")
@@ -380,6 +440,7 @@ def api_export_bundle(task_id: str) -> Response:
     buffer = BytesIO()
     with ZipFile(buffer, "w", ZIP_DEFLATED) as archive:
         archive.writestr("diagnostics.md", diagnostics)
+        archive.writestr("visual_windows.md", visual_windows)
         if note.strip():
             archive.writestr("note.md", note)
         archive.writestr("task.json", json.dumps(task.model_dump(mode="json"), ensure_ascii=False, indent=2))
