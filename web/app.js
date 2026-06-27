@@ -994,7 +994,7 @@ async function checkHealth() {
     els.health.textContent = data.ffmpeg ? "本地后端可用" : "ffmpeg 缺失";
     if (els.browserBridgeStatus) {
       els.browserBridgeStatus.textContent = data.ffmpeg
-        ? "扩展读取播放状态、媒体请求和一次性 cookie，后端在本机处理。"
+        ? "扩展读取播放器、媒体请求和一次性 cookie，后端只下载可访问的视频地址。"
         : "后端已连接，但 ffmpeg 缺失；当前页直取后无法完成合并/切片。";
     }
   } catch {

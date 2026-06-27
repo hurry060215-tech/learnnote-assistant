@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>LearnNote 学习视频笔记</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="/web/styles.css?v=20260627-workbench-flow-1">
+    <link rel="stylesheet" href="/web/styles.css?v=20260627-current-page-capture-1">
   </head>
   <body>
     <header class="topbar">
@@ -117,40 +117,45 @@
 
         <section id="browserSource" class="source-pane active">
           <div class="browser-handoff">
-            <div class="browser-handshake">
-              <span class="status-dot"></span>
-              <div>
-              <strong>Side Panel 当前页直取</strong>
-              <small id="browserBridgeStatus">在 Chrome/Edge 扩展侧栏里选择候选资源，后端只下载可访问的媒体 URL。</small>
+            <div class="browser-capture-card" aria-label="当前页直取启动面板">
+              <div class="browser-capture-head">
+                <span class="capture-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z"/><path d="M8 9h8M8 13h5"/><path d="M17 16l3 3M20 16l-3 3"/></svg>
+                </span>
+                <div>
+                  <strong>当前页视频直取</strong>
+                  <small id="browserBridgeStatus">扩展读取播放器、媒体请求和一次性 cookie，后端只下载可访问的视频地址。</small>
+                </div>
+                <em>非录制</em>
+              </div>
+
+              <div class="capture-flow" aria-label="当前页交接流程">
+                <div>
+                  <span>01</span>
+                  <strong>播放课程页</strong>
+                  <small>让视频播放几秒，捕获真实请求。</small>
+                </div>
+                <div>
+                  <span>02</span>
+                  <strong>预检候选</strong>
+                  <small>优先主视频、manifest 和请求头。</small>
+                </div>
+                <div>
+                  <span>03</span>
+                  <strong>本地总结</strong>
+                  <small>下载后转写、切片、图文总结。</small>
+                </div>
+              </div>
+
+              <div class="capture-signals" aria-label="可直取线索">
+                <span>MP4/FLV/WebM</span>
+                <span>HLS/DASH</span>
+                <span>yt-dlp 页面解析</span>
+                <span>Blob/MSE 来源映射</span>
               </div>
             </div>
 
             <div id="browserRouteSummary" class="browser-route-summary" aria-label="当前页直取状态"></div>
-
-            <div class="side-panel-handoff" aria-label="Side Panel 交接清单">
-              <div>
-                <span>1</span>
-                <strong>打开课程页</strong>
-                <small>让视频播放几秒，扩展会记录播放器和媒体请求。</small>
-              </div>
-              <div>
-                <span>2</span>
-                <strong>选择候选资源</strong>
-                <small>优先主视频、manifest 和可复用请求头。</small>
-              </div>
-              <div>
-                <span>3</span>
-                <strong>本地处理</strong>
-                <small>下载、转写、抽帧切片和图文总结都在本机后端完成。</small>
-              </div>
-            </div>
-
-            <div class="capability-grid" aria-label="直取能力">
-              <span>MP4/FLV/WebM</span>
-              <span>HLS/DASH</span>
-              <span>yt-dlp</span>
-              <span>Blob/MSE 来源映射</span>
-            </div>
 
             <div class="browser-actions">
               <button id="copyBackendButton" class="secondary action-button" type="button">
@@ -312,6 +317,6 @@
       </section>
     </main>
 
-    <script src="/web/app.js?v=20260627-workbench-flow-1"></script>
+    <script src="/web/app.js?v=20260627-current-page-capture-1"></script>
   </body>
 </html>

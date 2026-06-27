@@ -144,15 +144,19 @@ assert.match(elements.get("#sourceWorkflow").innerHTML, /class="source-workflow-
 assert.match(elements.get("#sourceWorkflow").innerHTML, /学习生产线|当前页直取/);
 assert.match(elements.get("#sourceWorkflow").innerHTML, /读取当前页/);
 assert.match(elements.get("#sourceWorkflow").innerHTML, /预检资源/);
-assert.match(indexHtml, /class="side-panel-handoff"/);
+assert.match(indexHtml, /class="browser-capture-card"/);
+assert.match(indexHtml, /class="capture-flow"/);
+assert.match(indexHtml, /非录制/);
+assert.match(indexHtml, /预检候选/);
+assert.match(indexHtml, /本地总结/);
 assert.match(indexHtml, /id="browserRouteSummary"/);
 assert.ok(
   indexHtml.indexOf('id="browserRouteSummary"') < indexHtml.indexOf('id="sourceWorkflow"'),
   "current-page route summary should appear before the workflow explainer"
 );
 assert.match(indexHtml, /当前页直取状态/);
-assert.match(indexHtml, /打开课程页/);
-assert.match(indexHtml, /选择候选资源/);
+assert.match(indexHtml, /当前页交接流程/);
+assert.match(indexHtml, /Blob\/MSE 来源映射/);
 assert.match(indexHtml, /accept="video\/\*,\.mp4,\.m4v,\.mov,\.mkv,\.webm,\.flv,\.avi"/);
 context.window.location.search = "?task=task%20from%20url";
 assert.equal(context.taskIdFromCurrentUrl(), "task from url");
