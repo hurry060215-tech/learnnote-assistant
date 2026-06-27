@@ -194,6 +194,77 @@ small,
   line-height: 1.45;
 }
 
+.playback-readiness {
+  display: grid;
+  gap: 9px;
+  margin-top: 9px;
+  border: 1px solid #c9d9ff;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 10px;
+}
+
+.playback-readiness.ready {
+  border-color: rgba(20, 150, 74, 0.34);
+  background: linear-gradient(180deg, #ffffff, #f3fbf6);
+}
+
+.playback-readiness.mapping,
+.playback-readiness.waiting {
+  border-color: rgba(196, 122, 5, 0.3);
+  background: linear-gradient(180deg, #ffffff, #fffaf0);
+}
+
+.playback-readiness.blocked {
+  border-color: rgba(217, 45, 32, 0.24);
+  background: linear-gradient(180deg, #ffffff, #fff7f6);
+}
+
+.playback-readiness-head {
+  display: grid;
+  gap: 3px;
+}
+
+.playback-readiness-head strong {
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.playback-readiness-head small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.playback-readiness-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.playback-readiness-grid span {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: #fbfcff;
+  padding: 7px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.playback-readiness-grid b {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--ink);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .mode-row {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
