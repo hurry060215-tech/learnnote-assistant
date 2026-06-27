@@ -1290,7 +1290,9 @@ function scheduleContextRefresh(reason = "media", delay = 350) {
   contextRefreshTimer = setTimeout(() => {
     contextRefreshTimer = 0;
     if (!currentTaskId && reason !== "pending") {
-      els.taskMessage.textContent = "检测到当前页媒体变化，正在刷新候选资源...";
+      els.taskMessage.textContent = reason === "tab-activated"
+        ? "已切换到当前标签页，正在读取播放上下文..."
+        : "检测到当前页媒体变化，正在刷新候选资源...";
     }
     collect();
   }, delay);
@@ -1298,6 +1300,7 @@ function scheduleContextRefresh(reason = "media", delay = 350) {
 
 function shouldAcceptContextUpdate(message = {}) {
   if (message?.type !== "current-context-updated") return false;
+  if (message.reason === "tab-activated") return true;
   if (currentTabId === null || currentTabId === undefined) return true;
   if (message.tabId === null || message.tabId === undefined) return true;
   return message.tabId === currentTabId;

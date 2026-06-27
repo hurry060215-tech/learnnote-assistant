@@ -2,8 +2,13 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import vm from "node:vm";
 
-function listener() {
-  return { addListener() {} };
+const listeners = {};
+function listener(name = "") {
+  return {
+    addListener(callback) {
+      if (name) listeners[name] = callback;
+    }
+  };
 }
 
 const messages = [];
@@ -24,8 +29,9 @@ const context = {
       onErrorOccurred: listener()
     },
     tabs: {
-      onRemoved: listener(),
-      onUpdated: listener(),
+      onRemoved: listener("tabRemoved"),
+      onActivated: listener("tabActivated"),
+      onUpdated: listener("tabUpdated"),
       query() {}
     },
     action: { onClicked: listener() },
@@ -68,6 +74,21 @@ context.addResource(42, {
   score: 90
 }, false);
 
+assert.equal(messages.length, 0);
+
+listeners.tabActivated({ tabId: 77 });
+assert.equal(messages.length, 1);
+assert.equal(messages[0].tabId, 77);
+assert.equal(messages[0].reason, "tab-activated");
+
+messages.length = 0;
+listeners.tabUpdated(77, { status: "loading" });
+assert.equal(messages.length, 1);
+assert.equal(messages[0].tabId, 77);
+assert.equal(messages[0].reason, "navigation");
+
+messages.length = 0;
+listeners.tabUpdated(77, { status: "complete" });
 assert.equal(messages.length, 0);
 
 const merged = context.mergePageContexts({ title: "Top", url: "https://course.example.com" }, [

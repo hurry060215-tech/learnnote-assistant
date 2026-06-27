@@ -30,6 +30,7 @@ const documentStub = {
 
 let onMessageListener = null;
 let collectCalls = 0;
+let activeTabId = 7;
 const context = {
   console,
   document: documentStub,
@@ -71,10 +72,10 @@ const context = {
         if (message.type === "get-current-context") {
           collectCalls += 1;
           return {
-            tab: { id: 7, url: "https://course.example.com/lesson" },
+            tab: { id: activeTabId, url: `https://course.example.com/lesson-${activeTabId}` },
             page: {
               title: `Course player ${collectCalls}`,
-              page_url: "https://course.example.com/lesson",
+              page_url: `https://course.example.com/lesson-${activeTabId}`,
               page_text: "lesson text",
               active_video: null,
               frames: []
@@ -111,9 +112,19 @@ onMessageListener({ type: "current-context-updated", tabId: 99, reason: "media" 
 await new Promise(resolve => setTimeout(resolve, 0));
 assert.equal(collectCalls, 1);
 
-onMessageListener({ type: "current-context-updated", tabId: 7, reason: "media" });
+activeTabId = 99;
+onMessageListener({ type: "current-context-updated", tabId: 99, reason: "tab-activated" });
 await new Promise(resolve => setTimeout(resolve, 0));
 
 assert.equal(collectCalls, 2);
 assert.equal(elements.get("#resourceCount").textContent, "1");
+assert.match(elements.get("#taskMessage").textContent, /当前标签页/);
+
+onMessageListener({ type: "current-context-updated", tabId: 7, reason: "media" });
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.equal(collectCalls, 2);
+
+onMessageListener({ type: "current-context-updated", tabId: 99, reason: "media" });
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.equal(collectCalls, 3);
 assert.match(elements.get("#taskMessage").textContent, /刷新候选资源/);
