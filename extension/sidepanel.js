@@ -2053,6 +2053,7 @@ function visualStudyDeck(task) {
             <span>窗口 ${String(index + 1).padStart(2, "0")}</span>
             <strong>${fmt(window.start)} - ${fmt(window.end)}</strong>
             <p>${escapeHtml(excerpt)}</p>
+            ${sideVisualStudyChecklistHtml(window)}
             <div class="side-visual-meta">
               <em>${Number(window.frame_count || 0)} 帧</em>
               <em>${escapeHtml(task.options?.grid_columns && task.options?.grid_rows ? `${task.options.grid_columns}x${task.options.grid_rows}` : "网格")}</em>
@@ -2067,6 +2068,23 @@ function visualStudyDeck(task) {
       }).join("")}
     </div>
   </section>`;
+}
+
+function sideVisualStudyChecklistHtml(window) {
+  const hasCue = Boolean(window.transcript_excerpt);
+  const target = hasCue
+    ? "核对截图里的板书、PPT 切换、代码/界面状态是否已被字幕覆盖。"
+    : "先从截图判断本段主题，重点看标题、公式、代码和演示状态。";
+  const action = hasCue
+    ? "复述这一窗口的结论，再按画面顺序补齐遗漏步骤。"
+    : "补一句本段主题，再和前后窗口串成完整时间线。";
+  return `<div class="side-visual-study-checklist">
+    <span>学习动作</span>
+    <ul>
+      <li>${escapeHtml(target)}</li>
+      <li>${escapeHtml(action)}</li>
+    </ul>
+  </div>`;
 }
 
 function renderResult() {
