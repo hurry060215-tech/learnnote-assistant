@@ -113,14 +113,60 @@ assert.match(elements.get("#sourceWorkflow").innerHTML, /学习生产线|当前�
 assert.match(elements.get("#sourceWorkflow").innerHTML, /读取当前页/);
 assert.match(elements.get("#sourceWorkflow").innerHTML, /预检资源/);
 assert.match(indexHtml, /class="side-panel-handoff"/);
+assert.match(indexHtml, /id="browserRouteSummary"/);
+assert.match(indexHtml, /当前页直取状态/);
 assert.match(indexHtml, /打开课程页/);
 assert.match(indexHtml, /选择候选资源/);
-assert.doesNotMatch(indexHtml, /id="browserRouteSummary"/);
 assert.match(indexHtml, /accept="video\/\*,\.mp4,\.m4v,\.mov,\.mkv,\.webm,\.flv,\.avi"/);
 assert.equal(context.isSupportedLocalVideoFile({ name: "lesson.mkv", type: "" }), true);
 assert.equal(context.isSupportedLocalVideoFile({ name: "lesson.flv", type: "" }), true);
 assert.equal(context.isSupportedLocalVideoFile({ name: "lesson.avi", type: "" }), true);
 assert.equal(context.isSupportedLocalVideoFile({ name: "bad.txt", type: "text/plain" }), false);
+
+const routeSummaryHtml = context.browserRouteSummaryHtml({
+  id: "task-route-summary",
+  title: "<script>bad()</script> 课程",
+  status: "success",
+  phase: "completed",
+  progress: 100,
+  source_type: "current_page",
+  media_path: "D:/Projects/learnnote-assistant/data/tasks/task-route-summary/media.mp4",
+  note_path: "",
+  selected_resource: {
+    kind: "hls"
+  },
+  download_attempts: [{ strategy: "manifest-ffmpeg" }],
+  visual_windows: [
+    { id: "W001", start: 0, end: 180 },
+    { id: "W002", start: 180, end: 360 }
+  ]
+});
+
+assert.match(routeSummaryHtml, /class="browser-route-summary-card downloaded"/);
+assert.match(routeSummaryHtml, /视频已直取到本地/);
+assert.match(routeSummaryHtml, /继续切片总结/);
+assert.match(routeSummaryHtml, /data-select-browser-task="task-route-summary"/);
+assert.match(routeSummaryHtml, /data-rerun-browser-task="task-route-summary"/);
+assert.match(routeSummaryHtml, /\/api\/tasks\/task-route-summary\/exports\/media/);
+assert.match(routeSummaryHtml, /\/api\/tasks\/task-route-summary\/exports\/diagnostics/);
+assert.match(routeSummaryHtml, /视觉窗口/);
+assert.doesNotMatch(routeSummaryHtml, /<script>bad/);
+
+const blockedRouteSummaryHtml = context.browserRouteSummaryHtml({
+  id: "task-route-blocked",
+  status: "failed",
+  phase: "failed",
+  progress: 100,
+  source_type: "current_page",
+  error_code: "drm_or_encrypted",
+  error_detail: "<script>bad()</script> DRM"
+});
+
+assert.match(blockedRouteSummaryHtml, /class="browser-route-summary-card blocked"/);
+assert.match(blockedRouteSummaryHtml, /不可直取/);
+assert.match(blockedRouteSummaryHtml, /&lt;script&gt;bad\(\)&lt;\/script&gt; DRM/);
+assert.doesNotMatch(blockedRouteSummaryHtml, /导出本地视频/);
+assert.doesNotMatch(blockedRouteSummaryHtml, /<script>bad/);
 
 const html = context.markdownToHtml(`## 画面索引
 
