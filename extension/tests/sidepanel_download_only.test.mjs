@@ -30,7 +30,9 @@ const documentStub = {
 
 const calls = {
   preflight: 0,
-  start: null
+  start: null,
+  export: null,
+  openedTab: null
 };
 
 const page = {
@@ -100,11 +102,17 @@ const context = {
           calls.start = message;
           return { task_id: "download-only-task" };
         }
+        if (message.type === "download-task-export") {
+          calls.export = message;
+          return { ok: true, downloadId: 9 };
+        }
         throw new Error(`unexpected message: ${message.type}`);
       }
     },
     tabs: {
-      create() {}
+      create(options) {
+        calls.openedTab = options;
+      }
     }
   },
   setTimeout,
@@ -139,3 +147,10 @@ assert.equal(context.canContinueFromDownloadedMedia({
 }), false);
 assert.equal(elements.get("#continueFromMediaButton").hidden, false);
 assert.equal(elements.get("#continueFromMediaButton").disabled, false);
+
+await context.openTaskExport("media");
+
+assert.equal(calls.export.type, "download-task-export");
+assert.equal(calls.export.url, "http://127.0.0.1:8765/api/tasks/download-only-task/exports/media");
+assert.equal(calls.openedTab, null);
+assert.equal(elements.get("#taskMessage").textContent, "已开始下载本地视频。");
