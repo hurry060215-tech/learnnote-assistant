@@ -775,6 +775,61 @@ class DownloaderPriorityTests(unittest.TestCase):
                 server.shutdown()
                 server.server_close()
 
+    def test_preflight_retries_with_open_ended_range(self) -> None:
+        ffmpeg = ffmpeg_bin()
+        assert ffmpeg is not None
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            video = root / "range-preflight.mp4"
+            subprocess.run(
+                [
+                    ffmpeg,
+                    "-y",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "testsrc=duration=2:size=320x180:rate=10",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "sine=frequency=440:duration=2",
+                    "-shortest",
+                    "-pix_fmt",
+                    "yuv420p",
+                    str(video),
+                ],
+                check=True,
+            )
+            server = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(RangeGateHandler, directory=str(root)))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                media_url = f"http://127.0.0.1:{server.server_port}/{video.name}"
+                result = preflight_media_resource(
+                    ResourceCandidate(
+                        url=media_url,
+                        source="webRequest",
+                        kind="video",
+                        mime="video/mp4",
+                        score=100,
+                    ),
+                    [],
+                    f"http://127.0.0.1:{server.server_port}/lesson.html",
+                )
+                self.assertTrue(result.ok)
+                self.assertTrue(result.downloadable)
+                self.assertEqual(result.strategy, "direct-file-probe")
+                self.assertEqual(result.status_code, 200)
+                self.assertIn("Range", result.request_header_names)
+                self.assertIn("open-ended Range", " ".join(result.warnings))
+                self.assertGreater(result.bytes_checked, 0)
+            finally:
+                server.shutdown()
+                server.server_close()
+
     def test_preflight_reports_extensionless_video_response_manifest(self) -> None:
         ffmpeg = ffmpeg_bin()
         assert ffmpeg is not None
