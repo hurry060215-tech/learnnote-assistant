@@ -1,6 +1,7 @@
 const MEDIA_RE = /\.(mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd)(\?|#|$)/i;
 const FRAGMENT_RE = /\.(m4s|ts)(\?|#|$)/i;
 const SUBTITLE_RE = /\.(vtt|srt|ass|ssa)(\?|#|$)/i;
+const LOCAL_EXPORT_RE = /^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?\/api\/tasks\/[^/]+\/exports\/(?:markdown|visual-windows|bundle|diagnostics|media)(?:[?#].*)?$/i;
 const resourceByTab = new Map();
 const pageStateByTab = new Map();
 const requestHeadersByRequestId = new Map();
@@ -775,6 +776,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         })
       });
       sendResponse(await res.json());
+      return;
+    }
+
+    if (message.type === "download-task-export") {
+      const url = String(message.url || "");
+      if (!LOCAL_EXPORT_RE.test(url)) {
+        sendResponse({ ok: false, error: "只允许下载本地 LearnNote 导出文件。" });
+        return;
+      }
+      if (!chrome.downloads?.download) {
+        sendResponse({ ok: false, error: "当前浏览器不支持扩展直接下载。" });
+        return;
+      }
+      chrome.downloads.download({ url, saveAs: false }, downloadId => {
+        const error = chrome.runtime.lastError?.message;
+        sendResponse(error ? { ok: false, error } : { ok: true, downloadId });
+      });
       return;
     }
   })().catch(error => sendResponse({ error: String(error?.message || error) }));

@@ -1611,11 +1611,24 @@ function taskOverview(task) {
   </section>`;
 }
 
-function openTaskExport(type) {
+async function openTaskExport(type) {
   if (!currentTaskId) return;
   const url = `${backendUrl}/api/tasks/${encodeURIComponent(currentTaskId)}/exports/${type}`;
-  if (HAS_EXTENSION_API) chrome.tabs.create({ url });
-  else window.open(url, "_blank", "noopener");
+  if (HAS_EXTENSION_API) {
+    try {
+      const response = await chrome.runtime.sendMessage({ type: "download-task-export", url });
+      if (response?.ok) {
+        els.taskMessage.textContent = type === "media" ? "已开始下载本地视频。" : "已开始下载导出文件。";
+        return;
+      }
+      if (response?.error) els.taskMessage.textContent = `${response.error} 已改为打开导出链接。`;
+    } catch (error) {
+      els.taskMessage.textContent = `${error?.message || "导出下载失败"} 已改为打开导出链接。`;
+    }
+    chrome.tabs.create({ url });
+    return;
+  }
+  window.open(url, "_blank", "noopener");
 }
 
 async function rerunTaskFromMedia(taskId) {
