@@ -327,6 +327,31 @@ assert.equal(context.hasTaskBundle({}), false);
 assert.equal(context.hasTaskDiagnostics({ selected_resource: { kind: "video" } }), true);
 assert.equal(context.hasTaskDiagnostics({ summary_diagnostics_path: "summary.json" }), true);
 assert.equal(context.hasTaskDiagnostics({}), false);
+const diagnosticRecoveryHtml = context.diagnosticRecoveryHtml({
+  id: "side-recovery",
+  status: "success",
+  media_path: "D:/media.mp4",
+  note_path: "",
+  selected_resource: {
+    kind: "hls",
+    request_headers: {
+      Referer: "https://course.example.com/lesson",
+      Cookie: "secret=bad"
+    }
+  },
+  download_attempts: [
+    { strategy: "direct-file", code: "download_forbidden", status_code: 403, message: "<script>bad()</script>" },
+    { strategy: "manifest-ffmpeg", code: "unsupported_manifest" }
+  ]
+});
+assert.match(diagnosticRecoveryHtml, /class="diagnostic-recovery"/);
+assert.match(diagnosticRecoveryHtml, /下一步建议/);
+assert.match(diagnosticRecoveryHtml, /后端已尝试 2 条路线/);
+assert.match(diagnosticRecoveryHtml, /Referer/);
+assert.match(diagnosticRecoveryHtml, /Cookie/);
+assert.doesNotMatch(diagnosticRecoveryHtml, /secret=bad/);
+assert.match(diagnosticRecoveryHtml, /继续切片总结/);
+assert.doesNotMatch(diagnosticRecoveryHtml, /<script>bad/);
 
 const evidenceTags = context.resourceEvidenceTags({
   kind: "hls",

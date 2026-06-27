@@ -1727,6 +1727,35 @@ button:disabled {
   padding-left: 18px;
 }
 
+.diagnostic-recovery {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 14px;
+  border: 1px solid #c9d9ff;
+  border-radius: 8px;
+  background: #f4f8ff;
+  padding: 12px;
+  color: var(--text);
+}
+
+.diagnostic-recovery strong {
+  color: var(--accent);
+  font-size: 13px;
+}
+
+.diagnostic-recovery ul {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.diagnostic-recovery li {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
 .study-map {
   display: grid;
   gap: 12px;
