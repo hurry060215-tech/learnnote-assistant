@@ -669,6 +669,46 @@ function preflightBadgeHtml(item) {
   return `<span class="resource-preflight ${state}">${escapeHtml(detail ? `${label} · ${detail}` : label)}</span>`;
 }
 
+function resourceAttemptState(item) {
+  const result = preflightForResource(item);
+  if (result?.downloadable) return { className: "ok", label: "预检通过" };
+  if (result) return { className: result.code === "drm_or_encrypted" ? "bad" : "warn", label: result.code || "预检未过" };
+  if (isDownloadableResource(item)) return { className: "pending", label: "待预检" };
+  if (item?.kind === "blob" || item?.kind === "fragment") return { className: "warn", label: "线索" };
+  return { className: "muted", label: "候选" };
+}
+
+function resourceAttemptQueueHtml(limit = 4) {
+  if (!resources.length) return "";
+  const ordered = selectedResources().slice(0, limit);
+  return `<section class="resource-attempt-queue" aria-label="候选下载队列">
+    <div class="resource-attempt-head">
+      <strong>下载队列</strong>
+      <span>${resources.filter(isDownloadableResource).length}/${resources.length} 可直取</span>
+    </div>
+    <div class="resource-attempt-list">
+      ${ordered.map((item, index) => {
+        const state = resourceAttemptState(item);
+        const evidence = [
+          item.kind || "media",
+          candidateStrategyText(item),
+          item.score ? `${item.score}%` : "",
+          playbackText(item.playback_match),
+          resourceSourceText(item)
+        ].filter(Boolean).join(" · ");
+        return `<button type="button" class="resource-attempt-row ${item.url === selectedResourceUrl ? "selected" : ""}" data-url="${escapeHtml(item.url)}">
+          <em>${index + 1}</em>
+          <span>
+            <strong>${escapeHtml(item.label || item.kind || "media")}</strong>
+            <small>${escapeHtml(evidence || directnessText(item))}</small>
+          </span>
+          <b class="${escapeHtml(state.className)}">${escapeHtml(state.label)}</b>
+        </button>`;
+      }).join("")}
+    </div>
+  </section>`;
+}
+
 function activeVideoText(active) {
   if (!active?.src) return "-";
   return [
@@ -1038,7 +1078,7 @@ function renderContext() {
     renderInspector();
     return;
   }
-  els.resources.innerHTML = `${resourceHint()}${resources.map(item => `
+  els.resources.innerHTML = `${resourceHint()}${resourceAttemptQueueHtml()}${resources.map(item => `
     <button class="resource ${item.url === selectedResourceUrl ? "selected" : ""} ${isDownloadableResource(item) ? "" : "non-downloadable"} ${item.playback_match || item.is_main_video ? "playback" : ""}" data-url="${escapeHtml(item.url)}">
       <span>
         <strong>${escapeHtml(item.label || item.kind || "media")}</strong>
@@ -1062,6 +1102,12 @@ function renderContext() {
     </button>
   `).join("")}`;
   document.querySelectorAll(".resource").forEach(button => {
+    button.onclick = () => {
+      selectedResourceUrl = button.dataset.url;
+      renderContext();
+    };
+  });
+  document.querySelectorAll(".resource-attempt-row").forEach(button => {
     button.onclick = () => {
       selectedResourceUrl = button.dataset.url;
       renderContext();

@@ -418,12 +418,16 @@ assert.match(context.routeSummaryCopy("candidate").title, /已找到可直取候
 assert.equal(context.candidateTryOrder(context.selectedResource()), 1);
 assert.match(context.resourcePriorityBadgeHtml(context.selectedResource()), /第 1 顺位/);
 assert.match(context.resourcePriorityBadgeHtml(context.selectedResource()), /ffmpeg 合并/);
+assert.match(context.resourceAttemptQueueHtml(), /resource-attempt-queue/);
+assert.match(context.resourceAttemptQueueHtml(), /下载队列/);
+assert.match(context.resourceAttemptQueueHtml(), /待预检/);
 context.renderRouteSummary();
 assert.match(elements.get("#routeSummary").innerHTML, /待预检/);
 assert.doesNotMatch(elements.get("#routeSummary").innerHTML, /<script>bad/);
 context.renderContext();
 assert.match(elements.get("#resources").innerHTML, /第 1 顺位/);
 assert.match(elements.get("#resources").innerHTML, /ffmpeg 合并/);
+assert.match(elements.get("#resources").innerHTML, /resource-attempt-row selected/);
 assert.doesNotMatch(elements.get("#resources").innerHTML, /<script>bad/);
 
 vm.runInContext(`
@@ -432,6 +436,7 @@ preflightResourceUrl = "https://cdn.example.com/live/master.m3u8";
 preflightResultsByUrl = new Map([["https://cdn.example.com/live/master.m3u8", preflight]]);
 `, context);
 assert.equal(context.routeSummaryState(), "ready");
+assert.match(context.resourceAttemptQueueHtml(), /预检通过/);
 context.renderRouteSummary();
 assert.match(elements.get("#routeSummary").innerHTML, /直取路线已验证/);
 assert.match(elements.get("#routeSummary").innerHTML, /预检通过/);
