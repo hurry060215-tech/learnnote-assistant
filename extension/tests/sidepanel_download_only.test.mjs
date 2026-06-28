@@ -154,3 +154,61 @@ assert.equal(calls.export.type, "download-task-export");
 assert.equal(calls.export.url, "http://127.0.0.1:8765/api/tasks/download-only-task/exports/media");
 assert.equal(calls.openedTab, null);
 assert.equal(elements.get("#taskMessage").textContent, "已开始下载本地视频。");
+
+let rerunPayload = null;
+elements.get("#frameInterval").value = "30";
+elements.get("#gridSize").value = "4x3";
+elements.get("#transcriber").value = "openai-compatible";
+elements.get("#whisperModel").value = "whisper-1";
+elements.get("#llmModel").value = "vision-rerun";
+elements.get("#llmBaseUrl").value = "https://models.example/v1";
+elements.get("#llmApiKey").value = "sk-rerun";
+context.fetch = async (url, options = {}) => {
+  const value = String(url);
+  if (value.endsWith("/api/tasks/download-only-task/rerun-from-media")) {
+    rerunPayload = JSON.parse(options.body);
+    return { ok: true, json: async () => ({ task_id: "rerun-side-task" }) };
+  }
+  if (value.endsWith("/api/tasks")) {
+    return {
+      json: async () => ({
+        tasks: [{
+          id: "rerun-side-task",
+          title: "rerun",
+          status: "failed",
+          phase: "failed",
+          progress: 100,
+          message: "stop polling",
+          source_type: "local",
+          visual_windows: []
+        }]
+      })
+    };
+  }
+  if (value.endsWith("/api/tasks/rerun-side-task")) {
+    return {
+      json: async () => ({
+        task: {
+          id: "rerun-side-task",
+          title: "rerun",
+          status: "failed",
+          phase: "failed",
+          progress: 100,
+          message: "stop polling",
+          source_type: "local",
+          visual_windows: []
+        }
+      })
+    };
+  }
+  throw new Error(`unexpected fetch: ${url}`);
+};
+await context.rerunTaskFromMedia("download-only-task");
+
+assert.equal(rerunPayload.frame_interval, 30);
+assert.equal(rerunPayload.grid_columns, 4);
+assert.equal(rerunPayload.grid_rows, 3);
+assert.equal(rerunPayload.llm_model, "vision-rerun");
+assert.equal(rerunPayload.llm_base_url, "https://models.example/v1");
+assert.equal(rerunPayload.llm_api_key, "sk-rerun");
+assert.match(elements.get("#taskMessage").textContent, /当前切片/);

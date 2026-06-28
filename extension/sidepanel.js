@@ -2788,7 +2788,7 @@ async function openTaskExport(type) {
 
 async function rerunTaskFromMedia(taskId) {
   if (!taskId) return;
-  els.taskMessage.textContent = "正在复用已下载视频创建完整笔记任务...";
+  els.taskMessage.textContent = "正在复用已下载视频，并按当前切片、ASR 和视觉模型参数创建完整笔记任务...";
   const response = await fetch(`${backendUrl}/api/tasks/${encodeURIComponent(taskId)}/rerun-from-media`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

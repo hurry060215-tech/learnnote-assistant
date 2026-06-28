@@ -1251,6 +1251,45 @@ assert.match(localUploads[0].get("options"), /"visual_understanding":true/);
 assert.equal(elements.get("#fileName").textContent, "drag-local-lesson.mkv");
 assert.equal(elements.get("#uploadButton").disabled, false);
 
+let rerunPayload = null;
+elements.get("#frameInterval").value = "30";
+elements.get("#gridSize").value = "4x3";
+elements.get("#transcriber").value = "openai-compatible";
+elements.get("#whisperModel").value = "whisper-1";
+elements.get("#llmModel").value = "vision-rerun";
+elements.get("#llmBaseUrl").value = "https://models.example/v1";
+elements.get("#llmApiKey").value = "sk-rerun";
+context.fetch = async (url, options = {}) => {
+  const value = String(url);
+  if (value.endsWith("/api/tasks/source-media-task/rerun-from-media")) {
+    rerunPayload = JSON.parse(options.body);
+    return { ok: true, json: async () => ({ task_id: "rerun-task" }) };
+  }
+  if (value.endsWith("/api/tasks")) {
+    return {
+      json: async () => ({
+        tasks: [{
+          id: "rerun-task",
+          title: "rerun",
+          status: "queued",
+          phase: "queued",
+          progress: 0,
+          source_type: "local",
+          visual_windows: []
+        }]
+      })
+    };
+  }
+  return { ok: false, json: async () => ({}), text: async () => "" };
+};
+await context.rerunTaskFromMedia("source-media-task");
+assert.equal(rerunPayload.frame_interval, 30);
+assert.equal(rerunPayload.grid_columns, 4);
+assert.equal(rerunPayload.grid_rows, 3);
+assert.equal(rerunPayload.llm_model, "vision-rerun");
+assert.equal(rerunPayload.llm_base_url, "https://models.example/v1");
+assert.equal(rerunPayload.llm_api_key, "sk-rerun");
+
 let rejectedUploadCalled = false;
 context.fetch = async url => {
   const value = String(url);
