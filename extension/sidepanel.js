@@ -361,6 +361,11 @@ function workbenchUrl(taskId = currentTaskId, tabName = selectedTab) {
   return `${backendUrl.replace(/\/$/, "")}/?task=${encodeURIComponent(taskId)}&tab=${encodeURIComponent(tab)}`;
 }
 
+function taskMediaPreviewUrl(task) {
+  if (!task?.id || !task.media_path) return "";
+  return `${backendUrl.replace(/\/$/, "")}/api/tasks/${encodeURIComponent(task.id)}/media`;
+}
+
 function openWorkbench(taskId = currentTaskId, tabName = selectedTab) {
   const url = workbenchUrl(taskId, tabName);
   if (HAS_EXTENSION_API) chrome.tabs.create({ url });
@@ -2752,6 +2757,24 @@ function nextStepHtml(task) {
   </section>`;
 }
 
+function mediaPreviewHtml(task) {
+  const url = taskMediaPreviewUrl(task);
+  if (!url) return "";
+  const title = task.title || task.id || "media";
+  return `<section class="media-preview-card" aria-label="本地视频核对">
+    <div class="media-preview-copy">
+      <span>本地视频核对</span>
+      <strong>${escapeHtml(title)}</strong>
+      <small>${escapeHtml(task.media_path || "")}</small>
+    </div>
+    <video controls preload="metadata" src="${escapeHtml(url)}"></video>
+    <div class="media-preview-actions">
+      <button type="button" data-export="media">导出 media.mp4</button>
+      ${canContinueFromDownloadedMedia(task) ? `<button type="button" data-rerun-from-media="${escapeHtml(task.id)}">继续切片总结</button>` : ""}
+    </div>
+  </section>`;
+}
+
 function taskOverview(task) {
   const selected = task.selected_resource || {};
   const options = task.options || {};
@@ -2798,6 +2821,7 @@ function taskOverview(task) {
     </div>
     ${pipelineAuditHtml(task)}
     ${nextStepHtml(task)}
+    ${mediaPreviewHtml(task)}
     ${visualCoverageHtml(task)}
     ${taskRouteEvidenceHtml(task)}
     ${downloadOnly ? `<div class="task-overview-callout">

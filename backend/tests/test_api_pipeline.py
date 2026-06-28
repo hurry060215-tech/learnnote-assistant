@@ -20,7 +20,7 @@ from app.downloader import DownloadError
 from app.main import app, local_upload_filename
 from app.models import TranscriptResult, TranscriptSegment
 from app.runtime import ffmpeg_bin
-from app.storage import task_dir
+from app.storage import create_task, task_dir, update_task
 
 
 TEST_RUN_DIR = DATA_DIR / "test-runs"
@@ -84,6 +84,22 @@ class LocalUploadValidationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()["detail"]["code"], "empty_local_file")
         self.assertFalse(list((DATA_DIR / "uploads").glob("pending_*empty.mp4")))
+
+    def test_media_preview_endpoint_streams_inline_video(self) -> None:
+        task = create_task("local", "Preview media")
+        media = task_dir(task.id) / "media.mp4"
+        media.write_bytes(b"fake mp4 preview bytes")
+        try:
+            update_task(task.id, media_path=str(media))
+
+            response = self.client.get(f"/api/tasks/{task.id}/media")
+
+            self.assertEqual(response.status_code, 200)
+            self.assertIn("video/mp4", response.headers["content-type"])
+            self.assertIn("inline", response.headers["content-disposition"])
+            self.assertEqual(response.content, b"fake mp4 preview bytes")
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
     @unittest.skipUnless(ffmpeg_bin(), "ffmpeg or ffprobe is required for local upload content validation")
     def test_local_upload_rejects_fake_video_before_task_creation(self) -> None:

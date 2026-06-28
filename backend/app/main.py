@@ -676,6 +676,18 @@ def api_export_diagnostics(task_id: str) -> PlainTextResponse:
 
 @app.get("/api/tasks/{task_id}/exports/media")
 def api_export_media(task_id: str) -> FileResponse:
+    task, path = _task_media_file(task_id)
+    filename = media_filename(task.id, task.title)
+    headers = {
+        "Content-Disposition": (
+            f'attachment; filename="learnnote-{task.id}.mp4"; '
+            f"filename*=UTF-8''{quote(filename)}"
+        )
+    }
+    return FileResponse(path, media_type="video/mp4", headers=headers)
+
+
+def _task_media_file(task_id: str) -> tuple[TaskRecord, Path]:
     try:
         task = get_task(task_id)
     except FileNotFoundError as exc:
@@ -685,12 +697,19 @@ def api_export_media(task_id: str) -> FileResponse:
     path = Path(task.media_path)
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Media not found")
+    return task, path
+
+
+@app.get("/api/tasks/{task_id}/media")
+def api_preview_media(task_id: str) -> FileResponse:
+    task, path = _task_media_file(task_id)
     filename = media_filename(task.id, task.title)
     headers = {
         "Content-Disposition": (
-            f'attachment; filename="learnnote-{task.id}.mp4"; '
+            f'inline; filename="learnnote-{task.id}.mp4"; '
             f"filename*=UTF-8''{quote(filename)}"
-        )
+        ),
+        "Cache-Control": "private, max-age=60",
     }
     return FileResponse(path, media_type="video/mp4", headers=headers)
 
