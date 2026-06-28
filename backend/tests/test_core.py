@@ -305,6 +305,27 @@ class ResourceDetectionTests(unittest.TestCase):
         self.assertEqual(by_label["field hls"].url, "https://course.example.com/stream?lesson=1&token=abc")
         self.assertEqual(by_label["field dashUrl"].mime, "application/dash+xml")
 
+    def test_page_scan_finds_chaoxing_style_media_fields(self) -> None:
+        encoded_hls = "https%3A%2F%2Fcdn.example.com%2Fchaoxing%2Fmaster.m3u8%3Ftoken%3Dabc"
+        resources = extract_media_resources_from_text(
+            json.dumps({
+                "job": {
+                    "objectid": encoded_hls,
+                    "dtoken": "/api/ananas/video?id=42&dtoken=abc",
+                    "mediaType": "video/mp4",
+                }
+            }),
+            "https://mooc1.chaoxing.com/player/index.html",
+            "page-scan",
+        )
+        by_label = {resource.label: resource for resource in resources}
+
+        self.assertEqual(by_label["json job/objectid"].kind, "hls")
+        self.assertEqual(by_label["json job/objectid"].url, "https://cdn.example.com/chaoxing/master.m3u8?token=abc")
+        self.assertEqual(by_label["json job/dtoken"].kind, "video")
+        self.assertEqual(by_label["json job/dtoken"].url, "https://mooc1.chaoxing.com/api/ananas/video?id=42&dtoken=abc")
+        self.assertEqual(by_label["json job/dtoken"].mime, "video/mp4")
+
     def test_page_scan_decodes_wrapped_media_field_values(self) -> None:
         encoded = "https%3A%2F%2Fcdn.example.com%2Fsecure%2Flesson.m3u8%3Ftoken%3Dabc"
         packed = b64encode(b"https://cdn.example.com/video/lesson.mp4?sign=ok").decode("ascii")

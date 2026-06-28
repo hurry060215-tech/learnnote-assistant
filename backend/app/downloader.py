@@ -37,9 +37,12 @@ MEDIA_ENDPOINT_HINT_RE = re.compile(
     r"(^|[/?&=._\s-])(api|play|player|stream|video|media|hls|dash|manifest|playlist|master|m3u8|mpd)([/?&=._\s-]|$)",
     re.I,
 )
-JSON_MEDIA_KEY_RE = re.compile(r"(url|src|file|play|media|video|stream|source|hls|m3u8|dash|mpd|subtitle|caption)", re.I)
+JSON_MEDIA_KEY_RE = re.compile(
+    r"(url|src|file|fileid|objectid|dtoken|download|httpmd|play|media|video|stream|source|hls|m3u8|dash|mpd|subtitle|caption)",
+    re.I,
+)
 JSON_MIME_KEY_RE = re.compile(r"(mime|type|format|content.?type|media.?type)", re.I)
-JSON_VIDEO_CONTEXT_RE = re.compile(r"(video|media|play|stream|vod|course|lesson)", re.I)
+JSON_VIDEO_CONTEXT_RE = re.compile(r"(video|media|play|stream|vod|course|lesson|objectid|dtoken|fileid|download|httpmd)", re.I)
 TEXT_MEDIA_FIELD_RE = re.compile(
     r"(?P<key>[\"']?[A-Za-z_$][A-Za-z0-9_$.-]{0,79}[\"']?)\s*[:=]\s*[\"'](?P<url>[^\"'<>\\\s]{4,})[\"']",
     re.I,

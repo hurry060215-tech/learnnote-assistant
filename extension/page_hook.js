@@ -6,7 +6,7 @@
   const ENCODED_MEDIA_URL_RE = /https?%3A%2F%2F[^\s"'<>\\]+?(?:\.|%2E)(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|vtt|srt|ass|ssa)(?:[^\s"'<>\\]*)?/gi;
   const MEDIA_HINT_RE = /\.(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|vtt|srt|ass|ssa)(?:[?#]|["'\s<>]|$)/i;
   const TEXT_TYPE_RE = /json|text|javascript|mpegurl|dash\+xml|xml|x-mpegurl/i;
-  const JSON_MEDIA_KEY_RE = /(url|src|file|play|media|video|stream|source|hls|m3u8|dash|mpd|subtitle|caption)/i;
+  const JSON_MEDIA_KEY_RE = /(url|src|file|fileid|objectid|dtoken|download|httpmd|play|media|video|stream|source|hls|m3u8|dash|mpd|subtitle|caption)/i;
   const JSON_MIME_KEY_RE = /(mime|type|format|content.?type|media.?type)/i;
   const GLOBAL_MEDIA_NAME_RE = /(^__.*(play|player|media|video|stream|hls|dash|m3u8|mpd))|((play|player|media|video|stream|hls|dash|m3u8|mpd).*(config|info|data|url|source|sources|list)$)/i;
   const GLOBAL_MEDIA_KEYS = [
@@ -748,7 +748,7 @@
     if (typeof value === "object") {
       if (visited.has(value) || depth > 4) return output;
       visited.add(value);
-      for (const key of ["src", "url", "file", "source", "manifestUri", "playUrl", "videoUrl", "flvUrl", "hlsUrl"]) {
+      for (const key of ["src", "url", "file", "fileId", "objectid", "objectId", "dtoken", "downloadUrl", "httpmd", "source", "manifestUri", "playUrl", "videoUrl", "flvUrl", "hlsUrl"]) {
         try {
           if (typeof value[key] === "string") output.push(value[key]);
         } catch {
@@ -756,7 +756,7 @@
         }
       }
       for (const [key, child] of safeObjectEntries(value, 80)) {
-        if (!/^(video|media|source|sources|playlist|file|url|config|play|quality|qualities|streams?|hls|dash)$/i.test(key)) continue;
+        if (!/^(video|media|source|sources|playlist|file|fileid|objectid|dtoken|download|httpmd|url|config|play|quality|qualities|streams?|hls|dash)$/i.test(key)) continue;
         sourceCandidates(child, output, visited, depth + 1);
       }
     }
