@@ -483,6 +483,50 @@ function browserRouteMetrics(task) {
   ];
 }
 
+function browserRouteHandoffItems(task) {
+  const selected = task?.selected_resource || {};
+  const attempts = task?.download_attempts || [];
+  const windows = task ? visualWindows(task) : [];
+  return [
+    {
+      state: selected.url ? "done" : "pending",
+      label: "资源证据",
+      value: selected.kind || (task ? "未锁定" : "等待侧栏"),
+      detail: selected.url
+        ? (resourceSourceText(selected) || selected.source || "浏览器候选")
+        : "播放几秒后由扩展读取播放器和媒体请求"
+    },
+    {
+      state: task?.media_path ? "done" : attempts.length ? "active" : "pending",
+      label: "本地落地",
+      value: task?.media_path ? "media.mp4" : attempts.length ? `${attempts.length} 次尝试` : "未下载",
+      detail: task?.media_path ? "已可导出或继续切片总结" : "直接文件、ffmpeg 或 yt-dlp 路线"
+    },
+    {
+      state: windows.length ? "done" : task?.frame_grids?.length ? "active" : "pending",
+      label: "画面切片",
+      value: windows.length ? `${windows.length} 窗口` : task?.frame_grids?.length ? `${task.frame_grids.length} 网格` : "待生成",
+      detail: "按字幕时间和抽帧网格对齐"
+    },
+    {
+      state: task?.note_path ? "done" : canContinueFromDownloadedMedia(task) ? "active" : "pending",
+      label: "学习笔记",
+      value: task?.note_path ? "已完成" : canContinueFromDownloadedMedia(task) ? "可继续" : "待总结",
+      detail: task?.note_path ? "可导出 Markdown/资料包" : "复用本地视频生成完整笔记"
+    }
+  ];
+}
+
+function browserRouteHandoffHtml(task) {
+  return `<div class="browser-route-handoff" aria-label="当前页直取交接清单">
+    ${browserRouteHandoffItems(task).map(item => `<section class="${escapeHtml(item.state)}">
+      <span>${escapeHtml(item.label)}</span>
+      <strong>${escapeHtml(item.value)}</strong>
+      <small>${escapeHtml(item.detail)}</small>
+    </section>`).join("")}
+  </div>`;
+}
+
 function browserRouteActions(task) {
   const state = directRouteState(task);
   const actions = [];
@@ -519,6 +563,7 @@ function browserRouteSummaryHtml(task = null) {
     <div class="browser-route-summary-metrics">
       ${browserRouteMetrics(task).map(item => `<span><b>${escapeHtml(item.value)}</b>${escapeHtml(item.label)}</span>`).join("")}
     </div>
+    ${browserRouteHandoffHtml(task)}
     ${browserRouteActions(task)}
   </section>`;
 }

@@ -928,6 +928,64 @@ small,
   white-space: nowrap;
 }
 
+.route-handoff {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.route-handoff section {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: #fff;
+  padding: 6px;
+}
+
+.route-handoff section::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #cbd5e1;
+}
+
+.route-handoff section.done::before {
+  background: var(--success);
+}
+
+.route-handoff section.active::before {
+  background: var(--warning);
+}
+
+.route-handoff section.blocked::before {
+  background: var(--danger);
+}
+
+.route-handoff span,
+.route-handoff small {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 9.5px;
+  font-weight: 800;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.route-handoff strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 10.5px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .route-summary-actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3836,6 +3894,10 @@ button.primary {
 
 .current-study-metrics {
   gap: 5px;
+}
+
+.route-handoff {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .current-study-metrics span {

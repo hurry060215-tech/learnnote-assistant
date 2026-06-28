@@ -1612,6 +1612,49 @@ function routeSummaryMetrics() {
   ];
 }
 
+function routeHandoffItems(state) {
+  const selected = selectedResource();
+  const checked = currentPreflight();
+  const downloadableCount = resources.filter(isDownloadableResource).length;
+  const [cols, rows] = String(els.gridSize?.value || "3x3").split("x").map(Number);
+  return [
+    {
+      state: selected ? "done" : downloadableCount ? "active" : "pending",
+      label: "资源证据",
+      value: selected?.kind || `${downloadableCount}/${resources.length}`,
+      detail: selected ? directnessText(selected) : "播放课程页后收集播放器、请求和字幕"
+    },
+    {
+      state: checked?.downloadable ? "done" : checked ? "blocked" : state === "candidate" ? "active" : "pending",
+      label: "可下载性",
+      value: checked ? checked.downloadable ? "预检通过" : checked.code || "未通过" : "待预检",
+      detail: checked ? checked.message || preflightRecoveryText(checked) : "点击预检候选，先确认后端能访问"
+    },
+    {
+      state: state === "ready" ? "active" : "pending",
+      label: "本地落地",
+      value: state === "ready" ? "可开始" : "media.mp4",
+      detail: "后端直下、ffmpeg 合并或 yt-dlp 兜底"
+    },
+    {
+      state: "pending",
+      label: "切片笔记",
+      value: `${Number(els.frameInterval?.value || 20)}秒 · ${cols || 3}x${rows || 3}`,
+      detail: "下载后转写、抽帧并生成视觉窗口"
+    }
+  ];
+}
+
+function routeHandoffHtml(state) {
+  return `<div class="route-handoff" aria-label="当前页直取交接清单">
+    ${routeHandoffItems(state).map(item => `<section class="${escapeHtml(item.state)}">
+      <span>${escapeHtml(item.label)}</span>
+      <strong>${escapeHtml(item.value || "-")}</strong>
+      <small>${escapeHtml(item.detail || "-")}</small>
+    </section>`).join("")}
+  </div>`;
+}
+
 function routeSummaryActionsHtml(state) {
   const hasSelected = Boolean(selectedResource());
   const actions = [];
@@ -1652,6 +1695,7 @@ function renderRouteSummary() {
     <div class="route-summary-metrics">
       ${routeSummaryMetrics().map(item => `<span><b>${escapeHtml(item.value)}</b>${escapeHtml(item.label)}</span>`).join("")}
     </div>
+    ${routeHandoffHtml(state)}
     ${routeSummaryActionsHtml(state)}
   `;
 }

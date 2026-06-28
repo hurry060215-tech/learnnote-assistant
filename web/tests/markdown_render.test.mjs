@@ -200,6 +200,10 @@ assert.match(routeSummaryHtml, /data-browser-route-action="refresh"/);
 assert.match(routeSummaryHtml, /data-browser-route-action="copy-backend"/);
 assert.match(routeSummaryHtml, /\/api\/tasks\/task-route-summary\/exports\/media/);
 assert.match(routeSummaryHtml, /\/api\/tasks\/task-route-summary\/exports\/diagnostics/);
+assert.match(routeSummaryHtml, /class="browser-route-handoff"/);
+assert.match(routeSummaryHtml, /资源证据/);
+assert.match(routeSummaryHtml, /本地落地/);
+assert.match(routeSummaryHtml, /学习笔记/);
 assert.match(routeSummaryHtml, /视觉窗口/);
 assert.doesNotMatch(routeSummaryHtml, /<script>bad/);
 
