@@ -8,6 +8,7 @@ let backendUrl = DEFAULT_BACKEND;
 let page = null;
 let resources = [];
 let selectedResourceUrl = "";
+let resourceSelectionPinned = false;
 let resourceFilter = "all";
 let currentTaskId = "";
 let currentTask = null;
@@ -664,10 +665,16 @@ function playbackText(match) {
 }
 
 function pickDefaultResourceUrl(items, previousUrl = "") {
-  if (previousUrl && items.some(item => item.url === previousUrl)) return previousUrl;
+  if (!items.length) return "";
+  const previous = previousUrl ? items.find(item => item.url === previousUrl) : null;
   const downloadable = items.filter(isDownloadableResource);
   const preferred = downloadable.find(item => item.playback_match || item.is_main_video) || downloadable[0];
-  return preferred?.url || items[0]?.url || "";
+  if (!previous) return preferred?.url || items[0]?.url || "";
+  if (resourceSelectionPinned) return previous.url;
+  const previousMatched = Boolean(previous.playback_match || previous.is_main_video);
+  const preferredMatched = Boolean(preferred?.playback_match || preferred?.is_main_video);
+  if (preferred?.url && preferredMatched && !previousMatched) return preferred.url;
+  return previous.url;
 }
 
 function selectedResource() {
@@ -1844,9 +1851,16 @@ async function collectContextNow() {
     els.resources.innerHTML = `<p class="muted">${escapeHtml(response.error)}</p>`;
     return false;
   }
+  const nextTabId = response.tab?.id ?? null;
+  if (currentTabId !== null && nextTabId !== null && currentTabId !== nextTabId) {
+    resourceSelectionPinned = false;
+  }
   currentTabId = response.tab?.id ?? null;
   page = response.page;
   resources = response.resources || [];
+  if (selectedResourceUrl && !resources.some(item => item.url === selectedResourceUrl)) {
+    resourceSelectionPinned = false;
+  }
   selectedResourceUrl = pickDefaultResourceUrl(resources, selectedResourceUrl);
   preflight = null;
   preflightResourceUrl = "";
@@ -1954,12 +1968,14 @@ function renderContext() {
   document.querySelectorAll(".resource").forEach(button => {
     button.onclick = () => {
       selectedResourceUrl = button.dataset.url;
+      resourceSelectionPinned = true;
       renderContext();
     };
   });
   document.querySelectorAll(".resource-attempt-row").forEach(button => {
     button.onclick = () => {
       selectedResourceUrl = button.dataset.url;
+      resourceSelectionPinned = true;
       renderContext();
     };
   });

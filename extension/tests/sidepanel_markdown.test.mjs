@@ -826,6 +826,17 @@ assert.match(context.resourceAttemptQueueHtml(), /resource-attempt-queue/);
 assert.match(context.resourceAttemptQueueHtml(), /下载队列/);
 assert.match(context.resourceAttemptQueueHtml(), /播放匹配/);
 assert.match(context.resourceAttemptQueueHtml(), /待预检/);
+vm.runInContext("resourceSelectionPinned = false;", context);
+assert.equal(context.pickDefaultResourceUrl([
+  { url: "https://cdn.example.com/stale.mp4", kind: "video", score: 85 },
+  { url: "https://cdn.example.com/current.m3u8", kind: "hls", playback_match: "range-near-playhead", score: 100 }
+], "https://cdn.example.com/stale.mp4"), "https://cdn.example.com/current.m3u8");
+vm.runInContext("resourceSelectionPinned = true;", context);
+assert.equal(context.pickDefaultResourceUrl([
+  { url: "https://cdn.example.com/stale.mp4", kind: "video", score: 85 },
+  { url: "https://cdn.example.com/current.m3u8", kind: "hls", playback_match: "range-near-playhead", score: 100 }
+], "https://cdn.example.com/stale.mp4"), "https://cdn.example.com/stale.mp4");
+vm.runInContext("resourceSelectionPinned = false;", context);
 context.renderRouteSummary();
 assert.match(elements.get("#routeSummary").innerHTML, /待预检/);
 assert.match(elements.get("#routeSummary").innerHTML, /class="route-handoff"/);
