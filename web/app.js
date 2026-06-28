@@ -1086,6 +1086,10 @@ function mimeForKind(kind) {
   return "";
 }
 
+function isTextResponseMime(value = "") {
+  return /(?:^|;|\s)(text\/|application\/json|application\/xml|application\/javascript)/i.test(String(value || ""));
+}
+
 function labelForUrlResource(kind, mode = selectedUrlMode()) {
   if (mode === "video") return "手动视频直连";
   if (mode === "hls") return "手动 HLS";
@@ -1136,7 +1140,10 @@ function applyUrlPreflightToResource(resource) {
     resource.resolved_url = urlPreflightResult.resolved_url;
   }
   if (urlPreflightResult.content_type) {
-    resource.mime = urlPreflightResult.content_type;
+    const resolvedMime = urlPreflightResult.strategy === "direct-response-probe" && isTextResponseMime(urlPreflightResult.content_type)
+      ? mimeForKind(resource.kind || kind)
+      : urlPreflightResult.content_type;
+    if (resolvedMime) resource.mime = resolvedMime;
     resource.headers = { ...(resource.headers || {}), "content-type": urlPreflightResult.content_type };
   }
   if (urlPreflightResult.content_disposition) {

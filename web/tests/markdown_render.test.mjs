@@ -1111,6 +1111,25 @@ const embeddedTimelineHtml = context.transcriptTimeline({
 });
 assert.match(embeddedTimelineHtml, /视频内嵌字幕/);
 
+const preflightedUrlResource = {
+  url: "https://course.example.com/api/play",
+  source: "manual",
+  kind: "video",
+  mime: "video/mp4",
+  headers: {}
+};
+context.rememberUrlPreflight(preflightedUrlResource, {
+  downloadable: true,
+  strategy: "direct-response-probe",
+  kind: "hls",
+  resolved_url: "https://cdn.example.com/lesson/master.m3u8",
+  content_type: "application/json"
+});
+assert.equal(preflightedUrlResource.kind, "hls");
+assert.equal(preflightedUrlResource.mime, "application/vnd.apple.mpegurl");
+assert.equal(preflightedUrlResource.resolved_url, "https://cdn.example.com/lesson/master.m3u8");
+assert.equal(preflightedUrlResource.headers["content-type"], "application/json");
+
 const posts = [];
 const preflights = [];
 let preflightDownloadable = true;
