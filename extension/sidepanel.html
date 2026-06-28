@@ -27,6 +27,20 @@
 
     <main class="side-shell">
       <section class="current-card">
+        <div class="source-switcher" aria-label="学习来源">
+          <button type="button" class="active" data-source-action="summarize">
+            <svg viewBox="0 0 24 24"><path d="M5 5h14v10H5z"/><path d="M10 19h4"/><path d="M12 15v4"/></svg>
+            当前页视频
+          </button>
+          <button type="button" data-source-action="local">
+            <svg viewBox="0 0 24 24"><path d="M12 3v12M7 8l5-5 5 5M4 17v3h16v-3"/></svg>
+            本地视频
+          </button>
+          <button type="button" data-source-action="text">
+            <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+            页面文本
+          </button>
+        </div>
         <div class="section-head">
           <div>
             <span>当前播放页</span>

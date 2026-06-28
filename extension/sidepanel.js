@@ -1068,6 +1068,15 @@ function activeVideoText(active) {
   ].filter(Boolean).join(" · ");
 }
 
+function compactUrl(value, limit = 92) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  if (text.length <= limit) return text;
+  const head = Math.max(24, Math.floor(limit * 0.42));
+  const tail = Math.max(24, limit - head - 3);
+  return `${text.slice(0, head)}...${text.slice(-tail)}`;
+}
+
 function playbackReadinessState() {
   const active = page?.active_video || null;
   const frames = page?.frames || [];
@@ -1721,9 +1730,29 @@ function renderContext() {
   const active = page?.active_video;
   const frames = page?.frames || [];
   if (active?.src) {
-    els.activeVideo.innerHTML = `播放状态：${active.paused ? "暂停" : "播放中"} · ${fmt(active.current_time)} / ${fmt(active.duration)} · ${active.width || 0}x${active.height || 0} · frame ${active.frame_id ?? 0}${active.drm_detected ? " · DRM/EME" : ""}`;
+    const state = active.drm_detected ? "blocked" : active.paused ? "paused" : "playing";
+    els.activeVideo.className = `playback-card active-video-card ${state}`;
+    els.activeVideo.innerHTML = `
+      <div class="active-video-top">
+        <span>${active.drm_detected ? "DRM/EME" : active.paused ? "暂停" : "播放中"}</span>
+        <strong>${escapeHtml(fmt(active.current_time))} / ${escapeHtml(fmt(active.duration))}</strong>
+      </div>
+      <div class="active-video-metrics">
+        <span><b>${escapeHtml(playbackSourceLabel(active))}</b>源类型</span>
+        <span><b>${escapeHtml(`${active.width || 0}x${active.height || 0}`)}</b>画面</span>
+        <span><b>${escapeHtml(active.frame_id ?? "-")}</b>Frame</span>
+      </div>
+      <code>${escapeHtml(compactUrl(active.src))}</code>
+    `;
   } else {
-    els.activeVideo.textContent = frames.length ? `未读取到 HTML5 播放状态 · 已扫描 ${frames.length} 个 frame` : "未读取到 HTML5 播放状态";
+    els.activeVideo.className = `playback-card active-video-card ${frames.length ? "scanning" : "idle"}`;
+    els.activeVideo.innerHTML = `
+      <div class="active-video-top">
+        <span>${frames.length ? "扫描中" : "等待播放"}</span>
+        <strong>${frames.length ? `已扫描 ${frames.length} 个 frame` : "未读取到 HTML5 播放状态"}</strong>
+      </div>
+      <p>${frames.length ? "继续播放几秒后重新检测，扩展会把媒体请求和播放器 frame 对齐。" : "先播放课程视频，再重新检测当前页媒体资源。"}</p>
+    `;
   }
   renderPlaybackReadiness();
   renderCurrentStudyCard();
@@ -2860,6 +2889,9 @@ function handleRouteAction(action) {
     startTask("page_text");
   }
 }
+document.querySelectorAll("[data-source-action]").forEach(button => {
+  button.addEventListener("click", () => handleRouteAction(button.dataset.sourceAction));
+});
 els.routeSummary.addEventListener("click", event => {
   const button = event.target.closest("[data-route-action]");
   if (!button) return;
