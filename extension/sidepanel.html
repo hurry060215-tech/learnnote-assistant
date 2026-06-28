@@ -132,11 +132,21 @@
           </select>
         </label>
         <label>
+          <span>引擎</span>
+          <select id="transcriber">
+            <option value="faster-whisper" selected>本地</option>
+            <option value="openai-compatible">OpenAI</option>
+            <option value="groq">Groq</option>
+          </select>
+        </label>
+        <label>
           <span>转写</span>
           <select id="whisperModel">
             <option value="tiny">tiny</option>
             <option value="small" selected>small</option>
             <option value="medium">medium</option>
+            <option value="whisper-1">whisper-1</option>
+            <option value="whisper-large-v3">whisper-large-v3</option>
           </select>
         </label>
         <label>

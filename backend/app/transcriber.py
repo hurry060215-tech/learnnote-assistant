@@ -3,8 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 import re
 
-from .config import DEFAULT_WHISPER_COMPUTE_TYPE, DEFAULT_WHISPER_DEVICE, configure_local_caches
-from .models import TranscriptResult, TranscriptSegment
+from .config import DEFAULT_WHISPER_COMPUTE_TYPE, DEFAULT_WHISPER_DEVICE, LLM_API_KEY, LLM_BASE_URL, configure_local_caches
+from .models import TaskOptions, TranscriptResult, TranscriptSegment
 
 
 TIMESTAMP_RE = re.compile(
@@ -108,4 +108,95 @@ def transcribe_audio(audio_path: Path, model_size: str = "small") -> TranscriptR
                 TranscriptSegment(start=0, end=0, text=f"转写失败：{exc}")
             ],
             full_text=f"转写失败：{exc}",
+        )
+
+
+def _response_value(response, key: str, default=None):
+    if isinstance(response, dict):
+        return response.get(key, default)
+    return getattr(response, key, default)
+
+
+def _segments_from_remote_response(response) -> list[TranscriptSegment]:
+    raw_segments = _response_value(response, "segments", []) or []
+    segments: list[TranscriptSegment] = []
+    for item in raw_segments:
+        text = str(_response_value(item, "text", "") or "").strip()
+        if not text:
+            continue
+        start = float(_response_value(item, "start", 0) or 0)
+        end = float(_response_value(item, "end", start) or start)
+        segments.append(TranscriptSegment(start=max(0, start), end=max(start, end), text=text))
+    if segments:
+        return segments
+    text = str(_response_value(response, "text", "") or "").strip()
+    return [TranscriptSegment(start=0, end=0, text=text)] if text else []
+
+
+def transcribe_audio_openai_compatible(audio_path: Path, options: TaskOptions) -> TranscriptResult:
+    api_key = options.llm_api_key or LLM_API_KEY
+    if not api_key:
+        return TranscriptResult(
+            language="unknown",
+            source="openai-compatible-asr-missing-key",
+            warning="未配置 OpenAI-compatible ASR API Key；已跳过远程转写。",
+            segments=[TranscriptSegment(start=0, end=0, text="未配置远程 ASR API Key，当前任务没有生成真实字幕。")],
+            full_text="未配置远程 ASR API Key，当前任务没有生成真实字幕。",
+        )
+
+    model = options.whisper_model or "whisper-1"
+    if model in {"tiny", "base", "small", "medium", "large", "large-v2", "large-v3"}:
+        model = "whisper-1"
+
+    try:
+        from openai import OpenAI
+    except Exception:
+        return TranscriptResult(
+            language="unknown",
+            source="openai-compatible-asr-missing-sdk",
+            warning="未安装 openai SDK；请安装后再使用 OpenAI-compatible ASR。",
+            segments=[TranscriptSegment(start=0, end=0, text="未安装 openai SDK，当前任务没有生成远程 ASR 字幕。")],
+            full_text="未安装 openai SDK，当前任务没有生成远程 ASR 字幕。",
+        )
+
+    try:
+        client = OpenAI(api_key=api_key, base_url=options.llm_base_url or LLM_BASE_URL)
+        with audio_path.open("rb") as audio_file:
+            try:
+                response = client.audio.transcriptions.create(
+                    file=audio_file,
+                    model=model,
+                    response_format="verbose_json",
+                    timestamp_granularities=["segment"],
+                )
+            except Exception:
+                audio_file.seek(0)
+                try:
+                    response = client.audio.transcriptions.create(
+                        file=audio_file,
+                        model=model,
+                        response_format="verbose_json",
+                    )
+                except Exception:
+                    audio_file.seek(0)
+                    response = client.audio.transcriptions.create(
+                        file=audio_file,
+                        model=model,
+                    )
+        segments = _segments_from_remote_response(response)
+        text = "\n".join(segment.text for segment in segments) or str(_response_value(response, "text", "") or "").strip()
+        return TranscriptResult(
+            language=str(_response_value(response, "language", "unknown") or "unknown"),
+            source="openai-compatible-asr",
+            segments=segments,
+            full_text=text,
+            warning="" if segments else "远程 ASR 已返回，但没有解析出有效字幕片段。",
+        )
+    except Exception as exc:
+        return TranscriptResult(
+            language="unknown",
+            source="openai-compatible-asr-error",
+            warning=f"OpenAI-compatible ASR 转写失败：{exc}",
+            segments=[TranscriptSegment(start=0, end=0, text=f"远程 ASR 转写失败：{exc}")],
+            full_text=f"远程 ASR 转写失败：{exc}",
         )

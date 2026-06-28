@@ -34,7 +34,7 @@ from app.models import ActiveVideoInfo, BrowserCookie, CurrentPageTaskRequest, D
 from app.processor import build_summary_diagnostics, cookie_sync_summary, process_current_page_task, process_local_video_task, read_note, read_transcript, redacted_request_dump, redacted_resource
 from app.summarizer import MAX_VISION_GRIDS, build_visual_windows, ensure_visual_appendix, local_markdown_note, summarize_with_diagnostics
 from app.storage import create_task, get_task, task_dir
-from app.transcriber import transcript_from_subtitle
+from app.transcriber import transcribe_audio_openai_compatible, transcript_from_subtitle
 
 TEST_RUN_DIR = DATA_DIR / "test-runs"
 TEST_RUN_DIR.mkdir(parents=True, exist_ok=True)
@@ -481,6 +481,51 @@ class ResourceDetectionTests(unittest.TestCase):
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
 
+class TranscriberBoundaryTests(unittest.TestCase):
+    def test_openai_compatible_asr_parses_verbose_segments(self) -> None:
+        calls = []
+
+        class FakeTranscriptions:
+            def create(self, **kwargs):
+                calls.append(kwargs)
+                return {
+                    "language": "zh",
+                    "text": "第一句 第二句",
+                    "segments": [
+                        {"start": 0.0, "end": 1.5, "text": "第一句"},
+                        {"start": 1.5, "end": 3.0, "text": "第二句"},
+                    ],
+                }
+
+        class FakeOpenAI:
+            def __init__(self, **kwargs):
+                self.kwargs = kwargs
+                self.audio = types.SimpleNamespace(transcriptions=FakeTranscriptions())
+
+        fake_openai = types.ModuleType("openai")
+        fake_openai.OpenAI = FakeOpenAI
+
+        with tempfile.TemporaryDirectory() as tmp:
+            audio = Path(tmp) / "audio.wav"
+            audio.write_bytes(b"fake audio")
+            with patch.dict(sys.modules, {"openai": fake_openai}):
+                transcript = transcribe_audio_openai_compatible(
+                    audio,
+                    TaskOptions(
+                        transcriber="openai-compatible",
+                        whisper_model="small",
+                        llm_api_key="test-key",
+                        llm_base_url="https://asr.example/v1",
+                    ),
+                )
+
+        self.assertEqual(transcript.source, "openai-compatible-asr")
+        self.assertEqual(transcript.language, "zh")
+        self.assertEqual([segment.text for segment in transcript.segments], ["第一句", "第二句"])
+        self.assertEqual(calls[0]["model"], "whisper-1")
+        self.assertEqual(calls[0]["response_format"], "verbose_json")
+
+
 class ProcessorBoundaryTests(unittest.TestCase):
     def test_local_mp4_is_normalized_instead_of_copied(self) -> None:
         task = create_task("local", "Local mp4 normalize")
@@ -522,6 +567,51 @@ class ProcessorBoundaryTests(unittest.TestCase):
             self.assertTrue(record.media_path.endswith("media.mp4"))
             self.assertEqual(Path(record.media_path).read_bytes(), b"normalized mp4")
             self.assertIn("Local mp4 normalize", read_note(task.id))
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
+    def test_remote_asr_option_uses_openai_compatible_transcriber(self) -> None:
+        options = TaskOptions(
+            transcriber="openai-compatible",
+            whisper_model="whisper-1",
+            llm_api_key="test-key",
+        )
+        task = create_task("local", "Remote ASR", options=options)
+        input_path = task_dir(task.id) / "upload.mp4"
+        input_path.write_bytes(b"fake mp4")
+        try:
+            def fake_normalize(source: Path, target: Path) -> Path:
+                target.write_bytes(b"normalized mp4")
+                return target
+
+            def fake_extract_audio(video: Path, target: Path) -> Path:
+                target.write_bytes(b"audio")
+                return target
+
+            with patch("app.processor.normalize_video", side_effect=fake_normalize), \
+                patch("app.processor.extract_audio", side_effect=fake_extract_audio), \
+                patch("app.processor.transcribe_audio", side_effect=AssertionError("local faster-whisper should not run")), \
+                patch(
+                    "app.processor.transcribe_audio_openai_compatible",
+                    return_value=TranscriptResult(
+                        source="openai-compatible-asr",
+                        full_text="remote transcript",
+                        segments=[TranscriptSegment(start=0, end=1, text="remote transcript")],
+                    ),
+                ) as remote_asr, \
+                patch("app.processor.extract_frames", return_value=[]), \
+                patch("app.processor.build_frame_grids", return_value=[]), \
+                patch("app.processor.summarize_with_diagnostics", return_value=("# Remote ASR", "local-template", "")):
+                process_local_video_task(task.id, input_path, "Remote ASR", options)
+
+            remote_asr.assert_called_once()
+            self.assertEqual(remote_asr.call_args.args[1].transcriber, "openai-compatible")
+            record = get_task(task.id)
+            self.assertEqual(record.status, "success")
+            self.assertEqual(record.options.transcriber, "openai-compatible")
+            transcript = read_transcript(task.id)
+            self.assertEqual(transcript["source"], "openai-compatible-asr")
+            self.assertEqual(transcript["segments"][0]["text"], "remote transcript")
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 

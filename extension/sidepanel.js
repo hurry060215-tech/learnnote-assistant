@@ -2,6 +2,7 @@ const DEFAULT_BACKEND = "http://127.0.0.1:8765";
 const HAS_EXTENSION_API = typeof chrome !== "undefined" && Boolean(chrome.runtime?.sendMessage && chrome.storage?.local);
 const LOCAL_VIDEO_EXT_RE = /\.(mp4|m4v|mov|mkv|webm|flv|avi)$/i;
 const RESULT_TAB_NAMES = new Set(["note", "transcript", "frames", "diagnostics"]);
+const LOCAL_ASR_MODELS = new Set(["tiny", "base", "small", "medium", "large", "large-v2", "large-v3"]);
 
 let backendUrl = DEFAULT_BACKEND;
 let page = null;
@@ -48,6 +49,7 @@ const els = {
   redetectButton: document.querySelector("#redetectButton"),
   frameInterval: document.querySelector("#frameInterval"),
   gridSize: document.querySelector("#gridSize"),
+  transcriber: document.querySelector("#transcriber"),
   whisperModel: document.querySelector("#whisperModel"),
   noteStyle: document.querySelector("#noteStyle"),
   summaryDepth: document.querySelector("#summaryDepth"),
@@ -593,12 +595,14 @@ async function selectHistoryTask(taskId) {
 }
 
 function readOptions() {
+  syncTranscriberModelDefault();
   const [cols, rows] = els.gridSize.value.split("x").map(Number);
   const options = {
     visual_understanding: true,
     frame_interval: Number(els.frameInterval.value || 20),
     grid_columns: cols || 3,
     grid_rows: rows || 3,
+    transcriber: els.transcriber?.value || "faster-whisper",
     whisper_model: els.whisperModel.value || "small",
     note_style: els.noteStyle.value || "study",
     summary_depth: els.summaryDepth.value || "standard"
@@ -610,6 +614,19 @@ function readOptions() {
   if (llmBaseUrl) options.llm_base_url = llmBaseUrl;
   if (llmApiKey) options.llm_api_key = llmApiKey;
   return options;
+}
+
+function syncTranscriberModelDefault() {
+  if (!els.transcriber || !els.whisperModel) return;
+  const transcriber = els.transcriber.value || "faster-whisper";
+  const model = els.whisperModel.value || "small";
+  if (transcriber === "faster-whisper" && !LOCAL_ASR_MODELS.has(model)) {
+    els.whisperModel.value = "small";
+  } else if (transcriber === "openai-compatible" && LOCAL_ASR_MODELS.has(model)) {
+    els.whisperModel.value = "whisper-1";
+  } else if (transcriber === "groq" && LOCAL_ASR_MODELS.has(model)) {
+    els.whisperModel.value = "whisper-large-v3";
+  }
 }
 
 function isDownloadableResource(item) {
@@ -2975,6 +2992,7 @@ if (els.downloadOnlyButton) els.downloadOnlyButton.onclick = () => startTask("do
 if (els.continueFromMediaButton) els.continueFromMediaButton.onclick = () => rerunTaskFromMedia(currentTask?.id);
 els.textButton.onclick = () => startTask("page_text");
 if (els.refreshHistoryButton) els.refreshHistoryButton.onclick = loadTaskHistory;
+if (els.transcriber) els.transcriber.onchange = syncTranscriberModelDefault;
 els.uploadButton.onclick = () => els.fileInput.click();
 els.fileInput.onchange = uploadLocal;
 els.localDrop.onclick = () => els.fileInput.click();

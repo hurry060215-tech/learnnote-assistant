@@ -66,8 +66,8 @@ This project intentionally does **not** record the browser tab and does **not** 
 - HLS/DASH manifest download through ffmpeg when a manifest URL is visible.
 - yt-dlp page URL fallback for supported websites when direct browser resources are not usable.
 - Local video upload from the extension and the local web UI.
-- Shared video processing: remux/standardize local and downloaded videos to `media.mp4`, extract audio, transcribe with `faster-whisper` when available, extract frames, generate frame grids, and emit Markdown notes.
-- Transcript priority: page subtitle track first, yt-dlp platform subtitle second, then local `faster-whisper` fallback.
+- Shared video processing: remux/standardize local and downloaded videos to `media.mp4`, extract audio, transcribe with local `faster-whisper` or OpenAI-compatible/Groq ASR when selected, extract frames, generate frame grids, and emit Markdown notes.
+- Transcript priority: page subtitle track first, yt-dlp platform subtitle second, then selected ASR engine fallback.
 - Configurable slicing: frame interval, grid layout, ASR model, and note style.
 - Web UI and Side Panel diagnostic tabs show the selected resource, browser evidence, and every backend download attempt.
 - Side Panel direct-extraction console shows whether the selected candidate is a downloadable file, HLS/DASH manifest, subtitle, blob clue, or fragment clue, plus reused request-header names and request evidence.
@@ -136,7 +136,7 @@ $env:LEARNNOTE_BOOTSTRAP_PYTHON="D:\Python312\python.exe"
 
 ## Optional Model Settings
 
-Transcription defaults to `faster-whisper` with the `small` model. If `faster-whisper` is not installed or the model cannot load, the task still completes with a clear transcript warning and visual/text note fallback.
+Transcription defaults to local `faster-whisper` with the `small` model, and can be switched per task to an OpenAI-compatible/Groq ASR endpoint. If local or remote ASR is unavailable, the task still completes with a clear transcript warning and visual/text note fallback.
 
 Windows defaults to CPU/int8 for reliability:
 
@@ -159,6 +159,8 @@ $env:LEARNNOTE_LLM_API_KEY="..."
 $env:LEARNNOTE_LLM_BASE_URL="https://api.openai.com/v1"
 $env:LEARNNOTE_LLM_MODEL="gpt-4.1-mini"
 ```
+
+The same Base URL and API Key fields are reused when the task's transcriber is set to `OpenAI-compatible ASR` or `Groq ASR`. For OpenAI use `whisper-1`; for Groq-style endpoints choose `whisper-large-v3` or the model name supported by that endpoint.
 
 Without a model key, the backend generates a deterministic local Markdown note from transcript segments and frame-grid indexes.
 

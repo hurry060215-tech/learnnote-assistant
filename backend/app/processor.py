@@ -9,10 +9,11 @@ from .media import build_frame_grids, extract_audio, extract_frames, normalize_v
 from .models import BrowserSubtitleCue, CurrentPageTaskRequest, DownloadAttempt, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
 from .storage import get_task, save_task, task_dir, update_task, write_json
 from .summarizer import MAX_VISION_GRIDS, build_visual_windows, summarize_page_text_with_diagnostics, summarize_with_diagnostics
-from .transcriber import transcript_from_subtitle, transcribe_audio
+from .transcriber import transcript_from_subtitle, transcribe_audio, transcribe_audio_openai_compatible
 
 
 SAFE_RESPONSE_HEADER_NAMES = {"content-type", "content-disposition", "content-length", "content-range", "accept-ranges"}
+REMOTE_ASR_TRANSCRIBERS = {"openai", "openai-compatible", "openai-compatible-asr", "groq", "groq-asr"}
 
 
 @dataclass
@@ -188,6 +189,16 @@ def src_object_failure_message(request: CurrentPageTaskRequest) -> str:
         tracks.append(f"{active.src_object_audio_tracks} audio")
     track_detail = f"（{', '.join(tracks)}）" if tracks else ""
     return f"当前 HTML5 播放器使用 {stream_type}{track_detail}，页面没有暴露可交给后端下载的 mp4/FLV/m3u8/mpd URL；不会录制标签页，请使用本地视频入口或页面文本兜底。"
+
+
+def use_remote_asr(options: TaskOptions) -> bool:
+    return str(options.transcriber or "").strip().lower() in REMOTE_ASR_TRANSCRIBERS
+
+
+def transcribe_extracted_audio(audio_path: Path, options: TaskOptions) -> TranscriptResult:
+    if use_remote_asr(options):
+        return transcribe_audio_openai_compatible(audio_path, options)
+    return transcribe_audio(audio_path, options.whisper_model)
 
 
 def build_summary_diagnostics(
@@ -422,9 +433,14 @@ def _process_video_file(
             audio_path = None
             audio_warning = f"未能提取可转写音轨：{exc}；已继续使用画面切片生成笔记。"
 
-        update_task(task_id, phase="transcribing", progress=52, message="正在转写音频")
+        update_task(
+            task_id,
+            phase="transcribing",
+            progress=52,
+            message="正在使用远程 ASR 转写音频" if use_remote_asr(options) else "正在转写音频",
+        )
         if audio_path:
-            transcript = transcribe_audio(audio_path, options.whisper_model)
+            transcript = transcribe_extracted_audio(audio_path, options)
         else:
             transcript = TranscriptResult(source="no-audio", warning=audio_warning)
 
