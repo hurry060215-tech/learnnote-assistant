@@ -2151,6 +2151,128 @@ input[type="file"] {
   overflow-wrap: anywhere;
 }
 
+.vision-evidence {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #d6e2f2;
+  border-left: 4px solid var(--border-strong);
+  border-radius: 8px;
+  background: #fff;
+  padding: 9px;
+}
+
+.vision-evidence.strong {
+  border-left-color: var(--success);
+  background: rgba(20, 150, 74, 0.05);
+}
+
+.vision-evidence.partial,
+.vision-evidence.index {
+  border-left-color: var(--warning);
+  background: rgba(196, 122, 5, 0.05);
+}
+
+.vision-evidence.skip,
+.vision-evidence.empty {
+  border-left-color: var(--border-strong);
+  background: #fbfcff;
+}
+
+.vision-evidence-main {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.vision-evidence-main span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.vision-evidence.strong .vision-evidence-main span {
+  color: var(--success);
+}
+
+.vision-evidence.partial .vision-evidence-main span,
+.vision-evidence.index .vision-evidence-main span {
+  color: var(--warning);
+}
+
+.vision-evidence-main strong {
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.vision-evidence-main p,
+.vision-evidence-flags {
+  margin: 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.42;
+  overflow-wrap: anywhere;
+}
+
+.vision-evidence-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.vision-evidence-metrics span {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.78);
+  padding: 6px 7px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 760;
+  line-height: 1.25;
+}
+
+.vision-evidence-metrics b {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--ink);
+  font-size: 11px;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vision-evidence-flags {
+  border-top: 1px solid var(--border);
+  padding-top: 7px;
+}
+
+.vision-evidence-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.vision-evidence-actions button {
+  min-height: 28px;
+  border: 1px solid #c9d9ff;
+  border-radius: 7px;
+  background: #f2f6ff;
+  color: var(--accent);
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 850;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.vision-evidence-actions button:hover {
+  border-color: var(--accent);
+  background: #e8f0ff;
+}
+
 .pipeline-audit {
   display: grid;
   gap: 8px;

@@ -174,6 +174,90 @@ assert.match(visualCoverageHtml, /超限省略 W099/);
 assert.match(visualCoverageHtml, /&lt;script&gt;bad\(\)&lt;\/script&gt;/);
 assert.doesNotMatch(visualCoverageHtml, /<script>bad/);
 
+const visionEvidenceStrongHtml = context.visionEvidenceBar({
+  id: "side-vision-strong",
+  status: "success",
+  phase: "completed",
+  source_type: "current_page",
+  media_path: "D:/Projects/learnnote-assistant/data/tasks/side-vision-strong/media.mp4",
+  note_path: "D:/Projects/learnnote-assistant/data/tasks/side-vision-strong/note.md",
+  summary_source: "vision-llm",
+  options: { visual_understanding: true },
+  summary_diagnostics: {
+    used_vision_llm: true,
+    frame_grid_count: 2,
+    vision_grid_count: 2,
+    vision_image_count: 2
+  },
+  visual_windows: [
+    {
+      id: "W001",
+      start: 0,
+      end: 180,
+      frame_count: 9,
+      grid_url: "http://127.0.0.1:8765/api/tasks/demo/grids/grid_000.jpg"
+    },
+    {
+      id: "W002",
+      start: 180,
+      end: 360,
+      frame_count: 9,
+      grid_url: "http://127.0.0.1:8765/api/tasks/demo/grids/grid_001.jpg"
+    }
+  ]
+});
+assert.match(visionEvidenceStrongHtml, /class="vision-evidence strong"/);
+assert.match(visionEvidenceStrongHtml, /画面已参与图文总结/);
+assert.match(visionEvidenceStrongHtml, /2\/2/);
+assert.match(visionEvidenceStrongHtml, /data-switch-result-tab="frames"/);
+assert.match(visionEvidenceStrongHtml, /data-switch-result-tab="diagnostics"/);
+assert.match(visionEvidenceStrongHtml, /data-export="bundle"/);
+
+const visionEvidencePartialHtml = context.visionEvidenceBar({
+  id: "side-vision-partial",
+  status: "success",
+  phase: "completed",
+  source_type: "current_page",
+  note_path: "D:/Projects/learnnote-assistant/data/tasks/side-vision-partial/note.md",
+  summary_source: "text-llm",
+  options: { visual_understanding: true },
+  summary_diagnostics: {
+    used_text_llm: true,
+    frame_grid_count: 3,
+    vision_grid_count: 3,
+    vision_image_count: 1,
+    missing_vision_image_window_ids: ["W002"],
+    omitted_vision_window_ids: ["W099"],
+    summary_warning: "<script>bad()</script> 降级"
+  },
+  visual_windows: [
+    { id: "W001", start: 0, end: 180, grid_url: "http://127.0.0.1:8765/api/tasks/demo/grids/grid_000.jpg" },
+    { id: "W002", start: 180, end: 360, grid_url: "" }
+  ]
+});
+assert.match(visionEvidencePartialHtml, /class="vision-evidence partial"/);
+assert.match(visionEvidencePartialHtml, /模型链路存在降级/);
+assert.match(visionEvidencePartialHtml, /缺图 W002/);
+assert.match(visionEvidencePartialHtml, /超限省略 W099/);
+assert.match(visionEvidencePartialHtml, /&lt;script&gt;bad\(\)&lt;\/script&gt; 降级/);
+assert.doesNotMatch(visionEvidencePartialHtml, /<script>bad/);
+
+const visionEvidenceSkipHtml = context.visionEvidenceBar({
+  id: "side-vision-skip",
+  status: "success",
+  phase: "completed",
+  source_type: "page_text",
+  note_path: "D:/Projects/learnnote-assistant/data/tasks/side-vision-skip/note.md",
+  options: { visual_understanding: false },
+  summary_diagnostics: {
+    used_page_text_fallback: true,
+    combined_text_char_count: 88
+  }
+});
+assert.match(visionEvidenceSkipHtml, /class="vision-evidence skip"/);
+assert.match(visionEvidenceSkipHtml, /本任务走文本路线/);
+assert.doesNotMatch(visionEvidenceSkipHtml, /data-switch-result-tab="frames"/);
+
 const routeEvidenceItems = context.taskRouteEvidenceItems({
   source_type: "current_page",
   status: "failed",
@@ -863,6 +947,35 @@ assert.deepEqual(JSON.parse(JSON.stringify(openedTabs.at(-1))), {
   target: "_blank",
   features: "noopener"
 });
+
+vm.runInContext(`
+currentTaskId = "task-scroll-reset";
+currentTask = {
+  id: "task-scroll-reset",
+  title: "Scroll reset lesson",
+  status: "success",
+  phase: "completed",
+  progress: 100,
+  source_type: "current_page",
+  media_path: "D:/Projects/learnnote-assistant/data/tasks/task-scroll-reset/media.mp4",
+  note_path: "D:/Projects/learnnote-assistant/data/tasks/task-scroll-reset/note.md",
+  summary_source: "vision-llm",
+  options: { visual_understanding: true },
+  summary_diagnostics: { used_vision_llm: true, frame_grid_count: 1, vision_grid_count: 1, vision_image_count: 1 },
+  visual_windows: [{
+    id: "W001",
+    start: 0,
+    end: 180,
+    frame_count: 9,
+    grid_url: "http://127.0.0.1:8765/api/tasks/demo/grids/grid_000.jpg"
+  }]
+};
+selectedTab = "note";
+`, context);
+elements.get("#result").scrollTop = 128;
+context.switchResultTab("frames");
+assert.equal(elements.get("#result").scrollTop, 0);
+assert.match(elements.get("#result").innerHTML, /class="vision-evidence strong"/);
 
 vm.runInContext(`
 preflight = { downloadable: true, kind: "hls", code: "", message: "ok" };

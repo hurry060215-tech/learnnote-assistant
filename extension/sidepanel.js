@@ -588,6 +588,7 @@ async function selectHistoryTask(taskId) {
   transcriptCache = null;
   lastNote = "";
   await loadResult();
+  resetResultScroll();
   renderTaskHistory();
 }
 
@@ -2253,6 +2254,77 @@ function visualCoverageHtml(task) {
   </section>`;
 }
 
+function visionEvidenceBar(task) {
+  if (!task) return "";
+  const windows = visualWindows(task || {});
+  const diag = task.summary_diagnostics || {};
+  const hasDiagnostics = Object.keys(diag).length > 0;
+  const gridCount = Number(diag.frame_grid_count ?? task.frame_grids?.length ?? windows.length ?? 0);
+  const visionGridCount = Number(diag.vision_grid_count ?? gridCount ?? 0);
+  const sentImages = Number(diag.vision_image_count ?? windows.filter(window => safeNoteMediaUrl(window.grid_url)).length ?? 0);
+  const missingIds = (diag.missing_vision_image_window_ids || []).map(id => String(id || "").trim()).filter(Boolean);
+  const omittedIds = (diag.omitted_vision_window_ids || []).map(id => String(id || "").trim()).filter(Boolean);
+  const source = task.summary_source || diag.summary_source || (diag.used_vision_llm ? "vision-llm" : diag.used_text_llm ? "text-llm" : diag.used_local_template ? "local-template" : "");
+  const visualDisabled = task.options?.visual_understanding === false || task.source_type === "page_text";
+  const shouldShow = visualDisabled || hasDiagnostics || gridCount || windows.length || task.note_path || task.media_path;
+  if (!shouldShow) return "";
+
+  let state = "empty";
+  if (visualDisabled) state = "skip";
+  else if (source === "vision-llm" || diag.used_vision_llm) state = "strong";
+  else if (sentImages > 0 || missingIds.length || omittedIds.length) state = "partial";
+  else if (gridCount || windows.length) state = "index";
+
+  const title = {
+    strong: "画面已参与图文总结",
+    partial: "已有画面证据，模型链路存在降级",
+    index: "已生成画面切片，当前笔记未确认使用视觉模型",
+    skip: "本任务走文本路线",
+    empty: "还没有视觉切片证据"
+  }[state];
+  const badge = {
+    strong: "视觉模型",
+    partial: "视觉索引",
+    index: "本地切片",
+    skip: "文本总结",
+    empty: "等待切片"
+  }[state];
+  const detail = {
+    strong: `已把 ${sentImages}/${visionGridCount || gridCount || 0} 张网格图送入视觉模型，并和对应转写窗口合并成笔记。`,
+    partial: `检测到 ${windows.length || gridCount || 0} 个视觉窗口；当前结果可能使用了文本模型、模板或存在缺图窗口。`,
+    index: `已生成 ${windows.length || gridCount || 0} 个视觉窗口，可在“画面”页复核；总结来源为 ${source || "本地索引"}。`,
+    skip: "页面文本或用户选项关闭了视觉理解，因此不会调用画面切片总结。",
+    empty: "尚未看到抽帧、网格或视觉模型诊断；任务完成后这里会显示画面证据。"
+  }[state];
+  const flags = [
+    missingIds.length ? `缺图 ${compactIdList(missingIds, 4)}` : "",
+    omittedIds.length ? `超限省略 ${compactIdList(omittedIds, 4)}` : "",
+    diag.summary_warning || "",
+    diag.used_page_text_fallback ? "已使用页面文本/浏览器字幕兜底" : "",
+    diag.used_local_template ? "本地模板兜底" : ""
+  ].filter(Boolean);
+
+  return `<section class="vision-evidence ${escapeHtml(state)}" aria-label="图文总结证据">
+    <div class="vision-evidence-main">
+      <span>${escapeHtml(badge)}</span>
+      <strong>${escapeHtml(title)}</strong>
+      <p>${escapeHtml(detail)}</p>
+    </div>
+    <div class="vision-evidence-metrics">
+      <span><b>${windows.length || gridCount || "-"}</b>视觉窗口</span>
+      <span><b>${sentImages}/${visionGridCount || gridCount || 0}</b>送入视觉</span>
+      <span><b>${escapeHtml(source || "-")}</b>总结来源</span>
+      <span><b>${missingIds.length + omittedIds.length || "-"}</b>异常窗口</span>
+    </div>
+    ${flags.length ? `<p class="vision-evidence-flags">${flags.map(escapeHtml).join(" · ")}</p>` : ""}
+    <div class="vision-evidence-actions">
+      ${windows.length ? `<button type="button" data-switch-result-tab="frames">查看切片</button>` : ""}
+      ${hasTaskDiagnostics(task) ? `<button type="button" data-switch-result-tab="diagnostics">查看诊断</button>` : ""}
+      ${hasTaskBundle(task) ? `<button type="button" data-export="bundle">导出资料包</button>` : ""}
+    </div>
+  </section>`;
+}
+
 function auditGateState(task, passed) {
   if (passed) return "pass";
   if (task?.status === "failed") return "fail";
@@ -2510,11 +2582,16 @@ function bindTaskOverviewActions() {
   });
 }
 
+function resetResultScroll() {
+  if (els.result) els.result.scrollTop = 0;
+}
+
 function switchResultTab(tabName) {
   if (!tabName || selectedTab === tabName) return;
   selectedTab = tabName;
   els.resultTabs.forEach(item => item.classList.toggle("active", item.dataset.tab === selectedTab));
   renderResult();
+  resetResultScroll();
 }
 
 function noteHeadingStats(markdown) {
@@ -2759,7 +2836,7 @@ function renderResult() {
       : currentTask.media_path
         ? `<p>视频已下载到本地。可点击右上角视频按钮导出，不会继续转写、切片或总结。</p>`
         : `<p>${escapeHtml(currentTask.message || "笔记尚未生成。")}</p>`;
-    els.result.innerHTML = `${taskOverview(currentTask)}${noteStudyMap(lastNote, currentTask)}${noteOutline(lastNote)}${noteVisualRail(currentTask)}<article class="markdown-note">${noteHtml}</article>`;
+    els.result.innerHTML = `${taskOverview(currentTask)}${visionEvidenceBar(currentTask)}${noteStudyMap(lastNote, currentTask)}${noteOutline(lastNote)}${noteVisualRail(currentTask)}<article class="markdown-note">${noteHtml}</article>`;
     bindTaskOverviewActions();
     return;
   }
@@ -2771,7 +2848,7 @@ function renderResult() {
       return;
     }
     els.result.className = "result-body";
-    els.result.innerHTML = visualStudyDeck(currentTask);
+    els.result.innerHTML = `${visionEvidenceBar(currentTask)}${visualStudyDeck(currentTask)}`;
     bindTaskOverviewActions();
     return;
   }
