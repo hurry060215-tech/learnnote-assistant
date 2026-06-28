@@ -65,6 +65,7 @@ const els = {
   copyButton: document.querySelector("#copyButton"),
   bundleButton: document.querySelector("#bundleButton"),
   diagnosticsButton: document.querySelector("#diagnosticsButton"),
+  visualWindowsButton: document.querySelector("#visualWindowsButton"),
   mediaButton: document.querySelector("#mediaButton"),
   downloadButton: document.querySelector("#downloadButton")
 };
@@ -1409,6 +1410,10 @@ function hasTaskBundle(task) {
   );
 }
 
+function hasVisualWindowExport(task) {
+  return Boolean(task?.visual_windows?.length || task?.frame_grids?.length);
+}
+
 function hasTaskDiagnostics(task) {
   if (!task) return false;
   return Boolean(
@@ -2268,6 +2273,7 @@ async function renderDetail() {
     els.copyButton.disabled = true;
     els.bundleButton.disabled = true;
     els.diagnosticsButton.disabled = true;
+    if (els.visualWindowsButton) els.visualWindowsButton.disabled = true;
     els.mediaButton.disabled = true;
     els.downloadButton.disabled = true;
     updateContinueFromMediaAction(null);
@@ -2287,6 +2293,7 @@ async function renderDetail() {
   els.copyButton.disabled = !hasNote;
   els.bundleButton.disabled = !hasTaskBundle(task);
   els.diagnosticsButton.disabled = !hasTaskDiagnostics(task);
+  if (els.visualWindowsButton) els.visualWindowsButton.disabled = !hasVisualWindowExport(task);
   els.mediaButton.disabled = !task.media_path;
   els.downloadButton.disabled = !hasNote;
   updateContinueFromMediaAction(task);
@@ -2653,6 +2660,12 @@ els.diagnosticsButton.onclick = () => {
   if (!selectedTaskId) return;
   window.location.assign(`${API}/api/tasks/${encodeURIComponent(selectedTaskId)}/exports/diagnostics`);
 };
+if (els.visualWindowsButton) {
+  els.visualWindowsButton.onclick = () => {
+    if (!selectedTaskId) return;
+    window.location.assign(`${API}/api/tasks/${encodeURIComponent(selectedTaskId)}/exports/visual-windows`);
+  };
+}
 els.mediaButton.onclick = () => {
   if (!selectedTaskId) return;
   window.location.assign(`${API}/api/tasks/${encodeURIComponent(selectedTaskId)}/exports/media`);

@@ -67,6 +67,7 @@ const els = {
   copyButton: document.querySelector("#copyButton"),
   bundleButton: document.querySelector("#bundleButton"),
   diagnosticsButton: document.querySelector("#diagnosticsButton"),
+  visualWindowsButton: document.querySelector("#visualWindowsButton"),
   mediaButton: document.querySelector("#mediaButton"),
   downloadButton: document.querySelector("#downloadButton"),
   openWebButton: document.querySelector("#openWebButton"),
@@ -2263,6 +2264,10 @@ function hasTaskDiagnostics(task) {
   );
 }
 
+function hasVisualWindowExport(task) {
+  return Boolean(task?.visual_windows?.length || task?.frame_grids?.length);
+}
+
 function canContinueFromDownloadedMedia(task = currentTask) {
   const finished = task?.status === "success" || task?.status === "failed";
   return Boolean(task?.id && finished && task.media_path && !task.note_path);
@@ -2906,6 +2911,7 @@ function renderResult() {
   els.copyButton.disabled = !hasNote;
   els.bundleButton.disabled = !hasTaskBundle(currentTask);
   els.diagnosticsButton.disabled = !hasTaskDiagnostics(currentTask);
+  if (els.visualWindowsButton) els.visualWindowsButton.disabled = !hasVisualWindowExport(currentTask);
   els.mediaButton.disabled = !currentTask?.media_path;
   els.downloadButton.disabled = !hasNote;
   updateContinueFromMediaAction(currentTask);
@@ -3094,6 +3100,11 @@ els.bundleButton.onclick = () => {
 els.diagnosticsButton.onclick = () => {
   openTaskExport("diagnostics");
 };
+if (els.visualWindowsButton) {
+  els.visualWindowsButton.onclick = () => {
+    openTaskExport("visual-windows");
+  };
+}
 els.mediaButton.onclick = () => {
   openTaskExport("media");
 };

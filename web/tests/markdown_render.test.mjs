@@ -140,6 +140,7 @@ assert.match(elements.get("#detail").innerHTML, /直取候选 · HLS/);
 assert.match(elements.get("#detail").innerHTML, /浏览器字幕和转写片段会按视觉窗口对齐/);
 assert.match(elements.get("#detail").innerHTML, /不.*录制页面/);
 assert.equal(elements.get("#copyButton").disabled, true);
+assert.equal(elements.get("#visualWindowsButton").disabled, true);
 assert.match(elements.get("#sourceWorkflow").innerHTML, /class="source-workflow-card browser"/);
 assert.match(elements.get("#sourceWorkflow").innerHTML, /学习生产线|当前页直取/);
 assert.match(elements.get("#sourceWorkflow").innerHTML, /读取当前页/);
@@ -150,6 +151,7 @@ assert.match(indexHtml, /非录制/);
 assert.match(indexHtml, /预检候选/);
 assert.match(indexHtml, /本地总结/);
 assert.match(indexHtml, /id="browserRouteSummary"/);
+assert.match(indexHtml, /id="visualWindowsButton"/);
 assert.ok(
   indexHtml.indexOf('id="browserRouteSummary"') < indexHtml.indexOf('id="sourceWorkflow"'),
   "current-page route summary should appear before the workflow explainer"
