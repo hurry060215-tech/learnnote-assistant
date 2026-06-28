@@ -417,8 +417,40 @@ assert.match(taskOverviewHtml, /生成完整笔记/);
 assert.match(taskOverviewHtml, /data-rerun-from-media="side-overview"/);
 assert.match(taskOverviewHtml, /已完成直取下载/);
 assert.match(taskOverviewHtml, /已跟踪最终 URL/);
+assert.match(taskOverviewHtml, /阶段审计门/);
+assert.match(taskOverviewHtml, /来源门/);
+assert.match(taskOverviewHtml, /媒体门/);
+assert.match(taskOverviewHtml, /转写门/);
+assert.match(taskOverviewHtml, /切片门/);
+assert.match(taskOverviewHtml, /总结门/);
 assert.doesNotMatch(taskOverviewHtml, /<script>bad/);
 assert.match(taskOverviewHtml, /&lt;script&gt;bad\(\)&lt;\/script&gt; 课程/);
+
+const downloadedAuditItems = context.pipelineAuditItems({
+  id: "side-audit-downloaded",
+  status: "success",
+  phase: "completed",
+  source_type: "current_page",
+  media_path: "D:/Projects/learnnote-assistant/data/tasks/side-audit-downloaded/media.mp4",
+  selected_resource: {
+    kind: "hls",
+    source: "webRequest",
+    resolved_url: "https://cdn.example.com/master.m3u8"
+  },
+  options: { visual_understanding: true },
+  download_attempts: [{ strategy: "manifest-ffmpeg" }]
+});
+assert.equal(JSON.stringify(downloadedAuditItems.map(item => item.state)), JSON.stringify(["pass", "pass", "warn", "warn", "warn"]));
+const unsafeAuditHtml = context.pipelineAuditHtml({
+  status: "failed",
+  phase: "failed",
+  source_type: "current_page",
+  error_code: "<script>bad()</script>",
+  selected_resource: { kind: "video", source: "webRequest" },
+  download_attempts: []
+});
+assert.match(unsafeAuditHtml, /&lt;script&gt;bad\(\)&lt;\/script&gt;/);
+assert.doesNotMatch(unsafeAuditHtml, /<script>bad/);
 
 const failedMediaOverviewHtml = context.taskOverview({
   id: "side-failed-media",
