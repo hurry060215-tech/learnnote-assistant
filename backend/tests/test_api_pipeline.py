@@ -101,6 +101,25 @@ class LocalUploadValidationTests(unittest.TestCase):
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
+    def test_task_list_includes_embedded_audit_summary(self) -> None:
+        task = create_task("current_page", "List audit", "https://course.example.com/lesson")
+        media = task_dir(task.id) / "media.mp4"
+        media.write_bytes(b"fake mp4 bytes")
+        try:
+            update_task(task.id, status="success", phase="completed", progress=100, media_path=str(media))
+
+            response = self.client.get("/api/tasks")
+
+            self.assertEqual(response.status_code, 200)
+            listed = next(item for item in response.json()["tasks"] if item["id"] == task.id)
+            self.assertIn("audit", listed)
+            self.assertEqual(listed["audit"]["blocked_gate"], "transcript")
+            gates = {gate["key"]: gate for gate in listed["audit"]["gates"]}
+            self.assertEqual(gates["media"]["state"], "pass")
+            self.assertEqual(gates["transcript"]["state"], "warn")
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
     @unittest.skipUnless(ffmpeg_bin(), "ffmpeg or ffprobe is required for local upload content validation")
     def test_local_upload_rejects_fake_video_before_task_creation(self) -> None:
         response = self.client.post(

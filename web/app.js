@@ -1527,7 +1527,7 @@ async function taskRecord() {
 
 function taskFromPayload(payload) {
   const task = payload?.task || null;
-  if (task && payload?.audit) task.audit = payload.audit;
+  if (task && (payload?.audit || task.audit)) task.audit = payload.audit || task.audit;
   return task;
 }
 

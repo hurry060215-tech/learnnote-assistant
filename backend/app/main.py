@@ -390,6 +390,12 @@ def task_audit_summary(task: TaskRecord) -> dict:
     }
 
 
+def task_payload(task: TaskRecord) -> dict:
+    payload = task.model_dump(mode="json")
+    payload["audit"] = task_audit_summary(task)
+    return payload
+
+
 def render_diagnostics_markdown(task: TaskRecord) -> str:
     selected = task.selected_resource
     lines = [
@@ -627,14 +633,15 @@ def create_from_existing_media(
 
 @app.get("/api/tasks")
 def api_list_tasks() -> dict:
-    return {"tasks": list_tasks()}
+    return {"tasks": [task_payload(task) for task in list_tasks()]}
 
 
 @app.get("/api/tasks/{task_id}")
 def api_get_task(task_id: str) -> dict:
     try:
         task = get_task(task_id)
-        return {"task": task, "audit": task_audit_summary(task)}
+        payload = task_payload(task)
+        return {"task": payload, "audit": payload["audit"]}
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Task not found") from exc
 

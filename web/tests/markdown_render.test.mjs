@@ -775,6 +775,16 @@ assert.match(backendAuditHtml, /backend transcript/);
 assert.match(backendAuditHtml, /server says wait/);
 assert.match(backendAuditHtml, /class="warn"/);
 
+const embeddedAuditTask = context.taskFromPayload({
+  task: {
+    id: "embedded-audit-task",
+    audit: {
+      gates: [{ key: "transcript", state: "warn", value: "embedded transcript", detail: "embedded audit detail" }]
+    }
+  }
+});
+assert.equal(embeddedAuditTask.audit.gates[0].value, "embedded transcript");
+
 const taskPreviewWithImage = context.taskPreviewHtml({
   status: "success",
   source_type: "current_page",

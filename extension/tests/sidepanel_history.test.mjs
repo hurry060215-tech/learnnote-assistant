@@ -40,6 +40,15 @@ const task = {
   note_path: "note.md",
   media_path: "media.mp4",
   download_attempts: [{ strategy: "manifest-ffmpeg" }],
+  audit: {
+    gates: [
+      { key: "source", state: "pass", value: "history source", detail: "list embedded audit source" },
+      { key: "media", state: "pass", value: "history media", detail: "list embedded audit media" },
+      { key: "transcript", state: "warn", value: "history transcript gate", detail: "list embedded audit transcript" },
+      { key: "visual", state: "wait", value: "history visual", detail: "list embedded audit visual" },
+      { key: "summary", state: "wait", value: "history summary", detail: "list embedded audit summary" }
+    ]
+  },
   visual_windows: [
     { id: "W001", start: 0, end: 180, frame_count: 9, grid_url: "/api/tasks/task-history-1/assets/grid_000.jpg" },
     { id: "W002", start: 180, end: 360, frame_count: 9, grid_url: "/api/tasks/task-history-1/assets/grid_001.jpg" }
@@ -117,6 +126,8 @@ await context.selectHistoryTask("task-history-1");
 
 assert.match(elements.get("#result").innerHTML, /History lesson/);
 assert.match(elements.get("#result").innerHTML, /Generated note/);
+assert.match(elements.get("#result").innerHTML, /history transcript gate/);
+assert.match(elements.get("#result").innerHTML, /list embedded audit transcript/);
 assert.equal(elements.get("#copyButton").disabled, false);
 assert.equal(elements.get("#bundleButton").disabled, false);
 assert.equal(elements.get("#diagnosticsButton").disabled, false);
