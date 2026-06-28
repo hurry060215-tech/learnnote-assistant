@@ -64,6 +64,7 @@ class FakeElement {
 const packedDash = Buffer.from("https://cdn.example.com/static/manifest.mpd?token=b64", "utf8").toString("base64");
 const doubleEncodedHls = encodeURIComponent(encodeURIComponent("https://cdn.example.com/static/double/master.m3u8?token=double&uid=2"));
 const doubleEncodedNakedVideo = encodeURIComponent(encodeURIComponent("https://cdn.example.com/static/double/naked.mp4?token=naked-double"));
+const mixedEncodedVideo = "https%253A//cdn.example.com/static/mixed/lesson.mp4%253Ftoken%253Dmixed";
 
 const player = new FakeElement("div", {
   "data-play-url": "https%3A%2F%2Fcdn.example.com%2Fstatic%2Fmaster.m3u8%3Ftoken%3Dattr"
@@ -83,6 +84,9 @@ const doubleEncodedPlayer = new FakeElement("div", {
 const plainDoubleEncodedScript = new FakeElement("script", {
   textContent: `window.__payload='${doubleEncodedNakedVideo}';`
 });
+const mixedEncodedScript = new FakeElement("script", {
+  textContent: `window.__mixed='${mixedEncodedVideo}';`
+});
 const onclickPlayer = new FakeElement("button", {
   onclick: "openPlayer('https%3A%2F%2Fcdn.example.com%2Fstatic%2Fonclick-master.m3u8%3Ftoken%3Dclick')"
 });
@@ -98,7 +102,7 @@ const nakedPlayer = new FakeElement("div", {
 const plainUrlScript = new FakeElement("script", {
   textContent: "window.__payload='https://cdn.example.com/static/plain-url.m3u8?token=script-plain';"
 });
-const html = new FakeElement("html", {}, [player, packedPlayer, doubleEncodedPlayer, onclickPlayer, paramPlayer, configPlayer, nakedPlayer, script, plainEncodedScript, plainDoubleEncodedScript, plainUrlScript]);
+const html = new FakeElement("html", {}, [player, packedPlayer, doubleEncodedPlayer, onclickPlayer, paramPlayer, configPlayer, nakedPlayer, script, plainEncodedScript, plainDoubleEncodedScript, mixedEncodedScript, plainUrlScript]);
 
 let messageListener = null;
 const context = {
@@ -167,6 +171,7 @@ const flv = response.resources.find(item => item.url === "https://cdn.example.co
 const plainHls = response.resources.find(item => item.url === "https://cdn.example.com/static/plain-master.m3u8?token=plain&uid=1");
 const doubleHls = response.resources.find(item => item.url === "https://cdn.example.com/static/double/master.m3u8?token=double&uid=2");
 const doubleNakedVideo = response.resources.find(item => item.url === "https://cdn.example.com/static/double/naked.mp4?token=naked-double");
+const mixedVideo = response.resources.find(item => item.url === "https://cdn.example.com/static/mixed/lesson.mp4?token=mixed");
 const onclickHls = response.resources.find(item => item.url === "https://cdn.example.com/static/onclick-master.m3u8?token=click");
 const paramVideo = response.resources.find(item => item.url === "https://cdn.example.com/static/param-lesson.mp4?token=param");
 const plainAttrVideo = response.resources.find(item => item.url === "https://course.example.com/static/plain-attr.mp4?token=attr-plain");
@@ -208,6 +213,11 @@ assert.ok(doubleNakedVideo, "expected inline script encoded URL scan to expose d
 assert.equal(doubleNakedVideo.kind, "video");
 assert.equal(doubleNakedVideo.source, "scriptHint");
 assert.match(doubleNakedVideo.label, /encoded url/);
+
+assert.ok(mixedVideo, "expected inline script encoded URL scan to expose mixed-encoded mp4 URL");
+assert.equal(mixedVideo.kind, "video");
+assert.equal(mixedVideo.source, "scriptHint");
+assert.match(mixedVideo.label, /encoded url/);
 
 assert.ok(onclickHls, "expected onclick handler scan to expose embedded encoded HLS URL");
 assert.equal(onclickHls.kind, "hls");

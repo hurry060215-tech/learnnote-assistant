@@ -9,6 +9,7 @@ import json
 import os
 from base64 import b64encode
 from pathlib import Path
+from urllib.parse import quote
 from unittest.mock import patch
 
 from app.config import DATA_DIR, TEMP_DIR
@@ -328,21 +329,24 @@ class ResourceDetectionTests(unittest.TestCase):
 
     def test_page_scan_decodes_wrapped_media_field_values(self) -> None:
         encoded = "https%3A%2F%2Fcdn.example.com%2Fsecure%2Flesson.m3u8%3Ftoken%3Dabc"
+        double_encoded = quote(quote("https://cdn.example.com/secure/backup.m3u8?token=double"))
         packed = b64encode(b"https://cdn.example.com/video/lesson.mp4?sign=ok").decode("ascii")
         resources = extract_media_resources_from_text(
             json.dumps({
                 "playInfo": {
                     "hls": encoded,
+                    "backupHlsUrl": double_encoded,
                     "videoUrl": packed,
                 }
             }),
             "https://course.example.com/player/index.html",
             "page-scan",
         )
-        by_kind = {resource.kind: resource for resource in resources}
+        by_url = {resource.url: resource for resource in resources}
 
-        self.assertEqual(by_kind["hls"].url, "https://cdn.example.com/secure/lesson.m3u8?token=abc")
-        self.assertEqual(by_kind["video"].url, "https://cdn.example.com/video/lesson.mp4?sign=ok")
+        self.assertEqual(by_url["https://cdn.example.com/secure/lesson.m3u8?token=abc"].kind, "hls")
+        self.assertEqual(by_url["https://cdn.example.com/secure/backup.m3u8?token=double"].kind, "hls")
+        self.assertEqual(by_url["https://cdn.example.com/video/lesson.mp4?sign=ok"].kind, "video")
 
     def test_page_scan_decodes_nested_base64_json_media_config(self) -> None:
         nested_config = json.dumps(
@@ -367,21 +371,25 @@ class ResourceDetectionTests(unittest.TestCase):
         self.assertEqual(by_label["json data/playInfo/videoUrl"].mime, "video/mp4")
 
     def test_page_scan_decodes_encoded_media_urls_outside_media_fields(self) -> None:
+        double_encoded = quote(quote("https://cdn.example.com/secure/double.mp4?token=twice"))
         resources = extract_media_resources_from_text(
-            """
+            f"""
             <a href="/player?objectid=https%3A%2F%2Fcdn.example.com%2Fsecure%2Flesson.m3u8%3Ftoken%3Dabc%26uid%3D1">
               open player
             </a>
+            <script>window.__encoded = "{double_encoded}";</script>
             """,
             "https://course.example.com/lesson/index.html",
             "page-scan",
         )
+        by_url = {resource.url: resource for resource in resources}
 
-        self.assertEqual(len(resources), 1)
-        self.assertEqual(resources[0].kind, "hls")
-        self.assertEqual(resources[0].label, "encoded page scan")
-        self.assertEqual(resources[0].url, "https://cdn.example.com/secure/lesson.m3u8?token=abc&uid=1")
-        self.assertEqual(resources[0].request_headers["Referer"], "https://course.example.com/lesson/index.html")
+        self.assertEqual(len(resources), 2)
+        self.assertEqual(by_url["https://cdn.example.com/secure/lesson.m3u8?token=abc&uid=1"].kind, "hls")
+        self.assertEqual(by_url["https://cdn.example.com/secure/lesson.m3u8?token=abc&uid=1"].label, "encoded page scan")
+        self.assertEqual(by_url["https://cdn.example.com/secure/double.mp4?token=twice"].kind, "video")
+        self.assertEqual(by_url["https://cdn.example.com/secure/double.mp4?token=twice"].request_headers["Referer"], "https://course.example.com/lesson/index.html")
+        self.assertFalse([resource.url for resource in resources if "/https%3A%2F%2F" in resource.url])
 
     def test_page_scan_extracts_flv_direct_urls(self) -> None:
         resources = extract_media_resources_from_text(

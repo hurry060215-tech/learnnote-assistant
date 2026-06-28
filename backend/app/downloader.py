@@ -29,7 +29,7 @@ TEXT_MEDIA_URL_RE = re.compile(
     re.I,
 )
 ENCODED_MEDIA_URL_RE = re.compile(
-    r"https?%3A%2F%2F[^\s\"'<>\\]+?(?:\.|%2E)(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|vtt|srt|ass|ssa)(?:[^\s\"'<>\\]*)?",
+    r"https?%(?:25)*3A(?:(?:%(?:25)*2F)|/){2}[^\s\"'<>\\]+?(?:\.|%(?:25)*2E)(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|vtt|srt|ass|ssa)(?:[^\s\"'<>\\]*)?",
     re.I,
 )
 TEXT_RESPONSE_RE = re.compile(r"json|text|html|javascript|mpegurl|dash\+xml|xml|x-mpegurl", re.I)
@@ -341,14 +341,26 @@ def _looks_like_nested_media_text(value: str) -> bool:
     return bool(JSON_MEDIA_KEY_RE.search(text) and TEXT_MEDIA_HINT_RE.search(text))
 
 
+def _repeated_unquote(value: str, limit: int = 3) -> list[str]:
+    current = str(value or "")
+    decoded: list[str] = []
+    for _ in range(limit):
+        next_value = unquote(current)
+        if not next_value or next_value == current:
+            break
+        decoded.append(next_value)
+        current = next_value
+    return decoded
+
+
 def _decoded_media_values(value: str) -> list[str]:
     raw = str(value or "").strip()
     if not raw:
         return []
     values = [raw]
-    unquoted = unquote(raw)
-    if unquoted and unquoted != raw:
-        values.append(unquoted)
+    for unquoted in _repeated_unquote(raw):
+        if unquoted and unquoted not in values:
+            values.insert(0, unquoted)
 
     compact = raw.strip()
     if B64ISH_RE.match(compact) and len(compact) % 4 in {0, 2, 3}:
@@ -518,7 +530,7 @@ def extract_media_resources_from_encoded_url_text(
     seen = seen if seen is not None else set()
     for match in ENCODED_MEDIA_URL_RE.finditer(text or ""):
         for raw_url in _decoded_media_values(match.group(0)):
-            url = normalize_media_url(unquote(raw_url), base_url)
+            url = normalize_media_url(raw_url, base_url)
             if not url or url in seen:
                 continue
             kind = classify_resource(url)
