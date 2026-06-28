@@ -836,6 +836,7 @@ function cookieUrlsForContext(page = {}, tab = {}, resources = []) {
 
   for (const resource of resources || []) {
     add(resource.url);
+    add(resource.resolved_url);
     add(resource.page_url);
     add(resource.frame_url);
     add(resource.initiator);

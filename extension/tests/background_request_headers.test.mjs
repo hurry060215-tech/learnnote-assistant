@@ -375,6 +375,7 @@ const cookieUrls = context.cookieUrlsForContext(
   [
     {
       url: "https://cdn.example.com/live/master.m3u8",
+      resolved_url: "https://resolved-media.example.org/final/master.m3u8?token=abc",
       page_url: "https://course.example.com/frame-page",
       frame_url: "https://player.example.com/embed/1",
       initiator: "https://player.example.com",
@@ -398,6 +399,7 @@ assert.deepEqual(Array.from(cookieUrls), [
   "https://player.example.com/embed/active",
   "https://player.example.com/embed/1",
   "https://cdn.example.com/live/master.m3u8",
+  "https://resolved-media.example.org/final/master.m3u8?token=abc",
   "https://course.example.com/frame-page",
   "https://player.example.com",
   "https://player.example.com/embed/1?lesson=42",
