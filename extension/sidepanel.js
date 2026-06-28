@@ -2185,6 +2185,40 @@ async function requestResourcePreflight(resource) {
   return response.preflight;
 }
 
+async function requestPagePreflightReport(candidates) {
+  const response = await chrome.runtime.sendMessage({
+    type: "preflight-current-page",
+    backendUrl,
+    page,
+    resources: candidates,
+    probeLimit: 3
+  });
+  if (response.error) throw new Error(response.error);
+  return response.report || null;
+}
+
+function applyPagePreflightReport(report) {
+  if (!report?.candidates?.length) return false;
+  for (const item of report.candidates) {
+    const resource = item.resource || {};
+    const result = item.preflight || null;
+    if (!resource.url || !result) continue;
+    const existing = resources.find(candidate => candidate.url === resource.url);
+    if (existing) {
+      Object.assign(existing, resource);
+      rememberPreflightResult(existing, result);
+    } else {
+      resources.push(resource);
+      rememberPreflightResult(resource, result);
+    }
+  }
+  if (report.selected_url) {
+    selectedResourceUrl = report.selected_url;
+    resourceSelectionPinned = true;
+  }
+  return true;
+}
+
 async function preflightBestResource(mode = "video") {
   const candidates = preflightCandidatesForStart(mode);
   if (!candidates.length) return null;
@@ -2313,6 +2347,16 @@ async function runPreflight() {
     if (!candidates.length) {
       els.taskMessage.textContent = "没有可预检的直取候选；继续播放几秒后重新检测，或上传本地视频。";
       return null;
+    }
+    try {
+      const report = await requestPagePreflightReport(candidates);
+      if (applyPagePreflightReport(report)) {
+        els.taskMessage.textContent = report.message || (report.ready ? "Page preflight passed" : "Page preflight did not pass");
+        renderContext();
+        return report;
+      }
+    } catch {
+      // Fall through to the older per-resource preflight path.
     }
     return await preflightBestResource("video");
   } finally {

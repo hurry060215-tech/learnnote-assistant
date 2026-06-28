@@ -1067,6 +1067,27 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return;
     }
 
+    if (message.type === "preflight-current-page") {
+      const tab = await activeTab();
+      const page = message.page || await collectPageData(tab);
+      const resources = message.resources || resourceByTab.get(tab.id) || [];
+      const cookies = await cookiesForUrls(cookieUrlsForContext(page, tab, resources));
+      const backendUrl = message.backendUrl || "http://127.0.0.1:8765";
+      const res = await fetch(`${backendUrl}/api/media/preflight-current-page`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          page_url: page.page_url || tab.url,
+          resources,
+          cookies,
+          drm_detected: Boolean(page.drm_detected),
+          probe_limit: message.probeLimit ?? 3
+        })
+      });
+      sendResponse(await res.json());
+      return;
+    }
+
     if (message.type === "download-task-export") {
       const url = String(message.url || "");
       if (!LOCAL_EXPORT_RE.test(url)) {

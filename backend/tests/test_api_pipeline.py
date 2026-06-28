@@ -120,6 +120,39 @@ class LocalUploadValidationTests(unittest.TestCase):
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
+    def test_page_preflight_report_ranks_candidates_without_probe(self) -> None:
+        response = self.client.post(
+            "/api/media/preflight-current-page",
+            json={
+                "page_url": "https://course.example.com/lesson",
+                "probe_limit": 0,
+                "resources": [
+                    {
+                        "url": "https://cdn.example.com/chunk/lesson_001.ts",
+                        "kind": "fragment",
+                        "source": "webRequest",
+                        "score": 60,
+                    },
+                    {
+                        "url": "https://cdn.example.com/lesson.mp4",
+                        "kind": "video",
+                        "source": "webRequest",
+                        "score": 90,
+                        "is_main_video": True,
+                    },
+                ],
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        report = response.json()["report"]
+        self.assertFalse(report["ready"])
+        self.assertGreaterEqual(report["candidate_count"], 2)
+        self.assertEqual(report["probed_count"], 0)
+        self.assertEqual(report["candidates"][0]["resource"]["url"], "https://cdn.example.com/lesson.mp4")
+        self.assertEqual(report["candidates"][0]["preflight"]["strategy"], "not-probed")
+        self.assertTrue(any(item["resource"]["source"] in {"inferred-manifest", "manifest-guess"} for item in report["candidates"]))
+
     @unittest.skipUnless(ffmpeg_bin(), "ffmpeg or ffprobe is required for local upload content validation")
     def test_local_upload_rejects_fake_video_before_task_creation(self) -> None:
         response = self.client.post(

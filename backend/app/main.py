@@ -14,9 +14,9 @@ from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Res
 from fastapi.staticfiles import StaticFiles
 
 from .config import DATA_DIR, LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, STATIC_DIR, UPLOAD_DIR, WEB_DIR, ensure_dirs
-from .downloader import preflight_media_resource
+from .downloader import effective_resource_kind, preflight_media_resource, rank_media_candidates
 from .media import probe_duration
-from .models import CurrentPageTaskRequest, MediaPreflightRequest, TaskOptions, TaskRecord
+from .models import CurrentPageTaskRequest, MediaPreflightRequest, MediaPreflightResult, PagePreflightRequest, TaskOptions, TaskRecord
 from .processor import process_current_page_task, process_local_video_task, read_note, read_transcript, read_visual_index
 from .runtime import ffmpeg_bin, ffprobe_bin
 from .storage import create_task, get_task, list_tasks, task_dir, update_task
@@ -396,6 +396,65 @@ def task_payload(task: TaskRecord) -> dict:
     return payload
 
 
+def page_preflight_report(request: PagePreflightRequest) -> dict:
+    ranked = rank_media_candidates(request.resources)
+    probed = 0
+    downloadable_count = 0
+    selected_url = ""
+    candidates = []
+
+    for index, candidate in enumerate(ranked, start=1):
+        if probed < request.probe_limit:
+            result = preflight_media_resource(candidate, request.cookies, request.page_url)
+            probed += 1
+            if result.downloadable:
+                downloadable_count += 1
+                if not selected_url:
+                    selected_url = candidate.url
+        else:
+            result = MediaPreflightResult(
+                ok=True,
+                downloadable=False,
+                strategy="not-probed",
+                kind=effective_resource_kind(candidate),
+                url=candidate.url,
+                resolved_url=candidate.resolved_url or candidate.url,
+                code="not_probed",
+                message="候选排序靠后，本次整页预检未发起网络探测；启动任务时仍可作为后续下载候选。",
+            )
+
+        candidates.append({
+            "rank": index,
+            "resource": candidate.model_dump(mode="json"),
+            "preflight": result.model_dump(mode="json"),
+        })
+
+    if selected_url:
+        code = ""
+        message = f"整页预检通过：{downloadable_count} 个候选可访问，默认选择排序最靠前的可下载资源。"
+    elif ranked:
+        code = "download_forbidden"
+        message = "整页预检没有发现可直接下载的候选；可继续播放后重新检测，或改用本地视频上传。"
+    elif request.drm_detected or any(effective_resource_kind(item) == "blob" for item in request.resources):
+        code = "drm_or_encrypted"
+        message = "页面只暴露 blob/DRM 播放线索，没有可交给后端下载的 mp4、m3u8 或 mpd。"
+    else:
+        code = "no_media_found"
+        message = "当前页没有发现可预检的 mp4、m3u8 或 mpd 候选。"
+
+    return {
+        "ok": True,
+        "ready": bool(selected_url),
+        "code": code,
+        "message": message,
+        "selected_url": selected_url,
+        "candidate_count": len(ranked),
+        "probed_count": probed,
+        "downloadable_count": downloadable_count,
+        "candidates": candidates,
+    }
+
+
 def render_diagnostics_markdown(task: TaskRecord) -> str:
     selected = task.selected_resource
     lines = [
@@ -557,6 +616,11 @@ def create_from_current_page(request: CurrentPageTaskRequest, background_tasks: 
 def api_media_preflight(request: MediaPreflightRequest) -> dict:
     result = preflight_media_resource(request.resource, request.cookies, request.page_url)
     return {"preflight": result}
+
+
+@app.post("/api/media/preflight-current-page")
+def api_page_media_preflight(request: PagePreflightRequest) -> dict:
+    return {"report": page_preflight_report(request)}
 
 
 @app.post("/api/tasks/from-local")

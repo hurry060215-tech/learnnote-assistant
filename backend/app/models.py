@@ -129,6 +129,14 @@ class MediaPreflightRequest(BaseModel):
     cookies: list[BrowserCookie] = Field(default_factory=list)
 
 
+class PagePreflightRequest(BaseModel):
+    page_url: str = ""
+    resources: list[ResourceCandidate] = Field(default_factory=list)
+    cookies: list[BrowserCookie] = Field(default_factory=list)
+    drm_detected: bool = False
+    probe_limit: int = Field(default=3, ge=0, le=8)
+
+
 class MediaPreflightResult(BaseModel):
     ok: bool = False
     downloadable: bool = False
