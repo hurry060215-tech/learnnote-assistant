@@ -781,6 +781,17 @@ select:focus {
   font-weight: 900;
 }
 
+.capture-status-chip.bridge {
+  border-color: rgba(20, 99, 255, 0.22);
+  background: rgba(20, 99, 255, 0.07);
+  color: var(--accent);
+}
+
+.capture-status-chip.bridge b {
+  background: rgba(20, 99, 255, 0.12);
+  color: var(--accent);
+}
+
 .capture-status-chip.vision.ready {
   border-color: rgba(20, 150, 74, 0.24);
   background: rgba(20, 150, 74, 0.08);

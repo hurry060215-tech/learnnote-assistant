@@ -1231,6 +1231,7 @@ function updateHealthVisionStatus(data = lastHealthData) {
   els.browserBridgeStatus.title = `${mediaText} ${visionText}`.trim();
   els.browserBridgeStatus.classList.add("capture-status-grid");
   els.browserBridgeStatus.innerHTML = `
+    <span class="capture-status-chip bridge"><b>桥接</b>需 Chrome/Edge 扩展侧栏</span>
     <span class="capture-status-chip media"><b>媒体</b>${escapeHtml(healthMediaChipText(data))}</span>
     <span class="capture-status-chip vision ${healthVisionReady(data) ? "ready" : "pending"}"><b>视觉</b>${escapeHtml(healthVisionChipText(data))}</span>
   `;

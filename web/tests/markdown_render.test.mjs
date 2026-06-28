@@ -132,6 +132,8 @@ await new Promise(resolve => setTimeout(resolve, 0));
 await new Promise(resolve => setTimeout(resolve, 0));
 assert.match(elements.get("#health").textContent, /ffprobe/);
 assert.equal(elements.get("#browserBridgeStatus").classList.contains("capture-status-grid"), true);
+assert.match(elements.get("#browserBridgeStatus").innerHTML, /capture-status-chip bridge/);
+assert.match(elements.get("#browserBridgeStatus").innerHTML, /需 Chrome\/Edge 扩展侧栏/);
 assert.match(elements.get("#browserBridgeStatus").innerHTML, /capture-status-chip media/);
 assert.match(elements.get("#browserBridgeStatus").innerHTML, /API Key/);
 assert.match(elements.get("#detail").innerHTML, /class="empty-workbench"/);
