@@ -1436,6 +1436,101 @@ function visualCoverageHtml(task) {
   </section>`;
 }
 
+function auditGateState(task, passed) {
+  if (passed) return "pass";
+  if (task?.status === "failed") return "fail";
+  if (task?.status === "success") return "warn";
+  return "wait";
+}
+
+function pipelineAuditItems(task) {
+  const selected = task?.selected_resource || {};
+  const attempts = task?.download_attempts || [];
+  const windows = visualWindows(task || {});
+  const diag = task?.summary_diagnostics || {};
+  const isLocal = task?.source_type === "local";
+  const isPageText = task?.source_type === "page_text" || Boolean(diag.used_page_text_fallback);
+  const hasSelectedRoute = Boolean(selected.url || selected.kind || isLocal || isPageText);
+  const hasMedia = Boolean(task?.media_path);
+  const hasTranscript = Boolean(task?.transcript_path);
+  const hasVisuals = Boolean(windows.length || task?.frame_grids?.length || Number(diag.frame_grid_count || 0));
+  const hasNote = Boolean(task?.note_path);
+  const visualDisabled = task?.options?.visual_understanding === false || isPageText;
+
+  const sourceState = auditGateState(task, hasSelectedRoute || attempts.length || hasMedia || hasNote);
+  const mediaState = isPageText ? "skip" : auditGateState(task, hasMedia);
+  const transcriptState = isPageText && hasNote ? "pass" : auditGateState(task, hasTranscript);
+  const visualState = visualDisabled ? "skip" : auditGateState(task, hasVisuals);
+  const summaryState = auditGateState(task, hasNote);
+
+  return [
+    {
+      key: "source",
+      label: "来源门",
+      state: sourceState,
+      value: sourceState === "pass" ? (resourceSourceText(selected) || sourceText(task)) : task?.error_code || "待捕获",
+      detail: hasSelectedRoute
+        ? [selected.kind || task?.source_type, selected.playback_match ? playbackText(selected.playback_match) : "", selected.resolved_url ? "最终 URL 已记录" : ""].filter(Boolean).join(" · ")
+        : (attempts.length ? `${attempts.length} 次候选尝试` : "等待扩展/链接/本地入口提供来源")
+    },
+    {
+      key: "media",
+      label: "媒体门",
+      state: mediaState,
+      value: mediaState === "skip" ? "文本路线" : hasMedia ? "media.mp4" : task?.error_code || "待下载",
+      detail: hasMedia
+        ? "已落盘，可导出或复用继续总结"
+        : (attempts.length ? `${attempts.length} 次下载尝试` : "等待 yt-dlp、直连或 ffmpeg 合并")
+    },
+    {
+      key: "transcript",
+      label: "转写门",
+      state: transcriptState,
+      value: hasTranscript ? "字幕已生成" : isPageText && hasNote ? "页面文本/浏览器字幕" : task?.phase === "transcribing" ? "转写中" : "待转写",
+      detail: hasTranscript
+        ? "时间轴可在字幕页查看"
+        : (isPageText ? `${diag.browser_subtitle_count ?? 0} 条浏览器字幕 · ${diag.combined_text_char_count ?? 0} 字` : task?.summary_warning || "字幕优先，Whisper 兜底")
+    },
+    {
+      key: "visual",
+      label: "切片门",
+      state: visualState,
+      value: visualDisabled ? "未启用" : hasVisuals ? `${windows.length || diag.frame_grid_count || task?.frame_grids?.length} 个窗口` : task?.phase === "extracting_frames" ? "抽帧中" : "待切片",
+      detail: visualDisabled
+        ? "当前任务不走视觉窗口"
+        : hasVisuals
+          ? `${diag.vision_image_count ?? windows.filter(window => safeNoteMediaUrl(window.grid_url)).length}/${diag.vision_grid_count ?? (windows.length || 0)} 送入视觉`
+          : "等待 ffmpeg 抽帧生成网格"
+    },
+    {
+      key: "summary",
+      label: "总结门",
+      state: summaryState,
+      value: hasNote ? (task?.summary_source || "笔记完成") : task?.phase === "summarizing" ? "总结中" : task?.error_code || "待总结",
+      detail: hasNote
+        ? (task?.summary_warning || `${task?.options?.note_style || "study"} · ${task?.options?.summary_depth || "standard"}`)
+        : "等待字幕与视觉窗口汇总"
+    }
+  ];
+}
+
+function pipelineAuditHtml(task) {
+  const items = pipelineAuditItems(task);
+  return `<section class="pipeline-audit" aria-label="阶段审计门">
+    <header>
+      <span>阶段审计门</span>
+      <strong>${items.filter(item => item.state === "pass" || item.state === "skip").length}/${items.length} 已放行</strong>
+    </header>
+    <div class="pipeline-audit-grid">
+      ${items.map(item => `<article class="${escapeHtml(item.state)}">
+        <b>${escapeHtml(item.label)}</b>
+        <strong>${escapeHtml(item.value || "-")}</strong>
+        <small>${escapeHtml(item.detail || "-")}</small>
+      </article>`).join("")}
+    </div>
+  </section>`;
+}
+
 function taskOverview(task) {
   const selected = task.selected_resource || {};
   const options = task.options || {};
@@ -1481,6 +1576,7 @@ function taskOverview(task) {
       <span><b>${escapeHtml(task.summary_source || options.whisper_model || "-")}</b>${escapeHtml(task.summary_warning ? "已降级，查看诊断" : `${options.note_style || "study"} · ${options.visual_understanding === false ? "无视觉" : "图文"}`)}</span>
       <span><b>${windows.length || "-"}</b>${windows.length ? "画面窗口" : "等待画面切片"}</span>
     </div>
+    ${pipelineAuditHtml(task)}
     ${visualCoverageHtml(task)}
     ${taskRouteEvidenceHtml(task)}
     ${downloadOnly ? `<div class="download-only-callout">

@@ -2125,6 +2125,98 @@ button:disabled {
   white-space: nowrap;
 }
 
+.pipeline-audit {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 10px;
+  border: 1px solid #d6e2f2;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 12px;
+}
+
+.pipeline-audit header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pipeline-audit header span {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.pipeline-audit header strong {
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.pipeline-audit-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.pipeline-audit-grid article {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  border-radius: 8px;
+  background: #fbfcff;
+  padding: 10px;
+}
+
+.pipeline-audit-grid article.pass {
+  border-left-color: var(--success);
+}
+
+.pipeline-audit-grid article.wait {
+  border-left-color: var(--accent);
+}
+
+.pipeline-audit-grid article.warn,
+.pipeline-audit-grid article.skip {
+  border-left-color: var(--warning);
+}
+
+.pipeline-audit-grid article.fail {
+  border-left-color: var(--danger);
+  background: rgba(217, 45, 32, 0.04);
+}
+
+.pipeline-audit-grid b {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+  line-height: 1.1;
+}
+
+.pipeline-audit-grid strong,
+.pipeline-audit-grid small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pipeline-audit-grid strong {
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.pipeline-audit-grid small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
 .visual-coverage {
   grid-column: 1 / -1;
   display: grid;
@@ -3850,6 +3942,10 @@ select {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .pipeline-audit-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .visual-coverage {
     grid-template-columns: 1fr;
   }
@@ -4075,6 +4171,7 @@ select {
   .queue-stats,
   .task-brief,
   .task-overview-metrics,
+  .pipeline-audit-grid,
   .visual-coverage,
   .visual-coverage-metrics,
   .route-evidence-strip {
