@@ -3,6 +3,7 @@ const HAS_EXTENSION_API = typeof chrome !== "undefined" && Boolean(chrome.runtim
 const LOCAL_VIDEO_EXT_RE = /\.(mp4|m4v|mov|mkv|webm|flv|avi)$/i;
 const RESULT_TAB_NAMES = new Set(["note", "transcript", "frames", "diagnostics"]);
 const LOCAL_ASR_MODELS = new Set(["tiny", "base", "small", "medium", "large", "large-v2", "large-v3"]);
+const PENDING_INTENT_TTL_MS = 15000;
 
 let backendUrl = DEFAULT_BACKEND;
 let page = null;
@@ -1825,6 +1826,24 @@ async function saveSettings() {
   await health();
 }
 
+async function consumePendingSidePanelIntent() {
+  if (!HAS_EXTENSION_API) return;
+  const data = await chrome.storage.local.get({ pendingSidePanelIntent: null });
+  const intent = data.pendingSidePanelIntent || null;
+  if (chrome.storage.local.remove) await chrome.storage.local.remove("pendingSidePanelIntent");
+  else await chrome.storage.local.set({ pendingSidePanelIntent: null });
+  if (!intent || intent.action !== "summarize-current-video") return;
+  const age = Date.now() - Number(intent.createdAt || 0);
+  if (!Number.isFinite(age) || age < 0 || age > PENDING_INTENT_TTL_MS) return;
+  if (intent.tabId !== null && intent.tabId !== undefined && currentTabId !== null && currentTabId !== intent.tabId) return;
+  if (!hasActiveVideoSignal(page?.active_video) && !resources.length) {
+    els.taskMessage.textContent = "已打开当前页助手；还没有读取到正在播放的视频或媒体候选，先播放几秒后再点总结。";
+    return;
+  }
+  els.taskMessage.textContent = "已从扩展图标进入一键总结，正在预检当前播放视频...";
+  await startTask("video");
+}
+
 async function health() {
   try {
     const data = await fetch(`${backendUrl}/health`).then(r => r.json());
@@ -3212,4 +3231,7 @@ if (HAS_EXTENSION_API && chrome.runtime.onMessage?.addListener) {
   });
 }
 
-loadSettings().then(() => Promise.all([health(), collect(), loadTaskHistory()]));
+loadSettings().then(async () => {
+  await Promise.all([health(), collect(), loadTaskHistory()]);
+  await consumePendingSidePanelIntent();
+});

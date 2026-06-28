@@ -747,6 +747,12 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
   }
 });
 chrome.action.onClicked.addListener(tab => {
+  const intent = {
+    action: "summarize-current-video",
+    tabId: tab?.id ?? null,
+    createdAt: Date.now()
+  };
+  chrome.storage?.local?.set?.({ pendingSidePanelIntent: intent });
   if (chrome.sidePanel?.open) chrome.sidePanel.open({ tabId: tab.id });
 });
 

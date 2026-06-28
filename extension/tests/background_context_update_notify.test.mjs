@@ -26,6 +26,7 @@ const context = {
       onBeforeSendHeaders: listener(),
       onHeadersReceived: listener(),
       onCompleted: listener(),
+      onBeforeRedirect: listener(),
       onErrorOccurred: listener()
     },
     tabs: {
