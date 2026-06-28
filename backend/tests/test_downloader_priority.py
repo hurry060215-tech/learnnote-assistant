@@ -611,6 +611,78 @@ class DownloaderPriorityTests(unittest.TestCase):
                 server.shutdown()
                 server.server_close()
 
+    def test_resolved_post_play_endpoint_downloads_media_with_get(self) -> None:
+        ffmpeg = ffmpeg_bin()
+        assert ffmpeg is not None
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            video = root / DirectPostJsonMediaHandler.media_name
+            subprocess.run(
+                [
+                    ffmpeg,
+                    "-y",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "testsrc=duration=2:size=320x180:rate=10",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "sine=frequency=440:duration=2",
+                    "-shortest",
+                    "-pix_fmt",
+                    "yuv420p",
+                    str(video),
+                ],
+                check=True,
+            )
+
+            DirectPostJsonMediaHandler.seen_bodies = []
+            server = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(DirectPostJsonMediaHandler, directory=str(root)))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                play_url = f"http://127.0.0.1:{server.server_port}/api/play"
+                media_url = f"http://127.0.0.1:{server.server_port}/{video.name}"
+                downloader = MediaDownloader(root / "task")
+                media_path, selected = downloader.download(
+                    page_url=f"http://127.0.0.1:{server.server_port}/lesson.html",
+                    resources=[
+                        ResourceCandidate(
+                            url=play_url,
+                            resolved_url=media_url,
+                            source="webRequest",
+                            kind="video",
+                            mime="video/mp4",
+                            score=100,
+                            label="resolved POST play API",
+                            method="POST",
+                            request_headers={
+                                "User-Agent": DirectPostJsonMediaHandler.required_user_agent,
+                                "X-Requested-With": DirectPostJsonMediaHandler.required_x_requested_with,
+                                "Content-Type": "application/x-www-form-urlencoded",
+                            },
+                            request_body={"type": "form", "content": DirectPostJsonMediaHandler.required_body},
+                        )
+                    ],
+                    cookies=[],
+                    title="Resolved POST JSON API",
+                )
+
+                self.assertTrue(media_path.exists())
+                self.assertIsNotNone(selected)
+                self.assertEqual(selected.url, play_url)
+                self.assertEqual(selected.resolved_url, media_url)
+                self.assertEqual(downloader.attempts[0].strategy, "direct-file")
+                self.assertEqual(downloader.attempts[0].status, "success")
+                self.assertEqual(DirectPostJsonMediaHandler.seen_bodies, [])
+            finally:
+                server.shutdown()
+                server.server_close()
+
     def test_direct_candidate_does_not_reuse_observed_partial_range(self) -> None:
         ffmpeg = ffmpeg_bin()
         assert ffmpeg is not None

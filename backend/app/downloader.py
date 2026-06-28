@@ -815,8 +815,10 @@ def _safe_download_response_headers(response: requests.Response) -> dict[str, st
     return headers
 
 
-def request_body_for_candidate(candidate: ResourceCandidate | None) -> tuple[str, bytes | None]:
+def request_body_for_candidate(candidate: ResourceCandidate | None, target_url: str = "") -> tuple[str, bytes | None]:
     if not candidate:
+        return "GET", None
+    if target_url and target_url != candidate.url:
         return "GET", None
     method = str(candidate.method or "GET").upper()
     if method not in REQUEST_BODY_REPLAY_METHODS:
@@ -956,7 +958,7 @@ def preflight_media_resource(
 
     strategy = "manifest-probe" if kind in {"hls", "dash"} else "direct-file-probe"
     base_headers = download_headers_for_candidate(candidate, cookies, referer, url=resolved_url)
-    request_method, request_body = request_body_for_candidate(candidate)
+    request_method, request_body = request_body_for_candidate(candidate, resolved_url)
     if kind == "video":
         base_headers.setdefault("Accept", "*/*")
     elif kind == "hls":
@@ -1756,7 +1758,7 @@ class MediaDownloader:
     def _download_file(self, candidate: ResourceCandidate, cookies: list[BrowserCookie], referer: str, title: str) -> Path:
         url = candidate.resolved_url or candidate.url
         base_headers = download_headers_for_candidate(candidate, cookies, referer, url=url)
-        request_method, request_body = request_body_for_candidate(candidate)
+        request_method, request_body = request_body_for_candidate(candidate, url)
 
         def attempt(headers: dict[str, str]) -> Path:
             with requests.request(request_method, url, headers=headers, data=request_body, stream=True, timeout=30) as response:
