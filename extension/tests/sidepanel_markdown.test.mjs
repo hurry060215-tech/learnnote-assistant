@@ -80,6 +80,8 @@ const sidepanelCode = await readFile(new URL("../sidepanel.js", import.meta.url)
 vm.runInContext(sidepanelCode, context);
 await new Promise(resolve => setTimeout(resolve, 0));
 assert.equal(elements.get("#backendStatus").classList.contains("backend-status-grid"), true);
+assert.match(elements.get("#backendStatus").innerHTML, /backend-status-chip bridge/);
+assert.match(elements.get("#backendStatus").innerHTML, /当前标签页/);
 assert.match(elements.get("#backendStatus").innerHTML, /backend-status-chip media/);
 assert.match(elements.get("#backendStatus").innerHTML, /gpt-4\.1-mini/);
 assert.match(elements.get("#backendStatus").title, /视觉模型/);

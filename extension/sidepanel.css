@@ -140,6 +140,16 @@ small,
   font-weight: 900;
 }
 
+.backend-status-chip.bridge {
+  border-color: rgba(22, 119, 255, 0.24);
+  background: rgba(22, 119, 255, 0.08);
+  color: var(--accent);
+}
+
+.backend-status-chip.bridge b {
+  color: var(--accent);
+}
+
 .backend-status-chip.vision.ready {
   border-color: rgba(20, 150, 74, 0.24);
   background: rgba(20, 150, 74, 0.08);

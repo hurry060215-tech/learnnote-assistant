@@ -1954,6 +1954,7 @@ function updateHealthVisionStatus(data = lastHealthData) {
   els.backendStatus.title = `${mediaText} ${visionText}`.trim();
   els.backendStatus.classList.add("backend-status-grid");
   els.backendStatus.innerHTML = `
+    <span class="backend-status-chip bridge"><b>桥接</b>当前标签页</span>
     <span class="backend-status-chip media"><b>媒体</b>${escapeHtml(healthMediaChipText(data))}</span>
     <span class="backend-status-chip vision ${healthVisionReady(data) ? "ready" : "pending"}"><b>视觉</b>${escapeHtml(healthVisionChipText(data))}</span>
   `;
