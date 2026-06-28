@@ -620,6 +620,40 @@ class ProcessorBoundaryTests(unittest.TestCase):
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
+    def test_local_video_prefers_embedded_subtitle_over_audio_pipeline(self) -> None:
+        task = create_task("local", "Embedded subtitle lesson")
+        input_path = task_dir(task.id) / "upload.mkv"
+        input_path.write_bytes(b"fake mkv")
+        embedded_subtitle = task_dir(task.id) / "embedded_subtitle.srt"
+        try:
+            def fake_normalize(source: Path, target: Path) -> Path:
+                target.write_bytes(b"normalized mp4")
+                return target
+
+            def fake_extract_embedded_subtitle(source: Path, target: Path) -> Path:
+                self.assertEqual(source, input_path)
+                target.write_text("1\n00:00:00,000 --> 00:00:02,000\nembedded cue\n\n", encoding="utf-8")
+                return target
+
+            with patch("app.processor.normalize_video", side_effect=fake_normalize), \
+                patch("app.processor.extract_embedded_subtitle", side_effect=fake_extract_embedded_subtitle), \
+                patch("app.processor.extract_audio", side_effect=AssertionError("audio extraction should be skipped")), \
+                patch("app.processor.transcribe_audio", side_effect=AssertionError("ASR should be skipped")), \
+                patch("app.processor.extract_frames", return_value=[]), \
+                patch("app.processor.build_frame_grids", return_value=[]), \
+                patch("app.processor.summarize_with_diagnostics", return_value=("# Embedded subtitle lesson", "local-template", "")):
+                process_local_video_task(task.id, input_path, "Embedded subtitle lesson", TaskOptions())
+
+            record = get_task(task.id)
+            self.assertEqual(record.status, "success")
+            self.assertTrue(record.subtitle_path.endswith("embedded_subtitle.srt"))
+            self.assertEqual(Path(record.subtitle_path), embedded_subtitle)
+            transcript = read_transcript(task.id)
+            self.assertEqual(transcript["source"], "embedded-subtitle")
+            self.assertEqual(transcript["segments"][0]["text"], "embedded cue")
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
     def test_diagnostics_report_lists_header_names_without_sensitive_values(self) -> None:
         task = create_task("current_page", "Diagnostics redaction", "https://course.example.com/lesson")
         try:

@@ -6,7 +6,7 @@ from pathlib import Path
 
 from .config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
 from .downloader import DownloadError, MediaDownloader, effective_resource_kind, infer_manifest_url_from_fragment
-from .media import build_frame_grids, extract_audio, extract_frames, normalize_video
+from .media import build_frame_grids, extract_audio, extract_embedded_subtitle, extract_frames, normalize_video
 from .models import BrowserSubtitleCue, CurrentPageTaskRequest, DownloadAttempt, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
 from .storage import get_task, save_task, task_dir, update_task, write_json
 from .summarizer import MAX_VISION_GRIDS, build_visual_windows, summarize_page_text_with_diagnostics, summarize_with_diagnostics
@@ -425,6 +425,14 @@ def _process_video_file(
         transcript = transcript_from_subtitle(subtitle_path)
         if not transcript.segments:
             transcript = None
+
+    if transcript is None:
+        embedded_subtitle = extract_embedded_subtitle(input_path, work_dir / "embedded_subtitle.srt")
+        if embedded_subtitle:
+            update_task(task_id, subtitle_path=str(embedded_subtitle), message="已检测到视频内嵌字幕，正在解析字幕")
+            transcript = transcript_from_subtitle(embedded_subtitle, source="embedded-subtitle")
+            if not transcript.segments:
+                transcript = None
 
     audio_path: Path | None = None
     if transcript is None:

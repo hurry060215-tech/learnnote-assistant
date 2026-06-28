@@ -129,6 +129,39 @@ def extract_audio(video_path: Path, output_path: Path) -> Path:
     return output_path
 
 
+def extract_embedded_subtitle(video_path: Path, output_path: Path) -> Path | None:
+    require_ffmpeg()
+    ffmpeg = ffmpeg_bin()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.unlink(missing_ok=True)
+    result = subprocess.run(
+        [
+            ffmpeg,
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-i",
+            str(video_path),
+            "-map",
+            "0:s:0?",
+            "-c:s",
+            "srt",
+            str(output_path),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0 or not output_path.exists() or output_path.stat().st_size <= 0:
+        output_path.unlink(missing_ok=True)
+        return None
+    text = output_path.read_text(encoding="utf-8-sig", errors="replace")
+    if "-->" not in text:
+        output_path.unlink(missing_ok=True)
+        return None
+    return output_path
+
+
 def _md5(path: Path) -> str:
     digest = hashlib.md5()
     digest.update(path.read_bytes())

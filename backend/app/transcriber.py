@@ -23,7 +23,7 @@ def _parse_timestamp(value: str) -> float:
     return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
 
 
-def transcript_from_subtitle(path: Path) -> TranscriptResult:
+def transcript_from_subtitle(path: Path, source: str = "page-subtitle") -> TranscriptResult:
     text = path.read_text(encoding="utf-8-sig", errors="replace")
     normalized = re.sub(r"\r+\n", "\n", text)
     normalized = re.sub(r"\r+", "\n", normalized)
@@ -59,7 +59,7 @@ def transcript_from_subtitle(path: Path) -> TranscriptResult:
         )
     return TranscriptResult(
         language="unknown",
-        source="page-subtitle",
+        source=source,
         segments=segments,
         full_text="\n".join(segment.text for segment in segments),
         warning="" if segments else "字幕文件存在，但未解析出有效字幕片段。",

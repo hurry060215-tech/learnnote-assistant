@@ -8,7 +8,7 @@ from pathlib import Path
 from PIL import Image
 
 from app.config import DATA_DIR
-from app.media import _average_hash, _hamming_distance, build_frame_grids, extract_audio, extract_frames, probe_duration
+from app.media import _average_hash, _hamming_distance, build_frame_grids, extract_audio, extract_embedded_subtitle, extract_frames, probe_duration
 from app.runtime import ffmpeg_bin
 
 
@@ -90,6 +90,67 @@ class MediaPipelineTests(unittest.TestCase):
                 label_area = image.crop((4, 154, 92, 178))
                 dark_pixels = sum(1 for pixel in label_area.getdata() if sum(pixel[:3]) < 180)
                 self.assertGreater(dark_pixels, 20)
+
+    def test_embedded_text_subtitle_can_be_extracted(self) -> None:
+        ffmpeg = ffmpeg_bin()
+        assert ffmpeg is not None
+        TEST_RUN_DIR.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=TEST_RUN_DIR) as tmp:
+            root = Path(tmp)
+            video = root / "video.mp4"
+            subtitle = root / "lesson.srt"
+            subtitle.write_text(
+                "1\n00:00:00,000 --> 00:00:01,500\nEmbedded subtitle line\n\n",
+                encoding="utf-8",
+            )
+            subprocess.run(
+                [
+                    ffmpeg,
+                    "-y",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "testsrc=duration=2:size=320x180:rate=10",
+                    "-pix_fmt",
+                    "yuv420p",
+                    str(video),
+                ],
+                check=True,
+            )
+            muxed = root / "with-subtitle.mkv"
+            subprocess.run(
+                [
+                    ffmpeg,
+                    "-y",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-i",
+                    str(video),
+                    "-i",
+                    str(subtitle),
+                    "-map",
+                    "0:v",
+                    "-map",
+                    "1:s",
+                    "-c:v",
+                    "copy",
+                    "-c:s",
+                    "srt",
+                    str(muxed),
+                ],
+                check=True,
+            )
+
+            extracted = extract_embedded_subtitle(muxed, root / "embedded.srt")
+
+            self.assertIsNotNone(extracted)
+            assert extracted is not None
+            self.assertTrue(extracted.exists())
+            self.assertIn("Embedded subtitle line", extracted.read_text(encoding="utf-8-sig"))
 
 
 if __name__ == "__main__":

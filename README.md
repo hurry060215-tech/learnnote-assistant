@@ -35,7 +35,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - Local video upload from both the Side Panel and the local web UI.
 - Shared processing pipeline: normalize every downloaded or uploaded video into project-local `media.mp4`, extract audio, transcribe, slice frames, build frame grids, generate a visual-window index, summarize.
 - Multimodal LLM summaries run in visual-window batches and then merge the local window notes into the final Markdown note.
-- Page subtitle tracks and yt-dlp platform subtitles (`.vtt`, `.srt`, `.ass`, `.ssa`) are preferred over Whisper when available.
+- Browser subtitle cues, page subtitle tracks, yt-dlp platform subtitles (`.vtt`, `.srt`, `.ass`, `.ssa`), and embedded text subtitles are preferred over Whisper when available.
 - Structured failure codes: `no_media_found`, `auth_required`, `drm_or_encrypted`, `download_forbidden`, `unsupported_manifest`, `processing_failed`.
 
 ## What Works Now
@@ -69,7 +69,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - yt-dlp page URL fallback for supported websites when direct browser resources are not usable.
 - Local video upload from the extension and the local web UI.
 - Shared video processing: remux/standardize local and downloaded videos to `media.mp4`, extract audio, transcribe with local `faster-whisper` or OpenAI-compatible/Groq ASR when selected, extract frames, generate frame grids, and emit Markdown notes.
-- Transcript priority: page subtitle track first, yt-dlp platform subtitle second, then selected ASR engine fallback.
+- Transcript priority: browser/player subtitle cues first, page or yt-dlp platform subtitle second, embedded text subtitle third, then selected ASR engine fallback.
 - Configurable slicing: frame interval, grid layout, ASR model, and note style.
 - Web UI and Side Panel diagnostic tabs show the selected resource, browser evidence, and every backend download attempt.
 - Side Panel direct-extraction console shows whether the selected candidate is a downloadable file, HLS/DASH manifest, subtitle, blob clue, or fragment clue, plus reused request-header names and request evidence.
