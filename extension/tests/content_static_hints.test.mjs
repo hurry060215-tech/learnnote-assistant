@@ -65,6 +65,7 @@ const packedDash = Buffer.from("https://cdn.example.com/static/manifest.mpd?toke
 const doubleEncodedHls = encodeURIComponent(encodeURIComponent("https://cdn.example.com/static/double/master.m3u8?token=double&uid=2"));
 const doubleEncodedNakedVideo = encodeURIComponent(encodeURIComponent("https://cdn.example.com/static/double/naked.mp4?token=naked-double"));
 const mixedEncodedVideo = "https%253A//cdn.example.com/static/mixed/lesson.mp4%253Ftoken%253Dmixed";
+const pageUrlEncodedHls = encodeURIComponent(encodeURIComponent("https://cdn.example.com/static/page-url/master.m3u8?token=page"));
 
 const player = new FakeElement("div", {
   "data-play-url": "https%3A%2F%2Fcdn.example.com%2Fstatic%2Fmaster.m3u8%3Ftoken%3Dattr"
@@ -109,7 +110,7 @@ const context = {
   console,
   URL,
   Node: { ELEMENT_NODE: 1 },
-  location: { href: "https://course.example.com/lesson" },
+  location: { href: `https://course.example.com/lesson?objectid=${pageUrlEncodedHls}` },
   document: {
     title: "Static hints lesson",
     readyState: "complete",
@@ -165,6 +166,7 @@ messageListener({ type: "collect-page-data" }, {}, data => {
 });
 
 const hls = response.resources.find(item => item.url === "https://cdn.example.com/static/master.m3u8?token=attr");
+const pageUrlHls = response.resources.find(item => item.url === "https://cdn.example.com/static/page-url/master.m3u8?token=page");
 const dash = response.resources.find(item => item.url === "https://cdn.example.com/static/manifest.mpd?token=b64");
 const video = response.resources.find(item => item.url === "https://cdn.example.com/static/lesson.mp4?token=script");
 const flv = response.resources.find(item => item.url === "https://cdn.example.com/static/live.flv?token=script");
@@ -178,6 +180,11 @@ const plainAttrVideo = response.resources.find(item => item.url === "https://cou
 const nakedAttrHls = response.resources.find(item => item.url === "https://course.example.com/static/naked-master.m3u8?token=naked");
 const plainScriptHls = response.resources.find(item => item.url === "https://cdn.example.com/static/plain-url.m3u8?token=script-plain");
 const malformedEncodedUrls = response.resources.filter(item => /\/https%3A%2F%2F/i.test(item.url));
+
+assert.ok(pageUrlHls, "expected current page URL query to expose encoded HLS URL");
+assert.equal(pageUrlHls.kind, "hls");
+assert.equal(pageUrlHls.source, "locationHint");
+assert.match(pageUrlHls.label, /current page URL encoded url/);
 
 assert.ok(hls, "expected data-play-url media hint to expose encoded HLS URL");
 assert.equal(hls.kind, "hls");

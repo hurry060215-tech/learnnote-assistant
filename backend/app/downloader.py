@@ -1223,6 +1223,7 @@ class MediaDownloader:
     def _discover_page_resources(self, page_url: str, cookies: list[BrowserCookie]) -> list[ResourceCandidate]:
         if not re.match(r"^https?://", page_url, re.I):
             return []
+        url_resources = extract_media_resources_from_text(page_url, page_url, "page-scan-url")
         headers = download_headers_for_candidate(None, cookies, page_url, url=page_url)
         headers.setdefault("Accept", "text/html,application/xhtml+xml,application/json,text/plain,*/*;q=0.8")
         try:
@@ -1235,7 +1236,7 @@ class MediaDownloader:
                         code="auth_required",
                         message=f"页面扫描返回 HTTP {response.status_code}。",
                     )
-                    return []
+                    return url_resources
                 if response.status_code >= 400:
                     self._record_attempt(
                         strategy="page-scan",
@@ -1244,7 +1245,7 @@ class MediaDownloader:
                         code="download_forbidden",
                         message=f"页面扫描返回 HTTP {response.status_code}。",
                     )
-                    return []
+                    return url_resources
                 content_type = response.headers.get("content-type", "")
                 final_url = response.url or page_url
                 can_scan_body = (
@@ -1261,7 +1262,7 @@ class MediaDownloader:
                         code="unsupported_manifest",
                         message=f"页面响应不是可扫描文本：{content_type}",
                     )
-                    return []
+                    return url_resources
                 content_length = int(response.headers.get("content-length") or 0)
                 if content_length > MAX_PAGE_SCAN_BYTES:
                     self._record_attempt(
@@ -1271,7 +1272,7 @@ class MediaDownloader:
                         code="unsupported_manifest",
                         message="页面响应过大，跳过文本媒体 URL 扫描。",
                     )
-                    return []
+                    return url_resources
                 chunks: list[bytes] = []
                 size = 0
                 for chunk in response.iter_content(chunk_size=64 * 1024):
@@ -1286,11 +1287,17 @@ class MediaDownloader:
                             code="unsupported_manifest",
                             message="页面响应超过扫描上限，跳过文本媒体 URL 扫描。",
                         )
-                        return []
+                        return url_resources
                     chunks.append(chunk)
                 text = b"".join(chunks).decode(response.encoding or "utf-8-sig", errors="replace")
                 base_url = final_url
-                resources = extract_media_resources_from_text(text, base_url, "page-scan")
+                resources = [*url_resources]
+                seen = {item.url for item in resources}
+                for item in extract_media_resources_from_text(text, base_url, "page-scan"):
+                    if item.url in seen:
+                        continue
+                    seen.add(item.url)
+                    resources.append(item)
                 manifest_kind, manifest_mime = _manifest_kind_from_body(text, content_type)
                 if manifest_kind != "unknown" and not any(item.url == final_url for item in resources):
                     resources.insert(
@@ -1321,7 +1328,7 @@ class MediaDownloader:
                 code="download_forbidden",
                 message=f"页面文本扫描失败：{exc}",
             )
-            return []
+            return url_resources
 
     def _with_inferred_manifest_resources(self, resources: list[ResourceCandidate]) -> list[ResourceCandidate]:
         enriched = list(resources)

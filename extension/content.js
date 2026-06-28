@@ -505,6 +505,15 @@ function collectInlineScriptResources() {
   return resources;
 }
 
+function collectUrlEmbeddedResources(url, source = "domHint", label = "page url") {
+  if (!url) return [];
+  const seen = new Set();
+  return [
+    ...collectTextMediaResources(url, source, `${label} media url`, seen),
+    ...collectEncodedTextResources(url, source, `${label} encoded url`, seen)
+  ];
+}
+
 function collectShadowTexts(limit = 20000) {
   const texts = [];
   const seenRoots = new Set();
@@ -765,7 +774,11 @@ function bindVideoTextTracks(video) {
 }
 
 function collectDomResources() {
-  const resources = [...collectStaticAttributeResources(), ...collectInlineScriptResources()];
+  const resources = [
+    ...collectUrlEmbeddedResources(location.href, "locationHint", "current page URL"),
+    ...collectStaticAttributeResources(),
+    ...collectInlineScriptResources()
+  ];
   const videos = collectVideos();
   const main = pickMainVideo(videos);
   for (const { video, index } of videos) {
@@ -787,6 +800,7 @@ function collectDomResources() {
     resources.push(resource(track.src, "subtitleTrack", label || "subtitle", "text/vtt"));
   }
   for (const iframe of deepQuerySelectorAll("iframe[src]")) {
+    resources.push(...collectUrlEmbeddedResources(iframe.src, "domHint", "iframe URL"));
     if (/chaoxing|xuexitong|video|player|course|m3u8|mpd/i.test(iframe.src)) {
       resources.push(resource(iframe.src, "dom", "iframe"));
     }

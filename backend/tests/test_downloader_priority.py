@@ -7,7 +7,7 @@ import threading
 import unittest
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 from unittest.mock import patch
 
 from app.config import DATA_DIR
@@ -800,6 +800,37 @@ class DownloaderPriorityTests(unittest.TestCase):
                 self.assertEqual(selected.url, media_url)
                 self.assertEqual(selected.source, "page-scan")
                 self.assertEqual([attempt.strategy for attempt in downloader.attempts[:2]], ["page-scan", "direct-file"])
+                self.assertEqual(downloader.attempts[1].status, "success")
+            finally:
+                server.shutdown()
+                server.server_close()
+
+    def test_page_scan_uses_media_url_embedded_in_page_url_when_page_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            video = root / "query-hidden.mp4"
+            video.write_bytes(b"\x00\x00\x00\x18ftypmp42" + b"video" * 2048)
+            server = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(QuietHandler, directory=str(root)))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                media_url = f"http://127.0.0.1:{server.server_port}/{video.name}"
+                page_url = f"http://127.0.0.1:{server.server_port}/missing?objectid={quote(quote(media_url))}"
+                downloader = MediaDownloader(root / "task")
+                with patch.object(downloader, "_download_with_ytdlp") as ytdlp:
+                    media_path, selected = downloader.download(
+                        page_url=page_url,
+                        resources=[],
+                        cookies=[],
+                        title="Page URL query",
+                    )
+                ytdlp.assert_not_called()
+                self.assertTrue(media_path.exists())
+                self.assertIsNotNone(selected)
+                self.assertEqual(selected.url, media_url)
+                self.assertEqual(selected.source, "page-scan-url")
+                self.assertEqual([attempt.strategy for attempt in downloader.attempts[:2]], ["page-scan", "direct-file"])
+                self.assertEqual(downloader.attempts[0].status, "failed")
                 self.assertEqual(downloader.attempts[1].status, "success")
             finally:
                 server.shutdown()
