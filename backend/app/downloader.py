@@ -652,20 +652,20 @@ def _is_http_url(url: str) -> bool:
     return bool(re.match(r"^https?://", url or "", re.I))
 
 
-def fallback_page_urls(page_url: str, resources: list[ResourceCandidate]) -> list[str]:
-    urls: list[str] = []
+def fallback_page_contexts(page_url: str, resources: list[ResourceCandidate]) -> list[tuple[str, ResourceCandidate | None]]:
+    contexts: list[tuple[str, ResourceCandidate | None]] = []
     seen: set[str] = set()
 
-    def add(url: str) -> None:
+    def add(url: str, candidate: ResourceCandidate | None = None) -> None:
         value = _safe_header_value(url)
         if not _is_http_url(value):
             return
         if value in seen:
             return
         seen.add(value)
-        urls.append(value)
+        contexts.append((value, candidate))
 
-    add(page_url)
+    add(page_url, None)
     ordered = sorted(
         resources,
         key=lambda item: (
@@ -676,13 +676,17 @@ def fallback_page_urls(page_url: str, resources: list[ResourceCandidate]) -> lis
         reverse=True,
     )
     for item in ordered:
-        add(item.frame_url)
-        add(item.page_url)
+        add(item.frame_url, item)
+        add(item.page_url, item)
         if classify_resource(item.url, item.mime) == "unknown" and (item.source == "dom" or "iframe" in (item.label or "").lower()):
-            add(item.url)
-        add(item.request_headers.get("Referer", ""))
-        add(item.initiator)
-    return urls
+            add(item.url, item)
+        add(item.request_headers.get("Referer", ""), item)
+        add(item.initiator, item)
+    return contexts
+
+
+def fallback_page_urls(page_url: str, resources: list[ResourceCandidate]) -> list[str]:
+    return [url for url, _ in fallback_page_contexts(page_url, resources)]
 
 
 def write_netscape_cookie_file(cookies: list[BrowserCookie], path: Path) -> Path:
@@ -1107,9 +1111,9 @@ class MediaDownloader:
                 last_error = exc
                 continue
 
-        page_fallbacks = fallback_page_urls(page_url, resources)
-        for fallback_url in page_fallbacks:
-            page_scan_resources = self._discover_page_resources(fallback_url, cookies)
+        page_fallbacks = fallback_page_contexts(page_url, resources)
+        for fallback_url, context_candidate in page_fallbacks:
+            page_scan_resources = self._discover_page_resources(fallback_url, cookies, context_candidate)
             for candidate in self._candidate_resources(page_scan_resources):
                 if candidate.url in failed_urls:
                     continue
@@ -1129,7 +1133,7 @@ class MediaDownloader:
                     last_error = exc
                     continue
 
-        for fallback_url in page_fallbacks:
+        for fallback_url, _context_candidate in page_fallbacks:
             try:
                 media_path = self._download_with_ytdlp(fallback_url, cookie_file, title, resources)
                 self._record_attempt(
@@ -1218,12 +1222,27 @@ class MediaDownloader:
                 dedup[item.url] = item
         return sorted(dedup.values(), key=lambda item: item.score, reverse=True)
 
-    def _discover_page_resources(self, page_url: str, cookies: list[BrowserCookie]) -> list[ResourceCandidate]:
+    def _discover_page_resources(
+        self,
+        page_url: str,
+        cookies: list[BrowserCookie],
+        context_candidate: ResourceCandidate | None = None,
+    ) -> list[ResourceCandidate]:
         if not re.match(r"^https?://", page_url, re.I):
             return []
         url_resources = extract_media_resources_from_text(page_url, page_url, "page-scan-url")
-        headers = download_headers_for_candidate(None, cookies, page_url, url=page_url)
+        headers = download_headers_for_candidate(context_candidate, cookies, page_url, url=page_url)
         headers.setdefault("Accept", "text/html,application/xhtml+xml,application/json,text/plain,*/*;q=0.8")
+
+        def apply_context_headers(resources: list[ResourceCandidate], referer: str) -> list[ResourceCandidate]:
+            if not resources:
+                return resources
+            inherited = browser_request_headers_for_candidate(context_candidate)
+            inherited.setdefault("Referer", referer)
+            for item in resources:
+                item.request_headers = {**inherited, **(item.request_headers or {})}
+            return resources
+
         try:
             with requests.get(page_url, headers=headers, stream=True, timeout=20) as response:
                 if response.status_code in {401, 403}:
@@ -1234,7 +1253,7 @@ class MediaDownloader:
                         code="auth_required",
                         message=f"页面扫描返回 HTTP {response.status_code}。",
                     )
-                    return url_resources
+                    return apply_context_headers(url_resources, page_url)
                 if response.status_code >= 400:
                     self._record_attempt(
                         strategy="page-scan",
@@ -1243,7 +1262,7 @@ class MediaDownloader:
                         code="download_forbidden",
                         message=f"页面扫描返回 HTTP {response.status_code}。",
                     )
-                    return url_resources
+                    return apply_context_headers(url_resources, page_url)
                 content_type = response.headers.get("content-type", "")
                 final_url = response.url or page_url
                 can_scan_body = (
@@ -1260,7 +1279,7 @@ class MediaDownloader:
                         code="unsupported_manifest",
                         message=f"页面响应不是可扫描文本：{content_type}",
                     )
-                    return url_resources
+                    return apply_context_headers(url_resources, final_url)
                 content_length = int(response.headers.get("content-length") or 0)
                 if content_length > MAX_PAGE_SCAN_BYTES:
                     self._record_attempt(
@@ -1270,7 +1289,7 @@ class MediaDownloader:
                         code="unsupported_manifest",
                         message="页面响应过大，跳过文本媒体 URL 扫描。",
                     )
-                    return url_resources
+                    return apply_context_headers(url_resources, final_url)
                 chunks: list[bytes] = []
                 size = 0
                 for chunk in response.iter_content(chunk_size=64 * 1024):
@@ -1285,7 +1304,7 @@ class MediaDownloader:
                             code="unsupported_manifest",
                             message="页面响应超过扫描上限，跳过文本媒体 URL 扫描。",
                         )
-                        return url_resources
+                        return apply_context_headers(url_resources, final_url)
                     chunks.append(chunk)
                 text = b"".join(chunks).decode(response.encoding or "utf-8-sig", errors="replace")
                 base_url = final_url
@@ -1307,9 +1326,10 @@ class MediaDownloader:
                             mime=manifest_mime,
                             score=score_kind(final_url, "page-scan", manifest_kind),
                             label="response manifest",
-                            request_headers={"Referer": page_url},
+                            request_headers={**browser_request_headers_for_candidate(context_candidate), "Referer": page_url},
                         ),
                     )
+                apply_context_headers(resources, base_url)
                 self._record_attempt(
                     strategy="page-scan",
                     url=page_url,
@@ -1326,7 +1346,7 @@ class MediaDownloader:
                 code="download_forbidden",
                 message=f"页面文本扫描失败：{exc}",
             )
-            return url_resources
+            return apply_context_headers(url_resources, page_url)
 
     def _with_inferred_manifest_resources(self, resources: list[ResourceCandidate]) -> list[ResourceCandidate]:
         enriched = list(resources)

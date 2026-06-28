@@ -43,6 +43,37 @@ class HeaderGateHandler(QuietHandler):
         super().do_GET()
 
 
+class PageScanHeaderGateHandler(QuietHandler):
+    required_user_agent = "Chrome Test UA"
+    required_x_requested_with = "XMLHttpRequest"
+    media_name = "secure.mp4"
+
+    def _has_browser_headers(self) -> bool:
+        return (
+            self.headers.get("User-Agent") == self.required_user_agent
+            and self.headers.get("X-Requested-With") == self.required_x_requested_with
+        )
+
+    def do_GET(self) -> None:
+        path = urlparse(self.path).path
+        if path == "/player.json":
+            if not self._has_browser_headers():
+                self.send_error(403, "missing browser headers")
+                return
+            body = b'{"videoUrl":"/secure.mp4"}'
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        if path == f"/{self.media_name}":
+            if not self._has_browser_headers():
+                self.send_error(403, "missing browser headers")
+                return
+        super().do_GET()
+
+
 class RangeGateHandler(QuietHandler):
     required_range = "bytes=0-"
 
@@ -832,6 +863,52 @@ class DownloaderPriorityTests(unittest.TestCase):
                 self.assertEqual([attempt.strategy for attempt in downloader.attempts[:2]], ["page-scan", "direct-file"])
                 self.assertEqual(downloader.attempts[0].status, "failed")
                 self.assertEqual(downloader.attempts[1].status, "success")
+            finally:
+                server.shutdown()
+                server.server_close()
+
+    def test_page_scan_reuses_browser_headers_from_fallback_candidate(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            video = root / PageScanHeaderGateHandler.media_name
+            video.write_bytes(b"\x00\x00\x00\x18ftypmp42" + b"video" * 2048)
+            server = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(PageScanHeaderGateHandler, directory=str(root)))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                player_url = f"http://127.0.0.1:{server.server_port}/player.json"
+                media_url = f"http://127.0.0.1:{server.server_port}/{video.name}"
+                downloader = MediaDownloader(root / "task")
+                with patch.object(downloader, "_download_with_ytdlp") as ytdlp:
+                    media_path, selected = downloader.download(
+                        page_url=f"http://127.0.0.1:{server.server_port}/lesson",
+                        resources=[
+                            ResourceCandidate(
+                                url=player_url,
+                                source="dom",
+                                kind="unknown",
+                                label="iframe player api",
+                                request_headers={
+                                    "User-Agent": PageScanHeaderGateHandler.required_user_agent,
+                                    "X-Requested-With": PageScanHeaderGateHandler.required_x_requested_with,
+                                },
+                            )
+                        ],
+                        cookies=[],
+                        title="Header page scan",
+                    )
+                ytdlp.assert_not_called()
+                self.assertTrue(media_path.exists())
+                self.assertIsNotNone(selected)
+                self.assertEqual(selected.url, media_url)
+                self.assertEqual(selected.source, "page-scan")
+                self.assertEqual(selected.request_headers["User-Agent"], PageScanHeaderGateHandler.required_user_agent)
+                self.assertEqual(selected.request_headers["X-Requested-With"], PageScanHeaderGateHandler.required_x_requested_with)
+                self.assertEqual([attempt.strategy for attempt in downloader.attempts[:3]], ["skip-unknown", "page-scan", "page-scan"])
+                self.assertEqual(downloader.attempts[1].status, "failed")
+                self.assertEqual(downloader.attempts[2].status, "success")
+                self.assertEqual(downloader.attempts[3].strategy, "direct-file")
+                self.assertEqual(downloader.attempts[3].status, "success")
             finally:
                 server.shutdown()
                 server.server_close()
