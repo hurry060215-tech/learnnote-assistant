@@ -176,6 +176,43 @@ def _grid_window_prompt(transcript: TranscriptResult, grids: list[FrameGrid], of
     return "\n\n".join(sections)
 
 
+def _visual_appendix_markdown(transcript: TranscriptResult, grids: list[FrameGrid]) -> str:
+    windows = build_visual_windows(transcript, grids)
+    if not windows:
+        return ""
+
+    lines = [
+        "## 画面切片附录",
+        "",
+        "> 这是系统自动附加的确定性切片索引，用来保证每个视觉窗口都有 W 编号、时间范围、截图入口和回看检查点。",
+        "",
+    ]
+    for window in windows:
+        label = f"{window.id} {_format_ts(window.start)} - {_format_ts(window.end)}"
+        frame_times = ", ".join(_format_ts(value) for value in window.frame_timestamps) or "-"
+        lines.extend([
+            f"### {window.id} `{_format_ts(window.start)} - {_format_ts(window.end)}`",
+            f"- 画面网格：{window.grid_url}",
+            f"![{label}]({window.grid_url})",
+            f"- 帧时间：{frame_times}",
+            f"- 字幕线索：{window.transcript_excerpt or '本窗口没有匹配到字幕。'}",
+            "- 回看检查点：",
+            *_window_checkpoint_lines(window),
+            "",
+        ])
+    return "\n".join(lines).rstrip()
+
+
+def ensure_visual_appendix(markdown: str, transcript: TranscriptResult, grids: list[FrameGrid]) -> str:
+    note = (markdown or "").strip()
+    appendix = _visual_appendix_markdown(transcript, grids)
+    if not appendix:
+        return note
+    if re.search(r"^##\s+画面切片附录\b", note, re.M):
+        return note
+    return f"{note}\n\n{appendix}" if note else appendix
+
+
 def _grid_image_content_items(grids: list[FrameGrid], offset: int = 0) -> list[dict]:
     items: list[dict] = []
     for index, grid in enumerate(grids, start=offset + 1):
@@ -357,7 +394,8 @@ def summarize_with_llm(
                     ],
                     temperature=0.2,
                 )
-                return response.choices[0].message.content or None
+                generated = response.choices[0].message.content or ""
+                return ensure_visual_appendix(generated, transcript, grids) or None
             except Exception:
                 return None
 
@@ -379,7 +417,8 @@ def summarize_with_llm(
             messages=[{"role": "user", "content": content}],
             temperature=0.2,
         )
-        return response.choices[0].message.content or None
+        generated = response.choices[0].message.content or ""
+        return ensure_visual_appendix(generated, transcript, grids) or None
     except Exception:
         return None
 

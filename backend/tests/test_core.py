@@ -31,7 +31,7 @@ from app.downloader import (
 from app.main import render_diagnostics_markdown
 from app.models import ActiveVideoInfo, BrowserCookie, CurrentPageTaskRequest, DownloadAttempt, DrmSignal, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
 from app.processor import build_summary_diagnostics, cookie_sync_summary, process_current_page_task, process_local_video_task, read_note, read_transcript, redacted_request_dump, redacted_resource
-from app.summarizer import MAX_VISION_GRIDS, build_visual_windows, local_markdown_note, summarize_with_diagnostics
+from app.summarizer import MAX_VISION_GRIDS, build_visual_windows, ensure_visual_appendix, local_markdown_note, summarize_with_diagnostics
 from app.storage import create_task, get_task, task_dir
 from app.transcriber import transcript_from_subtitle
 
@@ -1340,6 +1340,23 @@ class SummaryFallbackTests(unittest.TestCase):
         self.assertIn("API Key", warning)
         self.assertIn("画面-字幕对齐索引", note)
 
+    def test_visual_appendix_is_appended_to_llm_notes(self) -> None:
+        transcript = TranscriptResult(
+            source="unit",
+            full_text="函数用于封装逻辑。",
+            segments=[TranscriptSegment(start=5, end=8, text="函数用于封装逻辑。")],
+        )
+        grids = [FrameGrid(path="", url="http://127.0.0.1/grid.jpg", start=0, end=20, frame_count=2, frame_timestamps=[0, 10])]
+
+        note = ensure_visual_appendix("# LLM note\n\n模型总结正文。", transcript, grids)
+
+        self.assertIn("# LLM note", note)
+        self.assertIn("## 画面切片附录", note)
+        self.assertIn("W001 `00:00:00 - 00:00:20`", note)
+        self.assertIn("![W001 00:00:00 - 00:00:20](http://127.0.0.1/grid.jpg)", note)
+        self.assertIn("帧时间：00:00:00, 00:00:10", note)
+        self.assertIn("00:00:05` 函数用于封装逻辑。；对照画面确认对应的板书、PPT、代码或操作步骤。", note)
+
     def test_summary_diagnostics_count_only_grids_eligible_for_vision(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1454,7 +1471,12 @@ class SummaryFallbackTests(unittest.TestCase):
             with patch.dict(sys.modules, {"openai": fake_openai}):
                 note = summarize_with_llm("Long lesson", transcript, grids, TaskOptions(llm_api_key="test-key"), "https://course.example")
 
-        self.assertEqual(note, "merged note")
+        self.assertTrue(note.startswith("merged note"))
+        self.assertIn("## 画面切片附录", note)
+        self.assertIn("W001 `00:00:00 - 00:03:00`", note)
+        self.assertIn("![W001 00:00:00 - 00:03:00](http://127.0.0.1/grid_0.jpg)", note)
+        self.assertIn("W009 `00:24:00 - 00:27:00`", note)
+        self.assertIn("segment 8", note)
         self.assertEqual(len(completions.calls), 4)
         vision_image_counts = [
             len([item for item in call["messages"][0]["content"] if item.get("type") == "image_url"])
