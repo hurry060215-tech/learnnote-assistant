@@ -710,6 +710,7 @@ const diagnosticRecoveryHtml = context.diagnosticRecoveryHtml({
   note_path: "",
   selected_resource: {
     kind: "hls",
+    url: "https://mooc1.chaoxing.com/ananas/status/lesson.m3u8",
     request_headers: {
       Referer: "https://course.example.com/lesson",
       Range: "bytes=100-200",
@@ -722,6 +723,8 @@ const diagnosticRecoveryHtml = context.diagnosticRecoveryHtml({
   ]
 });
 assert.match(diagnosticRecoveryHtml, /class="diagnostic-recovery"/);
+assert.match(diagnosticRecoveryHtml, /学习通\/超星/);
+assert.match(diagnosticRecoveryHtml, /不刷课/);
 assert.match(diagnosticRecoveryHtml, /下一步建议/);
 assert.match(diagnosticRecoveryHtml, /后端已尝试 2 条路线/);
 assert.match(diagnosticRecoveryHtml, /Referer/);

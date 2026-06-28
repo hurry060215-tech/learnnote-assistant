@@ -859,6 +859,20 @@ function preflightRecoveryText(result = {}) {
   return "可以换一个候选、重新检测，或使用本地视频入口。";
 }
 
+function isChaoxingTask(task = {}) {
+  const values = [
+    task.page_url,
+    task.title,
+    task.error_detail,
+    task.selected_resource?.url,
+    task.selected_resource?.resolved_url,
+    task.selected_resource?.initiator,
+    task.selected_resource?.label,
+    ...(task.download_attempts || []).flatMap(attempt => [attempt.url, attempt.resolved_url, attempt.source, attempt.message])
+  ].map(value => String(value || "").toLowerCase()).join(" ");
+  return /chaoxing|xuexitong|fanya|mooc1|mooc2|ananas|\u5b66\u4e60\u901a|\u8d85\u661f/.test(values);
+}
+
 function recoveryStepItems(task) {
   const attempts = task?.download_attempts || [];
   const codes = new Set([task?.error_code, ...attempts.map(attempt => attempt.code)].filter(Boolean));
@@ -866,6 +880,9 @@ function recoveryStepItems(task) {
   const add = text => {
     if (text && !steps.includes(text)) steps.push(text);
   };
+  if (isChaoxingTask(task)) {
+    add("检测到学习通/超星页面线索：请先在原课程页真实播放几秒，让 ananas/播放接口暴露 m3u8、mp4 或带 Referer 的媒体请求；本工具只复用你当前登录态可访问的资源，不刷课、不伪造进度、不自动答题。");
+  }
   if (codes.has("drm_or_encrypted") || task?.drm_detected) {
     add("不会录制、破解或绕过 DRM；没有可访问 mp4/FLV/m3u8/mpd 时，请改用本地视频入口。");
   }

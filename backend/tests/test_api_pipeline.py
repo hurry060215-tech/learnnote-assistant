@@ -17,8 +17,8 @@ from fastapi.testclient import TestClient
 
 from app.config import DATA_DIR
 from app.downloader import DownloadError
-from app.main import app, local_upload_filename
-from app.models import TranscriptResult, TranscriptSegment
+from app.main import app, local_upload_filename, render_diagnostics_markdown
+from app.models import DownloadAttempt, ResourceCandidate, TranscriptResult, TranscriptSegment
 from app.runtime import ffmpeg_bin
 from app.storage import create_task, task_dir, update_task
 
@@ -152,6 +152,40 @@ class LocalUploadValidationTests(unittest.TestCase):
         self.assertEqual(report["candidates"][0]["resource"]["url"], "https://cdn.example.com/lesson.mp4")
         self.assertEqual(report["candidates"][0]["preflight"]["strategy"], "not-probed")
         self.assertTrue(any(item["resource"]["source"] in {"inferred-manifest", "manifest-guess"} for item in report["candidates"]))
+
+    def test_diagnostics_include_chaoxing_recovery_hint(self) -> None:
+        task = create_task("current_page", "学习通课程", "https://mooc1.chaoxing.com/mycourse/studentstudy")
+        try:
+            task = update_task(
+                task.id,
+                status="failed",
+                phase="failed",
+                progress=100,
+                error_code="download_forbidden",
+                error_detail="HTTP 403",
+                selected_resource=ResourceCandidate(
+                    url="https://mooc1.chaoxing.com/ananas/status/lesson.m3u8",
+                    kind="hls",
+                    source="webRequest",
+                    request_headers={"Referer": "https://mooc1.chaoxing.com/mycourse/studentstudy"},
+                ),
+                download_attempts=[
+                    DownloadAttempt(
+                        strategy="manifest-ffmpeg",
+                        url="https://mooc1.chaoxing.com/ananas/status/lesson.m3u8",
+                        code="download_forbidden",
+                        message="HTTP 403",
+                    )
+                ],
+            )
+
+            diagnostics = render_diagnostics_markdown(task)
+
+            self.assertIn("学习通/超星", diagnostics)
+            self.assertIn("不刷课", diagnostics)
+            self.assertIn("ananas", diagnostics)
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
     @unittest.skipUnless(ffmpeg_bin(), "ffmpeg or ffprobe is required for local upload content validation")
     def test_local_upload_rejects_fake_video_before_task_creation(self) -> None:

@@ -274,6 +274,22 @@ def render_visual_windows_markdown(task: TaskRecord) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _is_chaoxing_task(task: TaskRecord) -> bool:
+    values = [
+        task.page_url,
+        task.title,
+        task.error_detail,
+        task.selected_resource.url if task.selected_resource else "",
+        task.selected_resource.resolved_url if task.selected_resource else "",
+        task.selected_resource.initiator if task.selected_resource else "",
+        task.selected_resource.label if task.selected_resource else "",
+    ]
+    for attempt in task.download_attempts:
+        values.extend([attempt.url, attempt.resolved_url, attempt.source, attempt.message])
+    text = " ".join(str(value or "").lower() for value in values)
+    return bool(re.search(r"chaoxing|xuexitong|fanya|mooc1|mooc2|ananas|学习通|超星", text, re.I))
+
+
 def diagnostic_recovery_steps(task: TaskRecord) -> list[str]:
     codes = {task.error_code} if task.error_code else set()
     codes.update(attempt.code for attempt in task.download_attempts if attempt.code)
@@ -283,6 +299,8 @@ def diagnostic_recovery_steps(task: TaskRecord) -> list[str]:
         if text and text not in steps:
             steps.append(text)
 
+    if _is_chaoxing_task(task):
+        add("检测到学习通/超星页面线索：请先在原课程页真实播放几秒，让 ananas/播放接口暴露 m3u8、mp4 或带 Referer 的媒体请求；本工具只复用你当前登录态可访问的资源，不刷课、不伪造进度、不自动答题。")
     if "drm_or_encrypted" in codes or task.drm_detected:
         add("页面触发 DRM/EME 或只暴露不可还原 blob 时，本工具不会录制、破解或绕过 DRM；请改用本地视频入口。")
     if "auth_required" in codes:
