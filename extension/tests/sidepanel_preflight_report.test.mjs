@@ -156,5 +156,8 @@ assert.equal(context.selectedResource().url, "https://cdn.example.com/live/maste
 assert.equal(context.preflightForResource(resources[0]).code, "download_forbidden");
 assert.equal(context.preflightForResource(resources[1]).strategy, "manifest-probe");
 assert.match(elements.get("#taskMessage").textContent, /page report ok/);
+assert.match(elements.get("#resources").innerHTML, /preflight-audit-summary/);
+assert.match(elements.get("#resources").innerHTML, /预检审计/);
+assert.match(elements.get("#resources").innerHTML, /1 可下载/);
 assert.match(elements.get("#resources").innerHTML, /resource-preflight warn/);
 assert.match(elements.get("#resources").innerHTML, /resource-preflight ok/);

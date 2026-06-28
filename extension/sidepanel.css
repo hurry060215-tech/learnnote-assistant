@@ -1494,6 +1494,115 @@ small,
   color: var(--danger);
 }
 
+.preflight-audit-summary {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #d7e2f4;
+  border-radius: 8px;
+  background: #fbfdff;
+  padding: 9px;
+}
+
+.preflight-audit-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.preflight-audit-head strong {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.preflight-audit-head span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 850;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preflight-audit-list {
+  display: grid;
+  gap: 5px;
+}
+
+.preflight-audit-list button {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: #fff;
+  padding: 6px;
+  color: var(--ink);
+  text-align: left;
+}
+
+.preflight-audit-list button.selected {
+  border-color: #8eb1ff;
+  background: #f2f7ff;
+}
+
+.preflight-audit-list b {
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  background: #eef2f7;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.preflight-audit-list .ok b {
+  background: rgba(20, 150, 74, 0.12);
+  color: var(--success);
+}
+
+.preflight-audit-list .warn b {
+  background: rgba(196, 122, 5, 0.12);
+  color: var(--warning);
+}
+
+.preflight-audit-list .bad b {
+  background: rgba(217, 45, 32, 0.1);
+  color: var(--danger);
+}
+
+.preflight-audit-list span {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.preflight-audit-list strong,
+.preflight-audit-list small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preflight-audit-list strong {
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.preflight-audit-list small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 760;
+}
+
 .resource small {
   display: block;
   margin-top: 5px;

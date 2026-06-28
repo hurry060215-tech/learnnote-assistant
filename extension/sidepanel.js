@@ -1195,6 +1195,41 @@ function resourceAttemptQueueHtml(limit = 4) {
   </section>`;
 }
 
+function preflightAuditSummaryHtml(limit = 4) {
+  const checked = resources
+    .map(resource => ({ resource, result: preflightForResource(resource) }))
+    .filter(item => item.result);
+  if (!checked.length) return "";
+  const passed = checked.filter(item => item.result.downloadable).length;
+  const blocked = checked.length - passed;
+  const top = checked.slice(0, limit);
+  return `<section class="preflight-audit-summary" aria-label="预检审计摘要">
+    <div class="preflight-audit-head">
+      <strong>预检审计</strong>
+      <span>${passed} 可下载 · ${blocked} 受阻 · ${checked.length} 已探测</span>
+    </div>
+    <div class="preflight-audit-list">
+      ${top.map(({ resource, result }) => {
+        const state = result.downloadable ? "ok" : result.code === "drm_or_encrypted" ? "bad" : "warn";
+        const detail = [
+          result.strategy || candidateStrategyText(resource),
+          result.status_code ? `HTTP ${result.status_code}` : "",
+          result.content_type || "",
+          fmtBytes(result.content_length),
+          result.resolved_url && result.resolved_url !== resource.url ? "resolved" : ""
+        ].filter(Boolean).join(" · ");
+        return `<button type="button" class="${state} ${resource.url === selectedResourceUrl ? "selected" : ""}" data-url="${escapeHtml(resource.url)}">
+          <b>${escapeHtml(result.downloadable ? "OK" : result.code || "WAIT")}</b>
+          <span>
+            <strong>${escapeHtml(resource.label || resource.kind || "media")}</strong>
+            <small>${escapeHtml(detail || result.message || resource.url)}</small>
+          </span>
+        </button>`;
+      }).join("")}
+    </div>
+  </section>`;
+}
+
 function activeVideoText(active) {
   if (!hasActiveVideoSignal(active)) return "-";
   return [
@@ -2107,7 +2142,7 @@ function renderContext() {
     <small>切回“全部”查看当前页已捕获的资源，或继续播放几秒后重新检测。</small>
     <button type="button" data-resource-filter="all">查看全部</button>
   </section>`;
-  els.resources.innerHTML = `${resourceHint()}${resourceAttemptQueueHtml()}${resourceFilterBarHtml()}${emptyFilterHtml}${visibleResources.map(item => `
+  els.resources.innerHTML = `${resourceHint()}${resourceAttemptQueueHtml()}${preflightAuditSummaryHtml()}${resourceFilterBarHtml()}${emptyFilterHtml}${visibleResources.map(item => `
     <button class="resource ${item.url === selectedResourceUrl ? "selected" : ""} ${isDownloadableResource(item) ? "" : "non-downloadable"} ${item.playback_match || item.is_main_video ? "playback" : ""}" data-url="${escapeHtml(item.url)}">
       <span>
         <strong>${escapeHtml(item.label || item.kind || "media")}</strong>
@@ -2140,6 +2175,13 @@ function renderContext() {
     };
   });
   document.querySelectorAll(".resource-attempt-row").forEach(button => {
+    button.onclick = () => {
+      selectedResourceUrl = button.dataset.url;
+      resourceSelectionPinned = true;
+      renderContext();
+    };
+  });
+  document.querySelectorAll(".preflight-audit-list button").forEach(button => {
     button.onclick = () => {
       selectedResourceUrl = button.dataset.url;
       resourceSelectionPinned = true;
