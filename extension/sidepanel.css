@@ -3699,3 +3699,285 @@ button.primary {
 .result-tabs .icon-button {
   flex: 0 0 34px;
 }
+
+/* Compact current-page cockpit */
+.side-shell {
+  gap: 8px;
+  padding: 8px;
+}
+
+.current-card,
+.resource-panel,
+.progress-panel,
+.history-panel,
+.result-panel,
+.local-drop {
+  border-radius: 8px;
+}
+
+.current-card {
+  gap: 7px;
+  padding: 10px;
+}
+
+.source-switcher {
+  gap: 4px;
+  padding: 3px;
+}
+
+.source-switcher button {
+  height: 30px;
+  gap: 4px;
+  padding: 0 5px;
+  font-size: 10px;
+}
+
+.source-switcher svg {
+  width: 13px;
+  height: 13px;
+}
+
+.section-head {
+  margin-bottom: 4px;
+}
+
+.section-head strong,
+#pageTitle {
+  margin-top: 1px;
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.page-url {
+  max-height: 18px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.playback-card {
+  min-height: 0;
+  padding: 7px 8px;
+  font-size: 11px;
+  line-height: 1.36;
+}
+
+.active-video-card {
+  gap: 6px;
+}
+
+.active-video-card p {
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.playback-readiness {
+  gap: 7px;
+  padding: 8px;
+}
+
+.playback-readiness-head {
+  gap: 2px;
+}
+
+.playback-readiness-head strong {
+  font-size: 12px;
+}
+
+.playback-readiness-head small {
+  font-size: 10px;
+  line-height: 1.32;
+}
+
+.playback-readiness-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.playback-readiness-grid span {
+  min-height: 46px;
+  padding: 6px 5px;
+  font-size: 9.5px;
+}
+
+.playback-readiness-grid b {
+  font-size: 10px;
+}
+
+.current-study-card {
+  gap: 7px;
+  margin-top: 4px;
+  padding: 8px;
+}
+
+.current-study-head {
+  grid-template-columns: 50px minmax(0, 1fr);
+  gap: 7px;
+}
+
+.current-study-head > span {
+  height: 23px;
+  font-size: 9.5px;
+}
+
+.current-study-head strong {
+  font-size: 12px;
+}
+
+.current-study-head small,
+.current-study-card p {
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.current-study-card p {
+  padding-top: 6px;
+}
+
+.current-study-metrics {
+  gap: 5px;
+}
+
+.current-study-metrics span {
+  padding: 6px;
+  font-size: 9.5px;
+}
+
+.current-study-metrics b {
+  font-size: 10px;
+}
+
+.launch-bar {
+  gap: 6px;
+  margin-top: 4px;
+  padding: 8px;
+}
+
+.launch-bar-main strong {
+  font-size: 11px;
+}
+
+.launch-bar-main small {
+  font-size: 9.5px;
+}
+
+.launch-bar-actions button {
+  height: 26px;
+  min-width: 38px;
+  padding: 0 7px;
+  font-size: 10px;
+}
+
+.mode-row {
+  display: none;
+}
+
+.actions {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  grid-template-columns: 1.1fr 1fr 1fr;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.96);
+  padding: 8px;
+  box-shadow: 0 8px 18px rgba(16, 24, 40, 0.08);
+  backdrop-filter: blur(10px);
+}
+
+.actions .primary {
+  grid-column: auto;
+}
+
+.actions button {
+  height: 32px;
+  gap: 4px;
+  padding: 0 6px;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.actions svg {
+  width: 14px;
+  height: 14px;
+}
+
+.resource-panel {
+  padding: 10px;
+}
+
+.readiness,
+.resource-hint,
+.route-summary,
+.extraction-plan,
+.no-resource-guide {
+  margin-bottom: 7px;
+}
+
+.direct-flow {
+  margin-bottom: 7px;
+}
+
+.direct-flow span {
+  height: 22px;
+  font-size: 9.5px;
+}
+
+.no-resource-guide {
+  gap: 8px;
+  padding: 10px;
+}
+
+.no-resource-guide > span {
+  padding: 3px 7px;
+  font-size: 10px;
+}
+
+.no-resource-guide strong {
+  font-size: 12px;
+}
+
+.no-resource-guide p {
+  font-size: 10.5px;
+  line-height: 1.42;
+}
+
+.no-resource-guide ol {
+  gap: 5px;
+}
+
+.no-resource-guide li {
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 6px;
+  padding: 6px;
+}
+
+.no-resource-guide li b {
+  width: 22px;
+  height: 22px;
+  font-size: 10px;
+}
+
+.no-resource-guide li span {
+  font-size: 11px;
+}
+
+.no-resource-guide li small {
+  font-size: 10px;
+}
+
+.no-resource-actions {
+  gap: 5px;
+}
+
+.no-resource-actions button {
+  min-height: 28px;
+  padding: 4px 5px;
+  font-size: 10px;
+}
+
+.local-drop {
+  min-height: 46px;
+  padding: 8px 10px;
+}
