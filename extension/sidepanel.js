@@ -463,21 +463,41 @@ function taskStatusText(task = {}) {
 function taskSourceText(task = {}) {
   if (task.source_type === "local") return "本地视频";
   if (task.source_type === "page_text") return "页面文本";
-  return task.selected_resource ? `直取 · ${task.selected_resource.kind || "media"}` : "当前页";
+  return task.selected_resource ? `直取 · ${mediaKindText(task.selected_resource.kind) || "媒体"}` : "当前页";
+}
+
+function mediaKindText(kind = "") {
+  return ({
+    hls: "HLS",
+    dash: "DASH",
+    video: "视频",
+    subtitle: "字幕",
+    fragment: "分片",
+    blob: "Blob"
+  })[String(kind || "").toLowerCase()] || kind || "";
 }
 
 function taskHistoryChipItems(task = {}) {
   const selected = task.selected_resource || {};
   const windows = visualWindows(task);
   const attempts = task.download_attempts || [];
-  const chips = [
-    taskSourceText(task),
-    selected.playback_match ? playbackText(selected.playback_match) : "",
-    task.media_path ? "本地视频" : "",
+  const route = selected.playback_match
+    ? playbackText(selected.playback_match)
+    : resourceSourceText(selected) || (task.source_type === "current_page" ? "当前页" : taskSourceText(task));
+  const chips = task.status === "failed" ? [
+    route,
+    mediaKindText(selected.kind),
+    task.error_code || "",
+    attempts.length ? `${attempts.length} 次尝试` : "",
+    task.note_path ? "兜底笔记" : task.media_path ? "media.mp4" : "",
+    windows.length ? `${windows.length} 窗口` : ""
+  ] : [
+    route,
+    mediaKindText(selected.kind),
+    task.media_path ? "media.mp4" : "",
     task.note_path ? "笔记" : "",
     windows.length ? `${windows.length} 窗口` : "",
-    attempts.length ? `${attempts.length} 次尝试` : "",
-    task.error_code || ""
+    attempts.length > 1 ? `${attempts.length} 次尝试` : ""
   ];
   const seen = new Set();
   return chips.filter(value => {
@@ -485,7 +505,7 @@ function taskHistoryChipItems(task = {}) {
     if (!text || seen.has(text)) return false;
     seen.add(text);
     return true;
-  }).slice(0, 7);
+  }).slice(0, 5);
 }
 
 function taskHistoryChipsHtml(task = {}) {

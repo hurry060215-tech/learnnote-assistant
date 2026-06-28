@@ -103,12 +103,15 @@ await new Promise(resolve => setTimeout(resolve, 0));
 
 assert.match(elements.get("#taskHistory").innerHTML, /History lesson/);
 assert.match(elements.get("#taskHistory").innerHTML, /直取/);
+assert.match(elements.get("#taskHistory").innerHTML, /HLS/);
+assert.match(elements.get("#taskHistory").innerHTML, /media\.mp4/);
 assert.match(elements.get("#taskHistory").innerHTML, /history-task-preview status-success/);
 assert.match(elements.get("#taskHistory").innerHTML, /\/api\/tasks\/task-history-1\/assets\/grid_000.jpg/);
 assert.match(elements.get("#taskHistory").innerHTML, /00:00:00 - 00:03:00/);
 assert.match(elements.get("#taskHistory").innerHTML, /history-task-chips/);
 assert.match(elements.get("#taskHistory").innerHTML, /2 窗口/);
-assert.match(elements.get("#taskHistory").innerHTML, /1 次尝试/);
+const successHistoryCard = elements.get("#taskHistory").innerHTML.split('data-id="task-history-failed"')[0];
+assert.doesNotMatch(successHistoryCard, /1 次尝试/);
 
 await context.selectHistoryTask("task-history-1");
 
@@ -130,3 +133,4 @@ assert.equal(elements.get("#mediaButton").disabled, true);
 assert.match(elements.get("#taskHistory").innerHTML, /Failed lesson/);
 assert.match(elements.get("#taskHistory").innerHTML, /history-task-preview status-failed empty/);
 assert.match(elements.get("#taskHistory").innerHTML, /download_forbidden/);
+assert.match(elements.get("#taskHistory").innerHTML, /1 次尝试/);

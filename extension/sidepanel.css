@@ -3264,13 +3264,15 @@ input[type="file"] {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
+  max-height: 40px;
+  overflow: hidden;
   margin-top: 6px;
 }
 
 .history-task-chips em {
-  max-width: 100%;
+  max-width: 112px;
   overflow: hidden;
-  border-radius: 999px;
+  border-radius: 6px;
   background: #eef5ff;
   color: var(--accent);
   padding: 2px 6px;
