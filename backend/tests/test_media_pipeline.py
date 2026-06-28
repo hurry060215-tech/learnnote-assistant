@@ -8,7 +8,7 @@ from pathlib import Path
 from PIL import Image
 
 from app.config import DATA_DIR
-from app.media import build_frame_grids, extract_audio, extract_frames, probe_duration
+from app.media import _average_hash, _hamming_distance, build_frame_grids, extract_audio, extract_frames, probe_duration
 from app.runtime import ffmpeg_bin
 
 
@@ -17,6 +17,32 @@ TEST_RUN_DIR = DATA_DIR / "test-runs"
 
 @unittest.skipUnless(ffmpeg_bin(), "ffmpeg is required for media pipeline tests")
 class MediaPipelineTests(unittest.TestCase):
+    def test_average_hash_detects_near_duplicate_frames(self) -> None:
+        TEST_RUN_DIR.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=TEST_RUN_DIR) as tmp:
+            root = Path(tmp)
+            base = root / "base.jpg"
+            near = root / "near.jpg"
+            different = root / "different.jpg"
+
+            base_image = Image.new("RGB", (320, 180), (46, 92, 184))
+            base_image.save(base)
+
+            near_image = base_image.copy()
+            near_image.putpixel((12, 12), (48, 94, 186))
+            near_image.save(near)
+
+            different_image = Image.new("RGB", (320, 180), (238, 242, 247))
+            different_image.paste(Image.new("RGB", (160, 180), (8, 13, 23)), (0, 0))
+            different_image.save(different)
+
+            base_hash = _average_hash(base)
+            near_hash = _average_hash(near)
+            different_hash = _average_hash(different)
+
+            self.assertLessEqual(_hamming_distance(base_hash, near_hash), 1)
+            self.assertGreater(_hamming_distance(base_hash, different_hash), 3)
+
     def test_synthetic_video_generates_audio_frames_and_grid(self) -> None:
         ffmpeg = ffmpeg_bin()
         assert ffmpeg is not None

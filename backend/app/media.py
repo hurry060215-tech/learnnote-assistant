@@ -135,6 +135,27 @@ def _md5(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _average_hash(path: Path, size: int = 8) -> int:
+    with Image.open(path) as image:
+        pixels = list(
+            image.convert("L")
+            .resize((size, size), Image.Resampling.LANCZOS)
+            .getdata()
+        )
+    if not pixels:
+        return 0
+    average = sum(pixels) / len(pixels)
+    value = 0
+    for index, pixel in enumerate(pixels):
+        if pixel >= average:
+            value |= 1 << index
+    return value
+
+
+def _hamming_distance(left: int, right: int) -> int:
+    return bin(left ^ right).count("1")
+
+
 def extract_frames(video_path: Path, frame_dir: Path, interval: int, max_frames: int = 900) -> list[Path]:
     require_ffmpeg()
     ffmpeg = ffmpeg_bin()
@@ -145,6 +166,7 @@ def extract_frames(video_path: Path, frame_dir: Path, interval: int, max_frames:
     timestamps = list(range(0, int(duration), max(1, interval)))[:max_frames]
     frames: list[Path] = []
     last_hash = ""
+    last_average_hash: int | None = None
     for index, ts in enumerate(timestamps):
         out = frame_dir / f"frame_{index:04d}_{ts:06d}.jpg"
         result = subprocess.run(
@@ -170,10 +192,15 @@ def extract_frames(video_path: Path, frame_dir: Path, interval: int, max_frames:
         if result.returncode != 0 or not out.exists():
             continue
         current_hash = _md5(out)
-        if current_hash == last_hash:
+        current_average_hash = _average_hash(out)
+        if current_hash == last_hash or (
+            last_average_hash is not None
+            and _hamming_distance(current_average_hash, last_average_hash) <= 1
+        ):
             out.unlink(missing_ok=True)
             continue
         last_hash = current_hash
+        last_average_hash = current_average_hash
         frames.append(out)
     return frames
 
