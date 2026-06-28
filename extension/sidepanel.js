@@ -1252,6 +1252,9 @@ function renderCurrentStudyCard() {
 function launchBarActionsHtml(state) {
   const hasSelected = Boolean(selectedResource());
   const actions = [];
+  if (state === "empty" || state === "fallback" || state === "blocked" || !hasSelected) {
+    actions.push(`<button type="button" data-route-action="redetect">重检</button>`);
+  }
   if (state === "candidate" && hasSelected) {
     actions.push(`<button type="button" data-route-action="preflight">预检</button>`);
   }
@@ -1497,6 +1500,9 @@ function routeSummaryMetrics() {
 function routeSummaryActionsHtml(state) {
   const hasSelected = Boolean(selectedResource());
   const actions = [];
+  if (state === "empty" || state === "fallback" || state === "blocked" || !hasSelected) {
+    actions.push(`<button type="button" data-route-action="redetect">重新检测</button>`);
+  }
   if (hasSelected && state !== "ready") {
     actions.push(`<button type="button" data-route-action="preflight">预检候选</button>`);
   }
@@ -2761,7 +2767,9 @@ els.resources.addEventListener("click", event => {
   }
 });
 function handleRouteAction(action) {
-  if (action === "preflight") {
+  if (action === "redetect") {
+    collect();
+  } else if (action === "preflight") {
     preflightSelectedResource();
   } else if (action === "summarize") {
     startTask("video");

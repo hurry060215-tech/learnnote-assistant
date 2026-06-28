@@ -111,13 +111,19 @@ await new Promise(resolve => setTimeout(resolve, 0));
 context.renderContext();
 
 assert.equal(context.routeSummaryState(), "empty");
+assert.match(elements.get("#routeSummary").innerHTML, /data-route-action="redetect"/);
 assert.match(elements.get("#routeSummary").innerHTML, /data-route-action="text"/);
+assert.match(elements.get("#launchBar").innerHTML, /data-route-action="redetect"/);
 assert.match(elements.get("#launchBar").innerHTML, /data-route-action="text"/);
+
+context.handleRouteAction("redetect");
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.equal(calls.collect, 2);
 
 context.handleRouteAction("text");
 await new Promise(resolve => setTimeout(resolve, 0));
 
-assert.equal(calls.collect, 2);
+assert.equal(calls.collect, 3);
 assert.ok(calls.start, "expected page-text task start");
 assert.equal(calls.start.mode, "page_text");
 assert.equal(calls.start.page.page_text, page.page_text);
