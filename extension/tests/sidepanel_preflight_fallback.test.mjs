@@ -53,11 +53,11 @@ const resources = [
     playback_match: "range-near-playhead"
   },
   {
-    url: "https://cdn.example.com/live/master.m3u8",
+    url: "https://cdn.example.com/api/play?id=2",
     source: "webRequest",
-    kind: "hls",
+    kind: "video",
     score: 94,
-    label: "HLS",
+    label: "play endpoint",
     request_type: "xmlhttprequest"
   }
 ];
@@ -126,6 +126,9 @@ const context = {
               downloadable: true,
               strategy: "manifest-ffmpeg",
               kind: "hls",
+              resolved_url: "https://cdn.example.com/live/master.m3u8",
+              content_type: "application/vnd.apple.mpegurl",
+              content_length: 512,
               message: "OK"
             }
           };
@@ -155,14 +158,19 @@ await context.startTask("video");
 
 assert.deepEqual(calls.preflight, [
   "https://cdn.example.com/stale.mp4",
-  "https://cdn.example.com/live/master.m3u8"
+  "https://cdn.example.com/api/play?id=2"
 ]);
 assert.ok(calls.start, "expected task start after second candidate passes preflight");
-assert.equal(calls.start.resources[0].url, "https://cdn.example.com/live/master.m3u8");
+assert.equal(calls.start.resources[0].url, "https://cdn.example.com/api/play?id=2");
 assert.equal(calls.start.resources[0].kind, "hls");
+assert.equal(calls.start.resources[0].resolved_url, "https://cdn.example.com/live/master.m3u8");
+assert.equal(calls.start.resources[0].mime, "application/vnd.apple.mpegurl");
+assert.equal(calls.start.resources[0].content_length, 512);
 assert.match(elements.get("#taskMessage").textContent, /test stop|预检通过/);
 assert.equal(context.preflightForResource(resources[0]).code, "download_forbidden");
 assert.equal(context.preflightForResource(resources[1]).strategy, "manifest-ffmpeg");
+assert.equal(resources[1].kind, "hls");
+assert.equal(resources[1].resolved_url, "https://cdn.example.com/live/master.m3u8");
 assert.match(elements.get("#resources").innerHTML, /resource-preflight warn/);
 assert.match(elements.get("#resources").innerHTML, /download_forbidden/);
 assert.match(elements.get("#resources").innerHTML, /resource-preflight ok/);

@@ -753,8 +753,29 @@ function preflightForResource(item) {
   return preflightResultsByUrl.get(item.url) || (preflight && preflightResourceUrl === item.url ? preflight : null);
 }
 
+function applyPreflightToResource(resource, result) {
+  if (!resource || !result?.downloadable) return;
+  const kind = String(result.kind || "").toLowerCase();
+  if (DOWNLOADABLE_KINDS.has(kind)) resource.kind = kind;
+  if (result.resolved_url && result.resolved_url !== resource.url) resource.resolved_url = result.resolved_url;
+  if (result.content_type) {
+    resource.mime = result.content_type;
+    resource.headers = { ...(resource.headers || {}), "content-type": result.content_type };
+  }
+  if (result.content_disposition) {
+    resource.headers = { ...(resource.headers || {}), "content-disposition": result.content_disposition };
+  }
+  const statusCode = Number(result.status_code);
+  if (Number.isFinite(statusCode) && statusCode > 0) resource.status_code = statusCode;
+  const contentLength = Number(result.content_length);
+  if (Number.isFinite(contentLength) && contentLength > 0) {
+    resource.content_length = contentLength;
+  }
+}
+
 function rememberPreflightResult(resource, result) {
   if (!resource?.url || !result) return result;
+  applyPreflightToResource(resource, result);
   preflight = result;
   preflightResourceUrl = resource.url;
   preflightResultsByUrl.set(resource.url, result);
