@@ -1094,10 +1094,12 @@ function preflightBadgeHtml(item) {
   const result = preflightForResource(item);
   if (!result) return "";
   const state = result.downloadable ? "ok" : result.code === "drm_or_encrypted" ? "bad" : "warn";
+  const resolvedLabel = result.strategy === "direct-response-probe" && result.resolved_url ? "解析媒体 URL" : "";
   const label = result.downloadable
     ? `预检通过 · ${result.kind || item.kind || "media"}`
     : `预检未过 · ${result.code || result.message || "不可直取"}`;
   const detail = [
+    resolvedLabel,
     result.status_code ? `HTTP ${result.status_code}` : "",
     result.content_type || "",
     contentDispositionHint(result.content_disposition),
