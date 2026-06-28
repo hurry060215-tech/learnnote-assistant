@@ -4109,3 +4109,263 @@ button.primary {
   min-height: 46px;
   padding: 8px 10px;
 }
+
+/* Studio refresh: keep the extension compact, but closer to the web workbench */
+:root {
+  --bg: #f3f6fb;
+  --surface-soft: #f7f9fd;
+  --surface-strong: #e9f2ff;
+  --ink: #111827;
+  --muted: #64748b;
+  --border: #d7e0ec;
+  --border-strong: #aec0d7;
+  --accent: #1769e8;
+  --accent-strong: #0f55c6;
+  --success: #11845b;
+  --warning: #a16207;
+  --danger: #d92d20;
+  --shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+
+body {
+  background:
+    linear-gradient(180deg, #fbfdff 0, #f3f6fb 160px),
+    var(--bg);
+}
+
+.app-header {
+  min-height: 62px;
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.mark {
+  border-radius: 9px;
+  background: #1769e8;
+  box-shadow: inset 0 -10px 18px rgba(15, 85, 198, 0.22);
+}
+
+h1 {
+  font-weight: 900;
+}
+
+.side-shell {
+  gap: 10px;
+  padding: 10px;
+}
+
+.current-card,
+.resource-panel,
+.progress-panel,
+.history-panel,
+.result-panel,
+.local-drop,
+.options-disclosure,
+.current-study-card,
+.launch-bar,
+.route-summary,
+.extraction-plan,
+.resource,
+.resource-inspector,
+.task-overview,
+.task-overview-callout {
+  border-color: #d5dfed;
+  border-radius: 10px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.current-card {
+  position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(135deg, rgba(23, 105, 232, 0.11), rgba(17, 132, 91, 0.08) 48%, rgba(255, 255, 255, 0) 68%),
+    #ffffff;
+}
+
+.current-card::after {
+  content: "";
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 0;
+  height: 3px;
+  border-radius: 999px 999px 0 0;
+  background: linear-gradient(90deg, var(--accent), var(--success));
+}
+
+.source-switcher {
+  border-color: #d5dfed;
+  background: #edf3fb;
+}
+
+.source-switcher button {
+  border-radius: 8px;
+}
+
+.source-switcher button.active {
+  border-color: #caddff;
+  background: #ffffff;
+  color: var(--accent);
+  box-shadow: 0 7px 16px rgba(23, 105, 232, 0.1);
+}
+
+.playback-card,
+.playback-readiness,
+.current-study-card,
+.launch-bar,
+.route-summary,
+.extraction-plan,
+.resource-hint,
+.no-resource-guide {
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.current-study-card.ready,
+.launch-bar.ready,
+.route-summary.ready {
+  border-color: rgba(17, 132, 91, 0.32);
+}
+
+.current-study-card.blocked,
+.route-summary.blocked {
+  border-color: rgba(217, 45, 32, 0.22);
+}
+
+.mode-row span,
+.direct-flow span,
+.stage-rail span,
+.resource-tags em,
+.history-task-chips em {
+  border-radius: 7px;
+}
+
+.actions {
+  top: 62px;
+  border-color: #d5dfed;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.actions button,
+.resource-filter-bar button,
+.resource-inspector-actions button,
+.task-overview-actions button,
+.task-overview-actions span,
+.no-resource-actions button {
+  border-radius: 8px;
+  font-weight: 900;
+}
+
+.actions .primary,
+.actions button.primary,
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.resource-list {
+  gap: 8px;
+}
+
+.resource {
+  background: #ffffff;
+}
+
+.resource:hover {
+  border-color: #b9c9df;
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.07);
+}
+
+.resource.selected {
+  border-color: var(--accent);
+  background: linear-gradient(90deg, #f2f7ff, #ffffff 48%);
+  box-shadow: inset 4px 0 0 var(--accent), 0 12px 26px rgba(23, 105, 232, 0.13);
+}
+
+.resource.playback {
+  border-color: rgba(17, 132, 91, 0.34);
+}
+
+.resource-priority,
+.resource-confidence,
+.backend-status-chip {
+  border-radius: 7px;
+}
+
+.local-drop {
+  background:
+    linear-gradient(135deg, rgba(23, 105, 232, 0.07), rgba(255, 255, 255, 0) 62%),
+    #ffffff;
+}
+
+.progress-panel,
+.history-panel,
+.result-panel,
+.resource-panel,
+.options-disclosure {
+  background: #ffffff;
+}
+
+.progress {
+  background: #e8eef6;
+}
+
+.progress span,
+#progressBar {
+  background: linear-gradient(90deg, var(--success), #18a36f);
+}
+
+.history-task {
+  border-color: #d5dfed;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.history-task.selected {
+  border-color: var(--accent);
+  background: linear-gradient(90deg, #f2f7ff, #ffffff 46%);
+}
+
+.result-tabs {
+  background: #ffffff;
+}
+
+.result-tab {
+  color: #526176;
+  font-weight: 900;
+}
+
+.result-tab.active {
+  color: var(--accent);
+}
+
+.result-body {
+  background:
+    linear-gradient(180deg, #f8fafd 0, #ffffff 150px),
+    #ffffff;
+}
+
+.task-overview {
+  background:
+    linear-gradient(135deg, rgba(23, 105, 232, 0.08), rgba(17, 132, 91, 0.05) 46%, rgba(255, 255, 255, 0) 70%),
+    #ffffff;
+}
+
+.task-overview.status-success {
+  border-color: rgba(17, 132, 91, 0.34);
+}
+
+.task-overview-metrics span,
+.task-route-evidence span,
+.pipeline-audit-grid article,
+.visual-coverage-metrics span {
+  border-color: #d5dfed;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.markdown-note {
+  border-color: #dbe4f0;
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
+}
