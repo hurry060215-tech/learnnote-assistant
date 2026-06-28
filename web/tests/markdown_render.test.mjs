@@ -610,6 +610,7 @@ const diagnosticRecoveryHtml = context.diagnosticRecoveryHtml({
     kind: "hls",
     request_headers: {
       Referer: "https://course.example.com/lesson",
+      Range: "bytes=100-200",
       Cookie: "secret=bad"
     }
   },
@@ -622,6 +623,7 @@ assert.match(diagnosticRecoveryHtml, /class="diagnostic-recovery"/);
 assert.match(diagnosticRecoveryHtml, /下一步建议/);
 assert.match(diagnosticRecoveryHtml, /后端已尝试 2 条路线/);
 assert.match(diagnosticRecoveryHtml, /Referer/);
+assert.match(diagnosticRecoveryHtml, /Range 只作为浏览器播放证据/);
 assert.match(diagnosticRecoveryHtml, /Cookie/);
 assert.doesNotMatch(diagnosticRecoveryHtml, /secret=bad/);
 assert.match(diagnosticRecoveryHtml, /继续切片总结/);

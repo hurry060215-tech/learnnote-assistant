@@ -132,6 +132,10 @@ def _safe_header_names(values: dict[str, str]) -> str:
     return ", ".join(names) or "-"
 
 
+def _has_range_header(values: dict[str, str]) -> bool:
+    return any(name.lower() == "range" for name in values)
+
+
 def _format_cookie_summary(summary: dict) -> list[str]:
     if not summary or not summary.get("total"):
         return ["- Cookie：未同步或未匹配到当前页/媒体域 Cookie"]
@@ -269,6 +273,8 @@ def diagnostic_recovery_steps(task: TaskRecord) -> list[str]:
         add("当前页没有暴露可直取媒体时，先让视频实际播放几秒再重检；仍失败就使用本地视频上传。")
     if task.selected_resource and task.selected_resource.request_headers:
         add(f"已捕获可复用请求头名：{_safe_header_names(task.selected_resource.request_headers)}；诊断中不会保存 Cookie 或 Authorization 值。")
+    if task.selected_resource and _has_range_header(task.selected_resource.request_headers):
+        add("Range 只作为浏览器播放证据；正式下载会去掉播放 Range，避免只保存一个视频片段。")
     if len(task.download_attempts) > 1:
         add(f"后端已尝试 {len(task.download_attempts)} 条路线；查看上方下载尝试，优先处理第一个失败的直接媒体候选。")
     if task.status == "failed" and task.note_path:

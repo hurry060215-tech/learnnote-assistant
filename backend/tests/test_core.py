@@ -630,6 +630,7 @@ class ProcessorBoundaryTests(unittest.TestCase):
                 },
                 request_headers={
                     "Referer": "https://course.example.com/lesson",
+                    "Range": "bytes=100-200",
                     "Cookie": "SESSION=secret",
                     "Authorization": "Bearer secret",
                 },
@@ -651,9 +652,10 @@ class ProcessorBoundaryTests(unittest.TestCase):
             self.assertIn("lesson%20download.mp4", report)
             self.assertIn("direct-file", report)
             self.assertIn("download_forbidden", report)
+            self.assertIn("Range 只作为浏览器播放证据", report)
             self.assertIn("## 下一步建议", report)
             self.assertIn("媒体服务器拒绝下载", report)
-            self.assertIn("已捕获可复用请求头名：Referer", report)
+            self.assertIn("Range, Referer", report)
             self.assertNotIn("SESSION=secret", report)
             self.assertNotIn("Bearer secret", report)
             self.assertNotIn("Cookie", report.split("可复用请求头名：", 1)[1].splitlines()[0])

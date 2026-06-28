@@ -370,6 +370,10 @@ function requestHeaderNames(resource) {
     .join(", ") || "-";
 }
 
+function hasRangeRequestHeader(resource) {
+  return Object.keys(resource?.request_headers || {}).some(name => String(name).toLowerCase() === "range");
+}
+
 function compactIdList(values, limit = 3) {
   const ids = (values || []).map(value => String(value || "").trim()).filter(Boolean);
   if (!ids.length) return "";
@@ -919,6 +923,9 @@ function recoveryStepItems(task) {
   }
   if (task?.selected_resource?.request_headers && Object.keys(task.selected_resource.request_headers).length) {
     add(`已捕获可复用请求头名：${requestHeaderNames(task.selected_resource)}；不会保存 Cookie 或 Authorization 值。`);
+  }
+  if (hasRangeRequestHeader(task?.selected_resource)) {
+    add("Range 只作为浏览器播放证据；正式下载会去掉播放 Range，避免只保存一个视频片段。");
   }
   if (canContinueFromDownloadedMedia(task)) {
     add("这个任务已把视频下载到本地，可先导出 media.mp4，或点击“继续切片总结”复用本地视频生成完整笔记。");
