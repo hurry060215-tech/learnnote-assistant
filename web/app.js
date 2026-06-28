@@ -15,6 +15,8 @@ let lastTranscriptTaskId = "";
 let tasks = [];
 let taskQuery = "";
 let taskStatusFilter = "all";
+let urlPreflightResourceUrl = "";
+let urlPreflightResult = null;
 
 const els = {
   health: document.querySelector("#health"),
@@ -1064,7 +1066,7 @@ function labelForUrlResource(kind, mode = selectedUrlMode()) {
 function manualUrlResource(url) {
   const kind = resourceKindForUrl(url);
   if (kind === "unknown") return null;
-  return {
+  const resource = {
     url,
     source: "manual",
     kind,
@@ -1073,6 +1075,44 @@ function manualUrlResource(url) {
     label: labelForUrlResource(kind),
     request_type: selectedUrlMode() === "auto" ? "manual-auto" : "manual-forced"
   };
+  applyUrlPreflightToResource(resource);
+  return resource;
+}
+
+function clearUrlPreflight() {
+  urlPreflightResourceUrl = "";
+  urlPreflightResult = null;
+}
+
+function rememberUrlPreflight(resource, result) {
+  if (!resource?.url || !result) return result;
+  urlPreflightResourceUrl = resource.url;
+  urlPreflightResult = result;
+  applyUrlPreflightToResource(resource);
+  return result;
+}
+
+function applyUrlPreflightToResource(resource) {
+  if (!resource?.url || resource.url !== urlPreflightResourceUrl || !urlPreflightResult?.downloadable) return;
+  const kind = String(urlPreflightResult.kind || "").toLowerCase();
+  if (["video", "hls", "dash"].includes(kind)) {
+    resource.kind = kind;
+    resource.mime = mimeForKind(kind) || resource.mime;
+  }
+  if (urlPreflightResult.resolved_url && urlPreflightResult.resolved_url !== resource.url) {
+    resource.resolved_url = urlPreflightResult.resolved_url;
+  }
+  if (urlPreflightResult.content_type) {
+    resource.mime = urlPreflightResult.content_type;
+    resource.headers = { ...(resource.headers || {}), "content-type": urlPreflightResult.content_type };
+  }
+  if (urlPreflightResult.content_disposition) {
+    resource.headers = { ...(resource.headers || {}), "content-disposition": urlPreflightResult.content_disposition };
+  }
+  const statusCode = Number(urlPreflightResult.status_code);
+  if (Number.isFinite(statusCode) && statusCode > 0) resource.status_code = statusCode;
+  const contentLength = Number(urlPreflightResult.content_length);
+  if (Number.isFinite(contentLength) && contentLength > 0) resource.content_length = contentLength;
 }
 
 function renderUrlModeHint() {
@@ -2509,7 +2549,7 @@ async function preflightUrlTask() {
         cookies: []
       })
     });
-    const result = data.preflight || {};
+    const result = rememberUrlPreflight(resource, data.preflight || {});
     els.urlModeHint.textContent = result.downloadable
       ? `预检通过：${result.kind || resource.kind} 可访问，${result.status_code ? `HTTP ${result.status_code}，` : ""}${fmtBytes(result.content_length) || `${result.bytes_checked || 0} B`}。`
       : `预检未通过：${result.message || result.code || "该链接暂不可直接下载"}`;
@@ -2657,8 +2697,14 @@ if (els.browserRouteSummary) {
 }
 
 if (els.urlMode) {
-  els.urlMode.onchange = renderUrlModeHint;
+  els.urlMode.onchange = () => {
+    clearUrlPreflight();
+    renderUrlModeHint();
+  };
   renderUrlModeHint();
+}
+if (els.urlInput) {
+  els.urlInput.oninput = clearUrlPreflight;
 }
 if (els.transcriber) {
   els.transcriber.onchange = () => syncTranscriberModelDefault(true);

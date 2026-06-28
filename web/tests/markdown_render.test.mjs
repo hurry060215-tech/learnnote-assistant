@@ -1110,7 +1110,9 @@ context.fetch = async (url, options = {}) => {
         preflight: preflightDownloadable ? {
           ok: true,
           downloadable: true,
-          kind: "video",
+          kind: "hls",
+          resolved_url: "https://cdn.example.com/archive/master.m3u8",
+          content_type: "application/vnd.apple.mpegurl",
           status_code: 206,
           content_length: 123456,
           bytes_checked: 4096
@@ -1184,6 +1186,17 @@ assert.equal(preflights[0].resource.url, "https://cdn.example.com/archive/lesson
 assert.match(elements.get("#urlModeHint").textContent, /预检通过/);
 assert.match(elements.get("#urlModeHint").textContent, /120\.6 KB/);
 assert.equal(elements.get("#preflightUrlButton").disabled, false);
+
+await context.startUrlTask("video");
+
+assert.equal(posts.length, 5);
+assert.equal(posts[4].resources.length, 1);
+assert.equal(posts[4].resources[0].url, "https://cdn.example.com/archive/lesson.avi?token=abc");
+assert.equal(posts[4].resources[0].kind, "hls");
+assert.equal(posts[4].resources[0].resolved_url, "https://cdn.example.com/archive/master.m3u8");
+assert.equal(posts[4].resources[0].mime, "application/vnd.apple.mpegurl");
+assert.equal(posts[4].resources[0].status_code, 206);
+assert.equal(posts[4].resources[0].content_length, 123456);
 
 preflightDownloadable = false;
 await context.preflightUrlTask();
