@@ -518,6 +518,9 @@ assert.match(taskOverviewHtml, /\/api\/tasks\/task-web-overview\/exports\/bundle
 assert.match(taskOverviewHtml, /已完成直取下载/);
 assert.match(taskOverviewHtml, /已跟踪最终 URL/);
 assert.match(taskOverviewHtml, /阶段审计门/);
+assert.match(taskOverviewHtml, /class="next-step-card ready"/);
+assert.match(taskOverviewHtml, /继续生成完整笔记/);
+assert.match(taskOverviewHtml, /看下载证据/);
 assert.match(taskOverviewHtml, /来源门/);
 assert.match(taskOverviewHtml, /媒体门/);
 assert.match(taskOverviewHtml, /转写门/);
@@ -701,6 +704,21 @@ const failedMediaOverviewHtml = context.taskOverview({
 });
 assert.match(failedMediaOverviewHtml, /data-rerun-from-media="task-failed-media"/);
 assert.match(failedMediaOverviewHtml, /Whisper failed/);
+
+const failedNextStepHtml = context.nextStepHtml({
+  id: "task-failed-next",
+  source_type: "current_page",
+  status: "failed",
+  phase: "failed",
+  error_code: "<script>bad()</script>",
+  error_detail: "signed URL expired",
+  selected_resource: { kind: "video", source: "webRequest" },
+  options: {}
+});
+assert.match(failedNextStepHtml, /直取链路需要处理/);
+assert.match(failedNextStepHtml, /signed URL expired/);
+assert.match(failedNextStepHtml, /data-recovery-source="local"/);
+assert.doesNotMatch(failedNextStepHtml, /<script>bad/);
 
 const taskChipsHtml = context.taskChipsHtml({
   title: "<script>bad()</script>",

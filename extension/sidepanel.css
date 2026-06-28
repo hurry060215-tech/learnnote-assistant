@@ -2473,6 +2473,77 @@ input[type="file"] {
   line-height: 1.35;
 }
 
+.next-step-card {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #c8d8ee;
+  border-left-width: 4px;
+  border-radius: 8px;
+  background: #f7faff;
+  padding: 9px;
+}
+
+.next-step-card.ready {
+  border-left-color: var(--success);
+  background: rgba(20, 150, 74, 0.06);
+}
+
+.next-step-card.active {
+  border-left-color: var(--accent);
+}
+
+.next-step-card.blocked {
+  border-left-color: var(--danger);
+  background: rgba(217, 45, 32, 0.04);
+}
+
+.next-step-card > div:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.next-step-card span {
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.next-step-card strong {
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.next-step-card small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.next-step-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.next-step-actions button {
+  min-height: 28px;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  background: #fff;
+  color: var(--ink);
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.next-step-actions button:first-child {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
 .task-route-evidence {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

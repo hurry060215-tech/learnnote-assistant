@@ -1837,6 +1837,72 @@ function pipelineAuditHtml(task) {
   </section>`;
 }
 
+function nextStepHtml(task) {
+  if (!task) return "";
+  const windows = visualWindows(task);
+  const hasNote = Boolean(task.note_path);
+  const hasMedia = Boolean(task.media_path);
+  const hasTranscript = Boolean(task.transcript_path);
+  const hasVisuals = Boolean(windows.length || task.frame_grids?.length || Number(task.summary_diagnostics?.frame_grid_count || 0));
+  const failed = task.status === "failed";
+  let tone = "active";
+  let title = "继续处理";
+  let detail = "等待任务进入下一阶段。";
+  let actions = [];
+
+  if (canContinueFromDownloadedMedia(task)) {
+    tone = "ready";
+    title = "继续生成完整笔记";
+    detail = "视频已经下载到本地，可以复用 media.mp4 继续转写、切片和图文总结。";
+    actions = [
+      `<button type="button" data-rerun-from-media="${escapeHtml(task.id)}">生成完整笔记</button>`,
+      `<button type="button" data-switch-result-tab="diagnostics">看下载证据</button>`
+    ];
+  } else if (failed && !hasNote) {
+    tone = "blocked";
+    title = "直取链路需要处理";
+    detail = task.error_detail || task.error_code || "当前任务失败；先看诊断确认是登录、DRM、签名过期还是资源不完整。";
+    actions = [
+      `<button type="button" data-switch-result-tab="diagnostics">查看诊断</button>`,
+      `<button type="button" data-recovery-source="local">改用本地视频</button>`
+    ];
+  } else if (hasNote) {
+    tone = "ready";
+    title = "阅读并核对笔记";
+    detail = hasVisuals
+      ? "笔记、字幕和画面切片已经形成，可以按时间轴回看关键画面。"
+      : "笔记已生成；如果缺少画面证据，请查看诊断确认视觉理解是否关闭或降级。";
+    actions = [
+      `<button type="button" data-switch-result-tab="note">阅读笔记</button>`,
+      hasVisuals ? `<button type="button" data-switch-result-tab="frames">核对画面</button>` : `<button type="button" data-switch-result-tab="diagnostics">查看诊断</button>`
+    ];
+  } else if (hasMedia && !hasTranscript) {
+    title = "等待转写字幕";
+    detail = "媒体已落盘，下一步会优先使用平台/内嵌字幕，没有字幕时再进入 ASR。";
+    actions = [`<button type="button" data-switch-result-tab="diagnostics">看处理状态</button>`];
+  } else if (hasTranscript && !hasVisuals && task.options?.visual_understanding !== false) {
+    title = "等待画面切片";
+    detail = "字幕已经生成，下一步应抽帧、拼网格并按视觉窗口对齐字幕。";
+    actions = [
+      `<button type="button" data-switch-result-tab="transcript">核对字幕</button>`,
+      `<button type="button" data-switch-result-tab="diagnostics">查看诊断</button>`
+    ];
+  } else {
+    title = "等待图文总结";
+    detail = "任务会按下载、转写、切片、总结顺序推进；阶段门会显示当前卡点。";
+    actions = [`<button type="button" data-switch-result-tab="diagnostics">查看阶段门</button>`];
+  }
+
+  return `<section class="next-step-card ${escapeHtml(tone)}" aria-label="下一步">
+    <div>
+      <span>下一步</span>
+      <strong>${escapeHtml(title)}</strong>
+      <small>${escapeHtml(detail)}</small>
+    </div>
+    <div class="next-step-actions">${actions.filter(Boolean).join("")}</div>
+  </section>`;
+}
+
 function taskOverview(task) {
   const selected = task.selected_resource || {};
   const options = task.options || {};
@@ -1883,6 +1949,7 @@ function taskOverview(task) {
       <span><b>${windows.length || "-"}</b>${windows.length ? "画面窗口" : "等待画面切片"}</span>
     </div>
     ${pipelineAuditHtml(task)}
+    ${nextStepHtml(task)}
     ${visualCoverageHtml(task)}
     ${taskRouteEvidenceHtml(task)}
     ${downloadOnly ? `<div class="download-only-callout">
