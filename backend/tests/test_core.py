@@ -651,6 +651,8 @@ class ProcessorBoundaryTests(unittest.TestCase):
             transcript = read_transcript(task.id)
             self.assertEqual(transcript["source"], "embedded-subtitle")
             self.assertEqual(transcript["segments"][0]["text"], "embedded cue")
+            report = render_diagnostics_markdown(record)
+            self.assertIn("转写来源：视频内嵌字幕", report)
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 

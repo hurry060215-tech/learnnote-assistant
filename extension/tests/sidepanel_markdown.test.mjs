@@ -385,6 +385,16 @@ assert.match(plainTimelineHtml, /浏览器字幕/);
 assert.match(plainTimelineHtml, /独立字幕时间轴/);
 assert.match(plainTimelineHtml, /无切片/);
 assert.match(plainTimelineHtml, /兜底字幕一/);
+assert.equal(context.transcriptSourceText("embedded-subtitle"), "视频内嵌字幕");
+const embeddedTimelineHtml = context.transcriptTimeline({
+  source: "embedded-subtitle",
+  segments: [
+    { start: 0, end: 2, text: "内嵌字幕" }
+  ]
+}, {
+  visual_windows: []
+});
+assert.match(embeddedTimelineHtml, /视频内嵌字幕/);
 
 const railHtml = context.noteVisualRail({
   visual_windows: [

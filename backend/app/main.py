@@ -164,6 +164,28 @@ def _asr_option_text(task: TaskRecord) -> str:
     return f"{_transcriber_label(options.transcriber)} · {options.whisper_model or 'small'}"
 
 
+def _transcript_source_text(source: str | None) -> str:
+    return {
+        "browser-subtitle": "浏览器字幕",
+        "page-subtitle": "页面字幕",
+        "embedded-subtitle": "视频内嵌字幕",
+        "faster-whisper": "本地 faster-whisper",
+        "openai-compatible-asr": "OpenAI-compatible ASR",
+        "groq-asr": "Groq ASR",
+    }.get((source or "").lower(), source or "-")
+
+
+def _task_transcript_source_text(task: TaskRecord) -> str:
+    if not task.transcript_path:
+        return "-"
+    try:
+        transcript = read_transcript(task.id)
+    except Exception:
+        return "-"
+    source = transcript.get("source") if isinstance(transcript, dict) else None
+    return _transcript_source_text(source)
+
+
 def _format_id_list(values: list[str] | tuple[str, ...] | None, limit: int = 12) -> str:
     ids = [str(value) for value in (values or []) if str(value)]
     if not ids:
@@ -349,6 +371,7 @@ def render_diagnostics_markdown(task: TaskRecord) -> str:
         f"- 媒体：{task.media_path or '-'}",
         f"- 音频：{task.audio_path or '-'}",
         f"- 转写引擎：{_asr_option_text(task)}",
+        f"- 转写来源：{_task_transcript_source_text(task)}",
         f"- 字幕：{task.subtitle_path or '-'}",
         f"- 转写：{task.transcript_path or '-'}",
         f"- 视觉索引：{task.visual_index_path or '-'}",

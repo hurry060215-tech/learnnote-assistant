@@ -665,6 +665,17 @@ function asrOptionText(options = {}) {
   return `${transcriberLabel(options.transcriber)} · ${options.whisper_model || "small"}`;
 }
 
+function transcriptSourceText(source) {
+  return ({
+    "browser-subtitle": "浏览器字幕",
+    "page-subtitle": "页面字幕",
+    "embedded-subtitle": "视频内嵌字幕",
+    "faster-whisper": "本地 faster-whisper",
+    "openai-compatible-asr": "OpenAI-compatible ASR",
+    "groq-asr": "Groq ASR"
+  })[String(source || "").toLowerCase()] || source || "转写";
+}
+
 function isDownloadableResource(item) {
   return DOWNLOADABLE_KINDS.has(item?.kind);
 }
@@ -2402,11 +2413,7 @@ function transcriptOverview(transcript, task) {
   const first = segments[0];
   const last = segments[segments.length - 1];
   const range = first && last ? `${fmt(first.start)} - ${fmt(last.end ?? last.start)}` : "无时间轴";
-  const source = transcript?.source === "browser-subtitle"
-    ? "浏览器字幕"
-    : transcript?.source === "page-subtitle"
-      ? "页面字幕"
-      : transcript?.source || "转写";
+  const source = transcriptSourceText(transcript?.source);
   return `<section class="transcript-overview" aria-label="字幕概览">
     <div>
       <span>字幕时间轴</span>
@@ -3171,6 +3178,7 @@ function renderResult() {
         <dt>请求头</dt><dd>${escapeHtml(requestHeaderNames(selected))}</dd>
         <dt>请求 body</dt><dd>${escapeHtml(requestBodySummary(selected) || "-")}</dd>
         <dt>转写引擎</dt><dd>${escapeHtml(asrOptionText(currentTask.options || {}))}</dd>
+        <dt>转写来源</dt><dd>${escapeHtml(transcriptCache?.source ? transcriptSourceText(transcriptCache.source) : "-")}</dd>
         <dt>总结来源</dt><dd>${escapeHtml(currentTask.summary_source || "-")}</dd>
         <dt>图文总结诊断</dt><dd>${escapeHtml(summaryDiagnosticText(currentTask))}</dd>
         <dt>总结提示</dt><dd>${escapeHtml(currentTask.summary_warning || "-")}</dd>

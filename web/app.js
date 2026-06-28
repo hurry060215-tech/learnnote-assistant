@@ -1031,6 +1031,17 @@ function asrOptionText(options = {}) {
   return `${transcriberLabel(options.transcriber)} · ${options.whisper_model || "small"}`;
 }
 
+function transcriptSourceText(source) {
+  return ({
+    "browser-subtitle": "浏览器字幕",
+    "page-subtitle": "页面字幕",
+    "embedded-subtitle": "视频内嵌字幕",
+    "faster-whisper": "本地 faster-whisper",
+    "openai-compatible-asr": "OpenAI-compatible ASR",
+    "groq-asr": "Groq ASR"
+  })[String(source || "").toLowerCase()] || source || "转写";
+}
+
 function optionText(task) {
   const options = task.options || {};
   return [
@@ -2147,11 +2158,7 @@ function transcriptOverview(transcript, task) {
   const first = segments[0];
   const last = segments[segments.length - 1];
   const range = first && last ? `${fmt(first.start)} - ${fmt(last.end ?? last.start)}` : "无时间轴";
-  const source = transcript?.source === "browser-subtitle"
-    ? "浏览器字幕"
-    : transcript?.source === "page-subtitle"
-      ? "页面字幕"
-      : transcript?.source || "转写";
+  const source = transcriptSourceText(transcript?.source);
   return `<section class="transcript-overview" aria-label="字幕概览">
     <div>
       <span>字幕时间轴</span>
@@ -2484,6 +2491,8 @@ async function renderDetail() {
   if (selectedTab === "diagnostics") {
     const selected = task.selected_resource || {};
     const attempts = task.download_attempts || [];
+    const transcript = await transcriptForTask(task);
+    const transcriptSource = transcript?.source ? transcriptSourceText(transcript.source) : "-";
     const attemptHtml = attempts.length ? `
       <div class="attempt-list">
         ${attempts.map(attempt => `
@@ -2536,6 +2545,7 @@ async function renderDetail() {
         <dt>媒体文件</dt><dd>${escapeHtml(task.media_path || "-")}</dd>
         <dt>音频文件</dt><dd>${escapeHtml(task.audio_path || "-")}</dd>
         <dt>转写引擎</dt><dd>${escapeHtml(asrOptionText(task.options || {}))}</dd>
+        <dt>转写来源</dt><dd>${escapeHtml(transcriptSource)}</dd>
         <dt>字幕文件</dt><dd>${escapeHtml(task.subtitle_path || "-")}</dd>
         <dt>总结来源</dt><dd>${escapeHtml(task.summary_source || "-")}</dd>
         <dt>图文总结诊断</dt><dd>${escapeHtml(summaryDiagnosticText(task))}</dd>
