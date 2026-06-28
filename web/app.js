@@ -22,6 +22,7 @@ let lastHealthData = null;
 const els = {
   health: document.querySelector("#health"),
   refreshButton: document.querySelector("#refreshButton"),
+  toggleWorkspaceButton: document.querySelector("#toggleWorkspaceButton"),
   toggleHistoryButton: document.querySelector("#toggleHistoryButton"),
   readingModeButton: document.querySelector("#readingModeButton"),
   sourceTabs: document.querySelectorAll(".source-tab"),
@@ -1310,6 +1311,12 @@ function setHistoryCollapsed(collapsed, persist = true) {
   if (persist) storeUiFlag("learnnote.historyCollapsed", collapsed);
 }
 
+function setWorkspaceCollapsed(collapsed, persist = true) {
+  document.body?.classList?.toggle("workspace-collapsed", Boolean(collapsed));
+  setPressed(els.toggleWorkspaceButton, collapsed);
+  if (persist) storeUiFlag("learnnote.workspaceCollapsed", collapsed);
+}
+
 function setReadingMode(enabled, persist = true) {
   document.body?.classList?.toggle("reading-mode", Boolean(enabled));
   setPressed(els.readingModeButton, enabled);
@@ -1321,6 +1328,7 @@ function renderResultTabState() {
 }
 
 function initializeWorkspaceView() {
+  setWorkspaceCollapsed(storedUiFlag("learnnote.workspaceCollapsed"), false);
   setHistoryCollapsed(storedUiFlag("learnnote.historyCollapsed"), false);
   setReadingMode(storedUiFlag("learnnote.readingMode"), false);
   renderResultTabState();
@@ -2893,6 +2901,12 @@ els.resultTabs.forEach(tab => {
 els.startUrlButton.onclick = () => startUrlTask("video");
 if (els.preflightUrlButton) els.preflightUrlButton.onclick = preflightUrlTask;
 if (els.downloadUrlButton) els.downloadUrlButton.onclick = () => startUrlTask("download_only");
+if (els.toggleWorkspaceButton) {
+  els.toggleWorkspaceButton.onclick = () => {
+    const collapsed = !document.body?.classList?.contains?.("workspace-collapsed");
+    setWorkspaceCollapsed(collapsed);
+  };
+}
 if (els.toggleHistoryButton) {
   els.toggleHistoryButton.onclick = () => {
     const collapsed = !document.body?.classList?.contains?.("queue-collapsed");

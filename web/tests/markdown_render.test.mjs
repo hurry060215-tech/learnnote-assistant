@@ -150,6 +150,15 @@ assert.match(elements.get("#sourceWorkflow").innerHTML, /class="source-workflow-
 assert.match(elements.get("#sourceWorkflow").innerHTML, /学习生产线|当前页直取/);
 assert.match(elements.get("#sourceWorkflow").innerHTML, /读取当前页/);
 assert.match(elements.get("#sourceWorkflow").innerHTML, /预检资源/);
+assert.match(indexHtml, /id="toggleWorkspaceButton"/);
+assert.equal(documentStub.body.classList.contains("workspace-collapsed"), false);
+elements.get("#toggleWorkspaceButton").onclick();
+assert.equal(documentStub.body.classList.contains("workspace-collapsed"), true);
+assert.equal(elements.get("#toggleWorkspaceButton").getAttribute("aria-pressed"), "true");
+assert.equal(context.window.localStorage.getItem("learnnote.workspaceCollapsed"), "1");
+elements.get("#toggleWorkspaceButton").onclick();
+assert.equal(documentStub.body.classList.contains("workspace-collapsed"), false);
+assert.equal(elements.get("#toggleWorkspaceButton").getAttribute("aria-pressed"), "false");
 assert.match(indexHtml, /class="browser-capture-card"/);
 assert.match(indexHtml, /class="capture-flow"/);
 assert.match(indexHtml, /非录制/);
