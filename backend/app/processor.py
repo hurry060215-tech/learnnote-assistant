@@ -309,6 +309,26 @@ def write_download_failure_fallback(task_id: str, request: CurrentPageTaskReques
         return False
 
 
+def complete_with_download_failure_fallback(task_id: str, request: CurrentPageTaskRequest, code: str, detail: str) -> bool:
+    if not write_download_failure_fallback(task_id, request):
+        return False
+    record = get_task(task_id)
+    warnings = [f"视频直取失败（{code}）：{detail}"]
+    if record.summary_warning:
+        warnings.append(record.summary_warning)
+    update_task(
+        task_id,
+        status="success",
+        phase="completed",
+        progress=100,
+        error_code=code,
+        error_detail=detail,
+        message="视频直取失败，已生成页面文本/浏览器字幕兜底笔记",
+        summary_warning="；".join(warnings),
+    )
+    return True
+
+
 def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> None:
     write_json(task_id, "request.json", redacted_request_dump(request))
     if request.mode == "page_text":
@@ -327,9 +347,6 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
         update_task(task_id, status="running", phase="downloading", progress=10, message="正在解析并下载当前页视频")
         if request.drm_detected and not has_downloadable_candidate(request.resources):
             message = drm_failure_message(request)
-            has_fallback = write_download_failure_fallback(task_id, request)
-            if has_fallback:
-                message = f"{message} 已生成页面文本/浏览器字幕兜底笔记。"
             update_task(
                 task_id,
                 download_attempts=[
@@ -341,6 +358,8 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
                     )
                 ],
             )
+            if complete_with_download_failure_fallback(task_id, request, "drm_or_encrypted", message):
+                return
             _fail(task_id, "drm_or_encrypted", message)
             return
         downloader = MediaDownloader(work_dir)
@@ -382,8 +401,8 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
         detail = exc.message
         if exc.code == "no_media_found" and request.active_video and request.active_video.src_object:
             detail = src_object_failure_message(request)
-        if write_download_failure_fallback(task_id, request):
-            detail = f"{detail} 已生成页面文本/浏览器字幕兜底笔记。"
+        if complete_with_download_failure_fallback(task_id, request, exc.code, detail):
+            return
         _fail(task_id, exc.code, detail)
     except Exception as exc:
         _fail(task_id, "processing_failed", str(exc))
