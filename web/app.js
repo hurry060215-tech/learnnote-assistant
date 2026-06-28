@@ -1436,6 +1436,77 @@ function visualCoverageHtml(task) {
   </section>`;
 }
 
+function visionEvidenceBar(task) {
+  if (!task) return "";
+  const windows = visualWindows(task || {});
+  const diag = task.summary_diagnostics || {};
+  const hasDiagnostics = Object.keys(diag).length > 0;
+  const gridCount = Number(diag.frame_grid_count ?? task.frame_grids?.length ?? windows.length ?? 0);
+  const visionGridCount = Number(diag.vision_grid_count ?? gridCount ?? 0);
+  const sentImages = Number(diag.vision_image_count ?? windows.filter(window => safeNoteMediaUrl(window.grid_url)).length ?? 0);
+  const missingIds = (diag.missing_vision_image_window_ids || []).map(id => String(id || "").trim()).filter(Boolean);
+  const omittedIds = (diag.omitted_vision_window_ids || []).map(id => String(id || "").trim()).filter(Boolean);
+  const source = task.summary_source || diag.summary_source || (diag.used_vision_llm ? "vision-llm" : diag.used_text_llm ? "text-llm" : diag.used_local_template ? "local-template" : "");
+  const visualDisabled = task.options?.visual_understanding === false || task.source_type === "page_text";
+  const shouldShow = visualDisabled || hasDiagnostics || gridCount || windows.length || task.note_path || task.media_path;
+  if (!shouldShow) return "";
+
+  let state = "empty";
+  if (visualDisabled) state = "skip";
+  else if (source === "vision-llm" || diag.used_vision_llm) state = "strong";
+  else if (sentImages > 0 || missingIds.length || omittedIds.length) state = "partial";
+  else if (gridCount || windows.length) state = "index";
+
+  const title = {
+    strong: "画面已参与图文总结",
+    partial: "已生成画面证据，模型链路存在降级",
+    index: "已有画面切片，当前笔记未确认使用视觉模型",
+    skip: "本任务走文本路线",
+    empty: "还没有视觉切片证据"
+  }[state];
+  const badge = {
+    strong: "已接入视觉模型",
+    partial: "视觉索引",
+    index: "本地切片",
+    skip: "文本总结",
+    empty: "等待切片"
+  }[state];
+  const detail = {
+    strong: `已把 ${sentImages}/${visionGridCount || gridCount || 0} 张网格图送入视觉模型，并和对应转写窗口合并成笔记。`,
+    partial: `检测到 ${windows.length || gridCount || 0} 个视觉窗口；当前结果可能使用了文本模型、模板或存在缺图窗口。`,
+    index: `已生成 ${windows.length || gridCount || 0} 个视觉窗口，可在“画面”页复核；总结来源为 ${source || "本地索引"}。`,
+    skip: "页面文本或用户选项关闭了视觉理解，因此不会调用画面切片总结。",
+    empty: "尚未看到抽帧、网格或视觉模型诊断；任务完成后这里会显示画面证据。"
+  }[state];
+  const flags = [
+    missingIds.length ? `缺图 ${compactIdList(missingIds, 4)}` : "",
+    omittedIds.length ? `超限省略 ${compactIdList(omittedIds, 4)}` : "",
+    diag.summary_warning || "",
+    diag.used_page_text_fallback ? "已使用页面文本/浏览器字幕兜底" : "",
+    diag.used_local_template ? "本地模板兜底" : ""
+  ].filter(Boolean);
+
+  return `<section class="vision-evidence ${escapeHtml(state)}" aria-label="图文总结证据">
+    <div class="vision-evidence-main">
+      <span>${escapeHtml(badge)}</span>
+      <strong>${escapeHtml(title)}</strong>
+      <p>${escapeHtml(detail)}</p>
+    </div>
+    <div class="vision-evidence-metrics">
+      <span><b>${windows.length || gridCount || "-"}</b>视觉窗口</span>
+      <span><b>${sentImages}/${visionGridCount || gridCount || 0}</b>送入视觉</span>
+      <span><b>${escapeHtml(source || "-")}</b>总结来源</span>
+      <span><b>${missingIds.length + omittedIds.length || "-"}</b>异常窗口</span>
+    </div>
+    ${flags.length ? `<p class="vision-evidence-flags">${flags.map(escapeHtml).join(" · ")}</p>` : ""}
+    <div class="vision-evidence-actions">
+      ${windows.length ? `<button type="button" data-switch-result-tab="frames">查看切片</button>` : ""}
+      ${hasTaskDiagnostics(task) ? `<button type="button" data-switch-result-tab="diagnostics">查看诊断</button>` : ""}
+      ${hasTaskBundle(task) ? `<a href="${escapeHtml(taskExportUrl(task, "bundle"))}">导出资料包</a>` : ""}
+    </div>
+  </section>`;
+}
+
 function auditGateState(task, passed) {
   if (passed) return "pass";
   if (task?.status === "failed") return "fail";
@@ -2166,6 +2237,7 @@ async function renderDetail() {
       <div class="note-shell">
         ${taskOverview(task)}
         ${failureGuide(task)}
+        ${visionEvidenceBar(task)}
         ${noteStudyBar(lastNote, task)}
         <div class="note-workbench">
           <article class="markdown-note">${lastNote ? markdownToHtml(lastNote) : task.media_path ? "<p>视频已下载到本地。可点击右上角视频按钮导出，不会继续转写、切片或总结。</p>" : "<p>笔记尚未生成。</p>"}</article>
@@ -2185,7 +2257,7 @@ async function renderDetail() {
       return;
     }
     const transcript = await transcriptForTask(task);
-    els.detail.innerHTML = visualStudyDeck(task, transcript);
+    els.detail.innerHTML = `${visionEvidenceBar(task)}${visualStudyDeck(task, transcript)}`;
     bindTaskOverviewActions();
     return;
   }

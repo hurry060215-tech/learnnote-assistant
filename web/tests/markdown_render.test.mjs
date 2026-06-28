@@ -201,6 +201,41 @@ assert.match(routeSummaryHtml, /\/api\/tasks\/task-route-summary\/exports\/diagn
 assert.match(routeSummaryHtml, /视觉窗口/);
 assert.doesNotMatch(routeSummaryHtml, /<script>bad/);
 
+const visionEvidenceHtml = context.visionEvidenceBar({
+  id: "vision-task",
+  title: "<script>bad()</script> 课程",
+  status: "success",
+  phase: "completed",
+  progress: 100,
+  source_type: "current_page",
+  media_path: "D:/Projects/learnnote-assistant/data/tasks/vision-task/media.mp4",
+  note_path: "D:/Projects/learnnote-assistant/data/tasks/vision-task/note.md",
+  summary_source: "vision-llm",
+  summary_diagnostics: {
+    frame_grid_count: 3,
+    vision_grid_count: 3,
+    vision_image_count: 2,
+    missing_vision_image_window_ids: ["W002"],
+    omitted_vision_window_ids: ["W099"],
+    summary_warning: "<script>bad()</script> warning"
+  },
+  visual_windows: [
+    { id: "W001", start: 0, end: 180, grid_url: "/api/tasks/vision-task/grids/grid_001.jpg" },
+    { id: "W002", start: 180, end: 360, grid_url: "" }
+  ]
+});
+
+assert.match(visionEvidenceHtml, /class="vision-evidence strong"/);
+assert.match(visionEvidenceHtml, /画面已参与图文总结/);
+assert.match(visionEvidenceHtml, /2\/3/);
+assert.match(visionEvidenceHtml, /缺图 W002/);
+assert.match(visionEvidenceHtml, /超限省略 W099/);
+assert.match(visionEvidenceHtml, /data-switch-result-tab="frames"/);
+assert.match(visionEvidenceHtml, /data-switch-result-tab="diagnostics"/);
+assert.match(visionEvidenceHtml, /\/api\/tasks\/vision-task\/exports\/bundle/);
+assert.match(visionEvidenceHtml, /&lt;script&gt;bad\(\)&lt;\/script&gt; warning/);
+assert.doesNotMatch(visionEvidenceHtml, /<script>bad/);
+
 const blockedRouteSummaryHtml = context.browserRouteSummaryHtml({
   id: "task-route-blocked",
   status: "failed",
