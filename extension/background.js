@@ -92,6 +92,22 @@ function hasRangeEvidence(requestHeaders = {}, responseHeaders = {}) {
   return requestRange && responseRange;
 }
 
+function responseContentLength(responseHeaders = {}) {
+  const value = Number(responseHeaders["content-length"] || 0);
+  return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+function looksLikeLargeBinaryMediaEndpoint(details = {}, mime = "", responseHeaders = {}) {
+  const type = String(details.type || "").toLowerCase();
+  if (!/^(xmlhttprequest|fetch|media)$/.test(type)) return false;
+  const binaryMime = /octet-stream|binary|application\/x-mpegurl/i.test(String(mime || ""));
+  if (!binaryMime) return false;
+  if (!/m3u8|mpd|video|media|stream|hls|dash|manifest|playlist|master|playback|player|download|attachment|\/play(?:[/?#]|$)/i.test(details.url || "")) {
+    return false;
+  }
+  return responseContentLength(responseHeaders) >= 1024 * 1024;
+}
+
 function classifyCompletedRequest(details = {}, mime = "", requestHeaders = {}, responseHeaders = {}) {
   const kind = classify(details.url || "", mime);
   if (kind !== "unknown") return kind;
@@ -103,6 +119,7 @@ function classifyCompletedRequest(details = {}, mime = "", requestHeaders = {}, 
   if ((type === "xmlhttprequest" || type === "fetch") && binaryMime && hasRangeEvidence(requestHeaders, responseHeaders)) {
     return "video";
   }
+  if (looksLikeLargeBinaryMediaEndpoint(details, mime, responseHeaders)) return "video";
   return "unknown";
 }
 

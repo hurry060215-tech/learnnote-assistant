@@ -92,6 +92,18 @@ assert.equal(
 assert.equal(
   context.classifyCompletedRequest(
     {
+      url: "https://cdn.example.com/api/playback/getVideo?id=abc",
+      type: "xmlhttprequest"
+    },
+    "application/octet-stream",
+    {},
+    { "content-length": "8388608" }
+  ),
+  "video"
+);
+assert.equal(
+  context.classifyCompletedRequest(
+    {
       url: "https://cdn.example.com/api/download?id=abc",
       type: "xmlhttprequest"
     },
@@ -269,6 +281,42 @@ assert.equal(downloadApiResources[0].headers["content-disposition"], "attachment
 assert.equal(downloadApiResources[0].content_length, 8388608);
 assert.equal(downloadApiResources[0].request_headers.Referer, "https://course.example.com/lesson");
 assert.equal(downloadApiResources[0].request_headers.Origin, "https://course.example.com");
+
+context.rememberRequestHeaders({
+  requestId: "large-binary-playback-api",
+  url: "https://course.example.com/api/playback/getVideo?id=42",
+  type: "xmlhttprequest",
+  requestHeaders: [
+    { name: "Referer", value: "https://course.example.com/lesson" },
+    { name: "Origin", value: "https://course.example.com" },
+    { name: "User-Agent", value: "Chrome Playback UA" },
+    { name: "X-Requested-With", value: "XMLHttpRequest" }
+  ]
+});
+context.recordResponseMedia({
+  requestId: "large-binary-playback-api",
+  tabId: 163,
+  url: "https://course.example.com/api/playback/getVideo?id=42",
+  type: "xmlhttprequest",
+  method: "GET",
+  statusCode: 200,
+  frameId: 2,
+  documentUrl: "https://course.example.com/lesson",
+  initiator: "https://course.example.com",
+  timeStamp: Date.now(),
+  responseHeaders: [
+    { name: "Content-Type", value: "application/octet-stream" },
+    { name: "Content-Length", value: "8388608" }
+  ]
+}, context.peekRequestHeaders("large-binary-playback-api"));
+
+const largeBinaryResources = vm.runInContext("resourceByTab.get(163)", context);
+assert.equal(largeBinaryResources.length, 1);
+assert.equal(largeBinaryResources[0].kind, "video");
+assert.equal(largeBinaryResources[0].content_length, 8388608);
+assert.equal(largeBinaryResources[0].request_headers.Referer, "https://course.example.com/lesson");
+assert.equal(largeBinaryResources[0].request_headers["X-Requested-With"], "XMLHttpRequest");
+assert.equal(largeBinaryResources[0].label, "VIDEO");
 
 context.rememberRequestHeaders({
   requestId: "streaming-1",

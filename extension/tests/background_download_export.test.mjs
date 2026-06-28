@@ -17,6 +17,7 @@ const context = {
     webRequest: {
       onBeforeSendHeaders: listener(),
       onHeadersReceived: listener(),
+      onBeforeRedirect: listener(),
       onCompleted: listener(),
       onErrorOccurred: listener()
     },
