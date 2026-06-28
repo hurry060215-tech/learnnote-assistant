@@ -92,7 +92,6 @@ async function fetchJson(url, options = {}) {
   const payload = await response.json();
   if (String(url).endsWith("/health")) {
     lastHealthData = payload;
-    setTimeout(() => updateHealthVisionStatus(payload), 0);
   }
   return payload;
 }
@@ -1184,13 +1183,28 @@ function healthVisionText(data) {
   return "未配置视觉模型 API Key：仍会生成字幕、切片网格和本地图文索引；填写 Key 后才会把画面送入视觉模型。";
 }
 
+function healthVisionChipText(data) {
+  const model = healthVisionModel(data);
+  return healthVisionReady(data) ? `模型 · ${model}` : "API Key 待填";
+}
+
+function healthMediaChipText(data) {
+  if (!data?.ffmpeg) return "ffmpeg 缺失";
+  if (data.ffprobe_optional) return "后端 · ffmpeg 时长回退";
+  return "后端 · 直取/切片就绪";
+}
+
 function updateHealthVisionStatus(data = lastHealthData) {
   if (!data || !els.browserBridgeStatus) return;
-  const text = healthVisionText(data);
-  els.browserBridgeStatus.title = text;
-  if (data.ffmpeg && !els.browserBridgeStatus.textContent.includes(text)) {
-    els.browserBridgeStatus.textContent = `${els.browserBridgeStatus.textContent} ${text}`.trim();
-  }
+  const mediaText = String(els.browserBridgeStatus.dataset.mediaText || els.browserBridgeStatus.textContent || "").trim();
+  const visionText = healthVisionText(data);
+  els.browserBridgeStatus.dataset.mediaText = mediaText;
+  els.browserBridgeStatus.title = `${mediaText} ${visionText}`.trim();
+  els.browserBridgeStatus.classList.add("capture-status-grid");
+  els.browserBridgeStatus.innerHTML = `
+    <span class="capture-status-chip media"><b>媒体</b>${escapeHtml(healthMediaChipText(data))}</span>
+    <span class="capture-status-chip vision ${healthVisionReady(data) ? "ready" : "pending"}"><b>视觉</b>${escapeHtml(healthVisionChipText(data))}</span>
+  `;
 }
 
 async function checkHealth() {
@@ -1206,6 +1220,7 @@ async function checkHealth() {
           ? "ffmpeg 可用，缺少 ffprobe 时会用 ffmpeg 输出解析时长；仍可下载、转写、切片和图文总结。"
           : "扩展读取播放器、媒体请求和一次性 cookie，后端只下载可访问的视频地址。"
         : "后端已连接，但 ffmpeg 缺失；当前页直取后无法完成合并/切片。";
+      updateHealthVisionStatus(data);
     }
   } catch {
     els.health.className = "health bad";
