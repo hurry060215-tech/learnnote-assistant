@@ -144,6 +144,35 @@ def _window_checkpoint_lines(window: VisualWindow, limit: int = 3) -> list[str]:
     ]
 
 
+def _study_route_lines(transcript: TranscriptResult, windows: list[VisualWindow]) -> list[str]:
+    if windows:
+        covered = [window for window in windows if window.transcript_excerpt.strip()]
+        uncovered = [window for window in windows if not window.transcript_excerpt.strip()]
+        priority = uncovered[:2] or covered[:2] or windows[:2]
+        lines = [
+            f"- 先用“时间轴重点”快速扫完整体，再按 {len(windows)} 个画面窗口回看截图证据。",
+            f"- 字幕覆盖：{len(covered)}/{len(windows)} 个窗口有同步字幕；无字幕窗口优先看 PPT 标题、板书、代码、公式和界面状态。",
+        ]
+        if priority:
+            focus = "、".join(
+                f"{window.id} `{_format_ts(window.start)} - {_format_ts(window.end)}`"
+                for window in priority
+            )
+            lines.append(f"- 优先回看：{focus}，把画面变化和字幕结论对齐后再整理概念。")
+        lines.append("- 最后用“复习问题”自测：先口头复述，再回到对应 W 窗口核对遗漏的演示步骤。")
+        return lines
+    if transcript.segments:
+        return [
+            "- 先按转写时间轴建立知识框架，再回到原视频补齐画面演示。",
+            "- 当前没有画面窗口；如果需要图文笔记，请确认 ffmpeg 可用并重新生成切片。",
+            "- 最后用“复习问题”自测，重点核对术语、步骤和例题条件。",
+        ]
+    return [
+        "- 当前缺少字幕和画面窗口；先检查下载/转写诊断，或改用本地视频入口重新处理。",
+        "- 如果课程页无法直取，上传本地视频后仍会走同一套转写、切片和图文总结管线。",
+    ]
+
+
 def _grid_batches(grids: list[FrameGrid], batch_size: int = MAX_GRIDS_PER_VISION_CALL) -> list[list[FrameGrid]]:
     if batch_size <= 0:
         batch_size = MAX_GRIDS_PER_VISION_CALL
@@ -239,6 +268,7 @@ def local_markdown_note(title: str, transcript: TranscriptResult, grids: list[Fr
         lines += [f"> 转写提示：{transcript.warning}", ""]
 
     key_sentences = _sentences(transcript.full_text, limit=6)
+    windows = build_visual_windows(transcript, grids)
 
     lines += ["## 课程主题", ""]
     if transcript.full_text and "未安装 faster-whisper" not in transcript.full_text:
@@ -251,11 +281,14 @@ def local_markdown_note(title: str, transcript: TranscriptResult, grids: list[Fr
     lines.extend(_timeline_lines(transcript, grids))
     lines.append("")
 
+    lines += ["## 学习路线", ""]
+    lines.extend(_study_route_lines(transcript, windows))
+    lines.append("")
+
     lines += ["## 分段图文摘要", ""]
     lines.extend(_window_summary_lines(transcript, grids))
     lines.append("")
 
-    windows = build_visual_windows(transcript, grids)
     if windows:
         lines += ["## 视觉切片学习卡", ""]
         lines.extend(_window_learning_card_lines(windows))

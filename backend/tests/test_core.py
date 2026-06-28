@@ -1618,6 +1618,8 @@ class SummaryFallbackTests(unittest.TestCase):
         note = local_markdown_note("Python lesson", transcript, grids, "https://example.com")
         self.assertIn("# Python lesson", note)
         self.assertIn("00:00:05", note)
+        self.assertIn("## 学习路线", note)
+        self.assertIn("优先回看：W001 `00:00:00 - 00:00:20`", note)
         self.assertIn("分段图文摘要", note)
         self.assertIn("视觉切片学习卡", note)
         self.assertIn("回看目标：对照画面确认本段的板书、PPT 切换、代码/界面操作和例题步骤是否被字幕完整覆盖。", note)
@@ -1642,6 +1644,7 @@ class SummaryFallbackTests(unittest.TestCase):
 
         self.assertEqual(source, "local-template")
         self.assertIn("API Key", warning)
+        self.assertIn("## 学习路线", note)
         self.assertIn("画面-字幕对齐索引", note)
 
     def test_visual_appendix_is_appended_to_llm_notes(self) -> None:
