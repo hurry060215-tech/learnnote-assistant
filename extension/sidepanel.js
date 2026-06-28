@@ -1865,13 +1865,28 @@ function healthVisionText(data) {
   return "未配置视觉模型 API Key：仍会生成字幕、切片网格和本地图文索引；填写 Key 后才会把画面送入视觉模型。";
 }
 
+function healthVisionChipText(data) {
+  const model = healthVisionModel(data);
+  return healthVisionReady(data) ? `模型 · ${model}` : "API Key 待填";
+}
+
+function healthMediaChipText(data) {
+  if (!data?.ffmpeg) return "ffmpeg 缺失";
+  if (data.ffprobe_optional) return "后端 · ffmpeg 时长回退";
+  return "后端 · 直取/切片就绪";
+}
+
 function updateHealthVisionStatus(data = lastHealthData) {
   if (!data || !els.backendStatus) return;
-  const label = healthVisionReady(data) ? "视觉API已配置" : "视觉API待填Key";
-  els.backendStatus.title = healthVisionText(data);
-  if (data.ffmpeg && !els.backendStatus.textContent.includes(label)) {
-    els.backendStatus.textContent = `${els.backendStatus.textContent} · ${label}`;
-  }
+  const mediaText = String(els.backendStatus.dataset.mediaText || els.backendStatus.textContent || "").trim();
+  const visionText = healthVisionText(data);
+  els.backendStatus.dataset.mediaText = mediaText;
+  els.backendStatus.title = `${mediaText} ${visionText}`.trim();
+  els.backendStatus.classList.add("backend-status-grid");
+  els.backendStatus.innerHTML = `
+    <span class="backend-status-chip media"><b>媒体</b>${escapeHtml(healthMediaChipText(data))}</span>
+    <span class="backend-status-chip vision ${healthVisionReady(data) ? "ready" : "pending"}"><b>视觉</b>${escapeHtml(healthVisionChipText(data))}</span>
+  `;
 }
 
 async function health() {

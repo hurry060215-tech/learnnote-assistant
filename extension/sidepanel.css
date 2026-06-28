@@ -109,6 +109,57 @@ small,
   line-height: 1.45;
 }
 
+#backendStatus.backend-status-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 3px;
+}
+
+.backend-status-chip {
+  min-width: 0;
+  min-height: 22px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid #d8e5fb;
+  border-radius: 999px;
+  background: #f7faff;
+  color: #24528f;
+  padding: 3px 7px;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.backend-status-chip b {
+  flex: 0 0 auto;
+  color: var(--accent);
+  font-size: 9px;
+  font-weight: 900;
+}
+
+.backend-status-chip.vision.ready {
+  border-color: rgba(20, 150, 74, 0.24);
+  background: rgba(20, 150, 74, 0.08);
+  color: var(--success);
+}
+
+.backend-status-chip.vision.ready b {
+  color: var(--success);
+}
+
+.backend-status-chip.vision.pending {
+  border-color: rgba(196, 122, 5, 0.24);
+  background: rgba(196, 122, 5, 0.08);
+  color: var(--warning);
+}
+
+.backend-status-chip.vision.pending b {
+  color: var(--warning);
+}
+
 .side-shell {
   display: grid;
   gap: 9px;
@@ -3539,6 +3590,21 @@ body {
 
 h1 {
   font-size: 17px;
+}
+
+#backendStatus.backend-status-grid {
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.backend-status-chip {
+  min-height: 21px;
+  padding: 3px 6px;
+  font-size: 9.5px;
+}
+
+.backend-status-chip b {
+  font-size: 8.5px;
 }
 
 .side-shell {

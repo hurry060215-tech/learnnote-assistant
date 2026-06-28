@@ -3,9 +3,31 @@ import { readFile } from "node:fs/promises";
 import vm from "node:vm";
 
 const elements = new Map();
+const makeClassList = () => {
+  const values = new Set();
+  return {
+    values,
+    add(name) {
+      values.add(name);
+    },
+    remove(name) {
+      values.delete(name);
+    },
+    toggle(name, force) {
+      const enabled = force === undefined ? !values.has(name) : Boolean(force);
+      if (enabled) values.add(name);
+      else values.delete(name);
+      return enabled;
+    },
+    contains(name) {
+      return values.has(name);
+    }
+  };
+};
+
 const makeElement = () => ({
   addEventListener() {},
-  classList: { add() {}, remove() {}, toggle() {} },
+  classList: makeClassList(),
   querySelector() { return null; },
   style: {},
   dataset: {},
@@ -57,8 +79,9 @@ vm.createContext(context);
 const sidepanelCode = await readFile(new URL("../sidepanel.js", import.meta.url), "utf8");
 vm.runInContext(sidepanelCode, context);
 await new Promise(resolve => setTimeout(resolve, 0));
-assert.match(elements.get("#backendStatus").textContent, /ffprobe/);
-assert.match(elements.get("#backendStatus").textContent, /视觉API/);
+assert.equal(elements.get("#backendStatus").classList.contains("backend-status-grid"), true);
+assert.match(elements.get("#backendStatus").innerHTML, /backend-status-chip media/);
+assert.match(elements.get("#backendStatus").innerHTML, /gpt-4\.1-mini/);
 assert.match(elements.get("#backendStatus").title, /视觉模型/);
 
 const html = context.markdownToHtml(`# 标题
