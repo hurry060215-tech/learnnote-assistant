@@ -1022,6 +1022,22 @@ class DownloaderBoundaryTests(unittest.TestCase):
             self.assertEqual(guessed.request_headers["Referer"], "https://course.example.com/lesson")
             self.assertLessEqual(guessed.score, 72)
 
+    def test_page_scan_extracts_plain_segment_urls_for_manifest_guessing(self) -> None:
+        resources = extract_media_resources_from_text(
+            "window.__segments=['https://cdn.example.com/live/segment-001.ts?token=abc'];",
+            "https://course.example.com/lesson",
+        )
+        segment = next(item for item in resources if item.url == "https://cdn.example.com/live/segment-001.ts?token=abc")
+        self.assertEqual(segment.kind, "fragment")
+        self.assertEqual(segment.source, "page-scan")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            downloader = MediaDownloader(Path(tmp))
+            candidates = downloader._candidate_resources(resources)
+        urls = {candidate.url: candidate for candidate in candidates}
+        self.assertIn("https://cdn.example.com/live/master.m3u8?token=abc", urls)
+        self.assertEqual(urls["https://cdn.example.com/live/master.m3u8?token=abc"].source, "manifest-guess")
+
     def test_manifest_guess_does_not_outrank_verified_candidate(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             downloader = MediaDownloader(Path(tmp))

@@ -49,7 +49,7 @@ const context = {
   URL,
   atob: value => Buffer.from(value, "base64").toString("binary"),
   fetch: async () => new FakeResponse(
-    `<a href="/player?objectid=${encodedHls}">open player</a><script>load(https://cdn.example.com/plain/naked.m3u8?token=naked); window.__encoded='${doubleEncodedVideo}';</script>`,
+    `<a href="/player?objectid=${encodedHls}">open player</a><script>load(https://cdn.example.com/plain/naked.m3u8?token=naked); window.__encoded='${doubleEncodedVideo}'; window.__segments=['https://cdn.example.com/live/segment-001.ts?token=seg'];</script>`,
     {
       url: "https://course.example.com/lesson/index.html",
       headers: { "content-type": "text/html" },
@@ -76,6 +76,7 @@ const resources = messages.flatMap(message => message.resources || []);
 const hls = resources.find(resource => resource.url === "https://cdn.example.com/secure/lesson.m3u8?token=abc&uid=1");
 const nakedHls = resources.find(resource => resource.url === "https://cdn.example.com/plain/naked.m3u8?token=naked");
 const doubleVideo = resources.find(resource => resource.url === "https://cdn.example.com/secure/double.mp4?token=twice");
+const hlsSegment = resources.find(resource => resource.url === "https://cdn.example.com/live/segment-001.ts?token=seg");
 const malformedEncodedUrls = resources.filter(resource => /\/https%3A%2F%2F/i.test(resource.url));
 
 assert.ok(hls, "expected page hook to decode encoded media URL from plain HTML text");
@@ -95,5 +96,10 @@ assert.ok(doubleVideo, "expected page hook to decode double-encoded media URL fr
 assert.equal(doubleVideo.kind, "video");
 assert.equal(doubleVideo.source, "pageHookBody");
 assert.match(doubleVideo.label, /encoded url/);
+
+assert.ok(hlsSegment, "expected page hook to expose segment URLs from response text");
+assert.equal(hlsSegment.kind, "fragment");
+assert.equal(hlsSegment.source, "pageHookBody");
+assert.equal(hlsSegment.request_type, "fetch");
 
 assert.equal(malformedEncodedUrls.length, 0, "expected page hook to normalize encoded absolute media URLs before URL resolution");

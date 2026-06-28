@@ -42,12 +42,11 @@ function classify(url, mime = "") {
   const lower = url.toLowerCase();
   const type = mime.toLowerCase();
   if (lower.startsWith("blob:")) return "blob";
-  if (FRAGMENT_RE.test(lower) && inferManifestUrl(url)) return "fragment";
+  if (FRAGMENT_RE.test(lower)) return "fragment";
   if (type.includes("mpegurl") || lower.includes(".m3u8")) return "hls";
   if (type.includes("dash+xml") || lower.includes(".mpd")) return "dash";
   if (type.includes("video/") || MEDIA_RE.test(lower)) return "video";
   if (type.includes("text/vtt") || type.includes("subrip") || SUBTITLE_RE.test(lower)) return "subtitle";
-  if (FRAGMENT_RE.test(lower)) return "fragment";
   return "unknown";
 }
 

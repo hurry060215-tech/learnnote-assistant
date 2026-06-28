@@ -1,8 +1,8 @@
 const MEDIA_RE = /\.(mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd)(\?|#|$)/i;
 const FRAGMENT_RE = /\.(m4s|ts)(\?|#|$)/i;
 const SUBTITLE_RE = /\.(vtt|srt|ass|ssa)(\?|#|$)/i;
-const MEDIA_URL_RE = /(?:https?:)?\/\/[^\s"'<>\\]+\.(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|vtt|srt|ass|ssa)(?:\?[^\s"'<>\\]*)?|(?:\/[^\s"'<>\\]+)\.(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|vtt|srt|ass|ssa)(?:\?[^\s"'<>\\]*)?|(?:[A-Za-z0-9._~!$&()*+,;=:@%-]+\/)*[A-Za-z0-9._~!$&()*+,;=:@%-]+\.(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|vtt|srt|ass|ssa)(?:\?[^\s"'<>\\]*)?/gi;
-const ENCODED_MEDIA_URL_RE = /https?%(?:25)*3A(?:(?:%(?:25)*2F)|\/){2}[^\s"'<>\\]+?(?:\.|%(?:25)*2E)(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|vtt|srt|ass|ssa)(?:[^\s"'<>\\]*)?/gi;
+const MEDIA_URL_RE = /(?:https?:)?\/\/[^\s"'<>\\]+\.(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|m4s|ts|vtt|srt|ass|ssa)(?:\?[^\s"'<>\\]*)?|(?:\/[^\s"'<>\\]+)\.(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|m4s|ts|vtt|srt|ass|ssa)(?:\?[^\s"'<>\\]*)?|(?:[A-Za-z0-9._~!$&()*+,;=:@%-]+\/)*[A-Za-z0-9._~!$&()*+,;=:@%-]+\.(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|m4s|ts|vtt|srt|ass|ssa)(?:\?[^\s"'<>\\]*)?/gi;
+const ENCODED_MEDIA_URL_RE = /https?%(?:25)*3A(?:(?:%(?:25)*2F)|\/){2}[^\s"'<>\\]+?(?:\.|%(?:25)*2E)(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|m4s|ts|vtt|srt|ass|ssa)(?:[^\s"'<>\\]*)?/gi;
 const STATIC_MEDIA_ATTRS = [
   "src",
   "href",
@@ -34,7 +34,7 @@ const STATIC_MEDIA_ATTRS = [
 ];
 const STATIC_MEDIA_SELECTOR = STATIC_MEDIA_ATTRS.map(name => `[${name}]`).join(",");
 const STATIC_FIELD_RE = /(["']?[A-Za-z_$][A-Za-z0-9_$.-]{0,79}["']?)\s*[:=]\s*["']([^"'<>\\\s]{4,})["']/gi;
-const STATIC_MEDIA_KEY_RE = /(url|src|file|fileid|objectid|dtoken|download|httpmd|play|media|video|stream|source|hls|m3u8|dash|mpd|subtitle|caption)/i;
+const STATIC_MEDIA_KEY_RE = /(url|src|file|fileid|objectid|dtoken|download|httpmd|play|media|video|stream|source|hls|m3u8|dash|mpd|segment|fragment|chunk|subtitle|caption)/i;
 const VISIBLE_SUBTITLE_HINT_RE = /(subtitle|subtitles|caption|captions|closed.?caption|texttrack|danmu|danmaku|barrage|\bcc\b|字幕|弹幕)/i;
 const VISIBLE_SUBTITLE_ROLE_RE = /^(log|status|marquee)$/i;
 const B64ISH_RE = /^[A-Za-z0-9+/_=-]{16,}$/;
@@ -55,12 +55,11 @@ function classify(url, mime = "") {
   const lower = String(url || "").toLowerCase();
   const type = String(mime || "").toLowerCase();
   if (lower.startsWith("blob:")) return "blob";
-  if (FRAGMENT_RE.test(lower) && inferManifestUrl(url)) return "fragment";
+  if (FRAGMENT_RE.test(lower)) return "fragment";
   if (type.includes("mpegurl") || lower.includes(".m3u8")) return "hls";
   if (type.includes("dash+xml") || lower.includes(".mpd")) return "dash";
   if (type.includes("video/") || MEDIA_RE.test(lower)) return "video";
   if (type.includes("text/vtt") || type.includes("subrip") || SUBTITLE_RE.test(lower)) return "subtitle";
-  if (FRAGMENT_RE.test(lower)) return "fragment";
   return "unknown";
 }
 
@@ -113,7 +112,7 @@ function stripUrlTail(value) {
   const absoluteIndex = text.search(/https?:\/\//i);
   if (absoluteIndex > 0) text = text.slice(absoluteIndex);
   if (!/^(https?:)?\/\//i.test(text)) {
-    const rootRelativeIndex = text.search(/\/[^\s"'<>\\]+\.(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|vtt|srt|ass|ssa)(?:[?#]|$)/i);
+    const rootRelativeIndex = text.search(/\/[^\s"'<>\\]+\.(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|m4s|ts|vtt|srt|ass|ssa)(?:[?#]|$)/i);
     if (rootRelativeIndex > 0) text = text.slice(rootRelativeIndex);
   }
   while (/[;,]/.test(text.at(-1) || "")) text = text.slice(0, -1);
@@ -184,7 +183,7 @@ function decodedValues(value) {
         decoded &&
         !values.includes(decoded) &&
         !/[\u0000-\u0008\u000e-\u001f]/.test(decoded) &&
-        (MEDIA_RE.test(decoded) || SUBTITLE_RE.test(decoded) || decoded.includes(".m3u8") || decoded.includes(".mpd") || looksLikeMediaValue(decoded, "media"))
+        (MEDIA_RE.test(decoded) || FRAGMENT_RE.test(decoded) || SUBTITLE_RE.test(decoded) || decoded.includes(".m3u8") || decoded.includes(".mpd") || looksLikeMediaValue(decoded, "media"))
       ) {
         values.push(decoded);
       }
@@ -207,7 +206,7 @@ function mimeFromHint(hint = "") {
 function looksLikeMediaValue(value, hint = "") {
   const text = String(value || "").trim();
   if (text.length < 4 || /\s/.test(text)) return false;
-  if (MEDIA_RE.test(text) || SUBTITLE_RE.test(text) || text.includes(".m3u8") || text.includes(".mpd")) return true;
+  if (MEDIA_RE.test(text) || FRAGMENT_RE.test(text) || SUBTITLE_RE.test(text) || text.includes(".m3u8") || text.includes(".mpd")) return true;
   if (/%2f|%3a|%3f|%3d|%26/i.test(text)) return STATIC_MEDIA_KEY_RE.test(hint) || MEDIA_RE.test(decodeURIComponentSafe(text));
   if (/^(https?:)?\/\//i.test(text) || text.startsWith("/")) return STATIC_MEDIA_KEY_RE.test(hint);
   return text.includes("/") && /[?=&]|api|play|media|video|stream|m3u8|mpd|hls|dash/i.test(text) && STATIC_MEDIA_KEY_RE.test(hint);

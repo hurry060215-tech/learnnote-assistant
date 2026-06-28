@@ -88,6 +88,9 @@ const plainDoubleEncodedScript = new FakeElement("script", {
 const mixedEncodedScript = new FakeElement("script", {
   textContent: `window.__mixed='${mixedEncodedVideo}';`
 });
+const segmentScript = new FakeElement("script", {
+  textContent: "window.__segments=['https://cdn.example.com/static/hls/segment-001.ts?token=seg'];"
+});
 const onclickPlayer = new FakeElement("button", {
   onclick: "openPlayer('https%3A%2F%2Fcdn.example.com%2Fstatic%2Fonclick-master.m3u8%3Ftoken%3Dclick')"
 });
@@ -103,7 +106,7 @@ const nakedPlayer = new FakeElement("div", {
 const plainUrlScript = new FakeElement("script", {
   textContent: "window.__payload='https://cdn.example.com/static/plain-url.m3u8?token=script-plain';"
 });
-const html = new FakeElement("html", {}, [player, packedPlayer, doubleEncodedPlayer, onclickPlayer, paramPlayer, configPlayer, nakedPlayer, script, plainEncodedScript, plainDoubleEncodedScript, mixedEncodedScript, plainUrlScript]);
+const html = new FakeElement("html", {}, [player, packedPlayer, doubleEncodedPlayer, onclickPlayer, paramPlayer, configPlayer, nakedPlayer, script, plainEncodedScript, plainDoubleEncodedScript, mixedEncodedScript, segmentScript, plainUrlScript]);
 
 let messageListener = null;
 const context = {
@@ -174,6 +177,7 @@ const plainHls = response.resources.find(item => item.url === "https://cdn.examp
 const doubleHls = response.resources.find(item => item.url === "https://cdn.example.com/static/double/master.m3u8?token=double&uid=2");
 const doubleNakedVideo = response.resources.find(item => item.url === "https://cdn.example.com/static/double/naked.mp4?token=naked-double");
 const mixedVideo = response.resources.find(item => item.url === "https://cdn.example.com/static/mixed/lesson.mp4?token=mixed");
+const hlsSegment = response.resources.find(item => item.url === "https://cdn.example.com/static/hls/segment-001.ts?token=seg");
 const onclickHls = response.resources.find(item => item.url === "https://cdn.example.com/static/onclick-master.m3u8?token=click");
 const paramVideo = response.resources.find(item => item.url === "https://cdn.example.com/static/param-lesson.mp4?token=param");
 const plainAttrVideo = response.resources.find(item => item.url === "https://course.example.com/static/plain-attr.mp4?token=attr-plain");
@@ -225,6 +229,11 @@ assert.ok(mixedVideo, "expected inline script encoded URL scan to expose mixed-e
 assert.equal(mixedVideo.kind, "video");
 assert.equal(mixedVideo.source, "scriptHint");
 assert.match(mixedVideo.label, /encoded url/);
+
+assert.ok(hlsSegment, "expected inline script media scan to expose HLS segment URL");
+assert.equal(hlsSegment.kind, "fragment");
+assert.equal(hlsSegment.source, "scriptHint");
+assert.match(hlsSegment.label, /script media url/);
 
 assert.ok(onclickHls, "expected onclick handler scan to expose embedded encoded HLS URL");
 assert.equal(onclickHls.kind, "hls");
