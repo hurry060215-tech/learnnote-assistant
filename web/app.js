@@ -1428,6 +1428,7 @@ function taskOverview(task) {
     selected.kind || task.source_type || "",
     resourceSourceText(selected),
     selected.playback_match ? playbackText(selected.playback_match) : "",
+    selected.resolved_url ? "已跟踪最终 URL" : "",
     contentDispositionHint(selected.headers?.["content-disposition"]),
     selected.content_length ? fmtBytes(selected.content_length) : ""
   ].filter(Boolean).join(" · ");

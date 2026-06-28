@@ -43,6 +43,7 @@ class ResourceCandidate(BaseModel):
     content_length: int | None = None
     initiator: str = ""
     time_stamp: float | None = None
+    resolved_url: str = ""
     headers: dict[str, str] = Field(default_factory=dict)
     request_headers: dict[str, str] = Field(default_factory=dict)
 
@@ -191,6 +192,7 @@ class DownloadAttempt(BaseModel):
     status_code: int | None = None
     content_length: int | None = None
     mime: str = ""
+    resolved_url: str = ""
 
 
 class TaskRecord(BaseModel):

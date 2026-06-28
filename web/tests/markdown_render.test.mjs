@@ -427,7 +427,8 @@ const taskOverviewHtml = context.taskOverview({
   selected_resource: {
     kind: "video",
     playback_match: "exact-src",
-    content_length: 1048576
+    content_length: 1048576,
+    resolved_url: "https://cdn.example.com/final.mp4?token=abc"
   },
   options: {
     frame_interval: 20,
@@ -449,6 +450,7 @@ assert.match(taskOverviewHtml, /\/api\/tasks\/task-web-overview\/exports\/media/
 assert.match(taskOverviewHtml, /\/api\/tasks\/task-web-overview\/exports\/diagnostics/);
 assert.match(taskOverviewHtml, /\/api\/tasks\/task-web-overview\/exports\/bundle/);
 assert.match(taskOverviewHtml, /已完成直取下载/);
+assert.match(taskOverviewHtml, /已跟踪最终 URL/);
 assert.doesNotMatch(taskOverviewHtml, /<script>bad/);
 assert.match(taskOverviewHtml, /&lt;script&gt;bad\(\)&lt;\/script&gt; 课程/);
 const fallbackTaskOverviewHtml = context.taskOverview({

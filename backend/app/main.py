@@ -282,6 +282,7 @@ def render_diagnostics_markdown(task: TaskRecord) -> str:
             f"- 类型：{selected.kind or '-'}",
             f"- 来源：{selected.source or '-'}",
             f"- URL：{selected.url or '-'}",
+            f"- 最终 URL：{selected.resolved_url or '-'}",
             f"- 播放匹配：{selected.playback_match or '-'}",
             f"- Blob：{selected.blob_url or '-'}",
             f"- Frame：{selected.frame_url or selected.frame_id or '-'}",
@@ -303,6 +304,7 @@ def render_diagnostics_markdown(task: TaskRecord) -> str:
             lines.extend([
                 f"### {index}. {attempt.strategy} · {attempt.status}",
                 f"- URL：{attempt.url or '-'}",
+                f"- 最终 URL：{attempt.resolved_url or '-'}",
                 f"- 类型：{attempt.kind or '-'}",
                 f"- 来源：{attempt.source or '-'}",
                 f"- 错误码：{attempt.code or '-'}",

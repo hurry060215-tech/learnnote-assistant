@@ -115,6 +115,19 @@ class ContentDispositionMediaHandler(QuietHandler):
         super().do_GET()
 
 
+class RedirectMediaHandler(QuietHandler):
+    media_name = "final.mp4"
+
+    def do_GET(self) -> None:
+        path = urlparse(self.path).path
+        if path == "/gate":
+            self.send_response(302)
+            self.send_header("Location", f"/{self.media_name}")
+            self.end_headers()
+            return
+        super().do_GET()
+
+
 @unittest.skipUnless(ffmpeg_bin(), "ffmpeg is required for downloader priority tests")
 class DownloaderPriorityTests(unittest.TestCase):
     def test_direct_browser_candidate_is_tried_before_page_resolver(self) -> None:
@@ -367,6 +380,66 @@ class DownloaderPriorityTests(unittest.TestCase):
                 self.assertEqual(selected.url, media_url)
                 self.assertEqual(RangeRecordingHandler.seen_ranges[0], "")
                 self.assertEqual(media_path.stat().st_size, video.stat().st_size)
+            finally:
+                server.shutdown()
+                server.server_close()
+
+    def test_direct_candidate_records_final_redirect_url(self) -> None:
+        ffmpeg = ffmpeg_bin()
+        assert ffmpeg is not None
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            video = root / RedirectMediaHandler.media_name
+            subprocess.run(
+                [
+                    ffmpeg,
+                    "-y",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "testsrc=duration=2:size=320x180:rate=10",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "sine=frequency=440:duration=2",
+                    "-shortest",
+                    "-pix_fmt",
+                    "yuv420p",
+                    str(video),
+                ],
+                check=True,
+            )
+            server = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(RedirectMediaHandler, directory=str(root)))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                gate_url = f"http://127.0.0.1:{server.server_port}/gate"
+                final_url = f"http://127.0.0.1:{server.server_port}/{video.name}"
+                downloader = MediaDownloader(root / "task")
+                media_path, selected = downloader.download(
+                    page_url=f"http://127.0.0.1:{server.server_port}/lesson.html",
+                    resources=[
+                        ResourceCandidate(
+                            url=gate_url,
+                            source="webRequest",
+                            kind="video",
+                            mime="video/mp4",
+                            score=100,
+                        )
+                    ],
+                    cookies=[],
+                    title="Redirect direct",
+                )
+                self.assertTrue(media_path.exists())
+                self.assertIsNotNone(selected)
+                self.assertEqual(selected.url, gate_url)
+                self.assertEqual(selected.resolved_url, final_url)
+                self.assertEqual(downloader.attempts[0].url, gate_url)
+                self.assertEqual(downloader.attempts[0].resolved_url, final_url)
+                self.assertIn("最终 URL", downloader.attempts[0].message)
             finally:
                 server.shutdown()
                 server.server_close()

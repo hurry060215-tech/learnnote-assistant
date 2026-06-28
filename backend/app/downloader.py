@@ -764,6 +764,9 @@ def _safe_download_response_headers(response: requests.Response) -> dict[str, st
 def _update_candidate_from_download_response(candidate: ResourceCandidate, response: requests.Response) -> None:
     candidate.status_code = response.status_code
     candidate.content_length = _response_content_length(response)
+    final_url = response.url or ""
+    if final_url and final_url != candidate.url:
+        candidate.resolved_url = final_url
     content_type = response.headers.get("content-type", "")
     if content_type:
         candidate.mime = content_type
@@ -1341,6 +1344,7 @@ class MediaDownloader:
             candidate.playback_match and f"播放匹配 {candidate.playback_match}",
             candidate.frame_id is not None and f"frame {candidate.frame_id}",
             candidate.status_code and f"HTTP {candidate.status_code}",
+            candidate.resolved_url and candidate.resolved_url != candidate.url and f"最终 URL {candidate.resolved_url}",
             candidate.mime and f"MIME {candidate.mime}",
             candidate.content_length and f"大小 {candidate.content_length}B",
         ]
@@ -1381,6 +1385,7 @@ class MediaDownloader:
                 status_code=candidate.status_code if candidate else None,
                 content_length=candidate.content_length if candidate else None,
                 mime=candidate.mime if candidate else "",
+                resolved_url=candidate.resolved_url if candidate else "",
             )
         )
 
