@@ -645,6 +645,30 @@ function sourceRouteInsightsHtml(source, task = null) {
   </div>`;
 }
 
+function sourceWorkflowActionsHtml(source, task = null) {
+  const actions = [];
+  if (source === "browser") {
+    if (task?.id && canContinueFromDownloadedMedia(task)) {
+      actions.push(["continue-media", "继续切片总结", task.id]);
+    }
+    actions.push(["refresh-browser", "刷新任务", ""]);
+    actions.push(["copy-backend", "复制后端地址", ""]);
+    actions.push(["switch-local", "本地兜底", ""]);
+  } else if (source === "local") {
+    actions.push(["choose-local", "选择文件", ""]);
+    actions.push(["upload-local", "上传并生成", ""]);
+    actions.push(["open-options", "处理参数", ""]);
+  } else {
+    actions.push(["focus-url", "填写链接", ""]);
+    actions.push(["preflight-url", "预检链接", ""]);
+    actions.push(["start-url", "生成笔记", ""]);
+    actions.push(["download-url", "只下载", ""]);
+  }
+  return `<div class="source-workflow-actions" aria-label="下一步操作">
+    ${actions.map(([action, label, taskId]) => `<button type="button" data-source-workflow-action="${escapeHtml(action)}"${taskId ? ` data-task-id="${escapeHtml(taskId)}"` : ""}>${escapeHtml(label)}</button>`).join("")}
+  </div>`;
+}
+
 function sourceWorkflowHtml(source = selectedSource, task = workflowTaskForSource(source)) {
   const config = workflowSourceConfig(source, task);
   const state = task ? statusText(task) : "等待开始";
@@ -662,6 +686,7 @@ function sourceWorkflowHtml(source = selectedSource, task = workflowTaskForSourc
       </li>`).join("")}
     </ol>
     ${sourceRouteInsightsHtml(source, task)}
+    ${sourceWorkflowActionsHtml(source, task)}
     <footer>
       <span>${escapeHtml(state)}</span>
       ${task ? `<button type="button" data-select-workflow-task="${escapeHtml(task.id)}">查看最近任务</button>` : `<em>选择入口后开始处理</em>`}
@@ -2248,13 +2273,68 @@ els.sourceTabs.forEach(tab => {
 });
 
 if (els.sourceWorkflow) {
-  els.sourceWorkflow.addEventListener("click", event => {
+  els.sourceWorkflow.addEventListener("click", async event => {
     const button = event.target.closest("[data-select-workflow-task]");
-    if (!button) return;
-    selectTask(button.dataset.selectWorkflowTask);
-    renderTasks();
-    renderDetail();
-    focusResultPanelOnMobile();
+    if (button) {
+      selectTask(button.dataset.selectWorkflowTask);
+      renderTasks();
+      await renderDetail();
+      focusResultPanelOnMobile();
+      return;
+    }
+    const actionButton = event.target.closest("[data-source-workflow-action]");
+    if (!actionButton) return;
+    const action = actionButton.dataset.sourceWorkflowAction;
+    if (action === "continue-media" && actionButton.dataset.taskId) {
+      await rerunTaskFromMedia(actionButton.dataset.taskId);
+      return;
+    }
+    if (action === "refresh-browser") {
+      actionButton.disabled = true;
+      try {
+        await loadTasks();
+      } finally {
+        actionButton.disabled = false;
+      }
+      return;
+    }
+    if (action === "copy-backend") {
+      await copyBackendUrl(actionButton);
+      return;
+    }
+    if (action === "switch-local") {
+      setSource("local");
+      els.fileInput?.focus?.();
+      return;
+    }
+    if (action === "choose-local") {
+      els.fileInput?.click?.();
+      return;
+    }
+    if (action === "upload-local") {
+      await uploadSelectedFile();
+      return;
+    }
+    if (action === "open-options") {
+      if (els.optionsDisclosure) els.optionsDisclosure.open = true;
+      els.optionsDisclosure?.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
+      return;
+    }
+    if (action === "focus-url") {
+      els.urlInput?.focus?.();
+      return;
+    }
+    if (action === "preflight-url") {
+      await preflightUrlTask();
+      return;
+    }
+    if (action === "start-url") {
+      await startUrlTask("video");
+      return;
+    }
+    if (action === "download-url") {
+      await startUrlTask("download_only");
+    }
   });
 }
 

@@ -895,6 +895,10 @@ assert.match(browserWorkflowHtml, /source-route-insights/);
 assert.match(browserWorkflowHtml, /浏览器证据/);
 assert.match(browserWorkflowHtml, /ffmpeg 合并|页面接口|候选资源|HLS|hls/);
 assert.match(browserWorkflowHtml, /不录制、不刷课、不绕过 DRM/);
+assert.match(browserWorkflowHtml, /source-workflow-actions/);
+assert.match(browserWorkflowHtml, /data-source-workflow-action="refresh-browser"/);
+assert.match(browserWorkflowHtml, /data-source-workflow-action="copy-backend"/);
+assert.match(browserWorkflowHtml, /data-source-workflow-action="switch-local"/);
 assert.match(browserWorkflowHtml, /class="active"/);
 assert.match(browserWorkflowHtml, /data-select-workflow-task="task-workflow-browser"/);
 
@@ -903,6 +907,8 @@ assert.match(localWorkflowHtml, /本地视频/);
 assert.match(localWorkflowHtml, /导入文件/);
 assert.match(localWorkflowHtml, /本地文件直进管线/);
 assert.match(localWorkflowHtml, /平台不暴露 URL 时兜底/);
+assert.match(localWorkflowHtml, /data-source-workflow-action="choose-local"/);
+assert.match(localWorkflowHtml, /data-source-workflow-action="upload-local"/);
 assert.match(localWorkflowHtml, /选择入口后开始处理/);
 
 const urlWorkflowHtml = context.sourceWorkflowHtml("url", {
@@ -919,6 +925,9 @@ const urlWorkflowHtml = context.sourceWorkflowHtml("url", {
 assert.match(urlWorkflowHtml, /链接解析/);
 assert.match(urlWorkflowHtml, /2 次下载尝试/);
 assert.match(urlWorkflowHtml, /2 个视觉窗口/);
+assert.match(urlWorkflowHtml, /data-source-workflow-action="preflight-url"/);
+assert.match(urlWorkflowHtml, /data-source-workflow-action="start-url"/);
+assert.match(urlWorkflowHtml, /data-source-workflow-action="download-url"/);
 
 const failedWorkflowHtml = context.sourceWorkflowHtml("browser", {
   id: "task-workflow-failed",
