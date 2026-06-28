@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 
+from .config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
 from .downloader import DownloadError, MediaDownloader, effective_resource_kind, infer_manifest_url_from_fragment
 from .media import build_frame_grids, extract_audio, extract_frames, normalize_video
 from .models import BrowserSubtitleCue, CurrentPageTaskRequest, DownloadAttempt, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
@@ -241,8 +242,9 @@ def build_summary_diagnostics(
         "summary_source": summary_source,
         "summary_warning": summary_warning,
         "visual_understanding": bool(options.visual_understanding),
-        "llm_model": options.llm_model or "",
-        "llm_base_url": options.llm_base_url or "",
+        "vision_model_configured": bool(options.llm_api_key or LLM_API_KEY),
+        "llm_model": options.llm_model or LLM_MODEL,
+        "llm_base_url": options.llm_base_url or LLM_BASE_URL,
         "note_style": options.note_style,
         "summary_depth": options.summary_depth,
         "frame_grid_count": len(grids),

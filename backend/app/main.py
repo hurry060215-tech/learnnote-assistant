@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from .config import DATA_DIR, STATIC_DIR, UPLOAD_DIR, WEB_DIR, ensure_dirs
+from .config import DATA_DIR, LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, STATIC_DIR, UPLOAD_DIR, WEB_DIR, ensure_dirs
 from .downloader import preflight_media_resource
 from .media import probe_duration
 from .models import CurrentPageTaskRequest, MediaPreflightRequest, TaskOptions, TaskRecord
@@ -416,6 +416,9 @@ def health() -> dict:
         "duration_probe": duration_probe,
         "duration_probe_available": bool(duration_probe),
         "ffprobe_optional": bool(ffmpeg and not ffprobe),
+        "vision_model_configured": bool(LLM_API_KEY),
+        "default_llm_model": LLM_MODEL,
+        "default_llm_base_url": LLM_BASE_URL,
     }
 
 

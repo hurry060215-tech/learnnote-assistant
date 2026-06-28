@@ -24,6 +24,7 @@ let isCollectingContext = false;
 let pendingContextRefresh = false;
 let currentTabId = null;
 let taskHistory = [];
+let lastHealthData = null;
 
 const els = {
   backendStatus: document.querySelector("#backendStatus"),
@@ -1848,13 +1849,40 @@ async function runSidePanelIntent(intent) {
   await startTask("video");
 }
 
+function healthVisionReady(data) {
+  return Boolean(data?.vision_model_configured || els.llmApiKey?.value?.trim());
+}
+
+function healthVisionModel(data) {
+  return els.llmModel?.value?.trim() || data?.default_llm_model || "gpt-4.1-mini";
+}
+
+function healthVisionText(data) {
+  const model = healthVisionModel(data);
+  if (healthVisionReady(data)) {
+    return `视觉模型已配置（${model}），切片网格会随字幕进入图文总结。`;
+  }
+  return "未配置视觉模型 API Key：仍会生成字幕、切片网格和本地图文索引；填写 Key 后才会把画面送入视觉模型。";
+}
+
+function updateHealthVisionStatus(data = lastHealthData) {
+  if (!data || !els.backendStatus) return;
+  const label = healthVisionReady(data) ? "视觉API已配置" : "视觉API待填Key";
+  els.backendStatus.title = healthVisionText(data);
+  if (data.ffmpeg && !els.backendStatus.textContent.includes(label)) {
+    els.backendStatus.textContent = `${els.backendStatus.textContent} · ${label}`;
+  }
+}
+
 async function health() {
   try {
     const data = await fetch(`${backendUrl}/health`).then(r => r.json());
+    lastHealthData = data;
     els.backendStatus.textContent = data.ffmpeg
       ? data.ffprobe_optional ? "后端可用 · ffprobe 可选" : "本地后端可用"
       : "ffmpeg 缺失";
     els.backendStatus.style.color = data.ffmpeg ? "#159947" : "#c27803";
+    updateHealthVisionStatus(data);
   } catch {
     els.backendStatus.textContent = "后端未连接";
     els.backendStatus.style.color = "#d92d20";
@@ -3228,6 +3256,8 @@ els.openWebButton.onclick = () => {
   openWorkbench();
 };
 els.settingsButton.onclick = saveSettings;
+els.llmModel?.addEventListener("input", () => updateHealthVisionStatus());
+els.llmApiKey?.addEventListener("input", () => updateHealthVisionStatus());
 
 if (HAS_EXTENSION_API && chrome.runtime.onMessage?.addListener) {
   chrome.runtime.onMessage.addListener(message => {

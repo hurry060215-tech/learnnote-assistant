@@ -17,6 +17,7 @@ let taskQuery = "";
 let taskStatusFilter = "all";
 let urlPreflightResourceUrl = "";
 let urlPreflightResult = null;
+let lastHealthData = null;
 
 const els = {
   health: document.querySelector("#health"),
@@ -88,7 +89,12 @@ async function fetchJson(url, options = {}) {
   if (contentType && !contentType.includes("application/json")) {
     throw new Error(`Expected JSON from ${url}`);
   }
-  return response.json();
+  const payload = await response.json();
+  if (String(url).endsWith("/health")) {
+    lastHealthData = payload;
+    setTimeout(() => updateHealthVisionStatus(payload), 0);
+  }
+  return payload;
 }
 
 function currentUrlSearchText() {
@@ -1159,6 +1165,31 @@ function syncTranscriberModelDefault(force = false) {
     els.whisperModel.value = "whisper-1";
   } else if (transcriber === "groq" && (force || LOCAL_ASR_MODELS.has(model))) {
     els.whisperModel.value = "whisper-large-v3";
+  }
+}
+
+function healthVisionReady(data) {
+  return Boolean(data?.vision_model_configured || els.llmApiKey?.value?.trim());
+}
+
+function healthVisionModel(data) {
+  return els.llmModel?.value?.trim() || data?.default_llm_model || "gpt-4.1-mini";
+}
+
+function healthVisionText(data) {
+  const model = healthVisionModel(data);
+  if (healthVisionReady(data)) {
+    return `视觉模型已配置（${model}），切片网格会随字幕进入图文总结。`;
+  }
+  return "未配置视觉模型 API Key：仍会生成字幕、切片网格和本地图文索引；填写 Key 后才会把画面送入视觉模型。";
+}
+
+function updateHealthVisionStatus(data = lastHealthData) {
+  if (!data || !els.browserBridgeStatus) return;
+  const text = healthVisionText(data);
+  els.browserBridgeStatus.title = text;
+  if (data.ffmpeg && !els.browserBridgeStatus.textContent.includes(text)) {
+    els.browserBridgeStatus.textContent = `${els.browserBridgeStatus.textContent} ${text}`.trim();
   }
 }
 
@@ -2797,6 +2828,9 @@ els.fileInput.onchange = () => {
   els.fileName.textContent = els.fileInput.files?.[0]?.name || "mp4 / flv / avi / webm / mov / mkv";
   setSource("local");
 };
+
+els.llmModel?.addEventListener("input", () => updateHealthVisionStatus());
+els.llmApiKey?.addEventListener("input", () => updateHealthVisionStatus());
 
 initializeResponsiveChrome();
 initializeWorkspaceView();

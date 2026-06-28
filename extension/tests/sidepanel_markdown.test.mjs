@@ -41,7 +41,7 @@ const context = {
   fetch: async url => {
     const value = String(url);
     if (value.endsWith("/health")) {
-      return { json: async () => ({ ffmpeg: true, ffprobe: false, ffprobe_optional: true, duration_probe: "ffmpeg" }) };
+      return { json: async () => ({ ffmpeg: true, ffprobe: false, ffprobe_optional: true, duration_probe: "ffmpeg", vision_model_configured: true, default_llm_model: "gpt-4.1-mini" }) };
     }
     if (value.endsWith("/api/tasks")) {
       return { json: async () => ({ tasks: [] }) };
@@ -58,6 +58,8 @@ const sidepanelCode = await readFile(new URL("../sidepanel.js", import.meta.url)
 vm.runInContext(sidepanelCode, context);
 await new Promise(resolve => setTimeout(resolve, 0));
 assert.match(elements.get("#backendStatus").textContent, /ffprobe/);
+assert.match(elements.get("#backendStatus").textContent, /视觉API/);
+assert.match(elements.get("#backendStatus").title, /视觉模型/);
 
 const html = context.markdownToHtml(`# 标题
 

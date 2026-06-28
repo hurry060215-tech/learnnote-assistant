@@ -52,6 +52,10 @@ class LocalUploadValidationTests(unittest.TestCase):
         payload = response.json()
         self.assertIn("duration_probe_available", payload)
         self.assertEqual(payload["duration_probe_available"], bool(payload["duration_probe"]))
+        self.assertIn("vision_model_configured", payload)
+        self.assertIsInstance(payload["vision_model_configured"], bool)
+        self.assertTrue(payload["default_llm_model"])
+        self.assertTrue(payload["default_llm_base_url"])
         if payload["ffmpeg"] and not payload["ffprobe"]:
             self.assertTrue(payload["ffprobe_optional"])
             self.assertEqual(payload["duration_probe"], "ffmpeg")
