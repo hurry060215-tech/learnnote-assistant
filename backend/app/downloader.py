@@ -65,6 +65,7 @@ SUBTITLE_LANGUAGE_PREFERENCES = ("zh-CN", "zh-Hans", "zh-Hant", "zh", "en", "en-
 BROWSER_REQUEST_HEADER_ALLOWLIST = {
     "accept": "Accept",
     "accept-language": "Accept-Language",
+    "content-type": "Content-Type",
     "origin": "Origin",
     "referer": "Referer",
     "sec-ch-ua": "Sec-CH-UA",
@@ -97,6 +98,8 @@ YTDLP_HTTP_HEADER_ORDER = (
     "Sec-Fetch-Site",
     "X-Requested-With",
 )
+REQUEST_BODY_REPLAY_METHODS = {"POST", "PUT", "PATCH"}
+MAX_REPLAY_BODY_BYTES = 64 * 1024
 
 
 class DownloadError(RuntimeError):
@@ -812,6 +815,22 @@ def _safe_download_response_headers(response: requests.Response) -> dict[str, st
     return headers
 
 
+def request_body_for_candidate(candidate: ResourceCandidate | None) -> tuple[str, bytes | None]:
+    if not candidate:
+        return "GET", None
+    method = str(candidate.method or "GET").upper()
+    if method not in REQUEST_BODY_REPLAY_METHODS:
+        return "GET", None
+    body = candidate.request_body or {}
+    content = str(body.get("content") or "")
+    if not content:
+        return "GET", None
+    encoded = content.encode("utf-8")
+    if len(encoded) > MAX_REPLAY_BODY_BYTES:
+        return "GET", None
+    return method, encoded
+
+
 def _update_candidate_from_download_response(candidate: ResourceCandidate, response: requests.Response) -> None:
     candidate.status_code = response.status_code
     candidate.content_length = _response_content_length(response)
@@ -875,6 +894,7 @@ def _embedded_media_candidates_from_text_response(
 
     inherited_headers = browser_request_headers_for_candidate(parent)
     inherited_headers.setdefault("Referer", referer or base_url)
+    inherited_headers.pop("Content-Type", None)
     skipped_urls = {parent.url, parent.resolved_url or ""}
     dedup: dict[str, ResourceCandidate] = {}
     for item in resources:
@@ -936,6 +956,7 @@ def preflight_media_resource(
 
     strategy = "manifest-probe" if kind in {"hls", "dash"} else "direct-file-probe"
     base_headers = download_headers_for_candidate(candidate, cookies, referer, url=resolved_url)
+    request_method, request_body = request_body_for_candidate(candidate)
     if kind == "video":
         base_headers.setdefault("Accept", "*/*")
     elif kind == "hls":
@@ -946,7 +967,15 @@ def preflight_media_resource(
     def probe_once(headers: dict[str, str], attempt_warnings: list[str]) -> MediaPreflightResult:
         probe_kind = kind
         probe_strategy = strategy
-        with requests.get(resolved_url, headers=headers, stream=True, timeout=timeout, allow_redirects=True) as response:
+        with requests.request(
+            request_method,
+            resolved_url,
+            headers=headers,
+            data=request_body,
+            stream=True,
+            timeout=timeout,
+            allow_redirects=True,
+        ) as response:
             body = _read_probe_bytes(response)
             content_type = response.headers.get("content-type", "")
             content_disposition = response.headers.get("content-disposition", "")
@@ -1071,7 +1100,7 @@ def preflight_media_resource(
             )
 
     probe_variants: list[tuple[dict[str, str], list[str]]] = []
-    if kind == "video":
+    if kind == "video" and request_body is None:
         bounded = dict(base_headers)
         bounded["Range"] = "bytes=0-4095"
         open_ended = dict(base_headers)
@@ -1727,9 +1756,10 @@ class MediaDownloader:
     def _download_file(self, candidate: ResourceCandidate, cookies: list[BrowserCookie], referer: str, title: str) -> Path:
         url = candidate.resolved_url or candidate.url
         base_headers = download_headers_for_candidate(candidate, cookies, referer, url=url)
+        request_method, request_body = request_body_for_candidate(candidate)
 
         def attempt(headers: dict[str, str]) -> Path:
-            with requests.get(url, headers=headers, stream=True, timeout=30) as response:
+            with requests.request(request_method, url, headers=headers, data=request_body, stream=True, timeout=30) as response:
                 _update_candidate_from_download_response(candidate, response)
                 if response.status_code in {401, 403}:
                     raise DownloadError("auth_required", f"媒体资源返回 HTTP {response.status_code}。")
@@ -1784,6 +1814,8 @@ class MediaDownloader:
             candidate.mime = detected.mime
             return self._download_manifest(candidate, cookies, referer, title)
         except DownloadError as first_error:
+            if request_body is not None:
+                raise first_error
             range_headers = dict(base_headers)
             range_headers["Range"] = "bytes=0-"
             try:

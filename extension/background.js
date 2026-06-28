@@ -5,10 +5,13 @@ const LOCAL_EXPORT_RE = /^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?\/api\/t
 const resourceByTab = new Map();
 const pageStateByTab = new Map();
 const requestHeadersByRequestId = new Map();
+const requestBodiesByRequestId = new Map();
 const contextUpdateTimers = new Map();
+const MAX_REQUEST_BODY_BYTES = 64 * 1024;
 const REQUEST_HEADER_ALLOWLIST = new Set([
   "accept",
   "accept-language",
+  "content-type",
   "origin",
   "range",
   "referer",
@@ -25,6 +28,7 @@ const RESPONSE_HEADER_ALLOWLIST = new Set(["accept-ranges", "content-disposition
 const REQUEST_HEADER_CANONICAL = {
   "accept": "Accept",
   "accept-language": "Accept-Language",
+  "content-type": "Content-Type",
   "origin": "Origin",
   "range": "Range",
   "referer": "Referer",
@@ -108,6 +112,13 @@ function looksLikeLargeBinaryMediaEndpoint(details = {}, mime = "", responseHead
   return responseContentLength(responseHeaders) >= 1024 * 1024;
 }
 
+function looksLikeTextPlayEndpoint(details = {}, mime = "") {
+  const type = String(details.type || "").toLowerCase();
+  if (!/^(xmlhttprequest|fetch)$/.test(type)) return false;
+  if (!/json|text|javascript|xml/i.test(String(mime || ""))) return false;
+  return /m3u8|mpd|video|media|stream|hls|dash|manifest|playlist|master|playback|player|\/play(?:[/?#]|$)/i.test(details.url || "");
+}
+
 function classifyCompletedRequest(details = {}, mime = "", requestHeaders = {}, responseHeaders = {}) {
   const kind = classify(details.url || "", mime);
   if (kind !== "unknown") return kind;
@@ -119,6 +130,7 @@ function classifyCompletedRequest(details = {}, mime = "", requestHeaders = {}, 
   if ((type === "xmlhttprequest" || type === "fetch") && binaryMime && hasRangeEvidence(requestHeaders, responseHeaders)) {
     return "video";
   }
+  if (looksLikeTextPlayEndpoint(details, mime)) return "video";
   if (looksLikeLargeBinaryMediaEndpoint(details, mime, responseHeaders)) return "video";
   return "unknown";
 }
@@ -307,6 +319,7 @@ function mergeResource(previous, incoming) {
   merged.page_url = incoming.page_url || previous.page_url || "";
   merged.headers = { ...(previous.headers || {}), ...(incoming.headers || {}) };
   merged.request_headers = { ...(previous.request_headers || {}), ...(incoming.request_headers || {}) };
+  merged.request_body = { ...(previous.request_body || {}), ...(incoming.request_body || {}) };
   merged.current_time = incoming.current_time ?? previous.current_time ?? null;
   merged.duration = incoming.duration ?? previous.duration ?? null;
   merged.width = incoming.width ?? previous.width ?? null;
@@ -377,6 +390,65 @@ function rememberRequestHeaders(details) {
   for (const [requestId] of oldest) requestHeadersByRequestId.delete(requestId);
 }
 
+function trimRequestContextCaches() {
+  if (requestHeadersByRequestId.size > 300) {
+    const oldest = [...requestHeadersByRequestId.entries()].sort((a, b) => a[1].time - b[1].time).slice(0, 60);
+    for (const [requestId] of oldest) requestHeadersByRequestId.delete(requestId);
+  }
+  if (requestBodiesByRequestId.size > 300) {
+    const oldest = [...requestBodiesByRequestId.entries()].sort((a, b) => a[1].time - b[1].time).slice(0, 60);
+    for (const [requestId] of oldest) requestBodiesByRequestId.delete(requestId);
+  }
+}
+
+function requestBodyFromFormData(formData = {}) {
+  const params = new URLSearchParams();
+  for (const [name, values] of Object.entries(formData || {})) {
+    for (const value of Array.isArray(values) ? values : [values]) {
+      params.append(name, String(value ?? ""));
+      if (params.toString().length > MAX_REQUEST_BODY_BYTES) return null;
+    }
+  }
+  const content = params.toString();
+  return content ? { type: "form", content } : null;
+}
+
+function requestBodyFromRaw(raw = []) {
+  const chunks = [];
+  let total = 0;
+  for (const part of raw || []) {
+    if (!part?.bytes) continue;
+    const bytes = new Uint8Array(part.bytes);
+    total += bytes.byteLength;
+    if (total > MAX_REQUEST_BODY_BYTES) return null;
+    chunks.push(bytes);
+  }
+  if (!chunks.length) return null;
+  const merged = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  if (merged.some(byte => byte === 0)) return null;
+  const content = new TextDecoder("utf-8", { fatal: false }).decode(merged).trim();
+  if (!content || /[\u0000-\u0008\u000e-\u001f]/.test(content)) return null;
+  return { type: "text", content };
+}
+
+function rememberRequestBody(details = {}) {
+  if (!details?.requestId || !looksLikeMediaRequest(details)) return;
+  const method = String(details.method || "").toUpperCase();
+  if (!["POST", "PUT", "PATCH"].includes(method)) return;
+  const body = requestBodyFromFormData(details.requestBody?.formData) || requestBodyFromRaw(details.requestBody?.raw);
+  if (!body?.content) return;
+  requestBodiesByRequestId.set(details.requestId, {
+    body,
+    time: Date.now()
+  });
+  trimRequestContextCaches();
+}
+
 function takeRequestHeaders(requestId) {
   const entry = requestHeadersByRequestId.get(requestId);
   requestHeadersByRequestId.delete(requestId);
@@ -385,6 +457,17 @@ function takeRequestHeaders(requestId) {
 
 function peekRequestHeaders(requestId) {
   return requestHeadersByRequestId.get(requestId)?.headers || {};
+}
+
+function peekRequestBody(requestId) {
+  return requestBodiesByRequestId.get(requestId)?.body || {};
+}
+
+function takeRequestContext(requestId) {
+  const headers = takeRequestHeaders(requestId);
+  const body = peekRequestBody(requestId);
+  requestBodiesByRequestId.delete(requestId);
+  return { headers, body };
 }
 
 function frameStates(tabId) {
@@ -545,7 +628,8 @@ function addResource(tabId, resource, notify = true) {
     initiator: resource.initiator || "",
     time_stamp: resource.time_stamp ?? null,
     headers: resource.headers || {},
-    request_headers: resource.request_headers || {}
+    request_headers: resource.request_headers || {},
+    request_body: resource.request_body || {}
   };
   if (existing) {
     Object.assign(existing, normalized, {
@@ -567,7 +651,8 @@ function addResource(tabId, resource, notify = true) {
       initiator: normalized.initiator || existing.initiator || "",
       time_stamp: normalized.time_stamp ?? existing.time_stamp ?? null,
       headers: { ...(existing.headers || {}), ...(normalized.headers || {}) },
-      request_headers: { ...(existing.request_headers || {}), ...(normalized.request_headers || {}) }
+      request_headers: { ...(existing.request_headers || {}), ...(normalized.request_headers || {}) },
+      request_body: { ...(existing.request_body || {}), ...(normalized.request_body || {}) }
     });
   } else {
     list.unshift(normalized);
@@ -615,6 +700,14 @@ function registerBeforeSendHeadersListener(options) {
   );
 }
 
+if (chrome.webRequest.onBeforeRequest?.addListener) {
+  chrome.webRequest.onBeforeRequest.addListener(
+    rememberRequestBody,
+    { urls: ["<all_urls>"] },
+    ["requestBody"]
+  );
+}
+
 try {
   registerBeforeSendHeadersListener(["requestHeaders", "extraHeaders"]);
 } catch {
@@ -643,7 +736,7 @@ function responseResolvedUrl(url = "", headers = {}) {
   }
 }
 
-function recordResponseMedia(details = {}, requestHeaders = {}) {
+function recordResponseMedia(details = {}, requestHeaders = {}, requestBody = peekRequestBody(details.requestId)) {
   const headers = responseHeadersObject(details.responseHeaders || []);
   const mime = headers["content-type"] || "";
   const kind = classifyCompletedRequest(details, mime, requestHeaders, headers);
@@ -667,11 +760,12 @@ function recordResponseMedia(details = {}, requestHeaders = {}) {
     page_url: details.documentUrl || details.initiator || "",
     time_stamp: details.timeStamp || Date.now(),
     request_headers: requestHeaders,
+    request_body: requestBody || {},
     label: kind.toUpperCase()
   });
 }
 
-function recordRedirectMedia(details = {}, requestHeaders = {}) {
+function recordRedirectMedia(details = {}, requestHeaders = {}, requestBody = peekRequestBody(details.requestId)) {
   const headers = responseHeadersObject(details.responseHeaders || []);
   const redirectUrl = details.redirectUrl || responseResolvedUrl(details.url || "", headers);
   if (redirectUrl && !headers.location) headers.location = redirectUrl;
@@ -698,13 +792,14 @@ function recordRedirectMedia(details = {}, requestHeaders = {}) {
     page_url: details.documentUrl || details.initiator || "",
     time_stamp: details.timeStamp || Date.now(),
     request_headers: requestHeaders,
+    request_body: requestBody || {},
     label: `${kind.toUpperCase()} redirect`
   });
 }
 
 function registerHeadersReceivedListener(options) {
   chrome.webRequest.onHeadersReceived.addListener(
-    details => recordResponseMedia(details, peekRequestHeaders(details.requestId)),
+    details => recordResponseMedia(details, peekRequestHeaders(details.requestId), peekRequestBody(details.requestId)),
     { urls: ["<all_urls>"] },
     options
   );
@@ -718,7 +813,7 @@ try {
 
 function registerBeforeRedirectListener(options) {
   chrome.webRequest.onBeforeRedirect.addListener(
-    details => recordRedirectMedia(details, peekRequestHeaders(details.requestId)),
+    details => recordRedirectMedia(details, peekRequestHeaders(details.requestId), peekRequestBody(details.requestId)),
     { urls: ["<all_urls>"] },
     options
   );
@@ -731,13 +826,16 @@ try {
 }
 
 chrome.webRequest.onCompleted.addListener(
-  details => recordResponseMedia(details, takeRequestHeaders(details.requestId)),
+  details => {
+    const context = takeRequestContext(details.requestId);
+    recordResponseMedia(details, context.headers, context.body);
+  },
   { urls: ["<all_urls>"] },
   ["responseHeaders"]
 );
 
 chrome.webRequest.onErrorOccurred.addListener(
-  details => takeRequestHeaders(details.requestId),
+  details => takeRequestContext(details.requestId),
   { urls: ["<all_urls>"] }
 );
 

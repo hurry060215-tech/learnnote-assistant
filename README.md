@@ -27,6 +27,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - Cookie handoff from the current browser session to the local backend at task start.
 - Cookie handoff includes the top page, active media URL, player iframe URLs, candidate page/frame URLs, initiator, Referer, and Origin domains so iframe-based course players keep their browser session context.
 - Non-sensitive browser request headers such as `Referer`, `Origin`, `User-Agent`, `Accept`, `Accept-Language`, `Sec-Fetch-*`, `Sec-CH-UA*`, and `X-Requested-With` are captured for media candidates and reused by backend downloads.
+- Bounded text/form POST bodies from recent playback-related XHR/fetch requests are kept in extension memory and handed to the backend only with the selected task, letting JSON play APIs be replayed locally to resolve the real media URL.
 - Local FastAPI backend on `127.0.0.1:8765`.
 - Download order: selected browser/media candidate first, then yt-dlp page resolver fallback with the current browser session's cookie file and safe request headers.
 - Download diagnostics: every task records the direct-file, manifest-ffmpeg, skipped blob/fragment, and yt-dlp attempts with status, HTTP code, content length, output file, and failure reason.
@@ -52,6 +53,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - Dynamic SPA video detection through MutationObserver, media event binding, periodic rescans, and PerformanceObserver resource updates.
 - Cookie collection at task start for the page URL and detected media URLs.
 - Browser-context download replay: direct media, subtitles, ffmpeg HLS/DASH merges, and yt-dlp page fallback reuse safe request headers plus the task-start cookie jar where applicable. Captured `Cookie` and `Authorization` headers are never replayed from request metadata; cookies are synced only through the explicit task/preflight handoff.
+- POST playback API replay: when the browser reaches a `/play`/`stream` JSON endpoint through a text or form POST, the extension can hand its bounded request body to the backend so preflight/download resolves the embedded mp4/FLV/m3u8/mpd URL instead of retrying the endpoint as a plain GET.
 - Browser-context preflight: selected mp4/FLV/HLS/DASH candidates can be checked with a small local backend probe before the full download. The result reports strategy, HTTP status, MIME type, content length, bytes checked, safe request-header names, and structured failure codes.
 - Side Panel task start now preflights ranked direct-download candidates in order and automatically switches to the first reachable mp4/FLV/HLS/DASH resource, so a stale or forbidden top candidate does not stop the workflow when another visible media URL works.
 - Side Panel also has a download-only current-page action: it uses the same preflight, cookie handoff, direct downloader, manifest merge, and yt-dlp fallback, then saves an exportable local `media.mp4` without transcription, slicing, or summarization.

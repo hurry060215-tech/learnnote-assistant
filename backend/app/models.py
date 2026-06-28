@@ -46,6 +46,7 @@ class ResourceCandidate(BaseModel):
     resolved_url: str = ""
     headers: dict[str, str] = Field(default_factory=dict)
     request_headers: dict[str, str] = Field(default_factory=dict)
+    request_body: dict[str, str] = Field(default_factory=dict)
 
 
 class DrmSignal(BaseModel):

@@ -438,6 +438,7 @@ class ResourceDetectionTests(unittest.TestCase):
             kind="video",
             headers={"content-type": "video/mp4", "set-cookie": "bad=1"},
             request_headers={"Referer": "https://course.example.com/lesson?token=secret", "User-Agent": "Chrome Test UA"},
+            request_body={"type": "form", "content": "lesson=42&token=secret"},
         )
         request = CurrentPageTaskRequest(
             page_url="https://course.example.com/lesson",
@@ -450,10 +451,12 @@ class ResourceDetectionTests(unittest.TestCase):
         self.assertEqual(data["cookies"][0]["value"], "<redacted>")
         self.assertEqual(data["resources"][0]["request_headers"]["Referer"], "<redacted>")
         self.assertEqual(data["resources"][0]["request_headers"]["User-Agent"], "<redacted>")
+        self.assertEqual(data["resources"][0]["request_body"]["content"], "<redacted>")
         self.assertEqual(data["resources"][0]["headers"], {"content-type": "video/mp4"})
 
         selected = redacted_resource(resource)
         self.assertEqual(selected.request_headers["Referer"], "<redacted>")
+        self.assertEqual(selected.request_body["content"], "<redacted>")
         self.assertEqual(selected.headers, {"content-type": "video/mp4"})
 
     def test_llm_api_key_is_not_persisted_in_task_or_request_snapshot(self) -> None:

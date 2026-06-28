@@ -10,9 +10,11 @@ const context = {
   console,
   Date,
   URL,
+  URLSearchParams,
   chrome: {
     webRequest: {
       onBeforeSendHeaders: listener(),
+      onBeforeRequest: listener(),
       onHeadersReceived: listener(),
       onBeforeRedirect: listener(),
       onCompleted: listener(),
@@ -41,6 +43,7 @@ const headers = context.normalizeRequestHeaders([
   { name: "Origin", value: "https://course.example.com" },
   { name: "User-Agent", value: "Chrome Test UA" },
   { name: "Accept-Language", value: "zh-CN,zh;q=0.9" },
+  { name: "Content-Type", value: "application/x-www-form-urlencoded" },
   { name: "Range", value: "bytes=0-" },
   { name: "Sec-Fetch-Dest", value: "video" },
   { name: "Sec-Fetch-Mode", value: "no-cors" },
@@ -57,6 +60,7 @@ assert.equal(headers.Referer, "https://course.example.com/lesson X-Bad: nope");
 assert.equal(headers.Origin, "https://course.example.com");
 assert.equal(headers["User-Agent"], "Chrome Test UA");
 assert.equal(headers["Accept-Language"], "zh-CN,zh;q=0.9");
+assert.equal(headers["Content-Type"], "application/x-www-form-urlencoded");
 assert.equal(headers.Range, "bytes=0-");
 assert.equal(headers["Sec-Fetch-Dest"], "video");
 assert.equal(headers["Sec-Fetch-Mode"], "no-cors");
@@ -208,6 +212,54 @@ assert.equal(apiPlayResources[0].request_headers["User-Agent"], "Chrome Playback
 assert.equal(apiPlayResources[0].headers.location, "https://media.example.net/redirected/master.m3u8");
 assert.equal(apiPlayResources[0].headers["content-location"], "/relative/master.m3u8");
 assert.equal(apiPlayResources[0].resolved_url, "https://media.example.net/redirected/master.m3u8");
+
+context.rememberRequestBody({
+  requestId: "post-json-play-api",
+  url: "https://course.example.com/api/play",
+  type: "xmlhttprequest",
+  method: "POST",
+  requestBody: {
+    formData: {
+      lesson: ["42"],
+      token: ["ok"]
+    }
+  }
+});
+context.rememberRequestHeaders({
+  requestId: "post-json-play-api",
+  url: "https://course.example.com/api/play",
+  type: "xmlhttprequest",
+  method: "POST",
+  requestHeaders: [
+    { name: "Referer", value: "https://course.example.com/lesson" },
+    { name: "Origin", value: "https://course.example.com" },
+    { name: "User-Agent", value: "Chrome Playback UA" },
+    { name: "Content-Type", value: "application/x-www-form-urlencoded" },
+    { name: "X-Requested-With", value: "XMLHttpRequest" }
+  ]
+});
+context.recordResponseMedia({
+  requestId: "post-json-play-api",
+  tabId: 164,
+  url: "https://course.example.com/api/play",
+  type: "xmlhttprequest",
+  method: "POST",
+  statusCode: 200,
+  frameId: 0,
+  documentUrl: "https://course.example.com/lesson",
+  initiator: "https://course.example.com",
+  timeStamp: Date.now(),
+  responseHeaders: [
+    { name: "Content-Type", value: "application/json" }
+  ]
+}, context.peekRequestHeaders("post-json-play-api"), context.peekRequestBody("post-json-play-api"));
+
+const postPlayResources = vm.runInContext("resourceByTab.get(164)", context);
+assert.equal(postPlayResources.length, 1);
+assert.equal(postPlayResources[0].method, "POST");
+assert.equal(postPlayResources[0].request_headers["Content-Type"], "application/x-www-form-urlencoded");
+assert.equal(postPlayResources[0].request_body.type, "form");
+assert.equal(postPlayResources[0].request_body.content, "lesson=42&token=ok");
 
 context.rememberRequestHeaders({
   requestId: "redirect-play-hls",

@@ -52,6 +52,7 @@ def redacted_resource(resource: ResourceCandidate) -> ResourceCandidate:
     redacted = resource.model_copy(deep=True)
     redacted.headers = _safe_response_headers(redacted.headers)
     redacted.request_headers = _redacted_values(redacted.request_headers)
+    redacted.request_body = _redacted_values(redacted.request_body)
     return redacted
 
 
@@ -65,6 +66,7 @@ def redacted_request_dump(request: CurrentPageTaskRequest) -> dict:
     for resource in data.get("resources", []):
         resource["headers"] = _safe_response_headers(resource.get("headers") or {})
         resource["request_headers"] = _redacted_values(resource.get("request_headers") or {})
+        resource["request_body"] = _redacted_values(resource.get("request_body") or {})
     return data
 
 

@@ -178,6 +178,35 @@ class DirectJsonMediaHandler(QuietHandler):
         super().do_GET()
 
 
+class DirectPostJsonMediaHandler(DirectJsonMediaHandler):
+    required_body = "lesson=42&token=ok"
+    seen_bodies: list[str] = []
+
+    def do_GET(self) -> None:
+        if urlparse(self.path).path == "/api/play":
+            self.send_error(405, "POST required")
+            return
+        super().do_GET()
+
+    def do_POST(self) -> None:
+        path = urlparse(self.path).path
+        if path != "/api/play":
+            self.send_error(404)
+            return
+        length = int(self.headers.get("Content-Length") or 0)
+        body = self.rfile.read(length).decode("utf-8", errors="replace")
+        self.__class__.seen_bodies.append(body)
+        if not self._has_browser_headers() or body != self.required_body:
+            self.send_error(403, "missing browser context")
+            return
+        payload = b'{"data":{"videoUrl":"/real.mp4","mimeType":"video/mp4"}}'
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+
 class RedirectMediaHandler(QuietHandler):
     media_name = "final.mp4"
 
@@ -501,6 +530,83 @@ class DownloaderPriorityTests(unittest.TestCase):
                 self.assertEqual([attempt.strategy for attempt in downloader.attempts[:2]], ["direct-response-scan", "direct-file"])
                 self.assertEqual(downloader.attempts[0].status, "success")
                 self.assertEqual(downloader.attempts[1].status, "success")
+            finally:
+                server.shutdown()
+                server.server_close()
+
+    def test_post_json_play_endpoint_replays_browser_request_body(self) -> None:
+        ffmpeg = ffmpeg_bin()
+        assert ffmpeg is not None
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            video = root / DirectPostJsonMediaHandler.media_name
+            subprocess.run(
+                [
+                    ffmpeg,
+                    "-y",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "testsrc=duration=2:size=320x180:rate=10",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "sine=frequency=440:duration=2",
+                    "-shortest",
+                    "-pix_fmt",
+                    "yuv420p",
+                    str(video),
+                ],
+                check=True,
+            )
+
+            DirectPostJsonMediaHandler.seen_bodies = []
+            server = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(DirectPostJsonMediaHandler, directory=str(root)))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                play_url = f"http://127.0.0.1:{server.server_port}/api/play"
+                media_url = f"http://127.0.0.1:{server.server_port}/{video.name}"
+                page_url = f"http://127.0.0.1:{server.server_port}/lesson.html"
+                candidate = ResourceCandidate(
+                    url=play_url,
+                    source="webRequest",
+                    kind="video",
+                    mime="video/mp4",
+                    score=100,
+                    label="POST play API",
+                    method="POST",
+                    request_headers={
+                        "User-Agent": DirectPostJsonMediaHandler.required_user_agent,
+                        "X-Requested-With": DirectPostJsonMediaHandler.required_x_requested_with,
+                        "Content-Type": "application/x-www-form-urlencoded",
+                    },
+                    request_body={"type": "form", "content": DirectPostJsonMediaHandler.required_body},
+                )
+
+                preflight = preflight_media_resource(candidate, [], page_url)
+                self.assertTrue(preflight.downloadable)
+                self.assertEqual(preflight.strategy, "direct-response-probe")
+                self.assertEqual(preflight.resolved_url, media_url)
+
+                downloader = MediaDownloader(root / "task")
+                with patch.object(downloader, "_download_with_ytdlp") as ytdlp:
+                    media_path, selected = downloader.download(
+                        page_url=page_url,
+                        resources=[candidate],
+                        cookies=[],
+                        title="POST JSON API",
+                    )
+                ytdlp.assert_not_called()
+                self.assertTrue(media_path.exists())
+                self.assertIsNotNone(selected)
+                self.assertEqual(selected.url, media_url)
+                self.assertEqual(selected.source, "direct-response")
+                self.assertEqual([attempt.strategy for attempt in downloader.attempts[:2]], ["direct-response-scan", "direct-file"])
+                self.assertGreaterEqual(DirectPostJsonMediaHandler.seen_bodies.count(DirectPostJsonMediaHandler.required_body), 2)
             finally:
                 server.shutdown()
                 server.server_close()
