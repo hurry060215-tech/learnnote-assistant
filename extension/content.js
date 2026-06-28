@@ -2,7 +2,7 @@ const MEDIA_RE = /\.(mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd)(\?|#|$)/i;
 const FRAGMENT_RE = /\.(m4s|ts)(\?|#|$)/i;
 const SUBTITLE_RE = /\.(vtt|srt|ass|ssa)(\?|#|$)/i;
 const MEDIA_URL_RE = /(?:https?:)?\/\/[^\s"'<>\\]+\.(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|vtt|srt|ass|ssa)(?:\?[^\s"'<>\\]*)?|(?:\/[^\s"'<>\\]+)\.(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|vtt|srt|ass|ssa)(?:\?[^\s"'<>\\]*)?|(?:[A-Za-z0-9._~!$&()*+,;=:@%-]+\/)*[A-Za-z0-9._~!$&()*+,;=:@%-]+\.(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|vtt|srt|ass|ssa)(?:\?[^\s"'<>\\]*)?/gi;
-const ENCODED_MEDIA_URL_RE = /https?%3A%2F%2F[^\s"'<>\\]+?(?:\.|%2E)(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|vtt|srt|ass|ssa)(?:[^\s"'<>\\]*)?/gi;
+const ENCODED_MEDIA_URL_RE = /https?%(?:25)*3A%(?:25)*2F%(?:25)*2F[^\s"'<>\\]+?(?:\.|%(?:25)*2E)(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|vtt|srt|ass|ssa)(?:[^\s"'<>\\]*)?/gi;
 const STATIC_MEDIA_ATTRS = [
   "src",
   "href",
@@ -102,7 +102,7 @@ function absoluteUrl(url) {
   if (!url) return "";
   if (url.startsWith("blob:")) return url;
   try {
-    return new URL(stripUrlTail(url), location.href).href;
+    return new URL(decodeRepeatedUrlComponent(stripUrlTail(url)), location.href).href;
   } catch {
     return "";
   }
@@ -130,6 +130,38 @@ function stripUrlTail(value) {
   return text;
 }
 
+function decodeRepeatedUrlComponent(value, limit = 3) {
+  let current = String(value || "");
+  for (let index = 0; index < limit; index += 1) {
+    try {
+      const next = decodeURIComponent(current);
+      if (!next || next === current) break;
+      current = next;
+    } catch {
+      break;
+    }
+  }
+  return current;
+}
+
+function appendRepeatedUrlDecodes(values, value, limit = 3) {
+  let current = String(value || "");
+  const decoded = [];
+  for (let index = 0; index < limit; index += 1) {
+    try {
+      const next = decodeURIComponent(current);
+      if (!next || next === current) break;
+      decoded.push(next);
+      current = next;
+    } catch {
+      break;
+    }
+  }
+  for (const item of decoded) {
+    if (!values.includes(item)) values.unshift(item);
+  }
+}
+
 function decodedValues(value) {
   const raw = stripUrlTail(value);
   if (!raw) return [];
@@ -141,12 +173,7 @@ function decodedValues(value) {
     .replace(/\\u003A/gi, ":")
     .replace(/\\u003F/gi, "?")
     .replace(/\\u003D/gi, "=")];
-  try {
-    const decoded = decodeURIComponent(values[0]);
-    if (decoded && decoded !== values[0]) values.unshift(decoded);
-  } catch {
-    // Keep the raw value when percent decoding is invalid.
-  }
+  appendRepeatedUrlDecodes(values, values[0]);
   const compact = raw.replace(/\s+/g, "");
   if (B64ISH_RE.test(compact)) {
     const padded = compact + "=".repeat((4 - (compact.length % 4)) % 4);

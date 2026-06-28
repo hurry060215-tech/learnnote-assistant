@@ -3,7 +3,7 @@
   window.__learnNotePageHookInstalled = true;
 
   const MEDIA_URL_RE = /(?:https?:)?\/\/[^\s"'<>\\]+\.(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|vtt|srt|ass|ssa)(?:\?[^\s"'<>\\]*)?|(?:\/[^\s"'<>\\]+)\.(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|vtt|srt|ass|ssa)(?:\?[^\s"'<>\\]*)?|(?:[A-Za-z0-9._~!$&()*+,;=:@%-]+\/)*[A-Za-z0-9._~!$&()*+,;=:@%-]+\.(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|vtt|srt|ass|ssa)(?:\?[^\s"'<>\\]*)?/gi;
-  const ENCODED_MEDIA_URL_RE = /https?%3A%2F%2F[^\s"'<>\\]+?(?:\.|%2E)(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|vtt|srt|ass|ssa)(?:[^\s"'<>\\]*)?/gi;
+  const ENCODED_MEDIA_URL_RE = /https?%(?:25)*3A%(?:25)*2F%(?:25)*2F[^\s"'<>\\]+?(?:\.|%(?:25)*2E)(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|vtt|srt|ass|ssa)(?:[^\s"'<>\\]*)?/gi;
   const MEDIA_HINT_RE = /\.(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|vtt|srt|ass|ssa)(?:[?#]|["'\s<>]|$)/i;
   const TEXT_TYPE_RE = /json|text|javascript|mpegurl|dash\+xml|xml|x-mpegurl/i;
   const JSON_MEDIA_KEY_RE = /(url|src|file|fileid|objectid|dtoken|download|httpmd|play|media|video|stream|source|hls|m3u8|dash|mpd|subtitle|caption)/i;
@@ -63,7 +63,7 @@
 
   function normalizeUrl(raw) {
     if (!raw) return "";
-    const cleaned = stripUrlTail(raw)
+    const cleaned = decodeRepeatedUrlComponent(stripUrlTail(raw)
       .replace(/\\\//g, "/")
       .replace(/\\u0026/g, "&")
       .replace(/\\u002F/gi, "/")
@@ -71,7 +71,7 @@
       .replace(/\\u003F/gi, "?")
       .replace(/\\u003D/gi, "=")
       .replace(/&amp;/g, "&")
-      .trim();
+      .trim());
     try {
       return new URL(cleaned, location.href).href;
     } catch {
@@ -339,16 +339,43 @@
     return JSON_MEDIA_KEY_RE.test(text) && MEDIA_HINT_RE.test(text);
   }
 
+  function decodeRepeatedUrlComponent(value, limit = 3) {
+    let current = String(value || "");
+    for (let index = 0; index < limit; index += 1) {
+      try {
+        const next = decodeURIComponent(current);
+        if (!next || next === current) break;
+        current = next;
+      } catch {
+        break;
+      }
+    }
+    return current;
+  }
+
+  function appendRepeatedUrlDecodes(values, value, limit = 3) {
+    let current = String(value || "");
+    const decoded = [];
+    for (let index = 0; index < limit; index += 1) {
+      try {
+        const next = decodeURIComponent(current);
+        if (!next || next === current) break;
+        decoded.push(next);
+        current = next;
+      } catch {
+        break;
+      }
+    }
+    for (const item of decoded) {
+      if (!values.includes(item)) values.unshift(item);
+    }
+  }
+
   function decodedMediaValues(value) {
     const raw = String(value || "").trim();
     if (!raw) return [];
     const values = [raw];
-    try {
-      const decoded = decodeURIComponent(raw);
-      if (decoded && decoded !== raw) values.unshift(decoded);
-    } catch {
-      // Keep the raw value when percent decoding is invalid.
-    }
+    appendRepeatedUrlDecodes(values, raw);
 
     const compact = raw.replace(/\s+/g, "");
     if (B64ISH_RE.test(compact)) {

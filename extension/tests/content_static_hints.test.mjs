@@ -62,6 +62,8 @@ class FakeElement {
 }
 
 const packedDash = Buffer.from("https://cdn.example.com/static/manifest.mpd?token=b64", "utf8").toString("base64");
+const doubleEncodedHls = encodeURIComponent(encodeURIComponent("https://cdn.example.com/static/double/master.m3u8?token=double&uid=2"));
+const doubleEncodedNakedVideo = encodeURIComponent(encodeURIComponent("https://cdn.example.com/static/double/naked.mp4?token=naked-double"));
 
 const player = new FakeElement("div", {
   "data-play-url": "https%3A%2F%2Fcdn.example.com%2Fstatic%2Fmaster.m3u8%3Ftoken%3Dattr"
@@ -74,6 +76,12 @@ const script = new FakeElement("script", {
 });
 const plainEncodedScript = new FakeElement("script", {
   textContent: "window.__payload='https%3A%2F%2Fcdn.example.com%2Fstatic%2Fplain-master.m3u8%3Ftoken%3Dplain%26uid%3D1';"
+});
+const doubleEncodedPlayer = new FakeElement("div", {
+  "data-hls-url": doubleEncodedHls
+});
+const plainDoubleEncodedScript = new FakeElement("script", {
+  textContent: `window.__payload='${doubleEncodedNakedVideo}';`
 });
 const onclickPlayer = new FakeElement("button", {
   onclick: "openPlayer('https%3A%2F%2Fcdn.example.com%2Fstatic%2Fonclick-master.m3u8%3Ftoken%3Dclick')"
@@ -90,7 +98,7 @@ const nakedPlayer = new FakeElement("div", {
 const plainUrlScript = new FakeElement("script", {
   textContent: "window.__payload='https://cdn.example.com/static/plain-url.m3u8?token=script-plain';"
 });
-const html = new FakeElement("html", {}, [player, packedPlayer, onclickPlayer, paramPlayer, configPlayer, nakedPlayer, script, plainEncodedScript, plainUrlScript]);
+const html = new FakeElement("html", {}, [player, packedPlayer, doubleEncodedPlayer, onclickPlayer, paramPlayer, configPlayer, nakedPlayer, script, plainEncodedScript, plainDoubleEncodedScript, plainUrlScript]);
 
 let messageListener = null;
 const context = {
@@ -157,11 +165,14 @@ const dash = response.resources.find(item => item.url === "https://cdn.example.c
 const video = response.resources.find(item => item.url === "https://cdn.example.com/static/lesson.mp4?token=script");
 const flv = response.resources.find(item => item.url === "https://cdn.example.com/static/live.flv?token=script");
 const plainHls = response.resources.find(item => item.url === "https://cdn.example.com/static/plain-master.m3u8?token=plain&uid=1");
+const doubleHls = response.resources.find(item => item.url === "https://cdn.example.com/static/double/master.m3u8?token=double&uid=2");
+const doubleNakedVideo = response.resources.find(item => item.url === "https://cdn.example.com/static/double/naked.mp4?token=naked-double");
 const onclickHls = response.resources.find(item => item.url === "https://cdn.example.com/static/onclick-master.m3u8?token=click");
 const paramVideo = response.resources.find(item => item.url === "https://cdn.example.com/static/param-lesson.mp4?token=param");
 const plainAttrVideo = response.resources.find(item => item.url === "https://course.example.com/static/plain-attr.mp4?token=attr-plain");
 const nakedAttrHls = response.resources.find(item => item.url === "https://course.example.com/static/naked-master.m3u8?token=naked");
 const plainScriptHls = response.resources.find(item => item.url === "https://cdn.example.com/static/plain-url.m3u8?token=script-plain");
+const malformedEncodedUrls = response.resources.filter(item => /\/https%3A%2F%2F/i.test(item.url));
 
 assert.ok(hls, "expected data-play-url media hint to expose encoded HLS URL");
 assert.equal(hls.kind, "hls");
@@ -188,6 +199,16 @@ assert.equal(plainHls.kind, "hls");
 assert.equal(plainHls.source, "scriptHint");
 assert.match(plainHls.label, /encoded url/);
 
+assert.ok(doubleHls, "expected DOM media hint to expose double-encoded HLS URL");
+assert.equal(doubleHls.kind, "hls");
+assert.equal(doubleHls.source, "domHint");
+assert.match(doubleHls.label, /data-hls-url/);
+
+assert.ok(doubleNakedVideo, "expected inline script encoded URL scan to expose double-encoded mp4 URL without a media field name");
+assert.equal(doubleNakedVideo.kind, "video");
+assert.equal(doubleNakedVideo.source, "scriptHint");
+assert.match(doubleNakedVideo.label, /encoded url/);
+
 assert.ok(onclickHls, "expected onclick handler scan to expose embedded encoded HLS URL");
 assert.equal(onclickHls.kind, "hls");
 assert.equal(onclickHls.source, "domHint");
@@ -212,3 +233,5 @@ assert.ok(plainScriptHls, "expected inline script URL scan to expose plain HLS U
 assert.equal(plainScriptHls.kind, "hls");
 assert.equal(plainScriptHls.source, "scriptHint");
 assert.match(plainScriptHls.label, /script media url/);
+
+assert.equal(malformedEncodedUrls.length, 0, "expected encoded absolute media URLs to normalize before URL resolution");

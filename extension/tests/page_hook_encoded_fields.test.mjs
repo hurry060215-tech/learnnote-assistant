@@ -34,6 +34,7 @@ class FakeResponse {
 }
 
 const encodedHls = "https%3A%2F%2Fcdn.example.com%2Fsecure%2Flesson.m3u8%3Ftoken%3Dabc";
+const doubleEncodedHls = encodeURIComponent(encodeURIComponent("https://cdn.example.com/secure/backup.m3u8?token=double"));
 const packedVideo = Buffer.from("https://cdn.example.com/video/lesson.mp4?sign=ok", "utf8").toString("base64");
 
 const context = {
@@ -47,7 +48,7 @@ const context = {
   URL,
   atob: value => Buffer.from(value, "base64").toString("binary"),
   fetch: async () => new FakeResponse(
-    JSON.stringify({ playInfo: { hls: encodedHls, videoUrl: packedVideo } }),
+    JSON.stringify({ playInfo: { hls: encodedHls, backupHlsUrl: doubleEncodedHls, videoUrl: packedVideo } }),
     {
       url: "https://course.example.com/api/play",
       headers: { "content-type": "application/json" },
@@ -74,4 +75,5 @@ const resources = messages.flatMap(message => message.resources || []);
 const urls = new Set(resources.map(resource => resource.url));
 
 assert.ok(urls.has("https://cdn.example.com/secure/lesson.m3u8?token=abc"));
+assert.ok(urls.has("https://cdn.example.com/secure/backup.m3u8?token=double"));
 assert.ok(urls.has("https://cdn.example.com/video/lesson.mp4?sign=ok"));

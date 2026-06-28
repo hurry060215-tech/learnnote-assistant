@@ -36,6 +36,7 @@ class FakeResponse {
 }
 
 const encodedHls = "https%3A%2F%2Fcdn.example.com%2Fsecure%2Flesson.m3u8%3Ftoken%3Dabc%26uid%3D1";
+const doubleEncodedVideo = encodeURIComponent(encodeURIComponent("https://cdn.example.com/secure/double.mp4?token=twice"));
 
 const context = {
   window: null,
@@ -48,7 +49,7 @@ const context = {
   URL,
   atob: value => Buffer.from(value, "base64").toString("binary"),
   fetch: async () => new FakeResponse(
-    `<a href="/player?objectid=${encodedHls}">open player</a><script>load(https://cdn.example.com/plain/naked.m3u8?token=naked);</script>`,
+    `<a href="/player?objectid=${encodedHls}">open player</a><script>load(https://cdn.example.com/plain/naked.m3u8?token=naked); window.__encoded='${doubleEncodedVideo}';</script>`,
     {
       url: "https://course.example.com/lesson/index.html",
       headers: { "content-type": "text/html" },
@@ -74,6 +75,8 @@ await new Promise(resolve => setTimeout(resolve, 20));
 const resources = messages.flatMap(message => message.resources || []);
 const hls = resources.find(resource => resource.url === "https://cdn.example.com/secure/lesson.m3u8?token=abc&uid=1");
 const nakedHls = resources.find(resource => resource.url === "https://cdn.example.com/plain/naked.m3u8?token=naked");
+const doubleVideo = resources.find(resource => resource.url === "https://cdn.example.com/secure/double.mp4?token=twice");
+const malformedEncodedUrls = resources.filter(resource => /\/https%3A%2F%2F/i.test(resource.url));
 
 assert.ok(hls, "expected page hook to decode encoded media URL from plain HTML text");
 assert.equal(hls.kind, "hls");
@@ -87,3 +90,10 @@ assert.ok(nakedHls, "expected page hook to trim trailing JS punctuation from pla
 assert.equal(nakedHls.kind, "hls");
 assert.equal(nakedHls.source, "pageHookBody");
 assert.equal(nakedHls.request_type, "fetch");
+
+assert.ok(doubleVideo, "expected page hook to decode double-encoded media URL from plain HTML text");
+assert.equal(doubleVideo.kind, "video");
+assert.equal(doubleVideo.source, "pageHookBody");
+assert.match(doubleVideo.label, /encoded url/);
+
+assert.equal(malformedEncodedUrls.length, 0, "expected page hook to normalize encoded absolute media URLs before URL resolution");
