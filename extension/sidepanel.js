@@ -1847,7 +1847,9 @@ async function consumePendingSidePanelIntent() {
 async function health() {
   try {
     const data = await fetch(`${backendUrl}/health`).then(r => r.json());
-    els.backendStatus.textContent = data.ffmpeg ? "本地后端可用" : "ffmpeg 缺失";
+    els.backendStatus.textContent = data.ffmpeg
+      ? data.ffprobe_optional ? "后端可用 · ffprobe 可选" : "本地后端可用"
+      : "ffmpeg 缺失";
     els.backendStatus.style.color = data.ffmpeg ? "#159947" : "#c27803";
   } catch {
     els.backendStatus.textContent = "后端未连接";

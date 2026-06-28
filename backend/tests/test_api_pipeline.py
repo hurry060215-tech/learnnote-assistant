@@ -45,6 +45,17 @@ class LocalUploadValidationTests(unittest.TestCase):
         self.assertEqual(script.status_code, 200)
         self.assertIn("loadTasks", script.text)
 
+    def test_health_reports_duration_probe_fallback(self) -> None:
+        response = self.client.get("/health")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertIn("duration_probe_available", payload)
+        self.assertEqual(payload["duration_probe_available"], bool(payload["duration_probe"]))
+        if payload["ffmpeg"] and not payload["ffprobe"]:
+            self.assertTrue(payload["ffprobe_optional"])
+            self.assertEqual(payload["duration_probe"], "ffmpeg")
+
     def test_local_upload_filename_is_sanitized_and_mime_can_supply_extension(self) -> None:
         self.assertEqual(local_upload_filename("..\\course:demo?.mkv", ""), "course_demo.mkv")
         self.assertEqual(local_upload_filename("", "video/mp4"), "local-video.mp4")

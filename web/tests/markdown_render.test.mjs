@@ -112,7 +112,7 @@ const context = {
   URL: class URL {},
   fetch: async url => {
     const value = String(url);
-    if (value.endsWith("/health")) return { json: async () => ({ ffmpeg: true }) };
+    if (value.endsWith("/health")) return { json: async () => ({ ffmpeg: true, ffprobe: false, ffprobe_optional: true, duration_probe: "ffmpeg" }) };
     if (value.endsWith("/api/tasks")) return { json: async () => ({ tasks: [] }) };
     return { ok: false, json: async () => ({}), text: async () => "" };
   },
@@ -129,6 +129,8 @@ const indexHtml = await readFile(new URL("../index.html", import.meta.url), "utf
 vm.runInContext(webCode, context);
 
 await new Promise(resolve => setTimeout(resolve, 0));
+assert.match(elements.get("#health").textContent, /ffprobe/);
+assert.match(elements.get("#browserBridgeStatus").textContent, /ffmpeg/);
 assert.match(elements.get("#detail").innerHTML, /class="empty-workbench"/);
 assert.match(elements.get("#detail").innerHTML, /class="empty-demo-board"/);
 assert.match(elements.get("#detail").innerHTML, /class="empty-route-grid"/);

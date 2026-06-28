@@ -41,7 +41,7 @@ const context = {
   fetch: async url => {
     const value = String(url);
     if (value.endsWith("/health")) {
-      return { json: async () => ({ ffmpeg: true }) };
+      return { json: async () => ({ ffmpeg: true, ffprobe: false, ffprobe_optional: true, duration_probe: "ffmpeg" }) };
     }
     if (value.endsWith("/api/tasks")) {
       return { json: async () => ({ tasks: [] }) };
@@ -57,6 +57,7 @@ vm.createContext(context);
 const sidepanelCode = await readFile(new URL("../sidepanel.js", import.meta.url), "utf8");
 vm.runInContext(sidepanelCode, context);
 await new Promise(resolve => setTimeout(resolve, 0));
+assert.match(elements.get("#backendStatus").textContent, /ffprobe/);
 
 const html = context.markdownToHtml(`# 标题
 

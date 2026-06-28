@@ -1166,10 +1166,14 @@ async function checkHealth() {
   try {
     const data = await fetchJson(`${API}/health`);
     els.health.className = data.ffmpeg ? "health ok" : "health bad";
-    els.health.textContent = data.ffmpeg ? "本地后端可用" : "ffmpeg 缺失";
+    els.health.textContent = data.ffmpeg
+      ? data.ffprobe_optional ? "后端可用 · ffprobe 可选" : "本地后端可用"
+      : "ffmpeg 缺失";
     if (els.browserBridgeStatus) {
       els.browserBridgeStatus.textContent = data.ffmpeg
-        ? "扩展读取播放器、媒体请求和一次性 cookie，后端只下载可访问的视频地址。"
+        ? data.ffprobe_optional
+          ? "ffmpeg 可用，缺少 ffprobe 时会用 ffmpeg 输出解析时长；仍可下载、转写、切片和图文总结。"
+          : "扩展读取播放器、媒体请求和一次性 cookie，后端只下载可访问的视频地址。"
         : "后端已连接，但 ffmpeg 缺失；当前页直取后无法完成合并/切片。";
     }
   } catch {

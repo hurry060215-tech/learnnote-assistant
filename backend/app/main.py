@@ -406,12 +406,16 @@ def index() -> HTMLResponse:
 def health() -> dict:
     ffmpeg = ffmpeg_bin()
     ffprobe = ffprobe_bin()
+    duration_probe = "ffprobe" if ffprobe else "ffmpeg" if ffmpeg else ""
     return {
         "ok": True,
         "ffmpeg": bool(ffmpeg),
         "ffmpeg_path": ffmpeg or "",
         "ffprobe": bool(ffprobe),
         "ffprobe_path": ffprobe or "",
+        "duration_probe": duration_probe,
+        "duration_probe_available": bool(duration_probe),
+        "ffprobe_optional": bool(ffmpeg and not ffprobe),
     }
 
 
