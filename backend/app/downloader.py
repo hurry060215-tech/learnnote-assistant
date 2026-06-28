@@ -39,6 +39,7 @@ MEDIA_ENDPOINT_HINT_RE = re.compile(
 )
 JSON_MEDIA_KEY_RE = re.compile(r"(url|src|file|play|media|video|stream|source|hls|m3u8|dash|mpd|subtitle|caption)", re.I)
 JSON_MIME_KEY_RE = re.compile(r"(mime|type|format|content.?type|media.?type)", re.I)
+JSON_VIDEO_CONTEXT_RE = re.compile(r"(video|media|play|stream|vod|course|lesson)", re.I)
 TEXT_MEDIA_FIELD_RE = re.compile(
     r"(?P<key>[\"']?[A-Za-z_$][A-Za-z0-9_$.-]{0,79}[\"']?)\s*[:=]\s*[\"'](?P<url>[^\"'<>\\\s]{4,})[\"']",
     re.I,
@@ -395,6 +396,8 @@ def _json_context_kind(key_path: list[str], url: str, parent: object) -> tuple[s
     if "text/vtt" in context or "subrip" in context or "subtitle" in context or "caption" in context:
         return "subtitle", "text/vtt"
     if "video/" in context or "mp4" in context or "video" in context:
+        return "video", "video/mp4"
+    if JSON_VIDEO_CONTEXT_RE.search(context) and _media_endpoint_hint(url):
         return "video", "video/mp4"
     return "unknown", ""
 
