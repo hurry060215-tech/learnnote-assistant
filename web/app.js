@@ -1522,7 +1522,13 @@ function taskMetaLine(task) {
 
 async function taskRecord() {
   if (!selectedTaskId) return null;
-  return fetch(`${API}/api/tasks/${selectedTaskId}`).then(r => r.json()).then(d => d.task);
+  return fetch(`${API}/api/tasks/${selectedTaskId}`).then(r => r.json()).then(taskFromPayload);
+}
+
+function taskFromPayload(payload) {
+  const task = payload?.task || null;
+  if (task && payload?.audit) task.audit = payload.audit;
+  return task;
 }
 
 async function noteForTask(taskId) {

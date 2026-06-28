@@ -29,7 +29,7 @@ from app.downloader import (
     score_resource,
     ytdlp_headers_from_browser_context,
 )
-from app.main import render_diagnostics_markdown
+from app.main import render_diagnostics_markdown, task_audit_summary
 from app.models import ActiveVideoInfo, BrowserCookie, CurrentPageTaskRequest, DownloadAttempt, DrmSignal, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
 from app.processor import build_summary_diagnostics, cookie_sync_summary, process_current_page_task, process_local_video_task, read_note, read_transcript, redacted_request_dump, redacted_resource
 from app.summarizer import MAX_VISION_GRIDS, build_visual_windows, ensure_visual_appendix, local_markdown_note, summarize_with_diagnostics
@@ -720,6 +720,61 @@ class ProcessorBoundaryTests(unittest.TestCase):
             self.assertNotIn("secret-cdn", report)
             self.assertNotIn("SESSION", report)
             self.assertNotIn("CDN_TOKEN", report)
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
+    def test_task_audit_marks_download_only_media_ready_for_rerun(self) -> None:
+        task = create_task("current_page", "Downloaded only", "https://course.example.com/lesson")
+        try:
+            record = get_task(task.id)
+            record.status = "success"
+            record.phase = "completed"
+            record.progress = 100
+            record.media_path = str(task_dir(task.id) / "media.mp4")
+            record.selected_resource = ResourceCandidate(
+                url="https://cdn.example.com/lesson.m3u8",
+                source="webRequest",
+                kind="hls",
+                playback_match="same-frame",
+            )
+
+            audit = task_audit_summary(record)
+            gates = {gate["key"]: gate for gate in audit["gates"]}
+
+            self.assertEqual(gates["source"]["state"], "pass")
+            self.assertEqual(gates["media"]["state"], "pass")
+            self.assertEqual(gates["transcript"]["state"], "warn")
+            self.assertEqual(audit["blocked_gate"], "transcript")
+            self.assertFalse(audit["ok"])
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
+    def test_task_audit_marks_failed_download_at_media_gate(self) -> None:
+        task = create_task("current_page", "Forbidden media", "https://course.example.com/lesson")
+        try:
+            record = get_task(task.id)
+            record.status = "failed"
+            record.phase = "failed"
+            record.error_code = "download_forbidden"
+            record.download_attempts = [
+                DownloadAttempt(
+                    strategy="direct-file",
+                    status="failed",
+                    code="download_forbidden",
+                    message="HTTP 403",
+                    url="https://cdn.example.com/lesson.mp4",
+                )
+            ]
+
+            audit = task_audit_summary(record)
+            gates = {gate["key"]: gate for gate in audit["gates"]}
+            report = render_diagnostics_markdown(record)
+
+            self.assertEqual(gates["source"]["state"], "pass")
+            self.assertEqual(gates["media"]["state"], "fail")
+            self.assertEqual(audit["blocked_gate"], "media")
+            self.assertIn("## Stage Audit Gates", report)
+            self.assertIn("- media: fail", report)
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 

@@ -2365,7 +2365,7 @@ async function uploadLocal() {
 async function pollTask() {
   if (!currentTaskId) return;
   const data = await fetch(`${backendUrl}/api/tasks/${currentTaskId}`).then(r => r.json());
-  currentTask = data.task;
+  currentTask = taskFromPayload(data);
   const index = taskHistory.findIndex(task => task.id === currentTask.id);
   if (index >= 0) taskHistory[index] = currentTask;
   else taskHistory.unshift(currentTask);
@@ -2387,7 +2387,7 @@ async function pollTask() {
 
 async function loadResult() {
   if (!currentTaskId) return;
-  currentTask = await fetch(`${backendUrl}/api/tasks/${currentTaskId}`).then(r => r.json()).then(d => d.task);
+  currentTask = await fetch(`${backendUrl}/api/tasks/${currentTaskId}`).then(r => r.json()).then(taskFromPayload);
   transcriptCache = null;
   lastNote = "";
   if (currentTask.transcript_path || currentTask.status === "success") {
@@ -2410,6 +2410,12 @@ async function loadResult() {
   if (index >= 0) taskHistory[index] = currentTask;
   else taskHistory.unshift(currentTask);
   renderResult();
+}
+
+function taskFromPayload(payload) {
+  const task = payload?.task || null;
+  if (task && payload?.audit) task.audit = payload.audit;
+  return task;
 }
 
 function visualWindows(task) {

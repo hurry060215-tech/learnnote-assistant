@@ -306,6 +306,90 @@ def diagnostic_recovery_steps(task: TaskRecord) -> list[str]:
     return steps
 
 
+def _audit_gate_state(task: TaskRecord, passed: bool, *, skipped: bool = False) -> str:
+    if skipped:
+        return "skip"
+    if passed:
+        return "pass"
+    if task.status == "failed":
+        return "fail"
+    if task.status == "success":
+        return "warn"
+    return "wait"
+
+
+def task_audit_gates(task: TaskRecord) -> list[dict[str, str]]:
+    selected = task.selected_resource
+    attempts = task.download_attempts or []
+    diagnostics = task.summary_diagnostics or {}
+    is_page_text = task.source_type == "page_text" or bool(diagnostics.get("used_page_text_fallback"))
+    is_local = task.source_type == "local"
+    has_route = bool(selected and (selected.url or selected.kind)) or is_local or is_page_text
+    has_media = bool(task.media_path)
+    has_transcript = bool(task.transcript_path)
+    has_visuals = bool(task.visual_windows or task.frame_grids or diagnostics.get("frame_grid_count"))
+    has_note = bool(task.note_path)
+    visual_disabled = task.options.visual_understanding is False or is_page_text
+    selected_kind = selected.kind if selected else ""
+    selected_source = selected.source if selected else ""
+    selected_match = selected.playback_match if selected else ""
+
+    return [
+        {
+            "key": "source",
+            "label": "Source gate",
+            "state": _audit_gate_state(task, has_route or bool(attempts) or has_media or has_note),
+            "value": selected_source or selected_kind or task.source_type or "-",
+            "detail": selected_match or (f"{len(attempts)} download attempts" if attempts else "waiting for browser, URL, or local source"),
+        },
+        {
+            "key": "media",
+            "label": "Media gate",
+            "state": _audit_gate_state(task, has_media, skipped=is_page_text),
+            "value": "page text route" if is_page_text else ("media.mp4" if has_media else task.error_code or "waiting"),
+            "detail": "downloaded media is reusable" if has_media else (f"{len(attempts)} download attempts" if attempts else "waiting for direct download or resolver"),
+        },
+        {
+            "key": "transcript",
+            "label": "Transcript gate",
+            "state": _audit_gate_state(task, has_transcript or (is_page_text and has_note)),
+            "value": "transcript ready" if has_transcript else ("browser/page text fallback" if is_page_text and has_note else task.phase or "waiting"),
+            "detail": "timestamped transcript is available" if has_transcript else (task.summary_warning or "subtitle first, ASR fallback"),
+        },
+        {
+            "key": "visual",
+            "label": "Visual slicing gate",
+            "state": _audit_gate_state(task, has_visuals, skipped=visual_disabled),
+            "value": "disabled" if visual_disabled else (f"{len(task.visual_windows) or len(task.frame_grids) or diagnostics.get('frame_grid_count')} windows" if has_visuals else task.phase or "waiting"),
+            "detail": "visual route disabled for this task" if visual_disabled else (
+                f"{diagnostics.get('vision_image_count', 0)}/{diagnostics.get('vision_grid_count', len(task.visual_windows) or len(task.frame_grids) or 0)} sent to vision"
+                if has_visuals
+                else "waiting for ffmpeg frame grids"
+            ),
+        },
+        {
+            "key": "summary",
+            "label": "Summary gate",
+            "state": _audit_gate_state(task, has_note),
+            "value": task.summary_source or ("note ready" if has_note else task.phase or "waiting"),
+            "detail": task.summary_warning or f"{task.options.note_style} / {task.options.summary_depth}",
+        },
+    ]
+
+
+def task_audit_summary(task: TaskRecord) -> dict:
+    gates = task_audit_gates(task)
+    released = [gate for gate in gates if gate["state"] in {"pass", "skip"}]
+    blocked = [gate for gate in gates if gate["state"] in {"fail", "warn"}]
+    return {
+        "gates": gates,
+        "released_count": len(released),
+        "gate_count": len(gates),
+        "blocked_gate": blocked[0]["key"] if blocked else "",
+        "ok": len(released) == len(gates),
+    }
+
+
 def render_diagnostics_markdown(task: TaskRecord) -> str:
     selected = task.selected_resource
     lines = [
@@ -364,6 +448,16 @@ def render_diagnostics_markdown(task: TaskRecord) -> str:
 
     lines.extend(["", "## 下一步建议"])
     lines.extend(f"- {step}" for step in diagnostic_recovery_steps(task))
+
+    audit = task_audit_summary(task)
+    lines.extend([
+        "",
+        "## Stage Audit Gates",
+        f"- Released: {audit['released_count']}/{audit['gate_count']}",
+        f"- Blocked gate: {audit['blocked_gate'] or '-'}",
+    ])
+    for gate in audit["gates"]:
+        lines.append(f"- {gate['key']}: {gate['state']} / {gate['value']} / {gate['detail']}")
 
     lines.extend([
         "",
@@ -539,7 +633,17 @@ def api_list_tasks() -> dict:
 @app.get("/api/tasks/{task_id}")
 def api_get_task(task_id: str) -> dict:
     try:
-        return {"task": get_task(task_id)}
+        task = get_task(task_id)
+        return {"task": task, "audit": task_audit_summary(task)}
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Task not found") from exc
+
+
+@app.get("/api/tasks/{task_id}/audit")
+def api_task_audit(task_id: str) -> dict:
+    try:
+        task = get_task(task_id)
+        return {"task_id": task.id, "audit": task_audit_summary(task)}
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Task not found") from exc
 
