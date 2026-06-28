@@ -1078,14 +1078,14 @@ function resourceAttemptQueueHtml(limit = 4) {
 }
 
 function activeVideoText(active) {
-  if (!active?.src) return "-";
+  if (!hasActiveVideoSignal(active)) return "-";
   return [
     active.paused ? "暂停" : "播放中",
     `${fmt(active.current_time || 0)} / ${fmt(active.duration || 0)}`,
     `${active.width || 0}x${active.height || 0}`,
     active.frame_id !== null && active.frame_id !== undefined ? `frame ${active.frame_id}` : "",
     active.drm_detected ? "DRM/EME" : "",
-    active.src
+    activeSrcObjectOnly(active) ? srcObjectText(active) : active.src
   ].filter(Boolean).join(" · ");
 }
 
@@ -1105,15 +1105,35 @@ function playbackReadinessState() {
   const downloadable = resources.filter(isDownloadableResource);
   const drmDetected = page?.drm_detected || active?.drm_detected;
   const isBlob = Boolean(active?.src?.startsWith("blob:"));
+  const srcObjectOnly = activeSrcObjectOnly(active);
   if (drmDetected && !downloadable.length) return "blocked";
   if (downloadable.length) return "ready";
-  if (active?.src || frames.length) return isBlob ? "mapping" : "waiting";
+  if (srcObjectOnly) return "blocked";
+  if (hasActiveVideoSignal(active) || frames.length) return isBlob ? "mapping" : "waiting";
   if (subtitles.length) return "waiting";
   return "empty";
 }
 
+function hasActiveVideoSignal(active) {
+  return Boolean(active?.src || active?.src_object);
+}
+
+function activeSrcObjectOnly(active) {
+  return Boolean(active?.src_object && !active?.src);
+}
+
+function srcObjectText(active) {
+  if (!active?.src_object) return "";
+  const tracks = [];
+  if (active.src_object_video_tracks) tracks.push(`${active.src_object_video_tracks} video`);
+  if (active.src_object_audio_tracks) tracks.push(`${active.src_object_audio_tracks} audio`);
+  if (!tracks.length && active.src_object_track_count) tracks.push(`${active.src_object_track_count} track`);
+  return [active.src_object_type || "MediaStream", tracks.join(" + ")].filter(Boolean).join(" · ");
+}
+
 function playbackSourceLabel(active) {
-  if (!active?.src) return "未读取";
+  if (!hasActiveVideoSignal(active)) return "未读取";
+  if (activeSrcObjectOnly(active)) return "MediaStream/srcObject";
   if (active.src.startsWith("blob:")) return "Blob/MSE";
   if (/^https?:\/\//i.test(active.src)) return "可见 URL";
   return "播放器源";
@@ -1125,6 +1145,12 @@ function playbackReadinessCopy(state) {
   const subtitleCount = (page?.browser_subtitles || []).length;
   const frames = page?.frames || [];
   if (state === "blocked") {
+    if (activeSrcObjectOnly(page?.active_video)) {
+      return {
+        title: "当前视频来自 MediaStream",
+        detail: "页面没有暴露可下载 URL；不会录制当前标签页，请使用本地视频入口或页面文本兜底。"
+      };
+    }
     return {
       title: "检测到 DRM/不可还原媒体",
       detail: "不会录制、破解或绕过 DRM；没有可直取资源时请使用本地视频入口。"
@@ -1164,6 +1190,7 @@ function renderPlaybackReadiness() {
   const copy = playbackReadinessCopy(state);
   const playValue = active?.src
     ? active.paused ? "暂停" : "播放中"
+    : active?.src_object ? active.paused ? "MediaStream 暂停" : "MediaStream 播放中"
     : (page?.frames || []).length ? `扫描 ${(page?.frames || []).length} frame` : "等待";
   const items = [
     { label: "播放", value: playValue },
@@ -1215,6 +1242,13 @@ function currentStudyCopy(state) {
     };
   }
   if (state === "blocked") {
+    if (activeSrcObjectOnly(page?.active_video)) {
+      return {
+        badge: "不可直取",
+        title: "当前视频来自 MediaStream",
+        detail: "没有可交给后端下载的媒体 URL；不会录制标签页，请使用本地视频或页面文本兜底。"
+      };
+    }
     return {
       badge: "不可直取",
       title: "当前页不能直接下载",
@@ -1240,7 +1274,7 @@ function currentStudyMetrics() {
   const selected = selectedResource();
   const subtitles = page?.browser_subtitles || [];
   const [cols, rows] = String(els.gridSize?.value || "3x3").split("x").map(Number);
-  const playTime = active?.src
+  const playTime = hasActiveVideoSignal(active)
     ? `${fmt(active.current_time || 0)} / ${fmt(active.duration || 0)}`
     : (page?.frames || []).length ? `${(page?.frames || []).length} frame` : "-";
   return [
@@ -1338,10 +1372,14 @@ function resourceHint() {
   const fragmentCount = resources.filter(item => item.kind === "fragment").length;
   const playbackMatched = resources.some(item => item.playback_match || item.is_main_video);
   const activeBlob = page?.active_video?.src?.startsWith("blob:");
+  const activeStream = activeSrcObjectOnly(page?.active_video);
   const drmDetected = page?.drm_detected || page?.active_video?.drm_detected;
   if (drmDetected) {
     const detail = drmSignalText(page?.drm_signals || []);
     return `<p class="resource-hint bad">检测到 EME/DRM 加密媒体信号${detail ? `（${escapeHtml(detail)}）` : ""}；本工具不会录制、破解或绕过 DRM，只会继续尝试页面暴露的可访问 mp4/FLV/m3u8/mpd。</p>`;
+  }
+  if (activeStream && !downloadable) {
+    return `<p class="resource-hint bad">当前播放器使用 MediaStream/srcObject，没有暴露可下载 URL；本工具不会录制标签页，请使用本地视频上传或页面文本兜底。</p>`;
   }
   if (downloadable && activeBlob) {
     return `<p class="resource-hint">当前播放器是 blob/MSE，已按同 frame、来源映射和最近媒体请求优先选择可直取候选。</p>`;
@@ -1357,16 +1395,21 @@ function resourceHint() {
 
 function noResourceGuideHtml() {
   const drmDetected = page?.drm_detected || page?.active_video?.drm_detected;
+  const activeStream = activeSrcObjectOnly(page?.active_video);
   const hasBlob = resources.some(item => item.kind === "blob");
   const hasFragment = resources.some(item => item.kind === "fragment");
-  const state = drmDetected ? "blocked" : hasBlob || hasFragment ? "warn" : "empty";
+  const state = drmDetected || activeStream ? "blocked" : hasBlob || hasFragment ? "warn" : "empty";
   const headline = drmDetected
     ? "当前页没有可直取媒体，且检测到 DRM/EME"
+    : activeStream
+      ? "当前视频来自 MediaStream，不能直接下载"
     : hasBlob || hasFragment
       ? "只看到 blob 或分片线索，还没还原到 manifest"
       : "还没有捕获到可下载的视频候选";
   const detail = drmDetected
     ? "不会录制、破解或绕过 DRM；可以改用本地视频入口走同一套转写、切片和图文总结。"
+    : activeStream
+      ? "MediaStream/srcObject 通常是 WebRTC、Canvas 或脚本生成流；没有浏览器可访问的 mp4/HLS/DASH 地址时，只能改用本地视频或页面文本。"
     : hasBlob || hasFragment
       ? "继续播放几秒后重新检测；如果页面暴露 m3u8/mpd/mp4 请求，候选会自动进入直取队列。"
       : "先让课程视频真实播放几秒，再重新检测媒体请求；也可以只总结当前页面文本。";
@@ -1401,6 +1444,7 @@ function renderReadiness() {
   const hasFragment = resources.some(item => item.kind === "fragment");
   const checked = currentPreflight();
   const drmDetected = page?.drm_detected || page?.active_video?.drm_detected;
+  const activeStream = activeSrcObjectOnly(page?.active_video);
   if (checked) {
     els.readiness.className = checked.downloadable ? "readiness" : checked.code === "drm_or_encrypted" ? "readiness bad" : "readiness warn";
     els.readiness.textContent = checked.downloadable
@@ -1411,6 +1455,11 @@ function renderReadiness() {
   if (drmDetected && !downloadable.length) {
     els.readiness.className = "readiness bad";
     els.readiness.textContent = "检测到 EME/DRM 加密媒体信号，且当前没有可直取 mp4/FLV/m3u8/mpd；不会录制或绕过 DRM，请改用本地视频入口。";
+    return;
+  }
+  if (activeStream && !downloadable.length) {
+    els.readiness.className = "readiness bad";
+    els.readiness.textContent = "当前视频来自 MediaStream/srcObject，没有可直接下载的媒体 URL；不会录制标签页，请改用本地视频入口或页面文本兜底。";
     return;
   }
   if (downloadable.length) {
@@ -1459,11 +1508,13 @@ function routeSummaryState() {
   const checked = currentPreflight();
   const downloadableCount = resources.filter(isDownloadableResource).length;
   const drmDetected = page?.drm_detected || page?.active_video?.drm_detected;
+  const activeStream = activeSrcObjectOnly(page?.active_video);
   const canFallback = canAttemptBackendPageFallback("video");
   if (checked?.downloadable) return "ready";
   if (checked && !checked.downloadable) return canFallback ? "fallback" : "blocked";
   if (downloadableCount) return "candidate";
   if (drmDetected) return "blocked";
+  if (activeStream) return "blocked";
   if (resources.length && canFallback) return "fallback";
   if (resources.length) return "blocked";
   return "empty";
@@ -1500,11 +1551,12 @@ function routeSummaryCopy(state) {
     };
   }
   if (state === "blocked") {
+    const activeStream = activeSrcObjectOnly(page?.active_video);
     return {
       badge: "不可直取",
-      title: "当前页还不能直接下载",
+      title: activeStream ? "MediaStream 不能直接下载" : "当前页还不能直接下载",
       action: "不会录制或绕过 DRM。继续播放几秒后重检，或拖入本地视频。",
-      detail: checked?.message || (page?.drm_detected || page?.active_video?.drm_detected ? "检测到 DRM/EME 或只有不可还原媒体线索。" : "没有可独立下载的 mp4/FLV/m3u8/mpd。")
+      detail: checked?.message || (activeStream ? "当前播放器只暴露 MediaStream/srcObject，没有可交给后端下载的 URL。" : page?.drm_detected || page?.active_video?.drm_detected ? "检测到 DRM/EME 或只有不可还原媒体线索。" : "没有可独立下载的 mp4/FLV/m3u8/mpd。")
     };
   }
   return {
@@ -1750,7 +1802,7 @@ function renderContext() {
   els.pageUrl.textContent = page?.page_url || "";
   const active = page?.active_video;
   const frames = page?.frames || [];
-  if (active?.src) {
+  if (hasActiveVideoSignal(active)) {
     const state = active.drm_detected ? "blocked" : active.paused ? "paused" : "playing";
     els.activeVideo.className = `playback-card active-video-card ${state}`;
     els.activeVideo.innerHTML = `
@@ -1763,7 +1815,7 @@ function renderContext() {
         <span><b>${escapeHtml(`${active.width || 0}x${active.height || 0}`)}</b>画面</span>
         <span><b>${escapeHtml(active.frame_id ?? "-")}</b>Frame</span>
       </div>
-      <code>${escapeHtml(compactUrl(active.src))}</code>
+      <code>${escapeHtml(activeSrcObjectOnly(active) ? srcObjectText(active) : compactUrl(active.src))}</code>
     `;
   } else {
     els.activeVideo.className = `playback-card active-video-card ${frames.length ? "scanning" : "idle"}`;

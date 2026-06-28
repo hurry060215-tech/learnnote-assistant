@@ -1035,3 +1035,40 @@ assert.match(elements.get("#launchBar").innerHTML, /data-route-action="redetect"
 assert.match(elements.get("#launchBar").innerHTML, /data-route-action="local"/);
 assert.match(elements.get("#launchBar").innerHTML, /data-route-action="text"/);
 assert.doesNotMatch(elements.get("#launchBar").innerHTML, /data-route-action="summarize"/);
+
+vm.runInContext(`
+page = {
+  page_url: "https://course.example.com/stream",
+  page_text: "MediaStream 课程说明",
+  drm_detected: false,
+  active_video: {
+    src: "",
+    src_object: true,
+    src_object_type: "MediaStream",
+    src_object_track_count: 2,
+    src_object_video_tracks: 1,
+    src_object_audio_tracks: 1,
+    current_time: 18,
+    duration: 90,
+    paused: false,
+    width: 1280,
+    height: 720
+  },
+  browser_subtitles: []
+};
+resources = [];
+selectedResourceUrl = "";
+preflight = null;
+preflightResourceUrl = "";
+preflightResultsByUrl = new Map();
+`, context);
+assert.equal(context.playbackReadinessState(), "blocked");
+assert.equal(context.routeSummaryState(), "blocked");
+assert.match(context.playbackSourceLabel({ src_object: true }), /MediaStream/);
+context.renderContext();
+assert.match(elements.get("#playbackReadiness").innerHTML, /MediaStream/);
+assert.match(elements.get("#readiness").textContent, /MediaStream\/srcObject/);
+assert.match(elements.get("#activeVideo").innerHTML, /MediaStream/);
+assert.match(elements.get("#resources").innerHTML, /当前视频来自 MediaStream/);
+assert.match(elements.get("#launchBar").className, /blocked/);
+assert.doesNotMatch(elements.get("#launchBar").innerHTML, /data-route-action="summarize"/);

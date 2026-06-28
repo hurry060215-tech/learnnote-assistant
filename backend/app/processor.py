@@ -178,6 +178,18 @@ def drm_failure_message(request: CurrentPageTaskRequest) -> str:
     return f"页面触发了 EME/DRM 加密媒体信号{suffix}，且没有发现可直接下载的 mp4/FLV/m3u8/mpd；不会录制或绕过 DRM。"
 
 
+def src_object_failure_message(request: CurrentPageTaskRequest) -> str:
+    active = request.active_video
+    stream_type = active.src_object_type if active and active.src_object_type else "MediaStream/srcObject"
+    tracks = []
+    if active and active.src_object_video_tracks:
+        tracks.append(f"{active.src_object_video_tracks} video")
+    if active and active.src_object_audio_tracks:
+        tracks.append(f"{active.src_object_audio_tracks} audio")
+    track_detail = f"（{', '.join(tracks)}）" if tracks else ""
+    return f"当前 HTML5 播放器使用 {stream_type}{track_detail}，页面没有暴露可交给后端下载的 mp4/FLV/m3u8/mpd URL；不会录制标签页，请使用本地视频入口或页面文本兜底。"
+
+
 def build_summary_diagnostics(
     task_id: str,
     title: str,
@@ -353,6 +365,8 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
         if "downloader" in locals():
             update_task(task_id, download_attempts=downloader.attempts)
         detail = exc.message
+        if exc.code == "no_media_found" and request.active_video and request.active_video.src_object:
+            detail = src_object_failure_message(request)
         if write_download_failure_fallback(task_id, request):
             detail = f"{detail} 已生成页面文本/浏览器字幕兜底笔记。"
         _fail(task_id, exc.code, detail)

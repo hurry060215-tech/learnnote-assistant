@@ -430,6 +430,11 @@ function rememberFramePage(tabId, frameId, page, tab = {}) {
   return normalized;
 }
 
+function hasActiveVideoSignal(page = {}) {
+  const active = page.active_video || null;
+  return Boolean(active?.src || active?.src_object);
+}
+
 function mergePageContexts(tab = {}, pages = []) {
   const byFrame = new Map();
   for (const page of pages) {
@@ -438,8 +443,8 @@ function mergePageContexts(tab = {}, pages = []) {
   }
   const ordered = [...byFrame.values()].sort((a, b) => (a.frame_id ?? 0) - (b.frame_id ?? 0));
   const top = ordered.find(page => (page.frame_id ?? 0) === 0) || ordered[0] || {};
-  const activePage = ordered.find(page => page.active_video?.src && !page.active_video.paused) ||
-    ordered.find(page => page.active_video?.src) ||
+  const activePage = ordered.find(page => hasActiveVideoSignal(page) && !page.active_video.paused) ||
+    ordered.find(hasActiveVideoSignal) ||
     null;
   const textParts = [];
   const seenText = new Set();
@@ -484,7 +489,7 @@ function mergePageContexts(tab = {}, pages = []) {
       frame_id: page.frame_id ?? 0,
       title: page.title || "",
       page_url: page.page_url || "",
-      has_active_video: Boolean(page.active_video?.src),
+      has_active_video: hasActiveVideoSignal(page),
       drm_detected: Boolean(page.drm_detected || page.active_video?.drm_detected),
       resource_count: (page.resources || []).length
     }))

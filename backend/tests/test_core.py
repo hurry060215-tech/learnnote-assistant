@@ -759,6 +759,54 @@ class ProcessorBoundaryTests(unittest.TestCase):
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
+    def test_src_object_download_failure_reports_media_stream_boundary(self) -> None:
+        task = create_task("current_page", "Stream lesson", "https://course.example.com/stream")
+
+        class FailingDownloader:
+            def __init__(self, work_dir: Path):
+                self.work_dir = work_dir
+                self.attempts = []
+
+            def download(self, page_url, resources, cookies, title):
+                raise DownloadError("no_media_found", "no media found")
+
+        try:
+            request = CurrentPageTaskRequest(
+                page_url="https://course.example.com/stream",
+                title="Stream lesson",
+                page_text="MediaStream 课程说明",
+                active_video=ActiveVideoInfo(
+                    src="",
+                    src_object=True,
+                    src_object_type="MediaStream",
+                    src_object_track_count=2,
+                    src_object_video_tracks=1,
+                    src_object_audio_tracks=1,
+                    current_time=18,
+                    duration=90,
+                    paused=False,
+                ),
+                resources=[],
+                options=TaskOptions(),
+            )
+
+            with patch("app.processor.MediaDownloader", FailingDownloader):
+                process_current_page_task(task.id, request)
+
+            record = get_task(task.id)
+            self.assertEqual(record.status, "failed")
+            self.assertEqual(record.error_code, "no_media_found")
+            self.assertIsNotNone(record.active_video)
+            assert record.active_video is not None
+            self.assertTrue(record.active_video.src_object)
+            self.assertEqual(record.active_video.src_object_video_tracks, 1)
+            self.assertIn("MediaStream", record.error_detail)
+            self.assertIn("不会录制标签页", record.error_detail)
+            self.assertIn("兜底笔记", record.error_detail)
+            self.assertTrue(record.note_path)
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
     def test_drm_signal_without_downloadable_candidate_fails_before_downloader(self) -> None:
         task = create_task("current_page", "DRM lesson", "https://course.example.com/drm")
         try:

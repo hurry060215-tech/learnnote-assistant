@@ -84,6 +84,11 @@ class TaskOptions(BaseModel):
 
 class ActiveVideoInfo(BaseModel):
     src: str = ""
+    src_object: bool = False
+    src_object_type: str = ""
+    src_object_track_count: int = 0
+    src_object_video_tracks: int = 0
+    src_object_audio_tracks: int = 0
     current_time: float = 0
     duration: float = 0
     paused: bool = True

@@ -538,11 +538,46 @@ function collectVideos() {
   return deepQuerySelectorAll("video").map((video, index) => ({ video, index }));
 }
 
+function videoSrcObjectInfo(video) {
+  let srcObject = null;
+  try {
+    srcObject = video?.srcObject || null;
+  } catch {
+    srcObject = null;
+  }
+  if (!srcObject) {
+    return {
+      src_object: false,
+      src_object_type: "",
+      src_object_track_count: 0,
+      src_object_video_tracks: 0,
+      src_object_audio_tracks: 0
+    };
+  }
+  let tracks = [];
+  try {
+    tracks = typeof srcObject.getTracks === "function" ? Array.from(srcObject.getTracks() || []) : [];
+  } catch {
+    tracks = [];
+  }
+  return {
+    src_object: true,
+    src_object_type: srcObject.constructor?.name || "MediaStream",
+    src_object_track_count: tracks.length,
+    src_object_video_tracks: tracks.filter(track => track?.kind === "video").length,
+    src_object_audio_tracks: tracks.filter(track => track?.kind === "audio").length
+  };
+}
+
+function hasVideoSourceSignal(video) {
+  return Boolean(video.currentSrc || video.src || video.querySelector("source[src]") || videoSrcObjectInfo(video).src_object);
+}
+
 function pickMainVideo(videos = collectVideos()) {
   const playing = videos.find(({ video }) => !video.paused && !video.ended && video.readyState >= 2);
   if (playing) return playing;
   return videos
-    .filter(({ video }) => video.currentSrc || video.src || video.querySelector("source[src]"))
+    .filter(({ video }) => hasVideoSourceSignal(video))
     .sort((a, b) => {
       const areaA = Number(a.video.videoWidth || a.video.clientWidth || 0) * Number(a.video.videoHeight || a.video.clientHeight || 0);
       const areaB = Number(b.video.videoWidth || b.video.clientWidth || 0) * Number(b.video.videoHeight || b.video.clientHeight || 0);
@@ -556,8 +591,10 @@ function activeVideoInfo() {
   if (!withSource) return null;
   const { video, index } = withSource;
   const drm = drmByVideo.get(video) || {};
+  const srcObject = videoSrcObjectInfo(video);
   return {
     src: absoluteUrl(video.currentSrc || video.src),
+    ...srcObject,
     current_time: Number(video.currentTime || 0),
     duration: Number.isFinite(video.duration) ? Number(video.duration || 0) : 0,
     paused: Boolean(video.paused),
@@ -865,6 +902,7 @@ function pageSignature(data) {
   return [
     location.href,
     active.src || "",
+    active.src_object ? `srcObject:${active.src_object_type || "MediaStream"}:${active.src_object_video_tracks || 0}:${active.src_object_audio_tracks || 0}` : "",
     Math.floor(active.current_time || 0),
     active.paused ? "paused" : "playing",
     subtitleTail,
