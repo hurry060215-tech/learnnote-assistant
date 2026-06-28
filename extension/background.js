@@ -21,7 +21,7 @@ const REQUEST_HEADER_ALLOWLIST = new Set([
   "user-agent",
   "x-requested-with"
 ]);
-const RESPONSE_HEADER_ALLOWLIST = new Set(["accept-ranges", "content-disposition", "content-length", "content-range", "content-type"]);
+const RESPONSE_HEADER_ALLOWLIST = new Set(["accept-ranges", "content-disposition", "content-length", "content-location", "content-range", "content-type", "location"]);
 const REQUEST_HEADER_CANONICAL = {
   "accept": "Accept",
   "accept-language": "Accept-Language",
@@ -297,6 +297,7 @@ function mergeResource(previous, incoming) {
   merged.height = incoming.height ?? previous.height ?? null;
   merged.status_code = incoming.status_code ?? previous.status_code ?? null;
   merged.content_length = incoming.content_length ?? previous.content_length ?? null;
+  merged.resolved_url = incoming.resolved_url || previous.resolved_url || "";
   merged.time_stamp = Math.max(previous.time_stamp || 0, incoming.time_stamp || 0) || null;
   return merged;
 }
@@ -519,6 +520,7 @@ function addResource(tabId, resource, notify = true) {
     method: resource.method || "",
     status_code: resource.status_code ?? null,
     content_length: resource.content_length ?? null,
+    resolved_url: resource.resolved_url || "",
     initiator: resource.initiator || "",
     time_stamp: resource.time_stamp ?? null,
     headers: resource.headers || {},
@@ -538,6 +540,7 @@ function addResource(tabId, resource, notify = true) {
       height: normalized.height ?? existing.height ?? null,
       status_code: normalized.status_code ?? existing.status_code ?? null,
       content_length: normalized.content_length ?? existing.content_length ?? null,
+      resolved_url: normalized.resolved_url || existing.resolved_url || "",
       request_type: normalized.request_type || existing.request_type || "",
       method: normalized.method || existing.method || "",
       initiator: normalized.initiator || existing.initiator || "",
@@ -609,14 +612,26 @@ function responseHeadersObject(responseHeaders = []) {
   return headers;
 }
 
+function responseResolvedUrl(url = "", headers = {}) {
+  const raw = headers.location || headers["content-location"] || "";
+  if (!raw) return "";
+  try {
+    return new URL(raw, url).href;
+  } catch {
+    return "";
+  }
+}
+
 function recordResponseMedia(details = {}, requestHeaders = {}) {
   const headers = responseHeadersObject(details.responseHeaders || []);
   const mime = headers["content-type"] || "";
   const kind = classifyCompletedRequest(details, mime, requestHeaders, headers);
   if (kind === "unknown") return;
   const contentLength = Number(headers["content-length"] || 0);
+  const resolvedUrl = responseResolvedUrl(details.url || "", headers);
   addResource(details.tabId, {
     url: details.url,
+    resolved_url: resolvedUrl,
     source: "webRequest",
     kind,
     mime,

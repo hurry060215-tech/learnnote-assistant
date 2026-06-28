@@ -180,7 +180,9 @@ context.recordResponseMedia({
   initiator: "https://course.example.com",
   timeStamp: Date.now(),
   responseHeaders: [
-    { name: "Content-Type", value: "application/vnd.apple.mpegurl" }
+    { name: "Content-Type", value: "application/vnd.apple.mpegurl" },
+    { name: "Location", value: "https://media.example.net/redirected/master.m3u8" },
+    { name: "Content-Location", value: "/relative/master.m3u8" }
   ]
 }, context.peekRequestHeaders("api-play-hls"));
 
@@ -190,6 +192,9 @@ assert.equal(apiPlayResources[0].kind, "hls");
 assert.equal(apiPlayResources[0].request_headers.Referer, "https://course.example.com/lesson");
 assert.equal(apiPlayResources[0].request_headers.Origin, "https://course.example.com");
 assert.equal(apiPlayResources[0].request_headers["User-Agent"], "Chrome Playback UA");
+assert.equal(apiPlayResources[0].headers.location, "https://media.example.net/redirected/master.m3u8");
+assert.equal(apiPlayResources[0].headers["content-location"], "/relative/master.m3u8");
+assert.equal(apiPlayResources[0].resolved_url, "https://media.example.net/redirected/master.m3u8");
 
 context.rememberRequestHeaders({
   requestId: "download-api-video",
