@@ -953,6 +953,126 @@
     }
   }
 
+  function mediaElementTag(element) {
+    try {
+      return String(element?.tagName || "").toLowerCase();
+    } catch {
+      return "";
+    }
+  }
+
+  function isMediaElement(element) {
+    try {
+      if (window.HTMLMediaElement && element instanceof window.HTMLMediaElement) return true;
+    } catch {
+      // Cross-realm or locked constructors can make instanceof throw.
+    }
+    const tag = mediaElementTag(element);
+    return tag === "video" || tag === "audio";
+  }
+
+  function isSourceElement(element) {
+    return mediaElementTag(element) === "source";
+  }
+
+  function mediaElementFallbackKind(element) {
+    const tag = mediaElementTag(element);
+    let parentTag = "";
+    try {
+      parentTag = mediaElementTag(element?.parentElement);
+    } catch {
+      parentTag = "";
+    }
+    if (tag === "video" || parentTag === "video") return "video";
+    return "";
+  }
+
+  function emitMediaElementSource(element, value, label) {
+    if (!value) return;
+    emitPlayerSources(value, mediaElementFallbackKind(element), label);
+  }
+
+  function collectMediaElementCurrentSources(element) {
+    const sources = [];
+    try {
+      if (element.currentSrc) sources.push(element.currentSrc);
+    } catch {
+      // Some custom elements expose throwing media-like getters.
+    }
+    try {
+      if (element.src) sources.push(element.src);
+    } catch {
+      // Keep playback untouched if a getter is not readable.
+    }
+    try {
+      const children = element.querySelectorAll?.("source[src]") || [];
+      for (const source of children) {
+        const src = source.getAttribute?.("src") || source.src;
+        if (src) sources.push(src);
+      }
+    } catch {
+      // Child source scanning is best-effort.
+    }
+    return sources;
+  }
+
+  function patchSrcDescriptor(proto, label) {
+    if (!proto) return false;
+    try {
+      if (Object.prototype.hasOwnProperty.call(proto, "__learnNoteSrcDescriptorPatched")) return true;
+      const descriptor = Object.getOwnPropertyDescriptor(proto, "src");
+      if (!descriptor?.get || !descriptor?.set || descriptor.configurable === false) return false;
+      Object.defineProperty(proto, "src", {
+        configurable: descriptor.configurable,
+        enumerable: descriptor.enumerable,
+        get() {
+          return descriptor.get.call(this);
+        },
+        set(value) {
+          emitMediaElementSource(this, value, label);
+          return descriptor.set.call(this, value);
+        }
+      });
+      Object.defineProperty(proto, "__learnNoteSrcDescriptorPatched", { value: true });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function patchHtmlMediaElement() {
+    try {
+      patchSrcDescriptor(window.HTMLMediaElement?.prototype, "HTMLMediaElement src");
+      patchSrcDescriptor(window.HTMLVideoElement?.prototype, "HTMLVideoElement src");
+      patchSrcDescriptor(window.HTMLAudioElement?.prototype, "HTMLAudioElement src");
+      patchSrcDescriptor(window.HTMLSourceElement?.prototype, "HTMLSourceElement src");
+    } catch {
+      // Native media prototypes vary by browser and page isolation mode.
+    }
+
+    try {
+      patchMethod(window.Element?.prototype, "setAttribute", original => function (name, value, ...rest) {
+        const attr = String(name || "").toLowerCase();
+        if (attr === "src" && (isMediaElement(this) || isSourceElement(this))) {
+          emitMediaElementSource(this, value, `${mediaElementTag(this) || "media"} setAttribute src`);
+        }
+        return original.call(this, name, value, ...rest);
+      });
+    } catch {
+      // If Element.prototype is locked, the src descriptor/load hooks can still catch most cases.
+    }
+
+    try {
+      patchMethod(window.HTMLMediaElement?.prototype, "load", original => function (...args) {
+        const sources = collectMediaElementCurrentSources(this);
+        if (sources.length) emitMediaElementSource(this, sources, "HTMLMediaElement load");
+        return original.apply(this, args);
+      });
+    } catch {
+      // Loading should continue even if inspection fails.
+    }
+  }
+
   function patchKnownPlayerLibraries() {
     patchHlsJs();
     patchDashJs();
@@ -1299,6 +1419,7 @@
   }
 
   installEmeDetection();
+  patchHtmlMediaElement();
   patchKnownPlayerLibraries();
   scanGlobalConfig();
   setTimeout(patchKnownPlayerLibraries, 100);
