@@ -2135,6 +2135,69 @@ function updateContinueFromMediaAction(task = currentTask) {
   els.continueFromMediaButton.disabled = !canContinue;
 }
 
+function visualCoverageHtml(task) {
+  const windows = visualWindows(task || {});
+  const diag = task?.summary_diagnostics || {};
+  const hasDiagnostics = Object.keys(diag).length > 0;
+  const gridCount = Number(diag.frame_grid_count ?? task?.frame_grids?.length ?? windows.length ?? 0);
+  const visionGridCount = Number(diag.vision_grid_count ?? gridCount ?? 0);
+  const sentImages = Number(diag.vision_image_count ?? windows.filter(window => safeNoteMediaUrl(window.grid_url)).length ?? 0);
+  const missingIds = (diag.missing_vision_image_window_ids || []).map(id => String(id || "").trim()).filter(Boolean);
+  const omittedIds = (diag.omitted_vision_window_ids || []).map(id => String(id || "").trim()).filter(Boolean);
+  const windowCount = Number(diag.visual_window_count ?? windows.length ?? 0);
+  if (!windows.length && !hasDiagnostics && !gridCount) return "";
+
+  const validWindows = windows
+    .map((window, index) => ({
+      ...window,
+      id: String(window.id || `W${String(index + 1).padStart(3, "0")}`),
+      start: Number(window.start || 0),
+      end: Number(window.end ?? window.start ?? 0),
+      frame_count: Number(window.frame_count || 0)
+    }))
+    .filter(window => Number.isFinite(window.start) && Number.isFinite(window.end));
+  const minStart = validWindows.length ? Math.min(...validWindows.map(window => window.start)) : 0;
+  const maxEnd = validWindows.length ? Math.max(...validWindows.map(window => window.end)) : 0;
+  const totalDuration = Math.max(1, maxEnd - minStart);
+  const shownWindows = validWindows.slice(0, 6);
+  const missingSet = new Set(missingIds);
+  const omittedSet = new Set(omittedIds);
+  const lane = shownWindows.length
+    ? `<div class="visual-coverage-lane" aria-label="视觉窗口覆盖">
+      ${shownWindows.map(window => {
+        const width = Math.max(12, Math.min(100, ((Math.max(1, window.end - window.start) / totalDuration) * 100)));
+        const state = omittedSet.has(window.id) ? "omitted" : missingSet.has(window.id) ? "missing" : safeNoteMediaUrl(window.grid_url) ? "ready" : "pending";
+        return `<span class="${escapeHtml(state)}" style="--w:${width.toFixed(2)}%" title="${escapeHtml(`${window.id} ${fmt(window.start)} - ${fmt(window.end)}`)}">
+          <b>${escapeHtml(window.id)}</b><small>${escapeHtml(fmt(window.start))}</small>
+        </span>`;
+      }).join("")}
+      ${validWindows.length > shownWindows.length ? `<em>+${validWindows.length - shownWindows.length}</em>` : ""}
+    </div>`
+    : `<div class="visual-coverage-empty">等待抽帧生成视觉窗口</div>`;
+  const flags = [
+    missingIds.length ? `缺图 ${compactIdList(missingIds)}` : "",
+    omittedIds.length ? `超限省略 ${compactIdList(omittedIds)}` : "",
+    diag.summary_warning || "",
+    diag.used_page_text_fallback ? "已使用页面文本/浏览器字幕兜底" : ""
+  ].filter(Boolean);
+
+  return `<section class="visual-coverage" aria-label="视觉切片覆盖">
+    <header>
+      <span>视觉切片覆盖</span>
+      <strong>${windowCount || windows.length || "-"} 个窗口</strong>
+      <small>${validWindows.length ? `${fmt(minStart)} - ${fmt(maxEnd)}` : "尚无时间覆盖"}</small>
+    </header>
+    <div class="visual-coverage-metrics">
+      <span><b>${gridCount || "-"}</b>网格</span>
+      <span><b>${sentImages}/${visionGridCount || gridCount || 0}</b>送入视觉</span>
+      <span><b>${missingIds.length || "-"}</b>缺图</span>
+      <span><b>${omittedIds.length || "-"}</b>省略</span>
+    </div>
+    ${lane}
+    ${flags.length ? `<p>${flags.map(escapeHtml).join(" · ")}</p>` : ""}
+  </section>`;
+}
+
 function taskOverview(task) {
   const selected = task.selected_resource || {};
   const options = task.options || {};
@@ -2178,6 +2241,7 @@ function taskOverview(task) {
       <span><b>${escapeHtml(task.summary_source || options.whisper_model || "-")}</b>${escapeHtml(task.summary_warning ? "已降级" : `${options.note_style || "study"} · ${options.visual_understanding === false ? "无视觉" : "图文"}`)}</span>
       <span><b>${windows.length || "-"}</b>${windows.length ? "画面窗口" : "等待切片"}</span>
     </div>
+    ${visualCoverageHtml(task)}
     ${taskRouteEvidenceHtml(task)}
     ${downloadOnly ? `<div class="task-overview-callout">
       <strong>已完成直取下载</strong>

@@ -1826,6 +1826,155 @@ input[type="file"] {
   white-space: nowrap;
 }
 
+.visual-coverage {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #d6e2f2;
+  border-radius: 8px;
+  background: #fbfcff;
+  padding: 10px;
+}
+
+.visual-coverage header {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.visual-coverage header span {
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.visual-coverage header strong {
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.visual-coverage header small,
+.visual-coverage p {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.visual-coverage-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.visual-coverage-metrics span {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: #fff;
+  padding: 7px 8px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 760;
+  line-height: 1.25;
+}
+
+.visual-coverage-metrics b {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.visual-coverage-lane {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  min-height: 42px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.visual-coverage-lane span {
+  width: var(--w);
+  min-width: 44px;
+  display: grid;
+  align-content: center;
+  gap: 2px;
+  overflow: hidden;
+  border: 1px solid #c9d9ff;
+  border-radius: 7px;
+  background: #f2f7ff;
+  color: var(--accent);
+  padding: 6px 7px;
+}
+
+.visual-coverage-lane span.ready {
+  border-color: rgba(20, 150, 74, 0.26);
+  background: rgba(20, 150, 74, 0.08);
+  color: var(--success);
+}
+
+.visual-coverage-lane span.missing {
+  border-color: rgba(196, 122, 5, 0.28);
+  background: rgba(196, 122, 5, 0.08);
+  color: var(--warning);
+}
+
+.visual-coverage-lane span.omitted {
+  border-color: rgba(217, 45, 32, 0.22);
+  background: rgba(217, 45, 32, 0.08);
+  color: var(--danger);
+}
+
+.visual-coverage-lane b,
+.visual-coverage-lane small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.visual-coverage-lane b {
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.visual-coverage-lane small {
+  font-size: 9px;
+  font-weight: 720;
+}
+
+.visual-coverage-lane em {
+  min-width: 36px;
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--border-strong);
+  border-radius: 7px;
+  color: var(--muted);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 850;
+}
+
+.visual-coverage-empty {
+  min-height: 36px;
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--border-strong);
+  border-radius: 7px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.visual-coverage p {
+  margin: 0;
+  border-top: 1px solid var(--border);
+  padding-top: 7px;
+  overflow-wrap: anywhere;
+}
+
 .task-route-evidence {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

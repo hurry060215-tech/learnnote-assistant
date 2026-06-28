@@ -129,6 +129,51 @@ assert.match(summaryDiagnostic, /页面文本 18 字/);
 assert.match(summaryDiagnostic, /浏览器字幕 3 条/);
 assert.match(summaryDiagnostic, /合并文本 72 字/);
 
+const visualCoverageHtml = context.visualCoverageHtml({
+  id: "side-visual-coverage",
+  summary_diagnostics: {
+    visual_window_count: 3,
+    frame_grid_count: 3,
+    vision_grid_count: 3,
+    vision_image_count: 1,
+    missing_vision_image_window_ids: ["W002"],
+    omitted_vision_window_ids: ["W099"],
+    summary_warning: "<script>bad()</script> 降级"
+  },
+  visual_windows: [
+    {
+      id: "W001",
+      start: 0,
+      end: 180,
+      frame_count: 9,
+      grid_url: "http://127.0.0.1:8765/api/tasks/demo/grids/grid_000.jpg"
+    },
+    {
+      id: "W002",
+      start: 180,
+      end: 360,
+      frame_count: 9,
+      grid_url: ""
+    },
+    {
+      id: "<script>bad()</script>",
+      start: 360,
+      end: 540,
+      frame_count: 9,
+      grid_url: ""
+    }
+  ]
+});
+assert.match(visualCoverageHtml, /class="visual-coverage"/);
+assert.match(visualCoverageHtml, /视觉切片覆盖/);
+assert.match(visualCoverageHtml, /3 个窗口/);
+assert.match(visualCoverageHtml, /00:00:00 - 00:09:00/);
+assert.match(visualCoverageHtml, /1\/3/);
+assert.match(visualCoverageHtml, /缺图 W002/);
+assert.match(visualCoverageHtml, /超限省略 W099/);
+assert.match(visualCoverageHtml, /&lt;script&gt;bad\(\)&lt;\/script&gt;/);
+assert.doesNotMatch(visualCoverageHtml, /<script>bad/);
+
 const routeEvidenceItems = context.taskRouteEvidenceItems({
   source_type: "current_page",
   status: "failed",
@@ -390,6 +435,36 @@ const failedMediaOverviewHtml = context.taskOverview({
 });
 assert.match(failedMediaOverviewHtml, /data-rerun-from-media="side-failed-media"/);
 assert.match(failedMediaOverviewHtml, /Whisper failed/);
+
+const coverageOverviewHtml = context.taskOverview({
+  id: "side-coverage-overview",
+  title: "侧栏切片覆盖",
+  source_type: "current_page",
+  status: "success",
+  phase: "completed",
+  progress: 100,
+  media_path: "D:/media.mp4",
+  note_path: "D:/note.md",
+  selected_resource: { kind: "hls", source: "webRequest" },
+  options: { frame_interval: 20, grid_columns: 3, grid_rows: 3 },
+  summary_diagnostics: {
+    visual_window_count: 1,
+    frame_grid_count: 1,
+    vision_grid_count: 1,
+    vision_image_count: 1
+  },
+  visual_windows: [{
+    id: "W001",
+    start: 0,
+    end: 180,
+    frame_count: 9,
+    grid_url: "http://127.0.0.1:8765/api/tasks/demo/grids/grid_000.jpg"
+  }]
+});
+assert.match(coverageOverviewHtml, /class="visual-coverage"/);
+assert.match(coverageOverviewHtml, /视觉切片覆盖/);
+assert.match(coverageOverviewHtml, /1\/1/);
+assert.match(coverageOverviewHtml, /W001/);
 
 const fallbackOverviewHtml = context.taskOverview({
   id: "side-fallback",
