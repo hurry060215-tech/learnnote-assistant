@@ -650,6 +650,37 @@ function recordResponseMedia(details = {}, requestHeaders = {}) {
   });
 }
 
+function recordRedirectMedia(details = {}, requestHeaders = {}) {
+  const headers = responseHeadersObject(details.responseHeaders || []);
+  const redirectUrl = details.redirectUrl || responseResolvedUrl(details.url || "", headers);
+  if (redirectUrl && !headers.location) headers.location = redirectUrl;
+  const mime = headers["content-type"] || "";
+  const redirectKind = classify(redirectUrl, mime);
+  const currentKind = classifyCompletedRequest(details, mime, requestHeaders, headers);
+  const kind = redirectKind !== "unknown" ? redirectKind : currentKind;
+  if (kind === "unknown") return;
+  const contentLength = Number(headers["content-length"] || 0);
+  addResource(details.tabId, {
+    url: details.url,
+    resolved_url: redirectUrl || "",
+    source: "webRequest",
+    kind,
+    mime,
+    headers,
+    request_type: details.type || "",
+    method: details.method || "",
+    status_code: details.statusCode || null,
+    content_length: Number.isFinite(contentLength) && contentLength > 0 ? contentLength : null,
+    initiator: details.initiator || "",
+    frame_id: details.frameId ?? null,
+    frame_url: details.documentUrl || "",
+    page_url: details.documentUrl || details.initiator || "",
+    time_stamp: details.timeStamp || Date.now(),
+    request_headers: requestHeaders,
+    label: `${kind.toUpperCase()} redirect`
+  });
+}
+
 function registerHeadersReceivedListener(options) {
   chrome.webRequest.onHeadersReceived.addListener(
     details => recordResponseMedia(details, peekRequestHeaders(details.requestId)),
@@ -662,6 +693,20 @@ try {
   registerHeadersReceivedListener(["responseHeaders", "extraHeaders"]);
 } catch {
   registerHeadersReceivedListener(["responseHeaders"]);
+}
+
+function registerBeforeRedirectListener(options) {
+  chrome.webRequest.onBeforeRedirect.addListener(
+    details => recordRedirectMedia(details, peekRequestHeaders(details.requestId)),
+    { urls: ["<all_urls>"] },
+    options
+  );
+}
+
+try {
+  registerBeforeRedirectListener(["responseHeaders", "extraHeaders"]);
+} catch {
+  registerBeforeRedirectListener(["responseHeaders"]);
 }
 
 chrome.webRequest.onCompleted.addListener(

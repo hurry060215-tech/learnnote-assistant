@@ -14,6 +14,7 @@ const context = {
     webRequest: {
       onBeforeSendHeaders: listener(),
       onHeadersReceived: listener(),
+      onBeforeRedirect: listener(),
       onCompleted: listener(),
       onErrorOccurred: listener()
     },
@@ -195,6 +196,43 @@ assert.equal(apiPlayResources[0].request_headers["User-Agent"], "Chrome Playback
 assert.equal(apiPlayResources[0].headers.location, "https://media.example.net/redirected/master.m3u8");
 assert.equal(apiPlayResources[0].headers["content-location"], "/relative/master.m3u8");
 assert.equal(apiPlayResources[0].resolved_url, "https://media.example.net/redirected/master.m3u8");
+
+context.rememberRequestHeaders({
+  requestId: "redirect-play-hls",
+  url: "https://course.example.com/api/play/redirect?lesson=42",
+  type: "xmlhttprequest",
+  requestHeaders: [
+    { name: "Referer", value: "https://course.example.com/lesson" },
+    { name: "Origin", value: "https://course.example.com" },
+    { name: "User-Agent", value: "Chrome Playback UA" }
+  ]
+});
+context.recordRedirectMedia({
+  requestId: "redirect-play-hls",
+  tabId: 162,
+  url: "https://course.example.com/api/play/redirect?lesson=42",
+  redirectUrl: "https://media.example.net/tmp/master.m3u8?sig=abc",
+  type: "xmlhttprequest",
+  method: "GET",
+  statusCode: 302,
+  frameId: 0,
+  documentUrl: "https://course.example.com/lesson",
+  initiator: "https://course.example.com",
+  timeStamp: Date.now(),
+  responseHeaders: [
+    { name: "Location", value: "https://media.example.net/tmp/master.m3u8?sig=abc" }
+  ]
+}, context.peekRequestHeaders("redirect-play-hls"));
+
+const redirectPlayResources = vm.runInContext("resourceByTab.get(162)", context);
+assert.equal(redirectPlayResources.length, 1);
+assert.equal(redirectPlayResources[0].kind, "hls");
+assert.equal(redirectPlayResources[0].url, "https://course.example.com/api/play/redirect?lesson=42");
+assert.equal(redirectPlayResources[0].resolved_url, "https://media.example.net/tmp/master.m3u8?sig=abc");
+assert.equal(redirectPlayResources[0].headers.location, "https://media.example.net/tmp/master.m3u8?sig=abc");
+assert.equal(redirectPlayResources[0].request_headers.Referer, "https://course.example.com/lesson");
+assert.equal(redirectPlayResources[0].request_headers.Origin, "https://course.example.com");
+assert.equal(redirectPlayResources[0].label, "HLS redirect");
 
 context.rememberRequestHeaders({
   requestId: "download-api-video",
