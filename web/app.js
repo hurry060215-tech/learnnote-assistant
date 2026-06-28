@@ -547,7 +547,7 @@ function workflowSourceConfig(source, task = null) {
       hint: task ? statusText(task) : "适合 DRM、不可还原 blob 或学习平台不暴露媒体 URL 的课程。",
       steps: [
         ["导入文件", "mp4 / flv / avi / mkv / webm"],
-        ["提取音频", "字幕优先，Whisper 兜底"],
+        ["提取音频", "字幕优先，所选 ASR 兜底"],
         ["抽帧切片", "按视觉窗口生成网格"],
         ["整理笔记", "Markdown + 资料包"]
       ]
@@ -619,7 +619,7 @@ function sourceRouteInsightItems(source, task = null) {
   if (source === "local") {
     return [
       ["视频入口", "本地文件直进管线", task?.media_path ? "已生成标准 media.mp4" : "拖拽上传后保存在 D 盘 data/uploads"],
-      ["理解方式", "字幕优先，Whisper 兜底", "同样抽帧切片并送入视觉窗口"],
+      ["理解方式", "字幕优先，所选 ASR 兜底", "同样抽帧切片并送入视觉窗口"],
       ["适用场景", "平台不暴露 URL 时兜底", "DRM、不可还原 blob、过期签名都可改走本地"]
     ];
   }
@@ -946,12 +946,27 @@ function stageRail(task) {
   return `<div class="stage-rail">${PIPELINE_STEPS.map(step => `<span class="${stepState(task, step)}">${step.label}</span>`).join("")}</div>`;
 }
 
+function transcriberLabel(value) {
+  return ({
+    "faster-whisper": "本地 faster-whisper",
+    "openai-compatible": "OpenAI-compatible ASR",
+    "openai-compatible-asr": "OpenAI-compatible ASR",
+    openai: "OpenAI ASR",
+    groq: "Groq ASR",
+    "groq-asr": "Groq ASR"
+  })[String(value || "faster-whisper").toLowerCase()] || String(value || "ASR");
+}
+
+function asrOptionText(options = {}) {
+  return `${transcriberLabel(options.transcriber)} · ${options.whisper_model || "small"}`;
+}
+
 function optionText(task) {
   const options = task.options || {};
   return [
     options.frame_interval ? `${options.frame_interval} 秒切片` : "",
     options.grid_columns && options.grid_rows ? `${options.grid_columns}x${options.grid_rows} 画面网格` : "",
-    options.whisper_model ? `ASR ${options.whisper_model}` : "",
+    asrOptionText(options),
     options.note_style ? `风格 ${options.note_style}` : "",
     options.visual_understanding === false ? "未开启视觉理解" : "视觉理解"
   ].filter(Boolean).join(" · ");
@@ -1041,15 +1056,15 @@ function readOptions() {
   return options;
 }
 
-function syncTranscriberModelDefault() {
+function syncTranscriberModelDefault(force = false) {
   if (!els.transcriber || !els.whisperModel) return;
   const transcriber = els.transcriber.value || "faster-whisper";
   const model = els.whisperModel.value || "small";
   if (transcriber === "faster-whisper" && !LOCAL_ASR_MODELS.has(model)) {
     els.whisperModel.value = "small";
-  } else if (transcriber === "openai-compatible" && LOCAL_ASR_MODELS.has(model)) {
+  } else if (transcriber === "openai-compatible" && (force || LOCAL_ASR_MODELS.has(model))) {
     els.whisperModel.value = "whisper-1";
-  } else if (transcriber === "groq" && LOCAL_ASR_MODELS.has(model)) {
+  } else if (transcriber === "groq" && (force || LOCAL_ASR_MODELS.has(model))) {
     els.whisperModel.value = "whisper-large-v3";
   }
 }
@@ -1359,11 +1374,12 @@ async function transcriptForTask(task) {
 
 function taskBrief(task) {
   const selected = task.selected_resource || {};
+  const options = task.options || {};
   return `<div class="task-brief">
     <span><b>${escapeHtml(statusText(task))}</b>${escapeHtml(task.phase || "-")} · ${task.progress || 0}%</span>
     <span><b>${escapeHtml(sourceText(task))}</b>${escapeHtml(selected.kind || task.source_type || "-")}</span>
-    <span><b>${escapeHtml(task.options?.frame_interval || "-")} 秒切片</b>${escapeHtml(task.options?.grid_columns && task.options?.grid_rows ? `${task.options.grid_columns}x${task.options.grid_rows} 视觉窗口` : "未配置视觉窗口")}</span>
-    <span><b>${escapeHtml(task.summary_source || task.options?.whisper_model || "-")}</b>${escapeHtml(task.summary_warning ? "已降级，详见诊断" : `${task.options?.note_style || "study"} · ${task.options?.visual_understanding === false ? "无视觉" : "图文"}`)}</span>
+    <span><b>${escapeHtml(options.frame_interval || "-")} 秒切片</b>${escapeHtml(options.grid_columns && options.grid_rows ? `${options.grid_columns}x${options.grid_rows} 视觉窗口` : "未配置视觉窗口")}</span>
+    <span><b>${escapeHtml(task.summary_source || asrOptionText(options))}</b>${escapeHtml(task.summary_warning ? "已降级，详见诊断" : `${options.note_style || "study"} · ${options.visual_understanding === false ? "无视觉" : "图文"}`)}</span>
   </div>`;
 }
 
@@ -1604,7 +1620,7 @@ function pipelineAuditItems(task) {
       value: hasTranscript ? "字幕已生成" : isPageText && hasNote ? "页面文本/浏览器字幕" : task?.phase === "transcribing" ? "转写中" : "待转写",
       detail: hasTranscript
         ? "时间轴可在字幕页查看"
-        : (isPageText ? `${diag.browser_subtitle_count ?? 0} 条浏览器字幕 · ${diag.combined_text_char_count ?? 0} 字` : task?.summary_warning || "字幕优先，Whisper 兜底")
+        : (isPageText ? `${diag.browser_subtitle_count ?? 0} 条浏览器字幕 · ${diag.combined_text_char_count ?? 0} 字` : task?.summary_warning || `字幕优先，${asrOptionText(task?.options || {})} 兜底`)
     },
     {
       key: "visual",
@@ -1688,7 +1704,7 @@ function taskOverview(task) {
     <div class="task-overview-metrics">
       <span><b>${escapeHtml(statusText(task))}</b>${escapeHtml(task.phase || "-")} · ${task.progress || 0}%</span>
       <span><b>${escapeHtml(options.frame_interval || "-")} 秒切片</b>${escapeHtml(options.grid_columns && options.grid_rows ? `${options.grid_columns}x${options.grid_rows} 视觉窗口` : "未配置视觉窗口")}</span>
-      <span><b>${escapeHtml(task.summary_source || options.whisper_model || "-")}</b>${escapeHtml(task.summary_warning ? "已降级，查看诊断" : `${options.note_style || "study"} · ${options.visual_understanding === false ? "无视觉" : "图文"}`)}</span>
+      <span><b>${escapeHtml(task.summary_source || asrOptionText(options))}</b>${escapeHtml(task.summary_warning ? "已降级，查看诊断" : `${options.note_style || "study"} · ${options.visual_understanding === false ? "无视觉" : "图文"}`)}</span>
       <span><b>${windows.length || "-"}</b>${windows.length ? "画面窗口" : "等待画面切片"}</span>
     </div>
     ${pipelineAuditHtml(task)}
@@ -1885,7 +1901,7 @@ function noteStudyBar(markdown, task) {
     {
       label: "转写字幕",
       value: hasTranscript ? "已对齐" : "未生成",
-      text: task.summary_warning ? "有降级提示，建议看诊断" : `${task.options?.whisper_model || "small"} · ${task.options?.transcriber || "ASR"}`,
+      text: task.summary_warning ? "有降级提示，建议看诊断" : asrOptionText(task.options || {}),
       action: hasTranscript ? `<button type="button" data-switch-result-tab="transcript">看字幕</button>` : ""
     },
     {
@@ -2359,6 +2375,7 @@ async function renderDetail() {
         <dt>复用请求头</dt><dd>${escapeHtml(requestHeaderNames(selected))}</dd>
         <dt>媒体文件</dt><dd>${escapeHtml(task.media_path || "-")}</dd>
         <dt>音频文件</dt><dd>${escapeHtml(task.audio_path || "-")}</dd>
+        <dt>转写引擎</dt><dd>${escapeHtml(asrOptionText(task.options || {}))}</dd>
         <dt>字幕文件</dt><dd>${escapeHtml(task.subtitle_path || "-")}</dd>
         <dt>总结来源</dt><dd>${escapeHtml(task.summary_source || "-")}</dd>
         <dt>图文总结诊断</dt><dd>${escapeHtml(summaryDiagnosticText(task))}</dd>
@@ -2592,7 +2609,7 @@ if (els.urlMode) {
   renderUrlModeHint();
 }
 if (els.transcriber) {
-  els.transcriber.onchange = syncTranscriberModelDefault;
+  els.transcriber.onchange = () => syncTranscriberModelDefault(true);
 }
 
 els.resultTabs.forEach(tab => {

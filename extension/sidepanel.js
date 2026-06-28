@@ -616,17 +616,32 @@ function readOptions() {
   return options;
 }
 
-function syncTranscriberModelDefault() {
+function syncTranscriberModelDefault(force = false) {
   if (!els.transcriber || !els.whisperModel) return;
   const transcriber = els.transcriber.value || "faster-whisper";
   const model = els.whisperModel.value || "small";
   if (transcriber === "faster-whisper" && !LOCAL_ASR_MODELS.has(model)) {
     els.whisperModel.value = "small";
-  } else if (transcriber === "openai-compatible" && LOCAL_ASR_MODELS.has(model)) {
+  } else if (transcriber === "openai-compatible" && (force || LOCAL_ASR_MODELS.has(model))) {
     els.whisperModel.value = "whisper-1";
-  } else if (transcriber === "groq" && LOCAL_ASR_MODELS.has(model)) {
+  } else if (transcriber === "groq" && (force || LOCAL_ASR_MODELS.has(model))) {
     els.whisperModel.value = "whisper-large-v3";
   }
+}
+
+function transcriberLabel(value) {
+  return ({
+    "faster-whisper": "本地 faster-whisper",
+    "openai-compatible": "OpenAI-compatible ASR",
+    "openai-compatible-asr": "OpenAI-compatible ASR",
+    openai: "OpenAI ASR",
+    groq: "Groq ASR",
+    "groq-asr": "Groq ASR"
+  })[String(value || "faster-whisper").toLowerCase()] || String(value || "ASR");
+}
+
+function asrOptionText(options = {}) {
+  return `${transcriberLabel(options.transcriber)} · ${options.whisper_model || "small"}`;
 }
 
 function isDownloadableResource(item) {
@@ -2434,7 +2449,7 @@ function pipelineAuditItems(task) {
       label: "转写门",
       state: isPageText && hasNote ? "pass" : auditGateState(task, hasTranscript),
       value: hasTranscript ? "字幕已生成" : isPageText && hasNote ? "页面文本/浏览器字幕" : task?.phase === "transcribing" ? "转写中" : "待转写",
-      detail: hasTranscript ? "可切到转写页核对" : (isPageText ? `${diag.browser_subtitle_count ?? 0} 条字幕 · ${diag.combined_text_char_count ?? 0} 字` : "字幕优先，Whisper 兜底")
+      detail: hasTranscript ? "可切到转写页核对" : (isPageText ? `${diag.browser_subtitle_count ?? 0} 条字幕 · ${diag.combined_text_char_count ?? 0} 字` : `字幕优先，${asrOptionText(task?.options || {})} 兜底`)
     },
     {
       label: "切片门",
@@ -2513,7 +2528,7 @@ function taskOverview(task) {
     <div class="task-overview-metrics">
       <span><b>${escapeHtml(taskStatusText(task))}</b>${escapeHtml(task.phase || "-")} · ${task.progress || 0}%</span>
       <span><b>${escapeHtml(options.frame_interval || "-")} 秒切片</b>${escapeHtml(options.grid_columns && options.grid_rows ? `${options.grid_columns}x${options.grid_rows} 视觉窗口` : "未配置视觉窗口")}</span>
-      <span><b>${escapeHtml(task.summary_source || options.whisper_model || "-")}</b>${escapeHtml(task.summary_warning ? "已降级" : `${options.note_style || "study"} · ${options.visual_understanding === false ? "无视觉" : "图文"}`)}</span>
+      <span><b>${escapeHtml(task.summary_source || asrOptionText(options))}</b>${escapeHtml(task.summary_warning ? "已降级" : `${options.note_style || "study"} · ${options.visual_understanding === false ? "无视觉" : "图文"}`)}</span>
       <span><b>${windows.length || "-"}</b>${windows.length ? "画面窗口" : "等待切片"}</span>
     </div>
     ${pipelineAuditHtml(task)}
@@ -2710,7 +2725,7 @@ function noteStudyMap(markdown, task) {
     {
       label: "转写字幕",
       value: hasTranscript ? "已对齐" : "未生成",
-      text: task.summary_warning ? "有降级提示，建议看诊断" : `${task.options?.whisper_model || "small"} · ${task.options?.transcriber || "ASR"}`,
+      text: task.summary_warning ? "有降级提示，建议看诊断" : asrOptionText(task.options || {}),
       action: hasTranscript ? `<button type="button" data-switch-result-tab="transcript">看字幕</button>` : ""
     },
     {
@@ -2961,6 +2976,7 @@ function renderResult() {
           fmtBytes(selected.content_length)
         ].filter(Boolean).join(" · "))}</dd>
         <dt>请求头</dt><dd>${escapeHtml(requestHeaderNames(selected))}</dd>
+        <dt>转写引擎</dt><dd>${escapeHtml(asrOptionText(currentTask.options || {}))}</dd>
         <dt>总结来源</dt><dd>${escapeHtml(currentTask.summary_source || "-")}</dd>
         <dt>图文总结诊断</dt><dd>${escapeHtml(summaryDiagnosticText(currentTask))}</dd>
         <dt>总结提示</dt><dd>${escapeHtml(currentTask.summary_warning || "-")}</dd>
@@ -2992,7 +3008,7 @@ if (els.downloadOnlyButton) els.downloadOnlyButton.onclick = () => startTask("do
 if (els.continueFromMediaButton) els.continueFromMediaButton.onclick = () => rerunTaskFromMedia(currentTask?.id);
 els.textButton.onclick = () => startTask("page_text");
 if (els.refreshHistoryButton) els.refreshHistoryButton.onclick = loadTaskHistory;
-if (els.transcriber) els.transcriber.onchange = syncTranscriberModelDefault;
+if (els.transcriber) els.transcriber.onchange = () => syncTranscriberModelDefault(true);
 els.uploadButton.onclick = () => els.fileInput.click();
 els.fileInput.onchange = uploadLocal;
 els.localDrop.onclick = () => els.fileInput.click();
