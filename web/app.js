@@ -375,6 +375,16 @@ function requestHeaderNames(resource) {
     .join(", ") || "-";
 }
 
+function requestBodySummary(resource) {
+  const body = resource?.request_body || {};
+  const content = String(body.content || "");
+  if (!content) return "";
+  const method = String(resource.method || "POST").toUpperCase();
+  const type = String(body.type || "body");
+  if (content === "<redacted>") return `${method} ${type} body 已捕获`;
+  return `${method} ${type} body ${fmtBytes(content.length) || `${content.length} B`}`;
+}
+
 function hasRangeRequestHeader(resource) {
   return Object.keys(resource?.request_headers || {}).some(name => String(name).toLowerCase() === "range");
 }
@@ -2522,6 +2532,7 @@ async function renderDetail() {
           selected.mime || "-"
         ].filter(Boolean).join(" · "))}</dd>
         <dt>复用请求头</dt><dd>${escapeHtml(requestHeaderNames(selected))}</dd>
+        <dt>请求 body</dt><dd>${escapeHtml(requestBodySummary(selected) || "-")}</dd>
         <dt>媒体文件</dt><dd>${escapeHtml(task.media_path || "-")}</dd>
         <dt>音频文件</dt><dd>${escapeHtml(task.audio_path || "-")}</dd>
         <dt>转写引擎</dt><dd>${escapeHtml(asrOptionText(task.options || {}))}</dd>

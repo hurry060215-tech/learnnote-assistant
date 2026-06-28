@@ -350,6 +350,7 @@ function selectedResourceReport(item = selectedResource()) {
     `请求证据: ${requestEvidence(item) || "-"}`,
     `响应证据: ${responseEvidenceLine(item) || "-"}`,
     `复用请求头: ${requestHeaderNames(item)}`,
+    `POST body: ${requestBodySummary(item) || "-"}`,
     `预检: ${resourcePreflightLine(checked)}`
   ].join("\n");
 }
@@ -970,6 +971,7 @@ function requestEvidence(item) {
     item.request_type,
     item.status_code ? `HTTP ${item.status_code}` : "",
     fmtBytes(item.content_length),
+    requestBodySummary(item),
     contentDispositionHint(item.headers?.["content-disposition"]),
     item.frame_id !== null && item.frame_id !== undefined ? `frame ${item.frame_id}` : "",
     item.mime || ""
@@ -998,6 +1000,16 @@ function requestHeaderValue(item, targetName) {
   return "";
 }
 
+function requestBodySummary(item) {
+  const body = item?.request_body || {};
+  const content = String(body.content || "");
+  if (!content) return "";
+  const method = String(item.method || "POST").toUpperCase();
+  const type = String(body.type || "body");
+  if (content === "<redacted>") return `${method} ${type} body 已捕获`;
+  return `${method} ${type} body ${fmtBytes(content.length) || `${content.length} B`}`;
+}
+
 function resourceHasRangeRequest(item) {
   return /^bytes=\d*-\d*$/i.test(requestHeaderValue(item, "range").trim());
 }
@@ -1023,6 +1035,7 @@ function resourceEvidenceTags(item) {
   if (String(item.source || "").startsWith("pageHook")) add("页面接口");
   if (item.request_type === "media") add("media 请求");
   if (resourceHasRangeRequest(item)) add("Range 播放请求");
+  if (requestBodySummary(item)) add("POST body");
   if (requestHeaderValue(item, "referer") || requestHeaderValue(item, "origin")) add("带 Referer/Origin");
   if (item.status_code) add(`HTTP ${item.status_code}`);
   return tags.slice(0, 9);
@@ -1820,6 +1833,7 @@ function renderInspector() {
     ${item.blob_url ? `<span>播放 blob：${escapeHtml(item.blob_url)}</span>` : ""}
     ${item.frame_url ? `<span>所在 frame：${escapeHtml(item.frame_url)}</span>` : ""}
     <span>复用请求头：${escapeHtml(requestHeaderNames(item))}</span>
+    ${requestBodySummary(item) ? `<span>POST body：${escapeHtml(requestBodySummary(item))}</span>` : ""}
     ${checked ? `<span>预检：${escapeHtml(resourcePreflightLine(checked))}</span>` : ""}
     ${checked ? `<span>下一步：${escapeHtml(preflightRecoveryText(checked))}</span>` : ""}
     ${checked?.warnings?.length ? `<span>提示：${escapeHtml(checked.warnings.join("；"))}</span>` : ""}
@@ -3155,6 +3169,7 @@ function renderResult() {
           fmtBytes(selected.content_length)
         ].filter(Boolean).join(" · "))}</dd>
         <dt>请求头</dt><dd>${escapeHtml(requestHeaderNames(selected))}</dd>
+        <dt>请求 body</dt><dd>${escapeHtml(requestBodySummary(selected) || "-")}</dd>
         <dt>转写引擎</dt><dd>${escapeHtml(asrOptionText(currentTask.options || {}))}</dd>
         <dt>总结来源</dt><dd>${escapeHtml(currentTask.summary_source || "-")}</dd>
         <dt>图文总结诊断</dt><dd>${escapeHtml(summaryDiagnosticText(currentTask))}</dd>
