@@ -837,6 +837,20 @@ def _read_probe_bytes(response: requests.Response, limit: int = 64 * 1024) -> by
     return b"".join(chunks)[:limit]
 
 
+def _read_text_response_body(first_chunk: bytes, chunks, limit: int = MAX_PAGE_SCAN_BYTES) -> bytes:
+    body = bytearray(first_chunk or b"")
+    if len(body) >= limit:
+        return bytes(body[:limit])
+    for chunk in chunks:
+        if not chunk:
+            continue
+        remaining = limit - len(body)
+        body.extend(chunk[:remaining])
+        if len(body) >= limit:
+            break
+    return bytes(body)
+
+
 def _textish_content_type(content_type: str) -> bool:
     return bool(re.search(r"html|json|text|xml|javascript", content_type or "", re.I))
 
@@ -1613,6 +1627,56 @@ class MediaDownloader:
             return self._download_file(candidate, cookies, referer, title)
         raise DownloadError("unsupported_manifest", f"不支持的候选资源类型：{kind}")
 
+    def _download_embedded_media_response(
+        self,
+        parent: ResourceCandidate,
+        body: bytes,
+        base_url: str,
+        cookies: list[BrowserCookie],
+        referer: str,
+        title: str,
+    ) -> tuple[Path, ResourceCandidate] | None:
+        text = body.decode("utf-8-sig", errors="replace")
+        resources = extract_media_resources_from_text(text, base_url, "direct-response")
+        if not resources:
+            return None
+
+        inherited_headers = browser_request_headers_for_candidate(parent)
+        inherited_headers.setdefault("Referer", referer or base_url)
+        skipped_urls = {parent.url, parent.resolved_url or ""}
+        last_error: DownloadError | None = None
+        for candidate in self._candidate_resources(resources):
+            if candidate.url in skipped_urls:
+                continue
+            candidate.request_headers = {**(candidate.request_headers or {}), **inherited_headers}
+            candidate.is_main_video = parent.is_main_video or candidate.is_main_video
+            candidate.playback_match = parent.playback_match or candidate.playback_match
+            candidate.page_url = parent.page_url or candidate.page_url
+            candidate.tab_id = parent.tab_id if parent.tab_id is not None else candidate.tab_id
+            candidate.frame_id = parent.frame_id if parent.frame_id is not None else candidate.frame_id
+            try:
+                output = self._download_candidate(candidate, cookies, base_url or referer, title)
+                self._record_attempt(
+                    strategy="direct-response-scan",
+                    candidate=candidate,
+                    status="success",
+                    message="播放接口返回文本/JSON，已解析并下载其中的真实媒体资源。",
+                    output_path=output,
+                )
+                return output, candidate
+            except DownloadError as exc:
+                last_error = exc
+                self._record_attempt(
+                    strategy="direct-response-scan",
+                    candidate=candidate,
+                    status="failed",
+                    code=exc.code,
+                    message=exc.message,
+                )
+        if last_error:
+            raise last_error
+        return None
+
     def _download_file(self, candidate: ResourceCandidate, cookies: list[BrowserCookie], referer: str, title: str) -> Path:
         url = candidate.resolved_url or candidate.url
         base_headers = download_headers_for_candidate(candidate, cookies, referer, url=url)
@@ -1634,8 +1698,20 @@ class MediaDownloader:
                     if chunk:
                         first_chunk = chunk
                         break
-                if _textish_content_type(content_type) and _looks_like_login_or_error(first_chunk):
-                    raise DownloadError("auth_required", "媒体资源返回登录/错误页面，而不是视频文件。")
+                if _textish_content_type(content_type):
+                    body = _read_text_response_body(first_chunk, chunks)
+                    if _looks_like_login_or_error(body):
+                        raise DownloadError("auth_required", "Media endpoint returned a login/error page instead of a video file.")
+                    manifest_kind, manifest_mime = _manifest_kind_from_body(body.decode("utf-8", errors="ignore"), content_type)
+                    if manifest_kind in {"hls", "dash"}:
+                        raise ManifestEndpointDetected(manifest_kind, manifest_mime)
+                    resolved = self._download_embedded_media_response(candidate, body, response.url or url, cookies, referer, title)
+                    if resolved:
+                        output, resolved_candidate = resolved
+                        for field in ResourceCandidate.model_fields:
+                            setattr(candidate, field, getattr(resolved_candidate, field))
+                        return output
+                    raise DownloadError("download_forbidden", "Media endpoint returned text/JSON but no downloadable video or manifest URL was found.")
                 manifest_kind, manifest_mime = _manifest_kind_from_body(first_chunk.decode("utf-8", errors="ignore"), content_type)
                 if manifest_kind in {"hls", "dash"}:
                     raise ManifestEndpointDetected(manifest_kind, manifest_mime)

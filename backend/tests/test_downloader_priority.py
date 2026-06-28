@@ -146,6 +146,38 @@ class ContentDispositionMediaHandler(QuietHandler):
         super().do_GET()
 
 
+class DirectJsonMediaHandler(QuietHandler):
+    required_user_agent = "Chrome Test UA"
+    required_x_requested_with = "XMLHttpRequest"
+    required_referer_suffix = "/lesson.html"
+    media_name = "real.mp4"
+
+    def _has_browser_headers(self) -> bool:
+        return (
+            self.headers.get("User-Agent") == self.required_user_agent
+            and self.headers.get("X-Requested-With") == self.required_x_requested_with
+            and (self.headers.get("Referer") or "").endswith(self.required_referer_suffix)
+        )
+
+    def do_GET(self) -> None:
+        path = urlparse(self.path).path
+        if path == "/api/play":
+            if not self._has_browser_headers():
+                self.send_error(403, "missing browser headers")
+                return
+            body = b'{"data":{"videoUrl":"/real.mp4","mimeType":"video/mp4"}}'
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        if path == f"/{self.media_name}" and not self._has_browser_headers():
+            self.send_error(403, "missing browser headers")
+            return
+        super().do_GET()
+
+
 class RedirectMediaHandler(QuietHandler):
     media_name = "final.mp4"
 
@@ -399,6 +431,76 @@ class DownloaderPriorityTests(unittest.TestCase):
                 self.assertEqual(downloader.attempts[0].status_code, 200)
                 self.assertEqual(downloader.attempts[0].content_length, video.stat().st_size)
                 self.assertEqual(downloader.attempts[0].mime, "application/octet-stream")
+            finally:
+                server.shutdown()
+                server.server_close()
+
+    def test_direct_json_play_endpoint_downloads_embedded_media_url(self) -> None:
+        ffmpeg = ffmpeg_bin()
+        assert ffmpeg is not None
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            video = root / DirectJsonMediaHandler.media_name
+            subprocess.run(
+                [
+                    ffmpeg,
+                    "-y",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "testsrc=duration=2:size=320x180:rate=10",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "sine=frequency=440:duration=2",
+                    "-shortest",
+                    "-pix_fmt",
+                    "yuv420p",
+                    str(video),
+                ],
+                check=True,
+            )
+
+            server = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(DirectJsonMediaHandler, directory=str(root)))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                play_url = f"http://127.0.0.1:{server.server_port}/api/play?id=42"
+                media_url = f"http://127.0.0.1:{server.server_port}/{video.name}"
+                downloader = MediaDownloader(root / "task")
+                with patch.object(downloader, "_download_with_ytdlp") as ytdlp:
+                    media_path, selected = downloader.download(
+                        page_url=f"http://127.0.0.1:{server.server_port}/lesson.html",
+                        resources=[
+                            ResourceCandidate(
+                                url=play_url,
+                                source="webRequest",
+                                kind="video",
+                                mime="video/mp4",
+                                score=100,
+                                label="extensionless play API",
+                                request_headers={
+                                    "User-Agent": DirectJsonMediaHandler.required_user_agent,
+                                    "X-Requested-With": DirectJsonMediaHandler.required_x_requested_with,
+                                },
+                            )
+                        ],
+                        cookies=[],
+                        title="Direct JSON API",
+                    )
+                ytdlp.assert_not_called()
+                self.assertTrue(media_path.exists())
+                self.assertIsNotNone(selected)
+                self.assertEqual(selected.url, media_url)
+                self.assertEqual(selected.source, "direct-response")
+                self.assertEqual(selected.request_headers["X-Requested-With"], DirectJsonMediaHandler.required_x_requested_with)
+                self.assertTrue(selected.request_headers["Referer"].endswith(DirectJsonMediaHandler.required_referer_suffix))
+                self.assertEqual([attempt.strategy for attempt in downloader.attempts[:2]], ["direct-response-scan", "direct-file"])
+                self.assertEqual(downloader.attempts[0].status, "success")
+                self.assertEqual(downloader.attempts[1].status, "success")
             finally:
                 server.shutdown()
                 server.server_close()
