@@ -1696,16 +1696,17 @@ class MediaDownloader:
             raise DownloadError("download_forbidden", f"manifest preflight failed: {exc}") from exc
 
     def _download_manifest(self, candidate: ResourceCandidate, cookies: list[BrowserCookie], referer: str, title: str) -> Path:
-        url = candidate.url
         ffmpeg = ffmpeg_bin()
         if not ffmpeg:
             raise DownloadError("unsupported_manifest", "未找到 ffmpeg，无法合并 HLS/DASH。")
         output = self.download_dir / f"{_clean_filename(title)}_manifest.mp4"
         request_headers = download_headers_for_candidate(candidate, cookies, referer)
         self._probe_manifest_before_ffmpeg(candidate, request_headers)
+        url = candidate.resolved_url or candidate.url
+        request_headers = download_headers_for_candidate(candidate, cookies, referer, url=url)
         kind = effective_resource_kind(candidate)
         user_agent = request_headers.pop("User-Agent", "Mozilla/5.0 LearnNoteAssistant/0.1")
-        ffmpeg_cookies = ffmpeg_cookies_option(cookies, candidate.url)
+        ffmpeg_cookies = ffmpeg_cookies_option(cookies, url)
         if ffmpeg_cookies:
             request_headers.pop("Cookie", None)
         headers = [f"{name}: {value}" for name, value in request_headers.items() if value]

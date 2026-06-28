@@ -128,6 +128,25 @@ class RedirectMediaHandler(QuietHandler):
         super().do_GET()
 
 
+class RedirectManifestHandler(QuietHandler):
+    def do_GET(self) -> None:
+        path = urlparse(self.path).path
+        if path == "/manifest-gate":
+            self.send_response(302)
+            self.send_header("Location", "/real/master.m3u8")
+            self.end_headers()
+            return
+        if path == "/real/master.m3u8":
+            body = b"#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:6\n#EXT-X-ENDLIST\n"
+            self.send_response(200)
+            self.send_header("Content-Type", "application/vnd.apple.mpegurl")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        super().do_GET()
+
+
 @unittest.skipUnless(ffmpeg_bin(), "ffmpeg is required for downloader priority tests")
 class DownloaderPriorityTests(unittest.TestCase):
     def test_direct_browser_candidate_is_tried_before_page_resolver(self) -> None:
@@ -440,6 +459,37 @@ class DownloaderPriorityTests(unittest.TestCase):
                 self.assertEqual(downloader.attempts[0].url, gate_url)
                 self.assertEqual(downloader.attempts[0].resolved_url, final_url)
                 self.assertIn("最终 URL", downloader.attempts[0].message)
+            finally:
+                server.shutdown()
+                server.server_close()
+
+    def test_manifest_download_uses_final_redirect_url_for_ffmpeg(self) -> None:
+        captured: dict = {}
+
+        def fake_run(cmd, capture_output, text):
+            captured["cmd"] = cmd
+            output = Path(cmd[-1])
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_bytes(b"0" * 5000)
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            server = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(RedirectManifestHandler, directory=str(root)))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                gate_url = f"http://127.0.0.1:{server.server_port}/manifest-gate"
+                final_url = f"http://127.0.0.1:{server.server_port}/real/master.m3u8"
+                candidate = ResourceCandidate(url=gate_url, source="webRequest", kind="hls", mime="application/vnd.apple.mpegurl")
+                downloader = MediaDownloader(root / "task")
+                with patch("app.downloader.ffmpeg_bin", return_value="ffmpeg"), patch("app.downloader.subprocess.run", side_effect=fake_run):
+                    media = downloader._download_manifest(candidate, [], "https://course.example.com/lesson", "Redirect HLS")
+
+                self.assertTrue(media.exists())
+                self.assertEqual(candidate.resolved_url, final_url)
+                self.assertIn("-i", captured["cmd"])
+                self.assertEqual(captured["cmd"][captured["cmd"].index("-i") + 1], final_url)
             finally:
                 server.shutdown()
                 server.server_close()
