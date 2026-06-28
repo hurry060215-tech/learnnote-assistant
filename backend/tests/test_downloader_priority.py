@@ -1467,6 +1467,43 @@ class DownloaderPriorityTests(unittest.TestCase):
                 server.shutdown()
                 server.server_close()
 
+    def test_preflight_reports_json_play_endpoint_embedded_media_url(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            server = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(DirectJsonMediaHandler, directory=str(root)))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                page_url = f"http://127.0.0.1:{server.server_port}/lesson.html"
+                play_url = f"http://127.0.0.1:{server.server_port}/api/play?id=42"
+                media_url = f"http://127.0.0.1:{server.server_port}/{DirectJsonMediaHandler.media_name}"
+                result = preflight_media_resource(
+                    ResourceCandidate(
+                        url=play_url,
+                        source="webRequest",
+                        kind="video",
+                        mime="video/mp4",
+                        score=100,
+                        request_headers={
+                            "User-Agent": DirectJsonMediaHandler.required_user_agent,
+                            "X-Requested-With": DirectJsonMediaHandler.required_x_requested_with,
+                        },
+                    ),
+                    [],
+                    page_url,
+                )
+                self.assertTrue(result.ok)
+                self.assertTrue(result.downloadable)
+                self.assertEqual(result.strategy, "direct-response-probe")
+                self.assertEqual(result.kind, "video")
+                self.assertEqual(result.resolved_url, media_url)
+                self.assertIn("Referer", result.request_header_names)
+                self.assertIn("X-Requested-With", result.request_header_names)
+                self.assertIn("embedded media URL", " ".join(result.warnings))
+            finally:
+                server.shutdown()
+                server.server_close()
+
     def test_preflight_prefers_existing_resolved_manifest_url(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

@@ -862,6 +862,39 @@ def _looks_like_login_or_error(body: bytes) -> bool:
     return any(marker in text for marker in ["login", "signin", "sign in", "请登录", "登录", "unauthorized", "forbidden"])
 
 
+def _embedded_media_candidates_from_text_response(
+    parent: ResourceCandidate,
+    body: bytes,
+    base_url: str,
+    referer: str,
+) -> list[ResourceCandidate]:
+    text = body.decode("utf-8-sig", errors="replace")
+    resources = extract_media_resources_from_text(text, base_url, "direct-response")
+    if not resources:
+        return []
+
+    inherited_headers = browser_request_headers_for_candidate(parent)
+    inherited_headers.setdefault("Referer", referer or base_url)
+    skipped_urls = {parent.url, parent.resolved_url or ""}
+    dedup: dict[str, ResourceCandidate] = {}
+    for item in resources:
+        if item.url in skipped_urls:
+            continue
+        kind = effective_resource_kind(item)
+        if kind not in {"hls", "dash", "video"}:
+            continue
+        item.kind = kind
+        item.score = min(100, max(item.score, score_candidate(item)))
+        item.request_headers = {**(item.request_headers or {}), **inherited_headers}
+        item.is_main_video = parent.is_main_video or item.is_main_video
+        item.playback_match = parent.playback_match or item.playback_match
+        item.page_url = parent.page_url or item.page_url
+        item.tab_id = parent.tab_id if parent.tab_id is not None else item.tab_id
+        item.frame_id = parent.frame_id if parent.frame_id is not None else item.frame_id
+        dedup[item.url] = item
+    return sorted(dedup.values(), key=lambda item: item.score, reverse=True)
+
+
 def preflight_media_resource(
     candidate: ResourceCandidate,
     cookies: list[BrowserCookie],
@@ -965,6 +998,32 @@ def preflight_media_resource(
                 base["content_type"] = manifest_mime or content_type
                 base["strategy"] = "manifest-probe"
                 attempt_warnings.append("该视频直连响应实际是 HLS/DASH manifest，正式任务会改用 ffmpeg 合并。")
+
+            if _textish_content_type(content_type) and manifest_kind == "unknown":
+                embedded_candidates = _embedded_media_candidates_from_text_response(candidate, body, final_url, referer)
+                if embedded_candidates:
+                    selected = embedded_candidates[0]
+                    attempt_warnings.append("Text/JSON response contains an embedded media URL; the full task will download that resolved resource.")
+                    return MediaPreflightResult(
+                        **{
+                            **base,
+                            "strategy": "direct-response-probe",
+                            "kind": selected.kind,
+                            "resolved_url": selected.url,
+                            "warnings": attempt_warnings,
+                        },
+                        ok=True,
+                        downloadable=True,
+                        code="",
+                        message="Media endpoint returned text/JSON with a downloadable video or manifest URL.",
+                    )
+                return MediaPreflightResult(
+                    **{**base, "warnings": attempt_warnings},
+                    ok=True,
+                    downloadable=False,
+                    code="download_forbidden",
+                    message="Media endpoint returned text/JSON but no downloadable video or manifest URL was found.",
+                )
 
             if probe_kind == "hls":
                 text = body.decode("utf-8", errors="ignore")
@@ -1636,24 +1695,12 @@ class MediaDownloader:
         referer: str,
         title: str,
     ) -> tuple[Path, ResourceCandidate] | None:
-        text = body.decode("utf-8-sig", errors="replace")
-        resources = extract_media_resources_from_text(text, base_url, "direct-response")
-        if not resources:
+        candidates = _embedded_media_candidates_from_text_response(parent, body, base_url, referer)
+        if not candidates:
             return None
 
-        inherited_headers = browser_request_headers_for_candidate(parent)
-        inherited_headers.setdefault("Referer", referer or base_url)
-        skipped_urls = {parent.url, parent.resolved_url or ""}
         last_error: DownloadError | None = None
-        for candidate in self._candidate_resources(resources):
-            if candidate.url in skipped_urls:
-                continue
-            candidate.request_headers = {**(candidate.request_headers or {}), **inherited_headers}
-            candidate.is_main_video = parent.is_main_video or candidate.is_main_video
-            candidate.playback_match = parent.playback_match or candidate.playback_match
-            candidate.page_url = parent.page_url or candidate.page_url
-            candidate.tab_id = parent.tab_id if parent.tab_id is not None else candidate.tab_id
-            candidate.frame_id = parent.frame_id if parent.frame_id is not None else candidate.frame_id
+        for candidate in candidates:
             try:
                 output = self._download_candidate(candidate, cookies, base_url or referer, title)
                 self._record_attempt(
