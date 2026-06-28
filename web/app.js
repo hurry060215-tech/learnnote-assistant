@@ -1769,6 +1769,22 @@ function auditGateState(task, passed) {
   return "wait";
 }
 
+function mergeBackendAuditItems(task, items) {
+  const gates = Array.isArray(task?.audit?.gates) ? task.audit.gates : [];
+  if (!gates.length) return items;
+  const byKey = new Map(gates.map(gate => [gate.key, gate]));
+  return items.map(item => {
+    const gate = byKey.get(item.key);
+    if (!gate) return item;
+    return {
+      ...item,
+      state: gate.state || item.state,
+      value: gate.value || item.value,
+      detail: gate.detail || item.detail
+    };
+  });
+}
+
 function pipelineAuditItems(task) {
   const selected = task?.selected_resource || {};
   const attempts = task?.download_attempts || [];
@@ -1789,7 +1805,7 @@ function pipelineAuditItems(task) {
   const visualState = visualDisabled ? "skip" : auditGateState(task, hasVisuals);
   const summaryState = auditGateState(task, hasNote);
 
-  return [
+  const items = [
     {
       key: "source",
       label: "来源门",
@@ -1838,6 +1854,7 @@ function pipelineAuditItems(task) {
         : "等待字幕与视觉窗口汇总"
     }
   ];
+  return mergeBackendAuditItems(task, items);
 }
 
 function pipelineAuditHtml(task) {

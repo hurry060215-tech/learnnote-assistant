@@ -327,7 +327,7 @@ function compactIdList(values, limit = 3) {
 
 function resourcePreflightLine(result = null) {
   if (!result) return "未预检";
-  return [
+  const items = [
     result.downloadable ? "通过" : result.code || "未通过",
     result.strategy || "",
     result.status_code ? `HTTP ${result.status_code}` : "",
@@ -2650,6 +2650,22 @@ function auditGateState(task, passed) {
   return "wait";
 }
 
+function mergeBackendAuditItems(task, items) {
+  const gates = Array.isArray(task?.audit?.gates) ? task.audit.gates : [];
+  if (!gates.length) return items;
+  const byKey = new Map(gates.map(gate => [gate.key, gate]));
+  return items.map((item, index) => {
+    const gate = byKey.get(item.key) || gates[index];
+    if (!gate) return item;
+    return {
+      ...item,
+      state: gate.state || item.state,
+      value: gate.value || item.value,
+      detail: gate.detail || item.detail
+    };
+  });
+}
+
 function pipelineAuditItems(task) {
   const selected = task?.selected_resource || {};
   const attempts = task?.download_attempts || [];
@@ -2664,7 +2680,7 @@ function pipelineAuditItems(task) {
   const hasNote = Boolean(task?.note_path);
   const visualDisabled = task?.options?.visual_understanding === false || isPageText;
 
-  return [
+  const items = [
     {
       label: "来源门",
       state: auditGateState(task, hasSelectedRoute || attempts.length || hasMedia || hasNote),
@@ -2702,6 +2718,7 @@ function pipelineAuditItems(task) {
       detail: hasNote ? (task?.summary_warning || `${task?.options?.note_style || "study"} · ${task?.options?.summary_depth || "standard"}`) : "等待字幕和切片"
     }
   ];
+  return mergeBackendAuditItems(task, items);
 }
 
 function pipelineAuditHtml(task) {

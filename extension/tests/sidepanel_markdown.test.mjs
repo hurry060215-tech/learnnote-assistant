@@ -570,6 +570,24 @@ const downloadedAuditItems = context.pipelineAuditItems({
   download_attempts: [{ strategy: "manifest-ffmpeg" }]
 });
 assert.equal(JSON.stringify(downloadedAuditItems.map(item => item.state)), JSON.stringify(["pass", "pass", "warn", "warn", "warn"]));
+const backendAuditHtml = context.pipelineAuditHtml({
+  status: "success",
+  source_type: "current_page",
+  media_path: "D:/media.mp4",
+  options: {},
+  audit: {
+    gates: [
+      { key: "source", state: "pass", value: "browser", detail: "server source" },
+      { key: "media", state: "pass", value: "media.mp4", detail: "server media" },
+      { key: "transcript", state: "warn", value: "backend transcript", detail: "server says wait" },
+      { key: "visual", state: "wait", value: "backend visual", detail: "server visual" },
+      { key: "summary", state: "wait", value: "backend summary", detail: "server summary" }
+    ]
+  }
+});
+assert.match(backendAuditHtml, /backend transcript/);
+assert.match(backendAuditHtml, /server says wait/);
+assert.match(backendAuditHtml, /class="warn"/);
 const unsafeAuditHtml = context.pipelineAuditHtml({
   status: "failed",
   phase: "failed",

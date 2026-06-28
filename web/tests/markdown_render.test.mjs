@@ -756,6 +756,25 @@ assert.match(taskChipsHtml, /2 次尝试/);
 assert.match(taskChipsHtml, /download_forbidden/);
 assert.doesNotMatch(taskChipsHtml, /<script>bad/);
 
+const backendAuditHtml = context.pipelineAuditHtml({
+  status: "success",
+  source_type: "current_page",
+  media_path: "D:/media.mp4",
+  options: {},
+  audit: {
+    gates: [
+      { key: "source", state: "pass", value: "browser", detail: "server source" },
+      { key: "media", state: "pass", value: "media.mp4", detail: "server media" },
+      { key: "transcript", state: "warn", value: "backend transcript", detail: "server says wait" },
+      { key: "visual", state: "wait", value: "backend visual", detail: "server visual" },
+      { key: "summary", state: "wait", value: "backend summary", detail: "server summary" }
+    ]
+  }
+});
+assert.match(backendAuditHtml, /backend transcript/);
+assert.match(backendAuditHtml, /server says wait/);
+assert.match(backendAuditHtml, /class="warn"/);
+
 const taskPreviewWithImage = context.taskPreviewHtml({
   status: "success",
   source_type: "current_page",
