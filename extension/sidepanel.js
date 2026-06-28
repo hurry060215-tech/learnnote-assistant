@@ -487,6 +487,18 @@ function mediaKindText(kind = "") {
   })[String(kind || "").toLowerCase()] || kind || "";
 }
 
+function mediaMimeForKind(kind = "") {
+  return ({
+    hls: "application/vnd.apple.mpegurl",
+    dash: "application/dash+xml",
+    video: "video/mp4"
+  })[String(kind || "").toLowerCase()] || "";
+}
+
+function isTextResponseMime(value = "") {
+  return /json|text|html|javascript|xml/i.test(String(value || ""));
+}
+
 function taskHistoryChipItems(task = {}) {
   const selected = task.selected_resource || {};
   const windows = visualWindows(task);
@@ -765,7 +777,10 @@ function applyPreflightToResource(resource, result) {
   if (DOWNLOADABLE_KINDS.has(kind)) resource.kind = kind;
   if (result.resolved_url && result.resolved_url !== resource.url) resource.resolved_url = result.resolved_url;
   if (result.content_type) {
-    resource.mime = result.content_type;
+    const resolvedMime = result.strategy === "direct-response-probe" && isTextResponseMime(result.content_type)
+      ? mediaMimeForKind(resource.kind || kind)
+      : result.content_type;
+    if (resolvedMime) resource.mime = resolvedMime;
     resource.headers = { ...(resource.headers || {}), "content-type": result.content_type };
   }
   if (result.content_disposition) {
