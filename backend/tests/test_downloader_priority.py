@@ -147,6 +147,23 @@ class RedirectManifestHandler(QuietHandler):
         super().do_GET()
 
 
+class ResolvedManifestOnlyHandler(QuietHandler):
+    def do_GET(self) -> None:
+        path = urlparse(self.path).path
+        if path == "/expired-gate":
+            self.send_error(403, "expired gate")
+            return
+        if path == "/real/master.m3u8":
+            body = b"#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:6\n#EXT-X-ENDLIST\n"
+            self.send_response(200)
+            self.send_header("Content-Type", "application/vnd.apple.mpegurl")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        super().do_GET()
+
+
 @unittest.skipUnless(ffmpeg_bin(), "ffmpeg is required for downloader priority tests")
 class DownloaderPriorityTests(unittest.TestCase):
     def test_direct_browser_candidate_is_tried_before_page_resolver(self) -> None:
@@ -488,6 +505,44 @@ class DownloaderPriorityTests(unittest.TestCase):
 
                 self.assertTrue(media.exists())
                 self.assertEqual(candidate.resolved_url, final_url)
+                self.assertIn("-i", captured["cmd"])
+                self.assertEqual(captured["cmd"][captured["cmd"].index("-i") + 1], final_url)
+            finally:
+                server.shutdown()
+                server.server_close()
+
+    def test_manifest_download_prefers_existing_resolved_url_for_probe(self) -> None:
+        captured: dict = {}
+
+        def fake_run(cmd, capture_output, text):
+            captured["cmd"] = cmd
+            output = Path(cmd[-1])
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_bytes(b"0" * 5000)
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            server = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(ResolvedManifestOnlyHandler, directory=str(root)))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                gate_url = f"http://127.0.0.1:{server.server_port}/expired-gate"
+                final_url = f"http://127.0.0.1:{server.server_port}/real/master.m3u8"
+                candidate = ResourceCandidate(
+                    url=gate_url,
+                    resolved_url=final_url,
+                    source="webRequest",
+                    kind="hls",
+                    mime="application/vnd.apple.mpegurl",
+                )
+                downloader = MediaDownloader(root / "task")
+                with patch("app.downloader.ffmpeg_bin", return_value="ffmpeg"), patch("app.downloader.subprocess.run", side_effect=fake_run):
+                    media = downloader._download_manifest(candidate, [], "https://course.example.com/lesson", "Resolved HLS")
+
+                self.assertTrue(media.exists())
+                self.assertEqual(candidate.resolved_url, final_url)
+                self.assertEqual(candidate.status_code, 200)
                 self.assertIn("-i", captured["cmd"])
                 self.assertEqual(captured["cmd"][captured["cmd"].index("-i") + 1], final_url)
             finally:
@@ -1125,6 +1180,37 @@ class DownloaderPriorityTests(unittest.TestCase):
                 self.assertEqual(result.kind, "hls")
                 self.assertEqual(result.strategy, "manifest-probe")
                 self.assertIn("正式任务会改用 ffmpeg 合并", " ".join(result.warnings))
+            finally:
+                server.shutdown()
+                server.server_close()
+
+    def test_preflight_prefers_existing_resolved_manifest_url(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            server = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(ResolvedManifestOnlyHandler, directory=str(root)))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                gate_url = f"http://127.0.0.1:{server.server_port}/expired-gate"
+                final_url = f"http://127.0.0.1:{server.server_port}/real/master.m3u8"
+                result = preflight_media_resource(
+                    ResourceCandidate(
+                        url=gate_url,
+                        resolved_url=final_url,
+                        source="webRequest",
+                        kind="hls",
+                        mime="application/vnd.apple.mpegurl",
+                        score=100,
+                    ),
+                    [],
+                    "https://course.example.com/lesson",
+                )
+                self.assertTrue(result.ok)
+                self.assertTrue(result.downloadable)
+                self.assertEqual(result.kind, "hls")
+                self.assertEqual(result.strategy, "manifest-probe")
+                self.assertEqual(result.status_code, 200)
+                self.assertEqual(result.resolved_url, final_url)
             finally:
                 server.shutdown()
                 server.server_close()

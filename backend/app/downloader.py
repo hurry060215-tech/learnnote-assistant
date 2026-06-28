@@ -835,7 +835,7 @@ def preflight_media_resource(
     timeout: int = 12,
 ) -> MediaPreflightResult:
     kind = effective_resource_kind(candidate)
-    resolved_url = candidate.url
+    resolved_url = candidate.resolved_url or candidate.url
     warnings: list[str] = []
     if kind == "fragment":
         inferred = infer_manifest_url_from_fragment(candidate.url)
@@ -1670,7 +1670,8 @@ class MediaDownloader:
             probe_headers.setdefault("Accept", "*/*")
 
         try:
-            with requests.get(candidate.url, headers=probe_headers, stream=True, timeout=15, allow_redirects=True) as response:
+            probe_url = candidate.resolved_url or candidate.url
+            with requests.get(probe_url, headers=probe_headers, stream=True, timeout=15, allow_redirects=True) as response:
                 _update_candidate_from_download_response(candidate, response)
                 body = _read_probe_bytes(response)
                 content_type = response.headers.get("content-type", "")
@@ -1700,7 +1701,8 @@ class MediaDownloader:
         if not ffmpeg:
             raise DownloadError("unsupported_manifest", "未找到 ffmpeg，无法合并 HLS/DASH。")
         output = self.download_dir / f"{_clean_filename(title)}_manifest.mp4"
-        request_headers = download_headers_for_candidate(candidate, cookies, referer)
+        probe_url = candidate.resolved_url or candidate.url
+        request_headers = download_headers_for_candidate(candidate, cookies, referer, url=probe_url)
         self._probe_manifest_before_ffmpeg(candidate, request_headers)
         url = candidate.resolved_url or candidate.url
         request_headers = download_headers_for_candidate(candidate, cookies, referer, url=url)
