@@ -4457,3 +4457,276 @@ body.reading-mode .note-workbench {
     grid-template-columns: 1fr;
   }
 }
+
+/* Compact BiliNote-style source cockpit */
+.workspace-panel {
+  padding: 18px 14px;
+}
+
+.workspace-panel .panel-heading {
+  margin-bottom: 12px;
+}
+
+.source-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.source-tab {
+  min-height: 68px;
+  display: grid;
+  grid-template-rows: 24px minmax(0, 1fr);
+  justify-items: center;
+  align-items: start;
+  gap: 6px;
+  padding: 9px 7px;
+  text-align: center;
+}
+
+.source-tab > svg {
+  width: 24px;
+  height: 24px;
+  padding: 4px;
+}
+
+.source-tab span {
+  display: grid;
+  gap: 2px;
+  justify-items: center;
+}
+
+.source-tab b {
+  font-size: 12px;
+  line-height: 1.15;
+}
+
+.source-tab small {
+  display: -webkit-box;
+  min-height: 26px;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: 10px;
+  line-height: 1.28;
+}
+
+.source-tab.active {
+  box-shadow: inset 0 0 0 1px rgba(20, 99, 255, 0.12), 0 8px 18px rgba(20, 99, 255, 0.08);
+}
+
+.source-tab.active::after {
+  right: 8px;
+  top: 8px;
+  width: 6px;
+  height: 6px;
+  box-shadow: 0 0 0 3px rgba(20, 99, 255, 0.12);
+}
+
+.source-pane.active {
+  gap: 10px;
+}
+
+.browser-handoff {
+  gap: 8px;
+}
+
+.browser-capture-card {
+  gap: 9px;
+  padding: 11px;
+  box-shadow: 0 8px 18px rgba(16, 24, 40, 0.05);
+}
+
+.browser-capture-head {
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.capture-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+}
+
+.capture-icon svg {
+  width: 17px;
+  height: 17px;
+}
+
+.browser-capture-head strong,
+.boundary-note strong {
+  font-size: 12px;
+}
+
+.browser-capture-head small,
+.boundary-note small {
+  font-size: 10.5px;
+  line-height: 1.38;
+}
+
+.browser-capture-head em {
+  min-width: 42px;
+  height: 22px;
+  font-size: 9px;
+}
+
+.capture-flow {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.capture-flow div {
+  min-height: 82px;
+  grid-template-columns: 1fr;
+  grid-template-rows: 22px auto 1fr;
+  gap: 4px;
+  padding: 7px;
+}
+
+.capture-flow div::after {
+  content: none;
+}
+
+.capture-flow span {
+  width: 22px;
+  height: 22px;
+  font-size: 10px;
+}
+
+.capture-flow strong {
+  font-size: 11px;
+}
+
+.capture-flow small {
+  font-size: 10px;
+  line-height: 1.28;
+}
+
+.capture-signals {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.capture-signals span {
+  min-height: 24px;
+  padding: 0 6px;
+  font-size: 9.5px;
+}
+
+.browser-actions {
+  gap: 7px;
+}
+
+.browser-actions .action-button {
+  height: 34px;
+  font-size: 11px;
+}
+
+.boundary-note {
+  gap: 4px;
+  padding: 9px 10px;
+}
+
+.source-workflow {
+  margin: 10px 0 12px;
+}
+
+.source-workflow-card {
+  gap: 9px;
+  padding: 11px;
+}
+
+.source-workflow-card header {
+  gap: 3px;
+}
+
+.source-workflow-card header span {
+  font-size: 10px;
+}
+
+.source-workflow-card header strong {
+  font-size: 13px;
+}
+
+.source-workflow-card header small {
+  font-size: 10.5px;
+  line-height: 1.36;
+}
+
+.source-workflow-lane {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.source-workflow-lane li {
+  min-height: 74px;
+  grid-template-rows: 20px auto 1fr;
+  gap: 4px;
+  padding: 7px 5px;
+}
+
+.source-workflow-lane b {
+  width: 20px;
+  height: 20px;
+  font-size: 10px;
+}
+
+.source-workflow-lane span {
+  font-size: 10.5px;
+}
+
+.source-workflow-lane small {
+  font-size: 9.5px;
+  line-height: 1.25;
+}
+
+.source-route-insights {
+  display: none;
+}
+
+.source-workflow-actions {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+  padding-top: 8px;
+}
+
+.source-workflow-actions button {
+  min-height: 30px;
+  padding: 0 5px;
+  font-size: 10px;
+}
+
+.source-workflow-card footer {
+  padding-top: 8px;
+}
+
+.source-workflow-card footer button {
+  min-width: 82px;
+  height: 28px;
+  font-size: 10px;
+}
+
+.options-disclosure {
+  margin-top: 8px;
+}
+
+.options-disclosure summary {
+  min-height: 40px;
+  padding: 0 10px;
+}
+
+.options-disclosure summary small {
+  display: none;
+}
+
+@media (max-width: 1320px) {
+  .source-workflow-lane,
+  .source-workflow-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .source-workflow-lane li {
+    min-height: 70px;
+  }
+}
