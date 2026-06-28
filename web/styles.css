@@ -4201,8 +4201,40 @@ select {
 
   .topbar {
     height: auto;
-    align-items: flex-start;
-    padding: 14px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 11px 14px;
+  }
+
+  .brand {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .brand p {
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .topbar-actions {
+    flex: 0 0 auto;
+    width: auto;
+    justify-content: flex-end;
+    gap: 7px;
+  }
+
+  .topbar-actions .health {
+    min-width: 104px;
+    padding: 0 9px;
+  }
+
+  .topbar-actions .icon-button {
+    width: 34px;
+    height: 34px;
   }
 
   .app-shell {
