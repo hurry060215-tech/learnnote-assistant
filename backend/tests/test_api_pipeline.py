@@ -535,6 +535,47 @@ class ApiPipelineTests(unittest.TestCase):
                 server.shutdown()
                 server.server_close()
 
+    def test_failed_current_page_preserves_attempted_resource_evidence(self) -> None:
+        media_url = "https://mooc1.chaoxing.com/ananas/status/lesson.m3u8"
+        payload = {
+            "mode": "video",
+            "page_url": "https://mooc1.chaoxing.com/mycourse/studentstudy",
+            "title": "Failed Chaoxing resource",
+            "resources": [
+                {
+                    "url": media_url,
+                    "source": "webRequest",
+                    "kind": "hls",
+                    "mime": "application/vnd.apple.mpegurl",
+                    "score": 98,
+                    "label": "ananas hls",
+                    "request_headers": {
+                        "Referer": "https://mooc1.chaoxing.com/mycourse/studentstudy",
+                        "Cookie": "secret=bad",
+                    },
+                }
+            ],
+        }
+        with patch("app.downloader.MediaDownloader._download_candidate", side_effect=DownloadError("download_forbidden", "HTTP 403")):
+            with patch("app.downloader.MediaDownloader._discover_page_resources", return_value=[]):
+                with patch("app.downloader.MediaDownloader._download_with_ytdlp", side_effect=DownloadError("no_media_found", "no fallback")):
+                    response = self.client.post("/api/tasks/from-current-page", json=payload)
+
+        self.assertEqual(response.status_code, 200)
+        task_id = response.json()["task_id"]
+        try:
+            task = self.client.get(f"/api/tasks/{task_id}").json()["task"]
+
+            self.assertEqual(task["status"], "failed")
+            self.assertEqual(task["selected_resource"]["url"], media_url)
+            self.assertEqual(task["selected_resource"]["kind"], "hls")
+            self.assertEqual(task["selected_resource"]["request_headers"]["Referer"], "<redacted>")
+            self.assertEqual(task["selected_resource"]["request_headers"]["Cookie"], "<redacted>")
+            self.assertEqual(task["download_attempts"][0]["url"], media_url)
+            self.assertIn("学习通/超星", self.client.get(f"/api/tasks/{task_id}/exports/diagnostics").text)
+        finally:
+            shutil.rmtree(task_dir(task_id), ignore_errors=True)
+
     def test_current_page_download_only_stops_after_media_export(self) -> None:
         with tempfile.TemporaryDirectory(dir=TEST_RUN_DIR) as tmp:
             root = Path(tmp)

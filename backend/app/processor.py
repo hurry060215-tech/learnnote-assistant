@@ -80,6 +80,18 @@ def has_downloadable_candidate(resources: list[ResourceCandidate]) -> bool:
     return False
 
 
+def attempted_resource_candidate(resources: list[ResourceCandidate], attempts: list[DownloadAttempt]) -> ResourceCandidate | None:
+    attempted_urls = [attempt.url for attempt in attempts if attempt.url]
+    for url in attempted_urls:
+        for resource in resources:
+            if resource.url == url or resource.resolved_url == url:
+                return resource
+    for resource in resources:
+        if effective_resource_kind(resource) in {"video", "hls", "dash"}:
+            return resource
+    return None
+
+
 def transcript_from_browser_subtitles(segments: list[BrowserSubtitleCue]) -> TranscriptResult:
     cleaned: list[TranscriptSegment] = []
     seen: set[tuple[int, int, str]] = set()
@@ -398,6 +410,9 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
     except DownloadError as exc:
         if "downloader" in locals():
             update_task(task_id, download_attempts=downloader.attempts)
+            failed_candidate = attempted_resource_candidate(request.resources, downloader.attempts)
+            if failed_candidate:
+                update_task(task_id, selected_resource=redacted_resource(failed_candidate))
         detail = exc.message
         if exc.code == "no_media_found" and request.active_video and request.active_video.src_object:
             detail = src_object_failure_message(request)
