@@ -1571,8 +1571,8 @@ class MediaDownloader:
         raise DownloadError("unsupported_manifest", f"不支持的候选资源类型：{kind}")
 
     def _download_file(self, candidate: ResourceCandidate, cookies: list[BrowserCookie], referer: str, title: str) -> Path:
-        url = candidate.url
-        base_headers = download_headers_for_candidate(candidate, cookies, referer)
+        url = candidate.resolved_url or candidate.url
+        base_headers = download_headers_for_candidate(candidate, cookies, referer, url=url)
 
         def attempt(headers: dict[str, str]) -> Path:
             with requests.get(url, headers=headers, stream=True, timeout=30) as response:

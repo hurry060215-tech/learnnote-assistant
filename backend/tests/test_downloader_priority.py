@@ -128,6 +128,17 @@ class RedirectMediaHandler(QuietHandler):
         super().do_GET()
 
 
+class ResolvedMediaOnlyHandler(QuietHandler):
+    media_name = "final.mp4"
+
+    def do_GET(self) -> None:
+        path = urlparse(self.path).path
+        if path == "/expired-gate":
+            self.send_error(403, "expired gate")
+            return
+        super().do_GET()
+
+
 class RedirectManifestHandler(QuietHandler):
     def do_GET(self) -> None:
         path = urlparse(self.path).path
@@ -476,6 +487,68 @@ class DownloaderPriorityTests(unittest.TestCase):
                 self.assertEqual(downloader.attempts[0].url, gate_url)
                 self.assertEqual(downloader.attempts[0].resolved_url, final_url)
                 self.assertIn("最终 URL", downloader.attempts[0].message)
+            finally:
+                server.shutdown()
+                server.server_close()
+
+    def test_direct_candidate_prefers_existing_resolved_url(self) -> None:
+        ffmpeg = ffmpeg_bin()
+        assert ffmpeg is not None
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            video = root / ResolvedMediaOnlyHandler.media_name
+            subprocess.run(
+                [
+                    ffmpeg,
+                    "-y",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "testsrc=duration=2:size=320x180:rate=10",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "sine=frequency=440:duration=2",
+                    "-shortest",
+                    "-pix_fmt",
+                    "yuv420p",
+                    str(video),
+                ],
+                check=True,
+            )
+            server = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(ResolvedMediaOnlyHandler, directory=str(root)))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                gate_url = f"http://127.0.0.1:{server.server_port}/expired-gate"
+                final_url = f"http://127.0.0.1:{server.server_port}/{video.name}"
+                downloader = MediaDownloader(root / "task")
+                media_path, selected = downloader.download(
+                    page_url=f"http://127.0.0.1:{server.server_port}/lesson.html",
+                    resources=[
+                        ResourceCandidate(
+                            url=gate_url,
+                            resolved_url=final_url,
+                            source="webRequest",
+                            kind="video",
+                            mime="video/mp4",
+                            score=100,
+                        )
+                    ],
+                    cookies=[],
+                    title="Resolved direct",
+                )
+                self.assertTrue(media_path.exists())
+                self.assertIsNotNone(selected)
+                self.assertEqual(selected.url, gate_url)
+                self.assertEqual(selected.resolved_url, final_url)
+                self.assertEqual(selected.status_code, 200)
+                self.assertEqual(downloader.attempts[0].status, "success")
+                self.assertEqual(downloader.attempts[0].url, gate_url)
+                self.assertEqual(downloader.attempts[0].resolved_url, final_url)
             finally:
                 server.shutdown()
                 server.server_close()
@@ -1209,6 +1282,62 @@ class DownloaderPriorityTests(unittest.TestCase):
                 self.assertTrue(result.downloadable)
                 self.assertEqual(result.kind, "hls")
                 self.assertEqual(result.strategy, "manifest-probe")
+                self.assertEqual(result.status_code, 200)
+                self.assertEqual(result.resolved_url, final_url)
+            finally:
+                server.shutdown()
+                server.server_close()
+
+    def test_preflight_prefers_existing_resolved_video_url(self) -> None:
+        ffmpeg = ffmpeg_bin()
+        assert ffmpeg is not None
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            video = root / ResolvedMediaOnlyHandler.media_name
+            subprocess.run(
+                [
+                    ffmpeg,
+                    "-y",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "testsrc=duration=2:size=320x180:rate=10",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "sine=frequency=440:duration=2",
+                    "-shortest",
+                    "-pix_fmt",
+                    "yuv420p",
+                    str(video),
+                ],
+                check=True,
+            )
+            server = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(ResolvedMediaOnlyHandler, directory=str(root)))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                gate_url = f"http://127.0.0.1:{server.server_port}/expired-gate"
+                final_url = f"http://127.0.0.1:{server.server_port}/{video.name}"
+                result = preflight_media_resource(
+                    ResourceCandidate(
+                        url=gate_url,
+                        resolved_url=final_url,
+                        source="webRequest",
+                        kind="video",
+                        mime="video/mp4",
+                        score=100,
+                    ),
+                    [],
+                    "https://course.example.com/lesson",
+                )
+                self.assertTrue(result.ok)
+                self.assertTrue(result.downloadable)
+                self.assertEqual(result.kind, "video")
+                self.assertEqual(result.strategy, "direct-file-probe")
                 self.assertEqual(result.status_code, 200)
                 self.assertEqual(result.resolved_url, final_url)
             finally:
