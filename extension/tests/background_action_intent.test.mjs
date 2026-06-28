@@ -5,6 +5,7 @@ import vm from "node:vm";
 let actionClick = null;
 const storageWrites = [];
 const sidePanelOpens = [];
+const runtimeMessages = [];
 
 function listener(callbackName = "") {
   return {
@@ -33,7 +34,13 @@ const context = {
       query() {}
     },
     action: { onClicked: listener("action") },
-    runtime: { onMessage: listener() },
+    runtime: {
+      onMessage: listener(),
+      sendMessage(message) {
+        runtimeMessages.push(message);
+        return Promise.resolve();
+      }
+    },
     webNavigation: { getAllFrames() {} },
     sidePanel: {
       open(options) {
@@ -66,3 +73,7 @@ assert.equal(storageWrites.length, 1);
 assert.equal(storageWrites[0].pendingSidePanelIntent.action, "summarize-current-video");
 assert.equal(storageWrites[0].pendingSidePanelIntent.tabId, 123);
 assert.equal(typeof storageWrites[0].pendingSidePanelIntent.createdAt, "number");
+assert.equal(runtimeMessages.length, 1);
+assert.equal(runtimeMessages[0].type, "sidepanel-action-intent");
+assert.equal(runtimeMessages[0].intent.action, "summarize-current-video");
+assert.equal(runtimeMessages[0].intent.tabId, 123);

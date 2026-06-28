@@ -753,6 +753,7 @@ chrome.action.onClicked.addListener(tab => {
     createdAt: Date.now()
   };
   chrome.storage?.local?.set?.({ pendingSidePanelIntent: intent });
+  chrome.runtime.sendMessage?.({ type: "sidepanel-action-intent", intent }).catch?.(() => {});
   if (chrome.sidePanel?.open) chrome.sidePanel.open({ tabId: tab.id });
 });
 

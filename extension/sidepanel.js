@@ -1832,6 +1832,10 @@ async function consumePendingSidePanelIntent() {
   const intent = data.pendingSidePanelIntent || null;
   if (chrome.storage.local.remove) await chrome.storage.local.remove("pendingSidePanelIntent");
   else await chrome.storage.local.set({ pendingSidePanelIntent: null });
+  await runSidePanelIntent(intent);
+}
+
+async function runSidePanelIntent(intent) {
   if (!intent || intent.action !== "summarize-current-video") return;
   const age = Date.now() - Number(intent.createdAt || 0);
   if (!Number.isFinite(age) || age < 0 || age > PENDING_INTENT_TTL_MS) return;
@@ -3229,6 +3233,13 @@ if (HAS_EXTENSION_API && chrome.runtime.onMessage?.addListener) {
   chrome.runtime.onMessage.addListener(message => {
     if (shouldAcceptContextUpdate(message)) {
       scheduleContextRefresh(message.reason || "media");
+      return;
+    }
+    if (message?.type === "sidepanel-action-intent") {
+      (async () => {
+        await collect();
+        await runSidePanelIntent(message.intent);
+      })();
     }
   });
 }
