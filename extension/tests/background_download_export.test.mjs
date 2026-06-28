@@ -72,6 +72,21 @@ assert.equal(downloads.length, 1);
 assert.equal(downloads[0].url, "http://127.0.0.1:8765/api/tasks/task-1/exports/media");
 assert.equal(downloads[0].saveAs, false);
 
+const previewResponse = await new Promise(resolve => {
+  onMessage(
+    {
+      type: "download-task-export",
+      url: "http://127.0.0.1:8765/api/tasks/task-1/media"
+    },
+    {},
+    resolve
+  );
+});
+
+assert.equal(previewResponse.ok, false);
+assert.match(previewResponse.error, /LearnNote/);
+assert.equal(downloads.length, 1);
+
 const invalidResponse = await new Promise(resolve => {
   onMessage(
     {
@@ -84,5 +99,5 @@ const invalidResponse = await new Promise(resolve => {
 });
 
 assert.equal(invalidResponse.ok, false);
-assert.match(invalidResponse.error, /本地 LearnNote/);
+assert.match(invalidResponse.error, /LearnNote/);
 assert.equal(downloads.length, 1);

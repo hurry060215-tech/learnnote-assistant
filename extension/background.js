@@ -1,6 +1,7 @@
 const MEDIA_RE = /\.(mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd)(\?|#|$)/i;
 const FRAGMENT_RE = /\.(m4s|ts)(\?|#|$)/i;
 const SUBTITLE_RE = /\.(vtt|srt|ass|ssa)(\?|#|$)/i;
+const LOCAL_TASK_FILE_RE = /^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?\/api\/tasks\/[^/]+(?:\/media|\/exports\/(?:markdown|visual-windows|bundle|diagnostics|media))(?:[?#].*)?$/i;
 const LOCAL_EXPORT_RE = /^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?\/api\/tasks\/[^/]+\/exports\/(?:markdown|visual-windows|bundle|diagnostics|media)(?:[?#].*)?$/i;
 const resourceByTab = new Map();
 const pageStateByTab = new Map();
@@ -736,7 +737,12 @@ function responseResolvedUrl(url = "", headers = {}) {
   }
 }
 
+function isLocalLearnNoteTaskFile(url = "") {
+  return LOCAL_TASK_FILE_RE.test(String(url || ""));
+}
+
 function recordResponseMedia(details = {}, requestHeaders = {}, requestBody = peekRequestBody(details.requestId)) {
+  if (isLocalLearnNoteTaskFile(details.url || "")) return;
   const headers = responseHeadersObject(details.responseHeaders || []);
   const mime = headers["content-type"] || "";
   const kind = classifyCompletedRequest(details, mime, requestHeaders, headers);
@@ -766,8 +772,10 @@ function recordResponseMedia(details = {}, requestHeaders = {}, requestBody = pe
 }
 
 function recordRedirectMedia(details = {}, requestHeaders = {}, requestBody = peekRequestBody(details.requestId)) {
+  if (isLocalLearnNoteTaskFile(details.url || "") || isLocalLearnNoteTaskFile(details.redirectUrl || "")) return;
   const headers = responseHeadersObject(details.responseHeaders || []);
   const redirectUrl = details.redirectUrl || responseResolvedUrl(details.url || "", headers);
+  if (isLocalLearnNoteTaskFile(redirectUrl)) return;
   if (redirectUrl && !headers.location) headers.location = redirectUrl;
   const mime = headers["content-type"] || "";
   const redirectKind = classify(redirectUrl, mime);

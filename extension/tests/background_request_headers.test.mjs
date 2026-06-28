@@ -175,6 +175,35 @@ assert.equal(hinted.is_main_video, true);
 assert.equal(hinted.current_time, 420);
 assert.ok(hinted.score >= 100, "expected recent range media requests near the active playhead to be top-ranked");
 
+context.recordResponseMedia({
+  requestId: "local-preview",
+  tabId: 177,
+  url: "http://127.0.0.1:8765/api/tasks/task-1/media",
+  type: "media",
+  method: "GET",
+  statusCode: 206,
+  responseHeaders: [
+    { name: "Content-Type", value: "video/mp4" },
+    { name: "Content-Range", value: "bytes 0-1048575/8388608" }
+  ]
+});
+
+context.recordResponseMedia({
+  requestId: "local-export-media",
+  tabId: 178,
+  url: "http://localhost:8765/api/tasks/task-1/exports/media",
+  type: "media",
+  method: "GET",
+  statusCode: 200,
+  responseHeaders: [
+    { name: "Content-Type", value: "video/mp4" },
+    { name: "Content-Length", value: "8388608" }
+  ]
+});
+
+assert.equal(vm.runInContext("resourceByTab.get(177)", context), undefined);
+assert.equal(vm.runInContext("resourceByTab.get(178)", context), undefined);
+
 context.rememberRequestHeaders({
   requestId: "api-play-hls",
   url: "https://course.example.com/api/play?lesson=42",
