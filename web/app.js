@@ -730,7 +730,18 @@ function statusText(task) {
 function sourceText(task) {
   if (task.source_type === "local") return "本地视频";
   if (task.source_type === "page_text") return "页面文本";
-  return task.selected_resource ? `直取 · ${task.selected_resource.kind}` : "页面解析";
+  return task.selected_resource ? `直取 · ${mediaKindText(task.selected_resource.kind) || "媒体"}` : "页面解析";
+}
+
+function mediaKindText(kind = "") {
+  return ({
+    hls: "HLS",
+    dash: "DASH",
+    video: "视频",
+    subtitle: "字幕",
+    fragment: "分片",
+    blob: "Blob"
+  })[String(kind || "").toLowerCase()] || kind || "";
 }
 
 function playerLibrarySourceText(resource) {
@@ -1179,8 +1190,7 @@ function renderTasks() {
       ${taskPreviewHtml(task)}
       <div>
         <strong>${escapeHtml(task.title || task.id)}</strong>
-        <small>${escapeHtml(statusText(task))} · ${escapeHtml(task.phase)}</small>
-        <span class="source">${escapeHtml(sourceText(task))}</span>
+        <small class="task-meta-line">${escapeHtml(taskMetaLine(task))}</small>
         ${taskChipsHtml(task)}
         ${stageRail(task)}
         <div class="progress"><span style="width:${task.progress || 0}%"></span></div>
@@ -1256,15 +1266,23 @@ function taskChipItems(task) {
   const selected = task.selected_resource || {};
   const windows = visualWindows(task);
   const attempts = task.download_attempts || [];
-  const chips = [
-    sourceText(task),
-    selected.kind || "",
-    selected.playback_match ? playbackText(selected.playback_match) : "",
-    task.media_path ? "本地视频" : "",
+  const route = selected.playback_match
+    ? playbackText(selected.playback_match)
+    : resourceSourceText(selected) || (task.source_type === "current_page" ? "页面解析" : sourceText(task));
+  const chips = task.status === "failed" ? [
+    route,
+    mediaKindText(selected.kind),
+    task.error_code || "",
+    attempts.length ? `${attempts.length} 次尝试` : "",
+    task.note_path ? "兜底笔记" : task.media_path ? "media.mp4" : "",
+    windows.length ? `${windows.length} 窗口` : ""
+  ] : [
+    route,
+    mediaKindText(selected.kind),
+    task.media_path ? "media.mp4" : "",
     task.note_path ? "笔记" : "",
-    windows.length ? `${windows.length} 视觉窗口` : "",
-    attempts.length ? `${attempts.length} 次下载尝试` : "",
-    task.error_code || ""
+    windows.length ? `${windows.length} 窗口` : "",
+    attempts.length > 1 ? `${attempts.length} 次尝试` : ""
   ];
   const seen = new Set();
   return chips.filter(value => {
@@ -1272,13 +1290,22 @@ function taskChipItems(task) {
     if (!text || seen.has(text)) return false;
     seen.add(text);
     return true;
-  }).slice(0, 8);
+  }).slice(0, 5);
 }
 
 function taskChipsHtml(task) {
   const chips = taskChipItems(task);
   if (!chips.length) return "";
   return `<div class="task-chips">${chips.map(chip => `<span>${escapeHtml(chip)}</span>`).join("")}</div>`;
+}
+
+function taskMetaLine(task) {
+  return [
+    statusText(task),
+    sourceText(task),
+    task.phase && task.phase !== "completed" ? task.phase : "",
+    `${task.progress || 0}%`
+  ].filter(Boolean).join(" · ");
 }
 
 async function taskRecord() {

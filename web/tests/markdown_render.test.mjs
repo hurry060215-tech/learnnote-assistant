@@ -201,6 +201,26 @@ assert.match(routeSummaryHtml, /\/api\/tasks\/task-route-summary\/exports\/diagn
 assert.match(routeSummaryHtml, /视觉窗口/);
 assert.doesNotMatch(routeSummaryHtml, /<script>bad/);
 
+const queueChipTask = {
+  id: "queue-chip-task",
+  status: "success",
+  phase: "completed",
+  progress: 100,
+  source_type: "current_page",
+  media_path: "D:/Projects/learnnote-assistant/data/tasks/queue-chip-task/media.mp4",
+  note_path: "D:/Projects/learnnote-assistant/data/tasks/queue-chip-task/note.md",
+  selected_resource: {
+    kind: "video",
+    source: "webRequest",
+    playback_match: "exact-src"
+  },
+  visual_windows: [{ id: "W001", start: 0, end: 180 }],
+  download_attempts: [{ strategy: "direct-file" }, { strategy: "page-ytdlp" }]
+};
+
+assert.equal(JSON.stringify(context.taskChipItems(queueChipTask)), JSON.stringify(["当前 src", "视频", "media.mp4", "笔记", "1 窗口"]));
+assert.equal(context.taskMetaLine(queueChipTask), "已完成 · 直取 · 视频 · 100%");
+
 const visionEvidenceHtml = context.visionEvidenceBar({
   id: "vision-task",
   title: "<script>bad()</script> 课程",
@@ -684,9 +704,9 @@ const taskChipsHtml = context.taskChipsHtml({
   visual_windows: [{ id: "W001" }, { id: "W002" }]
 });
 assert.match(taskChipsHtml, /task-chips/);
-assert.match(taskChipsHtml, /hls/);
-assert.match(taskChipsHtml, /2 视觉窗口/);
-assert.match(taskChipsHtml, /2 次下载尝试/);
+assert.match(taskChipsHtml, /HLS/);
+assert.doesNotMatch(taskChipsHtml, /2 窗口/);
+assert.match(taskChipsHtml, /2 次尝试/);
 assert.match(taskChipsHtml, /download_forbidden/);
 assert.doesNotMatch(taskChipsHtml, /<script>bad/);
 
