@@ -4,6 +4,8 @@ const LOCAL_VIDEO_EXT_RE = /\.(mp4|m4v|mov|mkv|webm|flv|avi)$/i;
 const RESULT_TAB_NAMES = new Set(["note", "transcript", "frames", "diagnostics"]);
 const LOCAL_ASR_MODELS = new Set(["tiny", "base", "small", "medium", "large", "large-v2", "large-v3"]);
 const PENDING_INTENT_TTL_MS = 15000;
+const ONE_CLICK_RESOURCE_WAIT_ATTEMPTS = 4;
+const ONE_CLICK_RESOURCE_WAIT_DELAY_MS = 900;
 
 let backendUrl = DEFAULT_BACKEND;
 let page = null;
@@ -1883,12 +1885,33 @@ async function consumePendingSidePanelIntent() {
   await runSidePanelIntent(intent);
 }
 
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function hasDownloadableResources(items = resources) {
+  return (items || []).some(isDownloadableResource);
+}
+
+async function waitForOneClickMediaCandidate() {
+  for (let attempt = 0; attempt < ONE_CLICK_RESOURCE_WAIT_ATTEMPTS; attempt += 1) {
+    if (hasDownloadableResources(resources)) return true;
+    if (hasActiveVideoSignal(page?.active_video) && resources.length) return true;
+    const remaining = ONE_CLICK_RESOURCE_WAIT_ATTEMPTS - attempt;
+    els.taskMessage.textContent = `正在等待当前页暴露可直取视频资源...剩余 ${remaining} 次自动重检`;
+    await sleep(ONE_CLICK_RESOURCE_WAIT_DELAY_MS);
+    await collect();
+  }
+  return hasActiveVideoSignal(page?.active_video) || resources.length > 0;
+}
+
 async function runSidePanelIntent(intent) {
   if (!intent || intent.action !== "summarize-current-video") return;
   const age = Date.now() - Number(intent.createdAt || 0);
   if (!Number.isFinite(age) || age < 0 || age > PENDING_INTENT_TTL_MS) return;
   if (intent.tabId !== null && intent.tabId !== undefined && currentTabId !== null && currentTabId !== intent.tabId) return;
-  if (!hasActiveVideoSignal(page?.active_video) && !resources.length) {
+  const hasCandidate = await waitForOneClickMediaCandidate();
+  if (!hasCandidate) {
     els.taskMessage.textContent = "已打开当前页助手；还没有读取到正在播放的视频或媒体候选，先播放几秒后再点总结。";
     return;
   }
