@@ -144,6 +144,22 @@ def _format_cookie_summary(summary: dict) -> list[str]:
     ]
 
 
+def _transcriber_label(value: str | None) -> str:
+    return {
+        "faster-whisper": "本地 faster-whisper",
+        "openai-compatible": "OpenAI-compatible ASR",
+        "openai-compatible-asr": "OpenAI-compatible ASR",
+        "openai": "OpenAI ASR",
+        "groq": "Groq ASR",
+        "groq-asr": "Groq ASR",
+    }.get((value or "faster-whisper").lower(), value or "ASR")
+
+
+def _asr_option_text(task: TaskRecord) -> str:
+    options = task.options
+    return f"{_transcriber_label(options.transcriber)} · {options.whisper_model or 'small'}"
+
+
 def _format_id_list(values: list[str] | tuple[str, ...] | None, limit: int = 12) -> str:
     ids = [str(value) for value in (values or []) if str(value)]
     if not ids:
@@ -326,6 +342,7 @@ def render_diagnostics_markdown(task: TaskRecord) -> str:
         "## 处理产物",
         f"- 媒体：{task.media_path or '-'}",
         f"- 音频：{task.audio_path or '-'}",
+        f"- 转写引擎：{_asr_option_text(task)}",
         f"- 字幕：{task.subtitle_path or '-'}",
         f"- 转写：{task.transcript_path or '-'}",
         f"- 视觉索引：{task.visual_index_path or '-'}",

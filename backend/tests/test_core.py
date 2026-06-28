@@ -612,6 +612,8 @@ class ProcessorBoundaryTests(unittest.TestCase):
             transcript = read_transcript(task.id)
             self.assertEqual(transcript["source"], "openai-compatible-asr")
             self.assertEqual(transcript["segments"][0]["text"], "remote transcript")
+            report = render_diagnostics_markdown(record)
+            self.assertIn("转写引擎：OpenAI-compatible ASR · whisper-1", report)
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
