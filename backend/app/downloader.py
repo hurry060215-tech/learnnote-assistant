@@ -326,6 +326,17 @@ def _looks_like_json_url_candidate(value: str) -> bool:
     return False
 
 
+def _looks_like_nested_media_text(value: str) -> bool:
+    text = str(value or "").strip()
+    if len(text) < 8:
+        return False
+    if text[0] in "{[":
+        has_media_field = JSON_MEDIA_KEY_RE.search(text)
+        has_media_target = TEXT_MEDIA_HINT_RE.search(text) or MEDIA_ENDPOINT_HINT_RE.search(text)
+        return bool(has_media_field and has_media_target)
+    return bool(JSON_MEDIA_KEY_RE.search(text) and TEXT_MEDIA_HINT_RE.search(text))
+
+
 def _decoded_media_values(value: str) -> list[str]:
     raw = str(value or "").strip()
     if not raw:
@@ -344,7 +355,11 @@ def _decoded_media_values(value: str) -> list[str]:
             except Exception:
                 continue
             if decoded and decoded not in values and not re.search(r"[\x00-\x08\x0e-\x1f]", decoded):
-                if _looks_like_json_url_candidate(decoded) or TEXT_MEDIA_HINT_RE.search(decoded):
+                if (
+                    _looks_like_json_url_candidate(decoded)
+                    or TEXT_MEDIA_HINT_RE.search(decoded)
+                    or _looks_like_nested_media_text(decoded)
+                ):
                     values.append(decoded)
             break
 
@@ -409,6 +424,22 @@ def _json_media_resources(node: object, base_url: str, source: str, key_path: li
                                 )
                             )
                             seen.add(url)
+            if isinstance(value, str) and len(key_path) < 12:
+                for candidate_text in _decoded_media_values(value):
+                    nested_text = html.unescape(candidate_text).strip()
+                    if not _looks_like_nested_media_text(nested_text):
+                        continue
+                    if nested_text[0] in "{[":
+                        try:
+                            nested_data = json.loads(nested_text)
+                        except Exception:
+                            continue
+                        resources.extend(_json_media_resources(nested_data, base_url, source, next_path, seen))
+                    else:
+                        resources.extend(extract_media_resources_from_field_text(nested_text, base_url, source, seen))
+                        resources.extend(extract_media_resources_from_encoded_url_text(nested_text, base_url, source, seen))
+                    if len(resources) >= 60:
+                        break
             if isinstance(value, (dict, list)):
                 resources.extend(_json_media_resources(value, base_url, source, next_path, seen))
             if len(resources) >= 60:

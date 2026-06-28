@@ -304,6 +304,28 @@ class ResourceDetectionTests(unittest.TestCase):
         self.assertEqual(by_kind["hls"].url, "https://cdn.example.com/secure/lesson.m3u8?token=abc")
         self.assertEqual(by_kind["video"].url, "https://cdn.example.com/video/lesson.mp4?sign=ok")
 
+    def test_page_scan_decodes_nested_base64_json_media_config(self) -> None:
+        nested_config = json.dumps(
+            {
+                "playInfo": {
+                    "videoUrl": "/api/media/file?id=42&token=abc",
+                    "mimeType": "video/mp4",
+                }
+            },
+            indent=2,
+        )
+        packed = b64encode(nested_config.encode("utf-8")).decode("ascii")
+        resources = extract_media_resources_from_text(
+            json.dumps({"code": 0, "data": packed}),
+            "https://course.example.com/player/index.html",
+            "page-scan",
+        )
+        by_label = {resource.label: resource for resource in resources}
+
+        self.assertEqual(by_label["json data/playInfo/videoUrl"].kind, "video")
+        self.assertEqual(by_label["json data/playInfo/videoUrl"].url, "https://course.example.com/api/media/file?id=42&token=abc")
+        self.assertEqual(by_label["json data/playInfo/videoUrl"].mime, "video/mp4")
+
     def test_page_scan_decodes_encoded_media_urls_outside_media_fields(self) -> None:
         resources = extract_media_resources_from_text(
             """

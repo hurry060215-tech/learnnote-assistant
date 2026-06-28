@@ -330,6 +330,15 @@
     return text.includes("/") && /[?=&]|api|play|media|video|stream|m3u8|mpd|hls|dash/i.test(text);
   }
 
+  function looksLikeNestedMediaText(value) {
+    const text = String(value || "").trim();
+    if (text.length < 8) return false;
+    if ("{[".includes(text[0])) {
+      return JSON_MEDIA_KEY_RE.test(text) && (MEDIA_HINT_RE.test(text) || mediaUrlHint(text));
+    }
+    return JSON_MEDIA_KEY_RE.test(text) && MEDIA_HINT_RE.test(text);
+  }
+
   function decodedMediaValues(value) {
     const raw = String(value || "").trim();
     if (!raw) return [];
@@ -351,7 +360,7 @@
           text &&
           !values.includes(text) &&
           !/[\u0000-\u0008\u000e-\u001f]/.test(text) &&
-          (looksLikeJsonUrlCandidate(text) || MEDIA_HINT_RE.test(text))
+          (looksLikeJsonUrlCandidate(text) || MEDIA_HINT_RE.test(text) || looksLikeNestedMediaText(text))
         ) {
           values.push(text);
         }
