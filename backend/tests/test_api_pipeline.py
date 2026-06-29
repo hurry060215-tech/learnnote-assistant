@@ -11,6 +11,7 @@ import unittest
 import zipfile
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import urlparse
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
@@ -24,6 +25,27 @@ from app.storage import create_task, task_dir, update_task
 
 
 TEST_RUN_DIR = DATA_DIR / "test-runs"
+
+
+class PagePreflightGateHandler(SimpleHTTPRequestHandler):
+    media_body = b"\x00\x00\x00\x18ftypmp42" + (b"learnnote-media" * 512)
+
+    def log_message(self, format: str, *args: object) -> None:
+        return
+
+    def do_GET(self) -> None:
+        path = urlparse(self.path).path
+        if path == "/protected.mp4":
+            self.send_error(403, "missing signed playback context")
+            return
+        if path == "/open.mp4":
+            self.send_response(200)
+            self.send_header("Content-Type", "video/mp4")
+            self.send_header("Content-Length", str(len(self.media_body)))
+            self.end_headers()
+            self.wfile.write(self.media_body)
+            return
+        self.send_error(404)
 
 
 class LocalUploadValidationTests(unittest.TestCase):
@@ -152,6 +174,53 @@ class LocalUploadValidationTests(unittest.TestCase):
         self.assertEqual(report["candidates"][0]["resource"]["url"], "https://cdn.example.com/lesson.mp4")
         self.assertEqual(report["candidates"][0]["preflight"]["strategy"], "not-probed")
         self.assertTrue(any(item["resource"]["source"] in {"inferred-manifest", "manifest-guess"} for item in report["candidates"]))
+
+    def test_page_preflight_selects_first_downloadable_candidate_after_failed_probe(self) -> None:
+        server = ThreadingHTTPServer(("127.0.0.1", 0), PagePreflightGateHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            base_url = f"http://127.0.0.1:{server.server_port}"
+            response = self.client.post(
+                "/api/media/preflight-current-page",
+                json={
+                    "page_url": f"{base_url}/lesson.html",
+                    "probe_limit": 3,
+                    "resources": [
+                        {
+                            "url": f"{base_url}/protected.mp4",
+                            "kind": "video",
+                            "source": "webRequest",
+                            "score": 100,
+                            "label": "stale signed mp4",
+                        },
+                        {
+                            "url": f"{base_url}/open.mp4",
+                            "kind": "video",
+                            "source": "webRequest",
+                            "score": 95,
+                            "label": "playable mp4",
+                        },
+                    ],
+                },
+            )
+
+            self.assertEqual(response.status_code, 200)
+            report = response.json()["report"]
+            self.assertTrue(report["ready"])
+            self.assertEqual(report["selected_url"], f"{base_url}/open.mp4")
+            self.assertEqual(report["candidate_count"], 2)
+            self.assertEqual(report["probed_count"], 2)
+            self.assertEqual(report["downloadable_count"], 1)
+            self.assertEqual(report["candidates"][0]["resource"]["url"], f"{base_url}/protected.mp4")
+            self.assertEqual(report["candidates"][0]["preflight"]["code"], "auth_required")
+            self.assertFalse(report["candidates"][0]["preflight"]["downloadable"])
+            self.assertEqual(report["candidates"][1]["resource"]["url"], f"{base_url}/open.mp4")
+            self.assertTrue(report["candidates"][1]["preflight"]["downloadable"])
+            self.assertEqual(report["candidates"][1]["preflight"]["strategy"], "direct-file-probe")
+        finally:
+            server.shutdown()
+            server.server_close()
 
     def test_diagnostics_include_chaoxing_recovery_hint(self) -> None:
         task = create_task("current_page", "学习通课程", "https://mooc1.chaoxing.com/mycourse/studentstudy")
