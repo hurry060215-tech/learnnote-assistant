@@ -290,6 +290,32 @@ class LocalUploadValidationTests(unittest.TestCase):
             server.shutdown()
             server.server_close()
 
+    def test_page_preflight_reports_blob_only_page_as_drm_boundary(self) -> None:
+        response = self.client.post(
+            "/api/media/preflight-current-page",
+            json={
+                "page_url": "https://course.example.com/lesson",
+                "drm_detected": True,
+                "probe_limit": 1,
+                "resources": [
+                    {
+                        "url": "blob:https://course.example.com/player",
+                        "kind": "blob",
+                        "source": "activeVideo",
+                        "score": 12,
+                        "label": "active blob",
+                    },
+                ],
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        report = response.json()["report"]
+        self.assertFalse(report["ready"])
+        self.assertEqual(report["code"], "drm_or_encrypted")
+        self.assertEqual(report["candidate_count"], 0)
+        self.assertEqual(report["downloadable_count"], 0)
+
     def test_diagnostics_include_chaoxing_recovery_hint(self) -> None:
         task = create_task("current_page", "学习通课程", "https://mooc1.chaoxing.com/mycourse/studentstudy")
         try:

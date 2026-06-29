@@ -548,6 +548,8 @@ def page_preflight_report(request: PagePreflightRequest) -> dict:
     downloadable_count = 0
     selected_url = ""
     candidates = []
+    direct_candidate_count = sum(1 for item in ranked if effective_resource_kind(item) in {"video", "hls", "dash"})
+    has_drm_boundary = request.drm_detected or any(effective_resource_kind(item) == "blob" for item in request.resources)
 
     for index, candidate in enumerate(ranked, start=1):
         if probed < request.probe_limit:
@@ -580,10 +582,13 @@ def page_preflight_report(request: PagePreflightRequest) -> dict:
     if selected_url:
         code = ""
         message = f"整页预检通过：{downloadable_count} 个候选可访问，默认选择排序最靠前的可下载资源。"
+    elif has_drm_boundary and not direct_candidate_count:
+        code = "drm_or_encrypted"
+        message = "页面只暴露 blob/DRM 播放线索，没有可交给后端下载的 mp4、m3u8 或 mpd。"
     elif ranked:
         code = "download_forbidden"
         message = "整页预检没有发现可直接下载的候选；可继续播放后重新检测，或改用本地视频上传。"
-    elif request.drm_detected or any(effective_resource_kind(item) == "blob" for item in request.resources):
+    elif has_drm_boundary:
         code = "drm_or_encrypted"
         message = "页面只暴露 blob/DRM 播放线索，没有可交给后端下载的 mp4、m3u8 或 mpd。"
     else:
