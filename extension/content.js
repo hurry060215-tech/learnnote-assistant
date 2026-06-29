@@ -327,7 +327,20 @@ function performanceKind(entry = {}) {
   const initiator = String(entry.initiatorType || "").toLowerCase();
   if (initiator === "video" || initiator === "audio") return "video";
   if (initiator === "track") return "subtitle";
+  if ((initiator === "fetch" || initiator === "xmlhttprequest") && performanceLooksLikeMediaEndpoint(name)) return "video";
   return "unknown";
+}
+
+function performanceLooksLikeMediaEndpoint(url = "") {
+  const raw = String(url || "");
+  const endpointRe = /(^|[/?&=._-])(api|play|player|stream|video|media|hls|dash|manifest|playlist|master|m3u8|mpd|subtitle|caption)([/?&=._-]|$)/i;
+  try {
+    const parsed = new URL(raw, location.href);
+    const queryKeys = [...parsed.searchParams.keys()].join("&");
+    return endpointRe.test(`${parsed.pathname} ${queryKeys}`) || /\.(m3u8|mpd|mp4|m4v|webm|mov|mkv|flv|avi|vtt|srt|ass|ssa)([?#]|$)/i.test(raw);
+  } catch {
+    return endpointRe.test(raw);
+  }
 }
 
 function performanceScore(kind, url) {
@@ -1021,7 +1034,7 @@ function collectPerformanceResources() {
   for (const entry of performance.getEntriesByType("resource")) {
     const name = entry.name || "";
     const kind = performanceKind(entry);
-    if (kind !== "unknown" || /m3u8|mpd|video|media|subtitle|caption/i.test(name)) {
+    if (kind !== "unknown" || performanceLooksLikeMediaEndpoint(name)) {
       const item = resource(name, "performance", "performance");
       if (!item) continue;
       item.kind = kind !== "unknown" ? kind : item.kind;
@@ -1196,7 +1209,7 @@ function installPerformanceObserver() {
     const observer = new PerformanceObserver(list => {
       const hasMedia = list.getEntries().some(entry => {
         const name = entry.name || "";
-        return performanceKind(entry) !== "unknown" || /m3u8|mpd|video|media|subtitle|caption/i.test(name);
+        return performanceKind(entry) !== "unknown" || performanceLooksLikeMediaEndpoint(name);
       });
       if (hasMedia) schedulePush(500);
     });

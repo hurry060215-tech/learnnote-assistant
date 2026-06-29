@@ -173,7 +173,20 @@ const context = {
   },
   performance: {
     getEntriesByType() {
-      return [];
+      return [
+        {
+          name: "https://course.example.com/api/play?id=perf",
+          initiatorType: "fetch",
+          encodedBodySize: 2048,
+          transferSize: 4096
+        },
+        {
+          name: "https://course.example.com/lesson-data?id=not-media",
+          initiatorType: "fetch",
+          encodedBodySize: 2048,
+          transferSize: 4096
+        }
+      ];
     }
   },
   atob: value => Buffer.from(value, "base64").toString("binary"),
@@ -221,6 +234,8 @@ const preloadVideoHint = response.resources.find(item => item.url === "https://c
 const preloadHlsHint = response.resources.find(item => item.url === "https://course.example.com/opaque/playlist?id=typed-hls");
 const prefetchPlayHint = response.resources.find(item => item.url === "https://course.example.com/api/play?id=prefetch");
 const ogVideoHint = response.resources.find(item => item.url === "https://course.example.com/opaque/og-stream?id=meta");
+const performancePlayHint = response.resources.find(item => item.url === "https://course.example.com/api/play?id=perf");
+const unrelatedPerformanceHint = response.resources.find(item => item.url === "https://course.example.com/lesson-data?id=not-media");
 const plainScriptHls = response.resources.find(item => item.url === "https://cdn.example.com/static/plain-url.m3u8?token=script-plain");
 const malformedEncodedUrls = response.resources.filter(item => /\/https%3A%2F%2F/i.test(item.url));
 
@@ -333,6 +348,13 @@ assert.ok(ogVideoHint, "expected og:video meta hint to expose extensionless medi
 assert.equal(ogVideoHint.kind, "video");
 assert.equal(ogVideoHint.source, "domHint");
 assert.match(ogVideoHint.label, /og:video/);
+
+assert.ok(performancePlayHint, "expected fetch performance play endpoint to enter direct-preflight candidates");
+assert.equal(performancePlayHint.kind, "video");
+assert.equal(performancePlayHint.source, "performance");
+assert.equal(performancePlayHint.request_type, "fetch");
+assert.equal(performancePlayHint.content_length, 2048);
+assert.equal(unrelatedPerformanceHint, undefined, "expected unrelated fetch performance entry to stay out of media candidates");
 
 assert.ok(plainScriptHls, "expected inline script URL scan to expose plain HLS URL without a media field name");
 assert.equal(plainScriptHls.kind, "hls");
