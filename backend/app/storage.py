@@ -32,11 +32,26 @@ def public_task_options(options: TaskOptions | None) -> TaskOptions:
     return public
 
 
-def create_task(source_type: str, title: str, page_url: str = "", options: TaskOptions | None = None) -> TaskRecord:
+def default_task_mode(source_type: str) -> str:
+    if source_type == "page_text":
+        return "page_text"
+    if source_type == "local":
+        return "local"
+    return "video"
+
+
+def create_task(
+    source_type: str,
+    title: str,
+    page_url: str = "",
+    options: TaskOptions | None = None,
+    mode: str | None = None,
+) -> TaskRecord:
     ensure_dirs()
     record = TaskRecord(
         id=new_task_id(),
         source_type=source_type,  # type: ignore[arg-type]
+        mode=mode or default_task_mode(source_type),
         title=title or "Untitled",
         page_url=page_url,
         options=public_task_options(options),

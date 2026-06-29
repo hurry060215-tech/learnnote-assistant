@@ -308,6 +308,7 @@ def render_bundle_manifest(task: TaskRecord, transcript: dict, visual_index: dic
             "id": task.id,
             "title": task.title,
             "source_type": task.source_type,
+            "mode": task.mode,
             "status": task.status,
             "phase": task.phase,
             "progress": task.progress,
@@ -455,6 +456,7 @@ def task_audit_gates(task: TaskRecord) -> list[dict[str, str]]:
     diagnostics = task.summary_diagnostics or {}
     is_page_text = task.source_type == "page_text" or bool(diagnostics.get("used_page_text_fallback"))
     is_local = task.source_type == "local"
+    is_download_only = task.mode == "download_only"
     has_route = bool(selected and (selected.url or selected.kind)) or is_local or is_page_text
     has_media = bool(task.media_path)
     has_transcript = bool(task.transcript_path)
@@ -464,6 +466,49 @@ def task_audit_gates(task: TaskRecord) -> list[dict[str, str]]:
     selected_kind = selected.kind if selected else ""
     selected_source = selected.source if selected else ""
     selected_match = selected.playback_match if selected else ""
+    transcript_value = (
+        "download-only route"
+        if is_download_only
+        else (
+            "transcript ready"
+            if has_transcript
+            else ("browser/page text fallback" if is_page_text and has_note else task.phase or "waiting")
+        )
+    )
+    transcript_detail = (
+        "media saved; rerun from media to transcribe"
+        if is_download_only
+        else ("timestamped transcript is available" if has_transcript else (task.summary_warning or "subtitle first, ASR fallback"))
+    )
+    visual_count = len(task.visual_windows) or len(task.frame_grids) or diagnostics.get("frame_grid_count")
+    visual_value = (
+        "download-only route"
+        if is_download_only
+        else ("disabled" if visual_disabled else (f"{visual_count} windows" if has_visuals else task.phase or "waiting"))
+    )
+    visual_detail = (
+        "media saved; rerun from media to slice frames"
+        if is_download_only
+        else (
+            "visual route disabled for this task"
+            if visual_disabled
+            else (
+                f"{diagnostics.get('vision_image_count', 0)}/{diagnostics.get('vision_grid_count', visual_count or 0)} sent to vision"
+                if has_visuals
+                else "waiting for ffmpeg frame grids"
+            )
+        )
+    )
+    summary_value = (
+        "download-only route"
+        if is_download_only
+        else (task.summary_source or ("note ready" if has_note else task.phase or "waiting"))
+    )
+    summary_detail = (
+        "media saved; generate full note from media when needed"
+        if is_download_only
+        else (task.summary_warning or f"{task.options.note_style} / {task.options.summary_depth}")
+    )
 
     return [
         {
@@ -483,27 +528,23 @@ def task_audit_gates(task: TaskRecord) -> list[dict[str, str]]:
         {
             "key": "transcript",
             "label": "Transcript gate",
-            "state": _audit_gate_state(task, has_transcript or (is_page_text and has_note)),
-            "value": "transcript ready" if has_transcript else ("browser/page text fallback" if is_page_text and has_note else task.phase or "waiting"),
-            "detail": "timestamped transcript is available" if has_transcript else (task.summary_warning or "subtitle first, ASR fallback"),
+            "state": _audit_gate_state(task, has_transcript or (is_page_text and has_note), skipped=is_download_only),
+            "value": transcript_value,
+            "detail": transcript_detail,
         },
         {
             "key": "visual",
             "label": "Visual slicing gate",
-            "state": _audit_gate_state(task, has_visuals, skipped=visual_disabled),
-            "value": "disabled" if visual_disabled else (f"{len(task.visual_windows) or len(task.frame_grids) or diagnostics.get('frame_grid_count')} windows" if has_visuals else task.phase or "waiting"),
-            "detail": "visual route disabled for this task" if visual_disabled else (
-                f"{diagnostics.get('vision_image_count', 0)}/{diagnostics.get('vision_grid_count', len(task.visual_windows) or len(task.frame_grids) or 0)} sent to vision"
-                if has_visuals
-                else "waiting for ffmpeg frame grids"
-            ),
+            "state": _audit_gate_state(task, has_visuals, skipped=visual_disabled or is_download_only),
+            "value": visual_value,
+            "detail": visual_detail,
         },
         {
             "key": "summary",
             "label": "Summary gate",
-            "state": _audit_gate_state(task, has_note),
-            "value": task.summary_source or ("note ready" if has_note else task.phase or "waiting"),
-            "detail": task.summary_warning or f"{task.options.note_style} / {task.options.summary_depth}",
+            "state": _audit_gate_state(task, has_note, skipped=is_download_only),
+            "value": summary_value,
+            "detail": summary_detail,
         },
     ]
 
@@ -617,6 +658,7 @@ def render_diagnostics_markdown(task: TaskRecord) -> str:
         f"- ID：{task.id}",
         f"- 状态：{task.status} / {task.phase} / {task.progress}%",
         f"- 来源：{task.source_type}",
+        f"- 模式：{task.mode}",
         f"- 页面：{task.page_url or '-'}",
         f"- 消息：{task.error_detail or task.message or '-'}",
         f"- 错误码：{task.error_code or '-'}",
@@ -760,7 +802,7 @@ def health() -> dict:
 @app.post("/api/tasks/from-current-page")
 def create_from_current_page(request: CurrentPageTaskRequest, background_tasks: BackgroundTasks) -> dict:
     source_type = "page_text" if request.mode == "page_text" else "current_page"
-    task = create_task(source_type=source_type, title=request.title or request.page_url, page_url=request.page_url, options=request.options)
+    task = create_task(source_type=source_type, title=request.title or request.page_url, page_url=request.page_url, options=request.options, mode=request.mode)
     background_tasks.add_task(process_current_page_task, task.id, request)
     return {"task_id": task.id, "task": task}
 
@@ -804,7 +846,7 @@ async def create_from_local(
         pending_path.unlink(missing_ok=True)
         raise local_upload_error("local_upload_failed", f"保存本地视频失败：{exc}", status_code=500) from exc
 
-    task = create_task(source_type="local", title=title or safe_name, options=parsed_options)
+    task = create_task(source_type="local", title=title or safe_name, options=parsed_options, mode="local")
     upload_path = UPLOAD_DIR / f"{task.id}_{safe_name}"
     pending_path.replace(upload_path)
     background_tasks.add_task(process_local_video_task, task.id, upload_path, title or safe_name, parsed_options)
@@ -834,6 +876,7 @@ def create_from_existing_media(
         title=source.title or f"Media from {source.id}",
         page_url=source.page_url,
         options=parsed_options,
+        mode="rerun_from_media",
     )
     task = update_task(
         task.id,

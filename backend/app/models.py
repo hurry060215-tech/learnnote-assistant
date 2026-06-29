@@ -212,6 +212,7 @@ class DownloadAttempt(BaseModel):
 class TaskRecord(BaseModel):
     id: str
     source_type: Literal["current_page", "local", "page_text"]
+    mode: str = "video"
     title: str
     page_url: str = ""
     phase: TaskPhase = "queued"
