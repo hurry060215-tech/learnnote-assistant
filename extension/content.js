@@ -47,6 +47,8 @@ const drmSignals = [];
 const drmByVideo = new WeakMap();
 const observedMutationRoots = new WeakSet();
 const DEEP_QUERY_LIMIT = 2500;
+const MAX_VISIBLE_SUBTITLE_HISTORY = 1200;
+const visibleSubtitleHistory = [];
 let pendingPushTimer = 0;
 let lastPushAt = 0;
 let lastSignature = "";
@@ -780,6 +782,36 @@ function looksLikeVisibleSubtitleElement(element) {
   return VISIBLE_SUBTITLE_ROLE_RE.test(role) || Boolean(ariaLive && ariaLive !== "off");
 }
 
+function rememberVisibleSubtitleCues(cues) {
+  for (const cue of cues || []) {
+    const text = String(cue?.text || "").replace(/\s+/g, " ").trim();
+    const start = Number(cue?.start ?? 0);
+    const end = Number(cue?.end ?? start);
+    if (!text || !Number.isFinite(start) || !Number.isFinite(end)) continue;
+    const nearby = visibleSubtitleHistory.find(item =>
+      item.text === text && (
+        Math.abs(item.start - start) <= 2 ||
+        Math.abs(item.end - start) <= 8 ||
+        Math.abs(item.end - end) <= 2
+      )
+    );
+    if (nearby) {
+      nearby.start = Math.min(nearby.start, Math.max(0, start));
+      nearby.end = Math.max(nearby.end, Math.max(start, end));
+    } else {
+      visibleSubtitleHistory.push({
+        start: Math.max(0, start),
+        end: Math.max(start, end),
+        text
+      });
+    }
+  }
+  visibleSubtitleHistory.sort((a, b) => a.start - b.start || a.end - b.end || a.text.localeCompare(b.text));
+  if (visibleSubtitleHistory.length > MAX_VISIBLE_SUBTITLE_HISTORY) {
+    visibleSubtitleHistory.splice(0, visibleSubtitleHistory.length - MAX_VISIBLE_SUBTITLE_HISTORY);
+  }
+}
+
 function collectVisibleSubtitleCues(limit = 200) {
   const active = activeVideoInfo();
   const base = Number(active?.current_time || 0);
@@ -796,7 +828,8 @@ function collectVisibleSubtitleCues(limit = 200) {
     cues.push({ start, end, text });
     if (cues.length >= limit) break;
   }
-  return cues;
+  rememberVisibleSubtitleCues(cues);
+  return visibleSubtitleHistory.slice(-limit);
 }
 
 function isVisibleSubtitleNode(node) {

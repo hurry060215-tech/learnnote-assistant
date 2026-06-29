@@ -59,6 +59,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - Side Panel task start now preflights ranked direct-download candidates in order and automatically switches to the first reachable mp4/FLV/HLS/DASH resource, so a stale or forbidden top candidate does not stop the workflow when another visible media URL works.
 - Side Panel also has a download-only current-page action: it uses the same preflight, cookie handoff, direct downloader, manifest merge, and yt-dlp fallback, then saves an exportable local `media.mp4` without transcription, slicing, or summarization.
 - Download-only tasks retain browser/player subtitle cues, so `继续切片总结` can reuse already captured subtitles instead of falling back to ASR.
+- For players that render captions only as visible DOM overlays, the extension keeps a bounded in-page subtitle history while the lesson plays, instead of only sending the single caption currently on screen.
 - Main-video ranking based on the actively playing `<video>` first, then the largest visible video element.
 - Candidate evidence from `webRequest`, including request type, HTTP status, MIME type, content length, initiator, and frame id when available.
 - Long-running media responses are added from `onHeadersReceived`, then merged again on completion if the request later finishes.
