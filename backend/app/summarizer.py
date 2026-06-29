@@ -110,12 +110,16 @@ def _window_learning_card_lines(windows: list[VisualWindow]) -> list[str]:
             lines.append("- 复习动作：用自己的话复述这一窗口的结论，再回到截图核对关键术语和操作顺序。")
             lines.append("- 窗口检查点：")
             lines.extend(_window_checkpoint_lines(window))
+            lines.append("- 自测问题：")
+            lines.extend(visual_window_review_question_lines(window))
         else:
             lines.append("- 字幕线索：本窗口没有匹配到字幕。")
             lines.append("- 回看目标：重点检查画面里的 PPT 标题、板书、公式、代码、界面状态或演示步骤。")
             lines.append("- 复习动作：先根据截图补一句本段主题，再和前后窗口串起来复盘。")
             lines.append("- 窗口检查点：")
             lines.extend(_window_checkpoint_lines(window))
+            lines.append("- 自测问题：")
+            lines.extend(visual_window_review_question_lines(window))
         lines.append("")
     return lines
 
@@ -141,6 +145,30 @@ def _window_checkpoint_lines(window: VisualWindow, limit: int = 3) -> list[str]:
             return lines
     return [
         "  - 无同步字幕；先描述画面网格中的标题、公式、代码或界面状态，再回看原视频确认上下文。"
+    ]
+
+
+def visual_window_review_question_lines(window: VisualWindow, limit: int = 2) -> list[str]:
+    if window.segments:
+        lines = []
+        for segment in window.segments[:limit]:
+            text = _checkpoint_text(segment.text, 72)
+            if not text:
+                continue
+            lines.append(
+                f"  - `{_format_ts(segment.start)}` 这句“{text}”在画面中对应的标题、公式、代码或操作状态是什么？"
+            )
+        if lines:
+            return lines
+
+    frame_times = ", ".join(_format_ts(value) for value in window.frame_timestamps[:3])
+    if frame_times:
+        return [
+            f"  - 这些帧（{frame_times}）里最能说明本段主题的画面证据是什么？",
+            "  - 如果没有字幕，能否用一句话描述这组截图的操作顺序或 PPT 结构？",
+        ]
+    return [
+        "  - 这个窗口里最值得回看的标题、公式、代码、界面状态或演示步骤是什么？",
     ]
 
 
@@ -227,6 +255,8 @@ def _visual_appendix_markdown(transcript: TranscriptResult, grids: list[FrameGri
             f"- 字幕线索：{window.transcript_excerpt or '本窗口没有匹配到字幕。'}",
             "- 回看检查点：",
             *_window_checkpoint_lines(window),
+            "- 自测问题：",
+            *visual_window_review_question_lines(window),
             "",
         ])
     return "\n".join(lines).rstrip()

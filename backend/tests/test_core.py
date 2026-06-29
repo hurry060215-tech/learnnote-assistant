@@ -1663,6 +1663,8 @@ class SummaryFallbackTests(unittest.TestCase):
         self.assertIn("回看目标：对照画面确认本段的板书、PPT 切换、代码/界面操作和例题步骤是否被字幕完整覆盖。", note)
         self.assertIn("窗口检查点", note)
         self.assertIn("00:00:05` 函数用于封装逻辑。；对照画面确认对应的板书、PPT、代码或操作步骤。", note)
+        self.assertIn("自测问题", note)
+        self.assertIn("00:00:05` 这句“函数用于封装逻辑。”在画面中对应的标题、公式、代码或操作状态是什么？", note)
         self.assertIn("画面-字幕对齐索引", note)
         self.assertIn("http://127.0.0.1/grid.jpg", note)
         self.assertIn("W001 `00:00:00 - 00:00:20`", note)
@@ -1701,6 +1703,8 @@ class SummaryFallbackTests(unittest.TestCase):
         self.assertIn("![W001 00:00:00 - 00:00:20](http://127.0.0.1/grid.jpg)", note)
         self.assertIn("帧时间：00:00:00, 00:00:10", note)
         self.assertIn("00:00:05` 函数用于封装逻辑。；对照画面确认对应的板书、PPT、代码或操作步骤。", note)
+        self.assertIn("自测问题", note)
+        self.assertIn("00:00:05` 这句“函数用于封装逻辑。”在画面中对应的标题、公式、代码或操作状态是什么？", note)
 
     def test_summary_diagnostics_count_only_grids_eligible_for_vision(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

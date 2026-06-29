@@ -20,6 +20,7 @@ from .models import CurrentPageTaskRequest, MediaPreflightRequest, MediaPrefligh
 from .processor import process_current_page_task, process_local_video_task, read_note, read_transcript, read_visual_index
 from .runtime import ffmpeg_bin, ffprobe_bin
 from .storage import create_task, get_task, list_tasks, task_dir, update_task
+from .summarizer import visual_window_review_question_lines
 
 ensure_dirs()
 
@@ -261,6 +262,8 @@ def render_visual_windows_markdown(task: TaskRecord) -> str:
             lines.append("")
             lines.append("- 回看检查点：")
             lines.extend(_visual_window_checkpoint_lines(window))
+            lines.append("- 自测问题：")
+            lines.extend(visual_window_review_question_lines(window))
             lines.append("")
         return "\n".join(lines).rstrip() + "\n"
 
