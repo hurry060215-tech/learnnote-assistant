@@ -3718,8 +3718,39 @@ function handleRouteAction(action) {
     startTask("page_text");
   }
 }
+
+function setSourceSwitcherActive(action) {
+  document.querySelectorAll("[data-source-action]").forEach(button => {
+    button.classList.toggle("active", button.dataset.sourceAction === action);
+  });
+}
+
+function pulseTarget(element) {
+  if (!element) return;
+  element.classList.add("focus-pulse");
+  if (typeof element.scrollIntoView === "function") {
+    element.scrollIntoView({ block: "center", behavior: "smooth" });
+  }
+  if (typeof element.focus === "function") {
+    element.focus({ preventScroll: true });
+  }
+  setTimeout(() => element.classList.remove("focus-pulse"), 900);
+}
+
+function handleSourceSwitch(action) {
+  const source = action === "local" || action === "text" ? action : "summarize";
+  setSourceSwitcherActive(source);
+  if (source === "local") {
+    pulseTarget(els.localDrop);
+  } else if (source === "text") {
+    pulseTarget(els.textButton);
+  } else {
+    pulseTarget(els.currentStudyCard || els.summarizeButton);
+  }
+}
+
 document.querySelectorAll("[data-source-action]").forEach(button => {
-  button.addEventListener("click", () => handleRouteAction(button.dataset.sourceAction));
+  button.addEventListener("click", () => handleSourceSwitch(button.dataset.sourceAction));
 });
 els.routeSummary.addEventListener("click", event => {
   const button = event.target.closest("[data-route-action]");
