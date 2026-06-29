@@ -895,6 +895,20 @@ assert.equal(context.candidateConfidence({
   source: "webRequest",
   playback_match: "range-near-playhead"
 }).label, "播放匹配");
+const opaqueVideoCandidate = {
+  kind: "video",
+  source: "webRequest",
+  request_type: "fetch",
+  mime: "application/octet-stream",
+  request_headers: {
+    Accept: "video/mp4,video/*;q=0.9,*/*;q=0.1",
+    "Sec-Fetch-Dest": "video",
+    Referer: "https://course.example.com/lesson"
+  }
+};
+assert.equal(context.candidateConfidence(opaqueVideoCandidate).label, "浏览器实证");
+assert.match(context.directnessText(opaqueVideoCandidate), /浏览器实际请求的视频响应/);
+assert.match(context.resourceReasonText(opaqueVideoCandidate), /视频请求头/);
 assert.match(context.candidateConfidenceHtml({
   kind: "hls",
   source: "manifest-guess"

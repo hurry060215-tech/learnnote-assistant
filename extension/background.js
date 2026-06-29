@@ -97,6 +97,25 @@ function hasRangeEvidence(requestHeaders = {}, responseHeaders = {}) {
   return requestRange && responseRange;
 }
 
+function requestHasMediaDestination(requestHeaders = {}) {
+  const headers = Object.fromEntries(
+    Object.entries(requestHeaders || {}).map(([name, value]) => [String(name).toLowerCase(), String(value || "").toLowerCase()])
+  );
+  return /^(video|audio)$/i.test(headers["sec-fetch-dest"] || "") ||
+    /(?:^|[,;\s])(?:video|audio)\//i.test(headers.accept || "") ||
+    /mpegurl|dash\+xml|mp4|webm|x-matroska/i.test(headers.accept || "");
+}
+
+function requestHeaderArrayHasMediaDestination(requestHeaders = []) {
+  const headers = {};
+  for (const header of requestHeaders || []) {
+    const name = String(header.name || "").toLowerCase();
+    if (!name) continue;
+    headers[name] = String(header.value || "");
+  }
+  return requestHasMediaDestination(headers);
+}
+
 function responseContentLength(responseHeaders = {}) {
   const value = Number(responseHeaders["content-length"] || 0);
   return Number.isFinite(value) && value > 0 ? value : 0;
@@ -129,6 +148,9 @@ function classifyCompletedRequest(details = {}, mime = "", requestHeaders = {}, 
   const type = String(details.type || "").toLowerCase();
   const binaryMime = /octet-stream|binary|application\/x-mpegurl/i.test(String(mime || ""));
   if ((type === "xmlhttprequest" || type === "fetch") && binaryMime && hasRangeEvidence(requestHeaders, responseHeaders)) {
+    return "video";
+  }
+  if ((type === "xmlhttprequest" || type === "fetch") && binaryMime && requestHasMediaDestination(requestHeaders) && responseContentLength(responseHeaders) >= 1024 * 1024) {
     return "video";
   }
   if (looksLikeTextPlayEndpoint(details, mime)) return "video";
@@ -362,6 +384,7 @@ function looksLikeMediaRequest(details) {
       String(header.name || "").toLowerCase() === "range" && /^bytes=/i.test(String(header.value || "").trim())
     );
     if (hasRange) return true;
+    if (requestHeaderArrayHasMediaDestination(details.requestHeaders || [])) return true;
   }
   return /m3u8|mpd|video|media|subtitle|caption|stream|hls|dash|manifest|playlist|master|playback|player|download|attachment|\/play(?:[/?#]|$)/i.test(url);
 }

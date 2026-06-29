@@ -467,6 +467,41 @@ assert.equal(xhrResources[0].request_type, "xmlhttprequest");
 assert.equal(xhrResources[0].request_headers.Range, "bytes=1048576-");
 assert.equal(xhrResources[0].headers["content-range"], "bytes 1048576-2097151/8388608");
 
+context.rememberRequestHeaders({
+  requestId: "opaque-video-fetch",
+  url: "https://cdn.example.com/opaque/9fa31b7c",
+  type: "fetch",
+  requestHeaders: [
+    { name: "Accept", value: "video/mp4,video/*;q=0.9,*/*;q=0.1" },
+    { name: "Sec-Fetch-Dest", value: "video" },
+    { name: "Referer", value: "https://course.example.com/lesson" }
+  ]
+});
+context.recordResponseMedia({
+  requestId: "opaque-video-fetch",
+  tabId: 181,
+  url: "https://cdn.example.com/opaque/9fa31b7c",
+  type: "fetch",
+  method: "GET",
+  statusCode: 200,
+  frameId: 4,
+  documentUrl: "https://course.example.com/player",
+  initiator: "https://course.example.com",
+  timeStamp: Date.now(),
+  responseHeaders: [
+    { name: "Content-Type", value: "application/octet-stream" },
+    { name: "Content-Length", value: "5242880" }
+  ]
+}, context.peekRequestHeaders("opaque-video-fetch"));
+
+const opaqueVideoResources = vm.runInContext("resourceByTab.get(181)", context);
+assert.equal(opaqueVideoResources.length, 1);
+assert.equal(opaqueVideoResources[0].kind, "video");
+assert.equal(opaqueVideoResources[0].request_type, "fetch");
+assert.equal(opaqueVideoResources[0].request_headers.Accept, "video/mp4,video/*;q=0.9,*/*;q=0.1");
+assert.equal(opaqueVideoResources[0].request_headers["Sec-Fetch-Dest"], "video");
+assert.equal(opaqueVideoResources[0].content_length, 5242880);
+
 context.addResource(19, {
   url: "https://cdn.example.com/hls/segment-0001.ts?token=abc",
   source: "webRequest",

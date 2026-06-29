@@ -960,6 +960,12 @@ function directnessText(item) {
   if (isDownloadableResource(item)) {
     if (item.kind === "hls") return playerSource ? `${playerSource} HLS manifest，可交给 ffmpeg 合并` : "HLS manifest，可交给 ffmpeg 合并";
     if (item.kind === "dash") return playerSource ? `${playerSource} DASH manifest，可交给 ffmpeg 合并` : "DASH manifest，可交给 ffmpeg 合并";
+    if (item.source === "webRequest" && (item.request_type === "media" || resourceHasMediaRequestHeader(item))) {
+      return "浏览器实际请求的视频响应，可下载到本地处理";
+    }
+    if (contentDispositionHint(item.headers?.["content-disposition"])) {
+      return "下载响应头指向视频文件，可下载到本地处理";
+    }
     return playerSource ? `${playerSource} 视频文件，可下载到本地处理` : "直接视频文件，可下载到本地处理";
   }
   if (item.kind === "blob") return "blob 播放地址线索，不可直接下载";
@@ -1050,6 +1056,12 @@ function resourceHasRangeRequest(item) {
   return /^bytes=\d*-\d*$/i.test(requestHeaderValue(item, "range").trim());
 }
 
+function resourceHasMediaRequestHeader(item) {
+  const accept = requestHeaderValue(item, "accept").toLowerCase();
+  const dest = requestHeaderValue(item, "sec-fetch-dest").toLowerCase();
+  return /^(video|audio)$/.test(dest) || /(?:^|[,;\s])(?:video|audio)\//.test(accept) || /mpegurl|dash\+xml|mp4|webm|x-matroska/.test(accept);
+}
+
 function resourceEvidenceTags(item) {
   if (!item) return [];
   const tags = [];
@@ -1070,6 +1082,7 @@ function resourceEvidenceTags(item) {
   if (item.source === "inferred-manifest") add("分片路径回推");
   if (String(item.source || "").startsWith("pageHook")) add("页面接口");
   if (item.request_type === "media") add("media 请求");
+  if (resourceHasMediaRequestHeader(item)) add("视频请求头");
   if (resourceHasRangeRequest(item)) add("Range 播放请求");
   if (requestBodySummary(item)) add("POST body");
   if (requestHeaderValue(item, "referer") || requestHeaderValue(item, "origin")) add("带 Referer/Origin");
@@ -1121,6 +1134,13 @@ function candidateConfidence(item) {
       className: "high",
       label: "播放匹配",
       detail: "与当前播放器或最近播放请求匹配，优先预检。"
+    };
+  }
+  if (item.source === "webRequest" && (item.request_type === "media" || resourceHasRangeRequest(item) || resourceHasMediaRequestHeader(item) || item.headers?.["content-disposition"])) {
+    return {
+      className: "high",
+      label: "浏览器实证",
+      detail: "浏览器已按媒体或下载响应访问该 URL，适合优先预检。"
     };
   }
   if (item.source === "webRequest" || String(item.source || "").startsWith("pageHook")) {
