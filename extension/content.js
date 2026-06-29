@@ -1121,12 +1121,39 @@ function collectCourseText() {
   return [headings, body, shadowText].filter(Boolean).join("\n\n").slice(0, 60000);
 }
 
+function mergePageResource(previous, incoming) {
+  if (!previous) return incoming;
+  const primary = Number(incoming.score || 0) > Number(previous.score || 0) ? incoming : previous;
+  const secondary = primary === incoming ? previous : incoming;
+  return {
+    ...secondary,
+    ...primary,
+    score: Math.max(Number(previous.score || 0), Number(incoming.score || 0)),
+    is_main_video: Boolean(previous.is_main_video || incoming.is_main_video),
+    playback_match: primary.playback_match || secondary.playback_match || "",
+    blob_url: primary.blob_url || secondary.blob_url || "",
+    request_type: primary.request_type || secondary.request_type || "",
+    method: primary.method || secondary.method || "",
+    status_code: primary.status_code ?? secondary.status_code ?? null,
+    content_length: primary.content_length ?? secondary.content_length ?? null,
+    resolved_url: primary.resolved_url || secondary.resolved_url || "",
+    initiator: primary.initiator || secondary.initiator || "",
+    current_time: primary.current_time ?? secondary.current_time ?? null,
+    duration: primary.duration ?? secondary.duration ?? null,
+    width: primary.width ?? secondary.width ?? null,
+    height: primary.height ?? secondary.height ?? null,
+    time_stamp: Math.max(previous.time_stamp || 0, incoming.time_stamp || 0) || null,
+    headers: { ...(secondary.headers || {}), ...(primary.headers || {}) },
+    request_headers: { ...(secondary.request_headers || {}), ...(primary.request_headers || {}) },
+    request_body: { ...(secondary.request_body || {}), ...(primary.request_body || {}) }
+  };
+}
+
 function collectPageData() {
   const all = [...collectDomResources(), ...collectPerformanceResources(), ...collectHookResources()];
   const byUrl = new Map();
   for (const item of all) {
-    const previous = byUrl.get(item.url);
-    if (!previous || item.score > previous.score) byUrl.set(item.url, item);
+    byUrl.set(item.url, mergePageResource(byUrl.get(item.url), item));
   }
   const active = activeVideoInfo();
   const drm = collectDrmSignals();

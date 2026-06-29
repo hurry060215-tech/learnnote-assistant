@@ -231,6 +231,16 @@ context.__learnNoteHookEventData = {
     request_type: "fetch",
     request_headers: { "Content-Type": "application/x-www-form-urlencoded" },
     request_body: { type: "text", content: "lesson=shadow&token=ok" }
+  }, {
+    url: "https://cdn.example.com/api/play?id=shadow",
+    source: "pageHookBody",
+    kind: "video",
+    mime: "video/mp4",
+    score: 70,
+    method: "POST",
+    request_type: "fetch",
+    request_headers: { "Content-Type": "application/json" },
+    request_body: { type: "text", content: "{\"lesson\":\"shadow\"}" }
   }]
 };
 assert.ok(windowMessageListener, "expected content script to install page hook bridge");
@@ -270,9 +280,12 @@ assert.equal(activeVideoResource.mime, "video/mp4");
 assert.equal(activeVideoResource.source, "activeVideo");
 const extensionless = response.resources.find(item => item.url === "https://cdn.example.com/api/play?id=shadow");
 assert.equal(extensionless.kind, "video");
-assert.equal(extensionless.source, "performance");
-assert.equal(extensionless.request_type, "video");
+assert.equal(extensionless.source, "pageHookBody");
+assert.equal(extensionless.request_type, "fetch");
 assert.equal(extensionless.content_length, 7340032);
+assert.equal(extensionless.method, "POST");
+assert.equal(extensionless.request_headers["Content-Type"], "application/json");
+assert.equal(extensionless.request_body.content, "{\"lesson\":\"shadow\"}");
 assert.match(response.page_text, /Shadow lesson title/);
 assert.ok(observedRoots.includes(shadowRoot), "expected open shadow roots to be observed for later media mutations");
 assert.ok(observeOptions.some(options => options?.characterData), "expected subtitle DOM text changes to refresh context");
