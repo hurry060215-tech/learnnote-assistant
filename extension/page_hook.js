@@ -638,6 +638,13 @@
     } catch {
       // Primitive values and some host objects cannot be WeakMap keys.
     }
+    try {
+      if (ArrayBuffer.isView?.(part) && part.buffer && typeof part.buffer === "object") {
+        blobPartSourceByObject.set(part.buffer, meta);
+      }
+    } catch {
+      // Some cross-realm typed array views expose restricted backing buffers.
+    }
   }
 
   function rememberStreamObject(stream, meta) {
@@ -1546,6 +1553,55 @@
       window.Blob = LearnNoteBlob;
     } catch {
       // Some pages lock constructors. Response.blob() and XHR blob tracking still work.
+    }
+  }
+
+  if (typeof window.Blob !== "undefined" && window.Blob.prototype && !window.Blob.prototype.__learnNoteBlobReadersPatched) {
+    const blobPrototype = window.Blob.prototype;
+
+    if (typeof blobPrototype.arrayBuffer === "function") {
+      const originalBlobArrayBuffer = blobPrototype.arrayBuffer;
+      blobPrototype.arrayBuffer = async function (...args) {
+        const buffer = await originalBlobArrayBuffer.apply(this, args);
+        try {
+          rememberBlobPartObject(buffer, blobPartMeta(this));
+        } catch {
+          // Blob reader hooks must not affect host page media pipelines.
+        }
+        return buffer;
+      };
+    }
+
+    if (typeof blobPrototype.stream === "function") {
+      const originalBlobStream = blobPrototype.stream;
+      blobPrototype.stream = function (...args) {
+        const stream = originalBlobStream.apply(this, args);
+        try {
+          rememberStreamObject(stream, blobPartMeta(this));
+        } catch {
+          // Keep Blob.stream() transparent for pages with custom stream handling.
+        }
+        return stream;
+      };
+    }
+
+    if (typeof blobPrototype.bytes === "function") {
+      const originalBlobBytes = blobPrototype.bytes;
+      blobPrototype.bytes = async function (...args) {
+        const bytes = await originalBlobBytes.apply(this, args);
+        try {
+          rememberBlobPartObject(bytes, blobPartMeta(this));
+        } catch {
+          // Keep experimental Blob.bytes() behavior unchanged.
+        }
+        return bytes;
+      };
+    }
+
+    try {
+      Object.defineProperty(blobPrototype, "__learnNoteBlobReadersPatched", { value: true });
+    } catch {
+      blobPrototype.__learnNoteBlobReadersPatched = true;
     }
   }
 
