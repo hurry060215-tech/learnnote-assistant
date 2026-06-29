@@ -388,7 +388,7 @@ def summarize_with_llm(
     grids: list[FrameGrid],
     options: TaskOptions,
     page_url: str = "",
-) -> str | None:
+) -> tuple[str, str] | None:
     api_key = options.llm_api_key or LLM_API_KEY
     if not api_key:
         return None
@@ -458,7 +458,8 @@ def summarize_with_llm(
                     temperature=0.2,
                 )
                 generated = response.choices[0].message.content or ""
-                return ensure_visual_appendix(generated, transcript, grids) or None
+                note = ensure_visual_appendix(generated, transcript, grids) or ""
+                return (note, "vision-llm") if note else None
             except Exception:
                 return None
 
@@ -481,7 +482,8 @@ def summarize_with_llm(
             temperature=0.2,
         )
         generated = response.choices[0].message.content or ""
-        return ensure_visual_appendix(generated, transcript, grids) or None
+        note = ensure_visual_appendix(generated, transcript, grids) or ""
+        return (note, "text-llm") if note else None
     except Exception:
         return None
 
@@ -502,8 +504,8 @@ def summarize_with_diagnostics(
         )
     generated = summarize_with_llm(title, transcript, grids, options, page_url)
     if generated:
-        source = "vision-llm" if grids and options.visual_understanding else "text-llm"
-        return generated, source, ""
+        note, source = generated
+        return note, source, ""
     return (
         local_markdown_note(title, transcript, grids, page_url),
         "local-template",
@@ -555,7 +557,8 @@ def summarize_page_text_with_diagnostics(title: str, page_url: str, page_text: s
     )
     generated = summarize_with_llm(title, transcript, [], options, page_url)
     if generated:
-        return generated, "text-llm", ""
+        note, source = generated
+        return note, source, ""
     text = (page_text or "").strip()
     page_body, subtitle_body = _split_page_text_sections(text)
     page_points = _clean_outline_lines(page_body, limit=8)

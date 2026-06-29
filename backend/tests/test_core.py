@@ -1901,8 +1901,9 @@ class SummaryFallbackTests(unittest.TestCase):
                 segments=[TranscriptSegment(start=index * 180, end=index * 180 + 30, text=f"segment {index}") for index in range(9)],
             )
             with patch.dict(sys.modules, {"openai": fake_openai}):
-                note = summarize_with_llm("Long lesson", transcript, grids, TaskOptions(llm_api_key="test-key"), "https://course.example")
+                note, source = summarize_with_llm("Long lesson", transcript, grids, TaskOptions(llm_api_key="test-key"), "https://course.example")
 
+        self.assertEqual(source, "vision-llm")
         self.assertTrue(note.startswith("merged note"))
         self.assertIn("## 画面切片附录", note)
         self.assertIn("W001 `00:00:00 - 00:03:00`", note)
@@ -1933,6 +1934,68 @@ class SummaryFallbackTests(unittest.TestCase):
         self.assertIn("http://127.0.0.1/grid_8.jpg", merge_content)
         self.assertIn("partial with 4 images", completions.calls[3]["messages"][0]["content"])
         self.assertIn("partial with 1 images", completions.calls[3]["messages"][0]["content"])
+
+    def test_llm_summary_reports_text_source_when_grid_images_are_missing(self) -> None:
+        from app.summarizer import summarize_with_diagnostics
+
+        class Message:
+            def __init__(self, content: str):
+                self.content = content
+
+        class Choice:
+            def __init__(self, content: str):
+                self.message = Message(content)
+
+        class Response:
+            def __init__(self, content: str):
+                self.choices = [Choice(content)]
+
+        class FakeCompletions:
+            def __init__(self):
+                self.calls = []
+
+            def create(self, **kwargs):
+                self.calls.append(kwargs)
+                return Response("# Text fallback note\n\nfrom transcript only")
+
+        completions = FakeCompletions()
+
+        class FakeOpenAI:
+            def __init__(self, **kwargs):
+                self.chat = types.SimpleNamespace(completions=completions)
+
+        fake_openai = types.ModuleType("openai")
+        fake_openai.OpenAI = FakeOpenAI
+
+        transcript = TranscriptResult(
+            full_text="all transcript",
+            segments=[TranscriptSegment(start=0, end=30, text="segment 0")],
+        )
+        grids = [
+            FrameGrid(
+                path=str(TEST_RUN_DIR / "missing-grid.jpg"),
+                url="http://127.0.0.1/missing-grid.jpg",
+                start=0,
+                end=180,
+                frame_count=9,
+            )
+        ]
+
+        with patch.dict(sys.modules, {"openai": fake_openai}):
+            note, source, warning = summarize_with_diagnostics(
+                "Missing image lesson",
+                transcript,
+                grids,
+                TaskOptions(llm_api_key="test-key", visual_understanding=True),
+                "https://course.example",
+            )
+
+        self.assertEqual(source, "text-llm")
+        self.assertEqual(warning, "")
+        self.assertIn("# Text fallback note", note)
+        self.assertEqual(len(completions.calls), 1)
+        content = completions.calls[0]["messages"][0]["content"]
+        self.assertFalse(any(item.get("type") == "image_url" for item in content))
 
 
 class SubtitleParsingTests(unittest.TestCase):
