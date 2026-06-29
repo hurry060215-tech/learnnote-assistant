@@ -284,6 +284,18 @@ function compareResourceCandidates(a = {}, b = {}) {
   return String(a.url || "").localeCompare(String(b.url || ""));
 }
 
+function mergeAndRankResources(resources, page = {}, tab = {}, { preserveOrder = false } = {}) {
+  const baseResources = Array.isArray(resources) ? resources : resourceByTab.get(tab?.id) || [];
+  const hinted = (baseResources || []).map(item => withPlaybackHints(item, page));
+  const byUrl = new Map();
+  for (const item of hinted) {
+    const previous = byUrl.get(item.url);
+    byUrl.set(item.url, mergeResource(previous, item));
+  }
+  const merged = [...byUrl.values()];
+  return preserveOrder ? merged : merged.sort(compareResourceCandidates);
+}
+
 function requestRangeHeader(resource = {}) {
   const headers = resource.request_headers || {};
   for (const [name, value] of Object.entries(headers)) {
@@ -1117,15 +1129,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === "get-current-context") {
       const tab = await tabForMessage(message);
       const page = await collectPageData(tab);
-      const sniffed = resourceByTab.get(tab.id) || [];
       const activePage = page;
-      const merged = [...(page.resources || []), ...sniffed].map(item => withPlaybackHints(item, activePage));
-      const byUrl = new Map();
-      for (const item of merged) {
-        const previous = byUrl.get(item.url);
-        byUrl.set(item.url, mergeResource(previous, item));
-      }
-      const resources = [...byUrl.values()].sort(compareResourceCandidates).slice(0, 30);
+      const resources = mergeAndRankResources([...(page.resources || []), ...(resourceByTab.get(tab.id) || [])], activePage, tab).slice(0, 30);
       sendResponse({ tab, page: activePage, resources });
       return;
     }
@@ -1133,7 +1138,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === "start-current-task") {
       const tab = await tabForMessage(message);
       const page = message.page || await collectPageData(tab);
-      const resources = message.resources || resourceByTab.get(tab.id) || [];
+      const resources = mergeAndRankResources(message.resources, page, tab, { preserveOrder: Array.isArray(message.resources) });
       const cookies = await cookiesForUrls(cookieUrlsForContext(page, tab, resources));
       const backendUrl = message.backendUrl || "http://127.0.0.1:8765";
       const res = await fetch(`${backendUrl}/api/tasks/from-current-page`, {
@@ -1160,7 +1165,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === "preflight-current-resource") {
       const tab = await tabForMessage(message);
       const page = message.page || await collectPageData(tab);
-      const resource = message.resource;
+      const resource = mergeAndRankResources(message.resource ? [message.resource] : [], page, tab, { preserveOrder: true })[0];
       if (!resource?.url) {
         sendResponse({ error: "没有可预检的候选资源。" });
         return;
@@ -1183,7 +1188,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === "preflight-current-page") {
       const tab = await tabForMessage(message);
       const page = message.page || await collectPageData(tab);
-      const resources = message.resources || resourceByTab.get(tab.id) || [];
+      const resources = mergeAndRankResources(message.resources, page, tab, { preserveOrder: Array.isArray(message.resources) });
       const cookies = await cookiesForUrls(cookieUrlsForContext(page, tab, resources));
       const backendUrl = message.backendUrl || "http://127.0.0.1:8765";
       const res = await fetch(`${backendUrl}/api/media/preflight-current-page`, {

@@ -221,6 +221,75 @@ const sortedCandidates = [
 
 assert.equal(sortedCandidates[0].url, manifestHinted.url);
 
+const preservedResources = context.mergeAndRankResources(
+  [
+    {
+      url: "https://cdn.example.com/manual.mp4",
+      source: "webRequest",
+      kind: "video",
+      score: 100,
+      time_stamp: Date.now() - 1000
+    },
+    {
+      url: "https://cdn.example.com/live/manual.m3u8",
+      source: "webRequest",
+      kind: "hls",
+      score: 100,
+      frame_id: 9,
+      initiator: "https://course.example.com",
+      time_stamp: Date.now() - 1000
+    }
+  ],
+  {
+    page_url: "https://course.example.com/lesson/1",
+    active_video: {
+      src: "blob:https://course.example.com/active",
+      paused: false,
+      current_time: 420,
+      frame_id: 9
+    }
+  },
+  { id: 501 },
+  { preserveOrder: true }
+);
+
+assert.equal(preservedResources[0].url, "https://cdn.example.com/manual.mp4");
+assert.equal(preservedResources[1].playback_match, "manifest-near-playhead");
+
+context.addResource(502, {
+  url: "https://cdn.example.com/archive.mp4",
+  source: "webRequest",
+  kind: "video",
+  score: 100,
+  time_stamp: Date.now() - 1000
+}, false);
+context.addResource(502, {
+  url: "https://cdn.example.com/live/cached.m3u8",
+  source: "webRequest",
+  kind: "hls",
+  score: 100,
+  frame_id: 9,
+  initiator: "https://course.example.com",
+  time_stamp: Date.now() - 1000
+}, false);
+
+const cachedResources = context.mergeAndRankResources(
+  undefined,
+  {
+    page_url: "https://course.example.com/lesson/1",
+    active_video: {
+      src: "blob:https://course.example.com/active",
+      paused: false,
+      current_time: 420,
+      frame_id: 9
+    }
+  },
+  { id: 502 }
+);
+
+assert.equal(cachedResources[0].url, "https://cdn.example.com/live/cached.m3u8");
+assert.equal(cachedResources[0].playback_match, "manifest-near-playhead");
+
 context.recordResponseMedia({
   requestId: "local-preview",
   tabId: 177,
