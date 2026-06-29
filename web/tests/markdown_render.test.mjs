@@ -1330,6 +1330,7 @@ assert.equal(preflights[0].resource.request_type, "manual-auto");
 assert.equal(preflights[0].resource.url, "https://cdn.example.com/archive/lesson.avi?token=abc");
 assert.match(elements.get("#urlModeHint").textContent, /预检通过/);
 assert.match(elements.get("#urlModeHint").textContent, /120\.6 KB/);
+assert.match(elements.get("#urlModeHint").textContent, /目标：https:\/\/cdn\.example\.com\/archive\/master\.m3u8/);
 assert.equal(elements.get("#preflightUrlButton").disabled, false);
 
 await context.startUrlTask("video");

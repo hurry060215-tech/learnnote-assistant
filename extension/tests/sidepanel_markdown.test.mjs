@@ -860,13 +860,14 @@ assert.match(context.selectedResourceReport({
   source: "webRequest",
   label: "header named",
   url: "https://cdn.example.com/download?id=1",
+  resolved_url: "https://media.example.com/real/lesson.mp4?sig=abc",
   mime: "application/octet-stream",
   status_code: 200,
   content_length: 123456,
   headers: {
     "content-disposition": "attachment; filename*=UTF-8''lesson%20download.mp4"
   }
-}), /HTTP 200.*filename lesson download\.mp4/);
+}), /实际媒体 URL: https:\/\/media\.example\.com\/real\/lesson\.mp4\?sig=abc[\s\S]*HTTP 200.*filename lesson download\.mp4/);
 assert.match(context.resourceTagHtml({
   kind: "hls",
   source: "webRequest",
@@ -1012,8 +1013,14 @@ await context.copySelectedResourceUrl();
 assert.equal(clipboardWrites.at(-1), "https://cdn.example.com/live/master.m3u8");
 assert.equal(elements.get("#taskMessage").textContent, "已复制候选资源 URL。");
 
+vm.runInContext(`selectedResource().resolved_url = "https://media.example.com/real/master.m3u8?sig=abc";`, context);
+await context.copySelectedResourceUrl();
+assert.equal(clipboardWrites.at(-1), "https://media.example.com/real/master.m3u8?sig=abc");
+assert.equal(elements.get("#taskMessage").textContent, "已复制实际媒体 URL。");
+
 const report = vm.runInContext("selectedResourceReport()", context);
 assert.match(report, /下载策略: ffmpeg 合并/);
+assert.match(report, /实际媒体 URL: https:\/\/media\.example\.com\/real\/master\.m3u8\?sig=abc/);
 assert.match(report, /复用请求头: Referer/);
 assert.doesNotMatch(report, /Cookie/);
 assert.doesNotMatch(report, /Authorization/);

@@ -327,7 +327,7 @@ function compactIdList(values, limit = 3) {
   return `${ids.slice(0, limit).join(", ")}${suffix}`;
 }
 
-function resourcePreflightLine(result = null) {
+function resourcePreflightLine(result = null, item = null) {
   if (!result) return "未预检";
   const items = [
     result.downloadable ? "通过" : result.code || "未通过",
@@ -335,17 +335,30 @@ function resourcePreflightLine(result = null) {
     result.status_code ? `HTTP ${result.status_code}` : "",
     result.content_type || "",
     contentDispositionHint(result.content_disposition),
-    fmtBytes(result.content_length) || (result.bytes_checked ? `${result.bytes_checked} B` : "")
+    fmtBytes(result.content_length) || (result.bytes_checked ? `${result.bytes_checked} B` : ""),
+    resolvedTargetText(item, result, 72) ? `目标 ${resolvedTargetText(item, result, 72)}` : ""
   ].filter(Boolean).join(" · ");
+}
+
+function resourceResolvedTarget(item, result = null) {
+  return item?.resolved_url || result?.resolved_url || "";
+}
+
+function resolvedTargetText(item, result = null, limit = 92) {
+  const target = resourceResolvedTarget(item, result);
+  if (!target || target === item?.url) return "";
+  return compactUrl(target, limit);
 }
 
 function selectedResourceReport(item = selectedResource()) {
   if (!item) return "";
   const confidence = candidateConfidence(item);
   const checked = preflightForResource(item);
+  const resolvedTarget = resourceResolvedTarget(item, checked);
   return [
     `LearnNote 候选资源：${item.label || item.kind || "media"}`,
     `URL: ${item.url}`,
+    resolvedTarget && resolvedTarget !== item.url ? `实际媒体 URL: ${resolvedTarget}` : "",
     `类型: ${item.kind || "unknown"}`,
     `下载策略: ${candidateStrategyText(item)}`,
     `下载顺序: 第 ${candidateTryOrder(item) || "-"} 顺位`,
@@ -355,8 +368,8 @@ function selectedResourceReport(item = selectedResource()) {
     `响应证据: ${responseEvidenceLine(item) || "-"}`,
     `复用请求头: ${requestHeaderNames(item)}`,
     `POST body: ${requestBodySummary(item) || "-"}`,
-    `预检: ${resourcePreflightLine(checked)}`
-  ].join("\n");
+    `预检: ${resourcePreflightLine(checked, item)}`
+  ].filter(Boolean).join("\n");
 }
 
 function workbenchUrl(taskId = currentTaskId, tabName = selectedTab) {
@@ -394,7 +407,8 @@ async function copySelectedResourceUrl() {
     els.taskMessage.textContent = "没有可复制的候选资源。";
     return false;
   }
-  return copyTextToClipboard(item.url, "已复制候选资源 URL。");
+  const target = resourceResolvedTarget(item, preflightForResource(item)) || item.url;
+  return copyTextToClipboard(target, target !== item.url ? "已复制实际媒体 URL。" : "已复制候选资源 URL。");
 }
 
 async function copySelectedResourceReport() {
@@ -1274,7 +1288,7 @@ function preflightAuditSummaryHtml(limit = 4) {
           result.status_code ? `HTTP ${result.status_code}` : "",
           result.content_type || "",
           fmtBytes(result.content_length),
-          result.resolved_url && result.resolved_url !== resource.url ? "resolved" : ""
+          resolvedTargetText(resource, result, 58) ? `目标 ${resolvedTargetText(resource, result, 58)}` : ""
         ].filter(Boolean).join(" · ");
         return `<button type="button" class="${state} ${resource.url === selectedResourceUrl ? "selected" : ""}" data-url="${escapeHtml(resource.url)}">
           <b>${escapeHtml(result.downloadable ? "OK" : result.code || "WAIT")}</b>
@@ -1927,6 +1941,8 @@ function renderInspector() {
   }
   els.resourceInspector.className = "resource-inspector";
   const confidence = candidateConfidence(item);
+  const resolvedTarget = resolvedTargetText(item, checked, 120);
+  const fullResolvedTarget = resourceResolvedTarget(item, checked);
   els.resourceInspector.innerHTML = `
     <strong>${escapeHtml(directnessText(item))}</strong>
     <div class="resource-inspector-actions">
@@ -1938,14 +1954,16 @@ function renderInspector() {
     ${resourceReasonText(item) ? `<span>选择依据：${escapeHtml(resourceReasonText(item))}</span>` : ""}
     <span>${escapeHtml(requestEvidence(item) || "无请求证据")}</span>
     ${responseEvidenceLine(item) ? `<span>响应证据：${escapeHtml(responseEvidenceLine(item))}</span>` : ""}
+    ${resolvedTarget ? `<span>实际媒体 URL：${escapeHtml(resolvedTarget)}</span>` : ""}
     ${item.blob_url ? `<span>播放 blob：${escapeHtml(item.blob_url)}</span>` : ""}
     ${item.frame_url ? `<span>所在 frame：${escapeHtml(item.frame_url)}</span>` : ""}
     <span>复用请求头：${escapeHtml(requestHeaderNames(item))}</span>
     ${requestBodySummary(item) ? `<span>POST body：${escapeHtml(requestBodySummary(item))}</span>` : ""}
-    ${checked ? `<span>预检：${escapeHtml(resourcePreflightLine(checked))}</span>` : ""}
+    ${checked ? `<span>预检：${escapeHtml(resourcePreflightLine(checked, item))}</span>` : ""}
     ${checked ? `<span>下一步：${escapeHtml(preflightRecoveryText(checked))}</span>` : ""}
     ${checked?.warnings?.length ? `<span>提示：${escapeHtml(checked.warnings.join("；"))}</span>` : ""}
     <code>${escapeHtml(item.url)}</code>
+    ${fullResolvedTarget && fullResolvedTarget !== item.url ? `<code>${escapeHtml(fullResolvedTarget)}</code>` : ""}
   `;
 }
 

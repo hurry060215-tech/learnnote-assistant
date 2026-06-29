@@ -80,6 +80,14 @@ function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[ch]));
 }
 
+function compactUrl(value, limit = 88) {
+  const text = String(value || "").trim();
+  if (!text || text.length <= limit) return text;
+  const head = Math.max(24, Math.floor(limit * 0.42));
+  const tail = Math.max(24, limit - head - 3);
+  return `${text.slice(0, head)}...${text.slice(-tail)}`;
+}
+
 async function fetchJson(url, options = {}) {
   const response = await fetch(url, options);
   const contentType = response.headers?.get?.("content-type") || "";
@@ -2899,8 +2907,11 @@ async function preflightUrlTask() {
       })
     });
     const result = rememberUrlPreflight(resource, data.preflight || {});
+    const resolvedTarget = resource.resolved_url && resource.resolved_url !== resource.url
+      ? `，目标：${compactUrl(resource.resolved_url, 92)}`
+      : "";
     els.urlModeHint.textContent = result.downloadable
-      ? `预检通过：${result.kind || resource.kind} 可访问，${result.status_code ? `HTTP ${result.status_code}，` : ""}${fmtBytes(result.content_length) || `${result.bytes_checked || 0} B`}。`
+      ? `预检通过：${result.kind || resource.kind} 可访问，${result.status_code ? `HTTP ${result.status_code}，` : ""}${fmtBytes(result.content_length) || `${result.bytes_checked || 0} B`}${resolvedTarget}。`
       : `预检未通过：${result.message || result.code || "该链接暂不可直接下载"}`;
   } finally {
     els.startUrlButton.disabled = false;
