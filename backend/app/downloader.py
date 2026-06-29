@@ -599,6 +599,15 @@ def extract_media_resources_from_encoded_url_text(
     return resources
 
 
+def _media_scan_text_variants(text: str) -> list[str]:
+    body = str(text or "")
+    variants = [body]
+    decoded = html.unescape(_decode_js_string_escapes(body))
+    if decoded and decoded != body:
+        variants.append(decoded)
+    return variants
+
+
 def extract_media_resources_from_text(text: str, base_url: str, source: str = "page-scan") -> list[ResourceCandidate]:
     if not text:
         return []
@@ -606,30 +615,33 @@ def extract_media_resources_from_text(text: str, base_url: str, source: str = "p
     seen: set[str] = set()
     for resource in resources:
         seen.add(resource.url)
-    resources.extend(extract_media_resources_from_field_text(text, base_url, source, seen))
-    resources.extend(extract_media_resources_from_encoded_url_text(text, base_url, source, seen))
-    if not TEXT_MEDIA_HINT_RE.search(text):
-        return resources
-    for match in TEXT_MEDIA_URL_RE.finditer(text):
-        url = normalize_media_url(match.group(0), base_url)
-        if not url or url in seen:
+    for searchable in _media_scan_text_variants(text):
+        resources.extend(extract_media_resources_from_field_text(searchable, base_url, source, seen))
+        resources.extend(extract_media_resources_from_encoded_url_text(searchable, base_url, source, seen))
+        if not TEXT_MEDIA_HINT_RE.search(searchable):
             continue
-        kind = classify_resource(url)
-        if kind == "unknown":
-            continue
-        mime = _mime_for_kind(kind)
-        resources.append(
-            ResourceCandidate(
-                url=url,
-                source=source,
-                kind=kind,
-                mime=mime,
-                score=score_resource(url, mime, source),
-                label="page scan",
-                request_headers={"Referer": base_url},
+        for match in TEXT_MEDIA_URL_RE.finditer(searchable):
+            url = normalize_media_url(match.group(0), base_url)
+            if not url or url in seen:
+                continue
+            kind = classify_resource(url)
+            if kind == "unknown":
+                continue
+            mime = _mime_for_kind(kind)
+            resources.append(
+                ResourceCandidate(
+                    url=url,
+                    source=source,
+                    kind=kind,
+                    mime=mime,
+                    score=score_resource(url, mime, source),
+                    label="page scan",
+                    request_headers={"Referer": base_url},
+                )
             )
-        )
-        seen.add(url)
+            seen.add(url)
+            if len(resources) >= 60:
+                break
         if len(resources) >= 60:
             break
     return resources
