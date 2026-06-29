@@ -3264,12 +3264,28 @@ function transcriptTimeline(transcript, task, limit = 100) {
   return `${transcriptOverview(transcript, task)}<div class="transcript-timeline">${cards.join("")}</div>`;
 }
 
-function visualStudyDeck(task) {
+function sideVisualStudyCueHtml(window, transcript) {
+  const matched = (transcript?.segments || [])
+    .filter(segment => segmentOverlapsWindow(segment, window))
+    .slice(0, 4);
+  if (matched.length) {
+    return `<div class="side-visual-study-cues">
+      ${matched.map(segment => `<div><time>${fmt(segment.start)}</time><span>${escapeHtml(segment.text)}</span></div>`).join("")}
+    </div>`;
+  }
+  const excerpt = window.transcript_excerpt || "暂无字幕摘录，可切到“转写”查看完整时间轴。";
+  return `<p>${escapeHtml(excerpt)}</p>`;
+}
+
+function visualStudyDeck(task, transcript = null) {
   const windows = visualWindows(task);
   if (!windows.length) return "";
   const firstWindow = windows[0];
   const lastWindow = windows[windows.length - 1];
   const range = firstWindow && lastWindow ? `${fmt(firstWindow.start)} - ${fmt(lastWindow.end)}` : "等待切片";
+  const matchedCueCount = (transcript?.segments || [])
+    .filter(segment => windows.some(window => segmentOverlapsWindow(segment, window))).length;
+  const headDetail = matchedCueCount ? `${windows.length} 窗口 · ${matchedCueCount} 段字幕已同步` : `${windows.length} 窗口 · ${range}`;
   return `<section class="side-visual-study" aria-label="视觉窗口复习">
     <div class="side-visual-study-head">
       <div>
@@ -3277,14 +3293,13 @@ function visualStudyDeck(task) {
         <strong>${escapeHtml(task.title || task.id || "画面切片")}</strong>
       </div>
       <div class="side-visual-study-head-actions">
-        <small>${escapeHtml(`${windows.length} 窗口 · ${range}`)}</small>
+        <small>${escapeHtml(headDetail)}</small>
         <button type="button" data-export="visual-windows">导出切片索引</button>
       </div>
     </div>
     <div class="side-visual-study-list">
       ${windows.slice(0, 8).map((window, index) => {
         const image = safeNoteMediaUrl(window.grid_url || "");
-        const excerpt = window.transcript_excerpt || "暂无字幕摘录，可切到“转写”查看完整时间轴。";
         return `<article class="side-visual-study-card">
           <figure>
             ${image ? `<img src="${image}" alt="${escapeHtml(window.id)} frame grid">` : `<div class="side-visual-placeholder">无画面</div>`}
@@ -3293,9 +3308,9 @@ function visualStudyDeck(task) {
           <div>
             <span>窗口 ${String(index + 1).padStart(2, "0")}</span>
             <strong>${fmt(window.start)} - ${fmt(window.end)}</strong>
-            <p>${escapeHtml(excerpt)}</p>
-            ${sideVisualStudyCheckpointHtml(window)}
-            ${sideVisualStudyChecklistHtml(window)}
+            ${sideVisualStudyCueHtml(window, transcript)}
+            ${sideVisualStudyCheckpointHtml(window, transcript)}
+            ${sideVisualStudyChecklistHtml(window, transcript)}
             <div class="side-visual-meta">
               <em>${Number(window.frame_count || 0)} 帧</em>
               ${frameTimestampText(window) ? `<em>${escapeHtml(frameTimestampText(window))}</em>` : ""}
@@ -3313,19 +3328,29 @@ function visualStudyDeck(task) {
   </section>`;
 }
 
-function sideVisualStudyCheckpointHtml(window) {
-  const excerpt = String(window.transcript_excerpt || "").replace(/\s+/g, " ").trim();
-  const item = excerpt
-    ? `<li><time>${fmt(window.start || 0)}</time><span>${escapeHtml(excerpt.length > 96 ? `${excerpt.slice(0, 96).trim()}...` : excerpt)}；对照画面确认对应的板书、PPT、代码或操作步骤。</span></li>`
-    : `<li><span>无同步字幕；先描述画面网格中的标题、公式、代码或界面状态，再回看原视频确认上下文。</span></li>`;
+function sideVisualStudyCheckpointHtml(window, transcript = null) {
+  const segments = (transcript?.segments || [])
+    .filter(segment => segmentOverlapsWindow(segment, window))
+    .slice(0, 3)
+    .map(segment => ({ time: fmt(segment.start), text: String(segment.text || "").replace(/\s+/g, " ").trim() }))
+    .filter(item => item.text);
+  if (!segments.length && window.transcript_excerpt) {
+    segments.push({
+      time: fmt(window.start || 0),
+      text: String(window.transcript_excerpt || "").replace(/\s+/g, " ").trim()
+    });
+  }
+  const items = segments.length
+    ? segments.map(item => `<li><time>${escapeHtml(item.time)}</time><span>${escapeHtml(item.text.length > 96 ? `${item.text.slice(0, 96).trim()}...` : item.text)}；对照画面确认对应的板书、PPT、代码或操作步骤。</span></li>`)
+    : [`<li><span>无同步字幕；先描述画面网格中的标题、公式、代码或界面状态，再回看原视频确认上下文。</span></li>`];
   return `<div class="side-visual-study-checkpoints">
     <span>回看检查点</span>
-    <ol>${item}</ol>
+    <ol>${items.join("")}</ol>
   </div>`;
 }
 
-function sideVisualStudyChecklistHtml(window) {
-  const hasCue = Boolean(window.transcript_excerpt);
+function sideVisualStudyChecklistHtml(window, transcript = null) {
+  const hasCue = Boolean(window.transcript_excerpt) || (transcript?.segments || []).some(segment => segmentOverlapsWindow(segment, window));
   const target = hasCue
     ? "核对截图里的板书、PPT 切换、代码/界面状态是否已被字幕覆盖。"
     : "先从截图判断本段主题，重点看标题、公式、代码和演示状态。";
@@ -3373,7 +3398,7 @@ function renderResult() {
       return;
     }
     els.result.className = "result-body";
-    els.result.innerHTML = `${visionEvidenceBar(currentTask)}${visualStudyDeck(currentTask)}`;
+    els.result.innerHTML = `${visionEvidenceBar(currentTask)}${visualStudyDeck(currentTask, transcriptCache)}`;
     bindTaskOverviewActions();
     return;
   }

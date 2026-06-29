@@ -3413,6 +3413,36 @@ input[type="file"] {
   overflow-wrap: anywhere;
 }
 
+.side-visual-study-cues {
+  display: grid;
+  gap: 5px;
+}
+
+.side-visual-study-cues div {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  gap: 6px;
+  align-items: start;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: #fbfcff;
+  padding: 6px 7px;
+}
+
+.side-visual-study-cues time {
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.side-visual-study-cues span {
+  color: var(--ink);
+  font-size: 11px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .side-visual-study-checkpoints {
   display: grid;
   gap: 5px;
