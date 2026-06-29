@@ -376,8 +376,47 @@ const readingRailHtml = context.readingRail("## 第一节", {
 });
 
 assert.match(readingRailHtml, /class="reading-rail"/);
+assert.match(readingRailHtml, /class="reading-progress-rail"/);
 assert.match(readingRailHtml, /class="note-outline"/);
 assert.match(readingRailHtml, /class="visual-rail"/);
+assert.match(readingRailHtml, /class="reading-actions-rail"/);
+assert.match(readingRailHtml, /读笔记/);
+assert.match(readingRailHtml, /看画面/);
+
+const richReadingRailHtml = context.readingRail(`# 课程笔记
+
+## 第一节
+### 例题
+`, {
+  id: "task-reading-rail",
+  status: "success",
+  source_type: "current_page",
+  media_path: "D:/Projects/learnnote-assistant/data/tasks/task-reading-rail/media.mp4",
+  transcript_path: "D:/Projects/learnnote-assistant/data/tasks/task-reading-rail/transcript.json",
+  note_path: "D:/Projects/learnnote-assistant/data/tasks/task-reading-rail/note.md",
+  selected_resource: { kind: "hls", source: "webRequest" },
+  download_attempts: [{ strategy: "manifest-ffmpeg" }],
+  visual_windows: [{
+    id: "W001",
+    start: 0,
+    end: 180,
+    frame_count: 9,
+    grid_url: "http://127.0.0.1:8765/api/tasks/demo/grids/grid_000.jpg",
+    transcript_excerpt: "重点演示"
+  }]
+});
+assert.match(richReadingRailHtml, /学习进度/);
+assert.match(richReadingRailHtml, /3 标题/);
+assert.match(richReadingRailHtml, /1 章节 · 1 小节/);
+assert.match(richReadingRailHtml, /1 窗口/);
+assert.match(richReadingRailHtml, /class="reading-artifacts-rail"/);
+assert.match(richReadingRailHtml, /Markdown/);
+assert.match(richReadingRailHtml, /media\.mp4/);
+assert.match(richReadingRailHtml, /切片索引/);
+assert.match(richReadingRailHtml, /资料包/);
+assert.match(richReadingRailHtml, /\/api\/tasks\/task-reading-rail\/exports\/bundle/);
+assert.match(richReadingRailHtml, /data-switch-result-tab="transcript"/);
+assert.match(richReadingRailHtml, /data-switch-result-tab="diagnostics"/);
 
 const visualDeckHtml = context.visualStudyDeck({
   id: "task-visual-deck",

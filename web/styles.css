@@ -3110,16 +3110,28 @@ button:disabled {
   top: 14px;
   display: grid;
   gap: 10px;
+  max-height: calc(100vh - 190px);
+  overflow: auto;
+  padding-right: 2px;
 }
 
 .note-outline,
-.visual-rail {
+.visual-rail,
+.reading-progress-rail,
+.reading-artifacts-rail,
+.reading-actions-rail {
   display: grid;
   gap: 10px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: #fbfcff;
   padding: 12px;
+}
+
+.reading-progress-rail {
+  background:
+    linear-gradient(180deg, rgba(20, 99, 255, 0.06), rgba(255, 255, 255, 0) 42%),
+    #fbfcff;
 }
 
 .visual-rail-head {
@@ -3138,6 +3150,86 @@ button:disabled {
   color: var(--muted);
   font-size: 11px;
   font-weight: 800;
+}
+
+.reading-progress-list {
+  display: grid;
+  gap: 7px;
+}
+
+.reading-progress-list div {
+  position: relative;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 2px 8px;
+  align-items: center;
+  border: 1px solid #e4ebf5;
+  border-radius: 8px;
+  background: #fff;
+  padding: 8px;
+}
+
+.reading-progress-list div::before {
+  content: "";
+  position: absolute;
+  left: 27px;
+  bottom: -8px;
+  width: 1px;
+  height: 8px;
+  background: #d7e3f5;
+}
+
+.reading-progress-list div:last-child::before {
+  content: none;
+}
+
+.reading-progress-list b {
+  grid-row: span 2;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: #eef4ff;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.reading-progress-list strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reading-progress-list small {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reading-progress-list .done b {
+  background: rgba(20, 150, 74, 0.12);
+  color: var(--success);
+}
+
+.reading-progress-list .active b {
+  background: rgba(196, 122, 5, 0.12);
+  color: var(--warning);
+}
+
+.reading-progress-list .skip b {
+  background: #eef2f7;
+  color: var(--muted);
 }
 
 .note-outline-list {
@@ -3216,6 +3308,45 @@ button:disabled {
   overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
+}
+
+.reading-artifact-actions,
+.reading-action-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.reading-artifact-actions a,
+.reading-action-list button {
+  min-width: 0;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #c9d9ff;
+  border-radius: 7px;
+  background: #f2f6ff;
+  color: var(--accent);
+  padding: 0 9px;
+  font-size: 11px;
+  font-weight: 850;
+  line-height: 1.2;
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.reading-action-list button {
+  width: auto;
+  height: auto;
+  cursor: pointer;
+}
+
+.reading-artifact-actions a:hover,
+.reading-action-list button:hover {
+  border-color: var(--accent);
+  background: #eaf2ff;
 }
 
 .markdown-note {
@@ -4328,15 +4459,44 @@ select {
   }
 
   .note-workbench {
+    grid-template-columns: minmax(0, 1fr) 250px;
+    gap: 14px;
+  }
+
+  .reading-rail {
+    position: sticky;
+    top: 10px;
+  }
+
+  .visual-rail-list {
+    grid-template-columns: 1fr;
+  }
+
+  .reading-artifact-actions,
+  .reading-action-list {
+    grid-template-columns: 1fr;
+  }
+}
+
+@container (max-width: 700px) {
+  .note-workbench {
     grid-template-columns: minmax(0, 1fr);
   }
 
   .reading-rail {
     position: static;
     order: -1;
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
   }
 
   .visual-rail-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .reading-artifact-actions,
+  .reading-action-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

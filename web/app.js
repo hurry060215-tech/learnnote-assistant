@@ -2271,11 +2271,100 @@ function visualRail(task, limit = 8) {
   </section>`;
 }
 
+function readingProgressRail(markdown, task) {
+  const headings = noteHeadingStats(markdown);
+  const windows = visualWindows(task || {});
+  const hasTranscript = Boolean(task?.transcript_path);
+  const hasMedia = Boolean(task?.media_path);
+  const hasNote = Boolean(task?.note_path);
+  const items = [
+    {
+      state: hasNote ? "done" : "wait",
+      label: "笔记",
+      value: headings.total ? `${headings.total} 标题` : hasNote ? "已生成" : "等待",
+      detail: headings.h2 ? `${headings.h2} 章节 · ${headings.h3} 小节` : "阅读主笔记"
+    },
+    {
+      state: hasTranscript ? "done" : "wait",
+      label: "字幕",
+      value: hasTranscript ? "已对齐" : "等待",
+      detail: hasTranscript ? "可切到字幕时间轴核对" : asrOptionText(task?.options || {})
+    },
+    {
+      state: windows.length ? "done" : task?.options?.visual_understanding === false ? "skip" : "wait",
+      label: "画面",
+      value: windows.length ? `${windows.length} 窗口` : task?.options?.visual_understanding === false ? "未启用" : "等待",
+      detail: windows.length ? `${fmt(windows[0]?.start || 0)} - ${fmt(windows[windows.length - 1]?.end || 0)}` : "抽帧后在这里预览"
+    },
+    {
+      state: hasTaskBundle(task) ? "done" : hasMedia ? "active" : "wait",
+      label: "产物",
+      value: hasTaskBundle(task) ? "可导出" : hasMedia ? "media.mp4" : "等待",
+      detail: hasMedia ? "本地视频可复用" : "完成后生成资料包"
+    }
+  ];
+  return `<section class="reading-progress-rail" aria-label="学习进度">
+    <div class="visual-rail-head">
+      <strong>学习进度</strong>
+      <span>${escapeHtml(statusText(task || {}))}</span>
+    </div>
+    <div class="reading-progress-list">
+      ${items.map(item => `<div class="${escapeHtml(item.state)}">
+        <b>${escapeHtml(item.label)}</b>
+        <strong>${escapeHtml(item.value)}</strong>
+        <small>${escapeHtml(item.detail)}</small>
+      </div>`).join("")}
+    </div>
+  </section>`;
+}
+
+function readingArtifactsRail(task) {
+  if (!task?.id) return "";
+  const actions = [
+    task.note_path ? `<a href="${escapeHtml(taskExportUrl(task, "markdown"))}">Markdown</a>` : "",
+    task.media_path ? `<a href="${escapeHtml(taskExportUrl(task, "media"))}">media.mp4</a>` : "",
+    hasVisualWindowExport(task) ? `<a href="${escapeHtml(taskExportUrl(task, "visual-windows"))}">切片索引</a>` : "",
+    hasTaskDiagnostics(task) ? `<a href="${escapeHtml(taskExportUrl(task, "diagnostics"))}">诊断</a>` : "",
+    hasTaskBundle(task) ? `<a href="${escapeHtml(taskExportUrl(task, "manifest"))}">清单</a>` : "",
+    hasTaskBundle(task) ? `<a href="${escapeHtml(taskExportUrl(task, "bundle"))}">资料包</a>` : ""
+  ].filter(Boolean);
+  if (!actions.length) return "";
+  return `<section class="reading-artifacts-rail" aria-label="导出产物">
+    <div class="visual-rail-head">
+      <strong>导出产物</strong>
+      <span>${actions.length} 项</span>
+    </div>
+    <div class="reading-artifact-actions">${actions.join("")}</div>
+  </section>`;
+}
+
+function readingActionsRail(task) {
+  if (!task) return "";
+  const actions = [
+    `<button type="button" data-switch-result-tab="note">读笔记</button>`,
+    task.transcript_path ? `<button type="button" data-switch-result-tab="transcript">查字幕</button>` : "",
+    hasVisualWindowExport(task) ? `<button type="button" data-switch-result-tab="frames">看画面</button>` : "",
+    hasTaskDiagnostics(task) ? `<button type="button" data-switch-result-tab="diagnostics">看诊断</button>` : "",
+    canContinueFromDownloadedMedia(task) ? `<button type="button" data-rerun-from-media="${escapeHtml(task.id)}">继续总结</button>` : ""
+  ].filter(Boolean);
+  return `<section class="reading-actions-rail" aria-label="阅读动作">
+    <div class="visual-rail-head">
+      <strong>阅读动作</strong>
+      <span>${actions.length} 个入口</span>
+    </div>
+    <div class="reading-action-list">${actions.join("")}</div>
+  </section>`;
+}
+
 function readingRail(markdown, task) {
   const outline = noteOutline(markdown);
   const visuals = visualRail(task);
-  if (!outline && !visuals) return "";
-  return `<aside class="reading-rail" aria-label="笔记阅读导航">${outline}${visuals}</aside>`;
+  const progress = readingProgressRail(markdown, task);
+  const artifacts = readingArtifactsRail(task);
+  const actions = readingActionsRail(task);
+  const blocks = [progress, outline, visuals, actions, artifacts].filter(Boolean);
+  if (!blocks.length) return "";
+  return `<aside class="reading-rail" aria-label="笔记阅读导航">${blocks.join("")}</aside>`;
 }
 
 function visualWindows(task) {
