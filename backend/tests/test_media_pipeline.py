@@ -122,6 +122,13 @@ class MediaPipelineTests(unittest.TestCase):
             self.assertTrue(Path(grids[0].path).exists())
             self.assertEqual(grids[0].frame_timestamps[:2], [0.0, 1.0])
             with Image.open(grids[0].path) as image:
+                window_label_area = image.crop((4, 4, 118, 34))
+                blue_pixels = sum(
+                    1
+                    for red, green, blue in window_label_area.getdata()
+                    if blue > red + 20 and blue > green + 10
+                )
+                self.assertGreater(blue_pixels, 20)
                 label_area = image.crop((4, 154, 92, 178))
                 dark_pixels = sum(1 for pixel in label_area.getdata() if sum(pixel[:3]) < 180)
                 self.assertGreater(dark_pixels, 20)

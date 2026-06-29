@@ -283,23 +283,44 @@ def _timestamp_from_frame_path(path: Path, fallback: float) -> float:
         return fallback
 
 
-def _draw_tile_timestamp(tile: Image.Image, timestamp: float) -> None:
-    label = _format_timestamp_label(timestamp)
+def _draw_label_box(
+    tile: Image.Image,
+    label: str,
+    *,
+    anchor: str,
+    xy: tuple[int, int],
+    fill: tuple[int, int, int, int],
+) -> None:
     draw = ImageDraw.Draw(tile, "RGBA")
     font = ImageFont.load_default()
-    left = 8
-    bottom = tile.height - 8
-    bbox = draw.textbbox((left, bottom), label, font=font, anchor="ls")
     pad_x = 6
     pad_y = 4
+    bbox = draw.textbbox(xy, label, font=font, anchor=anchor)
     rect = (
         max(0, bbox[0] - pad_x),
         max(0, bbox[1] - pad_y),
         min(tile.width, bbox[2] + pad_x),
         min(tile.height, bbox[3] + pad_y),
     )
-    draw.rounded_rectangle(rect, radius=4, fill=(8, 13, 23, 196))
-    draw.text((left, bottom), label, font=font, fill=(255, 255, 255, 236), anchor="ls")
+    draw.rounded_rectangle(rect, radius=4, fill=fill)
+    draw.text(xy, label, font=font, fill=(255, 255, 255, 238), anchor=anchor)
+
+
+def _draw_tile_labels(tile: Image.Image, timestamp: float, window_index: int, tile_index: int, tile_count: int) -> None:
+    _draw_label_box(
+        tile,
+        f"W{window_index:03d}-{tile_index:02d}/{tile_count:02d}",
+        anchor="la",
+        xy=(8, 8),
+        fill=(23, 105, 232, 210),
+    )
+    _draw_label_box(
+        tile,
+        _format_timestamp_label(timestamp),
+        anchor="ls",
+        xy=(8, tile.height - 8),
+        fill=(8, 13, 23, 196),
+    )
 
 
 def build_frame_grids(
@@ -318,6 +339,9 @@ def build_frame_grids(
         if not group:
             continue
         canvas = Image.new("RGB", (columns * 320, rows * 180), "white")
+        grid_index = idx // group_size
+        window_index = grid_index + 1
+        tile_count = len(group)
         timestamps = [
             _timestamp_from_frame_path(frame, float((idx + pos) * interval))
             for pos, frame in enumerate(group)
@@ -329,9 +353,8 @@ def build_frame_grids(
             x = (320 - image.width) // 2
             y = (180 - image.height) // 2
             tile.paste(image, (x, y))
-            _draw_tile_timestamp(tile, timestamps[pos])
+            _draw_tile_labels(tile, timestamps[pos], window_index, pos + 1, tile_count)
             canvas.paste(tile, ((pos % columns) * 320, (pos // columns) * 180))
-        grid_index = idx // group_size
         path = grid_dir / f"grid_{grid_index:03d}.jpg"
         canvas.save(path, quality=82)
         start = min(timestamps) if timestamps else float(idx * interval)
