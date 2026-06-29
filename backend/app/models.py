@@ -230,6 +230,7 @@ class TaskRecord(BaseModel):
     drm_detected: bool = False
     drm_signals: list[DrmSignal] = Field(default_factory=list)
     active_video: ActiveVideoInfo | None = None
+    browser_subtitles: list[BrowserSubtitleCue] = Field(default_factory=list)
     media_path: str = ""
     audio_path: str = ""
     subtitle_path: str = ""

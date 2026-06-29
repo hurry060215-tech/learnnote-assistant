@@ -423,9 +423,23 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
         _fail(task_id, "processing_failed", str(exc))
 
 
-def process_local_video_task(task_id: str, input_path: Path, title: str, options: TaskOptions, page_url: str = "") -> None:
+def process_local_video_task(
+    task_id: str,
+    input_path: Path,
+    title: str,
+    options: TaskOptions,
+    page_url: str = "",
+    browser_subtitles: list[BrowserSubtitleCue] | None = None,
+) -> None:
     try:
-        _process_video_file(task_id=task_id, input_path=input_path, title=title, page_url=page_url, options=options)
+        _process_video_file(
+            task_id=task_id,
+            input_path=input_path,
+            title=title,
+            page_url=page_url,
+            options=options,
+            browser_subtitles=browser_subtitles,
+        )
     except Exception as exc:
         _fail(task_id, "processing_failed", str(exc))
 

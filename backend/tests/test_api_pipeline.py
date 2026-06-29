@@ -694,7 +694,6 @@ class ApiPipelineTests(unittest.TestCase):
 
                 self.assertEqual(response.status_code, 200)
                 task_id = response.json()["task_id"]
-                rerun_task_id = ""
                 try:
                     task = self.client.get(f"/api/tasks/{task_id}").json()["task"]
                     self.assertEqual(task["status"], "success")
@@ -813,6 +812,10 @@ class ApiPipelineTests(unittest.TestCase):
                             "label": "unit mp4",
                         }
                     ],
+                    "browser_subtitles": [
+                        {"start": 0.2, "end": 1.4, "text": "downloaded browser subtitle"},
+                        {"start": 1.4, "end": 2.5, "text": "second browser cue"},
+                    ],
                     "options": {"visual_understanding": True, "frame_interval": 1},
                 }
                 with patch("app.processor.extract_audio", side_effect=AssertionError("download_only should not extract audio")):
@@ -823,6 +826,7 @@ class ApiPipelineTests(unittest.TestCase):
 
                 self.assertEqual(response.status_code, 200)
                 task_id = response.json()["task_id"]
+                rerun_task_id = ""
                 try:
                     task = self.client.get(f"/api/tasks/{task_id}").json()["task"]
                     self.assertEqual(task["status"], "success")
@@ -840,6 +844,7 @@ class ApiPipelineTests(unittest.TestCase):
                     self.assertFalse(task["note_path"])
                     self.assertEqual(task["frame_grids"], [])
                     self.assertEqual(task["visual_windows"], [])
+                    self.assertEqual(task["browser_subtitles"][0]["text"], "downloaded browser subtitle")
                     self.assertEqual(task["selected_resource"]["url"], media_url)
                     self.assertEqual(task["download_attempts"][0]["strategy"], "direct-file")
                     media_export = self.client.get(f"/api/tasks/{task_id}/exports/media")
@@ -881,11 +886,12 @@ class ApiPipelineTests(unittest.TestCase):
                     self.assertEqual(self.client.get(f"/api/tasks/{task_id}/note").text, "")
                     self.assertEqual(self.client.get(f"/api/tasks/{task_id}/transcript").json()["segments"], [])
 
-                    with patch("app.processor.transcribe_audio", side_effect=fake_transcribe_audio):
-                        rerun_response = self.client.post(
-                            f"/api/tasks/{task_id}/rerun-from-media",
-                            json={"visual_understanding": True, "frame_interval": 1},
-                        )
+                    with patch("app.processor.extract_audio", side_effect=AssertionError("rerun should reuse browser subtitles")):
+                        with patch("app.processor.transcribe_audio", side_effect=AssertionError("rerun should not run ASR when browser subtitles were saved")):
+                            rerun_response = self.client.post(
+                                f"/api/tasks/{task_id}/rerun-from-media",
+                                json={"visual_understanding": True, "frame_interval": 1},
+                            )
                     self.assertEqual(rerun_response.status_code, 200)
                     rerun_payload = rerun_response.json()
                     rerun_task_id = rerun_payload["task_id"]
@@ -898,6 +904,9 @@ class ApiPipelineTests(unittest.TestCase):
                     self.assertEqual(rerun_task["download_attempts"][0]["strategy"], "direct-file")
                     self.assertTrue(Path(rerun_task["media_path"]).exists())
                     self.assertTrue(rerun_task["transcript_path"])
+                    rerun_transcript = self.client.get(f"/api/tasks/{rerun_task_id}/transcript").json()
+                    self.assertEqual(rerun_transcript["source"], "browser-subtitle")
+                    self.assertIn("downloaded browser subtitle", rerun_transcript["full_text"])
                     self.assertTrue(rerun_task["frame_grids"])
                     self.assertTrue(rerun_task["visual_windows"])
                     rerun_note = self.client.get(f"/api/tasks/{rerun_task_id}/note").text

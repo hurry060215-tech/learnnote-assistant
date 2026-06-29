@@ -803,6 +803,8 @@ def health() -> dict:
 def create_from_current_page(request: CurrentPageTaskRequest, background_tasks: BackgroundTasks) -> dict:
     source_type = "page_text" if request.mode == "page_text" else "current_page"
     task = create_task(source_type=source_type, title=request.title or request.page_url, page_url=request.page_url, options=request.options, mode=request.mode)
+    if request.browser_subtitles:
+        task = update_task(task.id, browser_subtitles=request.browser_subtitles)
     background_tasks.add_task(process_current_page_task, task.id, request)
     return {"task_id": task.id, "task": task}
 
@@ -887,7 +889,7 @@ def create_from_existing_media(
         drm_signals=source.drm_signals,
         message="Queued from downloaded media",
     )
-    background_tasks.add_task(process_local_video_task, task.id, media_path, task.title, parsed_options, source.page_url)
+    background_tasks.add_task(process_local_video_task, task.id, media_path, task.title, parsed_options, source.page_url, source.browser_subtitles)
     return {"task_id": task.id, "task": task, "source_task_id": source.id}
 
 
