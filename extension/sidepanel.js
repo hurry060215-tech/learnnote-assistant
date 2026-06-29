@@ -3411,6 +3411,7 @@ function visualStudyDeck(task, transcript = null) {
             <strong>${fmt(window.start)} - ${fmt(window.end)}</strong>
             ${sideVisualStudyCueHtml(window, transcript)}
             ${sideVisualStudyCheckpointHtml(window, transcript)}
+            ${sideVisualStudyQuestionHtml(window, transcript)}
             ${sideVisualStudyChecklistHtml(window, transcript)}
             <div class="side-visual-meta">
               <em>${Number(window.frame_count || 0)} 帧</em>
@@ -3446,6 +3447,36 @@ function sideVisualStudyCheckpointHtml(window, transcript = null) {
     : [`<li><span>无同步字幕；先描述画面网格中的标题、公式、代码或界面状态，再回看原视频确认上下文。</span></li>`];
   return `<div class="side-visual-study-checkpoints">
     <span>回看检查点</span>
+    <ol>${items.join("")}</ol>
+  </div>`;
+}
+
+function sideVisualStudyQuestionHtml(window, transcript = null) {
+  const segments = (transcript?.segments || [])
+    .filter(segment => segmentOverlapsWindow(segment, window))
+    .slice(0, 2)
+    .map(segment => ({ time: fmt(segment.start), text: String(segment.text || "").replace(/\s+/g, " ").trim() }))
+    .filter(item => item.text);
+  if (!segments.length && window.transcript_excerpt) {
+    segments.push({
+      time: fmt(window.start || 0),
+      text: String(window.transcript_excerpt || "").replace(/\s+/g, " ").trim()
+    });
+  }
+  const items = segments.length
+    ? segments.map(item => {
+      const text = item.text.length > 72 ? `${item.text.slice(0, 72).trim()}...` : item.text;
+      return `<li><time>${escapeHtml(item.time)}</time><span>这句“${escapeHtml(text)}”在画面中对应的标题、公式、代码或操作状态是什么？</span></li>`;
+    })
+    : (() => {
+      const frameTimes = (window.frame_timestamps || []).slice(0, 3).map(value => fmt(value)).join(" / ");
+      return [
+        `<li><span>${escapeHtml(frameTimes ? `这些帧（${frameTimes}）里最能说明本段主题的画面证据是什么？` : "这个窗口里最值得回看的标题、公式、代码、界面状态或演示步骤是什么？")}</span></li>`,
+        `<li><span>如果没有字幕，能否用一句话描述这组截图的操作顺序或 PPT 结构？</span></li>`
+      ];
+    })();
+  return `<div class="side-visual-study-questions">
+    <span>自测问题</span>
     <ol>${items.join("")}</ol>
   </div>`;
 }

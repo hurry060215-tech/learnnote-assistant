@@ -463,6 +463,9 @@ assert.match(visualDeckHtml, /src="http:\/\/127\.0\.0\.1:8765\/api\/tasks\/demo\
 assert.match(visualDeckHtml, /回看检查点/);
 assert.match(visualDeckHtml, /00:00:00/);
 assert.match(visualDeckHtml, /对照画面确认对应的板书、PPT、代码或操作步骤/);
+assert.match(visualDeckHtml, /class="side-visual-study-questions"/);
+assert.match(visualDeckHtml, /自测问题/);
+assert.match(visualDeckHtml, /这句“&lt;script&gt;alert\(1\)&lt;\/script&gt; 画面摘要”在画面中对应的标题、公式、代码或操作状态是什么？/);
 assert.match(visualDeckHtml, /00:00:00 \/ 00:00:20 \/ 00:00:40 \/ 00:01:00\.\.\./);
 assert.doesNotMatch(visualDeckHtml, /src="javascript:alert/);
 assert.match(visualDeckHtml, /&lt;script&gt;alert\(1\)&lt;\/script&gt; 画面摘要/);
@@ -498,6 +501,8 @@ assert.match(visualDeckWithTranscriptHtml, /00:00:12/);
 assert.match(visualDeckWithTranscriptHtml, /老师讲解概念定义/);
 assert.match(visualDeckWithTranscriptHtml, /&lt;script&gt;alert\(1\)&lt;\/script&gt; 例题演示/);
 assert.match(visualDeckWithTranscriptHtml, /回看检查点/);
+assert.match(visualDeckWithTranscriptHtml, /自测问题/);
+assert.match(visualDeckWithTranscriptHtml, /这句“老师讲解概念定义”在画面中对应的标题、公式、代码或操作状态是什么？/);
 assert.match(visualDeckWithTranscriptHtml, /核对截图里的板书/);
 assert.doesNotMatch(visualDeckWithTranscriptHtml, /不属于这个窗口/);
 assert.doesNotMatch(visualDeckWithTranscriptHtml, /<script>/);

@@ -3952,6 +3952,53 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
+.visual-study-questions {
+  display: grid;
+  gap: 7px;
+  border: 1px solid #f1d9ad;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #fffaf1, #fff);
+  padding: 9px 10px;
+}
+
+.visual-study-questions > span {
+  color: #9b5d00;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.visual-study-questions ol {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.visual-study-questions li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 7px;
+  align-items: start;
+  color: #3f321d;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.visual-study-questions time {
+  border-radius: 6px;
+  background: #fff0d2;
+  color: #9b5d00;
+  padding: 2px 5px;
+  font-size: 10px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.visual-study-questions li > span {
+  overflow-wrap: anywhere;
+}
+
 .visual-study-checklist {
   display: grid;
   gap: 6px;

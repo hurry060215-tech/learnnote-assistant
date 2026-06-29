@@ -3555,6 +3555,53 @@ input[type="file"] {
   overflow-wrap: anywhere;
 }
 
+.side-visual-study-questions {
+  display: grid;
+  gap: 5px;
+  border: 1px solid #f1d9ad;
+  border-radius: 7px;
+  background: linear-gradient(180deg, #fffaf1, #fff);
+  padding: 7px 8px;
+}
+
+.side-visual-study-questions > span {
+  color: #9b5d00;
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.side-visual-study-questions ol {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.side-visual-study-questions li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px;
+  align-items: start;
+  color: #3f321d;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.side-visual-study-questions time {
+  border-radius: 6px;
+  background: #fff0d2;
+  color: #9b5d00;
+  padding: 2px 5px;
+  font-size: 10px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.side-visual-study-questions li > span {
+  overflow-wrap: anywhere;
+}
+
 .side-visual-study-checklist {
   display: grid;
   gap: 5px;
