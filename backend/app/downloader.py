@@ -2183,6 +2183,7 @@ class MediaDownloader:
         if ffmpeg_cookies:
             cmd += ["-cookies", ffmpeg_cookies]
         if kind in {"hls", "dash"}:
+            cmd += ["-protocol_whitelist", "file,http,https,tcp,tls,crypto,data", "-allowed_extensions", "ALL"]
             cmd += ["-f", kind]
         cmd += ["-user_agent", user_agent, "-i", url, "-c", "copy", str(output)]
         result = subprocess.run(cmd, capture_output=True, text=True)

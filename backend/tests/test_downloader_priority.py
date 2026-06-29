@@ -895,6 +895,43 @@ class DownloaderPriorityTests(unittest.TestCase):
                 server.shutdown()
                 server.server_close()
 
+    def test_manifest_download_allows_extensionless_segments_and_keys(self) -> None:
+        captured: dict = {}
+
+        def fake_run(cmd, capture_output, text):
+            captured["cmd"] = cmd
+            output = Path(cmd[-1])
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_bytes(b"0" * 5000)
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            server = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(RedirectManifestHandler, directory=str(root)))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                manifest_url = f"http://127.0.0.1:{server.server_port}/real/master.m3u8"
+                candidate = ResourceCandidate(
+                    url=manifest_url,
+                    source="webRequest",
+                    kind="hls",
+                    mime="application/vnd.apple.mpegurl",
+                )
+                downloader = MediaDownloader(root / "task")
+                with patch("app.downloader.ffmpeg_bin", return_value="ffmpeg"), patch("app.downloader.subprocess.run", side_effect=fake_run):
+                    media = downloader._download_manifest(candidate, [], "https://course.example.com/lesson", "Extensionless HLS")
+
+                self.assertTrue(media.exists())
+                self.assertIn("-protocol_whitelist", captured["cmd"])
+                self.assertIn("file,http,https,tcp,tls,crypto,data", captured["cmd"])
+                self.assertIn("-allowed_extensions", captured["cmd"])
+                self.assertIn("ALL", captured["cmd"])
+                self.assertLess(captured["cmd"].index("-allowed_extensions"), captured["cmd"].index("-i"))
+            finally:
+                server.shutdown()
+                server.server_close()
+
     def test_manifest_download_prefers_existing_resolved_url_for_probe(self) -> None:
         captured: dict = {}
 
