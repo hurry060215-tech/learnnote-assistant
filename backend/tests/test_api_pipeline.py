@@ -17,7 +17,7 @@ from fastapi.testclient import TestClient
 
 from app.config import DATA_DIR
 from app.downloader import DownloadError
-from app.main import app, local_upload_filename, render_diagnostics_markdown
+from app.main import app, local_upload_filename, render_bundle_manifest, render_diagnostics_markdown
 from app.models import DownloadAttempt, ResourceCandidate, TranscriptResult, TranscriptSegment
 from app.runtime import ffmpeg_bin
 from app.storage import create_task, task_dir, update_task
@@ -184,6 +184,39 @@ class LocalUploadValidationTests(unittest.TestCase):
             self.assertIn("学习通/超星", diagnostics)
             self.assertIn("不刷课", diagnostics)
             self.assertIn("ananas", diagnostics)
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
+    def test_bundle_manifest_redacts_sensitive_options_and_headers(self) -> None:
+        task = create_task("current_page", "Manifest redaction lesson", "https://course.example.com/watch")
+        try:
+            task.options.llm_api_key = "secret-key"
+            task.selected_resource = ResourceCandidate(
+                url="https://cdn.example.com/lesson.mp4",
+                kind="video",
+                source="webRequest",
+                request_headers={"Cookie": "session=secret", "Referer": "https://course.example.com/watch"},
+                headers={"content-type": "video/mp4", "set-cookie": "secret=value"},
+            )
+            task.download_attempts = [
+                DownloadAttempt(strategy="direct-file", url="https://cdn.example.com/lesson.mp4", status="success")
+            ]
+
+            manifest = render_bundle_manifest(
+                task,
+                {"source": "browser-subtitle", "language": "zh", "segments": [{"start": 1, "end": 3, "text": "字幕"}]},
+                {"windows": [{"id": "W001"}]},
+            )
+            encoded = json.dumps(manifest, ensure_ascii=False)
+
+            self.assertEqual(manifest["options"]["llm_api_key"], "<redacted>")
+            self.assertEqual(manifest["source"]["selected_resource"]["request_header_names"], ["Cookie", "Referer"])
+            self.assertEqual(manifest["source"]["selected_resource"]["response_header_names"], ["content-type", "set-cookie"])
+            self.assertEqual(manifest["transcript"]["segment_count"], 1)
+            self.assertIn("audit", manifest)
+            self.assertNotIn("secret-key", encoded)
+            self.assertNotIn("session=secret", encoded)
+            self.assertNotIn("secret=value", encoded)
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
@@ -386,6 +419,7 @@ class ApiPipelineTests(unittest.TestCase):
                     names = set(archive.namelist())
                     self.assertIn("diagnostics.md", names)
                     self.assertIn("note.md", names)
+                    self.assertIn("manifest.json", names)
                     self.assertIn("task.json", names)
                     self.assertIn("transcript.json", names)
                     self.assertIn("visual_index.json", names)
@@ -406,6 +440,15 @@ class ApiPipelineTests(unittest.TestCase):
                     self.assertIn("Local synthetic lesson", diagnostics_report)
                     visual_payload = json.loads(archive.read("visual_index.json").decode("utf-8"))
                     self.assertEqual(visual_payload["task_id"], task_id)
+                    manifest_payload = json.loads(archive.read("manifest.json").decode("utf-8"))
+                    self.assertEqual(manifest_payload["schema_version"], 1)
+                    self.assertEqual(manifest_payload["task"]["id"], task_id)
+                    self.assertEqual(manifest_payload["task"]["source_type"], "local")
+                    self.assertEqual(manifest_payload["visual"]["window_count"], len(task["visual_windows"]))
+                    self.assertEqual(manifest_payload["transcript"]["segment_count"], 2)
+                    self.assertEqual(manifest_payload["artifacts"]["note"], "note.md")
+                    self.assertIn(f"grids/{expected_grid_name}", manifest_payload["artifacts"]["grid_entries"])
+                    self.assertTrue(manifest_payload["audit"]["gates"])
                     summary_payload = json.loads(archive.read("summary_diagnostics.json").decode("utf-8"))
                     self.assertEqual(summary_payload["task_id"], task_id)
                     self.assertEqual(summary_payload["frame_grid_count"], len(task["frame_grids"]))
@@ -635,9 +678,15 @@ class ApiPipelineTests(unittest.TestCase):
                     with zipfile.ZipFile(io.BytesIO(bundle.content)) as archive:
                         names = set(archive.namelist())
                         self.assertIn("diagnostics.md", names)
+                        self.assertIn("manifest.json", names)
                         self.assertIn("task.json", names)
                         self.assertNotIn("note.md", names)
                         self.assertIn("Download only lesson", archive.read("diagnostics.md").decode("utf-8"))
+                        manifest_payload = json.loads(archive.read("manifest.json").decode("utf-8"))
+                        self.assertEqual(manifest_payload["task"]["id"], task_id)
+                        self.assertEqual(manifest_payload["source"]["selected_resource"]["url"], media_url)
+                        self.assertTrue(manifest_payload["artifacts"]["media_available"])
+                        self.assertEqual(manifest_payload["artifacts"]["note"], "")
                     self.assertEqual(self.client.get(f"/api/tasks/{task_id}/exports/markdown").status_code, 404)
                     self.assertEqual(self.client.get(f"/api/tasks/{task_id}/note").text, "")
                     self.assertEqual(self.client.get(f"/api/tasks/{task_id}/transcript").json()["segments"], [])

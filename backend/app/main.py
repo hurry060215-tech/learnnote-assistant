@@ -274,6 +274,113 @@ def render_visual_windows_markdown(task: TaskRecord) -> str:
     return "\n".join(lines) + "\n"
 
 
+def render_bundle_manifest(task: TaskRecord, transcript: dict, visual_index: dict) -> dict:
+    selected = task.selected_resource
+    options_payload = task.options.model_dump(mode="json")
+    if options_payload.get("llm_api_key"):
+        options_payload["llm_api_key"] = "<redacted>"
+    segments = transcript.get("segments") if isinstance(transcript, dict) else []
+    if not isinstance(segments, list):
+        segments = []
+    first_segment = segments[0] if segments else {}
+    last_segment = segments[-1] if segments else {}
+    visual_windows = task.visual_windows or []
+    first_window = visual_windows[0] if visual_windows else None
+    last_window = visual_windows[-1] if visual_windows else None
+    request_header_names = sorted((selected.request_headers or {}).keys()) if selected else []
+    response_header_names = sorted((selected.headers or {}).keys()) if selected else []
+    grid_entries = [
+        f"grids/{Path(grid.path).name}"
+        for grid in task.frame_grids
+        if Path(grid.path).name
+    ]
+
+    return {
+        "schema_version": 1,
+        "generator": "learnnote-assistant",
+        "task": {
+            "id": task.id,
+            "title": task.title,
+            "source_type": task.source_type,
+            "status": task.status,
+            "phase": task.phase,
+            "progress": task.progress,
+            "page_url": task.page_url,
+            "created_at": task.created_at,
+            "updated_at": task.updated_at,
+            "error_code": task.error_code,
+            "error_detail": task.error_detail,
+        },
+        "options": options_payload,
+        "source": {
+            "selected_resource": {
+                "url": selected.url if selected else "",
+                "resolved_url": selected.resolved_url if selected else "",
+                "kind": selected.kind if selected else "",
+                "source": selected.source if selected else "",
+                "mime": selected.mime if selected else "",
+                "score": selected.score if selected else 0,
+                "is_main_video": selected.is_main_video if selected else False,
+                "playback_match": selected.playback_match if selected else "",
+                "blob_url": selected.blob_url if selected else "",
+                "frame_url": selected.frame_url if selected else "",
+                "request_type": selected.request_type if selected else "",
+                "method": selected.method if selected else "",
+                "status_code": selected.status_code if selected else None,
+                "content_length": selected.content_length if selected else None,
+                "request_header_names": request_header_names,
+                "response_header_names": response_header_names,
+            } if selected else None,
+            "download_attempts": [
+                {
+                    "strategy": attempt.strategy,
+                    "source": attempt.source,
+                    "kind": attempt.kind,
+                    "status": attempt.status,
+                    "code": attempt.code,
+                    "status_code": attempt.status_code,
+                    "content_length": attempt.content_length,
+                    "bytes_downloaded": attempt.bytes_downloaded,
+                    "mime": attempt.mime,
+                    "url": attempt.url,
+                    "resolved_url": attempt.resolved_url,
+                }
+                for attempt in task.download_attempts
+            ],
+            "drm_detected": task.drm_detected,
+            "drm_signal_count": len(task.drm_signals),
+        },
+        "transcript": {
+            "source": transcript.get("source", "") if isinstance(transcript, dict) else "",
+            "language": transcript.get("language", "") if isinstance(transcript, dict) else "",
+            "warning": transcript.get("warning", "") if isinstance(transcript, dict) else "",
+            "segment_count": len(segments),
+            "start": first_segment.get("start") if isinstance(first_segment, dict) else None,
+            "end": last_segment.get("end") if isinstance(last_segment, dict) else None,
+        },
+        "visual": {
+            "window_count": len(visual_windows),
+            "frame_grid_count": len(task.frame_grids),
+            "start": first_window.start if first_window else None,
+            "end": last_window.end if last_window else None,
+            "visual_index_window_count": len(visual_index.get("windows", [])) if isinstance(visual_index, dict) else 0,
+            "summary_diagnostics": task.summary_diagnostics,
+        },
+        "artifacts": {
+            "note": "note.md" if task.note_path else "",
+            "diagnostics": "diagnostics.md",
+            "visual_windows": "visual_windows.md" if task.visual_windows or task.frame_grids else "",
+            "task": "task.json",
+            "transcript": "transcript.json",
+            "visual_index": "visual_index.json",
+            "summary_diagnostics": "summary_diagnostics.json" if task.summary_diagnostics else "",
+            "media_available": bool(task.media_path),
+            "grid_entries": grid_entries,
+        },
+        "audit": task_audit_summary(task),
+    }
+
+
 def _is_chaoxing_task(task: TaskRecord) -> bool:
     values = [
         task.page_url,
@@ -811,6 +918,7 @@ def api_export_bundle(task_id: str) -> Response:
 
     diagnostics = render_diagnostics_markdown(task)
     visual_windows = render_visual_windows_markdown(task)
+    manifest = render_bundle_manifest(task, transcript, visual_index)
     has_artifact = bool(
         note.strip()
         or transcript.get("segments")
@@ -825,6 +933,7 @@ def api_export_bundle(task_id: str) -> Response:
 
     buffer = BytesIO()
     with ZipFile(buffer, "w", ZIP_DEFLATED) as archive:
+        archive.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
         archive.writestr("diagnostics.md", diagnostics)
         archive.writestr("visual_windows.md", visual_windows)
         if note.strip():
