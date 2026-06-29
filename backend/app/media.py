@@ -185,6 +185,14 @@ def _average_hash(path: Path, size: int = 8) -> int:
     return value
 
 
+def _mean_luma(path: Path) -> float:
+    with Image.open(path) as image:
+        pixels = list(image.convert("L").resize((16, 16), Image.Resampling.BILINEAR).getdata())
+    if not pixels:
+        return 0.0
+    return sum(pixels) / len(pixels)
+
+
 def _hamming_distance(left: int, right: int) -> int:
     return bin(left ^ right).count("1")
 
@@ -198,16 +206,36 @@ def _should_keep_sampled_frame(
     last_average_hash: int | None,
     last_kept_timestamp: float | None,
     coverage_gap: int,
+    current_mean_luma: float | None = None,
+    last_mean_luma: float | None = None,
 ) -> bool:
     if not last_hash or last_kept_timestamp is None:
         return True
-    is_duplicate = current_hash == last_hash or (
-        last_average_hash is not None
-        and _hamming_distance(current_average_hash, last_average_hash) <= 1
-    )
+    exact_duplicate = current_hash == last_hash
+    near_duplicate = last_average_hash is not None and _hamming_distance(current_average_hash, last_average_hash) <= 1
+    if near_duplicate and current_mean_luma is not None and last_mean_luma is not None:
+        near_duplicate = abs(current_mean_luma - last_mean_luma) <= 8
+    is_duplicate = exact_duplicate or near_duplicate
     if not is_duplicate:
         return True
     return timestamp - last_kept_timestamp >= max(1, coverage_gap)
+
+
+def _sample_frame_timestamps(duration: float, interval: int, max_frames: int = 900) -> list[int]:
+    if duration <= 0 or max_frames <= 0:
+        return []
+    interval = max(1, int(interval or 1))
+    duration_int = int(duration)
+    timestamps = list(range(0, duration_int, interval))
+    if not timestamps:
+        timestamps = [0]
+
+    tail = max(0, int(duration) - 1)
+    tail_gap = tail - timestamps[-1]
+    if tail > timestamps[-1] and tail_gap >= max(5, int(interval * 0.5)):
+        timestamps.append(tail)
+
+    return timestamps[:max_frames]
 
 
 def extract_frames(video_path: Path, frame_dir: Path, interval: int, max_frames: int = 900) -> list[Path]:
@@ -219,13 +247,16 @@ def extract_frames(video_path: Path, frame_dir: Path, interval: int, max_frames:
         return []
     interval = max(1, interval)
     coverage_gap = max(5, interval)
-    timestamps = list(range(0, int(duration), interval))[:max_frames]
+    timestamps = _sample_frame_timestamps(duration, interval, max_frames)
     frames: list[Path] = []
     last_hash = ""
     last_average_hash: int | None = None
+    last_mean_luma: float | None = None
     last_kept_timestamp: float | None = None
     for index, ts in enumerate(timestamps):
         out = frame_dir / f"frame_{index:04d}_{ts:06d}.jpg"
+        seek_start = max(0, ts - 3)
+        precise_offset = ts - seek_start
         result = subprocess.run(
             [
                 ffmpeg,
@@ -234,9 +265,11 @@ def extract_frames(video_path: Path, frame_dir: Path, interval: int, max_frames:
                 "-loglevel",
                 "error",
                 "-ss",
-                str(ts),
+                str(seek_start),
                 "-i",
                 str(video_path),
+                "-ss",
+                str(precise_offset),
                 "-frames:v",
                 "1",
                 "-q:v",
@@ -250,12 +283,15 @@ def extract_frames(video_path: Path, frame_dir: Path, interval: int, max_frames:
             continue
         current_hash = _md5(out)
         current_average_hash = _average_hash(out)
+        current_mean_luma = _mean_luma(out)
         if not _should_keep_sampled_frame(
             current_hash=current_hash,
             current_average_hash=current_average_hash,
+            current_mean_luma=current_mean_luma,
             timestamp=float(ts),
             last_hash=last_hash,
             last_average_hash=last_average_hash,
+            last_mean_luma=last_mean_luma,
             last_kept_timestamp=last_kept_timestamp,
             coverage_gap=coverage_gap,
         ):
@@ -263,6 +299,7 @@ def extract_frames(video_path: Path, frame_dir: Path, interval: int, max_frames:
             continue
         last_hash = current_hash
         last_average_hash = current_average_hash
+        last_mean_luma = current_mean_luma
         last_kept_timestamp = float(ts)
         frames.append(out)
     return frames

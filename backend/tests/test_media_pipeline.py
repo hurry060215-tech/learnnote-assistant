@@ -8,7 +8,7 @@ from pathlib import Path
 from PIL import Image
 
 from app.config import DATA_DIR
-from app.media import _average_hash, _hamming_distance, _should_keep_sampled_frame, build_frame_grids, extract_audio, extract_embedded_subtitle, extract_frames, probe_duration
+from app.media import _average_hash, _hamming_distance, _sample_frame_timestamps, _should_keep_sampled_frame, build_frame_grids, extract_audio, extract_embedded_subtitle, extract_frames, probe_duration
 from app.runtime import ffmpeg_bin
 
 
@@ -17,6 +17,12 @@ TEST_RUN_DIR = DATA_DIR / "test-runs"
 
 @unittest.skipUnless(ffmpeg_bin(), "ffmpeg is required for media pipeline tests")
 class MediaPipelineTests(unittest.TestCase):
+    def test_frame_sampling_adds_tail_anchor_when_end_gap_is_large(self) -> None:
+        self.assertEqual(_sample_frame_timestamps(59.2, 20), [0, 20, 40, 58])
+        self.assertEqual(_sample_frame_timestamps(61.0, 20), [0, 20, 40, 60])
+        self.assertEqual(_sample_frame_timestamps(42.0, 20), [0, 20, 40])
+        self.assertEqual(_sample_frame_timestamps(59.2, 20, max_frames=3), [0, 20, 40])
+
     def test_near_duplicate_frames_keep_periodic_timeline_anchors(self) -> None:
         self.assertFalse(
             _should_keep_sampled_frame(
@@ -47,6 +53,19 @@ class MediaPipelineTests(unittest.TestCase):
                 timestamp=1,
                 last_hash="same",
                 last_average_hash=10,
+                last_kept_timestamp=0,
+                coverage_gap=5,
+            )
+        )
+        self.assertTrue(
+            _should_keep_sampled_frame(
+                current_hash="changed",
+                current_average_hash=10,
+                current_mean_luma=240,
+                timestamp=1,
+                last_hash="same",
+                last_average_hash=10,
+                last_mean_luma=12,
                 last_kept_timestamp=0,
                 coverage_gap=5,
             )
@@ -164,6 +183,45 @@ class MediaPipelineTests(unittest.TestCase):
             self.assertIn(0, timestamps)
             self.assertIn(5, timestamps)
             self.assertLess(len(frames), 7)
+
+    def test_tail_anchor_frame_is_kept_for_changing_final_slide(self) -> None:
+        ffmpeg = ffmpeg_bin()
+        assert ffmpeg is not None
+        TEST_RUN_DIR.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=TEST_RUN_DIR) as tmp:
+            root = Path(tmp)
+            video = root / "tail-anchor.mp4"
+            subprocess.run(
+                [
+                    ffmpeg,
+                    "-y",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "color=c=navy:s=320x180:d=12",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "color=c=white:s=320x180:d=7",
+                    "-filter_complex",
+                    "[0:v][1:v]concat=n=2:v=1:a=0,format=yuv420p[v]",
+                    "-map",
+                    "[v]",
+                    "-pix_fmt",
+                    "yuv420p",
+                    str(video),
+                ],
+                check=True,
+            )
+
+            frames = extract_frames(video, root / "frames", interval=10)
+
+            timestamps = [int(frame.stem.rsplit("_", 1)[-1]) for frame in frames]
+            self.assertIn(0, timestamps)
+            self.assertIn(18, timestamps)
 
     def test_embedded_text_subtitle_can_be_extracted(self) -> None:
         ffmpeg = ffmpeg_bin()
