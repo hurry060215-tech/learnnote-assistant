@@ -598,13 +598,25 @@ function declaredMediaHint(element) {
     if (!value || !/video\/|audio\/|mpegurl|dash\+xml|media|player|stream/i.test(`${type} ${value}`)) return null;
     return { value, hint: `${type} embed media`, label: "embed src" };
   }
+  if (["video", "audio", "source", "track"].includes(tag)) {
+    const value = mediaElementUrl(element);
+    const type = readAttribute(element, "type") || element?.type || "";
+    const kind = readAttribute(element, "kind") || element?.kind || "";
+    if (!value) return null;
+    if (tag === "track") {
+      const labelHint = kind || type || "src";
+      return { value, hint: `${tag} ${kind} ${type} subtitle caption`, label: `${tag} ${labelHint}` };
+    }
+    const labelHint = type || "src";
+    return { value, hint: `${tag} ${type} media video audio`, label: `${tag} ${labelHint}` };
+  }
   return null;
 }
 
 function collectDeclaredMediaResources() {
   const resources = [];
   const seen = new Set();
-  for (const element of deepQuerySelectorAll("link[href],meta[content],object[data],embed[src]", document, 400)) {
+  for (const element of deepQuerySelectorAll("link[href],meta[content],object[data],embed[src],video, audio, source, track", document, 500)) {
     const hint = declaredMediaHint(element);
     if (!hint) continue;
     const item = resourceFromHint(hint.value, "domHint", hint.label, hint.hint);
@@ -749,6 +761,16 @@ function collectShadowTexts(limit = 20000) {
 
 function collectVideos() {
   return deepQuerySelectorAll("video").map((video, index) => ({ video, index }));
+}
+
+function mediaElementUrl(element) {
+  return element?.currentSrc ||
+    element?.src ||
+    readAttribute(element, "currentSrc") ||
+    readAttribute(element, "src") ||
+    readAttribute(element, "data-src") ||
+    readAttribute(element, "data-url") ||
+    "";
 }
 
 function videoSrcObjectInfo(video) {
@@ -1068,21 +1090,21 @@ function collectDomResources() {
   const main = pickMainVideo(videos);
   for (const { video, index } of videos) {
     const isMain = main?.video === video;
-    resources.push(resource(video.currentSrc || video.src, "activeVideo", `当前视频 #${index + 1}`, video.type || "", video, isMain, isMain ? "exact-src" : ""));
+    resources.push(resource(mediaElementUrl(video), "activeVideo", `当前视频 #${index + 1}`, video.type || "", video, isMain, isMain ? "exact-src" : ""));
     for (const source of video.querySelectorAll("source")) {
-      resources.push(resource(source.src, "dom", `video source #${index + 1}`, source.type || "", video, isMain, isMain ? "source-element" : ""));
+      resources.push(resource(mediaElementUrl(source), "dom", `video source #${index + 1}`, source.type || "", video, isMain, isMain ? "source-element" : ""));
     }
-    for (const track of video.querySelectorAll("track[src]")) {
+    for (const track of video.querySelectorAll("track")) {
       const label = [track.kind || "subtitle", track.srclang || "", track.label || ""].filter(Boolean).join(" ");
-      resources.push(resource(track.src, "subtitleTrack", label || `subtitle #${index + 1}`, "text/vtt", video, isMain));
+      resources.push(resource(mediaElementUrl(track), "subtitleTrack", label || `subtitle #${index + 1}`, "text/vtt", video, isMain));
     }
   }
-  for (const source of deepQuerySelectorAll("source[src]")) {
-    resources.push(resource(source.src, "dom", "source", source.type || ""));
+  for (const source of deepQuerySelectorAll("source")) {
+    resources.push(resource(mediaElementUrl(source), "dom", "source", source.type || ""));
   }
-  for (const track of deepQuerySelectorAll("track[src]")) {
+  for (const track of deepQuerySelectorAll("track")) {
     const label = [track.kind || "subtitle", track.srclang || "", track.label || ""].filter(Boolean).join(" ");
-    resources.push(resource(track.src, "subtitleTrack", label || "subtitle", "text/vtt"));
+    resources.push(resource(mediaElementUrl(track), "subtitleTrack", label || "subtitle", "text/vtt"));
   }
   for (const iframe of deepQuerySelectorAll("iframe[src]")) {
     resources.push(...collectUrlEmbeddedResources(iframe.src, "domHint", "iframe URL"));
@@ -1166,7 +1188,7 @@ function collectPageData() {
     browser_subtitles: browserSubtitles,
     drm_detected: Boolean(active?.drm_detected || drm.length),
     drm_signals: drm,
-    resources: [...byUrl.values()].sort((a, b) => b.score - a.score).slice(0, 40)
+    resources: [...byUrl.values()].sort((a, b) => b.score - a.score).slice(0, 60)
   };
 }
 

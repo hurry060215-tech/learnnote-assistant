@@ -134,6 +134,22 @@ const ogVideo = new FakeElement("meta", {
   property: "og:video",
   content: "/opaque/og-stream?id=meta"
 });
+const htmlVideo = new FakeElement("video", {
+  src: "/api/play?id=html5&token=abc"
+}, [
+  new FakeElement("source", {
+    type: "application/vnd.apple.mpegurl",
+    src: "/opaque/html5-hls?id=42"
+  }),
+  new FakeElement("source", {
+    type: "application/dash+xml",
+    "data-src": "/opaque/html5-dash?id=42"
+  }),
+  new FakeElement("track", {
+    kind: "subtitles",
+    src: "/caption?id=html5"
+  })
+]);
 const plainUrlScript = new FakeElement("script", {
   textContent: "window.__payload='https://cdn.example.com/static/plain-url.m3u8?token=script-plain';"
 });
@@ -153,7 +169,7 @@ sameOriginIframe.contentDocument = {
     textContent: ""
   }
 };
-const html = new FakeElement("html", {}, [player, packedPlayer, doubleEncodedPlayer, onclickPlayer, paramPlayer, configPlayer, nakedPlayer, vendorPlayer, preloadVideo, preloadHls, prefetchPlayApi, ogVideo, script, plainEncodedScript, plainDoubleEncodedScript, mixedEncodedScript, jsEscapedScript, jsEscapedPayloadScript, segmentScript, plainUrlScript, srcdocIframe, sameOriginIframe]);
+const html = new FakeElement("html", {}, [player, packedPlayer, doubleEncodedPlayer, onclickPlayer, paramPlayer, configPlayer, nakedPlayer, vendorPlayer, preloadVideo, preloadHls, prefetchPlayApi, ogVideo, htmlVideo, script, plainEncodedScript, plainDoubleEncodedScript, mixedEncodedScript, jsEscapedScript, jsEscapedPayloadScript, segmentScript, plainUrlScript, srcdocIframe, sameOriginIframe]);
 
 let messageListener = null;
 const context = {
@@ -250,6 +266,10 @@ const preloadVideoHint = response.resources.find(item => item.url === "https://c
 const preloadHlsHint = response.resources.find(item => item.url === "https://course.example.com/opaque/playlist?id=typed-hls");
 const prefetchPlayHint = response.resources.find(item => item.url === "https://course.example.com/api/play?id=prefetch");
 const ogVideoHint = response.resources.find(item => item.url === "https://course.example.com/opaque/og-stream?id=meta");
+const html5VideoHint = response.resources.find(item => item.url === "https://course.example.com/api/play?id=html5&token=abc");
+const html5HlsHint = response.resources.find(item => item.url === "https://course.example.com/opaque/html5-hls?id=42");
+const html5DashHint = response.resources.find(item => item.url === "https://course.example.com/opaque/html5-dash?id=42");
+const html5TrackHint = response.resources.find(item => item.url === "https://course.example.com/caption?id=html5");
 const performancePlayHint = response.resources.find(item => item.url === "https://course.example.com/api/play?id=perf");
 const unrelatedPerformanceHint = response.resources.find(item => item.url === "https://course.example.com/lesson-data?id=not-media");
 const plainScriptHls = response.resources.find(item => item.url === "https://cdn.example.com/static/plain-url.m3u8?token=script-plain");
@@ -366,6 +386,26 @@ assert.ok(ogVideoHint, "expected og:video meta hint to expose extensionless medi
 assert.equal(ogVideoHint.kind, "video");
 assert.equal(ogVideoHint.source, "domHint");
 assert.match(ogVideoHint.label, /og:video/);
+
+assert.ok(html5VideoHint, "expected HTML5 video src to expose extensionless media URL");
+assert.equal(html5VideoHint.kind, "video");
+assert.ok(["activeVideo", "domHint"].includes(html5VideoHint.source));
+assert.match(html5VideoHint.label, /当前视频|video src/);
+
+assert.ok(html5HlsHint, "expected typed HTML5 source src to expose extensionless HLS URL");
+assert.equal(html5HlsHint.kind, "hls");
+assert.ok(["dom", "domHint"].includes(html5HlsHint.source));
+assert.match(html5HlsHint.label, /application\/vnd\.apple\.mpegurl|video source/);
+
+assert.ok(html5DashHint, "expected typed HTML5 source data-src to expose extensionless DASH URL");
+assert.equal(html5DashHint.kind, "dash");
+assert.ok(["dom", "domHint"].includes(html5DashHint.source));
+assert.match(html5DashHint.label, /application\/dash\+xml|source/);
+
+assert.ok(html5TrackHint, "expected HTML5 track src to expose extensionless subtitle URL");
+assert.equal(html5TrackHint.kind, "subtitle");
+assert.ok(["subtitleTrack", "domHint"].includes(html5TrackHint.source));
+assert.match(html5TrackHint.label, /track subtitles|subtitles/);
 
 assert.ok(performancePlayHint, "expected fetch performance play endpoint to enter direct-preflight candidates");
 assert.equal(performancePlayHint.kind, "video");
