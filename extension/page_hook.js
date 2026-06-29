@@ -78,6 +78,7 @@
 
   function stripUrlTail(value) {
     let text = String(value || "").trim();
+    if (/^blob:https?:\/\//i.test(text)) return text;
     const absoluteIndex = text.search(/https?:\/\//i);
     if (absoluteIndex > 0) text = text.slice(absoluteIndex);
     if (!/^(https?:)?\/\//i.test(text)) {
@@ -646,6 +647,37 @@
   function streamReaderMeta(reader) {
     if (!reader || typeof reader !== "object") return null;
     return streamReaderSourceByObject.get(reader) || null;
+  }
+
+  function wrapStreamReaderInstance(reader, meta) {
+    if (!reader || typeof reader !== "object" || typeof reader.read !== "function") return;
+    if (reader.__learnNoteReadInstancePatched) return;
+    const originalRead = reader.read;
+    const wrappedRead = async function (...args) {
+      const result = await originalRead.apply(this, args);
+      try {
+        const sourceMeta = streamReaderMeta(this) || meta;
+        if (result?.value) rememberBlobPartObject(result.value, sourceMeta);
+      } catch {
+        // Keep custom stream reader consumption unchanged.
+      }
+      return result;
+    };
+    try {
+      Object.defineProperty(reader, "read", {
+        configurable: true,
+        writable: true,
+        value: wrappedRead
+      });
+      Object.defineProperty(reader, "__learnNoteReadInstancePatched", { value: true });
+    } catch {
+      try {
+        reader.read = wrappedRead;
+        reader.__learnNoteReadInstancePatched = true;
+      } catch {
+        // Some custom readers are non-extensible; prototype patching may still cover them.
+      }
+    }
   }
 
   function blobPartMeta(part) {
@@ -1256,7 +1288,9 @@
     window.ReadableStream.prototype.getReader = function (...args) {
       const reader = originalGetReader.apply(this, args);
       try {
-        rememberStreamReader(reader, streamMeta(this));
+        const meta = streamMeta(this);
+        rememberStreamReader(reader, meta);
+        wrapStreamReaderInstance(reader, meta);
       } catch {
         // Keep stream reader creation transparent.
       }
