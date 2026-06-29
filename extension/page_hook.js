@@ -63,6 +63,7 @@
   const mediaSourceMetaByObject = new WeakMap();
   const mediaSourceUrlByObject = new WeakMap();
   const sourceBufferMediaSource = new WeakMap();
+  let patchingLatePlayerGlobal = false;
 
   function normalizeUrl(raw) {
     if (!raw) return "";
@@ -1185,6 +1186,52 @@
     patchJwPlayer();
   }
 
+  function watchLatePlayerGlobal(name) {
+    try {
+      if (!name || Object.prototype.hasOwnProperty.call(window, name)) return;
+      let current;
+      Object.defineProperty(window, name, {
+        configurable: true,
+        enumerable: true,
+        get() {
+          return current;
+        },
+        set(value) {
+          current = value;
+          if (!value || patchingLatePlayerGlobal) return;
+          patchingLatePlayerGlobal = true;
+          try {
+            patchKnownPlayerLibraries();
+          } finally {
+            patchingLatePlayerGlobal = false;
+          }
+        }
+      });
+    } catch {
+      // Some pages disallow accessors on window globals; timed retries still run.
+    }
+  }
+
+  function installLatePlayerGlobalWatchers() {
+    for (const name of [
+      "Hls",
+      "dashjs",
+      "shaka",
+      "videojs",
+      "videoJs",
+      "DPlayer",
+      "Artplayer",
+      "ArtPlayer",
+      "XGPlayer",
+      "Aliplayer",
+      "TcPlayer",
+      "xgplayer",
+      "jwplayer"
+    ]) {
+      watchLatePlayerGlobal(name);
+    }
+  }
+
   function scanGlobalConfig() {
     try {
       emit(collectGlobalConfigResources());
@@ -1659,6 +1706,7 @@
   installEmeDetection();
   patchHtmlMediaElement();
   patchKnownPlayerLibraries();
+  installLatePlayerGlobalWatchers();
   scanGlobalConfig();
   setTimeout(patchKnownPlayerLibraries, 100);
   setTimeout(scanGlobalConfig, 500);
