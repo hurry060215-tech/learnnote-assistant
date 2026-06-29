@@ -20,6 +20,7 @@ REMOTE_ASR_TRANSCRIBERS = {"openai", "openai-compatible", "openai-compatible-asr
 @dataclass
 class PageTextArtifacts:
     note_path: str = ""
+    subtitle_path: str = ""
     transcript_path: str = ""
     created: bool = False
     summary_source: str = ""
@@ -114,6 +115,32 @@ def transcript_from_browser_subtitles(segments: list[BrowserSubtitleCue]) -> Tra
     )
 
 
+def _srt_timestamp(seconds: float) -> str:
+    millis = round(max(0.0, seconds) * 1000)
+    hours, remainder = divmod(millis, 3_600_000)
+    minutes, remainder = divmod(remainder, 60_000)
+    secs, millis = divmod(remainder, 1000)
+    return f"{hours:02}:{minutes:02}:{secs:02},{millis:03}"
+
+
+def write_browser_subtitles_srt(task_id: str, transcript: TranscriptResult) -> str:
+    if not transcript.segments:
+        return ""
+    path = task_dir(task_id) / "browser_subtitles.srt"
+    blocks = []
+    for index, segment in enumerate(transcript.segments, start=1):
+        end = segment.end if segment.end > segment.start else segment.start + 0.001
+        blocks.append(
+            "\n".join([
+                str(index),
+                f"{_srt_timestamp(segment.start)} --> {_srt_timestamp(end)}",
+                segment.text.strip(),
+            ])
+        )
+    path.write_text("\n\n".join(blocks) + "\n", encoding="utf-8")
+    return str(path)
+
+
 def page_text_with_browser_subtitles(page_text: str, transcript: TranscriptResult) -> str:
     text = (page_text or "").strip()
     subtitle_text = (transcript.full_text or "").strip()
@@ -148,7 +175,9 @@ def write_page_text_artifacts(task_id: str, request: CurrentPageTaskRequest, all
     if not allow_empty and not page_text.strip():
         return PageTextArtifacts()
     transcript_path = ""
+    subtitle_path = ""
     if transcript.segments:
+        subtitle_path = write_browser_subtitles_srt(task_id, transcript)
         transcript_path = str(write_json(task_id, "transcript.json", transcript.model_dump(mode="json")))
     note, summary_source, summary_warning = summarize_page_text_with_diagnostics(request.title, request.page_url, page_text, request.options)
     note_path = task_dir(task_id) / "note.md"
@@ -172,6 +201,7 @@ def write_page_text_artifacts(task_id: str, request: CurrentPageTaskRequest, all
     summary_diagnostics_path = write_json(task_id, "summary_diagnostics.json", summary_diagnostics)
     return PageTextArtifacts(
         note_path=str(note_path),
+        subtitle_path=subtitle_path,
         transcript_path=transcript_path,
         created=True,
         summary_source=summary_source,
@@ -292,6 +322,7 @@ def process_page_text_task(task_id: str, request: CurrentPageTaskRequest) -> Non
             progress=100,
             message="页面文本总结完成",
             note_path=artifacts.note_path,
+            subtitle_path=artifacts.subtitle_path,
             transcript_path=artifacts.transcript_path,
             summary_source=artifacts.summary_source,
             summary_warning=artifacts.summary_warning,
@@ -309,6 +340,7 @@ def write_download_failure_fallback(task_id: str, request: CurrentPageTaskReques
             update_task(
                 task_id,
                 note_path=artifacts.note_path,
+                subtitle_path=artifacts.subtitle_path,
                 transcript_path=artifacts.transcript_path,
                 summary_source=artifacts.summary_source,
                 summary_warning=artifacts.summary_warning,
@@ -467,6 +499,8 @@ def _process_video_file(
         transcript = transcript_from_browser_subtitles(browser_subtitles)
         if not transcript.segments:
             transcript = None
+        else:
+            update_task(task_id, subtitle_path=write_browser_subtitles_srt(task_id, transcript))
 
     if transcript is None and subtitle_path:
         update_task(task_id, subtitle_path=str(subtitle_path), message="已检测到页面字幕，正在解析字幕")
