@@ -339,6 +339,42 @@
     return requestBodyFromValue(method, init?.body);
   }
 
+  function headerNumber(source, name) {
+    try {
+      const raw = source?.get?.(name) || source?.[name] || source?.[name.toLowerCase()] || "";
+      const value = Number(raw || 0);
+      return Number.isFinite(value) && value > 0 ? value : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  function requestTextWithTimeout(request, timeoutMs = 800) {
+    const read = request.text();
+    if (typeof setTimeout !== "function") return read;
+    return Promise.race([
+      read,
+      new Promise(resolve => setTimeout(() => resolve(""), timeoutMs))
+    ]);
+  }
+
+  async function fetchRequestBodyFromInput(method, input, init = {}) {
+    const explicit = fetchRequestBody(method, init);
+    if (explicit.content) return explicit;
+    if (!REQUEST_BODY_REPLAY_METHODS.has(method)) return {};
+    if (!input || typeof input.clone !== "function") return {};
+    const length = headerNumber(input.headers, "content-length");
+    if (length > MAX_REQUEST_BODY_BYTES) return {};
+    try {
+      const clone = input.clone();
+      if (typeof clone?.text !== "function") return {};
+      const text = await requestTextWithTimeout(clone);
+      return requestBodyFromText(text, "text");
+    } catch {
+      return {};
+    }
+  }
+
   function fetchResponseMeta(response, url = "", requestHeaders = {}, method = "", requestBody = {}) {
     const headers = safeResponseHeaders(name => response.headers?.get?.(name) || "");
     return {
@@ -1384,11 +1420,12 @@
   if (typeof window.fetch === "function") {
     const originalFetch = window.fetch;
     window.fetch = async function (...args) {
+      const method = fetchRequestMethod(args[0], args[1] || {});
+      const requestBody = await fetchRequestBodyFromInput(method, args[0], args[1] || {});
       const response = await originalFetch.apply(this, args);
       const url = response.url || requestUrl(args[0]);
       const mime = response.headers?.get?.("content-type") || "";
-      const method = fetchRequestMethod(args[0], args[1] || {});
-      const meta = fetchResponseMeta(response, url, fetchRequestHeaders(args[0], args[1] || {}), method, fetchRequestBody(method, args[1] || {}));
+      const meta = fetchResponseMeta(response, url, fetchRequestHeaders(args[0], args[1] || {}), method, requestBody);
       rememberResponseMeta(response, meta);
       emit([applyResponseMeta({ url, source: "pageHookRequest", label: "fetch", mime }, meta)]);
       try {

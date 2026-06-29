@@ -5,10 +5,24 @@ import vm from "node:vm";
 const messages = [];
 
 class FakeHeaders {
+  constructor(values = {}) {
+    this.values = values;
+  }
+
   get(name) {
-    if (String(name).toLowerCase() === "content-type") return "application/json";
-    if (String(name).toLowerCase() === "content-length") return "4096";
+    const lower = String(name).toLowerCase();
+    if (this.values[lower] !== undefined) return this.values[lower];
+    if (lower === "content-type") return "application/json";
+    if (lower === "content-length") return "4096";
     return "";
+  }
+
+  forEach(callback) {
+    const values = Object.keys(this.values).length ? this.values : {
+      "content-type": "application/json",
+      "content-length": "4096"
+    };
+    for (const [name, value] of Object.entries(values)) callback(value, name);
   }
 }
 
@@ -30,6 +44,24 @@ class FakeResponse {
   }
 }
 
+class FakeRequest {
+  constructor(url, options = {}) {
+    this.url = url;
+    this.method = options.method || "GET";
+    this.bodyText = String(options.body || "");
+    this.headers = new FakeHeaders(Object.fromEntries(
+      Object.entries(options.headers || {}).map(([name, value]) => [String(name).toLowerCase(), String(value)])
+    ));
+  }
+
+  clone() {
+    const bodyText = this.bodyText;
+    return {
+      text: async () => bodyText
+    };
+  }
+}
+
 const context = {
   window: null,
   location: { href: "https://course.example.com/player" },
@@ -40,7 +72,11 @@ const context = {
   ArrayBuffer,
   URL,
   atob: value => Buffer.from(value, "base64").toString("binary"),
-  fetch: async () => new FakeResponse({
+  Request: FakeRequest,
+  fetch: async input => {
+    assert.equal(input instanceof FakeRequest, true);
+    assert.equal(input.bodyText, "lesson=77&token=request-body");
+    return new FakeResponse({
     stream: {
       hlsUrl: "https%3A%2F%2Fcdn.example.com%2Fjson%2Fmaster.m3u8%3Ftoken%3Dfetch-json",
       mimeType: "application/vnd.apple.mpegurl"
@@ -54,7 +90,8 @@ const context = {
       data: "/api/playback/get?id=77&token=generic",
       mimeType: "video/mp4"
     }
-  }),
+  });
+  },
   setTimeout,
   clearTimeout,
   console
@@ -69,14 +106,18 @@ vm.createContext(context);
 const hookCode = await readFile(new URL("../page_hook.js", import.meta.url), "utf8");
 vm.runInContext(hookCode, context);
 
-const response = await context.fetch("https://course.example.com/api/play", {
+const request = new context.Request("https://course.example.com/api/play", {
+  method: "POST",
   headers: {
     Accept: "application/json",
+    "Content-Type": "application/x-www-form-urlencoded",
     Authorization: "Bearer fetch-token",
     "X-Requested-With": "XMLHttpRequest",
     Cookie: "secret=bad"
-  }
+  },
+  body: "lesson=77&token=request-body"
 });
+const response = await context.fetch(request);
 const data = await response.json();
 
 assert.equal(data.stream.mimeType, "application/vnd.apple.mpegurl");
@@ -98,9 +139,13 @@ assert.equal(hls.initiator, "https://course.example.com/api/play");
 assert.equal(hls.headers["content-type"], "application/json");
 assert.equal(hls.headers["content-length"], "4096");
 assert.equal(hls.request_headers.Accept, "application/json");
+assert.equal(hls.request_headers["Content-Type"], "application/x-www-form-urlencoded");
 assert.equal(hls.request_headers.Authorization, "Bearer fetch-token");
 assert.equal(hls.request_headers["X-Requested-With"], "XMLHttpRequest");
 assert.equal(hls.request_headers.Cookie, undefined);
+assert.equal(hls.method, "POST");
+assert.equal(hls.request_body.type, "text");
+assert.equal(hls.request_body.content, "lesson=77&token=request-body");
 
 assert.ok(objectHls, "expected Chaoxing-style objectid field to expose encoded HLS URL");
 assert.equal(objectHls.kind, "hls");
