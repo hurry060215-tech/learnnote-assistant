@@ -1216,6 +1216,43 @@ class DownloaderBoundaryTests(unittest.TestCase):
             self.assertEqual(candidates[0].url, "https://cdn.example.com/lesson.m3u8")
             self.assertEqual(candidates[0].playback_match, "same-frame")
 
+    def test_manifest_near_playhead_wins_tied_backend_rank(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            downloader = MediaDownloader(Path(tmp))
+            resources = [
+                ResourceCandidate(
+                    url="https://cdn.example.com/archive.mp4",
+                    source="webRequest",
+                    kind="video",
+                    mime="video/mp4",
+                    score=100,
+                    time_stamp=2000,
+                ),
+                ResourceCandidate(
+                    url="https://cdn.example.com/live/master.m3u8",
+                    source="webRequest",
+                    kind="hls",
+                    mime="application/vnd.apple.mpegurl",
+                    score=100,
+                    playback_match="manifest-near-playhead",
+                    is_main_video=True,
+                    time_stamp=1000,
+                ),
+            ]
+
+            candidates = downloader._candidate_resources(resources)
+
+            self.assertEqual(candidates[0].url, "https://cdn.example.com/live/master.m3u8")
+            self.assertEqual(candidates[0].playback_match, "manifest-near-playhead")
+            downloader._record_attempt(
+                strategy="manifest-ffmpeg",
+                candidate=candidates[0],
+                status="failed",
+                code="download_forbidden",
+                message="HTTP 403",
+            )
+            self.assertIn("播放进度附近 Manifest 请求", downloader.attempts[0].message)
+
     def test_blob_source_mapping_candidate_is_prioritized(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             downloader = MediaDownloader(Path(tmp))

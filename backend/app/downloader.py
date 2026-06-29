@@ -847,6 +847,77 @@ def score_candidate(candidate: ResourceCandidate) -> int:
     return score_kind(candidate.url, candidate.source, effective_resource_kind(candidate))
 
 
+def kind_rank(kind: str) -> int:
+    return {
+        "hls": 6,
+        "dash": 6,
+        "video": 5,
+        "fragment": 3,
+        "subtitle": 2,
+        "blob": 1,
+    }.get(kind, 0)
+
+
+def source_rank(source: str) -> int:
+    if source in {"pageHookMediaSource", "pageHookBlobSource"}:
+        return 7
+    if source.startswith("pageHookPlayer"):
+        return 6
+    if source == "webRequest":
+        return 5
+    if source == "activeVideo":
+        return 4
+    if source.startswith("pageHook"):
+        return 3
+    if source == "dom":
+        return 2
+    return 0
+
+
+def playback_match_rank(match: str) -> int:
+    return {
+        "exact-src": 9,
+        "blob-source": 8,
+        "range-near-playhead": 7,
+        "manifest-near-playhead": 6,
+        "blob-same-frame": 5,
+        "same-frame": 4,
+        "recent-media-request": 3,
+        "same-site-request": 2,
+        "inferred-from-fragment": 1,
+    }.get(match, 0)
+
+
+def playback_match_label(match: str) -> str:
+    return {
+        "exact-src": "当前 src",
+        "source-element": "当前 source",
+        "same-frame": "同播放器 frame",
+        "blob-same-frame": "blob 播放同 frame",
+        "blob-source": "Blob/MSE 来源映射",
+        "range-near-playhead": "播放进度附近 Range 请求",
+        "manifest-near-playhead": "播放进度附近 Manifest 请求",
+        "recent-media-request": "最近播放请求",
+        "same-site-request": "同站请求",
+        "inferred-from-fragment": "分片推断",
+    }.get(match, match)
+
+
+def candidate_rank_key(candidate: ResourceCandidate, order: int = 0) -> tuple[int, int, int, int, int, int, float, int, int]:
+    kind = effective_resource_kind(candidate)
+    return (
+        candidate.score or 0,
+        1 if candidate.is_main_video else 0,
+        playback_match_rank(candidate.playback_match or ""),
+        1 if kind in {"hls", "dash", "video"} else 0,
+        kind_rank(kind),
+        source_rank(candidate.source or ""),
+        candidate.time_stamp or 0,
+        candidate.content_length or 0,
+        -order,
+    )
+
+
 def enrich_with_inferred_manifest_resources(resources: list[ResourceCandidate]) -> list[ResourceCandidate]:
     enriched = list(resources)
     known_urls = {item.url for item in resources if item.url}
@@ -890,8 +961,8 @@ def enrich_with_inferred_manifest_resources(resources: list[ResourceCandidate]) 
 
 
 def rank_media_candidates(resources: list[ResourceCandidate]) -> list[ResourceCandidate]:
-    dedup: dict[str, ResourceCandidate] = {}
-    for item in enrich_with_inferred_manifest_resources(resources):
+    dedup: dict[str, tuple[int, ResourceCandidate]] = {}
+    for order, item in enumerate(enrich_with_inferred_manifest_resources(resources)):
         if not item.url or item.url.startswith(("chrome-extension:", "data:")):
             continue
         kind = effective_resource_kind(item)
@@ -902,8 +973,10 @@ def rank_media_candidates(resources: list[ResourceCandidate]) -> list[ResourceCa
         else:
             item.score = min(100, max(item.score, score_candidate(item)) + boost)
         if kind in {"hls", "dash", "video"}:
-            dedup[item.url] = item
-    return sorted(dedup.values(), key=lambda item: item.score, reverse=True)
+            previous = dedup.get(item.url)
+            if not previous or candidate_rank_key(item, order) > candidate_rank_key(previous[1], previous[0]):
+                dedup[item.url] = (order, item)
+    return [item for order, item in sorted(dedup.values(), key=lambda pair: candidate_rank_key(pair[1], pair[0]), reverse=True)]
 
 
 def _safe_request_header_names(headers: dict[str, str]) -> list[str]:
@@ -1579,7 +1652,7 @@ class MediaDownloader:
             return ""
         parts = [
             candidate.is_main_video and "主视频候选",
-            candidate.playback_match and f"播放匹配 {candidate.playback_match}",
+            candidate.playback_match and f"播放匹配 {playback_match_label(candidate.playback_match)}",
             candidate.frame_id is not None and f"frame {candidate.frame_id}",
             candidate.status_code and f"HTTP {candidate.status_code}",
             candidate.resolved_url and candidate.resolved_url != candidate.url and f"最终 URL {candidate.resolved_url}",
