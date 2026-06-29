@@ -175,6 +175,52 @@ assert.equal(hinted.is_main_video, true);
 assert.equal(hinted.current_time, 420);
 assert.ok(hinted.score >= 100, "expected recent range media requests near the active playhead to be top-ranked");
 
+const manifestHinted = context.withPlaybackHints(
+  {
+    url: "https://cdn.example.com/live/master.m3u8?token=abc",
+    source: "webRequest",
+    kind: "hls",
+    score: 100,
+    frame_id: 9,
+    initiator: "https://course.example.com",
+    time_stamp: Date.now() - 4000
+  },
+  {
+    page_url: "https://course.example.com/lesson/1",
+    active_video: {
+      src: "blob:https://course.example.com/active",
+      paused: false,
+      current_time: 420,
+      duration: 1800,
+      frame_id: 9
+    }
+  }
+);
+
+assert.equal(manifestHinted.playback_match, "manifest-near-playhead");
+assert.equal(manifestHinted.is_main_video, true);
+assert.equal(manifestHinted.current_time, 420);
+
+const sortedCandidates = [
+  {
+    url: "https://cdn.example.com/archive.mp4",
+    source: "webRequest",
+    kind: "video",
+    score: 100,
+    time_stamp: Date.now() - 1000
+  },
+  manifestHinted,
+  {
+    url: "https://cdn.example.com/subtitles.vtt",
+    source: "webRequest",
+    kind: "subtitle",
+    score: 100,
+    time_stamp: Date.now()
+  }
+].sort(context.compareResourceCandidates);
+
+assert.equal(sortedCandidates[0].url, manifestHinted.url);
+
 context.recordResponseMedia({
   requestId: "local-preview",
   tabId: 177,

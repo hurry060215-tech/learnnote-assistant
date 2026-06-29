@@ -222,6 +222,68 @@ function isDownloadableKind(kind) {
   return kind === "hls" || kind === "dash" || kind === "video";
 }
 
+function kindRank(kind) {
+  return ({
+    hls: 6,
+    dash: 6,
+    video: 5,
+    fragment: 3,
+    subtitle: 2,
+    blob: 1
+  })[kind] || 0;
+}
+
+function sourceRank(source = "") {
+  if (source === "pageHookMediaSource" || source === "pageHookBlobSource") return 7;
+  if (String(source || "").startsWith("pageHookPlayer")) return 6;
+  if (source === "webRequest") return 5;
+  if (source === "activeVideo") return 4;
+  if (String(source || "").startsWith("pageHook")) return 3;
+  if (source === "dom") return 2;
+  return 0;
+}
+
+function playbackMatchRank(match = "") {
+  return ({
+    "exact-src": 9,
+    "blob-source": 8,
+    "range-near-playhead": 7,
+    "manifest-near-playhead": 6,
+    "blob-same-frame": 5,
+    "same-frame": 4,
+    "recent-media-request": 3,
+    "same-site-request": 2,
+    "inferred-from-fragment": 1
+  })[match] || 0;
+}
+
+function compareResourceCandidates(a = {}, b = {}) {
+  const left = [
+    Number(a.score || 0),
+    a.is_main_video ? 1 : 0,
+    playbackMatchRank(a.playback_match),
+    isDownloadableKind(a.kind) ? 1 : 0,
+    kindRank(a.kind),
+    sourceRank(a.source),
+    Number(a.time_stamp || 0),
+    Number(a.content_length || 0)
+  ];
+  const right = [
+    Number(b.score || 0),
+    b.is_main_video ? 1 : 0,
+    playbackMatchRank(b.playback_match),
+    isDownloadableKind(b.kind) ? 1 : 0,
+    kindRank(b.kind),
+    sourceRank(b.source),
+    Number(b.time_stamp || 0),
+    Number(b.content_length || 0)
+  ];
+  for (let index = 0; index < left.length; index += 1) {
+    if (right[index] !== left[index]) return right[index] - left[index];
+  }
+  return String(a.url || "").localeCompare(String(b.url || ""));
+}
+
 function requestRangeHeader(resource = {}) {
   const headers = resource.request_headers || {};
   for (const [name, value] of Object.entries(headers)) {
@@ -310,6 +372,21 @@ function withPlaybackHints(resource, page = {}) {
   ) {
     boost += sameActiveFrame ? 22 : 18;
     match = ["exact-src", "blob-source"].includes(match) ? match : "range-near-playhead";
+    hinted.is_main_video = true;
+    hinted.current_time = active.current_time ?? hinted.current_time ?? null;
+    hinted.duration = active.duration ?? hinted.duration ?? null;
+  }
+
+  if (
+    veryRecent &&
+    !active.paused &&
+    Number(active.current_time || 0) > 0 &&
+    hinted.source === "webRequest" &&
+    (kind === "hls" || kind === "dash") &&
+    (sameActiveFrame || sameActiveSite || activeSrc.startsWith("blob:"))
+  ) {
+    boost += sameActiveFrame ? 20 : 14;
+    match = ["exact-src", "blob-source", "range-near-playhead"].includes(match) ? match : "manifest-near-playhead";
     hinted.is_main_video = true;
     hinted.current_time = active.current_time ?? hinted.current_time ?? null;
     hinted.duration = active.duration ?? hinted.duration ?? null;
@@ -1048,7 +1125,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const previous = byUrl.get(item.url);
         byUrl.set(item.url, mergeResource(previous, item));
       }
-      const resources = [...byUrl.values()].sort((a, b) => (b.score || 0) - (a.score || 0)).slice(0, 30);
+      const resources = [...byUrl.values()].sort(compareResourceCandidates).slice(0, 30);
       sendResponse({ tab, page: activePage, resources });
       return;
     }
