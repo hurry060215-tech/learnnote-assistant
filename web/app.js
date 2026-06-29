@@ -855,6 +855,7 @@ function resourceSourceText(resource) {
   if (playerSource) return `${playerSource}源地址`;
   if (resource?.source === "manifest-guess") return "同目录 manifest 猜测";
   if (resource?.source === "inferred-manifest") return "分片路径回推 manifest";
+  if (resource?.source === "webRequestResolved") return "最终媒体地址";
   if (resource?.source === "webRequest") return "浏览器请求";
   if (String(resource?.source || "").startsWith("pageHook")) return "页面接口";
   return resource?.source || "";
@@ -876,6 +877,7 @@ function playbackText(match) {
     "blob-source": "Blob/MSE 来源映射",
     "range-near-playhead": "播放进度附近 Range 请求",
     "manifest-near-playhead": "播放进度附近 Manifest 请求",
+    "resolved-final-url": "跳转后的真实媒体",
     "recent-media-request": "最近播放请求",
     "same-site-request": "同站请求",
     "inferred-from-fragment": "分片推断"

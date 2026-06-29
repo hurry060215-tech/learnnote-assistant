@@ -236,6 +236,7 @@ function kindRank(kind) {
 function sourceRank(source = "") {
   if (source === "pageHookMediaSource" || source === "pageHookBlobSource") return 7;
   if (String(source || "").startsWith("pageHookPlayer")) return 6;
+  if (source === "webRequestResolved") return 6;
   if (source === "webRequest") return 5;
   if (source === "activeVideo") return 4;
   if (String(source || "").startsWith("pageHook")) return 3;
@@ -249,6 +250,7 @@ function playbackMatchRank(match = "") {
     "blob-source": 8,
     "range-near-playhead": 7,
     "manifest-near-playhead": 6,
+    "resolved-final-url": 6,
     "blob-same-frame": 5,
     "same-frame": 4,
     "recent-media-request": 3,
@@ -861,7 +863,7 @@ function recordResponseMedia(details = {}, requestHeaders = {}, requestBody = pe
   if (kind === "unknown") return;
   const contentLength = Number(headers["content-length"] || 0);
   const resolvedUrl = responseResolvedUrl(details.url || "", headers);
-  addResource(details.tabId, {
+  const resource = {
     url: details.url,
     resolved_url: resolvedUrl,
     source: "webRequest",
@@ -880,7 +882,10 @@ function recordResponseMedia(details = {}, requestHeaders = {}, requestBody = pe
     request_headers: requestHeaders,
     request_body: requestBody || {},
     label: kind.toUpperCase()
-  });
+  };
+  addResource(details.tabId, resource, false);
+  addResolvedMediaResource(details.tabId, resource);
+  notifyContextUpdated(details.tabId, "media");
 }
 
 function recordRedirectMedia(details = {}, requestHeaders = {}, requestBody = peekRequestBody(details.requestId)) {
@@ -895,7 +900,7 @@ function recordRedirectMedia(details = {}, requestHeaders = {}, requestBody = pe
   const kind = redirectKind !== "unknown" ? redirectKind : currentKind;
   if (kind === "unknown") return;
   const contentLength = Number(headers["content-length"] || 0);
-  addResource(details.tabId, {
+  const resource = {
     url: details.url,
     resolved_url: redirectUrl || "",
     source: "webRequest",
@@ -914,7 +919,27 @@ function recordRedirectMedia(details = {}, requestHeaders = {}, requestBody = pe
     request_headers: requestHeaders,
     request_body: requestBody || {},
     label: `${kind.toUpperCase()} redirect`
-  });
+  };
+  addResource(details.tabId, resource, false);
+  addResolvedMediaResource(details.tabId, resource);
+  notifyContextUpdated(details.tabId, "media");
+}
+
+function addResolvedMediaResource(tabId, resource = {}) {
+  const resolvedUrl = String(resource.resolved_url || "").trim();
+  if (!resolvedUrl || resolvedUrl === resource.url || isLocalLearnNoteTaskFile(resolvedUrl)) return;
+  const resolvedKind = classify(resolvedUrl, resource.mime || "");
+  if (!isDownloadableKind(resolvedKind)) return;
+  addResource(tabId, {
+    ...resource,
+    url: resolvedUrl,
+    resolved_url: "",
+    source: "webRequestResolved",
+    kind: resolvedKind,
+    label: `${resolvedKind.toUpperCase()} final URL`,
+    score: Math.min(100, Number(resource.score || scoreKind(resolvedUrl, "webRequestResolved", resolvedKind)) + 10),
+    playback_match: resource.playback_match || "resolved-final-url"
+  }, false);
 }
 
 function registerHeadersReceivedListener(options) {

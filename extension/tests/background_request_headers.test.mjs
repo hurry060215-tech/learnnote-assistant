@@ -348,14 +348,22 @@ context.recordResponseMedia({
 }, context.peekRequestHeaders("api-play-hls"));
 
 const apiPlayResources = vm.runInContext("resourceByTab.get(16)", context);
-assert.equal(apiPlayResources.length, 1);
-assert.equal(apiPlayResources[0].kind, "hls");
-assert.equal(apiPlayResources[0].request_headers.Referer, "https://course.example.com/lesson");
-assert.equal(apiPlayResources[0].request_headers.Origin, "https://course.example.com");
-assert.equal(apiPlayResources[0].request_headers["User-Agent"], "Chrome Playback UA");
-assert.equal(apiPlayResources[0].headers.location, "https://media.example.net/redirected/master.m3u8");
-assert.equal(apiPlayResources[0].headers["content-location"], "/relative/master.m3u8");
-assert.equal(apiPlayResources[0].resolved_url, "https://media.example.net/redirected/master.m3u8");
+assert.equal(apiPlayResources.length, 2);
+const apiPlayEndpoint = apiPlayResources.find(item => item.url === "https://course.example.com/api/play?lesson=42");
+const apiPlayFinal = apiPlayResources.find(item => item.url === "https://media.example.net/redirected/master.m3u8");
+assert.equal(apiPlayEndpoint.kind, "hls");
+assert.equal(apiPlayEndpoint.request_headers.Referer, "https://course.example.com/lesson");
+assert.equal(apiPlayEndpoint.request_headers.Origin, "https://course.example.com");
+assert.equal(apiPlayEndpoint.request_headers["User-Agent"], "Chrome Playback UA");
+assert.equal(apiPlayEndpoint.headers.location, "https://media.example.net/redirected/master.m3u8");
+assert.equal(apiPlayEndpoint.headers["content-location"], "/relative/master.m3u8");
+assert.equal(apiPlayEndpoint.resolved_url, "https://media.example.net/redirected/master.m3u8");
+assert.equal(apiPlayFinal.kind, "hls");
+assert.equal(apiPlayFinal.source, "webRequestResolved");
+assert.equal(apiPlayFinal.request_headers.Referer, "https://course.example.com/lesson");
+assert.equal(apiPlayFinal.playback_match, "resolved-final-url");
+const apiPlayRanked = context.mergeAndRankResources(apiPlayResources, {}, {});
+assert.equal(apiPlayRanked[0].url, "https://media.example.net/redirected/master.m3u8");
 
 context.rememberRequestBody({
   requestId: "post-json-play-api",
@@ -433,14 +441,21 @@ context.recordRedirectMedia({
 }, context.peekRequestHeaders("redirect-play-hls"));
 
 const redirectPlayResources = vm.runInContext("resourceByTab.get(162)", context);
-assert.equal(redirectPlayResources.length, 1);
-assert.equal(redirectPlayResources[0].kind, "hls");
-assert.equal(redirectPlayResources[0].url, "https://course.example.com/api/play/redirect?lesson=42");
-assert.equal(redirectPlayResources[0].resolved_url, "https://media.example.net/tmp/master.m3u8?sig=abc");
-assert.equal(redirectPlayResources[0].headers.location, "https://media.example.net/tmp/master.m3u8?sig=abc");
-assert.equal(redirectPlayResources[0].request_headers.Referer, "https://course.example.com/lesson");
-assert.equal(redirectPlayResources[0].request_headers.Origin, "https://course.example.com");
-assert.equal(redirectPlayResources[0].label, "HLS redirect");
+assert.equal(redirectPlayResources.length, 2);
+const redirectEndpoint = redirectPlayResources.find(item => item.url === "https://course.example.com/api/play/redirect?lesson=42");
+const redirectFinal = redirectPlayResources.find(item => item.url === "https://media.example.net/tmp/master.m3u8?sig=abc");
+assert.equal(redirectEndpoint.kind, "hls");
+assert.equal(redirectEndpoint.resolved_url, "https://media.example.net/tmp/master.m3u8?sig=abc");
+assert.equal(redirectEndpoint.headers.location, "https://media.example.net/tmp/master.m3u8?sig=abc");
+assert.equal(redirectEndpoint.request_headers.Referer, "https://course.example.com/lesson");
+assert.equal(redirectEndpoint.request_headers.Origin, "https://course.example.com");
+assert.equal(redirectEndpoint.label, "HLS redirect");
+assert.equal(redirectFinal.kind, "hls");
+assert.equal(redirectFinal.source, "webRequestResolved");
+assert.equal(redirectFinal.request_headers.Referer, "https://course.example.com/lesson");
+assert.equal(redirectFinal.playback_match, "resolved-final-url");
+const redirectRanked = context.mergeAndRankResources(redirectPlayResources, {}, {});
+assert.equal(redirectRanked[0].url, "https://media.example.net/tmp/master.m3u8?sig=abc");
 
 context.rememberRequestHeaders({
   requestId: "download-api-video",

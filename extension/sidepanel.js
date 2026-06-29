@@ -734,6 +734,7 @@ function playbackText(match) {
     "blob-source": "Blob/MSE 来源映射",
     "range-near-playhead": "播放进度附近 Range 请求",
     "manifest-near-playhead": "播放进度附近 Manifest 请求",
+    "resolved-final-url": "跳转后的真实媒体",
     "recent-media-request": "最近播放请求",
     "same-site-request": "同站请求",
     "inferred-from-fragment": "分片推断"
@@ -998,6 +999,9 @@ function directnessText(item) {
   if (isDownloadableResource(item)) {
     if (item.kind === "hls") return playerSource ? `${playerSource} HLS manifest，可交给 ffmpeg 合并` : "HLS manifest，可交给 ffmpeg 合并";
     if (item.kind === "dash") return playerSource ? `${playerSource} DASH manifest，可交给 ffmpeg 合并` : "DASH manifest，可交给 ffmpeg 合并";
+    if (item.source === "webRequestResolved") {
+      return "播放接口跳转后的真实媒体地址，可直接交给后端下载";
+    }
     if (item.source === "webRequest" && (item.request_type === "media" || resourceHasMediaRequestHeader(item))) {
       return "浏览器实际请求的视频响应，可下载到本地处理";
     }
@@ -1037,6 +1041,7 @@ function resourceSourceText(item) {
   if (playerSource) return `${playerSource}源地址`;
   if (item?.source === "manifest-guess") return "同目录 manifest 猜测";
   if (item?.source === "inferred-manifest") return "分片路径回推 manifest";
+  if (item?.source === "webRequestResolved") return "最终媒体地址";
   if (item?.source === "webRequest") return "浏览器请求";
   if (String(item?.source || "").startsWith("pageHook")) return "页面接口";
   return item?.source || "";
@@ -1120,6 +1125,7 @@ function resourceEvidenceTags(item) {
   if (item.kind === "blob") add("blob 线索");
   if (item.kind === "fragment") add("分片线索");
   if (item.blob_url) add("blob/MSE 映射");
+  if (item.source === "webRequestResolved") add("最终媒体地址");
   if (item.source === "webRequest") add("浏览器请求");
   const playerSource = playerLibrarySourceText(item);
   if (playerSource) add(`${playerSource}源地址`);
@@ -1179,6 +1185,13 @@ function candidateConfidence(item) {
       className: "high",
       label: "播放匹配",
       detail: "与当前播放器或最近播放请求匹配，优先预检。"
+    };
+  }
+  if (item.source === "webRequestResolved") {
+    return {
+      className: "high",
+      label: "最终地址",
+      detail: "浏览器跳转或响应头解析出的真实媒体地址，适合优先预检。"
     };
   }
   if (item.source === "webRequest" && (item.request_type === "media" || resourceHasRangeRequest(item) || resourceHasMediaRequestHeader(item) || item.headers?.["content-disposition"])) {
