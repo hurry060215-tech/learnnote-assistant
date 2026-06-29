@@ -896,6 +896,8 @@ def source_rank(source: str) -> int:
         return 4
     if source.startswith("pageHook"):
         return 3
+    if source in {"scriptHint", "domHint", "locationHint"}:
+        return 3
     if source == "dom":
         return 2
     return 0

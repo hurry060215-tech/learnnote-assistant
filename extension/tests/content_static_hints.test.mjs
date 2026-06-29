@@ -115,10 +115,29 @@ const vendorPlayer = new FakeElement("div", {
     sources: [{ url: "https://cdn.example.com/static/vendor/master.m3u8?token=vendor" }]
   })
 });
+const preloadVideo = new FakeElement("link", {
+  rel: "preload",
+  as: "video",
+  href: "/opaque/video-stream?id=preload"
+});
+const preloadHls = new FakeElement("link", {
+  rel: "preload",
+  type: "application/vnd.apple.mpegurl",
+  href: "/opaque/playlist?id=typed-hls"
+});
+const prefetchPlayApi = new FakeElement("link", {
+  rel: "prefetch",
+  as: "fetch",
+  href: "/api/play?id=prefetch"
+});
+const ogVideo = new FakeElement("meta", {
+  property: "og:video",
+  content: "/opaque/og-stream?id=meta"
+});
 const plainUrlScript = new FakeElement("script", {
   textContent: "window.__payload='https://cdn.example.com/static/plain-url.m3u8?token=script-plain';"
 });
-const html = new FakeElement("html", {}, [player, packedPlayer, doubleEncodedPlayer, onclickPlayer, paramPlayer, configPlayer, nakedPlayer, vendorPlayer, script, plainEncodedScript, plainDoubleEncodedScript, mixedEncodedScript, jsEscapedScript, jsEscapedPayloadScript, segmentScript, plainUrlScript]);
+const html = new FakeElement("html", {}, [player, packedPlayer, doubleEncodedPlayer, onclickPlayer, paramPlayer, configPlayer, nakedPlayer, vendorPlayer, preloadVideo, preloadHls, prefetchPlayApi, ogVideo, script, plainEncodedScript, plainDoubleEncodedScript, mixedEncodedScript, jsEscapedScript, jsEscapedPayloadScript, segmentScript, plainUrlScript]);
 
 let messageListener = null;
 const context = {
@@ -198,6 +217,10 @@ const paramVideo = response.resources.find(item => item.url === "https://cdn.exa
 const plainAttrVideo = response.resources.find(item => item.url === "https://course.example.com/static/plain-attr.mp4?token=attr-plain");
 const nakedAttrHls = response.resources.find(item => item.url === "https://course.example.com/static/naked-master.m3u8?token=naked");
 const vendorAttrHls = response.resources.find(item => item.url === "https://cdn.example.com/static/vendor/master.m3u8?token=vendor");
+const preloadVideoHint = response.resources.find(item => item.url === "https://course.example.com/opaque/video-stream?id=preload");
+const preloadHlsHint = response.resources.find(item => item.url === "https://course.example.com/opaque/playlist?id=typed-hls");
+const prefetchPlayHint = response.resources.find(item => item.url === "https://course.example.com/api/play?id=prefetch");
+const ogVideoHint = response.resources.find(item => item.url === "https://course.example.com/opaque/og-stream?id=meta");
 const plainScriptHls = response.resources.find(item => item.url === "https://cdn.example.com/static/plain-url.m3u8?token=script-plain");
 const malformedEncodedUrls = response.resources.filter(item => /\/https%3A%2F%2F/i.test(item.url));
 
@@ -290,6 +313,26 @@ assert.ok(vendorAttrHls, "expected non-standard player attribute JSON to expose 
 assert.equal(vendorAttrHls.kind, "hls");
 assert.equal(vendorAttrHls.source, "domHint");
 assert.match(vendorAttrHls.label, /vendor-player-json/);
+
+assert.ok(preloadVideoHint, "expected link preload as=video to expose extensionless media URL");
+assert.equal(preloadVideoHint.kind, "video");
+assert.equal(preloadVideoHint.source, "domHint");
+assert.match(preloadVideoHint.label, /link preload as=video/);
+
+assert.ok(preloadHlsHint, "expected typed link preload to expose extensionless HLS URL");
+assert.equal(preloadHlsHint.kind, "hls");
+assert.equal(preloadHlsHint.source, "domHint");
+assert.match(preloadHlsHint.label, /application\/vnd\.apple\.mpegurl/);
+
+assert.ok(prefetchPlayHint, "expected link prefetch as=fetch play API to expose direct-response candidate");
+assert.equal(prefetchPlayHint.kind, "video");
+assert.equal(prefetchPlayHint.source, "domHint");
+assert.match(prefetchPlayHint.label, /link prefetch as=fetch/);
+
+assert.ok(ogVideoHint, "expected og:video meta hint to expose extensionless media URL");
+assert.equal(ogVideoHint.kind, "video");
+assert.equal(ogVideoHint.source, "domHint");
+assert.match(ogVideoHint.label, /og:video/);
 
 assert.ok(plainScriptHls, "expected inline script URL scan to expose plain HLS URL without a media field name");
 assert.equal(plainScriptHls.kind, "hls");

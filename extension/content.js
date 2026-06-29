@@ -543,6 +543,71 @@ function collectStaticAttributeResources() {
   return resources;
 }
 
+function declaredMediaHint(element) {
+  const tag = String(element?.tagName || "").toLowerCase();
+  if (tag === "link") {
+    const rel = readAttribute(element, "rel").toLowerCase();
+    const as = readAttribute(element, "as").toLowerCase();
+    const type = readAttribute(element, "type");
+    const href = readAttribute(element, "href");
+    if (!href || !/(^|\s)(preload|prefetch|modulepreload|prerender)(\s|$)/i.test(rel)) return null;
+    if (/^(video|audio)$/i.test(as)) {
+      return { value: href, hint: `${rel} ${as} ${type} media`, label: `link ${rel} as=${as}` };
+    }
+    if (/mpegurl|dash\+xml|video\/|audio\//i.test(type)) {
+      return { value: href, hint: `${rel} ${type}`, label: `link ${rel} ${type}` };
+    }
+    if (as === "fetch" && /api|play|player|stream|video|media|hls|dash|manifest|playlist|master|m3u8|mpd/i.test(href)) {
+      return { value: href, hint: `${rel} fetch play media`, label: `link ${rel} as=fetch` };
+    }
+  }
+  if (tag === "meta") {
+    const key = [
+      readAttribute(element, "property"),
+      readAttribute(element, "name"),
+      readAttribute(element, "itemprop")
+    ].join(" ");
+    const content = readAttribute(element, "content");
+    if (!content || !/(og:video|og:audio|twitter:player:stream|twitter:player|video|media|stream|hls|dash|m3u8|mpd)/i.test(key)) return null;
+    return { value: content, hint: `${key} media`, label: `meta ${key}` };
+  }
+  if (tag === "object") {
+    const value = readAttribute(element, "data");
+    const type = readAttribute(element, "type");
+    if (!value || !/video\/|audio\/|mpegurl|dash\+xml|media|player|stream/i.test(`${type} ${value}`)) return null;
+    return { value, hint: `${type} object media`, label: "object data" };
+  }
+  if (tag === "embed") {
+    const value = readAttribute(element, "src");
+    const type = readAttribute(element, "type");
+    if (!value || !/video\/|audio\/|mpegurl|dash\+xml|media|player|stream/i.test(`${type} ${value}`)) return null;
+    return { value, hint: `${type} embed media`, label: "embed src" };
+  }
+  return null;
+}
+
+function collectDeclaredMediaResources() {
+  const resources = [];
+  const seen = new Set();
+  for (const element of deepQuerySelectorAll("link[href],meta[content],object[data],embed[src]", document, 400)) {
+    const hint = declaredMediaHint(element);
+    if (!hint) continue;
+    const item = resourceFromHint(hint.value, "domHint", hint.label, hint.hint);
+    if (item && !seen.has(item.url)) {
+      seen.add(item.url);
+      item.score = Math.max(item.score || 0, item.kind === "hls" || item.kind === "dash" ? 96 : item.kind === "video" ? 88 : 62);
+      resources.push(item);
+    }
+    for (const textItem of collectTextMediaResources(hint.value, "domHint", `${hint.label} media url`, seen)) {
+      resources.push(textItem);
+    }
+    for (const encodedItem of collectEncodedTextResources(hint.value, "domHint", `${hint.label} encoded url`, seen)) {
+      resources.push(encodedItem);
+    }
+  }
+  return resources;
+}
+
 function collectInlineScriptResources() {
   const resources = [];
   const seen = new Set();
@@ -919,6 +984,7 @@ function collectDomResources() {
   const resources = [
     ...collectUrlEmbeddedResources(location.href, "locationHint", "current page URL"),
     ...collectStaticAttributeResources(),
+    ...collectDeclaredMediaResources(),
     ...collectInlineScriptResources()
   ];
   const videos = collectVideos();

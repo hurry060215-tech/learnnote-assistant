@@ -27,6 +27,7 @@ from app.downloader import (
     infer_manifest_url_from_fragment,
     infer_sibling_manifest_urls_from_fragment,
     score_resource,
+    source_rank,
     ytdlp_headers_from_browser_context,
 )
 from app.main import render_diagnostics_markdown, task_audit_summary
@@ -58,6 +59,13 @@ class ResourceDetectionTests(unittest.TestCase):
         self.assertEqual(classify_resource("https://cdn.example.com/index.m3u8"), "hls")
         self.assertEqual(classify_resource("https://cdn.example.com/manifest.mpd"), "dash")
         self.assertEqual(classify_resource("blob:https://example.com/abc"), "blob")
+
+    def test_declared_media_hint_sources_rank_above_plain_dom(self) -> None:
+        self.assertEqual(source_rank("scriptHint"), 3)
+        self.assertEqual(source_rank("domHint"), 3)
+        self.assertEqual(source_rank("locationHint"), 3)
+        self.assertGreater(source_rank("webRequest"), source_rank("domHint"))
+        self.assertGreater(source_rank("domHint"), source_rank("dom"))
         self.assertEqual(classify_resource("https://cdn.example.com/chunk.m4s"), "fragment")
         self.assertEqual(classify_resource("https://cdn.example.com/captions.vtt"), "subtitle")
 

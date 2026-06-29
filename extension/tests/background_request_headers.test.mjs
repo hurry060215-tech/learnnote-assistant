@@ -79,6 +79,12 @@ assert.equal(
   }, "application/octet-stream"),
   "video"
 );
+
+assert.equal(context.sourceRank("scriptHint"), 3);
+assert.equal(context.sourceRank("domHint"), 3);
+assert.equal(context.sourceRank("locationHint"), 3);
+assert.ok(context.sourceRank("webRequest") > context.sourceRank("domHint"));
+assert.ok(context.sourceRank("domHint") > context.sourceRank("dom"));
 assert.equal(
   context.classifyCompletedRequest({
     url: "https://cdn.example.com/live/lesson.flv?token=abc",
