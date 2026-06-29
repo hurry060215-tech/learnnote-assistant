@@ -209,6 +209,34 @@ class DirectPostJsonMediaHandler(DirectJsonMediaHandler):
         self.wfile.write(payload)
 
 
+class Html5VideoElementHandler(QuietHandler):
+    media_body = b"\x00\x00\x00\x18ftypmp42" + (b"html5-video-element" * 512)
+
+    def do_GET(self) -> None:
+        path = urlparse(self.path).path
+        if path == "/lesson.html":
+            body = b"""
+            <!doctype html>
+            <html><body>
+              <video controls src="/api/play?id=42&token=abc"></video>
+            </body></html>
+            """
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        if path == "/api/play":
+            self.send_response(200)
+            self.send_header("Content-Type", "video/mp4")
+            self.send_header("Content-Length", str(len(self.media_body)))
+            self.end_headers()
+            self.wfile.write(self.media_body)
+            return
+        super().do_GET()
+
+
 class RedirectMediaHandler(QuietHandler):
     media_name = "final.mp4"
 
@@ -271,6 +299,35 @@ class ResolvedManifestOnlyHandler(QuietHandler):
 
 @unittest.skipUnless(ffmpeg_bin(), "ffmpeg is required for downloader priority tests")
 class DownloaderPriorityTests(unittest.TestCase):
+    def test_page_scan_downloads_extensionless_html5_video_src(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            server = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(Html5VideoElementHandler, directory=str(root)))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                page_url = f"http://127.0.0.1:{server.server_port}/lesson.html"
+                media_url = f"http://127.0.0.1:{server.server_port}/api/play?id=42&token=abc"
+                downloader = MediaDownloader(root / "task")
+                media_path, selected = downloader.download(
+                    page_url=page_url,
+                    resources=[],
+                    cookies=[],
+                    title="HTML5 element",
+                )
+
+                self.assertTrue(media_path.exists())
+                self.assertIsNotNone(selected)
+                self.assertEqual(selected.url, media_url)
+                self.assertEqual(selected.kind, "video")
+                self.assertEqual(selected.label, "html video src")
+                self.assertEqual(downloader.attempts[0].strategy, "page-scan")
+                self.assertEqual(downloader.attempts[1].strategy, "direct-file")
+                self.assertEqual(downloader.attempts[1].status, "success")
+            finally:
+                server.shutdown()
+                server.server_close()
+
     def test_direct_browser_candidate_is_tried_before_page_resolver(self) -> None:
         ffmpeg = ffmpeg_bin()
         assert ffmpeg is not None

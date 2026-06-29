@@ -355,6 +355,31 @@ class ResourceDetectionTests(unittest.TestCase):
         self.assertEqual(by_label["html link prefetch as=fetch"].kind, "video")
         self.assertEqual(by_label["html meta og:video"].kind, "video")
 
+    def test_page_scan_finds_html5_media_element_sources(self) -> None:
+        resources = extract_media_resources_from_text(
+            """
+            <video src="/api/play?id=42&token=abc"></video>
+            <video>
+              <source type="application/vnd.apple.mpegurl" src="/opaque/hls?id=42">
+              <source type="application/dash+xml" data-src="/opaque/dash?id=42">
+              <track kind="subtitles" src="/caption?id=42">
+            </video>
+            """,
+            "https://course.example.com/player/index.html",
+            "page-scan",
+        )
+        by_label = {resource.label: resource for resource in resources}
+        by_url = {resource.url: resource for resource in resources}
+
+        self.assertEqual(by_label["html video src"].kind, "video")
+        self.assertEqual(by_label["html video src"].url, "https://course.example.com/api/play?id=42&token=abc")
+        self.assertEqual(by_url["https://course.example.com/opaque/hls?id=42"].kind, "hls")
+        self.assertEqual(by_url["https://course.example.com/opaque/hls?id=42"].label, "html source application/vnd.apple.mpegurl")
+        self.assertEqual(by_url["https://course.example.com/opaque/dash?id=42"].kind, "dash")
+        self.assertEqual(by_url["https://course.example.com/opaque/dash?id=42"].mime, "application/dash+xml")
+        self.assertEqual(by_url["https://course.example.com/caption?id=42"].kind, "subtitle")
+        self.assertEqual(by_url["https://course.example.com/caption?id=42"].label, "html track subtitles")
+
     def test_page_scan_decodes_js_escaped_media_fields_inside_script(self) -> None:
         resources = extract_media_resources_from_text(
             r"""

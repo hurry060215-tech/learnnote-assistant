@@ -679,6 +679,18 @@ class _DeclaredMediaHTMLParser(HTMLParser):
             type_attr = values.get("type", "")
             if value and re.search(r"video/|audio/|mpegurl|dash\+xml|media|player|stream", f"{type_attr} {value}", re.I):
                 self.hints.append((value, f"{type_attr} embed media", "html embed src"))
+        elif tag in {"video", "audio", "source", "track"}:
+            value = values.get("src", "") or values.get("data-src", "") or values.get("data-url", "")
+            type_attr = values.get("type", "")
+            kind_attr = values.get("kind", "")
+            if not value:
+                return
+            if tag == "track":
+                label_hint = kind_attr or type_attr or "src"
+                self.hints.append((value, f"{tag} {kind_attr} {type_attr} subtitle caption", f"html {tag} {label_hint}"))
+            else:
+                label_hint = type_attr or "src"
+                self.hints.append((value, f"{tag} {type_attr} media video audio", f"html {tag} {label_hint}"))
 
 
 def extract_declared_media_resources_from_html(
