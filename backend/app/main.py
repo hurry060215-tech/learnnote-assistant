@@ -234,6 +234,42 @@ def _visual_window_checkpoint_lines(window, limit: int = 3) -> list[str]:
     return lines or ["  - 无同步字幕；先描述画面网格中的标题、公式、代码或界面状态，再回看原视频确认上下文。"]
 
 
+def _render_study_manifest(task: TaskRecord) -> dict:
+    visual_windows = task.visual_windows or []
+    windows_with_transcript = sum(1 for window in visual_windows if str(window.transcript_excerpt or "").strip())
+    windows = []
+    checkpoint_count = 0
+    review_question_count = 0
+
+    for index, window in enumerate(visual_windows, start=1):
+        checkpoints = _visual_window_checkpoint_lines(window)
+        review_questions = visual_window_review_question_lines(window)
+        checkpoint_count += len(checkpoints)
+        review_question_count += len(review_questions)
+        windows.append({
+            "id": window.id or f"W{index:03d}",
+            "start": window.start,
+            "end": window.end,
+            "grid_entry": _bundle_grid_ref(window.grid_path, window.grid_url),
+            "frame_count": window.frame_count,
+            "frame_timestamps": window.frame_timestamps,
+            "transcript_segment_count": len(window.segments or []),
+            "has_transcript_excerpt": bool(str(window.transcript_excerpt or "").strip()),
+            "checkpoint_count": len(checkpoints),
+            "review_question_count": len(review_questions),
+        })
+
+    return {
+        "review_deck": "visual_windows.md" if visual_windows or task.frame_grids else "",
+        "window_count": len(visual_windows),
+        "windows_with_transcript": windows_with_transcript,
+        "windows_without_transcript": max(0, len(visual_windows) - windows_with_transcript),
+        "checkpoint_count": checkpoint_count,
+        "review_question_count": review_question_count,
+        "windows": windows,
+    }
+
+
 def render_visual_windows_markdown(task: TaskRecord) -> str:
     lines = [
         "# LearnNote 画面切片索引",
@@ -376,6 +412,7 @@ def render_bundle_manifest(task: TaskRecord, transcript: dict, visual_index: dic
             "visual_index_window_count": len(visual_index.get("windows", [])) if isinstance(visual_index, dict) else 0,
             "summary_diagnostics": task.summary_diagnostics,
         },
+        "study": _render_study_manifest(task),
         "artifacts": {
             "note": "note.md" if task.note_path else "",
             "diagnostics": "diagnostics.md",
