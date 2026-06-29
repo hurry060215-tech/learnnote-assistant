@@ -1991,19 +1991,44 @@ function renderInspector() {
   `;
 }
 
+function normalizeBackendUrl(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const candidate = /^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `http://${raw}`;
+  let parsed;
+  try {
+    parsed = new URL(candidate);
+  } catch {
+    return "";
+  }
+  if (!["http:", "https:"].includes(parsed.protocol)) return "";
+  if (parsed.username || parsed.password) return "";
+  const host = parsed.hostname.toLowerCase();
+  if (host !== "127.0.0.1" && host !== "localhost") return "";
+  return parsed.origin.replace(/\/$/, "");
+}
+
 async function loadSettings() {
   if (!HAS_EXTENSION_API) {
-    backendUrl = DEFAULT_BACKEND;
+    backendUrl = normalizeBackendUrl(backendUrl) || DEFAULT_BACKEND;
     return;
   }
   const data = await chrome.storage.local.get({ backendUrl: DEFAULT_BACKEND });
-  backendUrl = data.backendUrl || DEFAULT_BACKEND;
+  backendUrl = normalizeBackendUrl(data.backendUrl) || DEFAULT_BACKEND;
 }
 
 async function saveSettings() {
+  if (typeof prompt !== "function") return;
   const next = prompt("后端地址", backendUrl);
   if (!next) return;
-  backendUrl = next.replace(/\/$/, "");
+  const normalized = normalizeBackendUrl(next);
+  if (!normalized) {
+    els.backendStatus.textContent = "后端地址仅支持本机 127.0.0.1 或 localhost";
+    els.backendStatus.style.color = "#d92d20";
+    els.taskMessage.textContent = "后端地址未保存：只能连接本机后端。";
+    return;
+  }
+  backendUrl = normalized;
   if (HAS_EXTENSION_API) await chrome.storage.local.set({ backendUrl });
   await health();
 }

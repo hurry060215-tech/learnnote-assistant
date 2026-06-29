@@ -8,7 +8,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 from pathlib import Path
 from urllib.parse import quote
 
-from fastapi import BackgroundTasks, Body, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import BackgroundTasks, Body, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -25,14 +25,24 @@ from .summarizer import visual_window_review_question_lines
 ensure_dirs()
 
 app = FastAPI(title="LearnNote Assistant", version="0.1.0")
+TRUSTED_BROWSER_ORIGIN_RE = re.compile(r"^(chrome-extension://[a-z]+|moz-extension://[a-z0-9-]+|https?://(localhost|127\.0\.0\.1)(:\d+)?)$")
+WRITE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"^(chrome-extension://[a-z]+|moz-extension://[a-z0-9-]+|https?://(localhost|127\.0\.0\.1)(:\d+)?)$",
+    allow_origin_regex=TRUSTED_BROWSER_ORIGIN_RE.pattern,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def enforce_trusted_write_origin(request: Request, call_next):
+    origin = (request.headers.get("origin") or "").strip()
+    if request.method.upper() in WRITE_METHODS and request.url.path.startswith("/api/") and origin and not TRUSTED_BROWSER_ORIGIN_RE.fullmatch(origin):
+        return Response("Forbidden origin", status_code=403)
+    return await call_next(request)
 
 app.mount("/data", StaticFiles(directory=str(DATA_DIR)), name="data")
 app.mount("/web", StaticFiles(directory=str(WEB_DIR)), name="web")

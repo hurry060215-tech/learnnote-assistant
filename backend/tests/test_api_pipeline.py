@@ -109,6 +109,32 @@ class LocalUploadValidationTests(unittest.TestCase):
             self.assertTrue(payload["ffprobe_optional"])
             self.assertEqual(payload["duration_probe"], "ffmpeg")
 
+    def test_api_write_rejects_foreign_browser_origin(self) -> None:
+        response = self.client.post(
+            "/api/media/preflight-current-page",
+            headers={"Origin": "https://evil.example"},
+            json={
+                "page_url": "https://course.example.com/lesson",
+                "probe_limit": 0,
+                "resources": [],
+            },
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_api_write_allows_local_browser_origin(self) -> None:
+        response = self.client.post(
+            "/api/media/preflight-current-page",
+            headers={"Origin": "http://127.0.0.1:8765"},
+            json={
+                "page_url": "https://course.example.com/lesson",
+                "probe_limit": 0,
+                "resources": [],
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+
     def test_local_upload_filename_is_sanitized_and_mime_can_supply_extension(self) -> None:
         self.assertEqual(local_upload_filename("..\\course:demo?.mkv", ""), "course_demo.mkv")
         self.assertEqual(local_upload_filename("", "video/mp4"), "local-video.mp4")
