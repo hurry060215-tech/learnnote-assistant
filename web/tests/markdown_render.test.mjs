@@ -170,6 +170,8 @@ assert.match(indexHtml, /本地总结/);
 assert.match(indexHtml, /id="browserRouteSummary"/);
 assert.match(indexHtml, /id="visualWindowsButton"/);
 assert.match(indexHtml, /id="manifestButton"/);
+assert.match(indexHtml, /id="resultMoreActions"/);
+assert.match(indexHtml, /class="result-more-panel"/);
 assert.ok(
   indexHtml.indexOf('id="browserRouteSummary"') < indexHtml.indexOf('id="sourceWorkflow"'),
   "current-page route summary should appear before the workflow explainer"
