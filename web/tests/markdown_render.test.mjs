@@ -232,6 +232,7 @@ const queueChipTask = {
   progress: 100,
   source_type: "current_page",
   media_path: "D:/Projects/learnnote-assistant/data/tasks/queue-chip-task/media.mp4",
+  transcript_path: "D:/Projects/learnnote-assistant/data/tasks/queue-chip-task/transcript.json",
   note_path: "D:/Projects/learnnote-assistant/data/tasks/queue-chip-task/note.md",
   selected_resource: {
     kind: "video",
@@ -244,6 +245,34 @@ const queueChipTask = {
 
 assert.equal(JSON.stringify(context.taskChipItems(queueChipTask)), JSON.stringify(["当前 src", "视频", "media.mp4", "笔记", "1 窗口"]));
 assert.equal(context.taskMetaLine(queueChipTask), "已完成 · 直取 · 视频 · 100%");
+const queueAuditMiniHtml = context.taskAuditMiniHtml(queueChipTask);
+assert.match(queueAuditMiniHtml, /class="task-audit-mini"/);
+assert.match(queueAuditMiniHtml, /任务审计门/);
+assert.match(queueAuditMiniHtml, /来源/);
+assert.match(queueAuditMiniHtml, /媒体/);
+assert.match(queueAuditMiniHtml, /转写/);
+assert.match(queueAuditMiniHtml, /切片/);
+assert.match(queueAuditMiniHtml, /总结/);
+assert.match(queueAuditMiniHtml, /5\/5 已放行/);
+
+const blockedAuditMiniHtml = context.taskAuditMiniHtml({
+  id: "blocked-audit-mini",
+  status: "failed",
+  phase: "failed",
+  progress: 100,
+  source_type: "current_page",
+  error_code: "download_forbidden",
+  selected_resource: { kind: "hls", source: "webRequest" },
+  audit: {
+    gates: [
+      { key: "source", state: "pass", value: "browser candidate", detail: "webRequest HLS" },
+      { key: "media", state: "fail", value: "403 forbidden", detail: "cookie expired" }
+    ]
+  }
+});
+assert.match(blockedAuditMiniHtml, /class="fail"/);
+assert.match(blockedAuditMiniHtml, /媒体门 · 403 forbidden/);
+assert.match(blockedAuditMiniHtml, /cookie expired/);
 
 const visionEvidenceHtml = context.visionEvidenceBar({
   id: "vision-task",

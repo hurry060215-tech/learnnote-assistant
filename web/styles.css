@@ -1659,6 +1659,75 @@ select:focus {
   color: var(--danger);
 }
 
+.task-audit-mini {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  margin-top: 7px;
+}
+
+.task-audit-dots {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.task-audit-dots span {
+  min-width: 0;
+  display: grid;
+  place-items: center;
+  height: 18px;
+  border: 1px solid #d9e4f0;
+  border-radius: 6px;
+  background: #f5f8fc;
+  color: #697789;
+}
+
+.task-audit-dots b {
+  font-size: 9px;
+  line-height: 1;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.task-audit-dots span.pass {
+  border-color: rgba(15, 143, 97, 0.3);
+  background: rgba(15, 143, 97, 0.1);
+  color: var(--success);
+}
+
+.task-audit-dots span.wait {
+  border-color: rgba(23, 105, 232, 0.26);
+  background: rgba(23, 105, 232, 0.08);
+  color: var(--accent);
+}
+
+.task-audit-dots span.warn,
+.task-audit-dots span.skip {
+  border-color: rgba(194, 120, 3, 0.28);
+  background: rgba(194, 120, 3, 0.09);
+  color: #9a6400;
+}
+
+.task-audit-dots span.fail {
+  border-color: rgba(217, 45, 32, 0.28);
+  background: rgba(217, 45, 32, 0.09);
+  color: var(--danger);
+}
+
+.task-audit-mini small {
+  max-width: 132px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .stage-rail {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));

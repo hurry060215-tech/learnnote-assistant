@@ -1473,6 +1473,7 @@ function renderTasks() {
         <strong>${escapeHtml(task.title || task.id)}</strong>
         <small class="task-meta-line">${escapeHtml(taskMetaLine(task))}</small>
         ${taskChipsHtml(task)}
+        ${taskAuditMiniHtml(task)}
         ${stageRail(task)}
         <div class="progress"><span style="width:${task.progress || 0}%"></span></div>
       </div>
@@ -1578,6 +1579,21 @@ function taskChipsHtml(task) {
   const chips = taskChipItems(task);
   if (!chips.length) return "";
   return `<div class="task-chips">${chips.map(chip => `<span>${escapeHtml(chip)}</span>`).join("")}</div>`;
+}
+
+function taskAuditMiniHtml(task) {
+  const items = pipelineAuditItems(task);
+  if (!items.length) return "";
+  const blocked = items.find(item => item.state === "fail" || item.state === "warn" || item.state === "wait");
+  const passedCount = items.filter(item => item.state === "pass" || item.state === "skip").length;
+  return `<div class="task-audit-mini" aria-label="任务审计门">
+    <div class="task-audit-dots">
+      ${items.map(item => `<span class="${escapeHtml(item.state)}" title="${escapeHtml(`${item.label}：${item.value || "-"}；${item.detail || "-"}`)}">
+        <b>${escapeHtml(item.label.slice(0, 2))}</b>
+      </span>`).join("")}
+    </div>
+    <small>${escapeHtml(blocked ? `${blocked.label} · ${blocked.value || blocked.state}` : `${passedCount}/${items.length} 已放行`)}</small>
+  </div>`;
 }
 
 function taskMetaLine(task) {
