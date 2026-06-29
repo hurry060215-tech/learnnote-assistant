@@ -705,6 +705,7 @@ function ensureReadableTextTrack(track) {
 
 function collectVideoSubtitleCues(video, limit = 1000) {
   const subtitles = [];
+  if (limit <= 0) return subtitles;
   const seen = new Set();
   const tracks = [];
   try {
@@ -813,6 +814,7 @@ function rememberVisibleSubtitleCues(cues) {
 }
 
 function collectVisibleSubtitleCues(limit = 200) {
+  if (limit <= 0) return [];
   const active = activeVideoInfo();
   const base = Number(active?.current_time || 0);
   const start = Math.max(0, base - 1.5);
@@ -845,6 +847,7 @@ function isVisibleSubtitleNode(node) {
 }
 
 function collectBrowserSubtitles(limit = 1200) {
+  if (limit <= 0) return [];
   const videos = collectVideos();
   const main = pickMainVideo(videos);
   const ordered = main ? [main, ...videos.filter(item => item.video !== main.video)] : videos;

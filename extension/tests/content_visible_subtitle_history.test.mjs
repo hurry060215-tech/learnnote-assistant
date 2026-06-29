@@ -151,3 +151,5 @@ assert.deepEqual(JSON.parse(JSON.stringify(second.browser_subtitles)), [
   { start: 10.5, end: 16.5, text: "first visible caption" },
   { start: 16.5, end: 22.5, text: "second visible caption" },
 ]);
+assert.equal(context.collectVisibleSubtitleCues(0).length, 0);
+assert.equal(context.collectBrowserSubtitles(0).length, 0);
