@@ -5110,3 +5110,268 @@ button.primary:hover,
     gap: 4px;
   }
 }
+
+/* Side panel cockpit v2: compact version of the desktop learning workflow. */
+:root {
+  --bg: #eef3f8;
+  --surface: #ffffff;
+  --surface-soft: #f6f9fc;
+  --surface-strong: #e7f1ff;
+  --ink: #0f172a;
+  --muted: #64748b;
+  --border: #d6e0eb;
+  --border-strong: #9eb4cb;
+  --accent: #1769e8;
+  --accent-strong: #0d55c7;
+  --success: #0f8f61;
+  --warning: #a95d00;
+  --danger: #d92d20;
+  --shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+}
+
+body {
+  background:
+    linear-gradient(180deg, #f9fbfd 0, #eef3f8 160px),
+    var(--bg);
+}
+
+.app-header {
+  min-height: 64px;
+  padding: 12px;
+  border-bottom-color: #dce6f1;
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.mark {
+  background: linear-gradient(135deg, #0f172a 0%, #1769e8 58%, #0f8f61 100%);
+}
+
+.side-shell {
+  gap: 10px;
+  padding: 10px;
+}
+
+.current-card,
+.resource-panel,
+.progress-panel,
+.history-panel,
+.result-panel,
+.local-drop,
+.options-disclosure,
+.current-study-card,
+.launch-bar,
+.route-summary,
+.extraction-plan,
+.resource-inspector,
+.task-overview,
+.task-overview-callout {
+  border-color: var(--border);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.07);
+}
+
+.current-card {
+  border-color: #bfd4ee;
+  background:
+    linear-gradient(135deg, rgba(23, 105, 232, 0.1), rgba(15, 143, 97, 0.08) 52%, rgba(255, 255, 255, 0) 70%),
+    #ffffff;
+  box-shadow: var(--shadow);
+}
+
+.current-card::after {
+  left: 10px;
+  right: 10px;
+  height: 3px;
+  background: linear-gradient(90deg, var(--accent), var(--success));
+}
+
+.source-switcher {
+  gap: 5px;
+  padding: 4px;
+  border-color: #dce6f1;
+  border-radius: 10px;
+  background: #eaf0f7;
+}
+
+.source-switcher button {
+  height: 34px;
+  border-radius: 8px;
+  color: #526176;
+  font-weight: 900;
+}
+
+.source-switcher button.active {
+  border-color: #b8d1ff;
+  background: #ffffff;
+  color: var(--accent);
+  box-shadow: 0 8px 18px rgba(23, 105, 232, 0.12);
+}
+
+.section-head span,
+.panel-title span {
+  color: #718096;
+  font-weight: 850;
+}
+
+.section-head strong,
+#pageTitle {
+  color: var(--ink);
+  font-weight: 920;
+}
+
+.playback-card,
+.playback-readiness,
+.current-study-card,
+.launch-bar,
+.route-summary,
+.extraction-plan,
+.resource-hint,
+.no-resource-guide {
+  border-color: #dce6f1;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.active-video-card.playing,
+.playback-readiness.ready,
+.current-study-card.ready,
+.launch-bar.ready,
+.route-summary.ready {
+  border-color: rgba(15, 143, 97, 0.34);
+  background:
+    linear-gradient(135deg, rgba(15, 143, 97, 0.075), rgba(255, 255, 255, 0) 58%),
+    #ffffff;
+}
+
+.active-video-card.paused,
+.active-video-card.scanning,
+.playback-readiness.mapping,
+.playback-readiness.waiting,
+.current-study-card.candidate,
+.current-study-card.fallback,
+.current-study-card.mapping,
+.current-study-card.waiting,
+.launch-bar.candidate,
+.launch-bar.fallback,
+.launch-bar.mapping,
+.launch-bar.waiting {
+  border-color: rgba(169, 93, 0, 0.26);
+  background:
+    linear-gradient(135deg, rgba(169, 93, 0, 0.06), rgba(255, 255, 255, 0) 58%),
+    #ffffff;
+}
+
+.active-video-card.blocked,
+.playback-readiness.blocked,
+.current-study-card.blocked,
+.launch-bar.blocked,
+.route-summary.blocked {
+  border-color: rgba(217, 45, 32, 0.24);
+}
+
+.actions {
+  top: 64px;
+  grid-template-columns: 1.2fr 1fr 1fr;
+  gap: 7px;
+  border-color: var(--border);
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.1);
+}
+
+.actions button,
+.resource-filter-bar button,
+.resource-inspector-actions button,
+.task-overview-actions button,
+.task-overview-actions span,
+.no-resource-actions button,
+.launch-bar-actions button {
+  border-radius: 8px;
+  font-weight: 900;
+}
+
+.actions .primary,
+.actions button.primary,
+button.primary,
+.launch-bar-actions button.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.actions .primary:hover,
+.actions button.primary:hover,
+button.primary:hover,
+.launch-bar-actions button.primary:hover {
+  border-color: var(--accent-strong);
+  background: var(--accent-strong);
+}
+
+.resource,
+.history-task {
+  border-color: var(--border);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.resource:hover,
+.history-task:hover {
+  border-color: var(--border-strong);
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.07);
+}
+
+.resource.selected,
+.history-task.selected {
+  border-color: var(--accent);
+  background: linear-gradient(90deg, #eef6ff, #ffffff 48%);
+  box-shadow: inset 4px 0 0 var(--accent), 0 14px 28px rgba(23, 105, 232, 0.13);
+}
+
+.resource.playback {
+  border-color: rgba(15, 143, 97, 0.34);
+}
+
+.mode-row span,
+.direct-flow span,
+.stage-rail span,
+.resource-tags em,
+.history-task-chips em,
+.resource-priority,
+.resource-confidence,
+.backend-status-chip,
+.capture-chip,
+.route-chip {
+  border-radius: 7px;
+}
+
+.progress span,
+#progressBar {
+  background: linear-gradient(90deg, var(--success), #18a36f);
+}
+
+.result-tabs {
+  border-bottom-color: var(--border);
+  background: #ffffff;
+}
+
+.result-tab {
+  border-radius: 8px;
+  color: #526176;
+  font-weight: 900;
+}
+
+.result-tab.active {
+  border-color: #9db9f8;
+  background: #edf4ff;
+  color: var(--accent);
+}
+
+.result-body {
+  background:
+    linear-gradient(180deg, #f7fafd 0, #ffffff 150px),
+    #ffffff;
+}
+
+.markdown-note {
+  border-color: #dce6f1;
+  border-radius: 8px;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
+}
