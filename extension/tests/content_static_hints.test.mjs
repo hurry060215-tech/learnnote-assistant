@@ -103,10 +103,16 @@ const configPlayer = new FakeElement("div", {
 const nakedPlayer = new FakeElement("div", {
   "data-options": "load(/static/naked-master.m3u8?token=naked);"
 });
+const vendorPlayer = new FakeElement("div", {
+  "vendor-player-json": JSON.stringify({
+    course: "lesson",
+    sources: [{ url: "https://cdn.example.com/static/vendor/master.m3u8?token=vendor" }]
+  })
+});
 const plainUrlScript = new FakeElement("script", {
   textContent: "window.__payload='https://cdn.example.com/static/plain-url.m3u8?token=script-plain';"
 });
-const html = new FakeElement("html", {}, [player, packedPlayer, doubleEncodedPlayer, onclickPlayer, paramPlayer, configPlayer, nakedPlayer, script, plainEncodedScript, plainDoubleEncodedScript, mixedEncodedScript, segmentScript, plainUrlScript]);
+const html = new FakeElement("html", {}, [player, packedPlayer, doubleEncodedPlayer, onclickPlayer, paramPlayer, configPlayer, nakedPlayer, vendorPlayer, script, plainEncodedScript, plainDoubleEncodedScript, mixedEncodedScript, segmentScript, plainUrlScript]);
 
 let messageListener = null;
 const context = {
@@ -182,6 +188,7 @@ const onclickHls = response.resources.find(item => item.url === "https://cdn.exa
 const paramVideo = response.resources.find(item => item.url === "https://cdn.example.com/static/param-lesson.mp4?token=param");
 const plainAttrVideo = response.resources.find(item => item.url === "https://course.example.com/static/plain-attr.mp4?token=attr-plain");
 const nakedAttrHls = response.resources.find(item => item.url === "https://course.example.com/static/naked-master.m3u8?token=naked");
+const vendorAttrHls = response.resources.find(item => item.url === "https://cdn.example.com/static/vendor/master.m3u8?token=vendor");
 const plainScriptHls = response.resources.find(item => item.url === "https://cdn.example.com/static/plain-url.m3u8?token=script-plain");
 const malformedEncodedUrls = response.resources.filter(item => /\/https%3A%2F%2F/i.test(item.url));
 
@@ -254,6 +261,11 @@ assert.ok(nakedAttrHls, "expected data-options scan to trim trailing JS punctuat
 assert.equal(nakedAttrHls.kind, "hls");
 assert.equal(nakedAttrHls.source, "domHint");
 assert.match(nakedAttrHls.label, /data-options/);
+
+assert.ok(vendorAttrHls, "expected non-standard player attribute JSON to expose HLS URL");
+assert.equal(vendorAttrHls.kind, "hls");
+assert.equal(vendorAttrHls.source, "domHint");
+assert.match(vendorAttrHls.label, /vendor-player-json/);
 
 assert.ok(plainScriptHls, "expected inline script URL scan to expose plain HLS URL without a media field name");
 assert.equal(plainScriptHls.kind, "hls");

@@ -35,6 +35,7 @@ const STATIC_MEDIA_ATTRS = [
 const STATIC_MEDIA_SELECTOR = STATIC_MEDIA_ATTRS.map(name => `[${name}]`).join(",");
 const STATIC_FIELD_RE = /(["']?[A-Za-z_$][A-Za-z0-9_$.-]{0,79}["']?)\s*[:=]\s*["']([^"'<>\\\s]{4,})["']/gi;
 const STATIC_MEDIA_KEY_RE = /(url|src|file|fileid|objectid|dtoken|download|httpmd|play|media|video|stream|source|hls|m3u8|dash|mpd|segment|fragment|chunk|subtitle|caption)/i;
+const STATIC_ATTRIBUTE_KEY_RE = /(url|src|file|objectid|dtoken|download|httpmd|play|player|config|option|param|media|video|stream|source|hls|m3u8|dash|mpd|segment|fragment|chunk|subtitle|caption)/i;
 const VISIBLE_SUBTITLE_HINT_RE = /(subtitle|subtitles|caption|captions|closed.?caption|texttrack|danmu|danmaku|barrage|\bcc\b|字幕|弹幕)/i;
 const VISIBLE_SUBTITLE_ROLE_RE = /^(log|status|marquee)$/i;
 const B64ISH_RE = /^[A-Za-z0-9+/_=-]{16,}$/;
@@ -447,6 +448,36 @@ function readAttribute(element, name) {
   return element[name] || "";
 }
 
+function elementAttributeEntries(element) {
+  const attrs = element?.attributes || [];
+  if (typeof attrs[Symbol.iterator] === "function") {
+    return [...attrs]
+      .map(attr => [String(attr.name || ""), String(attr.value || "")])
+      .filter(([name, value]) => name && value);
+  }
+  if (attrs instanceof Map) {
+    return [...attrs.entries()].map(([name, value]) => [String(name || ""), String(value || "")]).filter(([name, value]) => name && value);
+  }
+  return Object.entries(attrs)
+    .map(([name, value]) => [String(name || ""), String(value || "")])
+    .filter(([name, value]) => name && value && name !== "textContent");
+}
+
+function attributeMayContainMedia(name, value) {
+  const hint = `${name} ${String(value || "").slice(0, 160)}`;
+  if (STATIC_ATTRIBUTE_KEY_RE.test(hint)) return true;
+  if (MEDIA_RE.test(value) || FRAGMENT_RE.test(value) || SUBTITLE_RE.test(value)) return true;
+  if (String(value || "").includes(".m3u8") || String(value || "").includes(".mpd")) return true;
+  if (ENCODED_MEDIA_URL_RE.test(value) || MEDIA_URL_RE.test(value)) {
+    ENCODED_MEDIA_URL_RE.lastIndex = 0;
+    MEDIA_URL_RE.lastIndex = 0;
+    return true;
+  }
+  ENCODED_MEDIA_URL_RE.lastIndex = 0;
+  MEDIA_URL_RE.lastIndex = 0;
+  return false;
+}
+
 function collectStaticAttributeResources() {
   const resources = [];
   const seen = new Set();
@@ -455,6 +486,24 @@ function collectStaticAttributeResources() {
     for (const attr of STATIC_MEDIA_ATTRS) {
       const value = readAttribute(element, attr);
       if (!value) continue;
+      const item = resourceFromHint(value, "domHint", `${tag} ${attr}`, attr);
+      if (item && !seen.has(item.url)) {
+        seen.add(item.url);
+        resources.push(item);
+      }
+      for (const textItem of collectTextMediaResources(value, "domHint", `${tag} ${attr} media url`, seen)) {
+        resources.push(textItem);
+      }
+      for (const encodedItem of collectEncodedTextResources(value, "domHint", `${tag} ${attr} encoded url`, seen)) {
+        resources.push(encodedItem);
+      }
+    }
+  }
+  for (const element of deepQuerySelectorAll("*", document, 1200)) {
+    const tag = String(element.tagName || "element").toLowerCase();
+    for (const [attr, value] of elementAttributeEntries(element)) {
+      const attrName = attr.toLowerCase();
+      if (STATIC_MEDIA_ATTRS.includes(attrName) || !attributeMayContainMedia(attrName, value)) continue;
       const item = resourceFromHint(value, "domHint", `${tag} ${attr}`, attr);
       if (item && !seen.has(item.url)) {
         seen.add(item.url);
