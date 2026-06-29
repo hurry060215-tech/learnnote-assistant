@@ -8,7 +8,7 @@ from pathlib import Path
 from PIL import Image
 
 from app.config import DATA_DIR
-from app.media import _average_hash, _hamming_distance, build_frame_grids, extract_audio, extract_embedded_subtitle, extract_frames, probe_duration
+from app.media import _average_hash, _hamming_distance, _should_keep_sampled_frame, build_frame_grids, extract_audio, extract_embedded_subtitle, extract_frames, probe_duration
 from app.runtime import ffmpeg_bin
 
 
@@ -17,6 +17,41 @@ TEST_RUN_DIR = DATA_DIR / "test-runs"
 
 @unittest.skipUnless(ffmpeg_bin(), "ffmpeg is required for media pipeline tests")
 class MediaPipelineTests(unittest.TestCase):
+    def test_near_duplicate_frames_keep_periodic_timeline_anchors(self) -> None:
+        self.assertFalse(
+            _should_keep_sampled_frame(
+                current_hash="same",
+                current_average_hash=10,
+                timestamp=4,
+                last_hash="same",
+                last_average_hash=10,
+                last_kept_timestamp=0,
+                coverage_gap=5,
+            )
+        )
+        self.assertTrue(
+            _should_keep_sampled_frame(
+                current_hash="same",
+                current_average_hash=10,
+                timestamp=5,
+                last_hash="same",
+                last_average_hash=10,
+                last_kept_timestamp=0,
+                coverage_gap=5,
+            )
+        )
+        self.assertTrue(
+            _should_keep_sampled_frame(
+                current_hash="changed",
+                current_average_hash=27,
+                timestamp=1,
+                last_hash="same",
+                last_average_hash=10,
+                last_kept_timestamp=0,
+                coverage_gap=5,
+            )
+        )
+
     def test_average_hash_detects_near_duplicate_frames(self) -> None:
         TEST_RUN_DIR.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(dir=TEST_RUN_DIR) as tmp:
@@ -90,6 +125,38 @@ class MediaPipelineTests(unittest.TestCase):
                 label_area = image.crop((4, 154, 92, 178))
                 dark_pixels = sum(1 for pixel in label_area.getdata() if sum(pixel[:3]) < 180)
                 self.assertGreater(dark_pixels, 20)
+
+    def test_static_video_keeps_periodic_visual_coverage(self) -> None:
+        ffmpeg = ffmpeg_bin()
+        assert ffmpeg is not None
+        TEST_RUN_DIR.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=TEST_RUN_DIR) as tmp:
+            root = Path(tmp)
+            video = root / "static.mp4"
+            subprocess.run(
+                [
+                    ffmpeg,
+                    "-y",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "color=c=navy:s=320x180:d=7",
+                    "-pix_fmt",
+                    "yuv420p",
+                    str(video),
+                ],
+                check=True,
+            )
+
+            frames = extract_frames(video, root / "frames", interval=1)
+
+            timestamps = [int(frame.stem.rsplit("_", 1)[-1]) for frame in frames]
+            self.assertIn(0, timestamps)
+            self.assertIn(5, timestamps)
+            self.assertLess(len(frames), 7)
 
     def test_embedded_text_subtitle_can_be_extracted(self) -> None:
         ffmpeg = ffmpeg_bin()

@@ -189,6 +189,27 @@ def _hamming_distance(left: int, right: int) -> int:
     return bin(left ^ right).count("1")
 
 
+def _should_keep_sampled_frame(
+    *,
+    current_hash: str,
+    current_average_hash: int,
+    timestamp: float,
+    last_hash: str,
+    last_average_hash: int | None,
+    last_kept_timestamp: float | None,
+    coverage_gap: int,
+) -> bool:
+    if not last_hash or last_kept_timestamp is None:
+        return True
+    is_duplicate = current_hash == last_hash or (
+        last_average_hash is not None
+        and _hamming_distance(current_average_hash, last_average_hash) <= 1
+    )
+    if not is_duplicate:
+        return True
+    return timestamp - last_kept_timestamp >= max(1, coverage_gap)
+
+
 def extract_frames(video_path: Path, frame_dir: Path, interval: int, max_frames: int = 900) -> list[Path]:
     require_ffmpeg()
     ffmpeg = ffmpeg_bin()
@@ -196,10 +217,13 @@ def extract_frames(video_path: Path, frame_dir: Path, interval: int, max_frames:
     duration = probe_duration(video_path)
     if duration <= 0:
         return []
-    timestamps = list(range(0, int(duration), max(1, interval)))[:max_frames]
+    interval = max(1, interval)
+    coverage_gap = max(5, interval)
+    timestamps = list(range(0, int(duration), interval))[:max_frames]
     frames: list[Path] = []
     last_hash = ""
     last_average_hash: int | None = None
+    last_kept_timestamp: float | None = None
     for index, ts in enumerate(timestamps):
         out = frame_dir / f"frame_{index:04d}_{ts:06d}.jpg"
         result = subprocess.run(
@@ -226,14 +250,20 @@ def extract_frames(video_path: Path, frame_dir: Path, interval: int, max_frames:
             continue
         current_hash = _md5(out)
         current_average_hash = _average_hash(out)
-        if current_hash == last_hash or (
-            last_average_hash is not None
-            and _hamming_distance(current_average_hash, last_average_hash) <= 1
+        if not _should_keep_sampled_frame(
+            current_hash=current_hash,
+            current_average_hash=current_average_hash,
+            timestamp=float(ts),
+            last_hash=last_hash,
+            last_average_hash=last_average_hash,
+            last_kept_timestamp=last_kept_timestamp,
+            coverage_gap=coverage_gap,
         ):
             out.unlink(missing_ok=True)
             continue
         last_hash = current_hash
         last_average_hash = current_average_hash
+        last_kept_timestamp = float(ts)
         frames.append(out)
     return frames
 

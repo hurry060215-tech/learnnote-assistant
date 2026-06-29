@@ -69,7 +69,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - HLS/DASH manifest download through ffmpeg when a manifest URL is visible.
 - yt-dlp page URL fallback for supported websites when direct browser resources are not usable.
 - Local video upload from the extension and the local web UI.
-- Shared video processing: remux/standardize local and downloaded videos to `media.mp4`, extract audio, transcribe with local `faster-whisper` or OpenAI-compatible/Groq ASR when selected, extract frames, generate frame grids, and emit Markdown notes.
+- Shared video processing: remux/standardize local and downloaded videos to `media.mp4`, extract audio, transcribe with local `faster-whisper` or OpenAI-compatible/Groq ASR when selected, extract frames, keep periodic visual anchors even on static slides, generate frame grids, and emit Markdown notes.
 - Transcript priority: browser/player subtitle cues first, page or yt-dlp platform subtitle second, embedded text subtitle third, then selected ASR engine fallback.
 - Configurable slicing: frame interval, grid layout, ASR model, and note style.
 - Web UI and Side Panel diagnostic tabs show the selected resource, browser evidence, and every backend download attempt.
