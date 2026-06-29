@@ -295,6 +295,8 @@ const routeEvidenceItems = context.taskRouteEvidenceItems({
   selected_resource: {
     kind: "video",
     source: "webRequest",
+    url: "https://course.example.com/player/video?id=1",
+    resolved_url: "https://cdn.example.com/final.mp4?token=abc",
     playback_match: "same-frame",
     mime: "video/mp4",
     content_length: 1048576,
@@ -318,13 +320,19 @@ const routeEvidenceItems = context.taskRouteEvidenceItems({
 });
 assert.equal(routeEvidenceItems.length, 4);
 assert.equal(routeEvidenceItems[2].value, "Referer");
+assert.match(JSON.stringify(routeEvidenceItems), /final\.mp4\?token=abc/);
 assert.doesNotMatch(JSON.stringify(routeEvidenceItems), /secret=bad|Bearer bad/);
 assert.match(context.taskRouteEvidenceHtml({
   source_type: "current_page",
-  selected_resource: { kind: "video", source: "webRequest" },
+  selected_resource: {
+    kind: "video",
+    source: "webRequest",
+    url: "https://course.example.com/player/video?id=1",
+    resolved_url: "https://cdn.example.com/final.mp4?token=abc"
+  },
   note_path: "D:/note.md",
   download_attempts: [{ strategy: "direct-file", code: "download_forbidden" }]
-}), /task-route-evidence/);
+}), /final\.mp4\?token=abc/);
 assert.match(context.taskRouteEvidenceHtml({
   source_type: "current_page",
   selected_resource: { kind: "video", source: "webRequest" },
@@ -574,6 +582,7 @@ assert.match(taskOverviewHtml, /生成完整笔记/);
 assert.match(taskOverviewHtml, /data-rerun-from-media="side-overview"/);
 assert.match(taskOverviewHtml, /已完成直取下载/);
 assert.match(taskOverviewHtml, /已跟踪最终 URL/);
+assert.match(taskOverviewHtml, /final\.mp4\?token=abc/);
 assert.match(taskOverviewHtml, /阶段审计门/);
 assert.match(taskOverviewHtml, /class="next-step-card ready"/);
 assert.match(taskOverviewHtml, /继续生成完整笔记/);

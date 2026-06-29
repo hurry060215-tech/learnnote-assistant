@@ -1038,6 +1038,13 @@ function resourceSourceText(item) {
   return item?.source || "";
 }
 
+function taskResolvedTargetText(task, limit = 92) {
+  const selected = task?.selected_resource || {};
+  const target = selected.resolved_url || "";
+  if (!target || target === selected.url) return "";
+  return compactUrl(target, limit);
+}
+
 function requestEvidence(item) {
   if (!item) return "";
   return [
@@ -3088,6 +3095,10 @@ function taskRouteEvidenceItems(task) {
   const lastAttempt = lastDownloadAttempt(task);
   const headers = requestHeaderNames(selected);
   const diag = task?.summary_diagnostics || {};
+  const resolvedTarget = taskResolvedTargetText(task, 86);
+  const downloadDetail = resolvedTarget
+    ? (lastAttempt ? `${resolvedTarget} · ${lastAttempt.code || lastAttempt.status || lastAttempt.strategy || "-"}` : resolvedTarget)
+    : (lastAttempt ? `${lastAttempt.strategy || "-"} · ${lastAttempt.code || lastAttempt.status || "-"}` : (task.error_code || task.phase || "-"));
   const summaryText = summaryDiagnosticText(task);
   const summaryValue = task.summary_source || (diag.used_page_text_fallback ? "页面文本兜底" : task.note_path ? "已有笔记" : "待生成");
   const summaryDetail = summaryText === "-"
@@ -3102,7 +3113,7 @@ function taskRouteEvidenceItems(task) {
     {
       label: "下载路线",
       value: attempts.length ? `${attempts.length} 次尝试` : task.media_path ? "已有本地媒体" : "等待下载",
-      detail: lastAttempt ? `${lastAttempt.strategy || "-"} · ${lastAttempt.code || lastAttempt.status || "-"}` : (task.error_code || task.phase || "-")
+      detail: downloadDetail
     },
     {
       label: "浏览器证据",
@@ -3520,6 +3531,7 @@ function renderResult() {
         <dt>播放器快照</dt><dd>${escapeHtml(activeVideoText(currentTask.active_video))}</dd>
         <dt>DRM/EME</dt><dd>${escapeHtml(currentTask.drm_detected ? (drmSignalText(currentTask.drm_signals || []) || "已检测到") : "-")}</dd>
         <dt>资源</dt><dd>${escapeHtml(selected.url || "未选择直接资源")}</dd>
+        <dt>实际媒体 URL</dt><dd>${escapeHtml(taskResolvedTargetText(currentTask, 140) || "-")}</dd>
         <dt>播放 blob</dt><dd>${escapeHtml(selected.blob_url || "-")}</dd>
         <dt>所在 frame</dt><dd>${escapeHtml(selected.frame_url || "-")}</dd>
         <dt>类型</dt><dd>${escapeHtml([
