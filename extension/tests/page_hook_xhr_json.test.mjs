@@ -23,7 +23,8 @@ class FakeXHR {
     this.url = url;
   }
 
-  send() {
+  send(body) {
+    this.body = body;
     for (const listener of this.listeners.get("loadend") || []) {
       listener.call(this);
     }
@@ -69,11 +70,12 @@ const hookCode = await readFile(new URL("../page_hook.js", import.meta.url), "ut
 vm.runInContext(hookCode, context);
 
 const xhr = new context.XMLHttpRequest();
-xhr.open("GET", "https://course.example.com/api/play-json");
+xhr.open("POST", "https://course.example.com/api/play-json");
 xhr.setRequestHeader("Accept", "application/json");
+xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
 xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
 xhr.setRequestHeader("Cookie", "secret=bad");
-xhr.send();
+xhr.send("lesson=42&token=xhr-ok");
 
 const resources = messages.flatMap(message => message.resources || []);
 const hls = resources.find(resource => resource.url === "https://cdn.example.com/course/lesson.m3u8?token=xhr");
@@ -83,12 +85,15 @@ assert.equal(hls.kind, "hls");
 assert.equal(hls.source, "pageHookBody");
 assert.match(hls.label, /xhr json/);
 assert.equal(hls.request_type, "xmlhttprequest");
-assert.equal(hls.method, "GET");
+assert.equal(hls.method, "POST");
 assert.equal(hls.status_code, 200);
 assert.equal(hls.content_length, 8192);
 assert.equal(hls.initiator, "https://course.example.com/api/play-json");
 assert.equal(hls.headers["content-type"], "application/json");
 assert.equal(hls.headers["content-length"], "8192");
 assert.equal(hls.request_headers.Accept, "application/json");
+assert.equal(hls.request_headers["Content-Type"], "application/x-www-form-urlencoded");
 assert.equal(hls.request_headers["X-Requested-With"], "XMLHttpRequest");
 assert.equal(hls.request_headers.Cookie, undefined);
+assert.equal(hls.request_body.type, "text");
+assert.equal(hls.request_body.content, "lesson=42&token=xhr-ok");

@@ -325,15 +325,18 @@
     }
   }
 
-  function fetchRequestBody(method, init = {}) {
+  function requestBodyFromValue(method, body) {
     if (!REQUEST_BODY_REPLAY_METHODS.has(method)) return {};
-    const body = init?.body;
     if (body === undefined || body === null) return {};
     if (typeof body === "string") return requestBodyFromText(body, "text");
     if (typeof URLSearchParams !== "undefined" && body instanceof URLSearchParams) return requestBodyFromText(body.toString(), "form");
     if (typeof FormData !== "undefined" && body instanceof FormData) return requestBodyFromFormData(body);
     if (typeof ArrayBuffer !== "undefined" && (body instanceof ArrayBuffer || ArrayBuffer.isView(body))) return requestBodyFromBuffer(body);
     return {};
+  }
+
+  function fetchRequestBody(method, init = {}) {
+    return requestBodyFromValue(method, init?.body);
   }
 
   function fetchResponseMeta(response, url = "", requestHeaders = {}, method = "", requestBody = {}) {
@@ -376,7 +379,8 @@
       content_length: numericHeader(headers, "content-length"),
       initiator: xhr.responseURL || url || "",
       headers,
-      request_headers: xhr.__learnNoteRequestHeaders || {}
+      request_headers: xhr.__learnNoteRequestHeaders || {},
+      request_body: xhr.__learnNoteRequestBody || {}
     };
   }
 
@@ -1769,18 +1773,21 @@
       };
     }
     XMLHttpRequest.prototype.send = function (...args) {
+      try {
+        this.__learnNoteRequestBody = requestBodyFromValue(String(this.__learnNoteMethod || "GET").toUpperCase(), args[0]);
+      } catch {
+        this.__learnNoteRequestBody = {};
+      }
       this.addEventListener("loadend", () => {
         const url = this.responseURL || this.__learnNoteUrl || "";
         const mime = this.getResponseHeader?.("content-type") || "";
         const meta = xhrResponseMeta(this, url);
         emit([applyResponseMeta({ url, source: "pageHookRequest", label: "xhr", mime }, meta)]);
         if (typeof Blob !== "undefined" && this.response instanceof Blob) {
-          const meta = blobMeta(url, this.response.type || mime, "pageHookBlob", "xhr blob source");
-          rememberBlobObject(this.response, meta);
+          rememberBlobObject(this.response, applyResponseMeta(blobMeta(url, this.response.type || mime, "pageHookBlob", "xhr blob source"), meta));
         }
         if (typeof ArrayBuffer !== "undefined" && this.response instanceof ArrayBuffer) {
-          const meta = blobMeta(url, mime, "pageHookBlob", "xhr arrayBuffer source");
-          rememberBlobPartObject(this.response, meta);
+          rememberBlobPartObject(this.response, applyResponseMeta(blobMeta(url, mime, "pageHookBlob", "xhr arrayBuffer source"), meta));
         }
         if (!shouldInspectTextPayload(url, mime, 0)) return;
         if (this.responseType === "json") {
