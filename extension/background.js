@@ -908,6 +908,19 @@ async function activeTab() {
   return tab;
 }
 
+async function tabForMessage(message = {}) {
+  const targetTabId = Number(message.targetTabId ?? message.tabId);
+  if (Number.isFinite(targetTabId) && targetTabId >= 0) {
+    try {
+      const tab = await chrome.tabs.get(targetTabId);
+      if (tab?.id !== undefined) return tab;
+    } catch {
+      // The tab may have been closed; fall back to the active tab.
+    }
+  }
+  return activeTab();
+}
+
 function getAllFrameInfos(tabId) {
   return new Promise(resolve => {
     if (!chrome.webNavigation?.getAllFrames) {
@@ -1025,7 +1038,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     if (message.type === "get-current-context") {
-      const tab = await activeTab();
+      const tab = await tabForMessage(message);
       const page = await collectPageData(tab);
       const sniffed = resourceByTab.get(tab.id) || [];
       const activePage = page;
@@ -1041,7 +1054,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     if (message.type === "start-current-task") {
-      const tab = await activeTab();
+      const tab = await tabForMessage(message);
       const page = message.page || await collectPageData(tab);
       const resources = message.resources || resourceByTab.get(tab.id) || [];
       const cookies = await cookiesForUrls(cookieUrlsForContext(page, tab, resources));
@@ -1068,7 +1081,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     if (message.type === "preflight-current-resource") {
-      const tab = await activeTab();
+      const tab = await tabForMessage(message);
       const page = message.page || await collectPageData(tab);
       const resource = message.resource;
       if (!resource?.url) {
@@ -1091,7 +1104,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     if (message.type === "preflight-current-page") {
-      const tab = await activeTab();
+      const tab = await tabForMessage(message);
       const page = message.page || await collectPageData(tab);
       const resources = message.resources || resourceByTab.get(tab.id) || [];
       const cookies = await cookiesForUrls(cookieUrlsForContext(page, tab, resources));

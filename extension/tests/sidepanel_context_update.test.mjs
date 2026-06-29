@@ -31,6 +31,7 @@ const documentStub = {
 let onMessageListener = null;
 let collectCalls = 0;
 let activeTabId = 7;
+const sentMessages = [];
 const context = {
   console,
   document: documentStub,
@@ -69,6 +70,7 @@ const context = {
         }
       },
       async sendMessage(message) {
+        sentMessages.push(message);
         if (message.type === "get-current-context") {
           collectCalls += 1;
           return {
@@ -127,4 +129,5 @@ assert.equal(collectCalls, 2);
 onMessageListener({ type: "current-context-updated", tabId: 99, reason: "media" });
 await new Promise(resolve => setTimeout(resolve, 0));
 assert.equal(collectCalls, 3);
+assert.equal(sentMessages.at(-1).targetTabId, 99);
 assert.match(elements.get("#taskMessage").textContent, /刷新候选资源/);

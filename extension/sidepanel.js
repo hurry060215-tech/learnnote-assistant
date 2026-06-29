@@ -2121,7 +2121,10 @@ async function collectContextNow() {
     renderContext();
     return true;
   }
-  const response = await chrome.runtime.sendMessage({ type: "get-current-context" });
+  const response = await chrome.runtime.sendMessage({
+    type: "get-current-context",
+    targetTabId: currentTabId
+  });
   if (response.error) {
     els.resources.innerHTML = `<p class="muted">${escapeHtml(response.error)}</p>`;
     return false;
@@ -2285,6 +2288,7 @@ async function requestResourcePreflight(resource) {
   const response = await chrome.runtime.sendMessage({
     type: "preflight-current-resource",
     backendUrl,
+    targetTabId: currentTabId,
     page,
     resource
   });
@@ -2304,6 +2308,7 @@ async function requestPagePreflightReport(candidates) {
   const response = await chrome.runtime.sendMessage({
     type: "preflight-current-page",
     backendUrl,
+    targetTabId: currentTabId,
     page,
     resources: candidates,
     probeLimit: 3
@@ -2423,6 +2428,7 @@ async function startTask(mode = "video") {
     const response = await chrome.runtime.sendMessage({
       type: "start-current-task",
       backendUrl,
+      targetTabId: currentTabId,
       page,
       resources: isMediaTaskMode(mode) ? selectedResources() : [],
       mode,
