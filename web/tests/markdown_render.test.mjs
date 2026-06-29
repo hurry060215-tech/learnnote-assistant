@@ -139,6 +139,13 @@ assert.match(elements.get("#browserBridgeStatus").innerHTML, /API Key/);
 assert.match(elements.get("#detail").innerHTML, /class="empty-workbench"/);
 assert.match(elements.get("#detail").innerHTML, /class="empty-demo-board"/);
 assert.match(elements.get("#detail").innerHTML, /class="empty-route-grid"/);
+assert.match(elements.get("#detail").innerHTML, /class="empty-readiness-panel"/);
+assert.match(elements.get("#detail").innerHTML, /data-empty-readiness/);
+assert.match(elements.get("#detail").innerHTML, /后端媒体门/);
+assert.match(elements.get("#detail").innerHTML, /视觉总结门/);
+assert.match(elements.get("#detail").innerHTML, /本地视频门/);
+assert.match(elements.get("#detail").innerHTML, /当前页直取门/);
+assert.match(elements.get("#detail").innerHTML, /复制后端地址/);
 assert.match(elements.get("#detail").innerHTML, /当前页直取/);
 assert.match(elements.get("#detail").innerHTML, /打开当前页路线/);
 assert.match(elements.get("#detail").innerHTML, /选择本地视频/);
@@ -179,6 +186,26 @@ assert.ok(
 assert.match(indexHtml, /当前页直取状态/);
 assert.match(indexHtml, /当前页交接流程/);
 assert.match(indexHtml, /Blob\/MSE 来源映射/);
+
+const readyGateHtml = context.emptyReadinessGatesHtml({
+  ffmpeg: true,
+  ffprobe_optional: false,
+  vision_model_configured: true,
+  default_llm_model: "gpt-4.1-mini"
+});
+assert.match(readyGateHtml, /class="empty-readiness-gates"/);
+assert.match(readyGateHtml, /section class="pass"/);
+assert.match(readyGateHtml, /直取\/切片就绪/);
+assert.match(readyGateHtml, /模型 · gpt-4\.1-mini/);
+assert.doesNotMatch(readyGateHtml, /<script>bad/);
+
+const blockedGateHtml = context.emptyReadinessGatesHtml({
+  ffmpeg: false,
+  vision_model_configured: false
+});
+assert.match(blockedGateHtml, /section class="block"/);
+assert.match(blockedGateHtml, /后端未就绪/);
+assert.match(blockedGateHtml, /API Key 待填/);
 assert.match(indexHtml, /accept="video\/\*,\.mp4,\.m4v,\.mov,\.mkv,\.webm,\.flv,\.avi"/);
 context.window.location.search = "?task=task%20from%20url";
 assert.equal(context.taskIdFromCurrentUrl(), "task from url");

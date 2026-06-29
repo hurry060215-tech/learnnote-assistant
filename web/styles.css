@@ -2209,6 +2209,111 @@ button:disabled {
   line-height: 1;
 }
 
+.empty-readiness-panel {
+  display: grid;
+  gap: 12px;
+  border: 1px solid #d5e1ef;
+  border-radius: 10px;
+  background: #fff;
+  padding: 14px;
+  box-shadow: var(--shadow-soft);
+}
+
+.empty-readiness-panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.empty-readiness-panel header > div:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.empty-readiness-panel span,
+.empty-readiness-gates span {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.empty-readiness-panel strong {
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.25;
+}
+
+.empty-readiness-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.empty-readiness-actions button {
+  min-height: 32px;
+  border: 1px solid #c9d9ff;
+  border-radius: 7px;
+  background: #f2f6ff;
+  color: var(--accent);
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.empty-readiness-actions button:first-child {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.empty-readiness-gates {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.empty-readiness-gates section {
+  position: relative;
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  border-radius: 8px;
+  background: var(--surface-soft);
+  padding: 11px 12px;
+}
+
+.empty-readiness-gates section.pass {
+  border-left-color: var(--success);
+  background: rgba(20, 150, 74, 0.06);
+}
+
+.empty-readiness-gates section.warn {
+  border-left-color: var(--warning);
+  background: rgba(169, 93, 0, 0.06);
+}
+
+.empty-readiness-gates section.block {
+  border-left-color: var(--danger);
+  background: rgba(217, 45, 32, 0.05);
+}
+
+.empty-readiness-gates strong {
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.empty-readiness-gates small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .empty-route-grid {
   display: grid;
   grid-template-columns: 1.25fr 1fr 1fr;
@@ -2288,7 +2393,8 @@ button:disabled {
 
 @container (max-width: 760px) {
   .empty-hero,
-  .empty-route-grid {
+  .empty-route-grid,
+  .empty-readiness-gates {
     grid-template-columns: 1fr;
   }
 

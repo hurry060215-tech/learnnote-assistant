@@ -1292,6 +1292,59 @@ function healthMediaChipText(data) {
   return "后端 · 直取/切片就绪";
 }
 
+function emptyReadinessItems(data = lastHealthData) {
+  const backendReady = Boolean(data?.ffmpeg);
+  return [
+    {
+      state: backendReady ? "pass" : "block",
+      label: "后端媒体门",
+      value: backendReady ? healthMediaChipText(data) : "后端未就绪",
+      detail: backendReady
+        ? "可以下载、合并、转音频、抽帧和生成本地 media.mp4。"
+        : "先启动 127.0.0.1 后端并确认 ffmpeg 可用。"
+    },
+    {
+      state: healthVisionReady(data) ? "pass" : "warn",
+      label: "视觉总结门",
+      value: healthVisionReady(data) ? healthVisionChipText(data) : "API Key 待填",
+      detail: healthVisionReady(data)
+        ? "切片网格会和转写片段一起进入多模态总结。"
+        : "仍会生成转写、截图网格和本地索引，配置模型后再启用图文总结。"
+    },
+    {
+      state: "pass",
+      label: "本地视频门",
+      value: "拖拽自动上传",
+      detail: "平台直取失败时，mp4、mkv、webm、flv、avi 可走同一套切片管线。"
+    },
+    {
+      state: "warn",
+      label: "当前页直取门",
+      value: "需要扩展侧栏",
+      detail: "只使用可访问媒体 URL、manifest、播放器源和一次性 cookie，不录制页面。"
+    }
+  ];
+}
+
+function emptyReadinessGatesHtml(data = lastHealthData) {
+  return `<div class="empty-readiness-gates" data-empty-readiness aria-label="准备度审计门">
+    ${emptyReadinessItems(data).map(item => `<section class="${escapeHtml(item.state)}">
+      <span>${escapeHtml(item.label)}</span>
+      <strong>${escapeHtml(item.value)}</strong>
+      <small>${escapeHtml(item.detail)}</small>
+    </section>`).join("")}
+  </div>`;
+}
+
+function refreshEmptyWorkbenchReadiness() {
+  const node = document.querySelector("[data-empty-readiness]");
+  if (node) node.innerHTML = emptyReadinessItems().map(item => `<section class="${escapeHtml(item.state)}">
+    <span>${escapeHtml(item.label)}</span>
+    <strong>${escapeHtml(item.value)}</strong>
+    <small>${escapeHtml(item.detail)}</small>
+  </section>`).join("");
+}
+
 function updateHealthVisionStatus(data = lastHealthData) {
   if (!data || !els.browserBridgeStatus) return;
   const mediaText = String(els.browserBridgeStatus.dataset.mediaText || els.browserBridgeStatus.textContent || "").trim();
@@ -1320,6 +1373,7 @@ async function checkHealth() {
           : "扩展读取播放器、媒体请求和一次性 cookie，后端只下载可访问的视频地址。"
         : "后端已连接，但 ffmpeg 缺失；当前页直取后无法完成合并/切片。";
       updateHealthVisionStatus(data);
+      refreshEmptyWorkbenchReadiness();
     }
   } catch {
     els.health.className = "health bad";
@@ -1327,6 +1381,7 @@ async function checkHealth() {
     if (els.browserBridgeStatus) {
       els.browserBridgeStatus.textContent = "先启动本地后端，再从扩展 Side Panel 创建当前页任务。";
     }
+    refreshEmptyWorkbenchReadiness();
   }
 }
 
@@ -2705,6 +2760,21 @@ function emptyResultWorkbench() {
         <span><b>04</b>图文总结</span>
       </div>
 
+      <section class="empty-readiness-panel" aria-label="准备度审计">
+        <header>
+          <div>
+            <span>审计门</span>
+            <strong>先看这条链路现在能不能跑通</strong>
+          </div>
+          <div class="empty-readiness-actions">
+            <button type="button" data-empty-source="local">本地视频兜底</button>
+            <button type="button" data-empty-action="copy-backend">复制后端地址</button>
+            <button type="button" data-empty-action="open-options">处理参数</button>
+          </div>
+        </header>
+        ${emptyReadinessGatesHtml()}
+      </section>
+
       <div class="empty-route-grid" aria-label="开始路线">
         <section class="empty-route-card primary">
           <div>
@@ -2755,6 +2825,18 @@ function bindEmptyWorkbenchActions() {
     button.onclick = () => {
       setSource(button.dataset.emptySource);
       document.querySelector(".workspace-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    };
+  });
+  document.querySelectorAll("[data-empty-action]").forEach(button => {
+    button.onclick = async () => {
+      if (button.dataset.emptyAction === "copy-backend") {
+        await copyBackendUrl(button);
+        return;
+      }
+      if (button.dataset.emptyAction === "open-options") {
+        if (els.optionsDisclosure) els.optionsDisclosure.open = true;
+        els.optionsDisclosure?.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
+      }
     };
   });
 }
