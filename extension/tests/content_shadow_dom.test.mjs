@@ -144,6 +144,7 @@ host.shadowRoot = shadowRoot;
 const html = new FakeElement("html", {}, [host]);
 
 let messageListener = null;
+let windowMessageListener = null;
 const observedRoots = [];
 const observeOptions = [];
 const context = {
@@ -206,12 +207,34 @@ const context = {
 };
 
 context.window = context;
-context.window.addEventListener = () => {};
+context.window.addEventListener = (name, listener) => {
+  if (name === "message") {
+    windowMessageListener = listener;
+    context.__learnNoteWindowMessageListener = listener;
+  }
+};
 context.window.postMessage = () => {};
 
 vm.createContext(context);
 const contentCode = await readFile(new URL("../content.js", import.meta.url), "utf8");
 vm.runInContext(contentCode, context);
+
+context.__learnNoteHookEventData = {
+  source: "learnnote-page-hook",
+  resources: [{
+    url: "https://course.example.com/api/post-play",
+    source: "pageHookBody",
+    kind: "hls",
+    mime: "application/vnd.apple.mpegurl",
+    score: 96,
+    method: "POST",
+    request_type: "fetch",
+    request_headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    request_body: { type: "text", content: "lesson=shadow&token=ok" }
+  }]
+};
+assert.ok(windowMessageListener, "expected content script to install page hook bridge");
+vm.runInContext("__learnNoteWindowMessageListener({ source: window, data: __learnNoteHookEventData })", context);
 
 let response = null;
 messageListener({ type: "collect-page-data" }, {}, data => {
@@ -235,6 +258,12 @@ assert.ok(urls.has("https://cdn.example.com/api/current?id=shadow&token=1"));
 assert.ok(urls.has("https://cdn.example.com/shadow/playlist.m3u8?token=1"));
 assert.ok(urls.has("https://cdn.example.com/shadow/captions.vtt"));
 assert.ok(urls.has("https://course.example.com/player?video=shadow"));
+const hookPostResource = response.resources.find(item => item.url === "https://course.example.com/api/post-play");
+assert.ok(hookPostResource, `expected page hook POST resource, got ${JSON.stringify(response.resources.map(item => [item.url, item.source, item.kind, item.score]).slice(0, 12))}`);
+assert.equal(hookPostResource.method, "POST");
+assert.equal(hookPostResource.request_type, "fetch");
+assert.equal(hookPostResource.request_headers["Content-Type"], "application/x-www-form-urlencoded");
+assert.equal(hookPostResource.request_body.content, "lesson=shadow&token=ok");
 const activeVideoResource = response.resources.find(item => item.url === "https://cdn.example.com/api/current?id=shadow&token=1");
 assert.equal(activeVideoResource.kind, "video");
 assert.equal(activeVideoResource.mime, "video/mp4");

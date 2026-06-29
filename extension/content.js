@@ -369,6 +369,7 @@ function rememberHookResource(item) {
   normalized.time_stamp = item.time_stamp ?? normalized.time_stamp ?? Date.now();
   normalized.headers = item.headers || {};
   normalized.request_headers = item.request_headers || {};
+  normalized.request_body = item.request_body || {};
   const existing = hookResources.find(entry => entry.url === normalized.url);
   if (existing) {
     Object.assign(existing, normalized, {
@@ -383,7 +384,8 @@ function rememberHookResource(item) {
       initiator: normalized.initiator || existing.initiator || "",
       time_stamp: Math.max(existing.time_stamp || 0, normalized.time_stamp || 0) || null,
       headers: { ...(existing.headers || {}), ...(normalized.headers || {}) },
-      request_headers: { ...(existing.request_headers || {}), ...(normalized.request_headers || {}) }
+      request_headers: { ...(existing.request_headers || {}), ...(normalized.request_headers || {}) },
+      request_body: { ...(existing.request_body || {}), ...(normalized.request_body || {}) }
     });
   } else {
     hookResources.unshift(normalized);

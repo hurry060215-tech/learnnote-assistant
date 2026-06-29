@@ -32,6 +32,8 @@
   const B64ISH_RE = /^[A-Za-z0-9+/_=-]{16,}$/;
   const MAX_TEXT_BYTES = 2 * 1024 * 1024;
   const MAX_BLOB_URLS = 80;
+  const MAX_REQUEST_BODY_BYTES = 64 * 1024;
+  const REQUEST_BODY_REPLAY_METHODS = new Set(["POST", "PUT", "PATCH"]);
   const RESPONSE_HEADER_ALLOWLIST = ["accept-ranges", "content-disposition", "content-length", "content-range", "content-type"];
   const REQUEST_HEADER_ALLOWLIST = new Set([
     "accept",
@@ -156,6 +158,7 @@
         initiator: item.initiator || "",
         headers: item.headers || {},
         request_headers: item.request_headers || {},
+        request_body: item.request_body || {},
         time_stamp: Date.now()
       });
     }
@@ -174,7 +177,8 @@
           content_length: item.content_length ?? existing.content_length ?? null,
           initiator: item.initiator || existing.initiator || "",
           headers: { ...(existing.headers || {}), ...(item.headers || {}) },
-          request_headers: { ...(existing.request_headers || {}), ...(item.request_headers || {}) }
+          request_headers: { ...(existing.request_headers || {}), ...(item.request_headers || {}) },
+          request_body: { ...(existing.request_body || {}), ...(item.request_body || {}) }
         });
       } else {
         bufferedResources.unshift(item);
@@ -267,15 +271,82 @@
     };
   }
 
-  function fetchResponseMeta(response, url = "", requestHeaders = {}) {
+  function fetchRequestMethod(input, init = {}) {
+    return String(init?.method || input?.method || "GET").toUpperCase();
+  }
+
+  function utf8ByteLength(value) {
+    const text = String(value ?? "");
+    try {
+      if (typeof TextEncoder !== "undefined") return new TextEncoder().encode(text).byteLength;
+    } catch {
+      // Fall through to URL-encoded byte estimate.
+    }
+    try {
+      return unescape(encodeURIComponent(text)).length;
+    } catch {
+      return text.length;
+    }
+  }
+
+  function requestBodyFromText(content, type = "text") {
+    const text = String(content ?? "");
+    if (!text) return {};
+    if (utf8ByteLength(text) > MAX_REQUEST_BODY_BYTES) return {};
+    return { type, content: text };
+  }
+
+  function requestBodyFromBuffer(value) {
+    try {
+      const view = ArrayBuffer.isView(value)
+        ? new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
+        : value instanceof ArrayBuffer
+          ? new Uint8Array(value)
+          : null;
+      if (!view || view.byteLength > MAX_REQUEST_BODY_BYTES) return {};
+      if (typeof TextDecoder === "undefined") return {};
+      return requestBodyFromText(new TextDecoder("utf-8").decode(view), "bytes");
+    } catch {
+      return {};
+    }
+  }
+
+  function requestBodyFromFormData(body) {
+    try {
+      const params = new URLSearchParams();
+      for (const [name, value] of body.entries()) {
+        if (typeof value !== "string") return {};
+        params.append(name, value);
+        if (utf8ByteLength(params.toString()) > MAX_REQUEST_BODY_BYTES) return {};
+      }
+      return requestBodyFromText(params.toString(), "form");
+    } catch {
+      return {};
+    }
+  }
+
+  function fetchRequestBody(method, init = {}) {
+    if (!REQUEST_BODY_REPLAY_METHODS.has(method)) return {};
+    const body = init?.body;
+    if (body === undefined || body === null) return {};
+    if (typeof body === "string") return requestBodyFromText(body, "text");
+    if (typeof URLSearchParams !== "undefined" && body instanceof URLSearchParams) return requestBodyFromText(body.toString(), "form");
+    if (typeof FormData !== "undefined" && body instanceof FormData) return requestBodyFromFormData(body);
+    if (typeof ArrayBuffer !== "undefined" && (body instanceof ArrayBuffer || ArrayBuffer.isView(body))) return requestBodyFromBuffer(body);
+    return {};
+  }
+
+  function fetchResponseMeta(response, url = "", requestHeaders = {}, method = "", requestBody = {}) {
     const headers = safeResponseHeaders(name => response.headers?.get?.(name) || "");
     return {
       request_type: "fetch",
+      method,
       status_code: response.status ?? null,
       content_length: numericHeader(headers, "content-length"),
       initiator: response.url || url || "",
       headers,
-      request_headers: requestHeaders
+      request_headers: requestHeaders,
+      request_body: requestBody
     };
   }
 
@@ -319,7 +390,8 @@
       content_length: item.content_length ?? meta.content_length ?? null,
       initiator: item.initiator || meta.initiator || "",
       headers: { ...(item.headers || {}), ...(meta.headers || {}) },
-      request_headers: { ...(item.request_headers || {}), ...(meta.request_headers || {}) }
+      request_headers: { ...(item.request_headers || {}), ...(meta.request_headers || {}) },
+      request_body: { ...(item.request_body || {}), ...(meta.request_body || {}) }
     };
   }
 
@@ -1311,7 +1383,8 @@
       const response = await originalFetch.apply(this, args);
       const url = response.url || requestUrl(args[0]);
       const mime = response.headers?.get?.("content-type") || "";
-      const meta = fetchResponseMeta(response, url, fetchRequestHeaders(args[0], args[1] || {}));
+      const method = fetchRequestMethod(args[0], args[1] || {});
+      const meta = fetchResponseMeta(response, url, fetchRequestHeaders(args[0], args[1] || {}), method, fetchRequestBody(method, args[1] || {}));
       rememberResponseMeta(response, meta);
       emit([applyResponseMeta({ url, source: "pageHookRequest", label: "fetch", mime }, meta)]);
       try {

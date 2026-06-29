@@ -54,7 +54,14 @@ vm.createContext(context);
 const hookCode = await readFile(new URL("../page_hook.js", import.meta.url), "utf8");
 vm.runInContext(hookCode, context);
 
-await context.fetch("https://course.example.com/api/play?lesson=1");
+await context.fetch("https://course.example.com/api/play?lesson=1", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/x-www-form-urlencoded",
+    "X-Requested-With": "XMLHttpRequest"
+  },
+  body: "lesson=1&token=ok"
+});
 await new Promise(resolve => setTimeout(resolve, 0));
 
 const resources = messages.flatMap(message => message.resources || []);
@@ -64,3 +71,8 @@ assert.ok(hls, "expected octet-stream extensionless manifest body to expose resp
 assert.equal(hls.kind, "hls");
 assert.equal(hls.source, "pageHookBody");
 assert.match(hls.label, /fetch body manifest|fetch text manifest/);
+assert.equal(hls.method, "POST");
+assert.equal(hls.request_headers["Content-Type"], "application/x-www-form-urlencoded");
+assert.equal(hls.request_headers["X-Requested-With"], "XMLHttpRequest");
+assert.equal(hls.request_body.type, "text");
+assert.equal(hls.request_body.content, "lesson=1&token=ok");
