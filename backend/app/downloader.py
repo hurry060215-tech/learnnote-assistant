@@ -486,6 +486,29 @@ def _json_media_resources(node: object, base_url: str, source: str, key_path: li
                             )
                             seen.add(url)
                             break
+            if isinstance(value, str) and not JSON_MEDIA_KEY_RE.search(str(key)):
+                for candidate_value in _decoded_media_values(value):
+                    if not _looks_like_json_url_candidate(candidate_value):
+                        continue
+                    url = normalize_media_url(candidate_value, base_url)
+                    if not url or url in seen:
+                        continue
+                    kind, mime = _json_context_kind(next_path, url, node)
+                    if kind == "unknown":
+                        continue
+                    resources.append(
+                        ResourceCandidate(
+                            url=url,
+                            source=source,
+                            kind=kind,
+                            mime=mime,
+                            score=score_resource(url, mime, source),
+                            label=f"json {'/'.join(next_path[-3:])}",
+                            request_headers={"Referer": base_url},
+                        )
+                    )
+                    seen.add(url)
+                    break
             if isinstance(value, str) and len(key_path) < 12:
                 for candidate_text in _decoded_media_values(value):
                     nested_text = html.unescape(candidate_text).strip()

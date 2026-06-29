@@ -284,6 +284,22 @@ class ResourceDetectionTests(unittest.TestCase):
         self.assertEqual(by_label["json lesson/playUrl"].url, "https://course.example.com/api/playback/getVideo?id=42&token=abc")
         self.assertNotIn("json lesson/coverUrl", by_label)
 
+    def test_page_scan_finds_generic_extensionless_json_value_with_mime(self) -> None:
+        resources = extract_media_resources_from_text(
+            json.dumps({
+                "code": 0,
+                "data": "/api/playback/get?id=42&token=abc",
+                "mimeType": "video/mp4",
+            }),
+            "https://course.example.com/player/index.html",
+            "page-scan",
+        )
+        by_label = {resource.label: resource for resource in resources}
+
+        self.assertEqual(by_label["json data"].kind, "video")
+        self.assertEqual(by_label["json data"].mime, "video/mp4")
+        self.assertEqual(by_label["json data"].url, "https://course.example.com/api/playback/get?id=42&token=abc")
+
     def test_page_scan_finds_extensionless_media_fields_inside_script(self) -> None:
         resources = extract_media_resources_from_text(
             """

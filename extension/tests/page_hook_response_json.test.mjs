@@ -49,6 +49,10 @@ const context = {
       objectid: "https%3A%2F%2Fcdn.example.com%2Fchaoxing%2Fmaster.m3u8%3Ftoken%3Dobject",
       dtoken: "/api/ananas/video?id=42&dtoken=abc",
       mediaType: "video/mp4"
+    },
+    generic: {
+      data: "/api/playback/get?id=77&token=generic",
+      mimeType: "video/mp4"
     }
   }),
   setTimeout,
@@ -80,6 +84,7 @@ const resources = messages.flatMap(message => message.resources || []);
 const hls = resources.find(resource => resource.url === "https://cdn.example.com/json/master.m3u8?token=fetch-json");
 const objectHls = resources.find(resource => resource.url === "https://cdn.example.com/chaoxing/master.m3u8?token=object");
 const dtokenVideo = resources.find(resource => resource.url === "https://course.example.com/api/ananas/video?id=42&dtoken=abc");
+const genericVideo = resources.find(resource => resource.url === "https://course.example.com/api/playback/get?id=77&token=generic");
 
 assert.ok(hls, "expected Response.json() body to expose the encoded HLS URL");
 assert.equal(hls.kind, "hls");
@@ -104,3 +109,9 @@ assert.ok(dtokenVideo, "expected Chaoxing-style dtoken field with video context 
 assert.equal(dtokenVideo.kind, "video");
 assert.equal(dtokenVideo.mime, "video/mp4");
 assert.equal(dtokenVideo.request_headers.Cookie, undefined);
+
+assert.ok(genericVideo, "expected generic JSON data field with sibling mimeType to expose extensionless video endpoint");
+assert.equal(genericVideo.kind, "video");
+assert.equal(genericVideo.mime, "video/mp4");
+assert.match(genericVideo.label, /fetch json/);
+assert.equal(genericVideo.request_headers.Cookie, undefined);

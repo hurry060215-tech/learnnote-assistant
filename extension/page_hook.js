@@ -501,6 +501,25 @@
           }
         }
       }
+      if (typeof value === "string" && !JSON_MEDIA_KEY_RE.test(key)) {
+        for (const candidateValue of decodedMediaValues(value)) {
+          if (!looksLikeJsonUrlCandidate(candidateValue)) continue;
+          const url = normalizeUrl(candidateValue);
+          if (!url || seen.has(url)) continue;
+          const { kind, mime } = kindFromJsonContext(nextKeys, url, node);
+          if (kind === "unknown") continue;
+          seen.add(url);
+          output.push(applyResponseMeta({
+            url,
+            source,
+            kind,
+            mime,
+            label: `${label} json ${nextKeys.slice(-3).join("/")}`,
+            score: kind === "hls" || kind === "dash" ? 97 : kind === "video" ? 89 : 64
+          }, meta));
+          break;
+        }
+      }
       if (typeof value === "string" && !JSON_MEDIA_KEY_RE.test(key) && keys.length < 12) {
         for (const candidateText of decodedMediaValues(value)) {
           const trimmed = String(candidateText || "").trim();
