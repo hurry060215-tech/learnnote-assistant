@@ -8,6 +8,7 @@ import re
 import subprocess
 import time
 from base64 import b64decode, urlsafe_b64decode
+from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import unquote, urljoin, urlparse, urlunparse
 
@@ -622,6 +623,105 @@ def extract_media_resources_from_encoded_url_text(
     return resources
 
 
+def _declared_media_kind(hint: str, url: str) -> tuple[str, str]:
+    kind = classify_resource(url)
+    if kind != "unknown":
+        return kind, _mime_for_kind(kind)
+    context = hint.lower()
+    if "mpegurl" in context or "x-mpegurl" in context or "m3u8" in context or "hls" in context:
+        return "hls", "application/vnd.apple.mpegurl"
+    if "dash+xml" in context or "mpd" in context or "dash" in context:
+        return "dash", "application/dash+xml"
+    if "text/vtt" in context or "subrip" in context or "subtitle" in context or "caption" in context:
+        return "subtitle", "text/vtt"
+    if "video/" in context or "audio/" in context or re.search(r"\b(video|audio|media|player|play|stream)\b", context):
+        return "video", "video/mp4"
+    return "unknown", ""
+
+
+class _DeclaredMediaHTMLParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.hints: list[tuple[str, str, str]] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if len(self.hints) >= 80:
+            return
+        tag = tag.lower()
+        values = {str(name).lower(): str(value or "") for name, value in attrs if name}
+        if tag == "link":
+            href = values.get("href", "")
+            rel = values.get("rel", "").lower()
+            as_attr = values.get("as", "").lower()
+            type_attr = values.get("type", "")
+            if not href or not re.search(r"(^|\s)(preload|prefetch|modulepreload|prerender)(\s|$)", rel):
+                return
+            if as_attr in {"video", "audio"}:
+                self.hints.append((href, f"{rel} {as_attr} {type_attr} media", f"html link {rel} as={as_attr}"))
+            elif re.search(r"mpegurl|dash\+xml|video/|audio/", type_attr, re.I):
+                self.hints.append((href, f"{rel} {type_attr}", f"html link {rel} {type_attr}"))
+            elif as_attr == "fetch" and _media_endpoint_hint(href):
+                self.hints.append((href, f"{rel} fetch play media", f"html link {rel} as=fetch"))
+        elif tag == "meta":
+            content = values.get("content", "")
+            key = " ".join([values.get("property", ""), values.get("name", ""), values.get("itemprop", "")])
+            if content and re.search(r"og:video|og:audio|twitter:player:stream|twitter:player|video|media|stream|hls|dash|m3u8|mpd", key, re.I):
+                self.hints.append((content, f"{key} media", f"html meta {key.strip()}"))
+        elif tag == "object":
+            value = values.get("data", "")
+            type_attr = values.get("type", "")
+            if value and re.search(r"video/|audio/|mpegurl|dash\+xml|media|player|stream", f"{type_attr} {value}", re.I):
+                self.hints.append((value, f"{type_attr} object media", "html object data"))
+        elif tag == "embed":
+            value = values.get("src", "")
+            type_attr = values.get("type", "")
+            if value and re.search(r"video/|audio/|mpegurl|dash\+xml|media|player|stream", f"{type_attr} {value}", re.I):
+                self.hints.append((value, f"{type_attr} embed media", "html embed src"))
+
+
+def extract_declared_media_resources_from_html(
+    text: str,
+    base_url: str,
+    source: str = "page-scan",
+    seen: set[str] | None = None,
+) -> list[ResourceCandidate]:
+    if not text or "<" not in text:
+        return []
+    parser = _DeclaredMediaHTMLParser()
+    try:
+        parser.feed((text or "")[:MAX_PAGE_SCAN_BYTES])
+    except Exception:
+        return []
+    resources: list[ResourceCandidate] = []
+    seen = seen if seen is not None else set()
+    for value, hint, label in parser.hints:
+        for raw_url in _decoded_media_values(value):
+            if not _looks_like_json_url_candidate(raw_url):
+                continue
+            url = normalize_media_url(raw_url, base_url)
+            if not url or url in seen:
+                continue
+            kind, mime = _declared_media_kind(hint, url)
+            if kind == "unknown":
+                continue
+            resources.append(
+                ResourceCandidate(
+                    url=url,
+                    source=source,
+                    kind=kind,
+                    mime=mime,
+                    score=score_resource(url, mime, source),
+                    label=label,
+                    request_headers={"Referer": base_url},
+                )
+            )
+            seen.add(url)
+            break
+        if len(resources) >= 60:
+            break
+    return resources
+
+
 def _media_scan_text_variants(text: str) -> list[str]:
     body = str(text or "")
     variants = [body]
@@ -639,6 +739,7 @@ def extract_media_resources_from_text(text: str, base_url: str, source: str = "p
     for resource in resources:
         seen.add(resource.url)
     for searchable in _media_scan_text_variants(text):
+        resources.extend(extract_declared_media_resources_from_html(searchable, base_url, source, seen))
         resources.extend(extract_media_resources_from_field_text(searchable, base_url, source, seen))
         resources.extend(extract_media_resources_from_encoded_url_text(searchable, base_url, source, seen))
         if not TEXT_MEDIA_HINT_RE.search(searchable):

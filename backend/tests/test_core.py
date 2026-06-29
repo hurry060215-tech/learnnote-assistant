@@ -330,6 +330,30 @@ class ResourceDetectionTests(unittest.TestCase):
         self.assertEqual(by_label["field hls"].url, "https://course.example.com/stream?lesson=1&token=abc")
         self.assertEqual(by_label["field dashUrl"].mime, "application/dash+xml")
 
+    def test_page_scan_finds_extensionless_declared_media_hints(self) -> None:
+        resources = extract_media_resources_from_text(
+            """
+            <html>
+              <head>
+                <link rel="preload" as="video" href="/opaque/video-stream?id=preload">
+                <link rel="preload" type="application/dash+xml" href="/opaque/manifest?id=dash">
+                <link rel="prefetch" as="fetch" href="/api/play?id=prefetch">
+                <meta property="og:video" content="/opaque/og-stream?id=meta">
+              </head>
+            </html>
+            """,
+            "https://course.example.com/player/index.html",
+            "page-scan",
+        )
+        by_label = {resource.label: resource for resource in resources}
+
+        self.assertEqual(by_label["html link preload as=video"].kind, "video")
+        self.assertEqual(by_label["html link preload as=video"].url, "https://course.example.com/opaque/video-stream?id=preload")
+        self.assertEqual(by_label["html link preload application/dash+xml"].kind, "dash")
+        self.assertEqual(by_label["html link preload application/dash+xml"].mime, "application/dash+xml")
+        self.assertEqual(by_label["html link prefetch as=fetch"].kind, "video")
+        self.assertEqual(by_label["html meta og:video"].kind, "video")
+
     def test_page_scan_decodes_js_escaped_media_fields_inside_script(self) -> None:
         resources = extract_media_resources_from_text(
             r"""
