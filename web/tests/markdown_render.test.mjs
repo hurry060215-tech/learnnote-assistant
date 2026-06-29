@@ -658,6 +658,8 @@ assert.match(taskOverviewHtml, /媒体门/);
 assert.match(taskOverviewHtml, /转写门/);
 assert.match(taskOverviewHtml, /切片门/);
 assert.match(taskOverviewHtml, /总结门/);
+assert.match(taskOverviewHtml, /pipeline-audit-actions/);
+assert.match(taskOverviewHtml, /data-rerun-from-media="task-web-overview"/);
 assert.doesNotMatch(taskOverviewHtml, /<script>bad/);
 assert.match(taskOverviewHtml, /&lt;script&gt;bad\(\)&lt;\/script&gt; 课程/);
 
@@ -686,6 +688,7 @@ const unsafeAuditHtml = context.pipelineAuditHtml({
 });
 assert.match(unsafeAuditHtml, /&lt;script&gt;bad\(\)&lt;\/script&gt;/);
 assert.doesNotMatch(unsafeAuditHtml, /<script>bad/);
+assert.match(unsafeAuditHtml, /data-recovery-source="local"/);
 const fallbackTaskOverviewHtml = context.taskOverview({
   id: "task-web-fallback",
   title: "直取失败课程",

@@ -2657,6 +2657,30 @@ input[type="file"] {
   line-height: 1.35;
 }
 
+.pipeline-audit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 4px;
+}
+
+.pipeline-audit-actions button {
+  min-height: 25px;
+  border: 1px solid #c8d8ee;
+  border-radius: 7px;
+  background: #ffffff;
+  color: var(--accent);
+  padding: 0 7px;
+  font-size: 10px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.pipeline-audit-actions button:hover {
+  border-color: var(--accent);
+  background: #edf4ff;
+}
+
 .next-step-card {
   display: grid;
   gap: 8px;

@@ -2684,6 +2684,30 @@ button:disabled {
   line-height: 1.35;
 }
 
+.pipeline-audit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.pipeline-audit-actions button {
+  min-height: 28px;
+  border: 1px solid #c8d8ee;
+  border-radius: 7px;
+  background: #ffffff;
+  color: var(--accent);
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.pipeline-audit-actions button:hover {
+  border-color: var(--accent);
+  background: #edf4ff;
+}
+
 .next-step-card {
   grid-column: 1 / -1;
   display: grid;

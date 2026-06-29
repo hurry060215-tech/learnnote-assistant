@@ -2003,6 +2003,50 @@ function pipelineAuditItems(task) {
   return mergeBackendAuditItems(task, items);
 }
 
+function pipelineAuditActionHtml(task, item) {
+  if (!task || !item) return "";
+  const actions = [];
+  const state = String(item.state || "");
+  const blocked = state === "fail" || state === "warn";
+
+  if (item.key === "media") {
+    if (canContinueFromDownloadedMedia(task)) {
+      actions.push(`<button type="button" data-rerun-from-media="${escapeHtml(task.id)}">继续总结</button>`);
+    } else if (task.media_path) {
+      actions.push(`<button type="button" data-switch-result-tab="diagnostics">看证据</button>`);
+    } else if (blocked || task.status === "failed") {
+      actions.push(`<button type="button" data-switch-result-tab="diagnostics">看失败原因</button>`);
+      actions.push(`<button type="button" data-recovery-source="local">本地兜底</button>`);
+    }
+  } else if (item.key === "transcript") {
+    if (task.transcript_path) {
+      actions.push(`<button type="button" data-switch-result-tab="transcript">核对转写</button>`);
+    } else if (canContinueFromDownloadedMedia(task)) {
+      actions.push(`<button type="button" data-rerun-from-media="${escapeHtml(task.id)}">开始转写</button>`);
+    } else if (blocked || task.status === "failed") {
+      actions.push(`<button type="button" data-switch-result-tab="diagnostics">看诊断</button>`);
+    }
+  } else if (item.key === "visual") {
+    if (visualWindows(task).length || task.frame_grids?.length) {
+      actions.push(`<button type="button" data-switch-result-tab="frames">看切片</button>`);
+    } else if (blocked || task.status === "failed") {
+      actions.push(`<button type="button" data-switch-result-tab="diagnostics">看诊断</button>`);
+    }
+  } else if (item.key === "summary") {
+    if (task.note_path) {
+      actions.push(`<button type="button" data-switch-result-tab="note">读笔记</button>`);
+    } else if (blocked || task.status === "failed") {
+      actions.push(`<button type="button" data-switch-result-tab="diagnostics">看诊断</button>`);
+    }
+  } else if (item.key === "source" && (blocked || task.status === "failed")) {
+    actions.push(`<button type="button" data-switch-result-tab="diagnostics">看来源证据</button>`);
+    actions.push(`<button type="button" data-recovery-source="local">本地兜底</button>`);
+  }
+
+  if (!actions.length) return "";
+  return `<div class="pipeline-audit-actions">${actions.join("")}</div>`;
+}
+
 function pipelineAuditHtml(task) {
   const items = pipelineAuditItems(task);
   return `<section class="pipeline-audit" aria-label="阶段审计门">
@@ -2015,6 +2059,7 @@ function pipelineAuditHtml(task) {
         <b>${escapeHtml(item.label)}</b>
         <strong>${escapeHtml(item.value || "-")}</strong>
         <small>${escapeHtml(item.detail || "-")}</small>
+        ${pipelineAuditActionHtml(task, item)}
       </article>`).join("")}
     </div>
   </section>`;
