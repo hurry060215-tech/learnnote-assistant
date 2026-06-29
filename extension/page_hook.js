@@ -1193,10 +1193,10 @@
     }
   }
 
-  function shouldInspectResponse(response) {
+  function shouldInspectResponse(response, fallbackUrl = "") {
     const type = response.headers?.get?.("content-type") || "";
     const length = Number(response.headers?.get?.("content-length") || 0);
-    return shouldInspectTextPayload(response.url || "", type, length);
+    return shouldInspectTextPayload(response.url || fallbackUrl || "", type, length);
   }
 
   function shouldInspectTextPayload(url, contentType = "", contentLength = 0) {
@@ -1213,6 +1213,40 @@
       return "";
     }
     return "";
+  }
+
+  function responseSourceUrl(response, fallbackUrl = "") {
+    const meta = responseMeta(response, fallbackUrl);
+    return response?.url || meta?.initiator || fallbackUrl || "";
+  }
+
+  function responseBlobSourceMeta(response, fallbackUrl, mime, source, label) {
+    const meta = responseMeta(response, fallbackUrl);
+    const sourceUrl = responseSourceUrl(response, fallbackUrl);
+    return applyResponseMeta(blobMeta(sourceUrl, mime, source, label), meta);
+  }
+
+  function inspectCacheResponse(response, request, label) {
+    if (!response || typeof response !== "object") return;
+    const url = response.url || requestUrl(request);
+    const mime = response.headers?.get?.("content-type") || "";
+    const meta = fetchResponseMeta(response, url, normalizeRequestHeaderMap(request?.headers));
+    rememberResponseMeta(response, meta);
+    emit([applyResponseMeta({ url: responseSourceUrl(response, url), source: "pageHookCache", label, mime }, meta)]);
+    try {
+      rememberStreamObject(response.body, blobMeta(responseSourceUrl(response, url), mime, "pageHookCache", "cache response stream"));
+    } catch {
+      // Cache responses may expose locked or synthetic bodies.
+    }
+    if (shouldInspectResponse(response, url)) {
+      try {
+        response.clone().text()
+          .then(text => extractUrlsFromText(text.slice(0, MAX_TEXT_BYTES), "pageHookCache", `${label} body`, mime, responseSourceUrl(response, url), meta))
+          .catch(() => {});
+      } catch {
+        // Cache response clones are optional and can fail for opaque responses.
+      }
+    }
   }
 
   if (typeof window.fetch === "function") {
@@ -1248,7 +1282,7 @@
       const blob = await originalResponseBlob.apply(this, args);
       try {
         const mime = blob?.type || this.headers?.get?.("content-type") || "";
-        const meta = blobMeta(this.url || "", mime, "pageHookBlob", "fetch blob source");
+        const meta = responseBlobSourceMeta(this, this.url || "", mime, "pageHookBlob", "fetch blob source");
         rememberBlobObject(blob, meta);
       } catch {
         // Keep the host page's response consumption behavior unchanged.
@@ -1293,7 +1327,7 @@
       const buffer = await originalResponseArrayBuffer.apply(this, args);
       try {
         const mime = this.headers?.get?.("content-type") || "";
-        const meta = blobMeta(this.url || "", mime, "pageHookBlob", "fetch arrayBuffer source");
+        const meta = responseBlobSourceMeta(this, this.url || "", mime, "pageHookBlob", "fetch arrayBuffer source");
         rememberBlobPartObject(buffer, meta);
       } catch {
         // Keep the host page's response consumption behavior unchanged.
@@ -1339,6 +1373,105 @@
 
   patchStreamReaderRead(window.ReadableStreamDefaultReader);
   patchStreamReaderRead(window.ReadableStreamBYOBReader);
+
+  function patchCacheInstance(cache) {
+    if (!cache || typeof cache !== "object" || cache.__learnNoteCachePatched) return cache;
+    if (typeof cache.put === "function") {
+      const originalPut = cache.put;
+      cache.put = function (request, response, ...rest) {
+        try {
+          inspectCacheResponse(response, request, "cache put");
+        } catch {
+          // Cache writes must stay transparent.
+        }
+        return originalPut.call(this, request, response, ...rest);
+      };
+    }
+    if (typeof cache.match === "function") {
+      const originalMatch = cache.match;
+      cache.match = async function (request, ...rest) {
+        const response = await originalMatch.call(this, request, ...rest);
+        try {
+          inspectCacheResponse(response, request, "cache match");
+        } catch {
+          // Cache reads must stay transparent.
+        }
+        return response;
+      };
+    }
+    if (typeof cache.matchAll === "function") {
+      const originalMatchAll = cache.matchAll;
+      cache.matchAll = async function (request, ...rest) {
+        const responses = await originalMatchAll.call(this, request, ...rest);
+        try {
+          for (const response of responses || []) inspectCacheResponse(response, request, "cache matchAll");
+        } catch {
+          // Cache reads must stay transparent.
+        }
+        return responses;
+      };
+    }
+    if (typeof cache.add === "function") {
+      const originalAdd = cache.add;
+      cache.add = function (request, ...rest) {
+        const url = requestUrl(request);
+        if (url) emit([{ url, source: "pageHookCache", label: "cache add" }]);
+        return originalAdd.call(this, request, ...rest);
+      };
+    }
+    if (typeof cache.addAll === "function") {
+      const originalAddAll = cache.addAll;
+      cache.addAll = function (requests, ...rest) {
+        try {
+          emit(Array.from(requests || []).map(request => ({ url: requestUrl(request), source: "pageHookCache", label: "cache addAll" })));
+        } catch {
+          // Keep cache population untouched for non-iterable inputs.
+        }
+        return originalAddAll.call(this, requests, ...rest);
+      };
+    }
+    try {
+      Object.defineProperty(cache, "__learnNoteCachePatched", { value: true });
+    } catch {
+      cache.__learnNoteCachePatched = true;
+    }
+    return cache;
+  }
+
+  if (typeof window.Cache !== "undefined" && window.Cache.prototype) {
+    patchCacheInstance(window.Cache.prototype);
+  }
+
+  if (window.caches?.open && !window.caches.__learnNoteOpenPatched) {
+    const originalCachesOpen = window.caches.open;
+    window.caches.open = async function (...args) {
+      const cache = await originalCachesOpen.apply(this, args);
+      return patchCacheInstance(cache);
+    };
+    try {
+      Object.defineProperty(window.caches, "__learnNoteOpenPatched", { value: true });
+    } catch {
+      window.caches.__learnNoteOpenPatched = true;
+    }
+  }
+
+  if (window.caches?.match && !window.caches.__learnNoteMatchPatched) {
+    const originalCachesMatch = window.caches.match;
+    window.caches.match = async function (request, ...rest) {
+      const response = await originalCachesMatch.call(this, request, ...rest);
+      try {
+        inspectCacheResponse(response, request, "cache storage match");
+      } catch {
+        // CacheStorage reads must stay transparent.
+      }
+      return response;
+    };
+    try {
+      Object.defineProperty(window.caches, "__learnNoteMatchPatched", { value: true });
+    } catch {
+      window.caches.__learnNoteMatchPatched = true;
+    }
+  }
 
   if (typeof window.Blob === "function" && !window.Blob.__learnNoteOriginalBlob) {
     const OriginalBlob = window.Blob;
