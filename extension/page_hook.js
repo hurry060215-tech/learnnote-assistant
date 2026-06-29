@@ -36,6 +36,7 @@
   const REQUEST_HEADER_ALLOWLIST = new Set([
     "accept",
     "accept-language",
+    "authorization",
     "content-type",
     "origin",
     "range",
@@ -45,6 +46,7 @@
   const REQUEST_HEADER_CANONICAL = {
     "accept": "Accept",
     "accept-language": "Accept-Language",
+    "authorization": "Authorization",
     "content-type": "Content-Type",
     "origin": "Origin",
     "range": "Range",

@@ -72,6 +72,7 @@ vm.runInContext(hookCode, context);
 const response = await context.fetch("https://course.example.com/api/play", {
   headers: {
     Accept: "application/json",
+    Authorization: "Bearer fetch-token",
     "X-Requested-With": "XMLHttpRequest",
     Cookie: "secret=bad"
   }
@@ -97,6 +98,7 @@ assert.equal(hls.initiator, "https://course.example.com/api/play");
 assert.equal(hls.headers["content-type"], "application/json");
 assert.equal(hls.headers["content-length"], "4096");
 assert.equal(hls.request_headers.Accept, "application/json");
+assert.equal(hls.request_headers.Authorization, "Bearer fetch-token");
 assert.equal(hls.request_headers["X-Requested-With"], "XMLHttpRequest");
 assert.equal(hls.request_headers.Cookie, undefined);
 

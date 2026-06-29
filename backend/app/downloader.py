@@ -66,6 +66,7 @@ SUBTITLE_LANGUAGE_PREFERENCES = ("zh-CN", "zh-Hans", "zh-Hant", "zh", "en", "en-
 BROWSER_REQUEST_HEADER_ALLOWLIST = {
     "accept": "Accept",
     "accept-language": "Accept-Language",
+    "authorization": "Authorization",
     "content-type": "Content-Type",
     "origin": "Origin",
     "referer": "Referer",
@@ -98,6 +99,7 @@ YTDLP_HTTP_HEADER_ORDER = (
     "Sec-Fetch-Mode",
     "Sec-Fetch-Site",
     "X-Requested-With",
+    "Authorization",
 )
 REQUEST_BODY_REPLAY_METHODS = {"POST", "PUT", "PATCH"}
 MAX_REPLAY_BODY_BYTES = 64 * 1024

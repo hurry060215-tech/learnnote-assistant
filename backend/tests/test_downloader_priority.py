@@ -29,6 +29,7 @@ class HeaderGateHandler(QuietHandler):
     required_origin = "https://course.example.com"
     required_referer = "https://course.example.com/lesson/1"
     required_user_agent = "Chrome Test UA"
+    required_authorization = "Bearer playback-token"
     required_cookie = "AUTH=ok"
 
     def do_GET(self) -> None:
@@ -36,6 +37,7 @@ class HeaderGateHandler(QuietHandler):
             self.headers.get("Origin") != self.required_origin
             or self.headers.get("Referer") != self.required_referer
             or self.headers.get("User-Agent") != self.required_user_agent
+            or self.headers.get("Authorization") != self.required_authorization
             or self.headers.get("Cookie") != self.required_cookie
         ):
             self.send_error(403, "missing browser context")
@@ -377,6 +379,7 @@ class DownloaderPriorityTests(unittest.TestCase):
                                 "Origin": HeaderGateHandler.required_origin,
                                 "Referer": HeaderGateHandler.required_referer,
                                 "User-Agent": HeaderGateHandler.required_user_agent,
+                                "Authorization": HeaderGateHandler.required_authorization,
                             },
                         )
                     ],
@@ -391,6 +394,8 @@ class DownloaderPriorityTests(unittest.TestCase):
                 self.assertIn("请求头 Origin, Referer, User-Agent", downloader.attempts[0].message)
                 self.assertNotIn("AUTH=ok", downloader.attempts[0].message)
                 self.assertNotIn(HeaderGateHandler.required_user_agent, downloader.attempts[0].message)
+                self.assertNotIn(HeaderGateHandler.required_authorization, downloader.attempts[0].message)
+                self.assertNotIn("Authorization", downloader.attempts[0].message)
             finally:
                 server.shutdown()
                 server.server_close()

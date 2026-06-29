@@ -160,7 +160,7 @@ class ResourceDetectionTests(unittest.TestCase):
         self.assertEqual(headers["X-Requested-With"], "XMLHttpRequest")
         self.assertEqual(headers["Cookie"], "SESSION=ok")
         self.assertNotIn("Range", headers)
-        self.assertNotIn("Authorization", headers)
+        self.assertEqual(headers["Authorization"], "Bearer bad")
 
     def test_ytdlp_headers_prefer_browser_playback_context(self) -> None:
         resources = [
@@ -217,7 +217,7 @@ class ResourceDetectionTests(unittest.TestCase):
         self.assertEqual(headers["Sec-CH-UA-Platform"], '"Windows"')
         self.assertEqual(headers["X-Requested-With"], "XMLHttpRequest")
         self.assertNotIn("Cookie", headers)
-        self.assertNotIn("Authorization", headers)
+        self.assertEqual(headers["Authorization"], "Bearer bad")
 
     def test_fallback_page_urls_include_active_iframe_and_referer_context(self) -> None:
         urls = fallback_page_urls(

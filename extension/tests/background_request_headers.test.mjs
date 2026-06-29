@@ -70,7 +70,7 @@ assert.equal(headers["Sec-CH-UA-Mobile"], "?0");
 assert.equal(headers["Sec-CH-UA-Platform"], '"Windows"');
 assert.equal(headers["X-Requested-With"], "XMLHttpRequest");
 assert.equal(headers.Cookie, undefined);
-assert.equal(headers.Authorization, undefined);
+assert.equal(headers.Authorization, "Bearer bad");
 
 assert.equal(
   context.classifyCompletedRequest({
@@ -393,6 +393,7 @@ context.rememberRequestHeaders({
     { name: "Referer", value: "https://course.example.com/lesson" },
     { name: "Origin", value: "https://course.example.com" },
     { name: "User-Agent", value: "Chrome Playback UA" },
+    { name: "Authorization", value: "Bearer playback-token" },
     { name: "Content-Type", value: "application/x-www-form-urlencoded" },
     { name: "X-Requested-With", value: "XMLHttpRequest" }
   ]
@@ -416,6 +417,7 @@ context.recordResponseMedia({
 const postPlayResources = vm.runInContext("resourceByTab.get(164)", context);
 assert.equal(postPlayResources.length, 1);
 assert.equal(postPlayResources[0].method, "POST");
+assert.equal(postPlayResources[0].request_headers.Authorization, "Bearer playback-token");
 assert.equal(postPlayResources[0].request_headers["Content-Type"], "application/x-www-form-urlencoded");
 assert.equal(postPlayResources[0].request_body.type, "form");
 assert.equal(postPlayResources[0].request_body.content, "lesson=42&token=ok");

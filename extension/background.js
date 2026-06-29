@@ -12,6 +12,7 @@ const MAX_REQUEST_BODY_BYTES = 64 * 1024;
 const REQUEST_HEADER_ALLOWLIST = new Set([
   "accept",
   "accept-language",
+  "authorization",
   "content-type",
   "origin",
   "range",
@@ -29,6 +30,7 @@ const RESPONSE_HEADER_ALLOWLIST = new Set(["accept-ranges", "content-disposition
 const REQUEST_HEADER_CANONICAL = {
   "accept": "Accept",
   "accept-language": "Accept-Language",
+  "authorization": "Authorization",
   "content-type": "Content-Type",
   "origin": "Origin",
   "range": "Range",
