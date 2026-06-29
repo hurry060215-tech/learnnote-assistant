@@ -163,6 +163,7 @@ elements.get("#whisperModel").value = "whisper-1";
 elements.get("#llmModel").value = "vision-rerun";
 elements.get("#llmBaseUrl").value = "https://models.example/v1";
 elements.get("#llmApiKey").value = "sk-rerun";
+elements.get("#visualUnderstanding").checked = false;
 context.fetch = async (url, options = {}) => {
   const value = String(url);
   if (value.endsWith("/api/tasks/download-only-task/rerun-from-media")) {
@@ -208,6 +209,7 @@ await context.rerunTaskFromMedia("download-only-task");
 assert.equal(rerunPayload.frame_interval, 30);
 assert.equal(rerunPayload.grid_columns, 4);
 assert.equal(rerunPayload.grid_rows, 3);
+assert.equal(rerunPayload.visual_understanding, false);
 assert.equal(rerunPayload.llm_model, "vision-rerun");
 assert.equal(rerunPayload.llm_base_url, "https://models.example/v1");
 assert.equal(rerunPayload.llm_api_key, "sk-rerun");

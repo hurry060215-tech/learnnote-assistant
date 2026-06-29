@@ -54,6 +54,7 @@ const els = {
   redetectButton: document.querySelector("#redetectButton"),
   frameInterval: document.querySelector("#frameInterval"),
   gridSize: document.querySelector("#gridSize"),
+  visualUnderstanding: document.querySelector("#visualUnderstanding"),
   transcriber: document.querySelector("#transcriber"),
   whisperModel: document.querySelector("#whisperModel"),
   noteStyle: document.querySelector("#noteStyle"),
@@ -627,7 +628,7 @@ function readOptions() {
   syncTranscriberModelDefault();
   const [cols, rows] = els.gridSize.value.split("x").map(Number);
   const options = {
-    visual_understanding: true,
+    visual_understanding: els.visualUnderstanding?.checked !== false,
     frame_interval: Number(els.frameInterval.value || 20),
     grid_columns: cols || 3,
     grid_rows: rows || 3,
