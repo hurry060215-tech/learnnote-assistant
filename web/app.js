@@ -811,6 +811,8 @@ function statusText(task) {
 }
 
 function sourceText(task) {
+  if (task.mode === "download_only") return "当前页下载";
+  if (task.mode === "rerun_from_media") return "复用本地视频";
   if (task.source_type === "local") return "本地视频";
   if (task.source_type === "page_text") return "页面文本";
   return task.selected_resource ? `直取 · ${mediaKindText(task.selected_resource.kind) || "媒体"}` : "页面解析";

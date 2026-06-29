@@ -543,6 +543,7 @@ const taskOverviewHtml = context.taskOverview({
   phase: "completed",
   progress: 100,
   source_type: "current_page",
+  mode: "download_only",
   media_path: "D:/Projects/learnnote-assistant/data/tasks/task-web-overview/media.mp4",
   selected_resource: {
     kind: "video",
@@ -571,6 +572,7 @@ assert.match(taskOverviewHtml, /\/api\/tasks\/task-web-overview\/exports\/diagno
 assert.match(taskOverviewHtml, /\/api\/tasks\/task-web-overview\/exports\/bundle/);
 assert.match(taskOverviewHtml, /\/api\/tasks\/task-web-overview\/exports\/manifest/);
 assert.match(taskOverviewHtml, /已完成直取下载/);
+assert.match(taskOverviewHtml, /当前页下载/);
 assert.match(taskOverviewHtml, /已跟踪最终 URL/);
 assert.match(taskOverviewHtml, /final\.mp4\?token=abc/);
 assert.match(taskOverviewHtml, /阶段审计门/);
