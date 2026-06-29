@@ -409,6 +409,35 @@ class LocalUploadValidationTests(unittest.TestCase):
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
+    def test_subtitle_artifact_is_exported_in_manifest_and_bundle(self) -> None:
+        task = create_task("current_page", "Browser subtitle bundle", "https://course.example.com/watch")
+        subtitle = task_dir(task.id) / "browser_subtitles.srt"
+        subtitle.write_text("1\n00:00:01,000 --> 00:00:03,000\n浏览器字幕\n", encoding="utf-8")
+        try:
+            update_task(task.id, status="success", phase="completed", progress=100, subtitle_path=str(subtitle))
+
+            subtitle_export = self.client.get(f"/api/tasks/{task.id}/exports/subtitles")
+            self.assertEqual(subtitle_export.status_code, 200)
+            self.assertIn("attachment", subtitle_export.headers["content-disposition"])
+            self.assertIn("-subtitles.srt", subtitle_export.headers["content-disposition"])
+            self.assertIn("浏览器字幕", subtitle_export.text)
+
+            manifest_export = self.client.get(f"/api/tasks/{task.id}/exports/manifest")
+            self.assertEqual(manifest_export.status_code, 200)
+            manifest_payload = manifest_export.json()
+            self.assertEqual(manifest_payload["artifacts"]["subtitles"], "subtitles/browser_subtitles.srt")
+
+            bundle = self.client.get(f"/api/tasks/{task.id}/exports/bundle")
+            self.assertEqual(bundle.status_code, 200)
+            with zipfile.ZipFile(io.BytesIO(bundle.content)) as archive:
+                names = set(archive.namelist())
+                self.assertIn("subtitles/browser_subtitles.srt", names)
+                self.assertIn("浏览器字幕", archive.read("subtitles/browser_subtitles.srt").decode("utf-8"))
+                bundled_manifest = json.loads(archive.read("manifest.json").decode("utf-8"))
+                self.assertEqual(bundled_manifest["artifacts"]["subtitles"], "subtitles/browser_subtitles.srt")
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
     @unittest.skipUnless(ffmpeg_bin(), "ffmpeg or ffprobe is required for local upload content validation")
     def test_local_upload_rejects_fake_video_before_task_creation(self) -> None:
         response = self.client.post(

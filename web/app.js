@@ -1737,6 +1737,7 @@ function hasTaskBundle(task) {
   if (!task) return false;
   return Boolean(
     task.note_path ||
+    task.subtitle_path ||
     task.media_path ||
     task.status === "failed" ||
     task.download_attempts?.length ||
@@ -2452,6 +2453,7 @@ function readingArtifactsRail(task) {
   if (!task?.id) return "";
   const actions = [
     task.note_path ? `<a href="${escapeHtml(taskExportUrl(task, "markdown"))}">Markdown</a>` : "",
+    task.subtitle_path ? `<a href="${escapeHtml(taskExportUrl(task, "subtitles"))}">字幕文件</a>` : "",
     task.media_path ? `<a href="${escapeHtml(taskExportUrl(task, "media"))}">media.mp4</a>` : "",
     hasVisualWindowExport(task) ? `<a href="${escapeHtml(taskExportUrl(task, "visual-windows"))}">切片索引</a>` : "",
     hasTaskDiagnostics(task) ? `<a href="${escapeHtml(taskExportUrl(task, "diagnostics"))}">诊断</a>` : "",

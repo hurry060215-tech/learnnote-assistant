@@ -126,6 +126,13 @@ def visual_windows_filename(task_id: str, title: str) -> str:
     return f"{stem}-visual-windows.md"
 
 
+def subtitles_filename(task_id: str, title: str, suffix: str = ".srt") -> str:
+    stem = _FILENAME_RESERVED_RE.sub("_", title or "").strip(" ._")
+    stem = stem[:120] or f"learnnote-{task_id}"
+    suffix = suffix if suffix.lower() in {".srt", ".vtt", ".ass", ".ssa"} else ".srt"
+    return f"{stem}-subtitles{suffix}"
+
+
 def manifest_filename(task_id: str, title: str) -> str:
     stem = _FILENAME_RESERVED_RE.sub("_", title or "").strip(" ._")
     stem = stem[:120] or f"learnnote-{task_id}"
@@ -425,6 +432,7 @@ def render_bundle_manifest(task: TaskRecord, transcript: dict, visual_index: dic
         "study": _render_study_manifest(task),
         "artifacts": {
             "note": "note.md" if task.note_path else "",
+            "subtitles": f"subtitles/{Path(task.subtitle_path).name}" if task.subtitle_path else "",
             "diagnostics": "diagnostics.md",
             "visual_windows": "visual_windows.md" if task.visual_windows or task.frame_grids else "",
             "task": "task.json",
@@ -1041,6 +1049,7 @@ def api_export_manifest(task_id: str) -> Response:
     has_artifact = bool(
         task.media_path
         or task.note_path
+        or task.subtitle_path
         or task.transcript_path
         or task.visual_windows
         or task.frame_grids
@@ -1079,6 +1088,7 @@ def api_export_bundle(task_id: str) -> Response:
         or transcript.get("segments")
         or visual_index.get("windows")
         or task.frame_grids
+        or task.subtitle_path
         or task.media_path
         or task.download_attempts
         or task.error_code
@@ -1096,6 +1106,8 @@ def api_export_bundle(task_id: str) -> Response:
         archive.writestr("task.json", json.dumps(task.model_dump(mode="json"), ensure_ascii=False, indent=2))
         archive.writestr("transcript.json", json.dumps(transcript, ensure_ascii=False, indent=2))
         archive.writestr("visual_index.json", json.dumps(visual_index, ensure_ascii=False, indent=2))
+        if task.subtitle_path:
+            _write_file_if_exists(archive, task.subtitle_path, f"subtitles/{Path(task.subtitle_path).name}")
         if task.summary_diagnostics:
             archive.writestr("summary_diagnostics.json", json.dumps(task.summary_diagnostics, ensure_ascii=False, indent=2))
         for index, grid in enumerate(task.frame_grids):
@@ -1131,6 +1143,26 @@ def api_export_diagnostics(task_id: str) -> PlainTextResponse:
     return PlainTextResponse(report, media_type="text/markdown; charset=utf-8", headers=headers)
 
 
+@app.get("/api/tasks/{task_id}/exports/subtitles")
+def api_export_subtitles(task_id: str) -> FileResponse:
+    task, path = _task_subtitle_file(task_id)
+    suffix = path.suffix.lower() or ".srt"
+    filename = subtitles_filename(task.id, task.title, suffix)
+    headers = {
+        "Content-Disposition": (
+            f'attachment; filename="learnnote-{task.id}-subtitles{suffix}"; '
+            f"filename*=UTF-8''{quote(filename)}"
+        )
+    }
+    media_type = {
+        ".vtt": "text/vtt",
+        ".srt": "application/x-subrip",
+        ".ass": "text/plain",
+        ".ssa": "text/plain",
+    }.get(suffix, "text/plain")
+    return FileResponse(path, media_type=media_type, headers=headers)
+
+
 @app.get("/api/tasks/{task_id}/exports/media")
 def api_export_media(task_id: str) -> FileResponse:
     task, path = _task_media_file(task_id)
@@ -1142,6 +1174,19 @@ def api_export_media(task_id: str) -> FileResponse:
         )
     }
     return FileResponse(path, media_type="video/mp4", headers=headers)
+
+
+def _task_subtitle_file(task_id: str) -> tuple[TaskRecord, Path]:
+    try:
+        task = get_task(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Task not found") from exc
+    if not task.subtitle_path:
+        raise HTTPException(status_code=404, detail="Subtitles not found")
+    path = Path(task.subtitle_path)
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Subtitles not found")
+    return task, path
 
 
 def _task_media_file(task_id: str) -> tuple[TaskRecord, Path]:

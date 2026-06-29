@@ -454,6 +454,7 @@ const richReadingRailHtml = context.readingRail(`# 课程笔记
   status: "success",
   source_type: "current_page",
   media_path: "D:/Projects/learnnote-assistant/data/tasks/task-reading-rail/media.mp4",
+  subtitle_path: "D:/Projects/learnnote-assistant/data/tasks/task-reading-rail/browser_subtitles.srt",
   transcript_path: "D:/Projects/learnnote-assistant/data/tasks/task-reading-rail/transcript.json",
   note_path: "D:/Projects/learnnote-assistant/data/tasks/task-reading-rail/note.md",
   selected_resource: { kind: "hls", source: "webRequest" },
@@ -473,10 +474,12 @@ assert.match(richReadingRailHtml, /1 章节 · 1 小节/);
 assert.match(richReadingRailHtml, /1 窗口/);
 assert.match(richReadingRailHtml, /class="reading-artifacts-rail"/);
 assert.match(richReadingRailHtml, /Markdown/);
+assert.match(richReadingRailHtml, /字幕文件/);
 assert.match(richReadingRailHtml, /media\.mp4/);
 assert.match(richReadingRailHtml, /切片索引/);
 assert.match(richReadingRailHtml, /资料包/);
 assert.match(richReadingRailHtml, /\/api\/tasks\/task-reading-rail\/exports\/bundle/);
+assert.match(richReadingRailHtml, /\/api\/tasks\/task-reading-rail\/exports\/subtitles/);
 assert.match(richReadingRailHtml, /data-switch-result-tab="transcript"/);
 assert.match(richReadingRailHtml, /data-switch-result-tab="diagnostics"/);
 
