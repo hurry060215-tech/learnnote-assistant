@@ -758,6 +758,9 @@ function sourceWorkflowHtml(source = selectedSource, task = workflowTaskForSourc
       </li>`).join("")}
     </ol>
     ${sourceRouteInsightsHtml(source, task)}
+    <div class="source-option-strip" aria-label="当前处理参数">
+      ${currentOptionSummaryItems().map(item => `<span>${escapeHtml(item)}</span>`).join("")}
+    </div>
     ${sourceWorkflowActionsHtml(source, task)}
     <footer>
       <span>${escapeHtml(state)}</span>
@@ -1180,11 +1183,37 @@ function renderUrlModeHint() {
   els.urlModeHint.textContent = urlModeDescription();
 }
 
+function visualUnderstandingEnabled() {
+  return els.visualUnderstanding?.checked !== false;
+}
+
+function visualPlanText() {
+  if (!visualUnderstandingEnabled()) return "无视觉 · 仅转写";
+  const [cols, rows] = String(els.gridSize?.value || "3x3").split("x").map(Number);
+  return `${Number(els.frameInterval?.value || 20)}秒 · ${cols || 3}x${rows || 3}`;
+}
+
+function currentOptionSummaryItems() {
+  return [
+    visualPlanText(),
+    asrOptionText({
+      transcriber: els.transcriber?.value || "faster-whisper",
+      whisper_model: els.whisperModel?.value || "small"
+    }),
+    `${els.noteStyle?.value || "study"} · ${els.summaryDepth?.value || "standard"}`
+  ];
+}
+
+function refreshOptionDependentUi() {
+  syncTranscriberModelDefault();
+  renderSourceWorkflow();
+}
+
 function readOptions() {
   syncTranscriberModelDefault();
   const [cols, rows] = els.gridSize.value.split("x").map(Number);
   const options = {
-    visual_understanding: els.visualUnderstanding?.checked !== false,
+    visual_understanding: visualUnderstandingEnabled(),
     frame_interval: Number(els.frameInterval.value || 20),
     grid_columns: cols || 3,
     grid_rows: rows || 3,
@@ -3119,6 +3148,17 @@ els.fileInput.onchange = () => {
   setSource("local");
 };
 
+[
+  els.frameInterval,
+  els.gridSize,
+  els.visualUnderstanding,
+  els.noteStyle,
+  els.summaryDepth,
+  els.transcriber,
+  els.whisperModel
+].filter(Boolean).forEach(control => {
+  control.addEventListener("change", refreshOptionDependentUi);
+});
 els.llmModel?.addEventListener("input", () => updateHealthVisionStatus());
 els.llmApiKey?.addEventListener("input", () => updateHealthVisionStatus());
 

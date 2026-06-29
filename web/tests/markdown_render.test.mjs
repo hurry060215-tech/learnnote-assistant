@@ -1398,6 +1398,8 @@ elements.get("#llmModel").value = "vision-rerun";
 elements.get("#llmBaseUrl").value = "https://models.example/v1";
 elements.get("#llmApiKey").value = "sk-rerun";
 elements.get("#visualUnderstanding").checked = false;
+elements.get("#visualUnderstanding").listeners.change();
+assert.match(elements.get("#sourceWorkflow").innerHTML, /\u65e0\u89c6\u89c9/);
 context.fetch = async (url, options = {}) => {
   const value = String(url);
   if (value.endsWith("/api/tasks/source-media-task/rerun-from-media")) {

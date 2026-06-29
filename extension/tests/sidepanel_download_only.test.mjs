@@ -164,6 +164,10 @@ elements.get("#llmModel").value = "vision-rerun";
 elements.get("#llmBaseUrl").value = "https://models.example/v1";
 elements.get("#llmApiKey").value = "sk-rerun";
 elements.get("#visualUnderstanding").checked = false;
+context.refreshOptionDependentUi();
+assert.match(elements.get("#currentStudyCard").innerHTML, /\u65e0\u89c6\u89c9/);
+assert.match(elements.get("#launchBar").innerHTML, /\u65e0\u89c6\u89c9/);
+assert.match(elements.get("#routeSummary").innerHTML, /\u65e0\u89c6\u89c9/);
 context.fetch = async (url, options = {}) => {
   const value = String(url);
   if (value.endsWith("/api/tasks/download-only-task/rerun-from-media")) {

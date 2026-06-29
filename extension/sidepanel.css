@@ -1025,6 +1025,10 @@ small,
   background: var(--danger);
 }
 
+.route-handoff section.skip::before {
+  background: #94a3b8;
+}
+
 .route-handoff span,
 .route-handoff small {
   min-width: 0;

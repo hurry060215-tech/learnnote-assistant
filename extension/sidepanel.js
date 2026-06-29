@@ -624,11 +624,30 @@ async function selectHistoryTask(taskId) {
   renderTaskHistory();
 }
 
+function visualUnderstandingEnabled() {
+  return els.visualUnderstanding?.checked !== false;
+}
+
+function visualPlanText() {
+  if (!visualUnderstandingEnabled()) return "无视觉 · 仅转写";
+  const [cols, rows] = String(els.gridSize?.value || "3x3").split("x").map(Number);
+  return `${Number(els.frameInterval?.value || 20)}秒 · ${cols || 3}x${rows || 3}`;
+}
+
+function refreshOptionDependentUi() {
+  syncTranscriberModelDefault();
+  renderCurrentStudyCard();
+  renderLaunchBar();
+  renderRouteSummary();
+  renderExtractionPlan();
+  renderReadiness();
+}
+
 function readOptions() {
   syncTranscriberModelDefault();
   const [cols, rows] = els.gridSize.value.split("x").map(Number);
   const options = {
-    visual_understanding: els.visualUnderstanding?.checked !== false,
+    visual_understanding: visualUnderstandingEnabled(),
     frame_interval: Number(els.frameInterval.value || 20),
     grid_columns: cols || 3,
     grid_rows: rows || 3,
@@ -1465,7 +1484,6 @@ function currentStudyMetrics() {
   const active = page?.active_video || null;
   const selected = selectedResource();
   const subtitles = page?.browser_subtitles || [];
-  const [cols, rows] = String(els.gridSize?.value || "3x3").split("x").map(Number);
   const playTime = hasActiveVideoSignal(active)
     ? `${fmt(active.current_time || 0)} / ${fmt(active.duration || 0)}`
     : (page?.frames || []).length ? `${(page?.frames || []).length} frame` : "-";
@@ -1473,7 +1491,7 @@ function currentStudyMetrics() {
     { label: "播放时间", value: playTime },
     { label: "直取路线", value: selected ? `${selected.kind || "media"} · ${candidateStrategyText(selected)}` : "等待候选" },
     { label: "字幕兜底", value: subtitles.length ? `${subtitles.length} 条` : "未读取" },
-    { label: "画面切片", value: `${Number(els.frameInterval?.value || 20)}秒 · ${cols || 3}x${rows || 3}` }
+    { label: "画面切片", value: visualPlanText() }
   ];
 }
 
@@ -1532,11 +1550,10 @@ function launchBarActionsHtml(state) {
 function launchBarMeta(state) {
   const selected = selectedResource();
   const checked = currentPreflight();
-  const [cols, rows] = String(els.gridSize?.value || "3x3").split("x").map(Number);
   return [
     selected ? `${selected.kind || "media"} · ${candidateStrategyText(selected)}` : "等待候选",
     checked ? checked.downloadable ? "预检通过" : checked.code || "预检未过" : state === "candidate" ? "建议预检" : "未预检",
-    `${Number(els.frameInterval?.value || 20)}秒 · ${cols || 3}x${rows || 3}`,
+    visualPlanText(),
     "点击时同步 Cookie"
   ];
 }
@@ -1762,12 +1779,11 @@ function routeSummaryCopy(state) {
 function routeSummaryMetrics() {
   const selected = selectedResource();
   const checked = currentPreflight();
-  const [cols, rows] = String(els.gridSize?.value || "3x3").split("x").map(Number);
   return [
     { label: "候选", value: `${resources.filter(isDownloadableResource).length}/${resources.length}` },
     { label: "选中", value: selected?.kind || "-" },
     { label: "预检", value: checked ? checked.downloadable ? "通过" : checked.code || "未过" : "未跑" },
-    { label: "切片", value: `${Number(els.frameInterval?.value || 20)}秒 · ${cols || 3}x${rows || 3}` }
+    { label: "切片", value: visualPlanText() }
   ];
 }
 
@@ -1775,7 +1791,7 @@ function routeHandoffItems(state) {
   const selected = selectedResource();
   const checked = currentPreflight();
   const downloadableCount = resources.filter(isDownloadableResource).length;
-  const [cols, rows] = String(els.gridSize?.value || "3x3").split("x").map(Number);
+  const visualEnabled = visualUnderstandingEnabled();
   return [
     {
       state: selected ? "done" : downloadableCount ? "active" : "pending",
@@ -1796,10 +1812,10 @@ function routeHandoffItems(state) {
       detail: "后端直下、ffmpeg 合并或 yt-dlp 兜底"
     },
     {
-      state: "pending",
+      state: visualEnabled ? "pending" : "skip",
       label: "切片笔记",
-      value: `${Number(els.frameInterval?.value || 20)}秒 · ${cols || 3}x${rows || 3}`,
-      detail: "下载后转写、抽帧并生成视觉窗口"
+      value: visualPlanText(),
+      detail: visualEnabled ? "下载后转写、抽帧并生成视觉窗口" : "关闭图文理解后不会抽帧，只生成转写和文本笔记"
     }
   ];
 }
@@ -3631,7 +3647,21 @@ els.openWebButton.onclick = () => {
   openWorkbench();
 };
 els.settingsButton.onclick = saveSettings;
-els.llmModel?.addEventListener("input", () => updateHealthVisionStatus());
+[
+  els.frameInterval,
+  els.gridSize,
+  els.visualUnderstanding,
+  els.noteStyle,
+  els.summaryDepth,
+  els.transcriber,
+  els.whisperModel
+].filter(Boolean).forEach(control => {
+  control.addEventListener("change", refreshOptionDependentUi);
+});
+els.llmModel?.addEventListener("input", () => {
+  updateHealthVisionStatus();
+  renderLaunchBar();
+});
 els.llmApiKey?.addEventListener("input", () => updateHealthVisionStatus());
 
 if (HAS_EXTENSION_API && chrome.runtime.onMessage?.addListener) {
