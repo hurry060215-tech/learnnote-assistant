@@ -1390,6 +1390,21 @@
     };
   }
 
+  if (typeof window.Response !== "undefined" && Response.prototype?.bytes) {
+    const originalResponseBytes = Response.prototype.bytes;
+    Response.prototype.bytes = async function (...args) {
+      const bytes = await originalResponseBytes.apply(this, args);
+      try {
+        const mime = this.headers?.get?.("content-type") || "";
+        const meta = responseBlobSourceMeta(this, this.url || "", mime, "pageHookBlob", "fetch bytes source");
+        rememberBlobPartObject(bytes, meta);
+      } catch {
+        // Keep the host page's response consumption behavior unchanged.
+      }
+      return bytes;
+    };
+  }
+
   if (typeof window.ReadableStream !== "undefined" && window.ReadableStream.prototype?.getReader) {
     const originalGetReader = window.ReadableStream.prototype.getReader;
     window.ReadableStream.prototype.getReader = function (...args) {
