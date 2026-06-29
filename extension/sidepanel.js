@@ -27,6 +27,7 @@ let pendingContextRefresh = false;
 let currentTabId = null;
 let taskHistory = [];
 let lastHealthData = null;
+let pendingLocalFile = null;
 
 const els = {
   backendStatus: document.querySelector("#backendStatus"),
@@ -2521,9 +2522,10 @@ async function runPreflight() {
   }
 }
 
-async function uploadLocal() {
-  const file = els.fileInput.files?.[0];
+async function uploadLocal(fileOverride = null) {
+  const file = fileOverride || els.fileInput.files?.[0] || pendingLocalFile;
   if (!file) return;
+  pendingLocalFile = file;
   if (!isSupportedLocalVideoFile(file)) {
     els.localDropText.textContent = "请选择 mp4 / m4v / mov / flv / avi / mkv / webm 等视频文件";
     els.taskMessage.textContent = `${file.name} 不是支持的视频格式。`;
@@ -3613,7 +3615,10 @@ els.textButton.onclick = () => startTask("page_text");
 if (els.refreshHistoryButton) els.refreshHistoryButton.onclick = loadTaskHistory;
 if (els.transcriber) els.transcriber.onchange = () => syncTranscriberModelDefault(true);
 els.uploadButton.onclick = () => els.fileInput.click();
-els.fileInput.onchange = uploadLocal;
+els.fileInput.onchange = () => {
+  pendingLocalFile = els.fileInput.files?.[0] || null;
+  uploadLocal(pendingLocalFile);
+};
 els.localDrop.onclick = () => els.fileInput.click();
 els.localDrop.addEventListener("dragover", event => {
   event.preventDefault();
@@ -3624,9 +3629,9 @@ els.localDrop.addEventListener("drop", event => {
   event.preventDefault();
   els.localDrop.classList.remove("drag");
   if (event.dataTransfer.files?.[0]) {
-    els.fileInput.files = event.dataTransfer.files;
-    els.localDropText.textContent = event.dataTransfer.files[0].name;
-    uploadLocal();
+    pendingLocalFile = event.dataTransfer.files[0];
+    els.localDropText.textContent = pendingLocalFile.name;
+    uploadLocal(pendingLocalFile);
   }
 });
 els.resourceInspector.addEventListener("click", event => {

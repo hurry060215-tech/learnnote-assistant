@@ -1400,6 +1400,7 @@ await elements.get("#dropzone").listeners.drop({
 await new Promise(resolve => setTimeout(resolve, 0));
 
 assert.equal(localUploads.length, 1);
+assert.equal(elements.get("#fileInput").files.length, 0);
 assert.equal(localUploads[0].get("file"), droppedFile);
 assert.equal(localUploads[0].get("title"), "drag-local-lesson.mkv");
 assert.match(localUploads[0].get("options"), /"visual_understanding":true/);

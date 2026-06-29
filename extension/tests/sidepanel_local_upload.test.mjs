@@ -26,7 +26,10 @@ const makeClassList = () => {
 };
 
 const makeElement = () => ({
-  addEventListener() {},
+  listeners: {},
+  addEventListener(type, handler) {
+    this.listeners[type] = handler;
+  },
   classList: makeClassList(),
   querySelector() { return null; },
   style: {},
@@ -172,21 +175,35 @@ assert.equal(elements.get("#uploadButton").disabled, false);
 assert.equal(elements.get("#localDrop").classList.contains("uploading"), false);
 assert.match(elements.get("#taskMessage").textContent, /done/);
 
+const droppedFile = { name: "drag-side-lesson.webm", size: 654321, type: "" };
+await elements.get("#localDrop").listeners.drop({
+  preventDefault() {},
+  dataTransfer: { files: [droppedFile] }
+});
+await new Promise(resolve => setTimeout(resolve, 0));
+
+assert.equal(uploadBodies.length, 2);
+assert.equal(elements.get("#fileInput").files[0], lessonFile);
+assert.equal(uploadBodies[1].get("file"), droppedFile);
+assert.equal(uploadBodies[1].get("title"), "drag-side-lesson.webm");
+assert.equal(elements.get("#localDropText").textContent, "drag-side-lesson.webm");
+assert.equal(elements.get("#localDrop").classList.contains("uploading"), false);
+
 uploadShouldFail = true;
 elements.get("#fileInput").files = [{ name: "server-reject.mov", size: 10, type: "video/quicktime" }];
 await context.uploadLocal();
 
-assert.equal(uploadBodies.length, 2);
-assert.equal(uploadBodies[1].get("title"), "server-reject.mov");
+assert.equal(uploadBodies.length, 3);
+assert.equal(uploadBodies[2].get("title"), "server-reject.mov");
 assert.equal(elements.get("#localDropText").textContent, "unsupported local file");
 assert.equal(elements.get("#uploadButton").disabled, false);
 assert.equal(elements.get("#localDrop").classList.contains("uploading"), false);
 assert.equal(elements.get("#taskMessage").textContent, "unsupported local file");
 
 elements.get("#fileInput").files = [{ name: "bad.txt", size: 10, type: "text/plain" }];
-await context.uploadLocal();
+await context.uploadLocal(elements.get("#fileInput").files[0]);
 
-assert.equal(uploadBodies.length, 2);
+assert.equal(uploadBodies.length, 3);
 assert.match(elements.get("#localDropText").textContent, /mp4 \/ m4v \/ mov/);
 assert.equal(elements.get("#uploadButton").disabled, false);
 assert.equal(elements.get("#localDrop").classList.contains("uploading"), false);

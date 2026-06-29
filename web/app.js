@@ -18,6 +18,7 @@ let taskStatusFilter = "all";
 let urlPreflightResourceUrl = "";
 let urlPreflightResult = null;
 let lastHealthData = null;
+let pendingLocalFile = null;
 
 const els = {
   health: document.querySelector("#health"),
@@ -2966,9 +2967,10 @@ async function preflightUrlTask() {
   }
 }
 
-async function uploadSelectedFile() {
-  const file = els.fileInput.files?.[0];
+async function uploadSelectedFile(fileOverride = null) {
+  const file = fileOverride || els.fileInput.files?.[0] || pendingLocalFile;
   if (!file) return;
+  pendingLocalFile = file;
   if (!isSupportedLocalVideoFile(file)) {
     els.fileName.textContent = `${file.name} 暂不支持，请选择 mp4 / m4v / mov / flv / avi / mkv / webm 等视频文件`;
     return;
@@ -3193,15 +3195,16 @@ els.dropzone.addEventListener("drop", event => {
   event.preventDefault();
   els.dropzone.classList.remove("drag");
   if (event.dataTransfer.files?.[0]) {
-    els.fileInput.files = event.dataTransfer.files;
-    els.fileName.textContent = event.dataTransfer.files[0].name;
+    pendingLocalFile = event.dataTransfer.files[0];
+    els.fileName.textContent = pendingLocalFile.name;
     setSource("local");
-    uploadSelectedFile();
+    uploadSelectedFile(pendingLocalFile);
   }
 });
 
 els.fileInput.onchange = () => {
-  els.fileName.textContent = els.fileInput.files?.[0]?.name || "mp4 / flv / avi / webm / mov / mkv";
+  pendingLocalFile = els.fileInput.files?.[0] || null;
+  els.fileName.textContent = pendingLocalFile?.name || "mp4 / flv / avi / webm / mov / mkv";
   setSource("local");
 };
 
