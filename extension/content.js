@@ -33,7 +33,7 @@ const STATIC_MEDIA_ATTRS = [
   "value"
 ];
 const STATIC_MEDIA_SELECTOR = STATIC_MEDIA_ATTRS.map(name => `[${name}]`).join(",");
-const STATIC_FIELD_RE = /(["']?[A-Za-z_$][A-Za-z0-9_$.-]{0,79}["']?)\s*[:=]\s*["']([^"'<>\\\s]{4,})["']/gi;
+const STATIC_FIELD_RE = /(["']?[A-Za-z_$][A-Za-z0-9_$.-]{0,79}["']?)\s*[:=]\s*["']((?:\\u[0-9a-fA-F]{4}|\\x[0-9a-fA-F]{2}|\\.|[^"'<>\\\s]){4,})["']/gi;
 const STATIC_MEDIA_KEY_RE = /(url|src|file|fileid|objectid|dtoken|download|httpmd|play|media|video|stream|source|hls|m3u8|dash|mpd|segment|fragment|chunk|subtitle|caption)/i;
 const STATIC_ATTRIBUTE_KEY_RE = /(url|src|file|objectid|dtoken|download|httpmd|play|player|config|option|param|media|video|stream|source|hls|m3u8|dash|mpd|segment|fragment|chunk|subtitle|caption)/i;
 const VISIBLE_SUBTITLE_HINT_RE = /(subtitle|subtitles|caption|captions|closed.?caption|texttrack|danmu|danmaku|barrage|\bcc\b|字幕|弹幕)/i;
@@ -162,17 +162,26 @@ function appendRepeatedUrlDecodes(values, value, limit = 3) {
   }
 }
 
+function decodeJsStringEscapes(value) {
+  return String(value || "")
+    .replace(/\\u([0-9a-fA-F]{4})/g, (match, hex) => {
+      const char = String.fromCharCode(parseInt(hex, 16));
+      return /[\u0000-\u0008\u000e-\u001f]/.test(char) ? match : char;
+    })
+    .replace(/\\x([0-9a-fA-F]{2})/g, (match, hex) => {
+      const char = String.fromCharCode(parseInt(hex, 16));
+      return /[\u0000-\u0008\u000e-\u001f]/.test(char) ? match : char;
+    })
+    .replace(/\\\//g, "/")
+    .replace(/\\&/g, "&")
+    .replace(/\\\?/g, "?")
+    .replace(/\\=/g, "=");
+}
+
 function decodedValues(value) {
   const raw = stripUrlTail(value);
   if (!raw) return [];
-  const values = [raw
-    .replace(/&amp;/g, "&")
-    .replace(/\\\//g, "/")
-    .replace(/\\u0026/g, "&")
-    .replace(/\\u002F/gi, "/")
-    .replace(/\\u003A/gi, ":")
-    .replace(/\\u003F/gi, "?")
-    .replace(/\\u003D/gi, "=")];
+  const values = [decodeJsStringEscapes(raw).replace(/&amp;/g, "&")];
   appendRepeatedUrlDecodes(values, values[0]);
   const compact = raw.replace(/\s+/g, "");
   if (B64ISH_RE.test(compact)) {
@@ -271,17 +280,29 @@ function collectEncodedTextResources(text, source, label, seen = new Set()) {
   return resources;
 }
 
+function isJsEscapedMediaFragmentMatch(text, index) {
+  if (!Number.isFinite(index) || index <= 0) return false;
+  const prefix = String(text || "").slice(Math.max(0, index - 6), index);
+  return /\\(?:u[0-9a-fA-F]{0,4}|x[0-9a-fA-F]{0,2})?$/.test(prefix);
+}
+
 function collectTextMediaResources(text, source, label, seen = new Set()) {
   const resources = [];
-  MEDIA_URL_RE.lastIndex = 0;
-  for (const match of String(text || "").matchAll(MEDIA_URL_RE)) {
-    for (const candidate of decodedValues(match[0] || "")) {
-      const item = resource(candidate, source, label, mimeFromHint(candidate));
-      if (!item || item.kind === "unknown" || seen.has(item.url)) continue;
-      seen.add(item.url);
-      item.score = Math.max(item.score || 0, item.kind === "hls" || item.kind === "dash" ? 96 : item.kind === "video" ? 86 : 62);
-      resources.push(item);
-      break;
+  const body = String(text || "");
+  const decodedBody = decodeJsStringEscapes(body);
+  for (const searchable of [body, decodedBody].filter((item, index, values) => item && values.indexOf(item) === index)) {
+    MEDIA_URL_RE.lastIndex = 0;
+    for (const match of searchable.matchAll(MEDIA_URL_RE)) {
+      if (isJsEscapedMediaFragmentMatch(searchable, match.index ?? -1)) continue;
+      for (const candidate of decodedValues(match[0] || "")) {
+        const item = resource(candidate, source, label, mimeFromHint(candidate));
+        if (!item || item.kind === "unknown" || seen.has(item.url)) continue;
+        seen.add(item.url);
+        item.score = Math.max(item.score || 0, item.kind === "hls" || item.kind === "dash" ? 96 : item.kind === "video" ? 86 : 62);
+        resources.push(item);
+        break;
+      }
+      if (resources.length >= 40) break;
     }
     if (resources.length >= 40) break;
   }
@@ -939,7 +960,7 @@ function collectPageData() {
     browser_subtitles: browserSubtitles,
     drm_detected: Boolean(active?.drm_detected || drm.length),
     drm_signals: drm,
-    resources: [...byUrl.values()].sort((a, b) => b.score - a.score).slice(0, 30)
+    resources: [...byUrl.values()].sort((a, b) => b.score - a.score).slice(0, 40)
   };
 }
 

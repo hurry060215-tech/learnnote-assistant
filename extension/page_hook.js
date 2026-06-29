@@ -28,7 +28,7 @@
     "courseData",
     "lessonData"
   ];
-  const TEXT_MEDIA_FIELD_RE = /(["']?[A-Za-z_$][A-Za-z0-9_$.-]{0,79}["']?)\s*[:=]\s*["']([^"'<>\\\s]{4,})["']/gi;
+  const TEXT_MEDIA_FIELD_RE = /(["']?[A-Za-z_$][A-Za-z0-9_$.-]{0,79}["']?)\s*[:=]\s*["']((?:\\u[0-9a-fA-F]{4}|\\x[0-9a-fA-F]{2}|\\.|[^"'<>\\\s]){4,})["']/gi;
   const B64ISH_RE = /^[A-Za-z0-9+/_=-]{16,}$/;
   const MAX_TEXT_BYTES = 2 * 1024 * 1024;
   const MAX_BLOB_URLS = 80;
@@ -66,13 +66,7 @@
 
   function normalizeUrl(raw) {
     if (!raw) return "";
-    const cleaned = decodeRepeatedUrlComponent(stripUrlTail(raw)
-      .replace(/\\\//g, "/")
-      .replace(/\\u0026/g, "&")
-      .replace(/\\u002F/gi, "/")
-      .replace(/\\u003A/gi, ":")
-      .replace(/\\u003F/gi, "?")
-      .replace(/\\u003D/gi, "=")
+    const cleaned = decodeRepeatedUrlComponent(decodeJsStringEscapes(stripUrlTail(raw))
       .replace(/&amp;/g, "&")
       .trim());
     try {
@@ -375,11 +369,27 @@
     }
   }
 
+  function decodeJsStringEscapes(value) {
+    return String(value || "")
+      .replace(/\\u([0-9a-fA-F]{4})/g, (match, hex) => {
+        const char = String.fromCharCode(parseInt(hex, 16));
+        return /[\u0000-\u0008\u000e-\u001f]/.test(char) ? match : char;
+      })
+      .replace(/\\x([0-9a-fA-F]{2})/g, (match, hex) => {
+        const char = String.fromCharCode(parseInt(hex, 16));
+        return /[\u0000-\u0008\u000e-\u001f]/.test(char) ? match : char;
+      })
+      .replace(/\\\//g, "/")
+      .replace(/\\&/g, "&")
+      .replace(/\\\?/g, "?")
+      .replace(/\\=/g, "=");
+  }
+
   function decodedMediaValues(value) {
     const raw = String(value || "").trim();
     if (!raw) return [];
-    const values = [raw];
-    appendRepeatedUrlDecodes(values, raw);
+    const values = [decodeJsStringEscapes(raw)];
+    appendRepeatedUrlDecodes(values, values[0]);
 
     const compact = raw.replace(/\s+/g, "");
     if (B64ISH_RE.test(compact)) {
@@ -570,6 +580,12 @@
     return output;
   }
 
+  function isJsEscapedMediaFragmentMatch(text, index) {
+    if (!Number.isFinite(index) || index <= 0) return false;
+    const prefix = String(text || "").slice(Math.max(0, index - 6), index);
+    return /\\(?:u[0-9a-fA-F]{0,4}|x[0-9a-fA-F]{0,2})?$/.test(prefix);
+  }
+
   function blobMeta(url, mime, source, label) {
     const normalizedUrl = normalizeUrl(url);
     const kind = mediaKind(normalizedUrl, mime || "");
@@ -698,14 +714,19 @@
     const resources = extractJsonMediaUrls(text, source, label, seen, meta);
     resources.push(...extractFieldMediaUrls(text, source, label, seen, meta));
     resources.push(...extractEncodedMediaUrls(text, source, label, seen, meta));
-    if (MEDIA_HINT_RE.test(text)) {
-      for (const match of text.matchAll(MEDIA_URL_RE)) {
+    const body = String(text || "");
+    const decodedBody = decodeJsStringEscapes(body);
+    for (const searchable of [body, decodedBody].filter((item, index, values) => item && values.indexOf(item) === index)) {
+      if (!MEDIA_HINT_RE.test(searchable)) continue;
+      for (const match of searchable.matchAll(MEDIA_URL_RE)) {
+        if (isJsEscapedMediaFragmentMatch(searchable, match.index ?? -1)) continue;
         const url = normalizeUrl(match[0]);
         if (!url || seen.has(url)) continue;
         resources.push(applyResponseMeta({ url, source, label, mime }, meta));
         seen.add(url);
         if (resources.length >= 40) break;
       }
+      if (resources.length >= 40) break;
     }
     return resources;
   }

@@ -88,6 +88,12 @@ const plainDoubleEncodedScript = new FakeElement("script", {
 const mixedEncodedScript = new FakeElement("script", {
   textContent: `window.__mixed='${mixedEncodedVideo}';`
 });
+const jsEscapedScript = new FakeElement("script", {
+  textContent: String.raw`window.__playConfig={hls:"https:\u002F\u002Fcdn.example.com\u002Fstatic\u002Fescaped\u002Fmaster.m3u8\u003Ftoken\u003Djs\u0026uid\u003D7",videoUrl:"https:\/\/cdn.example.com\/static\/escaped\/lesson.mp4\x3Fsig\x3Dok"};`
+});
+const jsEscapedPayloadScript = new FakeElement("script", {
+  textContent: String.raw`window.__payload='https:\/\/cdn.example.com\/static\/escaped\/payload.m3u8\x3Ftoken\x3Dpayload';`
+});
 const segmentScript = new FakeElement("script", {
   textContent: "window.__segments=['https://cdn.example.com/static/hls/segment-001.ts?token=seg'];"
 });
@@ -112,7 +118,7 @@ const vendorPlayer = new FakeElement("div", {
 const plainUrlScript = new FakeElement("script", {
   textContent: "window.__payload='https://cdn.example.com/static/plain-url.m3u8?token=script-plain';"
 });
-const html = new FakeElement("html", {}, [player, packedPlayer, doubleEncodedPlayer, onclickPlayer, paramPlayer, configPlayer, nakedPlayer, vendorPlayer, script, plainEncodedScript, plainDoubleEncodedScript, mixedEncodedScript, segmentScript, plainUrlScript]);
+const html = new FakeElement("html", {}, [player, packedPlayer, doubleEncodedPlayer, onclickPlayer, paramPlayer, configPlayer, nakedPlayer, vendorPlayer, script, plainEncodedScript, plainDoubleEncodedScript, mixedEncodedScript, jsEscapedScript, jsEscapedPayloadScript, segmentScript, plainUrlScript]);
 
 let messageListener = null;
 const context = {
@@ -183,6 +189,9 @@ const plainHls = response.resources.find(item => item.url === "https://cdn.examp
 const doubleHls = response.resources.find(item => item.url === "https://cdn.example.com/static/double/master.m3u8?token=double&uid=2");
 const doubleNakedVideo = response.resources.find(item => item.url === "https://cdn.example.com/static/double/naked.mp4?token=naked-double");
 const mixedVideo = response.resources.find(item => item.url === "https://cdn.example.com/static/mixed/lesson.mp4?token=mixed");
+const jsEscapedHls = response.resources.find(item => item.url === "https://cdn.example.com/static/escaped/master.m3u8?token=js&uid=7");
+const jsEscapedVideo = response.resources.find(item => item.url === "https://cdn.example.com/static/escaped/lesson.mp4?sig=ok");
+const jsEscapedPayloadHls = response.resources.find(item => item.url === "https://cdn.example.com/static/escaped/payload.m3u8?token=payload");
 const hlsSegment = response.resources.find(item => item.url === "https://cdn.example.com/static/hls/segment-001.ts?token=seg");
 const onclickHls = response.resources.find(item => item.url === "https://cdn.example.com/static/onclick-master.m3u8?token=click");
 const paramVideo = response.resources.find(item => item.url === "https://cdn.example.com/static/param-lesson.mp4?token=param");
@@ -236,6 +245,21 @@ assert.ok(mixedVideo, "expected inline script encoded URL scan to expose mixed-e
 assert.equal(mixedVideo.kind, "video");
 assert.equal(mixedVideo.source, "scriptHint");
 assert.match(mixedVideo.label, /encoded url/);
+
+assert.ok(jsEscapedHls, "expected inline script field scan to decode JS-escaped HLS URL");
+assert.equal(jsEscapedHls.kind, "hls");
+assert.equal(jsEscapedHls.source, "scriptHint");
+assert.match(jsEscapedHls.label, /hls/);
+
+assert.ok(jsEscapedVideo, "expected inline script field scan to decode JS-escaped mp4 URL");
+assert.equal(jsEscapedVideo.kind, "video");
+assert.equal(jsEscapedVideo.source, "scriptHint");
+assert.match(jsEscapedVideo.label, /videoUrl/);
+
+assert.ok(jsEscapedPayloadHls, "expected inline script text scan to decode JS-escaped HLS URL without media field name");
+assert.equal(jsEscapedPayloadHls.kind, "hls");
+assert.equal(jsEscapedPayloadHls.source, "scriptHint");
+assert.match(jsEscapedPayloadHls.label, /script media url/);
 
 assert.ok(hlsSegment, "expected inline script media scan to expose HLS segment URL");
 assert.equal(hlsSegment.kind, "fragment");

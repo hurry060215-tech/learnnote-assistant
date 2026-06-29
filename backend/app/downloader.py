@@ -44,7 +44,7 @@ JSON_MEDIA_KEY_RE = re.compile(
 JSON_MIME_KEY_RE = re.compile(r"(mime|type|format|content.?type|media.?type)", re.I)
 JSON_VIDEO_CONTEXT_RE = re.compile(r"(video|media|play|stream|vod|course|lesson|objectid|dtoken|fileid|download|httpmd)", re.I)
 TEXT_MEDIA_FIELD_RE = re.compile(
-    r"(?P<key>[\"']?[A-Za-z_$][A-Za-z0-9_$.-]{0,79}[\"']?)\s*[:=]\s*[\"'](?P<url>[^\"'<>\\\s]{4,})[\"']",
+    r"(?P<key>[\"']?[A-Za-z_$][A-Za-z0-9_$.-]{0,79}[\"']?)\s*[:=]\s*[\"'](?P<url>(?:\\u[0-9a-fA-F]{4}|\\x[0-9a-fA-F]{2}|\\.|[^\"'<>\\\s]){4,})[\"']",
     re.I,
 )
 B64ISH_RE = re.compile(r"^[A-Za-z0-9+/_=-]{16,}$")
@@ -361,9 +361,15 @@ def _decoded_media_values(value: str) -> list[str]:
     if not raw:
         return []
     values = [raw]
+    js_decoded = _decode_js_string_escapes(raw)
+    if js_decoded and js_decoded not in values:
+        values.insert(0, js_decoded)
     for unquoted in _repeated_unquote(raw):
         if unquoted and unquoted not in values:
             values.insert(0, unquoted)
+        unquoted_js = _decode_js_string_escapes(unquoted)
+        if unquoted_js and unquoted_js not in values:
+            values.insert(0, unquoted_js)
 
     compact = raw.strip()
     if B64ISH_RE.match(compact) and len(compact) % 4 in {0, 2, 3}:
@@ -389,6 +395,40 @@ def _decoded_media_values(value: str) -> list[str]:
             seen.add(item)
             deduped.append(item)
     return deduped
+
+
+def _decode_js_string_escapes(value: str) -> str:
+    text = str(value or "")
+    if "\\" not in text:
+        return text
+
+    def replace_unicode(match: re.Match[str]) -> str:
+        try:
+            char = chr(int(match.group(1), 16))
+        except Exception:
+            return match.group(0)
+        if re.search(r"[\x00-\x08\x0e-\x1f]", char):
+            return match.group(0)
+        return char
+
+    def replace_hex(match: re.Match[str]) -> str:
+        try:
+            char = chr(int(match.group(1), 16))
+        except Exception:
+            return match.group(0)
+        if re.search(r"[\x00-\x08\x0e-\x1f]", char):
+            return match.group(0)
+        return char
+
+    unicode_decoded = re.sub(r"\\u([0-9a-fA-F]{4})", replace_unicode, text)
+    hex_decoded = re.sub(r"\\x([0-9a-fA-F]{2})", replace_hex, unicode_decoded)
+    return (
+        hex_decoded
+        .replace("\\/", "/")
+        .replace("\\&", "&")
+        .replace("\\?", "?")
+        .replace("\\=", "=")
+    )
 
 
 def _json_context_mime(value: object) -> str:
@@ -445,6 +485,7 @@ def _json_media_resources(node: object, base_url: str, source: str, key_path: li
                                 )
                             )
                             seen.add(url)
+                            break
             if isinstance(value, str) and len(key_path) < 12:
                 for candidate_text in _decoded_media_values(value):
                     nested_text = html.unescape(candidate_text).strip()

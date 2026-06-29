@@ -36,6 +36,9 @@ class FakeResponse {
 const encodedHls = "https%3A%2F%2Fcdn.example.com%2Fsecure%2Flesson.m3u8%3Ftoken%3Dabc";
 const doubleEncodedHls = encodeURIComponent(encodeURIComponent("https://cdn.example.com/secure/backup.m3u8?token=double"));
 const packedVideo = Buffer.from("https://cdn.example.com/video/lesson.mp4?sign=ok", "utf8").toString("base64");
+const escapedHls = String.raw`https:\u002F\u002Fcdn.example.com\u002Fsecure\u002Fescaped.m3u8\u003Ftoken\u003Djs\u0026uid\u003D1`;
+const escapedVideo = String.raw`https:\/\/cdn.example.com\/video\/escaped.mp4\x3Fsign\x3Dhex`;
+const escapedPayload = String.raw`https:\/\/cdn.example.com\/secure\/payload.m3u8\x3Ftoken\x3Dpayload`;
 
 const context = {
   window: null,
@@ -48,7 +51,10 @@ const context = {
   URL,
   atob: value => Buffer.from(value, "base64").toString("binary"),
   fetch: async () => new FakeResponse(
-    JSON.stringify({ playInfo: { hls: encodedHls, backupHlsUrl: doubleEncodedHls, videoUrl: packedVideo } }),
+    JSON.stringify({
+      playInfo: { hls: encodedHls, backupHlsUrl: doubleEncodedHls, videoUrl: packedVideo, escapedHls, escapedVideo },
+      payload: escapedPayload,
+    }),
     {
       url: "https://course.example.com/api/play",
       headers: { "content-type": "application/json" },
@@ -77,3 +83,6 @@ const urls = new Set(resources.map(resource => resource.url));
 assert.ok(urls.has("https://cdn.example.com/secure/lesson.m3u8?token=abc"));
 assert.ok(urls.has("https://cdn.example.com/secure/backup.m3u8?token=double"));
 assert.ok(urls.has("https://cdn.example.com/video/lesson.mp4?sign=ok"));
+assert.ok(urls.has("https://cdn.example.com/secure/escaped.m3u8?token=js&uid=1"));
+assert.ok(urls.has("https://cdn.example.com/video/escaped.mp4?sign=hex"));
+assert.ok(urls.has("https://cdn.example.com/secure/payload.m3u8?token=payload"));

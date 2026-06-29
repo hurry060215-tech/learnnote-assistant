@@ -306,6 +306,26 @@ class ResourceDetectionTests(unittest.TestCase):
         self.assertEqual(by_label["field hls"].url, "https://course.example.com/stream?lesson=1&token=abc")
         self.assertEqual(by_label["field dashUrl"].mime, "application/dash+xml")
 
+    def test_page_scan_decodes_js_escaped_media_fields_inside_script(self) -> None:
+        resources = extract_media_resources_from_text(
+            r"""
+            <script>
+              window.__playConfig = {
+                hls: "https:\u002F\u002Fcdn.example.com\u002Fsecure\u002Flesson.m3u8\u003Ftoken\u003Dabc\u0026uid\u003D1",
+                videoUrl: "https:\/\/cdn.example.com\/archive\/lesson.mp4\x3Fsig\x3Dok"
+              };
+            </script>
+            """,
+            "https://course.example.com/player/index.html",
+            "page-scan",
+        )
+        by_url = {resource.url: resource for resource in resources}
+
+        self.assertEqual(by_url["https://cdn.example.com/secure/lesson.m3u8?token=abc&uid=1"].kind, "hls")
+        self.assertEqual(by_url["https://cdn.example.com/secure/lesson.m3u8?token=abc&uid=1"].label, "field hls")
+        self.assertEqual(by_url["https://cdn.example.com/archive/lesson.mp4?sig=ok"].kind, "video")
+        self.assertEqual(by_url["https://cdn.example.com/archive/lesson.mp4?sig=ok"].label, "field videoUrl")
+
     def test_page_scan_finds_chaoxing_style_media_fields(self) -> None:
         encoded_hls = "https%3A%2F%2Fcdn.example.com%2Fchaoxing%2Fmaster.m3u8%3Ftoken%3Dabc"
         resources = extract_media_resources_from_text(
