@@ -30,7 +30,8 @@ const documentStub = {
 
 const calls = {
   collect: 0,
-  preflight: 0,
+  pagePreflight: 0,
+  resourcePreflight: 0,
   start: 0
 };
 
@@ -83,8 +84,33 @@ const context = {
           calls.collect += 1;
           return { page, resources };
         }
+        if (message.type === "preflight-current-page") {
+          calls.pagePreflight += 1;
+          return {
+            report: {
+              ok: true,
+              ready: false,
+              code: "download_forbidden",
+              message: "HTTP 403：登录态或 Referer 不匹配",
+              selected_url: "",
+              candidate_count: 1,
+              probed_count: 1,
+              downloadable_count: 0,
+              candidates: [{
+                rank: 1,
+                resource: resources[0],
+                preflight: {
+                  ok: false,
+                  downloadable: false,
+                  code: "download_forbidden",
+                  message: "HTTP 403：登录态或 Referer 不匹配"
+                }
+              }]
+            }
+          };
+        }
         if (message.type === "preflight-current-resource") {
-          calls.preflight += 1;
+          calls.resourcePreflight += 1;
           return {
             preflight: {
               ok: false,
@@ -118,7 +144,8 @@ await new Promise(resolve => setTimeout(resolve, 0));
 await context.startTask("video");
 
 assert.equal(calls.collect, 2);
-assert.equal(calls.preflight, 1);
+assert.equal(calls.pagePreflight, 1);
+assert.equal(calls.resourcePreflight, 0);
 assert.equal(calls.start, 0);
 assert.match(elements.get("#extractionPlan").innerHTML, /data-step="fallback"/);
 assert.match(elements.get("#extractionPlan").innerHTML, /extraction-step blocked/);

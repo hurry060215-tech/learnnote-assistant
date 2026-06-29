@@ -2299,6 +2299,27 @@ function applyPagePreflightReport(report) {
   return true;
 }
 
+function pagePreflightResult(report) {
+  if (!report) return null;
+  return {
+    ok: Boolean(report.ok),
+    downloadable: Boolean(report.ready || report.downloadable_count > 0),
+    code: report.code || "",
+    message: report.message || "",
+    url: report.selected_url || "",
+    report
+  };
+}
+
+async function preflightPageCandidates(candidates) {
+  if (!candidates?.length) return null;
+  const report = await requestPagePreflightReport(candidates);
+  if (!applyPagePreflightReport(report)) return null;
+  els.taskMessage.textContent = report.message || (report.ready ? "整页预检通过" : "整页预检未通过");
+  renderContext();
+  return pagePreflightResult(report);
+}
+
 async function preflightBestResource(mode = "video") {
   const candidates = preflightCandidatesForStart(mode);
   if (!candidates.length) return null;
@@ -2346,8 +2367,15 @@ async function startTask(mode = "video") {
       els.taskMessage.textContent = "刷新当前页面失败，无法确认最新播放资源；请重新打开页面或刷新后再试。";
       return;
     }
-    if (preflightCandidatesForStart(mode).length) {
-      const checked = await preflightBestResource(mode);
+    const candidates = preflightCandidatesForStart(mode);
+    if (candidates.length) {
+      let checked = null;
+      try {
+        checked = await preflightPageCandidates(candidates);
+      } catch {
+        // Keep one-click start usable when the aggregate preflight endpoint is unavailable.
+      }
+      if (!checked) checked = await preflightBestResource(mode);
       if (!checked?.downloadable) {
         if (!canAttemptBackendPageFallback(mode)) {
           els.taskMessage.textContent = preflightBlockMessage(checked);
@@ -2429,12 +2457,8 @@ async function runPreflight() {
       return null;
     }
     try {
-      const report = await requestPagePreflightReport(candidates);
-      if (applyPagePreflightReport(report)) {
-        els.taskMessage.textContent = report.message || (report.ready ? "Page preflight passed" : "Page preflight did not pass");
-        renderContext();
-        return report;
-      }
+      const result = await preflightPageCandidates(candidates);
+      if (result?.report) return result.report;
     } catch {
       // Fall through to the older per-resource preflight path.
     }

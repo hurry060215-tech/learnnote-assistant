@@ -30,7 +30,8 @@ const documentStub = {
 
 const calls = {
   collect: 0,
-  preflight: [],
+  pagePreflight: 0,
+  resourcePreflight: [],
   start: null
 };
 
@@ -102,8 +103,34 @@ const context = {
           calls.collect += 1;
           return { page, resources };
         }
+        if (message.type === "preflight-current-page") {
+          calls.pagePreflight += 1;
+          return {
+            report: {
+              ok: true,
+              ready: false,
+              code: "download_forbidden",
+              message: "HTTP 403",
+              selected_url: "",
+              candidate_count: 1,
+              probed_count: 1,
+              downloadable_count: 0,
+              candidates: [{
+                rank: 1,
+                resource: resources[0],
+                preflight: {
+                  ok: false,
+                  downloadable: false,
+                  code: "download_forbidden",
+                  status_code: 403,
+                  message: "HTTP 403"
+                }
+              }]
+            }
+          };
+        }
         if (message.type === "preflight-current-resource") {
-          calls.preflight.push(message.resource.url);
+          calls.resourcePreflight.push(message.resource.url);
           return {
             preflight: {
               ok: false,
@@ -138,7 +165,8 @@ await new Promise(resolve => setTimeout(resolve, 0));
 await context.startTask("video");
 
 assert.equal(calls.collect, 2);
-assert.deepEqual(calls.preflight, ["https://cdn.example.com/protected/play?id=1"]);
+assert.equal(calls.pagePreflight, 1);
+assert.deepEqual(calls.resourcePreflight, []);
 assert.ok(calls.start, "expected backend task start when page URL can be scanned");
 assert.equal(calls.start.mode, "video");
 assert.equal(calls.start.page.page_url, "https://course.example.com/lesson");
