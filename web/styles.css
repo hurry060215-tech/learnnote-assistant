@@ -5678,12 +5678,38 @@ body {
   .app-shell {
     grid-template-columns: 54px minmax(304px, 332px) minmax(326px, 360px) minmax(540px, 1fr);
   }
+
+  .task-overview {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .task-overview-main .stage-rail {
+    max-width: 100%;
+  }
+
+  .task-overview-actions,
+  .next-step-actions {
+    justify-content: flex-start;
+  }
+
+  .task-overview-metrics,
+  .pipeline-audit-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .next-step-card,
+  .media-preview-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 @media (max-width: 760px) {
   .topbar {
-    height: 60px;
-    padding: 0 10px;
+    height: auto;
+    min-height: 60px;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px 10px;
   }
 
   .app-shell {
@@ -5751,5 +5777,29 @@ body {
 
   .media-preview-card {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 420px) {
+  .brand {
+    width: 100%;
+  }
+
+  .brand p {
+    display: none;
+  }
+
+  .topbar-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .topbar-actions .health {
+    min-width: 0;
+    flex: 1 1 auto;
+    overflow: hidden;
+    padding: 0 8px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
