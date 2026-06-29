@@ -1394,6 +1394,36 @@ class DownloaderBoundaryTests(unittest.TestCase):
             self.assertTrue(guessed_scores)
             self.assertTrue(all(score <= 72 for score in guessed_scores))
 
+    def test_resolved_final_url_candidate_outranks_play_api_candidate(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            downloader = MediaDownloader(Path(tmp))
+            resources = [
+                ResourceCandidate(
+                    url="https://course.example.com/api/play?id=42",
+                    resolved_url="https://cdn.example.com/real/master.m3u8?token=abc",
+                    source="webRequest",
+                    kind="hls",
+                    mime="application/vnd.apple.mpegurl",
+                    score=100,
+                    request_headers={"Referer": "https://course.example.com/lesson"},
+                ),
+                ResourceCandidate(
+                    url="https://cdn.example.com/real/master.m3u8?token=abc",
+                    source="webRequestResolved",
+                    kind="hls",
+                    mime="application/vnd.apple.mpegurl",
+                    score=100,
+                    playback_match="resolved-final-url",
+                    request_headers={"Referer": "https://course.example.com/lesson"},
+                ),
+            ]
+            candidates = downloader._candidate_resources(resources)
+
+            self.assertEqual(candidates[0].url, "https://cdn.example.com/real/master.m3u8?token=abc")
+            self.assertEqual(candidates[0].source, "webRequestResolved")
+            self.assertEqual(candidates[0].playback_match, "resolved-final-url")
+            self.assertEqual(candidates[0].request_headers["Referer"], "https://course.example.com/lesson")
+
     def test_ytdlp_fallback_receives_browser_http_headers(self) -> None:
         captured: dict = {}
 

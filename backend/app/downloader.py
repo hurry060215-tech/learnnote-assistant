@@ -851,6 +851,8 @@ def score_kind(url: str, source: str, kind: str) -> int:
         score += 60
     elif kind == "blob":
         score += 5
+    if source == "webRequestResolved":
+        score += 12
     if source == "webRequest":
         score += 10
     if source.startswith("pageHook"):
@@ -886,6 +888,8 @@ def source_rank(source: str) -> int:
         return 7
     if source.startswith("pageHookPlayer"):
         return 6
+    if source == "webRequestResolved":
+        return 6
     if source == "webRequest":
         return 5
     if source == "activeVideo":
@@ -903,6 +907,7 @@ def playback_match_rank(match: str) -> int:
         "blob-source": 8,
         "range-near-playhead": 7,
         "manifest-near-playhead": 6,
+        "resolved-final-url": 6,
         "blob-same-frame": 5,
         "same-frame": 4,
         "recent-media-request": 3,
@@ -920,6 +925,7 @@ def playback_match_label(match: str) -> str:
         "blob-source": "Blob/MSE 来源映射",
         "range-near-playhead": "播放进度附近 Range 请求",
         "manifest-near-playhead": "播放进度附近 Manifest 请求",
+        "resolved-final-url": "跳转后的真实媒体",
         "recent-media-request": "最近播放请求",
         "same-site-request": "同站请求",
         "inferred-from-fragment": "分片推断",
