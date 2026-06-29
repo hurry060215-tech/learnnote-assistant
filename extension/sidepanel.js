@@ -2062,6 +2062,22 @@ async function waitForOneClickMediaCandidate() {
   return hasActiveVideoSignal(page?.active_video) || resources.length > 0;
 }
 
+async function waitForMediaCandidateBeforeStart(mode = "video") {
+  if (!isMediaTaskMode(mode)) return true;
+  if (preflightCandidatesForStart(mode).length) return true;
+  for (let attempt = 0; attempt < ONE_CLICK_RESOURCE_WAIT_ATTEMPTS; attempt += 1) {
+    if (preflightCandidatesForStart(mode).length) return true;
+    if (hasActiveVideoSignal(page?.active_video) && resources.length) return true;
+    const remaining = ONE_CLICK_RESOURCE_WAIT_ATTEMPTS - attempt;
+    els.taskMessage.textContent = mode === "download_only"
+      ? `正在等待当前页暴露可下载视频资源...剩余 ${remaining} 次自动重检`
+      : `正在等待当前页暴露可直取视频资源...剩余 ${remaining} 次自动重检`;
+    await sleep(ONE_CLICK_RESOURCE_WAIT_DELAY_MS);
+    await collect();
+  }
+  return hasActiveVideoSignal(page?.active_video) || resources.length > 0 || canAttemptBackendPageFallback(mode);
+}
+
 async function runSidePanelIntent(intent) {
   if (!intent || intent.action !== "summarize-current-video") return;
   const age = Date.now() - Number(intent.createdAt || 0);
@@ -2456,6 +2472,7 @@ async function startTask(mode = "video") {
       els.taskMessage.textContent = "刷新当前页面失败，无法确认最新播放资源；请重新打开页面或刷新后再试。";
       return;
     }
+    await waitForMediaCandidateBeforeStart(mode);
     const candidates = preflightCandidatesForStart(mode);
     if (candidates.length) {
       let checked = null;
