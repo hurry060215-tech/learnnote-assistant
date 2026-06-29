@@ -148,6 +148,7 @@ assert.match(elements.get("#detail").innerHTML, /浏览器字幕和转写片段�
 assert.match(elements.get("#detail").innerHTML, /不.*录制页面/);
 assert.equal(elements.get("#copyButton").disabled, true);
 assert.equal(elements.get("#visualWindowsButton").disabled, true);
+assert.equal(elements.get("#manifestButton").disabled, true);
 assert.match(elements.get("#sourceWorkflow").innerHTML, /class="source-workflow-card browser"/);
 assert.match(elements.get("#sourceWorkflow").innerHTML, /学习生产线|当前页直取/);
 assert.match(elements.get("#sourceWorkflow").innerHTML, /读取当前页/);
@@ -168,6 +169,7 @@ assert.match(indexHtml, /预检候选/);
 assert.match(indexHtml, /本地总结/);
 assert.match(indexHtml, /id="browserRouteSummary"/);
 assert.match(indexHtml, /id="visualWindowsButton"/);
+assert.match(indexHtml, /id="manifestButton"/);
 assert.ok(
   indexHtml.indexOf('id="browserRouteSummary"') < indexHtml.indexOf('id="sourceWorkflow"'),
   "current-page route summary should appear before the workflow explainer"
@@ -275,6 +277,7 @@ assert.match(visionEvidenceHtml, /超限省略 W099/);
 assert.match(visionEvidenceHtml, /data-switch-result-tab="frames"/);
 assert.match(visionEvidenceHtml, /data-switch-result-tab="diagnostics"/);
 assert.match(visionEvidenceHtml, /\/api\/tasks\/vision-task\/exports\/bundle/);
+assert.match(visionEvidenceHtml, /\/api\/tasks\/vision-task\/exports\/manifest/);
 assert.match(visionEvidenceHtml, /&lt;script&gt;bad\(\)&lt;\/script&gt; warning/);
 assert.doesNotMatch(visionEvidenceHtml, /<script>bad/);
 
@@ -490,6 +493,7 @@ assert.match(studyBarHtml, /00:00:00 - 00:03:00/);
 assert.match(studyBarHtml, /data-switch-result-tab="frames"/);
 assert.match(studyBarHtml, /data-switch-result-tab="transcript"/);
 assert.match(studyBarHtml, /\/api\/tasks\/task-study-map\/exports\/bundle/);
+assert.match(studyBarHtml, /\/api\/tasks\/task-study-map\/exports\/manifest/);
 assert.doesNotMatch(studyBarHtml, /<script>bad/);
 assert.match(studyBarHtml, /&lt;script&gt;bad\(\)&lt;\/script&gt; 课程/);
 
@@ -526,6 +530,7 @@ assert.match(taskOverviewHtml, /data-rerun-from-media="task-web-overview"/);
 assert.match(taskOverviewHtml, /\/api\/tasks\/task-web-overview\/exports\/media/);
 assert.match(taskOverviewHtml, /\/api\/tasks\/task-web-overview\/exports\/diagnostics/);
 assert.match(taskOverviewHtml, /\/api\/tasks\/task-web-overview\/exports\/bundle/);
+assert.match(taskOverviewHtml, /\/api\/tasks\/task-web-overview\/exports\/manifest/);
 assert.match(taskOverviewHtml, /已完成直取下载/);
 assert.match(taskOverviewHtml, /已跟踪最终 URL/);
 assert.match(taskOverviewHtml, /阶段审计门/);

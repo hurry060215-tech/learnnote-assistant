@@ -240,6 +240,7 @@ assert.match(visionEvidenceStrongHtml, /2\/2/);
 assert.match(visionEvidenceStrongHtml, /data-switch-result-tab="frames"/);
 assert.match(visionEvidenceStrongHtml, /data-switch-result-tab="diagnostics"/);
 assert.match(visionEvidenceStrongHtml, /data-export="bundle"/);
+assert.match(visionEvidenceStrongHtml, /data-export="manifest"/);
 
 const visionEvidencePartialHtml = context.visionEvidenceBar({
   id: "side-vision-partial",
@@ -532,6 +533,7 @@ assert.match(studyMapHtml, /00:00:00 - 00:03:00/);
 assert.match(studyMapHtml, /data-switch-result-tab="frames"/);
 assert.match(studyMapHtml, /data-switch-result-tab="transcript"/);
 assert.match(studyMapHtml, /data-export="bundle"/);
+assert.match(studyMapHtml, /data-export="manifest"/);
 assert.doesNotMatch(studyMapHtml, /<script>bad/);
 assert.match(studyMapHtml, /&lt;script&gt;bad\(\)&lt;\/script&gt; 课程/);
 
@@ -566,6 +568,7 @@ assert.match(taskOverviewHtml, /data-open-workbench="side-overview"/);
 assert.match(taskOverviewHtml, /Web 工作台/);
 assert.match(taskOverviewHtml, /data-export="media"/);
 assert.match(taskOverviewHtml, /data-export="diagnostics"/);
+assert.match(taskOverviewHtml, /data-export="manifest"/);
 assert.match(taskOverviewHtml, /data-export="bundle"/);
 assert.match(taskOverviewHtml, /生成完整笔记/);
 assert.match(taskOverviewHtml, /data-rerun-from-media="side-overview"/);

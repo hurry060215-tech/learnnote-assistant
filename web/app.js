@@ -70,6 +70,7 @@ const els = {
   bundleButton: document.querySelector("#bundleButton"),
   diagnosticsButton: document.querySelector("#diagnosticsButton"),
   visualWindowsButton: document.querySelector("#visualWindowsButton"),
+  manifestButton: document.querySelector("#manifestButton"),
   mediaButton: document.querySelector("#mediaButton"),
   downloadButton: document.querySelector("#downloadButton")
 };
@@ -1774,6 +1775,7 @@ function visionEvidenceBar(task) {
     <div class="vision-evidence-actions">
       ${windows.length ? `<button type="button" data-switch-result-tab="frames">查看切片</button>` : ""}
       ${hasTaskDiagnostics(task) ? `<button type="button" data-switch-result-tab="diagnostics">查看诊断</button>` : ""}
+      ${hasTaskBundle(task) ? `<a href="${escapeHtml(taskExportUrl(task, "manifest"))}">导出清单</a>` : ""}
       ${hasTaskBundle(task) ? `<a href="${escapeHtml(taskExportUrl(task, "bundle"))}">导出资料包</a>` : ""}
     </div>
   </section>`;
@@ -2001,6 +2003,7 @@ function taskOverview(task) {
     hasNote ? `<a href="${escapeHtml(taskExportUrl(task, "markdown"))}">导出 Markdown</a>` : "",
     hasMedia ? `<a href="${escapeHtml(taskExportUrl(task, "media"))}">导出本地视频</a>` : "",
     hasTaskDiagnostics(task) ? `<a href="${escapeHtml(taskExportUrl(task, "diagnostics"))}">导出诊断</a>` : "",
+    hasBundle ? `<a href="${escapeHtml(taskExportUrl(task, "manifest"))}">导出清单</a>` : "",
     hasBundle ? `<a href="${escapeHtml(taskExportUrl(task, "bundle"))}">导出资料包</a>` : ""
   ].filter(Boolean).join("");
 
@@ -2223,7 +2226,7 @@ function noteStudyBar(markdown, task) {
       label: "本地产物",
       value: [hasMedia ? "视频" : "", hasBundle ? "资料包" : ""].filter(Boolean).join(" · ") || "等待产物",
       text: hasMedia ? "可复用 media.mp4 继续处理" : "任务完成后可导出",
-      action: hasBundle ? `<a href="${escapeHtml(taskExportUrl(task, "bundle"))}">导出资料包</a>` : ""
+      action: hasBundle ? `<a href="${escapeHtml(taskExportUrl(task, "manifest"))}">导出清单</a><a href="${escapeHtml(taskExportUrl(task, "bundle"))}">导出资料包</a>` : ""
     }
   ];
   return `<section class="study-map" aria-label="学习笔记导览">
@@ -2580,6 +2583,7 @@ async function renderDetail() {
     els.bundleButton.disabled = true;
     els.diagnosticsButton.disabled = true;
     if (els.visualWindowsButton) els.visualWindowsButton.disabled = true;
+    if (els.manifestButton) els.manifestButton.disabled = true;
     els.mediaButton.disabled = true;
     els.downloadButton.disabled = true;
     updateContinueFromMediaAction(null);
@@ -2600,6 +2604,7 @@ async function renderDetail() {
   els.bundleButton.disabled = !hasTaskBundle(task);
   els.diagnosticsButton.disabled = !hasTaskDiagnostics(task);
   if (els.visualWindowsButton) els.visualWindowsButton.disabled = !hasVisualWindowExport(task);
+  if (els.manifestButton) els.manifestButton.disabled = !hasTaskBundle(task);
   els.mediaButton.disabled = !task.media_path;
   els.downloadButton.disabled = !hasNote;
   updateContinueFromMediaAction(task);
@@ -2978,6 +2983,12 @@ els.bundleButton.onclick = () => {
   if (!selectedTaskId) return;
   window.location.assign(`${API}/api/tasks/${encodeURIComponent(selectedTaskId)}/exports/bundle`);
 };
+if (els.manifestButton) {
+  els.manifestButton.onclick = () => {
+    if (!selectedTaskId) return;
+    window.location.assign(`${API}/api/tasks/${encodeURIComponent(selectedTaskId)}/exports/manifest`);
+  };
+}
 els.diagnosticsButton.onclick = () => {
   if (!selectedTaskId) return;
   window.location.assign(`${API}/api/tasks/${encodeURIComponent(selectedTaskId)}/exports/diagnostics`);

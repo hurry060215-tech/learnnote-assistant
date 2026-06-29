@@ -115,6 +115,12 @@ def visual_windows_filename(task_id: str, title: str) -> str:
     return f"{stem}-visual-windows.md"
 
 
+def manifest_filename(task_id: str, title: str) -> str:
+    stem = _FILENAME_RESERVED_RE.sub("_", title or "").strip(" ._")
+    stem = stem[:120] or f"learnnote-{task_id}"
+    return f"{stem}-manifest.json"
+
+
 def _format_bytes(value: int | None) -> str:
     if not value:
         return "-"
@@ -904,6 +910,38 @@ def api_export_visual_windows(task_id: str) -> PlainTextResponse:
         )
     }
     return PlainTextResponse(report, media_type="text/markdown; charset=utf-8", headers=headers)
+
+
+@app.get("/api/tasks/{task_id}/exports/manifest")
+def api_export_manifest(task_id: str) -> Response:
+    try:
+        task = get_task(task_id)
+        transcript = read_transcript(task_id)
+        visual_index = read_visual_index(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Task not found") from exc
+
+    has_artifact = bool(
+        task.media_path
+        or task.note_path
+        or task.transcript_path
+        or task.visual_windows
+        or task.frame_grids
+        or task.download_attempts
+        or task.error_code
+    )
+    if not has_artifact:
+        raise HTTPException(status_code=404, detail="Task artifacts not found")
+
+    manifest = render_bundle_manifest(task, transcript, visual_index)
+    filename = manifest_filename(task.id, task.title)
+    headers = {
+        "Content-Disposition": (
+            f'attachment; filename="learnnote-{task.id}-manifest.json"; '
+            f"filename*=UTF-8''{quote(filename)}"
+        )
+    }
+    return Response(json.dumps(manifest, ensure_ascii=False, indent=2), media_type="application/json; charset=utf-8", headers=headers)
 
 
 @app.get("/api/tasks/{task_id}/exports/bundle")

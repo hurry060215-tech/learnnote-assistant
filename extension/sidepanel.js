@@ -73,6 +73,7 @@ const els = {
   bundleButton: document.querySelector("#bundleButton"),
   diagnosticsButton: document.querySelector("#diagnosticsButton"),
   visualWindowsButton: document.querySelector("#visualWindowsButton"),
+  manifestButton: document.querySelector("#manifestButton"),
   mediaButton: document.querySelector("#mediaButton"),
   downloadButton: document.querySelector("#downloadButton"),
   openWebButton: document.querySelector("#openWebButton"),
@@ -2741,6 +2742,7 @@ function visionEvidenceBar(task) {
     <div class="vision-evidence-actions">
       ${windows.length ? `<button type="button" data-switch-result-tab="frames">查看切片</button>` : ""}
       ${hasTaskDiagnostics(task) ? `<button type="button" data-switch-result-tab="diagnostics">查看诊断</button>` : ""}
+      ${hasTaskBundle(task) ? `<button type="button" data-export="manifest">导出清单</button>` : ""}
       ${hasTaskBundle(task) ? `<button type="button" data-export="bundle">导出资料包</button>` : ""}
     </div>
   </section>`;
@@ -2947,6 +2949,7 @@ function taskOverview(task) {
     hasNote ? `<button type="button" data-export="markdown">Markdown</button>` : "",
     hasMedia ? `<button type="button" data-export="media">本地视频</button>` : "",
     hasTaskDiagnostics(task) ? `<button type="button" data-export="diagnostics">诊断</button>` : "",
+    hasBundle ? `<button type="button" data-export="manifest">清单</button>` : "",
     hasBundle ? `<button type="button" data-export="bundle">资料包</button>` : ""
   ].filter(Boolean).join("");
   const downloadOnly = hasMedia && !hasNote && task.status === "success";
@@ -3172,7 +3175,7 @@ function noteStudyMap(markdown, task) {
       label: "本地产物",
       value: [hasMedia ? "视频" : "", hasBundle ? "资料包" : ""].filter(Boolean).join(" · ") || "等待产物",
       text: hasMedia ? "可复用 media.mp4 继续处理" : "任务完成后可导出",
-      action: hasBundle ? `<button type="button" data-export="bundle">导出资料包</button>` : ""
+      action: hasBundle ? `<button type="button" data-export="manifest">导出清单</button><button type="button" data-export="bundle">导出资料包</button>` : ""
     }
   ];
   return `<section class="study-map" aria-label="学习笔记导览">
@@ -3372,6 +3375,7 @@ function renderResult() {
   els.bundleButton.disabled = !hasTaskBundle(currentTask);
   els.diagnosticsButton.disabled = !hasTaskDiagnostics(currentTask);
   if (els.visualWindowsButton) els.visualWindowsButton.disabled = !hasVisualWindowExport(currentTask);
+  if (els.manifestButton) els.manifestButton.disabled = !hasTaskBundle(currentTask);
   els.mediaButton.disabled = !currentTask?.media_path;
   els.downloadButton.disabled = !hasNote;
   updateContinueFromMediaAction(currentTask);
@@ -3559,6 +3563,11 @@ els.copyButton.onclick = () => navigator.clipboard.writeText(lastNote || "");
 els.bundleButton.onclick = () => {
   openTaskExport("bundle");
 };
+if (els.manifestButton) {
+  els.manifestButton.onclick = () => {
+    openTaskExport("manifest");
+  };
+}
 els.diagnosticsButton.onclick = () => {
   openTaskExport("diagnostics");
 };
