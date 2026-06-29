@@ -857,6 +857,10 @@ function resourceSourceText(resource) {
   if (resource?.source === "inferred-manifest") return "分片路径回推 manifest";
   if (resource?.source === "webRequestResolved") return "最终媒体地址";
   if (resource?.source === "webRequest") return "浏览器请求";
+  if (resource?.source === "iframeHint") return "iframe 内播放器线索";
+  if (resource?.source === "scriptHint") return "页面脚本线索";
+  if (resource?.source === "domHint") return "页面元素线索";
+  if (resource?.source === "locationHint") return "页面 URL 线索";
   if (String(resource?.source || "").startsWith("pageHook")) return "页面接口";
   return resource?.source || "";
 }

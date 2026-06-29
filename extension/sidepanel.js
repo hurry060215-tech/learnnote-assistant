@@ -1043,6 +1043,10 @@ function resourceSourceText(item) {
   if (item?.source === "inferred-manifest") return "分片路径回推 manifest";
   if (item?.source === "webRequestResolved") return "最终媒体地址";
   if (item?.source === "webRequest") return "浏览器请求";
+  if (item?.source === "iframeHint") return "iframe 内播放器线索";
+  if (item?.source === "scriptHint") return "页面脚本线索";
+  if (item?.source === "domHint") return "页面元素线索";
+  if (item?.source === "locationHint") return "页面 URL 线索";
   if (String(item?.source || "").startsWith("pageHook")) return "页面接口";
   return item?.source || "";
 }

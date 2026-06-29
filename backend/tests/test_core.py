@@ -64,6 +64,7 @@ class ResourceDetectionTests(unittest.TestCase):
         self.assertEqual(source_rank("scriptHint"), 3)
         self.assertEqual(source_rank("domHint"), 3)
         self.assertEqual(source_rank("locationHint"), 3)
+        self.assertEqual(source_rank("iframeHint"), 3)
         self.assertGreater(source_rank("webRequest"), source_rank("domHint"))
         self.assertGreater(source_rank("domHint"), source_rank("dom"))
         self.assertEqual(classify_resource("https://cdn.example.com/chunk.m4s"), "fragment")

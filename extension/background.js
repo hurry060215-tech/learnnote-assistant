@@ -240,7 +240,7 @@ function sourceRank(source = "") {
   if (source === "webRequest") return 5;
   if (source === "activeVideo") return 4;
   if (String(source || "").startsWith("pageHook")) return 3;
-  if (source === "scriptHint" || source === "domHint" || source === "locationHint") return 3;
+  if (source === "scriptHint" || source === "domHint" || source === "locationHint" || source === "iframeHint") return 3;
   if (source === "dom") return 2;
   return 0;
 }

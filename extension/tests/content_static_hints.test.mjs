@@ -137,7 +137,23 @@ const ogVideo = new FakeElement("meta", {
 const plainUrlScript = new FakeElement("script", {
   textContent: "window.__payload='https://cdn.example.com/static/plain-url.m3u8?token=script-plain';"
 });
-const html = new FakeElement("html", {}, [player, packedPlayer, doubleEncodedPlayer, onclickPlayer, paramPlayer, configPlayer, nakedPlayer, vendorPlayer, preloadVideo, preloadHls, prefetchPlayApi, ogVideo, script, plainEncodedScript, plainDoubleEncodedScript, mixedEncodedScript, jsEscapedScript, jsEscapedPayloadScript, segmentScript, plainUrlScript]);
+const srcdocIframe = new FakeElement("iframe", {
+  title: "Inline player",
+  srcdoc: String.raw`<script>window.__player={hls:"https:\/\/cdn.example.com\/static\/iframe-srcdoc\/master.m3u8\x3Ftoken\x3Dsrcdoc"};</script>`
+});
+const sameOriginIframe = new FakeElement("iframe", {
+  title: "Same origin player"
+});
+sameOriginIframe.contentDocument = {
+  documentElement: {
+    outerHTML: String.raw`<html><body><script>window.__player={videoUrl:"https:\/\/cdn.example.com\/static\/iframe-doc\/lesson.mp4\x3Ftoken\x3Ddoc"};</script></body></html>`
+  },
+  body: {
+    innerText: "",
+    textContent: ""
+  }
+};
+const html = new FakeElement("html", {}, [player, packedPlayer, doubleEncodedPlayer, onclickPlayer, paramPlayer, configPlayer, nakedPlayer, vendorPlayer, preloadVideo, preloadHls, prefetchPlayApi, ogVideo, script, plainEncodedScript, plainDoubleEncodedScript, mixedEncodedScript, jsEscapedScript, jsEscapedPayloadScript, segmentScript, plainUrlScript, srcdocIframe, sameOriginIframe]);
 
 let messageListener = null;
 const context = {
@@ -237,6 +253,8 @@ const ogVideoHint = response.resources.find(item => item.url === "https://course
 const performancePlayHint = response.resources.find(item => item.url === "https://course.example.com/api/play?id=perf");
 const unrelatedPerformanceHint = response.resources.find(item => item.url === "https://course.example.com/lesson-data?id=not-media");
 const plainScriptHls = response.resources.find(item => item.url === "https://cdn.example.com/static/plain-url.m3u8?token=script-plain");
+const iframeSrcdocHls = response.resources.find(item => item.url === "https://cdn.example.com/static/iframe-srcdoc/master.m3u8?token=srcdoc");
+const iframeDocumentVideo = response.resources.find(item => item.url === "https://cdn.example.com/static/iframe-doc/lesson.mp4?token=doc");
 const malformedEncodedUrls = response.resources.filter(item => /\/https%3A%2F%2F/i.test(item.url));
 
 assert.ok(pageUrlHls, "expected current page URL query to expose encoded HLS URL");
@@ -360,5 +378,15 @@ assert.ok(plainScriptHls, "expected inline script URL scan to expose plain HLS U
 assert.equal(plainScriptHls.kind, "hls");
 assert.equal(plainScriptHls.source, "scriptHint");
 assert.match(plainScriptHls.label, /script media url/);
+
+assert.ok(iframeSrcdocHls, "expected iframe srcdoc scan to expose HLS URL");
+assert.equal(iframeSrcdocHls.kind, "hls");
+assert.equal(iframeSrcdocHls.source, "iframeHint");
+assert.match(iframeSrcdocHls.label, /Inline player srcdoc hls/);
+
+assert.ok(iframeDocumentVideo, "expected same-origin iframe document scan to expose mp4 URL");
+assert.equal(iframeDocumentVideo.kind, "video");
+assert.equal(iframeDocumentVideo.source, "iframeHint");
+assert.match(iframeDocumentVideo.label, /Same origin player document videoUrl/);
 
 assert.equal(malformedEncodedUrls.length, 0, "expected encoded absolute media URLs to normalize before URL resolution");

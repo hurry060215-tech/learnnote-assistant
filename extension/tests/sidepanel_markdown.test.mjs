@@ -857,6 +857,10 @@ assert.match(context.resourceReasonText({
   source: "inferred-manifest",
   label: "Inferred DASH manifest"
 }), /分片路径回推/);
+assert.equal(context.resourceSourceText({ source: "iframeHint" }), "iframe 内播放器线索");
+assert.equal(context.resourceSourceText({ source: "scriptHint" }), "页面脚本线索");
+assert.equal(context.resourceSourceText({ source: "domHint" }), "页面元素线索");
+assert.equal(context.resourceSourceText({ source: "locationHint" }), "页面 URL 线索");
 assert.match(context.requestEvidence({
   kind: "video",
   source: "pageHookPlayer",

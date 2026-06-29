@@ -186,6 +186,10 @@ assert.ok(
 assert.match(indexHtml, /当前页直取状态/);
 assert.match(indexHtml, /当前页交接流程/);
 assert.match(indexHtml, /Blob\/MSE 来源映射/);
+assert.equal(context.resourceSourceText({ source: "iframeHint" }), "iframe 内播放器线索");
+assert.equal(context.resourceSourceText({ source: "scriptHint" }), "页面脚本线索");
+assert.equal(context.resourceSourceText({ source: "domHint" }), "页面元素线索");
+assert.equal(context.resourceSourceText({ source: "locationHint" }), "页面 URL 线索");
 
 const readyGateHtml = context.emptyReadinessGatesHtml({
   ffmpeg: true,

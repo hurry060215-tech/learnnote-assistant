@@ -654,6 +654,67 @@ function collectInlineScriptResources() {
   return resources;
 }
 
+function collectHtmlTextResources(text, source, label, seen = new Set(), limit = 40) {
+  const resources = [];
+  const body = String(text || "").slice(0, 300000);
+  ENCODED_MEDIA_URL_RE.lastIndex = 0;
+  MEDIA_URL_RE.lastIndex = 0;
+  if (!body || (!STATIC_MEDIA_KEY_RE.test(body) && !ENCODED_MEDIA_URL_RE.test(body) && !MEDIA_URL_RE.test(body))) return resources;
+  ENCODED_MEDIA_URL_RE.lastIndex = 0;
+  MEDIA_URL_RE.lastIndex = 0;
+  STATIC_FIELD_RE.lastIndex = 0;
+  for (const match of body.matchAll(STATIC_FIELD_RE)) {
+    const key = String(match[1] || "").replace(/^["']|["']$/g, "");
+    if (!STATIC_MEDIA_KEY_RE.test(key)) continue;
+    const item = resourceFromHint(match[2], source, `${label} ${key}`, key);
+    if (!item || seen.has(item.url)) continue;
+    seen.add(item.url);
+    item.score = Math.max(item.score || 0, item.kind === "hls" || item.kind === "dash" ? 96 : item.kind === "video" ? 86 : 62);
+    resources.push(item);
+    if (resources.length >= limit) return resources;
+  }
+  for (const item of collectTextMediaResources(body, source, `${label} media url`, seen)) {
+    resources.push(item);
+    if (resources.length >= limit) return resources;
+  }
+  for (const item of collectEncodedTextResources(body, source, `${label} encoded url`, seen)) {
+    resources.push(item);
+    if (resources.length >= limit) return resources;
+  }
+  return resources;
+}
+
+function iframeDocumentText(iframe) {
+  try {
+    const doc = iframe?.contentDocument || iframe?.contentWindow?.document || null;
+    if (!doc) return "";
+    return [
+      doc.documentElement?.outerHTML,
+      doc.body?.innerText,
+      doc.body?.textContent
+    ].filter(Boolean).join("\n").slice(0, 300000);
+  } catch {
+    return "";
+  }
+}
+
+function collectIframeEmbeddedResources() {
+  const resources = [];
+  const seen = new Set();
+  for (const iframe of deepQuerySelectorAll("iframe", document, 160)) {
+    const label = readAttribute(iframe, "title") || readAttribute(iframe, "name") || "iframe";
+    const srcdoc = readAttribute(iframe, "srcdoc");
+    for (const item of collectHtmlTextResources(srcdoc, "iframeHint", `${label} srcdoc`, seen, 24)) {
+      resources.push(item);
+    }
+    for (const item of collectHtmlTextResources(iframeDocumentText(iframe), "iframeHint", `${label} document`, seen, 24)) {
+      resources.push(item);
+    }
+    if (resources.length >= 40) break;
+  }
+  return resources;
+}
+
 function collectUrlEmbeddedResources(url, source = "domHint", label = "page url") {
   if (!url) return [];
   const seen = new Set();
@@ -996,6 +1057,7 @@ function bindVideoTextTracks(video) {
 function collectDomResources() {
   const resources = [
     ...collectUrlEmbeddedResources(location.href, "locationHint", "current page URL"),
+    ...collectIframeEmbeddedResources(),
     ...collectStaticAttributeResources(),
     ...collectDeclaredMediaResources(),
     ...collectInlineScriptResources()
