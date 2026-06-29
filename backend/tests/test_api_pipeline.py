@@ -48,6 +48,33 @@ class PagePreflightGateHandler(SimpleHTTPRequestHandler):
         self.send_error(404)
 
 
+class JsonPlayEndpointHandler(SimpleHTTPRequestHandler):
+    media_body = b"\x00\x00\x00\x18ftypmp42" + (b"json-play-media" * 512)
+
+    def log_message(self, format: str, *args: object) -> None:
+        return
+
+    def do_GET(self) -> None:
+        path = urlparse(self.path).path
+        if path == "/api/play":
+            host = self.headers.get("Host", "")
+            body = json.dumps({"mediaUrl": f"http://{host}/real.mp4"}).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        if path == "/real.mp4":
+            self.send_response(200)
+            self.send_header("Content-Type", "video/mp4")
+            self.send_header("Content-Length", str(len(self.media_body)))
+            self.end_headers()
+            self.wfile.write(self.media_body)
+            return
+        self.send_error(404)
+
+
 class LocalUploadValidationTests(unittest.TestCase):
     def setUp(self) -> None:
         self.client = TestClient(app)
@@ -218,6 +245,47 @@ class LocalUploadValidationTests(unittest.TestCase):
             self.assertEqual(report["candidates"][1]["resource"]["url"], f"{base_url}/open.mp4")
             self.assertTrue(report["candidates"][1]["preflight"]["downloadable"])
             self.assertEqual(report["candidates"][1]["preflight"]["strategy"], "direct-file-probe")
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    def test_page_preflight_report_keeps_resolved_media_url_on_candidate(self) -> None:
+        server = ThreadingHTTPServer(("127.0.0.1", 0), JsonPlayEndpointHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            base_url = f"http://127.0.0.1:{server.server_port}"
+            play_url = f"{base_url}/api/play?id=42"
+            media_url = f"{base_url}/real.mp4"
+            response = self.client.post(
+                "/api/media/preflight-current-page",
+                json={
+                    "page_url": f"{base_url}/lesson.html",
+                    "probe_limit": 1,
+                    "resources": [
+                        {
+                            "url": play_url,
+                            "kind": "video",
+                            "mime": "video/mp4",
+                            "source": "webRequest",
+                            "score": 100,
+                            "label": "json play endpoint",
+                        },
+                    ],
+                },
+            )
+
+            self.assertEqual(response.status_code, 200)
+            report = response.json()["report"]
+            self.assertTrue(report["ready"])
+            self.assertEqual(report["selected_url"], play_url)
+            candidate = report["candidates"][0]["resource"]
+            preflight = report["candidates"][0]["preflight"]
+            self.assertEqual(candidate["url"], play_url)
+            self.assertEqual(candidate["resolved_url"], media_url)
+            self.assertEqual(candidate["kind"], "video")
+            self.assertEqual(preflight["resolved_url"], media_url)
+            self.assertEqual(preflight["strategy"], "direct-response-probe")
         finally:
             server.shutdown()
             server.server_close()

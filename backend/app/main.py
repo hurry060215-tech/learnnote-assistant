@@ -527,6 +527,21 @@ def task_payload(task: TaskRecord) -> dict:
     return payload
 
 
+def resource_with_preflight_result(candidate: ResourceCandidate, result: MediaPreflightResult) -> ResourceCandidate:
+    resource = candidate.model_copy(deep=True)
+    if result.resolved_url:
+        resource.resolved_url = result.resolved_url
+    if result.kind and result.kind != "unknown":
+        resource.kind = result.kind
+    if result.content_type:
+        resource.mime = result.content_type
+    if result.content_length:
+        resource.content_length = result.content_length
+    if result.status_code:
+        resource.status_code = result.status_code
+    return resource
+
+
 def page_preflight_report(request: PagePreflightRequest) -> dict:
     ranked = rank_media_candidates(request.resources)
     probed = 0
@@ -538,10 +553,11 @@ def page_preflight_report(request: PagePreflightRequest) -> dict:
         if probed < request.probe_limit:
             result = preflight_media_resource(candidate, request.cookies, request.page_url)
             probed += 1
+            resource = resource_with_preflight_result(candidate, result)
             if result.downloadable:
                 downloadable_count += 1
                 if not selected_url:
-                    selected_url = candidate.url
+                    selected_url = resource.url
         else:
             result = MediaPreflightResult(
                 ok=True,
@@ -553,10 +569,11 @@ def page_preflight_report(request: PagePreflightRequest) -> dict:
                 code="not_probed",
                 message="候选排序靠后，本次整页预检未发起网络探测；启动任务时仍可作为后续下载候选。",
             )
+            resource = resource_with_preflight_result(candidate, result)
 
         candidates.append({
             "rank": index,
-            "resource": candidate.model_dump(mode="json"),
+            "resource": resource.model_dump(mode="json"),
             "preflight": result.model_dump(mode="json"),
         })
 
