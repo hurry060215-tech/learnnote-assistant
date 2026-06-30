@@ -7,7 +7,7 @@ $ErrorActionPreference = "Stop"
 
 $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $backendDir = Join-Path $projectRoot "backend"
-$venvDir = Join-Path $backendDir ".venv"
+$venvDir = if ($env:LEARNNOTE_VENV_DIR) { $env:LEARNNOTE_VENV_DIR } else { Join-Path $projectRoot ".venv" }
 $venvPython = Join-Path $venvDir "Scripts\python.exe"
 $dataDir = Join-Path $projectRoot "data"
 $modelCacheDir = Join-Path $dataDir "model-cache"

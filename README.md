@@ -117,7 +117,7 @@ Load the browser extension:
 
 ## Local Storage On D
 
-On this machine the project lives at `D:\Projects\learnnote-assistant`. The startup script creates a project-local virtual environment at `backend\.venv` and keeps runtime outputs under the project `data\` directory:
+On this machine the project lives at `D:\Projects\learnnote-assistant`. The startup script creates a project-local virtual environment at `.venv` and keeps runtime outputs under the project `data\` directory. Set `LEARNNOTE_VENV_DIR` first if you want a different D-drive venv path:
 
 - `data\uploads` for local uploads.
 - `data\tasks` for task artifacts and generated notes.
@@ -180,9 +180,9 @@ cd D:\Projects\learnnote-assistant
 The stage audit checks working-tree changes, or the last commit when the tree is clean, and runs the narrow Node/Python checks that match the touched files. Use the full suite when changing broad contracts:
 
 ```powershell
-backend\.venv\Scripts\python.exe -m compileall backend\app
+.venv\Scripts\python.exe -m compileall backend\app
 $env:PYTHONPATH="backend"
-backend\.venv\Scripts\python.exe -m unittest discover backend\tests
+.venv\Scripts\python.exe -m unittest discover backend\tests
 node --check extension\background.js
 node --check extension\content.js
 node --check extension\sidepanel.js

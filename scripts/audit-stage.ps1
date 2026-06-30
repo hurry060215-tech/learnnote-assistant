@@ -32,9 +32,13 @@ function Resolve-Python {
   if ($env:LEARNNOTE_AUDIT_PYTHON -and (Test-Path $env:LEARNNOTE_AUDIT_PYTHON)) {
     return $env:LEARNNOTE_AUDIT_PYTHON
   }
-  $venvPython = Join-Path $repo "backend\.venv\Scripts\python.exe"
-  if (Test-Path $venvPython) {
-    return $venvPython
+  foreach ($candidate in @(
+    (Join-Path $repo ".venv\Scripts\python.exe"),
+    (Join-Path $repo "backend\.venv\Scripts\python.exe")
+  )) {
+    if (Test-Path $candidate) {
+      return $candidate
+    }
   }
   return "python"
 }
