@@ -1097,6 +1097,13 @@ def playback_match_label(match: str) -> str:
     }.get(match, match)
 
 
+def should_guess_sibling_manifest_with_blob_boundary(candidate: ResourceCandidate) -> bool:
+    match = candidate.playback_match or ""
+    if match in {"blob-source", "blob-same-frame", "range-near-playhead", "manifest-near-playhead"}:
+        return True
+    return bool(candidate.is_main_video and source_rank(candidate.source or "") >= source_rank("webRequest"))
+
+
 def candidate_rank_key(candidate: ResourceCandidate, order: int = 0) -> tuple[int, int, int, int, int, int, int, float, int, int]:
     kind = effective_resource_kind(candidate)
     return (
@@ -1134,7 +1141,7 @@ def enrich_with_inferred_manifest_resources(resources: list[ResourceCandidate]) 
             continue
         if inferred_url:
             continue
-        if has_blob_boundary:
+        if has_blob_boundary and not should_guess_sibling_manifest_with_blob_boundary(item):
             continue
         if effective_resource_kind(item) != "fragment":
             continue
