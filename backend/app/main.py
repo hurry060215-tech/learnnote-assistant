@@ -443,6 +443,7 @@ def render_bundle_manifest(task: TaskRecord, transcript: dict, visual_index: dic
             "grid_entries": grid_entries,
         },
         "audit": task_audit_summary(task),
+        "recovery": diagnostic_recovery_profile(task),
     }
 
 
@@ -462,9 +463,14 @@ def _is_chaoxing_task(task: TaskRecord) -> bool:
     return bool(re.search(r"chaoxing|xuexitong|fanya|mooc1|mooc2|ananas|学习通|超星", text, re.I))
 
 
-def diagnostic_recovery_steps(task: TaskRecord) -> list[str]:
+def _task_failure_codes(task: TaskRecord) -> set[str]:
     codes = {task.error_code} if task.error_code else set()
     codes.update(attempt.code for attempt in task.download_attempts if attempt.code)
+    return codes
+
+
+def diagnostic_recovery_steps(task: TaskRecord) -> list[str]:
+    codes = _task_failure_codes(task)
     steps: list[str] = []
 
     def add(text: str) -> None:
@@ -494,6 +500,100 @@ def diagnostic_recovery_steps(task: TaskRecord) -> list[str]:
     if not steps:
         add("如果任务未完成，先查看下载尝试的错误码；当前页直取失败时可以改用本地视频入口走同一套切片总结。")
     return steps
+
+
+def diagnostic_recovery_profile(task: TaskRecord) -> dict:
+    codes = _task_failure_codes(task)
+    selected = task.selected_resource
+    selected_kind = selected.kind if selected else ""
+    selected_source = selected.source if selected else ""
+    selected_url = selected.resolved_url or selected.url if selected else ""
+    latest_attempt = task.download_attempts[-1] if task.download_attempts else None
+    is_chaoxing = _is_chaoxing_task(task)
+    boundary_notes: list[str] = []
+    primary_code = task.error_code or (latest_attempt.code if latest_attempt else "")
+
+    if "drm_or_encrypted" in codes or task.drm_detected or selected_kind == "blob":
+        primary_code = "drm_or_encrypted"
+        diagnosis = "页面没有暴露可还原的直接媒体资源，或触发了 DRM/EME 边界。"
+        confidence = "high" if task.drm_detected or selected_kind == "blob" else "medium"
+        severity = "hard_boundary"
+        next_action = "local_upload"
+    elif "auth_required" in codes:
+        primary_code = "auth_required"
+        diagnosis = "登录态或 Cookie 已失效，后端无法复用浏览器当前权限下载。"
+        confidence = "high"
+        severity = "recoverable"
+        next_action = "refresh_login_and_retry"
+    elif "download_forbidden" in codes:
+        primary_code = "download_forbidden"
+        diagnosis = "媒体地址被防盗链、时效签名、Referer/Origin 或服务端策略拒绝。"
+        confidence = "medium"
+        severity = "recoverable"
+        next_action = "refresh_playback_and_retry"
+    elif "unsupported_manifest" in codes:
+        primary_code = "unsupported_manifest"
+        diagnosis = "已看到媒体线索，但 manifest 或分片不足以在本地合并。"
+        confidence = "medium"
+        severity = "recoverable"
+        next_action = "play_longer_and_redetect"
+    elif "no_media_found" in codes or (task.status == "failed" and not task.download_attempts):
+        primary_code = "no_media_found"
+        diagnosis = "当前页还没有暴露 mp4、m3u8、mpd 或 yt-dlp 可解析的下载入口。"
+        confidence = "medium"
+        severity = "recoverable"
+        next_action = "play_and_redetect"
+    elif task.status == "failed":
+        primary_code = primary_code or "processing_failed"
+        diagnosis = task.error_detail or "任务失败，需要查看下载尝试和阶段审计定位。"
+        confidence = "low"
+        severity = "recoverable"
+        next_action = "inspect_diagnostics"
+    elif task.mode == "download_only" and task.media_path:
+        primary_code = "download_ready"
+        diagnosis = "视频已保存到本地，当前任务按下载模式停止在媒体产物。"
+        confidence = "high"
+        severity = "ok"
+        next_action = "continue_from_media"
+    else:
+        primary_code = primary_code or ""
+        diagnosis = "任务仍可继续按阶段审计检查媒体、转写、切片和总结产物。"
+        confidence = "medium"
+        severity = "ok"
+        next_action = "inspect_audit"
+
+    if is_chaoxing:
+        boundary_notes.append("学习通/超星第一版只复用当前页面暴露的真实媒体 URL、Referer 和 Cookie，不刷课、不伪造学习进度、不自动答题。")
+    if "drm_or_encrypted" in codes or task.drm_detected or selected_kind == "blob":
+        boundary_notes.append("不会录制、破解或绕过 DRM/EME；blob 只有在扩展捕获到真实 manifest/媒体请求时才可直取。")
+    if selected and selected.request_headers:
+        boundary_notes.append(f"已捕获可复用请求头名：{_safe_header_names(selected.request_headers)}；不会保存 Cookie 或 Authorization 值。")
+    if selected and _has_range_header(selected.request_headers):
+        boundary_notes.append("Range 请求只作为播放证据，正式下载会去掉 Range，避免只保存片段。")
+    if not boundary_notes:
+        boundary_notes.append("当前页直取失败时，本地视频上传会复用同一套转写、切片和图文总结管线。")
+
+    return {
+        "code": primary_code,
+        "diagnosis": diagnosis,
+        "severity": severity,
+        "confidence": confidence,
+        "next_action": next_action,
+        "is_chaoxing": is_chaoxing,
+        "selected_kind": selected_kind,
+        "selected_source": selected_source,
+        "selected_url": selected_url,
+        "attempt_count": len(task.download_attempts),
+        "latest_attempt": {
+            "strategy": latest_attempt.strategy,
+            "code": latest_attempt.code,
+            "status": latest_attempt.status,
+            "status_code": latest_attempt.status_code,
+            "message": latest_attempt.message,
+        } if latest_attempt else None,
+        "steps": diagnostic_recovery_steps(task),
+        "boundary_notes": boundary_notes,
+    }
 
 
 def _audit_gate_state(task: TaskRecord, passed: bool, *, skipped: bool = False) -> str:
@@ -623,6 +723,7 @@ def task_audit_summary(task: TaskRecord) -> dict:
 def task_payload(task: TaskRecord) -> dict:
     payload = task.model_dump(mode="json")
     payload["audit"] = task_audit_summary(task)
+    payload["recovery"] = diagnostic_recovery_profile(task)
     return payload
 
 
@@ -764,8 +865,33 @@ def render_diagnostics_markdown(task: TaskRecord) -> str:
     else:
         lines.append("- 暂无下载尝试记录。")
 
+    recovery = diagnostic_recovery_profile(task)
+    latest_attempt = recovery.get("latest_attempt") or {}
+    lines.extend([
+        "",
+        "## 恢复档案",
+        f"- 归类：{recovery.get('code') or '-'}",
+        f"- 判断：{recovery.get('diagnosis') or '-'}",
+        f"- 严重度：{recovery.get('severity') or '-'}",
+        f"- 置信度：{recovery.get('confidence') or '-'}",
+        f"- 推荐动作：{recovery.get('next_action') or '-'}",
+        f"- 学习通/超星：{'yes' if recovery.get('is_chaoxing') else 'no'}",
+        f"- 已选候选：{recovery.get('selected_kind') or '-'} / {recovery.get('selected_source') or '-'}",
+        f"- 尝试次数：{recovery.get('attempt_count') or 0}",
+    ])
+    if latest_attempt:
+        lines.append(
+            "- 最近尝试："
+            f"{latest_attempt.get('strategy') or '-'} / "
+            f"{latest_attempt.get('code') or '-'} / "
+            f"{latest_attempt.get('status') or '-'} / "
+            f"HTTP {latest_attempt.get('status_code') or '-'}"
+        )
+    lines.append("- 边界说明：")
+    lines.extend(f"  - {note}" for note in recovery.get("boundary_notes", []))
+
     lines.extend(["", "## 下一步建议"])
-    lines.extend(f"- {step}" for step in diagnostic_recovery_steps(task))
+    lines.extend(f"- {step}" for step in recovery.get("steps", []))
 
     audit = task_audit_summary(task)
     lines.extend([

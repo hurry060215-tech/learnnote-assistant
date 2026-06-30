@@ -957,6 +957,9 @@ function isChaoxingTask(task = {}) {
 }
 
 function recoveryStepItems(task) {
+  if (Array.isArray(task?.recovery?.steps) && task.recovery.steps.length) {
+    return task.recovery.steps.map(step => String(step));
+  }
   const attempts = task?.download_attempts || [];
   const codes = new Set([task?.error_code, ...attempts.map(attempt => attempt.code)].filter(Boolean));
   const steps = [];

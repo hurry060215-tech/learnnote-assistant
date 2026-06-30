@@ -18,7 +18,7 @@ from fastapi.testclient import TestClient
 
 from app.config import DATA_DIR
 from app.downloader import DownloadError
-from app.main import app, local_upload_filename, render_bundle_manifest, render_diagnostics_markdown
+from app.main import app, diagnostic_recovery_profile, local_upload_filename, render_bundle_manifest, render_diagnostics_markdown
 from app.models import DownloadAttempt, ResourceCandidate, TranscriptResult, TranscriptSegment
 from app.runtime import ffmpeg_bin
 from app.storage import create_task, task_dir, update_task
@@ -369,10 +369,17 @@ class LocalUploadValidationTests(unittest.TestCase):
             )
 
             diagnostics = render_diagnostics_markdown(task)
+            recovery = diagnostic_recovery_profile(task)
 
             self.assertIn("学习通/超星", diagnostics)
             self.assertIn("不刷课", diagnostics)
             self.assertIn("ananas", diagnostics)
+            self.assertIn("## 恢复档案", diagnostics)
+            self.assertIn("归类：download_forbidden", diagnostics)
+            self.assertEqual(recovery["code"], "download_forbidden")
+            self.assertEqual(recovery["next_action"], "refresh_playback_and_retry")
+            self.assertTrue(recovery["is_chaoxing"])
+            self.assertIn("不刷课", " ".join(recovery["boundary_notes"]))
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
@@ -403,6 +410,9 @@ class LocalUploadValidationTests(unittest.TestCase):
             self.assertEqual(manifest["source"]["selected_resource"]["response_header_names"], ["content-type", "set-cookie"])
             self.assertEqual(manifest["transcript"]["segment_count"], 1)
             self.assertIn("audit", manifest)
+            self.assertIn("recovery", manifest)
+            self.assertEqual(manifest["recovery"]["selected_kind"], "video")
+            self.assertEqual(manifest["recovery"]["attempt_count"], 1)
             self.assertNotIn("secret-key", encoded)
             self.assertNotIn("session=secret", encoded)
             self.assertNotIn("secret=value", encoded)
@@ -847,6 +857,11 @@ class ApiPipelineTests(unittest.TestCase):
             self.assertEqual(task["selected_resource"]["request_headers"]["Referer"], "<redacted>")
             self.assertEqual(task["selected_resource"]["request_headers"]["Cookie"], "<redacted>")
             self.assertEqual(task["download_attempts"][0]["url"], media_url)
+            self.assertEqual(task["recovery"]["code"], "download_forbidden")
+            self.assertEqual(task["recovery"]["selected_kind"], "hls")
+            self.assertEqual(task["recovery"]["attempt_count"], 2)
+            self.assertTrue(task["recovery"]["is_chaoxing"])
+            self.assertIn("不刷课", " ".join(task["recovery"]["boundary_notes"]))
             self.assertIn("学习通/超星", self.client.get(f"/api/tasks/{task_id}/exports/diagnostics").text)
         finally:
             shutil.rmtree(task_dir(task_id), ignore_errors=True)
