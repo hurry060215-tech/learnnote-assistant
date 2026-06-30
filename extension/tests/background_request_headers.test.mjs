@@ -675,6 +675,42 @@ assert.equal(largeBinaryResources[0].request_headers["X-Requested-With"], "XMLHt
 assert.equal(largeBinaryResources[0].label, "VIDEO");
 
 context.rememberRequestHeaders({
+  requestId: "small-octet-manifest-api",
+  url: "https://course.example.com/api/play?id=manifest",
+  type: "xmlhttprequest",
+  requestHeaders: [
+    { name: "Referer", value: "https://course.example.com/lesson" },
+    { name: "Origin", value: "https://course.example.com" },
+    { name: "User-Agent", value: "Chrome Playback UA" },
+    { name: "Accept", value: "*/*" }
+  ]
+});
+context.recordResponseMedia({
+  requestId: "small-octet-manifest-api",
+  tabId: 165,
+  url: "https://course.example.com/api/play?id=manifest",
+  type: "xmlhttprequest",
+  method: "GET",
+  statusCode: 200,
+  frameId: 1,
+  documentUrl: "https://course.example.com/lesson",
+  initiator: "https://course.example.com",
+  timeStamp: Date.now(),
+  responseHeaders: [
+    { name: "Content-Type", value: "application/octet-stream" },
+    { name: "Content-Length", value: "32768" }
+  ]
+}, context.peekRequestHeaders("small-octet-manifest-api"));
+
+const smallOctetManifestResources = vm.runInContext("resourceByTab.get(165)", context);
+assert.equal(smallOctetManifestResources.length, 1);
+assert.equal(smallOctetManifestResources[0].kind, "video");
+assert.equal(smallOctetManifestResources[0].content_length, 32768);
+assert.equal(smallOctetManifestResources[0].request_headers.Referer, "https://course.example.com/lesson");
+assert.equal(smallOctetManifestResources[0].request_headers.Origin, "https://course.example.com");
+assert.equal(smallOctetManifestResources[0].label, "VIDEO");
+
+context.rememberRequestHeaders({
   requestId: "streaming-1",
   url: "https://cdn.example.com/live/play?id=long",
   type: "media",

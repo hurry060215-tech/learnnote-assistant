@@ -133,6 +133,15 @@ function looksLikeLargeBinaryMediaEndpoint(details = {}, mime = "", responseHead
   return responseContentLength(responseHeaders) >= 1024 * 1024;
 }
 
+function looksLikeSmallBinaryPlaybackEndpoint(details = {}, mime = "", responseHeaders = {}) {
+  const type = String(details.type || "").toLowerCase();
+  if (!/^(xmlhttprequest|fetch)$/.test(type)) return false;
+  if (!/octet-stream|binary/i.test(String(mime || ""))) return false;
+  if (!PLAYBACK_ENDPOINT_RE.test(details.url || "")) return false;
+  const length = responseContentLength(responseHeaders);
+  return length > 0 && length <= 512 * 1024;
+}
+
 function looksLikeTextPlayEndpoint(details = {}, mime = "") {
   const type = String(details.type || "").toLowerCase();
   if (!/^(xmlhttprequest|fetch)$/.test(type)) return false;
@@ -154,6 +163,7 @@ function classifyCompletedRequest(details = {}, mime = "", requestHeaders = {}, 
   if ((type === "xmlhttprequest" || type === "fetch") && binaryMime && requestHasMediaDestination(requestHeaders) && responseContentLength(responseHeaders) >= 1024 * 1024) {
     return "video";
   }
+  if (looksLikeSmallBinaryPlaybackEndpoint(details, mime, responseHeaders)) return "video";
   if (looksLikeTextPlayEndpoint(details, mime)) return "video";
   if (looksLikeLargeBinaryMediaEndpoint(details, mime, responseHeaders)) return "video";
   return "unknown";
