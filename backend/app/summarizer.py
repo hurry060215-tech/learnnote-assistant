@@ -417,6 +417,7 @@ def summarize_with_llm(
 
     if grids:
         partials = []
+        failed_batches = 0
         batches = _grid_batches(grids)
         for index, batch in enumerate(batches, start=1):
             batch_offset = (index - 1) * MAX_GRIDS_PER_VISION_CALL
@@ -445,10 +446,18 @@ def summarize_with_llm(
                 if partial.strip():
                     partials.append(partial.strip())
             except Exception:
-                return None
+                failed_batches += 1
+                continue
 
         if partials:
             merge_prompt = "\n\n".join(f"### 局部图文摘要 {idx}\n{partial}" for idx, partial in enumerate(partials, start=1))
+            if failed_batches:
+                merge_prompt = (
+                    "### Vision batch warning\n"
+                    f"{failed_batches} vision batch(es) failed. Merge the successful visual summaries, "
+                    "use the full transcript and frame index to preserve coverage, and state any uncertainty.\n\n"
+                    f"{merge_prompt}"
+                )
             frame_index = "\n".join(_grid_index_lines(grids[:MAX_VISION_GRIDS]))
             try:
                 response = client.chat.completions.create(

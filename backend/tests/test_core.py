@@ -2194,6 +2194,87 @@ class SummaryFallbackTests(unittest.TestCase):
         self.assertIn("partial with 4 images", completions.calls[3]["messages"][0]["content"])
         self.assertIn("partial with 1 images", completions.calls[3]["messages"][0]["content"])
 
+    def test_llm_summary_keeps_successful_vision_batches_when_one_batch_fails(self) -> None:
+        from app.summarizer import summarize_with_llm
+
+        class Message:
+            def __init__(self, content: str):
+                self.content = content
+
+        class Choice:
+            def __init__(self, content: str):
+                self.message = Message(content)
+
+        class Response:
+            def __init__(self, content: str):
+                self.choices = [Choice(content)]
+
+        class FakeCompletions:
+            def __init__(self):
+                self.calls = []
+                self.vision_calls = 0
+
+            def create(self, **kwargs):
+                self.calls.append(kwargs)
+                content = kwargs["messages"][0]["content"]
+                if isinstance(content, list):
+                    self.vision_calls += 1
+                    images = [item for item in content if item.get("type") == "image_url"]
+                    if self.vision_calls == 2:
+                        raise RuntimeError("rate limit")
+                    return Response(f"partial {self.vision_calls} with {len(images)} images")
+                return Response("merged partial note")
+
+        completions = FakeCompletions()
+
+        class FakeOpenAI:
+            def __init__(self, **kwargs):
+                self.chat = types.SimpleNamespace(completions=completions)
+
+        fake_openai = types.ModuleType("openai")
+        fake_openai.OpenAI = FakeOpenAI
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            grids = []
+            for index in range(9):
+                image = root / f"grid_{index}.jpg"
+                image.write_bytes(b"fake-image")
+                grids.append(
+                    FrameGrid(
+                        path=str(image),
+                        url=f"http://127.0.0.1/grid_{index}.jpg",
+                        start=index * 180,
+                        end=(index + 1) * 180,
+                        frame_count=9,
+                    )
+                )
+            transcript = TranscriptResult(
+                full_text="all transcript",
+                segments=[TranscriptSegment(start=index * 180, end=index * 180 + 30, text=f"segment {index}") for index in range(9)],
+            )
+            with patch.dict(sys.modules, {"openai": fake_openai}):
+                note, source = summarize_with_llm(
+                    "Long lesson",
+                    transcript,
+                    grids,
+                    TaskOptions(llm_api_key="test-key"),
+                    "https://course.example",
+                )
+
+        self.assertEqual(source, "vision-llm")
+        self.assertTrue(note.startswith("merged partial note"))
+        self.assertEqual(len(completions.calls), 4)
+        merge_content = completions.calls[3]["messages"][0]["content"]
+        self.assertIn("Vision batch warning", merge_content)
+        self.assertIn("1 vision batch(es) failed", merge_content)
+        self.assertIn("partial 1 with 4 images", merge_content)
+        self.assertIn("partial 3 with 1 images", merge_content)
+        self.assertIn("W005 `00:12:00 - 00:15:00`", note)
+        self.assertIn("W009 `00:24:00 - 00:27:00`", note)
+        self.assertIn("http://127.0.0.1/grid_4.jpg", note)
+        self.assertIn("segment 8", note)
+
     def test_llm_summary_reports_text_source_when_grid_images_are_missing(self) -> None:
         from app.summarizer import summarize_with_diagnostics
 
