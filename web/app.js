@@ -1559,15 +1559,17 @@ function renderTasks() {
   els.tasks.innerHTML = visibleTasks.map(task => `
     <button class="task status-${escapeHtml(task.status)} ${task.id === selectedTaskId ? "selected" : ""}" data-id="${escapeHtml(task.id)}">
       ${taskPreviewHtml(task)}
-      <div>
-        <strong>${escapeHtml(task.title || task.id)}</strong>
+      <div class="task-body">
+        <div class="task-headline">
+          <strong>${escapeHtml(task.title || task.id)}</strong>
+          <span class="task-status-pill ${escapeHtml(taskStatusClass(task))}">${escapeHtml(statusText(task))} · ${task.progress || 0}%</span>
+        </div>
         <small class="task-meta-line">${escapeHtml(taskMetaLine(task))}</small>
         ${taskChipsHtml(task)}
         ${taskAuditMiniHtml(task)}
         ${stageRail(task)}
         <div class="progress"><span style="width:${task.progress || 0}%"></span></div>
       </div>
-      <small>${task.progress || 0}%</small>
     </button>
   `).join("");
 
@@ -1666,7 +1668,11 @@ function taskChipItems(task) {
 }
 
 function taskChipsHtml(task) {
-  const chips = taskChipItems(task);
+  const metaParts = new Set(taskMetaLine(task).split(" · ").map(item => item.trim()).filter(Boolean));
+  const chips = taskChipItems(task).filter(chip => {
+    const text = String(chip || "").trim();
+    return !(metaParts.has(text) && ["本地视频", "视频"].includes(text));
+  });
   if (!chips.length) return "";
   return `<div class="task-chips">${chips.map(chip => `<span>${escapeHtml(chip)}</span>`).join("")}</div>`;
 }
@@ -1688,10 +1694,8 @@ function taskAuditMiniHtml(task) {
 
 function taskMetaLine(task) {
   return [
-    statusText(task),
     sourceText(task),
     task.phase && task.phase !== "completed" ? task.phase : "",
-    `${task.progress || 0}%`
   ].filter(Boolean).join(" · ");
 }
 

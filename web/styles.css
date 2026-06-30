@@ -1523,7 +1523,7 @@ select:focus {
   width: 100%;
   min-height: 96px;
   display: grid;
-  grid-template-columns: 78px minmax(0, 1fr) auto;
+  grid-template-columns: 78px minmax(0, 1fr);
   gap: 10px;
   align-items: start;
   padding: 11px;
@@ -1620,6 +1620,58 @@ select:focus {
   line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.task-body {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+}
+
+.task-headline {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.task-headline strong {
+  min-width: 0;
+}
+
+.task-status-pill {
+  flex: 0 0 auto;
+  max-width: 94px;
+  overflow: hidden;
+  border: 1px solid #d6e0ec;
+  border-radius: 999px;
+  background: #f5f8fc;
+  color: var(--muted);
+  padding: 3px 7px;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-status-pill.success {
+  border-color: rgba(15, 143, 97, 0.26);
+  background: #eefaf3;
+  color: var(--success);
+}
+
+.task-status-pill.running {
+  border-color: rgba(194, 120, 3, 0.25);
+  background: #fff7e8;
+  color: var(--warning);
+}
+
+.task-status-pill.failed {
+  border-color: rgba(217, 45, 32, 0.24);
+  background: #fff1f0;
+  color: var(--danger);
 }
 
 .task small,
@@ -7507,14 +7559,15 @@ body {
 
 .task {
   min-height: 118px;
-  grid-template-columns: 96px minmax(0, 1fr) 32px;
+  grid-template-columns: 88px minmax(0, 1fr);
   gap: 10px;
   border-color: #d6e0ec;
+  padding: 10px;
 }
 
 .task-preview {
-  width: 96px;
-  height: 72px;
+  width: 88px;
+  height: 64px;
   border: 1px solid #d4e0ed;
   background: #eef3f8;
 }
@@ -7526,6 +7579,38 @@ body {
 
 .task-audit-mini {
   margin-top: 7px;
+}
+
+.task .task-audit-mini {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 7px;
+  margin-top: 8px;
+}
+
+.task .task-audit-dots {
+  gap: 3px;
+}
+
+.task .task-audit-dots span {
+  height: 6px;
+  border-radius: 999px;
+}
+
+.task .task-audit-dots b {
+  display: none;
+}
+
+.task .task-audit-mini small {
+  max-width: 80px;
+  font-size: 9.5px;
+}
+
+.task .stage-rail {
+  display: none;
+}
+
+.task .progress {
+  margin-top: 8px;
 }
 
 .stage-rail {

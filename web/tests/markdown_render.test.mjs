@@ -286,7 +286,7 @@ const queueChipTask = {
 };
 
 assert.equal(JSON.stringify(context.taskChipItems(queueChipTask)), JSON.stringify(["当前 src", "视频", "media.mp4", "笔记", "1 窗口"]));
-assert.equal(context.taskMetaLine(queueChipTask), "已完成 · 直取 · 视频 · 100%");
+assert.equal(context.taskMetaLine(queueChipTask), "直取 · 视频");
 const queueAuditMiniHtml = context.taskAuditMiniHtml(queueChipTask);
 assert.match(queueAuditMiniHtml, /class="task-audit-mini"/);
 assert.match(queueAuditMiniHtml, /任务审计门/);
