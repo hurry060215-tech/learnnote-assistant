@@ -971,6 +971,73 @@ class ProcessorBoundaryTests(unittest.TestCase):
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
+    def test_current_page_prefers_full_page_subtitle_over_partial_browser_subtitles(self) -> None:
+        task = create_task("current_page", "Partial browser subtitle lesson", "https://course.example.com/lesson")
+        source_path = task_dir(task.id) / "download.mp4"
+        subtitle_path = task_dir(task.id) / "page_subtitle.srt"
+
+        class FakeDownloader:
+            def __init__(self, work_dir: Path):
+                self.work_dir = work_dir
+                self.attempts = []
+
+            def download(self, page_url, resources, cookies, title):
+                source_path.write_bytes(b"downloaded video")
+                return source_path, ResourceCandidate(url="https://cdn.example.com/lesson.mp4", source="webRequest", kind="video")
+
+            def download_subtitle(self, resources, cookies, referer, title):
+                subtitle_path.write_text(
+                    "1\n00:00:00,000 --> 00:00:02,000\nfull page cue one\n\n"
+                    "2\n00:00:02,000 --> 00:00:04,000\nfull page cue two\n",
+                    encoding="utf-8",
+                )
+                self.attempts.append(DownloadAttempt(strategy="subtitle-file", status="success", url="https://cdn.example.com/lesson.vtt"))
+                return subtitle_path
+
+        def fake_normalize(source: Path, target: Path) -> Path:
+            self.assertEqual(source, source_path)
+            target.write_bytes(b"normalized video")
+            return target
+
+        def fake_summary(title, transcript, grids, options, page_url):
+            self.assertEqual(transcript.source, "page-subtitle")
+            self.assertIn("full page cue one", transcript.full_text)
+            self.assertNotIn("only current visible cue", transcript.full_text)
+            return ("# Partial browser subtitle lesson\n\nfull page cue one", "local-template", "")
+
+        try:
+            request = CurrentPageTaskRequest(
+                page_url="https://course.example.com/lesson",
+                title="Partial browser subtitle lesson",
+                resources=[
+                    ResourceCandidate(url="https://cdn.example.com/lesson.mp4", source="webRequest", kind="video"),
+                    ResourceCandidate(url="https://cdn.example.com/lesson.vtt", source="subtitleTrack", kind="subtitle", mime="text/vtt"),
+                ],
+                browser_subtitles=[
+                    {"start": 38, "end": 42, "text": "only current visible cue"},
+                ],
+                options=TaskOptions(visual_understanding=False),
+            )
+
+            with patch("app.processor.MediaDownloader", FakeDownloader), \
+                patch("app.processor.normalize_video", side_effect=fake_normalize), \
+                patch("app.processor.extract_audio", side_effect=AssertionError("audio extraction should be skipped")), \
+                patch("app.processor.transcribe_audio", side_effect=AssertionError("Whisper should be skipped")), \
+                patch("app.processor.summarize_with_diagnostics", side_effect=fake_summary):
+                process_current_page_task(task.id, request)
+
+            record = get_task(task.id)
+            self.assertEqual(record.status, "success")
+            self.assertEqual(record.audio_path, "")
+            self.assertEqual(record.subtitle_path, str(subtitle_path))
+            self.assertTrue(any(attempt.strategy == "subtitle-file" and attempt.status == "success" for attempt in record.download_attempts))
+            transcript = read_transcript(task.id)
+            self.assertEqual(transcript["source"], "page-subtitle")
+            self.assertEqual([segment["text"] for segment in transcript["segments"]], ["full page cue one", "full page cue two"])
+            self.assertIn("full page cue one", read_note(task.id))
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
     def test_page_text_mode_includes_browser_subtitles(self) -> None:
         task = create_task("page_text", "Visible subtitle page", "https://course.example.com/lesson")
         try:

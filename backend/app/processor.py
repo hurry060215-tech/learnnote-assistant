@@ -115,6 +115,39 @@ def transcript_from_browser_subtitles(segments: list[BrowserSubtitleCue]) -> Tra
     )
 
 
+def has_downloadable_subtitle_candidate(resources: list[ResourceCandidate]) -> bool:
+    for resource in resources or []:
+        url = (resource.url or "").strip()
+        if not url or url.startswith(("blob:", "data:", "chrome-extension:")):
+            continue
+        if effective_resource_kind(resource) == "subtitle":
+            return True
+    return False
+
+
+def browser_subtitles_look_partial(segments: list[BrowserSubtitleCue], min_count: int = 8, min_span_seconds: float = 45.0) -> bool:
+    cleaned: list[tuple[float, float, str]] = []
+    for cue in segments or []:
+        text = " ".join(str(cue.text or "").split())
+        if not text:
+            continue
+        start = max(0.0, float(cue.start or 0))
+        end = max(start, float(cue.end or start))
+        cleaned.append((start, end, text))
+    if not cleaned:
+        return True
+    if len(cleaned) >= min_count:
+        return False
+    span = max(end for _, end, _ in cleaned) - min(start for start, _, _ in cleaned)
+    return span < min_span_seconds
+
+
+def should_download_page_subtitle(request: CurrentPageTaskRequest) -> bool:
+    if not request.browser_subtitles:
+        return True
+    return has_downloadable_subtitle_candidate(request.resources) and browser_subtitles_look_partial(request.browser_subtitles)
+
+
 def _srt_timestamp(seconds: float) -> str:
     millis = round(max(0.0, seconds) * 1000)
     hours, remainder = divmod(millis, 3_600_000)
@@ -426,7 +459,7 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
             )
             return
         subtitle_path = None
-        if not request.browser_subtitles:
+        if should_download_page_subtitle(request):
             subtitle_path = downloader.download_subtitle(request.resources, request.cookies, request.page_url, request.title)
         update_task(task_id, download_attempts=downloader.attempts)
 
@@ -494,19 +527,19 @@ def _process_video_file(
     audio_warning = ""
     transcript: TranscriptResult | None = None
 
-    if browser_subtitles:
+    if subtitle_path:
+        update_task(task_id, subtitle_path=str(subtitle_path), message="已检测到页面字幕，正在解析字幕")
+        transcript = transcript_from_subtitle(subtitle_path)
+        if not transcript.segments:
+            transcript = None
+
+    if transcript is None and browser_subtitles:
         update_task(task_id, message="已读取浏览器播放器字幕，正在生成带时间戳转写")
         transcript = transcript_from_browser_subtitles(browser_subtitles)
         if not transcript.segments:
             transcript = None
         else:
             update_task(task_id, subtitle_path=write_browser_subtitles_srt(task_id, transcript))
-
-    if transcript is None and subtitle_path:
-        update_task(task_id, subtitle_path=str(subtitle_path), message="已检测到页面字幕，正在解析字幕")
-        transcript = transcript_from_subtitle(subtitle_path)
-        if not transcript.segments:
-            transcript = None
 
     if transcript is None:
         embedded_subtitle = extract_embedded_subtitle(input_path, work_dir / "embedded_subtitle.srt")
