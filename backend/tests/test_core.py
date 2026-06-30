@@ -1872,6 +1872,30 @@ class SummaryFallbackTests(unittest.TestCase):
         self.assertEqual([segment.text for segment in windows[1].segments], ["recap"])
         self.assertIn("00:00:35 demo steps", windows[0].transcript_excerpt)
 
+    def test_visual_windows_do_not_duplicate_boundary_transcript_segments(self) -> None:
+        transcript = TranscriptResult(
+            source="unit",
+            full_text="first boundary second point",
+            segments=[
+                TranscriptSegment(start=10, end=20, text="first"),
+                TranscriptSegment(start=20, end=40, text="boundary second"),
+                TranscriptSegment(start=60, end=60, text="point marker"),
+            ],
+        )
+        grids = [
+            FrameGrid(path="grid0.jpg", url="http://127.0.0.1/grid0.jpg", start=0, end=20, frame_count=9, frame_timestamps=[0, 10]),
+            FrameGrid(path="grid1.jpg", url="http://127.0.0.1/grid1.jpg", start=20, end=60, frame_count=9, frame_timestamps=[20, 40]),
+            FrameGrid(path="grid2.jpg", url="http://127.0.0.1/grid2.jpg", start=60, end=90, frame_count=9, frame_timestamps=[60, 80]),
+        ]
+
+        windows = build_visual_windows(transcript, grids)
+
+        self.assertEqual([segment.text for segment in windows[0].segments], ["first"])
+        self.assertEqual([segment.text for segment in windows[1].segments], ["boundary second"])
+        self.assertEqual([segment.text for segment in windows[2].segments], ["point marker"])
+        self.assertNotIn("boundary second", windows[0].transcript_excerpt)
+        self.assertNotIn("point marker", windows[1].transcript_excerpt)
+
     def test_local_note_contains_timeline_and_frame_index(self) -> None:
         transcript = TranscriptResult(
             source="unit",

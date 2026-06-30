@@ -16,8 +16,18 @@ def _format_ts(seconds: float) -> str:
     return f"{seconds // 3600:02d}:{(seconds % 3600) // 60:02d}:{seconds % 60:02d}"
 
 
+def _segment_overlaps_window(segment, start: float, end: float) -> bool:
+    seg_start = float(getattr(segment, "start", 0) or 0)
+    seg_end = float(getattr(segment, "end", seg_start) or seg_start)
+    if seg_end < seg_start:
+        seg_start, seg_end = seg_end, seg_start
+    if seg_start == seg_end:
+        return start <= seg_start < end
+    return seg_end > start and seg_start < end
+
+
 def _overlapping_segments(transcript: TranscriptResult, start: float, end: float):
-    return [seg for seg in transcript.segments if seg.end >= start and seg.start <= end]
+    return [seg for seg in transcript.segments if _segment_overlaps_window(seg, start, end)]
 
 
 def _segments_window(transcript: TranscriptResult, start: float, end: float) -> str:
