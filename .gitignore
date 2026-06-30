@@ -4,6 +4,7 @@ __pycache__/
 *.pyc
 data/*.mp4
 data/*.png
+data/design-audit/
 data/model-cache/
 data/pip-cache/
 data/temp/
