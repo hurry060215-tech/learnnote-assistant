@@ -2226,6 +2226,7 @@ function taskOverview(task) {
       <span><b>${escapeHtml(task.summary_source || asrOptionText(options))}</b>${escapeHtml(task.summary_warning ? "已降级，查看诊断" : `${options.note_style || "study"} · ${options.visual_understanding === false ? "无视觉" : "图文"}`)}</span>
       <span><b>${windows.length || "-"}</b>${windows.length ? "画面窗口" : "等待画面切片"}</span>
     </div>
+    ${taskBrowserEvidenceHtml(task)}
     ${pipelineAuditHtml(task)}
     ${nextStepHtml(task)}
     ${mediaPreviewHtml(task)}
@@ -2243,6 +2244,39 @@ function taskOverview(task) {
       <strong>${escapeHtml(task.error_code || "任务失败")}</strong>
       <span>${escapeHtml(task.error_detail || "请查看诊断里的下载尝试和处理日志。")}</span>
     </div>` : ""}
+  </section>`;
+}
+
+function taskBrowserEvidenceHtml(task) {
+  if (!task || task.source_type !== "current_page") return "";
+  const selected = task.selected_resource || {};
+  const activeText = activeVideoText(task.active_video);
+  const target = taskResolvedTargetText(task, 108) || selected.url || "";
+  const requestContext = [
+    requestHeaderNames(selected),
+    selected.frame_url ? `frame ${compactUrl(selected.frame_url, 58)}` : "",
+    selected.blob_url ? "blob 已映射" : ""
+  ].filter(item => item && item !== "-").join(" · ");
+  if (activeText === "-" && !target && !requestContext) return "";
+  return `<section class="task-browser-evidence" aria-label="浏览器播放证据">
+    <header>
+      <span>浏览器播放证据</span>
+      <strong>非录制直取</strong>
+    </header>
+    <div>
+      <article>
+        <b>播放状态</b>
+        <span>${escapeHtml(activeText)}</span>
+      </article>
+      <article>
+        <b>直取目标</b>
+        <span>${escapeHtml(target || "等待媒体候选")}</span>
+      </article>
+      <article>
+        <b>请求上下文</b>
+        <span>${escapeHtml(requestContext || "Cookie 仅任务启动时同步")}</span>
+      </article>
+    </div>
   </section>`;
 }
 

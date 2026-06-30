@@ -2592,6 +2592,72 @@ button:disabled {
   white-space: nowrap;
 }
 
+.task-browser-evidence {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 9px;
+  border: 1px solid #dbe7f5;
+  border-radius: 10px;
+  background:
+    linear-gradient(135deg, rgba(23, 105, 232, 0.07), rgba(15, 143, 97, 0.04)),
+    #fbfdff;
+  padding: 10px;
+}
+
+.task-browser-evidence header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.task-browser-evidence header span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.task-browser-evidence header strong {
+  border: 1px solid rgba(15, 143, 97, 0.22);
+  border-radius: 999px;
+  background: #ecfdf5;
+  color: var(--success);
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.task-browser-evidence > div {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.task-browser-evidence article {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  border: 1px solid #e0e8f4;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 8px;
+}
+
+.task-browser-evidence b {
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.task-browser-evidence article span {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
 .pipeline-audit {
   grid-column: 1 / -1;
   display: grid;
@@ -5943,6 +6009,11 @@ body {
   font-weight: 920;
 }
 
+.task-browser-evidence {
+  border-color: #d5dfed;
+  background: #ffffff;
+}
+
 .task-overview-actions a,
 .task-overview-actions button {
   border-radius: 10px;
@@ -7658,6 +7729,7 @@ body.reading-mode .app-shell {
   .source-workflow-lane,
   .browser-route-summary-metrics,
   .browser-route-handoff,
+  .task-browser-evidence > div,
   .browser-route-actions,
   .source-option-strip,
   .source-workflow-actions,

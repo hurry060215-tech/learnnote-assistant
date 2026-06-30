@@ -624,11 +624,28 @@ const taskOverviewHtml = context.taskOverview({
   source_type: "current_page",
   mode: "download_only",
   media_path: "D:/Projects/learnnote-assistant/data/tasks/task-web-overview/media.mp4",
+  active_video: {
+    src: "blob:https://course.example.com/current-player",
+    current_time: 42,
+    duration: 600,
+    width: 1280,
+    height: 720,
+    frame_id: 7,
+    paused: false
+  },
   selected_resource: {
+    url: "https://cdn.example.com/source.mp4?token=abc",
     kind: "video",
     playback_match: "exact-src",
     content_length: 1048576,
-    resolved_url: "https://cdn.example.com/final.mp4?token=abc"
+    resolved_url: "https://cdn.example.com/final.mp4?token=abc",
+    frame_url: "https://course.example.com/player/frame.html",
+    blob_url: "blob:https://course.example.com/current-player",
+    request_headers: {
+      Referer: "https://course.example.com/lesson",
+      Cookie: "secret=1",
+      Authorization: "Bearer secret"
+    }
   },
   options: {
     frame_interval: 20,
@@ -654,6 +671,15 @@ assert.match(taskOverviewHtml, /已完成直取下载/);
 assert.match(taskOverviewHtml, /当前页下载/);
 assert.match(taskOverviewHtml, /已跟踪最终 URL/);
 assert.match(taskOverviewHtml, /final\.mp4\?token=abc/);
+assert.match(taskOverviewHtml, /浏览器播放证据/);
+assert.match(taskOverviewHtml, /非录制直取/);
+assert.match(taskOverviewHtml, /播放中 · 00:00:42 \/ 00:10:00 · 1280x720 · frame 7/);
+assert.match(taskOverviewHtml, /直取目标/);
+assert.match(taskOverviewHtml, /请求上下文/);
+assert.match(taskOverviewHtml, /Referer/);
+assert.match(taskOverviewHtml, /blob 已映射/);
+assert.doesNotMatch(taskOverviewHtml, /secret=1/);
+assert.doesNotMatch(taskOverviewHtml, /Bearer secret/);
 assert.match(taskOverviewHtml, /阶段审计门/);
 assert.match(taskOverviewHtml, /class="next-step-card ready"/);
 assert.match(taskOverviewHtml, /继续生成完整笔记/);
