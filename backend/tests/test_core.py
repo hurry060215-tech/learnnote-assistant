@@ -131,6 +131,30 @@ class ResourceDetectionTests(unittest.TestCase):
                 "https://cdn.example.com/dash/index.m3u8?token=abc",
             ],
         )
+        self.assertEqual(
+            infer_sibling_manifest_urls_from_fragment("https://cdn.example.com/live/720p/seg-001.ts?token=abc"),
+            [
+                "https://cdn.example.com/live/720p/index.m3u8?token=abc",
+                "https://cdn.example.com/live/720p/playlist.m3u8?token=abc",
+                "https://cdn.example.com/live/720p/master.m3u8?token=abc",
+                "https://cdn.example.com/live/index.m3u8?token=abc",
+                "https://cdn.example.com/live/playlist.m3u8?token=abc",
+                "https://cdn.example.com/live/master.m3u8?token=abc",
+            ],
+        )
+        self.assertEqual(
+            infer_sibling_manifest_urls_from_fragment("https://cdn.example.com/dash/video/chunk-001.m4s?token=abc"),
+            [
+                "https://cdn.example.com/dash/video/manifest.mpd?token=abc",
+                "https://cdn.example.com/dash/video/index.mpd?token=abc",
+                "https://cdn.example.com/dash/video/master.m3u8?token=abc",
+                "https://cdn.example.com/dash/video/index.m3u8?token=abc",
+                "https://cdn.example.com/dash/manifest.mpd?token=abc",
+                "https://cdn.example.com/dash/index.mpd?token=abc",
+                "https://cdn.example.com/dash/master.m3u8?token=abc",
+                "https://cdn.example.com/dash/index.m3u8?token=abc",
+            ],
+        )
         self.assertEqual(infer_sibling_manifest_urls_from_fragment("https://cdn.example.com/live/master.m3u8/seg.ts"), [])
 
     def test_cookie_header_matches_parent_domains(self) -> None:

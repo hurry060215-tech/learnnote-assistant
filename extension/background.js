@@ -188,12 +188,26 @@ function inferSiblingManifestUrls(url) {
     const names = lowerPath.endsWith(".ts")
       ? ["index.m3u8", "playlist.m3u8", "master.m3u8"]
       : ["manifest.mpd", "index.mpd", "master.m3u8", "index.m3u8"];
+    const directories = [directory];
+    const parent = directory.replace(/\/$/, "");
+    const parentName = parent.split("/").pop().toLowerCase();
+    const parentDirectory = parent.includes("/") ? `${parent.slice(0, parent.lastIndexOf("/") + 1)}` : "/";
+    if (
+      parentDirectory &&
+      parentDirectory !== "/" &&
+      !directories.includes(parentDirectory) &&
+      /^(segments?|chunks?|fragments?|video|audio|v\d+|\d{3,4}p|[a-z]{2,4}_?\d{3,4}p|avc|h26[45]|dash|hls)$/.test(parentName)
+    ) {
+      directories.push(parentDirectory);
+    }
     const results = [];
-    for (const name of names) {
-      parsed.pathname = directory + name;
-      parsed.hash = "";
-      const href = parsed.href;
-      if (!results.includes(href)) results.push(href);
+    for (const candidateDirectory of directories) {
+      for (const name of names) {
+        parsed.pathname = candidateDirectory + name;
+        parsed.hash = "";
+        const href = parsed.href;
+        if (!results.includes(href)) results.push(href);
+      }
     }
     return results;
   } catch {

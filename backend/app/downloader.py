@@ -209,11 +209,24 @@ def infer_sibling_manifest_urls_from_fragment(url: str) -> list[str]:
         if lowered.endswith(".ts")
         else ("manifest.mpd", "index.mpd", "master.m3u8", "index.m3u8")
     )
+
+    directories = [directory]
+    parent = directory.rstrip("/")
+    parent_name = parent.rsplit("/", 1)[-1].lower()
+    parent_directory = parent.rsplit("/", 1)[0] + "/" if "/" in parent else "/"
+    if (
+        parent_directory not in directories
+        and parent_directory != "/"
+        and re.search(r"^(segments?|chunks?|fragments?|video|audio|v\d+|\d{3,4}p|[a-z]{2,4}_?\d{3,4}p|avc|h26[45]|dash|hls)$", parent_name)
+    ):
+        directories.append(parent_directory)
+
     results: list[str] = []
-    for name in names:
-        guessed = urlunparse(parsed._replace(path=f"{directory}{name}", params="", fragment=""))
-        if guessed not in results:
-            results.append(guessed)
+    for candidate_directory in directories:
+        for name in names:
+            guessed = urlunparse(parsed._replace(path=f"{candidate_directory}{name}", params="", fragment=""))
+            if guessed not in results:
+                results.append(guessed)
     return results
 
 
