@@ -309,6 +309,40 @@ class RedirectManifestHandler(QuietHandler):
         super().do_GET()
 
 
+class PostManifestHandler(QuietHandler):
+    seen_body = b""
+    seen_referer = ""
+    seen_x_requested_with = ""
+
+    def do_GET(self) -> None:
+        self.send_error(405, "manifest requires POST")
+
+    def do_POST(self) -> None:
+        path = urlparse(self.path).path
+        if path != "/api/play":
+            self.send_error(404, "not found")
+            return
+        length = int(self.headers.get("Content-Length") or 0)
+        type(self).seen_body = self.rfile.read(length)
+        type(self).seen_referer = self.headers.get("Referer", "")
+        type(self).seen_x_requested_with = self.headers.get("X-Requested-With", "")
+        body = b"\n".join([
+            b"#EXTM3U",
+            b"#EXT-X-VERSION:3",
+            b"#EXT-X-TARGETDURATION:6",
+            b'#EXT-X-KEY:METHOD=AES-128,URI="key.bin"',
+            b"#EXTINF:6,",
+            b"seg/000.ts",
+            b"#EXT-X-ENDLIST",
+            b"",
+        ])
+        self.send_response(200)
+        self.send_header("Content-Type", "application/vnd.apple.mpegurl")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+
 class ResolvedManifestOnlyHandler(QuietHandler):
     def do_GET(self) -> None:
         path = urlparse(self.path).path
@@ -1147,6 +1181,57 @@ class DownloaderPriorityTests(unittest.TestCase):
                 self.assertIn("-allowed_extensions", captured["cmd"])
                 self.assertIn("ALL", captured["cmd"])
                 self.assertLess(captured["cmd"].index("-allowed_extensions"), captured["cmd"].index("-i"))
+            finally:
+                server.shutdown()
+                server.server_close()
+
+    def test_manifest_download_replays_post_body_to_local_manifest(self) -> None:
+        captured: dict = {}
+
+        def fake_run(cmd, capture_output, text):
+            captured["cmd"] = cmd
+            output = Path(cmd[-1])
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_bytes(b"0" * 5000)
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            PostManifestHandler.seen_body = b""
+            PostManifestHandler.seen_referer = ""
+            PostManifestHandler.seen_x_requested_with = ""
+            server = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(PostManifestHandler, directory=str(root)))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                manifest_url = f"http://127.0.0.1:{server.server_port}/api/play"
+                candidate = ResourceCandidate(
+                    url=manifest_url,
+                    source="webRequest",
+                    kind="hls",
+                    mime="application/vnd.apple.mpegurl",
+                    method="POST",
+                    request_headers={
+                        "Referer": "https://course.example.com/lesson",
+                        "X-Requested-With": "XMLHttpRequest",
+                    },
+                    request_body={"content": "objectid=42&dtoken=abc"},
+                )
+                downloader = MediaDownloader(root / "task")
+                with patch("app.downloader.ffmpeg_bin", return_value="ffmpeg"), patch("app.downloader.subprocess.run", side_effect=fake_run):
+                    media = downloader._download_manifest(candidate, [], "https://course.example.com/lesson", "Post HLS")
+
+                self.assertTrue(media.exists())
+                self.assertEqual(PostManifestHandler.seen_body, b"objectid=42&dtoken=abc")
+                self.assertEqual(PostManifestHandler.seen_referer, "https://course.example.com/lesson")
+                self.assertEqual(PostManifestHandler.seen_x_requested_with, "XMLHttpRequest")
+                self.assertIn("-i", captured["cmd"])
+                ffmpeg_input = Path(captured["cmd"][captured["cmd"].index("-i") + 1])
+                self.assertEqual(ffmpeg_input.suffix, ".m3u8")
+                self.assertTrue(ffmpeg_input.is_file())
+                manifest = ffmpeg_input.read_text(encoding="utf-8")
+                self.assertIn(f'URI="http://127.0.0.1:{server.server_port}/api/key.bin"', manifest)
+                self.assertIn(f"http://127.0.0.1:{server.server_port}/api/seg/000.ts", manifest)
             finally:
                 server.shutdown()
                 server.server_close()

@@ -362,6 +362,32 @@ def _manifest_kind_from_body(text: str, content_type: str = "") -> tuple[str, st
     return "unknown", ""
 
 
+def _absolute_manifest_uri(value: str, base_url: str) -> str:
+    if re.match(r"^(?:[a-z][a-z0-9+.-]*:|//)", value or "", re.I):
+        return value
+    return urljoin(base_url, value)
+
+
+def _rewrite_hls_manifest_for_local_file(text: str, base_url: str) -> str:
+    rewritten: list[str] = []
+    for line in (text or "").replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        stripped = line.strip()
+        if not stripped:
+            rewritten.append(line)
+            continue
+        if stripped.startswith("#"):
+            rewritten.append(
+                re.sub(
+                    r'URI="([^"]+)"',
+                    lambda match: f'URI="{_absolute_manifest_uri(match.group(1), base_url)}"',
+                    line,
+                )
+            )
+            continue
+        rewritten.append(_absolute_manifest_uri(stripped, base_url))
+    return "\n".join(rewritten).rstrip() + "\n"
+
+
 def _looks_like_json_url_candidate(value: str) -> bool:
     value = value.strip()
     if len(value) < 4 or re.search(r"\s", value):
@@ -2359,14 +2385,71 @@ class MediaDownloader:
         except requests.RequestException as exc:
             raise DownloadError("download_forbidden", f"manifest preflight failed: {exc}") from exc
 
+    def _manifest_file_from_replayed_request(
+        self,
+        candidate: ResourceCandidate,
+        cookies: list[BrowserCookie],
+        referer: str,
+        title: str,
+    ) -> Path | None:
+        url = candidate.url
+        request_method, request_body = request_body_for_candidate(candidate, url)
+        if request_body is None:
+            return None
+
+        kind = effective_resource_kind(candidate)
+        request_headers = download_headers_for_candidate(candidate, cookies, referer, url=url)
+        if kind == "hls":
+            request_headers.setdefault("Accept", "application/vnd.apple.mpegurl,application/x-mpegURL,text/plain,*/*;q=0.8")
+        elif kind == "dash":
+            request_headers.setdefault("Accept", "application/dash+xml,application/xml,text/xml,*/*;q=0.8")
+
+        try:
+            with requests.request(request_method, url, headers=request_headers, data=request_body, stream=True, timeout=30, allow_redirects=True) as response:
+                _update_candidate_from_download_response(candidate, response)
+                body = _read_probe_bytes(response, limit=MAX_PAGE_SCAN_BYTES)
+                content_type = response.headers.get("content-type", "")
+                if response.status_code in {401, 403}:
+                    raise DownloadError("auth_required", f"manifest replay returned HTTP {response.status_code}; refresh login cookies and retry.")
+                if response.status_code >= 400:
+                    raise DownloadError("download_forbidden", f"manifest replay returned HTTP {response.status_code}.")
+                if _textish_content_type(content_type) and _looks_like_login_or_error(body):
+                    raise DownloadError("auth_required", "manifest replay returned a login/error page instead of an HLS/DASH manifest.")
+
+                text = body.decode("utf-8", errors="ignore")
+                manifest_kind, manifest_mime = _manifest_kind_from_body(text, content_type)
+                if manifest_kind not in {"hls", "dash"}:
+                    raise DownloadError("unsupported_manifest", "Replayed playback request did not return an HLS/DASH manifest.")
+                if kind in {"hls", "dash"} and manifest_kind != kind:
+                    raise DownloadError("unsupported_manifest", f"Replayed playback request returned {manifest_kind}, expected {kind}.")
+                if manifest_kind == "hls" and re.search(r"#EXT-X-KEY:[^\n]*(SAMPLE-AES|skd://|widevine|fairplay)", text, re.I):
+                    raise DownloadError("drm_or_encrypted", "HLS manifest appears to use DRM/encrypted streaming.")
+                if manifest_kind == "dash" and re.search(r"ContentProtection|widevine|playready|urn:uuid", text, re.I):
+                    raise DownloadError("drm_or_encrypted", "DASH manifest contains ContentProtection and may be DRM protected.")
+
+                candidate.kind = manifest_kind
+                candidate.mime = manifest_mime or candidate.mime
+                suffix = ".m3u8" if manifest_kind == "hls" else ".mpd"
+                manifest_text = _rewrite_hls_manifest_for_local_file(text, response.url or url) if manifest_kind == "hls" else text
+                output = self.download_dir / f"{_clean_filename(title)}_replayed_manifest{suffix}"
+                with output.open("w", encoding="utf-8", newline="\n") as file:
+                    file.write(manifest_text)
+                return output
+        except DownloadError:
+            raise
+        except requests.RequestException as exc:
+            raise DownloadError("download_forbidden", f"manifest replay failed: {exc}") from exc
+
     def _download_manifest(self, candidate: ResourceCandidate, cookies: list[BrowserCookie], referer: str, title: str) -> Path:
         ffmpeg = ffmpeg_bin()
         if not ffmpeg:
             raise DownloadError("unsupported_manifest", "未找到 ffmpeg，无法合并 HLS/DASH。")
         output = self.download_dir / f"{_clean_filename(title)}_manifest.mp4"
-        probe_url = candidate.resolved_url or candidate.url
-        request_headers = download_headers_for_candidate(candidate, cookies, referer, url=probe_url)
-        self._probe_manifest_before_ffmpeg(candidate, request_headers)
+        local_manifest = self._manifest_file_from_replayed_request(candidate, cookies, referer, title)
+        if not local_manifest:
+            probe_url = candidate.resolved_url or candidate.url
+            request_headers = download_headers_for_candidate(candidate, cookies, referer, url=probe_url)
+            self._probe_manifest_before_ffmpeg(candidate, request_headers)
         url = candidate.resolved_url or candidate.url
         request_headers = download_headers_for_candidate(candidate, cookies, referer, url=url)
         kind = effective_resource_kind(candidate)
@@ -2383,7 +2466,7 @@ class MediaDownloader:
         if kind in {"hls", "dash"}:
             cmd += ["-protocol_whitelist", "file,http,https,tcp,tls,crypto,data", "-allowed_extensions", "ALL"]
             cmd += ["-f", kind]
-        cmd += ["-user_agent", user_agent, "-i", url, "-c", "copy", str(output)]
+        cmd += ["-user_agent", user_agent, "-i", str(local_manifest or url), "-c", "copy", str(output)]
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0:
             stderr = (result.stderr or "").lower()
