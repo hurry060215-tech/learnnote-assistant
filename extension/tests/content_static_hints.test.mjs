@@ -102,6 +102,15 @@ const nestedMediaKeyPayload = Buffer.from(JSON.stringify({
 const nestedMediaKeyScript = new FakeElement("script", {
   textContent: `window.__wrapped={playInfo:'${nestedMediaKeyPayload}'};`
 });
+const endpointContainerScript = new FakeElement("script", {
+  textContent: `window.__coursePlayer={
+    sources:[
+      { file: "/api/play?id=json-array&token=abc" },
+      { url: "/ananas/status/objectid-123?flag=normal" }
+    ],
+    streams:["https://media.example.com/vod/lesson?id=noext"]
+  };`
+});
 const segmentScript = new FakeElement("script", {
   textContent: "window.__segments=['https://cdn.example.com/static/hls/segment-001.ts?token=seg'];"
 });
@@ -177,7 +186,7 @@ sameOriginIframe.contentDocument = {
     textContent: ""
   }
 };
-const html = new FakeElement("html", {}, [player, packedPlayer, doubleEncodedPlayer, onclickPlayer, paramPlayer, configPlayer, nakedPlayer, vendorPlayer, preloadVideo, preloadHls, prefetchPlayApi, ogVideo, htmlVideo, script, plainEncodedScript, plainDoubleEncodedScript, mixedEncodedScript, jsEscapedScript, jsEscapedPayloadScript, nestedMediaKeyScript, segmentScript, plainUrlScript, srcdocIframe, sameOriginIframe]);
+const html = new FakeElement("html", {}, [player, packedPlayer, doubleEncodedPlayer, onclickPlayer, paramPlayer, configPlayer, nakedPlayer, vendorPlayer, preloadVideo, preloadHls, prefetchPlayApi, ogVideo, htmlVideo, script, plainEncodedScript, plainDoubleEncodedScript, mixedEncodedScript, jsEscapedScript, jsEscapedPayloadScript, nestedMediaKeyScript, endpointContainerScript, segmentScript, plainUrlScript, srcdocIframe, sameOriginIframe]);
 
 let messageListener = null;
 const context = {
@@ -265,6 +274,9 @@ const jsEscapedHls = response.resources.find(item => item.url === "https://cdn.e
 const jsEscapedVideo = response.resources.find(item => item.url === "https://cdn.example.com/static/escaped/lesson.mp4?sig=ok");
 const jsEscapedPayloadHls = response.resources.find(item => item.url === "https://cdn.example.com/static/escaped/payload.m3u8?token=payload");
 const nestedMediaKeyHls = response.resources.find(item => item.url === "https://cdn.example.com/static/nested-key/master.m3u8?token=wrapped");
+const apiPlayEndpoint = response.resources.find(item => item.url === "https://course.example.com/api/play?id=json-array&token=abc");
+const ananasEndpoint = response.resources.find(item => item.url === "https://course.example.com/ananas/status/objectid-123?flag=normal");
+const vodEndpoint = response.resources.find(item => item.url === "https://media.example.com/vod/lesson?id=noext");
 const hlsSegment = response.resources.find(item => item.url === "https://cdn.example.com/static/hls/segment-001.ts?token=seg");
 const onclickHls = response.resources.find(item => item.url === "https://cdn.example.com/static/onclick-master.m3u8?token=click");
 const paramVideo = response.resources.find(item => item.url === "https://cdn.example.com/static/param-lesson.mp4?token=param");
@@ -351,10 +363,25 @@ assert.equal(nestedMediaKeyHls.kind, "hls");
 assert.equal(nestedMediaKeyHls.source, "scriptHint");
 assert.match(nestedMediaKeyHls.label, /nested/);
 
+assert.ok(apiPlayEndpoint, "expected media-named source array to expose extensionless play endpoint");
+assert.equal(apiPlayEndpoint.kind, "video");
+assert.equal(apiPlayEndpoint.source, "scriptHint");
+assert.match(apiPlayEndpoint.label, /(file|sources container)/);
+
+assert.ok(ananasEndpoint, "expected media-named source array to expose Chaoxing-style ananas endpoint");
+assert.equal(ananasEndpoint.kind, "video");
+assert.equal(ananasEndpoint.source, "scriptHint");
+assert.match(ananasEndpoint.label, /(url|sources container)/);
+
+assert.ok(vodEndpoint, "expected media-named stream array to expose extensionless VOD endpoint");
+assert.equal(vodEndpoint.kind, "video");
+assert.equal(vodEndpoint.source, "scriptHint");
+assert.match(vodEndpoint.label, /(streams|coursePlayer) container/);
+
 assert.ok(hlsSegment, "expected inline script media scan to expose HLS segment URL");
 assert.equal(hlsSegment.kind, "fragment");
 assert.equal(hlsSegment.source, "scriptHint");
-assert.match(hlsSegment.label, /script media url/);
+assert.match(hlsSegment.label, /(segments container|script media url)/);
 
 assert.ok(onclickHls, "expected onclick handler scan to expose embedded encoded HLS URL");
 assert.equal(onclickHls.kind, "hls");

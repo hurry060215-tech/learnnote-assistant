@@ -34,6 +34,8 @@ const STATIC_MEDIA_ATTRS = [
 ];
 const STATIC_MEDIA_SELECTOR = STATIC_MEDIA_ATTRS.map(name => `[${name}]`).join(",");
 const STATIC_FIELD_RE = /(["']?[A-Za-z_$][A-Za-z0-9_$.-]{0,79}["']?)\s*[:=]\s*["']((?:\\u[0-9a-fA-F]{4}|\\x[0-9a-fA-F]{2}|\\.|[^"'<>\\\s]){4,})["']/gi;
+const STATIC_CONTAINER_FIELD_RE = /(["']?[A-Za-z_$][A-Za-z0-9_$.-]{0,79}["']?)\s*[:=]\s*[\[{]/gi;
+const STATIC_QUOTED_VALUE_RE = /["']((?:\\u[0-9a-fA-F]{4}|\\x[0-9a-fA-F]{2}|\\.|[^"'<>\\\s]){4,})["']/gi;
 const STATIC_MEDIA_KEY_RE = /(url|src|file|fileid|objectid|dtoken|download|httpmd|play|media|video|stream|source|hls|m3u8|dash|mpd|segment|fragment|chunk|subtitle|caption)/i;
 const STATIC_ATTRIBUTE_KEY_RE = /(url|src|file|objectid|dtoken|download|httpmd|play|player|config|option|param|media|video|stream|source|hls|m3u8|dash|mpd|segment|fragment|chunk|subtitle|caption)/i;
 const VISIBLE_SUBTITLE_HINT_RE = /(subtitle|subtitles|caption|captions|closed.?caption|texttrack|danmu|danmaku|barrage|\bcc\b|字幕|弹幕)/i;
@@ -224,6 +226,14 @@ function looksLikeMediaValue(value, hint = "") {
   return text.includes("/") && /[?=&]|api|play|media|video|stream|m3u8|mpd|hls|dash/i.test(text) && STATIC_MEDIA_KEY_RE.test(hint);
 }
 
+function looksLikePlaybackEndpointValue(value, hint = "") {
+  const text = decodeURIComponentSafe(decodeJsStringEscapes(String(value || ""))).trim();
+  if (!text || !STATIC_MEDIA_KEY_RE.test(hint)) return false;
+  if (!/^(https?:)?\/\//i.test(text) && !text.startsWith("/") && !text.includes("/")) return false;
+  if (MEDIA_RE.test(text) || FRAGMENT_RE.test(text) || SUBTITLE_RE.test(text) || text.includes(".m3u8") || text.includes(".mpd")) return false;
+  return /(^|[/?&=._-])(api|ananas|play|player|stream|video|media|vod|hls|dash|manifest|playlist|master|m3u8|mpd|objectid|dtoken)([/?&=._-]|$)/i.test(text);
+}
+
 function decodeURIComponentSafe(value) {
   try {
     return decodeURIComponent(value);
@@ -237,7 +247,8 @@ function resourceFromHint(value, source, label, hint = "", video = null, isMainV
     const trimmed = String(candidate || "").trim();
     if (trimmed[0] === "{" || trimmed[0] === "[") continue;
     if (!looksLikeMediaValue(candidate, hint || label)) continue;
-    const item = resource(candidate, source, label, mimeFromHint(`${hint} ${label}`), video, isMainVideo, playbackMatch);
+    const endpointMime = looksLikePlaybackEndpointValue(candidate, `${hint} ${label}`) ? "video/mp4" : "";
+    const item = resource(candidate, source, label, mimeFromHint(`${hint} ${label}`) || endpointMime, video, isMainVideo, playbackMatch);
     if (item && item.kind !== "unknown") return item;
   }
   return null;
@@ -340,6 +351,34 @@ function collectNestedFieldResources(value, source, label, seen = new Set(), lim
       if (resources.length >= limit) return resources;
     }
   }
+  return resources;
+}
+
+function collectKeyedContainerResources(text, source, label, seen = new Set(), limit = 40) {
+  const resources = [];
+  const body = String(text || "");
+  STATIC_CONTAINER_FIELD_RE.lastIndex = 0;
+  for (const match of body.matchAll(STATIC_CONTAINER_FIELD_RE)) {
+    const key = String(match[1] || "").replace(/^["']|["']$/g, "");
+    if (!STATIC_MEDIA_KEY_RE.test(key)) continue;
+    const chunk = body.slice(match.index || 0, Math.min(body.length, (match.index || 0) + 2400));
+    STATIC_QUOTED_VALUE_RE.lastIndex = 0;
+    for (const valueMatch of chunk.matchAll(STATIC_QUOTED_VALUE_RE)) {
+      const item = resourceFromHint(valueMatch[1], source, `${label} ${key} container`, key);
+      if (item && !seen.has(item.url)) {
+        seen.add(item.url);
+        item.score = Math.max(item.score || 0, item.kind === "hls" || item.kind === "dash" ? 96 : item.kind === "video" ? 84 : 62);
+        resources.push(item);
+        if (resources.length >= limit) return resources;
+      }
+      for (const nestedItem of collectNestedFieldResources(valueMatch[1], source, `${label} ${key} container`, seen, limit - resources.length)) {
+        resources.push(nestedItem);
+        if (resources.length >= limit) return resources;
+      }
+    }
+  }
+  STATIC_CONTAINER_FIELD_RE.lastIndex = 0;
+  STATIC_QUOTED_VALUE_RE.lastIndex = 0;
   return resources;
 }
 
@@ -692,6 +731,10 @@ function collectInlineScriptResources() {
         if (resources.length >= 40) return resources;
       }
     }
+    for (const item of collectKeyedContainerResources(text, "scriptHint", "script", seen, 40 - resources.length)) {
+      resources.push(item);
+      if (resources.length >= 40) return resources;
+    }
     for (const item of collectTextMediaResources(text, "scriptHint", "script media url", seen)) {
       resources.push(item);
       if (resources.length >= 40) return resources;
@@ -729,6 +772,10 @@ function collectHtmlTextResources(text, source, label, seen = new Set(), limit =
         if (resources.length >= limit) return resources;
       }
     }
+  }
+  for (const item of collectKeyedContainerResources(body, source, label, seen, limit - resources.length)) {
+    resources.push(item);
+    if (resources.length >= limit) return resources;
   }
   for (const item of collectTextMediaResources(body, source, `${label} media url`, seen)) {
     resources.push(item);
