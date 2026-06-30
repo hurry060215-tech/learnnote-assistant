@@ -264,22 +264,22 @@ function playbackMatchRank(match = "") {
 
 function compareResourceCandidates(a = {}, b = {}) {
   const left = [
-    Number(a.score || 0),
     a.is_main_video ? 1 : 0,
     playbackMatchRank(a.playback_match),
     isDownloadableKind(a.kind) ? 1 : 0,
     kindRank(a.kind),
     sourceRank(a.source),
+    Number(a.score || 0),
     Number(a.time_stamp || 0),
     Number(a.content_length || 0)
   ];
   const right = [
-    Number(b.score || 0),
     b.is_main_video ? 1 : 0,
     playbackMatchRank(b.playback_match),
     isDownloadableKind(b.kind) ? 1 : 0,
     kindRank(b.kind),
     sourceRank(b.source),
+    Number(b.score || 0),
     Number(b.time_stamp || 0),
     Number(b.content_length || 0)
   ];

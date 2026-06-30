@@ -60,3 +60,24 @@ const hinted = context.withPlaybackHints({
 assert.equal(hinted.playback_match, "blob-source");
 assert.equal(hinted.is_main_video, true);
 assert.ok(hinted.score >= 100, "expected recent pageHookMediaSource candidates to receive blob playback boost");
+
+const sorted = [
+  {
+    url: "https://cdn.example.com/archive-or-ad.mp4",
+    source: "webRequest",
+    kind: "video",
+    score: 100,
+    time_stamp: now + 2000
+  },
+  {
+    url: "https://cdn.example.com/current-lesson.mp4",
+    source: "pageHookBlobSource",
+    kind: "video",
+    score: 42,
+    playback_match: "blob-source",
+    blob_url: "blob:https://course.example.com/mse-1",
+    time_stamp: now
+  }
+].sort(context.compareResourceCandidates);
+
+assert.equal(sorted[0].url, "https://cdn.example.com/current-lesson.mp4");

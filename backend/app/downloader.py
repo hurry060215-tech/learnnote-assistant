@@ -1052,12 +1052,12 @@ def playback_match_label(match: str) -> str:
 def candidate_rank_key(candidate: ResourceCandidate, order: int = 0) -> tuple[int, int, int, int, int, int, float, int, int]:
     kind = effective_resource_kind(candidate)
     return (
-        candidate.score or 0,
         1 if candidate.is_main_video else 0,
         playback_match_rank(candidate.playback_match or ""),
         1 if kind in {"hls", "dash", "video"} else 0,
         kind_rank(kind),
         source_rank(candidate.source or ""),
+        candidate.score or 0,
         candidate.time_stamp or 0,
         candidate.content_length or 0,
         -order,

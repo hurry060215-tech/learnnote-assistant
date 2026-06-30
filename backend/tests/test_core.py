@@ -1358,6 +1358,35 @@ class DownloaderBoundaryTests(unittest.TestCase):
             self.assertEqual(candidates[0].playback_match, "blob-source")
             self.assertEqual(candidates[0].blob_url, "blob:https://course.example/active-video")
 
+    def test_playback_evidence_beats_higher_raw_score(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            downloader = MediaDownloader(Path(tmp))
+            resources = [
+                ResourceCandidate(
+                    url="https://cdn.example.com/archive-or-ad.mp4",
+                    source="webRequest",
+                    kind="video",
+                    mime="video/mp4",
+                    score=100,
+                    time_stamp=3000,
+                ),
+                ResourceCandidate(
+                    url="https://cdn.example.com/current-lesson.mp4",
+                    source="pageHookBlobSource",
+                    kind="video",
+                    mime="video/mp4",
+                    score=42,
+                    playback_match="blob-source",
+                    blob_url="blob:https://course.example/active-video",
+                    time_stamp=1000,
+                ),
+            ]
+
+            candidates = downloader._candidate_resources(resources)
+
+            self.assertEqual(candidates[0].url, "https://cdn.example.com/current-lesson.mp4")
+            self.assertEqual(candidates[0].playback_match, "blob-source")
+
     def test_extensionless_browser_media_candidate_is_downloadable(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             downloader = MediaDownloader(Path(tmp))
