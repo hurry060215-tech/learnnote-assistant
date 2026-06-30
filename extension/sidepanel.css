@@ -5836,6 +5836,67 @@ body {
   letter-spacing: 0;
 }
 
+.launch-bar {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border-style: solid;
+  border-radius: 8px;
+}
+
+.launch-bar-main {
+  min-width: 0;
+  gap: 0;
+}
+
+.launch-bar-main span,
+.launch-bar-main small {
+  display: none;
+}
+
+.launch-bar-main strong {
+  overflow: hidden;
+  font-size: 11px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.launch-bar-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 5px;
+  justify-content: flex-end;
+}
+
+.launch-bar-actions button,
+.launch-bar-actions button.primary {
+  min-width: 0;
+  min-height: 26px;
+  height: 26px;
+  grid-column: auto;
+  padding: 0 7px;
+  font-size: 10px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+@media (max-width: 360px) {
+  .launch-bar {
+    grid-template-columns: 1fr;
+  }
+
+  .launch-bar-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .launch-bar-actions button.primary {
+    grid-column: 1 / -1;
+  }
+}
+
 .brand p,
 .section-head span,
 .page-url,
