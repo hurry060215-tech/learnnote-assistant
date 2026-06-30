@@ -1,4 +1,32 @@
-const API = "";
+const DEFAULT_BACKEND_ORIGIN = "http://127.0.0.1:8765";
+
+function normalizeApiBase(value) {
+  const text = String(value || "").trim().replace(/\/+$/, "");
+  return /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/i.test(text) ? text : "";
+}
+
+function isBackendSameOrigin(loc = window?.location || location) {
+  const protocol = String(loc?.protocol || "");
+  const hostname = String(loc?.hostname || "");
+  const port = String(loc?.port || "");
+  return (protocol === "http:" || protocol === "https:")
+    && (hostname === "localhost" || hostname === "127.0.0.1")
+    && (!port || port === "8765");
+}
+
+function resolveApiBase(loc = window?.location || location, storage = window?.localStorage) {
+  const explicit = normalizeApiBase(currentUrlParam(["api", "backend", "backend_url"]));
+  if (explicit) return explicit;
+  const saved = normalizeApiBase(storage?.getItem?.("learnnote_api_base"));
+  if (saved) return saved;
+  return isBackendSameOrigin(loc) ? "" : DEFAULT_BACKEND_ORIGIN;
+}
+
+function apiUrl(path) {
+  return `${API}${path}`;
+}
+
+let API = resolveApiBase();
 const MEDIA_RE = /\.(mp4|m4v|webm|mov|mkv|flv|avi)(\?|#|$)/i;
 const HLS_RE = /\.(m3u8|mpd)(\?|#|$)/i;
 const LOCAL_VIDEO_EXT_RE = /\.(mp4|m4v|mov|mkv|webm|flv|avi)$/i;
@@ -1368,7 +1396,7 @@ function updateHealthVisionStatus(data = lastHealthData) {
 
 async function checkHealth() {
   try {
-    const data = await fetchJson(`${API}/health`);
+    const data = await fetchJson(apiUrl("/health"));
     els.health.className = data.ffmpeg ? "health ok" : "health bad";
     els.health.textContent = data.ffmpeg
       ? data.ffprobe_optional ? "后端可用 · ffprobe 可选" : "本地后端可用"
@@ -1469,7 +1497,7 @@ function initializeWorkspaceView() {
 async function loadTasks() {
   let data = { tasks: [] };
   try {
-    data = await fetchJson(`${API}/api/tasks`);
+    data = await fetchJson(apiUrl("/api/tasks"));
   } catch {
     tasks = [];
     selectedTaskId = null;
@@ -1669,7 +1697,7 @@ function taskMetaLine(task) {
 
 async function taskRecord() {
   if (!selectedTaskId) return null;
-  return fetch(`${API}/api/tasks/${selectedTaskId}`).then(r => r.json()).then(taskFromPayload);
+  return fetch(apiUrl(`/api/tasks/${selectedTaskId}`)).then(r => r.json()).then(taskFromPayload);
 }
 
 function taskFromPayload(payload) {
@@ -1681,7 +1709,7 @@ function taskFromPayload(payload) {
 async function noteForTask(taskId) {
   if (!taskId) return "";
   if (lastNoteTaskId === taskId && lastNote) return lastNote;
-  const response = await fetch(`${API}/api/tasks/${taskId}/note`);
+  const response = await fetch(apiUrl(`/api/tasks/${taskId}/note`));
   if (!response.ok) return "";
   lastNote = await response.text();
   lastNoteTaskId = taskId;
@@ -1698,7 +1726,7 @@ function clearTaskCaches() {
 async function transcriptForTask(task) {
   if (!task?.id || !task.transcript_path) return null;
   if (lastTranscriptTaskId === task.id && lastTranscript) return lastTranscript;
-  const response = await fetch(`${API}/api/tasks/${task.id}/transcript`);
+  const response = await fetch(apiUrl(`/api/tasks/${task.id}/transcript`));
   if (!response.ok) return null;
   lastTranscript = await response.json();
   lastTranscriptTaskId = task.id;
@@ -1724,16 +1752,16 @@ function taskStatusClass(task) {
 }
 
 function taskExportUrl(task, type) {
-  return `${API}/api/tasks/${encodeURIComponent(task.id)}/exports/${type}`;
+  return apiUrl(`/api/tasks/${encodeURIComponent(task.id)}/exports/${type}`);
 }
 
 function taskMediaPreviewUrl(task) {
   if (!task?.id || !task.media_path) return "";
-  return `${API}/api/tasks/${encodeURIComponent(task.id)}/media`;
+  return apiUrl(`/api/tasks/${encodeURIComponent(task.id)}/media`);
 }
 
 function taskRerunUrl(taskId) {
-  return `${API}/api/tasks/${encodeURIComponent(taskId)}/rerun-from-media`;
+  return apiUrl(`/api/tasks/${encodeURIComponent(taskId)}/rerun-from-media`);
 }
 
 function hasTaskBundle(task) {
@@ -2302,7 +2330,7 @@ async function rerunTaskFromMedia(taskId) {
 }
 
 async function copyBackendUrl(feedbackButton = els.copyBackendButton) {
-  const url = window.location.origin || "http://127.0.0.1:8765";
+  const url = API || (isBackendSameOrigin() ? window.location.origin : DEFAULT_BACKEND_ORIGIN);
   try {
     await navigator.clipboard.writeText(url);
   } catch {
@@ -3059,7 +3087,7 @@ async function startUrlTask(mode = "video") {
   if (els.preflightUrlButton) els.preflightUrlButton.disabled = true;
   if (els.downloadUrlButton) els.downloadUrlButton.disabled = true;
   try {
-    const data = await fetchJson(`${API}/api/tasks/from-current-page`, {
+    const data = await fetchJson(apiUrl("/api/tasks/from-current-page"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -3098,7 +3126,7 @@ async function preflightUrlTask() {
   if (els.downloadUrlButton) els.downloadUrlButton.disabled = true;
   els.urlModeHint.textContent = "正在预检链接可访问性...";
   try {
-    const data = await fetchJson(`${API}/api/media/preflight`, {
+    const data = await fetchJson(apiUrl("/api/media/preflight"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -3136,7 +3164,7 @@ async function uploadSelectedFile(fileOverride = null) {
   els.uploadButton.disabled = true;
   els.uploadButton.textContent = "上传中...";
   try {
-    const response = await fetch(`${API}/api/tasks/from-local`, { method: "POST", body: form });
+    const response = await fetch(apiUrl("/api/tasks/from-local"), { method: "POST", body: form });
     const data = await response.json().catch(() => ({}));
     if (response.ok === false || !data?.task_id) {
       els.fileName.textContent = apiErrorMessage(data, "本地视频上传失败，请确认文件格式和后端状态。");
@@ -3313,31 +3341,31 @@ els.copyButton.onclick = async () => navigator.clipboard.writeText(await noteFor
 if (els.continueFromMediaButton) els.continueFromMediaButton.onclick = () => rerunTaskFromMedia(selectedTaskId);
 els.bundleButton.onclick = () => {
   if (!selectedTaskId) return;
-  window.location.assign(`${API}/api/tasks/${encodeURIComponent(selectedTaskId)}/exports/bundle`);
+  window.location.assign(apiUrl(`/api/tasks/${encodeURIComponent(selectedTaskId)}/exports/bundle`));
 };
 if (els.manifestButton) {
   els.manifestButton.onclick = () => {
     if (!selectedTaskId) return;
-    window.location.assign(`${API}/api/tasks/${encodeURIComponent(selectedTaskId)}/exports/manifest`);
+    window.location.assign(apiUrl(`/api/tasks/${encodeURIComponent(selectedTaskId)}/exports/manifest`));
   };
 }
 els.diagnosticsButton.onclick = () => {
   if (!selectedTaskId) return;
-  window.location.assign(`${API}/api/tasks/${encodeURIComponent(selectedTaskId)}/exports/diagnostics`);
+  window.location.assign(apiUrl(`/api/tasks/${encodeURIComponent(selectedTaskId)}/exports/diagnostics`));
 };
 if (els.visualWindowsButton) {
   els.visualWindowsButton.onclick = () => {
     if (!selectedTaskId) return;
-    window.location.assign(`${API}/api/tasks/${encodeURIComponent(selectedTaskId)}/exports/visual-windows`);
+    window.location.assign(apiUrl(`/api/tasks/${encodeURIComponent(selectedTaskId)}/exports/visual-windows`));
   };
 }
 els.mediaButton.onclick = () => {
   if (!selectedTaskId) return;
-  window.location.assign(`${API}/api/tasks/${encodeURIComponent(selectedTaskId)}/exports/media`);
+  window.location.assign(apiUrl(`/api/tasks/${encodeURIComponent(selectedTaskId)}/exports/media`));
 };
 els.downloadButton.onclick = () => {
   if (!selectedTaskId) return;
-  window.location.assign(`${API}/api/tasks/${encodeURIComponent(selectedTaskId)}/exports/markdown`);
+  window.location.assign(apiUrl(`/api/tasks/${encodeURIComponent(selectedTaskId)}/exports/markdown`));
 };
 
 els.dropzone.addEventListener("dragover", event => {

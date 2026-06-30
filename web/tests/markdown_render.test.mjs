@@ -70,11 +70,11 @@ const documentStub = {
 const context = {
   console,
   document: documentStub,
-  location: { href: "http://127.0.0.1:8765/" },
+  location: { href: "http://127.0.0.1:8765/", protocol: "http:", hostname: "127.0.0.1", port: "8765", origin: "http://127.0.0.1:8765" },
   navigator: { clipboard: { writeText() {} } },
   window: {
     innerWidth: 1280,
-    location: { origin: "http://127.0.0.1:8765", href: "http://127.0.0.1:8765/", pathname: "/", search: "", hash: "", assign() {} },
+    location: { origin: "http://127.0.0.1:8765", href: "http://127.0.0.1:8765/", protocol: "http:", hostname: "127.0.0.1", port: "8765", pathname: "/", search: "", hash: "", assign() {} },
     history: {
       replacedUrls: [],
       replaceState(_state, _title, url) {
@@ -131,6 +131,15 @@ vm.runInContext(webCode, context);
 await new Promise(resolve => setTimeout(resolve, 0));
 await new Promise(resolve => setTimeout(resolve, 0));
 assert.match(elements.get("#health").textContent, /ffprobe/);
+assert.equal(context.normalizeApiBase(" http://127.0.0.1:8765/ "), "http://127.0.0.1:8765");
+assert.equal(context.normalizeApiBase("https://example.com"), "");
+assert.equal(context.resolveApiBase({ protocol: "http:", hostname: "127.0.0.1", port: "8765" }, null), "");
+assert.equal(context.resolveApiBase({ protocol: "http:", hostname: "127.0.0.1", port: "8878" }, null), "http://127.0.0.1:8765");
+assert.equal(context.resolveApiBase({ protocol: "file:", hostname: "", port: "" }, null), "http://127.0.0.1:8765");
+assert.equal(context.resolveApiBase(
+  { protocol: "http:", hostname: "127.0.0.1", port: "8878" },
+  { getItem: () => "http://localhost:9000/" }
+), "http://localhost:9000");
 assert.equal(elements.get("#browserBridgeStatus").classList.contains("capture-status-grid"), true);
 assert.match(elements.get("#browserBridgeStatus").innerHTML, /capture-status-chip bridge/);
 assert.match(elements.get("#browserBridgeStatus").innerHTML, /需 Chrome\/Edge 扩展侧栏/);
