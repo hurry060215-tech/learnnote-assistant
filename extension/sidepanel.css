@@ -6443,6 +6443,62 @@ body {
   color: var(--ln-blue, var(--accent));
 }
 
+.workbench-slice-plan {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  border: 1px solid rgba(23, 105, 232, 0.13);
+  border-radius: 8px;
+  background: rgba(248, 250, 252, 0.82);
+  padding: 6px;
+}
+
+.workbench-slice-plan section {
+  min-width: 0;
+  display: grid;
+  grid-template-rows: 18px auto auto 1fr;
+  gap: 3px;
+  border: 1px solid var(--ln-line, var(--border));
+  border-radius: 7px;
+  background: #ffffff;
+  padding: 7px;
+}
+
+.workbench-slice-plan i {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  background: #eaf2ff;
+  color: var(--ln-blue, var(--accent));
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.workbench-slice-plan span,
+.workbench-slice-plan small {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ln-muted, var(--muted));
+  font-size: 9.5px;
+  font-weight: 850;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workbench-slice-plan strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ln-ink, var(--ink));
+  font-size: 11px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .workbench-steps {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -6621,6 +6677,7 @@ body {
   .source-switcher,
   .actions,
   .launch-bar-actions,
+  .workbench-slice-plan,
   .workbench-steps,
   .workbench-facts,
   .workbench-route {

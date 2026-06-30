@@ -1026,6 +1026,11 @@ assert.doesNotMatch(elements.get("#resources").innerHTML, /<script>bad/);
 assert.match(elements.get("#currentStudyCard").className, /candidate/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /发现当前视频直取候选/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /workbench-route/);
+assert.match(elements.get("#currentStudyCard").innerHTML, /workbench-slice-plan/);
+assert.match(elements.get("#currentStudyCard").innerHTML, /20秒 · 3x3/);
+assert.match(elements.get("#currentStudyCard").innerHTML, /每窗 00:03:00/);
+assert.match(elements.get("#currentStudyCard").innerHTML, /视觉 API \/ 本地索引/);
+assert.match(elements.get("#currentStudyCard").innerHTML, /网格图 \+ 对应字幕合并/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /https:\/\/cdn\.example\.com\/live\/master\.m3u8/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /data-workbench-copy="url"/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /data-workbench-copy="report"/);
@@ -1037,6 +1042,11 @@ assert.equal(context.playbackReadinessState(), "ready");
 assert.match(elements.get("#playbackReadiness").innerHTML, /已读取当前播放视频/);
 assert.match(elements.get("#playbackReadiness").innerHTML, /1\/1 匹配/);
 assert.match(elements.get("#playbackReadiness").innerHTML, /1 条/);
+
+vm.runInContext("els.visualUnderstanding.checked = false; renderCurrentStudyCard();", context);
+assert.match(elements.get("#currentStudyCard").innerHTML, /无视觉 · 仅转写/);
+assert.match(elements.get("#currentStudyCard").innerHTML, /已关闭/);
+vm.runInContext("els.visualUnderstanding.checked = true; renderCurrentStudyCard();", context);
 
 await context.copySelectedResourceUrl();
 assert.equal(clipboardWrites.at(-1), "https://cdn.example.com/live/master.m3u8");

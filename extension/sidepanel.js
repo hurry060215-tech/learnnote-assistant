@@ -1723,6 +1723,43 @@ function workbenchRouteHtml() {
   </div>`;
 }
 
+function workbenchSlicePlanHtml() {
+  const visionEnabled = visualUnderstandingEnabled();
+  const model = (els.llmModel?.value || "").trim();
+  const asr = els.transcriber?.selectedOptions?.[0]?.textContent?.trim() || "本地";
+  const windowDuration = visualWindowText().replace(/^约\s*/, "").replace(/\s*\/\s*窗$/, "");
+  const items = [
+    {
+      label: "转写",
+      value: asr,
+      detail: `${els.whisperModel?.value || "small"} · 优先平台字幕`
+    },
+    {
+      label: "切片",
+      value: visualPlanText(),
+      detail: visionEnabled ? `每窗 ${windowDuration}` : "不抽帧"
+    },
+    {
+      label: "图文",
+      value: visionEnabled ? (model || "视觉 API / 本地索引") : "已关闭",
+      detail: visionEnabled ? "网格图 + 对应字幕合并" : "仅转写与页面文本"
+    },
+    {
+      label: "笔记",
+      value: noteStyleText(),
+      detail: `${els.summaryDepth?.selectedOptions?.[0]?.textContent?.trim() || "标准"} · 时间轴/概念/复习题`
+    }
+  ];
+  return `<div class="workbench-slice-plan" aria-label="切片笔记计划">
+    ${items.map((item, index) => `<section>
+      <i>${index + 1}</i>
+      <span>${escapeHtml(item.label)}</span>
+      <strong>${escapeHtml(item.value)}</strong>
+      <small>${escapeHtml(item.detail)}</small>
+    </section>`).join("")}
+  </div>`;
+}
+
 function renderCurrentStudyCard() {
   if (!els.currentStudyCard) return;
   const state = currentStudyState();
@@ -1742,6 +1779,7 @@ function renderCurrentStudyCard() {
       </button>
     </div>
     ${workbenchRouteHtml()}
+    ${workbenchSlicePlanHtml()}
     <div class="workbench-steps">
       ${workbenchStepItems(state).map((item, index) => `<section class="${escapeHtml(item.state)}">
         <i>${index + 1}</i>
