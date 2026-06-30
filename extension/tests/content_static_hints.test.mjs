@@ -94,6 +94,14 @@ const jsEscapedScript = new FakeElement("script", {
 const jsEscapedPayloadScript = new FakeElement("script", {
   textContent: String.raw`window.__payload='https:\/\/cdn.example.com\/static\/escaped\/payload.m3u8\x3Ftoken\x3Dpayload';`
 });
+const nestedMediaKeyPayload = Buffer.from(JSON.stringify({
+  streams: {
+    hlsUrl: "https://cdn.example.com/static/nested-key/master.m3u8?token=wrapped"
+  }
+}), "utf8").toString("base64");
+const nestedMediaKeyScript = new FakeElement("script", {
+  textContent: `window.__wrapped={playInfo:'${nestedMediaKeyPayload}'};`
+});
 const segmentScript = new FakeElement("script", {
   textContent: "window.__segments=['https://cdn.example.com/static/hls/segment-001.ts?token=seg'];"
 });
@@ -169,7 +177,7 @@ sameOriginIframe.contentDocument = {
     textContent: ""
   }
 };
-const html = new FakeElement("html", {}, [player, packedPlayer, doubleEncodedPlayer, onclickPlayer, paramPlayer, configPlayer, nakedPlayer, vendorPlayer, preloadVideo, preloadHls, prefetchPlayApi, ogVideo, htmlVideo, script, plainEncodedScript, plainDoubleEncodedScript, mixedEncodedScript, jsEscapedScript, jsEscapedPayloadScript, segmentScript, plainUrlScript, srcdocIframe, sameOriginIframe]);
+const html = new FakeElement("html", {}, [player, packedPlayer, doubleEncodedPlayer, onclickPlayer, paramPlayer, configPlayer, nakedPlayer, vendorPlayer, preloadVideo, preloadHls, prefetchPlayApi, ogVideo, htmlVideo, script, plainEncodedScript, plainDoubleEncodedScript, mixedEncodedScript, jsEscapedScript, jsEscapedPayloadScript, nestedMediaKeyScript, segmentScript, plainUrlScript, srcdocIframe, sameOriginIframe]);
 
 let messageListener = null;
 const context = {
@@ -256,6 +264,7 @@ const mixedVideo = response.resources.find(item => item.url === "https://cdn.exa
 const jsEscapedHls = response.resources.find(item => item.url === "https://cdn.example.com/static/escaped/master.m3u8?token=js&uid=7");
 const jsEscapedVideo = response.resources.find(item => item.url === "https://cdn.example.com/static/escaped/lesson.mp4?sig=ok");
 const jsEscapedPayloadHls = response.resources.find(item => item.url === "https://cdn.example.com/static/escaped/payload.m3u8?token=payload");
+const nestedMediaKeyHls = response.resources.find(item => item.url === "https://cdn.example.com/static/nested-key/master.m3u8?token=wrapped");
 const hlsSegment = response.resources.find(item => item.url === "https://cdn.example.com/static/hls/segment-001.ts?token=seg");
 const onclickHls = response.resources.find(item => item.url === "https://cdn.example.com/static/onclick-master.m3u8?token=click");
 const paramVideo = response.resources.find(item => item.url === "https://cdn.example.com/static/param-lesson.mp4?token=param");
@@ -336,6 +345,11 @@ assert.ok(jsEscapedPayloadHls, "expected inline script text scan to decode JS-es
 assert.equal(jsEscapedPayloadHls.kind, "hls");
 assert.equal(jsEscapedPayloadHls.source, "scriptHint");
 assert.match(jsEscapedPayloadHls.label, /script media url/);
+
+assert.ok(nestedMediaKeyHls, "expected nested JSON inside a media-named script field to expose HLS URL");
+assert.equal(nestedMediaKeyHls.kind, "hls");
+assert.equal(nestedMediaKeyHls.source, "scriptHint");
+assert.match(nestedMediaKeyHls.label, /nested/);
 
 assert.ok(hlsSegment, "expected inline script media scan to expose HLS segment URL");
 assert.equal(hlsSegment.kind, "fragment");

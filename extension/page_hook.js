@@ -635,7 +635,7 @@
           break;
         }
       }
-      if (typeof value === "string" && !JSON_MEDIA_KEY_RE.test(key) && keys.length < 12) {
+      if (typeof value === "string" && keys.length < 12) {
         for (const candidateText of decodedMediaValues(value)) {
           const trimmed = String(candidateText || "").trim();
           if (!trimmed || trimmed.length > MAX_TEXT_BYTES) continue;

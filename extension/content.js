@@ -234,6 +234,8 @@ function decodeURIComponentSafe(value) {
 
 function resourceFromHint(value, source, label, hint = "", video = null, isMainVideo = false, playbackMatch = "") {
   for (const candidate of decodedValues(value)) {
+    const trimmed = String(candidate || "").trim();
+    if (trimmed[0] === "{" || trimmed[0] === "[") continue;
     if (!looksLikeMediaValue(candidate, hint || label)) continue;
     const item = resource(candidate, source, label, mimeFromHint(`${hint} ${label}`), video, isMainVideo, playbackMatch);
     if (item && item.kind !== "unknown") return item;
@@ -309,6 +311,35 @@ function collectTextMediaResources(text, source, label, seen = new Set()) {
     if (resources.length >= 40) break;
   }
   MEDIA_URL_RE.lastIndex = 0;
+  return resources;
+}
+
+function nestedMediaTextCandidates(value) {
+  const candidates = [];
+  for (const candidate of decodedValues(value)) {
+    const text = String(candidate || "").trim();
+    if (!text || text.length > 300000) continue;
+    if (
+      text[0] === "{" ||
+      text[0] === "[" ||
+      (STATIC_MEDIA_KEY_RE.test(text) && (MEDIA_RE.test(text) || FRAGMENT_RE.test(text) || SUBTITLE_RE.test(text) || ENCODED_MEDIA_URL_RE.test(text) || MEDIA_URL_RE.test(text)))
+    ) {
+      candidates.push(text);
+    }
+    ENCODED_MEDIA_URL_RE.lastIndex = 0;
+    MEDIA_URL_RE.lastIndex = 0;
+  }
+  return candidates;
+}
+
+function collectNestedFieldResources(value, source, label, seen = new Set(), limit = 40) {
+  const resources = [];
+  for (const text of nestedMediaTextCandidates(value)) {
+    for (const item of collectHtmlTextResources(text, source, `${label} nested`, seen, Math.max(0, limit - resources.length), 1)) {
+      resources.push(item);
+      if (resources.length >= limit) return resources;
+    }
+  }
   return resources;
 }
 
@@ -650,11 +681,16 @@ function collectInlineScriptResources() {
       const key = String(match[1] || "").replace(/^["']|["']$/g, "");
       if (!STATIC_MEDIA_KEY_RE.test(key)) continue;
       const item = resourceFromHint(match[2], "scriptHint", `script ${key}`, key);
-      if (!item || seen.has(item.url)) continue;
-      seen.add(item.url);
-      item.score = Math.max(item.score || 0, item.kind === "hls" || item.kind === "dash" ? 96 : item.kind === "video" ? 86 : 62);
-      resources.push(item);
-      if (resources.length >= 40) return resources;
+      if (item && !seen.has(item.url)) {
+        seen.add(item.url);
+        item.score = Math.max(item.score || 0, item.kind === "hls" || item.kind === "dash" ? 96 : item.kind === "video" ? 86 : 62);
+        resources.push(item);
+        if (resources.length >= 40) return resources;
+      }
+      for (const nestedItem of collectNestedFieldResources(match[2], "scriptHint", `script ${key}`, seen, 40 - resources.length)) {
+        resources.push(nestedItem);
+        if (resources.length >= 40) return resources;
+      }
     }
     for (const item of collectTextMediaResources(text, "scriptHint", "script media url", seen)) {
       resources.push(item);
@@ -668,7 +704,7 @@ function collectInlineScriptResources() {
   return resources;
 }
 
-function collectHtmlTextResources(text, source, label, seen = new Set(), limit = 40) {
+function collectHtmlTextResources(text, source, label, seen = new Set(), limit = 40, depth = 0) {
   const resources = [];
   const body = String(text || "").slice(0, 300000);
   ENCODED_MEDIA_URL_RE.lastIndex = 0;
@@ -681,11 +717,18 @@ function collectHtmlTextResources(text, source, label, seen = new Set(), limit =
     const key = String(match[1] || "").replace(/^["']|["']$/g, "");
     if (!STATIC_MEDIA_KEY_RE.test(key)) continue;
     const item = resourceFromHint(match[2], source, `${label} ${key}`, key);
-    if (!item || seen.has(item.url)) continue;
-    seen.add(item.url);
-    item.score = Math.max(item.score || 0, item.kind === "hls" || item.kind === "dash" ? 96 : item.kind === "video" ? 86 : 62);
-    resources.push(item);
-    if (resources.length >= limit) return resources;
+    if (item && !seen.has(item.url)) {
+      seen.add(item.url);
+      item.score = Math.max(item.score || 0, item.kind === "hls" || item.kind === "dash" ? 96 : item.kind === "video" ? 86 : 62);
+      resources.push(item);
+      if (resources.length >= limit) return resources;
+    }
+    if (depth < 1) {
+      for (const nestedItem of collectNestedFieldResources(match[2], source, `${label} ${key}`, seen, limit - resources.length)) {
+        resources.push(nestedItem);
+        if (resources.length >= limit) return resources;
+      }
+    }
   }
   for (const item of collectTextMediaResources(body, source, `${label} media url`, seen)) {
     resources.push(item);

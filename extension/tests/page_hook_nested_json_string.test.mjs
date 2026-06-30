@@ -40,6 +40,16 @@ const packedJson = Buffer.from(JSON.stringify({
     mimeType: "video/mp4"
   }
 }, null, 2), "utf8").toString("base64");
+const mediaKeyWrappedJson = JSON.stringify({
+  mediaData: {
+    playInfo: JSON.stringify({
+      streams: {
+        hlsUrl: "/hls/media-key/master.m3u8?token=wrapped",
+        mimeType: "application/vnd.apple.mpegurl"
+      }
+    })
+  }
+});
 
 const context = {
   window: null,
@@ -51,7 +61,7 @@ const context = {
   ArrayBuffer,
   URL,
   atob: value => Buffer.from(value, "base64").toString("binary"),
-  fetch: async () => new FakeResponse({ code: 0, data: wrappedJson, packed: packedJson }),
+  fetch: async () => new FakeResponse({ code: 0, data: wrappedJson, packed: packedJson, playInfo: mediaKeyWrappedJson }),
   setTimeout,
   clearTimeout,
   console
@@ -74,6 +84,7 @@ assert.equal(data.code, 0);
 const resources = messages.flatMap(message => message.resources || []);
 const hls = resources.find(resource => resource.url === "https://cdn.example.com/wrapped/master.m3u8?token=nested");
 const video = resources.find(resource => resource.url === "https://course.example.com/api/media/file?id=42&token=abc");
+const mediaKeyHls = resources.find(resource => resource.url === "https://course.example.com/hls/media-key/master.m3u8?token=wrapped");
 
 assert.ok(hls, "expected nested encoded JSON string to expose the HLS URL");
 assert.equal(hls.kind, "hls");
@@ -83,3 +94,7 @@ assert.ok(video, "expected nested base64 JSON string to expose the extensionless
 assert.equal(video.kind, "video");
 assert.equal(video.source, "pageHookBody");
 assert.match(video.label, /nested packed/);
+assert.ok(mediaKeyHls, "expected nested JSON inside a media-named field to expose HLS URL");
+assert.equal(mediaKeyHls.kind, "hls");
+assert.equal(mediaKeyHls.source, "pageHookBody");
+assert.match(mediaKeyHls.label, /nested playInfo/);
