@@ -31,6 +31,7 @@ const documentStub = {
 const calls = {
   collect: 0,
   preflight: null,
+  preflightKindAtRequest: "",
   start: null
 };
 
@@ -45,7 +46,7 @@ const page = {
 const resources = [{
   url: "https://course.example.com/api/play?id=42",
   source: "webRequest",
-  kind: "video",
+  kind: "unknown",
   score: 98,
   label: "JSON play endpoint",
   request_type: "xmlhttprequest",
@@ -99,6 +100,7 @@ const context = {
         }
         if (message.type === "preflight-current-resource") {
           calls.preflight = message;
+          calls.preflightKindAtRequest = message.resource.kind;
           return {
             preflight: {
               ok: true,
@@ -137,6 +139,8 @@ await context.startTask("video");
 
 assert.equal(calls.collect, 2);
 assert.equal(calls.preflight.resource.url, "https://course.example.com/api/play?id=42");
+assert.equal(calls.preflightKindAtRequest, "unknown");
+assert.equal(context.looksLikePlayableEndpoint(resources[0]), true);
 assert.ok(calls.start, "expected task start after direct-response preflight");
 assert.equal(calls.start.mode, "video");
 assert.equal(calls.start.resources[0].url, "https://course.example.com/api/play?id=42");

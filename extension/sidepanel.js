@@ -874,10 +874,33 @@ function isMediaTaskMode(mode) {
   return mode === "video" || mode === "download_only";
 }
 
+function looksLikePlayableEndpoint(item) {
+  if (!item?.url || !/^https?:\/\//i.test(item.url)) return false;
+  const kind = String(item.kind || "").toLowerCase();
+  if (DOWNLOADABLE_KINDS.has(kind)) return true;
+  if (["blob", "fragment", "subtitle"].includes(kind)) return false;
+  const haystack = [
+    item.url,
+    item.label,
+    item.source,
+    item.request_type,
+    item.playback_match,
+    item.method,
+    item.frame_url,
+    item.page_url
+  ].map(value => String(value || "").toLowerCase()).join(" ");
+  const hasPlaybackApiHint = /(?:^|[/?&_.-])(play|playurl|video|media|stream|m3u8|mpd|ananas|objectid|vod|lesson)(?:[=/?&_.-]|$)/i.test(haystack);
+  const hasBrowserRequestEvidence = ["xmlhttprequest", "fetch", "media"].includes(String(item.request_type || "").toLowerCase())
+    || String(item.source || "").toLowerCase().startsWith("pagehook")
+    || Boolean(item.request_body?.content)
+    || Boolean(item.playback_match);
+  return hasPlaybackApiHint && hasBrowserRequestEvidence;
+}
+
 function shouldPreflightBeforeStart(mode, item) {
   if (!isMediaTaskMode(mode)) return false;
   if (!item?.url) return false;
-  return ["video", "hls", "dash", "blob", "fragment"].includes(item.kind);
+  return ["video", "hls", "dash", "blob", "fragment"].includes(item.kind) || looksLikePlayableEndpoint(item);
 }
 
 function preflightBlockMessage(result) {

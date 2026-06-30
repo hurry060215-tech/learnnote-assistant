@@ -999,6 +999,8 @@ def effective_resource_kind(candidate: ResourceCandidate) -> str:
     declared = (candidate.kind or "").lower()
     if declared in {"video", "hls", "dash", "subtitle", "fragment", "blob"}:
         return declared
+    if _is_scannable_play_endpoint(candidate):
+        return "video"
     return "unknown"
 
 

@@ -636,11 +636,12 @@ class DownloaderPriorityTests(unittest.TestCase):
                 candidate = ResourceCandidate(
                     url=play_url,
                     source="webRequest",
-                    kind="video",
-                    mime="video/mp4",
+                    kind="unknown",
+                    mime="application/json",
                     score=100,
                     label="POST play API",
                     method="POST",
+                    request_type="xmlhttprequest",
                     request_headers={
                         "User-Agent": DirectPostJsonMediaHandler.required_user_agent,
                         "X-Requested-With": DirectPostJsonMediaHandler.required_x_requested_with,
@@ -740,11 +741,11 @@ class DownloaderPriorityTests(unittest.TestCase):
                 self.assertTrue(media_path.exists())
                 self.assertIsNotNone(selected)
                 self.assertEqual(selected.url, media_url)
-                self.assertEqual(selected.source, "page-scan")
+                self.assertEqual(selected.source, "direct-response")
                 self.assertEqual(DirectPostJsonMediaHandler.seen_bodies, [DirectPostJsonMediaHandler.required_body])
-                self.assertEqual([attempt.strategy for attempt in downloader.attempts[:4]], ["skip-unknown", "page-scan", "page-scan", "direct-file"])
-                self.assertEqual(downloader.attempts[2].status, "success")
-                self.assertEqual(downloader.attempts[3].status, "success")
+                self.assertEqual([attempt.strategy for attempt in downloader.attempts[:2]], ["direct-response-scan", "direct-file"])
+                self.assertEqual(downloader.attempts[0].status, "success")
+                self.assertEqual(downloader.attempts[1].status, "success")
             finally:
                 server.shutdown()
                 server.server_close()
@@ -1356,14 +1357,12 @@ class DownloaderPriorityTests(unittest.TestCase):
                 self.assertTrue(media_path.exists())
                 self.assertIsNotNone(selected)
                 self.assertEqual(selected.url, media_url)
-                self.assertEqual(selected.source, "page-scan")
+                self.assertEqual(selected.source, "direct-response")
                 self.assertEqual(selected.request_headers["User-Agent"], PageScanHeaderGateHandler.required_user_agent)
                 self.assertEqual(selected.request_headers["X-Requested-With"], PageScanHeaderGateHandler.required_x_requested_with)
-                self.assertEqual([attempt.strategy for attempt in downloader.attempts[:3]], ["skip-unknown", "page-scan", "page-scan"])
-                self.assertEqual(downloader.attempts[1].status, "failed")
-                self.assertEqual(downloader.attempts[2].status, "success")
-                self.assertEqual(downloader.attempts[3].strategy, "direct-file")
-                self.assertEqual(downloader.attempts[3].status, "success")
+                self.assertEqual([attempt.strategy for attempt in downloader.attempts[:2]], ["direct-response-scan", "direct-file"])
+                self.assertEqual(downloader.attempts[0].status, "success")
+                self.assertEqual(downloader.attempts[1].status, "success")
             finally:
                 server.shutdown()
                 server.server_close()
