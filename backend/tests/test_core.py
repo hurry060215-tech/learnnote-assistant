@@ -86,6 +86,26 @@ class ResourceDetectionTests(unittest.TestCase):
         self.assertEqual(classify_resource(candidate.url, candidate.mime), "unknown")
         self.assertEqual(effective_resource_kind(candidate), "video")
 
+    def test_page_json_extracts_chaoxing_style_extensionless_playback_endpoints(self) -> None:
+        payload = json.dumps(
+            {
+                "sources": [
+                    {"url": "/ananas/status/objectid-123?flag=normal"},
+                    {"file": "/api/play?objectid=456&dtoken=abc"},
+                ],
+                "streams": ["https://media.example.com/vod/lesson?id=noext"],
+                "other": "/ordinary/page",
+            }
+        )
+
+        resources = extract_media_resources_from_text(payload, "https://course.example.com/lesson", "page-scan")
+        by_url = {item.url: item for item in resources}
+
+        self.assertEqual(by_url["https://course.example.com/ananas/status/objectid-123?flag=normal"].kind, "video")
+        self.assertEqual(by_url["https://course.example.com/api/play?objectid=456&dtoken=abc"].kind, "video")
+        self.assertEqual(by_url["https://media.example.com/vod/lesson?id=noext"].kind, "video")
+        self.assertNotIn("https://course.example.com/ordinary/page", by_url)
+
     def test_infers_manifest_url_from_nested_fragment(self) -> None:
         fragment = "https://cdn.example.com/live/master.m3u8/segment-001.ts?token=abc"
         self.assertEqual(classify_resource(fragment), "fragment")

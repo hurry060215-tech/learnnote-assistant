@@ -35,7 +35,7 @@ ENCODED_MEDIA_URL_RE = re.compile(
 )
 TEXT_RESPONSE_RE = re.compile(r"json|text|html|javascript|mpegurl|dash\+xml|xml|x-mpegurl", re.I)
 MEDIA_ENDPOINT_HINT_RE = re.compile(
-    r"(^|[/?&=._\s-])(api|play|player|stream|video|media|hls|dash|manifest|playlist|master|m3u8|mpd)([/?&=._\s-]|$)",
+    r"(^|[/?&=._\s-])(api|ananas|play|player|stream|video|media|vod|hls|dash|manifest|playlist|master|m3u8|mpd|objectid|dtoken|fileid|httpmd)([/?&=._\s-]|$)",
     re.I,
 )
 JSON_MEDIA_KEY_RE = re.compile(
@@ -43,7 +43,7 @@ JSON_MEDIA_KEY_RE = re.compile(
     re.I,
 )
 JSON_MIME_KEY_RE = re.compile(r"(mime|type|format|content.?type|media.?type)", re.I)
-JSON_VIDEO_CONTEXT_RE = re.compile(r"(video|media|play|stream|vod|course|lesson|objectid|dtoken|fileid|download|httpmd)", re.I)
+JSON_VIDEO_CONTEXT_RE = re.compile(r"(url|src|file|source|video|media|play|stream|vod|course|lesson|objectid|dtoken|fileid|download|httpmd)", re.I)
 TEXT_MEDIA_FIELD_RE = re.compile(
     r"(?P<key>[\"']?[A-Za-z_$][A-Za-z0-9_$.-]{0,79}[\"']?)\s*[:=]\s*[\"'](?P<url>(?:\\u[0-9a-fA-F]{4}|\\x[0-9a-fA-F]{2}|\\.|[^\"'<>\\\s]){4,})[\"']",
     re.I,
@@ -359,7 +359,7 @@ def _looks_like_json_url_candidate(value: str) -> bool:
         return True
     if value.startswith("/"):
         return True
-    if "/" in value and re.search(r"[?=&]|api|play|media|video|stream|m3u8|mpd|hls|dash", value, re.I):
+    if "/" in value and re.search(r"[?=&]|api|ananas|play|media|video|stream|vod|m3u8|mpd|hls|dash|objectid|dtoken|fileid|httpmd", value, re.I):
         return True
     return False
 
@@ -565,6 +565,29 @@ def _json_media_resources(node: object, base_url: str, source: str, key_path: li
             resources.extend(_json_media_resources(value, base_url, source, [*key_path, str(index)], seen))
             if len(resources) >= 60:
                 break
+    elif isinstance(node, str):
+        for candidate_value in _decoded_media_values(node):
+            if not _looks_like_json_url_candidate(candidate_value):
+                continue
+            url = normalize_media_url(candidate_value, base_url)
+            if not url or url in seen:
+                continue
+            kind, mime = _json_context_kind(key_path, url, {})
+            if kind == "unknown":
+                continue
+            resources.append(
+                ResourceCandidate(
+                    url=url,
+                    source=source,
+                    kind=kind,
+                    mime=mime,
+                    score=score_resource(url, mime, source),
+                    label=f"json {'/'.join(key_path[-3:])}",
+                    request_headers={"Referer": base_url},
+                )
+            )
+            seen.add(url)
+            break
     return resources
 
 
