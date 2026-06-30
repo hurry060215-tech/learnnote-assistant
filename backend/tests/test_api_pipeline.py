@@ -18,8 +18,8 @@ from fastapi.testclient import TestClient
 
 from app.config import DATA_DIR
 from app.downloader import DownloadError
-from app.main import app, diagnostic_recovery_profile, local_upload_filename, render_bundle_manifest, render_diagnostics_markdown
-from app.models import DownloadAttempt, ResourceCandidate, TranscriptResult, TranscriptSegment
+from app.main import app, diagnostic_recovery_profile, local_upload_filename, render_bundle_manifest, render_diagnostics_markdown, render_visual_windows_markdown
+from app.models import DownloadAttempt, ResourceCandidate, TranscriptResult, TranscriptSegment, VisualWindow
 from app.runtime import ffmpeg_bin
 from app.storage import create_task, task_dir, update_task
 
@@ -416,6 +416,70 @@ class LocalUploadValidationTests(unittest.TestCase):
             self.assertNotIn("secret-key", encoded)
             self.assertNotIn("session=secret", encoded)
             self.assertNotIn("secret=value", encoded)
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
+    def test_visual_window_exports_include_per_window_vision_status(self) -> None:
+        task = create_task("current_page", "Vision status lesson", "https://course.example.com/watch")
+        try:
+            task.visual_windows = [
+                VisualWindow(
+                    id="W001",
+                    index=1,
+                    start=0,
+                    end=180,
+                    duration=180,
+                    frame_count=9,
+                    frame_timestamps=[0, 20, 40],
+                    grid_url="/api/tasks/task/assets/grid_001.jpg",
+                    grid_path=str(task_dir(task.id) / "grids" / "grid_001.jpg"),
+                    transcript_excerpt="00:00:00 introduction",
+                    segments=[TranscriptSegment(start=0, end=10, text="introduction")],
+                ),
+                VisualWindow(
+                    id="W002",
+                    index=2,
+                    start=180,
+                    end=360,
+                    duration=180,
+                    frame_count=9,
+                    frame_timestamps=[180, 200, 220],
+                    grid_url="/api/tasks/task/assets/grid_002.jpg",
+                    grid_path=str(task_dir(task.id) / "grids" / "grid_002.jpg"),
+                ),
+                VisualWindow(
+                    id="W003",
+                    index=3,
+                    start=360,
+                    end=540,
+                    duration=180,
+                    frame_count=9,
+                    frame_timestamps=[360, 380, 400],
+                    grid_url="/api/tasks/task/assets/grid_003.jpg",
+                    grid_path=str(task_dir(task.id) / "grids" / "grid_003.jpg"),
+                ),
+            ]
+            task.summary_diagnostics = {
+                "visual_understanding": True,
+                "used_vision_llm": True,
+                "vision_image_window_ids": ["W001"],
+                "missing_vision_image_window_ids": ["W002"],
+                "omitted_vision_window_ids": ["W003"],
+            }
+
+            manifest = render_bundle_manifest(task, {"segments": []}, {"windows": []})
+            windows = manifest["study"]["windows"]
+            visual_markdown = render_visual_windows_markdown(task)
+
+            self.assertEqual(windows[0]["vision_status"], "sent_to_vision")
+            self.assertEqual(windows[1]["vision_status"], "missing_grid_image")
+            self.assertEqual(windows[2]["vision_status"], "omitted_by_limit")
+            self.assertEqual(manifest["study"]["vision_sent_count"], 1)
+            self.assertEqual(manifest["study"]["vision_missing_image_count"], 1)
+            self.assertEqual(manifest["study"]["vision_omitted_count"], 1)
+            self.assertIn("视觉模型：已送入视觉模型", visual_markdown)
+            self.assertIn("视觉模型：未送入：缺少网格图片", visual_markdown)
+            self.assertIn("视觉模型：未送入：超过视觉窗口上限", visual_markdown)
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 

@@ -253,18 +253,33 @@ def _visual_window_checkpoint_lines(window, limit: int = 3) -> list[str]:
 
 def _render_study_manifest(task: TaskRecord) -> dict:
     visual_windows = task.visual_windows or []
+    diagnostics = task.summary_diagnostics or {}
+    sent_ids = set(str(value) for value in diagnostics.get("vision_image_window_ids") or [])
+    missing_ids = set(str(value) for value in diagnostics.get("missing_vision_image_window_ids") or [])
+    omitted_ids = set(str(value) for value in diagnostics.get("omitted_vision_window_ids") or [])
     windows_with_transcript = sum(1 for window in visual_windows if str(window.transcript_excerpt or "").strip())
     windows = []
     checkpoint_count = 0
     review_question_count = 0
 
     for index, window in enumerate(visual_windows, start=1):
+        window_id = window.id or f"W{index:03d}"
         checkpoints = _visual_window_checkpoint_lines(window)
         review_questions = visual_window_review_question_lines(window)
         checkpoint_count += len(checkpoints)
         review_question_count += len(review_questions)
+        if window_id in sent_ids:
+            vision_status = "sent_to_vision"
+        elif window_id in missing_ids:
+            vision_status = "missing_grid_image"
+        elif window_id in omitted_ids:
+            vision_status = "omitted_by_limit"
+        elif diagnostics:
+            vision_status = "not_sent"
+        else:
+            vision_status = "unknown"
         windows.append({
-            "id": window.id or f"W{index:03d}",
+            "id": window_id,
             "start": window.start,
             "end": window.end,
             "grid_entry": _bundle_grid_ref(window.grid_path, window.grid_url),
@@ -272,6 +287,7 @@ def _render_study_manifest(task: TaskRecord) -> dict:
             "frame_timestamps": window.frame_timestamps,
             "transcript_segment_count": len(window.segments or []),
             "has_transcript_excerpt": bool(str(window.transcript_excerpt or "").strip()),
+            "vision_status": vision_status,
             "checkpoint_count": len(checkpoints),
             "review_question_count": len(review_questions),
         })
@@ -283,8 +299,28 @@ def _render_study_manifest(task: TaskRecord) -> dict:
         "windows_without_transcript": max(0, len(visual_windows) - windows_with_transcript),
         "checkpoint_count": checkpoint_count,
         "review_question_count": review_question_count,
+        "vision_sent_count": len(sent_ids),
+        "vision_missing_image_count": len(missing_ids),
+        "vision_omitted_count": len(omitted_ids),
         "windows": windows,
     }
+
+
+def _visual_window_vision_status_text(task: TaskRecord, label: str) -> str:
+    diagnostics = task.summary_diagnostics or {}
+    if not diagnostics:
+        return "未知（未生成 summary_diagnostics）"
+    if label in set(str(value) for value in diagnostics.get("vision_image_window_ids") or []):
+        return "已送入视觉模型"
+    if label in set(str(value) for value in diagnostics.get("missing_vision_image_window_ids") or []):
+        return "未送入：缺少网格图片"
+    if label in set(str(value) for value in diagnostics.get("omitted_vision_window_ids") or []):
+        return "未送入：超过视觉窗口上限"
+    if diagnostics.get("used_vision_llm"):
+        return "未送入视觉模型"
+    if diagnostics.get("visual_understanding") is False:
+        return "未启用图文理解"
+    return "未送入视觉模型"
 
 
 def render_visual_windows_markdown(task: TaskRecord) -> str:
@@ -305,6 +341,7 @@ def render_visual_windows_markdown(task: TaskRecord) -> str:
             lines.extend([
                 f"## {label} `{_format_timestamp(window.start)} - {_format_timestamp(window.end)}`",
                 f"- 画面网格：{grid_ref}",
+                f"- 视觉模型：{_visual_window_vision_status_text(task, label)}",
                 f"- 帧数：{window.frame_count}",
                 f"- 帧时间：{', '.join(_format_timestamp(value) for value in window.frame_timestamps) or '-'}",
             ])
