@@ -109,9 +109,13 @@ def _window_learning_card_lines(windows: list[VisualWindow]) -> list[str]:
     lines: list[str] = []
     for window in windows:
         excerpt = window.transcript_excerpt.strip()
+        label = f"{window.id} {_format_ts(window.start)} - {_format_ts(window.end)}"
+        frame_times = ", ".join(_format_ts(value) for value in window.frame_timestamps[:9]) or "-"
         lines.extend([
             f"### {window.id} `{_format_ts(window.start)} - {_format_ts(window.end)}`",
             f"- 画面网格：{window.grid_url}",
+            f"![{label}]({window.grid_url})",
+            f"- 帧时间：{frame_times}",
             f"- 切片范围：约 {int(window.duration)} 秒，{window.frame_count} 帧。",
         ])
         if excerpt:

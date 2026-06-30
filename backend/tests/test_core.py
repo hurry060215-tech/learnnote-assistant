@@ -1992,7 +1992,7 @@ class SummaryFallbackTests(unittest.TestCase):
             full_text="函数用于封装逻辑。",
             segments=[TranscriptSegment(start=5, end=8, text="函数用于封装逻辑。")],
         )
-        grids = [FrameGrid(path="", url="http://127.0.0.1/grid.jpg", start=0, end=20, frame_count=2)]
+        grids = [FrameGrid(path="", url="http://127.0.0.1/grid.jpg", start=0, end=20, frame_count=2, frame_timestamps=[0, 10])]
         note = local_markdown_note("Python lesson", transcript, grids, "https://example.com")
         self.assertIn("# Python lesson", note)
         self.assertIn("00:00:05", note)
@@ -2001,6 +2001,8 @@ class SummaryFallbackTests(unittest.TestCase):
         self.assertIn("分段图文摘要", note)
         self.assertIn("视觉切片学习卡", note)
         self.assertIn("回看目标：对照画面确认本段的板书、PPT 切换、代码/界面操作和例题步骤是否被字幕完整覆盖。", note)
+        self.assertIn("![W001 00:00:00 - 00:00:20](http://127.0.0.1/grid.jpg)", note.split("## 画面-字幕对齐索引")[0])
+        self.assertIn("帧时间：00:00:00, 00:00:10", note.split("## 画面-字幕对齐索引")[0])
         self.assertIn("窗口检查点", note)
         self.assertIn("00:00:05` 函数用于封装逻辑。；对照画面确认对应的板书、PPT、代码或操作步骤。", note)
         self.assertIn("自测问题", note)
