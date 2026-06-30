@@ -651,6 +651,14 @@ function visualPlanText() {
   return `${Number(els.frameInterval?.value || 20)}秒 · ${cols || 3}x${rows || 3}`;
 }
 
+function visualWindowText() {
+  if (!visualUnderstandingEnabled()) return "关闭";
+  const [cols, rows] = String(els.gridSize?.value || "3x3").split("x").map(Number);
+  const interval = Number(els.frameInterval?.value || 20);
+  const frames = (cols || 3) * (rows || 3);
+  return `约 ${fmt(interval * frames)} / 窗`;
+}
+
 function refreshOptionDependentUi() {
   syncTranscriberModelDefault();
   renderCurrentStudyCard();
@@ -1548,23 +1556,130 @@ function currentStudyActionText(state) {
   return "下一步：播放课程视频并点击重新检测。";
 }
 
+function workbenchPrimaryAction(state) {
+  const hasSelected = Boolean(selectedResource());
+  if (state === "ready") return { action: "summarize", label: "生成学习笔记", icon: "go" };
+  if (state === "candidate" && hasSelected) return { action: "preflight", label: "先预检直链", icon: "check" };
+  if (state === "fallback" || state === "mapping" || state === "waiting") return { action: "redetect", label: "重新检测资源", icon: "refresh" };
+  if (state === "blocked") return { action: "local", label: "上传本地视频", icon: "upload" };
+  return { action: "redetect", label: "检测当前页", icon: "refresh" };
+}
+
+function workbenchIcon(name) {
+  if (name === "check") return `<svg viewBox="0 0 24 24"><path d="M9 12l2 2 4-5"/><path d="M20 12a8 8 0 1 1-16 0 8 8 0 0 1 16 0z"/></svg>`;
+  if (name === "upload") return `<svg viewBox="0 0 24 24"><path d="M12 3v12M7 8l5-5 5 5M4 17v3h16v-3"/></svg>`;
+  if (name === "refresh") return `<svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 0 1-13.66 5.66M4 12A8 8 0 0 1 17.66 6.34M20 4v6h-6M4 20v-6h6"/></svg>`;
+  return `<svg viewBox="0 0 24 24"><path d="M5 12h14M13 5l7 7-7 7"/></svg>`;
+}
+
+function workbenchStepItems(state) {
+  const selected = selectedResource();
+  const checked = currentPreflight();
+  const taskPhase = currentTask?.phase || "";
+  const taskDone = currentTask?.status === "success" || taskPhase === "completed";
+  const downloaded = Boolean(currentTask?.media_path || taskDone || ["processing_video", "transcribing", "extracting_frames", "summarizing"].includes(taskPhase));
+  const summarized = Boolean(currentTask?.note_path || taskDone || taskPhase === "summarizing");
+  return [
+    {
+      key: "detect",
+      label: "读取页面",
+      state: selected || resources.length || hasActiveVideoSignal(page?.active_video) ? "done" : state === "empty" ? "active" : "done",
+      value: selected ? "已选候选" : resources.length ? `${resources.length} 线索` : "播放后检测"
+    },
+    {
+      key: "download",
+      label: "直取下载",
+      state: checked?.downloadable ? "done" : checked ? "warn" : selected ? "active" : state === "blocked" ? "blocked" : "pending",
+      value: checked?.downloadable ? "可访问" : checked ? checked.code || "未过" : selected ? selected.kind || "media" : "等待"
+    },
+    {
+      key: "slice",
+      label: "切片转写",
+      state: downloaded ? "done" : selected ? "pending" : state === "blocked" ? "blocked" : "pending",
+      value: visualPlanText()
+    },
+    {
+      key: "note",
+      label: "生成笔记",
+      state: summarized ? "done" : currentTask?.status === "running" ? "active" : "pending",
+      value: noteStyleText()
+    }
+  ];
+}
+
+function noteStyleText() {
+  return ({
+    study: "学习笔记",
+    outline: "大纲",
+    exam: "考点",
+    code: "演示"
+  })[els.noteStyle?.value || "study"] || "学习笔记";
+}
+
+function workbenchFacts(state) {
+  const selected = selectedResource();
+  const checked = currentPreflight();
+  const downloadable = resources.filter(isDownloadableResource).length;
+  const active = page?.active_video || null;
+  const subtitles = page?.browser_subtitles || [];
+  const playTime = hasActiveVideoSignal(active)
+    ? `${fmt(active.current_time || 0)} / ${fmt(active.duration || 0)}`
+    : (page?.frames || []).length ? `${(page?.frames || []).length} frame` : "-";
+  return [
+    { label: "播放时间", value: playTime },
+    { label: "媒体来源", value: selected ? mediaKindText(selected.kind) || selected.kind || "媒体" : downloadable ? `${downloadable} 候选` : "当前页" },
+    { label: "直取状态", value: checked ? checked.downloadable ? "预检通过" : checked.code || "未通过" : state === "candidate" ? "待预检" : state === "blocked" ? "不可直取" : "待检测" },
+    { label: "字幕兜底", value: subtitles.length ? `${subtitles.length} 条` : "未读取" },
+    { label: "视觉窗口", value: visualWindowText() },
+    { label: "转写引擎", value: els.transcriber?.selectedOptions?.[0]?.textContent?.trim() || "本地" }
+  ];
+}
+
+function workbenchSecondaryActions(state) {
+  const hasSelected = Boolean(selectedResource());
+  const actions = [];
+  if (hasSelected && state !== "ready") actions.push(["preflight", "预检"]);
+  if (state === "ready" || state === "candidate" || state === "fallback") actions.push(["summarize", "总结"]);
+  if (hasSelected && state !== "blocked") actions.push(["download", "只下载"]);
+  actions.push(["local", "本地视频"]);
+  if (hasPageTextFallback()) actions.push(["text", "页面文本"]);
+  return actions.slice(0, 5);
+}
+
 function renderCurrentStudyCard() {
   if (!els.currentStudyCard) return;
   const state = currentStudyState();
   const copy = currentStudyCopy(state);
-  els.currentStudyCard.className = `current-study-card ${state}`;
+  const primary = workbenchPrimaryAction(state);
+  els.currentStudyCard.className = `current-study-card study-workbench ${state}`;
   els.currentStudyCard.innerHTML = `
-    <div class="current-study-head">
-      <span>${escapeHtml(copy.badge)}</span>
-      <div>
+    <div class="workbench-hero">
+      <div class="workbench-title">
+        <span>${escapeHtml(copy.badge)}</span>
         <strong>${escapeHtml(copy.title)}</strong>
         <small>${escapeHtml(copy.detail)}</small>
       </div>
+      <button type="button" class="workbench-primary" data-route-action="${escapeHtml(primary.action)}">
+        ${workbenchIcon(primary.icon)}
+        ${escapeHtml(primary.label)}
+      </button>
     </div>
-    <div class="current-study-metrics">
-      ${currentStudyMetrics().map(item => `<span><b>${escapeHtml(item.value)}</b>${escapeHtml(item.label)}</span>`).join("")}
+    <div class="workbench-steps">
+      ${workbenchStepItems(state).map((item, index) => `<section class="${escapeHtml(item.state)}">
+        <i>${index + 1}</i>
+        <span>${escapeHtml(item.label)}</span>
+        <b>${escapeHtml(item.value)}</b>
+      </section>`).join("")}
     </div>
-    <p>${escapeHtml(currentStudyActionText(state))}</p>
+    <div class="workbench-facts">
+      ${workbenchFacts(state).map(item => `<span><b>${escapeHtml(item.value)}</b>${escapeHtml(item.label)}</span>`).join("")}
+    </div>
+    <div class="workbench-footer">
+      <p>${escapeHtml(currentStudyActionText(state))}</p>
+      <div class="workbench-actions">
+        ${workbenchSecondaryActions(state).map(([action, label]) => `<button type="button" data-route-action="${escapeHtml(action)}">${escapeHtml(label)}</button>`).join("")}
+      </div>
+    </div>
   `;
 }
 
@@ -3795,6 +3910,7 @@ function handleRouteAction(action) {
   } else if (action === "download") {
     startTask("download_only");
   } else if (action === "local") {
+    pulseTarget(els.localDrop);
     els.fileInput.click();
   } else if (action === "text") {
     startTask("page_text");
@@ -3839,6 +3955,13 @@ els.routeSummary.addEventListener("click", event => {
   if (!button) return;
   handleRouteAction(button.dataset.routeAction);
 });
+if (els.currentStudyCard) {
+  els.currentStudyCard.addEventListener("click", event => {
+    const button = event.target.closest("[data-route-action]");
+    if (!button) return;
+    handleRouteAction(button.dataset.routeAction);
+  });
+}
 if (els.launchBar) {
   els.launchBar.addEventListener("click", event => {
     const button = event.target.closest("[data-route-action]");

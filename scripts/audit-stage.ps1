@@ -45,7 +45,11 @@ function Invoke-Step {
     [scriptblock]$Command
   )
   Write-Host "==> $Name" -ForegroundColor Cyan
+  $global:LASTEXITCODE = 0
   & $Command
+  if ($LASTEXITCODE -ne 0) {
+    throw "Step failed with exit code ${LASTEXITCODE}: $Name"
+  }
 }
 
 function Test-Any {
