@@ -1589,7 +1589,7 @@ class MediaDownloader:
                     last_error = DownloadError("download_forbidden", str(exc))
 
         if last_error:
-            raise last_error
+            raise self._download_error_with_attempt_summary(last_error)
         raise DownloadError("no_media_found", "没有发现可直接下载的视频、HLS 或 DASH 资源。")
 
     def download_subtitle(
@@ -1642,6 +1642,34 @@ class MediaDownloader:
 
     def _candidate_resources(self, resources: list[ResourceCandidate]) -> list[ResourceCandidate]:
         return rank_media_candidates(resources)
+
+    def _download_error_with_attempt_summary(self, error: DownloadError) -> DownloadError:
+        failed = [attempt for attempt in self.attempts if attempt.status == "failed"]
+        skipped = [attempt for attempt in self.attempts if attempt.status == "skipped"]
+        if len(failed) <= 1 and not skipped:
+            return error
+        codes: dict[str, int] = {}
+        for attempt in [*failed, *skipped]:
+            code = attempt.code or "unknown"
+            codes[code] = codes.get(code, 0) + 1
+        code_summary = "，".join(f"{code}×{count}" for code, count in sorted(codes.items()))
+        latest = failed[-1] if failed else skipped[-1]
+        parts = [
+            error.message,
+            f"已尝试 {len(failed)} 个下载候选",
+        ]
+        if skipped:
+            parts.append(f"跳过 {len(skipped)} 条诊断线索")
+        if code_summary:
+            parts.append(f"失败码：{code_summary}")
+        if latest.strategy or latest.kind or latest.url:
+            parts.append(
+                "最后尝试："
+                f"{latest.strategy or '-'}"
+                f" / {latest.kind or '-'}"
+                f" / {latest.url or '-'}"
+            )
+        return DownloadError(error.code, "；".join(parts))
 
     def _discover_page_resources(
         self,
@@ -2031,7 +2059,7 @@ class MediaDownloader:
                     message=exc.message,
                 )
         if last_error:
-            raise last_error
+            raise self._download_error_with_attempt_summary(last_error)
         return None
 
     def _download_file(self, candidate: ResourceCandidate, cookies: list[BrowserCookie], referer: str, title: str) -> Path:

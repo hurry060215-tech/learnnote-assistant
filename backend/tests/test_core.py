@@ -1517,6 +1517,40 @@ class DownloaderBoundaryTests(unittest.TestCase):
             self.assertEqual(candidates[0].playback_match, "resolved-final-url")
             self.assertEqual(candidates[0].request_headers["Referer"], "https://course.example.com/lesson")
 
+    def test_download_failure_summarizes_all_attempted_candidates(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            downloader = MediaDownloader(Path(tmp))
+            resources = [
+                ResourceCandidate(
+                    url="https://cdn.example.com/expired.mp4",
+                    source="webRequest",
+                    kind="video",
+                    mime="video/mp4",
+                    score=100,
+                ),
+                ResourceCandidate(
+                    url="https://cdn.example.com/current/master.m3u8",
+                    source="webRequest",
+                    kind="hls",
+                    mime="application/vnd.apple.mpegurl",
+                    score=90,
+                ),
+            ]
+
+            with patch.object(downloader, "_download_candidate", side_effect=[
+                DownloadError("download_forbidden", "HTTP 403"),
+                DownloadError("unsupported_manifest", "second candidate failed"),
+            ]):
+                with self.assertRaises(DownloadError) as ctx:
+                    downloader.download("", resources, [], "attempt summary")
+
+            self.assertEqual(ctx.exception.code, "unsupported_manifest")
+            self.assertIn("已尝试 2 个下载候选", ctx.exception.message)
+            self.assertIn("download_forbidden×1", ctx.exception.message)
+            self.assertIn("unsupported_manifest×1", ctx.exception.message)
+            self.assertIn("最后尝试：direct-file / video / https://cdn.example.com/expired.mp4", ctx.exception.message)
+            self.assertEqual([attempt.status for attempt in downloader.attempts], ["failed", "failed"])
+
     def test_ytdlp_fallback_receives_browser_http_headers(self) -> None:
         captured: dict = {}
 
