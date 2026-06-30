@@ -6,6 +6,8 @@ function listener() {
   return { addListener() {} };
 }
 
+const cookieLookups = [];
+
 const context = {
   console,
   Date,
@@ -30,7 +32,24 @@ const context = {
     webNavigation: { getAllFrames() {} },
     sidePanel: { open() {} },
     scripting: { executeScript() {} },
-    cookies: { getAll() {} }
+    cookies: {
+      async getAll(details) {
+        cookieLookups.push(details);
+        if (details.url === "https://media.cdn.example.com/hls/master.m3u8?token=abc") {
+          return [{ name: "AUTH", value: "url", domain: ".cdn.example.com", path: "/" }];
+        }
+        if (details.domain === "cdn.example.com") {
+          return [
+            { name: "AUTH", value: "domain-duplicate", domain: ".cdn.example.com", path: "/" },
+            { name: "HLS", value: "domain-path", domain: ".cdn.example.com", path: "/hls" }
+          ];
+        }
+        if (details.domain === "course.example.com") {
+          return [{ name: "COURSE", value: "page", domain: ".course.example.com", path: "/" }];
+        }
+        return [];
+      }
+    }
   }
 };
 
@@ -181,6 +200,48 @@ assert.equal(hinted.playback_match, "range-near-playhead");
 assert.equal(hinted.is_main_video, true);
 assert.equal(hinted.current_time, 420);
 assert.ok(hinted.score >= 100, "expected recent range media requests near the active playhead to be top-ranked");
+
+const cookieSyncUrls = context.cookieUrlsForContext(
+  {
+    page_url: "https://course.example.com/lesson/1",
+    active_video: { src: "blob:https://course.example.com/active", frame_url: "https://course.example.com/player" },
+    frames: [{ page_url: "https://course.example.com/frame" }]
+  },
+  { url: "https://course.example.com/lesson/1" },
+  [{
+    url: "https://media.cdn.example.com/hls/master.m3u8?token=abc",
+    resolved_url: "https://media.cdn.example.com/hls/master.m3u8?token=resolved",
+    frame_url: "https://course.example.com/player",
+    initiator: "https://course.example.com",
+    blob_url: "blob:https://course.example.com/video",
+    request_headers: {
+      Referer: "https://course.example.com/player",
+      Origin: "https://course.example.com"
+    },
+    headers: {
+      Location: "https://media.cdn.example.com/hls/master.m3u8?token=redirect"
+    }
+  }]
+);
+
+assert.ok(cookieSyncUrls.includes("https://media.cdn.example.com/hls/master.m3u8?token=abc"));
+assert.ok(cookieSyncUrls.includes("https://media.cdn.example.com/hls/master.m3u8?token=resolved"));
+assert.ok(cookieSyncUrls.includes("https://course.example.com/player"));
+assert.ok(cookieSyncUrls.includes("https://course.example.com"));
+assert.ok(cookieSyncUrls.includes("https://media.cdn.example.com/hls/master.m3u8?token=redirect"));
+
+const lookupDetails = context.cookieLookupDetailsForUrls(cookieSyncUrls);
+assert.ok(lookupDetails.some(details => details.url === "https://media.cdn.example.com/hls/master.m3u8?token=abc"));
+assert.ok(lookupDetails.some(details => details.domain === "media.cdn.example.com"));
+assert.ok(lookupDetails.some(details => details.domain === "cdn.example.com"));
+assert.ok(lookupDetails.some(details => details.domain === "course.example.com"));
+
+const cookies = await context.cookiesForUrls(cookieSyncUrls);
+const byName = new Map(cookies.map(cookie => [cookie.name, cookie]));
+assert.equal(byName.get("AUTH").value, "url");
+assert.equal(byName.get("HLS").value, "domain-path");
+assert.equal(byName.get("COURSE").value, "page");
+assert.ok(cookieLookups.some(details => details.domain === "cdn.example.com"));
 
 const manifestHinted = context.withPlaybackHints(
   {

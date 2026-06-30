@@ -223,12 +223,40 @@ def _domain_matches(cookie_domain: str, host: str) -> bool:
     return host == cookie_domain or host.endswith(f".{cookie_domain}")
 
 
+def _path_matches(cookie_path: str, request_path: str) -> bool:
+    cookie_path = cookie_path or "/"
+    request_path = request_path or "/"
+    if not cookie_path.startswith("/"):
+        cookie_path = f"/{cookie_path}"
+    if not request_path.startswith("/"):
+        request_path = f"/{request_path}"
+    if request_path == cookie_path:
+        return True
+    if not request_path.startswith(cookie_path):
+        return False
+    return cookie_path.endswith("/") or request_path[len(cookie_path) : len(cookie_path) + 1] == "/"
+
+
 def cookie_header_for_url(cookies: list[BrowserCookie], url: str) -> str:
-    host = urlparse(url).hostname or ""
+    parsed = urlparse(url)
+    host = parsed.hostname or ""
+    scheme = parsed.scheme.lower()
+    path = parsed.path or "/"
+    now = time.time()
     parts = []
     for cookie in cookies:
-        if cookie.domain and _domain_matches(cookie.domain, host):
-            parts.append(f"{cookie.name}={cookie.value}")
+        if cookie.expirationDate and cookie.expirationDate < now:
+            continue
+        if cookie.secure and scheme != "https":
+            continue
+        if cookie.domain and not _domain_matches(cookie.domain, host):
+            continue
+        if not _path_matches(cookie.path or "/", path):
+            continue
+        name = _safe_cookie_field(cookie.name)
+        value = _safe_cookie_field(cookie.value)
+        if name and value:
+            parts.append(f"{name}={value}")
     return "; ".join(parts)
 
 

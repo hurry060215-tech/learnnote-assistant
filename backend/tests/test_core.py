@@ -121,6 +121,22 @@ class ResourceDetectionTests(unittest.TestCase):
         header = cookie_header_for_url(cookies, "https://mooc1.chaoxing.com/video")
         self.assertEqual(header, "SESSDATA=abc")
 
+    def test_cookie_header_respects_path_secure_and_expiry(self) -> None:
+        cookies = [
+            BrowserCookie(name="ROOT", value="ok", domain=".cdn.example.com", path="/"),
+            BrowserCookie(name="HLS", value="token", domain=".cdn.example.com", path="/hls"),
+            BrowserCookie(name="OTHER_PATH", value="nope", domain=".cdn.example.com", path="/api"),
+            BrowserCookie(name="SECURE_ONLY", value="https-only", domain=".cdn.example.com", path="/hls", secure=True),
+            BrowserCookie(name="EXPIRED", value="old", domain=".cdn.example.com", path="/hls", expirationDate=1),
+            BrowserCookie(name="BAD", value="a\nb", domain=".cdn.example.com", path="/hls"),
+        ]
+
+        header = cookie_header_for_url(cookies, "https://media.cdn.example.com/hls/master.m3u8")
+        self.assertEqual(header, "ROOT=ok; HLS=token; SECURE_ONLY=https-only")
+
+        insecure_header = cookie_header_for_url(cookies, "http://media.cdn.example.com/hls/master.m3u8")
+        self.assertEqual(insecure_header, "ROOT=ok; HLS=token")
+
     def test_download_headers_reuse_browser_context_without_sensitive_values(self) -> None:
         candidate = ResourceCandidate(
             url="https://media.cdn.example.com/video.mp4",

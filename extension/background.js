@@ -335,6 +335,24 @@ function cookieEligibleUrl(value) {
   return blob ? blob[1] : "";
 }
 
+function cookieDomainCandidates(value) {
+  const url = cookieEligibleUrl(value);
+  if (!url) return [];
+  try {
+    const host = new URL(url).hostname;
+    if (!host || /^\d+\.\d+\.\d+\.\d+$/.test(host) || host === "localhost") return host ? [host] : [];
+    const parts = host.split(".").filter(Boolean);
+    const domains = [];
+    for (let index = 0; index <= Math.max(0, parts.length - 2); index += 1) {
+      const domain = parts.slice(index).join(".");
+      if (domain && !domains.includes(domain)) domains.push(domain);
+    }
+    return domains;
+  } catch {
+    return [];
+  }
+}
+
 function withPlaybackHints(resource, page = {}) {
   const active = page.active_video || {};
   const activeSrc = active.src || "";
@@ -1089,17 +1107,38 @@ async function collectPageData(tab) {
   return mergePageContexts(tab, remembered);
 }
 
+function cookieLookupDetailsForUrls(urls) {
+  const details = [];
+  const seen = new Set();
+  const add = detail => {
+    const key = JSON.stringify(detail);
+    if (seen.has(key)) return;
+    seen.add(key);
+    details.push(detail);
+  };
+
+  for (const raw of urls || []) {
+    const url = cookieEligibleUrl(raw);
+    if (!/^https?:\/\//i.test(url)) continue;
+    add({ url });
+    for (const domain of cookieDomainCandidates(url)) {
+      add({ domain });
+    }
+  }
+  return details;
+}
+
 async function cookiesForUrls(urls) {
   const result = new Map();
-  for (const url of urls) {
-    if (!/^https?:\/\//i.test(url)) continue;
+  for (const details of cookieLookupDetailsForUrls(urls)) {
     try {
-      const cookies = await chrome.cookies.getAll({ url });
+      const cookies = await chrome.cookies.getAll(details);
       for (const cookie of cookies) {
-        result.set(`${cookie.domain}|${cookie.path}|${cookie.name}`, cookie);
+        const key = `${cookie.domain}|${cookie.path}|${cookie.name}`;
+        if (!result.has(key)) result.set(key, cookie);
       }
     } catch {
-      // Ignore browser-internal or malformed URLs.
+      // Ignore browser-internal, malformed, or unsupported cookie lookups.
     }
   }
   return [...result.values()];
