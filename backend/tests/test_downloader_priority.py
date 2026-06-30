@@ -673,6 +673,82 @@ class DownloaderPriorityTests(unittest.TestCase):
                 server.shutdown()
                 server.server_close()
 
+    def test_unknown_post_play_endpoint_is_scanned_with_browser_request_body(self) -> None:
+        ffmpeg = ffmpeg_bin()
+        assert ffmpeg is not None
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            video = root / DirectPostJsonMediaHandler.media_name
+            subprocess.run(
+                [
+                    ffmpeg,
+                    "-y",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "testsrc=duration=2:size=320x180:rate=10",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "sine=frequency=440:duration=2",
+                    "-shortest",
+                    "-pix_fmt",
+                    "yuv420p",
+                    str(video),
+                ],
+                check=True,
+            )
+
+            DirectPostJsonMediaHandler.seen_bodies = []
+            server = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(DirectPostJsonMediaHandler, directory=str(root)))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                play_url = f"http://127.0.0.1:{server.server_port}/api/play"
+                page_url = f"http://127.0.0.1:{server.server_port}/lesson.html"
+                media_url = f"http://127.0.0.1:{server.server_port}/{video.name}"
+                downloader = MediaDownloader(root / "task")
+                with patch.object(downloader, "_download_with_ytdlp") as ytdlp:
+                    media_path, selected = downloader.download(
+                        page_url=page_url,
+                        resources=[
+                            ResourceCandidate(
+                                url=play_url,
+                                source="webRequest",
+                                kind="unknown",
+                                mime="application/json",
+                                score=70,
+                                label="POST play API JSON",
+                                request_type="fetch",
+                                method="POST",
+                                page_url=page_url,
+                                request_headers={
+                                    "User-Agent": DirectPostJsonMediaHandler.required_user_agent,
+                                    "X-Requested-With": DirectPostJsonMediaHandler.required_x_requested_with,
+                                    "Content-Type": "application/x-www-form-urlencoded",
+                                },
+                                request_body={"type": "form", "content": DirectPostJsonMediaHandler.required_body},
+                            )
+                        ],
+                        cookies=[],
+                        title="Unknown POST API fallback",
+                    )
+                ytdlp.assert_not_called()
+                self.assertTrue(media_path.exists())
+                self.assertIsNotNone(selected)
+                self.assertEqual(selected.url, media_url)
+                self.assertEqual(selected.source, "page-scan")
+                self.assertEqual(DirectPostJsonMediaHandler.seen_bodies, [DirectPostJsonMediaHandler.required_body])
+                self.assertEqual([attempt.strategy for attempt in downloader.attempts[:4]], ["skip-unknown", "page-scan", "page-scan", "direct-file"])
+                self.assertEqual(downloader.attempts[2].status, "success")
+                self.assertEqual(downloader.attempts[3].status, "success")
+            finally:
+                server.shutdown()
+                server.server_close()
+
     def test_resolved_post_play_endpoint_downloads_media_with_get(self) -> None:
         ffmpeg = ffmpeg_bin()
         assert ffmpeg is not None
@@ -1593,6 +1669,7 @@ class DownloaderPriorityTests(unittest.TestCase):
                             "Origin": HeaderGateHandler.required_origin,
                             "Referer": HeaderGateHandler.required_referer,
                             "User-Agent": HeaderGateHandler.required_user_agent,
+                            "Authorization": HeaderGateHandler.required_authorization,
                         },
                     ),
                     [BrowserCookie(name="AUTH", value="ok", domain="127.0.0.1")],

@@ -874,6 +874,24 @@ def _is_http_url(url: str) -> bool:
     return bool(re.match(r"^https?://", url or "", re.I))
 
 
+def _is_scannable_play_endpoint(candidate: ResourceCandidate) -> bool:
+    if not _is_http_url(candidate.url):
+        return False
+    if classify_resource(candidate.url, candidate.mime) != "unknown":
+        return False
+    request_type = (candidate.request_type or "").lower()
+    method = (candidate.method or "").upper()
+    label = (candidate.label or "").lower()
+    source = (candidate.source or "").lower()
+    if request_type in {"xmlhttprequest", "fetch"} and _media_endpoint_hint(candidate.url):
+        return True
+    if source.startswith("pagehook") and _media_endpoint_hint(candidate.url):
+        return True
+    if method in REQUEST_BODY_REPLAY_METHODS and candidate.request_body and _media_endpoint_hint(candidate.url):
+        return True
+    return "play" in label and _media_endpoint_hint(candidate.url)
+
+
 def fallback_page_contexts(page_url: str, resources: list[ResourceCandidate]) -> list[tuple[str, ResourceCandidate | None]]:
     contexts: list[tuple[str, ResourceCandidate | None]] = []
     seen: set[str] = set()
@@ -900,7 +918,9 @@ def fallback_page_contexts(page_url: str, resources: list[ResourceCandidate]) ->
     for item in ordered:
         add(item.frame_url, item)
         add(item.page_url, item)
-        if classify_resource(item.url, item.mime) == "unknown" and (item.source == "dom" or "iframe" in (item.label or "").lower()):
+        if classify_resource(item.url, item.mime) == "unknown" and (
+            item.source == "dom" or "iframe" in (item.label or "").lower() or _is_scannable_play_endpoint(item)
+        ):
             add(item.url, item)
         add(item.request_headers.get("Referer", ""), item)
         add(item.initiator, item)
@@ -1077,10 +1097,11 @@ def playback_match_label(match: str) -> str:
     }.get(match, match)
 
 
-def candidate_rank_key(candidate: ResourceCandidate, order: int = 0) -> tuple[int, int, int, int, int, int, float, int, int]:
+def candidate_rank_key(candidate: ResourceCandidate, order: int = 0) -> tuple[int, int, int, int, int, int, int, float, int, int]:
     kind = effective_resource_kind(candidate)
     return (
         1 if candidate.is_main_video else 0,
+        0 if candidate.source == "manifest-guess" else 1,
         playback_match_rank(candidate.playback_match or ""),
         1 if kind in {"hls", "dash", "video"} else 0,
         kind_rank(kind),
@@ -1708,20 +1729,39 @@ class MediaDownloader:
         if not re.match(r"^https?://", page_url, re.I):
             return []
         url_resources = extract_media_resources_from_text(page_url, page_url, "page-scan-url")
-        headers = download_headers_for_candidate(context_candidate, cookies, page_url, url=page_url)
+        context_headers = browser_request_headers_for_candidate(context_candidate)
+        scan_referer = (
+            context_headers.get("Referer", "")
+            or (context_candidate.page_url if context_candidate else "")
+            or (context_candidate.frame_url if context_candidate else "")
+            or page_url
+        )
+        headers = download_headers_for_candidate(context_candidate, cookies, scan_referer, url=page_url)
+        request_method, request_body = request_body_for_candidate(context_candidate, page_url)
         headers.setdefault("Accept", "text/html,application/xhtml+xml,application/json,text/plain,*/*;q=0.8")
 
         def apply_context_headers(resources: list[ResourceCandidate], referer: str) -> list[ResourceCandidate]:
             if not resources:
                 return resources
             inherited = browser_request_headers_for_candidate(context_candidate)
-            inherited.setdefault("Referer", referer)
+            inherited.setdefault(
+                "Referer",
+                _safe_header_value(
+                    context_headers.get("Referer", "")
+                    or (context_candidate.page_url if context_candidate else "")
+                    or (context_candidate.frame_url if context_candidate else "")
+                    or referer
+                ),
+            )
             for item in resources:
-                item.request_headers = {**inherited, **(item.request_headers or {})}
+                merged_headers = {**(item.request_headers or {}), **inherited}
+                if not context_candidate or item.url != context_candidate.url:
+                    merged_headers.pop("Content-Type", None)
+                item.request_headers = merged_headers
             return resources
 
         try:
-            with requests.get(page_url, headers=headers, stream=True, timeout=20) as response:
+            with requests.request(request_method, page_url, headers=headers, data=request_body, stream=True, timeout=20) as response:
                 if response.status_code in {401, 403}:
                     self._record_attempt(
                         strategy="page-scan",
