@@ -174,6 +174,12 @@ Without a model key, the backend generates a deterministic local Markdown note f
 
 ```powershell
 cd D:\Projects\learnnote-assistant
+.\scripts\audit-stage.ps1
+```
+
+The stage audit checks working-tree changes, or the last commit when the tree is clean, and runs the narrow Node/Python checks that match the touched files. Use the full suite when changing broad contracts:
+
+```powershell
 backend\.venv\Scripts\python.exe -m compileall backend\app
 $env:PYTHONPATH="backend"
 backend\.venv\Scripts\python.exe -m unittest discover backend\tests
