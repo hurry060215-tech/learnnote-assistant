@@ -1107,7 +1107,45 @@ async function collectPageData(tab) {
   return mergePageContexts(tab, remembered);
 }
 
-function cookieLookupDetailsForUrls(urls) {
+function normalizedCookiePartitionKey(key = null) {
+  if (!key || typeof key !== "object") return null;
+  const normalized = {};
+  if (typeof key.topLevelSite === "string" && key.topLevelSite) normalized.topLevelSite = key.topLevelSite;
+  if (typeof key.hasCrossSiteAncestor === "boolean") normalized.hasCrossSiteAncestor = key.hasCrossSiteAncestor;
+  return Object.keys(normalized).length ? normalized : null;
+}
+
+async function cookiePartitionKeysForContext(page = {}, tab = {}, resources = []) {
+  if (!chrome.cookies?.getPartitionKey || !Number.isFinite(tab.id)) return [];
+  const frameIds = [];
+  const addFrameId = value => {
+    const frameId = Number(value);
+    if (!Number.isFinite(frameId) || frameId < 0 || frameIds.includes(frameId)) return;
+    frameIds.push(frameId);
+  };
+  addFrameId(0);
+  addFrameId(page.active_video?.frame_id);
+  for (const frame of page.frames || []) addFrameId(frame.frame_id);
+  for (const resource of resources || []) addFrameId(resource.frame_id);
+
+  const keys = [];
+  const seen = new Set();
+  for (const frameId of frameIds) {
+    try {
+      const key = normalizedCookiePartitionKey(await chrome.cookies.getPartitionKey({ tabId: tab.id, frameId }));
+      if (!key) continue;
+      const id = JSON.stringify(key);
+      if (seen.has(id)) continue;
+      seen.add(id);
+      keys.push(key);
+    } catch {
+      // Older browsers or inaccessible frames can continue with unpartitioned cookies.
+    }
+  }
+  return keys;
+}
+
+function cookieLookupDetailsForUrls(urls, partitionKeys = []) {
   const details = [];
   const seen = new Set();
   const add = detail => {
@@ -1116,21 +1154,28 @@ function cookieLookupDetailsForUrls(urls) {
     seen.add(key);
     details.push(detail);
   };
+  const addWithPartitions = detail => {
+    for (const partitionKey of partitionKeys || []) {
+      const normalized = normalizedCookiePartitionKey(partitionKey);
+      if (normalized) add({ ...detail, partitionKey: normalized });
+    }
+    add(detail);
+  };
 
   for (const raw of urls || []) {
     const url = cookieEligibleUrl(raw);
     if (!/^https?:\/\//i.test(url)) continue;
-    add({ url });
+    addWithPartitions({ url });
     for (const domain of cookieDomainCandidates(url)) {
-      add({ domain });
+      addWithPartitions({ domain });
     }
   }
   return details;
 }
 
-async function cookiesForUrls(urls) {
+async function cookiesForUrls(urls, partitionKeys = []) {
   const result = new Map();
-  for (const details of cookieLookupDetailsForUrls(urls)) {
+  for (const details of cookieLookupDetailsForUrls(urls, partitionKeys)) {
     try {
       const cookies = await chrome.cookies.getAll(details);
       for (const cookie of cookies) {
@@ -1206,7 +1251,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const tab = await tabForMessage(message);
       const page = message.page || await collectPageData(tab);
       const resources = mergeAndRankResources(message.resources, page, tab, { preserveOrder: Array.isArray(message.resources) });
-      const cookies = await cookiesForUrls(cookieUrlsForContext(page, tab, resources));
+      const partitionKeys = await cookiePartitionKeysForContext(page, tab, resources);
+      const cookies = await cookiesForUrls(cookieUrlsForContext(page, tab, resources), partitionKeys);
       const backendUrl = message.backendUrl || "http://127.0.0.1:8765";
       const res = await fetch(`${backendUrl}/api/tasks/from-current-page`, {
         method: "POST",
@@ -1237,7 +1283,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ error: "没有可预检的候选资源。" });
         return;
       }
-      const cookies = await cookiesForUrls(cookieUrlsForContext(page, tab, [resource]));
+      const partitionKeys = await cookiePartitionKeysForContext(page, tab, [resource]);
+      const cookies = await cookiesForUrls(cookieUrlsForContext(page, tab, [resource]), partitionKeys);
       const backendUrl = message.backendUrl || "http://127.0.0.1:8765";
       const res = await fetch(`${backendUrl}/api/media/preflight`, {
         method: "POST",
@@ -1256,7 +1303,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const tab = await tabForMessage(message);
       const page = message.page || await collectPageData(tab);
       const resources = mergeAndRankResources(message.resources, page, tab, { preserveOrder: Array.isArray(message.resources) });
-      const cookies = await cookiesForUrls(cookieUrlsForContext(page, tab, resources));
+      const partitionKeys = await cookiePartitionKeysForContext(page, tab, resources);
+      const cookies = await cookiesForUrls(cookieUrlsForContext(page, tab, resources), partitionKeys);
       const backendUrl = message.backendUrl || "http://127.0.0.1:8765";
       const res = await fetch(`${backendUrl}/api/media/preflight-current-page`, {
         method: "POST",

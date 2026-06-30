@@ -7,6 +7,7 @@ function listener() {
 }
 
 const cookieLookups = [];
+const partitionKeyLookups = [];
 
 const context = {
   console,
@@ -33,8 +34,16 @@ const context = {
     sidePanel: { open() {} },
     scripting: { executeScript() {} },
     cookies: {
+      async getPartitionKey(details) {
+        partitionKeyLookups.push(details);
+        if (details.frameId === 7) return { topLevelSite: "https://example.com", hasCrossSiteAncestor: true };
+        return { topLevelSite: "https://example.com" };
+      },
       async getAll(details) {
         cookieLookups.push(details);
+        if (details.partitionKey && details.url === "https://media.cdn.example.com/hls/master.m3u8?token=abc") {
+          return [{ name: "AUTH", value: "partition-url", domain: ".cdn.example.com", path: "/" }];
+        }
         if (details.url === "https://media.cdn.example.com/hls/master.m3u8?token=abc") {
           return [{ name: "AUTH", value: "url", domain: ".cdn.example.com", path: "/" }];
         }
@@ -230,15 +239,33 @@ assert.ok(cookieSyncUrls.includes("https://course.example.com/player"));
 assert.ok(cookieSyncUrls.includes("https://course.example.com"));
 assert.ok(cookieSyncUrls.includes("https://media.cdn.example.com/hls/master.m3u8?token=redirect"));
 
-const lookupDetails = context.cookieLookupDetailsForUrls(cookieSyncUrls);
+const partitionKeys = await context.cookiePartitionKeysForContext(
+  {
+    active_video: { frame_id: 7 },
+    frames: [{ frame_id: 7 }, { frame_id: 2 }]
+  },
+  { id: 55 },
+  [{ frame_id: 9 }]
+);
+assert.deepEqual(partitionKeyLookups.map(details => details.frameId), [0, 7, 2, 9]);
+assert.deepEqual(JSON.parse(JSON.stringify(partitionKeys)), [
+  { topLevelSite: "https://example.com" },
+  { topLevelSite: "https://example.com", hasCrossSiteAncestor: true }
+]);
+
+const lookupDetails = context.cookieLookupDetailsForUrls(cookieSyncUrls, partitionKeys);
 assert.ok(lookupDetails.some(details => details.url === "https://media.cdn.example.com/hls/master.m3u8?token=abc"));
+assert.ok(lookupDetails.some(details =>
+  details.url === "https://media.cdn.example.com/hls/master.m3u8?token=abc" &&
+  details.partitionKey?.topLevelSite === "https://example.com"
+));
 assert.ok(lookupDetails.some(details => details.domain === "media.cdn.example.com"));
 assert.ok(lookupDetails.some(details => details.domain === "cdn.example.com"));
 assert.ok(lookupDetails.some(details => details.domain === "course.example.com"));
 
-const cookies = await context.cookiesForUrls(cookieSyncUrls);
+const cookies = await context.cookiesForUrls(cookieSyncUrls, partitionKeys);
 const byName = new Map(cookies.map(cookie => [cookie.name, cookie]));
-assert.equal(byName.get("AUTH").value, "url");
+assert.equal(byName.get("AUTH").value, "partition-url");
 assert.equal(byName.get("HLS").value, "domain-path");
 assert.equal(byName.get("COURSE").value, "page");
 assert.ok(cookieLookups.some(details => details.domain === "cdn.example.com"));
