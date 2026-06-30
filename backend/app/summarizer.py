@@ -71,6 +71,50 @@ def _sentences(text: str, limit: int = 8) -> list[str]:
     return ranked[:limit]
 
 
+def _source_host(page_url: str) -> str:
+    match = re.match(r"^https?://([^/?#]+)", page_url or "", re.I)
+    return match.group(1) if match else ""
+
+
+def _context_topic_lines(title: str, transcript: TranscriptResult, limit: int = 3) -> list[str]:
+    candidates = []
+    for item in [title, *_sentences(transcript.full_text, limit=limit * 2)]:
+        cleaned = re.sub(r"\s+", " ", item or "").strip(" -•\t")
+        if not cleaned or cleaned in candidates:
+            continue
+        if len(cleaned) > 96:
+            cleaned = cleaned[:96].rstrip() + "..."
+        candidates.append(cleaned)
+        if len(candidates) >= limit:
+            break
+    return candidates
+
+
+def _learning_context_lines(title: str, transcript: TranscriptResult, windows: list[VisualWindow], page_url: str = "") -> list[str]:
+    lines = ["## 学习上下文", ""]
+    title_text = (title or "未命名课程").strip()
+    lines.append(f"- 课程标题：{title_text}")
+    if page_url:
+        host = _source_host(page_url)
+        lines.append(f"- 来源页面：{page_url}" + (f"（{host}）" if host else ""))
+    lines.append(f"- 文本来源：{transcript.source or 'unknown'}")
+    if windows:
+        first, last = windows[0], windows[-1]
+        covered = sum(1 for window in windows if window.transcript_excerpt.strip())
+        lines.append(
+            f"- 画面切片：{len(windows)} 个窗口，覆盖 `{_format_ts(first.start)} - {_format_ts(last.end)}`；"
+            f"{covered}/{len(windows)} 个窗口有同步字幕。"
+        )
+    else:
+        lines.append("- 画面切片：未生成；当前笔记主要依赖字幕、页面文本或后续本地视频回看。")
+    topics = _context_topic_lines(title_text, transcript)
+    if topics:
+        lines.append("- 主题线索：" + "；".join(topics))
+    lines.append("- 使用方式：先按时间轴扫一遍，再用 W 编号回看画面网格，最后把易错点和自测问题整理成复习卡。")
+    lines.append("")
+    return lines
+
+
 def _timeline_lines(transcript: TranscriptResult, grids: list[FrameGrid]) -> list[str]:
     if grids:
         lines = []
@@ -313,6 +357,8 @@ def local_markdown_note(title: str, transcript: TranscriptResult, grids: list[Fr
 
     key_sentences = _sentences(transcript.full_text, limit=6)
     windows = build_visual_windows(transcript, grids)
+
+    lines.extend(_learning_context_lines(title, transcript, windows, page_url))
 
     lines += ["## 课程主题", ""]
     if transcript.full_text and "未安装 faster-whisper" not in transcript.full_text:

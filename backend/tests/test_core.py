@@ -2040,6 +2040,13 @@ class SummaryFallbackTests(unittest.TestCase):
         note = local_markdown_note("Python lesson", transcript, grids, "https://example.com")
         self.assertIn("# Python lesson", note)
         self.assertIn("00:00:05", note)
+        self.assertIn("## 学习上下文", note)
+        self.assertIn("课程标题：Python lesson", note)
+        self.assertIn("来源页面：https://example.com（example.com）", note)
+        self.assertIn("文本来源：unit", note)
+        self.assertIn("画面切片：1 个窗口，覆盖 `00:00:00 - 00:00:20`；1/1 个窗口有同步字幕。", note)
+        self.assertIn("主题线索：Python lesson；函数用于封装逻辑。", note)
+        self.assertIn("用 W 编号回看画面网格", note)
         self.assertIn("## 学习路线", note)
         self.assertIn("优先回看：W001 `00:00:00 - 00:00:20`", note)
         self.assertIn("分段图文摘要", note)
@@ -2071,6 +2078,7 @@ class SummaryFallbackTests(unittest.TestCase):
         self.assertEqual(source, "local-template")
         self.assertIn("API Key", warning)
         self.assertIn("## 学习路线", note)
+        self.assertIn("## 学习上下文", note)
         self.assertIn("画面-字幕对齐索引", note)
 
     def test_visual_appendix_is_appended_to_llm_notes(self) -> None:
