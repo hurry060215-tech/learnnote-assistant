@@ -2295,6 +2295,71 @@ input[type="file"] {
   white-space: nowrap;
 }
 
+.task-browser-evidence {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #dbe7f5;
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(23, 105, 232, 0.07), rgba(15, 143, 97, 0.04)),
+    #fbfdff;
+  padding: 9px;
+}
+
+.task-browser-evidence header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.task-browser-evidence header span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.task-browser-evidence header strong {
+  border: 1px solid rgba(15, 143, 97, 0.22);
+  border-radius: 999px;
+  background: #ecfdf5;
+  color: var(--success);
+  padding: 3px 7px;
+  font-size: 10px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.task-browser-evidence > div {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.task-browser-evidence article {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  border: 1px solid #e0e8f4;
+  border-radius: 7px;
+  background: #ffffff;
+  padding: 7px;
+}
+
+.task-browser-evidence b {
+  color: var(--ink);
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.task-browser-evidence article span {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 .visual-coverage {
   display: grid;
   gap: 8px;
@@ -6808,5 +6873,9 @@ body {
   .capture-cockpit em {
     min-height: 28px;
     writing-mode: horizontal-tb;
+  }
+
+  .task-browser-evidence > div {
+    grid-template-columns: 1fr;
   }
 }
