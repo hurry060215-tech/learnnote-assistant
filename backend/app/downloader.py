@@ -1334,10 +1334,25 @@ def preflight_media_resource(
     cookies: list[BrowserCookie],
     referer: str,
     timeout: int = 12,
+    _seen: set[str] | None = None,
 ) -> MediaPreflightResult:
     kind = effective_resource_kind(candidate)
     resolved_url = candidate.resolved_url or candidate.url
     warnings: list[str] = []
+    seen = set(_seen or set())
+    seen_key = resolved_url or candidate.url
+    if seen_key in seen:
+        return MediaPreflightResult(
+            ok=True,
+            downloadable=False,
+            strategy="direct-response-probe",
+            kind=kind,
+            url=candidate.url,
+            resolved_url=resolved_url,
+            code="unsupported_manifest",
+            message="嵌套媒体预检出现循环引用，已停止继续解析。",
+        )
+    seen.update(url for url in {candidate.url, resolved_url} if url)
     if kind == "fragment":
         inferred = infer_manifest_url_from_fragment(candidate.url)
         if inferred:
@@ -1446,19 +1461,47 @@ def preflight_media_resource(
                 embedded_candidates = _embedded_media_candidates_from_text_response(candidate, body, final_url, referer)
                 if embedded_candidates:
                     selected = embedded_candidates[0]
-                    attempt_warnings.append("Text/JSON response contains an embedded media URL; the full task will download that resolved resource.")
+                    attempt_warnings.append("Text/JSON response contains an embedded media URL; probing that resolved resource.")
+                    nested = preflight_media_resource(selected, cookies, final_url, timeout=timeout, _seen=seen)
+                    nested_warnings = [*attempt_warnings, *nested.warnings]
+                    if not nested.downloadable:
+                        return MediaPreflightResult(
+                            **{
+                                **base,
+                                "strategy": "direct-response-probe",
+                                "kind": nested.kind or selected.kind,
+                                "resolved_url": nested.resolved_url or selected.url,
+                                "status_code": nested.status_code,
+                                "content_type": nested.content_type,
+                                "content_disposition": nested.content_disposition,
+                                "content_length": nested.content_length,
+                                "bytes_checked": nested.bytes_checked,
+                                "request_header_names": nested.request_header_names,
+                                "warnings": nested_warnings,
+                            },
+                            ok=nested.ok,
+                            downloadable=False,
+                            code=nested.code or "download_forbidden",
+                            message=f"Media endpoint returned text/JSON, but embedded resource preflight failed: {nested.message}",
+                        )
                     return MediaPreflightResult(
                         **{
                             **base,
                             "strategy": "direct-response-probe",
-                            "kind": selected.kind,
-                            "resolved_url": selected.url,
-                            "warnings": attempt_warnings,
+                            "kind": nested.kind or selected.kind,
+                            "resolved_url": nested.resolved_url or selected.url,
+                            "status_code": nested.status_code,
+                            "content_type": nested.content_type,
+                            "content_disposition": nested.content_disposition,
+                            "content_length": nested.content_length,
+                            "bytes_checked": nested.bytes_checked,
+                            "request_header_names": nested.request_header_names,
+                            "warnings": nested_warnings,
                         },
                         ok=True,
                         downloadable=True,
                         code="",
-                        message="Media endpoint returned text/JSON with a downloadable video or manifest URL.",
+                        message="Media endpoint returned text/JSON with an embedded resource that passed media preflight.",
                     )
                 return MediaPreflightResult(
                     **{**base, "warnings": attempt_warnings},

@@ -180,6 +180,35 @@ class DirectJsonMediaHandler(QuietHandler):
         super().do_GET()
 
 
+class ChaoxingJsonArrayMediaHandler(DirectJsonMediaHandler):
+    media_body = b"\x00\x00\x00\x18ftypmp42" + (b"chaoxing-extensionless" * 512)
+
+    def do_GET(self) -> None:
+        path = urlparse(self.path).path
+        if path == "/api/play":
+            if not self._has_browser_headers():
+                self.send_error(403, "missing browser headers")
+                return
+            body = b'{"sources":[{"url":"/ananas/status/objectid-123?flag=normal"}],"streams":["/vod/lesson?id=noext"]}'
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        if path == "/ananas/status/objectid-123":
+            if not self._has_browser_headers():
+                self.send_error(403, "missing browser headers")
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "video/mp4")
+            self.send_header("Content-Length", str(len(self.media_body)))
+            self.end_headers()
+            self.wfile.write(self.media_body)
+            return
+        super().do_GET()
+
+
 class DirectPostJsonMediaHandler(DirectJsonMediaHandler):
     required_body = "lesson=42&token=ok"
     seen_bodies: list[str] = []
@@ -589,6 +618,57 @@ class DownloaderPriorityTests(unittest.TestCase):
                 self.assertEqual(selected.source, "direct-response")
                 self.assertEqual(selected.request_headers["X-Requested-With"], DirectJsonMediaHandler.required_x_requested_with)
                 self.assertTrue(selected.request_headers["Referer"].endswith(DirectJsonMediaHandler.required_referer_suffix))
+                self.assertEqual([attempt.strategy for attempt in downloader.attempts[:2]], ["direct-response-scan", "direct-file"])
+                self.assertEqual(downloader.attempts[0].status, "success")
+                self.assertEqual(downloader.attempts[1].status, "success")
+            finally:
+                server.shutdown()
+                server.server_close()
+
+    def test_chaoxing_json_array_endpoint_preflights_and_downloads_extensionless_media(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            server = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(ChaoxingJsonArrayMediaHandler, directory=str(root)))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                page_url = f"http://127.0.0.1:{server.server_port}/lesson.html"
+                play_url = f"http://127.0.0.1:{server.server_port}/api/play?id=42"
+                media_url = f"http://127.0.0.1:{server.server_port}/ananas/status/objectid-123?flag=normal"
+                candidate = ResourceCandidate(
+                    url=play_url,
+                    source="webRequest",
+                    kind="video",
+                    mime="application/json",
+                    score=100,
+                    label="chaoxing play API",
+                    request_headers={
+                        "User-Agent": ChaoxingJsonArrayMediaHandler.required_user_agent,
+                        "X-Requested-With": ChaoxingJsonArrayMediaHandler.required_x_requested_with,
+                    },
+                )
+
+                preflight = preflight_media_resource(candidate, [], page_url)
+                self.assertTrue(preflight.downloadable)
+                self.assertEqual(preflight.strategy, "direct-response-probe")
+                self.assertEqual(preflight.kind, "video")
+                self.assertEqual(preflight.resolved_url, media_url)
+                self.assertEqual(preflight.status_code, 200)
+                self.assertEqual(preflight.content_type, "video/mp4")
+
+                downloader = MediaDownloader(root / "task")
+                with patch.object(downloader, "_download_with_ytdlp") as ytdlp:
+                    media_path, selected = downloader.download(
+                        page_url=page_url,
+                        resources=[candidate],
+                        cookies=[],
+                        title="Chaoxing JSON Array",
+                    )
+                ytdlp.assert_not_called()
+                self.assertTrue(media_path.exists())
+                self.assertIsNotNone(selected)
+                self.assertEqual(selected.url, media_url)
+                self.assertEqual(selected.source, "direct-response")
                 self.assertEqual([attempt.strategy for attempt in downloader.attempts[:2]], ["direct-response-scan", "direct-file"])
                 self.assertEqual(downloader.attempts[0].status, "success")
                 self.assertEqual(downloader.attempts[1].status, "success")
@@ -1823,6 +1903,7 @@ class DownloaderPriorityTests(unittest.TestCase):
     def test_preflight_reports_json_play_endpoint_embedded_media_url(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
+            (root / DirectJsonMediaHandler.media_name).write_bytes(b"\x00\x00\x00\x18ftypmp42" + b"preflight" * 512)
             server = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(DirectJsonMediaHandler, directory=str(root)))
             thread = threading.Thread(target=server.serve_forever, daemon=True)
             thread.start()
