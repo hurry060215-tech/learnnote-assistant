@@ -6700,3 +6700,113 @@ body {
     grid-template-columns: 1fr;
   }
 }
+
+/* 2026-06-30 BiliNote side-panel cockpit pass.
+   Make the browser-control entry read as direct extraction, not recording. */
+.capture-cockpit {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  gap: 6px;
+  align-items: stretch;
+  border: 1px solid var(--ln-line, var(--border));
+  border-radius: var(--ln-radius, 8px);
+  background:
+    linear-gradient(135deg, rgba(23, 105, 232, 0.06), rgba(15, 143, 97, 0.04) 58%, rgba(255, 255, 255, 0) 100%),
+    #ffffff;
+  padding: 7px;
+}
+
+.capture-cockpit section {
+  min-width: 0;
+  min-height: 54px;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  gap: 2px 7px;
+  align-content: center;
+  border: 1px solid #dbe7f5;
+  border-radius: 7px;
+  background: rgba(248, 251, 255, 0.86);
+  padding: 7px;
+}
+
+.capture-cockpit b {
+  grid-row: span 2;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  align-self: center;
+  border-radius: 6px;
+  background: #eaf2ff;
+  color: var(--ln-blue, var(--accent));
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.capture-cockpit span,
+.capture-cockpit small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.capture-cockpit span {
+  color: var(--ln-text, var(--ink));
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.capture-cockpit small {
+  color: var(--ln-muted, var(--muted));
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.capture-cockpit em {
+  min-width: 48px;
+  min-height: 54px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(15, 143, 97, 0.24);
+  border-radius: 7px;
+  background: #ecfdf5;
+  color: var(--ln-green, var(--success));
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 900;
+  letter-spacing: 0;
+  writing-mode: vertical-rl;
+}
+
+.source-switcher {
+  margin-bottom: 0;
+}
+
+.current-card > .section-head {
+  margin-top: 2px;
+}
+
+.actions {
+  position: sticky;
+  top: 56px;
+  z-index: 10;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.actions button {
+  min-height: 32px;
+}
+
+@media (max-width: 380px) {
+  .capture-cockpit {
+    grid-template-columns: 1fr;
+  }
+
+  .capture-cockpit em {
+    min-height: 28px;
+    writing-mode: horizontal-tb;
+  }
+}
