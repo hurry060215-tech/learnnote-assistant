@@ -1646,6 +1646,60 @@ function workbenchSecondaryActions(state) {
   return actions.slice(0, 5);
 }
 
+function preflightStatusTag(result = null) {
+  if (!result) return "待预检";
+  if (result.downloadable) return "预检通过";
+  if (result.code === "not_checked") return "待预检";
+  return result.code || "预检未过";
+}
+
+function workbenchRouteHtml() {
+  const selected = selectedResource();
+  if (!selected) {
+    return `<div class="workbench-route empty">
+      <span>直取候选</span>
+      <strong>等待当前页暴露媒体资源</strong>
+      <small>继续播放几秒后重新检测，或直接使用本地视频入口。</small>
+    </div>`;
+  }
+
+  const checked = currentPreflight();
+  const target = resolvedTargetText(selected, checked, 82);
+  const tags = [
+    mediaKindText(selected.kind) || selected.kind || "media",
+    candidateStrategyText(selected),
+    candidateConfidence(selected).label,
+    resourceSourceText(selected),
+    requestBodySummary(selected) ? "POST body" : "",
+    requestHeaderNames(selected) !== "-" ? "请求头可复用" : "",
+    preflightStatusTag(checked)
+  ].filter(Boolean).slice(0, 7);
+  const evidence = [
+    requestEvidence(selected),
+    responseEvidenceLine(selected),
+    target ? `实际目标 ${target}` : ""
+  ].filter(Boolean).join(" · ");
+
+  return `<div class="workbench-route">
+    <div class="workbench-route-main">
+      <span>直取候选 #${escapeHtml(String(candidateTryOrder(selected) || 1))}</span>
+      <strong>${escapeHtml(selected.label || directnessText(selected))}</strong>
+      <code>${escapeHtml(compactUrl(selected.url, 92))}</code>
+      ${target ? `<code>${escapeHtml(target)}</code>` : ""}
+    </div>
+    <div class="workbench-route-side">
+      <div class="workbench-route-tags">
+        ${tags.map(tag => `<em>${escapeHtml(tag)}</em>`).join("")}
+      </div>
+      <small>${escapeHtml(evidence || directnessText(selected))}</small>
+      <div class="workbench-route-tools">
+        <button type="button" data-workbench-copy="url">复制链接</button>
+        <button type="button" data-workbench-copy="report">复制证据</button>
+      </div>
+    </div>
+  </div>`;
+}
+
 function renderCurrentStudyCard() {
   if (!els.currentStudyCard) return;
   const state = currentStudyState();
@@ -1664,6 +1718,7 @@ function renderCurrentStudyCard() {
         ${escapeHtml(primary.label)}
       </button>
     </div>
+    ${workbenchRouteHtml()}
     <div class="workbench-steps">
       ${workbenchStepItems(state).map((item, index) => `<section class="${escapeHtml(item.state)}">
         <i>${index + 1}</i>
@@ -3957,6 +4012,15 @@ els.routeSummary.addEventListener("click", event => {
 });
 if (els.currentStudyCard) {
   els.currentStudyCard.addEventListener("click", event => {
+    const copyButton = event.target.closest("[data-workbench-copy]");
+    if (copyButton?.dataset.workbenchCopy === "url") {
+      copySelectedResourceUrl();
+      return;
+    }
+    if (copyButton?.dataset.workbenchCopy === "report") {
+      copySelectedResourceReport();
+      return;
+    }
     const button = event.target.closest("[data-route-action]");
     if (!button) return;
     handleRouteAction(button.dataset.routeAction);
