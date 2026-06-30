@@ -107,6 +107,36 @@ assert.equal(
   }, "application/octet-stream"),
   "video"
 );
+assert.equal(
+  context.classifyCompletedRequest({
+    url: "https://mooc1.chaoxing.com/ananas/status/objectid-123?flag=normal",
+    type: "xmlhttprequest"
+  }, "application/json"),
+  "video"
+);
+
+context.rememberRequestHeaders({
+  requestId: "chaoxing-ananas-post",
+  url: "https://mooc1.chaoxing.com/ananas/status/objectid-123?flag=normal",
+  type: "xmlhttprequest",
+  requestHeaders: [
+    { name: "Referer", value: "https://mooc1.chaoxing.com/mycourse/studentstudy?chapterId=42" },
+    { name: "X-Requested-With", value: "XMLHttpRequest" }
+  ]
+});
+context.rememberRequestBody({
+  requestId: "chaoxing-ananas-post",
+  url: "https://mooc1.chaoxing.com/ananas/status/objectid-123?flag=normal",
+  type: "xmlhttprequest",
+  method: "POST",
+  requestBody: { formData: { objectid: ["objectid-123"], dtoken: ["token-abc"] } }
+});
+assert.equal(
+  context.peekRequestHeaders("chaoxing-ananas-post").Referer,
+  "https://mooc1.chaoxing.com/mycourse/studentstudy?chapterId=42"
+);
+assert.equal(context.peekRequestHeaders("chaoxing-ananas-post")["X-Requested-With"], "XMLHttpRequest");
+assert.equal(context.peekRequestBody("chaoxing-ananas-post").content, "objectid=objectid-123&dtoken=token-abc");
 
 assert.equal(context.sourceRank("scriptHint"), 3);
 assert.equal(context.sourceRank("domHint"), 3);

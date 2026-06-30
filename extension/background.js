@@ -1,6 +1,7 @@
 const MEDIA_RE = /\.(mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd)(\?|#|$)/i;
 const FRAGMENT_RE = /\.(m4s|ts)(\?|#|$)/i;
 const SUBTITLE_RE = /\.(vtt|srt|ass|ssa)(\?|#|$)/i;
+const PLAYBACK_ENDPOINT_RE = /m3u8|mpd|video|media|subtitle|caption|stream|hls|dash|manifest|playlist|master|playback|player|download|attachment|ananas|objectid|dtoken|fileid|httpmd|vod|\/play(?:[/?#]|$)/i;
 const LOCAL_TASK_FILE_RE = /^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?\/api\/tasks\/[^/]+(?:\/media|\/exports\/(?:markdown|visual-windows|bundle|diagnostics|media))(?:[?#].*)?$/i;
 const LOCAL_EXPORT_RE = /^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?\/api\/tasks\/[^/]+\/exports\/(?:markdown|visual-windows|bundle|diagnostics|media)(?:[?#].*)?$/i;
 const resourceByTab = new Map();
@@ -128,9 +129,7 @@ function looksLikeLargeBinaryMediaEndpoint(details = {}, mime = "", responseHead
   if (!/^(xmlhttprequest|fetch|media)$/.test(type)) return false;
   const binaryMime = /octet-stream|binary|application\/x-mpegurl/i.test(String(mime || ""));
   if (!binaryMime) return false;
-  if (!/m3u8|mpd|video|media|stream|hls|dash|manifest|playlist|master|playback|player|download|attachment|\/play(?:[/?#]|$)/i.test(details.url || "")) {
-    return false;
-  }
+  if (!PLAYBACK_ENDPOINT_RE.test(details.url || "")) return false;
   return responseContentLength(responseHeaders) >= 1024 * 1024;
 }
 
@@ -138,7 +137,7 @@ function looksLikeTextPlayEndpoint(details = {}, mime = "") {
   const type = String(details.type || "").toLowerCase();
   if (!/^(xmlhttprequest|fetch)$/.test(type)) return false;
   if (!/json|text|javascript|xml/i.test(String(mime || ""))) return false;
-  return /m3u8|mpd|video|media|stream|hls|dash|manifest|playlist|master|playback|player|\/play(?:[/?#]|$)/i.test(details.url || "");
+  return PLAYBACK_ENDPOINT_RE.test(details.url || "");
 }
 
 function classifyCompletedRequest(details = {}, mime = "", requestHeaders = {}, responseHeaders = {}) {
@@ -213,6 +212,7 @@ function scoreKind(url, source, kind) {
   if (String(source || "").startsWith("pageHook")) score += 10;
   if (source === "pageHookBlobSource" || source === "pageHookMediaSource") score += 8;
   if (/chaoxing|xuexitong/i.test(url)) score += 8;
+  if (PLAYBACK_ENDPOINT_RE.test(url)) score += 6;
   return Math.min(score, 100);
 }
 
@@ -498,7 +498,7 @@ function looksLikeMediaRequest(details) {
     if (hasRange) return true;
     if (requestHeaderArrayHasMediaDestination(details.requestHeaders || [])) return true;
   }
-  return /m3u8|mpd|video|media|subtitle|caption|stream|hls|dash|manifest|playlist|master|playback|player|download|attachment|\/play(?:[/?#]|$)/i.test(url);
+  return PLAYBACK_ENDPOINT_RE.test(url);
 }
 
 function normalizeRequestHeaders(requestHeaders = []) {
