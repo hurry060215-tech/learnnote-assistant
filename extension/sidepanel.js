@@ -2423,6 +2423,14 @@ function pagePreflightResult(report) {
   };
 }
 
+function pagePreflightHasUnprobedCandidates(result, candidates = []) {
+  const report = result?.report || result;
+  if (!report || result?.downloadable || report.ready || report.downloadable_count > 0) return false;
+  const probed = Number(report.probed_count || 0);
+  const total = Number(report.candidate_count || candidates.length || 0);
+  return total > probed || candidates.length > probed;
+}
+
 async function preflightPageCandidates(candidates) {
   if (!candidates?.length) return null;
   const report = await requestPagePreflightReport(candidates);
@@ -2488,7 +2496,7 @@ async function startTask(mode = "video") {
       } catch {
         // Keep one-click start usable when the aggregate preflight endpoint is unavailable.
       }
-      if (!checked) checked = await preflightBestResource(mode);
+      if (!checked || pagePreflightHasUnprobedCandidates(checked, candidates)) checked = await preflightBestResource(mode);
       if (!checked?.downloadable) {
         if (!canAttemptBackendPageFallback(mode)) {
           els.taskMessage.textContent = preflightBlockMessage(checked);
@@ -2572,7 +2580,7 @@ async function runPreflight() {
     }
     try {
       const result = await preflightPageCandidates(candidates);
-      if (result?.report) return result.report;
+      if (result?.report && !pagePreflightHasUnprobedCandidates(result, candidates)) return result.report;
     } catch {
       // Fall through to the older per-resource preflight path.
     }
