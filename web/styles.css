@@ -3391,11 +3391,34 @@ button:disabled {
   background: #0f172a;
 }
 
+.media-preview-card video.media-seek-active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(16, 101, 199, 0.14);
+}
+
+.media-seek-dock {
+  max-width: 960px;
+  margin-bottom: 14px;
+}
+
+.media-seek-dock .media-preview-card {
+  margin-bottom: 0;
+}
+
 .media-preview-actions {
   grid-column: 1 / -1;
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.media-preview-actions > span {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 760;
 }
 
 .media-preview-actions a,
@@ -4378,6 +4401,39 @@ button:disabled {
 .diagnostics dt {
   color: var(--muted);
   font-variant-numeric: tabular-nums;
+}
+
+.time-seek,
+.window-seek,
+.checkpoint-seek,
+.question-seek {
+  min-width: 0;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  padding: 2px 5px;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+  cursor: pointer;
+}
+
+.time-seek:hover,
+.window-seek:hover,
+.checkpoint-seek:hover,
+.question-seek:hover,
+.time-seek.media-seek-active,
+.window-seek.media-seek-active,
+.checkpoint-seek.media-seek-active,
+.question-seek.media-seek-active {
+  border-color: rgba(16, 101, 199, 0.24);
+  background: #eaf2ff;
+  color: var(--accent);
+}
+
+.line .time-seek {
+  justify-self: start;
 }
 
 .transcript-timeline {

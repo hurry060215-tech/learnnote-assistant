@@ -11,6 +11,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - Richer BiliNote-style reading workspace with task search/filter, status counters, Markdown rendering, frame-grid preview, and failure recovery hints.
 - BiliNote-style task stage rail for download, transcription, frame slicing, note generation, and completion.
 - Transcript timeline view aligns each subtitle segment with its frame-grid visual window, so notes can be reviewed by time slice instead of as a flat transcript.
+- Web UI subtitle timestamps and visual-window checkpoints can seek the local `media.mp4` preview for time-anchored review.
 - Markdown note export from both the local Web UI and the browser Side Panel.
 - Study bundle export from both UIs: Markdown note, task metadata, transcript JSON, visual-window index, frame-grid screenshots, and a redacted machine-readable `manifest.json` in one zip.
 - Standalone manifest export from both UIs for the current task route, audit gates, media evidence, transcript/visual-window counts, and artifact list.
