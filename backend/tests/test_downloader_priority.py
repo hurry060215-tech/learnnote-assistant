@@ -266,6 +266,51 @@ class Html5VideoElementHandler(QuietHandler):
         super().do_GET()
 
 
+class IframePlayerShellHandler(QuietHandler):
+    media_body = b"\x00\x00\x00\x18ftypmp42" + (b"iframe-player-shell" * 512)
+    seen_shell_referer = ""
+    seen_media_referer = ""
+
+    def do_GET(self) -> None:
+        path = urlparse(self.path).path
+        if path == "/course/shell.html":
+            body = b"""
+            <!doctype html>
+            <html><body>
+              <iframe id="course-player" title="lesson video player" src="/frame.html?jobid=42"></iframe>
+            </body></html>
+            """
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        if path == "/frame.html":
+            type(self).seen_shell_referer = self.headers.get("Referer", "")
+            body = b"""
+            <!doctype html>
+            <html><body>
+              <script>window.__playInfo = {"videoUrl":"/media/lesson.mp4","mimeType":"video/mp4"};</script>
+            </body></html>
+            """
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        if path == "/media/lesson.mp4":
+            type(self).seen_media_referer = self.headers.get("Referer", "")
+            self.send_response(200)
+            self.send_header("Content-Type", "video/mp4")
+            self.send_header("Content-Length", str(len(self.media_body)))
+            self.end_headers()
+            self.wfile.write(self.media_body)
+            return
+        super().do_GET()
+
+
 class RedirectMediaHandler(QuietHandler):
     media_name = "final.mp4"
 
@@ -387,6 +432,41 @@ class DownloaderPriorityTests(unittest.TestCase):
                 self.assertEqual(downloader.attempts[0].strategy, "page-scan")
                 self.assertEqual(downloader.attempts[1].strategy, "direct-file")
                 self.assertEqual(downloader.attempts[1].status, "success")
+            finally:
+                server.shutdown()
+                server.server_close()
+
+    def test_page_scan_recurses_into_player_iframe_and_downloads_media(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            IframePlayerShellHandler.seen_shell_referer = ""
+            IframePlayerShellHandler.seen_media_referer = ""
+            server = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(IframePlayerShellHandler, directory=str(root)))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                shell_url = f"http://127.0.0.1:{server.server_port}/course/shell.html"
+                frame_url = f"http://127.0.0.1:{server.server_port}/frame.html?jobid=42"
+                media_url = f"http://127.0.0.1:{server.server_port}/media/lesson.mp4"
+                downloader = MediaDownloader(root / "task")
+                with patch.object(downloader, "_download_with_ytdlp") as ytdlp:
+                    media_path, selected = downloader.download(
+                        page_url=shell_url,
+                        resources=[],
+                        cookies=[],
+                        title="Iframe player",
+                    )
+
+                ytdlp.assert_not_called()
+                self.assertTrue(media_path.exists())
+                self.assertIsNotNone(selected)
+                self.assertEqual(selected.url, media_url)
+                self.assertEqual(selected.source, "page-scan")
+                self.assertEqual(selected.request_headers["Referer"], frame_url)
+                self.assertEqual(IframePlayerShellHandler.seen_shell_referer, shell_url)
+                self.assertEqual(IframePlayerShellHandler.seen_media_referer, frame_url)
+                self.assertEqual([attempt.strategy for attempt in downloader.attempts[:3]], ["page-scan", "page-scan", "direct-file"])
+                self.assertEqual(downloader.attempts[-1].status, "success")
             finally:
                 server.shutdown()
                 server.server_close()

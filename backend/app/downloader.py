@@ -48,6 +48,10 @@ TEXT_MEDIA_FIELD_RE = re.compile(
     r"(?P<key>[\"']?[A-Za-z_$][A-Za-z0-9_$.-]{0,79}[\"']?)\s*[:=]\s*[\"'](?P<url>(?:\\u[0-9a-fA-F]{4}|\\x[0-9a-fA-F]{2}|\\.|[^\"'<>\\\s]){4,})[\"']",
     re.I,
 )
+PLAYER_PAGE_HINT_RE = re.compile(
+    r"(player|play|video|media|vod|course|lesson|chapter|knowledge|clazz|job|mooc|ananas|xuexitong|chaoxing|study|viewer)",
+    re.I,
+)
 B64ISH_RE = re.compile(r"^[A-Za-z0-9+/_=-]{16,}$")
 MAX_PAGE_SCAN_BYTES = 2 * 1024 * 1024
 DIRECT_MEDIA_SUFFIXES = {".mp4", ".m4v", ".webm", ".mov", ".mkv", ".flv", ".avi"}
@@ -735,6 +739,7 @@ class _DeclaredMediaHTMLParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self.hints: list[tuple[str, str, str]] = []
+        self.page_hints: list[tuple[str, str, str]] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if len(self.hints) >= 80:
@@ -769,6 +774,20 @@ class _DeclaredMediaHTMLParser(HTMLParser):
             type_attr = values.get("type", "")
             if value and re.search(r"video/|audio/|mpegurl|dash\+xml|media|player|stream", f"{type_attr} {value}", re.I):
                 self.hints.append((value, f"{type_attr} embed media", "html embed src"))
+        elif tag in {"iframe", "frame"}:
+            value = values.get("src", "") or values.get("data-src", "") or values.get("data-url", "")
+            if not value:
+                return
+            hint = " ".join([
+                tag,
+                values.get("id", ""),
+                values.get("name", ""),
+                values.get("title", ""),
+                values.get("class", ""),
+                value,
+            ])
+            if PLAYER_PAGE_HINT_RE.search(hint):
+                self.page_hints.append((value, hint, f"html {tag} player page"))
         elif tag in {"video", "audio", "source", "track"}:
             value = values.get("src", "") or values.get("data-src", "") or values.get("data-url", "")
             type_attr = values.get("type", "")
@@ -822,6 +841,49 @@ def extract_declared_media_resources_from_html(
             seen.add(url)
             break
         if len(resources) >= 60:
+            break
+    return resources
+
+
+def extract_player_page_resources_from_html(
+    text: str,
+    base_url: str,
+    source: str = "page-frame-scan",
+    seen: set[str] | None = None,
+) -> list[ResourceCandidate]:
+    if not text or "<" not in text:
+        return []
+    parser = _DeclaredMediaHTMLParser()
+    try:
+        parser.feed((text or "")[:MAX_PAGE_SCAN_BYTES])
+    except Exception:
+        return []
+    resources: list[ResourceCandidate] = []
+    seen = seen if seen is not None else set()
+    for value, hint, label in parser.page_hints[:12]:
+        for raw_url in _decoded_media_values(value):
+            if not raw_url or raw_url.startswith(("javascript:", "data:", "blob:")):
+                continue
+            url = normalize_media_url(raw_url, base_url)
+            if not _is_http_url(url) or url in seen:
+                continue
+            if classify_resource(url) != "unknown":
+                continue
+            if not PLAYER_PAGE_HINT_RE.search(f"{hint} {url}"):
+                continue
+            resources.append(
+                ResourceCandidate(
+                    url=url,
+                    source=source,
+                    kind="unknown",
+                    score=24,
+                    label=label,
+                    page_url=base_url,
+                    frame_url=url,
+                    request_headers={"Referer": base_url},
+                )
+            )
+            seen.add(url)
             break
     return resources
 
@@ -1839,9 +1901,16 @@ class MediaDownloader:
         page_url: str,
         cookies: list[BrowserCookie],
         context_candidate: ResourceCandidate | None = None,
+        _depth: int = 0,
+        _seen_pages: set[str] | None = None,
     ) -> list[ResourceCandidate]:
         if not re.match(r"^https?://", page_url, re.I):
             return []
+        seen_pages = _seen_pages if _seen_pages is not None else set()
+        page_key = page_url.split("#", 1)[0]
+        if page_key in seen_pages:
+            return []
+        seen_pages.add(page_key)
         url_resources = extract_media_resources_from_text(page_url, page_url, "page-scan-url")
         context_headers = browser_request_headers_for_candidate(context_candidate)
         scan_referer = (
@@ -1868,7 +1937,7 @@ class MediaDownloader:
                 ),
             )
             for item in resources:
-                merged_headers = {**(item.request_headers or {}), **inherited}
+                merged_headers = {**inherited, **(item.request_headers or {})}
                 if not context_candidate or item.url != context_candidate.url:
                     merged_headers.pop("Content-Type", None)
                 item.request_headers = merged_headers
@@ -1946,6 +2015,14 @@ class MediaDownloader:
                         continue
                     seen.add(item.url)
                     resources.append(item)
+                frame_pages = extract_player_page_resources_from_html(text, base_url, "page-frame-scan", set(seen_pages))
+                if _depth < 2:
+                    for frame_page in frame_pages:
+                        for item in self._discover_page_resources(frame_page.url, cookies, frame_page, _depth + 1, seen_pages):
+                            if item.url in seen:
+                                continue
+                            seen.add(item.url)
+                            resources.append(item)
                 manifest_kind, manifest_mime = _manifest_kind_from_body(text, content_type)
                 if manifest_kind != "unknown" and not any(item.url == final_url for item in resources):
                     resources.insert(

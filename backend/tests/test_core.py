@@ -22,6 +22,7 @@ from app.downloader import (
     download_headers_for_candidate,
     effective_resource_kind,
     extract_media_resources_from_text,
+    extract_player_page_resources_from_html,
     fallback_page_urls,
     ffmpeg_cookies_option,
     infer_manifest_url_from_fragment,
@@ -477,6 +478,22 @@ class ResourceDetectionTests(unittest.TestCase):
         self.assertEqual(by_url["https://cdn.example.com/secure/payload.m3u8?token=payload"].label, "page scan")
         self.assertEqual(by_url["https://cdn.example.com/archive/payload.mp4?sig=ok"].kind, "video")
         self.assertEqual(by_url["https://cdn.example.com/archive/payload.mp4?sig=ok"].request_headers["Referer"], "https://course.example.com/player/index.html")
+
+    def test_page_scan_extracts_player_iframe_pages_for_recursive_scan(self) -> None:
+        resources = extract_player_page_resources_from_html(
+            """
+            <iframe id="course-player" title="lesson video player" src="/frame.html?jobid=42"></iframe>
+            <iframe src="/ads/banner.html"></iframe>
+            """,
+            "https://mooc1.chaoxing.com/lesson/shell.html",
+            "page-frame-scan",
+        )
+
+        self.assertEqual(len(resources), 1)
+        self.assertEqual(resources[0].url, "https://mooc1.chaoxing.com/frame.html?jobid=42")
+        self.assertEqual(resources[0].kind, "unknown")
+        self.assertEqual(resources[0].source, "page-frame-scan")
+        self.assertEqual(resources[0].request_headers["Referer"], "https://mooc1.chaoxing.com/lesson/shell.html")
 
     def test_page_scan_finds_chaoxing_style_media_fields(self) -> None:
         encoded_hls = "https%3A%2F%2Fcdn.example.com%2Fchaoxing%2Fmaster.m3u8%3Ftoken%3Dabc"

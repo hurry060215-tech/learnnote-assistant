@@ -25,6 +25,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - Manual URL tasks can explicitly force a pasted extensionless link to be treated as a video file, HLS manifest, or DASH manifest instead of only relying on suffix detection.
 - Manual URL tasks in the Web UI can preflight direct media links before task creation and can run download-only mode to save an exportable local `media.mp4` without transcription or summarization.
 - Iframe/player-page fallback: when the top course page is only a shell, the backend also tries the active frame URL, candidate page URL, Referer, and initiator as page-scan and yt-dlp fallback targets.
+- Backend player-iframe scan: when a manually pasted or browser-sent page only contains a course/player iframe, the backend follows that player frame with the page's browser context and scans it for mp4/FLV/HLS/DASH URLs before falling back to yt-dlp.
 - EME/DRM signal detection: the extension records `encrypted`, `setMediaKeys`, and `requestMediaKeySystemAccess` evidence so encrypted pages fail with a clear reason instead of pretending a normal direct URL was missed.
 - Cookie handoff from the current browser session to the local backend at task start.
 - Cookie handoff includes the top page, active media URL, player iframe URLs, candidate page/frame URLs, initiator, Referer, and Origin domains so iframe-based course players keep their browser session context.
@@ -52,6 +53,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - Extensionless browser media request capture: if Chrome reports a `webRequest` as `media`, the extension keeps it as a direct video candidate even when the URL is `/play?id=...` and the server only returns a generic MIME type.
 - Frame-aware context aggregation: the extension asks every reachable frame for page text, active video state, and media resources before ranking candidates.
 - Frame-aware fallback download: if the outer page cannot be resolved, backend page scanning and yt-dlp fallback are retried against the detected player iframe, candidate page URL, Referer, and request initiator.
+- Course-shell fallback: backend page scanning can now follow obvious player iframes from a shell page and reuse the iframe URL as Referer for media discovered inside that player page.
 - Dynamic SPA video detection through MutationObserver, media event binding, periodic rescans, and PerformanceObserver resource updates.
 - Cookie collection at task start/preflight for the page URL, active frame URLs, resolved/redirected media URLs, request initiators, and media domains. On browsers that expose partitioned-cookie APIs, the extension also asks the active tab/frame for the matching partition key before syncing cookies.
 - Browser-context download replay: direct media, subtitles, ffmpeg HLS/DASH merges, and yt-dlp page fallback reuse safe request headers plus the task-start cookie jar where applicable. Captured `Cookie` and `Authorization` headers are never replayed from request metadata; cookies are synced only through the explicit task/preflight handoff.
