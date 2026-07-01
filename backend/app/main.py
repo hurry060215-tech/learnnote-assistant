@@ -160,6 +160,21 @@ def _has_range_header(values: dict[str, str]) -> bool:
     return any(name.lower() == "range" for name in values)
 
 
+def mse_append_evidence(resource: ResourceCandidate | None) -> dict:
+    if not resource:
+        return {}
+    evidence = {
+        "append_count": resource.mse_append_count,
+        "append_bytes": resource.mse_append_bytes,
+        "append_total_bytes": resource.mse_append_total_bytes,
+        "append_magic": resource.mse_append_magic,
+        "append_mime": resource.mse_append_mime,
+        "append_detected_kind": resource.mse_append_detected_kind,
+        "blob_url": resource.blob_url,
+    }
+    return {key: value for key, value in evidence.items() if value not in (None, "")}
+
+
 def _format_cookie_summary(summary: dict) -> list[str]:
     if not summary or not summary.get("total"):
         return ["- Cookie：未同步或未匹配到当前页/媒体域 Cookie"]
@@ -375,6 +390,7 @@ def render_visual_windows_markdown(task: TaskRecord) -> str:
 
 def render_bundle_manifest(task: TaskRecord, transcript: dict, visual_index: dict) -> dict:
     selected = task.selected_resource
+    append_evidence = mse_append_evidence(selected)
     options_payload = task.options.model_dump(mode="json")
     if options_payload.get("llm_api_key"):
         options_payload["llm_api_key"] = "<redacted>"
@@ -428,6 +444,7 @@ def render_bundle_manifest(task: TaskRecord, transcript: dict, visual_index: dic
                 "method": selected.method if selected else "",
                 "status_code": selected.status_code if selected else None,
                 "content_length": selected.content_length if selected else None,
+                "mse_append_evidence": append_evidence,
                 "request_header_names": request_header_names,
                 "response_header_names": response_header_names,
             } if selected else None,
@@ -787,6 +804,7 @@ def task_reuse_evidence(task: TaskRecord) -> dict:
         "download_attempt_count": len(task.download_attempts),
         "selected_resource_url": task.selected_resource.url if task.selected_resource else "",
         "selected_resource_kind": task.selected_resource.kind if task.selected_resource else "",
+        "mse_append_evidence": mse_append_evidence(task.selected_resource),
         "frame_grid_count": len(task.frame_grids),
         "visual_window_count": len(task.visual_windows),
         "has_visual_slices": has_visual_slices,
@@ -916,6 +934,19 @@ def render_diagnostics_markdown(task: TaskRecord) -> str:
             f"- Content-Disposition：{selected.headers.get('content-disposition') or '-'}",
             f"- 可复用请求头名：{_safe_header_names(selected.request_headers)}",
         ])
+        append_evidence = mse_append_evidence(selected)
+        if append_evidence:
+            lines.extend([
+                "",
+                "### MSE Append Evidence",
+                f"- Append count: {append_evidence.get('append_count', '-')}",
+                f"- Last append bytes: {_format_bytes(append_evidence.get('append_bytes'))}",
+                f"- Total append bytes: {_format_bytes(append_evidence.get('append_total_bytes'))}",
+                f"- Magic: {append_evidence.get('append_magic', '-')}",
+                f"- Append MIME: {append_evidence.get('append_mime', '-')}",
+                f"- Detected kind: {append_evidence.get('append_detected_kind', '-')}",
+                f"- Blob URL: {append_evidence.get('blob_url', '-')}",
+            ])
     else:
         lines.append("- 未选择直接媒体资源，可能使用页面解析或 yt-dlp fallback。")
 

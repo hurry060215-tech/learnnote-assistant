@@ -419,6 +419,45 @@ class LocalUploadValidationTests(unittest.TestCase):
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
+    def test_bundle_manifest_and_diagnostics_include_mse_append_evidence(self) -> None:
+        task = create_task("current_page", "MSE blob lesson", "https://course.example.com/watch")
+        try:
+            task.selected_resource = ResourceCandidate(
+                url="blob:https://course.example.com/player-token",
+                kind="blob",
+                source="page-hook",
+                blob_url="blob:https://course.example.com/player-token",
+                mime="video/mp4",
+                mse_append_bytes=4096,
+                mse_append_total_bytes=10485760,
+                mse_append_count=37,
+                mse_append_magic="ftyp",
+                mse_append_mime="video/mp4",
+                mse_append_detected_kind="video",
+                request_headers={"Cookie": "session=secret", "Referer": "https://course.example.com/watch"},
+            )
+
+            manifest = render_bundle_manifest(task, {"segments": []}, {"windows": []})
+            diagnostics = render_diagnostics_markdown(task)
+            encoded = json.dumps(manifest, ensure_ascii=False)
+            evidence = manifest["source"]["selected_resource"]["mse_append_evidence"]
+
+            self.assertEqual(evidence["append_count"], 37)
+            self.assertEqual(evidence["append_bytes"], 4096)
+            self.assertEqual(evidence["append_total_bytes"], 10485760)
+            self.assertEqual(evidence["append_magic"], "ftyp")
+            self.assertEqual(evidence["append_mime"], "video/mp4")
+            self.assertEqual(evidence["append_detected_kind"], "video")
+            self.assertEqual(manifest["reuse"]["mse_append_evidence"], evidence)
+            self.assertIn("### MSE Append Evidence", diagnostics)
+            self.assertIn("Append count: 37", diagnostics)
+            self.assertIn("Magic: ftyp", diagnostics)
+            self.assertIn("Total append bytes: 10.0 MB", diagnostics)
+            self.assertNotIn("session=secret", encoded)
+            self.assertNotIn("session=secret", diagnostics)
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
     def test_visual_window_exports_include_per_window_vision_status(self) -> None:
         task = create_task("current_page", "Vision status lesson", "https://course.example.com/watch")
         try:
