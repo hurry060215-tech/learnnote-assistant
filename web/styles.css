@@ -1382,6 +1382,100 @@ select:focus {
   line-height: 1.45;
 }
 
+.url-preflight-report {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #c9d9ff;
+  border-radius: 8px;
+  background: #f7faff;
+  padding: 10px;
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.url-preflight-report[hidden] {
+  display: none;
+}
+
+.url-preflight-report.pass {
+  border-color: rgba(20, 150, 74, 0.3);
+  background: rgba(20, 150, 74, 0.07);
+}
+
+.url-preflight-report.fail {
+  border-color: rgba(196, 79, 67, 0.34);
+  background: rgba(196, 79, 67, 0.07);
+}
+
+.url-preflight-report.checking {
+  border-color: rgba(196, 122, 5, 0.32);
+  background: rgba(196, 122, 5, 0.08);
+}
+
+.url-preflight-report-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.url-preflight-report-head span {
+  border-radius: 999px;
+  background: var(--text);
+  color: #fff;
+  padding: 3px 8px;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.url-preflight-report.pass .url-preflight-report-head span {
+  background: var(--success);
+}
+
+.url-preflight-report.fail .url-preflight-report-head span {
+  background: var(--danger);
+}
+
+.url-preflight-report.checking .url-preflight-report-head span {
+  background: var(--warning);
+}
+
+.url-preflight-report-head strong {
+  min-width: 0;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 900;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.url-preflight-report-grid {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 5px 9px;
+}
+
+.url-preflight-report-grid span {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.url-preflight-report-grid b {
+  min-width: 0;
+  color: var(--text);
+  font-weight: 850;
+  overflow-wrap: anywhere;
+}
+
+.url-preflight-report p {
+  margin: 0;
+  color: var(--muted);
+  font-weight: 760;
+}
+
 .queue-stats {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

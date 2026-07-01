@@ -712,6 +712,37 @@ assert.match(failedNextStepHtml, /signed URL expired/);
 assert.match(failedNextStepHtml, /data-recovery-local/);
 assert.doesNotMatch(failedNextStepHtml, /<script>bad/);
 
+vm.runInContext(`
+page = {
+  page_url: "https://course.example.com/lesson",
+  page_text: "页面文本兜底",
+  browser_subtitles: []
+};
+`, context);
+const failedDirectChoiceHtml = context.nextStepHtml({
+  id: "side-failed-direct-choice",
+  source_type: "current_page",
+  page_url: "https://course.example.com/lesson",
+  status: "failed",
+  phase: "failed",
+  error_code: "download_forbidden",
+  error_detail: "<script>bad()</script> signed URL expired",
+  selected_resource: {
+    kind: "hls",
+    url: "https://cdn.example.com/live/master.m3u8",
+    source: "webRequest"
+  },
+  options: {}
+});
+assert.match(failedDirectChoiceHtml, /class="direct-failure-choices"/);
+assert.match(failedDirectChoiceHtml, /重新预检候选/);
+assert.match(failedDirectChoiceHtml, /data-route-action="preflight"/);
+assert.match(failedDirectChoiceHtml, /data-route-action="redetect"/);
+assert.match(failedDirectChoiceHtml, /data-route-action="local"/);
+assert.match(failedDirectChoiceHtml, /data-route-action="text"/);
+assert.match(failedDirectChoiceHtml, /只总结页面文本/);
+assert.doesNotMatch(failedDirectChoiceHtml, /<script>bad/);
+
 const coverageOverviewHtml = context.taskOverview({
   id: "side-coverage-overview",
   title: "侧栏切片覆盖",

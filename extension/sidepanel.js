@@ -3370,8 +3370,82 @@ function nextStepHtml(task) {
       <strong>${escapeHtml(title)}</strong>
       <small>${escapeHtml(detail)}</small>
     </div>
+    ${directFailureChoiceHtml(task)}
     <div class="next-step-actions">${actions.filter(Boolean).join("")}</div>
   </section>`;
+}
+
+function isFailedDirectPageTask(task) {
+  if (!task || task.status !== "failed") return false;
+  return task.source_type === "current_page" || task.mode === "download_only";
+}
+
+function taskHasTextFallbackOption(task) {
+  const diag = task?.summary_diagnostics || {};
+  if (task?.note_path || diag.used_page_text_fallback || diag.page_text_char_count || diag.browser_subtitle_count) return true;
+  if ((page?.page_text || "").trim()) return true;
+  return (page?.browser_subtitles || []).some(item => (item?.text || "").trim());
+}
+
+function directFailureChoiceItems(task) {
+  if (!isFailedDirectPageTask(task)) return [];
+  if (canContinueFromDownloadedMedia(task)) {
+    return [{
+      kind: "rerun",
+      action: task.id || "",
+      label: "继续切片总结",
+      detail: "已下载 media.mp4，复用本地视频继续转写、切片和图文总结。"
+    }];
+  }
+
+  const items = [];
+  if (task.selected_resource?.url) {
+    items.push({
+      kind: "route",
+      action: "preflight",
+      label: "重新预检候选",
+      detail: "先确认当前候选的签名、Referer 或 Cookie 是否已恢复。"
+    });
+  }
+  if (task.page_url || page?.page_url) {
+    items.push({
+      kind: "route",
+      action: "redetect",
+      label: "重新检测当前页",
+      detail: "回到课程页播放几秒后重读播放器和媒体请求。"
+    });
+  }
+  items.push({
+    kind: "route",
+    action: "local",
+    label: "上传本地视频",
+    detail: "直取仍失败时，改走同一套转写、切片和总结管线。"
+  });
+  if (taskHasTextFallbackOption(task)) {
+    items.push({
+      kind: "route",
+      action: "text",
+      label: "只总结页面文本",
+      detail: "用页面文本或浏览器字幕先生成可读笔记。"
+    });
+  }
+  return items;
+}
+
+function directFailureChoiceHtml(task) {
+  const items = directFailureChoiceItems(task);
+  if (!items.length) return "";
+  return `<div class="direct-failure-choices" aria-label="直取失败后的下一步选择">
+    ${items.map((item, index) => {
+      const attr = item.kind === "rerun"
+        ? `data-rerun-from-media="${escapeHtml(item.action)}"`
+        : `data-route-action="${escapeHtml(item.action)}"`;
+      return `<button type="button" class="${index === 0 ? "primary" : ""}" ${attr}>
+        <span>${escapeHtml(item.label)}</span>
+        <small>${escapeHtml(item.detail)}</small>
+      </button>`;
+    }).join("")}
+  </div>`;
 }
 
 function mediaPreviewHtml(task) {
@@ -3609,6 +3683,9 @@ function bindTaskOverviewActions() {
   });
   document.querySelectorAll("button[data-recovery-local]").forEach(button => {
     button.onclick = () => els.fileInput.click();
+  });
+  document.querySelectorAll("button[data-route-action]").forEach(button => {
+    button.onclick = () => handleRouteAction(button.dataset.routeAction);
   });
 }
 

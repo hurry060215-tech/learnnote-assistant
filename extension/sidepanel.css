@@ -2817,6 +2817,57 @@ input[type="file"] {
   color: #fff;
 }
 
+.direct-failure-choices {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 6px;
+}
+
+.direct-failure-choices button {
+  min-width: 0;
+  min-height: 58px;
+  display: grid;
+  gap: 4px;
+  align-content: start;
+  border: 1px solid #d7e2f2;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 8px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.direct-failure-choices button.primary {
+  border-color: rgba(20, 99, 255, 0.42);
+  background: #f1f6ff;
+}
+
+.direct-failure-choices button:hover {
+  border-color: var(--accent);
+  background: #f6faff;
+}
+
+.direct-failure-choices span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.direct-failure-choices small {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
 .media-preview-card {
   display: grid;
   gap: 8px;

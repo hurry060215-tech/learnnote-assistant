@@ -481,6 +481,7 @@ def render_bundle_manifest(task: TaskRecord, transcript: dict, visual_index: dic
         },
         "audit": task_audit_summary(task),
         "recovery": diagnostic_recovery_profile(task),
+        "reuse": task_reuse_evidence(task),
     }
 
 
@@ -757,10 +758,49 @@ def task_audit_summary(task: TaskRecord) -> dict:
     }
 
 
+def task_reuse_evidence(task: TaskRecord) -> dict:
+    browser_subtitle_count = len(task.browser_subtitles or [])
+    browser_subtitle_span = 0.0
+    if task.browser_subtitles:
+        starts = [cue.start for cue in task.browser_subtitles]
+        ends = [cue.end for cue in task.browser_subtitles]
+        browser_subtitle_span = max(0.0, max(ends) - min(starts))
+
+    has_visual_slices = bool(task.frame_grids or task.visual_windows)
+    media_available = bool(task.media_path)
+    is_download_only = task.mode == "download_only"
+    rerun_ready = media_available and not has_visual_slices
+    if rerun_ready:
+        suggested_next_step = "rerun_from_media"
+    elif has_visual_slices:
+        suggested_next_step = "review_visual_windows"
+    elif media_available:
+        suggested_next_step = "inspect_media"
+    else:
+        suggested_next_step = "download_media"
+
+    return {
+        "media_available": media_available,
+        "media_path_recorded": task.media_path,
+        "browser_subtitle_count": browser_subtitle_count,
+        "browser_subtitle_span_seconds": round(browser_subtitle_span, 3),
+        "download_attempt_count": len(task.download_attempts),
+        "selected_resource_url": task.selected_resource.url if task.selected_resource else "",
+        "selected_resource_kind": task.selected_resource.kind if task.selected_resource else "",
+        "frame_grid_count": len(task.frame_grids),
+        "visual_window_count": len(task.visual_windows),
+        "has_visual_slices": has_visual_slices,
+        "download_only": is_download_only,
+        "rerun_from_media_ready": rerun_ready,
+        "suggested_next_step": suggested_next_step,
+    }
+
+
 def task_payload(task: TaskRecord) -> dict:
     payload = task.model_dump(mode="json")
     payload["audit"] = task_audit_summary(task)
     payload["recovery"] = diagnostic_recovery_profile(task)
+    payload["reuse"] = task_reuse_evidence(task)
     return payload
 
 
@@ -939,6 +979,17 @@ def render_diagnostics_markdown(task: TaskRecord) -> str:
     ])
     for gate in audit["gates"]:
         lines.append(f"- {gate['key']}: {gate['state']} / {gate['value']} / {gate['detail']}")
+
+    reuse = task_reuse_evidence(task)
+    lines.extend([
+        "",
+        "## Reuse Evidence",
+        f"- Media available: {'yes' if reuse['media_available'] else 'no'}",
+        f"- Browser subtitles: {reuse['browser_subtitle_count']} cues / {reuse['browser_subtitle_span_seconds']}s",
+        f"- Visual slices: {reuse['frame_grid_count']} frame grids / {reuse['visual_window_count']} windows",
+        f"- Rerun from media ready: {'yes' if reuse['rerun_from_media_ready'] else 'no'}",
+        f"- Suggested next step: {reuse['suggested_next_step']}",
+    ])
 
     lines.extend([
         "",

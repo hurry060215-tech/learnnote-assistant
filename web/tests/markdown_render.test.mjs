@@ -172,6 +172,7 @@ assert.match(elements.get("#sourceWorkflow").innerHTML, /学习生产线|当前�
 assert.match(elements.get("#sourceWorkflow").innerHTML, /读取当前页/);
 assert.match(elements.get("#sourceWorkflow").innerHTML, /预检资源/);
 assert.match(indexHtml, /id="toggleWorkspaceButton"/);
+assert.match(indexHtml, /id="urlPreflightReport"/);
 assert.equal(documentStub.body.classList.contains("workspace-collapsed"), false);
 elements.get("#toggleWorkspaceButton").onclick();
 assert.equal(documentStub.body.classList.contains("workspace-collapsed"), true);
@@ -1397,6 +1398,7 @@ context.fetch = async (url, options = {}) => {
         preflight: preflightDownloadable ? {
           ok: true,
           downloadable: true,
+          strategy: "direct-response-probe",
           kind: "hls",
           resolved_url: "https://cdn.example.com/archive/master.m3u8",
           content_type: "application/vnd.apple.mpegurl",
@@ -1473,6 +1475,14 @@ assert.equal(preflights[0].resource.url, "https://cdn.example.com/archive/lesson
 assert.match(elements.get("#urlModeHint").textContent, /预检通过/);
 assert.match(elements.get("#urlModeHint").textContent, /120\.6 KB/);
 assert.match(elements.get("#urlModeHint").textContent, /目标：https:\/\/cdn\.example\.com\/archive\/master\.m3u8/);
+assert.equal(elements.get("#urlPreflightReport").hidden, false);
+assert.match(elements.get("#urlPreflightReport").className, /pass/);
+assert.match(elements.get("#urlPreflightReport").innerHTML, /可直取/);
+assert.match(elements.get("#urlPreflightReport").innerHTML, /HLS/);
+assert.match(elements.get("#urlPreflightReport").innerHTML, /直连响应探测/);
+assert.match(elements.get("#urlPreflightReport").innerHTML, /206/);
+assert.match(elements.get("#urlPreflightReport").innerHTML, /120\.6 KB/);
+assert.match(elements.get("#urlPreflightReport").innerHTML, /master\.m3u8/);
 assert.equal(elements.get("#preflightUrlButton").disabled, false);
 
 await context.startUrlTask("video");
@@ -1492,6 +1502,10 @@ await context.preflightUrlTask();
 assert.equal(preflights.length, 2);
 assert.match(elements.get("#urlModeHint").textContent, /预检未通过/);
 assert.match(elements.get("#urlModeHint").textContent, /HTTP 403/);
+assert.match(elements.get("#urlPreflightReport").className, /fail/);
+assert.match(elements.get("#urlPreflightReport").innerHTML, /未通过/);
+assert.match(elements.get("#urlPreflightReport").innerHTML, /HTTP 403/);
+assert.doesNotMatch(elements.get("#urlPreflightReport").innerHTML, /master\.m3u8/);
 
 const localUploads = [];
 const droppedFile = { name: "drag-local-lesson.mkv", type: "", size: 456789 };
