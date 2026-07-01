@@ -126,6 +126,7 @@ context.window.navigator = context.navigator;
 vm.createContext(context);
 const webCode = await readFile(new URL("../app.js", import.meta.url), "utf8");
 const indexHtml = await readFile(new URL("../index.html", import.meta.url), "utf8");
+const stylesCss = await readFile(new URL("../styles.css", import.meta.url), "utf8");
 vm.runInContext(webCode, context);
 
 await new Promise(resolve => setTimeout(resolve, 0));
@@ -140,6 +141,8 @@ assert.equal(context.resolveApiBase(
   { protocol: "http:", hostname: "127.0.0.1", port: "8878" },
   { getItem: () => "http://localhost:9000/" }
 ), "http://localhost:9000");
+assert.match(stylesCss, /@media \(max-width: 900px\)[\s\S]*body\s*\{[\s\S]*min-width:\s*0;[\s\S]*overflow-x:\s*hidden;/);
+assert.match(stylesCss, /@media \(max-width: 900px\)[\s\S]*\.app-shell,[\s\S]*max-width:\s*100vw;/);
 assert.equal(elements.get("#browserBridgeStatus").classList.contains("capture-status-grid"), true);
 assert.match(elements.get("#browserBridgeStatus").innerHTML, /capture-status-chip bridge/);
 assert.match(elements.get("#browserBridgeStatus").innerHTML, /需 Chrome\/Edge 扩展侧栏/);
