@@ -1703,6 +1703,12 @@ small,
   color: var(--danger);
 }
 
+.resource-hint.capture-log {
+  border-color: rgba(16, 101, 199, 0.24);
+  background: #eef6ff;
+  color: #0f4f9f;
+}
+
 .no-resource-guide {
   display: grid;
   gap: 11px;

@@ -10,6 +10,8 @@ const requestHeadersByRequestId = new Map();
 const requestBodiesByRequestId = new Map();
 const contextUpdateTimers = new Map();
 const MAX_REQUEST_BODY_BYTES = 64 * 1024;
+const MAX_CAPTURE_LOG_RESOURCES = 120;
+const CAPTURE_LOG_KEY_PREFIX = "captureLog:";
 const REQUEST_HEADER_ALLOWLIST = new Set([
   "accept",
   "accept-language",
@@ -45,6 +47,7 @@ const REQUEST_HEADER_CANONICAL = {
   "user-agent": "User-Agent",
   "x-requested-with": "X-Requested-With"
 };
+const PERSISTED_REQUEST_HEADER_DENYLIST = new Set(["authorization", "cookie", "proxy-authorization"]);
 
 function classify(url, mime = "") {
   const lower = url.toLowerCase();
@@ -496,6 +499,114 @@ function mergeResource(previous, incoming) {
   return merged;
 }
 
+function captureLogStorageKey(tabId) {
+  return `${CAPTURE_LOG_KEY_PREFIX}${tabId}`;
+}
+
+function safePersistedRequestHeaders(headers = {}) {
+  const safe = {};
+  for (const [name, value] of Object.entries(headers || {})) {
+    const lower = String(name || "").toLowerCase();
+    if (PERSISTED_REQUEST_HEADER_DENYLIST.has(lower)) continue;
+    const cleaned = String(value || "").replace(/[\r\n]+/g, " ").trim();
+    if (cleaned) safe[name] = cleaned.slice(0, 512);
+  }
+  return safe;
+}
+
+function captureLogResource(resource = {}) {
+  if (!resource?.url || isLocalLearnNoteTaskFile(resource.url)) return null;
+  return {
+    url: String(resource.url || ""),
+    source: resource.source || "unknown",
+    kind: resource.kind || classify(resource.url || "", resource.mime || ""),
+    mime: resource.mime || "",
+    score: Number(resource.score || 0),
+    label: resource.label || "",
+    is_main_video: Boolean(resource.is_main_video),
+    playback_match: resource.playback_match || "",
+    blob_url: resource.blob_url || "",
+    frame_url: resource.frame_url || "",
+    page_url: resource.page_url || "",
+    tab_id: resource.tab_id ?? null,
+    frame_id: resource.frame_id ?? null,
+    current_time: resource.current_time ?? null,
+    duration: resource.duration ?? null,
+    width: resource.width ?? null,
+    height: resource.height ?? null,
+    request_type: resource.request_type || "",
+    method: resource.method || "",
+    status_code: resource.status_code ?? null,
+    content_length: resource.content_length ?? null,
+    mse_append_bytes: resource.mse_append_bytes ?? null,
+    mse_append_total_bytes: resource.mse_append_total_bytes ?? null,
+    mse_append_count: resource.mse_append_count ?? null,
+    mse_append_magic: resource.mse_append_magic || "",
+    mse_append_mime: resource.mse_append_mime || "",
+    mse_append_detected_kind: resource.mse_append_detected_kind || "",
+    resolved_url: resource.resolved_url || "",
+    initiator: resource.initiator || "",
+    time_stamp: resource.time_stamp ?? Date.now(),
+    headers: resource.headers || {},
+    request_headers: safePersistedRequestHeaders(resource.request_headers || {}),
+    request_body: {}
+  };
+}
+
+async function loadCaptureLog(tabId) {
+  if (!chrome.storage?.local?.get || tabId === undefined || tabId < 0) return { resources: [], updated_at: 0 };
+  try {
+    const key = captureLogStorageKey(tabId);
+    const data = await chrome.storage.local.get({ [key]: null });
+    const log = data?.[key] || {};
+    return {
+      resources: Array.isArray(log.resources) ? log.resources : [],
+      updated_at: Number(log.updated_at || 0)
+    };
+  } catch {
+    return { resources: [], updated_at: 0 };
+  }
+}
+
+function persistCaptureResource(tabId, resource = {}) {
+  if (!chrome.storage?.local?.get || !chrome.storage?.local?.set || tabId === undefined || tabId < 0) return;
+  const persisted = captureLogResource(resource);
+  if (!persisted) return;
+  (async () => {
+    try {
+      const key = captureLogStorageKey(tabId);
+      const data = await chrome.storage.local.get({ [key]: null });
+      const existing = Array.isArray(data?.[key]?.resources) ? data[key].resources : [];
+      const merged = mergeAndRankResources([persisted, ...existing], {}, {}, { preserveOrder: false }).slice(0, MAX_CAPTURE_LOG_RESOURCES);
+      await chrome.storage.local.set({
+        [key]: {
+          tab_id: tabId,
+          updated_at: Date.now(),
+          resources: merged
+        }
+      });
+    } catch {
+      // Storage is a recovery cache only; live capture remains in memory.
+    }
+  })();
+}
+
+function clearCaptureLog(tabId) {
+  if (!chrome.storage?.local || tabId === undefined || tabId < 0) return;
+  const key = captureLogStorageKey(tabId);
+  try {
+    if (chrome.storage.local.remove) {
+      const removed = chrome.storage.local.remove(key);
+      if (removed?.catch) removed.catch(() => {});
+    } else if (chrome.storage.local.set) {
+      const cleared = chrome.storage.local.set({ [key]: null });
+      if (cleared?.catch) cleared.catch(() => {});
+    }
+  } catch {
+    // Best effort cleanup.
+  }
+}
+
 function notifyContextUpdated(tabId, reason = "media") {
   if (tabId < 0 || typeof setTimeout !== "function" || typeof clearTimeout !== "function") return;
   const previous = contextUpdateTimers.get(tabId);
@@ -836,6 +947,7 @@ function addResource(tabId, resource, notify = true) {
     list.unshift(normalized);
   }
   resourceByTab.set(tabId, list.slice(0, 80));
+  persistCaptureResource(tabId, normalized);
 
   const inferredUrl = inferManifestUrl(normalized.url);
   if (inferredUrl && inferredUrl !== normalized.url) {
@@ -1050,6 +1162,7 @@ chrome.webRequest.onErrorOccurred.addListener(
 chrome.tabs.onRemoved.addListener(tabId => {
   resourceByTab.delete(tabId);
   pageStateByTab.delete(tabId);
+  clearCaptureLog(tabId);
   const timer = contextUpdateTimers.get(tabId);
   if (timer) clearTimeout(timer);
   contextUpdateTimers.delete(tabId);
@@ -1063,6 +1176,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
   if (changeInfo.status === "loading" || changeInfo.url) {
     resourceByTab.delete(tabId);
     pageStateByTab.delete(tabId);
+    clearCaptureLog(tabId);
     const timer = contextUpdateTimers.get(tabId);
     if (timer) clearTimeout(timer);
     contextUpdateTimers.delete(tabId);
@@ -1284,8 +1398,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const tab = await tabForMessage(message);
       const page = await collectPageData(tab);
       const activePage = page;
-      const resources = mergeAndRankResources([...(page.resources || []), ...(resourceByTab.get(tab.id) || [])], activePage, tab).slice(0, 30);
-      sendResponse({ tab, page: activePage, resources });
+      const captureLog = await loadCaptureLog(tab.id);
+      const resources = mergeAndRankResources([
+        ...(page.resources || []),
+        ...(resourceByTab.get(tab.id) || []),
+        ...(captureLog.resources || [])
+      ], activePage, tab).slice(0, 30);
+      sendResponse({
+        tab,
+        page: activePage,
+        resources,
+        capture_log: {
+          total: captureLog.resources.length,
+          restored: captureLog.resources.length,
+          updated_at: captureLog.updated_at
+        }
+      });
       return;
     }
 

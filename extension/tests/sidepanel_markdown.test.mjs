@@ -86,6 +86,11 @@ assert.match(elements.get("#backendStatus").innerHTML, /backend-status-chip medi
 assert.match(elements.get("#backendStatus").innerHTML, /gpt-4\.1-mini/);
 assert.match(elements.get("#backendStatus").title, /视觉模型/);
 
+vm.runInContext("captureLog = { restored: 3, updated_at: Date.now() - 45000 }", context);
+const captureHint = context.captureLogHintHtml();
+assert.match(captureHint, /Network 捕获缓存已合并 3 条候选/);
+assert.match(captureHint, /45s ago/);
+
 const html = context.markdownToHtml(`# 标题
 
 - **重点** \`code\`

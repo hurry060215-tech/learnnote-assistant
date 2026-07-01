@@ -8,6 +8,17 @@ function listener() {
 
 const cookieLookups = [];
 const partitionKeyLookups = [];
+const storageData = {};
+const storageWrites = [];
+const storageRemovals = [];
+
+async function waitForStorageKey(key) {
+  for (let index = 0; index < 10; index += 1) {
+    if (storageData[key]) return storageData[key];
+    await new Promise(resolve => setTimeout(resolve, 0));
+  }
+  return storageData[key];
+}
 
 const context = {
   console,
@@ -33,6 +44,27 @@ const context = {
     webNavigation: { getAllFrames() {} },
     sidePanel: { open() {} },
     scripting: { executeScript() {} },
+    storage: {
+      local: {
+        async get(defaults = {}) {
+          const result = { ...defaults };
+          for (const key of Object.keys(defaults || {})) {
+            if (Object.prototype.hasOwnProperty.call(storageData, key)) {
+              result[key] = storageData[key];
+            }
+          }
+          return result;
+        },
+        async set(value) {
+          Object.assign(storageData, value);
+          storageWrites.push(value);
+        },
+        async remove(key) {
+          storageRemovals.push(key);
+          delete storageData[key];
+        }
+      }
+    },
     cookies: {
       async getPartitionKey(details) {
         partitionKeyLookups.push(details);
@@ -832,6 +864,40 @@ assert.equal(guessedManifest.kind, "hls");
 assert.equal(guessedManifest.playback_match, "inferred-from-fragment");
 assert.equal(guessedManifest.request_headers.Referer, "https://course.example.com/lesson");
 assert.ok(guessedManifest.score <= 72, "manifest guesses must stay below verified direct candidates");
+
+context.addResource(222, {
+  url: "https://media.cdn.example.com/hls/master.m3u8?token=abc",
+  source: "webRequest",
+  kind: "hls",
+  mime: "application/vnd.apple.mpegurl",
+  score: 96,
+  request_headers: {
+    Referer: "https://course.example.com/lesson",
+    Origin: "https://course.example.com",
+    Authorization: "Bearer secret-token",
+    Cookie: "sid=secret"
+  },
+  request_body: {
+    type: "form",
+    content: "token=secret"
+  }
+}, false);
+const captureKey = context.captureLogStorageKey(222);
+const persistedCaptureLog = await waitForStorageKey(captureKey);
+assert.ok(persistedCaptureLog, "expected media candidates to persist into the per-tab capture cache");
+assert.equal(storageWrites.length > 0, true);
+assert.equal(persistedCaptureLog.resources[0].url, "https://media.cdn.example.com/hls/master.m3u8?token=abc");
+assert.equal(persistedCaptureLog.resources[0].request_headers.Referer, "https://course.example.com/lesson");
+assert.equal(persistedCaptureLog.resources[0].request_headers.Origin, "https://course.example.com");
+assert.equal(persistedCaptureLog.resources[0].request_headers.Authorization, undefined);
+assert.equal(persistedCaptureLog.resources[0].request_headers.Cookie, undefined);
+assert.equal(Object.keys(persistedCaptureLog.resources[0].request_body || {}).length, 0);
+const loadedCaptureLog = await context.loadCaptureLog(222);
+assert.equal(loadedCaptureLog.resources.length, 1);
+context.clearCaptureLog(222);
+await Promise.resolve();
+assert.equal(storageData[captureKey], undefined);
+assert.deepEqual(storageRemovals, [captureKey]);
 
 const cookieUrls = context.cookieUrlsForContext(
   {

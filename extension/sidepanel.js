@@ -48,6 +48,7 @@ const ONE_CLICK_RESOURCE_WAIT_DELAY_MS = 900;
 let backendUrl = DEFAULT_BACKEND;
 let page = null;
 let resources = [];
+let captureLog = { total: 0, restored: 0, updated_at: 0 };
 let selectedResourceUrl = "";
 let resourceSelectionPinned = false;
 let resourceFilter = "all";
@@ -1975,6 +1976,15 @@ function resourceHint() {
   return "";
 }
 
+function captureLogHintHtml() {
+  const restored = Number(captureLog?.restored || 0);
+  if (!restored) return "";
+  const updated = Number(captureLog?.updated_at || 0);
+  const age = updated ? Math.max(0, Math.round((Date.now() - updated) / 1000)) : 0;
+  const ageText = updated ? ` · ${age < 60 ? `${age}s` : `${Math.round(age / 60)}m`} ago` : "";
+  return `<p class="resource-hint capture-log">Network 捕获缓存已合并 ${escapeHtml(restored)} 条候选${escapeHtml(ageText)}；继续播放后可重新检测刷新。</p>`;
+}
+
 function noResourceGuideHtml() {
   const drmDetected = page?.drm_detected || page?.active_video?.drm_detected;
   const activeStream = activeSrcObjectOnly(page?.active_video);
@@ -2152,10 +2162,12 @@ function routeSummaryCopy(state) {
 function routeSummaryMetrics() {
   const selected = selectedResource();
   const checked = currentPreflight();
+  const restored = Number(captureLog?.restored || 0);
   return [
     { label: "候选", value: `${resources.filter(isDownloadableResource).length}/${resources.length}` },
     { label: "选中", value: selected?.kind || "-" },
     { label: "预检", value: checked ? checked.downloadable ? "通过" : checked.code || "未过" : "未跑" },
+    { label: "捕获", value: restored ? `${restored} 缓存` : "实时" },
     { label: "切片", value: visualPlanText() }
   ];
 }
@@ -2517,6 +2529,7 @@ async function collectContextNow() {
       frames: []
     };
     resources = [];
+    captureLog = { total: 0, restored: 0, updated_at: 0 };
     selectedResourceUrl = "";
     renderContext();
     return true;
@@ -2536,6 +2549,7 @@ async function collectContextNow() {
   currentTabId = response.tab?.id ?? null;
   page = response.page;
   resources = response.resources || [];
+  captureLog = response.capture_log || { total: 0, restored: 0, updated_at: 0 };
   if (selectedResourceUrl && !resources.some(item => item.url === selectedResourceUrl)) {
     resourceSelectionPinned = false;
   }
@@ -2604,7 +2618,7 @@ function renderContext() {
   renderRouteSummary();
   renderExtractionPlan();
   if (!resources.length) {
-    els.resources.innerHTML = `${resourceHint()}${noResourceGuideHtml()}`;
+    els.resources.innerHTML = `${captureLogHintHtml()}${resourceHint()}${noResourceGuideHtml()}`;
     renderInspector();
     return;
   }
@@ -2618,7 +2632,7 @@ function renderContext() {
     <small>切回“全部”查看当前页已捕获的资源，或继续播放几秒后重新检测。</small>
     <button type="button" data-resource-filter="all">查看全部</button>
   </section>`;
-  els.resources.innerHTML = `${resourceHint()}${resourceAttemptQueueHtml()}${preflightAuditSummaryHtml()}${resourceFilterBarHtml()}${emptyFilterHtml}${visibleResources.map(item => `
+  els.resources.innerHTML = `${captureLogHintHtml()}${resourceHint()}${resourceAttemptQueueHtml()}${preflightAuditSummaryHtml()}${resourceFilterBarHtml()}${emptyFilterHtml}${visibleResources.map(item => `
     <button class="resource ${item.url === selectedResourceUrl ? "selected" : ""} ${isDownloadableResource(item) ? "" : "non-downloadable"} ${item.playback_match || item.is_main_video ? "playback" : ""}" data-url="${escapeHtml(item.url)}">
       <span>
         <strong>${escapeHtml(item.label || item.kind || "media")}</strong>
