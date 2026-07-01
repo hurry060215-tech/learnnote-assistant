@@ -1737,7 +1737,10 @@ function workbenchSecondaryActions(state) {
   if (hasSelected && state !== "blocked") actions.push(["download", "只下载"]);
   actions.push(["local", "本地视频"]);
   if (hasPageTextFallback()) actions.push(["text", "页面文本"]);
-  return actions.slice(0, 5);
+  const fallbackVisible = shouldShowWorkbenchFallback(state);
+  return actions
+    .filter(([action]) => fallbackVisible || !["local", "text"].includes(action))
+    .slice(0, 5);
 }
 
 function preflightStatusTag(result = null) {
@@ -1847,6 +1850,10 @@ function workbenchLocalFallbackHtml(state) {
   </div>`;
 }
 
+function shouldShowWorkbenchFallback(state) {
+  return !selectedResource() || ["blocked", "fallback", "mapping", "waiting", "empty"].includes(state);
+}
+
 function renderCurrentStudyCard() {
   if (!els.currentStudyCard) return;
   const state = currentStudyState();
@@ -1867,7 +1874,7 @@ function renderCurrentStudyCard() {
     </div>
     ${workbenchRouteHtml()}
     ${workbenchSlicePlanHtml()}
-    ${workbenchLocalFallbackHtml(state)}
+    ${shouldShowWorkbenchFallback(state) ? workbenchLocalFallbackHtml(state) : ""}
     <div class="workbench-steps">
       ${workbenchStepItems(state).map((item, index) => `<section class="${escapeHtml(item.state)}">
         <i>${index + 1}</i>
