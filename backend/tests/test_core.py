@@ -2064,6 +2064,18 @@ class SummaryFallbackTests(unittest.TestCase):
         self.assertIn("![W001 00:00:00 - 00:00:20](http://127.0.0.1/grid.jpg)", note)
         self.assertIn("复习问题", note)
 
+    def test_local_note_uses_note_template_option(self) -> None:
+        transcript = TranscriptResult(
+            source="unit",
+            full_text="question based review",
+            segments=[TranscriptSegment(start=1, end=3, text="question based review")],
+        )
+
+        note = local_markdown_note("Template lesson", transcript, [], "https://course.example", TaskOptions(note_template="qa"))
+
+        self.assertIn("\u7b14\u8bb0\u683c\u5f0f", note)
+        self.assertIn("\u95ee\u7b54\u590d\u4e60\u6a21\u677f", note)
+
     def test_summary_diagnostics_report_local_fallback_without_api_key(self) -> None:
         transcript = TranscriptResult(
             source="unit",
@@ -2220,7 +2232,7 @@ class SummaryFallbackTests(unittest.TestCase):
                 segments=[TranscriptSegment(start=index * 180, end=index * 180 + 30, text=f"segment {index}") for index in range(9)],
             )
             with patch.dict(sys.modules, {"openai": fake_openai}):
-                note, source = summarize_with_llm("Long lesson", transcript, grids, TaskOptions(llm_api_key="test-key"), "https://course.example")
+                note, source = summarize_with_llm("Long lesson", transcript, grids, TaskOptions(llm_api_key="test-key", note_template="cornell"), "https://course.example")
 
         self.assertEqual(source, "vision-llm")
         self.assertTrue(note.startswith("merged note"))
@@ -2248,6 +2260,8 @@ class SummaryFallbackTests(unittest.TestCase):
         self.assertEqual(first_content[4]["type"], "image_url")
         merge_content = completions.calls[3]["messages"][0]["content"]
         self.assertIn("画面索引清单", merge_content)
+        self.assertIn("cornell", merge_content)
+        self.assertIn("\u5eb7\u5948\u5c14\u6a21\u677f", merge_content)
         self.assertIn("W001 `00:00:00 - 00:03:00`", merge_content)
         self.assertIn("W009 `00:24:00 - 00:27:00`", merge_content)
         self.assertIn("http://127.0.0.1/grid_8.jpg", merge_content)

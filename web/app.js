@@ -120,6 +120,7 @@ const els = {
   transcriber: document.querySelector("#transcriber"),
   whisperModel: document.querySelector("#whisperModel"),
   noteStyle: document.querySelector("#noteStyle"),
+  noteTemplate: document.querySelector("#noteTemplate"),
   summaryDepth: document.querySelector("#summaryDepth"),
   llmProvider: document.querySelector("#llmProvider"),
   llmModel: document.querySelector("#llmModel"),
@@ -1184,6 +1185,7 @@ function optionText(task) {
     options.grid_columns && options.grid_rows ? `${options.grid_columns}x${options.grid_rows} 画面网格` : "",
     asrOptionText(options),
     options.note_style ? `风格 ${options.note_style}` : "",
+    options.note_template ? `格式 ${options.note_template}` : "",
     options.visual_understanding === false ? "未开启视觉理解" : "视觉理解"
   ].filter(Boolean).join(" · ");
 }
@@ -1387,7 +1389,7 @@ function currentOptionSummaryItems() {
       transcriber: els.transcriber?.value || "faster-whisper",
       whisper_model: els.whisperModel?.value || "small"
     }),
-    `${els.noteStyle?.value || "study"} · ${els.summaryDepth?.value || "standard"}`
+    `${els.noteStyle?.value || "study"} · ${els.noteTemplate?.value || "standard"} · ${els.summaryDepth?.value || "standard"}`
   ];
 }
 
@@ -1427,6 +1429,7 @@ function readOptions() {
     transcriber: els.transcriber?.value || "faster-whisper",
     whisper_model: els.whisperModel.value || "small",
     note_style: els.noteStyle.value || "study",
+    note_template: els.noteTemplate?.value || "standard",
     summary_depth: els.summaryDepth.value || "standard"
   };
   const llmModel = els.llmModel.value.trim();
@@ -1900,7 +1903,7 @@ function taskBrief(task) {
     <span><b>${escapeHtml(statusText(task))}</b>${escapeHtml(task.phase || "-")} · ${task.progress || 0}%</span>
     <span><b>${escapeHtml(sourceText(task))}</b>${escapeHtml(selected.kind || task.source_type || "-")}</span>
     <span><b>${escapeHtml(options.frame_interval || "-")} 秒切片</b>${escapeHtml(options.grid_columns && options.grid_rows ? `${options.grid_columns}x${options.grid_rows} 视觉窗口` : "未配置视觉窗口")}</span>
-    <span><b>${escapeHtml(task.summary_source || asrOptionText(options))}</b>${escapeHtml(task.summary_warning ? "已降级，详见诊断" : `${options.note_style || "study"} · ${options.visual_understanding === false ? "无视觉" : "图文"}`)}</span>
+    <span><b>${escapeHtml(task.summary_source || asrOptionText(options))}</b>${escapeHtml(task.summary_warning ? "已降级，详见诊断" : `${options.note_style || "study"} · ${options.note_template || "standard"} · ${options.visual_understanding === false ? "无视觉" : "图文"}`)}</span>
   </div>`;
 }
 
@@ -2187,7 +2190,7 @@ function pipelineAuditItems(task) {
       state: summaryState,
       value: hasNote ? (task?.summary_source || "笔记完成") : task?.phase === "summarizing" ? "总结中" : task?.error_code || "待总结",
       detail: hasNote
-        ? (task?.summary_warning || `${task?.options?.note_style || "study"} · ${task?.options?.summary_depth || "standard"}`)
+        ? (task?.summary_warning || `${task?.options?.note_style || "study"} · ${task?.options?.note_template || "standard"} · ${task?.options?.summary_depth || "standard"}`)
         : "等待字幕与视觉窗口汇总"
     }
   ];
@@ -2383,7 +2386,7 @@ function taskOverview(task) {
     <div class="task-overview-metrics">
       <span><b>${escapeHtml(statusText(task))}</b>${escapeHtml(task.phase || "-")} · ${task.progress || 0}%</span>
       <span><b>${escapeHtml(options.frame_interval || "-")} 秒切片</b>${escapeHtml(options.grid_columns && options.grid_rows ? `${options.grid_columns}x${options.grid_rows} 视觉窗口` : "未配置视觉窗口")}</span>
-      <span><b>${escapeHtml(task.summary_source || asrOptionText(options))}</b>${escapeHtml(task.summary_warning ? "已降级，查看诊断" : `${options.note_style || "study"} · ${options.visual_understanding === false ? "无视觉" : "图文"}`)}</span>
+      <span><b>${escapeHtml(task.summary_source || asrOptionText(options))}</b>${escapeHtml(task.summary_warning ? "已降级，查看诊断" : `${options.note_style || "study"} · ${options.note_template || "standard"} · ${options.visual_understanding === false ? "无视觉" : "图文"}`)}</span>
       <span><b>${windows.length || "-"}</b>${windows.length ? "画面窗口" : "等待画面切片"}</span>
     </div>
     ${taskBrowserEvidenceHtml(task)}
@@ -3689,6 +3692,7 @@ els.fileInput.onchange = () => {
   els.gridSize,
   els.visualUnderstanding,
   els.noteStyle,
+  els.noteTemplate,
   els.summaryDepth,
   els.llmProvider,
   els.transcriber,

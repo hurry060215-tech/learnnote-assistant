@@ -720,7 +720,7 @@ def task_audit_gates(task: TaskRecord) -> list[dict[str, str]]:
     summary_detail = (
         "media saved; generate full note from media when needed"
         if is_download_only
-        else (task.summary_warning or f"{task.options.note_style} / {task.options.summary_depth}")
+        else (task.summary_warning or f"{task.options.note_style} / {task.options.note_template} / {task.options.summary_depth}")
     )
 
     return [

@@ -158,6 +158,7 @@ assert.equal(elements.get("#taskMessage").textContent, "已开始下载本地视
 let rerunPayload = null;
 elements.get("#frameInterval").value = "30";
 elements.get("#gridSize").value = "4x3";
+elements.get("#noteTemplate").value = "qa";
 elements.get("#llmProvider").value = "groq";
 context.applyModelProviderPreset(true);
 assert.equal(elements.get("#llmBaseUrl").value, "https://api.groq.com/openai/v1");
@@ -219,6 +220,7 @@ await context.rerunTaskFromMedia("download-only-task");
 assert.equal(rerunPayload.frame_interval, 30);
 assert.equal(rerunPayload.grid_columns, 4);
 assert.equal(rerunPayload.grid_rows, 3);
+assert.equal(rerunPayload.note_template, "qa");
 assert.equal(rerunPayload.visual_understanding, false);
 assert.equal(rerunPayload.llm_model, "vision-rerun");
 assert.equal(rerunPayload.llm_base_url, "https://models.example/v1");

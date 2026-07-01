@@ -76,6 +76,18 @@ def _source_host(page_url: str) -> str:
     return match.group(1) if match else ""
 
 
+def note_template_instruction(options: TaskOptions) -> str:
+    template = str(options.note_template or "standard").strip().lower()
+    mapping = {
+        "standard": "标准学习笔记：按课程主题、时间轴重点、核心概念、例题/演示步骤、易错点、复习问题组织。",
+        "timeline": "时间轴模板：优先按时间段组织，每段保留关键结论、画面证据、字幕依据和回看动作。",
+        "cornell": "康奈尔模板：每个主题输出线索栏、笔记栏和课后总结，并在末尾生成复习问题。",
+        "qa": "问答复习模板：把内容整理成问题、答案、证据时间点和易错提醒，适合背诵复盘。",
+        "visual-handout": "图文讲义模板：突出画面窗口、截图索引、PPT/板书/代码/公式证据和对应字幕摘要。",
+    }
+    return mapping.get(template, mapping["standard"])
+
+
 def _context_topic_lines(title: str, transcript: TranscriptResult, limit: int = 3) -> list[str]:
     candidates = []
     for item in [title, *_sentences(transcript.full_text, limit=limit * 2)]:
@@ -348,7 +360,7 @@ def _grid_image_content_items(grids: list[FrameGrid], offset: int = 0) -> list[d
     return items
 
 
-def local_markdown_note(title: str, transcript: TranscriptResult, grids: list[FrameGrid], page_url: str = "") -> str:
+def local_markdown_note(title: str, transcript: TranscriptResult, grids: list[FrameGrid], page_url: str = "", options: TaskOptions | None = None) -> str:
     lines = [f"# {title or '学习笔记'}", ""]
     if page_url:
         lines += [f"来源：{page_url}", ""]
@@ -359,6 +371,7 @@ def local_markdown_note(title: str, transcript: TranscriptResult, grids: list[Fr
     windows = build_visual_windows(transcript, grids)
 
     lines.extend(_learning_context_lines(title, transcript, windows, page_url))
+    lines += ["## 笔记格式", "", f"- {note_template_instruction(options or TaskOptions())}", ""]
 
     lines += ["## 课程主题", ""]
     if transcript.full_text and "未安装 faster-whisper" not in transcript.full_text:
@@ -516,7 +529,8 @@ def summarize_with_llm(
                                 "必须覆盖所有时间窗口，不要只总结开头。\n\n"
                                 "结构必须包含：课程主题、时间轴重点、核心概念、例题/演示步骤、易错点、复习问题、画面索引。\n"
                                 "画面索引必须保留 W 编号、时间范围和画面网格 URL，方便用户回看截图。\n"
-                                f"笔记风格：{options.note_style}；详略程度：{options.summary_depth}。\n"
+                                f"笔记风格：{options.note_style}；笔记模板：{options.note_template}；详略程度：{options.summary_depth}。\n"
+                                f"模板要求：{note_template_instruction(options)}\n"
                                 f"标题：{title}\n来源：{page_url}\n\n"
                                 f"画面索引清单：\n{frame_index}\n\n"
                                 f"完整字幕节选：\n{transcript.full_text[:60000]}\n\n"
@@ -538,7 +552,8 @@ def summarize_with_llm(
             "text": (
                 "你是严谨的课程学习笔记助手。请结合字幕输出 Markdown。"
                 "结构必须包含：课程主题、时间轴重点、核心概念、例题/演示步骤、易错点、复习问题、画面索引。\n\n"
-                f"笔记风格：{options.note_style}；详略程度：{options.summary_depth}。\n"
+                f"笔记风格：{options.note_style}；笔记模板：{options.note_template}；详略程度：{options.summary_depth}。\n"
+                f"模板要求：{note_template_instruction(options)}\n"
                 f"标题：{title}\n来源：{page_url}\n\n字幕：\n{transcript.full_text[:60000]}"
             ),
         }
@@ -567,7 +582,7 @@ def summarize_with_diagnostics(
     api_key = options.llm_api_key or LLM_API_KEY
     if not api_key:
         return (
-            local_markdown_note(title, transcript, grids, page_url),
+            local_markdown_note(title, transcript, grids, page_url, options),
             "local-template",
             "未配置 OpenAI-compatible API Key，已使用本地画面索引模板生成笔记。",
         )
@@ -576,7 +591,7 @@ def summarize_with_diagnostics(
         note, source = generated
         return note, source, ""
     return (
-        local_markdown_note(title, transcript, grids, page_url),
+        local_markdown_note(title, transcript, grids, page_url, options),
         "local-template",
         "视觉/LLM 总结调用失败或不可用，已降级为本地画面索引模板。",
     )

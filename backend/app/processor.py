@@ -355,6 +355,7 @@ def build_summary_diagnostics(
         "llm_model": options.llm_model or LLM_MODEL,
         "llm_base_url": options.llm_base_url or LLM_BASE_URL,
         "note_style": options.note_style,
+        "note_template": options.note_template,
         "summary_depth": options.summary_depth,
         "frame_grid_count": len(grids),
         "visual_window_count": len(visual_windows),

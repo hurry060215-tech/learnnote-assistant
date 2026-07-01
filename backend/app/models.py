@@ -83,6 +83,7 @@ class TaskOptions(BaseModel):
     grid_columns: int = 3
     grid_rows: int = 3
     note_style: str = "study"
+    note_template: str = "standard"
     summary_depth: str = "standard"
     llm_base_url: str | None = None
     llm_api_key: str | None = None
