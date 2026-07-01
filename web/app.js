@@ -2343,6 +2343,103 @@ function mediaPreviewHtml(task) {
   </section>`;
 }
 
+function taskCommandCenterItemState(task, key) {
+  const windows = visualWindows(task || {});
+  if (!task) return "wait";
+  if (task.status === "failed" && ["source", "media"].includes(key) && !task.media_path) return "fail";
+  if (key === "source") return (task.selected_resource?.url || task.download_attempts?.length || task.media_path) ? "pass" : "wait";
+  if (key === "transcript") return task.transcript_path || task.source_type === "page_text" ? "pass" : task.phase === "transcribing" ? "active" : "wait";
+  if (key === "visual") {
+    if (task.options?.visual_understanding === false || task.source_type === "page_text") return "skip";
+    return windows.length || task.frame_grids?.length ? "pass" : task.phase === "extracting_frames" ? "active" : "wait";
+  }
+  if (key === "note") return task.note_path ? "pass" : task.phase === "summarizing" ? "active" : "wait";
+  return "wait";
+}
+
+function nextCommandCenterText(task, items) {
+  if (task.status === "failed") {
+    return {
+      title: "先看来源证据和失败原因",
+      detail: task.error_detail || task.error_code || "确认是登录态、签名、DRM 还是无可直取资源。"
+    };
+  }
+  if (canContinueFromDownloadedMedia(task)) {
+    return {
+      title: "视频已落盘，可以继续切片总结",
+      detail: "复用 media.mp4 进入转写、抽帧、视觉窗口和图文笔记。"
+    };
+  }
+  const waiting = items.find(item => !["pass", "skip"].includes(taskCommandCenterItemState(task, item.key)));
+  if (waiting) {
+    return {
+      title: `${waiting.label}正在推进`,
+      detail: "任务会按来源、媒体、字幕、切片、总结顺序流转。"
+    };
+  }
+  return {
+    title: "笔记和资料包已就绪",
+    detail: "可以阅读笔记、核对字幕/画面，或导出完整学习资料包。"
+  };
+}
+
+function taskCommandCenter(task) {
+  if (!task) return "";
+  const windows = visualWindows(task);
+  const selected = task.selected_resource || {};
+  const attempts = task.download_attempts || [];
+  const items = [
+    {
+      key: "source",
+      label: "来源证据",
+      value: selected.kind || task.source_type || "-",
+      detail: selected.playback_match ? playbackText(selected.playback_match) : `${attempts.length || 0} 次下载尝试`,
+      action: hasTaskDiagnostics(task) ? `<button type="button" data-switch-result-tab="diagnostics">看证据</button>` : ""
+    },
+    {
+      key: "transcript",
+      label: "字幕转写",
+      value: task.transcript_path ? "已生成" : task.source_type === "page_text" ? "页面文本" : task.phase === "transcribing" ? "转写中" : "等待",
+      detail: task.transcript_path ? asrOptionText(task.options || {}) : "平台字幕优先，ASR 兜底",
+      action: task.transcript_path ? `<button type="button" data-switch-result-tab="transcript">核对字幕</button>` : ""
+    },
+    {
+      key: "visual",
+      label: "画面切片",
+      value: windows.length ? `${windows.length} 窗口` : task.options?.visual_understanding === false ? "已关闭" : "等待",
+      detail: windows.length ? `${fmt(windows[0]?.start || 0)} - ${fmt(windows[windows.length - 1]?.end || 0)}` : "抽帧后按视觉窗口对齐",
+      action: windows.length ? `<button type="button" data-switch-result-tab="frames">看切片</button>` : ""
+    },
+    {
+      key: "note",
+      label: "笔记导出",
+      value: task.note_path ? (task.summary_source || "笔记完成") : task.phase === "summarizing" ? "总结中" : canContinueFromDownloadedMedia(task) ? "可继续" : "等待",
+      detail: task.note_path ? `${task.options?.note_style || "study"} · ${task.options?.note_template || "standard"}` : "生成 Markdown 和资料包",
+      action: task.note_path
+        ? `<button type="button" data-switch-result-tab="note">读笔记</button>${hasTaskBundle(task) ? `<button type="button" data-export="bundle">资料包</button>` : ""}`
+        : canContinueFromDownloadedMedia(task) ? `<button type="button" data-rerun-from-media="${escapeHtml(task.id)}">继续总结</button>` : ""
+    }
+  ];
+  const next = nextCommandCenterText(task, items);
+  return `<section class="task-command-center" aria-label="BiliNote 式任务导航">
+    <header>
+      <div>
+        <span>学习任务导航</span>
+        <strong>${escapeHtml(next.title)}</strong>
+      </div>
+      <small>${escapeHtml(next.detail)}</small>
+    </header>
+    <div class="task-command-grid">
+      ${items.map(item => `<article class="${escapeHtml(taskCommandCenterItemState(task, item.key))}">
+        <b>${escapeHtml(item.label)}</b>
+        <strong>${escapeHtml(item.value)}</strong>
+        <small>${escapeHtml(item.detail)}</small>
+        ${item.action ? `<div>${item.action}</div>` : ""}
+      </article>`).join("")}
+    </div>
+  </section>`;
+}
+
 function taskOverview(task) {
   const selected = task.selected_resource || {};
   const options = task.options || {};
@@ -2391,6 +2488,7 @@ function taskOverview(task) {
     </div>
     ${taskBrowserEvidenceHtml(task)}
     ${pipelineAuditHtml(task)}
+    ${taskCommandCenter(task)}
     ${nextStepHtml(task)}
     ${mediaPreviewHtml(task)}
     ${visualCoverageHtml(task)}

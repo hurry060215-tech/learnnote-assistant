@@ -2746,6 +2746,136 @@ input[type="file"] {
   background: #edf4ff;
 }
 
+.task-command-center {
+  display: grid;
+  gap: 9px;
+  border: 1px solid #c8d8ee;
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(22, 119, 255, 0.08), rgba(255, 255, 255, 0) 56%),
+    #ffffff;
+  padding: 10px;
+}
+
+.task-command-center header {
+  display: grid;
+  gap: 5px;
+}
+
+.task-command-center header div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.task-command-center header span {
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.task-command-center header strong {
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.task-command-center header small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.task-command-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.task-command-grid article {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  border: 1px solid #d9e4f2;
+  border-top: 3px solid #c8d8ee;
+  border-radius: 8px;
+  background: #f8fbff;
+  padding: 8px;
+}
+
+.task-command-grid article.pass {
+  border-top-color: var(--success);
+}
+
+.task-command-grid article.active {
+  border-top-color: var(--accent);
+}
+
+.task-command-grid article.fail {
+  border-top-color: var(--danger);
+  background: rgba(217, 45, 32, 0.04);
+}
+
+.task-command-grid article.skip {
+  border-top-color: #98a2b3;
+}
+
+.task-command-grid b {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 900;
+}
+
+.task-command-grid strong,
+.task-command-grid small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.task-command-grid strong {
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.task-command-grid small {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.task-command-grid article > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.task-command-grid button {
+  min-height: 25px;
+  border: 1px solid #c8d8ee;
+  border-radius: 7px;
+  background: #ffffff;
+  color: var(--accent);
+  padding: 0 7px;
+  font-size: 10px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.task-command-grid button:hover {
+  border-color: var(--accent);
+  background: #edf4ff;
+}
+
+@media (max-width: 360px) {
+  .task-command-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .next-step-card {
   display: grid;
   gap: 8px;
