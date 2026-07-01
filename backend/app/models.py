@@ -41,6 +41,12 @@ class ResourceCandidate(BaseModel):
     method: str = ""
     status_code: int | None = None
     content_length: int | None = None
+    mse_append_bytes: int | None = None
+    mse_append_total_bytes: int | None = None
+    mse_append_count: int | None = None
+    mse_append_magic: str = ""
+    mse_append_mime: str = ""
+    mse_append_detected_kind: str = ""
     initiator: str = ""
     time_stamp: float | None = None
     resolved_url: str = ""

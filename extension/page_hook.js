@@ -67,6 +67,8 @@
   const mediaSourceMetaByObject = new WeakMap();
   const mediaSourceUrlByObject = new WeakMap();
   const sourceBufferMediaSource = new WeakMap();
+  const sourceBufferMimeByObject = new WeakMap();
+  const sourceBufferAppendStats = new WeakMap();
   let patchingLatePlayerGlobal = false;
 
   function normalizeUrl(raw) {
@@ -115,6 +117,72 @@
     return "unknown";
   }
 
+  function bytesFromAppendBuffer(value, limit = 512) {
+    try {
+      if (value instanceof ArrayBuffer) return new Uint8Array(value, 0, Math.min(value.byteLength, limit));
+      if (ArrayBuffer.isView?.(value)) {
+        return new Uint8Array(value.buffer, value.byteOffset || 0, Math.min(value.byteLength || 0, limit));
+      }
+    } catch {
+      return new Uint8Array();
+    }
+    return new Uint8Array();
+  }
+
+  function asciiFromBytes(bytes) {
+    let text = "";
+    for (const byte of bytes || []) {
+      text += byte >= 32 && byte <= 126 ? String.fromCharCode(byte) : ".";
+    }
+    return text;
+  }
+
+  function appendMagic(bytes) {
+    const head = asciiFromBytes(bytes || []);
+    if (!head) return "";
+    if (head.startsWith("#EXTM3U")) return "#EXTM3U";
+    if (head.startsWith("WEBVTT")) return "WEBVTT";
+    if (head.startsWith("ID3")) return "ID3";
+    if (bytes?.[0] === 0x1a && bytes?.[1] === 0x45 && bytes?.[2] === 0xdf && bytes?.[3] === 0xa3) return "webm-ebml";
+    for (const token of ["ftyp", "moof", "moov", "mdat", "styp"]) {
+      if (head.slice(0, 64).includes(token)) return token;
+    }
+    return Array.from((bytes || []).slice(0, 8)).map(byte => byte.toString(16).padStart(2, "0")).join(" ");
+  }
+
+  function appendDetectedKind(magic, mime = "") {
+    const type = String(mime || "").toLowerCase();
+    if (type.includes("mpegurl") || magic === "#EXTM3U") return "hls";
+    if (type.includes("dash+xml")) return "dash";
+    if (type.includes("vtt") || type.includes("subtitle") || magic === "WEBVTT") return "subtitle";
+    if (type.includes("video/") || ["ftyp", "moov", "webm-ebml"].includes(magic)) return "video";
+    if (["moof", "mdat", "styp", "ID3"].includes(magic)) return "fragment";
+    return "blob";
+  }
+
+  function appendBufferEvidence(sourceBuffer, value) {
+    const bytes = bytesFromAppendBuffer(value);
+    const appendBytes = value instanceof ArrayBuffer
+      ? value.byteLength
+      : ArrayBuffer.isView?.(value)
+        ? value.byteLength
+        : 0;
+    const previous = sourceBufferAppendStats.get(sourceBuffer) || { count: 0, total: 0 };
+    const count = previous.count + 1;
+    const total = previous.total + Math.max(0, appendBytes || 0);
+    sourceBufferAppendStats.set(sourceBuffer, { count, total });
+    const mime = sourceBufferMimeByObject.get(sourceBuffer) || "";
+    const magic = appendMagic(bytes);
+    return {
+      mse_append_bytes: appendBytes || null,
+      mse_append_total_bytes: total || null,
+      mse_append_count: count,
+      mse_append_magic: magic,
+      mse_append_mime: mime,
+      mse_append_detected_kind: appendDetectedKind(magic, mime)
+    };
+  }
+
   function manifestKindFromText(text, mime = "") {
     const head = String(text || "").slice(0, 4096).trimStart();
     const type = String(mime || "").toLowerCase();
@@ -159,6 +227,12 @@
         headers: item.headers || {},
         request_headers: item.request_headers || {},
         request_body: item.request_body || {},
+        mse_append_bytes: item.mse_append_bytes ?? null,
+        mse_append_total_bytes: item.mse_append_total_bytes ?? null,
+        mse_append_count: item.mse_append_count ?? null,
+        mse_append_magic: item.mse_append_magic || "",
+        mse_append_mime: item.mse_append_mime || "",
+        mse_append_detected_kind: item.mse_append_detected_kind || "",
         time_stamp: Date.now()
       });
     }
@@ -178,7 +252,13 @@
           initiator: item.initiator || existing.initiator || "",
           headers: { ...(existing.headers || {}), ...(item.headers || {}) },
           request_headers: { ...(existing.request_headers || {}), ...(item.request_headers || {}) },
-          request_body: { ...(existing.request_body || {}), ...(item.request_body || {}) }
+          request_body: { ...(existing.request_body || {}), ...(item.request_body || {}) },
+          mse_append_bytes: item.mse_append_bytes ?? existing.mse_append_bytes ?? null,
+          mse_append_total_bytes: item.mse_append_total_bytes ?? existing.mse_append_total_bytes ?? null,
+          mse_append_count: item.mse_append_count ?? existing.mse_append_count ?? null,
+          mse_append_magic: item.mse_append_magic || existing.mse_append_magic || "",
+          mse_append_mime: item.mse_append_mime || existing.mse_append_mime || "",
+          mse_append_detected_kind: item.mse_append_detected_kind || existing.mse_append_detected_kind || ""
         });
       } else {
         bufferedResources.unshift(item);
@@ -1767,6 +1847,7 @@
       const sourceBuffer = originalAddSourceBuffer.apply(this, args);
       try {
         sourceBufferMediaSource.set(sourceBuffer, this);
+        sourceBufferMimeByObject.set(sourceBuffer, String(args[0] || ""));
       } catch {
         // Some SourceBuffer implementations are not extensible WeakMap keys.
       }
@@ -1778,9 +1859,27 @@
     const originalAppendBuffer = window.SourceBuffer.prototype.appendBuffer;
     window.SourceBuffer.prototype.appendBuffer = function (...args) {
       try {
+        const evidence = appendBufferEvidence(this, args[0]);
         const meta = blobPartMeta(args[0]);
         const mediaSource = sourceBufferMediaSource.get(this);
-        rememberMediaSourceMeta(mediaSource, meta);
+        if (meta) {
+          rememberMediaSourceMeta(mediaSource, { ...meta, ...evidence });
+        } else {
+          const blobUrl = mediaSourceUrlByObject.get(mediaSource);
+          if (blobUrl) {
+            emit([{
+              url: blobUrl,
+              source: "pageHookMediaSourceAppend",
+              kind: evidence.mse_append_detected_kind || "blob",
+              mime: evidence.mse_append_mime || "",
+              label: "MSE appendBuffer",
+              blob_url: blobUrl,
+              playback_match: "blob-source",
+              score: evidence.mse_append_detected_kind === "video" || evidence.mse_append_detected_kind === "fragment" ? 82 : 72,
+              ...evidence
+            }]);
+          }
+        }
       } catch {
         // Keep MSE playback untouched if a page uses unusual buffer wrappers.
       }

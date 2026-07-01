@@ -115,3 +115,8 @@ assert.equal(mapped.url, "https://cdn.example.com/stream/lesson.mp4?token=abc");
 assert.equal(mapped.kind, "video");
 assert.equal(mapped.source, "pageHookMediaSource");
 assert.equal(mapped.playback_match, "blob-source");
+assert.equal(mapped.mse_append_count, 1);
+assert.equal(mapped.mse_append_total_bytes, 3);
+assert.equal(mapped.mse_append_magic, "01 02 03");
+assert.equal(mapped.mse_append_mime, "video/mp4");
+assert.equal(mapped.mse_append_detected_kind, "video");

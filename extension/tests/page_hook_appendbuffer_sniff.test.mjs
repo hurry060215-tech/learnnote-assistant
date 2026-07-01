@@ -4,28 +4,6 @@ import vm from "node:vm";
 
 const messages = [];
 
-class FakeHeaders {
-  constructor(headers = {}) {
-    this.headers = new Map(Object.entries(headers).map(([key, value]) => [key.toLowerCase(), value]));
-  }
-
-  get(name) {
-    return this.headers.get(String(name).toLowerCase()) || "";
-  }
-}
-
-class FakeResponse {
-  constructor(bytes, options = {}) {
-    this.bytesValue = bytes;
-    this.url = options.url || "";
-    this.headers = new FakeHeaders(options.headers || {});
-  }
-
-  async bytes() {
-    return this.bytesValue;
-  }
-}
-
 class FakeSourceBuffer {
   appendBuffer(buffer) {
     this.buffer = buffer;
@@ -47,7 +25,6 @@ const context = {
   location: { href: "https://course.example.com/player" },
   document: { addEventListener() {} },
   navigator: {},
-  Response: FakeResponse,
   Blob,
   ArrayBuffer,
   Uint8Array,
@@ -55,7 +32,7 @@ const context = {
   SourceBuffer: FakeSourceBuffer,
   URL: class extends URL {
     static createObjectURL(value) {
-      if (value instanceof FakeMediaSource) return "blob:https://course.example.com/response-bytes-mse-1";
+      if (value instanceof FakeMediaSource) return "blob:https://course.example.com/raw-mse-1";
       return "blob:https://course.example.com/blob-1";
     }
 
@@ -75,27 +52,23 @@ vm.createContext(context);
 const hookCode = await readFile(new URL("../page_hook.js", import.meta.url), "utf8");
 vm.runInContext(hookCode, context);
 
-const response = new context.Response(new Uint8Array([1, 2, 3, 4]), {
-  url: "https://cdn.example.com/bytes/lesson.mp4?token=abc",
-  headers: { "content-type": "video/mp4" },
-});
-const bytes = await response.bytes();
 const mediaSource = new context.MediaSource();
 const blobUrl = context.URL.createObjectURL(mediaSource);
-const sourceBuffer = mediaSource.addSourceBuffer("video/mp4");
-sourceBuffer.appendBuffer(bytes.buffer);
+const sourceBuffer = mediaSource.addSourceBuffer("video/mp4; codecs=\"avc1.64001f\"");
+const initSegment = new Uint8Array([0, 0, 0, 24, 102, 116, 121, 112, 105, 115, 111, 109]);
+sourceBuffer.appendBuffer(initSegment);
 
 const resources = messages.flatMap(message => message.resources || []);
-const mapped = resources.find(resource => resource.blob_url === blobUrl);
+const mapped = resources.find(resource => resource.url === blobUrl);
 
-assert.equal(blobUrl, "blob:https://course.example.com/response-bytes-mse-1");
-assert.ok(mapped, "expected page hook to map Response.bytes() MSE chunks to the original media URL");
-assert.equal(mapped.url, "https://cdn.example.com/bytes/lesson.mp4?token=abc");
+assert.equal(blobUrl, "blob:https://course.example.com/raw-mse-1");
+assert.ok(mapped, "expected raw appendBuffer to produce non-downloadable MSE evidence");
+assert.equal(mapped.source, "pageHookMediaSourceAppend");
 assert.equal(mapped.kind, "video");
-assert.equal(mapped.source, "pageHookMediaSource");
+assert.equal(mapped.blob_url, blobUrl);
 assert.equal(mapped.playback_match, "blob-source");
 assert.equal(mapped.mse_append_count, 1);
-assert.equal(mapped.mse_append_total_bytes, 4);
-assert.equal(mapped.mse_append_magic, "01 02 03 04");
-assert.equal(mapped.mse_append_mime, "video/mp4");
+assert.equal(mapped.mse_append_total_bytes, initSegment.byteLength);
+assert.equal(mapped.mse_append_magic, "ftyp");
+assert.equal(mapped.mse_append_mime, "video/mp4; codecs=\"avc1.64001f\"");
 assert.equal(mapped.mse_append_detected_kind, "video");

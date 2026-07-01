@@ -1101,11 +1101,22 @@ function requestEvidence(item) {
     item.request_type,
     item.status_code ? `HTTP ${item.status_code}` : "",
     fmtBytes(item.content_length),
+    mseAppendEvidence(item),
     requestBodySummary(item),
     contentDispositionHint(item.headers?.["content-disposition"]),
     item.frame_id !== null && item.frame_id !== undefined ? `frame ${item.frame_id}` : "",
     item.mime || ""
   ].filter(Boolean).join(" · ");
+}
+
+function mseAppendEvidence(item) {
+  if (!item?.mse_append_count && !item?.mse_append_magic && !item?.mse_append_total_bytes) return "";
+  return [
+    item.mse_append_count ? `MSE append ${item.mse_append_count}x` : "MSE append",
+    item.mse_append_magic || "",
+    fmtBytes(item.mse_append_total_bytes),
+    item.mse_append_mime || ""
+  ].filter(Boolean).join(" ");
 }
 
 function responseEvidenceLine(item) {
@@ -1176,6 +1187,7 @@ function resourceEvidenceTags(item) {
   if (requestBodySummary(item)) add("POST body");
   if (requestHeaderValue(item, "referer") || requestHeaderValue(item, "origin")) add("带 Referer/Origin");
   if (item.status_code) add(`HTTP ${item.status_code}`);
+  if (mseAppendEvidence(item)) add("MSE append");
   return tags.slice(0, 9);
 }
 

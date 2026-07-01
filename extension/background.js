@@ -485,6 +485,12 @@ function mergeResource(previous, incoming) {
   merged.height = incoming.height ?? previous.height ?? null;
   merged.status_code = incoming.status_code ?? previous.status_code ?? null;
   merged.content_length = incoming.content_length ?? previous.content_length ?? null;
+  merged.mse_append_bytes = incoming.mse_append_bytes ?? previous.mse_append_bytes ?? null;
+  merged.mse_append_total_bytes = incoming.mse_append_total_bytes ?? previous.mse_append_total_bytes ?? null;
+  merged.mse_append_count = incoming.mse_append_count ?? previous.mse_append_count ?? null;
+  merged.mse_append_magic = incoming.mse_append_magic || previous.mse_append_magic || "";
+  merged.mse_append_mime = incoming.mse_append_mime || previous.mse_append_mime || "";
+  merged.mse_append_detected_kind = incoming.mse_append_detected_kind || previous.mse_append_detected_kind || "";
   merged.resolved_url = incoming.resolved_url || previous.resolved_url || "";
   merged.time_stamp = Math.max(previous.time_stamp || 0, incoming.time_stamp || 0) || null;
   return merged;
@@ -784,6 +790,12 @@ function addResource(tabId, resource, notify = true) {
     method: resource.method || "",
     status_code: resource.status_code ?? null,
     content_length: resource.content_length ?? null,
+    mse_append_bytes: resource.mse_append_bytes ?? null,
+    mse_append_total_bytes: resource.mse_append_total_bytes ?? null,
+    mse_append_count: resource.mse_append_count ?? null,
+    mse_append_magic: resource.mse_append_magic || "",
+    mse_append_mime: resource.mse_append_mime || "",
+    mse_append_detected_kind: resource.mse_append_detected_kind || "",
     resolved_url: resource.resolved_url || "",
     initiator: resource.initiator || "",
     time_stamp: resource.time_stamp ?? null,
@@ -805,6 +817,12 @@ function addResource(tabId, resource, notify = true) {
       height: normalized.height ?? existing.height ?? null,
       status_code: normalized.status_code ?? existing.status_code ?? null,
       content_length: normalized.content_length ?? existing.content_length ?? null,
+      mse_append_bytes: normalized.mse_append_bytes ?? existing.mse_append_bytes ?? null,
+      mse_append_total_bytes: normalized.mse_append_total_bytes ?? existing.mse_append_total_bytes ?? null,
+      mse_append_count: normalized.mse_append_count ?? existing.mse_append_count ?? null,
+      mse_append_magic: normalized.mse_append_magic || existing.mse_append_magic || "",
+      mse_append_mime: normalized.mse_append_mime || existing.mse_append_mime || "",
+      mse_append_detected_kind: normalized.mse_append_detected_kind || existing.mse_append_detected_kind || "",
       resolved_url: normalized.resolved_url || existing.resolved_url || "",
       request_type: normalized.request_type || existing.request_type || "",
       method: normalized.method || existing.method || "",
