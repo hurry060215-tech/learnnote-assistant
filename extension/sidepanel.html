@@ -192,6 +192,18 @@
           </select>
         </label>
         <label>
+          <span>模型服务</span>
+          <select id="llmProvider">
+            <option value="custom" selected>手动配置</option>
+            <option value="openai">OpenAI</option>
+            <option value="groq">Groq</option>
+            <option value="dashscope">通义千问 DashScope</option>
+            <option value="siliconflow">SiliconFlow</option>
+            <option value="openrouter">OpenRouter</option>
+            <option value="local-openai">本地 OpenAI-compatible</option>
+          </select>
+        </label>
+        <label>
           <span>视觉模型</span>
           <input id="llmModel" type="text" placeholder="gpt-4.1-mini">
         </label>

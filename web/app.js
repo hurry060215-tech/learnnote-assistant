@@ -32,6 +32,44 @@ const HLS_RE = /\.(m3u8|mpd)(\?|#|$)/i;
 const LOCAL_VIDEO_EXT_RE = /\.(mp4|m4v|mov|mkv|webm|flv|avi)$/i;
 const RESULT_TAB_NAMES = new Set(["note", "transcript", "frames", "diagnostics"]);
 const LOCAL_ASR_MODELS = new Set(["tiny", "base", "small", "medium", "large", "large-v2", "large-v3"]);
+const MODEL_PROVIDER_PRESETS = {
+  openai: {
+    baseUrl: "https://api.openai.com/v1",
+    model: "gpt-4.1-mini",
+    transcriber: "openai-compatible",
+    whisperModel: "whisper-1"
+  },
+  groq: {
+    baseUrl: "https://api.groq.com/openai/v1",
+    model: "meta-llama/llama-4-scout-17b-16e-instruct",
+    transcriber: "groq",
+    whisperModel: "whisper-large-v3"
+  },
+  dashscope: {
+    baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    model: "qwen-vl-max",
+    transcriber: "faster-whisper",
+    whisperModel: "small"
+  },
+  siliconflow: {
+    baseUrl: "https://api.siliconflow.cn/v1",
+    model: "Qwen/Qwen2.5-VL-72B-Instruct",
+    transcriber: "faster-whisper",
+    whisperModel: "small"
+  },
+  openrouter: {
+    baseUrl: "https://openrouter.ai/api/v1",
+    model: "openai/gpt-4.1-mini",
+    transcriber: "faster-whisper",
+    whisperModel: "small"
+  },
+  "local-openai": {
+    baseUrl: "http://127.0.0.1:11434/v1",
+    model: "qwen2.5vl:7b",
+    transcriber: "faster-whisper",
+    whisperModel: "small"
+  }
+};
 
 let selectedSource = "browser";
 let selectedTaskId = taskIdFromCurrentUrl();
@@ -83,6 +121,7 @@ const els = {
   whisperModel: document.querySelector("#whisperModel"),
   noteStyle: document.querySelector("#noteStyle"),
   summaryDepth: document.querySelector("#summaryDepth"),
+  llmProvider: document.querySelector("#llmProvider"),
   llmModel: document.querySelector("#llmModel"),
   llmBaseUrl: document.querySelector("#llmBaseUrl"),
   llmApiKey: document.querySelector("#llmApiKey"),
@@ -1339,6 +1378,26 @@ function currentOptionSummaryItems() {
 function refreshOptionDependentUi() {
   syncTranscriberModelDefault();
   renderSourceWorkflow();
+}
+
+function applyModelProviderPreset(force = false) {
+  const preset = MODEL_PROVIDER_PRESETS[els.llmProvider?.value || ""];
+  if (!preset) return;
+  if (els.llmBaseUrl && (force || !els.llmBaseUrl.value.trim())) {
+    els.llmBaseUrl.value = preset.baseUrl;
+  }
+  if (els.llmModel && (force || !els.llmModel.value.trim())) {
+    els.llmModel.value = preset.model;
+  }
+  if (els.transcriber && preset.transcriber && (force || els.transcriber.value === "faster-whisper")) {
+    els.transcriber.value = preset.transcriber;
+  }
+  if (els.whisperModel && preset.whisperModel && (force || !els.whisperModel.value.trim() || LOCAL_ASR_MODELS.has(els.whisperModel.value))) {
+    els.whisperModel.value = preset.whisperModel;
+  }
+  syncTranscriberModelDefault(false);
+  renderSourceWorkflow();
+  updateHealthVisionStatus();
 }
 
 function readOptions() {
@@ -3443,6 +3502,9 @@ if (els.urlInput) {
 if (els.transcriber) {
   els.transcriber.onchange = () => syncTranscriberModelDefault(true);
 }
+if (els.llmProvider) {
+  els.llmProvider.onchange = () => applyModelProviderPreset(true);
+}
 
 els.resultTabs.forEach(tab => {
   tab.onclick = () => switchResultTab(tab.dataset.tab);
@@ -3540,6 +3602,7 @@ els.fileInput.onchange = () => {
   els.visualUnderstanding,
   els.noteStyle,
   els.summaryDepth,
+  els.llmProvider,
   els.transcriber,
   els.whisperModel
 ].filter(Boolean).forEach(control => {

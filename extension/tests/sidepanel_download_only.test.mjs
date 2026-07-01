@@ -158,6 +158,12 @@ assert.equal(elements.get("#taskMessage").textContent, "已开始下载本地视
 let rerunPayload = null;
 elements.get("#frameInterval").value = "30";
 elements.get("#gridSize").value = "4x3";
+elements.get("#llmProvider").value = "groq";
+context.applyModelProviderPreset(true);
+assert.equal(elements.get("#llmBaseUrl").value, "https://api.groq.com/openai/v1");
+assert.equal(elements.get("#llmModel").value, "meta-llama/llama-4-scout-17b-16e-instruct");
+assert.equal(elements.get("#transcriber").value, "groq");
+assert.equal(elements.get("#whisperModel").value, "whisper-large-v3");
 elements.get("#transcriber").value = "openai-compatible";
 elements.get("#whisperModel").value = "whisper-1";
 elements.get("#llmModel").value = "vision-rerun";
