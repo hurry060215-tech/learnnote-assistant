@@ -33,7 +33,7 @@ from app.downloader import (
 from app.main import render_diagnostics_markdown, task_audit_summary
 from app.models import ActiveVideoInfo, BrowserCookie, CurrentPageTaskRequest, DownloadAttempt, DrmSignal, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
 from app.processor import build_summary_diagnostics, cookie_sync_summary, process_current_page_task, process_local_video_task, read_note, read_transcript, redacted_request_dump, redacted_resource
-from app.summarizer import MAX_VISION_GRIDS, build_visual_windows, ensure_visual_appendix, local_markdown_note, summarize_with_diagnostics
+from app.summarizer import MAX_GRIDS_PER_VISION_CALL, MAX_VISION_GRIDS, build_visual_windows, ensure_visual_appendix, local_markdown_note, summarize_with_diagnostics
 from app.storage import create_task, get_task, task_dir
 from app.transcriber import transcribe_audio_openai_compatible, transcript_from_subtitle
 
@@ -2143,8 +2143,14 @@ class SummaryFallbackTests(unittest.TestCase):
         self.assertEqual(diagnostics["frame_grid_count"], MAX_VISION_GRIDS + 3)
         self.assertEqual(diagnostics["available_grid_image_count"], MAX_VISION_GRIDS + 2)
         self.assertEqual(diagnostics["vision_grid_limit"], MAX_VISION_GRIDS)
+        self.assertEqual(diagnostics["vision_batch_size"], MAX_GRIDS_PER_VISION_CALL)
+        self.assertEqual(diagnostics["vision_expected_batch_count"], 20)
+        self.assertEqual(diagnostics["vision_call_status"], "vision_llm_used")
         self.assertEqual(diagnostics["vision_grid_count"], MAX_VISION_GRIDS)
         self.assertEqual(diagnostics["vision_image_count"], MAX_VISION_GRIDS - 1)
+        self.assertEqual(diagnostics["vision_call_plan"][0]["window_ids"], ["W001", "W002", "W003", "W004"])
+        self.assertEqual(diagnostics["vision_call_plan"][0]["image_window_ids"], ["W002", "W003", "W004"])
+        self.assertEqual(diagnostics["vision_call_plan"][-1]["window_ids"], ["W077", "W078", "W079", "W080"])
         self.assertEqual(diagnostics["vision_window_ids"][0], "W001")
         self.assertNotIn("W001", diagnostics["vision_image_window_ids"])
         self.assertIn("W001", diagnostics["missing_vision_image_window_ids"])
@@ -2158,6 +2164,8 @@ class SummaryFallbackTests(unittest.TestCase):
             record = get_task(task.id)
             record.summary_diagnostics = diagnostics
             report = render_diagnostics_markdown(record)
+            self.assertIn("vision_llm_used", report)
+            self.assertIn("20", report)
             self.assertIn("已送入视觉窗口", report)
             self.assertIn("缺少图片窗口：W001", report)
             self.assertIn("超限省略窗口：W081, W082, W083", report)

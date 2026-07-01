@@ -1013,6 +1013,9 @@ def render_diagnostics_markdown(task: TaskRecord) -> str:
         lines.extend([
             f"- 视觉窗口数：{task.summary_diagnostics.get('visual_window_count', '-')}",
             f"- 送入视觉图片：{task.summary_diagnostics.get('vision_image_count', '-')}/{task.summary_diagnostics.get('vision_grid_count', '-')}",
+            f"- 视觉调用状态：{task.summary_diagnostics.get('vision_call_status', '-')}",
+            f"- 视觉批次计划：{task.summary_diagnostics.get('vision_expected_batch_count', '-')}"
+            f" 批，每批最多 {task.summary_diagnostics.get('vision_batch_size', '-')} 张网格",
             f"- 省略网格：{task.summary_diagnostics.get('omitted_frame_grid_count', '-')}",
             f"- 已送入视觉窗口：{_format_id_list(task.summary_diagnostics.get('vision_image_window_ids'))}",
             f"- 缺少图片窗口：{_format_id_list(task.summary_diagnostics.get('missing_vision_image_window_ids'))}",

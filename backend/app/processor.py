@@ -9,7 +9,7 @@ from .downloader import DownloadError, MediaDownloader, effective_resource_kind,
 from .media import build_frame_grids, extract_audio, extract_embedded_subtitle, extract_frames, normalize_video
 from .models import BrowserSubtitleCue, CurrentPageTaskRequest, DownloadAttempt, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
 from .storage import get_task, save_task, task_dir, update_task, write_json
-from .summarizer import MAX_VISION_GRIDS, build_visual_windows, summarize_page_text_with_diagnostics, summarize_with_diagnostics
+from .summarizer import MAX_GRIDS_PER_VISION_CALL, MAX_VISION_GRIDS, build_visual_windows, summarize_page_text_with_diagnostics, summarize_with_diagnostics
 from .transcriber import transcript_from_subtitle, transcribe_audio, transcribe_audio_openai_compatible
 
 
@@ -290,6 +290,7 @@ def build_summary_diagnostics(
     summary_warning: str,
 ) -> dict:
     eligible_grids = grids[:MAX_VISION_GRIDS]
+
     def window_id(index: int) -> str:
         if index < len(visual_windows) and visual_windows[index].id:
             return visual_windows[index].id
@@ -312,6 +313,37 @@ def build_summary_diagnostics(
     ]
     total_image_count = sum(1 for grid in grids if grid.path and Path(grid.path).is_file())
     eligible_image_count = sum(1 for grid in eligible_grids if grid.path and Path(grid.path).is_file())
+    vision_batch_size = MAX_GRIDS_PER_VISION_CALL
+    vision_call_plan = []
+    for batch_index, start in enumerate(range(0, len(eligible_grids), vision_batch_size), start=1):
+        batch_grids = eligible_grids[start: start + vision_batch_size]
+        batch_window_ids = [window_id(index) for index in range(start, start + len(batch_grids))]
+        batch_image_window_ids = [
+            window_id(index)
+            for index, grid in enumerate(batch_grids, start=start)
+            if grid.path and Path(grid.path).is_file()
+        ]
+        vision_call_plan.append({
+            "batch": batch_index,
+            "window_ids": batch_window_ids,
+            "image_window_ids": batch_image_window_ids,
+            "grid_count": len(batch_grids),
+            "image_count": len(batch_image_window_ids),
+        })
+    if summary_source == "vision-llm":
+        vision_call_status = "vision_llm_used"
+    elif summary_source == "text-llm":
+        vision_call_status = "text_llm_fallback"
+    elif not bool(options.visual_understanding):
+        vision_call_status = "not_enabled"
+    elif not eligible_grids:
+        vision_call_status = "no_frame_grids"
+    elif not eligible_image_count:
+        vision_call_status = "no_grid_images"
+    elif not bool(options.llm_api_key or LLM_API_KEY):
+        vision_call_status = "missing_api_key"
+    else:
+        vision_call_status = "local_template_fallback"
     return {
         "task_id": task_id,
         "title": title,
@@ -328,6 +360,10 @@ def build_summary_diagnostics(
         "visual_window_count": len(visual_windows),
         "available_grid_image_count": total_image_count,
         "vision_grid_limit": MAX_VISION_GRIDS,
+        "vision_batch_size": vision_batch_size,
+        "vision_expected_batch_count": len(vision_call_plan),
+        "vision_call_status": vision_call_status,
+        "vision_call_plan": vision_call_plan,
         "vision_grid_count": len(eligible_grids),
         "vision_image_count": eligible_image_count,
         "vision_window_ids": eligible_window_ids,
