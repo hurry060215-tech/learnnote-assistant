@@ -640,6 +640,52 @@ assert.match(studyBarHtml, /\/api\/tasks\/task-study-map\/exports\/manifest/);
 assert.doesNotMatch(studyBarHtml, /<script>bad/);
 assert.match(studyBarHtml, /&lt;script&gt;bad\(\)&lt;\/script&gt; 课程/);
 
+const noteHeroHtml = context.noteHeroBanner(`# 机器学习导论
+
+## 第一章
+`, {
+  id: "task-note-hero",
+  title: "<script>bad()</script> fallback",
+  page_url: "https://course.example.com/lesson",
+  status: "success",
+  phase: "completed",
+  progress: 100,
+  source_type: "current_page",
+  media_path: "D:/Projects/learnnote-assistant/data/tasks/task-note-hero/media.mp4",
+  transcript_path: "D:/Projects/learnnote-assistant/data/tasks/task-note-hero/transcript.json",
+  note_path: "D:/Projects/learnnote-assistant/data/tasks/task-note-hero/note.md",
+  summary_source: "vision-llm",
+  selected_resource: {
+    kind: "hls",
+    playback_match: "blob-source",
+    url: "javascript:alert(1)"
+  },
+  options: {
+    frame_interval: 20,
+    grid_columns: 3,
+    grid_rows: 3,
+    visual_understanding: true
+  },
+  visual_windows: [{
+    id: "W001",
+    start: 0,
+    end: 180,
+    frame_count: 9,
+    grid_url: "http://127.0.0.1:8765/api/tasks/demo/grids/grid_000.jpg"
+  }]
+});
+
+assert.match(noteHeroHtml, /class="note-hero-banner"/);
+assert.match(noteHeroHtml, /机器学习导论/);
+assert.doesNotMatch(noteHeroHtml, /&lt;script&gt;bad/);
+assert.match(noteHeroHtml, /src="http:\/\/127\.0\.0\.1:8765\/api\/tasks\/demo\/grids\/grid_000\.jpg"/);
+assert.match(noteHeroHtml, /00:00:00 - 00:03:00/);
+assert.match(noteHeroHtml, /1 窗口/);
+assert.match(noteHeroHtml, /data-switch-result-tab="transcript"/);
+assert.match(noteHeroHtml, /data-switch-result-tab="frames"/);
+assert.match(noteHeroHtml, /href="https:\/\/course\.example\.com\/lesson"/);
+assert.doesNotMatch(noteHeroHtml, /javascript:alert/);
+
 const taskOverviewHtml = context.taskOverview({
   id: "task-web-overview",
   title: "<script>bad()</script> 课程",

@@ -232,6 +232,11 @@ function safeNoteMediaUrl(value) {
   return "";
 }
 
+function safeExternalUrl(value) {
+  const raw = String(value || "").trim();
+  return /^https?:\/\//i.test(raw) ? raw : "";
+}
+
 function isSupportedLocalVideoFile(file) {
   if (!file?.name) return false;
   if (String(file.type || "").startsWith("video/")) return true;
@@ -2589,6 +2594,74 @@ function noteHeadingStats(markdown) {
   return stats;
 }
 
+function notePrimaryTitle(markdown, task) {
+  const inFence = { value: false };
+  for (const line of String(markdown || "").split(/\r?\n/)) {
+    if (/^\s*```/.test(line)) {
+      inFence.value = !inFence.value;
+      continue;
+    }
+    if (inFence.value) continue;
+    const match = line.match(/^\s*#{1,2}\s+(.+)/);
+    if (match) {
+      const text = plainHeadingText(match[1]);
+      if (text) return text;
+    }
+  }
+  return task?.title || task?.id || "LearnNote";
+}
+
+function noteHeroBanner(markdown, task) {
+  if (!task) return "";
+  const windows = visualWindows(task);
+  const headings = noteHeadingStats(markdown);
+  const selected = task.selected_resource || {};
+  const firstWindow = windows.find(window => safeNoteMediaUrl(window.grid_url)) || windows[0] || null;
+  const image = safeNoteMediaUrl(firstWindow?.grid_url || "");
+  const sourceUrl = safeExternalUrl(task.page_url || selected.url || "");
+  const sourceLabel = [
+    sourceText(task),
+    selected.playback_match ? playbackText(selected.playback_match) : "",
+    selected.kind ? mediaKindText(selected.kind) : "",
+    task.summary_source || ""
+  ].filter(Boolean).join(" · ");
+  const timeline = windows.length && firstWindow
+    ? `${fmt(windows[0].start || 0)} - ${fmt(windows[windows.length - 1].end || 0)}`
+    : task.media_path ? "media.mp4 已落盘" : "等待切片";
+  const metrics = [
+    { label: "章节", value: headings.total ? `${headings.total}` : "-" },
+    { label: "字幕", value: task.transcript_path ? "已生成" : task.browser_subtitles?.length ? `${task.browser_subtitles.length} 条` : "-" },
+    { label: "画面", value: windows.length ? `${windows.length} 窗口` : "-" },
+    { label: "状态", value: statusText(task) }
+  ];
+  const actions = [
+    task.note_path ? `<a href="${escapeHtml(taskExportUrl(task, "markdown"))}">Markdown</a>` : "",
+    task.transcript_path ? `<button type="button" data-switch-result-tab="transcript">字幕</button>` : "",
+    windows.length ? `<button type="button" data-switch-result-tab="frames">画面</button>` : "",
+    sourceUrl ? `<a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noreferrer">原页面</a>` : "",
+    hasTaskBundle(task) ? `<a href="${escapeHtml(taskExportUrl(task, "bundle"))}">资料包</a>` : ""
+  ].filter(Boolean).join("");
+
+  return `<section class="note-hero-banner" aria-label="课程笔记资料页">
+    <div class="note-hero-media ${image ? "" : "empty"}">
+      ${image ? `<img src="${image}" alt="课程画面预览">` : `<span>LN</span>`}
+    </div>
+    <div class="note-hero-main">
+      <span>课程笔记</span>
+      <strong>${escapeHtml(notePrimaryTitle(markdown, task))}</strong>
+      <small>${escapeHtml(sourceLabel || task.page_url || task.source_type || "-")}</small>
+      <div class="note-hero-meta">
+        <em>${escapeHtml(timeline)}</em>
+        <em>${escapeHtml(optionText(task) || asrOptionText(task.options || {}))}</em>
+      </div>
+      <div class="note-hero-metrics">
+        ${metrics.map(item => `<b><span>${escapeHtml(item.value)}</span>${escapeHtml(item.label)}</b>`).join("")}
+      </div>
+      ${actions ? `<div class="note-hero-actions">${actions}</div>` : ""}
+    </div>
+  </section>`;
+}
+
 function noteStudyBar(markdown, task) {
   const headings = noteHeadingStats(markdown);
   const windows = visualWindows(task);
@@ -3177,6 +3250,7 @@ async function renderDetail() {
     els.detail.innerHTML = `
       <div class="note-shell">
         ${taskOverview(task)}
+        ${noteHeroBanner(lastNote, task)}
         ${failureGuide(task)}
         ${visionEvidenceBar(task)}
         ${noteStudyBar(lastNote, task)}
