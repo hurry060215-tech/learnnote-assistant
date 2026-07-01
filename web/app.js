@@ -465,6 +465,17 @@ function requestBodySummary(resource) {
   return `${method} ${type} body ${fmtBytes(content.length) || `${content.length} B`}`;
 }
 
+function mseAppendEvidence(resource) {
+  if (!resource?.mse_append_count && !resource?.mse_append_magic && !resource?.mse_append_total_bytes) return "";
+  return [
+    resource.mse_append_count ? `MSE append ${resource.mse_append_count}x` : "MSE append",
+    resource.mse_append_magic || "",
+    fmtBytes(resource.mse_append_total_bytes),
+    resource.mse_append_mime || "",
+    resource.mse_append_detected_kind ? `detected ${resource.mse_append_detected_kind}` : ""
+  ].filter(Boolean).join(" ");
+}
+
 function hasRangeRequestHeader(resource) {
   return Object.keys(resource?.request_headers || {}).some(name => String(name).toLowerCase() === "range");
 }
@@ -2399,6 +2410,7 @@ function taskBrowserEvidenceHtml(task) {
   const requestContext = [
     requestHeaderNames(selected),
     selected.frame_url ? `frame ${compactUrl(selected.frame_url, 58)}` : "",
+    mseAppendEvidence(selected),
     selected.blob_url ? "blob 已映射" : ""
   ].filter(item => item && item !== "-").join(" · ");
   if (activeText === "-" && !target && !requestContext) return "";
@@ -2461,7 +2473,8 @@ function taskRouteEvidenceItems(task) {
       detail: [
         selected.mime || "",
         selected.content_length ? fmtBytes(selected.content_length) : "",
-        selected.request_type || ""
+        selected.request_type || "",
+        mseAppendEvidence(selected)
       ].filter(Boolean).join(" · ") || "Cookie 仅任务启动时同步"
     },
     {
@@ -3231,6 +3244,7 @@ async function renderDetail() {
         <dt>已选资源</dt><dd>${escapeHtml(selected.url || "未选择直接资源")}</dd>
         <dt>实际媒体 URL</dt><dd>${escapeHtml(taskResolvedTargetText(task, 140) || "-")}</dd>
         <dt>播放 blob</dt><dd>${escapeHtml(selected.blob_url || "-")}</dd>
+        <dt>MSE append</dt><dd>${escapeHtml(mseAppendEvidence(selected) || "-")}</dd>
         <dt>所在 frame</dt><dd>${escapeHtml(selected.frame_url || "-")}</dd>
         <dt>资源类型</dt><dd>${escapeHtml([
           selected.kind || "-",

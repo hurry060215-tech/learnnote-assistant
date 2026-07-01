@@ -1154,6 +1154,11 @@ const routeEvidenceItems = context.taskRouteEvidenceItems({
     playback_match: "same-frame",
     mime: "video/mp4",
     content_length: 1048576,
+    mse_append_count: 12,
+    mse_append_total_bytes: 2097152,
+    mse_append_magic: "ftyp",
+    mse_append_mime: "video/mp4",
+    mse_append_detected_kind: "video",
     request_headers: {
       Referer: "https://course.example.com/lesson",
       Cookie: "secret=bad",
@@ -1174,8 +1179,24 @@ const routeEvidenceItems = context.taskRouteEvidenceItems({
 });
 assert.equal(routeEvidenceItems.length, 4);
 assert.equal(routeEvidenceItems[2].value, "Referer");
+assert.match(routeEvidenceItems[2].detail, /MSE append 12x ftyp 2\.0 MB video\/mp4 detected video/);
 assert.match(JSON.stringify(routeEvidenceItems), /final\.mp4\?token=abc/);
 assert.doesNotMatch(JSON.stringify(routeEvidenceItems), /secret=bad|Bearer bad/);
+assert.match(context.taskBrowserEvidenceHtml({
+  source_type: "current_page",
+  active_video: { src: "blob:https://course.example.com/player", current_time: 12, duration: 120, paused: false },
+  selected_resource: {
+    kind: "blob",
+    source: "pageHookMse",
+    url: "blob:https://course.example.com/player",
+    blob_url: "blob:https://course.example.com/player",
+    mse_append_count: 12,
+    mse_append_total_bytes: 2097152,
+    mse_append_magic: "ftyp",
+    mse_append_mime: "video/mp4",
+    mse_append_detected_kind: "video"
+  }
+}), /MSE append 12x ftyp 2\.0 MB video\/mp4 detected video/);
 assert.match(context.taskRouteEvidenceHtml({
   source_type: "current_page",
   selected_resource: {

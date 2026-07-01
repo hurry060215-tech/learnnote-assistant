@@ -3611,7 +3611,8 @@ function taskBrowserEvidenceHtml(task) {
   const requestContext = [
     requestHeaderNames(selected),
     selected.frame_url ? `frame ${compactUrl(selected.frame_url, 52)}` : "",
-    selected.blob_url ? "blob 已映射" : ""
+    selected.blob_url ? "blob 已映射" : "",
+    mseAppendEvidence(selected)
   ].filter(item => item && item !== "-").join(" · ");
   if (activeText === "-" && !target && !requestContext) return "";
   return `<section class="task-browser-evidence" aria-label="浏览器播放证据">
@@ -3673,7 +3674,8 @@ function taskRouteEvidenceItems(task) {
       detail: [
         selected.mime || "",
         selected.content_length ? fmtBytes(selected.content_length) : "",
-        selected.request_type || ""
+        selected.request_type || "",
+        mseAppendEvidence(selected)
       ].filter(Boolean).join(" · ") || "Cookie 仅任务启动时同步"
     },
     {
@@ -4119,6 +4121,7 @@ function renderResult() {
         <dt>资源</dt><dd>${escapeHtml(selected.url || "未选择直接资源")}</dd>
         <dt>实际媒体 URL</dt><dd>${escapeHtml(taskResolvedTargetText(currentTask, 140) || "-")}</dd>
         <dt>播放 blob</dt><dd>${escapeHtml(selected.blob_url || "-")}</dd>
+        <dt>MSE append</dt><dd>${escapeHtml(mseAppendEvidence(selected) || "-")}</dd>
         <dt>所在 frame</dt><dd>${escapeHtml(selected.frame_url || "-")}</dd>
         <dt>类型</dt><dd>${escapeHtml([
           selected.kind || "-",
