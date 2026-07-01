@@ -1760,6 +1760,22 @@ function workbenchSlicePlanHtml() {
   </div>`;
 }
 
+function workbenchLocalFallbackHtml(state) {
+  const blocked = state === "blocked";
+  const label = blocked ? "直取受限" : "直取优先";
+  const detail = blocked
+    ? "当前页不可下载时，拖入本地视频继续同一套转写、切片、图文笔记流程；不会录制页面。"
+    : "先预检当前页媒体直链；如果平台拦截下载，再上传本地视频继续，不录屏。";
+  return `<div class="workbench-local-fallback ${blocked ? "urgent" : "soft"}" aria-label="本地上传兜底">
+    <div>
+      <span>${escapeHtml(label)}</span>
+      <strong>本地视频上传兜底</strong>
+      <small>${escapeHtml(detail)}</small>
+    </div>
+    <button type="button" data-route-action="local">上传本地视频</button>
+  </div>`;
+}
+
 function renderCurrentStudyCard() {
   if (!els.currentStudyCard) return;
   const state = currentStudyState();
@@ -1780,6 +1796,7 @@ function renderCurrentStudyCard() {
     </div>
     ${workbenchRouteHtml()}
     ${workbenchSlicePlanHtml()}
+    ${workbenchLocalFallbackHtml(state)}
     <div class="workbench-steps">
       ${workbenchStepItems(state).map((item, index) => `<section class="${escapeHtml(item.state)}">
         <i>${index + 1}</i>

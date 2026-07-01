@@ -2035,6 +2035,53 @@ button:disabled {
   line-height: 1.7;
 }
 
+.empty-production-brief {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.empty-production-brief section {
+  min-width: 0;
+  min-height: 94px;
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  gap: 6px;
+  border: 1px solid #d6e2f2;
+  border-radius: 8px;
+  background: #f8fbff;
+  padding: 10px;
+}
+
+.empty-production-brief b {
+  width: fit-content;
+  min-height: 21px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #c9d9ff;
+  border-radius: 6px;
+  background: #eef5ff;
+  color: var(--accent);
+  padding: 0 7px;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.empty-production-brief strong {
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.empty-production-brief small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
 .empty-hero-actions {
   width: min(100%, 430px);
   display: flex;
@@ -7667,8 +7714,8 @@ body {
 .empty-hero h3 {
   max-width: 680px;
   color: var(--ln-ink);
-  font-size: clamp(26px, 3vw, 42px);
-  line-height: 1.08;
+  font-size: clamp(22px, 2.1vw, 30px);
+  line-height: 1.12;
 }
 
 .empty-hero p {
@@ -7846,6 +7893,7 @@ body.reading-mode .app-shell {
 
   .empty-hero,
   .empty-route-grid,
+  .empty-production-brief,
   .empty-readiness-gates {
     grid-template-columns: 1fr;
   }

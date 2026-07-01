@@ -1487,10 +1487,15 @@ function renderResultTabState() {
   els.resultTabs.forEach(item => item.classList.toggle("active", item.dataset.tab === selectedTab));
 }
 
+function hasExplicitTaskRoute() {
+  return Boolean(taskIdFromCurrentUrl());
+}
+
 function initializeWorkspaceView() {
-  setWorkspaceCollapsed(storedUiFlag("learnnote.workspaceCollapsed"), false);
-  setHistoryCollapsed(storedUiFlag("learnnote.historyCollapsed"), false);
-  setReadingMode(storedUiFlag("learnnote.readingMode"), false);
+  const taskRoute = hasExplicitTaskRoute();
+  setWorkspaceCollapsed(taskRoute && storedUiFlag("learnnote.workspaceCollapsed"), false);
+  setHistoryCollapsed(taskRoute && storedUiFlag("learnnote.historyCollapsed"), false);
+  setReadingMode(taskRoute && storedUiFlag("learnnote.readingMode"), false);
   renderResultTabState();
 }
 
@@ -2844,6 +2849,23 @@ function emptyResultWorkbench() {
           <span>LearnNote 工作区</span>
           <h3>把正在看的课程视频变成可复习的图文笔记</h3>
           <p>从扩展 Side Panel 直取当前页可访问的视频资源，或上传本地视频；后端会下载到本机、转写、切片、生成画面网格，再合并成学习笔记。</p>
+          <div class="empty-production-brief" aria-label="本次产出工作台">
+            <section>
+              <b>输入</b>
+              <strong>当前页 / 本地 / 链接</strong>
+              <small>优先直取可访问媒体，不录制页面。</small>
+            </section>
+            <section>
+              <b>处理</b>
+              <strong>下载 · 转写 · 切片</strong>
+              <small>生成字幕、时间轴和视觉窗口。</small>
+            </section>
+            <section>
+              <b>交付</b>
+              <strong>Markdown · 诊断 · 资料包</strong>
+              <small>可直接下载，不写入额外记录。</small>
+            </section>
+          </div>
           <div class="empty-hero-actions">
             <button type="button" data-empty-source="browser">当前页直取</button>
             <button type="button" data-empty-source="local">本地视频</button>
