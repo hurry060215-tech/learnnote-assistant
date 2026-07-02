@@ -898,6 +898,80 @@ function sourceRouteInsightsHtml(source, task = null) {
   </div>`;
 }
 
+function sourceWorkflowStatusItems(source, task = null) {
+  const selected = task?.selected_resource || {};
+  const attempts = task?.download_attempts || [];
+  const windows = task ? visualWindows(task) : [];
+  const failed = task?.status === "failed";
+  const running = task?.status === "running" || task?.status === "queued";
+  const hasMedia = Boolean(task?.media_path);
+  const hasNote = Boolean(task?.note_path);
+  const sourceLabel = source === "local" ? "本地视频" : source === "url" ? "链接解析" : "当前页直取";
+  const routeDetail = source === "browser"
+    ? selected.kind ? `${selected.kind} · ${resourceSourceText(selected) || selected.source || "候选"}` : "扩展侧栏交接播放器、媒体请求和一次性 Cookie"
+    : source === "local"
+      ? "文件直接进入本地管线，不依赖平台暴露 URL"
+      : "手动 URL 可先预检，再进入直连、manifest 或 yt-dlp 路线";
+  const downloadValue = hasMedia
+    ? "media.mp4"
+    : attempts.length
+      ? `${attempts.length} 次尝试`
+      : source === "local" ? "待上传" : source === "url" ? "待预检" : "待候选";
+  const downloadDetail = hasMedia
+    ? "已落地，可导出或继续切片总结"
+    : failed
+      ? task.error_code || "下载失败"
+      : running ? `${task.phase || "running"} · ${task.progress || 0}%` : "开始任务前先确认后端可访问媒体";
+  const sliceValue = windows.length
+    ? `${windows.length} 个视觉窗口`
+    : visualUnderstandingEnabled() ? visualPlanText() : "仅转写";
+  const sliceDetail = windows.length
+    ? "可在学习切片页核对画面、字幕和自测题"
+    : visualUnderstandingEnabled() ? "下载后抽帧拼网格，并按窗口对齐字幕" : "图文理解关闭，不生成视觉窗口";
+  const fallbackValue = source === "browser"
+    ? failed ? "本地兜底" : "非录制"
+    : source === "local" ? "离线管线" : "页面兜底";
+  const fallbackDetail = source === "browser"
+    ? "不可还原 blob、DRM 或签名过期时切到本地视频"
+    : source === "local" ? "同样输出 Markdown、诊断和资料包" : "直连失败后可切页面解析或本地上传";
+  return [
+    {
+      state: task || source !== "browser" ? "pass" : "active",
+      label: "入口",
+      value: sourceLabel,
+      detail: routeDetail
+    },
+    {
+      state: hasMedia ? "pass" : failed ? "block" : running ? "active" : "wait",
+      label: "下载",
+      value: downloadValue,
+      detail: downloadDetail
+    },
+    {
+      state: windows.length ? "pass" : visualUnderstandingEnabled() ? (hasMedia || running ? "active" : "wait") : "skip",
+      label: "切片",
+      value: sliceValue,
+      detail: sliceDetail
+    },
+    {
+      state: failed && source === "browser" ? "warn" : "pass",
+      label: "边界",
+      value: fallbackValue,
+      detail: fallbackDetail
+    }
+  ];
+}
+
+function sourceWorkflowStatusHtml(source, task = null) {
+  return `<div class="source-workflow-status" aria-label="路线状态">
+    ${sourceWorkflowStatusItems(source, task).map(item => `<section class="${escapeHtml(item.state)}">
+      <span>${escapeHtml(item.label)}</span>
+      <strong>${escapeHtml(item.value)}</strong>
+      <small>${escapeHtml(item.detail)}</small>
+    </section>`).join("")}
+  </div>`;
+}
+
 function sourceWorkflowActionsHtml(source, task = null) {
   const actions = [];
   if (source === "browser") {
@@ -931,6 +1005,7 @@ function sourceWorkflowHtml(source = selectedSource, task = workflowTaskForSourc
       <strong>${escapeHtml(config.title)}</strong>
       <small>${escapeHtml(config.hint)}</small>
     </header>
+    ${sourceWorkflowStatusHtml(source, task)}
     <ol class="source-workflow-lane">
       ${config.steps.map(([title, detail], index) => `<li class="${workflowStepState(task, index)}">
         <b>${index + 1}</b>

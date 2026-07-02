@@ -8672,6 +8672,77 @@ body {
   gap: 3px;
 }
 
+.source-workflow-status {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.source-workflow-status section {
+  min-width: 0;
+  min-height: 74px;
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  border: 1px solid #d6e0ec;
+  border-top-width: 3px;
+  border-top-color: #a9b7ca;
+  border-radius: 8px;
+  background: #f8fbff;
+  padding: 8px;
+}
+
+.source-workflow-status section.pass {
+  border-top-color: var(--ln-green);
+  background: #f3fbf7;
+}
+
+.source-workflow-status section.active {
+  border-top-color: var(--ln-blue);
+  background: #f1f7ff;
+}
+
+.source-workflow-status section.warn {
+  border-top-color: var(--ln-amber);
+  background: #fff8ec;
+}
+
+.source-workflow-status section.block {
+  border-top-color: var(--ln-red);
+  background: #fff4f3;
+}
+
+.source-workflow-status section.skip,
+.source-workflow-status section.wait {
+  border-top-color: #a9b7ca;
+}
+
+.source-workflow-status span {
+  color: #718096;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.source-workflow-status strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ln-ink);
+  font-size: 12px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-workflow-status small {
+  display: -webkit-box;
+  overflow: hidden;
+  color: #657286;
+  font-size: 10px;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
 .source-workflow-lane {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
@@ -8977,6 +9048,10 @@ body.reading-mode .app-shell {
   }
 
   .source-workflow-lane {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .source-workflow-status {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 

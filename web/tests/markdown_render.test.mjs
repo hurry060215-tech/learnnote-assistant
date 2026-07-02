@@ -171,10 +171,17 @@ assert.equal(elements.get("#copyButton").disabled, true);
 assert.equal(elements.get("#visualWindowsButton").disabled, true);
 assert.equal(elements.get("#manifestButton").disabled, true);
 assert.match(elements.get("#sourceWorkflow").innerHTML, /class="source-workflow-card browser"/);
+assert.match(elements.get("#sourceWorkflow").innerHTML, /class="source-workflow-status"/);
 assert.match(elements.get("#sourceWorkflow").innerHTML, /学习生产线|当前页直取/);
 assert.match(elements.get("#sourceWorkflow").innerHTML, /读取当前页/);
 assert.match(elements.get("#sourceWorkflow").innerHTML, /预检资源/);
+assert.match(elements.get("#sourceWorkflow").innerHTML, /<span>入口<\/span>/);
+assert.match(elements.get("#sourceWorkflow").innerHTML, /当前页直取/);
+assert.match(elements.get("#sourceWorkflow").innerHTML, /待候选/);
+assert.match(elements.get("#sourceWorkflow").innerHTML, /20秒 · 3x3/);
+assert.match(elements.get("#sourceWorkflow").innerHTML, /非录制/);
 assert.match(indexHtml, /id="toggleWorkspaceButton"/);
+assert.match(indexHtml, /styles\.css\?v=20260702-workflow-status/);
 assert.match(indexHtml, /id="urlPreflightReport"/);
 assert.match(indexHtml, /id="llmProvider"/);
 assert.equal(documentStub.body.classList.contains("workspace-collapsed"), false);
@@ -228,6 +235,26 @@ assert.equal(context.resourceSourceText({ source: "iframeHint" }), "iframe 内�
 assert.equal(context.resourceSourceText({ source: "scriptHint" }), "页面脚本线索");
 assert.equal(context.resourceSourceText({ source: "domHint" }), "页面元素线索");
 assert.equal(context.resourceSourceText({ source: "locationHint" }), "页面 URL 线索");
+
+const browserWorkflowStatusHtml = context.sourceWorkflowStatusHtml("browser", {
+  id: "workflow-current",
+  status: "success",
+  media_path: "D:/Projects/learnnote-assistant/data/tasks/workflow-current/media.mp4",
+  note_path: "D:/Projects/learnnote-assistant/data/tasks/workflow-current/note.md",
+  selected_resource: { kind: "hls", source: "webRequest" },
+  visual_windows: [{ id: "W001", start: 0, end: 180, frame_count: 9 }]
+});
+assert.match(browserWorkflowStatusHtml, /class="source-workflow-status"/);
+assert.match(browserWorkflowStatusHtml, /hls · 浏览器请求/);
+assert.match(browserWorkflowStatusHtml, /media\.mp4/);
+assert.match(browserWorkflowStatusHtml, /1 个视觉窗口/);
+assert.match(browserWorkflowStatusHtml, /不可还原 blob、DRM 或签名过期时切到本地视频/);
+assert.doesNotMatch(browserWorkflowStatusHtml, /<script>/);
+
+const localWorkflowStatusHtml = context.sourceWorkflowStatusHtml("local");
+assert.match(localWorkflowStatusHtml, /本地视频/);
+assert.match(localWorkflowStatusHtml, /待上传/);
+assert.match(localWorkflowStatusHtml, /离线管线/);
 
 const readyGateHtml = context.emptyReadinessGatesHtml({
   ffmpeg: true,
