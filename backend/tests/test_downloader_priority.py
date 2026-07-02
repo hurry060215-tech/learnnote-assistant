@@ -1326,6 +1326,44 @@ class DownloaderPriorityTests(unittest.TestCase):
                 server.shutdown()
                 server.server_close()
 
+    def test_direct_video_candidate_with_audio_url_uses_two_ffmpeg_inputs(self) -> None:
+        captured: dict = {}
+
+        def fake_run(cmd, capture_output, text):
+            captured["cmd"] = cmd
+            output = Path(cmd[-1])
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_bytes(b"0" * 5000)
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            candidate = ResourceCandidate(
+                url="https://cdn.example.com/course/video-only.mp4?token=v",
+                source="direct-response",
+                kind="video",
+                mime="video/mp4",
+                audio_url="https://cdn.example.com/course/audio-only.m4a?token=a",
+                audio_mime="audio/mp4",
+                request_headers={
+                    "Referer": "https://course.example.com/player",
+                    "User-Agent": "Chrome Test UA",
+                },
+            )
+            downloader = MediaDownloader(root / "task")
+            with patch("app.downloader.ffmpeg_bin", return_value="ffmpeg"), patch("app.downloader.subprocess.run", side_effect=fake_run):
+                media = downloader._download_file(candidate, [], "https://course.example.com/lesson", "Split AV")
+
+            self.assertTrue(media.exists())
+            self.assertEqual(media.name, "Split_AV_direct_av.mp4")
+            self.assertEqual(captured["cmd"].count("-i"), 2)
+            input_indexes = [index + 1 for index, value in enumerate(captured["cmd"]) if value == "-i"]
+            self.assertEqual(captured["cmd"][input_indexes[0]], candidate.url)
+            self.assertEqual(captured["cmd"][input_indexes[1]], candidate.audio_url)
+            self.assertIn("-map", captured["cmd"])
+            self.assertIn("0:v:0", captured["cmd"])
+            self.assertIn("1:a:0", captured["cmd"])
+
     def test_manifest_download_prefers_existing_resolved_url_for_probe(self) -> None:
         captured: dict = {}
 

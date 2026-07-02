@@ -22,6 +22,7 @@ from app.downloader import (
     cookie_header_for_url,
     download_headers_for_candidate,
     effective_resource_kind,
+    extract_media_resources_from_json_text,
     extract_media_resources_from_text,
     extract_player_page_resources_from_html,
     fallback_page_urls,
@@ -158,6 +159,22 @@ class ResourceDetectionTests(unittest.TestCase):
             ],
         )
         self.assertEqual(infer_sibling_manifest_urls_from_fragment("https://cdn.example.com/live/master.m3u8/seg.ts"), [])
+
+    def test_json_video_candidate_keeps_companion_audio_url(self) -> None:
+        payload = json.dumps({
+            "data": {
+                "videoUrl": "https://cdn.example.com/course/video-720p.mp4?token=v",
+                "audioUrl": "https://cdn.example.com/course/audio-128k.m4a?token=a",
+                "mimeType": "video/mp4",
+            }
+        })
+        resources = extract_media_resources_from_json_text(payload, "https://course.example.com/player", "direct-response")
+        by_kind = {item.kind: item for item in resources}
+        self.assertIn("video", by_kind)
+        self.assertIn("audio", by_kind)
+        self.assertEqual(by_kind["video"].audio_url, "https://cdn.example.com/course/audio-128k.m4a?token=a")
+        self.assertEqual(by_kind["video"].audio_mime, "audio/mp4")
+        self.assertEqual(by_kind["audio"].url, "https://cdn.example.com/course/audio-128k.m4a?token=a")
 
     def test_cookie_header_matches_parent_domains(self) -> None:
         cookies = [

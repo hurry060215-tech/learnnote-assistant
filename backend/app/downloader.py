@@ -20,18 +20,19 @@ from .runtime import ffmpeg_bin
 
 
 MEDIA_EXT_RE = re.compile(r"\.(mp4|m4v|webm|mov|mkv|flv|avi)(\?|#|$)", re.I)
+AUDIO_EXT_RE = re.compile(r"\.(m4a|mp3|aac|opus|ogg|oga|wav)(\?|#|$)", re.I)
 MANIFEST_EXT_RE = re.compile(r"\.(m3u8|mpd)(\?|#|$)", re.I)
 FRAGMENT_EXT_RE = re.compile(r"\.(m4s|ts)(\?|#|$)", re.I)
 SUBTITLE_EXT_RE = re.compile(r"\.(vtt|srt|ass|ssa)(\?|#|$)", re.I)
-TEXT_MEDIA_HINT_RE = re.compile(r"\.(mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|m4s|ts|vtt|srt|ass|ssa)([?#]|[\"'\s<>]|$)", re.I)
+TEXT_MEDIA_HINT_RE = re.compile(r"\.(mp4|m4v|webm|mov|mkv|flv|avi|m4a|mp3|aac|opus|ogg|oga|wav|m3u8|mpd|m4s|ts|vtt|srt|ass|ssa)([?#]|[\"'\s<>]|$)", re.I)
 TEXT_MEDIA_URL_RE = re.compile(
-    r"(?:https?:)?//[^\s\"'<>\\]+\.(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|m4s|ts|vtt|srt|ass|ssa)(?:\?[^\s\"'<>\\]*)?"
-    r"|(?:/[^\s\"'<>\\]+)\.(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|m4s|ts|vtt|srt|ass|ssa)(?:\?[^\s\"'<>\\]*)?"
-    r"|(?:[A-Za-z0-9._~!$&()*+,;=:@%-]+/)*[A-Za-z0-9._~!$&()*+,;=:@%-]+\.(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|m4s|ts|vtt|srt|ass|ssa)(?:\?[^\s\"'<>\\]*)?",
+    r"(?:https?:)?//[^\s\"'<>\\]+\.(?:mp4|m4v|webm|mov|mkv|flv|avi|m4a|mp3|aac|opus|ogg|oga|wav|m3u8|mpd|m4s|ts|vtt|srt|ass|ssa)(?:\?[^\s\"'<>\\]*)?"
+    r"|(?:/[^\s\"'<>\\]+)\.(?:mp4|m4v|webm|mov|mkv|flv|avi|m4a|mp3|aac|opus|ogg|oga|wav|m3u8|mpd|m4s|ts|vtt|srt|ass|ssa)(?:\?[^\s\"'<>\\]*)?"
+    r"|(?:[A-Za-z0-9._~!$&()*+,;=:@%-]+/)*[A-Za-z0-9._~!$&()*+,;=:@%-]+\.(?:mp4|m4v|webm|mov|mkv|flv|avi|m4a|mp3|aac|opus|ogg|oga|wav|m3u8|mpd|m4s|ts|vtt|srt|ass|ssa)(?:\?[^\s\"'<>\\]*)?",
     re.I,
 )
 ENCODED_MEDIA_URL_RE = re.compile(
-    r"https?%(?:25)*3A(?:(?:%(?:25)*2F)|/){2}[^\s\"'<>\\]+?(?:\.|%(?:25)*2E)(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|m4s|ts|vtt|srt|ass|ssa)(?:[^\s\"'<>\\]*)?",
+    r"https?%(?:25)*3A(?:(?:%(?:25)*2F)|/){2}[^\s\"'<>\\]+?(?:\.|%(?:25)*2E)(?:mp4|m4v|webm|mov|mkv|flv|avi|m4a|mp3|aac|opus|ogg|oga|wav|m3u8|mpd|m4s|ts|vtt|srt|ass|ssa)(?:[^\s\"'<>\\]*)?",
     re.I,
 )
 TEXT_RESPONSE_RE = re.compile(r"json|text|html|javascript|mpegurl|dash\+xml|xml|x-mpegurl", re.I)
@@ -40,7 +41,7 @@ MEDIA_ENDPOINT_HINT_RE = re.compile(
     re.I,
 )
 JSON_MEDIA_KEY_RE = re.compile(
-    r"(url|src|file|fileid|objectid|dtoken|download|httpmd|play|media|video|stream|source|hls|m3u8|dash|mpd|segment|fragment|chunk|subtitle|caption)",
+    r"(url|src|file|fileid|objectid|dtoken|download|httpmd|play|media|video|audio|stream|source|hls|m3u8|dash|mpd|segment|fragment|chunk|subtitle|caption)",
     re.I,
 )
 JSON_MIME_KEY_RE = re.compile(r"(mime|type|format|content.?type|media.?type)", re.I)
@@ -343,6 +344,8 @@ def _mime_for_kind(kind: str) -> str:
         return "text/vtt"
     if kind == "video":
         return "video/mp4"
+    if kind == "audio":
+        return "audio/mp4"
     return ""
 
 
@@ -587,6 +590,8 @@ def _json_context_kind(key_path: list[str], url: str, parent: object) -> tuple[s
         return "dash", "application/dash+xml"
     if "text/vtt" in context or "subrip" in context or "subtitle" in context or "caption" in context:
         return "subtitle", "text/vtt"
+    if "audio/" in context or "m4a" in context or "mp3" in context or "aac" in context or "opus" in context or "audio" in context:
+        return "audio", "audio/mp4"
     if "video/" in context or "mp4" in context or "video" in context:
         return "video", "video/mp4"
     if JSON_VIDEO_CONTEXT_RE.search(context) and _media_endpoint_hint(url):
@@ -597,6 +602,8 @@ def _json_context_kind(key_path: list[str], url: str, parent: object) -> tuple[s
 def _json_media_resources(node: object, base_url: str, source: str, key_path: list[str], seen: set[str]) -> list[ResourceCandidate]:
     resources: list[ResourceCandidate] = []
     if isinstance(node, dict):
+        local_video_resources: list[ResourceCandidate] = []
+        local_audio_resources: list[ResourceCandidate] = []
         for key, value in node.items():
             next_path = [*key_path, str(key)]
             if isinstance(value, str) and JSON_MEDIA_KEY_RE.search(str(key)):
@@ -607,17 +614,20 @@ def _json_media_resources(node: object, base_url: str, source: str, key_path: li
                     if url and url not in seen:
                         kind, mime = _json_context_kind(next_path, url, node)
                         if kind != "unknown":
-                            resources.append(
-                                ResourceCandidate(
-                                    url=url,
-                                    source=source,
-                                    kind=kind,
-                                    mime=mime,
-                                    score=score_resource(url, mime, source),
-                                    label=f"json {'/'.join(next_path[-3:])}",
-                                    request_headers={"Referer": base_url},
-                                )
+                            candidate = ResourceCandidate(
+                                url=url,
+                                source=source,
+                                kind=kind,
+                                mime=mime,
+                                score=score_resource(url, mime, source),
+                                label=f"json {'/'.join(next_path[-3:])}",
+                                request_headers={"Referer": base_url},
                             )
+                            resources.append(candidate)
+                            if kind == "video":
+                                local_video_resources.append(candidate)
+                            elif kind == "audio":
+                                local_audio_resources.append(candidate)
                             seen.add(url)
                             break
             if isinstance(value, str) and not JSON_MEDIA_KEY_RE.search(str(key)):
@@ -630,17 +640,20 @@ def _json_media_resources(node: object, base_url: str, source: str, key_path: li
                     kind, mime = _json_context_kind(next_path, url, node)
                     if kind == "unknown":
                         continue
-                    resources.append(
-                        ResourceCandidate(
-                            url=url,
-                            source=source,
-                            kind=kind,
-                            mime=mime,
-                            score=score_resource(url, mime, source),
-                            label=f"json {'/'.join(next_path[-3:])}",
-                            request_headers={"Referer": base_url},
-                        )
+                    candidate = ResourceCandidate(
+                        url=url,
+                        source=source,
+                        kind=kind,
+                        mime=mime,
+                        score=score_resource(url, mime, source),
+                        label=f"json {'/'.join(next_path[-3:])}",
+                        request_headers={"Referer": base_url},
                     )
+                    resources.append(candidate)
+                    if kind == "video":
+                        local_video_resources.append(candidate)
+                    elif kind == "audio":
+                        local_audio_resources.append(candidate)
                     seen.add(url)
                     break
             if isinstance(value, str) and len(key_path) < 12:
@@ -663,6 +676,12 @@ def _json_media_resources(node: object, base_url: str, source: str, key_path: li
                 resources.extend(_json_media_resources(value, base_url, source, next_path, seen))
             if len(resources) >= 60:
                 break
+        if local_video_resources and local_audio_resources:
+            audio = max(local_audio_resources, key=lambda item: item.score or 0)
+            for video in local_video_resources:
+                if not video.audio_url:
+                    video.audio_url = audio.url
+                    video.audio_mime = audio.mime
     elif isinstance(node, list):
         for index, value in enumerate(node[:120]):
             resources.extend(_json_media_resources(value, base_url, source, [*key_path, str(index)], seen))
@@ -1169,6 +1188,8 @@ def classify_resource(url: str, mime: str = "") -> str:
         return "hls"
     if "dash+xml" in mime_lower or ".mpd" in lowered:
         return "dash"
+    if "audio/" in mime_lower or AUDIO_EXT_RE.search(lowered):
+        return "audio"
     if "video/" in mime_lower or MEDIA_EXT_RE.search(lowered):
         return "video"
     if "text/vtt" in mime_lower or "subrip" in mime_lower or SUBTITLE_EXT_RE.search(lowered):
@@ -1181,7 +1202,7 @@ def effective_resource_kind(candidate: ResourceCandidate) -> str:
     if inferred != "unknown":
         return inferred
     declared = (candidate.kind or "").lower()
-    if declared in {"video", "hls", "dash", "subtitle", "fragment", "blob"}:
+    if declared in {"video", "audio", "hls", "dash", "subtitle", "fragment", "blob"}:
         return declared
     if _is_scannable_play_endpoint(candidate):
         return "video"
@@ -1194,6 +1215,8 @@ def score_kind(url: str, source: str, kind: str) -> int:
         score += 95
     elif kind == "video":
         score += 85
+    elif kind == "audio":
+        score += 35
     elif kind == "fragment":
         score += 15
     elif kind == "subtitle":
@@ -1226,6 +1249,7 @@ def kind_rank(kind: str) -> int:
         "hls": 6,
         "dash": 6,
         "video": 5,
+        "audio": 2,
         "fragment": 3,
         "subtitle": 2,
         "blob": 1,
@@ -2209,6 +2233,8 @@ class MediaDownloader:
         if kind in {"hls", "dash"}:
             return "manifest-ffmpeg"
         if kind == "video":
+            if candidate.audio_url:
+                return "direct-av-merge"
             return "direct-file"
         return f"unsupported-{kind}"
 
@@ -2221,6 +2247,7 @@ class MediaDownloader:
             candidate.frame_id is not None and f"frame {candidate.frame_id}",
             candidate.status_code and f"HTTP {candidate.status_code}",
             candidate.resolved_url and candidate.resolved_url != candidate.url and f"最终 URL {candidate.resolved_url}",
+            candidate.audio_url and "伴随音频流",
             candidate.mime and f"MIME {candidate.mime}",
             candidate.content_length and f"大小 {candidate.content_length}B",
         ]
@@ -2454,6 +2481,8 @@ class MediaDownloader:
         return None
 
     def _download_file(self, candidate: ResourceCandidate, cookies: list[BrowserCookie], referer: str, title: str) -> Path:
+        if candidate.audio_url:
+            return self._download_file_with_audio(candidate, cookies, referer, title)
         url = candidate.resolved_url or candidate.url
         base_headers = download_headers_for_candidate(candidate, cookies, referer, url=url)
         request_method, request_body = request_body_for_candidate(candidate, url)
@@ -2530,6 +2559,57 @@ class MediaDownloader:
                 raise first_error
         except Exception as exc:
             raise DownloadError("download_forbidden", f"直接下载失败：{exc}") from exc
+
+    def _download_file_with_audio(self, candidate: ResourceCandidate, cookies: list[BrowserCookie], referer: str, title: str) -> Path:
+        ffmpeg = ffmpeg_bin()
+        if not ffmpeg:
+            raise DownloadError("unsupported_manifest", "未找到 ffmpeg，无法合并分离的视频和音频流。")
+        video_url = candidate.resolved_url or candidate.url
+        audio_url = candidate.audio_url
+        if not _is_http_url(video_url) or not _is_http_url(audio_url):
+            raise DownloadError("download_forbidden", "分离音视频流缺少可访问的 HTTP(S) 地址。")
+        output = self.download_dir / f"{_clean_filename(title)}_direct_av.mp4"
+        video_headers = download_headers_for_candidate(candidate, cookies, referer, url=video_url)
+        audio_probe = candidate.model_copy(deep=True)
+        audio_probe.url = audio_url
+        audio_probe.resolved_url = ""
+        audio_probe.kind = "audio"
+        audio_probe.mime = candidate.audio_mime or "audio/mp4"
+        audio_headers = download_headers_for_candidate(audio_probe, cookies, referer, url=audio_url)
+        video_user_agent = video_headers.pop("User-Agent", "Mozilla/5.0 LearnNoteAssistant/0.1")
+        audio_user_agent = audio_headers.pop("User-Agent", video_user_agent)
+        cmd = [ffmpeg, "-y", "-hide_banner", "-loglevel", "error"]
+        if video_headers:
+            cmd += ["-headers", "\r\n".join(f"{name}: {value}" for name, value in video_headers.items() if value) + "\r\n"]
+        cmd += ["-user_agent", video_user_agent, "-i", video_url]
+        if audio_headers:
+            cmd += ["-headers", "\r\n".join(f"{name}: {value}" for name, value in audio_headers.items() if value) + "\r\n"]
+        cmd += [
+            "-user_agent",
+            audio_user_agent,
+            "-i",
+            audio_url,
+            "-map",
+            "0:v:0",
+            "-map",
+            "1:a:0",
+            "-c",
+            "copy",
+            "-movflags",
+            "+faststart",
+            str(output),
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            stderr = (result.stderr or "").lower()
+            if "403" in stderr or "401" in stderr:
+                raise DownloadError("auth_required", "ffmpeg 合并分离音视频失败，可能需要登录态 cookie。")
+            if "encrypted" in stderr or "drm" in stderr:
+                raise DownloadError("drm_or_encrypted", "分离媒体流疑似加密或 DRM 保护，无法直接下载。")
+            raise DownloadError("download_forbidden", f"ffmpeg 无法合并分离音视频：{result.stderr[:300]}")
+        if not output.exists() or output.stat().st_size < 4096:
+            raise DownloadError("download_forbidden", "分离音视频合并没有生成有效视频。")
+        return output
 
     def _download_text_file(self, candidate: ResourceCandidate, cookies: list[BrowserCookie], referer: str, title: str) -> Path:
         url = candidate.url

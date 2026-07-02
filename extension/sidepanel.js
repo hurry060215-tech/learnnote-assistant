@@ -1350,6 +1350,7 @@ function resourceEvidenceTags(item) {
   if (playerSource) add(`${playerSource}源地址`);
   if (item.source === "manifest-guess") add("同目录 manifest 猜测");
   if (item.source === "inferred-manifest") add("分片路径回推");
+  if (item.audio_url) add("分离音频");
   if (String(item.source || "").startsWith("pageHook")) add("页面接口");
   if (item.request_type === "media") add("media 请求");
   if (resourceHasMediaRequestHeader(item)) add("视频请求头");
@@ -1376,6 +1377,7 @@ function resourceTagHtml(item, limit = 4) {
 
 function candidateStrategyText(item) {
   if (!item) return "等待检测";
+  if (item.audio_url) return "音视频合并";
   if (item.kind === "hls" || item.kind === "dash") return "ffmpeg 合并";
   if (item.kind === "video") return "直接下载";
   if (item.kind === "fragment") return "尝试推断 manifest";

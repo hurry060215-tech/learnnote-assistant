@@ -48,6 +48,8 @@ class ResourceCandidate(BaseModel):
     mse_append_magic: str = ""
     mse_append_mime: str = ""
     mse_append_detected_kind: str = ""
+    audio_url: str = ""
+    audio_mime: str = ""
     initiator: str = ""
     time_stamp: float | None = None
     resolved_url: str = ""

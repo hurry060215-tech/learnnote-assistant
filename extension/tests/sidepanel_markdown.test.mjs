@@ -1082,6 +1082,15 @@ assert.match(context.resourceReasonText({
   source: "webRequest",
   playback_match: "fragment-near-playhead"
 }), /播放进度附近分片请求/);
+assert.match(context.resourceReasonText({
+  kind: "video",
+  source: "direct-response",
+  audio_url: "https://cdn.example.com/audio.m4a"
+}), /分离音频/);
+assert.equal(context.candidateStrategyText({
+  kind: "video",
+  audio_url: "https://cdn.example.com/audio.m4a"
+}), "音视频合并");
 assert.match(context.directnessText({
   kind: "hls",
   source: "pageHookPlayer",
