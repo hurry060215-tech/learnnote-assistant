@@ -532,6 +532,46 @@ assert.match(visualDeckHtml, /data-window-start="180\.000"/);
 assert.match(visualDeckHtml, />回看此段<\/button>/);
 assert.doesNotMatch(visualDeckHtml, /<script>bad/);
 
+const visualNavigatorHtml = context.visualStudyNavigatorHtml({
+  id: "side-visual-nav",
+  title: "<script>bad()</script> 视觉课程",
+  summary_source: "vision-llm",
+  summary_diagnostics: {
+    vision_image_window_ids: ["W001"],
+    missing_vision_image_window_ids: ["W002"]
+  },
+  visual_windows: [
+    {
+      id: "W001",
+      start: 0,
+      end: 180,
+      frame_count: 9,
+      transcript_excerpt: "<script>alert(1)</script> 画面摘要"
+    },
+    {
+      id: "W002",
+      start: 180,
+      end: 360,
+      frame_count: 6
+    }
+  ]
+}, {
+  segments: [
+    { start: 12, end: 18, text: "老师讲解概念定义" },
+    { start: 220, end: 230, text: "缺图窗口字幕" }
+  ]
+});
+assert.match(visualNavigatorHtml, /class="side-visual-study-navigator"/);
+assert.match(visualNavigatorHtml, /复习队列/);
+assert.match(visualNavigatorHtml, /按画面窗口回看/);
+assert.match(visualNavigatorHtml, /先扫窗口，再进入下方卡片核对字幕、截图和自测题。/);
+assert.match(visualNavigatorHtml, /W001/);
+assert.match(visualNavigatorHtml, /已进视觉 · 9 帧 · 1 字幕/);
+assert.match(visualNavigatorHtml, /class="missing"/);
+assert.match(visualNavigatorHtml, /缺图 · 6 帧 · 1 字幕/);
+assert.match(visualNavigatorHtml, /data-media-seek-time="180\.000"/);
+assert.doesNotMatch(visualNavigatorHtml, /<script>/);
+
 const visualDeckWithTranscriptHtml = context.visualStudyDeck({
   id: "side-visual-transcript",
   title: "带字幕切片",
