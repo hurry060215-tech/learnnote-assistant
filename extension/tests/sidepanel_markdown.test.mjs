@@ -136,6 +136,11 @@ const summaryDiagnostic = context.summaryDiagnosticText({
   summary_diagnostics: {
     used_vision_llm: true,
     llm_model: "vision-model",
+    llm_provider: "openrouter",
+    llm_base_host: "openrouter.ai",
+    llm_failure_stage: "vision_merge",
+    llm_failure_code: "api_error",
+    llm_failure_reason: "HTTP 429",
     visual_window_count: 2,
     frame_grid_count: 2,
     vision_grid_count: 2,
@@ -150,6 +155,11 @@ const summaryDiagnostic = context.summaryDiagnosticText({
     combined_text_char_count: 72
   }
 });
+
+assert.match(summaryDiagnostic, /Provider openrouter/);
+assert.match(summaryDiagnostic, /Base openrouter\.ai/);
+assert.match(summaryDiagnostic, /LLM 失败 vision_merge\/api_error/);
+assert.match(summaryDiagnostic, /原因 HTTP 429/);
 
 assert.match(summaryDiagnostic, /已使用视觉 LLM/);
 assert.match(summaryDiagnostic, /模型 vision-model/);

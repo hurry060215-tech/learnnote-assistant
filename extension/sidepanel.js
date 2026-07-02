@@ -499,6 +499,10 @@ function summaryDiagnosticText(task) {
   return [
     diag.used_vision_llm ? "已使用视觉 LLM" : diag.used_text_llm ? "已使用文本 LLM" : diag.used_local_template ? "本地模板" : "",
     `模型 ${diag.llm_model || task.summary_source || "-"}`,
+    diag.llm_provider ? `Provider ${diag.llm_provider}` : "",
+    diag.llm_base_host ? `Base ${diag.llm_base_host}` : "",
+    diag.llm_failure_code ? `LLM 失败 ${diag.llm_failure_stage || "unknown"}/${diag.llm_failure_code}` : "",
+    diag.llm_failure_reason ? `原因 ${diag.llm_failure_reason}` : "",
     `视觉窗口 ${diag.visual_window_count ?? 0}`,
     `画面网格 ${diag.frame_grid_count ?? 0}`,
     `\u9001\u5165\u89c6\u89c9 ${sentImages}/${visionGridCount}`,
