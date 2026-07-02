@@ -107,6 +107,15 @@ def merge_task_options(base: TaskOptions | None, overrides: TaskOptions | None) 
     return TaskOptions.model_validate(merged)
 
 
+def task_media_file_exists(task: TaskRecord) -> bool:
+    if not task.media_path:
+        return False
+    try:
+        return Path(task.media_path).is_file()
+    except (OSError, ValueError):
+        return False
+
+
 def markdown_filename(task_id: str, title: str) -> str:
     stem = _FILENAME_RESERVED_RE.sub("_", title or "").strip(" ._")
     stem = stem[:120] or f"learnnote-{task_id}"
@@ -288,15 +297,16 @@ def _safe_browser_request_header_names(selected: ResourceCandidate | None) -> li
 
 
 def _direct_extraction_route(task: TaskRecord) -> str:
+    media_exists = task_media_file_exists(task)
     if task.source_type == "local":
         return "local_video_pipeline"
     if task.source_type == "page_text" or task.mode == "page_text":
         return "page_text_only"
-    if task.mode == "download_only" and task.media_path:
+    if task.mode == "download_only" and media_exists:
         return "download_only_to_local_media"
-    if task.media_path and task.selected_resource:
+    if media_exists and task.selected_resource:
         return "browser_candidate_to_local_media"
-    if task.media_path:
+    if media_exists:
         return "resolver_to_local_media"
     if task.download_attempts:
         return "attempted_direct_extraction"
@@ -308,6 +318,7 @@ def direct_extraction_evidence(task: TaskRecord) -> dict:
     attempts = task.download_attempts or []
     cookie_summary = task.cookie_summary or {}
     cookie_count = cookie_summary.get("total", cookie_summary.get("cookie_count", 0))
+    media_exists = task_media_file_exists(task)
     successful_attempts = [attempt for attempt in attempts if attempt.status == "success"]
     failed_attempts = [attempt for attempt in attempts if attempt.status == "failed"]
     strategy_order: list[str] = []
@@ -334,7 +345,7 @@ def direct_extraction_evidence(task: TaskRecord) -> dict:
         boundary = "drm_or_encrypted_not_bypassed"
     elif active and active.src_object and not active.src:
         boundary = "mediastream_not_recorded"
-    elif selected and selected.kind in {"blob", "fragment"} and not task.media_path:
+    elif selected and selected.kind in {"blob", "fragment"} and not media_exists:
         boundary = "unresolved_blob_or_fragment_not_recorded"
     elif task.error_code:
         boundary = task.error_code
@@ -343,8 +354,8 @@ def direct_extraction_evidence(task: TaskRecord) -> dict:
         "no_tab_recording": True,
         "no_drm_bypass": True,
         "route": route,
-        "media_landed": bool(task.media_path),
-        "media_reusable": bool(task.media_path),
+        "media_landed": media_exists,
+        "media_reusable": media_exists,
         "selected_candidate": {
             "present": bool(selected),
             "kind": selected.kind if selected else "",
@@ -384,7 +395,7 @@ def direct_extraction_evidence(task: TaskRecord) -> dict:
             "note_ready": bool(task.note_path),
         },
         "boundary": boundary,
-        "fallback_available": bool(task.media_path or task.page_url or task.source_type == "local"),
+        "fallback_available": bool(media_exists or task.page_url or task.source_type == "local"),
     }
 
 
@@ -615,7 +626,7 @@ def render_bundle_manifest(task: TaskRecord, transcript: dict, visual_index: dic
             "transcript": "transcript.json",
             "visual_index": "visual_index.json",
             "summary_diagnostics": "summary_diagnostics.json" if task.summary_diagnostics else "",
-            "media_available": bool(task.media_path),
+            "media_available": task_media_file_exists(task),
             "grid_entries": grid_entries,
         },
         "direct_extraction": direct_extraction_evidence(task),
@@ -727,7 +738,7 @@ def diagnostic_recovery_profile(task: TaskRecord) -> dict:
         confidence = "low"
         severity = "recoverable"
         next_action = "inspect_diagnostics"
-    elif task.mode == "download_only" and task.media_path:
+    elif task.mode == "download_only" and task_media_file_exists(task):
         primary_code = "download_ready"
         diagnosis = "视频已保存到本地，当前任务按下载模式停止在媒体产物。"
         confidence = "high"
@@ -794,7 +805,7 @@ def task_audit_gates(task: TaskRecord) -> list[dict[str, str]]:
     is_local = task.source_type == "local"
     is_download_only = task.mode == "download_only"
     has_route = bool(selected and (selected.url or selected.kind)) or is_local or is_page_text
-    has_media = bool(task.media_path)
+    has_media = task_media_file_exists(task)
     has_transcript = bool(task.transcript_path)
     has_visuals = bool(task.visual_windows or task.frame_grids or diagnostics.get("frame_grid_count"))
     has_note = bool(task.note_path)
@@ -907,7 +918,7 @@ def task_reuse_evidence(task: TaskRecord) -> dict:
         browser_subtitle_span = max(0.0, max(ends) - min(starts))
 
     has_visual_slices = bool(task.frame_grids or task.visual_windows)
-    media_available = bool(task.media_path)
+    media_available = task_media_file_exists(task)
     is_download_only = task.mode == "download_only"
     rerun_ready = media_available and not has_visual_slices
     if rerun_ready:

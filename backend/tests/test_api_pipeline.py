@@ -176,6 +176,47 @@ class LocalUploadValidationTests(unittest.TestCase):
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
+    def test_stale_media_path_is_not_reported_reusable(self) -> None:
+        task = create_task("current_page", "Missing media", "https://course.example.com/lesson", mode="download_only")
+        missing_media = task_dir(task.id) / "media.mp4"
+        try:
+            update_task(
+                task.id,
+                status="success",
+                phase="completed",
+                progress=100,
+                media_path=str(missing_media),
+                selected_resource=ResourceCandidate(url="https://cdn.example.com/lesson.mp4", kind="video", source="webRequest"),
+                download_attempts=[DownloadAttempt(strategy="direct-file", url="https://cdn.example.com/lesson.mp4", status="success")],
+            )
+
+            detail = self.client.get(f"/api/tasks/{task.id}").json()["task"]
+            gates = {gate["key"]: gate for gate in detail["audit"]["gates"]}
+            self.assertFalse(detail["reuse"]["media_available"])
+            self.assertEqual(detail["reuse"]["media_path_recorded"], str(missing_media))
+            self.assertFalse(detail["reuse"]["rerun_from_media_ready"])
+            self.assertEqual(gates["media"]["state"], "warn")
+            self.assertFalse(detail["direct_extraction"]["media_landed"])
+            self.assertFalse(detail["direct_extraction"]["media_reusable"])
+
+            manifest_response = self.client.get(f"/api/tasks/{task.id}/exports/manifest")
+            self.assertEqual(manifest_response.status_code, 200)
+            manifest = manifest_response.json()
+            self.assertFalse(manifest["artifacts"]["media_available"])
+            self.assertFalse(manifest["reuse"]["media_available"])
+            self.assertFalse(manifest["reuse"]["rerun_from_media_ready"])
+            self.assertFalse(manifest["direct_extraction"]["media_landed"])
+
+            diagnostics = self.client.get(f"/api/tasks/{task.id}/exports/diagnostics")
+            self.assertEqual(diagnostics.status_code, 200)
+            self.assertIn("Media available: no", diagnostics.text)
+            self.assertIn("Rerun from media ready: no", diagnostics.text)
+            self.assertIn("Media landed: no", diagnostics.text)
+            self.assertEqual(self.client.get(f"/api/tasks/{task.id}/exports/media").status_code, 404)
+            self.assertEqual(self.client.post(f"/api/tasks/{task.id}/rerun-from-media", json={"frame_interval": 1}).status_code, 404)
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
     def test_task_list_includes_embedded_audit_summary(self) -> None:
         task = create_task("current_page", "List audit", "https://course.example.com/lesson")
         media = task_dir(task.id) / "media.mp4"

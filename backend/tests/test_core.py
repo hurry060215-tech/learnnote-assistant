@@ -919,7 +919,9 @@ class ProcessorBoundaryTests(unittest.TestCase):
             record.status = "success"
             record.phase = "completed"
             record.progress = 100
-            record.media_path = str(task_dir(task.id) / "media.mp4")
+            media = task_dir(task.id) / "media.mp4"
+            media.write_bytes(b"media")
+            record.media_path = str(media)
             record.selected_resource = ResourceCandidate(
                 url="https://cdn.example.com/lesson.m3u8",
                 source="webRequest",
