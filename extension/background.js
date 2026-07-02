@@ -1305,6 +1305,20 @@ function normalizedCookiePartitionKey(key = null) {
   return Object.keys(normalized).length ? normalized : null;
 }
 
+function cookiePartitionKeyId(key = null) {
+  const normalized = normalizedCookiePartitionKey(key);
+  return normalized ? JSON.stringify(normalized) : "";
+}
+
+function cookiePartitionPreference(partitionKeys = []) {
+  const ranks = new Map();
+  for (const partitionKey of partitionKeys || []) {
+    const id = cookiePartitionKeyId(partitionKey);
+    if (id && !ranks.has(id)) ranks.set(id, ranks.size);
+  }
+  return ranks;
+}
+
 async function cookiePartitionKeysForContext(page = {}, tab = {}, resources = []) {
   if (!chrome.cookies?.getPartitionKey || !Number.isFinite(tab.id)) return [];
   const frameIds = [];
@@ -1364,19 +1378,49 @@ function cookieLookupDetailsForUrls(urls, partitionKeys = []) {
 }
 
 async function cookiesForUrls(urls, partitionKeys = []) {
-  const result = new Map();
+  const exactCookies = new Map();
+  const partitionRanks = cookiePartitionPreference(partitionKeys);
+  let ordinal = 0;
   for (const details of cookieLookupDetailsForUrls(urls, partitionKeys)) {
     try {
       const cookies = await chrome.cookies.getAll(details);
       for (const cookie of cookies) {
-        const key = `${cookie.domain}|${cookie.path}|${cookie.name}`;
-        if (!result.has(key)) result.set(key, cookie);
+        const partitionKey = normalizedCookiePartitionKey(cookie.partitionKey) || normalizedCookiePartitionKey(details.partitionKey);
+        const normalizedCookie = partitionKey ? { ...cookie, partitionKey } : { ...cookie };
+        const partitionId = cookiePartitionKeyId(partitionKey);
+        const key = `${normalizedCookie.domain}|${normalizedCookie.path}|${normalizedCookie.name}|${partitionId}`;
+        if (!exactCookies.has(key)) {
+          exactCookies.set(key, {
+            cookie: normalizedCookie,
+            partitionId,
+            ordinal: ordinal++
+          });
+        }
       }
     } catch {
       // Ignore browser-internal, malformed, or unsupported cookie lookups.
     }
   }
-  return [...result.values()];
+
+  const grouped = new Map();
+  const hasPreferredPartitions = partitionRanks.size > 0;
+  for (const record of exactCookies.values()) {
+    const cookie = record.cookie;
+    const identity = `${cookie.domain}|${cookie.path}|${cookie.name}`;
+    const partitionRank = partitionRanks.has(record.partitionId) ? partitionRanks.get(record.partitionId) : null;
+    const partitionScore = partitionRank !== null
+      ? 10000 - partitionRank
+      : (record.partitionId ? 5000 : (hasPreferredPartitions ? 0 : 1000));
+    const scored = { ...record, score: partitionScore };
+    const previous = grouped.get(identity);
+    if (!previous || scored.score > previous.score || (scored.score === previous.score && scored.ordinal < previous.ordinal)) {
+      grouped.set(identity, scored);
+    }
+  }
+
+  return [...grouped.values()]
+    .sort((left, right) => left.ordinal - right.ordinal)
+    .map(record => record.cookie);
 }
 
 function cookieUrlsForContext(page = {}, tab = {}, resources = []) {

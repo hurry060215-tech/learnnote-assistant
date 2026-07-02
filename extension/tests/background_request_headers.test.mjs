@@ -346,6 +346,7 @@ assert.ok(lookupDetails.some(details => details.domain === "course.example.com")
 const cookies = await context.cookiesForUrls(cookieSyncUrls, partitionKeys);
 const byName = new Map(cookies.map(cookie => [cookie.name, cookie]));
 assert.equal(byName.get("AUTH").value, "partition-url");
+assert.deepEqual(JSON.parse(JSON.stringify(byName.get("AUTH").partitionKey)), { topLevelSite: "https://example.com" });
 assert.equal(byName.get("HLS").value, "domain-path");
 assert.equal(byName.get("COURSE").value, "page");
 assert.ok(cookieLookups.some(details => details.domain === "cdn.example.com"));

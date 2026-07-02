@@ -210,6 +210,7 @@ def _format_cookie_summary(summary: dict) -> list[str]:
         f"- Cookie 总数：{summary.get('total', 0)}",
         f"- Cookie 域：{domain_text}",
         f"- Secure / HttpOnly：{summary.get('secure_count', 0)} / {summary.get('http_only_count', 0)}",
+        f"- Partitioned：{summary.get('partitioned_count', 0)}（{summary.get('partition_key_count', 0)} 个 partition key）",
     ]
 
 

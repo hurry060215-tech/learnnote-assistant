@@ -74,6 +74,7 @@ class BrowserCookie(BaseModel):
     secure: bool = False
     httpOnly: bool = False
     expirationDate: float | None = None
+    partitionKey: dict[str, Any] | None = None
 
 
 class TaskOptions(BaseModel):

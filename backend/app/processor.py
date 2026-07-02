@@ -186,6 +186,8 @@ def cookie_sync_summary(cookies: list) -> dict:
     domains: dict[str, int] = {}
     secure_count = 0
     http_only_count = 0
+    partitioned_count = 0
+    partition_keys: set[str] = set()
     for cookie in cookies or []:
         domain = (getattr(cookie, "domain", "") or "").strip() or "(no domain)"
         domains[domain] = domains.get(domain, 0) + 1
@@ -193,12 +195,21 @@ def cookie_sync_summary(cookies: list) -> dict:
             secure_count += 1
         if getattr(cookie, "httpOnly", False):
             http_only_count += 1
+        partition_key = getattr(cookie, "partitionKey", None)
+        if partition_key:
+            partitioned_count += 1
+            try:
+                partition_keys.add(json.dumps(partition_key, sort_keys=True, ensure_ascii=False))
+            except TypeError:
+                partition_keys.add(str(partition_key))
     return {
         "total": sum(domains.values()),
         "domains": dict(sorted(domains.items())),
         "domain_count": len(domains),
         "secure_count": secure_count,
         "http_only_count": http_only_count,
+        "partitioned_count": partitioned_count,
+        "partition_key_count": len(partition_keys),
     }
 
 

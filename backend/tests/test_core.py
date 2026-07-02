@@ -1019,7 +1019,14 @@ class ProcessorBoundaryTests(unittest.TestCase):
         try:
             record = get_task(task.id)
             record.cookie_summary = cookie_sync_summary([
-                BrowserCookie(name="SESSION", value="secret-session", domain=".course.example.com", secure=True, httpOnly=True),
+                BrowserCookie(
+                    name="SESSION",
+                    value="secret-session",
+                    domain=".course.example.com",
+                    secure=True,
+                    httpOnly=True,
+                    partitionKey={"topLevelSite": "https://course.example.com"},
+                ),
                 BrowserCookie(name="CDN_TOKEN", value="secret-cdn", domain=".cdn.example.com", secure=True),
             ])
 
@@ -1028,6 +1035,9 @@ class ProcessorBoundaryTests(unittest.TestCase):
             self.assertIn(".course.example.com (1)", report)
             self.assertIn(".cdn.example.com (1)", report)
             self.assertIn("2", report)
+            self.assertIn("Partitioned：1", report)
+            self.assertEqual(record.cookie_summary["partitioned_count"], 1)
+            self.assertEqual(record.cookie_summary["partition_key_count"], 1)
             self.assertNotIn("secret-session", report)
             self.assertNotIn("secret-cdn", report)
             self.assertNotIn("SESSION", report)
@@ -1148,6 +1158,7 @@ class ProcessorBoundaryTests(unittest.TestCase):
             self.assertEqual(record.cookie_summary["total"], 2)
             self.assertEqual(record.cookie_summary["domains"][".course.example.com"], 1)
             self.assertEqual(record.cookie_summary["domains"][".cdn.example.com"], 1)
+            self.assertEqual(record.cookie_summary["partitioned_count"], 0)
             self.assertTrue(record.subtitle_path.endswith("browser_subtitles.srt"))
             self.assertIn("first browser cue", Path(record.subtitle_path).read_text(encoding="utf-8"))
             transcript = read_transcript(task.id)
