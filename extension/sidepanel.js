@@ -2110,11 +2110,20 @@ function workbenchLocalFallbackHtml(state) {
   const detail = blocked
     ? "当前页不可下载时，拖入本地视频继续同一套转写、切片、图文笔记流程；不会录制页面。"
     : "先预检当前页媒体直链；如果平台拦截下载，再上传本地视频继续，不录屏。";
+  const pipeline = [
+    ["本地落盘", "保存到 data/uploads"],
+    ["转写优先", els.transcriber?.selectedOptions?.[0]?.textContent?.trim() || "本地"],
+    ["视觉切片", visualUnderstandingEnabled() ? `${visualPlanText()} · ${visualWindowText()}` : "仅文本"],
+    ["笔记输出", noteStyleText()]
+  ];
   return `<div class="workbench-local-fallback ${blocked ? "urgent" : "soft"}" aria-label="本地上传兜底">
     <div>
       <span>${escapeHtml(label)}</span>
       <strong>本地视频上传兜底</strong>
       <small>${escapeHtml(detail)}</small>
+      <ul class="workbench-local-pipeline" aria-label="本地视频同管线">
+        ${pipeline.map(([name, value]) => `<li><b>${escapeHtml(name)}</b><em>${escapeHtml(value)}</em></li>`).join("")}
+      </ul>
     </div>
     <button type="button" data-route-action="local">上传本地视频</button>
   </div>`;

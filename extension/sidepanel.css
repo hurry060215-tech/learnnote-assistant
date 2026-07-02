@@ -7456,6 +7456,50 @@ body {
   line-height: 1.35;
 }
 
+.workbench-local-pipeline {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.workbench-local-pipeline li {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+  border: 1px solid rgba(23, 105, 232, 0.12);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.72);
+  padding: 5px 6px;
+}
+
+.workbench-local-fallback.urgent .workbench-local-pipeline li {
+  border-color: rgba(217, 45, 32, 0.14);
+}
+
+.workbench-local-pipeline b {
+  overflow: hidden;
+  color: var(--ln-ink, var(--ink));
+  font-size: 9.5px;
+  font-weight: 900;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workbench-local-pipeline em {
+  overflow: hidden;
+  color: var(--ln-muted, var(--muted));
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 750;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .workbench-local-fallback button {
   min-height: 30px;
   border: 1px solid var(--ln-line, var(--border));

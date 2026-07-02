@@ -471,6 +471,14 @@ assert.match(emptyBrowserGateHtml, /必须从课程页打开/);
 assert.match(emptyBrowserGateHtml, /Web 工作台不能直接读取你正在播放的 Chrome 标签页/);
 assert.match(emptyBrowserGateHtml, /等待侧栏读取/);
 assert.match(emptyBrowserGateHtml, /等待任务/);
+const emptyBrowserHandoffHtml = context.browserRouteEmptyHandoffHtml();
+assert.match(emptyBrowserHandoffHtml, /browser-route-summary-card handoff empty/);
+assert.match(emptyBrowserHandoffHtml, /当前页直取需要从扩展侧栏开始/);
+assert.match(emptyBrowserHandoffHtml, /打开正在播放的视频页/);
+assert.match(emptyBrowserHandoffHtml, /点扩展侧栏总结当前视频/);
+assert.match(emptyBrowserHandoffHtml, /回到工作台看切片笔记/);
+assert.match(emptyBrowserHandoffHtml, /不做标签页录制/);
+assert.match(emptyBrowserHandoffHtml, /data-browser-route-action="local-video"/);
 
 const html = context.markdownToHtml(`## 画面索引
 
@@ -1686,6 +1694,11 @@ assert.match(routeEmptyHtml, /不做标签页录制/);
 assert.match(routeEmptyHtml, /data-browser-route-action="refresh"/);
 assert.match(routeEmptyHtml, /data-browser-route-action="copy-backend"/);
 assert.match(routeEmptyHtml, /data-browser-route-action="local-video"/);
+const emptyWorkflowHtml = context.sourceWorkflowActionsHtml("browser", null);
+assert.match(emptyWorkflowHtml, /data-source-workflow-action="open-extension"/);
+assert.match(emptyWorkflowHtml, /去扩展侧栏开始/);
+assert.match(emptyWorkflowHtml, /刷新交接状态/);
+assert.match(emptyWorkflowHtml, /上传本地视频兜底/);
 
 const timelineHtml = context.transcriptTimeline({
   segments: [

@@ -167,6 +167,7 @@ assert.match(sidepanelHtml, /本地切片/);
 assert.match(sidepanelHtml, /非录制/);
 assert.match(sidepanelCss, /\.capture-cockpit/);
 assert.match(sidepanelCss, /writing-mode:\s*vertical-rl/);
+assert.match(sidepanelCss, /\.workbench-local-pipeline/);
 assert.match(sidepanelHtml, /accept="video\/\*,\.mp4,\.m4v,\.mov,\.mkv,\.webm,\.flv,\.avi"/);
 assert.equal(context.isSupportedLocalVideoFile({ name: "lesson.mkv", type: "" }), true);
 assert.equal(context.isSupportedLocalVideoFile({ name: "lesson.flv", type: "" }), true);

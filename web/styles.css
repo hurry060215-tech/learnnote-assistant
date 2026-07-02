@@ -1044,6 +1044,13 @@ select:focus {
     #ffffff;
 }
 
+.browser-route-summary-card.handoff {
+  border-color: rgba(20, 99, 255, 0.24);
+  background:
+    linear-gradient(135deg, rgba(20, 99, 255, 0.08), rgba(15, 143, 97, 0.05) 62%, rgba(255, 255, 255, 0) 100%),
+    #ffffff;
+}
+
 .browser-route-summary-main {
   display: grid;
   grid-template-columns: 60px minmax(0, 1fr);
@@ -1126,6 +1133,61 @@ select:focus {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.browser-route-empty-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.browser-route-empty-steps section {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 2px 7px;
+  align-content: start;
+  border: 1px solid #d8e5fb;
+  border-radius: 8px;
+  background: rgba(247, 250, 255, 0.86);
+  padding: 8px;
+}
+
+.browser-route-empty-steps b {
+  grid-row: span 2;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  background: #eaf2ff;
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 950;
+}
+
+.browser-route-empty-steps strong,
+.browser-route-empty-steps small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.browser-route-empty-steps strong {
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.browser-route-empty-steps small {
+  display: -webkit-box;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.25;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .browser-route-handoff {
@@ -6203,6 +6265,7 @@ select {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .browser-route-empty-steps,
   .browser-route-handoff {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

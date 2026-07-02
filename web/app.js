@@ -773,9 +773,35 @@ function browserRouteSummaryHtml(task = null) {
   </section>`;
 }
 
+function browserRouteEmptyHandoffHtml() {
+  const steps = [
+    ["1", "打开正在播放的视频页", "先让课程视频真实播放几秒，暴露浏览器请求。"],
+    ["2", "点扩展侧栏总结当前视频", "由 Chrome/Edge Side Panel 读取候选、字幕和一次性 Cookie。"],
+    ["3", "回到工作台看切片笔记", "下载成功后生成 media.mp4、转写、视觉窗口和 Markdown。"]
+  ];
+  return `<section class="browser-route-summary-card handoff empty">
+    <div class="browser-route-summary-main">
+      <span>交接</span>
+      <strong>当前页直取需要从扩展侧栏开始</strong>
+      <small>Web 工作台不能直接读取你正在播放的浏览器标签页；这里负责查看任务、切片和笔记。</small>
+    </div>
+    <p>不做标签页录制、不刷课、不绕过 DRM；如果课程页没有暴露可访问媒体 URL，就切到本地视频上传。</p>
+    <div class="browser-route-empty-steps" aria-label="扩展侧栏交接步骤">
+      ${steps.map(([index, title, detail]) => `<section>
+        <b>${escapeHtml(index)}</b>
+        <strong>${escapeHtml(title)}</strong>
+        <small>${escapeHtml(detail)}</small>
+      </section>`).join("")}
+    </div>
+    ${browserBridgeGateHtml(null)}
+    ${browserRouteActions(null)}
+  </section>`;
+}
+
 function renderBrowserRouteSummary() {
   if (!els.browserRouteSummary) return;
-  els.browserRouteSummary.innerHTML = browserRouteSummaryHtml(latestCurrentPageTask());
+  const task = latestCurrentPageTask();
+  els.browserRouteSummary.innerHTML = task ? browserRouteSummaryHtml(task) : browserRouteEmptyHandoffHtml();
 }
 
 function isManualUrlTask(task) {
@@ -1022,9 +1048,10 @@ function sourceWorkflowActionsHtml(source, task = null) {
     if (task?.id && canContinueFromDownloadedMedia(task)) {
       actions.push(["continue-media", "继续切片总结", task.id]);
     }
-    actions.push(["refresh-browser", "刷新任务", ""]);
+    if (!task?.id) actions.push(["open-extension", "去扩展侧栏开始", ""]);
+    actions.push(["refresh-browser", task?.id ? "刷新任务" : "刷新交接状态", ""]);
     actions.push(["copy-backend", "复制后端地址", ""]);
-    actions.push(["switch-local", "本地兜底", ""]);
+    actions.push(["switch-local", task?.id ? "本地兜底" : "上传本地视频兜底", ""]);
   } else if (source === "local") {
     actions.push(["choose-local", "选择文件", ""]);
     actions.push(["upload-local", "上传并生成", ""]);
@@ -4156,6 +4183,13 @@ if (els.sourceWorkflow) {
     }
     if (action === "copy-backend") {
       await copyBackendUrl(actionButton);
+      return;
+    }
+    if (action === "open-extension") {
+      const url = await copyBackendUrl(actionButton);
+      if (els.browserBridgeStatus) {
+        els.browserBridgeStatus.textContent = `已复制后端地址：${url}。请在课程播放页打开 LearnNote 扩展侧栏，点击“总结当前视频”。`;
+      }
       return;
     }
     if (action === "switch-local") {

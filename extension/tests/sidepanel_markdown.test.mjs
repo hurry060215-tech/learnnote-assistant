@@ -1571,6 +1571,10 @@ assert.match(elements.get("#currentStudyCard").innerHTML, /workbench-local-fallb
 assert.match(elements.get("#currentStudyCard").innerHTML, /直取受限/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /上传本地视频/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /不会录制页面/);
+assert.match(elements.get("#currentStudyCard").innerHTML, /workbench-local-pipeline/);
+assert.match(elements.get("#currentStudyCard").innerHTML, /本地落盘/);
+assert.match(elements.get("#currentStudyCard").innerHTML, /视觉切片/);
+assert.match(elements.get("#currentStudyCard").innerHTML, /data\/uploads/);
 assert.match(elements.get("#resources").innerHTML, /no-resource-guide blocked/);
 assert.match(elements.get("#resources").innerHTML, /data-resource-empty-action="redetect"/);
 assert.match(elements.get("#resources").innerHTML, /data-resource-empty-action="local"/);
