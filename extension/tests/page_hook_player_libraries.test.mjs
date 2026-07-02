@@ -77,6 +77,26 @@ function fakeJwplayer() {
   };
 }
 
+function fakeFlvCreatePlayer(mediaDataSource) {
+  return {
+    mediaDataSource,
+    load(source) {
+      this.loadedSource = source;
+      return "flv-load";
+    }
+  };
+}
+
+function fakeMpegtsCreatePlayer(mediaDataSource) {
+  return {
+    mediaDataSource,
+    switchUrl(source) {
+      this.source = source;
+      return "mpegts-switch";
+    }
+  };
+}
+
 const context = {
   window: null,
   location: { href: "https://course.example.com/player/index.html" },
@@ -89,6 +109,8 @@ const context = {
   Artplayer: FakeArtPlayer,
   xgplayer: { Player: FakeXgPlayer },
   jwplayer: fakeJwplayer,
+  flvjs: { createPlayer: fakeFlvCreatePlayer },
+  mpegts: { createPlayer: fakeMpegtsCreatePlayer },
   Response: undefined,
   Blob: undefined,
   ArrayBuffer,
@@ -136,6 +158,19 @@ const jw = context.jwplayer("lesson-player");
 assert.equal(jw.setup({ playlist: [{ file: "/jwplayer/lesson.mp4?token=6" }] }), "jw-setup");
 assert.equal(jw.load([{ sources: [{ file: "/jwplayer/master.m3u8?token=7" }] }]), "jw-load");
 
+const flv = context.flvjs.createPlayer({ type: "flv", url: "/flv/live?id=8" });
+assert.equal(flv.mediaDataSource.url, "/flv/live?id=8");
+assert.equal(flv.load({ backupUrl: "/flv/backup.flv?token=9" }), "flv-load");
+
+const mpegts = context.mpegts.createPlayer({
+  type: "mse",
+  isLive: true,
+  streamUrl: "/mpegts/live?id=10",
+  segments: [{ url: "/mpegts/segment-001.m4s?token=seg" }]
+});
+assert.equal(mpegts.mediaDataSource.streamUrl, "/mpegts/live?id=10");
+assert.equal(mpegts.switchUrl("/mpegts/backup.m3u8?token=11"), "mpegts-switch");
+
 const resources = messages.flatMap(message => message.resources || []);
 const urls = new Set(resources.map(resource => resource.url));
 const labels = new Set(resources.map(resource => resource.label));
@@ -151,6 +186,11 @@ assert.ok(urls.has("https://course.example.com/xgplayer/stream.mpd?token=4"));
 assert.ok(urls.has("https://course.example.com/xgplayer/backup.m3u8?token=5"));
 assert.ok(urls.has("https://course.example.com/jwplayer/lesson.mp4?token=6"));
 assert.ok(urls.has("https://course.example.com/jwplayer/master.m3u8?token=7"));
+assert.ok(urls.has("https://course.example.com/flv/live?id=8"));
+assert.ok(urls.has("https://course.example.com/flv/backup.flv?token=9"));
+assert.ok(urls.has("https://course.example.com/mpegts/live?id=10"));
+assert.ok(urls.has("https://course.example.com/mpegts/segment-001.m4s?token=seg"));
+assert.ok(urls.has("https://course.example.com/mpegts/backup.m3u8?token=11"));
 assert.ok(labels.has("hls.js loadSource"));
 assert.ok(labels.has("dash.js initialize"));
 assert.ok(labels.has("dash.js attachSource"));
@@ -162,9 +202,13 @@ assert.ok(labels.has("xgplayer Player constructor"));
 assert.ok(labels.has("xgplayer Player constructor switchUrl"));
 assert.ok(labels.has("jwplayer setup"));
 assert.ok(labels.has("jwplayer load"));
+assert.ok(labels.has("flv.js createPlayer"));
+assert.ok(labels.has("flv.js load"));
+assert.ok(labels.has("mpegts.js createPlayer"));
+assert.ok(labels.has("mpegts.js switchUrl"));
 
 for (const resource of resources) {
   assert.equal(resource.source, "pageHookPlayer");
-  assert.ok(["hls", "dash", "video"].includes(resource.kind));
-  assert.ok(resource.score >= (resource.kind === "video" ? 92 : 99));
+  assert.ok(["hls", "dash", "video", "fragment"].includes(resource.kind));
+  assert.ok(resource.score >= (resource.kind === "hls" || resource.kind === "dash" ? 99 : 92));
 }

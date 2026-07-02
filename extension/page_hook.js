@@ -1063,7 +1063,7 @@
     if (typeof value === "object") {
       if (visited.has(value) || depth > 4) return output;
       visited.add(value);
-      for (const key of ["src", "url", "file", "fileId", "objectid", "objectId", "dtoken", "downloadUrl", "httpmd", "source", "manifestUri", "playUrl", "videoUrl", "flvUrl", "hlsUrl"]) {
+      for (const key of ["src", "url", "file", "fileId", "objectid", "objectId", "dtoken", "downloadUrl", "httpmd", "source", "manifestUri", "playUrl", "videoUrl", "streamUrl", "mediaUrl", "mainUrl", "backupUrl", "flvUrl", "hlsUrl"]) {
         try {
           if (typeof value[key] === "string") output.push(value[key]);
         } catch {
@@ -1071,7 +1071,7 @@
         }
       }
       for (const [key, child] of safeObjectEntries(value, 80)) {
-        if (!/^(video|media|source|sources|playlist|file|fileid|objectid|dtoken|download|httpmd|url|config|play|quality|qualities|streams?|hls|dash)$/i.test(key)) continue;
+        if (!/^(video|media|source|sources|playlist|file|fileid|objectid|dtoken|download|httpmd|url|config|play|quality|qualities|streams?|segments?|hls|dash)$/i.test(key)) continue;
         sourceCandidates(child, output, visited, depth + 1);
       }
     }
@@ -1247,6 +1247,24 @@
     patchPlayerConstructorOn(window.xgplayer, "Player", "xgplayer Player constructor");
   }
 
+  function patchCreatePlayerFactory(target, label) {
+    try {
+      if (!target || typeof target.createPlayer !== "function") return;
+      patchMethod(target, "createPlayer", original => function (mediaDataSource, ...rest) {
+        emitPlayerSources(mediaDataSource, "video", `${label} createPlayer`);
+        return patchGenericPlayerInstance(original.call(this, mediaDataSource, ...rest), label);
+      });
+    } catch {
+      // flv.js/mpegts.js globals are often frozen or replaced by bundlers.
+    }
+  }
+
+  function patchSegmentedLivePlayers() {
+    patchCreatePlayerFactory(window.flvjs, "flv.js");
+    patchCreatePlayerFactory(window.mpegts, "mpegts.js");
+    patchCreatePlayerFactory(window.mpegtsjs, "mpegts.js");
+  }
+
   function patchJwPlayer() {
     try {
       const original = window.jwplayer;
@@ -1394,6 +1412,7 @@
     patchShakaPlayer();
     patchVideoJs();
     patchCommonChinesePlayers();
+    patchSegmentedLivePlayers();
     patchJwPlayer();
   }
 
@@ -1477,6 +1496,9 @@
       "Aliplayer",
       "TcPlayer",
       "xgplayer",
+      "flvjs",
+      "mpegts",
+      "mpegtsjs",
       "jwplayer"
     ]) {
       watchLatePlayerGlobal(name);
