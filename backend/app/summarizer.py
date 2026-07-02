@@ -37,6 +37,9 @@ def llm_base_host(base_url: str) -> str:
 
 def _safe_llm_error(exc: BaseException) -> str:
     message = re.sub(r"\s+", " ", str(exc or "")).strip()
+    message = re.sub(r"sk-[A-Za-z0-9_-]{8,}", "sk-<redacted>", message)
+    message = re.sub(r"(?i)bearer\s+[A-Za-z0-9._~+/=-]{8,}", "Bearer <redacted>", message)
+    message = re.sub(r"(?i)(api[_-]?key\s*[=:]\s*)[A-Za-z0-9._~+/=-]{8,}", r"\1<redacted>", message)
     if len(message) > MAX_LLM_ERROR_MESSAGE:
         message = message[:MAX_LLM_ERROR_MESSAGE].rstrip() + "..."
     return message or exc.__class__.__name__

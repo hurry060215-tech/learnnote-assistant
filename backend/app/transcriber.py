@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import re
+from urllib.parse import urlparse
 
 from .config import DEFAULT_WHISPER_COMPUTE_TYPE, DEFAULT_WHISPER_DEVICE, LLM_API_KEY, LLM_BASE_URL, configure_local_caches
 from .models import TaskOptions, TranscriptResult, TranscriptSegment
@@ -10,6 +11,61 @@ from .models import TaskOptions, TranscriptResult, TranscriptSegment
 TIMESTAMP_RE = re.compile(
     r"(?P<start>(?:\d{2}:)?\d{2}:\d{2}[\.,]\d{1,3})\s+-->\s+(?P<end>(?:\d{2}:)?\d{2}:\d{2}[\.,]\d{1,3})"
 )
+LOCAL_ASR_MODELS = {"tiny", "base", "small", "medium", "large", "large-v2", "large-v3"}
+MAX_ASR_ERROR_MESSAGE = 240
+
+
+def _remote_asr_base_host(base_url: str) -> str:
+    parsed = urlparse(base_url or "")
+    return parsed.netloc or parsed.path.strip("/") or ""
+
+
+def _remote_asr_provider(options: TaskOptions) -> str:
+    selected = str(options.transcriber or "").strip().lower()
+    if selected in {"groq", "groq-asr"}:
+        return "groq"
+    host = (_remote_asr_base_host(options.llm_base_url or LLM_BASE_URL)).lower()
+    if "groq.com" in host:
+        return "groq"
+    if "openai.com" in host:
+        return "openai"
+    if "dashscope.aliyuncs.com" in host:
+        return "dashscope"
+    if "siliconflow.cn" in host:
+        return "siliconflow"
+    if "openrouter.ai" in host:
+        return "openrouter"
+    if host in {"127.0.0.1", "localhost"}:
+        return "local-openai-compatible"
+    return "openai-compatible"
+
+
+def _remote_asr_model(options: TaskOptions) -> str:
+    model = options.whisper_model or "whisper-1"
+    return "whisper-1" if model in LOCAL_ASR_MODELS else model
+
+
+def _remote_asr_source(options: TaskOptions) -> str:
+    return "groq-asr" if _remote_asr_provider(options) == "groq" else "openai-compatible-asr"
+
+
+def _safe_asr_error(exc: BaseException) -> str:
+    message = re.sub(r"\s+", " ", str(exc or "")).strip()
+    message = re.sub(r"sk-[A-Za-z0-9_-]{8,}", "sk-<redacted>", message)
+    message = re.sub(r"(?i)bearer\s+[A-Za-z0-9._~+/=-]{8,}", "Bearer <redacted>", message)
+    message = re.sub(r"(?i)(api[_-]?key\s*[=:]\s*)[A-Za-z0-9._~+/=-]{8,}", r"\1<redacted>", message)
+    if len(message) > MAX_ASR_ERROR_MESSAGE:
+        message = message[:MAX_ASR_ERROR_MESSAGE].rstrip() + "..."
+    return message or exc.__class__.__name__
+
+
+def _remote_asr_warning(options: TaskOptions, stage: str, code: str, reason: str = "") -> str:
+    base_url = options.llm_base_url or LLM_BASE_URL
+    return (
+        f"Remote ASR failed: provider={_remote_asr_provider(options)}, "
+        f"model={_remote_asr_model(options)}, base={_remote_asr_base_host(base_url) or '-'}, "
+        f"stage={stage}, code={code}, reason={reason or '-'}."
+    )
 
 
 def _parse_timestamp(value: str) -> float:
@@ -135,26 +191,25 @@ def _segments_from_remote_response(response) -> list[TranscriptSegment]:
 
 def transcribe_audio_openai_compatible(audio_path: Path, options: TaskOptions) -> TranscriptResult:
     api_key = options.llm_api_key or LLM_API_KEY
+    source = _remote_asr_source(options)
     if not api_key:
         return TranscriptResult(
             language="unknown",
-            source="openai-compatible-asr-missing-key",
-            warning="未配置 OpenAI-compatible ASR API Key；已跳过远程转写。",
+            source=f"{source}-missing-key",
+            warning=_remote_asr_warning(options, "configuration", "missing_api_key", "API key is not configured"),
             segments=[TranscriptSegment(start=0, end=0, text="未配置远程 ASR API Key，当前任务没有生成真实字幕。")],
             full_text="未配置远程 ASR API Key，当前任务没有生成真实字幕。",
         )
 
-    model = options.whisper_model or "whisper-1"
-    if model in {"tiny", "base", "small", "medium", "large", "large-v2", "large-v3"}:
-        model = "whisper-1"
+    model = _remote_asr_model(options)
 
     try:
         from openai import OpenAI
-    except Exception:
+    except Exception as exc:
         return TranscriptResult(
             language="unknown",
-            source="openai-compatible-asr-missing-sdk",
-            warning="未安装 openai SDK；请安装后再使用 OpenAI-compatible ASR。",
+            source=f"{source}-missing-sdk",
+            warning=_remote_asr_warning(options, "client_import", "missing_openai_sdk", _safe_asr_error(exc)),
             segments=[TranscriptSegment(start=0, end=0, text="未安装 openai SDK，当前任务没有生成远程 ASR 字幕。")],
             full_text="未安装 openai SDK，当前任务没有生成远程 ASR 字幕。",
         )
@@ -187,16 +242,17 @@ def transcribe_audio_openai_compatible(audio_path: Path, options: TaskOptions) -
         text = "\n".join(segment.text for segment in segments) or str(_response_value(response, "text", "") or "").strip()
         return TranscriptResult(
             language=str(_response_value(response, "language", "unknown") or "unknown"),
-            source="openai-compatible-asr",
+            source=source,
             segments=segments,
             full_text=text,
             warning="" if segments else "远程 ASR 已返回，但没有解析出有效字幕片段。",
         )
     except Exception as exc:
+        reason = _safe_asr_error(exc)
         return TranscriptResult(
             language="unknown",
-            source="openai-compatible-asr-error",
-            warning=f"OpenAI-compatible ASR 转写失败：{exc}",
-            segments=[TranscriptSegment(start=0, end=0, text=f"远程 ASR 转写失败：{exc}")],
-            full_text=f"远程 ASR 转写失败：{exc}",
+            source=f"{source}-error",
+            warning=_remote_asr_warning(options, "transcription", "api_error", reason),
+            segments=[TranscriptSegment(start=0, end=0, text=f"远程 ASR 转写失败：{reason}")],
+            full_text=f"远程 ASR 转写失败：{reason}",
         )

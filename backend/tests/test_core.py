@@ -717,6 +717,69 @@ class TranscriberBoundaryTests(unittest.TestCase):
         self.assertEqual(calls[0]["model"], "whisper-1")
         self.assertEqual(calls[0]["response_format"], "verbose_json")
 
+    def test_groq_asr_missing_key_warning_includes_provider_model_and_base(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            audio = Path(tmp) / "audio.wav"
+            audio.write_bytes(b"fake audio")
+            transcript = transcribe_audio_openai_compatible(
+                audio,
+                TaskOptions(
+                    transcriber="groq",
+                    whisper_model="whisper-large-v3",
+                    llm_base_url="https://api.groq.com/openai/v1",
+                ),
+            )
+
+        self.assertEqual(transcript.source, "groq-asr-missing-key")
+        self.assertIn("provider=groq", transcript.warning)
+        self.assertIn("model=whisper-large-v3", transcript.warning)
+        self.assertIn("base=api.groq.com", transcript.warning)
+        self.assertIn("stage=configuration", transcript.warning)
+        self.assertIn("code=missing_api_key", transcript.warning)
+        self.assertNotIn("sk-", transcript.warning)
+
+    def test_remote_asr_error_warning_redacts_secret_like_values(self) -> None:
+        class FakeTranscriptions:
+            def create(self, **kwargs):
+                raise RuntimeError(
+                    "quota failed for sk-secretvalue123456 "
+                    "Bearer abcdefghijklmnop api_key=secretsecret123"
+                )
+
+        class FakeOpenAI:
+            def __init__(self, **kwargs):
+                self.audio = types.SimpleNamespace(transcriptions=FakeTranscriptions())
+
+        fake_openai = types.ModuleType("openai")
+        fake_openai.OpenAI = FakeOpenAI
+
+        with tempfile.TemporaryDirectory() as tmp:
+            audio = Path(tmp) / "audio.wav"
+            audio.write_bytes(b"fake audio")
+            with patch.dict(sys.modules, {"openai": fake_openai}):
+                transcript = transcribe_audio_openai_compatible(
+                    audio,
+                    TaskOptions(
+                        transcriber="openai-compatible",
+                        whisper_model="small",
+                        llm_api_key="test-key",
+                        llm_base_url="https://api.openai.com/v1",
+                    ),
+                )
+
+        self.assertEqual(transcript.source, "openai-compatible-asr-error")
+        self.assertIn("provider=openai", transcript.warning)
+        self.assertIn("model=whisper-1", transcript.warning)
+        self.assertIn("stage=transcription", transcript.warning)
+        self.assertIn("code=api_error", transcript.warning)
+        self.assertIn("sk-<redacted>", transcript.warning)
+        self.assertIn("Bearer <redacted>", transcript.warning)
+        self.assertIn("api_key=<redacted>", transcript.warning)
+        self.assertIn("sk-<redacted>", transcript.full_text)
+        self.assertNotIn("sk-secretvalue123456", transcript.warning)
+        self.assertNotIn("abcdefghijklmnop", transcript.warning)
+        self.assertNotIn("secretsecret123", transcript.full_text)
+
 
 class ProcessorBoundaryTests(unittest.TestCase):
     def test_local_mp4_is_normalized_instead_of_copied(self) -> None:
