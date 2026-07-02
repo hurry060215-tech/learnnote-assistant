@@ -1926,6 +1926,33 @@ function taskChipsHtml(task) {
   return `<div class="task-chips">${chips.map(chip => `<span>${escapeHtml(chip)}</span>`).join("")}</div>`;
 }
 
+function resultMetaChipsHtml(task) {
+  if (!task) return "";
+  const gates = pipelineAuditItems(task);
+  const blocked = gates.find(item => item.state === "fail" || item.state === "warn" || item.state === "wait");
+  const windows = visualWindows(task);
+  const selected = task.selected_resource || {};
+  const chips = [
+    { state: taskStatusClass(task), label: statusText(task), value: `${task.progress || 0}%` },
+    { state: "source", label: sourceText(task), value: selected.kind ? mediaKindText(selected.kind) : task.source_type || "-" },
+    { state: task.media_path ? "pass" : "wait", label: "媒体", value: task.media_path ? "已落盘" : "待下载" },
+    { state: task.transcript_path ? "pass" : "wait", label: "字幕", value: task.transcript_path ? "已生成" : "待转写" },
+    {
+      state: task.options?.visual_understanding === false ? "skip" : windows.length ? "pass" : "wait",
+      label: "切片",
+      value: task.options?.visual_understanding === false ? "关闭" : windows.length ? `${windows.length} 窗口` : "待生成"
+    },
+    { state: task.note_path ? "pass" : "wait", label: "笔记", value: task.summary_source || (task.note_path ? "完成" : "待总结") },
+    { state: hasTaskBundle(task) ? "pass" : "wait", label: "导出", value: hasTaskBundle(task) ? "可导出" : "等待" },
+    blocked ? { state: blocked.state, label: "当前门", value: `${blocked.label} · ${blocked.value || blocked.state}` } : null
+  ].filter(Boolean);
+  const optionLine = optionText(task);
+  return `<div class="result-meta-chips" aria-label="任务阶段摘要">
+    ${chips.map(chip => `<span class="${escapeHtml(chip.state)}"><b>${escapeHtml(chip.label)}</b>${escapeHtml(chip.value || "-")}</span>`).join("")}
+    ${optionLine ? `<small>${escapeHtml(optionLine)}</small>` : ""}
+  </div>`;
+}
+
 function taskAuditMiniHtml(task) {
   const items = pipelineAuditItems(task);
   if (!items.length) return "";
@@ -3059,6 +3086,41 @@ function noteStudyBar(markdown, task) {
   </section>`;
 }
 
+function noteExportCtaBar(task) {
+  if (!task?.id) return "";
+  const primary = [
+    task.note_path ? `<a class="primary" href="${escapeHtml(taskExportUrl(task, "markdown"))}">导出 Markdown</a>` : "",
+    hasVisualWindowExport(task) ? `<a href="${escapeHtml(taskExportUrl(task, "visual-windows"))}">导出切片索引</a>` : "",
+    hasTaskBundle(task) ? `<a href="${escapeHtml(taskExportUrl(task, "bundle"))}">导出资料包</a>` : ""
+  ].filter(Boolean);
+  const secondary = [
+    task.subtitle_path ? `<a href="${escapeHtml(taskExportUrl(task, "subtitles"))}">字幕</a>` : "",
+    task.media_path ? `<a href="${escapeHtml(taskExportUrl(task, "media"))}">media.mp4</a>` : "",
+    hasTaskDiagnostics(task) ? `<a href="${escapeHtml(taskExportUrl(task, "diagnostics"))}">诊断</a>` : "",
+    hasTaskAudit(task) ? `<a href="${escapeHtml(taskExportUrl(task, "audit"))}">审计</a>` : "",
+    hasTaskBundle(task) ? `<a href="${escapeHtml(taskExportUrl(task, "manifest"))}">清单</a>` : ""
+  ].filter(Boolean);
+  if (!primary.length && !secondary.length) return "";
+  const windows = visualWindows(task);
+  const status = task.note_path ? "ready" : task.media_path ? "partial" : "diagnostic";
+  const detail = task.note_path
+    ? `Markdown、切片索引和资料包可直接保存；${windows.length ? `${windows.length} 个视觉窗口会写入资料包。` : "当前任务没有视觉窗口。"}`
+    : task.media_path
+      ? "视频已落盘，可先导出媒体或继续切片总结。"
+      : "任务未生成完整笔记，但诊断和审计仍可导出。";
+  return `<section class="export-cta-bar ${escapeHtml(status)}" aria-label="导出学习成果">
+    <div>
+      <span>导出阶段</span>
+      <strong>拿走学习成果</strong>
+      <small>${escapeHtml(detail)}</small>
+    </div>
+    <nav>
+      ${primary.join("")}
+      ${secondary.length ? `<span>${secondary.join("")}</span>` : ""}
+    </nav>
+  </section>`;
+}
+
 function visualRail(task, limit = 8) {
   const windows = visualWindows(task);
   if (!windows.length) return "";
@@ -3631,12 +3693,7 @@ async function renderDetail() {
 
   els.selectedTitle.textContent = task.title || task.id;
   els.selectedSource.textContent = `${sourceText(task)} · ${statusText(task)}`;
-  els.resultMeta.textContent = [
-    task.id,
-    optionText(task),
-    task.selected_resource?.playback_match ? playbackText(task.selected_resource.playback_match) : "",
-    task.selected_resource?.content_length ? fmtBytes(task.selected_resource.content_length) : ""
-  ].filter(Boolean).join(" · ");
+  els.resultMeta.innerHTML = resultMetaChipsHtml(task);
   els.detail.className = "detail";
   const hasNote = Boolean(task.note_path);
   els.copyButton.disabled = !hasNote;
@@ -3657,6 +3714,7 @@ async function renderDetail() {
         ${failureGuide(task)}
         ${visionEvidenceBar(task)}
         ${noteStudyBar(lastNote, task)}
+        ${noteExportCtaBar(task)}
         <div class="note-workbench">
           <article class="markdown-note">${lastNote ? markdownToHtml(lastNote) : task.media_path ? "<p>视频已下载到本地。可点击右上角视频按钮导出，不会继续转写、切片或总结。</p>" : "<p>笔记尚未生成。</p>"}</article>
           ${readingRail(lastNote, task)}

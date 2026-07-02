@@ -333,6 +333,36 @@ assert.match(queueAuditMiniHtml, /切片/);
 assert.match(queueAuditMiniHtml, /总结/);
 assert.match(queueAuditMiniHtml, /5\/5 已放行/);
 
+const resultMetaHtml = context.resultMetaChipsHtml({
+  ...queueChipTask,
+  title: "<script>bad()</script> 课程",
+  options: {
+    frame_interval: 20,
+    grid_columns: 3,
+    grid_rows: 3,
+    transcriber: "faster-whisper",
+    whisper_model: "small",
+    note_style: "study",
+    note_template: "visual-handout",
+    visual_understanding: true
+  },
+  summary_source: "vision-llm"
+});
+assert.match(resultMetaHtml, /class="result-meta-chips"/);
+assert.match(resultMetaHtml, /任务阶段摘要/);
+assert.match(resultMetaHtml, /已完成/);
+assert.match(resultMetaHtml, /直取 · 视频/);
+assert.match(resultMetaHtml, /媒体<\/b>已落盘/);
+assert.match(resultMetaHtml, /字幕<\/b>已生成/);
+assert.match(resultMetaHtml, /切片<\/b>1 窗口/);
+assert.match(resultMetaHtml, /笔记<\/b>vision-llm/);
+assert.match(resultMetaHtml, /导出<\/b>可导出/);
+assert.match(resultMetaHtml, /20 秒切片/);
+assert.match(resultMetaHtml, /visual-handout/);
+assert.doesNotMatch(resultMetaHtml, /<script>bad/);
+assert.match(stylesCss, /\.result-meta-chips[\s\S]*flex-wrap:\s*wrap/);
+assert.match(stylesCss, /\.result-meta-chips \.success,[\s\S]*\.result-meta-chips \.pass/);
+
 const blockedAuditMiniHtml = context.taskAuditMiniHtml({
   id: "blocked-audit-mini",
   status: "failed",
@@ -769,6 +799,28 @@ assert.match(studyBarHtml, /\/api\/tasks\/task-study-map\/exports\/bundle/);
 assert.match(studyBarHtml, /\/api\/tasks\/task-study-map\/exports\/manifest/);
 assert.doesNotMatch(studyBarHtml, /<script>bad/);
 assert.match(studyBarHtml, /&lt;script&gt;bad\(\)&lt;\/script&gt; 课程/);
+
+const exportCtaHtml = context.noteExportCtaBar({
+  id: "task-study-map",
+  status: "success",
+  source_type: "current_page",
+  media_path: "D:/Projects/learnnote-assistant/data/tasks/task-study-map/media.mp4",
+  subtitle_path: "D:/Projects/learnnote-assistant/data/tasks/task-study-map/subtitles.srt",
+  note_path: "D:/Projects/learnnote-assistant/data/tasks/task-study-map/note.md",
+  summary_diagnostics_path: "D:/Projects/learnnote-assistant/data/tasks/task-study-map/summary_diagnostics.json",
+  visual_windows: [{ id: "W001", start: 0, end: 180, grid_url: "http://127.0.0.1/grid.jpg" }],
+  download_attempts: [{ strategy: "direct-file" }]
+});
+assert.match(exportCtaHtml, /class="export-cta-bar ready"/);
+assert.match(exportCtaHtml, /导出阶段/);
+assert.match(exportCtaHtml, /拿走学习成果/);
+assert.match(exportCtaHtml, /\/api\/tasks\/task-study-map\/exports\/markdown/);
+assert.match(exportCtaHtml, /\/api\/tasks\/task-study-map\/exports\/visual-windows/);
+assert.match(exportCtaHtml, /\/api\/tasks\/task-study-map\/exports\/bundle/);
+assert.match(exportCtaHtml, /\/api\/tasks\/task-study-map\/exports\/media/);
+assert.match(exportCtaHtml, /\/api\/tasks\/task-study-map\/exports\/diagnostics/);
+assert.match(stylesCss, /\.export-cta-bar[\s\S]*grid-template-columns:\s*minmax\(260px, 1fr\) minmax\(280px, auto\)/);
+assert.match(stylesCss, /@container \(max-width: 960px\)[\s\S]*\.export-cta-bar[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\)/);
 
 const noteHeroHtml = context.noteHeroBanner(`# 机器学习导论
 
