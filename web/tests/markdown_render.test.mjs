@@ -291,6 +291,11 @@ assert.match(routeSummaryHtml, /data-browser-route-action="refresh"/);
 assert.match(routeSummaryHtml, /data-browser-route-action="copy-backend"/);
 assert.match(routeSummaryHtml, /\/api\/tasks\/task-route-summary\/exports\/media/);
 assert.match(routeSummaryHtml, /\/api\/tasks\/task-route-summary\/exports\/diagnostics/);
+assert.match(routeSummaryHtml, /class="browser-bridge-gate"/);
+assert.match(routeSummaryHtml, /扩展侧栏交接门/);
+assert.match(routeSummaryHtml, /读取当前播放页只能从 Chrome\/Edge 扩展发起/);
+assert.match(routeSummaryHtml, /已交接/);
+assert.match(routeSummaryHtml, /已记录/);
 assert.match(routeSummaryHtml, /class="browser-route-handoff"/);
 assert.match(routeSummaryHtml, /资源证据/);
 assert.match(routeSummaryHtml, /本地落地/);
@@ -399,6 +404,13 @@ assert.match(blockedRouteSummaryHtml, /data-browser-route-action="local-video"/)
 assert.match(blockedRouteSummaryHtml, /&lt;script&gt;bad\(\)&lt;\/script&gt; DRM/);
 assert.doesNotMatch(blockedRouteSummaryHtml, /导出本地视频/);
 assert.doesNotMatch(blockedRouteSummaryHtml, /<script>bad/);
+
+const emptyBrowserGateHtml = context.browserRouteSummaryHtml(null);
+assert.match(emptyBrowserGateHtml, /class="browser-bridge-gate"/);
+assert.match(emptyBrowserGateHtml, /必须从课程页打开/);
+assert.match(emptyBrowserGateHtml, /Web 工作台不能直接读取你正在播放的 Chrome 标签页/);
+assert.match(emptyBrowserGateHtml, /等待侧栏读取/);
+assert.match(emptyBrowserGateHtml, /等待任务/);
 
 const html = context.markdownToHtml(`## 画面索引
 

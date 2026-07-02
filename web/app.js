@@ -680,6 +680,54 @@ function browserRouteHandoffHtml(task) {
   </div>`;
 }
 
+function browserBridgeGateItems(task) {
+  const hasCurrentPageTask = task?.source_type === "current_page";
+  const hasBrowserEvidence = Boolean(task?.selected_resource?.url || task?.active_video || task?.download_attempts?.length);
+  const hasProcessedMedia = Boolean(task?.media_path || task?.note_path);
+  return [
+    {
+      state: hasCurrentPageTask ? "done" : "active",
+      label: "扩展侧栏",
+      value: hasCurrentPageTask ? "已交接" : "必须从课程页打开",
+      detail: hasCurrentPageTask
+        ? "任务由 Chrome/Edge Side Panel 创建，保留浏览器上下文。"
+        : "Web 工作台不能直接读取你正在播放的 Chrome 标签页。"
+    },
+    {
+      state: hasBrowserEvidence ? "done" : hasCurrentPageTask ? "active" : "pending",
+      label: "播放证据",
+      value: hasBrowserEvidence ? "已记录" : "等待侧栏读取",
+      detail: hasBrowserEvidence
+        ? "已保存候选资源、播放器快照或下载尝试。"
+        : "侧栏会读取 DOM、Performance、webRequest、字幕和一次性 cookie。"
+    },
+    {
+      state: hasProcessedMedia ? "done" : task ? "active" : "pending",
+      label: "本地管线",
+      value: hasProcessedMedia ? "已落地" : "等待任务",
+      detail: hasProcessedMedia
+        ? "可以继续查看笔记、切片、审计或导出资料。"
+        : "拿到可访问媒体后才进入下载、转写、抽帧和总结。"
+    }
+  ];
+}
+
+function browserBridgeGateHtml(task) {
+  return `<div class="browser-bridge-gate" aria-label="扩展侧栏交接门">
+    <header>
+      <span>扩展侧栏交接门</span>
+      <strong>读取当前播放页只能从 Chrome/Edge 扩展发起</strong>
+    </header>
+    <div>
+      ${browserBridgeGateItems(task).map(item => `<section class="${escapeHtml(item.state)}">
+        <span>${escapeHtml(item.label)}</span>
+        <strong>${escapeHtml(item.value)}</strong>
+        <small>${escapeHtml(item.detail)}</small>
+      </section>`).join("")}
+    </div>
+  </div>`;
+}
+
 function browserRouteActions(task) {
   const state = directRouteState(task);
   const actions = [];
@@ -719,6 +767,7 @@ function browserRouteSummaryHtml(task = null) {
     <div class="browser-route-summary-metrics">
       ${browserRouteMetrics(task).map(item => `<span><b>${escapeHtml(item.value)}</b>${escapeHtml(item.label)}</span>`).join("")}
     </div>
+    ${browserBridgeGateHtml(task)}
     ${browserRouteHandoffHtml(task)}
     ${browserRouteActions(task)}
   </section>`;

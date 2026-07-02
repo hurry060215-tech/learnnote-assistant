@@ -1186,6 +1186,93 @@ select:focus {
   white-space: nowrap;
 }
 
+.browser-bridge-gate {
+  display: grid;
+  gap: 7px;
+  border: 1px solid rgba(23, 105, 232, 0.14);
+  border-radius: 8px;
+  background: rgba(246, 250, 255, 0.86);
+  padding: 8px;
+}
+
+.browser-bridge-gate header {
+  display: grid;
+  gap: 2px;
+}
+
+.browser-bridge-gate header span {
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.browser-bridge-gate header strong {
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.browser-bridge-gate > div {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.browser-bridge-gate section {
+  min-width: 0;
+  display: grid;
+  grid-template-rows: 8px auto auto;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: #ffffff;
+  padding: 7px;
+}
+
+.browser-bridge-gate section::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #cbd5e1;
+}
+
+.browser-bridge-gate section.done::before {
+  background: var(--success);
+}
+
+.browser-bridge-gate section.active::before {
+  background: var(--warning);
+}
+
+.browser-bridge-gate section.pending::before {
+  background: #94a3b8;
+}
+
+.browser-bridge-gate span,
+.browser-bridge-gate small,
+.browser-bridge-gate strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.browser-bridge-gate section span,
+.browser-bridge-gate small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.browser-bridge-gate section strong {
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.25;
+}
+
 .browser-route-actions {
   display: flex;
   flex-wrap: wrap;
@@ -8705,6 +8792,7 @@ body.reading-mode .app-shell {
   .capture-flow,
   .source-workflow-lane,
   .browser-route-summary-metrics,
+  .browser-bridge-gate > div,
   .browser-route-handoff,
   .task-browser-evidence > div,
   .direct-extraction-grid,
