@@ -4475,6 +4475,9 @@ function renderResult() {
     els.result.className = "result-body";
     els.result.innerHTML = `
       ${diagnosticRecoveryHtml(currentTask)}
+      ${taskBrowserEvidenceHtml(currentTask)}
+      ${directExtractionEvidenceHtml(currentTask)}
+      ${taskRouteEvidenceHtml(currentTask)}
       <dl class="diagnostics">
         <dt>状态</dt><dd>${escapeHtml(currentTask.status)} / ${escapeHtml(currentTask.phase)} / ${currentTask.progress || 0}%</dd>
         <dt>策略</dt><dd>${selected.url ? "浏览器候选资源优先" : "页面解析 fallback"}</dd>

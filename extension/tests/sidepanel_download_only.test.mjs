@@ -68,7 +68,63 @@ const context = {
       return { json: async () => ({ tasks: [] }) };
     }
     if (value.endsWith("/api/tasks/download-only-task")) {
-      return { json: async () => ({ task: { id: "download-only-task", status: "success", phase: "completed", progress: 100, message: "downloaded", media_path: "D:/media.mp4", download_attempts: [] } }) };
+      return {
+        json: async () => ({
+          task: {
+            id: "download-only-task",
+            status: "success",
+            phase: "completed",
+            progress: 100,
+            message: "downloaded",
+            source_type: "current_page",
+            mode: "download_only",
+            media_path: "D:/media.mp4",
+            active_video: page.active_video,
+            selected_resource: {
+              url: resources[0].url,
+              kind: "hls",
+              source: "webRequest",
+              playback_match: "blob-source",
+              request_headers: { Referer: page.page_url }
+            },
+            download_attempts: [{ strategy: "manifest-ffmpeg", status: "success", kind: "hls", source: "webRequest" }],
+            direct_extraction: {
+              no_tab_recording: true,
+              no_drm_bypass: true,
+              route: "download_only_to_local_media",
+              media_landed: true,
+              media_reusable: true,
+              selected_candidate: {
+                present: true,
+                kind: "hls",
+                source: "webRequest",
+                playback_match: "blob-source",
+                safe_request_header_names: ["Referer"]
+              },
+              browser_context: {
+                active_source_type: "blob",
+                browser_subtitle_count: 0,
+                cookie_domain_count: 1,
+                cookie_count: 2
+              },
+              download: {
+                attempt_count: 1,
+                successful_attempt_count: 1,
+                failed_attempt_count: 0,
+                strategy_order: ["manifest-ffmpeg"]
+              },
+              processing: {
+                download_only: true,
+                transcript_ready: false,
+                frame_grid_count: 0,
+                visual_window_count: 0,
+                note_ready: false
+              },
+              boundary: "normal_accessible_media_only"
+            }
+          }
+        })
+      };
     }
     throw new Error(`unexpected fetch: ${url}`);
   },
@@ -148,6 +204,15 @@ assert.equal(context.canContinueFromDownloadedMedia({
 }), false);
 assert.equal(elements.get("#continueFromMediaButton").hidden, false);
 assert.equal(elements.get("#continueFromMediaButton").disabled, false);
+
+context.switchResultTab("diagnostics");
+
+assert.match(elements.get("#result").innerHTML, /class="direct-extraction-evidence"/);
+assert.match(elements.get("#result").innerHTML, /class="task-browser-evidence"/);
+assert.match(elements.get("#result").innerHTML, /class="task-route-evidence"/);
+assert.match(elements.get("#result").innerHTML, /只下载到本地/);
+assert.match(elements.get("#result").innerHTML, /manifest-ffmpeg/);
+assert.match(elements.get("#result").innerHTML, /Referer/);
 
 await context.openTaskExport("media");
 

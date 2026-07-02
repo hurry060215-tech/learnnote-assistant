@@ -391,9 +391,17 @@ class LocalUploadValidationTests(unittest.TestCase):
                 url="https://cdn.example.com/lesson.mp4",
                 kind="video",
                 source="webRequest",
+                user_selected=True,
                 request_headers={"Cookie": "session=secret", "Authorization": "Bearer secret", "Referer": "https://course.example.com/watch"},
                 headers={"content-type": "video/mp4", "set-cookie": "secret=value"},
             )
+            task.cookie_summary = {
+                "total": 3,
+                "domains": {"course.example.com": 2, "cdn.example.com": 1},
+                "domain_count": 2,
+                "secure_count": 2,
+                "http_only_count": 1,
+            }
             task.download_attempts = [
                 DownloadAttempt(strategy="direct-file", url="https://cdn.example.com/lesson.mp4", status="success")
             ]
@@ -408,6 +416,9 @@ class LocalUploadValidationTests(unittest.TestCase):
             self.assertEqual(manifest["options"]["llm_api_key"], "<redacted>")
             self.assertEqual(manifest["source"]["selected_resource"]["request_header_names"], ["Referer"])
             self.assertEqual(manifest["direct_extraction"]["selected_candidate"]["safe_request_header_names"], ["Referer"])
+            self.assertTrue(manifest["direct_extraction"]["selected_candidate"]["user_selected"])
+            self.assertEqual(manifest["direct_extraction"]["browser_context"]["cookie_domain_count"], 2)
+            self.assertEqual(manifest["direct_extraction"]["browser_context"]["cookie_count"], 3)
             self.assertEqual(manifest["source"]["selected_resource"]["response_header_names"], ["content-type", "set-cookie"])
             self.assertEqual(manifest["transcript"]["segment_count"], 1)
             self.assertIn("audit", manifest)
@@ -419,6 +430,9 @@ class LocalUploadValidationTests(unittest.TestCase):
             self.assertNotIn("Bearer secret", encoded)
             self.assertNotIn("Authorization", json.dumps(manifest["direct_extraction"], ensure_ascii=False))
             self.assertNotIn("secret=value", encoded)
+            diagnostics = render_diagnostics_markdown(task)
+            self.assertIn("user selected yes", diagnostics)
+            self.assertIn("cookie domains 2 / cookies 3", diagnostics)
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
@@ -1014,7 +1028,13 @@ class ApiPipelineTests(unittest.TestCase):
                         {"start": 0.2, "end": 1.4, "text": "downloaded browser subtitle"},
                         {"start": 1.4, "end": 2.5, "text": "second browser cue"},
                     ],
-                    "options": {"visual_understanding": True, "frame_interval": 1},
+                    "options": {
+                        "visual_understanding": True,
+                        "frame_interval": 1,
+                        "note_template": "cornell",
+                        "summary_depth": "deep",
+                        "llm_model": "vision-source-model",
+                    },
                 }
                 with patch("app.processor.extract_audio", side_effect=AssertionError("download_only should not extract audio")):
                     with patch("app.processor.transcribe_audio", side_effect=AssertionError("download_only should not transcribe")):
@@ -1124,6 +1144,10 @@ class ApiPipelineTests(unittest.TestCase):
                     self.assertEqual(rerun_task["status"], "success")
                     self.assertEqual(rerun_task["source_type"], "local")
                     self.assertEqual(rerun_task["page_url"], payload["page_url"])
+                    self.assertEqual(rerun_task["options"]["frame_interval"], 1)
+                    self.assertEqual(rerun_task["options"]["note_template"], "cornell")
+                    self.assertEqual(rerun_task["options"]["summary_depth"], "deep")
+                    self.assertEqual(rerun_task["options"]["llm_model"], "vision-source-model")
                     self.assertEqual(rerun_task["selected_resource"]["url"], media_url)
                     self.assertEqual(rerun_task["download_attempts"][0]["strategy"], "direct-file")
                     self.assertEqual(rerun_task["browser_subtitles"][0]["text"], "downloaded browser subtitle")

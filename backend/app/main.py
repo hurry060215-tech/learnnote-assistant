@@ -96,6 +96,17 @@ def validate_local_upload_file(path: Path) -> None:
             raise local_upload_error("invalid_local_video", "无法读取本地视频时长，请确认文件不是空壳或损坏的视频。")
 
 
+def merge_task_options(base: TaskOptions | None, overrides: TaskOptions | None) -> TaskOptions:
+    merged = (base or TaskOptions()).model_dump(mode="json")
+    if overrides is not None:
+        explicit_fields = getattr(overrides, "model_fields_set", set()) or set()
+        override_values = overrides.model_dump(mode="json")
+        for field in explicit_fields:
+            if field in override_values:
+                merged[field] = override_values[field]
+    return TaskOptions.model_validate(merged)
+
+
 def markdown_filename(task_id: str, title: str) -> str:
     stem = _FILENAME_RESERVED_RE.sub("_", title or "").strip(" ._")
     stem = stem[:120] or f"learnnote-{task_id}"
@@ -295,6 +306,8 @@ def _direct_extraction_route(task: TaskRecord) -> str:
 def direct_extraction_evidence(task: TaskRecord) -> dict:
     selected = task.selected_resource
     attempts = task.download_attempts or []
+    cookie_summary = task.cookie_summary or {}
+    cookie_count = cookie_summary.get("total", cookie_summary.get("cookie_count", 0))
     successful_attempts = [attempt for attempt in attempts if attempt.status == "success"]
     failed_attempts = [attempt for attempt in attempts if attempt.status == "failed"]
     strategy_order: list[str] = []
@@ -336,6 +349,7 @@ def direct_extraction_evidence(task: TaskRecord) -> dict:
             "present": bool(selected),
             "kind": selected.kind if selected else "",
             "source": selected.source if selected else "",
+            "user_selected": selected.user_selected if selected else False,
             "is_main_video": selected.is_main_video if selected else False,
             "playback_match": selected.playback_match if selected else "",
             "request_type": selected.request_type if selected else "",
@@ -351,8 +365,8 @@ def direct_extraction_evidence(task: TaskRecord) -> dict:
             "active_frame_id": active.frame_id if active else None,
             "active_time_seconds": active.current_time if active else None,
             "browser_subtitle_count": len(task.browser_subtitles or []),
-            "cookie_domain_count": int((task.cookie_summary or {}).get("domain_count") or 0),
-            "cookie_count": int((task.cookie_summary or {}).get("cookie_count") or 0),
+            "cookie_domain_count": int(cookie_summary.get("domain_count") or 0),
+            "cookie_count": int(cookie_count or 0),
         },
         "download": {
             "attempt_count": len(attempts),
@@ -1125,9 +1139,11 @@ def render_diagnostics_markdown(task: TaskRecord) -> str:
         f"- Route: {direct.get('route') or '-'}",
         f"- Boundary: {direct.get('boundary') or '-'}",
         f"- Media landed: {'yes' if direct.get('media_landed') else 'no'}",
-        f"- Candidate: {selected_direct.get('kind') or '-'} / {selected_direct.get('source') or '-'} / {selected_direct.get('playback_match') or '-'}",
+        f"- Candidate: {selected_direct.get('kind') or '-'} / {selected_direct.get('source') or '-'} / {selected_direct.get('playback_match') or '-'}"
+        f" / user selected {'yes' if selected_direct.get('user_selected') else 'no'}",
         f"- Safe request headers: {', '.join(safe_headers) if safe_headers else '-'}",
-        f"- Browser context: {browser_context.get('active_source_type') or '-'} / subtitles {browser_context.get('browser_subtitle_count') or 0} / cookie domains {browser_context.get('cookie_domain_count') or 0}",
+        f"- Browser context: {browser_context.get('active_source_type') or '-'} / subtitles {browser_context.get('browser_subtitle_count') or 0}"
+        f" / cookie domains {browser_context.get('cookie_domain_count') or 0} / cookies {browser_context.get('cookie_count') or 0}",
         f"- Download attempts: {download_direct.get('successful_attempt_count') or 0} success / {download_direct.get('failed_attempt_count') or 0} failed / {', '.join(download_direct.get('strategy_order') or []) or '-'}",
         f"- Processing: transcript {'yes' if processing_direct.get('transcript_ready') else 'no'} / grids {processing_direct.get('frame_grid_count') or 0} / windows {processing_direct.get('visual_window_count') or 0} / note {'yes' if processing_direct.get('note_ready') else 'no'}",
     ])
@@ -1309,7 +1325,7 @@ def create_from_existing_media(
     if not media_path.exists():
         raise HTTPException(status_code=404, detail={"code": "media_not_found", "message": "Downloaded media file is missing"})
 
-    parsed_options = options or source.options or TaskOptions()
+    parsed_options = merge_task_options(source.options, options)
     task = create_task(
         source_type="local",
         title=source.title or f"Media from {source.id}",
