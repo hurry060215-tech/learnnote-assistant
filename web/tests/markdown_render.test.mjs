@@ -182,6 +182,7 @@ assert.match(elements.get("#sourceWorkflow").innerHTML, /20秒 · 3x3/);
 assert.match(elements.get("#sourceWorkflow").innerHTML, /非录制/);
 assert.match(indexHtml, /id="toggleWorkspaceButton"/);
 assert.match(indexHtml, /styles\.css\?v=20260702-workflow-status/);
+assert.match(indexHtml, /app\.js\?v=20260702-workflow-status/);
 assert.match(indexHtml, /id="urlPreflightReport"/);
 assert.match(indexHtml, /id="llmProvider"/);
 assert.equal(documentStub.body.classList.contains("workspace-collapsed"), false);
