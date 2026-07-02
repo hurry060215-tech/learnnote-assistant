@@ -1191,6 +1191,7 @@ def create_from_existing_media(
         selected_resource=source.selected_resource,
         download_attempts=source.download_attempts,
         active_video=source.active_video,
+        browser_subtitles=source.browser_subtitles,
         drm_detected=source.drm_detected,
         drm_signals=source.drm_signals,
         message="Queued from downloaded media",

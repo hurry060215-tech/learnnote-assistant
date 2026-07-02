@@ -1095,6 +1095,7 @@ class ApiPipelineTests(unittest.TestCase):
                     self.assertEqual(rerun_task["page_url"], payload["page_url"])
                     self.assertEqual(rerun_task["selected_resource"]["url"], media_url)
                     self.assertEqual(rerun_task["download_attempts"][0]["strategy"], "direct-file")
+                    self.assertEqual(rerun_task["browser_subtitles"][0]["text"], "downloaded browser subtitle")
                     self.assertTrue(Path(rerun_task["media_path"]).exists())
                     self.assertTrue(rerun_task["transcript_path"])
                     rerun_transcript = self.client.get(f"/api/tasks/{rerun_task_id}/transcript").json()
@@ -1102,10 +1103,13 @@ class ApiPipelineTests(unittest.TestCase):
                     self.assertIn("downloaded browser subtitle", rerun_transcript["full_text"])
                     self.assertTrue(rerun_task["frame_grids"])
                     self.assertTrue(rerun_task["visual_windows"])
-                    self.assertEqual(rerun_task["reuse"]["browser_subtitle_count"], 0)
+                    self.assertEqual(rerun_task["reuse"]["browser_subtitle_count"], 2)
                     self.assertGreater(rerun_task["reuse"]["frame_grid_count"], 0)
                     self.assertFalse(rerun_task["reuse"]["rerun_from_media_ready"])
                     self.assertEqual(rerun_task["reuse"]["suggested_next_step"], "review_visual_windows")
+                    rerun_diagnostics = self.client.get(f"/api/tasks/{rerun_task_id}/exports/diagnostics")
+                    self.assertEqual(rerun_diagnostics.status_code, 200)
+                    self.assertIn("Browser subtitles: 2 cues", rerun_diagnostics.text)
                     rerun_note = self.client.get(f"/api/tasks/{rerun_task_id}/note").text
                     self.assertIn("Download only lesson", rerun_note)
                     self.assertIn("画面索引", rerun_note)
@@ -1120,6 +1124,8 @@ class ApiPipelineTests(unittest.TestCase):
                         visual_windows_markdown = archive.read("visual_windows.md").decode("utf-8")
                         self.assertIn("Download only lesson", visual_windows_markdown)
                         self.assertIn("grids/", visual_windows_markdown)
+                        rerun_manifest = json.loads(archive.read("manifest.json").decode("utf-8"))
+                        self.assertEqual(rerun_manifest["reuse"]["browser_subtitle_count"], 2)
                 finally:
                     if rerun_task_id:
                         shutil.rmtree(task_dir(rerun_task_id), ignore_errors=True)
