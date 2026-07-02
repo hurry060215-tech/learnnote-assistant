@@ -4367,6 +4367,33 @@ function visualStudyDeck(task, transcript = null) {
   </section>`;
 }
 
+function pendingSliceWorkbench(task = currentTask) {
+  if (!task?.media_path) return "";
+  const canContinue = canContinueFromDownloadedMedia(task);
+  return `<section class="side-slice-pending" aria-label="待生成切片复习">
+    ${mediaSeekDockHtml(task)}
+    <div class="side-slice-pending-card">
+      <div>
+        <span>下一步</span>
+        <strong>${canContinue ? "视频已直取到本地，可以继续切片总结" : "等待生成切片复习"}</strong>
+        <small>${canContinue
+          ? "复用已下载的 media.mp4，按当前参数进入转写、抽帧、视觉窗口和图文笔记流程；不会录制页面。"
+          : "任务完成抽帧后，这里会显示按时间窗口组织的截图网格、字幕片段和回看动作。"}</small>
+      </div>
+      <ol>
+        <li class="done"><b>1</b><span>本地视频</span><small>media.mp4 已落盘。</small></li>
+        <li class="${canContinue ? "active" : "wait"}"><b>2</b><span>转写与抽帧</span><small>继续任务后生成字幕和画面网格。</small></li>
+        <li class="wait"><b>3</b><span>切片复习</span><small>按视觉窗口组织复习卡。</small></li>
+      </ol>
+      <nav>
+        ${canContinue ? `<button type="button" data-rerun-from-media="${escapeHtml(task.id)}">继续切片总结</button>` : ""}
+        <button type="button" data-export="media">导出 media.mp4</button>
+        ${hasTaskDiagnostics(task) ? `<button type="button" data-switch-result-tab="diagnostics">查看诊断</button>` : ""}
+      </nav>
+    </div>
+  </section>`;
+}
+
 function sideVisualStudyCheckpointHtml(window, transcript = null) {
   const segments = (transcript?.segments || [])
     .filter(segment => segmentOverlapsWindow(segment, window))
@@ -4464,6 +4491,12 @@ function renderResult() {
   }
   if (isVisualStudyResultTab(selectedTab)) {
     const windows = visualWindows(currentTask);
+    if (!windows.length && currentTask?.media_path) {
+      els.result.className = "result-body";
+      els.result.innerHTML = pendingSliceWorkbench(currentTask);
+      bindTaskOverviewActions();
+      return;
+    }
     if (!windows.length) {
       els.result.className = "result-body muted";
       els.result.textContent = "画面切片尚未生成。";

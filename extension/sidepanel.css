@@ -3837,6 +3837,111 @@ input[type="file"] {
   background: #eaf2ff;
 }
 
+.side-slice-pending {
+  display: grid;
+  gap: 10px;
+}
+
+.side-slice-pending-card {
+  display: grid;
+  gap: 12px;
+  border: 1px solid #dbe7f6;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 11px;
+}
+
+.side-slice-pending-card > div {
+  display: grid;
+  gap: 4px;
+}
+
+.side-slice-pending-card span {
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.side-slice-pending-card strong {
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.side-slice-pending-card small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.side-slice-pending-card ol {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.side-slice-pending-card li {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 2px 8px;
+  border: 1px solid #dbe7f6;
+  border-radius: 7px;
+  background: #f7faff;
+  padding: 8px;
+}
+
+.side-slice-pending-card li b {
+  grid-row: span 2;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  background: #eaf2ff;
+  color: var(--accent);
+  font-size: 10px;
+}
+
+.side-slice-pending-card li.done {
+  border-color: rgba(15, 143, 97, 0.24);
+  background: #ecfdf5;
+}
+
+.side-slice-pending-card li.active {
+  border-color: rgba(22, 119, 255, 0.3);
+  background: #eef6ff;
+}
+
+.side-slice-pending-card li.active b {
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.side-slice-pending-card nav {
+  display: grid;
+  gap: 7px;
+}
+
+.side-slice-pending-card nav button {
+  min-height: 32px;
+  border: 1px solid #b8d3ff;
+  border-radius: 7px;
+  background: #f2f7ff;
+  color: var(--accent);
+  padding: 0 10px;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.side-slice-pending-card nav button:first-child {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #ffffff;
+}
+
 .side-visual-study-list {
   display: grid;
   gap: 9px;

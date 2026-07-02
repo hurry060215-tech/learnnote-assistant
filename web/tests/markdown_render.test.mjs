@@ -618,6 +618,25 @@ assert.match(sliceWorkbenchHtml, /class="visual-study-deck"/);
 assert.match(sliceWorkbenchHtml, /data-media-seek-time="0\.000"/);
 assert.doesNotMatch(sliceWorkbenchHtml, /<script>bad/);
 
+const pendingSliceHtml = context.pendingSliceWorkbench({
+  id: "task-pending-slice",
+  title: "Downloaded only lesson",
+  status: "success",
+  phase: "completed",
+  mode: "download_only",
+  source_type: "current_page",
+  media_path: "D:/Projects/learnnote-assistant/data/tasks/task-pending-slice/media.mp4",
+  download_attempts: [{ strategy: "direct-file", status: "success" }],
+  visual_windows: []
+});
+assert.match(pendingSliceHtml, /class="slice-workbench pending"/);
+assert.match(pendingSliceHtml, /视频已直取到本地，可以继续切片总结/);
+assert.match(pendingSliceHtml, /不会重新录制页面/);
+assert.match(pendingSliceHtml, /data-rerun-from-media="task-pending-slice"/);
+assert.match(pendingSliceHtml, /\/api\/tasks\/task-pending-slice\/exports\/media/);
+assert.match(pendingSliceHtml, /data-switch-result-tab="diagnostics"/);
+assert.match(pendingSliceHtml, /media-preview-card/);
+
 const visualDeckWithTranscriptHtml = context.visualStudyDeck({
   id: "task-visual-transcript",
   title: "带字幕切片",

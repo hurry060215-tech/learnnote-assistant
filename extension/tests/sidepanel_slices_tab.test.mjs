@@ -128,3 +128,32 @@ assert.doesNotMatch(resultHtml, /Outside the slice window/);
 assert.match(resultHtml, /data-media-seek-time="12\.000"/);
 assert.match(resultHtml, /data-switch-result-tab="transcript"/);
 assert.match(resultHtml, /data-switch-result-tab="note"/);
+
+vm.runInContext(`
+currentTaskId = "download-only-task";
+currentTask = {
+  id: "download-only-task",
+  title: "Downloaded only lesson",
+  status: "success",
+  phase: "completed",
+  mode: "download_only",
+  source_type: "current_page",
+  media_path: "D:/Projects/learnnote-assistant/data/tasks/download-only-task/media.mp4",
+  download_attempts: [{ strategy: "direct-file", status: "success" }],
+  visual_windows: []
+};
+transcriptCache = null;
+selectedTab = "note";
+`, context);
+
+elements.get("#result").innerHTML = "";
+resultTabs.find(tab => tab.dataset.tab === "slices").onclick();
+
+const pendingHtml = elements.get("#result").innerHTML;
+assert.match(pendingHtml, /class="side-slice-pending"/);
+assert.match(pendingHtml, /视频已直取到本地，可以继续切片总结/);
+assert.match(pendingHtml, /不会录制页面/);
+assert.match(pendingHtml, /data-rerun-from-media="download-only-task"/);
+assert.match(pendingHtml, /data-export="media"/);
+assert.match(pendingHtml, /data-switch-result-tab="diagnostics"/);
+assert.match(pendingHtml, /media-preview-card/);

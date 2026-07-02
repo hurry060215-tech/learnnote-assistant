@@ -3377,6 +3377,33 @@ function learningSliceWorkbench(task, transcript = null) {
   </div>`;
 }
 
+function pendingSliceWorkbench(task) {
+  if (!task?.media_path) return "";
+  const canContinue = canContinueFromDownloadedMedia(task);
+  return `<div class="slice-workbench pending" aria-label="待生成学习切片">
+    ${mediaSeekDockHtml(task)}
+    <section class="slice-pending-card">
+      <div>
+        <span>下一步</span>
+        <strong>${canContinue ? "视频已直取到本地，可以继续切片总结" : "等待生成学习切片"}</strong>
+        <small>${canContinue
+          ? "复用已下载的 media.mp4，按当前参数进入转写、抽帧、视觉窗口和图文笔记流程；不会重新录制页面。"
+          : "任务完成抽帧后，这里会显示按时间窗口组织的截图网格、字幕片段和回看动作。"}</small>
+      </div>
+      <ol>
+        <li class="done"><b>1</b><span>本地视频</span><small>media.mp4 已落盘，可导出核对。</small></li>
+        <li class="${canContinue ? "active" : "wait"}"><b>2</b><span>转写与抽帧</span><small>继续任务后生成字幕和画面网格。</small></li>
+        <li class="wait"><b>3</b><span>学习切片</span><small>按视觉窗口汇总字幕、截图和复习问题。</small></li>
+      </ol>
+      <nav>
+        ${canContinue ? `<button type="button" data-rerun-from-media="${escapeHtml(task.id)}">继续切片总结</button>` : ""}
+        <a href="${escapeHtml(taskExportUrl(task, "media"))}">导出 media.mp4</a>
+        ${hasTaskDiagnostics(task) ? `<button type="button" data-switch-result-tab="diagnostics">查看下载诊断</button>` : ""}
+      </nav>
+    </section>
+  </div>`;
+}
+
 function emptyResultWorkbench() {
   return `
     <section class="empty-workbench" aria-label="学习工作区起始页">
@@ -3581,6 +3608,12 @@ async function renderDetail() {
 
   if (selectedTab === "slices" || selectedTab === "frames") {
     const windows = visualWindows(task);
+    if (!windows.length && task?.media_path) {
+      els.detail.className = "detail";
+      els.detail.innerHTML = pendingSliceWorkbench(task);
+      bindTaskOverviewActions();
+      return;
+    }
     if (!windows.length) {
       els.detail.className = "detail empty";
       els.detail.textContent = "画面切片尚未生成。";

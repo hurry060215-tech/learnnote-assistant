@@ -4812,6 +4812,113 @@ button:disabled {
   background: #eaf2ff;
 }
 
+.slice-pending-card {
+  display: grid;
+  gap: 14px;
+  border: 1px solid #d6e3f3;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 16px;
+}
+
+.slice-pending-card > div {
+  display: grid;
+  gap: 4px;
+}
+
+.slice-pending-card span {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.slice-pending-card strong {
+  color: var(--text);
+  font-size: 18px;
+  line-height: 1.25;
+}
+
+.slice-pending-card small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.slice-pending-card ol {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.slice-pending-card li {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 3px 8px;
+  align-items: start;
+  border: 1px solid #dbe7f6;
+  border-radius: 7px;
+  background: #f7faff;
+  padding: 10px;
+}
+
+.slice-pending-card li b {
+  grid-row: span 2;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  background: #eaf2ff;
+  color: var(--accent);
+  font-size: 11px;
+}
+
+.slice-pending-card li.done {
+  border-color: rgba(17, 132, 91, 0.26);
+  background: rgba(17, 132, 91, 0.07);
+}
+
+.slice-pending-card li.active {
+  border-color: rgba(23, 105, 232, 0.32);
+  background: #eef6ff;
+}
+
+.slice-pending-card li.active b {
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.slice-pending-card nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.slice-pending-card nav a,
+.slice-pending-card nav button {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #b8d3ff;
+  border-radius: 7px;
+  background: #f2f7ff;
+  color: var(--accent);
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 850;
+  text-decoration: none;
+}
+
+.slice-pending-card nav button:first-child {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #ffffff;
+}
+
 .visual-study-deck {
   display: grid;
   gap: 14px;
@@ -6942,6 +7049,10 @@ body {
 
   .slice-brief dl {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .slice-pending-card ol {
+    grid-template-columns: 1fr;
   }
 }
 
