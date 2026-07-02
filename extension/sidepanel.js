@@ -2120,6 +2120,47 @@ function workbenchLocalFallbackHtml(state) {
   </div>`;
 }
 
+function workbenchBriefItems(state) {
+  const selected = selectedResource();
+  const checked = currentPreflight();
+  const active = page?.active_video || null;
+  const sourceValue = selected
+    ? `${mediaKindText(selected.kind) || selected.kind || "媒体"} · ${resourceSourceText(selected) || selected.source || "候选"}`
+    : hasActiveVideoSignal(active)
+      ? playbackSourceLabel(active)
+      : "等待播放";
+  const sourceDetail = selected
+    ? directnessText(selected)
+    : activeSrcObjectOnly(active)
+      ? "MediaStream/srcObject 无法交给后端下载"
+      : "播放课程几秒后读取播放器、请求和字幕";
+  const nextValue = workbenchPrimaryAction(state).label;
+  const nextDetail = currentStudyActionText(state).replace(/^下一步：/, "");
+  const directValue = checked
+    ? checked.downloadable ? "预检通过" : checked.code || "未通过"
+    : selected ? "待预检" : state === "blocked" ? "不可直取" : "待候选";
+  const directDetail = checked
+    ? checked.message || resourcePreflightLine(checked, selected)
+    : selected ? `${candidateStrategyText(selected)} · ${candidateConfidence(selected).label}` : "不会录制标签页，只直取可访问媒体";
+  return [
+    ["入口", "当前页视频", sourceValue, sourceDetail],
+    ["下一步", nextValue, state === "ready" ? "生成完整图文笔记" : nextDetail],
+    ["直取", directValue, directDetail],
+    ["切片", visualPlanText(), visualUnderstandingEnabled() ? `${visualWindowText()} · 网格图对齐字幕` : "视觉理解关闭，仅转写"]
+  ];
+}
+
+function workbenchBriefHtml(state) {
+  return `<div class="workbench-brief" aria-label="学习流总览">
+    ${workbenchBriefItems(state).map(([label, value, title, detail]) => `<section>
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+      <b>${escapeHtml(title)}</b>
+      <small>${escapeHtml(detail)}</small>
+    </section>`).join("")}
+  </div>`;
+}
+
 function shouldShowWorkbenchFallback(state) {
   return !selectedResource() || ["blocked", "fallback", "mapping", "waiting", "empty"].includes(state);
 }
@@ -2142,6 +2183,7 @@ function renderCurrentStudyCard() {
         ${escapeHtml(primary.label)}
       </button>
     </div>
+    ${workbenchBriefHtml(state)}
     ${workbenchRouteHtml()}
     ${workbenchAuditGateHtml(state)}
     ${workbenchSlicePlanHtml()}

@@ -7050,6 +7050,71 @@ body {
   height: 15px;
 }
 
+.workbench-brief {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.workbench-brief section {
+  min-width: 0;
+  min-height: 82px;
+  display: grid;
+  grid-template-rows: auto auto auto 1fr;
+  gap: 3px;
+  border: 1px solid rgba(23, 105, 232, 0.16);
+  border-left: 3px solid var(--ln-blue, var(--accent));
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.86);
+  padding: 8px;
+}
+
+.study-workbench.ready .workbench-brief section {
+  border-left-color: var(--ln-green, var(--success));
+}
+
+.study-workbench.blocked .workbench-brief section {
+  border-left-color: var(--ln-red, var(--danger));
+}
+
+.workbench-brief span {
+  color: var(--ln-muted, var(--muted));
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1.15;
+}
+
+.workbench-brief strong,
+.workbench-brief b {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workbench-brief strong {
+  color: var(--ln-blue, var(--accent));
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1.15;
+}
+
+.workbench-brief b {
+  color: var(--ln-ink, var(--ink));
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.workbench-brief small {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--ln-muted, var(--muted));
+  font-size: 10px;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
 .workbench-route {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(118px, 0.82fr);
