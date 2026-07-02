@@ -19,6 +19,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - `webRequest` captures media candidates as soon as response headers arrive, so long-running video/range streams do not have to finish before they can be selected.
 - Main-world fetch/XHR hook for media URLs exposed in text, JSON, playlist, or script responses before they appear in `<video>`.
 - JSON/HTML script media-field discovery for extensionless player APIs such as `hls`, `dashUrl`, `playUrl`, or `videoUrl` when sibling metadata or field names identify HLS/DASH/video content.
+- Runtime page-global player config discovery: common globals such as `lessonPlayerConfig`, `coursePlayerConfig`, `ananasVideoInfo`, and `__playInfo` are watched even when assigned after extension injection, so late SPA/player setup can still expose mp4/FLV/HLS/DASH candidates.
 - URL-encoded and base64-wrapped media field values are decoded during page scanning and main-world response inspection.
 - Blob/MSE-backed player recovery: when a page fetches an accessible media response as a `Blob`, `ArrayBuffer`, or `ReadableStream` chunk, constructs a `Blob`, or appends the buffer to a `MediaSource`/`SourceBuffer`, the extension maps that generated `blob:` playback URL back to the original mp4/FLV/HLS/DASH request and ranks it as the current video candidate.
 - Backend page scanner for manually pasted page URLs, so the local Web UI can try direct media extraction before yt-dlp fallback.
@@ -47,7 +48,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - Direct current-page task creation from the extension Side Panel.
 - DOM, iframe-aware content scripts, Performance, active `<video>` state, and `webRequest` resource discovery.
 - Page-network hook discovery for mp4/FLV/HLS/DASH/subtitle URLs embedded in fetch/XHR text responses. The hook also records Blob object URL, fetch stream chunk, and MediaSource source mappings when the page builds playback from accessible media responses; it does not record playback or inspect binary video payloads.
-- Page-global player config discovery: the page hook scans bounded common globals such as `__playInfo`, `playerConfig`, `videoInfo`, and matching video/player/media keys for mp4/FLV/HLS/DASH/subtitle URLs, including encoded fields, without recording playback.
+- Page-global player config discovery: the page hook scans bounded common globals such as `__playInfo`, `playerConfig`, `videoInfo`, `lessonPlayerConfig`, and matching video/player/media keys for mp4/FLV/HLS/DASH/subtitle URLs, including encoded fields and late runtime assignments, without recording playback.
 - Extensionless manifest-body discovery: if a player endpoint such as `/api/play?lesson=...` returns an HLS/DASH manifest body with a generic MIME like `application/octet-stream`, the page hook promotes the response URL itself to a direct HLS/DASH candidate.
 - Backend page-text scanning for manually submitted URLs: HTML/JSON/script responses are scanned for absolute or relative mp4/FLV/HLS/DASH/subtitle URLs before yt-dlp is tried.
 - Extensionless API URL scanning: JSON fields or inline script fields like `hls`, `dashUrl`, `playUrl`, and `videoUrl` can become candidates even when the URL is `/stream?lesson=...` instead of ending in `.m3u8`, `.mpd`, `.flv`, or `.mp4`.

@@ -26,7 +26,17 @@
     "mediaInfo",
     "mediaData",
     "courseData",
-    "lessonData"
+    "lessonData",
+    "__coursePlayer",
+    "__coursePlayerConfig",
+    "__lessonPlayer",
+    "__lessonPlayerConfig",
+    "coursePlayer",
+    "coursePlayerConfig",
+    "lessonPlayer",
+    "lessonPlayerConfig",
+    "ananasVideoInfo",
+    "ananasPlayerConfig"
   ];
   const TEXT_MEDIA_FIELD_RE = /(["']?[A-Za-z_$][A-Za-z0-9_$.-]{0,79}["']?)\s*[:=]\s*["']((?:\\u[0-9a-fA-F]{4}|\\x[0-9a-fA-F]{2}|\\.|[^"'<>\\\s]){4,})["']/gi;
   const B64ISH_RE = /^[A-Za-z0-9+/_=-]{16,}$/;
@@ -1413,6 +1423,46 @@
     }
   }
 
+  function emitGlobalConfigValue(name, value) {
+    try {
+      const seen = new Set();
+      const label = `global ${name}`;
+      if (typeof value === "string") {
+        emit(collectMediaUrlsFromText(value.slice(0, MAX_TEXT_BYTES), "pageHookGlobal", label, "", seen));
+      } else if (value && typeof value === "object") {
+        emit(collectJsonMediaUrls(value, "pageHookGlobal", label, [name], null, [], seen));
+      }
+    } catch {
+      // Runtime player configs are best-effort hints only.
+    }
+  }
+
+  function watchLateGlobalConfig(name) {
+    try {
+      if (!name || Object.prototype.hasOwnProperty.call(window, name)) return;
+      let current;
+      Object.defineProperty(window, name, {
+        configurable: true,
+        enumerable: true,
+        get() {
+          return current;
+        },
+        set(value) {
+          current = value;
+          emitGlobalConfigValue(name, value);
+        }
+      });
+    } catch {
+      // Some pages disallow accessors on window globals; timed scans still run.
+    }
+  }
+
+  function installLateGlobalConfigWatchers() {
+    for (const name of GLOBAL_MEDIA_KEYS) {
+      watchLateGlobalConfig(name);
+    }
+  }
+
   function installLatePlayerGlobalWatchers() {
     for (const name of [
       "Hls",
@@ -1995,6 +2045,7 @@
   installEmeDetection();
   patchHtmlMediaElement();
   patchKnownPlayerLibraries();
+  installLateGlobalConfigWatchers();
   installLatePlayerGlobalWatchers();
   scanGlobalConfig();
   setTimeout(patchKnownPlayerLibraries, 100);
