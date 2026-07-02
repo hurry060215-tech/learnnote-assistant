@@ -655,6 +655,37 @@ const taskOverviewHtml = context.taskOverview({
       Authorization: "Bearer secret"
     }
   },
+  direct_extraction: {
+    no_tab_recording: true,
+    no_drm_bypass: true,
+    route: "download_only_to_local_media",
+    media_landed: true,
+    media_reusable: true,
+    selected_candidate: {
+      kind: "hls",
+      source: "webRequest",
+      playback_match: "blob-source",
+      safe_request_header_names: ["Referer", "Origin", "Cookie", "Authorization"]
+    },
+    browser_context: {
+      active_source_type: "blob",
+      browser_subtitle_count: 2,
+      cookie_domain_count: 1
+    },
+    download: {
+      successful_attempt_count: 1,
+      failed_attempt_count: 0,
+      strategy_order: ["manifest-ffmpeg", "yt-dlp-page"]
+    },
+    processing: {
+      download_only: true,
+      transcript_ready: false,
+      frame_grid_count: 0,
+      visual_window_count: 0,
+      note_ready: false
+    },
+    boundary: "normal_accessible_media_only"
+  },
   options: {
     frame_interval: 20,
     grid_columns: 3,
@@ -687,8 +718,19 @@ assert.match(taskOverviewHtml, /直取目标/);
 assert.match(taskOverviewHtml, /请求上下文/);
 assert.match(taskOverviewHtml, /Referer/);
 assert.match(taskOverviewHtml, /blob 已映射/);
+assert.match(taskOverviewHtml, /class="direct-extraction-evidence"/);
+assert.match(taskOverviewHtml, /直取证据/);
+assert.match(taskOverviewHtml, /非录制下载路线/);
+assert.match(taskOverviewHtml, /只下载到本地/);
+assert.match(taskOverviewHtml, /不录制标签页/);
+assert.match(taskOverviewHtml, /已落地 media\.mp4/);
+assert.match(taskOverviewHtml, /可复用本地视频/);
+assert.match(taskOverviewHtml, /headers Origin, Referer/);
+assert.match(taskOverviewHtml, /manifest-ffmpeg → yt-dlp-page/);
+assert.match(taskOverviewHtml, /仅可访问媒体/);
 assert.doesNotMatch(taskOverviewHtml, /secret=1/);
 assert.doesNotMatch(taskOverviewHtml, /Bearer secret/);
+assert.doesNotMatch(taskOverviewHtml, /Authorization/);
 assert.match(taskOverviewHtml, /阶段审计门/);
 assert.match(taskOverviewHtml, /class="task-command-center"/);
 assert.match(taskOverviewHtml, /class="task-command-grid"/);

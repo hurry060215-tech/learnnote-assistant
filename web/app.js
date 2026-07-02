@@ -2473,6 +2473,123 @@ function taskCommandCenter(task) {
   </section>`;
 }
 
+function directExtractionRouteLabel(route) {
+  const labels = {
+    download_only_to_local_media: "只下载到本地",
+    browser_candidate_to_local_media: "浏览器候选直取",
+    local_video_pipeline: "本地视频管线",
+    page_text_only: "页面文本兜底",
+    resolver_to_local_media: "解析器落地",
+    attempted_direct_extraction: "已尝试直取",
+    pending_or_no_media: "等待媒体"
+  };
+  return labels[route] || route || "未知路线";
+}
+
+function directExtractionBoundaryText(boundary) {
+  const labels = {
+    normal_accessible_media_only: "仅可访问媒体",
+    drm_or_encrypted_not_bypassed: "DRM 不绕过",
+    mediastream_not_recorded: "MediaStream 不录制",
+    unresolved_blob_or_fragment_not_recorded: "blob/分片不录制"
+  };
+  return labels[boundary] || boundary || "边界正常";
+}
+
+function directExtractionSafeHeaders(direct) {
+  const names = direct?.selected_candidate?.safe_request_header_names;
+  if (!Array.isArray(names)) return "";
+  return names
+    .map(name => String(name || "").trim())
+    .filter(name => name && !/cookie|authorization/i.test(name))
+    .sort()
+    .join(", ");
+}
+
+function directExtractionEvidenceItems(task) {
+  const direct = task?.direct_extraction;
+  if (!direct) return [];
+  const selected = direct.selected_candidate || {};
+  const browser = direct.browser_context || {};
+  const download = direct.download || {};
+  const processing = direct.processing || {};
+  const safeHeaders = directExtractionSafeHeaders(direct);
+  const contextDetail = [
+    selected.source ? `source ${selected.source}` : "",
+    selected.playback_match ? playbackText(selected.playback_match) : "",
+    browser.active_source_type ? `active ${browser.active_source_type}` : "",
+    Number.isFinite(browser.browser_subtitle_count) ? `${browser.browser_subtitle_count} 字幕` : "",
+    Number.isFinite(browser.cookie_domain_count) ? `${browser.cookie_domain_count} cookie 域` : "",
+    safeHeaders ? `headers ${safeHeaders}` : ""
+  ].filter(Boolean).join(" · ");
+  const strategyOrder = Array.isArray(download.strategy_order)
+    ? download.strategy_order.map(item => String(item || "").trim()).filter(Boolean).slice(0, 4).join(" → ")
+    : "";
+  const successCount = Number(download.successful_attempt_count || 0);
+  const failedCount = Number(download.failed_attempt_count || 0);
+  const processingDetail = [
+    processing.transcript_ready ? "转写已就绪" : "转写待生成",
+    Number.isFinite(processing.frame_grid_count) ? `${processing.frame_grid_count} 网格` : "",
+    Number.isFinite(processing.visual_window_count) ? `${processing.visual_window_count} 视觉窗` : "",
+    processing.note_ready ? "笔记已就绪" : "",
+    directExtractionBoundaryText(direct.boundary)
+  ].filter(Boolean).join(" · ");
+
+  return [
+    {
+      state: direct.no_tab_recording === false ? "warn" : "pass",
+      label: "直取路线",
+      value: directExtractionRouteLabel(direct.route),
+      detail: [
+        direct.no_tab_recording === false ? "录制状态未知" : "不录制标签页",
+        direct.no_drm_bypass === false ? "DRM 边界未知" : "不绕过 DRM"
+      ].join(" · ")
+    },
+    {
+      state: direct.media_landed ? "pass" : "warn",
+      label: "媒体落地",
+      value: direct.media_landed ? "已落地 media.mp4" : "未落地",
+      detail: direct.media_reusable ? "可复用本地视频" : directExtractionBoundaryText(direct.boundary)
+    },
+    {
+      state: contextDetail ? "active" : "skip",
+      label: "浏览器上下文",
+      value: selected.kind ? `${selected.kind} · ${selected.source || "候选"}` : (browser.active_source_type ? `active ${browser.active_source_type}` : "无候选"),
+      detail: contextDetail || "Cookie 仅任务启动时同步"
+    },
+    {
+      state: successCount ? "pass" : failedCount ? "fail" : "wait",
+      label: "下载尝试",
+      value: `成功 ${successCount} / 失败 ${failedCount}`,
+      detail: strategyOrder || "等待下载器结果"
+    },
+    {
+      state: processing.note_ready || processing.transcript_ready || processing.download_only ? "pass" : "wait",
+      label: "处理状态",
+      value: processing.download_only ? "只下载模式" : processing.note_ready ? "已生成笔记" : processing.transcript_ready ? "已转写" : "待处理",
+      detail: processingDetail || directExtractionBoundaryText(direct.boundary)
+    }
+  ];
+}
+
+function directExtractionEvidenceHtml(task) {
+  const items = directExtractionEvidenceItems(task);
+  if (!items.length) return "";
+  return `<section class="direct-extraction-evidence" aria-label="直取证据">
+    <header>
+      <span>直取证据</span>
+      <strong>非录制下载路线</strong>
+    </header>
+    <div class="direct-extraction-grid">
+      ${items.map(item => `<article class="${escapeHtml(item.state)}">
+        <b>${escapeHtml(item.label)}</b>
+        <strong>${escapeHtml(item.value)}</strong>
+        <small>${escapeHtml(item.detail)}</small>
+      </article>`).join("")}
+    </div>
+  </section>`;
+}
+
 function taskOverview(task) {
   const selected = task.selected_resource || {};
   const options = task.options || {};
@@ -2520,6 +2637,7 @@ function taskOverview(task) {
       <span><b>${windows.length || "-"}</b>${windows.length ? "画面窗口" : "等待画面切片"}</span>
     </div>
     ${taskBrowserEvidenceHtml(task)}
+    ${directExtractionEvidenceHtml(task)}
     ${pipelineAuditHtml(task)}
     ${taskCommandCenter(task)}
     ${nextStepHtml(task)}
