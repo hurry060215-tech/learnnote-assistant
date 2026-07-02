@@ -105,6 +105,8 @@ class LocalUploadValidationTests(unittest.TestCase):
         self.assertIsInstance(payload["vision_model_configured"], bool)
         self.assertTrue(payload["default_llm_model"])
         self.assertTrue(payload["default_llm_base_url"])
+        self.assertTrue(payload["default_llm_base_host"])
+        self.assertTrue(payload["default_llm_provider"])
         if payload["ffmpeg"] and not payload["ffprobe"]:
             self.assertTrue(payload["ffprobe_optional"])
             self.assertEqual(payload["duration_probe"], "ffmpeg")

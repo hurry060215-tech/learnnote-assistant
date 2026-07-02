@@ -1627,17 +1627,43 @@ function healthVisionModel(data) {
   return els.llmModel?.value?.trim() || data?.default_llm_model || "gpt-4.1-mini";
 }
 
+function healthVisionProvider(data) {
+  const selected = (els.llmProvider?.value || "").trim();
+  if (selected) {
+    return ({
+      openai: "OpenAI",
+      groq: "Groq",
+      dashscope: "DashScope",
+      siliconflow: "SiliconFlow",
+      openrouter: "OpenRouter",
+      ollama: "Ollama"
+    })[selected] || selected;
+  }
+  const provider = String(data?.default_llm_provider || "").trim();
+  return ({
+    openai: "OpenAI",
+    groq: "Groq",
+    dashscope: "DashScope",
+    siliconflow: "SiliconFlow",
+    openrouter: "OpenRouter",
+    "local-openai-compatible": "Local",
+    "openai-compatible": "Compatible"
+  })[provider] || provider || "Compatible";
+}
+
 function healthVisionText(data) {
   const model = healthVisionModel(data);
+  const provider = healthVisionProvider(data);
   if (healthVisionReady(data)) {
-    return `视觉模型已配置（${model}），切片网格会随字幕进入图文总结。`;
+    return `视觉模型已配置（${provider} · ${model}），切片网格会随字幕进入图文总结。`;
   }
-  return "未配置视觉模型 API Key：仍会生成字幕、切片网格和本地图文索引；填写 Key 后才会把画面送入视觉模型。";
+  return `未配置视觉模型 API Key：当前默认 ${provider} · ${model} 仅作待用配置；仍会生成字幕、切片网格和本地图文索引。`;
 }
 
 function healthVisionChipText(data) {
   const model = healthVisionModel(data);
-  return healthVisionReady(data) ? `模型 · ${model}` : "API Key 待填";
+  const provider = healthVisionProvider(data);
+  return healthVisionReady(data) ? `${provider} · ${model}` : `待填 · ${provider}`;
 }
 
 function healthMediaChipText(data) {
@@ -1660,10 +1686,10 @@ function emptyReadinessItems(data = lastHealthData) {
     {
       state: healthVisionReady(data) ? "pass" : "warn",
       label: "视觉总结门",
-      value: healthVisionReady(data) ? healthVisionChipText(data) : "API Key 待填",
+      value: healthVisionChipText(data),
       detail: healthVisionReady(data)
         ? "切片网格会和转写片段一起进入多模态总结。"
-        : "仍会生成转写、截图网格和本地索引，配置模型后再启用图文总结。"
+        : `${healthVisionProvider(data)} 默认模型待用；仍会生成转写、截图网格和本地索引，配置 Key 后再启用图文总结。`
     },
     {
       state: "pass",

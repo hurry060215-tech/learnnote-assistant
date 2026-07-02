@@ -20,7 +20,7 @@ from .models import CurrentPageTaskRequest, MediaPreflightRequest, MediaPrefligh
 from .processor import process_current_page_task, process_local_video_task, read_note, read_transcript, read_visual_index
 from .runtime import ffmpeg_bin, ffprobe_bin
 from .storage import create_task, get_task, list_tasks, task_dir, update_task
-from .summarizer import visual_window_review_question_lines
+from .summarizer import llm_base_host, llm_provider_name, visual_window_review_question_lines
 
 ensure_dirs()
 
@@ -1379,6 +1379,8 @@ def health() -> dict:
         "vision_model_configured": bool(LLM_API_KEY),
         "default_llm_model": LLM_MODEL,
         "default_llm_base_url": LLM_BASE_URL,
+        "default_llm_base_host": llm_base_host(LLM_BASE_URL),
+        "default_llm_provider": llm_provider_name(LLM_BASE_URL),
     }
 
 

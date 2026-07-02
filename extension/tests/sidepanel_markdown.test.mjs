@@ -63,7 +63,7 @@ const context = {
   fetch: async url => {
     const value = String(url);
     if (value.endsWith("/health")) {
-      return { json: async () => ({ ffmpeg: true, ffprobe: false, ffprobe_optional: true, duration_probe: "ffmpeg", vision_model_configured: true, default_llm_model: "gpt-4.1-mini" }) };
+      return { json: async () => ({ ffmpeg: true, ffprobe: false, ffprobe_optional: true, duration_probe: "ffmpeg", vision_model_configured: true, default_llm_model: "gpt-4.1-mini", default_llm_provider: "openai", default_llm_base_host: "api.openai.com" }) };
     }
     if (value.endsWith("/api/tasks")) {
       return { json: async () => ({ tasks: [] }) };
@@ -83,6 +83,7 @@ assert.equal(elements.get("#backendStatus").classList.contains("backend-status-g
 assert.match(elements.get("#backendStatus").innerHTML, /backend-status-chip bridge/);
 assert.match(elements.get("#backendStatus").innerHTML, /当前标签页/);
 assert.match(elements.get("#backendStatus").innerHTML, /backend-status-chip media/);
+assert.match(elements.get("#backendStatus").innerHTML, /OpenAI · gpt-4\.1-mini/);
 assert.match(elements.get("#backendStatus").innerHTML, /gpt-4\.1-mini/);
 assert.match(elements.get("#backendStatus").title, /视觉模型/);
 
