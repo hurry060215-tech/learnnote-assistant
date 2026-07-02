@@ -8494,6 +8494,50 @@ body.reading-mode .app-shell {
     min-height: 58px;
   }
 
+  .workspace-panel .source-tabs {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 5px;
+    padding: 4px;
+  }
+
+  .workspace-panel .source-tab {
+    min-height: 48px;
+    display: grid;
+    grid-template-rows: 18px minmax(0, 1fr);
+    justify-items: center;
+    align-items: start;
+    gap: 4px;
+    padding: 7px 5px;
+    text-align: center;
+  }
+
+  .workspace-panel .source-tab > svg {
+    width: 18px;
+    height: 18px;
+    padding: 3px;
+    border-radius: 6px;
+  }
+
+  .workspace-panel .source-tab span {
+    display: block;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .workspace-panel .source-tab b {
+    display: block;
+    overflow: hidden;
+    color: inherit;
+    font-size: 11px;
+    line-height: 1.15;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .workspace-panel .source-tab small {
+    display: none;
+  }
+
   .browser-capture-head {
     grid-template-columns: 34px minmax(0, 1fr);
   }
