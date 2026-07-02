@@ -452,6 +452,8 @@ class LocalUploadValidationTests(unittest.TestCase):
                 "domain_count": 2,
                 "secure_count": 2,
                 "http_only_count": 1,
+                "partitioned_count": 2,
+                "partition_key_count": 1,
             }
             task.download_attempts = [
                 DownloadAttempt(strategy="direct-file", url="https://cdn.example.com/lesson.mp4", status="success")
@@ -470,6 +472,8 @@ class LocalUploadValidationTests(unittest.TestCase):
             self.assertTrue(manifest["direct_extraction"]["selected_candidate"]["user_selected"])
             self.assertEqual(manifest["direct_extraction"]["browser_context"]["cookie_domain_count"], 2)
             self.assertEqual(manifest["direct_extraction"]["browser_context"]["cookie_count"], 3)
+            self.assertEqual(manifest["direct_extraction"]["browser_context"]["partitioned_cookie_count"], 2)
+            self.assertEqual(manifest["direct_extraction"]["browser_context"]["partition_key_count"], 1)
             self.assertEqual(manifest["source"]["selected_resource"]["response_header_names"], ["content-type", "set-cookie"])
             self.assertEqual(manifest["transcript"]["segment_count"], 1)
             self.assertIn("audit", manifest)
@@ -1052,9 +1056,10 @@ class ApiPipelineTests(unittest.TestCase):
             self.assertEqual(task["selected_resource"]["request_headers"]["Referer"], "<redacted>")
             self.assertEqual(task["selected_resource"]["request_headers"]["Cookie"], "<redacted>")
             self.assertEqual(task["download_attempts"][0]["url"], media_url)
+            self.assertEqual([attempt["strategy"] for attempt in task["download_attempts"]], ["manifest-ffmpeg", "candidate-ytdlp", "page-ytdlp"])
             self.assertEqual(task["recovery"]["code"], "download_forbidden")
             self.assertEqual(task["recovery"]["selected_kind"], "hls")
-            self.assertEqual(task["recovery"]["attempt_count"], 2)
+            self.assertEqual(task["recovery"]["attempt_count"], 3)
             self.assertTrue(task["recovery"]["is_chaoxing"])
             self.assertIn("不刷课", " ".join(task["recovery"]["boundary_notes"]))
             self.assertIn("学习通/超星", self.client.get(f"/api/tasks/{task_id}/exports/diagnostics").text)

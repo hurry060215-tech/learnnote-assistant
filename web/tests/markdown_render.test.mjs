@@ -915,6 +915,9 @@ const taskOverviewHtml = context.taskOverview({
     browser_context: {
       active_source_type: "blob",
       browser_subtitle_count: 2,
+      cookie_count: 3,
+      partitioned_cookie_count: 2,
+      partition_key_count: 1,
       cookie_domain_count: 1
     },
     download: {
@@ -958,6 +961,10 @@ assert.match(taskOverviewHtml, /当前页下载/);
 assert.match(taskOverviewHtml, /已跟踪最终 URL/);
 assert.match(taskOverviewHtml, /final\.mp4\?token=abc/);
 assert.match(taskOverviewHtml, /浏览器播放证据/);
+assert.match(taskOverviewHtml, /3 cookie/);
+assert.match(taskOverviewHtml, /2 分区 cookie/);
+assert.match(taskOverviewHtml, /1 partition key/);
+assert.doesNotMatch(taskOverviewHtml, /secret=1/);
 assert.match(taskOverviewHtml, /非录制直取/);
 assert.match(taskOverviewHtml, /播放中 · 00:00:42 \/ 00:10:00 · 1280x720 · frame 7/);
 assert.match(taskOverviewHtml, /直取目标/);

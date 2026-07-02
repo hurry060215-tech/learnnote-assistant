@@ -700,6 +700,9 @@ const taskOverviewHtml = context.taskOverview({
     browser_context: {
       active_source_type: "blob",
       browser_subtitle_count: 2,
+      cookie_count: 3,
+      partitioned_cookie_count: 2,
+      partition_key_count: 1,
       cookie_domain_count: 1
     },
     download: {
@@ -731,6 +734,10 @@ assert.match(taskOverviewHtml, /class="task-overview status-success"/);
 assert.match(taskOverviewHtml, /本地视频/);
 assert.match(taskOverviewHtml, /data-open-workbench="side-overview"/);
 assert.match(taskOverviewHtml, /Web 工作台/);
+assert.match(taskOverviewHtml, /3 cookie/);
+assert.match(taskOverviewHtml, /2 分区 cookie/);
+assert.match(taskOverviewHtml, /1 partition key/);
+assert.doesNotMatch(taskOverviewHtml, /secret=1/);
 assert.match(taskOverviewHtml, /data-export="media"/);
 assert.match(taskOverviewHtml, /data-export="audit"/);
 assert.match(taskOverviewHtml, /data-export="diagnostics"/);

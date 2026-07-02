@@ -385,6 +385,8 @@ def direct_extraction_evidence(task: TaskRecord) -> dict:
             "browser_subtitle_count": len(task.browser_subtitles or []),
             "cookie_domain_count": int(cookie_summary.get("domain_count") or 0),
             "cookie_count": int(cookie_count or 0),
+            "partitioned_cookie_count": int(cookie_summary.get("partitioned_count") or 0),
+            "partition_key_count": int(cookie_summary.get("partition_key_count") or 0),
         },
         "download": {
             "attempt_count": len(attempts),

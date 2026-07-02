@@ -2615,7 +2615,10 @@ function directExtractionEvidenceItems(task) {
     selected.playback_match ? playbackText(selected.playback_match) : "",
     browser.active_source_type ? `active ${browser.active_source_type}` : "",
     Number.isFinite(browser.browser_subtitle_count) ? `${browser.browser_subtitle_count} 字幕` : "",
+    Number.isFinite(browser.cookie_count) ? `${browser.cookie_count} cookie` : "",
     Number.isFinite(browser.cookie_domain_count) ? `${browser.cookie_domain_count} cookie 域` : "",
+    Number.isFinite(browser.partitioned_cookie_count) && browser.partitioned_cookie_count > 0 ? `${browser.partitioned_cookie_count} 分区 cookie` : "",
+    Number.isFinite(browser.partition_key_count) && browser.partition_key_count > 0 ? `${browser.partition_key_count} partition key` : "",
     safeHeaders ? `headers ${safeHeaders}` : ""
   ].filter(Boolean).join(" · ");
   const strategyOrder = Array.isArray(download.strategy_order)
