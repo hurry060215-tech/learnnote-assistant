@@ -7,6 +7,7 @@ import os
 import re
 import subprocess
 import time
+import xml.etree.ElementTree as ET
 from base64 import b64decode, urlsafe_b64decode
 from html.parser import HTMLParser
 from pathlib import Path
@@ -390,6 +391,65 @@ def _rewrite_hls_manifest_for_local_file(text: str, base_url: str) -> str:
             continue
         rewritten.append(_absolute_manifest_uri(stripped, base_url))
     return "\n".join(rewritten).rstrip() + "\n"
+
+
+def _xml_local_name(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1] if "}" in tag else tag
+
+
+def _rewrite_dash_manifest_text_fallback(text: str, base_url: str) -> str:
+    rewritten = re.sub(
+        r"(<BaseURL\b[^>]*>)([^<]+)(</BaseURL>)",
+        lambda match: f"{match.group(1)}{_absolute_manifest_uri(match.group(2).strip(), base_url)}{match.group(3)}",
+        text or "",
+        flags=re.I,
+    )
+    return re.sub(
+        r'\b(media|initialization|sourceURL|index|href)="([^"]+)"',
+        lambda match: f'{match.group(1)}="{_absolute_manifest_uri(match.group(2), base_url)}"',
+        rewritten,
+        flags=re.I,
+    ).rstrip() + "\n"
+
+
+def _rewrite_dash_manifest_for_local_file(text: str, base_url: str) -> str:
+    raw = text or ""
+    try:
+        root = ET.fromstring(raw)
+    except ET.ParseError:
+        return _rewrite_dash_manifest_text_fallback(raw, base_url)
+
+    if root.tag.startswith("{"):
+        namespace = root.tag[1:].split("}", 1)[0]
+        if namespace:
+            ET.register_namespace("", namespace)
+
+    rewrite_attrs = {"media", "initialization", "sourceURL", "index", "href"}
+
+    def rewrite_node(node: ET.Element, current_base: str) -> None:
+        effective_base = current_base
+        base_children = [child for child in list(node) if _xml_local_name(child.tag) == "BaseURL"]
+        for child in base_children:
+            value = (child.text or "").strip()
+            if not value:
+                continue
+            absolute = _absolute_manifest_uri(value, effective_base)
+            child.text = absolute
+            if effective_base == current_base:
+                effective_base = absolute
+
+        for attr in list(node.attrib):
+            if _xml_local_name(attr) in rewrite_attrs:
+                value = (node.attrib.get(attr) or "").strip()
+                if value:
+                    node.attrib[attr] = _absolute_manifest_uri(value, effective_base)
+
+        for child in list(node):
+            if _xml_local_name(child.tag) != "BaseURL":
+                rewrite_node(child, effective_base)
+
+    rewrite_node(root, base_url)
+    return ET.tostring(root, encoding="unicode").rstrip() + "\n"
 
 
 def _looks_like_json_url_candidate(value: str) -> bool:
@@ -1755,6 +1815,7 @@ class MediaDownloader:
                         message="该资源不是可独立下载的视频文件或 manifest，保留为诊断线索。",
                     )
         last_error: DownloadError | None = None
+        failed_media_candidates: list[ResourceCandidate] = []
         for candidate in candidates:
             try:
                 media_path = self._download_candidate(candidate, cookies, page_url, title)
@@ -1769,6 +1830,8 @@ class MediaDownloader:
             except DownloadError as exc:
                 self._record_attempt(strategy=self._strategy_for_candidate(candidate), candidate=candidate, status="failed", code=exc.code, message=exc.message)
                 failed_urls.add(candidate.url)
+                if effective_resource_kind(candidate) in {"hls", "dash", "video"}:
+                    failed_media_candidates.append(candidate)
                 last_error = exc
                 continue
 
@@ -1791,8 +1854,36 @@ class MediaDownloader:
                 except DownloadError as exc:
                     self._record_attempt(strategy=self._strategy_for_candidate(candidate), candidate=candidate, status="failed", code=exc.code, message=exc.message)
                     failed_urls.add(candidate.url)
+                    if effective_resource_kind(candidate) in {"hls", "dash", "video"}:
+                        failed_media_candidates.append(candidate)
                     last_error = exc
                     continue
+
+        seen_ytdlp_candidates: set[str] = set()
+        for candidate in failed_media_candidates:
+            candidate_url = candidate.resolved_url or candidate.url
+            if not _is_http_url(candidate_url) or candidate_url in seen_ytdlp_candidates:
+                continue
+            seen_ytdlp_candidates.add(candidate_url)
+            ytdlp_resources = [candidate, *resources]
+            try:
+                media_path = self._download_with_ytdlp(candidate_url, cookie_file, title, ytdlp_resources)
+                self._record_attempt(
+                    strategy="candidate-ytdlp",
+                    candidate=candidate,
+                    status="success",
+                    message="候选媒体 URL 直取失败，yt-dlp 对该 URL 下载成功。",
+                    output_path=media_path,
+                )
+                return media_path, candidate
+            except DownloadError as exc:
+                self._record_attempt(strategy="candidate-ytdlp", candidate=candidate, status="failed", code=exc.code, message=exc.message)
+                if not last_error:
+                    last_error = exc
+            except Exception as exc:
+                self._record_attempt(strategy="candidate-ytdlp", candidate=candidate, status="failed", code="download_forbidden", message=str(exc))
+                if not last_error:
+                    last_error = DownloadError("download_forbidden", str(exc))
 
         for fallback_url, _context_candidate in page_fallbacks:
             try:
@@ -2508,7 +2599,11 @@ class MediaDownloader:
                 candidate.kind = manifest_kind
                 candidate.mime = manifest_mime or candidate.mime
                 suffix = ".m3u8" if manifest_kind == "hls" else ".mpd"
-                manifest_text = _rewrite_hls_manifest_for_local_file(text, response.url or url) if manifest_kind == "hls" else text
+                manifest_base_url = response.url or url
+                if manifest_kind == "hls":
+                    manifest_text = _rewrite_hls_manifest_for_local_file(text, manifest_base_url)
+                else:
+                    manifest_text = _rewrite_dash_manifest_for_local_file(text, manifest_base_url)
                 output = self.download_dir / f"{_clean_filename(title)}_replayed_manifest{suffix}"
                 with output.open("w", encoding="utf-8", newline="\n") as file:
                     file.write(manifest_text)

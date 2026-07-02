@@ -16,6 +16,7 @@ from app.config import DATA_DIR, TEMP_DIR
 from app.downloader import (
     DownloadError,
     MediaDownloader,
+    _rewrite_dash_manifest_for_local_file,
     choose_ytdlp_subtitle_language,
     classify_resource,
     cookie_header_for_url,
@@ -310,6 +311,65 @@ class ResourceDetectionTests(unittest.TestCase):
         self.assertIn("https://player.example.com/embed/1?from=referer", urls)
         self.assertIn("https://player.example.com", urls)
         self.assertIn("https://course.example.com/iframe-player", urls)
+
+    def test_dash_manifest_rewrite_absolutizes_baseurl_and_segment_paths(self) -> None:
+        manifest = """<?xml version="1.0" encoding="UTF-8"?>
+<MPD xmlns="urn:mpeg:dash:schema:mpd:2011" type="static">
+  <Period>
+    <AdaptationSet>
+      <Representation id="v1">
+        <BaseURL>video/</BaseURL>
+        <SegmentTemplate initialization="init-$RepresentationID$.m4s" media="chunk-$Number$.m4s" />
+        <SegmentList>
+          <Initialization sourceURL="init-list.m4s" />
+          <SegmentURL media="seg-1.m4s" index="seg-1.idx" />
+        </SegmentList>
+      </Representation>
+    </AdaptationSet>
+  </Period>
+</MPD>
+"""
+
+        rewritten = _rewrite_dash_manifest_for_local_file(manifest, "https://cdn.example.com/course/play/manifest.mpd?token=abc")
+
+        self.assertIn("<BaseURL>https://cdn.example.com/course/play/video/</BaseURL>", rewritten)
+        self.assertIn('initialization="https://cdn.example.com/course/play/video/init-$RepresentationID$.m4s"', rewritten)
+        self.assertIn('media="https://cdn.example.com/course/play/video/chunk-$Number$.m4s"', rewritten)
+        self.assertIn('sourceURL="https://cdn.example.com/course/play/video/init-list.m4s"', rewritten)
+        self.assertIn('media="https://cdn.example.com/course/play/video/seg-1.m4s"', rewritten)
+        self.assertIn('index="https://cdn.example.com/course/play/video/seg-1.idx"', rewritten)
+
+    def test_download_falls_back_to_ytdlp_for_failed_media_candidate_url(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            output = root / "task" / "downloads" / "candidate-ytdlp.mp4"
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_bytes(b"0" * 8192)
+            candidate = ResourceCandidate(
+                url="https://cdn.example.com/course/master.mpd",
+                source="webRequest",
+                kind="dash",
+                mime="application/dash+xml",
+                score=100,
+                request_headers={"Referer": "https://course.example.com/player"},
+            )
+            downloader = MediaDownloader(root / "task")
+
+            with patch.object(downloader, "_download_candidate", side_effect=DownloadError("unsupported_manifest", "ffmpeg failed")):
+                with patch.object(downloader, "_discover_page_resources", return_value=[]):
+                    with patch.object(downloader, "_download_with_ytdlp", return_value=output) as ytdlp:
+                        media_path, selected = downloader.download(
+                            page_url="https://course.example.com/lesson",
+                            resources=[candidate],
+                            cookies=[],
+                            title="candidate fallback",
+                        )
+
+            self.assertEqual(media_path, output)
+            self.assertIs(selected, candidate)
+            self.assertEqual(ytdlp.call_args.args[0], "https://cdn.example.com/course/master.mpd")
+            self.assertEqual([attempt.strategy for attempt in downloader.attempts[:2]], ["manifest-ffmpeg", "candidate-ytdlp"])
+            self.assertEqual(downloader.attempts[1].status, "success")
 
     def test_page_scan_finds_extensionless_json_media_urls(self) -> None:
         resources = extract_media_resources_from_text(
@@ -1804,15 +1864,17 @@ class DownloaderBoundaryTests(unittest.TestCase):
                 DownloadError("download_forbidden", "HTTP 403"),
                 DownloadError("unsupported_manifest", "second candidate failed"),
             ]):
-                with self.assertRaises(DownloadError) as ctx:
-                    downloader.download("", resources, [], "attempt summary")
+                with patch.object(downloader, "_download_with_ytdlp", side_effect=DownloadError("unsupported_manifest", "yt-dlp fallback failed")):
+                    with self.assertRaises(DownloadError) as ctx:
+                        downloader.download("", resources, [], "attempt summary")
 
             self.assertEqual(ctx.exception.code, "unsupported_manifest")
-            self.assertIn("已尝试 2 个下载候选", ctx.exception.message)
+            self.assertIn("已尝试 4 个下载候选", ctx.exception.message)
             self.assertIn("download_forbidden×1", ctx.exception.message)
-            self.assertIn("unsupported_manifest×1", ctx.exception.message)
-            self.assertIn("最后尝试：direct-file / video / https://cdn.example.com/expired.mp4", ctx.exception.message)
-            self.assertEqual([attempt.status for attempt in downloader.attempts], ["failed", "failed"])
+            self.assertIn("unsupported_manifest×3", ctx.exception.message)
+            self.assertIn("最后尝试：candidate-ytdlp", ctx.exception.message)
+            self.assertEqual([attempt.status for attempt in downloader.attempts], ["failed", "failed", "failed", "failed"])
+            self.assertEqual([attempt.strategy for attempt in downloader.attempts[2:]], ["candidate-ytdlp", "candidate-ytdlp"])
 
     def test_ytdlp_fallback_receives_browser_http_headers(self) -> None:
         captured: dict = {}
@@ -2030,7 +2092,10 @@ class DownloaderBoundaryTests(unittest.TestCase):
 
             self.assertEqual(media_path, media)
             self.assertIsNone(selected)
-            self.assertEqual(attempted_urls[:2], ["https://course.example.com/top", "https://player.example.com/embed/1"])
+            page_attempts = [url for url in attempted_urls if url in {"https://course.example.com/top", "https://player.example.com/embed/1"}]
+            self.assertEqual(page_attempts[:2], ["https://course.example.com/top", "https://player.example.com/embed/1"])
+            self.assertTrue(any(url.startswith("https://cdn.example.com/") for url in attempted_urls))
+            self.assertTrue(any(attempt.strategy == "candidate-ytdlp" for attempt in downloader.attempts))
             self.assertEqual(downloader.attempts[-1].strategy, "page-ytdlp")
             self.assertEqual(downloader.attempts[-1].url, "https://player.example.com/embed/1")
 
