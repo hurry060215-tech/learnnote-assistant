@@ -3997,12 +3997,25 @@ function lastDownloadAttempt(task) {
   return attempts.length ? attempts[attempts.length - 1] : null;
 }
 
+function taskReuseEvidenceItem(task) {
+  const reuse = task?.reuse || {};
+  const sourceTaskId = String(task?.source_task_id || reuse.source_task_id || "").trim();
+  const sourceMediaPath = String(task?.source_media_path || reuse.source_media_path || reuse.media_path_recorded || "").trim();
+  if (!sourceTaskId && !sourceMediaPath) return null;
+  return {
+    label: "复用来源",
+    value: sourceTaskId ? `来自 ${sourceTaskId}` : "已复用本地媒体",
+    detail: sourceMediaPath ? compactUrl(sourceMediaPath, 86) : "原直取任务媒体"
+  };
+}
+
 function taskRouteEvidenceItems(task) {
   const selected = task?.selected_resource || {};
   const attempts = task?.download_attempts || [];
   const lastAttempt = lastDownloadAttempt(task);
   const headers = requestHeaderNames(selected);
   const diag = task?.summary_diagnostics || {};
+  const reuseEvidence = taskReuseEvidenceItem(task);
   const resolvedTarget = taskResolvedTargetText(task, 86);
   const downloadDetail = resolvedTarget
     ? (lastAttempt ? `${resolvedTarget} · ${lastAttempt.code || lastAttempt.status || lastAttempt.strategy || "-"}` : resolvedTarget)
@@ -4023,6 +4036,7 @@ function taskRouteEvidenceItems(task) {
       value: attempts.length ? `${attempts.length} 次尝试` : task.media_path ? "已有本地媒体" : "等待下载",
       detail: downloadDetail
     },
+    ...(reuseEvidence ? [reuseEvidence] : []),
     {
       label: "浏览器证据",
       value: headers !== "-" ? headers : selected.status_code ? `HTTP ${selected.status_code}` : "无可复用请求头",

@@ -372,6 +372,26 @@ assert.match(context.taskRouteEvidenceHtml({
   download_attempts: []
 }), /未记录总结诊断/);
 
+const rerunRouteEvidenceHtml = context.taskRouteEvidenceHtml({
+  mode: "rerun_from_media",
+  source_type: "local",
+  source_task_id: "download-only-task<script>bad()</script>",
+  source_media_path: "D:/Projects/learnnote-assistant/data/tasks/download-only-task/media.mp4",
+  reuse: {
+    source_task_id: "download-only-task<script>bad()</script>",
+    source_media_path: "D:/Projects/learnnote-assistant/data/tasks/download-only-task/media.mp4"
+  },
+  media_path: "D:/Projects/learnnote-assistant/data/tasks/rerun-task/media.mp4",
+  note_path: "D:/Projects/learnnote-assistant/data/tasks/rerun-task/note.md",
+  selected_resource: { kind: "video", source: "webRequest" },
+  download_attempts: [{ strategy: "direct-file", status: "success" }]
+});
+assert.match(rerunRouteEvidenceHtml, /复用来源/);
+assert.match(rerunRouteEvidenceHtml, /download-only-task/);
+assert.match(rerunRouteEvidenceHtml, /media\.mp4/);
+assert.match(rerunRouteEvidenceHtml, /&lt;script&gt;bad\(\)&lt;\/script&gt;/);
+assert.doesNotMatch(rerunRouteEvidenceHtml, /<script>bad/);
+
 const timelineHtml = context.transcriptTimeline({
   segments: [
     { start: 4, end: 8, text: "第一段字幕" },
