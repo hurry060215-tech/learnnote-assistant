@@ -1862,6 +1862,78 @@ function workbenchSlicePlanHtml() {
   </div>`;
 }
 
+function workbenchAuditGateItems(state) {
+  const selected = selectedResource();
+  const checked = currentPreflight();
+  const subtitles = page?.browser_subtitles || [];
+  const hasSafeHeaders = selected ? requestHeaderNames(selected) !== "-" : false;
+  const hasPostBody = selected ? Boolean(requestBodySummary(selected)) : false;
+  const fallback = canAttemptBackendPageFallback("video");
+  const drmDetected = page?.drm_detected || page?.active_video?.drm_detected;
+  const activeStream = activeSrcObjectOnly(page?.active_video);
+  const mediaGateState = selected
+    ? checked?.downloadable ? "pass" : checked ? "warn" : "active"
+    : drmDetected || activeStream ? "fail" : "wait";
+  return [
+    {
+      label: "主视频证据",
+      state: selected?.playback_match || selected?.is_main_video ? "pass" : selected ? "warn" : "wait",
+      value: selected ? selectedResourceLabel(selected) : "等待候选",
+      detail: selected
+        ? resourceReasonText(selected) || requestEvidence(selected) || directnessText(selected)
+        : "播放课程几秒后读取 DOM、Performance、webRequest 和播放器 frame"
+    },
+    {
+      label: "可下载性",
+      state: mediaGateState,
+      value: checked ? checked.downloadable ? "预检通过" : checked.code || "未通过" : selected ? "待预检" : "无直链",
+      detail: checked
+        ? checked.message || resourcePreflightLine(checked, selected)
+        : selected ? "正式总结会自动预检并按候选队列切换" : "没有 mp4/FLV/HLS/DASH 时不会录制标签页"
+    },
+    {
+      label: "浏览器上下文",
+      state: selected && (hasSafeHeaders || hasPostBody || fallback) ? "pass" : fallback ? "active" : "wait",
+      value: hasPostBody ? "POST 可回放" : hasSafeHeaders ? "请求头可复用" : fallback ? "页面兜底" : "仅直链",
+      detail: hasPostBody
+        ? requestBodySummary(selected)
+        : hasSafeHeaders ? `可复用 ${requestHeaderNames(selected)}` : fallback ? "任务开始时一次性同步 cookie，并保留 iframe/Referer/Origin 兜底" : "当前上下文没有可扫描 HTTP(S) 页面"
+    },
+    {
+      label: "字幕与切片",
+      state: visualUnderstandingEnabled() ? "active" : subtitles.length ? "pass" : "warn",
+      value: subtitles.length ? `${subtitles.length} 条字幕` : visualPlanText(),
+      detail: visualUnderstandingEnabled()
+        ? `${visualPlanText()}；下载后生成视觉窗口并对齐转写`
+        : subtitles.length ? "图文理解关闭，但会优先复用浏览器字幕生成文本笔记" : "图文理解关闭且暂无浏览器字幕"
+    },
+    {
+      label: "失败边界",
+      state: state === "blocked" ? "fail" : fallback || selected ? "pass" : "active",
+      value: state === "blocked" ? "转本地入口" : "非录制路径",
+      detail: drmDetected || activeStream
+        ? "DRM/EME、MediaStream 或不可还原 blob 不会被破解；改用本地视频"
+        : fallback ? "直取失败后尝试页面扫描、iframe 和 yt-dlp；仍失败则本地上传" : "只下载浏览器已暴露的可访问媒体资源"
+    }
+  ];
+}
+
+function workbenchAuditGateHtml(state) {
+  return `<div class="workbench-audit-gate" aria-label="当前页直取审计门">
+    <div class="workbench-audit-head">
+      <span>直取审计门</span>
+      <strong>下载前确认：不是录制，而是浏览器证据 + 本地管线</strong>
+    </div>
+    <div class="workbench-audit-grid">
+      ${workbenchAuditGateItems(state).map(item => `<section class="${escapeHtml(item.state)}">
+        <span>${escapeHtml(item.label)}</span>
+        <strong>${escapeHtml(item.value || "-")}</strong>
+        <small>${escapeHtml(item.detail || "-")}</small>
+      </section>`).join("")}
+    </div>
+  </div>`;
+}
+
 function workbenchLocalFallbackHtml(state) {
   const blocked = state === "blocked";
   const label = blocked ? "直取受限" : "直取优先";
@@ -1901,6 +1973,7 @@ function renderCurrentStudyCard() {
       </button>
     </div>
     ${workbenchRouteHtml()}
+    ${workbenchAuditGateHtml(state)}
     ${workbenchSlicePlanHtml()}
     ${shouldShowWorkbenchFallback(state) ? workbenchLocalFallbackHtml(state) : ""}
     <div class="workbench-steps">
