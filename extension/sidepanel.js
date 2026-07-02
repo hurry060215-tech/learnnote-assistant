@@ -1230,6 +1230,8 @@ function playerLibrarySourceText(item) {
     [/\bxgplayer\b|XGPlayer/i, "xgplayer"],
     [/Aliplayer/i, "Aliplayer"],
     [/TcPlayer/i, "TcPlayer"],
+    [/flv\.js/i, "flv.js"],
+    [/mpegts\.js/i, "mpegts.js"],
     [/jwplayer/i, "jwplayer"]
   ];
   const match = libraries.find(([pattern]) => pattern.test(label));
@@ -1325,7 +1327,7 @@ function resourceHasRangeRequest(item) {
 function resourceHasMediaRequestHeader(item) {
   const accept = requestHeaderValue(item, "accept").toLowerCase();
   const dest = requestHeaderValue(item, "sec-fetch-dest").toLowerCase();
-  return /^(video|audio)$/.test(dest) || /(?:^|[,;\s])(?:video|audio)\//.test(accept) || /mpegurl|dash\+xml|mp4|webm|x-matroska/.test(accept);
+  return /^(video|audio)$/.test(dest) || /(?:^|[,;\s])(?:video|audio)\//.test(accept) || /mpegurl|dash\+xml|mp4|webm|x-matroska|x-flv|flv/.test(accept);
 }
 
 function resourceEvidenceTags(item) {

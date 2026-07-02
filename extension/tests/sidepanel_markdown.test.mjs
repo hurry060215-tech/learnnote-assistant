@@ -1127,6 +1127,24 @@ assert.match(context.requestEvidence({
   source: "pageHookPlayer",
   label: "jwplayer setup"
 }), /jwplayer 已加载源地址/);
+assert.match(context.directnessText({
+  kind: "video",
+  source: "pageHookPlayer",
+  label: "flv.js createPlayer"
+}), /flv\.js 已加载 视频文件/);
+assert.match(context.resourceReasonText({
+  kind: "video",
+  source: "pageHookPlayer",
+  label: "mpegts.js createPlayer"
+}), /mpegts\.js 已加载源地址/);
+assert.deepEqual([...context.resourceEvidenceTags({
+  kind: "video",
+  source: "pageHookPlayer",
+  label: "flv.js createPlayer",
+  request_headers: {
+    Accept: "video/x-flv,*/*"
+  }
+})], ["可直接下载", "flv.js 已加载源地址", "页面接口", "视频请求头"]);
 assert.match(context.responseEvidenceLine({
   status_code: 200,
   mime: "application/octet-stream",
