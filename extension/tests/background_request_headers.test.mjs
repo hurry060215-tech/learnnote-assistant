@@ -290,6 +290,35 @@ assert.equal(hinted.is_main_video, true);
 assert.equal(hinted.current_time, 420);
 assert.ok(hinted.score >= 100, "expected recent range media requests near the active playhead to be top-ranked");
 
+const fragmentHinted = context.withPlaybackHints(
+  {
+    url: "https://cdn.example.com/live/segment-0042.ts?token=abc",
+    source: "webRequest",
+    kind: "fragment",
+    score: 25,
+    initiator: "https://course.example.com",
+    time_stamp: Date.now() - 4000,
+    request_headers: {
+      Referer: "https://course.example.com/player"
+    }
+  },
+  {
+    page_url: "https://course.example.com/lesson/1",
+    active_video: {
+      src: "blob:https://course.example.com/active",
+      paused: false,
+      current_time: 426,
+      duration: 1800,
+      frame_id: 9
+    }
+  }
+);
+
+assert.equal(fragmentHinted.playback_match, "fragment-near-playhead");
+assert.equal(fragmentHinted.is_main_video, true);
+assert.equal(fragmentHinted.current_time, 426);
+assert.ok(fragmentHinted.score > 25, "expected recent blob-backed segment requests to receive playback boost");
+
 const cookieSyncUrls = context.cookieUrlsForContext(
   {
     page_url: "https://course.example.com/lesson/1",

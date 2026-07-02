@@ -1257,6 +1257,7 @@ def playback_match_rank(match: str) -> int:
         "exact-src": 9,
         "blob-source": 8,
         "range-near-playhead": 7,
+        "fragment-near-playhead": 6,
         "manifest-near-playhead": 6,
         "resolved-final-url": 6,
         "blob-same-frame": 5,
@@ -1275,6 +1276,7 @@ def playback_match_label(match: str) -> str:
         "blob-same-frame": "blob 播放同 frame",
         "blob-source": "Blob/MSE 来源映射",
         "range-near-playhead": "播放进度附近 Range 请求",
+        "fragment-near-playhead": "播放进度附近分片请求",
         "manifest-near-playhead": "播放进度附近 Manifest 请求",
         "resolved-final-url": "跳转后的真实媒体",
         "recent-media-request": "最近播放请求",
@@ -1285,7 +1287,7 @@ def playback_match_label(match: str) -> str:
 
 def should_guess_sibling_manifest_with_blob_boundary(candidate: ResourceCandidate) -> bool:
     match = candidate.playback_match or ""
-    if match in {"blob-source", "blob-same-frame", "range-near-playhead", "manifest-near-playhead"}:
+    if match in {"blob-source", "blob-same-frame", "range-near-playhead", "fragment-near-playhead", "manifest-near-playhead"}:
         return True
     return bool(candidate.is_main_video and source_rank(candidate.source or "") >= source_rank("webRequest"))
 

@@ -905,6 +905,7 @@ function playbackText(match) {
     "blob-same-frame": "blob 播放同 frame",
     "blob-source": "Blob/MSE 来源映射",
     "range-near-playhead": "播放进度附近 Range 请求",
+    "fragment-near-playhead": "播放进度附近分片请求",
     "manifest-near-playhead": "播放进度附近 Manifest 请求",
     "resolved-final-url": "跳转后的真实媒体",
     "recent-media-request": "最近播放请求",

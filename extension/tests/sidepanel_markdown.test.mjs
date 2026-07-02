@@ -1077,6 +1077,11 @@ assert.deepEqual([...evidenceTags], [
   "HTTP 206"
 ]);
 assert.match(context.resourceReasonText({ kind: "fragment", source: "pageHookFetch" }), /\u5206\u7247\u7ebf\u7d22/);
+assert.match(context.resourceReasonText({
+  kind: "fragment",
+  source: "webRequest",
+  playback_match: "fragment-near-playhead"
+}), /播放进度附近分片请求/);
 assert.match(context.directnessText({
   kind: "hls",
   source: "pageHookPlayer",

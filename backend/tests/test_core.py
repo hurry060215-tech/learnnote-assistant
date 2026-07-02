@@ -1581,6 +1581,31 @@ class DownloaderBoundaryTests(unittest.TestCase):
             self.assertEqual(guessed.request_headers["Referer"], "https://course.example.com/lesson")
             self.assertLessEqual(guessed.score, 72)
 
+    def test_fragment_near_playhead_gets_manifest_guesses(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            downloader = MediaDownloader(Path(tmp))
+            resources = [
+                ResourceCandidate(url="blob:https://course.example/active", source="activeVideo", kind="blob"),
+                ResourceCandidate(
+                    url="https://cdn.example.com/live/segment-042.ts?token=abc",
+                    source="webRequest",
+                    kind="fragment",
+                    score=37,
+                    playback_match="fragment-near-playhead",
+                    is_main_video=True,
+                    request_headers={"Referer": "https://course.example.com/lesson"},
+                ),
+            ]
+            candidates = downloader._candidate_resources(resources)
+            urls = {candidate.url: candidate for candidate in candidates}
+            guessed = urls["https://cdn.example.com/live/master.m3u8?token=abc"]
+            self.assertEqual(guessed.kind, "hls")
+            self.assertEqual(guessed.source, "manifest-guess")
+            self.assertEqual(guessed.playback_match, "fragment-near-playhead")
+            self.assertTrue(guessed.is_main_video)
+            self.assertEqual(guessed.request_headers["Referer"], "https://course.example.com/lesson")
+            self.assertLessEqual(guessed.score, 72)
+
     def test_playback_matched_candidate_is_prioritized(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             downloader = MediaDownloader(Path(tmp))

@@ -251,6 +251,10 @@ function isDownloadableKind(kind) {
   return kind === "hls" || kind === "dash" || kind === "video";
 }
 
+function isPlayableMediaEvidenceKind(kind) {
+  return isDownloadableKind(kind) || kind === "fragment";
+}
+
 function kindRank(kind) {
   return ({
     hls: 6,
@@ -279,6 +283,7 @@ function playbackMatchRank(match = "") {
     "exact-src": 9,
     "blob-source": 8,
     "range-near-playhead": 7,
+    "fragment-near-playhead": 6,
     "manifest-near-playhead": 6,
     "resolved-final-url": 6,
     "blob-same-frame": 5,
@@ -408,15 +413,15 @@ function withPlaybackHints(resource, page = {}) {
     hinted.frame_id !== null &&
     hinted.frame_id !== undefined &&
     hinted.frame_id === activeFrameId &&
-    isDownloadableKind(kind)
+    (isDownloadableKind(kind) || (kind === "fragment" && activeSrc.startsWith("blob:")))
   ) {
-    boost += activeSrc.startsWith("blob:") ? 16 : 12;
+    boost += kind === "fragment" ? 14 : activeSrc.startsWith("blob:") ? 16 : 12;
     match = match || (activeSrc.startsWith("blob:") ? "blob-same-frame" : "same-frame");
     hinted.is_main_video = true;
   }
 
   const recent = hinted.time_stamp && Date.now() - hinted.time_stamp < 5 * 60 * 1000;
-  if (recent && activeSrc.startsWith("blob:") && /^pageHook(?:Blob|MediaSource)/.test(hinted.source || "") && isDownloadableKind(kind)) {
+  if (recent && activeSrc.startsWith("blob:") && /^pageHook(?:Blob|MediaSource)/.test(hinted.source || "") && isPlayableMediaEvidenceKind(kind)) {
     boost += 10;
     match = match || "blob-source";
     hinted.is_main_video = true;
@@ -431,11 +436,30 @@ function withPlaybackHints(resource, page = {}) {
     Number(active.current_time || 0) > 0 &&
     hinted.source === "webRequest" &&
     hasByteRangeRequest(hinted) &&
-    isDownloadableKind(kind) &&
+    isPlayableMediaEvidenceKind(kind) &&
     (sameActiveFrame || sameActiveSite || activeSrc.startsWith("blob:"))
   ) {
-    boost += sameActiveFrame ? 22 : 18;
+    boost += kind === "fragment" ? sameActiveFrame ? 18 : 14 : sameActiveFrame ? 22 : 18;
     match = ["exact-src", "blob-source"].includes(match) ? match : "range-near-playhead";
+    hinted.is_main_video = true;
+    hinted.current_time = active.current_time ?? hinted.current_time ?? null;
+    hinted.duration = active.duration ?? hinted.duration ?? null;
+  }
+
+  if (
+    veryRecent &&
+    !active.paused &&
+    Number(active.current_time || 0) > 0 &&
+    hinted.source === "webRequest" &&
+    kind === "fragment" &&
+    !hasByteRangeRequest(hinted) &&
+    activeSrc.startsWith("blob:") &&
+    (sameActiveFrame || sameActiveSite)
+  ) {
+    boost += sameActiveFrame ? 18 : 12;
+    match = ["exact-src", "blob-source", "blob-same-frame", "range-near-playhead"].includes(match)
+      ? match
+      : "fragment-near-playhead";
     hinted.is_main_video = true;
     hinted.current_time = active.current_time ?? hinted.current_time ?? null;
     hinted.duration = active.duration ?? hinted.duration ?? null;
