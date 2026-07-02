@@ -517,6 +517,35 @@ function safePersistedRequestHeaders(headers = {}) {
   return safe;
 }
 
+function requestBodyHasContent(details = {}) {
+  const requestBody = details.requestBody || {};
+  if (requestBody.formData && Object.keys(requestBody.formData || {}).length) return true;
+  return Array.isArray(requestBody.raw) && requestBody.raw.some(part => part?.bytes);
+}
+
+function safePersistedRequestBody(resource = {}) {
+  const body = resource.request_body || {};
+  const type = String(body.type || "").trim();
+  const content = String(body.content || "");
+  if (type === "dropped") {
+    return {
+      type: "dropped",
+      reason: String(body.reason || "too_large_or_binary").slice(0, 80)
+    };
+  }
+  if (!type || !content) return {};
+  const method = String(resource.method || "").toUpperCase();
+  const kind = resource.kind || classify(resource.url || "", resource.mime || "");
+  const replayable = ["POST", "PUT", "PATCH"].includes(method) && (
+    ["video", "hls", "dash"].includes(kind) || PLAYBACK_ENDPOINT_RE.test(resource.url || "")
+  );
+  if (!replayable) return {};
+  if (!["form", "text"].includes(type) || content.length > MAX_REQUEST_BODY_BYTES) {
+    return { type: "dropped", reason: "too_large_or_binary" };
+  }
+  return { type, content };
+}
+
 function captureLogResource(resource = {}) {
   if (!resource?.url || isLocalLearnNoteTaskFile(resource.url)) return null;
   return {
@@ -552,7 +581,7 @@ function captureLogResource(resource = {}) {
     time_stamp: resource.time_stamp ?? Date.now(),
     headers: resource.headers || {},
     request_headers: safePersistedRequestHeaders(resource.request_headers || {}),
-    request_body: {}
+    request_body: safePersistedRequestBody(resource)
   };
 }
 
@@ -721,9 +750,9 @@ function rememberRequestBody(details = {}) {
   const method = String(details.method || "").toUpperCase();
   if (!["POST", "PUT", "PATCH"].includes(method)) return;
   const body = requestBodyFromFormData(details.requestBody?.formData) || requestBodyFromRaw(details.requestBody?.raw);
-  if (!body?.content) return;
+  if (!body?.content && !requestBodyHasContent(details)) return;
   requestBodiesByRequestId.set(details.requestId, {
-    body,
+    body: body?.content ? body : { type: "dropped", reason: "too_large_or_binary" },
     time: Date.now()
   });
   trimRequestContextCaches();

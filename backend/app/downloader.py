@@ -1457,6 +1457,35 @@ def _looks_like_login_or_error(body: bytes) -> bool:
     return any(marker in text for marker in ["login", "signin", "sign in", "请登录", "登录", "unauthorized", "forbidden"])
 
 
+def _disguised_text_failure_code(body: bytes) -> str:
+    if not body:
+        return ""
+    sample = body[:8192]
+    if b"\x00" in sample[:512]:
+        return ""
+    text = sample.decode("utf-8", errors="ignore").lstrip("\ufeff\r\n\t ").lower()
+    if not text:
+        return ""
+    if text.startswith("#extm3u") or re.match(r"<mpd(?:\s|>)", text, re.I):
+        return ""
+    if text.startswith(("<!doctype html", "<html")):
+        return "auth_required" if _looks_like_login_or_error(body) else "download_forbidden"
+    if text.startswith(("{", "[")) and _looks_like_login_or_error(body):
+        return "auth_required"
+    if text.startswith(("<?xml", "<error", "<response")) and _looks_like_login_or_error(body):
+        return "auth_required"
+    return ""
+
+
+def _raise_disguised_text_failure(body: bytes, context: str) -> None:
+    code = _disguised_text_failure_code(body)
+    if not code:
+        return
+    if code == "auth_required":
+        raise DownloadError("auth_required", f"{context} returned a login/error page disguised as binary media.")
+    raise DownloadError("download_forbidden", f"{context} returned a text/HTML response disguised as binary media.")
+
+
 def _embedded_media_candidates_from_text_response(
     parent: ResourceCandidate,
     body: bytes,
@@ -1609,6 +1638,15 @@ def preflight_media_resource(
                     downloadable=False,
                     code="auth_required",
                     message="媒体预检拿到登录/错误页面，而不是视频或 manifest。",
+                )
+            disguised_failure = _disguised_text_failure_code(body)
+            if disguised_failure:
+                return MediaPreflightResult(
+                    **base,
+                    ok=True,
+                    downloadable=False,
+                    code=disguised_failure,
+                    message="媒体预检拿到伪装成二进制响应的登录/错误页面，而不是视频或 manifest。",
                 )
 
             manifest_kind, manifest_mime = _manifest_kind_from_body(body.decode("utf-8", errors="ignore"), content_type)
@@ -2435,6 +2473,8 @@ class MediaDownloader:
                     if chunk:
                         first_chunk = chunk
                         break
+                if not _textish_content_type(content_type):
+                    _raise_disguised_text_failure(first_chunk, "Media endpoint")
                 if _textish_content_type(content_type):
                     body = _read_text_response_body(first_chunk, chunks)
                     if _looks_like_login_or_error(body):
@@ -2539,6 +2579,7 @@ class MediaDownloader:
                     raise DownloadError("download_forbidden", f"manifest returned HTTP {response.status_code}.")
                 if _textish_content_type(content_type) and _looks_like_login_or_error(body):
                     raise DownloadError("auth_required", "manifest URL returned a login/error page instead of an HLS/DASH manifest.")
+                _raise_disguised_text_failure(body, "Manifest URL")
 
                 text = body.decode("utf-8", errors="ignore")
                 manifest_kind, manifest_mime = _manifest_kind_from_body(text, content_type)
@@ -2584,6 +2625,7 @@ class MediaDownloader:
                     raise DownloadError("download_forbidden", f"manifest replay returned HTTP {response.status_code}.")
                 if _textish_content_type(content_type) and _looks_like_login_or_error(body):
                     raise DownloadError("auth_required", "manifest replay returned a login/error page instead of an HLS/DASH manifest.")
+                _raise_disguised_text_failure(body, "Manifest replay")
 
                 text = body.decode("utf-8", errors="ignore")
                 manifest_kind, manifest_mime = _manifest_kind_from_body(text, content_type)

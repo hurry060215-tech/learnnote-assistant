@@ -104,6 +104,16 @@ class LoginPageAsMediaHandler(QuietHandler):
         self.wfile.write(body)
 
 
+class OctetStreamLoginPageAsMediaHandler(LoginPageAsMediaHandler):
+    def do_GET(self) -> None:
+        body = ("<html><title>login</title><body>Please sign in before watching this lesson.</body></html>" * 80).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/octet-stream")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+
 class ExtensionlessHlsHandler(QuietHandler):
     playlist_name = "lesson.m3u8"
 
@@ -1439,6 +1449,40 @@ class DownloaderPriorityTests(unittest.TestCase):
                 self.assertEqual(ctx.exception.code, "auth_required")
                 self.assertEqual(downloader.attempts[0].strategy, "direct-file")
                 self.assertEqual(downloader.attempts[0].status, "failed")
+                self.assertEqual(downloader.attempts[0].code, "auth_required")
+            finally:
+                server.shutdown()
+                server.server_close()
+
+    def test_direct_candidate_rejects_octet_stream_login_page_body(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            server = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(OctetStreamLoginPageAsMediaHandler, directory=str(root)))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                media_url = f"http://127.0.0.1:{server.server_port}/video.mp4"
+                candidate = ResourceCandidate(
+                    url=media_url,
+                    source="webRequest",
+                    kind="video",
+                    mime="application/octet-stream",
+                    score=100,
+                )
+                preflight = preflight_media_resource(candidate, [], f"http://127.0.0.1:{server.server_port}/lesson.html")
+                self.assertFalse(preflight.downloadable)
+                self.assertEqual(preflight.code, "auth_required")
+
+                downloader = MediaDownloader(root / "task")
+                with self.assertRaises(DownloadError) as ctx:
+                    downloader.download(
+                        page_url=f"http://127.0.0.1:{server.server_port}/lesson.html",
+                        resources=[candidate],
+                        cookies=[],
+                        title="Octet login page",
+                    )
+                self.assertEqual(ctx.exception.code, "auth_required")
+                self.assertEqual(downloader.attempts[0].strategy, "direct-file")
                 self.assertEqual(downloader.attempts[0].code, "auth_required")
             finally:
                 server.shutdown()

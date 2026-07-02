@@ -873,6 +873,7 @@ context.addResource(222, {
   kind: "hls",
   mime: "application/vnd.apple.mpegurl",
   score: 96,
+  method: "POST",
   request_headers: {
     Referer: "https://course.example.com/lesson",
     Origin: "https://course.example.com",
@@ -893,13 +894,33 @@ assert.equal(persistedCaptureLog.resources[0].request_headers.Referer, "https://
 assert.equal(persistedCaptureLog.resources[0].request_headers.Origin, "https://course.example.com");
 assert.equal(persistedCaptureLog.resources[0].request_headers.Authorization, undefined);
 assert.equal(persistedCaptureLog.resources[0].request_headers.Cookie, undefined);
-assert.equal(Object.keys(persistedCaptureLog.resources[0].request_body || {}).length, 0);
+assert.equal(persistedCaptureLog.resources[0].request_body.type, "form");
+assert.equal(persistedCaptureLog.resources[0].request_body.content, "token=secret");
 const loadedCaptureLog = await context.loadCaptureLog(222);
 assert.equal(loadedCaptureLog.resources.length, 1);
 context.clearCaptureLog(222);
 await Promise.resolve();
 assert.equal(storageData[captureKey], undefined);
 assert.deepEqual(storageRemovals, [captureKey]);
+
+context.addResource(223, {
+  url: "https://media.cdn.example.com/api/play",
+  source: "webRequest",
+  kind: "hls",
+  mime: "application/vnd.apple.mpegurl",
+  score: 91,
+  method: "POST",
+  request_headers: {
+    Referer: "https://course.example.com/lesson"
+  },
+  request_body: {
+    type: "dropped",
+    reason: "too_large_or_binary"
+  }
+}, false);
+const droppedCaptureLog = await waitForStorageKey(context.captureLogStorageKey(223));
+assert.equal(droppedCaptureLog.resources[0].request_body.type, "dropped");
+assert.equal(droppedCaptureLog.resources[0].request_body.reason, "too_large_or_binary");
 
 const cookieUrls = context.cookieUrlsForContext(
   {
