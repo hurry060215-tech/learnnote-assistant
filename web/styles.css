@@ -8672,6 +8672,51 @@ body {
   gap: 3px;
 }
 
+.source-workflow-brief {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.source-workflow-brief section {
+  min-width: 0;
+  min-height: 78px;
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  gap: 4px;
+  border: 1px solid #d8e2ef;
+  border-left: 3px solid var(--ln-blue);
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 8px;
+}
+
+.source-workflow-brief span {
+  color: #718096;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.source-workflow-brief strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ln-ink);
+  font-size: 12px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-workflow-brief small {
+  display: -webkit-box;
+  overflow: hidden;
+  color: #5f6d80;
+  font-size: 10.5px;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
 .source-workflow-status {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -9053,6 +9098,10 @@ body.reading-mode .app-shell {
 
   .source-workflow-status {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .source-workflow-brief {
+    grid-template-columns: 1fr;
   }
 
   .source-route-insights section {

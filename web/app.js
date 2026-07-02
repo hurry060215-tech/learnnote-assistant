@@ -898,6 +898,50 @@ function sourceRouteInsightsHtml(source, task = null) {
   </div>`;
 }
 
+function sourceWorkflowBriefItems(source, task = null) {
+  const selected = task?.selected_resource || {};
+  const routeLabel = source === "local" ? "本地视频" : source === "url" ? "链接解析" : "当前页直取";
+  const routeDetail = source === "browser"
+    ? selected.url
+      ? `${selected.kind || "media"} · ${resourceSourceText(selected) || selected.source || "浏览器候选"}`
+      : "从扩展侧栏读取播放器、请求和字幕"
+    : source === "local"
+      ? "拖拽或选择视频后直接进入同一套切片管线"
+      : "粘贴页面、直连视频或 manifest，先预检再处理";
+  const nextStep = task
+    ? canContinueFromDownloadedMedia(task)
+      ? "继续切片总结"
+      : task.status === "failed"
+        ? "查看诊断或切本地兜底"
+        : task.status === "success"
+          ? "查看笔记和资料包"
+          : statusText(task)
+    : source === "local"
+      ? "选择文件"
+      : source === "url"
+        ? "预检链接"
+        : "打开扩展侧栏总结当前页";
+  const visualDetail = visualUnderstandingEnabled()
+    ? `${visualPlanText()}，与字幕片段对齐`
+    : "视觉理解关闭，仅生成转写笔记";
+  return [
+    ["入口", routeLabel, routeDetail],
+    ["下一步", nextStep, task ? `${task.phase || task.status || "任务"} · ${task.progress || 0}%` : "先完成入口动作"],
+    ["切片", visualUnderstandingEnabled() ? "图文窗口" : "纯文本", visualDetail],
+    ["边界", source === "browser" ? "非录制直取" : source === "local" ? "离线兜底" : "可预检链接", source === "browser" ? "只下载已暴露且可访问的媒体，不刷课、不绕过 DRM" : "输出与当前页任务一致：media、转写、切片、Markdown"]
+  ];
+}
+
+function sourceWorkflowBriefHtml(source, task = null) {
+  return `<div class="source-workflow-brief" aria-label="学习流总览">
+    ${sourceWorkflowBriefItems(source, task).map(([label, value, detail]) => `<section>
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+      <small>${escapeHtml(detail)}</small>
+    </section>`).join("")}
+  </div>`;
+}
+
 function sourceWorkflowStatusItems(source, task = null) {
   const selected = task?.selected_resource || {};
   const attempts = task?.download_attempts || [];
@@ -1005,6 +1049,7 @@ function sourceWorkflowHtml(source = selectedSource, task = workflowTaskForSourc
       <strong>${escapeHtml(config.title)}</strong>
       <small>${escapeHtml(config.hint)}</small>
     </header>
+    ${sourceWorkflowBriefHtml(source, task)}
     ${sourceWorkflowStatusHtml(source, task)}
     <ol class="source-workflow-lane">
       ${config.steps.map(([title, detail], index) => `<li class="${workflowStepState(task, index)}">

@@ -181,8 +181,8 @@ assert.match(elements.get("#sourceWorkflow").innerHTML, /待候选/);
 assert.match(elements.get("#sourceWorkflow").innerHTML, /20秒 · 3x3/);
 assert.match(elements.get("#sourceWorkflow").innerHTML, /非录制/);
 assert.match(indexHtml, /id="toggleWorkspaceButton"/);
-assert.match(indexHtml, /styles\.css\?v=20260702-workflow-status/);
-assert.match(indexHtml, /app\.js\?v=20260702-workflow-status/);
+assert.match(indexHtml, /styles\.css\?v=20260702-workflow-brief/);
+assert.match(indexHtml, /app\.js\?v=20260702-workflow-brief/);
 assert.match(indexHtml, /id="urlPreflightReport"/);
 assert.match(indexHtml, /id="llmProvider"/);
 assert.equal(documentStub.body.classList.contains("workspace-collapsed"), false);
@@ -1617,6 +1617,10 @@ const browserWorkflowHtml = context.sourceWorkflowHtml("browser", {
 });
 assert.match(browserWorkflowHtml, /class="source-workflow-card browser"/);
 assert.match(browserWorkflowHtml, /当前页直取/);
+assert.match(browserWorkflowHtml, /source-workflow-brief/);
+assert.match(browserWorkflowHtml, /学习流总览/);
+assert.match(browserWorkflowHtml, /打开扩展侧栏总结当前页|downloading · 35%/);
+assert.match(browserWorkflowHtml, /非录制直取/);
 assert.match(browserWorkflowHtml, /预检资源/);
 assert.match(browserWorkflowHtml, /source-route-insights/);
 assert.match(browserWorkflowHtml, /浏览器证据/);
@@ -1631,6 +1635,9 @@ assert.match(browserWorkflowHtml, /data-select-workflow-task="task-workflow-brow
 
 const localWorkflowHtml = context.sourceWorkflowHtml("local", null);
 assert.match(localWorkflowHtml, /本地视频/);
+assert.match(localWorkflowHtml, /source-workflow-brief/);
+assert.match(localWorkflowHtml, /选择文件/);
+assert.match(localWorkflowHtml, /离线兜底/);
 assert.match(localWorkflowHtml, /导入文件/);
 assert.match(localWorkflowHtml, /本地文件直进管线/);
 assert.match(localWorkflowHtml, /平台不暴露 URL 时兜底/);
@@ -1650,6 +1657,9 @@ const urlWorkflowHtml = context.sourceWorkflowHtml("url", {
   visual_windows: [{ id: "W001" }, { id: "W002" }]
 });
 assert.match(urlWorkflowHtml, /链接解析/);
+assert.match(urlWorkflowHtml, /source-workflow-brief/);
+assert.match(urlWorkflowHtml, /查看笔记和资料包/);
+assert.match(urlWorkflowHtml, /可预检链接/);
 assert.match(urlWorkflowHtml, /2 次下载尝试/);
 assert.match(urlWorkflowHtml, /2 个视觉窗口/);
 assert.match(urlWorkflowHtml, /data-source-workflow-action="preflight-url"/);
