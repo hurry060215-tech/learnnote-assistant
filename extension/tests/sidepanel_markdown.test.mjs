@@ -1242,6 +1242,7 @@ assert.match(elements.get("#currentStudyCard").innerHTML, /网格图 \+ 对应�
 assert.match(elements.get("#currentStudyCard").innerHTML, /https:\/\/cdn\.example\.com\/live\/master\.m3u8/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /data-workbench-copy="url"/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /data-workbench-copy="report"/);
+assert.match(elements.get("#currentStudyCard").innerHTML, /data-workbench-copy="audit"/);
 assert.doesNotMatch(elements.get("#currentStudyCard").innerHTML, /Cookie: secret/);
 assert.doesNotMatch(elements.get("#currentStudyCard").innerHTML, /Authorization/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /00:00:00 \/ 00:00:00/);
@@ -1274,6 +1275,18 @@ assert.doesNotMatch(report, /Authorization/);
 await context.copySelectedResourceReport();
 assert.equal(clipboardWrites.at(-1), report);
 assert.equal(elements.get("#taskMessage").textContent, "已复制候选资源证据摘要。");
+
+const auditReport = vm.runInContext("currentPageAuditReport()", context);
+assert.match(auditReport, /LearnNote 当前页直取审计报告/);
+assert.match(auditReport, /候选资源: 1\/1 可直取/);
+assert.match(auditReport, /Cookie 只在点击任务时一次性同步给本地后端/);
+assert.match(auditReport, /本工具不录制标签页/);
+assert.match(auditReport, /选中候选证据/);
+assert.doesNotMatch(auditReport, /Cookie: secret/);
+assert.doesNotMatch(auditReport, /Authorization/);
+await context.copyCurrentPageAuditReport();
+assert.equal(clipboardWrites.at(-1), auditReport);
+assert.equal(elements.get("#taskMessage").textContent, "已复制当前页直取审计报告。");
 
 vm.runInContext(`
 resources = [
@@ -1406,6 +1419,7 @@ assert.match(elements.get("#currentStudyCard").className, /ready/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /可以开始当前视频总结/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /workbench-audit-gate/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /直取审计门/);
+assert.match(elements.get("#currentStudyCard").innerHTML, /复制审计/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /预检通过/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /非录制路径/);
 assert.equal(context.workbenchAuditGateItems("ready").length, 5);

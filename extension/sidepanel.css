@@ -7019,6 +7019,14 @@ body {
 .workbench-audit-head {
   min-width: 0;
   display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px;
+  align-items: start;
+}
+
+.workbench-audit-head div {
+  min-width: 0;
+  display: grid;
   gap: 2px;
 }
 
@@ -7034,6 +7042,24 @@ body {
   font-size: 12px;
   line-height: 1.25;
   overflow-wrap: anywhere;
+}
+
+.workbench-audit-head button {
+  min-height: 26px;
+  border: 1px solid rgba(23, 105, 232, 0.18);
+  border-radius: 7px;
+  background: #ffffff;
+  color: var(--ln-blue, var(--accent));
+  padding: 0 8px;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.workbench-audit-head button:hover {
+  border-color: rgba(23, 105, 232, 0.34);
+  background: #f6faff;
 }
 
 .workbench-audit-grid {

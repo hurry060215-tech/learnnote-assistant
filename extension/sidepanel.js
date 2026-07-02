@@ -491,6 +491,75 @@ async function copySelectedResourceReport() {
   return copyTextToClipboard(report, "已复制候选资源证据摘要。");
 }
 
+function currentPageAuditReport() {
+  const state = currentStudyState();
+  const copy = currentStudyCopy(state);
+  const selected = selectedResource();
+  const checked = currentPreflight();
+  const active = page?.active_video || {};
+  const subtitles = page?.browser_subtitles || [];
+  const candidateCount = resources.length;
+  const downloadableCount = resources.filter(isDownloadableResource).length;
+  const captureRestored = Number(captureLog?.restored || 0);
+  const lines = [
+    "LearnNote 当前页直取审计报告",
+    `页面标题: ${page?.title || "-"}`,
+    `页面 URL: ${page?.page_url || page?.url || "-"}`,
+    `状态: ${copy.badge} - ${copy.title}`,
+    `说明: ${copy.detail}`,
+    `动作建议: ${currentStudyActionText(state)}`,
+    "",
+    "播放状态",
+    `- 播放器: ${hasActiveVideoSignal(active) ? activeVideoText(active) : "未读取到活动视频"}`,
+    `- DRM/EME: ${page?.drm_detected || active?.drm_detected ? drmSignalText(page?.drm_signals || []) || "检测到" : "未检测到"}`,
+    `- 浏览器字幕: ${subtitles.length ? `${subtitles.length} 条` : "未读取"}`,
+    "",
+    "候选与预检",
+    `- 候选资源: ${downloadableCount}/${candidateCount} 可直取`,
+    `- Network 缓存: ${captureRestored ? `${captureRestored} 条` : "实时检测"}`,
+    `- 选中候选: ${selected ? selectedResourceLabel(selected) : "未选择"}`,
+    `- 下载策略: ${selected ? candidateStrategyText(selected) : "-"}`,
+    `- 预检状态: ${checked ? resourcePreflightLine(checked, selected) : "未预检"}`,
+    `- 实际媒体 URL: ${selected ? resourceResolvedTarget(selected, checked) || selected.url : "-"}`,
+    "",
+    "切片计划",
+    ...workbenchSlicePlanItemsForReport(),
+    "",
+    "审计门",
+    ...workbenchAuditGateItems(state).map(item => `- ${item.label}: ${item.value || "-"} / ${item.detail || "-"}`),
+    "",
+    "敏感信息处理",
+    "- Cookie 只在点击任务时一次性同步给本地后端，本报告不包含 Cookie 值。",
+    "- 鉴权类敏感请求头不会写入候选证据摘要。",
+    "- 本工具不录制标签页，不破解 DRM/EME，不伪造学习进度。"
+  ];
+  if (selected) {
+    lines.push("", "选中候选证据", selectedResourceReport());
+  }
+  return lines.filter(line => line !== undefined && line !== null).join("\n");
+}
+
+function workbenchSlicePlanItemsForReport() {
+  const visionEnabled = visualUnderstandingEnabled();
+  const model = (els.llmModel?.value || "").trim();
+  const asr = els.transcriber?.selectedOptions?.[0]?.textContent?.trim() || "本地";
+  return [
+    `- 抽帧窗口: ${visualPlanText()} / ${visualWindowText()}`,
+    `- 转写: ${asr}`,
+    `- 图文理解: ${visionEnabled ? model || "视觉 API / 本地索引" : "已关闭"}`,
+    `- 笔记模板: ${noteStyleText()}`
+  ];
+}
+
+async function copyCurrentPageAuditReport() {
+  const report = currentPageAuditReport();
+  if (!report) {
+    els.taskMessage.textContent = "没有可复制的当前页审计报告。";
+    return false;
+  }
+  return copyTextToClipboard(report, "已复制当前页直取审计报告。");
+}
+
 function summaryDiagnosticText(task) {
   const diag = task?.summary_diagnostics || {};
   if (!Object.keys(diag).length) return "-";
@@ -1929,8 +1998,11 @@ function workbenchAuditGateItems(state) {
 function workbenchAuditGateHtml(state) {
   return `<div class="workbench-audit-gate" aria-label="当前页直取审计门">
     <div class="workbench-audit-head">
-      <span>直取审计门</span>
-      <strong>下载前确认：不是录制，而是浏览器证据 + 本地管线</strong>
+      <div>
+        <span>直取审计门</span>
+        <strong>下载前确认：不是录制，而是浏览器证据 + 本地管线</strong>
+      </div>
+      <button type="button" data-workbench-copy="audit">复制审计</button>
     </div>
     <div class="workbench-audit-grid">
       ${workbenchAuditGateItems(state).map(item => `<section class="${escapeHtml(item.state)}">
@@ -4704,6 +4776,10 @@ if (els.currentStudyCard) {
     }
     if (copyButton?.dataset.workbenchCopy === "report") {
       copySelectedResourceReport();
+      return;
+    }
+    if (copyButton?.dataset.workbenchCopy === "audit") {
+      copyCurrentPageAuditReport();
       return;
     }
     const button = event.target.closest("[data-route-action]");
