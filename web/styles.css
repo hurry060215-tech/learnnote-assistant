@@ -5153,6 +5153,92 @@ button:disabled {
   color: #ffffff;
 }
 
+.visual-study-navigator {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #cfe0f4;
+  border-radius: 8px;
+  background: #f8fbff;
+  padding: 12px;
+}
+
+.visual-study-navigator header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.visual-study-navigator header span {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.visual-study-navigator header strong {
+  color: var(--text);
+  font-size: 15px;
+}
+
+.visual-study-navigator header small {
+  max-width: 520px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 760;
+  text-align: right;
+}
+
+.visual-study-navigator > div {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+}
+
+.visual-study-navigator button {
+  min-height: 76px;
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  border: 1px solid #d6e3f3;
+  border-left: 4px solid #94a3b8;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 10px 11px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.visual-study-navigator button:hover {
+  border-color: #a9c7f4;
+  background: #f2f7ff;
+}
+
+.visual-study-navigator button.vision {
+  border-left-color: #0f8f61;
+}
+
+.visual-study-navigator button.missing,
+.visual-study-navigator button.omitted {
+  border-left-color: #d97706;
+}
+
+.visual-study-navigator button span {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.visual-study-navigator button strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.visual-study-navigator button small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 780;
+}
+
 .visual-study-deck {
   display: grid;
   gap: 14px;
@@ -6423,6 +6509,19 @@ select {
   }
 
   .visual-rail-list {
+    grid-template-columns: 1fr;
+  }
+
+  .visual-study-navigator header {
+    display: grid;
+    align-items: start;
+  }
+
+  .visual-study-navigator header small {
+    text-align: left;
+  }
+
+  .visual-study-navigator > div {
     grid-template-columns: 1fr;
   }
 

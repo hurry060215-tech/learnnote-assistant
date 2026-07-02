@@ -3472,6 +3472,42 @@ function visualStudyDeck(task, transcript = null) {
   </section>`;
 }
 
+function visualStudyNavigatorHtml(task, transcript = null) {
+  const windows = visualWindows(task);
+  if (!windows.length) return "";
+  const diag = task.summary_diagnostics || {};
+  const sentIds = new Set((diag.vision_image_window_ids || []).map(value => String(value)));
+  const missingIds = new Set((diag.missing_vision_image_window_ids || []).map(value => String(value)));
+  const omittedIds = new Set((diag.omitted_vision_window_ids || []).map(value => String(value)));
+  const items = windows.map((window, index) => {
+    const id = String(window.id || `W${String(index + 1).padStart(3, "0")}`);
+    const matched = (transcript?.segments || []).filter(segment => segmentOverlapsWindow(segment, window));
+    let state = "ready";
+    if (missingIds.has(id)) state = "missing";
+    else if (omittedIds.has(id)) state = "omitted";
+    else if (sentIds.has(id) || diag.used_vision_llm || task.summary_source === "vision-llm") state = "vision";
+    const label = {
+      vision: "已进视觉",
+      ready: "本地索引",
+      missing: "缺图",
+      omitted: "已省略"
+    }[state];
+    return `<button type="button" class="${escapeHtml(state)}" data-media-seek-time="${seekTimeValue(window.start)}" data-window-start="${seekTimeValue(window.start)}">
+      <span>${escapeHtml(id)}</span>
+      <strong>${fmt(window.start)} - ${fmt(window.end)}</strong>
+      <small>${escapeHtml(label)} · ${Number(window.frame_count || 0)} 帧 · ${matched.length || 0} 字幕</small>
+    </button>`;
+  });
+  return `<section class="visual-study-navigator" aria-label="视觉窗口学习队列">
+    <header>
+      <span>复习队列</span>
+      <strong>按画面窗口回看</strong>
+      <small>先扫窗口，再进入下方卡片核对字幕、截图和自测题。</small>
+    </header>
+    <div>${items.join("")}</div>
+  </section>`;
+}
+
 function learningSliceWorkbench(task, transcript = null) {
   const windows = visualWindows(task);
   if (!windows.length) return "";
@@ -3499,6 +3535,7 @@ function learningSliceWorkbench(task, transcript = null) {
         ${hasTaskBundle(task) ? `<a href="${escapeHtml(taskExportUrl(task, "bundle"))}">导出资料包</a>` : ""}
       </nav>
     </section>
+    ${visualStudyNavigatorHtml(task, transcript)}
     ${visualStudyDeck(task, transcript)}
   </div>`;
 }
