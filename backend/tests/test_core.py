@@ -2143,6 +2143,45 @@ class SummaryFallbackTests(unittest.TestCase):
         self.assertIn("## 学习上下文", note)
         self.assertIn("画面-字幕对齐索引", note)
 
+    def test_llm_fallback_warning_includes_provider_model_and_error(self) -> None:
+        class FakeCompletions:
+            def create(self, **kwargs):
+                raise RuntimeError("rate limit from provider")
+
+        class FakeOpenAI:
+            def __init__(self, **kwargs):
+                self.chat = types.SimpleNamespace(completions=FakeCompletions())
+
+        fake_openai = types.ModuleType("openai")
+        fake_openai.OpenAI = FakeOpenAI
+        transcript = TranscriptResult(
+            source="unit",
+            full_text="short transcript",
+            segments=[TranscriptSegment(start=0, end=4, text="short transcript")],
+        )
+
+        with patch.dict(sys.modules, {"openai": fake_openai}):
+            note, source, warning = summarize_with_diagnostics(
+                "Provider failure",
+                transcript,
+                [],
+                TaskOptions(
+                    llm_api_key="test-key",
+                    llm_base_url="https://api.groq.com/openai/v1",
+                    llm_model="groq-vision-model",
+                ),
+                "https://course.example",
+            )
+
+        self.assertEqual(source, "local-template")
+        self.assertIn("provider=groq", warning)
+        self.assertIn("model=groq-vision-model", warning)
+        self.assertIn("base=api.groq.com", warning)
+        self.assertIn("stage=text_summary", warning)
+        self.assertIn("code=api_error", warning)
+        self.assertIn("rate limit from provider", warning)
+        self.assertIn("Provider failure", note)
+
     def test_visual_appendix_is_appended_to_llm_notes(self) -> None:
         transcript = TranscriptResult(
             source="unit",
@@ -2209,6 +2248,10 @@ class SummaryFallbackTests(unittest.TestCase):
         self.assertEqual(diagnostics["vision_expected_batch_count"], 20)
         self.assertEqual(diagnostics["vision_call_status"], "vision_llm_used")
         self.assertEqual(diagnostics["vision_grid_count"], MAX_VISION_GRIDS)
+        self.assertEqual(diagnostics["llm_provider"], "openai")
+        self.assertEqual(diagnostics["llm_base_host"], "api.openai.com")
+        self.assertEqual(diagnostics["llm_model"], "vision-model")
+        self.assertEqual(diagnostics["llm_failure_code"], "")
         self.assertEqual(diagnostics["vision_image_count"], MAX_VISION_GRIDS - 1)
         self.assertEqual(diagnostics["vision_call_plan"][0]["window_ids"], ["W001", "W002", "W003", "W004"])
         self.assertEqual(diagnostics["vision_call_plan"][0]["image_window_ids"], ["W002", "W003", "W004"])
@@ -2227,12 +2270,43 @@ class SummaryFallbackTests(unittest.TestCase):
             record.summary_diagnostics = diagnostics
             report = render_diagnostics_markdown(record)
             self.assertIn("vision_llm_used", report)
+            self.assertIn("LLM Provider", report)
+            self.assertIn("api.openai.com", report)
             self.assertIn("20", report)
             self.assertIn("已送入视觉窗口", report)
             self.assertIn("缺少图片窗口：W001", report)
             self.assertIn("超限省略窗口：W081, W082, W083", report)
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
+    def test_summary_diagnostics_classifies_openai_compatible_failure(self) -> None:
+        warning = (
+            "LLM 调用降级：provider=openrouter，model=openai/gpt-4.1-mini，base=openrouter.ai，"
+            "stage=vision_merge，code=api_error，reason=HTTP 429；已使用本地画面索引模板。"
+        )
+        diagnostics = build_summary_diagnostics(
+            "task-llm-fail",
+            "Provider failure",
+            "https://course.example",
+            TaskOptions(
+                visual_understanding=True,
+                llm_api_key="test-key",
+                llm_base_url="https://openrouter.ai/api/v1",
+                llm_model="openai/gpt-4.1-mini",
+            ),
+            [],
+            [],
+            "local-template",
+            warning,
+        )
+
+        self.assertEqual(diagnostics["llm_provider"], "openrouter")
+        self.assertEqual(diagnostics["llm_base_host"], "openrouter.ai")
+        self.assertEqual(diagnostics["llm_model"], "openai/gpt-4.1-mini")
+        self.assertEqual(diagnostics["llm_failure_stage"], "vision_merge")
+        self.assertEqual(diagnostics["llm_failure_code"], "api_error")
+        self.assertEqual(diagnostics["llm_failure_reason"], "HTTP 429")
+        self.assertEqual(diagnostics["vision_call_status"], "no_frame_grids")
 
     def test_llm_summary_batches_all_frame_grids_before_merge(self) -> None:
         from app.summarizer import summarize_with_llm

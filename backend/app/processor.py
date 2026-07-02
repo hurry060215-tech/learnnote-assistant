@@ -9,7 +9,7 @@ from .downloader import DownloadError, MediaDownloader, effective_resource_kind,
 from .media import build_frame_grids, extract_audio, extract_embedded_subtitle, extract_frames, normalize_video
 from .models import BrowserSubtitleCue, CurrentPageTaskRequest, DownloadAttempt, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
 from .storage import get_task, save_task, task_dir, update_task, write_json
-from .summarizer import MAX_GRIDS_PER_VISION_CALL, MAX_VISION_GRIDS, build_visual_windows, summarize_page_text_with_diagnostics, summarize_with_diagnostics
+from .summarizer import MAX_GRIDS_PER_VISION_CALL, MAX_VISION_GRIDS, build_visual_windows, llm_base_host, llm_provider_name, summarize_page_text_with_diagnostics, summarize_with_diagnostics
 from .transcriber import transcript_from_subtitle, transcribe_audio, transcribe_audio_openai_compatible
 
 
@@ -279,6 +279,29 @@ def transcribe_extracted_audio(audio_path: Path, options: TaskOptions) -> Transc
     return transcribe_audio(audio_path, options.whisper_model)
 
 
+def _warning_field(summary_warning: str, key: str) -> str:
+    marker = f"{key}="
+    if marker not in (summary_warning or ""):
+        return ""
+    value = (summary_warning or "").split(marker, 1)[1]
+    return value.split("，", 1)[0].split(";", 1)[0].split("；", 1)[0].strip()
+
+
+def _llm_failure_code(summary_source: str, summary_warning: str, configured: bool) -> str:
+    if summary_source != "local-template" and not summary_warning:
+        return ""
+    if not configured:
+        return "missing_api_key"
+    code = _warning_field(summary_warning, "code")
+    if code:
+        return code
+    if "missing_openai_sdk" in (summary_warning or ""):
+        return "missing_openai_sdk"
+    if summary_source == "local-template":
+        return "llm_unavailable"
+    return "partial_vision_failure"
+
+
 def build_summary_diagnostics(
     task_id: str,
     title: str,
@@ -290,6 +313,9 @@ def build_summary_diagnostics(
     summary_warning: str,
 ) -> dict:
     eligible_grids = grids[:MAX_VISION_GRIDS]
+    effective_llm_base_url = options.llm_base_url or LLM_BASE_URL
+    effective_llm_model = options.llm_model or LLM_MODEL
+    llm_configured = bool(options.llm_api_key or LLM_API_KEY)
 
     def window_id(index: int) -> str:
         if index < len(visual_windows) and visual_windows[index].id:
@@ -340,10 +366,11 @@ def build_summary_diagnostics(
         vision_call_status = "no_frame_grids"
     elif not eligible_image_count:
         vision_call_status = "no_grid_images"
-    elif not bool(options.llm_api_key or LLM_API_KEY):
+    elif not llm_configured:
         vision_call_status = "missing_api_key"
     else:
         vision_call_status = "local_template_fallback"
+    llm_failure_code = _llm_failure_code(summary_source, summary_warning, llm_configured)
     return {
         "task_id": task_id,
         "title": title,
@@ -351,9 +378,14 @@ def build_summary_diagnostics(
         "summary_source": summary_source,
         "summary_warning": summary_warning,
         "visual_understanding": bool(options.visual_understanding),
-        "vision_model_configured": bool(options.llm_api_key or LLM_API_KEY),
-        "llm_model": options.llm_model or LLM_MODEL,
-        "llm_base_url": options.llm_base_url or LLM_BASE_URL,
+        "vision_model_configured": llm_configured,
+        "llm_model": effective_llm_model,
+        "llm_base_url": effective_llm_base_url,
+        "llm_base_host": llm_base_host(effective_llm_base_url),
+        "llm_provider": llm_provider_name(effective_llm_base_url),
+        "llm_failure_code": llm_failure_code,
+        "llm_failure_stage": _warning_field(summary_warning, "stage") if llm_failure_code else "",
+        "llm_failure_reason": _warning_field(summary_warning, "reason") if llm_failure_code else "",
         "note_style": options.note_style,
         "note_template": options.note_template,
         "summary_depth": options.summary_depth,

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from urllib.parse import urlparse
 
 from .config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
 from .media import image_to_data_url
@@ -9,6 +10,68 @@ from .models import FrameGrid, TaskOptions, TranscriptResult, VisualWindow
 
 MAX_GRIDS_PER_VISION_CALL = 4
 MAX_VISION_GRIDS = 80
+MAX_LLM_ERROR_MESSAGE = 240
+
+
+def llm_provider_name(base_url: str) -> str:
+    host = (urlparse(base_url or "").hostname or "").lower()
+    if "openai.com" in host:
+        return "openai"
+    if "groq.com" in host:
+        return "groq"
+    if "dashscope.aliyuncs.com" in host:
+        return "dashscope"
+    if "siliconflow.cn" in host:
+        return "siliconflow"
+    if "openrouter.ai" in host:
+        return "openrouter"
+    if host in {"127.0.0.1", "localhost"}:
+        return "local-openai-compatible"
+    return "openai-compatible"
+
+
+def llm_base_host(base_url: str) -> str:
+    parsed = urlparse(base_url or "")
+    return parsed.netloc or parsed.path.strip("/") or ""
+
+
+def _safe_llm_error(exc: BaseException) -> str:
+    message = re.sub(r"\s+", " ", str(exc or "")).strip()
+    if len(message) > MAX_LLM_ERROR_MESSAGE:
+        message = message[:MAX_LLM_ERROR_MESSAGE].rstrip() + "..."
+    return message or exc.__class__.__name__
+
+
+def _record_llm_event(events: list[dict] | None, stage: str, code: str, exc: BaseException | None = None, **extra) -> None:
+    if events is None:
+        return
+    event = {
+        "stage": stage,
+        "code": code,
+    }
+    if exc is not None:
+        event.update({
+            "error_type": exc.__class__.__name__,
+            "message": _safe_llm_error(exc),
+        })
+    event.update({key: value for key, value in extra.items() if value not in (None, "", [])})
+    events.append(event)
+
+
+def llm_warning_from_events(options: TaskOptions, events: list[dict], fallback: str) -> str:
+    if not events:
+        return fallback
+    base_url = options.llm_base_url or LLM_BASE_URL
+    model = options.llm_model or LLM_MODEL
+    provider = llm_provider_name(base_url)
+    latest = events[-1]
+    stage = latest.get("stage") or "llm"
+    code = latest.get("code") or "api_error"
+    message = latest.get("message") or latest.get("error_type") or "unknown error"
+    return (
+        f"LLM 调用降级：provider={provider}，model={model}，base={llm_base_host(base_url) or '-'}，"
+        f"stage={stage}，code={code}，reason={message}；已使用本地画面索引模板。"
+    )
 
 
 def _format_ts(seconds: float) -> str:
@@ -461,18 +524,25 @@ def summarize_with_llm(
     grids: list[FrameGrid],
     options: TaskOptions,
     page_url: str = "",
+    events: list[dict] | None = None,
 ) -> tuple[str, str] | None:
     api_key = options.llm_api_key or LLM_API_KEY
     if not api_key:
+        _record_llm_event(events, "configuration", "missing_api_key")
         return None
 
     try:
         from openai import OpenAI
-    except Exception:
+    except Exception as exc:
+        _record_llm_event(events, "client_import", "missing_openai_sdk", exc)
         return None
 
-    client = OpenAI(api_key=api_key, base_url=options.llm_base_url or LLM_BASE_URL)
     model = options.llm_model or LLM_MODEL
+    try:
+        client = OpenAI(api_key=api_key, base_url=options.llm_base_url or LLM_BASE_URL)
+    except Exception as exc:
+        _record_llm_event(events, "client_init", "client_init_failed", exc, model=model)
+        return None
 
     if grids:
         partials = []
@@ -504,8 +574,9 @@ def summarize_with_llm(
                 partial = response.choices[0].message.content or ""
                 if partial.strip():
                     partials.append(partial.strip())
-            except Exception:
+            except Exception as exc:
                 failed_batches += 1
+                _record_llm_event(events, "vision_batch", "api_error", exc, batch=index, model=model)
                 continue
 
         if partials:
@@ -543,7 +614,8 @@ def summarize_with_llm(
                 generated = response.choices[0].message.content or ""
                 note = ensure_visual_appendix(generated, transcript, grids) or ""
                 return (note, "vision-llm") if note else None
-            except Exception:
+            except Exception as exc:
+                _record_llm_event(events, "vision_merge", "api_error", exc, model=model)
                 return None
 
     content: list[dict] = [
@@ -568,7 +640,8 @@ def summarize_with_llm(
         generated = response.choices[0].message.content or ""
         note = ensure_visual_appendix(generated, transcript, grids) or ""
         return (note, "text-llm") if note else None
-    except Exception:
+    except Exception as exc:
+        _record_llm_event(events, "text_summary", "api_error", exc, model=model)
         return None
 
 
@@ -586,10 +659,26 @@ def summarize_with_diagnostics(
             "local-template",
             "未配置 OpenAI-compatible API Key，已使用本地画面索引模板生成笔记。",
         )
-    generated = summarize_with_llm(title, transcript, grids, options, page_url)
+    events: list[dict] = []
+    generated = summarize_with_llm(title, transcript, grids, options, page_url, events)
     if generated:
         note, source = generated
-        return note, source, ""
+        warning = ""
+        failed_vision_batches = [event for event in events if event.get("stage") == "vision_batch"]
+        if source == "vision-llm" and failed_vision_batches:
+            warning = llm_warning_from_events(
+                options,
+                failed_vision_batches,
+                f"{len(failed_vision_batches)} vision batch(es) failed; merged successful visual summaries.",
+            )
+        return note, source, warning
+    fallback_warning = "Vision/LLM summary failed or unavailable; using local frame-index template."
+    if events:
+        return (
+            local_markdown_note(title, transcript, grids, page_url, options),
+            "local-template",
+            llm_warning_from_events(options, events, fallback_warning),
+        )
     return (
         local_markdown_note(title, transcript, grids, page_url, options),
         "local-template",

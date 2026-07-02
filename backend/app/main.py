@@ -1207,6 +1207,12 @@ def render_diagnostics_markdown(task: TaskRecord) -> str:
     if task.summary_diagnostics:
         lines.extend([
             f"- 视觉窗口数：{task.summary_diagnostics.get('visual_window_count', '-')}",
+            f"- LLM Provider：{task.summary_diagnostics.get('llm_provider', '-')}",
+            f"- LLM Base：{task.summary_diagnostics.get('llm_base_host', '-')}",
+            f"- LLM Model：{task.summary_diagnostics.get('llm_model', '-')}",
+            f"- LLM Failure：{task.summary_diagnostics.get('llm_failure_stage', '-')}"
+            f" / {task.summary_diagnostics.get('llm_failure_code', '-')}"
+            f" / {task.summary_diagnostics.get('llm_failure_reason', '-')}",
             f"- 送入视觉图片：{task.summary_diagnostics.get('vision_image_count', '-')}/{task.summary_diagnostics.get('vision_grid_count', '-')}",
             f"- 视觉调用状态：{task.summary_diagnostics.get('vision_call_status', '-')}",
             f"- 视觉批次计划：{task.summary_diagnostics.get('vision_expected_batch_count', '-')}"
