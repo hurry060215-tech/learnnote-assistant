@@ -1634,6 +1634,119 @@ small,
   font-weight: 850;
 }
 
+.resource-decision {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #d7e2f4;
+  border-left-width: 4px;
+  border-radius: 8px;
+  border-left-color: var(--border-strong);
+  background: #ffffff;
+  padding: 9px;
+}
+
+.resource-decision.ready {
+  border-left-color: var(--success);
+  background: rgba(20, 150, 74, 0.05);
+}
+
+.resource-decision.candidate {
+  border-left-color: var(--accent);
+  background: #f5f9ff;
+}
+
+.resource-decision.warn {
+  border-left-color: var(--warning);
+  background: rgba(196, 122, 5, 0.06);
+}
+
+.resource-decision.blocked {
+  border-left-color: var(--danger);
+  background: rgba(217, 45, 32, 0.05);
+}
+
+.resource-decision > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.resource-decision span {
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.resource-decision.blocked span {
+  color: var(--danger);
+}
+
+.resource-decision.warn span {
+  color: var(--warning);
+}
+
+.resource-decision strong {
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.resource-decision small {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.resource-decision p {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 0;
+}
+
+.resource-decision em {
+  border-radius: 999px;
+  background: #eef4ff;
+  color: var(--accent);
+  padding: 3px 7px;
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 850;
+}
+
+.resource-decision nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.resource-decision nav button {
+  min-height: 28px;
+  border: 1px solid #b8d3ff;
+  border-radius: 7px;
+  background: #ffffff;
+  color: var(--accent);
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.resource-decision nav button.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.resource-decision nav button:hover {
+  border-color: var(--accent);
+  background: #eaf2ff;
+}
+
+.resource-decision nav button.primary:hover {
+  background: #075ccc;
+}
+
 .resource-inspector {
   display: grid;
   gap: 5px;

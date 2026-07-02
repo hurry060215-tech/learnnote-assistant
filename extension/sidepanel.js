@@ -1508,6 +1508,91 @@ function resourceAttemptQueueHtml(limit = 4) {
   </section>`;
 }
 
+function resourceDecision(item, checked = null) {
+  if (!item) {
+    return {
+      state: "empty",
+      title: "等待候选资源",
+      detail: "播放课程视频几秒后重新检测，扩展会从 DOM、Performance、webRequest 和播放器 frame 汇总媒体线索。",
+      actions: [["redetect", "重新检测"], ["local", "本地视频"]]
+    };
+  }
+  if (checked?.downloadable) {
+    return {
+      state: "ready",
+      title: "预检通过，可以直取到本地",
+      detail: `${resourcePreflightLine(checked, item)}；下一步可以完整总结，或先只下载 media.mp4 验证。`,
+      actions: [["summarize", "完整总结"], ["download", "只下载"], ["preflight", "重预检"]]
+    };
+  }
+  if (checked && !checked.downloadable) {
+    const blocked = checked.code === "drm_or_encrypted";
+    return {
+      state: blocked ? "blocked" : "warn",
+      title: blocked ? "当前候选不可直取" : "当前候选预检未过",
+      detail: `${checked.message || checked.code || "后端暂时不能访问该候选"}；${preflightRecoveryText(checked)}`,
+      actions: blocked
+        ? [["local", "本地视频"], ["redetect", "重新检测"], ["text", "页面文本"]]
+        : [["redetect", "重新检测"], ["preflight", "重预检"], ["local", "本地视频"]]
+    };
+  }
+  if (isDownloadableResource(item)) {
+    return {
+      state: "candidate",
+      title: "候选待预检",
+      detail: `${directnessText(item)}；建议先让后端小流量验证 Referer/Cookie/签名是否仍有效。`,
+      actions: [["preflight", "预检候选"], ["summarize", "直接总结"], ["download", "只下载"]]
+    };
+  }
+  if (looksLikePlayableEndpoint(item)) {
+    return {
+      state: "candidate",
+      title: "播放接口可尝试解析",
+      detail: `${requestBodySummary(item) || requestEvidence(item) || "浏览器请求里有播放接口线索"}；预检会尝试解析响应里的 mp4/FLV/HLS/DASH。`,
+      actions: [["preflight", "预检接口"], ["summarize", "交给后端"], ["local", "本地视频"]]
+    };
+  }
+  if (item.kind === "blob" || item.kind === "fragment") {
+    return {
+      state: "warn",
+      title: "这是播放线索，不是完整下载目标",
+      detail: item.kind === "blob"
+        ? "blob: 地址本身不能直接下载；需要映射到底层 mp4/HLS/DASH 请求，继续播放后重新检测。"
+        : "孤立 ts/m4s 分片不能代表完整视频；需要对应 m3u8/mpd manifest。",
+      actions: [["redetect", "继续重检"], ["local", "本地视频"], ["text", "页面文本"]]
+    };
+  }
+  return {
+    state: "muted",
+    title: "媒体线索需要进一步确认",
+    detail: `${directnessText(item)}；如果没有完整媒体目标，请播放后重检或使用本地视频入口。`,
+    actions: [["redetect", "重新检测"], ["local", "本地视频"]]
+  };
+}
+
+function resourceDecisionHtml(item, checked = null) {
+  const decision = resourceDecision(item, checked);
+  const order = item ? candidateTryOrder(item) || "-" : "-";
+  const facts = item ? [
+    candidateStrategyText(item),
+    candidateConfidence(item).label,
+    preflightStatusTag(checked),
+    requestHeaderNames(item) !== "-" ? "请求头" : "",
+    requestBodySummary(item) ? "POST body" : ""
+  ].filter(Boolean) : [];
+  return `<section class="resource-decision ${escapeHtml(decision.state)}" aria-label="候选资源决策">
+    <div>
+      <span>候选决策 · #${escapeHtml(String(order))}</span>
+      <strong>${escapeHtml(decision.title)}</strong>
+      <small>${escapeHtml(decision.detail)}</small>
+    </div>
+    ${facts.length ? `<p>${facts.map(fact => `<em>${escapeHtml(fact)}</em>`).join("")}</p>` : ""}
+    <nav>
+      ${decision.actions.map(([action, label], index) => `<button type="button" class="${index === 0 ? "primary" : ""}" data-route-action="${escapeHtml(action)}">${escapeHtml(label)}</button>`).join("")}
+    </nav>
+  </section>`;
+}
+
 function preflightAuditSummaryHtml(limit = 4) {
   const checked = resources
     .map(resource => ({ resource, result: preflightForResource(resource) }))
@@ -2496,6 +2581,7 @@ function renderInspector() {
   const resolvedTarget = resolvedTargetText(item, checked, 120);
   const fullResolvedTarget = resourceResolvedTarget(item, checked);
   els.resourceInspector.innerHTML = `
+    ${resourceDecisionHtml(item, checked)}
     <strong>${escapeHtml(directnessText(item))}</strong>
     <div class="resource-inspector-actions">
       <button type="button" data-copy-resource-url>复制链接</button>
@@ -4735,6 +4821,11 @@ els.resourceInspector.addEventListener("click", event => {
   }
   if (event.target.closest("[data-copy-resource-report]")) {
     copySelectedResourceReport();
+    return;
+  }
+  const routeButton = event.target.closest("[data-route-action]");
+  if (routeButton) {
+    handleRouteAction(routeButton.dataset.routeAction);
   }
 });
 els.resources.addEventListener("click", event => {

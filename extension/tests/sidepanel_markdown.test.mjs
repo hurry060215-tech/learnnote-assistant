@@ -1239,6 +1239,11 @@ assert.match(context.resourceAttemptQueueHtml(), /resource-attempt-queue/);
 assert.match(context.resourceAttemptQueueHtml(), /下载队列/);
 assert.match(context.resourceAttemptQueueHtml(), /播放匹配/);
 assert.match(context.resourceAttemptQueueHtml(), /待预检/);
+assert.match(context.resourceDecisionHtml(context.selectedResource()), /class="resource-decision candidate"/);
+assert.match(context.resourceDecisionHtml(context.selectedResource()), /候选决策 · #1/);
+assert.match(context.resourceDecisionHtml(context.selectedResource()), /候选待预检/);
+assert.match(context.resourceDecisionHtml(context.selectedResource()), /data-route-action="preflight"/);
+assert.match(context.resourceDecisionHtml(context.selectedResource()), /data-route-action="download"/);
 vm.runInContext("resourceSelectionPinned = false;", context);
 assert.equal(context.pickDefaultResourceUrl([
   { url: "https://cdn.example.com/stale.mp4", kind: "video", score: 85 },
@@ -1277,8 +1282,12 @@ assert.match(elements.get("#resources").innerHTML, /data-resource-filter="matche
 assert.match(elements.get("#resources").innerHTML, /resource-attempt-row selected/);
 assert.match(elements.get("#resourceInspector").innerHTML, /候选置信度/);
 assert.match(elements.get("#resourceInspector").innerHTML, /播放匹配/);
+assert.match(elements.get("#resourceInspector").innerHTML, /class="resource-decision candidate"/);
+assert.match(elements.get("#resourceInspector").innerHTML, /候选待预检/);
 assert.match(elements.get("#resourceInspector").innerHTML, /复制链接/);
 assert.match(elements.get("#resourceInspector").innerHTML, /复制证据/);
+assert.doesNotMatch(elements.get("#resourceInspector").innerHTML, /Cookie: secret/);
+assert.doesNotMatch(elements.get("#resourceInspector").innerHTML, /Authorization/);
 assert.doesNotMatch(elements.get("#resources").innerHTML, /<script>bad/);
 assert.match(elements.get("#currentStudyCard").className, /candidate/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /发现当前视频直取候选/);
@@ -1456,6 +1465,10 @@ preflight = { downloadable: true, kind: "hls", code: "", message: "ok" };
 preflightResourceUrl = "https://cdn.example.com/live/master.m3u8";
 preflightResultsByUrl = new Map([["https://cdn.example.com/live/master.m3u8", preflight]]);
 `, context);
+assert.match(context.resourceDecisionHtml(context.selectedResource(), context.currentPreflight()), /class="resource-decision ready"/);
+assert.match(context.resourceDecisionHtml(context.selectedResource(), context.currentPreflight()), /预检通过，可以直取到本地/);
+assert.match(context.resourceDecisionHtml(context.selectedResource(), context.currentPreflight()), /data-route-action="summarize"/);
+assert.match(context.resourceDecisionHtml(context.selectedResource(), context.currentPreflight()), /data-route-action="download"/);
 assert.equal(context.routeSummaryState(), "ready");
 assert.equal(context.currentStudyState(), "ready");
 assert.match(context.currentStudyActionText("ready"), /总结当前视频/);
@@ -1494,6 +1507,20 @@ preflight = null;
 preflightResourceUrl = "";
 preflightResultsByUrl = new Map();
 `, context);
+const blockedDecisionHtml = context.resourceDecisionHtml({
+  url: "blob:https://course.example.com/drm",
+  kind: "blob",
+  source: "dom"
+}, {
+  downloadable: false,
+  code: "drm_or_encrypted",
+  message: "<script>bad()</script> DRM"
+});
+assert.match(blockedDecisionHtml, /class="resource-decision blocked"/);
+assert.match(blockedDecisionHtml, /当前候选不可直取/);
+assert.match(blockedDecisionHtml, /data-route-action="local"/);
+assert.match(blockedDecisionHtml, /data-route-action="text"/);
+assert.doesNotMatch(blockedDecisionHtml, /<script>bad/);
 assert.equal(context.routeSummaryState(), "blocked");
 assert.match(context.routeSummaryCopy("blocked").action, /不会录制/);
 assert.match(context.routeSummaryActionsHtml("blocked"), /data-route-action="local"/);
