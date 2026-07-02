@@ -1,7 +1,7 @@
 const DEFAULT_BACKEND = "http://127.0.0.1:8765";
 const HAS_EXTENSION_API = typeof chrome !== "undefined" && Boolean(chrome.runtime?.sendMessage && chrome.storage?.local);
 const LOCAL_VIDEO_EXT_RE = /\.(mp4|m4v|mov|mkv|webm|flv|avi)$/i;
-const RESULT_TAB_NAMES = new Set(["note", "transcript", "frames", "diagnostics"]);
+const RESULT_TAB_NAMES = new Set(["note", "transcript", "slices", "frames", "diagnostics"]);
 const LOCAL_ASR_MODELS = new Set(["tiny", "base", "small", "medium", "large", "large-v2", "large-v3"]);
 const MODEL_PROVIDER_PRESETS = {
   openai: {
@@ -443,6 +443,10 @@ function workbenchUrl(taskId = currentTaskId, tabName = selectedTab) {
   if (!taskId) return backendUrl;
   const tab = RESULT_TAB_NAMES.has(tabName) ? tabName : "note";
   return `${backendUrl.replace(/\/$/, "")}/?task=${encodeURIComponent(taskId)}&tab=${encodeURIComponent(tab)}`;
+}
+
+function isVisualStudyResultTab(tabName) {
+  return tabName === "slices" || tabName === "frames";
 }
 
 function taskMediaPreviewUrl(task) {
@@ -4458,7 +4462,7 @@ function renderResult() {
     bindTaskOverviewActions();
     return;
   }
-  if (selectedTab === "frames") {
+  if (isVisualStudyResultTab(selectedTab)) {
     const windows = visualWindows(currentTask);
     if (!windows.length) {
       els.result.className = "result-body muted";

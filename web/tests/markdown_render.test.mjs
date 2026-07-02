@@ -216,6 +216,7 @@ assert.match(indexHtml, /id="visualWindowsButton"/);
 assert.match(indexHtml, /id="manifestButton"/);
 assert.match(indexHtml, /id="resultMoreActions"/);
 assert.match(indexHtml, /class="result-more-panel"/);
+assert.match(indexHtml, /data-tab="slices">学习切片/);
 assert.ok(
   indexHtml.indexOf('id="browserRouteSummary"') < indexHtml.indexOf('id="sourceWorkflow"'),
   "current-page route summary should appear before the workflow explainer"
@@ -251,7 +252,9 @@ assert.match(indexHtml, /accept="video\/\*,\.mp4,\.m4v,\.mov,\.mkv,\.webm,\.flv,
 context.window.location.search = "?task=task%20from%20url";
 assert.equal(context.taskIdFromCurrentUrl(), "task from url");
 context.window.location.search = "?result_tab=frames";
-assert.equal(context.resultTabFromCurrentUrl(), "frames");
+assert.equal(context.resultTabFromCurrentUrl(), "slices");
+context.window.location.search = "?result_tab=slices";
+assert.equal(context.resultTabFromCurrentUrl(), "slices");
 context.window.location.search = "?tab=unknown";
 assert.equal(context.resultTabFromCurrentUrl(), "note");
 context.window.location.search = "";
@@ -568,6 +571,52 @@ assert.match(visualDeckHtml, /data-media-seek-time="0\.000"/);
 assert.match(visualDeckHtml, /data-window-start="180\.000"/);
 assert.match(visualDeckHtml, />回看此段<\/button>/);
 assert.doesNotMatch(visualDeckHtml, /<script>bad/);
+
+const sliceWorkbenchHtml = context.learningSliceWorkbench({
+  id: "task-slice-workbench",
+  title: "<script>bad()</script> 切片课程",
+  media_path: "D:/Projects/learnnote-assistant/data/tasks/task-slice-workbench/media.mp4",
+  note_path: "D:/Projects/learnnote-assistant/data/tasks/task-slice-workbench/note.md",
+  visual_index_path: "D:/Projects/learnnote-assistant/data/tasks/task-slice-workbench/visual_windows.json",
+  summary_source: "vision-llm",
+  options: { grid_columns: 3, grid_rows: 3 },
+  visual_windows: [
+    {
+      id: "W001",
+      start: 0,
+      end: 180,
+      frame_count: 9,
+      grid_url: "http://127.0.0.1:8765/api/tasks/demo/grids/grid_000.jpg",
+      transcript_excerpt: "PPT 演示"
+    },
+    {
+      id: "W002",
+      start: 180,
+      end: 360,
+      frame_count: 9,
+      grid_url: "http://127.0.0.1:8765/api/tasks/demo/grids/grid_001.jpg",
+      transcript_excerpt: "代码演示"
+    }
+  ]
+}, {
+  segments: [
+    { start: 10, end: 18, text: "第一段讲概念" },
+    { start: 220, end: 230, text: "第二段讲例题" }
+  ]
+});
+assert.match(sliceWorkbenchHtml, /class="slice-workbench"/);
+assert.match(sliceWorkbenchHtml, /学习切片工作台/);
+assert.match(sliceWorkbenchHtml, /按视觉窗口把截图网格、同步字幕和回看动作组织在一起/);
+assert.match(sliceWorkbenchHtml, /<dt>窗口<\/dt><dd>2<\/dd>/);
+assert.match(sliceWorkbenchHtml, /<dt>画面<\/dt><dd>18<\/dd>/);
+assert.match(sliceWorkbenchHtml, /<dt>字幕<\/dt><dd>2<\/dd>/);
+assert.match(sliceWorkbenchHtml, /00:00:00 - 00:06:00/);
+assert.match(sliceWorkbenchHtml, /data-switch-result-tab="transcript"/);
+assert.match(sliceWorkbenchHtml, /\/api\/tasks\/task-slice-workbench\/exports\/visual-windows/);
+assert.match(sliceWorkbenchHtml, /\/api\/tasks\/task-slice-workbench\/exports\/bundle/);
+assert.match(sliceWorkbenchHtml, /class="visual-study-deck"/);
+assert.match(sliceWorkbenchHtml, /data-media-seek-time="0\.000"/);
+assert.doesNotMatch(sliceWorkbenchHtml, /<script>bad/);
 
 const visualDeckWithTranscriptHtml = context.visualStudyDeck({
   id: "task-visual-transcript",
@@ -1625,7 +1674,7 @@ await context.startUrlTask("video");
 assert.equal(posts.length, 1);
 assert.equal(context.window.history.replacedUrls.at(-1), "/?task=task-url-direct&tab=note");
 context.switchResultTab("frames");
-assert.equal(context.window.history.replacedUrls.at(-1), "/?task=task-url-direct&tab=frames");
+assert.equal(context.window.history.replacedUrls.at(-1), "/?task=task-url-direct&tab=slices");
 assert.equal(posts[0].mode, "video");
 assert.equal(posts[0].resources.length, 1);
 assert.equal(posts[0].resources[0].kind, "video");

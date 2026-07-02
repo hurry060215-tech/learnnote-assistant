@@ -4702,6 +4702,116 @@ button:disabled {
   -webkit-line-clamp: 3;
 }
 
+.slice-workbench {
+  display: grid;
+  gap: 14px;
+  max-width: 1120px;
+}
+
+.slice-brief {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px 18px;
+  align-items: center;
+  border: 1px solid #d6e3f3;
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(23, 105, 232, 0.08), rgba(15, 143, 97, 0.045) 54%, rgba(255, 255, 255, 0) 78%),
+    #ffffff;
+  padding: 15px 16px;
+}
+
+.slice-brief > div:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.slice-brief span {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.slice-brief strong {
+  color: var(--text);
+  font-size: 18px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.slice-brief small {
+  max-width: 760px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.slice-brief dl {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(68px, auto));
+  gap: 7px;
+  margin: 0;
+}
+
+.slice-brief dl div {
+  min-height: 50px;
+  display: grid;
+  align-content: center;
+  gap: 2px;
+  border: 1px solid #dbe7f6;
+  border-radius: 7px;
+  background: #f7faff;
+  padding: 7px 9px;
+}
+
+.slice-brief dt,
+.slice-brief dd {
+  margin: 0;
+}
+
+.slice-brief dt {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.slice-brief dd {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.slice-brief nav {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.slice-brief nav a,
+.slice-brief nav button {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #b8d3ff;
+  border-radius: 7px;
+  background: #f2f7ff;
+  color: var(--accent);
+  padding: 0 11px;
+  font-size: 12px;
+  font-weight: 850;
+  text-decoration: none;
+}
+
+.slice-brief nav a:hover,
+.slice-brief nav button:hover {
+  border-color: var(--accent);
+  background: #eaf2ff;
+}
+
 .visual-study-deck {
   display: grid;
   gap: 14px;
@@ -6824,6 +6934,14 @@ body {
 
   .media-preview-card {
     grid-template-columns: 1fr;
+  }
+
+  .slice-brief {
+    grid-template-columns: 1fr;
+  }
+
+  .slice-brief dl {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

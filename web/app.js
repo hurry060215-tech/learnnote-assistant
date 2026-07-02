@@ -30,7 +30,7 @@ let API = resolveApiBase();
 const MEDIA_RE = /\.(mp4|m4v|webm|mov|mkv|flv|avi)(\?|#|$)/i;
 const HLS_RE = /\.(m3u8|mpd)(\?|#|$)/i;
 const LOCAL_VIDEO_EXT_RE = /\.(mp4|m4v|mov|mkv|webm|flv|avi)$/i;
-const RESULT_TAB_NAMES = new Set(["note", "transcript", "frames", "diagnostics"]);
+const RESULT_TAB_NAMES = new Set(["note", "transcript", "slices", "frames", "diagnostics"]);
 const LOCAL_ASR_MODELS = new Set(["tiny", "base", "small", "medium", "large", "large-v2", "large-v3"]);
 const MODEL_PROVIDER_PRESETS = {
   openai: {
@@ -201,6 +201,12 @@ function taskIdFromCurrentUrl() {
 
 function resultTabFromCurrentUrl() {
   const tab = currentUrlParam(["tab", "result_tab"]);
+  return normalizeResultTabName(tab);
+}
+
+function normalizeResultTabName(tabName) {
+  const tab = String(tabName || "").trim();
+  if (tab === "frames") return "slices";
   return RESULT_TAB_NAMES.has(tab) ? tab : "note";
 }
 
@@ -1667,7 +1673,7 @@ function setReadingMode(enabled, persist = true) {
 }
 
 function renderResultTabState() {
-  els.resultTabs.forEach(item => item.classList.toggle("active", item.dataset.tab === selectedTab));
+  els.resultTabs.forEach(item => item.classList.toggle("active", normalizeResultTabName(item.dataset.tab) === selectedTab));
 }
 
 function hasExplicitTaskRoute() {
@@ -2842,8 +2848,9 @@ function bindTaskOverviewActions() {
 }
 
 function switchResultTab(tabName) {
-  if (!RESULT_TAB_NAMES.has(tabName) || selectedTab === tabName) return;
-  selectedTab = tabName;
+  const normalizedTab = normalizeResultTabName(tabName);
+  if (!RESULT_TAB_NAMES.has(normalizedTab) || selectedTab === normalizedTab) return;
+  selectedTab = normalizedTab;
   renderResultTabState();
   syncSelectedTaskUrl(selectedTaskId);
   renderDetail();
@@ -3339,6 +3346,37 @@ function visualStudyDeck(task, transcript = null) {
   </section>`;
 }
 
+function learningSliceWorkbench(task, transcript = null) {
+  const windows = visualWindows(task);
+  if (!windows.length) return "";
+  const matchedCueCount = (transcript?.segments || []).filter(segment => windows.some(window => segmentOverlapsWindow(segment, window))).length;
+  const totalFrames = windows.reduce((sum, window) => sum + Number(window.frame_count || 0), 0);
+  const firstWindow = windows[0];
+  const lastWindow = windows[windows.length - 1];
+  const range = firstWindow && lastWindow ? `${fmt(firstWindow.start)} - ${fmt(lastWindow.end)}` : "等待切片";
+  return `<div class="slice-workbench" aria-label="学习切片工作台">
+    <section class="slice-brief">
+      <div>
+        <span>学习切片</span>
+        <strong>${escapeHtml(task.title || task.id || "视频学习切片")}</strong>
+        <small>按视觉窗口把截图网格、同步字幕和回看动作组织在一起，适合复习 PPT、板书、代码演示和界面操作。</small>
+      </div>
+      <dl>
+        <div><dt>窗口</dt><dd>${windows.length}</dd></div>
+        <div><dt>画面</dt><dd>${totalFrames || "-"}</dd></div>
+        <div><dt>字幕</dt><dd>${matchedCueCount || "-"}</dd></div>
+        <div><dt>范围</dt><dd>${escapeHtml(range)}</dd></div>
+      </dl>
+      <nav>
+        ${transcript?.segments?.length ? `<button type="button" data-switch-result-tab="transcript">核对字幕</button>` : ""}
+        <a href="${escapeHtml(taskExportUrl(task, "visual-windows"))}">导出切片索引</a>
+        ${hasTaskBundle(task) ? `<a href="${escapeHtml(taskExportUrl(task, "bundle"))}">导出资料包</a>` : ""}
+      </nav>
+    </section>
+    ${visualStudyDeck(task, transcript)}
+  </div>`;
+}
+
 function emptyResultWorkbench() {
   return `
     <section class="empty-workbench" aria-label="学习工作区起始页">
@@ -3541,7 +3579,7 @@ async function renderDetail() {
     return;
   }
 
-  if (selectedTab === "frames") {
+  if (selectedTab === "slices" || selectedTab === "frames") {
     const windows = visualWindows(task);
     if (!windows.length) {
       els.detail.className = "detail empty";
@@ -3549,7 +3587,7 @@ async function renderDetail() {
       return;
     }
     const transcript = await transcriptForTask(task);
-    els.detail.innerHTML = `${mediaSeekDockHtml(task)}${visionEvidenceBar(task)}${visualStudyDeck(task, transcript)}`;
+    els.detail.innerHTML = `${mediaSeekDockHtml(task)}${visionEvidenceBar(task)}${learningSliceWorkbench(task, transcript)}`;
     bindTaskOverviewActions();
     return;
   }
