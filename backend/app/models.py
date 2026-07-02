@@ -26,6 +26,7 @@ class ResourceCandidate(BaseModel):
     mime: str = ""
     score: int = 0
     label: str = ""
+    user_selected: bool = False
     is_main_video: bool = False
     playback_match: str = ""
     blob_url: str = ""

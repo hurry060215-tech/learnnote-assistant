@@ -132,6 +132,7 @@ assert.equal(calls.preflight, 1);
 assert.equal(calls.start.mode, "download_only");
 assert.equal(calls.start.resources.length, 1);
 assert.equal(calls.start.resources[0].url, resources[0].url);
+assert.equal(calls.start.resources[0].user_selected, true);
 assert.equal(elements.get("#downloadOnlyButton").disabled, false);
 assert.equal(context.canContinueFromDownloadedMedia({
   id: "download-only-task",

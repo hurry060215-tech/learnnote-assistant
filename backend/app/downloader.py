@@ -1230,9 +1230,10 @@ def should_guess_sibling_manifest_with_blob_boundary(candidate: ResourceCandidat
     return bool(candidate.is_main_video and source_rank(candidate.source or "") >= source_rank("webRequest"))
 
 
-def candidate_rank_key(candidate: ResourceCandidate, order: int = 0) -> tuple[int, int, int, int, int, int, int, float, int, int]:
+def candidate_rank_key(candidate: ResourceCandidate, order: int = 0) -> tuple[int, int, int, int, int, int, int, int, float, int, int]:
     kind = effective_resource_kind(candidate)
     return (
+        1 if candidate.user_selected else 0,
         1 if candidate.is_main_video else 0,
         0 if candidate.source == "manifest-guess" else 1,
         playback_match_rank(candidate.playback_match or ""),

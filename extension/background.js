@@ -291,6 +291,7 @@ function playbackMatchRank(match = "") {
 
 function compareResourceCandidates(a = {}, b = {}) {
   const left = [
+    a.user_selected ? 1 : 0,
     a.is_main_video ? 1 : 0,
     playbackMatchRank(a.playback_match),
     isDownloadableKind(a.kind) ? 1 : 0,
@@ -301,6 +302,7 @@ function compareResourceCandidates(a = {}, b = {}) {
     Number(a.content_length || 0)
   ];
   const right = [
+    b.user_selected ? 1 : 0,
     b.is_main_video ? 1 : 0,
     playbackMatchRank(b.playback_match),
     isDownloadableKind(b.kind) ? 1 : 0,
@@ -474,6 +476,7 @@ function mergeResource(previous, incoming) {
   if (!previous) return incoming;
   const merged = { ...previous, ...incoming };
   merged.score = Math.max(previous.score || 0, incoming.score || 0);
+  merged.user_selected = Boolean(previous.user_selected || incoming.user_selected);
   merged.is_main_video = Boolean(previous.is_main_video || incoming.is_main_video);
   merged.playback_match = previous.playback_match || incoming.playback_match || "";
   merged.blob_url = incoming.blob_url || previous.blob_url || "";
@@ -886,6 +889,7 @@ function addResource(tabId, resource, notify = true) {
       ? Math.min(72, Math.max(0, Number(resource.score || 0)))
       : Math.max(resource.score || 0, scoreKind(resource.url, resource.source || "", resource.kind || classify(resource.url, resource.mime || ""))),
     label: resource.label || "",
+    user_selected: Boolean(resource.user_selected),
     is_main_video: Boolean(resource.is_main_video),
     playback_match: resource.playback_match || "",
     blob_url: resource.blob_url || "",
@@ -917,6 +921,7 @@ function addResource(tabId, resource, notify = true) {
   if (existing) {
     Object.assign(existing, normalized, {
       score: Math.max(existing.score || 0, normalized.score),
+      user_selected: Boolean(existing.user_selected || normalized.user_selected),
       is_main_video: Boolean(existing.is_main_video || normalized.is_main_video),
       playback_match: existing.playback_match || normalized.playback_match || "",
       blob_url: normalized.blob_url || existing.blob_url || "",

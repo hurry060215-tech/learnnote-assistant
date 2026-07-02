@@ -1463,6 +1463,37 @@ class DownloaderBoundaryTests(unittest.TestCase):
             self.assertEqual(candidates[0].url, "https://cdn.example.com/lesson.m3u8")
             self.assertEqual(candidates[0].playback_match, "same-frame")
 
+    def test_user_selected_candidate_overrides_backend_rank(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            downloader = MediaDownloader(Path(tmp))
+            resources = [
+                ResourceCandidate(
+                    url="https://cdn.example.com/live/master.m3u8",
+                    source="webRequest",
+                    kind="hls",
+                    mime="application/vnd.apple.mpegurl",
+                    score=100,
+                    playback_match="manifest-near-playhead",
+                    is_main_video=True,
+                ),
+                ResourceCandidate(
+                    url="https://cdn.example.com/manual-choice.mp4",
+                    source="webRequest",
+                    kind="video",
+                    mime="video/mp4",
+                    score=72,
+                    user_selected=True,
+                    status_code=200,
+                    request_headers={"Referer": "https://course.example.com/lesson"},
+                ),
+            ]
+
+            candidates = downloader._candidate_resources(resources)
+
+            self.assertEqual(candidates[0].url, "https://cdn.example.com/manual-choice.mp4")
+            self.assertTrue(candidates[0].user_selected)
+            self.assertEqual(candidates[0].request_headers["Referer"], "https://course.example.com/lesson")
+
     def test_manifest_near_playhead_wins_tied_backend_rank(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             downloader = MediaDownloader(Path(tmp))

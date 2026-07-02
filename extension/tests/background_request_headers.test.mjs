@@ -403,6 +403,7 @@ const preservedResources = context.mergeAndRankResources(
       source: "webRequest",
       kind: "video",
       score: 100,
+      user_selected: true,
       time_stamp: Date.now() - 1000
     },
     {
@@ -429,6 +430,7 @@ const preservedResources = context.mergeAndRankResources(
 );
 
 assert.equal(preservedResources[0].url, "https://cdn.example.com/manual.mp4");
+assert.equal(preservedResources[0].user_selected, true);
 assert.equal(preservedResources[1].playback_match, "manifest-near-playhead");
 
 context.addResource(502, {

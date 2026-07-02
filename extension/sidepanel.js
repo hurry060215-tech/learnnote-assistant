@@ -2785,6 +2785,16 @@ function selectedResources() {
   return selected ? [selected, ...rest] : resources;
 }
 
+function selectedResourcesForTask() {
+  const selected = resources.find(item => item.url === selectedResourceUrl);
+  if (!selected) return resources.map(item => ({ ...item, user_selected: false }));
+  const rest = resources.filter(item => item.url !== selectedResourceUrl);
+  return [
+    { ...selected, user_selected: true },
+    ...rest.map(item => ({ ...item, user_selected: false }))
+  ];
+}
+
 function preflightCandidatesForStart(mode = "video") {
   if (!isMediaTaskMode(mode)) return [];
   const ordered = selectedResources().filter(item => shouldPreflightBeforeStart(mode, item));
@@ -2951,7 +2961,7 @@ async function startTask(mode = "video") {
       backendUrl,
       targetTabId: currentTabId,
       page,
-      resources: isMediaTaskMode(mode) ? selectedResources() : [],
+      resources: isMediaTaskMode(mode) ? selectedResourcesForTask() : [],
       mode,
       options: readOptions()
     });
