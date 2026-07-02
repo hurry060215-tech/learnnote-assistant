@@ -18,7 +18,7 @@ from fastapi.testclient import TestClient
 
 from app.config import DATA_DIR
 from app.downloader import DownloadError
-from app.main import app, diagnostic_recovery_profile, local_upload_filename, render_bundle_manifest, render_diagnostics_markdown, render_visual_windows_markdown
+from app.main import app, diagnostic_recovery_profile, local_upload_filename, render_bundle_manifest, render_diagnostics_markdown, render_task_audit_markdown, render_visual_windows_markdown
 from app.models import DownloadAttempt, ResourceCandidate, TranscriptResult, TranscriptSegment, VisualWindow
 from app.runtime import ffmpeg_bin
 from app.storage import create_task, task_dir, update_task
@@ -212,6 +212,16 @@ class LocalUploadValidationTests(unittest.TestCase):
             self.assertIn("Media available: no", diagnostics.text)
             self.assertIn("Rerun from media ready: no", diagnostics.text)
             self.assertIn("Media landed: no", diagnostics.text)
+            audit = self.client.get(f"/api/tasks/{task.id}/exports/audit")
+            self.assertEqual(audit.status_code, 200)
+            self.assertIn("# LearnNote 任务审计报告", audit.text)
+            self.assertIn("媒体存在：no", audit.text)
+            bundle = self.client.get(f"/api/tasks/{task.id}/exports/bundle")
+            self.assertEqual(bundle.status_code, 200)
+            with zipfile.ZipFile(io.BytesIO(bundle.content)) as archive:
+                self.assertIn("audit.md", archive.namelist())
+                self.assertIn("diagnostics.md", archive.namelist())
+                self.assertIn("LearnNote 任务审计报告", archive.read("audit.md").decode("utf-8"))
             self.assertEqual(self.client.get(f"/api/tasks/{task.id}/exports/media").status_code, 404)
             self.assertEqual(self.client.post(f"/api/tasks/{task.id}/rerun-from-media", json={"frame_interval": 1}).status_code, 404)
         finally:
@@ -463,6 +473,7 @@ class LocalUploadValidationTests(unittest.TestCase):
             self.assertEqual(manifest["source"]["selected_resource"]["response_header_names"], ["content-type", "set-cookie"])
             self.assertEqual(manifest["transcript"]["segment_count"], 1)
             self.assertIn("audit", manifest)
+            self.assertEqual(manifest["artifacts"]["audit"], "audit.md")
             self.assertIn("recovery", manifest)
             self.assertEqual(manifest["recovery"]["selected_kind"], "video")
             self.assertEqual(manifest["recovery"]["attempt_count"], 1)
@@ -474,6 +485,15 @@ class LocalUploadValidationTests(unittest.TestCase):
             diagnostics = render_diagnostics_markdown(task)
             self.assertIn("user selected yes", diagnostics)
             self.assertIn("cookie domains 2 / cookies 3", diagnostics)
+            audit = render_task_audit_markdown(task)
+            self.assertIn("# LearnNote 任务审计报告", audit)
+            self.assertIn("不录制标签页：yes", audit)
+            self.assertIn("安全请求头名：Referer", audit)
+            self.assertIn("Cookie 域：2", audit)
+            self.assertNotIn("session=secret", audit)
+            self.assertNotIn("Bearer secret", audit)
+            self.assertNotIn("Authorization", audit)
+            self.assertNotIn("secret=value", audit)
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 

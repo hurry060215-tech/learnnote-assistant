@@ -157,7 +157,8 @@ const sidepanelCss = await readFile(new URL("../sidepanel.css", import.meta.url)
 vm.runInContext(sidepanelCode, context);
 
 await new Promise(resolve => setTimeout(resolve, 0));
-assert.match(sidepanelHtml, /sidepanel\.css\?v=20260630-bilinote-polish-2/);
+assert.match(sidepanelHtml, /sidepanel\.css\?v=20260702-audit-export/);
+assert.match(sidepanelHtml, /sidepanel\.js\?v=20260702-audit-export/);
 assert.match(sidepanelHtml, /class="capture-cockpit"/);
 assert.match(sidepanelHtml, /当前页直取生产线/);
 assert.match(sidepanelHtml, /浏览器读取/);

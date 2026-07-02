@@ -140,6 +140,12 @@ def diagnostics_filename(task_id: str, title: str) -> str:
     return f"{stem}-diagnostics.md"
 
 
+def audit_filename(task_id: str, title: str) -> str:
+    stem = _FILENAME_RESERVED_RE.sub("_", title or "").strip(" ._")
+    stem = stem[:120] or f"learnnote-{task_id}"
+    return f"{stem}-audit.md"
+
+
 def visual_windows_filename(task_id: str, title: str) -> str:
     stem = _FILENAME_RESERVED_RE.sub("_", title or "").strip(" ._")
     stem = stem[:120] or f"learnnote-{task_id}"
@@ -521,6 +527,100 @@ def render_visual_windows_markdown(task: TaskRecord) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _audit_report_text(value: object) -> str:
+    text = str(value or "-")
+    text = text.replace("Authorization", "鉴权类敏感请求头")
+    return text
+
+
+def render_task_audit_markdown(task: TaskRecord) -> str:
+    audit = task_audit_summary(task)
+    direct = direct_extraction_evidence(task)
+    reuse = task_reuse_evidence(task)
+    recovery = diagnostic_recovery_profile(task)
+    selected = direct.get("selected_candidate") or {}
+    browser = direct.get("browser_context") or {}
+    download = direct.get("download") or {}
+    processing = direct.get("processing") or {}
+    safe_headers = selected.get("safe_request_header_names") or []
+    gates = audit.get("gates") or []
+    lines = [
+        "# LearnNote 任务审计报告",
+        "",
+        "## 任务",
+        f"- ID：{task.id}",
+        f"- 标题：{task.title or '-'}",
+        f"- 来源：{task.source_type or '-'} / {task.mode or '-'}",
+        f"- 页面：{task.page_url or '-'}",
+        f"- 状态：{task.status} / {task.phase} / {task.progress or 0}%",
+        f"- 错误：{task.error_code or '-'} / {task.error_detail or '-'}",
+        "",
+        "## 直取边界",
+        f"- 不录制标签页：{'yes' if direct.get('no_tab_recording') else 'no'}",
+        f"- 不绕过 DRM：{'yes' if direct.get('no_drm_bypass') else 'no'}",
+        f"- 路线：{direct.get('route') or '-'}",
+        f"- 边界：{direct.get('boundary') or '-'}",
+        f"- 媒体落地：{'yes' if direct.get('media_landed') else 'no'}",
+        f"- 媒体可复用：{'yes' if direct.get('media_reusable') else 'no'}",
+        "",
+        "## 浏览器证据",
+        f"- 候选：{selected.get('kind') or '-'} / {selected.get('source') or '-'} / {selected.get('playback_match') or '-'}",
+        f"- 用户选择：{'yes' if selected.get('user_selected') else 'no'}",
+        f"- 安全请求头名：{', '.join(safe_headers) if safe_headers else '-'}",
+        f"- 播放源：{browser.get('active_source_type') or '-'}",
+        f"- 浏览器字幕：{browser.get('browser_subtitle_count') or 0} 条",
+        f"- Cookie 域：{browser.get('cookie_domain_count') or 0}",
+        "",
+        "## 下载与处理",
+        f"- 下载尝试：成功 {download.get('successful_attempt_count') or 0} / 失败 {download.get('failed_attempt_count') or 0}",
+        f"- 策略顺序：{', '.join(download.get('strategy_order') or []) or '-'}",
+        f"- 转写：{'yes' if processing.get('transcript_ready') else 'no'}",
+        f"- 画面网格：{processing.get('frame_grid_count') or 0}",
+        f"- 视觉窗口：{processing.get('visual_window_count') or 0}",
+        f"- 笔记：{'yes' if processing.get('note_ready') else 'no'}",
+        "",
+        "## 阶段审计门",
+        f"- 放行：{audit.get('released_count', 0)}/{audit.get('gate_count', len(gates))}",
+        f"- 阻塞阶段：{audit.get('blocked_gate') or '-'}",
+    ]
+    for gate in gates:
+        lines.append(
+            "- "
+            f"{_audit_report_text(gate.get('label') or gate.get('key'))}: "
+            f"{_audit_report_text(gate.get('state'))} / "
+            f"{_audit_report_text(gate.get('value'))} / "
+            f"{_audit_report_text(gate.get('detail'))}"
+        )
+
+    lines.extend([
+        "",
+        "## 复用证据",
+        f"- 媒体存在：{'yes' if reuse.get('media_available') else 'no'}",
+        f"- 媒体路径记录：{reuse.get('media_path_recorded') or '-'}",
+        f"- 来源任务：{reuse.get('source_task_id') or '-'}",
+        f"- 来源媒体：{reuse.get('source_media_path') or '-'}",
+        f"- 浏览器字幕跨度：{reuse.get('browser_subtitle_span_seconds') or 0}s",
+        f"- 可从媒体继续：{'yes' if reuse.get('rerun_from_media_ready') else 'no'}",
+        f"- 建议下一步：{reuse.get('suggested_next_step') or '-'}",
+        "",
+        "## 恢复建议",
+        f"- 判断：{recovery.get('diagnosis') or '-'}",
+        f"- 推荐动作：{recovery.get('next_action') or '-'}",
+    ])
+    for step in recovery.get("steps", []):
+        lines.append(f"- {_audit_report_text(step)}")
+
+    lines.extend([
+        "",
+        "## 敏感信息处理",
+        "- 本报告不包含 Cookie 值。",
+        "- 鉴权类敏感请求头不会写入审计报告。",
+        "- 当前页直取失败时，本工具不会改用标签页录制、破解 DRM 或伪造学习进度。",
+        "",
+    ])
+    return "\n".join(lines)
+
+
 def render_bundle_manifest(task: TaskRecord, transcript: dict, visual_index: dict) -> dict:
     selected = task.selected_resource
     append_evidence = mse_append_evidence(selected)
@@ -622,6 +722,7 @@ def render_bundle_manifest(task: TaskRecord, transcript: dict, visual_index: dic
         "artifacts": {
             "note": "note.md" if task.note_path else "",
             "subtitles": f"subtitles/{Path(task.subtitle_path).name}" if task.subtitle_path else "",
+            "audit": "audit.md",
             "diagnostics": "diagnostics.md",
             "visual_windows": "visual_windows.md" if task.visual_windows or task.frame_grids else "",
             "task": "task.json",
@@ -1502,6 +1603,7 @@ def api_export_bundle(task_id: str) -> Response:
         raise HTTPException(status_code=404, detail="Task not found") from exc
 
     diagnostics = render_diagnostics_markdown(task)
+    audit_report = render_task_audit_markdown(task)
     visual_windows = render_visual_windows_markdown(task)
     manifest = render_bundle_manifest(task, transcript, visual_index)
     has_artifact = bool(
@@ -1520,6 +1622,7 @@ def api_export_bundle(task_id: str) -> Response:
     buffer = BytesIO()
     with ZipFile(buffer, "w", ZIP_DEFLATED) as archive:
         archive.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
+        archive.writestr("audit.md", audit_report)
         archive.writestr("diagnostics.md", diagnostics)
         archive.writestr("visual_windows.md", visual_windows)
         if note.strip():
@@ -1558,6 +1661,25 @@ def api_export_diagnostics(task_id: str) -> PlainTextResponse:
     headers = {
         "Content-Disposition": (
             f'attachment; filename="learnnote-{task.id}-diagnostics.md"; '
+            f"filename*=UTF-8''{quote(filename)}"
+        )
+    }
+    return PlainTextResponse(report, media_type="text/markdown; charset=utf-8", headers=headers)
+
+
+@app.get("/api/tasks/{task_id}/exports/audit")
+def api_export_audit(task_id: str) -> PlainTextResponse:
+    try:
+        task = get_task(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Task not found") from exc
+    report = render_task_audit_markdown(task)
+    if not report.strip():
+        raise HTTPException(status_code=404, detail="Audit report not found")
+    filename = audit_filename(task.id, task.title)
+    headers = {
+        "Content-Disposition": (
+            f'attachment; filename="learnnote-{task.id}-audit.md"; '
             f"filename*=UTF-8''{quote(filename)}"
         )
     }

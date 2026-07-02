@@ -692,6 +692,9 @@ function browserRouteActions(task) {
   if (task?.media_path) {
     actions.push(`<a href="${escapeHtml(taskExportUrl(task, "media"))}">导出本地视频</a>`);
   }
+  if (hasTaskAudit(task)) {
+    actions.push(`<a href="${escapeHtml(taskExportUrl(task, "audit"))}">下载审计</a>`);
+  }
   if (hasTaskDiagnostics(task)) {
     actions.push(`<a href="${escapeHtml(taskExportUrl(task, "diagnostics"))}">下载诊断</a>`);
   }
@@ -1140,6 +1143,9 @@ function recoveryActionsHtml(task) {
   ];
   if (hasTaskDiagnostics(task)) {
     actions.push(`<a href="${escapeHtml(taskExportUrl(task, "diagnostics"))}">导出诊断</a>`);
+  }
+  if (hasTaskAudit(task)) {
+    actions.push(`<a href="${escapeHtml(taskExportUrl(task, "audit"))}">导出审计</a>`);
   }
   if (canContinueFromDownloadedMedia(task)) {
     actions.push(`<button type="button" data-rerun-from-media="${escapeHtml(task.id)}">继续切片总结</button>`);
@@ -1990,6 +1996,10 @@ function hasTaskDiagnostics(task) {
   );
 }
 
+function hasTaskAudit(task) {
+  return Boolean(task?.id && (hasTaskBundle(task) || hasTaskDiagnostics(task) || task.source_type || task.status));
+}
+
 function canContinueFromDownloadedMedia(task) {
   const finished = task?.status === "success" || task?.status === "failed";
   return Boolean(task?.id && finished && task.media_path && !task.note_path);
@@ -2625,6 +2635,7 @@ function taskOverview(task) {
     canContinueMedia ? `<button type="button" data-rerun-from-media="${escapeHtml(task.id)}">生成完整笔记</button>` : "",
     hasNote ? `<a href="${escapeHtml(taskExportUrl(task, "markdown"))}">导出 Markdown</a>` : "",
     hasMedia ? `<a href="${escapeHtml(taskExportUrl(task, "media"))}">导出本地视频</a>` : "",
+    hasTaskAudit(task) ? `<a href="${escapeHtml(taskExportUrl(task, "audit"))}">导出审计</a>` : "",
     hasTaskDiagnostics(task) ? `<a href="${escapeHtml(taskExportUrl(task, "diagnostics"))}">导出诊断</a>` : "",
     hasBundle ? `<a href="${escapeHtml(taskExportUrl(task, "manifest"))}">导出清单</a>` : "",
     hasBundle ? `<a href="${escapeHtml(taskExportUrl(task, "bundle"))}">导出资料包</a>` : ""
@@ -3076,6 +3087,7 @@ function readingArtifactsRail(task) {
     task.subtitle_path ? `<a href="${escapeHtml(taskExportUrl(task, "subtitles"))}">字幕文件</a>` : "",
     task.media_path ? `<a href="${escapeHtml(taskExportUrl(task, "media"))}">media.mp4</a>` : "",
     hasVisualWindowExport(task) ? `<a href="${escapeHtml(taskExportUrl(task, "visual-windows"))}">切片索引</a>` : "",
+    hasTaskAudit(task) ? `<a href="${escapeHtml(taskExportUrl(task, "audit"))}">审计</a>` : "",
     hasTaskDiagnostics(task) ? `<a href="${escapeHtml(taskExportUrl(task, "diagnostics"))}">诊断</a>` : "",
     hasTaskBundle(task) ? `<a href="${escapeHtml(taskExportUrl(task, "manifest"))}">清单</a>` : "",
     hasTaskBundle(task) ? `<a href="${escapeHtml(taskExportUrl(task, "bundle"))}">资料包</a>` : ""

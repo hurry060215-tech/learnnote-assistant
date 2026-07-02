@@ -1173,6 +1173,9 @@ function recoveryActionsHtml(task) {
   if (hasTaskDiagnostics(task)) {
     actions.push(`<button type="button" data-export="diagnostics">导出诊断</button>`);
   }
+  if (hasTaskAudit(task)) {
+    actions.push(`<button type="button" data-export="audit">导出审计</button>`);
+  }
   if (canContinueFromDownloadedMedia(task)) {
     actions.push(`<button type="button" data-rerun-from-media="${escapeHtml(task.id)}">继续切片总结</button>`);
   }
@@ -3294,6 +3297,10 @@ function hasTaskDiagnostics(task) {
   );
 }
 
+function hasTaskAudit(task) {
+  return Boolean(task?.id && (hasTaskBundle(task) || hasTaskDiagnostics(task) || task.source_type || task.status));
+}
+
 function hasVisualWindowExport(task) {
   return Boolean(task?.visual_windows?.length || task?.frame_grids?.length);
 }
@@ -3991,6 +3998,7 @@ function taskOverview(task) {
     `<button type="button" data-open-workbench="${escapeHtml(task.id)}">Web 工作台</button>`,
     hasNote ? `<button type="button" data-export="markdown">Markdown</button>` : "",
     hasMedia ? `<button type="button" data-export="media">本地视频</button>` : "",
+    hasTaskAudit(task) ? `<button type="button" data-export="audit">审计</button>` : "",
     hasTaskDiagnostics(task) ? `<button type="button" data-export="diagnostics">诊断</button>` : "",
     hasBundle ? `<button type="button" data-export="manifest">清单</button>` : "",
     hasBundle ? `<button type="button" data-export="bundle">资料包</button>` : ""

@@ -880,10 +880,12 @@ const taskOverviewHtml = context.taskOverview({
 
 assert.match(taskOverviewHtml, /class="task-overview status-success"/);
 assert.match(taskOverviewHtml, /导出本地视频/);
+assert.match(taskOverviewHtml, /导出审计/);
 assert.match(taskOverviewHtml, /导出资料包/);
 assert.match(taskOverviewHtml, /生成完整笔记/);
 assert.match(taskOverviewHtml, /data-rerun-from-media="task-web-overview"/);
 assert.match(taskOverviewHtml, /\/api\/tasks\/task-web-overview\/exports\/media/);
+assert.match(taskOverviewHtml, /\/api\/tasks\/task-web-overview\/exports\/audit/);
 assert.match(taskOverviewHtml, /\/api\/tasks\/task-web-overview\/exports\/diagnostics/);
 assert.match(taskOverviewHtml, /\/api\/tasks\/task-web-overview\/exports\/bundle/);
 assert.match(taskOverviewHtml, /\/api\/tasks\/task-web-overview\/exports\/manifest/);
@@ -1045,6 +1047,7 @@ assert.doesNotMatch(diagnosticRecoveryHtml, /secret=bad/);
 assert.match(diagnosticRecoveryHtml, /继续切片总结/);
 assert.match(diagnosticRecoveryHtml, /data-rerun-from-media="task-recovery"/);
 assert.match(diagnosticRecoveryHtml, /\/api\/tasks\/task-recovery\/exports\/diagnostics/);
+assert.match(diagnosticRecoveryHtml, /\/api\/tasks\/task-recovery\/exports\/audit/);
 assert.match(diagnosticRecoveryHtml, /data-recovery-source="local"/);
 assert.doesNotMatch(diagnosticRecoveryHtml, /<script>bad/);
 assert.equal(context.hasTaskBundle({ media_path: "D:/media.mp4" }), true);
@@ -1054,6 +1057,8 @@ assert.equal(context.hasTaskBundle({}), false);
 assert.equal(context.hasTaskDiagnostics({ selected_resource: { kind: "video" } }), true);
 assert.equal(context.hasTaskDiagnostics({ summary_diagnostics_path: "summary.json" }), true);
 assert.equal(context.hasTaskDiagnostics({}), false);
+assert.equal(context.hasTaskAudit({ id: "audit-task", source_type: "current_page" }), true);
+assert.equal(context.hasTaskAudit({}), false);
 assert.equal(context.canContinueFromDownloadedMedia({
   id: "task-downloaded",
   status: "success",

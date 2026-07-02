@@ -13,7 +13,8 @@ This project intentionally does **not** record the browser tab and does **not** 
 - Transcript timeline view aligns each subtitle segment with its frame-grid visual window, so notes can be reviewed by time slice instead of as a flat transcript.
 - Web UI subtitle timestamps and visual-window checkpoints can seek the local `media.mp4` preview for time-anchored review.
 - Markdown note export from both the local Web UI and the browser Side Panel.
-- Study bundle export from both UIs: Markdown note, task metadata, transcript JSON, visual-window index, frame-grid screenshots, and a redacted machine-readable `manifest.json` in one zip.
+- Task audit export from both UIs: a Markdown report of the direct-extraction route, stage gates, reuse readiness, recovery recommendation, and privacy boundary.
+- Study bundle export from both UIs: Markdown note, `audit.md`, diagnostics, task metadata, transcript JSON, visual-window index, frame-grid screenshots, and a redacted machine-readable `manifest.json` in one zip.
 - Standalone manifest export from both UIs for the current task route, audit gates, media evidence, transcript/visual-window counts, and artifact list.
 - Current-page media detection from DOM, all-frame content scripts, Performance entries, and `webRequest`.
 - `webRequest` captures media candidates as soon as response headers arrive, so long-running video/range streams do not have to finish before they can be selected.
@@ -80,6 +81,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - Transcript priority: browser/player subtitle cues first, page or yt-dlp platform subtitle second, embedded text subtitle third, then selected ASR engine fallback.
 - Configurable slicing: frame interval, grid layout, ASR model, and note style.
 - Web UI and Side Panel diagnostic tabs show the selected resource, browser evidence, and every backend download attempt.
+- Web UI and Side Panel task actions can export `audit.md` separately, and the zip bundle includes the same report so direct extraction evidence remains portable.
 - Side Panel direct-extraction console shows whether the selected candidate is a downloadable file, HLS/DASH manifest, subtitle, blob clue, or fragment clue, plus reused request-header names and request evidence.
 - Side Panel has an explicit direct-extraction preflight button: it syncs cookies only when clicked and asks the local backend to verify whether the selected candidate is actually reachable before starting the full task.
 - Side Panel also runs that reachability preflight automatically before `总结当前视频`; if every direct candidate fails but the current page has a normal HTTP(S) URL, it still creates the task so backend page scanning, iframe fallback, and yt-dlp can continue. Pages with no usable page fallback keep the local upload fallback visible.
