@@ -497,6 +497,9 @@ assert.doesNotMatch(visualDeckHtml, /src="javascript:alert/);
 assert.match(visualDeckHtml, /&lt;script&gt;alert\(1\)&lt;\/script&gt; 画面摘要/);
 assert.match(visualDeckHtml, /data-switch-result-tab="transcript"/);
 assert.match(visualDeckHtml, /data-switch-result-tab="note"/);
+assert.match(visualDeckHtml, /data-media-seek-time="0\.000"/);
+assert.match(visualDeckHtml, /data-window-start="180\.000"/);
+assert.match(visualDeckHtml, />回看此段<\/button>/);
 assert.doesNotMatch(visualDeckHtml, /<script>bad/);
 
 const visualDeckWithTranscriptHtml = context.visualStudyDeck({
@@ -524,6 +527,8 @@ const visualDeckWithTranscriptHtml = context.visualStudyDeck({
 assert.match(visualDeckWithTranscriptHtml, /1 窗口 · 2 段字幕已同步/);
 assert.match(visualDeckWithTranscriptHtml, /class="side-visual-study-cues"/);
 assert.match(visualDeckWithTranscriptHtml, /00:00:12/);
+assert.match(visualDeckWithTranscriptHtml, /data-media-seek-time="12\.000"/);
+assert.match(visualDeckWithTranscriptHtml, /data-media-seek-time="45\.000"/);
 assert.match(visualDeckWithTranscriptHtml, /老师讲解概念定义/);
 assert.match(visualDeckWithTranscriptHtml, /&lt;script&gt;alert\(1\)&lt;\/script&gt; 例题演示/);
 assert.match(visualDeckWithTranscriptHtml, /回看检查点/);
@@ -532,6 +537,48 @@ assert.match(visualDeckWithTranscriptHtml, /这句“老师讲解概念定义”
 assert.match(visualDeckWithTranscriptHtml, /核对截图里的板书/);
 assert.doesNotMatch(visualDeckWithTranscriptHtml, /不属于这个窗口/);
 assert.doesNotMatch(visualDeckWithTranscriptHtml, /<script>/);
+
+const mediaPreviewHtml = context.mediaPreviewHtml({
+  id: "side-media-preview",
+  title: "本地回看",
+  media_path: "D:/Projects/learnnote-assistant/data/tasks/side-media-preview/media.mp4",
+  status: "success"
+});
+assert.match(mediaPreviewHtml, /data-learning-video/);
+assert.match(mediaPreviewHtml, /点击字幕或视觉窗口时间可回看对应画面/);
+
+const transcriptSeekHtml = context.transcriptTimeline({
+  source: "whisper",
+  segments: [
+    { start: 12, end: 18, text: "第一句" },
+    { start: 190, end: 195, text: "第二句" }
+  ]
+}, {
+  id: "side-transcript-seek",
+  title: "转写回看",
+  visual_windows: [{
+    id: "W001",
+    start: 0,
+    end: 180,
+    frame_count: 9,
+    grid_url: "http://127.0.0.1:8765/api/tasks/demo/grids/grid_000.jpg"
+  }]
+});
+assert.match(transcriptSeekHtml, /class="transcript-window"/);
+assert.match(transcriptSeekHtml, /data-media-seek-time="0\.000"/);
+assert.match(transcriptSeekHtml, /data-media-seek-time="12\.000"/);
+assert.match(transcriptSeekHtml, /data-line-time="190\.000"/);
+
+const seekVideo = documentStub.querySelector("[data-learning-video]");
+let playCalls = 0;
+seekVideo.play = () => {
+  playCalls += 1;
+  return Promise.resolve();
+};
+assert.equal(context.seekLearningVideo(42.25), true);
+assert.equal(seekVideo.currentTime, 42.25);
+assert.equal(playCalls, 1);
+assert.equal(seekVideo.classList.contains("media-seek-active"), true);
 
 const studyMapHtml = context.noteStudyMap(`# <script>bad()</script> 课程
 

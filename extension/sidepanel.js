@@ -302,6 +302,31 @@ function fmt(sec) {
   return `${String(Math.floor(sec / 3600)).padStart(2, "0")}:${String(Math.floor((sec % 3600) / 60)).padStart(2, "0")}:${String(sec % 60).padStart(2, "0")}`;
 }
 
+function seekTimeValue(seconds) {
+  const value = Math.max(0, Number(seconds || 0));
+  return Number.isFinite(value) ? value.toFixed(3) : "0.000";
+}
+
+function seekTimeButton(seconds, className = "side-time-seek") {
+  return `<button type="button" class="${escapeHtml(className)}" data-media-seek-time="${seekTimeValue(seconds)}" title="跳到 ${escapeHtml(fmt(seconds))}"><time>${escapeHtml(fmt(seconds))}</time></button>`;
+}
+
+function seekLearningVideo(seconds, sourceElement = null) {
+  const value = Math.max(0, Number(seconds || 0));
+  if (!Number.isFinite(value)) return false;
+  const video = document.querySelector("[data-learning-video]");
+  if (!video) return false;
+  video.currentTime = value;
+  video.scrollIntoView?.({ behavior: "smooth", block: "center" });
+  const playResult = video.play?.();
+  if (playResult?.catch) playResult.catch(() => {});
+  document.querySelectorAll(".media-seek-active").forEach(node => node.classList.remove("media-seek-active"));
+  sourceElement?.classList?.add("media-seek-active");
+  video.classList?.add("media-seek-active");
+  setTimeout(() => video.classList?.remove("media-seek-active"), 1400);
+  return true;
+}
+
 function frameTimestampText(window, limit = 4) {
   const values = (window?.frame_timestamps || []).slice(0, limit).map(value => fmt(value));
   if (!values.length) return "";
@@ -3052,7 +3077,7 @@ function segmentOverlapsWindow(segment, window) {
 }
 
 function transcriptLines(segments) {
-  return segments.map(seg => `<div class="line"><time>${fmt(seg.start)}</time><span>${escapeHtml(seg.text)}</span></div>`).join("");
+  return segments.map(seg => `<div class="line" data-line-time="${seekTimeValue(seg.start)}">${seekTimeButton(seg.start)}<span>${escapeHtml(seg.text)}</span></div>`).join("");
 }
 
 function transcriptOverview(transcript, task) {
@@ -3552,11 +3577,19 @@ function mediaPreviewHtml(task) {
       <strong>${escapeHtml(title)}</strong>
       <small>${escapeHtml(task.media_path || "")}</small>
     </div>
-    <video controls preload="metadata" src="${escapeHtml(url)}"></video>
+    <video controls preload="metadata" src="${escapeHtml(url)}" data-learning-video></video>
     <div class="media-preview-actions">
+      <span>点击字幕或视觉窗口时间可回看对应画面</span>
       <button type="button" data-export="media">导出 media.mp4</button>
       ${canContinueFromDownloadedMedia(task) ? `<button type="button" data-rerun-from-media="${escapeHtml(task.id)}">继续切片总结</button>` : ""}
     </div>
+  </section>`;
+}
+
+function mediaSeekDockHtml(task) {
+  if (!task?.media_path) return "";
+  return `<section class="media-seek-dock" aria-label="本地视频回看">
+    ${mediaPreviewHtml(task)}
   </section>`;
 }
 
@@ -3875,6 +3908,9 @@ function bindTaskOverviewActions() {
   document.querySelectorAll("button[data-switch-result-tab]").forEach(button => {
     button.onclick = () => switchResultTab(button.dataset.switchResultTab);
   });
+  document.querySelectorAll("button[data-media-seek-time]").forEach(button => {
+    button.onclick = () => seekLearningVideo(button.dataset.mediaSeekTime, button);
+  });
   document.querySelectorAll("button[data-recovery-local]").forEach(button => {
     button.onclick = () => els.fileInput.click();
   });
@@ -4013,12 +4049,13 @@ function transcriptTimeline(transcript, task, limit = 100) {
       : window.transcript_excerpt
         ? `<p>${escapeHtml(window.transcript_excerpt)}</p>`
         : `<p class="muted">这个画面窗口没有匹配到字幕段落。</p>`;
-    return `<section class="transcript-window">
+    return `<section class="transcript-window" data-visual-window="${escapeHtml(window.id || "")}" data-window-start="${seekTimeValue(window.start)}">
       <figure>
         ${window.grid_url ? `<img src="${escapeHtml(window.grid_url)}" alt="${escapeHtml(window.id)} frame grid">` : ""}
         <figcaption>
           <strong>${escapeHtml(window.id)}</strong>
           <span>${fmt(window.start)} - ${fmt(window.end)} · ${window.frame_count || 0} 帧</span>
+          ${seekTimeButton(window.start, "side-window-seek")}
         </figcaption>
       </figure>
       <div class="transcript-window-lines">${body}</div>
@@ -4047,7 +4084,7 @@ function sideVisualStudyCueHtml(window, transcript) {
     .slice(0, 4);
   if (matched.length) {
     return `<div class="side-visual-study-cues">
-      ${matched.map(segment => `<div><time>${fmt(segment.start)}</time><span>${escapeHtml(segment.text)}</span></div>`).join("")}
+      ${matched.map(segment => `<div>${seekTimeButton(segment.start)}<span>${escapeHtml(segment.text)}</span></div>`).join("")}
     </div>`;
   }
   const excerpt = window.transcript_excerpt || "暂无字幕摘录，可切到“转写”查看完整时间轴。";
@@ -4077,7 +4114,7 @@ function visualStudyDeck(task, transcript = null) {
     <div class="side-visual-study-list">
       ${windows.slice(0, 8).map((window, index) => {
         const image = safeNoteMediaUrl(window.grid_url || "");
-        return `<article class="side-visual-study-card">
+        return `<article class="side-visual-study-card" data-visual-window="${escapeHtml(window.id || "")}" data-window-start="${seekTimeValue(window.start)}">
           <figure>
             ${image ? `<img src="${image}" alt="${escapeHtml(window.id)} frame grid">` : `<div class="side-visual-placeholder">无画面</div>`}
             <figcaption>${escapeHtml(window.id || `W${String(index + 1).padStart(3, "0")}`)}</figcaption>
@@ -4096,6 +4133,7 @@ function visualStudyDeck(task, transcript = null) {
               <em>${escapeHtml(task.summary_source || "本地索引")}</em>
             </div>
             <div class="side-visual-actions">
+              <button type="button" data-media-seek-time="${seekTimeValue(window.start)}">回看此段</button>
               <button type="button" data-switch-result-tab="transcript">看转写</button>
               <button type="button" data-switch-result-tab="note">回笔记</button>
             </div>
@@ -4110,16 +4148,17 @@ function sideVisualStudyCheckpointHtml(window, transcript = null) {
   const segments = (transcript?.segments || [])
     .filter(segment => segmentOverlapsWindow(segment, window))
     .slice(0, 3)
-    .map(segment => ({ time: fmt(segment.start), text: String(segment.text || "").replace(/\s+/g, " ").trim() }))
+    .map(segment => ({ seconds: Number(segment.start || 0), time: fmt(segment.start), text: String(segment.text || "").replace(/\s+/g, " ").trim() }))
     .filter(item => item.text);
   if (!segments.length && window.transcript_excerpt) {
     segments.push({
+      seconds: Number(window.start || 0),
       time: fmt(window.start || 0),
       text: String(window.transcript_excerpt || "").replace(/\s+/g, " ").trim()
     });
   }
   const items = segments.length
-    ? segments.map(item => `<li><time>${escapeHtml(item.time)}</time><span>${escapeHtml(item.text.length > 96 ? `${item.text.slice(0, 96).trim()}...` : item.text)}；对照画面确认对应的板书、PPT、代码或操作步骤。</span></li>`)
+    ? segments.map(item => `<li>${seekTimeButton(item.seconds, "side-checkpoint-seek")}<span>${escapeHtml(item.text.length > 96 ? `${item.text.slice(0, 96).trim()}...` : item.text)}；对照画面确认对应的板书、PPT、代码或操作步骤。</span></li>`)
     : [`<li><span>无同步字幕；先描述画面网格中的标题、公式、代码或界面状态，再回看原视频确认上下文。</span></li>`];
   return `<div class="side-visual-study-checkpoints">
     <span>回看检查点</span>
@@ -4131,10 +4170,11 @@ function sideVisualStudyQuestionHtml(window, transcript = null) {
   const segments = (transcript?.segments || [])
     .filter(segment => segmentOverlapsWindow(segment, window))
     .slice(0, 2)
-    .map(segment => ({ time: fmt(segment.start), text: String(segment.text || "").replace(/\s+/g, " ").trim() }))
+    .map(segment => ({ seconds: Number(segment.start || 0), time: fmt(segment.start), text: String(segment.text || "").replace(/\s+/g, " ").trim() }))
     .filter(item => item.text);
   if (!segments.length && window.transcript_excerpt) {
     segments.push({
+      seconds: Number(window.start || 0),
       time: fmt(window.start || 0),
       text: String(window.transcript_excerpt || "").replace(/\s+/g, " ").trim()
     });
@@ -4142,7 +4182,7 @@ function sideVisualStudyQuestionHtml(window, transcript = null) {
   const items = segments.length
     ? segments.map(item => {
       const text = item.text.length > 72 ? `${item.text.slice(0, 72).trim()}...` : item.text;
-      return `<li><time>${escapeHtml(item.time)}</time><span>这句“${escapeHtml(text)}”在画面中对应的标题、公式、代码或操作状态是什么？</span></li>`;
+      return `<li>${seekTimeButton(item.seconds, "side-question-seek")}<span>这句“${escapeHtml(text)}”在画面中对应的标题、公式、代码或操作状态是什么？</span></li>`;
     })
     : (() => {
       const frameTimes = (window.frame_timestamps || []).slice(0, 3).map(value => fmt(value)).join(" / ");
@@ -4207,7 +4247,7 @@ function renderResult() {
       return;
     }
     els.result.className = "result-body";
-    els.result.innerHTML = `${visionEvidenceBar(currentTask)}${visualStudyDeck(currentTask, transcriptCache)}`;
+    els.result.innerHTML = `${mediaSeekDockHtml(currentTask)}${visionEvidenceBar(currentTask)}${visualStudyDeck(currentTask, transcriptCache)}`;
     bindTaskOverviewActions();
     return;
   }
@@ -4273,7 +4313,8 @@ function renderResult() {
     return;
   }
   els.result.className = "result-body";
-  els.result.innerHTML = transcriptTimeline(transcript, currentTask, 100);
+  els.result.innerHTML = `${mediaSeekDockHtml(currentTask)}${transcriptTimeline(transcript, currentTask, 100)}`;
+  bindTaskOverviewActions();
 }
 
 els.resultTabs.forEach(tab => {

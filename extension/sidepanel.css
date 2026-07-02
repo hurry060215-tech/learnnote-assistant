@@ -3047,10 +3047,29 @@ input[type="file"] {
   background: #0f172a;
 }
 
+.media-preview-card video.media-seek-active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(16, 101, 199, 0.14);
+}
+
+.media-seek-dock {
+  display: grid;
+  gap: 8px;
+}
+
 .media-preview-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.media-preview-actions > span {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 760;
 }
 
 .media-preview-actions button {
@@ -3064,7 +3083,7 @@ input[type="file"] {
   font-weight: 850;
 }
 
-.media-preview-actions button:first-child {
+.media-preview-actions button:first-of-type {
   border-color: var(--accent);
   background: var(--accent);
   color: #fff;
@@ -3464,6 +3483,39 @@ input[type="file"] {
 .line time {
   color: var(--muted);
   font-variant-numeric: tabular-nums;
+}
+
+.side-time-seek,
+.side-window-seek,
+.side-checkpoint-seek,
+.side-question-seek {
+  min-width: 0;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  padding: 2px 5px;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+  cursor: pointer;
+}
+
+.side-time-seek:hover,
+.side-window-seek:hover,
+.side-checkpoint-seek:hover,
+.side-question-seek:hover,
+.side-time-seek.media-seek-active,
+.side-window-seek.media-seek-active,
+.side-checkpoint-seek.media-seek-active,
+.side-question-seek.media-seek-active {
+  border-color: rgba(16, 101, 199, 0.24);
+  background: #eaf2ff;
+  color: var(--accent);
+}
+
+.line .side-time-seek {
+  justify-self: start;
 }
 
 .transcript-timeline {
