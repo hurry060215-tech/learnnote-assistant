@@ -447,6 +447,8 @@ def _render_study_manifest(task: TaskRecord) -> dict:
             "vision_status": vision_status,
             "checkpoint_count": len(checkpoints),
             "review_question_count": len(review_questions),
+            "checkpoints": checkpoints,
+            "review_questions": review_questions,
         })
 
     return {
@@ -572,7 +574,8 @@ def render_task_audit_markdown(task: TaskRecord) -> str:
         f"- 安全请求头名：{', '.join(safe_headers) if safe_headers else '-'}",
         f"- 播放源：{browser.get('active_source_type') or '-'}",
         f"- 浏览器字幕：{browser.get('browser_subtitle_count') or 0} 条",
-        f"- Cookie 域：{browser.get('cookie_domain_count') or 0}",
+        f"- Cookie：{browser.get('cookie_count') or 0} / {browser.get('cookie_domain_count') or 0} 域",
+        f"- 分区 Cookie：{browser.get('partitioned_cookie_count') or 0} / {browser.get('partition_key_count') or 0} partition key",
         "",
         "## 下载与处理",
         f"- 下载尝试：成功 {download.get('successful_attempt_count') or 0} / 失败 {download.get('failed_attempt_count') or 0}",
