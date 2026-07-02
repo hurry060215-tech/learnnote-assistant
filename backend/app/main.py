@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from .config import DATA_DIR, LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, STATIC_DIR, UPLOAD_DIR, WEB_DIR, ensure_dirs
 from .downloader import effective_resource_kind, preflight_media_resource, rank_media_candidates
 from .media import probe_duration
-from .models import CurrentPageTaskRequest, MediaPreflightRequest, MediaPreflightResult, PagePreflightRequest, TaskOptions, TaskRecord
+from .models import CurrentPageTaskRequest, MediaPreflightRequest, MediaPreflightResult, PagePreflightRequest, ResourceCandidate, TaskOptions, TaskRecord
 from .processor import process_current_page_task, process_local_video_task, read_note, read_transcript, read_visual_index
 from .runtime import ffmpeg_bin, ffprobe_bin
 from .storage import create_task, get_task, list_tasks, task_dir, update_task
@@ -266,6 +266,114 @@ def _visual_window_checkpoint_lines(window, limit: int = 3) -> list[str]:
     return lines or ["  - 无同步字幕；先描述画面网格中的标题、公式、代码或界面状态，再回看原视频确认上下文。"]
 
 
+def _safe_browser_request_header_names(selected: ResourceCandidate | None) -> list[str]:
+    if not selected:
+        return []
+    return [
+        name
+        for name in sorted((selected.request_headers or {}).keys())
+        if not re.search(r"cookie|authorization", name, re.I)
+    ]
+
+
+def _direct_extraction_route(task: TaskRecord) -> str:
+    if task.source_type == "local":
+        return "local_video_pipeline"
+    if task.source_type == "page_text" or task.mode == "page_text":
+        return "page_text_only"
+    if task.mode == "download_only" and task.media_path:
+        return "download_only_to_local_media"
+    if task.media_path and task.selected_resource:
+        return "browser_candidate_to_local_media"
+    if task.media_path:
+        return "resolver_to_local_media"
+    if task.download_attempts:
+        return "attempted_direct_extraction"
+    return "pending_or_no_media"
+
+
+def direct_extraction_evidence(task: TaskRecord) -> dict:
+    selected = task.selected_resource
+    attempts = task.download_attempts or []
+    successful_attempts = [attempt for attempt in attempts if attempt.status == "success"]
+    failed_attempts = [attempt for attempt in attempts if attempt.status == "failed"]
+    strategy_order: list[str] = []
+    for attempt in attempts:
+        if attempt.strategy and attempt.strategy not in strategy_order:
+            strategy_order.append(attempt.strategy)
+
+    active = task.active_video
+    active_source_type = "-"
+    if active:
+        if active.src_object and not active.src:
+            active_source_type = active.src_object_type or "MediaStream/srcObject"
+        elif active.src.startswith("blob:"):
+            active_source_type = "blob"
+        elif active.src.startswith(("http://", "https://")):
+            active_source_type = "visible_url"
+        elif active.src:
+            active_source_type = "player_source"
+
+    drm_detected = bool(task.drm_detected or (active and active.drm_detected))
+    route = _direct_extraction_route(task)
+    boundary = "normal_accessible_media_only"
+    if drm_detected:
+        boundary = "drm_or_encrypted_not_bypassed"
+    elif active and active.src_object and not active.src:
+        boundary = "mediastream_not_recorded"
+    elif selected and selected.kind in {"blob", "fragment"} and not task.media_path:
+        boundary = "unresolved_blob_or_fragment_not_recorded"
+    elif task.error_code:
+        boundary = task.error_code
+
+    return {
+        "no_tab_recording": True,
+        "no_drm_bypass": True,
+        "route": route,
+        "media_landed": bool(task.media_path),
+        "media_reusable": bool(task.media_path),
+        "selected_candidate": {
+            "present": bool(selected),
+            "kind": selected.kind if selected else "",
+            "source": selected.source if selected else "",
+            "is_main_video": selected.is_main_video if selected else False,
+            "playback_match": selected.playback_match if selected else "",
+            "request_type": selected.request_type if selected else "",
+            "status_code": selected.status_code if selected else None,
+            "content_length": selected.content_length if selected else None,
+            "has_resolved_url": bool(selected and selected.resolved_url),
+            "has_blob_mapping": bool(selected and selected.blob_url and selected.url and selected.url != selected.blob_url),
+            "has_replay_body": bool(selected and (selected.request_body or {}).get("content")),
+            "safe_request_header_names": _safe_browser_request_header_names(selected),
+        },
+        "browser_context": {
+            "active_source_type": active_source_type,
+            "active_frame_id": active.frame_id if active else None,
+            "active_time_seconds": active.current_time if active else None,
+            "browser_subtitle_count": len(task.browser_subtitles or []),
+            "cookie_domain_count": int((task.cookie_summary or {}).get("domain_count") or 0),
+            "cookie_count": int((task.cookie_summary or {}).get("cookie_count") or 0),
+        },
+        "download": {
+            "attempt_count": len(attempts),
+            "successful_attempt_count": len(successful_attempts),
+            "failed_attempt_count": len(failed_attempts),
+            "strategy_order": strategy_order,
+            "latest_code": attempts[-1].code if attempts else "",
+            "latest_status": attempts[-1].status if attempts else "",
+        },
+        "processing": {
+            "download_only": task.mode == "download_only",
+            "transcript_ready": bool(task.transcript_path),
+            "frame_grid_count": len(task.frame_grids),
+            "visual_window_count": len(task.visual_windows),
+            "note_ready": bool(task.note_path),
+        },
+        "boundary": boundary,
+        "fallback_available": bool(task.media_path or task.page_url or task.source_type == "local"),
+    }
+
+
 def _render_study_manifest(task: TaskRecord) -> dict:
     visual_windows = task.visual_windows or []
     diagnostics = task.summary_diagnostics or {}
@@ -402,7 +510,7 @@ def render_bundle_manifest(task: TaskRecord, transcript: dict, visual_index: dic
     visual_windows = task.visual_windows or []
     first_window = visual_windows[0] if visual_windows else None
     last_window = visual_windows[-1] if visual_windows else None
-    request_header_names = sorted((selected.request_headers or {}).keys()) if selected else []
+    request_header_names = _safe_browser_request_header_names(selected)
     response_header_names = sorted((selected.headers or {}).keys()) if selected else []
     grid_entries = [
         f"grids/{Path(grid.path).name}"
@@ -496,6 +604,7 @@ def render_bundle_manifest(task: TaskRecord, transcript: dict, visual_index: dic
             "media_available": bool(task.media_path),
             "grid_entries": grid_entries,
         },
+        "direct_extraction": direct_extraction_evidence(task),
         "audit": task_audit_summary(task),
         "recovery": diagnostic_recovery_profile(task),
         "reuse": task_reuse_evidence(task),
@@ -816,6 +925,7 @@ def task_reuse_evidence(task: TaskRecord) -> dict:
 
 def task_payload(task: TaskRecord) -> dict:
     payload = task.model_dump(mode="json")
+    payload["direct_extraction"] = direct_extraction_evidence(task)
     payload["audit"] = task_audit_summary(task)
     payload["recovery"] = diagnostic_recovery_profile(task)
     payload["reuse"] = task_reuse_evidence(task)
@@ -1000,6 +1110,27 @@ def render_diagnostics_markdown(task: TaskRecord) -> str:
 
     lines.extend(["", "## 下一步建议"])
     lines.extend(f"- {step}" for step in recovery.get("steps", []))
+
+    direct = direct_extraction_evidence(task)
+    selected_direct = direct.get("selected_candidate") or {}
+    browser_context = direct.get("browser_context") or {}
+    download_direct = direct.get("download") or {}
+    processing_direct = direct.get("processing") or {}
+    safe_headers = selected_direct.get("safe_request_header_names") or []
+    lines.extend([
+        "",
+        "## Direct Extraction Evidence",
+        f"- No tab recording: {'yes' if direct.get('no_tab_recording') else 'no'}",
+        f"- No DRM bypass: {'yes' if direct.get('no_drm_bypass') else 'no'}",
+        f"- Route: {direct.get('route') or '-'}",
+        f"- Boundary: {direct.get('boundary') or '-'}",
+        f"- Media landed: {'yes' if direct.get('media_landed') else 'no'}",
+        f"- Candidate: {selected_direct.get('kind') or '-'} / {selected_direct.get('source') or '-'} / {selected_direct.get('playback_match') or '-'}",
+        f"- Safe request headers: {', '.join(safe_headers) if safe_headers else '-'}",
+        f"- Browser context: {browser_context.get('active_source_type') or '-'} / subtitles {browser_context.get('browser_subtitle_count') or 0} / cookie domains {browser_context.get('cookie_domain_count') or 0}",
+        f"- Download attempts: {download_direct.get('successful_attempt_count') or 0} success / {download_direct.get('failed_attempt_count') or 0} failed / {', '.join(download_direct.get('strategy_order') or []) or '-'}",
+        f"- Processing: transcript {'yes' if processing_direct.get('transcript_ready') else 'no'} / grids {processing_direct.get('frame_grid_count') or 0} / windows {processing_direct.get('visual_window_count') or 0} / note {'yes' if processing_direct.get('note_ready') else 'no'}",
+    ])
 
     audit = task_audit_summary(task)
     lines.extend([

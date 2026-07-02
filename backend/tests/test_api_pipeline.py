@@ -391,7 +391,7 @@ class LocalUploadValidationTests(unittest.TestCase):
                 url="https://cdn.example.com/lesson.mp4",
                 kind="video",
                 source="webRequest",
-                request_headers={"Cookie": "session=secret", "Referer": "https://course.example.com/watch"},
+                request_headers={"Cookie": "session=secret", "Authorization": "Bearer secret", "Referer": "https://course.example.com/watch"},
                 headers={"content-type": "video/mp4", "set-cookie": "secret=value"},
             )
             task.download_attempts = [
@@ -406,7 +406,8 @@ class LocalUploadValidationTests(unittest.TestCase):
             encoded = json.dumps(manifest, ensure_ascii=False)
 
             self.assertEqual(manifest["options"]["llm_api_key"], "<redacted>")
-            self.assertEqual(manifest["source"]["selected_resource"]["request_header_names"], ["Cookie", "Referer"])
+            self.assertEqual(manifest["source"]["selected_resource"]["request_header_names"], ["Referer"])
+            self.assertEqual(manifest["direct_extraction"]["selected_candidate"]["safe_request_header_names"], ["Referer"])
             self.assertEqual(manifest["source"]["selected_resource"]["response_header_names"], ["content-type", "set-cookie"])
             self.assertEqual(manifest["transcript"]["segment_count"], 1)
             self.assertIn("audit", manifest)
@@ -415,6 +416,8 @@ class LocalUploadValidationTests(unittest.TestCase):
             self.assertEqual(manifest["recovery"]["attempt_count"], 1)
             self.assertNotIn("secret-key", encoded)
             self.assertNotIn("session=secret", encoded)
+            self.assertNotIn("Bearer secret", encoded)
+            self.assertNotIn("Authorization", json.dumps(manifest["direct_extraction"], ensure_ascii=False))
             self.assertNotIn("secret=value", encoded)
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
@@ -449,12 +452,26 @@ class LocalUploadValidationTests(unittest.TestCase):
             self.assertEqual(evidence["append_mime"], "video/mp4")
             self.assertEqual(evidence["append_detected_kind"], "video")
             self.assertEqual(manifest["reuse"]["mse_append_evidence"], evidence)
+            direct = manifest["direct_extraction"]
+            self.assertTrue(direct["no_tab_recording"])
+            self.assertTrue(direct["no_drm_bypass"])
+            self.assertEqual(direct["route"], "pending_or_no_media")
+            self.assertEqual(direct["selected_candidate"]["kind"], "blob")
+            self.assertEqual(direct["boundary"], "unresolved_blob_or_fragment_not_recorded")
+            self.assertEqual(direct["selected_candidate"]["safe_request_header_names"], ["Referer"])
+            self.assertNotIn("Cookie", direct["selected_candidate"]["safe_request_header_names"])
+            self.assertNotIn("Authorization", json.dumps(direct, ensure_ascii=False))
             self.assertIn("### MSE Append Evidence", diagnostics)
+            self.assertIn("## Direct Extraction Evidence", diagnostics)
+            self.assertIn("No tab recording: yes", diagnostics)
+            self.assertIn("Safe request headers: Referer", diagnostics)
             self.assertIn("Append count: 37", diagnostics)
             self.assertIn("Magic: ftyp", diagnostics)
             self.assertIn("Total append bytes: 10.0 MB", diagnostics)
             self.assertNotIn("session=secret", encoded)
+            self.assertNotIn("Bearer secret", encoded)
             self.assertNotIn("session=secret", diagnostics)
+            self.assertNotIn("Bearer secret", diagnostics)
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
@@ -1033,6 +1050,12 @@ class ApiPipelineTests(unittest.TestCase):
                     self.assertEqual(task["reuse"]["suggested_next_step"], "rerun_from_media")
                     self.assertEqual(task["selected_resource"]["url"], media_url)
                     self.assertEqual(task["download_attempts"][0]["strategy"], "direct-file")
+                    self.assertTrue(task["direct_extraction"]["no_tab_recording"])
+                    self.assertEqual(task["direct_extraction"]["route"], "download_only_to_local_media")
+                    self.assertTrue(task["direct_extraction"]["media_landed"])
+                    self.assertEqual(task["direct_extraction"]["selected_candidate"]["kind"], "video")
+                    self.assertEqual(task["direct_extraction"]["download"]["successful_attempt_count"], 1)
+                    self.assertTrue(task["direct_extraction"]["processing"]["download_only"])
                     media_export = self.client.get(f"/api/tasks/{task_id}/exports/media")
                     self.assertEqual(media_export.status_code, 200)
                     self.assertGreater(len(media_export.content), 1024)
@@ -1043,6 +1066,9 @@ class ApiPipelineTests(unittest.TestCase):
                     self.assertIn("模式：download_only", diagnostics_export.text)
                     self.assertIn("download-only route", diagnostics_export.text)
                     self.assertIn("direct-file", diagnostics_export.text)
+                    self.assertIn("## Direct Extraction Evidence", diagnostics_export.text)
+                    self.assertIn("No tab recording: yes", diagnostics_export.text)
+                    self.assertIn("Route: download_only_to_local_media", diagnostics_export.text)
                     self.assertIn("## Reuse Evidence", diagnostics_export.text)
                     self.assertIn("Browser subtitles: 2 cues", diagnostics_export.text)
                     self.assertIn("Rerun from media ready: yes", diagnostics_export.text)
@@ -1053,6 +1079,9 @@ class ApiPipelineTests(unittest.TestCase):
                     self.assertEqual(manifest_direct["task"]["mode"], "download_only")
                     self.assertTrue(manifest_direct["audit"]["ok"])
                     self.assertEqual(manifest_direct["source"]["selected_resource"]["url"], media_url)
+                    self.assertEqual(manifest_direct["direct_extraction"]["route"], "download_only_to_local_media")
+                    self.assertTrue(manifest_direct["direct_extraction"]["no_tab_recording"])
+                    self.assertTrue(manifest_direct["direct_extraction"]["media_reusable"])
                     self.assertEqual(manifest_direct["reuse"]["browser_subtitle_count"], 2)
                     self.assertTrue(manifest_direct["reuse"]["rerun_from_media_ready"])
                     self.assertEqual(manifest_direct["artifacts"]["note"], "")
@@ -1071,6 +1100,8 @@ class ApiPipelineTests(unittest.TestCase):
                         self.assertEqual(manifest_payload["task"]["mode"], "download_only")
                         self.assertTrue(manifest_payload["audit"]["ok"])
                         self.assertEqual(manifest_payload["source"]["selected_resource"]["url"], media_url)
+                        self.assertEqual(manifest_payload["direct_extraction"]["route"], "download_only_to_local_media")
+                        self.assertTrue(manifest_payload["direct_extraction"]["no_tab_recording"])
                         self.assertEqual(manifest_payload["reuse"]["browser_subtitle_count"], 2)
                         self.assertTrue(manifest_payload["reuse"]["rerun_from_media_ready"])
                         self.assertTrue(manifest_payload["artifacts"]["media_available"])
@@ -1126,6 +1157,8 @@ class ApiPipelineTests(unittest.TestCase):
                         self.assertIn("grids/", visual_windows_markdown)
                         rerun_manifest = json.loads(archive.read("manifest.json").decode("utf-8"))
                         self.assertEqual(rerun_manifest["reuse"]["browser_subtitle_count"], 2)
+                        self.assertEqual(rerun_manifest["direct_extraction"]["route"], "local_video_pipeline")
+                        self.assertTrue(rerun_manifest["direct_extraction"]["no_tab_recording"])
                 finally:
                     if rerun_task_id:
                         shutil.rmtree(task_dir(rerun_task_id), ignore_errors=True)
