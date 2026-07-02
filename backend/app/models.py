@@ -229,6 +229,8 @@ class TaskRecord(BaseModel):
     message: str = "Queued"
     error_code: str = ""
     error_detail: str = ""
+    source_task_id: str = ""
+    source_media_path: str = ""
     created_at: str
     updated_at: str
     options: TaskOptions = Field(default_factory=TaskOptions)

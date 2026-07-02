@@ -555,6 +555,8 @@ def render_bundle_manifest(task: TaskRecord, transcript: dict, visual_index: dic
             "phase": task.phase,
             "progress": task.progress,
             "page_url": task.page_url,
+            "source_task_id": task.source_task_id,
+            "source_media_path": task.source_media_path,
             "created_at": task.created_at,
             "updated_at": task.updated_at,
             "error_code": task.error_code,
@@ -933,6 +935,8 @@ def task_reuse_evidence(task: TaskRecord) -> dict:
     return {
         "media_available": media_available,
         "media_path_recorded": task.media_path,
+        "source_task_id": task.source_task_id,
+        "source_media_path": task.source_media_path,
         "browser_subtitle_count": browser_subtitle_count,
         "browser_subtitle_span_seconds": round(browser_subtitle_span, 3),
         "download_attempt_count": len(task.download_attempts),
@@ -1174,6 +1178,8 @@ def render_diagnostics_markdown(task: TaskRecord) -> str:
         "",
         "## Reuse Evidence",
         f"- Media available: {'yes' if reuse['media_available'] else 'no'}",
+        f"- Source task: {reuse.get('source_task_id') or '-'}",
+        f"- Source media: {reuse.get('source_media_path') or '-'}",
         f"- Browser subtitles: {reuse['browser_subtitle_count']} cues / {reuse['browser_subtitle_span_seconds']}s",
         f"- Visual slices: {reuse['frame_grid_count']} frame grids / {reuse['visual_window_count']} windows",
         f"- Rerun from media ready: {'yes' if reuse['rerun_from_media_ready'] else 'no'}",
@@ -1346,6 +1352,8 @@ def create_from_existing_media(
     )
     task = update_task(
         task.id,
+        source_task_id=source.id,
+        source_media_path=str(media_path),
         selected_resource=source.selected_resource,
         download_attempts=source.download_attempts,
         active_video=source.active_video,
