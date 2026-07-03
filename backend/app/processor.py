@@ -586,6 +586,12 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
             update_task(task_id, phase="processing_video", progress=80, message="正在保存可导出的本地视频")
             normalized = work_dir / "media.mp4"
             normalize_video(media_path, normalized)
+            transcript_path = ""
+            subtitle_path = ""
+            transcript = transcript_from_browser_subtitles(request.browser_subtitles)
+            if transcript.segments:
+                subtitle_path = write_browser_subtitles_srt(task_id, transcript)
+                transcript_path = str(write_json(task_id, "transcript.json", transcript.model_dump(mode="json")))
             update_task(
                 task_id,
                 status="success",
@@ -593,6 +599,8 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
                 progress=100,
                 message="视频已下载到本地，可直接导出。",
                 media_path=str(normalized),
+                subtitle_path=subtitle_path,
+                transcript_path=transcript_path,
                 download_attempts=downloader.attempts,
             )
             return

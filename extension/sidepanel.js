@@ -124,6 +124,7 @@ const els = {
   diagnosticsButton: document.querySelector("#diagnosticsButton"),
   visualWindowsButton: document.querySelector("#visualWindowsButton"),
   manifestButton: document.querySelector("#manifestButton"),
+  subtitlesButton: document.querySelector("#subtitlesButton"),
   mediaButton: document.querySelector("#mediaButton"),
   downloadButton: document.querySelector("#downloadButton"),
   openWebButton: document.querySelector("#openWebButton"),
@@ -5044,6 +5045,7 @@ function renderResult() {
   els.diagnosticsButton.disabled = !hasTaskDiagnostics(currentTask);
   if (els.visualWindowsButton) els.visualWindowsButton.disabled = !hasVisualWindowExport(currentTask);
   if (els.manifestButton) els.manifestButton.disabled = !hasTaskBundle(currentTask);
+  if (els.subtitlesButton) els.subtitlesButton.disabled = !currentTask?.subtitle_path;
   els.mediaButton.disabled = !currentTask?.media_path;
   els.downloadButton.disabled = !hasNote;
   updateContinueFromMediaAction(currentTask);
@@ -5334,6 +5336,11 @@ els.bundleButton.onclick = () => {
 if (els.manifestButton) {
   els.manifestButton.onclick = () => {
     openTaskExport("manifest");
+  };
+}
+if (els.subtitlesButton) {
+  els.subtitlesButton.onclick = () => {
+    openTaskExport("subtitles");
   };
 }
 els.diagnosticsButton.onclick = () => {

@@ -85,6 +85,7 @@ assert.match(sidepanelHtml, /data-tab="transcript">字幕/);
 assert.match(sidepanelHtml, /data-tab="slices">学习切片/);
 assert.match(sidepanelHtml, /data-tab="frames">画面网格/);
 assert.match(sidepanelHtml, /data-tab="diagnostics">下载诊断/);
+assert.match(sidepanelHtml, /id="subtitlesButton"/);
 assert.match(sidepanelHtml, /下载到本地/);
 assert.doesNotMatch(sidepanelHtml, />下载本地</);
 assert.equal(elements.get("#backendStatus").classList.contains("backend-status-grid"), true);
