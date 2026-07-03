@@ -820,7 +820,7 @@ function browserBridgeGateItems(task) {
     {
       state: hasProcessedMedia ? "done" : task ? "active" : "pending",
       label: "本地管线",
-      value: hasProcessedMedia ? "已落地" : "等待任务",
+      value: hasProcessedMedia ? "已保存" : "等待任务",
       detail: hasProcessedMedia
         ? "可以继续查看笔记、切片、审计或导出资料。"
         : "拿到可访问媒体后才进入下载、转写、抽帧和总结。"
@@ -1103,7 +1103,7 @@ function sourceRunModeItems(source, task = null) {
       },
       {
         state: canContinueFromDownloadedMedia(task) ? "active" : "wait",
-        label: "续跑切片",
+        label: "继续切片",
         title: canContinueFromDownloadedMedia(task) ? "从 media.mp4 继续" : "等待本地媒体",
         detail: "复用已下载视频进入转写、抽帧、视觉窗口和图文总结；不会录制页面。",
         action: canContinueFromDownloadedMedia(task) ? "continue-media" : ""
@@ -1133,7 +1133,7 @@ function sourceRunModeItems(source, task = null) {
     {
       state: downloadState,
       label: "只下载",
-      title: hasMedia ? "media.mp4 已落地" : "先把视频拉到本地",
+      title: hasMedia ? "media.mp4 已保存" : "先把视频拉到本地",
       detail: source === "local"
         ? "本地文件会复制到任务目录，无需平台下载。"
         : "适合先验证平台资源是否可访问，再决定是否继续总结。",
@@ -1141,7 +1141,7 @@ function sourceRunModeItems(source, task = null) {
     },
     {
       state: continueState,
-      label: "续跑切片",
+      label: "继续切片",
       title: canContinue ? "从 media.mp4 继续" : isRerun ? "正在生成完整笔记" : "等待本地媒体",
       detail: "复用已下载视频进入转写、抽帧、视觉窗口和图文总结；不会录制页面。",
       action: canContinue ? "continue-media" : ""
@@ -1184,7 +1184,7 @@ function sourceWorkflowStatusItems(source, task = null) {
       ? `${attempts.length} 次尝试`
       : source === "local" ? "待上传" : source === "url" ? "待预检" : "待候选";
   const downloadDetail = hasMedia
-    ? "已落地，可导出或继续切片总结"
+    ? "已保存到本地，可导出或继续切片总结"
     : failed
       ? task.error_code || "下载失败"
       : running ? `${task.phase || "running"} · ${task.progress || 0}%` : "开始任务前先确认后端可访问媒体";
@@ -1650,7 +1650,7 @@ function recoveryDecisionHtml(task) {
   return `<section class="recovery-decision ${escapeHtml(recoveryDecisionTone(task))}" aria-label="推荐行动">
     <div class="recovery-decision-main">
       <span>推荐行动</span>
-      <strong>${escapeHtml(primary?.label || (canContinueFromDownloadedMedia(task) ? "继续切片总结" : "查看阶段审计"))}</strong>
+      <strong>${escapeHtml(primary?.label || (canContinueFromDownloadedMedia(task) ? "继续切片总结" : "查看阶段检查"))}</strong>
       <small>${escapeHtml(detail)}</small>
     </div>
     <div class="recovery-decision-actions">
@@ -2120,7 +2120,7 @@ function emptyReadinessItems(data = lastHealthData) {
   return [
     {
       state: backendReady ? "pass" : "block",
-      label: "后端媒体门",
+      label: "后端媒体检查",
       value: backendReady ? healthMediaChipText(data) : "后端未就绪",
       detail: backendReady
         ? "可以下载、合并、转音频、抽帧和生成本地 media.mp4。"
@@ -2128,7 +2128,7 @@ function emptyReadinessItems(data = lastHealthData) {
     },
     {
       state: healthVisionReady(data) ? "pass" : "warn",
-      label: "视觉总结门",
+      label: "视觉总结检查",
       value: healthVisionChipText(data),
       detail: healthVisionReady(data)
         ? "切片网格会和转写片段一起进入多模态总结。"
@@ -2136,13 +2136,13 @@ function emptyReadinessItems(data = lastHealthData) {
     },
     {
       state: "pass",
-      label: "本地视频门",
+      label: "本地视频检查",
       value: "拖拽自动上传",
       detail: "平台直取失败时，mp4、mkv、webm、flv、avi 可走同一套切片管线。"
     },
     {
       state: "warn",
-      label: "当前页直取门",
+      label: "当前页直取检查",
       value: "需要扩展侧栏",
       detail: "只使用可访问媒体 URL、manifest、播放器源和一次性 cookie，不录制页面。"
     }
@@ -2150,7 +2150,7 @@ function emptyReadinessItems(data = lastHealthData) {
 }
 
 function emptyReadinessGatesHtml(data = lastHealthData) {
-  return `<div class="empty-readiness-gates" data-empty-readiness aria-label="准备度审计门">
+  return `<div class="empty-readiness-gates" data-empty-readiness aria-label="准备度检查">
     ${emptyReadinessItems(data).map(item => `<section class="${escapeHtml(item.state)}">
       <span>${escapeHtml(item.label)}</span>
       <strong>${escapeHtml(item.value)}</strong>
@@ -2273,7 +2273,11 @@ function setReadingMode(enabled, persist = true) {
 }
 
 function renderResultTabState() {
-  els.resultTabs.forEach(item => item.classList.toggle("active", normalizeResultTabName(item.dataset.tab) === selectedTab));
+  els.resultTabs.forEach(item => {
+    const active = normalizeResultTabName(item.dataset.tab) === selectedTab;
+    item.classList.toggle("active", active);
+    item.setAttribute?.("aria-selected", active ? "true" : "false");
+  });
 }
 
 function hasExplicitTaskRoute() {
@@ -2486,7 +2490,7 @@ function resultMetaChipsHtml(task) {
     { state: taskStatusClass(task), label: statusText(task), value: `${task.progress || 0}%` },
     { state: "source", label: sourceText(task), value: selected.kind ? mediaKindText(selected.kind) : task.source_type || "-" },
     reuseEvidence ? { state: "source", label: "复用", value: "已下载媒体" } : null,
-    { state: task.media_path ? "pass" : "wait", label: "媒体", value: task.media_path ? "已落盘" : "待下载" },
+    { state: task.media_path ? "pass" : "wait", label: "媒体", value: task.media_path ? "已保存" : "待下载" },
     { state: task.transcript_path ? "pass" : "wait", label: "字幕", value: task.transcript_path ? "已生成" : "待转写" },
     {
       state: task.options?.visual_understanding === false ? "skip" : windows.length ? "pass" : "wait",
@@ -2511,7 +2515,7 @@ function taskAuditMiniHtml(task) {
   if (!items.length) return "";
   const blocked = items.find(item => item.state === "fail" || item.state === "warn" || item.state === "wait");
   const passedCount = items.filter(item => item.state === "pass" || item.state === "skip").length;
-  return `<div class="task-audit-mini" aria-label="任务审计门">
+  return `<div class="task-audit-mini" aria-label="任务检查">
     <div class="task-audit-dots">
       ${items.map(item => `<span class="${escapeHtml(item.state)}" title="${escapeHtml(`${item.label}：${item.value || "-"}；${item.detail || "-"}`)}">
         <b>${escapeHtml(item.label.slice(0, 2))}</b>
@@ -2822,7 +2826,7 @@ function pipelineAuditItems(task) {
   const items = [
     {
       key: "source",
-      label: "来源门",
+      label: "来源检查",
       state: sourceState,
       value: sourceState === "pass" ? (resourceSourceText(selected) || sourceText(task)) : task?.error_code || "待捕获",
       detail: hasSelectedRoute
@@ -2831,16 +2835,16 @@ function pipelineAuditItems(task) {
     },
     {
       key: "media",
-      label: "媒体门",
+      label: "媒体检查",
       state: mediaState,
       value: mediaState === "skip" ? "文本路线" : hasMedia ? "media.mp4" : task?.error_code || "待下载",
       detail: hasMedia
-        ? "已落盘，可导出或复用继续总结"
+        ? "已保存到本地，可导出或复用继续总结"
         : (attempts.length ? `${attempts.length} 次下载尝试` : "等待 yt-dlp、直连或 ffmpeg 合并")
     },
     {
       key: "transcript",
-      label: "转写门",
+      label: "字幕检查",
       state: transcriptState,
       value: hasTranscript ? "字幕已生成" : isPageText && hasNote ? "页面文本/浏览器字幕" : task?.phase === "transcribing" ? "转写中" : "待转写",
       detail: hasTranscript
@@ -2849,7 +2853,7 @@ function pipelineAuditItems(task) {
     },
     {
       key: "visual",
-      label: "切片门",
+      label: "切片检查",
       state: visualState,
       value: visualDisabled ? "未启用" : hasVisuals ? `${windows.length || diag.frame_grid_count || task?.frame_grids?.length} 个窗口` : task?.phase === "extracting_frames" ? "抽帧中" : "待切片",
       detail: visualDisabled
@@ -2860,7 +2864,7 @@ function pipelineAuditItems(task) {
     },
     {
       key: "summary",
-      label: "总结门",
+      label: "总结检查",
       state: summaryState,
       value: hasNote ? (task?.summary_source || "笔记完成") : task?.phase === "summarizing" ? "总结中" : task?.error_code || "待总结",
       detail: hasNote
@@ -2917,9 +2921,9 @@ function pipelineAuditActionHtml(task, item) {
 
 function pipelineAuditHtml(task) {
   const items = pipelineAuditItems(task);
-  return `<section class="pipeline-audit" aria-label="阶段审计门">
+  return `<section class="pipeline-audit" aria-label="阶段检查">
     <header>
-      <span>阶段审计门</span>
+      <span>阶段检查</span>
       <strong>${items.filter(item => item.state === "pass" || item.state === "skip").length}/${items.length} 已放行</strong>
     </header>
     <div class="pipeline-audit-grid">
@@ -2983,7 +2987,7 @@ function nextStepHtml(task) {
     ];
   } else if (hasMedia && !hasTranscript) {
     title = "等待转写字幕";
-    detail = "媒体已落盘，下一步会优先使用平台/内嵌字幕，没有字幕时再进入 ASR。";
+    detail = "媒体已保存到本地，下一步会优先使用平台/内嵌字幕，没有字幕时再进入 ASR。";
     actions = [`<button type="button" data-switch-result-tab="diagnostics">看处理状态</button>`];
   } else if (hasTranscript && !hasVisuals && task.options?.visual_understanding !== false) {
     title = "等待画面切片";
@@ -2994,8 +2998,8 @@ function nextStepHtml(task) {
     ];
   } else {
     title = "等待图文总结";
-    detail = "任务会按下载、转写、切片、总结顺序推进；阶段门会显示当前卡点。";
-    actions = [`<button type="button" data-switch-result-tab="diagnostics">查看阶段门</button>`];
+    detail = "任务会按下载、转写、切片、总结顺序推进；阶段检查会显示当前卡点。";
+    actions = [`<button type="button" data-switch-result-tab="diagnostics">查看阶段检查</button>`];
   }
 
   return `<section class="next-step-card ${escapeHtml(tone)}" aria-label="下一步">
@@ -3057,7 +3061,7 @@ function nextCommandCenterText(task, items) {
   }
   if (canContinueFromDownloadedMedia(task)) {
     return {
-      title: "视频已落盘，可以继续切片总结",
+      title: "视频已保存到本地，可以继续切片总结",
       detail: "复用 media.mp4 进入转写、抽帧、视觉窗口和图文笔记。"
     };
   }
@@ -3211,8 +3215,8 @@ function directExtractionEvidenceItems(task) {
     },
     {
       state: direct.media_landed ? "pass" : "warn",
-      label: "媒体落地",
-      value: direct.media_landed ? "已落地 media.mp4" : "未落地",
+      label: "媒体保存",
+      value: direct.media_landed ? "已保存 media.mp4" : "未保存",
       detail: direct.media_reusable ? "可复用本地视频" : directExtractionBoundaryText(direct.boundary)
     },
     {
@@ -3576,7 +3580,7 @@ function noteHeroBanner(markdown, task) {
   ].filter(Boolean).join(" · ");
   const timeline = windows.length && firstWindow
     ? `${fmt(windows[0].start || 0)} - ${fmt(windows[windows.length - 1].end || 0)}`
-    : task.media_path ? "media.mp4 已落盘" : "等待切片";
+    : task.media_path ? "media.mp4 已保存" : "等待切片";
   const metrics = [
     { label: "章节", value: headings.total ? `${headings.total}` : "-" },
     { label: "字幕", value: task.transcript_path ? "已生成" : task.browser_subtitles?.length ? `${task.browser_subtitles.length} 条` : "-" },
@@ -3688,7 +3692,7 @@ function noteExportCtaBar(task) {
   const detail = task.note_path
     ? `Markdown、切片索引和资料包可直接保存；${windows.length ? `${windows.length} 个视觉窗口会写入资料包。` : "当前任务没有视觉窗口。"}`
     : task.media_path
-      ? "视频已落盘，可先导出媒体或继续切片总结。"
+      ? "视频已保存到本地，可先导出媒体或继续切片总结。"
       : "任务未生成完整笔记，但诊断和审计仍可导出。";
   return `<section class="export-cta-bar ${escapeHtml(status)}" aria-label="导出学习成果">
     <div>
@@ -4183,7 +4187,7 @@ function pendingSliceWorkbench(task) {
           : "任务完成抽帧后，这里会显示按时间窗口组织的截图网格、字幕片段和回看动作。"}</small>
       </div>
       <ol>
-        <li class="done"><b>1</b><span>本地视频</span><small>media.mp4 已落盘，可导出核对。</small></li>
+        <li class="done"><b>1</b><span>本地视频</span><small>media.mp4 已保存，可导出核对。</small></li>
         <li class="${canContinue ? "active" : "wait"}"><b>2</b><span>转写与抽帧</span><small>继续任务后生成字幕和画面网格。</small></li>
         <li class="wait"><b>3</b><span>学习切片</span><small>按视觉窗口汇总字幕、截图和复习问题。</small></li>
       </ol>
@@ -4260,7 +4264,7 @@ function emptyResultWorkbench() {
       <section class="empty-readiness-panel" aria-label="准备度审计">
         <header>
           <div>
-            <span>审计门</span>
+            <span>检查项</span>
             <strong>先看这条链路现在能不能跑通</strong>
           </div>
           <div class="empty-readiness-actions">

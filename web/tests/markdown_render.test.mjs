@@ -53,6 +53,13 @@ const makeElement = () => ({
   }
 });
 
+const resultTabs = ["note", "transcript", "slices", "frames", "diagnostics"]
+  .map(tab => {
+    const element = makeElement();
+    element.dataset.tab = tab;
+    return element;
+  });
+
 const documentStub = {
   body: makeElement(),
   createElement() {
@@ -62,7 +69,8 @@ const documentStub = {
     if (!elements.has(selector)) elements.set(selector, makeElement());
     return elements.get(selector);
   },
-  querySelectorAll() {
+  querySelectorAll(selector) {
+    if (selector === ".result-tab") return resultTabs;
     return [];
   }
 };
@@ -200,10 +208,10 @@ assert.match(elements.get("#detail").innerHTML, /class="empty-production-brief"/
 assert.match(elements.get("#detail").innerHTML, /class="empty-readiness-panel"/);
 assert.match(elements.get("#detail").innerHTML, /data-empty-readiness/);
 assert.match(elements.get("#detail").innerHTML, /Markdown · 诊断 · 资料包/);
-assert.match(elements.get("#detail").innerHTML, /后端媒体门/);
-assert.match(elements.get("#detail").innerHTML, /视觉总结门/);
-assert.match(elements.get("#detail").innerHTML, /本地视频门/);
-assert.match(elements.get("#detail").innerHTML, /当前页直取门/);
+assert.match(elements.get("#detail").innerHTML, /后端媒体检查/);
+assert.match(elements.get("#detail").innerHTML, /视觉总结检查/);
+assert.match(elements.get("#detail").innerHTML, /本地视频检查/);
+assert.match(elements.get("#detail").innerHTML, /当前页直取检查/);
 assert.match(elements.get("#detail").innerHTML, /复制后端地址/);
 assert.match(elements.get("#detail").innerHTML, /当前页直取/);
 assert.match(elements.get("#detail").innerHTML, /打开当前页路线/);
@@ -233,6 +241,8 @@ assert.match(indexHtml, /href="#optionsDisclosure" title="模板"/);
 assert.doesNotMatch(indexHtml, /href="#settings" title="模板"/);
 assert.match(indexHtml, /id="downloadUrlButton"[\s\S]*只下载到本地/);
 assert.doesNotMatch(indexHtml, />只下载本地</);
+assert.match(indexHtml, /class="result-tab active" role="tab" aria-selected="true" data-tab="note"/);
+assert.match(indexHtml, /class="result-tab" role="tab" aria-selected="false" data-tab="diagnostics">下载诊断/);
 assert.match(indexHtml, /id="llmProvider"/);
 assert.match(indexHtml, /value="gemini">Google Gemini/);
 assert.match(indexHtml, /value="dashscope">/);
@@ -440,10 +450,10 @@ assert.equal(JSON.stringify(context.taskChipItems(queueChipTask)), JSON.stringif
 assert.equal(context.taskMetaLine(queueChipTask), "直取 · 视频");
 const queueAuditMiniHtml = context.taskAuditMiniHtml(queueChipTask);
 assert.match(queueAuditMiniHtml, /class="task-audit-mini"/);
-assert.match(queueAuditMiniHtml, /任务审计门/);
+assert.match(queueAuditMiniHtml, /任务检查/);
 assert.match(queueAuditMiniHtml, /来源/);
 assert.match(queueAuditMiniHtml, /媒体/);
-assert.match(queueAuditMiniHtml, /转写/);
+assert.match(queueAuditMiniHtml, /字幕/);
 assert.match(queueAuditMiniHtml, /切片/);
 assert.match(queueAuditMiniHtml, /总结/);
 assert.match(queueAuditMiniHtml, /5\/5 已放行/);
@@ -467,7 +477,7 @@ assert.match(resultMetaHtml, /class="result-meta-chips"/);
 assert.match(resultMetaHtml, /任务阶段摘要/);
 assert.match(resultMetaHtml, /已完成/);
 assert.match(resultMetaHtml, /直取 · 视频/);
-assert.match(resultMetaHtml, /媒体<\/b>已落盘/);
+assert.match(resultMetaHtml, /媒体<\/b>已保存/);
 assert.match(resultMetaHtml, /字幕<\/b>已生成/);
 assert.match(resultMetaHtml, /切片<\/b>1 窗口/);
 assert.match(resultMetaHtml, /笔记<\/b>vision-llm/);
@@ -494,7 +504,7 @@ const blockedAuditMiniHtml = context.taskAuditMiniHtml({
   }
 });
 assert.match(blockedAuditMiniHtml, /class="fail"/);
-assert.match(blockedAuditMiniHtml, /媒体门 · 403 forbidden/);
+assert.match(blockedAuditMiniHtml, /媒体检查 · 403 forbidden/);
 assert.match(blockedAuditMiniHtml, /cookie expired/);
 
 const visionEvidenceHtml = context.visionEvidenceBar({
@@ -1180,7 +1190,7 @@ assert.match(taskOverviewHtml, /直取证据/);
 assert.match(taskOverviewHtml, /非录制下载路线/);
 assert.match(taskOverviewHtml, /只下载到本地/);
 assert.match(taskOverviewHtml, /不录制标签页/);
-assert.match(taskOverviewHtml, /已落地 media\.mp4/);
+assert.match(taskOverviewHtml, /已保存 media\.mp4/);
 assert.match(taskOverviewHtml, /可复用本地视频/);
 assert.match(taskOverviewHtml, /headers Origin, Referer/);
 assert.match(taskOverviewHtml, /manifest-ffmpeg → yt-dlp-page/);
@@ -1188,7 +1198,7 @@ assert.match(taskOverviewHtml, /仅可访问媒体/);
 assert.doesNotMatch(taskOverviewHtml, /secret=1/);
 assert.doesNotMatch(taskOverviewHtml, /Bearer secret/);
 assert.doesNotMatch(taskOverviewHtml, /Authorization/);
-assert.match(taskOverviewHtml, /阶段审计门/);
+assert.match(taskOverviewHtml, /阶段检查/);
 assert.match(taskOverviewHtml, /class="task-command-center"/);
 assert.match(taskOverviewHtml, /class="task-command-grid"/);
 assert.match(taskOverviewHtml, /data-switch-result-tab="diagnostics"/);
@@ -1200,11 +1210,11 @@ assert.match(taskOverviewHtml, /class="media-preview-card"/);
 assert.match(taskOverviewHtml, /本地视频核对/);
 assert.match(taskOverviewHtml, /\/api\/tasks\/task-web-overview\/media/);
 assert.match(taskOverviewHtml, /导出 media\.mp4/);
-assert.match(taskOverviewHtml, /来源门/);
-assert.match(taskOverviewHtml, /媒体门/);
-assert.match(taskOverviewHtml, /转写门/);
-assert.match(taskOverviewHtml, /切片门/);
-assert.match(taskOverviewHtml, /总结门/);
+assert.match(taskOverviewHtml, /来源检查/);
+assert.match(taskOverviewHtml, /媒体检查/);
+assert.match(taskOverviewHtml, /字幕检查/);
+assert.match(taskOverviewHtml, /切片检查/);
+assert.match(taskOverviewHtml, /总结检查/);
 assert.match(taskOverviewHtml, /pipeline-audit-actions/);
 assert.match(taskOverviewHtml, /data-rerun-from-media="task-web-overview"/);
 assert.doesNotMatch(taskOverviewHtml, /<script>bad/);
@@ -1907,7 +1917,7 @@ assert.match(browserWorkflowHtml, /打开扩展侧栏总结当前页|downloading
 assert.match(browserWorkflowHtml, /source-run-modes/);
 assert.match(browserWorkflowHtml, /完整笔记/);
 assert.match(browserWorkflowHtml, /只下载/);
-assert.match(browserWorkflowHtml, /续跑切片/);
+assert.match(browserWorkflowHtml, /继续切片/);
 assert.match(browserWorkflowHtml, /非录制直取/);
 assert.match(browserWorkflowHtml, /预检资源/);
 assert.match(browserWorkflowHtml, /source-route-insights/);
@@ -1996,7 +2006,7 @@ const downloadOnlyRunModesHtml = context.sourceRunModesHtml("browser", {
   selected_resource: { kind: "hls" },
   visual_windows: []
 });
-assert.match(downloadOnlyRunModesHtml, /media\.mp4 已落地/);
+assert.match(downloadOnlyRunModesHtml, /media\.mp4 已保存/);
 assert.match(downloadOnlyRunModesHtml, /从 media\.mp4 继续/);
 assert.match(downloadOnlyRunModesHtml, /data-source-workflow-action="continue-media"/);
 assert.match(downloadOnlyRunModesHtml, /data-task-id="task-workflow-download-only"/);
@@ -2136,6 +2146,8 @@ assert.equal(posts.length, 1);
 assert.equal(context.window.history.replacedUrls.at(-1), "/?task=task-url-direct&tab=note");
 context.switchResultTab("frames");
 assert.equal(context.window.history.replacedUrls.at(-1), "/?task=task-url-direct&tab=frames");
+assert.equal(resultTabs.find(tab => tab.dataset.tab === "frames").getAttribute("aria-selected"), "true");
+assert.equal(resultTabs.find(tab => tab.dataset.tab === "note").getAttribute("aria-selected"), "false");
 assert.equal(posts[0].mode, "video");
 assert.equal(posts[0].resources.length, 1);
 assert.equal(posts[0].resources[0].kind, "video");
