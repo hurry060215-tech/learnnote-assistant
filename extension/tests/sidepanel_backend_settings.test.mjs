@@ -107,6 +107,8 @@ assert.equal(elements.get("#llmModel").value, "openai/gpt-4.1-mini");
 assert.equal(elements.get("#llmBaseUrl").value, "https://openrouter.ai/api/v1");
 assert.equal(elements.get("#transcriber").value, "faster-whisper");
 assert.equal(elements.get("#whisperModel").value, "small");
+assert.match(elements.get("#backendStatus").innerHTML, /backend-status-chip asr/);
+assert.match(elements.get("#backendStatus").innerHTML, /本地 faster-whisper · small/);
 
 assert.equal(context.normalizeBackendUrl("127.0.0.1:8000/"), "http://127.0.0.1:8000");
 assert.equal(context.normalizeBackendUrl("localhost:8765/workbench"), "http://localhost:8765");
@@ -153,3 +155,7 @@ assert.equal(savedGeminiSettings.llm_base_url, "https://generativelanguage.googl
 assert.equal(savedGeminiSettings.llm_model, "gemini-3.5-flash");
 assert.equal(savedGeminiSettings.transcriber, "faster-whisper");
 assert.equal(savedGeminiSettings.whisper_model, "small");
+elements.get("#llmApiKey").value = "";
+context.updateHealthVisionStatus({ ffmpeg: true, vision_model_configured: false });
+assert.match(elements.get("#backendStatus").innerHTML, /待填 · Gemini/);
+assert.match(elements.get("#backendStatus").innerHTML, /本地 faster-whisper · small/);

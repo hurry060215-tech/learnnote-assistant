@@ -1820,16 +1820,21 @@ function healthVisionProvider(data) {
 function healthVisionText(data) {
   const model = healthVisionModel(data);
   const provider = healthVisionProvider(data);
+  const asr = healthAsrChipText();
   if (healthVisionReady(data)) {
-    return `视觉模型已配置（${provider} · ${model}），切片网格会随字幕进入图文总结。`;
+    return `视觉模型已配置（${provider} · ${model}），切片网格会随字幕进入图文总结；转写：${asr}。`;
   }
-  return `未配置视觉模型 API Key：当前默认 ${provider} · ${model} 仅作待用配置；仍会生成字幕、切片网格和本地图文索引。`;
+  return `未配置视觉模型 API Key：当前默认 ${provider} · ${model} 仅作待用配置；转写：${asr}；仍会生成字幕、切片网格和本地图文索引。`;
 }
 
 function healthVisionChipText(data) {
   const model = healthVisionModel(data);
   const provider = healthVisionProvider(data);
   return healthVisionReady(data) ? `${provider} · ${model}` : `待填 · ${provider}`;
+}
+
+function healthAsrChipText() {
+  return `${transcriberLabel(els.transcriber?.value || "faster-whisper")} · ${els.whisperModel?.value || "small"}`;
 }
 
 function healthMediaChipText(data) {
@@ -1902,6 +1907,7 @@ function updateHealthVisionStatus(data = lastHealthData) {
     <span class="capture-status-chip bridge"><b>桥接</b>需 Chrome/Edge 扩展侧栏</span>
     <span class="capture-status-chip media"><b>媒体</b>${escapeHtml(healthMediaChipText(data))}</span>
     <span class="capture-status-chip vision ${healthVisionReady(data) ? "ready" : "pending"}"><b>视觉</b>${escapeHtml(healthVisionChipText(data))}</span>
+    <span class="capture-status-chip asr"><b>转写</b>${escapeHtml(healthAsrChipText())}</span>
   `;
 }
 

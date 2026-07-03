@@ -170,6 +170,16 @@ small,
   color: var(--warning);
 }
 
+.backend-status-chip.asr {
+  border-color: rgba(21, 112, 239, 0.2);
+  background: rgba(21, 112, 239, 0.06);
+  color: #24528f;
+}
+
+.backend-status-chip.asr b {
+  color: #24528f;
+}
+
 .side-shell {
   display: grid;
   gap: 9px;

@@ -905,6 +905,17 @@ select:focus {
   color: var(--warning);
 }
 
+.capture-status-chip.asr {
+  border-color: rgba(21, 112, 239, 0.2);
+  background: rgba(21, 112, 239, 0.06);
+  color: #24528f;
+}
+
+.capture-status-chip.asr b {
+  background: rgba(21, 112, 239, 0.1);
+  color: #24528f;
+}
+
 .browser-capture-head em {
   min-width: 46px;
   height: 24px;
