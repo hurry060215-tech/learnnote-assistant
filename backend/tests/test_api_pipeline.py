@@ -533,6 +533,48 @@ class LocalUploadValidationTests(unittest.TestCase):
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
+    def test_recovery_prefers_rerun_when_failed_task_has_media(self) -> None:
+        task = create_task("current_page", "已下载课程", "https://mooc1.chaoxing.com/mycourse/studentstudy")
+        try:
+            media = task_dir(task.id) / "media.mp4"
+            media.write_bytes(b"\x00\x00\x00\x18ftypmp42" + (b"learnnote-media" * 512))
+            task = update_task(
+                task.id,
+                status="failed",
+                phase="failed",
+                progress=100,
+                media_path=str(media),
+                error_code="download_forbidden",
+                error_detail="HTTP 403 after media landed",
+                selected_resource=ResourceCandidate(
+                    url="https://mooc1.chaoxing.com/ananas/status/lesson.m3u8",
+                    kind="hls",
+                    source="webRequest",
+                    request_headers={"Referer": "https://mooc1.chaoxing.com/mycourse/studentstudy"},
+                ),
+                download_attempts=[
+                    DownloadAttempt(
+                        strategy="manifest-ffmpeg",
+                        url="https://mooc1.chaoxing.com/ananas/status/lesson.m3u8",
+                        code="download_forbidden",
+                        message="HTTP 403 after media landed",
+                    )
+                ],
+            )
+
+            recovery = diagnostic_recovery_profile(task)
+
+            self.assertEqual(recovery["code"], "media_ready_for_rerun")
+            self.assertEqual(recovery["next_action"], "continue_from_media")
+            self.assertEqual(recovery["primary_action"]["ui_intent"], "continue_from_media")
+            self.assertEqual(recovery["primary_action"]["label"], "继续切片总结")
+            self.assertIn("media.mp4", recovery["diagnosis"])
+            self.assertIn("local_upload", [action["key"] for action in recovery["actions"]])
+            self.assertIn("export_diagnostics", [action["key"] for action in recovery["actions"]])
+            self.assertTrue(recovery["is_chaoxing"])
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
     def test_bundle_manifest_redacts_sensitive_options_and_headers(self) -> None:
         task = create_task("current_page", "Manifest redaction lesson", "https://course.example.com/watch")
         try:

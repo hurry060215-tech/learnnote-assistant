@@ -1479,11 +1479,32 @@ const failedMediaOverviewHtml = context.taskOverview({
   error_code: "processing_failed",
   error_detail: "Whisper failed",
   selected_resource: { kind: "video", source: "webRequest" },
+  recovery: {
+    code: "media_ready_for_rerun",
+    severity: "recoverable",
+    confidence: "high",
+    diagnosis: "视频已保存到本地，但完整笔记尚未生成；优先复用 media.mp4 继续转写、切片和图文总结。",
+    attempt_count: 1,
+    primary_action: {
+      key: "continue_from_media",
+      label: "继续切片总结",
+      ui_intent: "continue_from_media"
+    },
+    actions: [
+      { key: "continue_from_media", label: "继续切片总结", ui_intent: "continue_from_media" },
+      { key: "local_upload", label: "上传本地视频", ui_intent: "local_upload" },
+      { key: "inspect_diagnostics", label: "查看诊断", ui_intent: "inspect_diagnostics" }
+    ]
+  },
   options: {},
   visual_windows: []
 });
 assert.match(failedMediaOverviewHtml, /data-rerun-from-media="task-failed-media"/);
 assert.match(failedMediaOverviewHtml, /Whisper failed/);
+assert.match(failedMediaOverviewHtml, /class="recovery-decision warn"/);
+assert.match(failedMediaOverviewHtml, /视频已保存到本地/);
+assert.match(failedMediaOverviewHtml, /继续切片总结/);
+assert.doesNotMatch(failedMediaOverviewHtml, /继续切片总结继续切片总结/);
 
 const failedNextStepHtml = context.nextStepHtml({
   id: "task-failed-next",

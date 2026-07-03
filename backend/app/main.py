@@ -899,8 +899,15 @@ def diagnostic_recovery_profile(task: TaskRecord) -> dict:
     is_chaoxing = _is_chaoxing_task(task)
     boundary_notes: list[str] = []
     primary_code = task.error_code or (latest_attempt.code if latest_attempt else "")
+    media_ready_for_rerun = task_media_file_exists(task) and not task.note_path
 
-    if "drm_or_encrypted" in codes or task.drm_detected or selected_kind == "blob":
+    if media_ready_for_rerun:
+        primary_code = "media_ready_for_rerun"
+        diagnosis = "视频已保存到本地，但完整笔记尚未生成；优先复用 media.mp4 继续转写、切片和图文总结。"
+        confidence = "high"
+        severity = "recoverable" if task.status == "failed" else "ok"
+        next_action = "continue_from_media"
+    elif "drm_or_encrypted" in codes or task.drm_detected or selected_kind == "blob":
         primary_code = "drm_or_encrypted"
         diagnosis = "页面没有暴露可还原的直接媒体资源，或触发了 DRM/EME 边界。"
         confidence = "high" if task.drm_detected or selected_kind == "blob" else "medium"
