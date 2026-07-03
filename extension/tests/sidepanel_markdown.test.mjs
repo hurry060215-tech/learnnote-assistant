@@ -1362,6 +1362,12 @@ assert.match(elements.get("#currentStudyCard").className, /candidate/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /发现当前视频直取候选/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /workbench-brief/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /学习流总览/);
+assert.match(elements.get("#currentStudyCard").innerHTML, /workbench-run-modes/);
+assert.match(elements.get("#currentStudyCard").innerHTML, /完整笔记/);
+assert.match(elements.get("#currentStudyCard").innerHTML, /只下载/);
+assert.match(elements.get("#currentStudyCard").innerHTML, /续跑切片/);
+assert.match(elements.get("#currentStudyCard").innerHTML, /data-route-action="summarize"/);
+assert.match(elements.get("#currentStudyCard").innerHTML, /data-route-action="download"/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /当前页视频/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /待预检/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /workbench-route/);
@@ -1558,6 +1564,9 @@ assert.match(elements.get("#currentStudyCard").innerHTML, /workbench-audit-gate/
 assert.match(elements.get("#currentStudyCard").innerHTML, /直取审计门/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /复制审计/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /workbench-brief/);
+assert.match(elements.get("#currentStudyCard").innerHTML, /workbench-run-modes/);
+assert.match(elements.get("#currentStudyCard").innerHTML, /下载后直接总结/);
+assert.match(elements.get("#currentStudyCard").innerHTML, /先把视频拉到本地/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /预检通过/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /生成完整图文笔记/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /预检通过/);
@@ -1568,6 +1577,24 @@ assert.match(elements.get("#launchBar").className, /ready/);
 assert.match(elements.get("#launchBar").innerHTML, /data-route-action="summarize"/);
 assert.match(elements.get("#launchBar").innerHTML, /data-route-action="download"/);
 assert.doesNotMatch(elements.get("#launchBar").innerHTML, /data-route-action="preflight"/);
+
+vm.runInContext(`
+currentTask = {
+  id: "side-download-only-task",
+  status: "success",
+  phase: "completed",
+  progress: 100,
+  mode: "download_only",
+  source_type: "current_page",
+  media_path: "D:/Projects/learnnote-assistant/data/tasks/side-download-only-task/media.mp4",
+  note_path: "",
+  visual_windows: []
+};
+`, context);
+const continueRunModesHtml = context.workbenchRunModesHtml("ready");
+assert.match(continueRunModesHtml, /media\.mp4 已落地/);
+assert.match(continueRunModesHtml, /从 media\.mp4 继续/);
+assert.match(continueRunModesHtml, /data-route-action="continue-media"/);
 
 vm.runInContext(`
 page = {
@@ -1582,6 +1609,7 @@ selectedResourceUrl = "";
 preflight = null;
 preflightResourceUrl = "";
 preflightResultsByUrl = new Map();
+currentTask = null;
 `, context);
 const blockedDecisionHtml = context.resourceDecisionHtml({
   url: "blob:https://course.example.com/drm",
@@ -1612,8 +1640,10 @@ assert.match(elements.get("#playbackReadiness").innerHTML, /DRM/);
 assert.match(elements.get("#currentStudyCard").className, /blocked/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /当前页不能直接下载/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /workbench-brief/);
+assert.match(elements.get("#currentStudyCard").innerHTML, /workbench-run-modes/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /不可直取/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /上传本地视频/);
+assert.match(elements.get("#currentStudyCard").innerHTML, /改走本地视频/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /workbench-audit-gate/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /失败边界/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /转本地入口/);

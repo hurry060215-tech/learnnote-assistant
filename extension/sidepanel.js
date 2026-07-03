@@ -2258,6 +2258,53 @@ function workbenchBriefHtml(state) {
   </div>`;
 }
 
+function workbenchRunModeItems(state) {
+  const hasSelected = Boolean(selectedResource());
+  const blocked = state === "blocked";
+  const canContinue = canContinueFromDownloadedMedia(currentTask);
+  const canDirectTask = hasSelected && !blocked;
+  return [
+    {
+      state: canDirectTask ? state === "ready" ? "active" : "ready" : "wait",
+      label: "完整笔记",
+      title: canDirectTask ? "下载后直接总结" : "等待可直取候选",
+      detail: "当前页媒体可访问时，下载后进入转写、抽帧、视觉窗口和图文总结。",
+      action: canDirectTask ? "summarize" : ""
+    },
+    {
+      state: canContinue ? "pass" : canDirectTask ? "ready" : "wait",
+      label: "只下载",
+      title: canContinue ? "media.mp4 已落地" : canDirectTask ? "先把视频拉到本地" : "等待媒体 URL",
+      detail: "先验证当前页资源能否本地下载，再决定是否继续生成图文笔记。",
+      action: canContinue ? "" : canDirectTask ? "download" : ""
+    },
+    {
+      state: canContinue ? "active" : blocked ? "active" : "wait",
+      label: "续跑切片",
+      title: canContinue ? "从 media.mp4 继续" : blocked ? "改走本地视频" : "等待本地媒体",
+      detail: canContinue
+        ? "复用已下载视频进入转写、抽帧、视觉窗口和图文总结；不会录制页面。"
+        : blocked
+          ? "当前页不可直取时，上传本地视频进入同一套切片总结管线。"
+          : "只下载成功后，可从本地 media.mp4 继续切片总结。",
+      action: canContinue ? "continue-media" : blocked ? "local" : ""
+    }
+  ];
+}
+
+function workbenchRunModesHtml(state) {
+  return `<div class="workbench-run-modes" aria-label="运行模式">
+    ${workbenchRunModeItems(state).map(item => {
+      const attrs = item.action ? ` data-route-action="${escapeHtml(item.action)}"` : " disabled";
+      return `<button type="button" class="${escapeHtml(item.state)}"${attrs}>
+        <span>${escapeHtml(item.label)}</span>
+        <strong>${escapeHtml(item.title)}</strong>
+        <small>${escapeHtml(item.detail)}</small>
+      </button>`;
+    }).join("")}
+  </div>`;
+}
+
 function shouldShowWorkbenchFallback(state) {
   return !selectedResource() || ["blocked", "fallback", "mapping", "waiting", "empty"].includes(state);
 }
@@ -2281,6 +2328,7 @@ function renderCurrentStudyCard() {
       </button>
     </div>
     ${workbenchBriefHtml(state)}
+    ${workbenchRunModesHtml(state)}
     ${workbenchRouteHtml()}
     ${workbenchAuditGateHtml(state)}
     ${workbenchSlicePlanHtml()}
@@ -5066,6 +5114,8 @@ function handleRouteAction(action) {
     startTask("video");
   } else if (action === "download") {
     startTask("download_only");
+  } else if (action === "continue-media") {
+    if (canContinueFromDownloadedMedia(currentTask)) rerunTaskFromMedia(currentTask.id);
   } else if (action === "local") {
     pulseTarget(els.localDrop);
     els.fileInput.click();
