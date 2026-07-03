@@ -491,7 +491,7 @@ def _looks_like_nested_media_text(value: str) -> bool:
         has_media_field = JSON_MEDIA_KEY_RE.search(text)
         has_media_target = TEXT_MEDIA_HINT_RE.search(text) or MEDIA_ENDPOINT_HINT_RE.search(text)
         return bool(has_media_field and has_media_target)
-    return bool(JSON_MEDIA_KEY_RE.search(text) and TEXT_MEDIA_HINT_RE.search(text))
+    return bool(JSON_MEDIA_KEY_RE.search(text) and (TEXT_MEDIA_HINT_RE.search(text) or MEDIA_ENDPOINT_HINT_RE.search(text)))
 
 
 def _repeated_unquote(value: str, limit: int = 3) -> list[str]:

@@ -50,6 +50,7 @@ const mediaKeyWrappedJson = JSON.stringify({
     })
   }
 });
+const noExtNestedText = "source='/ananas/status/objectid-wrapped?flag=normal'; mimeType='video/mp4'";
 
 const context = {
   window: null,
@@ -61,7 +62,7 @@ const context = {
   ArrayBuffer,
   URL,
   atob: value => Buffer.from(value, "base64").toString("binary"),
-  fetch: async () => new FakeResponse({ code: 0, data: wrappedJson, packed: packedJson, playInfo: mediaKeyWrappedJson }),
+  fetch: async () => new FakeResponse({ code: 0, data: wrappedJson, packed: packedJson, playInfo: mediaKeyWrappedJson, textConfig: noExtNestedText }),
   setTimeout,
   clearTimeout,
   console
@@ -85,6 +86,7 @@ const resources = messages.flatMap(message => message.resources || []);
 const hls = resources.find(resource => resource.url === "https://cdn.example.com/wrapped/master.m3u8?token=nested");
 const video = resources.find(resource => resource.url === "https://course.example.com/api/media/file?id=42&token=abc");
 const mediaKeyHls = resources.find(resource => resource.url === "https://course.example.com/hls/media-key/master.m3u8?token=wrapped");
+const noExtVideo = resources.find(resource => resource.url === "https://course.example.com/ananas/status/objectid-wrapped?flag=normal");
 
 assert.ok(hls, "expected nested encoded JSON string to expose the HLS URL");
 assert.equal(hls.kind, "hls");
@@ -98,3 +100,7 @@ assert.ok(mediaKeyHls, "expected nested JSON inside a media-named field to expos
 assert.equal(mediaKeyHls.kind, "hls");
 assert.equal(mediaKeyHls.source, "pageHookBody");
 assert.match(mediaKeyHls.label, /nested playInfo/);
+assert.ok(noExtVideo, "expected nested text config to expose extensionless Chaoxing media endpoint");
+assert.equal(noExtVideo.kind, "video");
+assert.equal(noExtVideo.source, "pageHookBody");
+assert.match(noExtVideo.label, /nested textConfig/);

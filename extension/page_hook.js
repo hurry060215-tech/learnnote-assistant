@@ -209,7 +209,7 @@
   }
 
   function mediaUrlHint(url = "") {
-    return /(^|[/?&=._-])(m3u8|mpd|hls|dash|manifest|playlist|master|stream|play|video|audio|media)([/?&=._-]|$)/i.test(String(url || ""));
+    return /(^|[/?&=._-])(m3u8|mpd|hls|dash|manifest|playlist|master|stream|play|video|audio|media|vod|ananas|objectid|dtoken|fileid|httpmd)([/?&=._-]|$)/i.test(String(url || ""));
   }
 
   function endpointKindHint(url = "") {
@@ -558,7 +558,7 @@
     if (/^(https?:)?\/\//i.test(text)) return true;
     if (/%2f|%3a|%3f|%3d|%26/i.test(text)) return true;
     if (text.startsWith("/")) return true;
-    return text.includes("/") && /[?=&]|api|play|media|video|audio|stream|m3u8|mpd|hls|dash/i.test(text);
+    return text.includes("/") && /[?=&]|api|ananas|play|media|video|audio|stream|vod|m3u8|mpd|hls|dash|objectid|dtoken|fileid|httpmd/i.test(text);
   }
 
   function looksLikeNestedMediaText(value) {
@@ -567,7 +567,7 @@
     if ("{[".includes(text[0])) {
       return JSON_MEDIA_KEY_RE.test(text) && (MEDIA_HINT_RE.test(text) || mediaUrlHint(text));
     }
-    return JSON_MEDIA_KEY_RE.test(text) && MEDIA_HINT_RE.test(text);
+    return JSON_MEDIA_KEY_RE.test(text) && (MEDIA_HINT_RE.test(text) || mediaUrlHint(text));
   }
 
   function decodeRepeatedUrlComponent(value, limit = 3) {

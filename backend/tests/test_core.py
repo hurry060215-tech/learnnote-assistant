@@ -158,6 +158,20 @@ class ResourceDetectionTests(unittest.TestCase):
         self.assertEqual(by_url["https://media.example.com/vod/lesson?id=noext"].kind, "video")
         self.assertNotIn("https://course.example.com/ordinary/page", by_url)
 
+    def test_nested_text_config_extracts_extensionless_chaoxing_endpoint(self) -> None:
+        payload = json.dumps(
+            {
+                "config": "source='/ananas/status/objectid-wrapped?flag=normal'; mimeType='video/mp4'",
+                "ordinary": "href='/ordinary/page'",
+            }
+        )
+
+        resources = extract_media_resources_from_text(payload, "https://course.example.com/lesson", "page-scan")
+        by_url = {item.url: item for item in resources}
+
+        self.assertEqual(by_url["https://course.example.com/ananas/status/objectid-wrapped?flag=normal"].kind, "video")
+        self.assertNotIn("https://course.example.com/ordinary/page", by_url)
+
     def test_page_scan_extracts_lazy_media_path_attributes(self) -> None:
         html = """
         <div class="player"
