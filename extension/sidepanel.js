@@ -4817,7 +4817,11 @@ function renderResult() {
     const noteHtml = lastNote
       ? markdownToHtml(lastNote)
       : currentTask.media_path
-        ? `<p>视频已下载到本地。可点击右上角视频按钮导出，不会继续转写、切片或总结。</p>`
+        ? `<section class="download-only-callout note-empty-continue">
+            <strong>视频已直取到本地</strong>
+            <span>可以先导出 media.mp4 核对，也可以继续进入转写、抽帧、视觉窗口和图文笔记流程；不会录制页面。</span>
+            ${canContinueFromDownloadedMedia(currentTask) ? `<button type="button" data-rerun-from-media="${escapeHtml(currentTask.id)}">继续切片总结</button>` : ""}
+          </section>`
         : `<p>${escapeHtml(currentTask.message || "笔记尚未生成。")}</p>`;
     els.result.innerHTML = `${taskOverview(currentTask)}${visionEvidenceBar(currentTask)}${noteStudyMap(lastNote, currentTask)}${noteOutline(lastNote)}${noteVisualRail(currentTask)}<article class="markdown-note">${noteHtml}</article>`;
     bindTaskOverviewActions();

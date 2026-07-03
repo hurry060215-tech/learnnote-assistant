@@ -4003,6 +4003,13 @@ async function renderDetail() {
 
   if (selectedTab === "note") {
     lastNote = await noteForTask(task.id);
+    const emptyNoteHtml = task.media_path
+      ? `<section class="download-only-callout note-empty-continue">
+          <strong>视频已直取到本地</strong>
+          <span>可以先导出 media.mp4 核对，也可以继续进入转写、抽帧、视觉窗口和图文笔记流程；不会录制页面。</span>
+          ${canContinueFromDownloadedMedia(task) ? `<button type="button" data-rerun-from-media="${escapeHtml(task.id)}">继续切片总结</button>` : ""}
+        </section>`
+      : "<p>笔记尚未生成。</p>";
     els.detail.innerHTML = `
       <div class="note-shell">
         ${taskOverview(task)}
@@ -4012,7 +4019,7 @@ async function renderDetail() {
         ${noteStudyBar(lastNote, task)}
         ${noteExportCtaBar(task)}
         <div class="note-workbench">
-          <article class="markdown-note">${lastNote ? markdownToHtml(lastNote) : task.media_path ? "<p>视频已下载到本地。可点击右上角视频按钮导出，不会继续转写、切片或总结。</p>" : "<p>笔记尚未生成。</p>"}</article>
+          <article class="markdown-note">${lastNote ? markdownToHtml(lastNote) : emptyNoteHtml}</article>
           ${readingRail(lastNote, task)}
         </div>
       </div>

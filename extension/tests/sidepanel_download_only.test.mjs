@@ -204,6 +204,10 @@ assert.equal(context.canContinueFromDownloadedMedia({
 }), false);
 assert.equal(elements.get("#continueFromMediaButton").hidden, false);
 assert.equal(elements.get("#continueFromMediaButton").disabled, false);
+assert.match(elements.get("#result").innerHTML, /视频已直取到本地/);
+assert.match(elements.get("#result").innerHTML, /继续切片总结/);
+assert.match(elements.get("#result").innerHTML, /data-rerun-from-media="download-only-task"/);
+assert.doesNotMatch(elements.get("#result").innerHTML, /不会继续转写、切片或总结/);
 
 context.switchResultTab("diagnostics");
 

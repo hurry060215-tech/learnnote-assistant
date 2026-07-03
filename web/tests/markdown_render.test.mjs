@@ -765,6 +765,39 @@ assert.match(pendingSliceHtml, /\/api\/tasks\/task-pending-slice\/exports\/media
 assert.match(pendingSliceHtml, /data-switch-result-tab="diagnostics"/);
 assert.match(pendingSliceHtml, /media-preview-card/);
 
+const originalFetchForDownloadNote = context.fetch;
+context.fetch = async url => {
+  const value = String(url);
+  if (value.endsWith("/api/tasks/task-note-download-only")) {
+    return {
+      json: async () => ({
+        task: {
+          id: "task-note-download-only",
+          title: "Downloaded only note",
+          status: "success",
+          phase: "completed",
+          mode: "download_only",
+          source_type: "current_page",
+          media_path: "D:/Projects/learnnote-assistant/data/tasks/task-note-download-only/media.mp4",
+          visual_windows: []
+        }
+      })
+    };
+  }
+  if (value.endsWith("/api/tasks/task-note-download-only/note")) {
+    return { ok: false, text: async () => "" };
+  }
+  return originalFetchForDownloadNote(url);
+};
+context.selectTask("task-note-download-only", { syncUrl: false });
+context.switchResultTab("note");
+await context.renderDetail();
+assert.match(elements.get("#detail").innerHTML, /视频已直取到本地/);
+assert.match(elements.get("#detail").innerHTML, /继续切片总结/);
+assert.match(elements.get("#detail").innerHTML, /data-rerun-from-media="task-note-download-only"/);
+assert.doesNotMatch(elements.get("#detail").innerHTML, /不会继续转写、切片或总结/);
+context.fetch = originalFetchForDownloadNote;
+
 const visualDeckWithTranscriptHtml = context.visualStudyDeck({
   id: "task-visual-transcript",
   title: "带字幕切片",
