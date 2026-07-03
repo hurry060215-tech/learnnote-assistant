@@ -286,6 +286,7 @@ function sourceRank(source = "") {
 function playbackMatchRank(match = "") {
   return ({
     "exact-src": 9,
+    "source-element": 8,
     "blob-source": 8,
     "range-near-playhead": 7,
     "fragment-near-playhead": 6,

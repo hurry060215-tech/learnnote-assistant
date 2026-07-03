@@ -1304,6 +1304,7 @@ def source_rank(source: str) -> int:
 def playback_match_rank(match: str) -> int:
     return {
         "exact-src": 9,
+        "source-element": 8,
         "blob-source": 8,
         "range-near-playhead": 7,
         "fragment-near-playhead": 6,

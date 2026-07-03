@@ -81,3 +81,25 @@ const sorted = [
 ].sort(context.compareResourceCandidates);
 
 assert.equal(sorted[0].url, "https://cdn.example.com/current-lesson.mp4");
+
+const sourceElementSorted = [
+  {
+    url: "https://cdn.example.com/preload-or-ad.mp4",
+    source: "webRequest",
+    kind: "video",
+    score: 100,
+    time_stamp: now + 3000
+  },
+  {
+    url: "https://cdn.example.com/current-source.mp4",
+    source: "dom",
+    kind: "video",
+    score: 82,
+    playback_match: "source-element",
+    is_main_video: true,
+    time_stamp: now
+  }
+].sort(context.compareResourceCandidates);
+
+assert.equal(sourceElementSorted[0].url, "https://cdn.example.com/current-source.mp4");
+assert.equal(sourceElementSorted[0].playback_match, "source-element");

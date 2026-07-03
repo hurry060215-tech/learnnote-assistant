@@ -92,3 +92,25 @@ assert.ok(
   response.resources.some(item => item.url === "https://cdn.example.com/current/video/init-0001.m4s"),
   "expected current playback match to survive the 60-resource truncation"
 );
+
+const sourceElementSorted = [
+  {
+    url: "https://cdn.example.com/background.mp4",
+    source: "performance",
+    kind: "video",
+    score: 100,
+    time_stamp: 2000
+  },
+  {
+    url: "https://cdn.example.com/current-source.mp4",
+    source: "dom",
+    kind: "video",
+    score: 80,
+    playback_match: "source-element",
+    is_main_video: true,
+    time_stamp: 1000
+  }
+].sort(context.comparePageResources);
+
+assert.equal(sourceElementSorted[0].url, "https://cdn.example.com/current-source.mp4");
+assert.equal(sourceElementSorted[0].playback_match, "source-element");
