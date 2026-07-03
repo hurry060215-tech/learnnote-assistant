@@ -279,10 +279,11 @@ assert.match(blockedGateHtml, /section class="block"/);
 assert.match(blockedGateHtml, /后端未就绪/);
 assert.match(blockedGateHtml, /待填 · OpenAI/);
 assert.match(indexHtml, /accept="video\/\*,\.mp4,\.m4v,\.mov,\.mkv,\.webm,\.flv,\.avi"/);
+assert.match(indexHtml, /data-tab="frames">画面网格/);
 context.window.location.search = "?task=task%20from%20url";
 assert.equal(context.taskIdFromCurrentUrl(), "task from url");
 context.window.location.search = "?result_tab=frames";
-assert.equal(context.resultTabFromCurrentUrl(), "slices");
+assert.equal(context.resultTabFromCurrentUrl(), "frames");
 context.window.location.search = "?result_tab=slices";
 assert.equal(context.resultTabFromCurrentUrl(), "slices");
 context.window.location.search = "?tab=unknown";
@@ -704,6 +705,34 @@ assert.match(sliceWorkbenchHtml, /\/api\/tasks\/task-slice-workbench\/exports\/b
 assert.match(sliceWorkbenchHtml, /class="visual-study-deck"/);
 assert.match(sliceWorkbenchHtml, /data-media-seek-time="0\.000"/);
 assert.doesNotMatch(sliceWorkbenchHtml, /<script>bad/);
+
+const frameWorkbenchHtml = context.visualFrameWorkbench({
+  id: "task-frame-workbench",
+  title: "<script>bad()</script> 画面课程",
+  media_path: "D:/Projects/learnnote-assistant/data/tasks/task-frame-workbench/media.mp4",
+  visual_index_path: "D:/Projects/learnnote-assistant/data/tasks/task-frame-workbench/visual_windows.json",
+  options: { grid_columns: 3, grid_rows: 3 },
+  visual_windows: [
+    {
+      id: "W001",
+      start: 0,
+      end: 180,
+      frame_count: 9,
+      grid_url: "http://127.0.0.1:8765/api/tasks/demo/grids/grid_000.jpg",
+      transcript_excerpt: "PPT 演示"
+    }
+  ]
+}, {
+  segments: [{ start: 10, end: 18, text: "第一段讲概念" }]
+});
+assert.match(frameWorkbenchHtml, /class="slice-workbench frame-workbench"/);
+assert.match(frameWorkbenchHtml, /画面网格复核/);
+assert.match(frameWorkbenchHtml, /集中核对每个视觉窗口的截图网格/);
+assert.match(frameWorkbenchHtml, /<dt>帧数<\/dt><dd>9<\/dd>/);
+assert.match(frameWorkbenchHtml, /<dt>网格<\/dt><dd>3x3<\/dd>/);
+assert.match(frameWorkbenchHtml, /data-switch-result-tab="slices"/);
+assert.match(frameWorkbenchHtml, /class="visual-study-deck"/);
+assert.doesNotMatch(frameWorkbenchHtml, /<script>bad/);
 
 const pendingSliceHtml = context.pendingSliceWorkbench({
   id: "task-pending-slice",
@@ -1832,7 +1861,7 @@ await context.startUrlTask("video");
 assert.equal(posts.length, 1);
 assert.equal(context.window.history.replacedUrls.at(-1), "/?task=task-url-direct&tab=note");
 context.switchResultTab("frames");
-assert.equal(context.window.history.replacedUrls.at(-1), "/?task=task-url-direct&tab=slices");
+assert.equal(context.window.history.replacedUrls.at(-1), "/?task=task-url-direct&tab=frames");
 assert.equal(posts[0].mode, "video");
 assert.equal(posts[0].resources.length, 1);
 assert.equal(posts[0].resources[0].kind, "video");

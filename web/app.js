@@ -206,7 +206,6 @@ function resultTabFromCurrentUrl() {
 
 function normalizeResultTabName(tabName) {
   const tab = String(tabName || "").trim();
-  if (tab === "frames") return "slices";
   return RESULT_TAB_NAMES.has(tab) ? tab : "note";
 }
 
@@ -3718,6 +3717,36 @@ function learningSliceWorkbench(task, transcript = null) {
   </div>`;
 }
 
+function visualFrameWorkbench(task, transcript = null) {
+  const windows = visualWindows(task);
+  if (!windows.length) return "";
+  const totalFrames = windows.reduce((sum, window) => sum + Number(window.frame_count || 0), 0);
+  const firstWindow = windows[0];
+  const lastWindow = windows[windows.length - 1];
+  const range = firstWindow && lastWindow ? `${fmt(firstWindow.start)} - ${fmt(lastWindow.end)}` : "等待切片";
+  return `<div class="slice-workbench frame-workbench" aria-label="画面网格复核">
+    <section class="slice-brief">
+      <div>
+        <span>画面网格</span>
+        <strong>${escapeHtml(task.title || task.id || "视频画面网格")}</strong>
+        <small>集中核对每个视觉窗口的截图网格、帧时间和回看按钮，适合检查 PPT、板书、代码和界面操作有没有进入笔记。</small>
+      </div>
+      <dl>
+        <div><dt>窗口</dt><dd>${windows.length}</dd></div>
+        <div><dt>帧数</dt><dd>${totalFrames || "-"}</dd></div>
+        <div><dt>网格</dt><dd>${escapeHtml(task.options?.grid_columns && task.options?.grid_rows ? `${task.options.grid_columns}x${task.options.grid_rows}` : "默认")}</dd></div>
+        <div><dt>范围</dt><dd>${escapeHtml(range)}</dd></div>
+      </dl>
+      <nav>
+        <button type="button" data-switch-result-tab="slices">学习切片</button>
+        ${transcript?.segments?.length ? `<button type="button" data-switch-result-tab="transcript">核对字幕</button>` : ""}
+        <a href="${escapeHtml(taskExportUrl(task, "visual-windows"))}">导出切片索引</a>
+      </nav>
+    </section>
+    ${visualStudyDeck(task, transcript)}
+  </div>`;
+}
+
 function pendingSliceWorkbench(task) {
   if (!task?.media_path) return "";
   const canContinue = canContinueFromDownloadedMedia(task);
@@ -3957,7 +3986,10 @@ async function renderDetail() {
       return;
     }
     const transcript = await transcriptForTask(task);
-    els.detail.innerHTML = `${mediaSeekDockHtml(task)}${visionEvidenceBar(task)}${learningSliceWorkbench(task, transcript)}`;
+    const workbench = selectedTab === "frames"
+      ? visualFrameWorkbench(task, transcript)
+      : learningSliceWorkbench(task, transcript);
+    els.detail.innerHTML = `${mediaSeekDockHtml(task)}${visionEvidenceBar(task)}${workbench}`;
     bindTaskOverviewActions();
     return;
   }
