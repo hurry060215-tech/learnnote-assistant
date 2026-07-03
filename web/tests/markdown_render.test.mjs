@@ -182,6 +182,9 @@ assert.deepEqual(context.sortedVisibleTasks([
 ], "selected-success").map(task => task.id), ["selected-success", "older-success", "stale-queued", "latest-failed"]);
 assert.match(stylesCss, /@media \(max-width: 900px\)[\s\S]*body\s*\{[\s\S]*min-width:\s*0;[\s\S]*overflow-x:\s*hidden;/);
 assert.match(stylesCss, /@media \(max-width: 900px\)[\s\S]*\.app-shell,[\s\S]*max-width:\s*100vw;/);
+assert.match(stylesCss, /\.recovery-decision\s*\{/);
+assert.match(stylesCss, /\.recovery-decision-metrics\s*\{/);
+assert.match(stylesCss, /@media \(max-width: 900px\)[\s\S]*\.recovery-decision\s*\{[\s\S]*grid-template-columns:\s*1fr;/);
 assert.equal(elements.get("#browserBridgeStatus").classList.contains("capture-status-grid"), true);
 assert.match(elements.get("#browserBridgeStatus").innerHTML, /capture-status-chip bridge/);
 assert.match(elements.get("#browserBridgeStatus").innerHTML, /需 Chrome\/Edge 扩展侧栏/);
@@ -223,8 +226,8 @@ assert.match(elements.get("#sourceWorkflow").innerHTML, /待候选/);
 assert.match(elements.get("#sourceWorkflow").innerHTML, /20秒 · 3x3/);
 assert.match(elements.get("#sourceWorkflow").innerHTML, /非录制/);
 assert.match(indexHtml, /id="toggleWorkspaceButton"/);
-assert.match(indexHtml, /styles\.css\?v=20260703-readable-ui/);
-assert.match(indexHtml, /app\.js\?v=20260703-readable-ui/);
+assert.match(indexHtml, /styles\.css\?v=20260703-recovery-decision/);
+assert.match(indexHtml, /app\.js\?v=20260703-recovery-decision/);
 assert.match(indexHtml, /id="urlPreflightReport"/);
 assert.match(indexHtml, /id="llmProvider"/);
 assert.match(indexHtml, /value="gemini">Google Gemini/);
@@ -1338,6 +1341,82 @@ assert.match(diagnosticRecoveryHtml, /\/api\/tasks\/task-recovery\/exports\/diag
 assert.match(diagnosticRecoveryHtml, /\/api\/tasks\/task-recovery\/exports\/audit/);
 assert.match(diagnosticRecoveryHtml, /data-recovery-source="local"/);
 assert.doesNotMatch(diagnosticRecoveryHtml, /<script>bad/);
+const recoveryDecisionHtml = context.recoveryDecisionHtml({
+  id: "task-decision",
+  status: "failed",
+  phase: "failed",
+  source_type: "current_page",
+  error_code: "download_forbidden",
+  error_detail: "<script>bad()</script> expired",
+  selected_resource: {
+    kind: "hls",
+    source: "webRequest",
+    request_headers: { Referer: "https://course.example.com" }
+  },
+  download_attempts: [{ strategy: "manifest-ffmpeg", code: "download_forbidden" }],
+  direct_extraction: {
+    boundary: "normal_accessible_media_only",
+    download: { failed_attempt_count: 1 },
+    processing: {}
+  },
+  recovery: {
+    code: "download_forbidden",
+    severity: "recoverable",
+    confidence: "medium",
+    diagnosis: "媒体地址被防盗链或签名拒绝。",
+    attempt_count: 1,
+    primary_action: {
+      key: "refresh_playback_and_retry",
+      label: "继续播放后重检",
+      ui_intent: "retry_current_page",
+      detail: "回到原页面播放后重试。"
+    },
+    actions: [
+      { key: "refresh_playback_and_retry", label: "继续播放后重检", ui_intent: "retry_current_page" },
+      { key: "local_upload", label: "上传本地视频", ui_intent: "local_upload" },
+      { key: "inspect_diagnostics", label: "查看诊断", ui_intent: "inspect_diagnostics" },
+      { key: "export_audit", label: "导出审计", ui_intent: "export_audit" }
+    ],
+    boundary_notes: [
+      "已捕获可复用请求头名：Referer；不会保存 Cookie 或 Authorization 值。"
+    ],
+    steps: [
+      "回到原页面继续播放后重新检测，优先选择带 Referer/Origin 或当前播放匹配的候选。"
+    ]
+  }
+});
+assert.match(recoveryDecisionHtml, /class="recovery-decision warn"/);
+assert.match(recoveryDecisionHtml, /推荐行动/);
+assert.match(recoveryDecisionHtml, /继续播放后重检/);
+assert.match(recoveryDecisionHtml, /data-recovery-source="browser"/);
+assert.match(recoveryDecisionHtml, /data-recovery-source="local"/);
+assert.match(recoveryDecisionHtml, /data-switch-result-tab="diagnostics"/);
+assert.match(recoveryDecisionHtml, /\/api\/tasks\/task-decision\/exports\/audit/);
+assert.match(recoveryDecisionHtml, /媒体地址被防盗链或签名拒绝/);
+assert.match(recoveryDecisionHtml, /诊断码/);
+assert.match(recoveryDecisionHtml, /download_forbidden/);
+assert.match(recoveryDecisionHtml, /1 条路线/);
+assert.match(recoveryDecisionHtml, /仅可访问媒体/);
+assert.match(recoveryDecisionHtml, /Referer/);
+assert.doesNotMatch(recoveryDecisionHtml, /<script>bad/);
+const recoveryNextStepHtml = context.nextStepHtml({
+  id: "task-decision",
+  status: "failed",
+  source_type: "current_page",
+  error_code: "download_forbidden",
+  recovery: {
+    severity: "recoverable",
+    diagnosis: "媒体地址被防盗链或签名拒绝。",
+    primary_action: {
+      key: "refresh_playback_and_retry",
+      label: "继续播放后重检",
+      ui_intent: "retry_current_page"
+    }
+  }
+});
+assert.match(recoveryNextStepHtml, /class="next-step-card warn"/);
+assert.match(recoveryNextStepHtml, /继续播放后重检/);
+assert.match(recoveryNextStepHtml, /data-recovery-source="browser"/);
 assert.equal(context.hasTaskBundle({ media_path: "D:/media.mp4" }), true);
 assert.equal(context.hasTaskBundle({ status: "failed", error_code: "download_forbidden" }), true);
 assert.equal(context.hasTaskBundle({ download_attempts: [{ strategy: "direct-file" }] }), true);

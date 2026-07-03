@@ -1569,11 +1569,15 @@ function recoveryActionButtonHtml(action, task) {
   return `<button type="button" data-switch-result-tab="diagnostics"${title}>${label}</button>`;
 }
 
-function recoveryActionsHtml(task) {
+function recoveryActionsHtml(task, skipKeys = new Set()) {
   if (!task) return "";
   const structured = Array.isArray(task.recovery?.actions) ? task.recovery.actions : [];
   if (structured.length) {
-    const rendered = structured.map(action => recoveryActionButtonHtml(action, task)).filter(Boolean);
+    const skipped = skipKeys instanceof Set ? skipKeys : new Set(skipKeys || []);
+    const rendered = structured
+      .filter(action => !skipped.has(action.key) && !skipped.has(action.ui_intent))
+      .map(action => recoveryActionButtonHtml(action, task))
+      .filter(Boolean);
     return `<div class="recovery-actions">${rendered.join("")}</div>`;
   }
   const actions = [
@@ -1585,6 +1589,81 @@ function recoveryActionsHtml(task) {
   if (canContinueFromDownloadedMedia(task)) actions.push(`<button type="button" data-rerun-from-media="${escapeHtml(task.id)}">继续切片总结</button>`);
   if (task.note_path) actions.push(`<a href="${escapeHtml(taskExportUrl(task, "markdown"))}">导出 Markdown</a>`);
   return `<div class="recovery-actions">${actions.join("")}</div>`;
+}
+
+function primaryRecoveryAction(task) {
+  const primary = task?.recovery?.primary_action || null;
+  if (!primary) return null;
+  const intent = primary.ui_intent || primary.key || "";
+  const actionable = task?.status === "failed"
+    || canContinueFromDownloadedMedia(task)
+    || ["local_upload", "retry_current_page", "continue_from_media"].includes(intent)
+    || ["recoverable", "hard_boundary"].includes(task?.recovery?.severity || "");
+  return actionable ? primary : null;
+}
+
+function recoveryDecisionTone(task) {
+  const severity = task?.recovery?.severity || "";
+  if (severity === "hard_boundary" || task?.drm_detected) return "blocked";
+  if (task?.status === "failed" || severity === "recoverable") return "warn";
+  if (canContinueFromDownloadedMedia(task)) return "ready";
+  return "active";
+}
+
+function recoveryDecisionMetrics(task) {
+  const recovery = task?.recovery || {};
+  const direct = task?.direct_extraction || {};
+  const reuse = task?.reuse || {};
+  return [
+    ["诊断码", recovery.code || task?.error_code || "-"],
+    ["置信度", recovery.confidence || "-"],
+    ["尝试", Number.isFinite(recovery.attempt_count) ? `${recovery.attempt_count} 条路线` : `${task?.download_attempts?.length || 0} 条路线`],
+    ["边界", directExtractionBoundaryText(direct.boundary)],
+    ["复用", reuse.rerun_from_media_ready || canContinueFromDownloadedMedia(task) ? "media.mp4 可续跑" : reuse.suggested_next_step || "-"]
+  ];
+}
+
+function recoveryDecisionHtml(task) {
+  if (!task?.id || !task.recovery) return "";
+  const primary = primaryRecoveryAction(task);
+  const show = Boolean(
+    primary
+    || task.status === "failed"
+    || canContinueFromDownloadedMedia(task)
+    || task.mode === "download_only"
+    || task.direct_extraction?.boundary && task.direct_extraction.boundary !== "normal_accessible_media_only"
+  );
+  if (!show) return "";
+
+  const recovery = task.recovery || {};
+  const notes = Array.isArray(recovery.boundary_notes)
+    ? recovery.boundary_notes.map(value => String(value || "").trim()).filter(Boolean).slice(0, 3)
+    : [];
+  const steps = Array.isArray(recovery.steps)
+    ? recovery.steps.map(value => String(value || "").trim()).filter(Boolean).slice(0, 3)
+    : [];
+  const primaryHtml = primary ? recoveryActionButtonHtml(primary, task) : "";
+  const skipKeys = new Set([primary?.key, primary?.ui_intent].filter(Boolean));
+  const secondaryHtml = recoveryActionsHtml(task, skipKeys);
+  const detail = recovery.diagnosis || primary?.detail || task.error_detail || "按阶段审计继续处理当前任务。";
+
+  return `<section class="recovery-decision ${escapeHtml(recoveryDecisionTone(task))}" aria-label="推荐行动">
+    <div class="recovery-decision-main">
+      <span>推荐行动</span>
+      <strong>${escapeHtml(primary?.label || (canContinueFromDownloadedMedia(task) ? "继续切片总结" : "查看阶段审计"))}</strong>
+      <small>${escapeHtml(detail)}</small>
+    </div>
+    <div class="recovery-decision-actions">
+      ${primaryHtml ? `<div class="recovery-decision-primary">${primaryHtml}</div>` : ""}
+      ${secondaryHtml}
+    </div>
+    <div class="recovery-decision-metrics">
+      ${recoveryDecisionMetrics(task).map(([label, value]) => `<span><b>${escapeHtml(label)}</b><strong>${escapeHtml(value || "-")}</strong></span>`).join("")}
+    </div>
+    ${notes.length || steps.length ? `<ul>
+      ${[...notes, ...steps].slice(0, 4).map(item => `<li>${escapeHtml(item)}</li>`).join("")}
+    </ul>` : ""}
+  </section>`;
 }
 
 function failedStepIndex(task) {
@@ -2866,8 +2945,17 @@ function nextStepHtml(task) {
   let title = "继续处理";
   let detail = "等待任务进入下一阶段。";
   let actions = [];
+  const recoveryPrimary = primaryRecoveryAction(task);
 
-  if (canContinueFromDownloadedMedia(task)) {
+  if (recoveryPrimary) {
+    tone = recoveryDecisionTone(task);
+    title = recoveryPrimary.label || "按推荐动作继续";
+    detail = task.recovery?.diagnosis || recoveryPrimary.detail || detail;
+    actions = [
+      recoveryActionButtonHtml(recoveryPrimary, task),
+      hasTaskAudit(task) ? `<a href="${escapeHtml(taskExportUrl(task, "audit"))}">导出审计</a>` : ""
+    ];
+  } else if (canContinueFromDownloadedMedia(task)) {
     tone = "ready";
     title = "继续生成完整笔记";
     detail = "视频已经下载到本地，可以复用 media.mp4 继续转写、切片和图文总结。";
@@ -3217,6 +3305,7 @@ function taskOverview(task) {
     ${taskBrowserEvidenceHtml(task)}
     ${directExtractionEvidenceHtml(task)}
     ${pipelineAuditHtml(task)}
+    ${recoveryDecisionHtml(task)}
     ${taskCommandCenter(task)}
     ${nextStepHtml(task)}
     ${mediaPreviewHtml(task)}
