@@ -650,6 +650,34 @@ function latestCurrentPageTask() {
   return currentPageTasks()[0] || null;
 }
 
+function currentPageDisplayRank(task) {
+  if (!task) return 90;
+  if (task.status === "running") return 0;
+  if (task.status === "queued") return 1;
+  if (task.status === "success" && task.media_path && task.note_path) return 2;
+  if (task.status === "success" && task.media_path) return 3;
+  if (task.status === "success") return 4;
+  if (task.status === "failed" && task.note_path) return 5;
+  if (task.status === "failed") return 6;
+  return 7;
+}
+
+function currentPageDisplayTask(list, { includeManual = false } = {}) {
+  const candidates = (Array.isArray(list) ? list : [])
+    .filter(task => task?.source_type === "current_page")
+    .filter(task => includeManual || !isManualUrlTask(task));
+  if (!candidates.length && !includeManual) {
+    return currentPageDisplayTask(list, { includeManual: true });
+  }
+  return candidates
+    .map((task, index) => ({ task, index }))
+    .sort((a, b) => currentPageDisplayRank(a.task) - currentPageDisplayRank(b.task) || a.index - b.index)[0]?.task || null;
+}
+
+function preferredCurrentPageTask() {
+  return currentPageDisplayTask(currentPageTasks());
+}
+
 function directRouteState(task) {
   if (!task) return "empty";
   if (task.status === "running" || task.status === "queued") return "running";
@@ -888,7 +916,7 @@ function browserRouteEmptyHandoffHtml() {
 
 function renderBrowserRouteSummary() {
   if (!els.browserRouteSummary) return;
-  const task = latestCurrentPageTask();
+  const task = preferredCurrentPageTask();
   els.browserRouteSummary.innerHTML = task ? browserRouteSummaryHtml(task) : browserRouteEmptyHandoffHtml();
 }
 
@@ -901,7 +929,7 @@ function isManualUrlTask(task) {
 function workflowTaskForSource(source) {
   if (source === "local") return tasks.find(task => task.source_type === "local") || null;
   if (source === "url") return tasks.find(isManualUrlTask) || null;
-  return currentPageTasks().find(task => !isManualUrlTask(task)) || latestCurrentPageTask();
+  return preferredCurrentPageTask() || latestCurrentPageTask();
 }
 
 function workflowSourceConfig(source, task = null) {
