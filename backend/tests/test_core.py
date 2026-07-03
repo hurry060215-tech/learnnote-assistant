@@ -35,7 +35,7 @@ from app.downloader import (
 )
 from app.main import render_diagnostics_markdown, task_audit_summary
 from app.models import ActiveVideoInfo, BrowserCookie, CurrentPageTaskRequest, DownloadAttempt, DrmSignal, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
-from app.processor import build_summary_diagnostics, cookie_sync_summary, process_current_page_task, process_local_video_task, read_note, read_transcript, redacted_request_dump, redacted_resource
+from app.processor import build_summary_diagnostics, cookie_sync_summary, enrich_resource_candidates_with_active_video, process_current_page_task, process_local_video_task, read_note, read_transcript, redacted_request_dump, redacted_resource
 from app.summarizer import MAX_GRIDS_PER_VISION_CALL, MAX_VISION_GRIDS, build_visual_windows, ensure_visual_appendix, local_markdown_note, summarize_with_diagnostics
 from app.storage import create_task, get_task, task_dir
 from app.transcriber import transcribe_audio_openai_compatible, transcript_from_subtitle
@@ -62,6 +62,51 @@ class ResourceDetectionTests(unittest.TestCase):
         self.assertEqual(classify_resource("https://cdn.example.com/index.m3u8"), "hls")
         self.assertEqual(classify_resource("https://cdn.example.com/manifest.mpd"), "dash")
         self.assertEqual(classify_resource("blob:https://example.com/abc"), "blob")
+
+    def test_active_video_hint_enriches_matching_candidate_without_mutating_input(self) -> None:
+        resource = ResourceCandidate(
+            url="https://cdn.example.com/current.mp4#t=12",
+            source="webRequest",
+            kind="video",
+            score=10,
+        )
+        enriched = enrich_resource_candidates_with_active_video(
+            ActiveVideoInfo(
+                src="https://cdn.example.com/current.mp4#t=12",
+                current_time=12,
+                duration=180,
+                width=1280,
+                height=720,
+                frame_id=4,
+            ),
+            [resource],
+        )
+
+        self.assertFalse(resource.is_main_video)
+        self.assertEqual(resource.playback_match, "")
+        self.assertTrue(enriched[0].is_main_video)
+        self.assertEqual(enriched[0].playback_match, "exact-src")
+        self.assertEqual(enriched[0].current_time, 12)
+        self.assertEqual(enriched[0].duration, 180)
+        self.assertEqual(enriched[0].frame_id, 4)
+
+    def test_active_blob_hint_enriches_blob_mapped_candidate(self) -> None:
+        enriched = enrich_resource_candidates_with_active_video(
+            ActiveVideoInfo(src="blob:https://course.example.com/player", current_time=22, paused=False),
+            [
+                ResourceCandidate(
+                    url="https://cdn.example.com/live/master.m3u8",
+                    source="pageHookMediaSource",
+                    kind="hls",
+                    blob_url="blob:https://course.example.com/player",
+                    score=80,
+                )
+            ],
+        )
+
+        self.assertTrue(enriched[0].is_main_video)
+        self.assertEqual(enriched[0].playback_match, "blob-source")
+        self.assertEqual(enriched[0].current_time, 22)
 
     def test_declared_media_hint_sources_rank_above_plain_dom(self) -> None:
         self.assertEqual(source_rank("scriptHint"), 3)

@@ -106,12 +106,14 @@ def _active_video_resource_match(active_video: ActiveVideoInfo, resource: Resour
     return "blob-source" if active_src.startswith("blob:") or active_src == blob_url else "exact-src"
 
 
-def enrich_resources_with_active_video(request: CurrentPageTaskRequest) -> list[ResourceCandidate]:
-    active_video = request.active_video
+def enrich_resource_candidates_with_active_video(
+    active_video: ActiveVideoInfo | None,
+    resources: list[ResourceCandidate],
+) -> list[ResourceCandidate]:
     if not active_video:
-        return request.resources
+        return resources
     enriched: list[ResourceCandidate] = []
-    for resource in request.resources:
+    for resource in resources:
         item = resource.model_copy(deep=True)
         match = _active_video_resource_match(active_video, item)
         if match:
@@ -130,6 +132,10 @@ def enrich_resources_with_active_video(request: CurrentPageTaskRequest) -> list[
                 item.height = active_video.height
         enriched.append(item)
     return enriched
+
+
+def enrich_resources_with_active_video(request: CurrentPageTaskRequest) -> list[ResourceCandidate]:
+    return enrich_resource_candidates_with_active_video(request.active_video, request.resources)
 
 
 def attempted_resource_candidate(resources: list[ResourceCandidate], attempts: list[DownloadAttempt]) -> ResourceCandidate | None:
