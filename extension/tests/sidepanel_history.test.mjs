@@ -57,7 +57,7 @@ const task = {
 
 const failedTask = {
   id: "task-history-failed",
-  title: "Failed lesson",
+  title: "?????????",
   status: "failed",
   phase: "failed",
   progress: 100,
@@ -83,7 +83,7 @@ const context = {
       return { json: async () => ({ ffmpeg: true }) };
     }
     if (value.endsWith("/api/tasks")) {
-      return { json: async () => ({ tasks: [task, failedTask] }) };
+      return { json: async () => ({ tasks: [failedTask, task] }) };
     }
     if (value.endsWith("/api/tasks/task-history-1")) {
       return { ok: true, json: async () => ({ task }) };
@@ -110,7 +110,9 @@ vm.runInContext(sidepanelCode, context);
 
 await new Promise(resolve => setTimeout(resolve, 0));
 
+assert.deepEqual(context.sortedHistoryTasks([failedTask, task]).map(item => item.id), ["task-history-1", "task-history-failed"]);
 assert.match(elements.get("#taskHistory").innerHTML, /History lesson/);
+assert.equal(elements.get("#taskHistory").innerHTML.indexOf('data-id="task-history-1"') < elements.get("#taskHistory").innerHTML.indexOf('data-id="task-history-failed"'), true);
 assert.match(elements.get("#taskHistory").innerHTML, /直取/);
 assert.match(elements.get("#taskHistory").innerHTML, /HLS/);
 assert.match(elements.get("#taskHistory").innerHTML, /media\.mp4/);
@@ -143,7 +145,8 @@ assert.equal(elements.get("#copyButton").disabled, true);
 assert.equal(elements.get("#diagnosticsButton").disabled, false);
 assert.equal(elements.get("#visualWindowsButton").disabled, true);
 assert.equal(elements.get("#mediaButton").disabled, true);
-assert.match(elements.get("#taskHistory").innerHTML, /Failed lesson/);
+assert.doesNotMatch(elements.get("#taskHistory").innerHTML, /\?{4,}/);
+assert.doesNotMatch(elements.get("#result").innerHTML, /\?{4,}/);
 assert.match(elements.get("#taskHistory").innerHTML, /history-task-preview status-failed empty/);
 assert.match(elements.get("#taskHistory").innerHTML, /download_forbidden/);
 assert.match(elements.get("#taskHistory").innerHTML, /1 次尝试/);

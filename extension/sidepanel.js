@@ -134,6 +134,55 @@ function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[ch]));
 }
 
+function isUnreadableTitle(value) {
+  const text = String(value || "").trim();
+  if (!text) return true;
+  const compact = text.replace(/\s+/g, "");
+  if (!compact) return true;
+  if (/^[?？\uFFFD]+$/.test(compact)) return true;
+  if (compact.length >= 4) {
+    const suspectCount = (compact.match(/[?？\uFFFD]/g) || []).length;
+    if (suspectCount / compact.length >= 0.65) return true;
+  }
+  return false;
+}
+
+function hostFromUrl(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  try {
+    const parsed = new URL(text);
+    return parsed.hostname || "";
+  } catch {
+    const match = /^https?:\/\/([^/?#]+)/i.exec(text);
+    return match ? match[1] : "";
+  }
+}
+
+function displayTaskTitle(task, fallback = "未命名任务") {
+  const raw = String(task?.title || "").trim();
+  if (!isUnreadableTitle(raw)) return raw;
+  const selected = task?.selected_resource || {};
+  const kind = mediaKindText(selected.kind) || selected.kind || (task?.media_path ? "media.mp4" : "");
+  const source = task?.mode === "download_only"
+    ? "当前页下载"
+    : task?.mode === "rerun_from_media"
+      ? "复用本地视频"
+      : task?.source_type === "local"
+        ? "本地视频"
+        : task?.source_type === "page_text"
+          ? "页面文本"
+          : task?.source_type === "current_page"
+            ? "当前页直取"
+            : "";
+  const host = hostFromUrl(task?.page_url || selected.page_url || selected.frame_url || selected.url);
+  if (source && kind) return `${source} · ${kind}`;
+  if (host && source) return `${source} · ${host}`;
+  if (host) return compactUrl(host, 48);
+  if (source) return source;
+  return task?.id ? `任务 ${String(task.id).slice(0, 8)}` : fallback;
+}
+
 function safeNoteMediaUrl(value) {
   const raw = String(value || "").trim();
   if (!raw) return "";
@@ -715,6 +764,26 @@ function taskHistoryChipsHtml(task = {}) {
   return `<span class="history-task-chips">${chips.map(chip => `<em>${escapeHtml(chip)}</em>`).join("")}</span>`;
 }
 
+function taskHistoryRank(task, currentId = currentTaskId) {
+  if (!task) return 90;
+  if (task.id && task.id === currentId) return 0;
+  if (task.status === "running") return 1;
+  if (task.status === "success" && task.note_path) return 2;
+  if (task.status === "success" && (task.media_path || visualWindows(task).length)) return 3;
+  if (task.status === "success") return 4;
+  if (task.status === "queued") return 5;
+  if (task.status === "failed" && task.note_path) return 6;
+  if (task.status === "failed") return 7;
+  return 8;
+}
+
+function sortedHistoryTasks(list, currentId = currentTaskId) {
+  return (Array.isArray(list) ? list : [])
+    .map((task, index) => ({ task, index }))
+    .sort((a, b) => taskHistoryRank(a.task, currentId) - taskHistoryRank(b.task, currentId) || a.index - b.index)
+    .map(item => item.task);
+}
+
 function taskHistoryPreviewIcon(status) {
   if (status === "success") return "看";
   if (status === "failed") return "错";
@@ -749,7 +818,7 @@ function taskHistoryPreviewHtml(task = {}) {
 
 function renderTaskHistory() {
   if (!els.taskHistory) return;
-  const visible = taskHistory.slice(0, 6);
+  const visible = sortedHistoryTasks(taskHistory, currentTaskId).slice(0, 6);
   if (!visible.length) {
     els.taskHistory.className = "task-history muted";
     els.taskHistory.textContent = "等待任务生成后显示最近记录";
@@ -760,7 +829,7 @@ function renderTaskHistory() {
     <button class="history-task status-${escapeHtml(task.status || "unknown")} ${task.id === currentTaskId ? "selected" : ""}" data-id="${escapeHtml(task.id)}">
       ${taskHistoryPreviewHtml(task)}
       <span>
-        <strong>${escapeHtml(task.title || task.id)}</strong>
+        <strong>${escapeHtml(displayTaskTitle(task))}</strong>
         <small>${escapeHtml(taskSourceText(task))} · ${escapeHtml(taskStatusText(task))} · ${task.progress || 0}%</small>
         ${taskHistoryChipsHtml(task)}
       </span>
@@ -4052,7 +4121,7 @@ function directFailureChoiceHtml(task) {
 function mediaPreviewHtml(task) {
   const url = taskMediaPreviewUrl(task);
   if (!url) return "";
-  const title = task.title || task.id || "media";
+  const title = displayTaskTitle(task, "media");
   return `<section class="media-preview-card" aria-label="本地视频核对">
     <div class="media-preview-copy">
       <span>本地视频核对</span>
@@ -4328,7 +4397,7 @@ function taskOverview(task) {
   return `<section class="task-overview status-${statusClass}">
     <div class="task-overview-main">
       <span>当前学习任务</span>
-      <strong>${escapeHtml(task.title || task.id)}</strong>
+      <strong>${escapeHtml(displayTaskTitle(task))}</strong>
       <small>${escapeHtml(resourceLine || taskStatusText(task))}</small>
       <div class="stage-rail inline">${PIPELINE_STEPS.map(step => `<span class="${stepState(task, step)}">${step.label}</span>`).join("")}</div>
     </div>
@@ -4631,7 +4700,7 @@ function noteStudyMap(markdown, task) {
     <div class="study-map-head">
       <div>
         <span>学习导览</span>
-        <strong>${escapeHtml(task.title || task.id)}</strong>
+        <strong>${escapeHtml(displayTaskTitle(task))}</strong>
       </div>
       <small>${escapeHtml(taskSourceText(task))} · ${escapeHtml(taskStatusText(task))}</small>
     </div>
@@ -4761,7 +4830,7 @@ function visualStudyDeck(task, transcript = null) {
     <div class="side-visual-study-head">
       <div>
         <span>视觉窗口复习</span>
-        <strong>${escapeHtml(task.title || task.id || "画面切片")}</strong>
+        <strong>${escapeHtml(displayTaskTitle(task, "画面切片"))}</strong>
       </div>
       <div class="side-visual-study-head-actions">
         <small>${escapeHtml(headDetail)}</small>
