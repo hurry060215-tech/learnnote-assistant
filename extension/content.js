@@ -420,7 +420,7 @@ function performanceKind(entry = {}) {
 
 function performanceLooksLikeMediaEndpoint(url = "") {
   const raw = String(url || "");
-  const endpointRe = /(^|[/?&=._-])(api|play|player|stream|video|audio|media|hls|dash|manifest|playlist|master|m3u8|mpd|subtitle|caption)([/?&=._-]|$)/i;
+  const endpointRe = /(^|[/?&=._-])(api|ananas|play|player|stream|video|audio|media|vod|hls|dash|manifest|playlist|master|m3u8|mpd|objectid|dtoken|fileid|httpmd|subtitle|caption)([/?&=._-]|$)/i;
   try {
     const parsed = new URL(raw, location.href);
     const queryKeys = [...parsed.searchParams.keys()].join("&");

@@ -239,6 +239,12 @@ const context = {
           transferSize: 4096
         },
         {
+          name: "https://mooc1.chaoxing.com/ananas/status/objectid-perf?flag=normal",
+          initiatorType: "xmlhttprequest",
+          encodedBodySize: 4096,
+          transferSize: 8192
+        },
+        {
           name: "https://course.example.com/lesson-data?id=not-media",
           initiatorType: "fetch",
           encodedBodySize: 2048,
@@ -304,6 +310,7 @@ const html5HlsHint = response.resources.find(item => item.url === "https://cours
 const html5DashHint = response.resources.find(item => item.url === "https://course.example.com/opaque/html5-dash?id=42");
 const html5TrackHint = response.resources.find(item => item.url === "https://course.example.com/caption?id=html5");
 const performancePlayHint = response.resources.find(item => item.url === "https://course.example.com/api/play?id=perf");
+const performanceChaoxingHint = response.resources.find(item => item.url === "https://mooc1.chaoxing.com/ananas/status/objectid-perf?flag=normal");
 const unrelatedPerformanceHint = response.resources.find(item => item.url === "https://course.example.com/lesson-data?id=not-media");
 const plainScriptHls = response.resources.find(item => item.url === "https://cdn.example.com/static/plain-url.m3u8?token=script-plain");
 const iframeSrcdocHls = response.resources.find(item => item.url === "https://cdn.example.com/static/iframe-srcdoc/master.m3u8?token=srcdoc");
@@ -477,6 +484,11 @@ assert.equal(performancePlayHint.kind, "video");
 assert.equal(performancePlayHint.source, "performance");
 assert.equal(performancePlayHint.request_type, "fetch");
 assert.equal(performancePlayHint.content_length, 2048);
+assert.ok(performanceChaoxingHint, "expected Chaoxing ananas performance endpoint to enter direct-preflight candidates");
+assert.equal(performanceChaoxingHint.kind, "video");
+assert.equal(performanceChaoxingHint.source, "performance");
+assert.equal(performanceChaoxingHint.request_type, "xmlhttprequest");
+assert.equal(performanceChaoxingHint.content_length, 4096);
 assert.equal(unrelatedPerformanceHint, undefined, "expected unrelated fetch performance entry to stay out of media candidates");
 
 assert.ok(plainScriptHls, "expected inline script URL scan to expose plain HLS URL without a media field name");
