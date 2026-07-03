@@ -588,10 +588,18 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
             normalize_video(media_path, normalized)
             transcript_path = ""
             subtitle_path = ""
-            transcript = transcript_from_browser_subtitles(request.browser_subtitles)
-            if transcript.segments:
-                subtitle_path = write_browser_subtitles_srt(task_id, transcript)
-                transcript_path = str(write_json(task_id, "transcript.json", transcript.model_dump(mode="json")))
+            if should_download_page_subtitle(request):
+                page_subtitle_path = downloader.download_subtitle(request.resources, request.cookies, request.page_url, request.title)
+                if page_subtitle_path:
+                    subtitle_path = str(page_subtitle_path)
+                    transcript = transcript_from_subtitle(page_subtitle_path)
+                    if transcript.segments:
+                        transcript_path = str(write_json(task_id, "transcript.json", transcript.model_dump(mode="json")))
+            if not transcript_path:
+                transcript = transcript_from_browser_subtitles(request.browser_subtitles)
+                if transcript.segments:
+                    subtitle_path = write_browser_subtitles_srt(task_id, transcript)
+                    transcript_path = str(write_json(task_id, "transcript.json", transcript.model_dump(mode="json")))
             update_task(
                 task_id,
                 status="success",
