@@ -532,8 +532,8 @@ def complete_with_download_failure_fallback(task_id: str, request: CurrentPageTa
         warnings.append(record.summary_warning)
     update_task(
         task_id,
-        status="success",
-        phase="completed",
+        status="failed",
+        phase="failed",
         progress=100,
         error_code=code,
         error_detail=detail,

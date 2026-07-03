@@ -1507,8 +1507,8 @@ class ProcessorBoundaryTests(unittest.TestCase):
                 process_current_page_task(task.id, request)
 
             record = get_task(task.id)
-            self.assertEqual(record.status, "success")
-            self.assertEqual(record.phase, "completed")
+            self.assertEqual(record.status, "failed")
+            self.assertEqual(record.phase, "failed")
             self.assertEqual(record.error_code, "download_forbidden")
             self.assertEqual(record.error_detail, "signed URL expired")
             self.assertTrue(record.note_path)
@@ -1572,8 +1572,8 @@ class ProcessorBoundaryTests(unittest.TestCase):
                 process_current_page_task(task.id, request)
 
             record = get_task(task.id)
-            self.assertEqual(record.status, "success")
-            self.assertEqual(record.phase, "completed")
+            self.assertEqual(record.status, "failed")
+            self.assertEqual(record.phase, "failed")
             self.assertEqual(record.error_code, "no_media_found")
             self.assertIsNotNone(record.active_video)
             assert record.active_video is not None

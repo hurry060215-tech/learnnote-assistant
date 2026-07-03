@@ -186,3 +186,37 @@ assert.match(pendingHtml, /data-rerun-from-media="download-only-task"/);
 assert.match(pendingHtml, /data-export="media"/);
 assert.match(pendingHtml, /data-switch-result-tab="diagnostics"/);
 assert.match(pendingHtml, /media-preview-card/);
+
+vm.runInContext(`
+currentTaskId = "failed-current-page-task";
+currentTask = {
+  id: "failed-current-page-task",
+  title: "Failed current page lesson",
+  status: "failed",
+  phase: "failed",
+  source_type: "current_page",
+  error_code: "download_forbidden",
+  error_detail: "signed URL expired",
+  selected_resource: { kind: "hls", source: "webRequest" },
+  download_attempts: [{ strategy: "manifest-ffmpeg", status: "failed", code: "download_forbidden" }],
+  visual_windows: []
+};
+transcriptCache = null;
+selectedTab = "note";
+`, context);
+
+elements.get("#result").innerHTML = "";
+resultTabs.find(tab => tab.dataset.tab === "frames").onclick();
+const failedFramesHtml = elements.get("#result").innerHTML;
+assert.match(failedFramesHtml, /画面切片尚未生成/);
+assert.match(failedFramesHtml, /直取链路需要处理/);
+assert.match(failedFramesHtml, /data-switch-result-tab="diagnostics"/);
+assert.match(failedFramesHtml, /data-recovery-local/);
+assert.match(failedFramesHtml, /class="pipeline-audit"/);
+
+resultTabs.find(tab => tab.dataset.tab === "transcript").onclick();
+const failedTranscriptHtml = elements.get("#result").innerHTML;
+assert.match(failedTranscriptHtml, /转写尚未生成/);
+assert.match(failedTranscriptHtml, /当前页视频直取没有走到字幕\/ASR 阶段/);
+assert.match(failedTranscriptHtml, /data-switch-result-tab="diagnostics"/);
+assert.match(failedTranscriptHtml, /data-recovery-local/);

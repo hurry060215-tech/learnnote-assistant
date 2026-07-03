@@ -9247,6 +9247,59 @@ body {
   margin-top: 8px;
 }
 
+.task-handoff {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.task-handoff span {
+  min-width: 0;
+  min-height: 38px;
+  display: grid;
+  align-content: center;
+  gap: 2px;
+  overflow: hidden;
+  border: 1px solid #d6e0ec;
+  border-radius: 7px;
+  background: #f8fbff;
+  color: #5f6d80;
+  padding: 5px 6px;
+  font-size: 9.5px;
+  font-weight: 760;
+  line-height: 1.18;
+}
+
+.task-handoff b {
+  display: block;
+  overflow: hidden;
+  color: #152033;
+  font-size: 9.5px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-handoff.ready span {
+  border-color: rgba(15, 143, 97, 0.22);
+  background: #f2fbf7;
+}
+
+.task-handoff.active span {
+  border-color: rgba(23, 105, 232, 0.22);
+  background: #f2f7ff;
+}
+
+.task-handoff.blocked span {
+  border-color: rgba(199, 48, 43, 0.2);
+  background: #fff7f6;
+}
+
+.task-handoff.done span {
+  background: #ffffff;
+}
+
 .stage-rail {
   gap: 4px;
 }
@@ -9428,6 +9481,10 @@ body.reading-mode .app-shell {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .task-handoff {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .source-workflow-brief {
     grid-template-columns: 1fr;
   }
@@ -9551,7 +9608,8 @@ body.reading-mode .app-shell {
   .browser-route-actions,
   .source-option-strip,
   .source-workflow-actions,
-  .browser-actions {
+  .browser-actions,
+  .task-handoff {
     max-width: 100%;
     grid-template-columns: 1fr;
     overflow-x: hidden;

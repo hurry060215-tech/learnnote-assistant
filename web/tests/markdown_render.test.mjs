@@ -448,6 +448,14 @@ const queueChipTask = {
 
 assert.equal(JSON.stringify(context.taskChipItems(queueChipTask)), JSON.stringify(["当前 src", "视频", "media.mp4", "笔记", "1 窗口"]));
 assert.equal(context.taskMetaLine(queueChipTask), "直取 · 视频");
+const queueHandoffHtml = context.taskHandoffHtml(queueChipTask);
+assert.match(queueHandoffHtml, /class="task-handoff done"/);
+assert.match(queueHandoffHtml, /学习接力/);
+assert.match(queueHandoffHtml, /来源<\/b>直取 · 视频/);
+assert.match(queueHandoffHtml, /媒体<\/b>media\.mp4 已保存/);
+assert.match(queueHandoffHtml, /切片<\/b>1 个切片窗口/);
+assert.match(queueHandoffHtml, /动作<\/b>下一步：核对画面笔记/);
+assert.doesNotMatch(queueHandoffHtml, /<script>/);
 const queueAuditMiniHtml = context.taskAuditMiniHtml(queueChipTask);
 assert.match(queueAuditMiniHtml, /class="task-audit-mini"/);
 assert.match(queueAuditMiniHtml, /任务检查/);
@@ -506,6 +514,34 @@ const blockedAuditMiniHtml = context.taskAuditMiniHtml({
 assert.match(blockedAuditMiniHtml, /class="fail"/);
 assert.match(blockedAuditMiniHtml, /媒体检查 · 403 forbidden/);
 assert.match(blockedAuditMiniHtml, /cookie expired/);
+
+const reusableHandoffHtml = context.taskHandoffHtml({
+  id: "downloaded-media",
+  status: "success",
+  source_type: "current_page",
+  mode: "download_only",
+  media_path: "D:/Projects/learnnote-assistant/data/tasks/downloaded-media/media.mp4",
+  note_path: "",
+  selected_resource: { kind: "hls", source: "webRequest" },
+  download_attempts: [{ strategy: "manifest-ffmpeg" }]
+});
+assert.match(reusableHandoffHtml, /class="task-handoff ready"/);
+assert.match(reusableHandoffHtml, /动作<\/b>下一步：继续切片总结/);
+assert.match(reusableHandoffHtml, /媒体<\/b>media\.mp4 已保存/);
+
+const failedHandoffHtml = context.taskHandoffHtml({
+  id: "failed-route",
+  status: "failed",
+  source_type: "current_page",
+  error_code: "download_forbidden",
+  recovery: { primary_action: { key: "local_upload", label: "上传本地视频" } },
+  selected_resource: { kind: "hls", source: "webRequest" },
+  download_attempts: [{ strategy: "manifest-ffmpeg", status: "failed" }]
+});
+assert.match(failedHandoffHtml, /class="task-handoff blocked"/);
+assert.match(failedHandoffHtml, /媒体<\/b>1 次下载尝试/);
+assert.match(failedHandoffHtml, /动作<\/b>下一步：上传本地视频/);
+assert.match(stylesCss, /\.task-handoff[\s\S]*grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)/);
 
 const visionEvidenceHtml = context.visionEvidenceBar({
   id: "vision-task",
@@ -889,6 +925,72 @@ assert.match(elements.get("#detail").innerHTML, /继续切片总结/);
 assert.match(elements.get("#detail").innerHTML, /data-rerun-from-media="task-note-download-only"/);
 assert.doesNotMatch(elements.get("#detail").innerHTML, /不会继续转写、切片或总结/);
 context.fetch = originalFetchForDownloadNote;
+
+const originalFetchForDiagnostics = context.fetch;
+context.fetch = async url => {
+  const value = String(url);
+  if (value.endsWith("/api/tasks/task-diagnostics-evidence")) {
+    return {
+      json: async () => ({
+        task: {
+          id: "task-diagnostics-evidence",
+          title: "Diagnostics lesson",
+          status: "failed",
+          phase: "failed",
+          progress: 100,
+          source_type: "current_page",
+          error_code: "download_forbidden",
+          error_detail: "signed URL expired",
+          active_video: {
+            src: "blob:https://course.example.com/player",
+            current_time: 42,
+            duration: 300,
+            paused: false,
+            width: 1280,
+            height: 720
+          },
+          selected_resource: {
+            kind: "hls",
+            source: "webRequest",
+            url: "https://cdn.example.com/lesson/master.m3u8",
+            resolved_url: "https://cdn.example.com/lesson/master.m3u8",
+            playback_match: "blob-source",
+            request_headers: { Referer: "https://course.example.com/lesson", Cookie: "secret=1" }
+          },
+          direct_extraction: {
+            no_tab_recording: true,
+            no_drm_bypass: true,
+            route: "attempted_direct_extraction",
+            boundary: "download_failed",
+            media_landed: false,
+            media_reusable: false,
+            selected_candidate: { kind: "hls", source: "webRequest", playback_match: "blob-source" },
+            browser_context: { active_source_type: "blob", cookie_count: 3, cookie_domain_count: 1 },
+            download: { successful_attempt_count: 0, failed_attempt_count: 1, strategy_order: ["manifest-ffmpeg"] },
+            processing: { note_ready: false, transcript_ready: false, frame_grid_count: 0, visual_window_count: 0 }
+          },
+          download_attempts: [{ strategy: "manifest-ffmpeg", status: "failed", code: "download_forbidden", message: "signed URL expired" }]
+        }
+      })
+    };
+  }
+  return originalFetchForDiagnostics(url);
+};
+context.selectTask("task-diagnostics-evidence", { syncUrl: false });
+context.switchResultTab("diagnostics");
+await context.renderDetail();
+const diagnosticsEvidenceHtml = elements.get("#detail").innerHTML;
+assert.match(diagnosticsEvidenceHtml, /class="task-browser-evidence"/);
+assert.match(diagnosticsEvidenceHtml, /浏览器播放证据/);
+assert.match(diagnosticsEvidenceHtml, /class="direct-extraction-evidence"/);
+assert.match(diagnosticsEvidenceHtml, /非录制下载路线/);
+assert.match(diagnosticsEvidenceHtml, /直取和总结证据/);
+assert.match(diagnosticsEvidenceHtml, /class="pipeline-audit"/);
+assert.match(diagnosticsEvidenceHtml, /manifest-ffmpeg/);
+assert.doesNotMatch(diagnosticsEvidenceHtml, /secret=1/);
+context.fetch = originalFetchForDiagnostics;
+vm.runInContext(`selectedTab = "note";`, context);
+context.renderResultTabState();
 
 const visualDeckWithTranscriptHtml = context.visualStudyDeck({
   id: "task-visual-transcript",

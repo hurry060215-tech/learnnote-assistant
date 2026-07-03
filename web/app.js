@@ -2368,6 +2368,7 @@ function renderTasks() {
         </div>
         <small class="task-meta-line">${escapeHtml(taskMetaLine(task))}</small>
         ${taskChipsHtml(task)}
+        ${taskHandoffHtml(task)}
         ${taskAuditMiniHtml(task)}
         ${stageRail(task)}
         <div class="progress"><span style="width:${task.progress || 0}%"></span></div>
@@ -2477,6 +2478,53 @@ function taskChipsHtml(task) {
   });
   if (!chips.length) return "";
   return `<div class="task-chips">${chips.map(chip => `<span>${escapeHtml(chip)}</span>`).join("")}</div>`;
+}
+
+function taskHandoffItems(task) {
+  const selected = task?.selected_resource || {};
+  const windows = visualWindows(task || {});
+  const attempts = task?.download_attempts || [];
+  const sourceLabel = sourceText(task);
+  const mediaLabel = task?.media_path
+    ? "media.mp4 已保存"
+    : attempts.length
+      ? `${attempts.length} 次下载尝试`
+      : task?.source_type === "local"
+        ? "等待上传"
+        : "等待直取";
+  const sliceLabel = task?.options?.visual_understanding === false || task?.source_type === "page_text"
+    ? "文本路线"
+    : windows.length
+      ? `${windows.length} 个切片窗口`
+      : "等待切片";
+  const nextLabel = (() => {
+    if (canContinueFromDownloadedMedia(task)) return "下一步：继续切片总结";
+    if (task?.status === "failed") return task?.recovery?.primary_action?.label ? `下一步：${task.recovery.primary_action.label}` : "下一步：查看诊断";
+    if (task?.note_path) return windows.length ? "下一步：核对画面笔记" : "下一步：阅读笔记";
+    if (task?.status === "running" || task?.status === "queued") return `下一步：${statusText(task)}`;
+    return "下一步：打开任务";
+  })();
+  return [
+    ["来源", [sourceLabel, selected.kind ? mediaKindText(selected.kind) : ""].filter(Boolean).join(" · ") || "-"],
+    ["媒体", mediaLabel],
+    ["切片", sliceLabel],
+    ["动作", nextLabel]
+  ];
+}
+
+function taskHandoffHtml(task) {
+  const tone = task?.status === "failed"
+    ? "blocked"
+    : canContinueFromDownloadedMedia(task)
+      ? "ready"
+      : task?.note_path
+        ? "done"
+        : task?.status === "running" || task?.status === "queued"
+          ? "active"
+          : "idle";
+  return `<div class="task-handoff ${escapeHtml(tone)}" aria-label="学习接力">
+    ${taskHandoffItems(task).map(([label, value]) => `<span><b>${escapeHtml(label)}</b>${escapeHtml(value)}</span>`).join("")}
+  </div>`;
 }
 
 function resultMetaChipsHtml(task) {
@@ -4458,6 +4506,10 @@ async function renderDetail() {
     els.detail.innerHTML = `
       ${failureGuide(task)}
       ${diagnosticRecoveryHtml(task)}
+      ${taskBrowserEvidenceHtml(task)}
+      ${directExtractionEvidenceHtml(task)}
+      ${taskRouteEvidenceHtml(task)}
+      ${pipelineAuditHtml(task)}
       <dl class="diagnostics">
         <dt>任务 ID</dt><dd>${escapeHtml(task.id)}</dd>
         <dt>状态</dt><dd>${escapeHtml(task.status)} / ${escapeHtml(task.phase)} / ${task.progress || 0}%</dd>

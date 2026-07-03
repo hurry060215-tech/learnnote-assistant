@@ -5026,6 +5026,17 @@ function sideVisualStudyChecklistHtml(window, transcript = null) {
   </div>`;
 }
 
+function resultEmptyRecoveryHtml(title, detail, task = currentTask) {
+  if (!task) return escapeHtml(detail || title || "");
+  return `<section class="task-overview-callout ${task.status === "failed" ? "failed" : ""}">
+    <strong>${escapeHtml(title)}</strong>
+    <span>${escapeHtml(detail)}</span>
+  </section>
+  ${pipelineAuditHtml(task)}
+  ${diagnosticRecoveryHtml(task)}
+  ${nextStepHtml(task)}`;
+}
+
 function renderResult() {
   const hasNote = Boolean(currentTaskId) && Boolean(currentTask?.note_path);
   els.copyButton.disabled = !hasNote;
@@ -5064,8 +5075,14 @@ function renderResult() {
       return;
     }
     if (!windows.length) {
-      els.result.className = "result-body muted";
-      els.result.textContent = "画面切片尚未生成。";
+      els.result.className = "result-body";
+      els.result.innerHTML = resultEmptyRecoveryHtml(
+        "画面切片尚未生成",
+        currentTask.status === "failed"
+          ? "当前页视频直取没有走到抽帧切片阶段；先查看诊断确认是登录、DRM、签名过期还是资源不完整，也可以改用本地视频入口。"
+          : "任务尚未生成视觉窗口；如果媒体已保存，可以继续切片总结，否则先查看阶段检查。"
+      );
+      bindTaskOverviewActions();
       return;
     }
     els.result.className = "result-body";
@@ -5133,8 +5150,14 @@ function renderResult() {
   }
   const transcript = transcriptCache;
   if (!transcript?.segments?.length) {
-    els.result.className = "result-body muted";
-    els.result.textContent = transcript?.warning || "转写尚未生成。";
+    els.result.className = "result-body";
+    els.result.innerHTML = resultEmptyRecoveryHtml(
+      "转写尚未生成",
+      transcript?.warning || (currentTask.status === "failed"
+        ? "当前页视频直取没有走到字幕/ASR 阶段；可先查看诊断或改用本地视频入口。"
+        : "任务尚未生成带时间戳字幕；如果媒体已保存，可以继续切片总结。")
+    );
+    bindTaskOverviewActions();
     return;
   }
   els.result.className = "result-body";
