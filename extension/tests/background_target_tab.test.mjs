@@ -14,11 +14,19 @@ const listeners = {};
 const queriedTabs = [];
 const fetchedTabs = [];
 const messagedTabs = [];
+let capturedPreflightBody = null;
 
 const context = {
   console,
   Date,
   URL,
+  fetch: async (url, options = {}) => {
+    if (String(url).endsWith("/api/media/preflight-current-page")) {
+      capturedPreflightBody = JSON.parse(String(options.body || "{}"));
+      return { json: async () => ({ report: { ok: true, ready: true } }) };
+    }
+    throw new Error(`unexpected fetch: ${url}`);
+  },
   setTimeout(fn) {
     fn();
     return 1;
@@ -75,7 +83,7 @@ const context = {
     },
     sidePanel: { open() {} },
     scripting: { executeScript() {} },
-    cookies: { getAll() {} }
+    cookies: { async getAll() { return []; } }
   }
 };
 
@@ -100,3 +108,37 @@ assert.deepEqual(queriedTabs, []);
 assert.equal(response.tab.id, 11);
 assert.equal(response.page.page_url, "https://course.example.com/lesson-11");
 assert.equal(response.resources[0].url, "https://cdn.example.com/lesson-11.mp4");
+
+const activeVideo = { src: "https://cdn.example.com/current.mp4", current_time: 33, duration: 600, paused: false };
+const preflightResponse = await new Promise(resolve => {
+  const keepAlive = listeners.runtimeMessage(
+    {
+      type: "preflight-current-page",
+      targetTabId: 11,
+      backendUrl: "http://127.0.0.1:8765",
+      probeLimit: 2,
+      page: {
+        title: "Course 11",
+        page_url: "https://course.example.com/lesson-11",
+        active_video: activeVideo,
+        drm_detected: false,
+        frames: []
+      },
+      resources: [{
+        url: "https://cdn.example.com/current.mp4",
+        source: "webRequest",
+        kind: "video",
+        score: 80
+      }]
+    },
+    {},
+    resolve
+  );
+  assert.equal(keepAlive, true);
+});
+
+assert.deepEqual(preflightResponse, { report: { ok: true, ready: true } });
+assert.equal(capturedPreflightBody.page_url, "https://course.example.com/lesson-11");
+assert.deepEqual(capturedPreflightBody.active_video, activeVideo);
+assert.equal(capturedPreflightBody.resources[0].url, "https://cdn.example.com/current.mp4");
+assert.equal(capturedPreflightBody.probe_limit, 2);

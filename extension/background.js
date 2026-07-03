@@ -1596,6 +1596,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           page_url: page.page_url || tab.url,
+          active_video: page.active_video || null,
           resources,
           cookies,
           drm_detected: Boolean(page.drm_detected),

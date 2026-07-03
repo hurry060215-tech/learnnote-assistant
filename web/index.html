@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>LearnNote 学习视频笔记</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="/web/styles.css?v=20260702-workflow-brief">
+    <link rel="stylesheet" href="/web/styles.css?v=20260703-readable-ui">
   </head>
   <body>
     <header class="topbar">
@@ -83,7 +83,7 @@
                 <option value="dash">DASH mpd</option>
               </select>
             </label>
-            <div id="urlModeHint" class="mode-hint">自动识别会优先把 mp4/FLV/m3u8/mpd 当作媒体候选；无后缀 URL 可切换直连、HLS/DASH，或交给页面扫描和 yt-dlp。</div>
+            <div id="urlModeHint" class="mode-hint">自动识别会优先把 mp4、FLV、m3u8、mpd 当作媒体候选；无后缀 URL 可切换直连、HLS/DASH，或交给页面扫描和 yt-dlp。</div>
           </div>
           <div id="urlPreflightReport" class="url-preflight-report" aria-label="链接预检报告" hidden></div>
           <label class="field">
@@ -335,30 +335,30 @@
                 <span>更多</span>
               </summary>
               <div class="result-more-panel" aria-label="导出和阅读操作">
-            <button id="readingModeButton" class="icon-button" title="阅读专注模式" aria-label="阅读专注模式" aria-pressed="false">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h7a4 4 0 0 1 4 4v10H8a4 4 0 0 0-4 4z"/><path d="M20 5h-7a4 4 0 0 0-4 4v10h7a4 4 0 0 1 4 4z"/></svg>
-            </button>
-            <button id="bundleButton" class="icon-button" title="导出资料包" aria-label="导出资料包">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v13H4z"/><path d="M4 7l2-3h12l2 3"/><path d="M9 12h6"/></svg>
-            </button>
-            <button id="diagnosticsButton" class="icon-button" title="导出诊断" aria-label="导出诊断">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l3 3v15H6z"/><path d="M14 3v4h4"/><path d="M9 11h6M9 15h6M9 19h3"/></svg>
-            </button>
-            <button id="visualWindowsButton" class="icon-button" title="导出切片索引" aria-label="导出切片索引">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/><path d="M7.5 11v2M16.5 11v2M11 7.5h2M11 16.5h2"/></svg>
-            </button>
-            <button id="manifestButton" class="icon-button" title="导出任务清单" aria-label="导出任务清单">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l3 3v15H6z"/><path d="M14 3v4h4"/><path d="M9 10h6M9 14h6M9 18h4"/></svg>
-            </button>
-            <button id="mediaButton" class="icon-button" title="导出本地视频" aria-label="导出本地视频">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v14H5z"/><path d="M10 9l5 3-5 3z"/></svg>
-            </button>
-            <button id="downloadButton" class="icon-button" title="导出 Markdown" aria-label="导出 Markdown">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11M7 9l5 5 5-5M5 19h14"/></svg>
-            </button>
-            <button id="copyButton" class="icon-button" title="复制笔记" aria-label="复制笔记">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8h11v13H8zM5 16H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h11a1 1 0 0 1 1 1v1"/></svg>
-            </button>
+                <button id="readingModeButton" class="icon-button" title="阅读专注模式" aria-label="阅读专注模式" aria-pressed="false">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h7a4 4 0 0 1 4 4v10H8a4 4 0 0 0-4 4z"/><path d="M20 5h-7a4 4 0 0 0-4 4v10h7a4 4 0 0 1 4 4z"/></svg>
+                </button>
+                <button id="bundleButton" class="icon-button" title="导出资料包" aria-label="导出资料包">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v13H4z"/><path d="M4 7l2-3h12l2 3"/><path d="M9 12h6"/></svg>
+                </button>
+                <button id="diagnosticsButton" class="icon-button" title="导出诊断" aria-label="导出诊断">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l3 3v15H6z"/><path d="M14 3v4h4"/><path d="M9 11h6M9 15h6M9 19h3"/></svg>
+                </button>
+                <button id="visualWindowsButton" class="icon-button" title="导出切片索引" aria-label="导出切片索引">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/><path d="M7.5 11v2M16.5 11v2M11 7.5h2M11 16.5h2"/></svg>
+                </button>
+                <button id="manifestButton" class="icon-button" title="导出任务清单" aria-label="导出任务清单">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l3 3v15H6z"/><path d="M14 3v4h4"/><path d="M9 10h6M9 14h6M9 18h4"/></svg>
+                </button>
+                <button id="mediaButton" class="icon-button" title="导出本地视频" aria-label="导出本地视频">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v14H5z"/><path d="M10 9l5 3-5 3z"/></svg>
+                </button>
+                <button id="downloadButton" class="icon-button" title="导出 Markdown" aria-label="导出 Markdown">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11M7 9l5 5 5-5M5 19h14"/></svg>
+                </button>
+                <button id="copyButton" class="icon-button" title="复制笔记" aria-label="复制笔记">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8h11v13H8zM5 16H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h11a1 1 0 0 1 1 1v1"/></svg>
+                </button>
               </div>
             </details>
           </div>
@@ -375,6 +375,6 @@
       </section>
     </main>
 
-    <script src="/web/app.js?v=20260702-workflow-brief"></script>
+    <script src="/web/app.js?v=20260703-readable-ui"></script>
   </body>
 </html>
