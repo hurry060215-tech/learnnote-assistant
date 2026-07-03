@@ -5470,6 +5470,31 @@ button:disabled {
   line-height: 1.25;
 }
 
+.visual-study-evidence {
+  width: fit-content;
+  border: 1px solid #d7e5ff;
+  border-radius: 7px;
+  background: #f3f8ff;
+  color: var(--accent);
+  padding: 4px 7px;
+  font-size: 11px;
+  font-weight: 850;
+  line-height: 1.35;
+}
+
+.visual-study-evidence.missing,
+.visual-study-evidence.omitted {
+  border-color: #f5d0a6;
+  background: #fff7ed;
+  color: #9a4b00;
+}
+
+.visual-study-evidence.vision {
+  border-color: #b7ead0;
+  background: #ecfdf5;
+  color: #08744a;
+}
+
 .visual-study-card-body p {
   margin: 0;
   color: var(--muted);

@@ -91,16 +91,33 @@ currentTask = {
   transcript_path: "D:/Projects/learnnote-assistant/data/tasks/slice-task/transcript.json",
   summary_source: "vision-llm",
   options: { grid_columns: 3, grid_rows: 3 },
-  summary_diagnostics: { used_vision_llm: true, frame_grid_count: 1, vision_grid_count: 1 },
-  visual_windows: [{
-    id: "W001",
-    start: 12,
-    end: 48,
-    frame_count: 9,
-    frame_timestamps: [12, 24, 36],
-    grid_url: "http://127.0.0.1:8765/api/tasks/slice-task/grids/grid_000.jpg",
-    transcript_excerpt: "Introduce the theorem and compare the two diagrams."
-  }]
+  summary_diagnostics: {
+    used_vision_llm: true,
+    frame_grid_count: 2,
+    vision_grid_count: 2,
+    vision_image_window_ids: ["W001"],
+    missing_vision_image_window_ids: ["W002"]
+  },
+  visual_windows: [
+    {
+      id: "W001",
+      start: 12,
+      end: 48,
+      frame_count: 9,
+      frame_timestamps: [12, 24, 36],
+      grid_url: "http://127.0.0.1:8765/api/tasks/slice-task/grids/grid_000.jpg",
+      transcript_excerpt: "Introduce the theorem and compare the two diagrams."
+    },
+    {
+      id: "W002",
+      start: 48,
+      end: 70,
+      frame_count: 9,
+      frame_timestamps: [48, 58, 68],
+      grid_url: "",
+      transcript_excerpt: "Missing image window should rely on transcript."
+    }
+  ]
 };
 transcriptCache = {
   segments: [
@@ -122,8 +139,14 @@ assert.match(resultHtml, /class="side-visual-study-navigator"/);
 assert.match(resultHtml, /复习队列/);
 assert.match(resultHtml, /按画面窗口回看/);
 assert.match(resultHtml, /class="side-visual-study"/);
-assert.match(resultHtml, /class="side-visual-study-card"/);
+assert.match(resultHtml, /side-visual-study-card vision/);
+assert.match(resultHtml, /side-visual-study-card missing/);
+assert.match(resultHtml, /side-visual-evidence vision/);
+assert.match(resultHtml, /side-visual-evidence missing/);
+assert.match(resultHtml, /已进视觉 · 网格图已参与图文总结/);
+assert.match(resultHtml, /缺图 · 未送入视觉模型，按字幕与索引复习/);
 assert.match(resultHtml, /W001/);
+assert.match(resultHtml, /W002/);
 assert.match(resultHtml, /已进视觉 · 9 帧 · 1 字幕/);
 assert.match(resultHtml, /00:00:12 - 00:00:48/);
 assert.match(resultHtml, /grid_000\.jpg/);

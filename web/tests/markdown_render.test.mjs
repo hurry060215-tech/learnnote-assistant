@@ -654,6 +654,10 @@ const visualDeckHtml = context.visualStudyDeck({
   title: "<script>bad()</script> 视觉课程",
   summary_source: "vision-llm",
   options: { grid_columns: 3, grid_rows: 3 },
+  summary_diagnostics: {
+    vision_image_window_ids: ["W001"],
+    missing_vision_image_window_ids: ["W002"]
+  },
   visual_windows: [
     {
       id: "W001",
@@ -675,6 +679,12 @@ const visualDeckHtml = context.visualStudyDeck({
   ]
 });
 assert.match(visualDeckHtml, /class="visual-study-deck"/);
+assert.match(visualDeckHtml, /visual-study-card vision/);
+assert.match(visualDeckHtml, /visual-study-card missing/);
+assert.match(visualDeckHtml, /visual-study-evidence vision/);
+assert.match(visualDeckHtml, /visual-study-evidence missing/);
+assert.match(visualDeckHtml, /已进视觉 · 网格图已参与图文总结/);
+assert.match(visualDeckHtml, /缺图 · 未送入视觉模型，按字幕与索引复习/);
 assert.match(visualDeckHtml, /视觉窗口复习/);
 assert.match(visualDeckHtml, /2 个窗口 · 00:00:00 - 00:06:00/);
 assert.match(visualDeckHtml, /导出切片索引/);

@@ -4730,6 +4730,24 @@ function sideVisualStudyCueHtml(window, transcript) {
   return `<p>${escapeHtml(excerpt)}</p>`;
 }
 
+function visualWindowEvidenceState(task, window, index = 0) {
+  const diag = task?.summary_diagnostics || {};
+  const id = String(window?.id || `W${String(index + 1).padStart(3, "0")}`);
+  const sentIds = new Set((diag.vision_image_window_ids || []).map(value => String(value)));
+  const missingIds = new Set((diag.missing_vision_image_window_ids || []).map(value => String(value)));
+  const omittedIds = new Set((diag.omitted_vision_window_ids || []).map(value => String(value)));
+  if (missingIds.has(id)) {
+    return { state: "missing", label: "缺图", detail: "未送入视觉模型，按字幕与索引复习" };
+  }
+  if (omittedIds.has(id)) {
+    return { state: "omitted", label: "已省略", detail: "超出视觉批次上限，保留本地索引" };
+  }
+  if (sentIds.has(id) || diag.used_vision_llm || task?.summary_source === "vision-llm") {
+    return { state: "vision", label: "已进视觉", detail: "网格图已参与图文总结" };
+  }
+  return { state: "ready", label: "本地索引", detail: safeNoteMediaUrl(window?.grid_url || "") ? "可核对画面和字幕" : "等待网格图" };
+}
+
 function visualStudyDeck(task, transcript = null) {
   const windows = visualWindows(task);
   if (!windows.length) return "";
@@ -4753,7 +4771,8 @@ function visualStudyDeck(task, transcript = null) {
     <div class="side-visual-study-list">
       ${windows.slice(0, 8).map((window, index) => {
         const image = safeNoteMediaUrl(window.grid_url || "");
-        return `<article class="side-visual-study-card" data-visual-window="${escapeHtml(window.id || "")}" data-window-start="${seekTimeValue(window.start)}">
+        const evidence = visualWindowEvidenceState(task, window, index);
+        return `<article class="side-visual-study-card ${escapeHtml(evidence.state)}" data-visual-window="${escapeHtml(window.id || "")}" data-window-start="${seekTimeValue(window.start)}">
           <figure>
             ${image ? `<img src="${image}" alt="${escapeHtml(window.id)} frame grid">` : `<div class="side-visual-placeholder">无画面</div>`}
             <figcaption>${escapeHtml(window.id || `W${String(index + 1).padStart(3, "0")}`)}</figcaption>
@@ -4761,6 +4780,7 @@ function visualStudyDeck(task, transcript = null) {
           <div>
             <span>窗口 ${String(index + 1).padStart(2, "0")}</span>
             <strong>${fmt(window.start)} - ${fmt(window.end)}</strong>
+            <small class="side-visual-evidence ${escapeHtml(evidence.state)}">${escapeHtml(evidence.label)} · ${escapeHtml(evidence.detail)}</small>
             ${sideVisualStudyCueHtml(window, transcript)}
             ${sideVisualStudyCheckpointHtml(window, transcript)}
             ${sideVisualStudyQuestionHtml(window, transcript)}
