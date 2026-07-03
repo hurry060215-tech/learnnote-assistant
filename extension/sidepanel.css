@@ -4430,6 +4430,33 @@ input[type="file"] {
   font-size: 12px;
 }
 
+.recovery-diagnosis {
+  display: grid;
+  gap: 4px;
+  border: 1px solid #d8e4ff;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 8px 9px;
+}
+
+.recovery-diagnosis span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.recovery-diagnosis strong {
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.42;
+}
+
+.recovery-diagnosis small {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.42;
+}
+
 .diagnostic-recovery ul {
   display: grid;
   gap: 4px;

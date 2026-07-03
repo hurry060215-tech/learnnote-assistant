@@ -1196,31 +1196,68 @@ function recoveryStepItems(task) {
 
 function diagnosticRecoveryHtml(task) {
   const steps = recoveryStepItems(task);
+  const recovery = task?.recovery || {};
+  const primary = recovery.primary_action || null;
+  const diagnosis = recovery.diagnosis || "";
+  const summary = diagnosis || primary?.detail
+    ? `<div class="recovery-diagnosis">
+        ${diagnosis ? `<span>判断</span><strong>${escapeHtml(diagnosis)}</strong>` : ""}
+        ${primary ? `<small>主动作：${escapeHtml(primary.label || primary.key || "查看诊断")}${primary.detail ? ` · ${escapeHtml(primary.detail)}` : ""}</small>` : ""}
+      </div>`
+    : "";
   return `<section class="diagnostic-recovery" aria-label="恢复建议">
     <strong>下一步建议</strong>
+    ${summary}
     <ul>${steps.map(step => `<li>${escapeHtml(step)}</li>`).join("")}</ul>
     ${recoveryActionsHtml(task)}
   </section>`;
 }
 
+function recoveryActionButtonHtml(action, task) {
+  const label = escapeHtml(action.label || action.key || "查看诊断");
+  const title = action.detail ? ` title="${escapeHtml(action.detail)}"` : "";
+  const intent = action.ui_intent || action.key || "";
+  if (intent === "local_upload") {
+    return `<button type="button" data-recovery-local${title}>${label}</button>`;
+  }
+  if (intent === "retry_current_page") {
+    return `<button type="button" data-route-action="redetect"${title}>${label}</button>`;
+  }
+  if (intent === "inspect_diagnostics") {
+    return `<button type="button" data-switch-result-tab="diagnostics"${title}>${label}</button>`;
+  }
+  if (intent === "continue_from_media") {
+    return canContinueFromDownloadedMedia(task)
+      ? `<button type="button" data-rerun-from-media="${escapeHtml(task.id)}"${title}>${label}</button>`
+      : "";
+  }
+  if (intent === "export_markdown") {
+    return task.note_path ? `<button type="button" data-export="markdown"${title}>${label}</button>` : "";
+  }
+  if (intent === "export_diagnostics") {
+    return hasTaskDiagnostics(task) ? `<button type="button" data-export="diagnostics"${title}>${label}</button>` : "";
+  }
+  if (intent === "export_audit" || intent === "inspect_audit") {
+    return hasTaskAudit(task) ? `<button type="button" data-export="audit"${title}>${label}</button>` : "";
+  }
+  return `<button type="button" data-switch-result-tab="diagnostics"${title}>${label}</button>`;
+}
+
 function recoveryActionsHtml(task) {
   if (!task) return "";
+  const structured = Array.isArray(task.recovery?.actions) ? task.recovery.actions : [];
+  if (structured.length) {
+    const rendered = structured.map(action => recoveryActionButtonHtml(action, task)).filter(Boolean);
+    return `<div class="recovery-actions">${rendered.join("")}</div>`;
+  }
   const actions = [
     `<button type="button" data-recovery-local>上传本地视频</button>`,
     `<button type="button" data-switch-result-tab="diagnostics">查看诊断</button>`
   ];
-  if (hasTaskDiagnostics(task)) {
-    actions.push(`<button type="button" data-export="diagnostics">导出诊断</button>`);
-  }
-  if (hasTaskAudit(task)) {
-    actions.push(`<button type="button" data-export="audit">导出审计</button>`);
-  }
-  if (canContinueFromDownloadedMedia(task)) {
-    actions.push(`<button type="button" data-rerun-from-media="${escapeHtml(task.id)}">继续切片总结</button>`);
-  }
-  if (task.note_path) {
-    actions.push(`<button type="button" data-export="markdown">导出 Markdown</button>`);
-  }
+  if (hasTaskDiagnostics(task)) actions.push(`<button type="button" data-export="diagnostics">导出诊断</button>`);
+  if (hasTaskAudit(task)) actions.push(`<button type="button" data-export="audit">导出审计</button>`);
+  if (canContinueFromDownloadedMedia(task)) actions.push(`<button type="button" data-rerun-from-media="${escapeHtml(task.id)}">继续切片总结</button>`);
+  if (task.note_path) actions.push(`<button type="button" data-export="markdown">导出 Markdown</button>`);
   return `<div class="recovery-actions">${actions.join("")}</div>`;
 }
 

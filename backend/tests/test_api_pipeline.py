@@ -524,6 +524,10 @@ class LocalUploadValidationTests(unittest.TestCase):
             self.assertIn("归类：download_forbidden", diagnostics)
             self.assertEqual(recovery["code"], "download_forbidden")
             self.assertEqual(recovery["next_action"], "refresh_playback_and_retry")
+            self.assertEqual(recovery["primary_action"]["ui_intent"], "retry_current_page")
+            self.assertEqual(recovery["primary_action"]["label"], "继续播放后重检")
+            self.assertIn("local_upload", [action["key"] for action in recovery["actions"]])
+            self.assertIn("export_diagnostics", [action["key"] for action in recovery["actions"]])
             self.assertTrue(recovery["is_chaoxing"])
             self.assertIn("不刷课", " ".join(recovery["boundary_notes"]))
         finally:

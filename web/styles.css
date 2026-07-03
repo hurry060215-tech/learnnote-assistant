@@ -4205,6 +4205,33 @@ button:disabled {
   font-size: 13px;
 }
 
+.recovery-diagnosis {
+  display: grid;
+  gap: 4px;
+  border: 1px solid #d8e4ff;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 9px 10px;
+}
+
+.recovery-diagnosis span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.recovery-diagnosis strong {
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.recovery-diagnosis small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
 .diagnostic-recovery ul {
   display: grid;
   gap: 5px;

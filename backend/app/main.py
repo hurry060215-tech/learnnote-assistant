@@ -801,6 +801,94 @@ def diagnostic_recovery_steps(task: TaskRecord) -> list[str]:
     return steps
 
 
+def _recovery_action(action: str, *, detail: str = "", priority: str = "secondary") -> dict[str, str]:
+    action_map = {
+        "local_upload": {
+            "label": "上传本地视频",
+            "ui_intent": "local_upload",
+            "detail": "改用本地文件，继续走同一套转写、切片、视觉窗口和总结管线。",
+        },
+        "refresh_login_and_retry": {
+            "label": "重新登录后重检",
+            "ui_intent": "retry_current_page",
+            "detail": "回到原课程页确认登录有效，播放几秒后从扩展重新检测并创建任务。",
+        },
+        "refresh_playback_and_retry": {
+            "label": "继续播放后重检",
+            "ui_intent": "retry_current_page",
+            "detail": "回到原页面继续播放，让 Referer、Cookie 和时效签名保持新鲜后重试。",
+        },
+        "play_longer_and_redetect": {
+            "label": "播放更久后重检",
+            "ui_intent": "retry_current_page",
+            "detail": "让播放器继续加载完整 manifest，再从扩展重新检测候选资源。",
+        },
+        "play_and_redetect": {
+            "label": "播放几秒后重检",
+            "ui_intent": "retry_current_page",
+            "detail": "先让视频真实播放，等待 mp4、m3u8、mpd 或播放接口请求暴露。",
+        },
+        "inspect_diagnostics": {
+            "label": "查看下载诊断",
+            "ui_intent": "inspect_diagnostics",
+            "detail": "查看每条下载路线的 URL、状态码、错误码和请求头证据。",
+        },
+        "continue_from_media": {
+            "label": "继续切片总结",
+            "ui_intent": "continue_from_media",
+            "detail": "复用已下载到本地的 media.mp4，继续生成字幕、画面网格和笔记。",
+        },
+        "inspect_audit": {
+            "label": "查看阶段审计",
+            "ui_intent": "inspect_audit",
+            "detail": "检查媒体、转写、切片、总结各阶段产物是否齐全。",
+        },
+        "export_markdown": {
+            "label": "导出 Markdown",
+            "ui_intent": "export_markdown",
+            "detail": "先导出现有笔记复习，再按诊断重新尝试直取。",
+        },
+        "export_diagnostics": {
+            "label": "导出诊断",
+            "ui_intent": "export_diagnostics",
+            "detail": "导出诊断文件，便于复现登录态、签名或 manifest 问题。",
+        },
+        "export_audit": {
+            "label": "导出审计",
+            "ui_intent": "export_audit",
+            "detail": "导出阶段门报告，确认失败发生在哪个处理阶段。",
+        },
+    }
+    base = dict(action_map.get(action, action_map["inspect_diagnostics"]))
+    base["key"] = action
+    base["priority"] = priority
+    if detail:
+        base["detail"] = detail
+    return base
+
+
+def _diagnostic_recovery_actions(task: TaskRecord, primary_action_key: str) -> list[dict[str, str]]:
+    actions = [_recovery_action(primary_action_key, priority="primary")]
+    existing = {primary_action_key}
+
+    def add(action_key: str) -> None:
+        if action_key not in existing:
+            actions.append(_recovery_action(action_key))
+            existing.add(action_key)
+
+    if task_media_file_exists(task):
+        add("continue_from_media")
+    if primary_action_key != "local_upload":
+        add("local_upload")
+    add("inspect_diagnostics")
+    if task.note_path:
+        add("export_markdown")
+    add("export_audit")
+    if task.summary_diagnostics_path or task.download_attempts or task.selected_resource or task.error_code:
+        add("export_diagnostics")
+    return actions
+
+
 def diagnostic_recovery_profile(task: TaskRecord) -> dict:
     codes = _task_failure_codes(task)
     selected = task.selected_resource
@@ -872,12 +960,16 @@ def diagnostic_recovery_profile(task: TaskRecord) -> dict:
     if not boundary_notes:
         boundary_notes.append("当前页直取失败时，本地视频上传会复用同一套转写、切片和图文总结管线。")
 
+    actions = _diagnostic_recovery_actions(task, next_action)
+
     return {
         "code": primary_code,
         "diagnosis": diagnosis,
         "severity": severity,
         "confidence": confidence,
         "next_action": next_action,
+        "primary_action": actions[0],
+        "actions": actions,
         "is_chaoxing": is_chaoxing,
         "selected_kind": selected_kind,
         "selected_source": selected_source,

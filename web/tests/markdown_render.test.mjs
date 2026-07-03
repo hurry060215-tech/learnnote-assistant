@@ -1226,12 +1226,32 @@ const diagnosticRecoveryHtml = context.diagnosticRecoveryHtml({
   download_attempts: [
     { strategy: "direct-file", code: "download_forbidden", status_code: 403, message: "<script>bad()</script>" },
     { strategy: "manifest-ffmpeg", code: "unsupported_manifest" }
-  ]
+  ],
+  recovery: {
+    diagnosis: "媒体地址被防盗链、时效签名或 Referer 拒绝。",
+    primary_action: {
+      key: "refresh_playback_and_retry",
+      label: "继续播放后重检",
+      ui_intent: "retry_current_page",
+      detail: "回到原页面继续播放后重试。"
+    },
+    actions: [
+      { key: "refresh_playback_and_retry", label: "继续播放后重检", ui_intent: "retry_current_page", detail: "回到原页面继续播放后重试。" },
+      { key: "continue_from_media", label: "继续切片总结", ui_intent: "continue_from_media" },
+      { key: "local_upload", label: "上传本地视频", ui_intent: "local_upload" },
+      { key: "inspect_diagnostics", label: "查看诊断", ui_intent: "inspect_diagnostics" },
+      { key: "export_diagnostics", label: "导出诊断", ui_intent: "export_diagnostics" },
+      { key: "export_audit", label: "导出审计", ui_intent: "export_audit" }
+    ]
+  }
 });
 assert.match(diagnosticRecoveryHtml, /class="diagnostic-recovery"/);
 assert.match(diagnosticRecoveryHtml, /学习通\/超星/);
 assert.match(diagnosticRecoveryHtml, /不刷课/);
 assert.match(diagnosticRecoveryHtml, /下一步建议/);
+assert.match(diagnosticRecoveryHtml, /媒体地址被防盗链/);
+assert.match(diagnosticRecoveryHtml, /主动作：继续播放后重检/);
+assert.match(diagnosticRecoveryHtml, /data-recovery-source="browser"/);
 assert.match(diagnosticRecoveryHtml, /后端已尝试 2 条路线/);
 assert.match(diagnosticRecoveryHtml, /Referer/);
 assert.match(diagnosticRecoveryHtml, /Range 只作为浏览器播放证据/);
