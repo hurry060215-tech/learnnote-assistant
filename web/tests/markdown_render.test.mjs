@@ -148,6 +148,24 @@ assert.equal(context.resolveApiBase(
   { protocol: "http:", hostname: "127.0.0.1", port: "8878" },
   { getItem: () => "http://localhost:9000/" }
 ), "http://localhost:9000");
+assert.equal(context.displayTaskTitle({
+  id: "bad-title",
+  title: "?????????",
+  source_type: "current_page",
+  selected_resource: { kind: "hls" }
+}), "当前页直取 · HLS");
+assert.equal(context.preferredInitialTask([
+  { id: "latest-failed", status: "failed", title: "?????????", source_type: "current_page" },
+  { id: "usable-success", status: "success", title: "Usable lesson", source_type: "local", note_path: "note.md" }
+]).id, "usable-success");
+assert.equal(context.preferredInitialTask([
+  { id: "running-now", status: "running", source_type: "current_page" },
+  { id: "usable-success", status: "success", source_type: "local", note_path: "note.md" }
+]).id, "running-now");
+assert.equal(context.preferredInitialTask([
+  { id: "stale-queued", status: "queued", source_type: "page_text" },
+  { id: "usable-success", status: "success", source_type: "local", note_path: "note.md" }
+]).id, "usable-success");
 assert.match(stylesCss, /@media \(max-width: 900px\)[\s\S]*body\s*\{[\s\S]*min-width:\s*0;[\s\S]*overflow-x:\s*hidden;/);
 assert.match(stylesCss, /@media \(max-width: 900px\)[\s\S]*\.app-shell,[\s\S]*max-width:\s*100vw;/);
 assert.equal(elements.get("#browserBridgeStatus").classList.contains("capture-status-grid"), true);

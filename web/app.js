@@ -166,6 +166,67 @@ function compactUrl(value, limit = 88) {
   return `${text.slice(0, head)}...${text.slice(-tail)}`;
 }
 
+function isUnreadableTitle(value) {
+  const text = String(value || "").trim();
+  if (!text) return true;
+  const compact = text.replace(/\s+/g, "");
+  if (!compact) return true;
+  if (/^[?？\uFFFD]+$/.test(compact)) return true;
+  if (compact.length >= 4) {
+    const suspectCount = (compact.match(/[?？\uFFFD]/g) || []).length;
+    if (suspectCount / compact.length >= 0.65) return true;
+  }
+  return false;
+}
+
+function hostFromUrl(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  try {
+    const parsed = new URL(text);
+    return parsed.hostname || "";
+  } catch {
+    const match = /^https?:\/\/([^/?#]+)/i.exec(text);
+    return match ? match[1] : "";
+  }
+}
+
+function displayTaskTitle(task, fallback = "未命名任务") {
+  const raw = String(task?.title || "").trim();
+  if (!isUnreadableTitle(raw)) return raw;
+  const selected = task?.selected_resource || {};
+  const kind = mediaKindText(selected.kind) || selected.kind || (task?.media_path ? "media.mp4" : "");
+  const source = task?.mode === "download_only"
+    ? "当前页下载"
+    : task?.mode === "rerun_from_media"
+      ? "复用本地视频"
+      : task?.source_type === "local"
+        ? "本地视频"
+        : task?.source_type === "page_text"
+          ? "页面文本"
+          : task?.source_type === "current_page"
+            ? "当前页直取"
+            : "";
+  const host = hostFromUrl(task?.page_url || selected.page_url || selected.frame_url || selected.url);
+  if (source && kind) return `${source} · ${kind}`;
+  if (host && source) return `${source} · ${host}`;
+  if (host) return compactUrl(host, 48);
+  if (source) return source;
+  return task?.id ? `任务 ${String(task.id).slice(0, 8)}` : fallback;
+}
+
+function preferredInitialTask(list) {
+  const candidates = Array.isArray(list) ? list : [];
+  return candidates.find(task => task.status === "running")
+    || candidates.find(task => task.status === "success" && task.note_path)
+    || candidates.find(task => task.status === "success" && (task.media_path || visualWindows(task).length))
+    || candidates.find(task => task.status === "success")
+    || candidates.find(task => task.status === "queued")
+    || candidates.find(task => task.status === "failed" && task.note_path)
+    || candidates[0]
+    || null;
+}
+
 async function fetchJson(url, options = {}) {
   const response = await fetch(url, options);
   const contentType = response.headers?.get?.("content-type") || "";
@@ -2115,7 +2176,10 @@ async function loadTasks() {
   }
   tasks = data.tasks || [];
   if (selectedTaskId && !tasks.some(task => task.id === selectedTaskId)) selectedTaskId = null;
-  if (!selectedTaskId && tasks[0]) selectTask(tasks[0].id, { clearCaches: false });
+  if (!selectedTaskId) {
+    const initialTask = preferredInitialTask(tasks);
+    if (initialTask) selectTask(initialTask.id, { clearCaches: false });
+  }
   else if (selectedTaskId) syncSelectedTaskUrl(selectedTaskId);
   renderTasks();
   renderBrowserRouteSummary();
@@ -2133,6 +2197,7 @@ function taskMatchesFilters(task) {
   if (!query) return true;
   return [
     task.title,
+    displayTaskTitle(task),
     task.page_url,
     task.source_type,
     task.error_code,
@@ -2167,7 +2232,7 @@ function renderTasks() {
       ${taskPreviewHtml(task)}
       <div class="task-body">
         <div class="task-headline">
-          <strong>${escapeHtml(task.title || task.id)}</strong>
+          <strong>${escapeHtml(displayTaskTitle(task))}</strong>
           <span class="task-status-pill ${escapeHtml(taskStatusClass(task))}">${escapeHtml(statusText(task))} · ${task.progress || 0}%</span>
         </div>
         <small class="task-meta-line">${escapeHtml(taskMetaLine(task))}</small>
@@ -2810,7 +2875,7 @@ function nextStepHtml(task) {
 function mediaPreviewHtml(task) {
   const url = taskMediaPreviewUrl(task);
   if (!url) return "";
-  const title = task.title || task.id || "media";
+  const title = displayTaskTitle(task, "media");
   return `<section class="media-preview-card" aria-label="本地视频核对">
     <div class="media-preview-copy">
       <span>本地视频核对</span>
@@ -3088,7 +3153,7 @@ function taskOverview(task) {
   return `<section class="task-overview status-${statusClass}">
     <div class="task-overview-main">
       <span class="eyeless">当前学习任务</span>
-      <strong>${escapeHtml(task.title || task.id)}</strong>
+      <strong>${escapeHtml(displayTaskTitle(task))}</strong>
       <small>${escapeHtml(resourceLine || statusText(task))}</small>
       ${stageRail(task)}
     </div>
@@ -3451,7 +3516,7 @@ function noteStudyBar(markdown, task) {
     <div class="study-map-head">
       <div>
         <span>学习导览</span>
-        <strong>${escapeHtml(task.title || task.id)}</strong>
+        <strong>${escapeHtml(displayTaskTitle(task))}</strong>
       </div>
       <small>${escapeHtml(sourceText(task))} · ${escapeHtml(statusText(task))}</small>
     </div>
@@ -3827,7 +3892,7 @@ function visualStudyDeck(task, transcript = null) {
     <div class="visual-study-head">
       <div>
         <span>视觉窗口复习</span>
-        <strong>${escapeHtml(task.title || task.id || "画面切片")}</strong>
+        <strong>${escapeHtml(displayTaskTitle(task, "画面切片"))}</strong>
       </div>
       <div class="visual-study-head-actions">
         <small>${escapeHtml(headDetail)}</small>
@@ -3917,7 +3982,7 @@ function learningSliceWorkbench(task, transcript = null) {
     <section class="slice-brief">
       <div>
         <span>学习切片</span>
-        <strong>${escapeHtml(task.title || task.id || "视频学习切片")}</strong>
+        <strong>${escapeHtml(displayTaskTitle(task, "视频学习切片"))}</strong>
         <small>按视觉窗口把截图网格、同步字幕和回看动作组织在一起，适合复习 PPT、板书、代码演示和界面操作。</small>
       </div>
       <dl>
@@ -3948,7 +4013,7 @@ function visualFrameWorkbench(task, transcript = null) {
     <section class="slice-brief">
       <div>
         <span>画面网格</span>
-        <strong>${escapeHtml(task.title || task.id || "视频画面网格")}</strong>
+        <strong>${escapeHtml(displayTaskTitle(task, "视频画面网格"))}</strong>
         <small>集中核对每个视觉窗口的截图网格、帧时间和回看按钮，适合检查 PPT、板书、代码和界面操作有没有进入笔记。</small>
       </div>
       <dl>
@@ -4158,7 +4223,7 @@ async function renderDetail() {
     return;
   }
 
-  els.selectedTitle.textContent = task.title || task.id;
+  els.selectedTitle.textContent = displayTaskTitle(task);
   els.selectedSource.textContent = `${sourceText(task)} · ${statusText(task)}`;
   els.resultMeta.innerHTML = resultMetaChipsHtml(task);
   els.detail.className = "detail";

@@ -116,3 +116,18 @@ assert.deepEqual(JSON.parse(JSON.stringify(merged.browser_subtitles)), [
   { start: 3, end: 5, text: "second cue" },
   { start: 6, end: 8, text: "iframe cue" }
 ]);
+
+const titleFallbackMerged = context.mergePageContexts({ title: "Browser Tab Lesson", url: "https://course.example.com" }, [
+  context.normalizePageForFrame({
+    title: "?????????",
+    page_url: "https://course.example.com"
+  }, 0, {}),
+  context.normalizePageForFrame({
+    title: "Player Lesson",
+    page_url: "https://player.example.com",
+    active_video: { src: "blob:https://player.example.com/1", paused: false }
+  }, 2, {})
+]);
+
+assert.equal(titleFallbackMerged.title, "Player Lesson");
+assert.equal(context.bestPageTitle("????", "Clean Lesson"), "Clean Lesson");

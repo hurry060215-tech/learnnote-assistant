@@ -839,9 +839,30 @@ function normalizeBrowserSubtitles(items = []) {
   return normalized.sort((a, b) => a.start - b.start || a.end - b.end);
 }
 
+function isUnreadableTitle(value) {
+  const text = String(value || "").trim();
+  if (!text) return true;
+  const compact = text.replace(/\s+/g, "");
+  if (!compact) return true;
+  if (/^[?？\uFFFD]+$/.test(compact)) return true;
+  if (compact.length >= 4) {
+    const suspectCount = (compact.match(/[?？\uFFFD]/g) || []).length;
+    if (suspectCount / compact.length >= 0.65) return true;
+  }
+  return false;
+}
+
+function bestPageTitle(...values) {
+  for (const value of values) {
+    const text = String(value || "").trim();
+    if (text && !isUnreadableTitle(text)) return text;
+  }
+  return "";
+}
+
 function normalizePageForFrame(page = {}, frameId = 0, tab = {}) {
   const normalized = {
-    title: page.title || tab.title || "",
+    title: bestPageTitle(page.title, tab.title),
     page_url: page.page_url || tab.url || "",
     page_text: page.page_text || "",
     active_video: page.active_video || null,
@@ -919,7 +940,7 @@ function mergePageContexts(tab = {}, pages = []) {
     }
   }
   return {
-    title: top.title || activePage?.title || tab.title || "",
+    title: bestPageTitle(top.title, activePage?.title, tab.title),
     page_url: top.page_url || tab.url || activePage?.page_url || "",
     page_text: textParts.join("\n\n--- iframe ---\n\n").slice(0, 60000),
     active_video: activePage?.active_video || null,
@@ -1545,7 +1566,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         body: JSON.stringify({
           mode: message.mode || "video",
           page_url: page.page_url || tab.url,
-          title: page.title || tab.title || "",
+          title: bestPageTitle(page.title, tab.title),
           page_text: page.page_text || "",
           active_video: page.active_video || null,
           browser_subtitles: page.browser_subtitles || [],
