@@ -176,6 +176,29 @@ class ResourceDetectionTests(unittest.TestCase):
         self.assertEqual(by_kind["video"].audio_mime, "audio/mp4")
         self.assertEqual(by_kind["audio"].url, "https://cdn.example.com/course/audio-128k.m4a?token=a")
 
+    def test_json_extensionless_audio_endpoint_pairs_with_video(self) -> None:
+        payload = json.dumps({
+            "data": {
+                "videoUrl": "/api/video/stream?id=42&token=v",
+                "audioUrl": "/api/audio/stream?id=42&token=a",
+                "videoMime": "video/mp4",
+                "audioMime": "audio/mp4",
+                "backup": {
+                    "source": "/api/audio/backup?id=42&token=b"
+                },
+            }
+        })
+        resources = extract_media_resources_from_json_text(payload, "https://course.example.com/player", "direct-response")
+        by_url = {item.url: item for item in resources}
+        video = by_url["https://course.example.com/api/video/stream?id=42&token=v"]
+        audio = by_url["https://course.example.com/api/audio/stream?id=42&token=a"]
+        backup_audio = by_url["https://course.example.com/api/audio/backup?id=42&token=b"]
+        self.assertEqual(video.kind, "video")
+        self.assertEqual(audio.kind, "audio")
+        self.assertEqual(backup_audio.kind, "audio")
+        self.assertEqual(video.audio_url, audio.url)
+        self.assertEqual(video.audio_mime, "audio/mp4")
+
     def test_cookie_header_matches_parent_domains(self) -> None:
         cookies = [
             BrowserCookie(name="SESSDATA", value="abc", domain=".chaoxing.com"),

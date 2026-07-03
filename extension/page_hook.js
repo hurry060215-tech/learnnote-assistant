@@ -209,7 +209,14 @@
   }
 
   function mediaUrlHint(url = "") {
-    return /(^|[/?&=._-])(m3u8|mpd|hls|dash|manifest|playlist|master|stream|play|video|media)([/?&=._-]|$)/i.test(String(url || ""));
+    return /(^|[/?&=._-])(m3u8|mpd|hls|dash|manifest|playlist|master|stream|play|video|audio|media)([/?&=._-]|$)/i.test(String(url || ""));
+  }
+
+  function endpointKindHint(url = "") {
+    const text = String(url || "").toLowerCase();
+    if (/(^|[/?&=._-])audio([/?&=._-]|$)/i.test(text)) return { kind: "audio", mime: "audio/mp4" };
+    if (mediaUrlHint(text)) return { kind: "video", mime: "video/mp4" };
+    return { kind: "unknown", mime: "" };
   }
 
   function post(resources = [], drm = []) {
@@ -551,7 +558,7 @@
     if (/^(https?:)?\/\//i.test(text)) return true;
     if (/%2f|%3a|%3f|%3d|%26/i.test(text)) return true;
     if (text.startsWith("/")) return true;
-    return text.includes("/") && /[?=&]|api|play|media|video|stream|m3u8|mpd|hls|dash/i.test(text);
+    return text.includes("/") && /[?=&]|api|play|media|video|audio|stream|m3u8|mpd|hls|dash/i.test(text);
   }
 
   function looksLikeNestedMediaText(value) {
@@ -651,22 +658,40 @@
   function kindFromJsonContext(keys, url, parent) {
     const urlKind = mediaKind(url, "");
     if (urlKind !== "unknown") return { kind: urlKind, mime: mimeForKind(urlKind) };
-    const context = [...keys, jsonContextMime(parent)].join(" ").toLowerCase();
-    if (context.includes("mpegurl") || context.includes("x-mpegurl") || context.includes("m3u8") || context.includes("hls")) {
+    const keyContext = keys.join(" ").toLowerCase();
+    const mimeContext = jsonContextMime(parent).toLowerCase();
+    if (keyContext.includes("mpegurl") || keyContext.includes("x-mpegurl") || keyContext.includes("m3u8") || keyContext.includes("hls")) {
       return { kind: "hls", mime: "application/vnd.apple.mpegurl" };
     }
-    if (context.includes("dash+xml") || context.includes("mpd") || context.includes("dash")) {
+    if (keyContext.includes("dash+xml") || keyContext.includes("mpd") || keyContext.includes("dash")) {
       return { kind: "dash", mime: "application/dash+xml" };
     }
-    if (context.includes("text/vtt") || context.includes("subrip") || context.includes("subtitle") || context.includes("caption")) {
+    if (keyContext.includes("text/vtt") || keyContext.includes("subrip") || keyContext.includes("subtitle") || keyContext.includes("caption")) {
       return { kind: "subtitle", mime: "text/vtt" };
     }
-    if (context.includes("audio/") || context.includes("m4a") || context.includes("mp3") || context.includes("aac") || context.includes("opus") || context.includes("audio")) {
+    if (keyContext.includes("audio/") || keyContext.includes("m4a") || keyContext.includes("mp3") || keyContext.includes("aac") || keyContext.includes("opus") || keyContext.includes("audio")) {
       return { kind: "audio", mime: "audio/mp4" };
     }
-    if (context.includes("video/") || context.includes("mp4") || context.includes("video")) {
+    if (keyContext.includes("video/") || keyContext.includes("mp4") || keyContext.includes("video")) {
       return { kind: "video", mime: "video/mp4" };
     }
+    if (mimeContext.includes("mpegurl") || mimeContext.includes("x-mpegurl") || mimeContext.includes("m3u8") || mimeContext.includes("hls")) {
+      return { kind: "hls", mime: "application/vnd.apple.mpegurl" };
+    }
+    if (mimeContext.includes("dash+xml") || mimeContext.includes("mpd") || mimeContext.includes("dash")) {
+      return { kind: "dash", mime: "application/dash+xml" };
+    }
+    if (mimeContext.includes("text/vtt") || mimeContext.includes("subrip") || mimeContext.includes("subtitle") || mimeContext.includes("caption")) {
+      return { kind: "subtitle", mime: "text/vtt" };
+    }
+    if (mimeContext.includes("audio/") || mimeContext.includes("m4a") || mimeContext.includes("mp3") || mimeContext.includes("aac") || mimeContext.includes("opus") || mimeContext.includes("audio")) {
+      return { kind: "audio", mime: "audio/mp4" };
+    }
+    if (mimeContext.includes("video/") || mimeContext.includes("mp4") || mimeContext.includes("video")) {
+      return { kind: "video", mime: "video/mp4" };
+    }
+    const endpoint = endpointKindHint(url);
+    if (JSON_MEDIA_KEY_RE.test(keyContext) && endpoint.kind !== "unknown") return endpoint;
     return { kind: "unknown", mime: "" };
   }
 

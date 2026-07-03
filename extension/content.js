@@ -662,7 +662,7 @@ function declaredMediaHint(element) {
     if (/mpegurl|dash\+xml|video\/|audio\//i.test(type)) {
       return { value: href, hint: `${rel} ${type}`, label: `link ${rel} ${type}` };
     }
-    if (as === "fetch" && /api|play|player|stream|video|media|hls|dash|manifest|playlist|master|m3u8|mpd/i.test(href)) {
+    if (as === "fetch" && /api|play|player|stream|video|audio|media|hls|dash|manifest|playlist|master|m3u8|mpd/i.test(href)) {
       return { value: href, hint: `${rel} fetch play media`, label: `link ${rel} as=fetch` };
     }
   }

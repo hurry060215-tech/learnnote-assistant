@@ -37,7 +37,7 @@ ENCODED_MEDIA_URL_RE = re.compile(
 )
 TEXT_RESPONSE_RE = re.compile(r"json|text|html|javascript|mpegurl|dash\+xml|xml|x-mpegurl", re.I)
 MEDIA_ENDPOINT_HINT_RE = re.compile(
-    r"(^|[/?&=._\s-])(api|ananas|play|player|stream|video|media|vod|hls|dash|manifest|playlist|master|m3u8|mpd|objectid|dtoken|fileid|httpmd)([/?&=._\s-]|$)",
+    r"(^|[/?&=._\s-])(api|ananas|play|player|stream|video|audio|media|vod|hls|dash|manifest|playlist|master|m3u8|mpd|objectid|dtoken|fileid|httpmd)([/?&=._\s-]|$)",
     re.I,
 )
 JSON_MEDIA_KEY_RE = re.compile(
@@ -45,7 +45,7 @@ JSON_MEDIA_KEY_RE = re.compile(
     re.I,
 )
 JSON_MIME_KEY_RE = re.compile(r"(mime|type|format|content.?type|media.?type)", re.I)
-JSON_VIDEO_CONTEXT_RE = re.compile(r"(url|src|file|source|video|media|play|stream|vod|course|lesson|objectid|dtoken|fileid|download|httpmd)", re.I)
+JSON_VIDEO_CONTEXT_RE = re.compile(r"(url|src|file|source|video|audio|media|play|stream|vod|course|lesson|objectid|dtoken|fileid|download|httpmd)", re.I)
 TEXT_MEDIA_FIELD_RE = re.compile(
     r"(?P<key>[\"']?[A-Za-z_$][A-Za-z0-9_$.-]{0,79}[\"']?)\s*[:=]\s*[\"'](?P<url>(?:\\u[0-9a-fA-F]{4}|\\x[0-9a-fA-F]{2}|\\.|[^\"'<>\\\s]){4,})[\"']",
     re.I,
@@ -358,6 +358,19 @@ def _media_endpoint_hint(url: str) -> bool:
     return bool(MEDIA_ENDPOINT_HINT_RE.search(target))
 
 
+def _endpoint_kind_hint(url: str) -> tuple[str, str]:
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return "unknown", ""
+    target = " ".join([parsed.path or "", parsed.query or ""]).lower()
+    if re.search(r"(^|[/?&=._\s-])audio([/?&=._\s-]|$)", target):
+        return "audio", "audio/mp4"
+    if MEDIA_ENDPOINT_HINT_RE.search(target):
+        return "video", "video/mp4"
+    return "unknown", ""
+
+
 def _manifest_kind_from_body(text: str, content_type: str = "") -> tuple[str, str]:
     head = (text or "")[:8192].lstrip("\ufeff\r\n\t ")
     lower_head = head[:256].lower()
@@ -465,7 +478,7 @@ def _looks_like_json_url_candidate(value: str) -> bool:
         return True
     if value.startswith("/"):
         return True
-    if "/" in value and re.search(r"[?=&]|api|ananas|play|media|video|stream|vod|m3u8|mpd|hls|dash|objectid|dtoken|fileid|httpmd", value, re.I):
+    if "/" in value and re.search(r"[?=&]|api|ananas|play|media|video|audio|stream|vod|m3u8|mpd|hls|dash|objectid|dtoken|fileid|httpmd", value, re.I):
         return True
     return False
 
@@ -583,19 +596,31 @@ def _json_context_kind(key_path: list[str], url: str, parent: object) -> tuple[s
     if kind != "unknown":
         return kind, _mime_for_kind(kind)
 
-    context = " ".join(key_path + [_json_context_mime(parent)]).lower()
-    if "mpegurl" in context or "x-mpegurl" in context or "m3u8" in context or "hls" in context:
+    key_context = " ".join(key_path).lower()
+    mime_context = _json_context_mime(parent).lower()
+    if "mpegurl" in key_context or "x-mpegurl" in key_context or "m3u8" in key_context or "hls" in key_context:
         return "hls", "application/vnd.apple.mpegurl"
-    if "dash+xml" in context or "mpd" in context or "dash" in context:
+    if "dash+xml" in key_context or "mpd" in key_context or "dash" in key_context:
         return "dash", "application/dash+xml"
-    if "text/vtt" in context or "subrip" in context or "subtitle" in context or "caption" in context:
+    if "text/vtt" in key_context or "subrip" in key_context or "subtitle" in key_context or "caption" in key_context:
         return "subtitle", "text/vtt"
-    if "audio/" in context or "m4a" in context or "mp3" in context or "aac" in context or "opus" in context or "audio" in context:
+    if "audio/" in key_context or "m4a" in key_context or "mp3" in key_context or "aac" in key_context or "opus" in key_context or "audio" in key_context:
         return "audio", "audio/mp4"
-    if "video/" in context or "mp4" in context or "video" in context:
+    if "video/" in key_context or "mp4" in key_context or "video" in key_context:
         return "video", "video/mp4"
+    if "mpegurl" in mime_context or "x-mpegurl" in mime_context or "m3u8" in mime_context or "hls" in mime_context:
+        return "hls", "application/vnd.apple.mpegurl"
+    if "dash+xml" in mime_context or "mpd" in mime_context or "dash" in mime_context:
+        return "dash", "application/dash+xml"
+    if "text/vtt" in mime_context or "subrip" in mime_context or "subtitle" in mime_context or "caption" in mime_context:
+        return "subtitle", "text/vtt"
+    if "audio/" in mime_context or "m4a" in mime_context or "mp3" in mime_context or "aac" in mime_context or "opus" in mime_context or "audio" in mime_context:
+        return "audio", "audio/mp4"
+    if "video/" in mime_context or "mp4" in mime_context or "video" in mime_context:
+        return "video", "video/mp4"
+    context = f"{key_context} {mime_context}"
     if JSON_VIDEO_CONTEXT_RE.search(context) and _media_endpoint_hint(url):
-        return "video", "video/mp4"
+        return _endpoint_kind_hint(url)
     return "unknown", ""
 
 
