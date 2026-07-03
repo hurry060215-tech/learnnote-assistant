@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import shutil
 from pathlib import Path
 from urllib.parse import urldefrag
 
@@ -684,8 +685,16 @@ def _process_video_file(
     transcript: TranscriptResult | None = None
 
     if subtitle_path:
-        update_task(task_id, subtitle_path=str(subtitle_path), message="已检测到页面字幕，正在解析字幕")
-        transcript = transcript_from_subtitle(subtitle_path)
+        owned_subtitle_path = subtitle_path
+        try:
+            if subtitle_path.resolve().parent != work_dir.resolve():
+                owned_subtitle_path = work_dir / subtitle_path.name
+                if owned_subtitle_path.resolve() != subtitle_path.resolve():
+                    shutil.copy2(subtitle_path, owned_subtitle_path)
+        except OSError:
+            owned_subtitle_path = subtitle_path
+        update_task(task_id, subtitle_path=str(owned_subtitle_path), message="已检测到页面字幕，正在解析字幕")
+        transcript = transcript_from_subtitle(owned_subtitle_path)
         if not transcript.segments:
             transcript = None
 

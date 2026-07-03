@@ -1504,6 +1504,8 @@ class ApiPipelineTests(unittest.TestCase):
                     self.assertEqual(rerun_task["status"], "success")
                     self.assertFalse(rerun_task["audio_path"])
                     self.assertTrue(rerun_task["subtitle_path"])
+                    self.assertEqual(Path(rerun_task["subtitle_path"]).parent, task_dir(rerun_task_id))
+                    self.assertTrue(Path(rerun_task["subtitle_path"]).exists())
                     self.assertTrue(rerun_task["transcript_path"])
                     self.assertTrue(rerun_task["frame_grids"])
                     rerun_transcript = self.client.get(f"/api/tasks/{rerun_task_id}/transcript").json()
