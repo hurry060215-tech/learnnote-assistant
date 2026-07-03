@@ -1143,6 +1143,7 @@ function mediaKindText(kind = "") {
     hls: "HLS",
     dash: "DASH",
     video: "视频",
+    audio: "音频",
     subtitle: "字幕",
     fragment: "分片",
     blob: "Blob"
@@ -2690,12 +2691,15 @@ function taskCommandCenter(task) {
   const windows = visualWindows(task);
   const selected = task.selected_resource || {};
   const attempts = task.download_attempts || [];
+  const sourceDetail = selected.audio_url
+    ? `音视频合并 · ${compactUrl(selected.audio_url, 52)}`
+    : selected.playback_match ? playbackText(selected.playback_match) : `${attempts.length || 0} 次下载尝试`;
   const items = [
     {
       key: "source",
       label: "来源证据",
-      value: selected.kind || task.source_type || "-",
-      detail: selected.playback_match ? playbackText(selected.playback_match) : `${attempts.length || 0} 次下载尝试`,
+      value: mediaKindText(selected.kind) || selected.kind || task.source_type || "-",
+      detail: sourceDetail,
       action: hasTaskDiagnostics(task) ? `<button type="button" data-switch-result-tab="diagnostics">看证据</button>` : ""
     },
     {
@@ -2876,7 +2880,8 @@ function taskOverview(task) {
   const failedWithoutFallback = task.status === "failed" && !fallbackNote;
   const resourceLine = [
     sourceText(task),
-    selected.kind || task.source_type || "",
+    mediaKindText(selected.kind) || selected.kind || task.source_type || "",
+    selected.audio_url ? "伴随音频流" : "",
     resourceSourceText(selected),
     selected.playback_match ? playbackText(selected.playback_match) : "",
     selected.resolved_url ? "已跟踪最终 URL" : "",

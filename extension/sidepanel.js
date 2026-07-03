@@ -651,6 +651,7 @@ function mediaKindText(kind = "") {
     hls: "HLS",
     dash: "DASH",
     video: "视频",
+    audio: "音频",
     subtitle: "字幕",
     fragment: "分片",
     blob: "Blob"
@@ -661,7 +662,8 @@ function mediaMimeForKind(kind = "") {
   return ({
     hls: "application/vnd.apple.mpegurl",
     dash: "application/dash+xml",
-    video: "video/mp4"
+    video: "video/mp4",
+    audio: "audio/mp4"
   })[String(kind || "").toLowerCase()] || "";
 }
 
@@ -1271,6 +1273,8 @@ function requestEvidence(item) {
     item.request_type,
     item.status_code ? `HTTP ${item.status_code}` : "",
     fmtBytes(item.content_length),
+    item.audio_url ? `伴随音频 ${compactUrl(item.audio_url, 54)}` : "",
+    item.audio_mime || "",
     mseAppendEvidence(item),
     requestBodySummary(item),
     contentDispositionHint(item.headers?.["content-disposition"]),
@@ -1341,6 +1345,7 @@ function resourceEvidenceTags(item) {
   add(playbackText(item.playback_match));
   if (item.kind === "hls" || item.kind === "dash") add("可合并 manifest");
   if (item.kind === "video") add("可直接下载");
+  if (item.kind === "audio") add("音频线索");
   if (item.kind === "blob") add("blob 线索");
   if (item.kind === "fragment") add("分片线索");
   if (item.blob_url) add("blob/MSE 映射");
@@ -1351,6 +1356,7 @@ function resourceEvidenceTags(item) {
   if (item.source === "manifest-guess") add("同目录 manifest 猜测");
   if (item.source === "inferred-manifest") add("分片路径回推");
   if (item.audio_url) add("分离音频");
+  if (item.audio_url) add("音视频合并");
   if (String(item.source || "").startsWith("pageHook")) add("页面接口");
   if (item.request_type === "media") add("media 请求");
   if (resourceHasMediaRequestHeader(item)) add("视频请求头");
@@ -3976,12 +3982,15 @@ function taskCommandCenter(task) {
   const windows = visualWindows(task);
   const selected = task.selected_resource || {};
   const attempts = task.download_attempts || [];
+  const sourceDetail = selected.audio_url
+    ? `音视频合并 · ${compactUrl(selected.audio_url, 52)}`
+    : selected.playback_match ? playbackText(selected.playback_match) : `${attempts.length || 0} 次下载尝试`;
   const items = [
     {
       key: "source",
       label: "来源证据",
-      value: selected.kind || task.source_type || "-",
-      detail: selected.playback_match ? playbackText(selected.playback_match) : `${attempts.length || 0} 次下载尝试`,
+      value: mediaKindText(selected.kind) || selected.kind || task.source_type || "-",
+      detail: sourceDetail,
       action: hasTaskDiagnostics(task) ? `<button type="button" data-switch-result-tab="diagnostics">看证据</button>` : ""
     },
     {
@@ -4160,7 +4169,8 @@ function taskOverview(task) {
   const canContinueMedia = canContinueFromDownloadedMedia(task);
   const resourceLine = [
     taskSourceText(task),
-    selected.kind || task.source_type || "",
+    mediaKindText(selected.kind) || selected.kind || task.source_type || "",
+    selected.audio_url ? "伴随音频流" : "",
     selected.playback_match ? playbackText(selected.playback_match) : "",
     selected.resolved_url ? "已跟踪最终 URL" : "",
     selected.content_length ? fmtBytes(selected.content_length) : ""

@@ -1087,10 +1087,26 @@ assert.match(context.resourceReasonText({
   source: "direct-response",
   audio_url: "https://cdn.example.com/audio.m4a"
 }), /分离音频/);
+assert.match(context.resourceReasonText({
+  kind: "audio",
+  source: "pageHookBody"
+}), /音频线索/);
 assert.equal(context.candidateStrategyText({
   kind: "video",
   audio_url: "https://cdn.example.com/audio.m4a"
 }), "音视频合并");
+assert.match(context.requestEvidence({
+  kind: "video",
+  source: "direct-response",
+  audio_url: "https://cdn.example.com/audio.m4a",
+  audio_mime: "audio/mp4"
+}), /伴随音频/);
+assert.match(context.requestEvidence({
+  kind: "video",
+  source: "direct-response",
+  audio_url: "https://cdn.example.com/audio.m4a",
+  audio_mime: "audio/mp4"
+}), /audio\/mp4/);
 assert.match(context.directnessText({
   kind: "hls",
   source: "pageHookPlayer",

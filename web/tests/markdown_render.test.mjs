@@ -934,6 +934,7 @@ const taskOverviewHtml = context.taskOverview({
   selected_resource: {
     url: "https://cdn.example.com/source.mp4?token=abc",
     kind: "video",
+    audio_url: "https://cdn.example.com/audio.m4a?token=abc",
     playback_match: "exact-src",
     content_length: 1048576,
     resolved_url: "https://cdn.example.com/final.mp4?token=abc",
@@ -1003,6 +1004,8 @@ assert.match(taskOverviewHtml, /\/api\/tasks\/task-web-overview\/exports\/bundle
 assert.match(taskOverviewHtml, /\/api\/tasks\/task-web-overview\/exports\/manifest/);
 assert.match(taskOverviewHtml, /已完成直取下载/);
 assert.match(taskOverviewHtml, /当前页下载/);
+assert.match(taskOverviewHtml, /伴随音频流/);
+assert.match(taskOverviewHtml, /音视频合并/);
 assert.match(taskOverviewHtml, /已跟踪最终 URL/);
 assert.match(taskOverviewHtml, /final\.mp4\?token=abc/);
 assert.match(taskOverviewHtml, /浏览器播放证据/);
