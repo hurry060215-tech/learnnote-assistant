@@ -649,6 +649,7 @@ def process_local_video_task(
     options: TaskOptions,
     page_url: str = "",
     browser_subtitles: list[BrowserSubtitleCue] | None = None,
+    subtitle_path: Path | None = None,
 ) -> None:
     try:
         _process_video_file(
@@ -657,6 +658,7 @@ def process_local_video_task(
             title=title,
             page_url=page_url,
             options=options,
+            subtitle_path=subtitle_path,
             browser_subtitles=browser_subtitles,
         )
     except Exception as exc:

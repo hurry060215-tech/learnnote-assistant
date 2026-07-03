@@ -1470,6 +1470,7 @@ class ApiPipelineTests(unittest.TestCase):
 
                 self.assertEqual(response.status_code, 200)
                 task_id = response.json()["task_id"]
+                rerun_task_id = ""
                 try:
                     task = self.client.get(f"/api/tasks/{task_id}").json()["task"]
                     self.assertEqual(task["status"], "success")
@@ -1490,7 +1491,27 @@ class ApiPipelineTests(unittest.TestCase):
                     self.assertEqual(subtitle_export.status_code, 200)
                     self.assertIn("platform subtitle line two", subtitle_export.text)
                     self.assertEqual(self.client.get(f"/api/tasks/{task_id}/exports/markdown").status_code, 404)
+
+                    with patch("app.processor.extract_audio", side_effect=AssertionError("rerun should reuse page subtitle")):
+                        with patch("app.processor.transcribe_audio", side_effect=AssertionError("rerun should not run ASR when page subtitle was saved")):
+                            rerun_response = self.client.post(
+                                f"/api/tasks/{task_id}/rerun-from-media",
+                                json={"visual_understanding": True, "frame_interval": 1},
+                            )
+                    self.assertEqual(rerun_response.status_code, 200)
+                    rerun_task_id = rerun_response.json()["task_id"]
+                    rerun_task = self.client.get(f"/api/tasks/{rerun_task_id}").json()["task"]
+                    self.assertEqual(rerun_task["status"], "success")
+                    self.assertFalse(rerun_task["audio_path"])
+                    self.assertTrue(rerun_task["subtitle_path"])
+                    self.assertTrue(rerun_task["transcript_path"])
+                    self.assertTrue(rerun_task["frame_grids"])
+                    rerun_transcript = self.client.get(f"/api/tasks/{rerun_task_id}/transcript").json()
+                    self.assertEqual(rerun_transcript["source"], "page-subtitle")
+                    self.assertIn("platform subtitle line two", rerun_transcript["full_text"])
                 finally:
+                    if rerun_task_id:
+                        shutil.rmtree(task_dir(rerun_task_id), ignore_errors=True)
                     shutil.rmtree(task_dir(task_id), ignore_errors=True)
             finally:
                 server.shutdown()

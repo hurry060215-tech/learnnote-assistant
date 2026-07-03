@@ -1631,7 +1631,26 @@ def create_from_existing_media(
         drm_signals=source.drm_signals,
         message="Queued from downloaded media",
     )
-    background_tasks.add_task(process_local_video_task, task.id, media_path, task.title, parsed_options, source.page_url, source.browser_subtitles)
+    source_transcript_source = ""
+    try:
+        source_transcript_source = str(read_transcript(source.id).get("source") or "")
+    except Exception:
+        source_transcript_source = ""
+    source_subtitle_path = Path(source.subtitle_path) if source.subtitle_path else None
+    if source_subtitle_path and not source_subtitle_path.exists():
+        source_subtitle_path = None
+    if source_transcript_source == "browser-subtitle":
+        source_subtitle_path = None
+    background_tasks.add_task(
+        process_local_video_task,
+        task.id,
+        media_path,
+        task.title,
+        parsed_options,
+        source.page_url,
+        source.browser_subtitles,
+        source_subtitle_path,
+    )
     return {"task_id": task.id, "task": task, "source_task_id": source.id}
 
 
