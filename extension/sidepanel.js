@@ -4977,15 +4977,18 @@ function pulseTarget(element) {
   setTimeout(() => element.classList.remove("focus-pulse"), 900);
 }
 
-function handleSourceSwitch(action) {
+async function handleSourceSwitch(action) {
   const source = action === "local" || action === "text" ? action : "summarize";
   setSourceSwitcherActive(source);
   if (source === "local") {
     pulseTarget(els.localDrop);
+    els.fileInput?.click();
   } else if (source === "text") {
     pulseTarget(els.textButton);
+    await startTask("page_text");
   } else {
     pulseTarget(els.currentStudyCard || els.summarizeButton);
+    await startTask("video");
   }
 }
 

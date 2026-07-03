@@ -75,7 +75,8 @@ const documentStub = {
   }
 };
 
-let startCalls = 0;
+const startCalls = [];
+let preflightCalls = 0;
 
 const context = {
   console,
@@ -89,8 +90,23 @@ const context = {
     const value = String(url);
     if (value.endsWith("/health")) return { json: async () => ({ ffmpeg: true }) };
     if (value.endsWith("/api/tasks")) return { json: async () => ({ tasks: [] }) };
+    if (value.includes("/api/tasks/task-")) {
+      return {
+        json: async () => ({
+          task: {
+            id: value.split("/").pop(),
+            title: "Started task",
+            status: "success",
+            phase: "completed",
+            progress: 100,
+            source_type: "current_page",
+            visual_windows: []
+          }
+        })
+      };
+    }
     if (value.includes("/api/tasks/from-current-page")) {
-      startCalls += 1;
+      startCalls.push("fetch-current-page");
       return { ok: true, json: async () => ({ task_id: "unexpected-task" }) };
     }
     throw new Error(`unexpected fetch: ${url}`);
@@ -112,11 +128,53 @@ const context = {
               title: "Current page",
               page_url: "https://course.example.com/lesson",
               page_text: "page text",
-              active_video: null,
+              active_video: {
+                src: "blob:https://course.example.com/player",
+                current_time: 10,
+                duration: 120,
+                paused: false
+              },
               frames: []
             },
-            resources: []
+            resources: [{
+              url: "https://cdn.example.com/lesson.mp4",
+              source: "webRequest",
+              kind: "video",
+              mime: "video/mp4",
+              score: 96,
+              playback_match: "blob-source"
+            }]
           };
+        }
+        if (message.type === "preflight-current-page") {
+          preflightCalls += 1;
+          const resource = message.resources[0];
+          return {
+            report: {
+              ok: true,
+              ready: true,
+              selected_url: resource.url,
+              downloadable_count: 1,
+              candidate_count: 1,
+              probed_count: 1,
+              candidates: [{
+                resource,
+                preflight: {
+                  ok: true,
+                  downloadable: true,
+                  strategy: "direct-file-probe",
+                  kind: "video",
+                  url: resource.url,
+                  resolved_url: resource.url,
+                  message: "预检通过"
+                }
+              }]
+            }
+          };
+        }
+        if (message.type === "start-current-task") {
+          startCalls.push(message.mode);
+          return { task_id: `task-${message.mode}` };
         }
         throw new Error(`unexpected message: ${message.type}`);
       }
@@ -136,20 +194,21 @@ vm.runInContext(sidepanelCode, context);
 
 await new Promise(resolve => setTimeout(resolve, 0));
 
-sourceButtons[1].listeners.click();
+await sourceButtons[1].listeners.click();
 assert.equal(sourceButtons[0].classList.contains("active"), false);
 assert.equal(sourceButtons[1].classList.contains("active"), true);
 assert.equal(elements.get("#localDrop").scrollCount, 1);
-assert.equal(elements.get("#fileInput").clicks, 0);
-assert.equal(startCalls, 0);
+assert.equal(elements.get("#fileInput").clicks, 1);
+assert.deepEqual(startCalls, []);
 
-sourceButtons[2].listeners.click();
+await sourceButtons[2].listeners.click();
 assert.equal(sourceButtons[1].classList.contains("active"), false);
 assert.equal(sourceButtons[2].classList.contains("active"), true);
 assert.equal(elements.get("#textButton").focusCount, 1);
-assert.equal(startCalls, 0);
+assert.deepEqual(startCalls, ["page_text"]);
 
-sourceButtons[0].listeners.click();
+await sourceButtons[0].listeners.click();
 assert.equal(sourceButtons[0].classList.contains("active"), true);
 assert.equal(elements.get("#currentStudyCard").scrollCount, 1);
-assert.equal(startCalls, 0);
+assert.equal(preflightCalls, 1);
+assert.deepEqual(startCalls, ["page_text", "video"]);
