@@ -135,6 +135,8 @@ const resultHtml = elements.get("#result").innerHTML;
 assert.equal(elements.get("#result").scrollTop, 0);
 assert.equal(context.workbenchUrl("slice-task", "slices"), "http://127.0.0.1:8765/?task=slice-task&tab=slices");
 assert.equal(resultTabs.find(tab => tab.dataset.tab === "slices").classList.contains("active"), true);
+assert.equal(resultTabs.find(tab => tab.dataset.tab === "slices").ariaSelected, "true");
+assert.equal(resultTabs.find(tab => tab.dataset.tab === "note").ariaSelected, "false");
 assert.match(resultHtml, /class="side-visual-study-navigator"/);
 assert.match(resultHtml, /复习队列/);
 assert.match(resultHtml, /按画面窗口回看/);

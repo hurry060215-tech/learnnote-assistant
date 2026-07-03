@@ -1213,7 +1213,7 @@ function preflightRecoveryText(result = {}) {
   if (code === "unsupported_manifest") return "检测到的可能只是分片或非完整 manifest；继续播放后重新检测，优先选择 m3u8/mpd 候选。";
   if (code === "no_media_found") return "当前页还没有暴露可直取资源；先播放几秒，等待媒体请求出现，再重新检测。";
   if (code === "preflight_failed") return "本地后端或扩展通信没有完成；确认 127.0.0.1 后端可用后重试。";
-  if (result.downloadable) return "可以直接开始完整总结，或先用“下载本地”验证可导出的 media.mp4。";
+  if (result.downloadable) return "可以直接开始完整总结，或先用“下载到本地”验证可导出的 media.mp4。";
   return "可以换一个候选、重新检测，或使用本地视频入口。";
 }
 
@@ -2761,7 +2761,7 @@ function routeSummaryActionsHtml(state) {
     actions.push(`<button type="button" data-route-action="summarize">总结当前视频</button>`);
   }
   if (hasSelected && state !== "blocked") {
-    actions.push(`<button type="button" data-route-action="download">下载本地</button>`);
+    actions.push(`<button type="button" data-route-action="download">下载到本地</button>`);
   }
   if (state === "blocked" || state === "fallback" || !hasSelected) {
     actions.push(`<button type="button" data-route-action="local">上传本地视频</button>`);
@@ -4430,7 +4430,7 @@ function taskOverview(task) {
     ${taskRouteEvidenceHtml(task)}
     ${downloadOnly ? `<div class="task-overview-callout">
       <strong>已完成直取下载</strong>
-      <span>这个任务按“下载本地”运行，未进入转写、切片和总结；可导出 media.mp4，或直接复用这个本地视频生成完整笔记。</span>
+      <span>这个任务按“下载到本地”运行，未进入转写、切片和总结；可导出 media.mp4，或直接复用这个本地视频生成完整笔记。</span>
     </div>` : ""}
     ${fallbackNote ? `<div class="task-overview-callout">
       <strong>已生成兜底笔记</strong>
@@ -4606,7 +4606,7 @@ async function rerunTaskFromMedia(taskId) {
   transcriptCache = null;
   lastNote = "";
   selectedTab = "note";
-  els.resultTabs.forEach(item => item.classList.toggle("active", item.dataset.tab === selectedTab));
+  updateResultTabState();
   await loadTaskHistory();
   els.taskMessage.textContent = rerunFromMediaNotice(data.source_task_id || taskId, data.task_id, data.task);
   pollTask();
@@ -4640,10 +4640,22 @@ function resetResultScroll() {
   if (els.result) els.result.scrollTop = 0;
 }
 
+function updateResultTabState() {
+  els.resultTabs.forEach(item => {
+    const active = item.dataset.tab === selectedTab;
+    item.classList.toggle("active", active);
+    if (typeof item.setAttribute === "function") {
+      item.setAttribute("aria-selected", active ? "true" : "false");
+    } else {
+      item.ariaSelected = active ? "true" : "false";
+    }
+  });
+}
+
 function switchResultTab(tabName) {
   if (!tabName || selectedTab === tabName) return;
   selectedTab = tabName;
-  els.resultTabs.forEach(item => item.classList.toggle("active", item.dataset.tab === selectedTab));
+  updateResultTabState();
   renderResult();
   resetResultScroll();
 }

@@ -231,6 +231,8 @@ assert.match(indexHtml, /app\.js\?v=20260703-recovery-decision/);
 assert.match(indexHtml, /id="urlPreflightReport"/);
 assert.match(indexHtml, /href="#optionsDisclosure" title="模板"/);
 assert.doesNotMatch(indexHtml, /href="#settings" title="模板"/);
+assert.match(indexHtml, /id="downloadUrlButton"[\s\S]*只下载到本地/);
+assert.doesNotMatch(indexHtml, />只下载本地</);
 assert.match(indexHtml, /id="llmProvider"/);
 assert.match(indexHtml, /value="gemini">Google Gemini/);
 assert.match(indexHtml, /value="dashscope">/);

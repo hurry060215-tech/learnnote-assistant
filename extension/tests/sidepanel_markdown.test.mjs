@@ -77,8 +77,16 @@ context.window = { ...context.window, location: context.location };
 
 vm.createContext(context);
 const sidepanelCode = await readFile(new URL("../sidepanel.js", import.meta.url), "utf8");
+const sidepanelHtml = await readFile(new URL("../sidepanel.html", import.meta.url), "utf8");
 vm.runInContext(sidepanelCode, context);
 await new Promise(resolve => setTimeout(resolve, 0));
+assert.match(sidepanelHtml, /<div class="result-tabs" role="tablist" aria-label="任务结果">/);
+assert.match(sidepanelHtml, /data-tab="transcript">字幕/);
+assert.match(sidepanelHtml, /data-tab="slices">学习切片/);
+assert.match(sidepanelHtml, /data-tab="frames">画面网格/);
+assert.match(sidepanelHtml, /data-tab="diagnostics">下载诊断/);
+assert.match(sidepanelHtml, /下载到本地/);
+assert.doesNotMatch(sidepanelHtml, />下载本地</);
 assert.equal(elements.get("#backendStatus").classList.contains("backend-status-grid"), true);
 assert.match(elements.get("#backendStatus").innerHTML, /backend-status-chip bridge/);
 assert.match(elements.get("#backendStatus").innerHTML, /当前标签页/);
