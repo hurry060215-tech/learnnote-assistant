@@ -140,6 +140,8 @@ class ResourceDetectionTests(unittest.TestCase):
                 "sources": [
                     {"url": "/ananas/status/objectid-123?flag=normal"},
                     {"file": "/api/play?objectid=456&dtoken=abc"},
+                    {"path": "/ananas/status/objectid-789?flag=normal"},
+                    {"uri": "/vod/play?id=lesson-2"},
                 ],
                 "streams": ["https://media.example.com/vod/lesson?id=noext"],
                 "other": "/ordinary/page",
@@ -151,7 +153,24 @@ class ResourceDetectionTests(unittest.TestCase):
 
         self.assertEqual(by_url["https://course.example.com/ananas/status/objectid-123?flag=normal"].kind, "video")
         self.assertEqual(by_url["https://course.example.com/api/play?objectid=456&dtoken=abc"].kind, "video")
+        self.assertEqual(by_url["https://course.example.com/ananas/status/objectid-789?flag=normal"].kind, "video")
+        self.assertEqual(by_url["https://course.example.com/vod/play?id=lesson-2"].kind, "video")
         self.assertEqual(by_url["https://media.example.com/vod/lesson?id=noext"].kind, "video")
+        self.assertNotIn("https://course.example.com/ordinary/page", by_url)
+
+    def test_page_scan_extracts_lazy_media_path_attributes(self) -> None:
+        html = """
+        <div class="player"
+             data-path="/ananas/status/objectid-lazy?flag=normal"
+             data-uri="/vod/play?id=lazy-uri"
+             data-href="/ordinary/page"></div>
+        """
+
+        resources = extract_media_resources_from_text(html, "https://course.example.com/lesson", "page-scan")
+        by_url = {item.url: item for item in resources}
+
+        self.assertEqual(by_url["https://course.example.com/ananas/status/objectid-lazy?flag=normal"].kind, "video")
+        self.assertEqual(by_url["https://course.example.com/vod/play?id=lazy-uri"].kind, "video")
         self.assertNotIn("https://course.example.com/ordinary/page", by_url)
 
     def test_infers_manifest_url_from_nested_fragment(self) -> None:
