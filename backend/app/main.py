@@ -3,6 +3,7 @@ from __future__ import annotations
 from io import BytesIO
 import json
 import re
+import tempfile
 from uuid import uuid4
 from zipfile import ZIP_DEFLATED, ZipFile
 from pathlib import Path
@@ -13,8 +14,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from .config import DATA_DIR, LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, STATIC_DIR, UPLOAD_DIR, WEB_DIR, ensure_dirs
-from .downloader import effective_resource_kind, preflight_media_resource, rank_media_candidates
+from .config import DATA_DIR, LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, STATIC_DIR, TEMP_DIR, UPLOAD_DIR, WEB_DIR, ensure_dirs
+from .downloader import MediaDownloader, effective_resource_kind, fallback_page_contexts, preflight_media_resource, rank_media_candidates
 from .media import probe_duration
 from .models import CurrentPageTaskRequest, MediaPreflightRequest, MediaPreflightResult, PagePreflightRequest, ResourceCandidate, TaskOptions, TaskRecord
 from .processor import process_current_page_task, process_local_video_task, read_note, read_transcript, read_visual_index
@@ -1083,8 +1084,48 @@ def resource_with_preflight_result(candidate: ResourceCandidate, result: MediaPr
     return resource
 
 
+def _should_scan_page_for_preflight(request: PagePreflightRequest, ranked: list[ResourceCandidate]) -> bool:
+    if request.probe_limit <= 0 or not request.page_url:
+        return False
+    if len(ranked) >= request.probe_limit:
+        return False
+    if not request.resources:
+        return True
+    if request.drm_detected and all(effective_resource_kind(item) == "blob" for item in request.resources):
+        return False
+    for item in request.resources:
+        kind = effective_resource_kind(item)
+        if kind == "blob":
+            continue
+        if kind == "unknown":
+            return True
+        if item.frame_url or item.page_url or item.request_headers.get("Referer") or item.initiator:
+            return True
+    return False
+
+
+def _preflight_page_scan_resources(request: PagePreflightRequest, ranked: list[ResourceCandidate]) -> tuple[list[ResourceCandidate], list[dict]]:
+    if not _should_scan_page_for_preflight(request, ranked):
+        return [], []
+    TEMP_DIR.mkdir(parents=True, exist_ok=True)
+    discovered: list[ResourceCandidate] = []
+    seen = {item.url for item in request.resources if item.url}
+    with tempfile.TemporaryDirectory(prefix="page-preflight-", dir=str(TEMP_DIR)) as workspace:
+        downloader = MediaDownloader(Path(workspace))
+        for fallback_url, context_candidate in fallback_page_contexts(request.page_url, request.resources):
+            for item in downloader._discover_page_resources(fallback_url, request.cookies, context_candidate):
+                if not item.url or item.url in seen:
+                    continue
+                seen.add(item.url)
+                discovered.append(item)
+    attempts = [attempt.model_dump(mode="json") for attempt in downloader.attempts]
+    return discovered, attempts
+
+
 def page_preflight_report(request: PagePreflightRequest) -> dict:
-    ranked = rank_media_candidates(request.resources)
+    initial_ranked = rank_media_candidates(request.resources)
+    discovered_resources, discovery_attempts = _preflight_page_scan_resources(request, initial_ranked)
+    ranked = rank_media_candidates([*request.resources, *discovered_resources]) if discovered_resources else initial_ranked
     probed = 0
     downloadable_count = 0
     selected_url = ""
@@ -1145,6 +1186,11 @@ def page_preflight_report(request: PagePreflightRequest) -> dict:
         "candidate_count": len(ranked),
         "probed_count": probed,
         "downloadable_count": downloadable_count,
+        "page_scan": {
+            "attempted": bool(discovery_attempts),
+            "discovered_count": len(discovered_resources),
+            "attempts": discovery_attempts,
+        },
         "candidates": candidates,
     }
 

@@ -56,6 +56,15 @@ class JsonPlayEndpointHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self) -> None:
         path = urlparse(self.path).path
+        if path == "/lesson.html":
+            host = self.headers.get("Host", "")
+            body = f'<html><script>window.__lesson = {{"mediaUrl":"http://{host}/real.mp4"}};</script></html>'.encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         if path == "/api/play":
             host = self.headers.get("Host", "")
             body = json.dumps({"mediaUrl": f"http://{host}/real.mp4"}).encode("utf-8")
@@ -324,6 +333,38 @@ class LocalUploadValidationTests(unittest.TestCase):
             self.assertEqual(report["candidates"][1]["resource"]["url"], f"{base_url}/open.mp4")
             self.assertTrue(report["candidates"][1]["preflight"]["downloadable"])
             self.assertEqual(report["candidates"][1]["preflight"]["strategy"], "direct-file-probe")
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    def test_page_preflight_scans_page_when_extension_candidates_are_empty(self) -> None:
+        server = ThreadingHTTPServer(("127.0.0.1", 0), JsonPlayEndpointHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            base_url = f"http://127.0.0.1:{server.server_port}"
+            media_url = f"{base_url}/real.mp4"
+            response = self.client.post(
+                "/api/media/preflight-current-page",
+                json={
+                    "page_url": f"{base_url}/lesson.html",
+                    "probe_limit": 3,
+                    "resources": [],
+                },
+            )
+
+            self.assertEqual(response.status_code, 200)
+            report = response.json()["report"]
+            self.assertTrue(report["ready"])
+            self.assertEqual(report["selected_url"], media_url)
+            self.assertEqual(report["page_scan"]["discovered_count"], 1)
+            self.assertTrue(report["page_scan"]["attempted"])
+            self.assertEqual(report["candidate_count"], 1)
+            self.assertEqual(report["probed_count"], 1)
+            candidate = report["candidates"][0]["resource"]
+            self.assertEqual(candidate["url"], media_url)
+            self.assertEqual(candidate["source"], "page-scan")
+            self.assertTrue(report["candidates"][0]["preflight"]["downloadable"])
         finally:
             server.shutdown()
             server.server_close()
