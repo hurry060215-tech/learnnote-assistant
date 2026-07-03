@@ -441,6 +441,49 @@ function performanceScore(kind, url) {
   return Math.min(value, 100);
 }
 
+function pageResourceKindRank(kind = "") {
+  return ({ hls: 6, dash: 6, video: 5, audio: 3, subtitle: 2, fragment: 1, blob: 0 })[kind] ?? 0;
+}
+
+function pageResourcePlaybackRank(match = "") {
+  return ({
+    "exact-src": 9,
+    "blob-source": 8,
+    "range-near-playhead": 7,
+    "fragment-near-playhead": 6,
+    "manifest-near-playhead": 6,
+    "resolved-final-url": 6,
+    "blob-same-frame": 5,
+    "same-frame": 4,
+    "recent-media-request": 3,
+    "same-site-request": 2,
+    "inferred-from-fragment": 1
+  })[match] || 0;
+}
+
+function comparePageResources(a = {}, b = {}) {
+  const left = [
+    a.is_main_video ? 1 : 0,
+    pageResourcePlaybackRank(a.playback_match),
+    pageResourceKindRank(a.kind),
+    Number(a.score || 0),
+    Number(a.time_stamp || 0),
+    Number(a.content_length || 0)
+  ];
+  const right = [
+    b.is_main_video ? 1 : 0,
+    pageResourcePlaybackRank(b.playback_match),
+    pageResourceKindRank(b.kind),
+    Number(b.score || 0),
+    Number(b.time_stamp || 0),
+    Number(b.content_length || 0)
+  ];
+  for (let index = 0; index < left.length; index += 1) {
+    if (right[index] !== left[index]) return right[index] - left[index];
+  }
+  return String(a.url || "").localeCompare(String(b.url || ""));
+}
+
 function rememberHookResource(item) {
   const normalized = resource(item.url, item.source || "pageHook", item.label || "page hook", item.mime || "");
   if (!normalized) return;
@@ -1302,7 +1345,7 @@ function collectPageData() {
     browser_subtitles: browserSubtitles,
     drm_detected: Boolean(active?.drm_detected || drm.length),
     drm_signals: drm,
-    resources: [...byUrl.values()].sort((a, b) => b.score - a.score).slice(0, 60)
+    resources: [...byUrl.values()].sort(comparePageResources).slice(0, 60)
   };
 }
 
