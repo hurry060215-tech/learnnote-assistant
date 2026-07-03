@@ -3,11 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 from pathlib import Path
+from urllib.parse import urldefrag
 
 from .config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
 from .downloader import DownloadError, MediaDownloader, effective_resource_kind, infer_manifest_url_from_fragment
 from .media import build_frame_grids, extract_audio, extract_embedded_subtitle, extract_frames, normalize_video
-from .models import BrowserSubtitleCue, CurrentPageTaskRequest, DownloadAttempt, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
+from .models import ActiveVideoInfo, BrowserSubtitleCue, CurrentPageTaskRequest, DownloadAttempt, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
 from .storage import get_task, save_task, task_dir, update_task, write_json
 from .summarizer import MAX_GRIDS_PER_VISION_CALL, MAX_VISION_GRIDS, build_visual_windows, llm_base_host, llm_provider_name, summarize_page_text_with_diagnostics, summarize_with_diagnostics
 from .transcriber import transcript_from_subtitle, transcribe_audio, transcribe_audio_openai_compatible
@@ -79,6 +80,56 @@ def has_downloadable_candidate(resources: list[ResourceCandidate]) -> bool:
         if kind == "fragment" and infer_manifest_url_from_fragment(resource.url):
             return True
     return False
+
+
+def _canonical_media_url(value: str) -> str:
+    value = str(value or "").strip()
+    if not value:
+        return ""
+    if value.startswith("blob:"):
+        return value
+    return urldefrag(value)[0]
+
+
+def _active_video_resource_match(active_video: ActiveVideoInfo, resource: ResourceCandidate) -> str:
+    active_src = _canonical_media_url(active_video.src)
+    if not active_src:
+        return ""
+    blob_url = _canonical_media_url(resource.blob_url)
+    resource_urls = [
+        _canonical_media_url(resource.url),
+        _canonical_media_url(resource.resolved_url),
+        blob_url,
+    ]
+    if active_src not in resource_urls:
+        return ""
+    return "blob-source" if active_src.startswith("blob:") or active_src == blob_url else "exact-src"
+
+
+def enrich_resources_with_active_video(request: CurrentPageTaskRequest) -> list[ResourceCandidate]:
+    active_video = request.active_video
+    if not active_video:
+        return request.resources
+    enriched: list[ResourceCandidate] = []
+    for resource in request.resources:
+        item = resource.model_copy(deep=True)
+        match = _active_video_resource_match(active_video, item)
+        if match:
+            item.is_main_video = True
+            if not item.playback_match:
+                item.playback_match = match
+            if item.frame_id is None:
+                item.frame_id = active_video.frame_id
+            if item.current_time is None:
+                item.current_time = active_video.current_time
+            if item.duration is None and active_video.duration:
+                item.duration = active_video.duration
+            if item.width is None and active_video.width:
+                item.width = active_video.width
+            if item.height is None and active_video.height:
+                item.height = active_video.height
+        enriched.append(item)
+    return enriched
 
 
 def attempted_resource_candidate(resources: list[ResourceCandidate], attempts: list[DownloadAttempt]) -> ResourceCandidate | None:
@@ -487,6 +538,7 @@ def complete_with_download_failure_fallback(task_id: str, request: CurrentPageTa
 
 
 def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> None:
+    request.resources = enrich_resources_with_active_video(request)
     write_json(task_id, "request.json", redacted_request_dump(request))
     if request.mode == "page_text":
         process_page_text_task(task_id, request)

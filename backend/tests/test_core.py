@@ -925,6 +925,77 @@ class ProcessorBoundaryTests(unittest.TestCase):
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
+    def test_current_page_active_src_marks_matching_candidate_as_main_video(self) -> None:
+        task = create_task("current_page", "Active src lesson", "https://course.example.com/lesson")
+        source_path = task_dir(task.id) / "active-download.mp4"
+        current_url = "https://cdn.example.com/current.mp4#t=12"
+        background_url = "https://cdn.example.com/background.mp4"
+        test_case = self
+
+        class FakeDownloader:
+            def __init__(self, work_dir: Path):
+                self.work_dir = work_dir
+                self.attempts = []
+
+            def download(self, page_url, resources, cookies, title):
+                current = next(item for item in resources if item.url == current_url)
+                test_case.assertTrue(current.is_main_video)
+                test_case.assertEqual(current.playback_match, "exact-src")
+                test_case.assertEqual(current.current_time, 42)
+                test_case.assertEqual(current.duration, 300)
+                ranked = MediaDownloader(self.work_dir)._candidate_resources(resources)
+                test_case.assertEqual(ranked[0].url, current_url)
+                source_path.write_bytes(b"active video bytes")
+                self.attempts = [
+                    DownloadAttempt(
+                        strategy="direct-file",
+                        url=ranked[0].url,
+                        source=ranked[0].source,
+                        kind=ranked[0].kind,
+                        status="success",
+                    )
+                ]
+                return source_path, ranked[0]
+
+        def fake_normalize(source: Path, target: Path) -> Path:
+            self.assertEqual(source, source_path)
+            target.write_bytes(b"normalized active video")
+            return target
+
+        try:
+            request = CurrentPageTaskRequest(
+                mode="download_only",
+                page_url="https://course.example.com/lesson",
+                title="Active src lesson",
+                active_video=ActiveVideoInfo(
+                    src=current_url,
+                    current_time=42,
+                    duration=300,
+                    width=1280,
+                    height=720,
+                    frame_id=3,
+                ),
+                resources=[
+                    ResourceCandidate(url=background_url, source="webRequest", kind="video", mime="video/mp4", score=100),
+                    ResourceCandidate(url=current_url, source="webRequest", kind="video", mime="video/mp4", score=10),
+                ],
+            )
+
+            with patch("app.processor.MediaDownloader", FakeDownloader), \
+                patch("app.processor.normalize_video", side_effect=fake_normalize):
+                process_current_page_task(task.id, request)
+
+            record = get_task(task.id)
+            self.assertEqual(record.status, "success")
+            assert record.selected_resource is not None
+            self.assertEqual(record.selected_resource.url, current_url)
+            self.assertTrue(record.selected_resource.is_main_video)
+            self.assertEqual(record.selected_resource.playback_match, "exact-src")
+            self.assertEqual(record.selected_resource.current_time, 42)
+            self.assertEqual(record.selected_resource.duration, 300)
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
     def test_remote_asr_option_uses_openai_compatible_transcriber(self) -> None:
         options = TaskOptions(
             transcriber="openai-compatible",
