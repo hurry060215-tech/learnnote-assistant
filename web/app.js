@@ -32,6 +32,7 @@ const HLS_RE = /\.(m3u8|mpd)(\?|#|$)/i;
 const LOCAL_VIDEO_EXT_RE = /\.(mp4|m4v|mov|mkv|webm|flv|avi)$/i;
 const RESULT_TAB_NAMES = new Set(["note", "transcript", "slices", "frames", "diagnostics"]);
 const LOCAL_ASR_MODELS = new Set(["tiny", "base", "small", "medium", "large", "large-v2", "large-v3"]);
+const MODEL_SETTINGS_STORAGE_KEY = "learnnote_model_settings";
 const MODEL_PROVIDER_PRESETS = {
   openai: {
     baseUrl: "https://api.openai.com/v1",
@@ -1653,6 +1654,54 @@ function applyModelProviderPreset(force = false) {
   syncTranscriberModelDefault(false);
   renderSourceWorkflow();
   updateHealthVisionStatus();
+}
+
+function currentModelSettings() {
+  return {
+    llm_provider: els.llmProvider?.value || "",
+    llm_model: els.llmModel?.value?.trim() || "",
+    llm_base_url: els.llmBaseUrl?.value?.trim() || "",
+    transcriber: els.transcriber?.value || "faster-whisper",
+    whisper_model: els.whisperModel?.value || "small"
+  };
+}
+
+function applyModelSettings(settings = {}) {
+  if (!settings || typeof settings !== "object") return;
+  if (els.llmProvider && settings.llm_provider && MODEL_PROVIDER_PRESETS[settings.llm_provider]) {
+    els.llmProvider.value = settings.llm_provider;
+  }
+  if (els.llmModel && typeof settings.llm_model === "string") {
+    els.llmModel.value = settings.llm_model;
+  }
+  if (els.llmBaseUrl && typeof settings.llm_base_url === "string") {
+    els.llmBaseUrl.value = settings.llm_base_url;
+  }
+  if (els.transcriber && typeof settings.transcriber === "string") {
+    els.transcriber.value = settings.transcriber;
+  }
+  if (els.whisperModel && typeof settings.whisper_model === "string") {
+    els.whisperModel.value = settings.whisper_model;
+  }
+  syncTranscriberModelDefault(false);
+}
+
+function loadModelSettings() {
+  try {
+    const raw = window.localStorage?.getItem(MODEL_SETTINGS_STORAGE_KEY);
+    if (!raw) return;
+    applyModelSettings(JSON.parse(raw));
+  } catch {
+    return;
+  }
+}
+
+function saveModelSettings() {
+  try {
+    window.localStorage?.setItem(MODEL_SETTINGS_STORAGE_KEY, JSON.stringify(currentModelSettings()));
+  } catch {
+    return;
+  }
 }
 
 function readOptions() {
@@ -4313,10 +4362,16 @@ if (els.urlInput) {
   els.urlInput.oninput = clearUrlPreflight;
 }
 if (els.transcriber) {
-  els.transcriber.onchange = () => syncTranscriberModelDefault(true);
+  els.transcriber.onchange = () => {
+    syncTranscriberModelDefault(true);
+    saveModelSettings();
+  };
 }
 if (els.llmProvider) {
-  els.llmProvider.onchange = () => applyModelProviderPreset(true);
+  els.llmProvider.onchange = () => {
+    applyModelProviderPreset(true);
+    saveModelSettings();
+  };
 }
 
 els.resultTabs.forEach(tab => {
@@ -4420,12 +4475,23 @@ els.fileInput.onchange = () => {
   els.transcriber,
   els.whisperModel
 ].filter(Boolean).forEach(control => {
-  control.addEventListener("change", refreshOptionDependentUi);
+  control.addEventListener("change", () => {
+    refreshOptionDependentUi();
+    if ([els.llmProvider, els.transcriber, els.whisperModel].includes(control)) saveModelSettings();
+  });
 });
-els.llmModel?.addEventListener("input", () => updateHealthVisionStatus());
+els.llmModel?.addEventListener("input", () => {
+  updateHealthVisionStatus();
+  saveModelSettings();
+});
+els.llmBaseUrl?.addEventListener("input", () => {
+  updateHealthVisionStatus();
+  saveModelSettings();
+});
 els.llmApiKey?.addEventListener("input", () => updateHealthVisionStatus());
 
 initializeResponsiveChrome();
+loadModelSettings();
 initializeWorkspaceView();
 renderSourceWorkflow();
 checkHealth();

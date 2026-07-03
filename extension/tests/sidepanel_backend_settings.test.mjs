@@ -28,7 +28,16 @@ const documentStub = {
   }
 };
 
-const stored = { backendUrl: "https://evil.example" };
+const stored = {
+  backendUrl: "https://evil.example",
+  modelSettings: {
+    llm_provider: "openrouter",
+    llm_model: "openai/gpt-4.1-mini",
+    llm_base_url: "https://openrouter.ai/api/v1",
+    transcriber: "faster-whisper",
+    whisper_model: "small"
+  }
+};
 const calls = { storageSet: [], fetchUrls: [] };
 let promptValue = "";
 
@@ -91,6 +100,12 @@ vm.runInContext(sidepanelCode, context);
 
 await new Promise(resolve => setTimeout(resolve, 0));
 
+assert.equal(elements.get("#llmProvider").value, "openrouter");
+assert.equal(elements.get("#llmModel").value, "openai/gpt-4.1-mini");
+assert.equal(elements.get("#llmBaseUrl").value, "https://openrouter.ai/api/v1");
+assert.equal(elements.get("#transcriber").value, "faster-whisper");
+assert.equal(elements.get("#whisperModel").value, "small");
+
 assert.equal(context.normalizeBackendUrl("127.0.0.1:8000/"), "http://127.0.0.1:8000");
 assert.equal(context.normalizeBackendUrl("localhost:8765/workbench"), "http://localhost:8765");
 assert.equal(context.normalizeBackendUrl("https://evil.example"), "");
@@ -113,3 +128,16 @@ assert.equal(calls.storageSet.length, 0);
 assert.equal(context.workbenchUrl("task-local", "note"), "http://127.0.0.1:8000/?task=task-local&tab=note");
 assert.match(elements.get("#backendStatus").textContent, /127\.0\.0\.1|localhost/);
 assert.match(elements.get("#taskMessage").textContent, /本机后端/);
+
+elements.get("#llmProvider").value = "groq";
+context.applyModelProviderPreset(true);
+elements.get("#llmApiKey").value = "sk-should-not-persist";
+await context.saveModelSettings();
+const savedModelSettings = calls.storageSet.at(-1).modelSettings;
+assert.equal(savedModelSettings.llm_provider, "groq");
+assert.equal(savedModelSettings.llm_base_url, "https://api.groq.com/openai/v1");
+assert.equal(savedModelSettings.llm_model, "meta-llama/llama-4-scout-17b-16e-instruct");
+assert.equal(savedModelSettings.transcriber, "groq");
+assert.equal(savedModelSettings.whisper_model, "whisper-large-v3");
+assert.equal(Object.hasOwn(savedModelSettings, "llm_api_key"), false);
+assert.equal(JSON.stringify(savedModelSettings).includes("sk-should-not-persist"), false);

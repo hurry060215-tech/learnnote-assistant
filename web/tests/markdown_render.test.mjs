@@ -124,6 +124,13 @@ context.window.document = context.document;
 context.window.navigator = context.navigator;
 
 vm.createContext(context);
+context.window.localStorage.setItem("learnnote_model_settings", JSON.stringify({
+  llm_provider: "openrouter",
+  llm_model: "openai/gpt-4.1-mini",
+  llm_base_url: "https://openrouter.ai/api/v1",
+  transcriber: "faster-whisper",
+  whisper_model: "small"
+}));
 const webCode = await readFile(new URL("../app.js", import.meta.url), "utf8");
 const indexHtml = await readFile(new URL("../index.html", import.meta.url), "utf8");
 const stylesCss = await readFile(new URL("../styles.css", import.meta.url), "utf8");
@@ -147,7 +154,7 @@ assert.equal(elements.get("#browserBridgeStatus").classList.contains("capture-st
 assert.match(elements.get("#browserBridgeStatus").innerHTML, /capture-status-chip bridge/);
 assert.match(elements.get("#browserBridgeStatus").innerHTML, /需 Chrome\/Edge 扩展侧栏/);
 assert.match(elements.get("#browserBridgeStatus").innerHTML, /capture-status-chip media/);
-assert.match(elements.get("#browserBridgeStatus").innerHTML, /待填 · OpenAI/);
+assert.match(elements.get("#browserBridgeStatus").innerHTML, /待填 · OpenRouter/);
 assert.match(elements.get("#detail").innerHTML, /class="empty-workbench"/);
 assert.match(elements.get("#detail").innerHTML, /class="empty-demo-board"/);
 assert.match(elements.get("#detail").innerHTML, /class="empty-route-grid"/);
@@ -185,6 +192,11 @@ assert.match(indexHtml, /styles\.css\?v=20260702-workflow-brief/);
 assert.match(indexHtml, /app\.js\?v=20260702-workflow-brief/);
 assert.match(indexHtml, /id="urlPreflightReport"/);
 assert.match(indexHtml, /id="llmProvider"/);
+assert.equal(elements.get("#llmProvider").value, "openrouter");
+assert.equal(elements.get("#llmModel").value, "openai/gpt-4.1-mini");
+assert.equal(elements.get("#llmBaseUrl").value, "https://openrouter.ai/api/v1");
+assert.equal(elements.get("#transcriber").value, "faster-whisper");
+assert.equal(elements.get("#whisperModel").value, "small");
 assert.equal(documentStub.body.classList.contains("workspace-collapsed"), false);
 elements.get("#toggleWorkspaceButton").onclick();
 assert.equal(documentStub.body.classList.contains("workspace-collapsed"), true);
@@ -267,7 +279,7 @@ const readyGateHtml = context.emptyReadinessGatesHtml({
 assert.match(readyGateHtml, /class="empty-readiness-gates"/);
 assert.match(readyGateHtml, /section class="pass"/);
 assert.match(readyGateHtml, /直取\/切片就绪/);
-assert.match(readyGateHtml, /OpenAI · gpt-4\.1-mini/);
+assert.match(readyGateHtml, /OpenRouter · openai\/gpt-4\.1-mini/);
 assert.doesNotMatch(readyGateHtml, /<script>bad/);
 
 const blockedGateHtml = context.emptyReadinessGatesHtml({
@@ -277,7 +289,7 @@ const blockedGateHtml = context.emptyReadinessGatesHtml({
 });
 assert.match(blockedGateHtml, /section class="block"/);
 assert.match(blockedGateHtml, /后端未就绪/);
-assert.match(blockedGateHtml, /待填 · OpenAI/);
+assert.match(blockedGateHtml, /待填 · OpenRouter/);
 assert.match(indexHtml, /accept="video\/\*,\.mp4,\.m4v,\.mov,\.mkv,\.webm,\.flv,\.avi"/);
 assert.match(indexHtml, /data-tab="frames">画面网格/);
 context.window.location.search = "?task=task%20from%20url";
@@ -1987,11 +1999,20 @@ assert.equal(elements.get("#llmBaseUrl").value, "https://api.groq.com/openai/v1"
 assert.equal(elements.get("#llmModel").value, "meta-llama/llama-4-scout-17b-16e-instruct");
 assert.equal(elements.get("#transcriber").value, "groq");
 assert.equal(elements.get("#whisperModel").value, "whisper-large-v3");
+elements.get("#llmApiKey").value = "sk-rerun";
+context.saveModelSettings();
+const savedModelSettings = JSON.parse(context.window.localStorage.getItem("learnnote_model_settings"));
+assert.equal(savedModelSettings.llm_provider, "groq");
+assert.equal(savedModelSettings.llm_base_url, "https://api.groq.com/openai/v1");
+assert.equal(savedModelSettings.llm_model, "meta-llama/llama-4-scout-17b-16e-instruct");
+assert.equal(savedModelSettings.transcriber, "groq");
+assert.equal(savedModelSettings.whisper_model, "whisper-large-v3");
+assert.equal(Object.hasOwn(savedModelSettings, "llm_api_key"), false);
+assert.equal(JSON.stringify(savedModelSettings).includes("sk-rerun"), false);
 elements.get("#transcriber").value = "openai-compatible";
 elements.get("#whisperModel").value = "whisper-1";
 elements.get("#llmModel").value = "vision-rerun";
 elements.get("#llmBaseUrl").value = "https://models.example/v1";
-elements.get("#llmApiKey").value = "sk-rerun";
 elements.get("#visualUnderstanding").checked = false;
 elements.get("#visualUnderstanding").listeners.change();
 assert.match(elements.get("#sourceWorkflow").innerHTML, /\u65e0\u89c6\u89c9/);

@@ -3,6 +3,7 @@ const HAS_EXTENSION_API = typeof chrome !== "undefined" && Boolean(chrome.runtim
 const LOCAL_VIDEO_EXT_RE = /\.(mp4|m4v|mov|mkv|webm|flv|avi)$/i;
 const RESULT_TAB_NAMES = new Set(["note", "transcript", "slices", "frames", "diagnostics"]);
 const LOCAL_ASR_MODELS = new Set(["tiny", "base", "small", "medium", "large", "large-v2", "large-v3"]);
+const MODEL_SETTINGS_STORAGE_KEY = "modelSettings";
 const MODEL_PROVIDER_PRESETS = {
   openai: {
     baseUrl: "https://api.openai.com/v1",
@@ -831,6 +832,41 @@ function applyModelProviderPreset(force = false) {
   syncTranscriberModelDefault(false);
   refreshOptionDependentUi();
   updateHealthVisionStatus();
+}
+
+function currentModelSettings() {
+  return {
+    llm_provider: els.llmProvider?.value || "",
+    llm_model: els.llmModel?.value?.trim() || "",
+    llm_base_url: els.llmBaseUrl?.value?.trim() || "",
+    transcriber: els.transcriber?.value || "faster-whisper",
+    whisper_model: els.whisperModel?.value || "small"
+  };
+}
+
+function applyModelSettings(settings = {}) {
+  if (!settings || typeof settings !== "object") return;
+  if (els.llmProvider && settings.llm_provider && MODEL_PROVIDER_PRESETS[settings.llm_provider]) {
+    els.llmProvider.value = settings.llm_provider;
+  }
+  if (els.llmModel && typeof settings.llm_model === "string") {
+    els.llmModel.value = settings.llm_model;
+  }
+  if (els.llmBaseUrl && typeof settings.llm_base_url === "string") {
+    els.llmBaseUrl.value = settings.llm_base_url;
+  }
+  if (els.transcriber && typeof settings.transcriber === "string") {
+    els.transcriber.value = settings.transcriber;
+  }
+  if (els.whisperModel && typeof settings.whisper_model === "string") {
+    els.whisperModel.value = settings.whisper_model;
+  }
+  syncTranscriberModelDefault(false);
+}
+
+async function saveModelSettings() {
+  if (!HAS_EXTENSION_API) return;
+  await chrome.storage.local.set({ [MODEL_SETTINGS_STORAGE_KEY]: currentModelSettings() });
 }
 
 function readOptions() {
@@ -2689,8 +2725,9 @@ async function loadSettings() {
     backendUrl = normalizeBackendUrl(backendUrl) || DEFAULT_BACKEND;
     return;
   }
-  const data = await chrome.storage.local.get({ backendUrl: DEFAULT_BACKEND });
+  const data = await chrome.storage.local.get({ backendUrl: DEFAULT_BACKEND, [MODEL_SETTINGS_STORAGE_KEY]: null });
   backendUrl = normalizeBackendUrl(data.backendUrl) || DEFAULT_BACKEND;
+  applyModelSettings(data[MODEL_SETTINGS_STORAGE_KEY]);
 }
 
 async function saveSettings() {
@@ -4884,8 +4921,14 @@ if (els.downloadOnlyButton) els.downloadOnlyButton.onclick = () => startTask("do
 if (els.continueFromMediaButton) els.continueFromMediaButton.onclick = () => rerunTaskFromMedia(currentTask?.id);
 els.textButton.onclick = () => startTask("page_text");
 if (els.refreshHistoryButton) els.refreshHistoryButton.onclick = loadTaskHistory;
-if (els.transcriber) els.transcriber.onchange = () => syncTranscriberModelDefault(true);
-if (els.llmProvider) els.llmProvider.onchange = () => applyModelProviderPreset(true);
+if (els.transcriber) els.transcriber.onchange = () => {
+  syncTranscriberModelDefault(true);
+  saveModelSettings();
+};
+if (els.llmProvider) els.llmProvider.onchange = () => {
+  applyModelProviderPreset(true);
+  saveModelSettings();
+};
 els.uploadButton.onclick = () => els.fileInput.click();
 els.fileInput.onchange = () => {
   pendingLocalFile = els.fileInput.files?.[0] || null;
@@ -5065,11 +5108,20 @@ els.settingsButton.onclick = saveSettings;
   els.transcriber,
   els.whisperModel
 ].filter(Boolean).forEach(control => {
-  control.addEventListener("change", refreshOptionDependentUi);
+  control.addEventListener("change", () => {
+    refreshOptionDependentUi();
+    if ([els.llmProvider, els.transcriber, els.whisperModel].includes(control)) saveModelSettings();
+  });
 });
 els.llmModel?.addEventListener("input", () => {
   updateHealthVisionStatus();
   renderLaunchBar();
+  saveModelSettings();
+});
+els.llmBaseUrl?.addEventListener("input", () => {
+  updateHealthVisionStatus();
+  renderLaunchBar();
+  saveModelSettings();
 });
 els.llmApiKey?.addEventListener("input", () => updateHealthVisionStatus());
 
