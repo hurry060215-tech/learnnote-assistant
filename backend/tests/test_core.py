@@ -36,7 +36,7 @@ from app.downloader import (
 from app.main import render_diagnostics_markdown, task_audit_summary
 from app.models import ActiveVideoInfo, BrowserCookie, CurrentPageTaskRequest, DownloadAttempt, DrmSignal, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
 from app.processor import build_summary_diagnostics, cookie_sync_summary, enrich_resource_candidates_with_active_video, process_current_page_task, process_local_video_task, read_note, read_transcript, redacted_request_dump, redacted_resource
-from app.summarizer import MAX_GRIDS_PER_VISION_CALL, MAX_VISION_GRIDS, build_visual_windows, ensure_visual_appendix, local_markdown_note, summarize_with_diagnostics
+from app.summarizer import MAX_GRIDS_PER_VISION_CALL, MAX_VISION_GRIDS, build_visual_windows, ensure_visual_appendix, llm_provider_name, local_markdown_note, summarize_with_diagnostics
 from app.storage import create_task, get_task, task_dir
 from app.transcriber import transcribe_audio_openai_compatible, transcript_from_subtitle
 
@@ -2701,6 +2701,12 @@ class SummaryFallbackTests(unittest.TestCase):
         self.assertEqual(diagnostics["llm_failure_code"], "api_error")
         self.assertEqual(diagnostics["llm_failure_reason"], "HTTP 429")
         self.assertEqual(diagnostics["vision_call_status"], "no_frame_grids")
+
+    def test_llm_provider_name_classifies_gemini_openai_compatibility(self) -> None:
+        self.assertEqual(
+            llm_provider_name("https://generativelanguage.googleapis.com/v1beta/openai/"),
+            "gemini",
+        )
 
     def test_llm_summary_batches_all_frame_grids_before_merge(self) -> None:
         from app.summarizer import summarize_with_llm

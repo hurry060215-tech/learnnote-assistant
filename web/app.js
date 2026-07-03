@@ -46,6 +46,12 @@ const MODEL_PROVIDER_PRESETS = {
     transcriber: "groq",
     whisperModel: "whisper-large-v3"
   },
+  gemini: {
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai/",
+    model: "gemini-3.5-flash",
+    transcriber: "faster-whisper",
+    whisperModel: "small"
+  },
   dashscope: {
     baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
     model: "qwen-vl-max",
@@ -1791,6 +1797,7 @@ function healthVisionProvider(data) {
     return ({
       openai: "OpenAI",
       groq: "Groq",
+      gemini: "Gemini",
       dashscope: "DashScope",
       siliconflow: "SiliconFlow",
       openrouter: "OpenRouter",
@@ -1801,6 +1808,7 @@ function healthVisionProvider(data) {
   return ({
     openai: "OpenAI",
     groq: "Groq",
+    gemini: "Gemini",
     dashscope: "DashScope",
     siliconflow: "SiliconFlow",
     openrouter: "OpenRouter",

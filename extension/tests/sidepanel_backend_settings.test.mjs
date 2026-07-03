@@ -96,10 +96,12 @@ context.window = { ...context.window, location: context.location };
 
 vm.createContext(context);
 const sidepanelCode = await readFile(new URL("../sidepanel.js", import.meta.url), "utf8");
+const sidepanelHtml = await readFile(new URL("../sidepanel.html", import.meta.url), "utf8");
 vm.runInContext(sidepanelCode, context);
 
 await new Promise(resolve => setTimeout(resolve, 0));
 
+assert.match(sidepanelHtml, /value="gemini">Google Gemini/);
 assert.equal(elements.get("#llmProvider").value, "openrouter");
 assert.equal(elements.get("#llmModel").value, "openai/gpt-4.1-mini");
 assert.equal(elements.get("#llmBaseUrl").value, "https://openrouter.ai/api/v1");
@@ -141,3 +143,13 @@ assert.equal(savedModelSettings.transcriber, "groq");
 assert.equal(savedModelSettings.whisper_model, "whisper-large-v3");
 assert.equal(Object.hasOwn(savedModelSettings, "llm_api_key"), false);
 assert.equal(JSON.stringify(savedModelSettings).includes("sk-should-not-persist"), false);
+
+elements.get("#llmProvider").value = "gemini";
+context.applyModelProviderPreset(true);
+await context.saveModelSettings();
+const savedGeminiSettings = calls.storageSet.at(-1).modelSettings;
+assert.equal(savedGeminiSettings.llm_provider, "gemini");
+assert.equal(savedGeminiSettings.llm_base_url, "https://generativelanguage.googleapis.com/v1beta/openai/");
+assert.equal(savedGeminiSettings.llm_model, "gemini-3.5-flash");
+assert.equal(savedGeminiSettings.transcriber, "faster-whisper");
+assert.equal(savedGeminiSettings.whisper_model, "small");

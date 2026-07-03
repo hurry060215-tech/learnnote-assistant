@@ -19,6 +19,8 @@ def llm_provider_name(base_url: str) -> str:
         return "openai"
     if "groq.com" in host:
         return "groq"
+    if "generativelanguage.googleapis.com" in host:
+        return "gemini"
     if "dashscope.aliyuncs.com" in host:
         return "dashscope"
     if "siliconflow.cn" in host:
