@@ -102,6 +102,8 @@ vm.runInContext(sidepanelCode, context);
 await new Promise(resolve => setTimeout(resolve, 0));
 
 assert.match(sidepanelHtml, /value="gemini">Google Gemini/);
+assert.match(sidepanelHtml, /value="dashscope">/);
+assert.match(sidepanelHtml, /value="siliconflow">SiliconFlow/);
 assert.equal(elements.get("#llmProvider").value, "openrouter");
 assert.equal(elements.get("#llmModel").value, "openai/gpt-4.1-mini");
 assert.equal(elements.get("#llmBaseUrl").value, "https://openrouter.ai/api/v1");
@@ -159,3 +161,19 @@ elements.get("#llmApiKey").value = "";
 context.updateHealthVisionStatus({ ffmpeg: true, vision_model_configured: false });
 assert.match(elements.get("#backendStatus").innerHTML, /待填 · Gemini/);
 assert.match(elements.get("#backendStatus").innerHTML, /本地 faster-whisper · small/);
+
+elements.get("#llmProvider").value = "dashscope";
+context.applyModelProviderPreset(true);
+assert.equal(elements.get("#llmBaseUrl").value, "https://dashscope.aliyuncs.com/compatible-mode/v1");
+assert.equal(elements.get("#llmModel").value, "qwen-vl-max");
+assert.equal(context.healthVisionProvider({}), "DashScope");
+elements.get("#llmProvider").value = "siliconflow";
+context.applyModelProviderPreset(true);
+assert.equal(elements.get("#llmBaseUrl").value, "https://api.siliconflow.cn/v1");
+assert.equal(elements.get("#llmModel").value, "Qwen/Qwen2.5-VL-72B-Instruct");
+assert.equal(context.healthVisionProvider({}), "SiliconFlow");
+elements.get("#llmProvider").value = "local-openai";
+context.applyModelProviderPreset(true);
+assert.equal(elements.get("#llmBaseUrl").value, "http://127.0.0.1:11434/v1");
+assert.equal(elements.get("#llmModel").value, "qwen2.5vl:7b");
+assert.equal(context.healthVisionProvider({}), "Local");

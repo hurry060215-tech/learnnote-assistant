@@ -2914,6 +2914,7 @@ function healthVisionProvider(data) {
       dashscope: "DashScope",
       siliconflow: "SiliconFlow",
       openrouter: "OpenRouter",
+      "local-openai": "Local",
       ollama: "Ollama"
     })[selected] || selected;
   }
@@ -2925,6 +2926,7 @@ function healthVisionProvider(data) {
     dashscope: "DashScope",
     siliconflow: "SiliconFlow",
     openrouter: "OpenRouter",
+    "local-openai": "Local",
     "local-openai-compatible": "Local",
     "openai-compatible": "Compatible"
   })[provider] || provider || "Compatible";
