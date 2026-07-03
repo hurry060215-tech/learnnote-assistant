@@ -1741,6 +1741,10 @@ assert.match(browserWorkflowHtml, /当前页直取/);
 assert.match(browserWorkflowHtml, /source-workflow-brief/);
 assert.match(browserWorkflowHtml, /学习流总览/);
 assert.match(browserWorkflowHtml, /打开扩展侧栏总结当前页|downloading · 35%/);
+assert.match(browserWorkflowHtml, /source-run-modes/);
+assert.match(browserWorkflowHtml, /完整笔记/);
+assert.match(browserWorkflowHtml, /只下载/);
+assert.match(browserWorkflowHtml, /续跑切片/);
 assert.match(browserWorkflowHtml, /非录制直取/);
 assert.match(browserWorkflowHtml, /预检资源/);
 assert.match(browserWorkflowHtml, /source-route-insights/);
@@ -1757,6 +1761,7 @@ assert.match(browserWorkflowHtml, /data-select-workflow-task="task-workflow-brow
 const localWorkflowHtml = context.sourceWorkflowHtml("local", null);
 assert.match(localWorkflowHtml, /本地视频/);
 assert.match(localWorkflowHtml, /source-workflow-brief/);
+assert.match(localWorkflowHtml, /source-run-modes/);
 assert.match(localWorkflowHtml, /选择文件/);
 assert.match(localWorkflowHtml, /离线兜底/);
 assert.match(localWorkflowHtml, /导入文件/);
@@ -1779,6 +1784,9 @@ const urlWorkflowHtml = context.sourceWorkflowHtml("url", {
 });
 assert.match(urlWorkflowHtml, /链接解析/);
 assert.match(urlWorkflowHtml, /source-workflow-brief/);
+assert.match(urlWorkflowHtml, /source-run-modes/);
+assert.match(urlWorkflowHtml, /生成新的链接笔记/);
+assert.match(urlWorkflowHtml, /先把视频拉到本地/);
 assert.match(urlWorkflowHtml, /查看笔记和资料包/);
 assert.match(urlWorkflowHtml, /可预检链接/);
 assert.match(urlWorkflowHtml, /2 次下载尝试/);
@@ -1812,6 +1820,28 @@ assert.match(emptyWorkflowHtml, /data-source-workflow-action="open-extension"/);
 assert.match(emptyWorkflowHtml, /去扩展侧栏开始/);
 assert.match(emptyWorkflowHtml, /刷新交接状态/);
 assert.match(emptyWorkflowHtml, /上传本地视频兜底/);
+
+const downloadOnlyRunModesHtml = context.sourceRunModesHtml("browser", {
+  id: "task-workflow-download-only",
+  title: "Downloaded lesson",
+  status: "success",
+  phase: "completed",
+  progress: 100,
+  source_type: "current_page",
+  mode: "download_only",
+  media_path: "D:/Projects/learnnote-assistant/data/tasks/task-workflow-download-only/media.mp4",
+  selected_resource: { kind: "hls" },
+  visual_windows: []
+});
+assert.match(downloadOnlyRunModesHtml, /media\.mp4 已落地/);
+assert.match(downloadOnlyRunModesHtml, /从 media\.mp4 继续/);
+assert.match(downloadOnlyRunModesHtml, /data-source-workflow-action="continue-media"/);
+assert.match(downloadOnlyRunModesHtml, /data-task-id="task-workflow-download-only"/);
+
+const urlRunModesHtml = context.sourceRunModesHtml("url", null);
+assert.match(urlRunModesHtml, /data-source-workflow-action="start-url"/);
+assert.match(urlRunModesHtml, /data-source-workflow-action="download-url"/);
+assert.match(urlRunModesHtml, /生成新的链接笔记/);
 
 const timelineHtml = context.transcriptTimeline({
   segments: [

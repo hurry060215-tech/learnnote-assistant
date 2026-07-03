@@ -975,6 +975,86 @@ function sourceWorkflowBriefHtml(source, task = null) {
   </div>`;
 }
 
+function sourceRunModeItems(source, task = null) {
+  if (source === "url") {
+    return [
+      {
+        state: "ready",
+        label: "完整笔记",
+        title: "生成新的链接笔记",
+        detail: "粘贴页面、直连视频或 manifest，下载后进入转写、切片和图文总结。",
+        action: "start-url"
+      },
+      {
+        state: "ready",
+        label: "只下载",
+        title: "先把视频拉到本地",
+        detail: "适合先验证平台资源是否可访问，再从 media.mp4 继续切片总结。",
+        action: "download-url"
+      },
+      {
+        state: canContinueFromDownloadedMedia(task) ? "active" : "wait",
+        label: "续跑切片",
+        title: canContinueFromDownloadedMedia(task) ? "从 media.mp4 继续" : "等待本地媒体",
+        detail: "复用已下载视频进入转写、抽帧、视觉窗口和图文总结；不会录制页面。",
+        action: canContinueFromDownloadedMedia(task) ? "continue-media" : ""
+      }
+    ];
+  }
+  const hasMedia = Boolean(task?.media_path);
+  const hasNote = Boolean(task?.note_path);
+  const canContinue = canContinueFromDownloadedMedia(task);
+  const isDownloadOnly = task?.mode === "download_only";
+  const isRerun = task?.mode === "rerun_from_media";
+  const fullState = hasNote ? "pass" : isRerun || (task && !isDownloadOnly) ? "active" : "ready";
+  const downloadState = hasMedia ? "pass" : isDownloadOnly ? "active" : "ready";
+  const continueState = canContinue ? "active" : isRerun ? "pass" : "wait";
+  const fullAction = source === "url" ? "start-url" : source === "browser" ? "open-extension" : "upload-local";
+  const downloadAction = source === "url" ? "download-url" : source === "browser" ? "open-extension" : "";
+  return [
+    {
+      state: fullState,
+      label: "完整笔记",
+      title: hasNote ? "已生成图文笔记" : source === "local" ? "上传后直接总结" : "下载后直接总结",
+      detail: source === "local"
+        ? "上传文件后进入转写、切片、视觉总结。"
+        : "媒体直取成功后自动进入转写、切片和图文总结。",
+      action: hasNote ? "" : fullAction
+    },
+    {
+      state: downloadState,
+      label: "只下载",
+      title: hasMedia ? "media.mp4 已落地" : "先把视频拉到本地",
+      detail: source === "local"
+        ? "本地文件会复制到任务目录，无需平台下载。"
+        : "适合先验证平台资源是否可访问，再决定是否继续总结。",
+      action: hasMedia ? "" : downloadAction
+    },
+    {
+      state: continueState,
+      label: "续跑切片",
+      title: canContinue ? "从 media.mp4 继续" : isRerun ? "正在生成完整笔记" : "等待本地媒体",
+      detail: "复用已下载视频进入转写、抽帧、视觉窗口和图文总结；不会录制页面。",
+      action: canContinue ? "continue-media" : ""
+    }
+  ];
+}
+
+function sourceRunModesHtml(source, task = null) {
+  return `<div class="source-run-modes" aria-label="运行模式">
+    ${sourceRunModeItems(source, task).map(item => {
+      const attrs = item.action
+        ? ` data-source-workflow-action="${escapeHtml(item.action)}"${item.action === "continue-media" && task?.id ? ` data-task-id="${escapeHtml(task.id)}"` : ""}`
+        : " disabled";
+      return `<button type="button" class="${escapeHtml(item.state)}"${attrs}>
+        <span>${escapeHtml(item.label)}</span>
+        <strong>${escapeHtml(item.title)}</strong>
+        <small>${escapeHtml(item.detail)}</small>
+      </button>`;
+    }).join("")}
+  </div>`;
+}
+
 function sourceWorkflowStatusItems(source, task = null) {
   const selected = task?.selected_resource || {};
   const attempts = task?.download_attempts || [];
@@ -1084,6 +1164,7 @@ function sourceWorkflowHtml(source = selectedSource, task = workflowTaskForSourc
       <small>${escapeHtml(config.hint)}</small>
     </header>
     ${sourceWorkflowBriefHtml(source, task)}
+    ${sourceRunModesHtml(source, task)}
     ${sourceWorkflowStatusHtml(source, task)}
     <ol class="source-workflow-lane">
       ${config.steps.map(([title, detail], index) => `<li class="${workflowStepState(task, index)}">
