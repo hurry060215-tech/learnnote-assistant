@@ -337,6 +337,58 @@ class LocalUploadValidationTests(unittest.TestCase):
             server.shutdown()
             server.server_close()
 
+    def test_page_preflight_active_src_prioritizes_current_candidate(self) -> None:
+        server = ThreadingHTTPServer(("127.0.0.1", 0), PagePreflightGateHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            base_url = f"http://127.0.0.1:{server.server_port}"
+            open_url = f"{base_url}/open.mp4#t=12"
+            response = self.client.post(
+                "/api/media/preflight-current-page",
+                json={
+                    "page_url": f"{base_url}/lesson.html",
+                    "probe_limit": 1,
+                    "active_video": {
+                        "src": open_url,
+                        "current_time": 12,
+                        "duration": 180,
+                        "width": 1280,
+                        "height": 720,
+                    },
+                    "resources": [
+                        {
+                            "url": f"{base_url}/protected.mp4",
+                            "kind": "video",
+                            "source": "webRequest",
+                            "score": 100,
+                            "label": "stale signed mp4",
+                        },
+                        {
+                            "url": open_url,
+                            "kind": "video",
+                            "source": "webRequest",
+                            "score": 10,
+                            "label": "current mp4",
+                        },
+                    ],
+                },
+            )
+
+            self.assertEqual(response.status_code, 200)
+            report = response.json()["report"]
+            self.assertTrue(report["ready"])
+            self.assertEqual(report["selected_url"], open_url)
+            self.assertEqual(report["probed_count"], 1)
+            candidate = report["candidates"][0]["resource"]
+            self.assertEqual(candidate["url"], open_url)
+            self.assertTrue(candidate["is_main_video"])
+            self.assertEqual(candidate["playback_match"], "exact-src")
+            self.assertEqual(candidate["current_time"], 12)
+        finally:
+            server.shutdown()
+            server.server_close()
+
     def test_page_preflight_scans_page_when_extension_candidates_are_empty(self) -> None:
         server = ThreadingHTTPServer(("127.0.0.1", 0), JsonPlayEndpointHandler)
         thread = threading.Thread(target=server.serve_forever, daemon=True)

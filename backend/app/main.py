@@ -18,7 +18,7 @@ from .config import DATA_DIR, LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, STATIC_DIR, 
 from .downloader import MediaDownloader, effective_resource_kind, fallback_page_contexts, preflight_media_resource, rank_media_candidates
 from .media import probe_duration
 from .models import CurrentPageTaskRequest, MediaPreflightRequest, MediaPreflightResult, PagePreflightRequest, ResourceCandidate, TaskOptions, TaskRecord
-from .processor import process_current_page_task, process_local_video_task, read_note, read_transcript, read_visual_index
+from .processor import enrich_resources_with_active_video, process_current_page_task, process_local_video_task, read_note, read_transcript, read_visual_index
 from .runtime import ffmpeg_bin, ffprobe_bin
 from .storage import create_task, get_task, list_tasks, task_dir, update_task
 from .summarizer import llm_base_host, llm_provider_name, visual_window_review_question_lines
@@ -1123,6 +1123,13 @@ def _preflight_page_scan_resources(request: PagePreflightRequest, ranked: list[R
 
 
 def page_preflight_report(request: PagePreflightRequest) -> dict:
+    request.resources = enrich_resources_with_active_video(
+        CurrentPageTaskRequest(
+            page_url=request.page_url,
+            active_video=request.active_video,
+            resources=request.resources,
+        )
+    )
     initial_ranked = rank_media_candidates(request.resources)
     discovered_resources, discovery_attempts = _preflight_page_scan_resources(request, initial_ranked)
     ranked = rank_media_candidates([*request.resources, *discovered_resources]) if discovered_resources else initial_ranked

@@ -144,6 +144,7 @@ class PagePreflightRequest(BaseModel):
     page_url: str = ""
     resources: list[ResourceCandidate] = Field(default_factory=list)
     cookies: list[BrowserCookie] = Field(default_factory=list)
+    active_video: ActiveVideoInfo | None = None
     drm_detected: bool = False
     probe_limit: int = Field(default=3, ge=0, le=8)
 
