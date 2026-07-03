@@ -2,19 +2,21 @@
   if (window.__learnNotePageHookInstalled) return;
   window.__learnNotePageHookInstalled = true;
 
-  const MEDIA_URL_RE = /(?:https?:)?\/\/[^\s"'<>\\]+\.(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|m4s|ts|vtt|srt|ass|ssa)(?:\?[^\s"'<>\\]*)?|(?:\/[^\s"'<>\\]+)\.(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|m4s|ts|vtt|srt|ass|ssa)(?:\?[^\s"'<>\\]*)?|(?:[A-Za-z0-9._~!$&()*+,;=:@%-]+\/)*[A-Za-z0-9._~!$&()*+,;=:@%-]+\.(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|m4s|ts|vtt|srt|ass|ssa)(?:\?[^\s"'<>\\]*)?/gi;
-  const ENCODED_MEDIA_URL_RE = /https?%(?:25)*3A(?:(?:%(?:25)*2F)|\/){2}[^\s"'<>\\]+?(?:\.|%(?:25)*2E)(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|m4s|ts|vtt|srt|ass|ssa)(?:[^\s"'<>\\]*)?/gi;
-  const MEDIA_HINT_RE = /\.(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|m4s|ts|vtt|srt|ass|ssa)(?:[?#]|["'\s<>]|$)/i;
+  const MEDIA_EXT_PATTERN = "mp4|m4v|webm|mov|mkv|flv|avi|m4a|mp3|aac|opus|ogg|oga|wav|m3u8|mpd|m4s|ts|vtt|srt|ass|ssa";
+  const MEDIA_URL_RE = new RegExp(`(?:https?:)?//[^\\s"'<>\\\\]+\\.(?:${MEDIA_EXT_PATTERN})(?:\\?[^\\s"'<>\\\\]*)?|(?:/[^\\s"'<>\\\\]+)\\.(?:${MEDIA_EXT_PATTERN})(?:\\?[^\\s"'<>\\\\]*)?|(?:[A-Za-z0-9._~!$&()*+,;=:@%-]+/)*[A-Za-z0-9._~!$&()*+,;=:@%-]+\\.(?:${MEDIA_EXT_PATTERN})(?:\\?[^\\s"'<>\\\\]*)?`, "gi");
+  const ENCODED_MEDIA_URL_RE = new RegExp(`https?%(?:25)*3A(?:(?:%(?:25)*2F)|/){2}[^\\s"'<>\\\\]+?(?:\\.|%(?:25)*2E)(?:${MEDIA_EXT_PATTERN})(?:[^\\s"'<>\\\\]*)?`, "gi");
+  const MEDIA_HINT_RE = new RegExp(`\\.(?:${MEDIA_EXT_PATTERN})(?:[?#]|["'\\s<>]|$)`, "i");
   const FRAGMENT_RE = /\.(?:m4s|ts)(?:\?|#|$)/i;
   const TEXT_TYPE_RE = /json|text|javascript|mpegurl|dash\+xml|xml|x-mpegurl/i;
-  const JSON_MEDIA_KEY_RE = /(url|src|file|fileid|objectid|dtoken|download|httpmd|play|media|video|stream|source|hls|m3u8|dash|mpd|segment|fragment|chunk|subtitle|caption)/i;
+  const JSON_MEDIA_KEY_RE = /(url|src|file|fileid|objectid|dtoken|download|httpmd|play|media|video|audio|stream|source|hls|m3u8|dash|mpd|segment|fragment|chunk|subtitle|caption)/i;
   const JSON_MIME_KEY_RE = /(mime|type|format|content.?type|media.?type)/i;
-  const GLOBAL_MEDIA_NAME_RE = /(^__.*(play|player|media|video|stream|hls|dash|m3u8|mpd))|((play|player|media|video|stream|hls|dash|m3u8|mpd).*(config|info|data|url|source|sources|list)$)/i;
+  const GLOBAL_MEDIA_NAME_RE = /(^__.*(play|player|media|video|audio|stream|hls|dash|m3u8|mpd))|((play|player|media|video|audio|stream|hls|dash|m3u8|mpd).*(config|info|data|url|source|sources|list)$)/i;
   const GLOBAL_MEDIA_KEYS = [
     "__playInfo",
     "__playerConfig",
     "__videoInfo",
     "__videoData",
+    "__audioInfo",
     "__INITIAL_STATE__",
     "__NEXT_DATA__",
     "playInfo",
@@ -23,6 +25,9 @@
     "videoInfo",
     "videoData",
     "videoConfig",
+    "audioInfo",
+    "audioData",
+    "audioConfig",
     "mediaInfo",
     "mediaData",
     "courseData",
@@ -99,7 +104,7 @@
     const absoluteIndex = text.search(/https?:\/\//i);
     if (absoluteIndex > 0) text = text.slice(absoluteIndex);
     if (!/^(https?:)?\/\//i.test(text)) {
-      const rootRelativeIndex = text.search(/\/[^\s"'<>\\]+\.(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|m4s|ts|vtt|srt|ass|ssa)(?:[?#]|$)/i);
+      const rootRelativeIndex = text.search(new RegExp(`/[^\\s"'<>\\\\]+\\.(?:${MEDIA_EXT_PATTERN})(?:[?#]|$)`, "i"));
       if (rootRelativeIndex > 0) text = text.slice(rootRelativeIndex);
     }
     while (/[;,]/.test(text.at(-1) || "")) text = text.slice(0, -1);
@@ -124,6 +129,7 @@
     if (type.includes("dash+xml") || lower.includes(".mpd")) return "dash";
     if (type.includes("text/vtt") || type.includes("subrip") || /\.(vtt|srt|ass|ssa)(\?|#|$)/i.test(lower)) return "subtitle";
     if (type.includes("video/") || /\.(mp4|m4v|webm|mov|mkv|flv|avi)(\?|#|$)/i.test(lower)) return "video";
+    if (type.includes("audio/") || /\.(m4a|mp3|aac|opus|ogg|oga|wav)(\?|#|$)/i.test(lower)) return "audio";
     return "unknown";
   }
 
@@ -166,6 +172,7 @@
     if (type.includes("dash+xml")) return "dash";
     if (type.includes("vtt") || type.includes("subtitle") || magic === "WEBVTT") return "subtitle";
     if (type.includes("video/") || ["ftyp", "moov", "webm-ebml"].includes(magic)) return "video";
+    if (type.includes("audio/")) return "audio";
     if (["moof", "mdat", "styp", "ID3"].includes(magic)) return "fragment";
     return "blob";
   }
@@ -225,7 +232,7 @@
         kind,
         mime: item.mime || "",
         label: item.label || "page hook",
-        score: item.score || (kind === "hls" || kind === "dash" ? 96 : kind === "video" ? 88 : 62),
+        score: item.score || scoreForKind(kind, { manifest: 96, video: 88, audio: 38, other: 62 }),
         playback_match: item.playback_match || "",
         is_main_video: Boolean(item.is_main_video),
         blob_url: item.blob_url ? normalizeUrl(item.blob_url) : "",
@@ -237,6 +244,8 @@
         headers: item.headers || {},
         request_headers: item.request_headers || {},
         request_body: item.request_body || {},
+        audio_url: item.audio_url || "",
+        audio_mime: item.audio_mime || "",
         mse_append_bytes: item.mse_append_bytes ?? null,
         mse_append_total_bytes: item.mse_append_total_bytes ?? null,
         mse_append_count: item.mse_append_count ?? null,
@@ -263,6 +272,8 @@
           headers: { ...(existing.headers || {}), ...(item.headers || {}) },
           request_headers: { ...(existing.request_headers || {}), ...(item.request_headers || {}) },
           request_body: { ...(existing.request_body || {}), ...(item.request_body || {}) },
+          audio_url: item.audio_url || existing.audio_url || "",
+          audio_mime: item.audio_mime || existing.audio_mime || "",
           mse_append_bytes: item.mse_append_bytes ?? existing.mse_append_bytes ?? null,
           mse_append_total_bytes: item.mse_append_total_bytes ?? existing.mse_append_total_bytes ?? null,
           mse_append_count: item.mse_append_count ?? existing.mse_append_count ?? null,
@@ -303,7 +314,16 @@
     if (kind === "dash") return "application/dash+xml";
     if (kind === "subtitle") return "text/vtt";
     if (kind === "video") return "video/mp4";
+    if (kind === "audio") return "audio/mp4";
     return "";
+  }
+
+  function scoreForKind(kind, scores = {}) {
+    if (kind === "hls" || kind === "dash") return scores.manifest ?? 97;
+    if (kind === "video") return scores.video ?? 89;
+    if (kind === "audio") return scores.audio ?? 38;
+    if (kind === "subtitle") return scores.subtitle ?? 64;
+    return scores.other ?? 64;
   }
 
   function cleanHeaderValue(value) {
@@ -641,6 +661,9 @@
     if (context.includes("text/vtt") || context.includes("subrip") || context.includes("subtitle") || context.includes("caption")) {
       return { kind: "subtitle", mime: "text/vtt" };
     }
+    if (context.includes("audio/") || context.includes("m4a") || context.includes("mp3") || context.includes("aac") || context.includes("opus") || context.includes("audio")) {
+      return { kind: "audio", mime: "audio/mp4" };
+    }
     if (context.includes("video/") || context.includes("mp4") || context.includes("video")) {
       return { kind: "video", mime: "video/mp4" };
     }
@@ -665,6 +688,21 @@
     return entries;
   }
 
+  function attachSiblingAudioUrl(resources = []) {
+    const audio = resources
+      .filter(item => item?.kind === "audio" && item.url)
+      .sort((left, right) => Number(right.score || 0) - Number(left.score || 0))[0];
+    if (!audio) return;
+    for (const video of resources.filter(item => item?.kind === "video" && item.url)) {
+      if (!video.audio_url) {
+        video.audio_url = audio.url;
+        video.audio_mime = audio.mime || "audio/mp4";
+        video.score = Math.min(100, Math.max(Number(video.score || 0), 92));
+        video.label = `${video.label || "video"} + audio`;
+      }
+    }
+  }
+
   function collectJsonMediaUrls(node, source, label, keys = [], parent = null, output = [], seen = new Set(), visited = new WeakSet(), meta = {}) {
     if (!node || output.length >= 40) return output;
     if (Array.isArray(node)) {
@@ -683,6 +721,7 @@
     if (typeof node !== "object") return output;
     if (visited.has(node)) return output;
     visited.add(node);
+    const siblingResources = [];
     for (const [key, value] of safeObjectEntries(node)) {
       const nextKeys = [...keys, key];
       if (typeof value === "string" && JSON_MEDIA_KEY_RE.test(key)) {
@@ -693,14 +732,16 @@
             const { kind, mime } = kindFromJsonContext(nextKeys, url, node);
             if (kind !== "unknown") {
               seen.add(url);
-              output.push(applyResponseMeta({
+              const item = applyResponseMeta({
                 url,
                 source,
                 kind,
                 mime,
                 label: `${label} json ${nextKeys.slice(-3).join("/")}`,
-                score: kind === "hls" || kind === "dash" ? 97 : kind === "video" ? 89 : 64
-              }, meta));
+                score: scoreForKind(kind)
+              }, meta);
+              output.push(item);
+              siblingResources.push(item);
               break;
             }
           }
@@ -714,14 +755,16 @@
           const { kind, mime } = kindFromJsonContext(nextKeys, url, node);
           if (kind === "unknown") continue;
           seen.add(url);
-          output.push(applyResponseMeta({
+          const item = applyResponseMeta({
             url,
             source,
             kind,
             mime,
             label: `${label} json ${nextKeys.slice(-3).join("/")}`,
-            score: kind === "hls" || kind === "dash" ? 97 : kind === "video" ? 89 : 64
-          }, meta));
+            score: scoreForKind(kind)
+          }, meta);
+          output.push(item);
+          siblingResources.push(item);
           break;
         }
       }
@@ -740,6 +783,7 @@
       }
       if (output.length >= 40) break;
     }
+    attachSiblingAudioUrl(siblingResources);
     return output;
   }
 
@@ -772,7 +816,7 @@
           kind,
           mime,
           label: `${label} field ${key}`,
-          score: kind === "hls" || kind === "dash" ? 97 : kind === "video" ? 89 : 64
+          score: scoreForKind(kind)
         }, meta));
         break;
       }
@@ -796,7 +840,7 @@
           kind,
           mime: mimeForKind(kind),
           label: `${label} encoded url`,
-          score: kind === "hls" || kind === "dash" ? 97 : kind === "video" ? 89 : 64
+          score: scoreForKind(kind)
         }, meta));
         break;
       }
@@ -821,7 +865,7 @@
       kind,
       mime: mime || "",
       label,
-      score: kind === "hls" || kind === "dash" ? 98 : kind === "video" ? 94 : 66
+      score: scoreForKind(kind, { manifest: 98, video: 94, audio: 40, other: 66 })
     };
   }
 
@@ -1063,7 +1107,7 @@
     if (typeof value === "object") {
       if (visited.has(value) || depth > 4) return output;
       visited.add(value);
-      for (const key of ["src", "url", "file", "fileId", "objectid", "objectId", "dtoken", "downloadUrl", "httpmd", "source", "manifestUri", "playUrl", "videoUrl", "streamUrl", "mediaUrl", "mainUrl", "backupUrl", "flvUrl", "hlsUrl"]) {
+      for (const key of ["src", "url", "file", "fileId", "objectid", "objectId", "dtoken", "downloadUrl", "httpmd", "source", "manifestUri", "playUrl", "videoUrl", "audioUrl", "streamUrl", "mediaUrl", "mainUrl", "backupUrl", "flvUrl", "hlsUrl"]) {
         try {
           if (typeof value[key] === "string") output.push(value[key]);
         } catch {
@@ -1071,7 +1115,7 @@
         }
       }
       for (const [key, child] of safeObjectEntries(value, 80)) {
-        if (!/^(video|media|source|sources|playlist|file|fileid|objectid|dtoken|download|httpmd|url|config|play|quality|qualities|streams?|segments?|hls|dash)$/i.test(key)) continue;
+        if (!/^(video|audio|media|source|sources|playlist|file|fileid|objectid|dtoken|download|httpmd|url|config|play|quality|qualities|streams?|segments?|hls|dash)$/i.test(key)) continue;
         sourceCandidates(child, output, visited, depth + 1);
       }
     }
@@ -1094,7 +1138,7 @@
         kind,
         mime: mimeForKind(kind),
         label,
-        score: kind === "hls" || kind === "dash" ? 99 : 92
+        score: scoreForKind(kind, { manifest: 99, video: 92, audio: 40, other: 64 })
       });
     }
     emit(resources);
@@ -1947,7 +1991,7 @@
               label: "MSE appendBuffer",
               blob_url: blobUrl,
               playback_match: "blob-source",
-              score: evidence.mse_append_detected_kind === "video" || evidence.mse_append_detected_kind === "fragment" ? 82 : 72,
+              score: evidence.mse_append_detected_kind === "video" || evidence.mse_append_detected_kind === "fragment" ? 82 : evidence.mse_append_detected_kind === "audio" ? 40 : 72,
               ...evidence
             }]);
           }

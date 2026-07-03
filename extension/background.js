@@ -1,7 +1,9 @@
-const MEDIA_RE = /\.(mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd)(\?|#|$)/i;
+const VIDEO_RE = /\.(mp4|m4v|webm|mov|mkv|flv|avi)(\?|#|$)/i;
+const AUDIO_RE = /\.(m4a|mp3|aac|opus|ogg|oga|wav)(\?|#|$)/i;
+const MEDIA_RE = /\.(mp4|m4v|webm|mov|mkv|flv|avi|m4a|mp3|aac|opus|ogg|oga|wav|m3u8|mpd)(\?|#|$)/i;
 const FRAGMENT_RE = /\.(m4s|ts)(\?|#|$)/i;
 const SUBTITLE_RE = /\.(vtt|srt|ass|ssa)(\?|#|$)/i;
-const PLAYBACK_ENDPOINT_RE = /m3u8|mpd|video|media|subtitle|caption|stream|hls|dash|manifest|playlist|master|playback|player|download|attachment|ananas|objectid|dtoken|fileid|httpmd|vod|\/play(?:[/?#]|$)/i;
+const PLAYBACK_ENDPOINT_RE = /m3u8|mpd|video|audio|media|subtitle|caption|stream|hls|dash|manifest|playlist|master|playback|player|download|attachment|ananas|objectid|dtoken|fileid|httpmd|vod|\/play(?:[/?#]|$)/i;
 const LOCAL_TASK_FILE_RE = /^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?\/api\/tasks\/[^/]+(?:\/media|\/exports\/(?:markdown|visual-windows|bundle|diagnostics|media))(?:[?#].*)?$/i;
 const LOCAL_EXPORT_RE = /^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?\/api\/tasks\/[^/]+\/exports\/(?:markdown|visual-windows|bundle|diagnostics|media)(?:[?#].*)?$/i;
 const resourceByTab = new Map();
@@ -56,7 +58,8 @@ function classify(url, mime = "") {
   if (FRAGMENT_RE.test(lower)) return "fragment";
   if (type.includes("mpegurl") || lower.includes(".m3u8")) return "hls";
   if (type.includes("dash+xml") || lower.includes(".mpd")) return "dash";
-  if (type.includes("video/") || MEDIA_RE.test(lower)) return "video";
+  if (type.includes("video/") || VIDEO_RE.test(lower)) return "video";
+  if (type.includes("audio/") || AUDIO_RE.test(lower)) return "audio";
   if (type.includes("text/vtt") || type.includes("subrip") || SUBTITLE_RE.test(lower)) return "subtitle";
   return "unknown";
 }
@@ -109,7 +112,7 @@ function requestHasMediaDestination(requestHeaders = {}) {
   );
   return /^(video|audio)$/i.test(headers["sec-fetch-dest"] || "") ||
     /(?:^|[,;\s])(?:video|audio)\//i.test(headers.accept || "") ||
-    /mpegurl|dash\+xml|mp4|webm|x-matroska/i.test(headers.accept || "");
+    /mpegurl|dash\+xml|mp4|webm|x-matroska|m4a|mp3|aac|opus|ogg/i.test(headers.accept || "");
 }
 
 function requestHeaderArrayHasMediaDestination(requestHeaders = []) {
@@ -157,7 +160,7 @@ function classifyCompletedRequest(details = {}, mime = "", requestHeaders = {}, 
   if (kind !== "unknown") return kind;
   const headerKind = classifyContentDisposition(responseHeaders["content-disposition"] || "", mime);
   if (headerKind !== "unknown") return headerKind;
-  if (details.type === "media") return "video";
+  if (details.type === "media") return String(mime || "").toLowerCase().includes("audio/") ? "audio" : "video";
   const type = String(details.type || "").toLowerCase();
   const binaryMime = /octet-stream|binary|application\/x-mpegurl/i.test(String(mime || ""));
   if ((type === "xmlhttprequest" || type === "fetch") && binaryMime && hasRangeEvidence(requestHeaders, responseHeaders)) {
@@ -232,6 +235,7 @@ function scoreKind(url, source, kind) {
   let score = 0;
   if (kind === "hls" || kind === "dash") score += 95;
   else if (kind === "video") score += 85;
+  else if (kind === "audio") score += 35;
   else if (kind === "fragment") score += 15;
   else if (kind === "subtitle") score += 60;
   else if (kind === "blob") score += 5;
@@ -261,6 +265,7 @@ function kindRank(kind) {
     dash: 6,
     video: 5,
     fragment: 3,
+    audio: 2,
     subtitle: 2,
     blob: 1
   })[kind] || 0;
@@ -509,6 +514,8 @@ function mergeResource(previous, incoming) {
   merged.headers = { ...(previous.headers || {}), ...(incoming.headers || {}) };
   merged.request_headers = { ...(previous.request_headers || {}), ...(incoming.request_headers || {}) };
   merged.request_body = { ...(previous.request_body || {}), ...(incoming.request_body || {}) };
+  merged.audio_url = incoming.audio_url || previous.audio_url || "";
+  merged.audio_mime = incoming.audio_mime || previous.audio_mime || "";
   merged.current_time = incoming.current_time ?? previous.current_time ?? null;
   merged.duration = incoming.duration ?? previous.duration ?? null;
   merged.width = incoming.width ?? previous.width ?? null;
@@ -600,6 +607,8 @@ function captureLogResource(resource = {}) {
     mse_append_magic: resource.mse_append_magic || "",
     mse_append_mime: resource.mse_append_mime || "",
     mse_append_detected_kind: resource.mse_append_detected_kind || "",
+    audio_url: resource.audio_url || "",
+    audio_mime: resource.audio_mime || "",
     resolved_url: resource.resolved_url || "",
     initiator: resource.initiator || "",
     time_stamp: resource.time_stamp ?? Date.now(),
@@ -964,6 +973,8 @@ function addResource(tabId, resource, notify = true) {
     mse_append_magic: resource.mse_append_magic || "",
     mse_append_mime: resource.mse_append_mime || "",
     mse_append_detected_kind: resource.mse_append_detected_kind || "",
+    audio_url: resource.audio_url || "",
+    audio_mime: resource.audio_mime || "",
     resolved_url: resource.resolved_url || "",
     initiator: resource.initiator || "",
     time_stamp: resource.time_stamp ?? null,
@@ -992,6 +1003,8 @@ function addResource(tabId, resource, notify = true) {
       mse_append_magic: normalized.mse_append_magic || existing.mse_append_magic || "",
       mse_append_mime: normalized.mse_append_mime || existing.mse_append_mime || "",
       mse_append_detected_kind: normalized.mse_append_detected_kind || existing.mse_append_detected_kind || "",
+      audio_url: normalized.audio_url || existing.audio_url || "",
+      audio_mime: normalized.audio_mime || existing.audio_mime || "",
       resolved_url: normalized.resolved_url || existing.resolved_url || "",
       request_type: normalized.request_type || existing.request_type || "",
       method: normalized.method || existing.method || "",

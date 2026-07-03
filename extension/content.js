@@ -1,14 +1,18 @@
-const MEDIA_RE = /\.(mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd)(\?|#|$)/i;
+const VIDEO_RE = /\.(mp4|m4v|webm|mov|mkv|flv|avi)(\?|#|$)/i;
+const AUDIO_RE = /\.(m4a|mp3|aac|opus|ogg|oga|wav)(\?|#|$)/i;
+const MEDIA_RE = /\.(mp4|m4v|webm|mov|mkv|flv|avi|m4a|mp3|aac|opus|ogg|oga|wav|m3u8|mpd)(\?|#|$)/i;
 const FRAGMENT_RE = /\.(m4s|ts)(\?|#|$)/i;
 const SUBTITLE_RE = /\.(vtt|srt|ass|ssa)(\?|#|$)/i;
-const MEDIA_URL_RE = /(?:https?:)?\/\/[^\s"'<>\\]+\.(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|m4s|ts|vtt|srt|ass|ssa)(?:\?[^\s"'<>\\]*)?|(?:\/[^\s"'<>\\]+)\.(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|m4s|ts|vtt|srt|ass|ssa)(?:\?[^\s"'<>\\]*)?|(?:[A-Za-z0-9._~!$&()*+,;=:@%-]+\/)*[A-Za-z0-9._~!$&()*+,;=:@%-]+\.(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|m4s|ts|vtt|srt|ass|ssa)(?:\?[^\s"'<>\\]*)?/gi;
-const ENCODED_MEDIA_URL_RE = /https?%(?:25)*3A(?:(?:%(?:25)*2F)|\/){2}[^\s"'<>\\]+?(?:\.|%(?:25)*2E)(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|m4s|ts|vtt|srt|ass|ssa)(?:[^\s"'<>\\]*)?/gi;
+const MEDIA_EXT_PATTERN = "mp4|m4v|webm|mov|mkv|flv|avi|m4a|mp3|aac|opus|ogg|oga|wav|m3u8|mpd|m4s|ts|vtt|srt|ass|ssa";
+const MEDIA_URL_RE = new RegExp(`(?:https?:)?//[^\\s"'<>\\\\]+\\.(?:${MEDIA_EXT_PATTERN})(?:\\?[^\\s"'<>\\\\]*)?|(?:/[^\\s"'<>\\\\]+)\\.(?:${MEDIA_EXT_PATTERN})(?:\\?[^\\s"'<>\\\\]*)?|(?:[A-Za-z0-9._~!$&()*+,;=:@%-]+/)*[A-Za-z0-9._~!$&()*+,;=:@%-]+\\.(?:${MEDIA_EXT_PATTERN})(?:\\?[^\\s"'<>\\\\]*)?`, "gi");
+const ENCODED_MEDIA_URL_RE = new RegExp(`https?%(?:25)*3A(?:(?:%(?:25)*2F)|/){2}[^\\s"'<>\\\\]+?(?:\\.|%(?:25)*2E)(?:${MEDIA_EXT_PATTERN})(?:[^\\s"'<>\\\\]*)?`, "gi");
 const STATIC_MEDIA_ATTRS = [
   "src",
   "href",
   "data-src",
   "data-url",
   "data-video-url",
+  "data-audio-url",
   "data-play-url",
   "data-media-url",
   "data-stream-url",
@@ -36,8 +40,8 @@ const STATIC_MEDIA_SELECTOR = STATIC_MEDIA_ATTRS.map(name => `[${name}]`).join("
 const STATIC_FIELD_RE = /(["']?[A-Za-z_$][A-Za-z0-9_$.-]{0,79}["']?)\s*[:=]\s*["']((?:\\u[0-9a-fA-F]{4}|\\x[0-9a-fA-F]{2}|\\.|[^"'<>\\\s]){4,})["']/gi;
 const STATIC_CONTAINER_FIELD_RE = /(["']?[A-Za-z_$][A-Za-z0-9_$.-]{0,79}["']?)\s*[:=]\s*[\[{]/gi;
 const STATIC_QUOTED_VALUE_RE = /["']((?:\\u[0-9a-fA-F]{4}|\\x[0-9a-fA-F]{2}|\\.|[^"'<>\\\s]){4,})["']/gi;
-const STATIC_MEDIA_KEY_RE = /(url|src|file|fileid|objectid|dtoken|download|httpmd|play|media|video|stream|source|hls|m3u8|dash|mpd|segment|fragment|chunk|subtitle|caption)/i;
-const STATIC_ATTRIBUTE_KEY_RE = /(url|src|file|objectid|dtoken|download|httpmd|play|player|config|option|param|media|video|stream|source|hls|m3u8|dash|mpd|segment|fragment|chunk|subtitle|caption)/i;
+const STATIC_MEDIA_KEY_RE = /(url|src|file|fileid|objectid|dtoken|download|httpmd|play|media|video|audio|stream|source|hls|m3u8|dash|mpd|segment|fragment|chunk|subtitle|caption)/i;
+const STATIC_ATTRIBUTE_KEY_RE = /(url|src|file|objectid|dtoken|download|httpmd|play|player|config|option|param|media|video|audio|stream|source|hls|m3u8|dash|mpd|segment|fragment|chunk|subtitle|caption)/i;
 const VISIBLE_SUBTITLE_HINT_RE = /(subtitle|subtitles|caption|captions|closed.?caption|texttrack|danmu|danmaku|barrage|\bcc\b|字幕|弹幕)/i;
 const VISIBLE_SUBTITLE_ROLE_RE = /^(log|status|marquee)$/i;
 const B64ISH_RE = /^[A-Za-z0-9+/_=-]{16,}$/;
@@ -63,7 +67,8 @@ function classify(url, mime = "") {
   if (FRAGMENT_RE.test(lower)) return "fragment";
   if (type.includes("mpegurl") || lower.includes(".m3u8")) return "hls";
   if (type.includes("dash+xml") || lower.includes(".mpd")) return "dash";
-  if (type.includes("video/") || MEDIA_RE.test(lower)) return "video";
+  if (type.includes("video/") || VIDEO_RE.test(lower)) return "video";
+  if (type.includes("audio/") || AUDIO_RE.test(lower)) return "audio";
   if (type.includes("text/vtt") || type.includes("subrip") || SUBTITLE_RE.test(lower)) return "subtitle";
   return "unknown";
 }
@@ -92,6 +97,7 @@ function score(url, mime, source) {
   let value = 0;
   if (kind === "hls" || kind === "dash") value += 95;
   else if (kind === "video") value += 85;
+  else if (kind === "audio") value += 35;
   else if (kind === "fragment") value += 15;
   else if (kind === "subtitle") value += 60;
   else if (kind === "blob") value += 5;
@@ -100,6 +106,14 @@ function score(url, mime, source) {
   if (String(source || "").startsWith("pageHook")) value += 12;
   if (/chaoxing|xuexitong/i.test(url)) value += 8;
   return Math.min(value, 100);
+}
+
+function scoreForKind(kind, scores = {}) {
+  if (kind === "hls" || kind === "dash") return scores.manifest ?? 96;
+  if (kind === "video") return scores.video ?? 86;
+  if (kind === "audio") return scores.audio ?? 38;
+  if (kind === "subtitle") return scores.subtitle ?? 62;
+  return scores.other ?? 62;
 }
 
 function absoluteUrl(url) {
@@ -117,7 +131,7 @@ function stripUrlTail(value) {
   const absoluteIndex = text.search(/https?:\/\//i);
   if (absoluteIndex > 0) text = text.slice(absoluteIndex);
   if (!/^(https?:)?\/\//i.test(text)) {
-    const rootRelativeIndex = text.search(/\/[^\s"'<>\\]+\.(?:mp4|m4v|webm|mov|mkv|flv|avi|m3u8|mpd|m4s|ts|vtt|srt|ass|ssa)(?:[?#]|$)/i);
+    const rootRelativeIndex = text.search(new RegExp(`/[^\\s"'<>\\\\]+\\.(?:${MEDIA_EXT_PATTERN})(?:[?#]|$)`, "i"));
     if (rootRelativeIndex > 0) text = text.slice(rootRelativeIndex);
   }
   while (/[;,]/.test(text.at(-1) || "")) text = text.slice(0, -1);
@@ -213,6 +227,7 @@ function mimeFromHint(hint = "") {
   if (text.includes("m3u8") || text.includes("hls") || text.includes("mpegurl")) return "application/vnd.apple.mpegurl";
   if (text.includes("mpd") || text.includes("dash")) return "application/dash+xml";
   if (text.includes("subtitle") || text.includes("caption") || text.includes("vtt") || text.includes("srt")) return "text/vtt";
+  if (text.includes("audio/") || text.includes("m4a") || text.includes("mp3") || text.includes("aac") || text.includes("opus") || text.includes("audio")) return "audio/mp4";
   if (text.includes("video") || text.includes("mp4") || text.includes("media") || text.includes("play") || text.includes("stream")) return "video/mp4";
   return "";
 }
@@ -223,7 +238,7 @@ function looksLikeMediaValue(value, hint = "") {
   if (MEDIA_RE.test(text) || FRAGMENT_RE.test(text) || SUBTITLE_RE.test(text) || text.includes(".m3u8") || text.includes(".mpd")) return true;
   if (/%2f|%3a|%3f|%3d|%26/i.test(text)) return STATIC_MEDIA_KEY_RE.test(hint) || MEDIA_RE.test(decodeURIComponentSafe(text));
   if (/^(https?:)?\/\//i.test(text) || text.startsWith("/")) return STATIC_MEDIA_KEY_RE.test(hint);
-  return text.includes("/") && /[?=&]|api|play|media|video|stream|m3u8|mpd|hls|dash/i.test(text) && STATIC_MEDIA_KEY_RE.test(hint);
+  return text.includes("/") && /[?=&]|api|play|media|video|audio|stream|m3u8|mpd|hls|dash/i.test(text) && STATIC_MEDIA_KEY_RE.test(hint);
 }
 
 function looksLikePlaybackEndpointValue(value, hint = "") {
@@ -231,7 +246,7 @@ function looksLikePlaybackEndpointValue(value, hint = "") {
   if (!text || !STATIC_MEDIA_KEY_RE.test(hint)) return false;
   if (!/^(https?:)?\/\//i.test(text) && !text.startsWith("/") && !text.includes("/")) return false;
   if (MEDIA_RE.test(text) || FRAGMENT_RE.test(text) || SUBTITLE_RE.test(text) || text.includes(".m3u8") || text.includes(".mpd")) return false;
-  return /(^|[/?&=._-])(api|ananas|play|player|stream|video|media|vod|hls|dash|manifest|playlist|master|m3u8|mpd|objectid|dtoken)([/?&=._-]|$)/i.test(text);
+  return /(^|[/?&=._-])(api|ananas|play|player|stream|video|audio|media|vod|hls|dash|manifest|playlist|master|m3u8|mpd|objectid|dtoken)([/?&=._-]|$)/i.test(text);
 }
 
 function decodeURIComponentSafe(value) {
@@ -285,7 +300,7 @@ function collectEncodedTextResources(text, source, label, seen = new Set()) {
       const item = resource(candidate, source, label, mimeFromHint(candidate));
       if (!item || item.kind === "unknown" || seen.has(item.url)) continue;
       seen.add(item.url);
-      item.score = Math.max(item.score || 0, item.kind === "hls" || item.kind === "dash" ? 96 : item.kind === "video" ? 86 : 62);
+      item.score = Math.max(item.score || 0, scoreForKind(item.kind));
       resources.push(item);
       break;
     }
@@ -313,7 +328,7 @@ function collectTextMediaResources(text, source, label, seen = new Set()) {
         const item = resource(candidate, source, label, mimeFromHint(candidate));
         if (!item || item.kind === "unknown" || seen.has(item.url)) continue;
         seen.add(item.url);
-        item.score = Math.max(item.score || 0, item.kind === "hls" || item.kind === "dash" ? 96 : item.kind === "video" ? 86 : 62);
+        item.score = Math.max(item.score || 0, scoreForKind(item.kind));
         resources.push(item);
         break;
       }
@@ -367,7 +382,7 @@ function collectKeyedContainerResources(text, source, label, seen = new Set(), l
       const item = resourceFromHint(valueMatch[1], source, `${label} ${key} container`, key);
       if (item && !seen.has(item.url)) {
         seen.add(item.url);
-        item.score = Math.max(item.score || 0, item.kind === "hls" || item.kind === "dash" ? 96 : item.kind === "video" ? 84 : 62);
+        item.score = Math.max(item.score || 0, scoreForKind(item.kind, { manifest: 96, video: 84, audio: 38, other: 62 }));
         resources.push(item);
         if (resources.length >= limit) return resources;
       }
@@ -403,11 +418,11 @@ function performanceKind(entry = {}) {
 
 function performanceLooksLikeMediaEndpoint(url = "") {
   const raw = String(url || "");
-  const endpointRe = /(^|[/?&=._-])(api|play|player|stream|video|media|hls|dash|manifest|playlist|master|m3u8|mpd|subtitle|caption)([/?&=._-]|$)/i;
+  const endpointRe = /(^|[/?&=._-])(api|play|player|stream|video|audio|media|hls|dash|manifest|playlist|master|m3u8|mpd|subtitle|caption)([/?&=._-]|$)/i;
   try {
     const parsed = new URL(raw, location.href);
     const queryKeys = [...parsed.searchParams.keys()].join("&");
-    return endpointRe.test(`${parsed.pathname} ${queryKeys}`) || /\.(m3u8|mpd|mp4|m4v|webm|mov|mkv|flv|avi|vtt|srt|ass|ssa)([?#]|$)/i.test(raw);
+    return endpointRe.test(`${parsed.pathname} ${queryKeys}`) || /\.(m3u8|mpd|mp4|m4v|webm|mov|mkv|flv|avi|m4a|mp3|aac|opus|ogg|oga|wav|vtt|srt|ass|ssa)([?#]|$)/i.test(raw);
   } catch {
     return endpointRe.test(raw);
   }
@@ -417,6 +432,7 @@ function performanceScore(kind, url) {
   let value = 0;
   if (kind === "hls" || kind === "dash") value = 95;
   else if (kind === "video") value = 88;
+  else if (kind === "audio") value = 35;
   else if (kind === "subtitle") value = 65;
   else if (kind === "fragment") value = 20;
   if (/chaoxing|xuexitong/i.test(url)) value += 8;
@@ -440,6 +456,8 @@ function rememberHookResource(item) {
   normalized.headers = item.headers || {};
   normalized.request_headers = item.request_headers || {};
   normalized.request_body = item.request_body || {};
+  normalized.audio_url = absoluteUrl(item.audio_url || "") || "";
+  normalized.audio_mime = item.audio_mime || "";
   const existing = hookResources.find(entry => entry.url === normalized.url);
   if (existing) {
     Object.assign(existing, normalized, {
@@ -455,7 +473,9 @@ function rememberHookResource(item) {
       time_stamp: Math.max(existing.time_stamp || 0, normalized.time_stamp || 0) || null,
       headers: { ...(existing.headers || {}), ...(normalized.headers || {}) },
       request_headers: { ...(existing.request_headers || {}), ...(normalized.request_headers || {}) },
-      request_body: { ...(existing.request_body || {}), ...(normalized.request_body || {}) }
+      request_body: { ...(existing.request_body || {}), ...(normalized.request_body || {}) },
+      audio_url: normalized.audio_url || existing.audio_url || "",
+      audio_mime: normalized.audio_mime || existing.audio_mime || ""
     });
   } else {
     hookResources.unshift(normalized);
@@ -692,7 +712,7 @@ function collectDeclaredMediaResources() {
     const item = resourceFromHint(hint.value, "domHint", hint.label, hint.hint);
     if (item && !seen.has(item.url)) {
       seen.add(item.url);
-      item.score = Math.max(item.score || 0, item.kind === "hls" || item.kind === "dash" ? 96 : item.kind === "video" ? 88 : 62);
+      item.score = Math.max(item.score || 0, scoreForKind(item.kind, { manifest: 96, video: 88, audio: 38, other: 62 }));
       resources.push(item);
     }
     for (const textItem of collectTextMediaResources(hint.value, "domHint", `${hint.label} media url`, seen)) {
@@ -722,7 +742,7 @@ function collectInlineScriptResources() {
       const item = resourceFromHint(match[2], "scriptHint", `script ${key}`, key);
       if (item && !seen.has(item.url)) {
         seen.add(item.url);
-        item.score = Math.max(item.score || 0, item.kind === "hls" || item.kind === "dash" ? 96 : item.kind === "video" ? 86 : 62);
+        item.score = Math.max(item.score || 0, scoreForKind(item.kind));
         resources.push(item);
         if (resources.length >= 40) return resources;
       }
@@ -762,7 +782,7 @@ function collectHtmlTextResources(text, source, label, seen = new Set(), limit =
     const item = resourceFromHint(match[2], source, `${label} ${key}`, key);
     if (item && !seen.has(item.url)) {
       seen.add(item.url);
-      item.score = Math.max(item.score || 0, item.kind === "hls" || item.kind === "dash" ? 96 : item.kind === "video" ? 86 : 62);
+      item.score = Math.max(item.score || 0, scoreForKind(item.kind));
       resources.push(item);
       if (resources.length >= limit) return resources;
     }
@@ -1257,7 +1277,9 @@ function mergePageResource(previous, incoming) {
     time_stamp: Math.max(previous.time_stamp || 0, incoming.time_stamp || 0) || null,
     headers: { ...(secondary.headers || {}), ...(primary.headers || {}) },
     request_headers: { ...(secondary.request_headers || {}), ...(primary.request_headers || {}) },
-    request_body: { ...(secondary.request_body || {}), ...(primary.request_body || {}) }
+    request_body: { ...(secondary.request_body || {}), ...(primary.request_body || {}) },
+    audio_url: primary.audio_url || secondary.audio_url || "",
+    audio_mime: primary.audio_mime || secondary.audio_mime || ""
   };
 }
 

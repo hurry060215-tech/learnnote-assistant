@@ -89,6 +89,12 @@ const context = {
     generic: {
       data: "/api/playback/get?id=77&token=generic",
       mimeType: "video/mp4"
+    },
+    splitAv: {
+      videoUrl: "https://cdn.example.com/dash/video-only.mp4?token=v",
+      audioUrl: "https://cdn.example.com/dash/audio-only.m4a?token=a",
+      videoMime: "video/mp4",
+      audioMime: "audio/mp4"
     }
   });
   },
@@ -127,6 +133,8 @@ const hls = resources.find(resource => resource.url === "https://cdn.example.com
 const objectHls = resources.find(resource => resource.url === "https://cdn.example.com/chaoxing/master.m3u8?token=object");
 const dtokenVideo = resources.find(resource => resource.url === "https://course.example.com/api/ananas/video?id=42&dtoken=abc");
 const genericVideo = resources.find(resource => resource.url === "https://course.example.com/api/playback/get?id=77&token=generic");
+const splitVideo = resources.find(resource => resource.url === "https://cdn.example.com/dash/video-only.mp4?token=v");
+const splitAudio = resources.find(resource => resource.url === "https://cdn.example.com/dash/audio-only.m4a?token=a");
 
 assert.ok(hls, "expected Response.json() body to expose the encoded HLS URL");
 assert.equal(hls.kind, "hls");
@@ -162,3 +170,13 @@ assert.equal(genericVideo.kind, "video");
 assert.equal(genericVideo.mime, "video/mp4");
 assert.match(genericVideo.label, /fetch json/);
 assert.equal(genericVideo.request_headers.Cookie, undefined);
+
+assert.ok(splitVideo, "expected split AV JSON to expose the video-only URL");
+assert.equal(splitVideo.kind, "video");
+assert.equal(splitVideo.audio_url, "https://cdn.example.com/dash/audio-only.m4a?token=a");
+assert.equal(splitVideo.audio_mime, "audio/mp4");
+assert.match(splitVideo.label, /\+ audio/);
+
+assert.ok(splitAudio, "expected split AV JSON to retain the audio-only resource as evidence");
+assert.equal(splitAudio.kind, "audio");
+assert.equal(splitAudio.mime, "audio/mp4");
