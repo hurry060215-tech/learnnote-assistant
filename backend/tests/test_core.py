@@ -2770,6 +2770,7 @@ class SummaryFallbackTests(unittest.TestCase):
                 image = root / f"grid_{index}.jpg"
                 image.write_bytes(b"fake-image")
                 grids.append(FrameGrid(path=str(image), url=f"http://127.0.0.1/grid_{index}.jpg", start=index * 180, end=(index + 1) * 180, frame_count=9))
+            Path(grids[0].path).unlink()
             transcript = TranscriptResult(
                 full_text="all transcript",
                 segments=[TranscriptSegment(start=index * 180, end=index * 180 + 30, text=f"segment {index}") for index in range(9)],
@@ -2789,18 +2790,22 @@ class SummaryFallbackTests(unittest.TestCase):
             len([item for item in call["messages"][0]["content"] if item.get("type") == "image_url"])
             for call in completions.calls[:3]
         ]
-        self.assertEqual(vision_image_counts, [4, 4, 1])
+        self.assertEqual(vision_image_counts, [3, 4, 1])
         first_prompt = completions.calls[0]["messages"][0]["content"][0]["text"]
         self.assertIn("窗口 W001", first_prompt)
         self.assertIn("http://127.0.0.1/grid_0.jpg", first_prompt)
         self.assertIn("同编号标注的画面网格", first_prompt)
         first_content = completions.calls[0]["messages"][0]["content"]
         self.assertEqual(first_content[1]["type"], "text")
-        self.assertIn("下面这张画面网格对应窗口 W001", first_content[1]["text"])
-        self.assertEqual(first_content[2]["type"], "image_url")
-        self.assertEqual(first_content[3]["type"], "text")
-        self.assertIn("下面这张画面网格对应窗口 W002", first_content[3]["text"])
-        self.assertEqual(first_content[4]["type"], "image_url")
+        self.assertIn("W001", first_content[1]["text"])
+        self.assertIn("\u753b\u9762\u7f51\u683c\u6587\u4ef6\u7f3a\u5931", first_content[1]["text"])
+        self.assertIn("\u4e0d\u8981\u7f16\u9020\u753b\u9762\u7ec6\u8282", first_content[1]["text"])
+        self.assertEqual(first_content[2]["type"], "text")
+        self.assertIn("下面这张画面网格对应窗口 W002", first_content[2]["text"])
+        self.assertEqual(first_content[3]["type"], "image_url")
+        self.assertEqual(first_content[4]["type"], "text")
+        self.assertIn("下面这张画面网格对应窗口 W003", first_content[4]["text"])
+        self.assertEqual(first_content[5]["type"], "image_url")
         merge_content = completions.calls[3]["messages"][0]["content"]
         self.assertIn("画面索引清单", merge_content)
         self.assertIn("cornell", merge_content)

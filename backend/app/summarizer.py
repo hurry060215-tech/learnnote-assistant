@@ -415,6 +415,14 @@ def _grid_image_content_items(grids: list[FrameGrid], offset: int = 0) -> list[d
     for index, grid in enumerate(grids, start=offset + 1):
         path = Path(grid.path)
         if not path.exists():
+            items.append({
+                "type": "text",
+                "text": (
+                    f"\u7a97\u53e3 W{index:03d}\uff08{_format_ts(grid.start)} - {_format_ts(grid.end)}\uff09"
+                    f"\u7684\u753b\u9762\u7f51\u683c\u6587\u4ef6\u7f3a\u5931\uff0c\u539f\u59cb\u7d22\u5f15 URL\uff1a{grid.url}\u3002"
+                    "\u8bf7\u53ea\u6839\u636e\u5b57\u5e55\u7247\u6bb5\u548c\u753b\u9762\u7d22\u5f15\u5904\u7406\u8fd9\u4e2a\u7a97\u53e3\uff0c\u4e0d\u8981\u7f16\u9020\u753b\u9762\u7ec6\u8282\u3002"
+                ),
+            })
             continue
         items.append({
             "type": "text",
