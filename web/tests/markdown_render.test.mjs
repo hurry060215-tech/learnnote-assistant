@@ -2089,7 +2089,18 @@ context.fetch = async (url, options = {}) => {
   const value = String(url);
   if (value.endsWith("/api/tasks/source-media-task/rerun-from-media")) {
     rerunPayload = JSON.parse(options.body);
-    return { ok: true, json: async () => ({ task_id: "rerun-task" }) };
+    return {
+      ok: true,
+      json: async () => ({
+        task_id: "rerun-task",
+        source_task_id: "source-media-task",
+        task: {
+          id: "rerun-task",
+          source_task_id: "source-media-task",
+          source_media_path: "D:/Projects/learnnote-assistant/data/tasks/source-media-task/media.mp4"
+        }
+      })
+    };
   }
   if (value.endsWith("/api/tasks")) {
     return {
@@ -2101,6 +2112,12 @@ context.fetch = async (url, options = {}) => {
           phase: "queued",
           progress: 0,
           source_type: "local",
+          source_task_id: "source-media-task",
+          source_media_path: "D:/Projects/learnnote-assistant/data/tasks/source-media-task/media.mp4",
+          reuse: {
+            source_task_id: "source-media-task",
+            source_media_path: "D:/Projects/learnnote-assistant/data/tasks/source-media-task/media.mp4"
+          },
           visual_windows: []
         }]
       })
@@ -2117,6 +2134,26 @@ assert.equal(rerunPayload.visual_understanding, false);
 assert.equal(rerunPayload.llm_model, "vision-rerun");
 assert.equal(rerunPayload.llm_base_url, "https://models.example/v1");
 assert.equal(rerunPayload.llm_api_key, "sk-rerun");
+const rerunMetaHtml = context.resultMetaChipsHtml({
+  id: "rerun-task",
+  status: "queued",
+  phase: "queued",
+  progress: 0,
+  source_type: "local",
+  source_task_id: "source-media-task",
+  source_media_path: "D:/Projects/learnnote-assistant/data/tasks/source-media-task/media.mp4",
+  reuse: {
+    source_task_id: "source-media-task",
+    source_media_path: "D:/Projects/learnnote-assistant/data/tasks/source-media-task/media.mp4"
+  },
+  options: { visual_understanding: false },
+  visual_windows: []
+});
+const rerunNotice = context.rerunFromMediaNotice("source-media-task", "rerun-task");
+assert.match(rerunMetaHtml, /复用/);
+assert.match(rerunMetaHtml, /已下载媒体/);
+assert.match(rerunNotice, /完整笔记任务 rerun-task/);
+assert.match(rerunNotice, /不会录制页面/);
 
 let rejectedUploadCalled = false;
 context.fetch = async url => {

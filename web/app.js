@@ -92,6 +92,7 @@ let urlPreflightResourceUrl = "";
 let urlPreflightResult = null;
 let lastHealthData = null;
 let pendingLocalFile = null;
+let pendingRerunNotice = null;
 
 const els = {
   health: document.querySelector("#health"),
@@ -2205,9 +2206,11 @@ function resultMetaChipsHtml(task) {
   const blocked = gates.find(item => item.state === "fail" || item.state === "warn" || item.state === "wait");
   const windows = visualWindows(task);
   const selected = task.selected_resource || {};
+  const reuseEvidence = taskReuseEvidenceItem(task);
   const chips = [
     { state: taskStatusClass(task), label: statusText(task), value: `${task.progress || 0}%` },
     { state: "source", label: sourceText(task), value: selected.kind ? mediaKindText(selected.kind) : task.source_type || "-" },
+    reuseEvidence ? { state: "source", label: "复用", value: "已下载媒体" } : null,
     { state: task.media_path ? "pass" : "wait", label: "媒体", value: task.media_path ? "已落盘" : "待下载" },
     { state: task.transcript_path ? "pass" : "wait", label: "字幕", value: task.transcript_path ? "已生成" : "待转写" },
     {
@@ -2220,8 +2223,10 @@ function resultMetaChipsHtml(task) {
     blocked ? { state: blocked.state, label: "当前门", value: `${blocked.label} · ${blocked.value || blocked.state}` } : null
   ].filter(Boolean);
   const optionLine = optionText(task);
+  const notice = pendingRerunNotice?.taskId === task.id ? pendingRerunNotice.message : "";
   return `<div class="result-meta-chips" aria-label="任务阶段摘要">
     ${chips.map(chip => `<span class="${escapeHtml(chip.state)}"><b>${escapeHtml(chip.label)}</b>${escapeHtml(chip.value || "-")}</span>`).join("")}
+    ${notice ? `<small class="rerun-notice">${escapeHtml(notice)}</small>` : ""}
     ${optionLine ? `<small>${escapeHtml(optionLine)}</small>` : ""}
   </div>`;
 }
@@ -3087,6 +3092,14 @@ function taskReuseEvidenceItem(task) {
   };
 }
 
+function rerunFromMediaNotice(sourceTaskId, newTaskId, task = null) {
+  const sourceId = String(sourceTaskId || task?.source_task_id || task?.reuse?.source_task_id || "").trim();
+  const targetId = String(newTaskId || task?.id || "").trim();
+  const sourceText = sourceId ? `从任务 ${sourceId} 复用已下载 media.mp4` : "复用已下载 media.mp4";
+  const targetText = targetId ? `，新完整笔记任务 ${targetId}` : "";
+  return `${sourceText}${targetText}，正在进入转写、抽帧、视觉窗口和图文总结；不会录制页面。`;
+}
+
 function taskRouteEvidenceItems(task) {
   const selected = task?.selected_resource || {};
   const attempts = task?.download_attempts || [];
@@ -3160,6 +3173,10 @@ async function rerunTaskFromMedia(taskId) {
     return;
   }
   const data = await response.json();
+  pendingRerunNotice = {
+    taskId: data.task_id,
+    message: rerunFromMediaNotice(data.source_task_id || taskId, data.task_id, data.task)
+  };
   selectTask(data.task_id);
   selectedTab = "note";
   renderResultTabState();

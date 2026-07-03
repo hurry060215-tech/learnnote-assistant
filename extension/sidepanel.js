@@ -3439,7 +3439,7 @@ async function pollTask() {
   els.progressBar.style.width = `${currentTask.progress || 0}%`;
   renderStageRail(currentTask);
   els.taskPhase.textContent = currentTask.phase || "-";
-  els.taskMessage.textContent = currentTask.error_detail || currentTask.message || currentTask.phase;
+  els.taskMessage.textContent = currentTask.error_detail || rerunFromMediaProgressMessage(currentTask) || currentTask.message || currentTask.phase;
   if (currentTask.status === "success") {
     await loadResult();
     await loadTaskHistory();
@@ -4366,6 +4366,22 @@ function taskReuseEvidenceItem(task) {
   };
 }
 
+function rerunFromMediaNotice(sourceTaskId, newTaskId, task = null) {
+  const sourceId = String(sourceTaskId || task?.source_task_id || task?.reuse?.source_task_id || "").trim();
+  const targetId = String(newTaskId || task?.id || "").trim();
+  const sourceText = sourceId ? `从任务 ${sourceId} 复用已下载 media.mp4` : "复用已下载 media.mp4";
+  const targetText = targetId ? `，新完整笔记任务 ${targetId}` : "";
+  return `${sourceText}${targetText}，正在进入转写、抽帧、视觉窗口和图文总结；不会录制页面。`;
+}
+
+function rerunFromMediaProgressMessage(task) {
+  if (!taskReuseEvidenceItem(task)) return "";
+  if (task.status === "queued" || task.status === "running") {
+    return rerunFromMediaNotice(task.source_task_id, task.id, task);
+  }
+  return "";
+}
+
 function taskRouteEvidenceItems(task) {
   const selected = task?.selected_resource || {};
   const attempts = task?.download_attempts || [];
@@ -4464,6 +4480,7 @@ async function rerunTaskFromMedia(taskId) {
   selectedTab = "note";
   els.resultTabs.forEach(item => item.classList.toggle("active", item.dataset.tab === selectedTab));
   await loadTaskHistory();
+  els.taskMessage.textContent = rerunFromMediaNotice(data.source_task_id || taskId, data.task_id, data.task);
   pollTask();
 }
 

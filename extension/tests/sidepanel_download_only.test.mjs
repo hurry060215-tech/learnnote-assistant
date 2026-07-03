@@ -249,7 +249,18 @@ context.fetch = async (url, options = {}) => {
   const value = String(url);
   if (value.endsWith("/api/tasks/download-only-task/rerun-from-media")) {
     rerunPayload = JSON.parse(options.body);
-    return { ok: true, json: async () => ({ task_id: "rerun-side-task" }) };
+    return {
+      ok: true,
+      json: async () => ({
+        task_id: "rerun-side-task",
+        source_task_id: "download-only-task",
+        task: {
+          id: "rerun-side-task",
+          source_task_id: "download-only-task",
+          source_media_path: "D:/Projects/learnnote-assistant/data/tasks/download-only-task/media.mp4"
+        }
+      })
+    };
   }
   if (value.endsWith("/api/tasks")) {
     return {
@@ -262,6 +273,12 @@ context.fetch = async (url, options = {}) => {
           progress: 100,
           message: "stop polling",
           source_type: "local",
+          source_task_id: "download-only-task",
+          source_media_path: "D:/Projects/learnnote-assistant/data/tasks/download-only-task/media.mp4",
+          reuse: {
+            source_task_id: "download-only-task",
+            source_media_path: "D:/Projects/learnnote-assistant/data/tasks/download-only-task/media.mp4"
+          },
           visual_windows: []
         }]
       })
@@ -278,6 +295,12 @@ context.fetch = async (url, options = {}) => {
           progress: 100,
           message: "stop polling",
           source_type: "local",
+          source_task_id: "download-only-task",
+          source_media_path: "D:/Projects/learnnote-assistant/data/tasks/download-only-task/media.mp4",
+          reuse: {
+            source_task_id: "download-only-task",
+            source_media_path: "D:/Projects/learnnote-assistant/data/tasks/download-only-task/media.mp4"
+          },
           visual_windows: []
         }
       })
@@ -295,4 +318,6 @@ assert.equal(rerunPayload.visual_understanding, false);
 assert.equal(rerunPayload.llm_model, "vision-rerun");
 assert.equal(rerunPayload.llm_base_url, "https://models.example/v1");
 assert.equal(rerunPayload.llm_api_key, "sk-rerun");
-assert.match(elements.get("#taskMessage").textContent, /当前切片/);
+assert.match(elements.get("#taskMessage").textContent, /完整笔记任务 rerun-side-task/);
+assert.match(elements.get("#taskMessage").textContent, /转写、抽帧、视觉窗口和图文总结/);
+assert.match(elements.get("#taskMessage").textContent, /不会录制页面/);
