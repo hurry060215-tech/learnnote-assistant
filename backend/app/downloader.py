@@ -1400,9 +1400,96 @@ def enrich_with_inferred_manifest_resources(resources: list[ResourceCandidate]) 
     return enriched
 
 
+def _same_url_host(left: str, right: str) -> bool:
+    return (urlparse(left or "").netloc or "").lower() == (urlparse(right or "").netloc or "").lower()
+
+
+def _shared_path_prefix_score(left: str, right: str) -> int:
+    left_parts = [part for part in urlparse(left or "").path.split("/") if part]
+    right_parts = [part for part in urlparse(right or "").path.split("/") if part]
+    if not left_parts or not right_parts:
+        return 0
+    shared = 0
+    for left_part, right_part in zip(left_parts, right_parts):
+        if left_part != right_part:
+            break
+        shared += 1
+    if shared >= 2:
+        return 3
+    if shared == 1:
+        return 1
+    parent_words = " ".join(left_parts[:-1] + right_parts[:-1]).lower()
+    return 1 if re.search(r"course|lesson|video|media|stream|dash|hls|vod", parent_words) else 0
+
+
+def _companion_audio_match_score(video: ResourceCandidate, audio: ResourceCandidate) -> int:
+    if effective_resource_kind(video) != "video" or effective_resource_kind(audio) != "audio":
+        return -100
+    score = 0
+    if video.tab_id is not None and audio.tab_id is not None and video.tab_id == audio.tab_id:
+        score += 2
+    if video.frame_id is not None and audio.frame_id is not None and video.frame_id == audio.frame_id:
+        score += 4
+    if video.playback_match and video.playback_match == audio.playback_match:
+        score += 4
+    elif audio.playback_match:
+        score += 1
+    if video.is_main_video and audio.is_main_video:
+        score += 2
+    if video.blob_url and video.blob_url == audio.blob_url:
+        score += 4
+    if _same_url_host(video.url, audio.url):
+        score += 2
+    score += _shared_path_prefix_score(video.url, audio.url)
+    if video.page_url and audio.page_url and video.page_url == audio.page_url:
+        score += 1
+    if video.time_stamp and audio.time_stamp and abs(video.time_stamp - audio.time_stamp) <= 5000:
+        score += 1
+    if video.current_time is not None and audio.current_time is not None and abs(video.current_time - audio.current_time) <= 3:
+        score += 2
+    if video.duration and audio.duration and abs(video.duration - audio.duration) <= 3:
+        score += 2
+    if video.source and audio.source and video.source == audio.source:
+        score += 1
+    return score
+
+
+def _attach_companion_audio_resources(resources: list[ResourceCandidate]) -> list[ResourceCandidate]:
+    audio_candidates = [item for item in resources if effective_resource_kind(item) == "audio" and _is_http_url(item.url)]
+    if not audio_candidates:
+        return resources
+    paired: list[ResourceCandidate] = []
+    for item in resources:
+        if effective_resource_kind(item) != "video" or item.audio_url:
+            paired.append(item)
+            continue
+        matches = sorted(
+            (
+                (_companion_audio_match_score(item, audio), audio.score or 0, index, audio)
+                for index, audio in enumerate(audio_candidates)
+            ),
+            key=lambda value: value[:3],
+            reverse=True,
+        )
+        best_score, _, _, audio = matches[0] if matches else (-100, 0, 0, None)
+        if audio is None or best_score < 6:
+            paired.append(item)
+            continue
+        merged = item.model_copy(deep=True)
+        merged.audio_url = audio.url
+        merged.audio_mime = audio.mime or "audio/mp4"
+        merged.score = min(100, max(merged.score or 0, score_candidate(merged)) + 7)
+        if not merged.playback_match and audio.playback_match:
+            merged.playback_match = audio.playback_match
+        for name, value in (audio.request_headers or {}).items():
+            merged.request_headers.setdefault(name, value)
+        paired.append(merged)
+    return paired
+
+
 def rank_media_candidates(resources: list[ResourceCandidate]) -> list[ResourceCandidate]:
     dedup: dict[str, tuple[int, ResourceCandidate]] = {}
-    for order, item in enumerate(enrich_with_inferred_manifest_resources(resources)):
+    for order, item in enumerate(_attach_companion_audio_resources(enrich_with_inferred_manifest_resources(resources))):
         if not item.url or item.url.startswith(("chrome-extension:", "data:")):
             continue
         kind = effective_resource_kind(item)
@@ -1831,7 +1918,11 @@ def preflight_media_resource(
             result = probe_once(headers, [*warnings, *variant_warnings])
             if first_result is None:
                 first_result = result
-            if result.downloadable or result.code == "drm_or_encrypted":
+            if result.downloadable:
+                if kind == "video" and candidate.audio_url:
+                    return _preflight_companion_audio(candidate, cookies, referer, timeout, result)
+                return result
+            if result.code == "drm_or_encrypted":
                 return result
         assert first_result is not None
         return first_result
@@ -1848,6 +1939,107 @@ def preflight_media_resource(
             request_header_names=_safe_request_header_names(last_headers),
             warnings=warnings,
         )
+
+
+def _preflight_companion_audio(
+    candidate: ResourceCandidate,
+    cookies: list[BrowserCookie],
+    referer: str,
+    timeout: int,
+    video_result: MediaPreflightResult,
+) -> MediaPreflightResult:
+    audio_url = candidate.audio_url or ""
+    warnings = [*video_result.warnings]
+    if not _is_http_url(audio_url):
+        return video_result.model_copy(update={
+            "downloadable": False,
+            "strategy": "companion-audio-probe",
+            "code": "download_forbidden",
+            "message": "伴随音频流缺少可访问的 HTTP(S) 地址，无法确认音视频合并任务可执行。",
+            "warnings": warnings,
+        })
+
+    audio_probe = candidate.model_copy(deep=True)
+    audio_probe.url = audio_url
+    audio_probe.resolved_url = ""
+    audio_probe.kind = "audio"
+    audio_probe.mime = candidate.audio_mime or "audio/mp4"
+    headers = download_headers_for_candidate(audio_probe, cookies, referer, url=audio_url)
+    headers.setdefault("Accept", "audio/*,video/*,*/*;q=0.8")
+    headers.setdefault("Range", "bytes=0-4095")
+
+    try:
+        with requests.get(audio_url, headers=headers, stream=True, timeout=timeout, allow_redirects=True) as response:
+            body = _read_probe_bytes(response)
+            content_type = response.headers.get("content-type", "")
+            content_disposition = response.headers.get("content-disposition", "")
+            content_length = _response_content_length(response)
+            base = {
+                "strategy": "companion-audio-probe",
+                "kind": video_result.kind or "video",
+                "url": candidate.url,
+                "resolved_url": video_result.resolved_url or candidate.resolved_url or candidate.url,
+                "status_code": response.status_code,
+                "content_type": content_type,
+                "content_disposition": content_disposition,
+                "content_length": content_length,
+                "bytes_checked": len(body),
+                "request_header_names": _safe_request_header_names(headers),
+                "warnings": warnings,
+            }
+            if response.status_code in {401, 403}:
+                return MediaPreflightResult(
+                    **base,
+                    ok=True,
+                    downloadable=False,
+                    code="auth_required",
+                    message=f"伴随音频流预检返回 HTTP {response.status_code}，需要刷新登录态、Referer 或 Cookie 后才能合并。",
+                )
+            if response.status_code >= 400:
+                return MediaPreflightResult(
+                    **base,
+                    ok=True,
+                    downloadable=False,
+                    code="download_forbidden",
+                    message=f"伴随音频流预检返回 HTTP {response.status_code}，当前分离音视频候选不可完整下载。",
+                )
+            if _textish_content_type(content_type) and _looks_like_login_or_error(body):
+                return MediaPreflightResult(
+                    **base,
+                    ok=True,
+                    downloadable=False,
+                    code="auth_required",
+                    message="伴随音频流预检拿到登录/错误页面，而不是音频数据。",
+                )
+            disguised_failure = _disguised_text_failure_code(body)
+            if disguised_failure:
+                return MediaPreflightResult(
+                    **base,
+                    ok=True,
+                    downloadable=False,
+                    code=disguised_failure,
+                    message="伴随音频流预检拿到伪装成二进制响应的登录/错误页面。",
+                )
+            if len(body) <= 0:
+                return MediaPreflightResult(
+                    **base,
+                    ok=True,
+                    downloadable=False,
+                    code="download_forbidden",
+                    message="伴随音频流预检没有读到任何音频字节，无法确认可合并。",
+                )
+    except requests.RequestException as exc:
+        return video_result.model_copy(update={
+            "downloadable": False,
+            "strategy": "companion-audio-probe",
+            "code": "download_forbidden",
+            "message": f"伴随音频流预检连接失败：{exc}",
+            "request_header_names": _safe_request_header_names(headers),
+            "warnings": warnings,
+        })
+
+    warnings.append("伴随音频流预检通过，正式任务会用 ffmpeg 合并 video-only 与 audio-only。")
+    return video_result.model_copy(update={"warnings": warnings})
 
 
 class MediaDownloader:

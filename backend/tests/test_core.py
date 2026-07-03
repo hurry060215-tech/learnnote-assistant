@@ -1786,6 +1786,80 @@ class DownloaderBoundaryTests(unittest.TestCase):
             self.assertEqual(candidates[0].url, "https://cdn.example.com/current-lesson.mp4")
             self.assertEqual(candidates[0].playback_match, "blob-source")
 
+    def test_independent_audio_candidate_pairs_with_matching_video_candidate(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            downloader = MediaDownloader(Path(tmp))
+            resources = [
+                ResourceCandidate(
+                    url="https://cdn.example.com/course/video-only.mp4?token=v",
+                    source="webRequest",
+                    kind="video",
+                    mime="video/mp4",
+                    score=86,
+                    tab_id=7,
+                    frame_id=3,
+                    playback_match="blob-same-frame",
+                    current_time=120,
+                    duration=600,
+                    request_headers={"Referer": "https://course.example.com/lesson"},
+                ),
+                ResourceCandidate(
+                    url="https://cdn.example.com/course/audio-only.m4a?token=a",
+                    source="webRequest",
+                    kind="audio",
+                    mime="audio/mp4",
+                    score=42,
+                    tab_id=7,
+                    frame_id=3,
+                    playback_match="blob-same-frame",
+                    current_time=121,
+                    duration=600,
+                    request_headers={"Accept-Language": "zh-CN"},
+                ),
+            ]
+
+            candidates = downloader._candidate_resources(resources)
+
+            self.assertEqual(len(candidates), 1)
+            self.assertEqual(candidates[0].url, "https://cdn.example.com/course/video-only.mp4?token=v")
+            self.assertEqual(candidates[0].audio_url, "https://cdn.example.com/course/audio-only.m4a?token=a")
+            self.assertEqual(candidates[0].audio_mime, "audio/mp4")
+            self.assertEqual(candidates[0].request_headers["Referer"], "https://course.example.com/lesson")
+            self.assertEqual(candidates[0].request_headers["Accept-Language"], "zh-CN")
+            self.assertEqual(downloader._strategy_for_candidate(candidates[0]), "direct-av-merge")
+
+    def test_unrelated_audio_candidate_is_not_attached_to_video_candidate(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            downloader = MediaDownloader(Path(tmp))
+            resources = [
+                ResourceCandidate(
+                    url="https://cdn.example.com/course/video-only.mp4?token=v",
+                    source="webRequest",
+                    kind="video",
+                    mime="video/mp4",
+                    score=86,
+                    tab_id=7,
+                    frame_id=3,
+                    playback_match="blob-same-frame",
+                ),
+                ResourceCandidate(
+                    url="https://ads.example.net/audio/ad-track.m4a",
+                    source="webRequest",
+                    kind="audio",
+                    mime="audio/mp4",
+                    score=70,
+                    tab_id=7,
+                    frame_id=99,
+                    playback_match="recent-media-request",
+                ),
+            ]
+
+            candidates = downloader._candidate_resources(resources)
+
+            self.assertEqual(len(candidates), 1)
+            self.assertEqual(candidates[0].url, "https://cdn.example.com/course/video-only.mp4?token=v")
+            self.assertEqual(candidates[0].audio_url, "")
+
     def test_extensionless_browser_media_candidate_is_downloadable(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             downloader = MediaDownloader(Path(tmp))

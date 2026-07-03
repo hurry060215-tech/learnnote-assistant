@@ -158,6 +158,45 @@ class ContentDispositionMediaHandler(QuietHandler):
         super().do_GET()
 
 
+class SplitAVPreflightHandler(QuietHandler):
+    required_referer = "https://course.example.com/player"
+    required_cookie = "AUTH=ok"
+    audio_forbidden = False
+    seen_audio_range = ""
+    video_body = b"\x00\x00\x00\x18ftypmp42" + (b"video-only" * 512)
+    audio_body = b"\x00\x00\x00\x18ftypM4A " + (b"audio-only" * 512)
+
+    def _authorized(self) -> bool:
+        return (
+            self.headers.get("Referer") == self.required_referer
+            and self.headers.get("Cookie") == self.required_cookie
+        )
+
+    def _send_media(self, body: bytes, content_type: str) -> None:
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self) -> None:
+        path = urlparse(self.path).path
+        if path == "/video-only.mp4":
+            if not self._authorized():
+                self.send_error(403, "missing browser context")
+                return
+            self._send_media(self.video_body, "video/mp4")
+            return
+        if path == "/audio-only.m4a":
+            self.__class__.seen_audio_range = self.headers.get("Range") or ""
+            if self.audio_forbidden or not self._authorized():
+                self.send_error(403, "missing audio context")
+                return
+            self._send_media(self.audio_body, "audio/mp4")
+            return
+        super().do_GET()
+
+
 class DirectJsonMediaHandler(QuietHandler):
     required_user_agent = "Chrome Test UA"
     required_x_requested_with = "XMLHttpRequest"
@@ -1363,6 +1402,73 @@ class DownloaderPriorityTests(unittest.TestCase):
             self.assertIn("-map", captured["cmd"])
             self.assertIn("0:v:0", captured["cmd"])
             self.assertIn("1:a:0", captured["cmd"])
+
+    def test_preflight_video_with_audio_url_requires_companion_audio_access(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            SplitAVPreflightHandler.audio_forbidden = False
+            SplitAVPreflightHandler.seen_audio_range = ""
+            server = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(SplitAVPreflightHandler, directory=str(root)))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                video_url = f"http://127.0.0.1:{server.server_port}/video-only.mp4"
+                audio_url = f"http://127.0.0.1:{server.server_port}/audio-only.m4a"
+                result = preflight_media_resource(
+                    ResourceCandidate(
+                        url=video_url,
+                        source="direct-response",
+                        kind="video",
+                        mime="video/mp4",
+                        audio_url=audio_url,
+                        audio_mime="audio/mp4",
+                        request_headers={"Referer": SplitAVPreflightHandler.required_referer},
+                    ),
+                    [BrowserCookie(name="AUTH", value="ok", domain="127.0.0.1")],
+                    "https://course.example.com/lesson",
+                )
+                self.assertTrue(result.ok)
+                self.assertTrue(result.downloadable)
+                self.assertEqual(result.strategy, "direct-file-probe")
+                self.assertIn("伴随音频流预检通过", " ".join(result.warnings))
+                self.assertEqual(SplitAVPreflightHandler.seen_audio_range, "bytes=0-4095")
+            finally:
+                server.shutdown()
+                server.server_close()
+
+    def test_preflight_video_with_audio_url_fails_when_companion_audio_is_forbidden(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            SplitAVPreflightHandler.audio_forbidden = True
+            SplitAVPreflightHandler.seen_audio_range = ""
+            server = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(SplitAVPreflightHandler, directory=str(root)))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                video_url = f"http://127.0.0.1:{server.server_port}/video-only.mp4"
+                audio_url = f"http://127.0.0.1:{server.server_port}/audio-only.m4a"
+                result = preflight_media_resource(
+                    ResourceCandidate(
+                        url=video_url,
+                        source="direct-response",
+                        kind="video",
+                        mime="video/mp4",
+                        audio_url=audio_url,
+                        audio_mime="audio/mp4",
+                        request_headers={"Referer": SplitAVPreflightHandler.required_referer},
+                    ),
+                    [BrowserCookie(name="AUTH", value="ok", domain="127.0.0.1")],
+                    "https://course.example.com/lesson",
+                )
+                self.assertTrue(result.ok)
+                self.assertFalse(result.downloadable)
+                self.assertEqual(result.strategy, "companion-audio-probe")
+                self.assertEqual(result.code, "auth_required")
+                self.assertIn("伴随音频流预检返回 HTTP 403", result.message)
+            finally:
+                SplitAVPreflightHandler.audio_forbidden = False
+                server.shutdown()
+                server.server_close()
 
     def test_manifest_download_prefers_existing_resolved_url_for_probe(self) -> None:
         captured: dict = {}
