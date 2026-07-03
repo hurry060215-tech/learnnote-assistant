@@ -1264,7 +1264,8 @@ class ApiPipelineTests(unittest.TestCase):
                     self.assertTrue(task["audit"]["ok"])
                     audit_gates = {gate["key"]: gate for gate in task["audit"]["gates"]}
                     self.assertEqual(audit_gates["media"]["state"], "pass")
-                    self.assertEqual(audit_gates["transcript"]["state"], "skip")
+                    self.assertEqual(audit_gates["transcript"]["state"], "pass")
+                    self.assertEqual(audit_gates["transcript"]["value"], "browser subtitles saved")
                     self.assertEqual(audit_gates["visual"]["state"], "skip")
                     self.assertEqual(audit_gates["summary"]["state"], "skip")
                     self.assertTrue(Path(task["media_path"]).exists())
@@ -1302,6 +1303,7 @@ class ApiPipelineTests(unittest.TestCase):
                     self.assertIn("Download only lesson", diagnostics_export.text)
                     self.assertIn("模式：download_only", diagnostics_export.text)
                     self.assertIn("download-only route", diagnostics_export.text)
+                    self.assertIn("browser subtitles saved", diagnostics_export.text)
                     self.assertIn("direct-file", diagnostics_export.text)
                     self.assertIn("## Direct Extraction Evidence", diagnostics_export.text)
                     self.assertIn("No tab recording: yes", diagnostics_export.text)

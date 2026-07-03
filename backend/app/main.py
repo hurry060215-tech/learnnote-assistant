@@ -1023,18 +1023,22 @@ def task_audit_gates(task: TaskRecord) -> list[dict[str, str]]:
     selected_source = selected.source if selected else ""
     selected_match = selected.playback_match if selected else ""
     transcript_value = (
-        "download-only route"
+        "browser subtitles saved"
+        if is_download_only and has_transcript
+        else "download-only route"
         if is_download_only
-        else (
-            "transcript ready"
-            if has_transcript
-            else ("browser/page text fallback" if is_page_text and has_note else task.phase or "waiting")
-        )
+        else "transcript ready"
+        if has_transcript
+        else ("browser/page text fallback" if is_page_text and has_note else task.phase or "waiting")
     )
     transcript_detail = (
-        "media saved; rerun from media to transcribe"
+        "timestamped browser subtitles are available; rerun from media can reuse them"
+        if is_download_only and has_transcript
+        else "media saved; rerun from media to transcribe"
         if is_download_only
-        else ("timestamped transcript is available" if has_transcript else (task.summary_warning or "subtitle first, ASR fallback"))
+        else "timestamped transcript is available"
+        if has_transcript
+        else (task.summary_warning or "subtitle first, ASR fallback")
     )
     visual_count = len(task.visual_windows) or len(task.frame_grids) or diagnostics.get("frame_grid_count")
     visual_value = (
@@ -1084,7 +1088,11 @@ def task_audit_gates(task: TaskRecord) -> list[dict[str, str]]:
         {
             "key": "transcript",
             "label": "Transcript gate",
-            "state": _audit_gate_state(task, has_transcript or (is_page_text and has_note), skipped=is_download_only),
+            "state": _audit_gate_state(
+                task,
+                has_transcript or (is_page_text and has_note),
+                skipped=is_download_only and not has_transcript,
+            ),
             "value": transcript_value,
             "detail": transcript_detail,
         },
