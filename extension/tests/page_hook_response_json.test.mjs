@@ -84,7 +84,12 @@ const context = {
     chaoxing: {
       objectid: "https%3A%2F%2Fcdn.example.com%2Fchaoxing%2Fmaster.m3u8%3Ftoken%3Dobject",
       dtoken: "/api/ananas/video?id=42&dtoken=abc",
+      path: "/ananas/status/objectid-path?flag=normal",
+      uri: "/vod/play?id=uri-json&token=ok",
       mediaType: "video/mp4"
+    },
+    ordinary: {
+      path: "/ordinary/page"
     },
     generic: {
       data: "/api/playback/get?id=77&token=generic",
@@ -141,6 +146,9 @@ const resources = messages.flatMap(message => message.resources || []);
 const hls = resources.find(resource => resource.url === "https://cdn.example.com/json/master.m3u8?token=fetch-json");
 const objectHls = resources.find(resource => resource.url === "https://cdn.example.com/chaoxing/master.m3u8?token=object");
 const dtokenVideo = resources.find(resource => resource.url === "https://course.example.com/api/ananas/video?id=42&dtoken=abc");
+const pathVideo = resources.find(resource => resource.url === "https://course.example.com/ananas/status/objectid-path?flag=normal");
+const uriVideo = resources.find(resource => resource.url === "https://course.example.com/vod/play?id=uri-json&token=ok");
+const ordinaryPath = resources.find(resource => resource.url === "https://course.example.com/ordinary/page");
 const genericVideo = resources.find(resource => resource.url === "https://course.example.com/api/playback/get?id=77&token=generic");
 const splitVideo = resources.find(resource => resource.url === "https://cdn.example.com/dash/video-only.mp4?token=v");
 const splitAudio = resources.find(resource => resource.url === "https://cdn.example.com/dash/audio-only.m4a?token=a");
@@ -176,6 +184,16 @@ assert.ok(dtokenVideo, "expected Chaoxing-style dtoken field with video context 
 assert.equal(dtokenVideo.kind, "video");
 assert.equal(dtokenVideo.mime, "video/mp4");
 assert.equal(dtokenVideo.request_headers.Cookie, undefined);
+
+assert.ok(pathVideo, "expected Chaoxing-style path field with video context to expose extensionless video endpoint");
+assert.equal(pathVideo.kind, "video");
+assert.equal(pathVideo.mime, "video/mp4");
+
+assert.ok(uriVideo, "expected uri field with video context to expose extensionless video endpoint");
+assert.equal(uriVideo.kind, "video");
+assert.equal(uriVideo.mime, "video/mp4");
+
+assert.equal(ordinaryPath, undefined, "expected ordinary path field without media context to stay out of media candidates");
 
 assert.ok(genericVideo, "expected generic JSON data field with sibling mimeType to expose extensionless video endpoint");
 assert.equal(genericVideo.kind, "video");

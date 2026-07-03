@@ -8,7 +8,7 @@
   const MEDIA_HINT_RE = new RegExp(`\\.(?:${MEDIA_EXT_PATTERN})(?:[?#]|["'\\s<>]|$)`, "i");
   const FRAGMENT_RE = /\.(?:m4s|ts)(?:\?|#|$)/i;
   const TEXT_TYPE_RE = /json|text|javascript|mpegurl|dash\+xml|xml|x-mpegurl/i;
-  const JSON_MEDIA_KEY_RE = /(url|src|file|fileid|objectid|dtoken|download|httpmd|play|media|video|audio|stream|source|hls|m3u8|dash|mpd|segment|fragment|chunk|subtitle|caption)/i;
+  const JSON_MEDIA_KEY_RE = /(url|uri|path|src|file|fileid|objectid|dtoken|download|httpmd|play|media|video|audio|stream|source|hls|m3u8|dash|mpd|segment|fragment|chunk|subtitle|caption)/i;
   const JSON_MIME_KEY_RE = /(mime|type|format|content.?type|media.?type)/i;
   const GLOBAL_MEDIA_NAME_RE = /(^__.*(play|player|media|video|audio|stream|hls|dash|m3u8|mpd))|((play|player|media|video|audio|stream|hls|dash|m3u8|mpd).*(config|info|data|url|source|sources|list)$)/i;
   const GLOBAL_MEDIA_KEYS = [

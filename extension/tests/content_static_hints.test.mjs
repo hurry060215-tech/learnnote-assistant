@@ -120,6 +120,15 @@ const onclickPlayer = new FakeElement("button", {
 const paramPlayer = new FakeElement("div", {
   "data-params": "objectid=ignored&play=https%3A%2F%2Fcdn.example.com%2Fstatic%2Fparam-lesson.mp4%3Ftoken%3Dparam"
 });
+const lazyPathPlayer = new FakeElement("div", {
+  "data-path": "/ananas/status/objectid-lazy?flag=normal"
+});
+const lazyUriPlayer = new FakeElement("div", {
+  "data-uri": "/vod/play?id=uri-lazy&token=ok"
+});
+const ordinaryPathLink = new FakeElement("a", {
+  "data-path": "/ordinary/page"
+});
 const configPlayer = new FakeElement("div", {
   "data-config": "open('/static/plain-attr.mp4?token=attr-plain')"
 });
@@ -186,7 +195,7 @@ sameOriginIframe.contentDocument = {
     textContent: ""
   }
 };
-const html = new FakeElement("html", {}, [player, packedPlayer, doubleEncodedPlayer, onclickPlayer, paramPlayer, configPlayer, nakedPlayer, vendorPlayer, preloadVideo, preloadHls, prefetchPlayApi, ogVideo, htmlVideo, script, plainEncodedScript, plainDoubleEncodedScript, mixedEncodedScript, jsEscapedScript, jsEscapedPayloadScript, nestedMediaKeyScript, endpointContainerScript, segmentScript, plainUrlScript, srcdocIframe, sameOriginIframe]);
+const html = new FakeElement("html", {}, [player, packedPlayer, doubleEncodedPlayer, onclickPlayer, paramPlayer, lazyPathPlayer, lazyUriPlayer, ordinaryPathLink, configPlayer, nakedPlayer, vendorPlayer, preloadVideo, preloadHls, prefetchPlayApi, ogVideo, htmlVideo, script, plainEncodedScript, plainDoubleEncodedScript, mixedEncodedScript, jsEscapedScript, jsEscapedPayloadScript, nestedMediaKeyScript, endpointContainerScript, segmentScript, plainUrlScript, srcdocIframe, sameOriginIframe]);
 
 let messageListener = null;
 const context = {
@@ -280,6 +289,9 @@ const vodEndpoint = response.resources.find(item => item.url === "https://media.
 const hlsSegment = response.resources.find(item => item.url === "https://cdn.example.com/static/hls/segment-001.ts?token=seg");
 const onclickHls = response.resources.find(item => item.url === "https://cdn.example.com/static/onclick-master.m3u8?token=click");
 const paramVideo = response.resources.find(item => item.url === "https://cdn.example.com/static/param-lesson.mp4?token=param");
+const lazyPathEndpoint = response.resources.find(item => item.url === "https://course.example.com/ananas/status/objectid-lazy?flag=normal");
+const lazyUriEndpoint = response.resources.find(item => item.url === "https://course.example.com/vod/play?id=uri-lazy&token=ok");
+const ordinaryPathEndpoint = response.resources.find(item => item.url === "https://course.example.com/ordinary/page");
 const plainAttrVideo = response.resources.find(item => item.url === "https://course.example.com/static/plain-attr.mp4?token=attr-plain");
 const nakedAttrHls = response.resources.find(item => item.url === "https://course.example.com/static/naked-master.m3u8?token=naked");
 const vendorAttrHls = response.resources.find(item => item.url === "https://cdn.example.com/static/vendor/master.m3u8?token=vendor");
@@ -392,6 +404,18 @@ assert.ok(paramVideo, "expected data-params scan to expose embedded encoded mp4 
 assert.equal(paramVideo.kind, "video");
 assert.equal(paramVideo.source, "domHint");
 assert.match(paramVideo.label, /data-params/);
+
+assert.ok(lazyPathEndpoint, "expected lazy data-path playback endpoint to be detected");
+assert.equal(lazyPathEndpoint.kind, "video");
+assert.equal(lazyPathEndpoint.source, "domHint");
+assert.match(lazyPathEndpoint.label, /data-path/);
+
+assert.ok(lazyUriEndpoint, "expected lazy data-uri playback endpoint to be detected");
+assert.equal(lazyUriEndpoint.kind, "video");
+assert.equal(lazyUriEndpoint.source, "domHint");
+assert.match(lazyUriEndpoint.label, /data-uri/);
+
+assert.equal(ordinaryPathEndpoint, undefined, "expected ordinary data-path navigation value to stay out of media candidates");
 
 assert.ok(plainAttrVideo, "expected data-config scan to expose embedded plain relative mp4 URL");
 assert.equal(plainAttrVideo.kind, "video");

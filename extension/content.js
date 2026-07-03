@@ -14,6 +14,8 @@ const STATIC_MEDIA_ATTRS = [
   "data-video-url",
   "data-audio-url",
   "data-play-url",
+  "data-path",
+  "data-uri",
   "data-media-url",
   "data-stream-url",
   "data-hls-url",
@@ -40,8 +42,8 @@ const STATIC_MEDIA_SELECTOR = STATIC_MEDIA_ATTRS.map(name => `[${name}]`).join("
 const STATIC_FIELD_RE = /(["']?[A-Za-z_$][A-Za-z0-9_$.-]{0,79}["']?)\s*[:=]\s*["']((?:\\u[0-9a-fA-F]{4}|\\x[0-9a-fA-F]{2}|\\.|[^"'<>\\\s]){4,})["']/gi;
 const STATIC_CONTAINER_FIELD_RE = /(["']?[A-Za-z_$][A-Za-z0-9_$.-]{0,79}["']?)\s*[:=]\s*[\[{]/gi;
 const STATIC_QUOTED_VALUE_RE = /["']((?:\\u[0-9a-fA-F]{4}|\\x[0-9a-fA-F]{2}|\\.|[^"'<>\\\s]){4,})["']/gi;
-const STATIC_MEDIA_KEY_RE = /(url|src|file|fileid|objectid|dtoken|download|httpmd|play|media|video|audio|stream|source|hls|m3u8|dash|mpd|segment|fragment|chunk|subtitle|caption)/i;
-const STATIC_ATTRIBUTE_KEY_RE = /(url|src|file|objectid|dtoken|download|httpmd|play|player|config|option|param|media|video|audio|stream|source|hls|m3u8|dash|mpd|segment|fragment|chunk|subtitle|caption)/i;
+const STATIC_MEDIA_KEY_RE = /(url|uri|path|src|file|fileid|objectid|dtoken|download|httpmd|play|media|video|audio|stream|source|hls|m3u8|dash|mpd|segment|fragment|chunk|subtitle|caption)/i;
+const STATIC_ATTRIBUTE_KEY_RE = /(url|uri|path|src|file|objectid|dtoken|download|httpmd|play|player|config|option|param|media|video|audio|stream|source|hls|m3u8|dash|mpd|segment|fragment|chunk|subtitle|caption)/i;
 const VISIBLE_SUBTITLE_HINT_RE = /(subtitle|subtitles|caption|captions|closed.?caption|texttrack|danmu|danmaku|barrage|\bcc\b|字幕|弹幕)/i;
 const VISIBLE_SUBTITLE_ROLE_RE = /^(log|status|marquee)$/i;
 const B64ISH_RE = /^[A-Za-z0-9+/_=-]{16,}$/;
