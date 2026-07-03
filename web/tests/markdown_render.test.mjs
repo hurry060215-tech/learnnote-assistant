@@ -166,6 +166,12 @@ assert.equal(context.preferredInitialTask([
   { id: "stale-queued", status: "queued", source_type: "page_text" },
   { id: "usable-success", status: "success", source_type: "local", note_path: "note.md" }
 ]).id, "usable-success");
+assert.deepEqual(context.sortedVisibleTasks([
+  { id: "latest-failed", status: "failed", source_type: "current_page" },
+  { id: "stale-queued", status: "queued", source_type: "page_text" },
+  { id: "older-success", status: "success", source_type: "local", note_path: "note.md" },
+  { id: "selected-success", status: "success", source_type: "local", note_path: "note.md" }
+], "selected-success").map(task => task.id), ["selected-success", "older-success", "stale-queued", "latest-failed"]);
 assert.match(stylesCss, /@media \(max-width: 900px\)[\s\S]*body\s*\{[\s\S]*min-width:\s*0;[\s\S]*overflow-x:\s*hidden;/);
 assert.match(stylesCss, /@media \(max-width: 900px\)[\s\S]*\.app-shell,[\s\S]*max-width:\s*100vw;/);
 assert.equal(elements.get("#browserBridgeStatus").classList.contains("capture-status-grid"), true);

@@ -227,6 +227,26 @@ function preferredInitialTask(list) {
     || null;
 }
 
+function taskStudyRank(task, currentTaskId = selectedTaskId) {
+  if (!task) return 90;
+  if (task.id && task.id === currentTaskId) return 0;
+  if (task.status === "running") return 1;
+  if (task.status === "success" && task.note_path) return 2;
+  if (task.status === "success" && (task.media_path || visualWindows(task).length)) return 3;
+  if (task.status === "success") return 4;
+  if (task.status === "queued") return 5;
+  if (task.status === "failed" && task.note_path) return 6;
+  if (task.status === "failed") return 7;
+  return 8;
+}
+
+function sortedVisibleTasks(list, currentTaskId = selectedTaskId) {
+  return (Array.isArray(list) ? list : [])
+    .map((task, index) => ({ task, index }))
+    .sort((a, b) => taskStudyRank(a.task, currentTaskId) - taskStudyRank(b.task, currentTaskId) || a.index - b.index)
+    .map(item => item.task);
+}
+
 async function fetchJson(url, options = {}) {
   const response = await fetch(url, options);
   const contentType = response.headers?.get?.("content-type") || "";
@@ -2216,7 +2236,7 @@ function renderTasks() {
   els.runningCount.textContent = String(tasks.filter(task => task.status === "running" || task.status === "queued").length);
   els.failedCount.textContent = String(tasks.filter(task => task.status === "failed").length);
 
-  const visibleTasks = tasks.filter(taskMatchesFilters);
+  const visibleTasks = sortedVisibleTasks(tasks.filter(taskMatchesFilters), selectedTaskId);
 
   if (!tasks.length) {
     els.tasks.innerHTML = emptyTaskQueueHtml();
