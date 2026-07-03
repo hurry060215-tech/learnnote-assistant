@@ -124,8 +124,6 @@ assert.match(elements.get("#taskHistory").innerHTML, /2 窗口/);
 const successHistoryCard = elements.get("#taskHistory").innerHTML.split('data-id="task-history-failed"')[0];
 assert.doesNotMatch(successHistoryCard, /1 次尝试/);
 
-await context.selectHistoryTask("task-history-1");
-
 assert.match(elements.get("#result").innerHTML, /History lesson/);
 assert.match(elements.get("#result").innerHTML, /Generated note/);
 assert.match(elements.get("#result").innerHTML, /history transcript gate/);

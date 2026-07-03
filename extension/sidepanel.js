@@ -845,6 +845,15 @@ async function loadTaskHistory() {
   try {
     const data = await fetch(`${backendUrl}/api/tasks`).then(r => r.json());
     taskHistory = data.tasks || [];
+    if (!currentTaskId) {
+      const previewTask = sortedHistoryTasks(taskHistory, "")[0];
+      if (previewTask?.id) {
+        currentTaskId = previewTask.id;
+        transcriptCache = null;
+        lastNote = "";
+        await loadResult();
+      }
+    }
     renderTaskHistory();
   } catch {
     els.taskHistory.className = "task-history muted";
