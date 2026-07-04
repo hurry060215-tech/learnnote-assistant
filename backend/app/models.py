@@ -17,6 +17,8 @@ TaskPhase = Literal[
     "completed",
     "failed",
 ]
+TaskMode = Literal["video", "page_text", "download_only", "local", "rerun_from_media"]
+CurrentPageTaskMode = Literal["video", "page_text", "download_only"]
 
 
 class ResourceCandidate(BaseModel):
@@ -123,7 +125,7 @@ class BrowserSubtitleCue(BaseModel):
 
 
 class CurrentPageTaskRequest(BaseModel):
-    mode: Literal["video", "page_text", "download_only"] = "video"
+    mode: CurrentPageTaskMode = "video"
     page_url: str
     title: str = ""
     page_text: str = ""
@@ -239,7 +241,7 @@ class DownloadAttempt(BaseModel):
 class TaskRecord(BaseModel):
     id: str
     source_type: Literal["current_page", "local", "page_text"]
-    mode: str = "video"
+    mode: TaskMode = "video"
     title: str
     page_url: str = ""
     phase: TaskPhase = "queued"

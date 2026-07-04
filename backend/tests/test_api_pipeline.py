@@ -1659,6 +1659,7 @@ class ApiPipelineTests(unittest.TestCase):
                     rerun_task = self.client.get(f"/api/tasks/{rerun_task_id}").json()["task"]
                     self.assertEqual(rerun_task["status"], "success")
                     self.assertEqual(rerun_task["source_type"], "local")
+                    self.assertEqual(rerun_task["mode"], "rerun_from_media")
                     self.assertEqual(rerun_task["source_task_id"], task_id)
                     self.assertEqual(rerun_task["source_media_path"], source_media_path)
                     self.assertEqual(rerun_task["page_url"], payload["page_url"])
