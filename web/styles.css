@@ -226,6 +226,12 @@ h1 {
   background: #f7f9fc;
 }
 
+#resultPanel,
+#tasks,
+#optionsDisclosure {
+  scroll-margin-top: 82px;
+}
+
 .panel-heading {
   display: grid;
   gap: 4px;
@@ -9914,6 +9920,12 @@ body.reading-mode .app-shell {
     max-height: none;
     overflow: visible;
     padding-right: 0;
+  }
+
+  #resultPanel,
+  #tasks,
+  #optionsDisclosure {
+    scroll-margin-top: 110px;
   }
 }
 
