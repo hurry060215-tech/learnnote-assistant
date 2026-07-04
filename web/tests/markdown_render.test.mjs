@@ -243,9 +243,16 @@ assert.match(elements.get("#sourceWorkflow").innerHTML, /当前页直取/);
 assert.match(elements.get("#sourceWorkflow").innerHTML, /待候选/);
 assert.match(elements.get("#sourceWorkflow").innerHTML, /20秒 · 3x3/);
 assert.match(elements.get("#sourceWorkflow").innerHTML, /非录制/);
+assert.match(elements.get("#sourceRouteRail").innerHTML, /class="source-route-item idle selected"/);
+assert.match(elements.get("#sourceRouteRail").innerHTML, /浏览器直取/);
+assert.match(elements.get("#sourceRouteRail").innerHTML, /本地视频/);
+assert.match(elements.get("#sourceRouteRail").innerHTML, /链接解析/);
+assert.match(stylesCss, /\.source-route-rail\s*\{/);
+assert.match(stylesCss, /\.source-route-item\.blocked\s*\{/);
 assert.match(indexHtml, /id="toggleWorkspaceButton"/);
 assert.match(indexHtml, /styles\.css\?v=20260704-reuse-ui/);
 assert.match(indexHtml, /app\.js\?v=20260704-reuse-ui/);
+assert.match(indexHtml, /id="sourceRouteRail"/);
 assert.match(indexHtml, /id="urlPreflightReport"/);
 assert.match(indexHtml, /href="#optionsDisclosure" title="模板"/);
 assert.doesNotMatch(indexHtml, /href="#settings" title="模板"/);
@@ -2099,6 +2106,49 @@ assert.match(browserWorkflowHtml, /data-source-workflow-action="copy-backend"/);
 assert.match(browserWorkflowHtml, /data-source-workflow-action="switch-local"/);
 assert.match(browserWorkflowHtml, /class="active"/);
 assert.match(browserWorkflowHtml, /data-select-workflow-task="task-workflow-browser"/);
+
+vm.runInContext(`tasks = ${JSON.stringify([
+  {
+    id: "rail-browser",
+    title: "Current page rail",
+    status: "running",
+    phase: "downloading",
+    progress: 42,
+    source_type: "current_page",
+    selected_resource: { kind: "hls", source: "webRequest" }
+  },
+  {
+    id: "rail-local",
+    title: "Local rail",
+    status: "success",
+    phase: "completed",
+    progress: 100,
+    source_type: "local",
+    media_path: "D:/Projects/learnnote-assistant/data/tasks/rail-local/media.mp4",
+    note_path: "D:/Projects/learnnote-assistant/data/tasks/rail-local/note.md",
+    visual_windows: [{ id: "W001" }]
+  },
+  {
+    id: "rail-url",
+    title: "Bad <script>",
+    status: "failed",
+    phase: "failed",
+    progress: 100,
+    source_type: "current_page",
+    error_code: "download_forbidden",
+    selected_resource: { kind: "video", source: "manual", request_type: "manual-forced" }
+  }
+])};`, context);
+const routeRailHtml = context.sourceRouteRailHtml();
+assert.match(routeRailHtml, /data-source-route="browser"/);
+assert.match(routeRailHtml, /data-task-id="rail-browser"/);
+assert.match(routeRailHtml, />42%<\/small>/);
+assert.match(routeRailHtml, /class="source-route-item ready"/);
+assert.match(routeRailHtml, /已成稿/);
+assert.match(routeRailHtml, /class="source-route-item blocked"/);
+assert.match(routeRailHtml, /download_forbidden/);
+assert.doesNotMatch(routeRailHtml, /<script>/);
+vm.runInContext(`tasks = [];`, context);
 
 const localWorkflowHtml = context.sourceWorkflowHtml("local", null);
 assert.match(localWorkflowHtml, /本地视频/);

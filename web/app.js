@@ -117,6 +117,7 @@ const els = {
   browserRefreshButton: document.querySelector("#browserRefreshButton"),
   browserBridgeStatus: document.querySelector("#browserBridgeStatus"),
   browserRouteSummary: document.querySelector("#browserRouteSummary"),
+  sourceRouteRail: document.querySelector("#sourceRouteRail"),
   sourceWorkflow: document.querySelector("#sourceWorkflow"),
   fileInput: document.querySelector("#fileInput"),
   fileName: document.querySelector("#fileName"),
@@ -975,6 +976,80 @@ function workflowTaskForSource(source) {
   return preferredCurrentPageTask() || latestCurrentPageTask();
 }
 
+function sourceRouteRailItem(source) {
+  const task = workflowTaskForSource(source);
+  const hasMedia = Boolean(task?.media_path);
+  const hasNote = Boolean(task?.note_path);
+  const failed = task?.status === "failed";
+  const running = task?.status === "running" || task?.status === "queued";
+  const windows = task ? visualWindows(task) : [];
+  const sourceMeta = {
+    browser: {
+      label: "当前页",
+      title: "浏览器直取",
+      detail: "扩展交接播放器、请求和一次性 Cookie",
+      empty: "待扩展交接"
+    },
+    local: {
+      label: "本地",
+      title: "本地视频",
+      detail: "拖入文件后复用转写、切片、图文总结",
+      empty: "待选择文件"
+    },
+    url: {
+      label: "链接",
+      title: "链接解析",
+      detail: "页面、直连、HLS/DASH 先预检再下载",
+      empty: "待填写 URL"
+    }
+  }[source];
+  const status = hasNote
+    ? "已成稿"
+    : hasMedia
+      ? "已下载"
+      : failed
+        ? (task.error_code || "需兜底")
+        : running
+          ? `${task.progress || 0}%`
+          : sourceMeta.empty;
+  const detail = hasNote
+    ? "笔记、转写和资料包可查看"
+    : windows.length
+      ? `${windows.length} 个视觉窗口已生成`
+      : hasMedia
+        ? "可继续切片总结"
+        : failed
+          ? source === "browser" ? "不录制，切本地上传兜底" : "查看诊断后重试"
+          : sourceMeta.detail;
+  const state = hasNote || hasMedia
+    ? "ready"
+    : failed
+      ? "blocked"
+      : running
+        ? "active"
+        : "idle";
+  return { source, task, state, status, detail, ...sourceMeta };
+}
+
+function sourceRouteRailHtml() {
+  return ["browser", "local", "url"].map(source => {
+    const item = sourceRouteRailItem(source);
+    const selected = selectedSource === source ? " selected" : "";
+    const taskAttr = item.task?.id ? ` data-task-id="${escapeHtml(item.task.id)}"` : "";
+    return `<button type="button" class="source-route-item ${escapeHtml(item.state)}${selected}" data-source-route="${escapeHtml(source)}"${taskAttr}>
+      <span>${escapeHtml(item.label)}</span>
+      <strong>${escapeHtml(item.title)}</strong>
+      <small>${escapeHtml(item.status)}</small>
+      <em>${escapeHtml(item.detail)}</em>
+    </button>`;
+  }).join("");
+}
+
+function renderSourceRouteRail() {
+  if (!els.sourceRouteRail) return;
+  els.sourceRouteRail.innerHTML = sourceRouteRailHtml();
+}
+
 function workflowSourceConfig(source, task = null) {
   if (source === "local") {
     return {
@@ -1338,6 +1413,7 @@ function sourceWorkflowHtml(source = selectedSource, task = workflowTaskForSourc
 }
 
 function renderSourceWorkflow() {
+  renderSourceRouteRail();
   if (!els.sourceWorkflow) return;
   els.sourceWorkflow.innerHTML = sourceWorkflowHtml();
 }
@@ -4866,6 +4942,19 @@ async function uploadSelectedFile(fileOverride = null) {
 els.sourceTabs.forEach(tab => {
   tab.onclick = () => setSource(tab.dataset.source);
 });
+
+if (els.sourceRouteRail) {
+  els.sourceRouteRail.addEventListener("click", async event => {
+    const route = event.target.closest("[data-source-route]");
+    if (!route) return;
+    setSource(route.dataset.sourceRoute);
+    if (route.dataset.taskId) {
+      selectTask(route.dataset.taskId);
+      renderTasks();
+      await renderDetail();
+    }
+  });
+}
 
 if (els.sourceWorkflow) {
   els.sourceWorkflow.addEventListener("click", async event => {
