@@ -1947,34 +1947,39 @@ function rememberUrlPreflight(resource, result) {
   if (!resource?.url || !result) return result;
   urlPreflightResourceUrl = resource.url;
   urlPreflightResult = result;
-  applyUrlPreflightToResource(resource);
+  applyPreflightResultToResource(resource, result);
   return result;
 }
 
-function applyUrlPreflightToResource(resource) {
-  if (!resource?.url || resource.url !== urlPreflightResourceUrl || !urlPreflightResult?.downloadable) return;
-  const kind = String(urlPreflightResult.kind || "").toLowerCase();
+function applyPreflightResultToResource(resource, result) {
+  if (!resource?.url || !result?.downloadable) return;
+  const kind = String(result.kind || "").toLowerCase();
   if (["video", "hls", "dash"].includes(kind)) {
     resource.kind = kind;
     resource.mime = mimeForKind(kind) || resource.mime;
   }
-  if (urlPreflightResult.resolved_url && urlPreflightResult.resolved_url !== resource.url) {
-    resource.resolved_url = urlPreflightResult.resolved_url;
+  if (result.resolved_url && result.resolved_url !== resource.url) {
+    resource.resolved_url = result.resolved_url;
   }
-  if (urlPreflightResult.content_type) {
-    const resolvedMime = urlPreflightResult.strategy === "direct-response-probe" && isTextResponseMime(urlPreflightResult.content_type)
+  if (result.content_type) {
+    const resolvedMime = result.strategy === "direct-response-probe" && isTextResponseMime(result.content_type)
       ? mimeForKind(resource.kind || kind)
-      : urlPreflightResult.content_type;
+      : result.content_type;
     if (resolvedMime) resource.mime = resolvedMime;
-    resource.headers = { ...(resource.headers || {}), "content-type": urlPreflightResult.content_type };
+    resource.headers = { ...(resource.headers || {}), "content-type": result.content_type };
   }
-  if (urlPreflightResult.content_disposition) {
-    resource.headers = { ...(resource.headers || {}), "content-disposition": urlPreflightResult.content_disposition };
+  if (result.content_disposition) {
+    resource.headers = { ...(resource.headers || {}), "content-disposition": result.content_disposition };
   }
-  const statusCode = Number(urlPreflightResult.status_code);
+  const statusCode = Number(result.status_code);
   if (Number.isFinite(statusCode) && statusCode > 0) resource.status_code = statusCode;
-  const contentLength = Number(urlPreflightResult.content_length);
+  const contentLength = Number(result.content_length);
   if (Number.isFinite(contentLength) && contentLength > 0) resource.content_length = contentLength;
+}
+
+function applyUrlPreflightToResource(resource) {
+  if (!resource?.url || resource.url !== urlPreflightResourceUrl || !urlPreflightResult?.downloadable) return;
+  applyPreflightResultToResource(resource, urlPreflightResult);
 }
 
 function rememberUrlPagePreflight(pageUrl, report) {
@@ -1982,9 +1987,14 @@ function rememberUrlPagePreflight(pageUrl, report) {
   urlPagePreflightResource = null;
   const selectedUrl = report?.selected_url || "";
   const candidates = Array.isArray(report?.candidates) ? report.candidates : [];
-  const selected = candidates
-    .map(item => item?.resource || {})
-    .find(resource => resource.url === selectedUrl || resource.resolved_url === selectedUrl);
+  const selectedItem = candidates.find(item => {
+    const resource = item?.resource || {};
+    const result = item?.preflight || {};
+    return resource.url === selectedUrl
+      || resource.resolved_url === selectedUrl
+      || result.resolved_url === selectedUrl;
+  });
+  const selected = selectedItem?.resource || {};
   if (selected?.url) {
     urlPagePreflightResource = {
       ...selected,
@@ -1992,6 +2002,7 @@ function rememberUrlPagePreflight(pageUrl, report) {
       request_type: selected.request_type || "manual-page-preflight",
       page_url: pageUrl
     };
+    applyPreflightResultToResource(urlPagePreflightResource, selectedItem?.preflight || {});
   }
   return report;
 }

@@ -2395,9 +2395,10 @@ context.fetch = async (url, options = {}) => {
               downloadable: true,
               strategy: "manifest-probe",
               kind: "hls",
-              resolved_url: "https://cdn.example.com/page/master.m3u8",
+              resolved_url: "https://media.example.com/page/final-master.m3u8",
               status_code: 200,
-              content_type: "application/vnd.apple.mpegurl"
+              content_type: "application/vnd.apple.mpegurl",
+              content_length: 654321
             }
           }]
         }
@@ -2509,7 +2510,7 @@ assert.equal(pagePreflights[0].resources.length, 0);
 assert.equal(pagePreflights[0].probe_limit, 3);
 assert.match(elements.get("#urlPreflightReport").className, /pass/);
 assert.match(elements.get("#urlPreflightReport").innerHTML, /2\/5/);
-assert.match(elements.get("#urlPreflightReport").innerHTML, /page\/master\.m3u8/);
+assert.match(elements.get("#urlPreflightReport").innerHTML, /page\/final-master\.m3u8/);
 
 await context.startUrlTask("video");
 
@@ -2518,6 +2519,10 @@ assert.equal(posts[5].page_url, "https://course.example.com/watch?id=page-prefli
 assert.equal(posts[5].resources.length, 1);
 assert.equal(posts[5].resources[0].url, "https://cdn.example.com/page/master.m3u8");
 assert.equal(posts[5].resources[0].kind, "hls");
+assert.equal(posts[5].resources[0].resolved_url, "https://media.example.com/page/final-master.m3u8");
+assert.equal(posts[5].resources[0].mime, "application/vnd.apple.mpegurl");
+assert.equal(posts[5].resources[0].status_code, 200);
+assert.equal(posts[5].resources[0].content_length, 654321);
 assert.equal(posts[5].resources[0].request_type, "manual-page-preflight");
 assert.equal(posts[5].resources[0].page_url, "https://course.example.com/watch?id=page-preflight");
 
