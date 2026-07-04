@@ -5505,6 +5505,27 @@ function taskQaUrl(taskId) {
   return `${backendUrl.replace(/\/$/, "")}/api/tasks/${encodeURIComponent(taskId)}/qa`;
 }
 
+function safeCitationUrl(value) {
+  const url = String(value || "").trim();
+  return /^(https?:\/\/|\/)/i.test(url) ? url : "";
+}
+
+function qaCitationHtml(item) {
+  const label = item?.label || item?.source || "证据";
+  const meta = [item?.window_id, item?.time_range].filter(Boolean).join(" · ");
+  const gridUrl = safeCitationUrl(item?.grid_url);
+  const targetTab = RESULT_TAB_NAMES.has(item?.target_tab) ? item.target_tab : item?.window_id ? "slices" : "";
+  return `<span class="${item?.window_id ? "visual" : ""}">
+    <b>${escapeHtml(label)}</b>
+    ${meta ? `<em>${escapeHtml(meta)}</em>` : ""}
+    ${escapeHtml(item?.text || "")}
+    ${(targetTab || gridUrl) ? `<small>
+      ${targetTab ? `<button type="button" data-switch-result-tab="${escapeHtml(targetTab)}">查看切片</button>` : ""}
+      ${gridUrl ? `<a href="${escapeHtml(gridUrl)}" target="_blank" rel="noreferrer">打开网格</a>` : ""}
+    </small>` : ""}
+  </span>`;
+}
+
 function qaPanelHtml(task) {
   const state = qaState.taskId === task?.id ? qaState : { taskId: task?.id || "", question: "", answer: "", source: "", warning: "", citations: [], historyCount: 0, recent: [], loading: false };
   const citations = Array.isArray(state.citations) ? state.citations : [];
@@ -5532,7 +5553,7 @@ function qaPanelHtml(task) {
     </div>
     ${state.warning ? `<p class="qa-warning">${escapeHtml(state.warning)}</p>` : ""}
     ${state.answer ? `<article class="markdown-note qa-answer">${markdownToHtml(state.answer)}</article>` : `<div class="result-empty compact">基于当前任务的笔记、字幕和画面索引回答；没有模型 Key 时会先给出本地摘录。</div>`}
-    ${citations.length ? `<div class="qa-citations">${citations.map(item => `<span><b>${escapeHtml(item.label || item.source || "证据")}</b>${escapeHtml(item.text || "")}</span>`).join("")}</div>` : ""}
+    ${citations.length ? `<div class="qa-citations">${citations.map(item => qaCitationHtml(item)).join("")}</div>` : ""}
     ${recent.length ? `<div class="qa-recent" aria-label="最近问答">${recent.map((item, index) => `
       <article>
         <span>Q${index + 1} · ${escapeHtml(item.source || "saved")}${item.citation_count ? ` · ${escapeHtml(item.citation_count)} 证据` : ""}</span>

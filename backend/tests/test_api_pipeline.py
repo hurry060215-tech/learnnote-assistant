@@ -273,7 +273,13 @@ class LocalUploadValidationTests(unittest.TestCase):
         visual_index.write_text(json.dumps({
             "task_id": task.id,
             "windows": [
-                {"id": "W001", "start": 0, "end": 60, "transcript_excerpt": "函数封装与返回值示例"}
+                {
+                    "id": "W001",
+                    "start": 0,
+                    "end": 60,
+                    "transcript_excerpt": "函数封装与返回值示例",
+                    "grid_url": "/api/tasks/qa-visual/grids/grid_000.jpg",
+                }
             ],
         }, ensure_ascii=False), encoding="utf-8")
         try:
@@ -298,8 +304,15 @@ class LocalUploadValidationTests(unittest.TestCase):
             self.assertEqual(payload["warning"], "missing_api_key")
             self.assertIn("函数封装", payload["answer"])
             self.assertTrue(payload["citations"])
+            visual_citation = next(item for item in payload["citations"] if item.get("source") == "visual_window")
+            self.assertEqual(visual_citation["window_id"], "W001")
+            self.assertEqual(visual_citation["time_range"], "00:00-01:00")
+            self.assertEqual(visual_citation["grid_url"], "/api/tasks/qa-visual/grids/grid_000.jpg")
+            self.assertEqual(visual_citation["target_tab"], "slices")
             self.assertEqual(payload["history_count"], 1)
             self.assertEqual(payload["history_item"]["source"], "local-extractive")
+            history_visual = next(item for item in payload["history_item"]["citations"] if item.get("source") == "visual_window")
+            self.assertEqual(history_visual["window_id"], "W001")
 
             history_response = self.client.get(f"/api/tasks/{task.id}/qa")
             self.assertEqual(history_response.status_code, 200)
@@ -326,6 +339,9 @@ class LocalUploadValidationTests(unittest.TestCase):
             self.assertIn("text/markdown", qa_export.headers["content-type"])
             self.assertIn("# LearnNote 问答记录", qa_export.text)
             self.assertIn("local-extractive", qa_export.text)
+            self.assertIn("W001", qa_export.text)
+            self.assertIn("00:00-01:00", qa_export.text)
+            self.assertIn("/api/tasks/qa-visual/grids/grid_000.jpg", qa_export.text)
 
             manifest = self.client.get(f"/api/tasks/{task.id}/exports/manifest")
             self.assertEqual(manifest.status_code, 200)

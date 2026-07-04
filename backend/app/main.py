@@ -299,6 +299,13 @@ def _format_timestamp(seconds: float | int | None) -> str:
     return f"{minutes:02d}:{secs:02d}"
 
 
+def _safe_seconds(value: object, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def _bundle_grid_ref(path_value: str, fallback_url: str = "") -> str:
     if path_value:
         filename = Path(path_value).name
@@ -1806,16 +1813,48 @@ def _task_qa_context(task: TaskRecord) -> tuple[str, list[dict]]:
             if not isinstance(window, dict):
                 continue
             window_id = window.get("id") or f"W{len(lines) + 1:03d}"
-            start = _format_timestamp(window.get("start", 0))
-            end = _format_timestamp(window.get("end", 0))
+            start_seconds = _safe_seconds(window.get("start"))
+            end_seconds = _safe_seconds(window.get("end"))
+            start = _format_timestamp(start_seconds)
+            end = _format_timestamp(end_seconds)
             excerpt = _clip_text(window.get("transcript_excerpt", ""), 260)
             lines.append(f"{window_id} {start}-{end} {excerpt}")
+            citations.append({
+                "source": "visual_window",
+                "label": window_id,
+                "text": _clip_text(excerpt or f"{window_id} {start}-{end}", 500),
+                "window_id": window_id,
+                "start": start_seconds,
+                "end": end_seconds,
+                "time_range": f"{start}-{end}",
+                "grid_url": str(window.get("grid_url") or ""),
+                "target_tab": "slices",
+            })
         if lines:
             excerpt = _clip_text("\n".join(lines), 10000)
             blocks.append(f"## VISUAL WINDOWS\n{excerpt}")
             citations.append({"source": "visual_windows", "label": "Visual window index", "text": _clip_text(excerpt, 500)})
 
     return "\n\n".join(blocks), citations
+
+
+def _rank_citations_for_question(citations: list[dict], terms: set[str], limit: int = 4) -> list[dict]:
+    ranked = []
+    for index, citation in enumerate(citations):
+        if not isinstance(citation, dict):
+            continue
+        text = " ".join([
+            str(citation.get("label") or ""),
+            str(citation.get("text") or ""),
+            str(citation.get("window_id") or ""),
+        ])
+        score = _score_excerpt(text, terms)
+        source = str(citation.get("source") or "")
+        if source.startswith("visual"):
+            score += 1
+        ranked.append((score, -index, citation))
+    ranked.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    return [citation for score, _index, citation in ranked if score > 0][:limit] or [citation for _score, _index, citation in ranked[:limit]]
 
 
 def _local_task_answer(question: str, context: str, citations: list[dict]) -> tuple[str, list[dict]]:
@@ -1847,7 +1886,18 @@ def _local_task_answer(question: str, context: str, citations: list[dict]) -> tu
     local_citations = [
         {"source": "local-excerpt", "label": f"Excerpt {index}", "text": text}
         for index, text in enumerate(selected, start=1)
-    ] or citations[:3]
+    ]
+    seen = {(item.get("source"), item.get("label"), item.get("text")) for item in local_citations}
+    for citation in _rank_citations_for_question(citations, terms):
+        key = (citation.get("source"), citation.get("label"), citation.get("text"))
+        if key in seen:
+            continue
+        local_citations.append(citation)
+        seen.add(key)
+        if len(local_citations) >= 8:
+            break
+    if not local_citations:
+        local_citations = citations[:3]
     return "\n".join(answer_lines), local_citations
 
 
@@ -1878,6 +1928,12 @@ def append_task_qa_history(task: TaskRecord, request: TaskQuestionRequest, resul
                 "source": _clip_text(str(citation.get("source") or ""), 120),
                 "label": _clip_text(str(citation.get("label") or ""), 120),
                 "text": _clip_text(str(citation.get("text") or ""), 800),
+                "window_id": _clip_text(str(citation.get("window_id") or ""), 80),
+                "time_range": _clip_text(str(citation.get("time_range") or ""), 80),
+                "grid_url": _clip_text(str(citation.get("grid_url") or ""), 500),
+                "target_tab": _clip_text(str(citation.get("target_tab") or ""), 40),
+                "start": citation.get("start") if isinstance(citation.get("start"), (int, float)) else None,
+                "end": citation.get("end") if isinstance(citation.get("end"), (int, float)) else None,
             }
             for citation in (result.get("citations") or [])[:12]
             if isinstance(citation, dict)
@@ -1921,7 +1977,12 @@ def render_qa_history_markdown(task: TaskRecord, history: list[dict] | None = No
                     continue
                 label = citation.get("label") or citation.get("source") or "证据"
                 text = citation.get("text") or ""
-                lines.append(f"- **{label}**：{text}")
+                meta = " · ".join(str(citation.get(key) or "") for key in ("window_id", "time_range") if citation.get(key))
+                grid = citation.get("grid_url") or ""
+                suffix = f"（{meta}）" if meta else ""
+                lines.append(f"- **{label}**{suffix}：{text}")
+                if grid:
+                    lines.append(f"  - 画面网格：{grid}")
             lines.append("")
     return "\n".join(lines).strip() + "\n"
 

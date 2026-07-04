@@ -10479,9 +10479,40 @@ body.reading-mode .app-shell {
   line-height: 1.5;
 }
 
+.qa-citations span.visual {
+  border-color: rgba(20, 99, 255, 0.22);
+  background: linear-gradient(180deg, #f8fbff, #ffffff);
+}
+
 .qa-citations b {
   color: var(--accent, #1769e8);
   font-size: 11px;
+}
+
+.qa-citations em {
+  color: #34507a;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 850;
+}
+
+.qa-citations small {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.qa-citations small button,
+.qa-citations small a {
+  width: auto;
+  border: 1px solid rgba(20, 99, 255, 0.2);
+  border-radius: 7px;
+  background: #eef5ff;
+  color: var(--accent, #1769e8);
+  padding: 4px 7px;
+  font-size: 11px;
+  font-weight: 850;
+  text-decoration: none;
 }
 
 .qa-recent {

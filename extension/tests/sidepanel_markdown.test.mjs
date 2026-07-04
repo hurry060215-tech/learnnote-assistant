@@ -130,6 +130,33 @@ assert.match(qaPanelRecentHtml, /class="qa-recent"/);
 assert.match(qaPanelRecentHtml, /如何复习函数封装/);
 assert.match(qaPanelRecentHtml, /先看输入输出/);
 assert.match(qaPanelRecentHtml, /2 证据/);
+vm.runInContext(`qaState = {
+  taskId: "side-qa-visual",
+  question: "画面里有哪些步骤？",
+  answer: "请回看 W001。",
+  source: "local-extractive",
+  warning: "",
+  citations: [{
+    source: "visual_window",
+    label: "W001",
+    text: "函数封装演示",
+    window_id: "W001",
+    time_range: "00:00:00-00:01:00",
+    grid_url: "/api/tasks/side-qa-visual/grids/grid_000.jpg",
+    target_tab: "slices"
+  }],
+  historyCount: 1,
+  recent: [],
+  loading: false
+}`, context);
+const qaPanelVisualHtml = context.qaPanelHtml({ id: "side-qa-visual" });
+assert.match(qaPanelVisualHtml, /qa-citations/);
+assert.match(qaPanelVisualHtml, /class="visual"/);
+assert.match(qaPanelVisualHtml, /W001/);
+assert.match(qaPanelVisualHtml, /00:00:00-00:01:00/);
+assert.match(qaPanelVisualHtml, /data-switch-result-tab="slices"/);
+assert.match(qaPanelVisualHtml, /打开网格/);
+assert.match(qaPanelVisualHtml, /\/api\/tasks\/side-qa-visual\/grids\/grid_000\.jpg/);
 
 vm.runInContext("captureLog = { restored: 3, updated_at: Date.now() - 45000 }", context);
 const captureHint = context.captureLogHintHtml();
