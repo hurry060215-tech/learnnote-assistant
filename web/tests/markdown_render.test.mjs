@@ -2158,7 +2158,7 @@ const routeBlockedHtml = context.browserRouteSummaryHtml({
   error_detail: "<script>bad()</script> encrypted"
 });
 assert.match(routeBlockedHtml, /browser-route-summary-card blocked/);
-assert.match(routeBlockedHtml, /不会录制或绕过 DRM/);
+assert.match(routeBlockedHtml, /不录制 · 不绕过 DRM · 不刷课/);
 assert.match(routeBlockedHtml, /本地视频兜底/);
 assert.match(routeBlockedHtml, /&lt;script&gt;bad\(\)&lt;\/script&gt; encrypted/);
 assert.doesNotMatch(routeBlockedHtml, /<script>bad/);
@@ -2292,7 +2292,8 @@ assert.match(failedWorkflowHtml, /DRM/);
 
 const routeEmptyHtml = context.browserRouteSummaryHtml(null);
 assert.match(routeEmptyHtml, /等待扩展侧栏创建当前页任务/);
-assert.match(routeEmptyHtml, /不做标签页录制/);
+assert.match(routeEmptyHtml, /不录制 · 不绕过 DRM · 不刷课/);
+assert.match(routeEmptyHtml, /mp4、mkv、webm、flv、m3u8、mpd/);
 assert.match(routeEmptyHtml, /data-browser-route-action="refresh"/);
 assert.match(routeEmptyHtml, /data-browser-route-action="copy-backend"/);
 assert.match(routeEmptyHtml, /data-browser-route-action="local-video"/);

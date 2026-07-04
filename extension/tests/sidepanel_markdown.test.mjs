@@ -1360,7 +1360,8 @@ assert.match(context.candidateConfidenceHtml({
 }), /resource-confidence low/);
 
 assert.match(context.preflightRecoveryText({ code: "auth_required" }), /已登录/);
-assert.match(context.preflightRecoveryText({ code: "drm_or_encrypted" }), /不会录制/);
+assert.match(context.preflightRecoveryText({ code: "drm_or_encrypted" }), /不录制 · 不绕过 DRM · 不刷课/);
+assert.match(context.preflightRecoveryText({ code: "drm_or_encrypted" }), /mp4、mkv、webm、flv、m3u8、mpd/);
 assert.match(context.preflightRecoveryText({ code: "download_forbidden" }), /Referer/);
 assert.match(context.preflightRecoveryText({ downloadable: true, kind: "video" }), /完整总结/);
 
@@ -1775,7 +1776,7 @@ assert.match(context.routeSummaryActionsHtml("blocked"), /data-route-action="loc
 assert.match(context.routeSummaryActionsHtml("blocked"), /data-route-action="text"/);
 assert.match(context.routeSummaryActionsHtml("blocked"), /data-route-action="redetect"/);
 assert.equal(context.currentStudyState(), "blocked");
-assert.match(context.currentStudyCopy("blocked").detail, /不会录制/);
+assert.match(context.currentStudyCopy("blocked").detail, /不录制 · 不绕过 DRM · 不刷课/);
 assert.match(context.currentStudyActionText("blocked"), /本地视频上传/);
 context.renderContext();
 assert.equal(context.playbackReadinessState(), "blocked");
@@ -1794,7 +1795,7 @@ assert.match(elements.get("#currentStudyCard").innerHTML, /转本地入口/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /workbench-local-fallback urgent/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /直取受限/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /上传本地视频/);
-assert.match(elements.get("#currentStudyCard").innerHTML, /不会录制页面/);
+assert.match(elements.get("#currentStudyCard").innerHTML, /不录制 · 不绕过 DRM · 不刷课/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /workbench-local-pipeline/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /本地落盘/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /视觉切片/);

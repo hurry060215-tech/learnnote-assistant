@@ -785,7 +785,7 @@ function directRouteCopy(task) {
       badge: "不可直取",
       title: task.error_code === "drm_or_encrypted" ? "最近任务遇到 DRM/不可还原媒体" : "最近任务没有拿到可下载视频",
       detail: task.error_detail || task.message || task.error_code || "无法直接下载",
-      hint: "不会录制或绕过 DRM。继续播放后重检，或切到本地视频入口上传文件。"
+      hint: `${directFailureBoundaryText()}。继续播放后重检，或切到本地视频入口上传文件。`
     };
   }
   if (state === "failed") {
@@ -800,7 +800,7 @@ function directRouteCopy(task) {
     badge: "等待",
     title: "等待扩展侧栏创建当前页任务",
     detail: "在课程页打开 Chrome/Edge Side Panel，先预检候选，再开始总结。",
-    hint: "只直取浏览器暴露的 mp4/FLV/AVI/m3u8/mpd 或 yt-dlp 可解析页面，不做标签页录制。"
+    hint: `只直取浏览器暴露的 ${directCapabilityFormatsText()} 或 yt-dlp 可解析页面，${directFailureBoundaryText()}。`
   };
 }
 
@@ -1604,7 +1604,7 @@ const DOWNLOAD_ERROR_CODES = new Set(["no_media_found", "auth_required", "drm_or
 const ERROR_GUIDES = {
   no_media_found: {
     title: "没有发现可直取的视频资源",
-    body: "可以先让页面视频播放几秒后重新检测；如果仍没有 mp4、FLV、AVI、m3u8 或 mpd，请改用本地视频上传。"
+    body: ""
   },
   auth_required: {
     title: "资源需要登录态",
@@ -1612,7 +1612,7 @@ const ERROR_GUIDES = {
   },
   drm_or_encrypted: {
     title: "页面触发了 DRM/EME 加密媒体信号",
-    body: "这个版本不会录制、破解或绕过 DRM。可直取 mp4、FLV、AVI、m3u8 或 mpd 不存在时，只能使用本地视频入口。"
+    body: ""
   },
   download_forbidden: {
     title: "媒体服务器拒绝下载",
@@ -1620,7 +1620,7 @@ const ERROR_GUIDES = {
   },
   unsupported_manifest: {
     title: "manifest 或分片无法合并",
-    body: "检测到了媒体线索，但它不是完整可下载的视频或播放列表。继续播放后重新检测，优先选择 m3u8/mpd 候选。"
+    body: ""
   },
   processing_failed: {
     title: "本地处理失败",
@@ -1628,9 +1628,45 @@ const ERROR_GUIDES = {
   }
 };
 
+function directCapabilityFormatsText() {
+  return healthDirectMediaFormats().split("/").filter(Boolean).join("、");
+}
+
+function directCapabilityManifestText() {
+  const direct = assistantCapabilities().direct_media || {};
+  return capabilityList(direct.manifests, ["m3u8", "mpd"], 2).join("/");
+}
+
+function directFailureBoundaryText() {
+  return healthDirectBoundaryText() || "不录制 · 不绕过 DRM · 不刷课";
+}
+
+function errorGuideForCode(code, fallbackBody = "") {
+  const guide = ERROR_GUIDES[code] || { title: "任务失败", body: fallbackBody || "请查看下载诊断里的尝试记录。" };
+  if (code === "no_media_found") {
+    return {
+      ...guide,
+      body: `可以先让页面视频播放几秒后重新检测；如果仍没有 ${directCapabilityFormatsText()}，请改用本地视频上传。`
+    };
+  }
+  if (code === "drm_or_encrypted") {
+    return {
+      ...guide,
+      body: `${directFailureBoundaryText()}。可直取 ${directCapabilityFormatsText()} 不存在时，只能使用本地视频入口。`
+    };
+  }
+  if (code === "unsupported_manifest") {
+    return {
+      ...guide,
+      body: `检测到了媒体线索，但它不是完整可下载的视频或播放列表。继续播放后重新检测，优先选择 ${directCapabilityManifestText()} 候选。`
+    };
+  }
+  return guide;
+}
+
 function failureGuide(task) {
   if (!task || task.status !== "failed") return "";
-  const guide = ERROR_GUIDES[task.error_code] || { title: "任务失败", body: task.error_detail || "请查看下载诊断里的尝试记录。" };
+  const guide = errorGuideForCode(task.error_code, task.error_detail);
   const attempts = task.download_attempts || [];
   const lastAttempt = attempts[attempts.length - 1] || null;
   const steps = recoveryStepItems(task);
@@ -1670,10 +1706,10 @@ function recoveryStepItems(task) {
     if (text && !steps.includes(text)) steps.push(text);
   };
   if (isChaoxingTask(task)) {
-    add("检测到学习通/超星页面线索：请先在原课程页真实播放几秒，让 ananas/播放接口暴露 m3u8、mp4 或带 Referer 的媒体请求；本工具只复用你当前登录态可访问的资源，不刷课、不伪造进度、不自动答题。");
+    add(`检测到学习通/超星页面线索：请先在原课程页真实播放几秒，让 ananas/播放接口暴露 ${directCapabilityFormatsText()} 或带 Referer 的媒体请求；本工具只复用你当前登录态可访问的资源，${directFailureBoundaryText()}，不伪造进度，不自动答题。`);
   }
   if (codes.has("drm_or_encrypted") || task?.drm_detected) {
-    add("不会录制、破解或绕过 DRM；没有可访问 mp4/FLV/AVI/m3u8/mpd 时，请改用本地视频入口。");
+    add(`${directFailureBoundaryText()}；没有可访问 ${directCapabilityFormatsText()} 时，请改用本地视频入口。`);
   }
   if (codes.has("auth_required")) {
     add("重新打开课程页并确认登录有效，播放几秒后立刻重新创建任务。");
@@ -1682,7 +1718,7 @@ function recoveryStepItems(task) {
     add("回到原页面继续播放后重新检测，优先选择带 Referer/Origin 或当前播放匹配的候选。");
   }
   if (codes.has("unsupported_manifest")) {
-    add("继续播放后重新检测，优先选择完整 m3u8/mpd，而不是孤立 ts/m4s 分片。");
+    add(`继续播放后重新检测，优先选择完整 ${directCapabilityManifestText()}，而不是孤立 ts/m4s 分片。`);
   }
   if (codes.has("no_media_found") || (!attempts.length && task?.status === "failed")) {
     add("先让视频实际播放几秒再重新检测；仍没有候选时上传本地视频。");

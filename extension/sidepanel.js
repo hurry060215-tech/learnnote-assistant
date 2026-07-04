@@ -1384,9 +1384,9 @@ function preflightFallbackStartMessage(result) {
 function preflightRecoveryText(result = {}) {
   const code = result.code || "";
   if (code === "auth_required") return "重新打开课程页并确认已登录，然后播放几秒后重新检测；Cookie 只会在点击任务时同步一次。";
-  if (code === "drm_or_encrypted") return "当前版本不会录制、破解或绕过 DRM；如果没有可访问 mp4/FLV/m3u8/mpd，请改用本地视频入口。";
+  if (code === "drm_or_encrypted") return `${directFailureBoundaryText()}；如果没有可访问 ${directCapabilityFormatsText()}，请改用本地视频入口。`;
   if (code === "download_forbidden") return "通常是 Referer、Cookie 或签名过期；回到原页面继续播放后立刻重新预检，或换一个候选资源。";
-  if (code === "unsupported_manifest") return "检测到的可能只是分片或非完整 manifest；继续播放后重新检测，优先选择 m3u8/mpd 候选。";
+  if (code === "unsupported_manifest") return `检测到的可能只是分片或非完整 manifest；继续播放后重新检测，优先选择 ${directCapabilityManifestText()} 候选。`;
   if (code === "no_media_found") return "当前页还没有暴露可直取资源；先播放几秒，等待媒体请求出现，再重新检测。";
   if (code === "preflight_failed") return "本地后端或扩展通信没有完成；确认 127.0.0.1 后端可用后重试。";
   if (result.downloadable) return "可以直接开始完整总结，或先用“下载到本地”验证可导出的 media.mp4。";
@@ -1418,10 +1418,10 @@ function recoveryStepItems(task) {
     if (text && !steps.includes(text)) steps.push(text);
   };
   if (isChaoxingTask(task)) {
-    add("检测到学习通/超星页面线索：请先在原课程页真实播放几秒，让 ananas/播放接口暴露 m3u8、mp4 或带 Referer 的媒体请求；本工具只复用你当前登录态可访问的资源，不刷课、不伪造进度、不自动答题。");
+    add(`检测到学习通/超星页面线索：请先在原课程页真实播放几秒，让 ananas/播放接口暴露 ${directCapabilityFormatsText()} 或带 Referer 的媒体请求；本工具只复用你当前登录态可访问的资源，${directFailureBoundaryText()}，不伪造进度，不自动答题。`);
   }
   if (codes.has("drm_or_encrypted") || task?.drm_detected) {
-    add("不会录制、破解或绕过 DRM；没有可访问 mp4/FLV/m3u8/mpd 时，请改用本地视频入口。");
+    add(`${directFailureBoundaryText()}；没有可访问 ${directCapabilityFormatsText()} 时，请改用本地视频入口。`);
   }
   if (codes.has("auth_required")) {
     add("重新打开课程页并确认登录有效，播放几秒后立刻重新创建任务。");
@@ -1430,7 +1430,7 @@ function recoveryStepItems(task) {
     add("回到原页面继续播放后重新检测，优先选择带 Referer/Origin 或当前播放匹配的候选。");
   }
   if (codes.has("unsupported_manifest")) {
-    add("继续播放后重新检测，优先选择完整 m3u8/mpd，而不是孤立 ts/m4s 分片。");
+    add(`继续播放后重新检测，优先选择完整 ${directCapabilityManifestText()}，而不是孤立 ts/m4s 分片。`);
   }
   if (codes.has("no_media_found") || (!attempts.length && task?.status === "failed")) {
     add("先让视频实际播放几秒再重新检测；仍没有候选时上传本地视频。");
@@ -2045,12 +2045,12 @@ function playbackReadinessCopy(state) {
     if (activeSrcObjectOnly(page?.active_video)) {
       return {
         title: "当前视频来自 MediaStream",
-        detail: "页面没有暴露可下载 URL；不会录制当前标签页，请使用本地视频入口或页面文本兜底。"
+        detail: `页面没有暴露可下载 URL；${directFailureBoundaryText()}，请使用本地视频入口或页面文本兜底。`
       };
     }
     return {
       title: "检测到 DRM/不可还原媒体",
-      detail: "不会录制、破解或绕过 DRM；没有可直取资源时请使用本地视频入口。"
+      detail: `${directFailureBoundaryText()}；没有可直取 ${directCapabilityFormatsText()} 时请使用本地视频入口。`
     };
   }
   if (state === "ready") {
@@ -2143,13 +2143,13 @@ function currentStudyCopy(state) {
       return {
         badge: "不可直取",
         title: "当前视频来自 MediaStream",
-        detail: "没有可交给后端下载的媒体 URL；不会录制标签页，请使用本地视频或页面文本兜底。"
+        detail: `没有可交给后端下载的媒体 URL；${directFailureBoundaryText()}，请使用本地视频或页面文本兜底。`
       };
     }
     return {
       badge: "不可直取",
       title: "当前页不能直接下载",
-      detail: "不会录制、破解或绕过 DRM。可以继续播放重检，或拖入本地视频走同一套笔记管线。"
+      detail: `${directFailureBoundaryText()}。可以继续播放重检，或拖入本地视频走同一套笔记管线。`
     };
   }
   if (state === "waiting") {
@@ -2162,7 +2162,7 @@ function currentStudyCopy(state) {
   return {
     badge: "等待播放",
     title: "播放课程后创建学习任务",
-    detail: "打开课程视频并播放几秒，再让扩展检测可访问的 mp4、FLV、HLS 或 DASH。"
+    detail: `打开课程视频并播放几秒，再让扩展检测可访问的 ${directCapabilityFormatsText()}。`
   };
 }
 
@@ -3370,6 +3370,19 @@ function healthDirectBoundaryText(data = lastHealthData) {
 
 function healthDirectChipText(data = lastHealthData) {
   return `${healthDirectMediaFormats(data)} · ${healthDirectBoundaryText(data)}`;
+}
+
+function directCapabilityFormatsText() {
+  return healthDirectMediaFormats().split("/").filter(Boolean).join("、");
+}
+
+function directCapabilityManifestText() {
+  const direct = assistantCapabilities().direct_media || {};
+  return capabilityList(direct.manifests, ["m3u8", "mpd"], 2).join("/");
+}
+
+function directFailureBoundaryText() {
+  return healthDirectBoundaryText() || "不录制 · 不绕过 DRM · 不刷课";
 }
 
 function healthDataChipText(data) {
