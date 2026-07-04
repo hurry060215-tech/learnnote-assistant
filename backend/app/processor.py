@@ -7,7 +7,7 @@ from pathlib import Path
 from urllib.parse import urldefrag
 
 from .config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
-from .downloader import DownloadError, MediaDownloader, effective_resource_kind, infer_manifest_url_from_fragment
+from .downloader import DownloadError, MediaDownloader, classify_resource, effective_resource_kind, infer_manifest_url_from_fragment
 from .media import build_frame_grids, extract_audio, extract_embedded_subtitle, extract_frames, normalize_video
 from .models import ActiveVideoInfo, BrowserSubtitleCue, CurrentPageTaskRequest, DownloadAttempt, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
 from .storage import get_task, save_task, task_dir, update_task, write_json
@@ -114,10 +114,12 @@ def enrich_resource_candidates_with_active_video(
     if not active_video:
         return resources
     enriched: list[ResourceCandidate] = []
+    matched_active_src = False
     for resource in resources:
         item = resource.model_copy(deep=True)
         match = _active_video_resource_match(active_video, item)
         if match:
+            matched_active_src = True
             item.is_main_video = True
             if not item.playback_match:
                 item.playback_match = match
@@ -132,7 +134,37 @@ def enrich_resource_candidates_with_active_video(
             if item.height is None and active_video.height:
                 item.height = active_video.height
         enriched.append(item)
+    synthetic = active_video_resource_candidate(active_video) if not matched_active_src else None
+    if synthetic and not any(_canonical_media_url(item.url) == _canonical_media_url(synthetic.url) for item in enriched):
+        enriched.insert(0, synthetic)
     return enriched
+
+
+def active_video_resource_candidate(active_video: ActiveVideoInfo) -> ResourceCandidate | None:
+    src = str(active_video.src or "").strip()
+    if not src.lower().startswith(("http://", "https://")):
+        return None
+    kind = classify_resource(src)
+    if kind in {"audio", "subtitle", "fragment"}:
+        return None
+    if kind == "unknown":
+        kind = "video"
+    return ResourceCandidate(
+        url=src,
+        source="activeVideo",
+        kind=kind,
+        mime="application/vnd.apple.mpegurl" if kind == "hls" else "application/dash+xml" if kind == "dash" else "video/mp4" if kind == "video" else "",
+        score=100,
+        label=active_video.label or "current video src",
+        is_main_video=True,
+        playback_match="exact-src",
+        frame_id=active_video.frame_id,
+        current_time=active_video.current_time,
+        duration=active_video.duration or None,
+        width=active_video.width or None,
+        height=active_video.height or None,
+        request_type="active-video",
+    )
 
 
 def enrich_resources_with_active_video(request: CurrentPageTaskRequest) -> list[ResourceCandidate]:

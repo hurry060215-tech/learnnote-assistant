@@ -128,6 +128,45 @@ class ResourceDetectionTests(unittest.TestCase):
         self.assertEqual(enriched[0].playback_match, "blob-source")
         self.assertEqual(enriched[0].current_time, 22)
 
+    def test_active_video_src_adds_candidate_when_resource_list_is_empty(self) -> None:
+        enriched = enrich_resource_candidates_with_active_video(
+            ActiveVideoInfo(
+                src="https://cdn.example.com/current-playback?id=42",
+                current_time=18,
+                duration=240,
+                width=1280,
+                height=720,
+                frame_id=9,
+                label="main lesson player",
+            ),
+            [],
+        )
+
+        self.assertEqual(len(enriched), 1)
+        self.assertEqual(enriched[0].url, "https://cdn.example.com/current-playback?id=42")
+        self.assertEqual(enriched[0].source, "activeVideo")
+        self.assertEqual(enriched[0].kind, "video")
+        self.assertEqual(enriched[0].label, "main lesson player")
+        self.assertTrue(enriched[0].is_main_video)
+        self.assertEqual(enriched[0].playback_match, "exact-src")
+        self.assertEqual(enriched[0].request_type, "active-video")
+        self.assertEqual(enriched[0].current_time, 18)
+        self.assertEqual(enriched[0].duration, 240)
+        self.assertEqual(enriched[0].frame_id, 9)
+
+    def test_active_video_src_does_not_create_download_candidate_for_blob_or_src_object(self) -> None:
+        blob_enriched = enrich_resource_candidates_with_active_video(
+            ActiveVideoInfo(src="blob:https://course.example.com/player", current_time=18),
+            [],
+        )
+        stream_enriched = enrich_resource_candidates_with_active_video(
+            ActiveVideoInfo(src="", src_object=True, src_object_type="MediaStream", src_object_video_tracks=1),
+            [],
+        )
+
+        self.assertEqual(blob_enriched, [])
+        self.assertEqual(stream_enriched, [])
+
     def test_declared_media_hint_sources_rank_above_plain_dom(self) -> None:
         self.assertEqual(source_rank("scriptHint"), 3)
         self.assertEqual(source_rank("domHint"), 3)
