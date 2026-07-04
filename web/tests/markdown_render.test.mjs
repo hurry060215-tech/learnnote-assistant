@@ -234,8 +234,8 @@ assert.match(elements.get("#sourceWorkflow").innerHTML, /待候选/);
 assert.match(elements.get("#sourceWorkflow").innerHTML, /20秒 · 3x3/);
 assert.match(elements.get("#sourceWorkflow").innerHTML, /非录制/);
 assert.match(indexHtml, /id="toggleWorkspaceButton"/);
-assert.match(indexHtml, /styles\.css\?v=20260703-recovery-decision/);
-assert.match(indexHtml, /app\.js\?v=20260703-recovery-decision/);
+assert.match(indexHtml, /styles\.css\?v=20260704-reuse-ui/);
+assert.match(indexHtml, /app\.js\?v=20260704-reuse-ui/);
 assert.match(indexHtml, /id="urlPreflightReport"/);
 assert.match(indexHtml, /href="#optionsDisclosure" title="模板"/);
 assert.doesNotMatch(indexHtml, /href="#settings" title="模板"/);
@@ -734,6 +734,22 @@ assert.match(richReadingRailHtml, /\/api\/tasks\/task-reading-rail\/exports\/sub
 assert.match(richReadingRailHtml, /data-switch-result-tab="transcript"/);
 assert.match(richReadingRailHtml, /data-switch-result-tab="diagnostics"/);
 
+const reuseReadingRailHtml = context.readingRail("## Reuse", {
+  id: "task-reuse-rail",
+  status: "success",
+  source_type: "current_page",
+  reuse: {
+    media_available: true,
+    subtitle_available: true,
+    transcript_ready: true,
+    rerun_from_media_ready: true
+  }
+});
+assert.match(reuseReadingRailHtml, /data-switch-result-tab="transcript"/);
+assert.match(reuseReadingRailHtml, /\/api\/tasks\/task-reuse-rail\/exports\/subtitles/);
+assert.match(reuseReadingRailHtml, /\/api\/tasks\/task-reuse-rail\/exports\/media/);
+assert.match(reuseReadingRailHtml, /data-rerun-from-media="task-reuse-rail"/);
+
 const visualDeckHtml = context.visualStudyDeck({
   id: "task-visual-deck",
   title: "<script>bad()</script> 视觉课程",
@@ -1146,6 +1162,20 @@ assert.match(exportCtaHtml, /\/api\/tasks\/task-study-map\/exports\/media/);
 assert.match(exportCtaHtml, /\/api\/tasks\/task-study-map\/exports\/diagnostics/);
 assert.match(stylesCss, /\.export-cta-bar[\s\S]*grid-template-columns:\s*minmax\(260px, 1fr\) minmax\(280px, auto\)/);
 assert.match(stylesCss, /@container \(max-width: 960px\)[\s\S]*\.export-cta-bar[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\)/);
+
+const reuseExportCtaHtml = context.noteExportCtaBar({
+  id: "task-reuse-export",
+  status: "success",
+  source_type: "current_page",
+  reuse: {
+    media_available: true,
+    subtitle_available: true,
+    transcript_ready: true
+  }
+});
+assert.match(reuseExportCtaHtml, /class="export-cta-bar partial"/);
+assert.match(reuseExportCtaHtml, /\/api\/tasks\/task-reuse-export\/exports\/subtitles/);
+assert.match(reuseExportCtaHtml, /\/api\/tasks\/task-reuse-export\/exports\/media/);
 
 const noteHeroHtml = context.noteHeroBanner(`# 机器学习导论
 

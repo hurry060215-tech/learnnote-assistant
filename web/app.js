@@ -2535,7 +2535,7 @@ function resultMetaChipsHtml(task) {
   const selected = task.selected_resource || {};
   const reuseEvidence = taskReuseEvidenceItem(task);
   const hasMedia = hasExportableMedia(task);
-  const hasTranscript = Boolean(task.transcript_path || task.reuse?.transcript_ready);
+  const hasTranscript = hasReadableTranscript(task);
   const transcriptSource = reusableTranscriptSourceText(task);
   const chips = [
     { state: taskStatusClass(task), label: statusText(task), value: `${task.progress || 0}%` },
@@ -2612,7 +2612,7 @@ function clearTaskCaches() {
 }
 
 async function transcriptForTask(task) {
-  if (!task?.id || !task.transcript_path) return null;
+  if (!task?.id || !hasReadableTranscript(task)) return null;
   if (lastTranscriptTaskId === task.id && lastTranscript) return lastTranscript;
   const response = await fetch(apiUrl(`/api/tasks/${task.id}/transcript`));
   if (!response.ok) return null;
@@ -2701,6 +2701,11 @@ function hasExportableSubtitle(task) {
 function hasExportableMedia(task) {
   const reuse = task?.reuse || {};
   return Boolean(task?.media_path || reuse.media_available);
+}
+
+function hasReadableTranscript(task) {
+  const reuse = task?.reuse || {};
+  return Boolean(task?.transcript_path || reuse.transcript_ready);
 }
 
 function reusableTranscriptSourceText(task) {
@@ -2907,7 +2912,7 @@ function pipelineAuditItems(task) {
   const isPageText = task?.source_type === "page_text" || Boolean(diag.used_page_text_fallback);
   const hasSelectedRoute = Boolean(selected.url || selected.kind || isLocal || isPageText);
   const hasMedia = hasExportableMedia(task);
-  const hasTranscript = Boolean(task?.transcript_path || task?.reuse?.transcript_ready);
+  const hasTranscript = hasReadableTranscript(task);
   const transcriptSource = reusableTranscriptSourceText(task);
   const hasVisuals = Boolean(windows.length || task?.frame_grids?.length || Number(diag.frame_grid_count || 0));
   const hasNote = Boolean(task?.note_path);
@@ -2987,7 +2992,7 @@ function pipelineAuditActionHtml(task, item) {
       actions.push(`<button type="button" data-recovery-source="local">本地兜底</button>`);
     }
   } else if (item.key === "transcript") {
-    if (task.transcript_path || task?.reuse?.transcript_ready) {
+    if (hasReadableTranscript(task)) {
       actions.push(`<button type="button" data-switch-result-tab="transcript">核对转写</button>`);
     } else if (canContinueFromDownloadedMedia(task)) {
       actions.push(`<button type="button" data-rerun-from-media="${escapeHtml(task.id)}">开始转写</button>`);
@@ -3038,7 +3043,7 @@ function nextStepHtml(task) {
   const windows = visualWindows(task);
   const hasNote = Boolean(task.note_path);
   const hasMedia = hasExportableMedia(task);
-  const hasTranscript = Boolean(task.transcript_path || task.reuse?.transcript_ready);
+  const hasTranscript = hasReadableTranscript(task);
   const hasVisuals = Boolean(windows.length || task.frame_grids?.length || Number(task.summary_diagnostics?.frame_grid_count || 0));
   const failed = task.status === "failed";
   let tone = "active";
@@ -3138,7 +3143,7 @@ function taskCommandCenterItemState(task, key) {
   const windows = visualWindows(task || {});
   if (!task) return "wait";
   const hasMedia = hasExportableMedia(task);
-  const hasTranscript = Boolean(task.transcript_path || task.reuse?.transcript_ready);
+  const hasTranscript = hasReadableTranscript(task);
   if (task.status === "failed" && ["source", "media"].includes(key) && !hasMedia) return "fail";
   if (key === "source") return (task.selected_resource?.url || task.download_attempts?.length || hasMedia) ? "pass" : "wait";
   if (key === "transcript") return hasTranscript || task.source_type === "page_text" ? "pass" : task.phase === "transcribing" ? "active" : "wait";
@@ -3181,7 +3186,7 @@ function taskCommandCenter(task) {
   const windows = visualWindows(task);
   const selected = task.selected_resource || {};
   const attempts = task.download_attempts || [];
-  const hasTranscript = Boolean(task.transcript_path || task.reuse?.transcript_ready);
+  const hasTranscript = hasReadableTranscript(task);
   const transcriptSource = reusableTranscriptSourceText(task);
   const sourceDetail = selected.audio_url
     ? `音视频合并 · ${compactUrl(selected.audio_url, 52)}`
@@ -3680,16 +3685,16 @@ function noteHeroBanner(markdown, task) {
   ].filter(Boolean).join(" · ");
   const timeline = windows.length && firstWindow
     ? `${fmt(windows[0].start || 0)} - ${fmt(windows[windows.length - 1].end || 0)}`
-    : task.media_path ? "media.mp4 已保存" : "等待切片";
+    : hasExportableMedia(task) ? "media.mp4 已保存" : "等待切片";
   const metrics = [
     { label: "章节", value: headings.total ? `${headings.total}` : "-" },
-    { label: "字幕", value: task.transcript_path ? "已生成" : task.browser_subtitles?.length ? `${task.browser_subtitles.length} 条` : "-" },
+    { label: "字幕", value: hasReadableTranscript(task) ? "已生成" : task.browser_subtitles?.length ? `${task.browser_subtitles.length} 条` : "-" },
     { label: "画面", value: windows.length ? `${windows.length} 窗口` : "-" },
     { label: "状态", value: statusText(task) }
   ];
   const actions = [
     task.note_path ? `<a href="${escapeHtml(taskExportUrl(task, "markdown"))}">Markdown</a>` : "",
-    task.transcript_path ? `<button type="button" data-switch-result-tab="transcript">字幕</button>` : "",
+    hasReadableTranscript(task) ? `<button type="button" data-switch-result-tab="transcript">字幕</button>` : "",
     windows.length ? `<button type="button" data-switch-result-tab="frames">画面</button>` : "",
     sourceUrl ? `<a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noreferrer">原页面</a>` : "",
     hasTaskBundle(task) ? `<a href="${escapeHtml(taskExportUrl(task, "bundle"))}">资料包</a>` : ""
@@ -3719,8 +3724,8 @@ function noteStudyBar(markdown, task) {
   const headings = noteHeadingStats(markdown);
   const windows = visualWindows(task);
   const hasNote = Boolean(task.note_path);
-  const hasTranscript = Boolean(task.transcript_path);
-  const hasMedia = Boolean(task.media_path);
+  const hasTranscript = hasReadableTranscript(task);
+  const hasMedia = hasExportableMedia(task);
   const hasBundle = hasTaskBundle(task);
   const firstWindow = windows[0];
   const lastWindow = windows[windows.length - 1];
@@ -3774,24 +3779,25 @@ function noteStudyBar(markdown, task) {
 
 function noteExportCtaBar(task) {
   if (!task?.id) return "";
+  const hasMedia = hasExportableMedia(task);
   const primary = [
     task.note_path ? `<a class="primary" href="${escapeHtml(taskExportUrl(task, "markdown"))}">导出 Markdown</a>` : "",
     hasVisualWindowExport(task) ? `<a href="${escapeHtml(taskExportUrl(task, "visual-windows"))}">导出切片索引</a>` : "",
     hasTaskBundle(task) ? `<a href="${escapeHtml(taskExportUrl(task, "bundle"))}">导出资料包</a>` : ""
   ].filter(Boolean);
   const secondary = [
-    task.subtitle_path ? `<a href="${escapeHtml(taskExportUrl(task, "subtitles"))}">字幕</a>` : "",
-    task.media_path ? `<a href="${escapeHtml(taskExportUrl(task, "media"))}">media.mp4</a>` : "",
+    hasExportableSubtitle(task) ? `<a href="${escapeHtml(taskExportUrl(task, "subtitles"))}">字幕</a>` : "",
+    hasMedia ? `<a href="${escapeHtml(taskExportUrl(task, "media"))}">media.mp4</a>` : "",
     hasTaskDiagnostics(task) ? `<a href="${escapeHtml(taskExportUrl(task, "diagnostics"))}">诊断</a>` : "",
     hasTaskAudit(task) ? `<a href="${escapeHtml(taskExportUrl(task, "audit"))}">审计</a>` : "",
     hasTaskBundle(task) ? `<a href="${escapeHtml(taskExportUrl(task, "manifest"))}">清单</a>` : ""
   ].filter(Boolean);
   if (!primary.length && !secondary.length) return "";
   const windows = visualWindows(task);
-  const status = task.note_path ? "ready" : task.media_path ? "partial" : "diagnostic";
+  const status = task.note_path ? "ready" : hasMedia ? "partial" : "diagnostic";
   const detail = task.note_path
     ? `Markdown、切片索引和资料包可直接保存；${windows.length ? `${windows.length} 个视觉窗口会写入资料包。` : "当前任务没有视觉窗口。"}`
-    : task.media_path
+    : hasMedia
       ? "视频已保存到本地，可先导出媒体或继续切片总结。"
       : "任务未生成完整笔记，但诊断和审计仍可导出。";
   return `<section class="export-cta-bar ${escapeHtml(status)}" aria-label="导出学习成果">
@@ -3833,8 +3839,8 @@ function visualRail(task, limit = 8) {
 function readingProgressRail(markdown, task) {
   const headings = noteHeadingStats(markdown);
   const windows = visualWindows(task || {});
-  const hasTranscript = Boolean(task?.transcript_path);
-  const hasMedia = Boolean(task?.media_path);
+  const hasTranscript = hasReadableTranscript(task);
+  const hasMedia = hasExportableMedia(task);
   const hasNote = Boolean(task?.note_path);
   const items = [
     {
@@ -3881,8 +3887,8 @@ function readingArtifactsRail(task) {
   if (!task?.id) return "";
   const actions = [
     task.note_path ? `<a href="${escapeHtml(taskExportUrl(task, "markdown"))}">Markdown</a>` : "",
-    task.subtitle_path ? `<a href="${escapeHtml(taskExportUrl(task, "subtitles"))}">字幕文件</a>` : "",
-    task.media_path ? `<a href="${escapeHtml(taskExportUrl(task, "media"))}">media.mp4</a>` : "",
+    hasExportableSubtitle(task) ? `<a href="${escapeHtml(taskExportUrl(task, "subtitles"))}">字幕文件</a>` : "",
+    hasExportableMedia(task) ? `<a href="${escapeHtml(taskExportUrl(task, "media"))}">media.mp4</a>` : "",
     hasVisualWindowExport(task) ? `<a href="${escapeHtml(taskExportUrl(task, "visual-windows"))}">切片索引</a>` : "",
     hasTaskAudit(task) ? `<a href="${escapeHtml(taskExportUrl(task, "audit"))}">审计</a>` : "",
     hasTaskDiagnostics(task) ? `<a href="${escapeHtml(taskExportUrl(task, "diagnostics"))}">诊断</a>` : "",
@@ -3903,7 +3909,7 @@ function readingActionsRail(task) {
   if (!task) return "";
   const actions = [
     `<button type="button" data-switch-result-tab="note">读笔记</button>`,
-    task.transcript_path ? `<button type="button" data-switch-result-tab="transcript">查字幕</button>` : "",
+    hasReadableTranscript(task) ? `<button type="button" data-switch-result-tab="transcript">查字幕</button>` : "",
     hasVisualWindowExport(task) ? `<button type="button" data-switch-result-tab="frames">看画面</button>` : "",
     hasTaskDiagnostics(task) ? `<button type="button" data-switch-result-tab="diagnostics">看诊断</button>` : "",
     canContinueFromDownloadedMedia(task) ? `<button type="button" data-rerun-from-media="${escapeHtml(task.id)}">继续总结</button>` : ""

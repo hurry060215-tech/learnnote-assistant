@@ -703,6 +703,20 @@ assert.match(studyMapHtml, /data-export="manifest"/);
 assert.doesNotMatch(studyMapHtml, /<script>bad/);
 assert.match(studyMapHtml, /&lt;script&gt;bad\(\)&lt;\/script&gt; 课程/);
 
+const reuseStudyMapHtml = context.noteStudyMap("## Reuse", {
+  id: "side-reuse-study-map",
+  status: "success",
+  source_type: "current_page",
+  reuse: {
+    media_available: true,
+    subtitle_available: true,
+    transcript_ready: true
+  }
+});
+assert.match(reuseStudyMapHtml, /data-switch-result-tab="transcript"/);
+assert.match(reuseStudyMapHtml, /data-export="bundle"/);
+assert.match(reuseStudyMapHtml, /data-export="manifest"/);
+
 const taskOverviewHtml = context.taskOverview({
   id: "side-overview",
   title: "<script>bad()</script> 课程",
@@ -1017,6 +1031,12 @@ assert.equal(context.canContinueFromDownloadedMedia({
   status: "failed",
   media_path: "D:/media.mp4",
   note_path: ""
+}), true);
+assert.equal(context.canContinueFromDownloadedMedia({
+  id: "side-reuse-media",
+  status: "success",
+  note_path: "",
+  reuse: { media_available: true }
 }), true);
 assert.equal(context.canContinueFromDownloadedMedia({
   id: "side-running-media",

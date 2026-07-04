@@ -3716,6 +3716,11 @@ function hasExportableMedia(task) {
   return Boolean(task?.media_path || reuse.media_available);
 }
 
+function hasReadableTranscript(task) {
+  const reuse = task?.reuse || {};
+  return Boolean(task?.transcript_path || reuse.transcript_ready);
+}
+
 function reusableTranscriptSourceText(task) {
   const source = task?.reuse?.transcript_source || "";
   return source ? transcriptSourceText(source) : "";
@@ -3920,7 +3925,7 @@ function pipelineAuditItems(task) {
   const isPageText = task?.source_type === "page_text" || Boolean(diag.used_page_text_fallback);
   const hasSelectedRoute = Boolean(selected.url || selected.kind || isLocal || isPageText);
   const hasMedia = hasExportableMedia(task);
-  const hasTranscript = Boolean(task?.transcript_path || task?.reuse?.transcript_ready);
+  const hasTranscript = hasReadableTranscript(task);
   const transcriptSource = reusableTranscriptSourceText(task);
   const hasVisuals = Boolean(windows.length || task?.frame_grids?.length || Number(diag.frame_grid_count || 0));
   const hasNote = Boolean(task?.note_path);
@@ -3988,7 +3993,7 @@ function pipelineAuditActionHtml(task, item) {
       actions.push(`<button type="button" data-recovery-local>本地兜底</button>`);
     }
   } else if (item.key === "transcript") {
-    if (task.transcript_path || task?.reuse?.transcript_ready) {
+    if (hasReadableTranscript(task)) {
       actions.push(`<button type="button" data-switch-result-tab="transcript">核对转写</button>`);
     } else if (canContinueFromDownloadedMedia(task)) {
       actions.push(`<button type="button" data-rerun-from-media="${escapeHtml(task.id)}">开始转写</button>`);
@@ -4039,7 +4044,7 @@ function nextStepHtml(task) {
   const windows = visualWindows(task);
   const hasNote = Boolean(task.note_path);
   const hasMedia = hasExportableMedia(task);
-  const hasTranscript = Boolean(task.transcript_path || task.reuse?.transcript_ready);
+  const hasTranscript = hasReadableTranscript(task);
   const hasVisuals = Boolean(windows.length || task.frame_grids?.length || Number(task.summary_diagnostics?.frame_grid_count || 0));
   const failed = task.status === "failed";
   let tone = "active";
@@ -4204,7 +4209,7 @@ function taskCommandCenterItemState(task, key) {
   const windows = visualWindows(task || {});
   if (!task) return "wait";
   const hasMedia = hasExportableMedia(task);
-  const hasTranscript = Boolean(task.transcript_path || task.reuse?.transcript_ready);
+  const hasTranscript = hasReadableTranscript(task);
   if (task.status === "failed" && ["source", "media"].includes(key) && !hasMedia) return "fail";
   if (key === "source") return (task.selected_resource?.url || task.download_attempts?.length || hasMedia) ? "pass" : "wait";
   if (key === "transcript") return hasTranscript || task.source_type === "page_text" ? "pass" : task.phase === "transcribing" ? "active" : "wait";
@@ -4247,7 +4252,7 @@ function taskCommandCenter(task) {
   const windows = visualWindows(task);
   const selected = task.selected_resource || {};
   const attempts = task.download_attempts || [];
-  const hasTranscript = Boolean(task.transcript_path || task.reuse?.transcript_ready);
+  const hasTranscript = hasReadableTranscript(task);
   const transcriptSource = reusableTranscriptSourceText(task);
   const sourceDetail = selected.audio_url
     ? `音视频合并 · ${compactUrl(selected.audio_url, 52)}`
@@ -4429,7 +4434,7 @@ function taskOverview(task) {
   const options = task.options || {};
   const windows = visualWindows(task);
   const hasNote = Boolean(task.note_path);
-  const hasMedia = Boolean(task.media_path);
+  const hasMedia = hasExportableMedia(task);
   const hasBundle = hasTaskBundle(task);
   const statusClass = taskStatusClass(task);
   const fallbackNote = task.status === "failed" && hasNote;
@@ -4734,8 +4739,8 @@ function noteStudyMap(markdown, task) {
   const headings = noteHeadingStats(markdown);
   const windows = visualWindows(task);
   const hasNote = Boolean(task.note_path);
-  const hasTranscript = Boolean(task.transcript_path);
-  const hasMedia = Boolean(task.media_path);
+  const hasTranscript = hasReadableTranscript(task);
+  const hasMedia = hasExportableMedia(task);
   const hasBundle = hasTaskBundle(task);
   const firstWindow = windows[0];
   const lastWindow = windows[windows.length - 1];
