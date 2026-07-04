@@ -39,7 +39,7 @@ const stored = {
   }
 };
 const calls = { storageSet: [], fetchUrls: [] };
-let promptValue = "";
+let promptCalled = false;
 
 const context = {
   console,
@@ -49,7 +49,10 @@ const context = {
   window: { open() {} },
   FormData: class FormData {},
   URL,
-  prompt: () => promptValue,
+  prompt: () => {
+    promptCalled = true;
+    throw new Error("prompt should not be used for backend settings");
+  },
   fetch: async url => {
     calls.fetchUrls.push(String(url));
     const value = String(url);
@@ -123,11 +126,12 @@ assert.equal(context.normalizeBackendUrl("http://user:pass@127.0.0.1:8765"), "")
 
 assert.equal(context.workbenchUrl("task-default", "frames"), "http://127.0.0.1:8765/?task=task-default&tab=frames");
 
-promptValue = "127.0.0.1:8000/";
+elements.get("#backendUrlInput").value = "127.0.0.1:8000/";
 await context.saveSettings();
 
 assert.equal(calls.storageSet.at(-1).backendUrl, "http://127.0.0.1:8000");
 assert.equal(context.workbenchUrl("task-local", "note"), "http://127.0.0.1:8000/?task=task-local&tab=note");
+assert.equal(promptCalled, false);
 
 elements.get("#backendSettingsPanel").hidden = true;
 context.openBackendSettingsPanel();
@@ -140,7 +144,7 @@ assert.equal(elements.get("#backendSettingsPanel").hidden, true);
 assert.equal(context.workbenchUrl("task-panel", "note"), "http://localhost:8766/?task=task-panel&tab=note");
 
 calls.storageSet = [];
-promptValue = "https://evil.example";
+elements.get("#backendUrlInput").value = "https://evil.example";
 await context.saveSettings();
 
 assert.equal(calls.storageSet.length, 0);

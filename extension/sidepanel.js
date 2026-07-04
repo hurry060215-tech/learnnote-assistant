@@ -3105,7 +3105,7 @@ async function loadSettings() {
 
 function openBackendSettingsPanel() {
   if (!els.backendSettingsPanel || !els.backendUrlInput) {
-    if (typeof prompt === "function") saveSettings(prompt("后端地址", backendUrl));
+    els.taskMessage.textContent = "请在侧栏设置区域填写本机后端地址。";
     return;
   }
   els.backendUrlInput.value = backendUrl;
@@ -3118,11 +3118,7 @@ function closeBackendSettingsPanel() {
 }
 
 async function saveSettings(next = null) {
-  if (next === null && els.backendUrlInput && els.backendSettingsPanel?.hidden === false) {
-    next = els.backendUrlInput.value;
-  } else if (next === null && typeof prompt === "function") {
-    next = prompt("后端地址", backendUrl);
-  }
+  if (next === null) next = els.backendUrlInput?.value || "";
   if (!next) return;
   const normalized = normalizeBackendUrl(next);
   if (!normalized) {
