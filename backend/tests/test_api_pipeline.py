@@ -19,7 +19,7 @@ from fastapi.testclient import TestClient
 from app.config import DATA_DIR
 from app.downloader import DownloadError
 from app.main import app, diagnostic_recovery_profile, local_upload_filename, render_bundle_manifest, render_diagnostics_markdown, render_task_audit_markdown, render_visual_windows_markdown
-from app.models import DownloadAttempt, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
+from app.models import ActiveVideoInfo, DownloadAttempt, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
 from app.runtime import ffmpeg_bin
 from app.storage import create_task, task_dir, update_task
 
@@ -935,8 +935,24 @@ class LocalUploadValidationTests(unittest.TestCase):
                 kind="video",
                 source="webRequest",
                 user_selected=True,
+                is_main_video=True,
+                playback_match="range-near-playhead",
+                current_time=12,
+                duration=120,
+                width=1280,
+                height=720,
                 request_headers={"Cookie": "session=secret", "Authorization": "Bearer secret", "Referer": "https://course.example.com/watch"},
                 headers={"content-type": "video/mp4", "set-cookie": "secret=value"},
+            )
+            task.active_video = ActiveVideoInfo(
+                src="blob:https://course.example.com/player",
+                current_time=12,
+                duration=120,
+                paused=False,
+                width=1280,
+                height=720,
+                frame_id=2,
+                label="course player",
             )
             task.cookie_summary = {
                 "total": 3,
@@ -967,6 +983,9 @@ class LocalUploadValidationTests(unittest.TestCase):
             self.assertEqual(manifest["direct_extraction"]["browser_context"]["partitioned_cookie_count"], 2)
             self.assertEqual(manifest["direct_extraction"]["browser_context"]["partition_key_count"], 1)
             self.assertEqual(manifest["source"]["selected_resource"]["response_header_names"], ["content-type", "set-cookie"])
+            self.assertTrue(manifest["source"]["playback"]["matched_current_playback"])
+            self.assertEqual(manifest["source"]["playback"]["active_video"]["current_time"], 12)
+            self.assertEqual(manifest["source"]["playback"]["selected_resource"]["playback_match"], "range-near-playhead")
             self.assertEqual(manifest["transcript"]["segment_count"], 1)
             self.assertIn("audit", manifest)
             self.assertEqual(manifest["artifacts"]["audit"], "audit.md")
@@ -981,10 +1000,14 @@ class LocalUploadValidationTests(unittest.TestCase):
             diagnostics = render_diagnostics_markdown(task)
             self.assertIn("user selected yes", diagnostics)
             self.assertIn("cookie domains 2 / cookies 3", diagnostics)
+            self.assertIn("Active playback: url / 00:12 / 02:00 / paused no / frame 2 / 1280x720", diagnostics)
+            self.assertIn("Selected playback match: yes / range-near-playhead / 00:12 / 02:00", diagnostics)
             audit = render_task_audit_markdown(task)
             self.assertIn("# LearnNote 任务审计报告", audit)
             self.assertIn("不录制标签页：yes", audit)
             self.assertIn("安全请求头名：Referer", audit)
+            self.assertIn("当前播放：url / 00:12 / 02:00 / paused no / frame 2 / 1280x720", audit)
+            self.assertIn("选中资源播放匹配：yes / range-near-playhead / 00:12 / 02:00", audit)
             self.assertIn("Cookie：3 / 2 域", audit)
             self.assertIn("分区 Cookie：2 / 1 partition key", audit)
             self.assertNotIn("session=secret", audit)

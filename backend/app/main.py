@@ -457,6 +457,37 @@ def direct_extraction_evidence(task: TaskRecord) -> dict:
     }
 
 
+def playback_evidence(task: TaskRecord) -> dict:
+    active = task.active_video
+    selected = task.selected_resource
+    return {
+        "active_video": {
+            "present": bool(active),
+            "source_type": "srcObject" if active and active.src_object else "url" if active and active.src else "",
+            "current_time": active.current_time if active else None,
+            "duration": active.duration if active else None,
+            "paused": active.paused if active else None,
+            "frame_id": active.frame_id if active else None,
+            "width": active.width if active else None,
+            "height": active.height if active else None,
+            "label": active.label if active else "",
+            "drm_detected": active.drm_detected if active else False,
+        },
+        "selected_resource": {
+            "present": bool(selected),
+            "is_main_video": selected.is_main_video if selected else False,
+            "playback_match": selected.playback_match if selected else "",
+            "current_time": selected.current_time if selected else None,
+            "duration": selected.duration if selected else None,
+            "width": selected.width if selected else None,
+            "height": selected.height if selected else None,
+            "frame_id": selected.frame_id if selected else None,
+            "blob_mapped": bool(selected and selected.blob_url and selected.url and selected.url != selected.blob_url),
+        },
+        "matched_current_playback": bool(selected and (selected.is_main_video or selected.playback_match)),
+    }
+
+
 def _render_study_manifest(task: TaskRecord) -> dict:
     visual_windows = task.visual_windows or []
     diagnostics = task.summary_diagnostics or {}
@@ -625,6 +656,9 @@ def render_task_audit_markdown(task: TaskRecord) -> str:
     browser = direct.get("browser_context") or {}
     download = direct.get("download") or {}
     processing = direct.get("processing") or {}
+    playback = playback_evidence(task)
+    active_playback = playback.get("active_video") or {}
+    selected_playback = playback.get("selected_resource") or {}
     safe_headers = selected.get("safe_request_header_names") or []
     gates = audit.get("gates") or []
     lines = [
@@ -651,6 +685,14 @@ def render_task_audit_markdown(task: TaskRecord) -> str:
         f"- 用户选择：{'yes' if selected.get('user_selected') else 'no'}",
         f"- 安全请求头名：{', '.join(safe_headers) if safe_headers else '-'}",
         f"- 播放源：{browser.get('active_source_type') or '-'}",
+        f"- 当前播放：{active_playback.get('source_type') or '-'} / {_format_timestamp(active_playback.get('current_time'))}"
+        f" / {_format_timestamp(active_playback.get('duration'))} / paused {'yes' if active_playback.get('paused') else 'no'}"
+        f" / frame {active_playback.get('frame_id') if active_playback.get('frame_id') is not None else '-'}"
+        f" / {active_playback.get('width') or 0}x{active_playback.get('height') or 0}",
+        f"- 选中资源播放匹配：{'yes' if playback.get('matched_current_playback') else 'no'}"
+        f" / {selected_playback.get('playback_match') or '-'}"
+        f" / {_format_timestamp(selected_playback.get('current_time'))}"
+        f" / {_format_timestamp(selected_playback.get('duration'))}",
         f"- 浏览器字幕：{browser.get('browser_subtitle_count') or 0} 条",
         f"- Cookie：{browser.get('cookie_count') or 0} / {browser.get('cookie_domain_count') or 0} 域",
         f"- 分区 Cookie：{browser.get('partitioned_cookie_count') or 0} / {browser.get('partition_key_count') or 0} partition key",
@@ -786,6 +828,7 @@ def render_bundle_manifest(task: TaskRecord, transcript: dict, visual_index: dic
             ],
             "drm_detected": task.drm_detected,
             "drm_signal_count": len(task.drm_signals),
+            "playback": playback_evidence(task),
         },
         "transcript": {
             "source": transcript.get("source", "") if isinstance(transcript, dict) else "",
@@ -1520,6 +1563,9 @@ def render_diagnostics_markdown(task: TaskRecord) -> str:
     browser_context = direct.get("browser_context") or {}
     download_direct = direct.get("download") or {}
     processing_direct = direct.get("processing") or {}
+    playback_direct = playback_evidence(task)
+    active_playback = playback_direct.get("active_video") or {}
+    selected_playback = playback_direct.get("selected_resource") or {}
     safe_headers = selected_direct.get("safe_request_header_names") or []
     lines.extend([
         "",
@@ -1534,6 +1580,14 @@ def render_diagnostics_markdown(task: TaskRecord) -> str:
         f"- Safe request headers: {', '.join(safe_headers) if safe_headers else '-'}",
         f"- Browser context: {browser_context.get('active_source_type') or '-'} / subtitles {browser_context.get('browser_subtitle_count') or 0}"
         f" / cookie domains {browser_context.get('cookie_domain_count') or 0} / cookies {browser_context.get('cookie_count') or 0}",
+        f"- Active playback: {active_playback.get('source_type') or '-'} / {_format_timestamp(active_playback.get('current_time'))}"
+        f" / {_format_timestamp(active_playback.get('duration'))} / paused {'yes' if active_playback.get('paused') else 'no'}"
+        f" / frame {active_playback.get('frame_id') if active_playback.get('frame_id') is not None else '-'}"
+        f" / {active_playback.get('width') or 0}x{active_playback.get('height') or 0}",
+        f"- Selected playback match: {'yes' if playback_direct.get('matched_current_playback') else 'no'}"
+        f" / {selected_playback.get('playback_match') or '-'}"
+        f" / {_format_timestamp(selected_playback.get('current_time'))}"
+        f" / {_format_timestamp(selected_playback.get('duration'))}",
         f"- Download attempts: {download_direct.get('successful_attempt_count') or 0} success / {download_direct.get('failed_attempt_count') or 0} failed / {', '.join(download_direct.get('strategy_order') or []) or '-'}",
         f"- Processing: transcript {'yes' if processing_direct.get('transcript_ready') else 'no'} / grids {processing_direct.get('frame_grid_count') or 0} / windows {processing_direct.get('visual_window_count') or 0} / note {'yes' if processing_direct.get('note_ready') else 'no'}",
     ])
