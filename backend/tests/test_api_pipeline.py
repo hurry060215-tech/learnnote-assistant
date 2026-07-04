@@ -116,6 +116,7 @@ class LocalUploadValidationTests(unittest.TestCase):
         self.assertTrue(payload["default_llm_base_url"])
         self.assertTrue(payload["default_llm_base_host"])
         self.assertTrue(payload["default_llm_provider"])
+        self.assertRegex(payload["backend_origin"], r"^https?://(127\.0\.0\.1|localhost):\d+")
         if payload["ffmpeg"] and not payload["ffprobe"]:
             self.assertTrue(payload["ffprobe_optional"])
             self.assertEqual(payload["duration_probe"], "ffmpeg")
@@ -133,6 +134,7 @@ class LocalUploadValidationTests(unittest.TestCase):
             "ffmpeg",
             "ffprobe",
             "duration_probe",
+            "backend_origin",
             "vision_model_configured",
             "default_llm_model",
             "default_llm_base_host",

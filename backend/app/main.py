@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Res
 from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 
-from .config import DATA_DIR, LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, STATIC_DIR, TEMP_DIR, UPLOAD_DIR, WEB_DIR, ensure_dirs
+from .config import BACKEND_ORIGIN, DATA_DIR, LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, STATIC_DIR, TEMP_DIR, UPLOAD_DIR, WEB_DIR, ensure_dirs
 from .downloader import MediaDownloader, effective_resource_kind, fallback_page_contexts, preflight_media_resource, rank_media_candidates
 from .media import probe_duration
 from .models import CurrentPageTaskRequest, MediaPreflightRequest, MediaPreflightResult, PagePreflightRequest, RerunFromMediaRequest, ResourceCandidate, TaskOptions, TaskRecord
@@ -1592,6 +1592,7 @@ def health_payload() -> dict:
         "duration_probe": duration_probe,
         "duration_probe_available": bool(duration_probe),
         "ffprobe_optional": bool(ffmpeg and not ffprobe),
+        "backend_origin": BACKEND_ORIGIN,
         "vision_model_configured": bool(LLM_API_KEY),
         "default_llm_model": LLM_MODEL,
         "default_llm_base_url": LLM_BASE_URL,

@@ -23,6 +23,9 @@ if (-not $env:PIP_CACHE_DIR) { $env:PIP_CACHE_DIR = $pipCacheDir }
 $env:TMP = $tempDir
 $env:TEMP = $tempDir
 $env:TMPDIR = $tempDir
+if (-not $env:LEARNNOTE_BACKEND_ORIGIN) {
+  $env:LEARNNOTE_BACKEND_ORIGIN = "http://127.0.0.1:$Port"
+}
 
 function Resolve-BootstrapPython {
   if ($env:LEARNNOTE_BOOTSTRAP_PYTHON) {

@@ -120,6 +120,7 @@ If port `8765` is occupied, start the backend on another local port and put the 
 ```
 
 The extension only accepts local backend origins (`127.0.0.1` or `localhost`), and its manifest keeps localhost permissions host-wide so non-default ports continue to work.
+When `-Port` is used, the startup script also sets `LEARNNOTE_BACKEND_ORIGIN` to the same local origin so generated frame-grid, media, and export links point at the running backend.
 
 Load the browser extension:
 
