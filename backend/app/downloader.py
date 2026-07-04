@@ -1182,6 +1182,8 @@ def download_headers_for_candidate(
     target_url = url or (candidate.url if candidate else "")
     headers = browser_request_headers_for_candidate(candidate)
     headers.pop("Range", None)
+    if candidate and url and url != candidate.url:
+        headers.pop("Content-Type", None)
 
     headers.setdefault("User-Agent", "Mozilla/5.0 LearnNoteAssistant/0.1")
     if referer:

@@ -362,6 +362,36 @@ class ResourceDetectionTests(unittest.TestCase):
         self.assertNotIn("Range", headers)
         self.assertEqual(headers["Authorization"], "Bearer bad")
 
+    def test_download_headers_drop_post_content_type_for_resolved_media_url(self) -> None:
+        candidate = ResourceCandidate(
+            url="https://course.example.com/api/play",
+            resolved_url="https://media.cdn.example.com/video.mp4",
+            source="webRequest",
+            kind="video",
+            method="POST",
+            request_headers={
+                "User-Agent": "Chrome Test UA",
+                "Referer": "https://course.example.com/lesson/1",
+                "X-Requested-With": "XMLHttpRequest",
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+            request_body={"type": "form", "content": "lesson=42&token=ok"},
+        )
+        cookies = [BrowserCookie(name="SESSION", value="ok", domain=".cdn.example.com")]
+
+        headers = download_headers_for_candidate(
+            candidate,
+            cookies,
+            "https://course.example.com/lesson/1",
+            url=candidate.resolved_url,
+        )
+
+        self.assertEqual(headers["User-Agent"], "Chrome Test UA")
+        self.assertEqual(headers["Referer"], "https://course.example.com/lesson/1")
+        self.assertEqual(headers["X-Requested-With"], "XMLHttpRequest")
+        self.assertEqual(headers["Cookie"], "SESSION=ok")
+        self.assertNotIn("Content-Type", headers)
+
     def test_ytdlp_headers_prefer_browser_playback_context(self) -> None:
         resources = [
             ResourceCandidate(
