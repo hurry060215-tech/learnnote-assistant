@@ -8,10 +8,8 @@ function normalizeApiBase(value) {
 function isBackendSameOrigin(loc = window?.location || location) {
   const protocol = String(loc?.protocol || "");
   const hostname = String(loc?.hostname || "");
-  const port = String(loc?.port || "");
   return (protocol === "http:" || protocol === "https:")
-    && (hostname === "localhost" || hostname === "127.0.0.1")
-    && (!port || port === "8765");
+    && (hostname === "localhost" || hostname === "127.0.0.1");
 }
 
 function resolveApiBase(loc = window?.location || location, storage = window?.localStorage) {

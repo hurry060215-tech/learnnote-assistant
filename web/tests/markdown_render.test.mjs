@@ -150,7 +150,7 @@ assert.match(elements.get("#health").textContent, /ffprobe/);
 assert.equal(context.normalizeApiBase(" http://127.0.0.1:8765/ "), "http://127.0.0.1:8765");
 assert.equal(context.normalizeApiBase("https://example.com"), "");
 assert.equal(context.resolveApiBase({ protocol: "http:", hostname: "127.0.0.1", port: "8765" }, null), "");
-assert.equal(context.resolveApiBase({ protocol: "http:", hostname: "127.0.0.1", port: "8878" }, null), "http://127.0.0.1:8765");
+assert.equal(context.resolveApiBase({ protocol: "http:", hostname: "127.0.0.1", port: "8766" }, null), "");
 assert.equal(context.resolveApiBase({ protocol: "file:", hostname: "", port: "" }, null), "http://127.0.0.1:8765");
 assert.equal(context.resolveApiBase(
   { protocol: "http:", hostname: "127.0.0.1", port: "8878" },
