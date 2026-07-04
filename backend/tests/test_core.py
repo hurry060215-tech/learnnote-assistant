@@ -12,6 +12,8 @@ from pathlib import Path
 from urllib.parse import quote
 from unittest.mock import patch
 
+from pydantic import ValidationError
+
 from app.config import DATA_DIR, TEMP_DIR
 from app.downloader import (
     DownloadError,
@@ -54,6 +56,23 @@ class ResourceDetectionTests(unittest.TestCase):
         self.assertEqual(Path(os.environ["TEMP"]).resolve(), TEMP_DIR.resolve())
         self.assertEqual(Path(os.environ["TMPDIR"]).resolve(), TEMP_DIR.resolve())
         self.assertTrue(TEMP_DIR.exists())
+
+    def test_task_options_bound_visual_slicing_parameters(self) -> None:
+        options = TaskOptions(frame_interval=1, grid_columns=4, grid_rows=3)
+
+        self.assertEqual(options.frame_interval, 1)
+        self.assertEqual(options.grid_columns, 4)
+        self.assertEqual(options.grid_rows, 3)
+
+        for kwargs in (
+            {"frame_interval": 0},
+            {"frame_interval": 601},
+            {"grid_columns": 0},
+            {"grid_rows": 7},
+        ):
+            with self.subTest(kwargs=kwargs):
+                with self.assertRaises(ValidationError):
+                    TaskOptions(**kwargs)
 
     def test_classifies_common_media_urls(self) -> None:
         self.assertEqual(classify_resource("https://cdn.example.com/video.mp4"), "video")

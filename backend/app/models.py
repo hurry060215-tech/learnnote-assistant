@@ -83,9 +83,9 @@ class TaskOptions(BaseModel):
     transcriber: str = "faster-whisper"
     whisper_model: str = "small"
     visual_understanding: bool = True
-    frame_interval: int = 20
-    grid_columns: int = 3
-    grid_rows: int = 3
+    frame_interval: int = Field(default=20, ge=1, le=600)
+    grid_columns: int = Field(default=3, ge=1, le=6)
+    grid_rows: int = Field(default=3, ge=1, le=6)
     note_style: str = "study"
     note_template: str = "standard"
     summary_depth: str = "standard"
