@@ -1310,6 +1310,24 @@ assert.match(context.preflightRecoveryText({ code: "drm_or_encrypted" }), /不�
 assert.match(context.preflightRecoveryText({ code: "download_forbidden" }), /Referer/);
 assert.match(context.preflightRecoveryText({ downloadable: true, kind: "video" }), /完整总结/);
 
+const playableApiCandidate = {
+  url: "https://mooc1.chaoxing.com/ananas/status/objectid-123?flag=normal",
+  kind: "unknown",
+  source: "webRequest",
+  request_type: "fetch",
+  method: "POST",
+  score: 76,
+  label: "Chaoxing play api",
+  request_body: { content: "{\"objectid\":\"123\"}" },
+  request_headers: {
+    Referer: "https://mooc1.chaoxing.com/mycourse/studentstudy"
+  }
+};
+assert.equal(context.looksLikePlayableEndpoint(playableApiCandidate), true);
+assert.equal(context.isDirectExtractionCandidate(playableApiCandidate), true);
+assert.match(context.directnessText(playableApiCandidate), /播放 API 端点/);
+assert.equal(context.candidateStrategyText(playableApiCandidate), "预检解析");
+
 vm.runInContext(`
 page = {
   page_url: "https://course.example.com/lesson",
@@ -1467,6 +1485,31 @@ assert.doesNotMatch(auditReport, /Authorization/);
 await context.copyCurrentPageAuditReport();
 assert.equal(clipboardWrites.at(-1), auditReport);
 assert.equal(elements.get("#taskMessage").textContent, "已复制当前页直取审计报告。");
+
+vm.runInContext(`
+resources = [{
+  url: "https://mooc1.chaoxing.com/ananas/status/objectid-123?flag=normal",
+  kind: "unknown",
+  source: "webRequest",
+  request_type: "fetch",
+  method: "POST",
+  score: 76,
+  label: "Chaoxing play api",
+  request_body: { content: "{\\"objectid\\":\\"123\\"}" },
+  request_headers: { Referer: "https://mooc1.chaoxing.com/mycourse/studentstudy" }
+}];
+selectedResourceUrl = "https://mooc1.chaoxing.com/ananas/status/objectid-123?flag=normal";
+resourceFilter = "downloadable";
+preflight = null;
+preflightResourceUrl = "";
+preflightResultsByUrl = new Map();
+`, context);
+assert.equal(context.resourceFilterOptions().find(item => item.key === "downloadable").count, 1);
+assert.equal(context.resourceFilterOptions().find(item => item.key === "diagnostic").count, 0);
+assert.equal(context.filteredResources().length, 1);
+context.renderReadiness();
+assert.match(elements.get("#readiness").textContent, /可直取候选 1 个/);
+assert.doesNotMatch(elements.get("#readiness").textContent, /没有可下载媒体候选/);
 
 vm.runInContext(`
 resources = [

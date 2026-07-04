@@ -556,7 +556,7 @@ function currentPageAuditReport() {
   const active = page?.active_video || {};
   const subtitles = page?.browser_subtitles || [];
   const candidateCount = resources.length;
-  const downloadableCount = resources.filter(isDownloadableResource).length;
+  const downloadableCount = resources.filter(isDirectExtractionCandidate).length;
   const captureRestored = Number(captureLog?.restored || 0);
   const lines = [
     "LearnNote 当前页直取审计报告",
@@ -1020,6 +1020,10 @@ function isDownloadableResource(item) {
   return DOWNLOADABLE_KINDS.has(item?.kind);
 }
 
+function isDirectExtractionCandidate(item) {
+  return isDownloadableResource(item) || looksLikePlayableEndpoint(item);
+}
+
 function playbackText(match) {
   return ({
     "exact-src": "当前 src",
@@ -1064,7 +1068,7 @@ function isPlaybackMatchedResource(item) {
 }
 
 function isDiagnosticResource(item) {
-  return !isDownloadableResource(item) || ["blob", "fragment", "subtitle", "unknown"].includes(item?.kind || "");
+  return !isDirectExtractionCandidate(item) || ["blob", "fragment", "subtitle"].includes(item?.kind || "");
 }
 
 function resourceFilterOptions() {
@@ -1078,8 +1082,8 @@ function resourceFilterOptions() {
     {
       key: "downloadable",
       label: "可直取",
-      count: resources.filter(isDownloadableResource).length,
-      match: isDownloadableResource
+      count: resources.filter(isDirectExtractionCandidate).length,
+      match: isDirectExtractionCandidate
     },
     {
       key: "matched",
@@ -1375,6 +1379,7 @@ function directnessText(item) {
   if (item.kind === "blob") return "blob 播放地址线索，不可直接下载";
   if (item.kind === "fragment") return "分片线索，需要对应 manifest";
   if (item.kind === "subtitle") return "字幕轨，可辅助转写";
+  if (looksLikePlayableEndpoint(item)) return "播放 API 端点，后端会先预检并解析真实媒体";
   return "媒体线索，需继续检测";
 }
 
@@ -1544,6 +1549,7 @@ function candidateStrategyText(item) {
   if (item.audio_url) return "音视频合并";
   if (item.kind === "hls" || item.kind === "dash") return "ffmpeg 合并";
   if (item.kind === "video") return "直接下载";
+  if (looksLikePlayableEndpoint(item)) return "预检解析";
   if (item.kind === "fragment") return "尝试推断 manifest";
   if (item.kind === "blob") return "不可直接下载";
   if (item.kind === "subtitle") return "字幕辅助";
@@ -1651,7 +1657,7 @@ function resourceAttemptQueueHtml(limit = 4) {
   return `<section class="resource-attempt-queue" aria-label="候选下载队列">
     <div class="resource-attempt-head">
       <strong>下载队列</strong>
-      <span>${resources.filter(isDownloadableResource).length}/${resources.length} 可直取</span>
+      <span>${resources.filter(isDirectExtractionCandidate).length}/${resources.length} 可直取</span>
     </div>
     <div class="resource-attempt-list">
       ${ordered.map((item, index) => {
@@ -1822,7 +1828,7 @@ function playbackReadinessState() {
   const active = page?.active_video || null;
   const frames = page?.frames || [];
   const subtitles = page?.browser_subtitles || [];
-  const downloadable = resources.filter(isDownloadableResource);
+  const downloadable = resources.filter(isDirectExtractionCandidate);
   const drmDetected = page?.drm_detected || active?.drm_detected;
   const isBlob = Boolean(active?.src?.startsWith("blob:"));
   const srcObjectOnly = activeSrcObjectOnly(active);
@@ -1860,7 +1866,7 @@ function playbackSourceLabel(active) {
 }
 
 function playbackReadinessCopy(state) {
-  const downloadable = resources.filter(isDownloadableResource).length;
+  const downloadable = resources.filter(isDirectExtractionCandidate).length;
   const matched = resources.filter(item => item.playback_match || item.is_main_video).length;
   const subtitleCount = (page?.browser_subtitles || []).length;
   const frames = page?.frames || [];
@@ -1904,7 +1910,7 @@ function renderPlaybackReadiness() {
   if (!els.playbackReadiness) return;
   const active = page?.active_video || null;
   const subtitles = page?.browser_subtitles || [];
-  const downloadable = resources.filter(isDownloadableResource);
+  const downloadable = resources.filter(isDirectExtractionCandidate);
   const matched = resources.filter(item => item.playback_match || item.is_main_video);
   const state = playbackReadinessState();
   const copy = playbackReadinessCopy(state);
@@ -2075,7 +2081,7 @@ function noteStyleText() {
 function workbenchFacts(state) {
   const selected = selectedResource();
   const checked = currentPreflight();
-  const downloadable = resources.filter(isDownloadableResource).length;
+  const downloadable = resources.filter(isDirectExtractionCandidate).length;
   const active = page?.active_video || null;
   const subtitles = page?.browser_subtitles || [];
   const playTime = hasActiveVideoSignal(active)
@@ -2484,7 +2490,7 @@ function renderLaunchBar() {
 }
 
 function resourceHint() {
-  const downloadable = resources.filter(isDownloadableResource).length;
+  const downloadable = resources.filter(isDirectExtractionCandidate).length;
   const blobCount = resources.filter(item => item.kind === "blob").length;
   const fragmentCount = resources.filter(item => item.kind === "fragment").length;
   const playbackMatched = resources.some(item => item.playback_match || item.is_main_video);
@@ -2564,7 +2570,7 @@ function noResourceGuideHtml() {
 }
 
 function renderReadiness() {
-  const downloadable = resources.filter(isDownloadableResource);
+  const downloadable = resources.filter(isDirectExtractionCandidate);
   const selected = selectedResource();
   const hasBlob = resources.some(item => item.kind === "blob");
   const hasFragment = resources.some(item => item.kind === "fragment");
@@ -2632,7 +2638,7 @@ function selectedResourceLabel(item) {
 function routeSummaryState() {
   const selected = selectedResource();
   const checked = currentPreflight();
-  const downloadableCount = resources.filter(isDownloadableResource).length;
+  const downloadableCount = resources.filter(isDirectExtractionCandidate).length;
   const drmDetected = page?.drm_detected || page?.active_video?.drm_detected;
   const activeStream = activeSrcObjectOnly(page?.active_video);
   const canFallback = canAttemptBackendPageFallback("video");
@@ -2698,7 +2704,7 @@ function routeSummaryMetrics() {
   const checked = currentPreflight();
   const restored = Number(captureLog?.restored || 0);
   return [
-    { label: "候选", value: `${resources.filter(isDownloadableResource).length}/${resources.length}` },
+    { label: "候选", value: `${resources.filter(isDirectExtractionCandidate).length}/${resources.length}` },
     { label: "选中", value: selected?.kind || "-" },
     { label: "预检", value: checked ? checked.downloadable ? "通过" : checked.code || "未过" : "未跑" },
     { label: "捕获", value: restored ? `${restored} 缓存` : "实时" },
@@ -2709,7 +2715,7 @@ function routeSummaryMetrics() {
 function routeHandoffItems(state) {
   const selected = selectedResource();
   const checked = currentPreflight();
-  const downloadableCount = resources.filter(isDownloadableResource).length;
+  const downloadableCount = resources.filter(isDirectExtractionCandidate).length;
   const visualEnabled = visualUnderstandingEnabled();
   return [
     {
@@ -2798,7 +2804,7 @@ function renderExtractionPlan() {
   if (!els.extractionPlan) return;
   const selected = selectedResource();
   const checked = currentPreflight();
-  const downloadableCount = resources.filter(isDownloadableResource).length;
+  const downloadableCount = resources.filter(isDirectExtractionCandidate).length;
   const pageFallback = canAttemptBackendPageFallback("video");
   const drmDetected = page?.drm_detected || page?.active_video?.drm_detected;
   const directState = checked
@@ -2930,7 +2936,7 @@ function sleep(ms) {
 }
 
 function hasDownloadableResources(items = resources) {
-  return (items || []).some(isDownloadableResource);
+  return (items || []).some(isDirectExtractionCandidate);
 }
 
 async function waitForOneClickMediaCandidate() {
