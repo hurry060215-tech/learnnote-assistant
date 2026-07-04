@@ -581,6 +581,8 @@ class LocalUploadValidationTests(unittest.TestCase):
             self.assertEqual(report["candidates"][0]["preflight"]["code"], "auth_required")
             self.assertFalse(report["candidates"][0]["preflight"]["downloadable"])
             self.assertEqual(report["candidates"][1]["resource"]["url"], f"{base_url}/open.mp4")
+            self.assertTrue(report["candidates"][1]["resource"]["user_selected"])
+            self.assertEqual(report["candidates"][1]["resource"]["score"], 100)
             self.assertTrue(report["candidates"][1]["preflight"]["downloadable"])
             self.assertEqual(report["candidates"][1]["preflight"]["strategy"], "direct-file-probe")
         finally:

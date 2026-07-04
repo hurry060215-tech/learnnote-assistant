@@ -135,7 +135,7 @@ const context = {
                 },
                 {
                   rank: 2,
-                  resource: resources[1],
+                  resource: { ...resources[1], user_selected: true, score: 100 },
                   preflight: {
                     ok: true,
                     downloadable: true,
@@ -181,6 +181,8 @@ assert.equal(calls.resourcePreflight, 0);
 assert.ok(calls.start, "expected task start after aggregate page preflight selects a candidate");
 assert.equal(calls.start.resources[0].url, "https://cdn.example.com/live/master.m3u8");
 assert.equal(calls.start.resources[0].kind, "hls");
+assert.equal(calls.start.resources[0].user_selected, true);
+assert.equal(calls.start.resources[0].score, 100);
 assert.equal(context.selectedResource().url, "https://cdn.example.com/live/master.m3u8");
 assert.equal(context.preflightForResource(resources[0]).code, "download_forbidden");
 assert.equal(context.preflightForResource(resources[1]).strategy, "manifest-probe");

@@ -1347,6 +1347,8 @@ def page_preflight_report(request: PagePreflightRequest) -> dict:
                 downloadable_count += 1
                 if not selected_url:
                     selected_url = resource.url
+                    resource.user_selected = True
+                    resource.score = 100
         else:
             result = MediaPreflightResult(
                 ok=True,
