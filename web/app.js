@@ -90,6 +90,8 @@ let taskQuery = "";
 let taskStatusFilter = "all";
 let urlPreflightResourceUrl = "";
 let urlPreflightResult = null;
+let urlPagePreflightUrl = "";
+let urlPagePreflightResource = null;
 let lastHealthData = null;
 let pendingLocalFile = null;
 let pendingRerunNotice = null;
@@ -1804,9 +1806,16 @@ function manualUrlResource(url) {
   return resource;
 }
 
+function selectedPagePreflightResource(url) {
+  if (!url || url !== urlPagePreflightUrl || !urlPagePreflightResource?.url) return null;
+  return { ...urlPagePreflightResource };
+}
+
 function clearUrlPreflight() {
   urlPreflightResourceUrl = "";
   urlPreflightResult = null;
+  urlPagePreflightUrl = "";
+  urlPagePreflightResource = null;
   renderUrlPreflightReport(null, null);
 }
 
@@ -1844,6 +1853,25 @@ function applyUrlPreflightToResource(resource) {
   if (Number.isFinite(contentLength) && contentLength > 0) resource.content_length = contentLength;
 }
 
+function rememberUrlPagePreflight(pageUrl, report) {
+  urlPagePreflightUrl = pageUrl || "";
+  urlPagePreflightResource = null;
+  const selectedUrl = report?.selected_url || "";
+  const candidates = Array.isArray(report?.candidates) ? report.candidates : [];
+  const selected = candidates
+    .map(item => item?.resource || {})
+    .find(resource => resource.url === selectedUrl || resource.resolved_url === selectedUrl);
+  if (selected?.url) {
+    urlPagePreflightResource = {
+      ...selected,
+      source: selected.source || "page-preflight",
+      request_type: selected.request_type || "manual-page-preflight",
+      page_url: pageUrl
+    };
+  }
+  return report;
+}
+
 function preflightKindLabel(kind) {
   const key = String(kind || "").toLowerCase();
   if (key === "hls") return "HLS";
@@ -1859,6 +1887,7 @@ function preflightStrategyLabel(strategy) {
     "direct-response-probe": "直连响应探测",
     "manifest-probe": "清单探测",
     "range-probe": "分段探测",
+    "page-scan": "页面扫描",
     "yt-dlp": "yt-dlp 页面解析"
   };
   return labels[key] || key || "后端预检";
@@ -1914,6 +1943,53 @@ function renderUrlPreflightReport(resource, result, state = "") {
       `).join("")}
     </div>
     <p>${escapeHtml(message)}</p>
+  `;
+}
+
+function renderUrlPagePreflightReport(url, report = {}, state = "") {
+  if (!els.urlPreflightReport) return;
+  if (!url && !report) {
+    renderUrlPreflightReport(null, null);
+    return;
+  }
+  const ready = Boolean(report?.ready || report?.selected_url);
+  const status = state || (ready ? "pass" : "fail");
+  const statusText = status === "checking" ? "页面预检中" : ready ? "发现可直取资源" : "未发现可直取资源";
+  const candidates = Array.isArray(report?.candidates) ? report.candidates : [];
+  const selectedUrl = report?.selected_url || "";
+  const selectedItem = candidates.find(item => {
+    const resource = item?.resource || {};
+    return resource.url === selectedUrl || resource.resolved_url === selectedUrl;
+  }) || candidates[0] || {};
+  const selectedResource = selectedItem.resource || {};
+  const selectedResult = selectedItem.preflight || {};
+  const kindText = preflightKindLabel(selectedResult.kind || selectedResource.kind || "page");
+  const strategyText = preflightStrategyLabel(selectedResult.strategy || "page-scan");
+  const target = selectedResult.resolved_url || selectedResource.resolved_url || selectedResource.url || selectedUrl || url || "";
+  const scan = report?.page_scan || {};
+  const rows = [
+    ["候选", `${report?.downloadable_count || 0}/${report?.candidate_count || candidates.length || 0}`],
+    ["探测", `${report?.probed_count || 0}`],
+    ["页面发现", `${scan.discovered_count || 0}`],
+    ["类型", kindText],
+    ["策略", strategyText]
+  ];
+  if (target) rows.push(["目标", compactUrl(target, 96)]);
+
+  els.urlPreflightReport.hidden = false;
+  els.urlPreflightReport.className = `url-preflight-report ${status}`;
+  els.urlPreflightReport.innerHTML = `
+    <div class="url-preflight-report-head">
+      <span>${escapeHtml(statusText)}</span>
+      <strong>${escapeHtml(kindText)}</strong>
+    </div>
+    <div class="url-preflight-report-grid">
+      ${rows.map(([label, value]) => `
+        <span>${escapeHtml(label)}</span>
+        <b>${escapeHtml(value)}</b>
+      `).join("")}
+    </div>
+    <p>${escapeHtml(state === "checking" ? "正在扫描页面和候选媒体地址；不会录制标签页。" : (report?.message || report?.code || "页面预检完成。"))}</p>
   `;
 }
 
@@ -4620,7 +4696,8 @@ async function startUrlTask(mode = "video") {
     return;
   }
   const resource = manualUrlResource(url);
-  const resources = resource ? [resource] : [];
+  const pagePreflightResource = resource ? null : selectedPagePreflightResource(url);
+  const resources = resource ? [resource] : pagePreflightResource ? [pagePreflightResource] : [];
   els.startUrlButton.disabled = true;
   if (els.preflightUrlButton) els.preflightUrlButton.disabled = true;
   if (els.downloadUrlButton) els.downloadUrlButton.disabled = true;
@@ -4657,12 +4734,32 @@ async function preflightUrlTask() {
   if (urlPreflightResourceUrl === url) clearUrlPreflight();
   const resource = manualUrlResource(url);
   if (!resource) {
-    els.urlModeHint.textContent = "当前链接类型不能直接预检。请切换为视频直连、HLS 或 DASH，或直接创建任务交给页面扫描和 yt-dlp。";
-    renderUrlPreflightReport({ url, kind: resourceKindForUrl(url) }, {
-      downloadable: false,
-      code: "unsupported_url_mode",
-      message: "当前链接类型不能直接预检。可切换为视频直连、HLS 或 DASH，或创建页面扫描任务。"
-    }, "fail");
+    els.startUrlButton.disabled = true;
+    if (els.preflightUrlButton) els.preflightUrlButton.disabled = true;
+    if (els.downloadUrlButton) els.downloadUrlButton.disabled = true;
+    els.urlModeHint.textContent = "正在预检页面 URL；后端会扫描页面里的 mp4/m3u8/mpd 线索。";
+    renderUrlPagePreflightReport(url, null, "checking");
+    try {
+      const data = await fetchJson(apiUrl("/api/media/preflight-current-page"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          page_url: url,
+          resources: [],
+          cookies: [],
+          probe_limit: 3
+        })
+      });
+      const report = rememberUrlPagePreflight(url, data.report || {});
+      els.urlModeHint.textContent = report.ready
+        ? `页面预检通过：${report.downloadable_count || 1} 个候选可访问，生成笔记时会优先复用已发现资源。`
+        : `页面预检未通过：${report.message || report.code || "未发现可直取媒体"}；仍可创建任务交给 yt-dlp 或页面扫描兜底。`;
+      renderUrlPagePreflightReport(url, report);
+    } finally {
+      els.startUrlButton.disabled = false;
+      if (els.preflightUrlButton) els.preflightUrlButton.disabled = false;
+      if (els.downloadUrlButton) els.downloadUrlButton.disabled = false;
+    }
     return;
   }
   els.startUrlButton.disabled = true;

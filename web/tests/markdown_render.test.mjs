@@ -2252,6 +2252,7 @@ assert.equal(preflightedUrlResource.headers["content-type"], "application/json")
 
 const posts = [];
 const preflights = [];
+const pagePreflights = [];
 let preflightDownloadable = true;
 context.fetch = async (url, options = {}) => {
   const value = String(url);
@@ -2278,6 +2279,46 @@ context.fetch = async (url, options = {}) => {
           downloadable: false,
           code: "download_forbidden",
           message: "HTTP 403：Referer 或签名已过期"
+        }
+      })
+    };
+  }
+  if (value.endsWith("/api/media/preflight-current-page")) {
+    pagePreflights.push(JSON.parse(options.body));
+    return {
+      json: async () => ({
+        report: {
+          ok: true,
+          ready: true,
+          selected_url: "https://cdn.example.com/page/master.m3u8",
+          candidate_count: 5,
+          probed_count: 3,
+          downloadable_count: 2,
+          message: "page preflight ok",
+          page_scan: {
+            attempted: true,
+            discovered_count: 4,
+            attempts: []
+          },
+          candidates: [{
+            rank: 1,
+            resource: {
+              url: "https://cdn.example.com/page/master.m3u8",
+              source: "page-scan",
+              kind: "hls",
+              mime: "application/vnd.apple.mpegurl",
+              score: 92
+            },
+            preflight: {
+              ok: true,
+              downloadable: true,
+              strategy: "manifest-probe",
+              kind: "hls",
+              resolved_url: "https://cdn.example.com/page/master.m3u8",
+              status_code: 200,
+              content_type: "application/vnd.apple.mpegurl"
+            }
+          }]
         }
       })
     };
@@ -2376,6 +2417,28 @@ assert.match(elements.get("#urlPreflightReport").className, /fail/);
 assert.match(elements.get("#urlPreflightReport").innerHTML, /未通过/);
 assert.match(elements.get("#urlPreflightReport").innerHTML, /HTTP 403/);
 assert.doesNotMatch(elements.get("#urlPreflightReport").innerHTML, /master\.m3u8/);
+
+elements.get("#urlInput").value = "https://course.example.com/watch?id=page-preflight";
+elements.get("#urlMode").value = "page";
+await context.preflightUrlTask();
+
+assert.equal(pagePreflights.length, 1);
+assert.equal(pagePreflights[0].page_url, "https://course.example.com/watch?id=page-preflight");
+assert.equal(pagePreflights[0].resources.length, 0);
+assert.equal(pagePreflights[0].probe_limit, 3);
+assert.match(elements.get("#urlPreflightReport").className, /pass/);
+assert.match(elements.get("#urlPreflightReport").innerHTML, /2\/5/);
+assert.match(elements.get("#urlPreflightReport").innerHTML, /page\/master\.m3u8/);
+
+await context.startUrlTask("video");
+
+assert.equal(posts.length, 6);
+assert.equal(posts[5].page_url, "https://course.example.com/watch?id=page-preflight");
+assert.equal(posts[5].resources.length, 1);
+assert.equal(posts[5].resources[0].url, "https://cdn.example.com/page/master.m3u8");
+assert.equal(posts[5].resources[0].kind, "hls");
+assert.equal(posts[5].resources[0].request_type, "manual-page-preflight");
+assert.equal(posts[5].resources[0].page_url, "https://course.example.com/watch?id=page-preflight");
 
 const localUploads = [];
 const droppedFile = { name: "drag-local-lesson.mkv", type: "", size: 456789 };
