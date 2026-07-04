@@ -120,6 +120,26 @@ class LocalUploadValidationTests(unittest.TestCase):
             self.assertTrue(payload["ffprobe_optional"])
             self.assertEqual(payload["duration_probe"], "ffmpeg")
 
+    def test_api_health_alias_matches_health_payload(self) -> None:
+        health = self.client.get("/health")
+        api_health = self.client.get("/api/health")
+
+        self.assertEqual(health.status_code, 200)
+        self.assertEqual(api_health.status_code, 200)
+        health_payload = health.json()
+        api_payload = api_health.json()
+        for key in (
+            "ok",
+            "ffmpeg",
+            "ffprobe",
+            "duration_probe",
+            "vision_model_configured",
+            "default_llm_model",
+            "default_llm_base_host",
+            "default_llm_provider",
+        ):
+            self.assertEqual(api_payload[key], health_payload[key])
+
     def test_api_write_rejects_foreign_browser_origin(self) -> None:
         response = self.client.post(
             "/api/media/preflight-current-page",

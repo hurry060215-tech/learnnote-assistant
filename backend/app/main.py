@@ -1579,8 +1579,7 @@ def index() -> HTMLResponse:
     return HTMLResponse(path.read_text(encoding="utf-8"))
 
 
-@app.get("/health")
-def health() -> dict:
+def health_payload() -> dict:
     ffmpeg = ffmpeg_bin()
     ffprobe = ffprobe_bin()
     duration_probe = "ffprobe" if ffprobe else "ffmpeg" if ffmpeg else ""
@@ -1599,6 +1598,16 @@ def health() -> dict:
         "default_llm_base_host": llm_base_host(LLM_BASE_URL),
         "default_llm_provider": llm_provider_name(LLM_BASE_URL),
     }
+
+
+@app.get("/health")
+def health() -> dict:
+    return health_payload()
+
+
+@app.get("/api/health")
+def api_health() -> dict:
+    return health_payload()
 
 
 @app.post("/api/tasks/from-current-page")
