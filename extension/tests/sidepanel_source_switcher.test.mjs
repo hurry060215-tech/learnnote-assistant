@@ -194,6 +194,16 @@ vm.runInContext(sidepanelCode, context);
 
 await new Promise(resolve => setTimeout(resolve, 0));
 
+const sourceRouteRail = elements.get("#sourceRouteRail");
+assert.match(sourceRouteRail.innerHTML, /data-source-route="summarize"/);
+assert.match(sourceRouteRail.innerHTML, /data-source-route="local"/);
+assert.match(sourceRouteRail.innerHTML, /data-source-route="text"/);
+assert.match(sourceRouteRail.innerHTML, /当前页视频/);
+assert.match(sourceRouteRail.innerHTML, /本地视频/);
+assert.match(sourceRouteRail.innerHTML, /页面文本/);
+assert.match(sourceRouteRail.innerHTML, /待预检|可总结/);
+assert.match(sourceRouteRail.innerHTML, /视频 · 直接下载|1 个直取候选/);
+
 await sourceButtons[1].listeners.click();
 assert.equal(sourceButtons[0].classList.contains("active"), false);
 assert.equal(sourceButtons[1].classList.contains("active"), true);
@@ -201,15 +211,27 @@ assert.equal(elements.get("#localVideoCard").scrollCount, 1);
 assert.equal(elements.get("#localVideoCard").dataset.localState, "idle");
 assert.equal(elements.get("#fileInput").clicks, 0);
 assert.deepEqual(startCalls, []);
+assert.match(sourceRouteRail.innerHTML, /data-source-route="local" data-state="wait"/);
 
 await sourceButtons[2].listeners.click();
 assert.equal(sourceButtons[1].classList.contains("active"), false);
 assert.equal(sourceButtons[2].classList.contains("active"), true);
 assert.equal(elements.get("#textButton").focusCount, 1);
 assert.deepEqual(startCalls, []);
+assert.match(sourceRouteRail.innerHTML, /data-source-route="text" data-state="pass"/);
 
 await sourceButtons[0].listeners.click();
 assert.equal(sourceButtons[0].classList.contains("active"), true);
 assert.equal(elements.get("#currentStudyCard").scrollCount, 1);
 assert.equal(preflightCalls, 0);
 assert.deepEqual(startCalls, []);
+
+await sourceRouteRail.listeners.click({
+  target: {
+    closest(selector) {
+      return selector === "[data-source-route]" ? { dataset: { sourceRoute: "local" } } : null;
+    }
+  }
+});
+assert.equal(sourceButtons[0].classList.contains("active"), false);
+assert.equal(sourceButtons[1].classList.contains("active"), true);

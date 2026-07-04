@@ -74,6 +74,7 @@ let currentTabId = null;
 let taskHistory = [];
 let lastHealthData = null;
 let pendingLocalFile = null;
+let activeSource = "summarize";
 
 const els = {
   backendStatus: document.querySelector("#backendStatus"),
@@ -81,6 +82,7 @@ const els = {
   pageUrl: document.querySelector("#pageUrl"),
   activeVideo: document.querySelector("#activeVideo"),
   playbackReadiness: document.querySelector("#playbackReadiness"),
+  sourceRouteRail: document.querySelector("#sourceRouteRail"),
   currentStudyCard: document.querySelector("#currentStudyCard"),
   launchBar: document.querySelector("#launchBar"),
   resourceCount: document.querySelector("#resourceCount"),
@@ -2041,6 +2043,92 @@ function currentStudyMetrics() {
   ];
 }
 
+function sourceRouteItems() {
+  const studyState = currentStudyState();
+  const selected = selectedResource();
+  const downloadableCount = resources.filter(isDirectExtractionCandidate).length;
+  const subtitles = page?.browser_subtitles || [];
+  const pageTextLength = (page?.page_text || "").trim().length;
+  const localState = localUploadFocusState();
+  const videoState = ({
+    ready: "pass",
+    candidate: "active",
+    fallback: "warn",
+    mapping: "warn",
+    waiting: "wait",
+    blocked: "fail",
+    empty: "wait"
+  })[studyState] || "wait";
+  const videoValue = studyState === "ready"
+    ? "可总结"
+    : studyState === "candidate"
+      ? "待预检"
+      : ["fallback", "mapping", "waiting"].includes(studyState)
+        ? "待映射"
+        : studyState === "blocked"
+          ? "受限"
+          : "待播放";
+  const videoDetail = selected
+    ? `${mediaKindText(selected.kind) || selected.kind || "媒体"} · ${candidateStrategyText(selected)}`
+    : downloadableCount
+      ? `${downloadableCount} 个直取候选`
+      : hasActiveVideoSignal(page?.active_video)
+        ? playbackSourceLabel(page.active_video)
+        : "播放几秒后检测媒体请求";
+  const localValue = ({
+    selected: "已选择",
+    uploading: "处理中",
+    ready: "已接入",
+    error: "需重试"
+  })[localState] || "兜底";
+  const localDetail = pendingLocalFile
+    ? pendingLocalFile.name
+    : currentTask?.source_type === "local"
+      ? taskStatusText(currentTask)
+      : "拖入本地视频走同一套切片管线";
+  const textReady = hasPageTextFallback();
+  const textValue = textReady ? "可用" : "待读取";
+  const textDetail = subtitles.length
+    ? `${subtitles.length} 条浏览器字幕`
+    : pageTextLength
+      ? `${pageTextLength} 字页面文本`
+      : "无视频时可作为轻量总结入口";
+  return [
+    {
+      key: "summarize",
+      state: videoState,
+      title: "当前页视频",
+      value: videoValue,
+      detail: videoDetail
+    },
+    {
+      key: "local",
+      state: localState === "error" ? "fail" : ["selected", "uploading", "ready"].includes(localState) ? "active" : "wait",
+      title: "本地视频",
+      value: localValue,
+      detail: localDetail
+    },
+    {
+      key: "text",
+      state: textReady ? "pass" : "wait",
+      title: "页面文本",
+      value: textValue,
+      detail: textDetail
+    }
+  ];
+}
+
+function renderSourceRouteRail() {
+  if (!els.sourceRouteRail) return;
+  els.sourceRouteRail.innerHTML = sourceRouteItems().map(item => `
+    <button type="button" class="${item.key === activeSource ? "active" : ""}" data-source-route="${escapeHtml(item.key)}" data-state="${escapeHtml(item.state)}">
+      <span>${escapeHtml(item.title)}</span>
+      <strong>${escapeHtml(item.value)}</strong>
+      <small>${escapeHtml(item.detail)}</small>
+    </button>
+  `).join("");
+}
+
 function currentStudyActionText(state) {
   if (state === "ready") return "下一步：点击“总结当前视频”生成完整图文笔记。";
   if (state === "candidate") return "下一步：点击“预检资源”，确认当前候选能被本地后端访问。";
@@ -3241,6 +3329,7 @@ function renderContext() {
     `;
   }
   renderPlaybackReadiness();
+  renderSourceRouteRail();
   renderCurrentStudyCard();
   renderLaunchBar();
   els.resourceCount.textContent = String(resources.length);
@@ -5400,9 +5489,11 @@ function handleRouteAction(action) {
 }
 
 function setSourceSwitcherActive(action) {
+  activeSource = action === "local" || action === "text" ? action : "summarize";
   document.querySelectorAll("[data-source-action]").forEach(button => {
-    button.classList.toggle("active", button.dataset.sourceAction === action);
+    button.classList.toggle("active", button.dataset.sourceAction === activeSource);
   });
+  renderSourceRouteRail();
 }
 
 function pulseTarget(element) {
@@ -5433,6 +5524,13 @@ async function handleSourceSwitch(action) {
 document.querySelectorAll("[data-source-action]").forEach(button => {
   button.addEventListener("click", () => handleSourceSwitch(button.dataset.sourceAction));
 });
+if (els.sourceRouteRail) {
+  els.sourceRouteRail.addEventListener("click", event => {
+    const button = event.target.closest("[data-source-route]");
+    if (!button) return;
+    handleSourceSwitch(button.dataset.sourceRoute);
+  });
+}
 els.routeSummary.addEventListener("click", event => {
   const button = event.target.closest("[data-route-action]");
   if (!button) return;
