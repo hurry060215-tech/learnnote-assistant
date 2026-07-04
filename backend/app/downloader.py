@@ -21,6 +21,7 @@ from .runtime import ffmpeg_bin
 
 
 DownloadProgressCallback = Callable[[int, Optional[int], ResourceCandidate], None]
+DownloadStatusCallback = Callable[[str, int, Optional[ResourceCandidate]], None]
 
 
 MEDIA_EXT_RE = re.compile(r"\.(mp4|m4v|webm|mov|mkv|flv|avi)(\?|#|$)", re.I)
@@ -2169,18 +2170,32 @@ def _preflight_companion_audio(
 
 
 class MediaDownloader:
-    def __init__(self, task_path: Path, progress_callback: Optional[DownloadProgressCallback] = None):
+    def __init__(
+        self,
+        task_path: Path,
+        progress_callback: Optional[DownloadProgressCallback] = None,
+        status_callback: Optional[DownloadStatusCallback] = None,
+    ):
         self.task_path = task_path
         self.download_dir = task_path / "downloads"
         self.download_dir.mkdir(parents=True, exist_ok=True)
         self.attempts: list[DownloadAttempt] = []
         self.progress_callback = progress_callback
+        self.status_callback = status_callback
 
     def _notify_progress(self, downloaded: int, total: int | None, candidate: ResourceCandidate) -> None:
         if downloaded <= 0 or not self.progress_callback:
             return
         try:
             self.progress_callback(downloaded, total, candidate)
+        except Exception:
+            return
+
+    def _notify_status(self, message: str, progress: int, candidate: ResourceCandidate | None = None) -> None:
+        if not self.status_callback:
+            return
+        try:
+            self.status_callback(message, progress, candidate)
         except Exception:
             return
 
@@ -2723,6 +2738,7 @@ class MediaDownloader:
             opts["cookiefile"] = str(cookie_file)
 
         before = set(self.download_dir.glob("*"))
+        self._notify_status("正在使用 yt-dlp 解析并下载页面视频", 18, (resources or [None])[0])
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
                 ydl.extract_info(page_url, download=True)
@@ -2941,6 +2957,7 @@ class MediaDownloader:
         ffmpeg = ffmpeg_bin()
         if not ffmpeg:
             raise DownloadError("unsupported_manifest", "未找到 ffmpeg，无法合并分离的视频和音频流。")
+        self._notify_status("正在用 ffmpeg 合并分离音视频流", 35, candidate)
         video_url = candidate.resolved_url or candidate.url
         audio_url = candidate.audio_url
         if not _is_http_url(video_url) or not _is_http_url(audio_url):
@@ -3074,6 +3091,7 @@ class MediaDownloader:
             request_headers.setdefault("Accept", "application/dash+xml,application/xml,text/xml,*/*;q=0.8")
 
         try:
+            self._notify_status("正在重放播放请求获取 manifest", 15, candidate)
             with requests.request(request_method, url, headers=request_headers, data=request_body, stream=True, timeout=30, allow_redirects=True) as response:
                 _update_candidate_from_download_response(candidate, response)
                 body = _read_probe_bytes(response, limit=MAX_PAGE_SCAN_BYTES)
@@ -3141,6 +3159,7 @@ class MediaDownloader:
             cmd += ["-protocol_whitelist", "file,http,https,tcp,tls,crypto,data", "-allowed_extensions", "ALL"]
             cmd += ["-f", kind]
         cmd += ["-user_agent", user_agent, "-i", str(local_manifest or url), "-c", "copy", str(output)]
+        self._notify_status("正在用 ffmpeg 合并 HLS/DASH 分片", 35, candidate)
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0:
             stderr = (result.stderr or "").lower()

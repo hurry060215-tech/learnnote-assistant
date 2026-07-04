@@ -104,6 +104,21 @@ def download_progress_updater(task_id: str):
     return update
 
 
+def download_status_updater(task_id: str):
+    def update(message: str, progress: int, candidate: ResourceCandidate | None = None) -> None:
+        current = get_task(task_id)
+        payload = {
+            "phase": "downloading",
+            "progress": max(current.progress, max(10, min(60, int(progress)))),
+            "message": message,
+        }
+        if candidate:
+            payload["selected_resource"] = redacted_resource(candidate)
+        update_task(task_id, **payload)
+
+    return update
+
+
 def redacted_request_dump(request: CurrentPageTaskRequest) -> dict:
     data = request.model_dump(mode="json")
     if data.get("options") and data["options"].get("llm_api_key"):
@@ -675,7 +690,11 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
                 return
             _fail(task_id, "drm_or_encrypted", message)
             return
-        downloader = MediaDownloader(work_dir, progress_callback=download_progress_updater(task_id))
+        downloader = MediaDownloader(
+            work_dir,
+            progress_callback=download_progress_updater(task_id),
+            status_callback=download_status_updater(task_id),
+        )
         media_path, selected = downloader.download(request.page_url, request.resources, request.cookies, request.title)
         if selected:
             update_task(task_id, selected_resource=redacted_resource(selected))
