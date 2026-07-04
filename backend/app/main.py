@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from .config import DATA_DIR, LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, STATIC_DIR, TEMP_DIR, UPLOAD_DIR, WEB_DIR, ensure_dirs
 from .downloader import MediaDownloader, effective_resource_kind, fallback_page_contexts, preflight_media_resource, rank_media_candidates
 from .media import probe_duration
-from .models import CurrentPageTaskRequest, MediaPreflightRequest, MediaPreflightResult, PagePreflightRequest, ResourceCandidate, TaskOptions, TaskRecord
+from .models import CurrentPageTaskRequest, MediaPreflightRequest, MediaPreflightResult, PagePreflightRequest, RerunFromMediaRequest, ResourceCandidate, TaskOptions, TaskRecord
 from .processor import enrich_resource_candidates_with_active_video, process_current_page_task, process_local_video_task, read_note, read_transcript, read_visual_index
 from .runtime import ffmpeg_bin, ffprobe_bin
 from .storage import create_task, get_task, list_tasks, task_dir, update_task
@@ -106,6 +106,14 @@ def merge_task_options(base: TaskOptions | None, overrides: TaskOptions | None) 
             if field in override_values:
                 merged[field] = override_values[field]
     return TaskOptions.model_validate(merged)
+
+
+def rerun_options_from_body(body: RerunFromMediaRequest | TaskOptions | None) -> TaskOptions | None:
+    if body is None:
+        return None
+    if isinstance(body, RerunFromMediaRequest):
+        return body.options
+    return body
 
 
 def task_media_file_exists(task: TaskRecord) -> bool:
@@ -1646,7 +1654,7 @@ async def create_from_local(
 def create_from_existing_media(
     task_id: str,
     background_tasks: BackgroundTasks,
-    options: TaskOptions | None = Body(default=None),
+    request: RerunFromMediaRequest | TaskOptions | None = Body(default=None),
 ) -> dict:
     try:
         source = get_task(task_id)
@@ -1658,8 +1666,18 @@ def create_from_existing_media(
     media_path = Path(source.media_path)
     if not media_path.exists():
         raise HTTPException(status_code=404, detail={"code": "media_not_found", "message": "Downloaded media file is missing"})
+    if not media_path.is_file():
+        raise HTTPException(status_code=400, detail={"code": "media_not_found", "message": "Downloaded media path is not a file"})
+    if media_path.stat().st_size <= 0:
+        raise HTTPException(status_code=400, detail={"code": "media_not_found", "message": "Downloaded media file is empty"})
+    try:
+        validate_local_upload_file(media_path)
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, dict) else {"code": "invalid_local_video", "message": str(exc.detail)}
+        detail["code"] = "media_not_found"
+        raise HTTPException(status_code=400, detail=detail) from exc
 
-    parsed_options = merge_task_options(source.options, options)
+    parsed_options = merge_task_options(source.options, rerun_options_from_body(request))
     task = create_task(
         source_type="local",
         title=source.title or f"Media from {source.id}",

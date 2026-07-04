@@ -198,17 +198,17 @@ await sourceButtons[1].listeners.click();
 assert.equal(sourceButtons[0].classList.contains("active"), false);
 assert.equal(sourceButtons[1].classList.contains("active"), true);
 assert.equal(elements.get("#localDrop").scrollCount, 1);
-assert.equal(elements.get("#fileInput").clicks, 1);
+assert.equal(elements.get("#fileInput").clicks, 0);
 assert.deepEqual(startCalls, []);
 
 await sourceButtons[2].listeners.click();
 assert.equal(sourceButtons[1].classList.contains("active"), false);
 assert.equal(sourceButtons[2].classList.contains("active"), true);
 assert.equal(elements.get("#textButton").focusCount, 1);
-assert.deepEqual(startCalls, ["page_text"]);
+assert.deepEqual(startCalls, []);
 
 await sourceButtons[0].listeners.click();
 assert.equal(sourceButtons[0].classList.contains("active"), true);
 assert.equal(elements.get("#currentStudyCard").scrollCount, 1);
-assert.equal(preflightCalls, 1);
-assert.deepEqual(startCalls, ["page_text", "video"]);
+assert.equal(preflightCalls, 0);
+assert.deepEqual(startCalls, []);

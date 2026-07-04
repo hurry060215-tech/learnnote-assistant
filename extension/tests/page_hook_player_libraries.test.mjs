@@ -64,6 +64,22 @@ class FakeXgPlayer {
   }
 }
 
+class FakePlyr {
+  constructor(target, options = {}) {
+    this.target = target;
+    this.options = options;
+    this._source = null;
+  }
+
+  get source() {
+    return this._source;
+  }
+
+  set source(value) {
+    this._source = value;
+  }
+}
+
 function fakeJwplayer() {
   return {
     setup(options) {
@@ -108,6 +124,7 @@ const context = {
   DPlayer: FakeDPlayer,
   Artplayer: FakeArtPlayer,
   xgplayer: { Player: FakeXgPlayer },
+  Plyr: FakePlyr,
   jwplayer: fakeJwplayer,
   flvjs: { createPlayer: fakeFlvCreatePlayer },
   mpegts: { createPlayer: fakeMpegtsCreatePlayer },
@@ -154,6 +171,20 @@ const xg = new context.xgplayer.Player({ source: { src: "/xgplayer/stream.mpd?to
 assert.equal(xg.options.source.src, "/xgplayer/stream.mpd?token=4");
 assert.equal(xg.switchUrl("/xgplayer/backup.m3u8?token=5"), "xg-switched");
 
+const plyr = new context.Plyr("#course-video", {
+  source: {
+    type: "video",
+    sources: [{ src: "/plyr/constructor.mp4?token=12", type: "video/mp4" }]
+  }
+});
+plyr.source = {
+  type: "video",
+  sources: [
+    { src: "/plyr/master.m3u8?token=13", type: "application/vnd.apple.mpegurl" },
+    { src: "/plyr/fallback.mp4?token=14", type: "video/mp4" }
+  ]
+};
+
 const jw = context.jwplayer("lesson-player");
 assert.equal(jw.setup({ playlist: [{ file: "/jwplayer/lesson.mp4?token=6" }] }), "jw-setup");
 assert.equal(jw.load([{ sources: [{ file: "/jwplayer/master.m3u8?token=7" }] }]), "jw-load");
@@ -184,6 +215,9 @@ assert.ok(urls.has("https://course.example.com/dplayer/next.flv?token=2"));
 assert.ok(urls.has("https://course.example.com/artplayer/course.m3u8?token=3"));
 assert.ok(urls.has("https://course.example.com/xgplayer/stream.mpd?token=4"));
 assert.ok(urls.has("https://course.example.com/xgplayer/backup.m3u8?token=5"));
+assert.ok(urls.has("https://course.example.com/plyr/constructor.mp4?token=12"));
+assert.ok(urls.has("https://course.example.com/plyr/master.m3u8?token=13"));
+assert.ok(urls.has("https://course.example.com/plyr/fallback.mp4?token=14"));
 assert.ok(urls.has("https://course.example.com/jwplayer/lesson.mp4?token=6"));
 assert.ok(urls.has("https://course.example.com/jwplayer/master.m3u8?token=7"));
 assert.ok(urls.has("https://course.example.com/flv/live?id=8"));
@@ -200,6 +234,8 @@ assert.ok(labels.has("DPlayer constructor switchVideo"));
 assert.ok(labels.has("ArtPlayer constructor"));
 assert.ok(labels.has("xgplayer Player constructor"));
 assert.ok(labels.has("xgplayer Player constructor switchUrl"));
+assert.ok(labels.has("Plyr constructor"));
+assert.ok(labels.has("Plyr source"));
 assert.ok(labels.has("jwplayer setup"));
 assert.ok(labels.has("jwplayer load"));
 assert.ok(labels.has("flv.js createPlayer"));
@@ -210,5 +246,6 @@ assert.ok(labels.has("mpegts.js switchUrl"));
 for (const resource of resources) {
   assert.equal(resource.source, "pageHookPlayer");
   assert.ok(["hls", "dash", "video", "fragment"].includes(resource.kind));
-  assert.ok(resource.score >= (resource.kind === "hls" || resource.kind === "dash" ? 99 : 92));
+  const minScore = resource.kind === "hls" || resource.kind === "dash" ? 99 : resource.kind === "video" ? 92 : 64;
+  assert.ok(resource.score >= minScore);
 }

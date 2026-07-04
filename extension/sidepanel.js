@@ -5341,13 +5341,10 @@ async function handleSourceSwitch(action) {
   setSourceSwitcherActive(source);
   if (source === "local") {
     pulseTarget(els.localDrop);
-    els.fileInput?.click();
   } else if (source === "text") {
     pulseTarget(els.textButton);
-    await startTask("page_text");
   } else {
     pulseTarget(els.currentStudyCard || els.summarizeButton);
-    await startTask("video");
   }
 }
 

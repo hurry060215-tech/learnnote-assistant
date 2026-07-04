@@ -1268,6 +1268,33 @@
     }
   }
 
+  function patchPlyr() {
+    try {
+      const Plyr = window.Plyr;
+      if (!Plyr?.prototype) return;
+      const descriptor = Object.getOwnPropertyDescriptor(Plyr.prototype, "source");
+      if (descriptor?.set && !descriptor.set.__learnNotePlyrSourcePatched) {
+        const originalSet = descriptor.set;
+        const wrappedSet = function (value) {
+          emitPlayerSources(value, "", "Plyr source");
+          return originalSet.call(this, value);
+        };
+        try {
+          Object.defineProperty(wrappedSet, "__learnNotePlyrSourcePatched", { value: true });
+        } catch {
+          // The wrapped setter still works if the marker cannot be written.
+        }
+        Object.defineProperty(Plyr.prototype, "source", {
+          ...descriptor,
+          set: wrappedSet
+        });
+      }
+      patchPlayerConstructorOn(window, "Plyr", "Plyr constructor");
+    } catch {
+      // Plyr is optional and may be loaded late or expose a locked prototype.
+    }
+  }
+
   function patchGenericPlayerInstance(player, label) {
     if (!player || typeof player !== "object") return player;
     for (const method of ["src", "url", "load", "setup", "switchVideo", "switchUrl", "switchURL", "changeQuality", "setSrc", "setUrl", "setVideoUrl"]) {
@@ -1480,6 +1507,7 @@
     patchDashJs();
     patchShakaPlayer();
     patchVideoJs();
+    patchPlyr();
     patchCommonChinesePlayers();
     patchSegmentedLivePlayers();
     patchJwPlayer();
@@ -1558,6 +1586,7 @@
       "shaka",
       "videojs",
       "videoJs",
+      "Plyr",
       "DPlayer",
       "Artplayer",
       "ArtPlayer",

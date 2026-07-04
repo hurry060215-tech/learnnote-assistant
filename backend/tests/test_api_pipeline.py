@@ -19,7 +19,7 @@ from fastapi.testclient import TestClient
 from app.config import DATA_DIR
 from app.downloader import DownloadError
 from app.main import app, diagnostic_recovery_profile, local_upload_filename, render_bundle_manifest, render_diagnostics_markdown, render_task_audit_markdown, render_visual_windows_markdown
-from app.models import DownloadAttempt, ResourceCandidate, TranscriptResult, TranscriptSegment, VisualWindow
+from app.models import DownloadAttempt, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
 from app.runtime import ffmpeg_bin
 from app.storage import create_task, task_dir, update_task
 
@@ -956,6 +956,49 @@ class ApiPipelineTests(unittest.TestCase):
     def setUp(self) -> None:
         TEST_RUN_DIR.mkdir(parents=True, exist_ok=True)
         self.client = TestClient(app)
+
+    def test_rerun_from_media_accepts_nested_options_request(self) -> None:
+        with tempfile.TemporaryDirectory(dir=TEST_RUN_DIR) as tmp:
+            video = make_video(Path(tmp))
+            source = create_task(
+                source_type="current_page",
+                title="Nested rerun source",
+                page_url="https://course.example.com/watch",
+                options=TaskOptions(frame_interval=20, grid_columns=3, grid_rows=3, visual_understanding=True),
+                mode="download_only",
+            )
+            update_task(source.id, status="success", phase="completed", progress=100, media_path=str(video))
+            rerun_task_id = ""
+            try:
+                with patch("app.main.process_local_video_task") as process_task:
+                    response = self.client.post(
+                        f"/api/tasks/{source.id}/rerun-from-media",
+                        json={"options": {"frame_interval": 5, "grid_columns": 4, "grid_rows": 2, "visual_understanding": False}},
+                    )
+                self.assertEqual(response.status_code, 200)
+                rerun_task_id = response.json()["task_id"]
+                rerun_task = self.client.get(f"/api/tasks/{rerun_task_id}").json()["task"]
+                self.assertEqual(rerun_task["options"]["frame_interval"], 5)
+                self.assertEqual(rerun_task["options"]["grid_columns"], 4)
+                self.assertEqual(rerun_task["options"]["grid_rows"], 2)
+                self.assertEqual(rerun_task["options"]["visual_understanding"], False)
+                process_task.assert_called_once()
+            finally:
+                if rerun_task_id:
+                    shutil.rmtree(task_dir(rerun_task_id), ignore_errors=True)
+                shutil.rmtree(task_dir(source.id), ignore_errors=True)
+
+    def test_rerun_from_media_rejects_invalid_media_path_before_queueing(self) -> None:
+        source = create_task(source_type="current_page", title="Invalid rerun source", page_url="", mode="download_only")
+        update_task(source.id, status="success", phase="completed", progress=100, media_path=str(task_dir(source.id)))
+        try:
+            with patch("app.main.process_local_video_task") as process_task:
+                response = self.client.post(f"/api/tasks/{source.id}/rerun-from-media", json={"visual_understanding": False})
+            self.assertEqual(response.status_code, 400)
+            self.assertEqual(response.json()["detail"]["code"], "media_not_found")
+            process_task.assert_not_called()
+        finally:
+            shutil.rmtree(task_dir(source.id), ignore_errors=True)
 
     def test_local_upload_reaches_note_with_frame_grid(self) -> None:
         with tempfile.TemporaryDirectory(dir=TEST_RUN_DIR) as tmp:

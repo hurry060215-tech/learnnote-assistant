@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 TaskPhase = Literal[
@@ -147,6 +147,12 @@ class PagePreflightRequest(BaseModel):
     active_video: ActiveVideoInfo | None = None
     drm_detected: bool = False
     probe_limit: int = Field(default=3, ge=0, le=8)
+
+
+class RerunFromMediaRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    options: TaskOptions | None = None
 
 
 class MediaPreflightResult(BaseModel):
