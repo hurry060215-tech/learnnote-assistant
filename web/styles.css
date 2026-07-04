@@ -10073,3 +10073,164 @@ body.reading-mode .app-shell {
     grid-template-columns: 1fr;
   }
 }
+
+/* 2026-07-04 cockpit polish: make the first source pane read as one compact
+   BiliNote-style study workflow instead of repeated status cards. */
+.workspace-panel {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(247, 250, 253, 0.94)),
+    var(--surface);
+}
+
+.workspace-panel .panel-heading {
+  margin-bottom: 12px;
+}
+
+.workspace-panel .source-route-rail {
+  gap: 7px;
+  margin-bottom: 12px;
+}
+
+.workspace-panel .source-route-item {
+  position: relative;
+  min-height: 86px;
+  border-color: #d6e2ef;
+  background: #f8fbff;
+  box-shadow: none;
+}
+
+.workspace-panel .source-route-item::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  border-radius: 8px 8px 0 0;
+  background: #b9c8d9;
+}
+
+.workspace-panel .source-route-item.active::before,
+.workspace-panel .source-route-item.ready::before {
+  background: var(--success);
+}
+
+.workspace-panel .source-route-item.blocked::before {
+  background: var(--danger);
+}
+
+.workspace-panel .source-route-item.selected {
+  background: #ffffff;
+  box-shadow: 0 8px 18px rgba(23, 105, 232, 0.08);
+}
+
+.workspace-panel .source-tabs {
+  margin-bottom: 12px;
+  border: 1px solid #d8e3ef;
+  border-radius: 10px;
+  background: #eef4fb;
+  padding: 5px;
+}
+
+.workspace-panel .source-tab {
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+}
+
+.workspace-panel .source-tab:hover {
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.workspace-panel .source-tab.active {
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.08);
+}
+
+.browser-capture-card {
+  border: 1px solid #dbe6f2;
+  box-shadow: 0 10px 26px rgba(16, 24, 40, 0.05);
+}
+
+.browser-capture-head {
+  align-items: start;
+}
+
+.browser-capture-head .capture-status-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 5px;
+}
+
+.browser-capture-head .capture-status-grid span {
+  min-width: 0;
+  border-radius: 7px;
+}
+
+.capture-flow div {
+  border: 1px solid #dbe5f1;
+  box-shadow: none;
+}
+
+.capture-flow div::after {
+  opacity: 0.45;
+}
+
+.capture-signals span {
+  justify-content: center;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.boundary-note {
+  border-radius: 9px;
+  background: #fffaf1;
+}
+
+@media (max-width: 560px) {
+  .workspace-panel .source-route-rail {
+    display: none;
+  }
+
+  .browser-capture-card {
+    gap: 9px;
+    padding: 11px;
+  }
+
+  .browser-capture-head {
+    grid-template-columns: 30px minmax(0, 1fr) auto;
+    gap: 8px;
+  }
+
+  .capture-icon {
+    width: 30px;
+    height: 30px;
+  }
+
+  .browser-capture-head .capture-status-grid {
+    grid-column: 1 / -1;
+  }
+
+  .browser-capture-head em {
+    grid-column: auto;
+    align-self: start;
+    justify-self: end;
+  }
+
+  .capture-flow {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .capture-flow div {
+    min-height: 64px;
+    padding: 7px 6px;
+  }
+
+  .capture-flow small {
+    display: none;
+  }
+
+  .capture-signals {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
