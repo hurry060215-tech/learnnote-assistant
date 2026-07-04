@@ -218,6 +218,14 @@ def maybe_download_page_subtitle(downloader: object, request: CurrentPageTaskReq
         return None
 
 
+def parse_subtitle_or_none(path: Path, source: str = "page-subtitle") -> TranscriptResult | None:
+    try:
+        transcript = transcript_from_subtitle(path, source=source)
+    except Exception:
+        return None
+    return transcript if transcript.segments else None
+
+
 def _srt_timestamp(seconds: float) -> str:
     millis = round(max(0.0, seconds) * 1000)
     hours, remainder = divmod(millis, 3_600_000)
@@ -604,8 +612,8 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
             page_subtitle_path = maybe_download_page_subtitle(downloader, request)
             if page_subtitle_path:
                 subtitle_path = str(page_subtitle_path)
-                transcript = transcript_from_subtitle(page_subtitle_path)
-                if transcript.segments:
+                transcript = parse_subtitle_or_none(page_subtitle_path)
+                if transcript:
                     transcript_path = str(write_json(task_id, "transcript.json", transcript.model_dump(mode="json")))
             if not transcript_path:
                 transcript = transcript_from_browser_subtitles(request.browser_subtitles)
@@ -706,9 +714,7 @@ def _process_video_file(
         except OSError:
             owned_subtitle_path = subtitle_path
         update_task(task_id, subtitle_path=str(owned_subtitle_path), message="已检测到页面字幕，正在解析字幕")
-        transcript = transcript_from_subtitle(owned_subtitle_path, source=subtitle_source or "page-subtitle")
-        if not transcript.segments:
-            transcript = None
+        transcript = parse_subtitle_or_none(owned_subtitle_path, source=subtitle_source or "page-subtitle")
 
     if transcript is None and browser_subtitles:
         update_task(task_id, message="已读取浏览器播放器字幕，正在生成带时间戳转写")
@@ -722,9 +728,7 @@ def _process_video_file(
         embedded_subtitle = extract_embedded_subtitle(input_path, work_dir / "embedded_subtitle.srt")
         if embedded_subtitle:
             update_task(task_id, subtitle_path=str(embedded_subtitle), message="已检测到视频内嵌字幕，正在解析字幕")
-            transcript = transcript_from_subtitle(embedded_subtitle, source="embedded-subtitle")
-            if not transcript.segments:
-                transcript = None
+            transcript = parse_subtitle_or_none(embedded_subtitle, source="embedded-subtitle")
 
     audio_path: Path | None = None
     if transcript is None:
