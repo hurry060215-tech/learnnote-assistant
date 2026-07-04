@@ -832,7 +832,12 @@ const taskOverviewHtml = context.taskOverview({
     note_style: "study",
     visual_understanding: true
   },
-  visual_windows: []
+  visual_windows: [],
+  next_actions: [
+    { key: "continue_from_media", label: "从 media.mp4 继续", detail: "复用已下载视频进入切片总结。", intent: "rerun_from_media" },
+    { key: "export_media", label: "导出 media.mp4", detail: "核对本地视频。", intent: "export", target: "media" },
+    { key: "view_diagnostics", label: "看下载诊断", detail: "查看候选和失败原因。", intent: "switch_tab", target: "diagnostics" }
+  ]
 });
 
 assert.match(taskOverviewHtml, /class="task-overview status-success"/);
@@ -877,6 +882,12 @@ assert.doesNotMatch(taskOverviewHtml, /Authorization/);
 assert.match(taskOverviewHtml, /阶段审计门/);
 assert.match(taskOverviewHtml, /class="task-command-center"/);
 assert.match(taskOverviewHtml, /class="task-command-grid"/);
+assert.match(taskOverviewHtml, /class="task-next-actions"/);
+assert.match(taskOverviewHtml, /推荐下一步/);
+assert.match(taskOverviewHtml, /从 media\.mp4 继续/);
+assert.match(taskOverviewHtml, /data-rerun-from-media="side-overview"/);
+assert.match(taskOverviewHtml, /data-export="media"/);
+assert.match(taskOverviewHtml, /data-switch-result-tab="diagnostics"/);
 assert.match(taskOverviewHtml, /data-switch-result-tab="diagnostics"/);
 assert.match(taskOverviewHtml, /data-rerun-from-media="side-overview"/);
 assert.match(taskOverviewHtml, /class="next-step-card ready"/);

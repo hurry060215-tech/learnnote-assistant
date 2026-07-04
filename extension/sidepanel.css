@@ -2655,6 +2655,73 @@ input[type="file"] {
   cursor: pointer;
 }
 
+.task-next-actions {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #d8e2f1;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 9px;
+}
+
+.task-next-actions header {
+  display: grid;
+  gap: 2px;
+}
+
+.task-next-actions header span {
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.task-next-actions header strong {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.task-next-actions > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.next-action {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  border: 1px solid #cbd8ea;
+  border-radius: 7px;
+  background: #f8fbff;
+  padding: 7px 8px;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+}
+
+.next-action.primary {
+  border-color: #8fb0f1;
+  background: #eef5ff;
+}
+
+.next-action span {
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.next-action small {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.next-action:hover {
+  border-color: var(--accent);
+  background: #f2f7ff;
+}
+
 .task-overview-metrics {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -782,6 +782,7 @@ def render_bundle_manifest(task: TaskRecord, transcript: dict, visual_index: dic
             "summary_diagnostics": task.summary_diagnostics,
         },
         "study": _render_study_manifest(task),
+        "next_actions": task_next_actions(task),
         "qa": {
             "history_count": len(qa_history),
             "export": "qa.md" if qa_history else "",
@@ -1253,6 +1254,7 @@ def task_payload(task: TaskRecord) -> dict:
     payload["audit"] = task_audit_summary(task)
     payload["recovery"] = diagnostic_recovery_profile(task)
     payload["reuse"] = task_reuse_evidence(task)
+    payload["next_actions"] = task_next_actions(task)
     qa_history = read_task_qa_history(task.id)
     payload["qa"] = {
         "history_count": len(qa_history),
@@ -1831,6 +1833,56 @@ def qa_history_preview(history: list[dict], limit: int = 5) -> list[dict]:
             "citation_count": len(item.get("citations") or []) if isinstance(item.get("citations"), list) else 0,
         })
     return list(reversed(preview))
+
+
+def task_next_actions(task: TaskRecord, limit: int = 7) -> list[dict]:
+    actions: list[dict] = []
+    seen: set[str] = set()
+
+    def add(key: str, label: str, detail: str, intent: str, target: str = "") -> None:
+        if not key or key in seen or len(actions) >= limit:
+            return
+        seen.add(key)
+        actions.append({
+            "key": key,
+            "label": label,
+            "detail": detail,
+            "intent": intent,
+            "target": target,
+        })
+
+    media_ready = task_media_file_exists(task)
+    note_ready = bool(task.note_path)
+    transcript_ready = bool(task.transcript_path or task.browser_subtitles)
+    visual_ready = bool(task.visual_windows or task.frame_grids or task.visual_index_path)
+    has_diagnostics = bool(task.download_attempts or task.error_code or task.selected_resource or task.summary_diagnostics)
+    can_continue_media = media_ready and (task.mode == "download_only" or not note_ready or task.status == "failed")
+
+    if can_continue_media:
+        add(
+            "continue_from_media",
+            "从 media.mp4 继续",
+            "复用已下载视频进入转写、抽帧、视觉窗口和图文总结；不会录制页面。",
+            "rerun_from_media",
+        )
+    if note_ready:
+        add("ask_qa", "问这个任务", "基于笔记、字幕和画面索引继续追问。", "switch_tab", "qa")
+        add("export_markdown", "导出 Markdown", "保存当前学习笔记。", "export", "markdown")
+    if visual_ready:
+        add("review_slices", "复核学习切片", "按视觉窗口回看截图、字幕片段和复习问题。", "switch_tab", "slices")
+        add("export_visual_windows", "导出切片索引", "保存画面窗口、截图网格和回看问题。", "export", "visual-windows")
+    elif transcript_ready:
+        add("review_transcript", "核对字幕", "先检查平台字幕或 ASR 转写，再继续总结。", "switch_tab", "transcript")
+    if media_ready:
+        add("export_media", "导出 media.mp4", "核对本地直取视频文件。", "export", "media")
+    if note_ready or visual_ready or transcript_ready or has_diagnostics:
+        add("export_bundle", "导出资料包", "打包笔记、字幕、视觉索引、审计和诊断。", "export", "bundle")
+    if has_diagnostics:
+        add("view_diagnostics", "看下载诊断", "查看候选资源、请求上下文、失败原因和边界说明。", "switch_tab", "diagnostics")
+        add("export_diagnostics", "导出诊断", "保存直取证据和失败路径，方便复盘。", "export", "diagnostics")
+    if not actions:
+        add("wait_for_task", "等待任务产物", "任务完成后这里会出现继续学习、导出和诊断动作。", "status")
+    return actions
 
 
 def task_qa_suggestions(task: TaskRecord, limit: int = 7) -> list[dict]:

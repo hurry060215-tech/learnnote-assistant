@@ -293,6 +293,11 @@ class LocalUploadValidationTests(unittest.TestCase):
             suggestion_questions = [item["question"] for item in task_payload["qa"]["suggestions"]]
             self.assertTrue(any("3 个概念" in item for item in suggestion_questions))
             self.assertTrue(any("画面索引" in item for item in suggestion_questions))
+            next_action_keys = [item["key"] for item in task_payload["next_actions"]]
+            self.assertIn("ask_qa", next_action_keys)
+            self.assertIn("review_slices", next_action_keys)
+            self.assertIn("export_markdown", next_action_keys)
+            self.assertIn("export_bundle", next_action_keys)
 
             qa_export = self.client.get(f"/api/tasks/{task.id}/exports/qa")
             self.assertEqual(qa_export.status_code, 200)
@@ -305,6 +310,8 @@ class LocalUploadValidationTests(unittest.TestCase):
             manifest_payload = manifest.json()
             self.assertEqual(manifest_payload["qa"]["history_count"], 1)
             self.assertTrue(manifest_payload["qa"]["suggestions"])
+            self.assertIn("next_actions", manifest_payload)
+            self.assertIn("ask_qa", [item["key"] for item in manifest_payload["next_actions"]])
             self.assertEqual(manifest_payload["artifacts"]["qa"], "qa.md")
             self.assertEqual(manifest_payload["artifacts"]["qa_history"], "qa_history.json")
 

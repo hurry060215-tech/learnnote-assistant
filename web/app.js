@@ -3617,6 +3617,33 @@ function directExtractionEvidenceHtml(task) {
   </section>`;
 }
 
+function taskNextActionsHtml(task) {
+  const actions = Array.isArray(task?.next_actions) ? task.next_actions : [];
+  if (!actions.length) return "";
+  const controls = actions.map(action => {
+    const label = escapeHtml(action.label || action.key || "下一步");
+    const detail = escapeHtml(action.detail || "");
+    const content = `<span>${label}</span>${detail ? `<small>${detail}</small>` : ""}`;
+    if (action.intent === "rerun_from_media") {
+      return `<button type="button" class="next-action primary" data-rerun-from-media="${escapeHtml(task.id)}">${content}</button>`;
+    }
+    if (action.intent === "switch_tab" && action.target) {
+      return `<button type="button" class="next-action" data-switch-result-tab="${escapeHtml(action.target)}">${content}</button>`;
+    }
+    if (action.intent === "export" && action.target) {
+      return `<a class="next-action" href="${escapeHtml(taskExportUrl(task, action.target))}">${content}</a>`;
+    }
+    return `<span class="next-action muted">${content}</span>`;
+  }).join("");
+  return `<section class="task-next-actions" aria-label="推荐下一步">
+    <header>
+      <span>推荐下一步</span>
+      <strong>按当前产物继续学习</strong>
+    </header>
+    <div>${controls}</div>
+  </section>`;
+}
+
 function taskOverview(task) {
   const selected = task.selected_resource || {};
   const options = task.options || {};
@@ -3659,6 +3686,7 @@ function taskOverview(task) {
     <div class="task-overview-actions">
       ${actionLinks || `<span>${escapeHtml(statusText(task))}</span>`}
     </div>
+    ${taskNextActionsHtml(task)}
     <div class="task-overview-metrics">
       <span><b>${escapeHtml(statusText(task))}</b>${escapeHtml(task.phase || "-")} · ${task.progress || 0}%</span>
       <span><b>${escapeHtml(options.frame_interval || "-")} 秒切片</b>${escapeHtml(options.grid_columns && options.grid_rows ? `${options.grid_columns}x${options.grid_rows} 视觉窗口` : "未配置视觉窗口")}</span>
