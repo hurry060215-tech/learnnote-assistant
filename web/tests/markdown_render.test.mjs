@@ -190,6 +190,19 @@ assert.equal(context.currentPageDisplayTask([
   { id: "manual-url", status: "success", source_type: "current_page", media_path: "media.mp4", selected_resource: { source: "manual", request_type: "manual-forced" } },
   { id: "browser-current", status: "success", source_type: "current_page", media_path: "media.mp4", note_path: "note.md", selected_resource: { source: "webRequest" } }
 ]).id, "browser-current");
+vm.runInContext(`tasks = ${JSON.stringify([
+  { id: "latest-local", status: "success", source_type: "local", note_path: "note.md" },
+  { id: "selected-local", status: "failed", source_type: "local", error_code: "processing_failed" },
+  { id: "latest-url", status: "success", source_type: "current_page", selected_resource: { source: "manual", request_type: "manual-forced" }, note_path: "note.md" },
+  { id: "selected-url", status: "running", source_type: "current_page", selected_resource: { source: "manual", request_type: "manual-forced" }, progress: 12 },
+  { id: "browser-current", status: "success", source_type: "current_page", selected_resource: { source: "webRequest" }, note_path: "note.md" }
+])}; selectedTaskId = "selected-local";`, context);
+assert.equal(context.workflowTaskForSource("local").id, "selected-local");
+assert.equal(context.workflowTaskForSource("url").id, "selected-url");
+assert.equal(context.workflowTaskForSource("browser").id, "browser-current");
+vm.runInContext(`selectedTaskId = "selected-url";`, context);
+assert.equal(context.workflowTaskForSource("url").id, "selected-url");
+vm.runInContext(`tasks = []; selectedTaskId = "";`, context);
 assert.equal(context.directRouteState({ status: "success", reuse: { media_available: true } }), "downloaded");
 assert.equal(context.workflowActiveIndex({ status: "failed", reuse: { transcript_ready: true } }), 3);
 assert.deepEqual(context.sortedVisibleTasks([

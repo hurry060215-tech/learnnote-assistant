@@ -971,9 +971,16 @@ function isManualUrlTask(task) {
 }
 
 function workflowTaskForSource(source) {
-  if (source === "local") return tasks.find(task => task.source_type === "local") || null;
-  if (source === "url") return tasks.find(isManualUrlTask) || null;
-  return preferredCurrentPageTask() || latestCurrentPageTask();
+  const matchesSource = source === "local"
+    ? task => task?.source_type === "local"
+    : source === "url"
+      ? isManualUrlTask
+      : task => task?.source_type === "current_page" && !isManualUrlTask(task);
+  const candidates = tasks.filter(matchesSource);
+  if (!candidates.length && source === "browser") return latestCurrentPageTask();
+  const selected = tasks.find(task => task.id === selectedTaskId);
+  if (selected && matchesSource(selected)) return selected;
+  return sortedVisibleTasks(candidates, selectedTaskId)[0] || null;
 }
 
 function sourceRouteRailItem(source) {
