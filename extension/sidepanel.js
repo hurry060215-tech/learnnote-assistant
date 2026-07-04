@@ -660,8 +660,8 @@ const DOWNLOADABLE_KINDS = new Set(["video", "hls", "dash"]);
 
 function failedStepIndex(task) {
   if (DOWNLOAD_ERROR_CODES.has(task.error_code)) return 0;
-  if (task.media_path && !task.transcript_path) return 1;
-  if (task.transcript_path && !task.frame_grids?.length) return 2;
+  if (hasExportableMedia(task) && !hasReadableTranscript(task)) return 1;
+  if (hasReadableTranscript(task) && !task.frame_grids?.length) return 2;
   return 3;
 }
 
@@ -770,7 +770,7 @@ function taskHistoryRank(task, currentId = currentTaskId) {
   if (task.id && task.id === currentId) return 0;
   if (task.status === "running") return 1;
   if (task.status === "success" && task.note_path) return 2;
-  if (task.status === "success" && (task.media_path || visualWindows(task).length)) return 3;
+  if (task.status === "success" && (hasExportableMedia(task) || visualWindows(task).length)) return 3;
   if (task.status === "success") return 4;
   if (task.status === "queued") return 5;
   if (task.status === "failed" && task.note_path) return 6;
@@ -799,10 +799,10 @@ function taskHistoryPreviewHtml(task = {}) {
   const status = taskStatusClass(task);
   const label = firstWindow
     ? firstWindow.id || "切片"
-    : selected.kind || (task.media_path ? "视频" : task.error_code ? "诊断" : "任务");
+    : selected.kind || (hasExportableMedia(task) ? "视频" : task.error_code ? "诊断" : "任务");
   const detail = firstWindow
     ? `${fmt(firstWindow.start)} - ${fmt(firstWindow.end)}`
-    : task.media_path
+    : hasExportableMedia(task)
       ? "media.mp4"
       : task.error_code || taskStatusText(task);
   if (firstWindow?.grid_url) {

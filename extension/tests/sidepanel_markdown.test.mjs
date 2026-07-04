@@ -1026,6 +1026,18 @@ assert.equal(context.hasTaskDiagnostics({ summary_diagnostics_path: "summary.jso
 assert.equal(context.hasTaskDiagnostics({}), false);
 assert.equal(context.hasTaskAudit({ id: "audit-task", source_type: "current_page" }), true);
 assert.equal(context.hasTaskAudit({}), false);
+assert.equal(context.failedStepIndex({
+  status: "failed",
+  reuse: { media_available: true }
+}), 1);
+assert.equal(context.failedStepIndex({
+  status: "failed",
+  reuse: { transcript_ready: true }
+}), 2);
+assert.deepEqual(context.sortedHistoryTasks([
+  { id: "plain-success", status: "success", source_type: "current_page" },
+  { id: "reuse-success", status: "success", source_type: "current_page", reuse: { media_available: true } }
+], "").map(task => task.id), ["reuse-success", "plain-success"]);
 assert.equal(context.canContinueFromDownloadedMedia({
   id: "side-failed-media",
   status: "failed",

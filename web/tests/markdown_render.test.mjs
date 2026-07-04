@@ -167,6 +167,10 @@ assert.equal(context.preferredInitialTask([
   { id: "usable-success", status: "success", title: "Usable lesson", source_type: "local", note_path: "note.md" }
 ]).id, "usable-success");
 assert.equal(context.preferredInitialTask([
+  { id: "plain-success", status: "success", source_type: "current_page" },
+  { id: "reuse-media-success", status: "success", source_type: "current_page", reuse: { media_available: true } }
+]).id, "reuse-media-success");
+assert.equal(context.preferredInitialTask([
   { id: "running-now", status: "running", source_type: "current_page" },
   { id: "usable-success", status: "success", source_type: "local", note_path: "note.md" }
 ]).id, "running-now");
@@ -179,9 +183,15 @@ assert.equal(context.currentPageDisplayTask([
   { id: "usable-current", status: "success", source_type: "current_page", media_path: "media.mp4", note_path: "note.md" }
 ]).id, "usable-current");
 assert.equal(context.currentPageDisplayTask([
+  { id: "plain-current", status: "success", source_type: "current_page" },
+  { id: "reuse-current", status: "success", source_type: "current_page", reuse: { media_available: true } }
+]).id, "reuse-current");
+assert.equal(context.currentPageDisplayTask([
   { id: "manual-url", status: "success", source_type: "current_page", media_path: "media.mp4", selected_resource: { source: "manual", request_type: "manual-forced" } },
   { id: "browser-current", status: "success", source_type: "current_page", media_path: "media.mp4", note_path: "note.md", selected_resource: { source: "webRequest" } }
 ]).id, "browser-current");
+assert.equal(context.directRouteState({ status: "success", reuse: { media_available: true } }), "downloaded");
+assert.equal(context.workflowActiveIndex({ status: "failed", reuse: { transcript_ready: true } }), 3);
 assert.deepEqual(context.sortedVisibleTasks([
   { id: "latest-failed", status: "failed", source_type: "current_page" },
   { id: "stale-queued", status: "queued", source_type: "page_text" },

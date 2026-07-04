@@ -219,7 +219,7 @@ function preferredInitialTask(list) {
   const candidates = Array.isArray(list) ? list : [];
   return candidates.find(task => task.status === "running")
     || candidates.find(task => task.status === "success" && task.note_path)
-    || candidates.find(task => task.status === "success" && (task.media_path || visualWindows(task).length))
+    || candidates.find(task => task.status === "success" && (hasExportableMedia(task) || visualWindows(task).length))
     || candidates.find(task => task.status === "success")
     || candidates.find(task => task.status === "queued")
     || candidates.find(task => task.status === "failed" && task.note_path)
@@ -232,7 +232,7 @@ function taskStudyRank(task, currentTaskId = selectedTaskId) {
   if (task.id && task.id === currentTaskId) return 0;
   if (task.status === "running") return 1;
   if (task.status === "success" && task.note_path) return 2;
-  if (task.status === "success" && (task.media_path || visualWindows(task).length)) return 3;
+  if (task.status === "success" && (hasExportableMedia(task) || visualWindows(task).length)) return 3;
   if (task.status === "success") return 4;
   if (task.status === "queued") return 5;
   if (task.status === "failed" && task.note_path) return 6;
@@ -654,8 +654,8 @@ function currentPageDisplayRank(task) {
   if (!task) return 90;
   if (task.status === "running") return 0;
   if (task.status === "queued") return 1;
-  if (task.status === "success" && task.media_path && task.note_path) return 2;
-  if (task.status === "success" && task.media_path) return 3;
+  if (task.status === "success" && hasExportableMedia(task) && task.note_path) return 2;
+  if (task.status === "success" && hasExportableMedia(task)) return 3;
   if (task.status === "success") return 4;
   if (task.status === "failed" && task.note_path) return 5;
   if (task.status === "failed") return 6;
@@ -681,8 +681,8 @@ function preferredCurrentPageTask() {
 function directRouteState(task) {
   if (!task) return "empty";
   if (task.status === "running" || task.status === "queued") return "running";
-  if (task.status === "success" && task.media_path && task.note_path) return "ready";
-  if (task.status === "success" && task.media_path) return "downloaded";
+  if (task.status === "success" && hasExportableMedia(task) && task.note_path) return "ready";
+  if (task.status === "success" && hasExportableMedia(task)) return "downloaded";
   if (task.status === "failed") {
     return ["drm_or_encrypted", "no_media_found", "unsupported_manifest"].includes(task.error_code) ? "blocked" : "failed";
   }
@@ -978,8 +978,8 @@ function workflowActiveIndex(task) {
   if (task.status === "success") return 4;
   if (task.status === "failed") {
     if (task.note_path) return 4;
-    if (task.transcript_path || task.visual_windows?.length || task.frame_grids?.length) return 3;
-    if (task.media_path) return 2;
+    if (hasReadableTranscript(task) || task.visual_windows?.length || task.frame_grids?.length) return 3;
+    if (hasExportableMedia(task)) return 2;
     return 1;
   }
   const phase = task.phase || "queued";
