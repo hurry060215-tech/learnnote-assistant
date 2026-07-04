@@ -3919,8 +3919,9 @@ function pipelineAuditItems(task) {
   const isLocal = task?.source_type === "local";
   const isPageText = task?.source_type === "page_text" || Boolean(diag.used_page_text_fallback);
   const hasSelectedRoute = Boolean(selected.url || selected.kind || isLocal || isPageText);
-  const hasMedia = Boolean(task?.media_path);
-  const hasTranscript = Boolean(task?.transcript_path);
+  const hasMedia = hasExportableMedia(task);
+  const hasTranscript = Boolean(task?.transcript_path || task?.reuse?.transcript_ready);
+  const transcriptSource = reusableTranscriptSourceText(task);
   const hasVisuals = Boolean(windows.length || task?.frame_grids?.length || Number(diag.frame_grid_count || 0));
   const hasNote = Boolean(task?.note_path);
   const visualDisabled = task?.options?.visual_understanding === false || isPageText;
@@ -3946,8 +3947,8 @@ function pipelineAuditItems(task) {
       key: "transcript",
       label: "转写门",
       state: isPageText && hasNote ? "pass" : auditGateState(task, hasTranscript),
-      value: hasTranscript ? "字幕已生成" : isPageText && hasNote ? "页面文本/浏览器字幕" : task?.phase === "transcribing" ? "转写中" : "待转写",
-      detail: hasTranscript ? "可切到转写页核对" : (isPageText ? `${diag.browser_subtitle_count ?? 0} 条字幕 · ${diag.combined_text_char_count ?? 0} 字` : `字幕优先，${asrOptionText(task?.options || {})} 兜底`)
+      value: hasTranscript ? (transcriptSource || "字幕已生成") : isPageText && hasNote ? "页面文本/浏览器字幕" : task?.phase === "transcribing" ? "转写中" : "待转写",
+      detail: hasTranscript ? "可切到转写页核对或导出" : (isPageText ? `${diag.browser_subtitle_count ?? 0} 条字幕 · ${diag.combined_text_char_count ?? 0} 字` : `字幕优先，${asrOptionText(task?.options || {})} 兜底`)
     },
     {
       key: "visual",
@@ -3980,14 +3981,14 @@ function pipelineAuditActionHtml(task, item) {
   if (item.key === "media") {
     if (canContinueFromDownloadedMedia(task)) {
       actions.push(`<button type="button" data-rerun-from-media="${escapeHtml(task.id)}">继续总结</button>`);
-    } else if (task.media_path) {
+    } else if (hasExportableMedia(task)) {
       actions.push(`<button type="button" data-switch-result-tab="diagnostics">看证据</button>`);
     } else if (blocked || task.status === "failed") {
       actions.push(`<button type="button" data-switch-result-tab="diagnostics">看失败原因</button>`);
       actions.push(`<button type="button" data-recovery-local>本地兜底</button>`);
     }
   } else if (item.key === "transcript") {
-    if (task.transcript_path) {
+    if (task.transcript_path || task?.reuse?.transcript_ready) {
       actions.push(`<button type="button" data-switch-result-tab="transcript">核对转写</button>`);
     } else if (canContinueFromDownloadedMedia(task)) {
       actions.push(`<button type="button" data-rerun-from-media="${escapeHtml(task.id)}">开始转写</button>`);
@@ -4037,8 +4038,8 @@ function nextStepHtml(task) {
   if (!task) return "";
   const windows = visualWindows(task);
   const hasNote = Boolean(task.note_path);
-  const hasMedia = Boolean(task.media_path);
-  const hasTranscript = Boolean(task.transcript_path);
+  const hasMedia = hasExportableMedia(task);
+  const hasTranscript = Boolean(task.transcript_path || task.reuse?.transcript_ready);
   const hasVisuals = Boolean(windows.length || task.frame_grids?.length || Number(task.summary_diagnostics?.frame_grid_count || 0));
   const failed = task.status === "failed";
   let tone = "active";
@@ -4202,9 +4203,11 @@ function mediaSeekDockHtml(task) {
 function taskCommandCenterItemState(task, key) {
   const windows = visualWindows(task || {});
   if (!task) return "wait";
-  if (task.status === "failed" && ["source", "media"].includes(key) && !task.media_path) return "fail";
-  if (key === "source") return (task.selected_resource?.url || task.download_attempts?.length || task.media_path) ? "pass" : "wait";
-  if (key === "transcript") return task.transcript_path || task.source_type === "page_text" ? "pass" : task.phase === "transcribing" ? "active" : "wait";
+  const hasMedia = hasExportableMedia(task);
+  const hasTranscript = Boolean(task.transcript_path || task.reuse?.transcript_ready);
+  if (task.status === "failed" && ["source", "media"].includes(key) && !hasMedia) return "fail";
+  if (key === "source") return (task.selected_resource?.url || task.download_attempts?.length || hasMedia) ? "pass" : "wait";
+  if (key === "transcript") return hasTranscript || task.source_type === "page_text" ? "pass" : task.phase === "transcribing" ? "active" : "wait";
   if (key === "visual") {
     if (task.options?.visual_understanding === false || task.source_type === "page_text") return "skip";
     return windows.length || task.frame_grids?.length ? "pass" : task.phase === "extracting_frames" ? "active" : "wait";
@@ -4244,6 +4247,8 @@ function taskCommandCenter(task) {
   const windows = visualWindows(task);
   const selected = task.selected_resource || {};
   const attempts = task.download_attempts || [];
+  const hasTranscript = Boolean(task.transcript_path || task.reuse?.transcript_ready);
+  const transcriptSource = reusableTranscriptSourceText(task);
   const sourceDetail = selected.audio_url
     ? `音视频合并 · ${compactUrl(selected.audio_url, 52)}`
     : selected.playback_match ? playbackText(selected.playback_match) : `${attempts.length || 0} 次下载尝试`;
@@ -4258,9 +4263,9 @@ function taskCommandCenter(task) {
     {
       key: "transcript",
       label: "字幕转写",
-      value: task.transcript_path ? "已生成" : task.source_type === "page_text" ? "页面文本" : task.phase === "transcribing" ? "转写中" : "等待",
-      detail: task.transcript_path ? asrOptionText(task.options || {}) : "平台字幕优先，ASR 兜底",
-      action: task.transcript_path ? `<button type="button" data-switch-result-tab="transcript">核对字幕</button>` : ""
+      value: hasTranscript ? (transcriptSource || "已生成") : task.source_type === "page_text" ? "页面文本" : task.phase === "transcribing" ? "转写中" : "等待",
+      detail: hasTranscript ? "可核对或导出字幕" : "平台字幕优先，ASR 兜底",
+      action: hasTranscript ? `<button type="button" data-switch-result-tab="transcript">核对字幕</button>` : ""
     },
     {
       key: "visual",
