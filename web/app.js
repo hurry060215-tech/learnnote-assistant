@@ -36,43 +36,64 @@ const MODEL_PROVIDER_PRESETS = {
     baseUrl: "https://api.openai.com/v1",
     model: "gpt-4.1-mini",
     transcriber: "openai-compatible",
-    whisperModel: "whisper-1"
+    whisperModel: "whisper-1",
+    tier: "mainstream",
+    recommended: true,
+    capabilities: ["text", "vision", "asr"]
   },
   groq: {
     baseUrl: "https://api.groq.com/openai/v1",
     model: "meta-llama/llama-4-scout-17b-16e-instruct",
     transcriber: "groq",
-    whisperModel: "whisper-large-v3"
+    whisperModel: "whisper-large-v3",
+    tier: "mainstream",
+    recommended: true,
+    capabilities: ["text", "asr"]
   },
   gemini: {
     baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai/",
     model: "gemini-3.5-flash",
     transcriber: "faster-whisper",
-    whisperModel: "small"
+    whisperModel: "small",
+    tier: "mainstream",
+    recommended: true,
+    capabilities: ["text", "vision"]
   },
   dashscope: {
     baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
     model: "qwen-vl-max",
     transcriber: "faster-whisper",
-    whisperModel: "small"
+    whisperModel: "small",
+    tier: "mainstream",
+    recommended: true,
+    capabilities: ["text", "vision"]
   },
   siliconflow: {
     baseUrl: "https://api.siliconflow.cn/v1",
     model: "Qwen/Qwen2.5-VL-72B-Instruct",
     transcriber: "faster-whisper",
-    whisperModel: "small"
+    whisperModel: "small",
+    tier: "compatible",
+    recommended: false,
+    capabilities: ["text", "vision"]
   },
   openrouter: {
     baseUrl: "https://openrouter.ai/api/v1",
     model: "openai/gpt-4.1-mini",
     transcriber: "faster-whisper",
-    whisperModel: "small"
+    whisperModel: "small",
+    tier: "compatible",
+    recommended: false,
+    capabilities: ["text", "vision"]
   },
   "local-openai": {
     baseUrl: "http://127.0.0.1:11434/v1",
     model: "qwen2.5vl:7b",
     transcriber: "faster-whisper",
-    whisperModel: "small"
+    whisperModel: "small",
+    tier: "compatible",
+    recommended: false,
+    capabilities: ["text", "vision"]
   }
 };
 let modelProviderPresets = { ...MODEL_PROVIDER_PRESETS };
@@ -86,7 +107,12 @@ function normalizeModelProviderPreset(preset) {
     baseUrl: String(preset.baseUrl || preset.base_url || "").trim(),
     model: String(preset.model || "").trim(),
     transcriber: String(preset.transcriber || "faster-whisper").trim(),
-    whisperModel: String(preset.whisperModel || preset.whisper_model || "small").trim()
+    whisperModel: String(preset.whisperModel || preset.whisper_model || "small").trim(),
+    tier: String(preset.tier || "compatible").trim(),
+    recommended: Boolean(preset.recommended),
+    capabilities: Array.isArray(preset.capabilities)
+      ? preset.capabilities.map(item => String(item || "").trim()).filter(Boolean)
+      : []
   };
 }
 
@@ -102,6 +128,7 @@ function syncModelProviderPresets(data) {
     if (preset) next[preset.key] = preset;
   }
   modelProviderPresets = next;
+  updateModelProviderHint();
 }
 
 function modelProviderLabel(key) {
@@ -118,6 +145,38 @@ function modelProviderLabel(key) {
     "openai-compatible": "Compatible",
     ollama: "Ollama"
   })[key] || key;
+}
+
+function providerBaseHost(baseUrl) {
+  const text = String(baseUrl || "").trim().replace(/^https?:\/\//i, "");
+  return text.split(/[/?#]/)[0] || "custom";
+}
+
+function providerCapabilitySummary(preset) {
+  const capabilities = new Set(preset?.capabilities || []);
+  const visual = capabilities.has("vision") ? "vision ready" : "text/asr only";
+  const asr = preset?.transcriber === "groq"
+    ? "Groq ASR"
+    : preset?.transcriber === "openai-compatible"
+      ? "remote ASR"
+      : "local faster-whisper";
+  return `${visual} · ${asr}`;
+}
+
+function updateModelProviderHint() {
+  if (!els?.providerHint) return;
+  const key = els.llmProvider?.value || "";
+  const preset = modelProviderPresets[key];
+  if (!preset) {
+    els.providerHint.innerHTML = `<span class="provider-tier compatible">Manual</span><span>Use a custom OpenAI-compatible endpoint; visual summaries need a vision-capable model.</span>`;
+    return;
+  }
+  const tier = preset.recommended || preset.tier === "mainstream" ? "mainstream" : "compatible";
+  const tierLabel = tier === "mainstream" ? "Recommended" : "Advanced";
+  const label = escapeHtml(modelProviderLabel(key));
+  const summary = escapeHtml(providerCapabilitySummary(preset));
+  const host = escapeHtml(providerBaseHost(preset.baseUrl));
+  els.providerHint.innerHTML = `<span class="provider-tier ${tier}">${tierLabel}</span><span>${label} · ${summary} · ${host}</span>`;
 }
 
 let selectedSource = "browser";
@@ -177,6 +236,7 @@ const els = {
   noteTemplate: document.querySelector("#noteTemplate"),
   summaryDepth: document.querySelector("#summaryDepth"),
   llmProvider: document.querySelector("#llmProvider"),
+  providerHint: document.querySelector("#providerHint"),
   llmModel: document.querySelector("#llmModel"),
   llmBaseUrl: document.querySelector("#llmBaseUrl"),
   llmApiKey: document.querySelector("#llmApiKey"),
@@ -2290,6 +2350,7 @@ function applyModelProviderPreset(force = false) {
   }
   syncTranscriberModelDefault(false);
   renderSourceWorkflow();
+  updateModelProviderHint();
   updateHealthVisionStatus();
 }
 
@@ -2321,6 +2382,7 @@ function applyModelSettings(settings = {}) {
     els.whisperModel.value = settings.whisper_model;
   }
   syncTranscriberModelDefault(false);
+  updateModelProviderHint();
 }
 
 function loadModelSettings() {
@@ -5574,6 +5636,7 @@ els.llmApiKey?.addEventListener("input", () => updateHealthVisionStatus());
 
 initializeResponsiveChrome();
 loadModelSettings();
+updateModelProviderHint();
 initializeWorkspaceView();
 renderSourceWorkflow();
 checkHealth();

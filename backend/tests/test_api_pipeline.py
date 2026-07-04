@@ -133,6 +133,10 @@ class LocalUploadValidationTests(unittest.TestCase):
         self.assertIn("openai", preset_keys)
         self.assertIn("groq", preset_keys)
         self.assertIn("dashscope", preset_keys)
+        openai_preset = next(item for item in payload["model_provider_presets"] if item["key"] == "openai")
+        self.assertEqual(openai_preset["tier"], "mainstream")
+        self.assertTrue(openai_preset["recommended"])
+        self.assertIn("vision", openai_preset["capabilities"])
         self.assertIn("assistant_capabilities", payload)
         capabilities = payload["assistant_capabilities"]
         self.assertIn("current_page_direct", capabilities["routes"])

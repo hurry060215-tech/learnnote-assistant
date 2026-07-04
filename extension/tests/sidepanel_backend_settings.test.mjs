@@ -107,6 +107,7 @@ await new Promise(resolve => setTimeout(resolve, 0));
 assert.match(sidepanelHtml, /value="gemini">Google Gemini/);
 assert.match(sidepanelHtml, /value="dashscope">/);
 assert.match(sidepanelHtml, /value="siliconflow">SiliconFlow/);
+assert.match(sidepanelHtml, /id="providerHint"/);
 assert.match(sidepanelHtml, /id="backendSettingsPanel"/);
 assert.match(sidepanelHtml, /id="backendUrlInput"/);
 assert.match(sidepanelHtml, /id="saveBackendSettingsButton"/);
@@ -115,6 +116,8 @@ assert.equal(elements.get("#llmModel").value, "openai/gpt-4.1-mini");
 assert.equal(elements.get("#llmBaseUrl").value, "https://openrouter.ai/api/v1");
 assert.equal(elements.get("#transcriber").value, "faster-whisper");
 assert.equal(elements.get("#whisperModel").value, "small");
+assert.match(elements.get("#providerHint").innerHTML, /Advanced/);
+assert.match(elements.get("#providerHint").innerHTML, /OpenRouter/);
 assert.match(elements.get("#backendStatus").innerHTML, /backend-status-chip asr/);
 assert.match(elements.get("#backendStatus").innerHTML, /本地 faster-whisper · small/);
 
@@ -174,6 +177,8 @@ assert.equal(savedGeminiSettings.llm_base_url, "https://generativelanguage.googl
 assert.equal(savedGeminiSettings.llm_model, "gemini-3.5-flash");
 assert.equal(savedGeminiSettings.transcriber, "faster-whisper");
 assert.equal(savedGeminiSettings.whisper_model, "small");
+assert.match(elements.get("#providerHint").innerHTML, /Recommended/);
+assert.match(elements.get("#providerHint").innerHTML, /vision ready/);
 elements.get("#llmApiKey").value = "";
 context.updateHealthVisionStatus({ ffmpeg: true, vision_model_configured: false });
 assert.match(elements.get("#backendStatus").innerHTML, /待填 · Gemini/);

@@ -1664,6 +1664,9 @@ MODEL_PROVIDER_PRESETS = [
         "model": "gpt-4.1-mini",
         "transcriber": "openai-compatible",
         "whisper_model": "whisper-1",
+        "tier": "mainstream",
+        "recommended": True,
+        "capabilities": ["text", "vision", "asr"],
     },
     {
         "key": "groq",
@@ -1672,6 +1675,9 @@ MODEL_PROVIDER_PRESETS = [
         "model": "meta-llama/llama-4-scout-17b-16e-instruct",
         "transcriber": "groq",
         "whisper_model": "whisper-large-v3",
+        "tier": "mainstream",
+        "recommended": True,
+        "capabilities": ["text", "asr"],
     },
     {
         "key": "gemini",
@@ -1680,6 +1686,9 @@ MODEL_PROVIDER_PRESETS = [
         "model": "gemini-3.5-flash",
         "transcriber": "faster-whisper",
         "whisper_model": "small",
+        "tier": "mainstream",
+        "recommended": True,
+        "capabilities": ["text", "vision"],
     },
     {
         "key": "dashscope",
@@ -1688,6 +1697,9 @@ MODEL_PROVIDER_PRESETS = [
         "model": "qwen-vl-max",
         "transcriber": "faster-whisper",
         "whisper_model": "small",
+        "tier": "mainstream",
+        "recommended": True,
+        "capabilities": ["text", "vision"],
     },
     {
         "key": "siliconflow",
@@ -1696,6 +1708,9 @@ MODEL_PROVIDER_PRESETS = [
         "model": "Qwen/Qwen2.5-VL-72B-Instruct",
         "transcriber": "faster-whisper",
         "whisper_model": "small",
+        "tier": "compatible",
+        "recommended": False,
+        "capabilities": ["text", "vision"],
     },
     {
         "key": "openrouter",
@@ -1704,6 +1719,9 @@ MODEL_PROVIDER_PRESETS = [
         "model": "openai/gpt-4.1-mini",
         "transcriber": "faster-whisper",
         "whisper_model": "small",
+        "tier": "compatible",
+        "recommended": False,
+        "capabilities": ["text", "vision"],
     },
     {
         "key": "local-openai",
@@ -1712,6 +1730,9 @@ MODEL_PROVIDER_PRESETS = [
         "model": "qwen2.5vl:7b",
         "transcriber": "faster-whisper",
         "whisper_model": "small",
+        "tier": "compatible",
+        "recommended": False,
+        "capabilities": ["text", "vision"],
     },
 ]
 

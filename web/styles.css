@@ -743,6 +743,40 @@ h1 {
   grid-column: 1 / -1;
 }
 
+.provider-hint {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: -2px 0 2px;
+  padding: 8px 10px;
+  border: 1px solid rgba(39, 95, 198, 0.14);
+  border-radius: 8px;
+  background: #f7faff;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.provider-tier {
+  flex: 0 0 auto;
+  padding: 3px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0;
+}
+
+.provider-tier.mainstream {
+  background: #e8f3ff;
+  color: #1557a8;
+}
+
+.provider-tier.compatible {
+  background: #eef2f7;
+  color: #526176;
+}
+
 .visual-toggle {
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
