@@ -97,7 +97,7 @@ const context = {
               ok: true,
               ready: true,
               message: "page report ok",
-              selected_url: "https://cdn.example.com/live/master.m3u8",
+              selected_url: "https://media.example.com/live/final-master.m3u8",
               candidate_count: 2,
               probed_count: 2,
               downloadable_count: 1,
@@ -120,6 +120,9 @@ const context = {
                     downloadable: true,
                     strategy: "manifest-probe",
                     kind: "hls",
+                    resolved_url: "https://media.example.com/live/final-master.m3u8",
+                    content_type: "application/vnd.apple.mpegurl",
+                    content_length: 987654,
                     message: "OK"
                   }
                 }
@@ -153,6 +156,9 @@ await context.runPreflight();
 assert.equal(calls.pagePreflight, 1);
 assert.equal(calls.resourcePreflight, 0);
 assert.equal(context.selectedResource().url, "https://cdn.example.com/live/master.m3u8");
+assert.equal(context.selectedResource().resolved_url, "https://media.example.com/live/final-master.m3u8");
+assert.equal(context.selectedResource().mime, "application/vnd.apple.mpegurl");
+assert.equal(context.selectedResource().content_length, 987654);
 assert.equal(context.preflightForResource(resources[0]).code, "download_forbidden");
 assert.equal(context.preflightForResource(resources[1]).strategy, "manifest-probe");
 assert.match(elements.get("#taskMessage").textContent, /page report ok/);

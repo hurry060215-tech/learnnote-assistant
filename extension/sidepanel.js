@@ -1103,7 +1103,7 @@ function pickDefaultResourceUrl(items, previousUrl = "") {
 }
 
 function selectedResource() {
-  return resources.find(item => item.url === selectedResourceUrl) || null;
+  return resources.find(item => item.url === selectedResourceUrl || item.resolved_url === selectedResourceUrl) || null;
 }
 
 function hasPageTextFallback() {
@@ -3416,15 +3416,16 @@ function renderContext() {
 }
 
 function selectedResources() {
-  const selected = resources.find(item => item.url === selectedResourceUrl);
-  const rest = resources.filter(item => item.url !== selectedResourceUrl);
+  const selected = selectedResource();
+  const selectedUrl = selected?.url || "";
+  const rest = resources.filter(item => item.url !== selectedUrl);
   return selected ? [selected, ...rest] : resources;
 }
 
 function selectedResourcesForTask() {
-  const selected = resources.find(item => item.url === selectedResourceUrl);
+  const selected = selectedResource();
   if (!selected) return resources.map(item => ({ ...item, user_selected: false }));
-  const rest = resources.filter(item => item.url !== selectedResourceUrl);
+  const rest = resources.filter(item => item.url !== selected.url);
   return [
     { ...selected, user_selected: true },
     ...rest.map(item => ({ ...item, user_selected: false }))
@@ -3491,7 +3492,14 @@ function applyPagePreflightReport(report) {
     }
   }
   if (report.selected_url) {
-    selectedResourceUrl = report.selected_url;
+    const selectedItem = report.candidates.find(item => {
+      const resource = item?.resource || {};
+      const result = item?.preflight || {};
+      return resource.url === report.selected_url
+        || resource.resolved_url === report.selected_url
+        || result.resolved_url === report.selected_url;
+    });
+    selectedResourceUrl = selectedItem?.resource?.url || report.selected_url;
     resourceSelectionPinned = true;
   }
   return true;
