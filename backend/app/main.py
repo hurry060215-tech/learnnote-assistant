@@ -495,6 +495,20 @@ def _visual_window_vision_status_text(task: TaskRecord, label: str) -> str:
 
 
 def render_visual_windows_markdown(task: TaskRecord) -> str:
+    direct = direct_extraction_evidence(task)
+    selected = direct.get("selected_candidate") or {}
+    route = direct.get("route") or "-"
+    boundary = direct.get("boundary") or "-"
+    media_state = "yes" if direct.get("media_landed") else "no"
+    candidate = " / ".join(
+        str(value)
+        for value in [
+            selected.get("kind") or "",
+            selected.get("source") or "",
+            selected.get("playback_match") or "",
+        ]
+        if value
+    ) or "-"
     lines = [
         "# LearnNote 画面切片索引",
         "",
@@ -502,6 +516,19 @@ def render_visual_windows_markdown(task: TaskRecord) -> str:
         f"- ID：{task.id}",
         f"- 页面：{task.page_url or '-'}",
         "- 说明：本索引对应资料包 `grids/` 目录中的网格图，可和 `transcript.json`、`visual_index.json` 交叉回看。",
+        "",
+        "## 资料包导览",
+        "- 先看本文件的 W 编号和时间段，再打开 `grids/` 中对应网格图核对 PPT、板书、代码或操作步骤。",
+        "- 字幕摘录来自同一时间窗口；需要完整上下文时查看 `transcript.json` 或 `note.md`。",
+        "- `manifest.json` 记录任务路线、直取证据、审计门和产物列表，便于复盘这次总结是否用了当前页直取或本地视频。",
+        "",
+        "## 直取边界",
+        "- 不录制标签页：yes",
+        "- 不绕过 DRM/EME：yes",
+        f"- 任务路线：{route}",
+        f"- 边界说明：{boundary}",
+        f"- 媒体落地：{media_state}",
+        f"- 已选候选：{candidate}",
         "",
     ]
 
