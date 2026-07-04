@@ -1444,6 +1444,73 @@ class ProcessorBoundaryTests(unittest.TestCase):
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
+    def test_current_page_continues_when_page_subtitle_download_fails(self) -> None:
+        task = create_task("current_page", "Expired subtitle lesson", "https://course.example.com/lesson")
+        source_path = task_dir(task.id) / "download.mp4"
+
+        class FakeDownloader:
+            def __init__(self, work_dir: Path):
+                self.work_dir = work_dir
+                self.attempts = []
+
+            def download(self, page_url, resources, cookies, title):
+                source_path.write_bytes(b"downloaded video")
+                return source_path, ResourceCandidate(url="https://cdn.example.com/lesson.mp4", source="webRequest", kind="video")
+
+            def download_subtitle(self, resources, cookies, referer, title):
+                self.attempts.append(
+                    DownloadAttempt(
+                        strategy="subtitle-file",
+                        status="failed",
+                        code="download_forbidden",
+                        url="https://cdn.example.com/expired.vtt",
+                        message="HTTP 403",
+                    )
+                )
+                raise DownloadError("download_forbidden", "subtitle returned HTTP 403")
+
+        def fake_normalize(source: Path, target: Path) -> Path:
+            self.assertEqual(source, source_path)
+            target.write_bytes(b"normalized video")
+            return target
+
+        def fake_summary(title, transcript, grids, options, page_url):
+            self.assertEqual(transcript.source, "browser-subtitle")
+            self.assertIn("visible fallback cue", transcript.full_text)
+            return ("# Expired subtitle lesson\n\nvisible fallback cue", "local-template", "")
+
+        try:
+            request = CurrentPageTaskRequest(
+                page_url="https://course.example.com/lesson",
+                title="Expired subtitle lesson",
+                resources=[
+                    ResourceCandidate(url="https://cdn.example.com/lesson.mp4", source="webRequest", kind="video"),
+                    ResourceCandidate(url="https://cdn.example.com/expired.vtt", source="subtitleTrack", kind="subtitle", mime="text/vtt"),
+                ],
+                browser_subtitles=[
+                    {"start": 38, "end": 42, "text": "visible fallback cue"},
+                ],
+                options=TaskOptions(visual_understanding=False),
+            )
+
+            with patch("app.processor.MediaDownloader", FakeDownloader), \
+                patch("app.processor.normalize_video", side_effect=fake_normalize), \
+                patch("app.processor.extract_audio", side_effect=AssertionError("audio extraction should be skipped")), \
+                patch("app.processor.transcribe_audio", side_effect=AssertionError("Whisper should be skipped")), \
+                patch("app.processor.summarize_with_diagnostics", side_effect=fake_summary):
+                process_current_page_task(task.id, request)
+
+            record = get_task(task.id)
+            self.assertEqual(record.status, "success")
+            self.assertTrue(record.subtitle_path.endswith("browser_subtitles.srt"))
+            self.assertTrue(any(attempt.strategy == "subtitle-file" and attempt.status == "failed" for attempt in record.download_attempts))
+            transcript = read_transcript(task.id)
+            self.assertEqual(transcript["source"], "browser-subtitle")
+            self.assertIn("visible fallback cue", transcript["full_text"])
+            self.assertIn("visible fallback cue", read_note(task.id))
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
     def test_page_text_mode_includes_browser_subtitles(self) -> None:
         task = create_task("page_text", "Visible subtitle page", "https://course.example.com/lesson")
         try:

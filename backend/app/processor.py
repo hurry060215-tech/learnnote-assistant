@@ -212,7 +212,10 @@ def maybe_download_page_subtitle(downloader: object, request: CurrentPageTaskReq
     download_subtitle = getattr(downloader, "download_subtitle", None)
     if not callable(download_subtitle):
         return None
-    return download_subtitle(request.resources, request.cookies, request.page_url, request.title)
+    try:
+        return download_subtitle(request.resources, request.cookies, request.page_url, request.title)
+    except DownloadError:
+        return None
 
 
 def _srt_timestamp(seconds: float) -> str:
