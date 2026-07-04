@@ -196,7 +196,11 @@ function displayTaskTitle(task, fallback = "未命名任务") {
 function safeNoteMediaUrl(value) {
   const raw = String(value || "").trim();
   if (!raw) return "";
-  if (/^(https?:\/\/|\/)/i.test(raw)) return escapeHtml(raw);
+  const backend = backendUrl.replace(/\/$/, "");
+  if (/^\/(?:api|data)\//i.test(raw)) return escapeHtml(`${backend}${raw}`);
+  const localMatch = /^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?(\/(?:api|data)\/.*)$/i.exec(raw);
+  if (localMatch) return escapeHtml(`${backend}${localMatch[1]}`);
+  if (/^https?:\/\//i.test(raw)) return escapeHtml(raw);
   return "";
 }
 

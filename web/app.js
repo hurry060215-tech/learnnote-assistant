@@ -326,7 +326,10 @@ function selectTask(taskId, { clearCaches = true, syncUrl = true } = {}) {
 function safeNoteMediaUrl(value) {
   const raw = String(value || "").trim();
   if (!raw) return "";
-  if (/^(https?:\/\/|\/)/i.test(raw)) return escapeHtml(raw);
+  const localMatch = /^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?(\/(?:api|data)\/.*)$/i.exec(raw);
+  if (localMatch && API) return escapeHtml(`${API}${localMatch[1]}`);
+  if (/^\/(?:api|data)\//i.test(raw)) return escapeHtml(API ? `${API}${raw}` : raw);
+  if (/^https?:\/\//i.test(raw)) return escapeHtml(raw);
   return "";
 }
 

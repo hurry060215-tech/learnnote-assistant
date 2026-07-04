@@ -1578,6 +1578,12 @@ resourceFilter = "all";
 vm.runInContext(`currentTaskId = "task-url-direct"; selectedTab = "frames"; backendUrl = "http://127.0.0.1:8765/";`, context);
 assert.equal(context.workbenchUrl(), "http://127.0.0.1:8765/?task=task-url-direct&tab=frames");
 assert.equal(context.workbenchUrl("task-url-direct", "bad-tab"), "http://127.0.0.1:8765/?task=task-url-direct&tab=note");
+assert.equal(context.safeNoteMediaUrl("/api/tasks/task-url-direct/assets/grid_001.jpg"), "http://127.0.0.1:8765/api/tasks/task-url-direct/assets/grid_001.jpg");
+vm.runInContext(`backendUrl = "http://127.0.0.1:8766";`, context);
+assert.equal(context.safeNoteMediaUrl("http://127.0.0.1:8765/api/tasks/task-url-direct/assets/grid_001.jpg"), "http://127.0.0.1:8766/api/tasks/task-url-direct/assets/grid_001.jpg");
+assert.equal(context.safeNoteMediaUrl("https://cdn.example.com/image.jpg"), "https://cdn.example.com/image.jpg");
+assert.equal(context.safeNoteMediaUrl("javascript:alert(1)"), "");
+vm.runInContext(`backendUrl = "http://127.0.0.1:8765/";`, context);
 context.openWorkbench("task-url-direct", "frames");
 assert.deepEqual(JSON.parse(JSON.stringify(openedTabs.at(-1))), {
   url: "http://127.0.0.1:8765/?task=task-url-direct&tab=frames",
