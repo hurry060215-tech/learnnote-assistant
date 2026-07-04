@@ -332,6 +332,41 @@ class LocalUploadValidationTests(unittest.TestCase):
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
+    def test_task_next_actions_allow_qa_from_transcript_without_note(self) -> None:
+        task = create_task("local", "Transcript only lesson", "https://course.example/lesson")
+        root = task_dir(task.id)
+        transcript = root / "transcript.json"
+        transcript.write_text(json.dumps({
+            "source": "unit",
+            "segments": [
+                {"start": 0, "end": 12, "text": "The lesson explains function parameters."},
+                {"start": 20, "end": 35, "text": "Return values pass computed results back to callers."},
+            ],
+            "full_text": "The lesson explains function parameters. Return values pass computed results back to callers.",
+        }, ensure_ascii=False), encoding="utf-8")
+        try:
+            update_task(
+                task.id,
+                status="success",
+                phase="completed",
+                progress=100,
+                transcript_path=str(transcript),
+            )
+
+            response = self.client.get(f"/api/tasks/{task.id}")
+
+            self.assertEqual(response.status_code, 200)
+            task_payload = response.json()["task"]
+            next_action_keys = [item["key"] for item in task_payload["next_actions"]]
+            self.assertIn("ask_qa", next_action_keys)
+            self.assertIn("review_transcript", next_action_keys)
+            self.assertIn("export_bundle", next_action_keys)
+            self.assertNotIn("export_markdown", next_action_keys)
+            self.assertTrue(task_payload["qa"]["suggestions"])
+            self.assertTrue(any(item["source"] == "transcript" for item in task_payload["qa"]["suggestions"]))
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
     def test_stale_media_path_is_not_reported_reusable(self) -> None:
         task = create_task("current_page", "Missing media", "https://course.example.com/lesson", mode="download_only")
         missing_media = task_dir(task.id) / "media.mp4"

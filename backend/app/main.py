@@ -1864,7 +1864,7 @@ def qa_history_preview(history: list[dict], limit: int = 5) -> list[dict]:
     return list(reversed(preview))
 
 
-def task_next_actions(task: TaskRecord, limit: int = 7) -> list[dict]:
+def task_next_actions(task: TaskRecord, limit: int = 9) -> list[dict]:
     actions: list[dict] = []
     seen: set[str] = set()
 
@@ -1884,6 +1884,7 @@ def task_next_actions(task: TaskRecord, limit: int = 7) -> list[dict]:
     note_ready = bool(task.note_path)
     transcript_ready = bool(task.transcript_path or task.browser_subtitles)
     visual_ready = bool(task.visual_windows or task.frame_grids or task.visual_index_path)
+    qa_ready = note_ready or transcript_ready or visual_ready
     has_diagnostics = bool(task.download_attempts or task.error_code or task.selected_resource or task.summary_diagnostics)
     can_continue_media = media_ready and (task.mode == "download_only" or not note_ready or task.status == "failed")
 
@@ -1894,13 +1895,14 @@ def task_next_actions(task: TaskRecord, limit: int = 7) -> list[dict]:
             "复用已下载视频进入转写、抽帧、视觉窗口和图文总结；不会录制页面。",
             "rerun_from_media",
         )
-    if note_ready:
+    if qa_ready:
         add("ask_qa", "问这个任务", "基于笔记、字幕和画面索引继续追问。", "switch_tab", "qa")
+    if note_ready:
         add("export_markdown", "导出 Markdown", "保存当前学习笔记。", "export", "markdown")
     if visual_ready:
         add("review_slices", "复核学习切片", "按视觉窗口回看截图、字幕片段和复习问题。", "switch_tab", "slices")
         add("export_visual_windows", "导出切片索引", "保存画面窗口、截图网格和回看问题。", "export", "visual-windows")
-    elif transcript_ready:
+    if transcript_ready:
         add("review_transcript", "核对字幕", "先检查平台字幕或 ASR 转写，再继续总结。", "switch_tab", "transcript")
     if media_ready:
         add("export_media", "导出 media.mp4", "核对本地直取视频文件。", "export", "media")
