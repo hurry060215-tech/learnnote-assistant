@@ -1,7 +1,7 @@
 const DEFAULT_BACKEND = "http://127.0.0.1:8765";
 const HAS_EXTENSION_API = typeof chrome !== "undefined" && Boolean(chrome.runtime?.sendMessage && chrome.storage?.local);
 const LOCAL_VIDEO_EXT_RE = /\.(mp4|m4v|mov|mkv|webm|flv|avi)$/i;
-const RESULT_TAB_NAMES = new Set(["note", "transcript", "slices", "frames", "diagnostics"]);
+const RESULT_TAB_NAMES = new Set(["note", "transcript", "slices", "frames", "qa", "diagnostics"]);
 const LOCAL_ASR_MODELS = new Set(["tiny", "base", "small", "medium", "large", "large-v2", "large-v3"]);
 const MODEL_SETTINGS_STORAGE_KEY = "modelSettings";
 const MODEL_PROVIDER_PRESETS = {
@@ -64,6 +64,7 @@ let currentTask = null;
 let selectedTab = "note";
 let transcriptCache = null;
 let lastNote = "";
+let qaState = { taskId: "", question: "", answer: "", source: "", warning: "", citations: [], loading: false };
 let preflight = null;
 let preflightResourceUrl = "";
 let preflightResultsByUrl = new Map();
@@ -5377,6 +5378,68 @@ function resultEmptyRecoveryHtml(title, detail, task = currentTask) {
   ${nextStepHtml(task)}`;
 }
 
+function taskQaUrl(taskId) {
+  return `${backendUrl.replace(/\/$/, "")}/api/tasks/${encodeURIComponent(taskId)}/qa`;
+}
+
+function qaPanelHtml(task) {
+  const state = qaState.taskId === task?.id ? qaState : { taskId: task?.id || "", question: "", answer: "", source: "", warning: "", citations: [], loading: false };
+  const citations = Array.isArray(state.citations) ? state.citations : [];
+  const sourceLabel = state.source ? ` · ${state.source}` : "";
+  return `<section class="qa-panel" aria-label="任务问答">
+    <form id="qaForm" class="qa-form">
+      <label>
+        <span>问这个任务${escapeHtml(sourceLabel)}</span>
+        <textarea id="qaQuestion" rows="3" maxlength="1000" placeholder="例如：这节课最重要的概念是什么？">${escapeHtml(state.question || "")}</textarea>
+      </label>
+      <button class="primary action-button" type="submit"${state.loading ? " disabled" : ""}>${state.loading ? "回答中..." : "提问"}</button>
+    </form>
+    ${state.warning ? `<p class="qa-warning">${escapeHtml(state.warning)}</p>` : ""}
+    ${state.answer ? `<article class="markdown-note qa-answer">${markdownToHtml(state.answer)}</article>` : `<div class="result-empty compact">基于当前任务的笔记、字幕和画面索引回答；没有模型 Key 时会先给出本地摘录。</div>`}
+    ${citations.length ? `<div class="qa-citations">${citations.map(item => `<span><b>${escapeHtml(item.label || item.source || "证据")}</b>${escapeHtml(item.text || "")}</span>`).join("")}</div>` : ""}
+  </section>`;
+}
+
+async function submitTaskQuestion(task) {
+  const input = document.querySelector("#qaQuestion");
+  const question = String(input?.value || "").trim();
+  if (!task?.id || !question) return;
+  qaState = { taskId: task.id, question, answer: "", source: "", warning: "", citations: [], loading: true };
+  renderResult();
+  try {
+    const response = await fetch(taskQaUrl(task.id), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question, options: readOptions() })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload?.detail?.message || payload?.detail || "问答失败");
+    }
+    qaState = {
+      taskId: task.id,
+      question,
+      answer: payload.answer || "",
+      source: payload.source || "",
+      warning: payload.warning || "",
+      citations: payload.citations || [],
+      loading: false
+    };
+  } catch (error) {
+    qaState = { taskId: task.id, question, answer: "", source: "", warning: error.message || "问答失败", citations: [], loading: false };
+  }
+  renderResult();
+}
+
+function bindQaActions(task) {
+  const form = document.querySelector("#qaForm");
+  if (!form) return;
+  form.onsubmit = event => {
+    event.preventDefault();
+    submitTaskQuestion(task);
+  };
+}
+
 function renderResult() {
   const hasNote = Boolean(currentTaskId) && Boolean(currentTask?.note_path);
   els.copyButton.disabled = !hasNote;
@@ -5425,6 +5488,13 @@ function renderResult() {
     els.result.className = "result-body";
     els.result.innerHTML = `${mediaSeekDockHtml(currentTask)}${visionEvidenceBar(currentTask)}${visualStudyNavigatorHtml(currentTask, transcriptCache)}${visualStudyDeck(currentTask, transcriptCache)}`;
     bindTaskOverviewActions();
+    return;
+  }
+  if (selectedTab === "qa") {
+    els.result.className = "result-body";
+    els.result.innerHTML = `${taskOverview(currentTask)}${qaPanelHtml(currentTask)}`;
+    bindTaskOverviewActions();
+    bindQaActions(currentTask);
     return;
   }
   if (selectedTab === "diagnostics") {

@@ -230,6 +230,55 @@ class LocalUploadValidationTests(unittest.TestCase):
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
+    def test_task_question_answers_from_note_and_transcript_without_llm_key(self) -> None:
+        task = create_task("local", "函数封装课程", "https://course.example/lesson")
+        root = task_dir(task.id)
+        note = root / "note.md"
+        transcript = root / "transcript.json"
+        visual_index = root / "visual_index.json"
+        note.write_text(
+            "# 函数封装课程\n\n核心概念：函数封装可以复用逻辑，并通过参数控制输入，通过返回值输出结果。\n",
+            encoding="utf-8",
+        )
+        transcript.write_text(json.dumps({
+            "source": "unit",
+            "segments": [
+                {"start": 12, "end": 18, "text": "函数封装减少重复代码。"},
+                {"start": 40, "end": 48, "text": "返回值用于把计算结果交给调用者。"},
+            ],
+            "full_text": "函数封装减少重复代码。返回值用于把计算结果交给调用者。",
+        }, ensure_ascii=False), encoding="utf-8")
+        visual_index.write_text(json.dumps({
+            "task_id": task.id,
+            "windows": [
+                {"id": "W001", "start": 0, "end": 60, "transcript_excerpt": "函数封装与返回值示例"}
+            ],
+        }, ensure_ascii=False), encoding="utf-8")
+        try:
+            update_task(
+                task.id,
+                status="success",
+                phase="completed",
+                note_path=str(note),
+                transcript_path=str(transcript),
+                visual_index_path=str(visual_index),
+            )
+
+            with patch("app.main.LLM_API_KEY", ""):
+                response = self.client.post(
+                    f"/api/tasks/{task.id}/qa",
+                    json={"question": "函数封装有什么作用？"},
+                )
+
+            self.assertEqual(response.status_code, 200)
+            payload = response.json()
+            self.assertEqual(payload["source"], "local-extractive")
+            self.assertEqual(payload["warning"], "missing_api_key")
+            self.assertIn("函数封装", payload["answer"])
+            self.assertTrue(payload["citations"])
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
     def test_stale_media_path_is_not_reported_reusable(self) -> None:
         task = create_task("current_page", "Missing media", "https://course.example.com/lesson", mode="download_only")
         missing_media = task_dir(task.id) / "media.mp4"

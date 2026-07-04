@@ -19,7 +19,7 @@ from pydantic import ValidationError
 from .config import BACKEND_ORIGIN, DATA_DIR, LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, STATIC_DIR, TEMP_DIR, UPLOAD_DIR, WEB_DIR, ensure_dirs
 from .downloader import MediaDownloader, effective_resource_kind, fallback_page_contexts, preflight_media_resource, rank_media_candidates
 from .media import probe_duration
-from .models import CurrentPageTaskRequest, MediaPreflightRequest, MediaPreflightResult, PagePreflightRequest, RerunFromMediaRequest, ResourceCandidate, TaskOptions, TaskRecord
+from .models import CurrentPageTaskRequest, MediaPreflightRequest, MediaPreflightResult, PagePreflightRequest, RerunFromMediaRequest, ResourceCandidate, TaskOptions, TaskQuestionRequest, TaskRecord
 from .processor import enrich_resource_candidates_with_active_video, process_current_page_task, process_local_video_task, read_note, read_transcript, read_visual_index
 from .runtime import ffmpeg_bin, ffprobe_bin
 from .storage import create_task, get_task, list_tasks, task_dir, update_task
@@ -1610,6 +1610,173 @@ def health_payload() -> dict:
     }
 
 
+def _clip_text(value: str, limit: int) -> str:
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    if len(text) <= limit:
+        return text
+    return text[:limit].rstrip() + "..."
+
+
+def _question_terms(question: str) -> set[str]:
+    text = str(question or "").lower()
+    terms = {item for item in re.findall(r"[a-z0-9_]{2,}|[\u4e00-\u9fff]{1,4}", text, re.I) if item.strip()}
+    if not terms:
+        terms.update(char for char in text if char.strip())
+    return terms
+
+
+def _score_excerpt(text: str, terms: set[str]) -> int:
+    lowered = str(text or "").lower()
+    return sum(lowered.count(term.lower()) for term in terms)
+
+
+def _task_qa_context(task: TaskRecord) -> tuple[str, list[dict]]:
+    citations: list[dict] = []
+    blocks: list[str] = []
+    try:
+        note = read_note(task.id)
+    except Exception:
+        note = ""
+    if note.strip():
+        excerpt = _clip_text(note, 18000)
+        blocks.append(f"## NOTE\n{excerpt}")
+        citations.append({"source": "note", "label": "Markdown note", "text": _clip_text(excerpt, 500)})
+
+    try:
+        transcript = read_transcript(task.id)
+    except Exception:
+        transcript = {}
+    segments = transcript.get("segments") if isinstance(transcript, dict) else []
+    if isinstance(segments, list) and segments:
+        lines = []
+        for segment in segments[:300]:
+            start = _format_timestamp(segment.get("start", 0) if isinstance(segment, dict) else 0)
+            text = segment.get("text", "") if isinstance(segment, dict) else ""
+            if text:
+                lines.append(f"{start} {text}")
+        if lines:
+            excerpt = _clip_text("\n".join(lines), 16000)
+            blocks.append(f"## TRANSCRIPT\n{excerpt}")
+            citations.append({"source": "transcript", "label": "Timestamped transcript", "text": _clip_text(excerpt, 500)})
+
+    try:
+        visual_index = read_visual_index(task.id)
+    except Exception:
+        visual_index = {}
+    windows = visual_index.get("windows") if isinstance(visual_index, dict) else []
+    if isinstance(windows, list) and windows:
+        lines = []
+        for window in windows[:80]:
+            if not isinstance(window, dict):
+                continue
+            window_id = window.get("id") or f"W{len(lines) + 1:03d}"
+            start = _format_timestamp(window.get("start", 0))
+            end = _format_timestamp(window.get("end", 0))
+            excerpt = _clip_text(window.get("transcript_excerpt", ""), 260)
+            lines.append(f"{window_id} {start}-{end} {excerpt}")
+        if lines:
+            excerpt = _clip_text("\n".join(lines), 10000)
+            blocks.append(f"## VISUAL WINDOWS\n{excerpt}")
+            citations.append({"source": "visual_windows", "label": "Visual window index", "text": _clip_text(excerpt, 500)})
+
+    return "\n\n".join(blocks), citations
+
+
+def _local_task_answer(question: str, context: str, citations: list[dict]) -> tuple[str, list[dict]]:
+    terms = _question_terms(question)
+    chunks = [chunk.strip() for chunk in re.split(r"\n{2,}|(?<=[。！？.!?])\s+", context or "") if chunk.strip()]
+    ranked = sorted(
+        ((chunk, _score_excerpt(chunk, terms)) for chunk in chunks),
+        key=lambda item: (item[1], len(item[0])),
+        reverse=True,
+    )
+    selected = [chunk for chunk, score in ranked if score > 0][:5] or [chunk for chunk, _score in ranked[:5]]
+    selected = [_clip_text(chunk, 420) for chunk in selected if chunk]
+    answer_lines = [
+        "## 回答",
+        "",
+        "当前没有可用的问答模型配置，下面是基于已生成笔记、字幕和画面索引抽取的相关证据：",
+        "",
+    ]
+    if selected:
+        answer_lines.extend(f"- {item}" for item in selected)
+    else:
+        answer_lines.append("- 这个任务还没有足够的笔记、字幕或画面索引可用于回答。")
+    answer_lines.extend([
+        "",
+        "## 建议",
+        "",
+        "- 若要获得综合推理式回答，请在任务参数中配置 OpenAI-compatible / Groq / Gemini 等模型 API Key。",
+    ])
+    local_citations = [
+        {"source": "local-excerpt", "label": f"Excerpt {index}", "text": text}
+        for index, text in enumerate(selected, start=1)
+    ] or citations[:3]
+    return "\n".join(answer_lines), local_citations
+
+
+def _answer_task_question(task: TaskRecord, request: TaskQuestionRequest) -> dict:
+    options = merge_task_options(task.options, request.options)
+    context, citations = _task_qa_context(task)
+    if not context.strip():
+        raise HTTPException(status_code=404, detail={"code": "task_context_missing", "message": "任务还没有可用于问答的笔记、字幕或画面索引。"})
+
+    api_key = options.llm_api_key or LLM_API_KEY
+    base_url = options.llm_base_url or LLM_BASE_URL
+    model = options.llm_model or LLM_MODEL
+    if api_key:
+        try:
+            from openai import OpenAI
+
+            client = OpenAI(api_key=api_key, base_url=base_url)
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": (
+                            "你是课程学习助手。请只根据给定的笔记、字幕和画面索引回答问题；"
+                            "如果证据不足，明确说证据不足，并指出需要回看哪些时间窗。\n\n"
+                            f"问题：{request.question}\n\n"
+                            f"任务标题：{task.title}\n来源：{task.page_url or '-'}\n\n"
+                            f"{context[:42000]}"
+                        ),
+                    }
+                ],
+                temperature=0.2,
+            )
+            answer = response.choices[0].message.content or ""
+            if answer.strip():
+                return {
+                    "answer": answer.strip(),
+                    "source": "llm",
+                    "warning": "",
+                    "provider": llm_provider_name(base_url),
+                    "model": model,
+                    "citations": citations[:8],
+                }
+        except Exception as exc:
+            local_answer, local_citations = _local_task_answer(request.question, context, citations)
+            return {
+                "answer": local_answer,
+                "source": "local-extractive",
+                "warning": f"LLM QA failed: {type(exc).__name__}: {_clip_text(str(exc), 240)}",
+                "provider": llm_provider_name(base_url),
+                "model": model,
+                "citations": local_citations,
+            }
+
+    local_answer, local_citations = _local_task_answer(request.question, context, citations)
+    return {
+        "answer": local_answer,
+        "source": "local-extractive",
+        "warning": "missing_api_key",
+        "provider": llm_provider_name(base_url),
+        "model": model,
+        "citations": local_citations,
+    }
+
+
 @app.get("/health")
 def health() -> dict:
     return health_payload()
@@ -1789,6 +1956,15 @@ def api_note(task_id: str) -> str:
         return read_note(task_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Task not found") from exc
+
+
+@app.post("/api/tasks/{task_id}/qa")
+def api_task_question(task_id: str, request: TaskQuestionRequest) -> dict:
+    try:
+        task = get_task(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Task not found") from exc
+    return _answer_task_question(task, request)
 
 
 @app.get("/api/tasks/{task_id}/visual-index")

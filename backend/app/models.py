@@ -157,6 +157,13 @@ class RerunFromMediaRequest(BaseModel):
     options: TaskOptions | None = None
 
 
+class TaskQuestionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    question: str = Field(min_length=1, max_length=1000)
+    options: TaskOptions | None = None
+
+
 class MediaPreflightResult(BaseModel):
     ok: bool = False
     downloadable: bool = False

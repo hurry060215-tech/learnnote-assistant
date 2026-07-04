@@ -53,7 +53,7 @@ const makeElement = () => ({
   }
 });
 
-const resultTabs = ["note", "transcript", "slices", "frames", "diagnostics"]
+const resultTabs = ["note", "transcript", "slices", "frames", "qa", "diagnostics"]
   .map(tab => {
     const element = makeElement();
     element.dataset.tab = tab;
@@ -283,6 +283,7 @@ assert.doesNotMatch(indexHtml, /href="#settings" title="模板"/);
 assert.match(indexHtml, /id="downloadUrlButton"[\s\S]*只下载到本地/);
 assert.doesNotMatch(indexHtml, />只下载本地</);
 assert.match(indexHtml, /class="result-tab active" role="tab" aria-selected="true" data-tab="note"/);
+assert.match(indexHtml, /class="result-tab" role="tab" aria-selected="false" data-tab="qa">问答/);
 assert.match(indexHtml, /class="result-tab" role="tab" aria-selected="false" data-tab="diagnostics">下载诊断/);
 assert.match(indexHtml, /id="llmProvider"/);
 assert.match(indexHtml, /value="gemini">Google Gemini/);
@@ -417,6 +418,10 @@ assert.match(blockedGateHtml, /后端未就绪/);
 assert.match(blockedGateHtml, /待填 · OpenRouter/);
 assert.match(indexHtml, /accept="video\/\*,\.mp4,\.m4v,\.mov,\.mkv,\.webm,\.flv,\.avi"/);
 assert.match(indexHtml, /data-tab="frames">画面网格/);
+const qaPanelInitialHtml = context.qaPanelHtml({ id: "task-qa-test" });
+assert.match(qaPanelInitialHtml, /id="qaForm"/);
+assert.match(qaPanelInitialHtml, /id="qaQuestion"/);
+assert.match(qaPanelInitialHtml, /基于当前任务的笔记、字幕和画面索引回答/);
 context.window.location.search = "?task=task%20from%20url";
 assert.equal(context.taskIdFromCurrentUrl(), "task from url");
 context.window.location.search = "?result_tab=frames";

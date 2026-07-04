@@ -84,6 +84,7 @@ assert.match(sidepanelHtml, /<div class="result-tabs" role="tablist" aria-label=
 assert.match(sidepanelHtml, /data-tab="transcript">字幕/);
 assert.match(sidepanelHtml, /data-tab="slices">学习切片/);
 assert.match(sidepanelHtml, /data-tab="frames">画面网格/);
+assert.match(sidepanelHtml, /data-tab="qa">问答/);
 assert.match(sidepanelHtml, /data-tab="diagnostics">下载诊断/);
 assert.match(sidepanelHtml, /id="subtitlesButton"/);
 assert.match(sidepanelHtml, /下载到本地/);
@@ -95,6 +96,10 @@ assert.match(elements.get("#backendStatus").innerHTML, /backend-status-chip medi
 assert.match(elements.get("#backendStatus").innerHTML, /OpenAI · gpt-4\.1-mini/);
 assert.match(elements.get("#backendStatus").innerHTML, /gpt-4\.1-mini/);
 assert.match(elements.get("#backendStatus").title, /视觉模型/);
+const qaPanelInitialHtml = context.qaPanelHtml({ id: "side-qa-test" });
+assert.match(qaPanelInitialHtml, /id="qaForm"/);
+assert.match(qaPanelInitialHtml, /id="qaQuestion"/);
+assert.match(qaPanelInitialHtml, /基于当前任务的笔记、字幕和画面索引回答/);
 
 vm.runInContext("captureLog = { restored: 3, updated_at: Date.now() - 45000 }", context);
 const captureHint = context.captureLogHintHtml();
