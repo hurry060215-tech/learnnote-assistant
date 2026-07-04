@@ -9,6 +9,7 @@ data/model-cache/
 data/pip-cache/
 data/temp/
 data/test-runs/
+data/ui-audit/
 data/uploads/
 data/wheelhouse*/
 data/tasks/

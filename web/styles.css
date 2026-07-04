@@ -9794,3 +9794,135 @@ body.reading-mode .app-shell {
     grid-template-columns: 1fr;
   }
 }
+
+/* Mobile layout audit patch: keep the workbench flow usable instead of forcing
+   desktop panes, floating export menus, and sticky reading rails into one column. */
+@media (max-width: 900px) {
+  .nav-rail {
+    order: 1;
+  }
+
+  .workspace-panel {
+    order: 2;
+  }
+
+  .result-panel {
+    order: 3;
+  }
+
+  .queue-panel {
+    order: 4;
+  }
+
+  .workspace-panel,
+  .queue-panel,
+  .result-panel {
+    overflow: visible;
+  }
+
+  .result-header {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .result-actions {
+    width: 100%;
+  }
+
+  .continue-media-button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .result-more {
+    width: 100%;
+  }
+
+  .result-more-trigger {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .result-more-panel {
+    position: static;
+    width: 100%;
+    max-width: 100%;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin-top: 8px;
+    box-shadow: none;
+  }
+
+  .result-more-panel .icon-button {
+    width: 100%;
+  }
+
+  .result-tabs {
+    position: static;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+    padding: 10px;
+  }
+
+  .result-tab {
+    width: 100%;
+    height: 38px;
+    min-width: 0;
+    padding: 0 8px;
+  }
+
+  .detail {
+    overflow: visible;
+    padding: 14px;
+  }
+
+  .options-disclosure .option-grid,
+  .option-grid,
+  .url-mode-grid,
+  .url-actions,
+  .reading-artifact-actions,
+  .reading-action-list {
+    grid-template-columns: 1fr;
+  }
+
+  .field,
+  .field input,
+  .field select,
+  .option-grid input,
+  .option-grid select {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .options-disclosure summary {
+    align-items: flex-start;
+  }
+
+  .options-disclosure summary small {
+    display: none;
+  }
+
+  .options-disclosure:not([open]) > :not(summary) {
+    display: none !important;
+  }
+
+  .reading-rail {
+    position: static;
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
+  }
+}
+
+@media (max-width: 420px) {
+  .result-more-panel {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .result-tabs {
+    grid-template-columns: 1fr;
+  }
+}
