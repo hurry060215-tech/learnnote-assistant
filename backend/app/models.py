@@ -80,6 +80,8 @@ class BrowserCookie(BaseModel):
 
 
 class TaskOptions(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     transcriber: str = "faster-whisper"
     whisper_model: str = "small"
     visual_understanding: bool = True

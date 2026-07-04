@@ -171,6 +171,19 @@ class LocalUploadValidationTests(unittest.TestCase):
         self.assertEqual(response.json()["detail"]["code"], "empty_local_file")
         self.assertFalse(list((DATA_DIR / "uploads").glob("pending_*empty.mp4")))
 
+    def test_local_upload_rejects_invalid_task_options_before_file_validation(self) -> None:
+        response = self.client.post(
+            "/api/tasks/from-local",
+            files={"file": ("lesson.mp4", io.BytesIO(b"not a real video"), "video/mp4")},
+            data={"title": "bad options", "options": json.dumps({"frame_interval": 0})},
+        )
+
+        self.assertEqual(response.status_code, 422)
+        detail = response.json()["detail"]
+        self.assertEqual(detail["code"], "invalid_task_options")
+        self.assertIn("frame_interval", detail["message"])
+        self.assertFalse(list((DATA_DIR / "uploads").glob("pending_*lesson.mp4")))
+
     def test_media_preview_endpoint_streams_inline_video(self) -> None:
         task = create_task("local", "Preview media")
         media = task_dir(task.id) / "media.mp4"

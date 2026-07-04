@@ -69,6 +69,7 @@ class ResourceDetectionTests(unittest.TestCase):
             {"frame_interval": 601},
             {"grid_columns": 0},
             {"grid_rows": 7},
+            {"unexpected": True},
         ):
             with self.subTest(kwargs=kwargs):
                 with self.assertRaises(ValidationError):

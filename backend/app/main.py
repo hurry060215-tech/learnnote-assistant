@@ -13,6 +13,7 @@ from fastapi import BackgroundTasks, Body, FastAPI, File, Form, HTTPException, R
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
+from pydantic import ValidationError
 
 from .config import DATA_DIR, LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, STATIC_DIR, TEMP_DIR, UPLOAD_DIR, WEB_DIR, ensure_dirs
 from .downloader import MediaDownloader, effective_resource_kind, fallback_page_contexts, preflight_media_resource, rank_media_candidates
@@ -1631,8 +1632,8 @@ async def create_from_local(
     safe_name = local_upload_filename(file.filename, file.content_type)
     try:
         parsed_options = TaskOptions.model_validate(json.loads(options or "{}"))
-    except Exception:
-        parsed_options = TaskOptions()
+    except (json.JSONDecodeError, TypeError, ValidationError) as exc:
+        raise local_upload_error("invalid_task_options", f"本地视频处理参数无效：{exc}", status_code=422) from exc
     pending_path = UPLOAD_DIR / f"pending_{uuid4().hex}_{safe_name}"
     try:
         with pending_path.open("wb") as output:
