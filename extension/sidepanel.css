@@ -3378,6 +3378,51 @@ input[type="file"] {
   color: var(--danger);
 }
 
+.download-only-callout {
+  display: grid;
+  gap: 4px;
+  border: 1px solid rgba(20, 99, 255, 0.22);
+  border-radius: 8px;
+  background: #f4f8ff;
+  padding: 10px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.download-only-callout strong {
+  color: var(--accent);
+  font-size: 12px;
+}
+
+.download-only-callout.subtitle-ready {
+  border-color: rgba(20, 150, 74, 0.28);
+  background: rgba(20, 150, 74, 0.08);
+}
+
+.download-only-callout.subtitle-ready strong {
+  color: var(--success);
+}
+
+.download-only-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-top: 3px;
+}
+
+.download-only-actions button {
+  min-height: 26px;
+  border: 1px solid rgba(20, 99, 255, 0.22);
+  border-radius: 7px;
+  background: #fff;
+  color: var(--accent);
+  padding: 5px 8px;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
 .study-map {
   display: grid;
   gap: 9px;

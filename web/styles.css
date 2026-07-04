@@ -4110,6 +4110,40 @@ button:disabled {
   font-size: 13px;
 }
 
+.download-only-callout.subtitle-ready {
+  border-color: rgba(20, 150, 74, 0.28);
+  background: rgba(20, 150, 74, 0.08);
+}
+
+.download-only-callout.subtitle-ready strong {
+  color: var(--success);
+}
+
+.download-only-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  padding-top: 4px;
+}
+
+.download-only-actions a,
+.download-only-actions button {
+  min-height: 28px;
+  border: 1px solid rgba(20, 99, 255, 0.22);
+  border-radius: 7px;
+  background: #fff;
+  color: var(--accent);
+  padding: 5px 9px;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.2;
+  text-decoration: none;
+}
+
+.download-only-actions button {
+  cursor: pointer;
+}
+
 .fallback-note-callout {
   border-color: rgba(20, 150, 74, 0.28);
   background: rgba(20, 150, 74, 0.08);

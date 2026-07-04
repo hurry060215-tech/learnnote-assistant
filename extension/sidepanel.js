@@ -3701,6 +3701,24 @@ function canContinueFromDownloadedMedia(task = currentTask) {
   return Boolean(task?.id && finished && task.media_path && !task.note_path);
 }
 
+function downloadOnlyEmptyNoteHtml(task) {
+  const hasSubtitle = Boolean(task?.subtitle_path || task?.transcript_path);
+  const title = hasSubtitle ? "视频和字幕已直取到本地" : "视频已直取到本地";
+  const detail = hasSubtitle
+    ? "已保存字幕/转写，可先导出字幕核对，也可以继续进入抽帧、视觉窗口和图文笔记流程；不会录制页面。"
+    : "可以先导出 media.mp4 核对，也可以继续进入转写、抽帧、视觉窗口和图文笔记流程；不会录制页面。";
+  const actions = [
+    task?.subtitle_path ? `<button type="button" data-export="subtitles">导出字幕</button>` : "",
+    task?.media_path ? `<button type="button" data-export="media">导出 media.mp4</button>` : "",
+    canContinueFromDownloadedMedia(task) ? `<button type="button" data-rerun-from-media="${escapeHtml(task.id)}">继续切片总结</button>` : ""
+  ].filter(Boolean).join("");
+  return `<section class="download-only-callout note-empty-continue ${hasSubtitle ? "subtitle-ready" : ""}">
+    <strong>${escapeHtml(title)}</strong>
+    <span>${escapeHtml(detail)}</span>
+    ${actions ? `<div class="download-only-actions">${actions}</div>` : ""}
+  </section>`;
+}
+
 function updateContinueFromMediaAction(task = currentTask) {
   if (!els.continueFromMediaButton) return;
   const canContinue = canContinueFromDownloadedMedia(task);
@@ -5058,11 +5076,7 @@ function renderResult() {
     const noteHtml = lastNote
       ? markdownToHtml(lastNote)
       : currentTask.media_path
-        ? `<section class="download-only-callout note-empty-continue">
-            <strong>视频已直取到本地</strong>
-            <span>可以先导出 media.mp4 核对，也可以继续进入转写、抽帧、视觉窗口和图文笔记流程；不会录制页面。</span>
-            ${canContinueFromDownloadedMedia(currentTask) ? `<button type="button" data-rerun-from-media="${escapeHtml(currentTask.id)}">继续切片总结</button>` : ""}
-          </section>`
+        ? downloadOnlyEmptyNoteHtml(currentTask)
         : `<p>${escapeHtml(currentTask.message || "笔记尚未生成。")}</p>`;
     els.result.innerHTML = `${taskOverview(currentTask)}${visionEvidenceBar(currentTask)}${noteStudyMap(lastNote, currentTask)}${noteOutline(lastNote)}${noteVisualRail(currentTask)}<article class="markdown-note">${noteHtml}</article>`;
     bindTaskOverviewActions();

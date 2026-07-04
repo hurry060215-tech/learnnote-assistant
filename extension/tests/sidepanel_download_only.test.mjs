@@ -79,6 +79,8 @@ const context = {
             source_type: "current_page",
             mode: "download_only",
             media_path: "D:/media.mp4",
+            subtitle_path: "D:/browser_subtitles.srt",
+            transcript_path: "D:/transcript.json",
             active_video: page.active_video,
             selected_resource: {
               url: resources[0].url,
@@ -125,6 +127,19 @@ const context = {
           }
         })
       };
+    }
+    if (value.endsWith("/api/tasks/download-only-task/transcript")) {
+      return {
+        ok: true,
+        json: async () => ({
+          source: "browser-subtitle",
+          segments: [{ start: 0, end: 2, text: "saved browser subtitle" }],
+          full_text: "saved browser subtitle"
+        })
+      };
+    }
+    if (value.endsWith("/api/tasks/download-only-task/note")) {
+      return { ok: false, text: async () => "" };
     }
     throw new Error(`unexpected fetch: ${url}`);
   },
@@ -204,9 +219,11 @@ assert.equal(context.canContinueFromDownloadedMedia({
 }), false);
 assert.equal(elements.get("#continueFromMediaButton").hidden, false);
 assert.equal(elements.get("#continueFromMediaButton").disabled, false);
-assert.match(elements.get("#result").innerHTML, /视频已直取到本地/);
+assert.match(elements.get("#result").innerHTML, /视频和字幕已直取到本地/);
+assert.match(elements.get("#result").innerHTML, /导出字幕/);
 assert.match(elements.get("#result").innerHTML, /继续切片总结/);
 assert.match(elements.get("#result").innerHTML, /data-rerun-from-media="download-only-task"/);
+assert.equal(elements.get("#subtitlesButton").disabled, false);
 assert.doesNotMatch(elements.get("#result").innerHTML, /不会继续转写、切片或总结/);
 
 context.switchResultTab("diagnostics");
