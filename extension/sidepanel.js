@@ -133,7 +133,11 @@ const els = {
   mediaButton: document.querySelector("#mediaButton"),
   downloadButton: document.querySelector("#downloadButton"),
   openWebButton: document.querySelector("#openWebButton"),
-  settingsButton: document.querySelector("#settingsButton")
+  settingsButton: document.querySelector("#settingsButton"),
+  backendSettingsPanel: document.querySelector("#backendSettingsPanel"),
+  backendUrlInput: document.querySelector("#backendUrlInput"),
+  saveBackendSettingsButton: document.querySelector("#saveBackendSettingsButton"),
+  cancelBackendSettingsButton: document.querySelector("#cancelBackendSettingsButton")
 };
 
 function escapeHtml(value) {
@@ -3033,26 +3037,48 @@ function normalizeBackendUrl(value) {
 async function loadSettings() {
   if (!HAS_EXTENSION_API) {
     backendUrl = normalizeBackendUrl(backendUrl) || DEFAULT_BACKEND;
+    if (els.backendUrlInput) els.backendUrlInput.value = backendUrl;
     return;
   }
   const data = await chrome.storage.local.get({ backendUrl: DEFAULT_BACKEND, [MODEL_SETTINGS_STORAGE_KEY]: null });
   backendUrl = normalizeBackendUrl(data.backendUrl) || DEFAULT_BACKEND;
+  if (els.backendUrlInput) els.backendUrlInput.value = backendUrl;
   applyModelSettings(data[MODEL_SETTINGS_STORAGE_KEY]);
 }
 
-async function saveSettings() {
-  if (typeof prompt !== "function") return;
-  const next = prompt("后端地址", backendUrl);
+function openBackendSettingsPanel() {
+  if (!els.backendSettingsPanel || !els.backendUrlInput) {
+    if (typeof prompt === "function") saveSettings(prompt("后端地址", backendUrl));
+    return;
+  }
+  els.backendUrlInput.value = backendUrl;
+  els.backendSettingsPanel.hidden = false;
+  els.backendUrlInput.focus?.({ preventScroll: true });
+}
+
+function closeBackendSettingsPanel() {
+  if (els.backendSettingsPanel) els.backendSettingsPanel.hidden = true;
+}
+
+async function saveSettings(next = null) {
+  if (next === null && els.backendUrlInput && els.backendSettingsPanel?.hidden === false) {
+    next = els.backendUrlInput.value;
+  } else if (next === null && typeof prompt === "function") {
+    next = prompt("后端地址", backendUrl);
+  }
   if (!next) return;
   const normalized = normalizeBackendUrl(next);
   if (!normalized) {
     els.backendStatus.textContent = "后端地址仅支持本机 127.0.0.1 或 localhost";
     els.backendStatus.style.color = "#d92d20";
     els.taskMessage.textContent = "后端地址未保存：只能连接本机后端。";
+    if (els.backendSettingsPanel) els.backendSettingsPanel.hidden = false;
     return;
   }
   backendUrl = normalized;
+  if (els.backendUrlInput) els.backendUrlInput.value = backendUrl;
   if (HAS_EXTENSION_API) await chrome.storage.local.set({ backendUrl });
+  closeBackendSettingsPanel();
   await health();
 }
 
@@ -5624,7 +5650,13 @@ els.downloadButton.onclick = () => {
 els.openWebButton.onclick = () => {
   openWorkbench();
 };
-els.settingsButton.onclick = saveSettings;
+els.settingsButton.onclick = openBackendSettingsPanel;
+if (els.saveBackendSettingsButton) {
+  els.saveBackendSettingsButton.onclick = () => saveSettings();
+}
+if (els.cancelBackendSettingsButton) {
+  els.cancelBackendSettingsButton.onclick = closeBackendSettingsPanel;
+}
 [
   els.frameInterval,
   els.gridSize,

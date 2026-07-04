@@ -104,6 +104,9 @@ await new Promise(resolve => setTimeout(resolve, 0));
 assert.match(sidepanelHtml, /value="gemini">Google Gemini/);
 assert.match(sidepanelHtml, /value="dashscope">/);
 assert.match(sidepanelHtml, /value="siliconflow">SiliconFlow/);
+assert.match(sidepanelHtml, /id="backendSettingsPanel"/);
+assert.match(sidepanelHtml, /id="backendUrlInput"/);
+assert.match(sidepanelHtml, /id="saveBackendSettingsButton"/);
 assert.equal(elements.get("#llmProvider").value, "openrouter");
 assert.equal(elements.get("#llmModel").value, "openai/gpt-4.1-mini");
 assert.equal(elements.get("#llmBaseUrl").value, "https://openrouter.ai/api/v1");
@@ -126,12 +129,22 @@ await context.saveSettings();
 assert.equal(calls.storageSet.at(-1).backendUrl, "http://127.0.0.1:8000");
 assert.equal(context.workbenchUrl("task-local", "note"), "http://127.0.0.1:8000/?task=task-local&tab=note");
 
+elements.get("#backendSettingsPanel").hidden = true;
+context.openBackendSettingsPanel();
+assert.equal(elements.get("#backendSettingsPanel").hidden, false);
+assert.equal(elements.get("#backendUrlInput").value, "http://127.0.0.1:8000");
+elements.get("#backendUrlInput").value = "localhost:8766/workbench";
+await context.saveSettings();
+assert.equal(calls.storageSet.at(-1).backendUrl, "http://localhost:8766");
+assert.equal(elements.get("#backendSettingsPanel").hidden, true);
+assert.equal(context.workbenchUrl("task-panel", "note"), "http://localhost:8766/?task=task-panel&tab=note");
+
 calls.storageSet = [];
 promptValue = "https://evil.example";
 await context.saveSettings();
 
 assert.equal(calls.storageSet.length, 0);
-assert.equal(context.workbenchUrl("task-local", "note"), "http://127.0.0.1:8000/?task=task-local&tab=note");
+assert.equal(context.workbenchUrl("task-local", "note"), "http://localhost:8766/?task=task-local&tab=note");
 assert.match(elements.get("#backendStatus").textContent, /127\.0\.0\.1|localhost/);
 assert.match(elements.get("#taskMessage").textContent, /本机后端/);
 

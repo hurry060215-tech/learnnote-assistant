@@ -25,6 +25,21 @@
       </div>
     </header>
 
+    <section id="backendSettingsPanel" class="backend-settings-panel" hidden aria-label="后端连接设置">
+      <div>
+        <span>本地后端</span>
+        <strong>只连接 127.0.0.1 / localhost</strong>
+      </div>
+      <label>
+        <span>地址</span>
+        <input id="backendUrlInput" type="url" inputmode="url" placeholder="http://127.0.0.1:8765">
+      </label>
+      <div class="backend-settings-actions">
+        <button id="cancelBackendSettingsButton" type="button">取消</button>
+        <button id="saveBackendSettingsButton" type="button">保存并检查</button>
+      </div>
+    </section>
+
     <main class="side-shell">
       <section class="current-card">
         <div class="source-switcher" aria-label="学习来源">

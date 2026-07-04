@@ -84,6 +84,77 @@ select {
   gap: 6px;
 }
 
+.backend-settings-panel {
+  margin: 10px 10px 0;
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+  border: 1px solid #bfd5fa;
+  border-radius: 8px;
+  background: #f7fbff;
+  box-shadow: var(--shadow);
+}
+
+.backend-settings-panel > div:first-child {
+  display: grid;
+  gap: 2px;
+}
+
+.backend-settings-panel span {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.backend-settings-panel strong {
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.backend-settings-panel label {
+  display: grid;
+  gap: 5px;
+}
+
+.backend-settings-panel input {
+  width: 100%;
+  min-height: 36px;
+  border: 1px solid #cbdaf0;
+  border-radius: 7px;
+  background: #fff;
+  color: var(--ink);
+  padding: 8px 10px;
+  font-size: 12px;
+  outline: none;
+}
+
+.backend-settings-panel input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(22, 119, 255, 0.12);
+}
+
+.backend-settings-actions {
+  display: grid;
+  grid-template-columns: 1fr 1.25fr;
+  gap: 8px;
+}
+
+.backend-settings-actions button {
+  min-height: 34px;
+  border: 1px solid #cbdaf0;
+  border-radius: 7px;
+  background: #fff;
+  color: #24528f;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.backend-settings-actions button:last-child {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
 .mark {
   width: 32px;
   height: 32px;
