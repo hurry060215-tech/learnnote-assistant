@@ -2641,7 +2641,7 @@ function taskExportUrl(task, type) {
 }
 
 function taskMediaPreviewUrl(task) {
-  if (!task?.id || !task.media_path) return "";
+  if (!task?.id || !hasExportableMedia(task)) return "";
   return apiUrl(`/api/tasks/${encodeURIComponent(task.id)}/media`);
 }
 
@@ -2651,10 +2651,14 @@ function taskRerunUrl(taskId) {
 
 function hasTaskBundle(task) {
   if (!task) return false;
+  const reuse = task.reuse || {};
   return Boolean(
     task.note_path ||
     task.subtitle_path ||
     task.media_path ||
+    reuse.subtitle_available ||
+    reuse.transcript_ready ||
+    reuse.media_available ||
     task.status === "failed" ||
     task.download_attempts?.length ||
     visualWindows(task).length
@@ -2681,20 +2685,42 @@ function hasTaskAudit(task) {
   return Boolean(task?.id && (hasTaskBundle(task) || hasTaskDiagnostics(task) || task.source_type || task.status));
 }
 
+function hasReusableSubtitle(task) {
+  const reuse = task?.reuse || {};
+  return Boolean(task?.subtitle_path || task?.transcript_path || reuse.subtitle_available || reuse.transcript_ready);
+}
+
+function hasExportableSubtitle(task) {
+  const reuse = task?.reuse || {};
+  return Boolean(task?.subtitle_path || reuse.subtitle_available);
+}
+
+function hasExportableMedia(task) {
+  const reuse = task?.reuse || {};
+  return Boolean(task?.media_path || reuse.media_available);
+}
+
+function reusableTranscriptSourceText(task) {
+  const source = task?.reuse?.transcript_source || "";
+  return source ? transcriptSourceText(source) : "";
+}
+
 function canContinueFromDownloadedMedia(task) {
   const finished = task?.status === "success" || task?.status === "failed";
-  return Boolean(task?.id && finished && task.media_path && !task.note_path);
+  const reuse = task?.reuse || {};
+  return Boolean(task?.id && finished && !task.note_path && (task.media_path || reuse.media_available || reuse.rerun_from_media_ready));
 }
 
 function downloadOnlyEmptyNoteHtml(task) {
-  const hasSubtitle = Boolean(task?.subtitle_path || task?.transcript_path);
+  const hasSubtitle = hasReusableSubtitle(task);
+  const transcriptSource = reusableTranscriptSourceText(task);
   const title = hasSubtitle ? "视频和字幕已直取到本地" : "视频已直取到本地";
   const detail = hasSubtitle
-    ? "已保存字幕/转写，可先导出字幕核对，也可以继续进入抽帧、视觉窗口和图文笔记流程；不会录制页面。"
+    ? `已保存${transcriptSource ? ` ${transcriptSource}` : "字幕/转写"}，可先导出字幕核对，也可以继续进入抽帧、视觉窗口和图文笔记流程；不会录制页面。`
     : "可以先导出 media.mp4 核对，也可以继续进入转写、抽帧、视觉窗口和图文笔记流程；不会录制页面。";
   const actions = [
-    task?.subtitle_path ? `<a href="${escapeHtml(taskExportUrl(task, "subtitles"))}">导出字幕</a>` : "",
-    task?.media_path ? `<a href="${escapeHtml(taskExportUrl(task, "media"))}">导出 media.mp4</a>` : "",
+    hasExportableSubtitle(task) ? `<a href="${escapeHtml(taskExportUrl(task, "subtitles"))}">导出字幕</a>` : "",
+    hasExportableMedia(task) ? `<a href="${escapeHtml(taskExportUrl(task, "media"))}">导出 media.mp4</a>` : "",
     canContinueFromDownloadedMedia(task) ? `<button type="button" data-rerun-from-media="${escapeHtml(task.id)}">继续切片总结</button>` : ""
   ].filter(Boolean).join("");
   return `<section class="download-only-callout note-empty-continue ${hasSubtitle ? "subtitle-ready" : ""}">
@@ -4440,13 +4466,13 @@ async function renderDetail() {
   els.diagnosticsButton.disabled = !hasTaskDiagnostics(task);
   if (els.visualWindowsButton) els.visualWindowsButton.disabled = !hasVisualWindowExport(task);
   if (els.manifestButton) els.manifestButton.disabled = !hasTaskBundle(task);
-  els.mediaButton.disabled = !task.media_path;
+  els.mediaButton.disabled = !hasExportableMedia(task);
   els.downloadButton.disabled = !hasNote;
   updateContinueFromMediaAction(task);
 
   if (selectedTab === "note") {
     lastNote = await noteForTask(task.id);
-    const emptyNoteHtml = task.media_path ? downloadOnlyEmptyNoteHtml(task) : "<p>笔记尚未生成。</p>";
+    const emptyNoteHtml = hasExportableMedia(task) ? downloadOnlyEmptyNoteHtml(task) : "<p>笔记尚未生成。</p>";
     els.detail.innerHTML = `
       <div class="note-shell">
         ${taskOverview(task)}
@@ -4467,7 +4493,7 @@ async function renderDetail() {
 
   if (selectedTab === "slices" || selectedTab === "frames") {
     const windows = visualWindows(task);
-    if (!windows.length && task?.media_path) {
+    if (!windows.length && hasExportableMedia(task)) {
       els.detail.className = "detail";
       els.detail.innerHTML = pendingSliceWorkbench(task);
       bindTaskOverviewActions();

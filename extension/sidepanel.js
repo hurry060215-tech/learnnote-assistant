@@ -507,7 +507,7 @@ function isVisualStudyResultTab(tabName) {
 }
 
 function taskMediaPreviewUrl(task) {
-  if (!task?.id || !task.media_path) return "";
+  if (!task?.id || !hasExportableMedia(task)) return "";
   return `${backendUrl.replace(/\/$/, "")}/api/tasks/${encodeURIComponent(task.id)}/media`;
 }
 
@@ -3667,9 +3667,14 @@ function taskStatusClass(task = {}) {
 
 function hasTaskBundle(task) {
   if (!task) return false;
+  const reuse = task.reuse || {};
   return Boolean(
     task.note_path ||
+    task.subtitle_path ||
     task.media_path ||
+    reuse.subtitle_available ||
+    reuse.transcript_ready ||
+    reuse.media_available ||
     task.status === "failed" ||
     task.download_attempts?.length ||
     visualWindows(task).length
@@ -3696,20 +3701,42 @@ function hasVisualWindowExport(task) {
   return Boolean(task?.visual_windows?.length || task?.frame_grids?.length);
 }
 
+function hasReusableSubtitle(task) {
+  const reuse = task?.reuse || {};
+  return Boolean(task?.subtitle_path || task?.transcript_path || reuse.subtitle_available || reuse.transcript_ready);
+}
+
+function hasExportableSubtitle(task) {
+  const reuse = task?.reuse || {};
+  return Boolean(task?.subtitle_path || reuse.subtitle_available);
+}
+
+function hasExportableMedia(task) {
+  const reuse = task?.reuse || {};
+  return Boolean(task?.media_path || reuse.media_available);
+}
+
+function reusableTranscriptSourceText(task) {
+  const source = task?.reuse?.transcript_source || "";
+  return source ? transcriptSourceText(source) : "";
+}
+
 function canContinueFromDownloadedMedia(task = currentTask) {
   const finished = task?.status === "success" || task?.status === "failed";
-  return Boolean(task?.id && finished && task.media_path && !task.note_path);
+  const reuse = task?.reuse || {};
+  return Boolean(task?.id && finished && !task.note_path && (task.media_path || reuse.media_available || reuse.rerun_from_media_ready));
 }
 
 function downloadOnlyEmptyNoteHtml(task) {
-  const hasSubtitle = Boolean(task?.subtitle_path || task?.transcript_path);
+  const hasSubtitle = hasReusableSubtitle(task);
+  const transcriptSource = reusableTranscriptSourceText(task);
   const title = hasSubtitle ? "视频和字幕已直取到本地" : "视频已直取到本地";
   const detail = hasSubtitle
-    ? "已保存字幕/转写，可先导出字幕核对，也可以继续进入抽帧、视觉窗口和图文笔记流程；不会录制页面。"
+    ? `已保存${transcriptSource ? ` ${transcriptSource}` : "字幕/转写"}，可先导出字幕核对，也可以继续进入抽帧、视觉窗口和图文笔记流程；不会录制页面。`
     : "可以先导出 media.mp4 核对，也可以继续进入转写、抽帧、视觉窗口和图文笔记流程；不会录制页面。";
   const actions = [
-    task?.subtitle_path ? `<button type="button" data-export="subtitles">导出字幕</button>` : "",
-    task?.media_path ? `<button type="button" data-export="media">导出 media.mp4</button>` : "",
+    hasExportableSubtitle(task) ? `<button type="button" data-export="subtitles">导出字幕</button>` : "",
+    hasExportableMedia(task) ? `<button type="button" data-export="media">导出 media.mp4</button>` : "",
     canContinueFromDownloadedMedia(task) ? `<button type="button" data-rerun-from-media="${escapeHtml(task.id)}">继续切片总结</button>` : ""
   ].filter(Boolean).join("");
   return `<section class="download-only-callout note-empty-continue ${hasSubtitle ? "subtitle-ready" : ""}">
@@ -5063,8 +5090,8 @@ function renderResult() {
   els.diagnosticsButton.disabled = !hasTaskDiagnostics(currentTask);
   if (els.visualWindowsButton) els.visualWindowsButton.disabled = !hasVisualWindowExport(currentTask);
   if (els.manifestButton) els.manifestButton.disabled = !hasTaskBundle(currentTask);
-  if (els.subtitlesButton) els.subtitlesButton.disabled = !currentTask?.subtitle_path;
-  els.mediaButton.disabled = !currentTask?.media_path;
+  if (els.subtitlesButton) els.subtitlesButton.disabled = !hasExportableSubtitle(currentTask);
+  els.mediaButton.disabled = !hasExportableMedia(currentTask);
   els.downloadButton.disabled = !hasNote;
   updateContinueFromMediaAction(currentTask);
   if (!currentTask) {
@@ -5075,7 +5102,7 @@ function renderResult() {
     els.result.className = "result-body";
     const noteHtml = lastNote
       ? markdownToHtml(lastNote)
-      : currentTask.media_path
+      : hasExportableMedia(currentTask)
         ? downloadOnlyEmptyNoteHtml(currentTask)
         : `<p>${escapeHtml(currentTask.message || "笔记尚未生成。")}</p>`;
     els.result.innerHTML = `${taskOverview(currentTask)}${visionEvidenceBar(currentTask)}${noteStudyMap(lastNote, currentTask)}${noteOutline(lastNote)}${noteVisualRail(currentTask)}<article class="markdown-note">${noteHtml}</article>`;
@@ -5084,7 +5111,7 @@ function renderResult() {
   }
   if (isVisualStudyResultTab(selectedTab)) {
     const windows = visualWindows(currentTask);
-    if (!windows.length && currentTask?.media_path) {
+    if (!windows.length && hasExportableMedia(currentTask)) {
       els.result.className = "result-body";
       els.result.innerHTML = pendingSliceWorkbench(currentTask);
       bindTaskOverviewActions();

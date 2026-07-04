@@ -906,9 +906,16 @@ context.fetch = async url => {
           phase: "completed",
           mode: "download_only",
           source_type: "current_page",
-          media_path: "D:/Projects/learnnote-assistant/data/tasks/task-note-download-only/media.mp4",
-          subtitle_path: "D:/Projects/learnnote-assistant/data/tasks/task-note-download-only/browser_subtitles.srt",
-          transcript_path: "D:/Projects/learnnote-assistant/data/tasks/task-note-download-only/transcript.json",
+          media_path: "",
+          subtitle_path: "",
+          transcript_path: "",
+          reuse: {
+            media_available: true,
+            subtitle_available: true,
+            transcript_ready: true,
+            transcript_source: "page-subtitle",
+            rerun_from_media_ready: true
+          },
           visual_windows: []
         }
       })
@@ -923,7 +930,9 @@ context.selectTask("task-note-download-only", { syncUrl: false });
 context.switchResultTab("note");
 await context.renderDetail();
 assert.match(elements.get("#detail").innerHTML, /视频和字幕已直取到本地/);
+assert.match(elements.get("#detail").innerHTML, /页面字幕/);
 assert.match(elements.get("#detail").innerHTML, /导出字幕/);
+assert.match(elements.get("#detail").innerHTML, /导出 media\.mp4/);
 assert.match(elements.get("#detail").innerHTML, /继续切片总结/);
 assert.match(elements.get("#detail").innerHTML, /data-rerun-from-media="task-note-download-only"/);
 assert.doesNotMatch(elements.get("#detail").innerHTML, /不会继续转写、切片或总结/);

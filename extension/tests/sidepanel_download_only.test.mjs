@@ -81,6 +81,13 @@ const context = {
             media_path: "D:/media.mp4",
             subtitle_path: "D:/browser_subtitles.srt",
             transcript_path: "D:/transcript.json",
+            reuse: {
+              media_available: true,
+              subtitle_available: true,
+              transcript_ready: true,
+              transcript_source: "browser-subtitle",
+              rerun_from_media_ready: true
+            },
             active_video: page.active_video,
             selected_resource: {
               url: resources[0].url,
@@ -212,6 +219,13 @@ assert.equal(context.canContinueFromDownloadedMedia({
   note_path: ""
 }), true);
 assert.equal(context.canContinueFromDownloadedMedia({
+  id: "reuse-media-task",
+  status: "success",
+  media_path: "",
+  note_path: "",
+  reuse: { media_available: true, rerun_from_media_ready: true }
+}), true);
+assert.equal(context.canContinueFromDownloadedMedia({
   id: "complete-task",
   status: "success",
   media_path: "D:/media.mp4",
@@ -220,6 +234,7 @@ assert.equal(context.canContinueFromDownloadedMedia({
 assert.equal(elements.get("#continueFromMediaButton").hidden, false);
 assert.equal(elements.get("#continueFromMediaButton").disabled, false);
 assert.match(elements.get("#result").innerHTML, /视频和字幕已直取到本地/);
+assert.match(elements.get("#result").innerHTML, /浏览器字幕/);
 assert.match(elements.get("#result").innerHTML, /导出字幕/);
 assert.match(elements.get("#result").innerHTML, /继续切片总结/);
 assert.match(elements.get("#result").innerHTML, /data-rerun-from-media="download-only-task"/);
