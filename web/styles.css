@@ -5805,6 +5805,12 @@ button:disabled {
   box-shadow: 0 10px 24px rgba(16, 24, 40, 0.04);
 }
 
+.visual-study-card.visual-window-focused,
+.transcript-window.visual-window-focused {
+  outline: 3px solid rgba(37, 99, 235, 0.35);
+  box-shadow: 0 0 0 6px rgba(37, 99, 235, 0.08), 0 16px 42px rgba(15, 23, 42, 0.16);
+}
+
 .visual-study-card figure {
   margin: 0;
 }

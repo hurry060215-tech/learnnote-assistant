@@ -482,6 +482,7 @@ assert.match(qaPanelVisualHtml, /class="visual"/);
 assert.match(qaPanelVisualHtml, /W001/);
 assert.match(qaPanelVisualHtml, /00:00:00-00:01:00/);
 assert.match(qaPanelVisualHtml, /data-switch-result-tab="slices"/);
+assert.match(qaPanelVisualHtml, /data-focus-visual-window="W001"/);
 assert.match(qaPanelVisualHtml, /打开网格/);
 assert.match(qaPanelVisualHtml, /\/api\/tasks\/task-qa-visual\/grids\/grid_000\.jpg/);
 context.window.location.search = "?task=task%20from%20url";

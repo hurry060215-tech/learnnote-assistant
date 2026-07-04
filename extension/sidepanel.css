@@ -4573,6 +4573,12 @@ input[type="file"] {
   box-shadow: 0 8px 18px rgba(16, 24, 40, 0.04);
 }
 
+.side-visual-study-card.visual-window-focused,
+.transcript-window.visual-window-focused {
+  outline: 3px solid rgba(37, 99, 235, 0.35);
+  box-shadow: 0 0 0 5px rgba(37, 99, 235, 0.08), 0 14px 34px rgba(15, 23, 42, 0.16);
+}
+
 .side-visual-study-card figure {
   margin: 0;
 }

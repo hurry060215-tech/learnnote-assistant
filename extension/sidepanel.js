@@ -5087,7 +5087,7 @@ function bindTaskOverviewActions() {
     button.onclick = () => rerunTaskFromMedia(button.dataset.rerunFromMedia);
   });
   document.querySelectorAll("button[data-switch-result-tab]").forEach(button => {
-    button.onclick = () => switchResultTab(button.dataset.switchResultTab);
+    button.onclick = () => switchResultTab(button.dataset.switchResultTab, button.dataset.focusVisualWindow || "");
   });
   document.querySelectorAll("button[data-media-seek-time]").forEach(button => {
     button.onclick = () => seekLearningVideo(button.dataset.mediaSeekTime, button);
@@ -5116,12 +5116,27 @@ function updateResultTabState() {
   });
 }
 
-function switchResultTab(tabName) {
-  if (!tabName || selectedTab === tabName) return;
-  selectedTab = tabName;
-  updateResultTabState();
-  renderResult();
-  resetResultScroll();
+function focusVisualWindow(windowId) {
+  const id = String(windowId || "").trim();
+  if (!id) return;
+  const target = [...document.querySelectorAll("[data-visual-window]")]
+    .find(item => item.dataset.visualWindow === id);
+  if (!target) return;
+  target.classList.remove("visual-window-focused");
+  target.scrollIntoView({ behavior: "smooth", block: "center" });
+  window.setTimeout(() => target.classList.add("visual-window-focused"), 20);
+  window.setTimeout(() => target.classList.remove("visual-window-focused"), 1800);
+}
+
+function switchResultTab(tabName, focusWindowId = "") {
+  if (!RESULT_TAB_NAMES.has(tabName)) return;
+  if (selectedTab !== tabName) {
+    selectedTab = tabName;
+    updateResultTabState();
+    renderResult();
+    resetResultScroll();
+  }
+  if (focusWindowId) window.setTimeout(() => focusVisualWindow(focusWindowId), 0);
 }
 
 function noteHeadingStats(markdown) {
@@ -5514,13 +5529,14 @@ function qaCitationHtml(item) {
   const label = item?.label || item?.source || "证据";
   const meta = [item?.window_id, item?.time_range].filter(Boolean).join(" · ");
   const gridUrl = safeCitationUrl(item?.grid_url);
+  const windowId = item?.window_id || "";
   const targetTab = RESULT_TAB_NAMES.has(item?.target_tab) ? item.target_tab : item?.window_id ? "slices" : "";
   return `<span class="${item?.window_id ? "visual" : ""}">
     <b>${escapeHtml(label)}</b>
     ${meta ? `<em>${escapeHtml(meta)}</em>` : ""}
     ${escapeHtml(item?.text || "")}
     ${(targetTab || gridUrl) ? `<small>
-      ${targetTab ? `<button type="button" data-switch-result-tab="${escapeHtml(targetTab)}">查看切片</button>` : ""}
+      ${targetTab ? `<button type="button" data-switch-result-tab="${escapeHtml(targetTab)}"${windowId ? ` data-focus-visual-window="${escapeHtml(windowId)}"` : ""}>查看切片</button>` : ""}
       ${gridUrl ? `<a href="${escapeHtml(gridUrl)}" target="_blank" rel="noreferrer">打开网格</a>` : ""}
     </small>` : ""}
   </span>`;

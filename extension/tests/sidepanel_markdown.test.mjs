@@ -155,6 +155,7 @@ assert.match(qaPanelVisualHtml, /class="visual"/);
 assert.match(qaPanelVisualHtml, /W001/);
 assert.match(qaPanelVisualHtml, /00:00:00-00:01:00/);
 assert.match(qaPanelVisualHtml, /data-switch-result-tab="slices"/);
+assert.match(qaPanelVisualHtml, /data-focus-visual-window="W001"/);
 assert.match(qaPanelVisualHtml, /打开网格/);
 assert.match(qaPanelVisualHtml, /\/api\/tasks\/side-qa-visual\/grids\/grid_000\.jpg/);
 
