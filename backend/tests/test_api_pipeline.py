@@ -121,6 +121,13 @@ class LocalUploadValidationTests(unittest.TestCase):
         self.assertTrue(payload["default_llm_base_url"])
         self.assertTrue(payload["default_llm_base_host"])
         self.assertTrue(payload["default_llm_provider"])
+        self.assertIn("data_paths", payload)
+        self.assertTrue(payload["data_paths"]["root"])
+        self.assertTrue(payload["data_paths"]["all_under_data_dir"])
+        self.assertTrue(payload["data_paths"]["all_on_data_drive"])
+        self.assertEqual(payload["data_paths"]["data_drive"], DATA_DIR.resolve().drive)
+        self.assertEqual(payload["data_paths"]["paths"]["data"], str(DATA_DIR.resolve()))
+        self.assertTrue(payload["data_paths"]["paths"]["tasks"].endswith("\\data\\tasks") or payload["data_paths"]["paths"]["tasks"].endswith("/data/tasks"))
         self.assertRegex(payload["backend_origin"], r"^https?://(127\.0\.0\.1|localhost):\d+")
         if payload["ffmpeg"] and not payload["ffprobe"]:
             self.assertTrue(payload["ffprobe_optional"])
@@ -147,6 +154,7 @@ class LocalUploadValidationTests(unittest.TestCase):
             "default_llm_model",
             "default_llm_base_host",
             "default_llm_provider",
+            "data_paths",
         ):
             self.assertEqual(api_payload[key], health_payload[key])
 

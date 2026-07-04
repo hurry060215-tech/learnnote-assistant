@@ -3300,6 +3300,13 @@ function healthMediaChipText(data) {
   return "后端 · 直取/切片就绪";
 }
 
+function healthDataChipText(data) {
+  const paths = data?.data_paths || {};
+  const drive = paths.data_drive || "";
+  const state = paths.all_under_data_dir && paths.all_on_data_drive ? "data内" : "路径异常";
+  return `${drive || "data"} · ${state}`;
+}
+
 function updateHealthVisionStatus(data = lastHealthData) {
   if (!data || !els.backendStatus) return;
   const mediaText = String(els.backendStatus.dataset.mediaText || els.backendStatus.textContent || "").trim();
@@ -3312,6 +3319,7 @@ function updateHealthVisionStatus(data = lastHealthData) {
     <span class="backend-status-chip media"><b>媒体</b>${escapeHtml(healthMediaChipText(data))}</span>
     <span class="backend-status-chip vision ${healthVisionReady(data) ? "ready" : "pending"}"><b>视觉</b>${escapeHtml(healthVisionChipText(data))}</span>
     <span class="backend-status-chip asr"><b>转写</b>${escapeHtml(healthAsrChipText(data))}</span>
+    <span class="backend-status-chip data ${data?.data_paths?.all_under_data_dir ? "ready" : "pending"}"><b>数据</b>${escapeHtml(healthDataChipText(data))}</span>
   `;
 }
 

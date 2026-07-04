@@ -63,7 +63,7 @@ const context = {
   fetch: async url => {
     const value = String(url);
     if (value.endsWith("/health")) {
-      return { json: async () => ({ ffmpeg: true, ffprobe: false, ffprobe_optional: true, duration_probe: "ffmpeg", vision_model_configured: true, default_llm_model: "gpt-4.1-mini", default_llm_provider: "openai", default_llm_base_host: "api.openai.com" }) };
+      return { json: async () => ({ ffmpeg: true, ffprobe: false, ffprobe_optional: true, duration_probe: "ffmpeg", vision_model_configured: true, default_llm_model: "gpt-4.1-mini", default_llm_provider: "openai", default_llm_base_host: "api.openai.com", data_paths: { root: "D:\\Projects\\learnnote-assistant\\data", data_drive: "D:", all_under_data_dir: true, all_on_data_drive: true, paths: { tasks: "D:\\Projects\\learnnote-assistant\\data\\tasks" } } }) };
     }
     if (value.endsWith("/api/tasks")) {
       return { json: async () => ({ tasks: [] }) };
@@ -95,6 +95,8 @@ assert.match(elements.get("#backendStatus").innerHTML, /当前标签页/);
 assert.match(elements.get("#backendStatus").innerHTML, /backend-status-chip media/);
 assert.match(elements.get("#backendStatus").innerHTML, /OpenAI · gpt-4\.1-mini/);
 assert.match(elements.get("#backendStatus").innerHTML, /gpt-4\.1-mini/);
+assert.match(elements.get("#backendStatus").innerHTML, /backend-status-chip data ready/);
+assert.match(elements.get("#backendStatus").innerHTML, /D: · data/);
 assert.match(elements.get("#backendStatus").title, /视觉模型/);
 const qaPanelInitialHtml = context.qaPanelHtml({ id: "side-qa-test" });
 assert.match(qaPanelInitialHtml, /id="qaForm"/);

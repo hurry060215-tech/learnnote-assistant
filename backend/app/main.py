@@ -16,7 +16,7 @@ from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Res
 from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 
-from .config import BACKEND_ORIGIN, DATA_DIR, LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, STATIC_DIR, TEMP_DIR, UPLOAD_DIR, WEB_DIR, ensure_dirs
+from .config import BACKEND_ORIGIN, DATA_DIR, LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, MODEL_CACHE_DIR, STATIC_DIR, TASK_DIR, TEMP_DIR, UPLOAD_DIR, WEB_DIR, ensure_dirs
 from .downloader import MediaDownloader, effective_resource_kind, fallback_page_contexts, preflight_media_resource, rank_media_candidates
 from .media import probe_duration
 from .models import CurrentPageTaskRequest, MediaPreflightRequest, MediaPreflightResult, PagePreflightRequest, RerunFromMediaRequest, ResourceCandidate, TaskOptions, TaskQuestionRequest, TaskRecord, now_iso
@@ -1612,6 +1612,34 @@ def index() -> HTMLResponse:
     return HTMLResponse(path.read_text(encoding="utf-8"))
 
 
+def data_paths_payload() -> dict:
+    root = DATA_DIR.resolve()
+    paths = {
+        "data": root,
+        "uploads": UPLOAD_DIR.resolve(),
+        "tasks": TASK_DIR.resolve(),
+        "static": STATIC_DIR.resolve(),
+        "model_cache": MODEL_CACHE_DIR.resolve(),
+        "temp": TEMP_DIR.resolve(),
+    }
+    under_data = {}
+    for key, path in paths.items():
+        try:
+            under_data[key] = path == root or path.is_relative_to(root)
+        except ValueError:
+            under_data[key] = False
+    drives = {key: path.drive for key, path in paths.items()}
+    return {
+        "root": str(root),
+        "paths": {key: str(path) for key, path in paths.items()},
+        "under_data_dir": under_data,
+        "all_under_data_dir": all(under_data.values()),
+        "drives": drives,
+        "all_on_data_drive": all(drive == root.drive for drive in drives.values()),
+        "data_drive": root.drive,
+    }
+
+
 def health_payload() -> dict:
     ffmpeg = ffmpeg_bin()
     ffprobe = ffprobe_bin()
@@ -1635,6 +1663,7 @@ def health_payload() -> dict:
         "default_llm_base_url": LLM_BASE_URL,
         "default_llm_base_host": llm_base_host(LLM_BASE_URL),
         "default_llm_provider": llm_provider_name(LLM_BASE_URL),
+        "data_paths": data_paths_payload(),
     }
 
 

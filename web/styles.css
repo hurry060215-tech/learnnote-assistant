@@ -1025,6 +1025,28 @@ select:focus {
   color: #24528f;
 }
 
+.capture-status-chip.data.ready {
+  border-color: rgba(20, 150, 74, 0.22);
+  background: rgba(20, 150, 74, 0.07);
+  color: var(--success);
+}
+
+.capture-status-chip.data.ready b {
+  background: rgba(20, 150, 74, 0.12);
+  color: var(--success);
+}
+
+.capture-status-chip.data.pending {
+  border-color: rgba(217, 45, 32, 0.2);
+  background: rgba(217, 45, 32, 0.06);
+  color: var(--danger);
+}
+
+.capture-status-chip.data.pending b {
+  background: rgba(217, 45, 32, 0.1);
+  color: var(--danger);
+}
+
 .browser-capture-head em {
   min-width: 46px;
   height: 24px;

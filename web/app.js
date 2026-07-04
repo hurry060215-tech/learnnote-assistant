@@ -2364,6 +2364,13 @@ function healthMediaChipText(data) {
   return "后端 · 直取/切片就绪";
 }
 
+function healthDataChipText(data) {
+  const paths = data?.data_paths || {};
+  const drive = paths.data_drive || "";
+  const state = paths.all_under_data_dir && paths.all_on_data_drive ? "data内" : "路径异常";
+  return `${drive || "data"} · ${state}`;
+}
+
 function emptyReadinessItems(data = lastHealthData) {
   const backendReady = Boolean(data?.ffmpeg);
   return [
@@ -2388,6 +2395,12 @@ function emptyReadinessItems(data = lastHealthData) {
       label: "本地视频检查",
       value: "拖拽自动上传",
       detail: "平台直取失败时，mp4、mkv、webm、flv、avi 可走同一套切片管线。"
+    },
+    {
+      state: data?.data_paths?.all_under_data_dir && data?.data_paths?.all_on_data_drive ? "pass" : "warn",
+      label: "本地数据目录",
+      value: healthDataChipText(data),
+      detail: data?.data_paths?.root || "等待后端返回 data 目录。"
     },
     {
       state: "warn",
@@ -2429,6 +2442,7 @@ function updateHealthVisionStatus(data = lastHealthData) {
     <span class="capture-status-chip media"><b>媒体</b>${escapeHtml(healthMediaChipText(data))}</span>
     <span class="capture-status-chip vision ${healthVisionReady(data) ? "ready" : "pending"}"><b>视觉</b>${escapeHtml(healthVisionChipText(data))}</span>
     <span class="capture-status-chip asr"><b>转写</b>${escapeHtml(healthAsrChipText(data))}</span>
+    <span class="capture-status-chip data ${data?.data_paths?.all_under_data_dir ? "ready" : "pending"}"><b>数据</b>${escapeHtml(healthDataChipText(data))}</span>
   `;
 }
 

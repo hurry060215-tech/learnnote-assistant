@@ -120,7 +120,7 @@ const context = {
   URL: class URL {},
   fetch: async url => {
     const value = String(url);
-    if (value.endsWith("/health")) return { json: async () => ({ ffmpeg: true, ffprobe: false, ffprobe_optional: true, duration_probe: "ffmpeg", vision_model_configured: false, default_llm_model: "gpt-4.1-mini", default_llm_provider: "openai", default_llm_base_host: "api.openai.com" }) };
+    if (value.endsWith("/health")) return { json: async () => ({ ffmpeg: true, ffprobe: false, ffprobe_optional: true, duration_probe: "ffmpeg", vision_model_configured: false, default_llm_model: "gpt-4.1-mini", default_llm_provider: "openai", default_llm_base_host: "api.openai.com", data_paths: { root: "D:\\Projects\\learnnote-assistant\\data", data_drive: "D:", all_under_data_dir: true, all_on_data_drive: true, paths: { tasks: "D:\\Projects\\learnnote-assistant\\data\\tasks" } } }) };
     if (value.endsWith("/api/tasks")) return { json: async () => ({ tasks: [] }) };
     return { ok: false, json: async () => ({}), text: async () => "" };
   },
@@ -231,6 +231,8 @@ assert.match(elements.get("#browserBridgeStatus").innerHTML, /待填 · OpenRout
 assert.match(elements.get("#browserBridgeStatus").innerHTML, /capture-status-chip asr/);
 assert.match(elements.get("#browserBridgeStatus").innerHTML, /转写/);
 assert.match(elements.get("#browserBridgeStatus").innerHTML, /本地 faster-whisper · small/);
+assert.match(elements.get("#browserBridgeStatus").innerHTML, /capture-status-chip data ready/);
+assert.match(elements.get("#browserBridgeStatus").innerHTML, /D: · data/);
 assert.match(elements.get("#detail").innerHTML, /class="empty-workbench"/);
 assert.match(elements.get("#detail").innerHTML, /class="empty-demo-board"/);
 assert.match(elements.get("#detail").innerHTML, /class="empty-route-grid"/);
