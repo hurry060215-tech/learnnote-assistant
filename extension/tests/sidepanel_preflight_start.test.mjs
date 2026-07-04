@@ -171,3 +171,36 @@ selectedResourceUrl = "blob:https://course.example.com/player";
 
 assert.equal(context.preflightCandidatesForStart("video").length, 0);
 assert.equal(context.canAttemptBackendPageFallback("video"), false);
+
+const activeOnlyCandidates = context.resourcesWithActiveVideoCandidate([], {
+  src: "https://cdn.example.com/current-player?id=active",
+  current_time: 33,
+  duration: 600,
+  width: 1280,
+  height: 720,
+  frame_id: 4,
+  label: "current lesson video"
+});
+assert.equal(activeOnlyCandidates.length, 1);
+assert.equal(activeOnlyCandidates[0].source, "activeVideo");
+assert.equal(activeOnlyCandidates[0].kind, "video");
+assert.equal(activeOnlyCandidates[0].request_type, "active-video");
+assert.equal(activeOnlyCandidates[0].playback_match, "exact-src");
+assert.equal(activeOnlyCandidates[0].current_time, 33);
+
+vm.runInContext(`
+page = {
+  title: "Active only player",
+  page_url: "https://course.example.com/watch",
+  active_video: { src: "https://cdn.example.com/current-player?id=active", current_time: 33, duration: 600, paused: false },
+  frames: []
+};
+resources = resourcesWithActiveVideoCandidate([], page.active_video);
+selectedResourceUrl = "https://cdn.example.com/current-player?id=active";
+`, context);
+
+const activeOnlyPreflightCandidates = context.preflightCandidatesForStart("video");
+assert.equal(activeOnlyPreflightCandidates.length, 1);
+assert.equal(activeOnlyPreflightCandidates[0].source, "activeVideo");
+assert.equal(activeOnlyPreflightCandidates[0].url, "https://cdn.example.com/current-player?id=active");
+assert.equal(context.selectedResourcesForTask()[0].user_selected, true);

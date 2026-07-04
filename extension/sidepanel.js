@@ -694,6 +694,9 @@ const PIPELINE_STEPS = [
 
 const DOWNLOAD_ERROR_CODES = new Set(["no_media_found", "auth_required", "drm_or_encrypted", "download_forbidden", "unsupported_manifest"]);
 const DOWNLOADABLE_KINDS = new Set(["video", "hls", "dash"]);
+const HLS_URL_RE = /\.m3u8(?:[?#]|$)|mpegurl/i;
+const DASH_URL_RE = /\.mpd(?:[?#]|$)|dash/i;
+const MEDIA_URL_RE = /\.(mp4|m4v|mov|mkv|webm|flv|avi)(?:[?#]|$)/i;
 
 function failedStepIndex(task) {
   if (DOWNLOAD_ERROR_CODES.has(task.error_code)) return 0;
@@ -1070,6 +1073,60 @@ function transcriptSourceText(source) {
 
 function isDownloadableResource(item) {
   return DOWNLOADABLE_KINDS.has(item?.kind);
+}
+
+function mediaKindFromUrl(value = "") {
+  const url = String(value || "");
+  if (HLS_URL_RE.test(url)) return "hls";
+  if (DASH_URL_RE.test(url)) return "dash";
+  if (MEDIA_URL_RE.test(url)) return "video";
+  return "video";
+}
+
+function mimeForMediaKind(kind = "") {
+  if (kind === "hls") return "application/vnd.apple.mpegurl";
+  if (kind === "dash") return "application/dash+xml";
+  if (kind === "video") return "video/mp4";
+  return "";
+}
+
+function activeVideoResourceCandidate(active = page?.active_video) {
+  const src = String(active?.src || "").trim();
+  if (!/^https?:\/\//i.test(src)) return null;
+  const kind = mediaKindFromUrl(src);
+  return {
+    url: src,
+    source: "activeVideo",
+    kind,
+    mime: mimeForMediaKind(kind),
+    score: 100,
+    label: active?.label || "当前播放视频",
+    is_main_video: true,
+    playback_match: "exact-src",
+    frame_id: active?.frame_id ?? null,
+    current_time: active?.current_time ?? null,
+    duration: active?.duration || null,
+    width: active?.width || null,
+    height: active?.height || null,
+    request_type: "active-video"
+  };
+}
+
+function resourcesWithActiveVideoCandidate(items = [], active = page?.active_video) {
+  const list = Array.isArray(items) ? items.slice() : [];
+  const candidate = activeVideoResourceCandidate(active);
+  if (!candidate) return list;
+  const activeUrl = candidate.url.split("#")[0];
+  const existing = list.find(item => String(item?.url || "").split("#")[0] === activeUrl || String(item?.resolved_url || "").split("#")[0] === activeUrl);
+  if (existing) {
+    existing.is_main_video = true;
+    existing.playback_match ||= "exact-src";
+    existing.current_time ??= candidate.current_time;
+    existing.duration ??= candidate.duration;
+    existing.frame_id ??= candidate.frame_id;
+    return list;
+  }
+  return [candidate, ...list];
 }
 
 function isDirectExtractionCandidate(item) {
@@ -3307,7 +3364,7 @@ async function collectContextNow() {
   }
   currentTabId = response.tab?.id ?? null;
   page = response.page;
-  resources = response.resources || [];
+  resources = resourcesWithActiveVideoCandidate(response.resources || [], page?.active_video);
   captureLog = response.capture_log || { total: 0, restored: 0, updated_at: 0 };
   if (selectedResourceUrl && !resources.some(item => item.url === selectedResourceUrl)) {
     resourceSelectionPinned = false;
