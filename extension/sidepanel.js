@@ -2994,7 +2994,7 @@ function missingCurrentVideoEvidenceMessage() {
 async function waitForOneClickMediaCandidate() {
   for (let attempt = 0; attempt < ONE_CLICK_RESOURCE_WAIT_ATTEMPTS; attempt += 1) {
     if (hasDownloadableResources(resources)) return true;
-    if (hasCurrentVideoEvidence(resources) && canAttemptBackendPageFallback("video")) return true;
+    if (attempt === ONE_CLICK_RESOURCE_WAIT_ATTEMPTS - 1 && hasCurrentVideoEvidence(resources) && canAttemptBackendPageFallback("video")) return true;
     const remaining = ONE_CLICK_RESOURCE_WAIT_ATTEMPTS - attempt;
     els.taskMessage.textContent = `正在等待当前页暴露可直取视频资源...剩余 ${remaining} 次自动重检`;
     await sleep(ONE_CLICK_RESOURCE_WAIT_DELAY_MS);
@@ -3008,7 +3008,7 @@ async function waitForMediaCandidateBeforeStart(mode = "video") {
   if (preflightCandidatesForStart(mode).length) return true;
   for (let attempt = 0; attempt < ONE_CLICK_RESOURCE_WAIT_ATTEMPTS; attempt += 1) {
     if (preflightCandidatesForStart(mode).length) return true;
-    if (hasCurrentVideoEvidence(resources) && canAttemptBackendPageFallback(mode)) return true;
+    if (attempt === ONE_CLICK_RESOURCE_WAIT_ATTEMPTS - 1 && hasCurrentVideoEvidence(resources) && canAttemptBackendPageFallback(mode)) return true;
     const remaining = ONE_CLICK_RESOURCE_WAIT_ATTEMPTS - attempt;
     els.taskMessage.textContent = mode === "download_only"
       ? `正在等待当前页暴露可下载视频资源...剩余 ${remaining} 次自动重检`
@@ -3469,7 +3469,14 @@ async function startTask(mode = "video") {
       els.taskMessage.textContent = "刷新当前页面失败，无法确认最新播放资源；请重新打开页面或刷新后再试。";
       return;
     }
-    await waitForMediaCandidateBeforeStart(mode);
+    const mediaCandidateReady = await waitForMediaCandidateBeforeStart(mode);
+    if (isMediaTaskMode(mode) && !mediaCandidateReady) {
+      els.taskMessage.textContent = mode === "download_only"
+        ? "还没有读取到可下载的视频资源；先播放课程视频几秒后重新检测，或改用本地视频上传。"
+        : missingCurrentVideoEvidenceMessage();
+      renderContext();
+      return;
+    }
     const candidates = preflightCandidatesForStart(mode);
     if (candidates.length) {
       let checked = null;
