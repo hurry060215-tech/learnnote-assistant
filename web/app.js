@@ -798,6 +798,57 @@ function browserRouteHandoffHtml(task) {
   </div>`;
 }
 
+function browserExtensionHandoffSteps(backendUrl = "") {
+  return [
+    {
+      index: "1",
+      title: "打开课程播放页",
+      detail: "在学习通、B 站、YouTube 或其他课程页播放几秒，让真实媒体请求出现。"
+    },
+    {
+      index: "2",
+      title: "打开扩展侧栏",
+      detail: backendUrl
+        ? `后端 ${backendUrl} 已复制；在 Chrome/Edge 侧栏点击“总结当前视频”。`
+        : "必要时先复制后端地址，再在 Chrome/Edge 侧栏点击“总结当前视频”。"
+    },
+    {
+      index: "3",
+      title: "回到工作台",
+      detail: "这里跟踪下载、转写、抽帧切片、视觉窗口和 Markdown 笔记。"
+    }
+  ];
+}
+
+function browserExtensionHandoffHtml(backendUrl = "") {
+  return `<div class="browser-extension-handoff" aria-label="当前播放页交接操作">
+    ${browserExtensionHandoffSteps(backendUrl).map(item => `<section>
+      <b>${escapeHtml(item.index)}</b>
+      <strong>${escapeHtml(item.title)}</strong>
+      <small>${escapeHtml(item.detail)}</small>
+    </section>`).join("")}
+  </div>`;
+}
+
+function browserExtensionHandoffStatusHtml(backendUrl = "") {
+  const url = backendUrl || (API || (isBackendSameOrigin() ? window.location.origin : DEFAULT_BACKEND_ORIGIN));
+  return `
+    <span class="capture-status-chip bridge handoff"><b>后端</b>${escapeHtml(url)} 已复制</span>
+    <span class="capture-status-chip media handoff"><b>课程页</b>播放几秒后打开扩展侧栏</span>
+    <span class="capture-status-chip vision pending handoff"><b>侧栏</b>点击“总结当前视频”</span>
+    <span class="capture-status-chip asr handoff"><b>工作台</b>等待任务、切片和笔记</span>
+  `;
+}
+
+function setBrowserExtensionHandoffStatus(backendUrl = "") {
+  if (!els.browserBridgeStatus) return;
+  const url = backendUrl || (API || (isBackendSameOrigin() ? window.location.origin : DEFAULT_BACKEND_ORIGIN));
+  els.browserBridgeStatus.classList.add("capture-status-grid");
+  els.browserBridgeStatus.innerHTML = browserExtensionHandoffStatusHtml(url);
+  els.browserBridgeStatus.title = `后端地址已复制：${url}。请在课程播放页打开 LearnNote 扩展侧栏，点击“总结当前视频”。`;
+  els.browserBridgeStatus.dataset.mediaText = "等待扩展侧栏读取当前页视频";
+}
+
 function browserBridgeGateItems(task) {
   const hasCurrentPageTask = task?.source_type === "current_page";
   const hasBrowserEvidence = Boolean(task?.selected_resource?.url || task?.active_video || task?.download_attempts?.length);
@@ -892,11 +943,6 @@ function browserRouteSummaryHtml(task = null) {
 }
 
 function browserRouteEmptyHandoffHtml() {
-  const steps = [
-    ["1", "打开正在播放的视频页", "先让课程视频真实播放几秒，暴露浏览器请求。"],
-    ["2", "点扩展侧栏总结当前视频", "由 Chrome/Edge Side Panel 读取候选、字幕和一次性 Cookie。"],
-    ["3", "回到工作台看切片笔记", "下载成功后生成 media.mp4、转写、视觉窗口和 Markdown。"]
-  ];
   return `<section class="browser-route-summary-card handoff empty">
     <div class="browser-route-summary-main">
       <span>交接</span>
@@ -904,14 +950,9 @@ function browserRouteEmptyHandoffHtml() {
       <small>Web 工作台不能直接读取你正在播放的浏览器标签页；这里负责查看任务、切片和笔记。</small>
     </div>
     <p>不做标签页录制、不刷课、不绕过 DRM；如果课程页没有暴露可访问媒体 URL，就切到本地视频上传。</p>
-    <div class="browser-route-empty-steps" aria-label="扩展侧栏交接步骤">
-      ${steps.map(([index, title, detail]) => `<section>
-        <b>${escapeHtml(index)}</b>
-        <strong>${escapeHtml(title)}</strong>
-        <small>${escapeHtml(detail)}</small>
-      </section>`).join("")}
-    </div>
+    ${browserExtensionHandoffHtml()}
     ${browserBridgeGateHtml(null)}
+    ${browserRouteHandoffHtml(null)}
     ${browserRouteActions(null)}
   </section>`;
 }
@@ -3671,7 +3712,7 @@ async function copyBackendUrl(feedbackButton = els.copyBackendButton) {
     input.remove();
   }
   if (els.browserBridgeStatus) {
-    els.browserBridgeStatus.textContent = `后端地址已复制：${url}`;
+    setBrowserExtensionHandoffStatus(url);
   }
   if (feedbackButton) {
     const previous = feedbackButton.innerHTML;
@@ -4858,9 +4899,7 @@ if (els.sourceWorkflow) {
     }
     if (action === "open-extension") {
       const url = await copyBackendUrl(actionButton);
-      if (els.browserBridgeStatus) {
-        els.browserBridgeStatus.textContent = `已复制后端地址：${url}。请在课程播放页打开 LearnNote 扩展侧栏，点击“总结当前视频”。`;
-      }
+      setBrowserExtensionHandoffStatus(url);
       return;
     }
     if (action === "switch-local") {

@@ -615,11 +615,26 @@ assert.match(emptyBrowserGateHtml, /等待任务/);
 const emptyBrowserHandoffHtml = context.browserRouteEmptyHandoffHtml();
 assert.match(emptyBrowserHandoffHtml, /browser-route-summary-card handoff empty/);
 assert.match(emptyBrowserHandoffHtml, /当前页直取需要从扩展侧栏开始/);
-assert.match(emptyBrowserHandoffHtml, /打开正在播放的视频页/);
-assert.match(emptyBrowserHandoffHtml, /点扩展侧栏总结当前视频/);
-assert.match(emptyBrowserHandoffHtml, /回到工作台看切片笔记/);
+assert.match(emptyBrowserHandoffHtml, /class="browser-extension-handoff"/);
+assert.match(emptyBrowserHandoffHtml, /打开课程播放页/);
+assert.match(emptyBrowserHandoffHtml, /打开扩展侧栏/);
+assert.match(emptyBrowserHandoffHtml, /总结当前视频/);
+assert.match(emptyBrowserHandoffHtml, /回到工作台/);
+assert.match(emptyBrowserHandoffHtml, /抽帧切片/);
+assert.match(emptyBrowserHandoffHtml, /当前页直取交接清单/);
 assert.match(emptyBrowserHandoffHtml, /不做标签页录制/);
 assert.match(emptyBrowserHandoffHtml, /data-browser-route-action="local-video"/);
+
+const extensionHandoffHtml = context.browserExtensionHandoffHtml("http://127.0.0.1:8765");
+assert.match(extensionHandoffHtml, /后端 http:\/\/127\.0\.0\.1:8765 已复制/);
+assert.match(extensionHandoffHtml, /Chrome\/Edge 侧栏点击“总结当前视频”/);
+assert.doesNotMatch(extensionHandoffHtml, /<script>/);
+
+const extensionStatusHtml = context.browserExtensionHandoffStatusHtml("http://127.0.0.1:8765");
+assert.match(extensionStatusHtml, /capture-status-chip bridge handoff/);
+assert.match(extensionStatusHtml, /http:\/\/127\.0\.0\.1:8765 已复制/);
+assert.match(extensionStatusHtml, /播放几秒后打开扩展侧栏/);
+assert.match(extensionStatusHtml, /等待任务、切片和笔记/);
 
 const html = context.markdownToHtml(`## 画面索引
 

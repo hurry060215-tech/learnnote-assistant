@@ -1152,13 +1152,15 @@ select:focus {
   white-space: nowrap;
 }
 
-.browser-route-empty-steps {
+.browser-route-empty-steps,
+.browser-extension-handoff {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
 }
 
-.browser-route-empty-steps section {
+.browser-route-empty-steps section,
+.browser-extension-handoff section {
   min-width: 0;
   display: grid;
   grid-template-columns: 24px minmax(0, 1fr);
@@ -1170,7 +1172,8 @@ select:focus {
   padding: 8px;
 }
 
-.browser-route-empty-steps b {
+.browser-route-empty-steps b,
+.browser-extension-handoff b {
   grid-row: span 2;
   width: 24px;
   height: 24px;
@@ -1184,20 +1187,24 @@ select:focus {
 }
 
 .browser-route-empty-steps strong,
-.browser-route-empty-steps small {
+.browser-route-empty-steps small,
+.browser-extension-handoff strong,
+.browser-extension-handoff small {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.browser-route-empty-steps strong {
+.browser-route-empty-steps strong,
+.browser-extension-handoff strong {
   color: var(--text);
   font-size: 11px;
   line-height: 1.2;
   white-space: nowrap;
 }
 
-.browser-route-empty-steps small {
+.browser-route-empty-steps small,
+.browser-extension-handoff small {
   display: -webkit-box;
   color: var(--muted);
   font-size: 10px;
@@ -6495,6 +6502,7 @@ select {
   }
 
   .browser-route-empty-steps,
+  .browser-extension-handoff,
   .browser-route-handoff {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -9642,6 +9650,7 @@ body.reading-mode .app-shell {
   .source-workflow-lane,
   .browser-route-summary-metrics,
   .browser-bridge-gate > div,
+  .browser-extension-handoff,
   .browser-route-handoff,
   .task-browser-evidence > div,
   .direct-extraction-grid,
