@@ -19,7 +19,7 @@ from fastapi.testclient import TestClient
 from app.config import DATA_DIR
 from app.downloader import DownloadError
 from app.main import app, diagnostic_recovery_profile, local_upload_filename, render_bundle_manifest, render_diagnostics_markdown, render_task_audit_markdown, render_visual_windows_markdown
-from app.models import DownloadAttempt, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
+from app.models import DownloadAttempt, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
 from app.runtime import ffmpeg_bin
 from app.storage import create_task, task_dir, update_task
 
@@ -235,6 +235,46 @@ class LocalUploadValidationTests(unittest.TestCase):
                 self.assertIn("LearnNote 任务审计报告", archive.read("audit.md").decode("utf-8"))
             self.assertEqual(self.client.get(f"/api/tasks/{task.id}/exports/media").status_code, 404)
             self.assertEqual(self.client.post(f"/api/tasks/{task.id}/rerun-from-media", json={"frame_interval": 1}).status_code, 404)
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
+    def test_reuse_ready_when_media_has_slices_but_no_note(self) -> None:
+        task = create_task("current_page", "Failed after slicing", "https://course.example.com/lesson", mode="video")
+        work_dir = task_dir(task.id)
+        media = work_dir / "media.mp4"
+        grid = work_dir / "grids" / "grid_000.jpg"
+        try:
+            grid.parent.mkdir(parents=True, exist_ok=True)
+            media.write_bytes(b"fake mp4 bytes")
+            grid.write_bytes(b"fake jpg bytes")
+            update_task(
+                task.id,
+                status="failed",
+                phase="summarizing",
+                progress=84,
+                error_code="processing_failed",
+                error_detail="LLM failed after slicing",
+                media_path=str(media),
+                frame_grids=[
+                    FrameGrid(
+                        path=str(grid),
+                        url=f"/data/tasks/{task.id}/grids/grid_000.jpg",
+                        start=0,
+                        end=180,
+                        frame_count=9,
+                        frame_timestamps=[0, 20, 40],
+                    )
+                ],
+            )
+
+            detail = self.client.get(f"/api/tasks/{task.id}").json()["task"]
+
+            self.assertTrue(detail["reuse"]["media_available"])
+            self.assertTrue(detail["reuse"]["has_visual_slices"])
+            self.assertFalse(detail["reuse"]["note_ready"])
+            self.assertTrue(detail["reuse"]["rerun_from_media_ready"])
+            self.assertEqual(detail["reuse"]["suggested_next_step"], "rerun_from_media")
+            self.assertEqual(detail["recovery"]["next_action"], "continue_from_media")
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
@@ -1531,6 +1571,77 @@ class ApiPipelineTests(unittest.TestCase):
             finally:
                 server.shutdown()
                 server.server_close()
+
+    def test_rerun_reuses_saved_browser_subtitle_file_without_cues(self) -> None:
+        with tempfile.TemporaryDirectory(dir=TEST_RUN_DIR) as tmp:
+            video = make_video(Path(tmp))
+            source = create_task("current_page", "Saved browser subtitle lesson", "https://course.example.com/watch", mode="download_only")
+            source_dir = task_dir(source.id)
+            media = source_dir / "media.mp4"
+            subtitle = source_dir / "browser_subtitles.srt"
+            transcript_path = source_dir / "transcript.json"
+            rerun_task_id = ""
+            try:
+                shutil.copy2(video, media)
+                subtitle.write_text(
+                    "\n".join([
+                        "1",
+                        "00:00:00.000 --> 00:00:02.000",
+                        "saved browser subtitle line one",
+                        "",
+                        "2",
+                        "00:00:02.000 --> 00:00:04.000",
+                        "saved browser subtitle line two",
+                        "",
+                    ]),
+                    encoding="utf-8",
+                )
+                transcript_path.write_text(
+                    TranscriptResult(
+                        source="browser-subtitle",
+                        full_text="saved browser subtitle line one\nsaved browser subtitle line two",
+                        segments=[
+                            TranscriptSegment(start=0, end=2, text="saved browser subtitle line one"),
+                            TranscriptSegment(start=2, end=4, text="saved browser subtitle line two"),
+                        ],
+                    ).model_dump_json(indent=2),
+                    encoding="utf-8",
+                )
+                update_task(
+                    source.id,
+                    status="success",
+                    phase="completed",
+                    progress=100,
+                    media_path=str(media),
+                    subtitle_path=str(subtitle),
+                    transcript_path=str(transcript_path),
+                    browser_subtitles=[],
+                )
+
+                with patch("app.processor.extract_audio", side_effect=AssertionError("rerun should reuse saved browser subtitle file")):
+                    with patch("app.processor.transcribe_audio", side_effect=AssertionError("rerun should not run ASR when saved browser subtitle file exists")):
+                        response = self.client.post(
+                            f"/api/tasks/{source.id}/rerun-from-media",
+                            json={"visual_understanding": False},
+                        )
+
+                self.assertEqual(response.status_code, 200)
+                rerun_task_id = response.json()["task_id"]
+                rerun_task = self.client.get(f"/api/tasks/{rerun_task_id}").json()["task"]
+                self.assertEqual(rerun_task["status"], "success")
+                self.assertEqual(rerun_task["browser_subtitles"], [])
+                self.assertFalse(rerun_task["audio_path"])
+                self.assertTrue(rerun_task["subtitle_path"])
+                self.assertEqual(Path(rerun_task["subtitle_path"]).parent, task_dir(rerun_task_id))
+                rerun_transcript = self.client.get(f"/api/tasks/{rerun_task_id}/transcript").json()
+                self.assertEqual(rerun_transcript["source"], "browser-subtitle")
+                self.assertIn("saved browser subtitle line two", rerun_transcript["full_text"])
+                self.assertEqual(rerun_task["reuse"]["transcript_source"], "browser-subtitle")
+                self.assertEqual(rerun_task["reuse"]["browser_subtitle_count"], 0)
+            finally:
+                if rerun_task_id:
+                    shutil.rmtree(task_dir(rerun_task_id), ignore_errors=True)
+                shutil.rmtree(task_dir(source.id), ignore_errors=True)
 
     def test_current_page_download_only_saves_page_subtitle_without_full_processing(self) -> None:
         with tempfile.TemporaryDirectory(dir=TEST_RUN_DIR) as tmp:

@@ -657,6 +657,7 @@ def process_local_video_task(
     page_url: str = "",
     browser_subtitles: list[BrowserSubtitleCue] | None = None,
     subtitle_path: Path | None = None,
+    subtitle_source: str = "page-subtitle",
 ) -> None:
     try:
         _process_video_file(
@@ -667,6 +668,7 @@ def process_local_video_task(
             options=options,
             subtitle_path=subtitle_path,
             browser_subtitles=browser_subtitles,
+            subtitle_source=subtitle_source,
         )
     except Exception as exc:
         _fail(task_id, "processing_failed", str(exc))
@@ -680,6 +682,7 @@ def _process_video_file(
     options: TaskOptions,
     subtitle_path: Path | None = None,
     browser_subtitles: list[BrowserSubtitleCue] | None = None,
+    subtitle_source: str = "page-subtitle",
 ) -> None:
     work_dir = task_dir(task_id)
     update_task(task_id, status="running", phase="processing_video", progress=25, message="正在标准化视频")
@@ -700,7 +703,7 @@ def _process_video_file(
         except OSError:
             owned_subtitle_path = subtitle_path
         update_task(task_id, subtitle_path=str(owned_subtitle_path), message="已检测到页面字幕，正在解析字幕")
-        transcript = transcript_from_subtitle(owned_subtitle_path)
+        transcript = transcript_from_subtitle(owned_subtitle_path, source=subtitle_source or "page-subtitle")
         if not transcript.segments:
             transcript = None
 

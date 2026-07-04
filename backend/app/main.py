@@ -1182,12 +1182,17 @@ def task_reuse_evidence(task: TaskRecord) -> dict:
 
     subtitle_available = bool(task.subtitle_path and Path(task.subtitle_path).is_file())
     transcript_ready = bool(task.transcript_path and Path(task.transcript_path).is_file())
+    note_ready = bool(task.note_path and Path(task.note_path).is_file())
     has_visual_slices = bool(task.frame_grids or task.visual_windows)
     media_available = task_media_file_exists(task)
     is_download_only = task.mode == "download_only"
-    rerun_ready = media_available and not has_visual_slices
+    rerun_ready = media_available and not note_ready
     if rerun_ready:
         suggested_next_step = "rerun_from_media"
+    elif note_ready and has_visual_slices:
+        suggested_next_step = "review_visual_windows"
+    elif note_ready:
+        suggested_next_step = "review_note"
     elif has_visual_slices:
         suggested_next_step = "review_visual_windows"
     elif media_available:
@@ -1206,6 +1211,7 @@ def task_reuse_evidence(task: TaskRecord) -> dict:
         "transcript_path_recorded": task.transcript_path,
         "transcript_source": _task_transcript_source(task) if transcript_ready else "",
         "transcript_source_text": _task_transcript_source_text(task) if transcript_ready else "-",
+        "note_ready": note_ready,
         "browser_subtitle_count": browser_subtitle_count,
         "browser_subtitle_span_seconds": round(browser_subtitle_span, 3),
         "download_attempt_count": len(task.download_attempts),
@@ -1705,8 +1711,12 @@ def create_from_existing_media(
     source_subtitle_path = Path(source.subtitle_path) if source.subtitle_path else None
     if source_subtitle_path and not source_subtitle_path.exists():
         source_subtitle_path = None
-    if source_transcript_source == "browser-subtitle":
+    source_browser_subtitles = source.browser_subtitles
+    subtitle_source = "page-subtitle"
+    if source_transcript_source == "browser-subtitle" and source_browser_subtitles:
         source_subtitle_path = None
+    elif source_transcript_source == "browser-subtitle" and source_subtitle_path:
+        subtitle_source = "browser-subtitle"
     background_tasks.add_task(
         process_local_video_task,
         task.id,
@@ -1714,8 +1724,9 @@ def create_from_existing_media(
         task.title,
         parsed_options,
         source.page_url,
-        source.browser_subtitles,
+        source_browser_subtitles,
         source_subtitle_path,
+        subtitle_source,
     )
     return {"task_id": task.id, "task": task, "source_task_id": source.id}
 
