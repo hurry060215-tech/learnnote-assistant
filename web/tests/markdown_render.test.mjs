@@ -82,7 +82,7 @@ const context = {
   navigator: { clipboard: { writeText() {} } },
   window: {
     innerWidth: 1280,
-    location: { origin: "http://127.0.0.1:8765", href: "http://127.0.0.1:8765/", protocol: "http:", hostname: "127.0.0.1", port: "8765", pathname: "/", search: "", hash: "", assign() {} },
+    location: { origin: "http://127.0.0.1:8765", href: "http://127.0.0.1:8765/", protocol: "http:", hostname: "127.0.0.1", port: "8765", pathname: "/", search: "", hash: "", assignedUrls: [], assign(url) { this.assignedUrls.push(String(url)); } },
     history: {
       replacedUrls: [],
       replaceState(_state, _title, url) {
@@ -253,6 +253,7 @@ assert.match(elements.get("#detail").innerHTML, /不.*录制页面/);
 assert.equal(elements.get("#copyButton").disabled, true);
 assert.equal(elements.get("#visualWindowsButton").disabled, true);
 assert.equal(elements.get("#manifestButton").disabled, true);
+assert.equal(elements.get("#subtitlesButton").disabled, true);
 assert.match(elements.get("#sourceWorkflow").innerHTML, /class="source-workflow-card browser"/);
 assert.match(elements.get("#sourceWorkflow").innerHTML, /class="source-workflow-status"/);
 assert.match(elements.get("#sourceWorkflow").innerHTML, /学习生产线|当前页直取/);
@@ -356,6 +357,8 @@ assert.match(indexHtml, /本地总结/);
 assert.match(indexHtml, /id="browserRouteSummary"/);
 assert.match(indexHtml, /id="visualWindowsButton"/);
 assert.match(indexHtml, /id="manifestButton"/);
+assert.match(indexHtml, /id="subtitlesButton"/);
+assert.match(indexHtml, /title="导出字幕"/);
 assert.match(indexHtml, /id="resultMoreActions"/);
 assert.match(indexHtml, /class="result-more-panel"/);
 assert.match(indexHtml, /data-tab="slices">学习切片/);
@@ -1007,6 +1010,10 @@ assert.match(elements.get("#detail").innerHTML, /导出 media\.mp4/);
 assert.match(elements.get("#detail").innerHTML, /继续切片总结/);
 assert.match(elements.get("#detail").innerHTML, /data-rerun-from-media="task-note-download-only"/);
 assert.doesNotMatch(elements.get("#detail").innerHTML, /不会继续转写、切片或总结/);
+assert.equal(elements.get("#subtitlesButton").disabled, false);
+context.window.location.assignedUrls = [];
+elements.get("#subtitlesButton").onclick();
+assert.equal(context.window.location.assignedUrls.at(-1), "/api/tasks/task-note-download-only/exports/subtitles");
 context.fetch = originalFetchForDownloadNote;
 
 const originalFetchForDiagnostics = context.fetch;

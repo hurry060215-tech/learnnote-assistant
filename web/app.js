@@ -151,6 +151,7 @@ const els = {
   diagnosticsButton: document.querySelector("#diagnosticsButton"),
   visualWindowsButton: document.querySelector("#visualWindowsButton"),
   manifestButton: document.querySelector("#manifestButton"),
+  subtitlesButton: document.querySelector("#subtitlesButton"),
   mediaButton: document.querySelector("#mediaButton"),
   downloadButton: document.querySelector("#downloadButton")
 };
@@ -4693,6 +4694,7 @@ async function renderDetail() {
     els.diagnosticsButton.disabled = true;
     if (els.visualWindowsButton) els.visualWindowsButton.disabled = true;
     if (els.manifestButton) els.manifestButton.disabled = true;
+    if (els.subtitlesButton) els.subtitlesButton.disabled = true;
     els.mediaButton.disabled = true;
     els.downloadButton.disabled = true;
     updateContinueFromMediaAction(null);
@@ -4709,6 +4711,7 @@ async function renderDetail() {
   els.diagnosticsButton.disabled = !hasTaskDiagnostics(task);
   if (els.visualWindowsButton) els.visualWindowsButton.disabled = !hasVisualWindowExport(task);
   if (els.manifestButton) els.manifestButton.disabled = !hasTaskBundle(task);
+  if (els.subtitlesButton) els.subtitlesButton.disabled = !hasExportableSubtitle(task);
   els.mediaButton.disabled = !hasExportableMedia(task);
   els.downloadButton.disabled = !hasNote;
   updateContinueFromMediaAction(task);
@@ -5180,6 +5183,12 @@ if (els.visualWindowsButton) {
   els.visualWindowsButton.onclick = () => {
     if (!selectedTaskId) return;
     window.location.assign(apiUrl(`/api/tasks/${encodeURIComponent(selectedTaskId)}/exports/visual-windows`));
+  };
+}
+if (els.subtitlesButton) {
+  els.subtitlesButton.onclick = () => {
+    if (!selectedTaskId) return;
+    window.location.assign(apiUrl(`/api/tasks/${encodeURIComponent(selectedTaskId)}/exports/subtitles`));
   };
 }
 els.mediaButton.onclick = () => {
