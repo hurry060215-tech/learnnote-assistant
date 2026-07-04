@@ -5396,7 +5396,11 @@ if (els.llmProvider) els.llmProvider.onchange = () => {
   applyModelProviderPreset(true);
   saveModelSettings();
 };
-els.uploadButton.onclick = () => els.fileInput.click();
+els.uploadButton.onclick = () => {
+  setSourceSwitcherActive("local");
+  pulseTarget(els.localVideoCard || els.localDrop);
+  els.fileInput.click();
+};
 if (els.chooseLocalButton) {
   els.chooseLocalButton.onclick = () => {
     setSourceSwitcherActive("local");
@@ -5464,6 +5468,8 @@ els.resources.addEventListener("click", event => {
   if (action === "redetect") {
     collect();
   } else if (action === "local") {
+    setSourceSwitcherActive("local");
+    pulseTarget(els.localVideoCard || els.localDrop);
     els.fileInput.click();
   } else if (action === "text") {
     startTask("page_text");
@@ -5481,6 +5487,7 @@ function handleRouteAction(action) {
   } else if (action === "continue-media") {
     if (canContinueFromDownloadedMedia(currentTask)) rerunTaskFromMedia(currentTask.id);
   } else if (action === "local") {
+    setSourceSwitcherActive("local");
     pulseTarget(els.localVideoCard || els.localDrop);
     els.fileInput.click();
   } else if (action === "text") {

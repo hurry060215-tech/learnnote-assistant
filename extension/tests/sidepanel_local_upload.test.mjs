@@ -195,6 +195,10 @@ elements.get("#chooseLocalButton").onclick();
 assert.equal(elements.get("#fileInput").clicks, 1);
 assert.equal(elements.get("#localVideoCard").classList.contains("focus-pulse"), true);
 
+elements.get("#uploadButton").onclick();
+assert.equal(elements.get("#fileInput").clicks, 2);
+assert.equal(elements.get("#localVideoCard").classList.contains("focus-pulse"), true);
+
 elements.get("#fileInput").files = [lessonFile];
 await context.uploadLocal();
 await new Promise(resolve => setTimeout(resolve, 0));
