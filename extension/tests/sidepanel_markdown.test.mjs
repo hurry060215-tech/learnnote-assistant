@@ -1490,6 +1490,8 @@ assert.match(elements.get("#resources").innerHTML, /resource-confidence high/);
 assert.match(elements.get("#resources").innerHTML, /resource-filter-bar/);
 assert.match(elements.get("#resources").innerHTML, /data-resource-filter="downloadable"/);
 assert.match(elements.get("#resources").innerHTML, /data-resource-filter="matched"/);
+assert.match(elements.get("#resources").innerHTML, /data-resource-filter="excluded"/);
+assert.match(elements.get("#resources").innerHTML, /data-resource-toggle-excluded="https:\/\/cdn\.example\.com\/live\/master\.m3u8"/);
 assert.match(elements.get("#resources").innerHTML, /resource-attempt-row selected/);
 assert.match(elements.get("#resourceInspector").innerHTML, /候选置信度/);
 assert.match(elements.get("#resourceInspector").innerHTML, /播放匹配/);
@@ -1532,6 +1534,32 @@ assert.equal(context.playbackReadinessState(), "ready");
 assert.match(elements.get("#playbackReadiness").innerHTML, /已读取当前播放视频/);
 assert.match(elements.get("#playbackReadiness").innerHTML, /1\/1 匹配/);
 assert.match(elements.get("#playbackReadiness").innerHTML, /1 条/);
+
+vm.runInContext(`
+excludedResourceUrls = new Set(["https://cdn.example.com/live/master.m3u8"]);
+selectedResourceUrl = "https://cdn.example.com/live/master.m3u8";
+resourceSelectionPinned = false;
+`, context);
+assert.equal(context.selectedResource(), null);
+assert.equal(context.selectedResourcesForTask().some(item => item.url === "https://cdn.example.com/live/master.m3u8"), false);
+assert.notEqual(context.pickDefaultResourceUrl([
+  { url: "https://cdn.example.com/live/master.m3u8", kind: "hls" },
+  { url: "https://cdn.example.com/video.mp4", kind: "video", score: 80 }
+], "https://cdn.example.com/live/master.m3u8"), "https://cdn.example.com/live/master.m3u8");
+context.renderContext();
+assert.doesNotMatch(elements.get("#resources").innerHTML, /resource-attempt-row selected/);
+vm.runInContext(`resourceFilter = "excluded";`, context);
+context.renderContext();
+assert.match(elements.get("#resources").innerHTML, /class="resource[^"]*excluded/);
+assert.doesNotMatch(elements.get("#resources").innerHTML, /class="resource selected[^"]*excluded/);
+assert.match(elements.get("#resources").innerHTML, /恢复/);
+assert.match(elements.get("#resources").innerHTML, /data-resource-toggle-excluded="https:\/\/cdn\.example\.com\/live\/master\.m3u8"/);
+vm.runInContext(`
+excludedResourceUrls = new Set();
+resourceFilter = "all";
+selectedResourceUrl = "https://cdn.example.com/live/master.m3u8";
+`, context);
+context.renderContext();
 
 vm.runInContext("els.visualUnderstanding.checked = false; renderCurrentStudyCard();", context);
 assert.match(elements.get("#currentStudyCard").innerHTML, /无视觉 · 仅转写/);

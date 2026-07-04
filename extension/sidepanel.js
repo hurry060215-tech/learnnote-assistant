@@ -102,6 +102,7 @@ let resources = [];
 let captureLog = { total: 0, restored: 0, updated_at: 0 };
 let selectedResourceUrl = "";
 let resourceSelectionPinned = false;
+let excludedResourceUrls = new Set();
 let resourceFilter = "all";
 let currentTaskId = "";
 let currentTask = null;
@@ -1212,12 +1213,13 @@ function playbackText(match) {
   })[match] || match || "";
 }
 
-function pickDefaultResourceUrl(items, previousUrl = "") {
-  if (!items.length) return "";
-  const previous = previousUrl ? items.find(item => item.url === previousUrl) : null;
-  const downloadable = items.filter(isDownloadableResource);
+function pickDefaultResourceUrl(items = [], previousUrl = "") {
+  const available = items.filter(item => !isResourceExcluded(item));
+  if (!available.length) return "";
+  const previous = previousUrl ? available.find(item => item.url === previousUrl) : null;
+  const downloadable = available.filter(isDownloadableResource);
   const preferred = downloadable.find(item => item.playback_match || item.is_main_video) || downloadable[0];
-  if (!previous) return preferred?.url || items[0]?.url || "";
+  if (!previous) return preferred?.url || available[0]?.url || "";
   if (resourceSelectionPinned) return previous.url;
   const previousMatched = Boolean(previous.playback_match || previous.is_main_video);
   const preferredMatched = Boolean(preferred?.playback_match || preferred?.is_main_video);
@@ -1226,7 +1228,11 @@ function pickDefaultResourceUrl(items, previousUrl = "") {
 }
 
 function selectedResource() {
-  return resources.find(item => item.url === selectedResourceUrl || item.resolved_url === selectedResourceUrl) || null;
+  return resources.find(item => !isResourceExcluded(item) && (item.url === selectedResourceUrl || item.resolved_url === selectedResourceUrl)) || null;
+}
+
+function isResourceExcluded(item) {
+  return Boolean(item?.url && excludedResourceUrls.has(item.url));
 }
 
 function hasPageTextFallback() {
@@ -1247,26 +1253,32 @@ function resourceFilterOptions() {
     {
       key: "all",
       label: "全部",
-      count: resources.length,
+      count: candidateResources().length,
       match: () => true
     },
     {
       key: "downloadable",
       label: "可直取",
-      count: resources.filter(isDirectExtractionCandidate).length,
+      count: candidateResources().filter(isDirectExtractionCandidate).length,
       match: isDirectExtractionCandidate
     },
     {
       key: "matched",
       label: "播放匹配",
-      count: resources.filter(isPlaybackMatchedResource).length,
+      count: candidateResources().filter(isPlaybackMatchedResource).length,
       match: isPlaybackMatchedResource
     },
     {
       key: "diagnostic",
       label: "诊断线索",
-      count: resources.filter(isDiagnosticResource).length,
+      count: candidateResources().filter(isDiagnosticResource).length,
       match: isDiagnosticResource
+    },
+    {
+      key: "excluded",
+      label: "已排除",
+      count: resources.filter(isResourceExcluded).length,
+      match: isResourceExcluded
     }
   ];
 }
@@ -1277,7 +1289,27 @@ function resourceFilterOption(key = resourceFilter) {
 
 function filteredResources() {
   const option = resourceFilterOption();
-  return resources.filter(option.match);
+  return resources.filter(item => (option.key === "excluded" ? isResourceExcluded(item) : !isResourceExcluded(item) && option.match(item)));
+}
+
+function candidateResources() {
+  return resources.filter(item => !isResourceExcluded(item));
+}
+
+function toggleResourceExcluded(url) {
+  const value = String(url || "");
+  if (!value) return;
+  if (excludedResourceUrls.has(value)) {
+    excludedResourceUrls.delete(value);
+    if (!selectedResourceUrl) selectedResourceUrl = value;
+  } else {
+    excludedResourceUrls.add(value);
+    if (selectedResourceUrl === value) {
+      resourceSelectionPinned = false;
+      selectedResourceUrl = pickDefaultResourceUrl(candidateResources(), "");
+    }
+  }
+  renderContext();
 }
 
 function resourceFilterBarHtml() {
@@ -3479,11 +3511,12 @@ async function collectContextNow() {
   currentTabId = response.tab?.id ?? null;
   page = response.page;
   resources = resourcesWithActiveVideoCandidate(response.resources || [], page?.active_video);
+  excludedResourceUrls = new Set([...excludedResourceUrls].filter(url => resources.some(item => item.url === url)));
   captureLog = response.capture_log || { total: 0, restored: 0, updated_at: 0 };
-  if (selectedResourceUrl && !resources.some(item => item.url === selectedResourceUrl)) {
+  if (selectedResourceUrl && !candidateResources().some(item => item.url === selectedResourceUrl)) {
     resourceSelectionPinned = false;
   }
-  selectedResourceUrl = pickDefaultResourceUrl(resources, selectedResourceUrl);
+  selectedResourceUrl = pickDefaultResourceUrl(candidateResources(), selectedResourceUrl);
   preflight = null;
   preflightResourceUrl = "";
   preflightResultsByUrl = new Map();
@@ -3544,7 +3577,7 @@ function renderContext() {
   renderSourceRouteRail();
   renderCurrentStudyCard();
   renderLaunchBar();
-  els.resourceCount.textContent = String(resources.length);
+  els.resourceCount.textContent = String(candidateResources().length);
   renderReadiness();
   renderRouteSummary();
   renderExtractionPlan();
@@ -3564,7 +3597,7 @@ function renderContext() {
     <button type="button" data-resource-filter="all">查看全部</button>
   </section>`;
   els.resources.innerHTML = `${captureLogHintHtml()}${resourceHint()}${resourceAttemptQueueHtml()}${preflightAuditSummaryHtml()}${resourceFilterBarHtml()}${emptyFilterHtml}${visibleResources.map(item => `
-    <button class="resource ${item.url === selectedResourceUrl ? "selected" : ""} ${isDownloadableResource(item) ? "" : "non-downloadable"} ${item.playback_match || item.is_main_video ? "playback" : ""}" data-url="${escapeHtml(item.url)}">
+    <button class="resource ${!isResourceExcluded(item) && item.url === selectedResourceUrl ? "selected" : ""} ${isDownloadableResource(item) ? "" : "non-downloadable"} ${item.playback_match || item.is_main_video ? "playback" : ""} ${isResourceExcluded(item) ? "excluded" : ""}" data-url="${escapeHtml(item.url)}">
       <span>
         <strong>${escapeHtml(item.label || item.kind || "media")}</strong>
         ${resourcePriorityBadgeHtml(item)}
@@ -3585,11 +3618,17 @@ function renderContext() {
         ].filter(Boolean).join(" · "))}</small>
         ${responseEvidenceLine(item) ? `<small class="resource-response-evidence">${escapeHtml(responseEvidenceLine(item))}</small>` : ""}
       </span>
-      <span class="confidence">${item.score || 0}%</span>
+      <span class="resource-side">
+        <span class="confidence">${item.score || 0}%</span>
+        <span class="resource-actions">
+          <span data-resource-toggle-excluded="${escapeHtml(item.url)}">${isResourceExcluded(item) ? "恢复" : "排除"}</span>
+        </span>
+      </span>
     </button>
   `).join("")}`;
   document.querySelectorAll(".resource").forEach(button => {
     button.onclick = () => {
+      if (excludedResourceUrls.has(button.dataset.url)) return;
       selectedResourceUrl = button.dataset.url;
       resourceSelectionPinned = true;
       renderContext();
@@ -3609,20 +3648,28 @@ function renderContext() {
       renderContext();
     };
   });
+  document.querySelectorAll("[data-resource-toggle-excluded]").forEach(button => {
+    button.onclick = event => {
+      event.stopPropagation();
+      toggleResourceExcluded(button.dataset.resourceToggleExcluded);
+    };
+  });
   renderInspector();
 }
 
 function selectedResources() {
   const selected = selectedResource();
   const selectedUrl = selected?.url || "";
-  const rest = resources.filter(item => item.url !== selectedUrl);
-  return selected ? [selected, ...rest] : resources;
+  const candidates = candidateResources();
+  const rest = candidates.filter(item => item.url !== selectedUrl);
+  return selected ? [selected, ...rest] : candidates;
 }
 
 function selectedResourcesForTask() {
   const selected = selectedResource();
-  if (!selected) return resources.map(item => ({ ...item, user_selected: false }));
-  const rest = resources.filter(item => item.url !== selected.url);
+  const candidates = candidateResources();
+  if (!selected) return candidates.map(item => ({ ...item, user_selected: false }));
+  const rest = candidates.filter(item => item.url !== selected.url);
   return [
     { ...selected, user_selected: true },
     ...rest.map(item => ({ ...item, user_selected: false }))

@@ -1437,6 +1437,13 @@ small,
   color: var(--muted);
 }
 
+.resource.excluded {
+  border-style: dashed;
+  background: #f8fafc;
+  color: #64748b;
+  opacity: 0.78;
+}
+
 .resource strong {
   display: block;
   overflow: hidden;
@@ -1828,6 +1835,32 @@ small,
   color: var(--accent);
   font-size: 11px;
   font-weight: 850;
+}
+
+.resource-side {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+}
+
+.resource-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.resource-actions span {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #fff;
+  padding: 3px 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.resource-actions span:hover {
+  border-color: var(--border-strong);
+  color: var(--ink);
 }
 
 .resource-decision {
