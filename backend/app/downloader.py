@@ -679,8 +679,12 @@ def _json_split_base_media_resources(
     source: str,
     key_path: list[str],
     seen: set[str],
+    inherited_bases: list[str] | None = None,
 ) -> list[ResourceCandidate]:
     bases = _json_base_urls(node, base_url)
+    for inherited in inherited_bases or []:
+        if inherited and inherited not in bases:
+            bases.append(inherited)
     if not bases:
         return []
     resources: list[ResourceCandidate] = []
@@ -721,9 +725,21 @@ def _json_split_base_media_resources(
     return resources
 
 
-def _json_media_resources(node: object, base_url: str, source: str, key_path: list[str], seen: set[str]) -> list[ResourceCandidate]:
+def _json_media_resources(
+    node: object,
+    base_url: str,
+    source: str,
+    key_path: list[str],
+    seen: set[str],
+    inherited_bases: list[str] | None = None,
+) -> list[ResourceCandidate]:
     resources: list[ResourceCandidate] = []
     if isinstance(node, dict):
+        local_bases = _json_base_urls(node, base_url)
+        inherited_for_children = [*(inherited_bases or [])]
+        for local_base in local_bases:
+            if local_base not in inherited_for_children:
+                inherited_for_children.append(local_base)
         local_video_resources: list[ResourceCandidate] = []
         local_audio_resources: list[ResourceCandidate] = []
         for key, value in node.items():
@@ -788,17 +804,17 @@ def _json_media_resources(node: object, base_url: str, source: str, key_path: li
                             nested_data = json.loads(nested_text)
                         except Exception:
                             continue
-                        resources.extend(_json_media_resources(nested_data, base_url, source, next_path, seen))
+                        resources.extend(_json_media_resources(nested_data, base_url, source, next_path, seen, inherited_for_children))
                     else:
                         resources.extend(extract_media_resources_from_field_text(nested_text, base_url, source, seen))
                         resources.extend(extract_media_resources_from_encoded_url_text(nested_text, base_url, source, seen))
                     if len(resources) >= 60:
                         break
             if isinstance(value, (dict, list)):
-                resources.extend(_json_media_resources(value, base_url, source, next_path, seen))
+                resources.extend(_json_media_resources(value, base_url, source, next_path, seen, inherited_for_children))
             if len(resources) >= 60:
                 break
-        for candidate in _json_split_base_media_resources(node, base_url, source, key_path, seen):
+        for candidate in _json_split_base_media_resources(node, base_url, source, key_path, seen, inherited_bases):
             resources.append(candidate)
             if candidate.kind == "video":
                 local_video_resources.append(candidate)
@@ -812,7 +828,7 @@ def _json_media_resources(node: object, base_url: str, source: str, key_path: li
                     video.audio_mime = audio.mime
     elif isinstance(node, list):
         for index, value in enumerate(node[:120]):
-            resources.extend(_json_media_resources(value, base_url, source, [*key_path, str(index)], seen))
+            resources.extend(_json_media_resources(value, base_url, source, [*key_path, str(index)], seen, inherited_bases))
             if len(resources) >= 60:
                 break
     elif isinstance(node, str):
