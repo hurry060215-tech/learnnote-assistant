@@ -11,12 +11,16 @@ import xml.etree.ElementTree as ET
 from base64 import b64decode, urlsafe_b64decode
 from html.parser import HTMLParser
 from pathlib import Path
+from typing import Callable, Optional
 from urllib.parse import unquote, urljoin, urlparse, urlunparse
 
 import requests
 
 from .models import BrowserCookie, DownloadAttempt, MediaPreflightResult, ResourceCandidate
 from .runtime import ffmpeg_bin
+
+
+DownloadProgressCallback = Callable[[int, Optional[int], ResourceCandidate], None]
 
 
 MEDIA_EXT_RE = re.compile(r"\.(mp4|m4v|webm|mov|mkv|flv|avi)(\?|#|$)", re.I)
@@ -2165,11 +2169,20 @@ def _preflight_companion_audio(
 
 
 class MediaDownloader:
-    def __init__(self, task_path: Path):
+    def __init__(self, task_path: Path, progress_callback: Optional[DownloadProgressCallback] = None):
         self.task_path = task_path
         self.download_dir = task_path / "downloads"
         self.download_dir.mkdir(parents=True, exist_ok=True)
         self.attempts: list[DownloadAttempt] = []
+        self.progress_callback = progress_callback
+
+    def _notify_progress(self, downloaded: int, total: int | None, candidate: ResourceCandidate) -> None:
+        if downloaded <= 0 or not self.progress_callback:
+            return
+        try:
+            self.progress_callback(downloaded, total, candidate)
+        except Exception:
+            return
 
     def download(
         self,
@@ -2883,14 +2896,20 @@ class MediaDownloader:
                     raise ManifestEndpointDetected(manifest_kind, manifest_mime)
                 suffix = _media_suffix_from_response(response.url or url, content_type, content_disposition)
                 output = self.download_dir / f"{_clean_filename(title)}_direct{suffix}"
+                total = candidate.content_length or _response_content_length(response)
+                downloaded = 0
                 if output.exists():
                     output.unlink()
                 with output.open("wb") as file:
                     if first_chunk:
                         file.write(first_chunk)
+                        downloaded += len(first_chunk)
+                        self._notify_progress(downloaded, total, candidate)
                     for chunk in chunks:
                         if chunk:
                             file.write(chunk)
+                            downloaded += len(chunk)
+                            self._notify_progress(downloaded, total, candidate)
             if not output.exists() or output.stat().st_size < 4096:
                 output.unlink(missing_ok=True)
                 raise DownloadError("download_forbidden", "下载文件过小，可能不是有效视频。")

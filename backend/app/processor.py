@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 import shutil
+import time
 from pathlib import Path
 from urllib.parse import urldefrag
 
@@ -57,6 +58,50 @@ def redacted_resource(resource: ResourceCandidate) -> ResourceCandidate:
     redacted.request_headers = _redacted_values(redacted.request_headers)
     redacted.request_body = _redacted_values(redacted.request_body)
     return redacted
+
+
+def human_bytes(value: int | None) -> str:
+    if value is None or value < 0:
+        return "-"
+    units = ["B", "KB", "MB", "GB", "TB"]
+    size = float(value)
+    for unit in units:
+        if size < 1024 or unit == units[-1]:
+            if unit == "B":
+                return f"{int(size)} {unit}"
+            return f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{int(value)} B"
+
+
+def download_progress_updater(task_id: str):
+    last_progress = 10
+    last_update = 0.0
+
+    def update(downloaded: int, total: int | None, candidate: ResourceCandidate) -> None:
+        nonlocal last_progress, last_update
+        if downloaded <= 0:
+            return
+        if total and total > 0:
+            progress = 10 + int(min(1.0, downloaded / total) * 50)
+            size_text = f"{human_bytes(downloaded)} / {human_bytes(total)}"
+        else:
+            progress = min(55, 10 + int(downloaded / (10 * 1024 * 1024)) * 5)
+            size_text = human_bytes(downloaded)
+        now = time.monotonic()
+        if progress < last_progress + 5 and now - last_update < 2:
+            return
+        last_progress = max(last_progress, min(60, progress))
+        last_update = now
+        update_task(
+            task_id,
+            phase="downloading",
+            progress=last_progress,
+            message=f"正在下载当前页视频（{size_text}）",
+            selected_resource=redacted_resource(candidate),
+        )
+
+    return update
 
 
 def redacted_request_dump(request: CurrentPageTaskRequest) -> dict:
@@ -630,7 +675,7 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
                 return
             _fail(task_id, "drm_or_encrypted", message)
             return
-        downloader = MediaDownloader(work_dir)
+        downloader = MediaDownloader(work_dir, progress_callback=download_progress_updater(task_id))
         media_path, selected = downloader.download(request.page_url, request.resources, request.cookies, request.title)
         if selected:
             update_task(task_id, selected_resource=redacted_resource(selected))

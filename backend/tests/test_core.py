@@ -37,7 +37,7 @@ from app.downloader import (
 )
 from app.main import render_diagnostics_markdown, task_audit_summary
 from app.models import ActiveVideoInfo, BrowserCookie, CurrentPageTaskRequest, DownloadAttempt, DrmSignal, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
-from app.processor import build_summary_diagnostics, cookie_sync_summary, enrich_resource_candidates_with_active_video, process_current_page_task, process_local_video_task, read_note, read_transcript, redacted_request_dump, redacted_resource
+from app.processor import build_summary_diagnostics, cookie_sync_summary, download_progress_updater, enrich_resource_candidates_with_active_video, process_current_page_task, process_local_video_task, read_note, read_transcript, redacted_request_dump, redacted_resource
 from app.summarizer import MAX_GRIDS_PER_VISION_CALL, MAX_VISION_GRIDS, build_visual_windows, ensure_visual_appendix, llm_provider_name, local_markdown_note, summarize_with_diagnostics
 from app.storage import create_task, get_task, task_dir
 from app.transcriber import transcribe_audio_openai_compatible, transcript_from_subtitle
@@ -166,6 +166,57 @@ class ResourceDetectionTests(unittest.TestCase):
 
         self.assertEqual(blob_enriched, [])
         self.assertEqual(stream_enriched, [])
+
+    def test_direct_file_download_updates_task_progress(self) -> None:
+        task = create_task("current_page", "Progress lesson", "https://course.example.com/lesson")
+        body = b"\x00\x00\x00\x18ftypmp42" + (b"progress-video" * 512)
+
+        class FakeResponse:
+            status_code = 200
+            url = "https://cdn.example.com/progress.mp4"
+            headers = {
+                "content-type": "video/mp4",
+                "content-length": str(len(body)),
+            }
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def iter_content(self, chunk_size=1024 * 1024):
+                yield body[:2048]
+                yield body[2048:]
+
+        try:
+            candidate = ResourceCandidate(
+                url="https://cdn.example.com/progress.mp4",
+                source="webRequest",
+                kind="video",
+                request_headers={"Authorization": "Bearer secret-token"},
+            )
+            with patch("app.downloader.requests.request", return_value=FakeResponse()):
+                downloader = MediaDownloader(task_dir(task.id), progress_callback=download_progress_updater(task.id))
+                output, selected = downloader.download(
+                    "https://course.example.com/lesson",
+                    [candidate],
+                    [],
+                    "Progress lesson",
+                )
+
+            record = get_task(task.id)
+            self.assertTrue(output.exists())
+            self.assertEqual(selected.url, "https://cdn.example.com/progress.mp4")
+            self.assertGreater(record.progress, 10)
+            self.assertEqual(record.phase, "downloading")
+            self.assertIn("正在下载当前页视频", record.message)
+            self.assertIn("KB", record.message)
+            self.assertIsNotNone(record.selected_resource)
+            self.assertEqual(record.selected_resource.request_headers["Authorization"], "<redacted>")
+            self.assertEqual(downloader.attempts[0].bytes_downloaded, output.stat().st_size)
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
     def test_declared_media_hint_sources_rank_above_plain_dom(self) -> None:
         self.assertEqual(source_rank("scriptHint"), 3)
@@ -1100,7 +1151,7 @@ class ProcessorBoundaryTests(unittest.TestCase):
         test_case = self
 
         class FakeDownloader:
-            def __init__(self, work_dir: Path):
+            def __init__(self, work_dir: Path, progress_callback=None):
                 self.work_dir = work_dir
                 self.attempts = []
 
@@ -1385,7 +1436,7 @@ class ProcessorBoundaryTests(unittest.TestCase):
         source_path = task_dir(task.id) / "download.mp4"
 
         class FakeDownloader:
-            def __init__(self, work_dir: Path):
+            def __init__(self, work_dir: Path, progress_callback=None):
                 self.work_dir = work_dir
                 self.attempts = []
 
@@ -1452,7 +1503,7 @@ class ProcessorBoundaryTests(unittest.TestCase):
         subtitle_path = task_dir(task.id) / "page_subtitle.srt"
 
         class FakeDownloader:
-            def __init__(self, work_dir: Path):
+            def __init__(self, work_dir: Path, progress_callback=None):
                 self.work_dir = work_dir
                 self.attempts = []
 
@@ -1518,7 +1569,7 @@ class ProcessorBoundaryTests(unittest.TestCase):
         source_path = task_dir(task.id) / "download.mp4"
 
         class FakeDownloader:
-            def __init__(self, work_dir: Path):
+            def __init__(self, work_dir: Path, progress_callback=None):
                 self.work_dir = work_dir
                 self.attempts = []
 
@@ -1586,7 +1637,7 @@ class ProcessorBoundaryTests(unittest.TestCase):
         subtitle_path = task_dir(task.id) / "bad_page_subtitle.srt"
 
         class FakeDownloader:
-            def __init__(self, work_dir: Path):
+            def __init__(self, work_dir: Path, progress_callback=None):
                 self.work_dir = work_dir
                 self.attempts = []
 
@@ -1698,7 +1749,7 @@ class ProcessorBoundaryTests(unittest.TestCase):
         task = create_task("current_page", "Fallback lesson", "https://course.example.com/lesson")
 
         class FailingDownloader:
-            def __init__(self, work_dir: Path):
+            def __init__(self, work_dir: Path, progress_callback=None):
                 self.work_dir = work_dir
                 self.attempts = [
                     DownloadAttempt(
@@ -1763,7 +1814,7 @@ class ProcessorBoundaryTests(unittest.TestCase):
         task = create_task("current_page", "Stream lesson", "https://course.example.com/stream")
 
         class FailingDownloader:
-            def __init__(self, work_dir: Path):
+            def __init__(self, work_dir: Path, progress_callback=None):
                 self.work_dir = work_dir
                 self.attempts = []
 
@@ -1862,7 +1913,7 @@ class ProcessorBoundaryTests(unittest.TestCase):
         source_path = task_dir(task.id) / "signed-download.bin"
 
         class FakeDownloader:
-            def __init__(self, work_dir: Path):
+            def __init__(self, work_dir: Path, progress_callback=None):
                 self.work_dir = work_dir
                 self.attempts = [
                     DownloadAttempt(
