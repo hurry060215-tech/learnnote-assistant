@@ -2335,7 +2335,7 @@ function healthVisionProvider(data) {
 function healthVisionText(data) {
   const model = healthVisionModel(data);
   const provider = healthVisionProvider(data);
-  const asr = healthAsrChipText();
+  const asr = healthAsrChipText(data);
   if (healthVisionReady(data)) {
     return `视觉模型已配置（${provider} · ${model}），切片网格会随字幕进入图文总结；转写：${asr}。`;
   }
@@ -2348,7 +2348,12 @@ function healthVisionChipText(data) {
   return healthVisionReady(data) ? `${provider} · ${model}` : `待填 · ${provider}`;
 }
 
-function healthAsrChipText() {
+function healthAsrChipText(data = lastHealthData) {
+  const transcriber = els.transcriber?.value || "faster-whisper";
+  const base = `${transcriberLabel(transcriber)} · ${els.whisperModel?.value || "small"}`;
+  if (transcriber !== "faster-whisper") return `${base} · 远程`;
+  if (!data) return `${base} · 待检测`;
+  return `${base} · ${data.local_asr_available ? "可用" : "未安装"}`;
   return `${transcriberLabel(els.transcriber?.value || "faster-whisper")} · ${els.whisperModel?.value || "small"}`;
 }
 
@@ -2422,7 +2427,7 @@ function updateHealthVisionStatus(data = lastHealthData) {
     <span class="capture-status-chip bridge"><b>桥接</b>需 Chrome/Edge 扩展侧栏</span>
     <span class="capture-status-chip media"><b>媒体</b>${escapeHtml(healthMediaChipText(data))}</span>
     <span class="capture-status-chip vision ${healthVisionReady(data) ? "ready" : "pending"}"><b>视觉</b>${escapeHtml(healthVisionChipText(data))}</span>
-    <span class="capture-status-chip asr"><b>转写</b>${escapeHtml(healthAsrChipText())}</span>
+    <span class="capture-status-chip asr"><b>转写</b>${escapeHtml(healthAsrChipText(data))}</span>
   `;
 }
 

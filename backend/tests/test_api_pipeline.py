@@ -112,6 +112,11 @@ class LocalUploadValidationTests(unittest.TestCase):
         self.assertEqual(payload["duration_probe_available"], bool(payload["duration_probe"]))
         self.assertIn("vision_model_configured", payload)
         self.assertIsInstance(payload["vision_model_configured"], bool)
+        self.assertIn("local_asr_available", payload)
+        self.assertIsInstance(payload["local_asr_available"], bool)
+        self.assertEqual(payload["local_asr_package"], "faster-whisper")
+        if not payload["local_asr_available"]:
+            self.assertIn("faster-whisper", payload["local_asr_install_hint"])
         self.assertTrue(payload["default_llm_model"])
         self.assertTrue(payload["default_llm_base_url"])
         self.assertTrue(payload["default_llm_base_host"])
@@ -135,6 +140,9 @@ class LocalUploadValidationTests(unittest.TestCase):
             "ffprobe",
             "duration_probe",
             "backend_origin",
+            "local_asr_available",
+            "local_asr_package",
+            "local_asr_install_hint",
             "vision_model_configured",
             "default_llm_model",
             "default_llm_base_host",

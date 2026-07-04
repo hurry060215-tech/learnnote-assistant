@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from importlib.util import find_spec
 from io import BytesIO
 import json
 import re
@@ -1587,6 +1588,7 @@ def health_payload() -> dict:
     ffmpeg = ffmpeg_bin()
     ffprobe = ffprobe_bin()
     duration_probe = "ffprobe" if ffprobe else "ffmpeg" if ffmpeg else ""
+    local_asr_available = find_spec("faster_whisper") is not None
     return {
         "ok": True,
         "ffmpeg": bool(ffmpeg),
@@ -1597,6 +1599,9 @@ def health_payload() -> dict:
         "duration_probe_available": bool(duration_probe),
         "ffprobe_optional": bool(ffmpeg and not ffprobe),
         "backend_origin": BACKEND_ORIGIN,
+        "local_asr_available": local_asr_available,
+        "local_asr_package": "faster-whisper",
+        "local_asr_install_hint": "pip install faster-whisper" if not local_asr_available else "",
         "vision_model_configured": bool(LLM_API_KEY),
         "default_llm_model": LLM_MODEL,
         "default_llm_base_url": LLM_BASE_URL,
