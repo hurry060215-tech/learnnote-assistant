@@ -1257,6 +1257,7 @@ def task_payload(task: TaskRecord) -> dict:
         "history_count": len(qa_history),
         "last_question": qa_history[-1].get("question", "") if qa_history else "",
         "last_source": qa_history[-1].get("source", "") if qa_history else "",
+        "recent": qa_history_preview(qa_history),
     }
     return payload
 
@@ -1811,6 +1812,23 @@ def render_qa_history_markdown(task: TaskRecord, history: list[dict] | None = No
                 lines.append(f"- **{label}**：{text}")
             lines.append("")
     return "\n".join(lines).strip() + "\n"
+
+
+def qa_history_preview(history: list[dict], limit: int = 5) -> list[dict]:
+    preview = []
+    for item in history[-limit:]:
+        preview.append({
+            "id": item.get("id", ""),
+            "created_at": item.get("created_at", ""),
+            "question": _clip_text(str(item.get("question") or ""), 180),
+            "answer_excerpt": _clip_text(str(item.get("answer") or ""), 420),
+            "source": item.get("source", ""),
+            "warning": _clip_text(str(item.get("warning") or ""), 220),
+            "provider": item.get("provider", ""),
+            "model": item.get("model", ""),
+            "citation_count": len(item.get("citations") or []) if isinstance(item.get("citations"), list) else 0,
+        })
+    return list(reversed(preview))
 
 
 def _answer_task_question(task: TaskRecord, request: TaskQuestionRequest) -> dict:

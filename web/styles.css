@@ -10343,3 +10343,36 @@ body.reading-mode .app-shell {
   color: var(--accent, #1769e8);
   font-size: 11px;
 }
+
+.qa-recent {
+  display: grid;
+  gap: 9px;
+}
+
+.qa-recent article {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--border, #dbe4f0);
+  border-radius: 9px;
+  background: #ffffff;
+  padding: 11px 12px;
+}
+
+.qa-recent span {
+  color: var(--accent, #1769e8);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.qa-recent strong {
+  color: var(--ink, #172033);
+  font-size: 13px;
+  line-height: 1.42;
+}
+
+.qa-recent p {
+  margin: 0;
+  color: var(--muted, #526176);
+  font-size: 12px;
+  line-height: 1.55;
+}

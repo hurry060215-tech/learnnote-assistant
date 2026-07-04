@@ -104,6 +104,17 @@ assert.match(qaPanelInitialHtml, /已保存 0 条问答/);
 const qaPanelHistoryHtml = context.qaPanelHtml({ id: "side-qa-history", qa: { history_count: 2 } });
 assert.match(qaPanelHistoryHtml, /已保存 2 条问答/);
 assert.match(qaPanelHistoryHtml, /data-export="qa"/);
+const qaPanelRecentHtml = context.qaPanelHtml({
+  id: "side-qa-recent",
+  qa: {
+    history_count: 1,
+    recent: [{ question: "如何复习函数封装？", answer_excerpt: "先看输入输出，再看边界条件。", source: "local-extractive", citation_count: 2 }]
+  }
+});
+assert.match(qaPanelRecentHtml, /class="qa-recent"/);
+assert.match(qaPanelRecentHtml, /如何复习函数封装/);
+assert.match(qaPanelRecentHtml, /先看输入输出/);
+assert.match(qaPanelRecentHtml, /2 证据/);
 
 vm.runInContext("captureLog = { restored: 3, updated_at: Date.now() - 45000 }", context);
 const captureHint = context.captureLogHintHtml();

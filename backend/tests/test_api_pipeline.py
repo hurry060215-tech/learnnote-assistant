@@ -284,6 +284,11 @@ class LocalUploadValidationTests(unittest.TestCase):
             history = history_response.json()
             self.assertEqual(len(history["items"]), 1)
             self.assertEqual(history["items"][0]["source"], "local-extractive")
+            task_payload = self.client.get(f"/api/tasks/{task.id}").json()["task"]
+            self.assertEqual(task_payload["qa"]["history_count"], 1)
+            self.assertEqual(len(task_payload["qa"]["recent"]), 1)
+            self.assertEqual(task_payload["qa"]["recent"][0]["source"], "local-extractive")
+            self.assertIn("answer_excerpt", task_payload["qa"]["recent"][0])
 
             qa_export = self.client.get(f"/api/tasks/{task.id}/exports/qa")
             self.assertEqual(qa_export.status_code, 200)

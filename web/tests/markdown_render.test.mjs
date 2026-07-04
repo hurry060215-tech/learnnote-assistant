@@ -426,6 +426,17 @@ assert.match(qaPanelInitialHtml, /已保存 0 条问答/);
 const qaPanelHistoryHtml = context.qaPanelHtml({ id: "task-qa-history", qa: { history_count: 2 } });
 assert.match(qaPanelHistoryHtml, /已保存 2 条问答/);
 assert.match(qaPanelHistoryHtml, /\/api\/tasks\/task-qa-history\/exports\/qa/);
+const qaPanelRecentHtml = context.qaPanelHtml({
+  id: "task-qa-recent",
+  qa: {
+    history_count: 1,
+    recent: [{ question: "如何复习函数封装？", answer_excerpt: "先看输入输出，再看边界条件。", source: "local-extractive", citation_count: 2 }]
+  }
+});
+assert.match(qaPanelRecentHtml, /class="qa-recent"/);
+assert.match(qaPanelRecentHtml, /如何复习函数封装/);
+assert.match(qaPanelRecentHtml, /先看输入输出/);
+assert.match(qaPanelRecentHtml, /2 证据/);
 context.window.location.search = "?task=task%20from%20url";
 assert.equal(context.taskIdFromCurrentUrl(), "task from url");
 context.window.location.search = "?result_tab=frames";

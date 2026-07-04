@@ -64,7 +64,7 @@ let currentTask = null;
 let selectedTab = "note";
 let transcriptCache = null;
 let lastNote = "";
-let qaState = { taskId: "", question: "", answer: "", source: "", warning: "", citations: [], historyCount: 0, loading: false };
+let qaState = { taskId: "", question: "", answer: "", source: "", warning: "", citations: [], historyCount: 0, recent: [], loading: false };
 let preflight = null;
 let preflightResourceUrl = "";
 let preflightResultsByUrl = new Map();
@@ -5383,10 +5383,11 @@ function taskQaUrl(taskId) {
 }
 
 function qaPanelHtml(task) {
-  const state = qaState.taskId === task?.id ? qaState : { taskId: task?.id || "", question: "", answer: "", source: "", warning: "", citations: [], historyCount: 0, loading: false };
+  const state = qaState.taskId === task?.id ? qaState : { taskId: task?.id || "", question: "", answer: "", source: "", warning: "", citations: [], historyCount: 0, recent: [], loading: false };
   const citations = Array.isArray(state.citations) ? state.citations : [];
   const sourceLabel = state.source ? ` · ${state.source}` : "";
   const historyCount = Number(state.historyCount || task?.qa?.history_count || 0);
+  const recent = Array.isArray(state.recent) && state.recent.length ? state.recent : Array.isArray(task?.qa?.recent) ? task.qa.recent : [];
   return `<section class="qa-panel" aria-label="任务问答">
     <form id="qaForm" class="qa-form">
       <label>
@@ -5402,6 +5403,13 @@ function qaPanelHtml(task) {
     ${state.warning ? `<p class="qa-warning">${escapeHtml(state.warning)}</p>` : ""}
     ${state.answer ? `<article class="markdown-note qa-answer">${markdownToHtml(state.answer)}</article>` : `<div class="result-empty compact">基于当前任务的笔记、字幕和画面索引回答；没有模型 Key 时会先给出本地摘录。</div>`}
     ${citations.length ? `<div class="qa-citations">${citations.map(item => `<span><b>${escapeHtml(item.label || item.source || "证据")}</b>${escapeHtml(item.text || "")}</span>`).join("")}</div>` : ""}
+    ${recent.length ? `<div class="qa-recent" aria-label="最近问答">${recent.map((item, index) => `
+      <article>
+        <span>Q${index + 1} · ${escapeHtml(item.source || "saved")}${item.citation_count ? ` · ${escapeHtml(item.citation_count)} 证据` : ""}</span>
+        <strong>${escapeHtml(item.question || "-")}</strong>
+        <p>${escapeHtml(item.answer_excerpt || "")}</p>
+      </article>
+    `).join("")}</div>` : ""}
   </section>`;
 }
 
@@ -5409,7 +5417,8 @@ async function submitTaskQuestion(task) {
   const input = document.querySelector("#qaQuestion");
   const question = String(input?.value || "").trim();
   if (!task?.id || !question) return;
-  qaState = { taskId: task.id, question, answer: "", source: "", warning: "", citations: [], historyCount: Number(task?.qa?.history_count || 0), loading: true };
+  const existingRecent = Array.isArray(task?.qa?.recent) ? task.qa.recent : [];
+  qaState = { taskId: task.id, question, answer: "", source: "", warning: "", citations: [], historyCount: Number(task?.qa?.history_count || 0), recent: existingRecent, loading: true };
   renderResult();
   try {
     const response = await fetch(taskQaUrl(task.id), {
@@ -5429,10 +5438,21 @@ async function submitTaskQuestion(task) {
       warning: payload.warning || "",
       citations: payload.citations || [],
       historyCount: Number(payload.history_count || task?.qa?.history_count || 0),
+      recent: payload.history_item ? [{
+        id: payload.history_item.id || "",
+        created_at: payload.history_item.created_at || "",
+        question: payload.history_item.question || question,
+        answer_excerpt: (payload.history_item.answer || payload.answer || "").replace(/\s+/g, " ").slice(0, 420),
+        source: payload.history_item.source || payload.source || "",
+        warning: payload.history_item.warning || payload.warning || "",
+        provider: payload.history_item.provider || "",
+        model: payload.history_item.model || "",
+        citation_count: Array.isArray(payload.history_item.citations) ? payload.history_item.citations.length : 0
+      }, ...existingRecent].slice(0, 5) : existingRecent,
       loading: false
     };
   } catch (error) {
-    qaState = { taskId: task.id, question, answer: "", source: "", warning: error.message || "问答失败", citations: [], historyCount: Number(task?.qa?.history_count || 0), loading: false };
+    qaState = { taskId: task.id, question, answer: "", source: "", warning: error.message || "问答失败", citations: [], historyCount: Number(task?.qa?.history_count || 0), recent: existingRecent, loading: false };
   }
   renderResult();
 }
