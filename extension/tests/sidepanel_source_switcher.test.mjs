@@ -197,7 +197,8 @@ await new Promise(resolve => setTimeout(resolve, 0));
 await sourceButtons[1].listeners.click();
 assert.equal(sourceButtons[0].classList.contains("active"), false);
 assert.equal(sourceButtons[1].classList.contains("active"), true);
-assert.equal(elements.get("#localDrop").scrollCount, 1);
+assert.equal(elements.get("#localVideoCard").scrollCount, 1);
+assert.equal(elements.get("#localVideoCard").dataset.localState, "idle");
 assert.equal(elements.get("#fileInput").clicks, 0);
 assert.deepEqual(startCalls, []);
 

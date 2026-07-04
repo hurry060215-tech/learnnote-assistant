@@ -40,7 +40,18 @@ const makeElement = () => ({
   disabled: false,
   onclick: null,
   onchange: null,
-  files: []
+  files: [],
+  clicks: 0,
+  click() {
+    this.clicks += 1;
+    if (typeof this.onclick === "function") return this.onclick();
+  },
+  scrollIntoView() {
+    this.scrolled = true;
+  },
+  focus() {
+    this.focused = true;
+  }
 });
 
 const documentStub = {
@@ -165,7 +176,13 @@ assert.match(sidepanelHtml, /浏览器读取/);
 assert.match(sidepanelHtml, /直链预检/);
 assert.match(sidepanelHtml, /本地切片/);
 assert.match(sidepanelHtml, /非录制/);
+assert.match(sidepanelHtml, /id="localVideoCard"/);
+assert.match(sidepanelHtml, /本地视频同管线/);
+assert.match(sidepanelHtml, /选择本地视频/);
+assert.match(sidepanelHtml, /抽帧网格 \+ 时间窗/);
 assert.match(sidepanelCss, /\.capture-cockpit/);
+assert.match(sidepanelCss, /\.local-video-card/);
+assert.match(sidepanelCss, /\.local-video-actions/);
 assert.match(sidepanelCss, /writing-mode:\s*vertical-rl/);
 assert.match(sidepanelCss, /\.workbench-local-pipeline/);
 assert.match(sidepanelHtml, /accept="video\/\*,\.mp4,\.m4v,\.mov,\.mkv,\.webm,\.flv,\.avi"/);
@@ -173,6 +190,10 @@ assert.equal(context.isSupportedLocalVideoFile({ name: "lesson.mkv", type: "" })
 assert.equal(context.isSupportedLocalVideoFile({ name: "lesson.flv", type: "" }), true);
 assert.equal(context.isSupportedLocalVideoFile({ name: "lesson.avi", type: "" }), true);
 assert.equal(context.isSupportedLocalVideoFile({ name: "bad.txt", type: "text/plain" }), false);
+
+elements.get("#chooseLocalButton").onclick();
+assert.equal(elements.get("#fileInput").clicks, 1);
+assert.equal(elements.get("#localVideoCard").classList.contains("focus-pulse"), true);
 
 elements.get("#fileInput").files = [lessonFile];
 await context.uploadLocal();
@@ -185,6 +206,7 @@ assert.match(uploadBodies[0].get("options"), /"frame_interval":20/);
 assert.equal(elements.get("#localDropText").textContent, "local-lesson.mp4");
 assert.equal(elements.get("#uploadButton").disabled, false);
 assert.equal(elements.get("#localDrop").classList.contains("uploading"), false);
+assert.equal(elements.get("#localVideoCard").classList.contains("state-ready"), true);
 assert.match(elements.get("#taskMessage").textContent, /done/);
 
 const droppedFile = { name: "drag-side-lesson.webm", size: 654321, type: "" };
@@ -200,6 +222,7 @@ assert.equal(uploadBodies[1].get("file"), droppedFile);
 assert.equal(uploadBodies[1].get("title"), "drag-side-lesson.webm");
 assert.equal(elements.get("#localDropText").textContent, "drag-side-lesson.webm");
 assert.equal(elements.get("#localDrop").classList.contains("uploading"), false);
+assert.equal(elements.get("#localVideoCard").dataset.localState, "ready");
 
 uploadShouldFail = true;
 elements.get("#fileInput").files = [{ name: "server-reject.mov", size: 10, type: "video/quicktime" }];
@@ -210,6 +233,7 @@ assert.equal(uploadBodies[2].get("title"), "server-reject.mov");
 assert.equal(elements.get("#localDropText").textContent, "unsupported local file");
 assert.equal(elements.get("#uploadButton").disabled, false);
 assert.equal(elements.get("#localDrop").classList.contains("uploading"), false);
+assert.equal(elements.get("#localVideoCard").classList.contains("state-error"), true);
 assert.equal(elements.get("#taskMessage").textContent, "unsupported local file");
 
 elements.get("#fileInput").files = [{ name: "bad.txt", size: 10, type: "text/plain" }];
@@ -219,4 +243,5 @@ assert.equal(uploadBodies.length, 3);
 assert.match(elements.get("#localDropText").textContent, /mp4 \/ m4v \/ mov/);
 assert.equal(elements.get("#uploadButton").disabled, false);
 assert.equal(elements.get("#localDrop").classList.contains("uploading"), false);
+assert.equal(elements.get("#localVideoCard").dataset.localState, "error");
 assert.equal(elements.get("#taskMessage").textContent, "bad.txt 不是支持的视频格式。");

@@ -95,8 +95,11 @@ const els = {
   continueFromMediaButton: document.querySelector("#continueFromMediaButton"),
   uploadButton: document.querySelector("#uploadButton"),
   fileInput: document.querySelector("#fileInput"),
+  localVideoCard: document.querySelector("#localVideoCard"),
   localDrop: document.querySelector("#localDrop"),
   localDropText: document.querySelector("#localDropText"),
+  chooseLocalButton: document.querySelector("#chooseLocalButton"),
+  localOptionsButton: document.querySelector("#localOptionsButton"),
   textButton: document.querySelector("#textButton"),
   redetectButton: document.querySelector("#redetectButton"),
   frameInterval: document.querySelector("#frameInterval"),
@@ -195,6 +198,34 @@ function isSupportedLocalVideoFile(file) {
   if (!file?.name) return false;
   if (String(file.type || "").startsWith("video/")) return true;
   return LOCAL_VIDEO_EXT_RE.test(file.name);
+}
+
+function setLocalUploadState(state = "idle", message = "") {
+  if (!els.localVideoCard) return;
+  for (const name of ["idle", "selected", "uploading", "ready", "error"]) {
+    els.localVideoCard.classList.remove(`state-${name}`);
+  }
+  els.localVideoCard.classList.add(`state-${state}`);
+  els.localVideoCard.dataset.localState = state;
+  const status = els.localVideoCard.querySelector?.("[data-local-video-status]");
+  if (status) {
+    status.textContent = message || ({
+      idle: "待选择",
+      selected: "已选择",
+      uploading: "上传中",
+      ready: "已交接",
+      error: "需重试"
+    }[state] || "待选择");
+  }
+}
+
+function localUploadFocusState() {
+  if (currentTask?.source_type === "local") {
+    if (currentTask.status === "failed") return "error";
+    if (currentTask.status === "running" || currentTask.status === "queued") return "uploading";
+    return "ready";
+  }
+  return pendingLocalFile ? "selected" : "idle";
 }
 
 function apiErrorMessage(payload, fallback) {
@@ -3529,9 +3560,11 @@ async function uploadLocal(fileOverride = null) {
   if (!isSupportedLocalVideoFile(file)) {
     els.localDropText.textContent = "请选择 mp4 / m4v / mov / flv / avi / mkv / webm 等视频文件";
     els.taskMessage.textContent = `${file.name} 不是支持的视频格式。`;
+    setLocalUploadState("error", "格式不支持");
     return;
   }
   els.localDropText.textContent = file.name;
+  setLocalUploadState("uploading", "上传中");
   els.uploadButton.disabled = true;
   els.localDrop.classList.add("uploading");
   const form = new FormData();
@@ -3546,9 +3579,11 @@ async function uploadLocal(fileOverride = null) {
       const message = apiErrorMessage(data, "本地视频上传失败，请确认后端可用并重试。");
       els.localDropText.textContent = message;
       els.taskMessage.textContent = message;
+      setLocalUploadState("error", "上传失败");
       return;
     }
     currentTaskId = data.task_id;
+    setLocalUploadState("ready", "已交接");
     transcriptCache = null;
     lastNote = "";
     await loadTaskHistory();
@@ -3557,6 +3592,7 @@ async function uploadLocal(fileOverride = null) {
     const detail = error?.message ? `本地视频上传失败：${error.message}` : "本地视频上传失败，请确认后端可用并重试。";
     els.localDropText.textContent = "上传失败，请重试";
     els.taskMessage.textContent = detail;
+    setLocalUploadState("error", "上传失败");
   } finally {
     els.uploadButton.disabled = false;
     els.localDrop.classList.remove("uploading");
@@ -5244,8 +5280,23 @@ if (els.llmProvider) els.llmProvider.onchange = () => {
   saveModelSettings();
 };
 els.uploadButton.onclick = () => els.fileInput.click();
+if (els.chooseLocalButton) {
+  els.chooseLocalButton.onclick = () => {
+    setSourceSwitcherActive("local");
+    pulseTarget(els.localVideoCard || els.localDrop);
+    els.fileInput.click();
+  };
+}
+if (els.localOptionsButton) {
+  els.localOptionsButton.onclick = () => {
+    setSourceSwitcherActive("local");
+    if (els.optionsDisclosure) els.optionsDisclosure.open = true;
+    pulseTarget(els.optionsDisclosure || els.localVideoCard || els.localDrop);
+  };
+}
 els.fileInput.onchange = () => {
   pendingLocalFile = els.fileInput.files?.[0] || null;
+  if (pendingLocalFile) setLocalUploadState("selected", "已选择");
   uploadLocal(pendingLocalFile);
 };
 els.localDrop.onclick = () => els.fileInput.click();
@@ -5260,6 +5311,8 @@ els.localDrop.addEventListener("drop", event => {
   if (event.dataTransfer.files?.[0]) {
     pendingLocalFile = event.dataTransfer.files[0];
     els.localDropText.textContent = pendingLocalFile.name;
+    setSourceSwitcherActive("local");
+    setLocalUploadState("selected", "已选择");
     uploadLocal(pendingLocalFile);
   }
 });
@@ -5311,7 +5364,7 @@ function handleRouteAction(action) {
   } else if (action === "continue-media") {
     if (canContinueFromDownloadedMedia(currentTask)) rerunTaskFromMedia(currentTask.id);
   } else if (action === "local") {
-    pulseTarget(els.localDrop);
+    pulseTarget(els.localVideoCard || els.localDrop);
     els.fileInput.click();
   } else if (action === "text") {
     startTask("page_text");
@@ -5340,7 +5393,8 @@ async function handleSourceSwitch(action) {
   const source = action === "local" || action === "text" ? action : "summarize";
   setSourceSwitcherActive(source);
   if (source === "local") {
-    pulseTarget(els.localDrop);
+    setLocalUploadState(localUploadFocusState());
+    pulseTarget(els.localVideoCard || els.localDrop);
   } else if (source === "text") {
     pulseTarget(els.textButton);
   } else {

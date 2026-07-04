@@ -229,10 +229,29 @@
       </section>
       </details>
 
-      <label id="localDrop" class="local-drop">
-        <svg viewBox="0 0 24 24"><path d="M12 3v12M7 8l5-5 5 5M4 17v3h16v-3"/></svg>
-        <span id="localDropText">拖入 mp4 / flv / avi / mkv / webm 作为兜底入口</span>
-      </label>
+      <section id="localVideoCard" class="local-video-card" aria-label="本地视频同管线">
+        <header>
+          <div>
+            <span>本地视频</span>
+            <strong>平台不可直取时，拖入文件继续生成图文笔记</strong>
+          </div>
+          <em data-local-video-status>待选择</em>
+        </header>
+        <ol class="workbench-local-pipeline" aria-label="本地视频处理步骤">
+          <li><b>导入</b><em>mp4 / mkv / webm</em></li>
+          <li><b>转写</b><em>字幕优先，ASR 兜底</em></li>
+          <li><b>切片</b><em>抽帧网格 + 时间窗</em></li>
+          <li><b>笔记</b><em>图文总结 + 资料包</em></li>
+        </ol>
+        <label id="localDrop" class="local-drop">
+          <svg viewBox="0 0 24 24"><path d="M12 3v12M7 8l5-5 5 5M4 17v3h16v-3"/></svg>
+          <span id="localDropText">拖入 mp4 / flv / avi / mkv / webm 作为兜底入口</span>
+        </label>
+        <div class="local-video-actions">
+          <button id="chooseLocalButton" type="button">选择本地视频</button>
+          <button id="localOptionsButton" type="button">处理参数</button>
+        </div>
+      </section>
 
       <section class="progress-panel">
         <div class="section-head compact">
