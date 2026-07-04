@@ -46,6 +46,7 @@ JSON_MEDIA_KEY_RE = re.compile(
 )
 JSON_MIME_KEY_RE = re.compile(r"(mime|type|format|content.?type|media.?type)", re.I)
 JSON_VIDEO_CONTEXT_RE = re.compile(r"(url|uri|path|src|file|source|video|audio|media|play|stream|vod|course|lesson|objectid|dtoken|fileid|download|httpmd)", re.I)
+JSON_BASE_URL_KEY_RE = re.compile(r"(base.?url|cdn|host|domain|origin|endpoint|server|root|prefix)", re.I)
 TEXT_MEDIA_FIELD_RE = re.compile(
     r"(?P<key>[\"']?[A-Za-z_$][A-Za-z0-9_$.-]{0,79}[\"']?)\s*[:=]\s*[\"'](?P<url>(?:\\u[0-9a-fA-F]{4}|\\x[0-9a-fA-F]{2}|\\.|[^\"'<>\\\s]){4,})[\"']",
     re.I,
@@ -624,6 +625,95 @@ def _json_context_kind(key_path: list[str], url: str, parent: object) -> tuple[s
     return "unknown", ""
 
 
+def _normalize_json_base_url(value: str, base_url: str) -> str:
+    raw = str(value or "").strip().strip("'\"")
+    if not raw or re.search(r"\s", raw):
+        return ""
+    parsed_base = urlparse(base_url or "")
+    if raw.startswith("//"):
+        return f"{parsed_base.scheme or 'https'}:{raw}".rstrip("/") + "/"
+    if re.match(r"^https?://", raw, re.I):
+        return raw.rstrip("/") + "/"
+    if re.match(r"^[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?::\d+)?(?:/.*)?$", raw):
+        return f"{parsed_base.scheme or 'https'}://{raw}".rstrip("/") + "/"
+    return ""
+
+
+def _json_base_urls(node: dict, base_url: str) -> list[str]:
+    urls: list[str] = []
+    for key, value in node.items():
+        if not isinstance(value, str) or not JSON_BASE_URL_KEY_RE.search(str(key)):
+            continue
+        for candidate_value in _decoded_media_values(value):
+            url = _normalize_json_base_url(candidate_value, base_url)
+            if url and url not in urls:
+                urls.append(url)
+    return urls[:6]
+
+
+def _looks_like_split_media_path(value: str, key_path: list[str], parent: object) -> bool:
+    text = str(value or "").strip().strip("'\"")
+    if not text or re.search(r"\s", text):
+        return False
+    if re.match(r"^(?:https?:)?//", text, re.I):
+        return False
+    if text.startswith(("data:", "blob:", "javascript:")):
+        return False
+    if TEXT_MEDIA_HINT_RE.search(text):
+        return True
+    context = " ".join(key_path).lower()
+    mime_context = _json_context_mime(parent).lower()
+    return bool(JSON_VIDEO_CONTEXT_RE.search(context) and re.search(r"video/|mpegurl|dash\+xml|audio/", mime_context))
+
+
+def _json_split_base_media_resources(
+    node: dict,
+    base_url: str,
+    source: str,
+    key_path: list[str],
+    seen: set[str],
+) -> list[ResourceCandidate]:
+    bases = _json_base_urls(node, base_url)
+    if not bases:
+        return []
+    resources: list[ResourceCandidate] = []
+    for key, value in node.items():
+        if not isinstance(value, str):
+            continue
+        next_path = [*key_path, str(key)]
+        if not JSON_MEDIA_KEY_RE.search(str(key)):
+            continue
+        for candidate_value in _decoded_media_values(value):
+            if not _looks_like_split_media_path(candidate_value, next_path, node):
+                continue
+            for media_base in bases:
+                url = urljoin(media_base, candidate_value.lstrip("/") if not candidate_value.startswith("/") else candidate_value)
+                if not url or url in seen:
+                    continue
+                kind, mime = _json_context_kind(next_path, url, node)
+                if kind == "unknown":
+                    continue
+                score = min(100, score_resource(url, mime, source) + 18)
+                resources.append(
+                    ResourceCandidate(
+                        url=url,
+                        source=source,
+                        kind=kind,
+                        mime=mime,
+                        score=score,
+                        label=f"json combined {'/'.join(next_path[-3:])}",
+                        request_headers={"Referer": base_url},
+                    )
+                )
+                seen.add(url)
+                break
+            if len(resources) >= 20:
+                break
+        if len(resources) >= 20:
+            break
+    return resources
+
+
 def _json_media_resources(node: object, base_url: str, source: str, key_path: list[str], seen: set[str]) -> list[ResourceCandidate]:
     resources: list[ResourceCandidate] = []
     if isinstance(node, dict):
@@ -701,6 +791,12 @@ def _json_media_resources(node: object, base_url: str, source: str, key_path: li
                 resources.extend(_json_media_resources(value, base_url, source, next_path, seen))
             if len(resources) >= 60:
                 break
+        for candidate in _json_split_base_media_resources(node, base_url, source, key_path, seen):
+            resources.append(candidate)
+            if candidate.kind == "video":
+                local_video_resources.append(candidate)
+            elif candidate.kind == "audio":
+                local_audio_resources.append(candidate)
         if local_video_resources and local_audio_resources:
             audio = max(local_audio_resources, key=lambda item: item.score or 0)
             for video in local_video_resources:

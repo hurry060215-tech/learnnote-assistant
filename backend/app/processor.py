@@ -206,6 +206,15 @@ def should_download_page_subtitle(request: CurrentPageTaskRequest) -> bool:
     return has_downloadable_subtitle_candidate(request.resources) and browser_subtitles_look_partial(request.browser_subtitles)
 
 
+def maybe_download_page_subtitle(downloader: object, request: CurrentPageTaskRequest) -> Path | None:
+    if not should_download_page_subtitle(request):
+        return None
+    download_subtitle = getattr(downloader, "download_subtitle", None)
+    if not callable(download_subtitle):
+        return None
+    return download_subtitle(request.resources, request.cookies, request.page_url, request.title)
+
+
 def _srt_timestamp(seconds: float) -> str:
     millis = round(max(0.0, seconds) * 1000)
     hours, remainder = divmod(millis, 3_600_000)
@@ -589,13 +598,12 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
             normalize_video(media_path, normalized)
             transcript_path = ""
             subtitle_path = ""
-            if should_download_page_subtitle(request):
-                page_subtitle_path = downloader.download_subtitle(request.resources, request.cookies, request.page_url, request.title)
-                if page_subtitle_path:
-                    subtitle_path = str(page_subtitle_path)
-                    transcript = transcript_from_subtitle(page_subtitle_path)
-                    if transcript.segments:
-                        transcript_path = str(write_json(task_id, "transcript.json", transcript.model_dump(mode="json")))
+            page_subtitle_path = maybe_download_page_subtitle(downloader, request)
+            if page_subtitle_path:
+                subtitle_path = str(page_subtitle_path)
+                transcript = transcript_from_subtitle(page_subtitle_path)
+                if transcript.segments:
+                    transcript_path = str(write_json(task_id, "transcript.json", transcript.model_dump(mode="json")))
             if not transcript_path:
                 transcript = transcript_from_browser_subtitles(request.browser_subtitles)
                 if transcript.segments:
@@ -613,9 +621,7 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
                 download_attempts=downloader.attempts,
             )
             return
-        subtitle_path = None
-        if should_download_page_subtitle(request):
-            subtitle_path = downloader.download_subtitle(request.resources, request.cookies, request.page_url, request.title)
+        subtitle_path = maybe_download_page_subtitle(downloader, request)
         update_task(task_id, download_attempts=downloader.attempts)
 
         _process_video_file(
