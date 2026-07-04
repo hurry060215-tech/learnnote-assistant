@@ -788,6 +788,7 @@ def render_bundle_manifest(task: TaskRecord, transcript: dict, visual_index: dic
             "history": QA_HISTORY_FILE if qa_history else "",
             "last_question": qa_history[-1].get("question", "") if qa_history else "",
             "last_source": qa_history[-1].get("source", "") if qa_history else "",
+            "suggestions": task_qa_suggestions(task),
         },
         "artifacts": {
             "note": "note.md" if task.note_path else "",
@@ -1258,6 +1259,7 @@ def task_payload(task: TaskRecord) -> dict:
         "last_question": qa_history[-1].get("question", "") if qa_history else "",
         "last_source": qa_history[-1].get("source", "") if qa_history else "",
         "recent": qa_history_preview(qa_history),
+        "suggestions": task_qa_suggestions(task),
     }
     return payload
 
@@ -1829,6 +1831,43 @@ def qa_history_preview(history: list[dict], limit: int = 5) -> list[dict]:
             "citation_count": len(item.get("citations") or []) if isinstance(item.get("citations"), list) else 0,
         })
     return list(reversed(preview))
+
+
+def task_qa_suggestions(task: TaskRecord, limit: int = 7) -> list[dict]:
+    suggestions: list[dict] = []
+    seen: set[str] = set()
+
+    def add(label: str, question: str, source: str) -> None:
+        normalized = " ".join(question.split())
+        if not normalized or normalized in seen or len(suggestions) >= limit:
+            return
+        seen.add(normalized)
+        suggestions.append({"label": label, "question": normalized, "source": source})
+
+    has_note = bool(task.note_path)
+    has_transcript = bool(task.transcript_path or task.browser_subtitles)
+    has_visual = bool(task.visual_index_path or task.visual_windows or task.frame_grids)
+
+    if has_note:
+        add("核心概念", "这节课最重要的 3 个概念是什么？请用适合复习的方式解释。", "note")
+        add("时间轴重点", "按时间顺序列出这节课的重点、例题和操作步骤。", "note")
+        add("易错点", "这节课有哪些容易混淆或考试容易错的地方？", "note")
+    if has_transcript:
+        add("字幕梳理", "根据字幕提取老师反复强调的关键词，并说明它们之间的关系。", "transcript")
+        add("自测题", "基于这节课生成 5 道复习自测题，并附简短答案。", "transcript")
+    if has_visual:
+        add("画面线索", "结合画面索引，哪些 PPT、代码或演示步骤最值得回看？", "visual")
+        first_window = task.visual_windows[0] if task.visual_windows else None
+        if first_window:
+            label = first_window.id or f"W{first_window.index + 1:03d}"
+            add(
+                label,
+                f"请解释 {label}（{_format_timestamp(first_window.start)}-{_format_timestamp(first_window.end)}）这一段画面和字幕对应的学习重点。",
+                "visual",
+            )
+    if not suggestions:
+        add("页面文本", "如果当前任务没有视频结果，请先总结当前页面文本的主要内容。", "page")
+    return suggestions
 
 
 def _answer_task_question(task: TaskRecord, request: TaskQuestionRequest) -> dict:

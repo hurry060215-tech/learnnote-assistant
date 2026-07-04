@@ -101,6 +101,19 @@ assert.match(qaPanelInitialHtml, /id="qaForm"/);
 assert.match(qaPanelInitialHtml, /id="qaQuestion"/);
 assert.match(qaPanelInitialHtml, /基于当前任务的笔记、字幕和画面索引回答/);
 assert.match(qaPanelInitialHtml, /已保存 0 条问答/);
+const qaPanelSuggestionHtml = context.qaPanelHtml({
+  id: "side-qa-suggestions",
+  qa: {
+    suggestions: [
+      { label: "核心概念", question: "这节课最重要的 3 个概念是什么？", source: "note" },
+      { label: "画面线索", question: "哪些演示步骤最值得回看？", source: "visual" }
+    ]
+  }
+});
+assert.match(qaPanelSuggestionHtml, /class="qa-suggestions"/);
+assert.match(qaPanelSuggestionHtml, /data-qa-suggestion=/);
+assert.match(qaPanelSuggestionHtml, /核心概念/);
+assert.match(qaPanelSuggestionHtml, /哪些演示步骤最值得回看/);
 const qaPanelHistoryHtml = context.qaPanelHtml({ id: "side-qa-history", qa: { history_count: 2 } });
 assert.match(qaPanelHistoryHtml, /已保存 2 条问答/);
 assert.match(qaPanelHistoryHtml, /data-export="qa"/);

@@ -3866,6 +3866,7 @@ function qaPanelHtml(task) {
   const citations = Array.isArray(state.citations) ? state.citations : [];
   const historyCount = Number(state.historyCount || task?.qa?.history_count || 0);
   const recent = Array.isArray(state.recent) && state.recent.length ? state.recent : Array.isArray(task?.qa?.recent) ? task.qa.recent : [];
+  const suggestions = Array.isArray(task?.qa?.suggestions) ? task.qa.suggestions : [];
   return `<section class="qa-panel" aria-label="任务问答">
     <form id="qaForm" class="qa-form">
       <label>
@@ -3874,6 +3875,12 @@ function qaPanelHtml(task) {
       </label>
       <button class="primary action-button" type="submit"${state.loading ? " disabled" : ""}>${state.loading ? "回答中..." : "提问"}</button>
     </form>
+    ${suggestions.length ? `<div class="qa-suggestions" aria-label="建议问题">${suggestions.map(item => `
+      <button type="button" data-qa-suggestion="${escapeHtml(item.question || "")}">
+        <span>${escapeHtml(item.label || item.source || "建议")}</span>
+        ${escapeHtml(item.question || "")}
+      </button>
+    `).join("")}</div>` : ""}
     <div class="qa-history-bar">
       <span>已保存 ${historyCount} 条问答</span>
       ${historyCount ? `<a href="${escapeHtml(taskExportUrl(task, "qa"))}">导出问答</a>` : ""}
@@ -3938,6 +3945,14 @@ async function submitTaskQuestion(task) {
 function bindQaActions(task) {
   const form = document.querySelector("#qaForm");
   if (!form) return;
+  document.querySelectorAll("[data-qa-suggestion]").forEach(button => {
+    button.onclick = () => {
+      const input = document.querySelector("#qaQuestion");
+      if (!input) return;
+      input.value = button.dataset.qaSuggestion || "";
+      input.focus();
+    };
+  });
   form.onsubmit = event => {
     event.preventDefault();
     submitTaskQuestion(task);

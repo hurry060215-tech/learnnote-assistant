@@ -8379,6 +8379,43 @@ body {
   font-weight: 750;
 }
 
+.qa-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.qa-suggestions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  border: 1px solid #cddbf2;
+  border-radius: 7px;
+  background: #ffffff;
+  padding: 6px 8px;
+  color: var(--ink, #172033);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.35;
+  text-align: left;
+}
+
+.qa-suggestions button:hover {
+  border-color: #8fb0f1;
+  background: #f5f9ff;
+}
+
+.qa-suggestions span {
+  flex: 0 0 auto;
+  border-radius: 6px;
+  background: #eef4ff;
+  padding: 2px 5px;
+  color: var(--accent, #1769e8);
+  font-size: 10px;
+  font-weight: 850;
+}
+
 .qa-history-bar button {
   border: 1px solid #9db9f8;
   border-radius: 6px;

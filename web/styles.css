@@ -10305,6 +10305,43 @@ body.reading-mode .app-shell {
   font-weight: 750;
 }
 
+.qa-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.qa-suggestions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 100%;
+  border: 1px solid #cddbf2;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 7px 10px;
+  color: var(--ink, #172033);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+  text-align: left;
+}
+
+.qa-suggestions button:hover {
+  border-color: #8fb0f1;
+  background: #f5f9ff;
+}
+
+.qa-suggestions span {
+  flex: 0 0 auto;
+  border-radius: 6px;
+  background: #eef4ff;
+  padding: 3px 6px;
+  color: var(--accent, #1769e8);
+  font-size: 11px;
+  font-weight: 850;
+}
+
 .qa-history-bar a,
 .qa-history-bar button {
   border: 1px solid #9db9f8;
