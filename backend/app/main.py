@@ -1640,6 +1640,83 @@ def data_paths_payload() -> dict:
     }
 
 
+MODEL_PROVIDER_PRESETS = [
+    {
+        "key": "openai",
+        "label": "OpenAI",
+        "base_url": "https://api.openai.com/v1",
+        "model": "gpt-4.1-mini",
+        "transcriber": "openai-compatible",
+        "whisper_model": "whisper-1",
+    },
+    {
+        "key": "groq",
+        "label": "Groq",
+        "base_url": "https://api.groq.com/openai/v1",
+        "model": "meta-llama/llama-4-scout-17b-16e-instruct",
+        "transcriber": "groq",
+        "whisper_model": "whisper-large-v3",
+    },
+    {
+        "key": "gemini",
+        "label": "Google Gemini",
+        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
+        "model": "gemini-3.5-flash",
+        "transcriber": "faster-whisper",
+        "whisper_model": "small",
+    },
+    {
+        "key": "dashscope",
+        "label": "通义千问 DashScope",
+        "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "model": "qwen-vl-max",
+        "transcriber": "faster-whisper",
+        "whisper_model": "small",
+    },
+    {
+        "key": "siliconflow",
+        "label": "SiliconFlow",
+        "base_url": "https://api.siliconflow.cn/v1",
+        "model": "Qwen/Qwen2.5-VL-72B-Instruct",
+        "transcriber": "faster-whisper",
+        "whisper_model": "small",
+    },
+    {
+        "key": "openrouter",
+        "label": "OpenRouter",
+        "base_url": "https://openrouter.ai/api/v1",
+        "model": "openai/gpt-4.1-mini",
+        "transcriber": "faster-whisper",
+        "whisper_model": "small",
+    },
+    {
+        "key": "local-openai",
+        "label": "本地 OpenAI-compatible",
+        "base_url": "http://127.0.0.1:11434/v1",
+        "model": "qwen2.5vl:7b",
+        "transcriber": "faster-whisper",
+        "whisper_model": "small",
+    },
+]
+
+
+ASSISTANT_CAPABILITIES = {
+    "routes": ["current_page_direct", "local_upload", "download_only", "rerun_from_media", "page_text", "task_qa"],
+    "direct_media": {
+        "file_extensions": ["mp4", "m4v", "mov", "mkv", "webm", "flv", "avi"],
+        "manifests": ["m3u8", "mpd"],
+        "detectors": ["dom_video", "performance_resource", "web_request", "player_runtime", "yt_dlp"],
+        "cookie_policy": "on_click_domains_only",
+    },
+    "study_pipeline": {
+        "default_frame_interval": 20,
+        "default_grid": "3x3",
+        "outputs": ["media.mp4", "transcript.json", "visual_index.json", "note.md", "qa.md", "bundle.zip"],
+    },
+    "non_goals": ["tab_recording", "drm_bypass", "progress_spoofing", "auto_answering"],
+}
+
+
 def health_payload() -> dict:
     ffmpeg = ffmpeg_bin()
     ffprobe = ffprobe_bin()
@@ -1664,6 +1741,8 @@ def health_payload() -> dict:
         "default_llm_base_host": llm_base_host(LLM_BASE_URL),
         "default_llm_provider": llm_provider_name(LLM_BASE_URL),
         "data_paths": data_paths_payload(),
+        "model_provider_presets": MODEL_PROVIDER_PRESETS,
+        "assistant_capabilities": ASSISTANT_CAPABILITIES,
     }
 
 

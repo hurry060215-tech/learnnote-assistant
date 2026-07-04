@@ -48,6 +48,50 @@ const MODEL_PROVIDER_PRESETS = {
     whisperModel: "small"
   }
 };
+let modelProviderPresets = { ...MODEL_PROVIDER_PRESETS };
+
+function normalizeModelProviderPreset(preset) {
+  const key = String(preset?.key || "").trim();
+  if (!key) return null;
+  return {
+    key,
+    label: String(preset.label || key).trim(),
+    baseUrl: String(preset.baseUrl || preset.base_url || "").trim(),
+    model: String(preset.model || "").trim(),
+    transcriber: String(preset.transcriber || "faster-whisper").trim(),
+    whisperModel: String(preset.whisperModel || preset.whisper_model || "small").trim()
+  };
+}
+
+function syncModelProviderPresets(data) {
+  const raw = data?.model_provider_presets;
+  if (!raw) return;
+  const entries = Array.isArray(raw)
+    ? raw
+    : Object.entries(raw).map(([key, preset]) => ({ ...(preset || {}), key }));
+  const next = { ...MODEL_PROVIDER_PRESETS };
+  for (const item of entries) {
+    const preset = normalizeModelProviderPreset(item);
+    if (preset) next[preset.key] = preset;
+  }
+  modelProviderPresets = next;
+}
+
+function modelProviderLabel(key) {
+  return modelProviderPresets[key]?.label || ({
+    custom: "手动配置",
+    openai: "OpenAI",
+    groq: "Groq",
+    gemini: "Gemini",
+    dashscope: "DashScope",
+    siliconflow: "SiliconFlow",
+    openrouter: "OpenRouter",
+    "local-openai": "Local",
+    "local-openai-compatible": "Local",
+    "openai-compatible": "Compatible",
+    ollama: "Ollama"
+  })[key] || key;
+}
 const PENDING_INTENT_TTL_MS = 15000;
 const ONE_CLICK_RESOURCE_WAIT_ATTEMPTS = 4;
 const ONE_CLICK_RESOURCE_WAIT_DELAY_MS = 900;
@@ -973,7 +1017,7 @@ function refreshOptionDependentUi() {
 }
 
 function applyModelProviderPreset(force = false) {
-  const preset = MODEL_PROVIDER_PRESETS[els.llmProvider?.value || ""];
+  const preset = modelProviderPresets[els.llmProvider?.value || ""];
   if (!preset) return;
   if (els.llmBaseUrl && (force || !els.llmBaseUrl.value.trim())) {
     els.llmBaseUrl.value = preset.baseUrl;
@@ -1004,7 +1048,7 @@ function currentModelSettings() {
 
 function applyModelSettings(settings = {}) {
   if (!settings || typeof settings !== "object") return;
-  if (els.llmProvider && settings.llm_provider && MODEL_PROVIDER_PRESETS[settings.llm_provider]) {
+  if (els.llmProvider && settings.llm_provider && modelProviderPresets[settings.llm_provider]) {
     els.llmProvider.value = settings.llm_provider;
   }
   if (els.llmModel && typeof settings.llm_model === "string") {
@@ -3244,29 +3288,10 @@ function healthVisionModel(data) {
 function healthVisionProvider(data) {
   const selected = (els.llmProvider?.value || "").trim();
   if (selected) {
-    return ({
-      openai: "OpenAI",
-      groq: "Groq",
-      gemini: "Gemini",
-      dashscope: "DashScope",
-      siliconflow: "SiliconFlow",
-      openrouter: "OpenRouter",
-      "local-openai": "Local",
-      ollama: "Ollama"
-    })[selected] || selected;
+    return modelProviderLabel(selected);
   }
   const provider = String(data?.default_llm_provider || "").trim();
-  return ({
-    openai: "OpenAI",
-    groq: "Groq",
-    gemini: "Gemini",
-    dashscope: "DashScope",
-    siliconflow: "SiliconFlow",
-    openrouter: "OpenRouter",
-    "local-openai": "Local",
-    "local-openai-compatible": "Local",
-    "openai-compatible": "Compatible"
-  })[provider] || provider || "Compatible";
+  return modelProviderLabel(provider) || "Compatible";
 }
 
 function healthVisionText(data) {
@@ -3327,6 +3352,7 @@ async function health() {
   try {
     const data = await fetch(`${backendUrl}/health`).then(r => r.json());
     lastHealthData = data;
+    syncModelProviderPresets(data);
     els.backendStatus.textContent = data.ffmpeg
       ? data.ffprobe_optional ? "后端可用 · ffprobe 可选" : "本地后端可用"
       : "ffmpeg 缺失";

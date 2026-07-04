@@ -128,6 +128,18 @@ class LocalUploadValidationTests(unittest.TestCase):
         self.assertEqual(payload["data_paths"]["data_drive"], DATA_DIR.resolve().drive)
         self.assertEqual(payload["data_paths"]["paths"]["data"], str(DATA_DIR.resolve()))
         self.assertTrue(payload["data_paths"]["paths"]["tasks"].endswith("\\data\\tasks") or payload["data_paths"]["paths"]["tasks"].endswith("/data/tasks"))
+        self.assertIn("model_provider_presets", payload)
+        preset_keys = {item["key"] for item in payload["model_provider_presets"]}
+        self.assertIn("openai", preset_keys)
+        self.assertIn("groq", preset_keys)
+        self.assertIn("dashscope", preset_keys)
+        self.assertIn("assistant_capabilities", payload)
+        capabilities = payload["assistant_capabilities"]
+        self.assertIn("current_page_direct", capabilities["routes"])
+        self.assertIn("local_upload", capabilities["routes"])
+        self.assertIn("m3u8", capabilities["direct_media"]["manifests"])
+        self.assertIn("tab_recording", capabilities["non_goals"])
+        self.assertIn("drm_bypass", capabilities["non_goals"])
         self.assertRegex(payload["backend_origin"], r"^https?://(127\.0\.0\.1|localhost):\d+")
         if payload["ffmpeg"] and not payload["ffprobe"]:
             self.assertTrue(payload["ffprobe_optional"])
@@ -155,6 +167,8 @@ class LocalUploadValidationTests(unittest.TestCase):
             "default_llm_base_host",
             "default_llm_provider",
             "data_paths",
+            "model_provider_presets",
+            "assistant_capabilities",
         ):
             self.assertEqual(api_payload[key], health_payload[key])
 
