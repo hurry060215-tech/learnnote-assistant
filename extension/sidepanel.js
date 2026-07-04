@@ -64,7 +64,7 @@ let currentTask = null;
 let selectedTab = "note";
 let transcriptCache = null;
 let lastNote = "";
-let qaState = { taskId: "", question: "", answer: "", source: "", warning: "", citations: [], loading: false };
+let qaState = { taskId: "", question: "", answer: "", source: "", warning: "", citations: [], historyCount: 0, loading: false };
 let preflight = null;
 let preflightResourceUrl = "";
 let preflightResultsByUrl = new Map();
@@ -5383,9 +5383,10 @@ function taskQaUrl(taskId) {
 }
 
 function qaPanelHtml(task) {
-  const state = qaState.taskId === task?.id ? qaState : { taskId: task?.id || "", question: "", answer: "", source: "", warning: "", citations: [], loading: false };
+  const state = qaState.taskId === task?.id ? qaState : { taskId: task?.id || "", question: "", answer: "", source: "", warning: "", citations: [], historyCount: 0, loading: false };
   const citations = Array.isArray(state.citations) ? state.citations : [];
   const sourceLabel = state.source ? ` · ${state.source}` : "";
+  const historyCount = Number(state.historyCount || task?.qa?.history_count || 0);
   return `<section class="qa-panel" aria-label="任务问答">
     <form id="qaForm" class="qa-form">
       <label>
@@ -5394,6 +5395,10 @@ function qaPanelHtml(task) {
       </label>
       <button class="primary action-button" type="submit"${state.loading ? " disabled" : ""}>${state.loading ? "回答中..." : "提问"}</button>
     </form>
+    <div class="qa-history-bar">
+      <span>已保存 ${historyCount} 条问答</span>
+      ${historyCount ? `<button type="button" data-export="qa">导出问答</button>` : ""}
+    </div>
     ${state.warning ? `<p class="qa-warning">${escapeHtml(state.warning)}</p>` : ""}
     ${state.answer ? `<article class="markdown-note qa-answer">${markdownToHtml(state.answer)}</article>` : `<div class="result-empty compact">基于当前任务的笔记、字幕和画面索引回答；没有模型 Key 时会先给出本地摘录。</div>`}
     ${citations.length ? `<div class="qa-citations">${citations.map(item => `<span><b>${escapeHtml(item.label || item.source || "证据")}</b>${escapeHtml(item.text || "")}</span>`).join("")}</div>` : ""}
@@ -5404,7 +5409,7 @@ async function submitTaskQuestion(task) {
   const input = document.querySelector("#qaQuestion");
   const question = String(input?.value || "").trim();
   if (!task?.id || !question) return;
-  qaState = { taskId: task.id, question, answer: "", source: "", warning: "", citations: [], loading: true };
+  qaState = { taskId: task.id, question, answer: "", source: "", warning: "", citations: [], historyCount: Number(task?.qa?.history_count || 0), loading: true };
   renderResult();
   try {
     const response = await fetch(taskQaUrl(task.id), {
@@ -5423,10 +5428,11 @@ async function submitTaskQuestion(task) {
       source: payload.source || "",
       warning: payload.warning || "",
       citations: payload.citations || [],
+      historyCount: Number(payload.history_count || task?.qa?.history_count || 0),
       loading: false
     };
   } catch (error) {
-    qaState = { taskId: task.id, question, answer: "", source: "", warning: error.message || "问答失败", citations: [], loading: false };
+    qaState = { taskId: task.id, question, answer: "", source: "", warning: error.message || "问答失败", citations: [], historyCount: Number(task?.qa?.history_count || 0), loading: false };
   }
   renderResult();
 }

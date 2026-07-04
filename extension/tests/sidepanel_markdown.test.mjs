@@ -100,6 +100,10 @@ const qaPanelInitialHtml = context.qaPanelHtml({ id: "side-qa-test" });
 assert.match(qaPanelInitialHtml, /id="qaForm"/);
 assert.match(qaPanelInitialHtml, /id="qaQuestion"/);
 assert.match(qaPanelInitialHtml, /基于当前任务的笔记、字幕和画面索引回答/);
+assert.match(qaPanelInitialHtml, /已保存 0 条问答/);
+const qaPanelHistoryHtml = context.qaPanelHtml({ id: "side-qa-history", qa: { history_count: 2 } });
+assert.match(qaPanelHistoryHtml, /已保存 2 条问答/);
+assert.match(qaPanelHistoryHtml, /data-export="qa"/);
 
 vm.runInContext("captureLog = { restored: 3, updated_at: Date.now() - 45000 }", context);
 const captureHint = context.captureLogHintHtml();

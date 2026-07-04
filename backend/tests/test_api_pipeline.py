@@ -276,6 +276,34 @@ class LocalUploadValidationTests(unittest.TestCase):
             self.assertEqual(payload["warning"], "missing_api_key")
             self.assertIn("函数封装", payload["answer"])
             self.assertTrue(payload["citations"])
+            self.assertEqual(payload["history_count"], 1)
+            self.assertEqual(payload["history_item"]["source"], "local-extractive")
+
+            history_response = self.client.get(f"/api/tasks/{task.id}/qa")
+            self.assertEqual(history_response.status_code, 200)
+            history = history_response.json()
+            self.assertEqual(len(history["items"]), 1)
+            self.assertEqual(history["items"][0]["source"], "local-extractive")
+
+            qa_export = self.client.get(f"/api/tasks/{task.id}/exports/qa")
+            self.assertEqual(qa_export.status_code, 200)
+            self.assertIn("text/markdown", qa_export.headers["content-type"])
+            self.assertIn("# LearnNote 问答记录", qa_export.text)
+            self.assertIn("local-extractive", qa_export.text)
+
+            manifest = self.client.get(f"/api/tasks/{task.id}/exports/manifest")
+            self.assertEqual(manifest.status_code, 200)
+            manifest_payload = manifest.json()
+            self.assertEqual(manifest_payload["qa"]["history_count"], 1)
+            self.assertEqual(manifest_payload["artifacts"]["qa"], "qa.md")
+            self.assertEqual(manifest_payload["artifacts"]["qa_history"], "qa_history.json")
+
+            bundle = self.client.get(f"/api/tasks/{task.id}/exports/bundle")
+            self.assertEqual(bundle.status_code, 200)
+            with zipfile.ZipFile(io.BytesIO(bundle.content)) as archive:
+                self.assertIn("qa.md", archive.namelist())
+                self.assertIn("qa_history.json", archive.namelist())
+                self.assertIn("local-extractive", archive.read("qa.md").decode("utf-8"))
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 

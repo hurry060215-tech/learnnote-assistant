@@ -8365,6 +8365,31 @@ body {
   line-height: 1.5;
 }
 
+.qa-history-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid var(--border, #dbe4f0);
+  border-radius: 7px;
+  background: #f8fbff;
+  padding: 8px 9px;
+  color: var(--muted, #526176);
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.qa-history-bar button {
+  border: 1px solid #9db9f8;
+  border-radius: 6px;
+  background: #ffffff;
+  padding: 5px 8px;
+  color: var(--accent, #1769e8);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 850;
+}
+
 .qa-answer {
   max-width: none;
 }

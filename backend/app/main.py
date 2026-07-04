@@ -19,10 +19,10 @@ from pydantic import ValidationError
 from .config import BACKEND_ORIGIN, DATA_DIR, LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, STATIC_DIR, TEMP_DIR, UPLOAD_DIR, WEB_DIR, ensure_dirs
 from .downloader import MediaDownloader, effective_resource_kind, fallback_page_contexts, preflight_media_resource, rank_media_candidates
 from .media import probe_duration
-from .models import CurrentPageTaskRequest, MediaPreflightRequest, MediaPreflightResult, PagePreflightRequest, RerunFromMediaRequest, ResourceCandidate, TaskOptions, TaskQuestionRequest, TaskRecord
+from .models import CurrentPageTaskRequest, MediaPreflightRequest, MediaPreflightResult, PagePreflightRequest, RerunFromMediaRequest, ResourceCandidate, TaskOptions, TaskQuestionRequest, TaskRecord, now_iso
 from .processor import enrich_resource_candidates_with_active_video, process_current_page_task, process_local_video_task, read_note, read_transcript, read_visual_index
 from .runtime import ffmpeg_bin, ffprobe_bin
-from .storage import create_task, get_task, list_tasks, task_dir, update_task
+from .storage import create_task, get_task, list_tasks, read_json, task_dir, update_task, write_json
 from .summarizer import llm_base_host, llm_provider_name, visual_window_review_question_lines
 
 ensure_dirs()
@@ -64,6 +64,7 @@ LOCAL_VIDEO_MIME_EXTENSIONS = {
     "video/x-msvideo": ".avi",
 }
 LOCAL_UPLOAD_CHUNK_SIZE = 1024 * 1024
+QA_HISTORY_FILE = "qa_history.json"
 
 
 def local_upload_filename(filename: str | None, content_type: str | None = "") -> str:
@@ -168,6 +169,12 @@ def subtitles_filename(task_id: str, title: str, suffix: str = ".srt") -> str:
     stem = stem[:120] or f"learnnote-{task_id}"
     suffix = suffix if suffix.lower() in {".srt", ".vtt", ".ass", ".ssa"} else ".srt"
     return f"{stem}-subtitles{suffix}"
+
+
+def qa_filename(task_id: str, title: str) -> str:
+    stem = _FILENAME_RESERVED_RE.sub("_", title or "").strip(" ._")
+    stem = stem[:120] or f"learnnote-{task_id}"
+    return f"{stem}-qa.md"
 
 
 def manifest_filename(task_id: str, title: str) -> str:
@@ -697,6 +704,7 @@ def render_bundle_manifest(task: TaskRecord, transcript: dict, visual_index: dic
         for grid in task.frame_grids
         if Path(grid.path).name
     ]
+    qa_history = read_task_qa_history(task.id)
 
     return {
         "schema_version": 1,
@@ -774,11 +782,20 @@ def render_bundle_manifest(task: TaskRecord, transcript: dict, visual_index: dic
             "summary_diagnostics": task.summary_diagnostics,
         },
         "study": _render_study_manifest(task),
+        "qa": {
+            "history_count": len(qa_history),
+            "export": "qa.md" if qa_history else "",
+            "history": QA_HISTORY_FILE if qa_history else "",
+            "last_question": qa_history[-1].get("question", "") if qa_history else "",
+            "last_source": qa_history[-1].get("source", "") if qa_history else "",
+        },
         "artifacts": {
             "note": "note.md" if task.note_path else "",
             "subtitles": f"subtitles/{Path(task.subtitle_path).name}" if task.subtitle_path else "",
             "audit": "audit.md",
             "diagnostics": "diagnostics.md",
+            "qa": "qa.md" if qa_history else "",
+            "qa_history": QA_HISTORY_FILE if qa_history else "",
             "visual_windows": "visual_windows.md" if task.visual_windows or task.frame_grids else "",
             "task": "task.json",
             "transcript": "transcript.json",
@@ -1235,6 +1252,12 @@ def task_payload(task: TaskRecord) -> dict:
     payload["audit"] = task_audit_summary(task)
     payload["recovery"] = diagnostic_recovery_profile(task)
     payload["reuse"] = task_reuse_evidence(task)
+    qa_history = read_task_qa_history(task.id)
+    payload["qa"] = {
+        "history_count": len(qa_history),
+        "last_question": qa_history[-1].get("question", "") if qa_history else "",
+        "last_source": qa_history[-1].get("source", "") if qa_history else "",
+    }
     return payload
 
 
@@ -1715,6 +1738,81 @@ def _local_task_answer(question: str, context: str, citations: list[dict]) -> tu
     return "\n".join(answer_lines), local_citations
 
 
+def read_task_qa_history(task_id: str) -> list[dict]:
+    data = read_json(task_id, QA_HISTORY_FILE, {"items": []})
+    if isinstance(data, list):
+        items = data
+    elif isinstance(data, dict):
+        items = data.get("items", [])
+    else:
+        items = []
+    return [item for item in items if isinstance(item, dict)]
+
+
+def append_task_qa_history(task: TaskRecord, request: TaskQuestionRequest, result: dict) -> tuple[dict, list[dict]]:
+    history = read_task_qa_history(task.id)
+    item = {
+        "id": uuid4().hex[:10],
+        "created_at": now_iso(),
+        "question": _clip_text(request.question, 1000),
+        "answer": str(result.get("answer") or ""),
+        "source": str(result.get("source") or ""),
+        "warning": _clip_text(str(result.get("warning") or ""), 500),
+        "provider": str(result.get("provider") or ""),
+        "model": str(result.get("model") or ""),
+        "citations": [
+            {
+                "source": _clip_text(str(citation.get("source") or ""), 120),
+                "label": _clip_text(str(citation.get("label") or ""), 120),
+                "text": _clip_text(str(citation.get("text") or ""), 800),
+            }
+            for citation in (result.get("citations") or [])[:12]
+            if isinstance(citation, dict)
+        ],
+    }
+    history.append(item)
+    write_json(task.id, QA_HISTORY_FILE, {"schema_version": 1, "items": history})
+    return item, history
+
+
+def render_qa_history_markdown(task: TaskRecord, history: list[dict] | None = None) -> str:
+    items = history if history is not None else read_task_qa_history(task.id)
+    lines = [
+        "# LearnNote 问答记录",
+        "",
+        f"- 任务：{task.title}",
+        f"- ID：{task.id}",
+        f"- 页面：{task.page_url or '-'}",
+        f"- 问答数：{len(items)}",
+        "",
+    ]
+    if not items:
+        lines.append("暂无问答记录。")
+        return "\n".join(lines)
+    for index, item in enumerate(items, start=1):
+        lines.extend([
+            f"## Q{index}. {item.get('question') or '-'}",
+            "",
+            f"- 时间：{item.get('created_at') or '-'}",
+            f"- 来源：{item.get('source') or '-'}",
+            f"- 模型：{item.get('provider') or '-'} / {item.get('model') or '-'}",
+        ])
+        if item.get("warning"):
+            lines.append(f"- 提示：{item.get('warning')}")
+        lines.extend(["", str(item.get("answer") or "-"), ""])
+        citations = item.get("citations") if isinstance(item.get("citations"), list) else []
+        if citations:
+            lines.append("### 证据")
+            for citation in citations:
+                if not isinstance(citation, dict):
+                    continue
+                label = citation.get("label") or citation.get("source") or "证据"
+                text = citation.get("text") or ""
+                lines.append(f"- **{label}**：{text}")
+            lines.append("")
+    return "\n".join(lines).strip() + "\n"
+
+
 def _answer_task_question(task: TaskRecord, request: TaskQuestionRequest) -> dict:
     options = merge_task_options(task.options, request.options)
     context, citations = _task_qa_context(task)
@@ -1964,7 +2062,20 @@ def api_task_question(task_id: str, request: TaskQuestionRequest) -> dict:
         task = get_task(task_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Task not found") from exc
-    return _answer_task_question(task, request)
+    result = _answer_task_question(task, request)
+    history_item, history = append_task_qa_history(task, request, result)
+    result["history_item"] = history_item
+    result["history_count"] = len(history)
+    return result
+
+
+@app.get("/api/tasks/{task_id}/qa")
+def api_task_question_history(task_id: str) -> dict:
+    try:
+        task = get_task(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Task not found") from exc
+    return {"task_id": task.id, "items": read_task_qa_history(task.id)}
 
 
 @app.get("/api/tasks/{task_id}/visual-index")
@@ -2013,6 +2124,26 @@ def api_export_visual_windows(task_id: str) -> PlainTextResponse:
     return PlainTextResponse(report, media_type="text/markdown; charset=utf-8", headers=headers)
 
 
+@app.get("/api/tasks/{task_id}/exports/qa")
+def api_export_qa(task_id: str) -> PlainTextResponse:
+    try:
+        task = get_task(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Task not found") from exc
+    history = read_task_qa_history(task.id)
+    if not history:
+        raise HTTPException(status_code=404, detail="QA history not found")
+    report = render_qa_history_markdown(task, history)
+    filename = qa_filename(task.id, task.title)
+    headers = {
+        "Content-Disposition": (
+            f'attachment; filename="learnnote-{task.id}-qa.md"; '
+            f"filename*=UTF-8''{quote(filename)}"
+        )
+    }
+    return PlainTextResponse(report, media_type="text/markdown; charset=utf-8", headers=headers)
+
+
 @app.get("/api/tasks/{task_id}/exports/manifest")
 def api_export_manifest(task_id: str) -> Response:
     try:
@@ -2022,6 +2153,7 @@ def api_export_manifest(task_id: str) -> Response:
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Task not found") from exc
 
+    qa_history = read_task_qa_history(task.id)
     has_artifact = bool(
         task.media_path
         or task.note_path
@@ -2031,6 +2163,7 @@ def api_export_manifest(task_id: str) -> Response:
         or task.frame_grids
         or task.download_attempts
         or task.error_code
+        or qa_history
     )
     if not has_artifact:
         raise HTTPException(status_code=404, detail="Task artifacts not found")
@@ -2059,6 +2192,8 @@ def api_export_bundle(task_id: str) -> Response:
     diagnostics = render_diagnostics_markdown(task)
     audit_report = render_task_audit_markdown(task)
     visual_windows = render_visual_windows_markdown(task)
+    qa_history = read_task_qa_history(task.id)
+    qa_report = render_qa_history_markdown(task, qa_history)
     manifest = render_bundle_manifest(task, transcript, visual_index)
     has_artifact = bool(
         note.strip()
@@ -2069,6 +2204,7 @@ def api_export_bundle(task_id: str) -> Response:
         or task.media_path
         or task.download_attempts
         or task.error_code
+        or qa_history
     )
     if not has_artifact:
         raise HTTPException(status_code=404, detail="Task artifacts not found")
@@ -2079,6 +2215,9 @@ def api_export_bundle(task_id: str) -> Response:
         archive.writestr("audit.md", audit_report)
         archive.writestr("diagnostics.md", diagnostics)
         archive.writestr("visual_windows.md", visual_windows)
+        if qa_history:
+            archive.writestr("qa.md", qa_report)
+            archive.writestr(QA_HISTORY_FILE, json.dumps({"schema_version": 1, "items": qa_history}, ensure_ascii=False, indent=2))
         if note.strip():
             archive.writestr("note.md", note)
         archive.writestr("task.json", json.dumps(task.model_dump(mode="json"), ensure_ascii=False, indent=2))
