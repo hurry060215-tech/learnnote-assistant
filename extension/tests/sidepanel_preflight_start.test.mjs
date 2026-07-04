@@ -204,3 +204,7 @@ assert.equal(activeOnlyPreflightCandidates.length, 1);
 assert.equal(activeOnlyPreflightCandidates[0].source, "activeVideo");
 assert.equal(activeOnlyPreflightCandidates[0].url, "https://cdn.example.com/current-player?id=active");
 assert.equal(context.selectedResourcesForTask()[0].user_selected, true);
+
+assert.equal(context.mediaKindFromUrl("https://cdn.example.com/live/master.m3u8?token=abc"), "hls");
+assert.equal(context.mediaKindFromUrl("https://cdn.example.com/live/manifest.mpd?token=abc"), "dash");
+assert.equal(context.mediaKindFromUrl("https://cdn.example.com/course/dashboard-player?id=42"), "video");

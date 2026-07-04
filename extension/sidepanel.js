@@ -694,8 +694,8 @@ const PIPELINE_STEPS = [
 
 const DOWNLOAD_ERROR_CODES = new Set(["no_media_found", "auth_required", "drm_or_encrypted", "download_forbidden", "unsupported_manifest"]);
 const DOWNLOADABLE_KINDS = new Set(["video", "hls", "dash"]);
-const HLS_URL_RE = /\.m3u8(?:[?#]|$)|mpegurl/i;
-const DASH_URL_RE = /\.mpd(?:[?#]|$)|dash/i;
+const HLS_URL_RE = /\.m3u8(?:[?#]|$)/i;
+const DASH_URL_RE = /\.mpd(?:[?#]|$)/i;
 const MEDIA_URL_RE = /\.(mp4|m4v|mov|mkv|webm|flv|avi)(?:[?#]|$)/i;
 
 function failedStepIndex(task) {
