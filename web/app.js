@@ -3016,6 +3016,10 @@ function taskExportUrl(task, type) {
   return apiUrl(`/api/tasks/${encodeURIComponent(task.id)}/exports/${type}`);
 }
 
+function taskClipExportUrl(task, windowId) {
+  return taskExportUrl(task, `clips/${encodeURIComponent(windowId || "window")}`);
+}
+
 function taskMediaPreviewUrl(task) {
   if (!task?.id || !hasExportableMedia(task)) return "";
   return apiUrl(`/api/tasks/${encodeURIComponent(task.id)}/media`);
@@ -4704,6 +4708,7 @@ function visualStudyDeck(task, transcript = null) {
             ${visualStudyCheckpointHtml(window, transcript)}
             ${visualStudyQuestionHtml(window, transcript)}
             ${visualStudyChecklistHtml(window, transcript)}
+            ${hasExportableMedia(task) ? `<p class="visual-clip-action"><a href="${escapeHtml(taskClipExportUrl(task, window.id || `W${String(index + 1).padStart(3, "0")}`))}">导出片段</a></p>` : ""}
             <div class="visual-study-meta">
               <em>${Number(window.frame_count || 0)} 帧</em>
               ${frameTimestampText(window) ? `<em>${escapeHtml(frameTimestampText(window))}</em>` : ""}

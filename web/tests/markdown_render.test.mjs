@@ -878,6 +878,7 @@ assert.match(reuseReadingRailHtml, /data-rerun-from-media="task-reuse-rail"/);
 
 const visualDeckHtml = context.visualStudyDeck({
   id: "task-visual-deck",
+  media_path: "D:/Projects/learnnote-assistant/data/tasks/task-visual-deck/media.mp4",
   title: "<script>bad()</script> 视觉课程",
   summary_source: "vision-llm",
   options: { grid_columns: 3, grid_rows: 3 },
@@ -930,6 +931,8 @@ assert.doesNotMatch(visualDeckHtml, /src="javascript:alert/);
 assert.match(visualDeckHtml, /&lt;script&gt;alert\(1\)&lt;\/script&gt; PPT 演示/);
 assert.match(visualDeckHtml, /data-switch-result-tab="transcript"/);
 assert.match(visualDeckHtml, /data-switch-result-tab="note"/);
+assert.match(visualDeckHtml, /\/api\/tasks\/task-visual-deck\/exports\/clips\/W001/);
+assert.match(visualDeckHtml, /导出片段/);
 assert.match(visualDeckHtml, /data-media-seek-time="0\.000"/);
 assert.match(visualDeckHtml, /data-window-start="180\.000"/);
 assert.match(visualDeckHtml, />回看此段<\/button>/);

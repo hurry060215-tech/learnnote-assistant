@@ -18,7 +18,7 @@ from pydantic import ValidationError
 
 from .config import BACKEND_ORIGIN, DATA_DIR, LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, MODEL_CACHE_DIR, STATIC_DIR, TASK_DIR, TEMP_DIR, UPLOAD_DIR, WEB_DIR, ensure_dirs
 from .downloader import MediaDownloader, effective_resource_kind, fallback_page_contexts, preflight_media_resource, rank_media_candidates
-from .media import probe_duration
+from .media import MediaProcessingError, extract_video_clip, probe_duration
 from .models import CurrentPageTaskRequest, MediaPreflightRequest, MediaPreflightResult, PagePreflightRequest, RerunFromMediaRequest, ResourceCandidate, TaskOptions, TaskQuestionRequest, TaskRecord, now_iso
 from .processor import enrich_resource_candidates_with_active_video, process_current_page_task, process_local_video_task, read_note, read_transcript, read_visual_index
 from .runtime import ffmpeg_bin, ffprobe_bin
@@ -162,6 +162,13 @@ def visual_windows_filename(task_id: str, title: str) -> str:
     stem = _FILENAME_RESERVED_RE.sub("_", title or "").strip(" ._")
     stem = stem[:120] or f"learnnote-{task_id}"
     return f"{stem}-visual-windows.md"
+
+
+def clip_filename(task_id: str, title: str, window_id: str) -> str:
+    stem = _FILENAME_RESERVED_RE.sub("_", title or "").strip(" ._")
+    stem = stem[:100] or f"learnnote-{task_id}"
+    safe_window = _FILENAME_RESERVED_RE.sub("_", window_id or "").strip(" ._") or "window"
+    return f"{stem}-{safe_window}.mp4"
 
 
 def subtitles_filename(task_id: str, title: str, suffix: str = ".srt") -> str:
@@ -2594,6 +2601,19 @@ def api_export_media(task_id: str) -> FileResponse:
     return FileResponse(path, media_type="video/mp4", headers=headers)
 
 
+@app.get("/api/tasks/{task_id}/exports/clips/{window_id}")
+def api_export_visual_clip(task_id: str, window_id: str) -> FileResponse:
+    task, path, resolved_id = _task_visual_clip_file(task_id, window_id)
+    filename = clip_filename(task.id, task.title, resolved_id)
+    headers = {
+        "Content-Disposition": (
+            f'attachment; filename="learnnote-{task.id}-{resolved_id}.mp4"; '
+            f"filename*=UTF-8''{quote(filename)}"
+        )
+    }
+    return FileResponse(path, media_type="video/mp4", headers=headers)
+
+
 def _task_subtitle_file(task_id: str) -> tuple[TaskRecord, Path]:
     try:
         task = get_task(task_id)
@@ -2618,6 +2638,36 @@ def _task_media_file(task_id: str) -> tuple[TaskRecord, Path]:
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Media not found")
     return task, path
+
+
+def _task_visual_clip_range(task: TaskRecord, window_id: str) -> tuple[str, float, float]:
+    target = (window_id or "").strip().lower()
+    windows = list(task.visual_windows or [])
+    if windows:
+        for index, window in enumerate(windows, start=1):
+            current_id = str(window.id or f"W{index:03d}")
+            if current_id.lower() == target:
+                return current_id, float(window.start or 0), float(window.end or 0)
+    for index, grid in enumerate(task.frame_grids or [], start=1):
+        current_id = f"W{index:03d}"
+        if current_id.lower() == target:
+            return current_id, float(grid.start or 0), float(grid.end or 0)
+    raise HTTPException(status_code=404, detail={"code": "visual_window_not_found", "message": "Visual window not found"})
+
+
+def _task_visual_clip_file(task_id: str, window_id: str) -> tuple[TaskRecord, Path, str]:
+    task, media_path = _task_media_file(task_id)
+    resolved_id, start, end = _task_visual_clip_range(task, window_id)
+    if end <= start:
+        raise HTTPException(status_code=400, detail={"code": "invalid_visual_window", "message": "Visual window has no positive duration"})
+    clips_dir = task_dir(task.id) / "clips"
+    clip_path = clips_dir / f"{_FILENAME_RESERVED_RE.sub('_', resolved_id).strip(' ._') or 'window'}.mp4"
+    if not clip_path.exists() or clip_path.stat().st_size <= 0:
+        try:
+            extract_video_clip(media_path, clip_path, start, end)
+        except MediaProcessingError as exc:
+            raise HTTPException(status_code=500, detail={"code": "clip_export_failed", "message": str(exc)}) from exc
+    return task, clip_path, resolved_id
 
 
 @app.get("/api/tasks/{task_id}/media")

@@ -507,6 +507,57 @@ class LocalUploadValidationTests(unittest.TestCase):
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
+    def test_visual_window_clip_export_generates_and_reuses_cached_clip(self) -> None:
+        task = create_task("local", "Clip lesson", "", mode="local")
+        work_dir = task_dir(task.id)
+        media = work_dir / "media.mp4"
+        try:
+            media.write_bytes(b"fake source media")
+            update_task(
+                task.id,
+                status="success",
+                phase="completed",
+                progress=100,
+                media_path=str(media),
+                visual_windows=[
+                    VisualWindow(
+                        id="W001",
+                        index=1,
+                        start=10,
+                        end=40,
+                        frame_count=2,
+                        grid_url="/data/tasks/clip/grids/grid_000.jpg",
+                    )
+                ],
+            )
+
+            calls = []
+
+            def fake_extract(video_path, output_path, start, end):
+                calls.append((Path(video_path), Path(output_path), start, end))
+                Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+                Path(output_path).write_bytes(b"clip bytes")
+                return Path(output_path)
+
+            with patch("app.main.extract_video_clip", side_effect=fake_extract):
+                response = self.client.get(f"/api/tasks/{task.id}/exports/clips/W001")
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.content, b"clip bytes")
+                self.assertIn("video/mp4", response.headers["content-type"])
+                self.assertIn("W001", response.headers["content-disposition"])
+                self.assertEqual(calls[0][0], media)
+                self.assertEqual(calls[0][2:], (10.0, 40.0))
+
+                cached = self.client.get(f"/api/tasks/{task.id}/exports/clips/W001")
+                self.assertEqual(cached.status_code, 200)
+                self.assertEqual(cached.content, b"clip bytes")
+                self.assertEqual(len(calls), 1)
+
+            missing = self.client.get(f"/api/tasks/{task.id}/exports/clips/W999")
+            self.assertEqual(missing.status_code, 404)
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
     def test_page_preflight_report_ranks_candidates_without_probe(self) -> None:
         response = self.client.post(
             "/api/media/preflight-current-page",

@@ -5130,6 +5130,9 @@ function bindTaskOverviewActions() {
   document.querySelectorAll("button[data-export]").forEach(button => {
     button.onclick = () => openTaskExport(button.dataset.export);
   });
+  document.querySelectorAll("button[data-export-clip-window]").forEach(button => {
+    button.onclick = () => openTaskExport(`clips/${encodeURIComponent(button.dataset.exportClipWindow || "window")}`);
+  });
   document.querySelectorAll("button[data-rerun-from-media]").forEach(button => {
     button.onclick = () => rerunTaskFromMedia(button.dataset.rerunFromMedia);
   });
@@ -5401,6 +5404,7 @@ function visualStudyDeck(task, transcript = null) {
             ${sideVisualStudyCheckpointHtml(window, transcript)}
             ${sideVisualStudyQuestionHtml(window, transcript)}
             ${sideVisualStudyChecklistHtml(window, transcript)}
+            ${hasExportableMedia(task) ? `<p class="side-visual-clip-action"><button type="button" data-export-clip-window="${escapeHtml(window.id || `W${String(index + 1).padStart(3, "0")}`)}">导出片段</button></p>` : ""}
             <div class="side-visual-meta">
               <em>${Number(window.frame_count || 0)} 帧</em>
               ${frameTimestampText(window) ? `<em>${escapeHtml(frameTimestampText(window))}</em>` : ""}

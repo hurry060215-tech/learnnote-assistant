@@ -103,6 +103,45 @@ def normalize_video(input_path: Path, output_path: Path) -> Path:
     return output_path
 
 
+def extract_video_clip(video_path: Path, output_path: Path, start: float, end: float) -> Path:
+    require_ffmpeg()
+    ffmpeg = ffmpeg_bin()
+    start_value = max(0.0, float(start or 0))
+    duration = max(0.5, float(end or 0) - start_value)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.unlink(missing_ok=True)
+    _run(
+        [
+            ffmpeg,
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-ss",
+            f"{start_value:.3f}",
+            "-i",
+            str(video_path),
+            "-t",
+            f"{duration:.3f}",
+            "-map",
+            "0:v:0?",
+            "-map",
+            "0:a:0?",
+            "-c",
+            "copy",
+            "-avoid_negative_ts",
+            "make_zero",
+            "-movflags",
+            "+faststart",
+            str(output_path),
+        ],
+        "瑙嗛鍒囩墖瀵煎嚭澶辫触",
+    )
+    if not output_path.exists() or output_path.stat().st_size <= 0:
+        raise MediaProcessingError("瑙嗛鍒囩墖瀵煎嚭澶辫触锛氳緭鍑烘枃浠朵负绌?")
+    return output_path
+
+
 def extract_audio(video_path: Path, output_path: Path) -> Path:
     require_ffmpeg()
     ffmpeg = ffmpeg_bin()
