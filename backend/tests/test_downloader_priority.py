@@ -234,6 +234,23 @@ class DirectJsonMediaHandler(QuietHandler):
         super().do_GET()
 
 
+class EmptyJsonPlayHandler(DirectJsonMediaHandler):
+    def do_GET(self) -> None:
+        path = urlparse(self.path).path
+        if path == "/api/play":
+            if not self._has_browser_headers():
+                self.send_error(403, "missing browser headers")
+                return
+            body = b'{"data":{"status":"ok","message":"no media url yet"}}'
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        super().do_GET()
+
+
 class ChaoxingJsonArrayMediaHandler(DirectJsonMediaHandler):
     media_body = b"\x00\x00\x00\x18ftypmp42" + (b"chaoxing-extensionless" * 512)
 
@@ -954,6 +971,44 @@ class DownloaderPriorityTests(unittest.TestCase):
                 self.assertEqual(selected.source, "direct-response")
                 self.assertEqual([attempt.strategy for attempt in downloader.attempts[:2]], ["direct-response-scan", "direct-file"])
                 self.assertGreaterEqual(DirectPostJsonMediaHandler.seen_bodies.count(DirectPostJsonMediaHandler.required_body), 2)
+            finally:
+                server.shutdown()
+                server.server_close()
+
+    def test_direct_json_play_endpoint_without_media_returns_structured_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            server = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(EmptyJsonPlayHandler, directory=str(root)))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                page_url = f"http://127.0.0.1:{server.server_port}/lesson.html"
+                play_url = f"http://127.0.0.1:{server.server_port}/api/play"
+                candidate = ResourceCandidate(
+                    url=play_url,
+                    source="webRequest",
+                    kind="video",
+                    mime="application/json",
+                    score=90,
+                    label="empty play API",
+                    request_headers={
+                        "User-Agent": EmptyJsonPlayHandler.required_user_agent,
+                        "X-Requested-With": EmptyJsonPlayHandler.required_x_requested_with,
+                    },
+                )
+
+                preflight = preflight_media_resource(candidate, [], page_url)
+                self.assertTrue(preflight.ok)
+                self.assertFalse(preflight.downloadable)
+                self.assertEqual(preflight.strategy, "direct-file-probe")
+                self.assertEqual(preflight.code, "download_forbidden")
+                self.assertIn("no downloadable video", preflight.message)
+
+                downloader = MediaDownloader(root / "task")
+                with self.assertRaises(DownloadError) as raised:
+                    downloader._download_file(candidate, [], page_url, "Empty JSON API")
+                self.assertEqual(raised.exception.code, "download_forbidden")
+                self.assertIn("no downloadable video", raised.exception.message)
             finally:
                 server.shutdown()
                 server.server_close()

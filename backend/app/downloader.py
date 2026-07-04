@@ -2792,7 +2792,7 @@ class MediaDownloader:
         title: str,
     ) -> tuple[Path, ResourceCandidate] | None:
         candidates = _embedded_media_candidates_from_text_response(parent, body, base_url, referer)
-        if not candidates and not has_only_unresolved_blob_media:
+        if not candidates:
             return None
 
         last_error: DownloadError | None = None
