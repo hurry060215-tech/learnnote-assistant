@@ -1537,8 +1537,12 @@ def render_diagnostics_markdown(task: TaskRecord) -> str:
             f"- LLM Failure：{task.summary_diagnostics.get('llm_failure_stage', '-')}"
             f" / {task.summary_diagnostics.get('llm_failure_code', '-')}"
             f" / {task.summary_diagnostics.get('llm_failure_reason', '-')}",
+            f"- LLM Events：{task.summary_diagnostics.get('llm_event_count', 0)}",
+            f"- LLM Last Failure：{task.summary_diagnostics.get('llm_last_failure', {})}",
             f"- 送入视觉图片：{task.summary_diagnostics.get('vision_image_count', '-')}/{task.summary_diagnostics.get('vision_grid_count', '-')}",
             f"- 视觉调用状态：{task.summary_diagnostics.get('vision_call_status', '-')}",
+            f"- 视觉失败批次：{task.summary_diagnostics.get('vision_failed_batch_count', 0)}",
+            f"- 视觉图片输入被拒：{'yes' if task.summary_diagnostics.get('vision_model_rejected_image') else 'no'}",
             f"- 视觉批次计划：{task.summary_diagnostics.get('vision_expected_batch_count', '-')}"
             f" 批，每批最多 {task.summary_diagnostics.get('vision_batch_size', '-')} 张网格",
             f"- 省略网格：{task.summary_diagnostics.get('omitted_frame_grid_count', '-')}",

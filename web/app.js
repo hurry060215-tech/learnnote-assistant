@@ -617,6 +617,18 @@ function compactIdList(values, limit = 3) {
   return `${ids.slice(0, limit).join(", ")}${suffix}`;
 }
 
+function llmAuditFlags(diag = {}) {
+  const flags = [];
+  if (diag.vision_failed_batch_count) flags.push(`视觉批次失败 ${diag.vision_failed_batch_count}`);
+  if (diag.vision_model_rejected_image) flags.push("模型拒绝图片输入");
+  if (diag.llm_event_count) flags.push(`LLM 事件 ${diag.llm_event_count}`);
+  const lastFailure = diag.llm_last_failure || {};
+  if (lastFailure.stage || lastFailure.code) {
+    flags.push(`最后失败 ${lastFailure.stage || "llm"}/${lastFailure.code || "unknown"}`);
+  }
+  return flags;
+}
+
 function summaryDiagnosticText(task) {
   const diag = task?.summary_diagnostics || {};
   if (!Object.keys(diag).length) return "-";
@@ -640,6 +652,7 @@ function summaryDiagnosticText(task) {
     missingWindowIds ? `缺图 ${missingWindowIds}` : "",
     omittedWindowIds ? `省略窗口 ${omittedWindowIds}` : "",
     missingImages ? "\u5b58\u5728\u7f3a\u5931\u56fe\u7247" : "",
+    ...llmAuditFlags(diag),
     diag.used_page_text_fallback ? `页面文本 ${diag.page_text_char_count ?? 0} 字` : "",
     diag.used_page_text_fallback ? `浏览器字幕 ${diag.browser_subtitle_count ?? 0} 条` : "",
     diag.used_page_text_fallback ? `合并文本 ${diag.combined_text_char_count ?? 0} 字` : "",
@@ -3017,6 +3030,7 @@ function visualCoverageHtml(task) {
   const flags = [
     missingIds.length ? `缺图 ${compactIdList(missingIds)}` : "",
     omittedIds.length ? `超限省略 ${compactIdList(omittedIds)}` : "",
+    ...llmAuditFlags(diag),
     diag.summary_warning || "",
     diag.used_page_text_fallback ? "已使用页面文本/浏览器字幕兜底" : ""
   ].filter(Boolean);

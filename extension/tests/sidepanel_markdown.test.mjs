@@ -151,6 +151,10 @@ const summaryDiagnostic = context.summaryDiagnosticText({
     llm_failure_stage: "vision_merge",
     llm_failure_code: "api_error",
     llm_failure_reason: "HTTP 429",
+    llm_event_count: 2,
+    llm_last_failure: { stage: "vision_batch", code: "api_error" },
+    vision_failed_batch_count: 1,
+    vision_model_rejected_image: true,
     visual_window_count: 2,
     frame_grid_count: 2,
     vision_grid_count: 2,
@@ -168,6 +172,10 @@ const summaryDiagnostic = context.summaryDiagnosticText({
 
 assert.match(summaryDiagnostic, /Provider openrouter/);
 assert.match(summaryDiagnostic, /Base openrouter\.ai/);
+assert.match(summaryDiagnostic, /视觉批次失败 1/);
+assert.match(summaryDiagnostic, /模型拒绝图片输入/);
+assert.match(summaryDiagnostic, /LLM 事件 2/);
+assert.match(summaryDiagnostic, /最后失败 vision_batch\/api_error/);
 assert.match(summaryDiagnostic, /LLM 失败 vision_merge\/api_error/);
 assert.match(summaryDiagnostic, /原因 HTTP 429/);
 

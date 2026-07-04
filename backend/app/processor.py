@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import re
 import shutil
 import time
 from pathlib import Path
@@ -12,7 +13,7 @@ from .downloader import DownloadError, MediaDownloader, classify_resource, effec
 from .media import build_frame_grids, extract_audio, extract_embedded_subtitle, extract_frames, normalize_video
 from .models import ActiveVideoInfo, BrowserSubtitleCue, CurrentPageTaskRequest, DownloadAttempt, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
 from .storage import get_task, save_task, task_dir, update_task, write_json
-from .summarizer import MAX_GRIDS_PER_VISION_CALL, MAX_VISION_GRIDS, build_visual_windows, llm_base_host, llm_provider_name, summarize_page_text_with_diagnostics, summarize_with_diagnostics
+from .summarizer import MAX_GRIDS_PER_VISION_CALL, MAX_VISION_GRIDS, build_visual_windows, llm_base_host, llm_provider_name, summarize_page_text_with_diagnostics, summarize_with_diagnostics_audit as summarize_with_diagnostics
 from .transcriber import transcript_from_subtitle, transcribe_audio, transcribe_audio_openai_compatible
 
 
@@ -483,6 +484,39 @@ def _llm_failure_code(summary_source: str, summary_warning: str, configured: boo
     return "partial_vision_failure"
 
 
+def _safe_llm_events(events: list[dict] | None, limit: int = 20) -> list[dict]:
+    safe_events: list[dict] = []
+    for event in (events or [])[:limit]:
+        if not isinstance(event, dict):
+            continue
+        safe_events.append({
+            key: value
+            for key, value in event.items()
+            if key in {"stage", "code", "error_type", "message", "batch", "model"}
+            and value not in (None, "", [])
+        })
+    return safe_events
+
+
+def _llm_event_failure(events: list[dict]) -> dict:
+    for event in reversed(events or []):
+        code = str(event.get("code") or "").strip()
+        if code and code not in {"ok", "success"}:
+            return event
+    return {}
+
+
+def _vision_model_rejected_image(events: list[dict]) -> bool:
+    pattern = "image|vision|modal|multimodal|content|unsupported|invalid"
+    for event in events or []:
+        if event.get("stage") != "vision_batch":
+            continue
+        text = " ".join(str(event.get(key) or "") for key in ("code", "error_type", "message")).lower()
+        if re.search(pattern, text):
+            return True
+    return False
+
+
 def build_summary_diagnostics(
     task_id: str,
     title: str,
@@ -492,6 +526,7 @@ def build_summary_diagnostics(
     visual_windows: list[VisualWindow],
     summary_source: str,
     summary_warning: str,
+    llm_events: list[dict] | None = None,
 ) -> dict:
     eligible_grids = grids[:MAX_VISION_GRIDS]
     effective_llm_base_url = options.llm_base_url or LLM_BASE_URL
@@ -551,7 +586,16 @@ def build_summary_diagnostics(
         vision_call_status = "missing_api_key"
     else:
         vision_call_status = "local_template_fallback"
+    safe_llm_events = _safe_llm_events(llm_events)
+    last_llm_failure = _llm_event_failure(safe_llm_events)
+    failed_vision_batch_count = sum(
+        1
+        for event in safe_llm_events
+        if event.get("stage") == "vision_batch" and str(event.get("code") or "").lower() not in {"", "ok", "success"}
+    )
     llm_failure_code = _llm_failure_code(summary_source, summary_warning, llm_configured)
+    if not llm_failure_code and last_llm_failure and summary_source == "local-template":
+        llm_failure_code = str(last_llm_failure.get("code") or "llm_unavailable")
     return {
         "task_id": task_id,
         "title": title,
@@ -565,8 +609,12 @@ def build_summary_diagnostics(
         "llm_base_host": llm_base_host(effective_llm_base_url),
         "llm_provider": llm_provider_name(effective_llm_base_url),
         "llm_failure_code": llm_failure_code,
-        "llm_failure_stage": _warning_field(summary_warning, "stage") if llm_failure_code else "",
-        "llm_failure_reason": _warning_field(summary_warning, "reason") if llm_failure_code else "",
+        "llm_failure_stage": (_warning_field(summary_warning, "stage") or last_llm_failure.get("stage") or "") if llm_failure_code else "",
+        "llm_failure_reason": (_warning_field(summary_warning, "reason") or last_llm_failure.get("message") or last_llm_failure.get("error_type") or "") if llm_failure_code else "",
+        "llm_event_count": len(safe_llm_events),
+        "llm_events": safe_llm_events,
+        "llm_last_event": safe_llm_events[-1] if safe_llm_events else {},
+        "llm_last_failure": last_llm_failure,
         "note_style": options.note_style,
         "note_template": options.note_template,
         "summary_depth": options.summary_depth,
@@ -578,6 +626,8 @@ def build_summary_diagnostics(
         "vision_expected_batch_count": len(vision_call_plan),
         "vision_call_status": vision_call_status,
         "vision_call_plan": vision_call_plan,
+        "vision_failed_batch_count": failed_vision_batch_count,
+        "vision_model_rejected_image": _vision_model_rejected_image(safe_llm_events),
         "vision_grid_count": len(eligible_grids),
         "vision_image_count": eligible_image_count,
         "vision_window_ids": eligible_window_ids,
@@ -881,7 +931,12 @@ def _process_video_file(
     save_task(record)
 
     update_task(task_id, phase="summarizing", progress=84, message="正在生成 Markdown 笔记")
-    note, summary_source, summary_warning = summarize_with_diagnostics(title, transcript, grids, options, page_url)
+    summary_result = summarize_with_diagnostics(title, transcript, grids, options, page_url)
+    if len(summary_result) == 4:
+        note, summary_source, summary_warning, llm_events = summary_result
+    else:
+        note, summary_source, summary_warning = summary_result
+        llm_events = []
     summary_diagnostics = build_summary_diagnostics(
         task_id=task_id,
         title=title,
@@ -891,6 +946,7 @@ def _process_video_file(
         visual_windows=visual_windows,
         summary_source=summary_source,
         summary_warning=summary_warning,
+        llm_events=llm_events,
     )
     summary_diagnostics_path = write_json(task_id, "summary_diagnostics.json", summary_diagnostics)
     note_path = work_dir / "note.md"

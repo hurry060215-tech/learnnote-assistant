@@ -38,7 +38,7 @@ from app.downloader import (
 from app.main import render_diagnostics_markdown, task_audit_summary
 from app.models import ActiveVideoInfo, BrowserCookie, CurrentPageTaskRequest, DownloadAttempt, DrmSignal, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
 from app.processor import build_summary_diagnostics, cookie_sync_summary, download_progress_updater, download_status_updater, enrich_resource_candidates_with_active_video, process_current_page_task, process_local_video_task, read_note, read_transcript, redacted_request_dump, redacted_resource
-from app.summarizer import MAX_GRIDS_PER_VISION_CALL, MAX_VISION_GRIDS, build_visual_windows, ensure_visual_appendix, llm_provider_name, local_markdown_note, summarize_with_diagnostics
+from app.summarizer import MAX_GRIDS_PER_VISION_CALL, MAX_VISION_GRIDS, build_visual_windows, ensure_visual_appendix, llm_provider_name, local_markdown_note, summarize_with_diagnostics, summarize_with_diagnostics_audit
 from app.storage import create_task, get_task, task_dir
 from app.transcriber import transcribe_audio_openai_compatible, transcript_from_subtitle
 
@@ -2975,6 +2975,63 @@ class SummaryFallbackTests(unittest.TestCase):
         self.assertIn("code=api_error", warning)
         self.assertIn("rate limit from provider", warning)
         self.assertIn("Provider failure", note)
+
+    def test_summary_diagnostics_include_llm_audit_events(self) -> None:
+        class FakeCompletions:
+            def create(self, **kwargs):
+                message = kwargs["messages"][0]["content"]
+                if isinstance(message, list) and any(item.get("type") == "image_url" for item in message):
+                    raise RuntimeError("vision model rejected image content")
+                return types.SimpleNamespace(
+                    choices=[types.SimpleNamespace(message=types.SimpleNamespace(content="# Text fallback\n\nRecovered from transcript."))]
+                )
+
+        class FakeOpenAI:
+            def __init__(self, **kwargs):
+                self.chat = types.SimpleNamespace(completions=FakeCompletions())
+
+        fake_openai = types.ModuleType("openai")
+        fake_openai.OpenAI = FakeOpenAI
+        transcript = TranscriptResult(
+            source="unit",
+            full_text="visual transcript",
+            segments=[TranscriptSegment(start=0, end=4, text="visual transcript")],
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            image = Path(tmp) / "grid.jpg"
+            image.write_bytes(b"fake-image")
+            grids = [FrameGrid(path=str(image), url="http://127.0.0.1/grid.jpg", start=0, end=20, frame_count=2)]
+            windows = build_visual_windows(transcript, grids)
+
+            with patch.dict(sys.modules, {"openai": fake_openai}):
+                note, source, warning, events = summarize_with_diagnostics_audit(
+                    "Vision rejected",
+                    transcript,
+                    grids,
+                    TaskOptions(llm_api_key="test-key", llm_model="vision-model"),
+                    "https://course.example",
+                )
+
+            diagnostics = build_summary_diagnostics(
+                "task-vision-rejected",
+                "Vision rejected",
+                "https://course.example",
+                TaskOptions(llm_api_key="test-key", llm_model="vision-model"),
+                grids,
+                windows,
+                source,
+                warning,
+                llm_events=events,
+            )
+
+        self.assertEqual(source, "text-llm")
+        self.assertIn("Text fallback", note)
+        self.assertGreaterEqual(diagnostics["llm_event_count"], 1)
+        self.assertEqual(diagnostics["llm_last_failure"]["stage"], "vision_batch")
+        self.assertEqual(diagnostics["llm_last_failure"]["code"], "api_error")
+        self.assertEqual(diagnostics["vision_failed_batch_count"], 1)
+        self.assertTrue(diagnostics["vision_model_rejected_image"])
+        self.assertEqual(diagnostics["llm_failure_code"], "")
 
     def test_visual_appendix_is_appended_to_llm_notes(self) -> None:
         transcript = TranscriptResult(

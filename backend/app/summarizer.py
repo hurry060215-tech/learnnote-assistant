@@ -665,14 +665,27 @@ def summarize_with_diagnostics(
     options: TaskOptions,
     page_url: str = "",
 ) -> tuple[str, str, str]:
+    note, source, warning, _events = summarize_with_diagnostics_audit(title, transcript, grids, options, page_url)
+    return note, source, warning
+
+
+def summarize_with_diagnostics_audit(
+    title: str,
+    transcript: TranscriptResult,
+    grids: list[FrameGrid],
+    options: TaskOptions,
+    page_url: str = "",
+) -> tuple[str, str, str, list[dict]]:
+    events: list[dict] = []
     api_key = options.llm_api_key or LLM_API_KEY
     if not api_key:
+        events.append({"stage": "configuration", "code": "missing_api_key"})
         return (
             local_markdown_note(title, transcript, grids, page_url, options),
             "local-template",
             "未配置 OpenAI-compatible API Key，已使用本地画面索引模板生成笔记。",
+            events,
         )
-    events: list[dict] = []
     generated = summarize_with_llm(title, transcript, grids, options, page_url, events)
     if generated:
         note, source = generated
@@ -684,18 +697,21 @@ def summarize_with_diagnostics(
                 failed_vision_batches,
                 f"{len(failed_vision_batches)} vision batch(es) failed; merged successful visual summaries.",
             )
-        return note, source, warning
+        return note, source, warning, events
     fallback_warning = "Vision/LLM summary failed or unavailable; using local frame-index template."
     if events:
         return (
             local_markdown_note(title, transcript, grids, page_url, options),
             "local-template",
             llm_warning_from_events(options, events, fallback_warning),
+            events,
         )
+    events.append({"stage": "summary", "code": "llm_unavailable"})
     return (
         local_markdown_note(title, transcript, grids, page_url, options),
         "local-template",
         "视觉/LLM 总结调用失败或不可用，已降级为本地画面索引模板。",
+        events,
     )
 
 
