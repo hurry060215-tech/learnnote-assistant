@@ -2389,6 +2389,53 @@ function healthMediaChipText(data) {
   return "后端 · 直取/切片就绪";
 }
 
+function assistantCapabilities(data = lastHealthData) {
+  return data?.assistant_capabilities || {};
+}
+
+function capabilityList(items, fallback, limit = 5) {
+  const values = Array.isArray(items) ? items.map(item => String(item || "").trim()).filter(Boolean) : [];
+  const chosen = values.length ? values : fallback;
+  return chosen.slice(0, limit);
+}
+
+function healthDirectMediaFormats(data = lastHealthData) {
+  const direct = assistantCapabilities(data).direct_media || {};
+  const files = capabilityList(direct.file_extensions, ["mp4", "mkv", "webm", "flv", "avi"], 4);
+  const manifests = capabilityList(direct.manifests, ["m3u8", "mpd"], 2);
+  return [...files, ...manifests].join("/");
+}
+
+function healthDirectDetectorText(data = lastHealthData) {
+  const direct = assistantCapabilities(data).direct_media || {};
+  const labels = {
+    dom_video: "DOM",
+    performance_resource: "Performance",
+    web_request: "webRequest",
+    player_runtime: "播放器",
+    yt_dlp: "yt-dlp"
+  };
+  return capabilityList(direct.detectors, ["dom_video", "performance_resource", "web_request", "yt_dlp"], 4)
+    .map(item => labels[item] || item)
+    .join(" + ");
+}
+
+function healthDirectBoundaryText(data = lastHealthData) {
+  const labels = {
+    tab_recording: "不录制",
+    drm_bypass: "不绕过 DRM",
+    progress_spoofing: "不刷课",
+    auto_answering: "不自动答题"
+  };
+  return capabilityList(assistantCapabilities(data).non_goals, ["tab_recording", "drm_bypass", "progress_spoofing"], 3)
+    .map(item => labels[item] || item)
+    .join(" · ");
+}
+
+function healthDirectChipText(data = lastHealthData) {
+  return `${healthDirectMediaFormats(data)} · ${healthDirectBoundaryText(data)}`;
+}
+
 function healthDataChipText(data) {
   const paths = data?.data_paths || {};
   const drive = paths.data_drive || "";
@@ -2418,8 +2465,8 @@ function emptyReadinessItems(data = lastHealthData) {
     {
       state: "pass",
       label: "本地视频检查",
-      value: "拖拽自动上传",
-      detail: "平台直取失败时，mp4、mkv、webm、flv、avi 可走同一套切片管线。"
+      value: `${healthDirectMediaFormats(data)} 可上传`,
+      detail: "平台直取失败时，本地视频会走同一套转写、抽帧、视觉窗口和图文总结管线。"
     },
     {
       state: data?.data_paths?.all_under_data_dir && data?.data_paths?.all_on_data_drive ? "pass" : "warn",
@@ -2430,8 +2477,8 @@ function emptyReadinessItems(data = lastHealthData) {
     {
       state: "warn",
       label: "当前页直取检查",
-      value: "需要扩展侧栏",
-      detail: "只使用可访问媒体 URL、manifest、播放器源和一次性 cookie，不录制页面。"
+      value: healthDirectMediaFormats(data),
+      detail: `${healthDirectDetectorText(data)} 捕获可访问媒体；${healthDirectBoundaryText(data)}。`
     }
   ];
 }
@@ -2465,6 +2512,7 @@ function updateHealthVisionStatus(data = lastHealthData) {
   els.browserBridgeStatus.innerHTML = `
     <span class="capture-status-chip bridge"><b>桥接</b>需 Chrome/Edge 扩展侧栏</span>
     <span class="capture-status-chip media"><b>媒体</b>${escapeHtml(healthMediaChipText(data))}</span>
+    <span class="capture-status-chip direct"><b>直取</b>${escapeHtml(healthDirectChipText(data))}</span>
     <span class="capture-status-chip vision ${healthVisionReady(data) ? "ready" : "pending"}"><b>视觉</b>${escapeHtml(healthVisionChipText(data))}</span>
     <span class="capture-status-chip asr"><b>转写</b>${escapeHtml(healthAsrChipText(data))}</span>
     <span class="capture-status-chip data ${data?.data_paths?.all_under_data_dir ? "ready" : "pending"}"><b>数据</b>${escapeHtml(healthDataChipText(data))}</span>

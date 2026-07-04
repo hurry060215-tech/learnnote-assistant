@@ -178,6 +178,9 @@ elements.get("#llmApiKey").value = "";
 context.updateHealthVisionStatus({ ffmpeg: true, vision_model_configured: false });
 assert.match(elements.get("#backendStatus").innerHTML, /待填 · Gemini/);
 assert.match(elements.get("#backendStatus").innerHTML, /本地 faster-whisper · small/);
+assert.match(elements.get("#backendStatus").innerHTML, /backend-status-chip direct/);
+assert.match(elements.get("#backendStatus").innerHTML, /mp4\/mkv\/webm\/flv\/m3u8\/mpd/);
+assert.match(elements.get("#backendStatus").innerHTML, /不录制 · 不绕过 DRM · 不刷课/);
 
 elements.get("#llmProvider").value = "dashscope";
 context.applyModelProviderPreset(true);

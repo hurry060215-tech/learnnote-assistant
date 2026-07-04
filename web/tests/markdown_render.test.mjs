@@ -227,6 +227,9 @@ assert.equal(elements.get("#browserBridgeStatus").classList.contains("capture-st
 assert.match(elements.get("#browserBridgeStatus").innerHTML, /capture-status-chip bridge/);
 assert.match(elements.get("#browserBridgeStatus").innerHTML, /需 Chrome\/Edge 扩展侧栏/);
 assert.match(elements.get("#browserBridgeStatus").innerHTML, /capture-status-chip media/);
+assert.match(elements.get("#browserBridgeStatus").innerHTML, /capture-status-chip direct/);
+assert.match(elements.get("#browserBridgeStatus").innerHTML, /mp4\/mkv\/webm\/flv\/m3u8\/mpd/);
+assert.match(elements.get("#browserBridgeStatus").innerHTML, /不录制 · 不绕过 DRM · 不刷课/);
 assert.match(elements.get("#browserBridgeStatus").innerHTML, /待填 · OpenRouter/);
 assert.match(elements.get("#browserBridgeStatus").innerHTML, /capture-status-chip asr/);
 assert.match(elements.get("#browserBridgeStatus").innerHTML, /转写/);
@@ -244,6 +247,8 @@ assert.match(elements.get("#detail").innerHTML, /后端媒体检查/);
 assert.match(elements.get("#detail").innerHTML, /视觉总结检查/);
 assert.match(elements.get("#detail").innerHTML, /本地视频检查/);
 assert.match(elements.get("#detail").innerHTML, /当前页直取检查/);
+assert.match(elements.get("#detail").innerHTML, /DOM \+ Performance \+ webRequest \+ yt-dlp/);
+assert.match(elements.get("#detail").innerHTML, /mp4\/mkv\/webm\/flv\/m3u8\/mpd 可上传/);
 assert.match(elements.get("#detail").innerHTML, /复制后端地址/);
 assert.match(elements.get("#detail").innerHTML, /当前页直取/);
 assert.match(elements.get("#detail").innerHTML, /打开当前页路线/);

@@ -2843,12 +2843,12 @@ function renderReadiness() {
   }
   if (drmDetected && !downloadable.length) {
     els.readiness.className = "readiness bad";
-    els.readiness.textContent = "检测到 EME/DRM 加密媒体信号，且当前没有可直取 mp4/FLV/m3u8/mpd；不会录制或绕过 DRM，请改用本地视频入口。";
+    els.readiness.textContent = `检测到 EME/DRM 加密媒体信号，且当前没有可直取 ${healthDirectMediaFormats()}；${healthDirectBoundaryText()}，请改用本地视频入口。`;
     return;
   }
   if (activeStream && !downloadable.length) {
     els.readiness.className = "readiness bad";
-    els.readiness.textContent = "当前视频来自 MediaStream/srcObject，没有可直接下载的媒体 URL；不会录制标签页，请改用本地视频入口或页面文本兜底。";
+    els.readiness.textContent = `当前视频来自 MediaStream/srcObject，没有可直接下载的媒体 URL；${healthDirectBoundaryText()}，请改用本地视频入口或页面文本兜底。`;
     return;
   }
   if (downloadable.length) {
@@ -2858,7 +2858,7 @@ function renderReadiness() {
   }
   if (hasBlob || hasFragment) {
     els.readiness.className = "readiness warn";
-    els.readiness.textContent = "只看到未映射的 blob 或分片线索；不会录制，继续播放后重新检测，或拖入本地视频。";
+    els.readiness.textContent = `只看到未映射的 blob 或分片线索；${healthDirectDetectorText()} 会继续捕获可访问媒体，${healthDirectBoundaryText()}。`;
     return;
   }
   els.readiness.className = "readiness bad";
@@ -3325,6 +3325,53 @@ function healthMediaChipText(data) {
   return "后端 · 直取/切片就绪";
 }
 
+function assistantCapabilities(data = lastHealthData) {
+  return data?.assistant_capabilities || {};
+}
+
+function capabilityList(items, fallback, limit = 5) {
+  const values = Array.isArray(items) ? items.map(item => String(item || "").trim()).filter(Boolean) : [];
+  const chosen = values.length ? values : fallback;
+  return chosen.slice(0, limit);
+}
+
+function healthDirectMediaFormats(data = lastHealthData) {
+  const direct = assistantCapabilities(data).direct_media || {};
+  const files = capabilityList(direct.file_extensions, ["mp4", "mkv", "webm", "flv", "avi"], 4);
+  const manifests = capabilityList(direct.manifests, ["m3u8", "mpd"], 2);
+  return [...files, ...manifests].join("/");
+}
+
+function healthDirectDetectorText(data = lastHealthData) {
+  const direct = assistantCapabilities(data).direct_media || {};
+  const labels = {
+    dom_video: "DOM",
+    performance_resource: "Performance",
+    web_request: "webRequest",
+    player_runtime: "播放器",
+    yt_dlp: "yt-dlp"
+  };
+  return capabilityList(direct.detectors, ["dom_video", "performance_resource", "web_request", "yt_dlp"], 4)
+    .map(item => labels[item] || item)
+    .join(" + ");
+}
+
+function healthDirectBoundaryText(data = lastHealthData) {
+  const labels = {
+    tab_recording: "不录制",
+    drm_bypass: "不绕过 DRM",
+    progress_spoofing: "不刷课",
+    auto_answering: "不自动答题"
+  };
+  return capabilityList(assistantCapabilities(data).non_goals, ["tab_recording", "drm_bypass", "progress_spoofing"], 3)
+    .map(item => labels[item] || item)
+    .join(" · ");
+}
+
+function healthDirectChipText(data = lastHealthData) {
+  return `${healthDirectMediaFormats(data)} · ${healthDirectBoundaryText(data)}`;
+}
+
 function healthDataChipText(data) {
   const paths = data?.data_paths || {};
   const drive = paths.data_drive || "";
@@ -3342,6 +3389,7 @@ function updateHealthVisionStatus(data = lastHealthData) {
   els.backendStatus.innerHTML = `
     <span class="backend-status-chip bridge"><b>桥接</b>当前标签页</span>
     <span class="backend-status-chip media"><b>媒体</b>${escapeHtml(healthMediaChipText(data))}</span>
+    <span class="backend-status-chip direct"><b>直取</b>${escapeHtml(healthDirectChipText(data))}</span>
     <span class="backend-status-chip vision ${healthVisionReady(data) ? "ready" : "pending"}"><b>视觉</b>${escapeHtml(healthVisionChipText(data))}</span>
     <span class="backend-status-chip asr"><b>转写</b>${escapeHtml(healthAsrChipText(data))}</span>
     <span class="backend-status-chip data ${data?.data_paths?.all_under_data_dir ? "ready" : "pending"}"><b>数据</b>${escapeHtml(healthDataChipText(data))}</span>

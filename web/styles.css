@@ -1025,6 +1025,17 @@ select:focus {
   color: #24528f;
 }
 
+.capture-status-chip.direct {
+  border-color: rgba(126, 87, 194, 0.22);
+  background: rgba(126, 87, 194, 0.07);
+  color: #5b3d94;
+}
+
+.capture-status-chip.direct b {
+  background: rgba(126, 87, 194, 0.12);
+  color: #5b3d94;
+}
+
 .capture-status-chip.data.ready {
   border-color: rgba(20, 150, 74, 0.22);
   background: rgba(20, 150, 74, 0.07);
