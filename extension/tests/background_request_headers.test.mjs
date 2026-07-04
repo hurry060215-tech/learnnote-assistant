@@ -319,6 +319,52 @@ assert.equal(fragmentHinted.is_main_video, true);
 assert.equal(fragmentHinted.current_time, 426);
 assert.ok(fragmentHinted.score > 25, "expected recent blob-backed segment requests to receive playback boost");
 
+const activeVideoHinted = context.withPlaybackHints(
+  {
+    url: "https://cdn.example.com/current-player?id=active",
+    source: "activeVideo",
+    kind: "video",
+    score: 100
+  },
+  {
+    page_url: "https://course.example.com/lesson/1",
+    active_video: {
+      src: "https://cdn.example.com/current-player?id=active",
+      frame_url: "https://player.example.com/embed/lesson",
+      paused: false,
+      current_time: 33,
+      duration: 600
+    }
+  },
+  { url: "https://course.example.com/lesson/1" }
+);
+assert.equal(activeVideoHinted.playback_match, "exact-src");
+assert.equal(activeVideoHinted.is_main_video, true);
+assert.equal(activeVideoHinted.request_headers.Referer, "https://player.example.com/embed/lesson");
+assert.equal(activeVideoHinted.request_headers.Origin, "https://player.example.com");
+
+const activeVideoExistingHeaders = context.withPlaybackHints(
+  {
+    url: "https://cdn.example.com/current-player?id=active",
+    source: "activeVideo",
+    kind: "video",
+    request_headers: {
+      Referer: "https://course.example.com/custom-ref",
+      Origin: "https://course.example.com"
+    }
+  },
+  {
+    page_url: "https://course.example.com/lesson/1",
+    active_video: {
+      src: "https://cdn.example.com/current-player?id=active",
+      frame_url: "https://player.example.com/embed/lesson"
+    }
+  },
+  { url: "https://course.example.com/lesson/1" }
+);
+assert.equal(activeVideoExistingHeaders.request_headers.Referer, "https://course.example.com/custom-ref");
+assert.equal(activeVideoExistingHeaders.request_headers.Origin, "https://course.example.com");
+
 const cookieSyncUrls = context.cookieUrlsForContext(
   {
     page_url: "https://course.example.com/lesson/1",

@@ -331,7 +331,7 @@ function compareResourceCandidates(a = {}, b = {}) {
 
 function mergeAndRankResources(resources, page = {}, tab = {}, { preserveOrder = false } = {}) {
   const baseResources = Array.isArray(resources) ? resources : resourceByTab.get(tab?.id) || [];
-  const hinted = (baseResources || []).map(item => withPlaybackHints(item, page));
+  const hinted = (baseResources || []).map(item => withPlaybackHints(item, page, tab));
   const byUrl = new Map();
   for (const item of hinted) {
     const previous = byUrl.get(item.url);
@@ -393,12 +393,33 @@ function cookieDomainCandidates(value) {
   }
 }
 
-function withPlaybackHints(resource, page = {}) {
+function originForUrl(value = "") {
+  try {
+    return new URL(value).origin;
+  } catch {
+    return "";
+  }
+}
+
+function addActiveVideoRequestContext(resource = {}, page = {}, tab = {}) {
+  if (resource.source !== "activeVideo") return resource;
+  if (!/^https?:\/\//i.test(String(resource.url || ""))) return resource;
+  const headers = { ...(resource.request_headers || {}) };
+  const referer = page.active_video?.frame_url || page.page_url || tab.url || "";
+  const normalized = normalizeRequestHeaders([
+    { name: "Referer", value: headers.Referer || referer },
+    { name: "Origin", value: headers.Origin || originForUrl(referer) },
+    ...Object.entries(headers).map(([name, value]) => ({ name, value }))
+  ]);
+  return { ...resource, request_headers: normalized };
+}
+
+function withPlaybackHints(resource, page = {}, tab = {}) {
   const active = page.active_video || {};
   const activeSrc = active.src || "";
   const activeFrameId = active.frame_id ?? null;
   const kind = resource.kind || classify(resource.url || "", resource.mime || "");
-  const hinted = { ...resource, kind };
+  const hinted = addActiveVideoRequestContext({ ...resource, kind }, page, tab);
   let boost = 0;
   let match = hinted.playback_match || "";
 
