@@ -462,6 +462,50 @@ class LocalUploadValidationTests(unittest.TestCase):
             server.shutdown()
             server.server_close()
 
+    def test_page_preflight_resolves_unknown_playback_api_candidate(self) -> None:
+        server = ThreadingHTTPServer(("127.0.0.1", 0), JsonPlayEndpointHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            base_url = f"http://127.0.0.1:{server.server_port}"
+            play_url = f"{base_url}/api/play?id=42"
+            media_url = f"{base_url}/real.mp4"
+            response = self.client.post(
+                "/api/media/preflight-current-page",
+                json={
+                    "page_url": f"{base_url}/lesson.html",
+                    "probe_limit": 1,
+                    "resources": [
+                        {
+                            "url": play_url,
+                            "kind": "unknown",
+                            "mime": "application/json",
+                            "source": "webRequest",
+                            "request_type": "fetch",
+                            "method": "GET",
+                            "score": 76,
+                            "label": "playback api endpoint",
+                        },
+                    ],
+                },
+            )
+
+            self.assertEqual(response.status_code, 200)
+            report = response.json()["report"]
+            self.assertTrue(report["ready"])
+            self.assertEqual(report["selected_url"], play_url)
+            candidate = report["candidates"][0]["resource"]
+            preflight = report["candidates"][0]["preflight"]
+            self.assertEqual(candidate["url"], play_url)
+            self.assertEqual(candidate["resolved_url"], media_url)
+            self.assertEqual(candidate["kind"], "video")
+            self.assertTrue(preflight["downloadable"])
+            self.assertEqual(preflight["resolved_url"], media_url)
+            self.assertEqual(preflight["strategy"], "direct-response-probe")
+        finally:
+            server.shutdown()
+            server.server_close()
+
     def test_page_preflight_reports_blob_only_page_as_drm_boundary(self) -> None:
         response = self.client.post(
             "/api/media/preflight-current-page",
