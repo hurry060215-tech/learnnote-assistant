@@ -321,6 +321,12 @@ def _bundle_grid_ref(path_value: str, fallback_url: str = "") -> str:
     return fallback_url or "-"
 
 
+def _visual_window_clip_ref(task: TaskRecord, label: str) -> str:
+    if not task.media_path:
+        return "-"
+    return f"/api/tasks/{quote(task.id, safe='')}/exports/clips/{quote(label, safe='')}"
+
+
 def _visual_window_checkpoint_lines(window, limit: int = 3) -> list[str]:
     segments = getattr(window, "segments", []) or []
     lines: list[str] = []
@@ -570,6 +576,7 @@ def render_visual_windows_markdown(task: TaskRecord) -> str:
             lines.extend([
                 f"## {label} `{_format_timestamp(window.start)} - {_format_timestamp(window.end)}`",
                 f"- 画面网格：{grid_ref}",
+                f"- 视频片段：{_visual_window_clip_ref(task, label)}",
                 f"- 视觉模型：{_visual_window_vision_status_text(task, label)}",
                 f"- 帧数：{window.frame_count}",
                 f"- 帧时间：{', '.join(_format_timestamp(value) for value in window.frame_timestamps) or '-'}",
@@ -592,6 +599,7 @@ def render_visual_windows_markdown(task: TaskRecord) -> str:
             lines.extend([
                 f"## {label} `{_format_timestamp(grid.start)} - {_format_timestamp(grid.end)}`",
                 f"- 画面网格：{_bundle_grid_ref(grid.path, grid.url)}",
+                f"- 视频片段：{_visual_window_clip_ref(task, label)}",
                 f"- 帧数：{grid.frame_count}",
                 f"- 帧时间：{', '.join(_format_timestamp(value) for value in grid.frame_timestamps) or '-'}",
                 "",

@@ -1050,6 +1050,7 @@ class LocalUploadValidationTests(unittest.TestCase):
     def test_visual_window_exports_include_per_window_vision_status(self) -> None:
         task = create_task("current_page", "Vision status lesson", "https://course.example.com/watch")
         try:
+            task.media_path = str(task_dir(task.id) / "media.mp4")
             task.visual_windows = [
                 VisualWindow(
                     id="W001",
@@ -1106,6 +1107,7 @@ class LocalUploadValidationTests(unittest.TestCase):
             self.assertEqual(manifest["study"]["vision_missing_image_count"], 1)
             self.assertEqual(manifest["study"]["vision_omitted_count"], 1)
             self.assertIn("视觉模型：已送入视觉模型", visual_markdown)
+            self.assertIn(f"/api/tasks/{task.id}/exports/clips/W001", visual_markdown)
             self.assertIn("视觉模型：未送入：缺少网格图片", visual_markdown)
             self.assertIn("视觉模型：未送入：超过视觉窗口上限", visual_markdown)
         finally:
@@ -1378,6 +1380,7 @@ class ApiPipelineTests(unittest.TestCase):
                 self.assertIn("任务路线：local_video_pipeline", visual_windows_export.text)
                 self.assertIn("manifest.json", visual_windows_export.text)
                 self.assertIn("帧时间", visual_windows_export.text)
+                self.assertIn(f"/api/tasks/{task_id}/exports/clips/W001", visual_windows_export.text)
                 self.assertIn("回看检查点", visual_windows_export.text)
                 self.assertIn("自测问题", visual_windows_export.text)
                 manifest_export = self.client.get(f"/api/tasks/{task_id}/exports/manifest")
@@ -1410,6 +1413,7 @@ class ApiPipelineTests(unittest.TestCase):
                     self.assertIn("资料包导览", visual_windows_markdown)
                     self.assertIn("任务路线：local_video_pipeline", visual_windows_markdown)
                     self.assertIn(f"grids/{expected_grid_name}", visual_windows_markdown)
+                    self.assertIn(f"/api/tasks/{task_id}/exports/clips/W001", visual_windows_markdown)
                     self.assertIn("帧时间", visual_windows_markdown)
                     self.assertIn("回看检查点", visual_windows_markdown)
                     self.assertIn("自测问题", visual_windows_markdown)
