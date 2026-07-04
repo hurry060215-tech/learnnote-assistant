@@ -1743,9 +1743,11 @@ class DownloaderBoundaryTests(unittest.TestCase):
                     ],
                     cookies=[],
                     title="Blob with fragments",
-                )
+            )
             self.assertEqual(ctx.exception.code, "drm_or_encrypted")
-            self.assertEqual([attempt.strategy for attempt in downloader.attempts], ["blob-unrecoverable", "skip-fragment"])
+            self.assertEqual([attempt.strategy for attempt in downloader.attempts[:2]], ["blob-unrecoverable", "skip-fragment"])
+            self.assertIn("page-scan", [attempt.strategy for attempt in downloader.attempts])
+            self.assertIn("page-ytdlp", [attempt.strategy for attempt in downloader.attempts])
 
     def test_blob_with_playback_matched_fragments_gets_manifest_guesses(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -2194,13 +2196,41 @@ class DownloaderBoundaryTests(unittest.TestCase):
                     with self.assertRaises(DownloadError) as ctx:
                         downloader.download("", resources, [], "attempt summary")
 
-            self.assertEqual(ctx.exception.code, "unsupported_manifest")
+            self.assertEqual(ctx.exception.code, "download_forbidden")
             self.assertIn("已尝试 4 个下载候选", ctx.exception.message)
             self.assertIn("download_forbidden×1", ctx.exception.message)
             self.assertIn("unsupported_manifest×3", ctx.exception.message)
             self.assertIn("最后尝试：candidate-ytdlp", ctx.exception.message)
             self.assertEqual([attempt.status for attempt in downloader.attempts], ["failed", "failed", "failed", "failed"])
             self.assertEqual([attempt.strategy for attempt in downloader.attempts[2:]], ["candidate-ytdlp", "candidate-ytdlp"])
+
+    def test_download_error_summary_preserves_auth_required_classification(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            downloader = MediaDownloader(Path(tmp))
+            downloader.attempts = [
+                DownloadAttempt(
+                    strategy="page-scan",
+                    url="https://course.example.com/lesson",
+                    status="failed",
+                    code="auth_required",
+                    message="page returned HTTP 403",
+                ),
+                DownloadAttempt(
+                    strategy="page-ytdlp",
+                    url="https://course.example.com/lesson",
+                    status="failed",
+                    code="unsupported_manifest",
+                    message="yt-dlp unsupported",
+                ),
+            ]
+
+            error = downloader._download_error_with_attempt_summary(
+                DownloadError("unsupported_manifest", "yt-dlp unsupported")
+            )
+
+            self.assertEqual(error.code, "auth_required")
+            self.assertIn("auth_required", error.message)
+            self.assertIn("unsupported_manifest", error.message)
 
     def test_ytdlp_fallback_receives_browser_http_headers(self) -> None:
         captured: dict = {}

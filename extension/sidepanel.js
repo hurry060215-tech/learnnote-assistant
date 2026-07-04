@@ -1223,7 +1223,7 @@ function looksLikePlayableEndpoint(item) {
 function shouldPreflightBeforeStart(mode, item) {
   if (!isMediaTaskMode(mode)) return false;
   if (!item?.url) return false;
-  return ["video", "hls", "dash", "blob", "fragment"].includes(item.kind) || looksLikePlayableEndpoint(item);
+  return ["video", "hls", "dash", "fragment"].includes(item.kind) || looksLikePlayableEndpoint(item);
 }
 
 function preflightBlockMessage(result) {
@@ -2970,16 +2970,37 @@ function hasDownloadableResources(items = resources) {
   return (items || []).some(isDirectExtractionCandidate);
 }
 
+function isCurrentVideoEvidenceResource(item) {
+  if (!item?.url) return false;
+  if (isDirectExtractionCandidate(item)) return true;
+  const kind = String(item.kind || "").toLowerCase();
+  if (kind === "subtitle") return false;
+  if (["blob", "fragment"].includes(kind)) return true;
+  if (item.playback_match || item.is_main_video || item.blob_url) return true;
+  const source = String(item.source || "").toLowerCase();
+  const requestType = String(item.request_type || "").toLowerCase();
+  if (["media", "xmlhttprequest", "fetch"].includes(requestType) && /video|audio|media|stream|play|ananas|vod/.test(String(item.url || ""))) return true;
+  return source.startsWith("pagehook") && /video|audio|media|source|blob/.test(source);
+}
+
+function hasCurrentVideoEvidence(items = resources) {
+  return hasActiveVideoSignal(page?.active_video) || (items || []).some(isCurrentVideoEvidenceResource);
+}
+
+function missingCurrentVideoEvidenceMessage() {
+  return "已打开当前页助手；还没有读取到正在播放的视频或可直取媒体线索。先播放课程视频几秒后重新检测，或改用本地视频上传/页面文本总结。";
+}
+
 async function waitForOneClickMediaCandidate() {
   for (let attempt = 0; attempt < ONE_CLICK_RESOURCE_WAIT_ATTEMPTS; attempt += 1) {
     if (hasDownloadableResources(resources)) return true;
-    if (hasActiveVideoSignal(page?.active_video) && resources.length) return true;
+    if (hasCurrentVideoEvidence(resources) && canAttemptBackendPageFallback("video")) return true;
     const remaining = ONE_CLICK_RESOURCE_WAIT_ATTEMPTS - attempt;
     els.taskMessage.textContent = `正在等待当前页暴露可直取视频资源...剩余 ${remaining} 次自动重检`;
     await sleep(ONE_CLICK_RESOURCE_WAIT_DELAY_MS);
     await collect();
   }
-  return hasActiveVideoSignal(page?.active_video) || resources.length > 0;
+  return hasDownloadableResources(resources) || (hasCurrentVideoEvidence(resources) && canAttemptBackendPageFallback("video"));
 }
 
 async function waitForMediaCandidateBeforeStart(mode = "video") {
@@ -2987,7 +3008,7 @@ async function waitForMediaCandidateBeforeStart(mode = "video") {
   if (preflightCandidatesForStart(mode).length) return true;
   for (let attempt = 0; attempt < ONE_CLICK_RESOURCE_WAIT_ATTEMPTS; attempt += 1) {
     if (preflightCandidatesForStart(mode).length) return true;
-    if (hasActiveVideoSignal(page?.active_video) && resources.length) return true;
+    if (hasCurrentVideoEvidence(resources) && canAttemptBackendPageFallback(mode)) return true;
     const remaining = ONE_CLICK_RESOURCE_WAIT_ATTEMPTS - attempt;
     els.taskMessage.textContent = mode === "download_only"
       ? `正在等待当前页暴露可下载视频资源...剩余 ${remaining} 次自动重检`
@@ -2995,7 +3016,7 @@ async function waitForMediaCandidateBeforeStart(mode = "video") {
     await sleep(ONE_CLICK_RESOURCE_WAIT_DELAY_MS);
     await collect();
   }
-  return hasActiveVideoSignal(page?.active_video) || resources.length > 0 || canAttemptBackendPageFallback(mode);
+  return preflightCandidatesForStart(mode).length || (hasCurrentVideoEvidence(resources) && canAttemptBackendPageFallback(mode));
 }
 
 async function runSidePanelIntent(intent) {
@@ -3005,7 +3026,7 @@ async function runSidePanelIntent(intent) {
   if (intent.tabId !== null && intent.tabId !== undefined && currentTabId !== null && currentTabId !== intent.tabId) return;
   const hasCandidate = await waitForOneClickMediaCandidate();
   if (!hasCandidate) {
-    els.taskMessage.textContent = "已打开当前页助手；还没有读取到正在播放的视频或媒体候选，先播放几秒后再点总结。";
+    els.taskMessage.textContent = missingCurrentVideoEvidenceMessage();
     return;
   }
   els.taskMessage.textContent = "已从扩展图标进入一键总结，正在预检当前播放视频...";

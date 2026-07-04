@@ -70,6 +70,13 @@ MEDIA_CONTENT_TYPE_SUFFIXES = {
 }
 SUBTITLE_EXTENSIONS = {".vtt", ".srt", ".ass", ".ssa"}
 SUBTITLE_LANGUAGE_PREFERENCES = ("zh-CN", "zh-Hans", "zh-Hant", "zh", "en", "en-US")
+DOWNLOAD_FAILURE_PRIORITY = {
+    "drm_or_encrypted": 50,
+    "auth_required": 40,
+    "download_forbidden": 30,
+    "unsupported_manifest": 20,
+    "no_media_found": 10,
+}
 BROWSER_REQUEST_HEADER_ALLOWLIST = {
     "accept": "Accept",
     "accept-language": "Accept-Language",
@@ -2154,9 +2161,10 @@ class MediaDownloader:
         title: str,
     ) -> tuple[Path, ResourceCandidate | None]:
         resources = self._with_inferred_manifest_resources(resources)
-        if any(item.url.startswith("blob:") for item in resources) and not any(
+        has_only_unresolved_blob_media = any(item.url.startswith("blob:") for item in resources) and not any(
             effective_resource_kind(item) in {"hls", "dash", "video"} for item in resources
-        ):
+        )
+        if has_only_unresolved_blob_media:
             for item in resources:
                 kind = effective_resource_kind(item)
                 if kind == "blob":
@@ -2175,13 +2183,14 @@ class MediaDownloader:
                         code="unsupported_manifest",
                         message="检测到媒体分片，但没有对应 manifest，不能作为独立视频下载。",
                     )
-            raise DownloadError("drm_or_encrypted", "页面只暴露 blob 媒体地址，未发现可下载 manifest 或视频文件。")
+            if not _is_http_url(page_url):
+                raise DownloadError("drm_or_encrypted", "页面只暴露 blob 媒体地址，未发现可下载 manifest 或视频文件。")
 
         cookie_file = write_netscape_cookie_file(cookies, self.task_path / "cookies.txt") if cookies else None
 
         candidates = self._candidate_resources(resources)
         failed_urls: set[str] = set()
-        if not candidates:
+        if not candidates and not has_only_unresolved_blob_media:
             for item in resources:
                 kind = effective_resource_kind(item)
                 if kind in {"fragment", "blob", "unknown"}:
@@ -2343,6 +2352,7 @@ class MediaDownloader:
         skipped = [attempt for attempt in self.attempts if attempt.status == "skipped"]
         if len(failed) <= 1 and not skipped:
             return error
+        primary_error = self._primary_download_error(error, [*failed, *skipped])
         codes: dict[str, int] = {}
         for attempt in [*failed, *skipped]:
             code = attempt.code or "unknown"
@@ -2364,7 +2374,23 @@ class MediaDownloader:
                 f" / {latest.kind or '-'}"
                 f" / {latest.url or '-'}"
             )
-        return DownloadError(error.code, "；".join(parts))
+        return DownloadError(primary_error.code, "；".join(parts))
+
+    def _primary_download_error(self, fallback: DownloadError, attempts: list[DownloadAttempt]) -> DownloadError:
+        candidates: list[tuple[int, int, int, DownloadError]] = [
+            (DOWNLOAD_FAILURE_PRIORITY.get(fallback.code, 0), 1, len(attempts), fallback)
+        ]
+        for index, attempt in enumerate(attempts):
+            if not attempt.code:
+                continue
+            status_weight = 1 if attempt.status == "failed" else 0
+            candidates.append((
+                DOWNLOAD_FAILURE_PRIORITY.get(attempt.code, 0),
+                status_weight,
+                index,
+                DownloadError(attempt.code, attempt.message or fallback.message),
+            ))
+        return max(candidates, key=lambda item: item[:3])[3]
 
     def _discover_page_resources(
         self,
@@ -2766,7 +2792,7 @@ class MediaDownloader:
         title: str,
     ) -> tuple[Path, ResourceCandidate] | None:
         candidates = _embedded_media_candidates_from_text_response(parent, body, base_url, referer)
-        if not candidates:
+        if not candidates and not has_only_unresolved_blob_media:
             return None
 
         last_error: DownloadError | None = None

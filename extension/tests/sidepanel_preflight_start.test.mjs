@@ -150,3 +150,24 @@ assert.equal(calls.start, 0);
 assert.match(elements.get("#extractionPlan").innerHTML, /data-step="fallback"/);
 assert.match(elements.get("#extractionPlan").innerHTML, /extraction-step blocked/);
 assert.match(elements.get("#taskMessage").textContent, /HTTP 403/);
+
+vm.runInContext(`
+page = {
+  title: "Blob-only player",
+  page_url: "chrome-extension://learnnote/sidepanel.html",
+  page_text: "lesson text",
+  active_video: { src: "blob:https://course.example.com/player", current_time: 12, duration: 120, paused: false },
+  frames: []
+};
+resources = [{
+  url: "blob:https://course.example.com/player",
+  source: "activeVideo",
+  kind: "blob",
+  score: 5,
+  label: "active blob"
+}];
+selectedResourceUrl = "blob:https://course.example.com/player";
+`, context);
+
+assert.equal(context.preflightCandidatesForStart("video").length, 0);
+assert.equal(context.canAttemptBackendPageFallback("video"), false);
