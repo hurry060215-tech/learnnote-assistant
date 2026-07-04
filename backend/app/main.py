@@ -253,6 +253,17 @@ def _task_transcript_source_text(task: TaskRecord) -> str:
     return _transcript_source_text(source)
 
 
+def _task_transcript_source(task: TaskRecord) -> str:
+    if not task.transcript_path:
+        return ""
+    try:
+        transcript = read_transcript(task.id)
+    except Exception:
+        return ""
+    source = transcript.get("source") if isinstance(transcript, dict) else None
+    return str(source or "")
+
+
 def _format_id_list(values: list[str] | tuple[str, ...] | None, limit: int = 12) -> str:
     ids = [str(value) for value in (values or []) if str(value)]
     if not ids:
@@ -1134,6 +1145,8 @@ def task_reuse_evidence(task: TaskRecord) -> dict:
         ends = [cue.end for cue in task.browser_subtitles]
         browser_subtitle_span = max(0.0, max(ends) - min(starts))
 
+    subtitle_available = bool(task.subtitle_path and Path(task.subtitle_path).is_file())
+    transcript_ready = bool(task.transcript_path and Path(task.transcript_path).is_file())
     has_visual_slices = bool(task.frame_grids or task.visual_windows)
     media_available = task_media_file_exists(task)
     is_download_only = task.mode == "download_only"
@@ -1152,6 +1165,12 @@ def task_reuse_evidence(task: TaskRecord) -> dict:
         "media_path_recorded": task.media_path,
         "source_task_id": task.source_task_id,
         "source_media_path": task.source_media_path,
+        "subtitle_available": subtitle_available,
+        "subtitle_path_recorded": task.subtitle_path,
+        "transcript_ready": transcript_ready,
+        "transcript_path_recorded": task.transcript_path,
+        "transcript_source": _task_transcript_source(task) if transcript_ready else "",
+        "transcript_source_text": _task_transcript_source_text(task) if transcript_ready else "-",
         "browser_subtitle_count": browser_subtitle_count,
         "browser_subtitle_span_seconds": round(browser_subtitle_span, 3),
         "download_attempt_count": len(task.download_attempts),
@@ -1441,6 +1460,8 @@ def render_diagnostics_markdown(task: TaskRecord) -> str:
         f"- Media available: {'yes' if reuse['media_available'] else 'no'}",
         f"- Source task: {reuse.get('source_task_id') or '-'}",
         f"- Source media: {reuse.get('source_media_path') or '-'}",
+        f"- Saved subtitles: {'yes' if reuse['subtitle_available'] else 'no'} / {reuse.get('subtitle_path_recorded') or '-'}",
+        f"- Reusable transcript: {'yes' if reuse['transcript_ready'] else 'no'} / {reuse.get('transcript_source') or '-'}",
         f"- Browser subtitles: {reuse['browser_subtitle_count']} cues / {reuse['browser_subtitle_span_seconds']}s",
         f"- Visual slices: {reuse['frame_grid_count']} frame grids / {reuse['visual_window_count']} windows",
         f"- Rerun from media ready: {'yes' if reuse['rerun_from_media_ready'] else 'no'}",
