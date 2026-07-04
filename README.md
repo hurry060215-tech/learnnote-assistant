@@ -113,6 +113,14 @@ Open the local web UI:
 http://127.0.0.1:8765
 ```
 
+If port `8765` is occupied, start the backend on another local port and put the same address in the Side Panel backend settings:
+
+```powershell
+.\start-backend.ps1 -Port 8766
+```
+
+The extension only accepts local backend origins (`127.0.0.1` or `localhost`), and its manifest keeps localhost permissions host-wide so non-default ports continue to work.
+
 Load the browser extension:
 
 1. Open `chrome://extensions` or `edge://extensions`.

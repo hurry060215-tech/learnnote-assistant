@@ -19,6 +19,7 @@ function Get-ChangedFiles {
   $files = @()
   $files += git diff --name-only $Base --
   $files += git diff --name-only --cached
+  $files += git ls-files --others --exclude-standard
   $files = @($files | Where-Object { $_ } | Sort-Object -Unique)
   if ($files.Count -gt 0) {
     return $files
@@ -114,6 +115,11 @@ if (Test-Any @("extension/background.js", "extension/tests/background_*.test.mjs
   )) {
     Invoke-Step $test { node $test }
   }
+}
+
+if (Test-Any @("extension/manifest.json", "extension/tests/manifest_*.test.mjs")) {
+  $ran = $true
+  Invoke-Step "Extension manifest permissions" { node extension\tests\manifest_permissions.test.mjs }
 }
 
 if (Test-Any @("extension/sidepanel.js", "extension/sidepanel.css", "extension/sidepanel.html", "extension/tests/sidepanel_*.test.mjs")) {
