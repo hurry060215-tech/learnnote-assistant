@@ -2127,10 +2127,27 @@ function visualUnderstandingEnabled() {
   return els.visualUnderstanding?.checked !== false;
 }
 
+function boundedNumber(value, fallback, min, max) {
+  const text = String(value ?? "").trim();
+  if (!text) return fallback;
+  const number = Number(text);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(number)));
+}
+
+function readVisualSliceOptions() {
+  const [rawCols, rawRows] = String(els.gridSize?.value || "3x3").split("x").map(Number);
+  return {
+    frame_interval: boundedNumber(els.frameInterval?.value, 20, 1, 600),
+    grid_columns: boundedNumber(rawCols, 3, 1, 6),
+    grid_rows: boundedNumber(rawRows, 3, 1, 6)
+  };
+}
+
 function visualPlanText() {
   if (!visualUnderstandingEnabled()) return "无视觉 · 仅转写";
-  const [cols, rows] = String(els.gridSize?.value || "3x3").split("x").map(Number);
-  return `${Number(els.frameInterval?.value || 20)}秒 · ${cols || 3}x${rows || 3}`;
+  const visual = readVisualSliceOptions();
+  return `${visual.frame_interval}秒 · ${visual.grid_columns}x${visual.grid_rows}`;
 }
 
 function currentOptionSummaryItems() {
@@ -2219,12 +2236,12 @@ function saveModelSettings() {
 
 function readOptions() {
   syncTranscriberModelDefault();
-  const [cols, rows] = els.gridSize.value.split("x").map(Number);
+  const visual = readVisualSliceOptions();
   const options = {
     visual_understanding: visualUnderstandingEnabled(),
-    frame_interval: Number(els.frameInterval.value || 20),
-    grid_columns: cols || 3,
-    grid_rows: rows || 3,
+    frame_interval: visual.frame_interval,
+    grid_columns: visual.grid_columns,
+    grid_rows: visual.grid_rows,
     transcriber: els.transcriber?.value || "faster-whisper",
     whisper_model: els.whisperModel.value || "small",
     note_style: els.noteStyle.value || "study",

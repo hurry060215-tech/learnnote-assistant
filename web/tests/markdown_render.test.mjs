@@ -2559,6 +2559,13 @@ assert.equal(elements.get("#fileName").textContent, "drag-local-lesson.mkv");
 assert.equal(elements.get("#uploadButton").disabled, false);
 
 let rerunPayload = null;
+elements.get("#frameInterval").value = "0";
+elements.get("#gridSize").value = "7xnope";
+let boundedOptions = context.readOptions();
+assert.equal(boundedOptions.frame_interval, 1);
+assert.equal(boundedOptions.grid_columns, 6);
+assert.equal(boundedOptions.grid_rows, 3);
+assert.match(context.visualPlanText(), /1秒 · 6x3/);
 elements.get("#frameInterval").value = "30";
 elements.get("#gridSize").value = "4x3";
 elements.get("#noteTemplate").value = "cornell";

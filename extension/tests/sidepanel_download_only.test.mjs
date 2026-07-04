@@ -258,6 +258,14 @@ assert.equal(calls.openedTab, null);
 assert.equal(elements.get("#taskMessage").textContent, "已开始下载本地视频。");
 
 let rerunPayload = null;
+elements.get("#frameInterval").value = "0";
+elements.get("#gridSize").value = "7xnope";
+let boundedOptions = context.readOptions();
+assert.equal(boundedOptions.frame_interval, 1);
+assert.equal(boundedOptions.grid_columns, 6);
+assert.equal(boundedOptions.grid_rows, 3);
+assert.match(context.visualPlanText(), /1秒 · 6x3/);
+assert.match(context.visualWindowText(), /00:00:18/);
 elements.get("#frameInterval").value = "30";
 elements.get("#gridSize").value = "4x3";
 elements.get("#noteTemplate").value = "qa";
