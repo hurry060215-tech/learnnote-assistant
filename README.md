@@ -183,7 +183,7 @@ $env:LEARNNOTE_LLM_MODEL="gpt-4.1-mini"
 
 The same Base URL and API Key fields are reused when the task's transcriber is set to `OpenAI-compatible ASR` or `Groq ASR`. For OpenAI use `whisper-1`; for Groq-style endpoints choose `whisper-large-v3` or the model name supported by that endpoint.
 
-The Web UI and Side Panel include mainstream OpenAI-compatible presets for OpenAI, Groq, Google Gemini, DashScope/Qwen, SiliconFlow, OpenRouter, and a local compatible endpoint. Presets only fill Base URL/model defaults; API keys are still task-scoped, and non-OpenAI/Groq presets keep local `faster-whisper` ASR by default.
+The Web UI and Side Panel include mainstream provider presets for OpenAI, Groq, Google Gemini, and DashScope/Qwen. A custom OpenAI-compatible endpoint can still be entered manually, but non-mainstream providers are not shown as default presets. Presets only fill Base URL/model defaults; API keys are still task-scoped, and non-OpenAI/Groq presets keep local `faster-whisper` ASR by default.
 
 Without a model key, the backend generates a deterministic local Markdown note from transcript segments and frame-grid indexes.
 

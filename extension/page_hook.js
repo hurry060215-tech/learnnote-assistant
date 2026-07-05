@@ -1445,13 +1445,14 @@
     return sources;
   }
 
-  function patchSrcDescriptor(proto, label) {
+  function patchMediaUrlDescriptor(proto, property, label) {
     if (!proto) return false;
     try {
-      if (Object.prototype.hasOwnProperty.call(proto, "__learnNoteSrcDescriptorPatched")) return true;
-      const descriptor = Object.getOwnPropertyDescriptor(proto, "src");
+      const flag = `__learnNote${property}DescriptorPatched`;
+      if (Object.prototype.hasOwnProperty.call(proto, flag)) return true;
+      const descriptor = Object.getOwnPropertyDescriptor(proto, property);
       if (!descriptor?.get || !descriptor?.set || descriptor.configurable === false) return false;
-      Object.defineProperty(proto, "src", {
+      Object.defineProperty(proto, property, {
         configurable: descriptor.configurable,
         enumerable: descriptor.enumerable,
         get() {
@@ -1462,7 +1463,7 @@
           return descriptor.set.call(this, value);
         }
       });
-      Object.defineProperty(proto, "__learnNoteSrcDescriptorPatched", { value: true });
+      Object.defineProperty(proto, flag, { value: true });
       return true;
     } catch {
       return false;
@@ -1471,10 +1472,13 @@
 
   function patchHtmlMediaElement() {
     try {
-      patchSrcDescriptor(window.HTMLMediaElement?.prototype, "HTMLMediaElement src");
-      patchSrcDescriptor(window.HTMLVideoElement?.prototype, "HTMLVideoElement src");
-      patchSrcDescriptor(window.HTMLAudioElement?.prototype, "HTMLAudioElement src");
-      patchSrcDescriptor(window.HTMLSourceElement?.prototype, "HTMLSourceElement src");
+      patchMediaUrlDescriptor(window.HTMLMediaElement?.prototype, "src", "HTMLMediaElement src");
+      patchMediaUrlDescriptor(window.HTMLVideoElement?.prototype, "src", "HTMLVideoElement src");
+      patchMediaUrlDescriptor(window.HTMLAudioElement?.prototype, "src", "HTMLAudioElement src");
+      patchMediaUrlDescriptor(window.HTMLSourceElement?.prototype, "src", "HTMLSourceElement src");
+      patchMediaUrlDescriptor(window.HTMLMediaElement?.prototype, "currentSrc", "HTMLMediaElement currentSrc");
+      patchMediaUrlDescriptor(window.HTMLVideoElement?.prototype, "currentSrc", "HTMLVideoElement currentSrc");
+      patchMediaUrlDescriptor(window.HTMLAudioElement?.prototype, "currentSrc", "HTMLAudioElement currentSrc");
     } catch {
       // Native media prototypes vary by browser and page isolation mode.
     }

@@ -112,6 +112,7 @@ vm.runInContext(hookCode, context);
 
 const directVideo = new context.HTMLVideoElement();
 directVideo.src = "https://cdn.example.com/playback?id=src-assignment&token=1";
+directVideo.currentSrc = "https://cdn.example.com/playback?id=current-src-assignment&token=1";
 
 const directSource = new context.HTMLSourceElement();
 directSource.setAttribute("src", "/media/source-only.mp4?token=source-direct");
@@ -137,6 +138,11 @@ assert.equal(
   "expected extensionless video.src assignment to use video-element fallback kind"
 );
 assert.equal(
+  byUrl.get("https://cdn.example.com/playback?id=current-src-assignment&token=1")?.kind,
+  "video",
+  "expected writable currentSrc assignment to use video-element fallback kind"
+);
+assert.equal(
   byUrl.get("https://cdn.example.com/playback?id=load-source&token=2")?.kind,
   "video",
   "expected video.load() to inspect the current media src"
@@ -159,6 +165,7 @@ assert.equal(
 );
 
 assert.ok(labels.has("HTMLMediaElement src"));
+assert.ok(labels.has("HTMLMediaElement currentSrc"));
 assert.ok(labels.has("video setAttribute src"));
 assert.ok(labels.has("source setAttribute src"));
 assert.ok(labels.has("HTMLSourceElement src"));
