@@ -777,6 +777,61 @@ assert.match(studyMapHtml, /data-export="manifest"/);
 assert.doesNotMatch(studyMapHtml, /<script>bad/);
 assert.match(studyMapHtml, /&lt;script&gt;bad\(\)&lt;\/script&gt; 课程/);
 
+const reviewWorkbenchHtml = context.noteReviewWorkbench(`# 机器学习导论
+
+## 第一章
+### 概念`, {
+  id: "side-review-workbench",
+  title: "复习工作台课程",
+  status: "success",
+  phase: "completed",
+  progress: 100,
+  source_type: "current_page",
+  media_path: "D:/Projects/learnnote-assistant/data/tasks/side-review-workbench/media.mp4",
+  subtitle_path: "D:/Projects/learnnote-assistant/data/tasks/side-review-workbench/subtitles.vtt",
+  transcript_path: "D:/Projects/learnnote-assistant/data/tasks/side-review-workbench/transcript.json",
+  note_path: "D:/Projects/learnnote-assistant/data/tasks/side-review-workbench/note.md",
+  download_attempts: [{ strategy: "manifest-ffmpeg", status: "success" }],
+  qa: { history_count: 2 },
+  options: { frame_interval: 20, grid_columns: 3, grid_rows: 3, visual_understanding: true },
+  visual_windows: [{
+    id: "W001",
+    start: 0,
+    end: 180,
+    frame_count: 9,
+    grid_url: "http://127.0.0.1:8765/api/tasks/demo/grids/grid_000.jpg"
+  }]
+});
+assert.match(reviewWorkbenchHtml, /class="review-workbench ready"/);
+assert.match(reviewWorkbenchHtml, /复习工作台/);
+assert.match(reviewWorkbenchHtml, /复习笔记/);
+assert.match(reviewWorkbenchHtml, /学习切片/);
+assert.match(reviewWorkbenchHtml, /字幕时间轴/);
+assert.match(reviewWorkbenchHtml, /问答复习/);
+assert.match(reviewWorkbenchHtml, /直取诊断/);
+assert.match(reviewWorkbenchHtml, /3 个标题/);
+assert.match(reviewWorkbenchHtml, /2 条记录/);
+assert.match(reviewWorkbenchHtml, /data-switch-result-tab="qa"/);
+assert.match(reviewWorkbenchHtml, /data-switch-result-tab="slices"/);
+assert.match(reviewWorkbenchHtml, /data-export="markdown"/);
+assert.match(reviewWorkbenchHtml, /data-export="subtitles"/);
+assert.match(reviewWorkbenchHtml, /data-export="visual-windows"/);
+assert.match(reviewWorkbenchHtml, /data-export="media"/);
+assert.match(reviewWorkbenchHtml, /data-export="bundle"/);
+
+const partialReviewWorkbenchHtml = context.noteReviewWorkbench("", {
+  id: "side-review-partial",
+  status: "success",
+  phase: "completed",
+  source_type: "current_page",
+  media_path: "D:/Projects/learnnote-assistant/data/tasks/side-review-partial/media.mp4",
+  options: { visual_understanding: true }
+});
+assert.match(partialReviewWorkbenchHtml, /class="review-workbench partial"/);
+assert.match(partialReviewWorkbenchHtml, /继续切片总结/);
+assert.match(partialReviewWorkbenchHtml, /data-rerun-from-media="side-review-partial"/);
+assert.match(partialReviewWorkbenchHtml, /视频已直取到本地/);
+
 const reuseStudyMapHtml = context.noteStudyMap("## Reuse", {
   id: "side-reuse-study-map",
   status: "success",
