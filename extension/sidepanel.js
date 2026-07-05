@@ -2142,6 +2142,39 @@ function playbackReadinessCopy(state) {
   };
 }
 
+function playbackReadinessActionsHtml(state) {
+  const selected = selectedResource();
+  const checked = currentPreflight();
+  const hasText = hasPageTextFallback();
+  const actions = [];
+  const push = (action, label, primary = false) => {
+    actions.push(`<button type="button" class="${primary ? "primary" : ""}" data-route-action="${escapeHtml(action)}">${escapeHtml(label)}</button>`);
+  };
+  if (state === "ready") {
+    if (selected && !checked?.downloadable) push("preflight", "预检");
+    if (selected) {
+      push("summarize", "总结当前视频", true);
+      push("download", "下载到本地");
+    } else {
+      push("redetect", "重新检测");
+    }
+  } else if (state === "mapping" || state === "waiting") {
+    push("redetect", "重新检测", true);
+    if (selected) push("preflight", "预检候选");
+    push("local", "上传本地视频");
+    if (hasText) push("text", "只总结文本");
+  } else if (state === "blocked") {
+    push("redetect", "重新检测");
+    push("local", "上传本地视频", true);
+    if (hasText) push("text", "只总结文本");
+  } else {
+    push("redetect", "重新检测", true);
+    push("local", "上传本地视频");
+    if (hasText) push("text", "只总结文本");
+  }
+  return actions.length ? `<div class="playback-readiness-actions">${actions.join("")}</div>` : "";
+}
+
 function renderPlaybackReadiness() {
   if (!els.playbackReadiness) return;
   const active = page?.active_video || null;
@@ -2169,6 +2202,7 @@ function renderPlaybackReadiness() {
     <div class="playback-readiness-grid">
       ${items.map(item => `<span><b>${escapeHtml(item.value)}</b>${escapeHtml(item.label)}</span>`).join("")}
     </div>
+    ${playbackReadinessActionsHtml(state)}
   `;
 }
 
@@ -3583,6 +3617,10 @@ function renderContext() {
   els.pageUrl.textContent = page?.page_url || "";
   const active = page?.active_video;
   const frames = page?.frames || [];
+  const visibleResources = filteredResources();
+  if (visibleResources.length && !visibleResources.some(item => item.url === selectedResourceUrl)) {
+    selectedResourceUrl = pickDefaultResourceUrl(visibleResources, selectedResourceUrl);
+  }
   if (hasActiveVideoSignal(active)) {
     const state = active.drm_detected ? "blocked" : active.paused ? "paused" : "playing";
     els.activeVideo.className = `playback-card active-video-card ${state}`;
@@ -3621,7 +3659,6 @@ function renderContext() {
     renderInspector();
     return;
   }
-  const visibleResources = filteredResources();
   if (visibleResources.length && !visibleResources.some(item => item.url === selectedResourceUrl)) {
     selectedResourceUrl = pickDefaultResourceUrl(visibleResources, "");
   }
@@ -6137,6 +6174,13 @@ if (els.currentStudyCard) {
 }
 if (els.launchBar) {
   els.launchBar.addEventListener("click", event => {
+    const button = event.target.closest("[data-route-action]");
+    if (!button) return;
+    handleRouteAction(button.dataset.routeAction);
+  });
+}
+if (els.playbackReadiness) {
+  els.playbackReadiness.addEventListener("click", event => {
     const button = event.target.closest("[data-route-action]");
     if (!button) return;
     handleRouteAction(button.dataset.routeAction);
