@@ -22,6 +22,17 @@ class LateDPlayer {
   }
 }
 
+class LateVideoRoll {
+  constructor(options) {
+    this.options = options;
+  }
+
+  changeSource(source) {
+    this.source = source;
+    return "late-videoroll-change-source";
+  }
+}
+
 const lateFlvjs = {
   createPlayer(mediaDataSource) {
     return {
@@ -73,6 +84,11 @@ const dplayer = new context.DPlayer({ video: { url: "/late/lesson.mp4?token=2" }
 assert.equal(dplayer.options.video.url, "/late/lesson.mp4?token=2");
 assert.equal(dplayer.switchVideo({ url: "/late/next.flv?token=3" }), "late-dplayer-switched");
 
+context.VideoRoll = LateVideoRoll;
+const videoRoll = new context.VideoRoll({ video: { url: "/late/videoroll.m3u8?token=6" } });
+assert.equal(videoRoll.options.video.url, "/late/videoroll.m3u8?token=6");
+assert.equal(videoRoll.changeSource({ src: "/late/videoroll-next.mp4?token=7" }), "late-videoroll-change-source");
+
 context.flvjs = lateFlvjs;
 const flv = context.flvjs.createPlayer({ type: "flv", url: "/late/live?id=4" });
 assert.equal(flv.mediaDataSource.url, "/late/live?id=4");
@@ -85,11 +101,15 @@ const labels = new Set(resources.map(resource => resource.label));
 assert.ok(urls.has("https://course.example.com/late/master.m3u8?token=1"));
 assert.ok(urls.has("https://course.example.com/late/lesson.mp4?token=2"));
 assert.ok(urls.has("https://course.example.com/late/next.flv?token=3"));
+assert.ok(urls.has("https://course.example.com/late/videoroll.m3u8?token=6"));
+assert.ok(urls.has("https://course.example.com/late/videoroll-next.mp4?token=7"));
 assert.ok(urls.has("https://course.example.com/late/live?id=4"));
 assert.ok(urls.has("https://course.example.com/late/live-backup.flv?token=5"));
 assert.ok(labels.has("hls.js loadSource"));
 assert.ok(labels.has("DPlayer constructor"));
 assert.ok(labels.has("DPlayer constructor switchVideo"));
+assert.ok(labels.has("VideoRoll constructor"));
+assert.ok(labels.has("VideoRoll constructor changeSource"));
 assert.ok(labels.has("flv.js createPlayer"));
 assert.ok(labels.has("flv.js setUrl"));
 

@@ -64,6 +64,22 @@ class FakeXgPlayer {
   }
 }
 
+class FakeVideoRoll {
+  constructor(options) {
+    this.options = options;
+  }
+
+  setSource(source) {
+    this.source = source;
+    return "videoroll-set-source";
+  }
+
+  changeUrl(source) {
+    this.changedSource = source;
+    return "videoroll-change-url";
+  }
+}
+
 class FakePlyr {
   constructor(target, options = {}) {
     this.target = target;
@@ -124,6 +140,7 @@ const context = {
   DPlayer: FakeDPlayer,
   Artplayer: FakeArtPlayer,
   xgplayer: { Player: FakeXgPlayer },
+  VideoRoll: FakeVideoRoll,
   Plyr: FakePlyr,
   jwplayer: fakeJwplayer,
   flvjs: { createPlayer: fakeFlvCreatePlayer },
@@ -171,6 +188,11 @@ const xg = new context.xgplayer.Player({ source: { src: "/xgplayer/stream.mpd?to
 assert.equal(xg.options.source.src, "/xgplayer/stream.mpd?token=4");
 assert.equal(xg.switchUrl("/xgplayer/backup.m3u8?token=5"), "xg-switched");
 
+const videoRoll = new context.VideoRoll({ video: { url: "/videoroll/lesson.m3u8?token=15" } });
+assert.equal(videoRoll.options.video.url, "/videoroll/lesson.m3u8?token=15");
+assert.equal(videoRoll.setSource({ src: "/videoroll/next.mp4?token=16" }), "videoroll-set-source");
+assert.equal(videoRoll.changeUrl("/videoroll/backup.m3u8?token=17"), "videoroll-change-url");
+
 const plyr = new context.Plyr("#course-video", {
   source: {
     type: "video",
@@ -215,6 +237,9 @@ assert.ok(urls.has("https://course.example.com/dplayer/next.flv?token=2"));
 assert.ok(urls.has("https://course.example.com/artplayer/course.m3u8?token=3"));
 assert.ok(urls.has("https://course.example.com/xgplayer/stream.mpd?token=4"));
 assert.ok(urls.has("https://course.example.com/xgplayer/backup.m3u8?token=5"));
+assert.ok(urls.has("https://course.example.com/videoroll/lesson.m3u8?token=15"));
+assert.ok(urls.has("https://course.example.com/videoroll/next.mp4?token=16"));
+assert.ok(urls.has("https://course.example.com/videoroll/backup.m3u8?token=17"));
 assert.ok(urls.has("https://course.example.com/plyr/constructor.mp4?token=12"));
 assert.ok(urls.has("https://course.example.com/plyr/master.m3u8?token=13"));
 assert.ok(urls.has("https://course.example.com/plyr/fallback.mp4?token=14"));
@@ -234,6 +259,9 @@ assert.ok(labels.has("DPlayer constructor switchVideo"));
 assert.ok(labels.has("ArtPlayer constructor"));
 assert.ok(labels.has("xgplayer Player constructor"));
 assert.ok(labels.has("xgplayer Player constructor switchUrl"));
+assert.ok(labels.has("VideoRoll constructor"));
+assert.ok(labels.has("VideoRoll constructor setSource"));
+assert.ok(labels.has("VideoRoll constructor changeUrl"));
 assert.ok(labels.has("Plyr constructor"));
 assert.ok(labels.has("Plyr source"));
 assert.ok(labels.has("jwplayer setup"));

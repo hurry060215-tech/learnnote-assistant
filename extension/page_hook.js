@@ -1297,7 +1297,7 @@
 
   function patchGenericPlayerInstance(player, label) {
     if (!player || typeof player !== "object") return player;
-    for (const method of ["src", "url", "load", "setup", "switchVideo", "switchUrl", "switchURL", "changeQuality", "setSrc", "setUrl", "setVideoUrl"]) {
+    for (const method of ["src", "url", "load", "setup", "switchVideo", "switchUrl", "switchURL", "changeQuality", "setSrc", "setUrl", "setVideoUrl", "setSource", "changeSource", "changeUrl", "loadVideo"]) {
       patchMethod(player, method, original => function (...args) {
         for (const arg of args) emitPlayerSources(arg, "", `${label} ${method}`);
         return original.apply(this, args);
@@ -1340,7 +1340,11 @@
     patchPlayerConstructorOn(window, "XGPlayer", "xgplayer constructor");
     patchPlayerConstructorOn(window, "Aliplayer", "Aliplayer constructor");
     patchPlayerConstructorOn(window, "TcPlayer", "TcPlayer constructor");
+    patchPlayerConstructorOn(window, "VideoRoll", "VideoRoll constructor");
+    patchPlayerConstructorOn(window, "videoRoll", "VideoRoll constructor");
     patchPlayerConstructorOn(window.xgplayer, "Player", "xgplayer Player constructor");
+    patchPlayerConstructorOn(window.VideoRoll, "Player", "VideoRoll Player constructor");
+    patchPlayerConstructorOn(window.videoRoll, "Player", "VideoRoll Player constructor");
   }
 
   function patchCreatePlayerFactory(target, label) {
@@ -1597,6 +1601,8 @@
       "XGPlayer",
       "Aliplayer",
       "TcPlayer",
+      "VideoRoll",
+      "videoRoll",
       "xgplayer",
       "flvjs",
       "mpegts",
