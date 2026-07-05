@@ -334,6 +334,33 @@ class ResourceDetectionTests(unittest.TestCase):
         self.assertEqual(by_url["https://course.example.com/vod/play?id=lazy-uri"].kind, "video")
         self.assertNotIn("https://course.example.com/ordinary/page", by_url)
 
+    def test_page_scan_extracts_player_alias_attributes(self) -> None:
+        html = """
+        <div class="videoroll-player"
+             data-playurl="/vod/play?id=alias-play"
+             data-master-url="/static/master.m3u8?token=master"
+             data-dash-url="/static/manifest.mpd?token=dash"
+             data-backup-url="/static/backup.mp4?token=backup"
+             data-download-url="/static/download.mp4?token=download"
+             data-master="/api/master?id=master-endpoint"
+             data-main="/api/main?id=main-endpoint"
+             data-backup="/api/backup?id=backup-endpoint"
+             data-download-page="/ordinary/download-page"></div>
+        """
+
+        resources = extract_media_resources_from_text(html, "https://course.example.com/lesson", "page-scan")
+        by_url = {item.url: item for item in resources}
+
+        self.assertEqual(by_url["https://course.example.com/vod/play?id=alias-play"].kind, "video")
+        self.assertEqual(by_url["https://course.example.com/static/master.m3u8?token=master"].kind, "hls")
+        self.assertEqual(by_url["https://course.example.com/static/manifest.mpd?token=dash"].kind, "dash")
+        self.assertEqual(by_url["https://course.example.com/static/backup.mp4?token=backup"].kind, "video")
+        self.assertEqual(by_url["https://course.example.com/static/download.mp4?token=download"].kind, "video")
+        self.assertEqual(by_url["https://course.example.com/api/master?id=master-endpoint"].kind, "video")
+        self.assertEqual(by_url["https://course.example.com/api/main?id=main-endpoint"].kind, "video")
+        self.assertEqual(by_url["https://course.example.com/api/backup?id=backup-endpoint"].kind, "video")
+        self.assertNotIn("https://course.example.com/ordinary/download-page", by_url)
+
     def test_infers_manifest_url_from_nested_fragment(self) -> None:
         fragment = "https://cdn.example.com/live/master.m3u8/segment-001.ts?token=abc"
         self.assertEqual(classify_resource(fragment), "fragment")

@@ -46,11 +46,11 @@ MEDIA_ENDPOINT_HINT_RE = re.compile(
     re.I,
 )
 JSON_MEDIA_KEY_RE = re.compile(
-    r"(url|uri|path|src|file|fileid|objectid|dtoken|download|httpmd|play|media|video|audio|stream|source|hls|m3u8|dash|mpd|segment|fragment|chunk|subtitle|caption)",
+    r"(url|uri|path|src|file|fileid|objectid|dtoken|download|httpmd|play|media|video|audio|stream|source|manifest|master|main|backup|hls|m3u8|dash|mpd|segment|fragment|chunk|subtitle|caption)",
     re.I,
 )
 JSON_MIME_KEY_RE = re.compile(r"(mime|type|format|content.?type|media.?type)", re.I)
-JSON_VIDEO_CONTEXT_RE = re.compile(r"(url|uri|path|src|file|source|video|audio|media|play|stream|vod|course|lesson|objectid|dtoken|fileid|download|httpmd)", re.I)
+JSON_VIDEO_CONTEXT_RE = re.compile(r"(url|uri|path|src|file|source|video|audio|media|play|stream|vod|course|lesson|objectid|dtoken|fileid|download|httpmd|manifest|master|main|backup)", re.I)
 JSON_BASE_URL_KEY_RE = re.compile(r"(base.?url|cdn|host|domain|origin|endpoint|server|root|prefix)", re.I)
 TEXT_MEDIA_FIELD_RE = re.compile(
     r"(?P<key>[\"']?[A-Za-z_$][A-Za-z0-9_$.-]{0,79}[\"']?)\s*[:=]\s*[\"'](?P<url>(?:\\u[0-9a-fA-F]{4}|\\x[0-9a-fA-F]{2}|\\.|[^\"'<>\\\s]){4,})[\"']",
