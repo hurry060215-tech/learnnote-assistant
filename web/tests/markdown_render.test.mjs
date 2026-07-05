@@ -230,7 +230,7 @@ assert.match(elements.get("#browserBridgeStatus").innerHTML, /capture-status-chi
 assert.match(elements.get("#browserBridgeStatus").innerHTML, /capture-status-chip direct/);
 assert.match(elements.get("#browserBridgeStatus").innerHTML, /mp4\/mkv\/webm\/flv\/m3u8\/mpd/);
 assert.match(elements.get("#browserBridgeStatus").innerHTML, /不录制 · 不绕过 DRM · 不刷课/);
-assert.match(elements.get("#browserBridgeStatus").innerHTML, /待填 · OpenRouter/);
+assert.match(elements.get("#browserBridgeStatus").innerHTML, /手动配置/);
 assert.match(elements.get("#browserBridgeStatus").innerHTML, /capture-status-chip asr/);
 assert.match(elements.get("#browserBridgeStatus").innerHTML, /转写/);
 assert.match(elements.get("#browserBridgeStatus").innerHTML, /本地 faster-whisper · small/);
@@ -295,15 +295,17 @@ assert.match(indexHtml, /class="result-tab" role="tab" aria-selected="false" dat
 assert.match(indexHtml, /id="llmProvider"/);
 assert.match(indexHtml, /value="gemini">Google Gemini/);
 assert.match(indexHtml, /value="dashscope">/);
-assert.match(indexHtml, /value="siliconflow">SiliconFlow/);
+assert.doesNotMatch(indexHtml, /value="siliconflow"/);
+assert.doesNotMatch(indexHtml, /value="openrouter"/);
+assert.doesNotMatch(indexHtml, /value="local-openai"/);
 assert.match(indexHtml, /id="providerHint"/);
-assert.equal(elements.get("#llmProvider").value, "openrouter");
+assert.equal(elements.get("#llmProvider").value, "custom");
 assert.equal(elements.get("#llmModel").value, "openai/gpt-4.1-mini");
 assert.equal(elements.get("#llmBaseUrl").value, "https://openrouter.ai/api/v1");
 assert.equal(elements.get("#transcriber").value, "faster-whisper");
 assert.equal(elements.get("#whisperModel").value, "small");
-assert.match(elements.get("#providerHint").innerHTML, /Advanced/);
-assert.match(elements.get("#providerHint").innerHTML, /OpenRouter/);
+assert.match(elements.get("#providerHint").innerHTML, /Manual/);
+assert.match(elements.get("#providerHint").innerHTML, /custom OpenAI-compatible endpoint/);
 elements.get("#llmProvider").value = "gemini";
 context.applyModelProviderPreset(true);
 assert.equal(elements.get("#llmBaseUrl").value, "https://generativelanguage.googleapis.com/v1beta/openai/");
@@ -321,18 +323,6 @@ context.applyModelProviderPreset(true);
 assert.equal(elements.get("#llmBaseUrl").value, "https://dashscope.aliyuncs.com/compatible-mode/v1");
 assert.equal(elements.get("#llmModel").value, "qwen-vl-max");
 assert.equal(context.healthVisionProvider({}), "DashScope");
-elements.get("#llmProvider").value = "siliconflow";
-context.applyModelProviderPreset(true);
-assert.equal(elements.get("#llmBaseUrl").value, "https://api.siliconflow.cn/v1");
-assert.equal(elements.get("#llmModel").value, "Qwen/Qwen2.5-VL-72B-Instruct");
-assert.equal(context.healthVisionProvider({}), "SiliconFlow");
-elements.get("#llmProvider").value = "local-openai";
-context.applyModelProviderPreset(true);
-assert.equal(elements.get("#llmBaseUrl").value, "http://127.0.0.1:11434/v1");
-assert.equal(elements.get("#llmModel").value, "qwen2.5vl:7b");
-assert.equal(context.healthVisionProvider({}), "Local");
-elements.get("#llmProvider").value = "openrouter";
-context.applyModelProviderPreset(true);
 assert.equal(documentStub.body.classList.contains("workspace-collapsed"), false);
 elements.get("#toggleWorkspaceButton").onclick();
 assert.equal(documentStub.body.classList.contains("workspace-collapsed"), true);
@@ -417,7 +407,7 @@ const readyGateHtml = context.emptyReadinessGatesHtml({
 assert.match(readyGateHtml, /class="empty-readiness-gates"/);
 assert.match(readyGateHtml, /section class="pass"/);
 assert.match(readyGateHtml, /直取\/切片就绪/);
-assert.match(readyGateHtml, /OpenRouter · openai\/gpt-4\.1-mini/);
+assert.match(readyGateHtml, /DashScope · qwen-vl-max/);
 assert.doesNotMatch(readyGateHtml, /<script>bad/);
 
 const blockedGateHtml = context.emptyReadinessGatesHtml({
@@ -427,7 +417,7 @@ const blockedGateHtml = context.emptyReadinessGatesHtml({
 });
 assert.match(blockedGateHtml, /section class="block"/);
 assert.match(blockedGateHtml, /后端未就绪/);
-assert.match(blockedGateHtml, /待填 · OpenRouter/);
+assert.match(blockedGateHtml, /DashScope/);
 assert.match(indexHtml, /accept="video\/\*,\.mp4,\.m4v,\.mov,\.mkv,\.webm,\.flv,\.avi"/);
 assert.match(indexHtml, /data-tab="frames">画面网格/);
 const qaPanelInitialHtml = context.qaPanelHtml({ id: "task-qa-test" });

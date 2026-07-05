@@ -4,6 +4,7 @@ const LOCAL_VIDEO_EXT_RE = /\.(mp4|m4v|mov|mkv|webm|flv|avi)$/i;
 const RESULT_TAB_NAMES = new Set(["note", "transcript", "slices", "frames", "qa", "diagnostics"]);
 const LOCAL_ASR_MODELS = new Set(["tiny", "base", "small", "medium", "large", "large-v2", "large-v3"]);
 const MODEL_SETTINGS_STORAGE_KEY = "modelSettings";
+const MAINSTREAM_MODEL_PROVIDER_KEYS = new Set(["openai", "groq", "gemini", "dashscope"]);
 const MODEL_PROVIDER_PRESETS = {
   openai: {
     baseUrl: "https://api.openai.com/v1",
@@ -40,33 +41,6 @@ const MODEL_PROVIDER_PRESETS = {
     tier: "mainstream",
     recommended: true,
     capabilities: ["text", "vision"]
-  },
-  siliconflow: {
-    baseUrl: "https://api.siliconflow.cn/v1",
-    model: "Qwen/Qwen2.5-VL-72B-Instruct",
-    transcriber: "faster-whisper",
-    whisperModel: "small",
-    tier: "compatible",
-    recommended: false,
-    capabilities: ["text", "vision"]
-  },
-  openrouter: {
-    baseUrl: "https://openrouter.ai/api/v1",
-    model: "openai/gpt-4.1-mini",
-    transcriber: "faster-whisper",
-    whisperModel: "small",
-    tier: "compatible",
-    recommended: false,
-    capabilities: ["text", "vision"]
-  },
-  "local-openai": {
-    baseUrl: "http://127.0.0.1:11434/v1",
-    model: "qwen2.5vl:7b",
-    transcriber: "faster-whisper",
-    whisperModel: "small",
-    tier: "compatible",
-    recommended: false,
-    capabilities: ["text", "vision"]
   }
 };
 let modelProviderPresets = { ...MODEL_PROVIDER_PRESETS };
@@ -98,6 +72,7 @@ function syncModelProviderPresets(data) {
   const next = { ...MODEL_PROVIDER_PRESETS };
   for (const item of entries) {
     const preset = normalizeModelProviderPreset(item);
+    if (preset && !MAINSTREAM_MODEL_PROVIDER_KEYS.has(preset.key)) continue;
     if (preset) next[preset.key] = preset;
   }
   modelProviderPresets = next;
@@ -111,10 +86,6 @@ function modelProviderLabel(key) {
     groq: "Groq",
     gemini: "Gemini",
     dashscope: "DashScope",
-    siliconflow: "SiliconFlow",
-    openrouter: "OpenRouter",
-    "local-openai": "Local",
-    "local-openai-compatible": "Local",
     "openai-compatible": "Compatible",
     ollama: "Ollama"
   })[key] || key;
@@ -1110,8 +1081,8 @@ function currentModelSettings() {
 
 function applyModelSettings(settings = {}) {
   if (!settings || typeof settings !== "object") return;
-  if (els.llmProvider && settings.llm_provider && modelProviderPresets[settings.llm_provider]) {
-    els.llmProvider.value = settings.llm_provider;
+  if (els.llmProvider && typeof settings.llm_provider === "string") {
+    els.llmProvider.value = modelProviderPresets[settings.llm_provider] ? settings.llm_provider : "custom";
   }
   if (els.llmModel && typeof settings.llm_model === "string") {
     els.llmModel.value = settings.llm_model;
