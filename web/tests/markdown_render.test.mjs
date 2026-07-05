@@ -236,6 +236,16 @@ assert.match(elements.get("#browserBridgeStatus").innerHTML, /转写/);
 assert.match(elements.get("#browserBridgeStatus").innerHTML, /本地 faster-whisper · small/);
 assert.match(elements.get("#browserBridgeStatus").innerHTML, /capture-status-chip data ready/);
 assert.match(elements.get("#browserBridgeStatus").innerHTML, /D: · data/);
+context.updateHealthVisionStatus({
+  ffmpeg: true,
+  ffprobe_optional: true,
+  default_llm_model: "gpt-4.1-mini",
+  default_llm_provider: "openai",
+  default_llm_base_host: "api.openai.com"
+});
+assert.match(elements.get("#browserBridgeStatus").innerHTML, /capture-status-chip data pending/);
+assert.match(elements.get("#browserBridgeStatus").innerHTML, /data · 待检测/);
+assert.doesNotMatch(elements.get("#browserBridgeStatus").innerHTML, /路径异常/);
 assert.match(elements.get("#detail").innerHTML, /class="empty-workbench"/);
 assert.match(elements.get("#detail").innerHTML, /class="empty-demo-board"/);
 assert.match(elements.get("#detail").innerHTML, /class="empty-route-grid"/);

@@ -2600,10 +2600,22 @@ function healthDirectChipText(data = lastHealthData) {
   return `${healthDirectMediaFormats(data)} · ${healthDirectBoundaryText(data)}`;
 }
 
+function hasHealthDataPaths(data) {
+  const paths = data?.data_paths;
+  return Boolean(paths && typeof paths === "object" && Object.keys(paths).length);
+}
+
+function healthDataPathsReady(data) {
+  const paths = data?.data_paths || {};
+  return Boolean(hasHealthDataPaths(data) && paths.all_under_data_dir && paths.all_on_data_drive);
+}
+
 function healthDataChipText(data) {
   const paths = data?.data_paths || {};
   const drive = paths.data_drive || "";
-  const state = paths.all_under_data_dir && paths.all_on_data_drive ? "data内" : "路径异常";
+  const state = !hasHealthDataPaths(data)
+    ? "待检测"
+    : healthDataPathsReady(data) ? "data内" : "路径异常";
   return `${drive || "data"} · ${state}`;
 }
 
@@ -2633,10 +2645,10 @@ function emptyReadinessItems(data = lastHealthData) {
       detail: "平台直取失败时，本地视频会走同一套转写、抽帧、视觉窗口和图文总结管线。"
     },
     {
-      state: data?.data_paths?.all_under_data_dir && data?.data_paths?.all_on_data_drive ? "pass" : "warn",
+      state: !hasHealthDataPaths(data) ? "warn" : healthDataPathsReady(data) ? "pass" : "warn",
       label: "本地数据目录",
       value: healthDataChipText(data),
-      detail: data?.data_paths?.root || "等待后端返回 data 目录。"
+      detail: hasHealthDataPaths(data) ? data?.data_paths?.root || "等待后端返回 data 目录。" : "当前后端未上报 data 目录；刷新或重启后端后会重新检测。"
     },
     {
       state: "warn",
@@ -2679,7 +2691,7 @@ function updateHealthVisionStatus(data = lastHealthData) {
     <span class="capture-status-chip direct"><b>直取</b>${escapeHtml(healthDirectChipText(data))}</span>
     <span class="capture-status-chip vision ${healthVisionReady(data) ? "ready" : "pending"}"><b>视觉</b>${escapeHtml(healthVisionChipText(data))}</span>
     <span class="capture-status-chip asr"><b>转写</b>${escapeHtml(healthAsrChipText(data))}</span>
-    <span class="capture-status-chip data ${data?.data_paths?.all_under_data_dir ? "ready" : "pending"}"><b>数据</b>${escapeHtml(healthDataChipText(data))}</span>
+    <span class="capture-status-chip data ${healthDataPathsReady(data) ? "ready" : "pending"}"><b>数据</b>${escapeHtml(healthDataChipText(data))}</span>
   `;
 }
 

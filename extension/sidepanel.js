@@ -3501,8 +3501,20 @@ function directFailureBoundaryText() {
 function healthDataChipText(data) {
   const paths = data?.data_paths || {};
   const drive = paths.data_drive || "";
-  const state = paths.all_under_data_dir && paths.all_on_data_drive ? "data内" : "路径异常";
+  const state = !hasHealthDataPaths(data)
+    ? "待检测"
+    : healthDataPathsReady(data) ? "data内" : "路径异常";
   return `${drive || "data"} · ${state}`;
+}
+
+function hasHealthDataPaths(data) {
+  const paths = data?.data_paths;
+  return Boolean(paths && typeof paths === "object" && Object.keys(paths).length);
+}
+
+function healthDataPathsReady(data) {
+  const paths = data?.data_paths || {};
+  return Boolean(hasHealthDataPaths(data) && paths.all_under_data_dir && paths.all_on_data_drive);
 }
 
 function updateHealthVisionStatus(data = lastHealthData) {
@@ -3518,7 +3530,7 @@ function updateHealthVisionStatus(data = lastHealthData) {
     <span class="backend-status-chip direct"><b>直取</b>${escapeHtml(healthDirectChipText(data))}</span>
     <span class="backend-status-chip vision ${healthVisionReady(data) ? "ready" : "pending"}"><b>视觉</b>${escapeHtml(healthVisionChipText(data))}</span>
     <span class="backend-status-chip asr"><b>转写</b>${escapeHtml(healthAsrChipText(data))}</span>
-    <span class="backend-status-chip data ${data?.data_paths?.all_under_data_dir ? "ready" : "pending"}"><b>数据</b>${escapeHtml(healthDataChipText(data))}</span>
+    <span class="backend-status-chip data ${healthDataPathsReady(data) ? "ready" : "pending"}"><b>数据</b>${escapeHtml(healthDataChipText(data))}</span>
   `;
 }
 

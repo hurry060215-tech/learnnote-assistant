@@ -97,6 +97,16 @@ assert.match(elements.get("#backendStatus").innerHTML, /OpenAI · gpt-4\.1-mini/
 assert.match(elements.get("#backendStatus").innerHTML, /gpt-4\.1-mini/);
 assert.match(elements.get("#backendStatus").innerHTML, /backend-status-chip data ready/);
 assert.match(elements.get("#backendStatus").innerHTML, /D: · data/);
+context.updateHealthVisionStatus({
+  ffmpeg: true,
+  ffprobe_optional: true,
+  default_llm_model: "gpt-4.1-mini",
+  default_llm_provider: "openai",
+  default_llm_base_host: "api.openai.com"
+});
+assert.match(elements.get("#backendStatus").innerHTML, /backend-status-chip data pending/);
+assert.match(elements.get("#backendStatus").innerHTML, /data · 待检测/);
+assert.doesNotMatch(elements.get("#backendStatus").innerHTML, /路径异常/);
 assert.match(elements.get("#backendStatus").title, /视觉模型/);
 const qaPanelInitialHtml = context.qaPanelHtml({ id: "side-qa-test" });
 assert.match(qaPanelInitialHtml, /id="qaForm"/);
