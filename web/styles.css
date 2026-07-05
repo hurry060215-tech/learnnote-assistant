@@ -4868,6 +4868,184 @@ button:disabled {
   color: #ffffff;
 }
 
+.review-workbench {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 16px;
+  border: 1px solid #cfdded;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 13px;
+  box-shadow: 0 12px 26px rgba(16, 24, 40, 0.045);
+}
+
+.review-workbench.ready {
+  border-color: rgba(20, 150, 74, 0.24);
+}
+
+.review-workbench.partial {
+  border-color: rgba(169, 93, 0, 0.28);
+  background: linear-gradient(135deg, rgba(169, 93, 0, 0.07), #ffffff 56%);
+}
+
+.review-workbench.pending {
+  border-color: #dbe4f1;
+}
+
+.review-workbench header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.review-workbench header > div:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.review-workbench header span,
+.review-workbench header small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 820;
+  line-height: 1.4;
+}
+
+.review-workbench header strong {
+  color: var(--text);
+  font-size: 17px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.review-workbench-primary {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.review-workbench-primary button,
+.review-command-grid button,
+.review-command-grid span,
+.review-export-row a {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #c9d9ff;
+  border-radius: 7px;
+  background: #f7faff;
+  color: var(--accent);
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 850;
+  line-height: 1.2;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.review-workbench-primary button {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.review-command-grid span {
+  border-color: #e2e8f0;
+  background: #f8fafc;
+  color: var(--muted);
+}
+
+.review-workbench-primary button:hover,
+.review-command-grid button:hover,
+.review-export-row a:hover {
+  border-color: var(--accent);
+  background: #eaf2ff;
+}
+
+.review-workbench-primary button:hover {
+  background: var(--accent-strong);
+  color: #ffffff;
+}
+
+.review-command-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.review-command-grid article {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  align-content: start;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fbfcff;
+  padding: 10px;
+}
+
+.review-command-grid article.ready {
+  background: linear-gradient(180deg, rgba(20, 150, 74, 0.06), #ffffff 48%);
+}
+
+.review-command-grid article.active {
+  background: linear-gradient(180deg, rgba(20, 99, 255, 0.06), #ffffff 48%);
+}
+
+.review-command-grid article.wait,
+.review-command-grid article.skip {
+  background: #f8fafc;
+}
+
+.review-command-grid article > span {
+  border: 0;
+  min-height: 0;
+  display: inline;
+  justify-content: flex-start;
+  background: transparent;
+  color: var(--muted);
+  padding: 0;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.review-command-grid article > strong {
+  min-width: 0;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.review-command-grid article > small {
+  min-height: 34px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.review-command-grid article > div {
+  margin-top: 2px;
+}
+
+.review-export-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  border-top: 1px solid #edf2f7;
+  padding-top: 10px;
+}
+
+.review-export-row > span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+}
+
 .note-workbench {
   display: grid;
   grid-template-columns: minmax(0, 820px) 300px;
@@ -6642,6 +6820,10 @@ select {
 }
 
 @container (max-width: 960px) {
+  .review-command-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .study-map-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -6675,6 +6857,22 @@ select {
 }
 
 @container (max-width: 700px) {
+  .review-workbench header {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .review-workbench-primary {
+    justify-content: stretch;
+  }
+
+  .review-workbench-primary button {
+    width: 100%;
+  }
+
+  .review-command-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .note-workbench {
     grid-template-columns: minmax(0, 1fr);
   }

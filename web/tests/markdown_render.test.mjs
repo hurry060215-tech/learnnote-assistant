@@ -1351,6 +1351,64 @@ assert.match(noteHeroHtml, /data-switch-result-tab="frames"/);
 assert.match(noteHeroHtml, /href="https:\/\/course\.example\.com\/lesson"/);
 assert.doesNotMatch(noteHeroHtml, /javascript:alert/);
 
+const reviewWorkbenchHtml = context.noteReviewWorkbench(`# 机器学习导论
+
+## 第一章
+### 概念`, {
+  id: "task-review-workbench",
+  title: "复习工作台课程",
+  status: "success",
+  phase: "completed",
+  progress: 100,
+  source_type: "current_page",
+  media_path: "D:/Projects/learnnote-assistant/data/tasks/task-review-workbench/media.mp4",
+  subtitle_path: "D:/Projects/learnnote-assistant/data/tasks/task-review-workbench/subtitles.vtt",
+  transcript_path: "D:/Projects/learnnote-assistant/data/tasks/task-review-workbench/transcript.json",
+  note_path: "D:/Projects/learnnote-assistant/data/tasks/task-review-workbench/note.md",
+  summary_source: "vision-llm",
+  download_attempts: [{ strategy: "manifest-ffmpeg", status: "success" }],
+  qa: { history_count: 2 },
+  options: { frame_interval: 20, grid_columns: 3, grid_rows: 3, visual_understanding: true },
+  visual_windows: [{
+    id: "W001",
+    start: 0,
+    end: 180,
+    frame_count: 9,
+    grid_url: "http://127.0.0.1:8765/api/tasks/demo/grids/grid_000.jpg"
+  }]
+});
+assert.match(reviewWorkbenchHtml, /class="review-workbench ready"/);
+assert.match(reviewWorkbenchHtml, /复习工作台/);
+assert.match(reviewWorkbenchHtml, /复习笔记/);
+assert.match(reviewWorkbenchHtml, /学习切片/);
+assert.match(reviewWorkbenchHtml, /字幕时间轴/);
+assert.match(reviewWorkbenchHtml, /问答复习/);
+assert.match(reviewWorkbenchHtml, /直取诊断/);
+assert.match(reviewWorkbenchHtml, /3 个标题/);
+assert.match(reviewWorkbenchHtml, /2 条记录/);
+assert.match(reviewWorkbenchHtml, /data-switch-result-tab="qa"/);
+assert.match(reviewWorkbenchHtml, /data-switch-result-tab="slices"/);
+assert.match(reviewWorkbenchHtml, /\/api\/tasks\/task-review-workbench\/exports\/markdown/);
+assert.match(reviewWorkbenchHtml, /\/api\/tasks\/task-review-workbench\/exports\/subtitles/);
+assert.match(reviewWorkbenchHtml, /\/api\/tasks\/task-review-workbench\/exports\/visual-windows/);
+assert.match(reviewWorkbenchHtml, /\/api\/tasks\/task-review-workbench\/exports\/media/);
+assert.match(reviewWorkbenchHtml, /\/api\/tasks\/task-review-workbench\/exports\/bundle/);
+assert.match(stylesCss, /\.review-command-grid[\s\S]*grid-template-columns:\s*repeat\(5, minmax\(0, 1fr\)\)/);
+assert.match(stylesCss, /@container \(max-width: 960px\)[\s\S]*\.review-command-grid[\s\S]*repeat\(3, minmax\(0, 1fr\)\)/);
+
+const partialReviewWorkbenchHtml = context.noteReviewWorkbench("", {
+  id: "task-review-partial",
+  status: "success",
+  phase: "completed",
+  source_type: "current_page",
+  media_path: "D:/Projects/learnnote-assistant/data/tasks/task-review-partial/media.mp4",
+  options: { visual_understanding: true }
+});
+assert.match(partialReviewWorkbenchHtml, /class="review-workbench partial"/);
+assert.match(partialReviewWorkbenchHtml, /继续切片总结/);
+assert.match(partialReviewWorkbenchHtml, /data-rerun-from-media="task-review-partial"/);
+assert.match(partialReviewWorkbenchHtml, /视频已直取到本地/);
+
 const taskOverviewHtml = context.taskOverview({
   id: "task-web-overview",
   title: "<script>bad()</script> 课程",
