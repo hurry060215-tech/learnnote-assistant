@@ -1132,7 +1132,13 @@
     if (typeof value === "object") {
       if (visited.has(value) || depth > 4) return output;
       visited.add(value);
-      for (const key of ["src", "url", "file", "fileId", "objectid", "objectId", "dtoken", "downloadUrl", "httpmd", "source", "manifestUri", "playUrl", "videoUrl", "audioUrl", "streamUrl", "mediaUrl", "mainUrl", "backupUrl", "flvUrl", "hlsUrl"]) {
+      for (const key of [
+        "src", "url", "uri", "path", "file", "fileId", "file_id", "objectid", "objectId", "object_id",
+        "dtoken", "downloadUrl", "download_url", "httpmd", "source", "manifestUri", "manifestUrl", "manifest_url",
+        "playUrl", "playURL", "play_url", "videoUrl", "video_url", "audioUrl", "audio_url", "streamUrl", "stream_url",
+        "mediaUrl", "media_url", "mainUrl", "main_url", "masterUrl", "master_url", "backupUrl", "backup_url",
+        "flvUrl", "flv_url", "hlsUrl", "hls_url", "m3u8Url", "m3u8_url", "dashUrl", "dash_url", "mpdUrl", "mpd_url"
+      ]) {
         try {
           if (typeof value[key] === "string") output.push(value[key]);
         } catch {
@@ -1140,7 +1146,7 @@
         }
       }
       for (const [key, child] of safeObjectEntries(value, 80)) {
-        if (!/^(video|audio|media|source|sources|playlist|file|fileid|objectid|dtoken|download|httpmd|url|config|play|quality|qualities|streams?|segments?|hls|dash)$/i.test(key)) continue;
+        if (!/^(video|audio|media|source|sources|playlist|file|fileid|file_id|objectid|object_id|dtoken|download|download_url|httpmd|url|uri|path|config|play|play_url|quality|qualities|streams?|stream_url|segments?|manifest|manifest_url|master|master_url|main_url|backup_url|hls|hls_url|m3u8|m3u8_url|dash|dash_url|mpd|mpd_url)$/i.test(key)) continue;
         sourceCandidates(child, output, visited, depth + 1);
       }
     }
@@ -1155,13 +1161,14 @@
       if (!url || seen.has(url)) continue;
       seen.add(url);
       const detectedKind = mediaKind(url, "");
-      const kind = detectedKind === "unknown" ? fallbackKind : detectedKind;
+      const endpoint = detectedKind === "unknown" && !fallbackKind ? endpointKindHint(url) : null;
+      const kind = detectedKind === "unknown" ? (fallbackKind || endpoint?.kind || "") : detectedKind;
       if (!kind || kind === "unknown") continue;
       resources.push({
         url,
         source: "pageHookPlayer",
         kind,
-        mime: mimeForKind(kind),
+        mime: endpoint?.mime || mimeForKind(kind),
         label,
         score: scoreForKind(kind, { manifest: 99, video: 92, audio: 40, other: 64 })
       });

@@ -188,7 +188,15 @@ const xg = new context.xgplayer.Player({ source: { src: "/xgplayer/stream.mpd?to
 assert.equal(xg.options.source.src, "/xgplayer/stream.mpd?token=4");
 assert.equal(xg.switchUrl("/xgplayer/backup.m3u8?token=5"), "xg-switched");
 
-const videoRoll = new context.VideoRoll({ video: { url: "/videoroll/lesson.m3u8?token=15" } });
+const videoRoll = new context.VideoRoll({
+  video: {
+    url: "/videoroll/lesson.m3u8?token=15",
+    play_url: "/videoroll/play?id=18",
+    m3u8Url: "/videoroll/mobile.m3u8?token=19"
+  },
+  streams: [{ stream_url: "/videoroll/stream?id=20" }],
+  backup_url: "/videoroll/backup-file.mp4?token=21"
+});
 assert.equal(videoRoll.options.video.url, "/videoroll/lesson.m3u8?token=15");
 assert.equal(videoRoll.setSource({ src: "/videoroll/next.mp4?token=16" }), "videoroll-set-source");
 assert.equal(videoRoll.changeUrl("/videoroll/backup.m3u8?token=17"), "videoroll-change-url");
@@ -227,6 +235,7 @@ assert.equal(mpegts.switchUrl("/mpegts/backup.m3u8?token=11"), "mpegts-switch");
 const resources = messages.flatMap(message => message.resources || []);
 const urls = new Set(resources.map(resource => resource.url));
 const labels = new Set(resources.map(resource => resource.label));
+const resourceByUrl = new Map(resources.map(resource => [resource.url, resource]));
 
 assert.ok(urls.has("https://course.example.com/media/course/master.m3u8?token=1"));
 assert.ok(urls.has("https://cdn.example.com/dash/manifest.mpd?sig=1"));
@@ -240,6 +249,12 @@ assert.ok(urls.has("https://course.example.com/xgplayer/backup.m3u8?token=5"));
 assert.ok(urls.has("https://course.example.com/videoroll/lesson.m3u8?token=15"));
 assert.ok(urls.has("https://course.example.com/videoroll/next.mp4?token=16"));
 assert.ok(urls.has("https://course.example.com/videoroll/backup.m3u8?token=17"));
+assert.ok(urls.has("https://course.example.com/videoroll/play?id=18"));
+assert.ok(urls.has("https://course.example.com/videoroll/mobile.m3u8?token=19"));
+assert.ok(urls.has("https://course.example.com/videoroll/stream?id=20"));
+assert.ok(urls.has("https://course.example.com/videoroll/backup-file.mp4?token=21"));
+assert.equal(resourceByUrl.get("https://course.example.com/videoroll/play?id=18")?.kind, "video");
+assert.equal(resourceByUrl.get("https://course.example.com/videoroll/stream?id=20")?.kind, "video");
 assert.ok(urls.has("https://course.example.com/plyr/constructor.mp4?token=12"));
 assert.ok(urls.has("https://course.example.com/plyr/master.m3u8?token=13"));
 assert.ok(urls.has("https://course.example.com/plyr/fallback.mp4?token=14"));
