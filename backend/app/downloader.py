@@ -42,15 +42,15 @@ ENCODED_MEDIA_URL_RE = re.compile(
 )
 TEXT_RESPONSE_RE = re.compile(r"json|text|html|javascript|mpegurl|dash\+xml|xml|x-mpegurl", re.I)
 MEDIA_ENDPOINT_HINT_RE = re.compile(
-    r"(^|[/?&=._\s-])(api|ananas|play|player|stream|video|audio|media|vod|hls|dash|manifest|playlist|master|m3u8|mpd|objectid|dtoken|fileid|httpmd)([/?&=._\s-]|$)",
+    r"(^|[/?&=._\s-])(api|ananas|play|player|stream|video|audio|media|vod|quality|qualities|definition|definitions|format|formats|profile|profiles|variant|variants|rendition|renditions|level|levels|track|tracks|hls|dash|manifest|playlist|master|m3u8|mpd|objectid|dtoken|fileid|httpmd)([/?&=._\s-]|$)",
     re.I,
 )
 JSON_MEDIA_KEY_RE = re.compile(
-    r"(url|uri|path|src|file|fileid|objectid|dtoken|download|httpmd|play|media|video|audio|stream|source|manifest|master|main|backup|hls|m3u8|dash|mpd|segment|fragment|chunk|subtitle|caption)",
+    r"(url|uri|path|src|address|file|fileid|objectid|dtoken|download|httpmd|play|playlist|media|video|audio|stream|source|sourcelist|video.?list|audio.?list|quality|qualities|definition|definitions|format|formats|profile|profiles|variant|variants|rendition|renditions|level|levels|track|tracks|manifest|master|main|backup|hls|m3u8|dash|mpd|segment|fragment|chunk|subtitle|caption)",
     re.I,
 )
 JSON_MIME_KEY_RE = re.compile(r"(mime|type|format|content.?type|media.?type)", re.I)
-JSON_VIDEO_CONTEXT_RE = re.compile(r"(url|uri|path|src|file|source|video|audio|media|play|stream|vod|course|lesson|objectid|dtoken|fileid|download|httpmd|manifest|master|main|backup)", re.I)
+JSON_VIDEO_CONTEXT_RE = re.compile(r"(url|uri|path|src|address|file|source|sourcelist|video.?list|audio.?list|video|audio|media|play|playlist|stream|vod|course|lesson|objectid|dtoken|fileid|download|httpmd|quality|qualities|definition|definitions|format|formats|profile|profiles|variant|variants|rendition|renditions|level|levels|track|tracks|manifest|master|main|backup)", re.I)
 JSON_BASE_URL_KEY_RE = re.compile(r"(base.?url|cdn|host|domain|origin|endpoint|server|root|prefix)", re.I)
 TEXT_MEDIA_FIELD_RE = re.compile(
     r"(?P<key>[\"']?[A-Za-z_$][A-Za-z0-9_$.-]{0,79}[\"']?)\s*[:=]\s*[\"'](?P<url>(?:\\u[0-9a-fA-F]{4}|\\x[0-9a-fA-F]{2}|\\.|[^\"'<>\\\s]){4,})[\"']",
@@ -491,7 +491,7 @@ def _looks_like_json_url_candidate(value: str) -> bool:
         return True
     if value.startswith("/"):
         return True
-    if "/" in value and re.search(r"[?=&]|api|ananas|play|media|video|audio|stream|vod|m3u8|mpd|hls|dash|objectid|dtoken|fileid|httpmd", value, re.I):
+    if "/" in value and re.search(r"[?=&]|api|ananas|play|media|video|audio|stream|vod|quality|qualities|definition|definitions|format|formats|profile|profiles|variant|variants|rendition|renditions|level|levels|track|tracks|m3u8|mpd|hls|dash|objectid|dtoken|fileid|httpmd", value, re.I):
         return True
     return False
 

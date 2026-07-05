@@ -195,7 +195,11 @@ const videoRoll = new context.VideoRoll({
     m3u8Url: "/videoroll/mobile.m3u8?token=19"
   },
   streams: [{ stream_url: "/videoroll/stream?id=20" }],
-  backup_url: "/videoroll/backup-file.mp4?token=21"
+  backup_url: "/videoroll/backup-file.mp4?token=21",
+  definitions: [{ label: "HD", address: "/videoroll/definition?id=22" }],
+  qualities: [{ name: "720p", play: "/videoroll/quality-play?id=23" }],
+  formats: [{ file: "/videoroll/formats/lesson.mp4?token=24" }],
+  renditions: [{ src: "/videoroll/renditions/master.m3u8?token=25" }]
 });
 assert.equal(videoRoll.options.video.url, "/videoroll/lesson.m3u8?token=15");
 assert.equal(videoRoll.setSource({ src: "/videoroll/next.mp4?token=16" }), "videoroll-set-source");
@@ -253,8 +257,14 @@ assert.ok(urls.has("https://course.example.com/videoroll/play?id=18"));
 assert.ok(urls.has("https://course.example.com/videoroll/mobile.m3u8?token=19"));
 assert.ok(urls.has("https://course.example.com/videoroll/stream?id=20"));
 assert.ok(urls.has("https://course.example.com/videoroll/backup-file.mp4?token=21"));
+assert.ok(urls.has("https://course.example.com/videoroll/definition?id=22"));
+assert.ok(urls.has("https://course.example.com/videoroll/quality-play?id=23"));
+assert.ok(urls.has("https://course.example.com/videoroll/formats/lesson.mp4?token=24"));
+assert.ok(urls.has("https://course.example.com/videoroll/renditions/master.m3u8?token=25"));
 assert.equal(resourceByUrl.get("https://course.example.com/videoroll/play?id=18")?.kind, "video");
 assert.equal(resourceByUrl.get("https://course.example.com/videoroll/stream?id=20")?.kind, "video");
+assert.equal(resourceByUrl.get("https://course.example.com/videoroll/definition?id=22")?.kind, "video");
+assert.equal(resourceByUrl.get("https://course.example.com/videoroll/quality-play?id=23")?.kind, "video");
 assert.ok(urls.has("https://course.example.com/plyr/constructor.mp4?token=12"));
 assert.ok(urls.has("https://course.example.com/plyr/master.m3u8?token=13"));
 assert.ok(urls.has("https://course.example.com/plyr/fallback.mp4?token=14"));

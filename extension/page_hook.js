@@ -8,7 +8,7 @@
   const MEDIA_HINT_RE = new RegExp(`\\.(?:${MEDIA_EXT_PATTERN})(?:[?#]|["'\\s<>]|$)`, "i");
   const FRAGMENT_RE = /\.(?:m4s|ts)(?:\?|#|$)/i;
   const TEXT_TYPE_RE = /json|text|javascript|mpegurl|dash\+xml|xml|x-mpegurl/i;
-  const JSON_MEDIA_KEY_RE = /(url|uri|path|src|file|fileid|objectid|dtoken|download|httpmd|play|media|video|audio|stream|source|hls|m3u8|dash|mpd|segment|fragment|chunk|subtitle|caption)/i;
+  const JSON_MEDIA_KEY_RE = /(url|uri|path|src|address|file|fileid|objectid|dtoken|download|httpmd|play|playlist|media|video|audio|stream|source|sourcelist|video.?list|audio.?list|quality|qualities|definition|definitions|format|formats|profile|profiles|variant|variants|rendition|renditions|level|levels|track|tracks|hls|m3u8|dash|mpd|segment|fragment|chunk|subtitle|caption)/i;
   const JSON_MIME_KEY_RE = /(mime|type|format|content.?type|media.?type)/i;
   const GLOBAL_MEDIA_NAME_RE = /(^__.*(play|player|media|video|audio|stream|hls|dash|m3u8|mpd))|((play|player|media|video|audio|stream|hls|dash|m3u8|mpd).*(config|info|data|url|source|sources|list)$)/i;
   const GLOBAL_MEDIA_KEYS = [
@@ -209,7 +209,7 @@
   }
 
   function mediaUrlHint(url = "") {
-    return /(^|[/?&=._-])(m3u8|mpd|hls|dash|manifest|playlist|master|stream|play|video|audio|media|vod|ananas|objectid|dtoken|fileid|httpmd)([/?&=._-]|$)/i.test(String(url || ""));
+    return /(^|[/?&=._-])(m3u8|mpd|hls|dash|manifest|playlist|master|stream|play|video|audio|media|vod|quality|qualities|definition|definitions|format|formats|profile|profiles|variant|variants|rendition|renditions|level|levels|track|tracks|ananas|objectid|dtoken|fileid|httpmd)([/?&=._-]|$)/i.test(String(url || ""));
   }
 
   function endpointKindHint(url = "") {
@@ -1133,7 +1133,7 @@
       if (visited.has(value) || depth > 4) return output;
       visited.add(value);
       for (const key of [
-        "src", "url", "uri", "path", "file", "fileId", "file_id", "objectid", "objectId", "object_id",
+        "src", "url", "uri", "path", "address", "file", "fileId", "file_id", "objectid", "objectId", "object_id",
         "dtoken", "downloadUrl", "download_url", "httpmd", "source", "manifestUri", "manifestUrl", "manifest_url",
         "playUrl", "playURL", "play_url", "videoUrl", "video_url", "audioUrl", "audio_url", "streamUrl", "stream_url",
         "mediaUrl", "media_url", "mainUrl", "main_url", "masterUrl", "master_url", "backupUrl", "backup_url",
@@ -1146,7 +1146,7 @@
         }
       }
       for (const [key, child] of safeObjectEntries(value, 80)) {
-        if (!/^(video|audio|media|source|sources|playlist|file|fileid|file_id|objectid|object_id|dtoken|download|download_url|httpmd|url|uri|path|config|play|play_url|quality|qualities|streams?|stream_url|segments?|manifest|manifest_url|master|master_url|main_url|backup_url|hls|hls_url|m3u8|m3u8_url|dash|dash_url|mpd|mpd_url)$/i.test(key)) continue;
+        if (!/^(video|videos|video.?list|audio|audios|audio.?list|media|medias|source|sources|source.?list|playlist|play.?list|file|fileid|file_id|objectid|object_id|dtoken|download|download_url|httpmd|url|uri|path|address|config|options|play|play_url|quality|qualities|definition|definitions|format|formats|profile|profiles|variant|variants|rendition|renditions|level|levels|track|tracks|streams?|stream_url|segments?|manifest|manifest_url|master|master_url|main_url|backup_url|hls|hls_url|m3u8|m3u8_url|dash|dash_url|mpd|mpd_url)$/i.test(key)) continue;
         sourceCandidates(child, output, visited, depth + 1);
       }
     }

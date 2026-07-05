@@ -361,6 +361,28 @@ class ResourceDetectionTests(unittest.TestCase):
         self.assertEqual(by_url["https://course.example.com/api/backup?id=backup-endpoint"].kind, "video")
         self.assertNotIn("https://course.example.com/ordinary/download-page", by_url)
 
+    def test_page_scan_extracts_quality_variant_player_fields(self) -> None:
+        html = """
+        <script>
+        window.__qualityPlayer = {
+          definitions: [{ name: "HD", address: "/api/play?id=definition-hd" }],
+          qualities: [{ name: "720p", play: "/api/play?id=quality-play" }],
+          formats: [{ file: "/static/formats/lesson.mp4?token=format" }],
+          renditions: [{ src: "/static/renditions/master.m3u8?token=rendition" }],
+          profiles: [{ stream: "/api/stream?id=profile-stream" }]
+        };
+        </script>
+        """
+
+        resources = extract_media_resources_from_text(html, "https://course.example.com/lesson", "page-scan")
+        by_url = {item.url: item for item in resources}
+
+        self.assertEqual(by_url["https://course.example.com/api/play?id=definition-hd"].kind, "video")
+        self.assertEqual(by_url["https://course.example.com/api/play?id=quality-play"].kind, "video")
+        self.assertEqual(by_url["https://course.example.com/static/formats/lesson.mp4?token=format"].kind, "video")
+        self.assertEqual(by_url["https://course.example.com/static/renditions/master.m3u8?token=rendition"].kind, "hls")
+        self.assertEqual(by_url["https://course.example.com/api/stream?id=profile-stream"].kind, "video")
+
     def test_infers_manifest_url_from_nested_fragment(self) -> None:
         fragment = "https://cdn.example.com/live/master.m3u8/segment-001.ts?token=abc"
         self.assertEqual(classify_resource(fragment), "fragment")

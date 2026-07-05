@@ -122,6 +122,14 @@ const endpointContainerScript = new FakeElement("script", {
     streams:["https://media.example.com/vod/lesson?id=noext"]
   };`
 });
+const qualityContainerScript = new FakeElement("script", {
+  textContent: `window.__qualityPlayer={
+    definitions:[{name:"HD", address:"/api/play?id=definition-hd"}],
+    qualities:[{name:"720p", play:"/api/play?id=quality-play"}],
+    formats:[{file:"/static/formats/lesson.mp4?token=format"}],
+    renditions:[{src:"/static/renditions/master.m3u8?token=rendition"}]
+  };`
+});
 const segmentScript = new FakeElement("script", {
   textContent: "window.__segments=['https://cdn.example.com/static/hls/segment-001.ts?token=seg'];"
 });
@@ -206,7 +214,7 @@ sameOriginIframe.contentDocument = {
     textContent: ""
   }
 };
-const html = new FakeElement("html", {}, [player, packedPlayer, playUrlAliasPlayer, manifestAliasPlayer, backupAliasPlayer, doubleEncodedPlayer, onclickPlayer, paramPlayer, lazyPathPlayer, lazyUriPlayer, ordinaryPathLink, configPlayer, nakedPlayer, vendorPlayer, preloadVideo, preloadHls, prefetchPlayApi, ogVideo, htmlVideo, script, plainEncodedScript, plainDoubleEncodedScript, mixedEncodedScript, jsEscapedScript, jsEscapedPayloadScript, nestedMediaKeyScript, endpointContainerScript, segmentScript, plainUrlScript, srcdocIframe, sameOriginIframe]);
+const html = new FakeElement("html", {}, [player, packedPlayer, playUrlAliasPlayer, manifestAliasPlayer, backupAliasPlayer, doubleEncodedPlayer, onclickPlayer, paramPlayer, lazyPathPlayer, lazyUriPlayer, ordinaryPathLink, configPlayer, nakedPlayer, vendorPlayer, preloadVideo, preloadHls, prefetchPlayApi, ogVideo, htmlVideo, script, plainEncodedScript, plainDoubleEncodedScript, mixedEncodedScript, jsEscapedScript, jsEscapedPayloadScript, nestedMediaKeyScript, endpointContainerScript, qualityContainerScript, segmentScript, plainUrlScript, srcdocIframe, sameOriginIframe]);
 
 let messageListener = null;
 const context = {
@@ -308,6 +316,10 @@ const nestedMediaKeyHls = response.resources.find(item => item.url === "https://
 const apiPlayEndpoint = response.resources.find(item => item.url === "https://course.example.com/api/play?id=json-array&token=abc");
 const ananasEndpoint = response.resources.find(item => item.url === "https://course.example.com/ananas/status/objectid-123?flag=normal");
 const vodEndpoint = response.resources.find(item => item.url === "https://media.example.com/vod/lesson?id=noext");
+const definitionEndpoint = response.resources.find(item => item.url === "https://course.example.com/api/play?id=definition-hd");
+const qualityPlayEndpoint = response.resources.find(item => item.url === "https://course.example.com/api/play?id=quality-play");
+const formatVideo = response.resources.find(item => item.url === "https://course.example.com/static/formats/lesson.mp4?token=format");
+const renditionHls = response.resources.find(item => item.url === "https://course.example.com/static/renditions/master.m3u8?token=rendition");
 const hlsSegment = response.resources.find(item => item.url === "https://cdn.example.com/static/hls/segment-001.ts?token=seg");
 const onclickHls = response.resources.find(item => item.url === "https://cdn.example.com/static/onclick-master.m3u8?token=click");
 const paramVideo = response.resources.find(item => item.url === "https://cdn.example.com/static/param-lesson.mp4?token=param");
@@ -437,6 +449,22 @@ assert.ok(vodEndpoint, "expected media-named stream array to expose extensionles
 assert.equal(vodEndpoint.kind, "video");
 assert.equal(vodEndpoint.source, "scriptHint");
 assert.match(vodEndpoint.label, /(streams|coursePlayer) container/);
+
+assert.ok(definitionEndpoint, "expected definitions/address to expose extensionless play endpoint");
+assert.equal(definitionEndpoint.kind, "video");
+assert.equal(definitionEndpoint.source, "scriptHint");
+
+assert.ok(qualityPlayEndpoint, "expected qualities/play to expose extensionless play endpoint");
+assert.equal(qualityPlayEndpoint.kind, "video");
+assert.equal(qualityPlayEndpoint.source, "scriptHint");
+
+assert.ok(formatVideo, "expected formats/file to expose direct video");
+assert.equal(formatVideo.kind, "video");
+assert.equal(formatVideo.source, "scriptHint");
+
+assert.ok(renditionHls, "expected renditions/src to expose HLS manifest");
+assert.equal(renditionHls.kind, "hls");
+assert.equal(renditionHls.source, "scriptHint");
 
 assert.ok(hlsSegment, "expected inline script media scan to expose HLS segment URL");
 assert.equal(hlsSegment.kind, "fragment");
