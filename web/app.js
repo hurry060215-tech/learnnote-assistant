@@ -1380,6 +1380,100 @@ function sourceRunModesHtml(source, task = null) {
   </div>`;
 }
 
+function sourcePrimaryCommand(source, task = null) {
+  if (task?.note_path) {
+    return {
+      state: "done",
+      label: "查看笔记",
+      title: "已生成图文学习笔记",
+      detail: "打开结果区查看 Markdown、视觉切片、问答和资料包导出。",
+      selectTask: task.id
+    };
+  }
+  if (task?.status === "running" || task?.status === "queued") {
+    return {
+      state: "active",
+      label: "查看进度",
+      title: statusText(task),
+      detail: `${task.phase || "processing"} · ${task.progress || 0}%`,
+      selectTask: task.id
+    };
+  }
+  if (canContinueFromDownloadedMedia(task)) {
+    return {
+      state: "ready",
+      label: "继续切片总结",
+      title: "复用已下载视频",
+      detail: "从本地 media.mp4 继续转写、抽帧、视觉窗口和图文总结。",
+      action: "continue-media",
+      taskId: task.id
+    };
+  }
+  if (task?.status === "success") {
+    return {
+      state: "done",
+      label: "查看结果",
+      title: "任务已完成",
+      detail: "打开结果区查看下载产物、切片索引、诊断和可继续动作。",
+      selectTask: task.id
+    };
+  }
+  if (task?.status === "failed") {
+    return {
+      state: "blocked",
+      label: source === "browser" ? "切到本地兜底" : "查看诊断",
+      title: task.error_code || "任务失败",
+      detail: source === "browser"
+        ? "当前页直取失败时，优先上传本地视频继续同一套切片总结管线。"
+        : "打开结果区查看诊断、失败原因和可恢复动作。",
+      action: source === "browser" ? "switch-local" : "",
+      selectTask: source === "browser" ? "" : task.id
+    };
+  }
+  if (source === "local") {
+    return {
+      state: "ready",
+      label: "选择本地视频",
+      title: "拖入或选择 mp4 / mkv / webm",
+      detail: "本地文件直接进入转写、抽帧、视觉切片和笔记生成。",
+      action: "choose-local"
+    };
+  }
+  if (source === "url") {
+    return {
+      state: "ready",
+      label: "预检链接",
+      title: "先确认可下载再生成",
+      detail: "适合页面链接、直连视频、m3u8 或 mpd；通过后可一键生成笔记。",
+      action: "preflight-url"
+    };
+  }
+  return {
+    state: "ready",
+    label: "去扩展侧栏开始",
+    title: "读取正在播放的视频",
+    detail: "从 Chrome/Edge 当前页嗅探可访问媒体，不录制标签页。",
+    action: "open-extension"
+  };
+}
+
+function sourcePrimaryCommandHtml(source, task = null) {
+  const command = sourcePrimaryCommand(source, task);
+  const attrs = command.selectTask
+    ? `data-select-workflow-task="${escapeHtml(command.selectTask)}"`
+    : command.action
+      ? `data-source-workflow-action="${escapeHtml(command.action)}"${command.taskId ? ` data-task-id="${escapeHtml(command.taskId)}"` : ""}`
+      : "disabled";
+  return `<div class="source-primary-command ${escapeHtml(command.state)}" aria-label="主要下一步">
+    <div>
+      <span>下一步</span>
+      <strong>${escapeHtml(command.title)}</strong>
+      <small>${escapeHtml(command.detail)}</small>
+    </div>
+    <button type="button" ${attrs}>${escapeHtml(command.label)}</button>
+  </div>`;
+}
+
 function sourceWorkflowStatusItems(source, task = null) {
   const selected = task?.selected_resource || {};
   const attempts = task?.download_attempts || [];
@@ -1488,6 +1582,7 @@ function sourceWorkflowHtml(source = selectedSource, task = workflowTaskForSourc
       <strong>${escapeHtml(config.title)}</strong>
       <small>${escapeHtml(config.hint)}</small>
     </header>
+    ${sourcePrimaryCommandHtml(source, task)}
     ${sourceWorkflowBriefHtml(source, task)}
     ${sourceRunModesHtml(source, task)}
     ${sourceWorkflowStatusHtml(source, task)}

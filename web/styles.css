@@ -9218,6 +9218,87 @@ body {
   gap: 3px;
 }
 
+.source-primary-command {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #cfe0f2;
+  border-left: 4px solid var(--ln-blue);
+  border-radius: 9px;
+  background: #f7fbff;
+  padding: 10px;
+}
+
+.source-primary-command.done {
+  border-left-color: var(--ln-green);
+  background: #f4fbf7;
+}
+
+.source-primary-command.active {
+  border-left-color: var(--ln-blue);
+  background: #eef6ff;
+}
+
+.source-primary-command.blocked {
+  border-left-color: var(--ln-red);
+  background: #fff6f5;
+}
+
+.source-primary-command div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.source-primary-command span {
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.source-primary-command strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ln-ink);
+  font-size: 14px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-primary-command small {
+  color: #526176;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.source-primary-command button {
+  min-height: 36px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--ln-blue);
+  color: #ffffff;
+  padding: 0 14px;
+  font-size: 12px;
+  font-weight: 850;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.source-primary-command.done button {
+  background: var(--ln-green);
+}
+
+.source-primary-command.blocked button {
+  background: var(--ln-red);
+}
+
+.source-primary-command button:disabled {
+  cursor: default;
+  opacity: 0.62;
+}
+
 .source-workflow-brief {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

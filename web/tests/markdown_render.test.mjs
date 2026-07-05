@@ -2202,6 +2202,9 @@ const browserWorkflowHtml = context.sourceWorkflowHtml("browser", {
 });
 assert.match(browserWorkflowHtml, /class="source-workflow-card browser"/);
 assert.match(browserWorkflowHtml, /当前页直取/);
+assert.match(browserWorkflowHtml, /source-primary-command active/);
+assert.match(browserWorkflowHtml, /查看进度/);
+assert.match(browserWorkflowHtml, /data-select-workflow-task="task-workflow-browser"/);
 assert.match(browserWorkflowHtml, /source-workflow-brief/);
 assert.match(browserWorkflowHtml, /学习流总览/);
 assert.match(browserWorkflowHtml, /打开扩展侧栏总结当前页|downloading · 35%/);
@@ -2267,6 +2270,9 @@ vm.runInContext(`tasks = [];`, context);
 
 const localWorkflowHtml = context.sourceWorkflowHtml("local", null);
 assert.match(localWorkflowHtml, /本地视频/);
+assert.match(localWorkflowHtml, /source-primary-command ready/);
+assert.match(localWorkflowHtml, /选择本地视频/);
+assert.match(localWorkflowHtml, /data-source-workflow-action="choose-local"/);
 assert.match(localWorkflowHtml, /source-workflow-brief/);
 assert.match(localWorkflowHtml, /source-run-modes/);
 assert.match(localWorkflowHtml, /选择文件/);
@@ -2290,6 +2296,8 @@ const urlWorkflowHtml = context.sourceWorkflowHtml("url", {
   visual_windows: [{ id: "W001" }, { id: "W002" }]
 });
 assert.match(urlWorkflowHtml, /链接解析/);
+assert.match(urlWorkflowHtml, /source-primary-command done/);
+assert.match(urlWorkflowHtml, /查看笔记/);
 assert.match(urlWorkflowHtml, /source-workflow-brief/);
 assert.match(urlWorkflowHtml, /source-run-modes/);
 assert.match(urlWorkflowHtml, /生成新的链接笔记/);
@@ -2314,6 +2322,8 @@ const failedWorkflowHtml = context.sourceWorkflowHtml("browser", {
   download_attempts: []
 });
 assert.match(failedWorkflowHtml, /class="blocked"/);
+assert.match(failedWorkflowHtml, /source-primary-command blocked/);
+assert.match(failedWorkflowHtml, /切到本地兜底/);
 assert.match(failedWorkflowHtml, /DRM/);
 
 const routeEmptyHtml = context.browserRouteSummaryHtml(null);
@@ -2345,6 +2355,19 @@ assert.match(downloadOnlyRunModesHtml, /media\.mp4 已保存/);
 assert.match(downloadOnlyRunModesHtml, /从 media\.mp4 继续/);
 assert.match(downloadOnlyRunModesHtml, /data-source-workflow-action="continue-media"/);
 assert.match(downloadOnlyRunModesHtml, /data-task-id="task-workflow-download-only"/);
+
+const downloadOnlyPrimaryHtml = context.sourcePrimaryCommandHtml("browser", {
+  id: "task-workflow-download-only",
+  status: "success",
+  phase: "completed",
+  progress: 100,
+  source_type: "current_page",
+  mode: "download_only",
+  media_path: "D:/Projects/learnnote-assistant/data/tasks/task-workflow-download-only/media.mp4"
+});
+assert.match(downloadOnlyPrimaryHtml, /继续切片总结/);
+assert.match(downloadOnlyPrimaryHtml, /data-source-workflow-action="continue-media"/);
+assert.match(downloadOnlyPrimaryHtml, /data-task-id="task-workflow-download-only"/);
 
 const urlRunModesHtml = context.sourceRunModesHtml("url", null);
 assert.match(urlRunModesHtml, /data-source-workflow-action="start-url"/);
