@@ -455,6 +455,35 @@ class LocalUploadValidationTests(unittest.TestCase):
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
+    def test_media_export_uses_recorded_raw_filename(self) -> None:
+        task = create_task("current_page", "Raw downloaded lesson", "https://course.example.com/lesson", mode="video")
+        work_dir = task_dir(task.id)
+        media = work_dir / "downloaded-original.mp4"
+        try:
+            work_dir.mkdir(parents=True, exist_ok=True)
+            media.write_bytes(b"fake mp4 bytes")
+            update_task(
+                task.id,
+                status="failed",
+                phase="failed",
+                progress=100,
+                error_code="processing_failed",
+                media_path=str(media),
+            )
+
+            export = self.client.get(f"/api/tasks/{task.id}/exports/media")
+            self.assertEqual(export.status_code, 200)
+            self.assertIn("attachment", export.headers["content-disposition"])
+            self.assertIn("downloaded-original.mp4", export.headers["content-disposition"])
+            self.assertEqual(export.content, b"fake mp4 bytes")
+
+            preview = self.client.get(f"/api/tasks/{task.id}/media")
+            self.assertEqual(preview.status_code, 200)
+            self.assertIn("inline", preview.headers["content-disposition"])
+            self.assertIn("downloaded-original.mp4", preview.headers["content-disposition"])
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
     def test_reuse_ready_when_media_has_slices_but_no_note(self) -> None:
         task = create_task("current_page", "Failed after slicing", "https://course.example.com/lesson", mode="video")
         work_dir = task_dir(task.id)

@@ -153,6 +153,13 @@ def media_filename(task_id: str, title: str) -> str:
     return f"{stem}.mp4"
 
 
+def media_download_filename(task: TaskRecord, path: Path) -> str:
+    name = _FILENAME_RESERVED_RE.sub("_", path.name or "").strip(" ._")
+    if name and name.lower() != "media.mp4":
+        return name[:160]
+    return media_filename(task.id, task.title)
+
+
 def diagnostics_filename(task_id: str, title: str) -> str:
     stem = _FILENAME_RESERVED_RE.sub("_", title or "").strip(" ._")
     stem = stem[:120] or f"learnnote-{task_id}"
@@ -2649,10 +2656,10 @@ def api_export_subtitles(task_id: str) -> FileResponse:
 @app.get("/api/tasks/{task_id}/exports/media")
 def api_export_media(task_id: str) -> FileResponse:
     task, path = _task_media_file(task_id)
-    filename = media_filename(task.id, task.title)
+    filename = media_download_filename(task, path)
     headers = {
         "Content-Disposition": (
-            f'attachment; filename="learnnote-{task.id}.mp4"; '
+            f'attachment; filename="{quote(filename)}"; '
             f"filename*=UTF-8''{quote(filename)}"
         )
     }
@@ -2731,10 +2738,10 @@ def _task_visual_clip_file(task_id: str, window_id: str) -> tuple[TaskRecord, Pa
 @app.get("/api/tasks/{task_id}/media")
 def api_preview_media(task_id: str) -> FileResponse:
     task, path = _task_media_file(task_id)
-    filename = media_filename(task.id, task.title)
+    filename = media_download_filename(task, path)
     headers = {
         "Content-Disposition": (
-            f'inline; filename="learnnote-{task.id}.mp4"; '
+            f'inline; filename="{quote(filename)}"; '
             f"filename*=UTF-8''{quote(filename)}"
         ),
         "Cache-Control": "private, max-age=60",
