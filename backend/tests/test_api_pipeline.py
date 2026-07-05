@@ -495,6 +495,47 @@ class LocalUploadValidationTests(unittest.TestCase):
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
+    def test_failed_task_with_downloaded_raw_media_can_rerun_from_media(self) -> None:
+        task = create_task("current_page", "Failed raw media", "https://course.example.com/lesson", mode="video")
+        work_dir = task_dir(task.id)
+        media = make_video(work_dir, "downloaded-original.mp4")
+        rerun_task_id = ""
+        try:
+            update_task(
+                task.id,
+                status="failed",
+                phase="failed",
+                progress=100,
+                error_code="processing_failed",
+                error_detail="normalize failed",
+                media_path=str(media),
+                selected_resource=ResourceCandidate(url="https://cdn.example.com/lesson.mp4", kind="video", source="webRequest"),
+                download_attempts=[DownloadAttempt(strategy="direct-file", url="https://cdn.example.com/lesson.mp4", status="success")],
+            )
+
+            detail = self.client.get(f"/api/tasks/{task.id}").json()["task"]
+
+            self.assertTrue(detail["reuse"]["media_available"])
+            self.assertTrue(detail["reuse"]["rerun_from_media_ready"])
+            self.assertEqual(detail["reuse"]["suggested_next_step"], "rerun_from_media")
+            self.assertEqual(detail["recovery"]["next_action"], "continue_from_media")
+            self.assertIn("downloaded-original.mp4", detail["recovery"]["diagnosis"])
+            self.assertEqual(detail["recovery"]["primary_action"]["ui_intent"], "continue_from_media")
+            self.assertTrue(any(item["key"] == "continue_from_media" for item in detail["next_actions"]))
+
+            with patch("app.main.process_local_video_task") as process_task:
+                response = self.client.post(f"/api/tasks/{task.id}/rerun-from-media", json={"visual_understanding": False})
+            self.assertEqual(response.status_code, 200)
+            rerun_task_id = response.json()["task_id"]
+            process_task.assert_called_once()
+            rerun = self.client.get(f"/api/tasks/{rerun_task_id}").json()["task"]
+            self.assertEqual(rerun["source_task_id"], task.id)
+            self.assertEqual(rerun["source_media_path"], str(media))
+        finally:
+            if rerun_task_id:
+                shutil.rmtree(task_dir(rerun_task_id), ignore_errors=True)
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
     def test_task_list_includes_embedded_audit_summary(self) -> None:
         task = create_task("current_page", "List audit", "https://course.example.com/lesson")
         media = task_dir(task.id) / "media.mp4"

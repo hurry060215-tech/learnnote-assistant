@@ -45,6 +45,17 @@ def _fail(task_id: str, code: str, detail: str) -> None:
     )
 
 
+def remember_reusable_media(task_id: str, path: Path) -> bool:
+    try:
+        candidate = Path(path)
+        if not candidate.is_file() or candidate.stat().st_size <= 0:
+            return False
+        update_task(task_id, media_path=str(candidate))
+        return True
+    except OSError:
+        return False
+
+
 def _redacted_values(values: dict[str, str]) -> dict[str, str]:
     return {name: "<redacted>" for name in values}
 
@@ -746,6 +757,7 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
             status_callback=download_status_updater(task_id),
         )
         media_path, selected = downloader.download(request.page_url, request.resources, request.cookies, request.title)
+        remember_reusable_media(task_id, media_path)
         if selected:
             update_task(task_id, selected_resource=redacted_resource(selected))
         if request.mode == "download_only":
@@ -845,6 +857,7 @@ def _process_video_file(
     update_task(task_id, status="running", phase="processing_video", progress=25, message="正在标准化视频")
 
     normalized = work_dir / "media.mp4"
+    remember_reusable_media(task_id, input_path)
     normalize_video(input_path, normalized)
     update_task(task_id, media_path=str(normalized))
     audio_warning = ""

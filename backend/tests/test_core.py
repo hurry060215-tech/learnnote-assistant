@@ -1180,6 +1180,50 @@ class ProcessorBoundaryTests(unittest.TestCase):
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
+    def test_current_page_keeps_downloaded_media_when_normalize_fails(self) -> None:
+        for mode in ("video", "download_only"):
+            with self.subTest(mode=mode):
+                task = create_task("current_page", f"Normalize failure {mode}", "https://course.example.com/lesson", mode=mode)
+                source_path = task_dir(task.id) / f"downloaded-{mode}.mp4"
+
+                class FakeDownloader:
+                    def __init__(self, work_dir: Path, progress_callback=None, status_callback=None):
+                        self.work_dir = work_dir
+                        self.attempts = []
+
+                    def download(self, page_url, resources, cookies, title):
+                        source_path.write_bytes(b"\x00\x00\x00\x18ftypmp42" + b"downloaded")
+                        selected = ResourceCandidate(url="https://cdn.example.com/lesson.mp4", source="webRequest", kind="video")
+                        self.attempts = [
+                            DownloadAttempt(strategy="direct-file", url=selected.url, source=selected.source, kind=selected.kind, status="success")
+                        ]
+                        return source_path, selected
+
+                request = CurrentPageTaskRequest(
+                    mode=mode,
+                    page_url="https://course.example.com/lesson",
+                    title=f"Normalize failure {mode}",
+                    resources=[ResourceCandidate(url="https://cdn.example.com/lesson.mp4", source="webRequest", kind="video")],
+                    options=TaskOptions(visual_understanding=False),
+                )
+
+                try:
+                    with patch("app.processor.MediaDownloader", FakeDownloader), \
+                        patch("app.processor.normalize_video", side_effect=RuntimeError("normalize failed")):
+                        process_current_page_task(task.id, request)
+
+                    record = get_task(task.id)
+                    self.assertEqual(record.status, "failed")
+                    self.assertEqual(record.error_code, "processing_failed")
+                    self.assertIn("normalize failed", record.error_detail)
+                    self.assertEqual(record.media_path, str(source_path))
+                    self.assertTrue(Path(record.media_path).is_file())
+                    self.assertEqual(record.download_attempts[0].status, "success")
+                    assert record.selected_resource is not None
+                    self.assertEqual(record.selected_resource.url, "https://cdn.example.com/lesson.mp4")
+                finally:
+                    shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
     def test_current_page_active_src_marks_matching_candidate_as_main_video(self) -> None:
         task = create_task("current_page", "Active src lesson", "https://course.example.com/lesson")
         source_path = task_dir(task.id) / "active-download.mp4"

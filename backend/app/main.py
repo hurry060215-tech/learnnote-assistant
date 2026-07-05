@@ -128,6 +128,13 @@ def task_media_file_exists(task: TaskRecord) -> bool:
         return False
 
 
+def task_media_display_name(task: TaskRecord) -> str:
+    try:
+        return Path(task.media_path).name if task.media_path else "本地媒体"
+    except (OSError, ValueError):
+        return "本地媒体"
+
+
 def markdown_filename(task_id: str, title: str) -> str:
     stem = _FILENAME_RESERVED_RE.sub("_", title or "").strip(" ._")
     stem = stem[:120] or f"learnnote-{task_id}"
@@ -933,7 +940,8 @@ def diagnostic_recovery_steps(task: TaskRecord) -> list[str]:
     return steps
 
 
-def _recovery_action(action: str, *, detail: str = "", priority: str = "secondary") -> dict[str, str]:
+def _recovery_action(action: str, *, detail: str = "", priority: str = "secondary", task: TaskRecord | None = None) -> dict[str, str]:
+    media_name = task_media_display_name(task) if task is not None else "本地媒体"
     action_map = {
         "local_upload": {
             "label": "上传本地视频",
@@ -968,7 +976,7 @@ def _recovery_action(action: str, *, detail: str = "", priority: str = "secondar
         "continue_from_media": {
             "label": "继续切片总结",
             "ui_intent": "continue_from_media",
-            "detail": "复用已下载到本地的 media.mp4，继续生成字幕、画面网格和笔记。",
+            "detail": f"复用已下载到本地的 {media_name}，继续生成字幕、画面网格和笔记。",
         },
         "inspect_audit": {
             "label": "查看阶段审计",
@@ -1000,12 +1008,12 @@ def _recovery_action(action: str, *, detail: str = "", priority: str = "secondar
 
 
 def _diagnostic_recovery_actions(task: TaskRecord, primary_action_key: str) -> list[dict[str, str]]:
-    actions = [_recovery_action(primary_action_key, priority="primary")]
+    actions = [_recovery_action(primary_action_key, priority="primary", task=task)]
     existing = {primary_action_key}
 
     def add(action_key: str) -> None:
         if action_key not in existing:
-            actions.append(_recovery_action(action_key))
+            actions.append(_recovery_action(action_key, task=task))
             existing.add(action_key)
 
     if task_media_file_exists(task):
@@ -1035,7 +1043,7 @@ def diagnostic_recovery_profile(task: TaskRecord) -> dict:
 
     if media_ready_for_rerun:
         primary_code = "media_ready_for_rerun"
-        diagnosis = "视频已保存到本地，但完整笔记尚未生成；优先复用 media.mp4 继续转写、切片和图文总结。"
+        diagnosis = f"视频已保存到本地，但完整笔记尚未生成；优先复用 {task_media_display_name(task)} 继续转写、切片和图文总结。"
         confidence = "high"
         severity = "recoverable" if task.status == "failed" else "ok"
         next_action = "continue_from_media"
