@@ -1005,6 +1005,62 @@ assert.match(taskOverviewHtml, /data-rerun-from-media="side-overview"/);
 assert.doesNotMatch(taskOverviewHtml, /<script>bad/);
 assert.match(taskOverviewHtml, /&lt;script&gt;bad\(\)&lt;\/script&gt; 课程/);
 
+const rawMediaNameTask = {
+  id: "side-raw-media-name",
+  title: "downloaded original",
+  status: "success",
+  phase: "completed",
+  progress: 100,
+  source_type: "current_page",
+  mode: "download_only",
+  media_path: "D:/Projects/learnnote-assistant/data/tasks/side-raw-media-name/downloaded-original.mp4",
+  selected_resource: {
+    kind: "hls",
+    source: "webRequest",
+    playback_match: "blob-source"
+  },
+  direct_extraction: {
+    no_tab_recording: true,
+    no_drm_bypass: true,
+    route: "download_only_to_local_media",
+    media_landed: true,
+    media_reusable: true,
+    selected_candidate: {
+      kind: "hls",
+      source: "webRequest"
+    },
+    download: {
+      successful_attempt_count: 1,
+      failed_attempt_count: 0,
+      strategy_order: ["manifest-ffmpeg"]
+    },
+    processing: {
+      download_only: true
+    },
+    boundary: "normal_accessible_media_only"
+  },
+  options: {
+    frame_interval: 20,
+    grid_columns: 3,
+    grid_rows: 3,
+    visual_understanding: true
+  },
+  visual_windows: []
+};
+const rawMediaOverviewHtml = context.taskOverview(rawMediaNameTask);
+assert.match(rawMediaOverviewHtml, /downloaded-original\.mp4/);
+assert.doesNotMatch(rawMediaOverviewHtml, /已落地 media\.mp4|导出 media\.mp4|media\.mp4 继续/);
+const rawMediaNoteTask = {
+  ...rawMediaNameTask,
+  status: "success",
+  mode: "rerun_from_media",
+  note_path: "D:/Projects/learnnote-assistant/data/tasks/side-raw-media-name/note.md",
+  transcript_path: "D:/Projects/learnnote-assistant/data/tasks/side-raw-media-name/transcript.json"
+};
+assert.match(context.noteReviewWorkbench("# downloaded original", rawMediaNoteTask), />downloaded-original\.mp4</);
+assert.match(context.noteStudyMap("# downloaded original", rawMediaNoteTask), /downloaded-original\.mp4/);
+assert.doesNotMatch(context.noteReviewWorkbench("# downloaded original", rawMediaNoteTask), />media\.mp4</);
+
 const downloadedAuditItems = context.pipelineAuditItems({
   id: "side-audit-downloaded",
   status: "success",

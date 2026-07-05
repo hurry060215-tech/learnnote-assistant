@@ -273,7 +273,7 @@ function displayTaskTitle(task, fallback = "未命名任务") {
   const raw = String(task?.title || "").trim();
   if (!isUnreadableTitle(raw)) return raw;
   const selected = task?.selected_resource || {};
-  const kind = mediaKindText(selected.kind) || selected.kind || (task?.media_path ? "media.mp4" : "");
+  const kind = mediaKindText(selected.kind) || selected.kind || (task?.media_path ? taskMediaDisplayName(task) : "");
   const source = task?.mode === "download_only"
     ? "当前页下载"
     : task?.mode === "rerun_from_media"
@@ -787,6 +787,7 @@ function directRouteCopy(task) {
   const state = directRouteState(task);
   const selected = task?.selected_resource || {};
   const attempts = task?.download_attempts || [];
+  const mediaName = taskMediaDisplayName(task);
   if (state === "ready") {
     return {
       badge: "可复习",
@@ -799,7 +800,7 @@ function directRouteCopy(task) {
     return {
       badge: "已下载",
       title: "视频已直取到本地",
-      detail: `${selected.kind || "media"} · 可导出 media.mp4`,
+      detail: `${selected.kind || "media"} · 可导出 ${mediaName}`,
       hint: "选择该任务后点击“继续切片总结”，复用已下载视频生成完整笔记。"
     };
   }
@@ -850,6 +851,7 @@ function browserRouteHandoffItems(task) {
   const selected = task?.selected_resource || {};
   const attempts = task?.download_attempts || [];
   const windows = task ? visualWindows(task) : [];
+  const mediaName = taskMediaDisplayName(task);
   return [
     {
       state: selected.url ? "done" : "pending",
@@ -862,7 +864,7 @@ function browserRouteHandoffItems(task) {
     {
       state: task?.media_path ? "done" : attempts.length ? "active" : "pending",
       label: "本地落地",
-      value: task?.media_path ? "media.mp4" : attempts.length ? `${attempts.length} 次尝试` : "未下载",
+      value: task?.media_path ? mediaName : attempts.length ? `${attempts.length} 次尝试` : "未下载",
       detail: task?.media_path ? "已可导出或继续切片总结" : "直接文件、ffmpeg 或 yt-dlp 路线"
     },
     {
@@ -1225,9 +1227,10 @@ function sourceRouteInsightItems(source, task = null) {
   const selected = task?.selected_resource || {};
   const attempts = task?.download_attempts || [];
   const windows = task ? visualWindows(task) : [];
+  const mediaName = taskMediaDisplayName(task);
   if (source === "local") {
     return [
-      ["视频入口", "本地文件直进管线", task?.media_path ? "已生成标准 media.mp4" : "拖拽上传后保存在 D 盘 data/uploads"],
+      ["视频入口", "本地文件直进管线", task?.media_path ? `已生成 ${mediaName}` : "拖拽上传后保存在 D 盘 data/uploads"],
       ["理解方式", "字幕优先，所选 ASR 兜底", "同样抽帧切片并送入视觉窗口"],
       ["适用场景", "平台不暴露 URL 时兜底", "DRM、不可还原 blob、过期签名都可改走本地"]
     ];
@@ -1301,6 +1304,7 @@ function sourceWorkflowBriefHtml(source, task = null) {
 }
 
 function sourceRunModeItems(source, task = null) {
+  const mediaName = taskMediaDisplayName(task);
   if (source === "url") {
     return [
       {
@@ -1314,13 +1318,13 @@ function sourceRunModeItems(source, task = null) {
         state: "ready",
         label: "只下载",
         title: "先把视频拉到本地",
-        detail: "适合先验证平台资源是否可访问，再从 media.mp4 继续切片总结。",
+        detail: `适合先验证平台资源是否可访问，再从 ${mediaName} 继续切片总结。`,
         action: "download-url"
       },
       {
         state: canContinueFromDownloadedMedia(task) ? "active" : "wait",
         label: "继续切片",
-        title: canContinueFromDownloadedMedia(task) ? "从 media.mp4 继续" : "等待本地媒体",
+        title: canContinueFromDownloadedMedia(task) ? `从 ${mediaName} 继续` : "等待本地媒体",
         detail: "复用已下载视频进入转写、抽帧、视觉窗口和图文总结；不会录制页面。",
         action: canContinueFromDownloadedMedia(task) ? "continue-media" : ""
       }
@@ -1349,7 +1353,7 @@ function sourceRunModeItems(source, task = null) {
     {
       state: downloadState,
       label: "只下载",
-      title: hasMedia ? "media.mp4 已保存" : "先把视频拉到本地",
+      title: hasMedia ? `${mediaName} 已保存` : "先把视频拉到本地",
       detail: source === "local"
         ? "本地文件会复制到任务目录，无需平台下载。"
         : "适合先验证平台资源是否可访问，再决定是否继续总结。",
@@ -1358,7 +1362,7 @@ function sourceRunModeItems(source, task = null) {
     {
       state: continueState,
       label: "继续切片",
-      title: canContinue ? "从 media.mp4 继续" : isRerun ? "正在生成完整笔记" : "等待本地媒体",
+      title: canContinue ? `从 ${mediaName} 继续` : isRerun ? "正在生成完整笔记" : "等待本地媒体",
       detail: "复用已下载视频进入转写、抽帧、视觉窗口和图文总结；不会录制页面。",
       action: canContinue ? "continue-media" : ""
     }
@@ -1400,11 +1404,12 @@ function sourcePrimaryCommand(source, task = null) {
     };
   }
   if (canContinueFromDownloadedMedia(task)) {
+    const mediaName = taskMediaDisplayName(task);
     return {
       state: "ready",
       label: "继续切片总结",
       title: "复用已下载视频",
-      detail: "从本地 media.mp4 继续转写、抽帧、视觉窗口和图文总结。",
+      detail: `从本地 ${mediaName} 继续转写、抽帧、视觉窗口和图文总结。`,
       action: "continue-media",
       taskId: task.id
     };
@@ -2925,13 +2930,14 @@ function taskPreviewHtml(task) {
   const firstWindow = windows[0];
   const selected = task.selected_resource || {};
   const status = taskStatusClass(task);
+  const mediaName = taskMediaDisplayName(task);
   const label = firstWindow
     ? firstWindow.id || "切片"
     : selected.kind || (task.media_path ? "视频" : task.error_code ? "诊断" : "任务");
   const detail = firstWindow
     ? `${fmt(firstWindow.start)} - ${fmt(firstWindow.end)}`
     : task.media_path
-      ? "media.mp4"
+      ? mediaName
       : task.error_code || statusText(task);
   if (firstWindow?.grid_url) {
     return `<figure class="task-preview status-${escapeHtml(status)}">
@@ -2956,6 +2962,7 @@ function taskChipItems(task) {
   const selected = task.selected_resource || {};
   const windows = visualWindows(task);
   const attempts = task.download_attempts || [];
+  const mediaName = taskMediaDisplayName(task);
   const route = selected.playback_match
     ? playbackText(selected.playback_match)
     : resourceSourceText(selected) || (task.source_type === "current_page" ? "页面解析" : sourceText(task));
@@ -2964,12 +2971,12 @@ function taskChipItems(task) {
     mediaKindText(selected.kind),
     task.error_code || "",
     attempts.length ? `${attempts.length} 次尝试` : "",
-    task.note_path ? "兜底笔记" : task.media_path ? "media.mp4" : "",
+    task.note_path ? "兜底笔记" : task.media_path ? mediaName : "",
     windows.length ? `${windows.length} 窗口` : ""
   ] : [
     route,
     mediaKindText(selected.kind),
-    task.media_path ? "media.mp4" : "",
+    task.media_path ? mediaName : "",
     task.note_path ? "笔记" : "",
     windows.length ? `${windows.length} 窗口` : "",
     attempts.length > 1 ? `${attempts.length} 次尝试` : ""
@@ -2998,8 +3005,9 @@ function taskHandoffItems(task) {
   const windows = visualWindows(task || {});
   const attempts = task?.download_attempts || [];
   const sourceLabel = sourceText(task);
+  const mediaName = taskMediaDisplayName(task);
   const mediaLabel = task?.media_path
-    ? "media.mp4 已保存"
+    ? `${mediaName} 已保存`
     : attempts.length
       ? `${attempts.length} 次下载尝试`
       : task?.source_type === "local"
@@ -3450,6 +3458,7 @@ function pipelineAuditItems(task) {
   const isPageText = task?.source_type === "page_text" || Boolean(diag.used_page_text_fallback);
   const hasSelectedRoute = Boolean(selected.url || selected.kind || isLocal || isPageText);
   const hasMedia = hasExportableMedia(task);
+  const mediaName = taskMediaDisplayName(task);
   const hasTranscript = hasReadableTranscript(task);
   const transcriptSource = reusableTranscriptSourceText(task);
   const hasVisuals = Boolean(windows.length || task?.frame_grids?.length || Number(diag.frame_grid_count || 0));
@@ -3476,7 +3485,7 @@ function pipelineAuditItems(task) {
       key: "media",
       label: "媒体检查",
       state: mediaState,
-      value: mediaState === "skip" ? "文本路线" : hasMedia ? "media.mp4" : task?.error_code || "待下载",
+      value: mediaState === "skip" ? "文本路线" : hasMedia ? mediaName : task?.error_code || "待下载",
       detail: hasMedia
         ? "已保存到本地，可导出或复用继续总结"
         : (attempts.length ? `${attempts.length} 次下载尝试` : "等待 yt-dlp、直连或 ffmpeg 合并")
@@ -3581,6 +3590,7 @@ function nextStepHtml(task) {
   const windows = visualWindows(task);
   const hasNote = Boolean(task.note_path);
   const hasMedia = hasExportableMedia(task);
+  const mediaName = taskMediaDisplayName(task);
   const hasTranscript = hasReadableTranscript(task);
   const hasVisuals = Boolean(windows.length || task.frame_grids?.length || Number(task.summary_diagnostics?.frame_grid_count || 0));
   const failed = task.status === "failed";
@@ -3601,7 +3611,7 @@ function nextStepHtml(task) {
   } else if (canContinueFromDownloadedMedia(task)) {
     tone = "ready";
     title = "继续生成完整笔记";
-    detail = "视频已经下载到本地，可以复用 media.mp4 继续转写、切片和图文总结。";
+    detail = `视频已经下载到本地，可以复用 ${mediaName} 继续转写、切片和图文总结。`;
     actions = [
       `<button type="button" data-rerun-from-media="${escapeHtml(task.id)}">生成完整笔记</button>`,
       `<button type="button" data-switch-result-tab="diagnostics">看下载证据</button>`
@@ -3702,9 +3712,10 @@ function nextCommandCenterText(task, items) {
     };
   }
   if (canContinueFromDownloadedMedia(task)) {
+    const mediaName = taskMediaDisplayName(task);
     return {
       title: "视频已保存到本地，可以继续切片总结",
-      detail: "复用 media.mp4 进入转写、抽帧、视觉窗口和图文笔记。"
+      detail: `复用 ${mediaName} 进入转写、抽帧、视觉窗口和图文笔记。`
     };
   }
   const waiting = items.find(item => !["pass", "skip"].includes(taskCommandCenterItemState(task, item.key)));
@@ -3819,6 +3830,7 @@ function directExtractionEvidenceItems(task) {
   const direct = task?.direct_extraction;
   if (!direct) return [];
   const selected = direct.selected_candidate || {};
+  const mediaName = taskMediaDisplayName(task);
   const browser = direct.browser_context || {};
   const download = direct.download || {};
   const processing = direct.processing || {};
@@ -3860,7 +3872,7 @@ function directExtractionEvidenceItems(task) {
     {
       state: direct.media_landed ? "pass" : "warn",
       label: "媒体保存",
-      value: direct.media_landed ? "已保存 media.mp4" : "未保存",
+      value: direct.media_landed ? `已保存 ${mediaName}` : "未保存",
       detail: direct.media_reusable ? "可复用本地视频" : directExtractionBoundaryText(direct.boundary)
     },
     {
@@ -3941,6 +3953,7 @@ function taskOverview(task) {
   const canContinueMedia = canContinueFromDownloadedMedia(task);
   const fallbackNote = task.status === "failed" && hasNote;
   const failedWithoutFallback = task.status === "failed" && !fallbackNote;
+  const mediaName = taskMediaDisplayName(task);
   const resourceLine = [
     sourceText(task),
     mediaKindText(selected.kind) || selected.kind || task.source_type || "",
@@ -3989,7 +4002,7 @@ function taskOverview(task) {
     ${taskRouteEvidenceHtml(task)}
     ${downloadOnly ? `<div class="download-only-callout">
       <strong>已完成直取下载</strong>
-      <span>这个任务按“只下载本地”运行，未进入转写、切片和总结。可以先导出 media.mp4，或直接复用这个本地视频生成完整笔记。</span>
+      <span>这个任务按“只下载本地”运行，未进入转写、切片和总结。可以先导出 ${escapeHtml(mediaName)}，或直接复用这个本地视频生成完整笔记。</span>
     </div>` : ""}
     ${fallbackNote ? `<div class="download-only-callout fallback-note-callout">
       <strong>已生成兜底笔记</strong>
@@ -4377,6 +4390,7 @@ function noteHeroBanner(markdown, task) {
   const windows = visualWindows(task);
   const headings = noteHeadingStats(markdown);
   const selected = task.selected_resource || {};
+  const mediaName = taskMediaDisplayName(task);
   const firstWindow = windows.find(window => safeNoteMediaUrl(window.grid_url)) || windows[0] || null;
   const image = safeNoteMediaUrl(firstWindow?.grid_url || "");
   const sourceUrl = safeExternalUrl(task.page_url || selected.url || "");
@@ -4388,7 +4402,7 @@ function noteHeroBanner(markdown, task) {
   ].filter(Boolean).join(" · ");
   const timeline = windows.length && firstWindow
     ? `${fmt(windows[0].start || 0)} - ${fmt(windows[windows.length - 1].end || 0)}`
-    : hasExportableMedia(task) ? "media.mp4 已保存" : "等待切片";
+    : hasExportableMedia(task) ? `${mediaName} 已保存` : "等待切片";
   const metrics = [
     { label: "章节", value: headings.total ? `${headings.total}` : "-" },
     { label: "字幕", value: hasReadableTranscript(task) ? "已生成" : task.browser_subtitles?.length ? `${task.browser_subtitles.length} 条` : "-" },
@@ -4438,6 +4452,7 @@ function noteReviewWorkbench(markdown, task) {
   const hasDiagnostics = hasTaskDiagnostics(task);
   const hasMedia = hasExportableMedia(task);
   const canContinueMedia = canContinueFromDownloadedMedia(task);
+  const mediaName = taskMediaDisplayName(task);
   const cards = [
     {
       state: hasNote ? "ready" : "wait",
@@ -4479,7 +4494,7 @@ function noteReviewWorkbench(markdown, task) {
     task.note_path ? `<a href="${escapeHtml(taskExportUrl(task, "markdown"))}">Markdown</a>` : "",
     hasExportableSubtitle(task) ? `<a href="${escapeHtml(taskExportUrl(task, "subtitles"))}">字幕</a>` : "",
     hasVisualWindowExport(task) ? `<a href="${escapeHtml(taskExportUrl(task, "visual-windows"))}">切片索引</a>` : "",
-    hasMedia ? `<a href="${escapeHtml(taskExportUrl(task, "media"))}">media.mp4</a>` : "",
+    hasMedia ? `<a href="${escapeHtml(taskExportUrl(task, "media"))}">${escapeHtml(mediaName)}</a>` : "",
     hasTaskBundle(task) ? `<a href="${escapeHtml(taskExportUrl(task, "bundle"))}">资料包</a>` : ""
   ].filter(Boolean);
   const primary = canContinueMedia
@@ -4488,7 +4503,7 @@ function noteReviewWorkbench(markdown, task) {
       ? `<button type="button" data-switch-result-tab="qa">问这节课</button>`
       : `<button type="button" data-switch-result-tab="diagnostics">查看阶段检查</button>`;
   const detail = canContinueMedia
-    ? "视频已直取到本地，下一步复用 media.mp4 进入转写、抽帧和图文总结。"
+    ? `视频已直取到本地，下一步复用 ${mediaName} 进入转写、抽帧和图文总结。`
     : hasNote
       ? "按 BiliNote 式阅读路径组织：笔记先读，切片和字幕随时核对，最后导出资料包。"
       : "任务还在推进，先用诊断和阶段检查确认卡点。";
@@ -4520,6 +4535,7 @@ function noteStudyBar(markdown, task) {
   const hasTranscript = hasReadableTranscript(task);
   const hasMedia = hasExportableMedia(task);
   const hasBundle = hasTaskBundle(task);
+  const mediaName = taskMediaDisplayName(task);
   const firstWindow = windows[0];
   const lastWindow = windows[windows.length - 1];
   const visualRange = windows.length && firstWindow && lastWindow
@@ -4547,7 +4563,7 @@ function noteStudyBar(markdown, task) {
     {
       label: "本地产物",
       value: [hasMedia ? "视频" : "", hasBundle ? "资料包" : ""].filter(Boolean).join(" · ") || "等待产物",
-      text: hasMedia ? "可复用 media.mp4 继续处理" : "任务完成后可导出",
+      text: hasMedia ? `可复用 ${mediaName} 继续处理` : "任务完成后可导出",
       action: hasBundle ? `<a href="${escapeHtml(taskExportUrl(task, "manifest"))}">导出清单</a><a href="${escapeHtml(taskExportUrl(task, "bundle"))}">导出资料包</a>` : ""
     }
   ];
@@ -4573,6 +4589,7 @@ function noteStudyBar(markdown, task) {
 function noteExportCtaBar(task) {
   if (!task?.id) return "";
   const hasMedia = hasExportableMedia(task);
+  const mediaName = taskMediaDisplayName(task);
   const primary = [
     task.note_path ? `<a class="primary" href="${escapeHtml(taskExportUrl(task, "markdown"))}">导出 Markdown</a>` : "",
     hasVisualWindowExport(task) ? `<a href="${escapeHtml(taskExportUrl(task, "visual-windows"))}">导出切片索引</a>` : "",
@@ -4580,7 +4597,7 @@ function noteExportCtaBar(task) {
   ].filter(Boolean);
   const secondary = [
     hasExportableSubtitle(task) ? `<a href="${escapeHtml(taskExportUrl(task, "subtitles"))}">字幕</a>` : "",
-    hasMedia ? `<a href="${escapeHtml(taskExportUrl(task, "media"))}">media.mp4</a>` : "",
+    hasMedia ? `<a href="${escapeHtml(taskExportUrl(task, "media"))}">${escapeHtml(mediaName)}</a>` : "",
     hasTaskDiagnostics(task) ? `<a href="${escapeHtml(taskExportUrl(task, "diagnostics"))}">诊断</a>` : "",
     hasTaskAudit(task) ? `<a href="${escapeHtml(taskExportUrl(task, "audit"))}">审计</a>` : "",
     hasTaskBundle(task) ? `<a href="${escapeHtml(taskExportUrl(task, "manifest"))}">清单</a>` : ""
@@ -4635,6 +4652,7 @@ function readingProgressRail(markdown, task) {
   const hasTranscript = hasReadableTranscript(task);
   const hasMedia = hasExportableMedia(task);
   const hasNote = Boolean(task?.note_path);
+  const mediaName = taskMediaDisplayName(task);
   const items = [
     {
       state: hasNote ? "done" : "wait",
@@ -4657,8 +4675,8 @@ function readingProgressRail(markdown, task) {
     {
       state: hasTaskBundle(task) ? "done" : hasMedia ? "active" : "wait",
       label: "产物",
-      value: hasTaskBundle(task) ? "可导出" : hasMedia ? "media.mp4" : "等待",
-      detail: hasMedia ? "本地视频可复用" : "完成后生成资料包"
+      value: hasTaskBundle(task) ? "可导出" : hasMedia ? mediaName : "等待",
+      detail: hasMedia ? `本地 ${mediaName} 可复用` : "完成后生成资料包"
     }
   ];
   return `<section class="reading-progress-rail" aria-label="学习进度">
@@ -4678,10 +4696,11 @@ function readingProgressRail(markdown, task) {
 
 function readingArtifactsRail(task) {
   if (!task?.id) return "";
+  const mediaName = taskMediaDisplayName(task);
   const actions = [
     task.note_path ? `<a href="${escapeHtml(taskExportUrl(task, "markdown"))}">Markdown</a>` : "",
     hasExportableSubtitle(task) ? `<a href="${escapeHtml(taskExportUrl(task, "subtitles"))}">字幕文件</a>` : "",
-    hasExportableMedia(task) ? `<a href="${escapeHtml(taskExportUrl(task, "media"))}">media.mp4</a>` : "",
+    hasExportableMedia(task) ? `<a href="${escapeHtml(taskExportUrl(task, "media"))}">${escapeHtml(mediaName)}</a>` : "",
     hasVisualWindowExport(task) ? `<a href="${escapeHtml(taskExportUrl(task, "visual-windows"))}">切片索引</a>` : "",
     hasTaskAudit(task) ? `<a href="${escapeHtml(taskExportUrl(task, "audit"))}">审计</a>` : "",
     hasTaskDiagnostics(task) ? `<a href="${escapeHtml(taskExportUrl(task, "diagnostics"))}">诊断</a>` : "",
