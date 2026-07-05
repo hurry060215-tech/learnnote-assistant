@@ -673,8 +673,8 @@ function currentPageAuditReport() {
   const checked = currentPreflight();
   const active = page?.active_video || {};
   const subtitles = page?.browser_subtitles || [];
-  const candidateCount = resources.length;
-  const downloadableCount = resources.filter(isDirectExtractionCandidate).length;
+  const candidateCount = candidateResources().length;
+  const downloadableCount = directExtractionCandidates().length;
   const captureRestored = Number(captureLog?.restored || 0);
   const lines = [
     "LearnNote 当前页直取审计报告",
@@ -1329,6 +1329,14 @@ function candidateResources() {
   return resources.filter(item => !isResourceExcluded(item));
 }
 
+function directExtractionCandidates() {
+  return candidateResources().filter(isDirectExtractionCandidate);
+}
+
+function playbackMatchedCandidates() {
+  return candidateResources().filter(item => item.playback_match || item.is_main_video);
+}
+
 function toggleResourceExcluded(url) {
   const value = String(url || "");
   if (!value) return;
@@ -1890,10 +1898,11 @@ function resourceAttemptState(item) {
 function resourceAttemptQueueHtml(limit = 4) {
   if (!resources.length) return "";
   const ordered = selectedResources().slice(0, limit);
+  const candidateCount = candidateResources().length;
   return `<section class="resource-attempt-queue" aria-label="候选下载队列">
     <div class="resource-attempt-head">
       <strong>下载队列</strong>
-      <span>${resources.filter(isDirectExtractionCandidate).length}/${resources.length} 可直取</span>
+      <span>${directExtractionCandidates().length}/${candidateCount} 可直取</span>
     </div>
     <div class="resource-attempt-list">
       ${ordered.map((item, index) => {
@@ -2064,7 +2073,7 @@ function playbackReadinessState() {
   const active = page?.active_video || null;
   const frames = page?.frames || [];
   const subtitles = page?.browser_subtitles || [];
-  const downloadable = resources.filter(isDirectExtractionCandidate);
+  const downloadable = directExtractionCandidates();
   const drmDetected = page?.drm_detected || active?.drm_detected;
   const isBlob = Boolean(active?.src?.startsWith("blob:"));
   const srcObjectOnly = activeSrcObjectOnly(active);
@@ -2102,8 +2111,8 @@ function playbackSourceLabel(active) {
 }
 
 function playbackReadinessCopy(state) {
-  const downloadable = resources.filter(isDirectExtractionCandidate).length;
-  const matched = resources.filter(item => item.playback_match || item.is_main_video).length;
+  const downloadable = directExtractionCandidates().length;
+  const matched = playbackMatchedCandidates().length;
   const subtitleCount = (page?.browser_subtitles || []).length;
   const frames = page?.frames || [];
   if (state === "blocked") {
@@ -2179,8 +2188,8 @@ function renderPlaybackReadiness() {
   if (!els.playbackReadiness) return;
   const active = page?.active_video || null;
   const subtitles = page?.browser_subtitles || [];
-  const downloadable = resources.filter(isDirectExtractionCandidate);
-  const matched = resources.filter(item => item.playback_match || item.is_main_video);
+  const downloadable = directExtractionCandidates();
+  const matched = playbackMatchedCandidates();
   const state = playbackReadinessState();
   const copy = playbackReadinessCopy(state);
   const playValue = active?.src
@@ -2283,7 +2292,7 @@ function currentStudyMetrics() {
 function sourceRouteItems() {
   const studyState = currentStudyState();
   const selected = selectedResource();
-  const downloadableCount = resources.filter(isDirectExtractionCandidate).length;
+  const downloadableCount = directExtractionCandidates().length;
   const subtitles = page?.browser_subtitles || [];
   const pageTextLength = (page?.page_text || "").trim().length;
   const localState = localUploadFocusState();
@@ -2437,7 +2446,7 @@ function noteStyleText() {
 function workbenchFacts(state) {
   const selected = selectedResource();
   const checked = currentPreflight();
-  const downloadable = resources.filter(isDirectExtractionCandidate).length;
+  const downloadable = directExtractionCandidates().length;
   const active = page?.active_video || null;
   const subtitles = page?.browser_subtitles || [];
   const playTime = hasActiveVideoSignal(active)
@@ -2846,10 +2855,10 @@ function renderLaunchBar() {
 }
 
 function resourceHint() {
-  const downloadable = resources.filter(isDirectExtractionCandidate).length;
+  const downloadable = directExtractionCandidates().length;
   const blobCount = resources.filter(item => item.kind === "blob").length;
   const fragmentCount = resources.filter(item => item.kind === "fragment").length;
-  const playbackMatched = resources.some(item => item.playback_match || item.is_main_video);
+  const playbackMatched = playbackMatchedCandidates().length > 0;
   const activeBlob = page?.active_video?.src?.startsWith("blob:");
   const activeStream = activeSrcObjectOnly(page?.active_video);
   const drmDetected = page?.drm_detected || page?.active_video?.drm_detected;
@@ -2926,7 +2935,7 @@ function noResourceGuideHtml() {
 }
 
 function renderReadiness() {
-  const downloadable = resources.filter(isDirectExtractionCandidate);
+  const downloadable = directExtractionCandidates();
   const selected = selectedResource();
   const hasBlob = resources.some(item => item.kind === "blob");
   const hasFragment = resources.some(item => item.kind === "fragment");
@@ -2994,7 +3003,7 @@ function selectedResourceLabel(item) {
 function routeSummaryState() {
   const selected = selectedResource();
   const checked = currentPreflight();
-  const downloadableCount = resources.filter(isDirectExtractionCandidate).length;
+  const downloadableCount = directExtractionCandidates().length;
   const drmDetected = page?.drm_detected || page?.active_video?.drm_detected;
   const activeStream = activeSrcObjectOnly(page?.active_video);
   const canFallback = canAttemptBackendPageFallback("video");
@@ -3059,8 +3068,10 @@ function routeSummaryMetrics() {
   const selected = selectedResource();
   const checked = currentPreflight();
   const restored = Number(captureLog?.restored || 0);
+  const downloadableCount = directExtractionCandidates().length;
+  const candidateCount = candidateResources().length;
   return [
-    { label: "候选", value: `${resources.filter(isDirectExtractionCandidate).length}/${resources.length}` },
+    { label: "候选", value: `${downloadableCount}/${candidateCount}` },
     { label: "选中", value: selected?.kind || "-" },
     { label: "预检", value: checked ? checked.downloadable ? "通过" : checked.code || "未过" : "未跑" },
     { label: "捕获", value: restored ? `${restored} 缓存` : "实时" },
@@ -3071,13 +3082,14 @@ function routeSummaryMetrics() {
 function routeHandoffItems(state) {
   const selected = selectedResource();
   const checked = currentPreflight();
-  const downloadableCount = resources.filter(isDirectExtractionCandidate).length;
+  const downloadableCount = directExtractionCandidates().length;
+  const candidateCount = candidateResources().length;
   const visualEnabled = visualUnderstandingEnabled();
   return [
     {
       state: selected ? "done" : downloadableCount ? "active" : "pending",
       label: "资源证据",
-      value: selected?.kind || `${downloadableCount}/${resources.length}`,
+      value: selected?.kind || `${downloadableCount}/${candidateCount}`,
       detail: selected ? directnessText(selected) : "播放课程页后收集播放器、请求和字幕"
     },
     {
@@ -3160,7 +3172,7 @@ function renderExtractionPlan() {
   if (!els.extractionPlan) return;
   const selected = selectedResource();
   const checked = currentPreflight();
-  const downloadableCount = resources.filter(isDirectExtractionCandidate).length;
+  const downloadableCount = directExtractionCandidates().length;
   const pageFallback = canAttemptBackendPageFallback("video");
   const drmDetected = page?.drm_detected || page?.active_video?.drm_detected;
   const directState = checked

@@ -1610,6 +1610,12 @@ assert.notEqual(context.pickDefaultResourceUrl([
 ], "https://cdn.example.com/live/master.m3u8"), "https://cdn.example.com/live/master.m3u8");
 context.renderContext();
 assert.doesNotMatch(elements.get("#resources").innerHTML, /resource-attempt-row selected/);
+assert.equal(context.playbackReadinessState(), "mapping");
+assert.doesNotMatch(elements.get("#playbackReadiness").innerHTML, /data-route-action="preflight"/);
+assert.doesNotMatch(elements.get("#playbackReadiness").innerHTML, /data-route-action="summarize"/);
+assert.doesNotMatch(elements.get("#playbackReadiness").innerHTML, /data-route-action="download"/);
+assert.match(elements.get("#playbackReadiness").innerHTML, /data-route-action="redetect"/);
+assert.match(elements.get("#playbackReadiness").innerHTML, /data-route-action="local"/);
 vm.runInContext(`resourceFilter = "excluded";`, context);
 context.renderContext();
 assert.match(elements.get("#resources").innerHTML, /class="resource[^"]*excluded/);
