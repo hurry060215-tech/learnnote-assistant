@@ -155,3 +155,6 @@ assert.equal(resources[0].resolved_url, "https://media.example.com/real/lesson.m
 assert.equal(resources[0].mime, "video/mp4");
 assert.match(elements.get("#resources").innerHTML, /resource-preflight ok/);
 assert.match(elements.get("#resources").innerHTML, /解析媒体 URL/);
+assert.match(context.resourceDecisionHtml(context.selectedResource(), context.currentPreflight()), /接口解析: https:\/\/media\.example\.co\.\.\.\/real\/lesson\.mp4\?sig=abc/);
+assert.match(context.workbenchRouteHtml(), /接口解析: https:\/\/media\.example\.com\/real\/lesson\.mp4\?sig=abc/);
+assert.match(context.selectedResourceReport(), /接口解析: https:\/\/media\.example\.com\/real\/lesson\.mp4\?sig=abc/);

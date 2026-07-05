@@ -571,7 +571,7 @@ function compactIdList(values, limit = 3) {
 
 function resourcePreflightLine(result = null, item = null) {
   if (!result) return "未预检";
-  const items = [
+  return [
     result.downloadable ? "通过" : result.code || "未通过",
     result.strategy || "",
     result.status_code ? `HTTP ${result.status_code}` : "",
@@ -592,6 +592,13 @@ function resolvedTargetText(item, result = null, limit = 92) {
   return compactUrl(target, limit);
 }
 
+function preflightResolvedMediaFact(item, result = null, limit = 72) {
+  const checked = result || preflightForResource(item);
+  if (!checked?.downloadable || checked.strategy !== "direct-response-probe") return "";
+  const target = resolvedTargetText(item, checked, limit);
+  return target ? `接口解析: ${target}` : "";
+}
+
 function selectedResourceReport(item = selectedResource()) {
   if (!item) return "";
   const confidence = candidateConfidence(item);
@@ -606,6 +613,7 @@ function selectedResourceReport(item = selectedResource()) {
     `下载顺序: 第 ${candidateTryOrder(item) || "-"} 顺位`,
     `置信度: ${confidence.label} - ${confidence.detail}`,
     `选择依据: ${resourceReasonText(item) || requestEvidence(item) || "-"}`,
+    preflightResolvedMediaFact(item, checked, 120),
     `请求证据: ${requestEvidence(item) || "-"}`,
     `响应证据: ${responseEvidenceLine(item) || "-"}`,
     `复用请求头: ${requestHeaderNames(item)}`,
@@ -1998,6 +2006,7 @@ function resourceDecisionHtml(item, checked = null) {
     candidateStrategyText(item),
     candidateConfidence(item).label,
     preflightStatusTag(checked),
+    preflightResolvedMediaFact(item, checked, 48),
     requestHeaderNames(item) !== "-" ? "请求头" : "",
     requestBodySummary(item) ? "POST body" : ""
   ].filter(Boolean) : [];
@@ -2508,6 +2517,7 @@ function workbenchRouteHtml() {
   const evidence = [
     requestEvidence(selected),
     responseEvidenceLine(selected),
+    preflightResolvedMediaFact(selected, checked, 82),
     target ? `实际目标 ${target}` : ""
   ].filter(Boolean).join(" · ");
 
