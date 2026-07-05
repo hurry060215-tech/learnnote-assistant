@@ -1033,6 +1033,21 @@ assert.match(pendingSliceHtml, /\/api\/tasks\/task-pending-slice\/exports\/media
 assert.match(pendingSliceHtml, /data-switch-result-tab="diagnostics"/);
 assert.match(pendingSliceHtml, /media-preview-card/);
 
+const rawPendingSliceHtml = context.pendingSliceWorkbench({
+  id: "task-pending-raw-slice",
+  title: "Downloaded raw lesson",
+  status: "failed",
+  phase: "failed",
+  mode: "video",
+  source_type: "current_page",
+  media_path: "D:/Projects/learnnote-assistant/data/tasks/task-pending-raw-slice/downloaded-original.mp4",
+  download_attempts: [{ strategy: "direct-file", status: "success" }],
+  visual_windows: []
+});
+assert.match(rawPendingSliceHtml, /downloaded-original\.mp4/);
+assert.match(rawPendingSliceHtml, /data-rerun-from-media="task-pending-raw-slice"/);
+assert.doesNotMatch(rawPendingSliceHtml, /导出 media\.mp4/);
+
 const originalFetchForDownloadNote = context.fetch;
 context.fetch = async url => {
   const value = String(url);
@@ -2846,10 +2861,15 @@ const rerunMetaHtml = context.resultMetaChipsHtml({
   visual_windows: []
 });
 const rerunNotice = context.rerunFromMediaNotice("source-media-task", "rerun-task");
+const rawRerunNotice = context.rerunFromMediaNotice("source-media-task", "rerun-task", {
+  reuse: { source_media_path: "D:/Projects/learnnote-assistant/data/tasks/source-media-task/downloaded-original.mp4" }
+});
 assert.match(rerunMetaHtml, /复用/);
 assert.match(rerunMetaHtml, /已下载媒体/);
 assert.match(rerunNotice, /完整笔记任务 rerun-task/);
 assert.match(rerunNotice, /不会录制页面/);
+
+assert.match(rawRerunNotice, /downloaded-original\.mp4/);
 
 let rejectedUploadCalled = false;
 context.fetch = async url => {

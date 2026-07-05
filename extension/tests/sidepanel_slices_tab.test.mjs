@@ -167,7 +167,7 @@ currentTask = {
   phase: "completed",
   mode: "download_only",
   source_type: "current_page",
-  media_path: "D:/Projects/learnnote-assistant/data/tasks/download-only-task/media.mp4",
+  media_path: "D:/Projects/learnnote-assistant/data/tasks/download-only-task/downloaded-original.mp4",
   download_attempts: [{ strategy: "direct-file", status: "success" }],
   visual_windows: []
 };
@@ -184,6 +184,8 @@ assert.match(pendingHtml, /视频已直取到本地，可以继续切片总结/)
 assert.match(pendingHtml, /不会录制页面/);
 assert.match(pendingHtml, /data-rerun-from-media="download-only-task"/);
 assert.match(pendingHtml, /data-export="media"/);
+assert.match(pendingHtml, /downloaded-original\.mp4/);
+assert.doesNotMatch(pendingHtml, /导出 media\.mp4/);
 assert.match(pendingHtml, /data-switch-result-tab="diagnostics"/);
 assert.match(pendingHtml, /media-preview-card/);
 

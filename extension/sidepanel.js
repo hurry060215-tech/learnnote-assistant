@@ -937,7 +937,7 @@ function taskHistoryPreviewHtml(task = {}) {
   const detail = firstWindow
     ? `${fmt(firstWindow.start)} - ${fmt(firstWindow.end)}`
     : hasExportableMedia(task)
-      ? "media.mp4"
+      ? taskMediaDisplayName(task)
       : task.error_code || taskStatusText(task);
   if (firstWindow?.grid_url) {
     return `<figure class="history-task-preview status-${escapeHtml(status)}">
@@ -1518,7 +1518,7 @@ function recoveryStepItems(task) {
     add("Range 只作为浏览器播放证据；正式下载会去掉播放 Range，避免只保存一个视频片段。");
   }
   if (canContinueFromDownloadedMedia(task)) {
-    add("这个任务已把视频下载到本地，可先导出 media.mp4，或点击“继续切片总结”复用本地视频生成完整笔记。");
+    add(`这个任务已把视频下载到本地，可先导出 ${taskMediaDisplayName(task)}，或点击“继续切片总结”复用本地视频生成完整笔记。`);
   }
   if (task?.note_path) {
     add("已生成兜底笔记时，可以先导出 Markdown/资料包复习，再按诊断重新尝试直取。");
@@ -4226,6 +4226,21 @@ function hasExportableMedia(task) {
   return Boolean(task?.media_path || reuse.media_available);
 }
 
+function taskMediaDisplayName(task) {
+  const reuse = task?.reuse || {};
+  const raw = String(
+    task?.media_path ||
+    reuse.media_path_recorded ||
+    task?.source_media_path ||
+    reuse.source_media_path ||
+    ""
+  ).trim();
+  if (!raw) return "media.mp4";
+  const withoutQuery = raw.replace(/[?#].*$/, "").replace(/\\/g, "/");
+  const parts = withoutQuery.split("/").filter(Boolean);
+  return parts[parts.length - 1] || "media.mp4";
+}
+
 function hasReadableTranscript(task) {
   const reuse = task?.reuse || {};
   return Boolean(task?.transcript_path || reuse.transcript_ready);
@@ -4245,13 +4260,14 @@ function canContinueFromDownloadedMedia(task = currentTask) {
 function downloadOnlyEmptyNoteHtml(task) {
   const hasSubtitle = hasReusableSubtitle(task);
   const transcriptSource = reusableTranscriptSourceText(task);
+  const mediaName = taskMediaDisplayName(task);
   const title = hasSubtitle ? "视频和字幕已直取到本地" : "视频已直取到本地";
   const detail = hasSubtitle
     ? `已保存${transcriptSource ? ` ${transcriptSource}` : "字幕/转写"}，可先导出字幕核对，也可以继续进入抽帧、视觉窗口和图文笔记流程；不会录制页面。`
-    : "可以先导出 media.mp4 核对，也可以继续进入转写、抽帧、视觉窗口和图文笔记流程；不会录制页面。";
+    : `可以先导出 ${mediaName} 核对，也可以继续进入转写、抽帧、视觉窗口和图文笔记流程；不会录制页面。`;
   const actions = [
     hasExportableSubtitle(task) ? `<button type="button" data-export="subtitles">导出字幕</button>` : "",
-    hasExportableMedia(task) ? `<button type="button" data-export="media">导出 media.mp4</button>` : "",
+    hasExportableMedia(task) ? `<button type="button" data-export="media">导出 ${escapeHtml(mediaName)}</button>` : "",
     canContinueFromDownloadedMedia(task) ? `<button type="button" data-rerun-from-media="${escapeHtml(task.id)}">继续切片总结</button>` : ""
   ].filter(Boolean).join("");
   return `<section class="download-only-callout note-empty-continue ${hasSubtitle ? "subtitle-ready" : ""}">
@@ -4694,6 +4710,7 @@ function mediaPreviewHtml(task) {
   const url = taskMediaPreviewUrl(task);
   if (!url) return "";
   const title = displayTaskTitle(task, "media");
+  const mediaName = taskMediaDisplayName(task);
   return `<section class="media-preview-card" aria-label="本地视频核对">
     <div class="media-preview-copy">
       <span>本地视频核对</span>
@@ -4703,7 +4720,7 @@ function mediaPreviewHtml(task) {
     <video controls preload="metadata" src="${escapeHtml(url)}" data-learning-video></video>
     <div class="media-preview-actions">
       <span>点击字幕或视觉窗口时间可回看对应画面</span>
-      <button type="button" data-export="media">导出 media.mp4</button>
+      <button type="button" data-export="media">导出 ${escapeHtml(mediaName)}</button>
       ${canContinueFromDownloadedMedia(task) ? `<button type="button" data-rerun-from-media="${escapeHtml(task.id)}">继续切片总结</button>` : ""}
     </div>
   </section>`;
@@ -5092,7 +5109,8 @@ function taskReuseEvidenceItem(task) {
 function rerunFromMediaNotice(sourceTaskId, newTaskId, task = null) {
   const sourceId = String(sourceTaskId || task?.source_task_id || task?.reuse?.source_task_id || "").trim();
   const targetId = String(newTaskId || task?.id || "").trim();
-  const sourceText = sourceId ? `从任务 ${sourceId} 复用已下载 media.mp4` : "复用已下载 media.mp4";
+  const mediaName = taskMediaDisplayName(task);
+  const sourceText = sourceId ? `从任务 ${sourceId} 复用已下载 ${mediaName}` : `复用已下载 ${mediaName}`;
   const targetText = targetId ? `，新完整笔记任务 ${targetId}` : "";
   return `${sourceText}${targetText}，正在进入转写、抽帧、视觉窗口和图文总结；不会录制页面。`;
 }
@@ -5636,6 +5654,7 @@ function visualStudyNavigatorHtml(task, transcript = null) {
 function pendingSliceWorkbench(task = currentTask) {
   if (!task?.media_path) return "";
   const canContinue = canContinueFromDownloadedMedia(task);
+  const mediaName = taskMediaDisplayName(task);
   return `<section class="side-slice-pending" aria-label="待生成切片复习">
     ${mediaSeekDockHtml(task)}
     <div class="side-slice-pending-card">
@@ -5643,17 +5662,17 @@ function pendingSliceWorkbench(task = currentTask) {
         <span>下一步</span>
         <strong>${canContinue ? "视频已直取到本地，可以继续切片总结" : "等待生成切片复习"}</strong>
         <small>${canContinue
-          ? "复用已下载的 media.mp4，按当前参数进入转写、抽帧、视觉窗口和图文笔记流程；不会录制页面。"
+          ? `复用已下载的 ${mediaName}，按当前参数进入转写、抽帧、视觉窗口和图文笔记流程；不会录制页面。`
           : "任务完成抽帧后，这里会显示按时间窗口组织的截图网格、字幕片段和回看动作。"}</small>
       </div>
       <ol>
-        <li class="done"><b>1</b><span>本地视频</span><small>media.mp4 已落盘。</small></li>
+        <li class="done"><b>1</b><span>本地视频</span><small>${escapeHtml(mediaName)} 已落盘。</small></li>
         <li class="${canContinue ? "active" : "wait"}"><b>2</b><span>转写与抽帧</span><small>继续任务后生成字幕和画面网格。</small></li>
         <li class="wait"><b>3</b><span>切片复习</span><small>按视觉窗口组织复习卡。</small></li>
       </ol>
       <nav>
         ${canContinue ? `<button type="button" data-rerun-from-media="${escapeHtml(task.id)}">继续切片总结</button>` : ""}
-        <button type="button" data-export="media">导出 media.mp4</button>
+        <button type="button" data-export="media">导出 ${escapeHtml(mediaName)}</button>
         ${hasTaskDiagnostics(task) ? `<button type="button" data-switch-result-tab="diagnostics">查看诊断</button>` : ""}
       </nav>
     </div>

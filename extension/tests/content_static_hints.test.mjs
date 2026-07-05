@@ -73,6 +73,17 @@ const player = new FakeElement("div", {
 const packedPlayer = new FakeElement("div", {
   "data-video-url": packedDash
 });
+const playUrlAliasPlayer = new FakeElement("div", {
+  "data-playurl": "/static/alias-play.mp4?token=alias"
+});
+const manifestAliasPlayer = new FakeElement("div", {
+  "data-master-url": "/static/alias-master.m3u8?token=master",
+  "data-dash-url": "/static/alias-manifest.mpd?token=dash"
+});
+const backupAliasPlayer = new FakeElement("div", {
+  "data-backup-url": "/static/alias-backup.mp4?token=backup",
+  "data-download-url": "/static/alias-download.mp4?token=download"
+});
 const script = new FakeElement("script", {
   textContent: "window.__player={videoUrl:'https%3A%2F%2Fcdn.example.com%2Fstatic%2Flesson.mp4%3Ftoken%3Dscript', flvUrl:'https://cdn.example.com/static/live.flv?token=script'};"
 });
@@ -195,7 +206,7 @@ sameOriginIframe.contentDocument = {
     textContent: ""
   }
 };
-const html = new FakeElement("html", {}, [player, packedPlayer, doubleEncodedPlayer, onclickPlayer, paramPlayer, lazyPathPlayer, lazyUriPlayer, ordinaryPathLink, configPlayer, nakedPlayer, vendorPlayer, preloadVideo, preloadHls, prefetchPlayApi, ogVideo, htmlVideo, script, plainEncodedScript, plainDoubleEncodedScript, mixedEncodedScript, jsEscapedScript, jsEscapedPayloadScript, nestedMediaKeyScript, endpointContainerScript, segmentScript, plainUrlScript, srcdocIframe, sameOriginIframe]);
+const html = new FakeElement("html", {}, [player, packedPlayer, playUrlAliasPlayer, manifestAliasPlayer, backupAliasPlayer, doubleEncodedPlayer, onclickPlayer, paramPlayer, lazyPathPlayer, lazyUriPlayer, ordinaryPathLink, configPlayer, nakedPlayer, vendorPlayer, preloadVideo, preloadHls, prefetchPlayApi, ogVideo, htmlVideo, script, plainEncodedScript, plainDoubleEncodedScript, mixedEncodedScript, jsEscapedScript, jsEscapedPayloadScript, nestedMediaKeyScript, endpointContainerScript, segmentScript, plainUrlScript, srcdocIframe, sameOriginIframe]);
 
 let messageListener = null;
 const context = {
@@ -279,6 +290,11 @@ messageListener({ type: "collect-page-data" }, {}, data => {
 const hls = response.resources.find(item => item.url === "https://cdn.example.com/static/master.m3u8?token=attr");
 const pageUrlHls = response.resources.find(item => item.url === "https://cdn.example.com/static/page-url/master.m3u8?token=page");
 const dash = response.resources.find(item => item.url === "https://cdn.example.com/static/manifest.mpd?token=b64");
+const aliasPlayVideo = response.resources.find(item => item.url === "https://course.example.com/static/alias-play.mp4?token=alias");
+const aliasMasterHls = response.resources.find(item => item.url === "https://course.example.com/static/alias-master.m3u8?token=master");
+const aliasDash = response.resources.find(item => item.url === "https://course.example.com/static/alias-manifest.mpd?token=dash");
+const aliasBackupVideo = response.resources.find(item => item.url === "https://course.example.com/static/alias-backup.mp4?token=backup");
+const aliasDownloadVideo = response.resources.find(item => item.url === "https://course.example.com/static/alias-download.mp4?token=download");
 const video = response.resources.find(item => item.url === "https://cdn.example.com/static/lesson.mp4?token=script");
 const flv = response.resources.find(item => item.url === "https://cdn.example.com/static/live.flv?token=script");
 const plainHls = response.resources.find(item => item.url === "https://cdn.example.com/static/plain-master.m3u8?token=plain&uid=1");
@@ -331,6 +347,31 @@ assert.ok(dash, "expected base64 data-video-url media hint to expose DASH manife
 assert.equal(dash.kind, "dash");
 assert.equal(dash.source, "domHint");
 assert.match(dash.label, /data-video-url/);
+
+assert.ok(aliasPlayVideo, "expected data-playurl alias to expose direct video");
+assert.equal(aliasPlayVideo.kind, "video");
+assert.equal(aliasPlayVideo.source, "domHint");
+assert.match(aliasPlayVideo.label, /data-playurl/);
+
+assert.ok(aliasMasterHls, "expected data-master-url alias to expose HLS manifest");
+assert.equal(aliasMasterHls.kind, "hls");
+assert.equal(aliasMasterHls.source, "domHint");
+assert.match(aliasMasterHls.label, /data-master-url/);
+
+assert.ok(aliasDash, "expected data-dash-url alias to expose DASH manifest");
+assert.equal(aliasDash.kind, "dash");
+assert.equal(aliasDash.source, "domHint");
+assert.match(aliasDash.label, /data-dash-url/);
+
+assert.ok(aliasBackupVideo, "expected data-backup-url alias to expose backup video");
+assert.equal(aliasBackupVideo.kind, "video");
+assert.equal(aliasBackupVideo.source, "domHint");
+assert.match(aliasBackupVideo.label, /data-backup-url/);
+
+assert.ok(aliasDownloadVideo, "expected data-download-url alias to expose downloadable video");
+assert.equal(aliasDownloadVideo.kind, "video");
+assert.equal(aliasDownloadVideo.source, "domHint");
+assert.match(aliasDownloadVideo.label, /data-download-url/);
 
 assert.ok(video, "expected inline script media hint to expose encoded mp4 URL");
 assert.equal(video.kind, "video");
