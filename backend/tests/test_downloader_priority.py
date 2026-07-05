@@ -234,6 +234,38 @@ class DirectJsonMediaHandler(QuietHandler):
         super().do_GET()
 
 
+class MultiSourceJsonMediaHandler(DirectJsonMediaHandler):
+    forbidden_name = "forbidden.mp4"
+    media_name = "real.mp4"
+
+    def do_GET(self) -> None:
+        path = urlparse(self.path).path
+        if path == "/api/play":
+            if not self._has_browser_headers():
+                self.send_error(403, "missing browser headers")
+                return
+            body = json_bytes({
+                "data": {
+                    "videoUrl": f"/{self.forbidden_name}",
+                    "backupUrl": f"/{self.media_name}",
+                    "mimeType": "video/mp4",
+                }
+            })
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        if path == f"/{self.forbidden_name}":
+            self.send_error(403, "expired source")
+            return
+        if path == f"/{self.media_name}" and not self._has_browser_headers():
+            self.send_error(403, "missing browser headers")
+            return
+        super().do_GET()
+
+
 class EmptyJsonPlayHandler(DirectJsonMediaHandler):
     def do_GET(self) -> None:
         path = urlparse(self.path).path
@@ -2523,6 +2555,42 @@ class DownloaderPriorityTests(unittest.TestCase):
                 self.assertIn("Referer", result.request_header_names)
                 self.assertIn("X-Requested-With", result.request_header_names)
                 self.assertIn("embedded media URL", " ".join(result.warnings))
+            finally:
+                server.shutdown()
+                server.server_close()
+
+    def test_preflight_tries_next_embedded_media_url_when_first_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / MultiSourceJsonMediaHandler.media_name).write_bytes(b"\x00\x00\x00\x18ftypmp42" + b"backup" * 512)
+            server = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(MultiSourceJsonMediaHandler, directory=str(root)))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                page_url = f"http://127.0.0.1:{server.server_port}/lesson.html"
+                play_url = f"http://127.0.0.1:{server.server_port}/api/play?id=42"
+                backup_url = f"http://127.0.0.1:{server.server_port}/{MultiSourceJsonMediaHandler.media_name}"
+                result = preflight_media_resource(
+                    ResourceCandidate(
+                        url=play_url,
+                        source="webRequest",
+                        kind="video",
+                        mime="video/mp4",
+                        score=100,
+                        request_headers={
+                            "User-Agent": MultiSourceJsonMediaHandler.required_user_agent,
+                            "X-Requested-With": MultiSourceJsonMediaHandler.required_x_requested_with,
+                        },
+                    ),
+                    [],
+                    page_url,
+                )
+                self.assertTrue(result.ok)
+                self.assertTrue(result.downloadable)
+                self.assertEqual(result.strategy, "direct-response-probe")
+                self.assertEqual(result.kind, "video")
+                self.assertEqual(result.resolved_url, backup_url)
+                self.assertIn("embedded media URLs", " ".join(result.warnings))
             finally:
                 server.shutdown()
                 server.server_close()

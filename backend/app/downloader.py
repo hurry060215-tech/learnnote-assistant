@@ -1896,7 +1896,13 @@ def preflight_media_resource(
                     code="download_forbidden",
                     message=f"媒体预检返回 HTTP {response.status_code}。",
                 )
-            if _textish_content_type(content_type) and _looks_like_login_or_error(body):
+            manifest_kind, manifest_mime = _manifest_kind_from_body(body.decode("utf-8", errors="ignore"), content_type)
+            embedded_candidates = (
+                _embedded_media_candidates_from_text_response(candidate, body, final_url, referer)
+                if _textish_content_type(content_type) and manifest_kind == "unknown"
+                else []
+            )
+            if _textish_content_type(content_type) and not embedded_candidates and _looks_like_login_or_error(body):
                 return MediaPreflightResult(
                     **base,
                     ok=True,
@@ -1904,7 +1910,7 @@ def preflight_media_resource(
                     code="auth_required",
                     message="媒体预检拿到登录/错误页面，而不是视频或 manifest。",
                 )
-            disguised_failure = _disguised_text_failure_code(body)
+            disguised_failure = "" if embedded_candidates else _disguised_text_failure_code(body)
             if disguised_failure:
                 return MediaPreflightResult(
                     **base,
@@ -1914,7 +1920,6 @@ def preflight_media_resource(
                     message="媒体预检拿到伪装成二进制响应的登录/错误页面，而不是视频或 manifest。",
                 )
 
-            manifest_kind, manifest_mime = _manifest_kind_from_body(body.decode("utf-8", errors="ignore"), content_type)
             if probe_kind == "video" and manifest_kind in {"hls", "dash"}:
                 probe_kind = manifest_kind
                 base["kind"] = manifest_kind
@@ -1923,32 +1928,54 @@ def preflight_media_resource(
                 attempt_warnings.append("该视频直连响应实际是 HLS/DASH manifest，正式任务会改用 ffmpeg 合并。")
 
             if _textish_content_type(content_type) and manifest_kind == "unknown":
-                embedded_candidates = _embedded_media_candidates_from_text_response(candidate, body, final_url, referer)
                 if embedded_candidates:
-                    selected = embedded_candidates[0]
-                    attempt_warnings.append("Text/JSON response contains an embedded media URL; probing that resolved resource.")
-                    nested = preflight_media_resource(selected, cookies, final_url, timeout=timeout, _seen=seen)
-                    nested_warnings = [*attempt_warnings, *nested.warnings]
-                    if not nested.downloadable:
-                        return MediaPreflightResult(
-                            **{
-                                **base,
-                                "strategy": "direct-response-probe",
-                                "kind": nested.kind or selected.kind,
-                                "resolved_url": nested.resolved_url or selected.url,
-                                "status_code": nested.status_code,
-                                "content_type": nested.content_type,
-                                "content_disposition": nested.content_disposition,
-                                "content_length": nested.content_length,
-                                "bytes_checked": nested.bytes_checked,
-                                "request_header_names": nested.request_header_names,
-                                "warnings": nested_warnings,
-                            },
-                            ok=nested.ok,
-                            downloadable=False,
-                            code=nested.code or "download_forbidden",
-                            message=f"Media endpoint returned text/JSON, but embedded resource preflight failed: {nested.message}",
+                    embedded_warning = "Text/JSON response contains embedded media URLs; probing resolved resources."
+                    best_failure: tuple[ResourceCandidate, MediaPreflightResult, list[str]] | None = None
+                    for selected in embedded_candidates:
+                        nested = preflight_media_resource(selected, cookies, final_url, timeout=timeout, _seen=seen)
+                        nested_warnings = [*attempt_warnings, embedded_warning, *nested.warnings]
+                        if nested.downloadable:
+                            return MediaPreflightResult(
+                                **{
+                                    **base,
+                                    "strategy": "direct-response-probe",
+                                    "kind": nested.kind or selected.kind,
+                                    "resolved_url": nested.resolved_url or selected.url,
+                                    "status_code": nested.status_code,
+                                    "content_type": nested.content_type,
+                                    "content_disposition": nested.content_disposition,
+                                    "content_length": nested.content_length,
+                                    "bytes_checked": nested.bytes_checked,
+                                    "request_header_names": nested.request_header_names,
+                                    "warnings": nested_warnings,
+                                },
+                                ok=True,
+                                downloadable=True,
+                                code="",
+                                message="Media endpoint returned text/JSON with an embedded resource that passed media preflight.",
+                            )
+                        current_priority = DOWNLOAD_FAILURE_PRIORITY.get(nested.code or "download_forbidden", 0)
+                        best_priority = (
+                            DOWNLOAD_FAILURE_PRIORITY.get(best_failure[1].code or "download_forbidden", 0)
+                            if best_failure
+                            else -1
                         )
+                        if not best_failure or current_priority > best_priority:
+                            best_failure = (selected, nested, nested_warnings)
+                    selected, nested, nested_warnings = best_failure or (
+                        embedded_candidates[0],
+                        MediaPreflightResult(
+                            ok=True,
+                            downloadable=False,
+                            strategy="direct-response-probe",
+                            kind=embedded_candidates[0].kind,
+                            url=embedded_candidates[0].url,
+                            resolved_url=embedded_candidates[0].resolved_url or embedded_candidates[0].url,
+                            code="download_forbidden",
+                            message="Embedded media resource preflight failed.",
+                        ),
+                        [*attempt_warnings, embedded_warning],
+                    )
                     return MediaPreflightResult(
                         **{
                             **base,
@@ -1963,10 +1990,10 @@ def preflight_media_resource(
                             "request_header_names": nested.request_header_names,
                             "warnings": nested_warnings,
                         },
-                        ok=True,
-                        downloadable=True,
-                        code="",
-                        message="Media endpoint returned text/JSON with an embedded resource that passed media preflight.",
+                        ok=nested.ok,
+                        downloadable=False,
+                        code=nested.code or "download_forbidden",
+                        message=f"Media endpoint returned text/JSON, but embedded resource preflight failed: {nested.message}",
                     )
                 return MediaPreflightResult(
                     **{**base, "warnings": attempt_warnings},

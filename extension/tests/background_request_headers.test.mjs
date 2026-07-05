@@ -193,6 +193,25 @@ assert.equal(
 assert.equal(
   context.classifyCompletedRequest(
     {
+      url: "https://cdn.example.com/api/definition?id=hd",
+      type: "xmlhttprequest"
+    },
+    "application/octet-stream",
+    {},
+    { "content-length": "32768" }
+  ),
+  "video"
+);
+assert.equal(
+  context.classifyCompletedRequest({
+    url: "https://cdn.example.com/api/rendition?id=720p",
+    type: "xmlhttprequest"
+  }, "application/json"),
+  "video"
+);
+assert.equal(
+  context.classifyCompletedRequest(
+    {
       url: "https://cdn.example.com/api/playback/getVideo?id=abc",
       type: "xmlhttprequest"
     },
@@ -819,6 +838,40 @@ assert.equal(smallOctetManifestResources[0].content_length, 32768);
 assert.equal(smallOctetManifestResources[0].request_headers.Referer, "https://course.example.com/lesson");
 assert.equal(smallOctetManifestResources[0].request_headers.Origin, "https://course.example.com");
 assert.equal(smallOctetManifestResources[0].label, "VIDEO");
+
+context.rememberRequestHeaders({
+  requestId: "definition-octet-api",
+  url: "https://course.example.com/api/definition?id=hd",
+  type: "xmlhttprequest",
+  requestHeaders: [
+    { name: "Referer", value: "https://course.example.com/lesson" },
+    { name: "Origin", value: "https://course.example.com" },
+    { name: "User-Agent", value: "Chrome Playback UA" }
+  ]
+});
+context.recordResponseMedia({
+  requestId: "definition-octet-api",
+  tabId: 166,
+  url: "https://course.example.com/api/definition?id=hd",
+  type: "xmlhttprequest",
+  method: "GET",
+  statusCode: 200,
+  frameId: 1,
+  documentUrl: "https://course.example.com/lesson",
+  initiator: "https://course.example.com",
+  timeStamp: Date.now(),
+  responseHeaders: [
+    { name: "Content-Type", value: "application/octet-stream" },
+    { name: "Content-Length", value: "49152" }
+  ]
+}, context.peekRequestHeaders("definition-octet-api"));
+
+const definitionOctetResources = vm.runInContext("resourceByTab.get(166)", context);
+assert.equal(definitionOctetResources.length, 1);
+assert.equal(definitionOctetResources[0].kind, "video");
+assert.equal(definitionOctetResources[0].url, "https://course.example.com/api/definition?id=hd");
+assert.equal(definitionOctetResources[0].request_headers.Referer, "https://course.example.com/lesson");
+assert.equal(definitionOctetResources[0].content_length, 49152);
 
 context.rememberRequestHeaders({
   requestId: "streaming-1",
