@@ -2101,11 +2101,12 @@ def task_next_actions(task: TaskRecord, limit: int = 9) -> list[dict]:
     qa_ready = note_ready or transcript_ready or visual_ready
     has_diagnostics = bool(task.download_attempts or task.error_code or task.selected_resource or task.summary_diagnostics)
     can_continue_media = media_ready and (task.mode == "download_only" or not note_ready or task.status == "failed")
+    media_name = task_media_display_name(task) if media_ready else "media.mp4"
 
     if can_continue_media:
         add(
             "continue_from_media",
-            "从 media.mp4 继续",
+            f"从 {media_name} 继续",
             "复用已下载视频进入转写、抽帧、视觉窗口和图文总结；不会录制页面。",
             "rerun_from_media",
         )
@@ -2119,7 +2120,7 @@ def task_next_actions(task: TaskRecord, limit: int = 9) -> list[dict]:
     if transcript_ready:
         add("review_transcript", "核对字幕", "先检查平台字幕或 ASR 转写，再继续总结。", "switch_tab", "transcript")
     if media_ready:
-        add("export_media", "导出 media.mp4", "核对本地直取视频文件。", "export", "media")
+        add("export_media", f"导出 {media_name}", "核对本地直取视频文件。", "export", "media")
     if note_ready or visual_ready or transcript_ready or has_diagnostics:
         add("export_bundle", "导出资料包", "打包笔记、字幕、视觉索引、审计和诊断。", "export", "bundle")
     if has_diagnostics:

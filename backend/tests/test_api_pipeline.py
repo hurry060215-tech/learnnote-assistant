@@ -481,6 +481,11 @@ class LocalUploadValidationTests(unittest.TestCase):
             self.assertEqual(preview.status_code, 200)
             self.assertIn("inline", preview.headers["content-disposition"])
             self.assertIn("downloaded-original.mp4", preview.headers["content-disposition"])
+
+            detail = self.client.get(f"/api/tasks/{task.id}").json()["task"]
+            action_labels = {item["key"]: item["label"] for item in detail["next_actions"]}
+            self.assertEqual(action_labels["continue_from_media"], "从 downloaded-original.mp4 继续")
+            self.assertEqual(action_labels["export_media"], "导出 downloaded-original.mp4")
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
