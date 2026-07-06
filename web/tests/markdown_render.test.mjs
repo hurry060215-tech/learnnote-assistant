@@ -1586,6 +1586,34 @@ assert.match(taskOverviewHtml, /data-rerun-from-media="task-web-overview"/);
 assert.doesNotMatch(taskOverviewHtml, /<script>bad/);
 assert.match(taskOverviewHtml, /&lt;script&gt;bad\(\)&lt;\/script&gt; 课程/);
 
+const directResponseOverviewHtml = context.taskOverview({
+  id: "task-web-direct-response",
+  title: "JSON play API",
+  status: "success",
+  phase: "completed",
+  progress: 100,
+  source_type: "current_page",
+  media_path: "D:/Projects/learnnote-assistant/data/tasks/task-web-direct-response/media.mp4",
+  selected_resource: {
+    url: "https://course.example.com/api/play?id=42",
+    kind: "video",
+    source: "webRequest",
+    resolved_url: "https://media.example.com/real/lesson.mp4?sig=abc",
+    mime: "application/json",
+    request_headers: {
+      Referer: "https://course.example.com/lesson",
+      Cookie: "secret=1"
+    }
+  },
+  download_attempts: [{ strategy: "direct-response-scan", status: "success" }],
+  options: { frame_interval: 20, grid_columns: 3, grid_rows: 3 },
+  visual_windows: []
+});
+assert.match(directResponseOverviewHtml, /播放接口解析: https:\/\/media\.example\.com\/real\/lesson\.mp4\?sig=abc/);
+assert.match(directResponseOverviewHtml, /<b>接口解析<\/b>/);
+assert.match(directResponseOverviewHtml, /direct-response-scan/);
+assert.doesNotMatch(directResponseOverviewHtml, /secret=1/);
+
 const rawMediaNameTask = {
   id: "task-raw-media-name",
   title: "downloaded original",

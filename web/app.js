@@ -1706,6 +1706,17 @@ function taskResolvedTargetText(task, limit = 92) {
   return compactUrl(target, limit);
 }
 
+function directResponseResolvedFact(resource = {}, limit = 86) {
+  const target = String(resource?.resolved_url || "").trim();
+  if (!target || target === resource?.url) return "";
+  const source = String(resource?.source || "").toLowerCase();
+  const responseType = String(resource?.headers?.["content-type"] || resource?.mime || "").toLowerCase();
+  const url = String(resource?.url || "");
+  const looksLikePlaybackApi = /(?:^|[/?&=._-])(api|play|player|stream|video|media|vod|quality|definition|rendition|profile|track)(?:[/?&=._-]|$)/i.test(url);
+  const resolvedByResponse = source === "direct-response" || isTextResponseMime(responseType) || looksLikePlaybackApi;
+  return resolvedByResponse ? `播放接口解析: ${compactUrl(target, limit)}` : "";
+}
+
 function playbackText(match) {
   return ({
     "exact-src": "当前 src",
@@ -3960,6 +3971,7 @@ function taskOverview(task) {
     selected.audio_url ? "伴随音频流" : "",
     resourceSourceText(selected),
     selected.playback_match ? playbackText(selected.playback_match) : "",
+    directResponseResolvedFact(selected, 72),
     selected.resolved_url ? "已跟踪最终 URL" : "",
     contentDispositionHint(selected.headers?.["content-disposition"]),
     selected.content_length ? fmtBytes(selected.content_length) : ""
@@ -4020,6 +4032,7 @@ function taskBrowserEvidenceHtml(task) {
   const selected = task.selected_resource || {};
   const activeText = activeVideoText(task.active_video);
   const target = taskResolvedTargetText(task, 108) || selected.url || "";
+  const resolvedFact = directResponseResolvedFact(selected, 108);
   const requestContext = [
     requestHeaderNames(selected),
     selected.frame_url ? `frame ${compactUrl(selected.frame_url, 58)}` : "",
@@ -4038,7 +4051,7 @@ function taskBrowserEvidenceHtml(task) {
         <span>${escapeHtml(activeText)}</span>
       </article>
       <article>
-        <b>直取目标</b>
+        <b>${escapeHtml(resolvedFact ? "接口解析" : "直取目标")}</b>
         <span>${escapeHtml(target || "等待媒体候选")}</span>
       </article>
       <article>
@@ -4083,9 +4096,11 @@ function taskRouteEvidenceItems(task) {
   const diag = task?.summary_diagnostics || {};
   const reuseEvidence = taskReuseEvidenceItem(task);
   const resolvedTarget = taskResolvedTargetText(task, 86);
+  const resolvedFact = directResponseResolvedFact(selected, 86);
+  const attemptState = lastAttempt ? [lastAttempt.strategy, lastAttempt.code || lastAttempt.status].filter(Boolean).join(" · ") : "";
   const downloadDetail = resolvedTarget
-    ? (lastAttempt ? `${resolvedTarget} · ${lastAttempt.code || lastAttempt.status || lastAttempt.strategy || "-"}` : resolvedTarget)
-    : (lastAttempt ? `${lastAttempt.strategy || "-"} · ${lastAttempt.code || lastAttempt.status || "-"}` : (task.error_code || task.phase || "-"));
+    ? (lastAttempt ? `${resolvedTarget} · ${attemptState || "-"}` : resolvedTarget)
+    : (lastAttempt ? `${attemptState || lastAttempt.strategy || "-"}` : (task.error_code || task.phase || "-"));
   const summaryText = summaryDiagnosticText(task);
   const summaryValue = task.summary_source || (diag.used_page_text_fallback ? "页面文本兜底" : task.note_path ? "已有笔记" : "待生成");
   const summaryDetail = summaryText === "-"
@@ -4100,7 +4115,7 @@ function taskRouteEvidenceItems(task) {
     {
       label: "下载路线",
       value: attempts.length ? `${attempts.length} 次尝试` : task.media_path ? "已有本地媒体" : "等待下载",
-      detail: downloadDetail
+      detail: resolvedFact ? `${resolvedFact} · ${downloadDetail}` : downloadDetail
     },
     ...(reuseEvidence ? [reuseEvidence] : []),
     {
