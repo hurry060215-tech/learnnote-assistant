@@ -52,8 +52,8 @@ const STATIC_MEDIA_SELECTOR = STATIC_MEDIA_ATTRS.map(name => `[${name}]`).join("
 const STATIC_FIELD_RE = /(["']?[A-Za-z_$][A-Za-z0-9_$.-]{0,79}["']?)\s*[:=]\s*["']((?:\\u[0-9a-fA-F]{4}|\\x[0-9a-fA-F]{2}|\\.|[^"'<>\\\s]){4,})["']/gi;
 const STATIC_CONTAINER_FIELD_RE = /(["']?[A-Za-z_$][A-Za-z0-9_$.-]{0,79}["']?)\s*[:=]\s*[\[{]/gi;
 const STATIC_QUOTED_VALUE_RE = /["']((?:\\u[0-9a-fA-F]{4}|\\x[0-9a-fA-F]{2}|\\.|[^"'<>\\\s]){4,})["']/gi;
-const STATIC_MEDIA_KEY_RE = /(url|uri|path|src|address|file|fileid|objectid|dtoken|download|httpmd|play|playlist|media|video|audio|stream|source|sourcelist|video.?list|audio.?list|quality|qualities|definition|definitions|format|formats|profile|profiles|variant|variants|rendition|renditions|level|levels|track|tracks|hls|m3u8|dash|mpd|segment|fragment|chunk|subtitle|caption)/i;
-const STATIC_ATTRIBUTE_KEY_RE = /(url|uri|path|src|address|file|objectid|dtoken|download|httpmd|play|playlist|player|config|option|param|media|video|audio|stream|source|sourcelist|video.?list|audio.?list|quality|qualities|definition|definitions|format|formats|profile|profiles|variant|variants|rendition|renditions|level|levels|track|tracks|hls|m3u8|dash|mpd|segment|fragment|chunk|subtitle|caption)/i;
+const STATIC_MEDIA_KEY_RE = /(url|uri|path|src|address|file|fileid|objectid|dtoken|download|httpmd|play|playlist|media|video|audio|stream|source|sourcelist|main|master|manifest|backup|backups|cdn|baseurl|base_url|host|domain|video.?list|audio.?list|quality|qualities|definition|definitions|format|formats|profile|profiles|variant|variants|rendition|renditions|level|levels|track|tracks|hls|m3u8|dash|mpd|segment|fragment|chunk|subtitle|caption)/i;
+const STATIC_ATTRIBUTE_KEY_RE = /(url|uri|path|src|address|file|objectid|dtoken|download|httpmd|play|playlist|player|config|option|param|media|video|audio|stream|source|sourcelist|main|master|manifest|backup|backups|cdn|baseurl|base_url|host|domain|video.?list|audio.?list|quality|qualities|definition|definitions|format|formats|profile|profiles|variant|variants|rendition|renditions|level|levels|track|tracks|hls|m3u8|dash|mpd|segment|fragment|chunk|subtitle|caption)/i;
 const VISIBLE_SUBTITLE_HINT_RE = /(subtitle|subtitles|caption|captions|closed.?caption|texttrack|danmu|danmaku|barrage|\bcc\b|字幕|弹幕)/i;
 const VISIBLE_SUBTITLE_ROLE_RE = /^(log|status|marquee)$/i;
 const B64ISH_RE = /^[A-Za-z0-9+/_=-]{16,}$/;
@@ -250,7 +250,7 @@ function looksLikeMediaValue(value, hint = "") {
   if (MEDIA_RE.test(text) || FRAGMENT_RE.test(text) || SUBTITLE_RE.test(text) || text.includes(".m3u8") || text.includes(".mpd")) return true;
   if (/%2f|%3a|%3f|%3d|%26/i.test(text)) return STATIC_MEDIA_KEY_RE.test(hint) || MEDIA_RE.test(decodeURIComponentSafe(text));
   if (/^(https?:)?\/\//i.test(text) || text.startsWith("/")) return STATIC_MEDIA_KEY_RE.test(hint);
-  return text.includes("/") && /[?=&]|api|play|media|video|audio|stream|m3u8|mpd|hls|dash/i.test(text) && STATIC_MEDIA_KEY_RE.test(hint);
+  return text.includes("/") && /[?=&]|api|play|media|video|audio|stream|source|sourcelist|main|master|manifest|backup|cdn|m3u8|mpd|hls|dash/i.test(text) && STATIC_MEDIA_KEY_RE.test(hint);
 }
 
 function looksLikePlaybackEndpointValue(value, hint = "") {
@@ -258,7 +258,7 @@ function looksLikePlaybackEndpointValue(value, hint = "") {
   if (!text || !STATIC_MEDIA_KEY_RE.test(hint)) return false;
   if (!/^(https?:)?\/\//i.test(text) && !text.startsWith("/") && !text.includes("/")) return false;
   if (MEDIA_RE.test(text) || FRAGMENT_RE.test(text) || SUBTITLE_RE.test(text) || text.includes(".m3u8") || text.includes(".mpd")) return false;
-  return /(^|[/?&=._-])(api|ananas|play|player|stream|video|audio|media|vod|quality|qualities|definition|definitions|format|formats|profile|profiles|variant|variants|rendition|renditions|level|levels|track|tracks|hls|dash|manifest|playlist|master|m3u8|mpd|objectid|dtoken)([/?&=._-]|$)/i.test(text);
+  return /(^|[/?&=._-])(api|ananas|play|player|stream|video|audio|media|source|sources|sourcelist|main|master|manifest|backup|backups|cdn|baseurl|base_url|base-url|host|domain|vod|quality|qualities|definition|definitions|format|formats|profile|profiles|variant|variants|rendition|renditions|level|levels|track|tracks|hls|dash|playlist|m3u8|mpd|objectid|dtoken)([/?&=._-]|$)/i.test(text);
 }
 
 function decodeURIComponentSafe(value) {
@@ -430,7 +430,7 @@ function performanceKind(entry = {}) {
 
 function performanceLooksLikeMediaEndpoint(url = "") {
   const raw = String(url || "");
-  const endpointRe = /(^|[/?&=._-])(api|ananas|play|player|stream|video|audio|media|vod|quality|qualities|definition|definitions|format|formats|profile|profiles|variant|variants|rendition|renditions|level|levels|track|tracks|hls|dash|manifest|playlist|master|m3u8|mpd|objectid|dtoken|fileid|httpmd|subtitle|caption)([/?&=._-]|$)/i;
+  const endpointRe = /(^|[/?&=._-])(api|ananas|play|player|stream|video|audio|media|source|sources|sourcelist|main|master|manifest|backup|backups|cdn|baseurl|base_url|base-url|host|domain|vod|quality|qualities|definition|definitions|format|formats|profile|profiles|variant|variants|rendition|renditions|level|levels|track|tracks|hls|dash|playlist|m3u8|mpd|objectid|dtoken|fileid|httpmd|subtitle|caption)([/?&=._-]|$)/i;
   try {
     const parsed = new URL(raw, location.href);
     const queryKeys = [...parsed.searchParams.keys()].join("&");

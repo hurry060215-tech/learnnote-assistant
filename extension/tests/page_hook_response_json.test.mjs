@@ -107,6 +107,11 @@ const context = {
       videoMime: "video/mp4",
       audioMime: "audio/mp4"
     },
+    bareAlias: {
+      backup: "/backup?id=json-backup&token=ok",
+      main: "/main?id=json-main&token=ok",
+      mimeType: "video/mp4"
+    },
     genericAudioEndpoint: {
       source: "/api/audio/backup?id=42&token=b"
     }
@@ -154,6 +159,8 @@ const splitVideo = resources.find(resource => resource.url === "https://cdn.exam
 const splitAudio = resources.find(resource => resource.url === "https://cdn.example.com/dash/audio-only.m4a?token=a");
 const endpointSplitVideo = resources.find(resource => resource.url === "https://course.example.com/api/video/stream?id=42&token=v");
 const endpointSplitAudio = resources.find(resource => resource.url === "https://course.example.com/api/audio/stream?id=42&token=a");
+const bareBackupEndpoint = resources.find(resource => resource.url === "https://course.example.com/backup?id=json-backup&token=ok");
+const bareMainEndpoint = resources.find(resource => resource.url === "https://course.example.com/main?id=json-main&token=ok");
 const genericAudioEndpoint = resources.find(resource => resource.url === "https://course.example.com/api/audio/backup?id=42&token=b");
 
 assert.ok(hls, "expected Response.json() body to expose the encoded HLS URL");
@@ -218,6 +225,14 @@ assert.equal(endpointSplitVideo.audio_mime, "audio/mp4");
 
 assert.ok(endpointSplitAudio, "expected extensionless split AV audio endpoint to be detected");
 assert.equal(endpointSplitAudio.kind, "audio");
+
+assert.ok(bareBackupEndpoint, "expected bare backup field with sibling MIME to be detected");
+assert.equal(bareBackupEndpoint.kind, "video");
+assert.equal(bareBackupEndpoint.mime, "video/mp4");
+
+assert.ok(bareMainEndpoint, "expected bare main field with sibling MIME to be detected");
+assert.equal(bareMainEndpoint.kind, "video");
+assert.equal(bareMainEndpoint.mime, "video/mp4");
 
 assert.ok(genericAudioEndpoint, "expected generic source field with audio endpoint URL to be detected");
 assert.equal(genericAudioEndpoint.kind, "audio");

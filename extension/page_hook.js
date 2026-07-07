@@ -8,7 +8,7 @@
   const MEDIA_HINT_RE = new RegExp(`\\.(?:${MEDIA_EXT_PATTERN})(?:[?#]|["'\\s<>]|$)`, "i");
   const FRAGMENT_RE = /\.(?:m4s|ts)(?:\?|#|$)/i;
   const TEXT_TYPE_RE = /json|text|javascript|mpegurl|dash\+xml|xml|x-mpegurl/i;
-  const JSON_MEDIA_KEY_RE = /(url|uri|path|src|address|file|fileid|objectid|dtoken|download|httpmd|play|playlist|media|video|audio|stream|source|sourcelist|video.?list|audio.?list|quality|qualities|definition|definitions|format|formats|profile|profiles|variant|variants|rendition|renditions|level|levels|track|tracks|hls|m3u8|dash|mpd|segment|fragment|chunk|subtitle|caption)/i;
+  const JSON_MEDIA_KEY_RE = /(url|uri|path|src|address|file|fileid|objectid|dtoken|download|httpmd|play|playlist|media|video|audio|stream|source|sourcelist|main|master|manifest|backup|backups|cdn|baseurl|base_url|host|domain|video.?list|audio.?list|quality|qualities|definition|definitions|format|formats|profile|profiles|variant|variants|rendition|renditions|level|levels|track|tracks|hls|m3u8|dash|mpd|segment|fragment|chunk|subtitle|caption)/i;
   const JSON_MIME_KEY_RE = /(mime|type|format|content.?type|media.?type)/i;
   const GLOBAL_MEDIA_NAME_RE = /(^__.*(play|player|media|video|audio|stream|hls|dash|m3u8|mpd))|((play|player|media|video|audio|stream|hls|dash|m3u8|mpd).*(config|info|data|url|source|sources|list)$)/i;
   const GLOBAL_MEDIA_KEYS = [
@@ -209,7 +209,7 @@
   }
 
   function mediaUrlHint(url = "") {
-    return /(^|[/?&=._-])(m3u8|mpd|hls|dash|manifest|playlist|master|stream|play|video|audio|media|vod|quality|qualities|definition|definitions|format|formats|profile|profiles|variant|variants|rendition|renditions|level|levels|track|tracks|ananas|objectid|dtoken|fileid|httpmd)([/?&=._-]|$)/i.test(String(url || ""));
+    return /(^|[/?&=._-])(m3u8|mpd|hls|dash|manifest|playlist|master|main|backup|backups|source|sources|sourcelist|cdn|baseurl|base_url|base-url|host|domain|stream|play|video|audio|media|vod|quality|qualities|definition|definitions|format|formats|profile|profiles|variant|variants|rendition|renditions|level|levels|track|tracks|ananas|objectid|dtoken|fileid|httpmd)([/?&=._-]|$)/i.test(String(url || ""));
   }
 
   function endpointKindHint(url = "") {
