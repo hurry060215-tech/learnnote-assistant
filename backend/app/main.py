@@ -119,18 +119,40 @@ def rerun_options_from_body(body: RerunFromMediaRequest | TaskOptions | None) ->
     return body
 
 
+def task_media_path(task: TaskRecord) -> Path | None:
+    for raw_path in (task.media_path, task.source_media_path):
+        if not raw_path:
+            continue
+        try:
+            path = Path(raw_path)
+        except (OSError, ValueError):
+            continue
+        if path.is_file():
+            return path
+    return None
+
+
 def task_media_file_exists(task: TaskRecord) -> bool:
-    if not task.media_path:
+    return task_media_path(task) is not None
+
+
+def task_media_ready_for_rerun(task: TaskRecord, *, allow_existing_note: bool = False) -> bool:
+    if task.status not in {"success", "failed"}:
         return False
-    try:
-        return Path(task.media_path).is_file()
-    except (OSError, ValueError):
+    if task.note_path and not allow_existing_note:
         return False
+    return task_media_file_exists(task)
 
 
 def task_media_display_name(task: TaskRecord) -> str:
+    media_path = task_media_path(task)
+    if media_path:
+        return media_path.name
+    raw_path = task.media_path or task.source_media_path
+    if not raw_path:
+        return "本地媒体"
     try:
-        return Path(task.media_path).name if task.media_path else "本地媒体"
+        return Path(raw_path).name or "本地媒体"
     except (OSError, ValueError):
         return "本地媒体"
 
@@ -336,7 +358,7 @@ def _bundle_grid_ref(path_value: str, fallback_url: str = "") -> str:
 
 
 def _visual_window_clip_ref(task: TaskRecord, label: str) -> str:
-    if not task.media_path:
+    if not (task.media_path or task.source_media_path):
         return "-"
     return f"/api/tasks/{quote(task.id, safe='')}/exports/clips/{quote(label, safe='')}"
 
@@ -1023,7 +1045,7 @@ def _diagnostic_recovery_actions(task: TaskRecord, primary_action_key: str) -> l
             actions.append(_recovery_action(action_key, task=task))
             existing.add(action_key)
 
-    if task_media_file_exists(task):
+    if task_media_ready_for_rerun(task, allow_existing_note=True):
         add("continue_from_media")
     if primary_action_key != "local_upload":
         add("local_upload")
@@ -1046,7 +1068,7 @@ def diagnostic_recovery_profile(task: TaskRecord) -> dict:
     is_chaoxing = _is_chaoxing_task(task)
     boundary_notes: list[str] = []
     primary_code = task.error_code or (latest_attempt.code if latest_attempt else "")
-    media_ready_for_rerun = task_media_file_exists(task) and not task.note_path
+    media_ready_for_rerun = task_media_ready_for_rerun(task)
 
     if media_ready_for_rerun:
         primary_code = "media_ready_for_rerun"
@@ -1287,7 +1309,7 @@ def task_reuse_evidence(task: TaskRecord) -> dict:
     has_visual_slices = bool(task.frame_grids or task.visual_windows)
     media_available = task_media_file_exists(task)
     is_download_only = task.mode == "download_only"
-    rerun_ready = media_available and not note_ready
+    rerun_ready = task_media_ready_for_rerun(task)
     if rerun_ready:
         suggested_next_step = "rerun_from_media"
     elif note_ready and has_visual_slices:
@@ -2100,7 +2122,9 @@ def task_next_actions(task: TaskRecord, limit: int = 9) -> list[dict]:
     visual_ready = bool(task.visual_windows or task.frame_grids or task.visual_index_path)
     qa_ready = note_ready or transcript_ready or visual_ready
     has_diagnostics = bool(task.download_attempts or task.error_code or task.selected_resource or task.summary_diagnostics)
-    can_continue_media = media_ready and (task.mode == "download_only" or not note_ready or task.status == "failed")
+    can_continue_media = task_media_ready_for_rerun(task, allow_existing_note=True) and (
+        task.mode == "download_only" or not note_ready or task.status == "failed"
+    )
     media_name = task_media_display_name(task) if media_ready else "media.mp4"
 
     if can_continue_media:
@@ -2312,11 +2336,19 @@ def create_from_existing_media(
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Task not found") from exc
 
-    if not source.media_path:
+    media_path = task_media_path(source)
+    if not media_path:
+        raw_media_path = source.media_path or source.source_media_path
+        if raw_media_path:
+            try:
+                recorded_path = Path(raw_media_path)
+            except (OSError, ValueError) as exc:
+                raise HTTPException(status_code=400, detail={"code": "media_not_found", "message": "Downloaded media path is invalid"}) from exc
+            if not recorded_path.exists():
+                raise HTTPException(status_code=404, detail={"code": "media_not_found", "message": "Downloaded media file is missing"})
+            if not recorded_path.is_file():
+                raise HTTPException(status_code=400, detail={"code": "media_not_found", "message": "Downloaded media path is not a file"})
         raise HTTPException(status_code=404, detail={"code": "media_not_found", "message": "Task has no downloaded media"})
-    media_path = Path(source.media_path)
-    if not media_path.exists():
-        raise HTTPException(status_code=404, detail={"code": "media_not_found", "message": "Downloaded media file is missing"})
     if not media_path.is_file():
         raise HTTPException(status_code=400, detail={"code": "media_not_found", "message": "Downloaded media path is not a file"})
     if media_path.stat().st_size <= 0:
@@ -2515,7 +2547,7 @@ def api_export_manifest(task_id: str) -> Response:
 
     qa_history = read_task_qa_history(task.id)
     has_artifact = bool(
-        task.media_path
+        task_media_file_exists(task)
         or task.note_path
         or task.subtitle_path
         or task.transcript_path
@@ -2561,7 +2593,7 @@ def api_export_bundle(task_id: str) -> Response:
         or visual_index.get("windows")
         or task.frame_grids
         or task.subtitle_path
-        or task.media_path
+        or task_media_file_exists(task)
         or task.download_attempts
         or task.error_code
         or qa_history
@@ -2703,10 +2735,8 @@ def _task_media_file(task_id: str) -> tuple[TaskRecord, Path]:
         task = get_task(task_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Task not found") from exc
-    if not task.media_path:
-        raise HTTPException(status_code=404, detail="Media not found")
-    path = Path(task.media_path)
-    if not path.is_file():
+    path = task_media_path(task)
+    if not path:
         raise HTTPException(status_code=404, detail="Media not found")
     return task, path
 
