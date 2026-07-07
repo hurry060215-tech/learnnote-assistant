@@ -1776,7 +1776,7 @@ MODEL_PROVIDER_PRESETS = [
         "whisper_model": "whisper-large-v3",
         "tier": "mainstream",
         "recommended": True,
-        "capabilities": ["text", "asr"],
+        "capabilities": ["text", "vision", "asr"],
     },
     {
         "key": "gemini",

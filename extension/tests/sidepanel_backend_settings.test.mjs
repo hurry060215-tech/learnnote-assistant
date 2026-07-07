@@ -167,6 +167,9 @@ assert.equal(savedModelSettings.llm_base_url, "https://api.groq.com/openai/v1");
 assert.equal(savedModelSettings.llm_model, "meta-llama/llama-4-scout-17b-16e-instruct");
 assert.equal(savedModelSettings.transcriber, "groq");
 assert.equal(savedModelSettings.whisper_model, "whisper-large-v3");
+assert.match(elements.get("#providerHint").innerHTML, /Groq/);
+assert.match(elements.get("#providerHint").innerHTML, /vision ready/);
+assert.match(elements.get("#providerHint").innerHTML, /Groq ASR/);
 assert.equal(Object.hasOwn(savedModelSettings, "llm_api_key"), false);
 assert.equal(JSON.stringify(savedModelSettings).includes("sk-should-not-persist"), false);
 

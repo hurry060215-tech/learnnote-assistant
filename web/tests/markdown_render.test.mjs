@@ -2892,6 +2892,9 @@ assert.equal(elements.get("#llmBaseUrl").value, "https://api.groq.com/openai/v1"
 assert.equal(elements.get("#llmModel").value, "meta-llama/llama-4-scout-17b-16e-instruct");
 assert.equal(elements.get("#transcriber").value, "groq");
 assert.equal(elements.get("#whisperModel").value, "whisper-large-v3");
+assert.match(elements.get("#providerHint").innerHTML, /Groq/);
+assert.match(elements.get("#providerHint").innerHTML, /vision ready/);
+assert.match(elements.get("#providerHint").innerHTML, /Groq ASR/);
 elements.get("#llmApiKey").value = "sk-rerun";
 context.saveModelSettings();
 const savedModelSettings = JSON.parse(context.window.localStorage.getItem("learnnote_model_settings"));

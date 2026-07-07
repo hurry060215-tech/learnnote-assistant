@@ -49,7 +49,7 @@ const MODEL_PROVIDER_PRESETS = {
     whisperModel: "whisper-large-v3",
     tier: "mainstream",
     recommended: true,
-    capabilities: ["text", "asr"]
+    capabilities: ["text", "vision", "asr"]
   },
   gemini: {
     baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai/",

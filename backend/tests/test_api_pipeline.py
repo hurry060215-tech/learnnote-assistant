@@ -140,6 +140,10 @@ class LocalUploadValidationTests(unittest.TestCase):
         self.assertEqual(openai_preset["tier"], "mainstream")
         self.assertTrue(openai_preset["recommended"])
         self.assertIn("vision", openai_preset["capabilities"])
+        groq_preset = next(item for item in payload["model_provider_presets"] if item["key"] == "groq")
+        self.assertEqual(groq_preset["transcriber"], "groq")
+        self.assertIn("vision", groq_preset["capabilities"])
+        self.assertIn("asr", groq_preset["capabilities"])
         self.assertIn("assistant_capabilities", payload)
         capabilities = payload["assistant_capabilities"]
         self.assertIn("current_page_direct", capabilities["routes"])
