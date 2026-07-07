@@ -1009,6 +1009,9 @@ function browserRouteActions(task) {
   if (hasTaskDiagnostics(task)) {
     actions.push(`<a href="${escapeHtml(taskExportUrl(task, "diagnostics"))}">下载诊断</a>`);
   }
+  if (!task?.id) {
+    actions.push(`<button type="button" class="primary" data-browser-route-action="open-extension">去扩展侧栏开始</button>`);
+  }
   actions.push(`<button type="button" data-browser-route-action="refresh">刷新任务</button>`);
   actions.push(`<button type="button" data-browser-route-action="copy-backend">复制后端地址</button>`);
   if (!task?.id || state === "blocked" || state === "failed" || state === "empty") {
@@ -5712,6 +5715,11 @@ if (els.browserRouteSummary) {
     }
     if (routeAction.dataset.browserRouteAction === "copy-backend") {
       await copyBackendUrl(routeAction);
+      return;
+    }
+    if (routeAction.dataset.browserRouteAction === "open-extension") {
+      await copyBackendUrl(routeAction);
+      setBrowserExtensionHandoffStatus(backendDisplayUrl());
       return;
     }
     if (routeAction.dataset.browserRouteAction === "local-video") {

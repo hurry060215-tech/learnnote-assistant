@@ -3199,11 +3199,12 @@ class SummaryFallbackTests(unittest.TestCase):
         self.assertEqual(diagnostics["vision_image_count"], MAX_VISION_GRIDS - 1)
         self.assertEqual(diagnostics["vision_call_plan"][0]["window_ids"], ["W001", "W002", "W003", "W004"])
         self.assertEqual(diagnostics["vision_call_plan"][0]["image_window_ids"], ["W002", "W003", "W004"])
-        self.assertEqual(diagnostics["vision_call_plan"][-1]["window_ids"], ["W077", "W078", "W079", "W080"])
+        self.assertEqual(diagnostics["vision_call_plan"][-1]["window_ids"], ["W080", "W081", "W082", "W083"])
         self.assertEqual(diagnostics["vision_window_ids"][0], "W001")
+        self.assertEqual(diagnostics["vision_window_ids"][-1], "W083")
         self.assertNotIn("W001", diagnostics["vision_image_window_ids"])
         self.assertIn("W001", diagnostics["missing_vision_image_window_ids"])
-        self.assertEqual(diagnostics["omitted_vision_window_ids"], ["W081", "W082", "W083"])
+        self.assertEqual(diagnostics["omitted_vision_window_ids"], ["W015", "W042", "W069"])
         self.assertEqual(diagnostics["omitted_frame_grid_count"], 3)
         self.assertFalse(diagnostics["all_sent_grids_had_images"])
         self.assertFalse(diagnostics["all_grids_had_images"])
@@ -3219,7 +3220,7 @@ class SummaryFallbackTests(unittest.TestCase):
             self.assertIn("20", report)
             self.assertIn("已送入视觉窗口", report)
             self.assertIn("缺少图片窗口：W001", report)
-            self.assertIn("超限省略窗口：W081, W082, W083", report)
+            self.assertIn("超限省略窗口：W015, W042, W069", report)
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 

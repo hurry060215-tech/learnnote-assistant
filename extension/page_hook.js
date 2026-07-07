@@ -605,6 +605,7 @@
   function looksLikeJsonUrlCandidate(value) {
     const text = String(value || "").trim();
     if (text.length < 4 || /\s/.test(text)) return false;
+    if (/^(audio|video|application|text)\/[a-z0-9.+-]+$/i.test(text)) return false;
     if (/^(https?:)?\/\//i.test(text)) return true;
     if (/%2f|%3a|%3f|%3d|%26/i.test(text)) return true;
     if (text.startsWith("/")) return true;
@@ -764,18 +765,16 @@
   }
 
   function attachSiblingAudioUrl(resources = []) {
-    const audio = resources
-      .filter(item => item?.kind === "audio" && item.url)
-      .sort((left, right) => Number(right.score || 0) - Number(left.score || 0))[0];
-    if (!audio) return;
-    for (const video of resources.filter(item => item?.kind === "video" && item.url)) {
-      if (!video.audio_url) {
-        video.audio_url = audio.url;
-        video.audio_mime = audio.mime || "audio/mp4";
-        video.score = Math.min(100, Math.max(Number(video.score || 0), 92));
-        video.label = `${video.label || "video"} + audio`;
-      }
-    }
+    const audios = resources.filter(item => item?.kind === "audio" && item.url);
+    const videos = resources.filter(item => item?.kind === "video" && item.url);
+    if (audios.length !== 1 || videos.length !== 1) return;
+    const [audio] = audios;
+    const [video] = videos;
+    if (video.audio_url) return;
+    video.audio_url = audio.url;
+    video.audio_mime = audio.mime || "audio/mp4";
+    video.score = Math.min(100, Math.max(Number(video.score || 0), 92));
+    video.label = `${video.label || "video"} + audio`;
   }
 
   function collectJsonMediaUrls(node, source, label, keys = [], parent = null, output = [], seen = new Set(), visited = new WeakSet(), meta = {}) {

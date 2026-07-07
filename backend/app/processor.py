@@ -13,7 +13,7 @@ from .downloader import DownloadError, MediaDownloader, classify_resource, effec
 from .media import build_frame_grids, extract_audio, extract_embedded_subtitle, extract_frames, normalize_video
 from .models import ActiveVideoInfo, BrowserSubtitleCue, CurrentPageTaskRequest, DownloadAttempt, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
 from .storage import get_task, save_task, task_dir, update_task, write_json
-from .summarizer import MAX_GRIDS_PER_VISION_CALL, MAX_VISION_GRIDS, build_visual_windows, llm_base_host, llm_provider_name, summarize_page_text_with_diagnostics, summarize_with_diagnostics_audit as summarize_with_diagnostics
+from .summarizer import MAX_GRIDS_PER_VISION_CALL, MAX_VISION_GRIDS, build_visual_windows, llm_base_host, llm_provider_name, select_vision_grid_entries, summarize_page_text_with_diagnostics, summarize_with_diagnostics_audit as summarize_with_diagnostics
 from .transcriber import transcript_from_subtitle, transcribe_audio, transcribe_audio_openai_compatible
 
 
@@ -541,7 +541,10 @@ def build_summary_diagnostics(
     summary_warning: str,
     llm_events: list[dict] | None = None,
 ) -> dict:
-    eligible_grids = grids[:MAX_VISION_GRIDS]
+    eligible_entries = select_vision_grid_entries(grids)
+    eligible_grids = [grid for _index, grid in eligible_entries]
+    eligible_indices = [index for index, _grid in eligible_entries]
+    eligible_index_set = set(eligible_indices)
     effective_llm_base_url = options.llm_base_url or LLM_BASE_URL
     effective_llm_model = options.llm_model or LLM_MODEL
     llm_configured = bool(options.llm_api_key or LLM_API_KEY)
@@ -551,38 +554,39 @@ def build_summary_diagnostics(
             return visual_windows[index].id
         return f"W{index + 1:03d}"
 
-    eligible_window_ids = [window_id(index) for index in range(len(eligible_grids))]
+    eligible_window_ids = [window_id(index) for index in eligible_indices]
     vision_image_window_ids = [
         window_id(index)
-        for index, grid in enumerate(eligible_grids)
+        for index, grid in eligible_entries
         if grid.path and Path(grid.path).is_file()
     ]
     missing_vision_image_window_ids = [
         window_id(index)
-        for index, grid in enumerate(eligible_grids)
+        for index, grid in eligible_entries
         if not (grid.path and Path(grid.path).is_file())
     ]
     omitted_vision_window_ids = [
         window_id(index)
-        for index in range(len(eligible_grids), len(grids))
+        for index in range(len(grids))
+        if index not in eligible_index_set
     ]
     total_image_count = sum(1 for grid in grids if grid.path and Path(grid.path).is_file())
     eligible_image_count = sum(1 for grid in eligible_grids if grid.path and Path(grid.path).is_file())
     vision_batch_size = MAX_GRIDS_PER_VISION_CALL
     vision_call_plan = []
-    for batch_index, start in enumerate(range(0, len(eligible_grids), vision_batch_size), start=1):
-        batch_grids = eligible_grids[start: start + vision_batch_size]
-        batch_window_ids = [window_id(index) for index in range(start, start + len(batch_grids))]
+    for batch_index, start in enumerate(range(0, len(eligible_entries), vision_batch_size), start=1):
+        batch_entries = eligible_entries[start: start + vision_batch_size]
+        batch_window_ids = [window_id(index) for index, _grid in batch_entries]
         batch_image_window_ids = [
             window_id(index)
-            for index, grid in enumerate(batch_grids, start=start)
+            for index, grid in batch_entries
             if grid.path and Path(grid.path).is_file()
         ]
         vision_call_plan.append({
             "batch": batch_index,
             "window_ids": batch_window_ids,
             "image_window_ids": batch_image_window_ids,
-            "grid_count": len(batch_grids),
+            "grid_count": len(batch_entries),
             "image_count": len(batch_image_window_ids),
         })
     if summary_source == "vision-llm":

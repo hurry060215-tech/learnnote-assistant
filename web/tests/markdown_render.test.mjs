@@ -2518,6 +2518,8 @@ assert.match(routeEmptyHtml, /不录制 · 不绕过 DRM · 不刷课/);
 assert.match(routeEmptyHtml, /mp4、mkv、webm、flv、m3u8、mpd/);
 assert.match(routeEmptyHtml, /data-browser-route-action="refresh"/);
 assert.match(routeEmptyHtml, /data-browser-route-action="copy-backend"/);
+assert.match(routeEmptyHtml, /data-browser-route-action="open-extension"/);
+assert.match(routeEmptyHtml, /去扩展侧栏开始/);
 assert.match(routeEmptyHtml, /data-browser-route-action="local-video"/);
 const emptyWorkflowHtml = context.sourceWorkflowActionsHtml("browser", null);
 assert.match(emptyWorkflowHtml, /data-source-workflow-action="open-extension"/);

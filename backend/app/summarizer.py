@@ -339,29 +339,63 @@ def _study_route_lines(transcript: TranscriptResult, windows: list[VisualWindow]
     ]
 
 
-def _grid_batches(grids: list[FrameGrid], batch_size: int = MAX_GRIDS_PER_VISION_CALL) -> list[list[FrameGrid]]:
+VisionGridEntry = tuple[int, FrameGrid]
+
+
+def select_vision_grid_entries(grids: list[FrameGrid], limit: int = MAX_VISION_GRIDS) -> list[VisionGridEntry]:
+    if limit <= 0 or not grids:
+        return []
+    total = len(grids)
+    if total <= limit:
+        return list(enumerate(grids))
+    if limit == 1:
+        return [(0, grids[0])]
+    selected_indices = [
+        round(index * (total - 1) / (limit - 1))
+        for index in range(limit)
+    ]
+    seen: set[int] = set()
+    unique_indices: list[int] = []
+    for index in selected_indices:
+        bounded = min(total - 1, max(0, int(index)))
+        if bounded not in seen:
+            seen.add(bounded)
+            unique_indices.append(bounded)
+    if len(unique_indices) < limit:
+        for index in range(total):
+            if index not in seen:
+                seen.add(index)
+                unique_indices.append(index)
+                if len(unique_indices) >= limit:
+                    break
+    unique_indices = sorted(unique_indices[:limit])
+    return [(index, grids[index]) for index in unique_indices]
+
+
+def _grid_batches(grids: list[FrameGrid], batch_size: int = MAX_GRIDS_PER_VISION_CALL) -> list[list[VisionGridEntry]]:
     if batch_size <= 0:
         batch_size = MAX_GRIDS_PER_VISION_CALL
-    limited = grids[:MAX_VISION_GRIDS]
-    return [limited[index: index + batch_size] for index in range(0, len(limited), batch_size)]
+    selected = select_vision_grid_entries(grids)
+    return [selected[index: index + batch_size] for index in range(0, len(selected), batch_size)]
 
 
 def _grid_index_lines(grids: list[FrameGrid]) -> list[str]:
     return [
         (
-            f"- W{index:03d} `{_format_ts(grid.start)} - {_format_ts(grid.end)}` "
+            f"- W{index + 1:03d} `{_format_ts(grid.start)} - {_format_ts(grid.end)}` "
             f"{grid.frame_count} 帧，画面网格：{grid.url}"
         )
-        for index, grid in enumerate(grids, start=1)
+        for index, grid in select_vision_grid_entries(grids)
     ]
 
 
-def _grid_window_prompt(transcript: TranscriptResult, grids: list[FrameGrid], offset: int = 0) -> str:
+def _grid_window_prompt(transcript: TranscriptResult, entries: list[VisionGridEntry]) -> str:
     sections = []
-    for index, grid in enumerate(grids, start=offset + 1):
+    for original_index, grid in entries:
+        window_id = f"W{original_index + 1:03d}"
         sections.append(
             "\n".join([
-                f"窗口 W{index:03d}：{_format_ts(grid.start)} - {_format_ts(grid.end)}",
+                f"窗口 {window_id}：{_format_ts(grid.start)} - {_format_ts(grid.end)}",
                 f"画面网格：{grid.url}",
                 f"帧数：{grid.frame_count}",
                 f"对应字幕：\n{_segments_window(transcript, grid.start, grid.end) or '无对应字幕'}",
@@ -410,15 +444,16 @@ def ensure_visual_appendix(markdown: str, transcript: TranscriptResult, grids: l
     return f"{note}\n\n{appendix}" if note else appendix
 
 
-def _grid_image_content_items(grids: list[FrameGrid], offset: int = 0) -> list[dict]:
+def _grid_image_content_items(entries: list[VisionGridEntry]) -> list[dict]:
     items: list[dict] = []
-    for index, grid in enumerate(grids, start=offset + 1):
+    for original_index, grid in entries:
+        window_id = f"W{original_index + 1:03d}"
         path = Path(grid.path)
         if not path.exists():
             items.append({
                 "type": "text",
                 "text": (
-                    f"\u7a97\u53e3 W{index:03d}\uff08{_format_ts(grid.start)} - {_format_ts(grid.end)}\uff09"
+                    f"\u7a97\u53e3 {window_id}\uff08{_format_ts(grid.start)} - {_format_ts(grid.end)}\uff09"
                     f"\u7684\u753b\u9762\u7f51\u683c\u6587\u4ef6\u7f3a\u5931\uff0c\u539f\u59cb\u7d22\u5f15 URL\uff1a{grid.url}\u3002"
                     "\u8bf7\u53ea\u6839\u636e\u5b57\u5e55\u7247\u6bb5\u548c\u753b\u9762\u7d22\u5f15\u5904\u7406\u8fd9\u4e2a\u7a97\u53e3\uff0c\u4e0d\u8981\u7f16\u9020\u753b\u9762\u7ec6\u8282\u3002"
                 ),
@@ -427,9 +462,9 @@ def _grid_image_content_items(grids: list[FrameGrid], offset: int = 0) -> list[d
         items.append({
             "type": "text",
             "text": (
-                f"下面这张画面网格对应窗口 W{index:03d}："
+                f"下面这张画面网格对应窗口 {window_id}："
                 f"{_format_ts(grid.start)} - {_format_ts(grid.end)}；"
-                f"网格 URL：{grid.url}。请把这张图只用于 W{index:03d} 的局部摘要。"
+                f"网格 URL：{grid.url}。请把这张图只用于 {window_id} 的局部摘要。"
             ),
         })
         items.append({"type": "image_url", "image_url": {"url": image_to_data_url(path)}})
@@ -562,7 +597,6 @@ def summarize_with_llm(
         failed_batches = 0
         batches = _grid_batches(grids)
         for index, batch in enumerate(batches, start=1):
-            batch_offset = (index - 1) * MAX_GRIDS_PER_VISION_CALL
             content: list[dict] = [
                 {
                     "type": "text",
@@ -571,11 +605,11 @@ def summarize_with_llm(
                         "请先做局部图文总结，不要写完整总笔记。\n"
                         "每个窗口必须包含：时间范围、画面可见信息、字幕重点、操作/PPT/代码/公式/例题线索、可能的易错点。\n"
                         f"标题：{title}\n来源：{page_url}\n批次：{index}\n\n"
-                        f"{_grid_window_prompt(transcript, batch, batch_offset)}"
+                        f"{_grid_window_prompt(transcript, batch)}"
                     ),
                 }
             ]
-            content.extend(_grid_image_content_items(batch, batch_offset))
+            content.extend(_grid_image_content_items(batch))
             if not any(item.get("type") == "image_url" for item in content):
                 continue
             try:
@@ -601,7 +635,7 @@ def summarize_with_llm(
                     "use the full transcript and frame index to preserve coverage, and state any uncertainty.\n\n"
                     f"{merge_prompt}"
                 )
-            frame_index = "\n".join(_grid_index_lines(grids[:MAX_VISION_GRIDS]))
+            frame_index = "\n".join(_grid_index_lines(grids))
             try:
                 response = client.chat.completions.create(
                     model=model,
