@@ -606,6 +606,42 @@ class LocalUploadValidationTests(unittest.TestCase):
                 shutil.rmtree(task_dir(rerun_task_id), ignore_errors=True)
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
+    def test_download_only_success_reports_download_ready_recovery(self) -> None:
+        task = create_task("current_page", "Downloaded only", "https://course.example.com/lesson", mode="download_only")
+        try:
+            media = task_dir(task.id) / "media.mp4"
+            media.write_bytes(b"\x00\x00\x00\x18ftypmp42" + (b"download-only" * 256))
+            task = update_task(
+                task.id,
+                status="success",
+                phase="completed",
+                progress=100,
+                media_path=str(media),
+                selected_resource=ResourceCandidate(
+                    url="https://cdn.example.com/lesson.m3u8",
+                    kind="hls",
+                    source="webRequest",
+                ),
+                download_attempts=[
+                    DownloadAttempt(
+                        strategy="manifest-ffmpeg",
+                        url="https://cdn.example.com/lesson.m3u8",
+                        status="success",
+                    )
+                ],
+            )
+
+            recovery = diagnostic_recovery_profile(task)
+
+            self.assertEqual(recovery["code"], "download_ready")
+            self.assertEqual(recovery["next_action"], "continue_from_media")
+            self.assertEqual(recovery["severity"], "ok")
+            self.assertEqual(recovery["primary_action"]["ui_intent"], "continue_from_media")
+            self.assertIn("只下载模式", recovery["diagnosis"])
+            self.assertIn("media.mp4", recovery["diagnosis"])
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
     def test_failed_local_upload_can_rerun_from_source_media_path(self) -> None:
         task = create_task("local", "Failed queued upload", mode="video")
         upload_path = make_video(DATA_DIR / "uploads", f"{task.id}_queued-local.mp4")

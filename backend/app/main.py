@@ -1070,7 +1070,13 @@ def diagnostic_recovery_profile(task: TaskRecord) -> dict:
     primary_code = task.error_code or (latest_attempt.code if latest_attempt else "")
     media_ready_for_rerun = task_media_ready_for_rerun(task)
 
-    if media_ready_for_rerun:
+    if task.mode == "download_only" and task_media_file_exists(task):
+        primary_code = "download_ready"
+        diagnosis = f"{task_media_display_name(task)} 已按只下载模式保存到本地；下一步可复用该视频生成字幕、画面网格和图文笔记。"
+        confidence = "high"
+        severity = "ok"
+        next_action = "continue_from_media"
+    elif media_ready_for_rerun:
         primary_code = "media_ready_for_rerun"
         diagnosis = f"视频已保存到本地，但完整笔记尚未生成；优先复用 {task_media_display_name(task)} 继续转写、切片和图文总结。"
         confidence = "high"
@@ -1112,12 +1118,6 @@ def diagnostic_recovery_profile(task: TaskRecord) -> dict:
         confidence = "low"
         severity = "recoverable"
         next_action = "inspect_diagnostics"
-    elif task.mode == "download_only" and task_media_file_exists(task):
-        primary_code = "download_ready"
-        diagnosis = "视频已保存到本地，当前任务按下载模式停止在媒体产物。"
-        confidence = "high"
-        severity = "ok"
-        next_action = "continue_from_media"
     else:
         primary_code = primary_code or ""
         diagnosis = "任务仍可继续按阶段审计检查媒体、转写、切片和总结产物。"
