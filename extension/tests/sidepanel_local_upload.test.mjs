@@ -168,8 +168,8 @@ const sidepanelCss = await readFile(new URL("../sidepanel.css", import.meta.url)
 vm.runInContext(sidepanelCode, context);
 
 await new Promise(resolve => setTimeout(resolve, 0));
-assert.match(sidepanelHtml, /sidepanel\.css\?v=20260702-audit-export/);
-assert.match(sidepanelHtml, /sidepanel\.js\?v=20260702-audit-export/);
+assert.match(sidepanelHtml, /sidepanel\.css\?v=20260708-side-workbench/);
+assert.match(sidepanelHtml, /sidepanel\.js\?v=20260708-side-workbench/);
 assert.match(sidepanelHtml, /class="capture-cockpit"/);
 assert.match(sidepanelHtml, /当前页直取生产线/);
 assert.match(sidepanelHtml, /浏览器读取/);
@@ -181,6 +181,9 @@ assert.match(sidepanelHtml, /本地视频同管线/);
 assert.match(sidepanelHtml, /选择本地视频/);
 assert.match(sidepanelHtml, /抽帧网格 \+ 时间窗/);
 assert.match(sidepanelCss, /\.capture-cockpit/);
+assert.match(sidepanelCss, /Compact Side Panel workbench/);
+assert.match(sidepanelCss, /\.current-card #currentStudyCard \{\s*order: 3;/);
+assert.match(sidepanelCss, /\.current-card \.capture-cockpit \{\s*order: 6;/);
 assert.match(sidepanelCss, /\.local-video-card/);
 assert.match(sidepanelCss, /\.local-video-actions/);
 assert.match(sidepanelCss, /writing-mode:\s*vertical-rl/);

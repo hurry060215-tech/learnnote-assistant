@@ -8881,3 +8881,510 @@ body {
   font-size: 11px;
   line-height: 1.45;
 }
+
+/* 2026-07-08 Compact Side Panel workbench.
+   Keep current-page direct extraction, preflight, and slicing controls in the first viewport. */
+.side-shell {
+  gap: 8px;
+  padding: 8px;
+}
+
+.current-card {
+  display: grid;
+  gap: 7px;
+  padding: 9px;
+}
+
+.current-card .source-switcher {
+  order: 0;
+}
+
+.current-card > .section-head {
+  order: 1;
+  margin: 0;
+}
+
+.current-card #pageUrl {
+  order: 2;
+  max-height: 16px;
+  font-size: 10px;
+  line-height: 1.25;
+}
+
+.current-card #currentStudyCard {
+  order: 3;
+  margin-top: 0;
+}
+
+.current-card #launchBar {
+  order: 4;
+  margin-top: 0;
+}
+
+.current-card .source-route-rail {
+  order: 5;
+}
+
+.current-card .capture-cockpit {
+  order: 6;
+}
+
+.current-card #activeVideo {
+  order: 7;
+}
+
+.current-card #playbackReadiness {
+  order: 8;
+}
+
+.current-card .mode-row {
+  display: none;
+}
+
+.current-card .source-switcher button {
+  min-height: 30px;
+  height: 30px;
+  padding: 0 5px;
+  font-size: 10px;
+}
+
+.current-card .section-head strong,
+.current-card #pageTitle {
+  margin-top: 0;
+  font-size: 13px;
+  line-height: 1.22;
+}
+
+.current-card .source-route-rail {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.current-card .source-route-rail button {
+  min-height: 42px;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  gap: 1px 5px;
+  align-items: center;
+  padding: 6px;
+}
+
+.current-card .source-route-rail button::before {
+  grid-row: 1 / 3;
+  width: 7px;
+  height: 7px;
+}
+
+.current-card .source-route-rail span {
+  font-size: 9px;
+}
+
+.current-card .source-route-rail strong {
+  font-size: 11px;
+}
+
+.current-card .source-route-rail small {
+  grid-column: 2;
+  font-size: 9px;
+}
+
+.current-card .capture-cockpit {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) 34px;
+  gap: 5px;
+  padding: 5px;
+}
+
+.current-card .capture-cockpit section {
+  min-height: 36px;
+  grid-template-columns: 18px minmax(0, 1fr);
+  padding: 5px;
+}
+
+.current-card .capture-cockpit b {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  font-size: 9px;
+}
+
+.current-card .capture-cockpit span {
+  font-size: 10px;
+}
+
+.current-card .capture-cockpit small {
+  display: none;
+}
+
+.current-card .capture-cockpit em {
+  min-width: 34px;
+  min-height: 36px;
+  font-size: 9px;
+}
+
+.current-card .playback-card {
+  max-height: 44px;
+  min-height: 0;
+  overflow: hidden;
+  padding: 7px 8px;
+  font-size: 10.5px;
+  line-height: 1.35;
+}
+
+.current-card .playback-readiness {
+  gap: 6px;
+  padding: 7px;
+}
+
+.current-card .playback-readiness-head small,
+.current-card .playback-readiness-actions,
+.current-card .workbench-brief,
+.current-card .workbench-facts,
+.current-card .workbench-footer p {
+  display: none;
+}
+
+.current-card .playback-readiness-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.current-card .playback-readiness-grid span {
+  min-height: 34px;
+  padding: 4px;
+  font-size: 9px;
+}
+
+.current-card .playback-readiness-grid b {
+  font-size: 9.5px;
+}
+
+.current-card .study-workbench {
+  gap: 7px;
+  padding: 8px;
+}
+
+.current-card .workbench-hero {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.current-card .workbench-title > span {
+  margin-bottom: 3px;
+  padding: 2px 6px;
+  font-size: 9px;
+}
+
+.current-card .workbench-title strong {
+  font-size: 13px;
+  line-height: 1.22;
+}
+
+.current-card .workbench-title small {
+  max-height: 30px;
+  overflow: hidden;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.current-card .workbench-primary {
+  min-width: 104px;
+  min-height: 34px;
+  height: 34px;
+  padding: 0 9px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.current-card .workbench-run-modes {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.current-card .workbench-run-modes button {
+  min-height: 32px;
+  padding: 5px;
+}
+
+.current-card .workbench-run-modes small {
+  display: none;
+}
+
+.current-card .workbench-run-modes span,
+.current-card .workbench-run-modes strong {
+  font-size: 9.5px;
+}
+
+.current-card .workbench-route {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 5px;
+  padding: 7px;
+}
+
+.current-card .workbench-route-main,
+.current-card .workbench-route-side {
+  gap: 4px;
+}
+
+.current-card .workbench-route strong {
+  font-size: 11px;
+}
+
+.current-card .workbench-route code {
+  max-height: 18px;
+  padding: 4px 5px;
+  font-size: 9.5px;
+}
+
+.current-card .workbench-route code + code,
+.current-card .workbench-route small,
+.current-card .workbench-route-tools {
+  display: none;
+}
+
+.current-card .workbench-route-tags {
+  gap: 4px;
+}
+
+.current-card .workbench-route-tags em {
+  padding: 2px 5px;
+  font-size: 9px;
+}
+
+.current-card .workbench-audit-gate {
+  gap: 5px;
+  padding: 7px;
+}
+
+.current-card .workbench-audit-head {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.current-card .workbench-audit-head span,
+.current-card .workbench-audit-head strong {
+  font-size: 10px;
+}
+
+.current-card .workbench-audit-head button {
+  min-height: 26px;
+  padding: 0 7px;
+  font-size: 10px;
+}
+
+.current-card .workbench-audit-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.current-card .workbench-audit-grid section {
+  min-height: 34px;
+  padding: 5px;
+}
+
+.current-card .workbench-audit-grid span {
+  font-size: 9px;
+}
+
+.current-card .workbench-audit-grid strong {
+  font-size: 10px;
+}
+
+.current-card .workbench-audit-grid small {
+  display: none;
+}
+
+.current-card .workbench-slice-plan {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.current-card .workbench-slice-plan section {
+  min-height: 38px;
+  grid-template-columns: 18px minmax(0, 1fr);
+  padding: 5px;
+}
+
+.current-card .workbench-slice-plan i {
+  width: 18px;
+  height: 18px;
+  font-size: 9px;
+}
+
+.current-card .workbench-slice-plan span,
+.current-card .workbench-slice-plan strong,
+.current-card .workbench-slice-plan small {
+  font-size: 9.5px;
+}
+
+.current-card .workbench-slice-plan small {
+  display: none;
+}
+
+.current-card .workbench-steps {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.current-card .workbench-steps section {
+  min-height: 34px;
+  grid-template-columns: 16px minmax(0, 1fr);
+  padding: 5px;
+}
+
+.current-card .workbench-steps i {
+  width: 16px;
+  height: 16px;
+  font-size: 8.5px;
+}
+
+.current-card .workbench-steps span,
+.current-card .workbench-steps b {
+  font-size: 9px;
+}
+
+.current-card .workbench-footer {
+  display: block;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.current-card .workbench-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.current-card .workbench-actions button {
+  min-height: 26px;
+  padding: 0 6px;
+  font-size: 10px;
+}
+
+.current-card .workbench-local-fallback {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  padding: 7px;
+}
+
+.current-card .workbench-local-fallback small,
+.current-card .workbench-local-fallback .workbench-local-pipeline {
+  display: none;
+}
+
+.current-card .workbench-local-fallback button {
+  min-height: 30px;
+  padding: 0 8px;
+  font-size: 10px;
+}
+
+.current-card .launch-bar {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  padding: 7px;
+}
+
+.current-card .launch-bar-main strong {
+  font-size: 11px;
+}
+
+.current-card .launch-bar-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 4px;
+}
+
+.current-card .launch-bar-actions button,
+.current-card .launch-bar-actions button.primary {
+  min-height: 24px;
+  height: 24px;
+  padding: 0 6px;
+  font-size: 9.5px;
+  line-height: 1;
+}
+
+.actions {
+  top: 58px;
+  gap: 5px;
+  padding: 5px;
+}
+
+.actions button {
+  min-height: 30px;
+  height: 30px;
+  padding: 0 6px;
+  font-size: 10px;
+}
+
+.actions .primary {
+  min-height: 34px;
+  height: 34px;
+  font-size: 11px;
+}
+
+.resource-panel {
+  padding: 9px;
+}
+
+.resource-panel .section-head {
+  margin-bottom: 5px;
+}
+
+.resource-panel .readiness,
+.resource-panel .route-summary,
+.resource-panel .extraction-plan,
+.resource-panel .direct-flow {
+  margin-bottom: 7px;
+}
+
+.resource-panel .route-summary {
+  gap: 6px;
+  padding: 8px;
+}
+
+.resource-panel .route-summary-detail,
+.resource-panel .route-summary-actions {
+  display: none;
+}
+
+.resource-panel .route-summary-metrics {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.resource-panel .route-summary-metrics span {
+  padding: 4px;
+  font-size: 9px;
+}
+
+.resource-panel .route-summary-metrics b {
+  font-size: 9.5px;
+}
+
+@media (max-width: 380px) {
+  .current-card .capture-cockpit,
+  .current-card .source-route-rail {
+    grid-template-columns: 1fr;
+  }
+
+  .current-card .capture-cockpit em {
+    min-height: 28px;
+    writing-mode: horizontal-tb;
+  }
+
+  .current-card .workbench-hero,
+  .current-card .launch-bar,
+  .current-card .workbench-local-fallback {
+    grid-template-columns: 1fr;
+  }
+
+  .current-card .workbench-primary,
+  .current-card .workbench-local-fallback button {
+    width: 100%;
+  }
+
+  .current-card .workbench-actions,
+  .current-card .launch-bar-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
