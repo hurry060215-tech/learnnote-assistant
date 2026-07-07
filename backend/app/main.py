@@ -2292,6 +2292,11 @@ async def create_from_local(
     task = create_task(source_type="local", title=title or safe_name, options=parsed_options, mode="local")
     upload_path = UPLOAD_DIR / f"{task.id}_{safe_name}"
     pending_path.replace(upload_path)
+    task = update_task(
+        task.id,
+        source_media_path=str(upload_path),
+        message="Local upload saved; queued for processing",
+    )
     background_tasks.add_task(process_local_video_task, task.id, upload_path, title or safe_name, parsed_options)
     return {"task_id": task.id, "task": task}
 

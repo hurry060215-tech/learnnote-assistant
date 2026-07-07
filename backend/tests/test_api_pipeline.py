@@ -243,6 +243,38 @@ class LocalUploadValidationTests(unittest.TestCase):
         self.assertIn("frame_interval", detail["message"])
         self.assertFalse(list((DATA_DIR / "uploads").glob("pending_*lesson.mp4")))
 
+    def test_local_upload_records_source_media_path_before_processing(self) -> None:
+        with patch("app.main.validate_local_upload_file") as validate, \
+            patch("app.main.process_local_video_task") as process_task:
+            response = self.client.post(
+                "/api/tasks/from-local",
+                files={"file": ("queued-local.mp4", io.BytesIO(b"fake local video bytes"), "video/mp4")},
+                data={"title": "Queued local lesson"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        task = payload["task"]
+        task_id = payload["task_id"]
+        source_media_path = Path(task["source_media_path"])
+        try:
+            self.assertEqual(source_media_path.name, f"{task_id}_queued-local.mp4")
+            self.assertEqual(source_media_path.parent, (DATA_DIR / "uploads").resolve())
+            self.assertTrue(source_media_path.is_file())
+            self.assertEqual(source_media_path.read_bytes(), b"fake local video bytes")
+            self.assertEqual(task["message"], "Local upload saved; queued for processing")
+            validate.assert_called_once()
+            process_task.assert_called_once()
+            self.assertEqual(process_task.call_args.args[0], task_id)
+            self.assertEqual(process_task.call_args.args[1], source_media_path)
+            detail = self.client.get(f"/api/tasks/{task_id}").json()["task"]
+            self.assertEqual(detail["source_media_path"], str(source_media_path))
+            self.assertEqual(detail["reuse"]["source_media_path"], str(source_media_path))
+            self.assertFalse(list((DATA_DIR / "uploads").glob("pending_*queued-local.mp4")))
+        finally:
+            source_media_path.unlink(missing_ok=True)
+            shutil.rmtree(task_dir(task_id), ignore_errors=True)
+
     def test_media_preview_endpoint_streams_inline_video(self) -> None:
         task = create_task("local", "Preview media")
         media = task_dir(task.id) / "media.mp4"
