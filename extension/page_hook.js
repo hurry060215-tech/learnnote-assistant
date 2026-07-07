@@ -133,6 +133,44 @@
     return "unknown";
   }
 
+  function mediaKindFromContentDisposition(value = "", mime = "") {
+    const header = String(value || "");
+    let filename = "";
+    for (const part of header.split(";")) {
+      const [rawKey, ...rest] = part.trim().split("=");
+      if (!rawKey || !rest.length) continue;
+      const key = rawKey.toLowerCase();
+      let raw = rest.join("=").trim().replace(/^"|"$/g, "");
+      if (key === "filename*") {
+        const marker = raw.indexOf("''");
+        raw = marker >= 0 ? raw.slice(marker + 2) : raw;
+      }
+      if ((key === "filename" || key === "filename*") && raw) {
+        try {
+          filename = decodeURIComponent(raw);
+        } catch {
+          filename = raw;
+        }
+        if (filename) break;
+      }
+    }
+    return filename ? mediaKind(filename.split(/[\\/]/).pop() || "", mime) : "unknown";
+  }
+
+  function responseMediaKind(url, mime = "", headers = {}) {
+    const direct = mediaKind(url, mime);
+    if (direct !== "unknown") return direct;
+    const dispositionKind = mediaKindFromContentDisposition(headers?.["content-disposition"] || "", mime);
+    if (dispositionKind !== "unknown") return dispositionKind;
+    const type = String(mime || "").toLowerCase();
+    const binaryLike = /octet-stream|binary|application\/x-mpegurl/i.test(type);
+    const byteRangeEvidence = Boolean(headers?.["content-range"]) || String(headers?.["accept-ranges"] || "").toLowerCase().includes("bytes");
+    if ((binaryLike || byteRangeEvidence) && mediaUrlHint(url)) {
+      return endpointKindHint(url).kind;
+    }
+    return "unknown";
+  }
+
   function bytesFromAppendBuffer(value, limit = 512) {
     try {
       if (value instanceof ArrayBuffer) return new Uint8Array(value, 0, Math.min(value.byteLength, limit));
@@ -230,7 +268,9 @@
     for (const item of resources || []) {
       const url = normalizeUrl(item.url);
       if (!url || seen.has(url)) continue;
-      const kind = item.kind || mediaKind(url, item.mime || "");
+      const kind = item.kind && item.kind !== "unknown"
+        ? item.kind
+        : responseMediaKind(url, item.mime || "", item.headers || {});
       if (kind === "unknown") continue;
       seen.add(url);
       deduped.push({
@@ -882,7 +922,7 @@
 
   function blobMeta(url, mime, source, label) {
     const normalizedUrl = normalizeUrl(url);
-    const kind = mediaKind(normalizedUrl, mime || "");
+    const kind = responseMediaKind(normalizedUrl, mime || "");
     if (!normalizedUrl || kind === "unknown") return null;
     return {
       url: normalizedUrl,

@@ -53,8 +53,13 @@ const context = {
   MediaSource: FakeMediaSource,
   SourceBuffer: FakeSourceBuffer,
   URL: class extends URL {
+    static mediaSourceCount = 0;
+
     static createObjectURL(value) {
-      if (value instanceof FakeMediaSource) return "blob:https://course.example.com/mse-1";
+      if (value instanceof FakeMediaSource) {
+        this.mediaSourceCount += 1;
+        return `blob:https://course.example.com/mse-${this.mediaSourceCount}`;
+      }
       return "blob:https://course.example.com/blob-1";
     }
 
@@ -93,3 +98,27 @@ assert.equal(mapped.url, "https://cdn.example.com/mse/lesson.mp4?token=abc");
 assert.equal(mapped.kind, "video");
 assert.equal(mapped.source, "pageHookMediaSource");
 assert.equal(mapped.playback_match, "blob-source");
+
+const extensionlessResponse = new context.Response(new Uint8Array([0, 0, 0, 24, 102, 116, 121, 112]).buffer, {
+  url: "https://cdn.example.com/api/playback/getVideo?id=42&token=abc",
+  headers: {
+    "content-type": "application/octet-stream",
+    "content-length": "8388608",
+    "accept-ranges": "bytes"
+  },
+});
+const extensionlessBuffer = await extensionlessResponse.arrayBuffer();
+const extensionlessMediaSource = new context.MediaSource();
+const extensionlessBlobUrl = context.URL.createObjectURL(extensionlessMediaSource);
+const extensionlessSourceBuffer = extensionlessMediaSource.addSourceBuffer("video/mp4");
+extensionlessSourceBuffer.appendBuffer(extensionlessBuffer);
+
+const updatedResources = messages.flatMap(message => message.resources || []);
+const extensionlessMapped = updatedResources.find(resource => resource.blob_url === extensionlessBlobUrl);
+
+assert.ok(extensionlessMapped, "expected extensionless binary playback response to map through MediaSource");
+assert.equal(extensionlessMapped.url, "https://cdn.example.com/api/playback/getVideo?id=42&token=abc");
+assert.equal(extensionlessMapped.kind, "video");
+assert.equal(extensionlessMapped.mime, "application/octet-stream");
+assert.equal(extensionlessMapped.content_length, 8388608);
+assert.equal(extensionlessMapped.headers["accept-ranges"], "bytes");
