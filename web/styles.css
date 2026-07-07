@@ -7764,6 +7764,66 @@ body {
   background: #ffffff;
 }
 
+.workspace-panel .browser-route-summary-card {
+  gap: 7px;
+  padding: 10px;
+  border-color: #d9e4ef;
+  border-radius: 9px;
+  box-shadow: none;
+}
+
+.workspace-panel .browser-route-summary-main {
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px 8px;
+}
+
+.workspace-panel .browser-route-summary-main span {
+  height: 22px;
+  padding: 0 8px;
+  font-size: 10px;
+}
+
+.workspace-panel .browser-route-summary-main strong {
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.workspace-panel .browser-route-summary-main small {
+  display: none;
+}
+
+.workspace-panel .browser-route-summary-card p {
+  overflow: hidden;
+  margin: 0;
+  color: #4b5d75;
+  font-size: 10.5px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-panel .browser-route-summary-metrics {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.workspace-panel .browser-route-summary-metrics span {
+  min-height: 36px;
+  gap: 1px;
+  border-radius: 7px;
+  padding: 5px 4px;
+}
+
+.workspace-panel .browser-route-summary-metrics b {
+  font-size: 12px;
+}
+
+.workspace-panel .browser-bridge-gate,
+.workspace-panel .browser-route-handoff,
+.workspace-panel .browser-route-actions {
+  display: none;
+}
+
 .panel-heading strong,
 .result-header h2 {
   font-weight: 900;
@@ -11218,4 +11278,140 @@ body.reading-mode .app-shell {
   .workspace-panel .browser-capture-head .capture-status-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* Audit gate 2026-07-08: reduce repeated workbench chrome after the BiliNote pass. */
+.workspace-panel .source-route-rail {
+  display: none;
+}
+
+.workspace-panel #sourceWorkflow {
+  display: none;
+}
+
+.workspace-panel {
+  gap: 10px;
+  padding: 16px 13px;
+}
+
+.workspace-panel .panel-heading {
+  padding-bottom: 2px;
+}
+
+.workspace-panel .source-tabs {
+  border: 1px solid #d9e2ee;
+  background: #f6f8fb;
+}
+
+.workspace-panel .source-tab {
+  min-height: 38px;
+  border-radius: 7px;
+  background: transparent;
+  box-shadow: none;
+}
+
+.workspace-panel .source-tab.active {
+  border-color: #c9d8ea;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+}
+
+.workspace-panel .source-tab > svg {
+  width: 22px;
+  height: 22px;
+  padding: 5px;
+}
+
+.workspace-panel .browser-capture-card {
+  border-color: #d7e2ef;
+  background: #ffffff;
+  box-shadow: none;
+}
+
+.workspace-panel .capture-flow,
+.workspace-panel .capture-signals {
+  display: none;
+}
+
+.workspace-panel .browser-actions {
+  grid-template-columns: 1fr 1fr;
+}
+
+.workspace-panel .browser-actions .action-button {
+  min-height: 34px;
+  padding: 0 10px;
+}
+
+.workspace-panel .boundary-note {
+  border-color: #e0e7f0;
+  background: #f8fafc;
+}
+
+.queue-panel {
+  gap: 10px;
+  padding: 16px 12px;
+}
+
+.queue-stats {
+  gap: 6px;
+}
+
+.queue-stats span {
+  min-height: 46px;
+  border-radius: 8px;
+  padding: 8px 6px;
+}
+
+.task {
+  min-height: 86px;
+  grid-template-columns: 80px minmax(0, 1fr) auto;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+.task-preview {
+  width: 80px;
+  min-height: 58px;
+  border-radius: 7px;
+}
+
+.task-preview figcaption {
+  padding: 4px 5px;
+}
+
+.task-preview figcaption span {
+  display: none;
+}
+
+.task h3,
+.task-title {
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.task-meta-line,
+.task p {
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.task-brief {
+  display: none;
+}
+
+.task-chips,
+.task-audit-mini {
+  gap: 4px;
+}
+
+.task-chips span {
+  height: 22px;
+  padding: 0 6px;
+  font-size: 10px;
+}
+
+.result-panel {
+  background: #ffffff;
 }
