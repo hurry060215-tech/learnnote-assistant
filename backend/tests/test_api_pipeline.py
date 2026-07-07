@@ -626,6 +626,15 @@ class LocalUploadValidationTests(unittest.TestCase):
             self.assertEqual(detail["reuse"]["suggested_next_step"], "rerun_from_media")
             self.assertEqual(detail["recovery"]["next_action"], "continue_from_media")
 
+            export = self.client.get(f"/api/tasks/{task.id}/exports/media")
+            self.assertEqual(export.status_code, 200)
+            self.assertIn(upload_path.name, export.headers["content-disposition"])
+            self.assertEqual(export.content, upload_path.read_bytes())
+            preview = self.client.get(f"/api/tasks/{task.id}/media")
+            self.assertEqual(preview.status_code, 200)
+            self.assertIn("inline", preview.headers["content-disposition"])
+            self.assertIn(upload_path.name, preview.headers["content-disposition"])
+
             with patch("app.main.process_local_video_task") as process_task:
                 response = self.client.post(f"/api/tasks/{task.id}/rerun-from-media", json={"visual_understanding": False})
             self.assertEqual(response.status_code, 200)
