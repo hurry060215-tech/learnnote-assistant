@@ -2330,6 +2330,18 @@ assert.match(rerunRouteEvidenceHtml, /media\.mp4/);
 assert.match(rerunRouteEvidenceHtml, /&lt;script&gt;bad\(\)&lt;\/script&gt;/);
 assert.doesNotMatch(rerunRouteEvidenceHtml, /<script>bad/);
 
+const localUploadEvidenceHtml = context.taskRouteEvidenceHtml({
+  source_type: "local",
+  source_media_path: "D:/Projects/learnnote-assistant/data/uploads/local-task_queued-local.mp4<script>",
+  selected_resource: {},
+  download_attempts: []
+});
+assert.match(localUploadEvidenceHtml, /上传原片/);
+assert.match(localUploadEvidenceHtml, /local-task_queued-local\.mp4/);
+assert.match(localUploadEvidenceHtml, /data\/uploads/);
+assert.match(localUploadEvidenceHtml, /&lt;script&gt;/);
+assert.doesNotMatch(localUploadEvidenceHtml, /<script>/);
+
 const routeDownloadedHtml = context.browserRouteSummaryHtml({
   id: "route-downloaded",
   source_type: "current_page",

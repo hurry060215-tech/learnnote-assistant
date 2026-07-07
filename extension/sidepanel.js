@@ -5129,6 +5129,16 @@ function taskReuseEvidenceItem(task) {
   const sourceTaskId = String(task?.source_task_id || reuse.source_task_id || "").trim();
   const sourceMediaPath = String(task?.source_media_path || reuse.source_media_path || reuse.media_path_recorded || "").trim();
   if (!sourceTaskId && !sourceMediaPath) return null;
+  const sourceMediaName = sourceMediaPath
+    ? (sourceMediaPath.replace(/[?#].*$/, "").replace(/\\/g, "/").split("/").filter(Boolean).pop() || "原片")
+    : "";
+  if (!sourceTaskId && task?.source_type === "local" && task?.mode !== "rerun_from_media") {
+    return {
+      label: "上传原片",
+      value: sourceMediaName || "本地视频",
+      detail: sourceMediaPath ? compactUrl(sourceMediaPath, 86) : "已保存到 data/uploads"
+    };
+  }
   return {
     label: "复用来源",
     value: sourceTaskId ? `来自 ${sourceTaskId}` : "已复用本地媒体",
