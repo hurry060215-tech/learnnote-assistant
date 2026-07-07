@@ -1002,6 +1002,7 @@ function activeVideoInfo() {
     width: Number(video.videoWidth || video.clientWidth || 0),
     height: Number(video.videoHeight || video.clientHeight || 0),
     frame_id: 0,
+    frame_url: location.href,
     label: `video#${index + 1}`,
     drm_detected: Boolean(drm.encrypted_events || drmSignals.length || video.mediaKeys),
     drm_key_system: drm.key_system || "",

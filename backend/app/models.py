@@ -105,6 +105,7 @@ class ActiveVideoInfo(BaseModel):
     src_object_track_count: int = 0
     src_object_video_tracks: int = 0
     src_object_audio_tracks: int = 0
+    frame_url: str = ""
     current_time: float = 0
     duration: float = 0
     paused: bool = True

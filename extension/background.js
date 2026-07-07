@@ -405,7 +405,7 @@ function addActiveVideoRequestContext(resource = {}, page = {}, tab = {}) {
   if (resource.source !== "activeVideo") return resource;
   if (!/^https?:\/\//i.test(String(resource.url || ""))) return resource;
   const headers = { ...(resource.request_headers || {}) };
-  const referer = page.active_video?.frame_url || page.page_url || tab.url || "";
+  const referer = resource.frame_url || page.active_video?.frame_url || page.page_url || tab.url || "";
   const normalized = normalizeRequestHeaders([
     { name: "Referer", value: headers.Referer || referer },
     { name: "Origin", value: headers.Origin || originForUrl(referer) },
@@ -894,7 +894,13 @@ function normalizePageForFrame(page = {}, frameId = 0, tab = {}) {
     drm_signals: Array.isArray(page.drm_signals) ? page.drm_signals : [],
     frame_id: frameId
   };
-  if (normalized.active_video) normalized.active_video = { ...normalized.active_video, frame_id: frameId };
+  if (normalized.active_video) {
+    normalized.active_video = {
+      ...normalized.active_video,
+      frame_id: frameId,
+      frame_url: normalized.active_video.frame_url || normalized.page_url || ""
+    };
+  }
   normalized.resources = normalized.resources.map(resource => ({
     ...resource,
     frame_id: resource.frame_id ?? frameId,

@@ -110,4 +110,5 @@ assert.equal(response.active_video.src_object_track_count, 2);
 assert.equal(response.active_video.src_object_video_tracks, 1);
 assert.equal(response.active_video.src_object_audio_tracks, 1);
 assert.equal(response.active_video.paused, false);
+assert.equal(response.active_video.frame_url, "https://course.example.com/stream-lesson");
 assert.equal(response.resources.length, 0);

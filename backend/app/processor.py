@@ -236,6 +236,8 @@ def active_video_resource_candidate(active_video: ActiveVideoInfo) -> ResourceCa
         width=active_video.width or None,
         height=active_video.height or None,
         request_type="active-video",
+        frame_url=active_video.frame_url,
+        request_headers={"Referer": active_video.frame_url} if active_video.frame_url else {},
     )
 
 

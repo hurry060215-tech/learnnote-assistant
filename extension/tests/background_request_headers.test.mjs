@@ -398,6 +398,24 @@ const activeVideoExistingHeaders = context.withPlaybackHints(
 assert.equal(activeVideoExistingHeaders.request_headers.Referer, "https://course.example.com/custom-ref");
 assert.equal(activeVideoExistingHeaders.request_headers.Origin, "https://course.example.com");
 
+const activeVideoResourceFrameUrl = context.withPlaybackHints(
+  {
+    url: "https://cdn.example.com/current-player?id=frame-resource",
+    source: "activeVideo",
+    kind: "video",
+    frame_url: "https://player.example.com/embed/from-resource"
+  },
+  {
+    page_url: "https://course.example.com/lesson/1",
+    active_video: {
+      src: "https://cdn.example.com/current-player?id=frame-resource"
+    }
+  },
+  { url: "https://course.example.com/lesson/1" }
+);
+assert.equal(activeVideoResourceFrameUrl.request_headers.Referer, "https://player.example.com/embed/from-resource");
+assert.equal(activeVideoResourceFrameUrl.request_headers.Origin, "https://player.example.com");
+
 const cookieSyncUrls = context.cookieUrlsForContext(
   {
     page_url: "https://course.example.com/lesson/1",
