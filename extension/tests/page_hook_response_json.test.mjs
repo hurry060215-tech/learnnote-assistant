@@ -66,7 +66,7 @@ const context = {
   window: null,
   location: { href: "https://course.example.com/player" },
   document: { addEventListener() {} },
-  navigator: {},
+  navigator: { userAgent: "Chrome Lesson UA" },
   Response: FakeResponse,
   Blob,
   ArrayBuffer,
@@ -137,6 +137,9 @@ const request = new context.Request("https://course.example.com/api/play", {
     Accept: "application/json",
     "Content-Type": "application/x-www-form-urlencoded",
     Authorization: "Bearer fetch-token",
+    "Sec-Fetch-Dest": "empty",
+    "Sec-Fetch-Mode": "cors",
+    "Sec-Fetch-Site": "same-origin",
     "X-Requested-With": "XMLHttpRequest",
     Cookie: "secret=bad"
   },
@@ -176,6 +179,10 @@ assert.equal(hls.headers["content-length"], "4096");
 assert.equal(hls.request_headers.Accept, "application/json");
 assert.equal(hls.request_headers["Content-Type"], "application/x-www-form-urlencoded");
 assert.equal(hls.request_headers.Authorization, "Bearer fetch-token");
+assert.equal(hls.request_headers["User-Agent"], "Chrome Lesson UA");
+assert.equal(hls.request_headers["Sec-Fetch-Dest"], "empty");
+assert.equal(hls.request_headers["Sec-Fetch-Mode"], "cors");
+assert.equal(hls.request_headers["Sec-Fetch-Site"], "same-origin");
 assert.equal(hls.request_headers["X-Requested-With"], "XMLHttpRequest");
 assert.equal(hls.request_headers.Cookie, undefined);
 assert.equal(hls.method, "POST");

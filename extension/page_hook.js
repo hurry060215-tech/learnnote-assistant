@@ -58,6 +58,10 @@
     "origin",
     "range",
     "referer",
+    "sec-fetch-dest",
+    "sec-fetch-mode",
+    "sec-fetch-site",
+    "user-agent",
     "x-requested-with"
   ]);
   const REQUEST_HEADER_CANONICAL = {
@@ -68,6 +72,10 @@
     "origin": "Origin",
     "range": "Range",
     "referer": "Referer",
+    "sec-fetch-dest": "Sec-Fetch-Dest",
+    "sec-fetch-mode": "Sec-Fetch-Mode",
+    "sec-fetch-site": "Sec-Fetch-Site",
+    "user-agent": "User-Agent",
     "x-requested-with": "X-Requested-With"
   };
   const bufferedResources = [];
@@ -422,7 +430,9 @@
   }
 
   function fetchRequestHeaders(input, init = {}) {
+    const userAgent = cleanHeaderValue(typeof navigator !== "undefined" ? navigator.userAgent : "");
     return {
+      ...(userAgent ? { "User-Agent": userAgent } : {}),
       ...normalizeRequestHeaderMap(input?.headers),
       ...normalizeRequestHeaderMap(init?.headers)
     };
