@@ -5211,68 +5211,35 @@ function emptyResultWorkbench() {
         </div>
       </div>
 
+      <div class="empty-quick-routes" aria-label="开始路线">
+        <button type="button" class="primary" data-empty-source="browser">
+          <div>
+            <span>当前页直取</span>
+            <strong>读取正在播放的视频</strong>
+            <small>扩展侧栏嗅探媒体请求、播放器源和一次性 Cookie。</small>
+          </div>
+        </button>
+        <button type="button" data-empty-source="local">
+          <div>
+            <span>本地视频</span>
+            <strong>拖入文件直接切片</strong>
+            <small>mp4、mkv、webm、flv、avi 走同一套转写和视觉总结。</small>
+          </div>
+        </button>
+        <button type="button" data-empty-source="url">
+          <div>
+            <span>链接解析</span>
+            <strong>粘贴页面或媒体链接</strong>
+            <small>预检 mp4、m3u8、mpd 或平台页面，再决定下载/总结。</small>
+          </div>
+        </button>
+      </div>
+
       <div class="empty-flow" aria-label="处理流程">
         <span><b>01</b>检测媒体</span>
         <span><b>02</b>预检下载</span>
         <span><b>03</b>转写切片</span>
         <span><b>04</b>图文总结</span>
-      </div>
-
-      <section class="empty-readiness-panel" aria-label="准备度审计">
-        <header>
-          <div>
-            <span>检查项</span>
-            <strong>先看这条链路现在能不能跑通</strong>
-          </div>
-          <div class="empty-readiness-actions">
-            <button type="button" data-empty-source="local">本地视频兜底</button>
-            <button type="button" data-empty-action="copy-backend">复制后端地址</button>
-            <button type="button" data-empty-action="open-options">处理参数</button>
-          </div>
-        </header>
-        ${emptyReadinessGatesHtml()}
-      </section>
-
-      <div class="empty-route-grid" aria-label="开始路线">
-        <section class="empty-route-card primary">
-          <div>
-            <span>当前页直取</span>
-            <strong>读取正在播放的视频</strong>
-            <p>扩展侧栏嗅探 MP4/FLV/WebM、HLS/DASH、yt-dlp 支持页面和可复用请求头；失败时给出原因，不录制页面。</p>
-          </div>
-          <div class="empty-route-tags">
-            <em>主视频匹配</em>
-            <em>Cookie 直取</em>
-            <em>DRM 边界</em>
-          </div>
-          <button type="button" data-empty-source="browser">打开当前页路线</button>
-        </section>
-        <section class="empty-route-card">
-          <div>
-            <span>本地视频</span>
-            <strong>拖入文件直接切片</strong>
-            <p>mp4、mkv、webm、flv、avi 等文件走同一套转写、抽帧、视觉窗口和图文总结管线。</p>
-          </div>
-          <div class="empty-route-tags">
-            <em>离线处理</em>
-            <em>视觉切片</em>
-            <em>资料包导出</em>
-          </div>
-          <button type="button" data-empty-source="local">选择本地视频</button>
-        </section>
-        <section class="empty-route-card">
-          <div>
-            <span>链接解析</span>
-            <strong>粘贴页面或媒体链接</strong>
-            <p>可预检 mp4、m3u8、mpd 或平台页面；适合先验证能否下载，再进入完整总结。</p>
-          </div>
-          <div class="empty-route-tags">
-            <em>预检下载</em>
-            <em>只下载本地</em>
-            <em>继续总结</em>
-          </div>
-          <button type="button" data-empty-source="url">粘贴链接</button>
-        </section>
       </div>
     </section>
   `;

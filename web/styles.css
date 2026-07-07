@@ -2493,7 +2493,7 @@ button:disabled {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 360px;
   gap: 24px;
-  align-items: stretch;
+  align-items: start;
   border: 1px solid #dbe7f6;
   border-radius: 12px;
   background:
@@ -2618,6 +2618,39 @@ button:disabled {
   background: #fbfdff;
   padding: 12px;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.7);
+}
+
+.result-panel .empty-hero {
+  gap: 18px;
+  padding: 18px;
+}
+
+.result-panel .empty-hero h3 {
+  margin: 6px 0 8px;
+  font-size: 24px;
+}
+
+.result-panel .empty-production-brief {
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.result-panel .empty-production-brief section {
+  min-height: 68px;
+  gap: 4px;
+  padding: 8px 9px;
+}
+
+.result-panel .empty-production-brief small {
+  line-height: 1.3;
+}
+
+.result-panel .empty-hero-actions {
+  margin-top: 14px;
+}
+
+.result-panel .empty-demo-board {
+  grid-template-rows: auto 132px auto auto auto;
 }
 
 .empty-demo-board header {
@@ -2806,6 +2839,57 @@ button:disabled {
   color: var(--accent);
   font-size: 11px;
   line-height: 1;
+}
+
+.empty-quick-routes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.empty-quick-routes button {
+  min-width: 0;
+  min-height: 96px;
+  display: grid;
+  align-content: start;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  color: inherit;
+  padding: 13px 14px;
+  text-align: left;
+}
+
+.empty-quick-routes button.primary {
+  border-color: #bfd2ff;
+  background: linear-gradient(180deg, #f8fbff, #eef5ff);
+  box-shadow: inset 0 0 0 1px rgba(20, 99, 255, 0.08);
+}
+
+.empty-quick-routes button:hover {
+  border-color: var(--accent);
+}
+
+.empty-quick-routes span {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.empty-quick-routes strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.empty-quick-routes small {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .empty-readiness-panel {
@@ -3018,6 +3102,7 @@ button:disabled {
 }
 
 @container (max-width: 480px) {
+  .empty-quick-routes,
   .empty-flow {
     grid-template-columns: 1fr;
   }
