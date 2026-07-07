@@ -764,6 +764,161 @@
     return entries;
   }
 
+  function isJsonBaseOnlyKey(key = "") {
+    return /^(base.?url|base.?path|path.?prefix|cdn|host|domain|origin|endpoint|server|root|prefix|dir|directory)$/i.test(String(key || ""));
+  }
+
+  function currentLocationProtocol() {
+    try {
+      return location.protocol || new URL(location.href).protocol || "https:";
+    } catch {
+      return "https:";
+    }
+  }
+
+  function currentLocationOrigin() {
+    try {
+      return location.origin || new URL(location.href).origin || "";
+    } catch {
+      return "";
+    }
+  }
+
+  function normalizeJsonBaseUrl(value, key = "") {
+    const raw = String(value || "").trim().replace(/^['"]|['"]$/g, "");
+    if (!raw || /\s/.test(raw)) return "";
+    const keyContext = String(key || "").toLowerCase();
+    try {
+      if (raw.startsWith("//")) return `${currentLocationProtocol()}${raw}`.replace(/\/?$/, "/");
+      if (/^https?:\/\//i.test(raw)) return raw.replace(/\/?$/, "/");
+      if (/^[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?::\d+)?(?:\/.*)?$/.test(raw)) {
+        return `${currentLocationProtocol()}//${raw}`.replace(/\/?$/, "/");
+      }
+      if (raw.startsWith("/") && /(base.?path|path.?prefix|root|prefix|dir|directory)/i.test(keyContext)) {
+        return new URL(raw, location.href).href.replace(/\/?$/, "/");
+      }
+      if (raw.endsWith("/") && /(base.?path|path.?prefix|root|prefix|dir|directory)/i.test(keyContext)) {
+        return new URL(raw, location.href).href.replace(/\/?$/, "/");
+      }
+    } catch {
+      return "";
+    }
+    return "";
+  }
+
+  function jsonBaseUrls(node) {
+    if (!node || typeof node !== "object" || Array.isArray(node)) return [];
+    const bases = [];
+    const hostBases = [];
+    const pathBases = [];
+    const add = (url, bucket = null) => {
+      if (!url || bases.includes(url)) return;
+      bases.push(url);
+      if (bucket && !bucket.includes(url)) bucket.push(url);
+    };
+    for (const [key, value] of safeObjectEntries(node)) {
+      if (typeof value !== "string" || !isJsonBaseOnlyKey(key)) {
+        continue;
+      }
+      for (const candidateValue of decodedMediaValues(value)) {
+        const url = normalizeJsonBaseUrl(candidateValue, key);
+        if (!url) continue;
+        try {
+          const parsed = new URL(url, location.href);
+          const raw = String(candidateValue || "").trim().replace(/^['"]|['"]$/g, "");
+          if (parsed.pathname.replace(/\/+$/, "") === "") add(url, hostBases);
+          else if (raw.startsWith("/") && parsed.origin === currentLocationOrigin()) add(url, pathBases);
+          else add(url);
+        } catch {
+          add(url);
+        }
+      }
+    }
+    for (const hostBase of hostBases) {
+      for (const pathBase of pathBases) {
+        try {
+          const host = new URL(hostBase, location.href);
+          const path = new URL(pathBase, location.href);
+          add(`${host.origin}${path.pathname}`.replace(/\/?$/, "/"));
+        } catch {
+          // Invalid synthetic base combinations are ignored.
+        }
+      }
+    }
+    return bases
+      .sort((a, b) => {
+        try {
+          const parsedA = new URL(a, location.href);
+          const parsedB = new URL(b, location.href);
+          const pathDelta = parsedB.pathname.length - parsedA.pathname.length;
+          if (pathDelta) return pathDelta;
+          const currentOrigin = currentLocationOrigin();
+          return Number(parsedB.origin !== currentOrigin) - Number(parsedA.origin !== currentOrigin);
+        } catch {
+          return b.length - a.length;
+        }
+      })
+      .slice(0, 8);
+  }
+
+  function looksLikeSplitMediaPath(value, keys, parent) {
+    const text = String(value || "").trim().replace(/^['"]|['"]$/g, "");
+    if (!text || /\s/.test(text)) return false;
+    const decoded = decodeRepeatedUrlComponent(decodeJsStringEscapes(text));
+    if (/^(?:https?:)?\/\//i.test(decoded)) return false;
+    if (/^(audio|video|application|text)\/[a-z0-9.+-]+$/i.test(text)) return false;
+    if (/^(?:https?:)?\/\//i.test(text)) return false;
+    if (/^(data|blob|javascript):/i.test(text)) return false;
+    if (MEDIA_HINT_RE.test(text)) return true;
+    const context = keys.join(" ").toLowerCase();
+    const mimeContext = jsonContextMime(parent).toLowerCase();
+    return JSON_MEDIA_KEY_RE.test(context) && /video\/|mpegurl|dash\+xml|audio\//i.test(mimeContext);
+  }
+
+  function collectSplitBaseMediaUrls(node, source, label, keys, seen, meta, inheritedBases = []) {
+    if (!node || typeof node !== "object" || Array.isArray(node)) return [];
+    const bases = jsonBaseUrls(node);
+    for (const inherited of inheritedBases || []) {
+      if (inherited && !bases.includes(inherited)) bases.push(inherited);
+    }
+    if (!bases.length) return [];
+    const resources = [];
+    for (const [key, value] of safeObjectEntries(node)) {
+      if (typeof value !== "string" || !JSON_MEDIA_KEY_RE.test(key) || isJsonBaseOnlyKey(key)) continue;
+      const nextKeys = [...keys, key];
+      for (const candidateValue of decodedMediaValues(value)) {
+        if (!looksLikeSplitMediaPath(candidateValue, nextKeys, node)) continue;
+        for (const base of bases) {
+          let url = "";
+          try {
+            const path = String(candidateValue || "").startsWith("/")
+              ? String(candidateValue || "")
+              : String(candidateValue || "").replace(/^\/+/, "");
+            url = new URL(path, base).href;
+          } catch {
+            continue;
+          }
+          if (!url || seen.has(url)) continue;
+          const { kind, mime } = kindFromJsonContext(nextKeys, url, node);
+          if (kind === "unknown") continue;
+          seen.add(url);
+          resources.push(applyResponseMeta({
+            url,
+            source,
+            kind,
+            mime,
+            label: `${label} json combined ${nextKeys.slice(-3).join("/")}`,
+            score: Math.min(100, scoreForKind(kind) + 18)
+          }, meta));
+          break;
+        }
+        if (resources.length >= 20) break;
+      }
+      if (resources.length >= 20) break;
+    }
+    return resources;
+  }
+
   function attachSiblingAudioUrl(resources = []) {
     const audios = resources.filter(item => item?.kind === "audio" && item.url);
     const videos = resources.filter(item => item?.kind === "video" && item.url);
@@ -777,7 +932,7 @@
     video.label = `${video.label || "video"} + audio`;
   }
 
-  function collectJsonMediaUrls(node, source, label, keys = [], parent = null, output = [], seen = new Set(), visited = new WeakSet(), meta = {}) {
+  function collectJsonMediaUrls(node, source, label, keys = [], parent = null, output = [], seen = new Set(), visited = new WeakSet(), meta = {}, inheritedBases = []) {
     if (!node || output.length >= 40) return output;
     if (Array.isArray(node)) {
       for (let index = 0; index < Math.min(node.length, 120); index += 1) {
@@ -787,7 +942,7 @@
         } catch {
           child = null;
         }
-        collectJsonMediaUrls(child, source, label, [...keys, String(index)], node, output, seen, visited, meta);
+        collectJsonMediaUrls(child, source, label, [...keys, String(index)], node, output, seen, visited, meta, inheritedBases);
         if (output.length >= 40) break;
       }
       return output;
@@ -795,10 +950,18 @@
     if (typeof node !== "object") return output;
     if (visited.has(node)) return output;
     visited.add(node);
+    const localBases = jsonBaseUrls(node);
+    const childBases = [...(inheritedBases || [])];
+    for (const base of localBases) {
+      if (base && !childBases.includes(base)) childBases.push(base);
+    }
     const siblingResources = [];
+    const splitResources = collectSplitBaseMediaUrls(node, source, label, keys, seen, meta, childBases);
+    output.push(...splitResources.slice(0, Math.max(0, 40 - output.length)));
+    siblingResources.push(...splitResources);
     for (const [key, value] of safeObjectEntries(node)) {
       const nextKeys = [...keys, key];
-      if (typeof value === "string" && JSON_MEDIA_KEY_RE.test(key)) {
+      if (typeof value === "string" && JSON_MEDIA_KEY_RE.test(key) && !isJsonBaseOnlyKey(key)) {
         for (const candidateValue of decodedMediaValues(value)) {
           if (!looksLikeJsonUrlCandidate(candidateValue)) continue;
           const url = normalizeUrl(candidateValue);
@@ -853,7 +1016,7 @@
         }
       }
       if (value && typeof value === "object") {
-        collectJsonMediaUrls(value, source, label, nextKeys, node, output, seen, visited, meta);
+        collectJsonMediaUrls(value, source, label, nextKeys, node, output, seen, visited, meta, childBases);
       }
       if (output.length >= 40) break;
     }
@@ -876,7 +1039,7 @@
     TEXT_MEDIA_FIELD_RE.lastIndex = 0;
     for (const match of String(text || "").matchAll(TEXT_MEDIA_FIELD_RE)) {
       const key = String(match[1] || "").replace(/^["']|["']$/g, "");
-      if (!JSON_MEDIA_KEY_RE.test(key)) continue;
+      if (!JSON_MEDIA_KEY_RE.test(key) || isJsonBaseOnlyKey(key)) continue;
       for (const rawUrl of decodedMediaValues(match[2] || "")) {
         if (!looksLikeJsonUrlCandidate(rawUrl)) continue;
         const url = normalizeUrl(rawUrl);

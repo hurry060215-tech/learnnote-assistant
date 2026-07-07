@@ -32,7 +32,13 @@ const responseText = JSON.stringify({
   playInfo: {
     videoUrl: "https%3A%2F%2Fcdn.example.com%2Ftext%2Flesson.mp4%3Ftoken%3Dfetch-text",
     flvUrl: "https://cdn.example.com/text/live.flv?token=fetch-text",
-    format: "video/mp4"
+    format: "video/mp4",
+    cdn: "https://cdn.example.com",
+    pathPrefix: "/split/course/",
+    streams: {
+      videoPath: "720p/lesson.m3u8?token=split",
+      videoMime: "application/vnd.apple.mpegurl"
+    }
   }
 });
 
@@ -69,6 +75,7 @@ assert.equal(text, responseText);
 const resources = messages.flatMap(message => message.resources || []);
 const video = resources.find(resource => resource.url === "https://cdn.example.com/text/lesson.mp4?token=fetch-text");
 const flv = resources.find(resource => resource.url === "https://cdn.example.com/text/live.flv?token=fetch-text");
+const splitHls = resources.find(resource => resource.url === "https://cdn.example.com/split/course/720p/lesson.m3u8?token=split");
 
 assert.ok(video, "expected Response.text() body to expose the encoded video URL");
 assert.equal(video.kind, "video");
@@ -78,3 +85,8 @@ assert.match(video.label, /fetch text/);
 assert.ok(flv, "expected Response.text() body to expose the FLV URL");
 assert.equal(flv.kind, "video");
 assert.equal(flv.source, "pageHookBody");
+
+assert.ok(splitHls, "expected split CDN host/path JSON fields to expose the HLS URL");
+assert.equal(splitHls.kind, "hls");
+assert.equal(splitHls.source, "pageHookBody");
+assert.match(splitHls.label, /json combined/);
