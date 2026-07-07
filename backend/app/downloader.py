@@ -51,7 +51,7 @@ JSON_MEDIA_KEY_RE = re.compile(
 )
 JSON_MIME_KEY_RE = re.compile(r"(mime|type|format|content.?type|media.?type)", re.I)
 JSON_VIDEO_CONTEXT_RE = re.compile(r"(url|uri|path|src|address|file|source|sourcelist|video.?list|audio.?list|video|audio|media|play|playlist|stream|vod|course|lesson|objectid|dtoken|fileid|download|httpmd|quality|qualities|definition|definitions|format|formats|profile|profiles|variant|variants|rendition|renditions|level|levels|track|tracks|manifest|master|main|backup)", re.I)
-JSON_BASE_URL_KEY_RE = re.compile(r"(base.?url|cdn|host|domain|origin|endpoint|server|root|prefix)", re.I)
+JSON_BASE_URL_KEY_RE = re.compile(r"(base.?url|base.?path|path.?prefix|cdn|host|domain|origin|endpoint|server|root|prefix|dir|directory)", re.I)
 TEXT_MEDIA_FIELD_RE = re.compile(
     r"(?P<key>[\"']?[A-Za-z_$][A-Za-z0-9_$.-]{0,79}[\"']?)\s*[:=]\s*[\"'](?P<url>(?:\\u[0-9a-fA-F]{4}|\\x[0-9a-fA-F]{2}|\\.|[^\"'<>\\\s]){4,})[\"']",
     re.I,
@@ -637,30 +637,60 @@ def _json_context_kind(key_path: list[str], url: str, parent: object) -> tuple[s
     return "unknown", ""
 
 
-def _normalize_json_base_url(value: str, base_url: str) -> str:
+def _normalize_json_base_url(value: str, base_url: str, key: str = "") -> str:
     raw = str(value or "").strip().strip("'\"")
     if not raw or re.search(r"\s", raw):
         return ""
     parsed_base = urlparse(base_url or "")
+    key_context = str(key or "").lower()
     if raw.startswith("//"):
         return f"{parsed_base.scheme or 'https'}:{raw}".rstrip("/") + "/"
     if re.match(r"^https?://", raw, re.I):
         return raw.rstrip("/") + "/"
     if re.match(r"^[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?::\d+)?(?:/.*)?$", raw):
         return f"{parsed_base.scheme or 'https'}://{raw}".rstrip("/") + "/"
+    if raw.startswith("/") and re.search(r"(base.?path|path.?prefix|root|prefix|dir|directory)", key_context, re.I):
+        return urljoin(base_url, raw).rstrip("/") + "/"
+    if raw.endswith("/") and re.search(r"(base.?path|path.?prefix|root|prefix|dir|directory)", key_context, re.I):
+        return urljoin(base_url, raw).rstrip("/") + "/"
     return ""
 
 
 def _json_base_urls(node: dict, base_url: str) -> list[str]:
     urls: list[str] = []
+    host_bases: list[str] = []
+    path_bases: list[str] = []
+    parsed_base = urlparse(base_url or "")
+
+    def add(url: str, bucket: list[str] | None = None) -> None:
+        if not url or url in urls:
+            return
+        urls.append(url)
+        if bucket is not None and url not in bucket:
+            bucket.append(url)
+
     for key, value in node.items():
         if not isinstance(value, str) or not JSON_BASE_URL_KEY_RE.search(str(key)):
             continue
         for candidate_value in _decoded_media_values(value):
-            url = _normalize_json_base_url(candidate_value, base_url)
-            if url and url not in urls:
-                urls.append(url)
-    return urls[:6]
+            url = _normalize_json_base_url(candidate_value, base_url, str(key))
+            raw = str(candidate_value or "").strip().strip("'\"")
+            parsed = urlparse(url)
+            if parsed.scheme and parsed.netloc and parsed.path.rstrip("/") in {"", "/"}:
+                add(url, host_bases)
+            elif raw.startswith("/") and parsed.netloc == parsed_base.netloc:
+                add(url, path_bases)
+            else:
+                add(url)
+
+    for host_base in host_bases:
+        parsed_host = urlparse(host_base)
+        for path_base in path_bases:
+            parsed_path = urlparse(path_base)
+            combined = urlunparse((parsed_host.scheme, parsed_host.netloc, parsed_path.path, "", "", "")).rstrip("/") + "/"
+            add(combined)
+
+    return sorted(urls, key=lambda item: len(urlparse(item).path or ""), reverse=True)[:8]
 
 
 def _looks_like_split_media_path(value: str, key_path: list[str], parent: object) -> bool:

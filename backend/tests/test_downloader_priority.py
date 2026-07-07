@@ -434,6 +434,45 @@ class ParentBaseNestedJsonMediaHandler(DirectJsonMediaHandler):
         super().do_GET()
 
 
+class HostPrefixFilenameJsonMediaHandler(DirectJsonMediaHandler):
+    media_body = b"\x00\x00\x00\x18ftypmp42" + (b"host-prefix-filename" * 512)
+
+    def do_GET(self) -> None:
+        path = urlparse(self.path).path
+        if path == "/api/play":
+            if not self._has_browser_headers():
+                self.send_error(403, "missing browser headers")
+                return
+            host = self.headers.get("Host") or f"127.0.0.1:{self.server.server_port}"
+            payload = json_bytes({
+                "data": {
+                    "cdnHost": f"http://{host}",
+                    "pathPrefix": "/cdn/course42/",
+                    "video": {
+                        "fileName": "real.mp4",
+                        "mimeType": "video/mp4",
+                    },
+                }
+            })
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
+        if path == "/cdn/course42/real.mp4":
+            if not self._has_browser_headers():
+                self.send_error(403, "missing browser headers")
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "video/mp4")
+            self.send_header("Content-Length", str(len(self.media_body)))
+            self.end_headers()
+            self.wfile.write(self.media_body)
+            return
+        super().do_GET()
+
+
 class Html5VideoElementHandler(QuietHandler):
     media_body = b"\x00\x00\x00\x18ftypmp42" + (b"html5-video-element" * 512)
 
@@ -1224,6 +1263,56 @@ class DownloaderPriorityTests(unittest.TestCase):
                         resources=[candidate],
                         cookies=[],
                         title="Parent base nested JSON API",
+                    )
+                ytdlp.assert_not_called()
+                self.assertTrue(media_path.exists())
+                self.assertIsNotNone(selected)
+                self.assertEqual(selected.url, media_url)
+                self.assertEqual(selected.source, "direct-response")
+                self.assertEqual([attempt.strategy for attempt in downloader.attempts[:2]], ["direct-response-scan", "direct-file"])
+                self.assertEqual(downloader.attempts[0].status, "success")
+                self.assertEqual(downloader.attempts[1].status, "success")
+            finally:
+                server.shutdown()
+                server.server_close()
+
+    def test_json_host_prefix_and_nested_filename_combine_to_media(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            server = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(HostPrefixFilenameJsonMediaHandler, directory=str(root)))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                page_url = f"http://127.0.0.1:{server.server_port}/lesson.html"
+                play_url = f"http://127.0.0.1:{server.server_port}/api/play"
+                media_url = f"http://127.0.0.1:{server.server_port}/cdn/course42/real.mp4"
+                candidate = ResourceCandidate(
+                    url=play_url,
+                    source="webRequest",
+                    kind="unknown",
+                    mime="application/json",
+                    score=92,
+                    label="host prefix filename API",
+                    request_type="fetch",
+                    request_headers={
+                        "User-Agent": HostPrefixFilenameJsonMediaHandler.required_user_agent,
+                        "X-Requested-With": HostPrefixFilenameJsonMediaHandler.required_x_requested_with,
+                    },
+                )
+
+                preflight = preflight_media_resource(candidate, [], page_url)
+                self.assertTrue(preflight.downloadable)
+                self.assertEqual(preflight.strategy, "direct-response-probe")
+                self.assertEqual(preflight.resolved_url, media_url)
+                self.assertEqual(preflight.content_type, "video/mp4")
+
+                downloader = MediaDownloader(root / "task")
+                with patch.object(downloader, "_download_with_ytdlp") as ytdlp:
+                    media_path, selected = downloader.download(
+                        page_url=page_url,
+                        resources=[candidate],
+                        cookies=[],
+                        title="Host prefix filename JSON API",
                     )
                 ytdlp.assert_not_called()
                 self.assertTrue(media_path.exists())
