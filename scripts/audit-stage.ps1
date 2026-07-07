@@ -145,6 +145,7 @@ if (Test-Any @("extension/content.js", "extension/page_hook.js", "extension/test
   foreach ($test in @(
     "extension\tests\content_static_hints.test.mjs",
     "extension\tests\content_shadow_dom.test.mjs",
+    "extension\tests\page_hook_arraybuffer_text.test.mjs",
     "extension\tests\page_hook_response_json.test.mjs",
     "extension\tests\page_hook_mediasource.test.mjs",
     "extension\tests\page_hook_media_element.test.mjs"

@@ -1113,7 +1113,7 @@
         url: normalizedUrl,
         source,
         kind,
-        mime: mime || mimeForKind(kind),
+        mime: mimeForKind(kind),
         label: `${label} manifest`,
         score: 99
       }, meta));
@@ -1123,6 +1123,53 @@
 
   function extractUrlsFromText(text, source, label, mime = "", responseUrl = "", meta = {}) {
     emit(collectResponseTextResources(responseUrl, text, source, label, mime, meta));
+  }
+
+  function binaryPayloadBytes(value, limit = MAX_TEXT_BYTES) {
+    if (!value) return null;
+    try {
+      if (value instanceof ArrayBuffer) return new Uint8Array(value, 0, Math.min(value.byteLength, limit));
+      if (ArrayBuffer.isView(value)) {
+        const length = Math.min(value.byteLength, limit);
+        return new Uint8Array(value.buffer, value.byteOffset, length);
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  }
+
+  function binaryPayloadLooksTextual(bytes, mime = "", totalBytes = 0) {
+    if (!bytes?.length) return false;
+    if (totalBytes && totalBytes > MAX_TEXT_BYTES) return false;
+    if (TEXT_TYPE_RE.test(String(mime || ""))) return true;
+    const head = bytes.slice(0, Math.min(bytes.length, 64));
+    if (head.length >= 12) {
+      const ftyp = String.fromCharCode(head[4] || 0, head[5] || 0, head[6] || 0, head[7] || 0);
+      if (ftyp === "ftyp") return false;
+    }
+    const magic = String.fromCharCode(...head.slice(0, Math.min(head.length, 16)));
+    if (/^(FLV|OggS|ID3)|^\x1aE\xdf\xa3/.test(magic)) return false;
+    if (head.some(byte => byte === 0)) return false;
+    const text = new TextDecoder("utf-8", { fatal: false }).decode(head).replace(/^\ufeff/, "").trimStart();
+    return text.startsWith("{") ||
+      text.startsWith("[") ||
+      text.startsWith("#EXTM3U") ||
+      /^<MPD(?:\s|>)/i.test(text) ||
+      text.startsWith("WEBVTT");
+  }
+
+  function inspectBinaryTextPayload(value, source, label, mime = "", responseUrl = "", meta = {}) {
+    try {
+      if (typeof TextDecoder === "undefined") return;
+      const bytes = binaryPayloadBytes(value);
+      const totalBytes = value?.byteLength ?? bytes?.byteLength ?? 0;
+      if (!binaryPayloadLooksTextual(bytes, mime, totalBytes)) return;
+      const text = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+      extractUrlsFromText(text.slice(0, MAX_TEXT_BYTES), source, label, mime, responseUrl, meta);
+    } catch {
+      // Binary response sniffing is best-effort and must not affect page playback.
+    }
   }
 
   function collectGlobalConfigResources() {
@@ -1806,6 +1853,7 @@
         const mime = this.headers?.get?.("content-type") || "";
         const meta = responseBlobSourceMeta(this, this.url || "", mime, "pageHookBlob", "fetch arrayBuffer source");
         rememberBlobPartObject(buffer, meta);
+        inspectBinaryTextPayload(buffer, "pageHookBody", "fetch arrayBuffer", mime, this.url || "", responseMeta(this, this.url || ""));
       } catch {
         // Keep the host page's response consumption behavior unchanged.
       }
@@ -1821,6 +1869,7 @@
         const mime = this.headers?.get?.("content-type") || "";
         const meta = responseBlobSourceMeta(this, this.url || "", mime, "pageHookBlob", "fetch bytes source");
         rememberBlobPartObject(bytes, meta);
+        inspectBinaryTextPayload(bytes, "pageHookBody", "fetch bytes", mime, this.url || "", responseMeta(this, this.url || ""));
       } catch {
         // Keep the host page's response consumption behavior unchanged.
       }
@@ -2151,6 +2200,7 @@
         }
         if (typeof ArrayBuffer !== "undefined" && this.response instanceof ArrayBuffer) {
           rememberBlobPartObject(this.response, applyResponseMeta(blobMeta(url, mime, "pageHookBlob", "xhr arrayBuffer source"), meta));
+          inspectBinaryTextPayload(this.response, "pageHookBody", "xhr arrayBuffer", mime, url, meta);
         }
         if (!shouldInspectTextPayload(url, mime, 0)) return;
         if (this.responseType === "json") {
