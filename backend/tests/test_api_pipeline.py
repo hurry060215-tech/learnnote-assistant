@@ -1235,6 +1235,7 @@ class LocalUploadValidationTests(unittest.TestCase):
 
             manifest = render_bundle_manifest(task, {"segments": []}, {"windows": []})
             diagnostics = render_diagnostics_markdown(task)
+            recovery = diagnostic_recovery_profile(task)
             encoded = json.dumps(manifest, ensure_ascii=False)
             evidence = manifest["source"]["selected_resource"]["mse_append_evidence"]
 
@@ -1254,6 +1255,12 @@ class LocalUploadValidationTests(unittest.TestCase):
             self.assertEqual(direct["selected_candidate"]["safe_request_header_names"], ["Referer"])
             self.assertNotIn("Cookie", direct["selected_candidate"]["safe_request_header_names"])
             self.assertNotIn("Authorization", json.dumps(direct, ensure_ascii=False))
+            self.assertEqual(recovery["code"], "drm_or_encrypted")
+            self.assertEqual(recovery["next_action"], "local_upload")
+            self.assertIn("MSE appendBuffer 播放证据", recovery["diagnosis"])
+            self.assertIn("不是可下载 URL", recovery["diagnosis"])
+            self.assertTrue(any("MSE appendBuffer 播放证据" in step for step in recovery["steps"]))
+            self.assertTrue(any("不能替代直接媒体下载" in note for note in recovery["boundary_notes"]))
             self.assertIn("### MSE Append Evidence", diagnostics)
             self.assertIn("## Direct Extraction Evidence", diagnostics)
             self.assertIn("No tab recording: yes", diagnostics)
@@ -1261,6 +1268,8 @@ class LocalUploadValidationTests(unittest.TestCase):
             self.assertIn("Append count: 37", diagnostics)
             self.assertIn("Magic: ftyp", diagnostics)
             self.assertIn("Total append bytes: 10.0 MB", diagnostics)
+            self.assertIn("MSE appendBuffer 播放证据", diagnostics)
+            self.assertIn("不能替代直接媒体下载", diagnostics)
             self.assertNotIn("session=secret", encoded)
             self.assertNotIn("Bearer secret", encoded)
             self.assertNotIn("session=secret", diagnostics)

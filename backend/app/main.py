@@ -262,6 +262,21 @@ def mse_append_evidence(resource: ResourceCandidate | None) -> dict:
     return {key: value for key, value in evidence.items() if value not in (None, "")}
 
 
+def _mse_append_boundary_summary(resource: ResourceCandidate | None) -> str:
+    evidence = mse_append_evidence(resource)
+    if not evidence:
+        return ""
+    kind = evidence.get("append_detected_kind") or "unknown"
+    magic = evidence.get("append_magic") or "-"
+    count = evidence.get("append_count") or 0
+    total = _format_bytes(evidence.get("append_total_bytes"))
+    return (
+        "扩展已看到 MSE appendBuffer 播放证据"
+        f"（类型 {kind}，magic {magic}，append {count} 次，总量 {total}），"
+        "说明页面确实在播放媒体；但 appendBuffer 字节不是可下载 URL。"
+    )
+
+
 def _format_cookie_summary(summary: dict) -> list[str]:
     if not summary or not summary.get("total"):
         return ["- Cookie：未同步或未匹配到当前页/媒体域 Cookie"]
@@ -948,6 +963,9 @@ def diagnostic_recovery_steps(task: TaskRecord) -> list[str]:
         add("检测到学习通/超星页面线索：请先在原课程页真实播放几秒，让 ananas/播放接口暴露 m3u8、mp4 或带 Referer 的媒体请求；本工具只复用你当前登录态可访问的资源，不刷课、不伪造进度、不自动答题。")
     if "drm_or_encrypted" in codes or task.drm_detected:
         add("页面触发 DRM/EME 或只暴露不可还原 blob 时，本工具不会录制、破解或绕过 DRM；请改用本地视频入口。")
+    mse_boundary_summary = _mse_append_boundary_summary(task.selected_resource)
+    if mse_boundary_summary:
+        add(f"{mse_boundary_summary} 请继续播放几秒并重新检测真实 manifest/mp4 请求；如果仍只有 blob/MSE 证据，就使用本地视频入口。")
     if "auth_required" in codes:
         add("重新打开课程页面并确认登录有效，播放几秒后立刻从扩展侧栏重新创建任务，让 Cookie 和媒体请求保持新鲜。")
     if "download_forbidden" in codes:
@@ -1069,6 +1087,7 @@ def diagnostic_recovery_profile(task: TaskRecord) -> dict:
     boundary_notes: list[str] = []
     primary_code = task.error_code or (latest_attempt.code if latest_attempt else "")
     media_ready_for_rerun = task_media_ready_for_rerun(task)
+    mse_boundary_summary = _mse_append_boundary_summary(selected)
 
     if task.mode == "download_only" and task_media_file_exists(task):
         primary_code = "download_ready"
@@ -1084,7 +1103,10 @@ def diagnostic_recovery_profile(task: TaskRecord) -> dict:
         next_action = "continue_from_media"
     elif "drm_or_encrypted" in codes or task.drm_detected or selected_kind == "blob":
         primary_code = "drm_or_encrypted"
-        diagnosis = "页面没有暴露可还原的直接媒体资源，或触发了 DRM/EME 边界。"
+        diagnosis = (
+            f"{mse_boundary_summary} 需要继续播放并重新检测真实 manifest/mp4 请求，"
+            "否则改用本地视频入口。"
+        ) if mse_boundary_summary else "页面没有暴露可还原的直接媒体资源，或触发了 DRM/EME 边界。"
         confidence = "high" if task.drm_detected or selected_kind == "blob" else "medium"
         severity = "hard_boundary"
         next_action = "local_upload"
@@ -1129,6 +1151,8 @@ def diagnostic_recovery_profile(task: TaskRecord) -> dict:
         boundary_notes.append("学习通/超星第一版只复用当前页面暴露的真实媒体 URL、Referer 和 Cookie，不刷课、不伪造学习进度、不自动答题。")
     if "drm_or_encrypted" in codes or task.drm_detected or selected_kind == "blob":
         boundary_notes.append("不会录制、破解或绕过 DRM/EME；blob 只有在扩展捕获到真实 manifest/媒体请求时才可直取。")
+    if mse_boundary_summary:
+        boundary_notes.append(f"{mse_boundary_summary} 这只能作为播放证据，不能替代直接媒体下载。")
     if selected and selected.request_headers:
         boundary_notes.append(f"已捕获可复用请求头名：{_safe_header_names(selected.request_headers)}；不会保存 Cookie 或 Authorization 值。")
     if selected and _has_range_header(selected.request_headers):
