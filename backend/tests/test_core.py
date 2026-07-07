@@ -35,7 +35,7 @@ from app.downloader import (
     source_rank,
     ytdlp_headers_from_browser_context,
 )
-from app.main import render_diagnostics_markdown, task_audit_summary
+from app.main import diagnostic_recovery_profile, render_diagnostics_markdown, task_audit_summary
 from app.models import ActiveVideoInfo, BrowserCookie, CurrentPageTaskRequest, DownloadAttempt, DrmSignal, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
 from app.processor import build_summary_diagnostics, cookie_sync_summary, download_progress_updater, download_status_updater, enrich_resource_candidates_with_active_video, process_current_page_task, process_local_video_task, read_note, read_transcript, redacted_request_dump, redacted_resource
 from app.summarizer import MAX_GRIDS_PER_VISION_CALL, MAX_VISION_GRIDS, build_visual_windows, ensure_visual_appendix, llm_provider_name, local_markdown_note, summarize_with_diagnostics, summarize_with_diagnostics_audit
@@ -1942,6 +1942,14 @@ class ProcessorBoundaryTests(unittest.TestCase):
             transcript = read_transcript(task.id)
             self.assertEqual(transcript["source"], "browser-subtitle")
             self.assertEqual(transcript["segments"][0]["text"], "老师解释 if else 分支")
+            recovery = diagnostic_recovery_profile(record)
+            self.assertEqual(recovery["code"], "fallback_note_ready")
+            self.assertEqual(recovery["severity"], "partial")
+            self.assertEqual(recovery["next_action"], "export_markdown")
+            self.assertEqual(recovery["primary_action"]["ui_intent"], "export_markdown")
+            self.assertIn("兜底学习笔记", recovery["diagnosis"])
+            self.assertIn("refresh_playback_and_retry", [action["key"] for action in recovery["actions"]])
+            self.assertIn("local_upload", [action["key"] for action in recovery["actions"]])
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 

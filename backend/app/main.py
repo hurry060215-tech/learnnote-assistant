@@ -1064,6 +1064,7 @@ def _recovery_action(action: str, *, detail: str = "", priority: str = "secondar
 def _diagnostic_recovery_actions(task: TaskRecord, primary_action_key: str) -> list[dict[str, str]]:
     actions = [_recovery_action(primary_action_key, priority="primary", task=task)]
     existing = {primary_action_key}
+    codes = _task_failure_codes(task)
 
     def add(action_key: str) -> None:
         if action_key not in existing:
@@ -1072,6 +1073,15 @@ def _diagnostic_recovery_actions(task: TaskRecord, primary_action_key: str) -> l
 
     if task_media_ready_for_rerun(task, allow_existing_note=True):
         add("continue_from_media")
+    if primary_action_key == "export_markdown":
+        if "auth_required" in codes:
+            add("refresh_login_and_retry")
+        elif "unsupported_manifest" in codes:
+            add("play_longer_and_redetect")
+        elif "no_media_found" in codes:
+            add("play_and_redetect")
+        else:
+            add("refresh_playback_and_retry")
     if primary_action_key != "local_upload":
         add("local_upload")
     add("inspect_diagnostics")
@@ -1108,6 +1118,12 @@ def diagnostic_recovery_profile(task: TaskRecord) -> dict:
         confidence = "high"
         severity = "recoverable" if task.status == "failed" else "ok"
         next_action = "continue_from_media"
+    elif task.status == "failed" and task.note_path and task.summary_diagnostics.get("used_page_text_fallback"):
+        primary_code = "fallback_note_ready"
+        diagnosis = "视频直取失败，但已用页面文本和浏览器字幕生成兜底学习笔记；可以先导出 Markdown 复习，再按诊断重新尝试直取或改用本地视频。"
+        confidence = "high"
+        severity = "partial"
+        next_action = "export_markdown"
     elif "drm_or_encrypted" in codes or task.drm_detected or selected_kind == "blob":
         primary_code = "drm_or_encrypted"
         diagnosis = (
