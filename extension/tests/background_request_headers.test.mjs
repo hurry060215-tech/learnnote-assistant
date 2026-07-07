@@ -210,6 +210,20 @@ assert.equal(
   "video"
 );
 assert.equal(
+  context.classifyCompletedRequest({
+    url: "https://course.example.com/source?id=abc",
+    type: "xmlhttprequest"
+  }, "application/json"),
+  "video"
+);
+assert.equal(
+  context.classifyCompletedRequest({
+    url: "https://course.example.com/backup?id=abc",
+    type: "fetch"
+  }, "application/json"),
+  "video"
+);
+assert.equal(
   context.classifyCompletedRequest(
     {
       url: "https://cdn.example.com/api/playback/getVideo?id=abc",

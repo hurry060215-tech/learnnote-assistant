@@ -42,7 +42,7 @@ ENCODED_MEDIA_URL_RE = re.compile(
 )
 TEXT_RESPONSE_RE = re.compile(r"json|text|html|javascript|mpegurl|dash\+xml|xml|x-mpegurl", re.I)
 MEDIA_ENDPOINT_HINT_RE = re.compile(
-    r"(^|[/?&=._\s-])(api|ananas|play|player|stream|video|audio|media|vod|quality|qualities|definition|definitions|format|formats|profile|profiles|variant|variants|rendition|renditions|level|levels|track|tracks|hls|dash|manifest|playlist|master|m3u8|mpd|objectid|dtoken|fileid|httpmd)([/?&=._\s-]|$)",
+    r"(^|[/?&=._\s-])(api|ananas|play|player|stream|video|audio|media|source|sources|sourcelist|backup|backups|cdn|baseurl|base_url|base-url|host|domain|vod|quality|qualities|definition|definitions|format|formats|profile|profiles|variant|variants|rendition|renditions|level|levels|track|tracks|hls|dash|manifest|playlist|master|m3u8|mpd|objectid|dtoken|fileid|httpmd)([/?&=._\s-]|$)",
     re.I,
 )
 JSON_MEDIA_KEY_RE = re.compile(
@@ -491,7 +491,7 @@ def _looks_like_json_url_candidate(value: str) -> bool:
         return True
     if value.startswith("/"):
         return True
-    if "/" in value and re.search(r"[?=&]|api|ananas|play|media|video|audio|stream|vod|quality|qualities|definition|definitions|format|formats|profile|profiles|variant|variants|rendition|renditions|level|levels|track|tracks|m3u8|mpd|hls|dash|objectid|dtoken|fileid|httpmd", value, re.I):
+    if "/" in value and re.search(r"[?=&]|api|ananas|play|media|video|audio|stream|source|sourcelist|backup|cdn|vod|quality|qualities|definition|definitions|format|formats|profile|profiles|variant|variants|rendition|renditions|level|levels|track|tracks|m3u8|mpd|hls|dash|objectid|dtoken|fileid|httpmd", value, re.I):
         return True
     return False
 

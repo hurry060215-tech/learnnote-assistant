@@ -3,7 +3,7 @@ const AUDIO_RE = /\.(m4a|mp3|aac|opus|ogg|oga|wav)(\?|#|$)/i;
 const MEDIA_RE = /\.(mp4|m4v|webm|mov|mkv|flv|avi|m4a|mp3|aac|opus|ogg|oga|wav|m3u8|mpd)(\?|#|$)/i;
 const FRAGMENT_RE = /\.(m4s|ts)(\?|#|$)/i;
 const SUBTITLE_RE = /\.(vtt|srt|ass|ssa)(\?|#|$)/i;
-const PLAYBACK_ENDPOINT_RE = /m3u8|mpd|video|audio|media|subtitle|caption|stream|hls|dash|manifest|playlist|master|playback|player|download|attachment|ananas|objectid|dtoken|fileid|httpmd|vod|quality|qualities|definition|definitions|format|formats|profile|profiles|variant|variants|rendition|renditions|level|levels|track|tracks|\/play(?:[/?#]|$)/i;
+const PLAYBACK_ENDPOINT_RE = /m3u8|mpd|video|audio|media|subtitle|caption|stream|hls|dash|manifest|playlist|master|playback|player|download|attachment|ananas|objectid|dtoken|fileid|httpmd|vod|quality|qualities|definition|definitions|format|formats|profile|profiles|variant|variants|rendition|renditions|level|levels|track|tracks|(?:^|[/?&=._-])(?:source|sources|sourcelist|backup|backups|cdn|baseurl|base_url|base-url|host|domain)(?:[/?&=._-]|$)|\/play(?:[/?#]|$)/i;
 const LOCAL_TASK_FILE_RE = /^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?\/api\/tasks\/[^/]+(?:\/media|\/exports\/(?:markdown|visual-windows|bundle|diagnostics|media|manifest|audit|subtitles))(?:[?#].*)?$/i;
 const LOCAL_EXPORT_RE = /^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?\/api\/tasks\/[^/]+\/exports\/(?:markdown|visual-windows|bundle|diagnostics|media|manifest|audit|subtitles)(?:[?#].*)?$/i;
 const resourceByTab = new Map();
