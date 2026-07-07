@@ -926,6 +926,58 @@ class LocalUploadValidationTests(unittest.TestCase):
             server.shutdown()
             server.server_close()
 
+    def test_page_preflight_scans_page_after_probe_limit_candidates_fail(self) -> None:
+        server = ThreadingHTTPServer(("127.0.0.1", 0), JsonPlayEndpointHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            base_url = f"http://127.0.0.1:{server.server_port}"
+            media_url = f"{base_url}/real.mp4"
+            stale_resources = [
+                {
+                    "url": f"{base_url}/stale-{index}.mp4",
+                    "kind": "video",
+                    "source": "webRequest",
+                    "score": 100 - index,
+                    "label": f"expired candidate {index}",
+                    "request_headers": {"Referer": f"{base_url}/lesson.html"},
+                }
+                for index in range(3)
+            ]
+            response = self.client.post(
+                "/api/media/preflight-current-page",
+                json={
+                    "page_url": f"{base_url}/lesson.html",
+                    "probe_limit": 3,
+                    "resources": stale_resources,
+                },
+            )
+
+            self.assertEqual(response.status_code, 200)
+            report = response.json()["report"]
+            self.assertTrue(report["ready"])
+            self.assertEqual(report["selected_url"], media_url)
+            self.assertTrue(report["page_scan"]["attempted"])
+            self.assertEqual(report["page_scan"]["discovered_count"], 1)
+            self.assertGreaterEqual(report["probed_count"], 4)
+            self.assertEqual(report["downloadable_count"], 1)
+            stale_results = [
+                item for item in report["candidates"]
+                if "/stale-" in item["resource"]["url"]
+            ]
+            self.assertEqual(len(stale_results), 3)
+            self.assertTrue(all(not item["preflight"]["downloadable"] for item in stale_results))
+            page_scan_candidate = next(
+                item for item in report["candidates"]
+                if item["resource"]["url"] == media_url
+            )
+            self.assertEqual(page_scan_candidate["resource"]["source"], "page-scan")
+            self.assertTrue(page_scan_candidate["resource"]["user_selected"])
+            self.assertTrue(page_scan_candidate["preflight"]["downloadable"])
+        finally:
+            server.shutdown()
+            server.server_close()
+
     def test_page_preflight_report_keeps_resolved_media_url_on_candidate(self) -> None:
         server = ThreadingHTTPServer(("127.0.0.1", 0), JsonPlayEndpointHandler)
         thread = threading.Thread(target=server.serve_forever, daemon=True)

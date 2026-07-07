@@ -1407,10 +1407,10 @@ def resource_with_preflight_result(candidate: ResourceCandidate, result: MediaPr
     return resource
 
 
-def _should_scan_page_for_preflight(request: PagePreflightRequest, ranked: list[ResourceCandidate]) -> bool:
+def _should_scan_page_for_preflight(request: PagePreflightRequest, ranked: list[ResourceCandidate], *, after_failed_probe: bool = False) -> bool:
     if request.probe_limit <= 0 or not request.page_url:
         return False
-    if len(ranked) >= request.probe_limit:
+    if len(ranked) >= request.probe_limit and not after_failed_probe:
         return False
     if not request.resources:
         return True
@@ -1427,8 +1427,8 @@ def _should_scan_page_for_preflight(request: PagePreflightRequest, ranked: list[
     return False
 
 
-def _preflight_page_scan_resources(request: PagePreflightRequest, ranked: list[ResourceCandidate]) -> tuple[list[ResourceCandidate], list[dict]]:
-    if not _should_scan_page_for_preflight(request, ranked):
+def _preflight_page_scan_resources(request: PagePreflightRequest, ranked: list[ResourceCandidate], *, after_failed_probe: bool = False) -> tuple[list[ResourceCandidate], list[dict]]:
+    if not _should_scan_page_for_preflight(request, ranked, after_failed_probe=after_failed_probe):
         return [], []
     TEMP_DIR.mkdir(parents=True, exist_ok=True)
     discovered: list[ResourceCandidate] = []
@@ -1450,42 +1450,70 @@ def page_preflight_report(request: PagePreflightRequest) -> dict:
     initial_ranked = rank_media_candidates(request.resources)
     discovered_resources, discovery_attempts = _preflight_page_scan_resources(request, initial_ranked)
     ranked = rank_media_candidates([*request.resources, *discovered_resources]) if discovered_resources else initial_ranked
-    probed = 0
-    downloadable_count = 0
-    selected_url = ""
-    candidates = []
+    preflight_cache: dict[str, MediaPreflightResult] = {}
+
+    def evaluate_candidates(
+        candidate_list: list[ResourceCandidate],
+        *,
+        extra_probe_urls: set[str] | None = None,
+    ) -> tuple[int, int, str, list[dict]]:
+        probed = 0
+        downloadable_count = 0
+        selected_url = ""
+        candidates: list[dict] = []
+        extra_probe_urls = extra_probe_urls or set()
+
+        for index, candidate in enumerate(candidate_list, start=1):
+            should_probe = probed < request.probe_limit or candidate.url in extra_probe_urls
+            if should_probe:
+                result = preflight_cache.get(candidate.url)
+                if result is None:
+                    result = preflight_media_resource(candidate, request.cookies, request.page_url)
+                    preflight_cache[candidate.url] = result
+                probed += 1
+                resource = resource_with_preflight_result(candidate, result)
+                if result.downloadable:
+                    downloadable_count += 1
+                    if not selected_url:
+                        selected_url = resource.url
+                        resource.user_selected = True
+                        resource.score = 100
+            else:
+                result = MediaPreflightResult(
+                    ok=True,
+                    downloadable=False,
+                    strategy="not-probed",
+                    kind=effective_resource_kind(candidate),
+                    url=candidate.url,
+                    resolved_url=candidate.resolved_url or candidate.url,
+                    code="not_probed",
+                    message="候选排序靠后，本次整页预检未发起网络探测；启动任务时仍可作为后续下载候选。",
+                )
+                resource = resource_with_preflight_result(candidate, result)
+
+            candidates.append({
+                "rank": index,
+                "resource": resource.model_dump(mode="json"),
+                "preflight": result.model_dump(mode="json"),
+            })
+        return probed, downloadable_count, selected_url, candidates
+
+    probed, downloadable_count, selected_url, candidates = evaluate_candidates(ranked)
+    if not selected_url:
+        fallback_resources, fallback_attempts = _preflight_page_scan_resources(request, ranked, after_failed_probe=True)
+        if fallback_resources:
+            existing_urls = {item.url for item in discovered_resources}
+            new_resources = [item for item in fallback_resources if item.url not in existing_urls]
+            discovered_resources.extend(new_resources)
+            discovery_attempts.extend(fallback_attempts)
+            ranked = rank_media_candidates([*request.resources, *discovered_resources])
+            probed, downloadable_count, selected_url, candidates = evaluate_candidates(
+                ranked,
+                extra_probe_urls={item.url for item in new_resources if item.url},
+            )
+
     direct_candidate_count = sum(1 for item in ranked if effective_resource_kind(item) in {"video", "hls", "dash"})
     has_drm_boundary = request.drm_detected or any(effective_resource_kind(item) == "blob" for item in request.resources)
-
-    for index, candidate in enumerate(ranked, start=1):
-        if probed < request.probe_limit:
-            result = preflight_media_resource(candidate, request.cookies, request.page_url)
-            probed += 1
-            resource = resource_with_preflight_result(candidate, result)
-            if result.downloadable:
-                downloadable_count += 1
-                if not selected_url:
-                    selected_url = resource.url
-                    resource.user_selected = True
-                    resource.score = 100
-        else:
-            result = MediaPreflightResult(
-                ok=True,
-                downloadable=False,
-                strategy="not-probed",
-                kind=effective_resource_kind(candidate),
-                url=candidate.url,
-                resolved_url=candidate.resolved_url or candidate.url,
-                code="not_probed",
-                message="候选排序靠后，本次整页预检未发起网络探测；启动任务时仍可作为后续下载候选。",
-            )
-            resource = resource_with_preflight_result(candidate, result)
-
-        candidates.append({
-            "rank": index,
-            "resource": resource.model_dump(mode="json"),
-            "preflight": result.model_dump(mode="json"),
-        })
 
     if selected_url:
         code = ""
