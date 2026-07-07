@@ -105,6 +105,7 @@ vm.runInContext(sidepanelCode, context);
 await new Promise(resolve => setTimeout(resolve, 0));
 
 assert.match(sidepanelHtml, /value="gemini">Google Gemini/);
+assert.match(sidepanelHtml, /value="openai" selected>OpenAI/);
 assert.match(sidepanelHtml, /value="dashscope">/);
 assert.doesNotMatch(sidepanelHtml, /value="siliconflow"/);
 assert.doesNotMatch(sidepanelHtml, /value="openrouter"/);
@@ -118,8 +119,8 @@ assert.equal(elements.get("#llmModel").value, "openai/gpt-4.1-mini");
 assert.equal(elements.get("#llmBaseUrl").value, "https://openrouter.ai/api/v1");
 assert.equal(elements.get("#transcriber").value, "faster-whisper");
 assert.equal(elements.get("#whisperModel").value, "small");
-assert.match(elements.get("#providerHint").innerHTML, /Manual/);
-assert.match(elements.get("#providerHint").innerHTML, /custom OpenAI-compatible endpoint/);
+assert.match(elements.get("#providerHint").innerHTML, /高级/);
+assert.match(elements.get("#providerHint").innerHTML, /手动填写 OpenAI-compatible 端点/);
 assert.match(elements.get("#backendStatus").innerHTML, /backend-status-chip asr/);
 assert.match(elements.get("#backendStatus").innerHTML, /本地 faster-whisper · small/);
 
@@ -168,7 +169,7 @@ assert.equal(savedModelSettings.llm_model, "meta-llama/llama-4-scout-17b-16e-ins
 assert.equal(savedModelSettings.transcriber, "groq");
 assert.equal(savedModelSettings.whisper_model, "whisper-large-v3");
 assert.match(elements.get("#providerHint").innerHTML, /Groq/);
-assert.match(elements.get("#providerHint").innerHTML, /vision ready/);
+assert.match(elements.get("#providerHint").innerHTML, /支持图文总结/);
 assert.match(elements.get("#providerHint").innerHTML, /Groq ASR/);
 assert.equal(Object.hasOwn(savedModelSettings, "llm_api_key"), false);
 assert.equal(JSON.stringify(savedModelSettings).includes("sk-should-not-persist"), false);
@@ -182,8 +183,8 @@ assert.equal(savedGeminiSettings.llm_base_url, "https://generativelanguage.googl
 assert.equal(savedGeminiSettings.llm_model, "gemini-3.5-flash");
 assert.equal(savedGeminiSettings.transcriber, "faster-whisper");
 assert.equal(savedGeminiSettings.whisper_model, "small");
-assert.match(elements.get("#providerHint").innerHTML, /Recommended/);
-assert.match(elements.get("#providerHint").innerHTML, /vision ready/);
+assert.match(elements.get("#providerHint").innerHTML, /主流/);
+assert.match(elements.get("#providerHint").innerHTML, /支持图文总结/);
 elements.get("#llmApiKey").value = "";
 context.updateHealthVisionStatus({ ffmpeg: true, vision_model_configured: false });
 assert.match(elements.get("#backendStatus").innerHTML, /待填 · Gemini/);

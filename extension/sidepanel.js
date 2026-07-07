@@ -98,12 +98,12 @@ function providerBaseHost(baseUrl) {
 
 function providerCapabilitySummary(preset) {
   const capabilities = new Set(preset?.capabilities || []);
-  const visual = capabilities.has("vision") ? "vision ready" : "text/asr only";
+  const visual = capabilities.has("vision") ? "支持图文总结" : "仅文本/转写";
   const asr = preset?.transcriber === "groq"
     ? "Groq ASR"
     : preset?.transcriber === "openai-compatible"
-      ? "remote ASR"
-      : "local faster-whisper";
+      ? "远程 ASR"
+      : "本地 faster-whisper";
   return `${visual} · ${asr}`;
 }
 
@@ -112,11 +112,11 @@ function updateModelProviderHint() {
   const key = els.llmProvider?.value || "";
   const preset = modelProviderPresets[key];
   if (!preset) {
-    els.providerHint.innerHTML = `<span class="provider-tier compatible">Manual</span><span>Use a custom OpenAI-compatible endpoint; visual summaries need a vision-capable model.</span>`;
+    els.providerHint.innerHTML = `<span class="provider-tier compatible">高级</span><span>手动填写 OpenAI-compatible 端点；图文总结需要支持视觉输入的模型。</span>`;
     return;
   }
   const tier = preset.recommended || preset.tier === "mainstream" ? "mainstream" : "compatible";
-  const tierLabel = tier === "mainstream" ? "Recommended" : "Advanced";
+  const tierLabel = tier === "mainstream" ? "主流" : "高级";
   const label = escapeHtml(modelProviderLabel(key));
   const summary = escapeHtml(providerCapabilitySummary(preset));
   const host = escapeHtml(providerBaseHost(preset.baseUrl));
@@ -3289,6 +3289,7 @@ async function loadSettings() {
   if (!HAS_EXTENSION_API) {
     backendUrl = normalizeBackendUrl(backendUrl) || DEFAULT_BACKEND;
     if (els.backendUrlInput) els.backendUrlInput.value = backendUrl;
+    applyModelProviderPreset(false);
     updateModelProviderHint();
     return;
   }
@@ -3296,6 +3297,7 @@ async function loadSettings() {
   backendUrl = normalizeBackendUrl(data.backendUrl) || DEFAULT_BACKEND;
   if (els.backendUrlInput) els.backendUrlInput.value = backendUrl;
   applyModelSettings(data[MODEL_SETTINGS_STORAGE_KEY]);
+  applyModelProviderPreset(false);
   updateModelProviderHint();
 }
 

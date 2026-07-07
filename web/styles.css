@@ -2536,7 +2536,7 @@ button:disabled {
 
 .empty-production-brief {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
   gap: 8px;
   margin-top: 16px;
 }
@@ -2572,6 +2572,7 @@ button:disabled {
   color: var(--text);
   font-size: 12px;
   line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
 .empty-production-brief small {
@@ -10020,7 +10021,7 @@ body {
 }
 
 .empty-hero {
-  grid-template-columns: minmax(0, 1fr) minmax(320px, 380px);
+  grid-template-columns: minmax(220px, 0.82fr) minmax(260px, 1.18fr);
   gap: 22px;
   border-color: #d6e0ec;
   background: #ffffff;
@@ -10029,8 +10030,8 @@ body {
 .empty-hero h3 {
   max-width: 680px;
   color: var(--ln-ink);
-  font-size: clamp(22px, 2.1vw, 30px);
-  line-height: 1.12;
+  font-size: clamp(21px, 1.8vw, 28px);
+  line-height: 1.16;
 }
 
 .empty-hero p {
