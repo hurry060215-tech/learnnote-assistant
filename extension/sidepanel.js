@@ -3878,12 +3878,12 @@ function pagePreflightHasUnprobedCandidates(result, candidates = []) {
 }
 
 async function preflightPageCandidates(candidates) {
-  if (!candidates?.length) return null;
-  const report = await requestPagePreflightReport(candidates);
-  if (!applyPagePreflightReport(report)) return null;
+  const report = await requestPagePreflightReport(candidates || []);
+  const applied = applyPagePreflightReport(report);
   els.taskMessage.textContent = report.message || (report.ready ? "整页预检通过" : "整页预检未通过");
   renderContext();
-  return pagePreflightResult(report);
+  const result = pagePreflightResult(report);
+  return applied || result ? result : null;
 }
 
 async function preflightBestResource(mode = "video") {
@@ -4028,6 +4028,15 @@ async function runPreflight() {
     }
     const candidates = preflightCandidatesForStart("video");
     if (!candidates.length) {
+      if (hasCurrentVideoEvidence(resources) && canAttemptBackendPageFallback("video")) {
+        try {
+          els.taskMessage.textContent = "正在交给后端扫描当前页播放资源...";
+          const result = await preflightPageCandidates([]);
+          return result?.report || result;
+        } catch {
+          // Fall back to the user-facing recovery message below.
+        }
+      }
       els.taskMessage.textContent = "没有可预检的直取候选；继续播放几秒后重新检测，或上传本地视频。";
       return null;
     }

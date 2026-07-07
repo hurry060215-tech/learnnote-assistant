@@ -132,6 +132,7 @@ if (Test-Any @("extension/sidepanel.js", "extension/sidepanel.css", "extension/s
     "extension\tests\sidepanel_direct_response_preflight.test.mjs",
     "extension\tests\sidepanel_download_only.test.mjs",
     "extension\tests\sidepanel_local_upload.test.mjs",
+    "extension\tests\sidepanel_run_preflight_blob_fallback.test.mjs",
     "extension\tests\sidepanel_markdown.test.mjs"
   )) {
     Invoke-Step $test { node $test }
