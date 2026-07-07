@@ -655,10 +655,19 @@ function contentDispositionHint(value = "") {
 }
 
 function requestHeaderNames(resource) {
-  return Object.keys(resource?.request_headers || {})
+  return safeHeaderNames(Object.keys(resource?.request_headers || {})) || "-";
+}
+
+function safeHeaderNames(names) {
+  return (names || [])
+    .map(name => String(name || "").trim())
     .filter(name => !/cookie|authorization/i.test(name))
     .sort()
-    .join(", ") || "-";
+    .join(", ");
+}
+
+function attemptHeaderNames(attempt) {
+  return safeHeaderNames(attempt?.request_header_names) || "-";
 }
 
 function requestBodySummary(resource) {
@@ -5397,7 +5406,8 @@ async function renderDetail() {
                   attempt.status_code ? `HTTP ${attempt.status_code}` : "",
                   fmtBytes(attempt.bytes_downloaded || attempt.content_length),
                   attempt.kind,
-                  attempt.source
+                  attempt.source,
+                  attemptHeaderNames(attempt) !== "-" ? `headers ${attemptHeaderNames(attempt)}` : ""
                 ].filter(Boolean).join(" · "))}</small>
               </div>
               <span class="attempt-status">${escapeHtml(attempt.status)}</span>

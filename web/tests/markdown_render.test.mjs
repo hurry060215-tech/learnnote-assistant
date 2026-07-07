@@ -1153,7 +1153,15 @@ context.fetch = async url => {
             download: { successful_attempt_count: 0, failed_attempt_count: 1, strategy_order: ["manifest-ffmpeg"] },
             processing: { note_ready: false, transcript_ready: false, frame_grid_count: 0, visual_window_count: 0 }
           },
-          download_attempts: [{ strategy: "manifest-ffmpeg", status: "failed", code: "download_forbidden", message: "signed URL expired" }]
+          download_attempts: [
+            {
+              strategy: "manifest-ffmpeg",
+              status: "failed",
+              code: "download_forbidden",
+              message: "signed URL expired",
+              request_header_names: ["Referer", "Origin", "Cookie", "Authorization", "User-Agent"]
+            }
+          ]
         }
       })
     };
@@ -1171,7 +1179,9 @@ assert.match(diagnosticsEvidenceHtml, /非录制下载路线/);
 assert.match(diagnosticsEvidenceHtml, /直取和总结证据/);
 assert.match(diagnosticsEvidenceHtml, /class="pipeline-audit"/);
 assert.match(diagnosticsEvidenceHtml, /manifest-ffmpeg/);
+assert.match(diagnosticsEvidenceHtml, /headers Origin, Referer, User-Agent/);
 assert.doesNotMatch(diagnosticsEvidenceHtml, /secret=1/);
+assert.doesNotMatch(diagnosticsEvidenceHtml, /headers .*Cookie|headers .*Authorization/);
 context.fetch = originalFetchForDiagnostics;
 vm.runInContext(`selectedTab = "note";`, context);
 context.renderResultTabState();

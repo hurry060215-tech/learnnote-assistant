@@ -1321,6 +1321,10 @@ assert.match(diagnosticRecoveryHtml, /后端已尝试 2 条路线/);
 assert.match(diagnosticRecoveryHtml, /Referer/);
 assert.match(diagnosticRecoveryHtml, /Range 只作为浏览器播放证据/);
 assert.match(diagnosticRecoveryHtml, /Cookie/);
+assert.equal(context.attemptHeaderNames({
+  request_header_names: ["Referer", "Origin", "Cookie", "Authorization", "User-Agent"]
+}), "Origin, Referer, User-Agent");
+assert.equal(context.attemptHeaderNames({ request_header_names: ["Cookie", "Authorization"] }), "-");
 assert.doesNotMatch(diagnosticRecoveryHtml, /secret=bad/);
 assert.match(diagnosticRecoveryHtml, /继续切片总结/);
 assert.match(diagnosticRecoveryHtml, /class="recovery-actions"/);
