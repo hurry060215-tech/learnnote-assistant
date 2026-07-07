@@ -2738,6 +2738,8 @@ class MediaDownloader:
                 mime=candidate.mime if candidate else "",
                 resolved_url=candidate.resolved_url if candidate else "",
                 request_header_names=request_header_names,
+                companion_audio_url=candidate.audio_url if candidate else "",
+                companion_audio_mime=candidate.audio_mime if candidate else "",
             )
         )
 

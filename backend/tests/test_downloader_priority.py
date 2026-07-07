@@ -1814,6 +1814,9 @@ class DownloaderPriorityTests(unittest.TestCase):
             self.assertIn("-map", captured["cmd"])
             self.assertIn("0:v:0", captured["cmd"])
             self.assertIn("1:a:0", captured["cmd"])
+            downloader._record_attempt("direct-av-merge", "success", "合并完成", candidate, output_path=media)
+            self.assertEqual(downloader.attempts[0].companion_audio_url, candidate.audio_url)
+            self.assertEqual(downloader.attempts[0].companion_audio_mime, "audio/mp4")
 
     def test_preflight_video_with_audio_url_requires_companion_audio_access(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

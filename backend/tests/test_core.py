@@ -1453,6 +1453,8 @@ class ProcessorBoundaryTests(unittest.TestCase):
                     message="HTTP 403",
                     url="https://cdn.example.com/lesson.mp4",
                     request_header_names=["Range", "Referer"],
+                    companion_audio_url="https://cdn.example.com/lesson-audio.m4a",
+                    companion_audio_mime="audio/mp4",
                 )
             ]
 
@@ -1468,6 +1470,7 @@ class ProcessorBoundaryTests(unittest.TestCase):
             self.assertIn("媒体服务器拒绝下载", report)
             self.assertIn("Range, Referer", report)
             self.assertIn("请求头名：Range, Referer", report)
+            self.assertIn("伴随音频：https://cdn.example.com/lesson-audio.m4a (audio/mp4)", report)
             self.assertNotIn("SESSION=secret", report)
             self.assertNotIn("Bearer secret", report)
             self.assertNotIn("Cookie", report.split("可复用请求头名：", 1)[1].splitlines()[0])

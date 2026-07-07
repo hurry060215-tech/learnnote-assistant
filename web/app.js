@@ -5407,7 +5407,8 @@ async function renderDetail() {
                   fmtBytes(attempt.bytes_downloaded || attempt.content_length),
                   attempt.kind,
                   attempt.source,
-                  attemptHeaderNames(attempt) !== "-" ? `headers ${attemptHeaderNames(attempt)}` : ""
+                  attemptHeaderNames(attempt) !== "-" ? `headers ${attemptHeaderNames(attempt)}` : "",
+                  attempt.companion_audio_url ? `audio ${compactUrl(attempt.companion_audio_url, 44)}` : ""
                 ].filter(Boolean).join(" · "))}</small>
               </div>
               <span class="attempt-status">${escapeHtml(attempt.status)}</span>

@@ -238,6 +238,8 @@ class DownloadAttempt(BaseModel):
     mime: str = ""
     resolved_url: str = ""
     request_header_names: list[str] = Field(default_factory=list)
+    companion_audio_url: str = ""
+    companion_audio_mime: str = ""
 
 
 class TaskRecord(BaseModel):

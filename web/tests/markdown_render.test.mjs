@@ -1159,7 +1159,8 @@ context.fetch = async url => {
               status: "failed",
               code: "download_forbidden",
               message: "signed URL expired",
-              request_header_names: ["Referer", "Origin", "Cookie", "Authorization", "User-Agent"]
+              request_header_names: ["Referer", "Origin", "Cookie", "Authorization", "User-Agent"],
+              companion_audio_url: "https://cdn.example.com/course/audio-only.m4a?token=a"
             }
           ]
         }
@@ -1180,6 +1181,7 @@ assert.match(diagnosticsEvidenceHtml, /直取和总结证据/);
 assert.match(diagnosticsEvidenceHtml, /class="pipeline-audit"/);
 assert.match(diagnosticsEvidenceHtml, /manifest-ffmpeg/);
 assert.match(diagnosticsEvidenceHtml, /headers Origin, Referer, User-Agent/);
+assert.match(diagnosticsEvidenceHtml, /audio .*audio-only\.m4a/);
 assert.doesNotMatch(diagnosticsEvidenceHtml, /secret=1/);
 assert.doesNotMatch(diagnosticsEvidenceHtml, /headers .*Cookie|headers .*Authorization/);
 context.fetch = originalFetchForDiagnostics;

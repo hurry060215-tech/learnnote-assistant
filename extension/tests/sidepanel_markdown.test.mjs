@@ -418,7 +418,12 @@ const routeEvidenceItems = context.taskRouteEvidenceItems({
     }
   },
   download_attempts: [
-    { strategy: "direct-file", code: "download_forbidden", message: "<script>bad()</script>" }
+    {
+      strategy: "direct-file",
+      code: "download_forbidden",
+      message: "<script>bad()</script>",
+      companion_audio_url: "https://cdn.example.com/course/audio-only.m4a?token=a"
+    }
   ],
   summary_source: "local-template",
   summary_diagnostics: {

@@ -1219,6 +1219,8 @@ class LocalUploadValidationTests(unittest.TestCase):
                     url="https://cdn.example.com/lesson.mp4",
                     status="success",
                     request_header_names=["Referer"],
+                    companion_audio_url="https://cdn.example.com/lesson-audio.m4a",
+                    companion_audio_mime="audio/mp4",
                 )
             ]
 
@@ -1232,6 +1234,11 @@ class LocalUploadValidationTests(unittest.TestCase):
             self.assertEqual(manifest["options"]["llm_api_key"], "<redacted>")
             self.assertEqual(manifest["source"]["selected_resource"]["request_header_names"], ["Referer"])
             self.assertEqual(manifest["source"]["download_attempts"][0]["request_header_names"], ["Referer"])
+            self.assertEqual(
+                manifest["source"]["download_attempts"][0]["companion_audio_url"],
+                "https://cdn.example.com/lesson-audio.m4a",
+            )
+            self.assertEqual(manifest["source"]["download_attempts"][0]["companion_audio_mime"], "audio/mp4")
             self.assertEqual(manifest["direct_extraction"]["selected_candidate"]["safe_request_header_names"], ["Referer"])
             self.assertTrue(manifest["direct_extraction"]["selected_candidate"]["user_selected"])
             self.assertEqual(manifest["direct_extraction"]["browser_context"]["cookie_domain_count"], 2)

@@ -879,6 +879,8 @@ def render_bundle_manifest(task: TaskRecord, transcript: dict, visual_index: dic
                     "url": attempt.url,
                     "resolved_url": attempt.resolved_url,
                     "request_header_names": _safe_request_header_names(attempt.request_header_names),
+                    "companion_audio_url": attempt.companion_audio_url,
+                    "companion_audio_mime": attempt.companion_audio_mime,
                 }
                 for attempt in task.download_attempts
             ],
@@ -1618,6 +1620,8 @@ def render_diagnostics_markdown(task: TaskRecord) -> str:
                 f"- MIME：{attempt.mime or '-'}",
                 f"- 大小：{_format_bytes(attempt.bytes_downloaded or attempt.content_length)}",
                 f"- 请求头名：{', '.join(_safe_request_header_names(attempt.request_header_names)) if attempt.request_header_names else '-'}",
+                f"- 伴随音频：{attempt.companion_audio_url or '-'}"
+                f"{f' ({attempt.companion_audio_mime})' if attempt.companion_audio_mime else ''}",
                 f"- 输出：{attempt.output_path or '-'}",
                 f"- 信息：{attempt.message or '-'}",
                 "",
