@@ -78,6 +78,32 @@ class FakeVideoRoll {
     this.changedSource = source;
     return "videoroll-change-url";
   }
+
+  loadByUrl(source) {
+    this.loadedByUrl = source;
+    return "videoroll-load-by-url";
+  }
+
+  setDataSource(source) {
+    this.dataSource = source;
+    return "videoroll-data-source";
+  }
+}
+
+class FakeTcPlayer {
+  constructor(options) {
+    this.options = options;
+  }
+
+  loadVideoByUrl(source) {
+    this.loadedVideoByUrl = source;
+    return "tc-load-video-by-url";
+  }
+
+  playUrl(source) {
+    this.playedUrl = source;
+    return "tc-play-url";
+  }
 }
 
 class FakePlyr {
@@ -141,6 +167,7 @@ const context = {
   Artplayer: FakeArtPlayer,
   xgplayer: { Player: FakeXgPlayer },
   VideoRoll: FakeVideoRoll,
+  TcPlayer: FakeTcPlayer,
   Plyr: FakePlyr,
   jwplayer: fakeJwplayer,
   flvjs: { createPlayer: fakeFlvCreatePlayer },
@@ -204,6 +231,12 @@ const videoRoll = new context.VideoRoll({
 assert.equal(videoRoll.options.video.url, "/videoroll/lesson.m3u8?token=15");
 assert.equal(videoRoll.setSource({ src: "/videoroll/next.mp4?token=16" }), "videoroll-set-source");
 assert.equal(videoRoll.changeUrl("/videoroll/backup.m3u8?token=17"), "videoroll-change-url");
+assert.equal(videoRoll.loadByUrl("/videoroll/runtime-play?id=26"), "videoroll-load-by-url");
+assert.equal(videoRoll.setDataSource({ stream_url: "/videoroll/runtime-stream?id=27" }), "videoroll-data-source");
+
+const tc = new context.TcPlayer({ sources: [{ src: "/tcplayer/constructor.m3u8?token=28" }] });
+assert.equal(tc.loadVideoByUrl("/tcplayer/runtime-video?id=29"), "tc-load-video-by-url");
+assert.equal(tc.playUrl({ play_url: "/tcplayer/runtime-play?id=30" }), "tc-play-url");
 
 const plyr = new context.Plyr("#course-video", {
   source: {
@@ -261,10 +294,19 @@ assert.ok(urls.has("https://course.example.com/videoroll/definition?id=22"));
 assert.ok(urls.has("https://course.example.com/videoroll/quality-play?id=23"));
 assert.ok(urls.has("https://course.example.com/videoroll/formats/lesson.mp4?token=24"));
 assert.ok(urls.has("https://course.example.com/videoroll/renditions/master.m3u8?token=25"));
+assert.ok(urls.has("https://course.example.com/videoroll/runtime-play?id=26"));
+assert.ok(urls.has("https://course.example.com/videoroll/runtime-stream?id=27"));
 assert.equal(resourceByUrl.get("https://course.example.com/videoroll/play?id=18")?.kind, "video");
 assert.equal(resourceByUrl.get("https://course.example.com/videoroll/stream?id=20")?.kind, "video");
 assert.equal(resourceByUrl.get("https://course.example.com/videoroll/definition?id=22")?.kind, "video");
 assert.equal(resourceByUrl.get("https://course.example.com/videoroll/quality-play?id=23")?.kind, "video");
+assert.equal(resourceByUrl.get("https://course.example.com/videoroll/runtime-play?id=26")?.kind, "video");
+assert.equal(resourceByUrl.get("https://course.example.com/videoroll/runtime-stream?id=27")?.kind, "video");
+assert.ok(urls.has("https://course.example.com/tcplayer/constructor.m3u8?token=28"));
+assert.ok(urls.has("https://course.example.com/tcplayer/runtime-video?id=29"));
+assert.ok(urls.has("https://course.example.com/tcplayer/runtime-play?id=30"));
+assert.equal(resourceByUrl.get("https://course.example.com/tcplayer/runtime-video?id=29")?.kind, "video");
+assert.equal(resourceByUrl.get("https://course.example.com/tcplayer/runtime-play?id=30")?.kind, "video");
 assert.ok(urls.has("https://course.example.com/plyr/constructor.mp4?token=12"));
 assert.ok(urls.has("https://course.example.com/plyr/master.m3u8?token=13"));
 assert.ok(urls.has("https://course.example.com/plyr/fallback.mp4?token=14"));
@@ -287,6 +329,11 @@ assert.ok(labels.has("xgplayer Player constructor switchUrl"));
 assert.ok(labels.has("VideoRoll constructor"));
 assert.ok(labels.has("VideoRoll constructor setSource"));
 assert.ok(labels.has("VideoRoll constructor changeUrl"));
+assert.ok(labels.has("VideoRoll constructor loadByUrl"));
+assert.ok(labels.has("VideoRoll constructor setDataSource"));
+assert.ok(labels.has("TcPlayer constructor"));
+assert.ok(labels.has("TcPlayer constructor loadVideoByUrl"));
+assert.ok(labels.has("TcPlayer constructor playUrl"));
 assert.ok(labels.has("Plyr constructor"));
 assert.ok(labels.has("Plyr source"));
 assert.ok(labels.has("jwplayer setup"));

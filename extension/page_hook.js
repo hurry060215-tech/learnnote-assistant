@@ -1401,7 +1401,14 @@
 
   function patchGenericPlayerInstance(player, label) {
     if (!player || typeof player !== "object") return player;
-    for (const method of ["src", "url", "load", "setup", "switchVideo", "switchUrl", "switchURL", "changeQuality", "setSrc", "setUrl", "setVideoUrl", "setSource", "changeSource", "changeUrl", "loadVideo"]) {
+    for (const method of [
+      "src", "url", "source", "load", "setup",
+      "attachSource", "setDataSource", "setMediaSource",
+      "switchVideo", "switchUrl", "switchURL",
+      "changeQuality", "changeVideo", "replaceVideo",
+      "setSrc", "setUrl", "setVideoUrl", "setSource", "changeSource", "changeUrl",
+      "loadUrl", "loadByUrl", "loadVideo", "loadVideoUrl", "loadVideoByUrl", "playUrl"
+    ]) {
       patchMethod(player, method, original => function (...args) {
         for (const arg of args) emitPlayerSources(arg, "", `${label} ${method}`);
         return original.apply(this, args);
