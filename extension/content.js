@@ -269,6 +269,209 @@ function decodeURIComponentSafe(value) {
   }
 }
 
+function isStaticBaseOnlyKey(key = "") {
+  const normalized = String(key || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  return [
+    "baseurl",
+    "basepath",
+    "pathprefix",
+    "cdn",
+    "host",
+    "domain",
+    "origin",
+    "endpoint",
+    "server",
+    "root",
+    "prefix",
+    "dir",
+    "directory"
+  ].includes(normalized);
+}
+
+function normalizeStaticBaseUrl(value, key = "") {
+  const raw = String(value || "").trim().replace(/^['"]|['"]$/g, "");
+  if (!raw || /\s/.test(raw)) return "";
+  const keyContext = String(key || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  try {
+    const current = new URL(location.href);
+    if (raw.startsWith("//")) return `${current.protocol}${raw}`.replace(/\/?$/, "/");
+    if (/^https?:\/\//i.test(raw)) return raw.replace(/\/?$/, "/");
+    if (/^[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?::\d+)?(?:\/.*)?$/.test(raw)) {
+      return `${current.protocol}//${raw}`.replace(/\/?$/, "/");
+    }
+    if (raw.startsWith("/") && /^(basepath|pathprefix|root|prefix|dir|directory)$/.test(keyContext)) {
+      return new URL(raw, location.href).href.replace(/\/?$/, "/");
+    }
+    if (raw.endsWith("/") && /^(basepath|pathprefix|root|prefix|dir|directory)$/.test(keyContext)) {
+      return new URL(raw, location.href).href.replace(/\/?$/, "/");
+    }
+  } catch {
+    return "";
+  }
+  return "";
+}
+
+function staticJsonBaseUrls(node) {
+  if (!node || typeof node !== "object" || Array.isArray(node)) return [];
+  const bases = [];
+  const hostBases = [];
+  const pathBases = [];
+  let currentOrigin = "";
+  try {
+    currentOrigin = new URL(location.href).origin;
+  } catch {
+    currentOrigin = "";
+  }
+  const add = (url, bucket = null) => {
+    if (!url || bases.includes(url)) return;
+    bases.push(url);
+    if (bucket && !bucket.includes(url)) bucket.push(url);
+  };
+  for (const [key, value] of Object.entries(node).slice(0, 120)) {
+    if (typeof value !== "string" || !isStaticBaseOnlyKey(key)) continue;
+    for (const candidateValue of decodedValues(value)) {
+      const url = normalizeStaticBaseUrl(candidateValue, key);
+      if (!url) continue;
+      try {
+        const parsed = new URL(url, location.href);
+        const raw = String(candidateValue || "").trim().replace(/^['"]|['"]$/g, "");
+        if (parsed.pathname.replace(/\/+$/, "") === "") add(url, hostBases);
+        else if (raw.startsWith("/") && parsed.origin === currentOrigin) add(url, pathBases);
+        else add(url);
+      } catch {
+        add(url);
+      }
+    }
+  }
+  for (const hostBase of hostBases) {
+    for (const pathBase of pathBases) {
+      try {
+        const host = new URL(hostBase, location.href);
+        const path = new URL(pathBase, location.href);
+        add(`${host.origin}${path.pathname}`.replace(/\/?$/, "/"));
+      } catch {
+        // Ignore invalid synthetic bases.
+      }
+    }
+  }
+  return sortStaticBaseUrls(bases, currentOrigin).slice(0, 8);
+}
+
+function sortStaticBaseUrls(bases = [], currentOrigin = "") {
+  let origin = currentOrigin;
+  if (!origin) {
+    try {
+      origin = new URL(location.href).origin;
+    } catch {
+      origin = "";
+    }
+  }
+  return bases.sort((a, b) => {
+    try {
+      const parsedA = new URL(a, location.href);
+      const parsedB = new URL(b, location.href);
+      const pathDelta = parsedB.pathname.length - parsedA.pathname.length;
+      if (pathDelta) return pathDelta;
+      return Number(parsedB.origin !== origin) - Number(parsedA.origin !== origin);
+    } catch {
+      return b.length - a.length;
+    }
+  });
+}
+
+function staticJsonMimeContext(node) {
+  if (!node || typeof node !== "object" || Array.isArray(node)) return "";
+  return Object.entries(node)
+    .filter(([key, value]) => /(mime|type|format|content.?type|media.?type)/i.test(key) && typeof value === "string")
+    .map(([, value]) => value)
+    .join(" ");
+}
+
+function looksLikeStaticSplitMediaPath(value, key, node) {
+  const text = String(value || "").trim().replace(/^['"]|['"]$/g, "");
+  if (!text || /\s/.test(text)) return false;
+  const decoded = decodeURIComponentSafe(decodeJsStringEscapes(text));
+  if (/^(?:https?:)?\/\//i.test(decoded)) return false;
+  if (/^(audio|video|application|text)\/[a-z0-9.+-]+$/i.test(text)) return false;
+  if (/^(?:https?:)?\/\//i.test(text)) return false;
+  if (/^(data|blob|javascript):/i.test(text)) return false;
+  if (MEDIA_RE.test(text) || text.includes(".m3u8") || text.includes(".mpd")) return true;
+  return STATIC_MEDIA_KEY_RE.test(key) && /video\/|mpegurl|dash\+xml|audio\//i.test(staticJsonMimeContext(node));
+}
+
+function staticSplitCandidateValues(value) {
+  const raw = decodeJsStringEscapes(String(value || "").trim()).replace(/&amp;/g, "&");
+  const values = raw ? [raw] : [];
+  appendRepeatedUrlDecodes(values, raw);
+  for (const item of decodedValues(value)) {
+    if (item && !values.includes(item)) values.push(item);
+  }
+  return values;
+}
+
+function mimeForStaticSplit(key, value, node) {
+  return mimeFromHint(`${key} ${value} ${staticJsonMimeContext(node)}`);
+}
+
+function collectStaticSplitBaseResourcesFromNode(node, source, label, seen, limit, inheritedBases = [], visited = new WeakSet()) {
+  const resources = [];
+  if (!node || typeof node !== "object" || resources.length >= limit) return resources;
+  if (visited.has(node)) return resources;
+  visited.add(node);
+  if (Array.isArray(node)) {
+    for (const child of node.slice(0, 120)) {
+      resources.push(...collectStaticSplitBaseResourcesFromNode(child, source, label, seen, limit - resources.length, inheritedBases, visited));
+      if (resources.length >= limit) break;
+    }
+    return resources;
+  }
+  const bases = staticJsonBaseUrls(node);
+  for (const inherited of inheritedBases || []) {
+    if (inherited && !bases.includes(inherited)) bases.push(inherited);
+  }
+  sortStaticBaseUrls(bases);
+  for (const [key, value] of Object.entries(node).slice(0, 160)) {
+    if (typeof value === "string" && STATIC_MEDIA_KEY_RE.test(key) && !isStaticBaseOnlyKey(key)) {
+      for (const candidateValue of staticSplitCandidateValues(value)) {
+        if (!looksLikeStaticSplitMediaPath(candidateValue, key, node)) continue;
+        for (const base of bases) {
+          let url = "";
+          try {
+            const path = String(candidateValue || "").startsWith("/")
+              ? String(candidateValue || "")
+              : String(candidateValue || "").replace(/^\/+/, "");
+            url = new URL(path, base).href;
+          } catch {
+            continue;
+          }
+          const item = resource(url, source, `${label} json combined ${key}`, mimeForStaticSplit(key, candidateValue, node));
+          if (!item || item.kind === "unknown" || seen.has(item.url)) continue;
+          seen.add(item.url);
+          item.score = Math.max(item.score || 0, scoreForKind(item.kind, { manifest: 96, video: 84, audio: 38, other: 62 }));
+          resources.push(item);
+          break;
+        }
+        if (resources.length >= limit) break;
+      }
+    }
+    if (value && typeof value === "object") {
+      resources.push(...collectStaticSplitBaseResourcesFromNode(value, source, label, seen, limit - resources.length, bases, visited));
+    }
+    if (resources.length >= limit) break;
+  }
+  return resources;
+}
+
+function collectStaticSplitBaseResources(text, source, label, seen = new Set(), limit = 40) {
+  const trimmed = String(text || "").trim();
+  if (!trimmed || !"{[".includes(trimmed[0])) return [];
+  try {
+    return collectStaticSplitBaseResourcesFromNode(JSON.parse(trimmed), source, label, seen, limit);
+  } catch {
+    return [];
+  }
+}
+
 function resourceFromHint(value, source, label, hint = "", video = null, isMainVideo = false, playbackMatch = "") {
   for (const candidate of decodedValues(value)) {
     const trimmed = String(candidate || "").trim();
@@ -373,6 +576,10 @@ function nestedMediaTextCandidates(value) {
 function collectNestedFieldResources(value, source, label, seen = new Set(), limit = 40) {
   const resources = [];
   for (const text of nestedMediaTextCandidates(value)) {
+    for (const item of collectStaticSplitBaseResources(text, source, `${label} nested`, seen, Math.max(0, limit - resources.length))) {
+      resources.push(item);
+      if (resources.length >= limit) return resources;
+    }
     for (const item of collectHtmlTextResources(text, source, `${label} nested`, seen, Math.max(0, limit - resources.length), 1)) {
       resources.push(item);
       if (resources.length >= limit) return resources;
@@ -784,6 +991,7 @@ function collectDeclaredMediaResources() {
 function collectInlineScriptResources() {
   const resources = [];
   const seen = new Set();
+  const limit = 60;
   for (const script of deepQuerySelectorAll("script", document, 400)) {
     const text = String(script.textContent || "").slice(0, 200000);
     ENCODED_MEDIA_URL_RE.lastIndex = 0;
@@ -794,30 +1002,30 @@ function collectInlineScriptResources() {
     STATIC_FIELD_RE.lastIndex = 0;
     for (const match of text.matchAll(STATIC_FIELD_RE)) {
       const key = String(match[1] || "").replace(/^["']|["']$/g, "");
-      if (!STATIC_MEDIA_KEY_RE.test(key)) continue;
+      if (!STATIC_MEDIA_KEY_RE.test(key) || isStaticBaseOnlyKey(key)) continue;
       const item = resourceFromHint(match[2], "scriptHint", `script ${key}`, key);
       if (item && !seen.has(item.url)) {
         seen.add(item.url);
         item.score = Math.max(item.score || 0, scoreForKind(item.kind));
         resources.push(item);
-        if (resources.length >= 40) return resources;
+        if (resources.length >= limit) return resources;
       }
-      for (const nestedItem of collectNestedFieldResources(match[2], "scriptHint", `script ${key}`, seen, 40 - resources.length)) {
+      for (const nestedItem of collectNestedFieldResources(match[2], "scriptHint", `script ${key}`, seen, limit - resources.length)) {
         resources.push(nestedItem);
-        if (resources.length >= 40) return resources;
+        if (resources.length >= limit) return resources;
       }
     }
-    for (const item of collectKeyedContainerResources(text, "scriptHint", "script", seen, 40 - resources.length)) {
+    for (const item of collectKeyedContainerResources(text, "scriptHint", "script", seen, limit - resources.length)) {
       resources.push(item);
-      if (resources.length >= 40) return resources;
+      if (resources.length >= limit) return resources;
     }
     for (const item of collectTextMediaResources(text, "scriptHint", "script media url", seen)) {
       resources.push(item);
-      if (resources.length >= 40) return resources;
+      if (resources.length >= limit) return resources;
     }
     for (const item of collectEncodedTextResources(text, "scriptHint", "script encoded url", seen)) {
       resources.push(item);
-      if (resources.length >= 40) return resources;
+      if (resources.length >= limit) return resources;
     }
   }
   return resources;
@@ -832,9 +1040,13 @@ function collectHtmlTextResources(text, source, label, seen = new Set(), limit =
   ENCODED_MEDIA_URL_RE.lastIndex = 0;
   MEDIA_URL_RE.lastIndex = 0;
   STATIC_FIELD_RE.lastIndex = 0;
+  for (const item of collectStaticSplitBaseResources(body, source, label, seen, limit - resources.length)) {
+    resources.push(item);
+    if (resources.length >= limit) return resources;
+  }
   for (const match of body.matchAll(STATIC_FIELD_RE)) {
     const key = String(match[1] || "").replace(/^["']|["']$/g, "");
-    if (!STATIC_MEDIA_KEY_RE.test(key)) continue;
+    if (!STATIC_MEDIA_KEY_RE.test(key) || isStaticBaseOnlyKey(key)) continue;
     const item = resourceFromHint(match[2], source, `${label} ${key}`, key);
     if (item && !seen.has(item.url)) {
       seen.add(item.url);
@@ -1357,7 +1569,7 @@ function collectPageData() {
     browser_subtitles: browserSubtitles,
     drm_detected: Boolean(active?.drm_detected || drm.length),
     drm_signals: drm,
-    resources: [...byUrl.values()].sort(comparePageResources).slice(0, 60)
+    resources: [...byUrl.values()].sort(comparePageResources).slice(0, 80)
   };
 }
 

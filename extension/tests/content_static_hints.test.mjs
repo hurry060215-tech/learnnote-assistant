@@ -113,6 +113,17 @@ const nestedMediaKeyPayload = Buffer.from(JSON.stringify({
 const nestedMediaKeyScript = new FakeElement("script", {
   textContent: `window.__wrapped={playInfo:'${nestedMediaKeyPayload}'};`
 });
+const splitBasePayload = JSON.stringify({
+  baseUrl: "https://cdn.example.com/static/split/",
+  streams: {
+    videoPath: "course/master.m3u8?token=split-static",
+    videoMime: "application/vnd.apple.mpegurl"
+  }
+});
+const splitBasePackedPayload = Buffer.from(splitBasePayload, "utf8").toString("base64");
+const splitBaseScript = new FakeElement("script", {
+  textContent: `window.__split={playInfo:'${splitBasePackedPayload}'};`
+});
 const endpointContainerScript = new FakeElement("script", {
   textContent: `window.__coursePlayer={
     sources:[
@@ -214,7 +225,7 @@ sameOriginIframe.contentDocument = {
     textContent: ""
   }
 };
-const html = new FakeElement("html", {}, [player, packedPlayer, playUrlAliasPlayer, manifestAliasPlayer, backupAliasPlayer, doubleEncodedPlayer, onclickPlayer, paramPlayer, lazyPathPlayer, lazyUriPlayer, ordinaryPathLink, configPlayer, nakedPlayer, vendorPlayer, preloadVideo, preloadHls, prefetchPlayApi, ogVideo, htmlVideo, script, plainEncodedScript, plainDoubleEncodedScript, mixedEncodedScript, jsEscapedScript, jsEscapedPayloadScript, nestedMediaKeyScript, endpointContainerScript, qualityContainerScript, segmentScript, plainUrlScript, srcdocIframe, sameOriginIframe]);
+const html = new FakeElement("html", {}, [player, packedPlayer, playUrlAliasPlayer, manifestAliasPlayer, backupAliasPlayer, doubleEncodedPlayer, onclickPlayer, paramPlayer, lazyPathPlayer, lazyUriPlayer, ordinaryPathLink, configPlayer, nakedPlayer, vendorPlayer, preloadVideo, preloadHls, prefetchPlayApi, ogVideo, htmlVideo, script, plainEncodedScript, plainDoubleEncodedScript, mixedEncodedScript, jsEscapedScript, jsEscapedPayloadScript, nestedMediaKeyScript, splitBaseScript, endpointContainerScript, qualityContainerScript, segmentScript, plainUrlScript, srcdocIframe, sameOriginIframe]);
 
 let messageListener = null;
 const context = {
@@ -313,6 +324,7 @@ const jsEscapedHls = response.resources.find(item => item.url === "https://cdn.e
 const jsEscapedVideo = response.resources.find(item => item.url === "https://cdn.example.com/static/escaped/lesson.mp4?sig=ok");
 const jsEscapedPayloadHls = response.resources.find(item => item.url === "https://cdn.example.com/static/escaped/payload.m3u8?token=payload");
 const nestedMediaKeyHls = response.resources.find(item => item.url === "https://cdn.example.com/static/nested-key/master.m3u8?token=wrapped");
+const splitBaseHls = response.resources.find(item => item.url === "https://cdn.example.com/static/split/course/master.m3u8?token=split-static");
 const apiPlayEndpoint = response.resources.find(item => item.url === "https://course.example.com/api/play?id=json-array&token=abc");
 const ananasEndpoint = response.resources.find(item => item.url === "https://course.example.com/ananas/status/objectid-123?flag=normal");
 const vodEndpoint = response.resources.find(item => item.url === "https://media.example.com/vod/lesson?id=noext");
@@ -434,6 +446,11 @@ assert.ok(nestedMediaKeyHls, "expected nested JSON inside a media-named script f
 assert.equal(nestedMediaKeyHls.kind, "hls");
 assert.equal(nestedMediaKeyHls.source, "scriptHint");
 assert.match(nestedMediaKeyHls.label, /nested/);
+
+assert.ok(splitBaseHls, "expected nested JSON base URL and media path fields to expose HLS URL");
+assert.equal(splitBaseHls.kind, "hls");
+assert.equal(splitBaseHls.source, "scriptHint");
+assert.match(splitBaseHls.label, /json combined/);
 
 assert.ok(apiPlayEndpoint, "expected media-named source array to expose extensionless play endpoint");
 assert.equal(apiPlayEndpoint.kind, "video");
