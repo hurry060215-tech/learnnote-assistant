@@ -10866,3 +10866,356 @@ body.reading-mode .app-shell {
   font-size: 12px;
   line-height: 1.55;
 }
+
+/* Compact BiliNote-style left workbench: keep route controls and task handoff in the first viewport. */
+.workspace-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 14px;
+}
+
+.workspace-panel .panel-heading {
+  order: 0;
+  margin-bottom: 0;
+}
+
+.workspace-panel .source-route-rail {
+  order: 1;
+  gap: 6px;
+  margin-bottom: 0;
+}
+
+.workspace-panel .source-route-item {
+  min-height: 82px;
+  gap: 3px;
+  padding: 8px 7px;
+  border-top-width: 2px;
+  box-shadow: none;
+}
+
+.workspace-panel .source-route-item span {
+  padding: 2px 5px;
+  font-size: 9.5px;
+}
+
+.workspace-panel .source-route-item strong {
+  font-size: 11.5px;
+}
+
+.workspace-panel .source-route-item small {
+  font-size: 10.5px;
+}
+
+.workspace-panel .source-route-item em {
+  -webkit-line-clamp: 1;
+  font-size: 10px;
+}
+
+.workspace-panel .source-tabs {
+  order: 2;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  margin-bottom: 0;
+  padding: 4px;
+  border-radius: 9px;
+}
+
+.workspace-panel .source-tab {
+  min-height: 42px;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 5px;
+  text-align: center;
+}
+
+.workspace-panel .source-tab > svg {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  padding: 5px;
+}
+
+.workspace-panel .source-tab span {
+  gap: 0;
+}
+
+.workspace-panel .source-tab b {
+  font-size: 11px;
+  line-height: 1.15;
+}
+
+.workspace-panel .source-tab small {
+  display: none;
+}
+
+.workspace-panel #sourceWorkflow {
+  order: 3;
+}
+
+.workspace-panel .source-pane {
+  order: 4;
+}
+
+.workspace-panel .options-disclosure {
+  order: 5;
+}
+
+.workspace-panel .source-workflow-card {
+  gap: 10px;
+  padding: 12px;
+  border-radius: 10px;
+  border-color: #d8e3ef;
+  background: #ffffff;
+  box-shadow: 0 8px 18px rgba(16, 24, 40, 0.05);
+}
+
+.workspace-panel .source-workflow-card header {
+  gap: 3px;
+}
+
+.workspace-panel .source-workflow-card header span {
+  font-size: 10px;
+}
+
+.workspace-panel .source-workflow-card header strong {
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.workspace-panel .source-workflow-card header small {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 11px;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.workspace-panel .source-primary-command {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: 9px;
+  border-radius: 9px;
+}
+
+.workspace-panel .source-primary-command span,
+.workspace-panel .source-primary-command small,
+.workspace-panel .source-workflow-status small,
+.workspace-panel .source-run-modes small,
+.workspace-panel .source-workflow-lane small,
+.workspace-panel .source-workflow-card footer,
+.workspace-panel .source-workflow-brief,
+.workspace-panel .source-route-insights,
+.workspace-panel .source-option-strip {
+  display: none;
+}
+
+.workspace-panel .source-primary-command strong {
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.workspace-panel .source-primary-command button {
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 11px;
+}
+
+.workspace-panel .source-run-modes {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.workspace-panel .source-run-modes button {
+  min-height: 54px;
+  gap: 3px;
+  padding: 8px 6px;
+  border-radius: 8px;
+}
+
+.workspace-panel .source-run-modes span {
+  font-size: 10px;
+}
+
+.workspace-panel .source-run-modes strong {
+  font-size: 11px;
+  line-height: 1.2;
+  -webkit-line-clamp: 2;
+}
+
+.workspace-panel .source-workflow-status {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.workspace-panel .source-workflow-status section {
+  min-height: 44px;
+  gap: 2px;
+  padding: 6px 4px;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.workspace-panel .source-workflow-status span {
+  font-size: 9.5px;
+}
+
+.workspace-panel .source-workflow-status strong {
+  font-size: 11px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.workspace-panel .source-workflow-lane {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.workspace-panel .source-workflow-lane li {
+  min-height: 46px;
+  gap: 3px;
+  padding: 7px 5px;
+  border-radius: 8px;
+}
+
+.workspace-panel .source-workflow-lane b {
+  width: 20px;
+  height: 20px;
+  font-size: 10px;
+}
+
+.workspace-panel .source-workflow-lane span {
+  font-size: 10.5px;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.workspace-panel .browser-handoff {
+  gap: 8px;
+}
+
+.workspace-panel .browser-capture-card {
+  gap: 9px;
+  padding: 11px;
+  border-radius: 10px;
+}
+
+.workspace-panel .browser-capture-head {
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.workspace-panel .capture-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+}
+
+.workspace-panel .capture-icon svg {
+  width: 17px;
+  height: 17px;
+}
+
+.workspace-panel .browser-capture-head strong {
+  font-size: 12px;
+}
+
+.workspace-panel .browser-capture-head em {
+  min-width: 42px;
+  height: 22px;
+  font-size: 9.5px;
+}
+
+.workspace-panel .browser-capture-head .capture-status-grid {
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+  margin-top: 2px;
+}
+
+.workspace-panel .capture-status-chip {
+  min-height: 26px;
+  padding: 4px 6px;
+  font-size: 10px;
+}
+
+.workspace-panel .capture-status-chip b {
+  height: 16px;
+  padding: 0 5px;
+  font-size: 9px;
+}
+
+.workspace-panel .capture-flow {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.workspace-panel .capture-flow div {
+  min-height: 60px;
+  grid-template-columns: 1fr;
+  justify-items: center;
+  gap: 4px;
+  padding: 7px 5px;
+  text-align: center;
+}
+
+.workspace-panel .capture-flow div::after,
+.workspace-panel .capture-flow small {
+  display: none;
+}
+
+.workspace-panel .capture-flow span {
+  width: 22px;
+  height: 22px;
+  font-size: 9px;
+}
+
+.workspace-panel .capture-flow strong {
+  font-size: 10.5px;
+}
+
+.workspace-panel .capture-signals {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.workspace-panel .capture-signals span {
+  height: 25px;
+  font-size: 10px;
+}
+
+.workspace-panel .browser-actions {
+  gap: 6px;
+}
+
+.workspace-panel .source-workflow-actions {
+  display: none;
+}
+
+.workspace-panel .boundary-note {
+  padding: 8px 9px;
+}
+
+.workspace-panel .boundary-note strong {
+  font-size: 11px;
+}
+
+.workspace-panel .boundary-note small {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .workspace-panel .source-route-rail,
+  .workspace-panel .source-tabs,
+  .workspace-panel .source-run-modes,
+  .workspace-panel .source-workflow-lane,
+  .workspace-panel .capture-flow {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .workspace-panel .source-workflow-status,
+  .workspace-panel .browser-capture-head .capture-status-grid {
+    grid-template-columns: 1fr;
+  }
+}
