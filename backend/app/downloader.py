@@ -2716,6 +2716,11 @@ class MediaDownloader:
         output_path: Path | None = None,
     ) -> None:
         downloaded = output_path.stat().st_size if output_path and output_path.exists() else None
+        request_header_names = (
+            _safe_request_header_names(browser_request_headers_for_candidate(candidate))
+            if candidate
+            else []
+        )
         self.attempts.append(
             DownloadAttempt(
                 strategy=strategy,
@@ -2732,6 +2737,7 @@ class MediaDownloader:
                 content_length=candidate.content_length if candidate else None,
                 mime=candidate.mime if candidate else "",
                 resolved_url=candidate.resolved_url if candidate else "",
+                request_header_names=request_header_names,
             )
         )
 

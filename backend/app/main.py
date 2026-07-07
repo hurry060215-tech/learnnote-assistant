@@ -396,9 +396,13 @@ def _visual_window_checkpoint_lines(window, limit: int = 3) -> list[str]:
 def _safe_browser_request_header_names(selected: ResourceCandidate | None) -> list[str]:
     if not selected:
         return []
+    return _safe_request_header_names((selected.request_headers or {}).keys())
+
+
+def _safe_request_header_names(names) -> list[str]:
     return [
         name
-        for name in sorted((selected.request_headers or {}).keys())
+        for name in sorted(str(name) for name in names if str(name or "").strip())
         if not re.search(r"cookie|authorization", name, re.I)
     ]
 
@@ -874,6 +878,7 @@ def render_bundle_manifest(task: TaskRecord, transcript: dict, visual_index: dic
                     "mime": attempt.mime,
                     "url": attempt.url,
                     "resolved_url": attempt.resolved_url,
+                    "request_header_names": _safe_request_header_names(attempt.request_header_names),
                 }
                 for attempt in task.download_attempts
             ],
@@ -1612,6 +1617,7 @@ def render_diagnostics_markdown(task: TaskRecord) -> str:
                 f"- HTTP：{attempt.status_code or '-'}",
                 f"- MIME：{attempt.mime or '-'}",
                 f"- 大小：{_format_bytes(attempt.bytes_downloaded or attempt.content_length)}",
+                f"- 请求头名：{', '.join(_safe_request_header_names(attempt.request_header_names)) if attempt.request_header_names else '-'}",
                 f"- 输出：{attempt.output_path or '-'}",
                 f"- 信息：{attempt.message or '-'}",
                 "",

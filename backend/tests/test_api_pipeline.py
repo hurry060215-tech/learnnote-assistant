@@ -1214,7 +1214,12 @@ class LocalUploadValidationTests(unittest.TestCase):
                 "partition_key_count": 1,
             }
             task.download_attempts = [
-                DownloadAttempt(strategy="direct-file", url="https://cdn.example.com/lesson.mp4", status="success")
+                DownloadAttempt(
+                    strategy="direct-file",
+                    url="https://cdn.example.com/lesson.mp4",
+                    status="success",
+                    request_header_names=["Referer"],
+                )
             ]
 
             manifest = render_bundle_manifest(
@@ -1226,6 +1231,7 @@ class LocalUploadValidationTests(unittest.TestCase):
 
             self.assertEqual(manifest["options"]["llm_api_key"], "<redacted>")
             self.assertEqual(manifest["source"]["selected_resource"]["request_header_names"], ["Referer"])
+            self.assertEqual(manifest["source"]["download_attempts"][0]["request_header_names"], ["Referer"])
             self.assertEqual(manifest["direct_extraction"]["selected_candidate"]["safe_request_header_names"], ["Referer"])
             self.assertTrue(manifest["direct_extraction"]["selected_candidate"]["user_selected"])
             self.assertEqual(manifest["direct_extraction"]["browser_context"]["cookie_domain_count"], 2)

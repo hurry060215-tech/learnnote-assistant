@@ -1452,6 +1452,7 @@ class ProcessorBoundaryTests(unittest.TestCase):
                     code="download_forbidden",
                     message="HTTP 403",
                     url="https://cdn.example.com/lesson.mp4",
+                    request_header_names=["Range", "Referer"],
                 )
             ]
 
@@ -1466,6 +1467,7 @@ class ProcessorBoundaryTests(unittest.TestCase):
             self.assertIn("## 下一步建议", report)
             self.assertIn("媒体服务器拒绝下载", report)
             self.assertIn("Range, Referer", report)
+            self.assertIn("请求头名：Range, Referer", report)
             self.assertNotIn("SESSION=secret", report)
             self.assertNotIn("Bearer secret", report)
             self.assertNotIn("Cookie", report.split("可复用请求头名：", 1)[1].splitlines()[0])

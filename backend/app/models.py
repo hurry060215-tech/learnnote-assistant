@@ -237,6 +237,7 @@ class DownloadAttempt(BaseModel):
     content_length: int | None = None
     mime: str = ""
     resolved_url: str = ""
+    request_header_names: list[str] = Field(default_factory=list)
 
 
 class TaskRecord(BaseModel):
