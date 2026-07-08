@@ -1477,6 +1477,37 @@ globalThis.__learnnoteE2E = {
         restored: Number(captureLog.resources?.length || 0)
       }
     };
+  },
+  async startCurrentPageTaskForTab(tabId, backendUrl, selectedResources = [], mode = "download_only", options = {}) {
+    const context = await globalThis.__learnnoteE2E.collectContextForTab(tabId);
+    const tab = await chrome.tabs.get(Number(tabId));
+    const page = context.page || {};
+    const resources = mergeAndRankResources(selectedResources, page, tab, { preserveOrder: Array.isArray(selectedResources) });
+    const partitionKeys = await cookiePartitionKeysForContext(page, tab, resources);
+    const cookies = await cookiesForUrls(cookieUrlsForContext(page, tab, resources), partitionKeys);
+    const res = await fetch(`${backendUrl}/api/tasks/from-current-page`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mode,
+        page_url: page.page_url || tab.url,
+        title: bestPageTitle(page.title, tab.title),
+        page_text: page.page_text || "",
+        active_video: page.active_video || null,
+        browser_subtitles: page.browser_subtitles || [],
+        drm_detected: Boolean(page.drm_detected),
+        drm_signals: page.drm_signals || [],
+        resources,
+        cookies,
+        options
+      })
+    });
+    const payload = await backendJsonResponse(res, "当前页任务创建失败。");
+    return {
+      ...payload,
+      e2e_resource_count: resources.length,
+      e2e_cookie_count: cookies.length
+    };
   }
 };
 

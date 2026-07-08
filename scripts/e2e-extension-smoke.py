@@ -355,6 +355,49 @@ def preflight(backend: str, page_url: str, resource: dict, label: str) -> dict:
     return result
 
 
+def wait_for_task_media(backend: str, task_id: str, timeout_seconds: float = 70) -> dict:
+    deadline = time.time() + timeout_seconds
+    latest: dict = {}
+    while time.time() < deadline:
+        latest = request_json("GET", f"{backend}/api/tasks/{task_id}")
+        task = latest.get("task", latest)
+        if task.get("status") in {"success", "failed"}:
+            if task.get("status") == "success" and task.get("media_path"):
+                return task
+            raise AssertionError(f"extension-started task failed: {task}")
+        time.sleep(0.8)
+    raise AssertionError(f"Timed out waiting for extension-started task {task_id}: {latest}")
+
+
+def start_extension_download_only_task(cdp: CdpWebSocket, backend: str, tab_id: int, resource: dict) -> dict:
+    expression = f"""
+async () => {{
+  const payload = await globalThis.__learnnoteE2E.startCurrentPageTaskForTab(
+    {int(tab_id)},
+    {json.dumps(backend)},
+    [{json.dumps(resource)}],
+    "download_only",
+    {{
+      visual_understanding: false,
+      frame_interval: 20,
+      grid_columns: 3,
+      grid_rows: 3,
+      transcriber: "faster-whisper",
+      whisper_model: "small",
+      note_style: "study",
+      note_template: "standard",
+      summary_depth: "brief"
+    }}
+  );
+  return payload;
+}}
+"""
+    payload = eval_service_worker(cdp, expression)
+    if payload.get("error") or not payload.get("task_id"):
+        raise AssertionError(f"extension background did not create download-only task: {payload}")
+    return wait_for_task_media(backend, payload["task_id"])
+
+
 def run_browser_checks(cdp: CdpWebSocket, backend: str, samples: str) -> None:
     mp4_page = f"{samples}/mp4.html"
     hls_page = f"{samples}/hls.html"
@@ -367,6 +410,8 @@ def run_browser_checks(cdp: CdpWebSocket, backend: str, samples: str) -> None:
     mp4 = assert_resource(mp4_context, "mp4", lambda item: "/media/sample.mp4" in item.get("url", "") and item.get("kind") == "video")
     preflight(backend, mp4_page, mp4, "mp4")
     print(f"PASS extension collect mp4: resources={len(mp4_context['resources'])} captured={mp4_context['captured_count']}")
+    mp4_task = start_extension_download_only_task(cdp, backend, tab_ids[mp4_page], mp4)
+    print(f"PASS extension start download_only mp4: {mp4_task.get('id')} -> {mp4_task.get('media_path')}")
 
     hls_context = collect_extension_context(cdp, hls_page, tab_ids[hls_page])
     hls = assert_resource(hls_context, "hls", lambda item: "/hls/master.m3u8" in item.get("url", "") and item.get("kind") == "hls")

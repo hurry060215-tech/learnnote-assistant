@@ -195,7 +195,7 @@ cd D:\Projects\learnnote-assistant
 .\scripts\e2e-extension-smoke.ps1
 ```
 
-That script launches a temporary Edge profile with the unpacked extension, starts the backend and sample server, then verifies the real MV3 service worker plus content/background collection for MP4, HLS, POST play API request body replay, blob iframe page-scan fallback, and the local 学习通-style mock (`ananas/playurl/objectid/dtoken/iframe/cookie`). Use Chrome explicitly when needed:
+That script launches a temporary Edge profile with the unpacked extension, starts the backend and sample server, then verifies the real MV3 service worker plus content/background collection for MP4, an extension-started `download_only` task that writes `media.mp4`, HLS, POST play API request body replay, blob iframe page-scan fallback, and the local 学习通-style mock (`ananas/playurl/objectid/dtoken/iframe/cookie`). Use Chrome explicitly when needed:
 
 ```powershell
 .\scripts\e2e-extension-smoke.ps1 -Browser chrome
