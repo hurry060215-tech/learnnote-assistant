@@ -197,7 +197,20 @@ Recommended browser checks with the unpacked extension loaded:
 - `POST play API`: open `http://127.0.0.1:8777/post-api.html`. Expected route: XHR/POST candidate with safe headers and bounded body, resolving `playUrl` or `sources` to the real media URL.
 - `学习通 mock`: open `http://127.0.0.1:8777/chaoxing-mock.html`. Expected route: outer course page plus iframe player, `ananas/status/play` POST body with `objectid`/`dtoken`, visible cookie, Referer/Origin/XHR evidence, then normal media preflight. This is only a local diagnostic mock; it does not fake progress, answer questions, or call private course-completion APIs.
 
-Run the local backend/sample smoke gate when changing downloader or detector contracts:
+Run the product verification gate after broad downloader, detector, Side Panel, or startup changes:
+
+```powershell
+cd D:\Projects\learnnote-assistant
+.\scripts\verify-product.ps1
+```
+
+That script runs the local doctor, a backend/sample smoke, and a real Edge MV3 extension smoke. It auto-picks loopback ports, keeps runtime artifacts under the D-drive project `data\` tree, and validates MP4, HLS, POST play API, blob iframe fallback, the local Chaoxing-style evidence chain, and an extension-started download-only task. Use Chrome explicitly when browser-specific behavior matters:
+
+```powershell
+.\scripts\verify-product.ps1 -Browser chrome
+```
+
+Run the narrower local backend/sample smoke gate when changing downloader or detector contracts and you want faster failure isolation:
 
 ```powershell
 cd D:\Projects\learnnote-assistant
