@@ -6113,6 +6113,138 @@ button:disabled {
   font-weight: 780;
 }
 
+.visual-study-correlation {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #dbe7f6;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 12px;
+}
+
+.visual-study-correlation header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.visual-study-correlation header div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.visual-study-correlation header span {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.visual-study-correlation header strong {
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.28;
+}
+
+.visual-study-correlation header small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.visual-study-correlation > div {
+  display: grid;
+  gap: 7px;
+}
+
+.visual-study-correlation article {
+  display: grid;
+  grid-template-columns: 76px repeat(4, minmax(0, 1fr)) auto;
+  gap: 8px;
+  align-items: stretch;
+  border: 1px solid #dbe7f6;
+  border-radius: 8px;
+  background: #f8fbff;
+  padding: 9px;
+}
+
+.visual-study-correlation article.vision {
+  border-color: rgba(20, 150, 74, 0.24);
+  background: linear-gradient(180deg, #f5fcf7, #ffffff);
+}
+
+.visual-study-correlation article.missing,
+.visual-study-correlation article.omitted {
+  border-color: rgba(196, 122, 5, 0.28);
+  background: linear-gradient(180deg, #fff8eb, #ffffff);
+}
+
+.visual-study-correlation-id,
+.visual-study-correlation article > div:not(.visual-study-correlation-id) {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 3px;
+}
+
+.visual-study-correlation-id b {
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.visual-study-correlation-id time,
+.visual-study-correlation span,
+.visual-study-correlation small {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+}
+
+.visual-study-correlation span {
+  color: #526176;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.visual-study-correlation strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.28;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.visual-study-correlation nav {
+  display: grid;
+  gap: 5px;
+  align-content: start;
+}
+
+.visual-study-correlation nav button {
+  min-height: 26px;
+  border: 1px solid #c9d9ff;
+  border-radius: 7px;
+  background: #f2f6ff;
+  color: var(--accent);
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.visual-study-correlation nav button:hover {
+  border-color: var(--accent);
+  background: #eaf2ff;
+}
+
 .visual-study-deck {
   display: grid;
   gap: 14px;
@@ -7450,6 +7582,28 @@ select {
 
   .visual-study-navigator > div {
     grid-template-columns: 1fr;
+  }
+
+  .visual-study-correlation header {
+    display: grid;
+    align-items: start;
+  }
+
+  .visual-study-correlation header small {
+    white-space: normal;
+  }
+
+  .visual-study-correlation article {
+    grid-template-columns: 1fr;
+  }
+
+  .visual-study-correlation strong,
+  .visual-study-correlation small {
+    white-space: normal;
+  }
+
+  .visual-study-correlation nav {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .visual-study-head {

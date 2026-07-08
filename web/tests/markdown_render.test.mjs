@@ -946,6 +946,57 @@ assert.match(visualDeckHtml, /data-window-start="180\.000"/);
 assert.match(visualDeckHtml, />回看此段<\/button>/);
 assert.doesNotMatch(visualDeckHtml, /<script>bad/);
 
+const visualCorrelationHtml = context.visualStudyCorrelationHtml({
+  id: "task-visual-correlation",
+  title: "视觉课程",
+  summary_source: "vision-llm",
+  summary_diagnostics: {
+    vision_image_window_ids: ["W001"],
+    missing_vision_image_window_ids: ["W002"]
+  },
+  visual_windows: [
+    {
+      id: "W001",
+      start: 0,
+      end: 180,
+      frame_count: 9,
+      grid_url: "http://127.0.0.1:8765/api/tasks/demo/grids/grid_000.jpg",
+      local_summary: "<script>alert(2)</script> 本段讲解第一章概念\n- 对照 PPT 标题和公式",
+      transcript_excerpt: "<script>alert(1)</script> PPT 演示"
+    },
+    {
+      id: "W002",
+      start: 180,
+      end: 360,
+      frame_count: 0,
+      grid_url: "",
+      frame_timestamps: [180, 210]
+    }
+  ]
+}, {
+  segments: [
+    { start: 10, end: 18, text: "第一段讲概念" },
+    { start: 30, end: 38, text: "继续解释公式" },
+    { start: 220, end: 230, text: "第二段讲例题" }
+  ]
+});
+assert.match(visualCorrelationHtml, /class="visual-study-correlation"/);
+assert.match(visualCorrelationHtml, /证据核对矩阵/);
+assert.match(visualCorrelationHtml, /逐窗对齐画面、字幕、局部总结和复习动作/);
+assert.match(visualCorrelationHtml, /2\/2 窗口/);
+assert.match(visualCorrelationHtml, /article class="vision"/);
+assert.match(visualCorrelationHtml, /article class="missing"/);
+assert.match(visualCorrelationHtml, /截图网格/);
+assert.match(visualCorrelationHtml, /无图/);
+assert.match(visualCorrelationHtml, /2 段字幕 · 00:00:10 起/);
+assert.match(visualCorrelationHtml, /本段讲解第一章概念/);
+assert.match(visualCorrelationHtml, /对照 PPT 标题和公式/);
+assert.match(visualCorrelationHtml, /data-focus-visual-window="W001"/);
+assert.match(visualCorrelationHtml, /data-switch-result-tab="note"/);
+assert.match(visualCorrelationHtml, /data-media-seek-time="180\.000"/);
+assert.doesNotMatch(visualCorrelationHtml, /<script>alert/);
+assert.match(visualCorrelationHtml, /&lt;script&gt;alert\(2\)&lt;\/script&gt; 本段讲解第一章概念/);
+
 const sliceWorkbenchHtml = context.learningSliceWorkbench({
   id: "task-slice-workbench",
   title: "<script>bad()</script> 切片课程",
@@ -991,6 +1042,9 @@ assert.match(sliceWorkbenchHtml, /按画面窗口回看/);
 assert.match(sliceWorkbenchHtml, /W001/);
 assert.match(sliceWorkbenchHtml, /已进视觉|本地索引/);
 assert.match(sliceWorkbenchHtml, /9 帧 · 1 字幕/);
+assert.match(sliceWorkbenchHtml, /class="visual-study-correlation"/);
+assert.match(sliceWorkbenchHtml, /局部总结/);
+assert.match(sliceWorkbenchHtml, /复习动作/);
 assert.match(sliceWorkbenchHtml, /data-media-seek-time="180\.000"/);
 assert.match(sliceWorkbenchHtml, /data-switch-result-tab="transcript"/);
 assert.match(sliceWorkbenchHtml, /\/api\/tasks\/task-slice-workbench\/exports\/visual-windows/);
@@ -1024,6 +1078,7 @@ assert.match(frameWorkbenchHtml, /集中核对每个视觉窗口的截图网格/
 assert.match(frameWorkbenchHtml, /<dt>帧数<\/dt><dd>9<\/dd>/);
 assert.match(frameWorkbenchHtml, /<dt>网格<\/dt><dd>3x3<\/dd>/);
 assert.match(frameWorkbenchHtml, /data-switch-result-tab="slices"/);
+assert.match(frameWorkbenchHtml, /class="visual-study-correlation"/);
 assert.match(frameWorkbenchHtml, /class="visual-study-deck"/);
 assert.doesNotMatch(frameWorkbenchHtml, /<script>bad/);
 
