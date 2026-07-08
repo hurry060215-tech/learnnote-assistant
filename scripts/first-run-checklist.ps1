@@ -3,7 +3,9 @@ param(
   [int]$SamplesPort = 8777,
   [ValidateSet("edge", "chrome")]
   [string]$Browser = "edge",
-  [switch]$Json
+  [switch]$Json,
+  [switch]$WriteGuide,
+  [string]$GuidePath = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -76,12 +78,152 @@ $baseReady = $fails.Count -eq 0
 $localAsrReady = Test-CheckPass $asrCheck
 $visionReady = Test-CheckPass $apiCheck
 $browserReady = (Test-CheckPass $extensionCheck) -and (Test-CheckPass $browserCheck)
+$guideOutputPath = if ($GuidePath) { $GuidePath } else { Join-Path $dataDir "first-run-guide.md" }
 $samplePages = [ordered]@{
   mp4 = "$samplesUrl/mp4.html"
   hls = "$samplesUrl/hls.html"
   blob_iframe = "$samplesUrl/blob-iframe.html"
   post_play_api = "$samplesUrl/post-api.html"
   chaoxing_mock = "$samplesUrl/chaoxing-mock.html"
+}
+
+function New-FirstRunGuide {
+  param(
+    [string]$Path,
+    [array]$Checks,
+    [array]$Fails,
+    [array]$Warns
+  )
+
+  $parent = Split-Path -Parent $Path
+  if ($parent) {
+    New-Item -ItemType Directory -Force -Path $parent | Out-Null
+  }
+  $baseState = if ($Fails.Count -eq 0) { "ready" } else { "blocked" }
+  $asrState = if ($localAsrReady) { "ready" } else { "optional warning" }
+  $visionState = if ($visionReady) { "ready" } else { "optional warning" }
+  $browserState = if ($browserReady) { "ready" } else { "check required" }
+  $requiredFixes = @($Fails | ForEach-Object {
+    $fix = if ($_.fix) { " | fix: $($_.fix)" } else { "" }
+    "- $($_.name): $($_.detail)$fix"
+  })
+  if (-not $requiredFixes.Count) {
+    $requiredFixes = @("- None. Base workflow can start.")
+  }
+  $optionalWarnings = @($Warns | ForEach-Object {
+    $fix = if ($_.fix) { " | fix: $($_.fix)" } else { "" }
+    "- $($_.name): $($_.detail)$fix"
+  })
+  if (-not $optionalWarnings.Count) {
+    $optionalWarnings = @("- None.")
+  }
+  $tick = [char]96
+  $fence = "$tick$tick$tick"
+  $lines = @(
+    "# LearnNote First-Run Guide",
+    "",
+    "Generated: $(Get-Date -Format s)",
+    "",
+    "## Local Paths",
+    "",
+    "- Project: $tick$projectRoot$tick",
+    "- Data: $tick$dataDir$tick",
+    "- Backend: $tick$backendUrl$tick",
+    "- Backend origin: $tick$backendUrl$tick",
+    "- Extension: $tick$extensionDir$tick",
+    "- Sample site: $tick$samplesUrl$tick",
+    "",
+    "## Readiness",
+    "",
+    "- Base workflow: $baseState",
+    "- Browser extension: $browserState",
+    "- Local ASR: $asrState",
+    "- Visual LLM: $visionState",
+    "",
+    "## Required Fixes",
+    "",
+    $requiredFixes,
+    "",
+    "## Optional Capability Warnings",
+    "",
+    $optionalWarnings,
+    "",
+    "## First Use",
+    "",
+    "1. Start backend and sample pages:",
+    "",
+    "$($fence)powershell",
+    "cd $projectRoot",
+    ".\start-learnnote.ps1 -WithSamples",
+    $fence,
+    "",
+    "2. Load the browser extension:",
+    "",
+    "- Open ${tick}edge://extensions${tick} or ${tick}chrome://extensions${tick}.",
+    "- Enable Developer Mode.",
+    "- Click ${tick}Load unpacked${tick}.",
+    "- Select $tick$extensionDir$tick.",
+    "- Open the Side Panel and keep backend URL as $tick$backendUrl$tick.",
+    "",
+    "3. Verify the loop with a local page:",
+    "",
+    "- MP4: $($samplePages.mp4)",
+    "- HLS: $($samplePages.hls)",
+    "- POST play API: $($samplePages.post_play_api)",
+    "- Blob iframe fallback: $($samplePages.blob_iframe)",
+    "- Chaoxing-style mock: $($samplePages.chaoxing_mock)",
+    "",
+    "Play a sample for a few seconds, click the Side Panel summarize or preflight action, then check the generated note, transcript, slices, and diagnostics tabs.",
+    "",
+    "4. Run product verification after code changes:",
+    "",
+    "$($fence)powershell",
+    ".\scripts\verify-product.ps1 -Browser $Browser",
+    $fence,
+    "",
+    "## Optional Upgrades",
+    "",
+    "Install local ASR:",
+    "",
+    "$($fence)powershell",
+    ".\start-learnnote.ps1 -InstallAsr",
+    $fence,
+    "",
+    "Configure a visual summary API for the current PowerShell session:",
+    "",
+    "$($fence)powershell",
+    '$env:LEARNNOTE_LLM_API_KEY="..."',
+    '$env:LEARNNOTE_LLM_BASE_URL="https://api.openai.com/v1"',
+    '$env:LEARNNOTE_LLM_MODEL="gpt-4.1-mini"',
+    $fence,
+    "",
+    "## Real-Site Audit",
+    "",
+    "Use this for YouTube/Bilibili/Chaoxing or another live site after the extension is loaded:",
+    "",
+    "$($fence)powershell",
+    ".\scripts\audit-real-site.ps1 `"<url>`" -Preflight -RequireReady",
+    $fence,
+    "",
+    "For logged-in learning pages, use a D-drive browser profile:",
+    "",
+    "$($fence)powershell",
+    ".\scripts\audit-real-site.ps1 `"https://mooc1.chaoxing.com/...`" -ProfileDir `"$dataDir\browser-profiles\chaoxing`" -InteractiveLogin -Preflight -RequireReady -RequireLearningProfile",
+    $fence,
+    "",
+    "## Boundaries",
+    "",
+    "- Runtime files stay under the D-drive project data directory.",
+    "- Current-page extraction directly downloads accessible media only.",
+    "- The app does not record tabs, bypass DRM, spoof progress, answer questions automatically, or collect cookies in the background."
+  )
+  Set-Content -LiteralPath $Path -Encoding UTF8 -Value $lines
+  return (Resolve-Path $Path).Path
+}
+
+$writtenGuidePath = ""
+if ($WriteGuide) {
+  $writtenGuidePath = New-FirstRunGuide -Path $guideOutputPath -Checks $checks -Fails $fails -Warns $warns
 }
 
 if ($Json) {
@@ -93,6 +235,7 @@ if ($Json) {
     samples = $samplesUrl
     extension = $extensionDir
     browser = $Browser
+    guide_path = $writtenGuidePath
     runtime_paths = @{
       data = $dataDir
       data_drive = ([System.IO.DirectoryInfo]$dataDir).Root.FullName
@@ -116,6 +259,7 @@ if ($Json) {
       install_asr = ".\start-learnnote.ps1 -InstallAsr"
       verify = ".\scripts\verify-product.ps1 -Browser $Browser"
       audit_real_site = ".\scripts\audit-real-site.ps1 <url> -Preflight"
+      write_guide = ".\scripts\first-run-checklist.ps1 -WriteGuide"
       set_visual_api = @(
         '$env:LEARNNOTE_LLM_API_KEY="..."',
         '$env:LEARNNOTE_LLM_BASE_URL="https://api.openai.com/v1"',
@@ -133,6 +277,9 @@ Write-Host "Backend:   $backendUrl"
 Write-Host "Origin:    $backendUrl"
 Write-Host "Samples:   $samplesUrl"
 Write-Host "Extension: $extensionDir"
+if ($writtenGuidePath) {
+  Write-Host "Guide:     $writtenGuidePath"
+}
 Write-Host ""
 
 Write-Host "Readiness" -ForegroundColor Cyan
@@ -159,6 +306,8 @@ if ($fails.Count) {
   Write-Host ("- Visual LLM: {0}" -f $(if ($visionReady) { "ready; multimodal summaries can use configured API" } else { "optional WARN; without API key, notes use local deterministic fallback plus frame indexes" }))
   Write-Host ""
   Write-Host "Startup path" -ForegroundColor Cyan
+  Write-Host "0. Optional: write this machine-specific guide to D-drive data:"
+  Write-Host "   .\scripts\first-run-checklist.ps1 -WriteGuide"
   Write-Host "1. Start backend:"
   Write-Host "   .\start-learnnote.ps1"
   Write-Host "2. Load unpacked extension:"
@@ -192,6 +341,12 @@ if ($fails.Count) {
   Write-Host '   $env:LEARNNOTE_LLM_MODEL="gpt-4.1-mini"'
   Write-Host "Real-site audit:"
   Write-Host "   .\scripts\audit-real-site.ps1 <url> -Preflight"
+}
+
+if ($writtenGuidePath) {
+  Write-Host ""
+  Write-Host "Guide written" -ForegroundColor Green
+  Write-Host "  $writtenGuidePath"
 }
 
 if ($warns.Count) {

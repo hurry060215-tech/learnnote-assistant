@@ -111,7 +111,11 @@ cd D:\Projects\learnnote-assistant
 .\scripts\first-run-checklist.ps1
 ```
 
-The checklist summarizes D-drive data paths, Python/ffmpeg/yt-dlp readiness, optional `faster-whisper` and visual API gaps, Chrome/Edge availability, the unpacked extension path, the backend URL, sample-site URL, and the product verification command. It also separates required blockers from optional capability warnings: if only `WARN` items remain, the base workflow can still run with subtitle/remote-ASR/local-note fallbacks. It does not start services or read browser cookies.
+The checklist summarizes D-drive data paths, Python/ffmpeg/yt-dlp readiness, optional `faster-whisper` and visual API gaps, Chrome/Edge availability, the unpacked extension path, the backend URL, sample-site URL, and the product verification command. It also separates required blockers from optional capability warnings: if only `WARN` items remain, the base workflow can still run with subtitle/remote-ASR/local-note fallbacks. It does not start services or read browser cookies. To write a machine-specific first-run guide under `data\first-run-guide.md`:
+
+```powershell
+.\scripts\first-run-checklist.ps1 -WriteGuide
+```
 
 Use the product launcher first. It keeps runtime files under the D-drive project `data\` directory, runs the local doctor, prints the extension load path, sets the backend origin, and then starts FastAPI:
 

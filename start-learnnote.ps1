@@ -138,6 +138,8 @@ if (-not $SkipDoctor) {
 }
 
 Write-Step "Browser setup"
+Write-Host "Machine-specific first-run guide:"
+Write-Host "  .\scripts\first-run-checklist.ps1 -WriteGuide"
 Write-Host "Load the unpacked extension from:"
 Write-Host "  $extensionDir"
 Write-Host "Chrome: chrome://extensions  Edge: edge://extensions"
