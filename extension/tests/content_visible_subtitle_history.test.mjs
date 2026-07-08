@@ -28,6 +28,7 @@ class FakeElement {
     this.tagName = tagName.toUpperCase();
     this.nodeType = 1;
     this.children = children;
+    this.attributes = options.attributes || {};
     this.className = options.className || "";
     this.id = options.id || "";
     this.textContent = options.textContent || "";
@@ -44,6 +45,7 @@ class FakeElement {
   }
 
   getAttribute(name) {
+    if (Object.prototype.hasOwnProperty.call(this.attributes, name)) return this.attributes[name];
     return this[name] || "";
   }
 
@@ -75,7 +77,16 @@ const overlay = new FakeElement("div", {
   className: "player-subtitle caption-layer",
   textContent: "first visible caption",
 });
-const html = new FakeElement("html", {}, [video, overlay]);
+const liveCaption = new FakeElement("div", {
+  className: "xgplayer-text vjs-text-track-display",
+  textContent: "first player live caption",
+  attributes: {
+    "aria-live": "polite",
+    role: "status",
+    "data-caption-layer": "true"
+  }
+});
+const html = new FakeElement("html", {}, [video, overlay, liveCaption]);
 
 let messageListener = null;
 const context = {
@@ -138,6 +149,7 @@ messageListener({ type: "collect-page-data" }, {}, data => {
 
 video.currentTime = 18;
 overlay.textContent = "second visible caption";
+liveCaption.textContent = "second player live caption";
 
 let second = null;
 messageListener({ type: "collect-page-data" }, {}, data => {
@@ -145,10 +157,13 @@ messageListener({ type: "collect-page-data" }, {}, data => {
 });
 
 assert.deepEqual(JSON.parse(JSON.stringify(first.browser_subtitles)), [
+  { start: 10.5, end: 16.5, text: "first player live caption" },
   { start: 10.5, end: 16.5, text: "first visible caption" },
 ]);
 assert.deepEqual(JSON.parse(JSON.stringify(second.browser_subtitles)), [
+  { start: 10.5, end: 16.5, text: "first player live caption" },
   { start: 10.5, end: 16.5, text: "first visible caption" },
+  { start: 16.5, end: 22.5, text: "second player live caption" },
   { start: 16.5, end: 22.5, text: "second visible caption" },
 ]);
 assert.equal(context.collectVisibleSubtitleCues(0).length, 0);
