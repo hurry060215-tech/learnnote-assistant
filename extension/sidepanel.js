@@ -1742,7 +1742,7 @@ function recoveryActionButtonHtml(action, task) {
     return `<button type="button" data-recovery-local${title}>${label}</button>`;
   }
   if (intent === "retry_current_page") {
-    return `<button type="button" data-route-action="redetect"${title}>${label}</button>`;
+    return `<button type="button" data-route-action="retry-current-page"${title}>${label}</button>`;
   }
   if (intent === "inspect_diagnostics") {
     return `<button type="button" data-switch-result-tab="diagnostics"${title}>${label}</button>`;
@@ -6423,6 +6423,8 @@ els.resources.addEventListener("click", event => {
 function handleRouteAction(action) {
   if (action === "redetect") {
     collect();
+  } else if (action === "retry-current-page") {
+    startTask("video");
   } else if (action === "preflight") {
     preflightSelectedResource();
   } else if (action === "summarize") {

@@ -1362,7 +1362,7 @@ assert.match(diagnosticRecoveryHtml, /不刷课/);
 assert.match(diagnosticRecoveryHtml, /下一步建议/);
 assert.match(diagnosticRecoveryHtml, /媒体地址被防盗链/);
 assert.match(diagnosticRecoveryHtml, /主动作：继续播放后重检/);
-assert.match(diagnosticRecoveryHtml, /data-route-action="redetect"/);
+assert.match(diagnosticRecoveryHtml, /data-route-action="retry-current-page"/);
 assert.match(diagnosticRecoveryHtml, /后端已尝试 2 条路线/);
 assert.match(diagnosticRecoveryHtml, /Referer/);
 assert.match(diagnosticRecoveryHtml, /Range 只作为浏览器播放证据/);
