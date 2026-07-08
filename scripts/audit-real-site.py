@@ -139,6 +139,8 @@ def task_probe_report(task_probe: dict | None) -> dict:
     if not task_probe:
         return {}
     task = task_probe.get("task") if isinstance(task_probe.get("task"), dict) else task_probe
+    attempts = task.get("download_attempts") or []
+    strategies = [str(item.get("strategy") or "") for item in attempts if isinstance(item, dict) and item.get("strategy")]
     return {
         "ran": True,
         "ready": bool(task_probe.get("ready") or (task.get("status") == "success" and task.get("media_path"))),
@@ -150,6 +152,7 @@ def task_probe_report(task_probe: dict | None) -> dict:
         "media_path_present": bool(task.get("media_path")),
         "error_code": task.get("error_code") or task_probe.get("error_code") or "",
         "error_detail": task.get("error_detail") or task_probe.get("error_detail") or "",
+        "download_strategies": strategies,
     }
 
 
@@ -193,7 +196,27 @@ def derive_next_step(profile: dict) -> str:
     return "Rerun audit-real-site with -Preflight to test whether the captured candidate is actually downloadable."
 
 
-def signal_profile(context: dict, preflight: dict | None = None, task_probe: dict | None = None) -> dict:
+def ytdlp_probe_report(probe: dict | None) -> dict:
+    if not probe:
+        return {}
+    return {
+        "ran": True,
+        "ready": bool(probe.get("ready")),
+        "extractor": str(probe.get("extractor") or ""),
+        "title": str(probe.get("title") or ""),
+        "id": str(probe.get("id") or ""),
+        "webpage_url": str(probe.get("webpage_url") or ""),
+        "error_code": str(probe.get("error_code") or ""),
+        "error_detail": str(probe.get("error_detail") or ""),
+    }
+
+
+def signal_profile(
+    context: dict,
+    preflight: dict | None = None,
+    task_probe: dict | None = None,
+    ytdlp_probe: dict | None = None,
+) -> dict:
     resources = context.get("resources") or []
     page = context.get("page") or {}
     active = page.get("active_video") or {}
@@ -211,6 +234,7 @@ def signal_profile(context: dict, preflight: dict | None = None, task_probe: dic
     )
     report = preflight_report(preflight)
     task_report = task_probe_report(task_probe)
+    ytdlp_report = ytdlp_probe_report(ytdlp_probe)
     preflight_ready = bool(report.get("ready") or report.get("downloadable") or report.get("downloadable_count"))
     task_ready = bool(task_report.get("ready"))
     platform = {
@@ -269,6 +293,7 @@ def signal_profile(context: dict, preflight: dict | None = None, task_probe: dic
         "constraints": constraints,
         "preflight": preflight_state,
         "task_probe": task_report,
+        "ytdlp_probe": ytdlp_report,
         "missing_steps": [],
     }
     if task_ready:
@@ -438,9 +463,14 @@ def sanitize_json(value):
     return value
 
 
-def evidence_model(context: dict, preflight: dict | None = None, task_probe: dict | None = None) -> dict:
+def evidence_model(
+    context: dict,
+    preflight: dict | None = None,
+    task_probe: dict | None = None,
+    ytdlp_probe: dict | None = None,
+) -> dict:
     resources = context.get("resources") or []
-    profile = signal_profile(context, preflight, task_probe)
+    profile = signal_profile(context, preflight, task_probe, ytdlp_probe)
     page = context.get("page") or {}
     direct_media = profile["signals"]["direct_media"]
     replay_body = profile["signals"]["request_body"]
@@ -584,6 +614,7 @@ def markdown_report(audits: list[dict], backend: str, gate_failures: list[dict] 
         constraints = profile.get("constraints") or {}
         preflight = audit.get("preflight")
         task_probe = profile.get("task_probe") or {}
+        ytdlp_probe = profile.get("ytdlp_probe") or {}
         lines.extend([
             f"## {tab.get('title') or page.get('title') or audit['url']}",
             "",
@@ -596,6 +627,7 @@ def markdown_report(audits: list[dict], backend: str, gate_failures: list[dict] 
             f"- Captured requests: {context.get('captured_count', 0)}",
             f"- Ranked resources: {context.get('resource_count', len(context.get('resources') or []))}",
             f"- Download task probe: {'ready' if task_probe.get('ready') else 'not ready' if task_probe.get('ran') else 'not run'}",
+            f"- yt-dlp probe: {'ready' if ytdlp_probe.get('ready') else 'not ready' if ytdlp_probe.get('ran') else 'not run'}",
             "",
             "### Direct-download chain",
             "",
@@ -665,7 +697,20 @@ def markdown_report(audits: list[dict], backend: str, gate_failures: list[dict] 
                 f"- Status: {task_probe.get('status') or '-'} / {task_probe.get('phase') or '-'}",
                 f"- Mode/source: {task_probe.get('mode') or '-'} / {task_probe.get('source_type') or '-'}",
                 f"- Media saved: {task_probe.get('media_path_present')}",
+                f"- Download strategies: {', '.join(task_probe.get('download_strategies') or []) or '-'}",
                 f"- Error: {task_probe.get('error_code') or '-'} {task_probe.get('error_detail') or ''}".rstrip(),
+            ])
+        if ytdlp_probe.get("ran"):
+            lines.extend([
+                "",
+                "### yt-dlp probe",
+                "",
+                f"- Ready: {ytdlp_probe.get('ready')}",
+                f"- Extractor: {ytdlp_probe.get('extractor') or '-'}",
+                f"- ID: {ytdlp_probe.get('id') or '-'}",
+                f"- Title: {ytdlp_probe.get('title') or '-'}",
+                f"- Webpage URL: {redact_url(ytdlp_probe.get('webpage_url') or '') or '-'}",
+                f"- Error: {ytdlp_probe.get('error_code') or '-'} {ytdlp_probe.get('error_detail') or ''}".rstrip(),
             ])
         lines.extend(["", "### Top resources", ""])
         for item in evidence["top_resources"]:
@@ -808,6 +853,49 @@ async () => {{
     }
 
 
+def run_ytdlp_metadata_probe(url: str, timeout_seconds: float = 45) -> dict:
+    cmd = [
+        helpers.project_python(),
+        "-m",
+        "yt_dlp",
+        "--simulate",
+        "--skip-download",
+        "--no-warnings",
+        "--no-progress",
+        "--print",
+        "%(extractor)s\t%(id)s\t%(title)s\t%(webpage_url)s",
+        url,
+    ]
+    try:
+        result = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True, timeout=timeout_seconds)
+    except subprocess.TimeoutExpired as exc:
+        output = (exc.stderr or exc.stdout or "").strip()
+        return {
+            "ready": False,
+            "error_code": "yt_dlp_timeout",
+            "error_detail": output[:500] or f"yt-dlp metadata probe timed out after {timeout_seconds:.0f}s",
+        }
+    output = (result.stdout or "").strip()
+    error = (result.stderr or "").strip()
+    if result.returncode != 0:
+        return {
+            "ready": False,
+            "error_code": "yt_dlp_probe_failed",
+            "error_detail": (error or output)[:500],
+        }
+    first = next((line for line in output.splitlines() if line.strip()), "")
+    parts = first.split("\t", 3)
+    while len(parts) < 4:
+        parts.append("")
+    return {
+        "ready": True,
+        "extractor": parts[0],
+        "id": parts[1],
+        "title": parts[2],
+        "webpage_url": parts[3],
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Audit real websites with the LearnNote MV3 extension and local backend.")
     parser.add_argument("urls", nargs="+", help="Real page URLs to open and audit.")
@@ -820,6 +908,8 @@ def main() -> None:
     parser.add_argument("--preflight", action="store_true", help="Run backend preflight with extension-collected cookies.")
     parser.add_argument("--probe-limit", type=int, default=5)
     parser.add_argument("--task-probe", action="store_true", help="Create a real download-only current-page task and wait for local media output.")
+    parser.add_argument("--task-probe-page-only", action="store_true", help="Create the download-only task with page URL, cookies, and no captured resources to test backend page fallback.")
+    parser.add_argument("--ytdlp-probe", action="store_true", help="Run a metadata-only yt-dlp probe and record extractor evidence in the audit report.")
     parser.add_argument("--task-timeout", type=float, default=90, help="Seconds to wait for --task-probe.")
     parser.add_argument("--keep-browser", action="store_true")
     parser.add_argument("--require-ready", action="store_true", help="Exit non-zero unless every audited URL is ready_to_download.")
@@ -846,6 +936,12 @@ def main() -> None:
     if helpers.port_is_open(debug_port):
         raise RuntimeError(f"Debug port {debug_port} is already in use.")
 
+    if args.backend_port <= 0:
+        args.backend_port = helpers.free_port()
+    elif helpers.port_is_open(args.backend_port):
+        replacement = helpers.free_port()
+        print(f"INFO backend port {args.backend_port} is busy; using {replacement} for this audit run.")
+        args.backend_port = replacement
     backend = f"http://127.0.0.1:{args.backend_port}"
     python = helpers.project_python()
     out_dir = ROOT / "data" / "test-runs" / "site-audits" / datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -915,21 +1011,25 @@ def main() -> None:
                     tab_ids[url],
                     context.get("resources") or [],
                     args.task_timeout,
-                    minimal=minimal_context,
+                    minimal=minimal_context or args.task_probe_page_only,
                 )
+            ytdlp_probe_payload = run_ytdlp_metadata_probe(url) if args.ytdlp_probe else None
             evidence = evidence_model(
                 context,
                 preflight_payload.get("report") if preflight_payload else None,
                 task_probe_payload,
+                ytdlp_probe_payload,
             )
             safe_context = sanitize_context(context)
             safe_preflight = sanitize_json(preflight_payload) if preflight_payload else None
             safe_task_probe = sanitize_json(task_probe_payload) if task_probe_payload else None
+            safe_ytdlp_probe = sanitize_json(ytdlp_probe_payload) if ytdlp_probe_payload else None
             audits.append({
                 "url": redact_url(url),
                 "context": safe_context,
                 "preflight": safe_preflight,
                 "task_probe": safe_task_probe,
+                "ytdlp_probe": safe_ytdlp_probe,
                 "evidence": evidence,
             })
             profile = evidence.get("profile") or {}

@@ -11,6 +11,8 @@ param(
   [switch]$Preflight,
   [int]$ProbeLimit = 5,
   [switch]$TaskProbe,
+  [switch]$TaskProbePageOnly,
+  [switch]$YtdlpProbe,
   [double]$TaskTimeout = 90,
   [switch]$KeepBrowser,
   [switch]$RequireReady,
@@ -51,6 +53,12 @@ if ($Preflight) {
 }
 if ($TaskProbe) {
   $argsList += "--task-probe"
+}
+if ($TaskProbePageOnly) {
+  $argsList += "--task-probe-page-only"
+}
+if ($YtdlpProbe) {
+  $argsList += "--ytdlp-probe"
 }
 if ($KeepBrowser) {
   $argsList += "--keep-browser"

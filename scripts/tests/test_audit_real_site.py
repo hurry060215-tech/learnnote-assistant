@@ -113,6 +113,36 @@ class AuditRealSiteSignalProfileTest(unittest.TestCase):
         self.assertTrue(profile["task_probe"]["ready"])
         self.assertEqual(profile["task_probe"]["task_id"], "task-ytdlp")
 
+    def test_ytdlp_probe_is_recorded_separately_from_download_readiness(self):
+        profile = audit_real_site.signal_profile(
+            context([{"url": "https://cdn.example.test/video.mp4", "kind": "video"}]),
+            None,
+            {
+                "ready": True,
+                "task": {
+                    "id": "task-generic",
+                    "status": "success",
+                    "phase": "completed",
+                    "mode": "download_only",
+                    "source_type": "current_page",
+                    "media_path": "D:/Projects/learnnote-assistant/data/tasks/task-generic/media.mp4",
+                    "download_attempts": [{"strategy": "direct-file", "status": "success"}],
+                },
+            },
+            {
+                "ready": True,
+                "extractor": "generic",
+                "id": "sample-mp4",
+                "title": "Sample MP4",
+                "webpage_url": "https://samplelib.com/sample-mp4.html",
+            },
+        )
+
+        self.assertEqual(profile["readiness"], "ready_to_download")
+        self.assertTrue(profile["ytdlp_probe"]["ready"])
+        self.assertEqual(profile["ytdlp_probe"]["extractor"], "generic")
+        self.assertEqual(profile["task_probe"]["download_strategies"], ["direct-file"])
+
     def test_task_probe_timeout_is_reported_as_task_failure(self):
         profile = audit_real_site.signal_profile(
             context([], page={"title": "YouTube lesson", "page_url": "https://www.youtube.com/watch?v=demo", "active_video": {}, "drm_detected": False}),

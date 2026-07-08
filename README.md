@@ -286,10 +286,16 @@ Use gate mode when you want the command itself to fail unless the page is actual
 .\scripts\audit-real-site.ps1 "https://example.com/video-page" -Preflight -RequireReady
 ```
 
-For yt-dlp-supported pages such as YouTube or Bilibili, use a real download-only task probe instead of only resource preflight. This proves that the current page URL fallback can actually save `media.mp4` locally:
+For yt-dlp-supported pages such as YouTube, Bilibili, or a generic extractor page, use a real download-only task probe plus a metadata-only yt-dlp probe instead of only resource preflight. This proves that the page is yt-dlp-resolvable and that the current-page workflow can save `media.mp4` locally:
 
 ```powershell
-.\scripts\audit-real-site.ps1 "https://www.youtube.com/watch?v=..." -TaskProbe -RequireReady -TaskTimeout 180
+.\scripts\audit-real-site.ps1 "https://samplelib.com/sample-mp4.html" -TaskProbe -YtdlpProbe -RequireReady -TaskTimeout 180
+```
+
+To verify the backend page fallback without using captured browser media resources, add `-TaskProbePageOnly`. This is useful when you want to test page scanning / yt-dlp fallback separately from the extension's resource ranking:
+
+```powershell
+.\scripts\audit-real-site.ps1 "https://example.com/video-page" -TaskProbe -TaskProbePageOnly -YtdlpProbe -RequireReady -TaskTimeout 180
 ```
 
 For logged-in course pages, keep a D-drive browser profile so login cookies are not stored on C by this workflow:

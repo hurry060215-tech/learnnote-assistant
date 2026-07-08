@@ -119,6 +119,24 @@ def ready_site_audit(audits: list[dict], tokens: Iterable[str] | None = None, *,
     return None
 
 
+def ytdlp_supported_audit(audits: list[dict], *, include_local: bool = False) -> dict | None:
+    for audit in audits:
+        entry = audit["entry"]
+        if not include_local and is_local_audit(entry):
+            continue
+        profile = profile_for(entry)
+        task_probe = profile.get("task_probe") or {}
+        ytdlp_probe = profile.get("ytdlp_probe") or {}
+        if (
+            profile.get("readiness") == "ready_to_download"
+            and task_probe.get("ready")
+            and ytdlp_probe.get("ready")
+            and ytdlp_probe.get("extractor")
+        ):
+            return audit
+    return None
+
+
 def learning_audit(audits: list[dict], *, include_local: bool = False) -> dict | None:
     required = {"ananas", "playurl", "objectid", "dtoken", "iframe", "cookie"}
     for audit in audits:
@@ -147,12 +165,6 @@ def site_audit_items(audits: list[dict]) -> list[ReadinessItem]:
             ["mp4", "m3u8", "hls"],
             "Run scripts/audit-real-site.ps1 <mp4-or-hls-url> -Preflight -RequireReady with the unpacked extension.",
         ),
-        (
-            "real_site_ytdlp",
-            "yt-dlp supported site audit",
-            ["youtube", "youtu.be", "bilibili", "b23.tv"],
-            "Run scripts/audit-real-site.ps1 <youtube-or-bilibili-url> -TaskProbe -RequireReady -TaskTimeout 180 to prove page URL fallback can save media.",
-        ),
     ]
     for key, title, tokens, next_step in targets:
         audit = ready_site_audit(audits, tokens)
@@ -172,6 +184,26 @@ def site_audit_items(audits: list[dict]) -> list[ReadinessItem]:
                 "No current ready_to_download live-site audit report was found in data/test-runs/site-audits.",
                 next_step=next_step,
             ))
+    ytdlp = ytdlp_supported_audit(audits)
+    if ytdlp:
+        rows.append(item(
+            "real_site_ytdlp",
+            "yt-dlp supported site audit",
+            "pass",
+            "A real-site audit has both a successful download-only task and a ready yt-dlp extractor probe.",
+            [(ytdlp["path"], "task_probe.ready and ytdlp_probe.ready are both true")],
+        ))
+    else:
+        rows.append(item(
+            "real_site_ytdlp",
+            "yt-dlp supported site audit",
+            "manual",
+            "No current real-site audit has both task_probe.ready and ytdlp_probe.ready evidence.",
+            next_step=(
+                "Run scripts/audit-real-site.ps1 <yt-dlp-supported-url> -TaskProbe -YtdlpProbe "
+                "-RequireReady -TaskTimeout 180. Use -TaskProbePageOnly to test backend page fallback without captured browser resources."
+            ),
+        ))
     chaoxing = learning_audit(audits)
     if chaoxing:
         rows.append(item(

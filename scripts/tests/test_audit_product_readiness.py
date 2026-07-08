@@ -146,6 +146,37 @@ class ProductReadinessAuditTest(unittest.TestCase):
         self.assertIsNone(audit_product_readiness.ready_site_audit([local_ready], ["mp4"]))
         self.assertIs(audit_product_readiness.ready_site_audit([local_ready], ["mp4"], include_local=True), local_ready)
 
+    def test_ytdlp_supported_audit_requires_task_and_extractor_evidence(self):
+        complete = {
+            "path": Path("audit.json"),
+            "entry": {
+                "url": "https://samplelib.com/sample-mp4.html",
+                "evidence": {
+                    "profile": {
+                        "readiness": "ready_to_download",
+                        "task_probe": {"ready": True},
+                        "ytdlp_probe": {"ready": True, "extractor": "generic"},
+                    }
+                },
+            },
+        }
+        missing_probe = {
+            "path": Path("audit.json"),
+            "entry": {
+                "url": "https://youtube.com/watch?v=demo",
+                "evidence": {
+                    "profile": {
+                        "readiness": "ready_to_download",
+                        "task_probe": {"ready": True},
+                        "ytdlp_probe": {"ready": False, "extractor": ""},
+                    }
+                },
+            },
+        }
+
+        self.assertIsNone(audit_product_readiness.ytdlp_supported_audit([missing_probe]))
+        self.assertIs(audit_product_readiness.ytdlp_supported_audit([complete]), complete)
+
 
 if __name__ == "__main__":
     unittest.main()
