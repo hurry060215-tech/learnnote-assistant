@@ -902,6 +902,7 @@ const visualDeckHtml = context.visualStudyDeck({
       frame_count: 9,
       frame_timestamps: [0, 20, 40, 60, 80],
       grid_url: "http://127.0.0.1:8765/api/tasks/demo/grids/grid_000.jpg",
+      local_summary: "本段讲解第一章概念\n- 对照 PPT 标题和公式",
       transcript_excerpt: "<script>alert(1)</script> PPT 演示"
     },
     {
@@ -926,6 +927,10 @@ assert.match(visualDeckHtml, /2 个窗口 · 00:00:00 - 00:06:00/);
 assert.match(visualDeckHtml, /导出切片索引/);
 assert.match(visualDeckHtml, /\/api\/tasks\/task-visual-deck\/exports\/visual-windows/);
 assert.match(visualDeckHtml, /src="http:\/\/127\.0\.0\.1:8765\/api\/tasks\/demo\/grids\/grid_000\.jpg"/);
+assert.match(visualDeckHtml, /class="visual-window-summary"/);
+assert.match(visualDeckHtml, /本段要点/);
+assert.match(visualDeckHtml, /本段讲解第一章概念/);
+assert.match(visualDeckHtml, /对照 PPT 标题和公式/);
 assert.match(visualDeckHtml, /学习动作/);
 assert.match(visualDeckHtml, /复述这一窗口的结论/);
 assert.match(visualDeckHtml, /回看检查点/);

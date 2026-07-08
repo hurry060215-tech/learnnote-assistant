@@ -220,6 +220,14 @@ class VisualWindow(BaseModel):
     grid_url: str
     grid_path: str = ""
     transcript_excerpt: str = ""
+    local_summary: str = ""
+    window_summary: str = ""
+    visual_summary: str = ""
+    summary: str = ""
+    learning_summary: str = ""
+    key_points: list[str] = Field(default_factory=list)
+    summary_points: list[str] = Field(default_factory=list)
+    concepts: list[str] = Field(default_factory=list)
     segments: list[TranscriptSegment] = Field(default_factory=list)
 
 

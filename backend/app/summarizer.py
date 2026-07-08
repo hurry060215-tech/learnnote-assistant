@@ -105,6 +105,25 @@ def _segments_window(transcript: TranscriptResult, start: float, end: float) -> 
     return "\n".join(lines)
 
 
+def _window_learning_points(segments: list[TranscriptSegment], frame_timestamps: list[float], limit: int = 3) -> list[str]:
+    points: list[str] = []
+    for segment in segments:
+        text = re.sub(r"\s+", " ", segment.text or "").strip(" -•\t")
+        if not text or text in points:
+            continue
+        if len(text) > 120:
+            text = text[:120].rstrip() + "..."
+        points.append(text)
+        if len(points) >= limit:
+            break
+    if points:
+        return points
+    frame_times = " / ".join(_format_ts(value) for value in frame_timestamps[:3])
+    if frame_times:
+        return [f"按 {frame_times} 这几帧核对本段画面变化。"]
+    return ["暂无同步字幕；先从截图标题、公式、代码或演示状态提炼本段主题。"]
+
+
 def build_visual_windows(transcript: TranscriptResult, grids: list[FrameGrid], excerpt_limit: int = 520) -> list[VisualWindow]:
     windows: list[VisualWindow] = []
     for index, grid in enumerate(grids, start=1):
@@ -112,6 +131,7 @@ def build_visual_windows(transcript: TranscriptResult, grids: list[FrameGrid], e
         excerpt = " ".join(f"{_format_ts(seg.start)} {seg.text}" for seg in segments)
         if len(excerpt) > excerpt_limit:
             excerpt = excerpt[:excerpt_limit].rstrip() + "..."
+        key_points = _window_learning_points(segments, grid.frame_timestamps)
         windows.append(
             VisualWindow(
                 id=f"W{index:03d}",
@@ -124,6 +144,9 @@ def build_visual_windows(transcript: TranscriptResult, grids: list[FrameGrid], e
                 grid_url=grid.url,
                 grid_path=grid.path,
                 transcript_excerpt=excerpt,
+                local_summary=key_points[0],
+                key_points=key_points,
+                summary_points=key_points,
                 segments=segments,
             )
         )

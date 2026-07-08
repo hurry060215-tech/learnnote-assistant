@@ -5170,6 +5170,14 @@ function visualWindowSummaryItems(window, transcript = null) {
   return [frameTimes ? `按 ${frameTimes} 这几帧核对本段画面变化。` : "暂无局部总结；先从截图标题、公式、代码或演示状态提炼本段主题。"];
 }
 
+function visualWindowSummaryHtml(window, transcript = null) {
+  const items = visualWindowSummaryItems(window, transcript);
+  return `<div class="visual-window-summary">
+    <span>本段要点</span>
+    <ul>${items.map(item => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+  </div>`;
+}
+
 function visualWindowCueSegments(window, transcript = null, limit = 2) {
   return (transcript?.segments || [])
     .filter(segment => segmentOverlapsWindow(segment, window))
@@ -5365,6 +5373,7 @@ function visualStudyDeck(task, transcript = null) {
             <span>窗口 ${String(index + 1).padStart(2, "0")}</span>
             <strong>${fmt(window.start)} - ${fmt(window.end)}</strong>
             <small class="visual-study-evidence ${escapeHtml(evidence.state)}">${escapeHtml(evidence.label)} · ${escapeHtml(evidence.detail)}</small>
+            ${visualWindowSummaryHtml(window, transcript)}
             ${visualStudyCueHtml(window, transcript)}
             ${visualStudyCheckpointHtml(window, transcript)}
             ${visualStudyQuestionHtml(window, transcript)}

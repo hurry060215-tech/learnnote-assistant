@@ -3096,6 +3096,9 @@ class SummaryFallbackTests(unittest.TestCase):
         self.assertEqual([segment.text for segment in windows[0].segments], ["intro", "demo steps"])
         self.assertEqual([segment.text for segment in windows[1].segments], ["recap"])
         self.assertIn("00:00:35 demo steps", windows[0].transcript_excerpt)
+        self.assertEqual(windows[0].local_summary, "intro")
+        self.assertEqual(windows[0].key_points, ["intro", "demo steps"])
+        self.assertEqual(windows[0].summary_points, ["intro", "demo steps"])
 
     def test_visual_windows_do_not_duplicate_boundary_transcript_segments(self) -> None:
         transcript = TranscriptResult(

@@ -6519,6 +6519,37 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
+.visual-window-summary {
+  display: grid;
+  gap: 7px;
+  border: 1px solid rgba(20, 150, 74, 0.22);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(236, 253, 245, 0.86), rgba(255, 255, 255, 0.96)),
+    #ffffff;
+  padding: 9px 10px;
+}
+
+.visual-window-summary span {
+  color: #08744a;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.visual-window-summary ul {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-left: 17px;
+}
+
+.visual-window-summary li {
+  color: #183a2b;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
 .visual-study-cues {
   display: grid;
   gap: 6px;
