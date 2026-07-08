@@ -1959,6 +1959,75 @@
     }
   }
 
+  function inspectRealtimeMessageData(data, source, label, responseUrl = "") {
+    try {
+      if (typeof data !== "string") return;
+      const text = data.slice(0, MAX_TEXT_BYTES);
+      if (!text || (!MEDIA_HINT_RE.test(text) && !JSON_MEDIA_KEY_RE.test(text) && !ENCODED_MEDIA_URL_RE.test(text))) return;
+      extractUrlsFromText(text, source, label, "", responseUrl);
+    } catch {
+      // Realtime message sniffing is best-effort and must not affect playback.
+    }
+  }
+
+  function patchWebSocketMessages() {
+    try {
+      const OriginalWebSocket = window.WebSocket;
+      if (typeof OriginalWebSocket !== "function" || OriginalWebSocket.__learnNotePatched) return;
+      function LearnNoteWebSocket(...args) {
+        const socket = new OriginalWebSocket(...args);
+        const endpoint = normalizeUrl(args[0] || "");
+        try {
+          socket.addEventListener?.("message", event => {
+            inspectRealtimeMessageData(event?.data, "pageHookWebSocket", "websocket message", endpoint);
+          });
+        } catch {
+          // Some WebSocket wrappers do not expose EventTarget methods.
+        }
+        return socket;
+      }
+      try {
+        Object.setPrototypeOf(LearnNoteWebSocket, OriginalWebSocket);
+        LearnNoteWebSocket.prototype = OriginalWebSocket.prototype;
+      } catch {
+        // Static constants are inherited only when the runtime allows prototype changes.
+      }
+      Object.defineProperty(LearnNoteWebSocket, "__learnNotePatched", { value: true });
+      window.WebSocket = LearnNoteWebSocket;
+    } catch {
+      // Locked or cross-realm constructors should not block other hooks.
+    }
+  }
+
+  function patchEventSourceMessages() {
+    try {
+      const OriginalEventSource = window.EventSource;
+      if (typeof OriginalEventSource !== "function" || OriginalEventSource.__learnNotePatched) return;
+      function LearnNoteEventSource(...args) {
+        const source = new OriginalEventSource(...args);
+        const endpoint = normalizeUrl(args[0] || "");
+        try {
+          source.addEventListener?.("message", event => {
+            inspectRealtimeMessageData(event?.data, "pageHookEventSource", "eventsource message", endpoint);
+          });
+        } catch {
+          // Some EventSource wrappers do not expose EventTarget methods.
+        }
+        return source;
+      }
+      try {
+        Object.setPrototypeOf(LearnNoteEventSource, OriginalEventSource);
+        LearnNoteEventSource.prototype = OriginalEventSource.prototype;
+      } catch {
+        // A plain wrapper still preserves normal constructor behavior.
+      }
+      Object.defineProperty(LearnNoteEventSource, "__learnNotePatched", { value: true });
+      window.EventSource = LearnNoteEventSource;
+    } catch {
+      // Locked or missing EventSource constructors are safe to ignore.
+    }
+  }
+
   function shouldInspectResponse(response, fallbackUrl = "") {
     const type = response.headers?.get?.("content-type") || "";
     const length = Number(response.headers?.get?.("content-length") || 0);
@@ -2516,6 +2585,8 @@
   installEmeDetection();
   patchHtmlMediaElement();
   patchKnownPlayerLibraries();
+  patchWebSocketMessages();
+  patchEventSourceMessages();
   installLateGlobalConfigWatchers();
   installLatePlayerGlobalWatchers();
   scanGlobalConfig();
