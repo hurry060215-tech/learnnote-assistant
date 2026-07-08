@@ -129,10 +129,13 @@ if (Test-Any @("extension/sidepanel.js", "extension/sidepanel.css", "extension/s
     "extension\tests\sidepanel_preflight_start.test.mjs",
     "extension\tests\sidepanel_preflight_fallback.test.mjs",
     "extension\tests\sidepanel_page_preflight_continues_queue.test.mjs",
+    "extension\tests\sidepanel_start_page_preflight_report.test.mjs",
     "extension\tests\sidepanel_direct_response_preflight.test.mjs",
     "extension\tests\sidepanel_download_only.test.mjs",
     "extension\tests\sidepanel_local_upload.test.mjs",
     "extension\tests\sidepanel_run_preflight_blob_fallback.test.mjs",
+    "extension\tests\sidepanel_source_switcher.test.mjs",
+    "extension\tests\sidepanel_slices_tab.test.mjs",
     "extension\tests\sidepanel_markdown.test.mjs"
   )) {
     Invoke-Step $test { node $test }
@@ -158,6 +161,7 @@ if (Test-Any @("extension/content.js", "extension/page_hook.js", "extension/test
 if (Test-Any @("web/*.js", "web/*.css", "web/*.html")) {
   $ran = $true
   Invoke-Step "Web UI syntax" { node --check web\app.js }
+  Invoke-Step "Web UI render tests" { node web\tests\markdown_render.test.mjs }
 }
 
 Invoke-Step "Whitespace check" { git diff --check }

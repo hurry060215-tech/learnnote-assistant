@@ -73,6 +73,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - Playback-aware candidate ranking: the Side Panel boosts exact current `<video>` sources, same-frame media requests, recoverable Blob/ArrayBuffer/ReadableStream/MediaSource source mappings, and recent requests from Blob/MSE-backed players before starting a task.
 - DRM-aware failure boundary: if a page triggers EME/DRM signals and exposes no downloadable mp4/FLV/HLS/DASH candidate, the task fails early as `drm_or_encrypted` and keeps the key-system/init-data evidence in diagnostics.
 - Recoverable fragment URLs such as `.../master.m3u8/segment.ts` or `.../manifest.mpd/chunk.m4s` are promoted to inferred manifest candidates.
+- Plain `.ts` / `.m4s` fragment clues near the current playback can also trigger a sibling manifest preflight (`master.m3u8`, `index.m3u8`, `manifest.mpd`, etc.) before the app gives up on direct extraction.
 - Subtitle discovery from `<track>` elements, Performance entries, and `webRequest`.
 - Direct video download for exposed MP4/FLV/WebM/MOV/MKV URLs.
 - HLS/DASH manifest download through ffmpeg when a manifest URL is visible.
@@ -210,6 +211,6 @@ node --check web\app.js
 ## Boundaries
 
 - `blob:` URLs without an underlying `.m3u8`, `.mpd`, video file request, or recoverable fetch/XHR Blob/ArrayBuffer/ReadableStream/MediaSource source mapping are reported as `drm_or_encrypted`.
-- Fragment URLs such as isolated `.m4s` or `.ts` segments are not downloaded unless a manifest is also detected.
+- Fragment URLs such as isolated `.m4s` or `.ts` segments are not downloaded by themselves; they are used only to infer or preflight a real HLS/DASH manifest.
 - The Learning Tong / Chaoxing first pass is deliberately lightweight: it relies on media URLs exposed to the browser and cookies from your active session.
 - If a course page uses DRM/EME or never exposes a media manifest/video URL to the browser, the app reports a failure and asks you to use the local upload path.
