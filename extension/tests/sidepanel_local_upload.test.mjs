@@ -182,6 +182,8 @@ assert.match(sidepanelHtml, /选择本地视频/);
 assert.match(sidepanelHtml, /抽帧网格 \+ 时间窗/);
 assert.match(sidepanelCss, /\.capture-cockpit/);
 assert.match(sidepanelCss, /Compact Side Panel workbench/);
+assert.match(sidepanelCss, /preserving the direct-extraction promise/);
+assert.doesNotMatch(sidepanelCss, /\.current-card \.source-route-rail,\s*\.current-card \.capture-cockpit,\s*\.current-card \.mode-row \{\s*display: none;/);
 assert.match(sidepanelCss, /\.current-card #currentStudyCard \{\s*order: 3;/);
 assert.match(sidepanelCss, /\.current-card \.capture-cockpit \{\s*order: 6;/);
 assert.match(sidepanelCss, /\.local-video-card/);

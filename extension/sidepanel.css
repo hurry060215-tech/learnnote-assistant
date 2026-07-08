@@ -9389,16 +9389,15 @@ body {
   }
 }
 
-/* Audit gate 2026-07-08: keep the extension side panel action-first. */
+/* Audit gate 2026-07-08: keep the extension side panel action-first while preserving the direct-extraction promise. */
 .current-card .source-route-rail,
-.current-card .capture-cockpit,
 .current-card .mode-row {
   display: none;
 }
 
 .current-card {
-  gap: 9px;
-  padding: 12px;
+  gap: 7px;
+  padding: 10px;
 }
 
 .current-card .source-switcher {
@@ -9428,6 +9427,48 @@ body {
   padding-top: 2px;
 }
 
+.current-card .capture-cockpit {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr auto;
+  gap: 4px;
+  align-items: stretch;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 4px;
+}
+
+.current-card .capture-cockpit section {
+  min-height: 30px;
+  grid-template-columns: 15px minmax(0, 1fr);
+  gap: 1px 4px;
+  border-color: #e0e8f3;
+  background: #f8fbff;
+  padding: 4px;
+}
+
+.current-card .capture-cockpit b {
+  width: 15px;
+  height: 15px;
+  border-radius: 4px;
+  font-size: 8px;
+}
+
+.current-card .capture-cockpit span {
+  align-self: center;
+  font-size: 9.5px;
+}
+
+.current-card .capture-cockpit small {
+  display: none;
+}
+
+.current-card .capture-cockpit em {
+  min-width: 30px;
+  min-height: 30px;
+  border-radius: 6px;
+  font-size: 8.5px;
+}
+
 .current-card .playback-card,
 .current-card .playback-readiness,
 .current-card .study-workbench,
@@ -9436,10 +9477,19 @@ body {
   box-shadow: none;
 }
 
+.current-card .study-workbench {
+  gap: 6px;
+  padding: 8px;
+}
+
 .current-card .playback-readiness-grid,
 .current-card .workbench-audit-grid,
 .current-card .workbench-slice-plan,
 .current-card .workbench-steps {
+  display: none;
+}
+
+.current-card .workbench-audit-gate {
   display: none;
 }
 
@@ -9459,13 +9509,25 @@ body {
 }
 
 .actions {
-  gap: 6px;
-  padding: 6px;
+  grid-template-columns: 1.2fr 1.2fr minmax(74px, 0.9fr);
+  gap: 5px;
+  padding: 5px;
 }
 
 .actions button {
   border-radius: 8px;
   box-shadow: none;
+  min-height: 30px;
+  height: 30px;
+  padding: 0 6px;
+  font-size: 10px;
+}
+
+.actions .primary {
+  grid-column: span 2;
+  min-height: 32px;
+  height: 32px;
+  font-size: 11px;
 }
 
 .resource-panel .direct-flow,
@@ -9519,4 +9581,23 @@ body {
   height: 20px;
   padding: 0 5px;
   font-size: 9.5px;
+}
+
+@media (max-width: 380px) {
+  .current-card .capture-cockpit {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .current-card .capture-cockpit em {
+    min-height: 26px;
+    writing-mode: horizontal-tb;
+  }
+
+  .actions {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .actions .primary {
+    grid-column: 1 / -1;
+  }
 }
