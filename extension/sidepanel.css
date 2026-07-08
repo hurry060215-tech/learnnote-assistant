@@ -4885,6 +4885,236 @@ input[type="file"] {
   background: #eaf2ff;
 }
 
+.visual-study-handout {
+  display: grid;
+  gap: 9px;
+  border: 1px solid #dbe7f6;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 10px;
+}
+
+.visual-study-handout header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.visual-study-handout header div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.visual-study-handout header span {
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.visual-study-handout header strong {
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.visual-study-handout header small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 850;
+  line-height: 1.35;
+  text-align: right;
+}
+
+.visual-study-handout-list {
+  display: grid;
+  gap: 8px;
+}
+
+.visual-study-handout article {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 8px;
+  border: 1px solid #dbe7f6;
+  border-radius: 8px;
+  background: #f8fbff;
+  padding: 8px;
+}
+
+.visual-study-handout article.vision {
+  border-color: rgba(20, 150, 74, 0.24);
+  background: linear-gradient(180deg, #f5fcf7, #ffffff);
+}
+
+.visual-study-handout article.missing,
+.visual-study-handout article.omitted {
+  border-color: rgba(196, 122, 5, 0.28);
+  background: linear-gradient(180deg, #fff8eb, #ffffff);
+}
+
+.visual-study-handout-time {
+  display: grid;
+  align-content: start;
+  gap: 5px;
+}
+
+.visual-study-handout-time b {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.visual-study-handout-time time {
+  color: var(--ink);
+  font-size: 10px;
+  font-weight: 850;
+  line-height: 1.35;
+}
+
+.visual-study-handout-time em {
+  width: fit-content;
+  border-radius: 6px;
+  background: #eef5ff;
+  color: var(--accent);
+  padding: 3px 5px;
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.visual-study-handout-body {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+}
+
+.visual-study-handout-title {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.visual-study-handout-title strong {
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.visual-study-handout-title small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 760;
+  line-height: 1.35;
+}
+
+.visual-study-handout figure {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+}
+
+.visual-study-handout img {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border: 1px solid #dbe7f6;
+  border-radius: 7px;
+  background: #111827;
+}
+
+.visual-study-handout figcaption {
+  color: var(--muted);
+  font-size: 9.5px;
+  font-weight: 800;
+}
+
+.visual-study-handout ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 15px;
+}
+
+.visual-study-handout li {
+  color: #25324a;
+  font-size: 11px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.visual-study-handout-cues {
+  display: grid;
+  gap: 5px;
+}
+
+.visual-study-handout-cues p {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px;
+  align-items: start;
+  margin: 0;
+  color: #25324a;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.visual-study-handout-cues span {
+  overflow-wrap: anywhere;
+}
+
+.visual-study-handout-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.visual-study-handout-actions button,
+.visual-study-handout-actions a {
+  min-height: 26px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #c9d9ff;
+  border-radius: 7px;
+  background: #f2f6ff;
+  color: var(--accent);
+  padding: 0 8px;
+  font-size: 10px;
+  font-weight: 850;
+  text-decoration: none;
+}
+
+.visual-study-handout footer {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+@media (max-width: 420px) {
+  .visual-study-handout header {
+    display: grid;
+  }
+
+  .visual-study-handout header small {
+    text-align: left;
+  }
+
+  .visual-study-handout article {
+    grid-template-columns: 1fr;
+  }
+
+  .visual-study-handout-time {
+    grid-template-columns: auto auto 1fr;
+    align-items: center;
+  }
+
+  .visual-study-handout-time em {
+    justify-self: start;
+  }
+}
+
 .side-slice-pending {
   display: grid;
   gap: 10px;

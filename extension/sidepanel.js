@@ -6342,6 +6342,68 @@ function sideVisualWindowSummaryHtml(window, transcript = null) {
   </div>`;
 }
 
+function visualWindowCueSegments(window, transcript = null, limit = 2) {
+  return (transcript?.segments || [])
+    .filter(segment => segmentOverlapsWindow(segment, window))
+    .slice(0, limit)
+    .map(segment => ({
+      start: Number(segment.start || 0),
+      text: String(segment.text || "").replace(/\s+/g, " ").trim()
+    }))
+    .filter(item => item.text);
+}
+
+function visualStudyHandoutHtml(task, transcript = null) {
+  const windows = visualWindows(task);
+  if (!windows.length) return "";
+  const shown = windows.slice(0, 8);
+  const remaining = Math.max(0, windows.length - shown.length);
+  const title = displayTaskTitle(task, "切片讲义");
+  return `<section class="visual-study-handout" aria-label="切片讲义时间轴">
+    <header>
+      <div>
+        <span>切片讲义时间轴</span>
+        <strong>${escapeHtml(title)}</strong>
+      </div>
+      <small>画面-字幕-总结对齐</small>
+    </header>
+    <div class="visual-study-handout-list">
+      ${shown.map((window, index) => {
+        const id = String(window.id || `W${String(index + 1).padStart(3, "0")}`);
+        const image = safeNoteMediaUrl(window.grid_url || "");
+        const evidence = visualWindowEvidenceState(task, window, index);
+        const points = visualWindowSummaryItems(window, transcript).slice(0, 2);
+        const cues = visualWindowCueSegments(window, transcript, 2);
+        const cueHtml = cues.length
+          ? cues.map(cue => `<p>${seekTimeButton(cue.start, "side-window-seek")}<span>${escapeHtml(cue.text.length > 110 ? `${cue.text.slice(0, 110).trim()}...` : cue.text)}</span></p>`).join("")
+          : `<p><span>${escapeHtml(String(window.transcript_excerpt || "暂无字幕线索；先看截图中的标题、公式、代码或演示状态。").replace(/\s+/g, " ").trim())}</span></p>`;
+        return `<article class="${escapeHtml(evidence.state)}" data-visual-window="${escapeHtml(id)}" data-window-start="${seekTimeValue(window.start)}">
+          <div class="visual-study-handout-time">
+            <b>${escapeHtml(id)}</b>
+            <time>${fmt(window.start)} - ${fmt(window.end)}</time>
+            <em>${escapeHtml(evidence.label)}</em>
+          </div>
+          <div class="visual-study-handout-body">
+            <div class="visual-study-handout-title">
+              <strong>${escapeHtml(points[0] || "先核对本段画面变化")}</strong>
+              <small>${escapeHtml(evidence.detail)} · ${Number(window.frame_count || 0)} 帧</small>
+            </div>
+            ${image ? `<figure><img src="${image}" alt="${escapeHtml(id)} frame grid"><figcaption>${escapeHtml(frameTimestampText(window) || "截图网格")}</figcaption></figure>` : ""}
+            ${points.length > 1 ? `<ul>${points.slice(1).map(point => `<li>${escapeHtml(point)}</li>`).join("")}</ul>` : ""}
+            <div class="visual-study-handout-cues">${cueHtml}</div>
+            <div class="visual-study-handout-actions">
+              <button type="button" data-media-seek-time="${seekTimeValue(window.start)}">回看</button>
+              <button type="button" data-switch-result-tab="transcript">字幕</button>
+              ${image ? `<a href="${escapeHtml(image)}" target="_blank" rel="noreferrer">网格</a>` : ""}
+            </div>
+          </div>
+        </article>`;
+      }).join("")}
+    </div>
+    ${remaining ? `<footer>还有 ${remaining} 个窗口；导出切片索引可查看完整列表。</footer>` : ""}
+  </section>`;
+}
+
 function visualWindowEvidenceState(task, window, index = 0) {
   const diag = task?.summary_diagnostics || {};
   const id = String(window?.id || `W${String(index + 1).padStart(3, "0")}`);
@@ -6437,6 +6499,7 @@ function visualStudyDeck(task, transcript = null) {
       </div>
     </div>
     ${visualStudyOverviewHtml(task, transcript)}
+    ${visualStudyHandoutHtml(task, transcript)}
     <div class="side-visual-study-list">
       ${windows.slice(0, 8).map((window, index) => {
         const image = safeNoteMediaUrl(window.grid_url || "");
