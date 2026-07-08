@@ -1151,6 +1151,27 @@ context.fetch = async url => {
             download: { successful_attempt_count: 0, failed_attempt_count: 1, strategy_order: ["manifest-ffmpeg"] },
             processing: { note_ready: false, transcript_ready: false, frame_grid_count: 0, visual_window_count: 0 }
           },
+          recovery: {
+            chaoxing_profile: {
+              detected: true,
+              has_ananas_candidate: true,
+              has_objectid: true,
+              has_dtoken: false,
+              has_replay_body: true,
+              has_referer: true,
+              has_origin: true,
+              has_x_requested_with: true,
+              has_iframe_context: true,
+              cookie_domain_count: 2,
+              cookie_count: 7,
+              partitioned_cookie_count: 1,
+              partition_key_count: 1,
+              safe_request_header_names: ["Origin", "Referer", "X-Requested-With"],
+              candidate_kinds: ["hls", "video"],
+              likely_issue: "anti_hotlink_or_expired_signature",
+              page_preflight: { present: true, candidate_count: 3, probed_count: 2, downloadable_count: 0 }
+            }
+          },
           download_attempts: [
             {
               strategy: "manifest-ffmpeg",
@@ -1173,6 +1194,11 @@ await context.renderDetail();
 const diagnosticsEvidenceHtml = elements.get("#detail").innerHTML;
 assert.match(diagnosticsEvidenceHtml, /class="task-browser-evidence"/);
 assert.match(diagnosticsEvidenceHtml, /浏览器播放证据/);
+assert.match(diagnosticsEvidenceHtml, /class="chaoxing-profile"/);
+assert.match(diagnosticsEvidenceHtml, /学习通证据/);
+assert.match(diagnosticsEvidenceHtml, /anti_hotlink_or_expired_signature/);
+assert.match(diagnosticsEvidenceHtml, /Origin, Referer, X-Requested-With/);
+assert.match(diagnosticsEvidenceHtml, /不录制、不刷课、不伪造进度、不自动答题/);
 assert.match(diagnosticsEvidenceHtml, /class="direct-extraction-evidence"/);
 assert.match(diagnosticsEvidenceHtml, /非录制下载路线/);
 assert.match(diagnosticsEvidenceHtml, /直取和总结证据/);
