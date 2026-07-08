@@ -104,6 +104,15 @@ This project intentionally does **not** record the browser tab and does **not** 
 
 ## Quick Start
 
+Run the local readiness check first. It does not install anything or contact external services; it verifies the D-drive project path, Python venv, backend imports, ffmpeg, yt-dlp, optional ASR, Chrome/Edge, extension manifest, sample scripts, and model-key status:
+
+```powershell
+cd D:\Projects\learnnote-assistant
+.\scripts\doctor.ps1
+```
+
+`PASS` means the base local workflow can run. `WARN` marks optional capability gaps such as missing `faster-whisper` or no multimodal API key. `FAIL` gives the command or path to fix before starting the backend.
+
 ```powershell
 cd D:\Projects\learnnote-assistant
 .\start-backend.ps1
@@ -200,6 +209,7 @@ To install the optional local ASR dependency into the D-drive project venv:
 ```powershell
 cd D:\Projects\learnnote-assistant
 .\start-backend.ps1 -InstallAsr
+.\scripts\doctor.ps1
 ```
 
 You can override the Python used to create the venv without changing where project dependencies and task data are stored:
