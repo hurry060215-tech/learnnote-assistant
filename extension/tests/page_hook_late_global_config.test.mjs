@@ -53,16 +53,34 @@ context.__lessonPlayerConfig = JSON.stringify({
   }
 });
 
+context.__playinfo__ = {
+  data: {
+    dash: {
+      video: [{ baseUrl: "https://cdn.example.com/late-config/bili-video.m4s?token=global" }],
+      audio: [{ baseUrl: "https://cdn.example.com/late-config/bili-audio.m4s?token=global" }]
+    },
+    hls: {
+      m3u8Url: "https://cdn.example.com/late-config/bili-master.m3u8?token=global"
+    }
+  }
+};
+
 const resources = messages.flatMap(message => message.resources || []);
 const urls = new Set(resources.map(resource => resource.url));
 
 assert.ok(urls.has("https://course.example.com/late-config/master.m3u8?token=global"));
 assert.ok(urls.has("https://cdn.example.com/late-config/lesson.mp4?token=global"));
 assert.ok(urls.has("https://cdn.example.com/late-config/manifest.mpd?token=global"));
+assert.ok(urls.has("https://cdn.example.com/late-config/bili-master.m3u8?token=global"));
+assert.ok(urls.has("https://cdn.example.com/late-config/bili-video.m4s?token=global"));
+assert.ok(urls.has("https://cdn.example.com/late-config/bili-audio.m4s?token=global"));
 
 const hls = resources.find(resource => resource.url.endsWith("/late-config/master.m3u8?token=global"));
 const video = resources.find(resource => resource.url.endsWith("/late-config/lesson.mp4?token=global"));
 const dash = resources.find(resource => resource.url.endsWith("/late-config/manifest.mpd?token=global"));
+const biliHls = resources.find(resource => resource.url.endsWith("/late-config/bili-master.m3u8?token=global"));
+const biliVideo = resources.find(resource => resource.url.endsWith("/late-config/bili-video.m4s?token=global"));
+const biliAudio = resources.find(resource => resource.url.endsWith("/late-config/bili-audio.m4s?token=global"));
 
 assert.equal(hls.source, "pageHookGlobal");
 assert.equal(hls.kind, "hls");
@@ -71,3 +89,10 @@ assert.equal(video.source, "pageHookGlobal");
 assert.equal(video.kind, "video");
 assert.equal(dash.source, "pageHookGlobal");
 assert.equal(dash.kind, "dash");
+assert.equal(biliHls.source, "pageHookGlobal");
+assert.equal(biliHls.kind, "hls");
+assert.match(biliHls.label, /global __playinfo__/);
+assert.equal(biliVideo.source, "pageHookGlobal");
+assert.equal(biliVideo.kind, "fragment");
+assert.equal(biliAudio.source, "pageHookGlobal");
+assert.equal(biliAudio.kind, "fragment");

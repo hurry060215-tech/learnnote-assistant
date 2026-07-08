@@ -13,9 +13,18 @@
   const GLOBAL_MEDIA_NAME_RE = /(^__.*(play|player|media|video|audio|stream|hls|dash|m3u8|mpd))|((play|player|media|video|audio|stream|hls|dash|m3u8|mpd).*(config|info|data|url|source|sources|list)$)/i;
   const GLOBAL_MEDIA_KEYS = [
     "__playInfo",
+    "__playInfo__",
+    "__playinfo",
+    "__playinfo__",
+    "__PLAYINFO__",
     "__playerConfig",
+    "__playerConfig__",
+    "__PLAYER_CONFIG__",
+    "__player_config__",
     "__videoInfo",
+    "__videoInfo__",
     "__videoData",
+    "__videoData__",
     "__audioInfo",
     "__INITIAL_STATE__",
     "__NEXT_DATA__",
