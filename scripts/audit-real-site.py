@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.parse
 from datetime import datetime
 from pathlib import Path
 
@@ -28,6 +29,24 @@ def load_helpers():
 helpers = load_helpers()
 
 
+def redact_url(value: str) -> str:
+    text = str(value or "")
+    if not text:
+        return ""
+    if text.startswith("blob:http://") or text.startswith("blob:https://"):
+        return f"blob:{redact_url(text[5:])}"
+    try:
+        parsed = urllib.parse.urlsplit(text)
+    except ValueError:
+        return text
+    if parsed.scheme not in {"http", "https"}:
+        return text
+    query = urllib.parse.parse_qsl(parsed.query, keep_blank_values=True)
+    redacted_query = urllib.parse.urlencode([(key, "<redacted>") for key, _ in query])
+    fragment = "<redacted>" if parsed.fragment else ""
+    return urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, parsed.path, redacted_query, fragment))
+
+
 def compact_url(value: str, limit: int = 120) -> str:
     text = str(value or "")
     if len(text) <= limit:
@@ -36,23 +55,125 @@ def compact_url(value: str, limit: int = 120) -> str:
     return f"{text[:keep]}...{text[-keep:]}"
 
 
+def request_body_evidence(body: dict | None) -> dict:
+    body = body or {}
+    content = str(body.get("content") or "")
+    content_type = str(body.get("type") or "")
+    keys: list[str] = []
+    if content:
+        if content_type == "json":
+            try:
+                payload = json.loads(content)
+                if isinstance(payload, dict):
+                    keys = sorted(str(key) for key in payload.keys())
+            except json.JSONDecodeError:
+                keys = []
+        if not keys:
+            keys = sorted({key for key, _ in urllib.parse.parse_qsl(content, keep_blank_values=True)})
+    lower = content.lower()
+    return {
+        "present": bool(content),
+        "type": content_type,
+        "length": len(content),
+        "field_names": keys[:20],
+        "has_objectid": "objectid" in lower,
+        "has_dtoken": "dtoken" in lower,
+        "has_playurl": "playurl" in lower or "play_url" in lower,
+    }
+
+
+def safe_header_names(headers: dict | None) -> list[str]:
+    return sorted(
+        name for name in (headers or {}).keys()
+        if "cookie" not in name.lower() and "authorization" not in name.lower()
+    )
+
+
+def sanitize_header_values(headers: dict | None) -> dict:
+    clean = {}
+    for name, value in (headers or {}).items():
+        lower = str(name).lower()
+        if "cookie" in lower or "authorization" in lower:
+            continue
+        if lower in {"referer", "referrer", "origin", "location"}:
+            clean[name] = redact_url(str(value or ""))
+        elif isinstance(value, str) and value.startswith(("http://", "https://", "blob:http://", "blob:https://")):
+            clean[name] = redact_url(value)
+        else:
+            clean[name] = value
+    return clean
+
+
 def resource_summary(resources: list[dict], limit: int = 12) -> list[dict]:
     rows: list[dict] = []
     for item in resources[:limit]:
         body = item.get("request_body") or {}
         headers = item.get("request_headers") or {}
-        safe_header_names = sorted(name for name in headers.keys() if "cookie" not in name.lower() and "authorization" not in name.lower())
         rows.append({
             "kind": item.get("kind") or "",
             "source": item.get("source") or "",
             "method": item.get("method") or "GET",
             "request_type": item.get("request_type") or "",
             "has_body": bool(body.get("content")),
-            "frame_url": item.get("frame_url") or "",
-            "safe_headers": safe_header_names,
-            "url": item.get("url") or "",
+            "body": request_body_evidence(body),
+            "frame_url": redact_url(item.get("frame_url") or ""),
+            "safe_headers": safe_header_names(headers),
+            "url": redact_url(item.get("url") or ""),
         })
     return rows
+
+
+def sanitize_context(context: dict) -> dict:
+    page = context.get("page") or {}
+    active = page.get("active_video") or {}
+    return {
+        "tab": {
+            "id": (context.get("tab") or {}).get("id"),
+            "url": redact_url((context.get("tab") or {}).get("url") or ""),
+            "title": (context.get("tab") or {}).get("title") or "",
+            "status": (context.get("tab") or {}).get("status") or "",
+        },
+        "page": {
+            "title": page.get("title") or "",
+            "page_url": redact_url(page.get("page_url") or ""),
+            "drm_detected": bool(page.get("drm_detected")),
+            "browser_subtitle_count": page.get("browser_subtitle_count") or 0,
+            "active_video": {
+                **active,
+                "src": redact_url(active.get("src") or ""),
+                "frame_url": redact_url(active.get("frame_url") or ""),
+            } if active else {},
+        },
+        "captured_count": int(context.get("captured_count") or 0),
+        "cookie_count": int(context.get("cookie_count") or 0),
+        "resource_count": len(context.get("resources") or []),
+        "resources": resource_summary(context.get("resources") or [], limit=30),
+    }
+
+
+def sanitize_json(value):
+    if isinstance(value, dict):
+        if "request_body" in value:
+            value = {**value, "request_body": request_body_evidence(value.get("request_body"))}
+        clean = {}
+        for key, item in value.items():
+            lower = str(key).lower()
+            if lower in {"cookies", "cookie"}:
+                clean[key] = f"{len(item) if isinstance(item, list) else 0} cookie(s) redacted"
+            elif lower in {"headers", "request_headers", "response_headers"} and isinstance(item, dict):
+                clean[key] = sanitize_header_values(item)
+            elif lower in {"url", "resolved_url", "frame_url", "page_url", "blob_url", "audio_url", "final_url", "src"}:
+                clean[key] = redact_url(str(item or ""))
+            elif "authorization" in lower or lower == "cookie":
+                clean[key] = "<redacted>"
+            else:
+                clean[key] = sanitize_json(item)
+        return clean
+    if isinstance(value, list):
+        return [sanitize_json(item) for item in value]
+    if isinstance(value, str) and value.startswith(("http://", "https://", "blob:http://", "blob:https://")):
+        return redact_url(value)
+    return value
 
 
 def evidence_model(context: dict, preflight: dict | None = None) -> dict:
@@ -140,11 +261,11 @@ def markdown_report(audits: list[dict], backend: str) -> str:
         lines.extend([
             f"## {tab.get('title') or page.get('title') or audit['url']}",
             "",
-            f"- URL: {audit['url']}",
+            f"- URL: {redact_url(audit['url'])}",
             f"- Final tab URL: {tab.get('url') or '-'}",
             f"- Cookies visible: {context.get('cookie_count', 0)}",
             f"- Captured requests: {context.get('captured_count', 0)}",
-            f"- Ranked resources: {len(context.get('resources') or [])}",
+            f"- Ranked resources: {context.get('resource_count', len(context.get('resources') or []))}",
             f"- Active video: `{json.dumps(page.get('active_video') or {}, ensure_ascii=False)[:500]}`",
             f"- DRM detected: {'yes' if page.get('drm_detected') else 'no'}",
             f"- Chaoxing-like evidence: {'yes' if evidence['chaoxing_like'] else 'no'}",
@@ -272,10 +393,12 @@ def main() -> None:
             if args.preflight:
                 preflight_payload = preflight_current_page(cdp, backend, tab_ids[url], context.get("resources") or [], args.probe_limit)
             evidence = evidence_model(context, preflight_payload.get("report") if preflight_payload else None)
+            safe_context = sanitize_context(context)
+            safe_preflight = sanitize_json(preflight_payload) if preflight_payload else None
             audits.append({
-                "url": url,
-                "context": context,
-                "preflight": preflight_payload,
+                "url": redact_url(url),
+                "context": safe_context,
+                "preflight": safe_preflight,
                 "evidence": evidence,
             })
             print(f"AUDIT {url}: resources={len(context.get('resources') or [])} cookies={context.get('cookie_count', 0)} missing={','.join(evidence['missing']) or '-'}")

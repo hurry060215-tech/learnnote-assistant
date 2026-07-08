@@ -213,7 +213,7 @@ For real sites, use the same evidence model instead of a site-specific assumptio
 - If the page uses a player API, the Side Panel diagnostics should show `播放 API`, `POST/body`, `Referer`, `Origin`, `XHR`, `iframe`, Cookie count, and preflight status when those signals are available.
 - If the page only exposes DRM/EME, unrecoverable `blob:`, or `MediaStream/srcObject`, the app should fail clearly and point to local upload instead of recording the tab.
 
-Use the real-site audit script when checking YouTube/B站/学习通 or any other live site. It launches Chrome/Edge with the unpacked extension, starts the local backend, collects the same browser evidence as the Side Panel, optionally runs cookie-aware backend preflight, and writes `audit.md` / `audit.json` under `data\test-runs\site-audits`:
+Use the real-site audit script when checking YouTube/B站/学习通 or any other live site. It launches Chrome/Edge with the unpacked extension, starts the local backend, collects the same browser evidence as the Side Panel, optionally runs cookie-aware backend preflight, and writes redacted `audit.md` / `audit.json` reports under `data\test-runs\site-audits`:
 
 ```powershell
 cd D:\Projects\learnnote-assistant
@@ -229,7 +229,7 @@ cd D:\Projects\learnnote-assistant
   -InteractiveLogin -Preflight -KeepBrowser
 ```
 
-When the browser opens, log in if needed, play the target video for a few seconds, then return to the terminal and press Enter. The report should show whether the generic chain is complete: browser playback evidence, auth/cookie context, replayable API body or direct media URL, and download preflight.
+When the browser opens, log in if needed, play the target video for a few seconds, then return to the terminal and press Enter. The report should show whether the generic chain is complete: browser playback evidence, auth/cookie context, replayable API body or direct media URL, and download preflight. Reports keep only evidence summaries: Cookie/Authorization values are not written, POST body content is replaced with field names and evidence flags, and URL query values are redacted.
 
 ## Local Storage On D
 
