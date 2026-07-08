@@ -79,6 +79,8 @@ class ResourceDetectionTests(unittest.TestCase):
         self.assertEqual(classify_resource("https://cdn.example.com/video.mp4"), "video")
         self.assertEqual(classify_resource("https://cdn.example.com/live/lesson.flv?token=abc"), "video")
         self.assertEqual(classify_resource("https://cdn.example.com/archive/lesson.avi?token=abc"), "video")
+        self.assertEqual(classify_resource("https://cdn.example.com/play?id=42", "application/mp4"), "video")
+        self.assertEqual(classify_resource("https://cdn.example.com/audio?id=42", "application/ogg"), "audio")
         self.assertEqual(classify_resource("https://cdn.example.com/index.m3u8"), "hls")
         self.assertEqual(classify_resource("https://cdn.example.com/manifest.mpd"), "dash")
         self.assertEqual(classify_resource("blob:https://example.com/abc"), "blob")

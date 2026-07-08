@@ -1369,9 +1369,9 @@ def classify_resource(url: str, mime: str = "") -> str:
         return "hls"
     if "dash+xml" in mime_lower or ".mpd" in lowered:
         return "dash"
-    if "audio/" in mime_lower or AUDIO_EXT_RE.search(lowered):
+    if "audio/" in mime_lower or "application/ogg" in mime_lower or AUDIO_EXT_RE.search(lowered):
         return "audio"
-    if "video/" in mime_lower or MEDIA_EXT_RE.search(lowered):
+    if "video/" in mime_lower or "application/mp4" in mime_lower or MEDIA_EXT_RE.search(lowered):
         return "video"
     if "text/vtt" in mime_lower or "subrip" in mime_lower or SUBTITLE_EXT_RE.search(lowered):
         return "subtitle"

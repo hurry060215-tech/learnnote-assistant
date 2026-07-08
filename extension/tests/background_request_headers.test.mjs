@@ -141,6 +141,13 @@ assert.equal(
 );
 assert.equal(
   context.classifyCompletedRequest({
+    url: "https://cdn.example.com/play?id=application-mp4",
+    type: "fetch"
+  }, "application/mp4"),
+  "video"
+);
+assert.equal(
+  context.classifyCompletedRequest({
     url: "https://mooc1.chaoxing.com/ananas/status/objectid-123?flag=normal",
     type: "xmlhttprequest"
   }, "application/json"),

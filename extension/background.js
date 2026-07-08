@@ -51,16 +51,27 @@ const REQUEST_HEADER_CANONICAL = {
 };
 const PERSISTED_REQUEST_HEADER_DENYLIST = new Set(["authorization", "cookie", "proxy-authorization"]);
 
+function mediaKindFromMime(mime = "") {
+  const type = String(mime || "").toLowerCase();
+  if (type.includes("mpegurl") || type.includes("application/x-mpegurl")) return "hls";
+  if (type.includes("dash+xml")) return "dash";
+  if (type.includes("video/") || type.includes("application/mp4")) return "video";
+  if (type.includes("audio/") || type.includes("application/ogg")) return "audio";
+  if (type.includes("text/vtt") || type.includes("subrip")) return "subtitle";
+  return "unknown";
+}
+
 function classify(url, mime = "") {
   const lower = url.toLowerCase();
-  const type = mime.toLowerCase();
+  const mimeKind = mediaKindFromMime(mime);
   if (lower.startsWith("blob:")) return "blob";
   if (FRAGMENT_RE.test(lower)) return "fragment";
-  if (type.includes("mpegurl") || lower.includes(".m3u8")) return "hls";
-  if (type.includes("dash+xml") || lower.includes(".mpd")) return "dash";
-  if (type.includes("video/") || VIDEO_RE.test(lower)) return "video";
-  if (type.includes("audio/") || AUDIO_RE.test(lower)) return "audio";
-  if (type.includes("text/vtt") || type.includes("subrip") || SUBTITLE_RE.test(lower)) return "subtitle";
+  if (mimeKind !== "unknown") return mimeKind;
+  if (lower.includes(".m3u8")) return "hls";
+  if (lower.includes(".mpd")) return "dash";
+  if (VIDEO_RE.test(lower)) return "video";
+  if (AUDIO_RE.test(lower)) return "audio";
+  if (SUBTITLE_RE.test(lower)) return "subtitle";
   return "unknown";
 }
 
