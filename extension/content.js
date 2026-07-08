@@ -1110,10 +1110,88 @@ function collectIframeEmbeddedResources() {
 function collectUrlEmbeddedResources(url, source = "domHint", label = "page url") {
   if (!url) return [];
   const seen = new Set();
-  return [
-    ...collectTextMediaResources(url, source, `${label} media url`, seen),
-    ...collectEncodedTextResources(url, source, `${label} encoded url`, seen)
+  const resources = [
+    ...collectUrlParameterResources(url, source, label, seen, 40)
   ];
+  if (resources.length < 40) {
+    resources.push(...collectTextMediaResources(url, source, `${label} media url`, seen));
+  }
+  if (resources.length < 40) {
+    resources.push(...collectEncodedTextResources(url, source, `${label} encoded url`, seen));
+  }
+  return resources;
+}
+
+function collectUrlParameterResources(url, source = "domHint", label = "page url", seen = new Set(), limit = 30) {
+  const resources = [];
+  if (!url || limit <= 0) return resources;
+  let parsed = null;
+  try {
+    parsed = new URL(url, location.href);
+  } catch {
+    return resources;
+  }
+  const chunks = [
+    ["query", parsed.search],
+    ["hash", parsed.hash]
+  ];
+  for (const [scope, rawChunk] of chunks) {
+    let chunk = String(rawChunk || "").replace(/^[?#]/, "");
+    if (!chunk) continue;
+    const nestedQueryIndex = chunk.indexOf("?");
+    if (nestedQueryIndex >= 0) chunk = chunk.slice(nestedQueryIndex + 1);
+    if (!/[=&]/.test(chunk)) continue;
+    let params = null;
+    try {
+      params = new URLSearchParams(chunk);
+    } catch {
+      continue;
+    }
+    for (const [key, value] of Array.from(params.entries()).slice(0, 80)) {
+      if (!value || resources.length >= limit) break;
+      const paramLabel = `${label} ${scope} ${key} param`;
+      const direct = resourceFromHint(value, source, paramLabel, key);
+      if (direct && !seen.has(direct.url)) {
+        seen.add(direct.url);
+        direct.score = Math.max(direct.score || 0, scoreForKind(direct.kind, { manifest: 96, video: 84, audio: 38, other: 62 }));
+        resources.push(direct);
+        if (resources.length >= limit) break;
+      }
+      for (const item of collectRawUrlParameterPayloadResources(value, source, paramLabel, seen, limit - resources.length)) {
+        resources.push(item);
+        if (resources.length >= limit) break;
+      }
+      for (const item of collectNestedFieldResources(value, source, paramLabel, seen, limit - resources.length)) {
+        resources.push(item);
+        if (resources.length >= limit) break;
+      }
+    }
+  }
+  return resources;
+}
+
+function rawUrlParameterPayloads(value) {
+  const raw = decodeJsStringEscapes(String(value || "").trim()).replace(/&amp;/g, "&");
+  const values = raw ? [raw] : [];
+  appendRepeatedUrlDecodes(values, raw);
+  return values
+    .map(item => String(item || "").trim())
+    .filter((item, index, list) => item && list.indexOf(item) === index && (item[0] === "{" || item[0] === "["));
+}
+
+function collectRawUrlParameterPayloadResources(value, source, label, seen = new Set(), limit = 20) {
+  const resources = [];
+  for (const payload of rawUrlParameterPayloads(value)) {
+    for (const item of collectStaticSplitBaseResources(payload, source, `${label} payload`, seen, limit - resources.length)) {
+      resources.push(item);
+      if (resources.length >= limit) return resources;
+    }
+    for (const item of collectHtmlTextResources(payload, source, `${label} payload`, seen, limit - resources.length, 1)) {
+      resources.push(item);
+      if (resources.length >= limit) return resources;
+    }
+  }
+  return resources;
 }
 
 function collectShadowTexts(limit = 20000) {

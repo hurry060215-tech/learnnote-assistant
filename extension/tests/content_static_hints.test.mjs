@@ -66,6 +66,13 @@ const doubleEncodedHls = encodeURIComponent(encodeURIComponent("https://cdn.exam
 const doubleEncodedNakedVideo = encodeURIComponent(encodeURIComponent("https://cdn.example.com/static/double/naked.mp4?token=naked-double"));
 const mixedEncodedVideo = "https%253A//cdn.example.com/static/mixed/lesson.mp4%253Ftoken%253Dmixed";
 const pageUrlEncodedHls = encodeURIComponent(encodeURIComponent("https://cdn.example.com/static/page-url/master.m3u8?token=page"));
+const pageUrlPackedConfig = Buffer.from(JSON.stringify({
+  sources: [{ file: "/static/page-param/lesson.mp4?token=packed" }]
+}), "utf8").toString("base64");
+const pageHashPlayerConfig = JSON.stringify({
+  baseUrl: "https://cdn.example.com/static/hash/",
+  streams: { hlsPath: "course/master.m3u8?token=hash", mediaType: "application/vnd.apple.mpegurl" }
+});
 
 const player = new FakeElement("div", {
   "data-play-url": "https%3A%2F%2Fcdn.example.com%2Fstatic%2Fmaster.m3u8%3Ftoken%3Dattr"
@@ -231,8 +238,9 @@ let messageListener = null;
 const context = {
   console,
   URL,
+  URLSearchParams,
   Node: { ELEMENT_NODE: 1 },
-  location: { href: `https://course.example.com/lesson?objectid=${pageUrlEncodedHls}` },
+  location: { href: `https://course.example.com/lesson?objectid=${pageUrlEncodedHls}&player=${encodeURIComponent(pageUrlPackedConfig)}#viewer?payload=${encodeURIComponent(pageHashPlayerConfig)}` },
   document: {
     title: "Static hints lesson",
     readyState: "complete",
@@ -308,6 +316,8 @@ messageListener({ type: "collect-page-data" }, {}, data => {
 
 const hls = response.resources.find(item => item.url === "https://cdn.example.com/static/master.m3u8?token=attr");
 const pageUrlHls = response.resources.find(item => item.url === "https://cdn.example.com/static/page-url/master.m3u8?token=page");
+const pageUrlPackedVideo = response.resources.find(item => item.url === "https://course.example.com/static/page-param/lesson.mp4?token=packed");
+const pageHashHls = response.resources.find(item => item.url === "https://cdn.example.com/static/hash/course/master.m3u8?token=hash");
 const dash = response.resources.find(item => item.url === "https://cdn.example.com/static/manifest.mpd?token=b64");
 const aliasPlayVideo = response.resources.find(item => item.url === "https://course.example.com/static/alias-play.mp4?token=alias");
 const aliasMasterHls = response.resources.find(item => item.url === "https://course.example.com/static/alias-master.m3u8?token=master");
@@ -360,7 +370,17 @@ const malformedEncodedUrls = response.resources.filter(item => /\/https%3A%2F%2F
 assert.ok(pageUrlHls, "expected current page URL query to expose encoded HLS URL");
 assert.equal(pageUrlHls.kind, "hls");
 assert.equal(pageUrlHls.source, "locationHint");
-assert.match(pageUrlHls.label, /current page URL encoded url/);
+assert.match(pageUrlHls.label, /current page URL query objectid param/);
+
+assert.ok(pageUrlPackedVideo, "expected current page URL query parameter JSON to expose video URL");
+assert.equal(pageUrlPackedVideo.kind, "video");
+assert.equal(pageUrlPackedVideo.source, "locationHint");
+assert.match(pageUrlPackedVideo.label, /current page URL query player param/);
+
+assert.ok(pageHashHls, "expected current page URL hash parameter JSON to expose split-base HLS URL");
+assert.equal(pageHashHls.kind, "hls");
+assert.equal(pageHashHls.source, "locationHint");
+assert.match(pageHashHls.label, /current page URL hash payload param/);
 
 assert.ok(hls, "expected data-play-url media hint to expose encoded HLS URL");
 assert.equal(hls.kind, "hls");
