@@ -3221,6 +3221,59 @@ function workbenchBriefHtml(state) {
   </div>`;
 }
 
+function studyFlowBoardItems(state) {
+  const selected = selectedResource();
+  const checked = currentPreflight();
+  const taskRunning = currentTask?.status === "running" || currentTask?.status === "queued";
+  const noteReady = Boolean(currentTask?.note_path || (currentTask?.status === "success" && currentTask?.mode !== "download_only"));
+  const sliceReady = Boolean((visualWindows(currentTask).length || currentTask?.summary_diagnostics?.visual_window_count) && currentTask?.status === "success");
+  const latestHistory = sortedHistoryTasks(taskHistory, currentTaskId)[0];
+  const historyCount = taskHistory.length;
+  const downloadable = checked?.downloadable || state === "ready";
+  const canSlice = downloadable || taskRunning || noteReady || sliceReady;
+  return [
+    {
+      step: "01",
+      label: "当前视频",
+      state: selected || hasActiveVideoSignal(page?.active_video) ? "pass" : state === "blocked" ? "fail" : "active",
+      title: selected ? "已锁定候选" : hasActiveVideoSignal(page?.active_video) ? "已读到播放状态" : "等待播放",
+      detail: selected ? `${mediaKindText(selected.kind) || selected.kind || "媒体"} · ${resourceSourceText(selected) || "浏览器"}` : currentStudyCopy(state).detail
+    },
+    {
+      step: "02",
+      label: "资源预检",
+      state: checked?.downloadable ? "pass" : checked ? "warn" : selected ? "active" : state === "blocked" ? "fail" : "wait",
+      title: checked?.downloadable ? "可下载" : checked ? checked.code || "未通过" : selected ? "待预检" : "无候选",
+      detail: checked ? checked.message || preflightStatusTag(checked) : selected ? "开始任务前会自动验证直链" : "继续播放几秒捕获 mp4/HLS/DASH"
+    },
+    {
+      step: "03",
+      label: "切片笔记",
+      state: noteReady || sliceReady ? "pass" : taskRunning ? "active" : canSlice ? "wait" : state === "blocked" ? "fail" : "wait",
+      title: noteReady ? "笔记完成" : sliceReady ? "切片完成" : taskRunning ? taskStatusText(currentTask) : noteStyleText(),
+      detail: `${visualPlanText()} · ${visualUnderstandingEnabled() ? visualWindowText() : "仅文本"}`
+    },
+    {
+      step: "04",
+      label: "历史复习",
+      state: historyCount ? "pass" : noteReady ? "active" : "wait",
+      title: historyCount ? `${historyCount} 条记录` : noteReady ? "可加入历史" : "等待结果",
+      detail: latestHistory ? `${displayTaskTitle(latestHistory)} · ${taskStatusText(latestHistory)}` : "完成后在这里快速回到笔记、切片和资料包"
+    }
+  ];
+}
+
+function studyFlowBoardHtml(state) {
+  return `<div class="study-flow-board" aria-label="学习闭环">
+    ${studyFlowBoardItems(state).map(item => `<section class="${escapeHtml(item.state)}">
+      <i>${escapeHtml(item.step)}</i>
+      <span>${escapeHtml(item.label)}</span>
+      <strong>${escapeHtml(item.title)}</strong>
+      <small>${escapeHtml(item.detail)}</small>
+    </section>`).join("")}
+  </div>`;
+}
+
 function workbenchRunModeItems(state) {
   const hasSelected = Boolean(selectedResource());
   const blocked = state === "blocked";
@@ -3296,6 +3349,7 @@ function renderCurrentStudyCard() {
       </button>
     </div>
     ${workbenchBriefHtml(state)}
+    ${studyFlowBoardHtml(state)}
     ${workbenchRunModesHtml(state)}
     ${workbenchRouteHtml()}
     ${workbenchSlicePlanHtml()}

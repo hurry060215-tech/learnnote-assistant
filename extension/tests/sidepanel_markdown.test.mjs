@@ -98,6 +98,7 @@ assert.doesNotMatch(sidepanelHtml, />下载本地</);
 assert.match(sidepanelCss, /body\[data-panel-mode="study"\] \.active-video-card code/);
 assert.match(sidepanelCss, /body\[data-panel-mode="study"\] \.playback-readiness-grid/);
 assert.match(sidepanelCss, /body\[data-panel-mode="study"\] \.playback-readiness-actions/);
+assert.match(sidepanelCss, /\.study-flow-board/);
 assert.equal(elements.get("#resourcePanel").hidden, true);
 assert.equal(elements.get("#studyModeButton").classList.contains("active"), true);
 assert.equal(elements.get("#diagnosticModeButton").classList.contains("active"), false);
@@ -2128,6 +2129,11 @@ assert.doesNotMatch(elements.get("#currentStudyCard").innerHTML, /workbench-audi
 assert.doesNotMatch(elements.get("#currentStudyCard").innerHTML, /直取审计门/);
 assert.doesNotMatch(elements.get("#currentStudyCard").innerHTML, /复制审计/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /workbench-brief/);
+assert.match(elements.get("#currentStudyCard").innerHTML, /study-flow-board/);
+assert.match(elements.get("#currentStudyCard").innerHTML, /当前视频/);
+assert.match(elements.get("#currentStudyCard").innerHTML, /资源预检/);
+assert.match(elements.get("#currentStudyCard").innerHTML, /切片笔记/);
+assert.match(elements.get("#currentStudyCard").innerHTML, /历史复习/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /workbench-run-modes/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /workbench-note-preview ready/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /data-switch-result-tab="slices"/);
@@ -2222,6 +2228,8 @@ assert.doesNotMatch(elements.get("#playbackReadiness").innerHTML, /data-route-ac
 assert.match(elements.get("#currentStudyCard").className, /blocked/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /当前页不能直接下载/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /workbench-brief/);
+assert.match(elements.get("#currentStudyCard").innerHTML, /study-flow-board/);
+assert.match(elements.get("#currentStudyCard").innerHTML, /不可直取|无候选/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /workbench-run-modes/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /不可直取/);
 assert.match(elements.get("#currentStudyCard").innerHTML, /上传本地视频/);
