@@ -6,6 +6,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import time
 import xml.etree.ElementTree as ET
 from base64 import b64decode, urlsafe_b64decode
@@ -78,6 +79,8 @@ SUBTITLE_LANGUAGE_PREFERENCES = ("zh-CN", "zh-Hans", "zh-Hant", "zh", "en", "en-
 DOWNLOAD_FAILURE_PRIORITY = {
     "drm_or_encrypted": 50,
     "auth_required": 40,
+    "yt_dlp_timeout": 35,
+    "download_timeout": 35,
     "download_forbidden": 30,
     "unsupported_manifest": 20,
     "no_media_found": 10,
@@ -122,6 +125,21 @@ YTDLP_HTTP_HEADER_ORDER = (
 )
 REQUEST_BODY_REPLAY_METHODS = {"POST", "PUT", "PATCH"}
 MAX_REPLAY_BODY_BYTES = 64 * 1024
+YTDLP_SOCKET_TIMEOUT_SECONDS = 20
+YTDLP_DOWNLOAD_TIMEOUT_SECONDS = 90
+YTDLP_RETRIES = 1
+YTDLP_FRAGMENT_RETRIES = 1
+YTDLP_EXTRACTOR_RETRIES = 1
+YTDLP_FIRST_HOSTS = {
+    "b23.tv",
+    "bilibili.com",
+    "m.bilibili.com",
+    "www.bilibili.com",
+    "youtube.com",
+    "m.youtube.com",
+    "www.youtube.com",
+    "youtu.be",
+}
 
 
 class DownloadError(RuntimeError):
@@ -147,6 +165,40 @@ class QuietYtdlpLogger:
 
     def error(self, message: str) -> None:
         return
+
+
+def _should_run_ytdlp_cli(yt_dlp_module: object) -> bool:
+    return bool(getattr(yt_dlp_module, "__file__", ""))
+
+
+def _truncate_process_output(value: object, limit: int = 500) -> str:
+    if isinstance(value, bytes):
+        text = value.decode("utf-8", errors="replace")
+    else:
+        text = str(value or "")
+    text = text.strip()
+    return text[:limit]
+
+
+def _classify_ytdlp_error(message: str) -> str:
+    lowered = (message or "").lower()
+    if "timed out" in lowered or "timeout" in lowered:
+        return "yt_dlp_timeout"
+    if any(marker in lowered for marker in ("login", "cookie", "sign in", "private video", "members-only")):
+        return "auth_required"
+    if any(marker in lowered for marker in ("drm", "encrypted", "eme")):
+        return "drm_or_encrypted"
+    if "unsupported url" in lowered or "no suitable extractor" in lowered:
+        return "no_media_found"
+    return "download_forbidden"
+
+
+def _prefer_ytdlp_before_page_scan(page_url: str) -> bool:
+    try:
+        host = (urlparse(page_url).hostname or "").lower()
+    except Exception:
+        return False
+    return host in YTDLP_FIRST_HOSTS
 
 
 def _clean_filename(value: str) -> str:
@@ -2392,6 +2444,41 @@ class MediaDownloader:
                 continue
 
         page_fallbacks = fallback_page_contexts(page_url, resources)
+        attempted_ytdlp_pages: set[str] = set()
+
+        def try_page_ytdlp_fallbacks() -> Path | None:
+            nonlocal last_error
+            for fallback_url, _context_candidate in page_fallbacks:
+                if fallback_url in attempted_ytdlp_pages:
+                    continue
+                attempted_ytdlp_pages.add(fallback_url)
+                try:
+                    media_path = self._download_with_ytdlp(fallback_url, cookie_file, title, resources)
+                    self._record_attempt(
+                        strategy="page-ytdlp",
+                        url=fallback_url,
+                        status="success",
+                        message="浏览器候选不可用，yt-dlp 页面解析成功。",
+                        output_path=media_path,
+                    )
+                    return media_path
+                except DownloadError as exc:
+                    self._record_attempt(strategy="page-ytdlp", url=fallback_url, status="failed", code=exc.code, message=exc.message)
+                    if not last_error:
+                        last_error = exc
+                except Exception as exc:
+                    self._record_attempt(strategy="page-ytdlp", url=fallback_url, status="failed", code="download_forbidden", message=str(exc))
+                    if not last_error:
+                        last_error = DownloadError("download_forbidden", str(exc))
+            return None
+
+        if not candidates and not resources and _prefer_ytdlp_before_page_scan(page_url):
+            media_path = try_page_ytdlp_fallbacks()
+            if media_path:
+                return media_path, None
+            if last_error and last_error.code in {"yt_dlp_timeout", "auth_required", "drm_or_encrypted", "download_forbidden"}:
+                raise self._download_error_with_attempt_summary(last_error)
+
         for fallback_url, context_candidate in page_fallbacks:
             page_scan_resources = self._discover_page_resources(fallback_url, cookies, context_candidate)
             for candidate in self._candidate_resources(page_scan_resources):
@@ -2442,6 +2529,8 @@ class MediaDownloader:
                     last_error = DownloadError("download_forbidden", str(exc))
 
         for fallback_url, _context_candidate in page_fallbacks:
+            if fallback_url in attempted_ytdlp_pages:
+                continue
             try:
                 media_path = self._download_with_ytdlp(fallback_url, cookie_file, title, resources)
                 self._record_attempt(
@@ -2830,6 +2919,10 @@ class MediaDownloader:
             "no_warnings": True,
             "logger": QuietYtdlpLogger(),
             "noprogress": True,
+            "socket_timeout": YTDLP_SOCKET_TIMEOUT_SECONDS,
+            "retries": YTDLP_RETRIES,
+            "fragment_retries": YTDLP_FRAGMENT_RETRIES,
+            "extractor_retries": YTDLP_EXTRACTOR_RETRIES,
             "skip_download": True,
             "http_headers": http_headers,
         }
@@ -2863,6 +2956,10 @@ class MediaDownloader:
             "no_warnings": True,
             "logger": QuietYtdlpLogger(),
             "noprogress": True,
+            "socket_timeout": YTDLP_SOCKET_TIMEOUT_SECONDS,
+            "retries": YTDLP_RETRIES,
+            "fragment_retries": YTDLP_FRAGMENT_RETRIES,
+            "extractor_retries": YTDLP_EXTRACTOR_RETRIES,
             "http_headers": http_headers,
         }
         if cookie_file:
@@ -2921,22 +3018,65 @@ class MediaDownloader:
             "no_warnings": True,
             "logger": QuietYtdlpLogger(),
             "noprogress": True,
-            "retries": 2,
-            "fragment_retries": 2,
+            "socket_timeout": YTDLP_SOCKET_TIMEOUT_SECONDS,
+            "retries": YTDLP_RETRIES,
+            "fragment_retries": YTDLP_FRAGMENT_RETRIES,
+            "extractor_retries": YTDLP_EXTRACTOR_RETRIES,
             "http_headers": http_headers,
         }
         if cookie_file:
             opts["cookiefile"] = str(cookie_file)
 
         before = set(self.download_dir.glob("*"))
-        try:
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                ydl.extract_info(page_url, download=True)
-        except Exception as exc:
-            message = str(exc)
-            if "login" in message.lower() or "cookie" in message.lower():
-                raise DownloadError("auth_required", "yt-dlp 页面下载失败，可能需要登录态 cookie。") from exc
-            raise DownloadError("download_forbidden", f"yt-dlp 无法下载当前页面：{message[:300]}") from exc
+        self._notify_status(
+            f"正在使用 yt-dlp 下载页面视频，最多等待 {YTDLP_DOWNLOAD_TIMEOUT_SECONDS} 秒",
+            18,
+            (resources or [None])[0] if resources else None,
+        )
+        if _should_run_ytdlp_cli(yt_dlp):
+            cmd = self._ytdlp_cli_command(page_url, outtmpl, cookie_file, http_headers)
+            try:
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=YTDLP_DOWNLOAD_TIMEOUT_SECONDS,
+                )
+            except subprocess.TimeoutExpired as exc:
+                output = _truncate_process_output(exc.stderr or exc.stdout)
+                suffix = f"；最后输出：{output}" if output else ""
+                raise DownloadError(
+                    "yt_dlp_timeout",
+                    f"yt-dlp 页面下载超过 {YTDLP_DOWNLOAD_TIMEOUT_SECONDS} 秒仍未完成，已终止本次直取{suffix}",
+                ) from exc
+            if result.returncode != 0:
+                output = _truncate_process_output(result.stderr or result.stdout)
+                code = _classify_ytdlp_error(output)
+                if code == "auth_required":
+                    raise DownloadError("auth_required", "yt-dlp 页面下载失败，可能需要登录态 cookie。")
+                if code == "yt_dlp_timeout":
+                    raise DownloadError("yt_dlp_timeout", f"yt-dlp 页面下载超时：{output[:300]}")
+                if code == "drm_or_encrypted":
+                    raise DownloadError("drm_or_encrypted", f"yt-dlp 检测到加密或 DRM 限制：{output[:300]}")
+                if code == "no_media_found":
+                    raise DownloadError("no_media_found", f"yt-dlp 不支持当前页面或没有找到可下载视频：{output[:300]}")
+                raise DownloadError("download_forbidden", f"yt-dlp 无法下载当前页面：{output[:300]}")
+        else:
+            try:
+                with yt_dlp.YoutubeDL(opts) as ydl:
+                    ydl.extract_info(page_url, download=True)
+            except Exception as exc:
+                message = str(exc)
+                code = _classify_ytdlp_error(message)
+                if code == "auth_required":
+                    raise DownloadError("auth_required", "yt-dlp 页面下载失败，可能需要登录态 cookie。") from exc
+                if code == "yt_dlp_timeout":
+                    raise DownloadError("yt_dlp_timeout", f"yt-dlp 页面下载超时：{message[:300]}") from exc
+                if code == "drm_or_encrypted":
+                    raise DownloadError("drm_or_encrypted", f"yt-dlp 检测到加密或 DRM 限制：{message[:300]}") from exc
+                if code == "no_media_found":
+                    raise DownloadError("no_media_found", f"yt-dlp 不支持当前页面或没有找到可下载视频：{message[:300]}") from exc
+                raise DownloadError("download_forbidden", f"yt-dlp 无法下载当前页面：{message[:300]}") from exc
 
         after = [path for path in self.download_dir.glob("*") if path not in before and path.is_file()]
         media = [path for path in after if path.suffix.lower() in {".mp4", ".webm", ".mkv", ".mov", ".m4v", ".flv", ".avi"}]
@@ -2945,6 +3085,43 @@ class MediaDownloader:
         if not media:
             raise DownloadError("download_forbidden", "yt-dlp 已运行但没有生成可用视频文件。")
         return max(media, key=lambda path: path.stat().st_size)
+
+    def _ytdlp_cli_command(
+        self,
+        page_url: str,
+        outtmpl: str,
+        cookie_file: Path | None,
+        http_headers: dict[str, str],
+    ) -> list[str]:
+        cmd = [
+            sys.executable,
+            "-m",
+            "yt_dlp",
+            "--no-warnings",
+            "--no-progress",
+            "--socket-timeout",
+            str(YTDLP_SOCKET_TIMEOUT_SECONDS),
+            "--retries",
+            str(YTDLP_RETRIES),
+            "--fragment-retries",
+            str(YTDLP_FRAGMENT_RETRIES),
+            "--extractor-retries",
+            str(YTDLP_EXTRACTOR_RETRIES),
+            "-f",
+            "bestvideo*+bestaudio/best",
+            "--merge-output-format",
+            "mp4",
+            "-o",
+            outtmpl,
+        ]
+        if cookie_file:
+            cmd.extend(["--cookies", str(cookie_file)])
+        for name in YTDLP_HTTP_HEADER_ORDER:
+            value = http_headers.get(name)
+            if value:
+                cmd.extend(["--add-header", f"{name}: {value}"])
+        cmd.append(page_url)
+        return cmd
 
     def _download_candidate(
         self,

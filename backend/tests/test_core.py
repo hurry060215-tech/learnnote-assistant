@@ -7,6 +7,7 @@ import sys
 import types
 import json
 import os
+import subprocess
 from base64 import b64encode
 from pathlib import Path
 from urllib.parse import quote
@@ -2842,6 +2843,79 @@ class DownloaderBoundaryTests(unittest.TestCase):
             self.assertEqual(captured["options"]["http_headers"]["Referer"], "https://course.example.com/lesson/1")
             self.assertEqual(captured["options"]["http_headers"]["Origin"], "https://course.example.com")
 
+    def test_ytdlp_cli_receives_browser_context_and_timeout(self) -> None:
+        captured: dict = {}
+
+        def fake_run(cmd, capture_output, text, timeout):
+            captured["cmd"] = cmd
+            captured["timeout"] = timeout
+            output = Path(cmd[cmd.index("-o") + 1].replace("%(ext)s", "mp4"))
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_bytes(b"0" * 5000)
+            return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+        fake_module = types.ModuleType("yt_dlp")
+        fake_module.__file__ = "D:/tools/yt_dlp/__init__.py"
+
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(sys.modules, {"yt_dlp": fake_module}):
+            cookie_file = Path(tmp) / "cookies.txt"
+            cookie_file.write_text("# Netscape HTTP Cookie File\n", encoding="utf-8")
+            downloader = MediaDownloader(Path(tmp))
+            with patch("app.downloader.subprocess.run", side_effect=fake_run):
+                media = downloader._download_with_ytdlp(
+                    "https://course.example.com/lesson/1",
+                    cookie_file,
+                    "yt-dlp cli",
+                    [
+                        ResourceCandidate(
+                            url="https://cdn.example.com/lesson.m3u8",
+                            source="webRequest",
+                            kind="hls",
+                            request_headers={
+                                "User-Agent": "Chrome Playback UA",
+                                "Referer": "https://course.example.com/lesson/1",
+                                "Origin": "https://course.example.com",
+                            },
+                        )
+                    ],
+                )
+                captured["media_exists"] = media.exists()
+
+        self.assertTrue(captured["media_exists"])
+        cmd = captured["cmd"]
+        self.assertEqual(captured["timeout"], 90)
+        self.assertIn("-m", cmd)
+        self.assertIn("yt_dlp", cmd)
+        self.assertIn("--cookies", cmd)
+        self.assertEqual(cmd[cmd.index("--cookies") + 1], str(cookie_file))
+        self.assertIn("--socket-timeout", cmd)
+        self.assertIn("20", cmd)
+        self.assertIn("--add-header", cmd)
+        self.assertIn("User-Agent: Chrome Playback UA", cmd)
+        self.assertIn("Referer: https://course.example.com/lesson/1", cmd)
+        self.assertIn("Origin: https://course.example.com", cmd)
+
+    def test_ytdlp_cli_timeout_maps_to_structured_error(self) -> None:
+        fake_module = types.ModuleType("yt_dlp")
+        fake_module.__file__ = "D:/tools/yt_dlp/__init__.py"
+
+        def fake_run(cmd, capture_output, text, timeout):
+            raise subprocess.TimeoutExpired(cmd, timeout, stderr="waiting for video data")
+
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(sys.modules, {"yt_dlp": fake_module}):
+            downloader = MediaDownloader(Path(tmp))
+            with patch("app.downloader.subprocess.run", side_effect=fake_run):
+                with self.assertRaises(DownloadError) as ctx:
+                    downloader._download_with_ytdlp(
+                        "https://course.example.com/lesson/1",
+                        None,
+                        "yt-dlp timeout",
+                        [],
+                    )
+
+        self.assertEqual(ctx.exception.code, "yt_dlp_timeout")
+        self.assertIn("90", ctx.exception.message)
+
     def test_ffmpeg_cookie_option_keeps_domain_scoped_cookies(self) -> None:
         cookie_text = ffmpeg_cookies_option(
             [
@@ -3011,6 +3085,29 @@ class DownloaderBoundaryTests(unittest.TestCase):
             self.assertTrue(any(attempt.strategy == "candidate-ytdlp" for attempt in downloader.attempts))
             self.assertEqual(downloader.attempts[-1].strategy, "page-ytdlp")
             self.assertEqual(downloader.attempts[-1].url, "https://player.example.com/embed/1")
+
+    def test_known_ytdlp_page_runs_before_page_scan_when_no_candidates(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            media = root / "youtube.mp4"
+            media.write_bytes(b"0" * 5000)
+            downloader = MediaDownloader(root / "task")
+
+            with (
+                patch.object(downloader, "_download_with_ytdlp", return_value=media) as ytdlp,
+                patch.object(downloader, "_discover_page_resources", side_effect=AssertionError("page scan should not run first")),
+            ):
+                media_path, selected = downloader.download(
+                    page_url="https://www.youtube.com/watch?v=BaW_jenozKc",
+                    resources=[],
+                    cookies=[],
+                    title="Known yt-dlp platform",
+                )
+
+            self.assertEqual(media_path, media)
+            self.assertIsNone(selected)
+            ytdlp.assert_called_once()
+            self.assertEqual(downloader.attempts[-1].strategy, "page-ytdlp")
 
     def test_subtitle_fallback_downloads_platform_caption_with_ytdlp(self) -> None:
         calls = []
