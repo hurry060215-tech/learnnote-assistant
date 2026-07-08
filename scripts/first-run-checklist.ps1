@@ -89,9 +89,16 @@ if ($Json) {
     project = $projectRoot
     data = $dataDir
     backend = $backendUrl
+    backend_origin = $backendUrl
     samples = $samplesUrl
     extension = $extensionDir
     browser = $Browser
+    runtime_paths = @{
+      data = $dataDir
+      data_drive = ([System.IO.DirectoryInfo]$dataDir).Root.FullName
+      backend_origin = $backendUrl
+      extension = $extensionDir
+    }
     fail_count = $fails.Count
     warn_count = $warns.Count
     readiness = @{
@@ -123,6 +130,7 @@ Write-Host "LearnNote first-run checklist" -ForegroundColor Green
 Write-Host "Project:   $projectRoot"
 Write-Host "Data:      $dataDir"
 Write-Host "Backend:   $backendUrl"
+Write-Host "Origin:    $backendUrl"
 Write-Host "Samples:   $samplesUrl"
 Write-Host "Extension: $extensionDir"
 Write-Host ""
@@ -158,6 +166,7 @@ if ($fails.Count) {
   Write-Host "3. In Chrome/Edge extensions page, enable Developer Mode and Load unpacked."
   Write-Host "4. Put this backend URL in Side Panel settings if needed:"
   Write-Host "   $backendUrl"
+  Write-Host "   The launcher also sets LEARNNOTE_BACKEND_ORIGIN to this URL for the current session."
   Write-Host "5. For local sample pages:"
   Write-Host "   .\start-learnnote.ps1 -WithSamples"
   Write-Host "   $samplesUrl"

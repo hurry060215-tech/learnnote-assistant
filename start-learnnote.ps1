@@ -102,18 +102,21 @@ if ($rootDrive -like "C:\*") {
 }
 
 New-Item -ItemType Directory -Force -Path $dataDir | Out-Null
-if (-not $env:LEARNNOTE_BACKEND_ORIGIN) {
-  $env:LEARNNOTE_BACKEND_ORIGIN = $backendUrl
-}
+$previousBackendOrigin = $env:LEARNNOTE_BACKEND_ORIGIN
+$env:LEARNNOTE_BACKEND_ORIGIN = $backendUrl
 
 Write-Host "LearnNote local launcher" -ForegroundColor Green
 Write-Host "Project:   $projectRoot"
 Write-Host "Data:      $dataDir"
 Write-Host "Backend:   $backendUrl"
+Write-Host "Origin:    $env:LEARNNOTE_BACKEND_ORIGIN"
 if ($WithSamples) {
   Write-Host "Samples:   $samplesUrl"
 }
 Write-Host "Extension: $extensionDir"
+if ($previousBackendOrigin -and $previousBackendOrigin -ne $backendUrl) {
+  Write-Host "Origin note: replaced previous LEARNNOTE_BACKEND_ORIGIN=$previousBackendOrigin for this session." -ForegroundColor DarkYellow
+}
 
 if (-not $SkipDoctor) {
   Write-Step "Readiness check"

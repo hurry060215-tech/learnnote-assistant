@@ -170,8 +170,7 @@ For automation or backend-only debugging, `start-backend.ps1` remains available:
 .\start-backend.ps1 -Port 8765
 ```
 
-The extension only accepts local backend origins (`127.0.0.1` or `localhost`), and its manifest keeps localhost permissions host-wide so non-default ports continue to work.
-When `-Port` is used, the startup script also sets `LEARNNOTE_BACKEND_ORIGIN` to the same local origin so generated frame-grid, media, and export links point at the running backend.
+The extension only accepts local backend origins (`127.0.0.1` or `localhost`), and its manifest keeps localhost permissions host-wide so non-default ports continue to work. Each launcher run sets `LEARNNOTE_BACKEND_ORIGIN` to the selected local port for the current PowerShell session, replacing a stale value from an earlier run so generated frame-grid, media, and export links point at the running backend.
 
 ## Local Browser Regression Samples
 

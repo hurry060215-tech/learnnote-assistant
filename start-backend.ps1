@@ -13,6 +13,7 @@ $dataDir = Join-Path $projectRoot "data"
 $modelCacheDir = Join-Path $dataDir "model-cache"
 $pipCacheDir = Join-Path $dataDir "pip-cache"
 $tempDir = Join-Path $dataDir "temp"
+$backendUrl = "http://127.0.0.1:$Port"
 
 New-Item -ItemType Directory -Force -Path $modelCacheDir, $pipCacheDir, $tempDir | Out-Null
 
@@ -23,9 +24,8 @@ if (-not $env:PIP_CACHE_DIR) { $env:PIP_CACHE_DIR = $pipCacheDir }
 $env:TMP = $tempDir
 $env:TEMP = $tempDir
 $env:TMPDIR = $tempDir
-if (-not $env:LEARNNOTE_BACKEND_ORIGIN) {
-  $env:LEARNNOTE_BACKEND_ORIGIN = "http://127.0.0.1:$Port"
-}
+$previousBackendOrigin = $env:LEARNNOTE_BACKEND_ORIGIN
+$env:LEARNNOTE_BACKEND_ORIGIN = $backendUrl
 
 function Resolve-BootstrapPython {
   if ($env:LEARNNOTE_BOOTSTRAP_PYTHON) {
@@ -50,6 +50,10 @@ if (-not (Test-Path $venvPython)) {
 
 $python = $venvPython
 Write-Host "Using Python: $python"
+Write-Host "Backend origin: $env:LEARNNOTE_BACKEND_ORIGIN"
+if ($previousBackendOrigin -and $previousBackendOrigin -ne $backendUrl) {
+  Write-Host "Origin note: replaced previous LEARNNOTE_BACKEND_ORIGIN=$previousBackendOrigin for this session." -ForegroundColor DarkYellow
+}
 Set-Location $backendDir
 
 try {
