@@ -111,6 +111,15 @@ cd D:\Projects\learnnote-assistant
 .\start-learnnote.ps1
 ```
 
+For first-run verification, start the backend and local regression sample site together:
+
+```powershell
+cd D:\Projects\learnnote-assistant
+.\start-learnnote.ps1 -WithSamples
+```
+
+This prints the Side Panel backend URL plus sample pages for direct MP4, HLS manifest, blob iframe fallback, POST play API replay, and the Chaoxing-style diagnostic mock. The sample server is stopped when the launcher exits, and its logs stay under `data\logs` on the D-drive project path.
+
 Open the local web UI after startup:
 
 ```text
@@ -163,6 +172,13 @@ Start the sample site in another terminal:
 ```powershell
 cd D:\Projects\learnnote-assistant
 .\scripts\serve-samples.ps1
+```
+
+Or run the product launcher with `-WithSamples` to start the backend and sample site together:
+
+```powershell
+cd D:\Projects\learnnote-assistant
+.\start-learnnote.ps1 -WithSamples
 ```
 
 Open:

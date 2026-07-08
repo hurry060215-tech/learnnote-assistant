@@ -5,6 +5,7 @@ __pycache__/
 data/*.mp4
 data/*.png
 data/design-audit/
+data/logs/
 data/model-cache/
 data/pip-cache/
 data/temp/

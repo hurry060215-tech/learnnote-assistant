@@ -167,6 +167,29 @@ if (Test-Any @("web/*.js", "web/*.css", "web/*.html")) {
   Invoke-Step "Web UI render tests" { node web\tests\markdown_render.test.mjs }
 }
 
+if (Test-Any @("*.ps1", "scripts/*.ps1")) {
+  $ran = $true
+  Invoke-Step "PowerShell syntax" {
+    $parseFailures = @()
+    foreach ($file in @($changed | Where-Object { $_ -like "*.ps1" })) {
+      $tokens = $null
+      $errors = $null
+      [System.Management.Automation.Language.Parser]::ParseFile(
+        (Join-Path $repo $file),
+        [ref]$tokens,
+        [ref]$errors
+      ) | Out-Null
+      foreach ($error in @($errors)) {
+        $parseFailures += "${file}: line $($error.Extent.StartLineNumber), column $($error.Extent.StartColumnNumber): $($error.Message)"
+      }
+    }
+    if ($parseFailures.Count -gt 0) {
+      $parseFailures | ForEach-Object { Write-Host $_ -ForegroundColor Red }
+      throw "PowerShell syntax parse failed."
+    }
+  }
+}
+
 Invoke-Step "Whitespace check" { git diff --check }
 
 if (-not $ran) {

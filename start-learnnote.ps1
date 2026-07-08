@@ -1,5 +1,7 @@
 param(
   [int]$Port = 8765,
+  [switch]$WithSamples,
+  [int]$SamplesPort = 8777,
   [switch]$InstallAsr,
   [switch]$SkipDoctor,
   [switch]$StrictDoctor
@@ -13,6 +15,7 @@ $extensionDir = Join-Path $projectRoot "extension"
 $doctorScript = Join-Path $projectRoot "scripts\doctor.ps1"
 $backendScript = Join-Path $projectRoot "start-backend.ps1"
 $backendUrl = "http://127.0.0.1:$Port"
+$samplesUrl = "http://127.0.0.1:$SamplesPort"
 
 function Write-Step {
   param([string]$Text)
@@ -40,6 +43,59 @@ function Test-LocalPortOpen {
   }
 }
 
+function Resolve-ProjectPython {
+  $venvDir = if ($env:LEARNNOTE_VENV_DIR) { $env:LEARNNOTE_VENV_DIR } else { Join-Path $projectRoot ".venv" }
+  $venvPython = Join-Path $venvDir "Scripts\python.exe"
+  if (Test-Path $venvPython) {
+    return $venvPython
+  }
+  $pathPython = Get-Command python -ErrorAction SilentlyContinue
+  if ($pathPython) {
+    return $pathPython.Source
+  }
+  $anacondaPython = "D:\Anaconda3\python.exe"
+  if (Test-Path $anacondaPython) {
+    return $anacondaPython
+  }
+  return "python"
+}
+
+function Start-SampleServer {
+  param(
+    [int]$PortNumber,
+    [string]$Url
+  )
+
+  if (Test-LocalPortOpen -PortNumber $PortNumber) {
+    Write-Host "WARN: $Url is already accepting connections. Reusing it as the sample site." -ForegroundColor Yellow
+    return $null
+  }
+
+  $logDir = Join-Path $dataDir "logs"
+  New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+  $stdoutLog = Join-Path $logDir "samples-$PortNumber.out.log"
+  $stderrLog = Join-Path $logDir "samples-$PortNumber.err.log"
+  $python = Resolve-ProjectPython
+  $sampleServer = Join-Path $projectRoot "scripts\serve-samples.py"
+  $args = @(
+    $sampleServer,
+    "--host",
+    "127.0.0.1",
+    "--port",
+    $PortNumber
+  )
+  $process = Start-Process `
+    -FilePath $python `
+    -ArgumentList $args `
+    -PassThru `
+    -WindowStyle Hidden `
+    -RedirectStandardOutput $stdoutLog `
+    -RedirectStandardError $stderrLog
+  Write-Host "Sample server: $Url"
+  Write-Host "Sample logs:   $stdoutLog"
+  return $process
+}
+
 $rootDrive = ([System.IO.DirectoryInfo]$projectRoot).Root.FullName
 if ($rootDrive -like "C:\*") {
   throw "LearnNote must run from a non-C drive project path. Move this project to D:\Projects\learnnote-assistant before starting."
@@ -54,6 +110,9 @@ Write-Host "LearnNote local launcher" -ForegroundColor Green
 Write-Host "Project:   $projectRoot"
 Write-Host "Data:      $dataDir"
 Write-Host "Backend:   $backendUrl"
+if ($WithSamples) {
+  Write-Host "Samples:   $samplesUrl"
+}
 Write-Host "Extension: $extensionDir"
 
 if (-not $SkipDoctor) {
@@ -87,16 +146,40 @@ if (Test-LocalPortOpen -PortNumber $Port) {
   Write-Host "WARN: $backendUrl is already accepting connections. If this is another service, restart with -Port 8766." -ForegroundColor Yellow
 }
 
-Write-Step "Starting backend"
-Write-Host "Open the web UI after startup:"
-Write-Host "  $backendUrl"
-Write-Host "Sample pages, in another terminal:"
-Write-Host "  .\scripts\serve-samples.ps1"
-Write-Host "Stop the backend with Ctrl+C."
-Write-Host ""
+$sampleProcess = $null
+try {
+  if ($WithSamples) {
+    Write-Step "Starting local regression samples"
+    $sampleProcess = Start-SampleServer -PortNumber $SamplesPort -Url $samplesUrl
+    Write-Host "Open these with the unpacked extension loaded:"
+    Write-Host "  $samplesUrl/mp4.html          direct MP4"
+    Write-Host "  $samplesUrl/hls.html          HLS manifest"
+    Write-Host "  $samplesUrl/blob-iframe.html  blob iframe fallback"
+    Write-Host "  $samplesUrl/post-api.html     POST play API"
+    Write-Host "  $samplesUrl/chaoxing-mock.html  Chaoxing-style diagnostic mock"
+  }
 
-$backendArgs = @{ Port = $Port }
-if ($InstallAsr) {
-  $backendArgs.InstallAsr = $true
+  Write-Step "Starting backend"
+  Write-Host "Open the web UI after startup:"
+  Write-Host "  $backendUrl"
+  if (-not $WithSamples) {
+    Write-Host "Sample pages, in another terminal:"
+    Write-Host "  .\scripts\serve-samples.ps1"
+    Write-Host "Or start both together:"
+    Write-Host "  .\start-learnnote.ps1 -WithSamples"
+  }
+  Write-Host "Stop the backend with Ctrl+C."
+  Write-Host ""
+
+  $backendArgs = @{ Port = $Port }
+  if ($InstallAsr) {
+    $backendArgs.InstallAsr = $true
+  }
+  & $backendScript @backendArgs
+} finally {
+  if ($sampleProcess -and -not $sampleProcess.HasExited) {
+    Write-Host ""
+    Write-Host "Stopping sample server on $samplesUrl"
+    Stop-Process -Id $sampleProcess.Id -Force -ErrorAction SilentlyContinue
+  }
 }
-& $backendScript @backendArgs
