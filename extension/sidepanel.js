@@ -4190,7 +4190,7 @@ async function pollTask() {
   renderStageRail(currentTask);
   els.taskPhase.textContent = currentTask.phase || "-";
   els.taskMessage.textContent = currentTask.error_detail || rerunFromMediaProgressMessage(currentTask) || currentTask.message || currentTask.phase;
-  if (currentTask.status === "success") {
+  if (currentTask.status === "success" || (currentTask.status === "failed" && hasReadableTaskArtifacts(currentTask))) {
     await loadResult();
     await loadTaskHistory();
     return;
@@ -4315,6 +4315,18 @@ function hasTaskDiagnostics(task) {
     task.resource_inventory_path ||
     task.page_preflight_report_path ||
     Object.keys(task.summary_diagnostics || {}).length
+  );
+}
+
+function hasReadableTaskArtifacts(task) {
+  return Boolean(
+    task?.note_path ||
+    task?.transcript_path ||
+    task?.subtitle_path ||
+    task?.media_path ||
+    hasExportableMedia(task) ||
+    hasVisualWindowExport(task) ||
+    visualWindows(task).length
   );
 }
 

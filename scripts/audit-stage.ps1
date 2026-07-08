@@ -132,6 +132,7 @@ if (Test-Any @("extension/sidepanel.js", "extension/sidepanel.css", "extension/s
     "extension\tests\sidepanel_start_page_preflight_report.test.mjs",
     "extension\tests\sidepanel_direct_response_preflight.test.mjs",
     "extension\tests\sidepanel_download_only.test.mjs",
+    "extension\tests\sidepanel_failed_fallback_result.test.mjs",
     "extension\tests\sidepanel_local_upload.test.mjs",
     "extension\tests\sidepanel_run_preflight_blob_fallback.test.mjs",
     "extension\tests\sidepanel_source_switcher.test.mjs",
