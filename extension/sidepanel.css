@@ -655,6 +655,25 @@ small,
   line-height: 1.35;
 }
 
+body[data-panel-mode="study"] .active-video-card code {
+  display: none;
+}
+
+body[data-panel-mode="study"] .active-video-metrics {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+body[data-panel-mode="study"] .active-video-metrics span:nth-child(3),
+body[data-panel-mode="study"] .playback-readiness-grid,
+body[data-panel-mode="study"] .playback-readiness-actions {
+  display: none;
+}
+
+body[data-panel-mode="study"] .playback-readiness {
+  gap: 6px;
+  padding: 9px 10px;
+}
+
 .active-video-card p {
   margin: 0;
   color: var(--muted);

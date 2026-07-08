@@ -7344,6 +7344,8 @@ function renderPanelMode() {
 function setPanelMode(mode, focus = false) {
   panelMode = mode === "diagnostics" ? "diagnostics" : "study";
   renderPanelMode();
+  renderCurrentStudyCard();
+  renderLaunchBar();
   if (focus && panelMode === "diagnostics") {
     pulseTarget(els.resourcePanel || els.resources);
   }
