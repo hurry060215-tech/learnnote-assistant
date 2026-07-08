@@ -135,10 +135,10 @@ def extract_video_clip(video_path: Path, output_path: Path, start: float, end: f
             "+faststart",
             str(output_path),
         ],
-        "瑙嗛鍒囩墖瀵煎嚭澶辫触",
+        "视频切片导出失败",
     )
     if not output_path.exists() or output_path.stat().st_size <= 0:
-        raise MediaProcessingError("瑙嗛鍒囩墖瀵煎嚭澶辫触锛氳緭鍑烘枃浠朵负绌?")
+        raise MediaProcessingError("视频切片导出失败：输出文件为空")
     return output_path
 
 

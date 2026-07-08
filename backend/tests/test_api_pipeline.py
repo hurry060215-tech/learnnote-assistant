@@ -19,6 +19,7 @@ from fastapi.testclient import TestClient
 from app.config import DATA_DIR
 from app.downloader import DownloadError
 from app.main import app, diagnostic_recovery_profile, local_upload_filename, render_bundle_manifest, render_diagnostics_markdown, render_task_audit_markdown, render_visual_windows_markdown
+from app.media import MediaProcessingError
 from app.models import ActiveVideoInfo, DownloadAttempt, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
 from app.runtime import ffmpeg_bin
 from app.storage import create_task, task_dir, update_task
@@ -757,6 +758,43 @@ class LocalUploadValidationTests(unittest.TestCase):
 
             missing = self.client.get(f"/api/tasks/{task.id}/exports/clips/W999")
             self.assertEqual(missing.status_code, 404)
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
+    def test_visual_window_clip_export_failure_reports_window_range(self) -> None:
+        task = create_task("local", "Clip failure lesson", "", mode="local")
+        work_dir = task_dir(task.id)
+        media = work_dir / "media.mp4"
+        try:
+            media.write_bytes(b"fake source media")
+            update_task(
+                task.id,
+                status="success",
+                phase="completed",
+                progress=100,
+                media_path=str(media),
+                visual_windows=[
+                    VisualWindow(
+                        id="W002",
+                        index=2,
+                        start=40,
+                        end=80,
+                        frame_count=2,
+                        grid_url="/data/tasks/clip/grids/grid_001.jpg",
+                    )
+                ],
+            )
+
+            with patch("app.main.extract_video_clip", side_effect=MediaProcessingError("视频切片导出失败：输出文件为空")):
+                response = self.client.get(f"/api/tasks/{task.id}/exports/clips/W002")
+
+            self.assertEqual(response.status_code, 500)
+            detail = response.json()["detail"]
+            self.assertEqual(detail["code"], "clip_export_failed")
+            self.assertEqual(detail["window_id"], "W002")
+            self.assertEqual(detail["start"], 40.0)
+            self.assertEqual(detail["end"], 80.0)
+            self.assertIn("视频切片导出失败", detail["message"])
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 

@@ -2845,7 +2845,16 @@ def _task_visual_clip_file(task_id: str, window_id: str) -> tuple[TaskRecord, Pa
         try:
             extract_video_clip(media_path, clip_path, start, end)
         except MediaProcessingError as exc:
-            raise HTTPException(status_code=500, detail={"code": "clip_export_failed", "message": str(exc)}) from exc
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "code": "clip_export_failed",
+                    "message": str(exc),
+                    "window_id": resolved_id,
+                    "start": start,
+                    "end": end,
+                },
+            ) from exc
     return task, clip_path, resolved_id
 
 

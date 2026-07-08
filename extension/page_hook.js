@@ -1256,6 +1256,7 @@
   function collectMediaUrlsFromText(text, source, label, mime = "", seen = new Set(), meta = {}) {
     if (!text) return [];
     const resources = extractJsonMediaUrls(text, source, label, seen, meta);
+    resources.push(...collectUrlParameterMediaUrls(text, source, label, seen, meta, Math.max(0, 40 - resources.length)));
     resources.push(...extractFieldMediaUrls(text, source, label, seen, meta));
     resources.push(...extractEncodedMediaUrls(text, source, label, seen, meta));
     const body = String(text || "");
@@ -1271,6 +1272,61 @@
         if (resources.length >= 40) break;
       }
       if (resources.length >= 40) break;
+    }
+    return resources;
+  }
+
+  function collectUrlParameterMediaUrls(text, source, label, seen = new Set(), meta = {}, limit = 20) {
+    const resources = [];
+    if (!text || limit <= 0 || typeof URLSearchParams === "undefined") return resources;
+    const raw = String(text || "").trim();
+    if (!raw || raw.length > 8192 || (!raw.includes("?") && !raw.includes("#"))) return resources;
+    let parsed = null;
+    try {
+      parsed = new URL(raw, location.href);
+    } catch {
+      return resources;
+    }
+    for (const [scope, rawChunk] of [["query", parsed.search], ["hash", parsed.hash]]) {
+      let chunk = String(rawChunk || "").replace(/^[?#]/, "");
+      if (!chunk) continue;
+      const nestedQueryIndex = chunk.indexOf("?");
+      if (nestedQueryIndex >= 0) chunk = chunk.slice(nestedQueryIndex + 1);
+      if (!/[=&]/.test(chunk)) continue;
+      let params = null;
+      try {
+        params = new URLSearchParams(chunk);
+      } catch {
+        continue;
+      }
+      for (const [key, value] of Array.from(params.entries()).slice(0, 80)) {
+        if (!value || resources.length >= limit) break;
+        const paramLabel = `${label} ${scope} ${key} param`;
+        for (const candidateValue of decodedMediaValues(value)) {
+          const trimmed = String(candidateValue || "").trim();
+          if (!trimmed || trimmed.length > MAX_TEXT_BYTES) continue;
+          const direct = looksLikeJsonUrlCandidate(trimmed) ? normalizeUrl(trimmed) : "";
+          if (direct && !seen.has(direct)) {
+            const { kind, mime: detectedMime } = kindFromJsonContext([key], direct, { [key]: value });
+            if (kind !== "unknown") {
+              seen.add(direct);
+              resources.push(applyResponseMeta({
+                url: direct,
+                source,
+                kind,
+                mime: detectedMime,
+                label: paramLabel,
+                score: scoreForKind(kind)
+              }, meta));
+              if (resources.length >= limit) break;
+            }
+          }
+          if (!"{[".includes(trimmed[0]) && !MEDIA_HINT_RE.test(trimmed) && !JSON_MEDIA_KEY_RE.test(trimmed)) continue;
+          const nested = collectMediaUrlsFromText(trimmed, source, `${paramLabel} payload`, "", seen, meta);
+          resources.push(...nested.slice(0, Math.max(0, limit - resources.length)));
+          if (resources.length >= limit) break;
+        }
+      }
     }
     return resources;
   }
