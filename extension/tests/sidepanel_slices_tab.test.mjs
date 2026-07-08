@@ -155,6 +155,7 @@ assert.match(resultHtml, /grid_000\.jpg/);
 assert.match(resultHtml, /The first diagram gives the theorem setup\./);
 assert.doesNotMatch(resultHtml, /Outside the slice window/);
 assert.match(resultHtml, /data-media-seek-time="12\.000"/);
+assert.match(resultHtml, /data-export-clip-window="W001"/);
 assert.match(resultHtml, /data-switch-result-tab="transcript"/);
 assert.match(resultHtml, /data-switch-result-tab="note"/);
 
