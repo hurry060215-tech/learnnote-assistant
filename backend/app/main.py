@@ -814,9 +814,22 @@ def read_resource_inventory(task: TaskRecord) -> dict:
     return read_json(task.id, "resource_inventory.json", {}) or {}
 
 
+def read_page_preflight_report(task: TaskRecord) -> dict:
+    path_value = task.page_preflight_report_path or ""
+    if path_value:
+        path = Path(path_value)
+        if path.is_file():
+            try:
+                return json.loads(path.read_text(encoding="utf-8"))
+            except Exception:
+                return {}
+    return read_json(task.id, "page_preflight_report.json", {}) or {}
+
+
 def render_bundle_manifest(task: TaskRecord, transcript: dict, visual_index: dict) -> dict:
     selected = task.selected_resource
     resource_inventory = read_resource_inventory(task)
+    page_preflight = read_page_preflight_report(task)
     append_evidence = mse_append_evidence(selected)
     options_payload = task.options.model_dump(mode="json")
     if options_payload.get("llm_api_key"):
@@ -866,6 +879,16 @@ def render_bundle_manifest(task: TaskRecord, transcript: dict, visual_index: dic
                 "replayable_candidate_count": int(resource_inventory.get("replayable_candidate_count") or 0) if resource_inventory else 0,
                 "kind_counts": resource_inventory.get("kind_counts", {}) if resource_inventory else {},
                 "source_counts": resource_inventory.get("source_counts", {}) if resource_inventory else {},
+            },
+            "page_preflight_report": {
+                "export": "page_preflight_report.json" if page_preflight else "",
+                "ready": bool(page_preflight.get("ready")) if page_preflight else False,
+                "code": page_preflight.get("code", "") if page_preflight else "",
+                "selected_url": page_preflight.get("selected_url", "") if page_preflight else "",
+                "candidate_count": int(page_preflight.get("candidate_count") or 0) if page_preflight else 0,
+                "probed_count": int(page_preflight.get("probed_count") or 0) if page_preflight else 0,
+                "downloadable_count": int(page_preflight.get("downloadable_count") or 0) if page_preflight else 0,
+                "page_scan_attempted": bool((page_preflight.get("page_scan") or {}).get("attempted")) if page_preflight else False,
             },
             "selected_resource": {
                 "url": selected.url if selected else "",
@@ -948,6 +971,7 @@ def render_bundle_manifest(task: TaskRecord, transcript: dict, visual_index: dic
             "visual_index": "visual_index.json",
             "summary_diagnostics": "summary_diagnostics.json" if task.summary_diagnostics else "",
             "resource_inventory": "resource_inventory.json" if resource_inventory else "",
+            "page_preflight_report": "page_preflight_report.json" if page_preflight else "",
             "media_available": task_media_file_exists(task),
             "grid_entries": grid_entries,
         },
@@ -1597,6 +1621,7 @@ def page_preflight_report(request: PagePreflightRequest) -> dict:
 def render_diagnostics_markdown(task: TaskRecord) -> str:
     selected = task.selected_resource
     resource_inventory = read_resource_inventory(task)
+    page_preflight = read_page_preflight_report(task)
     lines = [
         "# LearnNote 任务诊断报告",
         "",
@@ -1669,6 +1694,31 @@ def render_diagnostics_markdown(task: TaskRecord) -> str:
             ])
         if len(candidates) > 5:
             lines.append(f"- Omitted candidates in Markdown: {len(candidates) - 5}; see resource_inventory.json.")
+
+    if page_preflight:
+        page_scan = page_preflight.get("page_scan") or {}
+        candidates = page_preflight.get("candidates") or []
+        if not isinstance(candidates, list):
+            candidates = []
+        lines.extend([
+            "",
+            "## Page Preflight Report",
+            f"- Ready: {'yes' if page_preflight.get('ready') else 'no'}",
+            f"- Code: {page_preflight.get('code') or '-'}",
+            f"- Selected URL: {page_preflight.get('selected_url') or '-'}",
+            f"- Candidates/probed/downloadable: {page_preflight.get('candidate_count', 0)} / {page_preflight.get('probed_count', 0)} / {page_preflight.get('downloadable_count', 0)}",
+            f"- Page scan attempted: {'yes' if page_scan.get('attempted') else 'no'}",
+            f"- Page scan discoveries: {page_scan.get('discovered_count', 0)}",
+        ])
+        for item in candidates[:5]:
+            resource = item.get("resource") or {}
+            preflight = item.get("preflight") or {}
+            lines.append(
+                f"- Rank {item.get('rank', '-')}: {resource.get('kind') or '-'} / {resource.get('source') or '-'} / "
+                f"{preflight.get('code') or preflight.get('strategy') or '-'} / {resource.get('url') or '-'}"
+            )
+        if len(candidates) > 5:
+            lines.append(f"- Omitted preflight candidates in Markdown: {len(candidates) - 5}; see page_preflight_report.json.")
 
     lines.extend(["", "## Cookie 同步"])
     lines.extend(_format_cookie_summary(task.cookie_summary))
@@ -2717,6 +2767,7 @@ def api_export_bundle(task_id: str) -> Response:
     qa_report = render_qa_history_markdown(task, qa_history)
     manifest = render_bundle_manifest(task, transcript, visual_index)
     resource_inventory = read_resource_inventory(task)
+    page_preflight = read_page_preflight_report(task)
     has_artifact = bool(
         note.strip()
         or transcript.get("segments")
@@ -2747,6 +2798,8 @@ def api_export_bundle(task_id: str) -> Response:
         archive.writestr("visual_index.json", json.dumps(visual_index, ensure_ascii=False, indent=2))
         if resource_inventory:
             archive.writestr("resource_inventory.json", json.dumps(resource_inventory, ensure_ascii=False, indent=2))
+        if page_preflight:
+            archive.writestr("page_preflight_report.json", json.dumps(page_preflight, ensure_ascii=False, indent=2))
         if task.subtitle_path:
             _write_file_if_exists(archive, task.subtitle_path, f"subtitles/{Path(task.subtitle_path).name}")
         if task.summary_diagnostics:

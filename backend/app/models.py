@@ -130,6 +130,7 @@ class CurrentPageTaskRequest(BaseModel):
     page_url: str
     title: str = ""
     page_text: str = ""
+    page_preflight_report: dict[str, Any] = Field(default_factory=dict)
     active_video: ActiveVideoInfo | None = None
     browser_subtitles: list[BrowserSubtitleCue] = Field(default_factory=list)
     resources: list[ResourceCandidate] = Field(default_factory=list)
@@ -277,6 +278,7 @@ class TaskRecord(BaseModel):
     summary_diagnostics_path: str = ""
     summary_diagnostics: dict[str, Any] = Field(default_factory=dict)
     resource_inventory_path: str = ""
+    page_preflight_report_path: str = ""
     frame_grids: list[FrameGrid] = Field(default_factory=list)
     visual_windows: list[VisualWindow] = Field(default_factory=list)
 

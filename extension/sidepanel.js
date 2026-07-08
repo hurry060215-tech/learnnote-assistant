@@ -162,6 +162,7 @@ let qaState = { taskId: "", question: "", answer: "", source: "", warning: "", c
 let preflight = null;
 let preflightResourceUrl = "";
 let preflightResultsByUrl = new Map();
+let lastPagePreflightReport = null;
 let contextRefreshTimer = 0;
 let isCollectingContext = false;
 let pendingContextRefresh = false;
@@ -3655,6 +3656,7 @@ async function collectContextNow() {
   preflight = null;
   preflightResourceUrl = "";
   preflightResultsByUrl = new Map();
+  lastPagePreflightReport = null;
   renderContext();
   return true;
 }
@@ -3909,6 +3911,7 @@ function pagePreflightHasUnprobedCandidates(result, candidates = []) {
 
 async function preflightPageCandidates(candidates) {
   const report = await requestPagePreflightReport(candidates || []);
+  lastPagePreflightReport = report || null;
   const applied = applyPagePreflightReport(report);
   els.taskMessage.textContent = report.message || (report.ready ? "整页预检通过" : "整页预检未通过");
   renderContext();
@@ -3995,6 +3998,7 @@ async function startTask(mode = "video") {
       targetTabId: currentTabId,
       page,
       resources: isMediaTaskMode(mode) ? selectedResourcesForTask() : [],
+      pagePreflightReport: isMediaTaskMode(mode) ? lastPagePreflightReport : null,
       mode,
       options: readOptions()
     });

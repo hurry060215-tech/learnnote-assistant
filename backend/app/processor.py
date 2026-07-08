@@ -193,6 +193,36 @@ def write_resource_inventory(task_id: str, request: CurrentPageTaskRequest) -> s
     return str(path)
 
 
+def _redacted_report_value(value, parent_key: str = ""):
+    if isinstance(value, dict):
+        lowered_parent = parent_key.lower()
+        if lowered_parent == "headers":
+            return _safe_response_headers({str(name): str(item) for name, item in value.items()})
+        if lowered_parent in {"request_headers", "request_body"}:
+            return {str(name): "<redacted>" for name in value}
+        redacted = {}
+        for name, item in value.items():
+            key = str(name)
+            lowered = key.lower()
+            if lowered in {"authorization", "cookie", "set-cookie", "proxy-authorization"}:
+                redacted[key] = "<redacted>"
+            else:
+                redacted[key] = _redacted_report_value(item, key)
+        return redacted
+    if isinstance(value, list):
+        return [_redacted_report_value(item, parent_key) for item in value]
+    return value
+
+
+def write_page_preflight_report(task_id: str, request: CurrentPageTaskRequest) -> str:
+    report = request.page_preflight_report or {}
+    if not isinstance(report, dict) or not report:
+        return ""
+    path = write_json(task_id, "page_preflight_report.json", _redacted_report_value(report))
+    update_task(task_id, page_preflight_report_path=str(path))
+    return str(path)
+
+
 def has_downloadable_candidate(resources: list[ResourceCandidate]) -> bool:
     for resource in resources:
         kind = effective_resource_kind(resource)
@@ -779,6 +809,7 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
     request.resources = enrich_resources_with_active_video(request)
     write_json(task_id, "request.json", redacted_request_dump(request))
     write_resource_inventory(task_id, request)
+    write_page_preflight_report(task_id, request)
     if request.mode == "page_text":
         process_page_text_task(task_id, request)
         return

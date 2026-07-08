@@ -1607,6 +1607,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           page_url: page.page_url || tab.url,
           title: bestPageTitle(page.title, tab.title),
           page_text: page.page_text || "",
+          page_preflight_report: message.pagePreflightReport || {},
           active_video: page.active_video || null,
           browser_subtitles: page.browser_subtitles || [],
           drm_detected: Boolean(page.drm_detected),

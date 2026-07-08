@@ -1300,6 +1300,28 @@ class ProcessorBoundaryTests(unittest.TestCase):
             request = CurrentPageTaskRequest(
                 page_url="https://course.example.com/lesson",
                 title="Inventory failure",
+                page_preflight_report={
+                    "ok": True,
+                    "ready": False,
+                    "code": "download_forbidden",
+                    "selected_url": "",
+                    "candidate_count": 3,
+                    "probed_count": 2,
+                    "downloadable_count": 0,
+                    "page_scan": {"attempted": True, "discovered_count": 1},
+                    "candidates": [{
+                        "rank": 1,
+                        "resource": {
+                            "url": "https://cdn.example.com/lesson.mp4",
+                            "kind": "video",
+                            "source": "webRequest",
+                            "request_headers": {"Cookie": "SESSION=secret", "Referer": "https://course.example.com/lesson"},
+                            "request_body": {"content": "dtoken=secret-token"},
+                            "headers": {"content-type": "video/mp4", "set-cookie": "SECRET=1"},
+                        },
+                        "preflight": {"code": "download_forbidden", "message": "HTTP 403"},
+                    }],
+                },
                 active_video=ActiveVideoInfo(src="https://cdn.example.com/lesson.mp4", current_time=12, duration=300, frame_id=3),
                 resources=[
                     ResourceCandidate(
@@ -1338,6 +1360,7 @@ class ProcessorBoundaryTests(unittest.TestCase):
             record = get_task(task.id)
             self.assertEqual(record.status, "failed")
             self.assertTrue(record.resource_inventory_path)
+            self.assertTrue(record.page_preflight_report_path)
             inventory = json.loads(Path(record.resource_inventory_path).read_text(encoding="utf-8"))
             self.assertEqual(inventory["candidate_count"], 3)
             self.assertEqual(inventory["downloadable_candidate_count"], 2)
@@ -1348,10 +1371,19 @@ class ProcessorBoundaryTests(unittest.TestCase):
             self.assertEqual(first["request_headers"]["Authorization"], "<redacted>")
             self.assertEqual(first["request_body"]["content"], "<redacted>")
             self.assertNotIn("set-cookie", first["headers"])
+            preflight_report = json.loads(Path(record.page_preflight_report_path).read_text(encoding="utf-8"))
+            self.assertEqual(preflight_report["candidate_count"], 3)
+            self.assertTrue(preflight_report["page_scan"]["attempted"])
+            report_resource = preflight_report["candidates"][0]["resource"]
+            self.assertEqual(report_resource["request_headers"]["Cookie"], "<redacted>")
+            self.assertEqual(report_resource["request_body"]["content"], "<redacted>")
+            self.assertNotIn("set-cookie", report_resource["headers"])
 
             diagnostics = render_diagnostics_markdown(record)
             self.assertIn("Resource Inventory", diagnostics)
             self.assertIn("Candidate count: 3", diagnostics)
+            self.assertIn("Page Preflight Report", diagnostics)
+            self.assertIn("Page scan attempted: yes", diagnostics)
             self.assertIn("Safe request header names: Referer", diagnostics)
             self.assertNotIn("topsecret", diagnostics)
             self.assertNotIn("secret-token", diagnostics)
@@ -1359,6 +1391,9 @@ class ProcessorBoundaryTests(unittest.TestCase):
             manifest = render_bundle_manifest(record, {}, {})
             self.assertEqual(manifest["source"]["resource_inventory"]["candidate_count"], 3)
             self.assertEqual(manifest["artifacts"]["resource_inventory"], "resource_inventory.json")
+            self.assertEqual(manifest["source"]["page_preflight_report"]["candidate_count"], 3)
+            self.assertTrue(manifest["source"]["page_preflight_report"]["page_scan_attempted"])
+            self.assertEqual(manifest["artifacts"]["page_preflight_report"], "page_preflight_report.json")
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
