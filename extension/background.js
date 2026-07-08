@@ -289,6 +289,30 @@ function isDownloadableKind(kind) {
   return kind === "hls" || kind === "dash" || kind === "video";
 }
 
+function hasReplayableRequestBody(resource = {}) {
+  const method = String(resource.method || "").toUpperCase();
+  if (!["POST", "PUT", "PATCH"].includes(method)) return false;
+  const body = resource.request_body || {};
+  return Boolean(body.content || body.raw || body.formData || body.form_data || body.bytes);
+}
+
+function playableEndpointRank(resource = {}) {
+  if (!PLAYBACK_ENDPOINT_RE.test(resource.url || "")) return 0;
+  const requestType = String(resource.request_type || "").toLowerCase();
+  const source = String(resource.source || "").toLowerCase();
+  const method = String(resource.method || "").toUpperCase();
+  let rank = 1;
+  if (["xmlhttprequest", "fetch", "media"].includes(requestType)) rank += 2;
+  if (source.startsWith("pagehook")) rank += 1;
+  if (["POST", "PUT", "PATCH"].includes(method) || hasReplayableRequestBody(resource)) rank += 3;
+  if (resource.playback_match || resource.is_main_video) rank += 2;
+  return rank;
+}
+
+function isDirectResourceCandidate(resource = {}) {
+  return isDownloadableKind(resource.kind) || playableEndpointRank(resource) > 0;
+}
+
 function isPlayableMediaEvidenceKind(kind) {
   return isDownloadableKind(kind) || kind === "fragment";
 }
@@ -303,6 +327,19 @@ function kindRank(kind) {
     subtitle: 2,
     blob: 1
   })[kind] || 0;
+}
+
+function effectiveKindRank(resource = {}) {
+  const rank = kindRank(resource.kind);
+  if (rank) return rank;
+  return playableEndpointRank(resource) > 0 ? 4 : 0;
+}
+
+function playableEndpointScore(resource = {}) {
+  const rank = playableEndpointRank(resource);
+  if (!rank) return 0;
+  const hostBoost = /chaoxing|xuexitong/i.test(resource.url || "") ? 8 : 0;
+  return Math.min(100, 38 + rank * 8 + hostBoost);
 }
 
 function sourceRank(source = "") {
@@ -339,8 +376,9 @@ function compareResourceCandidates(a = {}, b = {}) {
     a.user_selected ? 1 : 0,
     a.is_main_video ? 1 : 0,
     playbackMatchRank(a.playback_match),
-    isDownloadableKind(a.kind) ? 1 : 0,
-    kindRank(a.kind),
+    isDirectResourceCandidate(a) ? 1 : 0,
+    effectiveKindRank(a),
+    playableEndpointRank(a),
     sourceRank(a.source),
     Number(a.score || 0),
     Number(a.time_stamp || 0),
@@ -350,8 +388,9 @@ function compareResourceCandidates(a = {}, b = {}) {
     b.user_selected ? 1 : 0,
     b.is_main_video ? 1 : 0,
     playbackMatchRank(b.playback_match),
-    isDownloadableKind(b.kind) ? 1 : 0,
-    kindRank(b.kind),
+    isDirectResourceCandidate(b) ? 1 : 0,
+    effectiveKindRank(b),
+    playableEndpointRank(b),
     sourceRank(b.source),
     Number(b.score || 0),
     Number(b.time_stamp || 0),
@@ -1025,14 +1064,16 @@ function addResource(tabId, resource, notify = true) {
   if (tabId < 0 || !resource?.url) return;
   const list = resourceByTab.get(tabId) || [];
   const existing = list.find(item => item.url === resource.url);
+  const kind = resource.kind || classify(resource.url, resource.mime);
+  const rawScore = resource.source === "manifest-guess"
+    ? Math.min(72, Math.max(0, Number(resource.score || 0)))
+    : Math.max(resource.score || 0, scoreKind(resource.url, resource.source || "", kind), playableEndpointScore({ ...resource, kind }));
   const normalized = {
     url: resource.url,
     source: resource.source || "unknown",
-    kind: resource.kind || classify(resource.url, resource.mime),
+    kind,
     mime: resource.mime || "",
-    score: resource.source === "manifest-guess"
-      ? Math.min(72, Math.max(0, Number(resource.score || 0)))
-      : Math.max(resource.score || 0, scoreKind(resource.url, resource.source || "", resource.kind || classify(resource.url, resource.mime || ""))),
+    score: rawScore,
     label: resource.label || "",
     user_selected: Boolean(resource.user_selected),
     is_main_video: Boolean(resource.is_main_video),

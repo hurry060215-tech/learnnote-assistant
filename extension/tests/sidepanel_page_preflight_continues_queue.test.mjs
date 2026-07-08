@@ -175,7 +175,6 @@ await context.startTask("video");
 
 assert.equal(calls.pagePreflight, 1);
 assert.deepEqual(calls.resourcePreflight, [
-  "https://cdn.example.com/stale-ad.mp4",
   "https://cdn.example.com/current/master.m3u8"
 ]);
 assert.ok(calls.start, "expected task to start after later candidate preflight passes");

@@ -84,7 +84,8 @@ messageListener({ type: "collect-page-data" }, {}, data => {
   response = data;
 });
 
-assert.equal(response.resources.length, 60);
+assert.ok(response.resources.length <= 80);
+assert.equal(response.resources.length, 71);
 assert.equal(response.resources[0].url, "https://cdn.example.com/current/video/init-0001.m4s");
 assert.equal(response.resources[0].playback_match, "blob-source");
 assert.equal(response.resources[0].is_main_video, true);

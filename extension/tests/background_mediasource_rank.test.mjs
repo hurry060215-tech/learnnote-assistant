@@ -103,3 +103,27 @@ const sourceElementSorted = [
 
 assert.equal(sourceElementSorted[0].url, "https://cdn.example.com/current-source.mp4");
 assert.equal(sourceElementSorted[0].playback_match, "source-element");
+
+const playableApiSorted = [
+  {
+    url: "https://cdn.example.com/tracker.gif",
+    source: "webRequest",
+    kind: "unknown",
+    score: 95,
+    request_type: "image",
+    time_stamp: now + 4000
+  },
+  {
+    url: "https://mooc1.chaoxing.com/ananas/status/play?id=course-video",
+    source: "webRequest",
+    kind: "unknown",
+    score: 10,
+    request_type: "xmlhttprequest",
+    method: "POST",
+    request_body: { content: "objectid=abc&dtoken=def", type: "form" },
+    time_stamp: now
+  }
+].sort(context.compareResourceCandidates);
+
+assert.equal(playableApiSorted[0].url, "https://mooc1.chaoxing.com/ananas/status/play?id=course-video");
+assert.ok(context.playableEndpointScore(playableApiSorted[0]) >= 90, "expected replayable playback API endpoint to receive a high score");

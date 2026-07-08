@@ -1388,13 +1388,11 @@ function pickDefaultResourceUrl(items = [], previousUrl = "") {
   const available = items.filter(item => !isResourceExcluded(item));
   if (!available.length) return "";
   const previous = previousUrl ? available.find(item => item.url === previousUrl) : null;
-  const downloadable = available.filter(isDownloadableResource);
-  const preferred = downloadable.find(item => item.playback_match || item.is_main_video) || downloadable[0];
+  const direct = available.filter(isDirectExtractionCandidate);
+  const preferred = direct.sort(compareDefaultResourceCandidates)[0] || available[0];
   if (!previous) return preferred?.url || available[0]?.url || "";
   if (resourceSelectionPinned) return previous.url;
-  const previousMatched = Boolean(previous.playback_match || previous.is_main_video);
-  const preferredMatched = Boolean(preferred?.playback_match || preferred?.is_main_video);
-  if (preferred?.url && preferredMatched && !previousMatched) return preferred.url;
+  if (preferred?.url && compareDefaultResourceCandidates(preferred, previous) < 0) return preferred.url;
   return previous.url;
 }
 
@@ -1569,6 +1567,58 @@ function looksLikePlayableEndpoint(item) {
     || Boolean(item.request_body?.content)
     || Boolean(item.playback_match);
   return hasPlaybackApiHint && hasBrowserRequestEvidence;
+}
+
+function hasReplayableRequestBody(item = {}) {
+  const method = String(item.method || "").toUpperCase();
+  if (!["POST", "PUT", "PATCH"].includes(method)) return false;
+  const body = item.request_body || {};
+  return Boolean(body.content || body.raw || body.formData || body.form_data || body.bytes);
+}
+
+function playableEndpointPriority(item = {}) {
+  if (!looksLikePlayableEndpoint(item)) return 0;
+  const requestType = String(item.request_type || "").toLowerCase();
+  const source = String(item.source || "").toLowerCase();
+  let priority = 1;
+  if (["xmlhttprequest", "fetch", "media"].includes(requestType)) priority += 2;
+  if (source.startsWith("pagehook")) priority += 1;
+  if (hasReplayableRequestBody(item)) priority += 3;
+  if (item.playback_match || item.is_main_video) priority += 2;
+  return priority;
+}
+
+function defaultKindPriority(item = {}) {
+  const kind = String(item.kind || "").toLowerCase();
+  if (kind === "hls" || kind === "dash") return 6;
+  if (kind === "video") return 5;
+  if (looksLikePlayableEndpoint(item)) return 4;
+  if (kind === "fragment") return 3;
+  if (kind === "audio" || kind === "subtitle") return 2;
+  if (kind === "blob") return 1;
+  return 0;
+}
+
+function defaultResourceRank(item = {}) {
+  return [
+    isDirectExtractionCandidate(item) ? 1 : 0,
+    item.playback_match || item.is_main_video ? 1 : 0,
+    playableEndpointPriority(item),
+    isDownloadableResource(item) ? 1 : 0,
+    defaultKindPriority(item),
+    Number(item.score || 0),
+    Number(item.time_stamp || 0),
+    Number(item.content_length || 0)
+  ];
+}
+
+function compareDefaultResourceCandidates(a = {}, b = {}) {
+  const left = defaultResourceRank(a);
+  const right = defaultResourceRank(b);
+  for (let index = 0; index < left.length; index += 1) {
+    if (right[index] !== left[index]) return right[index] - left[index];
+  }
+  return String(a.url || "").localeCompare(String(b.url || ""));
 }
 
 function shouldPreflightBeforeStart(mode, item) {
