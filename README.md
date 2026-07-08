@@ -165,6 +165,19 @@ Recommended browser checks with the unpacked extension loaded:
 - `Blob iframe`: open `http://127.0.0.1:8777/blob-iframe.html`. Expected route: iframe/player context plus blob-source mapping; no tab recording.
 - `POST play API`: open `http://127.0.0.1:8777/post-api.html`. Expected route: XHR/POST candidate with safe headers and bounded body, resolving `playUrl` or `sources` to the real media URL.
 
+Run the local backend/sample smoke gate when changing downloader or detector contracts:
+
+```powershell
+cd D:\Projects\learnnote-assistant
+.\scripts\e2e-local-smoke.ps1 -BackendPort 8790 -SamplesPort 8791
+```
+
+That script starts a temporary backend and sample server, then verifies MP4 preflight, HLS preflight, POST play API preflight, a real download-only task that writes `media.mp4`, and iframe/page fallback preflight. Add `-OpenBrowser` to also launch Chrome/Edge with a temporary profile and the unpacked extension opened on the sample site:
+
+```powershell
+.\scripts\e2e-local-smoke.ps1 -OpenBrowser
+```
+
 For real sites, use the same evidence model instead of a site-specific assumption:
 
 - A direct media URL, HLS/DASH manifest, or yt-dlp supported page is enough.
