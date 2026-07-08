@@ -104,42 +104,48 @@ This project intentionally does **not** record the browser tab and does **not** 
 
 ## Quick Start
 
-Run the local readiness check first. It does not install anything or contact external services; it verifies the D-drive project path, Python venv, backend imports, ffmpeg, yt-dlp, optional ASR, Chrome/Edge, extension manifest, sample scripts, and model-key status:
+Use the product launcher first. It keeps runtime files under the D-drive project `data\` directory, runs the local doctor, prints the extension load path, sets the backend origin, and then starts FastAPI:
 
 ```powershell
 cd D:\Projects\learnnote-assistant
-.\scripts\doctor.ps1
+.\start-learnnote.ps1
 ```
 
-`PASS` means the base local workflow can run. `WARN` marks optional capability gaps such as missing `faster-whisper` or no multimodal API key. `FAIL` gives the command or path to fix before starting the backend.
-
-```powershell
-cd D:\Projects\learnnote-assistant
-.\start-backend.ps1
-```
-
-Open the local web UI:
+Open the local web UI after startup:
 
 ```text
 http://127.0.0.1:8765
 ```
-
-If port `8765` is occupied, start the backend on another local port and put the same address in the Side Panel backend settings:
-
-```powershell
-.\start-backend.ps1 -Port 8766
-```
-
-The extension only accepts local backend origins (`127.0.0.1` or `localhost`), and its manifest keeps localhost permissions host-wide so non-default ports continue to work.
-When `-Port` is used, the startup script also sets `LEARNNOTE_BACKEND_ORIGIN` to the same local origin so generated frame-grid, media, and export links point at the running backend.
 
 Load the browser extension:
 
 1. Open `chrome://extensions` or `edge://extensions`.
 2. Enable Developer Mode.
 3. Click "Load unpacked".
-4. Select `learnnote-assistant/extension`.
+4. Select `D:\Projects\learnnote-assistant\extension`.
 5. Open a video page, click the extension icon, then use the Side Panel.
+
+The launcher runs the same readiness check as `.\scripts\doctor.ps1`. `PASS` means the base local workflow can run. `WARN` marks optional capability gaps such as missing `faster-whisper` or no multimodal API key. `FAIL` gives the command or path to fix before starting the backend. To install the optional local ASR dependency during startup:
+
+```powershell
+cd D:\Projects\learnnote-assistant
+.\start-learnnote.ps1 -InstallAsr
+```
+
+If port `8765` is occupied, start the backend on another local port and put the same address in the Side Panel backend settings:
+
+```powershell
+.\start-learnnote.ps1 -Port 8766
+```
+
+For automation or backend-only debugging, `start-backend.ps1` remains available:
+
+```powershell
+.\start-backend.ps1 -Port 8765
+```
+
+The extension only accepts local backend origins (`127.0.0.1` or `localhost`), and its manifest keeps localhost permissions host-wide so non-default ports continue to work.
+When `-Port` is used, the startup script also sets `LEARNNOTE_BACKEND_ORIGIN` to the same local origin so generated frame-grid, media, and export links point at the running backend.
 
 ## Local Browser Regression Samples
 
@@ -149,7 +155,7 @@ Start the backend in one terminal:
 
 ```powershell
 cd D:\Projects\learnnote-assistant
-.\start-backend.ps1
+.\start-learnnote.ps1
 ```
 
 Start the sample site in another terminal:
@@ -222,7 +228,7 @@ To install the optional local ASR dependency into the D-drive project venv:
 
 ```powershell
 cd D:\Projects\learnnote-assistant
-.\start-backend.ps1 -InstallAsr
+.\start-learnnote.ps1 -InstallAsr
 .\scripts\doctor.ps1
 ```
 
@@ -230,7 +236,7 @@ You can override the Python used to create the venv without changing where proje
 
 ```powershell
 $env:LEARNNOTE_BOOTSTRAP_PYTHON="D:\Python312\python.exe"
-.\start-backend.ps1
+.\start-learnnote.ps1
 ```
 
 ## Optional Model Settings

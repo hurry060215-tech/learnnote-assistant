@@ -77,7 +77,7 @@ def import_check(module: str, *, optional: bool = False, package_label: str | No
             label,
             "WARN" if optional else "FAIL",
             "not importable in the selected Python environment",
-            f"run .\\start-backend.ps1{' -InstallAsr' if optional else ''}" if optional else "run .\\start-backend.ps1 to create the D-drive venv and install backend requirements",
+            f"run .\\start-learnnote.ps1{' -InstallAsr' if optional else ''}" if optional else "run .\\start-learnnote.ps1 to create the D-drive venv and install backend requirements",
         )
     try:
         payload = json.loads(out or "{}")
@@ -103,7 +103,7 @@ def runtime_check() -> Check:
     )
     rc, out, err = run_python_snippet(code)
     if rc != 0:
-        return Check("backend runtime", "FAIL", (err or out or "runtime import failed")[:300], "run .\\start-backend.ps1")
+        return Check("backend runtime", "FAIL", (err or out or "runtime import failed")[:300], "run .\\start-learnnote.ps1")
     payload = json.loads(out)
     ffmpeg = payload.get("ffmpeg") or ""
     paths = payload.get("paths", {})
@@ -111,7 +111,7 @@ def runtime_check() -> Check:
     root_drive = ROOT.resolve().drive
     bad_drive = any(drive and drive != root_drive for drive in drives)
     if not ffmpeg:
-        return Check("backend runtime", "FAIL", f"data={paths.get('data', DATA_DIR)}; ffmpeg not found", "run .\\start-backend.ps1 or install ffmpeg / imageio-ffmpeg")
+        return Check("backend runtime", "FAIL", f"data={paths.get('data', DATA_DIR)}; ffmpeg not found", "run .\\start-learnnote.ps1 or install ffmpeg / imageio-ffmpeg")
     if bad_drive:
         return Check("backend runtime", "FAIL", f"runtime paths are not all on {root_drive}: {paths}", "keep LEARNNOTE_VENV_DIR and project data on the D-drive project path")
     return Check("backend runtime", "PASS", f"ffmpeg={ffmpeg}; data={paths.get('data', DATA_DIR)}")
@@ -121,7 +121,7 @@ def backend_import_check() -> Check:
     rc, out, err = run_python_snippet("import app.main\nprint('ok')", timeout=30)
     if rc == 0:
         return Check("FastAPI app import", "PASS", "app.main imports successfully")
-    return Check("FastAPI app import", "FAIL", (err or out or "import failed")[:300], "run .\\start-backend.ps1 and inspect backend dependency errors")
+    return Check("FastAPI app import", "FAIL", (err or out or "import failed")[:300], "run .\\start-learnnote.ps1 and inspect backend dependency errors")
 
 
 def browser_check(name: str, paths: list[Path]) -> Check:
@@ -176,14 +176,15 @@ def venv_check() -> Check:
         override_python = Path(override) / "Scripts" / "python.exe"
         if override_python.exists():
             return Check("Python environment", "PASS", f"{override_python} via LEARNNOTE_VENV_DIR")
-        return Check("Python environment", "FAIL", f"{override_python} does not exist", "run .\\start-backend.ps1 after setting LEARNNOTE_VENV_DIR")
+        return Check("Python environment", "FAIL", f"{override_python} does not exist", "run .\\start-learnnote.ps1 after setting LEARNNOTE_VENV_DIR")
     if venv_python.exists():
         return Check("Python environment", "PASS", str(venv_python))
-    return Check("Python environment", "WARN", f"project venv missing; using {python}", "run .\\start-backend.ps1 to create .venv under the D-drive project")
+    return Check("Python environment", "WARN", f"project venv missing; using {python}", "run .\\start-learnnote.ps1 to create .venv under the D-drive project")
 
 
 def script_check() -> Check:
     required = [
+        ROOT / "start-learnnote.ps1",
         ROOT / "start-backend.ps1",
         ROOT / "scripts" / "serve-samples.ps1",
         ROOT / "scripts" / "e2e-local-smoke.ps1",
@@ -192,7 +193,7 @@ def script_check() -> Check:
     missing = [str(path.relative_to(ROOT)) for path in required if not path.exists()]
     if missing:
         return Check("local scripts", "FAIL", f"missing: {', '.join(missing)}")
-    return Check("local scripts", "PASS", "start, sample server, backend smoke, and real extension smoke scripts are present")
+    return Check("local scripts", "PASS", "launcher, backend, sample server, backend smoke, and real extension smoke scripts are present")
 
 
 def collect_checks() -> list[Check]:
@@ -230,7 +231,7 @@ def main() -> int:
             print(status_line(check))
         print("")
         print("Next:")
-        print("  .\\start-backend.ps1")
+        print("  .\\start-learnnote.ps1")
         print("  .\\scripts\\serve-samples.ps1")
         print("  .\\scripts\\e2e-local-smoke.ps1 -OpenBrowser")
         print("  .\\scripts\\e2e-extension-smoke.ps1")
