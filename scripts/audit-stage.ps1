@@ -190,6 +190,11 @@ if (Test-Any @("*.ps1", "scripts/*.ps1")) {
   }
 }
 
+if (Test-Any @("scripts/audit-real-site.py", "scripts/tests/*.py")) {
+  $ran = $true
+  Invoke-Step "Real-site audit signal tests" { & $python -m unittest discover -s scripts\tests -p "test_*.py" }
+}
+
 Invoke-Step "Whitespace check" { git diff --check }
 
 if (-not $ran) {

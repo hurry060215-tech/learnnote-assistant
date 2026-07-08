@@ -275,7 +275,7 @@ cd D:\Projects\learnnote-assistant
   -InteractiveLogin -Preflight -KeepBrowser
 ```
 
-When the browser opens, log in if needed, play the target video for a few seconds, then return to the terminal and press Enter. The report should show whether the generic chain is complete: browser playback evidence, auth/cookie context, replayable API body or direct media URL, and download preflight. Reports keep only evidence summaries: Cookie/Authorization values are not written, POST body content is replaced with field names and evidence flags, and URL query values are redacted.
+When the browser opens, log in if needed, play the target video for a few seconds, then return to the terminal and press Enter. The report starts with `Readiness`, `Failure reason`, and `Next step`, then expands the generic chain: browser playback evidence, auth/cookie context, replayable API body or direct media URL, and download preflight. For learning-platform pages it also lists `ananas`, `playurl/play_url`, `objectid`, `dtoken`, `iframe`, and `cookie` as a checklist instead of hiding them in raw logs. Reports keep only evidence summaries: Cookie/Authorization values are not written, POST body content is replaced with field names and evidence flags, and URL query values are redacted.
 
 ## Local Storage On D
 

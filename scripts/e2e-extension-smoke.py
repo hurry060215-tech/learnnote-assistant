@@ -316,6 +316,7 @@ async () => {{
     if (resources.length || page.active_video || Number(captureLog.restored || captureLog.total || 0)) break;
   }}
   const cookies = await chrome.cookies.getAll({{ url: targetUrl }}).catch(() => []);
+  const cookieDomains = Array.from(new Set(cookies.map(item => item.domain).filter(Boolean))).sort();
   return {{
     tab: {{ id: tab.id, url: tab.url, title: tab.title, status: tab.status }},
     page: {{
@@ -328,6 +329,8 @@ async () => {{
     resources: resources.slice(0, 30),
     captured_count: Number(captureLog.restored || captureLog.total || 0),
     cookie_count: cookies.length,
+    cookie_domain_count: cookieDomains.length,
+    cookie_domains: cookieDomains.slice(0, 12),
   }};
 }}
 """
@@ -524,7 +527,9 @@ def main() -> None:
     log_dir = ROOT / "data" / "test-runs" / "e2e-logs"
     backend = f"http://127.0.0.1:{args.backend_port}"
     samples = f"http://127.0.0.1:{args.samples_port}"
-    profile_dir = Path(tempfile.mkdtemp(prefix="learnnote-extension-e2e-"))
+    profile_root = ROOT / "data" / "browser-profiles" / "e2e"
+    profile_root.mkdir(parents=True, exist_ok=True)
+    profile_dir = Path(tempfile.mkdtemp(prefix="learnnote-extension-e2e-", dir=str(profile_root)))
     backend_process: subprocess.Popen | None = None
     samples_process: subprocess.Popen | None = None
     browser_process: subprocess.Popen | None = None
