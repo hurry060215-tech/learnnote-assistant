@@ -11550,3 +11550,310 @@ body[data-panel-mode="diagnostics"] .resource-panel {
   font-style: normal;
   font-weight: 850;
 }
+
+/* Product closeout: learning-first result surfaces, with diagnostics kept behind their own tabs. */
+.learning-notebook-cover {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #d9e4f2;
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, #ffffff, #f8fbff);
+  padding: 11px;
+}
+
+.learning-notebook-cover.ready {
+  border-color: rgba(20, 150, 74, 0.26);
+  background: linear-gradient(180deg, #ffffff, #f5fcf7);
+}
+
+.learning-notebook-cover.continue {
+  border-color: rgba(20, 99, 255, 0.28);
+}
+
+.learning-notebook-cover.blocked {
+  border-color: rgba(217, 45, 32, 0.22);
+  background: linear-gradient(180deg, #ffffff, #fff7f6);
+}
+
+.learning-notebook-cover-main {
+  display: grid;
+  gap: 6px;
+}
+
+.learning-notebook-cover-main > span,
+.learning-notebook-cover-grid span,
+.visual-study-timeline header span,
+.visual-study-timeline-time em {
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.learning-notebook-cover-main strong {
+  color: var(--ink);
+  font-size: 17px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.learning-notebook-cover-main small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.learning-notebook-cover-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.learning-notebook-cover-actions button {
+  min-height: 28px;
+  height: auto;
+  border: 1px solid #cbdaf0;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #344054;
+  padding: 6px 8px;
+  font-size: 10.5px;
+  font-weight: 900;
+  line-height: 1.1;
+}
+
+.learning-notebook-cover-actions button:first-child {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.learning-notebook-cover-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.learning-notebook-cover-grid section {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  border: 1px solid #e2eaf5;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.74);
+  padding: 7px;
+}
+
+.learning-notebook-cover-grid strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.learning-notebook-cover-grid small {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.visual-study-timeline {
+  display: grid;
+  gap: 9px;
+  border: 1px solid #d9e4f2;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 10px;
+}
+
+.visual-study-timeline header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.visual-study-timeline header div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.visual-study-timeline header strong {
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.visual-study-timeline header small {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.visual-study-timeline-list {
+  display: grid;
+  gap: 8px;
+}
+
+.visual-study-timeline article {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 68px minmax(78px, 0.8fr) minmax(0, 1.2fr);
+  gap: 8px;
+  align-items: stretch;
+  border: 1px solid #e2eaf5;
+  border-radius: 8px;
+  background: #fbfdff;
+  padding: 8px;
+}
+
+.visual-study-timeline article.vision {
+  border-color: rgba(20, 150, 74, 0.24);
+  background: #f6fcf8;
+}
+
+.visual-study-timeline article.missing,
+.visual-study-timeline article.omitted {
+  border-color: rgba(196, 122, 5, 0.28);
+  background: #fffaf0;
+}
+
+.visual-study-timeline-time {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 4px;
+}
+
+.visual-study-timeline-time b {
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.visual-study-timeline-time time {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 850;
+  line-height: 1.25;
+}
+
+.visual-study-timeline-time em {
+  width: fit-content;
+  max-width: 100%;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #eef5ff;
+  padding: 2px 6px;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.visual-study-timeline figure {
+  min-width: 0;
+  margin: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.visual-study-timeline img,
+.visual-study-timeline .side-visual-placeholder {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border: 1px solid #dce7f4;
+  border-radius: 7px;
+  background: #eef3fa;
+}
+
+.visual-study-timeline figcaption {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 9.5px;
+  font-weight: 760;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.visual-study-timeline-body {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.visual-study-timeline-body > strong {
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.visual-study-timeline-body > p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.visual-study-timeline-cues {
+  display: grid;
+  gap: 4px;
+}
+
+.visual-study-timeline-cues span {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 5px;
+  align-items: start;
+}
+
+.visual-study-timeline-cues small {
+  min-width: 0;
+  color: #344054;
+  font-size: 10px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.visual-study-timeline-body nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.visual-study-timeline-body nav button {
+  min-height: 24px;
+  height: auto;
+  border: 1px solid #cbdaf0;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #24528f;
+  padding: 4px 7px;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1.1;
+}
+
+@media (max-width: 380px) {
+  .learning-notebook-cover-grid,
+  .visual-study-timeline article {
+    grid-template-columns: 1fr;
+  }
+
+  .visual-study-timeline figure {
+    max-width: 180px;
+  }
+}

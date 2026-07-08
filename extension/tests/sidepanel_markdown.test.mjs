@@ -783,6 +783,67 @@ assert.match(railHtml, /src="http:\/\/127\.0\.0\.1:8765\/api\/tasks\/demo\/grids
 assert.match(railHtml, /&lt;script&gt;alert\(1\)&lt;\/script&gt; 画面摘要/);
 assert.doesNotMatch(railHtml, /<script>/);
 
+const notebookCoverHtml = context.learningNotebookCoverHtml("## 第一章\n### 小节", {
+  id: "side-notebook-cover",
+  title: "<script>bad()</script> 学习笔记",
+  status: "success",
+  phase: "completed",
+  source_type: "current_page",
+  media_path: "D:/Projects/learnnote-assistant/data/tasks/side-notebook-cover/media.mp4",
+  transcript_path: "D:/Projects/learnnote-assistant/data/tasks/side-notebook-cover/transcript.json",
+  note_path: "D:/Projects/learnnote-assistant/data/tasks/side-notebook-cover/note.md",
+  summary_source: "vision-llm",
+  options: { transcriber: "faster-whisper", whisper_model: "small" },
+  visual_windows: [
+    { id: "W001", start: 0, end: 180, frame_count: 9, grid_url: "http://127.0.0.1:8765/api/tasks/demo/grids/grid_000.jpg" },
+    { id: "W002", start: 180, end: 360, frame_count: 9, grid_url: "http://127.0.0.1:8765/api/tasks/demo/grids/grid_001.jpg" }
+  ]
+});
+assert.match(notebookCoverHtml, /class="learning-notebook-cover ready status-success"/);
+assert.match(notebookCoverHtml, /2 窗口/);
+assert.match(notebookCoverHtml, /data-switch-result-tab="slices"/);
+assert.match(notebookCoverHtml, /data-export="bundle"/);
+assert.match(notebookCoverHtml, /&lt;script&gt;bad\(\)&lt;\/script&gt; 学习笔记/);
+assert.doesNotMatch(notebookCoverHtml, /<script>bad/);
+
+const visualTimelineHtml = context.visualStudyTimelineHtml({
+  id: "side-visual-timeline",
+  title: "切片时间轴",
+  summary_source: "vision-llm",
+  summary_diagnostics: { used_vision_llm: true },
+  visual_windows: [
+    {
+      id: "W001",
+      start: 0,
+      end: 180,
+      frame_count: 9,
+      frame_timestamps: [0, 20, 40],
+      grid_url: "http://127.0.0.1:8765/api/tasks/demo/grids/grid_000.jpg",
+      window_summary: "<script>alert(1)</script> 局部总结"
+    },
+    {
+      id: "W002",
+      start: 180,
+      end: 360,
+      frame_count: 9,
+      grid_url: "javascript:alert(1)",
+      transcript_excerpt: "no safe image"
+    }
+  ]
+}, {
+  segments: [
+    { start: 12, end: 18, text: "字幕一" },
+    { start: 48, end: 54, text: "<script>alert(1)</script> 字幕二" }
+  ]
+});
+assert.match(visualTimelineHtml, /class="visual-study-timeline"/);
+assert.match(visualTimelineHtml, /W001/);
+assert.match(visualTimelineHtml, /data-media-seek-time="12\.000"/);
+assert.match(visualTimelineHtml, /&lt;script&gt;alert\(1\)&lt;\/script&gt; 局部总结/);
+assert.match(visualTimelineHtml, /&lt;script&gt;alert\(1\)&lt;\/script&gt; 字幕二/);
+assert.doesNotMatch(visualTimelineHtml, /src="javascript:alert/);
+assert.doesNotMatch(visualTimelineHtml, /<script>/);
+
 const visualDeckHtml = context.visualStudyDeck({
   id: "side-visual-deck",
   media_path: "D:/Projects/learnnote-assistant/data/tasks/side-visual-deck/media.mp4",

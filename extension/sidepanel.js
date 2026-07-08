@@ -6645,6 +6645,65 @@ function noteStudyMap(markdown, task) {
   </section>`;
 }
 
+function learningNotebookCoverHtml(markdown, task) {
+  if (!task) return "";
+  const windows = visualWindows(task);
+  const headings = noteHeadingStats(markdown);
+  const hasNote = Boolean(task.note_path || markdown);
+  const hasTranscript = hasReadableTranscript(task);
+  const hasMedia = hasExportableMedia(task);
+  const mediaName = taskMediaDisplayName(task);
+  const firstWindow = windows[0];
+  const lastWindow = windows[windows.length - 1];
+  const visualRange = windows.length && firstWindow && lastWindow ? `${fmt(firstWindow.start)} - ${fmt(lastWindow.end)}` : "等待切片";
+  const state = hasNote ? "ready" : canContinueFromDownloadedMedia(task) ? "continue" : task.status === "failed" ? "blocked" : "pending";
+  const primaryAction = canContinueFromDownloadedMedia(task)
+    ? `<button type="button" data-rerun-from-media="${escapeHtml(task.id)}">继续生成笔记</button>`
+    : hasNote
+      ? `<button type="button" data-switch-result-tab="slices">核对切片</button>`
+      : task.status === "failed"
+        ? `<button type="button" data-switch-result-tab="diagnostics">查看失败原因</button>`
+        : `<button type="button" data-switch-result-tab="diagnostics">查看阶段进度</button>`;
+  const secondaryActions = [
+    hasTranscript ? `<button type="button" data-switch-result-tab="transcript">字幕</button>` : "",
+    windows.length ? `<button type="button" data-switch-result-tab="frames">画面</button>` : "",
+    hasMedia ? `<button type="button" data-export="media">${escapeHtml(mediaName)}</button>` : "",
+    hasNote ? `<button type="button" data-export="markdown">Markdown</button>` : "",
+    hasTaskBundle(task) ? `<button type="button" data-export="bundle">资料包</button>` : ""
+  ].filter(Boolean).join("");
+  const metrics = [
+    ["笔记结构", headings.total ? `${headings.total} 标题` : hasNote ? "已生成" : "未生成", headings.h2 ? `${headings.h2} 章 / ${headings.h3} 节` : noteStyleText()],
+    ["视觉切片", windows.length ? `${windows.length} 窗口` : "未生成", visualRange],
+    ["字幕核对", hasTranscript ? "可核对" : "等待转写", reusableTranscriptSourceText(task) || asrOptionText(task.options || {})],
+    ["本地产物", hasMedia ? mediaName : "等待媒体", task.summary_source || taskStatusText(task)]
+  ];
+  return `<section class="learning-notebook-cover ${escapeHtml(state)} status-${escapeHtml(taskStatusClass(task))}" aria-label="学习笔记封面">
+    <div class="learning-notebook-cover-main">
+      <span>学习笔记</span>
+      <strong>${escapeHtml(displayTaskTitle(task))}</strong>
+      <small>${escapeHtml(hasNote
+        ? "按课程笔记、视觉窗口、字幕时间轴和复习问答组织结果。"
+        : canContinueFromDownloadedMedia(task)
+          ? `已下载 ${mediaName}，可以继续进入转写、切片和图文总结。`
+          : task.status === "failed"
+            ? (task.error_detail || task.error_code || "当前任务未生成完整笔记。")
+            : "任务完成后会在这里形成可阅读、可核对、可导出的学习笔记。"
+      )}</small>
+      <nav class="learning-notebook-cover-actions">
+        ${primaryAction}
+        ${secondaryActions}
+      </nav>
+    </div>
+    <div class="learning-notebook-cover-grid">
+      ${metrics.map(([label, value, detail]) => `<section>
+        <span>${escapeHtml(label)}</span>
+        <strong>${escapeHtml(value)}</strong>
+        <small>${escapeHtml(detail || "-")}</small>
+      </section>`).join("")}
+    </div>
+  </section>`;
+}
+
 function noteVisualRail(task, limit = 4) {
   const windows = visualWindows(task).filter(window => window.grid_url).slice(0, limit);
   if (!windows.length) return "";
@@ -7010,6 +7069,56 @@ function visualStudyReviewPathHtml(task, transcript = null) {
       </article>`).join("")}
     </div>
     ${items.length > shown.length ? `<footer>还有 ${items.length - shown.length} 个窗口；导出切片索引可查看完整顺序。</footer>` : ""}
+  </section>`;
+}
+
+function visualStudyTimelineHtml(task, transcript = null) {
+  const windows = visualWindows(task);
+  if (!windows.length) return "";
+  const shown = windows.slice(0, 6);
+  const remaining = Math.max(0, windows.length - shown.length);
+  return `<section class="visual-study-timeline" aria-label="切片学习时间轴">
+    <header>
+      <div>
+        <span>切片学习时间轴</span>
+        <strong>画面、字幕和局部总结逐段对齐</strong>
+      </div>
+      <small>${shown.length}/${windows.length} 窗口${remaining ? ` · 余 ${remaining}` : ""}</small>
+    </header>
+    <div class="visual-study-timeline-list">
+      ${shown.map((window, index) => {
+        const id = String(window.id || `W${String(index + 1).padStart(3, "0")}`);
+        const image = safeNoteMediaUrl(window.grid_url || "");
+        const evidence = visualWindowEvidenceState(task, window, index);
+        const cues = visualWindowCueSegments(window, transcript, 2);
+        const points = visualWindowSummaryItems(window, transcript).slice(0, 2);
+        return `<article class="${escapeHtml(evidence.state)}" data-visual-window="${escapeHtml(id)}">
+          <div class="visual-study-timeline-time">
+            <b>${escapeHtml(id)}</b>
+            <time>${fmt(window.start)} - ${fmt(window.end)}</time>
+            <em>${escapeHtml(evidence.label)}</em>
+          </div>
+          <figure>
+            ${image ? `<img src="${image}" alt="${escapeHtml(id)} frame grid">` : `<div class="side-visual-placeholder">无画面</div>`}
+            <figcaption>${escapeHtml(frameTimestampText(window) || `${Number(window.frame_count || 0)} 帧`)}</figcaption>
+          </figure>
+          <div class="visual-study-timeline-body">
+            <strong>${escapeHtml(points[0] || evidence.detail)}</strong>
+            ${points[1] ? `<p>${escapeHtml(points[1])}</p>` : ""}
+            <div class="visual-study-timeline-cues">
+              ${cues.length
+                ? cues.map(cue => `<span>${seekTimeButton(cue.start, "side-window-seek")}<small>${escapeHtml(cue.text.length > 92 ? `${cue.text.slice(0, 92).trim()}...` : cue.text)}</small></span>`).join("")
+                : `<span><small>${escapeHtml(window.transcript_excerpt || "暂无字幕摘录；可切到字幕页核对上下文。")}</small></span>`}
+            </div>
+            <nav>
+              <button type="button" data-media-seek-time="${seekTimeValue(window.start)}">回看</button>
+              <button type="button" data-switch-result-tab="transcript" data-focus-visual-window="${escapeHtml(id)}">字幕</button>
+              <button type="button" data-switch-result-tab="note">笔记</button>
+            </nav>
+          </div>
+        </article>`;
+      }).join("")}
+    </div>
   </section>`;
 }
 
@@ -7422,7 +7531,7 @@ function renderResult() {
       : hasExportableMedia(currentTask)
         ? downloadOnlyEmptyNoteHtml(currentTask)
         : `<p>${escapeHtml(currentTask.message || "笔记尚未生成。")}</p>`;
-    els.result.innerHTML = `${taskOverview(currentTask)}${noteReviewWorkbench(lastNote, currentTask)}${visionEvidenceBar(currentTask)}${noteStudyMap(lastNote, currentTask)}${noteOutline(lastNote)}${noteVisualRail(currentTask)}<article class="markdown-note">${noteHtml}</article>`;
+    els.result.innerHTML = `${learningNotebookCoverHtml(lastNote, currentTask)}${noteReviewWorkbench(lastNote, currentTask)}${visionEvidenceBar(currentTask)}${noteStudyMap(lastNote, currentTask)}${noteOutline(lastNote)}${noteVisualRail(currentTask)}<article class="markdown-note">${noteHtml}</article>`;
     bindTaskOverviewActions();
     return;
   }
@@ -7446,7 +7555,7 @@ function renderResult() {
       return;
     }
     els.result.className = "result-body";
-    els.result.innerHTML = `${mediaSeekDockHtml(currentTask)}${learningPathHtml(lastNote, currentTask)}${visionEvidenceBar(currentTask)}${visualStudyNavigatorHtml(currentTask, transcriptCache)}${visualStudyDeck(currentTask, transcriptCache)}`;
+    els.result.innerHTML = `${mediaSeekDockHtml(currentTask)}${learningPathHtml(lastNote, currentTask)}${visionEvidenceBar(currentTask)}${visualStudyTimelineHtml(currentTask, transcriptCache)}${visualStudyNavigatorHtml(currentTask, transcriptCache)}${visualStudyDeck(currentTask, transcriptCache)}`;
     bindTaskOverviewActions();
     return;
   }
