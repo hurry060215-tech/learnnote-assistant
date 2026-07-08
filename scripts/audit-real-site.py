@@ -37,6 +37,8 @@ LEARNING_PLATFORM_TOKENS = [
     "objectid",
     "dtoken",
 ]
+LEARNING_PROFILE_SIGNALS = {"ananas", "playurl", "objectid", "dtoken", "iframe", "cookie"}
+DEFAULT_LEARNING_REQUIRED_SIGNALS = "ananas,playurl,objectid,dtoken,iframe,cookie"
 
 
 def load_helpers():
@@ -452,7 +454,52 @@ def evidence_model(context: dict, preflight: dict | None = None) -> dict:
     }
 
 
-def markdown_report(audits: list[dict], backend: str) -> str:
+def parse_learning_required_signals(value: str) -> list[str]:
+    signals = [item.strip().lower() for item in str(value or "").split(",") if item.strip()]
+    unknown = sorted(set(signals) - LEARNING_PROFILE_SIGNALS)
+    if unknown:
+        raise ValueError(f"Unknown learning profile signal(s): {', '.join(unknown)}")
+    return signals
+
+
+def audit_gate_failures(
+    audits: list[dict],
+    *,
+    require_ready: bool = False,
+    learning_required_signals: list[str] | None = None,
+) -> list[dict]:
+    failures: list[dict] = []
+    for audit in audits:
+        profile = ((audit.get("evidence") or {}).get("profile") or {})
+        platform = profile.get("learning_platform") or {}
+        url = audit.get("url") or ""
+        if require_ready and profile.get("readiness") != "ready_to_download":
+            failures.append({
+                "url": url,
+                "gate": "require_ready",
+                "readiness": profile.get("readiness") or "unknown",
+                "failure_reason": profile.get("failure_reason") or "unknown",
+                "missing_steps": profile.get("missing_steps") or [],
+                "next_step": profile.get("next_step") or "",
+            })
+        if learning_required_signals is not None:
+            missing = []
+            if not platform.get("detected"):
+                missing.append("learning_platform_detected")
+            missing.extend(signal for signal in learning_required_signals if not platform.get(signal))
+            if missing:
+                failures.append({
+                    "url": url,
+                    "gate": "require_learning_profile",
+                    "missing_signals": missing,
+                    "readiness": profile.get("readiness") or "unknown",
+                    "failure_reason": profile.get("failure_reason") or "unknown",
+                    "next_step": profile.get("next_step") or "",
+                })
+    return failures
+
+
+def markdown_report(audits: list[dict], backend: str, gate_failures: list[dict] | None = None) -> str:
     lines = [
         "# LearnNote real-site browser audit",
         "",
@@ -461,6 +508,23 @@ def markdown_report(audits: list[dict], backend: str) -> str:
         "- Boundary: no tab recording, no DRM bypass, no progress spoofing, no auto-answering.",
         "",
     ]
+    if gate_failures:
+        lines.extend([
+            "## Gate failures",
+            "",
+        ])
+        for failure in gate_failures:
+            if failure["gate"] == "require_ready":
+                lines.append(
+                    f"- `{failure['gate']}` {redact_url(failure['url'])}: readiness={failure['readiness']}, "
+                    f"reason={failure['failure_reason']}, missing={', '.join(failure.get('missing_steps') or []) or '-'}"
+                )
+            else:
+                lines.append(
+                    f"- `{failure['gate']}` {redact_url(failure['url'])}: "
+                    f"missing={', '.join(failure.get('missing_signals') or []) or '-'}"
+                )
+        lines.append("")
     for audit in audits:
         context = audit["context"]
         page = context.get("page") or {}
@@ -586,7 +650,22 @@ def main() -> None:
     parser.add_argument("--preflight", action="store_true", help="Run backend preflight with extension-collected cookies.")
     parser.add_argument("--probe-limit", type=int, default=5)
     parser.add_argument("--keep-browser", action="store_true")
+    parser.add_argument("--require-ready", action="store_true", help="Exit non-zero unless every audited URL is ready_to_download.")
+    parser.add_argument(
+        "--require-learning-profile",
+        action="store_true",
+        help="Exit non-zero unless every audited URL has the required learning-platform evidence signals.",
+    )
+    parser.add_argument(
+        "--learning-required-signals",
+        default=DEFAULT_LEARNING_REQUIRED_SIGNALS,
+        help=f"Comma-separated learning-platform signals to require. Allowed: {', '.join(sorted(LEARNING_PROFILE_SIGNALS))}.",
+    )
     args = parser.parse_args()
+    try:
+        learning_required_signals = parse_learning_required_signals(args.learning_required_signals)
+    except ValueError as exc:
+        parser.error(str(exc))
 
     browser = helpers.browser_path(args.browser)
     if not browser:
@@ -658,11 +737,38 @@ def main() -> None:
                 "preflight": safe_preflight,
                 "evidence": evidence,
             })
-            print(f"AUDIT {url}: resources={len(context.get('resources') or [])} cookies={context.get('cookie_count', 0)} missing={','.join(evidence['missing']) or '-'}")
+            profile = evidence.get("profile") or {}
+            missing = profile.get("missing_steps") or evidence["missing"]
+            print(
+                f"AUDIT {url}: readiness={profile.get('readiness', 'unknown')} "
+                f"reason={profile.get('failure_reason') or '-'} "
+                f"resources={len(context.get('resources') or [])} "
+                f"cookies={context.get('cookie_count', 0)} missing={','.join(missing) or '-'}"
+            )
 
+        gate_failures = audit_gate_failures(
+            audits,
+            require_ready=args.require_ready,
+            learning_required_signals=learning_required_signals if args.require_learning_profile else None,
+        )
         (out_dir / "audit.json").write_text(json.dumps(audits, ensure_ascii=False, indent=2), encoding="utf-8")
-        (out_dir / "audit.md").write_text(markdown_report(audits, backend), encoding="utf-8")
+        (out_dir / "audit.md").write_text(markdown_report(audits, backend, gate_failures), encoding="utf-8")
+        if gate_failures:
+            (out_dir / "gate-failures.json").write_text(json.dumps(gate_failures, ensure_ascii=False, indent=2), encoding="utf-8")
+            for failure in gate_failures:
+                if failure["gate"] == "require_ready":
+                    print(
+                        f"GATE FAIL require_ready {failure['url']}: "
+                        f"readiness={failure['readiness']} reason={failure['failure_reason']}"
+                    )
+                else:
+                    print(
+                        f"GATE FAIL require_learning_profile {failure['url']}: "
+                        f"missing={','.join(failure.get('missing_signals') or []) or '-'}"
+                    )
         print(f"Report: {out_dir / 'audit.md'}")
+        if gate_failures:
+            raise SystemExit(3)
     finally:
         if cdp:
             cdp.close()

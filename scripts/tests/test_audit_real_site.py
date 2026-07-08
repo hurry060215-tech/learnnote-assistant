@@ -32,6 +32,13 @@ def context(resources=None, *, cookies=0, cookie_domains=None, page=None):
     }
 
 
+def audit_from_profile(profile):
+    return {
+        "url": "https://example.test/course",
+        "evidence": {"profile": profile},
+    }
+
+
 class AuditRealSiteSignalProfileTest(unittest.TestCase):
     def test_learning_platform_post_api_without_cookie_needs_auth_context(self):
         profile = audit_real_site.signal_profile(context([
@@ -92,6 +99,57 @@ class AuditRealSiteSignalProfileTest(unittest.TestCase):
         self.assertEqual(profile["failure_reason"], "blob_without_manifest")
         self.assertIn("media_candidate", profile["missing_steps"])
         self.assertIn("local upload", profile["next_step"].lower())
+
+    def test_require_ready_gate_passes_only_downloadable_profile(self):
+        ready_profile = audit_real_site.signal_profile(
+            context([{"url": "https://cdn.example.test/video.mp4", "kind": "video"}]),
+            {"report": {"ready": True, "downloadable_count": 1}},
+        )
+        blocked_profile = audit_real_site.signal_profile(context(
+            page={"title": "Blob player", "active_video": {"src": "blob:https://example.test/abc"}, "drm_detected": False}
+        ))
+
+        failures = audit_real_site.audit_gate_failures(
+            [audit_from_profile(ready_profile), audit_from_profile(blocked_profile)],
+            require_ready=True,
+        )
+
+        self.assertEqual(len(failures), 1)
+        self.assertEqual(failures[0]["gate"], "require_ready")
+        self.assertEqual(failures[0]["readiness"], "blocked")
+        self.assertEqual(failures[0]["failure_reason"], "blob_without_manifest")
+
+    def test_learning_profile_gate_reports_missing_signals(self):
+        profile = audit_real_site.signal_profile(context([
+            {
+                "url": "https://mooc1.chaoxing.com/ananas/status/play",
+                "kind": "video",
+                "method": "POST",
+                "request_body": {"type": "form", "content": "objectid=local-object-001"},
+            }
+        ]))
+
+        failures = audit_real_site.audit_gate_failures(
+            [audit_from_profile(profile)],
+            learning_required_signals=["ananas", "playurl", "objectid", "dtoken", "iframe", "cookie"],
+        )
+
+        self.assertEqual(len(failures), 1)
+        self.assertEqual(failures[0]["gate"], "require_learning_profile")
+        self.assertIn("playurl", failures[0]["missing_signals"])
+        self.assertIn("dtoken", failures[0]["missing_signals"])
+        self.assertIn("iframe", failures[0]["missing_signals"])
+        self.assertIn("cookie", failures[0]["missing_signals"])
+        self.assertNotIn("ananas", failures[0]["missing_signals"])
+        self.assertNotIn("objectid", failures[0]["missing_signals"])
+
+    def test_parse_learning_required_signals_rejects_unknown(self):
+        self.assertEqual(
+            audit_real_site.parse_learning_required_signals("ananas, cookie"),
+            ["ananas", "cookie"],
+        )
+        with self.assertRaises(ValueError):
+            audit_real_site.parse_learning_required_signals("ananas,password")
 
 
 if __name__ == "__main__":

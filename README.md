@@ -265,16 +265,22 @@ cd D:\Projects\learnnote-assistant
 .\scripts\audit-real-site.ps1 "https://example.com/video-page" -Preflight
 ```
 
+Use gate mode when you want the command itself to fail unless the page is actually ready for direct extraction:
+
+```powershell
+.\scripts\audit-real-site.ps1 "https://example.com/video-page" -Preflight -RequireReady
+```
+
 For logged-in course pages, keep a D-drive browser profile so login cookies are not stored on C by this workflow:
 
 ```powershell
 cd D:\Projects\learnnote-assistant
 .\scripts\audit-real-site.ps1 "https://mooc1.chaoxing.com/..." `
   -ProfileDir "D:\Projects\learnnote-assistant\data\browser-profiles\chaoxing" `
-  -InteractiveLogin -Preflight -KeepBrowser
+  -InteractiveLogin -Preflight -RequireReady -RequireLearningProfile -KeepBrowser
 ```
 
-When the browser opens, log in if needed, play the target video for a few seconds, then return to the terminal and press Enter. The report starts with `Readiness`, `Failure reason`, and `Next step`, then expands the generic chain: browser playback evidence, auth/cookie context, replayable API body or direct media URL, and download preflight. For learning-platform pages it also lists `ananas`, `playurl/play_url`, `objectid`, `dtoken`, `iframe`, and `cookie` as a checklist instead of hiding them in raw logs. Reports keep only evidence summaries: Cookie/Authorization values are not written, POST body content is replaced with field names and evidence flags, and URL query values are redacted.
+When the browser opens, log in if needed, play the target video for a few seconds, then return to the terminal and press Enter. The report starts with `Readiness`, `Failure reason`, and `Next step`, then expands the generic chain: browser playback evidence, auth/cookie context, replayable API body or direct media URL, and download preflight. For learning-platform pages it also lists `ananas`, `playurl/play_url`, `objectid`, `dtoken`, `iframe`, and `cookie` as a checklist instead of hiding them in raw logs. `-RequireLearningProfile` makes those signals a command-level gate; tune it with `-LearningRequiredSignals "ananas,playurl,iframe,cookie"` if a site does not use Chaoxing-style `objectid`/`dtoken`. Reports keep only evidence summaries: Cookie/Authorization values are not written, POST body content is replaced with field names and evidence flags, and URL query values are redacted.
 
 ## Local Storage On D
 

@@ -10,7 +10,10 @@ param(
   [switch]$InteractiveLogin,
   [switch]$Preflight,
   [int]$ProbeLimit = 5,
-  [switch]$KeepBrowser
+  [switch]$KeepBrowser,
+  [switch]$RequireReady,
+  [switch]$RequireLearningProfile,
+  [string]$LearningRequiredSignals = "ananas,playurl,objectid,dtoken,iframe,cookie"
 )
 
 $ErrorActionPreference = "Stop"
@@ -45,6 +48,15 @@ if ($Preflight) {
 }
 if ($KeepBrowser) {
   $argsList += "--keep-browser"
+}
+if ($RequireReady) {
+  $argsList += "--require-ready"
+}
+if ($RequireLearningProfile) {
+  $argsList += "--require-learning-profile"
+}
+if ($LearningRequiredSignals) {
+  $argsList += @("--learning-required-signals", $LearningRequiredSignals)
 }
 
 Set-Location $projectRoot
