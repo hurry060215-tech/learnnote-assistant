@@ -141,10 +141,20 @@ def local_sample_audit(audits: list[dict]) -> dict | None:
 def site_audit_items(audits: list[dict]) -> list[ReadinessItem]:
     rows: list[ReadinessItem] = []
     targets = [
-        ("real_site_mp4_hls", "Public MP4/HLS real page audit", ["mp4", "m3u8", "hls"]),
-        ("real_site_ytdlp", "yt-dlp supported site audit", ["youtube", "youtu.be", "bilibili", "b23.tv"]),
+        (
+            "real_site_mp4_hls",
+            "Public MP4/HLS real page audit",
+            ["mp4", "m3u8", "hls"],
+            "Run scripts/audit-real-site.ps1 <mp4-or-hls-url> -Preflight -RequireReady with the unpacked extension.",
+        ),
+        (
+            "real_site_ytdlp",
+            "yt-dlp supported site audit",
+            ["youtube", "youtu.be", "bilibili", "b23.tv"],
+            "Run scripts/audit-real-site.ps1 <youtube-or-bilibili-url> -TaskProbe -RequireReady -TaskTimeout 180 to prove page URL fallback can save media.",
+        ),
     ]
-    for key, title, tokens in targets:
+    for key, title, tokens, next_step in targets:
         audit = ready_site_audit(audits, tokens)
         if audit:
             rows.append(item(
@@ -160,7 +170,7 @@ def site_audit_items(audits: list[dict]) -> list[ReadinessItem]:
                 title,
                 "manual",
                 "No current ready_to_download live-site audit report was found in data/test-runs/site-audits.",
-                next_step="Run scripts/audit-real-site.ps1 <url> -Preflight -RequireReady with the unpacked extension.",
+                next_step=next_step,
             ))
     chaoxing = learning_audit(audits)
     if chaoxing:

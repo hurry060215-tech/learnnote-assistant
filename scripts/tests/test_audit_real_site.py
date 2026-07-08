@@ -90,6 +90,55 @@ class AuditRealSiteSignalProfileTest(unittest.TestCase):
         self.assertTrue(profile["signals"]["manifest"])
         self.assertEqual(profile["auth_context"]["cookie_domain_count"], 1)
 
+    def test_task_probe_can_prove_yt_dlp_page_fallback_ready(self):
+        profile = audit_real_site.signal_profile(
+            context([], page={"title": "YouTube lesson", "page_url": "https://www.youtube.com/watch?v=demo", "active_video": {}, "drm_detected": False}),
+            None,
+            {
+                "ready": True,
+                "task": {
+                    "id": "task-ytdlp",
+                    "status": "success",
+                    "phase": "completed",
+                    "mode": "download_only",
+                    "source_type": "current_page",
+                    "media_path": "D:/Projects/learnnote-assistant/data/tasks/task-ytdlp/media.mp4",
+                },
+            },
+        )
+
+        self.assertEqual(profile["readiness"], "ready_to_download")
+        self.assertEqual(profile["failure_reason"], "")
+        self.assertNotIn("download_preflight", profile["missing_steps"])
+        self.assertTrue(profile["task_probe"]["ready"])
+        self.assertEqual(profile["task_probe"]["task_id"], "task-ytdlp")
+
+    def test_task_probe_timeout_is_reported_as_task_failure(self):
+        profile = audit_real_site.signal_profile(
+            context([], page={"title": "YouTube lesson", "page_url": "https://www.youtube.com/watch?v=demo", "active_video": {}, "drm_detected": False}),
+            None,
+            {
+                "ready": False,
+                "task_id": "task-ytdlp-timeout",
+                "status": "timeout",
+                "error_code": "task_probe_timeout",
+                "error_detail": "Timed out waiting for task.",
+                "task": {
+                    "id": "task-ytdlp-timeout",
+                    "status": "running",
+                    "phase": "downloading",
+                    "mode": "download_only",
+                    "source_type": "current_page",
+                    "media_path": "",
+                },
+            },
+        )
+
+        self.assertEqual(profile["readiness"], "task_probe_failed")
+        self.assertEqual(profile["failure_reason"], "task_probe_timeout")
+        self.assertIn("download_task_probe", profile["missing_steps"])
+        self.assertIn("longer", profile["next_step"])
+
     def test_blob_without_manifest_is_structured_failure(self):
         profile = audit_real_site.signal_profile(context(
             page={"title": "Blob player", "active_video": {"src": "blob:https://example.test/abc"}, "drm_detected": False}

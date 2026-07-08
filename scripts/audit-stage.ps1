@@ -190,7 +190,7 @@ if (Test-Any @("*.ps1", "scripts/*.ps1")) {
   }
 }
 
-if (Test-Any @("scripts/audit-real-site.py", "scripts/audit-product-readiness.py", "scripts/tests/*.py")) {
+if (Test-Any @("scripts/audit-real-site.py", "scripts/audit-product-readiness.py", "scripts/e2e-extension-smoke.py", "scripts/tests/*.py")) {
   $ran = $true
   Invoke-Step "Real-site audit signal tests" { & $python -m unittest discover -s scripts\tests -p "test_*.py" }
 }

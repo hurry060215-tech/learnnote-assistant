@@ -10,6 +10,8 @@ param(
   [switch]$InteractiveLogin,
   [switch]$Preflight,
   [int]$ProbeLimit = 5,
+  [switch]$TaskProbe,
+  [double]$TaskTimeout = 90,
   [switch]$KeepBrowser,
   [switch]$RequireReady,
   [switch]$RequireLearningProfile,
@@ -35,7 +37,8 @@ $argsList += @(
   "--debug-port", $DebugPort,
   "--browser", $Browser,
   "--wait-ms", $WaitMs,
-  "--probe-limit", $ProbeLimit
+  "--probe-limit", $ProbeLimit,
+  "--task-timeout", $TaskTimeout
 )
 if ($ProfileDir) {
   $argsList += @("--profile-dir", $ProfileDir)
@@ -45,6 +48,9 @@ if ($InteractiveLogin) {
 }
 if ($Preflight) {
   $argsList += "--preflight"
+}
+if ($TaskProbe) {
+  $argsList += "--task-probe"
 }
 if ($KeepBrowser) {
   $argsList += "--keep-browser"

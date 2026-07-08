@@ -135,9 +135,30 @@ def preflight_report(preflight: dict | None) -> dict:
     return preflight
 
 
+def task_probe_report(task_probe: dict | None) -> dict:
+    if not task_probe:
+        return {}
+    task = task_probe.get("task") if isinstance(task_probe.get("task"), dict) else task_probe
+    return {
+        "ran": True,
+        "ready": bool(task_probe.get("ready") or (task.get("status") == "success" and task.get("media_path"))),
+        "task_id": task.get("id") or task_probe.get("task_id") or "",
+        "status": task.get("status") or task_probe.get("status") or "",
+        "phase": task.get("phase") or "",
+        "mode": task.get("mode") or "",
+        "source_type": task.get("source_type") or "",
+        "media_path_present": bool(task.get("media_path")),
+        "error_code": task.get("error_code") or task_probe.get("error_code") or "",
+        "error_detail": task.get("error_detail") or task_probe.get("error_detail") or "",
+    }
+
+
 def derive_failure_reason(profile: dict) -> str:
     if profile["readiness"] == "ready_to_download":
         return ""
+    task_probe = profile.get("task_probe") or {}
+    if task_probe.get("ran") and not task_probe.get("ready") and task_probe.get("error_code"):
+        return str(task_probe.get("error_code"))
     if profile["constraints"]["drm_detected"]:
         return "drm_or_encrypted"
     if profile["constraints"]["blob_or_mse"] and not profile["signals"]["direct_media"] and not profile["signals"]["playback_api"]:
@@ -165,10 +186,14 @@ def derive_next_step(profile: dict) -> str:
         return "Play the target video for a few seconds, switch chapters if needed, then refresh detection."
     if reason == "download_forbidden":
         return "Inspect the top resource headers/body below; the server may require missing Referer/Origin/cookie or reject direct download."
+    if reason == "task_probe_timeout":
+        return "The real download-only task did not finish in time; inspect the task diagnostics or rerun with a longer --TaskTimeout."
+    if reason == "task_create_failed":
+        return "The extension could not create the backend task; confirm the local backend and extension are both reachable."
     return "Rerun audit-real-site with -Preflight to test whether the captured candidate is actually downloadable."
 
 
-def signal_profile(context: dict, preflight: dict | None = None) -> dict:
+def signal_profile(context: dict, preflight: dict | None = None, task_probe: dict | None = None) -> dict:
     resources = context.get("resources") or []
     page = context.get("page") or {}
     active = page.get("active_video") or {}
@@ -185,7 +210,9 @@ def signal_profile(context: dict, preflight: dict | None = None) -> dict:
         or any(item.get("blob_url") or str(item.get("kind") or "").lower() in {"blob", "mediasource"} for item in resources)
     )
     report = preflight_report(preflight)
+    task_report = task_probe_report(task_probe)
     preflight_ready = bool(report.get("ready") or report.get("downloadable") or report.get("downloadable_count"))
+    task_ready = bool(task_report.get("ready"))
     platform = {
         "detected": any(token in haystack for token in LEARNING_PLATFORM_TOKENS),
         "ananas": "ananas" in haystack,
@@ -241,9 +268,14 @@ def signal_profile(context: dict, preflight: dict | None = None) -> dict:
         "learning_platform": platform,
         "constraints": constraints,
         "preflight": preflight_state,
+        "task_probe": task_report,
         "missing_steps": [],
     }
-    if constraints["drm_detected"]:
+    if task_ready:
+        readiness = "ready_to_download"
+    elif task_report.get("ran"):
+        readiness = "task_probe_failed"
+    elif constraints["drm_detected"]:
         readiness = "blocked"
     elif preflight_ready:
         readiness = "ready_to_download"
@@ -266,7 +298,11 @@ def signal_profile(context: dict, preflight: dict | None = None) -> dict:
         missing.append("auth_context")
     if signals["playback_api"] and not (signals["request_body"] or signals["direct_media"]):
         missing.append("request_replay")
-    if not preflight:
+    if task_ready:
+        pass
+    elif task_report.get("ran"):
+        missing.append("download_task_probe")
+    elif not preflight:
         missing.append("download_preflight")
     elif not preflight_ready:
         missing.append("downloadable_candidate")
@@ -347,7 +383,7 @@ def resource_summary(resources: list[dict], limit: int = 12) -> list[dict]:
 def sanitize_context(context: dict) -> dict:
     page = context.get("page") or {}
     active = page.get("active_video") or {}
-    return {
+    payload = {
         "tab": {
             "id": (context.get("tab") or {}).get("id"),
             "url": redact_url((context.get("tab") or {}).get("url") or ""),
@@ -372,6 +408,9 @@ def sanitize_context(context: dict) -> dict:
         "resource_count": len(context.get("resources") or []),
         "resources": resource_summary(context.get("resources") or [], limit=30),
     }
+    if context.get("collection_error"):
+        payload["collection_error"] = str(context.get("collection_error"))[:500]
+    return payload
 
 
 def sanitize_json(value):
@@ -399,9 +438,9 @@ def sanitize_json(value):
     return value
 
 
-def evidence_model(context: dict, preflight: dict | None = None) -> dict:
+def evidence_model(context: dict, preflight: dict | None = None, task_probe: dict | None = None) -> dict:
     resources = context.get("resources") or []
-    profile = signal_profile(context, preflight)
+    profile = signal_profile(context, preflight, task_probe)
     page = context.get("page") or {}
     direct_media = profile["signals"]["direct_media"]
     replay_body = profile["signals"]["request_body"]
@@ -435,6 +474,12 @@ def evidence_model(context: dict, preflight: dict | None = None) -> dict:
             "label": "api_replay",
             "ok": replay_body or direct_media,
             "detail": "POST body/direct media available" if replay_body or direct_media else "no replayable POST body or direct media yet",
+        },
+        {
+            "label": "download_task_probe",
+            "ok": bool(profile.get("task_probe", {}).get("ready")),
+            "warn": not bool(profile.get("task_probe", {}).get("ran")),
+            "detail": "download-only task saved media locally" if profile.get("task_probe", {}).get("ready") else "not run" if not profile.get("task_probe", {}).get("ran") else "download-only task did not save media",
         },
         {
             "label": "download_preflight",
@@ -538,6 +583,7 @@ def markdown_report(audits: list[dict], backend: str, gate_failures: list[dict] 
         platform = profile.get("learning_platform") or {}
         constraints = profile.get("constraints") or {}
         preflight = audit.get("preflight")
+        task_probe = profile.get("task_probe") or {}
         lines.extend([
             f"## {tab.get('title') or page.get('title') or audit['url']}",
             "",
@@ -549,6 +595,7 @@ def markdown_report(audits: list[dict], backend: str, gate_failures: list[dict] 
             f"- Cookies visible: {context.get('cookie_count', 0)} across {auth.get('cookie_domain_count', 0)} domain(s)",
             f"- Captured requests: {context.get('captured_count', 0)}",
             f"- Ranked resources: {context.get('resource_count', len(context.get('resources') or []))}",
+            f"- Download task probe: {'ready' if task_probe.get('ready') else 'not ready' if task_probe.get('ran') else 'not run'}",
             "",
             "### Direct-download chain",
             "",
@@ -608,6 +655,18 @@ def markdown_report(audits: list[dict], backend: str, gate_failures: list[dict] 
                 f"- Downloadable: {report.get('downloadable_count', '-')}",
                 f"- E2E cookies handed off: {preflight.get('e2e_cookie_count', '-')}",
             ])
+        if task_probe.get("ran"):
+            lines.extend([
+                "",
+                "### Download task probe",
+                "",
+                f"- Ready: {task_probe.get('ready')}",
+                f"- Task: {task_probe.get('task_id') or '-'}",
+                f"- Status: {task_probe.get('status') or '-'} / {task_probe.get('phase') or '-'}",
+                f"- Mode/source: {task_probe.get('mode') or '-'} / {task_probe.get('source_type') or '-'}",
+                f"- Media saved: {task_probe.get('media_path_present')}",
+                f"- Error: {task_probe.get('error_code') or '-'} {task_probe.get('error_detail') or ''}".rstrip(),
+            ])
         lines.extend(["", "### Top resources", ""])
         for item in evidence["top_resources"]:
             flags = [
@@ -638,6 +697,117 @@ async () => {{
     return helpers.eval_service_worker(cdp, expression)
 
 
+def collect_minimal_context(cdp, tab_id: int, collection_error: str = "") -> dict:
+    expression = f"""
+async () => {{
+  const tab = await chrome.tabs.get({int(tab_id)});
+  return {{
+    tab: {{ id: tab.id, url: tab.url || "", title: tab.title || "", status: tab.status || "" }},
+    page: {{
+      title: tab.title || "",
+      page_url: tab.url || "",
+      drm_detected: false,
+      browser_subtitle_count: 0,
+      active_video: {{}}
+    }},
+    resources: [],
+    captured_count: 0,
+    cookie_count: 0,
+    cookie_domain_count: 0,
+    cookie_domains: [],
+    collection_error: {json.dumps(collection_error[:500])}
+  }};
+}}
+"""
+    return helpers.eval_service_worker(cdp, expression, timeout=30)
+
+
+def start_download_task_probe(cdp, backend: str, tab_id: int, resources: list[dict], timeout_seconds: float, *, minimal: bool = False) -> dict:
+    if minimal:
+        expression = f"""
+async () => {{
+  const tab = await chrome.tabs.get({int(tab_id)});
+  const cookies = await chrome.cookies.getAll({{ url: tab.url || "" }}).catch(() => []);
+  const res = await fetch({json.dumps(f"{backend}/api/tasks/from-current-page")}, {{
+    method: "POST",
+    headers: {{ "Content-Type": "application/json" }},
+    body: JSON.stringify({{
+      mode: "download_only",
+      page_url: tab.url || "",
+      title: tab.title || tab.url || "",
+      page_text: "",
+      active_video: null,
+      browser_subtitles: [],
+      drm_detected: false,
+      drm_signals: [],
+      resources: [],
+      cookies,
+      options: {{
+        visual_understanding: false,
+        frame_interval: 20,
+        grid_columns: 3,
+        grid_rows: 3,
+        transcriber: "faster-whisper",
+        whisper_model: "small",
+        note_style: "study",
+        note_template: "standard",
+        summary_depth: "brief"
+      }}
+    }})
+  }});
+  return await res.json();
+}}
+"""
+        payload = helpers.eval_service_worker(cdp, expression, timeout=30)
+    else:
+        expression = f"""
+async () => {{
+  return await globalThis.__learnnoteE2E.startCurrentPageTaskForTab(
+    {int(tab_id)},
+    {json.dumps(backend)},
+    {json.dumps(resources[:20])},
+    "download_only",
+    {{
+      visual_understanding: false,
+      frame_interval: 20,
+      grid_columns: 3,
+      grid_rows: 3,
+      transcriber: "faster-whisper",
+      whisper_model: "small",
+      note_style: "study",
+      note_template: "standard",
+      summary_depth: "brief"
+    }}
+  );
+}}
+"""
+        payload = helpers.eval_service_worker(cdp, expression)
+    if payload.get("error") or not payload.get("task_id"):
+        return {"ready": False, "error_code": "task_create_failed", "error_detail": payload.get("error") or json.dumps(payload, ensure_ascii=False)}
+    deadline = time.time() + max(1, timeout_seconds)
+    latest: dict = {}
+    last_error = ""
+    while time.time() < deadline:
+        try:
+            latest = helpers.request_json("GET", f"{backend}/api/tasks/{payload['task_id']}", timeout=8)
+        except Exception as exc:  # noqa: BLE001 - live-site downloads can temporarily occupy the backend
+            last_error = str(exc)
+            time.sleep(1.0)
+            continue
+        task = latest.get("task", latest)
+        if task.get("status") in {"success", "failed"}:
+            return {"ready": bool(task.get("status") == "success" and task.get("media_path")), "task": task}
+        time.sleep(0.8)
+    return {
+        "ready": False,
+        "task_id": payload.get("task_id"),
+        "status": "timeout",
+        "error_code": "task_probe_timeout",
+        "error_detail": f"Timed out after {timeout_seconds:.0f}s waiting for download-only task.{f' Last poll error: {last_error}' if last_error else ''}",
+        "task": latest.get("task", latest) if isinstance(latest, dict) else {},
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Audit real websites with the LearnNote MV3 extension and local backend.")
     parser.add_argument("urls", nargs="+", help="Real page URLs to open and audit.")
@@ -649,6 +819,8 @@ def main() -> None:
     parser.add_argument("--interactive-login", action="store_true", help="Pause so you can log in/play video before collection.")
     parser.add_argument("--preflight", action="store_true", help="Run backend preflight with extension-collected cookies.")
     parser.add_argument("--probe-limit", type=int, default=5)
+    parser.add_argument("--task-probe", action="store_true", help="Create a real download-only current-page task and wait for local media output.")
+    parser.add_argument("--task-timeout", type=float, default=90, help="Seconds to wait for --task-probe.")
     parser.add_argument("--keep-browser", action="store_true")
     parser.add_argument("--require-ready", action="store_true", help="Exit non-zero unless every audited URL is ready_to_download.")
     parser.add_argument(
@@ -724,17 +896,40 @@ def main() -> None:
 
         audits: list[dict] = []
         for url in args.urls:
-            context = helpers.collect_extension_context(cdp, url, tab_ids[url], wait_ms=args.wait_ms)
+            minimal_context = False
+            try:
+                context = helpers.collect_extension_context(cdp, url, tab_ids[url], wait_ms=args.wait_ms)
+            except Exception as exc:
+                if not args.task_probe:
+                    raise
+                minimal_context = True
+                context = collect_minimal_context(cdp, tab_ids[url], str(exc))
             preflight_payload = None
-            if args.preflight:
+            if args.preflight and not minimal_context:
                 preflight_payload = preflight_current_page(cdp, backend, tab_ids[url], context.get("resources") or [], args.probe_limit)
-            evidence = evidence_model(context, preflight_payload.get("report") if preflight_payload else None)
+            task_probe_payload = None
+            if args.task_probe:
+                task_probe_payload = start_download_task_probe(
+                    cdp,
+                    backend,
+                    tab_ids[url],
+                    context.get("resources") or [],
+                    args.task_timeout,
+                    minimal=minimal_context,
+                )
+            evidence = evidence_model(
+                context,
+                preflight_payload.get("report") if preflight_payload else None,
+                task_probe_payload,
+            )
             safe_context = sanitize_context(context)
             safe_preflight = sanitize_json(preflight_payload) if preflight_payload else None
+            safe_task_probe = sanitize_json(task_probe_payload) if task_probe_payload else None
             audits.append({
                 "url": redact_url(url),
                 "context": safe_context,
                 "preflight": safe_preflight,
+                "task_probe": safe_task_probe,
                 "evidence": evidence,
             })
             profile = evidence.get("profile") or {}

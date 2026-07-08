@@ -245,13 +245,13 @@ def wait_for_service_worker(debug_port: int, timeout_seconds: float = 30) -> dic
     raise RuntimeError(f"Timed out waiting for LearnNote extension service worker target. Saw: {seen}")
 
 
-def eval_service_worker(cdp: CdpWebSocket, expression: str) -> dict:
+def eval_service_worker(cdp: CdpWebSocket, expression: str, timeout: float = 90) -> dict:
     wrapped = f"(async () => JSON.stringify(await ({expression})()))()"
     result = cdp.call("Runtime.evaluate", {
         "expression": wrapped,
         "awaitPromise": True,
         "returnByValue": True,
-    }, timeout=45)
+    }, timeout=timeout)
     if result.get("exceptionDetails"):
         raise RuntimeError(f"CDP evaluation failed: {result['exceptionDetails']}")
     value = result.get("result", {}).get("value")

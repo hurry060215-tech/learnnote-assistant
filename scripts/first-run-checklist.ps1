@@ -211,6 +211,12 @@ function New-FirstRunGuide {
     ".\scripts\audit-real-site.ps1 `"<url>`" -Preflight -RequireReady",
     $fence,
     "",
+    "For yt-dlp page fallback such as YouTube/Bilibili, run a real download-only task probe:",
+    "",
+    "$($fence)powershell",
+    ".\scripts\audit-real-site.ps1 `"<youtube-or-bilibili-url>`" -TaskProbe -RequireReady -TaskTimeout 180",
+    $fence,
+    "",
     "For logged-in learning pages, use a D-drive browser profile:",
     "",
     "$($fence)powershell",
@@ -265,6 +271,7 @@ if ($Json) {
       install_asr = ".\start-learnnote.ps1 -InstallAsr"
       verify = ".\scripts\verify-product.ps1 -Browser $Browser"
       audit_real_site = ".\scripts\audit-real-site.ps1 <url> -Preflight"
+      audit_ytdlp_site = ".\scripts\audit-real-site.ps1 <url> -TaskProbe -RequireReady -TaskTimeout 180"
       audit_product_readiness = ".\scripts\audit-product-readiness.ps1"
       write_guide = ".\scripts\first-run-checklist.ps1 -WriteGuide"
       set_visual_api = @(
