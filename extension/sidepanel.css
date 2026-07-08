@@ -5512,6 +5512,69 @@ input[type="file"] {
   color: var(--success);
 }
 
+.chaoxing-mode-flow {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chaoxing-mode-flow li {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 6px;
+  align-items: center;
+  border: 1px solid #d8e2ee;
+  border-left-width: 4px;
+  border-left-color: #c47a05;
+  border-radius: 7px;
+  background: #fffaf0;
+  padding: 6px 7px;
+}
+
+.chaoxing-mode-flow li.pass {
+  border-left-color: var(--success);
+  background: #f2fbf5;
+}
+
+.chaoxing-mode-flow li.warn {
+  border-left-color: var(--warning);
+  background: #fff8eb;
+}
+
+.chaoxing-mode-flow li.miss {
+  border-left-color: var(--danger);
+  background: #fff5f4;
+}
+
+.chaoxing-mode-flow b {
+  color: var(--ink);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.chaoxing-mode-flow small {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 720;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.chaoxing-mode-next {
+  display: block;
+  border: 1px solid #dbe7f6;
+  border-radius: 7px;
+  background: #f8fbff;
+  color: #3b4a5f;
+  padding: 7px 8px;
+  font-size: 10px;
+  font-weight: 760;
+  line-height: 1.45;
+}
+
 .chaoxing-profile dl {
   display: grid;
   grid-template-columns: 56px minmax(0, 1fr);

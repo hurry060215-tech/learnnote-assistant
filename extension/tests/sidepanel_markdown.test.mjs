@@ -146,6 +146,7 @@ const chaoxingProfileHtml = context.chaoxingProfileHtml({
       detected: true,
       likely_issue: "anti_hotlink_or_expired_signature",
       has_ananas_candidate: true,
+      has_playurl: true,
       has_objectid: true,
       has_dtoken: true,
       has_replay_body: true,
@@ -163,7 +164,8 @@ const chaoxingProfileHtml = context.chaoxingProfileHtml({
         present: true,
         candidate_count: 1,
         probed_count: 1,
-        downloadable_count: 0
+        downloadable_count: 1,
+        ready: true
       }
     }
   }
@@ -176,11 +178,51 @@ assert.match(chaoxingProfileHtml, /播放 API/);
 assert.match(chaoxingProfileHtml, /POST\/body/);
 assert.match(chaoxingProfileHtml, /学习通模式/);
 assert.match(chaoxingProfileHtml, /ananas 已抓到/);
+assert.match(chaoxingProfileHtml, /playurl 已抓到/);
 assert.match(chaoxingProfileHtml, /objectid 已抓到/);
 assert.match(chaoxingProfileHtml, /dtoken 已抓到/);
 assert.match(chaoxingProfileHtml, /cookie 已抓到/);
+assert.match(chaoxingProfileHtml, /播放器入口/);
+assert.match(chaoxingProfileHtml, /已看到 ananas\/playurl 播放接口/);
+assert.match(chaoxingProfileHtml, /登录上下文/);
+assert.match(chaoxingProfileHtml, /接口回放/);
+assert.match(chaoxingProfileHtml, /POST\/body 可交给后端回放/);
+assert.match(chaoxingProfileHtml, /媒体落地/);
+assert.match(chaoxingProfileHtml, /预检已有可下载候选/);
+assert.match(chaoxingProfileHtml, /证据链基本完整/);
 assert.match(chaoxingProfileHtml, /通用策略/);
 assert.match(chaoxingProfileHtml, /不录制、不刷课、不伪造进度、不自动答题/);
+const missingChaoxingProfileHtml = context.chaoxingProfileHtml({
+  recovery: {
+    chaoxing_profile: {
+      detected: true,
+      likely_issue: "evidence_pending",
+      cookie_count: 0,
+      cookie_domain_count: 0,
+      page_preflight: {
+        present: true,
+        candidate_count: 0,
+        probed_count: 0,
+        downloadable_count: 0
+      }
+    }
+  },
+  selected_resource: {
+    url: "https://mooc1.chaoxing.com/mycourse/studentstudy",
+    kind: "unknown"
+  }
+});
+assert.match(missingChaoxingProfileHtml, /ananas 缺失/);
+assert.match(missingChaoxingProfileHtml, /playurl 缺失/);
+assert.match(missingChaoxingProfileHtml, /objectid 缺失/);
+assert.match(missingChaoxingProfileHtml, /dtoken 缺失/);
+assert.match(missingChaoxingProfileHtml, /cookie 缺失/);
+assert.match(missingChaoxingProfileHtml, /先在原课程页真实播放几秒/);
+assert.match(missingChaoxingProfileHtml, /需要当前登录态 Cookie/);
+assert.match(missingChaoxingProfileHtml, /等待 objectid\/dtoken\/body 或直接媒体 URL/);
+assert.match(missingChaoxingProfileHtml, /还没有 mp4\/HLS\/DASH 可下载资源/);
+assert.match(missingChaoxingProfileHtml, /缺口：播放器入口、登录上下文、接口回放、媒体落地/);
+assert.match(missingChaoxingProfileHtml, /本地视频入口/);
 const genericPlatformSignalHtml = context.platformSignalHtml({
   source_type: "current_page",
   page_url: "https://learn.example.com/course/player",
