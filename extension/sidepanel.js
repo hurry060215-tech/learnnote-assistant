@@ -6783,6 +6783,94 @@ function visualWindowEvidenceState(task, window, index = 0) {
   return { state: "ready", label: "本地索引", detail: safeNoteMediaUrl(window?.grid_url || "") ? "可核对画面和字幕" : "等待网格图" };
 }
 
+function visualWindowReviewItem(task, window, index = 0, transcript = null) {
+  const id = String(window?.id || `W${String(index + 1).padStart(3, "0")}`);
+  const evidence = visualWindowEvidenceState(task, window, index);
+  const cues = visualWindowCueSegments(window, transcript, 3);
+  const hasImage = Boolean(safeNoteMediaUrl(window?.grid_url || ""));
+  const points = visualWindowSummaryItems(window, transcript).filter(Boolean);
+  const hasSummary = points.some(point => point && !/暂无局部总结|先从截图/i.test(point));
+  const frameCount = Number(window?.frame_count || 0);
+  let priority = 5;
+  let label = "常规复核";
+  let reason = "确认画面、字幕和笔记结论一致。";
+  if (evidence.state === "missing" || evidence.state === "omitted") {
+    priority = 0;
+    label = "优先核对";
+    reason = evidence.detail;
+  } else if (!hasImage) {
+    priority = 1;
+    label = "缺少截图";
+    reason = "没有截图网格，先用字幕和前后窗口补全上下文。";
+  } else if (!cues.length && !window?.transcript_excerpt) {
+    priority = 2;
+    label = "补字幕线索";
+    reason = "没有同步字幕，先看截图判断本段主题。";
+  } else if (!hasSummary) {
+    priority = 3;
+    label = "补局部总结";
+    reason = "已有画面或字幕，但本段总结仍需要人工提炼。";
+  } else if (evidence.state === "vision") {
+    priority = 4;
+    label = "快速确认";
+    reason = "已进入视觉模型，复核重点是模型是否漏掉画面细节。";
+  }
+  return {
+    id,
+    window,
+    evidence,
+    priority,
+    label,
+    reason,
+    cueCount: cues.length || (window?.transcript_excerpt ? 1 : 0),
+    frameCount,
+    hasImage,
+    hasSummary,
+    summary: points[0] || reason
+  };
+}
+
+function visualStudyReviewPathHtml(task, transcript = null) {
+  const windows = visualWindows(task);
+  if (!windows.length) return "";
+  const items = windows
+    .map((window, index) => visualWindowReviewItem(task, window, index, transcript))
+    .sort((left, right) => left.priority - right.priority || Number(left.window.start || 0) - Number(right.window.start || 0));
+  const shown = items.slice(0, 6);
+  const urgentCount = items.filter(item => item.priority <= 2).length;
+  const readyCount = items.filter(item => item.evidence.state === "vision" || item.hasSummary).length;
+  return `<section class="visual-review-path" aria-label="切片复核路线">
+    <header>
+      <div>
+        <span>复核路线</span>
+        <strong>${urgentCount ? `先处理 ${urgentCount} 个重点窗口` : "按时间线快速复核"}</strong>
+      </div>
+      <small>${readyCount}/${items.length} 窗口已有总结或视觉证据</small>
+    </header>
+    <div class="visual-review-path-list">
+      ${shown.map(item => `<article class="${escapeHtml(item.evidence.state)} priority-${item.priority}">
+        <button type="button" class="visual-review-path-main" data-switch-result-tab="slices" data-focus-visual-window="${escapeHtml(item.id)}">
+          <b>${escapeHtml(item.id)}</b>
+          <span>${escapeHtml(item.label)}</span>
+          <strong>${fmt(item.window.start)} - ${fmt(item.window.end)}</strong>
+          <small>${escapeHtml(item.reason)}</small>
+        </button>
+        <div>
+          <em>${item.frameCount || "-"} 帧</em>
+          <em>${item.cueCount || "-"} 字幕</em>
+          <em>${escapeHtml(item.hasSummary ? "有总结" : "待总结")}</em>
+        </div>
+        <p>${escapeHtml(String(item.summary || item.reason).replace(/\s+/g, " ").slice(0, 120))}</p>
+        <nav>
+          <button type="button" data-media-seek-time="${seekTimeValue(item.window.start)}">回看</button>
+          <button type="button" data-switch-result-tab="transcript" data-focus-visual-window="${escapeHtml(item.id)}">字幕</button>
+        </nav>
+      </article>`).join("")}
+    </div>
+    ${items.length > shown.length ? `<footer>还有 ${items.length - shown.length} 个窗口；导出切片索引可查看完整顺序。</footer>` : ""}
+  </section>`;
+}
+
 function visualStudyOverviewHtml(task, transcript = null) {
   const windows = visualWindows(task);
   if (!windows.length) return "";
@@ -6860,6 +6948,7 @@ function visualStudyDeck(task, transcript = null) {
       </div>
     </div>
     ${visualStudyOverviewHtml(task, transcript)}
+    ${visualStudyReviewPathHtml(task, transcript)}
     ${visualStudyCorrelationHtml(task, transcript)}
     ${visualStudyHandoutHtml(task, transcript)}
     <div class="side-visual-study-list">

@@ -5062,6 +5062,202 @@ input[type="file"] {
   background: #eaf2ff;
 }
 
+.visual-review-path {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #dbe7f6;
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, #fbfdff, #ffffff),
+    #ffffff;
+  padding: 10px;
+}
+
+.visual-review-path header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.visual-review-path header div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.visual-review-path header span {
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.visual-review-path header strong {
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.visual-review-path header small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 850;
+  line-height: 1.35;
+  text-align: right;
+}
+
+.visual-review-path-list {
+  display: grid;
+  gap: 7px;
+}
+
+.visual-review-path article {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 8px;
+  align-items: start;
+  border: 1px solid #dbe7f6;
+  border-left: 4px solid #9aa9bd;
+  border-radius: 8px;
+  background: #f8fbff;
+  padding: 8px;
+}
+
+.visual-review-path article.vision {
+  border-left-color: #14964a;
+  background: linear-gradient(180deg, #f4fcf7, #ffffff);
+}
+
+.visual-review-path article.missing,
+.visual-review-path article.omitted,
+.visual-review-path article.priority-0,
+.visual-review-path article.priority-1 {
+  border-left-color: #d92d20;
+  background: linear-gradient(180deg, #fff6f2, #ffffff);
+}
+
+.visual-review-path-main {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 2px 8px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.visual-review-path-main:hover strong {
+  color: var(--accent);
+}
+
+.visual-review-path-main b {
+  grid-row: span 3;
+  width: 36px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  background: #eaf2ff;
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 950;
+}
+
+.visual-review-path article.priority-0 .visual-review-path-main b,
+.visual-review-path article.priority-1 .visual-review-path-main b {
+  background: #fff0ed;
+  color: #b42318;
+}
+
+.visual-review-path-main span,
+.visual-review-path-main strong,
+.visual-review-path-main small,
+.visual-review-path p {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.visual-review-path-main span {
+  color: var(--accent);
+  font-size: 9.5px;
+  font-weight: 900;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.visual-review-path-main strong {
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.22;
+  white-space: nowrap;
+}
+
+.visual-review-path-main small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 760;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.visual-review-path article > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.visual-review-path em {
+  border: 1px solid #d7e5ff;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #526176;
+  padding: 2px 6px;
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 900;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.visual-review-path p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #25324a;
+  font-size: 10.5px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.visual-review-path nav {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.visual-review-path nav button {
+  min-height: 24px;
+  border: 1px solid #c9d9ff;
+  border-radius: 999px;
+  background: #f2f6ff;
+  color: var(--accent);
+  padding: 2px 8px;
+  font-size: 9.5px;
+  font-weight: 900;
+}
+
+.visual-review-path footer {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+}
+
 .visual-study-correlation {
   display: grid;
   gap: 8px;
@@ -5402,6 +5598,22 @@ input[type="file"] {
 }
 
 @media (max-width: 420px) {
+  .visual-review-path header {
+    display: grid;
+  }
+
+  .visual-review-path header small {
+    text-align: left;
+  }
+
+  .visual-review-path article {
+    grid-template-columns: 1fr;
+  }
+
+  .visual-review-path article > div {
+    justify-content: flex-start;
+  }
+
   .visual-study-correlation header {
     display: grid;
   }
