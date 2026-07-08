@@ -6020,6 +6020,58 @@ function visualWindowEvidenceState(task, window, index = 0) {
   return { state: "ready", label: "本地索引", detail: safeNoteMediaUrl(window?.grid_url || "") ? "可核对画面和字幕" : "等待网格图" };
 }
 
+function visualStudyOverviewHtml(task, transcript = null) {
+  const windows = visualWindows(task);
+  if (!windows.length) return "";
+  const firstWindow = windows[0];
+  const lastWindow = windows[windows.length - 1];
+  const range = firstWindow && lastWindow ? `${fmt(firstWindow.start)} - ${fmt(lastWindow.end)}` : "等待切片";
+  const states = windows.map((window, index) => visualWindowEvidenceState(task, window, index).state);
+  const visionCount = states.filter(state => state === "vision").length;
+  const missingCount = states.filter(state => state === "missing").length;
+  const omittedCount = states.filter(state => state === "omitted").length;
+  const transcriptSegments = transcript?.segments || [];
+  const alignedCueCount = transcriptSegments.filter(segment => windows.some(window => segmentOverlapsWindow(segment, window))).length;
+  const frameCount = windows.reduce((total, window) => total + Number(window.frame_count || 0), 0);
+  const gridText = task.options?.grid_columns && task.options?.grid_rows
+    ? `${task.options.grid_columns}x${task.options.grid_rows}`
+    : "网格";
+  const quality = missingCount || omittedCount
+    ? "部分窗口需要人工核对"
+    : visionCount
+      ? "图文证据完整"
+      : "本地索引可复习";
+  const cards = [
+    { label: "覆盖范围", value: range, detail: `${windows.length} 个视觉窗口` },
+    { label: "视觉总结", value: visionCount ? `${visionCount}/${windows.length} 已参与` : "未调用视觉", detail: quality },
+    { label: "字幕对齐", value: alignedCueCount ? `${alignedCueCount} 段` : "无匹配字幕", detail: transcriptSegments.length ? "可逐窗核对" : "等待转写产物" },
+    { label: "画面证据", value: `${frameCount} 帧`, detail: `${gridText} 截图网格` }
+  ];
+  return `<section class="visual-study-overview" aria-label="切片学习总览">
+    <header>
+      <div>
+        <span>切片总览</span>
+        <strong>${escapeHtml(quality)}</strong>
+      </div>
+      <small>${escapeHtml(displayTaskTitle(task, "视觉窗口"))}</small>
+    </header>
+    <div class="visual-study-overview-grid">
+      ${cards.map(card => `<article>
+        <span>${escapeHtml(card.label)}</span>
+        <strong>${escapeHtml(card.value)}</strong>
+        <small>${escapeHtml(card.detail)}</small>
+      </article>`).join("")}
+    </div>
+    ${(missingCount || omittedCount) ? `<p>有 ${missingCount + omittedCount} 个窗口未完整进入视觉模型；请优先打开对应卡片，结合截图和字幕人工核对。</p>` : ""}
+    <nav>
+      <button type="button" data-switch-result-tab="transcript">核对字幕</button>
+      <button type="button" data-switch-result-tab="note">回到笔记</button>
+      ${hasTaskDiagnostics(task) ? `<button type="button" data-switch-result-tab="diagnostics">查看诊断</button>` : ""}
+      ${hasExportableMedia(task) ? `<button type="button" data-export="visual-windows">导出切片索引</button>` : ""}
+    </nav>
+  </section>`;
+}
+
 function visualStudyDeck(task, transcript = null) {
   const windows = visualWindows(task);
   if (!windows.length) return "";
@@ -6040,6 +6092,7 @@ function visualStudyDeck(task, transcript = null) {
         <button type="button" data-export="visual-windows">导出切片索引</button>
       </div>
     </div>
+    ${visualStudyOverviewHtml(task, transcript)}
     <div class="side-visual-study-list">
       ${windows.slice(0, 8).map((window, index) => {
         const image = safeNoteMediaUrl(window.grid_url || "");

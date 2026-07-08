@@ -4772,6 +4772,119 @@ input[type="file"] {
   overflow-wrap: anywhere;
 }
 
+.visual-study-overview {
+  display: grid;
+  gap: 9px;
+  border: 1px solid #dbe7f6;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 10px;
+}
+
+.visual-study-overview header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.visual-study-overview header div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.visual-study-overview header span {
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.visual-study-overview header strong {
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.visual-study-overview header small {
+  max-width: 44%;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 750;
+  line-height: 1.35;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.visual-study-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.visual-study-overview-grid article {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  border: 1px solid #d7e5f8;
+  border-radius: 8px;
+  background: #f8fbff;
+  padding: 8px;
+}
+
+.visual-study-overview-grid span {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 900;
+}
+
+.visual-study-overview-grid strong {
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.visual-study-overview-grid small {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.visual-study-overview p {
+  margin: 0;
+  border: 1px solid rgba(196, 122, 5, 0.24);
+  border-radius: 8px;
+  background: #fff8eb;
+  color: #7a4d0b;
+  padding: 8px;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.visual-study-overview nav {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.visual-study-overview nav button {
+  min-height: 30px;
+  border: 1px solid #b8d3ff;
+  border-radius: 7px;
+  background: #f2f7ff;
+  color: var(--accent);
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.visual-study-overview nav button:hover {
+  border-color: var(--accent);
+  background: #eaf2ff;
+}
+
 .side-slice-pending {
   display: grid;
   gap: 10px;
