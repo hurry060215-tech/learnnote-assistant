@@ -1820,6 +1820,61 @@ def _embedded_media_candidates_from_text_response(
     return sorted(dedup.values(), key=lambda item: item.score, reverse=True)
 
 
+def _preflight_sibling_manifest_guesses(
+    candidate: ResourceCandidate,
+    fragment_urls: list[str],
+    cookies: list[BrowserCookie],
+    referer: str,
+    timeout: int,
+    seen: set[str],
+) -> MediaPreflightResult | None:
+    guessed_urls: list[str] = []
+    for source_url in fragment_urls:
+        for guessed_url in infer_sibling_manifest_urls_from_fragment(source_url):
+            if guessed_url not in guessed_urls:
+                guessed_urls.append(guessed_url)
+
+    best_failure: MediaPreflightResult | None = None
+    for guessed_url in guessed_urls:
+        guessed = candidate.model_copy(deep=True)
+        guessed.url = guessed_url
+        guessed.resolved_url = ""
+        guessed.kind = classify_resource(guessed_url, "")
+        guessed.mime = "application/vnd.apple.mpegurl" if guessed.kind == "hls" else "application/dash+xml"
+        guessed.source = "manifest-guess"
+        if not guessed.playback_match:
+            guessed.playback_match = "inferred-from-fragment"
+
+        nested = preflight_media_resource(guessed, cookies, referer, timeout=timeout, _seen=seen)
+        nested.warnings = ["Tried sibling manifest guess from fragment URL.", *nested.warnings]
+        if nested.downloadable:
+            return MediaPreflightResult(
+                **{
+                    **nested.model_dump(),
+                    "url": candidate.url,
+                    "resolved_url": nested.resolved_url or guessed_url,
+                    "warnings": nested.warnings,
+                }
+            )
+
+        current_priority = DOWNLOAD_FAILURE_PRIORITY.get(nested.code or "download_forbidden", 0)
+        best_priority = DOWNLOAD_FAILURE_PRIORITY.get(best_failure.code or "download_forbidden", 0) if best_failure else -1
+        if not best_failure or current_priority > best_priority:
+            best_failure = nested
+
+    if not best_failure:
+        return None
+    return MediaPreflightResult(
+        **{
+            **best_failure.model_dump(),
+            "url": candidate.url,
+            "resolved_url": best_failure.resolved_url,
+            "warnings": best_failure.warnings,
+            "message": f"Fragment sibling manifest guesses failed: {best_failure.message}",
+        }
+    )
+
+
 def preflight_media_resource(
     candidate: ResourceCandidate,
     cookies: list[BrowserCookie],
@@ -1845,11 +1900,17 @@ def preflight_media_resource(
         )
     seen.update(url for url in {candidate.url, resolved_url} if url)
     if kind == "fragment":
-        inferred = infer_manifest_url_from_fragment(candidate.url)
+        fragment_urls = [url for url in (resolved_url, candidate.url) if url]
+        inferred = next((url for source_url in fragment_urls if (url := infer_manifest_url_from_fragment(source_url))), "")
         if inferred:
             resolved_url = inferred
             kind = classify_resource(inferred, candidate.mime)
             warnings.append("已从分片 URL 推断 manifest 后预检。")
+
+        else:
+            guessed_result = _preflight_sibling_manifest_guesses(candidate, fragment_urls, cookies, referer, timeout, seen)
+            if guessed_result:
+                return guessed_result
 
     if kind == "blob":
         return MediaPreflightResult(

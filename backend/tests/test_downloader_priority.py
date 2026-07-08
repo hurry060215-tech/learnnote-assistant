@@ -2880,6 +2880,37 @@ class DownloaderPriorityTests(unittest.TestCase):
                 server.shutdown()
                 server.server_close()
 
+    def test_preflight_plain_fragment_tries_sibling_manifest_guess(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            server = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(ResolvedManifestOnlyHandler, directory=str(root)))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                fragment_url = f"http://127.0.0.1:{server.server_port}/real/seg-0001.ts"
+                manifest_url = f"http://127.0.0.1:{server.server_port}/real/master.m3u8"
+                result = preflight_media_resource(
+                    ResourceCandidate(
+                        url=fragment_url,
+                        source="webRequest",
+                        kind="fragment",
+                        playback_match="fragment-near-playhead",
+                        score=40,
+                    ),
+                    [],
+                    "https://course.example.com/lesson",
+                )
+                self.assertTrue(result.ok)
+                self.assertTrue(result.downloadable)
+                self.assertEqual(result.kind, "hls")
+                self.assertEqual(result.strategy, "manifest-probe")
+                self.assertEqual(result.url, fragment_url)
+                self.assertEqual(result.resolved_url, manifest_url)
+                self.assertIn("sibling manifest guess", " ".join(result.warnings))
+            finally:
+                server.shutdown()
+                server.server_close()
+
     def test_preflight_prefers_existing_resolved_video_url(self) -> None:
         ffmpeg = ffmpeg_bin()
         assert ffmpeg is not None
