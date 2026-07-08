@@ -6363,6 +6363,29 @@ input[type="file"] {
   word-break: break-word;
 }
 
+.chaoxing-profile-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chaoxing-profile-actions button {
+  min-height: 28px;
+  border: 1px solid #cfdced;
+  border-radius: 7px;
+  background: #f8fbff;
+  color: #233044;
+  padding: 0 9px;
+  font-size: 10px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.chaoxing-profile-actions button:hover {
+  border-color: var(--accent);
+  background: #eef5ff;
+}
+
 .chaoxing-profile p {
   margin: 0;
   color: #667085;

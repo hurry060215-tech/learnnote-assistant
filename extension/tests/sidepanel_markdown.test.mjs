@@ -205,6 +205,72 @@ assert.match(chaoxingProfileHtml, /预检已有可下载候选/);
 assert.match(chaoxingProfileHtml, /证据链基本完整/);
 assert.match(chaoxingProfileHtml, /通用策略/);
 assert.match(chaoxingProfileHtml, /不录制、不刷课、不伪造进度、不自动答题/);
+assert.match(chaoxingProfileHtml, /data-copy-platform-report/);
+const chaoxingPlatformReport = context.platformSignalReport({
+  id: "chaoxing-report-task",
+  status: "failed",
+  error_code: "download_forbidden",
+  page_url: "https://mooc1.chaoxing.com/mycourse/studentstudy?courseid=secret-course",
+  recovery: {
+    chaoxing_profile: {
+      detected: true,
+      likely_issue: "anti_hotlink_or_expired_signature",
+      has_ananas_candidate: true,
+      has_playurl: true,
+      has_objectid: true,
+      has_dtoken: true,
+      has_replay_body: true,
+      has_referer: true,
+      has_origin: true,
+      has_x_requested_with: true,
+      has_iframe_context: true,
+      cookie_domain_count: 2,
+      cookie_count: 4,
+      safe_request_header_names: ["Origin", "Referer", "X-Requested-With"],
+      page_preflight: { present: true, candidate_count: 1, probed_count: 1, downloadable_count: 0, ready: false }
+    }
+  },
+  selected_resource: {
+    url: "https://mooc1.chaoxing.com/ananas/status/objectid-123?dtoken=secret-token&playurl=1",
+    frame_url: "https://mooc1.chaoxing.com/player.html?objectid=local-object-001&dtoken=local-dtoken-001",
+    kind: "unknown",
+    source: "webRequest",
+    method: "POST",
+    request_type: "xmlhttprequest",
+    request_headers: { Referer: "https://mooc1.chaoxing.com/course", Origin: "https://mooc1.chaoxing.com" },
+    request_body: { content: "objectid=local-object-001&dtoken=local-dtoken-001&playurl=1", type: "form" }
+  }
+});
+assert.match(chaoxingPlatformReport, /LearnNote platform direct-extraction report/);
+assert.match(chaoxingPlatformReport, /site: 学习通\/超星/);
+assert.match(chaoxingPlatformReport, /- ananas: yes/);
+assert.match(chaoxingPlatformReport, /- objectid: yes/);
+assert.match(chaoxingPlatformReport, /- dtoken: yes/);
+assert.match(chaoxingPlatformReport, /missing steps: downloadable_candidate/);
+assert.match(chaoxingPlatformReport, /next step:/);
+assert.match(chaoxingPlatformReport, /Cookie and Authorization values are not included/);
+assert.doesNotMatch(chaoxingPlatformReport, /secret-token/);
+assert.doesNotMatch(chaoxingPlatformReport, /local-object-001/);
+assert.doesNotMatch(chaoxingPlatformReport, /local-dtoken-001/);
+assert.doesNotMatch(chaoxingPlatformReport, /objectid-123/);
+const copiedPlatformReport = await context.copyPlatformSignalReport({
+  id: "chaoxing-report-task",
+  source_type: "current_page",
+  recovery: {
+    chaoxing_profile: {
+      detected: true,
+      has_ananas_candidate: true,
+      has_playurl: true,
+      cookie_count: 1,
+      cookie_domain_count: 1,
+      page_preflight: { present: true, ready: true, candidate_count: 1, probed_count: 1, downloadable_count: 1 }
+    }
+  },
+  selected_resource: { url: "https://mooc1.chaoxing.com/ananas/status/play?dtoken=secret", kind: "hls" }
+});
+assert.equal(copiedPlatformReport, true);
+assert.match(clipboardWrites.at(-1), /LearnNote platform direct-extraction report/);
+assert.doesNotMatch(clipboardWrites.at(-1), /secret/);
 const missingChaoxingProfileHtml = context.chaoxingProfileHtml({
   recovery: {
     chaoxing_profile: {

@@ -779,6 +779,141 @@ async function copyCurrentPageAuditReport() {
   return copyTextToClipboard(report, "已复制当前页直取审计报告。");
 }
 
+function reportSafeUrl(value) {
+  const text = String(value || "");
+  if (!text) return "";
+  const redactSensitive = input => String(input || "")
+    .replace(/([?&](?:objectid|dtoken|token|sign|signature|auth|session|courseid|clazzid)=)[^&#]*/ig, "$1<redacted>")
+    .replace(/(\/(?:objectid|dtoken|token|sign|signature|auth|session))[^/?#]*/ig, "$1<redacted>");
+  if (text.startsWith("blob:http://") || text.startsWith("blob:https://")) {
+    return `blob:${reportSafeUrl(text.slice(5))}`;
+  }
+  try {
+    const parsed = new URL(text);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return text;
+    const safePath = parsed.pathname.replace(/(objectid|dtoken|token|sign|signature|auth|session)[^/]*/ig, "$1<redacted>");
+    return redactSensitive(`${parsed.protocol}//${parsed.host}${safePath}${parsed.search ? "?<redacted>" : ""}${parsed.hash ? "#<redacted>" : ""}`);
+  } catch {
+    const safeText = redactSensitive(text);
+    return safeText.length > 160 ? `${safeText.slice(0, 78)}...${safeText.slice(-78)}` : safeText;
+  }
+}
+
+function platformReportSignalChecks(task, signal, profile = taskChaoxingProfile(task)) {
+  const haystack = compactEvidenceHaystack(task, profile);
+  return [
+    ["ananas", Boolean(profile.has_ananas_candidate || /ananas/i.test(haystack))],
+    ["playurl", Boolean(profile.has_playurl || /play_?url|playURL/i.test(haystack))],
+    ["objectid", Boolean(profile.has_objectid || /objectid/i.test(haystack))],
+    ["dtoken", Boolean(profile.has_dtoken || /dtoken/i.test(haystack))],
+    ["playable_api", Boolean(signal.hasPlayableApi)],
+    ["direct_media", Boolean(signal.hasDirectMedia)],
+    ["post_body", Boolean(signal.hasReplayBody)],
+    ["referer", Boolean(signal.hasReferer)],
+    ["origin", Boolean(signal.hasOrigin)],
+    ["xhr", Boolean(signal.hasXRequestedWith)],
+    ["iframe", Boolean(signal.hasFrameContext)],
+    ["cookie", Boolean(signal.cookieCount || signal.cookieDomainCount)],
+    ["blob_mse", Boolean(signal.hasBlobOrMse)],
+    ["preflight_ready", Boolean(signal.preflightReady)]
+  ];
+}
+
+function platformReportMissingSteps(task, signal, profile = taskChaoxingProfile(task)) {
+  const missing = [];
+  if (!signal.hasPlayableApi && !signal.hasDirectMedia && !signal.hasBlobOrMse) {
+    missing.push("playback_evidence");
+  }
+  if (!signal.hasPlayableApi && !signal.hasDirectMedia) {
+    missing.push("media_or_play_api");
+  }
+  if (profile.detected && !signal.cookieCount && !signal.cookieDomainCount) {
+    missing.push("auth_cookie");
+  }
+  if (signal.hasPlayableApi && !signal.hasReplayBody && !signal.hasDirectMedia) {
+    missing.push("api_replay_body_or_resolved_media");
+  }
+  if (!signal.hasFrameContext && profile.detected) {
+    missing.push("player_iframe_context");
+  }
+  if (!signal.hasPreflight) {
+    missing.push("download_preflight");
+  } else if (!signal.preflightReady) {
+    missing.push("downloadable_candidate");
+  }
+  if (signal.hasBlobOrMse && !signal.hasPlayableApi && !signal.hasDirectMedia) {
+    missing.push("recoverable_manifest_or_local_upload");
+  }
+  return missing;
+}
+
+function platformReportNextStep(missing, signal) {
+  if (!missing.length) return "Run preflight or start the current-page task; the platform evidence chain is complete enough for direct extraction.";
+  if (missing.includes("auth_cookie")) return "Open the logged-in page in the same browser profile, play the target video for a few seconds, then rerun detection/preflight.";
+  if (missing.includes("playback_evidence") || missing.includes("media_or_play_api")) return "Start real playback, wait for the player API/media request, then redetect resources.";
+  if (missing.includes("api_replay_body_or_resolved_media")) return "Keep playback active until the POST play API body or resolved mp4/HLS/DASH URL is captured.";
+  if (missing.includes("downloadable_candidate")) return "Inspect the candidate headers and preflight failure; the server may need fresh Referer/Origin/cookie or the URL may be expired.";
+  if (missing.includes("recoverable_manifest_or_local_upload")) return "If only unrecoverable blob/MSE remains, use the local video upload path; no tab recording or DRM bypass is attempted.";
+  if (!signal.hasPreflight) return "Run the direct-extraction preflight before starting the full task.";
+  return "Redetect after playback and use diagnostics to inspect the missing platform signal.";
+}
+
+function platformSignalReport(task = currentTask) {
+  const signal = platformSignalProfile(task);
+  if (!signal.detected) return "";
+  const profile = taskChaoxingProfile(task);
+  const selected = task?.selected_resource || {};
+  const preflight = signal.preflight || {};
+  const checks = platformReportSignalChecks(task, signal, profile);
+  const missing = platformReportMissingSteps(task, signal, profile);
+  const lines = [
+    "LearnNote platform direct-extraction report",
+    `site: ${signal.site}`,
+    `issue: ${signal.issue}`,
+    `task: ${task?.id || "-"} / ${task?.status || "-"} / ${task?.error_code || "-"}`,
+    `page: ${reportSafeUrl(task?.page_url || selected.page_url || selected.frame_url || selected.url || "") || "-"}`,
+    "",
+    "signals",
+    ...checks.map(([label, ok]) => `- ${label}: ${ok ? "yes" : "no"}`),
+    "",
+    "browser context",
+    `- cookies: ${signal.cookieDomainCount} domain(s) / ${signal.cookieCount} cookie(s) / partitioned ${signal.partitionedCookieCount} / key ${signal.partitionKeyCount}`,
+    `- safe headers: ${signal.headerNames.join(", ") || "-"}`,
+    `- candidate kinds: ${signal.candidateKinds.join(", ") || "-"}`,
+    `- request body: ${signal.requestBody || "-"}`,
+    "",
+    "download preflight",
+    `- present: ${signal.hasPreflight ? "yes" : "no"}`,
+    `- ready: ${signal.preflightReady ? "yes" : "no"}`,
+    `- candidates/probed/downloadable: ${Number(preflight.candidate_count || 0)}/${Number(preflight.probed_count || 0)}/${Number(preflight.downloadable_count || 0)}`,
+    "",
+    "selected candidate",
+    `- kind/source/method: ${selected.kind || "-"}/${selected.source || "-"}/${selected.method || "GET"}`,
+    `- request type: ${selected.request_type || "-"}`,
+    `- url: ${reportSafeUrl(selected.url || "") || "-"}`,
+    `- resolved: ${reportSafeUrl(selected.resolved_url || "") || "-"}`,
+    `- frame: ${reportSafeUrl(selected.frame_url || "") || "-"}`,
+    "",
+    `missing steps: ${missing.join(", ") || "-"}`,
+    `next step: ${platformReportNextStep(missing, signal)}`,
+    "",
+    "privacy boundary",
+    "- Cookie and Authorization values are not included.",
+    "- POST body content is summarized only by presence/size.",
+    "- This workflow does not record tabs, bypass DRM, spoof progress, or auto-answer questions."
+  ];
+  return lines.join("\n");
+}
+
+async function copyPlatformSignalReport(task = currentTask) {
+  const report = platformSignalReport(task);
+  if (!report) {
+    els.taskMessage.textContent = "没有可复制的平台诊断报告。";
+    return false;
+  }
+  return copyTextToClipboard(report, "已复制平台直取诊断报告。");
+}
+
 function llmAuditFlags(diag = {}) {
   const flags = [];
   if (diag.vision_failed_batch_count) flags.push(`视觉批次失败 ${diag.vision_failed_batch_count}`);
@@ -2039,6 +2174,10 @@ function platformSignalHtml(task) {
       <dt>请求头</dt><dd>${escapeHtml(safeHeaders)}</dd>
       <dt>候选类型</dt><dd>${escapeHtml(candidateKinds)}</dd>
     </dl>
+    <nav class="chaoxing-profile-actions" aria-label="平台诊断报告">
+      <button type="button" data-copy-platform-report>复制平台报告</button>
+      ${signal.hasPreflight ? "" : `<button type="button" data-route-action="preflight">先预检资源</button>`}
+    </nav>
     <p>通用策略：优先复用当前播放暴露的媒体 URL、播放 API、iframe、Referer/Origin、一次性 Cookie 和可回放 POST body；不录制、不刷课、不伪造进度、不自动答题。</p>
   </section>`;
 }
@@ -6225,6 +6364,9 @@ function bindTaskOverviewActions() {
   });
   document.querySelectorAll("button[data-route-action]").forEach(button => {
     button.onclick = () => handleRouteAction(button.dataset.routeAction);
+  });
+  document.querySelectorAll("button[data-copy-platform-report]").forEach(button => {
+    button.onclick = () => copyPlatformSignalReport(currentTask);
   });
 }
 
