@@ -1787,6 +1787,12 @@ function taskChaoxingProfile(task) {
   return profile && typeof profile === "object" ? profile : {};
 }
 
+function platformSignalSiteName(task, profile = taskChaoxingProfile(task)) {
+  if (profile?.detected) return "学习通/超星";
+  const selected = task?.selected_resource || {};
+  return hostFromUrl(task?.page_url || selected.page_url || selected.frame_url || selected.url) || "当前网站";
+}
+
 function profileYesNo(value) {
   return value ? "是" : "否";
 }
@@ -1795,35 +1801,98 @@ function profileChip(label, value) {
   return `<span class="${value ? "pass" : "warn"}"><b>${escapeHtml(label)}</b>${escapeHtml(profileYesNo(value))}</span>`;
 }
 
-function chaoxingProfileHtml(task) {
+function platformHeaderNames(task, profile = taskChaoxingProfile(task)) {
+  const selected = task?.selected_resource || {};
+  const safe = Array.isArray(profile.safe_request_header_names) ? profile.safe_request_header_names : [];
+  if (safe.length) return safe;
+  const headers = selected.request_headers && typeof selected.request_headers === "object"
+    ? Object.keys(selected.request_headers)
+    : [];
+  const explicit = Array.isArray(selected.request_header_names) ? selected.request_header_names : [];
+  return [...new Set([...headers, ...explicit].filter(name => !/cookie|authorization/i.test(String(name || ""))))].sort();
+}
+
+function platformSignalProfile(task) {
   const profile = taskChaoxingProfile(task);
-  if (!profile.detected) return "";
+  const direct = task?.direct_extraction || {};
+  const selected = task?.selected_resource || {};
+  const selectedDirect = direct.selected_candidate || {};
+  const browser = direct.browser_context || {};
   const preflight = profile.page_preflight || {};
-  const safeHeaders = (profile.safe_request_header_names || []).join(", ") || "-";
-  const candidateKinds = (profile.candidate_kinds || []).join(", ") || "-";
-  return `<section class="chaoxing-profile" aria-label="学习通直取证据">
+  const headerNames = platformHeaderNames(task, profile);
+  const requestBody = requestBodySummary(selected);
+  const hasReplayBody = Boolean(profile.has_replay_body || selectedDirect.has_replay_body || requestBody);
+  const hasFrameContext = Boolean(profile.has_iframe_context || selected.frame_url || selected.frame_id !== null && selected.frame_id !== undefined || browser.active_frame_id !== null && browser.active_frame_id !== undefined);
+  const cookieCount = Number(profile.cookie_count ?? browser.cookie_count ?? 0);
+  const cookieDomainCount = Number(profile.cookie_domain_count ?? browser.cookie_domain_count ?? 0);
+  const hasPlayableApi = Boolean(profile.has_ananas_candidate || profile.has_objectid || profile.has_dtoken || profile.has_httpmd || looksLikePlayableEndpoint(selected));
+  const hasDirectMedia = Boolean(["hls", "dash", "video", "audio"].includes(String(selected.kind || selectedDirect.kind || "").toLowerCase()) || selected.resolved_url || direct.media_landed);
+  const hasPreflight = Boolean(preflight.present || task?.page_preflight_report_path);
+  const downloadable = Number(preflight.downloadable_count || 0);
+  const pageScan = Boolean(preflight.page_scan_attempted || preflight.page_scan_discovered_count);
+  const issue = profile.likely_issue || direct.boundary || task?.error_code || "evidence_pending";
+  return {
+    detected: Boolean(profile.detected || task?.source_type === "current_page" || hasPlayableApi || hasDirectMedia || hasFrameContext || cookieCount || hasPreflight),
+    site: platformSignalSiteName(task, profile),
+    issue,
+    headerNames,
+    candidateKinds: profile.candidate_kinds || [selected.kind || selectedDirect.kind].filter(Boolean),
+    cookieCount,
+    cookieDomainCount,
+    partitionedCookieCount: Number(profile.partitioned_cookie_count ?? browser.partitioned_cookie_count ?? 0),
+    partitionKeyCount: Number(profile.partition_key_count ?? browser.partition_key_count ?? 0),
+    preflight,
+    hasPlayableApi,
+    hasDirectMedia,
+    hasReplayBody,
+    hasReferer: Boolean(profile.has_referer || headerNames.some(name => /^referer$/i.test(name))),
+    hasOrigin: Boolean(profile.has_origin || headerNames.some(name => /^origin$/i.test(name))),
+    hasXRequestedWith: Boolean(profile.has_x_requested_with || headerNames.some(name => /^x-requested-with$/i.test(name))),
+    hasFrameContext,
+    hasBlobOrMse: Boolean(selected.blob_url || selected.kind === "blob" || mseAppendEvidence(selected) || browser.active_source_type === "blob"),
+    hasPreflight,
+    preflightReady: Boolean(preflight.ready || downloadable > 0),
+    pageScan,
+    downloadable,
+    requestBody
+  };
+}
+
+function platformSignalHtml(task) {
+  const signal = platformSignalProfile(task);
+  if (!signal.detected) return "";
+  const safeHeaders = signal.headerNames.join(", ") || "-";
+  const candidateKinds = signal.candidateKinds.join(", ") || "-";
+  const preflightText = signal.hasPreflight
+    ? `${Number(signal.preflight.candidate_count || 0)} 候选 / ${Number(signal.preflight.probed_count || 0)} 探测 / ${Number(signal.preflight.downloadable_count || 0)} 可下载${signal.pageScan ? " / 已扫页面" : ""}`
+    : "未随任务落盘";
+  return `<section class="chaoxing-profile" data-platform-signal="true" aria-label="平台直取线索">
     <div class="chaoxing-profile-head">
-      <span>学习通证据</span>
-      <strong>${escapeHtml(profile.likely_issue || "evidence_ready")}</strong>
+      <span>平台线索 · ${escapeHtml(signal.site)}</span>
+      <strong>${escapeHtml(signal.issue)}</strong>
     </div>
     <div class="chaoxing-profile-grid">
-      ${profileChip("ananas", profile.has_ananas_candidate)}
-      ${profileChip("objectid", profile.has_objectid)}
-      ${profileChip("dtoken", profile.has_dtoken)}
-      ${profileChip("POST", profile.has_replay_body)}
-      ${profileChip("Referer", profile.has_referer)}
-      ${profileChip("Origin", profile.has_origin)}
-      ${profileChip("XHR", profile.has_x_requested_with)}
-      ${profileChip("iframe", profile.has_iframe_context)}
+      ${profileChip("播放 API", signal.hasPlayableApi)}
+      ${profileChip("真实媒体", signal.hasDirectMedia)}
+      ${profileChip("POST/body", signal.hasReplayBody)}
+      ${profileChip("Referer", signal.hasReferer)}
+      ${profileChip("Origin", signal.hasOrigin)}
+      ${profileChip("XHR", signal.hasXRequestedWith)}
+      ${profileChip("iframe", signal.hasFrameContext)}
+      ${profileChip("blob/MSE", signal.hasBlobOrMse)}
     </div>
     <dl>
-      <dt>Cookie</dt><dd>${Number(profile.cookie_domain_count || 0)} 域 / ${Number(profile.cookie_count || 0)} 条；分区 ${Number(profile.partitioned_cookie_count || 0)} / ${Number(profile.partition_key_count || 0)} key</dd>
-      <dt>预检</dt><dd>${preflight.present ? `${Number(preflight.candidate_count || 0)} 候选 / ${Number(preflight.probed_count || 0)} 探测 / ${Number(preflight.downloadable_count || 0)} 可下载` : "未随任务落盘"}</dd>
+      <dt>Cookie</dt><dd>${signal.cookieDomainCount} 域 / ${signal.cookieCount} 条；分区 ${signal.partitionedCookieCount} / ${signal.partitionKeyCount} key</dd>
+      <dt>预检</dt><dd>${preflightText}</dd>
       <dt>请求头</dt><dd>${escapeHtml(safeHeaders)}</dd>
       <dt>候选类型</dt><dd>${escapeHtml(candidateKinds)}</dd>
     </dl>
-    <p>只复用当前登录态暴露的真实媒体请求；不录制、不刷课、不伪造进度、不自动答题。</p>
+    <p>通用策略：优先复用当前播放暴露的媒体 URL、播放 API、iframe、Referer/Origin、一次性 Cookie 和可回放 POST body；不录制、不刷课、不伪造进度、不自动答题。</p>
   </section>`;
+}
+
+function chaoxingProfileHtml(task) {
+  return platformSignalHtml(task);
 }
 
 function drmSignalText(signals = []) {
@@ -2994,6 +3063,10 @@ function shouldShowWorkbenchFallback(state) {
   return !selectedResource() || ["blocked", "fallback", "mapping", "waiting", "empty"].includes(state);
 }
 
+function shouldShowWorkbenchAudit(state) {
+  return state === "ready" || state === "blocked";
+}
+
 function renderCurrentStudyCard() {
   if (!els.currentStudyCard) return;
   const state = currentStudyState();
@@ -3015,8 +3088,8 @@ function renderCurrentStudyCard() {
     ${workbenchBriefHtml(state)}
     ${workbenchRunModesHtml(state)}
     ${workbenchRouteHtml()}
-    ${workbenchAuditGateHtml(state)}
     ${workbenchSlicePlanHtml()}
+    ${shouldShowWorkbenchAudit(state) ? workbenchAuditGateHtml(state) : ""}
     ${shouldShowWorkbenchFallback(state) ? workbenchLocalFallbackHtml(state) : ""}
     <div class="workbench-steps">
       ${workbenchStepItems(state).map((item, index) => `<section class="${escapeHtml(item.state)}">
