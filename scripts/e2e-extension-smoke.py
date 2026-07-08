@@ -302,11 +302,19 @@ async () => {{
     throw new Error("tab not found: " + targetUrl + " tabId=" + tabId + " open=" + tabs.map(item => item.id + ":" + (item.url || item.pendingUrl || "")).join(","));
   }}
   await chrome.tabs.update(tab.id, {{ active: true }});
-  await sleep({int(wait_ms)});
-  const response = await globalThis.__learnnoteE2E.collectContextForTab(tab.id);
-  const page = response.page || {{}};
-  const resources = response.resources || [];
-  const captureLog = response.capture_log || {{}};
+  let response = {{}};
+  let page = {{}};
+  let resources = [];
+  let captureLog = {{}};
+  const deadline = Date.now() + Math.max({int(wait_ms)}, 1600) + 4200;
+  while (Date.now() < deadline) {{
+    await sleep(Math.min(Math.max({int(wait_ms)}, 400), 1000));
+    response = await globalThis.__learnnoteE2E.collectContextForTab(tab.id);
+    page = response.page || {{}};
+    resources = response.resources || [];
+    captureLog = response.capture_log || {{}};
+    if (resources.length || page.active_video || Number(captureLog.restored || captureLog.total || 0)) break;
+  }}
   const cookies = await chrome.cookies.getAll({{ url: targetUrl }}).catch(() => []);
   return {{
     tab: {{ id: tab.id, url: tab.url, title: tab.title, status: tab.status }},
@@ -477,10 +485,28 @@ def main() -> None:
     parser.add_argument("--browser", choices=["chrome", "edge"], default="edge")
     parser.add_argument("--keep-browser", action="store_true", help="Leave the temporary browser open after checks.")
     args = parser.parse_args()
+    backend_port_explicit = "--backend-port" in sys.argv and args.backend_port != BACKEND_PORT
+    samples_port_explicit = "--samples-port" in sys.argv and args.samples_port != SAMPLES_PORT
 
     browser = browser_path(args.browser)
     if not browser:
         raise RuntimeError(f"{args.browser} executable not found. Set LEARNNOTE_E2E_BROWSER to a Chrome/Edge executable.")
+    if args.backend_port <= 0:
+        args.backend_port = free_port()
+    elif port_is_open(args.backend_port):
+        if backend_port_explicit:
+            raise RuntimeError(f"Backend port {args.backend_port} is already in use. Pass --backend-port 0 or choose another port.")
+        replacement = free_port()
+        print(f"INFO backend port {args.backend_port} is busy; using {replacement} for this smoke run.")
+        args.backend_port = replacement
+    if args.samples_port <= 0:
+        args.samples_port = free_port()
+    elif port_is_open(args.samples_port):
+        if samples_port_explicit:
+            raise RuntimeError(f"Samples port {args.samples_port} is already in use. Pass --samples-port 0 or choose another port.")
+        replacement = free_port()
+        print(f"INFO samples port {args.samples_port} is busy; using {replacement} for this smoke run.")
+        args.samples_port = replacement
     if args.debug_port <= 0:
         args.debug_port = free_port()
     elif port_is_open(args.debug_port):
