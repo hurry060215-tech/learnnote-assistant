@@ -1658,6 +1658,66 @@ class DownloaderPriorityTests(unittest.TestCase):
                 server.shutdown()
                 server.server_close()
 
+    def test_unknown_candidate_uses_resolved_video_url(self) -> None:
+        ffmpeg = ffmpeg_bin()
+        assert ffmpeg is not None
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            video = root / ResolvedMediaOnlyHandler.media_name
+            subprocess.run(
+                [
+                    ffmpeg,
+                    "-y",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "testsrc=duration=2:size=320x180:rate=10",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "sine=frequency=440:duration=2",
+                    "-shortest",
+                    "-pix_fmt",
+                    "yuv420p",
+                    str(video),
+                ],
+                check=True,
+            )
+            server = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(ResolvedMediaOnlyHandler, directory=str(root)))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                gate_url = f"http://127.0.0.1:{server.server_port}/expired-gate"
+                final_url = f"http://127.0.0.1:{server.server_port}/{video.name}"
+                downloader = MediaDownloader(root / "task")
+                media_path, selected = downloader.download(
+                    page_url=f"http://127.0.0.1:{server.server_port}/lesson.html",
+                    resources=[
+                        ResourceCandidate(
+                            url=gate_url,
+                            resolved_url=final_url,
+                            source="webRequestResolved",
+                            kind="unknown",
+                            mime="",
+                            score=20,
+                        )
+                    ],
+                    cookies=[],
+                    title="Resolved unknown direct",
+                )
+                self.assertTrue(media_path.exists())
+                self.assertIsNotNone(selected)
+                self.assertEqual(selected.kind, "video")
+                self.assertEqual(selected.resolved_url, final_url)
+                self.assertEqual(downloader.attempts[0].strategy, "direct-file")
+                self.assertEqual(downloader.attempts[0].status, "success")
+            finally:
+                server.shutdown()
+                server.server_close()
+
     def test_manifest_download_uses_final_redirect_url_for_ffmpeg(self) -> None:
         captured: dict = {}
 
@@ -1722,6 +1782,53 @@ class DownloaderPriorityTests(unittest.TestCase):
                 self.assertIn("-allowed_extensions", captured["cmd"])
                 self.assertIn("ALL", captured["cmd"])
                 self.assertLess(captured["cmd"].index("-allowed_extensions"), captured["cmd"].index("-i"))
+            finally:
+                server.shutdown()
+                server.server_close()
+
+    def test_unknown_candidate_uses_resolved_manifest_url(self) -> None:
+        captured: dict = {}
+
+        def fake_run(cmd, capture_output, text):
+            captured["cmd"] = cmd
+            output = Path(cmd[-1])
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_bytes(b"0" * 5000)
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            server = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(ResolvedManifestOnlyHandler, directory=str(root)))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                gate_url = f"http://127.0.0.1:{server.server_port}/expired-gate"
+                final_url = f"http://127.0.0.1:{server.server_port}/real/master.m3u8"
+                downloader = MediaDownloader(root / "task")
+                with patch("app.downloader.ffmpeg_bin", return_value="ffmpeg"), patch("app.downloader.subprocess.run", side_effect=fake_run):
+                    media_path, selected = downloader.download(
+                        page_url=f"http://127.0.0.1:{server.server_port}/lesson.html",
+                        resources=[
+                            ResourceCandidate(
+                                url=gate_url,
+                                resolved_url=final_url,
+                                source="webRequestResolved",
+                                kind="unknown",
+                                mime="",
+                                score=20,
+                            )
+                        ],
+                        cookies=[],
+                        title="Resolved unknown HLS",
+                    )
+
+                self.assertTrue(media_path.exists())
+                self.assertIsNotNone(selected)
+                self.assertEqual(selected.kind, "hls")
+                self.assertEqual(selected.resolved_url, final_url)
+                self.assertEqual(downloader.attempts[0].strategy, "manifest-ffmpeg")
+                self.assertIn("-i", captured["cmd"])
+                self.assertEqual(captured["cmd"][captured["cmd"].index("-i") + 1], final_url)
             finally:
                 server.shutdown()
                 server.server_close()

@@ -1379,6 +1379,10 @@ def classify_resource(url: str, mime: str = "") -> str:
 
 
 def effective_resource_kind(candidate: ResourceCandidate) -> str:
+    if candidate.resolved_url and candidate.resolved_url != candidate.url:
+        resolved = classify_resource(candidate.resolved_url, candidate.mime)
+        if resolved in {"hls", "dash", "video", "audio", "subtitle"}:
+            return resolved
     inferred = classify_resource(candidate.url, candidate.mime)
     if inferred != "unknown":
         return inferred
@@ -1422,7 +1426,8 @@ def score_resource(url: str, mime: str = "", source: str = "") -> int:
 
 
 def score_candidate(candidate: ResourceCandidate) -> int:
-    return score_kind(candidate.url, candidate.source, effective_resource_kind(candidate))
+    score_url = candidate.resolved_url or candidate.url
+    return score_kind(score_url, candidate.source, effective_resource_kind(candidate))
 
 
 def kind_rank(kind: str) -> int:
