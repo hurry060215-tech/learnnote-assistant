@@ -3279,6 +3279,8 @@ function hasTaskBundle(task) {
     reuse.media_available ||
     task.status === "failed" ||
     task.download_attempts?.length ||
+    task.resource_inventory_path ||
+    task.page_preflight_report_path ||
     visualWindows(task).length
   );
 }
@@ -3295,6 +3297,8 @@ function hasTaskDiagnostics(task) {
     task.selected_resource ||
     task.media_path ||
     task.summary_diagnostics_path ||
+    task.resource_inventory_path ||
+    task.page_preflight_report_path ||
     Object.keys(task.summary_diagnostics || {}).length
   );
 }
@@ -4057,6 +4061,8 @@ function taskOverview(task) {
     hasMedia ? `<a href="${escapeHtml(taskExportUrl(task, "media"))}">导出本地视频</a>` : "",
     hasTaskAudit(task) ? `<a href="${escapeHtml(taskExportUrl(task, "audit"))}">导出审计</a>` : "",
     hasTaskDiagnostics(task) ? `<a href="${escapeHtml(taskExportUrl(task, "diagnostics"))}">导出诊断</a>` : "",
+    task.resource_inventory_path ? `<a href="${escapeHtml(taskExportUrl(task, "resource-inventory"))}">导出候选证据</a>` : "",
+    task.page_preflight_report_path ? `<a href="${escapeHtml(taskExportUrl(task, "page-preflight-report"))}">导出预检报告</a>` : "",
     hasBundle ? `<a href="${escapeHtml(taskExportUrl(task, "manifest"))}">导出清单</a>` : "",
     hasBundle ? `<a href="${escapeHtml(taskExportUrl(task, "bundle"))}">导出资料包</a>` : ""
   ].filter(Boolean).join("");

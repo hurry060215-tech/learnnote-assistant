@@ -915,6 +915,8 @@ const taskOverviewHtml = context.taskOverview({
   source_type: "current_page",
   mode: "download_only",
   media_path: "D:/Projects/learnnote-assistant/data/tasks/side-overview/media.mp4",
+  resource_inventory_path: "D:/Projects/learnnote-assistant/data/tasks/side-overview/resource_inventory.json",
+  page_preflight_report_path: "D:/Projects/learnnote-assistant/data/tasks/side-overview/page_preflight_report.json",
   active_video: {
     src: "blob:https://course.example.com/current-player",
     current_time: 42,
@@ -999,6 +1001,8 @@ assert.doesNotMatch(taskOverviewHtml, /secret=1/);
 assert.match(taskOverviewHtml, /data-export="media"/);
 assert.match(taskOverviewHtml, /data-export="audit"/);
 assert.match(taskOverviewHtml, /data-export="diagnostics"/);
+assert.match(taskOverviewHtml, /data-export="resource-inventory"/);
+assert.match(taskOverviewHtml, /data-export="page-preflight-report"/);
 assert.match(taskOverviewHtml, /data-export="manifest"/);
 assert.match(taskOverviewHtml, /data-export="bundle"/);
 assert.match(taskOverviewHtml, /生成完整笔记/);

@@ -4298,6 +4298,8 @@ function hasTaskBundle(task) {
     reuse.media_available ||
     task.status === "failed" ||
     task.download_attempts?.length ||
+    task.resource_inventory_path ||
+    task.page_preflight_report_path ||
     visualWindows(task).length
   );
 }
@@ -4310,6 +4312,8 @@ function hasTaskDiagnostics(task) {
     task.selected_resource ||
     task.media_path ||
     task.summary_diagnostics_path ||
+    task.resource_inventory_path ||
+    task.page_preflight_report_path ||
     Object.keys(task.summary_diagnostics || {}).length
   );
 }
@@ -5125,6 +5129,8 @@ function taskOverview(task) {
     hasMedia ? `<button type="button" data-export="media">本地视频</button>` : "",
     hasTaskAudit(task) ? `<button type="button" data-export="audit">审计</button>` : "",
     hasTaskDiagnostics(task) ? `<button type="button" data-export="diagnostics">诊断</button>` : "",
+    task.resource_inventory_path ? `<button type="button" data-export="resource-inventory">候选证据</button>` : "",
+    task.page_preflight_report_path ? `<button type="button" data-export="page-preflight-report">预检报告</button>` : "",
     hasBundle ? `<button type="button" data-export="manifest">清单</button>` : "",
     hasBundle ? `<button type="button" data-export="bundle">资料包</button>` : ""
   ].filter(Boolean).join("");

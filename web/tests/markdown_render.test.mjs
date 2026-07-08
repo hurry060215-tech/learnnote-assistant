@@ -1482,6 +1482,8 @@ const taskOverviewHtml = context.taskOverview({
   source_type: "current_page",
   mode: "download_only",
   media_path: "D:/Projects/learnnote-assistant/data/tasks/task-web-overview/media.mp4",
+  resource_inventory_path: "D:/Projects/learnnote-assistant/data/tasks/task-web-overview/resource_inventory.json",
+  page_preflight_report_path: "D:/Projects/learnnote-assistant/data/tasks/task-web-overview/page_preflight_report.json",
   active_video: {
     src: "blob:https://course.example.com/current-player",
     current_time: 42,
@@ -1565,6 +1567,8 @@ assert.match(taskOverviewHtml, /data-rerun-from-media="task-web-overview"/);
 assert.match(taskOverviewHtml, /\/api\/tasks\/task-web-overview\/exports\/media/);
 assert.match(taskOverviewHtml, /\/api\/tasks\/task-web-overview\/exports\/audit/);
 assert.match(taskOverviewHtml, /\/api\/tasks\/task-web-overview\/exports\/diagnostics/);
+assert.match(taskOverviewHtml, /\/api\/tasks\/task-web-overview\/exports\/resource-inventory/);
+assert.match(taskOverviewHtml, /\/api\/tasks\/task-web-overview\/exports\/page-preflight-report/);
 assert.match(taskOverviewHtml, /\/api\/tasks\/task-web-overview\/exports\/bundle/);
 assert.match(taskOverviewHtml, /\/api\/tasks\/task-web-overview\/exports\/manifest/);
 assert.match(taskOverviewHtml, /已完成直取下载/);

@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import functools
 import io
@@ -1194,7 +1194,27 @@ class LocalUploadValidationTests(unittest.TestCase):
                     "preflight": {"code": "download_forbidden", "message": "HTTP 403"},
                 }],
             })
-            task = update_task(task.id, page_preflight_report_path=str(preflight_path))
+            inventory_path = write_json(task.id, "resource_inventory.json", {
+                "candidate_count": 1,
+                "downloadable_candidate_count": 0,
+                "replayable_candidate_count": 1,
+                "kind_counts": {"hls": 1},
+                "source_counts": {"webRequest": 1},
+                "candidates": [{
+                    "url": "https://mooc1.chaoxing.com/ananas/status/lesson.m3u8?objectid=abc&dtoken=dt",
+                    "kind": "hls",
+                    "source": "webRequest",
+                    "request_headers": {
+                        "Referer": "<redacted>",
+                        "Cookie": "<redacted>",
+                    },
+                }],
+            })
+            task = update_task(
+                task.id,
+                resource_inventory_path=str(inventory_path),
+                page_preflight_report_path=str(preflight_path),
+            )
 
             diagnostics = render_diagnostics_markdown(task)
             recovery = diagnostic_recovery_profile(task)
@@ -1217,6 +1237,23 @@ class LocalUploadValidationTests(unittest.TestCase):
             self.assertIn("Referer", manifest["site_profiles"]["chaoxing"]["safe_request_header_names"])
             encoded_profile = json.dumps(manifest["site_profiles"]["chaoxing"], ensure_ascii=False)
             self.assertNotIn("UID=secret", encoded_profile)
+            inventory_export = self.client.get(f"/api/tasks/{task.id}/exports/resource-inventory")
+            self.assertEqual(inventory_export.status_code, 200)
+            self.assertIn("application/json", inventory_export.headers["content-type"])
+            self.assertEqual(inventory_export.json()["candidate_count"], 1)
+            self.assertNotIn("UID=secret", inventory_export.text)
+            self.assertNotIn("secret-token", inventory_export.text)
+            preflight_export = self.client.get(f"/api/tasks/{task.id}/exports/page-preflight-report")
+            self.assertEqual(preflight_export.status_code, 200)
+            self.assertIn("application/json", preflight_export.headers["content-type"])
+            self.assertEqual(preflight_export.json()["candidate_count"], 1)
+            self.assertNotIn("UID=secret", preflight_export.text)
+            empty_task = create_task("current_page", "No evidence", "https://course.example.com/empty")
+            try:
+                self.assertEqual(self.client.get(f"/api/tasks/{empty_task.id}/exports/resource-inventory").status_code, 404)
+                self.assertEqual(self.client.get(f"/api/tasks/{empty_task.id}/exports/page-preflight-report").status_code, 404)
+            finally:
+                shutil.rmtree(task_dir(empty_task.id), ignore_errors=True)
 
             self.assertIn("学习通/超星", diagnostics)
             self.assertIn("不刷课", diagnostics)

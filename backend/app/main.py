@@ -188,6 +188,12 @@ def diagnostics_filename(task_id: str, title: str) -> str:
     return f"{stem}-diagnostics.md"
 
 
+def evidence_json_filename(task_id: str, title: str, suffix: str) -> str:
+    stem = _FILENAME_RESERVED_RE.sub("_", title or "").strip(" ._")
+    stem = stem[:120] or f"learnnote-{task_id}"
+    return f"{stem}-{suffix}.json"
+
+
 def audit_filename(task_id: str, title: str) -> str:
     stem = _FILENAME_RESERVED_RE.sub("_", title or "").strip(" ._")
     stem = stem[:120] or f"learnnote-{task_id}"
@@ -3007,6 +3013,44 @@ def api_export_diagnostics(task_id: str) -> PlainTextResponse:
         )
     }
     return PlainTextResponse(report, media_type="text/markdown; charset=utf-8", headers=headers)
+
+
+@app.get("/api/tasks/{task_id}/exports/resource-inventory")
+def api_export_resource_inventory(task_id: str) -> Response:
+    try:
+        task = get_task(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Task not found") from exc
+    inventory = read_resource_inventory(task)
+    if not inventory:
+        raise HTTPException(status_code=404, detail="Resource inventory not found")
+    filename = evidence_json_filename(task.id, task.title, "resource-inventory")
+    headers = {
+        "Content-Disposition": (
+            f'attachment; filename="learnnote-{task.id}-resource-inventory.json"; '
+            f"filename*=UTF-8''{quote(filename)}"
+        )
+    }
+    return Response(json.dumps(inventory, ensure_ascii=False, indent=2), media_type="application/json; charset=utf-8", headers=headers)
+
+
+@app.get("/api/tasks/{task_id}/exports/page-preflight-report")
+def api_export_page_preflight_report(task_id: str) -> Response:
+    try:
+        task = get_task(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Task not found") from exc
+    report = read_page_preflight_report(task)
+    if not report:
+        raise HTTPException(status_code=404, detail="Page preflight report not found")
+    filename = evidence_json_filename(task.id, task.title, "page-preflight-report")
+    headers = {
+        "Content-Disposition": (
+            f'attachment; filename="learnnote-{task.id}-page-preflight-report.json"; '
+            f"filename*=UTF-8''{quote(filename)}"
+        )
+    }
+    return Response(json.dumps(report, ensure_ascii=False, indent=2), media_type="application/json; charset=utf-8", headers=headers)
 
 
 @app.get("/api/tasks/{task_id}/exports/audit")
