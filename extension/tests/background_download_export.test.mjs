@@ -72,7 +72,7 @@ assert.equal(downloads.length, 1);
 assert.equal(downloads[0].url, "http://127.0.0.1:8765/api/tasks/task-1/exports/media");
 assert.equal(downloads[0].saveAs, false);
 
-for (const type of ["manifest", "audit", "subtitles", "qa", "clips/W001"]) {
+for (const type of ["manifest", "audit", "subtitles", "qa", "resource-inventory", "page-preflight-report", "clips/W001"]) {
   const response = await new Promise(resolve => {
     onMessage(
       {
@@ -86,7 +86,7 @@ for (const type of ["manifest", "audit", "subtitles", "qa", "clips/W001"]) {
   assert.equal(response.ok, true);
   assert.equal(downloads.at(-1).url, `http://localhost:8765/api/tasks/task-1/exports/${type}`);
 }
-assert.equal(downloads.length, 6);
+assert.equal(downloads.length, 8);
 
 const previewResponse = await new Promise(resolve => {
   onMessage(
@@ -101,7 +101,7 @@ const previewResponse = await new Promise(resolve => {
 
 assert.equal(previewResponse.ok, false);
 assert.match(previewResponse.error, /LearnNote/);
-assert.equal(downloads.length, 6);
+assert.equal(downloads.length, 8);
 
 const invalidResponse = await new Promise(resolve => {
   onMessage(
@@ -116,4 +116,27 @@ const invalidResponse = await new Promise(resolve => {
 
 assert.equal(invalidResponse.ok, false);
 assert.match(invalidResponse.error, /LearnNote/);
-assert.equal(downloads.length, 6);
+assert.equal(downloads.length, 8);
+
+const detailError = await context.backendJsonResponse({
+  ok: false,
+  status: 422,
+  json: async () => ({ detail: { message: "bad payload" } })
+}, "fallback");
+assert.equal(detailError.ok, false);
+assert.equal(detailError.error, "bad payload");
+assert.equal(detailError.status, 422);
+
+const plainError = await context.backendJsonResponse({
+  ok: false,
+  status: 403,
+  json: async () => ({ detail: "forbidden" })
+}, "fallback");
+assert.equal(plainError.error, "forbidden");
+
+const malformedError = await context.backendJsonResponse({
+  ok: false,
+  status: 500,
+  json: async () => { throw new Error("not json"); }
+}, "backend failed");
+assert.equal(malformedError.error, "backend failed");

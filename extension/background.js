@@ -4,8 +4,9 @@ const MEDIA_RE = /\.(mp4|m4v|webm|mov|mkv|flv|avi|m4a|mp3|aac|opus|ogg|oga|wav|m
 const FRAGMENT_RE = /\.(m4s|ts)(\?|#|$)/i;
 const SUBTITLE_RE = /\.(vtt|srt|ass|ssa)(\?|#|$)/i;
 const PLAYBACK_ENDPOINT_RE = /m3u8|mpd|video|audio|media|subtitle|caption|stream|hls|dash|manifest|playlist|master|playback|player|download|attachment|ananas|objectid|dtoken|fileid|httpmd|vod|quality|qualities|definition|definitions|format|formats|profile|profiles|variant|variants|rendition|renditions|level|levels|track|tracks|(?:^|[/?&=._-])(?:source|sources|sourcelist|backup|backups|cdn|baseurl|base_url|base-url|host|domain)(?:[/?&=._-]|$)|\/play(?:[/?#]|$)/i;
-const LOCAL_TASK_FILE_RE = /^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?\/api\/tasks\/[^/]+(?:\/media|\/exports\/(?:(?:markdown|visual-windows|bundle|diagnostics|media|manifest|audit|subtitles|qa)|clips\/[^/?#]+))(?:[?#].*)?$/i;
-const LOCAL_EXPORT_RE = /^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?\/api\/tasks\/[^/]+\/exports\/(?:(?:markdown|visual-windows|bundle|diagnostics|media|manifest|audit|subtitles|qa)|clips\/[^/?#]+)(?:[?#].*)?$/i;
+const LOCAL_EXPORT_KIND_RE = /(?:(?:markdown|visual-windows|bundle|diagnostics|media|manifest|audit|subtitles|qa|resource-inventory|page-preflight-report)|clips\/[^/?#]+)/;
+const LOCAL_TASK_FILE_RE = new RegExp(`^https?:\\/\\/(?:127\\.0\\.0\\.1|localhost)(?::\\d+)?\\/api\\/tasks\\/[^/]+(?:\\/media|\\/exports\\/${LOCAL_EXPORT_KIND_RE.source})(?:[?#].*)?$`, "i");
+const LOCAL_EXPORT_RE = new RegExp(`^https?:\\/\\/(?:127\\.0\\.0\\.1|localhost)(?::\\d+)?\\/api\\/tasks\\/[^/]+\\/exports\\/${LOCAL_EXPORT_KIND_RE.source}(?:[?#].*)?$`, "i");
 const resourceByTab = new Map();
 const pageStateByTab = new Map();
 const requestHeadersByRequestId = new Map();
@@ -50,6 +51,28 @@ const REQUEST_HEADER_CANONICAL = {
   "x-requested-with": "X-Requested-With"
 };
 const PERSISTED_REQUEST_HEADER_DENYLIST = new Set(["authorization", "cookie", "proxy-authorization"]);
+
+function backendErrorMessage(payload, fallback) {
+  const detail = payload?.detail;
+  if (typeof detail === "string" && detail.trim()) return detail.trim();
+  if (detail?.message) return String(detail.message);
+  if (payload?.message) return String(payload.message);
+  if (payload?.error) return String(payload.error);
+  return fallback;
+}
+
+async function backendJsonResponse(res, fallback) {
+  const payload = await res.json().catch(() => ({}));
+  if (res.ok === false) {
+    return {
+      ...payload,
+      ok: false,
+      error: backendErrorMessage(payload, fallback || `HTTP ${res.status}`),
+      status: res.status
+    };
+  }
+  return payload;
+}
 
 function mediaKindFromMime(mime = "") {
   const type = String(mime || "").toLowerCase();
@@ -1617,7 +1640,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           options: message.options || {}
         })
       });
-      sendResponse(await res.json());
+      sendResponse(await backendJsonResponse(res, "预检候选资源失败。"));
       return;
     }
 
@@ -1641,7 +1664,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           cookies
         })
       });
-      sendResponse(await res.json());
+      sendResponse(await backendJsonResponse(res, "整页预检失败。"));
       return;
     }
 
@@ -1664,7 +1687,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           probe_limit: message.probeLimit ?? 3
         })
       });
-      sendResponse(await res.json());
+      sendResponse(await backendJsonResponse(res, "创建当前页任务失败。"));
       return;
     }
 
