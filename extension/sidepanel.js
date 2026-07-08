@@ -1801,6 +1801,41 @@ function profileChip(label, value) {
   return `<span class="${value ? "pass" : "warn"}"><b>${escapeHtml(label)}</b>${escapeHtml(profileYesNo(value))}</span>`;
 }
 
+function compactEvidenceHaystack(task, profile = {}) {
+  const selected = task?.selected_resource || {};
+  const direct = task?.direct_extraction || {};
+  const candidate = direct.selected_candidate || {};
+  return [
+    task?.page_url,
+    selected.url,
+    selected.resolved_url,
+    selected.frame_url,
+    selected.label,
+    candidate.url,
+    candidate.resolved_url,
+    profile.sample_url,
+    requestBodySummary(selected)
+  ].filter(Boolean).join(" ");
+}
+
+function chaoxingModeChecklist(task, signal, profile = taskChaoxingProfile(task)) {
+  if (!profile?.detected) return "";
+  const haystack = compactEvidenceHaystack(task, profile);
+  const items = [
+    ["ananas", Boolean(profile.has_ananas_candidate || /ananas/i.test(haystack))],
+    ["playurl", Boolean(profile.has_playurl || /play_?url|playURL/i.test(haystack))],
+    ["objectid", Boolean(profile.has_objectid || /objectid/i.test(haystack))],
+    ["dtoken", Boolean(profile.has_dtoken || /dtoken/i.test(haystack))],
+    ["iframe", Boolean(signal.hasFrameContext)],
+    ["cookie", Boolean(signal.cookieCount || signal.cookieDomainCount)]
+  ];
+  return `<div class="chaoxing-mode-checklist" aria-label="学习通模式证据">
+    <strong>学习通模式</strong>
+    <span>差哪一步一眼看清：播放接口、参数、frame 和登录态都只做可访问性诊断。</span>
+    <p>${items.map(([label, ok]) => `<em class="${ok ? "pass" : "warn"}">${escapeHtml(label)} ${ok ? "已抓到" : "缺失"}</em>`).join("")}</p>
+  </div>`;
+}
+
 function platformHeaderNames(task, profile = taskChaoxingProfile(task)) {
   const selected = task?.selected_resource || {};
   const safe = Array.isArray(profile.safe_request_header_names) ? profile.safe_request_header_names : [];
@@ -1859,6 +1894,7 @@ function platformSignalProfile(task) {
 }
 
 function platformSignalHtml(task) {
+  const profile = taskChaoxingProfile(task);
   const signal = platformSignalProfile(task);
   if (!signal.detected) return "";
   const safeHeaders = signal.headerNames.join(", ") || "-";
@@ -1881,6 +1917,7 @@ function platformSignalHtml(task) {
       ${profileChip("iframe", signal.hasFrameContext)}
       ${profileChip("blob/MSE", signal.hasBlobOrMse)}
     </div>
+    ${chaoxingModeChecklist(task, signal, profile)}
     <dl>
       <dt>Cookie</dt><dd>${signal.cookieDomainCount} 域 / ${signal.cookieCount} 条；分区 ${signal.partitionedCookieCount} / ${signal.partitionKeyCount} key</dd>
       <dt>预检</dt><dd>${preflightText}</dd>
@@ -3518,6 +3555,52 @@ function renderExtractionPlan() {
   `).join("");
 }
 
+function resourceInspectorSummaryHtml(item, checked, confidence) {
+  const evidence = requestEvidence(item) || responseEvidenceLine(item) || resourceReasonText(item) || "页面媒体线索";
+  const selectedHeaders = requestHeaderNames(item);
+  const risk = checked
+    ? checked.downloadable
+      ? "后端可访问"
+      : checked.code || "预检未通过"
+    : item.kind === "blob" || item.kind === "fragment"
+      ? "不能直接交给后端"
+      : "待预检";
+  const next = checked?.downloadable
+    ? "可以总结或只下载"
+    : checked
+      ? preflightRecoveryText(checked)
+      : "先跑预检，确认不是登录态、签名或 DRM 问题";
+  const cards = [
+    {
+      label: "首选路线",
+      value: candidateStrategyText(item),
+      detail: directnessText(item)
+    },
+    {
+      label: "证据",
+      value: confidence.label,
+      detail: `${confidence.detail}${selectedHeaders !== "-" ? `；可复用 ${selectedHeaders}` : ""}`
+    },
+    {
+      label: "风险",
+      value: risk,
+      detail: evidence
+    },
+    {
+      label: "下一步",
+      value: checked?.downloadable ? "开始学习任务" : "确认可下载性",
+      detail: next
+    }
+  ];
+  return `<div class="resource-learning-summary" aria-label="候选资源学习流程摘要">
+    ${cards.map(card => `<section>
+      <span>${escapeHtml(card.label)}</span>
+      <strong>${escapeHtml(card.value || "-")}</strong>
+      <small>${escapeHtml(card.detail || "-")}</small>
+    </section>`).join("")}
+  </div>`;
+}
+
 function renderInspector() {
   const item = selectedResource();
   const checked = currentPreflight();
@@ -3532,26 +3615,29 @@ function renderInspector() {
   const fullResolvedTarget = resourceResolvedTarget(item, checked);
   els.resourceInspector.innerHTML = `
     ${resourceDecisionHtml(item, checked)}
-    <strong>${escapeHtml(directnessText(item))}</strong>
+    ${resourceInspectorSummaryHtml(item, checked, confidence)}
     <div class="resource-inspector-actions">
       <button type="button" data-copy-resource-url>复制链接</button>
       <button type="button" data-copy-resource-report>复制证据</button>
     </div>
-    <span>下载顺序：第 ${escapeHtml(candidateTryOrder(item) || "-")} 顺位 · ${escapeHtml(candidateStrategyText(item))}</span>
-    <span>候选置信度：${escapeHtml(confidence.label)} · ${escapeHtml(confidence.detail)}</span>
-    ${resourceReasonText(item) ? `<span>选择依据：${escapeHtml(resourceReasonText(item))}</span>` : ""}
-    <span>${escapeHtml(requestEvidence(item) || "无请求证据")}</span>
-    ${responseEvidenceLine(item) ? `<span>响应证据：${escapeHtml(responseEvidenceLine(item))}</span>` : ""}
-    ${resolvedTarget ? `<span>实际媒体 URL：${escapeHtml(resolvedTarget)}</span>` : ""}
-    ${item.blob_url ? `<span>播放 blob：${escapeHtml(item.blob_url)}</span>` : ""}
-    ${item.frame_url ? `<span>所在 frame：${escapeHtml(item.frame_url)}</span>` : ""}
-    <span>复用请求头：${escapeHtml(requestHeaderNames(item))}</span>
-    ${requestBodySummary(item) ? `<span>POST body：${escapeHtml(requestBodySummary(item))}</span>` : ""}
-    ${checked ? `<span>预检：${escapeHtml(resourcePreflightLine(checked, item))}</span>` : ""}
-    ${checked ? `<span>下一步：${escapeHtml(preflightRecoveryText(checked))}</span>` : ""}
-    ${checked?.warnings?.length ? `<span>提示：${escapeHtml(checked.warnings.join("；"))}</span>` : ""}
-    <code>${escapeHtml(item.url)}</code>
-    ${fullResolvedTarget && fullResolvedTarget !== item.url ? `<code>${escapeHtml(fullResolvedTarget)}</code>` : ""}
+    <details class="resource-inspector-details">
+      <summary>高级诊断</summary>
+      <span>下载顺序：第 ${escapeHtml(candidateTryOrder(item) || "-")} 顺位 · ${escapeHtml(candidateStrategyText(item))}</span>
+      <span>候选置信度：${escapeHtml(confidence.label)} · ${escapeHtml(confidence.detail)}</span>
+      ${resourceReasonText(item) ? `<span>选择依据：${escapeHtml(resourceReasonText(item))}</span>` : ""}
+      <span>${escapeHtml(requestEvidence(item) || "无请求证据")}</span>
+      ${responseEvidenceLine(item) ? `<span>响应证据：${escapeHtml(responseEvidenceLine(item))}</span>` : ""}
+      ${resolvedTarget ? `<span>实际媒体 URL：${escapeHtml(resolvedTarget)}</span>` : ""}
+      ${item.blob_url ? `<span>播放 blob：${escapeHtml(item.blob_url)}</span>` : ""}
+      ${item.frame_url ? `<span>所在 frame：${escapeHtml(item.frame_url)}</span>` : ""}
+      <span>复用请求头：${escapeHtml(requestHeaderNames(item))}</span>
+      ${requestBodySummary(item) ? `<span>POST body：${escapeHtml(requestBodySummary(item))}</span>` : ""}
+      ${checked ? `<span>预检：${escapeHtml(resourcePreflightLine(checked, item))}</span>` : ""}
+      ${checked ? `<span>下一步：${escapeHtml(preflightRecoveryText(checked))}</span>` : ""}
+      ${checked?.warnings?.length ? `<span>提示：${escapeHtml(checked.warnings.join("；"))}</span>` : ""}
+      <code>${escapeHtml(item.url)}</code>
+      ${fullResolvedTarget && fullResolvedTarget !== item.url ? `<code>${escapeHtml(fullResolvedTarget)}</code>` : ""}
+    </details>
   `;
 }
 

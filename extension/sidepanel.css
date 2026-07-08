@@ -2058,6 +2058,43 @@ small,
   font-size: 12px;
 }
 
+.resource-learning-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.resource-learning-summary section {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  border: 1px solid #d7e5f8;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 8px;
+}
+
+.resource-learning-summary span {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 900;
+}
+
+.resource-learning-summary strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resource-learning-summary small {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 .resource-inspector-actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2084,6 +2121,28 @@ small,
   color: var(--muted);
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
   font-size: 10px;
+}
+
+.resource-inspector-details {
+  display: grid;
+  gap: 5px;
+  border-top: 1px solid var(--border);
+  padding-top: 4px;
+}
+
+.resource-inspector-details summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.resource-inspector-details[open] {
+  padding-top: 7px;
+}
+
+.resource-inspector-details[open] summary {
+  margin-bottom: 4px;
 }
 
 .resource-hint {
@@ -5265,6 +5324,48 @@ input[type="file"] {
   color: inherit;
   font-size: 9px;
   font-weight: 850;
+}
+
+.chaoxing-mode-checklist {
+  display: grid;
+  gap: 7px;
+  border: 1px solid #d7e5f8;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 9px;
+}
+
+.chaoxing-mode-checklist strong {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.chaoxing-mode-checklist span {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.chaoxing-mode-checklist p {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 0;
+}
+
+.chaoxing-mode-checklist em {
+  border-radius: 999px;
+  background: #fff7e8;
+  color: var(--warning);
+  padding: 4px 7px;
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 850;
+}
+
+.chaoxing-mode-checklist em.pass {
+  background: #eaf7ef;
+  color: var(--success);
 }
 
 .chaoxing-profile dl {

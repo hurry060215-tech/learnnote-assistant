@@ -174,6 +174,11 @@ assert.match(chaoxingProfileHtml, /anti_hotlink_or_expired_signature/);
 assert.match(chaoxingProfileHtml, /Origin, Referer, X-Requested-With/);
 assert.match(chaoxingProfileHtml, /播放 API/);
 assert.match(chaoxingProfileHtml, /POST\/body/);
+assert.match(chaoxingProfileHtml, /学习通模式/);
+assert.match(chaoxingProfileHtml, /ananas 已抓到/);
+assert.match(chaoxingProfileHtml, /objectid 已抓到/);
+assert.match(chaoxingProfileHtml, /dtoken 已抓到/);
+assert.match(chaoxingProfileHtml, /cookie 已抓到/);
 assert.match(chaoxingProfileHtml, /通用策略/);
 assert.match(chaoxingProfileHtml, /不录制、不刷课、不伪造进度、不自动答题/);
 const genericPlatformSignalHtml = context.platformSignalHtml({
@@ -203,6 +208,7 @@ assert.match(genericPlatformSignalHtml, /Origin, Referer/);
 assert.match(genericPlatformSignalHtml, /iframe/);
 assert.match(genericPlatformSignalHtml, /blob\/MSE/);
 assert.doesNotMatch(genericPlatformSignalHtml, /学习通证据/);
+assert.doesNotMatch(genericPlatformSignalHtml, /学习通模式/);
 vm.runInContext(`qaState = {
   taskId: "side-qa-visual",
   question: "画面里有哪些步骤？",
@@ -1713,6 +1719,10 @@ assert.match(elements.get("#resourceInspector").innerHTML, /候选置信度/);
 assert.match(elements.get("#resourceInspector").innerHTML, /播放匹配/);
 assert.match(elements.get("#resourceInspector").innerHTML, /class="resource-decision candidate"/);
 assert.match(elements.get("#resourceInspector").innerHTML, /候选待预检/);
+assert.match(elements.get("#resourceInspector").innerHTML, /resource-learning-summary/);
+assert.match(elements.get("#resourceInspector").innerHTML, /首选路线/);
+assert.match(elements.get("#resourceInspector").innerHTML, /下一步/);
+assert.match(elements.get("#resourceInspector").innerHTML, /高级诊断/);
 assert.match(elements.get("#resourceInspector").innerHTML, /复制链接/);
 assert.match(elements.get("#resourceInspector").innerHTML, /复制证据/);
 assert.doesNotMatch(elements.get("#resourceInspector").innerHTML, /Cookie: secret/);
