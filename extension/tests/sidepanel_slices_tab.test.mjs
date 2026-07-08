@@ -106,7 +106,9 @@ currentTask = {
       frame_count: 9,
       frame_timestamps: [12, 24, 36],
       grid_url: "http://127.0.0.1:8765/api/tasks/slice-task/grids/grid_000.jpg",
-      transcript_excerpt: "Introduce the theorem and compare the two diagrams."
+      transcript_excerpt: "Introduce the theorem and compare the two diagrams.",
+      local_summary: "Compare the two diagram assumptions.",
+      key_points: ["Identify the theorem setup."]
     },
     {
       id: "W002",
@@ -115,7 +117,7 @@ currentTask = {
       frame_count: 9,
       frame_timestamps: [48, 58, 68],
       grid_url: "",
-      transcript_excerpt: "Missing image window should rely on transcript."
+      transcript_excerpt: "<script>alert(1)</script> Missing image window should rely on transcript."
     }
   ]
 };
@@ -146,6 +148,7 @@ assert.match(resultHtml, /切片总览/);
 assert.match(resultHtml, /部分窗口需要人工核对/);
 assert.match(resultHtml, /1\/2 已参与/);
 assert.match(resultHtml, /1 段/);
+assert.match(resultHtml, /2\/2 窗口有线索/);
 assert.match(resultHtml, /18 帧/);
 assert.match(resultHtml, /3x3 截图网格/);
 assert.match(resultHtml, /有 1 个窗口未完整进入视觉模型/);
@@ -156,6 +159,11 @@ assert.match(resultHtml, /side-visual-evidence vision/);
 assert.match(resultHtml, /side-visual-evidence missing/);
 assert.match(resultHtml, /已进视觉 · 网格图已参与图文总结/);
 assert.match(resultHtml, /缺图 · 未送入视觉模型，按字幕与索引复习/);
+assert.match(resultHtml, /本段要点/);
+assert.match(resultHtml, /Compare the two diagram assumptions\./);
+assert.match(resultHtml, /Identify the theorem setup\./);
+assert.match(resultHtml, /&lt;script&gt;alert\(1\)&lt;\/script&gt; Missing image window should rely on transcript\./);
+assert.doesNotMatch(resultHtml, /<script>alert/);
 assert.match(resultHtml, /W001/);
 assert.match(resultHtml, /W002/);
 assert.match(resultHtml, /已进视觉 · 9 帧 · 1 字幕/);

@@ -5117,6 +5117,37 @@ input[type="file"] {
   overflow-wrap: anywhere;
 }
 
+.side-visual-window-summary {
+  display: grid;
+  gap: 5px;
+  border: 1px solid rgba(20, 150, 74, 0.22);
+  border-radius: 7px;
+  background:
+    linear-gradient(180deg, rgba(236, 253, 245, 0.86), rgba(255, 255, 255, 0.96)),
+    #ffffff;
+  padding: 7px 8px;
+}
+
+.side-visual-window-summary span {
+  color: #08744a;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.side-visual-window-summary ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 16px;
+}
+
+.side-visual-window-summary li {
+  color: #183a2b;
+  font-size: 11px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .side-visual-study-checkpoints {
   display: grid;
   gap: 5px;

@@ -6070,6 +6070,58 @@ function sideVisualStudyCueHtml(window, transcript) {
   return `<p>${escapeHtml(excerpt)}</p>`;
 }
 
+function visualWindowSummaryItems(window, transcript = null) {
+  const rawItems = [
+    window?.local_summary,
+    window?.window_summary,
+    window?.slice_summary,
+    window?.visual_summary,
+    window?.summary,
+    window?.learning_summary
+  ];
+  const arrays = [
+    window?.key_points,
+    window?.summary_points,
+    window?.concepts
+  ].filter(Array.isArray);
+  const items = [];
+  const pushText = value => {
+    const text = String(value || "").replace(/\s+/g, " ").trim();
+    if (!text) return;
+    if (!items.includes(text)) items.push(text);
+  };
+  rawItems.forEach(value => {
+    const text = String(value || "").trim();
+    if (!text) return;
+    text.split(/\n+|(?:^|\s)[-•]\s+/).forEach(pushText);
+  });
+  arrays.flat().forEach(pushText);
+  if (items.length) return items.slice(0, 3);
+
+  const matched = (transcript?.segments || [])
+    .filter(segment => segmentOverlapsWindow(segment, window))
+    .slice(0, 2)
+    .map(segment => String(segment.text || "").replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+  if (matched.length) {
+    return matched.map(text => text.length > 120 ? `${text.slice(0, 120).trim()}...` : text);
+  }
+
+  const excerpt = String(window?.transcript_excerpt || "").replace(/\s+/g, " ").trim();
+  if (excerpt) return [excerpt.length > 160 ? `${excerpt.slice(0, 160).trim()}...` : excerpt];
+
+  const frameTimes = (window?.frame_timestamps || []).slice(0, 3).map(value => fmt(value)).join(" / ");
+  return [frameTimes ? `按 ${frameTimes} 这几帧核对本段画面变化。` : "暂无局部总结；先从截图标题、公式、代码或演示状态提炼本段主题。"];
+}
+
+function sideVisualWindowSummaryHtml(window, transcript = null) {
+  const items = visualWindowSummaryItems(window, transcript);
+  return `<div class="side-visual-window-summary">
+    <span>本段要点</span>
+    <ul>${items.map(item => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+  </div>`;
+}
+
 function visualWindowEvidenceState(task, window, index = 0) {
   const diag = task?.summary_diagnostics || {};
   const id = String(window?.id || `W${String(index + 1).padStart(3, "0")}`);
@@ -6100,6 +6152,10 @@ function visualStudyOverviewHtml(task, transcript = null) {
   const omittedCount = states.filter(state => state === "omitted").length;
   const transcriptSegments = transcript?.segments || [];
   const alignedCueCount = transcriptSegments.filter(segment => windows.some(window => segmentOverlapsWindow(segment, window))).length;
+  const cueWindowCount = windows.filter(window => (
+    window.transcript_excerpt ||
+    transcriptSegments.some(segment => segmentOverlapsWindow(segment, window))
+  )).length;
   const frameCount = windows.reduce((total, window) => total + Number(window.frame_count || 0), 0);
   const gridText = task.options?.grid_columns && task.options?.grid_rows
     ? `${task.options.grid_columns}x${task.options.grid_rows}`
@@ -6112,7 +6168,7 @@ function visualStudyOverviewHtml(task, transcript = null) {
   const cards = [
     { label: "覆盖范围", value: range, detail: `${windows.length} 个视觉窗口` },
     { label: "视觉总结", value: visionCount ? `${visionCount}/${windows.length} 已参与` : "未调用视觉", detail: quality },
-    { label: "字幕对齐", value: alignedCueCount ? `${alignedCueCount} 段` : "无匹配字幕", detail: transcriptSegments.length ? "可逐窗核对" : "等待转写产物" },
+    { label: "字幕对齐", value: alignedCueCount ? `${alignedCueCount} 段` : "无匹配字幕", detail: cueWindowCount ? `${cueWindowCount}/${windows.length} 窗口有线索` : transcriptSegments.length ? "可逐窗核对" : "等待转写产物" },
     { label: "画面证据", value: `${frameCount} 帧`, detail: `${gridText} 截图网格` }
   ];
   return `<section class="visual-study-overview" aria-label="切片学习总览">
@@ -6174,6 +6230,7 @@ function visualStudyDeck(task, transcript = null) {
             <span>窗口 ${String(index + 1).padStart(2, "0")}</span>
             <strong>${fmt(window.start)} - ${fmt(window.end)}</strong>
             <small class="side-visual-evidence ${escapeHtml(evidence.state)}">${escapeHtml(evidence.label)} · ${escapeHtml(evidence.detail)}</small>
+            ${sideVisualWindowSummaryHtml(window, transcript)}
             ${sideVisualStudyCueHtml(window, transcript)}
             ${sideVisualStudyCheckpointHtml(window, transcript)}
             ${sideVisualStudyQuestionHtml(window, transcript)}
