@@ -104,6 +104,15 @@ This project intentionally does **not** record the browser tab and does **not** 
 
 ## Quick Start
 
+For a first run on Windows, print the machine-specific checklist first:
+
+```powershell
+cd D:\Projects\learnnote-assistant
+.\scripts\first-run-checklist.ps1
+```
+
+The checklist summarizes D-drive data paths, Python/ffmpeg/yt-dlp readiness, optional `faster-whisper` and visual API gaps, Chrome/Edge availability, the unpacked extension path, the backend URL, sample-site URL, and the product verification command. It does not start services or read browser cookies.
+
 Use the product launcher first. It keeps runtime files under the D-drive project `data\` directory, runs the local doctor, prints the extension load path, sets the backend origin, and then starts FastAPI:
 
 ```powershell

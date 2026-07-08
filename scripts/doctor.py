@@ -187,6 +187,7 @@ def script_check() -> Check:
         ROOT / "start-learnnote.ps1",
         ROOT / "start-backend.ps1",
         ROOT / "scripts" / "serve-samples.ps1",
+        ROOT / "scripts" / "first-run-checklist.ps1",
         ROOT / "scripts" / "verify-product.ps1",
         ROOT / "scripts" / "e2e-local-smoke.ps1",
         ROOT / "scripts" / "e2e-extension-smoke.ps1",
@@ -195,7 +196,7 @@ def script_check() -> Check:
     missing = [str(path.relative_to(ROOT)) for path in required if not path.exists()]
     if missing:
         return Check("local scripts", "FAIL", f"missing: {', '.join(missing)}")
-    return Check("local scripts", "PASS", "launcher, sample server, product verifier, smoke gates, and real-site audit scripts are present")
+    return Check("local scripts", "PASS", "launcher, first-run checklist, sample server, product verifier, smoke gates, and real-site audit scripts are present")
 
 
 def collect_checks() -> list[Check]:
@@ -233,6 +234,7 @@ def main() -> int:
             print(status_line(check))
         print("")
         print("Next:")
+        print("  .\\scripts\\first-run-checklist.ps1")
         print("  .\\start-learnnote.ps1")
         print("  .\\scripts\\serve-samples.ps1")
         print("  .\\scripts\\e2e-local-smoke.ps1 -OpenBrowser")
