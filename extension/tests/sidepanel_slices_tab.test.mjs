@@ -169,6 +169,7 @@ currentTask = {
   mode: "download_only",
   source_type: "current_page",
   media_path: "D:/Projects/learnnote-assistant/data/tasks/download-only-task/downloaded-original.mp4",
+  reuse: { rerun_from_media_ready: true, media_available: true },
   download_attempts: [{ strategy: "direct-file", status: "success" }],
   visual_windows: []
 };

@@ -217,7 +217,7 @@ assert.equal(context.canContinueFromDownloadedMedia({
   status: "success",
   media_path: "D:/media.mp4",
   note_path: ""
-}), true);
+}), false);
 assert.equal(context.canContinueFromDownloadedMedia({
   id: "reuse-media-task",
   status: "success",

@@ -514,6 +514,7 @@ const routeSummaryHtml = context.browserRouteSummaryHtml({
   source_type: "current_page",
   media_path: "D:/Projects/learnnote-assistant/data/tasks/task-route-summary/media.mp4",
   note_path: "",
+  reuse: { rerun_from_media_ready: true, media_available: true },
   selected_resource: {
     kind: "hls"
   },
@@ -639,6 +640,7 @@ const reusableHandoffHtml = context.taskHandoffHtml({
   mode: "download_only",
   media_path: "D:/Projects/learnnote-assistant/data/tasks/downloaded-media/media.mp4",
   note_path: "",
+  reuse: { rerun_from_media_ready: true, media_available: true },
   selected_resource: { kind: "hls", source: "webRequest" },
   download_attempts: [{ strategy: "manifest-ffmpeg" }]
 });
@@ -1033,6 +1035,7 @@ const pendingSliceHtml = context.pendingSliceWorkbench({
   mode: "download_only",
   source_type: "current_page",
   media_path: "D:/Projects/learnnote-assistant/data/tasks/task-pending-slice/media.mp4",
+  reuse: { rerun_from_media_ready: true, media_available: true },
   download_attempts: [{ strategy: "direct-file", status: "success" }],
   visual_windows: []
 });
@@ -1052,6 +1055,7 @@ const rawPendingSliceHtml = context.pendingSliceWorkbench({
   mode: "video",
   source_type: "current_page",
   media_path: "D:/Projects/learnnote-assistant/data/tasks/task-pending-raw-slice/downloaded-original.mp4",
+  reuse: { rerun_from_media_ready: true, media_available: true },
   download_attempts: [{ strategy: "direct-file", status: "success" }],
   visual_windows: []
 });
@@ -1466,6 +1470,7 @@ const partialReviewWorkbenchHtml = context.noteReviewWorkbench("", {
   phase: "completed",
   source_type: "current_page",
   media_path: "D:/Projects/learnnote-assistant/data/tasks/task-review-partial/media.mp4",
+  reuse: { rerun_from_media_ready: true, media_available: true },
   options: { visual_understanding: true }
 });
 assert.match(partialReviewWorkbenchHtml, /class="review-workbench partial"/);
@@ -1484,6 +1489,7 @@ const taskOverviewHtml = context.taskOverview({
   media_path: "D:/Projects/learnnote-assistant/data/tasks/task-web-overview/media.mp4",
   resource_inventory_path: "D:/Projects/learnnote-assistant/data/tasks/task-web-overview/resource_inventory.json",
   page_preflight_report_path: "D:/Projects/learnnote-assistant/data/tasks/task-web-overview/page_preflight_report.json",
+  reuse: { rerun_from_media_ready: true, media_available: true },
   active_video: {
     src: "blob:https://course.example.com/current-player",
     current_time: 42,
@@ -1803,6 +1809,7 @@ const diagnosticRecoveryHtml = context.diagnosticRecoveryHtml({
   status: "success",
   media_path: "D:/media.mp4",
   note_path: "",
+  reuse: { rerun_from_media_ready: true, media_available: true },
   selected_resource: {
     kind: "hls",
     url: "https://mooc1.chaoxing.com/ananas/status/lesson.m3u8",
@@ -1942,12 +1949,19 @@ assert.equal(context.canContinueFromDownloadedMedia({
   status: "success",
   media_path: "D:/media.mp4",
   note_path: ""
-}), true);
+}), false);
 assert.equal(context.canContinueFromDownloadedMedia({
   id: "task-processing-failed",
   status: "failed",
   media_path: "D:/media.mp4",
   note_path: ""
+}), false);
+assert.equal(context.canContinueFromDownloadedMedia({
+  id: "task-reuse-ready",
+  status: "success",
+  media_path: "D:/media.mp4",
+  note_path: "",
+  reuse: { media_available: true, rerun_from_media_ready: true }
 }), true);
 assert.equal(context.canContinueFromDownloadedMedia({
   id: "task-running",
@@ -1965,7 +1979,8 @@ context.updateContinueFromMediaAction({
   id: "task-downloaded",
   status: "success",
   media_path: "D:/media.mp4",
-  note_path: ""
+  note_path: "",
+  reuse: { media_available: true, rerun_from_media_ready: true }
 });
 assert.equal(elements.get("#continueFromMediaButton").hidden, false);
 assert.equal(elements.get("#continueFromMediaButton").disabled, false);
@@ -1987,6 +2002,7 @@ const failedMediaOverviewHtml = context.taskOverview({
   progress: 100,
   media_path: "D:/media.mp4",
   note_path: "",
+  reuse: { rerun_from_media_ready: true, media_available: true },
   error_code: "processing_failed",
   error_detail: "Whisper failed",
   selected_resource: { kind: "video", source: "webRequest" },
@@ -2576,6 +2592,7 @@ const downloadOnlyRunModesHtml = context.sourceRunModesHtml("browser", {
   source_type: "current_page",
   mode: "download_only",
   media_path: "D:/Projects/learnnote-assistant/data/tasks/task-workflow-download-only/media.mp4",
+  reuse: { rerun_from_media_ready: true, media_available: true },
   selected_resource: { kind: "hls" },
   visual_windows: []
 });
@@ -2591,7 +2608,8 @@ const downloadOnlyPrimaryHtml = context.sourcePrimaryCommandHtml("browser", {
   progress: 100,
   source_type: "current_page",
   mode: "download_only",
-  media_path: "D:/Projects/learnnote-assistant/data/tasks/task-workflow-download-only/media.mp4"
+  media_path: "D:/Projects/learnnote-assistant/data/tasks/task-workflow-download-only/media.mp4",
+  reuse: { rerun_from_media_ready: true, media_available: true }
 });
 assert.match(downloadOnlyPrimaryHtml, /继续切片总结/);
 assert.match(downloadOnlyPrimaryHtml, /data-source-workflow-action="continue-media"/);

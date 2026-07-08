@@ -885,6 +885,7 @@ const partialReviewWorkbenchHtml = context.noteReviewWorkbench("", {
   phase: "completed",
   source_type: "current_page",
   media_path: "D:/Projects/learnnote-assistant/data/tasks/side-review-partial/media.mp4",
+  reuse: { rerun_from_media_ready: true, media_available: true },
   options: { visual_understanding: true }
 });
 assert.match(partialReviewWorkbenchHtml, /class="review-workbench partial"/);
@@ -917,6 +918,7 @@ const taskOverviewHtml = context.taskOverview({
   media_path: "D:/Projects/learnnote-assistant/data/tasks/side-overview/media.mp4",
   resource_inventory_path: "D:/Projects/learnnote-assistant/data/tasks/side-overview/resource_inventory.json",
   page_preflight_report_path: "D:/Projects/learnnote-assistant/data/tasks/side-overview/page_preflight_report.json",
+  reuse: { rerun_from_media_ready: true, media_available: true },
   active_video: {
     src: "blob:https://course.example.com/current-player",
     current_time: 42,
@@ -1169,6 +1171,7 @@ const failedMediaOverviewHtml = context.taskOverview({
   progress: 100,
   media_path: "D:/media.mp4",
   note_path: "",
+  reuse: { rerun_from_media_ready: true, media_available: true },
   error_code: "processing_failed",
   error_detail: "Whisper failed",
   selected_resource: { kind: "video", source: "webRequest" },
@@ -1303,12 +1306,12 @@ assert.equal(context.canContinueFromDownloadedMedia({
   status: "failed",
   media_path: "D:/media.mp4",
   note_path: ""
-}), true);
+}), false);
 assert.equal(context.canContinueFromDownloadedMedia({
   id: "side-reuse-media",
   status: "success",
   note_path: "",
-  reuse: { media_available: true }
+  reuse: { media_available: true, rerun_from_media_ready: true }
 }), true);
 assert.equal(context.canContinueFromDownloadedMedia({
   id: "side-running-media",
@@ -1321,6 +1324,7 @@ const diagnosticRecoveryHtml = context.diagnosticRecoveryHtml({
   status: "success",
   media_path: "D:/media.mp4",
   note_path: "",
+  reuse: { rerun_from_media_ready: true, media_available: true },
   selected_resource: {
     kind: "hls",
     url: "https://mooc1.chaoxing.com/ananas/status/lesson.m3u8",
@@ -1981,6 +1985,7 @@ currentTask = {
   source_type: "current_page",
   media_path: "D:/Projects/learnnote-assistant/data/tasks/side-download-only-task/media.mp4",
   note_path: "",
+  reuse: { rerun_from_media_ready: true, media_available: true },
   visual_windows: []
 };
 `, context);

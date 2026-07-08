@@ -3358,7 +3358,7 @@ function reusableTranscriptSourceText(task) {
 function canContinueFromDownloadedMedia(task) {
   const finished = task?.status === "success" || task?.status === "failed";
   const reuse = task?.reuse || {};
-  return Boolean(task?.id && finished && !task.note_path && (task.media_path || reuse.media_available || reuse.rerun_from_media_ready));
+  return Boolean(task?.id && finished && !task.note_path && reuse.rerun_from_media_ready);
 }
 
 function downloadOnlyEmptyNoteHtml(task) {
