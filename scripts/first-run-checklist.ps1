@@ -181,6 +181,12 @@ function New-FirstRunGuide {
     ".\scripts\verify-product.ps1 -Browser $Browser",
     $fence,
     "",
+    "5. Check the product closure matrix:",
+    "",
+    "$($fence)powershell",
+    ".\scripts\audit-product-readiness.ps1",
+    $fence,
+    "",
     "## Optional Upgrades",
     "",
     "Install local ASR:",
@@ -259,6 +265,7 @@ if ($Json) {
       install_asr = ".\start-learnnote.ps1 -InstallAsr"
       verify = ".\scripts\verify-product.ps1 -Browser $Browser"
       audit_real_site = ".\scripts\audit-real-site.ps1 <url> -Preflight"
+      audit_product_readiness = ".\scripts\audit-product-readiness.ps1"
       write_guide = ".\scripts\first-run-checklist.ps1 -WriteGuide"
       set_visual_api = @(
         '$env:LEARNNOTE_LLM_API_KEY="..."',
@@ -321,6 +328,8 @@ if ($fails.Count) {
   Write-Host "   $samplesUrl"
   Write-Host "6. Product verification:"
   Write-Host "   .\scripts\verify-product.ps1 -Browser $Browser"
+  Write-Host "7. Product closure matrix:"
+  Write-Host "   .\scripts\audit-product-readiness.ps1"
   Write-Host ""
   Write-Host "Local sample pages" -ForegroundColor Cyan
   Write-Host "Start both backend and samples:"

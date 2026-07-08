@@ -140,6 +140,7 @@ The fastest first-use path is:
 3. Load the unpacked extension from `D:\Projects\learnnote-assistant\extension`.
 4. Open one sample page, play it for a few seconds, then use the Side Panel.
 5. Run `.\scripts\verify-product.ps1 -Browser edge` when changing downloader, extension, startup, or UI code.
+6. Run `.\scripts\audit-product-readiness.ps1` to see the product closure matrix. It reports code/local evidence as `pass` and keeps live-site checks as `manual` until real browser audit reports prove them.
 
 Open the local web UI after startup:
 
@@ -230,6 +231,15 @@ That script runs the local doctor, a backend/sample smoke, and a real Edge MV3 e
 .\scripts\verify-product.ps1 -Browser chrome
 ```
 
+Run the product readiness audit when deciding whether the current build is actually ready to hand off:
+
+```powershell
+cd D:\Projects\learnnote-assistant
+.\scripts\audit-product-readiness.ps1
+```
+
+This matrix maps the current objective to evidence: BiliNote-style Side Panel flow, non-recording direct extraction, local video upload, visual slice notes, learning-platform diagnostics, local regression samples, startup/onboarding, generic adapter direction, and live-site audit coverage. It deliberately does not count local mocks as real YouTube/Bilibili/Chaoxing proof. To make those rows pass, create real reports with `.\scripts\audit-real-site.ps1 ... -Preflight -RequireReady` and, for learning platforms, `-RequireLearningProfile`.
+
 Run the narrower local backend/sample smoke gate when changing downloader or detector contracts and you want faster failure isolation:
 
 ```powershell
@@ -297,6 +307,7 @@ On this machine the project lives at `D:\Projects\learnnote-assistant`. The star
 - `data\temp` for backend process temporary files.
 - `data\test-runs` for generated local test videos.
 - `data\browser-profiles` for optional real-site audit browser profiles.
+- `data\test-runs\site-audits` for redacted real-site and local browser audit reports used by `audit-product-readiness.ps1`.
 
 To install the optional local ASR dependency into the D-drive project venv:
 
@@ -363,6 +374,14 @@ node --check extension\content.js
 node --check extension\sidepanel.js
 node --check web\app.js
 ```
+
+Before calling the product complete, run:
+
+```powershell
+.\scripts\audit-product-readiness.ps1
+```
+
+Use `-RequireRealSiteAudits` when you want the command to fail until public MP4/HLS, yt-dlp-supported, and logged-in learning-platform audit rows have real non-local evidence.
 
 ## Boundaries
 
