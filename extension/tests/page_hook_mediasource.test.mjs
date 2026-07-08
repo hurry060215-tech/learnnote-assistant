@@ -30,6 +30,15 @@ class FakeSourceBuffer {
   appendBuffer(buffer) {
     this.buffer = buffer;
   }
+
+  appendBufferAsync(buffer) {
+    this.asyncBuffer = buffer;
+    return Promise.resolve("async-appended");
+  }
+
+  changeType(type) {
+    this.changedType = type;
+  }
 }
 
 class FakeMediaSource {
@@ -122,3 +131,22 @@ assert.equal(extensionlessMapped.kind, "video");
 assert.equal(extensionlessMapped.mime, "application/octet-stream");
 assert.equal(extensionlessMapped.content_length, 8388608);
 assert.equal(extensionlessMapped.headers["accept-ranges"], "bytes");
+
+const asyncMediaSource = new context.MediaSource();
+const asyncBlobUrl = context.URL.createObjectURL(asyncMediaSource);
+const asyncSourceBuffer = asyncMediaSource.addSourceBuffer("video/mp4");
+asyncSourceBuffer.changeType("audio/mp4");
+assert.equal(
+  await asyncSourceBuffer.appendBufferAsync(new Uint8Array([73, 68, 51, 4, 0, 0, 0, 0]).buffer),
+  "async-appended"
+);
+
+const asyncResources = messages.flatMap(message => message.resources || []);
+const asyncMapped = asyncResources.find(resource => resource.blob_url === asyncBlobUrl);
+
+assert.ok(asyncMapped, "expected appendBufferAsync without response meta to emit MSE append evidence");
+assert.equal(asyncMapped.source, "pageHookMediaSourceAppend");
+assert.equal(asyncMapped.kind, "audio");
+assert.equal(asyncMapped.mime, "audio/mp4");
+assert.equal(asyncMapped.mse_append_mime, "audio/mp4");
+assert.equal(asyncMapped.label, "MSE appendBufferAsync");

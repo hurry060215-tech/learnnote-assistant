@@ -2444,35 +2444,62 @@
     };
   }
 
+  function rememberSourceBufferAppend(sourceBuffer, value, label = "MSE appendBuffer") {
+    const evidence = appendBufferEvidence(sourceBuffer, value);
+    const meta = blobPartMeta(value);
+    const mediaSource = sourceBufferMediaSource.get(sourceBuffer);
+    if (meta) {
+      rememberMediaSourceMeta(mediaSource, { ...meta, ...evidence });
+      return;
+    }
+    const blobUrl = mediaSourceUrlByObject.get(mediaSource);
+    if (!blobUrl) return;
+    emit([{
+      url: blobUrl,
+      source: "pageHookMediaSourceAppend",
+      kind: evidence.mse_append_detected_kind || "blob",
+      mime: evidence.mse_append_mime || "",
+      label,
+      blob_url: blobUrl,
+      playback_match: "blob-source",
+      score: evidence.mse_append_detected_kind === "video" || evidence.mse_append_detected_kind === "fragment" ? 82 : evidence.mse_append_detected_kind === "audio" ? 40 : 72,
+      ...evidence
+    }]);
+  }
+
   if (typeof window.SourceBuffer !== "undefined" && window.SourceBuffer.prototype?.appendBuffer) {
     const originalAppendBuffer = window.SourceBuffer.prototype.appendBuffer;
     window.SourceBuffer.prototype.appendBuffer = function (...args) {
       try {
-        const evidence = appendBufferEvidence(this, args[0]);
-        const meta = blobPartMeta(args[0]);
-        const mediaSource = sourceBufferMediaSource.get(this);
-        if (meta) {
-          rememberMediaSourceMeta(mediaSource, { ...meta, ...evidence });
-        } else {
-          const blobUrl = mediaSourceUrlByObject.get(mediaSource);
-          if (blobUrl) {
-            emit([{
-              url: blobUrl,
-              source: "pageHookMediaSourceAppend",
-              kind: evidence.mse_append_detected_kind || "blob",
-              mime: evidence.mse_append_mime || "",
-              label: "MSE appendBuffer",
-              blob_url: blobUrl,
-              playback_match: "blob-source",
-              score: evidence.mse_append_detected_kind === "video" || evidence.mse_append_detected_kind === "fragment" ? 82 : evidence.mse_append_detected_kind === "audio" ? 40 : 72,
-              ...evidence
-            }]);
-          }
-        }
+        rememberSourceBufferAppend(this, args[0], "MSE appendBuffer");
       } catch {
         // Keep MSE playback untouched if a page uses unusual buffer wrappers.
       }
       return originalAppendBuffer.apply(this, args);
+    };
+  }
+
+  if (typeof window.SourceBuffer !== "undefined" && window.SourceBuffer.prototype?.appendBufferAsync) {
+    const originalAppendBufferAsync = window.SourceBuffer.prototype.appendBufferAsync;
+    window.SourceBuffer.prototype.appendBufferAsync = function (...args) {
+      try {
+        rememberSourceBufferAppend(this, args[0], "MSE appendBufferAsync");
+      } catch {
+        // Keep experimental async MSE playback untouched.
+      }
+      return originalAppendBufferAsync.apply(this, args);
+    };
+  }
+
+  if (typeof window.SourceBuffer !== "undefined" && window.SourceBuffer.prototype?.changeType) {
+    const originalChangeType = window.SourceBuffer.prototype.changeType;
+    window.SourceBuffer.prototype.changeType = function (...args) {
+      try {
+        sourceBufferMimeByObject.set(this, String(args[0] || ""));
+      } catch {
+        // Some SourceBuffer implementations are not extensible WeakMap keys.
+      }
+      return originalChangeType.apply(this, args);
     };
   }
 
