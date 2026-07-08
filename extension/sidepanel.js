@@ -3017,7 +3017,65 @@ function workbenchSlicePlanHtml() {
       <strong>${escapeHtml(item.value)}</strong>
       <small>${escapeHtml(item.detail)}</small>
     </section>`).join("")}
-  </div>`;
+    </div>`;
+}
+
+function workbenchNotePreviewItems(state) {
+  const selected = selectedResource();
+  const checked = currentPreflight();
+  const subtitleCount = (page?.browser_subtitles || []).length;
+  const hasVisual = visualUnderstandingEnabled();
+  const routeReady = checked?.downloadable || state === "ready";
+  return [
+    {
+      label: "笔记骨架",
+      value: noteStyleText(),
+      detail: "主题、时间轴重点、概念解释、易错点和复习题"
+    },
+    {
+      label: "画面索引",
+      value: hasVisual ? visualWindowText() : "仅文本",
+      detail: hasVisual ? "截图网格会和同时间段字幕一起进入总结" : "关闭图文理解后只保留转写和页面文本"
+    },
+    {
+      label: "字幕来源",
+      value: subtitleCount ? `${subtitleCount} 条` : "ASR 兜底",
+      detail: subtitleCount ? "优先复用浏览器/平台字幕，减少重复转写" : "下载后用所选转写引擎生成时间戳字幕"
+    },
+    {
+      label: "当前路线",
+      value: routeReady ? "可生成" : selected ? "待确认" : state === "blocked" ? "转本地" : "待播放",
+      detail: routeReady ? "点击主按钮即可生成学习笔记" : selected ? "正式任务会自动预检并切换可用候选" : "保持播放几秒后重新检测"
+    }
+  ];
+}
+
+function workbenchNotePreviewHtml(state) {
+  const ready = state === "ready";
+  const blocked = state === "blocked";
+  const label = ready ? "学习笔记就绪" : blocked ? "改用本地视频继续" : "学习笔记预览";
+  const detail = ready
+    ? "当前页视频会先落到本地，再生成字幕、画面切片和可导出的 Markdown/资料包。"
+    : blocked
+      ? "页面不能直取时，不录屏、不绕过限制；上传本地视频后仍进入同一套切片总结。"
+      : "检测到可用媒体后，会把下载、转写、截图网格和局部总结组织成一份学习笔记。";
+  return `<section class="workbench-note-preview ${ready ? "ready" : blocked ? "blocked" : "pending"}" aria-label="学习笔记预览">
+    <header>
+      <div>
+        <span>${escapeHtml(label)}</span>
+        <strong>结果会按“时间轴 + 字幕 + 截图网格”组织</strong>
+      </div>
+      <button type="button" data-switch-result-tab="slices">看切片页</button>
+    </header>
+    <p>${escapeHtml(detail)}</p>
+    <div class="workbench-note-preview-grid">
+      ${workbenchNotePreviewItems(state).map(item => `<section>
+        <span>${escapeHtml(item.label)}</span>
+        <strong>${escapeHtml(item.value)}</strong>
+        <small>${escapeHtml(item.detail)}</small>
+      </section>`).join("")}
+    </div>
+  </section>`;
 }
 
 function workbenchAuditGateItems(state) {
@@ -3214,7 +3272,7 @@ function shouldShowWorkbenchFallback(state) {
 }
 
 function shouldShowWorkbenchAudit(state) {
-  return state === "ready" || state === "blocked";
+  return panelMode === "diagnostics" && (state === "ready" || state === "blocked");
 }
 
 function renderCurrentStudyCard() {
@@ -3239,6 +3297,7 @@ function renderCurrentStudyCard() {
     ${workbenchRunModesHtml(state)}
     ${workbenchRouteHtml()}
     ${workbenchSlicePlanHtml()}
+    ${workbenchNotePreviewHtml(state)}
     ${shouldShowWorkbenchAudit(state) ? workbenchAuditGateHtml(state) : ""}
     ${shouldShowWorkbenchFallback(state) ? workbenchLocalFallbackHtml(state) : ""}
     <div class="workbench-steps">
@@ -7158,6 +7217,11 @@ if (els.currentStudyCard) {
     }
     if (copyButton?.dataset.workbenchCopy === "audit") {
       copyCurrentPageAuditReport();
+      return;
+    }
+    const tabButton = event.target.closest("[data-switch-result-tab]");
+    if (tabButton?.dataset.switchResultTab) {
+      switchResultTab(tabButton.dataset.switchResultTab, tabButton.dataset.focusVisualWindow || "");
       return;
     }
     const button = event.target.closest("[data-route-action]");
