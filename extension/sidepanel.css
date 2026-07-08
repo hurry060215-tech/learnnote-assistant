@@ -5662,6 +5662,67 @@ input[type="file"] {
   font-weight: 700;
 }
 
+.history-task-next {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-top: 7px;
+  border: 1px solid rgba(22, 119, 255, 0.16);
+  border-radius: 7px;
+  background: #f6f9ff;
+  padding: 5px 7px;
+  color: var(--accent);
+}
+
+.history-task-next b,
+.history-task-next small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-task-next b {
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.history-task-next small {
+  margin: 0;
+  color: inherit;
+  font-size: 10px;
+  font-weight: 780;
+  opacity: 0.78;
+}
+
+.history-task-next.success {
+  border-color: rgba(20, 150, 74, 0.18);
+  background: rgba(20, 150, 74, 0.08);
+  color: var(--success);
+}
+
+.history-task-next.failed {
+  border-color: rgba(217, 45, 32, 0.18);
+  background: rgba(217, 45, 32, 0.08);
+  color: var(--danger);
+}
+
+.history-task-next.running {
+  border-color: rgba(196, 122, 5, 0.2);
+  background: rgba(196, 122, 5, 0.09);
+  color: var(--warning);
+}
+
+.history-task-next.media,
+.history-task-next.text,
+.history-task-next.idle {
+  border-color: rgba(102, 112, 133, 0.16);
+  background: #f8fafc;
+  color: var(--muted);
+}
+
 .history-task-chips {
   display: flex;
   flex-wrap: wrap;
@@ -9880,6 +9941,20 @@ body {
 .history-task small {
   font-size: 10.5px;
   line-height: 1.35;
+}
+
+.history-task-next {
+  gap: 4px;
+  padding: 4px 5px;
+}
+
+.history-task-next b {
+  font-size: 10.5px;
+}
+
+.history-task-next small {
+  max-width: 92px;
+  font-size: 9.5px;
 }
 
 .history-task-chips {

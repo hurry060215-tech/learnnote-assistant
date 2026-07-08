@@ -70,6 +70,24 @@ const failedTask = {
   visual_windows: []
 };
 
+const downloadReadyTask = {
+  id: "task-download-only",
+  title: "Downloaded lesson",
+  status: "success",
+  phase: "completed",
+  progress: 100,
+  source_type: "current_page",
+  mode: "download_only",
+  selected_resource: { kind: "video" },
+  options: {},
+  media_path: "downloaded.mp4",
+  reuse: {
+    media_available: true,
+    rerun_from_media_ready: true
+  },
+  visual_windows: []
+};
+
 const context = {
   console,
   document: documentStub,
@@ -111,11 +129,19 @@ vm.runInContext(sidepanelCode, context);
 await new Promise(resolve => setTimeout(resolve, 0));
 
 assert.deepEqual(context.sortedHistoryTasks([failedTask, task]).map(item => item.id), ["task-history-1", "task-history-failed"]);
+assert.deepEqual(
+  context.sortedHistoryTasks([failedTask, task, downloadReadyTask], "").map(item => item.id),
+  ["task-download-only", "task-history-1", "task-history-failed"]
+);
+assert.equal(context.taskHistoryNextAction(downloadReadyTask).label, "继续切片总结");
+assert.match(context.taskHistoryNextAction(downloadReadyTask).detail, /downloaded\.mp4/);
 assert.match(elements.get("#taskHistory").innerHTML, /History lesson/);
 assert.equal(elements.get("#taskHistory").innerHTML.indexOf('data-id="task-history-1"') < elements.get("#taskHistory").innerHTML.indexOf('data-id="task-history-failed"'), true);
 assert.match(elements.get("#taskHistory").innerHTML, /直取/);
 assert.match(elements.get("#taskHistory").innerHTML, /HLS/);
 assert.match(elements.get("#taskHistory").innerHTML, /media\.mp4/);
+assert.match(elements.get("#taskHistory").innerHTML, /history-task-next success/);
+assert.match(elements.get("#taskHistory").innerHTML, /读笔记 · 看切片/);
 assert.match(elements.get("#taskHistory").innerHTML, /history-task-preview status-success/);
 assert.match(elements.get("#taskHistory").innerHTML, /\/api\/tasks\/task-history-1\/assets\/grid_000.jpg/);
 assert.match(elements.get("#taskHistory").innerHTML, /00:00:00 - 00:03:00/);
@@ -146,5 +172,7 @@ assert.equal(elements.get("#mediaButton").disabled, true);
 assert.doesNotMatch(elements.get("#taskHistory").innerHTML, /\?{4,}/);
 assert.doesNotMatch(elements.get("#result").innerHTML, /\?{4,}/);
 assert.match(elements.get("#taskHistory").innerHTML, /history-task-preview status-failed empty/);
+assert.match(elements.get("#taskHistory").innerHTML, /history-task-next failed/);
+assert.match(elements.get("#taskHistory").innerHTML, /看失败原因/);
 assert.match(elements.get("#taskHistory").innerHTML, /download_forbidden/);
 assert.match(elements.get("#taskHistory").innerHTML, /1 次尝试/);

@@ -937,17 +937,84 @@ function taskHistoryChipsHtml(task = {}) {
   return `<span class="history-task-chips">${chips.map(chip => `<em>${escapeHtml(chip)}</em>`).join("")}</span>`;
 }
 
+function taskHistoryNextAction(task = {}) {
+  const progress = Number(task.progress || 0);
+  if (task.status === "running" || task.status === "queued") {
+    return {
+      tone: "running",
+      label: task.status === "queued" ? "等待处理" : "继续处理",
+      detail: `${taskStatusText(task)} · ${Math.max(0, Math.min(100, progress))}%`
+    };
+  }
+  if (canContinueFromDownloadedMedia(task)) {
+    return {
+      tone: "primary",
+      label: "继续切片总结",
+      detail: `已直取 ${taskMediaDisplayName(task)}`
+    };
+  }
+  if (task.note_path && visualWindows(task).length) {
+    return {
+      tone: "success",
+      label: "读笔记 · 看切片",
+      detail: `${visualWindows(task).length} 个视觉窗口已对齐`
+    };
+  }
+  if (task.note_path) {
+    return {
+      tone: "success",
+      label: "读笔记",
+      detail: "学习笔记已生成"
+    };
+  }
+  if (task.status === "failed") {
+    return {
+      tone: "failed",
+      label: "看失败原因",
+      detail: task.error_code || task.error_detail || "直取失败"
+    };
+  }
+  if (hasExportableMedia(task)) {
+    return {
+      tone: "media",
+      label: "打开本地视频",
+      detail: taskMediaDisplayName(task)
+    };
+  }
+  if (task.source_type === "page_text" || task.mode === "page_text") {
+    return {
+      tone: "text",
+      label: "读页面笔记",
+      detail: taskStatusText(task)
+    };
+  }
+  return {
+    tone: "idle",
+    label: "查看任务",
+    detail: taskStatusText(task)
+  };
+}
+
+function taskHistoryNextActionHtml(task = {}) {
+  const action = taskHistoryNextAction(task);
+  return `<span class="history-task-next ${escapeHtml(action.tone)}">
+    <b>${escapeHtml(action.label)}</b>
+    <small>${escapeHtml(action.detail)}</small>
+  </span>`;
+}
+
 function taskHistoryRank(task, currentId = currentTaskId) {
   if (!task) return 90;
   if (task.id && task.id === currentId) return 0;
   if (task.status === "running") return 1;
-  if (task.status === "success" && task.note_path) return 2;
-  if (task.status === "success" && (hasExportableMedia(task) || visualWindows(task).length)) return 3;
-  if (task.status === "success") return 4;
-  if (task.status === "queued") return 5;
-  if (task.status === "failed" && task.note_path) return 6;
-  if (task.status === "failed") return 7;
-  return 8;
+  if (canContinueFromDownloadedMedia(task)) return 2;
+  if (task.status === "success" && task.note_path) return 3;
+  if (task.status === "success" && (hasExportableMedia(task) || visualWindows(task).length)) return 4;
+  if (task.status === "success") return 5;
+  if (task.status === "queued") return 6;
+  if (task.status === "failed" && task.note_path) return 7;
+  if (task.status === "failed") return 8;
+  return 9;
 }
 
 function sortedHistoryTasks(list, currentId = currentTaskId) {
@@ -1003,7 +1070,8 @@ function renderTaskHistory() {
       ${taskHistoryPreviewHtml(task)}
       <span>
         <strong>${escapeHtml(displayTaskTitle(task))}</strong>
-        <small>${escapeHtml(taskSourceText(task))} · ${escapeHtml(taskStatusText(task))} · ${task.progress || 0}%</small>
+        <small class="history-task-meta">${escapeHtml(taskSourceText(task))} · ${escapeHtml(taskStatusText(task))} · ${task.progress || 0}%</small>
+        ${taskHistoryNextActionHtml(task)}
         ${taskHistoryChipsHtml(task)}
       </span>
     </button>
