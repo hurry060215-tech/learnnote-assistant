@@ -307,6 +307,7 @@ async () => {{
   const page = response.page || {{}};
   const resources = response.resources || [];
   const captureLog = response.capture_log || {{}};
+  const cookies = await chrome.cookies.getAll({{ url: targetUrl }}).catch(() => []);
   return {{
     tab: {{ id: tab.id, url: tab.url, title: tab.title, status: tab.status }},
     page: {{
@@ -318,6 +319,7 @@ async () => {{
     }},
     resources: resources.slice(0, 30),
     captured_count: Number(captureLog.restored || captureLog.total || 0),
+    cookie_count: cookies.length,
   }};
 }}
 """
@@ -358,7 +360,8 @@ def run_browser_checks(cdp: CdpWebSocket, backend: str, samples: str) -> None:
     hls_page = f"{samples}/hls.html"
     post_page = f"{samples}/post-api.html"
     blob_page = f"{samples}/blob-iframe.html"
-    tab_ids = open_extension_tabs(cdp, [mp4_page, hls_page, post_page, blob_page])
+    chaoxing_page = f"{samples}/chaoxing-mock.html"
+    tab_ids = open_extension_tabs(cdp, [mp4_page, hls_page, post_page, blob_page, chaoxing_page])
 
     mp4_context = collect_extension_context(cdp, mp4_page, tab_ids[mp4_page])
     mp4 = assert_resource(mp4_context, "mp4", lambda item: "/media/sample.mp4" in item.get("url", "") and item.get("kind") == "video")
@@ -399,6 +402,27 @@ def run_browser_checks(cdp: CdpWebSocket, backend: str, samples: str) -> None:
     if not (report.get("candidate_count", 0) or report.get("page_scan", {}).get("attempted")):
         raise AssertionError(f"blob iframe fallback did not scan page/frame context: {report}")
     print(f"PASS extension collect blob-iframe: candidates={report.get('candidate_count')} ready={report.get('ready')}")
+
+    chaoxing_context = collect_extension_context(cdp, chaoxing_page, tab_ids[chaoxing_page], wait_ms=2200)
+    chaoxing = assert_resource(
+        chaoxing_context,
+        "chaoxing-mock",
+        lambda item: "/ananas/status/play" in item.get("url", "") and item.get("method") == "POST",
+    )
+    body = chaoxing.get("request_body", {}).get("content", "")
+    if "objectid=local-object-001" not in body or "dtoken=local-dtoken-001" not in body:
+        raise AssertionError(f"Chaoxing mock request body did not include objectid/dtoken: {chaoxing}")
+    if not chaoxing.get("frame_url") or "/chaoxing/player.html" not in chaoxing.get("frame_url", ""):
+        raise AssertionError(f"Chaoxing mock did not preserve iframe context: {chaoxing}")
+    if chaoxing_context.get("cookie_count", 0) < 1:
+        raise AssertionError(f"Chaoxing mock cookie was not visible to extension context: {chaoxing_context}")
+    preflight(backend, chaoxing_page, chaoxing, "chaoxing-mock")
+    print(
+        "PASS extension collect chaoxing-mock: "
+        f"cookies={chaoxing_context.get('cookie_count')} "
+        f"body={chaoxing.get('request_body', {}).get('type') or 'captured'} "
+        f"frame={chaoxing.get('frame_url')}"
+    )
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run real Chrome/Edge LearnNote extension smoke checks against local sample pages.")

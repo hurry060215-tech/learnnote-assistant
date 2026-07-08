@@ -125,6 +125,7 @@ def page(title: str, body: str) -> bytes:
       <a href="/hls.html">HLS</a>
       <a href="/blob-iframe.html">Blob iframe</a>
       <a href="/post-api.html">POST play API</a>
+      <a href="/chaoxing-mock.html">学习通 mock</a>
     </nav>
     {body}
   </main>
@@ -173,20 +174,34 @@ class SampleHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
-        if parsed.path != "/api/play":
+        if parsed.path not in {"/api/play", "/ananas/status/play"}:
             self.send_error(404)
             return
         length = int(self.headers.get("Content-Length") or "0")
         body = self.rfile.read(length).decode("utf-8", "replace")
-        payload = {
-            "title": "POST play API mock",
-            "received_body": body,
-            "sources": [
-                {"type": "video/mp4", "url": "/media/sample.mp4"},
-                {"type": "application/vnd.apple.mpegurl", "url": "/hls/master.m3u8"},
-            ],
-            "playUrl": "/media/sample.mp4",
-        }
+        if parsed.path == "/ananas/status/play":
+            payload = {
+                "title": "Chaoxing-style ananas play mock",
+                "received_body": body,
+                "objectid": "local-object-001",
+                "dtoken": "local-dtoken-001",
+                "httpmd": "mock-httpmd",
+                "sources": [
+                    {"type": "application/vnd.apple.mpegurl", "url": "/hls/master.m3u8"},
+                    {"type": "video/mp4", "url": "/media/sample.mp4"},
+                ],
+                "playUrl": "/hls/master.m3u8",
+            }
+        else:
+            payload = {
+                "title": "POST play API mock",
+                "received_body": body,
+                "sources": [
+                    {"type": "video/mp4", "url": "/media/sample.mp4"},
+                    {"type": "application/vnd.apple.mpegurl", "url": "/hls/master.m3u8"},
+                ],
+                "playUrl": "/media/sample.mp4",
+            }
         self.send_bytes(json.dumps(payload, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8")
 
     def do_GET(self) -> None:
@@ -199,7 +214,8 @@ class SampleHandler(BaseHTTPRequestHandler):
   <pre>MP4: 直接 video src
 HLS: DOM 暴露 master.m3u8
 Blob iframe: 外层页面只含 iframe，内层 fetch mp4 后创建 blob URL
-POST play API: 通过 POST /api/play 返回 playUrl/sources</pre>
+POST play API: 通过 POST /api/play 返回 playUrl/sources
+学习通 mock: 外层课程页 + iframe 播放器 + ananas POST + objectid/dtoken/cookie</pre>
 </section>"""))
             return
         if path == "/mp4.html":
@@ -260,6 +276,48 @@ async function load() {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
     body: 'lesson=post-mock&objectid=local-demo&dtoken=sample-token'
+  });
+  const data = await response.json();
+  document.querySelector('#status').textContent = JSON.stringify(data);
+  document.querySelector('#video').src = data.playUrl;
+}
+document.querySelector('#reload').onclick = load;
+load();
+</script>"""))
+            return
+        if path == "/chaoxing-mock.html":
+            self.send_bytes(page("学习通/超星 mock sample", """
+<section>
+  <h1>学习通风格课程页 mock</h1>
+  <p class="hint">外层页面模拟课程章节，iframe 内播放器请求 <code>/ananas/status/play</code>；预期扩展抓到 ananas/playurl/objectid/dtoken/iframe/cookie/Referer/Origin/XHR 证据。</p>
+  <div class="course-title">学习通课程：本地直取诊断</div>
+  <div class="chapter-title">章节 1.1 播放接口证据</div>
+  <iframe src="/chaoxing/player.html?objectid=local-object-001&dtoken=local-dtoken-001&playurl=%2Fananas%2Fstatus%2Fplay" style="width:100%;height:540px;border:1px solid #dbe7f5;border-radius:8px;background:#fff"></iframe>
+</section>
+<script>
+document.cookie = 'LEARNNOTE_COURSE_SESSION=mock-session; path=/; SameSite=Lax';
+</script>"""))
+            return
+        if path == "/chaoxing/player.html":
+            self.send_bytes(page("Chaoxing ananas player mock", """
+<section data-objectid="local-object-001" data-dtoken="local-dtoken-001" data-playurl="/ananas/status/play">
+  <h1>iframe 内 ananas 播放器 mock</h1>
+  <video id="video" controls autoplay muted></video>
+  <p class="hint" id="status">等待 ananas/status/play...</p>
+  <button id="reload">重新请求 ananas 播放接口</button>
+</section>
+<script>
+window.ananasVideoInfo = {
+  objectid: 'local-object-001',
+  dtoken: 'local-dtoken-001',
+  playUrl: '/ananas/status/play',
+  sources: [{ url: '/hls/master.m3u8', type: 'application/vnd.apple.mpegurl' }]
+};
+async function load() {
+  const response = await fetch('/ananas/status/play?objectid=local-object-001&dtoken=local-dtoken-001&playurl=1', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
+    body: 'clazzid=local-class&courseid=local-course&objectid=local-object-001&dtoken=local-dtoken-001&playurl=1'
   });
   const data = await response.json();
   document.querySelector('#status').textContent = JSON.stringify(data);
