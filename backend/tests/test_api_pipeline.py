@@ -22,7 +22,7 @@ from app.main import app, diagnostic_recovery_profile, local_upload_filename, re
 from app.media import MediaProcessingError
 from app.models import ActiveVideoInfo, DownloadAttempt, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
 from app.runtime import ffmpeg_bin
-from app.storage import create_task, task_dir, update_task
+from app.storage import create_task, task_dir, update_task, write_json
 
 
 TEST_RUN_DIR = DATA_DIR / "test-runs"
@@ -1138,23 +1138,85 @@ class LocalUploadValidationTests(unittest.TestCase):
                 error_code="download_forbidden",
                 error_detail="HTTP 403",
                 selected_resource=ResourceCandidate(
-                    url="https://mooc1.chaoxing.com/ananas/status/lesson.m3u8",
+                    url="https://mooc1.chaoxing.com/ananas/status/lesson.m3u8?objectid=abc&dtoken=dt",
                     kind="hls",
                     source="webRequest",
-                    request_headers={"Referer": "https://mooc1.chaoxing.com/mycourse/studentstudy"},
+                    frame_url="https://mooc1.chaoxing.com/ananas/modules/video/index.html",
+                    frame_id=7,
+                    request_headers={
+                        "Referer": "https://mooc1.chaoxing.com/mycourse/studentstudy",
+                        "Origin": "https://mooc1.chaoxing.com",
+                        "X-Requested-With": "XMLHttpRequest",
+                        "Cookie": "UID=secret",
+                    },
+                    request_body={"content": "objectid=abc&dtoken=dt"},
                 ),
+                cookie_summary={
+                    "total": 4,
+                    "domains": {".chaoxing.com": 3, "mooc1.chaoxing.com": 1},
+                    "domain_count": 2,
+                    "secure_count": 3,
+                    "http_only_count": 2,
+                    "partitioned_count": 1,
+                    "partition_key_count": 1,
+                },
                 download_attempts=[
                     DownloadAttempt(
                         strategy="manifest-ffmpeg",
-                        url="https://mooc1.chaoxing.com/ananas/status/lesson.m3u8",
+                        url="https://mooc1.chaoxing.com/ananas/status/lesson.m3u8?objectid=abc&dtoken=dt",
                         code="download_forbidden",
                         message="HTTP 403",
+                        request_header_names=["Referer", "Origin", "X-Requested-With", "Cookie"],
                     )
                 ],
             )
+            preflight_path = write_json(task.id, "page_preflight_report.json", {
+                "ready": False,
+                "code": "download_forbidden",
+                "candidate_count": 1,
+                "probed_count": 1,
+                "downloadable_count": 0,
+                "page_scan": {"attempted": True, "discovered_count": 0},
+                "candidates": [{
+                    "rank": 1,
+                    "resource": {
+                        "url": "https://mooc1.chaoxing.com/ananas/status/lesson.m3u8?objectid=abc&dtoken=dt",
+                        "kind": "hls",
+                        "source": "webRequest",
+                        "frame_url": "https://mooc1.chaoxing.com/ananas/modules/video/index.html",
+                        "request_headers": {
+                            "Referer": "<redacted>",
+                            "Origin": "<redacted>",
+                            "X-Requested-With": "<redacted>",
+                        },
+                        "request_body": {"content": "<redacted>"},
+                    },
+                    "preflight": {"code": "download_forbidden", "message": "HTTP 403"},
+                }],
+            })
+            task = update_task(task.id, page_preflight_report_path=str(preflight_path))
 
             diagnostics = render_diagnostics_markdown(task)
             recovery = diagnostic_recovery_profile(task)
+            manifest = render_bundle_manifest(task, {"segments": []}, {"windows": []})
+
+            self.assertIn("Chaoxing Profile", diagnostics)
+            self.assertIn("Replay body: yes", diagnostics)
+            self.assertIn("Referer/Origin/X-Requested-With: yes / yes / yes", diagnostics)
+            self.assertIn("Partitioned cookies: 1 / 1 partition keys", diagnostics)
+            self.assertTrue(recovery["chaoxing_profile"]["detected"])
+            self.assertTrue(recovery["chaoxing_profile"]["has_ananas_candidate"])
+            self.assertTrue(recovery["chaoxing_profile"]["has_objectid"])
+            self.assertTrue(recovery["chaoxing_profile"]["has_dtoken"])
+            self.assertTrue(recovery["chaoxing_profile"]["has_replay_body"])
+            self.assertTrue(recovery["chaoxing_profile"]["has_iframe_context"])
+            self.assertTrue(recovery["chaoxing_profile"]["has_partitioned_cookies"])
+            self.assertEqual(recovery["chaoxing_profile"]["likely_issue"], "anti_hotlink_or_expired_signature")
+            self.assertEqual(manifest["site_profiles"]["chaoxing"]["cookie_domain_count"], 2)
+            self.assertEqual(manifest["site_profiles"]["chaoxing"]["page_preflight"]["candidate_count"], 1)
+            self.assertIn("Referer", manifest["site_profiles"]["chaoxing"]["safe_request_header_names"])
+            encoded_profile = json.dumps(manifest["site_profiles"]["chaoxing"], ensure_ascii=False)
+            self.assertNotIn("UID=secret", encoded_profile)
 
             self.assertIn("学习通/超星", diagnostics)
             self.assertIn("不刷课", diagnostics)

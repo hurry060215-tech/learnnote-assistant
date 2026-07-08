@@ -830,6 +830,7 @@ def render_bundle_manifest(task: TaskRecord, transcript: dict, visual_index: dic
     selected = task.selected_resource
     resource_inventory = read_resource_inventory(task)
     page_preflight = read_page_preflight_report(task)
+    chaoxing_profile = chaoxing_evidence_profile(task)
     append_evidence = mse_append_evidence(selected)
     options_payload = task.options.model_dump(mode="json")
     if options_payload.get("llm_api_key"):
@@ -976,6 +977,9 @@ def render_bundle_manifest(task: TaskRecord, transcript: dict, visual_index: dic
             "grid_entries": grid_entries,
         },
         "direct_extraction": direct_extraction_evidence(task),
+        "site_profiles": {
+            "chaoxing": chaoxing_profile,
+        },
         "audit": task_audit_summary(task),
         "recovery": diagnostic_recovery_profile(task),
         "reuse": task_reuse_evidence(task),
@@ -996,6 +1000,154 @@ def _is_chaoxing_task(task: TaskRecord) -> bool:
         values.extend([attempt.url, attempt.resolved_url, attempt.source, attempt.message])
     text = " ".join(str(value or "").lower() for value in values)
     return bool(re.search(r"chaoxing|xuexitong|fanya|mooc1|mooc2|ananas|学习通|超星", text, re.I))
+
+
+def _string_contains_chaoxing_signal(value: object) -> bool:
+    return bool(re.search(r"chaoxing|xuexitong|fanya|mooc1|mooc2|ananas|objectid|dtoken|httpmd", str(value or ""), re.I))
+
+
+def _candidate_entries_for_site_profile(task: TaskRecord) -> list[dict]:
+    entries: list[dict] = []
+
+    def add(value: object, source: str) -> None:
+        if not value:
+            return
+        if hasattr(value, "model_dump"):
+            payload = value.model_dump(mode="json")
+        elif isinstance(value, dict):
+            payload = dict(value)
+        else:
+            return
+        payload["_profile_source"] = source
+        entries.append(payload)
+
+    add(task.selected_resource, "selected_resource")
+    for attempt in task.download_attempts or []:
+        add(attempt, "download_attempt")
+
+    inventory = read_resource_inventory(task)
+    for candidate in inventory.get("candidates") or []:
+        add(candidate, "resource_inventory")
+
+    page_preflight = read_page_preflight_report(task)
+    for item in page_preflight.get("candidates") or []:
+        if not isinstance(item, dict):
+            continue
+        resource = item.get("resource") or {}
+        if isinstance(resource, dict):
+            payload = dict(resource)
+            preflight = item.get("preflight") or {}
+            payload["_profile_source"] = "page_preflight"
+            payload["_preflight_rank"] = item.get("rank")
+            payload["_preflight_code"] = preflight.get("code") if isinstance(preflight, dict) else ""
+            payload["_preflight_strategy"] = preflight.get("strategy") if isinstance(preflight, dict) else ""
+            entries.append(payload)
+
+    return entries
+
+
+def chaoxing_evidence_profile(task: TaskRecord) -> dict:
+    entries = _candidate_entries_for_site_profile(task)
+    page_preflight = read_page_preflight_report(task)
+    cookie_summary = task.cookie_summary or {}
+    text_parts = [
+        task.page_url,
+        task.title,
+        task.error_detail,
+        json.dumps(page_preflight, ensure_ascii=False) if page_preflight else "",
+        json.dumps(cookie_summary, ensure_ascii=False) if cookie_summary else "",
+    ]
+    text_parts.extend(json.dumps(entry, ensure_ascii=False) for entry in entries)
+    all_text = " ".join(text_parts).lower()
+    detected = _is_chaoxing_task(task) or _string_contains_chaoxing_signal(all_text)
+
+    safe_header_names: set[str] = set()
+    all_header_names: set[str] = set()
+    candidate_sources: set[str] = set()
+    candidate_kinds: set[str] = set()
+    ananas_candidate_count = 0
+    replay_body_count = 0
+    iframe_context_count = 0
+
+    for entry in entries:
+        url_text = " ".join(str(entry.get(key) or "") for key in ("url", "resolved_url", "frame_url", "page_url", "initiator", "label"))
+        if re.search(r"ananas|objectid|dtoken|httpmd", url_text, re.I):
+            ananas_candidate_count += 1
+        if entry.get("request_body"):
+            replay_body_count += 1
+        if entry.get("frame_url") or entry.get("frame_id") is not None or entry.get("initiator"):
+            iframe_context_count += 1
+        source = str(entry.get("source") or entry.get("strategy") or entry.get("_profile_source") or "")
+        kind = str(entry.get("kind") or "")
+        if source:
+            candidate_sources.add(source)
+        if kind:
+            candidate_kinds.add(kind)
+        request_headers = entry.get("request_headers") or {}
+        if isinstance(request_headers, dict):
+            all_header_names.update(str(name) for name in request_headers)
+            safe_header_names.update(_safe_request_header_names(request_headers.keys()))
+        request_header_names = entry.get("request_header_names") or []
+        if isinstance(request_header_names, list):
+            all_header_names.update(str(name) for name in request_header_names)
+            safe_header_names.update(_safe_request_header_names(request_header_names))
+
+    lower_header_names = {name.lower() for name in all_header_names}
+    page_scan = page_preflight.get("page_scan") if isinstance(page_preflight, dict) else {}
+    if not isinstance(page_scan, dict):
+        page_scan = {}
+
+    issue = "no_chaoxing_signal"
+    codes = _task_failure_codes(task)
+    if detected:
+        if not ananas_candidate_count and not page_preflight:
+            issue = "playback_api_not_observed"
+        elif not cookie_summary.get("total"):
+            issue = "login_cookie_not_synced"
+        elif "download_forbidden" in codes:
+            issue = "anti_hotlink_or_expired_signature"
+        elif "auth_required" in codes:
+            issue = "auth_required"
+        elif task.error_code:
+            issue = task.error_code
+        else:
+            issue = "evidence_ready"
+
+    return {
+        "detected": bool(detected),
+        "candidate_count": len(entries),
+        "ananas_candidate_count": ananas_candidate_count,
+        "has_ananas_candidate": ananas_candidate_count > 0,
+        "has_objectid": "objectid" in all_text,
+        "has_dtoken": "dtoken" in all_text,
+        "has_httpmd": "httpmd" in all_text,
+        "has_replay_body": replay_body_count > 0,
+        "replay_body_count": replay_body_count,
+        "has_referer": "referer" in lower_header_names,
+        "has_origin": "origin" in lower_header_names,
+        "has_x_requested_with": "x-requested-with" in lower_header_names,
+        "has_iframe_context": iframe_context_count > 0,
+        "iframe_context_count": iframe_context_count,
+        "cookie_count": int(cookie_summary.get("total") or 0),
+        "cookie_domain_count": int(cookie_summary.get("domain_count") or 0),
+        "partitioned_cookie_count": int(cookie_summary.get("partitioned_count") or 0),
+        "partition_key_count": int(cookie_summary.get("partition_key_count") or 0),
+        "has_partitioned_cookies": int(cookie_summary.get("partitioned_count") or 0) > 0,
+        "safe_request_header_names": sorted(safe_header_names),
+        "candidate_sources": sorted(candidate_sources),
+        "candidate_kinds": sorted(candidate_kinds),
+        "page_preflight": {
+            "present": bool(page_preflight),
+            "ready": bool(page_preflight.get("ready")) if isinstance(page_preflight, dict) else False,
+            "candidate_count": int(page_preflight.get("candidate_count") or 0) if isinstance(page_preflight, dict) else 0,
+            "probed_count": int(page_preflight.get("probed_count") or 0) if isinstance(page_preflight, dict) else 0,
+            "downloadable_count": int(page_preflight.get("downloadable_count") or 0) if isinstance(page_preflight, dict) else 0,
+            "page_scan_attempted": bool(page_scan.get("attempted")),
+            "page_scan_discovered_count": int(page_scan.get("discovered_count") or 0),
+        },
+        "likely_issue": issue,
+        "boundary": "no_recording_no_progress_forgery",
+    }
 
 
 def _task_failure_codes(task: TaskRecord) -> set[str]:
@@ -1146,7 +1298,8 @@ def diagnostic_recovery_profile(task: TaskRecord) -> dict:
     selected_source = selected.source if selected else ""
     selected_url = selected.resolved_url or selected.url if selected else ""
     latest_attempt = task.download_attempts[-1] if task.download_attempts else None
-    is_chaoxing = _is_chaoxing_task(task)
+    chaoxing_profile = chaoxing_evidence_profile(task)
+    is_chaoxing = bool(chaoxing_profile.get("detected"))
     boundary_notes: list[str] = []
     primary_code = task.error_code or (latest_attempt.code if latest_attempt else "")
     media_ready_for_rerun = task_media_ready_for_rerun(task)
@@ -1240,6 +1393,7 @@ def diagnostic_recovery_profile(task: TaskRecord) -> dict:
         "primary_action": actions[0],
         "actions": actions,
         "is_chaoxing": is_chaoxing,
+        "chaoxing_profile": chaoxing_profile,
         "selected_kind": selected_kind,
         "selected_source": selected_source,
         "selected_url": selected_url,
@@ -1622,6 +1776,7 @@ def render_diagnostics_markdown(task: TaskRecord) -> str:
     selected = task.selected_resource
     resource_inventory = read_resource_inventory(task)
     page_preflight = read_page_preflight_report(task)
+    chaoxing_profile = chaoxing_evidence_profile(task)
     lines = [
         "# LearnNote 任务诊断报告",
         "",
@@ -1719,6 +1874,23 @@ def render_diagnostics_markdown(task: TaskRecord) -> str:
             )
         if len(candidates) > 5:
             lines.append(f"- Omitted preflight candidates in Markdown: {len(candidates) - 5}; see page_preflight_report.json.")
+
+    if chaoxing_profile.get("detected"):
+        lines.extend([
+            "",
+            "## Chaoxing Profile",
+            f"- Detected: yes",
+            f"- Likely issue: {chaoxing_profile.get('likely_issue') or '-'}",
+            f"- ananas/objectid/dtoken: {'yes' if chaoxing_profile.get('has_ananas_candidate') else 'no'} / {'yes' if chaoxing_profile.get('has_objectid') else 'no'} / {'yes' if chaoxing_profile.get('has_dtoken') else 'no'}",
+            f"- Replay body: {'yes' if chaoxing_profile.get('has_replay_body') else 'no'} ({chaoxing_profile.get('replay_body_count', 0)})",
+            f"- Referer/Origin/X-Requested-With: {'yes' if chaoxing_profile.get('has_referer') else 'no'} / {'yes' if chaoxing_profile.get('has_origin') else 'no'} / {'yes' if chaoxing_profile.get('has_x_requested_with') else 'no'}",
+            f"- iframe/player context: {'yes' if chaoxing_profile.get('has_iframe_context') else 'no'} ({chaoxing_profile.get('iframe_context_count', 0)})",
+            f"- Cookie domains/count: {chaoxing_profile.get('cookie_domain_count', 0)} / {chaoxing_profile.get('cookie_count', 0)}",
+            f"- Partitioned cookies: {chaoxing_profile.get('partitioned_cookie_count', 0)} / {chaoxing_profile.get('partition_key_count', 0)} partition keys",
+            f"- Safe request header names: {', '.join(chaoxing_profile.get('safe_request_header_names') or []) or '-'}",
+            f"- Candidate kinds: {', '.join(chaoxing_profile.get('candidate_kinds') or []) or '-'}",
+            "- Boundary: direct downloadable resources only; no recording, no progress forgery, no auto-answering.",
+        ])
 
     lines.extend(["", "## Cookie 同步"])
     lines.extend(_format_cookie_summary(task.cookie_summary))
