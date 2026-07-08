@@ -58,10 +58,31 @@ function Write-StatusLine {
   }
 }
 
+function Test-CheckPass {
+  param($Check)
+  return $Check -and $Check.status -eq "PASS"
+}
+
 $doctor = Get-DoctorChecks
 $checks = @($doctor.Checks)
 $fails = @($checks | Where-Object { $_.status -eq "FAIL" })
 $warns = @($checks | Where-Object { $_.status -eq "WARN" })
+$asrCheck = Find-Check $checks "faster-whisper ASR"
+$apiCheck = Find-Check $checks "multimodal API"
+$runtimeCheck = Find-Check $checks "backend runtime"
+$extensionCheck = Find-Check $checks "browser extension"
+$browserCheck = Find-Check $checks $Browser
+$baseReady = $fails.Count -eq 0
+$localAsrReady = Test-CheckPass $asrCheck
+$visionReady = Test-CheckPass $apiCheck
+$browserReady = (Test-CheckPass $extensionCheck) -and (Test-CheckPass $browserCheck)
+$samplePages = [ordered]@{
+  mp4 = "$samplesUrl/mp4.html"
+  hls = "$samplesUrl/hls.html"
+  blob_iframe = "$samplesUrl/blob-iframe.html"
+  post_play_api = "$samplesUrl/post-api.html"
+  chaoxing_mock = "$samplesUrl/chaoxing-mock.html"
+}
 
 if ($Json) {
   [pscustomobject]@{
@@ -73,12 +94,26 @@ if ($Json) {
     browser = $Browser
     fail_count = $fails.Count
     warn_count = $warns.Count
+    readiness = @{
+      base_workflow = if ($baseReady) { "ready" } else { "blocked" }
+      browser_extension = if ($browserReady) { "ready" } else { "check_required" }
+      local_asr = if ($localAsrReady) { "ready" } else { "optional_warn" }
+      visual_llm = if ($visionReady) { "ready" } else { "optional_warn" }
+      d_drive_runtime = if (Test-CheckPass $runtimeCheck) { "ready" } else { "check_required" }
+    }
+    sample_pages = $samplePages
     checks = $checks
     commands = @{
       start = ".\start-learnnote.ps1"
       start_with_samples = ".\start-learnnote.ps1 -WithSamples"
       install_asr = ".\start-learnnote.ps1 -InstallAsr"
       verify = ".\scripts\verify-product.ps1 -Browser $Browser"
+      audit_real_site = ".\scripts\audit-real-site.ps1 <url> -Preflight"
+      set_visual_api = @(
+        '$env:LEARNNOTE_LLM_API_KEY="..."',
+        '$env:LEARNNOTE_LLM_BASE_URL="https://api.openai.com/v1"',
+        '$env:LEARNNOTE_LLM_MODEL="gpt-4.1-mini"'
+      )
     }
   } | ConvertTo-Json -Depth 6
   exit $doctor.ExitCode
@@ -109,6 +144,12 @@ if ($fails.Count) {
     if ($item.fix) { Write-Host ("  fix: {0}" -f $item.fix) -ForegroundColor DarkYellow }
   }
 } else {
+  Write-Host "Capability modes" -ForegroundColor Cyan
+  Write-Host ("- Base workflow: {0}" -f $(if ($baseReady) { "ready; current-page direct download, local upload, deterministic notes can run" } else { "blocked by required failures" }))
+  Write-Host ("- Browser extension: {0}" -f $(if ($browserReady) { "ready; load unpacked extension and use Side Panel" } else { "check browser path or extension manifest" }))
+  Write-Host ("- Local ASR: {0}" -f $(if ($localAsrReady) { "ready; faster-whisper can transcribe locally" } else { "optional WARN; install with .\start-learnnote.ps1 -InstallAsr or use subtitle/remote ASR fallback" }))
+  Write-Host ("- Visual LLM: {0}" -f $(if ($visionReady) { "ready; multimodal summaries can use configured API" } else { "optional WARN; without API key, notes use local deterministic fallback plus frame indexes" }))
+  Write-Host ""
   Write-Host "Startup path" -ForegroundColor Cyan
   Write-Host "1. Start backend:"
   Write-Host "   .\start-learnnote.ps1"
@@ -122,6 +163,26 @@ if ($fails.Count) {
   Write-Host "   $samplesUrl"
   Write-Host "6. Product verification:"
   Write-Host "   .\scripts\verify-product.ps1 -Browser $Browser"
+  Write-Host ""
+  Write-Host "Local sample pages" -ForegroundColor Cyan
+  Write-Host "Start both backend and samples:"
+  Write-Host "   .\start-learnnote.ps1 -WithSamples"
+  Write-Host "Then open one of:"
+  Write-Host "   $($samplePages.mp4)          MP4"
+  Write-Host "   $($samplePages.hls)          HLS"
+  Write-Host "   $($samplePages.post_play_api)     POST play API"
+  Write-Host "   $($samplePages.blob_iframe)  blob iframe"
+  Write-Host "   $($samplePages.chaoxing_mock)  Chaoxing-style mock"
+  Write-Host ""
+  Write-Host "Optional upgrades" -ForegroundColor Cyan
+  Write-Host "Local ASR:"
+  Write-Host "   .\start-learnnote.ps1 -InstallAsr"
+  Write-Host "Visual summary API for this PowerShell session:"
+  Write-Host '   $env:LEARNNOTE_LLM_API_KEY="..."'
+  Write-Host '   $env:LEARNNOTE_LLM_BASE_URL="https://api.openai.com/v1"'
+  Write-Host '   $env:LEARNNOTE_LLM_MODEL="gpt-4.1-mini"'
+  Write-Host "Real-site audit:"
+  Write-Host "   .\scripts\audit-real-site.ps1 <url> -Preflight"
 }
 
 if ($warns.Count) {
