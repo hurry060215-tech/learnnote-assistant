@@ -1478,6 +1478,35 @@ globalThis.__learnnoteE2E = {
       }
     };
   },
+  async preflightCurrentPageForTab(tabId, backendUrl, selectedResources = [], probeLimit = 5) {
+    const context = await globalThis.__learnnoteE2E.collectContextForTab(tabId);
+    const tab = await chrome.tabs.get(Number(tabId));
+    const page = context.page || {};
+    const resources = mergeAndRankResources(
+      Array.isArray(selectedResources) && selectedResources.length ? selectedResources : context.resources,
+      page,
+      tab,
+      { preserveOrder: Array.isArray(selectedResources) && selectedResources.length > 0 }
+    );
+    const partitionKeys = await cookiePartitionKeysForContext(page, tab, resources);
+    const cookies = await cookiesForUrls(cookieUrlsForContext(page, tab, resources), partitionKeys);
+    const res = await fetch(`${backendUrl}/api/media/preflight-current-page`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        page_url: page.page_url || tab.url,
+        resources,
+        cookies,
+        probe_limit: probeLimit
+      })
+    });
+    const payload = await backendJsonResponse(res, "当前页预检失败。");
+    return {
+      ...payload,
+      e2e_resource_count: resources.length,
+      e2e_cookie_count: cookies.length
+    };
+  },
   async startCurrentPageTaskForTab(tabId, backendUrl, selectedResources = [], mode = "download_only", options = {}) {
     const context = await globalThis.__learnnoteE2E.collectContextForTab(tabId);
     const tab = await chrome.tabs.get(Number(tabId));

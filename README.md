@@ -213,6 +213,24 @@ For real sites, use the same evidence model instead of a site-specific assumptio
 - If the page uses a player API, the Side Panel diagnostics should show `播放 API`, `POST/body`, `Referer`, `Origin`, `XHR`, `iframe`, Cookie count, and preflight status when those signals are available.
 - If the page only exposes DRM/EME, unrecoverable `blob:`, or `MediaStream/srcObject`, the app should fail clearly and point to local upload instead of recording the tab.
 
+Use the real-site audit script when checking YouTube/B站/学习通 or any other live site. It launches Chrome/Edge with the unpacked extension, starts the local backend, collects the same browser evidence as the Side Panel, optionally runs cookie-aware backend preflight, and writes `audit.md` / `audit.json` under `data\test-runs\site-audits`:
+
+```powershell
+cd D:\Projects\learnnote-assistant
+.\scripts\audit-real-site.ps1 "https://example.com/video-page" -Preflight
+```
+
+For logged-in course pages, keep a D-drive browser profile so login cookies are not stored on C by this workflow:
+
+```powershell
+cd D:\Projects\learnnote-assistant
+.\scripts\audit-real-site.ps1 "https://mooc1.chaoxing.com/..." `
+  -ProfileDir "D:\Projects\learnnote-assistant\data\browser-profiles\chaoxing" `
+  -InteractiveLogin -Preflight -KeepBrowser
+```
+
+When the browser opens, log in if needed, play the target video for a few seconds, then return to the terminal and press Enter. The report should show whether the generic chain is complete: browser playback evidence, auth/cookie context, replayable API body or direct media URL, and download preflight.
+
 ## Local Storage On D
 
 On this machine the project lives at `D:\Projects\learnnote-assistant`. The startup script creates a project-local virtual environment at `.venv` and keeps runtime outputs under the project `data\` directory. Set `LEARNNOTE_VENV_DIR` first if you want a different D-drive venv path:
@@ -223,6 +241,7 @@ On this machine the project lives at `D:\Projects\learnnote-assistant`. The star
 - `data\pip-cache` for pip downloads.
 - `data\temp` for backend process temporary files.
 - `data\test-runs` for generated local test videos.
+- `data\browser-profiles` for optional real-site audit browser profiles.
 
 To install the optional local ASR dependency into the D-drive project venv:
 
