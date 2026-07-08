@@ -132,6 +132,45 @@ Load the browser extension:
 4. Select `learnnote-assistant/extension`.
 5. Open a video page, click the extension icon, then use the Side Panel.
 
+## Local Browser Regression Samples
+
+Use these pages before testing real course sites. They exercise the same generic extraction routes without depending on any external login state.
+
+Start the backend in one terminal:
+
+```powershell
+cd D:\Projects\learnnote-assistant
+.\start-backend.ps1
+```
+
+Start the sample site in another terminal:
+
+```powershell
+cd D:\Projects\learnnote-assistant
+.\scripts\serve-samples.ps1
+```
+
+Open:
+
+```text
+http://127.0.0.1:8777
+```
+
+The sample server writes generated media fixtures to `data\test-runs\samples` on the D-drive project path. It does not commit binary videos to the repository.
+
+Recommended browser checks with the unpacked extension loaded:
+
+- `MP4`: open `http://127.0.0.1:8777/mp4.html`, play the video, then use `预检资源` or `总结当前视频`. Expected route: direct `/media/sample.mp4`.
+- `HLS`: open `http://127.0.0.1:8777/hls.html`. Chrome may not play native HLS, but the extension should detect `/hls/master.m3u8` from DOM and backend ffmpeg should merge it.
+- `Blob iframe`: open `http://127.0.0.1:8777/blob-iframe.html`. Expected route: iframe/player context plus blob-source mapping; no tab recording.
+- `POST play API`: open `http://127.0.0.1:8777/post-api.html`. Expected route: XHR/POST candidate with safe headers and bounded body, resolving `playUrl` or `sources` to the real media URL.
+
+For real sites, use the same evidence model instead of a site-specific assumption:
+
+- A direct media URL, HLS/DASH manifest, or yt-dlp supported page is enough.
+- If the page uses a player API, the Side Panel diagnostics should show `播放 API`, `POST/body`, `Referer`, `Origin`, `XHR`, `iframe`, Cookie count, and preflight status when those signals are available.
+- If the page only exposes DRM/EME, unrecoverable `blob:`, or `MediaStream/srcObject`, the app should fail clearly and point to local upload instead of recording the tab.
+
 ## Local Storage On D
 
 On this machine the project lives at `D:\Projects\learnnote-assistant`. The startup script creates a project-local virtual environment at `.venv` and keeps runtime outputs under the project `data\` directory. Set `LEARNNOTE_VENV_DIR` first if you want a different D-drive venv path:
