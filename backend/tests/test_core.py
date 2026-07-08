@@ -39,7 +39,7 @@ from app.main import diagnostic_recovery_profile, render_bundle_manifest, render
 from app.models import ActiveVideoInfo, BrowserCookie, CurrentPageTaskRequest, DownloadAttempt, DrmSignal, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
 from app.processor import build_summary_diagnostics, cookie_sync_summary, download_progress_updater, download_status_updater, enrich_resource_candidates_with_active_video, process_current_page_task, process_local_video_task, read_note, read_transcript, redacted_request_dump, redacted_resource
 from app.summarizer import MAX_GRIDS_PER_VISION_CALL, MAX_VISION_GRIDS, build_visual_windows, ensure_visual_appendix, llm_provider_name, local_markdown_note, summarize_with_diagnostics, summarize_with_diagnostics_audit
-from app.storage import create_task, get_task, task_dir
+from app.storage import create_task, get_task, read_json, save_task, task_dir, write_json
 from app.transcriber import transcribe_audio_openai_compatible, transcript_from_subtitle
 
 TEST_RUN_DIR = DATA_DIR / "test-runs"
@@ -56,6 +56,21 @@ class ResourceDetectionTests(unittest.TestCase):
         self.assertEqual(Path(os.environ["TEMP"]).resolve(), TEMP_DIR.resolve())
         self.assertEqual(Path(os.environ["TMPDIR"]).resolve(), TEMP_DIR.resolve())
         self.assertTrue(TEMP_DIR.exists())
+
+    def test_storage_writes_task_and_json_atomically(self) -> None:
+        task = create_task("current_page", "Atomic write lesson", "https://course.example.com/lesson")
+        try:
+            task.message = "updated without partial file"
+            save_task(task)
+            write_json(task.id, "probe.json", {"ok": True})
+
+            reloaded = get_task(task.id)
+
+            self.assertEqual(reloaded.message, "updated without partial file")
+            self.assertEqual(read_json(task.id, "probe.json"), {"ok": True})
+            self.assertEqual(list(task_dir(task.id).glob(".*.tmp")), [])
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
     def test_task_options_bound_visual_slicing_parameters(self) -> None:
         options = TaskOptions(frame_interval=1, grid_columns=4, grid_rows=3)

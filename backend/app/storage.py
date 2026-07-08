@@ -32,6 +32,17 @@ def public_task_options(options: TaskOptions | None) -> TaskOptions:
     return public
 
 
+def atomic_write_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        tmp.write_text(text, encoding="utf-8")
+        tmp.replace(path)
+    finally:
+        if tmp.exists():
+            tmp.unlink()
+
+
 def default_task_mode(source_type: str) -> str:
     if source_type == "page_text":
         return "page_text"
@@ -65,14 +76,15 @@ def create_task(
 def save_task(record: TaskRecord) -> None:
     with _lock:
         record.updated_at = now_iso()
-        task_file(record.id).write_text(record.model_dump_json(indent=2), encoding="utf-8")
+        atomic_write_text(task_file(record.id), record.model_dump_json(indent=2))
 
 
 def get_task(task_id: str) -> TaskRecord:
-    path = task_file(task_id)
-    if not path.exists():
-        raise FileNotFoundError(task_id)
-    return TaskRecord.model_validate_json(path.read_text(encoding="utf-8"))
+    with _lock:
+        path = task_file(task_id)
+        if not path.exists():
+            raise FileNotFoundError(task_id)
+        return TaskRecord.model_validate_json(path.read_text(encoding="utf-8"))
 
 
 def update_task(task_id: str, **changes: Any) -> TaskRecord:
@@ -85,16 +97,18 @@ def update_task(task_id: str, **changes: Any) -> TaskRecord:
 
 
 def write_json(task_id: str, filename: str, data: Any) -> Path:
-    path = task_dir(task_id) / filename
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    return path
+    with _lock:
+        path = task_dir(task_id) / filename
+        atomic_write_text(path, json.dumps(data, ensure_ascii=False, indent=2))
+        return path
 
 
 def read_json(task_id: str, filename: str, default: Any = None) -> Any:
-    path = task_dir(task_id) / filename
-    if not path.exists():
-        return default
-    return json.loads(path.read_text(encoding="utf-8"))
+    with _lock:
+        path = task_dir(task_id) / filename
+        if not path.exists():
+            return default
+        return json.loads(path.read_text(encoding="utf-8"))
 
 
 def list_tasks() -> list[TaskRecord]:
