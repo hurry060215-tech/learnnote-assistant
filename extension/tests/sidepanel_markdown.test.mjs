@@ -92,6 +92,7 @@ assert.match(sidepanelHtml, /class="product-mode-bar"/);
 assert.match(sidepanelHtml, /id="studyModeButton"/);
 assert.match(sidepanelHtml, /id="diagnosticModeButton"/);
 assert.match(sidepanelHtml, /id="resourcePanel" class="resource-panel" hidden/);
+assert.match(sidepanelHtml, /id="diagnosticOverview" class="diagnostic-overview"/);
 assert.doesNotMatch(sidepanelHtml, />下载本地</);
 assert.equal(elements.get("#resourcePanel").hidden, true);
 assert.equal(elements.get("#studyModeButton").classList.contains("active"), true);
@@ -1764,6 +1765,15 @@ assert.equal(elements.get("#studyModeButton").classList.contains("active"), fals
 assert.equal(elements.get("#diagnosticModeButton").classList.contains("active"), true);
 context.setPanelMode("study");
 assert.equal(elements.get("#resourcePanel").hidden, true);
+assert.match(elements.get("#diagnosticOverview").innerHTML, /当前页直取证据链/);
+assert.match(elements.get("#diagnosticOverview").innerHTML, /播放器入口/);
+assert.match(elements.get("#diagnosticOverview").innerHTML, /媒体候选/);
+assert.match(elements.get("#diagnosticOverview").innerHTML, /播放接口/);
+assert.match(elements.get("#diagnosticOverview").innerHTML, /页面上下文/);
+assert.match(elements.get("#diagnosticOverview").innerHTML, /下载预检/);
+assert.match(elements.get("#diagnosticOverview").innerHTML, /Cookie 不后台预读/);
+assert.match(elements.get("#diagnosticOverview").innerHTML, /iframe 缺失/);
+assert.match(elements.get("#diagnosticOverview").innerHTML, /POST\/body 缺失/);
 assert.match(elements.get("#resources").innerHTML, /第 1 顺位/);
 assert.match(elements.get("#resources").innerHTML, /ffmpeg 合并/);
 assert.match(elements.get("#resources").innerHTML, /resource-confidence high/);
@@ -1901,8 +1911,9 @@ resources = [{
   method: "POST",
   score: 76,
   label: "Chaoxing play api",
-  request_body: { content: "{\\"objectid\\":\\"123\\"}" },
-  request_headers: { Referer: "https://mooc1.chaoxing.com/mycourse/studentstudy" }
+  request_body: { content: "objectid=123&dtoken=abc&playurl=1", type: "form" },
+  request_headers: { Referer: "https://mooc1.chaoxing.com/mycourse/studentstudy", Origin: "https://mooc1.chaoxing.com", "X-Requested-With": "XMLHttpRequest" },
+  frame_url: "https://mooc1.chaoxing.com/chaoxing/player.html"
 }];
 selectedResourceUrl = "https://mooc1.chaoxing.com/ananas/status/objectid-123?flag=normal";
 resourceFilter = "downloadable";
@@ -1916,6 +1927,18 @@ assert.equal(context.filteredResources().length, 1);
 context.renderReadiness();
 assert.match(elements.get("#readiness").textContent, /可直取候选 1 个/);
 assert.doesNotMatch(elements.get("#readiness").textContent, /没有可下载媒体候选/);
+context.renderDiagnosticOverview();
+assert.match(elements.get("#diagnosticOverview").innerHTML, /当前页直取证据链/);
+assert.match(elements.get("#diagnosticOverview").innerHTML, /1 POST\/body/);
+assert.match(elements.get("#diagnosticOverview").innerHTML, /ananas 已抓到/);
+assert.match(elements.get("#diagnosticOverview").innerHTML, /playurl 已抓到/);
+assert.match(elements.get("#diagnosticOverview").innerHTML, /objectid 已抓到/);
+assert.match(elements.get("#diagnosticOverview").innerHTML, /dtoken 已抓到/);
+assert.match(elements.get("#diagnosticOverview").innerHTML, /POST\/body 已抓到/);
+assert.match(elements.get("#diagnosticOverview").innerHTML, /iframe 已抓到/);
+assert.match(elements.get("#diagnosticOverview").innerHTML, /Cookie 不后台预读/);
+assert.doesNotMatch(elements.get("#diagnosticOverview").innerHTML, /dtoken=abc/);
+assert.doesNotMatch(elements.get("#diagnosticOverview").innerHTML, /objectid=123/);
 
 vm.runInContext(`
 resources = [

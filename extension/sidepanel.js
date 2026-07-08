@@ -183,6 +183,7 @@ const els = {
   currentStudyCard: document.querySelector("#currentStudyCard"),
   launchBar: document.querySelector("#launchBar"),
   resourceCount: document.querySelector("#resourceCount"),
+  diagnosticOverview: document.querySelector("#diagnosticOverview"),
   readiness: document.querySelector("#readiness"),
   routeSummary: document.querySelector("#routeSummary"),
   extractionPlan: document.querySelector("#extractionPlan"),
@@ -3311,6 +3312,179 @@ function renderLaunchBar() {
   `;
 }
 
+function currentPageEvidenceHaystack() {
+  return [
+    page?.page_url,
+    page?.title,
+    page?.active_video?.src,
+    page?.active_video?.frame_url,
+    ...(resources || []).flatMap(item => [
+      item.url,
+      item.resolved_url,
+      item.frame_url,
+      item.page_url,
+      item.initiator,
+      item.label,
+      item.request_body?.content,
+      requestBodySummary(item)
+    ])
+  ].map(value => String(value || "")).join(" ");
+}
+
+function currentDiagnosticSignals() {
+  const active = page?.active_video || null;
+  const frames = page?.frames || [];
+  const candidates = candidateResources();
+  const direct = directExtractionCandidates();
+  const playableApis = candidates.filter(looksLikePlayableEndpoint);
+  const replayBodies = candidates.filter(hasReplayableRequestBody);
+  const selected = selectedResource();
+  const checked = currentPreflight();
+  const haystack = currentPageEvidenceHaystack();
+  const headerNames = new Set();
+  for (const item of candidates) {
+    Object.keys(item.request_headers || {}).forEach(name => {
+      if (!/cookie|authorization/i.test(name)) headerNames.add(name);
+    });
+  }
+  const hasReferer = [...headerNames].some(name => /^referer$/i.test(name));
+  const hasOrigin = [...headerNames].some(name => /^origin$/i.test(name));
+  const hasXRequestedWith = [...headerNames].some(name => /^x-requested-with$/i.test(name));
+  const hasFrameContext = Boolean(
+    frames.length ||
+    active?.frame_id !== null && active?.frame_id !== undefined ||
+    candidates.some(item => item.frame_url || item.frame_id !== null && item.frame_id !== undefined)
+  );
+  const hasPlayableApiText = /(?:ananas|play_?url|\/play(?:[/?#]|$)|objectid|dtoken|httpmd)/i.test(haystack);
+  const preflightState = checked
+    ? checked.downloadable ? "pass" : "warn"
+    : selected ? "wait" : "miss";
+  return {
+    active,
+    candidates,
+    direct,
+    playableApis,
+    replayBodies,
+    selected,
+    checked,
+    headerNames: [...headerNames].sort(),
+    hasReferer,
+    hasOrigin,
+    hasXRequestedWith,
+    hasFrameContext,
+    hasPlayableApiText,
+    hasAnanas: /ananas/i.test(haystack),
+    hasPlayurl: /play_?url|playURL/i.test(haystack),
+    hasObjectid: /objectid/i.test(haystack),
+    hasDtoken: /dtoken/i.test(haystack),
+    hasBlobOrMse: Boolean(active?.src?.startsWith("blob:") || candidates.some(item => item.kind === "blob" || item.blob_url || mseAppendEvidence(item))),
+    drmDetected: Boolean(page?.drm_detected || active?.drm_detected),
+    preflightState
+  };
+}
+
+function diagnosticStateClass(ok, warn = false) {
+  if (ok) return "pass";
+  return warn ? "warn" : "miss";
+}
+
+function currentDiagnosticOverviewHtml() {
+  const signal = currentDiagnosticSignals();
+  const hasPlayback = hasActiveVideoSignal(signal.active) || signal.candidates.length > 0 || (page?.frames || []).length > 0;
+  const hasCandidate = signal.direct.length > 0;
+  const hasApi = signal.playableApis.length > 0 || signal.hasPlayableApiText;
+  const hasBody = signal.replayBodies.length > 0;
+  const hasContext = signal.hasFrameContext || signal.hasReferer || signal.hasOrigin || signal.hasXRequestedWith;
+  const preflightOk = signal.checked?.downloadable;
+  const chain = [
+    {
+      label: "播放器入口",
+      state: diagnosticStateClass(hasPlayback, Boolean(page?.frames?.length)),
+      value: hasActiveVideoSignal(signal.active)
+        ? signal.active?.drm_detected ? "DRM 信号" : signal.active?.paused ? "已读取 · 暂停" : "已读取 · 播放中"
+        : page?.frames?.length ? `${page.frames.length} frame` : "等待播放",
+      detail: hasPlayback ? "已能从当前页或 iframe 建立媒体上下文" : "先让课程视频真实播放几秒"
+    },
+    {
+      label: "媒体候选",
+      state: diagnosticStateClass(hasCandidate, signal.candidates.length > 0),
+      value: hasCandidate ? `${signal.direct.length} 可直取` : `${signal.candidates.length} 线索`,
+      detail: hasCandidate ? directCapabilityFormatsText() : "继续播放后等待 mp4/HLS/DASH 或播放 API 暴露"
+    },
+    {
+      label: "播放接口",
+      state: diagnosticStateClass(hasBody || hasApi, hasApi),
+      value: hasBody ? `${signal.replayBodies.length} POST/body` : hasApi ? "接口线索" : "未看到",
+      detail: hasBody ? "后端可用原请求体回放解析真实媒体" : "优先捕获 play/ananas/objectid/dtoken 等接口证据"
+    },
+    {
+      label: "页面上下文",
+      state: diagnosticStateClass(hasContext, signal.candidates.length > 0),
+      value: [
+        signal.hasFrameContext ? "iframe" : "",
+        signal.hasReferer ? "Referer" : "",
+        signal.hasOrigin ? "Origin" : "",
+        signal.hasXRequestedWith ? "XHR" : ""
+      ].filter(Boolean).join(" / ") || "待对齐",
+      detail: "Cookie 不后台预读；点击总结/预检时一次性同步给本地后端"
+    },
+    {
+      label: "下载预检",
+      state: signal.preflightState,
+      value: signal.checked
+        ? signal.checked.downloadable ? "可下载" : signal.checked.code || "未通过"
+        : signal.selected ? "待预检" : "无候选",
+      detail: signal.checked ? preflightRecoveryText(signal.checked) : "先预检最高分候选，再决定总结、下载或本地兜底"
+    },
+    {
+      label: "学习落地",
+      state: "pass",
+      value: visualPlanText(),
+      detail: "下载成功后进入转写、抽帧、视觉窗口和图文笔记"
+    }
+  ];
+  const platformFlags = [
+    ["ananas", signal.hasAnanas],
+    ["playurl", signal.hasPlayurl],
+    ["objectid", signal.hasObjectid],
+    ["dtoken", signal.hasDtoken],
+    ["iframe", signal.hasFrameContext],
+    ["POST/body", hasBody],
+    ["blob/MSE", signal.hasBlobOrMse],
+    ["DRM", signal.drmDetected]
+  ];
+  const missing = chain.filter(item => item.state === "miss").map(item => item.label);
+  const next = signal.drmDetected
+    ? `${directFailureBoundaryText()}；如果没有可访问媒体候选，请改用本地视频入口。`
+    : missing.length
+      ? `缺口：${missing.join("、")}。继续播放几秒后重新检测，或切到本地视频兜底。`
+      : "证据链已基本完整：建议先预检，通过后开始总结或只下载到本地。";
+  return `<section class="diagnostic-overview-card">
+    <header>
+      <div>
+        <span>当前页直取证据链</span>
+        <strong>${escapeHtml(next)}</strong>
+      </div>
+      <em>${escapeHtml(signal.selected ? selectedResourceLabel(signal.selected) : "未选择候选")}</em>
+    </header>
+    <div class="diagnostic-chain">
+      ${chain.map(item => `<section class="${escapeHtml(item.state)}">
+        <b>${escapeHtml(item.label)}</b>
+        <strong>${escapeHtml(item.value)}</strong>
+        <small>${escapeHtml(item.detail)}</small>
+      </section>`).join("")}
+    </div>
+    <div class="diagnostic-platform-flags" aria-label="平台播放接口线索">
+      ${platformFlags.map(([label, ok]) => `<span class="${ok ? "pass" : "wait"}">${escapeHtml(label)} ${ok ? "已抓到" : label === "DRM" ? "未见" : "缺失"}</span>`).join("")}
+    </div>
+  </section>`;
+}
+
+function renderDiagnosticOverview() {
+  if (!els.diagnosticOverview) return;
+  els.diagnosticOverview.innerHTML = currentDiagnosticOverviewHtml();
+}
+
 function resourceHint() {
   const downloadable = directExtractionCandidates().length;
   const blobCount = resources.filter(item => item.kind === "blob").length;
@@ -4185,6 +4359,7 @@ function renderContext() {
   renderLaunchBar();
   renderPanelMode();
   els.resourceCount.textContent = String(candidateResources().length);
+  renderDiagnosticOverview();
   renderReadiness();
   renderRouteSummary();
   renderExtractionPlan();
