@@ -469,10 +469,18 @@ def run_browser_checks(cdp: CdpWebSocket, backend: str, samples: str) -> None:
         raise AssertionError(f"Chaoxing mock did not preserve iframe context: {chaoxing}")
     if chaoxing_context.get("cookie_count", 0) < 1:
         raise AssertionError(f"Chaoxing mock cookie was not visible to extension context: {chaoxing_context}")
+    cookie_summary = eval_service_worker(cdp, f"""
+async () => {{
+  return await globalThis.__learnnoteE2E.inspectCookieContextForTab({int(tab_ids[chaoxing_page])}, [{json.dumps(chaoxing)}]);
+}}
+""")
+    if cookie_summary.get("count", 0) < 1 or cookie_summary.get("domain_count", 0) < 1:
+        raise AssertionError(f"Chaoxing mock cookie diagnostic did not find login context: {cookie_summary}")
     preflight(backend, chaoxing_page, chaoxing, "chaoxing-mock")
     print(
         "PASS extension collect chaoxing-mock: "
         f"cookies={chaoxing_context.get('cookie_count')} "
+        f"diagnostic_cookies={cookie_summary.get('count')} "
         f"body={chaoxing.get('request_body', {}).get('type') or 'captured'} "
         f"frame={chaoxing.get('frame_url')}"
     )

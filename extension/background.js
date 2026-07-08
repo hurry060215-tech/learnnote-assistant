@@ -1507,6 +1507,21 @@ globalThis.__learnnoteE2E = {
       e2e_cookie_count: cookies.length
     };
   },
+  async inspectCookieContextForTab(tabId, selectedResources = []) {
+    const context = await globalThis.__learnnoteE2E.collectContextForTab(tabId);
+    const tab = await chrome.tabs.get(Number(tabId));
+    const page = context.page || {};
+    const resources = mergeAndRankResources(
+      Array.isArray(selectedResources) && selectedResources.length ? selectedResources : context.resources,
+      page,
+      tab,
+      { preserveOrder: Array.isArray(selectedResources) && selectedResources.length > 0 }
+    );
+    const partitionKeys = await cookiePartitionKeysForContext(page, tab, resources);
+    const urls = cookieUrlsForContext(page, tab, resources);
+    const cookies = await cookiesForUrls(urls, partitionKeys);
+    return cookieContextSummary(cookies, urls, partitionKeys);
+  },
   async startCurrentPageTaskForTab(tabId, backendUrl, selectedResources = [], mode = "download_only", options = {}) {
     const context = await globalThis.__learnnoteE2E.collectContextForTab(tabId);
     const tab = await chrome.tabs.get(Number(tabId));
@@ -1666,6 +1681,28 @@ async function cookiesForUrls(urls, partitionKeys = []) {
     .map(record => record.cookie);
 }
 
+function cookieContextSummary(cookies = [], urls = [], partitionKeys = []) {
+  const domains = new Map();
+  let partitioned = 0;
+  for (const cookie of cookies || []) {
+    const domain = String(cookie.domain || "").replace(/^\./, "") || "(host)";
+    domains.set(domain, (domains.get(domain) || 0) + 1);
+    if (cookie.partitionKey) partitioned += 1;
+  }
+  const domainSummary = [...domains.entries()]
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .slice(0, 8)
+    .map(([domain, count]) => ({ domain, count }));
+  return {
+    count: cookies.length,
+    domain_count: domains.size,
+    partitioned_count: partitioned,
+    partition_key_count: partitionKeys.length,
+    target_count: urls.length,
+    domains: domainSummary
+  };
+}
+
 function cookieUrlsForContext(page = {}, tab = {}, resources = []) {
   const urls = [];
   const add = value => {
@@ -1734,6 +1771,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           restored: captureLog.resources.length,
           updated_at: captureLog.updated_at
         }
+      });
+      return;
+    }
+
+    if (message.type === "inspect-cookie-context") {
+      const tab = await tabForMessage(message);
+      const page = message.page || await collectPageData(tab);
+      const resources = mergeAndRankResources(message.resources, page, tab, { preserveOrder: Array.isArray(message.resources) });
+      const partitionKeys = await cookiePartitionKeysForContext(page, tab, resources);
+      const urls = cookieUrlsForContext(page, tab, resources);
+      const cookies = await cookiesForUrls(urls, partitionKeys);
+      sendResponse({
+        ok: true,
+        cookie_context: cookieContextSummary(cookies, urls, partitionKeys)
       });
       return;
     }

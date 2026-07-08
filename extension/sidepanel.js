@@ -163,6 +163,7 @@ let preflight = null;
 let preflightResourceUrl = "";
 let preflightResultsByUrl = new Map();
 let lastPagePreflightReport = null;
+let cookieDiagnostic = { status: "idle", summary: null, error: "", checked_at: 0 };
 let contextRefreshTimer = 0;
 let isCollectingContext = false;
 let pendingContextRefresh = false;
@@ -734,6 +735,7 @@ function currentPageAuditReport() {
     "候选与预检",
     `- 候选资源: ${downloadableCount}/${candidateCount} 可直取`,
     `- Network 缓存: ${captureRestored ? `${captureRestored} 条` : "实时检测"}`,
+    `- 登录态诊断: ${cookieDiagnostic.status === "idle" ? "未检查" : cookieDiagnostic.status} / ${cookieDiagnosticSummaryText(cookieDiagnostic.summary)}`,
     `- 选中候选: ${selected ? selectedResourceLabel(selected) : "未选择"}`,
     `- 下载策略: ${selected ? candidateStrategyText(selected) : "-"}`,
     `- 预检状态: ${checked ? resourcePreflightLine(checked, selected) : "未预检"}`,
@@ -3418,6 +3420,8 @@ function currentDiagnosticSignals() {
   const preflightState = checked
     ? checked.downloadable ? "pass" : "warn"
     : selected ? "wait" : "miss";
+  const cookieSummary = cookieDiagnostic.summary || {};
+  const cookieCount = Number(cookieSummary.count || 0);
   return {
     active,
     candidates,
@@ -3438,6 +3442,8 @@ function currentDiagnosticSignals() {
     hasDtoken: /dtoken/i.test(haystack),
     hasBlobOrMse: Boolean(active?.src?.startsWith("blob:") || candidates.some(item => item.kind === "blob" || item.blob_url || mseAppendEvidence(item))),
     drmDetected: Boolean(page?.drm_detected || active?.drm_detected),
+    cookieDiagnostic,
+    cookieCount,
     preflightState
   };
 }
@@ -3447,6 +3453,47 @@ function diagnosticStateClass(ok, warn = false) {
   return warn ? "warn" : "miss";
 }
 
+function cookieDiagnosticSummaryText(summary = null) {
+  if (!summary) return "未检查";
+  const count = Number(summary.count || 0);
+  const domains = Number(summary.domain_count || 0);
+  const partitioned = Number(summary.partitioned_count || 0);
+  const targets = Number(summary.target_count || 0);
+  if (!count) return targets ? `${targets} 个目标域未读到 cookie` : "没有可检查的登录域";
+  const parts = [`${domains} 域`, `${count} 条`];
+  if (partitioned) parts.push(`${partitioned} 分区`);
+  if (targets) parts.push(`${targets} 目标`);
+  return parts.join(" / ");
+}
+
+function cookieDiagnosticHtml() {
+  const status = cookieDiagnostic.status || "idle";
+  if (status === "idle") return "";
+  const summary = cookieDiagnostic.summary || null;
+  const domains = Array.isArray(summary?.domains) ? summary.domains : [];
+  const tone = status === "ready" ? "pass" : status === "empty" ? "warn" : status === "error" ? "miss" : "wait";
+  const title = status === "loading"
+    ? "正在按当前页和候选域检查登录态"
+    : status === "ready"
+      ? "已确认当前页可读取登录态"
+      : status === "empty"
+        ? "没有读到可用 Cookie"
+        : status === "error"
+          ? "登录态检查失败"
+          : "Cookie 不后台预读";
+  const detail = status === "error"
+    ? cookieDiagnostic.error || "浏览器未返回 cookie 统计"
+    : cookieDiagnosticSummaryText(summary);
+  return `<div class="diagnostic-cookie-evidence ${escapeHtml(tone)}" aria-label="登录态诊断">
+    <div>
+      <span>登录态证据</span>
+      <strong>${escapeHtml(title)}</strong>
+      <small>${escapeHtml(detail)}</small>
+    </div>
+    ${domains.length ? `<p>${domains.map(item => `<em>${escapeHtml(item.domain)} · ${escapeHtml(item.count)}</em>`).join("")}</p>` : ""}
+  </div>`;
+}
+
 function currentDiagnosticOverviewHtml() {
   const signal = currentDiagnosticSignals();
   const hasPlayback = hasActiveVideoSignal(signal.active) || signal.candidates.length > 0 || (page?.frames || []).length > 0;
@@ -3454,6 +3501,8 @@ function currentDiagnosticOverviewHtml() {
   const hasApi = signal.playableApis.length > 0 || signal.hasPlayableApiText;
   const hasBody = signal.replayBodies.length > 0;
   const hasContext = signal.hasFrameContext || signal.hasReferer || signal.hasOrigin || signal.hasXRequestedWith;
+  const cookieChecked = signal.cookieDiagnostic.status === "ready" || signal.cookieDiagnostic.status === "empty";
+  const cookieLoading = signal.cookieDiagnostic.status === "loading";
   const preflightOk = signal.checked?.downloadable;
   const chain = [
     {
@@ -3485,7 +3534,19 @@ function currentDiagnosticOverviewHtml() {
         signal.hasOrigin ? "Origin" : "",
         signal.hasXRequestedWith ? "XHR" : ""
       ].filter(Boolean).join(" / ") || "待对齐",
-      detail: "Cookie 不后台预读；点击总结/预检时一次性同步给本地后端"
+      detail: "Referer/Origin/iframe 用于防盗链回放；Cookie 不后台预读，需用户按需检查或任务点击时同步"
+    },
+    {
+      label: "登录态",
+      state: cookieChecked ? diagnosticStateClass(signal.cookieCount > 0, true) : cookieLoading ? "wait" : "warn",
+      value: cookieLoading
+        ? "检查中"
+        : cookieChecked
+          ? signal.cookieCount ? `${signal.cookieCount} cookie` : "未读到"
+          : "未检查",
+      detail: cookieChecked
+        ? cookieDiagnosticSummaryText(signal.cookieDiagnostic.summary)
+        : "诊断模式下可手动检查数量；不会显示或保存 Cookie 值"
     },
     {
       label: "下载预检",
@@ -3509,6 +3570,7 @@ function currentDiagnosticOverviewHtml() {
     ["dtoken", signal.hasDtoken],
     ["iframe", signal.hasFrameContext],
     ["POST/body", hasBody],
+    ["cookie", signal.cookieCount > 0],
     ["blob/MSE", signal.hasBlobOrMse],
     ["DRM", signal.drmDetected]
   ];
@@ -3524,7 +3586,10 @@ function currentDiagnosticOverviewHtml() {
         <span>当前页直取证据链</span>
         <strong>${escapeHtml(next)}</strong>
       </div>
-      <em>${escapeHtml(signal.selected ? selectedResourceLabel(signal.selected) : "未选择候选")}</em>
+      <nav class="diagnostic-overview-actions" aria-label="诊断操作">
+        <em>${escapeHtml(signal.selected ? selectedResourceLabel(signal.selected) : "未选择候选")}</em>
+        <button type="button" data-cookie-diagnostic ${cookieLoading ? "disabled" : ""}>${cookieLoading ? "检查中" : "检查登录态"}</button>
+      </nav>
     </header>
     <div class="diagnostic-chain">
       ${chain.map(item => `<section class="${escapeHtml(item.state)}">
@@ -3534,8 +3599,13 @@ function currentDiagnosticOverviewHtml() {
       </section>`).join("")}
     </div>
     <div class="diagnostic-platform-flags" aria-label="平台播放接口线索">
-      ${platformFlags.map(([label, ok]) => `<span class="${ok ? "pass" : "wait"}">${escapeHtml(label)} ${ok ? "已抓到" : label === "DRM" ? "未见" : "缺失"}</span>`).join("")}
+      ${platformFlags.map(([label, ok]) => {
+        const pendingCookie = label === "cookie" && !cookieChecked;
+        const text = ok ? "已抓到" : label === "DRM" ? "未见" : pendingCookie ? "未检查" : "缺失";
+        return `<span class="${ok ? "pass" : "wait"}">${escapeHtml(label)} ${escapeHtml(text)}</span>`;
+      }).join("")}
     </div>
+    ${cookieDiagnosticHtml()}
   </section>`;
 }
 
@@ -4341,6 +4411,7 @@ async function collectContextNow() {
   const nextTabId = response.tab?.id ?? null;
   if (currentTabId !== null && nextTabId !== null && currentTabId !== nextTabId) {
     resourceSelectionPinned = false;
+    cookieDiagnostic = { status: "idle", summary: null, error: "", checked_at: 0 };
   }
   currentTabId = response.tab?.id ?? null;
   page = response.page;
@@ -4355,6 +4426,9 @@ async function collectContextNow() {
   preflightResourceUrl = "";
   preflightResultsByUrl = new Map();
   lastPagePreflightReport = null;
+  if (cookieDiagnostic.status !== "idle") {
+    cookieDiagnostic = { status: "idle", summary: null, error: "", checked_at: 0 };
+  }
   renderContext();
   return true;
 }
@@ -4563,6 +4637,48 @@ async function requestPagePreflightReport(candidates) {
   });
   if (response.error) throw new Error(response.error);
   return response.report || null;
+}
+
+async function inspectCookieContext() {
+  if (!HAS_EXTENSION_API) {
+    cookieDiagnostic = { status: "error", summary: null, error: "当前环境不是扩展 Side Panel，无法读取浏览器 cookie。", checked_at: Date.now() };
+    renderDiagnosticOverview();
+    return false;
+  }
+  cookieDiagnostic = { status: "loading", summary: null, error: "", checked_at: Date.now() };
+  renderDiagnosticOverview();
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: "inspect-cookie-context",
+      targetTabId: currentTabId,
+      page,
+      resources: selectedResourcesForMediaTask()
+    });
+    if (response?.error) throw new Error(response.error);
+    const summary = response?.cookie_context || {};
+    const count = Number(summary.count || 0);
+    cookieDiagnostic = {
+      status: count > 0 ? "ready" : "empty",
+      summary,
+      error: "",
+      checked_at: Date.now()
+    };
+    els.taskMessage.textContent = count > 0
+      ? `已确认登录态：${cookieDiagnosticSummaryText(summary)}。`
+      : "没有读到当前页/媒体域 Cookie；如需登录态，请确认已在原页面登录并播放视频。";
+    renderDiagnosticOverview();
+    return count > 0;
+  } catch (error) {
+    cookieDiagnostic = {
+      status: "error",
+      summary: null,
+      error: error?.message || "登录态检查失败。",
+      checked_at: Date.now()
+    };
+    els.taskMessage.textContent = cookieDiagnostic.error;
+    renderDiagnosticOverview();
+    return false;
+  }
 }
 
 function applyPagePreflightReport(report) {
@@ -7099,6 +7215,13 @@ els.resources.addEventListener("click", event => {
     startTask("page_text");
   }
 });
+if (els.diagnosticOverview) {
+  els.diagnosticOverview.addEventListener("click", event => {
+    const button = event.target.closest("[data-cookie-diagnostic]");
+    if (!button) return;
+    inspectCookieContext();
+  });
+}
 function handleRouteAction(action) {
   if (action === "redetect") {
     collect();

@@ -1772,6 +1772,9 @@ assert.match(elements.get("#diagnosticOverview").innerHTML, /播放接口/);
 assert.match(elements.get("#diagnosticOverview").innerHTML, /页面上下文/);
 assert.match(elements.get("#diagnosticOverview").innerHTML, /下载预检/);
 assert.match(elements.get("#diagnosticOverview").innerHTML, /Cookie 不后台预读/);
+assert.match(elements.get("#diagnosticOverview").innerHTML, /登录态/);
+assert.match(elements.get("#diagnosticOverview").innerHTML, /检查登录态/);
+assert.match(elements.get("#diagnosticOverview").innerHTML, /cookie 未检查/);
 assert.match(elements.get("#diagnosticOverview").innerHTML, /iframe 缺失/);
 assert.match(elements.get("#diagnosticOverview").innerHTML, /POST\/body 缺失/);
 assert.match(elements.get("#resources").innerHTML, /第 1 顺位/);
@@ -1939,8 +1942,39 @@ assert.match(elements.get("#diagnosticOverview").innerHTML, /dtoken 已抓到/);
 assert.match(elements.get("#diagnosticOverview").innerHTML, /POST\/body 已抓到/);
 assert.match(elements.get("#diagnosticOverview").innerHTML, /iframe 已抓到/);
 assert.match(elements.get("#diagnosticOverview").innerHTML, /Cookie 不后台预读/);
+assert.match(elements.get("#diagnosticOverview").innerHTML, /cookie 未检查/);
 assert.doesNotMatch(elements.get("#diagnosticOverview").innerHTML, /dtoken=abc/);
 assert.doesNotMatch(elements.get("#diagnosticOverview").innerHTML, /objectid=123/);
+
+vm.runInContext(`
+cookieDiagnostic = {
+  status: "ready",
+  summary: {
+    count: 4,
+    domain_count: 2,
+    partitioned_count: 1,
+    partition_key_count: 1,
+    target_count: 5,
+    domains: [
+      { domain: "chaoxing.com", count: 3 },
+      { domain: "mooc1.chaoxing.com", count: 1 }
+    ]
+  },
+  error: "",
+  checked_at: Date.now()
+};
+renderDiagnosticOverview();
+`, context);
+assert.match(elements.get("#diagnosticOverview").innerHTML, /4 cookie/);
+assert.match(elements.get("#diagnosticOverview").innerHTML, /cookie 已抓到/);
+assert.match(elements.get("#diagnosticOverview").innerHTML, /已确认当前页可读取登录态/);
+assert.match(elements.get("#diagnosticOverview").innerHTML, /chaoxing\.com · 3/);
+assert.match(elements.get("#diagnosticOverview").innerHTML, /mooc1\.chaoxing\.com · 1/);
+assert.doesNotMatch(elements.get("#diagnosticOverview").innerHTML, /secret/);
+const cookieAuditReport = vm.runInContext("currentPageAuditReport()", context);
+assert.match(cookieAuditReport, /登录态诊断: ready \/ 2 域 \/ 4 条 \/ 1 分区 \/ 5 目标/);
+assert.doesNotMatch(cookieAuditReport, /secret/);
+vm.runInContext(`cookieDiagnostic = { status: "idle", summary: null, error: "", checked_at: 0 };`, context);
 
 vm.runInContext(`
 resources = [

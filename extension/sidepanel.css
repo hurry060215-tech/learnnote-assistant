@@ -10678,6 +10678,30 @@ body[data-panel-mode="diagnostics"] .resource-panel {
   white-space: nowrap;
 }
 
+.diagnostic-overview-actions {
+  min-width: 0;
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+}
+
+.diagnostic-overview-actions button {
+  min-height: 24px;
+  border: 1px solid #cbdaf0;
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--accent);
+  padding: 3px 8px;
+  font-size: 9.5px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.diagnostic-overview-actions button:disabled {
+  cursor: wait;
+  opacity: 0.68;
+}
+
 .diagnostic-chain {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -10766,4 +10790,71 @@ body[data-panel-mode="diagnostics"] .resource-panel {
   border-color: rgba(20, 150, 74, 0.24);
   background: rgba(20, 150, 74, 0.08);
   color: var(--success);
+}
+
+.diagnostic-cookie-evidence {
+  display: grid;
+  gap: 6px;
+  border: 1px solid #dbe7f5;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 7px;
+}
+
+.diagnostic-cookie-evidence.pass {
+  border-color: rgba(20, 150, 74, 0.24);
+  background: #f5fcf7;
+}
+
+.diagnostic-cookie-evidence.warn,
+.diagnostic-cookie-evidence.wait {
+  border-color: rgba(196, 122, 5, 0.28);
+  background: #fffaf0;
+}
+
+.diagnostic-cookie-evidence.miss {
+  border-color: rgba(217, 45, 32, 0.22);
+  background: #fff7f6;
+}
+
+.diagnostic-cookie-evidence div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.diagnostic-cookie-evidence span {
+  color: #526176;
+  font-size: 9.5px;
+  font-weight: 900;
+}
+
+.diagnostic-cookie-evidence strong {
+  color: var(--ink);
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.diagnostic-cookie-evidence small {
+  color: var(--muted);
+  font-size: 9.5px;
+  line-height: 1.35;
+}
+
+.diagnostic-cookie-evidence p {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+}
+
+.diagnostic-cookie-evidence em {
+  border: 1px solid rgba(34, 96, 166, 0.14);
+  border-radius: 999px;
+  background: rgba(34, 96, 166, 0.07);
+  color: #526176;
+  padding: 2px 6px;
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 850;
 }
