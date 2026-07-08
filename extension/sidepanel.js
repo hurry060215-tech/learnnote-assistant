@@ -6579,6 +6579,70 @@ function visualStudyHandoutHtml(task, transcript = null) {
   </section>`;
 }
 
+function visualStudyCorrelationHtml(task, transcript = null) {
+  const windows = visualWindows(task);
+  if (!windows.length) return "";
+  const shown = windows.slice(0, 8);
+  const rows = shown.map((window, index) => {
+    const id = String(window.id || `W${String(index + 1).padStart(3, "0")}`);
+    const evidence = visualWindowEvidenceState(task, window, index);
+    const image = safeNoteMediaUrl(window.grid_url || "");
+    const cues = visualWindowCueSegments(window, transcript, 3);
+    const points = visualWindowSummaryItems(window, transcript).slice(0, 2);
+    const hasQuestion = Boolean(cues.length || window.transcript_excerpt || (window.frame_timestamps || []).length);
+    const cueText = cues.length
+      ? `${cues.length} 段 · ${fmt(cues[0].start)} 起`
+      : window.transcript_excerpt
+        ? "有摘录"
+        : "待补字幕";
+    const summaryText = points.length
+      ? points[0]
+      : "等待局部总结";
+    return `<article class="${escapeHtml(evidence.state)}" data-visual-window="${escapeHtml(id)}">
+      <div class="visual-study-correlation-id">
+        <b>${escapeHtml(id)}</b>
+        <time>${fmt(window.start)} - ${fmt(window.end)}</time>
+      </div>
+      <div>
+        <span>画面</span>
+        <strong>${image ? "截图网格" : "无图"}</strong>
+        <small>${escapeHtml(evidence.label)} · ${Number(window.frame_count || 0)} 帧</small>
+      </div>
+      <div>
+        <span>字幕</span>
+        <strong>${escapeHtml(cueText)}</strong>
+        <small>${escapeHtml(cues[0]?.text ? cues[0].text.slice(0, 86) : window.transcript_excerpt || "切到字幕页核对完整上下文")}</small>
+      </div>
+      <div>
+        <span>局部总结</span>
+        <strong>${escapeHtml(summaryText.length > 74 ? `${summaryText.slice(0, 74).trim()}...` : summaryText)}</strong>
+        <small>${points[1] ? escapeHtml(points[1].slice(0, 96)) : escapeHtml(evidence.detail)}</small>
+      </div>
+      <div>
+        <span>复习动作</span>
+        <strong>${hasQuestion ? "可自测" : "先看片"}</strong>
+        <small>${hasQuestion ? "按画面解释字幕中的标题、公式、代码或操作状态" : "先描述截图再补字幕"}</small>
+      </div>
+      <nav>
+        <button type="button" data-media-seek-time="${seekTimeValue(window.start)}">回看</button>
+        <button type="button" data-switch-result-tab="transcript" data-focus-visual-window="${escapeHtml(id)}">字幕</button>
+        <button type="button" data-switch-result-tab="note">笔记</button>
+      </nav>
+    </article>`;
+  });
+  const remaining = Math.max(0, windows.length - shown.length);
+  return `<section class="visual-study-correlation" aria-label="切片证据核对矩阵">
+    <header>
+      <div>
+        <span>证据核对矩阵</span>
+        <strong>逐窗对齐画面、字幕、局部总结和复习动作</strong>
+      </div>
+      <small>${shown.length}/${windows.length} 窗口${remaining ? ` · 余 ${remaining}` : ""}</small>
+    </header>
+    <div>${rows.join("")}</div>
+  </section>`;
+}
+
 function visualWindowEvidenceState(task, window, index = 0) {
   const diag = task?.summary_diagnostics || {};
   const id = String(window?.id || `W${String(index + 1).padStart(3, "0")}`);
@@ -6674,6 +6738,7 @@ function visualStudyDeck(task, transcript = null) {
       </div>
     </div>
     ${visualStudyOverviewHtml(task, transcript)}
+    ${visualStudyCorrelationHtml(task, transcript)}
     ${visualStudyHandoutHtml(task, transcript)}
     <div class="side-visual-study-list">
       ${windows.slice(0, 8).map((window, index) => {
