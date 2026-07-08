@@ -183,6 +183,7 @@ let urlPreflightResourceUrl = "";
 let urlPreflightResult = null;
 let urlPagePreflightUrl = "";
 let urlPagePreflightResource = null;
+let urlPagePreflightReport = null;
 let lastHealthData = null;
 let pendingLocalFile = null;
 let pendingRerunNotice = null;
@@ -2248,11 +2249,17 @@ function selectedPagePreflightResource(url) {
   return { ...urlPagePreflightResource };
 }
 
+function selectedPagePreflightReport(url) {
+  if (!url || url !== urlPagePreflightUrl || !urlPagePreflightReport) return null;
+  return urlPagePreflightReport;
+}
+
 function clearUrlPreflight() {
   urlPreflightResourceUrl = "";
   urlPreflightResult = null;
   urlPagePreflightUrl = "";
   urlPagePreflightResource = null;
+  urlPagePreflightReport = null;
   renderUrlPreflightReport(null, null);
 }
 
@@ -2298,6 +2305,7 @@ function applyUrlPreflightToResource(resource) {
 function rememberUrlPagePreflight(pageUrl, report) {
   urlPagePreflightUrl = pageUrl || "";
   urlPagePreflightResource = null;
+  urlPagePreflightReport = report && typeof report === "object" ? report : null;
   const selectedUrl = report?.selected_url || "";
   const candidates = Array.isArray(report?.candidates) ? report.candidates : [];
   const selectedItem = candidates.find(item => {
@@ -5522,6 +5530,7 @@ async function startUrlTask(mode = "video") {
   }
   const resource = manualUrlResource(url);
   const pagePreflightResource = resource ? null : selectedPagePreflightResource(url);
+  const pagePreflightReport = resource ? null : selectedPagePreflightReport(url);
   const resources = resource ? [resource] : pagePreflightResource ? [pagePreflightResource] : [];
   els.startUrlButton.disabled = true;
   if (els.preflightUrlButton) els.preflightUrlButton.disabled = true;
@@ -5536,6 +5545,7 @@ async function startUrlTask(mode = "video") {
         title: els.titleInput.value.trim() || url,
         page_text: "",
         resources,
+        page_preflight_report: pagePreflightReport || {},
         cookies: [],
         options: readOptions()
       })

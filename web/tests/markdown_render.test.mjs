@@ -2876,6 +2876,10 @@ assert.equal(posts[5].resources[0].status_code, 200);
 assert.equal(posts[5].resources[0].content_length, 654321);
 assert.equal(posts[5].resources[0].request_type, "manual-page-preflight");
 assert.equal(posts[5].resources[0].page_url, "https://course.example.com/watch?id=page-preflight");
+assert.equal(posts[5].page_preflight_report.ready, true);
+assert.equal(posts[5].page_preflight_report.candidate_count, 5);
+assert.equal(posts[5].page_preflight_report.downloadable_count, 2);
+assert.equal(posts[5].page_preflight_report.candidates[0].preflight.resolved_url, "https://media.example.com/page/final-master.m3u8");
 
 const localUploads = [];
 const droppedFile = { name: "drag-local-lesson.mkv", type: "", size: 456789 };
