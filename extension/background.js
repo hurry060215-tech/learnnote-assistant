@@ -1458,6 +1458,28 @@ async function collectPageData(tab) {
   return mergePageContexts(tab, remembered);
 }
 
+globalThis.__learnnoteE2E = {
+  async collectContextForTab(tabId) {
+    const tab = await chrome.tabs.get(Number(tabId));
+    const page = await collectPageData(tab);
+    const captureLog = await loadCaptureLog(tab.id);
+    const resources = mergeAndRankResources([
+      ...(page.resources || []),
+      ...(resourceByTab.get(tab.id) || []),
+      ...(captureLog.resources || [])
+    ], page, tab);
+    return {
+      tab: { id: tab.id, url: tab.url || "", title: tab.title || "", status: tab.status || "" },
+      page,
+      resources,
+      capture_log: {
+        total: Number(captureLog.resources?.length || 0),
+        restored: Number(captureLog.resources?.length || 0)
+      }
+    };
+  }
+};
+
 function normalizedCookiePartitionKey(key = null) {
   if (!key || typeof key !== "object") return null;
   const normalized = {};

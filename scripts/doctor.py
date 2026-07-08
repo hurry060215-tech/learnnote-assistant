@@ -187,11 +187,12 @@ def script_check() -> Check:
         ROOT / "start-backend.ps1",
         ROOT / "scripts" / "serve-samples.ps1",
         ROOT / "scripts" / "e2e-local-smoke.ps1",
+        ROOT / "scripts" / "e2e-extension-smoke.ps1",
     ]
     missing = [str(path.relative_to(ROOT)) for path in required if not path.exists()]
     if missing:
         return Check("local scripts", "FAIL", f"missing: {', '.join(missing)}")
-    return Check("local scripts", "PASS", "start, sample server, and E2E smoke scripts are present")
+    return Check("local scripts", "PASS", "start, sample server, backend smoke, and real extension smoke scripts are present")
 
 
 def collect_checks() -> list[Check]:
@@ -232,6 +233,7 @@ def main() -> int:
         print("  .\\start-backend.ps1")
         print("  .\\scripts\\serve-samples.ps1")
         print("  .\\scripts\\e2e-local-smoke.ps1 -OpenBrowser")
+        print("  .\\scripts\\e2e-extension-smoke.ps1")
     statuses = {check.status for check in checks}
     if "FAIL" in statuses:
         return 1

@@ -187,6 +187,19 @@ That script starts a temporary backend and sample server, then verifies MP4 pref
 .\scripts\e2e-local-smoke.ps1 -OpenBrowser
 ```
 
+Run the real extension smoke when changing browser collection, `webRequest`, iframe fallback, or Side Panel start contracts:
+
+```powershell
+cd D:\Projects\learnnote-assistant
+.\scripts\e2e-extension-smoke.ps1
+```
+
+That script launches a temporary Edge profile with the unpacked extension, starts the backend and sample server, then verifies the real MV3 service worker plus content/background collection for MP4, HLS, POST play API request body replay, and blob iframe page-scan fallback. Use Chrome explicitly when needed:
+
+```powershell
+.\scripts\e2e-extension-smoke.ps1 -Browser chrome
+```
+
 For real sites, use the same evidence model instead of a site-specific assumption:
 
 - A direct media URL, HLS/DASH manifest, or yt-dlp supported page is enough.
