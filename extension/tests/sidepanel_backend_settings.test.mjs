@@ -57,7 +57,13 @@ const context = {
     calls.fetchUrls.push(String(url));
     const value = String(url);
     if (value.endsWith("/health")) {
-      return { json: async () => ({ ffmpeg: true }) };
+      return { json: async () => ({
+        ffmpeg: true,
+        model_provider_presets: [
+          { key: "openai", label: "OpenAI 官方", base_url: "https://api.openai.com/v1", model: "gpt-4.1-mini", transcriber: "openai-compatible", whisper_model: "whisper-1", tier: "mainstream", recommended: true, capabilities: ["text", "vision", "asr"] },
+          { key: "openrouter", label: "OpenRouter", base_url: "https://openrouter.ai/api/v1", model: "openai/gpt-4.1-mini", transcriber: "faster-whisper", whisper_model: "small", tier: "compatible", recommended: false, capabilities: ["text", "vision"] }
+        ]
+      }) };
     }
     if (value.endsWith("/api/tasks")) {
       return { json: async () => ({ tasks: [] }) };
@@ -114,6 +120,9 @@ assert.match(sidepanelHtml, /id="providerHint"/);
 assert.match(sidepanelHtml, /id="backendSettingsPanel"/);
 assert.match(sidepanelHtml, /id="backendUrlInput"/);
 assert.match(sidepanelHtml, /id="saveBackendSettingsButton"/);
+assert.match(elements.get("#llmProvider").innerHTML, /OpenAI 官方/);
+assert.doesNotMatch(elements.get("#llmProvider").innerHTML, /OpenRouter/);
+assert.match(elements.get("#llmProvider").innerHTML, /手动配置 OpenAI-compatible/);
 assert.equal(elements.get("#llmProvider").value, "custom");
 assert.equal(elements.get("#llmModel").value, "openai/gpt-4.1-mini");
 assert.equal(elements.get("#llmBaseUrl").value, "https://openrouter.ai/api/v1");

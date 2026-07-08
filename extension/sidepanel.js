@@ -66,6 +66,7 @@ function normalizeModelProviderPreset(preset) {
 function syncModelProviderPresets(data) {
   const raw = data?.model_provider_presets;
   if (!raw) return;
+  const previous = els?.llmProvider?.value || "";
   const entries = Array.isArray(raw)
     ? raw
     : Object.entries(raw).map(([key, preset]) => ({ ...(preset || {}), key }));
@@ -76,7 +77,25 @@ function syncModelProviderPresets(data) {
     if (preset) next[preset.key] = preset;
   }
   modelProviderPresets = next;
+  renderModelProviderOptions(previous);
   updateModelProviderHint();
+}
+
+function renderModelProviderOptions(preferred = "") {
+  if (!els?.llmProvider) return;
+  const current = preferred || els.llmProvider.value || "";
+  const entries = Object.values(modelProviderPresets)
+    .filter(preset => preset?.key && MAINSTREAM_MODEL_PROVIDER_KEYS.has(preset.key))
+    .sort((left, right) => {
+      const recommendedDelta = Number(Boolean(right.recommended)) - Number(Boolean(left.recommended));
+      if (recommendedDelta) return recommendedDelta;
+      return String(left.label || left.key).localeCompare(String(right.label || right.key), "zh-Hans-CN");
+    });
+  els.llmProvider.innerHTML = [
+    ...entries.map(preset => `<option value="${escapeHtml(preset.key)}">${escapeHtml(preset.label || preset.key)}</option>`),
+    `<option value="custom">手动配置 OpenAI-compatible</option>`
+  ].join("");
+  els.llmProvider.value = modelProviderPresets[current] ? current : "custom";
 }
 
 function modelProviderLabel(key) {
