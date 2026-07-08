@@ -1527,18 +1527,24 @@ assert.match(reviewWorkbenchHtml, /复习笔记/);
 assert.match(reviewWorkbenchHtml, /学习切片/);
 assert.match(reviewWorkbenchHtml, /字幕时间轴/);
 assert.match(reviewWorkbenchHtml, /问答复习/);
-assert.match(reviewWorkbenchHtml, /直取诊断/);
+assert.match(reviewWorkbenchHtml, /学习路径/);
+assert.match(reviewWorkbenchHtml, /读笔记 → 看切片 → 核字幕 → 提问/);
+assert.match(reviewWorkbenchHtml, /高级诊断/);
+assert.doesNotMatch(reviewWorkbenchHtml, /直取诊断/);
 assert.match(reviewWorkbenchHtml, /3 个标题/);
 assert.match(reviewWorkbenchHtml, /2 条记录/);
 assert.match(reviewWorkbenchHtml, /data-switch-result-tab="qa"/);
 assert.match(reviewWorkbenchHtml, /data-switch-result-tab="slices"/);
+assert.match(reviewWorkbenchHtml, /data-switch-result-tab="diagnostics"/);
 assert.match(reviewWorkbenchHtml, /\/api\/tasks\/task-review-workbench\/exports\/markdown/);
 assert.match(reviewWorkbenchHtml, /\/api\/tasks\/task-review-workbench\/exports\/subtitles/);
 assert.match(reviewWorkbenchHtml, /\/api\/tasks\/task-review-workbench\/exports\/visual-windows/);
 assert.match(reviewWorkbenchHtml, /\/api\/tasks\/task-review-workbench\/exports\/media/);
 assert.match(reviewWorkbenchHtml, /\/api\/tasks\/task-review-workbench\/exports\/bundle/);
-assert.match(stylesCss, /\.review-command-grid[\s\S]*grid-template-columns:\s*repeat\(5, minmax\(0, 1fr\)\)/);
+assert.match(reviewWorkbenchHtml, /\/api\/tasks\/task-review-workbench\/exports\/diagnostics/);
+assert.match(stylesCss, /\.review-command-grid[\s\S]*grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)/);
 assert.match(stylesCss, /@container \(max-width: 960px\)[\s\S]*\.review-command-grid[\s\S]*repeat\(3, minmax\(0, 1fr\)\)/);
+assert.match(stylesCss, /@container \(max-width: 960px\)[\s\S]*\.learning-path-steps[\s\S]*repeat\(2, minmax\(0, 1fr\)\)/);
 
 const partialReviewWorkbenchHtml = context.noteReviewWorkbench("", {
   id: "task-review-partial",

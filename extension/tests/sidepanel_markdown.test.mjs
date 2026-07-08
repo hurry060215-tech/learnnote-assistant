@@ -958,16 +958,21 @@ assert.match(reviewWorkbenchHtml, /复习笔记/);
 assert.match(reviewWorkbenchHtml, /学习切片/);
 assert.match(reviewWorkbenchHtml, /字幕时间轴/);
 assert.match(reviewWorkbenchHtml, /问答复习/);
-assert.match(reviewWorkbenchHtml, /直取诊断/);
+assert.match(reviewWorkbenchHtml, /学习路径/);
+assert.match(reviewWorkbenchHtml, /读笔记 → 看切片 → 核字幕 → 提问/);
+assert.match(reviewWorkbenchHtml, /高级诊断/);
+assert.doesNotMatch(reviewWorkbenchHtml, /直取诊断/);
 assert.match(reviewWorkbenchHtml, /3 个标题/);
 assert.match(reviewWorkbenchHtml, /2 条记录/);
 assert.match(reviewWorkbenchHtml, /data-switch-result-tab="qa"/);
 assert.match(reviewWorkbenchHtml, /data-switch-result-tab="slices"/);
+assert.match(reviewWorkbenchHtml, /data-switch-result-tab="diagnostics"/);
 assert.match(reviewWorkbenchHtml, /data-export="markdown"/);
 assert.match(reviewWorkbenchHtml, /data-export="subtitles"/);
 assert.match(reviewWorkbenchHtml, /data-export="visual-windows"/);
 assert.match(reviewWorkbenchHtml, /data-export="media"/);
 assert.match(reviewWorkbenchHtml, /data-export="bundle"/);
+assert.match(reviewWorkbenchHtml, /data-export="diagnostics"/);
 
 const partialReviewWorkbenchHtml = context.noteReviewWorkbench("", {
   id: "side-review-partial",

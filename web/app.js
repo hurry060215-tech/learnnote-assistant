@@ -4717,6 +4717,71 @@ function reviewCommandButton(target, label, enabled = true) {
   return `<button type="button" data-switch-result-tab="${escapeHtml(target)}">${escapeHtml(label)}</button>`;
 }
 
+function learningPathHtml(markdown, task) {
+  if (!task) return "";
+  const windows = visualWindows(task);
+  const headings = noteHeadingStats(markdown);
+  const hasNote = Boolean(task.note_path || markdown);
+  const hasTranscript = hasReadableTranscript(task);
+  const hasVisuals = windows.length > 0;
+  const hasQa = Boolean(hasNote);
+  const steps = [
+    {
+      number: "01",
+      label: "读笔记",
+      value: headings.total ? `${headings.total} 个标题` : hasNote ? "已生成" : "等待总结",
+      detail: hasNote ? "先读课程主题、重点和易错点。" : "任务完成后进入阅读。",
+      target: "note",
+      enabled: hasNote,
+      state: hasNote ? "ready" : "wait"
+    },
+    {
+      number: "02",
+      label: "看切片",
+      value: hasVisuals ? `${windows.length} 个窗口` : task.options?.visual_understanding === false ? "未启用" : "等待抽帧",
+      detail: hasVisuals ? "按时间窗核对 PPT、代码或演示。" : "开启视觉理解后显示画面网格。",
+      target: "slices",
+      enabled: hasVisuals,
+      state: hasVisuals ? "ready" : task.options?.visual_understanding === false ? "skip" : "wait"
+    },
+    {
+      number: "03",
+      label: "核字幕",
+      value: hasTranscript ? "已对齐" : "等待 ASR",
+      detail: hasTranscript ? "用时间戳回查原片上下文。" : asrOptionText(task.options || {}),
+      target: "transcript",
+      enabled: hasTranscript,
+      state: hasTranscript ? "ready" : "wait"
+    },
+    {
+      number: "04",
+      label: "问答复习",
+      value: task.qa?.history_count ? `${task.qa.history_count} 条` : hasQa ? "可提问" : "等待笔记",
+      detail: hasQa ? "基于笔记、字幕和画面索引追问。" : "先生成笔记再提问。",
+      target: "qa",
+      enabled: hasQa,
+      state: task.qa?.history_count ? "ready" : hasQa ? "active" : "wait"
+    }
+  ];
+  return `<section class="learning-path" aria-label="学习路径">
+    <header>
+      <span>学习路径</span>
+      <strong>读笔记 → 看切片 → 核字幕 → 提问</strong>
+    </header>
+    <div class="learning-path-steps">
+      ${steps.map(step => `<article class="${escapeHtml(step.state)}">
+        <b>${escapeHtml(step.number)}</b>
+        <div>
+          <span>${escapeHtml(step.label)}</span>
+          <strong>${escapeHtml(step.value)}</strong>
+          <small>${escapeHtml(step.detail)}</small>
+        </div>
+        ${step.enabled ? `<button type="button" data-switch-result-tab="${escapeHtml(step.target)}">进入</button>` : `<em>待就绪</em>`}
+      </article>`).join("")}
+    </div>
+  </section>`;
+}
+
 function noteReviewWorkbench(markdown, task) {
   if (!task) return "";
   const windows = visualWindows(task);
@@ -4725,6 +4790,7 @@ function noteReviewWorkbench(markdown, task) {
   const hasTranscript = hasReadableTranscript(task);
   const hasVisuals = windows.length > 0;
   const hasDiagnostics = hasTaskDiagnostics(task);
+  const hasAudit = hasTaskAudit(task);
   const hasMedia = hasExportableMedia(task);
   const canContinueMedia = canContinueFromDownloadedMedia(task);
   const mediaName = taskMediaDisplayName(task);
@@ -4756,13 +4822,6 @@ function noteReviewWorkbench(markdown, task) {
       value: task.qa?.history_count ? `${task.qa.history_count} 条记录` : hasNote ? "可提问" : "等待笔记",
       detail: hasNote ? "基于笔记、字幕和画面索引回答。" : "笔记生成后启用任务问答。",
       action: reviewCommandButton("qa", "打开问答", hasNote)
-    },
-    {
-      state: hasDiagnostics ? "ready" : "wait",
-      label: "直取诊断",
-      value: hasDiagnostics ? "有证据" : "暂无诊断",
-      detail: hasDiagnostics ? "查看候选资源、请求上下文和失败原因。" : "失败或下载后会记录证据。",
-      action: reviewCommandButton("diagnostics", "看诊断", hasDiagnostics)
     }
   ];
   const exports = [
@@ -4771,6 +4830,13 @@ function noteReviewWorkbench(markdown, task) {
     hasVisualWindowExport(task) ? `<a href="${escapeHtml(taskExportUrl(task, "visual-windows"))}">切片索引</a>` : "",
     hasMedia ? `<a href="${escapeHtml(taskExportUrl(task, "media"))}">${escapeHtml(mediaName)}</a>` : "",
     hasTaskBundle(task) ? `<a href="${escapeHtml(taskExportUrl(task, "bundle"))}">资料包</a>` : ""
+  ].filter(Boolean);
+  const advanced = [
+    hasDiagnostics ? `<button type="button" data-switch-result-tab="diagnostics">查看诊断</button>` : "",
+    hasDiagnostics ? `<a href="${escapeHtml(taskExportUrl(task, "diagnostics"))}">导出诊断</a>` : "",
+    hasAudit ? `<a href="${escapeHtml(taskExportUrl(task, "audit"))}">导出审计</a>` : "",
+    task.resource_inventory_path ? `<a href="${escapeHtml(taskExportUrl(task, "resource-inventory"))}">候选证据</a>` : "",
+    task.page_preflight_report_path ? `<a href="${escapeHtml(taskExportUrl(task, "page-preflight-report"))}">预检报告</a>` : ""
   ].filter(Boolean);
   const primary = canContinueMedia
     ? `<button type="button" data-rerun-from-media="${escapeHtml(task.id)}">继续切片总结</button>`
@@ -4791,6 +4857,7 @@ function noteReviewWorkbench(markdown, task) {
       </div>
       <div class="review-workbench-primary">${primary}</div>
     </header>
+    ${learningPathHtml(markdown, task)}
     <div class="review-command-grid">
       ${cards.map(card => `<article class="${escapeHtml(card.state)}">
         <span>${escapeHtml(card.label)}</span>
@@ -4800,6 +4867,7 @@ function noteReviewWorkbench(markdown, task) {
       </article>`).join("")}
     </div>
     ${exports.length ? `<nav class="review-export-row" aria-label="快速导出"><span>快速导出</span>${exports.join("")}</nav>` : ""}
+    ${advanced.length ? `<nav class="review-advanced-row" aria-label="高级诊断工具"><span>高级诊断</span>${advanced.join("")}</nav>` : ""}
   </section>`;
 }
 
@@ -5711,7 +5779,7 @@ async function renderDetail() {
     const workbench = selectedTab === "frames"
       ? visualFrameWorkbench(task, transcript)
       : learningSliceWorkbench(task, transcript);
-    els.detail.innerHTML = `${mediaSeekDockHtml(task)}${visionEvidenceBar(task)}${workbench}`;
+    els.detail.innerHTML = `${mediaSeekDockHtml(task)}${learningPathHtml(lastNote, task)}${visionEvidenceBar(task)}${workbench}`;
     bindTaskOverviewActions();
     return;
   }

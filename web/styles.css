@@ -5215,7 +5215,9 @@ button:disabled {
 .review-workbench-primary button,
 .review-command-grid button,
 .review-command-grid span,
-.review-export-row a {
+.review-export-row a,
+.review-advanced-row a,
+.review-advanced-row button {
   min-height: 32px;
   display: inline-flex;
   align-items: center;
@@ -5238,6 +5240,144 @@ button:disabled {
   color: #ffffff;
 }
 
+.learning-path {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #dbe7f6;
+  border-radius: 8px;
+  background: #fbfdff;
+  padding: 11px;
+}
+
+.learning-path header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.learning-path header span {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.learning-path header strong {
+  min-width: 0;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.learning-path-steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.learning-path-steps article {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 4px 8px;
+  align-content: start;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 9px;
+}
+
+.learning-path-steps article.ready {
+  border-color: rgba(20, 150, 74, 0.25);
+}
+
+.learning-path-steps article.active {
+  border-color: rgba(20, 99, 255, 0.3);
+  background: #f7faff;
+}
+
+.learning-path-steps article.skip,
+.learning-path-steps article.wait {
+  background: #f8fafc;
+}
+
+.learning-path-steps b {
+  grid-row: span 2;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: #eef4ff;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.learning-path-steps article.ready b {
+  background: rgba(20, 150, 74, 0.12);
+  color: var(--success);
+}
+
+.learning-path-steps div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.learning-path-steps span,
+.learning-path-steps strong,
+.learning-path-steps small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.learning-path-steps span {
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 850;
+}
+
+.learning-path-steps strong {
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.learning-path-steps small {
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 1.35;
+}
+
+.learning-path-steps button,
+.learning-path-steps em {
+  grid-column: 1 / -1;
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #c9d9ff;
+  border-radius: 7px;
+  background: #f2f6ff;
+  color: var(--accent);
+  padding: 0 8px;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 850;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.learning-path-steps em {
+  border-color: #e2e8f0;
+  background: #f8fafc;
+  color: var(--muted);
+}
+
 .review-command-grid span {
   border-color: #e2e8f0;
   background: #f8fafc;
@@ -5246,7 +5386,9 @@ button:disabled {
 
 .review-workbench-primary button:hover,
 .review-command-grid button:hover,
-.review-export-row a:hover {
+.review-export-row a:hover,
+.review-advanced-row a:hover,
+.review-advanced-row button:hover {
   border-color: var(--accent);
   background: #eaf2ff;
 }
@@ -5258,7 +5400,7 @@ button:disabled {
 
 .review-command-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -5331,6 +5473,28 @@ button:disabled {
   color: var(--muted);
   font-size: 11px;
   font-weight: 850;
+}
+
+.review-advanced-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  border-top: 1px dashed #edf2f7;
+  padding-top: 10px;
+}
+
+.review-advanced-row > span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.review-advanced-row a,
+.review-advanced-row button {
+  border-color: #e0e8f4;
+  background: #fbfcff;
+  color: #475569;
 }
 
 .note-workbench {
@@ -7274,6 +7438,10 @@ select {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  .learning-path-steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .study-map-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -7320,6 +7488,10 @@ select {
   }
 
   .review-command-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .learning-path-steps {
     grid-template-columns: minmax(0, 1fr);
   }
 
