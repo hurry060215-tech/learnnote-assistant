@@ -141,7 +141,15 @@ await new Promise(resolve => setTimeout(resolve, 0));
 const report = await context.runPreflight();
 
 assert.ok(report, "expected page-level preflight report for blob-only playback evidence");
-assert.equal(calls.pagePreflight.resources.length, 0);
+assert.ok(calls.pagePreflight.resources.length >= 2);
+assert.ok(
+  calls.pagePreflight.resources.some(item => item.url === "https://course.example.com/player-iframe" && item.request_type === "page-scan-fallback"),
+  "expected iframe URL to be passed as a backend page-scan context"
+);
+assert.ok(
+  calls.pagePreflight.resources.some(item => item.url === "https://course.example.com/lesson" && item.request_type === "page-scan-fallback"),
+  "expected top page URL to be passed as a backend page-scan context"
+);
 assert.equal(calls.pagePreflight.page.page_url, "https://course.example.com/lesson");
 assert.equal(calls.resourcePreflight, 0);
 assert.equal(context.selectedResource().url, "https://cdn.example.com/live/master.m3u8");

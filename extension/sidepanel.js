@@ -1263,6 +1263,106 @@ function resourcesWithActiveVideoCandidate(items = [], active = page?.active_vid
   return [candidate, ...list];
 }
 
+function isHttpUrl(value = "") {
+  return /^https?:\/\//i.test(String(value || "").trim());
+}
+
+function normalizedResourceUrl(value = "") {
+  return String(value || "").trim().split("#")[0];
+}
+
+function framePageUrl(frame = {}) {
+  return String(frame.page_url || frame.url || frame.frame_url || "").trim();
+}
+
+function addPageFallbackContextCandidate(list, seen, url, options = {}) {
+  const value = String(url || "").trim();
+  if (!isHttpUrl(value)) return;
+  const key = normalizedResourceUrl(value);
+  if (!key || seen.has(key)) return;
+  const pageUrl = String(page?.page_url || "").trim();
+  const frameUrl = String(options.frame_url || value).trim();
+  const referer = String(options.referer || pageUrl || frameUrl || value).trim();
+  seen.add(key);
+  list.push({
+    url: value,
+    source: options.source || "page-fallback-context",
+    kind: "unknown",
+    mime: "",
+    score: options.score ?? 20,
+    label: options.label || "Page scan context",
+    request_type: "page-scan-fallback",
+    page_url: pageUrl || value,
+    frame_url: isHttpUrl(frameUrl) && frameUrl !== pageUrl ? frameUrl : "",
+    initiator: isHttpUrl(pageUrl) && pageUrl !== value ? pageUrl : "",
+    request_headers: isHttpUrl(referer) ? { Referer: referer } : {},
+    frame_id: options.frame_id ?? null,
+    is_main_video: Boolean(options.is_main_video),
+    playback_match: options.playback_match || "page-scan-fallback"
+  });
+}
+
+function pageFallbackContextCandidates(active = page?.active_video, frames = page?.frames || []) {
+  const candidates = [];
+  const seen = new Set();
+  const pageUrl = String(page?.page_url || "").trim();
+  const activeFrameUrl = String(active?.frame_url || "").trim();
+  const activeSrc = String(active?.src || "").trim();
+  const hasSignal = hasActiveVideoSignal(active) || (Array.isArray(frames) && frames.length) || hasCurrentVideoEvidence(resources);
+  if (!hasSignal) return candidates;
+
+  addPageFallbackContextCandidate(candidates, seen, activeFrameUrl, {
+    source: "active-video-frame",
+    label: "Active video frame",
+    frame_id: active?.frame_id ?? null,
+    is_main_video: true,
+    score: 45
+  });
+  if (isHttpUrl(activeSrc)) {
+    addPageFallbackContextCandidate(candidates, seen, activeSrc, {
+      source: "active-video-source-context",
+      label: active?.label || "Active video source context",
+      frame_url: activeFrameUrl || pageUrl,
+      frame_id: active?.frame_id ?? null,
+      is_main_video: true,
+      score: 40
+    });
+  }
+  for (const frame of Array.isArray(frames) ? frames : []) {
+    const url = framePageUrl(frame);
+    addPageFallbackContextCandidate(candidates, seen, url, {
+      source: frame?.has_active_video ? "active-frame-context" : "frame-context",
+      label: frame?.title || (frame?.has_active_video ? "Active player frame" : "Player frame"),
+      frame_url: url,
+      frame_id: frame?.frame_id ?? null,
+      is_main_video: Boolean(frame?.has_active_video),
+      score: frame?.has_active_video ? 44 : 28
+    });
+  }
+  addPageFallbackContextCandidate(candidates, seen, pageUrl, {
+    source: "top-page-context",
+    label: "Top page scan context",
+    frame_url: activeFrameUrl,
+    frame_id: active?.frame_id ?? null,
+    is_main_video: Boolean(active),
+    score: 22
+  });
+  return candidates;
+}
+
+function mergePageFallbackContextCandidates(candidates = []) {
+  const list = Array.isArray(candidates) ? candidates.slice() : [];
+  const seen = new Set(list.map(item => normalizedResourceUrl(item?.url)).filter(Boolean));
+  const contextCandidates = pageFallbackContextCandidates();
+  for (const item of contextCandidates) {
+    const key = normalizedResourceUrl(item?.url);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    list.push(item);
+  }
+  return list;
+}
+
 function isDirectExtractionCandidate(item) {
   return isDownloadableResource(item) || looksLikePlayableEndpoint(item);
 }
@@ -3860,6 +3960,10 @@ function selectedResourcesForTask() {
   ];
 }
 
+function selectedResourcesForMediaTask() {
+  return mergePageFallbackContextCandidates(selectedResourcesForTask());
+}
+
 function preflightCandidatesForStart(mode = "video") {
   if (!isMediaTaskMode(mode)) return [];
   const ordered = selectedResources().filter(item => shouldPreflightBeforeStart(mode, item));
@@ -3892,12 +3996,13 @@ async function requestResourcePreflight(resource) {
 }
 
 async function requestPagePreflightReport(candidates) {
+  const resourcesForReport = mergePageFallbackContextCandidates(candidates || []);
   const response = await chrome.runtime.sendMessage({
     type: "preflight-current-page",
     backendUrl,
     targetTabId: currentTabId,
     page,
-    resources: candidates,
+    resources: resourcesForReport,
     probeLimit: 3
   });
   if (response.error) throw new Error(response.error);
@@ -4041,7 +4146,7 @@ async function startTask(mode = "video") {
       backendUrl,
       targetTabId: currentTabId,
       page,
-      resources: isMediaTaskMode(mode) ? selectedResourcesForTask() : [],
+      resources: isMediaTaskMode(mode) ? selectedResourcesForMediaTask() : [],
       pagePreflightReport: isMediaTaskMode(mode) ? lastPagePreflightReport : null,
       mode,
       options: readOptions()

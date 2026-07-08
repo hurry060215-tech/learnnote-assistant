@@ -208,9 +208,13 @@ await new Promise(resolve => setTimeout(resolve, 0));
 
 assert.equal(calls.preflight, 1);
 assert.equal(calls.start.mode, "download_only");
-assert.equal(calls.start.resources.length, 1);
+assert.ok(calls.start.resources.length >= 1);
 assert.equal(calls.start.resources[0].url, resources[0].url);
 assert.equal(calls.start.resources[0].user_selected, true);
+assert.ok(
+  calls.start.resources.some(item => item.url === page.page_url && item.request_type === "page-scan-fallback"),
+  "expected page-scan fallback context to be available if the selected HLS becomes stale"
+);
 assert.equal(elements.get("#downloadOnlyButton").disabled, false);
 assert.equal(context.canContinueFromDownloadedMedia({
   id: "download-only-task",
