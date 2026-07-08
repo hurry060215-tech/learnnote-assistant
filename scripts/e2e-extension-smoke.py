@@ -413,9 +413,10 @@ def run_browser_checks(cdp: CdpWebSocket, backend: str, samples: str) -> None:
     mp4_page = f"{samples}/mp4.html"
     hls_page = f"{samples}/hls.html"
     post_page = f"{samples}/post-api.html"
+    generic_page = f"{samples}/generic-player.html"
     blob_page = f"{samples}/blob-iframe.html"
     chaoxing_page = f"{samples}/chaoxing-mock.html"
-    tab_ids = open_extension_tabs(cdp, [mp4_page, hls_page, post_page, blob_page, chaoxing_page])
+    tab_ids = open_extension_tabs(cdp, [mp4_page, hls_page, post_page, generic_page, blob_page, chaoxing_page])
 
     mp4_context = collect_extension_context(cdp, mp4_page, tab_ids[mp4_page])
     mp4 = assert_resource(mp4_context, "mp4", lambda item: "/media/sample.mp4" in item.get("url", "") and item.get("kind") == "video")
@@ -435,6 +436,40 @@ def run_browser_checks(cdp: CdpWebSocket, backend: str, samples: str) -> None:
         raise AssertionError(f"POST play API request body was not captured: {post}")
     preflight(backend, post_page, post, "post-play-api")
     print(f"PASS extension collect post-play-api: body={post.get('request_body', {}).get('type') or 'captured'} captured={post_context['captured_count']}")
+
+    generic_context = collect_extension_context(cdp, generic_page, tab_ids[generic_page], wait_ms=1800)
+    generic_api = next(
+        (
+            item for item in generic_context.get("resources", [])
+            if "/api/lesson/resolve" in item.get("url", "")
+        ),
+        None,
+    )
+    generic_decoded = next(
+        (
+            item for item in generic_context.get("resources", [])
+            if (
+                ("/hls/master.m3u8" in item.get("url", "") or "/media/sample.mp4" in item.get("url", ""))
+                and item.get("source") in {"pageHookGlobal", "scriptHint"}
+            )
+        ),
+        None,
+    )
+    generic = generic_decoded or generic_api
+    if generic is None:
+        assert_resource(generic_context, "generic-player-api", lambda item: False)
+    generic_body = (generic_api or generic).get("request_body", {}).get("content", "")
+    if generic_api is None and generic.get("source") != "pageHookGlobal":
+        raise AssertionError(f"Generic player API did not expose the endpoint or decoded response media: {generic_context}")
+    if generic_body and ("generic-lesson-001" not in generic_body or "streamUrl" not in generic_body):
+        raise AssertionError(f"Generic player API request body was malformed: {generic_api or generic}")
+    preflight(backend, generic_page, generic, "generic-player-api")
+    print(
+        "PASS extension collect generic-player-api: "
+        f"endpoint={'yes' if generic_api else 'no'} "
+        f"body={(generic_api or generic).get('request_body', {}).get('type') or 'response-media'} "
+        f"captured={generic_context['captured_count']}"
+    )
 
     blob_context = collect_extension_context(cdp, blob_page, tab_ids[blob_page], wait_ms=2000)
     frame = assert_resource(blob_context, "blob iframe", lambda item: "/player/blob-source.html" in item.get("url", "") or "/player/blob-source.html" in item.get("frame_url", ""))

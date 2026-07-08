@@ -131,7 +131,7 @@ cd D:\Projects\learnnote-assistant
 .\start-learnnote.ps1 -WithSamples
 ```
 
-This prints the Side Panel backend URL plus sample pages for direct MP4, HLS manifest, blob iframe fallback, POST play API replay, and the Chaoxing-style diagnostic mock. The sample server is stopped when the launcher exits, and its logs stay under `data\logs` on the D-drive project path.
+This prints the Side Panel backend URL plus sample pages for direct MP4, HLS manifest, blob iframe fallback, POST play API replay, a generic nested player API, and the Chaoxing-style diagnostic mock. The sample server is stopped when the launcher exits, and its logs stay under `data\logs` on the D-drive project path.
 
 The fastest first-use path is:
 
@@ -216,6 +216,7 @@ Recommended browser checks with the unpacked extension loaded:
 - `HLS`: open `http://127.0.0.1:8777/hls.html`. Chrome may not play native HLS, but the extension should detect `/hls/master.m3u8` from DOM and backend ffmpeg should merge it.
 - `Blob iframe`: open `http://127.0.0.1:8777/blob-iframe.html`. Expected route: iframe/player context plus blob-source mapping; no tab recording.
 - `POST play API`: open `http://127.0.0.1:8777/post-api.html`. Expected route: XHR/POST candidate with safe headers and bounded body, resolving `playUrl` or `sources` to the real media URL.
+- `Generic API`: open `http://127.0.0.1:8777/generic-player.html`. Expected route: generic XHR/POST candidate with JSON body replay, resolving nested `streamUrl`, `manifestUrl`, `play_url`, or fallback source fields to real media.
 - `学习通 mock`: open `http://127.0.0.1:8777/chaoxing-mock.html`. Expected route: outer course page plus iframe player, `ananas/status/play` POST body with `objectid`/`dtoken`, visible cookie, Referer/Origin/XHR evidence, then normal media preflight. This is only a local diagnostic mock; it does not fake progress, answer questions, or call private course-completion APIs.
 
 Run the product verification gate after broad downloader, detector, Side Panel, or startup changes:
@@ -225,7 +226,7 @@ cd D:\Projects\learnnote-assistant
 .\scripts\verify-product.ps1
 ```
 
-That script runs the local doctor, a backend/sample smoke, and a real Edge MV3 extension smoke. It auto-picks loopback ports, keeps runtime artifacts under the D-drive project `data\` tree, and validates MP4, HLS, POST play API, blob iframe fallback, the local Chaoxing-style evidence chain, and an extension-started download-only task. Use Chrome explicitly when browser-specific behavior matters:
+That script runs the local doctor, a backend/sample smoke, and a real Edge MV3 extension smoke. It auto-picks loopback ports, keeps runtime artifacts under the D-drive project `data\` tree, and validates MP4, HLS, POST play API, generic nested player API, blob iframe fallback, the local Chaoxing-style evidence chain, and an extension-started download-only task. Use Chrome explicitly when browser-specific behavior matters:
 
 ```powershell
 .\scripts\verify-product.ps1 -Browser chrome
@@ -260,7 +261,7 @@ cd D:\Projects\learnnote-assistant
 .\scripts\e2e-extension-smoke.ps1
 ```
 
-That script launches a temporary Edge profile with the unpacked extension, starts the backend and sample server, then verifies the real MV3 service worker plus content/background collection for MP4, an extension-started `download_only` task that writes `media.mp4`, HLS, POST play API request body replay, blob iframe page-scan fallback, and the local 学习通-style mock (`ananas/playurl/objectid/dtoken/iframe/cookie`). Use Chrome explicitly when needed:
+That script launches a temporary Edge profile with the unpacked extension, starts the backend and sample server, then verifies the real MV3 service worker plus content/background collection for MP4, an extension-started `download_only` task that writes `media.mp4`, HLS, POST play API request body replay, generic nested player API replay, blob iframe page-scan fallback, and the local 学习通-style mock (`ananas/playurl/objectid/dtoken/iframe/cookie`). Use Chrome explicitly when needed:
 
 ```powershell
 .\scripts\e2e-extension-smoke.ps1 -Browser chrome

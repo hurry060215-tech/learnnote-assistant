@@ -125,6 +125,7 @@ def page(title: str, body: str) -> bytes:
       <a href="/hls.html">HLS</a>
       <a href="/blob-iframe.html">Blob iframe</a>
       <a href="/post-api.html">POST play API</a>
+      <a href="/generic-player.html">Generic API</a>
       <a href="/chaoxing-mock.html">学习通 mock</a>
     </nav>
     {body}
@@ -174,7 +175,7 @@ class SampleHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
-        if parsed.path not in {"/api/play", "/ananas/status/play"}:
+        if parsed.path not in {"/api/play", "/api/lesson/resolve", "/ananas/status/play"}:
             self.send_error(404)
             return
         length = int(self.headers.get("Content-Length") or "0")
@@ -191,6 +192,26 @@ class SampleHandler(BaseHTTPRequestHandler):
                     {"type": "video/mp4", "url": "/media/sample.mp4"},
                 ],
                 "playUrl": "/hls/master.m3u8",
+            }
+        elif parsed.path == "/api/lesson/resolve":
+            payload = {
+                "title": "Generic nested player API mock",
+                "received_body": body,
+                "lesson": {
+                    "id": "generic-lesson-001",
+                    "media": {
+                        "primary": {"streamUrl": "/media/sample.mp4", "mime": "video/mp4"},
+                        "manifest": {"manifestUrl": "/hls/master.m3u8", "mime": "application/vnd.apple.mpegurl"},
+                        "alternatives": [
+                            {"label": "direct mp4 backup", "src": "/media/sample.mp4"},
+                            {"label": "hls backup", "sourceUrl": "/hls/master.m3u8"},
+                        ],
+                    },
+                },
+                "playback": {
+                    "play_url": "/media/sample.mp4",
+                    "referer": "/generic-player.html",
+                },
             }
         else:
             payload = {
@@ -213,8 +234,9 @@ class SampleHandler(BaseHTTPRequestHandler):
   <p class="hint">这些页面用于真实浏览器扩展验证，不依赖外部网站。先启动后端和扩展，再打开任一页面点击 Side Panel 的“总结当前视频”或“预检资源”。</p>
   <pre>MP4: 直接 video src
 HLS: DOM 暴露 master.m3u8
-Blob iframe: 外层页面只含 iframe，内层 fetch mp4 后创建 blob URL
+Blob iframe: 外层页面只有 iframe，内部 fetch mp4 后创建 blob URL
 POST play API: 通过 POST /api/play 返回 playUrl/sources
+Generic API: 非学习通播放器 POST 接口返回嵌套 streamUrl/manifestUrl/play_url
 学习通 mock: 外层课程页 + iframe 播放器 + ananas POST + objectid/dtoken/cookie</pre>
 </section>"""))
             return
@@ -280,6 +302,35 @@ async function load() {
   const data = await response.json();
   document.querySelector('#status').textContent = JSON.stringify(data);
   document.querySelector('#video').src = data.playUrl;
+}
+document.querySelector('#reload').onclick = load;
+load();
+</script>"""))
+            return
+        if path == "/generic-player.html":
+            self.send_bytes(page("Generic nested player API sample", """
+<section>
+  <h1>通用播放器 API 样例</h1>
+  <video id="video" controls autoplay muted></video>
+  <p class="hint">这个页面不是学习通专用：它模拟任意网站的播放器接口，POST 后返回嵌套的 <code>streamUrl</code>、<code>manifestUrl</code>、<code>play_url</code> 和备选 sources。</p>
+  <p class="hint" id="status">等待 /api/lesson/resolve...</p>
+  <button id="reload">重新请求通用播放 API</button>
+</section>
+<script>
+window.lessonPlayerConfig = {
+  lessonId: 'generic-lesson-001',
+  resolver: '/api/lesson/resolve',
+  media: { backup: '/hls/master.m3u8' }
+};
+async function load() {
+  const response = await fetch('/api/lesson/resolve?lesson=generic-lesson-001', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+    body: JSON.stringify({ lessonId: 'generic-lesson-001', want: ['streamUrl', 'manifestUrl', 'play_url'] })
+  });
+  const data = await response.json();
+  document.querySelector('#status').textContent = JSON.stringify(data);
+  document.querySelector('#video').src = data.playback.play_url;
 }
 document.querySelector('#reload').onclick = load;
 load();

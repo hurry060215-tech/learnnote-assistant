@@ -25,3 +25,4 @@ if ($OpenBrowser) {
 
 Set-Location $projectRoot
 & $python @argsList
+exit $LASTEXITCODE

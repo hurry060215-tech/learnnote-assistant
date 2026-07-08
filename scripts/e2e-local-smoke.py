@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import socket
 import urllib.request
 from pathlib import Path
 
@@ -14,6 +15,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 BACKEND_PORT = 8765
 SAMPLES_PORT = 8777
+
+
+def free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
 
 
 def project_python() -> str:
@@ -161,6 +168,10 @@ def main() -> None:
     parser.add_argument("--samples-port", type=int, default=SAMPLES_PORT)
     parser.add_argument("--open-browser", action="store_true", help="Launch Chrome/Edge with a temporary profile and the unpacked extension.")
     args = parser.parse_args()
+    if args.backend_port <= 0:
+        args.backend_port = free_port()
+    if args.samples_port <= 0:
+        args.samples_port = free_port()
 
     python = project_python()
     log_dir = ROOT / "data" / "test-runs" / "e2e-logs"
@@ -194,6 +205,7 @@ def main() -> None:
         mp4_url = f"{samples}/media/sample.mp4"
         hls_url = f"{samples}/hls/master.m3u8"
         post_url = f"{samples}/api/play"
+        generic_url = f"{samples}/api/lesson/resolve"
         page_url = f"{samples}/mp4.html"
 
         mp4 = candidate(mp4_url, kind="video", source="dom", request_headers={"Referer": page_url})
@@ -207,10 +219,20 @@ def main() -> None:
             request_headers={"Referer": f"{samples}/post-api.html", "Origin": samples, "X-Requested-With": "XMLHttpRequest"},
             request_body={"content": "lesson=smoke&objectid=abc&dtoken=def", "type": "form"},
         )
+        generic = candidate(
+            generic_url,
+            kind="unknown",
+            source="webRequest",
+            request_type="xmlhttprequest",
+            method="POST",
+            request_headers={"Referer": f"{samples}/generic-player.html", "Origin": samples, "X-Requested-With": "XMLHttpRequest"},
+            request_body={"content": '{"lessonId":"generic-lesson-001","want":["streamUrl","manifestUrl","play_url"]}', "type": "json"},
+        )
 
         preflight(backend, page_url, mp4, "mp4")
         preflight(backend, f"{samples}/hls.html", hls, "hls")
         preflight(backend, f"{samples}/post-api.html", post, "post-play-api")
+        preflight(backend, f"{samples}/generic-player.html", generic, "generic-player-api")
         start_download_only_task(backend, page_url, mp4)
 
         report = request_json("POST", f"{backend}/api/media/preflight-current-page", {

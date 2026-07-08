@@ -32,6 +32,7 @@ from app.downloader import (
     ffmpeg_cookies_option,
     infer_manifest_url_from_fragment,
     infer_sibling_manifest_urls_from_fragment,
+    request_body_for_candidate,
     score_resource,
     source_rank,
     ytdlp_headers_from_browser_context,
@@ -57,6 +58,33 @@ class ResourceDetectionTests(unittest.TestCase):
         self.assertEqual(Path(os.environ["TEMP"]).resolve(), TEMP_DIR.resolve())
         self.assertEqual(Path(os.environ["TMPDIR"]).resolve(), TEMP_DIR.resolve())
         self.assertTrue(TEMP_DIR.exists())
+
+    def test_request_body_replay_does_not_post_to_explicit_media_files(self) -> None:
+        body = {"content": "lesson=abc&token=secret", "type": "form"}
+        manifest = ResourceCandidate(
+            url="https://cdn.example.com/course/master.m3u8",
+            kind="hls",
+            method="POST",
+            request_body=body,
+        )
+        video = ResourceCandidate(
+            url="https://cdn.example.com/course/video.mp4",
+            kind="video",
+            method="POST",
+            request_body=body,
+        )
+        endpoint = ResourceCandidate(
+            url="https://course.example.com/api/play",
+            kind="hls",
+            method="POST",
+            request_body=body,
+        )
+
+        self.assertEqual(request_body_for_candidate(manifest, manifest.url), ("GET", None))
+        self.assertEqual(request_body_for_candidate(video, video.url), ("GET", None))
+        method, encoded = request_body_for_candidate(endpoint, endpoint.url)
+        self.assertEqual(method, "POST")
+        self.assertEqual(encoded, b"lesson=abc&token=secret")
 
     def test_storage_writes_task_and_json_atomically(self) -> None:
         task = create_task("current_page", "Atomic write lesson", "https://course.example.com/lesson")

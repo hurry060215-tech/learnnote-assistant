@@ -1269,7 +1269,11 @@ def download_headers_for_candidate(
     target_url = url or (candidate.url if candidate else "")
     headers = browser_request_headers_for_candidate(candidate)
     headers.pop("Range", None)
-    if candidate and url and url != candidate.url:
+    if candidate and (
+        (url and url != candidate.url)
+        or MANIFEST_EXT_RE.search(target_url.lower())
+        or MEDIA_EXT_RE.search(target_url.lower())
+    ):
         headers.pop("Content-Type", None)
 
     headers.setdefault("User-Agent", "Mozilla/5.0 LearnNoteAssistant/0.1")
@@ -1745,6 +1749,8 @@ def request_body_for_candidate(candidate: ResourceCandidate | None, target_url: 
     if not candidate:
         return "GET", None
     if target_url and target_url != candidate.url:
+        return "GET", None
+    if target_url and (MANIFEST_EXT_RE.search(target_url.lower()) or MEDIA_EXT_RE.search(target_url.lower())):
         return "GET", None
     method = str(candidate.method or "GET").upper()
     if method not in REQUEST_BODY_REPLAY_METHODS:

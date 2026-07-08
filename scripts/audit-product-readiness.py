@@ -310,6 +310,8 @@ def build_matrix() -> list[ReadinessItem]:
         "hls.html",
         "blob-iframe.html",
         "post-api.html",
+        "generic-player.html",
+        "/api/lesson/resolve",
         "chaoxing-mock.html",
         "ananas/status/play",
     ])
@@ -317,7 +319,7 @@ def build_matrix() -> list[ReadinessItem]:
         "local_regression_samples",
         "Local regression samples",
         "pass" if samples_ready else "fail",
-        "MP4, HLS, blob iframe, POST play API, and Chaoxing-style mock are covered by local and extension smoke gates." if samples_ready else "Local sample or smoke coverage is incomplete.",
+        "MP4, HLS, blob iframe, generic/POST play APIs, and Chaoxing-style mock are covered by local and extension smoke gates." if samples_ready else "Local sample or smoke coverage is incomplete.",
         [
             (ROOT / "scripts" / "serve-samples.py", "sample pages and generated fixtures"),
             (ROOT / "scripts" / "e2e-local-smoke.py", "backend/sample smoke"),
@@ -352,16 +354,19 @@ def build_matrix() -> list[ReadinessItem]:
 
     generic_ready = has_all(sidepanel_js + audit_real_site + samples, [
         "playUrl",
+        "streamUrl",
+        "manifestUrl",
+        "generic-player.html",
         "MediaSource",
         "iframe",
         "request_body",
         "referer",
-    ]) and has_any(sidepanel_js + samples, ["videoUrl", "hls", "dashUrl", "play_url"])
+    ]) and has_any(sidepanel_js + samples, ["videoUrl", "hls", "dashUrl", "play_url", "/api/lesson/resolve"])
     rows.append(item(
         "generic_adapter_direction",
         "Generic website adapter direction",
         "pass" if generic_ready else "fail",
-        "Generic direct-download routes cover DOM/performance/webRequest/page-hook/API/body/iframe/blob-MSE clues instead of a single site-only path." if generic_ready else "Generic adapter evidence is too site-specific or incomplete.",
+        "Generic direct-download routes cover DOM/performance/webRequest/page-hook/API/body/iframe/blob-MSE clues plus a non-Chaoxing nested player API sample instead of a single site-only path." if generic_ready else "Generic adapter evidence is too site-specific or incomplete.",
         [
             (ROOT / "extension" / "sidepanel.js", "candidate ranking and preflight source switching"),
             (ROOT / "scripts" / "audit-real-site.py", "generic signal profile"),
