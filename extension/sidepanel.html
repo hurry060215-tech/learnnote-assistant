@@ -56,6 +56,16 @@
             页面文本
           </button>
         </div>
+        <div class="product-mode-bar" aria-label="面板视图">
+          <button id="studyModeButton" type="button" class="active" data-panel-mode="study">
+            <svg viewBox="0 0 24 24"><path d="M5 5h14v14H5z"/><path d="M8 9h8M8 13h5M8 17h6"/></svg>
+            学习流程
+          </button>
+          <button id="diagnosticModeButton" type="button" data-panel-mode="diagnostics">
+            <svg viewBox="0 0 24 24"><path d="M4 5h16v5H4zM4 14h16v5H4z"/><path d="M8 10v4M16 10v4"/></svg>
+            诊断证据
+          </button>
+        </div>
         <div id="sourceRouteRail" class="source-route-rail" aria-label="学习来源状态"></div>
         <div class="capture-cockpit" aria-label="当前页直取生产线">
           <section>
@@ -124,7 +134,7 @@
         <input id="fileInput" type="file" accept="video/*,.mp4,.m4v,.mov,.mkv,.webm,.flv,.avi">
       </section>
 
-      <section class="resource-panel">
+      <section id="resourcePanel" class="resource-panel" hidden>
         <div class="section-head compact">
           <span>候选资源</span>
           <b id="resourceCount">0</b>

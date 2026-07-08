@@ -171,6 +171,7 @@ let taskHistory = [];
 let lastHealthData = null;
 let pendingLocalFile = null;
 let activeSource = "summarize";
+let panelMode = "study";
 
 const els = {
   backendStatus: document.querySelector("#backendStatus"),
@@ -185,6 +186,7 @@ const els = {
   readiness: document.querySelector("#readiness"),
   routeSummary: document.querySelector("#routeSummary"),
   extractionPlan: document.querySelector("#extractionPlan"),
+  resourcePanel: document.querySelector("#resourcePanel"),
   resources: document.querySelector("#resources"),
   resourceInspector: document.querySelector("#resourceInspector"),
   summarizeButton: document.querySelector("#summarizeButton"),
@@ -230,6 +232,8 @@ const els = {
   mediaButton: document.querySelector("#mediaButton"),
   downloadButton: document.querySelector("#downloadButton"),
   openWebButton: document.querySelector("#openWebButton"),
+  studyModeButton: document.querySelector("#studyModeButton"),
+  diagnosticModeButton: document.querySelector("#diagnosticModeButton"),
   settingsButton: document.querySelector("#settingsButton"),
   backendSettingsPanel: document.querySelector("#backendSettingsPanel"),
   backendUrlInput: document.querySelector("#backendUrlInput"),
@@ -4179,6 +4183,7 @@ function renderContext() {
   renderSourceRouteRail();
   renderCurrentStudyCard();
   renderLaunchBar();
+  renderPanelMode();
   els.resourceCount.textContent = String(candidateResources().length);
   renderReadiness();
   renderRouteSummary();
@@ -6808,6 +6813,8 @@ function handleRouteAction(action) {
     startTask("video");
   } else if (action === "download") {
     startTask("download_only");
+  } else if (action === "diagnostics" || action === "inspect-diagnostics") {
+    setPanelMode("diagnostics", true);
   } else if (action === "continue-media") {
     if (canContinueFromDownloadedMedia(currentTask)) rerunTaskFromMedia(currentTask.id);
   } else if (action === "local") {
@@ -6825,6 +6832,36 @@ function setSourceSwitcherActive(action) {
     button.classList.toggle("active", button.dataset.sourceAction === activeSource);
   });
   renderSourceRouteRail();
+}
+
+function renderPanelMode() {
+  const diagnostic = panelMode === "diagnostics";
+  if (document.body?.dataset) {
+    document.body.dataset.panelMode = panelMode;
+  }
+  if (els.resourcePanel) {
+    els.resourcePanel.hidden = !diagnostic;
+    if (typeof els.resourcePanel.setAttribute === "function") {
+      els.resourcePanel.setAttribute("aria-hidden", diagnostic ? "false" : "true");
+    }
+  }
+  [
+    ["study", els.studyModeButton],
+    ["diagnostics", els.diagnosticModeButton]
+  ].forEach(([mode, button]) => {
+    if (!button) return;
+    const active = mode === panelMode;
+    button.classList.toggle("active", active);
+    button.setAttribute?.("aria-pressed", active ? "true" : "false");
+  });
+}
+
+function setPanelMode(mode, focus = false) {
+  panelMode = mode === "diagnostics" ? "diagnostics" : "study";
+  renderPanelMode();
+  if (focus && panelMode === "diagnostics") {
+    pulseTarget(els.resourcePanel || els.resources);
+  }
 }
 
 function pulseTarget(element) {
@@ -6854,6 +6891,9 @@ async function handleSourceSwitch(action) {
 
 document.querySelectorAll("[data-source-action]").forEach(button => {
   button.addEventListener("click", () => handleSourceSwitch(button.dataset.sourceAction));
+});
+document.querySelectorAll("[data-panel-mode]").forEach(button => {
+  button.addEventListener("click", () => setPanelMode(button.dataset.panelMode, false));
 });
 if (els.sourceRouteRail) {
   els.sourceRouteRail.addEventListener("click", event => {
@@ -6981,6 +7021,8 @@ if (HAS_EXTENSION_API && chrome.runtime.onMessage?.addListener) {
     }
   });
 }
+
+renderPanelMode();
 
 loadSettings().then(async () => {
   await Promise.all([health(), collect(), loadTaskHistory()]);

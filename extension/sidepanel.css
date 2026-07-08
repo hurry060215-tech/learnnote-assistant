@@ -10241,3 +10241,53 @@ body {
     writing-mode: vertical-rl;
   }
 }
+
+/* Product view switch: keep the default panel focused on the learning flow and move request evidence behind diagnostics. */
+.product-mode-bar {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid #d9e2ee;
+  border-radius: 9px;
+  background: #f6f8fb;
+}
+
+.product-mode-bar button {
+  min-width: 0;
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: #526176;
+  padding: 0 7px;
+  font-size: 10px;
+  font-weight: 850;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.product-mode-bar button.active {
+  border-color: #c9d8ea;
+  background: #ffffff;
+  color: var(--accent);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+}
+
+.product-mode-bar svg {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+}
+
+.resource-panel[hidden] {
+  display: none !important;
+}
+
+body[data-panel-mode="diagnostics"] .resource-panel {
+  display: block;
+}
