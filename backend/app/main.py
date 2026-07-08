@@ -802,8 +802,21 @@ def render_task_audit_markdown(task: TaskRecord) -> str:
     return "\n".join(lines)
 
 
+def read_resource_inventory(task: TaskRecord) -> dict:
+    path_value = task.resource_inventory_path or ""
+    if path_value:
+        path = Path(path_value)
+        if path.is_file():
+            try:
+                return json.loads(path.read_text(encoding="utf-8"))
+            except Exception:
+                return {}
+    return read_json(task.id, "resource_inventory.json", {}) or {}
+
+
 def render_bundle_manifest(task: TaskRecord, transcript: dict, visual_index: dict) -> dict:
     selected = task.selected_resource
+    resource_inventory = read_resource_inventory(task)
     append_evidence = mse_append_evidence(selected)
     options_payload = task.options.model_dump(mode="json")
     if options_payload.get("llm_api_key"):
@@ -846,6 +859,14 @@ def render_bundle_manifest(task: TaskRecord, transcript: dict, visual_index: dic
         },
         "options": options_payload,
         "source": {
+            "resource_inventory": {
+                "export": "resource_inventory.json" if resource_inventory else "",
+                "candidate_count": int(resource_inventory.get("candidate_count") or 0) if resource_inventory else 0,
+                "downloadable_candidate_count": int(resource_inventory.get("downloadable_candidate_count") or 0) if resource_inventory else 0,
+                "replayable_candidate_count": int(resource_inventory.get("replayable_candidate_count") or 0) if resource_inventory else 0,
+                "kind_counts": resource_inventory.get("kind_counts", {}) if resource_inventory else {},
+                "source_counts": resource_inventory.get("source_counts", {}) if resource_inventory else {},
+            },
             "selected_resource": {
                 "url": selected.url if selected else "",
                 "resolved_url": selected.resolved_url if selected else "",
@@ -926,6 +947,7 @@ def render_bundle_manifest(task: TaskRecord, transcript: dict, visual_index: dic
             "transcript": "transcript.json",
             "visual_index": "visual_index.json",
             "summary_diagnostics": "summary_diagnostics.json" if task.summary_diagnostics else "",
+            "resource_inventory": "resource_inventory.json" if resource_inventory else "",
             "media_available": task_media_file_exists(task),
             "grid_entries": grid_entries,
         },
@@ -1574,6 +1596,7 @@ def page_preflight_report(request: PagePreflightRequest) -> dict:
 
 def render_diagnostics_markdown(task: TaskRecord) -> str:
     selected = task.selected_resource
+    resource_inventory = read_resource_inventory(task)
     lines = [
         "# LearnNote 任务诊断报告",
         "",
@@ -1618,6 +1641,34 @@ def render_diagnostics_markdown(task: TaskRecord) -> str:
             ])
     else:
         lines.append("- 未选择直接媒体资源，可能使用页面解析或 yt-dlp fallback。")
+
+    if resource_inventory:
+        candidates = resource_inventory.get("candidates") or []
+        if not isinstance(candidates, list):
+            candidates = []
+        lines.extend([
+            "",
+            "## Resource Inventory",
+            f"- Candidate count: {resource_inventory.get('candidate_count', len(candidates))}",
+            f"- Downloadable candidates: {resource_inventory.get('downloadable_candidate_count', 0)}",
+            f"- Replayable candidates: {resource_inventory.get('replayable_candidate_count', 0)}",
+            f"- Kind counts: {resource_inventory.get('kind_counts', {})}",
+            f"- Source counts: {resource_inventory.get('source_counts', {})}",
+        ])
+        for index, candidate in enumerate(candidates[:5], start=1):
+            headers = candidate.get("request_headers") or {}
+            header_names = sorted(headers.keys()) if isinstance(headers, dict) else []
+            lines.extend([
+                f"### Candidate {index}",
+                f"- URL: {candidate.get('url') or '-'}",
+                f"- Kind/source: {candidate.get('kind') or '-'} / {candidate.get('source') or '-'}",
+                f"- Score: {candidate.get('score', '-')}",
+                f"- Playback match: {candidate.get('playback_match') or '-'}",
+                f"- MIME: {candidate.get('mime') or '-'}",
+                f"- Safe request header names: {', '.join(_safe_request_header_names(header_names)) if header_names else '-'}",
+            ])
+        if len(candidates) > 5:
+            lines.append(f"- Omitted candidates in Markdown: {len(candidates) - 5}; see resource_inventory.json.")
 
     lines.extend(["", "## Cookie 同步"])
     lines.extend(_format_cookie_summary(task.cookie_summary))
@@ -2665,6 +2716,7 @@ def api_export_bundle(task_id: str) -> Response:
     qa_history = read_task_qa_history(task.id)
     qa_report = render_qa_history_markdown(task, qa_history)
     manifest = render_bundle_manifest(task, transcript, visual_index)
+    resource_inventory = read_resource_inventory(task)
     has_artifact = bool(
         note.strip()
         or transcript.get("segments")
@@ -2693,6 +2745,8 @@ def api_export_bundle(task_id: str) -> Response:
         archive.writestr("task.json", json.dumps(task.model_dump(mode="json"), ensure_ascii=False, indent=2))
         archive.writestr("transcript.json", json.dumps(transcript, ensure_ascii=False, indent=2))
         archive.writestr("visual_index.json", json.dumps(visual_index, ensure_ascii=False, indent=2))
+        if resource_inventory:
+            archive.writestr("resource_inventory.json", json.dumps(resource_inventory, ensure_ascii=False, indent=2))
         if task.subtitle_path:
             _write_file_if_exists(archive, task.subtitle_path, f"subtitles/{Path(task.subtitle_path).name}")
         if task.summary_diagnostics:

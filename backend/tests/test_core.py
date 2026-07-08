@@ -35,7 +35,7 @@ from app.downloader import (
     source_rank,
     ytdlp_headers_from_browser_context,
 )
-from app.main import diagnostic_recovery_profile, render_diagnostics_markdown, task_audit_summary
+from app.main import diagnostic_recovery_profile, render_bundle_manifest, render_diagnostics_markdown, task_audit_summary
 from app.models import ActiveVideoInfo, BrowserCookie, CurrentPageTaskRequest, DownloadAttempt, DrmSignal, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
 from app.processor import build_summary_diagnostics, cookie_sync_summary, download_progress_updater, download_status_updater, enrich_resource_candidates_with_active_video, process_current_page_task, process_local_video_task, read_note, read_transcript, redacted_request_dump, redacted_resource
 from app.summarizer import MAX_GRIDS_PER_VISION_CALL, MAX_VISION_GRIDS, build_visual_windows, ensure_visual_appendix, llm_provider_name, local_markdown_note, summarize_with_diagnostics, summarize_with_diagnostics_audit
@@ -1274,6 +1274,93 @@ class ProcessorBoundaryTests(unittest.TestCase):
                     self.assertEqual(record.selected_resource.url, "https://cdn.example.com/lesson.mp4")
                 finally:
                     shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
+    def test_current_page_writes_redacted_resource_inventory(self) -> None:
+        task = create_task("current_page", "Inventory failure", "https://course.example.com/lesson")
+
+        class FailingDownloader:
+            def __init__(self, work_dir: Path, progress_callback=None, status_callback=None):
+                self.work_dir = work_dir
+                self.attempts = [
+                    DownloadAttempt(
+                        strategy="direct-file",
+                        url="https://cdn.example.com/lesson.mp4",
+                        source="webRequest",
+                        kind="video",
+                        status="failed",
+                        code="download_forbidden",
+                        message="HTTP 403",
+                    )
+                ]
+
+            def download(self, page_url, resources, cookies, title):
+                raise DownloadError("download_forbidden", "HTTP 403")
+
+        try:
+            request = CurrentPageTaskRequest(
+                page_url="https://course.example.com/lesson",
+                title="Inventory failure",
+                active_video=ActiveVideoInfo(src="https://cdn.example.com/lesson.mp4", current_time=12, duration=300, frame_id=3),
+                resources=[
+                    ResourceCandidate(
+                        url="https://cdn.example.com/lesson.mp4",
+                        source="webRequest",
+                        kind="video",
+                        score=98,
+                        mime="video/mp4",
+                        request_headers={
+                            "Referer": "https://course.example.com/lesson",
+                            "Cookie": "SESSION=secret",
+                            "Authorization": "Bearer topsecret",
+                        },
+                        request_body={"content": "objectid=abc&dtoken=secret-token"},
+                        headers={"content-type": "video/mp4", "set-cookie": "SECRET=1"},
+                    ),
+                    ResourceCandidate(
+                        url="https://cdn.example.com/master.m3u8",
+                        source="performance",
+                        kind="hls",
+                        score=80,
+                    ),
+                    ResourceCandidate(
+                        url="https://cdn.example.com/seg-00001.ts",
+                        source="webRequest",
+                        kind="fragment",
+                        score=40,
+                    ),
+                ],
+                options=TaskOptions(),
+            )
+
+            with patch("app.processor.MediaDownloader", FailingDownloader):
+                process_current_page_task(task.id, request)
+
+            record = get_task(task.id)
+            self.assertEqual(record.status, "failed")
+            self.assertTrue(record.resource_inventory_path)
+            inventory = json.loads(Path(record.resource_inventory_path).read_text(encoding="utf-8"))
+            self.assertEqual(inventory["candidate_count"], 3)
+            self.assertEqual(inventory["downloadable_candidate_count"], 2)
+            self.assertEqual(inventory["replayable_candidate_count"], 1)
+            self.assertEqual(inventory["active_video"]["source_type"], "url")
+            first = inventory["candidates"][0]
+            self.assertEqual(first["request_headers"]["Cookie"], "<redacted>")
+            self.assertEqual(first["request_headers"]["Authorization"], "<redacted>")
+            self.assertEqual(first["request_body"]["content"], "<redacted>")
+            self.assertNotIn("set-cookie", first["headers"])
+
+            diagnostics = render_diagnostics_markdown(record)
+            self.assertIn("Resource Inventory", diagnostics)
+            self.assertIn("Candidate count: 3", diagnostics)
+            self.assertIn("Safe request header names: Referer", diagnostics)
+            self.assertNotIn("topsecret", diagnostics)
+            self.assertNotIn("secret-token", diagnostics)
+
+            manifest = render_bundle_manifest(record, {}, {})
+            self.assertEqual(manifest["source"]["resource_inventory"]["candidate_count"], 3)
+            self.assertEqual(manifest["artifacts"]["resource_inventory"], "resource_inventory.json")
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
     def test_current_page_active_src_marks_matching_candidate_as_main_video(self) -> None:
         task = create_task("current_page", "Active src lesson", "https://course.example.com/lesson")

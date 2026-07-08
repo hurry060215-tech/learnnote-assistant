@@ -276,6 +276,7 @@ class TaskRecord(BaseModel):
     summary_warning: str = ""
     summary_diagnostics_path: str = ""
     summary_diagnostics: dict[str, Any] = Field(default_factory=dict)
+    resource_inventory_path: str = ""
     frame_grids: list[FrameGrid] = Field(default_factory=list)
     visual_windows: list[VisualWindow] = Field(default_factory=list)
 

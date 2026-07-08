@@ -145,6 +145,54 @@ def redacted_request_dump(request: CurrentPageTaskRequest) -> dict:
     return data
 
 
+def resource_inventory_payload(request: CurrentPageTaskRequest) -> dict:
+    resources = [redacted_resource(resource).model_dump(mode="json") for resource in request.resources]
+    kind_counts: dict[str, int] = {}
+    source_counts: dict[str, int] = {}
+    downloadable_count = 0
+    replayable_count = 0
+    for resource in request.resources:
+        kind = effective_resource_kind(resource) or resource.kind or "unknown"
+        source = resource.source or "unknown"
+        kind_counts[kind] = kind_counts.get(kind, 0) + 1
+        source_counts[source] = source_counts.get(source, 0) + 1
+        if kind in {"video", "hls", "dash"} or (kind == "fragment" and infer_manifest_url_from_fragment(resource.url)):
+            downloadable_count += 1
+        if resource.request_body or resource.request_headers:
+            replayable_count += 1
+    active = request.active_video
+    return {
+        "schema_version": 1,
+        "page_url": request.page_url,
+        "title": request.title,
+        "candidate_count": len(resources),
+        "downloadable_candidate_count": downloadable_count,
+        "replayable_candidate_count": replayable_count,
+        "kind_counts": dict(sorted(kind_counts.items())),
+        "source_counts": dict(sorted(source_counts.items())),
+        "drm_detected": bool(request.drm_detected),
+        "drm_signal_count": len(request.drm_signals or []),
+        "browser_subtitle_count": len(request.browser_subtitles or []),
+        "active_video": {
+            "present": bool(active),
+            "source_type": "srcObject" if active and active.src_object else "url" if active and active.src else "",
+            "frame_id": active.frame_id if active else None,
+            "current_time": active.current_time if active else None,
+            "duration": active.duration if active else None,
+            "width": active.width if active else 0,
+            "height": active.height if active else 0,
+            "drm_detected": active.drm_detected if active else False,
+        },
+        "candidates": resources,
+    }
+
+
+def write_resource_inventory(task_id: str, request: CurrentPageTaskRequest) -> str:
+    path = write_json(task_id, "resource_inventory.json", resource_inventory_payload(request))
+    update_task(task_id, resource_inventory_path=str(path))
+    return str(path)
+
+
 def has_downloadable_candidate(resources: list[ResourceCandidate]) -> bool:
     for resource in resources:
         kind = effective_resource_kind(resource)
@@ -730,6 +778,7 @@ def complete_with_download_failure_fallback(task_id: str, request: CurrentPageTa
 def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> None:
     request.resources = enrich_resources_with_active_video(request)
     write_json(task_id, "request.json", redacted_request_dump(request))
+    write_resource_inventory(task_id, request)
     if request.mode == "page_text":
         process_page_text_task(task_id, request)
         return
