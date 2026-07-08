@@ -140,6 +140,39 @@ assert.match(qaPanelRecentHtml, /class="qa-recent"/);
 assert.match(qaPanelRecentHtml, /如何复习函数封装/);
 assert.match(qaPanelRecentHtml, /先看输入输出/);
 assert.match(qaPanelRecentHtml, /2 证据/);
+const chaoxingProfileHtml = context.chaoxingProfileHtml({
+  recovery: {
+    chaoxing_profile: {
+      detected: true,
+      likely_issue: "anti_hotlink_or_expired_signature",
+      has_ananas_candidate: true,
+      has_objectid: true,
+      has_dtoken: true,
+      has_replay_body: true,
+      has_referer: true,
+      has_origin: true,
+      has_x_requested_with: true,
+      has_iframe_context: true,
+      cookie_domain_count: 2,
+      cookie_count: 4,
+      partitioned_cookie_count: 1,
+      partition_key_count: 1,
+      safe_request_header_names: ["Origin", "Referer", "X-Requested-With"],
+      candidate_kinds: ["hls"],
+      page_preflight: {
+        present: true,
+        candidate_count: 1,
+        probed_count: 1,
+        downloadable_count: 0
+      }
+    }
+  }
+});
+assert.match(chaoxingProfileHtml, /class="chaoxing-profile"/);
+assert.match(chaoxingProfileHtml, /学习通证据/);
+assert.match(chaoxingProfileHtml, /anti_hotlink_or_expired_signature/);
+assert.match(chaoxingProfileHtml, /Origin, Referer, X-Requested-With/);
+assert.match(chaoxingProfileHtml, /不录制、不刷课、不伪造进度、不自动答题/);
 vm.runInContext(`qaState = {
   taskId: "side-qa-visual",
   question: "画面里有哪些步骤？",

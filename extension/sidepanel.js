@@ -1632,6 +1632,50 @@ function recoveryActionsHtml(task) {
   return `<div class="recovery-actions">${actions.join("")}</div>`;
 }
 
+function taskChaoxingProfile(task) {
+  const profile = task?.recovery?.chaoxing_profile || task?.site_profiles?.chaoxing || task?.chaoxing_profile || {};
+  return profile && typeof profile === "object" ? profile : {};
+}
+
+function profileYesNo(value) {
+  return value ? "是" : "否";
+}
+
+function profileChip(label, value) {
+  return `<span class="${value ? "pass" : "warn"}"><b>${escapeHtml(label)}</b>${escapeHtml(profileYesNo(value))}</span>`;
+}
+
+function chaoxingProfileHtml(task) {
+  const profile = taskChaoxingProfile(task);
+  if (!profile.detected) return "";
+  const preflight = profile.page_preflight || {};
+  const safeHeaders = (profile.safe_request_header_names || []).join(", ") || "-";
+  const candidateKinds = (profile.candidate_kinds || []).join(", ") || "-";
+  return `<section class="chaoxing-profile" aria-label="学习通直取证据">
+    <div class="chaoxing-profile-head">
+      <span>学习通证据</span>
+      <strong>${escapeHtml(profile.likely_issue || "evidence_ready")}</strong>
+    </div>
+    <div class="chaoxing-profile-grid">
+      ${profileChip("ananas", profile.has_ananas_candidate)}
+      ${profileChip("objectid", profile.has_objectid)}
+      ${profileChip("dtoken", profile.has_dtoken)}
+      ${profileChip("POST", profile.has_replay_body)}
+      ${profileChip("Referer", profile.has_referer)}
+      ${profileChip("Origin", profile.has_origin)}
+      ${profileChip("XHR", profile.has_x_requested_with)}
+      ${profileChip("iframe", profile.has_iframe_context)}
+    </div>
+    <dl>
+      <dt>Cookie</dt><dd>${Number(profile.cookie_domain_count || 0)} 域 / ${Number(profile.cookie_count || 0)} 条；分区 ${Number(profile.partitioned_cookie_count || 0)} / ${Number(profile.partition_key_count || 0)} key</dd>
+      <dt>预检</dt><dd>${preflight.present ? `${Number(preflight.candidate_count || 0)} 候选 / ${Number(preflight.probed_count || 0)} 探测 / ${Number(preflight.downloadable_count || 0)} 可下载` : "未随任务落盘"}</dd>
+      <dt>请求头</dt><dd>${escapeHtml(safeHeaders)}</dd>
+      <dt>候选类型</dt><dd>${escapeHtml(candidateKinds)}</dd>
+    </dl>
+    <p>只复用当前登录态暴露的真实媒体请求；不录制、不刷课、不伪造进度、不自动答题。</p>
+  </section>`;
+}
+
 function drmSignalText(signals = []) {
   const parts = [];
   const keySystems = [...new Set(signals.map(item => item.key_system).filter(Boolean))];
@@ -6052,6 +6096,7 @@ function renderResult() {
     els.result.className = "result-body";
     els.result.innerHTML = `
       ${diagnosticRecoveryHtml(currentTask)}
+      ${chaoxingProfileHtml(currentTask)}
       ${taskBrowserEvidenceHtml(currentTask)}
       ${directExtractionEvidenceHtml(currentTask)}
       ${taskRouteEvidenceHtml(currentTask)}
