@@ -4824,6 +4824,110 @@ button:disabled {
   font-weight: 850;
 }
 
+.chaoxing-mode-checklist {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #d7e5f8;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 10px;
+}
+
+.chaoxing-mode-checklist strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.chaoxing-mode-checklist span {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.chaoxing-mode-checklist p {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+}
+
+.chaoxing-mode-checklist em {
+  border-radius: 999px;
+  background: #fff7e8;
+  color: #9b5d00;
+  padding: 4px 8px;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 850;
+}
+
+.chaoxing-mode-checklist em.pass {
+  background: #eaf7ef;
+  color: #11643d;
+}
+
+.chaoxing-mode-flow {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chaoxing-mode-flow li {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  align-content: start;
+  border: 1px solid #d8e2ee;
+  border-top: 4px solid #c47a05;
+  border-radius: 8px;
+  background: #fffaf0;
+  padding: 8px;
+}
+
+.chaoxing-mode-flow li.pass {
+  border-top-color: #14964a;
+  background: #f2fbf5;
+}
+
+.chaoxing-mode-flow li.warn {
+  border-top-color: #c47a05;
+  background: #fff8eb;
+}
+
+.chaoxing-mode-flow li.miss {
+  border-top-color: #d92d20;
+  background: #fff5f4;
+}
+
+.chaoxing-mode-flow b {
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.chaoxing-mode-flow small {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.chaoxing-mode-next {
+  display: block;
+  border: 1px solid #dbe7f6;
+  border-radius: 7px;
+  background: #f8fbff;
+  color: #3b4a5f;
+  padding: 8px 9px;
+  font-size: 11px;
+  font-weight: 760;
+  line-height: 1.45;
+}
+
 .chaoxing-profile dl {
   display: grid;
   grid-template-columns: 72px minmax(0, 1fr);
@@ -7620,6 +7724,24 @@ select {
   }
 
   .visual-study-card {
+    grid-template-columns: 1fr;
+  }
+
+  .chaoxing-profile-head {
+    display: grid;
+    align-items: start;
+  }
+
+  .chaoxing-profile-head strong {
+    text-align: left;
+  }
+
+  .chaoxing-profile-grid,
+  .chaoxing-mode-flow {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .chaoxing-profile dl {
     grid-template-columns: 1fr;
   }
 }

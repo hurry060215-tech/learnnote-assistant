@@ -1214,6 +1214,7 @@ context.fetch = async url => {
             chaoxing_profile: {
               detected: true,
               has_ananas_candidate: true,
+              has_playurl: true,
               has_objectid: true,
               has_dtoken: false,
               has_replay_body: true,
@@ -1254,9 +1255,24 @@ const diagnosticsEvidenceHtml = elements.get("#detail").innerHTML;
 assert.match(diagnosticsEvidenceHtml, /class="task-browser-evidence"/);
 assert.match(diagnosticsEvidenceHtml, /浏览器播放证据/);
 assert.match(diagnosticsEvidenceHtml, /class="chaoxing-profile"/);
-assert.match(diagnosticsEvidenceHtml, /学习通证据/);
+assert.match(diagnosticsEvidenceHtml, /平台线索 · 学习通\/超星/);
 assert.match(diagnosticsEvidenceHtml, /anti_hotlink_or_expired_signature/);
 assert.match(diagnosticsEvidenceHtml, /Origin, Referer, X-Requested-With/);
+assert.match(diagnosticsEvidenceHtml, /播放 API/);
+assert.match(diagnosticsEvidenceHtml, /真实媒体/);
+assert.match(diagnosticsEvidenceHtml, /POST\/body/);
+assert.match(diagnosticsEvidenceHtml, /学习通模式/);
+assert.match(diagnosticsEvidenceHtml, /ananas 已抓到/);
+assert.match(diagnosticsEvidenceHtml, /playurl 已抓到/);
+assert.match(diagnosticsEvidenceHtml, /objectid 已抓到/);
+assert.match(diagnosticsEvidenceHtml, /dtoken 缺失/);
+assert.match(diagnosticsEvidenceHtml, /cookie 已抓到/);
+assert.match(diagnosticsEvidenceHtml, /播放器入口/);
+assert.match(diagnosticsEvidenceHtml, /已看到 ananas\/playurl 播放接口/);
+assert.match(diagnosticsEvidenceHtml, /媒体落地/);
+assert.match(diagnosticsEvidenceHtml, /有媒体候选但预检未通过/);
+assert.match(diagnosticsEvidenceHtml, /缺口：媒体落地/);
+assert.match(diagnosticsEvidenceHtml, /通用策略/);
 assert.match(diagnosticsEvidenceHtml, /不录制、不刷课、不伪造进度、不自动答题/);
 assert.match(diagnosticsEvidenceHtml, /class="direct-extraction-evidence"/);
 assert.match(diagnosticsEvidenceHtml, /非录制下载路线/);

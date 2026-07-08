@@ -1221,11 +1221,13 @@ class LocalUploadValidationTests(unittest.TestCase):
             manifest = render_bundle_manifest(task, {"segments": []}, {"windows": []})
 
             self.assertIn("Chaoxing Profile", diagnostics)
+            self.assertIn("ananas/playurl/objectid/dtoken: yes / no / yes / yes", diagnostics)
             self.assertIn("Replay body: yes", diagnostics)
             self.assertIn("Referer/Origin/X-Requested-With: yes / yes / yes", diagnostics)
             self.assertIn("Partitioned cookies: 1 / 1 partition keys", diagnostics)
             self.assertTrue(recovery["chaoxing_profile"]["detected"])
             self.assertTrue(recovery["chaoxing_profile"]["has_ananas_candidate"])
+            self.assertFalse(recovery["chaoxing_profile"]["has_playurl"])
             self.assertTrue(recovery["chaoxing_profile"]["has_objectid"])
             self.assertTrue(recovery["chaoxing_profile"]["has_dtoken"])
             self.assertTrue(recovery["chaoxing_profile"]["has_replay_body"])
