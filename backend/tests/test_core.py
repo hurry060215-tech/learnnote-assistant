@@ -1587,7 +1587,7 @@ class ProcessorBoundaryTests(unittest.TestCase):
             target.write_bytes(b"normalized video")
             return target
 
-        def fake_summary(title, transcript, grids, options, page_url):
+        def fake_summary(title, transcript, grids, options, page_url, page_context=""):
             self.assertEqual(transcript.source, "browser-subtitle")
             self.assertIn("first browser cue", transcript.full_text)
             self.assertIn("second browser cue", transcript.full_text)
@@ -1660,10 +1660,11 @@ class ProcessorBoundaryTests(unittest.TestCase):
             target.write_bytes(b"normalized video")
             return target
 
-        def fake_summary(title, transcript, grids, options, page_url):
+        def fake_summary(title, transcript, grids, options, page_url, page_context=""):
             self.assertEqual(transcript.source, "page-subtitle")
             self.assertIn("full page cue one", transcript.full_text)
             self.assertNotIn("only current visible cue", transcript.full_text)
+            self.assertIn("Chapter context from current page", page_context)
             return ("# Partial browser subtitle lesson\n\nfull page cue one", "local-template", "")
 
         try:
@@ -1674,6 +1675,7 @@ class ProcessorBoundaryTests(unittest.TestCase):
                     ResourceCandidate(url="https://cdn.example.com/lesson.mp4", source="webRequest", kind="video"),
                     ResourceCandidate(url="https://cdn.example.com/lesson.vtt", source="subtitleTrack", kind="subtitle", mime="text/vtt"),
                 ],
+                page_text="Chapter context from current page",
                 browser_subtitles=[
                     {"start": 38, "end": 42, "text": "only current visible cue"},
                 ],
@@ -1729,7 +1731,7 @@ class ProcessorBoundaryTests(unittest.TestCase):
             target.write_bytes(b"normalized video")
             return target
 
-        def fake_summary(title, transcript, grids, options, page_url):
+        def fake_summary(title, transcript, grids, options, page_url, page_context=""):
             self.assertEqual(transcript.source, "browser-subtitle")
             self.assertIn("visible fallback cue", transcript.full_text)
             return ("# Expired subtitle lesson\n\nvisible fallback cue", "local-template", "")
@@ -1794,7 +1796,7 @@ class ProcessorBoundaryTests(unittest.TestCase):
             self.assertEqual(path, subtitle_path)
             raise ValueError("malformed subtitle")
 
-        def fake_summary(title, transcript, grids, options, page_url):
+        def fake_summary(title, transcript, grids, options, page_url, page_context=""):
             self.assertEqual(transcript.source, "browser-subtitle")
             self.assertIn("visible fallback cue", transcript.full_text)
             return ("# Bad subtitle lesson\n\nvisible fallback cue", "local-template", "")
@@ -3026,6 +3028,26 @@ class SummaryFallbackTests(unittest.TestCase):
         self.assertIn("\u7b14\u8bb0\u683c\u5f0f", note)
         self.assertIn("\u95ee\u7b54\u590d\u4e60\u6a21\u677f", note)
 
+    def test_local_note_keeps_page_context_separate_from_transcript(self) -> None:
+        transcript = TranscriptResult(
+            source="unit",
+            full_text="timestamped transcript line",
+            segments=[TranscriptSegment(start=1, end=3, text="timestamped transcript line")],
+        )
+
+        note = local_markdown_note(
+            "Context lesson",
+            transcript,
+            [],
+            "https://course.example",
+            TaskOptions(),
+            page_context="Chapter 7 dynamic programming homework prompt",
+        )
+
+        self.assertIn("Chapter 7 dynamic programming homework prompt", note)
+        self.assertIn("not as transcript", note)
+        self.assertEqual(transcript.full_text, "timestamped transcript line")
+
     def test_summary_diagnostics_report_local_fallback_without_api_key(self) -> None:
         transcript = TranscriptResult(
             source="unit",
@@ -3042,6 +3064,22 @@ class SummaryFallbackTests(unittest.TestCase):
         self.assertIn("## 学习路线", note)
         self.assertIn("## 学习上下文", note)
         self.assertIn("画面-字幕对齐索引", note)
+
+    def test_summary_diagnostics_record_page_context_usage(self) -> None:
+        diagnostics = build_summary_diagnostics(
+            "task-page-context",
+            "Context lesson",
+            "https://course.example",
+            TaskOptions(),
+            [],
+            [],
+            "local-template",
+            "",
+            page_context="Chapter outline and homework prompt",
+        )
+
+        self.assertTrue(diagnostics["page_context_used"])
+        self.assertEqual(diagnostics["page_text_char_count"], len("Chapter outline and homework prompt"))
 
     def test_llm_fallback_warning_includes_provider_model_and_error(self) -> None:
         class FakeCompletions:

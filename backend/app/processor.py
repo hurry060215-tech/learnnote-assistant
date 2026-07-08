@@ -540,6 +540,7 @@ def build_summary_diagnostics(
     summary_source: str,
     summary_warning: str,
     llm_events: list[dict] | None = None,
+    page_context: str = "",
 ) -> dict:
     eligible_entries = select_vision_grid_entries(grids)
     eligible_grids = [grid for _index, grid in eligible_entries]
@@ -613,6 +614,7 @@ def build_summary_diagnostics(
     llm_failure_code = _llm_failure_code(summary_source, summary_warning, llm_configured)
     if not llm_failure_code and last_llm_failure and summary_source == "local-template":
         llm_failure_code = str(last_llm_failure.get("code") or "llm_unavailable")
+    page_context_text = (page_context or "").strip()
     return {
         "task_id": task_id,
         "title": title,
@@ -635,6 +637,8 @@ def build_summary_diagnostics(
         "note_style": options.note_style,
         "note_template": options.note_template,
         "summary_depth": options.summary_depth,
+        "page_text_char_count": len(page_context_text),
+        "page_context_used": bool(page_context_text),
         "frame_grid_count": len(grids),
         "visual_window_count": len(visual_windows),
         "available_grid_image_count": total_image_count,
@@ -807,6 +811,7 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
             options=request.options,
             subtitle_path=subtitle_path,
             browser_subtitles=request.browser_subtitles,
+            page_context=request.page_text,
         )
     except DownloadError as exc:
         if "downloader" in locals():
@@ -844,6 +849,7 @@ def process_local_video_task(
             subtitle_path=subtitle_path,
             browser_subtitles=browser_subtitles,
             subtitle_source=subtitle_source,
+            page_context="",
         )
     except Exception as exc:
         _fail(task_id, "processing_failed", str(exc))
@@ -858,6 +864,7 @@ def _process_video_file(
     subtitle_path: Path | None = None,
     browser_subtitles: list[BrowserSubtitleCue] | None = None,
     subtitle_source: str = "page-subtitle",
+    page_context: str = "",
 ) -> None:
     work_dir = task_dir(task_id)
     update_task(task_id, status="running", phase="processing_video", progress=25, message="正在标准化视频")
@@ -950,7 +957,7 @@ def _process_video_file(
     save_task(record)
 
     update_task(task_id, phase="summarizing", progress=84, message="正在生成 Markdown 笔记")
-    summary_result = summarize_with_diagnostics(title, transcript, grids, options, page_url)
+    summary_result = summarize_with_diagnostics(title, transcript, grids, options, page_url, page_context)
     if len(summary_result) == 4:
         note, summary_source, summary_warning, llm_events = summary_result
     else:
@@ -966,6 +973,7 @@ def _process_video_file(
         summary_source=summary_source,
         summary_warning=summary_warning,
         llm_events=llm_events,
+        page_context=page_context,
     )
     summary_diagnostics_path = write_json(task_id, "summary_diagnostics.json", summary_diagnostics)
     note_path = work_dir / "note.md"

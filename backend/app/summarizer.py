@@ -170,7 +170,35 @@ def _context_topic_lines(title: str, transcript: TranscriptResult, limit: int = 
     return candidates
 
 
-def _learning_context_lines(title: str, transcript: TranscriptResult, windows: list[VisualWindow], page_url: str = "") -> list[str]:
+def _page_context_excerpt(page_context: str = "", limit: int = 1800) -> str:
+    text = re.sub(r"\s+", " ", page_context or "").strip()
+    if len(text) <= limit:
+        return text
+    return text[:limit].rstrip() + "..."
+
+
+def _page_context_markdown_lines(page_context: str = "") -> list[str]:
+    excerpt = _page_context_excerpt(page_context)
+    if not excerpt:
+        return []
+    return [
+        "- Page context: captured from the current browser page and used only as course/chapter context, not as transcript.",
+        f"  {excerpt}",
+    ]
+
+
+def _page_context_prompt(page_context: str = "") -> str:
+    excerpt = _page_context_excerpt(page_context, limit=4000)
+    if not excerpt:
+        return ""
+    return (
+        "Page context captured from the current browser page. Use it for course title, chapter, outline, "
+        "exercise wording, and surrounding learning context. Do not treat it as timestamped transcript.\n"
+        f"{excerpt}\n"
+    )
+
+
+def _learning_context_lines(title: str, transcript: TranscriptResult, windows: list[VisualWindow], page_url: str = "", page_context: str = "") -> list[str]:
     lines = ["## 学习上下文", ""]
     title_text = (title or "未命名课程").strip()
     lines.append(f"- 课程标题：{title_text}")
@@ -187,6 +215,7 @@ def _learning_context_lines(title: str, transcript: TranscriptResult, windows: l
         )
     else:
         lines.append("- 画面切片：未生成；当前笔记主要依赖字幕、页面文本或后续本地视频回看。")
+    lines.extend(_page_context_markdown_lines(page_context))
     topics = _context_topic_lines(title_text, transcript)
     if topics:
         lines.append("- 主题线索：" + "；".join(topics))
@@ -471,7 +500,7 @@ def _grid_image_content_items(entries: list[VisionGridEntry]) -> list[dict]:
     return items
 
 
-def local_markdown_note(title: str, transcript: TranscriptResult, grids: list[FrameGrid], page_url: str = "", options: TaskOptions | None = None) -> str:
+def local_markdown_note(title: str, transcript: TranscriptResult, grids: list[FrameGrid], page_url: str = "", options: TaskOptions | None = None, page_context: str = "") -> str:
     lines = [f"# {title or '学习笔记'}", ""]
     if page_url:
         lines += [f"来源：{page_url}", ""]
@@ -481,7 +510,7 @@ def local_markdown_note(title: str, transcript: TranscriptResult, grids: list[Fr
     key_sentences = _sentences(transcript.full_text, limit=6)
     windows = build_visual_windows(transcript, grids)
 
-    lines.extend(_learning_context_lines(title, transcript, windows, page_url))
+    lines.extend(_learning_context_lines(title, transcript, windows, page_url, page_context))
     lines += ["## 笔记格式", "", f"- {note_template_instruction(options or TaskOptions())}", ""]
 
     lines += ["## 课程主题", ""]
@@ -572,6 +601,7 @@ def summarize_with_llm(
     grids: list[FrameGrid],
     options: TaskOptions,
     page_url: str = "",
+    page_context: str = "",
     events: list[dict] | None = None,
 ) -> tuple[str, str] | None:
     api_key = options.llm_api_key or LLM_API_KEY
@@ -586,6 +616,7 @@ def summarize_with_llm(
         return None
 
     model = options.llm_model or LLM_MODEL
+    page_context_prompt = _page_context_prompt(page_context)
     try:
         client = OpenAI(api_key=api_key, base_url=options.llm_base_url or LLM_BASE_URL)
     except Exception as exc:
@@ -605,6 +636,7 @@ def summarize_with_llm(
                         "请先做局部图文总结，不要写完整总笔记。\n"
                         "每个窗口必须包含：时间范围、画面可见信息、字幕重点、操作/PPT/代码/公式/例题线索、可能的易错点。\n"
                         f"标题：{title}\n来源：{page_url}\n批次：{index}\n\n"
+                        f"{page_context_prompt}\n"
                         f"{_grid_window_prompt(transcript, batch)}"
                     ),
                 }
@@ -636,6 +668,8 @@ def summarize_with_llm(
                     f"{merge_prompt}"
                 )
             frame_index = "\n".join(_grid_index_lines(grids))
+            if page_context_prompt:
+                frame_index = f"{page_context_prompt}\n{frame_index}"
             try:
                 response = client.chat.completions.create(
                     model=model,
@@ -665,6 +699,11 @@ def summarize_with_llm(
                 _record_llm_event(events, "vision_merge", "api_error", exc, model=model)
                 return None
 
+    text_transcript_prompt = transcript.full_text[:60000]
+    original_transcript_full_text = transcript.full_text
+    if page_context_prompt:
+        text_transcript_prompt = f"{page_context_prompt}\n{text_transcript_prompt}"
+        transcript.full_text = text_transcript_prompt
     content: list[dict] = [
         {
             "type": "text",
@@ -677,6 +716,7 @@ def summarize_with_llm(
             ),
         }
     ]
+    transcript.full_text = original_transcript_full_text
 
     try:
         response = client.chat.completions.create(
@@ -698,8 +738,9 @@ def summarize_with_diagnostics(
     grids: list[FrameGrid],
     options: TaskOptions,
     page_url: str = "",
+    page_context: str = "",
 ) -> tuple[str, str, str]:
-    note, source, warning, _events = summarize_with_diagnostics_audit(title, transcript, grids, options, page_url)
+    note, source, warning, _events = summarize_with_diagnostics_audit(title, transcript, grids, options, page_url, page_context)
     return note, source, warning
 
 
@@ -709,18 +750,19 @@ def summarize_with_diagnostics_audit(
     grids: list[FrameGrid],
     options: TaskOptions,
     page_url: str = "",
+    page_context: str = "",
 ) -> tuple[str, str, str, list[dict]]:
     events: list[dict] = []
     api_key = options.llm_api_key or LLM_API_KEY
     if not api_key:
         events.append({"stage": "configuration", "code": "missing_api_key"})
         return (
-            local_markdown_note(title, transcript, grids, page_url, options),
+            local_markdown_note(title, transcript, grids, page_url, options, page_context),
             "local-template",
             "未配置 OpenAI-compatible API Key，已使用本地画面索引模板生成笔记。",
             events,
         )
-    generated = summarize_with_llm(title, transcript, grids, options, page_url, events)
+    generated = summarize_with_llm(title, transcript, grids, options, page_url, page_context, events)
     if generated:
         note, source = generated
         warning = ""
@@ -735,22 +777,22 @@ def summarize_with_diagnostics_audit(
     fallback_warning = "Vision/LLM summary failed or unavailable; using local frame-index template."
     if events:
         return (
-            local_markdown_note(title, transcript, grids, page_url, options),
+            local_markdown_note(title, transcript, grids, page_url, options, page_context),
             "local-template",
             llm_warning_from_events(options, events, fallback_warning),
             events,
         )
     events.append({"stage": "summary", "code": "llm_unavailable"})
     return (
-        local_markdown_note(title, transcript, grids, page_url, options),
+        local_markdown_note(title, transcript, grids, page_url, options, page_context),
         "local-template",
         "视觉/LLM 总结调用失败或不可用，已降级为本地画面索引模板。",
         events,
     )
 
 
-def summarize(title: str, transcript: TranscriptResult, grids: list[FrameGrid], options: TaskOptions, page_url: str = "") -> str:
-    return summarize_with_diagnostics(title, transcript, grids, options, page_url)[0]
+def summarize(title: str, transcript: TranscriptResult, grids: list[FrameGrid], options: TaskOptions, page_url: str = "", page_context: str = "") -> str:
+    return summarize_with_diagnostics(title, transcript, grids, options, page_url, page_context)[0]
 
 
 def _split_page_text_sections(text: str) -> tuple[str, str]:
