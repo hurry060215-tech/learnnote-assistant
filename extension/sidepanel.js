@@ -747,6 +747,9 @@ function currentPageAuditReport() {
     "审计门",
     ...workbenchAuditGateItems(state).map(item => `- ${item.label}: ${item.value || "-"} / ${item.detail || "-"}`),
     "",
+    "通用适配链",
+    ...workbenchUniversalAdapterItems(state).map(item => `- ${item.label}: ${item.value || "-"} / ${item.detail || "-"}`),
+    "",
     "敏感信息处理",
     "- Cookie 只在点击任务时一次性同步给本地后端，本报告不包含 Cookie 值。",
     "- 鉴权类敏感请求头不会写入候选证据摘要。",
@@ -3294,6 +3297,147 @@ function workbenchAuditGateHtml(state) {
   </div>`;
 }
 
+function workbenchUniversalAdapterItems(state) {
+  const signal = currentDiagnosticSignals();
+  const selected = signal.selected || selectedResource();
+  const checked = signal.checked || currentPreflight();
+  const hasPlayback = hasActiveVideoSignal(signal.active) || signal.candidates.length > 0 || (page?.frames || []).length > 0;
+  const replayableApiCount = signal.replayBodies.length;
+  const playableApiCount = signal.playableApis.length;
+  const directCount = signal.direct.length;
+  const hasManifestOrFile = signal.direct.some(item => ["video", "flv", "hls", "dash"].includes(item.kind));
+  const hasHeaders = signal.headerNames.length > 0;
+  const contextBits = [
+    signal.hasFrameContext ? "iframe" : "",
+    signal.hasReferer ? "Referer" : "",
+    signal.hasOrigin ? "Origin" : "",
+    signal.hasXRequestedWith ? "XHR" : "",
+    hasHeaders && !signal.hasReferer && !signal.hasOrigin && !signal.hasXRequestedWith ? `${signal.headerNames.length} headers` : ""
+  ].filter(Boolean);
+  const cookieChecked = ["ready", "empty"].includes(signal.cookieDiagnostic.status);
+  const authValue = signal.cookieCount
+    ? `${signal.cookieCount} cookie`
+    : contextBits.length
+      ? contextBits.join(" / ")
+      : cookieChecked
+        ? "无 cookie"
+        : "按需同步";
+  const apiState = replayableApiCount
+    ? "pass"
+    : playableApiCount || signal.hasPlayableApiText
+      ? "active"
+      : selected
+        ? "wait"
+        : "wait";
+  const mediaState = checked?.downloadable
+    ? "pass"
+    : selected
+      ? checked ? "warn" : "active"
+      : signal.hasBlobOrMse
+        ? "warn"
+        : signal.drmDetected
+          ? "fail"
+          : "wait";
+  const authState = signal.cookieCount
+    ? "pass"
+    : contextBits.length
+      ? "active"
+      : cookieChecked
+        ? "warn"
+        : "wait";
+  return [
+    {
+      label: "播放器入口",
+      state: signal.drmDetected ? "fail" : hasPlayback ? "pass" : "wait",
+      value: hasActiveVideoSignal(signal.active)
+        ? signal.active?.src?.startsWith("blob:") ? "blob/MSE" : "video 元素"
+        : (page?.frames || []).length ? `${page.frames.length} iframe` : "等待播放",
+      detail: hasPlayback ? "已建立当前页或 iframe 的播放上下文" : "先让目标视频真实播放几秒"
+    },
+    {
+      label: "播放接口",
+      state: apiState,
+      value: replayableApiCount ? `${replayableApiCount} 可回放` : playableApiCount ? `${playableApiCount} 线索` : signal.hasPlayableApiText ? "文本线索" : "未发现",
+      detail: replayableApiCount
+        ? "POST/body 会被脱敏记录并交给本地后端解析真实媒体"
+        : playableApiCount || signal.hasPlayableApiText ? "已看到 play/ananas/httpmd/objectid 等播放接口线索" : "没有接口也可走 DOM、webRequest、yt-dlp 和页面扫描"
+    },
+    {
+      label: "媒体落点",
+      state: mediaState,
+      value: checked?.downloadable
+        ? "预检通过"
+        : selected
+          ? `${selected.kind || "media"} · ${candidateStrategyText(selected)}`
+          : signal.hasBlobOrMse ? "待映射" : directCount ? `${directCount} 候选` : "未定位",
+      detail: checked?.downloadable
+        ? resourcePreflightLine(checked, selected)
+        : selected
+          ? directnessText(selected)
+          : signal.hasBlobOrMse ? "继续从 appendBuffer、API 响应或最近请求映射 manifest/文件" : "等待 mp4/FLV/HLS/DASH 或后端页面解析"
+    },
+    {
+      label: "鉴权上下文",
+      state: authState,
+      value: authValue,
+      detail: signal.cookieCount
+        ? "任务点击时可把登录态一次性同步给本地后端，不写入报告"
+        : contextBits.length ? "Referer/Origin/iframe/header 可用于防盗链回放" : "未主动后台读取 Cookie；需要时点检查登录态"
+    },
+    {
+      label: "本地学习管线",
+      state: checked?.downloadable || state === "ready" ? "pass" : state === "blocked" ? "fail" : selected || hasManifestOrFile ? "active" : "wait",
+      value: checked?.downloadable || state === "ready" ? "可生成" : state === "blocked" ? "转本地" : visualPlanText(),
+      detail: checked?.downloadable || state === "ready"
+        ? "下载到 data/tasks 后进入转写、抽帧、视觉窗口和图文笔记"
+        : state === "blocked" ? "DRM/MediaStream/不可还原 blob 不破解，改用本地视频" : "直取成功后复用同一套切片总结，不做标签页录制"
+    }
+  ];
+}
+
+function workbenchUniversalAdapterSummary(state) {
+  const signal = currentDiagnosticSignals();
+  const selected = signal.selected || selectedResource();
+  const checked = signal.checked || currentPreflight();
+  if (signal.drmDetected) {
+    return "检测到 DRM/EME 边界；只保留可访问媒体线索，不能直取时改用本地视频。";
+  }
+  if (checked?.downloadable || state === "ready") {
+    return "通用适配链已闭合：播放上下文、媒体落点、鉴权上下文和本地学习管线都可继续。";
+  }
+  if (selected) {
+    return "已定位媒体落点；下一步先预检，失败时保留页面扫描、iframe、播放 API 和 yt-dlp 兜底。";
+  }
+  if (signal.hasBlobOrMse || signal.hasPlayableApiText || signal.playableApis.length) {
+    return "播放器已暴露 API/blob/MSE 线索；继续播放几秒或重检，等待映射到可下载 manifest/文件。";
+  }
+  return "先让任意网站的视频真实播放几秒；系统会按 DOM、播放器 API、Network、iframe 和页面下载器依次适配。";
+}
+
+function workbenchUniversalAdapterHtml(state) {
+  const items = workbenchUniversalAdapterItems(state);
+  const readyCount = items.filter(item => item.state === "pass").length;
+  const warnCount = items.filter(item => item.state === "warn" || item.state === "fail").length;
+  return `<section class="workbench-adapter-ladder ${warnCount ? "attention" : readyCount >= 3 ? "ready" : "probing"}" aria-label="通用播放器适配链">
+    <header>
+      <div>
+        <span>通用适配链</span>
+        <strong>任意网站先找“播放器 → 接口 → 媒体 → 鉴权 → 本地管线”</strong>
+        <small>${escapeHtml(workbenchUniversalAdapterSummary(state))}</small>
+      </div>
+      <button type="button" data-switch-result-tab="diagnostics">看诊断</button>
+    </header>
+    <div class="workbench-adapter-ladder-grid">
+      ${items.map((item, index) => `<section class="${escapeHtml(item.state)}">
+        <i>${index + 1}</i>
+        <span>${escapeHtml(item.label)}</span>
+        <strong>${escapeHtml(item.value || "-")}</strong>
+        <small>${escapeHtml(item.detail || "-")}</small>
+      </section>`).join("")}
+    </div>
+  </section>`;
+}
+
 function workbenchLocalFallbackHtml(state) {
   const blocked = state === "blocked";
   const label = blocked ? "直取受限" : "直取优先";
@@ -3489,6 +3633,7 @@ function renderCurrentStudyCard() {
     </div>
     ${workbenchBriefHtml(state)}
     ${studyFlowBoardHtml(state)}
+    ${workbenchUniversalAdapterHtml(state)}
     ${workbenchRunModesHtml(state)}
     ${workbenchRouteHtml()}
     ${workbenchSlicePlanHtml()}

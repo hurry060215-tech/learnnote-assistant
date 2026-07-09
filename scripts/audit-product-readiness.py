@@ -391,6 +391,8 @@ def build_matrix() -> list[ReadinessItem]:
         "iframe",
         "request_body",
         "referer",
+        "workbenchUniversalAdapterItems",
+        "workbench-adapter-ladder",
     ]) and has_any(sidepanel_js + samples, ["videoUrl", "hls", "dashUrl", "play_url", "/api/lesson/resolve"])
     rows.append(item(
         "generic_adapter_direction",
