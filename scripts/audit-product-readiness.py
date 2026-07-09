@@ -240,6 +240,7 @@ def build_matrix() -> list[ReadinessItem]:
     launcher = read_text(ROOT / "start-learnnote.ps1")
     web_html = read_text(ROOT / "web" / "index.html")
     web_js = read_text(ROOT / "web" / "app.js")
+    web_css = read_text(ROOT / "web" / "styles.css")
     readme = read_text(ROOT / "README.md")
     audits = collect_site_audits()
 
@@ -307,16 +308,22 @@ def build_matrix() -> list[ReadinessItem]:
         "build_visual_windows",
         "visualStudyDeck",
         "transcript-window",
+    ]) and has_all(web_js + web_css + sidepanel_js + sidepanel_css, [
+        "visualStudyOverviewHtml",
+        "visualStudyReviewPathHtml",
+        "visualStudyHandoutHtml",
+        "visual-study-correlation",
     ])
     rows.append(item(
         "visual_slice_notes",
         "Slice and visual-summary result page",
         "pass" if visual_ready else "fail",
-        "Frame grids, visual windows, transcript alignment, review path, and export surface are implemented." if visual_ready else "Visual slice/result-page evidence is incomplete.",
+        "Frame grids, visual windows, transcript alignment, review path, handout timeline, evidence matrix, and export surface are implemented in the result UIs." if visual_ready else "Visual slice/result-page evidence is incomplete.",
         [
             (ROOT / "backend" / "app" / "processor.py", "visual index and window generation"),
             (ROOT / "backend" / "app" / "media.py", "frame-grid generation"),
-            (ROOT / "extension" / "sidepanel.js", "visual study deck, transcript windows, review path"),
+            (ROOT / "extension" / "sidepanel.js", "visual study deck, transcript windows, review path, handout"),
+            (ROOT / "web" / "app.js", "Web visual study overview, review path, handout, evidence matrix"),
         ],
     ))
 
