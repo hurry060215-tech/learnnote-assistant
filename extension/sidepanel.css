@@ -9203,6 +9203,155 @@ body {
   line-height: 1.25;
 }
 
+.study-next-step {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  border: 1px solid rgba(23, 105, 232, 0.16);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.92);
+  padding: 9px;
+}
+
+.study-next-step.ready {
+  border-color: rgba(15, 143, 97, 0.26);
+  background: linear-gradient(180deg, #ffffff, #f5fcf7);
+}
+
+.study-next-step.pending,
+.study-next-step.idle {
+  border-color: rgba(183, 111, 0, 0.22);
+  background: linear-gradient(180deg, #ffffff, #fffaf0);
+}
+
+.study-next-step.blocked {
+  border-color: rgba(199, 48, 43, 0.22);
+  background: linear-gradient(180deg, #ffffff, #fff7f6);
+}
+
+.study-next-step-main {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.study-next-step-main span {
+  width: fit-content;
+  max-width: 100%;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #eaf2ff;
+  color: var(--ln-blue, var(--accent));
+  padding: 2px 7px;
+  font-size: 9px;
+  font-weight: 900;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.study-next-step.ready .study-next-step-main span {
+  background: #eaf8f1;
+  color: var(--ln-green, var(--success));
+}
+
+.study-next-step.pending .study-next-step-main span,
+.study-next-step.idle .study-next-step-main span {
+  background: #fff2d6;
+  color: var(--ln-orange, var(--warning));
+}
+
+.study-next-step.blocked .study-next-step-main span {
+  background: #fff0ef;
+  color: var(--ln-red, var(--danger));
+}
+
+.study-next-step-main strong {
+  color: var(--ln-ink, var(--ink));
+  font-size: 12px;
+  line-height: 1.28;
+  overflow-wrap: anywhere;
+}
+
+.study-next-step-main small {
+  color: var(--ln-muted, var(--muted));
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.study-next-step-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.study-next-step-facts em {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  border: 1px solid #e2eaf5;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.78);
+  padding: 5px;
+  color: var(--ln-muted, var(--muted));
+  font-size: 9.5px;
+  font-style: normal;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.study-next-step-facts b {
+  color: var(--ln-ink, var(--ink));
+  font-size: 9px;
+  font-weight: 900;
+}
+
+.study-next-step-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 64px;
+  gap: 6px;
+}
+
+.study-next-step-actions button {
+  min-width: 0;
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: 1px solid #cbdaf0;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #24528f;
+  padding: 0 8px;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1.1;
+}
+
+.study-next-step-actions button.primary {
+  border-color: var(--ln-blue, var(--accent));
+  background: var(--ln-blue, var(--accent));
+  color: #ffffff;
+}
+
+.study-next-step.ready .study-next-step-actions button.primary {
+  border-color: var(--ln-green, var(--success));
+  background: var(--ln-green, var(--success));
+}
+
+.study-next-step.blocked .study-next-step-actions button.primary {
+  border-color: var(--ln-red, var(--danger));
+  background: var(--ln-red, var(--danger));
+}
+
+.study-next-step-actions svg {
+  width: 14px;
+  height: 14px;
+}
+
 .workbench-run-modes {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -10492,6 +10641,45 @@ body {
   padding: 5px;
 }
 
+.current-card .study-next-step {
+  gap: 6px;
+  padding: 7px;
+}
+
+.current-card .study-next-step-main small {
+  display: none;
+}
+
+.current-card .study-next-step-main strong {
+  font-size: 11px;
+}
+
+.current-card .study-next-step-facts {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.current-card .study-next-step-facts em {
+  min-height: 30px;
+  padding: 4px;
+  font-size: 9px;
+}
+
+.current-card .study-next-step-facts b {
+  font-size: 8.5px;
+}
+
+.current-card .study-next-step-actions {
+  grid-template-columns: minmax(0, 1fr) 58px;
+  gap: 5px;
+}
+
+.current-card .study-next-step-actions button {
+  min-height: 28px;
+  padding: 0 6px;
+  font-size: 9.5px;
+}
+
 .current-card .workbench-run-modes small {
   display: none;
 }
@@ -11401,6 +11589,10 @@ body[data-panel-mode="study"] #downloadOnlyButton {
 
   .current-card .capture-cockpit em {
     writing-mode: vertical-rl;
+  }
+
+  .current-card .study-next-step-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

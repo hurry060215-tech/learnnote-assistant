@@ -246,23 +246,23 @@ def build_matrix() -> list[ReadinessItem]:
     rows: list[ReadinessItem] = []
     ui_ready = (
         has_all(sidepanel_html, ["currentStudyCard", "sourceRouteRail", "taskHistory", "result-tab", "diagnosticModeButton"])
-        and has_all(sidepanel_js, ["setPanelMode", "study-flow-board", "review-command-grid", "review-advanced-row"])
-        and has_all(sidepanel_css, ["current-study-card", "study-flow-board", "review-command-grid", "diagnostics"])
+        and has_all(sidepanel_js, ["setPanelMode", "study-flow-board", "study-next-step", "panelMode === \"diagnostics\"", "review-command-grid", "review-advanced-row"])
+        and has_all(sidepanel_css, ["current-study-card", "study-flow-board", "study-next-step", "review-command-grid", "diagnostics"])
     )
     rows.append(item(
         "side_panel_product_flow",
         "BiliNote-style Side Panel flow",
         "pass" if ui_ready else "fail",
         (
-            "Study mode separates current video, source route, slice summary, history, and advanced diagnostics."
+            "Study mode foregrounds current video, next action, slice summary, history, and keeps adapter/resource details behind diagnostics."
             if ui_ready else "Side Panel product-flow tokens are missing."
         ),
         [
             (ROOT / "extension" / "sidepanel.html", "study/diagnostics tabs, current task card, history, result tabs"),
-            (ROOT / "extension" / "sidepanel.js", "study-flow board and advanced diagnostic actions"),
-            (ROOT / "extension" / "sidepanel.css", "product-flow and diagnostic styling"),
+            (ROOT / "extension" / "sidepanel.js", "study-flow board, next-step card, and diagnostics-only adapter/resource details"),
+            (ROOT / "extension" / "sidepanel.css", "product-flow, next-step, and diagnostic styling"),
         ],
-        "Restore the study/diagnostics split and current-video route sections." if not ui_ready else "",
+        "Restore the study/diagnostics split and keep raw resource/adapter details out of the default study view." if not ui_ready else "",
     ))
 
     direct_ready = has_all(sidepanel_js + audit_real_site + backend_main, [

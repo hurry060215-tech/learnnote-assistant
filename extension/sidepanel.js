@@ -3504,6 +3504,48 @@ function workbenchBriefHtml(state) {
   </div>`;
 }
 
+function studyNextStepItems(state) {
+  const selected = selectedResource();
+  const checked = currentPreflight();
+  const subtitles = page?.browser_subtitles || [];
+  const source = selected
+    ? `${mediaKindText(selected.kind) || selected.kind || "媒体"} · ${resourceSourceText(selected) || selected.source || "浏览器"}`
+    : hasActiveVideoSignal(page?.active_video)
+      ? playbackSourceLabel(page.active_video)
+      : "等待播放";
+  const direct = checked
+    ? checked.downloadable ? "预检通过" : checked.code || "预检未过"
+    : selected ? "任务会自动预检" : state === "blocked" ? "不可直取" : "等待候选";
+  const subtitle = subtitles.length ? `${subtitles.length} 条字幕` : "ASR 兜底";
+  return [
+    ["视频入口", source],
+    ["下载状态", direct],
+    ["切片计划", visualPlanText()],
+    ["字幕来源", subtitle]
+  ];
+}
+
+function studyNextStepHtml(state) {
+  const copy = currentStudyCopy(state);
+  const primary = workbenchPrimaryAction(state);
+  const tone = state === "ready" ? "ready" : state === "blocked" ? "blocked" : ["candidate", "fallback", "mapping", "waiting"].includes(state) ? "pending" : "idle";
+  const detail = currentStudyActionText(state).replace(/^下一步：/, "");
+  return `<section class="study-next-step ${escapeHtml(tone)}" aria-label="下一步学习动作">
+    <div class="study-next-step-main">
+      <span>${escapeHtml(copy.badge)}</span>
+      <strong>${escapeHtml(detail)}</strong>
+      <small>${escapeHtml(copy.detail)}</small>
+    </div>
+    <div class="study-next-step-facts">
+      ${studyNextStepItems(state).map(([label, value]) => `<em><b>${escapeHtml(label)}</b>${escapeHtml(value)}</em>`).join("")}
+    </div>
+    <div class="study-next-step-actions">
+      <button type="button" class="primary" data-route-action="${escapeHtml(primary.action)}">${workbenchIcon(primary.icon)}${escapeHtml(primary.label)}</button>
+      <button type="button" data-route-action="diagnostics">诊断</button>
+    </div>
+  </section>`;
+}
+
 function studyFlowBoardItems(state) {
   const selected = selectedResource();
   const checked = currentPreflight();
@@ -3618,6 +3660,7 @@ function renderCurrentStudyCard() {
   const state = currentStudyState();
   const copy = currentStudyCopy(state);
   const primary = workbenchPrimaryAction(state);
+  const diagnostic = panelMode === "diagnostics";
   els.currentStudyCard.className = `current-study-card study-workbench ${state}`;
   els.currentStudyCard.innerHTML = `
     <div class="workbench-hero">
@@ -3633,12 +3676,13 @@ function renderCurrentStudyCard() {
     </div>
     ${workbenchBriefHtml(state)}
     ${studyFlowBoardHtml(state)}
-    ${workbenchUniversalAdapterHtml(state)}
+    ${studyNextStepHtml(state)}
     ${workbenchRunModesHtml(state)}
-    ${workbenchRouteHtml()}
+    ${diagnostic ? workbenchUniversalAdapterHtml(state) : ""}
+    ${diagnostic ? workbenchRouteHtml() : ""}
     ${workbenchSlicePlanHtml()}
     ${workbenchNotePreviewHtml(state)}
-    ${shouldShowWorkbenchAudit(state) ? workbenchAuditGateHtml(state) : ""}
+    ${diagnostic && shouldShowWorkbenchAudit(state) ? workbenchAuditGateHtml(state) : ""}
     ${shouldShowWorkbenchFallback(state) ? workbenchLocalFallbackHtml(state) : ""}
     <div class="workbench-steps">
       ${workbenchStepItems(state).map((item, index) => `<section class="${escapeHtml(item.state)}">
