@@ -232,6 +232,16 @@ That script runs the local doctor, a backend/sample smoke, and a real Edge MV3 e
 .\scripts\verify-product.ps1 -Browser chrome
 ```
 
+Before handoff, run the product acceptance gate. It stitches the important evidence together: local doctor, real Edge/Chrome extension sample smoke, yt-dlp real-site task probe, learning-platform mock gate, and the product readiness matrix. If you have a logged-in course page, pass it so the real learning-platform row is audited in the same run:
+
+```powershell
+cd D:\Projects\learnnote-assistant
+.\scripts\audit-product-acceptance.ps1 -Browser edge
+.\scripts\audit-product-acceptance.ps1 -Browser edge -LearningUrl "https://mooc1.chaoxing.com/..."
+```
+
+The acceptance report is written under `data\test-runs\product-acceptance\{timestamp}\summary.md`. Without `-LearningUrl`, the only expected manual item is the real logged-in learning-platform audit.
+
 Run the product readiness audit when deciding whether the current build is actually ready to hand off:
 
 ```powershell

@@ -183,7 +183,14 @@ function New-FirstRunGuide {
     ".\scripts\verify-product.ps1 -Browser $Browser",
     $fence,
     "",
-    "5. Check the product closure matrix:",
+    "5. Run the product acceptance gate before handoff:",
+    "",
+    "$($fence)powershell",
+    ".\scripts\audit-product-acceptance.ps1 -Browser $Browser",
+    ".\scripts\audit-product-acceptance.ps1 -Browser $Browser -LearningUrl `"https://mooc1.chaoxing.com/...`"",
+    $fence,
+    "",
+    "6. Check the product closure matrix:",
     "",
     "$($fence)powershell",
     ".\scripts\audit-product-readiness.ps1",
@@ -278,6 +285,8 @@ if ($Json) {
       start_with_samples = ".\start-learnnote.ps1 -WithSamples"
       install_asr = ".\start-learnnote.ps1 -InstallAsr"
       verify = ".\scripts\verify-product.ps1 -Browser $Browser"
+      acceptance = ".\scripts\audit-product-acceptance.ps1 -Browser $Browser"
+      acceptance_with_learning_url = ".\scripts\audit-product-acceptance.ps1 -Browser $Browser -LearningUrl <learning-url>"
       audit_real_site = ".\scripts\audit-real-site.ps1 <url> -Preflight"
       audit_ytdlp_site = ".\scripts\audit-real-site.ps1 <url> -TaskProbe -YtdlpProbe -RequireReady -TaskTimeout 180"
       audit_learning_platform = ".\scripts\audit-learning-platform.ps1 <learning-url>"
@@ -345,7 +354,10 @@ if ($fails.Count) {
   Write-Host "   $samplesUrl"
   Write-Host "6. Product verification:"
   Write-Host "   .\scripts\verify-product.ps1 -Browser $Browser"
-  Write-Host "7. Product closure matrix:"
+  Write-Host "7. Product acceptance gate:"
+  Write-Host "   .\scripts\audit-product-acceptance.ps1 -Browser $Browser"
+  Write-Host "   .\scripts\audit-product-acceptance.ps1 -Browser $Browser -LearningUrl <learning-url>"
+  Write-Host "8. Product closure matrix:"
   Write-Host "   .\scripts\audit-product-readiness.ps1"
   Write-Host ""
   Write-Host "Local sample pages" -ForegroundColor Cyan

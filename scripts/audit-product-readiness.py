@@ -368,6 +368,7 @@ def build_matrix() -> list[ReadinessItem]:
             "LEARNNOTE_LLM_API_KEY",
             "D:\\Projects\\learnnote-assistant",
             "audit-learning-platform.ps1",
+            "audit-product-acceptance.ps1",
         ])
         and has_all(web_html + web_js + backend_main, ["startupReadiness", "startupReadinessItems", "yt_dlp_available"])
         and has_all(doctor, ["project location", "backend runtime", "script_check"])
@@ -380,6 +381,7 @@ def build_matrix() -> list[ReadinessItem]:
         [
             (ROOT / "scripts" / "first-run-checklist.ps1", "machine-specific first-run guide"),
             (ROOT / "scripts" / "doctor.py", "runtime and dependency checks"),
+            (ROOT / "scripts" / "audit-product-acceptance.ps1", "product acceptance gate"),
             (ROOT / "start-learnnote.ps1", "D-drive launcher"),
             (ROOT / "web" / "index.html", "startup readiness card"),
             (ROOT / "web" / "app.js", "startup readiness health rendering"),

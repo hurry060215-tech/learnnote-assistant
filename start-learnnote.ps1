@@ -179,6 +179,8 @@ try {
   Write-Host "Stop the backend with Ctrl+C."
   Write-Host "Logged-in learning-platform audit:"
   Write-Host "  .\scripts\audit-learning-platform.ps1 <learning-url>"
+  Write-Host "Product acceptance gate:"
+  Write-Host "  .\scripts\audit-product-acceptance.ps1 -Browser edge"
   Write-Host ""
 
   $backendArgs = @{ Port = $Port }
