@@ -149,16 +149,26 @@ function New-FirstRunGuide {
     "",
     $optionalWarnings,
     "",
-    "## First Use",
+    "## Five-Minute Product Loop",
     "",
-    "1. Start backend and sample pages:",
+    "1. Confirm required readiness:",
+    "",
+    "$($fence)powershell",
+    ".\scripts\first-run-checklist.ps1",
+    $fence,
+    "",
+    "Expected: no FAIL items. WARN items only reduce quality, for example local ASR or multimodal summaries.",
+    "",
+    "2. Start backend and sample pages:",
     "",
     "$($fence)powershell",
     "cd $projectRoot",
     ".\start-learnnote.ps1 -WithSamples",
     $fence,
     "",
-    "2. Load the browser extension:",
+    "Expected: FastAPI runs at $tick$backendUrl$tick, samples run at $tick$samplesUrl$tick, and logs stay under $tick$dataDir\logs$tick.",
+    "",
+    "3. Load the browser extension:",
     "",
     "- Open ${tick}edge://extensions${tick} or ${tick}chrome://extensions${tick}.",
     "- Enable Developer Mode.",
@@ -166,7 +176,7 @@ function New-FirstRunGuide {
     "- Select $tick$extensionDir$tick.",
     "- Open the Side Panel and keep backend URL as $tick$backendUrl$tick.",
     "",
-    "3. Verify the loop with a local page:",
+    "4. Verify the loop with a local page:",
     "",
     "- MP4: $($samplePages.mp4)",
     "- HLS: $($samplePages.hls)",
@@ -175,26 +185,28 @@ function New-FirstRunGuide {
     "- Blob iframe fallback: $($samplePages.blob_iframe)",
     "- Chaoxing-style mock: $($samplePages.chaoxing_mock)",
     "",
-    "Play a sample for a few seconds, click the Side Panel summarize or preflight action, then check the generated note, transcript, slices, and diagnostics tabs.",
+    "Play a sample for a few seconds, click the Side Panel summarize or preflight action, then check the generated note, transcript, slices, frame grids, and diagnostics tabs. Task artifacts should appear under $tick$dataDir\tasks\{task_id}$tick.",
     "",
-    "4. Run product verification after code changes:",
+    "5. Run product verification after code changes:",
     "",
     "$($fence)powershell",
     ".\scripts\verify-product.ps1 -Browser $Browser",
     $fence,
     "",
-    "5. Run the product acceptance gate before handoff:",
+    "6. Run the product acceptance gate before handoff:",
     "",
     "$($fence)powershell",
     ".\scripts\audit-product-acceptance.ps1 -Browser $Browser",
     ".\scripts\audit-product-acceptance.ps1 -Browser $Browser -LearningUrl `"https://mooc1.chaoxing.com/...`"",
     $fence,
     "",
-    "6. Check the product closure matrix:",
+    "7. Check the product closure matrix:",
     "",
     "$($fence)powershell",
     ".\scripts\audit-product-readiness.ps1",
     $fence,
+    "",
+    "Expected: local/code rows pass. Without a real logged-in course URL, the logged-in learning-platform row remains manual by design.",
     "",
     "## Optional Upgrades",
     "",
@@ -338,26 +350,28 @@ if ($fails.Count) {
   Write-Host ("- Local ASR: {0}" -f $(if ($localAsrReady) { "ready; faster-whisper can transcribe locally" } else { "optional WARN; install with .\start-learnnote.ps1 -InstallAsr or use subtitle/remote ASR fallback" }))
   Write-Host ("- Visual LLM: {0}" -f $(if ($visionReady) { "ready; multimodal summaries can use configured API" } else { "optional WARN; without API key, notes use local deterministic fallback plus frame indexes" }))
   Write-Host ""
-  Write-Host "Startup path" -ForegroundColor Cyan
+  Write-Host "Five-minute product loop" -ForegroundColor Cyan
   Write-Host "0. Optional: write this machine-specific guide to D-drive data:"
   Write-Host "   .\scripts\first-run-checklist.ps1 -WriteGuide"
-  Write-Host "1. Start backend:"
-  Write-Host "   .\start-learnnote.ps1"
-  Write-Host "2. Load unpacked extension:"
+  Write-Host "1. Confirm there are no FAIL items:"
+  Write-Host "   .\scripts\first-run-checklist.ps1"
+  Write-Host "2. Start backend and samples:"
+  Write-Host "   .\start-learnnote.ps1 -WithSamples"
+  Write-Host "3. Load unpacked extension:"
   Write-Host "   $extensionDir"
-  Write-Host "3. In Chrome/Edge extensions page, enable Developer Mode and Load unpacked."
-  Write-Host "4. Put this backend URL in Side Panel settings if needed:"
+  Write-Host "4. In Chrome/Edge extensions page, enable Developer Mode and Load unpacked."
+  Write-Host "5. Keep this backend URL in Side Panel settings:"
   Write-Host "   $backendUrl"
   Write-Host "   The launcher also sets LEARNNOTE_BACKEND_ORIGIN to this URL for the current session."
-  Write-Host "5. For local sample pages:"
-  Write-Host "   .\start-learnnote.ps1 -WithSamples"
+  Write-Host "6. Open a local sample, play it for a few seconds, then click Side Panel preflight or summarize:"
   Write-Host "   $samplesUrl"
-  Write-Host "6. Product verification:"
+  Write-Host "   Expected: task artifacts under data\tasks and result tabs for note/transcript/slices/frames/diagnostics."
+  Write-Host "7. Product verification:"
   Write-Host "   .\scripts\verify-product.ps1 -Browser $Browser"
-  Write-Host "7. Product acceptance gate:"
+  Write-Host "8. Product acceptance gate:"
   Write-Host "   .\scripts\audit-product-acceptance.ps1 -Browser $Browser"
   Write-Host "   .\scripts\audit-product-acceptance.ps1 -Browser $Browser -LearningUrl <learning-url>"
-  Write-Host "8. Product closure matrix:"
+  Write-Host "9. Product closure matrix:"
   Write-Host "   .\scripts\audit-product-readiness.ps1"
   Write-Host ""
   Write-Host "Local sample pages" -ForegroundColor Cyan

@@ -145,6 +145,12 @@ Write-Host "  $extensionDir"
 Write-Host "Chrome: chrome://extensions  Edge: edge://extensions"
 Write-Host "After loading, set Side Panel backend URL to:"
 Write-Host "  $backendUrl"
+Write-Host ""
+Write-Host "First-use loop:" -ForegroundColor Cyan
+Write-Host "  1. Keep this launcher running."
+Write-Host "  2. Load the extension path above in Chrome/Edge Developer Mode."
+Write-Host "  3. Open a sample or real video page, play it for a few seconds, then use Side Panel preflight or summarize."
+Write-Host "  4. Expected result: task artifacts under data\tasks plus note, transcript, slices, frame grids, and diagnostics tabs."
 
 if (Test-LocalPortOpen -PortNumber $Port) {
   Write-Host ""

@@ -133,14 +133,16 @@ cd D:\Projects\learnnote-assistant
 
 This prints the Side Panel backend URL plus sample pages for direct MP4, HLS manifest, blob iframe fallback, POST play API replay, a generic nested player API, and the Chaoxing-style diagnostic mock. The sample server is stopped when the launcher exits, and its logs stay under `data\logs` on the D-drive project path.
 
-The fastest first-use path is:
+The fastest first-use path is a five-minute product loop:
 
-1. Run `.\scripts\first-run-checklist.ps1`.
-2. If there are no `FAIL` lines, run `.\start-learnnote.ps1 -WithSamples`.
-3. Load the unpacked extension from `D:\Projects\learnnote-assistant\extension`.
-4. Open one sample page, play it for a few seconds, then use the Side Panel.
-5. Run `.\scripts\verify-product.ps1 -Browser edge` when changing downloader, extension, startup, or UI code.
-6. Run `.\scripts\audit-product-readiness.ps1` to see the product closure matrix. It reports code/local evidence as `pass` and keeps live-site checks as `manual` until real browser audit reports prove them.
+1. `.\scripts\first-run-checklist.ps1`: confirm there are no `FAIL` items. `WARN` means optional quality is missing, not that the base workflow is blocked.
+2. `.\start-learnnote.ps1 -WithSamples`: start FastAPI plus the local MP4/HLS/blob/API/learning-platform sample site. Runtime files and logs stay under `D:\Projects\learnnote-assistant\data`.
+3. Load the unpacked extension from `D:\Projects\learnnote-assistant\extension`, then keep the Side Panel backend URL as `http://127.0.0.1:8765`.
+4. Open `http://127.0.0.1:8777/mp4.html` or `http://127.0.0.1:8777/chaoxing-mock.html`, play the video for a few seconds, then click Side Panel `预检资源` or `总结当前视频`.
+5. Expected first success: the Side Panel shows a normal learning flow, a task writes artifacts under `data\tasks\{task_id}`, and the result tabs show note, transcript, slices, frame grids, and diagnostics.
+6. When changing downloader, extension, startup, or UI code, run `.\scripts\verify-product.ps1 -Browser edge`.
+7. Before handoff, run `.\scripts\audit-product-acceptance.ps1 -Browser edge`; add `-LearningUrl "<logged-in-course-url>"` only when a real logged-in course page is available.
+8. Run `.\scripts\audit-product-readiness.ps1` to see the product closure matrix. It reports code/local evidence as `pass` and keeps live-site checks as `manual` until real browser audit reports prove them.
 
 Open the local web UI after startup:
 
