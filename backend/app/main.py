@@ -4,6 +4,7 @@ from importlib.util import find_spec
 from io import BytesIO
 import json
 import re
+import shutil
 import tempfile
 from uuid import uuid4
 from zipfile import ZIP_DEFLATED, ZipFile
@@ -2183,6 +2184,8 @@ def health_payload() -> dict:
     ffprobe = ffprobe_bin()
     duration_probe = "ffprobe" if ffprobe else "ffmpeg" if ffmpeg else ""
     local_asr_available = find_spec("faster_whisper") is not None
+    ytdlp_package_available = find_spec("yt_dlp") is not None
+    ytdlp_cli = shutil.which("yt-dlp") or shutil.which("yt-dlp.exe") or ""
     return {
         "ok": True,
         "ffmpeg": bool(ffmpeg),
@@ -2196,6 +2199,10 @@ def health_payload() -> dict:
         "local_asr_available": local_asr_available,
         "local_asr_package": "faster-whisper",
         "local_asr_install_hint": "pip install faster-whisper" if not local_asr_available else "",
+        "yt_dlp_available": ytdlp_package_available or bool(ytdlp_cli),
+        "yt_dlp_package_available": ytdlp_package_available,
+        "yt_dlp_cli_path": ytdlp_cli,
+        "yt_dlp_install_hint": "pip install yt-dlp" if not (ytdlp_package_available or ytdlp_cli) else "",
         "vision_model_configured": bool(LLM_API_KEY),
         "default_llm_model": LLM_MODEL,
         "default_llm_base_url": LLM_BASE_URL,

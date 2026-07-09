@@ -210,6 +210,7 @@ const els = {
   browserRefreshButton: document.querySelector("#browserRefreshButton"),
   browserBridgeStatus: document.querySelector("#browserBridgeStatus"),
   browserRouteSummary: document.querySelector("#browserRouteSummary"),
+  startupReadiness: document.querySelector("#startupReadiness"),
   sourceRouteRail: document.querySelector("#sourceRouteRail"),
   sourceWorkflow: document.querySelector("#sourceWorkflow"),
   fileInput: document.querySelector("#fileInput"),
@@ -2879,6 +2880,114 @@ function healthDataChipText(data) {
   return `${drive || "data"} · ${state}`;
 }
 
+function ytdlpChipText(data) {
+  if (!data) return "待连接";
+  if (data.yt_dlp_package_available) return "Python 包可用";
+  if (data.yt_dlp_available) return "CLI 可用";
+  return "未安装";
+}
+
+function projectPathFromHealth(data) {
+  const root = String(data?.data_paths?.root || "");
+  if (!root) return "D:\\Projects\\learnnote-assistant";
+  return root.replace(/[\\/]+data[\\/]?$/i, "") || root;
+}
+
+function startupReadinessItems(data = lastHealthData) {
+  const connected = Boolean(data);
+  const projectPath = projectPathFromHealth(data);
+  return [
+    {
+      state: connected ? "pass" : "block",
+      label: "本地后端",
+      value: connected ? "已连接" : "未连接",
+      detail: connected ? `API ${API || window.location.origin}` : "先运行 start-learnnote.ps1，后端监听 127.0.0.1。"
+    },
+    {
+      state: data?.ffmpeg ? "pass" : "block",
+      label: "ffmpeg",
+      value: data ? healthMediaChipText(data) : "待检测",
+      detail: data?.ffmpeg ? "可下载合并、转音频和抽帧。" : "缺少 ffmpeg 时无法完成 HLS/DASH 合并和切片。"
+    },
+    {
+      state: data?.yt_dlp_available ? "pass" : connected ? "warn" : "wait",
+      label: "yt-dlp",
+      value: ytdlpChipText(data),
+      detail: data?.yt_dlp_available ? "页面解析和平台字幕兜底可用。" : "YouTube/B站等页面兜底需要安装 yt-dlp。"
+    },
+    {
+      state: data?.local_asr_available ? "pass" : connected ? "warn" : "wait",
+      label: "转写",
+      value: healthAsrChipText(data),
+      detail: data?.local_asr_available ? "本地 faster-whisper 可用。" : "未安装时仍可用平台字幕、远程 ASR 或本地索引兜底。"
+    },
+    {
+      state: healthVisionReady(data) ? "pass" : connected ? "warn" : "wait",
+      label: "视觉总结",
+      value: data ? healthVisionChipText(data) : "待检测",
+      detail: healthVisionReady(data) ? "切片网格可进入多模态总结。" : "未填 Key 时仍生成截图网格和本地索引。"
+    },
+    {
+      state: healthDataPathsReady(data) ? "pass" : connected ? "warn" : "wait",
+      label: "D盘数据",
+      value: healthDataChipText(data),
+      detail: hasHealthDataPaths(data) ? data.data_paths.root : "任务、上传和缓存应落在项目 data 目录。"
+    },
+    {
+      state: "active",
+      label: "浏览器扩展",
+      value: "手动加载",
+      detail: `${projectPath}\\extension`
+    },
+    {
+      state: "ready",
+      label: "样例回归",
+      value: "可选",
+      detail: "start-learnnote.ps1 -WithSamples 后打开本地 MP4/HLS/API mock。"
+    }
+  ];
+}
+
+function startupReadinessSummary(data = lastHealthData) {
+  const items = startupReadinessItems(data);
+  const blocks = items.filter(item => item.state === "block").length;
+  const warns = items.filter(item => item.state === "warn").length;
+  if (blocks) return `${blocks} 个必需项未就绪`;
+  if (warns) return `${warns} 个增强项待配置，基础流程可用`;
+  return "本机学习助手已就绪";
+}
+
+function startupReadinessHtml(data = lastHealthData) {
+  const items = startupReadinessItems(data);
+  return `
+    <div class="startup-readiness-head">
+      <div>
+        <span>启动就绪</span>
+        <strong>${escapeHtml(startupReadinessSummary(data))}</strong>
+      </div>
+      <em>${escapeHtml(API || window.location.origin || "127.0.0.1")}</em>
+    </div>
+    <div class="startup-readiness-grid">
+      ${items.map(item => `<section class="${escapeHtml(item.state)}">
+        <span>${escapeHtml(item.label)}</span>
+        <strong>${escapeHtml(item.value)}</strong>
+        <small>${escapeHtml(item.detail)}</small>
+      </section>`).join("")}
+    </div>
+    <div class="startup-readiness-actions">
+      <button type="button" data-startup-action="copy-backend">复制后端地址</button>
+      <button type="button" data-startup-action="open-options">模型参数</button>
+      <button type="button" data-startup-action="browser">当前页入口</button>
+      <button type="button" data-startup-action="local">本地视频</button>
+    </div>
+  `;
+}
+
+function updateStartupReadiness(data = lastHealthData) {
+  if (!els.startupReadiness) return;
+  els.startupReadiness.innerHTML = startupReadinessHtml(data);
+}
+
 function emptyReadinessItems(data = lastHealthData) {
   const backendReady = Boolean(data?.ffmpeg);
   return [
@@ -2970,6 +3079,7 @@ async function checkHealth() {
           : "扩展读取播放器、媒体请求和一次性 cookie，后端只下载可访问的视频地址。"
         : "后端已连接，但 ffmpeg 缺失；当前页直取后无法完成合并/切片。";
       updateHealthVisionStatus(data);
+      updateStartupReadiness(data);
       refreshEmptyWorkbenchReadiness();
     }
   } catch {
@@ -2978,6 +3088,7 @@ async function checkHealth() {
     if (els.browserBridgeStatus) {
       els.browserBridgeStatus.textContent = "先启动本地后端，再从扩展 Side Panel 创建当前页任务。";
     }
+    updateStartupReadiness(null);
     refreshEmptyWorkbenchReadiness();
   }
 }
@@ -6146,6 +6257,27 @@ if (els.browserRouteSummary) {
   });
 }
 
+if (els.startupReadiness) {
+  els.startupReadiness.addEventListener("click", async event => {
+    const button = event.target.closest("[data-startup-action]");
+    if (!button) return;
+    const action = button.dataset.startupAction;
+    if (action === "copy-backend") {
+      await copyBackendUrl(button);
+      return;
+    }
+    if (action === "open-options") {
+      if (els.optionsDisclosure) els.optionsDisclosure.open = true;
+      els.optionsDisclosure?.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
+      return;
+    }
+    if (action === "browser" || action === "local" || action === "url") {
+      setSource(action);
+      document.querySelector(".workspace-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  });
+}
+
 if (els.urlMode) {
   els.urlMode.onchange = () => {
     clearUrlPreflight();
@@ -6160,12 +6292,16 @@ if (els.transcriber) {
   els.transcriber.onchange = () => {
     syncTranscriberModelDefault(true);
     saveModelSettings();
+    updateHealthVisionStatus();
+    updateStartupReadiness();
   };
 }
 if (els.llmProvider) {
   els.llmProvider.onchange = () => {
     applyModelProviderPreset(true);
     saveModelSettings();
+    updateHealthVisionStatus();
+    updateStartupReadiness();
   };
 }
 
@@ -6283,13 +6419,18 @@ els.fileInput.onchange = () => {
 });
 els.llmModel?.addEventListener("input", () => {
   updateHealthVisionStatus();
+  updateStartupReadiness();
   saveModelSettings();
 });
 els.llmBaseUrl?.addEventListener("input", () => {
   updateHealthVisionStatus();
+  updateStartupReadiness();
   saveModelSettings();
 });
-els.llmApiKey?.addEventListener("input", () => updateHealthVisionStatus());
+els.llmApiKey?.addEventListener("input", () => {
+  updateHealthVisionStatus();
+  updateStartupReadiness();
+});
 
 initializeResponsiveChrome();
 loadModelSettings();

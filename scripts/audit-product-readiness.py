@@ -238,6 +238,8 @@ def build_matrix() -> list[ReadinessItem]:
     first_run = read_text(ROOT / "scripts" / "first-run-checklist.ps1")
     doctor = read_text(ROOT / "scripts" / "doctor.py")
     launcher = read_text(ROOT / "start-learnnote.ps1")
+    web_html = read_text(ROOT / "web" / "index.html")
+    web_js = read_text(ROOT / "web" / "app.js")
     readme = read_text(ROOT / "README.md")
     audits = collect_site_audits()
 
@@ -367,6 +369,7 @@ def build_matrix() -> list[ReadinessItem]:
             "D:\\Projects\\learnnote-assistant",
             "audit-learning-platform.ps1",
         ])
+        and has_all(web_html + web_js + backend_main, ["startupReadiness", "startupReadinessItems", "yt_dlp_available"])
         and has_all(doctor, ["project location", "backend runtime", "script_check"])
     )
     rows.append(item(
@@ -378,6 +381,8 @@ def build_matrix() -> list[ReadinessItem]:
             (ROOT / "scripts" / "first-run-checklist.ps1", "machine-specific first-run guide"),
             (ROOT / "scripts" / "doctor.py", "runtime and dependency checks"),
             (ROOT / "start-learnnote.ps1", "D-drive launcher"),
+            (ROOT / "web" / "index.html", "startup readiness card"),
+            (ROOT / "web" / "app.js", "startup readiness health rendering"),
             (ROOT / "README.md", "Quick Start and real-site audit instructions"),
         ],
     ))

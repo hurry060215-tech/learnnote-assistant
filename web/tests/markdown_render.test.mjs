@@ -120,7 +120,7 @@ const context = {
   URL: class URL {},
   fetch: async url => {
     const value = String(url);
-    if (value.endsWith("/health")) return { json: async () => ({ ffmpeg: true, ffprobe: false, ffprobe_optional: true, duration_probe: "ffmpeg", vision_model_configured: false, default_llm_model: "gpt-4.1-mini", default_llm_provider: "openai", default_llm_base_host: "api.openai.com", data_paths: { root: "D:\\Projects\\learnnote-assistant\\data", data_drive: "D:", all_under_data_dir: true, all_on_data_drive: true, paths: { tasks: "D:\\Projects\\learnnote-assistant\\data\\tasks" } }, model_provider_presets: [
+    if (value.endsWith("/health")) return { json: async () => ({ ffmpeg: true, ffprobe: false, ffprobe_optional: true, duration_probe: "ffmpeg", yt_dlp_available: true, yt_dlp_package_available: true, vision_model_configured: false, default_llm_model: "gpt-4.1-mini", default_llm_provider: "openai", default_llm_base_host: "api.openai.com", data_paths: { root: "D:\\Projects\\learnnote-assistant\\data", data_drive: "D:", all_under_data_dir: true, all_on_data_drive: true, paths: { tasks: "D:\\Projects\\learnnote-assistant\\data\\tasks" } }, model_provider_presets: [
       { key: "openai", label: "OpenAI 官方", base_url: "https://api.openai.com/v1", model: "gpt-4.1-mini", transcriber: "openai-compatible", whisper_model: "whisper-1", tier: "mainstream", recommended: true, capabilities: ["text", "vision", "asr"] },
       { key: "openrouter", label: "OpenRouter", base_url: "https://openrouter.ai/api/v1", model: "openai/gpt-4.1-mini", transcriber: "faster-whisper", whisper_model: "small", tier: "compatible", recommended: false, capabilities: ["text", "vision"] }
     ] }) };
@@ -159,6 +159,7 @@ assert.equal(context.resolveApiBase(
   { protocol: "http:", hostname: "127.0.0.1", port: "8878" },
   { getItem: () => "http://localhost:9000/" }
 ), "http://localhost:9000");
+assert.match(indexHtml, /id="startupReadiness"/);
 assert.equal(context.safeNoteMediaUrl("/api/tasks/task-web/assets/grid_001.jpg"), "/api/tasks/task-web/assets/grid_001.jpg");
 vm.runInContext(`API = "http://127.0.0.1:8766";`, context);
 assert.equal(context.safeNoteMediaUrl("/api/tasks/task-web/assets/grid_001.jpg"), "http://127.0.0.1:8766/api/tasks/task-web/assets/grid_001.jpg");
@@ -239,6 +240,16 @@ assert.match(elements.get("#browserBridgeStatus").innerHTML, /转写/);
 assert.match(elements.get("#browserBridgeStatus").innerHTML, /本地 faster-whisper · small/);
 assert.match(elements.get("#browserBridgeStatus").innerHTML, /capture-status-chip data ready/);
 assert.match(elements.get("#browserBridgeStatus").innerHTML, /D: · data/);
+assert.match(elements.get("#startupReadiness").innerHTML, /启动就绪/);
+assert.match(elements.get("#startupReadiness").innerHTML, /增强项待配置|本机学习助手已就绪/);
+assert.match(elements.get("#startupReadiness").innerHTML, /本地后端/);
+assert.match(elements.get("#startupReadiness").innerHTML, /ffmpeg/);
+assert.match(elements.get("#startupReadiness").innerHTML, /yt-dlp/);
+assert.match(elements.get("#startupReadiness").innerHTML, /Python 包可用/);
+assert.match(elements.get("#startupReadiness").innerHTML, /D:\\Projects\\learnnote-assistant\\extension/);
+assert.match(elements.get("#startupReadiness").innerHTML, /data-startup-action="copy-backend"/);
+assert.match(elements.get("#startupReadiness").innerHTML, /data-startup-action="open-options"/);
+assert.match(context.startupReadinessHtml({ ffmpeg: false, yt_dlp_available: false, data_paths: null }), /必需项未就绪/);
 context.updateHealthVisionStatus({
   ffmpeg: true,
   ffprobe_optional: true,
