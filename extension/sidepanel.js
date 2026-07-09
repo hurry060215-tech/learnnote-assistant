@@ -3661,7 +3661,7 @@ function renderCurrentStudyCard() {
   const copy = currentStudyCopy(state);
   const primary = workbenchPrimaryAction(state);
   const diagnostic = panelMode === "diagnostics";
-  els.currentStudyCard.className = `current-study-card study-workbench ${state}`;
+  els.currentStudyCard.className = `current-study-card study-workbench ${state} ${diagnostic ? "diagnostic-mode" : "study-mode"}`;
   els.currentStudyCard.innerHTML = `
     <div class="workbench-hero">
       <div class="workbench-title">
@@ -3674,7 +3674,7 @@ function renderCurrentStudyCard() {
         ${escapeHtml(primary.label)}
       </button>
     </div>
-    ${workbenchBriefHtml(state)}
+    ${diagnostic ? workbenchBriefHtml(state) : ""}
     ${studyFlowBoardHtml(state)}
     ${studyNextStepHtml(state)}
     ${workbenchRunModesHtml(state)}
@@ -3684,7 +3684,7 @@ function renderCurrentStudyCard() {
     ${workbenchNotePreviewHtml(state)}
     ${diagnostic && shouldShowWorkbenchAudit(state) ? workbenchAuditGateHtml(state) : ""}
     ${shouldShowWorkbenchFallback(state) ? workbenchLocalFallbackHtml(state) : ""}
-    <div class="workbench-steps">
+    ${diagnostic ? `<div class="workbench-steps">
       ${workbenchStepItems(state).map((item, index) => `<section class="${escapeHtml(item.state)}">
         <i>${index + 1}</i>
         <span>${escapeHtml(item.label)}</span>
@@ -3699,7 +3699,7 @@ function renderCurrentStudyCard() {
       <div class="workbench-actions">
         ${workbenchSecondaryActions(state).map(([action, label]) => `<button type="button" data-route-action="${escapeHtml(action)}">${escapeHtml(label)}</button>`).join("")}
       </div>
-    </div>
+    </div>` : ""}
   `;
 }
 
