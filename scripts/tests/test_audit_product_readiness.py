@@ -37,6 +37,7 @@ class ProductReadinessAuditTest(unittest.TestCase):
             "local_regression_samples",
             "startup_onboarding",
             "generic_adapter_direction",
+            "product_acceptance_gate",
             "real_site_chaoxing",
         }:
             self.assertIn(expected, keys)
@@ -176,6 +177,23 @@ class ProductReadinessAuditTest(unittest.TestCase):
 
         self.assertIsNone(audit_product_readiness.ytdlp_supported_audit([missing_probe]))
         self.assertIs(audit_product_readiness.ytdlp_supported_audit([complete]), complete)
+
+    def test_acceptance_report_allows_manual_logged_in_learning_gate_only(self):
+        report = """
+# LearnNote product acceptance gate
+- PASS doctor (2s)
+- PASS real browser extension smoke: local MP4/HLS/API/blob/learning mock (12s)
+- PASS yt-dlp supported real-site task probe (54s)
+- PASS learning-platform local mock gate (9s)
+- MANUAL logged-in learning-platform real gate: provide -LearningUrl after logging in and opening the lesson page
+- PASS product readiness matrix (0s)
+"""
+        missing = report.replace("- PASS real browser extension smoke: local MP4/HLS/API/blob/learning mock (12s)\n", "")
+        failed = report + "\n- FAIL product readiness matrix (1s): broken\n"
+
+        self.assertTrue(audit_product_readiness.acceptance_report_ready(report))
+        self.assertFalse(audit_product_readiness.acceptance_report_ready(missing))
+        self.assertFalse(audit_product_readiness.acceptance_report_ready(failed))
 
 
 if __name__ == "__main__":

@@ -10,6 +10,7 @@ from typing import Iterable
 
 ROOT = Path(__file__).resolve().parents[1]
 SITE_AUDIT_DIR = ROOT / "data" / "test-runs" / "site-audits"
+PRODUCT_ACCEPTANCE_DIR = ROOT / "data" / "test-runs" / "product-acceptance"
 
 
 @dataclass
@@ -153,6 +154,27 @@ def local_sample_audit(audits: list[dict]) -> dict | None:
     for audit in audits:
         if is_local_audit(audit["entry"]):
             return audit
+    return None
+
+
+def acceptance_report_ready(text: str) -> bool:
+    required = [
+        "- PASS doctor",
+        "- PASS real browser extension smoke: local MP4/HLS/API/blob/learning mock",
+        "- PASS yt-dlp supported real-site task probe",
+        "- PASS learning-platform local mock gate",
+        "- PASS product readiness matrix",
+    ]
+    return has_all(text, required) and "- FAIL " not in text
+
+
+def latest_product_acceptance_report() -> tuple[Path, str] | None:
+    if not PRODUCT_ACCEPTANCE_DIR.exists():
+        return None
+    for path in sorted(PRODUCT_ACCEPTANCE_DIR.glob("*/summary.md"), reverse=True):
+        text = read_text(path)
+        if text.strip():
+            return path, text
     return None
 
 
@@ -419,6 +441,33 @@ def build_matrix() -> list[ReadinessItem]:
             (ROOT / "scripts" / "serve-samples.py", "site-agnostic regression mocks"),
         ],
     ))
+
+    acceptance = latest_product_acceptance_report()
+    if acceptance and acceptance_report_ready(acceptance[1]):
+        rows.append(item(
+            "product_acceptance_gate",
+            "Full product acceptance gate",
+            "pass",
+            "Latest product acceptance report proves doctor, real Edge/Chrome extension smoke, yt-dlp real-site probe, local learning-platform mock, and readiness matrix.",
+            [(acceptance[0], "summary.md has all required PASS rows; logged-in learning-platform real gate may remain manual without -LearningUrl")],
+        ))
+    elif acceptance:
+        rows.append(item(
+            "product_acceptance_gate",
+            "Full product acceptance gate",
+            "warn",
+            "A product acceptance report exists, but it does not prove all required local/real-browser gates passed.",
+            [(acceptance[0], "summary.md is missing one or more required PASS rows")],
+            next_step="Run scripts/audit-product-acceptance.ps1 -Browser edge. Provide -LearningUrl for the logged-in learning-platform real gate.",
+        ))
+    else:
+        rows.append(item(
+            "product_acceptance_gate",
+            "Full product acceptance gate",
+            "warn",
+            "No product acceptance report exists under data/test-runs/product-acceptance.",
+            next_step="Run scripts/audit-product-acceptance.ps1 -Browser edge. Provide -LearningUrl for the logged-in learning-platform real gate.",
+        ))
 
     rows.extend(site_audit_items(audits))
 
