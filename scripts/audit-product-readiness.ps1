@@ -2,7 +2,8 @@ param(
   [switch]$Json,
   [string]$Output = "",
   [switch]$Strict,
-  [switch]$RequireRealSiteAudits
+  [switch]$RequireRealSiteAudits,
+  [switch]$SkipAcceptanceGate
 )
 
 $ErrorActionPreference = "Stop"
@@ -25,6 +26,9 @@ if ($Strict) {
 }
 if ($RequireRealSiteAudits) {
   $argsList += "--require-real-site-audits"
+}
+if ($SkipAcceptanceGate) {
+  $argsList += "--skip-acceptance-gate"
 }
 
 & $python @argsList

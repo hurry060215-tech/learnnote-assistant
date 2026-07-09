@@ -137,7 +137,9 @@ if ($LearningUrl) {
 
 if (-not $SkipReadiness) {
   Invoke-AcceptanceStep "product readiness matrix" {
-    $args = @{}
+    $args = @{
+      SkipAcceptanceGate = $true
+    }
     if ($RequireRealSiteAudits) {
       $args.RequireRealSiteAudits = $true
     }

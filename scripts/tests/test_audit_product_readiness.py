@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -48,6 +49,14 @@ class ProductReadinessAuditTest(unittest.TestCase):
         failures = [row for row in static_rows if row.status == "fail"]
 
         self.assertEqual([], [(row.key, row.detail) for row in failures])
+
+    def test_acceptance_gate_can_be_skipped_for_self_audit(self):
+        rows = audit_product_readiness.build_matrix(include_acceptance_gate=False)
+        keys = {row.key for row in rows}
+
+        self.assertNotIn("product_acceptance_gate", keys)
+        self.assertIn("startup_onboarding", keys)
+        self.assertIn("real_site_ytdlp", keys)
 
     def test_learning_audit_requires_full_signal_set(self):
         complete = {
@@ -194,6 +203,41 @@ class ProductReadinessAuditTest(unittest.TestCase):
         self.assertTrue(audit_product_readiness.acceptance_report_ready(report))
         self.assertFalse(audit_product_readiness.acceptance_report_ready(missing))
         self.assertFalse(audit_product_readiness.acceptance_report_ready(failed))
+
+    def test_latest_acceptance_report_prefers_complete_report_over_newer_skip(self):
+        complete = """
+# LearnNote product acceptance gate
+- PASS doctor (2s)
+- PASS real browser extension smoke: local MP4/HLS/API/blob/learning mock (12s)
+- PASS yt-dlp supported real-site task probe (54s)
+- PASS learning-platform local mock gate (9s)
+- MANUAL logged-in learning-platform real gate: provide -LearningUrl after logging in and opening the lesson page
+- PASS product readiness matrix (0s)
+"""
+        skipped = """
+# LearnNote product acceptance gate
+- PASS doctor (2s)
+- SKIP real browser extension smoke
+- SKIP yt-dlp supported real-site task probe
+- PASS product readiness matrix (0s)
+"""
+        original = audit_product_readiness.PRODUCT_ACCEPTANCE_DIR
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            older = root / "20260709-010000" / "summary.md"
+            newer = root / "20260709-020000" / "summary.md"
+            older.parent.mkdir(parents=True)
+            newer.parent.mkdir(parents=True)
+            older.write_text(complete, encoding="utf-8")
+            newer.write_text(skipped, encoding="utf-8")
+            audit_product_readiness.PRODUCT_ACCEPTANCE_DIR = root
+            try:
+                selected = audit_product_readiness.latest_product_acceptance_report()
+            finally:
+                audit_product_readiness.PRODUCT_ACCEPTANCE_DIR = original
+
+        self.assertIsNotNone(selected)
+        self.assertEqual(selected[0], older)
 
 
 if __name__ == "__main__":
