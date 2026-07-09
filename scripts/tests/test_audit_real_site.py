@@ -221,6 +221,42 @@ class AuditRealSiteSignalProfileTest(unittest.TestCase):
         self.assertIn("cookie", failures[0]["missing_signals"])
         self.assertNotIn("ananas", failures[0]["missing_signals"])
         self.assertNotIn("objectid", failures[0]["missing_signals"])
+        self.assertTrue(any("playurl" in item for item in failures[0]["next_checks"]))
+        self.assertTrue(any("cookie" in item for item in failures[0]["next_checks"]))
+        self.assertEqual(profile["learning_platform"]["missing_signals"], ["playurl", "dtoken", "iframe", "cookie"])
+        self.assertTrue(any("iframe" in item for item in profile["learning_platform"]["next_checks"]))
+
+    def test_markdown_report_includes_actionable_missing_signal_guidance(self):
+        profile = audit_real_site.signal_profile(context([
+            {
+                "url": "https://mooc1.chaoxing.com/ananas/status/play",
+                "kind": "video",
+                "method": "POST",
+                "request_body": {"type": "form", "content": "objectid=local-object-001"},
+            }
+        ]))
+        audit = {
+            "url": "https://example.test/course?token=secret",
+            "context": context(),
+            "evidence": {
+                "profile": profile,
+                "stages": [{"label": "auth_context", "ok": False, "detail": "No cookies"}],
+                "missing": ["auth_context"],
+            },
+        }
+        failures = audit_real_site.audit_gate_failures(
+            [audit],
+            learning_required_signals=["ananas", "playurl", "objectid", "dtoken", "iframe", "cookie"],
+        )
+
+        report = audit_real_site.markdown_report([audit], "http://127.0.0.1:8765", failures)
+
+        self.assertIn("Learning-platform next checks:", report)
+        self.assertIn("playurl:", report)
+        self.assertIn("dtoken:", report)
+        self.assertIn("cookie:", report)
+        self.assertIn("Next check: playurl:", report)
+        self.assertNotIn("token=secret", report)
 
     def test_parse_learning_required_signals_rejects_unknown(self):
         self.assertEqual(

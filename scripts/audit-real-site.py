@@ -196,6 +196,66 @@ def derive_next_step(profile: dict) -> str:
     return "Rerun audit-real-site with -Preflight to test whether the captured candidate is actually downloadable."
 
 
+LEARNING_SIGNAL_GUIDANCE = {
+    "learning_platform_detected": "Open the real course playback page, not a catalog page; the URL/title/frame/request log should contain Chaoxing/Xuexitong/ananas/play evidence.",
+    "ananas": "Start playback and wait for an ananas/status or similar player request; if the video is inside an iframe, click into that player frame first.",
+    "playurl": "Keep the lesson video playing until a playurl/play_url/media URL response appears; switch chapters if the current one is already cached.",
+    "objectid": "The player request did not expose objectid; open the embedded lesson player and rerun after the first network play/status request.",
+    "dtoken": "The player request did not expose dtoken; replay the video from the real player so the POST/query body can be captured.",
+    "iframe": "Open the actual video player iframe or lesson playback view; iframe context is needed for Referer and frame evidence.",
+    "cookie": "Use the persistent D-drive learning audit browser profile, log in, play the video, then rerun; cookies are counted only, not printed.",
+}
+
+
+CHAIN_STEP_GUIDANCE = {
+    "page_playback": "Play the target video for several seconds so the page emits media or player API requests.",
+    "media_candidate": "No mp4/HLS/DASH/play API candidate was visible yet; keep playback active and rerun detection.",
+    "auth_context": "The page looks like a login-gated learning platform but no cookies were visible; rerun from the logged-in audit profile.",
+    "request_replay": "A playback API was captured without a replayable body or resolved media URL; rerun while the first play request is sent.",
+    "download_preflight": "Run the audit with preflight enabled so the captured candidate is tested before creating a full task.",
+    "downloadable_candidate": "The candidate was visible but not downloadable; inspect headers/body for missing Referer, Origin, cookie, expiry, DRM, or signed URL rules.",
+    "download_task_probe": "The download-only task did not produce local media; inspect task diagnostics and retry with a longer timeout if the source is slow.",
+}
+
+
+def learning_signal_guidance(missing_signals: list[str]) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for signal in missing_signals:
+        key = str(signal or "").strip().lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        message = LEARNING_SIGNAL_GUIDANCE.get(key)
+        if message:
+            result.append(f"{key}: {message}")
+    return result
+
+
+def missing_chain_guidance(missing_steps: list[str]) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for step in missing_steps:
+        key = str(step or "").strip().lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        message = CHAIN_STEP_GUIDANCE.get(key)
+        if message:
+            result.append(f"{key}: {message}")
+    return result
+
+
+def learning_profile_missing_signals(profile: dict, required_signals: list[str] | None = None) -> list[str]:
+    platform = profile.get("learning_platform") or {}
+    signals = required_signals if required_signals is not None else list(DEFAULT_LEARNING_REQUIRED_SIGNALS.split(","))
+    missing: list[str] = []
+    if not platform.get("detected"):
+        missing.append("learning_platform_detected")
+    missing.extend(signal for signal in signals if not platform.get(signal))
+    return missing
+
+
 def ytdlp_probe_report(probe: dict | None) -> dict:
     if not probe:
         return {}
@@ -295,6 +355,8 @@ def signal_profile(
         "task_probe": task_report,
         "ytdlp_probe": ytdlp_report,
         "missing_steps": [],
+        "step_guidance": [],
+        "next_checks": [],
     }
     if task_ready:
         readiness = "ready_to_download"
@@ -331,9 +393,18 @@ def signal_profile(
         missing.append("download_preflight")
     elif not preflight_ready:
         missing.append("downloadable_candidate")
+    learning_missing = [
+        signal
+        for signal in DEFAULT_LEARNING_REQUIRED_SIGNALS.split(",")
+        if platform["detected"] and not platform.get(signal)
+    ]
+    platform["missing_signals"] = learning_missing
+    platform["next_checks"] = learning_signal_guidance(learning_missing)
     profile["missing_steps"] = missing
+    profile["step_guidance"] = missing_chain_guidance(missing)
     profile["failure_reason"] = derive_failure_reason(profile)
     profile["next_step"] = derive_next_step(profile)
+    profile["next_checks"] = profile["step_guidance"] + platform["next_checks"]
     return profile
 
 
@@ -546,9 +617,9 @@ def audit_gate_failures(
     failures: list[dict] = []
     for audit in audits:
         profile = ((audit.get("evidence") or {}).get("profile") or {})
-        platform = profile.get("learning_platform") or {}
         url = audit.get("url") or ""
         if require_ready and profile.get("readiness") != "ready_to_download":
+            step_guidance = profile.get("step_guidance") or missing_chain_guidance(profile.get("missing_steps") or [])
             failures.append({
                 "url": url,
                 "gate": "require_ready",
@@ -556,12 +627,10 @@ def audit_gate_failures(
                 "failure_reason": profile.get("failure_reason") or "unknown",
                 "missing_steps": profile.get("missing_steps") or [],
                 "next_step": profile.get("next_step") or "",
+                "next_checks": step_guidance,
             })
         if learning_required_signals is not None:
-            missing = []
-            if not platform.get("detected"):
-                missing.append("learning_platform_detected")
-            missing.extend(signal for signal in learning_required_signals if not platform.get(signal))
+            missing = learning_profile_missing_signals(profile, learning_required_signals)
             if missing:
                 failures.append({
                     "url": url,
@@ -570,6 +639,7 @@ def audit_gate_failures(
                     "readiness": profile.get("readiness") or "unknown",
                     "failure_reason": profile.get("failure_reason") or "unknown",
                     "next_step": profile.get("next_step") or "",
+                    "next_checks": learning_signal_guidance(missing),
                 })
     return failures
 
@@ -599,6 +669,8 @@ def markdown_report(audits: list[dict], backend: str, gate_failures: list[dict] 
                     f"- `{failure['gate']}` {redact_url(failure['url'])}: "
                     f"missing={', '.join(failure.get('missing_signals') or []) or '-'}"
                 )
+            for check in failure.get("next_checks") or []:
+                lines.append(f"  - Next check: {check}")
         lines.append("")
     for audit in audits:
         context = audit["context"]
@@ -638,6 +710,9 @@ def markdown_report(audits: list[dict], backend: str, gate_failures: list[dict] 
         missing_steps = profile.get("missing_steps") or evidence["missing"]
         if missing_steps:
             lines.extend(["", f"Missing chain: {', '.join(missing_steps)}"])
+        if profile.get("step_guidance"):
+            lines.extend(["", "Next chain checks:"])
+            lines.extend(f"- {item}" for item in profile["step_guidance"])
         lines.extend([
             "",
             "### Signal profile",
@@ -670,6 +745,15 @@ def markdown_report(audits: list[dict], backend: str, gate_failures: list[dict] 
             f"- dtoken: {'yes' if platform.get('dtoken') else 'no'}",
             f"- iframe: {'yes' if platform.get('iframe') else 'no'}",
             f"- cookie: {'yes' if platform.get('cookie') else 'no'}",
+        ])
+        if platform.get("missing_signals"):
+            lines.append(f"- Missing learning signals: {', '.join(platform['missing_signals'])}")
+        if platform.get("next_checks"):
+            lines.extend(["", "Learning-platform next checks:"])
+            lines.extend(f"- {item}" for item in platform["next_checks"])
+        if platform.get("detected") and not platform.get("missing_signals"):
+            lines.append("- Learning-platform next checks: all required learning signals are present.")
+        lines.extend([
             "",
             "### Active video",
             "",
@@ -713,7 +797,7 @@ def markdown_report(audits: list[dict], backend: str, gate_failures: list[dict] 
                 f"- Error: {ytdlp_probe.get('error_code') or '-'} {ytdlp_probe.get('error_detail') or ''}".rstrip(),
             ])
         lines.extend(["", "### Top resources", ""])
-        for item in evidence["top_resources"]:
+        for item in evidence.get("top_resources") or []:
             flags = [
                 item["kind"] or "unknown",
                 item["source"] or "-",
