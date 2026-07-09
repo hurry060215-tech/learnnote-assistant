@@ -161,7 +161,10 @@ try {
     Write-Host "  $samplesUrl/hls.html          HLS manifest"
     Write-Host "  $samplesUrl/blob-iframe.html  blob iframe fallback"
     Write-Host "  $samplesUrl/post-api.html     POST play API"
+    Write-Host "  $samplesUrl/generic-player.html  generic nested API"
     Write-Host "  $samplesUrl/chaoxing-mock.html  Chaoxing-style diagnostic mock"
+    Write-Host "Learning-platform mock audit:"
+    Write-Host "  .\scripts\audit-learning-platform.ps1 -Mock"
   }
 
   Write-Step "Starting backend"
@@ -174,6 +177,8 @@ try {
     Write-Host "  .\start-learnnote.ps1 -WithSamples"
   }
   Write-Host "Stop the backend with Ctrl+C."
+  Write-Host "Logged-in learning-platform audit:"
+  Write-Host "  .\scripts\audit-learning-platform.ps1 <learning-url>"
   Write-Host ""
 
   $backendArgs = @{ Port = $Port }

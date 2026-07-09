@@ -298,16 +298,20 @@ To verify the backend page fallback without using captured browser media resourc
 .\scripts\audit-real-site.ps1 "https://example.com/video-page" -TaskProbe -TaskProbePageOnly -YtdlpProbe -RequireReady -TaskTimeout 180
 ```
 
-For logged-in course pages, keep a D-drive browser profile so login cookies are not stored on C by this workflow:
+For logged-in course pages, use the learning-platform wrapper. It keeps the browser profile under the D-drive project data directory, pauses for login/playback, runs cookie-aware preflight, and requires the learning signal checklist by default:
 
 ```powershell
 cd D:\Projects\learnnote-assistant
-.\scripts\audit-real-site.ps1 "https://mooc1.chaoxing.com/..." `
-  -ProfileDir "D:\Projects\learnnote-assistant\data\browser-profiles\chaoxing" `
-  -InteractiveLogin -Preflight -RequireReady -RequireLearningProfile -KeepBrowser
+.\scripts\audit-learning-platform.ps1 "https://mooc1.chaoxing.com/..." -KeepBrowser
 ```
 
-When the browser opens, log in if needed, play the target video for a few seconds, then return to the terminal and press Enter. The report starts with `Readiness`, `Failure reason`, and `Next step`, then expands the generic chain: browser playback evidence, auth/cookie context, replayable API body or direct media URL, and download preflight. For learning-platform pages it also lists `ananas`, `playurl/play_url`, `objectid`, `dtoken`, `iframe`, and `cookie` as a checklist instead of hiding them in raw logs. `-RequireLearningProfile` makes those signals a command-level gate; tune it with `-LearningRequiredSignals "ananas,playurl,iframe,cookie"` if a site does not use Chaoxing-style `objectid`/`dtoken`. Reports keep only evidence summaries: Cookie/Authorization values are not written, POST body content is replaced with field names and evidence flags, and URL query values are redacted.
+Rehearse the same gate against the local Chaoxing-style mock without using a real account:
+
+```powershell
+.\scripts\audit-learning-platform.ps1 -Mock
+```
+
+When the browser opens for a real site, log in if needed, play the target video for a few seconds, then return to the terminal and press Enter. The report starts with `Readiness`, `Failure reason`, and `Next step`, then expands the generic chain: browser playback evidence, auth/cookie context, replayable API body or direct media URL, and download preflight. For learning-platform pages it also lists `ananas`, `playurl/play_url`, `objectid`, `dtoken`, `iframe`, and `cookie` as a checklist instead of hiding them in raw logs. The wrapper enables `-RequireLearningProfile`; tune it with `-LearningRequiredSignals "ananas,playurl,iframe,cookie"` if a site does not use Chaoxing-style `objectid`/`dtoken`. Reports keep only evidence summaries: Cookie/Authorization values are not written, POST body content is replaced with field names and evidence flags, and URL query values are redacted.
 
 ## Local Storage On D
 

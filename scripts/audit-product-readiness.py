@@ -219,10 +219,7 @@ def site_audit_items(audits: list[dict]) -> list[ReadinessItem]:
             "Logged-in learning-platform audit",
             "manual",
             "No logged-in learning-platform audit with the full evidence chain was found.",
-            next_step=(
-                "Run scripts/audit-real-site.ps1 <learning-url> -ProfileDir data/browser-profiles/chaoxing "
-                "-InteractiveLogin -Preflight -RequireReady -RequireLearningProfile."
-            ),
+            next_step="Run scripts/audit-learning-platform.ps1 <learning-url>. Use -Mock to rehearse the same gate locally.",
         ))
     return rows
 
@@ -368,6 +365,7 @@ def build_matrix() -> list[ReadinessItem]:
             "extension",
             "LEARNNOTE_LLM_API_KEY",
             "D:\\Projects\\learnnote-assistant",
+            "audit-learning-platform.ps1",
         ])
         and has_all(doctor, ["project location", "backend runtime", "script_check"])
     )

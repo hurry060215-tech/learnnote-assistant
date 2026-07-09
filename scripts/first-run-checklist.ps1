@@ -84,6 +84,7 @@ $samplePages = [ordered]@{
   hls = "$samplesUrl/hls.html"
   blob_iframe = "$samplesUrl/blob-iframe.html"
   post_play_api = "$samplesUrl/post-api.html"
+  generic_api = "$samplesUrl/generic-player.html"
   chaoxing_mock = "$samplesUrl/chaoxing-mock.html"
 }
 
@@ -170,6 +171,7 @@ function New-FirstRunGuide {
     "- MP4: $($samplePages.mp4)",
     "- HLS: $($samplePages.hls)",
     "- POST play API: $($samplePages.post_play_api)",
+    "- Generic nested API: $($samplePages.generic_api)",
     "- Blob iframe fallback: $($samplePages.blob_iframe)",
     "- Chaoxing-style mock: $($samplePages.chaoxing_mock)",
     "",
@@ -211,16 +213,22 @@ function New-FirstRunGuide {
     ".\scripts\audit-real-site.ps1 `"<url>`" -Preflight -RequireReady",
     $fence,
     "",
-    "For yt-dlp page fallback such as YouTube/Bilibili, run a real download-only task probe:",
+    "For yt-dlp page fallback such as YouTube/Bilibili/generic extractor pages, run a real download-only task probe and metadata probe:",
     "",
     "$($fence)powershell",
-    ".\scripts\audit-real-site.ps1 `"<youtube-or-bilibili-url>`" -TaskProbe -RequireReady -TaskTimeout 180",
+    ".\scripts\audit-real-site.ps1 `"<yt-dlp-supported-url>`" -TaskProbe -YtdlpProbe -RequireReady -TaskTimeout 180",
     $fence,
     "",
-    "For logged-in learning pages, use a D-drive browser profile:",
+    "For logged-in learning pages, use the learning-platform wrapper. It keeps the browser profile on D-drive, pauses for login/playback, and requires ananas/playurl/objectid/dtoken/iframe/cookie evidence by default:",
     "",
     "$($fence)powershell",
-    ".\scripts\audit-real-site.ps1 `"https://mooc1.chaoxing.com/...`" -ProfileDir `"$dataDir\browser-profiles\chaoxing`" -InteractiveLogin -Preflight -RequireReady -RequireLearningProfile",
+    ".\scripts\audit-learning-platform.ps1 `"https://mooc1.chaoxing.com/...`"",
+    $fence,
+    "",
+    "Rehearse the same learning-platform gate against the local Chaoxing-style mock without a real login:",
+    "",
+    "$($fence)powershell",
+    ".\scripts\audit-learning-platform.ps1 -Mock",
     $fence,
     "",
     "## Boundaries",
@@ -271,7 +279,9 @@ if ($Json) {
       install_asr = ".\start-learnnote.ps1 -InstallAsr"
       verify = ".\scripts\verify-product.ps1 -Browser $Browser"
       audit_real_site = ".\scripts\audit-real-site.ps1 <url> -Preflight"
-      audit_ytdlp_site = ".\scripts\audit-real-site.ps1 <url> -TaskProbe -RequireReady -TaskTimeout 180"
+      audit_ytdlp_site = ".\scripts\audit-real-site.ps1 <url> -TaskProbe -YtdlpProbe -RequireReady -TaskTimeout 180"
+      audit_learning_platform = ".\scripts\audit-learning-platform.ps1 <learning-url>"
+      audit_learning_mock = ".\scripts\audit-learning-platform.ps1 -Mock"
       audit_product_readiness = ".\scripts\audit-product-readiness.ps1"
       write_guide = ".\scripts\first-run-checklist.ps1 -WriteGuide"
       set_visual_api = @(
@@ -345,6 +355,7 @@ if ($fails.Count) {
   Write-Host "   $($samplePages.mp4)          MP4"
   Write-Host "   $($samplePages.hls)          HLS"
   Write-Host "   $($samplePages.post_play_api)     POST play API"
+  Write-Host "   $($samplePages.generic_api)     Generic nested API"
   Write-Host "   $($samplePages.blob_iframe)  blob iframe"
   Write-Host "   $($samplePages.chaoxing_mock)  Chaoxing-style mock"
   Write-Host ""
@@ -357,6 +368,9 @@ if ($fails.Count) {
   Write-Host '   $env:LEARNNOTE_LLM_MODEL="gpt-4.1-mini"'
   Write-Host "Real-site audit:"
   Write-Host "   .\scripts\audit-real-site.ps1 <url> -Preflight"
+  Write-Host "Learning-platform audit:"
+  Write-Host "   .\scripts\audit-learning-platform.ps1 <learning-url>"
+  Write-Host "   .\scripts\audit-learning-platform.ps1 -Mock"
 }
 
 if ($writtenGuidePath) {
