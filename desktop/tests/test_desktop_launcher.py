@@ -50,6 +50,12 @@ class DesktopLauncherTests(unittest.TestCase):
                 else:
                     os.environ[key] = value
 
+    def test_release_build_analyzes_dynamic_backend_imports(self):
+        workflow = (ROOT / ".github" / "workflows" / "desktop-release.yml").read_text(encoding="utf-8")
+        self.assertIn('--paths "backend"', workflow)
+        self.assertIn("--hidden-import app.main", workflow)
+        self.assertIn("--collect-submodules fastapi", workflow)
+
 
 if __name__ == "__main__":
     unittest.main()

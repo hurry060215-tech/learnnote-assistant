@@ -26,9 +26,15 @@ jobs:
       - name: Build portable desktop client
         run: |
           pyinstaller --noconfirm --clean --onedir --windowed --name LearnNote `
+            --paths "backend" `
             --add-data "backend;backend" `
             --add-data "web;web" `
             --add-data "extension;extension" `
+            --hidden-import app.main `
+            --collect-submodules app `
+            --collect-submodules fastapi `
+            --collect-submodules starlette `
+            --collect-submodules uvicorn `
             --collect-all webview `
             --collect-all imageio_ffmpeg `
             --collect-all faster_whisper `
