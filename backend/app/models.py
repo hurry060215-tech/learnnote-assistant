@@ -140,6 +140,10 @@ class CurrentPageTaskRequest(BaseModel):
     options: TaskOptions = Field(default_factory=TaskOptions)
 
 
+class SourceInputRequest(BaseModel):
+    value: str = Field(min_length=1, max_length=4096)
+
+
 class MediaPreflightRequest(BaseModel):
     page_url: str = ""
     resource: ResourceCandidate

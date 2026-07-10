@@ -3,13 +3,16 @@ from __future__ import annotations
 import json
 import threading
 import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
 from .config import TASK_DIR, ensure_dirs
 from .models import TaskOptions, TaskRecord, now_iso
+from .source_input import clean_task_title
 
 _lock = threading.RLock()
+STALE_TASK_AFTER = timedelta(hours=6)
 
 
 def new_task_id() -> str:
@@ -63,7 +66,7 @@ def create_task(
         id=new_task_id(),
         source_type=source_type,  # type: ignore[arg-type]
         mode=mode or default_task_mode(source_type),
-        title=title or "Untitled",
+        title=clean_task_title(title, page_url),
         page_url=page_url,
         options=public_task_options(options),
         created_at=now_iso(),
@@ -116,7 +119,54 @@ def list_tasks() -> list[TaskRecord]:
     records: list[TaskRecord] = []
     for path in TASK_DIR.glob("*/task.json"):
         try:
-            records.append(TaskRecord.model_validate_json(path.read_text(encoding="utf-8")))
+            record = TaskRecord.model_validate_json(path.read_text(encoding="utf-8"))
+            records.append(record)
         except Exception:
             continue
+    records = reconcile_stale_tasks(records)
+    for record in records:
+        repaired_title = clean_task_title(record.title, record.page_url)
+        if repaired_title != record.title:
+            record.title = repaired_title
+            save_task(record)
     return sorted(records, key=lambda item: item.created_at, reverse=True)
+
+
+def _parse_iso_datetime(value: str) -> datetime | None:
+    try:
+        parsed = datetime.fromisoformat(str(value or "").replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def reconcile_stale_tasks(
+    records: list[TaskRecord],
+    *,
+    now: datetime | None = None,
+    max_age: timedelta = STALE_TASK_AFTER,
+) -> list[TaskRecord]:
+    current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    for record in records:
+        if record.status not in {"queued", "running"}:
+            continue
+        updated = _parse_iso_datetime(record.updated_at) or _parse_iso_datetime(record.created_at)
+        if not updated or current - updated <= max_age:
+            continue
+        has_media = any(
+            raw_path and Path(raw_path).is_file()
+            for raw_path in (record.media_path, record.source_media_path)
+        )
+        record.status = "failed"
+        record.phase = "failed"
+        record.error_code = "task_interrupted"
+        record.error_detail = (
+            "任务长时间没有进度，后端可能已退出。已下载的媒体仍保留，可从媒体继续切片总结。"
+            if has_media
+            else "任务长时间没有进度，后端可能已退出。请重新创建任务；旧任务记录已保留。"
+        )
+        record.message = record.error_detail
+        save_task(record)
+    return records

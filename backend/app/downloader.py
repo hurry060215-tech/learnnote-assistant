@@ -19,6 +19,7 @@ import requests
 
 from .models import BrowserCookie, DownloadAttempt, MediaPreflightResult, ResourceCandidate
 from .runtime import ffmpeg_bin
+from .source_input import clean_task_title
 
 
 DownloadProgressCallback = Callable[[int, Optional[int], ResourceCandidate], None]
@@ -2367,6 +2368,7 @@ class MediaDownloader:
         self.attempts: list[DownloadAttempt] = []
         self.progress_callback = progress_callback
         self.status_callback = status_callback
+        self.resolved_title = ""
 
     def _notify_progress(self, downloaded: int, total: int | None, candidate: ResourceCandidate) -> None:
         if downloaded <= 0 or not self.progress_callback:
@@ -2972,6 +2974,9 @@ class MediaDownloader:
             "extractor_retries": YTDLP_EXTRACTOR_RETRIES,
             "http_headers": http_headers,
         }
+        ffmpeg = ffmpeg_bin()
+        if ffmpeg:
+            opts["ffmpeg_location"] = str(ffmpeg)
         if cookie_file:
             opts["cookiefile"] = str(cookie_file)
 
@@ -3044,6 +3049,8 @@ class MediaDownloader:
             (resources or [None])[0] if resources else None,
         )
         if _should_run_ytdlp_cli(yt_dlp):
+            title_capture_path = self.task_path / "ytdlp-title.txt"
+            title_capture_path.unlink(missing_ok=True)
             cmd = self._ytdlp_cli_command(page_url, outtmpl, cookie_file, http_headers)
             try:
                 result = subprocess.run(
@@ -3071,10 +3078,17 @@ class MediaDownloader:
                 if code == "no_media_found":
                     raise DownloadError("no_media_found", f"yt-dlp 不支持当前页面或没有找到可下载视频：{output[:300]}")
                 raise DownloadError("download_forbidden", f"yt-dlp 无法下载当前页面：{output[:300]}")
+            if title_capture_path.is_file():
+                captured_title = title_capture_path.read_text(encoding="utf-8", errors="replace").strip().splitlines()
+                if captured_title:
+                    self.resolved_title = clean_task_title(captured_title[-1], page_url)
+                title_capture_path.unlink(missing_ok=True)
         else:
             try:
                 with yt_dlp.YoutubeDL(opts) as ydl:
-                    ydl.extract_info(page_url, download=True)
+                    info = ydl.extract_info(page_url, download=True)
+                    if isinstance(info, dict):
+                        self.resolved_title = clean_task_title(str(info.get("title") or ""), page_url)
             except Exception as exc:
                 message = str(exc)
                 code = _classify_ytdlp_error(message)
@@ -3124,6 +3138,14 @@ class MediaDownloader:
             "-o",
             outtmpl,
         ]
+        ffmpeg = ffmpeg_bin()
+        if ffmpeg:
+            cmd.extend(["--ffmpeg-location", str(ffmpeg)])
+        cmd.extend([
+            "--print-to-file",
+            "after_move:%(title)s",
+            str(self.task_path / "ytdlp-title.txt"),
+        ])
         if cookie_file:
             cmd.extend(["--cookies", str(cookie_file)])
         for name in YTDLP_HTTP_HEADER_ORDER:

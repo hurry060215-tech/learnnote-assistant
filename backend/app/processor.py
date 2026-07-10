@@ -13,7 +13,9 @@ from .downloader import DownloadError, MediaDownloader, classify_resource, effec
 from .media import build_frame_grids, extract_audio, extract_embedded_subtitle, extract_frames, normalize_video
 from .models import ActiveVideoInfo, BrowserSubtitleCue, CurrentPageTaskRequest, DownloadAttempt, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
 from .storage import get_task, save_task, task_dir, update_task, write_json
+from .source_input import clean_task_title
 from .summarizer import MAX_GRIDS_PER_VISION_CALL, MAX_VISION_GRIDS, build_visual_windows, llm_base_host, llm_model_supports_vision, llm_provider_name, select_vision_grid_entries, summarize_page_text_with_diagnostics, summarize_with_diagnostics_audit as summarize_with_diagnostics
+from .text_cleanup import correct_transcript_terms
 from .transcriber import transcript_from_subtitle, transcribe_audio, transcribe_audio_openai_compatible
 
 
@@ -860,6 +862,10 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
             status_callback=download_status_updater(task_id),
         )
         media_path, selected = downloader.download(request.page_url, request.resources, request.cookies, request.title)
+        resolved_title = clean_task_title(getattr(downloader, "resolved_title", ""), request.page_url, request.title)
+        if resolved_title != request.title:
+            request.title = resolved_title
+            update_task(task_id, title=resolved_title)
         remember_reusable_media(task_id, media_path)
         if selected:
             update_task(task_id, selected_resource=redacted_resource(selected))
@@ -1019,6 +1025,7 @@ def _process_video_file(
 
     if transcript is None:
         transcript = TranscriptResult(source="no-audio", warning=audio_warning)
+    transcript = correct_transcript_terms(transcript)
     asr_error = asr_failure_detail(transcript)
     if asr_error:
         transcript = transcript.model_copy(update={"segments": [], "full_text": ""})

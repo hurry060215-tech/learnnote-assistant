@@ -2948,6 +2948,7 @@ class DownloaderBoundaryTests(unittest.TestCase):
             self.assertEqual(captured["options"]["http_headers"]["User-Agent"], "Chrome Playback UA")
             self.assertEqual(captured["options"]["http_headers"]["Referer"], "https://course.example.com/lesson/1")
             self.assertEqual(captured["options"]["http_headers"]["Origin"], "https://course.example.com")
+            self.assertEqual(downloader.resolved_title, "fake")
 
     def test_ytdlp_cli_receives_browser_context_and_timeout(self) -> None:
         captured: dict = {}
@@ -2996,6 +2997,9 @@ class DownloaderBoundaryTests(unittest.TestCase):
         self.assertEqual(cmd[cmd.index("--cookies") + 1], str(cookie_file))
         self.assertIn("--socket-timeout", cmd)
         self.assertIn("20", cmd)
+        self.assertIn("--ffmpeg-location", cmd)
+        self.assertTrue(Path(cmd[cmd.index("--ffmpeg-location") + 1]).is_file())
+        self.assertIn("--print-to-file", cmd)
         self.assertIn("--add-header", cmd)
         self.assertIn("User-Agent: Chrome Playback UA", cmd)
         self.assertIn("Referer: https://course.example.com/lesson/1", cmd)

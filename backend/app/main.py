@@ -20,9 +20,10 @@ from pydantic import ValidationError
 from .config import BACKEND_ORIGIN, DATA_DIR, LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, MODEL_CACHE_DIR, STATIC_DIR, TASK_DIR, TEMP_DIR, UPLOAD_DIR, WEB_DIR, ensure_dirs
 from .downloader import MediaDownloader, effective_resource_kind, fallback_page_contexts, preflight_media_resource, rank_media_candidates
 from .media import MediaProcessingError, extract_video_clip, probe_duration
-from .models import CurrentPageTaskRequest, MediaPreflightRequest, MediaPreflightResult, PagePreflightRequest, RerunFromMediaRequest, ResourceCandidate, TaskOptions, TaskQuestionRequest, TaskRecord, now_iso
+from .models import CurrentPageTaskRequest, MediaPreflightRequest, MediaPreflightResult, PagePreflightRequest, RerunFromMediaRequest, ResourceCandidate, SourceInputRequest, TaskOptions, TaskQuestionRequest, TaskRecord, now_iso
 from .processor import enrich_resource_candidates_with_active_video, process_current_page_task, process_local_video_task, read_note, read_transcript, read_visual_index
 from .runtime import ffmpeg_bin, ffprobe_bin
+from .source_input import SourceInputError, clean_task_title, normalize_source_input
 from .storage import create_task, get_task, list_tasks, read_json, task_dir, update_task, write_json
 from .summarizer import chat_completion_provider_kwargs, llm_base_host, llm_model_supports_vision, llm_provider_name, visual_window_review_question_lines
 
@@ -2698,8 +2699,16 @@ def api_health() -> dict:
 
 @app.post("/api/tasks/from-current-page")
 def create_from_current_page(request: CurrentPageTaskRequest, background_tasks: BackgroundTasks) -> dict:
+    raw_page_url = request.page_url
+    try:
+        source = normalize_source_input(raw_page_url)
+    except SourceInputError as exc:
+        raise HTTPException(status_code=422, detail={"code": "invalid_source_input", "message": str(exc)}) from exc
+    explicit_title = request.title if request.title.strip() and request.title.strip() != raw_page_url.strip() else ""
+    title = clean_task_title(explicit_title, source.url, source.default_title)
+    request = request.model_copy(update={"page_url": source.url, "title": title})
     source_type = "page_text" if request.mode == "page_text" else "current_page"
-    task = create_task(source_type=source_type, title=request.title or request.page_url, page_url=request.page_url, options=request.options, mode=request.mode)
+    task = create_task(source_type=source_type, title=title, page_url=source.url, options=request.options, mode=request.mode)
     if request.browser_subtitles:
         task = update_task(task.id, browser_subtitles=request.browser_subtitles)
     background_tasks.add_task(process_current_page_task, task.id, request)
@@ -2714,7 +2723,20 @@ def api_media_preflight(request: MediaPreflightRequest) -> dict:
 
 @app.post("/api/media/preflight-current-page")
 def api_page_media_preflight(request: PagePreflightRequest) -> dict:
-    return {"report": page_preflight_report(request)}
+    try:
+        source = normalize_source_input(request.page_url)
+    except SourceInputError as exc:
+        raise HTTPException(status_code=422, detail={"code": "invalid_source_input", "message": str(exc)}) from exc
+    normalized = request.model_copy(update={"page_url": source.url})
+    return {"source": source.as_dict(), "report": page_preflight_report(normalized)}
+
+
+@app.post("/api/source/normalize")
+def api_normalize_source(request: SourceInputRequest) -> dict:
+    try:
+        return {"source": normalize_source_input(request.value).as_dict()}
+    except SourceInputError as exc:
+        raise HTTPException(status_code=422, detail={"code": "invalid_source_input", "message": str(exc)}) from exc
 
 
 @app.post("/api/tasks/from-local")

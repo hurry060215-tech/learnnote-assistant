@@ -299,8 +299,8 @@ assert.match(stylesCss, /\.workspace-panel \.source-pane\s*\{\s*order: 4;/);
 assert.match(stylesCss, /\.workspace-panel \.source-route-rail\s*\{\s*display: none;/);
 assert.match(stylesCss, /\.capture-flow\s*\{\s*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);/);
 assert.match(indexHtml, /id="toggleWorkspaceButton"/);
-assert.match(indexHtml, /styles\.css\?v=20260708-bilinote-workbench/);
-assert.match(indexHtml, /app\.js\?v=20260704-reuse-ui/);
+assert.match(indexHtml, /styles\.css\?v=20260710-bv-input/);
+assert.match(indexHtml, /app\.js\?v=20260710-bv-input/);
 assert.match(indexHtml, /id="sourceRouteRail"/);
 assert.match(indexHtml, /id="urlPreflightReport"/);
 assert.match(indexHtml, /href="#optionsDisclosure" title="模板"/);
@@ -3211,3 +3211,16 @@ await context.uploadSelectedFile();
 
 assert.equal(unsupportedFetchCalled, false);
 assert.match(elements.get("#fileName").textContent, /暂不支持/);
+
+const normalizedBvid = context.normalizeSourceInput("BV1xx411c7mD");
+assert.equal(normalizedBvid.valid, true);
+assert.equal(normalizedBvid.platform, "bilibili");
+assert.equal(normalizedBvid.sourceId, "BV1xx411c7mD");
+assert.equal(normalizedBvid.url, "https://www.bilibili.com/video/BV1xx411c7mD");
+
+const normalizedBilibiliUrl = context.normalizeSourceInput("视频 https://www.bilibili.com/video/BV1xx411c7mD?p=2。");
+assert.equal(normalizedBilibiliUrl.url, "https://www.bilibili.com/video/BV1xx411c7mD?p=2");
+assert.match(normalizedBilibiliUrl.label, /B站视频/);
+
+const invalidSourceInput = context.normalizeSourceInput("not a video source");
+assert.equal(invalidSourceInput.valid, false);

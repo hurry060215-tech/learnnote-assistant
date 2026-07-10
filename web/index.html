@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>LearnNote 学习视频笔记</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="/web/styles.css?v=20260708-bilinote-workbench">
+    <link rel="stylesheet" href="/web/styles.css?v=20260710-bv-input">
   </head>
   <body>
     <header class="topbar">
@@ -78,9 +78,10 @@
 
         <section id="urlSource" class="source-pane">
           <label class="field">
-            <span>视频或页面 URL</span>
-            <input id="urlInput" type="url" placeholder="https://example.com/api/play?id=lesson">
+            <span>B站 BV号、视频或页面链接</span>
+            <input id="urlInput" type="text" inputmode="url" autocomplete="off" spellcheck="false" placeholder="BV1xx411c7mD 或 https://www.bilibili.com/video/...">
           </label>
+          <div id="urlSourceIdentity" class="url-source-identity" hidden></div>
           <div class="url-mode-grid">
             <label class="field">
               <span>链接类型</span>
@@ -92,7 +93,7 @@
                 <option value="dash">DASH mpd</option>
               </select>
             </label>
-            <div id="urlModeHint" class="mode-hint">自动识别会优先把 mp4、FLV、m3u8、mpd 当作媒体候选；无后缀 URL 可切换直连、HLS/DASH，或交给页面扫描和 yt-dlp。</div>
+            <div id="urlModeHint" class="mode-hint">B站 BV/AV 号会自动转换为视频页；页面链接交给 yt-dlp 和页面扫描，mp4、FLV、m3u8、mpd 会按媒体直链处理。</div>
           </div>
           <div id="urlPreflightReport" class="url-preflight-report" aria-label="链接预检报告" hidden></div>
           <label class="field">
@@ -393,6 +394,6 @@
       </section>
     </main>
 
-    <script src="/web/app.js?v=20260704-reuse-ui"></script>
+    <script src="/web/app.js?v=20260710-bv-input"></script>
   </body>
 </html>

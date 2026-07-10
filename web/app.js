@@ -260,6 +260,7 @@ const els = {
   sourceTabs: document.querySelectorAll(".source-tab"),
   panes: document.querySelectorAll(".source-pane"),
   urlInput: document.querySelector("#urlInput"),
+  urlSourceIdentity: document.querySelector("#urlSourceIdentity"),
   urlMode: document.querySelector("#urlMode"),
   urlModeHint: document.querySelector("#urlModeHint"),
   urlPreflightReport: document.querySelector("#urlPreflightReport"),
@@ -1862,6 +1863,10 @@ const ERROR_GUIDES = {
   processing_failed: {
     title: "本地处理失败",
     body: "下载可能成功，但转音频、转写、抽帧或总结阶段失败。请查看诊断里的阶段和本地 data/tasks 产物。"
+  },
+  task_interrupted: {
+    title: "任务已中断并自动收口",
+    body: "任务超过 6 小时没有进度，通常是后端退出或系统重启。旧记录和已下载文件仍保留；有本地媒体时可继续切片总结，否则重新创建任务。"
   }
 };
 
@@ -1956,6 +1961,9 @@ function recoveryStepItems(task) {
   }
   if (codes.has("unsupported_manifest")) {
     add(`继续播放后重新检测，优先选择完整 ${directCapabilityManifestText()}，而不是孤立 ts/m4s 分片。`);
+  }
+  if (codes.has("task_interrupted")) {
+    add(canContinueFromDownloadedMedia(task) ? "已下载媒体仍然可用，点击“继续切片总结”即可从本地断点继续。" : "重新创建同一链接任务；旧任务记录不会继续占用运行队列。" );
   }
   if (codes.has("no_media_found") || (!attempts.length && task?.status === "failed")) {
     add("先让视频实际播放几秒再重新检测；仍没有候选时上传本地视频。");
@@ -2411,13 +2419,55 @@ function mediaKind(url) {
   return "unknown";
 }
 
+function normalizeSourceInput(value) {
+  const raw = String(value || "").trim().replace(/^["']|["']$/g, "");
+  if (!raw) return { valid: false, raw, url: "", platform: "", sourceId: "", label: "" };
+  const urlMatch = raw.match(/https?:\/\/[^\s<>"']+/i);
+  if (urlMatch) {
+    const url = urlMatch[0].replace(/[.,;:!?，。；：！？)\]}）】》]+$/g, "");
+    const parsedUrl = url.match(/^https?:\/\/([^/?#]+)([^?#]*)/i);
+    if (!parsedUrl) {
+      return { valid: false, raw, url: "", platform: "", sourceId: "", label: "链接格式无效" };
+    }
+    const host = parsedUrl[1].split("@").at(-1).split(":")[0].toLowerCase();
+    const bilibili = host === "b23.tv" || host.endsWith(".bilibili.com");
+    const youtube = host === "youtu.be" || host === "youtube.com" || host.endsWith(".youtube.com");
+    const idMatch = bilibili ? decodeURIComponent(parsedUrl[2] || "").match(/(?:BV([A-Za-z0-9]{10})|av(\d{1,20}))/i) : null;
+    const sourceId = idMatch ? (idMatch[1] ? `BV${idMatch[1]}` : `av${idMatch[2]}`) : "";
+    const platform = bilibili ? "bilibili" : youtube ? "youtube" : "web";
+    const platformLabel = bilibili ? "B站视频" : youtube ? "YouTube 视频" : mediaKind(url) === "unknown" ? "网页链接" : "媒体直链";
+    return { valid: true, raw, url, platform, sourceId, label: sourceId ? `${platformLabel} · ${sourceId}` : platformLabel };
+  }
+  const bv = raw.match(/(?:^|[^A-Za-z0-9])BV([A-Za-z0-9]{10})(?![A-Za-z0-9])/i);
+  if (bv) {
+    const sourceId = `BV${bv[1]}`;
+    return { valid: true, raw, url: `https://www.bilibili.com/video/${sourceId}`, platform: "bilibili", sourceId, label: `B站视频 · ${sourceId}` };
+  }
+  const av = raw.match(/(?:^|[^A-Za-z0-9])av(\d{1,20})(?![A-Za-z0-9])/i);
+  if (av) {
+    const sourceId = `av${av[1]}`;
+    return { valid: true, raw, url: `https://www.bilibili.com/video/${sourceId}`, platform: "bilibili", sourceId, label: `B站视频 · ${sourceId}` };
+  }
+  return { valid: false, raw, url: "", platform: "", sourceId: "", label: "请输入 BV/AV 号或完整链接" };
+}
+
+function renderUrlSourceIdentity(source = normalizeSourceInput(els.urlInput?.value)) {
+  if (!els.urlSourceIdentity) return source;
+  els.urlSourceIdentity.hidden = !source.raw;
+  els.urlSourceIdentity.className = `url-source-identity ${source.valid ? "valid" : "invalid"}`;
+  els.urlSourceIdentity.textContent = source.valid
+    ? `${source.label}${source.url !== source.raw ? `  →  ${source.url}` : ""}`
+    : source.label;
+  return source;
+}
+
 function selectedUrlMode() {
   return els.urlMode?.value || "auto";
 }
 
 function urlModeDescription(mode = selectedUrlMode()) {
   return ({
-    auto: "自动识别会优先把 mp4/FLV/AVI/m3u8/mpd 当作媒体候选；无后缀 URL 可切换直连/HLS/DASH 或交给页面扫描和 yt-dlp。",
+    auto: "B站 BV/AV 号会自动转换为视频页；页面链接交给 yt-dlp 和页面扫描，mp4/FLV/AVI/m3u8/mpd 会按媒体直链处理。",
     page: "按课程网页处理：后端先扫描页面里的媒体地址，再用 yt-dlp 解析，不把这个 URL 当直连文件。",
     video: "按视频文件直连处理：适合没有后缀但实际返回 video/* 的签名接口或播放接口。",
     hls: "按 HLS 播放列表处理：后端会用 ffmpeg 合并 m3u8 可访问的分片。",
@@ -6270,8 +6320,9 @@ async function renderDetail() {
 }
 
 async function startUrlTask(mode = "video") {
-  const url = els.urlInput.value.trim();
-  if (!url) {
+  const source = renderUrlSourceIdentity();
+  const url = source.url;
+  if (!source.valid) {
     els.urlInput.focus();
     return;
   }
@@ -6289,7 +6340,7 @@ async function startUrlTask(mode = "video") {
       body: JSON.stringify({
         mode,
         page_url: url,
-        title: els.titleInput.value.trim() || url,
+        title: els.titleInput.value.trim() || source.label || url,
         page_text: "",
         resources,
         page_preflight_report: pagePreflightReport || {},
@@ -6308,8 +6359,9 @@ async function startUrlTask(mode = "video") {
 }
 
 async function preflightUrlTask() {
-  const url = els.urlInput.value.trim();
-  if (!url) {
+  const source = renderUrlSourceIdentity();
+  const url = source.url;
+  if (!source.valid) {
     els.urlInput.focus();
     return;
   }
@@ -6563,7 +6615,10 @@ if (els.urlMode) {
   renderUrlModeHint();
 }
 if (els.urlInput) {
-  els.urlInput.oninput = clearUrlPreflight;
+  els.urlInput.oninput = () => {
+    clearUrlPreflight();
+    renderUrlSourceIdentity();
+  };
 }
 if (els.transcriber) {
   els.transcriber.onchange = () => {
