@@ -2652,7 +2652,6 @@ def _answer_task_question(task: TaskRecord, request: TaskQuestionRequest) -> dic
                         ),
                     }
                 ],
-                temperature=0.2,
                 **chat_completion_provider_kwargs(base_url),
             )
             answer = response.choices[0].message.content or ""

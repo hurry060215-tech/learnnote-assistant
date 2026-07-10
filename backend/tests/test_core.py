@@ -3659,9 +3659,13 @@ class SummaryFallbackTests(unittest.TestCase):
         self.assertEqual(llm_provider_name("https://api.deepseek.com"), "deepseek")
         self.assertEqual(
             chat_completion_provider_kwargs("https://api.deepseek.com"),
+            {"temperature": 0.2, "extra_body": {"thinking": {"type": "disabled"}}},
+        )
+        self.assertEqual(
+            chat_completion_provider_kwargs("https://api.moonshot.cn/v1"),
             {"extra_body": {"thinking": {"type": "disabled"}}},
         )
-        self.assertEqual(chat_completion_provider_kwargs("https://api.openai.com/v1"), {})
+        self.assertEqual(chat_completion_provider_kwargs("https://api.openai.com/v1"), {"temperature": 0.2})
         self.assertFalse(llm_model_supports_vision("https://api.deepseek.com", "deepseek-v4-flash"))
         self.assertTrue(llm_model_supports_vision("https://api.moonshot.cn/v1", "kimi-k2.6"))
         self.assertTrue(llm_model_supports_vision("https://open.bigmodel.cn/api/paas/v4", "glm-5v-turbo"))

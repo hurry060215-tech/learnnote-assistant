@@ -45,9 +45,12 @@ def llm_provider_name(base_url: str) -> str:
 
 
 def chat_completion_provider_kwargs(base_url: str) -> dict:
-    if llm_provider_name(base_url) == "deepseek":
+    provider = llm_provider_name(base_url)
+    if provider == "deepseek":
+        return {"temperature": 0.2, "extra_body": {"thinking": {"type": "disabled"}}}
+    if provider == "kimi":
         return {"extra_body": {"thinking": {"type": "disabled"}}}
-    return {}
+    return {"temperature": 0.2}
 
 
 def llm_model_supports_vision(base_url: str, model: str) -> bool:
@@ -709,7 +712,6 @@ def summarize_with_llm(
                 response = client.chat.completions.create(
                     model=model,
                     messages=[{"role": "user", "content": content}],
-                    temperature=0.2,
                     **provider_kwargs,
                 )
                 partial = response.choices[0].message.content or ""
@@ -752,7 +754,6 @@ def summarize_with_llm(
                             ),
                         }
                     ],
-                    temperature=0.2,
                     **provider_kwargs,
                 )
                 generated = response.choices[0].message.content or ""
@@ -785,7 +786,6 @@ def summarize_with_llm(
         response = client.chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": content}],
-            temperature=0.2,
             **provider_kwargs,
         )
         generated = response.choices[0].message.content or ""
