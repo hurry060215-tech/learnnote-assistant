@@ -125,6 +125,31 @@ class ProductReadinessAuditTest(unittest.TestCase):
         self.assertIsNone(audit_product_readiness.learning_audit([local]))
         self.assertIs(audit_product_readiness.learning_audit([local], include_local=True), local)
 
+    def test_learning_audit_accepts_completed_direct_task_evidence(self):
+        completed = {
+            "path": Path("D:/audit.json"),
+            "entry": {
+                "url": "https://mooc1.chaoxing.com/course",
+                "evidence": {
+                    "profile": {
+                        "readiness": "ready_to_download",
+                        "learning_platform": {
+                            "detected": True,
+                            "direct_task": {
+                                "ready": True,
+                                "download_success": True,
+                                "processing_success": True,
+                                "no_tab_recording": True,
+                                "no_drm_bypass": True,
+                            },
+                        },
+                    }
+                },
+            },
+        }
+
+        self.assertIs(audit_product_readiness.learning_audit([completed]), completed)
+
     def test_ready_site_audit_filters_by_readiness_and_token(self):
         ready = {
             "path": Path("audit.json"),

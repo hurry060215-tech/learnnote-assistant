@@ -37,6 +37,10 @@ function Resolve-BootstrapPython {
   if ($env:LEARNNOTE_BOOTSTRAP_PYTHON) {
     return $env:LEARNNOTE_BOOTSTRAP_PYTHON
   }
+  $python312 = "D:\Python312\python.exe"
+  if (Test-Path $python312) {
+    return $python312
+  }
   $pathPython = Get-Command python -ErrorAction SilentlyContinue
   if ($pathPython) {
     return $pathPython.Source

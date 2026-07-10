@@ -55,6 +55,10 @@ function Resolve-ProjectPython {
   if (Test-Path $venvPython) {
     return $venvPython
   }
+  $python312 = "D:\Python312\python.exe"
+  if (Test-Path $python312) {
+    return $python312
+  }
   $pathPython = Get-Command python -ErrorAction SilentlyContinue
   if ($pathPython) {
     return $pathPython.Source

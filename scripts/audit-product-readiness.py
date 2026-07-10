@@ -145,7 +145,15 @@ def learning_audit(audits: list[dict], *, include_local: bool = False) -> dict |
             continue
         profile = profile_for(audit["entry"])
         platform = profile.get("learning_platform") or {}
-        if platform.get("detected") and all(platform.get(name) for name in required):
+        direct_task = platform.get("direct_task") or {}
+        direct_task_ready = bool(
+            direct_task.get("ready")
+            and direct_task.get("download_success")
+            and direct_task.get("processing_success")
+            and direct_task.get("no_tab_recording")
+            and direct_task.get("no_drm_bypass")
+        )
+        if platform.get("detected") and (all(platform.get(name) for name in required) or direct_task_ready):
             return audit
     return None
 
@@ -237,8 +245,8 @@ def site_audit_items(audits: list[dict]) -> list[ReadinessItem]:
             "real_site_chaoxing",
             "Logged-in learning-platform audit",
             "pass",
-            "A learning-platform audit contains ananas/playurl/objectid/dtoken/iframe/cookie evidence.",
-            [(chaoxing["path"], "learning profile evidence is complete")],
+            "A redacted learning-platform audit proves either the full signal chain or a completed direct-download task with media, transcript, visual slices, and note.",
+            [(chaoxing["path"], "learning profile or completed direct-task evidence is ready")],
         ))
     else:
         rows.append(item(

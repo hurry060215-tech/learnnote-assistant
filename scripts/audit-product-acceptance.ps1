@@ -72,7 +72,7 @@ New-RunDir
   "- Browser: $Browser",
   "- Data: $dataDir",
   "- Yt-dlp URL: $YtdlpUrl",
-  "- Learning URL: $(if ($LearningUrl) { $LearningUrl } else { "not provided; real logged-in learning-platform audit remains manual" })",
+  "- Learning URL: $(if ($LearningUrl) { $LearningUrl } else { "not provided; completed real-task evidence will be checked" })",
   "",
   "## Steps"
 ) | Set-Content -Encoding UTF8 -Path $summaryPath
@@ -132,7 +132,9 @@ if ($LearningUrl) {
     & (Join-Path $projectRoot "scripts\audit-learning-platform.ps1") @args
   } -Manual:$false
 } else {
-  Write-Summary "- MANUAL logged-in learning-platform real gate: provide -LearningUrl after logging in and opening the lesson page"
+  Invoke-AcceptanceStep "logged-in learning-platform real gate: completed task evidence" {
+    & (Join-Path $projectRoot ".venv\Scripts\python.exe") (Join-Path $projectRoot "scripts\audit-learning-task-evidence.py") --require-ready
+  } -Manual
 }
 
 if (-not $SkipReadiness) {
@@ -155,7 +157,7 @@ if (-not $SkipReadiness) {
   "",
   "Acceptance report: $summaryPath",
   "",
-  "The only expected manual row without -LearningUrl is the real logged-in learning-platform audit."
+  "Without -LearningUrl, the gate reuses a completed redacted learning-platform direct-task artifact when available; otherwise that row remains manual."
 ) | Add-Content -Encoding UTF8 -Path $summaryPath
 
 Write-Host ""

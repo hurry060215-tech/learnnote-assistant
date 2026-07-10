@@ -172,13 +172,28 @@ def venv_check() -> Check:
     python = project_python()
     venv_python = ROOT / ".venv" / "Scripts" / "python.exe"
     override = os.getenv("LEARNNOTE_VENV_DIR")
+    try:
+        result = subprocess.run(
+            [str(python), "-c", "import sys; print('.'.join(map(str, sys.version_info[:3])))"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        version_text = result.stdout.strip() if result.returncode == 0 else "unknown"
+        version_parts = tuple(int(part) for part in version_text.split(".")[:2])
+    except (OSError, ValueError, subprocess.SubprocessError):
+        version_text = "unknown"
+        version_parts = ()
+    if version_parts and version_parts < (3, 10):
+        return Check("Python environment", "FAIL", f"{python}; Python {version_text} is unsupported", "install Python 3.12 under D:\\Python312 and recreate the project .venv")
+    version_suffix = f"; Python {version_text}" if version_text != "unknown" else ""
     if override:
         override_python = Path(override) / "Scripts" / "python.exe"
         if override_python.exists():
-            return Check("Python environment", "PASS", f"{override_python} via LEARNNOTE_VENV_DIR")
+            return Check("Python environment", "PASS", f"{override_python} via LEARNNOTE_VENV_DIR{version_suffix}")
         return Check("Python environment", "FAIL", f"{override_python} does not exist", "run .\\start-learnnote.ps1 after setting LEARNNOTE_VENV_DIR")
     if venv_python.exists():
-        return Check("Python environment", "PASS", str(venv_python))
+        return Check("Python environment", "PASS", f"{venv_python}{version_suffix}")
     return Check("Python environment", "WARN", f"project venv missing; using {python}", "run .\\start-learnnote.ps1 to create .venv under the D-drive project")
 
 

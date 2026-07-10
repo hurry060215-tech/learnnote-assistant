@@ -10,6 +10,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 - BiliNote-style workspace UI: source selection, processing options, task history, note/transcript/frame/diagnostic result tabs.
 - Richer BiliNote-style reading workspace with task search/filter, status counters, Markdown rendering, frame-grid preview, and failure recovery hints.
 - BiliNote-style task stage rail for download, transcription, frame slicing, note generation, and completion.
+- Bilibili link entry accepts a full B站 URL, bare `BV...`/`av...` ID, or copied text containing one; the backend normalizes it to a video page, downloads through yt-dlp, merges separate audio/video with the project ffmpeg, and replaces the placeholder with the real video title.
 - Transcript timeline view aligns each subtitle segment with its frame-grid visual window, so notes can be reviewed by time slice instead of as a flat transcript.
 - Web UI subtitle timestamps and visual-window checkpoints can seek the local `media.mp4` preview for time-anchored review.
 - Markdown note export from both the local Web UI and the browser Side Panel.
@@ -46,6 +47,7 @@ This project intentionally does **not** record the browser tab and does **not** 
 
 ## What Works Now
 
+- Paste a B站 URL or `BV...`/`av...` ID into Web UI **链接解析**, then choose **生成链接笔记**, **预检链接**, or **只下载到本地**. YouTube and other yt-dlp-supported page URLs use the same entry.
 - Direct current-page task creation from the extension Side Panel.
 - DOM, iframe-aware content scripts, Performance, active `<video>` state, and `webRequest` resource discovery.
 - Page-network hook discovery for mp4/FLV/HLS/DASH/subtitle URLs embedded in fetch/XHR text responses. The hook also records Blob object URL, fetch stream chunk, and MediaSource source mappings when the page builds playback from accessible media responses; it does not record playback or inspect binary video payloads.
@@ -242,7 +244,7 @@ cd D:\Projects\learnnote-assistant
 .\scripts\audit-product-acceptance.ps1 -Browser edge -LearningUrl "https://mooc1.chaoxing.com/..."
 ```
 
-The acceptance report is written under `data\test-runs\product-acceptance\{timestamp}\summary.md`. Without `-LearningUrl`, the only expected manual item is the real logged-in learning-platform audit.
+The acceptance report is written under `data\test-runs\product-acceptance\{timestamp}\summary.md`. Without `-LearningUrl`, the gate can reuse a completed real learning-platform direct task after converting it into a redacted audit with `scripts\audit-learning-task-evidence.py --require-ready`; if no such task exists, the row remains manual.
 
 Run the product readiness audit when deciding whether the current build is actually ready to hand off:
 
