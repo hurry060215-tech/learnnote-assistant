@@ -288,7 +288,6 @@ def build_matrix(*, include_acceptance_gate: bool = True) -> list[ReadinessItem]
     public_site_html = read_text(ROOT / "site" / "index.html")
     public_site_css = read_text(ROOT / "site" / "styles.css")
     public_site_start = read_text(ROOT / "scripts" / "start-public-site.ps1")
-    pages_workflow = read_text(ROOT / ".github" / "workflows" / "pages.yml")
     readme = read_text(ROOT / "README.md")
     audits = collect_site_audits()
 
@@ -485,7 +484,6 @@ def build_matrix(*, include_acceptance_gate: bool = True) -> list[ReadinessItem]
     public_site_ready = (
         has_all(public_site_html + public_site_css, ["LearnNote", "下载 Windows 版", "本地处理", "不录屏", "不刷课", "learnnote-desktop.png"])
         and has_all(public_site_start, ["http.server", "cloudflared", "No login is required"])
-        and has_all(pages_workflow, ["deploy-pages", "site"])
         and "password" not in public_site_html.lower()
     )
     rows.append(item(
@@ -497,7 +495,6 @@ def build_matrix(*, include_acceptance_gate: bool = True) -> list[ReadinessItem]
             (ROOT / "site" / "index.html", "public product, workflow, privacy, and download content"),
             (ROOT / "site" / "assets" / "learnnote-desktop.png", "real desktop-client screenshot"),
             (ROOT / "scripts" / "start-public-site.ps1", "no-login static public tunnel"),
-            (ROOT / ".github" / "workflows" / "pages.yml", "static GitHub Pages deployment"),
         ],
     ))
 

@@ -179,7 +179,7 @@ Start a temporary public site with no login prompt:
 .\scripts\stop-public-site.ps1
 ```
 
-The `Public Website` GitHub Actions workflow deploys the same static directory to GitHub Pages. Its Windows download buttons point to the latest GitHub Release.
+The Windows download buttons point to the latest GitHub Release. The same static directory can be uploaded to any static host; GitHub Pages requires either a public repository or an account plan that supports Pages for private repositories.
 
 ## Optional Personal Server Deployment
 
