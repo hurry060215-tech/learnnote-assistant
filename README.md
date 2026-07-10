@@ -152,6 +152,36 @@ Open the local web UI after startup:
 http://127.0.0.1:8765
 ```
 
+## Protected Website Deployment
+
+LearnNote can run as a complete personal website, not only as an unpacked extension. The deployed service includes the Web UI, FastAPI, yt-dlp, FFmpeg, faster-whisper, local uploads, task history, and persistent artifacts. Public mode is intentionally single-user and requires HTTP Basic authentication; it is not a multi-tenant SaaS account system like BiliNote Pro.
+
+### Docker / VPS
+
+Copy the deployment environment file and replace the password with at least 12 random characters:
+
+```bash
+cp .env.deploy.example .env.deploy
+docker compose --env-file .env.deploy up --build -d
+```
+
+Open `http://localhost:8765`. Data, uploads, task history, screenshots, and model caches persist in the `learnnote-data` volume. The container runs as a non-root user and exposes an unauthenticated `/health` endpoint only; the website and task APIs require the configured username/password. For a domain, put the container behind an HTTPS reverse proxy and set `LEARNNOTE_PUBLIC_ORIGIN` to the final origin.
+
+Images are published from `main` to `ghcr.io/hurry060215-tech/learnnote-assistant:latest`. Because the source repository is private, authenticate Docker to GHCR before pulling unless package visibility is changed explicitly.
+
+### Temporary Protected Public URL
+
+On Windows, this starts a separate empty data workspace and an optional Cloudflare Quick Tunnel. The generated password is written under the ignored D-drive `data\config` directory and is never committed:
+
+```powershell
+.\scripts\start-public-preview.ps1 -Tunnel
+# detached mode
+.\scripts\start-public-preview.ps1 -Tunnel -Detach
+.\scripts\stop-public-preview.ps1
+```
+
+The public Web UI supports Bilibili/YouTube/page links and local uploads. Keep current-page browser-cookie extraction on the local extension/backend path: the protected cloud website deliberately does not embed or persist browser login credentials for multiple users.
+
 Load the browser extension:
 
 1. Open `chrome://extensions` or `edge://extensions`.

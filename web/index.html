@@ -6,6 +6,7 @@
     <title>LearnNote 学习视频笔记</title>
     <link rel="icon" href="data:,">
     <link rel="stylesheet" href="/web/styles.css?v=20260710-bv-input">
+    <link rel="stylesheet" href="/web/workspace.css?v=20260710-workspace-redesign">
   </head>
   <body>
     <header class="topbar">
@@ -32,24 +33,28 @@
 
     <main class="app-shell">
       <nav class="nav-rail" aria-label="主导航">
-        <a class="nav-item active" href="/" title="首页" aria-label="首页">
+        <a class="nav-item active" href="/" title="创建笔记" aria-label="创建笔记">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></svg>
+          <span>创建笔记</span>
         </a>
         <a class="nav-item" href="#resultPanel" title="笔记库" aria-label="笔记库">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h11a2 2 0 0 1 2 2v16l-4-2-4 2-4-2-4 2V5a2 2 0 0 1 2-2z"/><path d="M8 8h7M8 12h6"/></svg>
+          <span>笔记库</span>
         </a>
         <a class="nav-item" href="#tasks" title="历史记录" aria-label="历史记录">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v6h6"/><path d="M12 7v5l3 2"/></svg>
+          <span>历史记录</span>
         </a>
-        <a class="nav-item" href="#optionsDisclosure" title="模板" aria-label="模板">
+        <a class="nav-item" href="#optionsDisclosure" title="设置" aria-label="设置">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5z"/><path d="M9 8h6M9 12h6M9 16h3"/></svg>
+          <span>设置</span>
         </a>
       </nav>
 
       <aside class="workspace-panel">
         <div class="panel-heading">
-          <span class="eyeless">学习工作台</span>
-          <strong>视频来源</strong>
+          <span class="eyeless">LearnNote 工作台</span>
+          <strong>创建学习笔记</strong>
         </div>
 
         <div id="sourceRouteRail" class="source-route-rail" aria-label="学习入口路线"></div>

@@ -276,6 +276,11 @@ def build_matrix(*, include_acceptance_gate: bool = True) -> list[ReadinessItem]
     web_html = read_text(ROOT / "web" / "index.html")
     web_js = read_text(ROOT / "web" / "app.js")
     web_css = read_text(ROOT / "web" / "styles.css")
+    workspace_css = read_text(ROOT / "web" / "workspace.css")
+    dockerfile = read_text(ROOT / "Dockerfile")
+    compose = read_text(ROOT / "compose.yaml")
+    container_workflow = read_text(ROOT / ".github" / "workflows" / "container.yml")
+    public_preview = read_text(ROOT / "scripts" / "start-public-preview.ps1")
     readme = read_text(ROOT / "README.md")
     audits = collect_site_audits()
 
@@ -428,6 +433,28 @@ def build_matrix(*, include_acceptance_gate: bool = True) -> list[ReadinessItem]
             (ROOT / "web" / "index.html", "startup readiness card"),
             (ROOT / "web" / "app.js", "startup readiness health rendering"),
             (ROOT / "README.md", "Quick Start and real-site audit instructions"),
+        ],
+    ))
+
+    deployment_ready = (
+        has_all(dockerfile + compose, ["LEARNNOTE_DEPLOYMENT_MODE", "LEARNNOTE_PUBLIC_PASSWORD", "/app/data", "healthcheck"])
+        and has_all(container_workflow, ["ghcr.io", "docker/build-push-action", "push: true"])
+        and has_all(backend_main, ["enforce_public_access", "request_origin_matches_host", "www-authenticate"])
+        and has_all(public_preview, ["cloudflared", "public-preview-state.json", "LEARNNOTE_PUBLIC_PASSWORD"])
+        and has_all(web_html + workspace_css, ["workspace.css", "创建学习笔记", "--ln-accent", ".queue-panel"])
+    )
+    rows.append(item(
+        "protected_web_deployment",
+        "Protected Web deployment",
+        "pass" if deployment_ready else "fail",
+        "The redesigned Web workspace is packaged as a non-root container, persists data, requires Basic auth in public mode, and publishes through GHCR." if deployment_ready else "Public deployment, authentication, or redesigned workspace evidence is incomplete.",
+        [
+            (ROOT / "Dockerfile", "non-root production image and persistent data directory"),
+            (ROOT / "compose.yaml", "authenticated server-mode deployment"),
+            (ROOT / ".github" / "workflows" / "container.yml", "GHCR build and publish workflow"),
+            (ROOT / "backend" / "app" / "main.py", "public Basic auth and same-origin write protection"),
+            (ROOT / "web" / "workspace.css", "responsive BiliNote-style workspace"),
+            (ROOT / "scripts" / "start-public-preview.ps1", "temporary protected public preview"),
         ],
     ))
 

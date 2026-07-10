@@ -8,8 +8,7 @@ function normalizeApiBase(value) {
 function isBackendSameOrigin(loc = window?.location || location) {
   const protocol = String(loc?.protocol || "");
   const hostname = String(loc?.hostname || "");
-  return (protocol === "http:" || protocol === "https:")
-    && (hostname === "localhost" || hostname === "127.0.0.1");
+  return (protocol === "http:" || protocol === "https:") && Boolean(hostname);
 }
 
 function resolveApiBase(loc = window?.location || location, storage = window?.localStorage) {
@@ -2999,7 +2998,8 @@ function hasHealthDataPaths(data) {
 
 function healthDataPathsReady(data) {
   const paths = data?.data_paths || {};
-  return Boolean(hasHealthDataPaths(data) && paths.all_under_data_dir && paths.all_on_data_drive);
+  const serverMode = ["server", "public", "cloud"].includes(String(data?.deployment_mode || "").toLowerCase());
+  return Boolean(hasHealthDataPaths(data) && paths.all_under_data_dir && (serverMode || paths.all_on_data_drive));
 }
 
 function healthDataChipText(data) {
@@ -3008,7 +3008,8 @@ function healthDataChipText(data) {
   const state = !hasHealthDataPaths(data)
     ? "待检测"
     : healthDataPathsReady(data) ? "data内" : "路径异常";
-  return `${drive || "data"} · ${state}`;
+  const serverMode = ["server", "public", "cloud"].includes(String(data?.deployment_mode || "").toLowerCase());
+  return `${serverMode ? "持久卷" : drive || "data"} · ${state}`;
 }
 
 function ytdlpChipText(data) {
@@ -3026,11 +3027,12 @@ function projectPathFromHealth(data) {
 
 function startupReadinessItems(data = lastHealthData) {
   const connected = Boolean(data);
+  const serverMode = ["server", "public", "cloud"].includes(String(data?.deployment_mode || "").toLowerCase());
   const projectPath = projectPathFromHealth(data);
   return [
     {
       state: connected ? "pass" : "block",
-      label: "本地后端",
+      label: serverMode ? "部署服务" : "本地后端",
       value: connected ? "已连接" : "未连接",
       detail: connected ? `API ${API || window.location.origin}` : "先运行 start-learnnote.ps1，后端监听 127.0.0.1。"
     },
@@ -3060,7 +3062,7 @@ function startupReadinessItems(data = lastHealthData) {
     },
     {
       state: healthDataPathsReady(data) ? "pass" : connected ? "warn" : "wait",
-      label: "D盘数据",
+      label: serverMode ? "持久化数据" : "D盘数据",
       value: healthDataChipText(data),
       detail: hasHealthDataPaths(data) ? data.data_paths.root : "任务、上传和缓存应落在项目 data 目录。"
     },

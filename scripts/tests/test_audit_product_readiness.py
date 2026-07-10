@@ -37,6 +37,7 @@ class ProductReadinessAuditTest(unittest.TestCase):
             "learning_platform_diagnostics",
             "local_regression_samples",
             "startup_onboarding",
+            "protected_web_deployment",
             "generic_adapter_direction",
             "product_acceptance_gate",
             "real_site_chaoxing",

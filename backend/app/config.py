@@ -5,13 +5,21 @@ from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DATA_DIR = PROJECT_ROOT / "data"
+DATA_DIR = Path(os.getenv("LEARNNOTE_DATA_DIR", str(PROJECT_ROOT / "data"))).expanduser().resolve()
 UPLOAD_DIR = DATA_DIR / "uploads"
 TASK_DIR = DATA_DIR / "tasks"
 STATIC_DIR = DATA_DIR / "static"
 MODEL_CACHE_DIR = DATA_DIR / "model-cache"
 TEMP_DIR = DATA_DIR / "temp"
 WEB_DIR = PROJECT_ROOT / "web"
+
+DEPLOYMENT_MODE = os.getenv("LEARNNOTE_DEPLOYMENT_MODE", "local").strip().lower()
+PUBLIC_DEPLOYMENT = DEPLOYMENT_MODE in {"server", "public", "cloud"}
+PUBLIC_USERNAME = os.getenv("LEARNNOTE_PUBLIC_USERNAME", "ln").strip() or "ln"
+PUBLIC_PASSWORD = os.getenv("LEARNNOTE_PUBLIC_PASSWORD", "")
+
+if PUBLIC_DEPLOYMENT and len(PUBLIC_PASSWORD) < 12:
+    raise RuntimeError("LEARNNOTE_PUBLIC_PASSWORD must contain at least 12 characters in public deployment mode.")
 
 BACKEND_ORIGIN = os.getenv("LEARNNOTE_BACKEND_ORIGIN", "http://127.0.0.1:8765")
 DEFAULT_FRAME_INTERVAL = int(os.getenv("LEARNNOTE_FRAME_INTERVAL", "20"))

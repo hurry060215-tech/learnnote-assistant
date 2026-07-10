@@ -1,0 +1,11 @@
+.git
+.github
+.venv*
+data
+extension
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+backend/tests
+scripts
+*.log

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from importlib.util import find_spec
 from io import BytesIO
+import base64
+import hmac
 import json
 import re
 import shutil
@@ -9,7 +11,7 @@ import tempfile
 from uuid import uuid4
 from zipfile import ZIP_DEFLATED, ZipFile
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 from fastapi import BackgroundTasks, Body, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,7 +19,7 @@ from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Res
 from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 
-from .config import BACKEND_ORIGIN, DATA_DIR, LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, MODEL_CACHE_DIR, STATIC_DIR, TASK_DIR, TEMP_DIR, UPLOAD_DIR, WEB_DIR, ensure_dirs
+from .config import BACKEND_ORIGIN, DATA_DIR, DEPLOYMENT_MODE, LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, MODEL_CACHE_DIR, PUBLIC_DEPLOYMENT, PUBLIC_PASSWORD, PUBLIC_USERNAME, STATIC_DIR, TASK_DIR, TEMP_DIR, UPLOAD_DIR, WEB_DIR, ensure_dirs
 from .downloader import MediaDownloader, effective_resource_kind, fallback_page_contexts, preflight_media_resource, rank_media_candidates
 from .media import MediaProcessingError, extract_video_clip, probe_duration
 from .models import CurrentPageTaskRequest, MediaPreflightRequest, MediaPreflightResult, PagePreflightRequest, RerunFromMediaRequest, ResourceCandidate, SourceInputRequest, TaskOptions, TaskQuestionRequest, TaskRecord, now_iso
@@ -43,9 +45,36 @@ app.add_middleware(
 
 
 @app.middleware("http")
+async def enforce_public_access(request: Request, call_next):
+    if not PUBLIC_DEPLOYMENT or request.url.path == "/health":
+        return await call_next(request)
+    authorization = (request.headers.get("authorization") or "").strip()
+    expected = base64.b64encode(f"{PUBLIC_USERNAME}:{PUBLIC_PASSWORD}".encode("utf-8")).decode("ascii")
+    valid = authorization.lower().startswith("basic ") and hmac.compare_digest(authorization[6:].strip(), expected)
+    if not valid:
+        return Response(
+            "Authentication required",
+            status_code=401,
+            headers={"WWW-Authenticate": 'Basic realm="LearnNote", charset="UTF-8"'},
+        )
+    return await call_next(request)
+
+
+def request_origin_matches_host(request: Request, origin: str) -> bool:
+    try:
+        parsed = urlsplit(origin)
+    except ValueError:
+        return False
+    forwarded_host = (request.headers.get("x-forwarded-host") or request.headers.get("host") or "").split(",", 1)[0].strip()
+    forwarded_proto = (request.headers.get("x-forwarded-proto") or request.url.scheme or "").split(",", 1)[0].strip().lower()
+    return bool(parsed.netloc and parsed.netloc.lower() == forwarded_host.lower() and parsed.scheme.lower() == forwarded_proto)
+
+
+@app.middleware("http")
 async def enforce_trusted_write_origin(request: Request, call_next):
     origin = (request.headers.get("origin") or "").strip()
-    if request.method.upper() in WRITE_METHODS and request.url.path.startswith("/api/") and origin and not TRUSTED_BROWSER_ORIGIN_RE.fullmatch(origin):
+    trusted_origin = bool(TRUSTED_BROWSER_ORIGIN_RE.fullmatch(origin) or request_origin_matches_host(request, origin))
+    if request.method.upper() in WRITE_METHODS and request.url.path.startswith("/api/") and origin and not trusted_origin:
         return Response("Forbidden origin", status_code=403)
     return await call_next(request)
 
@@ -2263,6 +2292,8 @@ def health_payload() -> dict:
         "duration_probe_available": bool(duration_probe),
         "ffprobe_optional": bool(ffmpeg and not ffprobe),
         "backend_origin": BACKEND_ORIGIN,
+        "deployment_mode": DEPLOYMENT_MODE,
+        "public_access_protected": bool(PUBLIC_DEPLOYMENT and PUBLIC_PASSWORD),
         "local_asr_available": local_asr_available,
         "local_asr_package": "faster-whisper",
         "local_asr_install_hint": "pip install faster-whisper" if not local_asr_available else "",

@@ -12,6 +12,8 @@ data/model-cache/
 data/pip-cache/
 data/temp/
 data/tools/
+data/public-preview/
+.env.deploy
 data/test-runs/
 data/ui-audit/
 data/uploads/

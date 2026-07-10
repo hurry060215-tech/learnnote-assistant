@@ -154,6 +154,7 @@ assert.equal(context.normalizeApiBase(" http://127.0.0.1:8765/ "), "http://127.0
 assert.equal(context.normalizeApiBase("https://example.com"), "");
 assert.equal(context.resolveApiBase({ protocol: "http:", hostname: "127.0.0.1", port: "8765" }, null), "");
 assert.equal(context.resolveApiBase({ protocol: "http:", hostname: "127.0.0.1", port: "8766" }, null), "");
+assert.equal(context.resolveApiBase({ protocol: "https:", hostname: "learnnote.example", port: "" }, null), "");
 assert.equal(context.resolveApiBase({ protocol: "file:", hostname: "", port: "" }, null), "http://127.0.0.1:8765");
 assert.equal(context.resolveApiBase(
   { protocol: "http:", hostname: "127.0.0.1", port: "8878" },
@@ -303,8 +304,9 @@ assert.match(indexHtml, /styles\.css\?v=20260710-bv-input/);
 assert.match(indexHtml, /app\.js\?v=20260710-bv-input/);
 assert.match(indexHtml, /id="sourceRouteRail"/);
 assert.match(indexHtml, /id="urlPreflightReport"/);
-assert.match(indexHtml, /href="#optionsDisclosure" title="模板"/);
-assert.doesNotMatch(indexHtml, /href="#settings" title="模板"/);
+assert.match(indexHtml, /href="#optionsDisclosure" title="设置"/);
+assert.doesNotMatch(indexHtml, /href="#settings" title="设置"/);
+assert.match(indexHtml, /workspace\.css\?v=20260710-workspace-redesign/);
 assert.match(indexHtml, /id="downloadUrlButton"[\s\S]*只下载到本地/);
 assert.doesNotMatch(indexHtml, />只下载本地</);
 assert.match(indexHtml, /class="result-tab active" role="tab" aria-selected="true" data-tab="note"/);

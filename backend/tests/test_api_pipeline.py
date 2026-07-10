@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 import functools
+import base64
 import io
 import json
 import shutil
@@ -217,6 +218,37 @@ class LocalUploadValidationTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
+
+    def test_api_write_allows_reverse_proxy_same_origin(self) -> None:
+        response = self.client.post(
+            "/api/media/preflight-current-page",
+            headers={
+                "Origin": "https://learnnote.example",
+                "Host": "learnnote.example",
+                "X-Forwarded-Proto": "https",
+            },
+            json={
+                "page_url": "https://course.example.com/lesson",
+                "probe_limit": 0,
+                "resources": [],
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_public_deployment_requires_basic_auth_but_keeps_health_open(self) -> None:
+        credential = base64.b64encode(b"ln:test-password-123").decode("ascii")
+        with patch("app.main.PUBLIC_DEPLOYMENT", True), \
+                patch("app.main.PUBLIC_USERNAME", "ln"), \
+                patch("app.main.PUBLIC_PASSWORD", "test-password-123"):
+            health = self.client.get("/health")
+            denied = self.client.get("/")
+            allowed = self.client.get("/", headers={"Authorization": f"Basic {credential}"})
+
+        self.assertEqual(health.status_code, 200)
+        self.assertEqual(denied.status_code, 401)
+        self.assertIn("Basic", denied.headers.get("www-authenticate", ""))
+        self.assertEqual(allowed.status_code, 200)
 
     def test_local_upload_filename_is_sanitized_and_mime_can_supply_extension(self) -> None:
         self.assertEqual(local_upload_filename("..\\course:demo?.mkv", ""), "course_demo.mkv")
