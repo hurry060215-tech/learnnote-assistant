@@ -4,7 +4,7 @@ from pathlib import Path
 import re
 from urllib.parse import urlparse
 
-from .config import DEFAULT_WHISPER_COMPUTE_TYPE, DEFAULT_WHISPER_DEVICE, LLM_API_KEY, LLM_BASE_URL, configure_local_caches
+from .config import DEFAULT_WHISPER_COMPUTE_TYPE, DEFAULT_WHISPER_DEVICE, LLM_API_KEY, LLM_BASE_URL, MODEL_CACHE_DIR, configure_local_caches
 from .models import TaskOptions, TranscriptResult, TranscriptSegment
 
 
@@ -13,6 +13,17 @@ TIMESTAMP_RE = re.compile(
 )
 LOCAL_ASR_MODELS = {"tiny", "base", "small", "medium", "large", "large-v2", "large-v3"}
 MAX_ASR_ERROR_MESSAGE = 240
+
+
+def resolve_whisper_model(model_size: str) -> str:
+    requested = str(model_size or "small").strip() or "small"
+    explicit_path = Path(requested)
+    if explicit_path.is_dir():
+        return str(explicit_path.resolve())
+    local_model = MODEL_CACHE_DIR / f"faster-whisper-{requested}"
+    if (local_model / "config.json").is_file() and (local_model / "model.bin").is_file():
+        return str(local_model)
+    return requested
 
 
 def _remote_asr_base_host(base_url: str) -> str:
@@ -142,7 +153,7 @@ def transcribe_audio(audio_path: Path, model_size: str = "small") -> TranscriptR
         )
 
     try:
-        model = WhisperModel(model_size, device=DEFAULT_WHISPER_DEVICE, compute_type=DEFAULT_WHISPER_COMPUTE_TYPE)
+        model = WhisperModel(resolve_whisper_model(model_size), device=DEFAULT_WHISPER_DEVICE, compute_type=DEFAULT_WHISPER_COMPUTE_TYPE)
         segments_iter, info = model.transcribe(str(audio_path), vad_filter=True)
         segments: list[TranscriptSegment] = []
         for item in segments_iter:

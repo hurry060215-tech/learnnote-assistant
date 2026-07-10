@@ -840,6 +840,39 @@ function readAttribute(element, name) {
   return element[name] || "";
 }
 
+function chaoxingStatusResourceFromIframe(iframe) {
+  const frameSrc = readAttribute(iframe, "src");
+  const marker = [
+    frameSrc,
+    readAttribute(iframe, "class"),
+    readAttribute(iframe, "data")
+  ].join(" ");
+  if (!/ananas\/modules\/video|ans-insertvideo|chaoxing|xuexitong/i.test(marker)) return null;
+
+  let objectId = readAttribute(iframe, "objectid") || readAttribute(iframe, "data-objectid");
+  if (!objectId) {
+    const data = readAttribute(iframe, "data");
+    const match = String(data || "").match(/["']objectid["']\s*:\s*["']([A-Za-z0-9_-]{8,128})["']/i);
+    objectId = match?.[1] || "";
+  }
+  if (!/^[A-Za-z0-9_-]{8,128}$/.test(objectId)) return null;
+
+  try {
+    const frameUrl = new URL(frameSrc || location.href, location.href);
+    const endpoint = new URL(`/ananas/status/${encodeURIComponent(objectId)}`, frameUrl.origin);
+    endpoint.searchParams.set("k", "");
+    endpoint.searchParams.set("flag", "normal");
+    const item = resource(endpoint.href, "domHint", "Chaoxing object status", "video/mp4", null, true, "objectid-status");
+    if (!item) return null;
+    item.frame_url = frameUrl.href;
+    item.page_url = location.href;
+    item.request_headers = { Referer: location.href };
+    return item;
+  } catch {
+    return null;
+  }
+}
+
 function elementAttributeEntries(element) {
   const attrs = element?.attributes || [];
   if (typeof attrs[Symbol.iterator] === "function") {
@@ -1571,6 +1604,8 @@ function collectDomResources() {
     resources.push(resource(mediaElementUrl(track), "subtitleTrack", label || "subtitle", "text/vtt"));
   }
   for (const iframe of deepQuerySelectorAll("iframe[src]")) {
+    const chaoxingStatus = chaoxingStatusResourceFromIframe(iframe);
+    if (chaoxingStatus) resources.push(chaoxingStatus);
     resources.push(...collectUrlEmbeddedResources(iframe.src, "domHint", "iframe URL"));
     if (/chaoxing|xuexitong|video|player|course|m3u8|mpd/i.test(iframe.src)) {
       resources.push(resource(iframe.src, "dom", "iframe"));

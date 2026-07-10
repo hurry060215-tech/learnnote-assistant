@@ -56,20 +56,32 @@ if ($previousBackendOrigin -and $previousBackendOrigin -ne $backendUrl) {
 }
 Set-Location $backendDir
 
-try {
-  & $python -c "import fastapi, uvicorn, requests, PIL, yt_dlp, openai, imageio_ffmpeg" | Out-Null
-} catch {
+function Test-PythonImports {
+  param([string]$Code)
+
+  $previousErrorActionPreference = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = "Continue"
+    & $python -c $Code 2>$null | Out-Null
+    return $LASTEXITCODE -eq 0
+  } finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+  }
+}
+
+if (-not (Test-PythonImports "import fastapi, uvicorn, requests, PIL, yt_dlp, openai, imageio_ffmpeg")) {
   Write-Host "Installing backend dependencies..."
   & $python -m pip install --upgrade pip
+  if ($LASTEXITCODE -ne 0) { throw "Failed to upgrade pip in $venvDir" }
   & $python -m pip install -r requirements.txt
+  if ($LASTEXITCODE -ne 0) { throw "Failed to install backend dependencies in $venvDir" }
 }
 
 if ($InstallAsr) {
-  try {
-    & $python -c "import faster_whisper" | Out-Null
-  } catch {
+  if (-not (Test-PythonImports "import faster_whisper")) {
     Write-Host "Installing optional faster-whisper ASR dependency..."
     & $python -m pip install "faster-whisper>=1.1.1"
+    if ($LASTEXITCODE -ne 0) { throw "Failed to install faster-whisper in $venvDir" }
   }
 }
 

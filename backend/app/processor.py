@@ -19,6 +19,7 @@ from .transcriber import transcript_from_subtitle, transcribe_audio, transcribe_
 
 SAFE_RESPONSE_HEADER_NAMES = {"content-type", "content-disposition", "content-length", "content-range", "accept-ranges"}
 REMOTE_ASR_TRANSCRIBERS = {"openai", "openai-compatible", "openai-compatible-asr", "groq", "groq-asr"}
+ASR_FAILURE_SOURCES = {"missing-faster-whisper", "faster-whisper-error", "no-audio"}
 
 
 @dataclass
@@ -552,6 +553,14 @@ def transcribe_extracted_audio(audio_path: Path, options: TaskOptions) -> Transc
     return transcribe_audio(audio_path, options.whisper_model)
 
 
+def asr_failure_detail(transcript: TranscriptResult) -> str:
+    source = str(transcript.source or "").strip().lower()
+    failed = source in ASR_FAILURE_SOURCES or bool(re.search(r"-(?:missing-key|missing-sdk|error)$", source))
+    if not failed:
+        return ""
+    return transcript.warning or f"ASR failed with source: {transcript.source or 'unknown'}"
+
+
 def _warning_field(summary_warning: str, key: str) -> str:
     marker = f"{key}="
     if marker not in (summary_warning or ""):
@@ -1006,6 +1015,9 @@ def _process_video_file(
 
     if transcript is None:
         transcript = TranscriptResult(source="no-audio", warning=audio_warning)
+    asr_error = asr_failure_detail(transcript)
+    if asr_error:
+        transcript = transcript.model_copy(update={"segments": [], "full_text": ""})
     transcript_path = work_dir / "transcript.json"
     transcript_path.write_text(transcript.model_dump_json(indent=2), encoding="utf-8")
     update_task(task_id, transcript_path=str(transcript_path))
@@ -1059,18 +1071,33 @@ def _process_video_file(
     note_path = work_dir / "note.md"
     note_path.write_text(note, encoding="utf-8")
 
-    update_task(
-        task_id,
-        status="success",
-        phase="completed",
-        progress=100,
-        message="任务完成",
-        note_path=str(note_path),
-        summary_source=summary_source,
-        summary_warning=summary_warning,
-        summary_diagnostics_path=str(summary_diagnostics_path),
-        summary_diagnostics=summary_diagnostics,
-    )
+    final_fields = {
+        "note_path": str(note_path),
+        "summary_source": summary_source,
+        "summary_warning": summary_warning,
+        "summary_diagnostics_path": str(summary_diagnostics_path),
+        "summary_diagnostics": summary_diagnostics,
+    }
+    if asr_error:
+        update_task(
+            task_id,
+            status="failed",
+            phase="failed",
+            progress=100,
+            message=asr_error,
+            error_code="asr_failed",
+            error_detail=asr_error,
+            **final_fields,
+        )
+    else:
+        update_task(
+            task_id,
+            status="success",
+            phase="completed",
+            progress=100,
+            message="任务完成",
+            **final_fields,
+        )
 
 
 def read_transcript(task_id: str) -> dict:

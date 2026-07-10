@@ -42,7 +42,7 @@ from app.models import ActiveVideoInfo, BrowserCookie, CurrentPageTaskRequest, D
 from app.processor import build_summary_diagnostics, cookie_sync_summary, download_progress_updater, download_status_updater, enrich_resource_candidates_with_active_video, process_current_page_task, process_local_video_task, read_note, read_transcript, redacted_request_dump, redacted_resource
 from app.summarizer import MAX_GRIDS_PER_VISION_CALL, MAX_VISION_GRIDS, build_visual_windows, ensure_visual_appendix, llm_provider_name, local_markdown_note, summarize_with_diagnostics, summarize_with_diagnostics_audit
 from app.storage import create_task, get_task, read_json, save_task, task_dir, write_json
-from app.transcriber import transcribe_audio_openai_compatible, transcript_from_subtitle
+from app.transcriber import resolve_whisper_model, transcribe_audio_openai_compatible, transcript_from_subtitle
 
 TEST_RUN_DIR = DATA_DIR / "test-runs"
 TEST_RUN_DIR.mkdir(parents=True, exist_ok=True)
@@ -518,6 +518,22 @@ class ResourceDetectionTests(unittest.TestCase):
         self.assertEqual(backup_audio.kind, "audio")
         self.assertEqual(video.audio_url, audio.url)
         self.assertEqual(video.audio_mime, "audio/mp4")
+
+    def test_json_bare_mp3_directory_is_not_paired_as_audio(self) -> None:
+        resources = extract_media_resources_from_json_text(
+            json.dumps({
+                "http": "https://cdn.example.com/video/lesson/sd.mp4?token=ok",
+                "mp3": "https://cdn.example.com/video/lesson/mp3/",
+            }),
+            "https://mooc1.chaoxing.com/ananas/status/objectid",
+            "direct-response",
+        )
+        by_url = {item.url: item for item in resources}
+        video = by_url["https://cdn.example.com/video/lesson/sd.mp4?token=ok"]
+
+        self.assertEqual(video.kind, "video")
+        self.assertEqual(video.audio_url, "")
+        self.assertNotIn("https://cdn.example.com/video/lesson/mp3/", by_url)
 
     def test_cookie_header_matches_parent_domains(self) -> None:
         cookies = [
@@ -1124,6 +1140,18 @@ class ResourceDetectionTests(unittest.TestCase):
 
 
 class TranscriberBoundaryTests(unittest.TestCase):
+    def test_local_whisper_model_is_preferred_over_hub_name(self) -> None:
+        with tempfile.TemporaryDirectory(dir=TEST_RUN_DIR) as temp_dir:
+            model_root = Path(temp_dir)
+            local_model = model_root / "faster-whisper-small"
+            local_model.mkdir()
+            (local_model / "config.json").write_text("{}", encoding="utf-8")
+            (local_model / "model.bin").write_bytes(b"model")
+
+            with patch("app.transcriber.MODEL_CACHE_DIR", model_root):
+                self.assertEqual(resolve_whisper_model("small"), str(local_model))
+                self.assertEqual(resolve_whisper_model("medium"), "medium")
+
     def test_openai_compatible_asr_parses_verbose_segments(self) -> None:
         calls = []
 
@@ -1232,6 +1260,56 @@ class TranscriberBoundaryTests(unittest.TestCase):
 
 
 class ProcessorBoundaryTests(unittest.TestCase):
+    def test_asr_failure_keeps_media_and_note_but_marks_task_failed(self) -> None:
+        task = create_task("local", "ASR failure")
+        input_path = task_dir(task.id) / "upload.mp4"
+        input_path.write_bytes(b"fake mp4")
+        try:
+            def fake_normalize(source: Path, target: Path) -> Path:
+                target.write_bytes(b"normalized mp4")
+                return target
+
+            def fake_extract_audio(video: Path, target: Path) -> Path:
+                target.write_bytes(b"audio")
+                return target
+
+            def fake_summary(title, transcript, grids, options, page_url, page_context):
+                self.assertEqual(transcript.full_text, "")
+                self.assertEqual(transcript.segments, [])
+                return "# Visual fallback", "local-template", ""
+
+            with patch("app.processor.normalize_video", side_effect=fake_normalize), \
+                patch("app.processor.extract_audio", side_effect=fake_extract_audio), \
+                patch(
+                    "app.processor.transcribe_audio",
+                    return_value=TranscriptResult(
+                        source="faster-whisper-error",
+                        warning="model download failed",
+                        full_text="model download failed",
+                        segments=[TranscriptSegment(start=0, end=0, text="model download failed")],
+                    ),
+                ), \
+                patch("app.processor.summarize_with_diagnostics", side_effect=fake_summary):
+                process_local_video_task(
+                    task.id,
+                    input_path,
+                    "ASR failure",
+                    TaskOptions(visual_understanding=False),
+                )
+
+            record = get_task(task.id)
+            self.assertEqual(record.status, "failed")
+            self.assertEqual(record.error_code, "asr_failed")
+            self.assertIn("model download failed", record.error_detail)
+            self.assertTrue(Path(record.media_path).is_file())
+            self.assertTrue(Path(record.note_path).is_file())
+            transcript = read_transcript(task.id)
+            self.assertEqual(transcript["source"], "faster-whisper-error")
+            self.assertEqual(transcript["full_text"], "")
+            self.assertEqual(transcript["segments"], [])
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
     def test_local_mp4_is_normalized_instead_of_copied(self) -> None:
         task = create_task("local", "Local mp4 normalize")
         input_path = task_dir(task.id) / "upload.mp4"

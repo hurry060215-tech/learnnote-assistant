@@ -661,6 +661,10 @@ def _json_context_kind(key_path: list[str], url: str, parent: object) -> tuple[s
     if kind != "unknown":
         return kind, _mime_for_kind(kind)
 
+    parsed_url = urlparse(url)
+    if parsed_url.path.endswith("/") and not parsed_url.query:
+        return "unknown", ""
+
     key_context = " ".join(key_path).lower()
     mime_context = _json_context_mime(parent).lower()
     if "mpegurl" in key_context or "x-mpegurl" in key_context or "m3u8" in key_context or "hls" in key_context:

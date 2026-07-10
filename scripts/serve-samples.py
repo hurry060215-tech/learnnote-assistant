@@ -378,6 +378,18 @@ document.querySelector('#reload').onclick = load;
 load();
 </script>"""))
             return
+        if path == "/ananas/status/local-object-001":
+            payload = {
+                "status": "success",
+                "objectid": "local-object-001",
+                "dtoken": "local-dtoken-001",
+                "duration": 8,
+                "filename": "chaoxing-objectid-direct.mp4",
+                "http": "/media/sample.mp4",
+                "download": "/media/sample.mp4",
+            }
+            self.send_bytes(json.dumps(payload, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8")
+            return
         if path.startswith("/media/"):
             self.send_file(self.data_dir / path.lstrip("/"))
             return

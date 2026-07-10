@@ -152,8 +152,8 @@ assert.doesNotMatch(successHistoryCard, /1 次尝试/);
 
 assert.match(elements.get("#result").innerHTML, /History lesson/);
 assert.match(elements.get("#result").innerHTML, /Generated note/);
-assert.match(elements.get("#result").innerHTML, /history transcript gate/);
-assert.match(elements.get("#result").innerHTML, /list embedded audit transcript/);
+assert.doesNotMatch(elements.get("#result").innerHTML, /history transcript gate/);
+assert.doesNotMatch(elements.get("#result").innerHTML, /list embedded audit transcript/);
 assert.equal(elements.get("#copyButton").disabled, false);
 assert.equal(elements.get("#bundleButton").disabled, false);
 assert.equal(elements.get("#diagnosticsButton").disabled, false);
