@@ -13,6 +13,7 @@ data/pip-cache/
 data/temp/
 data/tools/
 data/public-preview/
+data/release-smoke*/
 .env.deploy
 data/test-runs/
 data/ui-audit/
