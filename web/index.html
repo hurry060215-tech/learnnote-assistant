@@ -6,7 +6,7 @@
     <title>LearnNote 学习视频笔记</title>
     <link rel="icon" href="data:,">
     <link rel="stylesheet" href="/web/styles.css?v=20260710-bv-input">
-    <link rel="stylesheet" href="/web/workspace.css?v=20260710-workspace-redesign">
+    <link rel="stylesheet" href="/web/workspace.css?v=20260711-focus-settings">
   </head>
   <body>
     <header class="topbar">
@@ -33,28 +33,128 @@
 
     <main class="app-shell">
       <nav class="nav-rail" aria-label="主导航">
-        <a class="nav-item active" href="/" title="创建笔记" aria-label="创建笔记">
+        <a id="workspaceNav" class="nav-item active" href="#workspace" data-app-view="workspace" title="创建笔记" aria-label="创建笔记">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></svg>
           <span>创建笔记</span>
         </a>
-        <a class="nav-item" href="#resultPanel" title="笔记库" aria-label="笔记库">
+        <a class="nav-item" href="#resultPanel" data-app-view="notes" title="笔记库" aria-label="笔记库">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h11a2 2 0 0 1 2 2v16l-4-2-4 2-4-2-4 2V5a2 2 0 0 1 2-2z"/><path d="M8 8h7M8 12h6"/></svg>
           <span>笔记库</span>
         </a>
-        <a class="nav-item" href="#tasks" title="历史记录" aria-label="历史记录">
+        <a class="nav-item" href="#tasks" data-app-view="history" title="历史记录" aria-label="历史记录">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v6h6"/><path d="M12 7v5l3 2"/></svg>
           <span>历史记录</span>
         </a>
-        <a class="nav-item" href="#optionsDisclosure" title="设置" aria-label="设置">
+        <a id="settingsNav" class="nav-item" href="#settingsView" data-app-view="settings" title="设置" aria-label="设置">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5z"/><path d="M9 8h6M9 12h6M9 16h3"/></svg>
           <span>设置</span>
         </a>
       </nav>
 
-      <aside class="workspace-panel">
+      <section id="settingsView" class="settings-view" hidden aria-label="设置">
+        <header class="settings-header">
+          <div>
+            <h2>设置</h2>
+            <p>调整界面与视频处理方式</p>
+          </div>
+          <button id="settingsCloseButton" class="secondary action-button" type="button">返回工作台</button>
+        </header>
+
+        <div class="settings-layout">
+          <nav class="settings-menu" aria-label="设置分类">
+            <button class="active" type="button" data-settings-tab="general">通用</button>
+            <button type="button" data-settings-tab="model">AI 模型</button>
+            <button type="button" data-settings-tab="transcriber">转写</button>
+            <button type="button" data-settings-tab="processing">视频处理</button>
+            <button type="button" data-settings-tab="connection">下载与存储</button>
+            <button type="button" data-settings-tab="privacy">隐私</button>
+          </nav>
+
+          <div class="settings-content">
+            <section class="settings-pane active" data-settings-pane="general">
+              <div class="settings-section-heading"><h3>界面</h3><p>让常用操作更清晰、易读。</p></div>
+              <div class="settings-rows">
+                <div class="setting-row">
+                  <div><strong>界面缩放</strong><small>调整整体控件大小</small></div>
+                  <div class="segment-control" data-setting="uiScale">
+                    <button type="button" data-value="90">90%</button><button class="active" type="button" data-value="100">100%</button><button type="button" data-value="110">110%</button><button type="button" data-value="125">125%</button>
+                  </div>
+                </div>
+                <div class="setting-row">
+                  <div><strong>文字大小</strong><small>不改变窗口布局</small></div>
+                  <div class="segment-control" data-setting="textSize">
+                    <button type="button" data-value="compact">紧凑</button><button class="active" type="button" data-value="standard">标准</button><button type="button" data-value="large">大</button>
+                  </div>
+                </div>
+                <div class="setting-row">
+                  <div><strong>主题</strong><small>跟随系统或固定外观</small></div>
+                  <div class="segment-control" data-setting="theme">
+                    <button class="active" type="button" data-value="system">跟随系统</button><button type="button" data-value="light">浅色</button><button type="button" data-value="dark">深色</button>
+                  </div>
+                </div>
+                <div class="setting-row">
+                  <div><strong>配色</strong><small>强调色只用于操作与选中状态</small></div>
+                  <div class="segment-control color-themes" data-setting="colorTheme">
+                    <button class="active" type="button" data-value="teal"><i class="theme-swatch teal"></i>青绿</button><button type="button" data-value="ocean"><i class="theme-swatch ocean"></i>海蓝</button><button type="button" data-value="forest"><i class="theme-swatch forest"></i>森林</button><button type="button" data-value="graphite"><i class="theme-swatch graphite"></i>石墨</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="settings-section-heading"><h3>默认行为</h3></div>
+              <div class="settings-rows">
+                <div class="setting-row">
+                  <div><strong>默认输入</strong><small>打开客户端时优先显示</small></div>
+                  <div class="segment-control" data-setting="defaultSource">
+                    <button class="active" type="button" data-value="browser">当前页面</button><button type="button" data-value="local">本地视频</button><button type="button" data-value="url">视频链接</button>
+                  </div>
+                </div>
+                <label class="setting-row setting-switch"><span><strong>完成后打开笔记</strong><small>任务完成时切换到笔记结果</small></span><input id="settingAutoOpenNote" type="checkbox" checked></label>
+                <label class="setting-row setting-switch"><span><strong>任务完成通知</strong><small>使用系统通知提醒</small></span><input id="settingTaskNotifications" type="checkbox"></label>
+                <label class="setting-row setting-switch"><span><strong>默认隐藏历史栏</strong><small>让新建笔记区域更宽</small></span><input id="settingCompactHistory" type="checkbox" checked></label>
+              </div>
+            </section>
+
+            <section class="settings-pane" data-settings-pane="model">
+              <div class="settings-section-heading"><h3>AI 模型</h3><p>用于文字整理和画面理解。</p></div>
+              <div id="settingsModelSlot" class="settings-option-slot"></div>
+            </section>
+            <section class="settings-pane" data-settings-pane="transcriber">
+              <div class="settings-section-heading"><h3>转写</h3><p>优先使用字幕，没有字幕时再识别音频。</p></div>
+              <div id="settingsTranscriberSlot" class="settings-option-slot"></div>
+            </section>
+            <section class="settings-pane" data-settings-pane="processing">
+              <div class="settings-section-heading"><h3>视频处理</h3><p>控制切片密度与笔记结构。</p></div>
+              <div id="settingsProcessingSlot" class="settings-option-slot"></div>
+            </section>
+            <section class="settings-pane" data-settings-pane="connection">
+              <div class="settings-section-heading"><h3>下载与存储</h3><p>客户端只连接本机后端。</p></div>
+              <div class="settings-rows">
+                <label class="setting-row setting-field"><span><strong>后端地址</strong><small>修改后重新载入客户端</small></span><input id="settingApiBase" type="url" placeholder="http://127.0.0.1:8765"></label>
+                <div class="setting-row"><div><strong>数据目录</strong><small id="settingDataPath">正在读取...</small></div><span id="settingDataDrive" class="setting-value">本地</span></div>
+                <label class="setting-row setting-switch"><span><strong>链接生成前预检</strong><small>先确认媒体是否可访问</small></span><input id="settingAutoPreflight" type="checkbox" checked></label>
+              </div>
+            </section>
+            <section class="settings-pane" data-settings-pane="privacy">
+              <div class="settings-section-heading"><h3>隐私</h3><p>视频与任务产物默认保留在本机。</p></div>
+              <div class="settings-rows">
+                <div class="setting-row"><div><strong>API Key</strong><small>不会写入任务记录或导出文件</small></div><span class="setting-value">仅本次会话</span></div>
+                <div class="setting-row"><div><strong>浏览器 Cookie</strong><small>仅在点击创建任务时读取相关域</small></div><span class="setting-value">按需读取</span></div>
+              </div>
+            </section>
+
+            <footer class="settings-actions">
+              <span id="settingsSavedStatus" role="status"></span>
+              <button id="resetSettingsButton" class="secondary action-button" type="button">恢复默认</button>
+              <button id="saveSettingsButton" class="primary action-button" type="button">保存设置</button>
+            </footer>
+          </div>
+        </div>
+      </section>
+
+      <aside id="workspace" class="workspace-panel">
         <div class="panel-heading">
           <span class="eyeless">LearnNote 工作台</span>
-          <strong>创建学习笔记</strong>
+          <strong>新建学习笔记</strong>
         </div>
 
         <div id="sourceRouteRail" class="source-route-rail" aria-label="学习入口路线"></div>
@@ -62,7 +162,7 @@
         <div class="source-tabs" role="tablist" aria-label="视频来源">
           <button class="source-tab active" data-source="browser">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4z"/><path d="M4 9h16M9 19V9"/></svg>
-            <span><b>当前页直取</b><small>从扩展侧栏读取正在播放的视频</small></span>
+            <span><b>当前页面</b><small>从扩展侧栏读取正在播放的视频</small></span>
           </button>
           <button class="source-tab" data-source="local">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5M4 17v3h16v-3"/></svg>
@@ -70,7 +170,7 @@
           </button>
           <button class="source-tab" data-source="url">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.07 0l2.12-2.12a5 5 0 0 0-7.07-7.07L11 4.93"/><path d="M14 11a5 5 0 0 0-7.07 0L4.8 13.12a5 5 0 0 0 7.07 7.07L13 19.07"/></svg>
-            <span><b>链接解析</b><small>解析网页或直接媒体链接</small></span>
+            <span><b>视频链接</b><small>解析网页或直接媒体链接</small></span>
           </button>
         </div>
 
@@ -142,7 +242,7 @@
                   <svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z"/><path d="M8 9h8M8 13h5"/><path d="M17 16l3 3M20 16l-3 3"/></svg>
                 </span>
                 <div>
-                  <strong>当前页视频直取</strong>
+                  <strong id="browserCaptureTitle">先打开课程视频</strong>
                   <div id="browserBridgeStatus" class="capture-status-grid">扩展读取播放器、媒体请求和一次性 cookie，后端只下载可访问的视频地址。</div>
                 </div>
                 <em>非录制</em>
@@ -183,7 +283,7 @@
               </button>
               <button id="browserRefreshButton" class="secondary action-button" type="button">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 0 1-13.66 5.66M4 12A8 8 0 0 1 17.66 6.34M20 4v6h-6M4 20v-6h6"/></svg>
-                刷新任务
+                刷新当前页状态
               </button>
             </div>
 
@@ -192,6 +292,14 @@
               <small>检测不到可访问媒体 URL 时，任务会给出失败原因，并保留本地视频入口。</small>
             </div>
           </div>
+        </section>
+
+        <section class="quick-note-options" aria-label="笔记输出方式">
+          <div class="quick-note-heading">
+            <strong>输出方式</strong>
+            <button id="openProcessingSettingsButton" type="button">更多设置</button>
+          </div>
+          <div id="homeQuickOptionsSlot" class="quick-note-grid"></div>
         </section>
 
         <section id="sourceWorkflow" class="source-workflow" aria-label="学习生产线"></section>
@@ -203,7 +311,7 @@
           </summary>
 
           <div class="option-grid">
-            <label class="field">
+            <label class="field" data-setting-group="processing">
               <span>切片间隔</span>
               <select id="frameInterval">
                 <option value="10">10 秒</option>
@@ -212,7 +320,7 @@
                 <option value="60">60 秒</option>
               </select>
             </label>
-            <label class="field">
+            <label class="field" data-setting-group="processing">
               <span>视觉窗口</span>
               <select id="gridSize">
                 <option value="3x3" selected>3x3 · 约 3 分钟</option>
@@ -220,14 +328,14 @@
                 <option value="4x3">4x3 · 长窗口</option>
               </select>
             </label>
-            <label class="field visual-toggle wide">
+            <label class="field visual-toggle wide" data-setting-group="processing">
               <input id="visualUnderstanding" type="checkbox" checked>
               <span>
                 <b>开启图文理解</b>
                 <small>抽帧生成视觉窗口；关闭后只做转写和文本笔记。</small>
               </span>
             </label>
-            <label class="field">
+            <label class="field" data-setting-group="transcriber">
               <span>转写引擎</span>
               <select id="transcriber">
                 <option value="faster-whisper" selected>本地 faster-whisper</option>
@@ -235,7 +343,7 @@
                 <option value="groq">Groq ASR</option>
               </select>
             </label>
-            <label class="field">
+            <label class="field" data-setting-group="transcriber">
               <span>转写模型</span>
               <select id="whisperModel">
                 <option value="tiny">tiny</option>
@@ -245,16 +353,20 @@
                 <option value="whisper-large-v3">whisper-large-v3</option>
               </select>
             </label>
-            <label class="field">
+            <label class="field" data-setting-group="home">
               <span>笔记风格</span>
               <select id="noteStyle">
                 <option value="study" selected>学习笔记</option>
-                <option value="outline">大纲梳理</option>
+                <option value="concise">重点速记</option>
                 <option value="exam">考点复习</option>
-                <option value="code">代码/演示</option>
+                <option value="lecture">课程讲义</option>
+                <option value="concept">概念精讲</option>
+                <option value="code">代码教程</option>
+                <option value="academic">论文导读</option>
+                <option value="language">语言学习</option>
               </select>
             </label>
-            <label class="field">
+            <label class="field" data-setting-group="home">
               <span>笔记格式</span>
               <select id="noteTemplate">
                 <option value="standard" selected>标准结构</option>
@@ -262,9 +374,13 @@
                 <option value="cornell">康奈尔笔记</option>
                 <option value="qa">问答复习</option>
                 <option value="visual-handout">图文讲义</option>
+                <option value="mindmap">层级脑图</option>
+                <option value="flashcards">记忆卡片</option>
+                <option value="formula-sheet">公式清单</option>
+                <option value="bilingual">双语对照</option>
               </select>
             </label>
-            <label class="field">
+            <label class="field" data-setting-group="processing">
               <span>摘要深度</span>
               <select id="summaryDepth">
                 <option value="brief">简洁</option>
@@ -272,7 +388,7 @@
                 <option value="deep">深入</option>
               </select>
             </label>
-            <label class="field">
+            <label class="field" data-setting-group="model">
               <span>模型服务</span>
               <select id="llmProvider">
                 <option value="openai" selected>OpenAI</option>
@@ -288,16 +404,16 @@
                 <option value="custom">手动兼容端点</option>
               </select>
             </label>
-            <p id="providerHint" class="provider-hint" aria-live="polite"></p>
-            <label class="field">
+            <p id="providerHint" class="provider-hint" data-setting-group="model" aria-live="polite"></p>
+            <label class="field" data-setting-group="model">
               <span>视觉模型</span>
               <input id="llmModel" type="text" placeholder="gpt-4.1-mini">
             </label>
-            <label class="field wide">
+            <label class="field wide" data-setting-group="model">
               <span>Base URL</span>
               <input id="llmBaseUrl" type="url" placeholder="https://api.openai.com/v1">
             </label>
-            <label class="field wide">
+            <label class="field wide" data-setting-group="model">
               <span>API Key（仅随本次任务发送，不写入任务记录）</span>
               <input id="llmApiKey" type="password" autocomplete="off" placeholder="留空则使用后端环境变量或本地降级">
             </label>
@@ -399,6 +515,6 @@
       </section>
     </main>
 
-    <script src="/web/app.js?v=20260710-bv-input"></script>
+    <script src="/web/app.js?v=20260711-focus-settings"></script>
   </body>
 </html>

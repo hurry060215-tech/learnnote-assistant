@@ -12216,3 +12216,100 @@ body {
 .app-header {
   background: rgba(249, 253, 253, .97);
 }
+
+/* First-use focus: the study view exposes one obvious action and moves evidence to diagnostics. */
+body[data-panel-mode="study"] .current-card .source-route-rail,
+body[data-panel-mode="study"] .current-card .capture-cockpit,
+body[data-panel-mode="study"] .current-card #activeVideo,
+body[data-panel-mode="study"] .current-card #playbackReadiness {
+  display: none;
+}
+
+body[data-panel-mode="study"] .actions {
+  display: none;
+}
+
+body[data-panel-mode="study"] .current-card .study-next-step,
+body[data-panel-mode="study"] .current-card .workbench-run-modes,
+body[data-panel-mode="study"] .current-card .workbench-slice-plan,
+body[data-panel-mode="study"] .current-card .workbench-note-preview,
+body[data-panel-mode="study"] .current-card .workbench-local-fallback {
+  display: none;
+}
+
+.side-shell {
+  gap: 10px;
+  padding: 10px;
+}
+
+.current-card {
+  gap: 10px;
+  padding: 11px;
+}
+
+.current-card .source-switcher button {
+  min-height: 36px;
+  height: 36px;
+  font-size: 11px;
+}
+
+.product-mode-bar button {
+  min-height: 32px;
+  font-size: 11px;
+}
+
+.current-card > .section-head {
+  padding: 3px 1px 0;
+}
+
+.current-card .section-head strong,
+.current-card #pageTitle {
+  font-size: 15px;
+  line-height: 1.3;
+}
+
+.current-card #pageUrl {
+  font-size: 11px;
+}
+
+.current-card .study-workbench {
+  gap: 10px;
+  padding: 12px;
+}
+
+.current-card .workbench-title strong,
+.current-card .study-next-step strong {
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.current-card .workbench-title small,
+.current-card .study-next-step p {
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.current-card .workbench-primary,
+.current-card .launch-bar-actions button.primary {
+  min-height: 40px;
+  height: 40px;
+  padding: 0 14px;
+  font-size: 12px;
+}
+
+.actions {
+  gap: 7px;
+  padding: 7px;
+}
+
+.actions button {
+  min-height: 36px;
+  height: 36px;
+  font-size: 11px;
+}
+
+.actions .primary {
+  min-height: 44px;
+  height: 44px;
+  font-size: 13px;
+}

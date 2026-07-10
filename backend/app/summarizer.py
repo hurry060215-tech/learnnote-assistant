@@ -214,8 +214,28 @@ def note_template_instruction(options: TaskOptions) -> str:
         "cornell": "康奈尔模板：每个主题输出线索栏、笔记栏和课后总结，并在末尾生成复习问题。",
         "qa": "问答复习模板：把内容整理成问题、答案、证据时间点和易错提醒，适合背诵复盘。",
         "visual-handout": "图文讲义模板：突出画面窗口、截图索引、PPT/板书/代码/公式证据和对应字幕摘要。",
+        "mindmap": "层级脑图模板：使用多级 Markdown 列表呈现主题、分支、概念关系和时间点，不使用 Mermaid。",
+        "flashcards": "记忆卡片模板：按“问题 / 简答 / 证据时间点 / 易错提醒”生成可独立复习的卡片。",
+        "formula-sheet": "公式清单模板：集中整理公式、变量含义、适用条件、推导线索和例题时间点。",
+        "bilingual": "双语对照模板：关键术语保留原文并给出中文解释，重点结论按中英对照组织。",
     }
     return mapping.get(template, mapping["standard"])
+
+
+def note_style_instruction(options: TaskOptions) -> str:
+    style = str(options.note_style or "study").strip().lower()
+    mapping = {
+        "study": "学习笔记：解释概念、保留例子和易错点，结尾给出可执行的复习任务。",
+        "concise": "重点速记：只保留高价值结论、关键词和时间点，避免重复背景。",
+        "outline": "重点速记：只保留高价值结论、关键词和时间点，避免重复背景。",
+        "exam": "考点复习：突出定义、公式、常见题型、易错项和自测问题。",
+        "lecture": "课程讲义：按授课顺序完整解释主题，并串联板书、PPT、演示和例题。",
+        "concept": "概念精讲：先给直观解释，再写严格定义、概念关系、反例和应用。",
+        "code": "代码教程：保留代码步骤、关键 API、输入输出、运行结果和调试注意事项。",
+        "academic": "论文导读：围绕研究问题、方法、证据、贡献、局限和可复现实验整理。",
+        "language": "语言学习：提取词汇、表达、语法、语境例句和跟读复习材料。",
+    }
+    return mapping.get(style, mapping["study"])
 
 
 def _context_topic_lines(title: str, transcript: TranscriptResult, limit: int = 3) -> list[str]:
@@ -573,7 +593,14 @@ def local_markdown_note(title: str, transcript: TranscriptResult, grids: list[Fr
     windows = build_visual_windows(transcript, grids)
 
     lines.extend(_learning_context_lines(title, transcript, windows, page_url, page_context))
-    lines += ["## 笔记格式", "", f"- {note_template_instruction(options or TaskOptions())}", ""]
+    resolved_options = options or TaskOptions()
+    lines += [
+        "## 笔记格式",
+        "",
+        f"- 风格：{note_style_instruction(resolved_options)}",
+        f"- 结构：{note_template_instruction(resolved_options)}",
+        "",
+    ]
 
     lines += ["## 课程主题", ""]
     if transcript.full_text and "未安装 faster-whisper" not in transcript.full_text:
@@ -746,6 +773,7 @@ def summarize_with_llm(
                                 "结构必须包含：课程主题、时间轴重点、核心概念、例题/演示步骤、易错点、复习问题、画面索引。\n"
                                 "画面索引必须保留 W 编号、时间范围和画面网格 URL，方便用户回看截图。\n"
                                 f"笔记风格：{options.note_style}；笔记模板：{options.note_template}；详略程度：{options.summary_depth}。\n"
+                                f"风格要求：{note_style_instruction(options)}\n"
                                 f"模板要求：{note_template_instruction(options)}\n"
                                 f"标题：{title}\n来源：{page_url}\n\n"
                                 f"画面索引清单：\n{frame_index}\n\n"
@@ -775,6 +803,7 @@ def summarize_with_llm(
                 "你是严谨的课程学习笔记助手。请结合字幕输出 Markdown。"
                 "结构必须包含：课程主题、时间轴重点、核心概念、例题/演示步骤、易错点、复习问题、画面索引。\n\n"
                 f"笔记风格：{options.note_style}；笔记模板：{options.note_template}；详略程度：{options.summary_depth}。\n"
+                f"风格要求：{note_style_instruction(options)}\n"
                 f"模板要求：{note_template_instruction(options)}\n"
                 f"标题：{title}\n来源：{page_url}\n\n字幕：\n{transcript.full_text[:60000]}"
             ),

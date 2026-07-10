@@ -111,6 +111,8 @@ class LocalUploadValidationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertIn("duration_probe_available", payload)
+        self.assertIn("extension_connected", payload)
+        self.assertIsInstance(payload["extension_connected"], bool)
         self.assertEqual(payload["duration_probe_available"], bool(payload["duration_probe"]))
         self.assertIn("vision_model_configured", payload)
         self.assertIsInstance(payload["vision_model_configured"], bool)
@@ -192,6 +194,16 @@ class LocalUploadValidationTests(unittest.TestCase):
             "assistant_capabilities",
         ):
             self.assertEqual(api_payload[key], health_payload[key])
+
+    def test_extension_heartbeat_is_visible_in_health(self) -> None:
+        heartbeat = self.client.post(
+            "/api/extension/heartbeat",
+            headers={"Origin": "chrome-extension://abcdefghijklmnop"},
+        )
+
+        self.assertEqual(heartbeat.status_code, 200)
+        self.assertTrue(heartbeat.json()["extension_connected"])
+        self.assertTrue(self.client.get("/health").json()["extension_connected"])
 
     def test_api_write_rejects_foreign_browser_origin(self) -> None:
         response = self.client.post(

@@ -38,7 +38,8 @@ def page_health(page: Page) -> dict:
 
 
 def capture(page: Page, output: Path, name: str, report: list[dict], errors: list[str]) -> None:
-    page.screenshot(path=output / f"{name}.png", full_page=False)
+    full_page = name.startswith("client-settings-") and (page.viewport_size or {}).get("width", 0) > 600
+    page.screenshot(path=output / f"{name}.png", full_page=full_page, animations="disabled")
     state = page_health(page)
     state["name"] = name
     state["console_errors"] = list(errors)
@@ -53,18 +54,58 @@ def audit_workspace(browser, base_url: str, output: Path, report: list[dict]) ->
     page.goto(base_url, wait_until="domcontentloaded")
     page.wait_for_timeout(4200)
     capture(page, output, "client-current-page", report, errors)
+    page.evaluate("() => fetch('/api/extension/heartbeat', { method: 'POST' }).then(() => checkHealth())")
+    page.wait_for_timeout(300)
+    capture(page, output, "client-current-page-connected", report, errors)
 
     for source, name in (("url", "client-video-link"), ("local", "client-local-video")):
         page.locator(f'button[data-source="{source}"]').click()
         page.wait_for_timeout(350)
         capture(page, output, name, report, errors)
 
-    page.locator('button[data-source="url"]').click()
-    disclosure = page.locator("#optionsDisclosure")
-    if not disclosure.evaluate("element => element.open"):
-        page.locator("#optionsDisclosure > summary").click()
+    page.locator("#settingsNav").click()
     page.wait_for_timeout(350)
-    capture(page, output, "client-model-settings", report, errors)
+    capture(page, output, "client-settings-general", report, errors)
+    for setting, name in (
+        ("model", "client-settings-model"),
+        ("transcriber", "client-settings-transcriber"),
+        ("processing", "client-settings-processing"),
+        ("connection", "client-settings-connection"),
+        ("privacy", "client-settings-privacy"),
+    ):
+        page.goto(base_url, wait_until="domcontentloaded")
+        page.wait_for_timeout(650)
+        page.locator("#settingsNav").click()
+        page.locator(f'button[data-settings-tab="{setting}"]').click()
+        page.wait_for_timeout(220)
+        capture(page, output, name, report, errors)
+
+    page.goto(base_url, wait_until="domcontentloaded")
+    page.wait_for_timeout(650)
+    page.locator("#settingsNav").click()
+    page.locator('[data-setting="textSize"] button[data-value="large"]').click()
+    page.locator('[data-setting="defaultSource"] button[data-value="local"]').click()
+    page.locator('[data-setting="colorTheme"] button[data-value="ocean"]').click()
+    page.locator("#saveSettingsButton").click()
+    page.wait_for_timeout(500)
+    saved_settings = page.evaluate("() => JSON.parse(localStorage.getItem('learnnote_app_settings') || '{}')")
+    if saved_settings.get("textSize") != "large" or saved_settings.get("defaultSource") != "local" or saved_settings.get("colorTheme") != "ocean":
+        raise RuntimeError("General settings did not persist text size, default source, and color theme.")
+    page.goto(base_url, wait_until="domcontentloaded")
+    page.wait_for_timeout(700)
+    restored_state = page.evaluate("""() => ({
+      textSize: document.body.dataset.textSize,
+      colorTheme: document.body.dataset.colorTheme,
+      activeSource: document.querySelector('button[data-source].active')?.dataset.source || '',
+      saved: JSON.parse(localStorage.getItem('learnnote_app_settings') || '{}')
+    })""")
+    if restored_state["textSize"] != "large" or restored_state["activeSource"] != "local" or restored_state["colorTheme"] != "ocean":
+        raise RuntimeError(f"Saved general settings were not restored after reload: {restored_state}")
+    page.locator("#settingsNav").click()
+    page.locator("#resetSettingsButton").click()
+    page.wait_for_timeout(250)
+    page.locator("#settingsCloseButton").click()
+    page.wait_for_timeout(250)
 
     for tab in ("note", "transcript", "slices", "frames", "qa", "diagnostics"):
         locator = page.locator(f'button[data-tab="{tab}"]')
@@ -78,6 +119,9 @@ def audit_workspace(browser, base_url: str, output: Path, report: list[dict]) ->
     page.goto(base_url, wait_until="domcontentloaded")
     page.wait_for_timeout(2500)
     capture(page, output, "client-mobile", report, errors)
+    page.locator("#settingsNav").click()
+    page.wait_for_timeout(300)
+    capture(page, output, "client-settings-mobile", report, errors)
     page.close()
 
 
@@ -122,7 +166,11 @@ def main() -> int:
         raise RuntimeError("Microsoft Edge is required for the visual audit.")
 
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(executable_path=str(edge), headless=True)
+        browser = playwright.chromium.launch(
+            executable_path=str(edge),
+            headless=True,
+            args=["--disable-gpu", "--disable-gpu-compositing"],
+        )
         audit_workspace(browser, args.client_url, args.output, report)
         audit_site(browser, args.site_url, args.output, report)
         audit_sidepanel(browser, args.output, report)

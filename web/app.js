@@ -30,6 +30,24 @@ const LOCAL_VIDEO_EXT_RE = /\.(mp4|m4v|mov|mkv|webm|flv|avi)$/i;
 const RESULT_TAB_NAMES = new Set(["note", "transcript", "slices", "frames", "qa", "diagnostics"]);
 const LOCAL_ASR_MODELS = new Set(["tiny", "base", "small", "medium", "large", "large-v2", "large-v3"]);
 const MODEL_SETTINGS_STORAGE_KEY = "learnnote_model_settings";
+const APP_SETTINGS_STORAGE_KEY = "learnnote_app_settings";
+const DEFAULT_APP_SETTINGS = Object.freeze({
+  uiScale: "100",
+  textSize: "standard",
+  theme: "system",
+  colorTheme: "teal",
+  defaultSource: "browser",
+  autoOpenNote: true,
+  taskNotifications: false,
+  compactHistory: true,
+  autoPreflight: true,
+  frameInterval: "20",
+  gridSize: "3x3",
+  visualUnderstanding: true,
+  noteStyle: "study",
+  noteTemplate: "standard",
+  summaryDepth: "standard"
+});
 const MAINSTREAM_MODEL_PROVIDER_KEYS = new Set([
   "openai", "groq", "gemini", "dashscope", "deepseek", "kimi", "zhipu", "doubao", "minimax", "qianfan"
 ]);
@@ -248,6 +266,9 @@ let urlPagePreflightReport = null;
 let lastHealthData = null;
 let pendingLocalFile = null;
 let pendingRerunNotice = null;
+let appSettings = { ...DEFAULT_APP_SETTINGS };
+let taskStatusSnapshot = new Map();
+let taskStatusSnapshotReady = false;
 let qaState = { taskId: "", question: "", answer: "", source: "", warning: "", citations: [], historyCount: 0, recent: [], loading: false };
 
 const els = {
@@ -255,6 +276,24 @@ const els = {
   refreshButton: document.querySelector("#refreshButton"),
   toggleWorkspaceButton: document.querySelector("#toggleWorkspaceButton"),
   toggleHistoryButton: document.querySelector("#toggleHistoryButton"),
+  workspaceNav: document.querySelector("#workspaceNav"),
+  settingsNav: document.querySelector("#settingsNav"),
+  settingsView: document.querySelector("#settingsView"),
+  settingsCloseButton: document.querySelector("#settingsCloseButton"),
+  settingsMenuButtons: document.querySelectorAll("[data-settings-tab]"),
+  settingsPanes: document.querySelectorAll("[data-settings-pane]"),
+  settingsSegmentButtons: document.querySelectorAll(".segment-control button"),
+  settingAutoOpenNote: document.querySelector("#settingAutoOpenNote"),
+  settingTaskNotifications: document.querySelector("#settingTaskNotifications"),
+  settingCompactHistory: document.querySelector("#settingCompactHistory"),
+  settingAutoPreflight: document.querySelector("#settingAutoPreflight"),
+  settingApiBase: document.querySelector("#settingApiBase"),
+  settingDataPath: document.querySelector("#settingDataPath"),
+  settingDataDrive: document.querySelector("#settingDataDrive"),
+  settingsSavedStatus: document.querySelector("#settingsSavedStatus"),
+  saveSettingsButton: document.querySelector("#saveSettingsButton"),
+  resetSettingsButton: document.querySelector("#resetSettingsButton"),
+  openProcessingSettingsButton: document.querySelector("#openProcessingSettingsButton"),
   readingModeButton: document.querySelector("#readingModeButton"),
   sourceTabs: document.querySelectorAll(".source-tab"),
   panes: document.querySelectorAll(".source-pane"),
@@ -271,6 +310,7 @@ const els = {
   copyBackendButton: document.querySelector("#copyBackendButton"),
   browserRefreshButton: document.querySelector("#browserRefreshButton"),
   browserBridgeStatus: document.querySelector("#browserBridgeStatus"),
+  browserCaptureTitle: document.querySelector("#browserCaptureTitle"),
   browserRouteSummary: document.querySelector("#browserRouteSummary"),
   startupReadiness: document.querySelector("#startupReadiness"),
   sourceRouteRail: document.querySelector("#sourceRouteRail"),
@@ -317,6 +357,174 @@ const els = {
 
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[ch]));
+}
+
+function normalizedAppSettings(value = {}) {
+  const settings = { ...DEFAULT_APP_SETTINGS, ...(value && typeof value === "object" ? value : {}) };
+  if (!["90", "100", "110", "125"].includes(String(settings.uiScale))) settings.uiScale = "100";
+  if (!["compact", "standard", "large"].includes(settings.textSize)) settings.textSize = "standard";
+  if (!["system", "light", "dark"].includes(settings.theme)) settings.theme = "system";
+  if (!["teal", "ocean", "forest", "graphite"].includes(settings.colorTheme)) settings.colorTheme = "teal";
+  if (!["browser", "local", "url"].includes(settings.defaultSource)) settings.defaultSource = "browser";
+  if (!["10", "20", "30", "60"].includes(String(settings.frameInterval))) settings.frameInterval = "20";
+  if (!["2x3", "3x3", "4x3"].includes(settings.gridSize)) settings.gridSize = "3x3";
+  if (settings.noteStyle === "outline") settings.noteStyle = "concise";
+  if (!["study", "concise", "exam", "lecture", "concept", "code", "academic", "language"].includes(settings.noteStyle)) settings.noteStyle = "study";
+  if (!["standard", "timeline", "cornell", "qa", "visual-handout", "mindmap", "flashcards", "formula-sheet", "bilingual"].includes(settings.noteTemplate)) settings.noteTemplate = "standard";
+  if (!["brief", "standard", "deep"].includes(settings.summaryDepth)) settings.summaryDepth = "standard";
+  for (const key of ["autoOpenNote", "taskNotifications", "compactHistory", "autoPreflight", "visualUnderstanding"]) {
+    settings[key] = Boolean(settings[key]);
+  }
+  return settings;
+}
+
+function loadAppSettings() {
+  try {
+    appSettings = normalizedAppSettings(JSON.parse(window.localStorage?.getItem(APP_SETTINGS_STORAGE_KEY) || "{}"));
+  } catch {
+    appSettings = { ...DEFAULT_APP_SETTINGS };
+  }
+  return appSettings;
+}
+
+function storeAppSettings() {
+  try {
+    window.localStorage?.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify(appSettings));
+  } catch {
+    // Local storage can be unavailable in private contexts.
+  }
+}
+
+function systemPrefersDark() {
+  return Boolean(window.matchMedia?.("(prefers-color-scheme: dark)")?.matches);
+}
+
+function applyAppSettings() {
+  appSettings = normalizedAppSettings(appSettings);
+  const dark = appSettings.theme === "dark" || (appSettings.theme === "system" && systemPrefersDark());
+  document.body?.classList?.toggle("theme-dark", dark);
+  if (document.body?.dataset) {
+    document.body.dataset.textSize = appSettings.textSize;
+    document.body.dataset.colorTheme = appSettings.colorTheme;
+  }
+  if (document.documentElement?.style) document.documentElement.style.zoom = `${appSettings.uiScale}%`;
+
+  if (els.settingAutoOpenNote) els.settingAutoOpenNote.checked = appSettings.autoOpenNote;
+  if (els.settingTaskNotifications) els.settingTaskNotifications.checked = appSettings.taskNotifications;
+  if (els.settingCompactHistory) els.settingCompactHistory.checked = appSettings.compactHistory;
+  if (els.settingAutoPreflight) els.settingAutoPreflight.checked = appSettings.autoPreflight;
+  if (els.settingApiBase) els.settingApiBase.value = API || window.location?.origin || DEFAULT_BACKEND_ORIGIN;
+  if (els.frameInterval) els.frameInterval.value = appSettings.frameInterval;
+  if (els.gridSize) els.gridSize.value = appSettings.gridSize;
+  if (els.visualUnderstanding) els.visualUnderstanding.checked = appSettings.visualUnderstanding;
+  if (els.noteStyle) els.noteStyle.value = appSettings.noteStyle;
+  if (els.noteTemplate) els.noteTemplate.value = appSettings.noteTemplate;
+  if (els.summaryDepth) els.summaryDepth.value = appSettings.summaryDepth;
+
+  els.settingsSegmentButtons?.forEach?.(button => {
+    const setting = button.parentElement?.dataset?.setting;
+    button.classList?.toggle("active", Boolean(setting && String(appSettings[setting]) === String(button.dataset.value)));
+  });
+}
+
+function organizeSettingsOptions() {
+  const slots = {
+    home: document.querySelector("#homeQuickOptionsSlot"),
+    model: document.querySelector("#settingsModelSlot"),
+    transcriber: document.querySelector("#settingsTranscriberSlot"),
+    processing: document.querySelector("#settingsProcessingSlot")
+  };
+  const controls = document.querySelectorAll?.("[data-setting-group]") || [];
+  controls.forEach?.(control => {
+    const slot = slots[control.dataset?.settingGroup];
+    if (slot?.appendChild) slot.appendChild(control);
+  });
+  if (els.optionsDisclosure) els.optionsDisclosure.hidden = true;
+}
+
+function showSettingsPane(name = "general") {
+  els.settingsMenuButtons?.forEach?.(button => button.classList?.toggle("active", button.dataset.settingsTab === name));
+  els.settingsPanes?.forEach?.(pane => pane.classList?.toggle("active", pane.dataset.settingsPane === name));
+}
+
+function showAppView(view = "workspace") {
+  const settingsMode = view === "settings";
+  document.body?.classList?.toggle("settings-mode", settingsMode);
+  if (els.settingsView) els.settingsView.hidden = !settingsMode;
+  document.querySelectorAll?.("[data-app-view]")?.forEach?.(item => {
+    const active = settingsMode ? item.dataset.appView === "settings" : item.dataset.appView === view || (view === "workspace" && item.dataset.appView === "workspace");
+    item.classList?.toggle("active", active);
+  });
+  if (settingsMode) showSettingsPane("general");
+}
+
+function updateSettingsStorageInfo(data = lastHealthData) {
+  const paths = data?.data_paths || {};
+  if (els.settingDataPath) els.settingDataPath.textContent = paths.root || "本地 data 目录";
+  if (els.settingDataDrive) {
+    els.settingDataDrive.textContent = paths.all_on_data_drive === false ? "检查路径" : (paths.data_drive || "本地");
+    els.settingDataDrive.classList?.toggle("warning", paths.all_on_data_drive === false);
+  }
+}
+
+async function saveAppSettingsFromUi() {
+  appSettings.autoOpenNote = Boolean(els.settingAutoOpenNote?.checked);
+  appSettings.taskNotifications = Boolean(els.settingTaskNotifications?.checked);
+  appSettings.compactHistory = Boolean(els.settingCompactHistory?.checked);
+  appSettings.autoPreflight = Boolean(els.settingAutoPreflight?.checked);
+  appSettings.frameInterval = els.frameInterval?.value || "20";
+  appSettings.gridSize = els.gridSize?.value || "3x3";
+  appSettings.visualUnderstanding = els.visualUnderstanding?.checked !== false;
+  appSettings.noteStyle = els.noteStyle?.value || "study";
+  appSettings.noteTemplate = els.noteTemplate?.value || "standard";
+  appSettings.summaryDepth = els.summaryDepth?.value || "standard";
+  const apiBase = normalizeApiBase(els.settingApiBase?.value);
+  if (apiBase) {
+    API = apiBase;
+    try { window.localStorage?.setItem("learnnote_api_base", apiBase); } catch { /* ignore */ }
+  }
+  if (appSettings.taskNotifications && typeof Notification !== "undefined" && Notification.permission === "default") {
+    try { await Notification.requestPermission(); } catch { /* ignore */ }
+  }
+  storeAppSettings();
+  saveModelSettings();
+  applyAppSettings();
+  setHistoryCollapsed(appSettings.compactHistory);
+  if (els.settingsSavedStatus) els.settingsSavedStatus.textContent = "已保存";
+  await checkHealth();
+  await loadTasks();
+}
+
+function resetAppSettings() {
+  appSettings = { ...DEFAULT_APP_SETTINGS };
+  storeAppSettings();
+  applyAppSettings();
+  setSource(appSettings.defaultSource);
+  setHistoryCollapsed(appSettings.compactHistory);
+  if (els.settingsSavedStatus) els.settingsSavedStatus.textContent = "已恢复默认";
+}
+
+function handleTaskStatusTransitions(nextTasks) {
+  const completed = [];
+  for (const task of nextTasks || []) {
+    const previous = taskStatusSnapshot.get(task.id);
+    if (taskStatusSnapshotReady && previous && previous !== "success" && task.status === "success") completed.push(task);
+  }
+  taskStatusSnapshot = new Map((nextTasks || []).map(task => [task.id, task.status]));
+  if (!taskStatusSnapshotReady) {
+    taskStatusSnapshotReady = true;
+    return;
+  }
+  const latest = completed[0];
+  if (!latest) return;
+  if (appSettings.taskNotifications && typeof Notification !== "undefined" && Notification.permission === "granted") {
+    try { new Notification("LearnNote", { body: `${displayTaskTitle(latest)} 已生成` }); } catch { /* ignore */ }
+  }
+  if (appSettings.autoOpenNote && !document.body?.classList?.contains?.("settings-mode")) {
+    selectTask(latest.id);
+    selectedTab = "note";
+    renderResultTabState();
+  }
 }
 
 function compactUrl(value, limit = 88) {
@@ -423,6 +631,7 @@ async function fetchJson(url, options = {}) {
   const payload = await response.json();
   if (String(url).endsWith("/health")) {
     lastHealthData = payload;
+    updateSettingsStorageInfo(payload);
   }
   return payload;
 }
@@ -1151,6 +1360,7 @@ function renderBrowserRouteSummary() {
   if (!els.browserRouteSummary) return;
   const task = preferredCurrentPageTask();
   els.browserRouteSummary.innerHTML = task ? browserRouteSummaryHtml(task) : browserRouteEmptyHandoffHtml();
+  updateBrowserFirstUse();
 }
 
 function isManualUrlTask(task) {
@@ -3188,14 +3398,44 @@ function updateHealthVisionStatus(data = lastHealthData) {
   els.browserBridgeStatus.dataset.mediaText = mediaText;
   els.browserBridgeStatus.title = `${mediaText} ${visionText}`.trim();
   els.browserBridgeStatus.classList.add("capture-status-grid");
+  const connected = Boolean(data.extension_connected);
   els.browserBridgeStatus.innerHTML = `
-    <span class="capture-status-chip bridge"><b>桥接</b>需 Chrome/Edge 扩展侧栏</span>
+    <span class="capture-status-chip bridge ${connected ? "ready" : "pending"}"><b>${connected ? "扩展已连接" : "第 1 步"}</b>${connected ? "播放视频几秒，再在侧栏点击“检测当前页”" : "打开课程视频，再打开 LearnNote 扩展侧栏"}</span>
     <span class="capture-status-chip media"><b>媒体</b>${escapeHtml(healthMediaChipText(data))}</span>
     <span class="capture-status-chip direct"><b>直取</b>${escapeHtml(healthDirectChipText(data))}</span>
     <span class="capture-status-chip vision ${healthVisionReady(data) ? "ready" : "pending"}"><b>视觉</b>${escapeHtml(healthVisionChipText(data))}</span>
     <span class="capture-status-chip asr"><b>转写</b>${escapeHtml(healthAsrChipText(data))}</span>
     <span class="capture-status-chip data ${healthDataPathsReady(data) ? "ready" : "pending"}"><b>数据</b>${escapeHtml(healthDataChipText(data))}</span>
   `;
+}
+
+function updateBrowserFirstUse(data = lastHealthData) {
+  const task = preferredCurrentPageTask();
+  const state = directRouteState(task);
+  const connected = Boolean(data?.extension_connected);
+  let title = "先打开课程视频";
+  let action = "检查扩展连接";
+  if (state === "running") {
+    title = "正在处理当前页视频";
+    action = "刷新处理进度";
+  } else if (!connected) {
+    // A completed history item must not replace the first-use handoff for the current tab.
+    title = "打开课程视频，再打开扩展侧栏";
+  } else if (state === "ready") {
+    title = "视频笔记已经生成";
+    action = "查看最新状态";
+  } else if (state === "downloaded") {
+    title = "视频已下载，可以继续总结";
+    action = "查看最新状态";
+  } else {
+    title = "扩展已连接，播放视频几秒";
+    action = "已在侧栏发起，刷新进度";
+  }
+  if (els.browserCaptureTitle) els.browserCaptureTitle.textContent = title;
+  if (els.browserRefreshButton) {
+    els.browserRefreshButton.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 0 1-13.66 5.66M4 12A8 8 0 0 1 17.66 6.34M20 4v6h-6M4 20v-6h6"/></svg>${escapeHtml(action)}`;
+  }
+  document.querySelector(".browser-capture-card")?.classList?.toggle("extension-connected", connected);
 }
 
 async function checkHealth() {
@@ -3213,6 +3453,7 @@ async function checkHealth() {
           : "扩展读取播放器、媒体请求和一次性 cookie，后端只下载可访问的视频地址。"
         : "后端已连接，但 ffmpeg 缺失；当前页直取后无法完成合并/切片。";
       updateHealthVisionStatus(data);
+      updateBrowserFirstUse(data);
       updateStartupReadiness(data);
       refreshEmptyWorkbenchReadiness();
     }
@@ -3222,6 +3463,7 @@ async function checkHealth() {
     if (els.browserBridgeStatus) {
       els.browserBridgeStatus.textContent = "先启动本地后端，再从扩展 Side Panel 创建当前页任务。";
     }
+    if (els.browserCaptureTitle) els.browserCaptureTitle.textContent = "先启动 LearnNote 后端";
     updateStartupReadiness(null);
     refreshEmptyWorkbenchReadiness();
   }
@@ -3323,6 +3565,7 @@ async function loadTasks() {
     await renderDetail();
     return;
   }
+  handleTaskStatusTransitions(data.tasks || []);
   tasks = data.tasks || [];
   if (selectedTaskId && !tasks.some(task => task.id === selectedTaskId)) selectedTaskId = null;
   if (!selectedTaskId) {
@@ -3554,31 +3797,23 @@ function resultMetaChipsHtml(task) {
   const blocked = gates.find(item => item.state === "fail" || item.state === "warn" || item.state === "wait");
   const windows = visualWindows(task);
   const selected = task.selected_resource || {};
-  const reuseEvidence = taskReuseEvidenceItem(task);
   const hasMedia = hasExportableMedia(task);
   const hasTranscript = hasReadableTranscript(task);
-  const transcriptSource = reusableTranscriptSourceText(task);
   const chips = [
     { state: taskStatusClass(task), label: statusText(task), value: `${task.progress || 0}%` },
     { state: "source", label: sourceText(task), value: selected.kind ? mediaKindText(selected.kind) : task.source_type || "-" },
-    reuseEvidence ? { state: "source", label: "复用", value: "已下载媒体" } : null,
-    { state: hasMedia ? "pass" : "wait", label: "媒体", value: hasMedia ? "已保存" : "待下载" },
-    { state: hasTranscript ? "pass" : "wait", label: "字幕", value: hasTranscript ? (transcriptSource || "已生成") : "待转写" },
     {
-      state: task.options?.visual_understanding === false ? "skip" : windows.length ? "pass" : "wait",
-      label: "切片",
-      value: task.options?.visual_understanding === false ? "关闭" : windows.length ? `${windows.length} 窗口` : "待生成"
+      state: hasMedia && hasTranscript ? "pass" : "wait",
+      label: "内容",
+      value: [hasMedia ? "视频" : "", hasTranscript ? "字幕" : "", windows.length ? `${windows.length} 画面` : ""].filter(Boolean).join(" · ") || "处理中"
     },
-    { state: task.note_path ? "pass" : "wait", label: "笔记", value: task.summary_source || (task.note_path ? "完成" : "待总结") },
-    { state: hasTaskBundle(task) ? "pass" : "wait", label: "导出", value: hasTaskBundle(task) ? "可导出" : "等待" },
+    { state: task.note_path ? "pass" : "wait", label: "笔记", value: task.note_path ? "可阅读" : "待总结" },
     blocked ? { state: blocked.state, label: "当前门", value: `${blocked.label} · ${blocked.value || blocked.state}` } : null
   ].filter(Boolean);
-  const optionLine = optionText(task);
   const notice = pendingRerunNotice?.taskId === task.id ? pendingRerunNotice.message : "";
   return `<div class="result-meta-chips" aria-label="任务阶段摘要">
     ${chips.map(chip => `<span class="${escapeHtml(chip.state)}"><b>${escapeHtml(chip.label)}</b>${escapeHtml(chip.value || "-")}</span>`).join("")}
     ${notice ? `<small class="rerun-notice">${escapeHtml(notice)}</small>` : ""}
-    ${optionLine ? `<small>${escapeHtml(optionLine)}</small>` : ""}
   </div>`;
 }
 
@@ -4458,27 +4693,10 @@ function taskOverview(task) {
   const fallbackNote = task.status === "failed" && hasNote;
   const failedWithoutFallback = task.status === "failed" && !fallbackNote;
   const mediaName = taskMediaDisplayName(task);
-  const resourceLine = [
-    sourceText(task),
-    mediaKindText(selected.kind) || selected.kind || task.source_type || "",
-    selected.audio_url ? "伴随音频流" : "",
-    resourceSourceText(selected),
-    selected.playback_match ? playbackText(selected.playback_match) : "",
-    directResponseResolvedFact(selected, 72),
-    selected.resolved_url ? "已跟踪最终 URL" : "",
-    contentDispositionHint(selected.headers?.["content-disposition"]),
-    selected.content_length ? fmtBytes(selected.content_length) : ""
-  ].filter(Boolean).join(" · ");
+  const resourceLine = [sourceText(task), mediaKindText(selected.kind) || selected.kind || task.source_type || ""].filter(Boolean).join(" · ");
   const actionLinks = [
     canContinueMedia ? `<button type="button" data-rerun-from-media="${escapeHtml(task.id)}">生成完整笔记</button>` : "",
-    hasNote ? `<a href="${escapeHtml(taskExportUrl(task, "markdown"))}">导出 Markdown</a>` : "",
-    hasMedia ? `<a href="${escapeHtml(taskExportUrl(task, "media"))}">导出本地视频</a>` : "",
-    hasTaskAudit(task) ? `<a href="${escapeHtml(taskExportUrl(task, "audit"))}">导出审计</a>` : "",
-    hasTaskDiagnostics(task) ? `<a href="${escapeHtml(taskExportUrl(task, "diagnostics"))}">导出诊断</a>` : "",
-    task.resource_inventory_path ? `<a href="${escapeHtml(taskExportUrl(task, "resource-inventory"))}">导出候选证据</a>` : "",
-    task.page_preflight_report_path ? `<a href="${escapeHtml(taskExportUrl(task, "page-preflight-report"))}">导出预检报告</a>` : "",
-    hasBundle ? `<a href="${escapeHtml(taskExportUrl(task, "manifest"))}">导出清单</a>` : "",
-    hasBundle ? `<a href="${escapeHtml(taskExportUrl(task, "bundle"))}">导出资料包</a>` : ""
+    hasBundle ? `<a href="${escapeHtml(taskExportUrl(task, "bundle"))}">资料包</a>` : ""
   ].filter(Boolean).join("");
 
   return `<section class="task-overview status-${statusClass}">
@@ -6329,7 +6547,11 @@ async function startUrlTask(mode = "video") {
     els.urlInput.focus();
     return;
   }
-  const resource = manualUrlResource(url);
+  const directResource = manualUrlResource(url);
+  if (mode === "video" && appSettings.autoPreflight && !directResource && !selectedPagePreflightReport(url)) {
+    await preflightUrlTask();
+  }
+  const resource = directResource || manualUrlResource(url);
   const pagePreflightResource = resource ? null : selectedPagePreflightResource(url);
   const pagePreflightReport = resource ? null : selectedPagePreflightReport(url);
   const resources = resource ? [resource] : pagePreflightResource ? [pagePreflightResource] : [];
@@ -6736,6 +6958,39 @@ els.fileInput.onchange = () => {
   setSource("local");
 };
 
+document.querySelectorAll?.("[data-app-view]")?.forEach?.(item => {
+  item.addEventListener("click", event => {
+    const view = item.dataset.appView;
+    if (view === "settings") {
+      event.preventDefault();
+      showAppView("settings");
+      return;
+    }
+    showAppView(view || "workspace");
+    if (view === "history") setHistoryCollapsed(false);
+  });
+});
+
+els.settingsCloseButton?.addEventListener?.("click", () => showAppView("workspace"));
+els.openProcessingSettingsButton?.addEventListener?.("click", () => {
+  showAppView("settings");
+  showSettingsPane("processing");
+});
+els.settingsMenuButtons?.forEach?.(button => {
+  button.addEventListener("click", () => showSettingsPane(button.dataset.settingsTab));
+});
+els.settingsSegmentButtons?.forEach?.(button => {
+  button.addEventListener("click", () => {
+    const setting = button.parentElement?.dataset?.setting;
+    if (!setting) return;
+    appSettings[setting] = button.dataset.value;
+    applyAppSettings();
+    if (setting === "defaultSource") setSource(appSettings.defaultSource);
+  });
+});
+els.saveSettingsButton?.addEventListener?.("click", saveAppSettingsFromUi);
+els.resetSettingsButton?.addEventListener?.("click", resetAppSettings);
+
 [
   els.frameInterval,
   els.gridSize,
@@ -6767,11 +7022,18 @@ els.llmApiKey?.addEventListener("input", () => {
   updateStartupReadiness();
 });
 
+loadAppSettings();
+organizeSettingsOptions();
+applyAppSettings();
 initializeResponsiveChrome();
 loadModelSettings();
 applyModelProviderPreset(false);
 updateModelProviderHint();
 initializeWorkspaceView();
+if (!hasExplicitTaskRoute()) {
+  setSource(appSettings.defaultSource);
+  setHistoryCollapsed(appSettings.compactHistory, false);
+}
 renderSourceWorkflow();
 checkHealth();
 loadTasks();

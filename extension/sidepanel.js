@@ -4810,6 +4810,7 @@ function updateHealthVisionStatus(data = lastHealthData) {
 
 async function health() {
   try {
+    await fetch(`${backendUrl}/api/extension/heartbeat`, { method: "POST" }).catch(() => null);
     const data = await fetch(`${backendUrl}/health`).then(r => r.json());
     lastHealthData = data;
     syncModelProviderPresets(data);
@@ -8251,4 +8252,5 @@ renderPanelMode();
 loadSettings().then(async () => {
   await Promise.all([health(), collect(), loadTaskHistory()]);
   await consumePendingSidePanelIntent();
+  if (typeof setInterval === "function") setInterval(health, 10000);
 });

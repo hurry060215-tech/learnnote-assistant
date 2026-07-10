@@ -168,7 +168,7 @@ const sidepanelCss = await readFile(new URL("../sidepanel.css", import.meta.url)
 vm.runInContext(sidepanelCode, context);
 
 await new Promise(resolve => setTimeout(resolve, 0));
-assert.match(sidepanelHtml, /sidepanel\.css\?v=20260708-side-workbench/);
+assert.match(sidepanelHtml, /sidepanel\.css\?v=20260711-first-use-focus/);
 assert.match(sidepanelHtml, /sidepanel\.js\?v=20260708-side-workbench/);
 assert.match(sidepanelHtml, /class="capture-cockpit"/);
 assert.match(sidepanelHtml, /当前页直取生产线/);

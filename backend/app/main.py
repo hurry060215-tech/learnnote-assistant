@@ -8,6 +8,7 @@ import json
 import re
 import shutil
 import tempfile
+import time
 from uuid import uuid4
 from zipfile import ZIP_DEFLATED, ZipFile
 from pathlib import Path
@@ -32,6 +33,8 @@ from .summarizer import chat_completion_provider_kwargs, llm_base_host, llm_mode
 ensure_dirs()
 
 app = FastAPI(title="LearnNote Assistant", version="0.1.0")
+_extension_heartbeat_at = 0.0
+EXTENSION_HEARTBEAT_TTL_SECONDS = 20.0
 TRUSTED_BROWSER_ORIGIN_RE = re.compile(r"^(chrome-extension://[a-z]+|moz-extension://[a-z0-9-]+|https?://(localhost|127\.0\.0\.1)(:\d+)?)$")
 WRITE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
@@ -2294,6 +2297,7 @@ def health_payload() -> dict:
         "backend_origin": BACKEND_ORIGIN,
         "deployment_mode": DEPLOYMENT_MODE,
         "public_access_protected": bool(PUBLIC_DEPLOYMENT and PUBLIC_PASSWORD),
+        "extension_connected": bool(_extension_heartbeat_at and time.monotonic() - _extension_heartbeat_at <= EXTENSION_HEARTBEAT_TTL_SECONDS),
         "local_asr_available": local_asr_available,
         "local_asr_package": "faster-whisper",
         "local_asr_install_hint": "pip install faster-whisper" if not local_asr_available else "",
@@ -2726,6 +2730,13 @@ def health() -> dict:
 @app.get("/api/health")
 def api_health() -> dict:
     return health_payload()
+
+
+@app.post("/api/extension/heartbeat")
+def extension_heartbeat() -> dict:
+    global _extension_heartbeat_at
+    _extension_heartbeat_at = time.monotonic()
+    return {"ok": True, "extension_connected": True}
 
 
 @app.post("/api/tasks/from-current-page")

@@ -3377,6 +3377,24 @@ class SummaryFallbackTests(unittest.TestCase):
         self.assertIn("\u7b14\u8bb0\u683c\u5f0f", note)
         self.assertIn("\u95ee\u7b54\u590d\u4e60\u6a21\u677f", note)
 
+    def test_local_note_uses_expanded_style_and_template_options(self) -> None:
+        transcript = TranscriptResult(
+            source="unit",
+            full_text="A contextual language example.",
+            segments=[TranscriptSegment(start=1, end=3, text="A contextual language example.")],
+        )
+
+        note = local_markdown_note(
+            "Language lesson",
+            transcript,
+            [],
+            "https://course.example",
+            TaskOptions(note_style="language", note_template="flashcards"),
+        )
+
+        self.assertIn("词汇、表达、语法", note)
+        self.assertIn("记忆卡片模板", note)
+
     def test_local_note_keeps_page_context_separate_from_transcript(self) -> None:
         transcript = TranscriptResult(
             source="unit",

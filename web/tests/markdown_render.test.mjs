@@ -145,6 +145,7 @@ context.window.localStorage.setItem("learnnote_model_settings", JSON.stringify({
 const webCode = await readFile(new URL("../app.js", import.meta.url), "utf8");
 const indexHtml = await readFile(new URL("../index.html", import.meta.url), "utf8");
 const stylesCss = await readFile(new URL("../styles.css", import.meta.url), "utf8");
+const workspaceCss = await readFile(new URL("../workspace.css", import.meta.url), "utf8");
 vm.runInContext(webCode, context);
 
 await new Promise(resolve => setTimeout(resolve, 0));
@@ -230,7 +231,7 @@ assert.match(stylesCss, /\.recovery-decision-metrics\s*\{/);
 assert.match(stylesCss, /@media \(max-width: 900px\)[\s\S]*\.recovery-decision\s*\{[\s\S]*grid-template-columns:\s*1fr;/);
 assert.equal(elements.get("#browserBridgeStatus").classList.contains("capture-status-grid"), true);
 assert.match(elements.get("#browserBridgeStatus").innerHTML, /capture-status-chip bridge/);
-assert.match(elements.get("#browserBridgeStatus").innerHTML, /需 Chrome\/Edge 扩展侧栏/);
+assert.match(elements.get("#browserBridgeStatus").innerHTML, /打开课程视频，再打开 LearnNote 扩展侧栏/);
 assert.match(elements.get("#browserBridgeStatus").innerHTML, /capture-status-chip media/);
 assert.match(elements.get("#browserBridgeStatus").innerHTML, /capture-status-chip direct/);
 assert.match(elements.get("#browserBridgeStatus").innerHTML, /mp4\/mkv\/webm\/flv\/m3u8\/mpd/);
@@ -301,12 +302,19 @@ assert.match(stylesCss, /\.workspace-panel \.source-route-rail\s*\{\s*display: n
 assert.match(stylesCss, /\.capture-flow\s*\{\s*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);/);
 assert.match(indexHtml, /id="toggleWorkspaceButton"/);
 assert.match(indexHtml, /styles\.css\?v=20260710-bv-input/);
-assert.match(indexHtml, /app\.js\?v=20260710-bv-input/);
+assert.match(indexHtml, /app\.js\?v=20260711-focus-settings/);
 assert.match(indexHtml, /id="sourceRouteRail"/);
 assert.match(indexHtml, /id="urlPreflightReport"/);
-assert.match(indexHtml, /href="#optionsDisclosure" title="设置"/);
+assert.match(indexHtml, /href="#settingsView" data-app-view="settings" title="设置"/);
 assert.doesNotMatch(indexHtml, /href="#settings" title="设置"/);
-assert.match(indexHtml, /workspace\.css\?v=20260710-workspace-redesign/);
+assert.match(indexHtml, /workspace\.css\?v=20260711-focus-settings/);
+assert.match(indexHtml, /id="settingsView"/);
+assert.match(indexHtml, /data-settings-tab="general"/);
+assert.match(indexHtml, /data-settings-tab="model"/);
+assert.match(indexHtml, /data-settings-tab="transcriber"/);
+assert.match(indexHtml, /data-settings-tab="processing"/);
+assert.match(workspaceCss, /body\.queue-collapsed \.queue-panel\s*\{\s*display: none;/);
+assert.match(workspaceCss, /body\.settings-mode \.workspace-panel/);
 assert.match(indexHtml, /id="downloadUrlButton"[\s\S]*只下载到本地/);
 assert.doesNotMatch(indexHtml, />只下载本地</);
 assert.match(indexHtml, /class="result-tab active" role="tab" aria-selected="true" data-tab="note"/);
@@ -637,13 +645,10 @@ assert.match(resultMetaHtml, /class="result-meta-chips"/);
 assert.match(resultMetaHtml, /任务阶段摘要/);
 assert.match(resultMetaHtml, /已完成/);
 assert.match(resultMetaHtml, /直取 · 视频/);
-assert.match(resultMetaHtml, /媒体<\/b>已保存/);
-assert.match(resultMetaHtml, /字幕<\/b>已生成/);
-assert.match(resultMetaHtml, /切片<\/b>1 窗口/);
-assert.match(resultMetaHtml, /笔记<\/b>vision-llm/);
-assert.match(resultMetaHtml, /导出<\/b>可导出/);
-assert.match(resultMetaHtml, /20 秒切片/);
-assert.match(resultMetaHtml, /visual-handout/);
+assert.match(resultMetaHtml, /内容<\/b>视频 · 字幕 · 1 画面/);
+assert.match(resultMetaHtml, /笔记<\/b>可阅读/);
+assert.doesNotMatch(resultMetaHtml, /导出<\/b>/);
+assert.doesNotMatch(resultMetaHtml, /20 秒切片/);
 assert.doesNotMatch(resultMetaHtml, /<script>bad/);
 assert.match(stylesCss, /\.result-meta-chips[\s\S]*flex-wrap:\s*wrap/);
 assert.match(stylesCss, /\.result-meta-chips \.success,[\s\S]*\.result-meta-chips \.pass/);
@@ -1691,23 +1696,15 @@ const taskOverviewHtml = context.taskOverview({
 });
 
 assert.match(taskOverviewHtml, /class="task-overview status-success"/);
-assert.match(taskOverviewHtml, /导出本地视频/);
-assert.match(taskOverviewHtml, /导出审计/);
-assert.match(taskOverviewHtml, /导出资料包/);
+assert.match(taskOverviewHtml, /资料包/);
 assert.match(taskOverviewHtml, /生成完整笔记/);
 assert.match(taskOverviewHtml, /data-rerun-from-media="task-web-overview"/);
 assert.match(taskOverviewHtml, /\/api\/tasks\/task-web-overview\/exports\/media/);
-assert.match(taskOverviewHtml, /\/api\/tasks\/task-web-overview\/exports\/audit/);
-assert.match(taskOverviewHtml, /\/api\/tasks\/task-web-overview\/exports\/diagnostics/);
-assert.match(taskOverviewHtml, /\/api\/tasks\/task-web-overview\/exports\/resource-inventory/);
-assert.match(taskOverviewHtml, /\/api\/tasks\/task-web-overview\/exports\/page-preflight-report/);
 assert.match(taskOverviewHtml, /\/api\/tasks\/task-web-overview\/exports\/bundle/);
-assert.match(taskOverviewHtml, /\/api\/tasks\/task-web-overview\/exports\/manifest/);
 assert.match(taskOverviewHtml, /已完成直取下载/);
 assert.match(taskOverviewHtml, /当前页下载/);
-assert.match(taskOverviewHtml, /伴随音频流/);
 assert.match(taskOverviewHtml, /音视频合并/);
-assert.match(taskOverviewHtml, /已跟踪最终 URL/);
+assert.match(taskOverviewHtml, /最终 URL 已记录/);
 assert.match(taskOverviewHtml, /final\.mp4\?token=abc/);
 assert.match(taskOverviewHtml, /浏览器播放证据/);
 assert.match(taskOverviewHtml, /3 cookie/);
@@ -1909,9 +1906,9 @@ const fallbackTaskOverviewHtml = context.taskOverview({
 });
 assert.match(fallbackTaskOverviewHtml, /class="task-overview status-failed"/);
 assert.match(fallbackTaskOverviewHtml, /已生成兜底笔记/);
-assert.match(fallbackTaskOverviewHtml, /导出 Markdown/);
-assert.match(fallbackTaskOverviewHtml, /导出诊断/);
-assert.match(fallbackTaskOverviewHtml, /导出资料包/);
+assert.match(fallbackTaskOverviewHtml, /阅读笔记/);
+assert.match(fallbackTaskOverviewHtml, /查看诊断/);
+assert.match(fallbackTaskOverviewHtml, /资料包/);
 const failureGuideHtml = context.failureGuide({
   status: "failed",
   error_code: "download_forbidden",
@@ -3170,8 +3167,8 @@ const rerunNotice = context.rerunFromMediaNotice("source-media-task", "rerun-tas
 const rawRerunNotice = context.rerunFromMediaNotice("source-media-task", "rerun-task", {
   reuse: { source_media_path: "D:/Projects/learnnote-assistant/data/tasks/source-media-task/downloaded-original.mp4" }
 });
-assert.match(rerunMetaHtml, /复用/);
-assert.match(rerunMetaHtml, /已下载媒体/);
+assert.match(rerunMetaHtml, /内容/);
+assert.doesNotMatch(rerunMetaHtml, /已下载媒体/);
 assert.match(rerunNotice, /完整笔记任务 rerun-task/);
 assert.match(rerunNotice, /不会录制页面/);
 
@@ -3226,3 +3223,38 @@ assert.match(normalizedBilibiliUrl.label, /B站视频/);
 
 const invalidSourceInput = context.normalizeSourceInput("not a video source");
 assert.equal(invalidSourceInput.valid, false);
+
+assert.deepEqual(
+  JSON.parse(JSON.stringify(context.normalizedAppSettings({ uiScale: "999", textSize: "huge", defaultSource: "bad" }))),
+  {
+    uiScale: "100",
+    textSize: "standard",
+    theme: "system",
+    colorTheme: "teal",
+    defaultSource: "browser",
+    autoOpenNote: true,
+    taskNotifications: false,
+    compactHistory: true,
+    autoPreflight: true,
+    frameInterval: "20",
+    gridSize: "3x3",
+    visualUnderstanding: true,
+    noteStyle: "study",
+    noteTemplate: "standard",
+    summaryDepth: "standard"
+  }
+);
+vm.runInContext(`appSettings = normalizedAppSettings({
+  theme: "dark",
+  textSize: "large",
+  defaultSource: "local",
+  frameInterval: "30",
+  gridSize: "4x3",
+  visualUnderstanding: false
+}); applyAppSettings(); storeAppSettings();`, context);
+assert.equal(context.document.body.classList.contains("theme-dark"), true);
+assert.equal(context.document.body.dataset.textSize, "large");
+assert.equal(elements.get("#frameInterval").value, "30");
+assert.equal(elements.get("#gridSize").value, "4x3");
+assert.equal(elements.get("#visualUnderstanding").checked, false);
+assert.equal(JSON.parse(context.window.localStorage.getItem("learnnote_app_settings")).defaultSource, "local");

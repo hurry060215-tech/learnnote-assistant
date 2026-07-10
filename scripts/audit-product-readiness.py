@@ -448,7 +448,7 @@ def build_matrix(*, include_acceptance_gate: bool = True) -> list[ReadinessItem]
         and has_all(container_workflow, ["ghcr.io", "docker/build-push-action", "push: true"])
         and has_all(backend_main, ["enforce_public_access", "request_origin_matches_host", "www-authenticate"])
         and has_all(public_preview, ["cloudflared", "public-preview-state.json", "LEARNNOTE_PUBLIC_PASSWORD"])
-        and has_all(web_html + workspace_css, ["workspace.css", "创建学习笔记", "--ln-accent", ".queue-panel"])
+        and has_all(web_html + workspace_css, ["workspace.css", "新建学习笔记", "--ln-accent", ".queue-panel"])
     )
     rows.append(item(
         "protected_web_deployment",
