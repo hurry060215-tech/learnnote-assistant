@@ -27,9 +27,45 @@ def llm_provider_name(base_url: str) -> str:
         return "siliconflow"
     if "openrouter.ai" in host:
         return "openrouter"
+    if "deepseek.com" in host:
+        return "deepseek"
+    if "moonshot.cn" in host or "platform.kimi.com" in host:
+        return "kimi"
+    if "bigmodel.cn" in host:
+        return "zhipu"
+    if "volces.com" in host:
+        return "doubao"
+    if "minimaxi.com" in host or "minimax.io" in host:
+        return "minimax"
+    if "baidubce.com" in host or "baiduqianfan.ai" in host:
+        return "qianfan"
     if host in {"127.0.0.1", "localhost"}:
         return "local-openai-compatible"
     return "openai-compatible"
+
+
+def chat_completion_provider_kwargs(base_url: str) -> dict:
+    if llm_provider_name(base_url) == "deepseek":
+        return {"extra_body": {"thinking": {"type": "disabled"}}}
+    return {}
+
+
+def llm_model_supports_vision(base_url: str, model: str) -> bool:
+    provider = llm_provider_name(base_url)
+    normalized = str(model or "").strip().lower()
+    if provider in {"deepseek", "minimax"}:
+        return False
+    if provider == "dashscope":
+        return any(token in normalized for token in ("-vl", "omni", "qvq"))
+    if provider == "kimi":
+        return any(token in normalized for token in ("k2.6", "k2.7"))
+    if provider == "zhipu":
+        return "vision" in normalized or bool(re.search(r"glm-[0-9.]+v(?:-|$)", normalized))
+    if provider == "doubao":
+        return "vision" in normalized
+    if provider == "qianfan":
+        return "ernie-4.5" in normalized or "vision" in normalized
+    return True
 
 
 def llm_base_host(base_url: str) -> str:
@@ -640,13 +676,15 @@ def summarize_with_llm(
 
     model = options.llm_model or LLM_MODEL
     page_context_prompt = _page_context_prompt(page_context)
+    base_url = options.llm_base_url or LLM_BASE_URL
+    provider_kwargs = chat_completion_provider_kwargs(base_url)
     try:
-        client = OpenAI(api_key=api_key, base_url=options.llm_base_url or LLM_BASE_URL)
+        client = OpenAI(api_key=api_key, base_url=base_url)
     except Exception as exc:
         _record_llm_event(events, "client_init", "client_init_failed", exc, model=model)
         return None
 
-    if grids:
+    if grids and llm_model_supports_vision(base_url, model):
         partials = []
         failed_batches = 0
         batches = _grid_batches(grids)
@@ -672,6 +710,7 @@ def summarize_with_llm(
                     model=model,
                     messages=[{"role": "user", "content": content}],
                     temperature=0.2,
+                    **provider_kwargs,
                 )
                 partial = response.choices[0].message.content or ""
                 if partial.strip():
@@ -714,6 +753,7 @@ def summarize_with_llm(
                         }
                     ],
                     temperature=0.2,
+                    **provider_kwargs,
                 )
                 generated = response.choices[0].message.content or ""
                 note = ensure_visual_appendix(generated, transcript, grids) or ""
@@ -746,6 +786,7 @@ def summarize_with_llm(
             model=model,
             messages=[{"role": "user", "content": content}],
             temperature=0.2,
+            **provider_kwargs,
         )
         generated = response.choices[0].message.content or ""
         note = ensure_visual_appendix(generated, transcript, grids) or ""

@@ -355,7 +355,7 @@ $env:LEARNNOTE_BOOTSTRAP_PYTHON="D:\Python312\python.exe"
 
 ## Optional Model Settings
 
-Transcription defaults to local `faster-whisper` with the `small` model, and can be switched per task to an OpenAI-compatible/Groq ASR endpoint. If local or remote ASR is unavailable, the task still completes with a clear transcript warning and visual/text note fallback.
+Transcription defaults to local `faster-whisper` with the `small` model, and can be switched per task to an OpenAI-compatible/Groq ASR endpoint. If ASR fails, LearnNote retains the downloaded media and diagnostic artifacts but marks the task failed instead of treating an error message as course content.
 
 Windows defaults to CPU/int8 for reliability:
 
@@ -381,7 +381,33 @@ $env:LEARNNOTE_LLM_MODEL="gpt-4.1-mini"
 
 The same Base URL and API Key fields are reused when the task's transcriber is set to `OpenAI-compatible ASR` or `Groq ASR`. For OpenAI use `whisper-1`; for Groq-style endpoints choose `whisper-large-v3` or the model name supported by that endpoint.
 
-The Web UI and Side Panel include mainstream provider presets for OpenAI, Groq, Google Gemini, and DashScope/Qwen. A custom OpenAI-compatible endpoint can still be entered manually, but non-mainstream providers are not shown as default presets. Presets only fill Base URL/model defaults; API keys are still task-scoped, and non-OpenAI/Groq presets keep local `faster-whisper` ASR by default.
+The Web UI and Side Panel include built-in OpenAI-compatible presets. Presets only fill the Base URL and model defaults; keys entered in either UI remain task-scoped, and providers without an ASR capability keep local `faster-whisper` transcription.
+
+| Provider | Default model | Summary input |
+| --- | --- | --- |
+| DeepSeek | `deepseek-v4-flash` | Transcript/text |
+| 通义千问 Qwen | `qwen-vl-max` | Transcript + frame grids |
+| Kimi 月之暗面 | `kimi-k2.6` | Transcript + frame grids |
+| 智谱 GLM | `glm-5v-turbo` | Transcript + frame grids |
+| 豆包 火山方舟 | `doubao-seed-2-0-lite-260215` | Transcript/text |
+| MiniMax | `MiniMax-M2.7` | Transcript/text |
+| 百度千帆 ERNIE | `ernie-4.5-8k-preview` | Transcript + frame grids |
+| OpenAI / Groq / Gemini | Provider preset | Capabilities shown in the UI |
+
+Every model field remains editable. This is important for providers such as Volcengine Ark that may require a console-created endpoint or a region-specific model ID.
+
+For a reusable local-only configuration, create `data/config/model-profiles/<name>.env` with
+`LEARNNOTE_LLM_BASE_URL`, `LEARNNOTE_LLM_API_KEY`, and `LEARNNOTE_LLM_MODEL`, then start with
+`./start-learnnote.ps1 -ModelProfile <name>`. The entire `data/config/` directory is ignored by Git,
+and the launcher reports only the profile name. DeepSeek's official API is OpenAI-compatible and can
+be used for transcript/text summarization, but its current models are text-only; use a vision-capable
+provider when frame-grid image understanding is required.
+
+For example, a profile named `ln` is started with:
+
+```powershell
+.\start-learnnote.ps1 -ModelProfile ln
+```
 
 Without a model key, the backend generates a deterministic local Markdown note from transcript segments and frame-grid indexes.
 

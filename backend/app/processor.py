@@ -13,13 +13,13 @@ from .downloader import DownloadError, MediaDownloader, classify_resource, effec
 from .media import build_frame_grids, extract_audio, extract_embedded_subtitle, extract_frames, normalize_video
 from .models import ActiveVideoInfo, BrowserSubtitleCue, CurrentPageTaskRequest, DownloadAttempt, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
 from .storage import get_task, save_task, task_dir, update_task, write_json
-from .summarizer import MAX_GRIDS_PER_VISION_CALL, MAX_VISION_GRIDS, build_visual_windows, llm_base_host, llm_provider_name, select_vision_grid_entries, summarize_page_text_with_diagnostics, summarize_with_diagnostics_audit as summarize_with_diagnostics
+from .summarizer import MAX_GRIDS_PER_VISION_CALL, MAX_VISION_GRIDS, build_visual_windows, llm_base_host, llm_model_supports_vision, llm_provider_name, select_vision_grid_entries, summarize_page_text_with_diagnostics, summarize_with_diagnostics_audit as summarize_with_diagnostics
 from .transcriber import transcript_from_subtitle, transcribe_audio, transcribe_audio_openai_compatible
 
 
 SAFE_RESPONSE_HEADER_NAMES = {"content-type", "content-disposition", "content-length", "content-range", "accept-ranges"}
 REMOTE_ASR_TRANSCRIBERS = {"openai", "openai-compatible", "openai-compatible-asr", "groq", "groq-asr"}
-ASR_FAILURE_SOURCES = {"missing-faster-whisper", "faster-whisper-error", "no-audio"}
+ASR_FAILURE_SOURCES = {"missing-faster-whisper", "faster-whisper-error"}
 
 
 @dataclass
@@ -636,6 +636,7 @@ def build_summary_diagnostics(
     effective_llm_base_url = options.llm_base_url or LLM_BASE_URL
     effective_llm_model = options.llm_model or LLM_MODEL
     llm_configured = bool(options.llm_api_key or LLM_API_KEY)
+    vision_model_configured = llm_configured and llm_model_supports_vision(effective_llm_base_url, effective_llm_model)
 
     def window_id(index: int) -> str:
         if index < len(visual_windows) and visual_windows[index].id:
@@ -677,7 +678,9 @@ def build_summary_diagnostics(
             "grid_count": len(batch_entries),
             "image_count": len(batch_image_window_ids),
         })
-    if summary_source == "vision-llm":
+    if llm_configured and not vision_model_configured:
+        vision_call_status = "text_only_model"
+    elif summary_source == "vision-llm":
         vision_call_status = "vision_llm_used"
     elif summary_source == "text-llm":
         vision_call_status = "text_llm_fallback"
@@ -709,7 +712,8 @@ def build_summary_diagnostics(
         "summary_source": summary_source,
         "summary_warning": summary_warning,
         "visual_understanding": bool(options.visual_understanding),
-        "vision_model_configured": llm_configured,
+        "llm_model_configured": llm_configured,
+        "vision_model_configured": vision_model_configured,
         "llm_model": effective_llm_model,
         "llm_base_url": effective_llm_base_url,
         "llm_base_host": llm_base_host(effective_llm_base_url),

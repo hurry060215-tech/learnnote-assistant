@@ -1,6 +1,7 @@
 param(
   [switch]$InstallAsr,
-  [int]$Port = 8765
+  [int]$Port = 8765,
+  [string]$ModelProfile = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -14,6 +15,11 @@ $modelCacheDir = Join-Path $dataDir "model-cache"
 $pipCacheDir = Join-Path $dataDir "pip-cache"
 $tempDir = Join-Path $dataDir "temp"
 $backendUrl = "http://127.0.0.1:$Port"
+
+if ($ModelProfile) {
+  . (Join-Path $projectRoot "scripts\model-profile.ps1")
+  Import-LearnNoteModelProfile -ProjectRoot $projectRoot -Name $ModelProfile | Out-Null
+}
 
 New-Item -ItemType Directory -Force -Path $modelCacheDir, $pipCacheDir, $tempDir | Out-Null
 

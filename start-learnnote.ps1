@@ -4,7 +4,8 @@ param(
   [int]$SamplesPort = 8777,
   [switch]$InstallAsr,
   [switch]$SkipDoctor,
-  [switch]$StrictDoctor
+  [switch]$StrictDoctor,
+  [string]$ModelProfile = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -16,6 +17,11 @@ $doctorScript = Join-Path $projectRoot "scripts\doctor.ps1"
 $backendScript = Join-Path $projectRoot "start-backend.ps1"
 $backendUrl = "http://127.0.0.1:$Port"
 $samplesUrl = "http://127.0.0.1:$SamplesPort"
+
+if ($ModelProfile) {
+  . (Join-Path $projectRoot "scripts\model-profile.ps1")
+  Import-LearnNoteModelProfile -ProjectRoot $projectRoot -Name $ModelProfile | Out-Null
+}
 
 function Write-Step {
   param([string]$Text)
@@ -189,7 +195,7 @@ try {
   Write-Host "  .\scripts\audit-product-acceptance.ps1 -Browser edge"
   Write-Host ""
 
-  $backendArgs = @{ Port = $Port }
+  $backendArgs = @{ Port = $Port; ModelProfile = $ModelProfile }
   if ($InstallAsr) {
     $backendArgs.InstallAsr = $true
   }

@@ -40,7 +40,7 @@ from app.downloader import (
 from app.main import diagnostic_recovery_profile, render_bundle_manifest, render_diagnostics_markdown, task_audit_summary
 from app.models import ActiveVideoInfo, BrowserCookie, CurrentPageTaskRequest, DownloadAttempt, DrmSignal, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
 from app.processor import build_summary_diagnostics, cookie_sync_summary, download_progress_updater, download_status_updater, enrich_resource_candidates_with_active_video, process_current_page_task, process_local_video_task, read_note, read_transcript, redacted_request_dump, redacted_resource
-from app.summarizer import MAX_GRIDS_PER_VISION_CALL, MAX_VISION_GRIDS, build_visual_windows, ensure_visual_appendix, llm_provider_name, local_markdown_note, summarize_with_diagnostics, summarize_with_diagnostics_audit
+from app.summarizer import MAX_GRIDS_PER_VISION_CALL, MAX_VISION_GRIDS, build_visual_windows, chat_completion_provider_kwargs, ensure_visual_appendix, llm_model_supports_vision, llm_provider_name, local_markdown_note, summarize_with_diagnostics, summarize_with_diagnostics_audit
 from app.storage import create_task, get_task, read_json, save_task, task_dir, write_json
 from app.transcriber import resolve_whisper_model, transcribe_audio_openai_compatible, transcript_from_subtitle
 
@@ -3654,6 +3654,18 @@ class SummaryFallbackTests(unittest.TestCase):
             llm_provider_name("https://generativelanguage.googleapis.com/v1beta/openai/"),
             "gemini",
         )
+
+    def test_deepseek_uses_non_thinking_text_mode(self) -> None:
+        self.assertEqual(llm_provider_name("https://api.deepseek.com"), "deepseek")
+        self.assertEqual(
+            chat_completion_provider_kwargs("https://api.deepseek.com"),
+            {"extra_body": {"thinking": {"type": "disabled"}}},
+        )
+        self.assertEqual(chat_completion_provider_kwargs("https://api.openai.com/v1"), {})
+        self.assertFalse(llm_model_supports_vision("https://api.deepseek.com", "deepseek-v4-flash"))
+        self.assertTrue(llm_model_supports_vision("https://api.moonshot.cn/v1", "kimi-k2.6"))
+        self.assertTrue(llm_model_supports_vision("https://open.bigmodel.cn/api/paas/v4", "glm-5v-turbo"))
+        self.assertFalse(llm_model_supports_vision("https://api.minimaxi.com/v1", "MiniMax-M2.7"))
 
     def test_llm_summary_batches_all_frame_grids_before_merge(self) -> None:
         from app.summarizer import summarize_with_llm

@@ -4,7 +4,9 @@ const LOCAL_VIDEO_EXT_RE = /\.(mp4|m4v|mov|mkv|webm|flv|avi)$/i;
 const RESULT_TAB_NAMES = new Set(["note", "transcript", "slices", "frames", "qa", "diagnostics"]);
 const LOCAL_ASR_MODELS = new Set(["tiny", "base", "small", "medium", "large", "large-v2", "large-v3"]);
 const MODEL_SETTINGS_STORAGE_KEY = "modelSettings";
-const MAINSTREAM_MODEL_PROVIDER_KEYS = new Set(["openai", "groq", "gemini", "dashscope"]);
+const MAINSTREAM_MODEL_PROVIDER_KEYS = new Set([
+  "openai", "groq", "gemini", "dashscope", "deepseek", "kimi", "zhipu", "doubao", "minimax", "qianfan"
+]);
 const MODEL_PROVIDER_PRESETS = {
   openai: {
     baseUrl: "https://api.openai.com/v1",
@@ -36,6 +38,60 @@ const MODEL_PROVIDER_PRESETS = {
   dashscope: {
     baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
     model: "qwen-vl-max",
+    transcriber: "faster-whisper",
+    whisperModel: "small",
+    tier: "mainstream",
+    recommended: true,
+    capabilities: ["text", "vision"]
+  },
+  deepseek: {
+    baseUrl: "https://api.deepseek.com",
+    model: "deepseek-v4-flash",
+    transcriber: "faster-whisper",
+    whisperModel: "small",
+    tier: "mainstream",
+    recommended: true,
+    capabilities: ["text"]
+  },
+  kimi: {
+    baseUrl: "https://api.moonshot.cn/v1",
+    model: "kimi-k2.6",
+    transcriber: "faster-whisper",
+    whisperModel: "small",
+    tier: "mainstream",
+    recommended: true,
+    capabilities: ["text", "vision"]
+  },
+  zhipu: {
+    baseUrl: "https://open.bigmodel.cn/api/paas/v4",
+    model: "glm-5v-turbo",
+    transcriber: "faster-whisper",
+    whisperModel: "small",
+    tier: "mainstream",
+    recommended: true,
+    capabilities: ["text", "vision"]
+  },
+  doubao: {
+    baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+    model: "doubao-seed-2-0-lite-260215",
+    transcriber: "faster-whisper",
+    whisperModel: "small",
+    tier: "mainstream",
+    recommended: true,
+    capabilities: ["text"]
+  },
+  minimax: {
+    baseUrl: "https://api.minimaxi.com/v1",
+    model: "MiniMax-M2.7",
+    transcriber: "faster-whisper",
+    whisperModel: "small",
+    tier: "mainstream",
+    recommended: true,
+    capabilities: ["text"]
+  },
+  qianfan: {
+    baseUrl: "https://qianfan.baidubce.com/v2",
+    model: "ernie-4.5-8k-preview",
     transcriber: "faster-whisper",
     whisperModel: "small",
     tier: "mainstream",
@@ -105,6 +161,12 @@ function modelProviderLabel(key) {
     groq: "Groq",
     gemini: "Gemini",
     dashscope: "DashScope",
+    deepseek: "DeepSeek",
+    kimi: "Kimi",
+    zhipu: "智谱 GLM",
+    doubao: "豆包",
+    minimax: "MiniMax",
+    qianfan: "百度千帆",
     "openai-compatible": "Compatible",
     ollama: "Ollama"
   })[key] || key;
@@ -4584,14 +4646,28 @@ async function runSidePanelIntent(intent) {
 }
 
 function healthVisionReady(data) {
-  return Boolean(data?.vision_model_configured || els.llmApiKey?.value?.trim());
+  const taskKeyConfigured = Boolean(els.llmApiKey?.value?.trim());
+  if (!taskKeyConfigured) return Boolean(data?.vision_model_configured);
+  const preset = modelProviderPresets[els.llmProvider?.value || ""];
+  return !preset || preset.capabilities.includes("vision");
+}
+
+function healthTextModelReady(data) {
+  return Boolean(data?.llm_model_configured || els.llmApiKey?.value?.trim());
 }
 
 function healthVisionModel(data) {
+  if (!els.llmApiKey?.value?.trim() && data?.llm_model_configured) {
+    return data.default_llm_model || "gpt-4.1-mini";
+  }
   return els.llmModel?.value?.trim() || data?.default_llm_model || "gpt-4.1-mini";
 }
 
 function healthVisionProvider(data) {
+  if (!els.llmApiKey?.value?.trim() && data?.llm_model_configured) {
+    const configuredProvider = String(data?.default_llm_provider || "").trim();
+    return modelProviderLabel(configuredProvider) || "Compatible";
+  }
   const selected = (els.llmProvider?.value || "").trim();
   if (selected) {
     return modelProviderLabel(selected);
@@ -4607,13 +4683,18 @@ function healthVisionText(data) {
   if (healthVisionReady(data)) {
     return `视觉模型已配置（${provider} · ${model}），切片网格会随字幕进入图文总结；转写：${asr}。`;
   }
+  if (healthTextModelReady(data)) {
+    return `文本总结模型已配置（${provider} · ${model}）；画面切片仍会生成，但不会发送给该文本模型；转写：${asr}。`;
+  }
   return `未配置视觉模型 API Key：当前默认 ${provider} · ${model} 仅作待用配置；转写：${asr}；仍会生成字幕、切片网格和本地图文索引。`;
 }
 
 function healthVisionChipText(data) {
   const model = healthVisionModel(data);
   const provider = healthVisionProvider(data);
-  return healthVisionReady(data) ? `${provider} · ${model}` : `待填 · ${provider}`;
+  if (healthVisionReady(data)) return `${provider} · ${model}`;
+  if (healthTextModelReady(data)) return `仅文本 · ${provider}`;
+  return `待填 · ${provider}`;
 }
 
 function healthAsrChipText(data = lastHealthData) {

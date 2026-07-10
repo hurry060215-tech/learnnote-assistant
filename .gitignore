@@ -14,6 +14,7 @@ data/test-runs/
 data/ui-audit/
 data/uploads/
 data/browser-profiles/
+data/config/
 data/wheelhouse*/
 data/tasks/
 data/static/

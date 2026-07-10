@@ -24,7 +24,7 @@ from .models import CurrentPageTaskRequest, MediaPreflightRequest, MediaPrefligh
 from .processor import enrich_resource_candidates_with_active_video, process_current_page_task, process_local_video_task, read_note, read_transcript, read_visual_index
 from .runtime import ffmpeg_bin, ffprobe_bin
 from .storage import create_task, get_task, list_tasks, read_json, task_dir, update_task, write_json
-from .summarizer import llm_base_host, llm_provider_name, visual_window_review_question_lines
+from .summarizer import chat_completion_provider_kwargs, llm_base_host, llm_model_supports_vision, llm_provider_name, visual_window_review_question_lines
 
 ensure_dirs()
 
@@ -2150,9 +2150,75 @@ MODEL_PROVIDER_PRESETS = [
     },
     {
         "key": "dashscope",
-        "label": "通义千问 DashScope",
+        "label": "通义千问 Qwen",
         "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
         "model": "qwen-vl-max",
+        "transcriber": "faster-whisper",
+        "whisper_model": "small",
+        "tier": "mainstream",
+        "recommended": True,
+        "capabilities": ["text", "vision"],
+    },
+    {
+        "key": "deepseek",
+        "label": "DeepSeek",
+        "base_url": "https://api.deepseek.com",
+        "model": "deepseek-v4-flash",
+        "transcriber": "faster-whisper",
+        "whisper_model": "small",
+        "tier": "mainstream",
+        "recommended": True,
+        "capabilities": ["text"],
+    },
+    {
+        "key": "kimi",
+        "label": "Kimi 月之暗面",
+        "base_url": "https://api.moonshot.cn/v1",
+        "model": "kimi-k2.6",
+        "transcriber": "faster-whisper",
+        "whisper_model": "small",
+        "tier": "mainstream",
+        "recommended": True,
+        "capabilities": ["text", "vision"],
+    },
+    {
+        "key": "zhipu",
+        "label": "智谱 GLM",
+        "base_url": "https://open.bigmodel.cn/api/paas/v4",
+        "model": "glm-5v-turbo",
+        "transcriber": "faster-whisper",
+        "whisper_model": "small",
+        "tier": "mainstream",
+        "recommended": True,
+        "capabilities": ["text", "vision"],
+    },
+    {
+        "key": "doubao",
+        "label": "豆包 火山方舟",
+        "base_url": "https://ark.cn-beijing.volces.com/api/v3",
+        "model": "doubao-seed-2-0-lite-260215",
+        "transcriber": "faster-whisper",
+        "whisper_model": "small",
+        "tier": "mainstream",
+        "recommended": True,
+        "capabilities": ["text"],
+    },
+    {
+        "key": "minimax",
+        "label": "MiniMax",
+        "base_url": "https://api.minimaxi.com/v1",
+        "model": "MiniMax-M2.7",
+        "transcriber": "faster-whisper",
+        "whisper_model": "small",
+        "tier": "mainstream",
+        "recommended": True,
+        "capabilities": ["text"],
+    },
+    {
+        "key": "qianfan",
+        "label": "百度千帆 ERNIE",
+        "base_url": "https://qianfan.baidubce.com/v2",
+        "model": "ernie-4.5-8k-preview",
         "transcriber": "faster-whisper",
         "whisper_model": "small",
         "tier": "mainstream",
@@ -2203,7 +2269,8 @@ def health_payload() -> dict:
         "yt_dlp_package_available": ytdlp_package_available,
         "yt_dlp_cli_path": ytdlp_cli,
         "yt_dlp_install_hint": "pip install yt-dlp" if not (ytdlp_package_available or ytdlp_cli) else "",
-        "vision_model_configured": bool(LLM_API_KEY),
+        "llm_model_configured": bool(LLM_API_KEY),
+        "vision_model_configured": bool(LLM_API_KEY) and llm_model_supports_vision(LLM_BASE_URL, LLM_MODEL),
         "default_llm_model": LLM_MODEL,
         "default_llm_base_url": LLM_BASE_URL,
         "default_llm_base_host": llm_base_host(LLM_BASE_URL),
@@ -2586,6 +2653,7 @@ def _answer_task_question(task: TaskRecord, request: TaskQuestionRequest) -> dic
                     }
                 ],
                 temperature=0.2,
+                **chat_completion_provider_kwargs(base_url),
             )
             answer = response.choices[0].message.content or ""
             if answer.strip():
