@@ -161,7 +161,7 @@ assert.equal(context.resolveApiBase(
   { getItem: () => "http://localhost:9000/" }
 ), "http://localhost:9000");
 assert.match(indexHtml, /id="startupReadiness"/);
-assert.equal(context.safeNoteMediaUrl("/api/tasks/task-web/assets/grid_001.jpg"), "/api/tasks/task-web/assets/grid_001.jpg");
+assert.equal(context.safeNoteMediaUrl("/api/tasks/task-web/assets/grid_001.jpg"), "http://127.0.0.1:8765/api/tasks/task-web/assets/grid_001.jpg");
 vm.runInContext(`API = "http://127.0.0.1:8766";`, context);
 assert.equal(context.safeNoteMediaUrl("/api/tasks/task-web/assets/grid_001.jpg"), "http://127.0.0.1:8766/api/tasks/task-web/assets/grid_001.jpg");
 assert.equal(context.safeNoteMediaUrl("http://127.0.0.1:8765/api/tasks/task-web/assets/grid_001.jpg"), "http://127.0.0.1:8766/api/tasks/task-web/assets/grid_001.jpg");
@@ -2236,7 +2236,7 @@ const taskPreviewWithImage = context.taskPreviewHtml({
   }]
 });
 assert.match(taskPreviewWithImage, /class="task-preview status-success"/);
-assert.match(taskPreviewWithImage, /<img src="\/api\/tasks\/task-preview\/assets\/grid_000.jpg"/);
+assert.match(taskPreviewWithImage, /<img src="http:\/\/127\.0\.0\.1:8765\/api\/tasks\/task-preview\/assets\/grid_000.jpg"/);
 assert.match(taskPreviewWithImage, /00:00:00 - 00:03:00/);
 
 const taskPreviewFallback = context.taskPreviewHtml({

@@ -281,6 +281,14 @@ def build_matrix(*, include_acceptance_gate: bool = True) -> list[ReadinessItem]
     compose = read_text(ROOT / "compose.yaml")
     container_workflow = read_text(ROOT / ".github" / "workflows" / "container.yml")
     public_preview = read_text(ROOT / "scripts" / "start-public-preview.ps1")
+    desktop_main = read_text(ROOT / "desktop" / "main.py")
+    desktop_start = read_text(ROOT / "start-desktop.ps1")
+    desktop_requirements = read_text(ROOT / "backend" / "requirements.desktop.txt")
+    desktop_release = read_text(ROOT / ".github" / "workflows" / "desktop-release.yml")
+    public_site_html = read_text(ROOT / "site" / "index.html")
+    public_site_css = read_text(ROOT / "site" / "styles.css")
+    public_site_start = read_text(ROOT / "scripts" / "start-public-site.ps1")
+    pages_workflow = read_text(ROOT / ".github" / "workflows" / "pages.yml")
     readme = read_text(ROOT / "README.md")
     audits = collect_site_audits()
 
@@ -455,6 +463,41 @@ def build_matrix(*, include_acceptance_gate: bool = True) -> list[ReadinessItem]
             (ROOT / "backend" / "app" / "main.py", "public Basic auth and same-origin write protection"),
             (ROOT / "web" / "workspace.css", "responsive BiliNote-style workspace"),
             (ROOT / "scripts" / "start-public-preview.ps1", "temporary protected public preview"),
+        ],
+    ))
+
+    desktop_ready = (
+        has_all(desktop_main, ["127.0.0.1", "webview.create_window", "uvicorn.Server", "server.should_exit", "LEARNNOTE_DATA_DIR"])
+        and has_all(desktop_start + desktop_requirements + desktop_release, ["requirements.desktop.txt", "pywebview", "pyinstaller", "LearnNote-Windows-x64.zip"])
+    )
+    rows.append(item(
+        "windows_desktop_client",
+        "Windows desktop client",
+        "pass" if desktop_ready else "fail",
+        "A WebView2 desktop shell owns a loopback-only backend, D-drive data, graceful shutdown, and portable Windows release build." if desktop_ready else "Desktop shell or release evidence is incomplete.",
+        [
+            (ROOT / "desktop" / "main.py", "WebView2 window and owned loopback backend"),
+            (ROOT / "start-desktop.ps1", "D-drive one-command desktop launcher"),
+            (ROOT / ".github" / "workflows" / "desktop-release.yml", "portable Windows release artifact"),
+        ],
+    ))
+
+    public_site_ready = (
+        has_all(public_site_html + public_site_css, ["LearnNote", "下载 Windows 版", "本地处理", "不录屏", "不刷课", "learnnote-desktop.png"])
+        and has_all(public_site_start, ["http.server", "cloudflared", "No login is required"])
+        and has_all(pages_workflow, ["deploy-pages", "site"])
+        and "password" not in public_site_html.lower()
+    )
+    rows.append(item(
+        "public_marketing_site",
+        "No-login public marketing site",
+        "pass" if public_site_ready else "fail",
+        "The public site is static, requires no login, exposes no processing API, shows the real desktop client, and links to Windows releases." if public_site_ready else "Public-site separation or deployment evidence is incomplete.",
+        [
+            (ROOT / "site" / "index.html", "public product, workflow, privacy, and download content"),
+            (ROOT / "site" / "assets" / "learnnote-desktop.png", "real desktop-client screenshot"),
+            (ROOT / "scripts" / "start-public-site.ps1", "no-login static public tunnel"),
+            (ROOT / ".github" / "workflows" / "pages.yml", "static GitHub Pages deployment"),
         ],
     ))
 

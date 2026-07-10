@@ -1253,7 +1253,7 @@ function taskHistoryPreviewHtml(task = {}) {
       : task.error_code || taskStatusText(task);
   if (firstWindow?.grid_url) {
     return `<figure class="history-task-preview status-${escapeHtml(status)}">
-      <img src="${escapeHtml(firstWindow.grid_url)}" alt="${escapeHtml(firstWindow.id || "frame grid")}">
+      <img src="${safeNoteMediaUrl(firstWindow.grid_url)}" alt="${escapeHtml(firstWindow.id || "frame grid")}">
       <figcaption><b>${escapeHtml(label)}</b><span>${escapeHtml(detail)}</span></figcaption>
     </figure>`;
   }
@@ -6985,7 +6985,7 @@ function noteVisualRail(task, limit = 4) {
     <div class="note-visual-list">
       ${windows.map(window => `
         <figure>
-          <img src="${escapeHtml(window.grid_url)}" alt="${escapeHtml(window.id)} frame grid">
+          <img src="${safeNoteMediaUrl(window.grid_url)}" alt="${escapeHtml(window.id)} frame grid">
           <figcaption>
             <strong>${escapeHtml(window.id)}</strong>
             <span>${fmt(window.start)} - ${fmt(window.end)} · ${window.frame_count || 0} 帧</span>
@@ -7018,7 +7018,7 @@ function transcriptTimeline(transcript, task, limit = 100) {
         : `<p class="muted">这个画面窗口没有匹配到字幕段落。</p>`;
     return `<section class="transcript-window" data-visual-window="${escapeHtml(window.id || "")}" data-window-start="${seekTimeValue(window.start)}">
       <figure>
-        ${window.grid_url ? `<img src="${escapeHtml(window.grid_url)}" alt="${escapeHtml(window.id)} frame grid">` : ""}
+        ${window.grid_url ? `<img src="${safeNoteMediaUrl(window.grid_url)}" alt="${escapeHtml(window.id)} frame grid">` : ""}
         <figcaption>
           <strong>${escapeHtml(window.id)}</strong>
           <span>${fmt(window.start)} - ${fmt(window.end)} · ${window.frame_count || 0} 帧</span>

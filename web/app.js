@@ -484,9 +484,10 @@ function selectTask(taskId, { clearCaches = true, syncUrl = true } = {}) {
 function safeNoteMediaUrl(value) {
   const raw = String(value || "").trim();
   if (!raw) return "";
+  const runtimeBackend = API || (isBackendSameOrigin() ? window.location.origin : "");
   const localMatch = /^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?(\/(?:api|data)\/.*)$/i.exec(raw);
-  if (localMatch && API) return escapeHtml(`${API}${localMatch[1]}`);
-  if (/^\/(?:api|data)\//i.test(raw)) return escapeHtml(API ? `${API}${raw}` : raw);
+  if (localMatch && runtimeBackend) return escapeHtml(`${runtimeBackend}${localMatch[1]}`);
+  if (/^\/(?:api|data)\//i.test(raw)) return escapeHtml(runtimeBackend ? `${runtimeBackend}${raw}` : raw);
   if (/^https?:\/\//i.test(raw)) return escapeHtml(raw);
   return "";
 }
@@ -3440,7 +3441,7 @@ function taskPreviewHtml(task) {
       : task.error_code || statusText(task);
   if (firstWindow?.grid_url) {
     return `<figure class="task-preview status-${escapeHtml(status)}">
-      <img src="${escapeHtml(firstWindow.grid_url)}" alt="${escapeHtml(firstWindow.id || "frame grid")}">
+      <img src="${safeNoteMediaUrl(firstWindow.grid_url)}" alt="${escapeHtml(firstWindow.id || "frame grid")}">
       <figcaption><b>${escapeHtml(label)}</b><span>${escapeHtml(detail)}</span></figcaption>
     </figure>`;
   }
@@ -5221,7 +5222,7 @@ function visualRail(task, limit = 8) {
     <div class="visual-rail-list">
       ${windows.slice(0, limit).map(window => `
         <figure>
-          <img src="${escapeHtml(window.grid_url)}" alt="${escapeHtml(window.id)} frame grid">
+          <img src="${safeNoteMediaUrl(window.grid_url)}" alt="${escapeHtml(window.id)} frame grid">
           <figcaption>
             <strong>${escapeHtml(window.id)}</strong>
             <span>${fmt(window.start)} - ${fmt(window.end)} · ${window.frame_count} 帧</span>
@@ -5399,7 +5400,7 @@ function transcriptTimeline(transcript, task, limit = Infinity) {
         : `<p class="muted">这个画面窗口没有匹配到字幕段落。</p>`;
     return `<section class="transcript-window" data-visual-window="${escapeHtml(window.id || "")}" data-window-start="${seekTimeValue(window.start)}">
       <figure>
-        ${window.grid_url ? `<img src="${escapeHtml(window.grid_url)}" alt="${escapeHtml(window.id)} frame grid">` : ""}
+        ${window.grid_url ? `<img src="${safeNoteMediaUrl(window.grid_url)}" alt="${escapeHtml(window.id)} frame grid">` : ""}
         <figcaption>
           <strong>${escapeHtml(window.id)}</strong>
           <span>${fmt(window.start)} - ${fmt(window.end)} · ${window.frame_count || 0} 帧</span>

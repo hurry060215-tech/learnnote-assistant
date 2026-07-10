@@ -1,17 +1,19 @@
 :root {
-  --ln-bg: #f7f9f9;
+  --ln-bg: #f3f9fa;
   --ln-surface: #ffffff;
-  --ln-line: #dfe6e4;
-  --ln-line-strong: #ccd8d5;
-  --ln-text: #17201e;
-  --ln-muted: #66736f;
-  --ln-soft: #eef5f3;
-  --ln-accent: #078c82;
-  --ln-accent-dark: #066f68;
-  --ln-warn: #d88718;
+  --ln-line: #d8e6e8;
+  --ln-line-strong: #bfd3d7;
+  --ln-text: #10272d;
+  --ln-muted: #5b7278;
+  --ln-soft: #e6f5f6;
+  --ln-accent: #0b8795;
+  --ln-accent-dark: #086b7d;
+  --ln-blue: #2f6fd3;
+  --ln-green: #13a087;
+  --ln-warn: #cb7a14;
   --ln-danger: #c64d42;
   --ln-radius: 6px;
-  --ln-shadow: 0 10px 26px rgba(28, 52, 47, .07);
+  --ln-shadow: 0 12px 30px rgba(24, 71, 79, .09);
 }
 
 * {
@@ -54,7 +56,7 @@ a:focus-visible {
   min-height: 60px;
   padding: 0 22px;
   border-bottom: 1px solid var(--ln-line);
-  background: rgba(255, 255, 255, .96);
+  background: rgba(249, 253, 253, .97);
   box-shadow: none;
   backdrop-filter: blur(12px);
 }
@@ -68,7 +70,7 @@ a:focus-visible {
   height: 32px;
   border-radius: 6px;
   color: #fff;
-  background: var(--ln-accent);
+  background: #087f8d;
   box-shadow: none;
   font-size: 12px;
   font-weight: 800;
@@ -95,7 +97,7 @@ a:focus-visible {
   border: 0;
   border-radius: 4px;
   color: var(--ln-muted);
-  background: #f4f7f6;
+  background: #edf7f7;
   font-size: 12px;
 }
 
@@ -103,7 +105,7 @@ a:focus-visible {
   left: 10px;
   width: 7px;
   height: 7px;
-  background: #2da76d;
+  background: var(--ln-green);
   box-shadow: none;
 }
 
@@ -125,10 +127,10 @@ a:focus-visible {
 
 .app-shell {
   display: grid;
-  grid-template-columns: 118px minmax(560px, 1fr) 320px;
+  grid-template-columns: 124px minmax(640px, 1fr) 340px;
   grid-template-rows: auto auto;
   height: auto;
-  width: min(1580px, 100%);
+  width: min(1920px, 100%);
   min-height: calc(100vh - 60px);
   margin: 0 auto;
   gap: 0;
@@ -143,11 +145,11 @@ a:focus-visible {
   align-self: start;
   display: flex;
   flex-direction: column;
-  width: 118px;
+  width: 124px;
   height: calc(100vh - 60px);
   padding: 24px 12px;
   border-right: 1px solid var(--ln-line);
-  background: #fbfcfc;
+  background: #f7fbfc;
   gap: 8px;
 }
 
@@ -178,12 +180,12 @@ a:focus-visible {
 
 .nav-item:hover {
   color: var(--ln-text);
-  background: #f0f4f3;
+  background: #eaf4f5;
 }
 
 .nav-item.active {
   color: var(--ln-accent-dark);
-  background: #e8f3f1;
+  background: #dff2f4;
 }
 
 .nav-item.active::before {
@@ -326,7 +328,7 @@ a:focus-visible {
 .field select:hover,
 .queue-tools input:hover,
 .queue-tools select:hover {
-  border-color: #9eafaa;
+  border-color: #8faeb4;
 }
 
 .field input:focus,
@@ -350,7 +352,7 @@ a:focus-visible {
   border: 1px solid var(--ln-line);
   border-radius: 5px;
   color: var(--ln-muted);
-  background: #f8faf9;
+  background: #f3f9fa;
   font-size: 12px;
 }
 
@@ -430,7 +432,7 @@ a:focus-visible {
   height: 28px;
   border-radius: 5px;
   color: var(--ln-accent);
-  background: #e7f3f1;
+  background: #dff3f5;
   place-items: center;
 }
 
@@ -596,7 +598,7 @@ a:focus-visible {
   border: 0;
   border-left: 3px solid #d6e1de;
   border-radius: 0;
-  background: #f8faf9;
+  background: #f3f9fa;
 }
 
 .boundary-note strong,
@@ -609,13 +611,13 @@ a:focus-visible {
   min-height: 164px;
   border: 1px dashed #aabbb7;
   border-radius: 5px;
-  background: #fafcfc;
+  background: #f7fbfc;
 }
 
 .dropzone:hover,
 .dropzone.drag {
   border-color: var(--ln-accent);
-  background: #f1f8f7;
+  background: #e9f7f7;
 }
 
 .options-disclosure {
@@ -656,14 +658,14 @@ a:focus-visible {
   grid-column: 3;
   grid-row: 1 / 3;
   align-self: start;
-  width: 320px;
+  width: 340px;
   height: calc(100vh - 60px);
   min-height: 0;
   padding: 28px 20px;
   overflow: auto;
   border: 0;
   border-radius: 0;
-  background: #fbfcfc;
+  background: #f6fbfc;
   box-shadow: none;
 }
 
@@ -683,7 +685,7 @@ a:focus-visible {
   height: 24px;
   border-radius: 4px;
   color: var(--ln-muted);
-  background: #edf2f1;
+  background: #e5f1f3;
   font-size: 11px;
 }
 
@@ -735,7 +737,7 @@ a:focus-visible {
 .task-item.active,
 .task-card.active {
   border-color: var(--ln-line);
-  background: #f1f6f5;
+  background: #e9f5f6;
   transform: none;
 }
 

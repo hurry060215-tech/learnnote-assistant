@@ -38,6 +38,8 @@ class ProductReadinessAuditTest(unittest.TestCase):
             "local_regression_samples",
             "startup_onboarding",
             "protected_web_deployment",
+            "windows_desktop_client",
+            "public_marketing_site",
             "generic_adapter_direction",
             "product_acceptance_gate",
             "real_site_chaoxing",

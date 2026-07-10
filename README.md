@@ -152,9 +152,38 @@ Open the local web UI after startup:
 http://127.0.0.1:8765
 ```
 
-## Protected Website Deployment
+## Windows Desktop Client
 
-LearnNote can run as a complete personal website, not only as an unpacked extension. The deployed service includes the Web UI, FastAPI, yt-dlp, FFmpeg, faster-whisper, local uploads, task history, and persistent artifacts. Public mode is intentionally single-user and requires HTTP Basic authentication; it is not a multi-tenant SaaS account system like BiliNote Pro.
+The primary product is the local Windows desktop client. It opens in its own WebView2 window, starts FastAPI on `127.0.0.1`, stores tasks under the D-drive project directory, and shuts down the backend it owns when the window closes:
+
+```powershell
+.\start-desktop.ps1
+```
+
+The first run installs `pywebview` into the D-drive virtual environment. Tagged releases build a portable `LearnNote-Windows-x64.zip`; extract it to D: and run `LearnNote.exe`. The browser extension remains the current-page handoff: it detects the playing page and sends accessible media evidence to the desktop backend without recording the tab.
+
+## Public Website
+
+`site/` is the no-login public LearnNote introduction and download website. It is deliberately static: it does not expose FastAPI, accept video uploads, read browser cookies, or receive model API keys.
+
+Preview it locally:
+
+```powershell
+python -m http.server 8790 --bind 127.0.0.1 --directory site
+```
+
+Start a temporary public site with no login prompt:
+
+```powershell
+.\scripts\start-public-site.ps1 -Detach
+.\scripts\stop-public-site.ps1
+```
+
+The `Public Website` GitHub Actions workflow deploys the same static directory to GitHub Pages. Its Windows download buttons point to the latest GitHub Release.
+
+## Optional Personal Server Deployment
+
+The complete processing application can still be deployed privately for one owner. Unlike the public introduction site, this surface includes FastAPI, yt-dlp, FFmpeg, faster-whisper, uploads, task history, and persistent artifacts, so public mode requires HTTP Basic authentication.
 
 ### Docker / VPS
 
@@ -169,7 +198,7 @@ Open `http://localhost:8765`. Data, uploads, task history, screenshots, and mode
 
 Images are published from `main` to `ghcr.io/hurry060215-tech/learnnote-assistant:latest`. Because the source repository is private, authenticate Docker to GHCR before pulling unless package visibility is changed explicitly.
 
-### Temporary Protected Public URL
+### Temporary Protected Processing URL
 
 On Windows, this starts a separate empty data workspace and an optional Cloudflare Quick Tunnel. The generated password is written under the ignored D-drive `data\config` directory and is never committed:
 
@@ -180,7 +209,7 @@ On Windows, this starts a separate empty data workspace and an optional Cloudfla
 .\scripts\stop-public-preview.ps1
 ```
 
-The public Web UI supports Bilibili/YouTube/page links and local uploads. Keep current-page browser-cookie extraction on the local extension/backend path: the protected cloud website deliberately does not embed or persist browser login credentials for multiple users.
+This protected processing URL is for personal remote access, not the public LearnNote website. Keep current-page browser-cookie extraction on the local extension/backend path.
 
 Load the browser extension:
 

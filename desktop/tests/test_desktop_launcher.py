@@ -1,0 +1,55 @@
+from __future__ import annotations
+
+import importlib.util
+import os
+import tempfile
+import unittest
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[2]
+MODULE_PATH = ROOT / "desktop" / "main.py"
+
+
+def load_module():
+    spec = importlib.util.spec_from_file_location("learnnote_desktop", MODULE_PATH)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Cannot load {MODULE_PATH}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+desktop = load_module()
+
+
+class DesktopLauncherTests(unittest.TestCase):
+    def test_available_port_returns_loopback_bindable_port(self):
+        port = desktop.available_port(18765)
+        self.assertGreaterEqual(port, 18765)
+        self.assertLess(port, 18785)
+
+    def test_configure_runtime_uses_application_data_and_local_origin(self):
+        previous = {key: os.environ.get(key) for key in (
+            "LEARNNOTE_DATA_DIR",
+            "LEARNNOTE_BACKEND_ORIGIN",
+            "LEARNNOTE_DEPLOYMENT_MODE",
+        )}
+        try:
+            with tempfile.TemporaryDirectory(dir=ROOT / "data") as temp_dir:
+                root = Path(temp_dir)
+                data_dir = desktop.configure_runtime(root, 18766)
+                self.assertEqual(root / "data", data_dir)
+                self.assertEqual(str(data_dir), os.environ["LEARNNOTE_DATA_DIR"])
+                self.assertEqual("http://127.0.0.1:18766", os.environ["LEARNNOTE_BACKEND_ORIGIN"])
+                self.assertEqual("desktop", os.environ["LEARNNOTE_DEPLOYMENT_MODE"])
+        finally:
+            for key, value in previous.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
+
+
+if __name__ == "__main__":
+    unittest.main()

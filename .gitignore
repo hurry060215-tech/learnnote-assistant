@@ -16,6 +16,7 @@ data/public-preview/
 .env.deploy
 data/test-runs/
 data/ui-audit/
+data/visual-audit/
 data/uploads/
 data/browser-profiles/
 data/config/

@@ -12188,3 +12188,31 @@ body[data-panel-mode="diagnostics"] .resource-panel {
     max-width: 180px;
   }
 }
+
+/* LearnNote blue-green product palette. */
+:root {
+  --bg: #f3f9fa;
+  --surface-soft: #f6fbfc;
+  --surface-strong: #e5f3f5;
+  --ink: #10272d;
+  --muted: #5b7278;
+  --border: #d8e6e8;
+  --border-strong: #bed2d7;
+  --accent: #0a8393;
+  --accent-strong: #086878;
+  --success: #139b82;
+  --ln-blue: #0a8393;
+  --ln-green: #139b82;
+}
+
+body {
+  background: var(--bg);
+}
+
+.mark {
+  background: #087f91;
+}
+
+.app-header {
+  background: rgba(249, 253, 253, .97);
+}
