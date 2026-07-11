@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import os
 import tempfile
 import unittest
@@ -107,6 +108,133 @@ class DesktopLauncherTests(unittest.TestCase):
                 api.export_task("../secrets", "markdown")
             with self.assertRaises(ValueError):
                 api.export_task("abcdef123456", "unknown")
+
+    def test_update_check_returns_verified_windows_installer_metadata(self):
+        checksum = "a" * 64
+        installer_url = (
+            "https://github.com/hurry060215-tech/learnnote-assistant/"
+            "releases/download/v9.8.7/LearnNote-Setup-x64.exe"
+        )
+
+        class Response:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {
+                    "tag_name": "v9.8.7",
+                    "html_url": "https://github.com/hurry060215-tech/learnnote-assistant/releases/tag/v9.8.7",
+                    "assets": [{
+                        "name": "LearnNote-Setup-x64.exe",
+                        "browser_download_url": installer_url,
+                        "digest": f"sha256:{checksum}",
+                    }],
+                }
+
+        with tempfile.TemporaryDirectory(dir=ROOT / "data") as temp_dir:
+            api = desktop.DesktopApi(Path(temp_dir))
+            with patch.object(desktop.requests, "get", return_value=Response()):
+                result = api.check_update()
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["installable"])
+        self.assertEqual(installer_url, result["installer_url"])
+        self.assertEqual(checksum, result["installer_sha256"])
+
+    def test_update_download_verifies_checksum_and_stays_under_data(self):
+        content = b"signed release installer bytes"
+        checksum = hashlib.sha256(content).hexdigest()
+        installer_url = (
+            "https://github.com/hurry060215-tech/learnnote-assistant/"
+            "releases/download/v9.8.7/LearnNote-Setup-x64.exe"
+        )
+
+        class Response:
+            headers = {"Content-Length": str(len(content))}
+
+            def raise_for_status(self):
+                return None
+
+            def iter_content(self, chunk_size):
+                self.chunk_size = chunk_size
+                return iter((content[:10], content[10:]))
+
+        with tempfile.TemporaryDirectory(dir=ROOT / "data") as temp_dir:
+            api = desktop.DesktopApi(Path(temp_dir))
+            with patch.object(desktop.requests, "get", return_value=Response()):
+                result = api.download_update("9.8.7", installer_url, checksum)
+            target = Path(result["path"])
+            self.assertEqual(Path(temp_dir) / "installers" / "v9.8.7", target.parent)
+            self.assertEqual(content, target.read_bytes())
+
+    def test_update_check_falls_back_to_release_page_and_checksum_asset(self):
+        checksum = "b" * 64
+
+        class ApiLimitedResponse:
+            def raise_for_status(self):
+                raise desktop.requests.HTTPError("rate limited")
+
+        class LatestReleaseResponse:
+            url = "https://github.com/hurry060215-tech/learnnote-assistant/releases/tag/v9.8.7"
+
+            def raise_for_status(self):
+                return None
+
+        class ChecksumsResponse:
+            text = f"{checksum}  LearnNote-Setup-x64.exe\n"
+
+            def raise_for_status(self):
+                return None
+
+        with tempfile.TemporaryDirectory(dir=ROOT / "data") as temp_dir:
+            api = desktop.DesktopApi(Path(temp_dir))
+            with patch.object(
+                desktop.requests,
+                "get",
+                side_effect=[ApiLimitedResponse(), LatestReleaseResponse(), ChecksumsResponse()],
+            ):
+                result = api.check_update()
+        self.assertTrue(result["installable"])
+        self.assertEqual("9.8.7", result["latest_version"])
+        self.assertEqual(checksum, result["installer_sha256"])
+
+    def test_update_rejects_untrusted_url_and_arbitrary_installer_path(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / "data") as temp_dir:
+            api = desktop.DesktopApi(Path(temp_dir))
+            with self.assertRaises(ValueError):
+                api.download_update("9.8.7", "https://example.com/LearnNote-Setup-x64.exe", "a" * 64)
+            unrelated = Path(temp_dir) / "LearnNote-Setup-x64.exe"
+            unrelated.write_bytes(b"not an update")
+            with self.assertRaises(ValueError):
+                api.install_update("9.8.7", str(unrelated))
+
+    def test_update_install_schedules_wait_install_and_restart_script(self):
+        class Window:
+            def destroy(self):
+                return None
+
+        with tempfile.TemporaryDirectory(dir=ROOT / "data") as temp_dir:
+            root = Path(temp_dir)
+            data_dir = root / "data"
+            installer = data_dir / "installers" / "v9.8.7" / "LearnNote-Setup-x64.exe"
+            installer.parent.mkdir(parents=True)
+            installer.write_bytes(b"verified installer")
+            (root / "LearnNote.exe").write_bytes(b"desktop app")
+            api = desktop.DesktopApi(data_dir)
+            api.bind_window(Window())
+            with (
+                patch.object(desktop, "application_root", return_value=root),
+                patch.object(desktop.subprocess, "Popen") as popen,
+                patch.object(desktop.threading, "Timer") as timer,
+            ):
+                result = api.install_update("9.8.7", str(installer))
+            script = (installer.parent / "install-update.ps1").read_text(encoding="utf-8-sig")
+        self.assertTrue(result["installing"])
+        self.assertIn("Wait-Process", script)
+        self.assertIn("/VERYSILENT", script)
+        self.assertIn("Start-Process -FilePath $app", script)
+        popen.assert_called_once()
+        timer.assert_called_once()
+        timer.return_value.start.assert_called_once()
 
     def test_release_build_analyzes_dynamic_backend_imports(self):
         workflow = (ROOT / ".github" / "workflows" / "desktop-release.yml").read_text(encoding="utf-8")

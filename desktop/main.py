@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import re
 import socket
+import subprocess
 import sys
 import threading
 import time
 import webbrowser
 from pathlib import Path
-from urllib.parse import unquote
+from urllib.parse import unquote, urlparse
 
 import requests
 import uvicorn
@@ -18,6 +20,10 @@ from desktop.credentials import delete_secret, read_secret, write_secret
 
 
 GITHUB_LATEST_RELEASE_API = "https://api.github.com/repos/hurry060215-tech/learnnote-assistant/releases/latest"
+GITHUB_LATEST_RELEASE_PAGE = "https://github.com/hurry060215-tech/learnnote-assistant/releases/latest"
+GITHUB_RELEASE_BASE = "https://github.com/hurry060215-tech/learnnote-assistant/releases"
+WINDOWS_INSTALLER_NAME = "LearnNote-Setup-x64.exe"
+MAX_UPDATE_BYTES = 500 * 1024 * 1024
 DESKTOP_MODEL_PROVIDER = "kimi"
 DESKTOP_MODEL_BASE_URL = "https://api.moonshot.cn/v1"
 DESKTOP_MODEL_NAME = "kimi-k2.6"
@@ -41,6 +47,10 @@ class DesktopApi:
     def __init__(self, data_dir: Path, backend_url: str = ""):
         self.data_dir = data_dir
         self.backend_url = backend_url.rstrip("/") or os.getenv("LEARNNOTE_BACKEND_ORIGIN", "http://127.0.0.1:8765").rstrip("/")
+        self.window = None
+
+    def bind_window(self, window) -> None:
+        self.window = window
 
     def save_model_key(self, provider: str, api_key: str) -> dict:
         write_secret(provider, api_key)
@@ -113,9 +123,178 @@ class DesktopApi:
             payload = response.json()
             tag = str(payload.get("tag_name") or "").lstrip("v")
             url = str(payload.get("html_url") or "")
-            return {"ok": True, "latest_version": tag, "release_url": url}
-        except (requests.RequestException, ValueError) as exc:
-            return {"ok": False, "message": str(exc)}
+            installer = next(
+                (asset for asset in payload.get("assets") or [] if asset.get("name") == WINDOWS_INSTALLER_NAME),
+                {},
+            )
+            digest = str(installer.get("digest") or "")
+            sha256 = digest.removeprefix("sha256:") if digest.startswith("sha256:") else ""
+            installer_url = str(installer.get("browser_download_url") or "")
+            installable = bool(
+                re.fullmatch(r"\d+\.\d+\.\d+", tag)
+                and re.fullmatch(r"[a-fA-F0-9]{64}", sha256)
+                and self._valid_installer_url(tag, installer_url)
+            )
+            result = {
+                "ok": True,
+                "latest_version": tag,
+                "release_url": url,
+                "installer_url": installer_url if installable else "",
+                "installer_sha256": sha256.lower() if installable else "",
+                "installable": installable,
+            }
+            return result if installable else self._check_update_without_api()
+        except (requests.RequestException, ValueError):
+            try:
+                return self._check_update_without_api()
+            except (requests.RequestException, ValueError) as exc:
+                return {"ok": False, "message": str(exc)}
+
+    def _check_update_without_api(self) -> dict:
+        release = requests.get(
+            GITHUB_LATEST_RELEASE_PAGE,
+            timeout=8.0,
+            allow_redirects=True,
+            headers={"User-Agent": "LearnNote-Desktop-Updater"},
+        )
+        release.raise_for_status()
+        match = re.fullmatch(
+            r"https://github\.com/hurry060215-tech/learnnote-assistant/releases/tag/v(\d+\.\d+\.\d+)/?",
+            str(release.url or ""),
+        )
+        if not match:
+            raise ValueError("GitHub latest release redirect is invalid")
+        version = match.group(1)
+        asset_base = f"{GITHUB_RELEASE_BASE}/download/v{version}"
+        checksums = requests.get(
+            f"{asset_base}/SHA256SUMS.txt",
+            timeout=8.0,
+            headers={"User-Agent": "LearnNote-Desktop-Updater"},
+        )
+        checksums.raise_for_status()
+        checksum_match = re.search(
+            rf"(?mi)^([a-f0-9]{{64}})\s+\*?{re.escape(WINDOWS_INSTALLER_NAME)}\s*$",
+            checksums.text,
+        )
+        if not checksum_match:
+            raise ValueError("Release checksum file does not contain the Windows installer")
+        installer_url = f"{asset_base}/{WINDOWS_INSTALLER_NAME}"
+        return {
+            "ok": True,
+            "latest_version": version,
+            "release_url": f"{GITHUB_RELEASE_BASE}/tag/v{version}",
+            "installer_url": installer_url,
+            "installer_sha256": checksum_match.group(1).lower(),
+            "installable": True,
+        }
+
+    @staticmethod
+    def _valid_installer_url(version: str, url: str) -> bool:
+        parsed = urlparse(str(url or ""))
+        expected_path = f"/hurry060215-tech/learnnote-assistant/releases/download/v{version}/{WINDOWS_INSTALLER_NAME}"
+        return parsed.scheme == "https" and parsed.netloc == "github.com" and parsed.path == expected_path and not parsed.query
+
+    def download_update(self, version: str, url: str, sha256: str) -> dict:
+        version = str(version or "").strip()
+        sha256 = str(sha256 or "").strip().lower()
+        if not re.fullmatch(r"\d+\.\d+\.\d+", version) or not self._valid_installer_url(version, url):
+            raise ValueError("Unsupported update installer URL")
+        if not re.fullmatch(r"[a-f0-9]{64}", sha256):
+            raise ValueError("Invalid update checksum")
+
+        update_dir = (self.data_dir / "installers" / f"v{version}").resolve()
+        update_dir.mkdir(parents=True, exist_ok=True)
+        target = (update_dir / WINDOWS_INSTALLER_NAME).resolve()
+        partial = target.with_suffix(".download")
+        if target.parent != update_dir or partial.parent != update_dir:
+            raise ValueError("Unsafe update path")
+
+        if target.is_file() and target.stat().st_size <= MAX_UPDATE_BYTES:
+            cached_digest = hashlib.sha256()
+            with target.open("rb") as existing:
+                for chunk in iter(lambda: existing.read(1024 * 1024), b""):
+                    cached_digest.update(chunk)
+            if cached_digest.hexdigest() == sha256:
+                return {
+                    "ok": True,
+                    "path": str(target),
+                    "version": version,
+                    "bytes": target.stat().st_size,
+                    "sha256": sha256,
+                    "cached": True,
+                }
+            target.unlink()
+
+        response = requests.get(
+            url,
+            stream=True,
+            timeout=(5.0, 300.0),
+            headers={"Accept": "application/octet-stream", "User-Agent": "LearnNote-Desktop-Updater"},
+        )
+        response.raise_for_status()
+        content_length = int(response.headers.get("Content-Length") or 0)
+        if content_length > MAX_UPDATE_BYTES:
+            raise ValueError("Update installer is unexpectedly large")
+
+        digest = hashlib.sha256()
+        written = 0
+        try:
+            with partial.open("wb") as output:
+                for chunk in response.iter_content(chunk_size=1024 * 1024):
+                    if not chunk:
+                        continue
+                    written += len(chunk)
+                    if written > MAX_UPDATE_BYTES:
+                        raise ValueError("Update installer is unexpectedly large")
+                    digest.update(chunk)
+                    output.write(chunk)
+            if digest.hexdigest() != sha256:
+                raise ValueError("Update installer checksum mismatch")
+            partial.replace(target)
+        except Exception:
+            partial.unlink(missing_ok=True)
+            raise
+        return {"ok": True, "path": str(target), "version": version, "bytes": written, "sha256": sha256}
+
+    def install_update(self, version: str, installer_path: str) -> dict:
+        version = str(version or "").strip()
+        if not re.fullmatch(r"\d+\.\d+\.\d+", version):
+            raise ValueError("Invalid update version")
+        update_dir = (self.data_dir / "installers" / f"v{version}").resolve()
+        installer = Path(str(installer_path or "")).resolve()
+        if installer != update_dir / WINDOWS_INSTALLER_NAME or not installer.is_file():
+            raise ValueError("Update installer is not ready")
+        root = application_root().resolve()
+        app_path = (root / "LearnNote.exe").resolve()
+        if root.drive.upper() == "C:" or not app_path.is_file() or self.window is None:
+            raise RuntimeError("Automatic update is only available in the installed desktop client")
+
+        def ps_literal(value: Path | str) -> str:
+            return "'" + str(value).replace("'", "''") + "'"
+
+        script_path = update_dir / "install-update.ps1"
+        log_path = update_dir / "install.log"
+        script = "\n".join([
+            "$ErrorActionPreference = 'Stop'",
+            f"$parentPid = {os.getpid()}",
+            "$parent = Get-Process -Id $parentPid -ErrorAction SilentlyContinue",
+            "if ($parent) { Wait-Process -Id $parentPid }",
+            f"$installer = {ps_literal(installer)}",
+            f"$app = {ps_literal(app_path)}",
+            f"$installDir = {ps_literal(root)}",
+            f"$log = {ps_literal(log_path)}",
+            "$arguments = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', ('/DIR=\"' + $installDir + '\"'), ('/LOG=\"' + $log + '\"'))",
+            "$result = Start-Process -FilePath $installer -ArgumentList $arguments -WindowStyle Hidden -Wait -PassThru",
+            "if ($result.ExitCode -eq 0) { Start-Process -FilePath $app -WorkingDirectory $installDir }",
+        ]) + "\n"
+        script_path.write_text(script, encoding="utf-8-sig")
+        subprocess.Popen(
+            ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script_path)],
+            cwd=str(update_dir),
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        threading.Timer(0.4, self.window.destroy).start()
+        return {"ok": True, "installing": True, "version": version}
 
     def open_release(self, url: str) -> dict:
         if not str(url).startswith("https://github.com/hurry060215-tech/learnnote-assistant/releases/"):
@@ -216,6 +395,7 @@ def run() -> int:
 
     try:
         wait_for_backend(backend_url)
+        desktop_api = DesktopApi(data_dir, backend_url)
         window = webview.create_window(
             "LearnNote",
             backend_url,
@@ -224,8 +404,9 @@ def run() -> int:
             min_size=(1024, 700),
             text_select=True,
             confirm_close=False,
-            js_api=DesktopApi(data_dir, backend_url),
+            js_api=desktop_api,
         )
+        desktop_api.bind_window(window)
         window.events.loaded += lambda: window.set_title("LearnNote - Video Learning Notes")
         webview.start(debug=args.debug, private_mode=False)
     finally:

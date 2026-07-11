@@ -310,14 +310,14 @@ assert.match(stylesCss, /\.workspace-panel \.source-pane\s*\{\s*order: 4;/);
 assert.match(stylesCss, /\.workspace-panel \.source-route-rail\s*\{\s*display: none;/);
 assert.match(stylesCss, /\.capture-flow\s*\{\s*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);/);
 assert.match(indexHtml, /id="toggleWorkspaceButton"/);
-assert.match(indexHtml, /styles\.css\?v=20260711-v015/);
-assert.match(indexHtml, /app\.js\?v=20260711-v015/);
+assert.match(indexHtml, /styles\.css\?v=20260711-v016/);
+assert.match(indexHtml, /app\.js\?v=20260711-v016/);
 assert.match(indexHtml, /id="sourceRouteRail"/);
 assert.match(indexHtml, /id="urlPreflightReport"/);
 assert.match(indexHtml, /href="#settingsView" data-app-view="settings" title="设置"/);
 assert.doesNotMatch(indexHtml, /href="#settings" title="设置"/);
-assert.match(indexHtml, /workspace\.css\?v=20260711-v015/);
-assert.match(indexHtml, /product\.css\?v=20260711-v015/);
+assert.match(indexHtml, /workspace\.css\?v=20260711-v016/);
+assert.match(indexHtml, /product\.css\?v=20260711-v016/);
 assert.match(indexHtml, /<body data-app-view="workspace">/);
 assert.match(indexHtml, /id="settingsView"/);
 assert.match(indexHtml, /data-settings-tab="general"/);
@@ -334,6 +334,7 @@ assert.match(indexHtml, /class="result-tab" role="tab" aria-selected="false" dat
 assert.match(indexHtml, /class="result-tab" role="tab" aria-selected="false" data-tab="diagnostics">任务诊断/);
 assert.match(indexHtml, /id="onboardingOverlay"/);
 assert.match(indexHtml, /id="openOnboardingButton"/);
+assert.match(indexHtml, /id="installUpdateButton"[\s\S]*下载并安装/);
 assert.match(indexHtml, /id="llmProvider"/);
 assert.match(indexHtml, /value="kimi" selected>Kimi/);
 assert.match(indexHtml, /id="recentNotesRail"/);
@@ -3284,3 +3285,24 @@ assert.equal(elements.get("#frameInterval").value, "30");
 assert.equal(elements.get("#gridSize").value, "4x3");
 assert.equal(elements.get("#visualUnderstanding").checked, false);
 assert.equal(JSON.parse(context.window.localStorage.getItem("learnnote_app_settings")).defaultSource, "local");
+
+const updateCalls = [];
+context.window.pywebview = { api: {
+  async download_update(version, url, sha256) {
+    updateCalls.push(["download", version, url, sha256]);
+    return { ok: true, path: "D:\\LearnNote\\data\\installers\\v9.8.7\\LearnNote-Setup-x64.exe" };
+  },
+  async install_update(version, path) {
+    updateCalls.push(["install", version, path]);
+    return { ok: true, installing: true };
+  }
+} };
+vm.runInContext(`tasks = []; pendingDesktopUpdate = {
+  version: "9.8.7",
+  url: "https://github.com/hurry060215-tech/learnnote-assistant/releases/download/v9.8.7/LearnNote-Setup-x64.exe",
+  sha256: "${"a".repeat(64)}"
+};`, context);
+await context.installDesktopUpdate();
+assert.equal(updateCalls.length, 2);
+assert.deepEqual(updateCalls[0].slice(0, 2), ["download", "9.8.7"]);
+assert.deepEqual(updateCalls[1], ["install", "9.8.7", "D:\\LearnNote\\data\\installers\\v9.8.7\\LearnNote-Setup-x64.exe"]);

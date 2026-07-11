@@ -280,6 +280,7 @@ let pendingCleanupPreview = null;
 let desktopCredentialKey = "";
 let desktopCredentialProvider = "";
 let pendingReleaseUrl = "";
+let pendingDesktopUpdate = null;
 let appSettings = { ...DEFAULT_APP_SETTINGS };
 let taskStatusSnapshot = new Map();
 let taskStatusSnapshotReady = false;
@@ -317,6 +318,7 @@ const els = {
   nativeDesktopSettings: document.querySelector("#nativeDesktopSettings"),
   openDataFolderButton: document.querySelector("#openDataFolderButton"),
   checkUpdateButton: document.querySelector("#checkUpdateButton"),
+  installUpdateButton: document.querySelector("#installUpdateButton"),
   openReleaseButton: document.querySelector("#openReleaseButton"),
   updateStatus: document.querySelector("#updateStatus"),
   settingsSavedStatus: document.querySelector("#settingsSavedStatus"),
@@ -653,12 +655,50 @@ async function checkDesktopUpdate() {
     const current = lastHealthData?.app_version || "0.0.0";
     pendingReleaseUrl = result?.release_url || "";
     const newer = result?.ok && isNewerVersion(result.latest_version, current);
+    pendingDesktopUpdate = newer && result?.installable ? {
+      version: result.latest_version,
+      url: result.installer_url,
+      sha256: result.installer_sha256
+    } : null;
     if (els.updateStatus) els.updateStatus.textContent = result?.ok
-      ? newer ? `发现 v${result.latest_version}，更新前请先关闭正在运行的任务` : `当前 v${current} 已是最新版本`
+      ? newer
+        ? result.installable ? `发现 v${result.latest_version}，可直接下载并安装` : `发现 v${result.latest_version}，安装包暂不可用`
+        : `当前 v${current} 已是最新版本`
       : "暂时无法连接 GitHub，请稍后重试";
+    if (els.installUpdateButton) {
+      els.installUpdateButton.hidden = !pendingDesktopUpdate;
+      els.installUpdateButton.textContent = pendingDesktopUpdate ? `更新到 v${result.latest_version}` : "下载并安装";
+    }
     if (els.openReleaseButton) els.openReleaseButton.hidden = !newer;
   } finally {
     els.checkUpdateButton.disabled = false;
+  }
+}
+
+async function installDesktopUpdate() {
+  const api = desktopApi();
+  if (!api || !pendingDesktopUpdate || !els.installUpdateButton) return;
+  const activeTasks = tasks.filter(task => task.status === "running" || task.status === "queued");
+  if (activeTasks.length) {
+    if (els.updateStatus) els.updateStatus.textContent = `还有 ${activeTasks.length} 个任务正在处理，完成后再更新`;
+    return;
+  }
+  els.installUpdateButton.disabled = true;
+  if (els.checkUpdateButton) els.checkUpdateButton.disabled = true;
+  if (els.updateStatus) els.updateStatus.textContent = `正在下载 v${pendingDesktopUpdate.version}，请保持客户端运行`;
+  try {
+    const downloaded = await api.download_update(
+      pendingDesktopUpdate.version,
+      pendingDesktopUpdate.url,
+      pendingDesktopUpdate.sha256
+    );
+    if (!downloaded?.ok) throw new Error("更新包下载失败");
+    if (els.updateStatus) els.updateStatus.textContent = "校验完成，客户端将关闭并自动重启";
+    await api.install_update(pendingDesktopUpdate.version, downloaded.path);
+  } catch (error) {
+    if (els.updateStatus) els.updateStatus.textContent = error?.message || "自动更新失败，可打开版本说明手动安装";
+    els.installUpdateButton.disabled = false;
+    if (els.checkUpdateButton) els.checkUpdateButton.disabled = false;
   }
 }
 
@@ -7495,6 +7535,7 @@ els.saveCredentialButton?.addEventListener?.("click", saveDesktopCredential);
 els.deleteCredentialButton?.addEventListener?.("click", deleteDesktopCredential);
 els.openDataFolderButton?.addEventListener?.("click", () => desktopApi()?.open_data_folder?.());
 els.checkUpdateButton?.addEventListener?.("click", checkDesktopUpdate);
+els.installUpdateButton?.addEventListener?.("click", installDesktopUpdate);
 els.openReleaseButton?.addEventListener?.("click", () => {
   if (pendingReleaseUrl) desktopApi()?.open_release?.(pendingReleaseUrl);
 });
