@@ -12313,3 +12313,645 @@ body[data-panel-mode="study"] .current-card .workbench-local-fallback {
   height: 44px;
   font-size: 13px;
 }
+
+/* Side Panel visual v2: one obvious learning path at a 420px panel width. */
+:root {
+  --bg: #f5f8fa;
+  --surface: #ffffff;
+  --surface-soft: #f3f7f8;
+  --surface-strong: #e8f4f3;
+  --ink: #17252a;
+  --muted: #66777d;
+  --border: #e2e9ec;
+  --border-strong: #cbd8dd;
+  --accent: #087f8c;
+  --accent-strong: #066a76;
+  --success: #159778;
+  --ln-blue: #2d6cdf;
+  --ln-green: #159778;
+  --shadow: 0 8px 24px rgba(30, 55, 65, 0.06);
+  font-family: "Segoe UI Variable Text", "Segoe UI Variable", "Microsoft YaHei UI", "PingFang SC", sans-serif;
+}
+
+html {
+  background: var(--bg);
+}
+
+body[data-ui="learnnote-sidepanel-v2"] {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  overflow-x: hidden;
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.5;
+  letter-spacing: 0;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] button,
+body[data-ui="learnnote-sidepanel-v2"] input,
+body[data-ui="learnnote-sidepanel-v2"] select,
+body[data-ui="learnnote-sidepanel-v2"] summary {
+  letter-spacing: 0;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] button,
+body[data-ui="learnnote-sidepanel-v2"] input,
+body[data-ui="learnnote-sidepanel-v2"] select,
+body[data-ui="learnnote-sidepanel-v2"] .current-card,
+body[data-ui="learnnote-sidepanel-v2"] .resource-panel,
+body[data-ui="learnnote-sidepanel-v2"] .progress-panel,
+body[data-ui="learnnote-sidepanel-v2"] .history-panel,
+body[data-ui="learnnote-sidepanel-v2"] .result-panel,
+body[data-ui="learnnote-sidepanel-v2"] .options-disclosure,
+body[data-ui="learnnote-sidepanel-v2"] .local-video-card,
+body[data-ui="learnnote-sidepanel-v2"] .backend-settings-panel {
+  border-radius: 8px;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .app-header {
+  min-height: 68px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: none;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .brand {
+  flex: 1 1 auto;
+  gap: 10px;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .brand > div:last-child {
+  min-width: 0;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .mark {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: #173a4c;
+  box-shadow: none;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .brand h1 {
+  color: var(--ink);
+  font-size: 17px;
+  font-weight: 720;
+  line-height: 1.2;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] #backendStatus {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.25;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .header-actions {
+  gap: 6px;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .icon-button {
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #52666e;
+  box-shadow: none;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .icon-button:hover {
+  border-color: var(--border);
+  background: var(--surface-soft);
+  color: var(--accent);
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .side-shell {
+  display: grid;
+  gap: 12px;
+  padding: 14px 14px 28px;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .current-card,
+body[data-ui="learnnote-sidepanel-v2"] .resource-panel,
+body[data-ui="learnnote-sidepanel-v2"] .progress-panel,
+body[data-ui="learnnote-sidepanel-v2"] .history-panel,
+body[data-ui="learnnote-sidepanel-v2"] .result-panel,
+body[data-ui="learnnote-sidepanel-v2"] .options-disclosure,
+body[data-ui="learnnote-sidepanel-v2"] .local-video-card {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: none;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .current-card {
+  order: 1;
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+  box-shadow: var(--shadow);
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .progress-panel { order: 2; }
+body[data-ui="learnnote-sidepanel-v2"] .resource-panel { order: 3; }
+body[data-ui="learnnote-sidepanel-v2"] .actions { order: 4; }
+body[data-ui="learnnote-sidepanel-v2"] .options-disclosure { order: 5; }
+body[data-ui="learnnote-sidepanel-v2"] .local-video-card { order: 6; }
+body[data-ui="learnnote-sidepanel-v2"] .history-panel { order: 7; }
+body[data-ui="learnnote-sidepanel-v2"] .result-panel { order: 8; }
+
+body[data-ui="learnnote-sidepanel-v2"] .source-switcher {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border: 0;
+  border-radius: 8px;
+  background: #eef3f5;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .current-card .source-switcher button {
+  grid-column: auto !important;
+  min-width: 0;
+  min-height: 40px;
+  height: 40px;
+  gap: 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #53666d;
+  padding: 0 8px;
+  box-shadow: none;
+  font-size: 12px;
+  font-weight: 620;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .current-card .source-switcher button.active {
+  background: var(--surface);
+  color: var(--accent-strong);
+  box-shadow: 0 1px 4px rgba(27, 57, 67, 0.1);
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .product-mode-bar {
+  display: flex;
+  justify-content: flex-start;
+  gap: 18px;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .product-mode-bar button {
+  position: relative;
+  flex: 0 0 auto;
+  min-height: 32px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  padding: 0 2px;
+  font-size: 13px;
+  font-weight: 620;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .product-mode-bar button.active {
+  background: transparent;
+  color: var(--ink);
+  box-shadow: none;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .product-mode-bar button.active::after {
+  position: absolute;
+  right: 2px;
+  bottom: 0;
+  left: 2px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+  content: "";
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .current-card > .section-head {
+  align-items: flex-start;
+  padding: 10px 2px 0;
+  border-top: 1px solid var(--border);
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .current-card > .section-head span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 560;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .current-card .section-head strong,
+body[data-ui="learnnote-sidepanel-v2"] .current-card #pageTitle {
+  display: block;
+  margin-top: 3px;
+  color: var(--ink);
+  font-size: 18px;
+  font-weight: 720;
+  line-height: 1.35;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .current-card #pageUrl,
+body[data-ui="learnnote-sidepanel-v2"] .current-card .mode-row,
+body[data-ui="learnnote-sidepanel-v2"] .current-card #launchBar {
+  display: none;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .current-card .study-workbench {
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .current-card .workbench-hero {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .current-card .workbench-title {
+  gap: 4px;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .current-card .workbench-title > span {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .current-card .workbench-title strong {
+  color: var(--ink);
+  font-size: 20px;
+  font-weight: 740;
+  line-height: 1.35;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .current-card .workbench-title small {
+  max-width: 34em;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 450;
+  line-height: 1.55;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .current-card .workbench-primary,
+body[data-ui="learnnote-sidepanel-v2"] .current-card .launch-bar-actions button.primary {
+  width: 100%;
+  min-height: 48px;
+  height: 48px;
+  justify-content: center;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--accent);
+  color: #ffffff;
+  padding: 0 16px;
+  box-shadow: 0 6px 14px rgba(8, 127, 140, 0.16);
+  font-size: 15px;
+  font-weight: 700;
+  transition: background 167ms ease, border-color 167ms ease, transform 167ms ease, box-shadow 167ms ease;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .current-card .workbench-primary:hover {
+  border-color: var(--accent-strong);
+  background: var(--accent-strong);
+  box-shadow: 0 8px 18px rgba(8, 106, 118, 0.2);
+  transform: translateY(-1px);
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .current-card .study-flow-board {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0;
+  padding: 14px 0 0;
+  border-top: 1px solid var(--border);
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .current-card .study-flow-board::before {
+  position: absolute;
+  top: 26px;
+  right: 12.5%;
+  left: 12.5%;
+  height: 2px;
+  background: #dce7ea;
+  content: "";
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .current-card .study-flow-board section {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 0 3px;
+  border: 0;
+  background: transparent;
+  text-align: center;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .current-card .study-flow-board i {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border: 2px solid #d7e2e6;
+  border-radius: 50%;
+  background: var(--surface);
+  color: #71838a;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 750;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .current-card .study-flow-board section.active i,
+body[data-ui="learnnote-sidepanel-v2"] .current-card .study-flow-board section.pass i,
+body[data-ui="learnnote-sidepanel-v2"] .current-card .study-flow-board section.ready i {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #ffffff;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .current-card .study-flow-board span {
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.25;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .current-card .study-flow-board strong,
+body[data-ui="learnnote-sidepanel-v2"] .current-card .study-flow-board small {
+  display: none;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .progress-panel {
+  gap: 8px;
+  padding: 12px 14px;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .progress-panel .section-head span,
+body[data-ui="learnnote-sidepanel-v2"] .history-panel .section-head span {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 680;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .progress {
+  height: 4px;
+  border-radius: 4px;
+  background: #e5edef;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .progress span {
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--accent), var(--ln-blue));
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .stage-rail {
+  display: none;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .progress-panel #taskMessage {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .options-disclosure,
+body[data-ui="learnnote-sidepanel-v2"] .local-video-card,
+body[data-ui="learnnote-sidepanel-v2"] .history-panel {
+  box-shadow: none;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .options-disclosure summary {
+  min-height: 50px;
+  padding: 0 14px;
+  background: transparent;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .options-disclosure summary span {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 680;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .options-disclosure summary small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 450;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .options-disclosure .option-panel {
+  border-top: 1px solid var(--border);
+  background: #fbfcfd;
+  padding: 14px;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .local-video-card {
+  padding: 0;
+  background: var(--surface);
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .local-video-summary {
+  position: relative;
+  display: flex;
+  min-height: 58px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 38px 10px 14px;
+  cursor: pointer;
+  list-style: none;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .local-video-summary::-webkit-details-marker {
+  display: none;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .local-video-summary::after {
+  position: absolute;
+  top: 50%;
+  right: 15px;
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid #73868d;
+  border-bottom: 2px solid #73868d;
+  content: "";
+  transform: translateY(-68%) rotate(45deg);
+  transition: transform 167ms ease;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .local-video-card[open] .local-video-summary::after {
+  transform: translateY(-32%) rotate(225deg);
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .local-video-summary div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .local-video-summary span {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .local-video-summary strong {
+  display: block;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .local-video-summary em {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 650;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .local-video-card .workbench-local-pipeline {
+  display: none;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .local-drop {
+  margin: 0 14px 12px;
+  min-height: 72px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 8px;
+  background: #fbfcfd;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .local-video-actions button {
+  min-height: 40px;
+  border-radius: 7px;
+  font-size: 13px;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .local-video-actions {
+  margin: 0 14px 14px;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .history-panel {
+  padding: 12px 14px;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .task-history {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .actions {
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .actions button {
+  min-height: 40px;
+  height: 40px;
+  border-radius: 7px;
+  font-size: 13px;
+}
+
+body[data-ui="learnnote-sidepanel-v2"][data-panel-mode="study"] .current-card .source-route-rail,
+body[data-ui="learnnote-sidepanel-v2"][data-panel-mode="study"] .current-card .capture-cockpit,
+body[data-ui="learnnote-sidepanel-v2"][data-panel-mode="study"] .current-card #activeVideo,
+body[data-ui="learnnote-sidepanel-v2"][data-panel-mode="study"] .current-card #playbackReadiness,
+body[data-ui="learnnote-sidepanel-v2"][data-panel-mode="study"] .current-card .study-next-step,
+body[data-ui="learnnote-sidepanel-v2"][data-panel-mode="study"] .current-card .workbench-run-modes,
+body[data-ui="learnnote-sidepanel-v2"][data-panel-mode="study"] .current-card .workbench-slice-plan,
+body[data-ui="learnnote-sidepanel-v2"][data-panel-mode="study"] .current-card .workbench-note-preview,
+body[data-ui="learnnote-sidepanel-v2"][data-panel-mode="study"] .current-card .workbench-local-fallback,
+body[data-ui="learnnote-sidepanel-v2"][data-panel-mode="study"] .actions {
+  display: none;
+}
+
+body[data-ui="learnnote-sidepanel-v2"][data-panel-mode="diagnostics"] .current-card {
+  box-shadow: none;
+}
+
+body[data-ui="learnnote-sidepanel-v2"][data-panel-mode="diagnostics"] .current-card .study-flow-board,
+body[data-ui="learnnote-sidepanel-v2"][data-panel-mode="diagnostics"] .current-card .workbench-primary {
+  display: none;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .backend-settings-panel {
+  margin: 10px 14px 0;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .focus-pulse {
+  animation: sidepanel-focus 720ms ease-out;
+}
+
+@keyframes sidepanel-focus {
+  0% { box-shadow: 0 0 0 0 rgba(8, 127, 140, 0.28); }
+  100% { box-shadow: 0 0 0 8px rgba(8, 127, 140, 0); }
+}
+
+@media (max-width: 420px) {
+  body[data-ui="learnnote-sidepanel-v2"] .side-shell {
+    padding: 12px 12px 24px;
+  }
+
+  body[data-ui="learnnote-sidepanel-v2"] .current-card {
+    padding: 12px;
+  }
+
+  body[data-ui="learnnote-sidepanel-v2"] .current-card .source-switcher button {
+    gap: 4px;
+    padding: 0 5px;
+    font-size: 11.5px;
+  }
+
+  body[data-ui="learnnote-sidepanel-v2"] .current-card .source-switcher svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  body[data-ui="learnnote-sidepanel-v2"] .current-card .workbench-title strong {
+    font-size: 19px;
+  }
+}
+
+@media (max-width: 350px) {
+  body[data-ui="learnnote-sidepanel-v2"] .current-card .source-switcher button svg,
+  body[data-ui="learnnote-sidepanel-v2"] .product-mode-bar button svg {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body[data-ui="learnnote-sidepanel-v2"] *,
+  body[data-ui="learnnote-sidepanel-v2"] *::before,
+  body[data-ui="learnnote-sidepanel-v2"] *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

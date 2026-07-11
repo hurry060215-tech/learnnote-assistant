@@ -449,6 +449,8 @@ function showSettingsPane(name = "general") {
 
 function showAppView(view = "workspace") {
   const settingsMode = view === "settings";
+  const normalizedView = ["workspace", "notes", "history", "settings"].includes(view) ? view : "workspace";
+  if (document.body?.dataset) document.body.dataset.appView = normalizedView;
   document.body?.classList?.toggle("settings-mode", settingsMode);
   if (els.settingsView) els.settingsView.hidden = !settingsMode;
   document.querySelectorAll?.("[data-app-view]")?.forEach?.(item => {
@@ -6405,12 +6407,7 @@ async function renderDetail() {
     els.detail.innerHTML = `
       <div class="note-shell">
         ${taskOverview(task)}
-        ${noteHeroBanner(lastNote, task)}
-        ${noteReviewWorkbench(lastNote, task)}
         ${failureGuide(task)}
-        ${visionEvidenceBar(task)}
-        ${noteStudyBar(lastNote, task)}
-        ${noteExportCtaBar(task)}
         <div class="note-workbench">
           <article class="markdown-note">${lastNote ? markdownToHtml(lastNote) : emptyNoteHtml}</article>
           ${readingRail(lastNote, task)}

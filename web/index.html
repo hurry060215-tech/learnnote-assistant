@@ -7,8 +7,9 @@
     <link rel="icon" href="data:,">
     <link rel="stylesheet" href="/web/styles.css?v=20260710-bv-input">
     <link rel="stylesheet" href="/web/workspace.css?v=20260711-focus-settings">
+    <link rel="stylesheet" href="/web/product.css?v=20260711-product-redesign">
   </head>
-  <body>
+  <body data-app-view="workspace">
     <header class="topbar">
       <div class="brand">
         <div class="brand-mark">LN</div>
@@ -35,7 +36,7 @@
       <nav class="nav-rail" aria-label="主导航">
         <a id="workspaceNav" class="nav-item active" href="#workspace" data-app-view="workspace" title="创建笔记" aria-label="创建笔记">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></svg>
-          <span>创建笔记</span>
+          <span>新建笔记</span>
         </a>
         <a class="nav-item" href="#resultPanel" data-app-view="notes" title="笔记库" aria-label="笔记库">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h11a2 2 0 0 1 2 2v16l-4-2-4 2-4-2-4 2V5a2 2 0 0 1 2-2z"/><path d="M8 8h7M8 12h6"/></svg>
@@ -272,20 +273,20 @@
                 <span>yt-dlp 页面解析</span>
                 <span>Blob/MSE 来源映射</span>
               </div>
+
+              <div class="browser-actions">
+                <button id="copyBackendButton" class="secondary action-button" type="button">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8h11v13H8zM5 16H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h11a1 1 0 0 1 1 1v1"/></svg>
+                  复制后端地址
+                </button>
+                <button id="browserRefreshButton" class="secondary action-button" type="button">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 0 1-13.66 5.66M4 12A8 8 0 0 1 17.66 6.34M20 4v6h-6M4 20v-6h6"/></svg>
+                  刷新当前页状态
+                </button>
+              </div>
             </div>
 
             <div id="browserRouteSummary" class="browser-route-summary" aria-label="当前页直取状态"></div>
-
-            <div class="browser-actions">
-              <button id="copyBackendButton" class="secondary action-button" type="button">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8h11v13H8zM5 16H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h11a1 1 0 0 1 1 1v1"/></svg>
-                复制后端地址
-              </button>
-              <button id="browserRefreshButton" class="secondary action-button" type="button">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 0 1-13.66 5.66M4 12A8 8 0 0 1 17.66 6.34M20 4v6h-6M4 20v-6h6"/></svg>
-                刷新当前页状态
-              </button>
-            </div>
 
             <div class="boundary-note">
               <strong>不录制、不刷课、不绕过 DRM。</strong>
@@ -509,12 +510,12 @@
           <button class="result-tab" role="tab" aria-selected="false" data-tab="slices">学习切片</button>
           <button class="result-tab" role="tab" aria-selected="false" data-tab="frames">画面网格</button>
           <button class="result-tab" role="tab" aria-selected="false" data-tab="qa">问答</button>
-          <button class="result-tab" role="tab" aria-selected="false" data-tab="diagnostics">下载诊断</button>
+          <button class="result-tab" role="tab" aria-selected="false" data-tab="diagnostics">诊断</button>
         </div>
         <div id="detail" class="detail empty">任务完成后显示结构化结果。</div>
       </section>
     </main>
 
-    <script src="/web/app.js?v=20260711-focus-settings"></script>
+    <script src="/web/app.js?v=20260711-product-redesign"></script>
   </body>
 </html>

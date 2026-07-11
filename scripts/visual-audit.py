@@ -107,6 +107,9 @@ def audit_workspace(browser, base_url: str, output: Path, report: list[dict]) ->
     page.locator("#settingsCloseButton").click()
     page.wait_for_timeout(250)
 
+    page.locator('[data-app-view="notes"]').click()
+    page.wait_for_timeout(250)
+
     for tab in ("note", "transcript", "slices", "frames", "qa", "diagnostics"):
         locator = page.locator(f'button[data-tab="{tab}"]')
         if locator.is_visible():
@@ -118,9 +121,11 @@ def audit_workspace(browser, base_url: str, output: Path, report: list[dict]) ->
     page.set_viewport_size({"width": 390, "height": 844})
     page.goto(base_url, wait_until="domcontentloaded")
     page.wait_for_timeout(2500)
+    page.evaluate("() => scrollTo(0, 0)")
     capture(page, output, "client-mobile", report, errors)
     page.locator("#settingsNav").click()
     page.wait_for_timeout(300)
+    page.evaluate("() => scrollTo(0, 0)")
     capture(page, output, "client-settings-mobile", report, errors)
     page.close()
 

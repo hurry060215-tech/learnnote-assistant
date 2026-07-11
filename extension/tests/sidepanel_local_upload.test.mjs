@@ -168,7 +168,8 @@ const sidepanelCss = await readFile(new URL("../sidepanel.css", import.meta.url)
 vm.runInContext(sidepanelCode, context);
 
 await new Promise(resolve => setTimeout(resolve, 0));
-assert.match(sidepanelHtml, /sidepanel\.css\?v=20260711-first-use-focus/);
+assert.match(sidepanelHtml, /sidepanel\.css\?v=20260711-sidepanel-visual-v2/);
+assert.match(sidepanelHtml, /<body data-ui="learnnote-sidepanel-v2">/);
 assert.match(sidepanelHtml, /sidepanel\.js\?v=20260708-side-workbench/);
 assert.match(sidepanelHtml, /class="capture-cockpit"/);
 assert.match(sidepanelHtml, /当前页直取生产线/);
@@ -190,6 +191,9 @@ assert.match(sidepanelCss, /\.local-video-card/);
 assert.match(sidepanelCss, /\.local-video-actions/);
 assert.match(sidepanelCss, /writing-mode:\s*vertical-rl/);
 assert.match(sidepanelCss, /\.workbench-local-pipeline/);
+assert.match(sidepanelCss, /Side Panel visual v2: one obvious learning path at a 420px panel width/);
+assert.match(sidepanelCss, /grid-template-columns: repeat\(4, minmax\(0, 1fr\)\)/);
+assert.match(sidepanelCss, /body\[data-ui="learnnote-sidepanel-v2"\]\[data-panel-mode="study"\] \.actions/);
 assert.match(sidepanelHtml, /accept="video\/\*,\.mp4,\.m4v,\.mov,\.mkv,\.webm,\.flv,\.avi"/);
 assert.equal(context.isSupportedLocalVideoFile({ name: "lesson.mkv", type: "" }), true);
 assert.equal(context.isSupportedLocalVideoFile({ name: "lesson.flv", type: "" }), true);
