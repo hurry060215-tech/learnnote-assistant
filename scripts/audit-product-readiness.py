@@ -482,7 +482,16 @@ def build_matrix(*, include_acceptance_gate: bool = True) -> list[ReadinessItem]
     ))
 
     public_site_ready = (
-        has_all(public_site_html + public_site_css, ["LearnNote", "下载 Windows 版", "本地处理", "不录屏", "不刷课", "learnnote-desktop.png"])
+        has_all(public_site_html + public_site_css, [
+            "LearnNote",
+            "下载 Windows 版",
+            "安装浏览器扩展",
+            "笔记，不只是摘要",
+            "从你正在看的地方开始",
+            "内容留在你的设备，选择留给你",
+            "learnnote-desktop.png",
+            "learnnote-note.png",
+        ])
         and has_all(public_site_start, ["http.server", "cloudflared", "No login is required"])
         and "password" not in public_site_html.lower()
     )
@@ -494,6 +503,7 @@ def build_matrix(*, include_acceptance_gate: bool = True) -> list[ReadinessItem]
         [
             (ROOT / "site" / "index.html", "public product, workflow, privacy, and download content"),
             (ROOT / "site" / "assets" / "learnnote-desktop.png", "real desktop-client screenshot"),
+            (ROOT / "site" / "assets" / "learnnote-note.png", "real structured-note screenshot"),
             (ROOT / "scripts" / "start-public-site.ps1", "no-login static public tunnel"),
         ],
     ))
