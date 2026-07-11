@@ -2983,6 +2983,7 @@ class DownloaderBoundaryTests(unittest.TestCase):
 
     def test_ytdlp_fallback_receives_browser_http_headers(self) -> None:
         captured: dict = {}
+        progress_events: list[tuple[int, int | None, str]] = []
 
         class FakeYoutubeDL:
             def __init__(self, options):
@@ -2997,6 +2998,8 @@ class DownloaderBoundaryTests(unittest.TestCase):
             def extract_info(self, page_url, download):
                 captured["page_url"] = page_url
                 captured["download"] = download
+                for hook in captured["options"].get("progress_hooks", []):
+                    hook({"status": "downloading", "downloaded_bytes": 4096, "total_bytes": 8192})
                 output = Path(captured["options"]["outtmpl"].replace("%(ext)s", "mp4"))
                 output.parent.mkdir(parents=True, exist_ok=True)
                 output.write_bytes(b"0" * 5000)
@@ -3006,7 +3009,12 @@ class DownloaderBoundaryTests(unittest.TestCase):
         fake_module.YoutubeDL = FakeYoutubeDL
 
         with tempfile.TemporaryDirectory() as tmp, patch.dict(sys.modules, {"yt_dlp": fake_module}):
-            downloader = MediaDownloader(Path(tmp))
+            downloader = MediaDownloader(
+                Path(tmp),
+                progress_callback=lambda downloaded, total, candidate: progress_events.append(
+                    (downloaded, total, candidate.url)
+                ),
+            )
             media = downloader._download_with_ytdlp(
                 "https://course.example.com/lesson/1",
                 None,
@@ -3034,6 +3042,7 @@ class DownloaderBoundaryTests(unittest.TestCase):
             self.assertEqual(captured["options"]["http_headers"]["Referer"], "https://course.example.com/lesson/1")
             self.assertEqual(captured["options"]["http_headers"]["Origin"], "https://course.example.com")
             self.assertTrue(Path(captured["options"]["ffmpeg_location"]).is_file())
+            self.assertEqual(progress_events, [(4096, 8192, "https://cdn.example.com/lesson.m3u8")])
             self.assertEqual(downloader.resolved_title, "fake")
 
     def test_ytdlp_cli_receives_browser_context_and_timeout(self) -> None:

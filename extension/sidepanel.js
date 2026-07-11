@@ -1101,6 +1101,15 @@ function taskPhaseLabel(task = {}) {
   })[task.phase] || "处理中";
 }
 
+function taskElapsedText(task = {}) {
+  const started = Date.parse(task.created_at || "");
+  if (!Number.isFinite(started)) return "";
+  const seconds = Math.max(0, Math.floor((Date.now() - started) / 1000));
+  if (seconds < 60) return `${seconds} 秒`;
+  const minutes = Math.floor(seconds / 60);
+  return minutes < 60 ? `${minutes} 分钟` : `${Math.floor(minutes / 60)} 小时 ${minutes % 60} 分钟`;
+}
+
 function taskStatusText(task = {}) {
   if (task.status === "success") return "已完成";
   if (task.status === "failed") return task.error_code || "失败";
@@ -5496,7 +5505,9 @@ async function pollTask() {
   renderTaskHistory();
   els.progressBar.style.width = `${currentTask.progress || 0}%`;
   els.taskPhase.textContent = taskPhaseLabel(currentTask);
-  els.taskMessage.textContent = currentTask.error_detail || rerunFromMediaProgressMessage(currentTask) || currentTask.message || currentTask.phase;
+  const taskMessage = currentTask.error_detail || rerunFromMediaProgressMessage(currentTask) || currentTask.message || currentTask.phase;
+  const elapsed = ["running", "queued", "cancelling"].includes(currentTask.status) ? taskElapsedText(currentTask) : "";
+  els.taskMessage.textContent = [taskMessage, elapsed ? `已用时 ${elapsed}` : ""].filter(Boolean).join(" · ");
   if (currentTask.status === "success" || (currentTask.status === "failed" && hasReadableTaskArtifacts(currentTask))) {
     await loadResult();
     await loadTaskHistory();

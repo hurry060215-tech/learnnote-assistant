@@ -2299,6 +2299,15 @@ function taskPhaseLabel(task = {}) {
   })[task.phase] || "处理中";
 }
 
+function taskElapsedText(task = {}) {
+  const started = Date.parse(task.created_at || "");
+  if (!Number.isFinite(started)) return "";
+  const seconds = Math.max(0, Math.floor((Date.now() - started) / 1000));
+  if (seconds < 60) return `${seconds} 秒`;
+  const minutes = Math.floor(seconds / 60);
+  return minutes < 60 ? `${minutes} 分钟` : `${Math.floor(minutes / 60)} 小时 ${minutes % 60} 分钟`;
+}
+
 function sourceText(task) {
   if (task.mode === "download_only") return "当前页下载";
   if (task.mode === "rerun_from_media") return "复用本地视频";
@@ -4348,6 +4357,7 @@ function taskMetaLine(task) {
   return [
     sourceText(task),
     task.status === "running" || task.status === "queued" ? taskPhaseLabel(task) : "",
+    task.status === "running" || task.status === "queued" ? `已用时 ${taskElapsedText(task)}` : "",
   ].filter(Boolean).join(" · ");
 }
 

@@ -3068,11 +3068,29 @@ class MediaDownloader:
         if cookie_file:
             opts["cookiefile"] = str(cookie_file)
 
+        progress_candidate = (resources or [None])[0] if resources else None
+        if progress_candidate is None:
+            progress_candidate = ResourceCandidate(
+                url=page_url,
+                source="page-ytdlp",
+                kind="video",
+                label="yt-dlp page download",
+            )
+
+        def progress_hook(event: dict) -> None:
+            if event.get("status") != "downloading":
+                return
+            downloaded = int(event.get("downloaded_bytes") or 0)
+            total = int(event.get("total_bytes") or event.get("total_bytes_estimate") or 0) or None
+            self._notify_progress(downloaded, total, progress_candidate)
+
+        opts["progress_hooks"] = [progress_hook]
+
         before = set(self.download_dir.glob("*"))
         self._notify_status(
             f"正在使用 yt-dlp 下载页面视频，最多等待 {YTDLP_DOWNLOAD_TIMEOUT_SECONDS} 秒",
             18,
-            (resources or [None])[0] if resources else None,
+            progress_candidate,
         )
         if _should_run_ytdlp_cli(yt_dlp):
             title_capture_path = self.task_path / "ytdlp-title.txt"
