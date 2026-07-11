@@ -9,6 +9,7 @@ class FakeVideo {
     this.children = [];
     this.src = "";
     this.currentSrc = "";
+    this.poster = "/previews/lesson-cover.jpg";
     this.type = "";
     this.currentTime = 18;
     this.duration = 90;
@@ -104,6 +105,7 @@ messageListener({ type: "collect-page-data" }, {}, data => {
 });
 
 assert.equal(response.active_video.src, "");
+assert.equal(response.active_video.poster_url, "https://course.example.com/previews/lesson-cover.jpg");
 assert.equal(response.active_video.src_object, true);
 assert.equal(response.active_video.src_object_type, "MediaStream");
 assert.equal(response.active_video.src_object_track_count, 2);

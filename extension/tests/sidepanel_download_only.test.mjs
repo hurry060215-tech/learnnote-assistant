@@ -286,7 +286,7 @@ elements.get("#llmBaseUrl").value = "https://models.example/v1";
 elements.get("#llmApiKey").value = "sk-rerun";
 elements.get("#visualUnderstanding").checked = false;
 context.refreshOptionDependentUi();
-assert.match(elements.get("#currentStudyCard").innerHTML, /\u65e0\u89c6\u89c9/);
+assert.equal(context.visualPlanText(), "无视觉 · 仅转写");
 assert.match(elements.get("#launchBar").innerHTML, /\u65e0\u89c6\u89c9/);
 assert.match(elements.get("#routeSummary").innerHTML, /\u65e0\u89c6\u89c9/);
 context.fetch = async (url, options = {}) => {

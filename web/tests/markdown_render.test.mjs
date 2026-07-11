@@ -146,6 +146,7 @@ const webCode = await readFile(new URL("../app.js", import.meta.url), "utf8");
 const indexHtml = await readFile(new URL("../index.html", import.meta.url), "utf8");
 const stylesCss = await readFile(new URL("../styles.css", import.meta.url), "utf8");
 const workspaceCss = await readFile(new URL("../workspace.css", import.meta.url), "utf8");
+const productCss = await readFile(new URL("../product.css", import.meta.url), "utf8");
 vm.runInContext(webCode, context);
 
 await new Promise(resolve => setTimeout(resolve, 0));
@@ -310,14 +311,14 @@ assert.match(stylesCss, /\.workspace-panel \.source-pane\s*\{\s*order: 4;/);
 assert.match(stylesCss, /\.workspace-panel \.source-route-rail\s*\{\s*display: none;/);
 assert.match(stylesCss, /\.capture-flow\s*\{\s*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);/);
 assert.match(indexHtml, /id="toggleWorkspaceButton"/);
-assert.match(indexHtml, /styles\.css\?v=20260711-v017/);
-assert.match(indexHtml, /app\.js\?v=20260711-v017/);
+assert.match(indexHtml, /styles\.css\?v=20260711-v018/);
+assert.match(indexHtml, /app\.js\?v=20260711-v018/);
 assert.match(indexHtml, /id="sourceRouteRail"/);
 assert.match(indexHtml, /id="urlPreflightReport"/);
 assert.match(indexHtml, /href="#settingsView" data-app-view="settings" title="设置"/);
 assert.doesNotMatch(indexHtml, /href="#settings" title="设置"/);
-assert.match(indexHtml, /workspace\.css\?v=20260711-v017/);
-assert.match(indexHtml, /product\.css\?v=20260711-v017/);
+assert.match(indexHtml, /workspace\.css\?v=20260711-v018/);
+assert.match(indexHtml, /product\.css\?v=20260711-v018/);
 assert.match(indexHtml, /<body data-app-view="workspace">/);
 assert.match(indexHtml, /id="settingsView"/);
 assert.match(indexHtml, /data-settings-tab="general"/);
@@ -433,6 +434,31 @@ assert.match(indexHtml, /id="subtitlesButton"/);
 assert.match(indexHtml, /title="导出字幕"/);
 assert.match(indexHtml, /id="resultMoreActions"/);
 assert.match(indexHtml, /class="result-more-panel"/);
+assert.match(indexHtml, /id="unifiedExportButton"[^>]*>统一导出</);
+assert.equal((indexHtml.match(/id="resultMeta"/g) || []).length, 1);
+assert.match(indexHtml, /id="generateNoteButton"[\s\S]*在浏览器侧栏开始/);
+assert.doesNotMatch(indexHtml, /id="notePreset"/);
+assert.equal((indexHtml.match(/name="learningGoal"/g) || []).length, 4);
+const migratedTutorial = context.normalizedAppSettings({ notePreset: "tutorial" });
+assert.equal(migratedTutorial.noteStyle, "code");
+assert.equal(migratedTutorial.noteTemplate, "visual-handout");
+assert.equal(migratedTutorial.summaryDepth, "deep");
+context.applyLearningGoal("exam");
+assert.equal(elements.get("#noteStyle").value, "exam");
+assert.equal(elements.get("#noteTemplate").value, "qa");
+assert.equal(elements.get("#summaryDepth").value, "standard");
+assert.equal(context.readOptions().note_style, "exam");
+assert.equal(context.readOptions().note_template, "qa");
+assert.equal(context.readOptions().summary_depth, "standard");
+context.setSource("browser");
+assert.match(elements.get("#generateNoteHint").textContent, /扩展侧栏/);
+context.setSource("local");
+assert.equal(elements.get("#generateNoteHint").textContent, "选择视频后直接上传处理");
+context.setSource("browser");
+assert.match(productCss, /\.note-workbench\s*\{[\s\S]*grid-template-columns:\s*minmax\(720px, 820px\) minmax\(220px, 260px\)/);
+assert.match(productCss, /\.reading-rail\s*\{[\s\S]*position:\s*sticky;[\s\S]*min-width:\s*220px;[\s\S]*max-width:\s*260px;/);
+assert.match(productCss, /body\[data-app-view="notes"\] \.note-workbench > \.markdown-note[\s\S]*grid-column:\s*1;/);
+assert.match(productCss, /body\[data-app-view="notes"\] \.note-workbench > \.reading-rail[\s\S]*grid-column:\s*2;[\s\S]*order:\s*0;/);
 assert.match(indexHtml, /data-tab="slices">画面与时间轴/);
 assert.ok(
   indexHtml.indexOf('id="browserRouteSummary"') < indexHtml.indexOf('id="sourceWorkflow"'),
@@ -878,12 +904,8 @@ const readingRailHtml = context.readingRail("## 第一节", {
 });
 
 assert.match(readingRailHtml, /class="reading-rail"/);
-assert.match(readingRailHtml, /class="reading-progress-rail"/);
 assert.match(readingRailHtml, /class="note-outline"/);
-assert.match(readingRailHtml, /class="visual-rail"/);
-assert.match(readingRailHtml, /class="reading-actions-rail"/);
-assert.match(readingRailHtml, /读笔记/);
-assert.match(readingRailHtml, /看画面/);
+assert.doesNotMatch(readingRailHtml, /class="(?:reading-progress-rail|visual-rail|reading-actions-rail|reading-artifacts-rail)"/);
 
 const richReadingRailHtml = context.readingRail(`# 课程笔记
 
@@ -908,20 +930,9 @@ const richReadingRailHtml = context.readingRail(`# 课程笔记
     transcript_excerpt: "重点演示"
   }]
 });
-assert.match(richReadingRailHtml, /学习进度/);
-assert.match(richReadingRailHtml, /3 标题/);
-assert.match(richReadingRailHtml, /1 章节 · 1 小节/);
-assert.match(richReadingRailHtml, /1 窗口/);
-assert.match(richReadingRailHtml, /class="reading-artifacts-rail"/);
-assert.match(richReadingRailHtml, /Markdown/);
-assert.match(richReadingRailHtml, /字幕文件/);
-assert.match(richReadingRailHtml, /media\.mp4/);
-assert.match(richReadingRailHtml, /切片索引/);
-assert.match(richReadingRailHtml, /资料包/);
-assert.match(richReadingRailHtml, /\/api\/tasks\/task-reading-rail\/exports\/bundle/);
-assert.match(richReadingRailHtml, /\/api\/tasks\/task-reading-rail\/exports\/subtitles/);
-assert.match(richReadingRailHtml, /data-switch-result-tab="transcript"/);
-assert.match(richReadingRailHtml, /data-switch-result-tab="diagnostics"/);
+assert.match(richReadingRailHtml, /笔记目录/);
+assert.match(richReadingRailHtml, /3 节/);
+assert.doesNotMatch(richReadingRailHtml, /exports\/|data-switch-result-tab/);
 
 const reuseReadingRailHtml = context.readingRail("## Reuse", {
   id: "task-reuse-rail",
@@ -934,10 +945,8 @@ const reuseReadingRailHtml = context.readingRail("## Reuse", {
     rerun_from_media_ready: true
   }
 });
-assert.match(reuseReadingRailHtml, /data-switch-result-tab="transcript"/);
-assert.match(reuseReadingRailHtml, /\/api\/tasks\/task-reuse-rail\/exports\/subtitles/);
-assert.match(reuseReadingRailHtml, /\/api\/tasks\/task-reuse-rail\/exports\/media/);
-assert.match(reuseReadingRailHtml, /data-rerun-from-media="task-reuse-rail"/);
+assert.match(reuseReadingRailHtml, /笔记目录/);
+assert.doesNotMatch(reuseReadingRailHtml, /exports\/|data-switch-result-tab|data-rerun-from-media/);
 
 const visualDeckHtml = context.visualStudyDeck({
   id: "task-visual-deck",

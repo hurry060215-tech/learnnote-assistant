@@ -3121,11 +3121,28 @@ function workbenchStepItems(state) {
 
 function noteStyleText() {
   return ({
-    study: "学习笔记",
-    outline: "大纲",
-    exam: "考点",
-    code: "演示"
-  })[els.noteStyle?.value || "study"] || "学习笔记";
+    study: "自动整理",
+    concept: "深入理解",
+    concise: "快速回顾",
+    exam: "备考自测",
+    lecture: "深入理解",
+    code: "深入理解",
+    academic: "深入理解",
+    language: "深入理解"
+  })[els.noteStyle?.value || "study"] || "自动整理";
+}
+
+function applyLearningGoalDefaults() {
+  const goal = els.noteStyle?.value || "study";
+  const defaults = {
+    study: { template: "standard", depth: "standard" },
+    concept: { template: "visual-handout", depth: "deep" },
+    concise: { template: "timeline", depth: "brief" },
+    exam: { template: "qa", depth: "deep" }
+  }[goal];
+  if (!defaults) return;
+  if (els.noteTemplate) els.noteTemplate.value = defaults.template;
+  if (els.summaryDepth) els.summaryDepth.value = defaults.depth;
 }
 
 function workbenchFacts(state) {
@@ -3750,6 +3767,16 @@ function renderCurrentStudyCard() {
   const copy = currentStudyCopy(state);
   const primary = workbenchPrimaryAction(state);
   const diagnostic = panelMode === "diagnostics";
+  const selected = selectedResource();
+  const checked = currentPreflight();
+  const hasPlayer = hasActiveVideoSignal(page?.active_video);
+  const hasPixels = Boolean(currentTask?.visual_windows?.length || currentTask?.frame_grids?.length);
+  const steps = [
+    { label: "发现播放器", done: hasPlayer, active: !hasPlayer },
+    { label: "找到视频源", done: Boolean(selected), active: hasPlayer && !selected },
+    { label: "验证可下载", done: Boolean(checked?.downloadable), active: Boolean(selected) && !checked },
+    { label: "生成画面切片", done: hasPixels, active: Boolean(currentTask) && !hasPixels }
+  ];
   els.currentStudyCard.className = `current-study-card study-workbench ${state} ${diagnostic ? "diagnostic-mode" : "study-mode"}`;
   els.currentStudyCard.innerHTML = `
     <div class="workbench-hero">
@@ -3763,32 +3790,12 @@ function renderCurrentStudyCard() {
         ${escapeHtml(primary.label)}
       </button>
     </div>
-    ${diagnostic ? workbenchBriefHtml(state) : ""}
-    ${studyFlowBoardHtml(state)}
-    ${studyNextStepHtml(state)}
-    ${workbenchRunModesHtml(state)}
-    ${diagnostic ? workbenchUniversalAdapterHtml(state) : ""}
-    ${diagnostic ? workbenchRouteHtml() : ""}
-    ${workbenchSlicePlanHtml()}
-    ${workbenchNotePreviewHtml(state)}
-    ${diagnostic && shouldShowWorkbenchAudit(state) ? workbenchAuditGateHtml(state) : ""}
-    ${shouldShowWorkbenchFallback(state) ? workbenchLocalFallbackHtml(state) : ""}
-    ${diagnostic ? `<div class="workbench-steps">
-      ${workbenchStepItems(state).map((item, index) => `<section class="${escapeHtml(item.state)}">
-        <i>${index + 1}</i>
-        <span>${escapeHtml(item.label)}</span>
-        <b>${escapeHtml(item.value)}</b>
-      </section>`).join("")}
+    <div class="evidence-steps" aria-label="当前视频处理证据">
+      ${steps.map((item, index) => `<span class="${item.done ? "done" : item.active ? "active" : "pending"}">
+        <i>${item.done ? "✓" : index + 1}</i><b>${escapeHtml(item.label)}</b>
+      </span>`).join("")}
     </div>
-    <div class="workbench-facts">
-      ${workbenchFacts(state).map(item => `<span><b>${escapeHtml(item.value)}</b>${escapeHtml(item.label)}</span>`).join("")}
-    </div>
-    <div class="workbench-footer">
-      <p>${escapeHtml(currentStudyActionText(state))}</p>
-      <div class="workbench-actions">
-        ${workbenchSecondaryActions(state).map(([action, label]) => `<button type="button" data-route-action="${escapeHtml(action)}">${escapeHtml(label)}</button>`).join("")}
-      </div>
-    </div>` : ""}
+    ${diagnostic ? `${workbenchBriefHtml(state)}${workbenchRouteHtml()}${workbenchAuditGateHtml(state)}` : ""}
   `;
 }
 
@@ -4986,9 +4993,10 @@ function renderContext() {
       </div>
       <div class="active-video-metrics">
         <span><b>${escapeHtml(playbackSourceLabel(active))}</b>源类型</span>
-        <span><b>${escapeHtml(`${active.width || 0}x${active.height || 0}`)}</b>画面</span>
+        <span><b>${escapeHtml(`${active.width || 0}x${active.height || 0}`)}</b>播放器尺寸</span>
         <span><b>${escapeHtml(active.frame_id ?? "-")}</b>Frame</span>
       </div>
+      ${safeNoteMediaUrl(active.poster_url) ? `<img class="active-video-poster" src="${safeNoteMediaUrl(active.poster_url)}" alt="当前视频封面">` : ""}
       <code>${escapeHtml(activeSrcObjectOnly(active) ? srcObjectText(active) : compactUrl(active.src))}</code>
     `;
   } else {
@@ -8272,6 +8280,7 @@ if (els.cancelBackendSettingsButton) {
   els.whisperModel
 ].filter(Boolean).forEach(control => {
   control.addEventListener("change", () => {
+    if (control === els.noteStyle) applyLearningGoalDefaults();
     refreshOptionDependentUi();
     if ([els.llmProvider, els.transcriber, els.whisperModel].includes(control)) saveModelSettings();
   });

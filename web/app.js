@@ -49,12 +49,18 @@ const DEFAULT_APP_SETTINGS = Object.freeze({
   noteTemplate: "standard",
   summaryDepth: "standard"
 });
-const NOTE_PRESETS = Object.freeze({
+const LEGACY_NOTE_PRESETS = Object.freeze({
   course: { style: "study", template: "standard", depth: "standard" },
   review: { style: "exam", template: "qa", depth: "standard" },
   tutorial: { style: "code", template: "visual-handout", depth: "deep" },
   timeline: { style: "concise", template: "timeline", depth: "brief" },
   academic: { style: "academic", template: "standard", depth: "deep" }
+});
+const LEARNING_GOALS = Object.freeze({
+  auto: { style: "study", template: "standard", depth: "standard" },
+  deep: { style: "concept", template: "standard", depth: "deep" },
+  review: { style: "concise", template: "standard", depth: "brief" },
+  exam: { style: "exam", template: "qa", depth: "standard" }
 });
 const MAINSTREAM_MODEL_PROVIDER_KEYS = new Set([
   "openai", "groq", "gemini", "dashscope", "deepseek", "kimi", "zhipu", "doubao", "minimax", "qianfan"
@@ -361,10 +367,12 @@ const els = {
   transcriber: document.querySelector("#transcriber"),
   whisperModel: document.querySelector("#whisperModel"),
   asrModelHint: document.querySelector("#asrModelHint"),
-  notePreset: document.querySelector("#notePreset"),
+  learningGoals: document.querySelectorAll('input[name="learningGoal"]'),
+  generateNoteButton: document.querySelector("#generateNoteButton"),
+  generateNoteLabel: document.querySelector("#generateNoteLabel"),
+  generateNoteHint: document.querySelector("#generateNoteHint"),
   noteStyle: document.querySelector("#noteStyle"),
   noteTemplate: document.querySelector("#noteTemplate"),
-  notePresetHint: document.querySelector("#notePresetHint"),
   summaryDepth: document.querySelector("#summaryDepth"),
   llmProvider: document.querySelector("#llmProvider"),
   providerHint: document.querySelector("#providerHint"),
@@ -383,6 +391,7 @@ const els = {
   detail: document.querySelector("#detail"),
   continueFromMediaButton: document.querySelector("#continueFromMediaButton"),
   copyButton: document.querySelector("#copyButton"),
+  unifiedExportButton: document.querySelector("#unifiedExportButton"),
   bundleButton: document.querySelector("#bundleButton"),
   diagnosticsButton: document.querySelector("#diagnosticsButton"),
   visualWindowsButton: document.querySelector("#visualWindowsButton"),
@@ -410,6 +419,12 @@ function escapeHtml(value) {
 
 function normalizedAppSettings(value = {}) {
   const settings = { ...DEFAULT_APP_SETTINGS, ...(value && typeof value === "object" ? value : {}) };
+  const legacyPreset = LEGACY_NOTE_PRESETS[value?.notePreset];
+  if (legacyPreset) {
+    if (!value.noteStyle) settings.noteStyle = legacyPreset.style;
+    if (!value.noteTemplate) settings.noteTemplate = legacyPreset.template;
+    if (!value.summaryDepth) settings.summaryDepth = legacyPreset.depth;
+  }
   if (!["90", "100", "110", "125"].includes(String(settings.uiScale))) settings.uiScale = "100";
   if (!["compact", "standard", "large"].includes(settings.textSize)) settings.textSize = "standard";
   if (!["system", "light", "dark"].includes(settings.theme)) settings.theme = "light";
@@ -470,7 +485,7 @@ function applyAppSettings() {
   if (els.noteStyle) els.noteStyle.value = appSettings.noteStyle;
   if (els.noteTemplate) els.noteTemplate.value = appSettings.noteTemplate;
   if (els.summaryDepth) els.summaryDepth.value = appSettings.summaryDepth;
-  syncNotePresetFromOptions();
+  syncLearningGoalFromOptions();
 
   els.settingsSegmentButtons?.forEach?.(button => {
     const setting = button.parentElement?.dataset?.setting;
@@ -3433,32 +3448,28 @@ function syncTranscriberModelDefault(force = false) {
   }
 }
 
-function updateNotePresetHint() {
-  if (!els.notePresetHint) return;
-  const presetHints = {
-    course: "适合大多数课程：按章节整理概念、例子、重点与复习题。",
-    review: "面向考试：优先提取考点、易错点，并生成问答自测。",
-    tutorial: "适合软件与代码演示：保留画面步骤、命令和排错过程。",
-    timeline: "适合快速回顾：沿时间轴保留关键结论与跳转点。",
-    academic: "适合讲座与论文：整理研究问题、方法、证据和局限。",
-    custom: "已在设置中自定义笔记风格、格式或摘要深度。"
-  };
-  els.notePresetHint.textContent = presetHints[els.notePreset?.value || "custom"] || presetHints.custom;
-}
-
-function syncNotePresetFromOptions() {
-  if (!els.notePreset) return;
-  const match = Object.entries(NOTE_PRESETS).find(([, value]) =>
-    value.style === (els.noteStyle?.value || "study") &&
-    value.template === (els.noteTemplate?.value || "standard") &&
-    value.depth === (els.summaryDepth?.value || "standard")
+function learningGoalFromOptions(style, template, depth) {
+  const exact = Object.entries(LEARNING_GOALS).find(([, value]) =>
+    value.style === style && value.template === template && value.depth === depth
   );
-  els.notePreset.value = match?.[0] || "";
-  updateNotePresetHint();
+  if (exact) return exact[0];
+  if (style === "exam" || template === "qa" || template === "flashcards") return "exam";
+  if (depth === "deep") return "deep";
+  if (depth === "brief" || style === "concise" || template === "timeline") return "review";
+  return "auto";
 }
 
-function applyNotePreset(name) {
-  const preset = NOTE_PRESETS[name];
+function syncLearningGoalFromOptions() {
+  const goal = learningGoalFromOptions(
+    els.noteStyle?.value || "study",
+    els.noteTemplate?.value || "standard",
+    els.summaryDepth?.value || "standard"
+  );
+  els.learningGoals?.forEach?.(control => { control.checked = control.value === goal; });
+}
+
+function applyLearningGoal(name) {
+  const preset = LEARNING_GOALS[name];
   if (!preset) return;
   if (els.noteStyle) els.noteStyle.value = preset.style;
   if (els.noteTemplate) els.noteTemplate.value = preset.template;
@@ -3467,7 +3478,6 @@ function applyNotePreset(name) {
   appSettings.noteTemplate = preset.template;
   appSettings.summaryDepth = preset.depth;
   storeAppSettings();
-  updateNotePresetHint();
 }
 
 function healthVisionReady(data) {
@@ -3855,6 +3865,12 @@ function setSource(source) {
   selectedSource = source;
   els.sourceTabs.forEach(tab => tab.classList.toggle("active", tab.dataset.source === source));
   els.panes.forEach(pane => pane.classList.toggle("active", pane.id === `${source}Source`));
+  if (els.generateNoteLabel) els.generateNoteLabel.textContent = source === "browser" ? "在浏览器侧栏开始" : "生成笔记";
+  if (els.generateNoteHint) {
+    els.generateNoteHint.textContent = source === "browser"
+      ? "客户端不读取其他浏览器窗口；当前页任务由扩展侧栏安全交接"
+      : source === "local" ? "选择视频后直接上传处理" : "自动识别页面或媒体链接";
+  }
   renderSourceWorkflow();
 }
 
@@ -6021,13 +6037,8 @@ function readingActionsRail(task) {
 
 function readingRail(markdown, task) {
   const outline = noteOutline(markdown);
-  const visuals = visualRail(task);
-  const progress = readingProgressRail(markdown, task);
-  const artifacts = readingArtifactsRail(task);
-  const actions = readingActionsRail(task);
-  const blocks = [progress, outline, visuals, actions, artifacts].filter(Boolean);
-  if (!blocks.length) return "";
-  return `<aside class="reading-rail" aria-label="笔记阅读导航">${blocks.join("")}</aside>`;
+  if (!outline) return "";
+  return `<aside class="reading-rail" aria-label="笔记阅读导航">${outline}</aside>`;
 }
 
 function visualWindows(task) {
@@ -6851,6 +6862,7 @@ async function renderDetail() {
     lastNote = "";
     lastNoteTaskId = "";
     els.copyButton.disabled = true;
+    if (els.unifiedExportButton) els.unifiedExportButton.disabled = true;
     els.bundleButton.disabled = true;
     els.diagnosticsButton.disabled = true;
     if (els.visualWindowsButton) els.visualWindowsButton.disabled = true;
@@ -6868,6 +6880,7 @@ async function renderDetail() {
   els.detail.className = "detail";
   const hasNote = Boolean(task.note_path);
   els.copyButton.disabled = !hasNote;
+  if (els.unifiedExportButton) els.unifiedExportButton.disabled = !unifiedExportType(task);
   els.bundleButton.disabled = !hasTaskBundle(task);
   els.diagnosticsButton.disabled = !hasTaskDiagnostics(task);
   if (els.visualWindowsButton) els.visualWindowsButton.disabled = !hasVisualWindowExport(task);
@@ -6880,14 +6893,14 @@ async function renderDetail() {
   if (selectedTab === "note") {
     lastNote = await noteForTask(task.id);
     const emptyNoteHtml = hasExportableMedia(task) ? downloadOnlyEmptyNoteHtml(task) : "<p>笔记尚未生成。</p>";
+    const pendingContext = lastNote ? "" : `${taskOverview(task)}${failureGuide(task)}`;
     els.detail.innerHTML = `
       <div class="note-shell">
-        ${taskOverview(task)}
-        ${failureGuide(task)}
         <div class="note-workbench">
           <article class="markdown-note">${lastNote ? markdownToHtml(lastNote) : emptyNoteHtml}</article>
           ${readingRail(lastNote, task)}
         </div>
+        ${pendingContext}
       </div>
     `;
     bindTaskOverviewActions();
@@ -7157,6 +7170,29 @@ async function uploadSelectedFile(fileOverride = null) {
   }
 }
 
+async function generateNoteFromSelectedSource() {
+  if (!els.generateNoteButton) return;
+  els.generateNoteButton.disabled = true;
+  try {
+    if (selectedSource === "url") {
+      await startUrlTask("video");
+      return;
+    }
+    if (selectedSource === "local") {
+      if (!pendingLocalFile && !els.fileInput?.files?.[0]) {
+        els.fileInput?.click?.();
+        return;
+      }
+      await uploadSelectedFile(pendingLocalFile || els.fileInput?.files?.[0]);
+      return;
+    }
+    openOnboarding();
+    if (els.generateNoteHint) els.generateNoteHint.textContent = "在正在播放的视频页点击 LearnNote 扩展图标，再点“总结当前视频”";
+  } finally {
+    els.generateNoteButton.disabled = false;
+  }
+}
+
 els.sourceTabs.forEach(tab => {
   tab.onclick = () => setSource(tab.dataset.source);
 });
@@ -7344,6 +7380,7 @@ els.resultTabs.forEach(tab => {
 });
 
 els.startUrlButton.onclick = () => startUrlTask("video");
+if (els.generateNoteButton) els.generateNoteButton.onclick = generateNoteFromSelectedSource;
 if (els.preflightUrlButton) els.preflightUrlButton.onclick = preflightUrlTask;
 if (els.downloadUrlButton) els.downloadUrlButton.onclick = () => startUrlTask("download_only");
 if (els.toggleWorkspaceButton) {
@@ -7408,7 +7445,22 @@ async function exportTaskArtifact(taskId, exportType, button = null) {
 
 const exportSelectedTask = (exportType, button) => exportTaskArtifact(selectedTaskId, exportType, button);
 
+function unifiedExportType(task) {
+  if (hasTaskBundle(task)) return "bundle";
+  if (task?.note_path) return "markdown";
+  if (hasExportableMedia(task)) return "media";
+  if (hasTaskDiagnostics(task)) return "diagnostics";
+  return "";
+}
+
 els.bundleButton.onclick = () => exportSelectedTask("bundle", els.bundleButton);
+if (els.unifiedExportButton) {
+  els.unifiedExportButton.onclick = () => {
+    const task = tasks.find(item => item.id === selectedTaskId);
+    const exportType = unifiedExportType(task);
+    if (exportType) exportSelectedTask(exportType, els.unifiedExportButton);
+  };
+}
 if (els.manifestButton) {
   els.manifestButton.onclick = () => exportSelectedTask("manifest", els.manifestButton);
 }
@@ -7554,11 +7606,13 @@ window.addEventListener?.("pywebviewready", initializeDesktopBridge);
 ].filter(Boolean).forEach(control => {
   control.addEventListener("change", () => {
     refreshOptionDependentUi();
-    if (control === els.noteStyle || control === els.noteTemplate || control === els.summaryDepth) syncNotePresetFromOptions();
+    if (control === els.noteStyle || control === els.noteTemplate || control === els.summaryDepth) syncLearningGoalFromOptions();
     if ([els.llmProvider, els.transcriber, els.whisperModel].includes(control)) saveModelSettings();
   });
 });
-els.notePreset?.addEventListener?.("change", () => applyNotePreset(els.notePreset.value));
+els.learningGoals?.forEach?.(control => control.addEventListener?.("change", () => {
+  if (control.checked) applyLearningGoal(control.value);
+}));
 els.llmModel?.addEventListener("input", () => {
   updateHealthVisionStatus();
   updateStartupReadiness();
@@ -7582,7 +7636,7 @@ initializeResponsiveChrome();
 loadModelSettings();
 applyModelProviderPreset(false);
 syncTranscriberModelDefault(false);
-updateNotePresetHint();
+syncLearningGoalFromOptions();
 updateModelProviderHint();
 initializeWorkspaceView();
 if (!hasExplicitTaskRoute()) {

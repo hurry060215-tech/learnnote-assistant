@@ -102,6 +102,7 @@ class TaskOptions(BaseModel):
 
 class ActiveVideoInfo(BaseModel):
     src: str = ""
+    poster_url: str = ""
     src_object: bool = False
     src_object_type: str = ""
     src_object_track_count: int = 0

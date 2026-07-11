@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import math
 import re
 import subprocess
 from pathlib import Path
@@ -260,7 +261,28 @@ def _should_keep_sampled_frame(
     return timestamp - last_kept_timestamp >= max(1, coverage_gap)
 
 
-def _sample_frame_timestamps(duration: float, interval: int, max_frames: int = 900) -> list[int]:
+def _normalize_frame_anchor_timestamps(duration: float, anchor_timestamps: list[float] | None) -> list[int]:
+    if duration <= 0:
+        return []
+    last_seekable_second = max(0, int(math.ceil(duration)) - 1)
+    normalized = set()
+    for raw_timestamp in anchor_timestamps or []:
+        try:
+            timestamp = float(raw_timestamp)
+        except (TypeError, ValueError):
+            continue
+        if not math.isfinite(timestamp):
+            continue
+        normalized.add(min(last_seekable_second, max(0, int(round(timestamp)))))
+    return sorted(normalized)
+
+
+def _sample_frame_timestamps(
+    duration: float,
+    interval: int,
+    max_frames: int = 900,
+    anchor_timestamps: list[float] | None = None,
+) -> list[int]:
     if duration <= 0 or max_frames <= 0:
         return []
     interval = max(1, int(interval or 1))
@@ -274,10 +296,23 @@ def _sample_frame_timestamps(duration: float, interval: int, max_frames: int = 9
     if tail > timestamps[-1] and tail_gap >= max(5, int(interval * 0.5)):
         timestamps.append(tail)
 
-    return timestamps[:max_frames]
+    anchors = _normalize_frame_anchor_timestamps(duration, anchor_timestamps)
+    if not anchors:
+        return timestamps[:max_frames]
+
+    selected = anchors[:max_frames]
+    if len(selected) < max_frames:
+        selected.extend(timestamp for timestamp in timestamps if timestamp not in anchors)
+    return sorted(selected[:max_frames])
 
 
-def extract_frames(video_path: Path, frame_dir: Path, interval: int, max_frames: int = 900) -> list[Path]:
+def extract_frames(
+    video_path: Path,
+    frame_dir: Path,
+    interval: int,
+    max_frames: int = 900,
+    anchor_timestamps: list[float] | None = None,
+) -> list[Path]:
     require_ffmpeg()
     ffmpeg = ffmpeg_bin()
     frame_dir.mkdir(parents=True, exist_ok=True)
@@ -286,7 +321,8 @@ def extract_frames(video_path: Path, frame_dir: Path, interval: int, max_frames:
         return []
     interval = max(1, interval)
     coverage_gap = max(5, interval)
-    timestamps = _sample_frame_timestamps(duration, interval, max_frames)
+    timestamps = _sample_frame_timestamps(duration, interval, max_frames, anchor_timestamps)
+    anchor_set = set(_normalize_frame_anchor_timestamps(duration, anchor_timestamps))
     frames: list[Path] = []
     last_hash = ""
     last_average_hash: int | None = None
@@ -323,7 +359,7 @@ def extract_frames(video_path: Path, frame_dir: Path, interval: int, max_frames:
         current_hash = _md5(out)
         current_average_hash = _average_hash(out)
         current_mean_luma = _mean_luma(out)
-        if not _should_keep_sampled_frame(
+        if ts not in anchor_set and not _should_keep_sampled_frame(
             current_hash=current_hash,
             current_average_hash=current_average_hash,
             current_mean_luma=current_mean_luma,

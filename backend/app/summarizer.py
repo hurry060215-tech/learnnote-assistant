@@ -238,6 +238,106 @@ def note_style_instruction(options: TaskOptions) -> str:
     return mapping.get(style, mapping["study"])
 
 
+def learning_goal(options: TaskOptions) -> str:
+    """Resolve the new learning-goal semantics while accepting legacy option values."""
+    style = str(options.note_style or "").strip().lower().replace("_", "-")
+    template = str(options.note_template or "").strip().lower().replace("_", "-")
+    explicit_goals = {
+        "auto": "auto",
+        "automatic": "auto",
+        "default": "auto",
+        "自动": "auto",
+        "自动默认": "auto",
+        "deep": "deep",
+        "deep-understanding": "deep",
+        "understanding": "deep",
+        "深入理解": "deep",
+        "quick": "quick",
+        "quick-review": "quick",
+        "review": "quick",
+        "快速回顾": "quick",
+        "exam": "exam",
+        "exam-practice": "exam",
+        "self-test": "exam",
+        "备考自测": "exam",
+    }
+    if style in explicit_goals:
+        return explicit_goals[style]
+    if template in explicit_goals:
+        return explicit_goals[template]
+
+    # Legacy style/template combinations map to the closest learning intent.
+    if style in {"concise", "outline"} or template in {"timeline", "mindmap"}:
+        return "quick"
+    if style == "exam" or template in {"qa", "flashcards", "formula-sheet"}:
+        return "exam"
+    if style in {"lecture", "concept", "code", "academic", "language"}:
+        return "deep"
+    return "auto"
+
+
+def learning_goal_instruction(options: TaskOptions) -> str:
+    goal = learning_goal(options)
+    instructions = {
+        "auto": (
+            "自动默认：先判断材料更适合深入理解、快速回顾还是备考自测，再采用对应结构；"
+            "在开头用一行写明所选目标和判断依据。不要为了凑模板生成材料中不存在的章节。"
+        ),
+        "deep": (
+            "深入理解：严格按“知识地图 → 概念精讲（直觉、定义、机制）→ 证据与应用 → "
+            "概念联系、边界与迁移 → 理解检验”组织。例题、易错点和视觉证据仅在材料支持时出现。"
+        ),
+        "quick": (
+            "快速回顾：严格按“一页速览 → 关键结论 → 回看定位 → 下一步复习”组织。"
+            "使用短条目，删除推导、重复背景和非关键例题；不要生成独立的课程主题、例题或易错点章节。"
+        ),
+        "exam": (
+            "备考自测：严格按“考点清单 → 闭卷自测题 → 答案与评分点 → 题型/陷阱复盘”组织。"
+            "题目必须可作答、答案必须与题号对应；只收录材料支持的考点，不生成通用课程讲义结构。"
+        ),
+    }
+    return instructions[goal]
+
+
+def summary_depth_instruction(options: TaskOptions) -> str:
+    depth = str(options.summary_depth or "standard").strip().lower()
+    aliases = {"concise": "brief", "short": "brief", "detailed": "deep", "long": "deep"}
+    depth = aliases.get(depth, depth)
+    constraints = {
+        "brief": (
+            "简洁深度：覆盖字幕中至少 60% 的高价值知识点；正文目标 500-900 个中文字符；"
+            "例题/应用练习 0-1 个；复习或自测题恰好 2 题。"
+        ),
+        "standard": (
+            "标准深度：覆盖字幕中至少 80% 的高价值知识点；正文目标 1000-1800 个中文字符；"
+            "例题/应用练习 1-2 个；复习或自测题恰好 4 题。"
+        ),
+        "deep": (
+            "深入深度：覆盖字幕中至少 95% 的高价值知识点及其前提和联系；正文目标 2200-3600 个中文字符；"
+            "例题/应用练习 2-4 个；复习或自测题 6-8 题。"
+        ),
+    }
+    return constraints.get(depth, constraints["standard"])
+
+
+def note_generation_contract(options: TaskOptions) -> str:
+    return (
+        f"学习目标：{learning_goal_instruction(options)}\n"
+        f"深度约束：{summary_depth_instruction(options)}\n"
+        "共同约束：时间戳只能来自字幕段或画面窗口；不要编造画面、例题或事实。"
+        "没有对应内容时省略可选章节，不要用空章节或套话补齐。"
+    )
+
+
+def _depth_counts(options: TaskOptions) -> tuple[int, int]:
+    depth = str(options.summary_depth or "standard").strip().lower()
+    if depth in {"brief", "concise", "short"}:
+        return 1, 2
+    if depth in {"deep", "detailed", "long"}:
+        return 3, 6
+    return 2, 4
+
+
 def _context_topic_lines(title: str, transcript: TranscriptResult, limit: int = 3) -> list[str]:
     candidates = []
     for item in [title, *_sentences(transcript.full_text, limit=limit * 2)]:
@@ -582,6 +682,84 @@ def _grid_image_content_items(entries: list[VisionGridEntry]) -> list[dict]:
     return items
 
 
+def _local_goal_note(
+    title: str,
+    transcript: TranscriptResult,
+    grids: list[FrameGrid],
+    page_url: str,
+    options: TaskOptions,
+    page_context: str,
+) -> str:
+    goal = learning_goal(options)
+    goal_labels = {"deep": "深入理解", "quick": "快速回顾", "exam": "备考自测"}
+    example_count, question_count = _depth_counts(options)
+    key_sentences = _sentences(transcript.full_text, limit=max(8, question_count))
+    windows = build_visual_windows(transcript, grids)
+    lines = [f"# {title or '学习笔记'}", ""]
+    if page_url:
+        lines += [f"来源：{page_url}", ""]
+    if transcript.warning:
+        lines += [f"> 转写提示：{transcript.warning}", ""]
+    lines.extend(_learning_context_lines(title, transcript, windows, page_url, page_context))
+    lines += [
+        "## 学习目标与笔记格式",
+        "",
+        f"- 当前目标：{goal_labels[goal]}",
+        f"- 目标结构：{learning_goal_instruction(options)}",
+        f"- 深度约束：{summary_depth_instruction(options)}",
+        f"- 旧风格兼容：{note_style_instruction(options)}",
+        f"- 旧格式兼容：{note_template_instruction(options)}",
+        "",
+    ]
+
+    if goal == "quick":
+        lines += ["## 一页速览", ""]
+        for item in key_sentences[: max(3, question_count)]:
+            lines.append(f"- {item}")
+        lines += ["", "## 关键结论", ""]
+        for item in key_sentences[:question_count]:
+            lines.append(f"- {item}")
+        lines += ["", "## 回看定位", ""]
+        lines.extend(_timeline_lines(transcript, grids)[: max(2, question_count)])
+        lines += ["", "## 下一步复习", ""]
+        for index in range(question_count):
+            topic = key_sentences[index % len(key_sentences)] if key_sentences else "本节关键结论"
+            lines.append(f"{index + 1}. 用一句话复述：{topic}")
+    elif goal == "deep":
+        topics = _context_topic_lines(title, transcript, limit=max(3, example_count))
+        lines += ["## 知识地图", ""]
+        lines.extend(f"- {item}" for item in topics)
+        lines += ["", "## 概念精讲", ""]
+        for item in key_sentences[: max(4, question_count)]:
+            lines.append(f"- {item}")
+        lines += ["", "## 证据与应用", ""]
+        for index in range(example_count):
+            topic = key_sentences[index % len(key_sentences)] if key_sentences else "本节概念"
+            lines.append(f"- 应用练习 {index + 1}：解释“{topic}”成立的前提，并给出一个适用场景。")
+        lines += ["", "## 概念联系、边界与迁移", ""]
+        lines.append("- 对照上下文检查各概念的前提、因果关系和适用边界；转写未明确的关系保持为待确认项。")
+        lines += ["", "## 理解检验", ""]
+        for index in range(question_count):
+            topic = key_sentences[index % len(key_sentences)] if key_sentences else "本节核心概念"
+            lines.append(f"{index + 1}. 如何解释并应用：{topic}")
+    else:
+        lines += ["## 考点清单", ""]
+        for item in key_sentences[: max(4, question_count)]:
+            lines.append(f"- {item}")
+        lines += ["", "## 闭卷自测题", ""]
+        for index in range(question_count):
+            topic = key_sentences[index % len(key_sentences)] if key_sentences else "本节核心考点"
+            lines.append(f"{index + 1}. 请准确说明：{topic}")
+        lines += ["", "## 答案与评分点", ""]
+        for index in range(question_count):
+            topic = key_sentences[index % len(key_sentences)] if key_sentences else "需结合原视频确认"
+            lines.append(f"{index + 1}. {topic}")
+        lines += ["", "## 题型 / 陷阱复盘", ""]
+        lines.append("- 作答时区分原始材料明确给出的结论与需要自行推导的内容，并核对条件和术语。")
+
+    return ensure_visual_appendix("\n".join(lines).rstrip() + "\n", transcript, grids)
+
+
 def local_markdown_note(title: str, transcript: TranscriptResult, grids: list[FrameGrid], page_url: str = "", options: TaskOptions | None = None, page_context: str = "") -> str:
     lines = [f"# {title or '学习笔记'}", ""]
     if page_url:
@@ -589,14 +767,19 @@ def local_markdown_note(title: str, transcript: TranscriptResult, grids: list[Fr
     if transcript.warning:
         lines += [f"> 转写提示：{transcript.warning}", ""]
 
+    resolved_options = options or TaskOptions()
+    if learning_goal(resolved_options) != "auto":
+        return _local_goal_note(title, transcript, grids, page_url, resolved_options, page_context)
+
     key_sentences = _sentences(transcript.full_text, limit=6)
     windows = build_visual_windows(transcript, grids)
 
     lines.extend(_learning_context_lines(title, transcript, windows, page_url, page_context))
-    resolved_options = options or TaskOptions()
     lines += [
-        "## 笔记格式",
+        "## 学习目标与笔记格式",
         "",
+        f"- {learning_goal_instruction(resolved_options)}",
+        f"- {summary_depth_instruction(resolved_options)}",
         f"- 风格：{note_style_instruction(resolved_options)}",
         f"- 结构：{note_template_instruction(resolved_options)}",
         "",
@@ -725,7 +908,8 @@ def summarize_with_llm(
                     "text": (
                         "你是严谨的课程学习笔记助手。下面是一批视频画面网格和对应字幕。"
                         "请先做局部图文总结，不要写完整总笔记。\n"
-                        "每个窗口必须包含：时间范围、画面可见信息、字幕重点、操作/PPT/代码/公式/例题线索、可能的易错点。\n"
+                        "每个窗口只需包含时间范围、画面可见信息和字幕重点；操作、PPT、代码、公式或例题线索仅在确实出现时记录。\n"
+                        "不要为了统一格式补写易错点、例题或其他未出现的内容。\n"
                         f"标题：{title}\n来源：{page_url}\n批次：{index}\n\n"
                         f"{page_context_prompt}\n"
                         f"{_grid_window_prompt(transcript, batch)}"
@@ -770,11 +954,11 @@ def summarize_with_llm(
                             "content": (
                                 "你是严谨的课程学习笔记助手。请把下面所有局部图文摘要和字幕合并成一份完整 Markdown 学习笔记。"
                                 "必须覆盖所有时间窗口，不要只总结开头。\n\n"
-                                "结构必须包含：课程主题、时间轴重点、核心概念、例题/演示步骤、易错点、复习问题、画面索引。\n"
                                 "画面索引必须保留 W 编号、时间范围和画面网格 URL，方便用户回看截图。\n"
                                 f"笔记风格：{options.note_style}；笔记模板：{options.note_template}；详略程度：{options.summary_depth}。\n"
-                                f"风格要求：{note_style_instruction(options)}\n"
-                                f"模板要求：{note_template_instruction(options)}\n"
+                                f"{note_generation_contract(options)}\n"
+                                f"旧风格兼容偏好：{note_style_instruction(options)}\n"
+                                f"旧格式兼容偏好：{note_template_instruction(options)}\n"
                                 f"标题：{title}\n来源：{page_url}\n\n"
                                 f"画面索引清单：\n{frame_index}\n\n"
                                 f"完整字幕节选：\n{transcript.full_text[:60000]}\n\n"
@@ -800,11 +984,11 @@ def summarize_with_llm(
         {
             "type": "text",
             "text": (
-                "你是严谨的课程学习笔记助手。请结合字幕输出 Markdown。"
-                "结构必须包含：课程主题、时间轴重点、核心概念、例题/演示步骤、易错点、复习问题、画面索引。\n\n"
+                "你是严谨的课程学习笔记助手。请结合字幕输出 Markdown。\n"
                 f"笔记风格：{options.note_style}；笔记模板：{options.note_template}；详略程度：{options.summary_depth}。\n"
-                f"风格要求：{note_style_instruction(options)}\n"
-                f"模板要求：{note_template_instruction(options)}\n"
+                f"{note_generation_contract(options)}\n"
+                f"旧风格兼容偏好：{note_style_instruction(options)}\n"
+                f"旧格式兼容偏好：{note_template_instruction(options)}\n"
                 f"标题：{title}\n来源：{page_url}\n\n字幕：\n{transcript.full_text[:60000]}"
             ),
         }

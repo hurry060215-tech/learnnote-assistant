@@ -194,6 +194,7 @@ def resource_inventory_payload(request: CurrentPageTaskRequest) -> dict:
         "active_video": {
             "present": bool(active),
             "source_type": "srcObject" if active and active.src_object else "url" if active and active.src else "",
+            "poster_url": active.poster_url if active else "",
             "frame_id": active.frame_id if active else None,
             "current_time": active.current_time if active else None,
             "duration": active.duration if active else None,
@@ -645,6 +646,9 @@ def build_summary_diagnostics(
     summary_warning: str,
     llm_events: list[dict] | None = None,
     page_context: str = "",
+    extracted_frame_count: int | None = None,
+    frame_extraction_warning: str = "",
+    frame_anchor_timestamps: list[float] | None = None,
 ) -> dict:
     eligible_entries = select_vision_grid_entries(grids)
     eligible_grids = [grid for _index, grid in eligible_entries]
@@ -748,6 +752,18 @@ def build_summary_diagnostics(
         "page_text_char_count": len(page_context_text),
         "page_context_used": bool(page_context_text),
         "frame_grid_count": len(grids),
+        "extracted_frame_count": extracted_frame_count,
+        "frame_extraction_status": (
+            "not_enabled"
+            if not options.visual_understanding
+            else "no_frames"
+            if extracted_frame_count == 0
+            else "no_frame_grids"
+            if not grids
+            else "ready"
+        ),
+        "frame_extraction_warning": frame_extraction_warning,
+        "frame_anchor_timestamps": list(frame_anchor_timestamps or []),
         "visual_window_count": len(visual_windows),
         "available_grid_image_count": total_image_count,
         "vision_grid_limit": MAX_VISION_GRIDS,
@@ -936,6 +952,7 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
             subtitle_path=subtitle_path,
             browser_subtitles=request.browser_subtitles,
             page_context=request.page_text,
+            frame_anchor_timestamps=[request.active_video.current_time] if request.active_video else [],
         )
     except TaskCancelled:
         return
@@ -997,6 +1014,7 @@ def _process_video_file(
     browser_subtitles: list[BrowserSubtitleCue] | None = None,
     subtitle_source: str = "page-subtitle",
     page_context: str = "",
+    frame_anchor_timestamps: list[float] | None = None,
 ) -> None:
     work_dir = task_dir(task_id)
     _check_cancel(task_id)
@@ -1070,13 +1088,20 @@ def _process_video_file(
     transcript_path.write_text(transcript.model_dump_json(indent=2), encoding="utf-8")
     update_task(task_id, transcript_path=str(transcript_path))
 
+    frames: list[Path] = []
     grids = []
+    frame_extraction_warning = ""
     if options.visual_understanding:
         update_task(task_id, phase="extracting_frames", progress=68, message="正在抽帧并生成画面网格")
         frame_dir = work_dir / "frames"
         grid_dir = work_dir / "grids"
         media_duration = probe_duration(normalized)
-        frames = extract_frames(normalized, frame_dir, max(1, options.frame_interval))
+        frames = extract_frames(
+            normalized,
+            frame_dir,
+            max(1, options.frame_interval),
+            anchor_timestamps=frame_anchor_timestamps,
+        )
         _check_cancel(task_id)
         grids = build_frame_grids(
             task_id,
@@ -1087,6 +1112,11 @@ def _process_video_file(
             max(1, options.frame_interval),
             media_duration=media_duration,
         )
+        if not frames:
+            frame_extraction_warning = (
+                "已启用画面理解，但未能从完整视频提取任何画面帧；本任务没有视觉切片，"
+                "请检查视频是否包含可解码的视频轨道。"
+            )
 
     visual_windows = build_visual_windows(transcript, grids)
     visual_index_path = write_json(
@@ -1115,6 +1145,8 @@ def _process_video_file(
     else:
         note, summary_source, summary_warning = summary_result
         llm_events = []
+    if frame_extraction_warning:
+        summary_warning = "；".join(filter(None, [summary_warning, frame_extraction_warning]))
     summary_diagnostics = build_summary_diagnostics(
         task_id=task_id,
         title=title,
@@ -1126,6 +1158,9 @@ def _process_video_file(
         summary_warning=summary_warning,
         llm_events=llm_events,
         page_context=page_context,
+        extracted_frame_count=len(frames) if options.visual_understanding else None,
+        frame_extraction_warning=frame_extraction_warning,
+        frame_anchor_timestamps=frame_anchor_timestamps,
     )
     summary_diagnostics_path = write_json(task_id, "summary_diagnostics.json", summary_diagnostics)
     note_path = work_dir / "note.md"
@@ -1155,7 +1190,7 @@ def _process_video_file(
             status="success",
             phase="completed",
             progress=100,
-            message="任务完成",
+            message="任务完成，但未生成视觉切片" if frame_extraction_warning else "任务完成",
             **final_fields,
         )
 

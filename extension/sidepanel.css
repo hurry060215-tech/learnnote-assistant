@@ -13174,3 +13174,88 @@ body[data-ui="learnnote-sidepanel-v2"][data-source-mode="local"] .local-video-ca
 body[data-ui="learnnote-sidepanel-v2"] .first-run-card {
   box-shadow: none;
 }
+/* v3: keep the first-use path focused; diagnostics retain the full evidence detail. */
+.learning-goal-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 132px;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line, #dce8e7);
+}
+
+.learning-goal-control > span {
+  display: grid;
+  gap: 3px;
+}
+
+.learning-goal-control b {
+  color: var(--ink, #123536);
+  font-size: 14px;
+}
+
+.learning-goal-control small {
+  color: var(--muted, #6b7f80);
+  line-height: 1.45;
+}
+
+.learning-goal-control select {
+  min-width: 0;
+  height: 38px;
+  border: 1px solid #bdd8d5;
+  border-radius: 7px;
+  background: #fff;
+  color: #164546;
+  font: inherit;
+  font-weight: 650;
+  padding: 0 10px;
+}
+
+.evidence-steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 13px;
+}
+
+.evidence-steps span {
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+  min-width: 0;
+  color: #879697;
+  font-size: 10px;
+  text-align: center;
+}
+
+.evidence-steps i {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid #cfdedd;
+  border-radius: 50%;
+  background: #fff;
+  font-style: normal;
+  font-weight: 750;
+}
+
+.evidence-steps .done { color: #087f79; }
+.evidence-steps .done i { border-color: #27a69f; background: #e6f7f5; }
+.evidence-steps .active { color: #175e62; }
+.evidence-steps .active i { border-color: #159a93; box-shadow: 0 0 0 4px #e4f6f4; }
+
+.active-video-poster {
+  width: 100%;
+  max-height: 150px;
+  margin: 10px 0 2px;
+  border-radius: 6px;
+  object-fit: cover;
+  background: #edf4f3;
+}
+
+@media (max-width: 360px) {
+  .learning-goal-control { grid-template-columns: 1fr; }
+  .evidence-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 10px; }
+}

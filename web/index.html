@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>LearnNote 学习视频笔记</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="/web/styles.css?v=20260711-v017">
-    <link rel="stylesheet" href="/web/workspace.css?v=20260711-v017">
-    <link rel="stylesheet" href="/web/product.css?v=20260711-v017">
+    <link rel="stylesheet" href="/web/styles.css?v=20260711-v018">
+    <link rel="stylesheet" href="/web/workspace.css?v=20260711-v018">
+    <link rel="stylesheet" href="/web/product.css?v=20260711-v018">
   </head>
   <body data-app-view="workspace">
     <header class="topbar">
@@ -307,25 +307,26 @@
           </div>
         </section>
 
-        <section class="quick-note-options" aria-label="笔记输出方式">
+        <section class="quick-note-options" aria-label="学习目标">
           <div class="quick-note-heading">
-            <strong>输出方式</strong>
-            <button id="openProcessingSettingsButton" type="button">更多设置</button>
+            <strong>学习目标</strong>
+            <button id="openProcessingSettingsButton" type="button">高级设置</button>
           </div>
-          <div id="homeQuickOptionsSlot" class="quick-note-grid">
-            <label class="field note-preset-field">
-              <span>笔记类型</span>
-              <select id="notePreset">
-                <option value="course" selected>课程整理 · 推荐</option>
-                <option value="review">考前复习</option>
-                <option value="tutorial">操作教程</option>
-                <option value="timeline">时间轴速览</option>
-                <option value="academic">论文导读</option>
-              </select>
-            </label>
+          <div id="homeQuickOptionsSlot" class="learning-goal-group" role="radiogroup" aria-label="选择学习目标">
+            <label><input type="radio" name="learningGoal" value="auto" checked><span>自动</span></label>
+            <label><input type="radio" name="learningGoal" value="deep"><span>深入理解</span></label>
+            <label><input type="radio" name="learningGoal" value="review"><span>快速回顾</span></label>
+            <label><input type="radio" name="learningGoal" value="exam"><span>备考自测</span></label>
           </div>
-          <p id="notePresetHint" class="note-preset-hint">通用课程：整理章节、重点和复习问题。</p>
         </section>
+
+        <div class="generate-note-row">
+          <button id="generateNoteButton" class="primary action-button" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+            <span id="generateNoteLabel">在浏览器侧栏开始</span>
+          </button>
+          <p id="generateNoteHint" aria-live="polite">客户端不读取其他浏览器窗口；当前页任务由扩展侧栏安全交接</p>
+        </div>
 
         <aside id="recentNotesRail" class="recent-notes-rail" aria-label="最近笔记">
           <header>
@@ -494,19 +495,23 @@
           <div>
             <span id="selectedSource" class="eyeless">结果工作区</span>
             <h2 id="selectedTitle">选择一个任务</h2>
-            <div id="resultMeta" class="result-meta"></div>
           </div>
           <div class="result-actions">
-            <button id="continueFromMediaButton" class="continue-media-button" type="button" hidden disabled>
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v4H4zM4 15h16v4H4z"/><path d="M8 9v6M16 9v6"/></svg>
-              继续切片总结
+            <button id="copyButton" class="icon-button" title="复制笔记" aria-label="复制笔记">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8h11v13H8zM5 16H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h11a1 1 0 0 1 1 1v1"/></svg>
             </button>
+            <button id="unifiedExportButton" class="result-export-button" type="button">统一导出</button>
             <details id="resultMoreActions" class="result-more">
-              <summary class="icon-button result-more-trigger" title="更多操作" aria-label="更多操作">
+              <summary class="icon-button result-more-trigger" title="高级导出与诊断" aria-label="高级导出与诊断">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h.01M12 12h.01M19 12h.01"/></svg>
-                <span>更多</span>
+                <span>高级</span>
               </summary>
-              <div class="result-more-panel" aria-label="导出和阅读操作">
+              <div class="result-more-panel" aria-label="高级导出和诊断">
+                <div id="resultMeta" class="result-meta"></div>
+                <button id="continueFromMediaButton" class="continue-media-button" type="button" hidden disabled>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v4H4zM4 15h16v4H4z"/><path d="M8 9v6M16 9v6"/></svg>
+                  继续切片总结
+                </button>
                 <button id="readingModeButton" class="icon-button" title="阅读专注模式" aria-label="阅读专注模式" aria-pressed="false">
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h7a4 4 0 0 1 4 4v10H8a4 4 0 0 0-4 4z"/><path d="M20 5h-7a4 4 0 0 0-4 4v10h7a4 4 0 0 1 4 4z"/></svg>
                 </button>
@@ -530,9 +535,6 @@
                 </button>
                 <button id="downloadButton" class="icon-button" title="导出 Markdown" aria-label="导出 Markdown">
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11M7 9l5 5 5-5M5 19h14"/></svg>
-                </button>
-                <button id="copyButton" class="icon-button" title="复制笔记" aria-label="复制笔记">
-                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8h11v13H8zM5 16H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h11a1 1 0 0 1 1 1v1"/></svg>
                 </button>
               </div>
             </details>
@@ -596,6 +598,6 @@
       </section>
     </div>
 
-    <script src="/web/app.js?v=20260711-v017"></script>
+    <script src="/web/app.js?v=20260711-v018"></script>
   </body>
 </html>

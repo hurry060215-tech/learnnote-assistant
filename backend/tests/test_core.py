@@ -41,7 +41,7 @@ from app.downloader import (
 from app.main import diagnostic_recovery_profile, render_bundle_manifest, render_diagnostics_markdown, task_audit_summary
 from app.models import ActiveVideoInfo, BrowserCookie, CurrentPageTaskRequest, DownloadAttempt, DrmSignal, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
 from app.processor import build_summary_diagnostics, cookie_sync_summary, download_progress_updater, download_status_updater, enrich_resource_candidates_with_active_video, process_current_page_task, process_local_video_task, read_note, read_transcript, redacted_request_dump, redacted_resource
-from app.summarizer import MAX_GRIDS_PER_VISION_CALL, MAX_VISION_GRIDS, build_visual_windows, chat_completion_provider_kwargs, ensure_visual_appendix, llm_model_supports_vision, llm_provider_name, local_markdown_note, summarize_with_diagnostics, summarize_with_diagnostics_audit
+from app.summarizer import MAX_GRIDS_PER_VISION_CALL, MAX_VISION_GRIDS, build_visual_windows, chat_completion_provider_kwargs, ensure_visual_appendix, learning_goal, learning_goal_instruction, llm_model_supports_vision, llm_provider_name, local_markdown_note, summarize_with_diagnostics, summarize_with_diagnostics_audit, summary_depth_instruction
 from app.storage import create_task, get_task, read_json, save_task, task_dir, write_json
 from app.transcriber import resolve_whisper_model, transcribe_audio_openai_compatible, transcript_from_subtitle
 
@@ -213,6 +213,11 @@ class ResourceDetectionTests(unittest.TestCase):
 
         self.assertEqual(blob_enriched, [])
         self.assertEqual(stream_enriched, [])
+
+    def test_active_video_poster_is_preview_evidence_not_download_candidate(self) -> None:
+        active = ActiveVideoInfo(poster_url="https://cdn.example.com/course-cover.jpg", current_time=12)
+
+        self.assertEqual(enrich_resource_candidates_with_active_video(active, []), [])
 
     def test_direct_file_download_updates_task_progress(self) -> None:
         task = create_task("current_page", "Progress lesson", "https://course.example.com/lesson")
@@ -1879,6 +1884,69 @@ class ProcessorBoundaryTests(unittest.TestCase):
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
+    def test_current_page_playhead_anchors_frames_and_zero_frames_warns(self) -> None:
+        task = create_task("current_page", "Playhead lesson", "https://course.example.com/lesson")
+        source_path = task_dir(task.id) / "download.mp4"
+
+        class FakeDownloader:
+            def __init__(self, work_dir: Path, progress_callback=None, status_callback=None):
+                self.work_dir = work_dir
+                self.attempts = []
+
+            def download(self, page_url, resources, cookies, title):
+                source_path.write_bytes(b"downloaded video")
+                return source_path, resources[0]
+
+        def fake_normalize(source: Path, target: Path) -> Path:
+            target.write_bytes(b"normalized video")
+            return target
+
+        try:
+            request = CurrentPageTaskRequest(
+                page_url="https://course.example.com/lesson",
+                title="Playhead lesson",
+                active_video=ActiveVideoInfo(
+                    src="https://cdn.example.com/lesson.mp4",
+                    poster_url="https://cdn.example.com/lesson-cover.jpg",
+                    current_time=47.4,
+                    duration=120,
+                ),
+                resources=[
+                    ResourceCandidate(
+                        url="https://cdn.example.com/lesson.mp4",
+                        source="webRequest",
+                        kind="video",
+                    )
+                ],
+                browser_subtitles=[{"start": 45, "end": 50, "text": "playhead cue"}],
+                options=TaskOptions(visual_understanding=True),
+            )
+
+            with patch("app.processor.MediaDownloader", FakeDownloader), \
+                patch("app.processor.normalize_video", side_effect=fake_normalize), \
+                patch("app.processor.probe_duration", return_value=120), \
+                patch("app.processor.extract_frames", return_value=[]) as extract, \
+                patch("app.processor.build_frame_grids", return_value=[]), \
+                patch(
+                    "app.processor.summarize_with_diagnostics",
+                    return_value=("# Playhead lesson", "local-template", ""),
+                ):
+                process_current_page_task(task.id, request)
+
+            self.assertEqual(extract.call_args.kwargs["anchor_timestamps"], [47.4])
+            record = get_task(task.id)
+            self.assertEqual(record.status, "success")
+            self.assertEqual(record.message, "任务完成，但未生成视觉切片")
+            self.assertIn("未能从完整视频提取任何画面帧", record.summary_warning)
+            self.assertEqual(record.summary_diagnostics["frame_extraction_status"], "no_frames")
+            self.assertEqual(record.summary_diagnostics["extracted_frame_count"], 0)
+            self.assertEqual(record.summary_diagnostics["frame_anchor_timestamps"], [47.4])
+            inventory = json.loads(Path(record.resource_inventory_path).read_text(encoding="utf-8"))
+            self.assertEqual(inventory["active_video"]["poster_url"], "https://cdn.example.com/lesson-cover.jpg")
+            self.assertNotIn("lesson-cover.jpg", [item["url"] for item in inventory["candidates"]])
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
     def test_current_page_prefers_full_page_subtitle_over_partial_browser_subtitles(self) -> None:
         task = create_task("current_page", "Partial browser subtitle lesson", "https://course.example.com/lesson")
         source_path = task_dir(task.id) / "download.mp4"
@@ -3403,6 +3471,99 @@ class SummaryFallbackTests(unittest.TestCase):
 
         self.assertIn("词汇、表达、语法", note)
         self.assertIn("记忆卡片模板", note)
+
+    def test_learning_goal_accepts_new_values_and_maps_legacy_options(self) -> None:
+        self.assertEqual(learning_goal(TaskOptions()), "auto")
+        self.assertEqual(learning_goal(TaskOptions(note_style="深入理解")), "deep")
+        self.assertEqual(learning_goal(TaskOptions(note_style="quick-review")), "quick")
+        self.assertEqual(learning_goal(TaskOptions(note_style="self-test")), "exam")
+        self.assertEqual(learning_goal(TaskOptions(note_style="concept")), "deep")
+        self.assertEqual(learning_goal(TaskOptions(note_style="concise")), "quick")
+        self.assertEqual(learning_goal(TaskOptions(note_template="qa")), "exam")
+
+    def test_learning_goals_define_distinct_structures(self) -> None:
+        deep = learning_goal_instruction(TaskOptions(note_style="deep"))
+        quick = learning_goal_instruction(TaskOptions(note_style="quick"))
+        exam = learning_goal_instruction(TaskOptions(note_style="exam-practice"))
+
+        self.assertIn("知识地图 → 概念精讲", deep)
+        self.assertIn("一页速览 → 关键结论", quick)
+        self.assertIn("考点清单 → 闭卷自测题", exam)
+        self.assertEqual(len({deep, quick, exam}), 3)
+        self.assertNotIn("结构必须包含：课程主题", deep + quick + exam)
+
+    def test_summary_depth_is_an_executable_generation_constraint(self) -> None:
+        brief = summary_depth_instruction(TaskOptions(summary_depth="brief"))
+        standard = summary_depth_instruction(TaskOptions(summary_depth="standard"))
+        deep = summary_depth_instruction(TaskOptions(summary_depth="deep"))
+
+        self.assertIn("至少 60%", brief)
+        self.assertIn("500-900", brief)
+        self.assertIn("0-1 个", brief)
+        self.assertIn("恰好 2 题", brief)
+        self.assertIn("至少 80%", standard)
+        self.assertIn("1-2 个", standard)
+        self.assertIn("恰好 4 题", standard)
+        self.assertIn("至少 95%", deep)
+        self.assertIn("2-4 个", deep)
+        self.assertIn("6-8 题", deep)
+
+    def test_local_learning_goals_do_not_share_the_same_forced_sections(self) -> None:
+        transcript = TranscriptResult(
+            source="unit",
+            full_text="A definition explains the mechanism. A second point states its boundary.",
+            segments=[TranscriptSegment(start=7, end=12, text="A definition explains the mechanism.")],
+        )
+
+        deep = local_markdown_note("Deep lesson", transcript, [], options=TaskOptions(note_style="deep", summary_depth="brief"))
+        quick = local_markdown_note("Quick lesson", transcript, [], options=TaskOptions(note_style="quick", summary_depth="brief"))
+        exam = local_markdown_note("Exam lesson", transcript, [], options=TaskOptions(note_style="exam", summary_depth="brief"))
+
+        self.assertIn("## 概念精讲", deep)
+        self.assertIn("## 一页速览", quick)
+        self.assertNotIn("## 例题 / 演示步骤", quick)
+        self.assertNotIn("## 易错点", quick)
+        self.assertIn("## 闭卷自测题", exam)
+        self.assertIn("## 答案与评分点", exam)
+        self.assertNotIn("## 课程主题", deep + quick + exam)
+
+    def test_text_llm_prompt_uses_goal_and_depth_contract(self) -> None:
+        from app.summarizer import summarize_with_llm
+
+        calls = []
+
+        class FakeCompletions:
+            def create(self, **kwargs):
+                calls.append(kwargs)
+                return types.SimpleNamespace(
+                    choices=[types.SimpleNamespace(message=types.SimpleNamespace(content="# Quick note"))]
+                )
+
+        class FakeOpenAI:
+            def __init__(self, **kwargs):
+                self.chat = types.SimpleNamespace(completions=FakeCompletions())
+
+        fake_openai = types.ModuleType("openai")
+        fake_openai.OpenAI = FakeOpenAI
+        transcript = TranscriptResult(
+            source="unit",
+            full_text="timestamped source",
+            segments=[TranscriptSegment(start=7, end=12, text="timestamped source")],
+        )
+        options = TaskOptions(llm_api_key="test-key", note_style="quick", summary_depth="deep")
+
+        with patch.dict(sys.modules, {"openai": fake_openai}):
+            note, source = summarize_with_llm("Quick lesson", transcript, [], options)
+
+        prompt = calls[0]["messages"][0]["content"][0]["text"]
+        self.assertEqual(source, "text-llm")
+        self.assertEqual(note, "# Quick note")
+        self.assertIn("一页速览 → 关键结论 → 回看定位 → 下一步复习", prompt)
+        self.assertIn("至少 95%", prompt)
+        self.assertIn("2-4 个", prompt)
+        self.assertIn("6-8 题", prompt)
+        self.assertNotIn("结构必须包含：课程主题", prompt)
+        self.assertEqual(transcript.full_text, "timestamped source")
 
     def test_local_note_keeps_page_context_separate_from_transcript(self) -> None:
         transcript = TranscriptResult(

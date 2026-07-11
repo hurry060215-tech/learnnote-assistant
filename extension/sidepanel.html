@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>LearnNote</title>
-    <link rel="stylesheet" href="sidepanel.css?v=20260711-v015">
+    <link rel="stylesheet" href="sidepanel.css?v=20260711-v018">
   </head>
   <body data-ui="learnnote-sidepanel-v2" data-source-mode="summarize">
     <header class="app-header">
@@ -78,24 +78,6 @@
           </button>
         </div>
         <div id="sourceRouteRail" class="source-route-rail" aria-label="学习来源状态"></div>
-        <div class="capture-cockpit" aria-label="当前页直取生产线">
-          <section>
-            <b>01</b>
-            <span>浏览器读取</span>
-            <small>播放器、请求、字幕</small>
-          </section>
-          <section>
-            <b>02</b>
-            <span>直链预检</span>
-            <small>mp4 / HLS / DASH</small>
-          </section>
-          <section>
-            <b>03</b>
-            <span>本地切片</span>
-            <small>转写、抽帧、图文笔记</small>
-          </section>
-          <em>非录制</em>
-        </div>
         <div class="section-head">
           <div>
             <span>当前播放页</span>
@@ -107,14 +89,19 @@
         </div>
         <small id="pageUrl" class="page-url"></small>
         <div id="activeVideo" class="playback-card">等待播放状态</div>
-        <div id="playbackReadiness" class="playback-readiness" aria-label="浏览器读取状态"></div>
         <div id="currentStudyCard" class="current-study-card" aria-label="当前页学习任务"></div>
-        <div id="launchBar" class="launch-bar" aria-label="直取任务快速开始"></div>
-        <div class="mode-row">
-          <span>资源直取</span>
-          <span>Cookie 一次同步</span>
-          <span>本地处理</span>
-        </div>
+        <label class="learning-goal-control">
+          <span>
+            <b>这次想得到什么</b>
+            <small>默认会根据视频内容自动安排结构</small>
+          </span>
+          <select id="noteStyle">
+            <option value="study" selected>自动整理</option>
+            <option value="concept">深入理解</option>
+            <option value="concise">快速回顾</option>
+            <option value="exam">备考自测</option>
+          </select>
+        </label>
       </section>
 
       <section class="actions">
@@ -218,20 +205,7 @@
           </select>
         </label>
         <label>
-          <span>笔记</span>
-          <select id="noteStyle">
-            <option value="study" selected>学习笔记</option>
-            <option value="concise">重点速记</option>
-            <option value="exam">考点复习</option>
-            <option value="lecture">课程讲义</option>
-            <option value="concept">概念精讲</option>
-            <option value="code">代码教程</option>
-            <option value="academic">论文导读</option>
-            <option value="language">语言学习</option>
-          </select>
-        </label>
-        <label>
-          <span>格式</span>
+          <span>结构覆盖</span>
           <select id="noteTemplate">
             <option value="standard" selected>标准</option>
             <option value="timeline">时间轴</option>
@@ -355,6 +329,6 @@
       </section>
     </main>
 
-    <script src="sidepanel.js?v=20260711-v015"></script>
+    <script src="sidepanel.js?v=20260711-v018"></script>
   </body>
 </html>

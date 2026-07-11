@@ -2255,6 +2255,300 @@ body.theme-dark .settings-view {
   }
 }
 
+/* Focused creation and reading IA. Keep this final layer explicit: older workbench
+   rules remain for compatibility with secondary views. */
+body[data-app-view="workspace"] .workspace-panel {
+  max-width: 980px;
+  padding-top: 38px;
+  padding-bottom: 56px;
+}
+
+body[data-app-view="workspace"] .workspace-panel > .panel-heading {
+  margin-bottom: 24px;
+}
+
+body[data-app-view="workspace"] .workspace-panel > .source-tabs { order: 1; }
+body[data-app-view="workspace"] .workspace-panel > .source-pane { order: 2; }
+body[data-app-view="workspace"] .workspace-panel > .quick-note-options { order: 3; }
+body[data-app-view="workspace"] .workspace-panel > .generate-note-row { order: 4; }
+
+body[data-app-view="workspace"] .workspace-panel > .startup-readiness,
+body[data-app-view="workspace"] .workspace-panel > .source-workflow,
+body[data-app-view="workspace"] .workspace-panel > .recent-notes-rail,
+body[data-app-view="workspace"] .workspace-panel > .options-disclosure,
+body[data-app-view="workspace"] #browserRouteSummary,
+body[data-app-view="workspace"] .capture-flow,
+body[data-app-view="workspace"] .browser-actions,
+body[data-app-view="workspace"] .url-mode-grid,
+body[data-app-view="workspace"] #urlPreflightReport,
+body[data-app-view="workspace"] #urlSource > .field:last-of-type,
+body[data-app-view="workspace"] .url-actions,
+body[data-app-view="workspace"] #uploadButton {
+  display: none !important;
+}
+
+body[data-app-view="workspace"] .source-tabs {
+  width: 100%;
+  margin-bottom: 22px;
+  border-bottom: 1px solid var(--product-line);
+}
+
+body[data-app-view="workspace"] .source-tab {
+  min-height: 54px;
+  padding: 0 16px;
+}
+
+body[data-app-view="workspace"] .source-tab small {
+  display: none;
+}
+
+body[data-app-view="workspace"] .source-pane {
+  min-height: 150px;
+  padding: 18px 0 24px;
+}
+
+body[data-app-view="workspace"] .browser-capture-card {
+  min-height: 126px;
+  padding: 24px 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+body[data-app-view="workspace"] .browser-capture-head {
+  max-width: 700px;
+  margin: 0 auto;
+}
+
+body[data-app-view="workspace"] .quick-note-options {
+  display: grid;
+  min-height: 0;
+  margin: 4px 0 18px;
+  padding: 18px 0 0;
+  border: 0;
+  border-top: 1px solid var(--product-line);
+  border-radius: 0;
+  background: transparent;
+  grid-template-columns: 118px minmax(0, 1fr);
+  gap: 18px;
+  box-shadow: none;
+}
+
+body[data-app-view="workspace"] .quick-note-heading {
+  align-items: flex-start;
+  padding-top: 8px;
+}
+
+body[data-app-view="workspace"] .quick-note-heading strong {
+  font-size: 14px;
+}
+
+body[data-app-view="workspace"] .quick-note-heading button {
+  margin-top: 7px;
+  padding: 0;
+  color: var(--product-accent-strong);
+  font-size: 12px;
+}
+
+.learning-goal-group {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid var(--product-line-strong);
+  border-radius: 7px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.learning-goal-group label {
+  position: relative;
+  min-width: 0;
+  border-right: 1px solid var(--product-line);
+  cursor: pointer;
+}
+
+.learning-goal-group label:last-child { border-right: 0; }
+.learning-goal-group input { position: absolute; opacity: 0; pointer-events: none; }
+
+.learning-goal-group span {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 10px;
+  color: var(--product-muted);
+  background: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  transition: color 150ms ease, background 150ms ease;
+}
+
+.learning-goal-group input:checked + span {
+  color: var(--product-accent-strong);
+  background: #eaf6f5;
+}
+
+.learning-goal-group input:focus-visible + span {
+  box-shadow: inset 0 0 0 2px var(--product-accent);
+}
+
+.generate-note-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+#generateNoteButton {
+  width: min(100%, 220px);
+  min-height: 44px;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+#generateNoteHint {
+  margin: 0;
+  color: var(--product-muted);
+  font-size: 12px;
+}
+
+.result-export-button {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--product-accent);
+  border-radius: 6px;
+  color: #fff;
+  background: var(--product-accent);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.result-export-button:hover { background: var(--product-accent-strong); }
+.result-export-button:disabled { opacity: .45; cursor: not-allowed; }
+
+.result-header {
+  align-items: center;
+  padding-bottom: 14px;
+}
+
+.result-header .eyeless {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--product-muted);
+  font-size: 12px;
+}
+
+.result-actions { align-items: center; }
+
+.result-more-panel .result-meta {
+  width: min(520px, 75vw);
+  padding: 4px 4px 10px;
+}
+
+.note-shell {
+  width: 100%;
+  max-width: 1100px;
+}
+
+.note-workbench {
+  display: grid;
+  grid-template-columns: minmax(720px, 820px) minmax(220px, 260px);
+  justify-content: center;
+  gap: 32px;
+}
+
+.note-workbench .markdown-note {
+  width: 100%;
+  max-width: 820px;
+  margin: 0;
+}
+
+.reading-rail {
+  position: sticky;
+  top: 96px;
+  width: 100%;
+  min-width: 220px;
+  max-width: 260px;
+  max-height: calc(100vh - 120px);
+  overflow: auto;
+  padding: 14px 0;
+}
+
+.reading-rail .note-outline {
+  border: 0;
+  background: transparent;
+}
+
+@media (max-width: 1400px) and (min-width: 1181px) {
+  .result-panel {
+    padding-right: 28px;
+    padding-left: 28px;
+  }
+}
+
+@media (max-width: 1180px) {
+  .note-workbench {
+    display: block;
+  }
+
+  .note-workbench .markdown-note {
+    max-width: 820px;
+    margin: 0 auto;
+  }
+
+  .reading-rail {
+    position: static;
+    width: min(100%, 820px);
+    max-width: 820px;
+    min-width: 0;
+    max-height: none;
+    margin: 24px auto 0;
+  }
+}
+
+@media (max-width: 820px) {
+  body[data-app-view="workspace"] .workspace-panel {
+    padding-top: 24px;
+  }
+
+  body[data-app-view="workspace"] .quick-note-options {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  body[data-app-view="workspace"] .quick-note-heading {
+    flex-direction: row;
+    justify-content: space-between;
+    padding-top: 0;
+  }
+
+  .learning-goal-group {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .learning-goal-group label:nth-child(2) { border-right: 0; }
+  .learning-goal-group label:nth-child(-n+2) { border-bottom: 1px solid var(--product-line); }
+
+  .generate-note-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  #generateNoteButton { width: 100%; }
+
+  .result-header {
+    align-items: flex-start;
+  }
+
+  .result-export-button {
+    flex: 1 1 auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .learning-goal-group span,
+  .result-export-button {
+    transition: none;
+  }
+}
+
 /* Usability closeout: readable defaults, compact settings, visible exports. */
 .settings-header,
 .settings-layout {
@@ -2409,5 +2703,65 @@ body[data-ui-density="110"] .workspace-panel {
 
   .settings-option-slot .visual-toggle {
     grid-column: 1;
+  }
+}
+
+/* Final cascade guard for the focused workspace. */
+body[data-app-view="workspace"] .workspace-panel {
+  display: flex !important;
+  flex-direction: column;
+}
+
+body[data-app-view="workspace"] .workspace-panel > #browserSource,
+body[data-app-view="workspace"] .workspace-panel > #localSource,
+body[data-app-view="workspace"] .workspace-panel > #urlSource {
+  order: 2;
+}
+
+body[data-app-view="workspace"] .quick-note-heading {
+  display: flex !important;
+}
+
+body[data-app-view="workspace"] .result-panel,
+body[data-app-view="workspace"] .queue-panel {
+  display: none !important;
+}
+
+/* Reading layout must override the older responsive rail ordering. */
+body[data-app-view="notes"] .result-panel .detail,
+body[data-app-view="history"] .result-panel .detail {
+  padding-right: 0;
+  padding-left: 0;
+}
+
+body[data-app-view="notes"] .note-workbench,
+body[data-app-view="history"] .note-workbench {
+  grid-template-columns: minmax(0, 820px) 220px;
+  gap: 24px;
+}
+
+body[data-app-view="notes"] .note-workbench > .markdown-note,
+body[data-app-view="history"] .note-workbench > .markdown-note {
+  grid-column: 1;
+  order: 0;
+}
+
+body[data-app-view="notes"] .note-workbench > .reading-rail,
+body[data-app-view="history"] .note-workbench > .reading-rail {
+  grid-column: 2;
+  align-self: start;
+  order: 0;
+}
+
+@media (max-width: 1180px) {
+  body[data-app-view="notes"] .note-workbench,
+  body[data-app-view="history"] .note-workbench {
+    display: block;
+  }
+
+  body[data-app-view="notes"] .result-panel .detail,
+  body[data-app-view="history"] .result-panel .detail {
+    padding-right: 24px;
+    padding-left: 24px;
   }
 }

@@ -1319,6 +1319,7 @@ function activeVideoInfo() {
   const srcObject = videoSrcObjectInfo(video);
   return {
     src: absoluteUrl(video.currentSrc || video.src),
+    poster_url: absoluteUrl(video.poster || readAttribute(video, "poster")),
     ...srcObject,
     current_time: Number(video.currentTime || 0),
     duration: Number.isFinite(video.duration) ? Number(video.duration || 0) : 0,

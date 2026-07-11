@@ -23,6 +23,16 @@ class MediaPipelineTests(unittest.TestCase):
         self.assertEqual(_sample_frame_timestamps(42.0, 20), [0, 20, 40])
         self.assertEqual(_sample_frame_timestamps(59.2, 20, max_frames=3), [0, 20, 40])
 
+    def test_frame_sampling_prioritizes_playhead_anchor(self) -> None:
+        self.assertEqual(
+            _sample_frame_timestamps(120, 20, max_frames=4, anchor_timestamps=[47.4]),
+            [0, 20, 40, 47],
+        )
+        self.assertEqual(
+            _sample_frame_timestamps(120, 20, max_frames=1, anchor_timestamps=[47.6]),
+            [48],
+        )
+
     def test_near_duplicate_frames_keep_periodic_timeline_anchors(self) -> None:
         self.assertFalse(
             _should_keep_sampled_frame(
