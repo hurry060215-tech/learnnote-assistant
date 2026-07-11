@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LearnNote 当前页助手",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "当前页视频直取、本地视频上传、转写与图文总结。",
   "permissions": [
     "activeTab",

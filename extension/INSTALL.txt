@@ -1,0 +1,10 @@
+LearnNote 浏览器扩展安装说明
+
+1. 先安装并启动 LearnNote Windows 客户端。
+2. 解压 LearnNote-Browser-Extension.zip 到 D 盘的固定目录。
+3. Chrome 打开 chrome://extensions；Edge 打开 edge://extensions。
+4. 开启“开发者模式”，点击“加载已解压的扩展程序”。
+5. 选择刚刚解压的目录，然后固定 LearnNote 扩展。
+6. 打开视频页面并播放几秒，点击 LearnNote 图标，在侧栏选择“检测当前页”。
+
+扩展只把当前页面中浏览器已经能够访问的媒体证据交给本机客户端，不录制标签页，不绕过 DRM，也不伪造学习进度。

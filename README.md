@@ -160,11 +160,13 @@ The primary product is the local Windows desktop client. It opens in its own Web
 .\start-desktop.ps1
 ```
 
-The first run installs `pywebview` into the D-drive virtual environment. Tagged releases build a portable `LearnNote-Windows-x64.zip`; extract it to D: and run `LearnNote.exe`. The browser extension remains the current-page handoff: it detects the playing page and sends accessible media evidence to the desktop backend without recording the tab.
+The first run installs `pywebview` into the D-drive virtual environment. Tagged releases publish a portable `LearnNote-Windows-x64.zip`, a separate `LearnNote-Browser-Extension.zip`, and `SHA256SUMS.txt`. Extract the client to D: and run `LearnNote.exe`, then load the unpacked extension from a stable D-drive directory. The browser extension remains the current-page handoff: it detects the playing page and sends accessible media evidence to the desktop backend without recording the tab.
 
 ## Public Website
 
 `site/` is the no-login public LearnNote introduction and download website. It is deliberately static: it does not expose FastAPI, accept video uploads, read browser cookies, or receive model API keys.
+
+Permanent website: `https://hurry060215-tech.github.io/learnnote-assistant/`
 
 Preview it locally:
 

@@ -59,7 +59,7 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round
 .button-secondary svg { fill: currentColor; stroke: none; }
 .button-secondary:hover { border-color: #91a5a0; background: #fafcfc; transform: translateY(-1px); }
 
-.hero { min-height: 760px; padding: 58px 28px 48px; overflow: hidden; }
+.hero { min-height: 0; padding: 40px 28px 36px; overflow: hidden; }
 .hero-inner { display: grid; grid-template-columns: minmax(320px, .76fr) minmax(620px, 1.45fr); width: min(1320px, 100%); margin: 0 auto; align-items: center; gap: 52px; }
 .hero-copy h1 { margin: 0 0 18px; font-size: clamp(62px, 7vw, 96px); line-height: 1; font-weight: 780; }
 .hero-copy > p { max-width: 470px; margin: 0; color: #374641; font-size: 21px; }
@@ -72,7 +72,7 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round
 .window-bar { display: grid; grid-template-columns: auto 1fr auto; height: 38px; padding: 0 12px; border-bottom: 1px solid var(--line); align-items: center; color: #46534f; background: #fbfcfc; gap: 8px; font-size: 11px; }
 .window-icon { display: grid; width: 18px; height: 18px; border-radius: 4px; color: #fff; background: var(--accent); place-items: center; font-size: 7px; font-weight: 800; }
 .window-controls { color: #65736f; word-spacing: 12px; }
-.product-shot { height: 520px; overflow: hidden; background: #f5f8f7; }
+.product-shot { height: 460px; overflow: hidden; background: #f5f8f7; }
 .product-shot img { width: 100%; height: 100%; object-fit: cover; object-position: 38% top; }
 
 .section-band { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--band); }
