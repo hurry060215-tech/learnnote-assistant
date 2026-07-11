@@ -35,6 +35,7 @@ class MediaPipelineTests(unittest.TestCase):
                 coverage_gap=5,
             )
         )
+
         self.assertTrue(
             _should_keep_sampled_frame(
                 current_hash="same",
@@ -70,6 +71,28 @@ class MediaPipelineTests(unittest.TestCase):
                 coverage_gap=5,
             )
         )
+
+    def test_frame_grid_end_is_clamped_to_media_duration(self) -> None:
+        TEST_RUN_DIR.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=TEST_RUN_DIR) as tmp:
+            root = Path(tmp)
+            frames = [root / "frame_0000_000000.jpg", root / "frame_0001_000018.jpg"]
+            for index, frame in enumerate(frames):
+                Image.new("RGB", (64, 36), (20 + index * 20, 80, 120)).save(frame)
+
+            grids = build_frame_grids(
+                "short-video",
+                frames,
+                root / "grids",
+                columns=3,
+                rows=3,
+                interval=20,
+                media_duration=19.0,
+            )
+
+            self.assertEqual(len(grids), 1)
+            self.assertEqual(grids[0].start, 0.0)
+            self.assertEqual(grids[0].end, 19.0)
 
     def test_average_hash_detects_near_duplicate_frames(self) -> None:
         TEST_RUN_DIR.mkdir(parents=True, exist_ok=True)

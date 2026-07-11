@@ -10,7 +10,7 @@ from urllib.parse import urldefrag
 
 from .config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
 from .downloader import DownloadError, MediaDownloader, classify_resource, effective_resource_kind, infer_manifest_url_from_fragment
-from .media import build_frame_grids, extract_audio, extract_embedded_subtitle, extract_frames, normalize_video
+from .media import build_frame_grids, extract_audio, extract_embedded_subtitle, extract_frames, normalize_video, probe_duration
 from .models import ActiveVideoInfo, BrowserSubtitleCue, CurrentPageTaskRequest, DownloadAttempt, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
 from .storage import get_task, save_task, task_dir, update_task, write_json
 from .source_input import clean_task_title
@@ -1038,8 +1038,17 @@ def _process_video_file(
         update_task(task_id, phase="extracting_frames", progress=68, message="正在抽帧并生成画面网格")
         frame_dir = work_dir / "frames"
         grid_dir = work_dir / "grids"
+        media_duration = probe_duration(normalized)
         frames = extract_frames(normalized, frame_dir, max(1, options.frame_interval))
-        grids = build_frame_grids(task_id, frames, grid_dir, max(1, options.grid_columns), max(1, options.grid_rows), max(1, options.frame_interval))
+        grids = build_frame_grids(
+            task_id,
+            frames,
+            grid_dir,
+            max(1, options.grid_columns),
+            max(1, options.grid_rows),
+            max(1, options.frame_interval),
+            media_duration=media_duration,
+        )
 
     visual_windows = build_visual_windows(transcript, grids)
     visual_index_path = write_json(

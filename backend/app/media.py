@@ -406,6 +406,7 @@ def build_frame_grids(
     columns: int,
     rows: int,
     interval: int,
+    media_duration: float | None = None,
 ) -> list[FrameGrid]:
     grid_dir.mkdir(parents=True, exist_ok=True)
     group_size = max(1, columns * rows)
@@ -435,6 +436,9 @@ def build_frame_grids(
         canvas.save(path, quality=82)
         start = min(timestamps) if timestamps else float(idx * interval)
         end = max(timestamp + max(1, interval) for timestamp in timestamps) if timestamps else float((idx + len(group)) * interval)
+        if media_duration is not None and media_duration > 0:
+            end = min(end, float(media_duration))
+        end = max(start, end)
         rel_url = f"/api/tasks/{task_id}/assets/{path.name}"
         grids.append(
             FrameGrid(
