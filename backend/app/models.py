@@ -15,6 +15,8 @@ TaskPhase = Literal[
     "extracting_frames",
     "summarizing",
     "completed",
+    "cancelling",
+    "cancelled",
     "failed",
 ]
 TaskMode = Literal["video", "page_text", "download_only", "local", "rerun_from_media"]
@@ -165,6 +167,14 @@ class RerunFromMediaRequest(BaseModel):
     options: TaskOptions | None = None
 
 
+class StorageCleanupRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    retention_days: int = Field(default=30, ge=1, le=3650)
+    keep_recent: int = Field(default=10, ge=0, le=1000)
+    dry_run: bool = True
+
+
 class TaskQuestionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -262,11 +272,16 @@ class TaskRecord(BaseModel):
     title: str
     page_url: str = ""
     phase: TaskPhase = "queued"
-    status: Literal["queued", "running", "success", "failed"] = "queued"
+    status: Literal["queued", "running", "cancelling", "cancelled", "success", "failed"] = "queued"
     progress: int = 0
     message: str = "Queued"
     error_code: str = ""
     error_detail: str = ""
+    failed_phase: str = ""
+    retry_count: int = 0
+    cancel_requested: bool = False
+    cancel_requested_at: str = ""
+    cancelled_at: str = ""
     source_task_id: str = ""
     source_media_path: str = ""
     created_at: str

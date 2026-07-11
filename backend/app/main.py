@@ -20,20 +20,23 @@ from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Res
 from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 
+from . import API_VERSION, APP_VERSION, TASK_SCHEMA_VERSION, UX_PROTOCOL_VERSION
 from .config import BACKEND_ORIGIN, DATA_DIR, DEPLOYMENT_MODE, LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, MODEL_CACHE_DIR, PUBLIC_DEPLOYMENT, PUBLIC_PASSWORD, PUBLIC_USERNAME, STATIC_DIR, TASK_DIR, TEMP_DIR, UPLOAD_DIR, WEB_DIR, ensure_dirs
 from .downloader import MediaDownloader, effective_resource_kind, fallback_page_contexts, preflight_media_resource, rank_media_candidates
 from .media import MediaProcessingError, extract_video_clip, probe_duration
-from .models import CurrentPageTaskRequest, MediaPreflightRequest, MediaPreflightResult, PagePreflightRequest, RerunFromMediaRequest, ResourceCandidate, SourceInputRequest, TaskOptions, TaskQuestionRequest, TaskRecord, now_iso
+from .models import CurrentPageTaskRequest, MediaPreflightRequest, MediaPreflightResult, PagePreflightRequest, RerunFromMediaRequest, ResourceCandidate, SourceInputRequest, StorageCleanupRequest, TaskOptions, TaskQuestionRequest, TaskRecord, now_iso
 from .processor import enrich_resource_candidates_with_active_video, process_current_page_task, process_local_video_task, read_note, read_transcript, read_visual_index
 from .runtime import ffmpeg_bin, ffprobe_bin
 from .source_input import SourceInputError, clean_task_title, normalize_source_input
-from .storage import create_task, get_task, list_tasks, read_json, task_dir, update_task, write_json
+from .storage import cleanup_tasks, create_task, delete_task, get_task, list_tasks, read_json, request_task_cancel, storage_summary, task_dir, update_task, write_json
 from .summarizer import chat_completion_provider_kwargs, llm_base_host, llm_model_supports_vision, llm_provider_name, visual_window_review_question_lines
 
 ensure_dirs()
 
-app = FastAPI(title="LearnNote Assistant", version="0.1.0")
+app = FastAPI(title="LearnNote Assistant", version=APP_VERSION)
 _extension_heartbeat_at = 0.0
+_extension_version = ""
+_extension_protocol_version = 0
 EXTENSION_HEARTBEAT_TTL_SECONDS = 20.0
 TRUSTED_BROWSER_ORIGIN_RE = re.compile(r"^(chrome-extension://[a-z]+|moz-extension://[a-z0-9-]+|https?://(localhost|127\.0\.0\.1)(:\d+)?)$")
 WRITE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
@@ -2287,6 +2290,14 @@ def health_payload() -> dict:
     ytdlp_cli = shutil.which("yt-dlp") or shutil.which("yt-dlp.exe") or ""
     return {
         "ok": True,
+        "app_version": APP_VERSION,
+        "backend_version": APP_VERSION,
+        "api_version": API_VERSION,
+        "protocol_version": UX_PROTOCOL_VERSION,
+        "task_schema_version": TASK_SCHEMA_VERSION,
+        "extension_version": _extension_version,
+        "extension_protocol_version": _extension_protocol_version,
+        "extension_compatible": not _extension_protocol_version or _extension_protocol_version == UX_PROTOCOL_VERSION,
         "ffmpeg": bool(ffmpeg),
         "ffmpeg_path": ffmpeg or "",
         "ffprobe": bool(ffprobe),
@@ -2733,10 +2744,23 @@ def api_health() -> dict:
 
 
 @app.post("/api/extension/heartbeat")
-def extension_heartbeat() -> dict:
-    global _extension_heartbeat_at
+def extension_heartbeat(payload: dict | None = Body(default=None)) -> dict:
+    global _extension_heartbeat_at, _extension_version, _extension_protocol_version
     _extension_heartbeat_at = time.monotonic()
-    return {"ok": True, "extension_connected": True}
+    body = payload or {}
+    _extension_version = str(body.get("extension_version") or _extension_version or "")[:32]
+    try:
+        _extension_protocol_version = int(body.get("protocol_version") or _extension_protocol_version or 0)
+    except (TypeError, ValueError):
+        _extension_protocol_version = 0
+    compatible = not _extension_protocol_version or _extension_protocol_version == UX_PROTOCOL_VERSION
+    return {
+        "ok": True,
+        "extension_connected": True,
+        "extension_version": _extension_version,
+        "protocol_version": UX_PROTOCOL_VERSION,
+        "extension_compatible": compatible,
+    }
 
 
 @app.post("/api/tasks/from-current-page")
@@ -2907,6 +2931,64 @@ def create_from_existing_media(
 @app.get("/api/tasks")
 def api_list_tasks() -> dict:
     return {"tasks": [task_payload(task) for task in list_tasks()]}
+
+
+@app.get("/api/storage")
+def api_storage_summary() -> dict:
+    return storage_summary()
+
+
+@app.post("/api/storage/cleanup")
+def api_storage_cleanup(request: StorageCleanupRequest) -> dict:
+    return cleanup_tasks(request.retention_days, request.keep_recent, request.dry_run)
+
+
+@app.post("/api/tasks/{task_id}/cancel")
+def api_cancel_task(task_id: str) -> dict:
+    try:
+        task = get_task(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail={"code": "task_not_found", "message": "任务不存在"}) from exc
+    if task.status in {"success", "failed", "cancelled"}:
+        raise HTTPException(status_code=409, detail={"code": "task_not_running", "message": "任务已经结束"})
+    task = request_task_cancel(task_id)
+    return {"task": task_payload(task)}
+
+
+@app.post("/api/tasks/{task_id}/retry")
+def api_retry_task(
+    task_id: str,
+    background_tasks: BackgroundTasks,
+    request: RerunFromMediaRequest | TaskOptions | None = Body(default=None),
+) -> dict:
+    try:
+        source = get_task(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail={"code": "task_not_found", "message": "任务不存在"}) from exc
+    if source.status in {"queued", "running", "cancelling"}:
+        raise HTTPException(status_code=409, detail={"code": "task_still_running", "message": "请先停止当前任务"})
+    if not task_media_path(source):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "recapture_required",
+                "message": "需要重新从当前播放页发起，才能刷新登录状态和视频地址。",
+            },
+        )
+    update_task(task_id, retry_count=source.retry_count + 1)
+    return create_from_existing_media(task_id, background_tasks, request)
+
+
+@app.delete("/api/tasks/{task_id}")
+def api_delete_task(task_id: str) -> dict:
+    try:
+        return delete_task(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail={"code": "task_not_found", "message": "任务不存在"}) from exc
+    except RuntimeError as exc:
+        if str(exc) == "active_task":
+            raise HTTPException(status_code=409, detail={"code": "task_still_running", "message": "请先停止任务再删除"}) from exc
+        raise
 
 
 @app.get("/api/tasks/{task_id}")

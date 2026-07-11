@@ -12,7 +12,7 @@ from .config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
 from .downloader import DownloadError, MediaDownloader, classify_resource, effective_resource_kind, infer_manifest_url_from_fragment
 from .media import build_frame_grids, extract_audio, extract_embedded_subtitle, extract_frames, normalize_video, probe_duration
 from .models import ActiveVideoInfo, BrowserSubtitleCue, CurrentPageTaskRequest, DownloadAttempt, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
-from .storage import get_task, save_task, task_dir, update_task, write_json
+from .storage import get_task, mark_task_cancelled, save_task, task_dir, update_task, write_json
 from .source_input import clean_task_title
 from .summarizer import MAX_GRIDS_PER_VISION_CALL, MAX_VISION_GRIDS, build_visual_windows, llm_base_host, llm_model_supports_vision, llm_provider_name, select_vision_grid_entries, summarize_page_text_with_diagnostics, summarize_with_diagnostics_audit as summarize_with_diagnostics
 from .text_cleanup import correct_transcript_terms
@@ -36,7 +36,21 @@ class PageTextArtifacts:
     summary_diagnostics: dict | None = None
 
 
+class TaskCancelled(Exception):
+    pass
+
+
+def _check_cancel(task_id: str) -> None:
+    if get_task(task_id).cancel_requested:
+        mark_task_cancelled(task_id)
+        raise TaskCancelled(task_id)
+
+
 def _fail(task_id: str, code: str, detail: str) -> None:
+    record = get_task(task_id)
+    if record.cancel_requested or record.status == "cancelled":
+        mark_task_cancelled(task_id)
+        return
     update_task(
         task_id,
         status="failed",
@@ -44,6 +58,7 @@ def _fail(task_id: str, code: str, detail: str) -> None:
         progress=100,
         error_code=code,
         error_detail=detail,
+        failed_phase=record.phase,
         message=detail,
     )
 
@@ -760,8 +775,10 @@ def build_summary_diagnostics(
 
 def process_page_text_task(task_id: str, request: CurrentPageTaskRequest) -> None:
     try:
+        _check_cancel(task_id)
         update_task(task_id, status="running", phase="summarizing", progress=60, message="正在总结当前页面文本")
         artifacts = write_page_text_artifacts(task_id, request)
+        _check_cancel(task_id)
         update_task(
             task_id,
             status="success",
@@ -776,6 +793,8 @@ def process_page_text_task(task_id: str, request: CurrentPageTaskRequest) -> Non
             summary_diagnostics_path=artifacts.summary_diagnostics_path,
             summary_diagnostics=artifacts.summary_diagnostics or {},
         )
+    except TaskCancelled:
+        return
     except Exception as exc:
         _fail(task_id, "processing_failed", str(exc))
 
@@ -821,6 +840,10 @@ def complete_with_download_failure_fallback(task_id: str, request: CurrentPageTa
 
 
 def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> None:
+    try:
+        _check_cancel(task_id)
+    except TaskCancelled:
+        return
     request.resources = enrich_resources_with_active_video(request)
     write_json(task_id, "request.json", redacted_request_dump(request))
     write_resource_inventory(task_id, request)
@@ -862,6 +885,7 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
             status_callback=download_status_updater(task_id),
         )
         media_path, selected = downloader.download(request.page_url, request.resources, request.cookies, request.title)
+        _check_cancel(task_id)
         resolved_title = clean_task_title(getattr(downloader, "resolved_title", ""), request.page_url, request.title)
         if resolved_title != request.title:
             request.title = resolved_title
@@ -874,6 +898,7 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
             update_task(task_id, phase="processing_video", progress=80, message="正在保存可导出的本地视频")
             normalized = work_dir / "media.mp4"
             normalize_video(media_path, normalized)
+            _check_cancel(task_id)
             transcript_path = ""
             subtitle_path = ""
             page_subtitle_path = maybe_download_page_subtitle(downloader, request)
@@ -912,7 +937,12 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
             browser_subtitles=request.browser_subtitles,
             page_context=request.page_text,
         )
+    except TaskCancelled:
+        return
     except DownloadError as exc:
+        if get_task(task_id).cancel_requested:
+            mark_task_cancelled(task_id)
+            return
         if "downloader" in locals():
             update_task(task_id, download_attempts=downloader.attempts)
             failed_candidate = attempted_resource_candidate(request.resources, downloader.attempts)
@@ -939,6 +969,7 @@ def process_local_video_task(
     subtitle_source: str = "page-subtitle",
 ) -> None:
     try:
+        _check_cancel(task_id)
         _process_video_file(
             task_id=task_id,
             input_path=input_path,
@@ -950,6 +981,8 @@ def process_local_video_task(
             subtitle_source=subtitle_source,
             page_context="",
         )
+    except TaskCancelled:
+        return
     except Exception as exc:
         _fail(task_id, "processing_failed", str(exc))
 
@@ -966,11 +999,13 @@ def _process_video_file(
     page_context: str = "",
 ) -> None:
     work_dir = task_dir(task_id)
+    _check_cancel(task_id)
     update_task(task_id, status="running", phase="processing_video", progress=25, message="正在标准化视频")
 
     normalized = work_dir / "media.mp4"
     remember_reusable_media(task_id, input_path)
     normalize_video(input_path, normalized)
+    _check_cancel(task_id)
     update_task(task_id, media_path=str(normalized))
     audio_warning = ""
     transcript: TranscriptResult | None = None
@@ -1007,6 +1042,7 @@ def _process_video_file(
         audio_path = work_dir / "audio.wav"
         try:
             extract_audio(normalized, audio_path)
+            _check_cancel(task_id)
             update_task(task_id, audio_path=str(audio_path))
         except Exception as exc:
             audio_path = None
@@ -1020,6 +1056,7 @@ def _process_video_file(
         )
         if audio_path:
             transcript = transcribe_extracted_audio(audio_path, options)
+            _check_cancel(task_id)
         else:
             transcript = TranscriptResult(source="no-audio", warning=audio_warning)
 
@@ -1040,6 +1077,7 @@ def _process_video_file(
         grid_dir = work_dir / "grids"
         media_duration = probe_duration(normalized)
         frames = extract_frames(normalized, frame_dir, max(1, options.frame_interval))
+        _check_cancel(task_id)
         grids = build_frame_grids(
             task_id,
             frames,
@@ -1069,7 +1107,9 @@ def _process_video_file(
     save_task(record)
 
     update_task(task_id, phase="summarizing", progress=84, message="正在生成 Markdown 笔记")
+    _check_cancel(task_id)
     summary_result = summarize_with_diagnostics(title, transcript, grids, options, page_url, page_context)
+    _check_cancel(task_id)
     if len(summary_result) == 4:
         note, summary_source, summary_warning, llm_events = summary_result
     else:

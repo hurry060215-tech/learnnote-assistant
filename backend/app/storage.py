@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import json
+import shutil
 import threading
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from .config import TASK_DIR, ensure_dirs
+from .config import DATA_DIR, MODEL_CACHE_DIR, STATIC_DIR, TASK_DIR, TEMP_DIR, UPLOAD_DIR, ensure_dirs
 from .models import TaskOptions, TaskRecord, now_iso
 from .source_input import clean_task_title
 
@@ -26,7 +27,7 @@ def task_dir(task_id: str) -> Path:
 
 
 def task_file(task_id: str) -> Path:
-    return task_dir(task_id) / "task.json"
+    return TASK_DIR / task_id / "task.json"
 
 
 def public_task_options(options: TaskOptions | None) -> TaskOptions:
@@ -97,6 +98,119 @@ def update_task(task_id: str, **changes: Any) -> TaskRecord:
             setattr(record, key, value)
         save_task(record)
         return record
+
+
+def request_task_cancel(task_id: str) -> TaskRecord:
+    with _lock:
+        record = get_task(task_id)
+        if record.status in {"success", "failed", "cancelled"}:
+            return record
+        record.cancel_requested = True
+        record.cancel_requested_at = now_iso()
+        record.status = "cancelling"
+        record.phase = "cancelling"
+        record.message = "正在停止任务"
+        save_task(record)
+        return record
+
+
+def mark_task_cancelled(task_id: str) -> TaskRecord:
+    return update_task(
+        task_id,
+        status="cancelled",
+        phase="cancelled",
+        message="任务已停止，已生成的文件仍然保留",
+        cancelled_at=now_iso(),
+    )
+
+
+def _directory_size(path: Path) -> int:
+    if not path.exists():
+        return 0
+    total = 0
+    for item in path.rglob("*"):
+        try:
+            if item.is_file():
+                total += item.stat().st_size
+        except OSError:
+            continue
+    return total
+
+
+def storage_summary() -> dict[str, Any]:
+    ensure_dirs()
+    categories = {
+        "tasks": _directory_size(TASK_DIR),
+        "uploads": _directory_size(UPLOAD_DIR),
+        "temporary": _directory_size(TEMP_DIR),
+        "model_cache": _directory_size(MODEL_CACHE_DIR),
+        "static": _directory_size(STATIC_DIR),
+    }
+    return {
+        "root": str(DATA_DIR),
+        "total_bytes": sum(categories.values()),
+        "categories": categories,
+        "task_count": len(list_tasks()),
+    }
+
+
+def delete_task(task_id: str) -> dict[str, Any]:
+    with _lock:
+        record = get_task(task_id)
+        if record.status in {"queued", "running", "cancelling"}:
+            raise RuntimeError("active_task")
+        owned_upload = Path(record.source_media_path) if record.source_media_path else None
+        task_path = (TASK_DIR / task_id).resolve()
+        if TASK_DIR.resolve() not in task_path.parents:
+            raise ValueError("invalid_task_path")
+        task_bytes = _directory_size(task_path)
+        if task_path.exists():
+            shutil.rmtree(task_path)
+        upload_bytes = 0
+        if owned_upload:
+            try:
+                resolved_upload = owned_upload.resolve()
+                shared = any(
+                    other.id != task_id and other.source_media_path and Path(other.source_media_path).resolve() == resolved_upload
+                    for other in list_tasks()
+                )
+                if UPLOAD_DIR.resolve() in resolved_upload.parents and resolved_upload.is_file() and not shared:
+                    upload_bytes = resolved_upload.stat().st_size
+                    resolved_upload.unlink()
+            except (OSError, ValueError):
+                upload_bytes = 0
+        return {"task_id": task_id, "reclaimed_bytes": task_bytes + upload_bytes}
+
+
+def cleanup_tasks(retention_days: int = 30, keep_recent: int = 10, dry_run: bool = True) -> dict[str, Any]:
+    cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
+    terminal = [task for task in list_tasks() if task.status in {"success", "failed", "cancelled"}]
+    keep_ids = {task.id for task in terminal[:keep_recent]}
+    candidates = []
+    reclaimable = 0
+    for task in terminal:
+        created = _parse_iso_datetime(task.created_at)
+        if task.id in keep_ids or not created or created >= cutoff:
+            continue
+        size = _directory_size(TASK_DIR / task.id)
+        candidates.append({"task_id": task.id, "title": task.title, "created_at": task.created_at, "bytes": size})
+        reclaimable += size
+    reclaimed = 0
+    deleted = []
+    if not dry_run:
+        for candidate in candidates:
+            result = delete_task(candidate["task_id"])
+            reclaimed += int(result["reclaimed_bytes"])
+            deleted.append(candidate["task_id"])
+    return {
+        "dry_run": dry_run,
+        "retention_days": retention_days,
+        "keep_recent": keep_recent,
+        "candidates": candidates,
+        "deleted_task_ids": deleted,
+        "reclaimable_bytes": reclaimable,
+        "reclaimed_bytes": reclaimed,
+    }
 
 
 def write_json(task_id: str, filename: str, data: Any) -> Path:
