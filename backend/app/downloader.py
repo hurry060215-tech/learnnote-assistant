@@ -169,7 +169,9 @@ class QuietYtdlpLogger:
 
 
 def _should_run_ytdlp_cli(yt_dlp_module: object) -> bool:
-    return bool(getattr(yt_dlp_module, "__file__", ""))
+    # A frozen desktop executable is not a Python interpreter. Running
+    # ``LearnNote.exe -m yt_dlp`` feeds yt-dlp arguments to the desktop CLI.
+    return not getattr(sys, "frozen", False) and bool(getattr(yt_dlp_module, "__file__", ""))
 
 
 def _truncate_process_output(value: object, limit: int = 500) -> str:
@@ -3039,6 +3041,9 @@ class MediaDownloader:
             "extractor_retries": YTDLP_EXTRACTOR_RETRIES,
             "http_headers": http_headers,
         }
+        bundled_ffmpeg = ffmpeg_bin()
+        if bundled_ffmpeg:
+            opts["ffmpeg_location"] = str(bundled_ffmpeg)
         if cookie_file:
             opts["cookiefile"] = str(cookie_file)
 

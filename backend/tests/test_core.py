@@ -20,6 +20,7 @@ from app.downloader import (
     DownloadError,
     MediaDownloader,
     _rewrite_dash_manifest_for_local_file,
+    _should_run_ytdlp_cli,
     choose_ytdlp_subtitle_language,
     classify_resource,
     cookie_header_for_url,
@@ -2948,6 +2949,7 @@ class DownloaderBoundaryTests(unittest.TestCase):
             self.assertEqual(captured["options"]["http_headers"]["User-Agent"], "Chrome Playback UA")
             self.assertEqual(captured["options"]["http_headers"]["Referer"], "https://course.example.com/lesson/1")
             self.assertEqual(captured["options"]["http_headers"]["Origin"], "https://course.example.com")
+            self.assertTrue(Path(captured["options"]["ffmpeg_location"]).is_file())
             self.assertEqual(downloader.resolved_title, "fake")
 
     def test_ytdlp_cli_receives_browser_context_and_timeout(self) -> None:
@@ -3004,6 +3006,13 @@ class DownloaderBoundaryTests(unittest.TestCase):
         self.assertIn("User-Agent: Chrome Playback UA", cmd)
         self.assertIn("Referer: https://course.example.com/lesson/1", cmd)
         self.assertIn("Origin: https://course.example.com", cmd)
+
+    def test_frozen_desktop_uses_embedded_ytdlp_library(self) -> None:
+        fake_module = types.ModuleType("yt_dlp")
+        fake_module.__file__ = "D:/LearnNote/_internal/yt_dlp/__init__.py"
+
+        with patch.object(sys, "frozen", True, create=True):
+            self.assertFalse(_should_run_ytdlp_cli(fake_module))
 
     def test_ytdlp_cli_timeout_maps_to_structured_error(self) -> None:
         fake_module = types.ModuleType("yt_dlp")
