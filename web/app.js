@@ -2285,6 +2285,20 @@ function statusText(task) {
   return task.message || task.phase;
 }
 
+function taskPhaseLabel(task = {}) {
+  if (task.status === "success" || task.phase === "completed") return "完成";
+  if (task.status === "failed") return "需要处理";
+  return ({
+    queued: "准备中",
+    detecting: "查找视频",
+    downloading: "获取视频",
+    processing_video: "理解内容",
+    transcribing: "理解内容",
+    extracting_frames: "理解内容",
+    summarizing: "整理笔记"
+  })[task.phase] || "处理中";
+}
+
 function sourceText(task) {
   if (task.mode === "download_only") return "当前页下载";
   if (task.mode === "rerun_from_media") return "复用本地视频";
@@ -2382,7 +2396,7 @@ const PIPELINE_STEPS = [
   { key: "completed", label: "完成" }
 ];
 
-const DOWNLOAD_ERROR_CODES = new Set(["no_media_found", "auth_required", "drm_or_encrypted", "download_forbidden", "unsupported_manifest"]);
+const DOWNLOAD_ERROR_CODES = new Set(["no_media_found", "auth_required", "drm_or_encrypted", "download_forbidden", "unsupported_manifest", "media_mismatch"]);
 
 const ERROR_GUIDES = {
   no_media_found: {
@@ -2404,6 +2418,10 @@ const ERROR_GUIDES = {
   unsupported_manifest: {
     title: "manifest 或分片无法合并",
     body: ""
+  },
+  media_mismatch: {
+    title: "检测到的内容不是这段视频",
+    body: "系统已停止生成笔记。请让目标视频播放几秒后重新检测，或改用本地视频，避免把封面、图标或跳转页当作课程内容。"
   },
   processing_failed: {
     title: "本地处理失败",
@@ -4329,7 +4347,7 @@ function taskAuditMiniHtml(task) {
 function taskMetaLine(task) {
   return [
     sourceText(task),
-    task.phase && task.phase !== "completed" ? task.phase : "",
+    task.status === "running" || task.status === "queued" ? taskPhaseLabel(task) : "",
   ].filter(Boolean).join(" · ");
 }
 

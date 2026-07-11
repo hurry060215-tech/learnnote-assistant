@@ -119,6 +119,21 @@ class OctetStreamLoginPageAsMediaHandler(LoginPageAsMediaHandler):
         self.wfile.write(body)
 
 
+class ImageRedirectAsMediaHandler(QuietHandler):
+    def do_GET(self) -> None:
+        if urlparse(self.path).path == "/candidate":
+            self.send_response(302)
+            self.send_header("Location", "/logo.png")
+            self.end_headers()
+            return
+        body = b"\x89PNG\r\n\x1a\n" + (b"not-a-video" * 700)
+        self.send_response(200)
+        self.send_header("Content-Type", "image/png")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+
 class ExtensionlessHlsHandler(QuietHandler):
     playlist_name = "lesson.m3u8"
 
@@ -1137,6 +1152,37 @@ class DownloaderPriorityTests(unittest.TestCase):
                 self.assertEqual(selected.source, "direct-response")
                 self.assertEqual([attempt.strategy for attempt in downloader.attempts[:2]], ["direct-response-scan", "direct-file"])
                 self.assertGreaterEqual(DirectPostJsonMediaHandler.seen_bodies.count(DirectPostJsonMediaHandler.required_body), 2)
+            finally:
+                server.shutdown()
+                server.server_close()
+
+    def test_user_selected_video_candidate_resolving_to_png_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            server = ThreadingHTTPServer(("127.0.0.1", 0), ImageRedirectAsMediaHandler)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                page_url = f"http://127.0.0.1:{server.server_port}/lesson.html"
+                candidate = ResourceCandidate(
+                    url=f"http://127.0.0.1:{server.server_port}/candidate",
+                    source="page-scan",
+                    kind="video",
+                    score=100,
+                    user_selected=True,
+                )
+
+                preflight = preflight_media_resource(candidate, [], page_url)
+                self.assertTrue(preflight.ok)
+                self.assertFalse(preflight.downloadable)
+                self.assertEqual(preflight.code, "media_mismatch")
+                self.assertEqual(preflight.content_type, "image/png")
+
+                downloader = MediaDownloader(root / "task")
+                with self.assertRaises(DownloadError) as raised:
+                    downloader._download_file(candidate, [], page_url, "Wrong candidate")
+                self.assertEqual(raised.exception.code, "media_mismatch")
+                self.assertFalse(list((root / "task" / "download").glob("*_direct*")))
             finally:
                 server.shutdown()
                 server.server_close()

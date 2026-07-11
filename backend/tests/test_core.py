@@ -40,7 +40,7 @@ from app.downloader import (
 )
 from app.main import diagnostic_recovery_profile, render_bundle_manifest, render_diagnostics_markdown, task_audit_summary
 from app.models import ActiveVideoInfo, BrowserCookie, CurrentPageTaskRequest, DownloadAttempt, DrmSignal, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
-from app.processor import build_summary_diagnostics, cookie_sync_summary, download_progress_updater, download_status_updater, enrich_resource_candidates_with_active_video, process_current_page_task, process_local_video_task, read_note, read_transcript, redacted_request_dump, redacted_resource
+from app.processor import ContentMismatchError, build_summary_diagnostics, cookie_sync_summary, download_progress_updater, download_status_updater, enrich_resource_candidates_with_active_video, process_current_page_task, process_local_video_task, read_note, read_transcript, redacted_request_dump, redacted_resource, validate_summary_evidence
 from app.summarizer import MAX_GRIDS_PER_VISION_CALL, MAX_VISION_GRIDS, build_visual_windows, chat_completion_provider_kwargs, ensure_visual_appendix, learning_goal, learning_goal_instruction, llm_model_supports_vision, llm_provider_name, local_markdown_note, summarize_with_diagnostics, summarize_with_diagnostics_audit, summary_depth_instruction
 from app.storage import create_task, get_task, read_json, save_task, task_dir, write_json
 from app.transcriber import resolve_whisper_model, transcribe_audio_openai_compatible, transcript_from_subtitle
@@ -1266,6 +1266,22 @@ class TranscriberBoundaryTests(unittest.TestCase):
 
 
 class ProcessorBoundaryTests(unittest.TestCase):
+    def test_summary_evidence_rejects_logo_only_artifact(self) -> None:
+        transcript = TranscriptResult(source="no-audio")
+        with self.assertRaises(ContentMismatchError):
+            validate_summary_evidence(transcript, [Path("frame_000000.jpg")], 0.04)
+
+        validate_summary_evidence(
+            TranscriptResult(full_text="This is a real lesson transcript with enough content to summarize."),
+            [],
+            0,
+        )
+        validate_summary_evidence(
+            transcript,
+            [Path("frame_000000.jpg"), Path("frame_000020.jpg")],
+            40,
+        )
+
     def test_asr_failure_keeps_media_and_note_but_marks_task_failed(self) -> None:
         task = create_task("local", "ASR failure")
         input_path = task_dir(task.id) / "upload.mp4"

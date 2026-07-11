@@ -79,6 +79,7 @@ SUBTITLE_EXTENSIONS = {".vtt", ".srt", ".ass", ".ssa"}
 SUBTITLE_LANGUAGE_PREFERENCES = ("zh-CN", "zh-Hans", "zh-Hant", "zh", "en", "en-US")
 DOWNLOAD_FAILURE_PRIORITY = {
     "drm_or_encrypted": 50,
+    "media_mismatch": 45,
     "auth_required": 40,
     "yt_dlp_timeout": 35,
     "download_timeout": 35,
@@ -1815,6 +1816,18 @@ def _textish_content_type(content_type: str) -> bool:
     return bool(re.search(r"html|json|text|xml|javascript", content_type or "", re.I))
 
 
+def _non_media_content_type(content_type: str) -> bool:
+    """Reject definitive non-media responses even when a candidate was mislabeled."""
+    mime = (content_type or "").split(";", 1)[0].strip().lower()
+    if not mime or mime == "application/octet-stream":
+        return False
+    if mime.startswith(("video/", "audio/")):
+        return False
+    if any(marker in mime for marker in ("mpegurl", "dash+xml")):
+        return False
+    return mime.startswith("image/") or _textish_content_type(mime)
+
+
 def _looks_like_login_or_error(body: bytes) -> bool:
     if not body:
         return False
@@ -2058,6 +2071,14 @@ def preflight_media_resource(
                     message=f"媒体预检返回 HTTP {response.status_code}。",
                 )
             manifest_kind, manifest_mime = _manifest_kind_from_body(body.decode("utf-8", errors="ignore"), content_type)
+            if _non_media_content_type(content_type) and not _textish_content_type(content_type):
+                return MediaPreflightResult(
+                    **base,
+                    ok=True,
+                    downloadable=False,
+                    code="media_mismatch",
+                    message=f"Candidate resolved to non-media content ({content_type}); it was not accepted as video.",
+                )
             embedded_candidates = (
                 _embedded_media_candidates_from_text_response(candidate, body, final_url, referer)
                 if _textish_content_type(content_type) and manifest_kind == "unknown"
@@ -3230,6 +3251,11 @@ class MediaDownloader:
                     raise DownloadError("download_forbidden", f"媒体资源返回 HTTP {response.status_code}。")
                 content_type = response.headers.get("content-type", "")
                 content_disposition = response.headers.get("content-disposition", "")
+                if _non_media_content_type(content_type) and not _textish_content_type(content_type):
+                    raise DownloadError(
+                        "media_mismatch",
+                        f"Candidate resolved to non-media content ({content_type}); refusing to save it as video.",
+                    )
                 chunks = response.iter_content(chunk_size=1024 * 1024)
                 first_chunk = b""
                 for chunk in chunks:

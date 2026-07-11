@@ -281,7 +281,6 @@ const els = {
   llmBaseUrl: document.querySelector("#llmBaseUrl"),
   llmApiKey: document.querySelector("#llmApiKey"),
   progressBar: document.querySelector("#progressBar"),
-  stageRail: document.querySelector("#stageRail"),
   taskPhase: document.querySelector("#taskPhase"),
   taskMessage: document.querySelector("#taskMessage"),
   refreshHistoryButton: document.querySelector("#refreshHistoryButton"),
@@ -1057,7 +1056,7 @@ const PIPELINE_STEPS = [
   { key: "completed", label: "完成" }
 ];
 
-const DOWNLOAD_ERROR_CODES = new Set(["no_media_found", "auth_required", "drm_or_encrypted", "download_forbidden", "unsupported_manifest"]);
+const DOWNLOAD_ERROR_CODES = new Set(["no_media_found", "auth_required", "drm_or_encrypted", "download_forbidden", "unsupported_manifest", "media_mismatch"]);
 const DOWNLOADABLE_KINDS = new Set(["video", "hls", "dash"]);
 const HLS_URL_RE = /\.m3u8(?:[?#]|$)/i;
 const DASH_URL_RE = /\.mpd(?:[?#]|$)/i;
@@ -1088,9 +1087,18 @@ function stepState(task, step) {
   return "pending";
 }
 
-function renderStageRail(task) {
-  if (!els.stageRail) return;
-  els.stageRail.innerHTML = PIPELINE_STEPS.map(step => `<span class="${stepState(task, step)}">${step.label}</span>`).join("");
+function taskPhaseLabel(task = {}) {
+  if (task.status === "success" || task.phase === "completed") return "完成";
+  if (task.status === "failed") return "需要处理";
+  return ({
+    queued: "准备中",
+    detecting: "查找视频",
+    downloading: "获取视频",
+    processing_video: "理解内容",
+    transcribing: "理解内容",
+    extracting_frames: "理解内容",
+    summarizing: "整理笔记"
+  })[task.phase] || "处理中";
 }
 
 function taskStatusText(task = {}) {
@@ -5487,8 +5495,7 @@ async function pollTask() {
   else taskHistory.unshift(currentTask);
   renderTaskHistory();
   els.progressBar.style.width = `${currentTask.progress || 0}%`;
-  renderStageRail(currentTask);
-  els.taskPhase.textContent = currentTask.phase || "-";
+  els.taskPhase.textContent = taskPhaseLabel(currentTask);
   els.taskMessage.textContent = currentTask.error_detail || rerunFromMediaProgressMessage(currentTask) || currentTask.message || currentTask.phase;
   if (currentTask.status === "success" || (currentTask.status === "failed" && hasReadableTaskArtifacts(currentTask))) {
     await loadResult();

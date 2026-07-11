@@ -40,6 +40,21 @@ class TaskCancelled(Exception):
     pass
 
 
+class ContentMismatchError(Exception):
+    pass
+
+
+def validate_summary_evidence(transcript: TranscriptResult, frames: list[Path], media_duration: float) -> None:
+    transcript_chars = len(re.sub(r"\s+", "", transcript.full_text or ""))
+    distinct_frames = len({path.name for path in frames})
+    if transcript_chars > 0 or (media_duration >= 2 and distinct_frames >= 2):
+        return
+    raise ContentMismatchError(
+        "未取得足够的真实视频内容：没有可用转写，且画面或时长证据不足。"
+        "已停止生成笔记，避免总结到封面、图标或错误资源。"
+    )
+
+
 def _check_cancel(task_id: str) -> None:
     if get_task(task_id).cancel_requested:
         mark_task_cancelled(task_id)
@@ -971,6 +986,8 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
         if complete_with_download_failure_fallback(task_id, request, exc.code, detail):
             return
         _fail(task_id, exc.code, detail)
+    except ContentMismatchError as exc:
+        _fail(task_id, "media_mismatch", str(exc))
     except Exception as exc:
         _fail(task_id, "processing_failed", str(exc))
 
@@ -1000,6 +1017,8 @@ def process_local_video_task(
         )
     except TaskCancelled:
         return
+    except ContentMismatchError as exc:
+        _fail(task_id, "media_mismatch", str(exc))
     except Exception as exc:
         _fail(task_id, "processing_failed", str(exc))
 
@@ -1091,11 +1110,11 @@ def _process_video_file(
     frames: list[Path] = []
     grids = []
     frame_extraction_warning = ""
+    media_duration = probe_duration(normalized)
     if options.visual_understanding:
         update_task(task_id, phase="extracting_frames", progress=68, message="正在抽帧并生成画面网格")
         frame_dir = work_dir / "frames"
         grid_dir = work_dir / "grids"
-        media_duration = probe_duration(normalized)
         frames = extract_frames(
             normalized,
             frame_dir,
@@ -1135,6 +1154,9 @@ def _process_video_file(
     record.visual_windows = visual_windows
     record.visual_index_path = str(visual_index_path)
     save_task(record)
+
+    if not asr_error:
+        validate_summary_evidence(transcript, frames, media_duration)
 
     update_task(task_id, phase="summarizing", progress=84, message="正在生成 Markdown 笔记")
     _check_cancel(task_id)
