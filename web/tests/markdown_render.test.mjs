@@ -317,7 +317,7 @@ assert.match(indexHtml, /id="urlPreflightReport"/);
 assert.match(indexHtml, /href="#settingsView" data-app-view="settings" title="设置"/);
 assert.doesNotMatch(indexHtml, /href="#settings" title="设置"/);
 assert.match(indexHtml, /workspace\.css\?v=20260711-focus-settings/);
-assert.match(indexHtml, /product\.css\?v=20260711-product-redesign/);
+assert.match(indexHtml, /product\.css\?v=20260711-editorial-client/);
 assert.match(indexHtml, /<body data-app-view="workspace">/);
 assert.match(indexHtml, /id="settingsView"/);
 assert.match(indexHtml, /data-settings-tab="general"/);
@@ -335,11 +335,12 @@ assert.match(indexHtml, /class="result-tab" role="tab" aria-selected="false" dat
 assert.match(indexHtml, /id="onboardingOverlay"/);
 assert.match(indexHtml, /id="openOnboardingButton"/);
 assert.match(indexHtml, /id="llmProvider"/);
-assert.match(indexHtml, /value="openai" selected>OpenAI/);
+assert.match(indexHtml, /value="kimi" selected>Kimi/);
+assert.match(indexHtml, /id="recentNotesRail"/);
 assert.match(indexHtml, /value="gemini">Google Gemini/);
 assert.match(indexHtml, /value="dashscope">/);
 assert.match(indexHtml, /value="deepseek">DeepSeek/);
-assert.match(indexHtml, /value="kimi">Kimi/);
+assert.match(indexHtml, /value="kimi" selected>Kimi/);
 assert.match(indexHtml, /value="zhipu">/);
 assert.match(indexHtml, /value="doubao">/);
 assert.match(indexHtml, /value="minimax">MiniMax/);
@@ -3244,7 +3245,7 @@ assert.deepEqual(
   {
     uiScale: "100",
     textSize: "standard",
-    theme: "system",
+    theme: "light",
     colorTheme: "teal",
     defaultSource: "browser",
     autoOpenNote: true,

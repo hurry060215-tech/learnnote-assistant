@@ -16,6 +16,9 @@ from desktop.credentials import delete_secret, read_secret, write_secret
 
 
 GITHUB_LATEST_RELEASE_API = "https://api.github.com/repos/hurry060215-tech/learnnote-assistant/releases/latest"
+DESKTOP_MODEL_PROVIDER = "kimi"
+DESKTOP_MODEL_BASE_URL = "https://api.moonshot.cn/v1"
+DESKTOP_MODEL_NAME = "kimi-k2.6"
 
 
 class DesktopApi:
@@ -108,6 +111,16 @@ def configure_runtime(root: Path, port: int) -> Path:
     return data_dir
 
 
+def configure_model_runtime() -> bool:
+    api_key = read_secret(DESKTOP_MODEL_PROVIDER)
+    if not api_key:
+        return False
+    os.environ["LEARNNOTE_LLM_API_KEY"] = api_key
+    os.environ["LEARNNOTE_LLM_BASE_URL"] = DESKTOP_MODEL_BASE_URL
+    os.environ["LEARNNOTE_LLM_MODEL"] = DESKTOP_MODEL_NAME
+    return True
+
+
 def run() -> int:
     parser = argparse.ArgumentParser(description="Launch the LearnNote Windows desktop client.")
     parser.add_argument("--port", type=int, default=8765)
@@ -119,6 +132,7 @@ def run() -> int:
         raise RuntimeError("LearnNote Desktop must be installed on D: or another non-system drive.")
     port = available_port(args.port)
     data_dir = configure_runtime(root, port)
+    configure_model_runtime()
 
     from app.main import app
     import webview

@@ -7,7 +7,7 @@
     <link rel="icon" href="data:,">
     <link rel="stylesheet" href="/web/styles.css?v=20260710-bv-input">
     <link rel="stylesheet" href="/web/workspace.css?v=20260711-focus-settings">
-    <link rel="stylesheet" href="/web/product.css?v=20260711-product-redesign">
+    <link rel="stylesheet" href="/web/product.css?v=20260711-editorial-client">
   </head>
   <body data-app-view="workspace">
     <header class="topbar">
@@ -292,7 +292,7 @@
                 </button>
                 <button id="browserRefreshButton" class="secondary action-button" type="button">
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 0 1-13.66 5.66M4 12A8 8 0 0 1 17.66 6.34M20 4v6h-6M4 20v-6h6"/></svg>
-                  我已在侧栏开始
+                  检查扩展连接
                 </button>
               </div>
             </div>
@@ -309,6 +309,14 @@
           </div>
           <div id="homeQuickOptionsSlot" class="quick-note-grid"></div>
         </section>
+
+        <aside id="recentNotesRail" class="recent-notes-rail" aria-label="最近笔记">
+          <header>
+            <strong>最近笔记</strong>
+            <button type="button" data-open-note-library>查看全部</button>
+          </header>
+          <div id="recentNotesList" class="recent-notes-list"></div>
+        </aside>
 
         <section id="sourceWorkflow" class="source-workflow" aria-label="学习生产线"></section>
 
@@ -399,12 +407,12 @@
             <label class="field" data-setting-group="model">
               <span>模型服务</span>
               <select id="llmProvider">
-                <option value="openai" selected>OpenAI</option>
+                <option value="openai">OpenAI</option>
                 <option value="groq">Groq</option>
                 <option value="gemini">Google Gemini</option>
                 <option value="dashscope">通义千问 DashScope</option>
                 <option value="deepseek">DeepSeek</option>
-                <option value="kimi">Kimi 月之暗面</option>
+                <option value="kimi" selected>Kimi 月之暗面</option>
                 <option value="zhipu">智谱 GLM</option>
                 <option value="doubao">豆包 火山方舟</option>
                 <option value="minimax">MiniMax</option>
@@ -415,11 +423,11 @@
             <p id="providerHint" class="provider-hint" data-setting-group="model" aria-live="polite"></p>
             <label class="field" data-setting-group="model">
               <span>视觉模型</span>
-              <input id="llmModel" type="text" placeholder="gpt-4.1-mini">
+              <input id="llmModel" type="text" placeholder="kimi-k2.6">
             </label>
             <label class="field wide" data-setting-group="model">
               <span>Base URL</span>
-              <input id="llmBaseUrl" type="url" placeholder="https://api.openai.com/v1">
+              <input id="llmBaseUrl" type="url" placeholder="https://api.moonshot.cn/v1">
             </label>
             <label class="field wide" data-setting-group="model">
               <span>API Key（仅随本次任务发送，不写入任务记录）</span>

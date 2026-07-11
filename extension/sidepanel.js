@@ -8070,6 +8070,9 @@ function handleRouteAction(action) {
 
 function setSourceSwitcherActive(action) {
   activeSource = action === "local" || action === "text" ? action : "summarize";
+  if (document.body?.dataset) {
+    document.body.dataset.sourceMode = activeSource;
+  }
   document.querySelectorAll("[data-source-action]").forEach(button => {
     button.classList.toggle("active", button.dataset.sourceAction === activeSource);
   });

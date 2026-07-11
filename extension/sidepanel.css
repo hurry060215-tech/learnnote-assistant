@@ -13092,3 +13092,85 @@ body[data-ui="learnnote-sidepanel-v2"] .result-advanced-menu hr {
   border: 0;
   border-top: 1px solid var(--border);
 }
+
+/* Editorial side panel: source first, one visible action, diagnostics on demand. */
+body[data-ui="learnnote-sidepanel-v2"] {
+  --accent: #0f9f9a;
+  --accent-strong: #087d79;
+  --surface-soft: #f7faf9;
+  --border: #e4e9e8;
+  background: #ffffff;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .side-shell {
+  gap: 12px;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .current-card,
+body[data-ui="learnnote-sidepanel-v2"] .progress-panel,
+body[data-ui="learnnote-sidepanel-v2"] .history-panel,
+body[data-ui="learnnote-sidepanel-v2"] .result-panel,
+body[data-ui="learnnote-sidepanel-v2"] .options-disclosure,
+body[data-ui="learnnote-sidepanel-v2"] .local-video-card {
+  border-radius: 7px;
+  box-shadow: none;
+}
+
+body[data-ui="learnnote-sidepanel-v2"][data-panel-mode="study"] .product-mode-bar #studyModeButton,
+body[data-ui="learnnote-sidepanel-v2"][data-panel-mode="study"] .current-card .study-flow-board {
+  display: none;
+}
+
+body[data-ui="learnnote-sidepanel-v2"][data-panel-mode="study"] .product-mode-bar {
+  min-height: 30px;
+  justify-content: flex-end;
+  border-bottom: 1px solid var(--border);
+}
+
+body[data-ui="learnnote-sidepanel-v2"][data-panel-mode="study"] .product-mode-bar #diagnosticModeButton {
+  min-height: 28px;
+  padding: 0 4px;
+  color: var(--muted);
+  background: transparent;
+  font-size: 11px;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .actions {
+  display: none;
+}
+
+body[data-ui="learnnote-sidepanel-v2"][data-source-mode="text"] .actions {
+  display: block;
+}
+
+body[data-ui="learnnote-sidepanel-v2"][data-source-mode="text"] .actions > :not(#textButton),
+body[data-ui="learnnote-sidepanel-v2"][data-source-mode="summarize"] .local-video-card,
+body[data-ui="learnnote-sidepanel-v2"][data-source-mode="text"] .local-video-card {
+  display: none !important;
+}
+
+body[data-ui="learnnote-sidepanel-v2"][data-source-mode="text"] #textButton {
+  display: flex;
+  width: 100%;
+  min-height: 46px;
+  justify-content: center;
+  border: 0;
+  border-radius: 6px;
+  color: #ffffff;
+  background: var(--accent);
+  font-weight: 700;
+}
+
+body[data-ui="learnnote-sidepanel-v2"][data-source-mode="local"] .current-card > :not(.source-switcher),
+body[data-ui="learnnote-sidepanel-v2"][data-source-mode="local"] .options-disclosure {
+  display: none !important;
+}
+
+body[data-ui="learnnote-sidepanel-v2"][data-source-mode="local"] .local-video-card {
+  display: block;
+  order: -1;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .first-run-card {
+  box-shadow: none;
+}

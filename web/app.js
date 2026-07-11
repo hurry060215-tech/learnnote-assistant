@@ -35,7 +35,7 @@ const ONBOARDING_STORAGE_KEY = "learnnote_onboarding_v1";
 const DEFAULT_APP_SETTINGS = Object.freeze({
   uiScale: "100",
   textSize: "standard",
-  theme: "system",
+  theme: "light",
   colorTheme: "teal",
   defaultSource: "browser",
   autoOpenNote: true,
@@ -335,6 +335,8 @@ const els = {
   browserBridgeStatus: document.querySelector("#browserBridgeStatus"),
   browserCaptureTitle: document.querySelector("#browserCaptureTitle"),
   browserRouteSummary: document.querySelector("#browserRouteSummary"),
+  recentNotesRail: document.querySelector("#recentNotesRail"),
+  recentNotesList: document.querySelector("#recentNotesList"),
   startupReadiness: document.querySelector("#startupReadiness"),
   sourceRouteRail: document.querySelector("#sourceRouteRail"),
   sourceWorkflow: document.querySelector("#sourceWorkflow"),
@@ -396,7 +398,7 @@ function normalizedAppSettings(value = {}) {
   const settings = { ...DEFAULT_APP_SETTINGS, ...(value && typeof value === "object" ? value : {}) };
   if (!["90", "100", "110", "125"].includes(String(settings.uiScale))) settings.uiScale = "100";
   if (!["compact", "standard", "large"].includes(settings.textSize)) settings.textSize = "standard";
-  if (!["system", "light", "dark"].includes(settings.theme)) settings.theme = "system";
+  if (!["system", "light", "dark"].includes(settings.theme)) settings.theme = "light";
   if (!["teal", "ocean", "forest", "graphite"].includes(settings.colorTheme)) settings.colorTheme = "teal";
   if (!["browser", "local", "url"].includes(settings.defaultSource)) settings.defaultSource = "browser";
   if (!["10", "20", "30", "60"].includes(String(settings.frameInterval))) settings.frameInterval = "20";
@@ -3872,11 +3874,52 @@ function taskMatchesFilters(task) {
   ].filter(Boolean).join(" ").toLowerCase().includes(query);
 }
 
+function recentTaskTime(task) {
+  const raw = String(task?.updated_at || task?.created_at || "");
+  const value = new Date(raw);
+  if (Number.isNaN(value.getTime())) return "";
+  const now = new Date();
+  const sameDay = value.toDateString() === now.toDateString();
+  if (sameDay) return value.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (value.toDateString() === yesterday.toDateString()) return "昨天";
+  return `${value.getMonth() + 1}月${value.getDate()}日`;
+}
+
+function renderRecentNotes() {
+  if (!els.recentNotesList) return;
+  const recent = tasks.filter(task => task.status === "success" && task.note_path).slice(0, 4);
+  if (!recent.length) {
+    els.recentNotesList.innerHTML = `<p class="recent-notes-empty">完成第一篇笔记后，会显示在这里。</p>`;
+    return;
+  }
+  els.recentNotesList.innerHTML = recent.map(task => `
+    <button type="button" class="recent-note-row" data-recent-task="${escapeHtml(task.id)}">
+      <span>
+        <strong>${escapeHtml(displayTaskTitle(task))}</strong>
+        <small>${escapeHtml(sourceText(task))}</small>
+      </span>
+      <em>完成</em>
+      <time>${escapeHtml(recentTaskTime(task))}</time>
+    </button>
+  `).join("");
+  document.querySelectorAll("[data-recent-task]").forEach(button => {
+    button.addEventListener("click", async () => {
+      selectTask(button.dataset.recentTask);
+      showAppView("notes");
+      renderTasks();
+      await renderDetail();
+    });
+  });
+}
+
 function renderTasks() {
   els.taskCount.textContent = String(tasks.length);
   els.successCount.textContent = String(tasks.filter(task => task.status === "success").length);
   els.runningCount.textContent = String(tasks.filter(task => ["running", "queued", "cancelling"].includes(task.status)).length);
   els.failedCount.textContent = String(tasks.filter(task => task.status === "failed").length);
+  renderRecentNotes();
 
   const filteredTasks = sortedVisibleTasks(tasks.filter(taskMatchesFilters), selectedTaskId);
   const visibleTasks = filteredTasks.slice(0, historyVisibleLimit);
@@ -7295,6 +7338,11 @@ document.querySelectorAll?.("[data-app-view]")?.forEach?.(item => {
     showAppView(view || "workspace");
     if (view === "history") setHistoryCollapsed(false);
   });
+});
+
+document.querySelector("[data-open-note-library]")?.addEventListener("click", () => {
+  showAppView("history");
+  setHistoryCollapsed(false);
 });
 
 els.settingsCloseButton?.addEventListener?.("click", () => showAppView("workspace"));

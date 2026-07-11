@@ -4,9 +4,9 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>LearnNote</title>
-    <link rel="stylesheet" href="sidepanel.css?v=20260711-first-run-flow">
+    <link rel="stylesheet" href="sidepanel.css?v=20260711-editorial-panel">
   </head>
-  <body data-ui="learnnote-sidepanel-v2">
+  <body data-ui="learnnote-sidepanel-v2" data-source-mode="summarize">
     <header class="app-header">
       <div class="brand">
         <div class="mark">LN</div>
@@ -130,6 +130,10 @@
           <svg viewBox="0 0 24 24"><path d="M12 3v12M7 8l5-5 5 5M4 17v3h16v-3"/></svg>
           上传本地视频
         </button>
+        <button id="textButton">
+          <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+          总结当前页面文字
+        </button>
         <details class="side-advanced-actions">
           <summary>更多方式</summary>
           <div>
@@ -140,10 +144,6 @@
             <button id="downloadOnlyButton">
               <svg viewBox="0 0 24 24"><path d="M12 3v11M7 9l5 5 5-5M5 19h14"/></svg>
               只下载视频
-            </button>
-            <button id="textButton">
-              <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
-              只总结页面文字
             </button>
           </div>
         </details>
@@ -255,12 +255,12 @@
         <label>
           <span>模型服务</span>
           <select id="llmProvider">
-            <option value="openai" selected>OpenAI</option>
+            <option value="openai">OpenAI</option>
             <option value="groq">Groq</option>
             <option value="gemini">Google Gemini</option>
             <option value="dashscope">通义千问 DashScope</option>
             <option value="deepseek">DeepSeek</option>
-            <option value="kimi">Kimi 月之暗面</option>
+            <option value="kimi" selected>Kimi 月之暗面</option>
             <option value="zhipu">智谱 GLM</option>
             <option value="doubao">豆包 火山方舟</option>
             <option value="minimax">MiniMax</option>
@@ -271,11 +271,11 @@
         <p id="providerHint" class="provider-hint" aria-live="polite"></p>
         <label>
           <span>视觉模型</span>
-          <input id="llmModel" type="text" placeholder="gpt-4.1-mini">
+          <input id="llmModel" type="text" placeholder="kimi-k2.6">
         </label>
         <label class="wide">
           <span>Base URL</span>
-          <input id="llmBaseUrl" type="url" placeholder="https://api.openai.com/v1">
+          <input id="llmBaseUrl" type="url" placeholder="https://api.moonshot.cn/v1">
         </label>
         <label class="wide">
           <span>API Key（仅本次任务）</span>
@@ -355,6 +355,6 @@
       </section>
     </main>
 
-    <script src="sidepanel.js?v=20260711-first-run-flow"></script>
+    <script src="sidepanel.js?v=20260711-editorial-panel"></script>
   </body>
 </html>

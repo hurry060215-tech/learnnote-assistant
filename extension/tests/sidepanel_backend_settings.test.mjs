@@ -111,10 +111,10 @@ vm.runInContext(sidepanelCode, context);
 await new Promise(resolve => setTimeout(resolve, 0));
 
 assert.match(sidepanelHtml, /value="gemini">Google Gemini/);
-assert.match(sidepanelHtml, /value="openai" selected>OpenAI/);
+assert.match(sidepanelHtml, /value="kimi" selected>Kimi/);
 assert.match(sidepanelHtml, /value="dashscope">/);
 assert.match(sidepanelHtml, /value="deepseek">DeepSeek/);
-assert.match(sidepanelHtml, /value="kimi">Kimi/);
+assert.match(sidepanelHtml, /value="kimi" selected>Kimi/);
 assert.match(sidepanelHtml, /value="zhipu">/);
 assert.match(sidepanelHtml, /value="doubao">/);
 assert.match(sidepanelHtml, /value="minimax">MiniMax/);

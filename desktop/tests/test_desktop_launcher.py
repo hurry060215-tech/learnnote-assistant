@@ -5,6 +5,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -49,6 +50,30 @@ class DesktopLauncherTests(unittest.TestCase):
                     os.environ.pop(key, None)
                 else:
                     os.environ[key] = value
+
+    def test_configure_model_runtime_uses_secure_kimi_credential(self):
+        keys = (
+            "LEARNNOTE_LLM_API_KEY",
+            "LEARNNOTE_LLM_BASE_URL",
+            "LEARNNOTE_LLM_MODEL",
+        )
+        previous = {key: os.environ.get(key) for key in keys}
+        try:
+            with patch.object(desktop, "read_secret", return_value="test-kimi-key"):
+                self.assertTrue(desktop.configure_model_runtime())
+            self.assertEqual("test-kimi-key", os.environ["LEARNNOTE_LLM_API_KEY"])
+            self.assertEqual("https://api.moonshot.cn/v1", os.environ["LEARNNOTE_LLM_BASE_URL"])
+            self.assertEqual("kimi-k2.6", os.environ["LEARNNOTE_LLM_MODEL"])
+        finally:
+            for key, value in previous.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
+
+    def test_configure_model_runtime_leaves_defaults_without_credential(self):
+        with patch.object(desktop, "read_secret", return_value=""):
+            self.assertFalse(desktop.configure_model_runtime())
 
     def test_release_build_analyzes_dynamic_backend_imports(self):
         workflow = (ROOT / ".github" / "workflows" / "desktop-release.yml").read_text(encoding="utf-8")
