@@ -55,6 +55,14 @@ class DesktopLauncherTests(unittest.TestCase):
         self.assertIn('--paths "backend"', workflow)
         self.assertIn("--hidden-import app.main", workflow)
         self.assertIn("--collect-submodules fastapi", workflow)
+        self.assertIn('--version-file "build/learnnote-version.txt"', workflow)
+        self.assertIn("LearnNote-Setup-x64.exe", workflow)
+
+    def test_installer_defaults_to_d_drive_and_rejects_c_drive(self):
+        installer = (ROOT / "scripts" / "learnnote-installer.iss").read_text(encoding="utf-8")
+        self.assertIn("DefaultDirName=D:\\LearnNote", installer)
+        self.assertIn("CompareText(ExtractFileDrive(WizardDirValue), 'C:') = 0", installer)
+        self.assertIn("Result := False", installer)
 
 
 if __name__ == "__main__":

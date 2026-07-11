@@ -160,7 +160,7 @@ The primary product is the local Windows desktop client. It opens in its own Web
 .\start-desktop.ps1
 ```
 
-The first run installs `pywebview` into the D-drive virtual environment. Tagged releases publish a portable `LearnNote-Windows-x64.zip`, a separate `LearnNote-Browser-Extension.zip`, and `SHA256SUMS.txt`. Extract the client to D: and run `LearnNote.exe`, then load the unpacked extension from a stable D-drive directory. The browser extension remains the current-page handoff: it detects the playing page and sends accessible media evidence to the desktop backend without recording the tab.
+The first run installs `pywebview` into the D-drive virtual environment. Tagged releases publish `LearnNote-Setup-x64.exe`, the portable `LearnNote-Windows-x64.zip`, a separate `LearnNote-Browser-Extension.zip`, and `SHA256SUMS.txt`. Install or extract the client to D: (or another non-system drive), run `LearnNote.exe`, then load the unpacked extension from a stable directory. The browser extension remains the current-page handoff: it detects the playing page and sends accessible media evidence to the desktop backend without recording the tab. The desktop client can keep provider API keys in Windows Credential Manager; keys are not written to task JSON, localStorage, diagnostics, or exports.
 
 ## Public Website
 

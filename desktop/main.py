@@ -6,10 +6,57 @@ import socket
 import sys
 import threading
 import time
+import webbrowser
 from pathlib import Path
 
 import requests
 import uvicorn
+
+from desktop.credentials import delete_secret, read_secret, write_secret
+
+
+GITHUB_LATEST_RELEASE_API = "https://api.github.com/repos/hurry060215-tech/learnnote-assistant/releases/latest"
+
+
+class DesktopApi:
+    def __init__(self, data_dir: Path):
+        self.data_dir = data_dir
+
+    def save_model_key(self, provider: str, api_key: str) -> dict:
+        write_secret(provider, api_key)
+        return {"ok": True, "provider": provider}
+
+    def load_model_key(self, provider: str) -> dict:
+        value = read_secret(provider)
+        return {"ok": True, "provider": provider, "api_key": value, "configured": bool(value)}
+
+    def delete_model_key(self, provider: str) -> dict:
+        return {"ok": True, "provider": provider, "deleted": delete_secret(provider)}
+
+    def open_data_folder(self) -> dict:
+        os.startfile(self.data_dir)  # type: ignore[attr-defined]
+        return {"ok": True}
+
+    def check_update(self) -> dict:
+        try:
+            response = requests.get(
+                GITHUB_LATEST_RELEASE_API,
+                timeout=4.0,
+                headers={"Accept": "application/vnd.github+json"},
+            )
+            response.raise_for_status()
+            payload = response.json()
+            tag = str(payload.get("tag_name") or "").lstrip("v")
+            url = str(payload.get("html_url") or "")
+            return {"ok": True, "latest_version": tag, "release_url": url}
+        except (requests.RequestException, ValueError) as exc:
+            return {"ok": False, "message": str(exc)}
+
+    def open_release(self, url: str) -> dict:
+        if not str(url).startswith("https://github.com/hurry060215-tech/learnnote-assistant/releases/"):
+            raise ValueError("Unsupported release URL")
+        webbrowser.open(url)
+        return {"ok": True}
 
 
 def application_root() -> Path:
@@ -99,8 +146,9 @@ def run() -> int:
             min_size=(1024, 700),
             text_select=True,
             confirm_close=False,
+            js_api=DesktopApi(data_dir),
         )
-        window.events.loaded += lambda: window.set_title("LearnNote - 视频学习笔记")
+        window.events.loaded += lambda: window.set_title("LearnNote - Video Learning Notes")
         webview.start(debug=args.debug, private_mode=False)
     finally:
         server.should_exit = True
