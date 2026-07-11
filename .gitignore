@@ -19,9 +19,16 @@ data/test-runs/
 data/ui-audit/
 data/visual-audit*/
 data/uploads/
+data/exports/
+data/installers/
 data/browser-profiles/
 data/config/
 data/wheelhouse*/
 data/tasks/
 data/static/
 extension/.DS_Store
+build/
+dist/
+dist-installer/
+LearnNote.spec
+LearnNote-*.zip

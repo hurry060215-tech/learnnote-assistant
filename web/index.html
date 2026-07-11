@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>LearnNote 学习视频笔记</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="/web/styles.css?v=20260710-bv-input">
-    <link rel="stylesheet" href="/web/workspace.css?v=20260711-focus-settings">
-    <link rel="stylesheet" href="/web/product.css?v=20260711-editorial-client">
+    <link rel="stylesheet" href="/web/styles.css?v=20260711-v015">
+    <link rel="stylesheet" href="/web/workspace.css?v=20260711-v015">
+    <link rel="stylesheet" href="/web/product.css?v=20260711-v015">
   </head>
   <body data-app-view="workspace">
     <header class="topbar">
@@ -66,6 +66,7 @@
             <button class="active" type="button" data-settings-tab="general">通用</button>
             <button type="button" data-settings-tab="model">AI 模型</button>
             <button type="button" data-settings-tab="transcriber">转写</button>
+            <button type="button" data-settings-tab="notes">笔记</button>
             <button type="button" data-settings-tab="processing">视频处理</button>
             <button type="button" data-settings-tab="connection">下载与存储</button>
             <button type="button" data-settings-tab="privacy">隐私</button>
@@ -76,9 +77,9 @@
               <div class="settings-section-heading"><h3>界面</h3><p>让常用操作更清晰、易读。</p></div>
               <div class="settings-rows">
                 <div class="setting-row">
-                  <div><strong>界面缩放</strong><small>调整整体控件大小</small></div>
+                  <div><strong>界面密度</strong><small>只调整留白和控件间距</small></div>
                   <div class="segment-control" data-setting="uiScale">
-                    <button type="button" data-value="90">90%</button><button class="active" type="button" data-value="100">100%</button><button type="button" data-value="110">110%</button><button type="button" data-value="125">125%</button>
+                    <button type="button" data-value="90">紧凑</button><button class="active" type="button" data-value="100">标准</button><button type="button" data-value="110">宽松</button>
                   </div>
                 </div>
                 <div class="setting-row">
@@ -130,6 +131,10 @@
             <section class="settings-pane" data-settings-pane="transcriber">
               <div class="settings-section-heading"><h3>转写</h3><p>优先使用字幕，没有字幕时再识别音频。</p></div>
               <div id="settingsTranscriberSlot" class="settings-option-slot"></div>
+            </section>
+            <section class="settings-pane" data-settings-pane="notes">
+              <div class="settings-section-heading"><h3>笔记细节</h3><p>主页预设会自动选择合适组合，也可以在这里精细调整。</p></div>
+              <div id="settingsNotesSlot" class="settings-option-slot"></div>
             </section>
             <section class="settings-pane" data-settings-pane="processing">
               <div class="settings-section-heading"><h3>视频处理</h3><p>控制切片密度与笔记结构。</p></div>
@@ -307,7 +312,19 @@
             <strong>输出方式</strong>
             <button id="openProcessingSettingsButton" type="button">更多设置</button>
           </div>
-          <div id="homeQuickOptionsSlot" class="quick-note-grid"></div>
+          <div id="homeQuickOptionsSlot" class="quick-note-grid">
+            <label class="field note-preset-field">
+              <span>笔记类型</span>
+              <select id="notePreset">
+                <option value="course" selected>课程整理 · 推荐</option>
+                <option value="review">考前复习</option>
+                <option value="tutorial">操作教程</option>
+                <option value="timeline">时间轴速览</option>
+                <option value="academic">论文导读</option>
+              </select>
+            </label>
+          </div>
+          <p id="notePresetHint" class="note-preset-hint">通用课程：整理章节、重点和复习问题。</p>
         </section>
 
         <aside id="recentNotesRail" class="recent-notes-rail" aria-label="最近笔记">
@@ -362,38 +379,41 @@
             <label class="field" data-setting-group="transcriber">
               <span>转写模型</span>
               <select id="whisperModel">
-                <option value="tiny">tiny</option>
-                <option value="small" selected>small</option>
-                <option value="medium">medium</option>
-                <option value="whisper-1">whisper-1</option>
-                <option value="whisper-large-v3">whisper-large-v3</option>
+                <option value="tiny" data-asr-engine="local">tiny · 最快预览</option>
+                <option value="base" data-asr-engine="local">base · 轻量</option>
+                <option value="small" data-asr-engine="local" selected>small · 推荐</option>
+                <option value="medium" data-asr-engine="local">medium · 更准确</option>
+                <option value="large-v3" data-asr-engine="local">large-v3 · 最高精度</option>
+                <option value="whisper-1" data-asr-engine="openai">whisper-1</option>
+                <option value="whisper-large-v3" data-asr-engine="groq">whisper-large-v3</option>
               </select>
+              <small id="asrModelHint">small 适合中文课程，速度与准确率较平衡。</small>
             </label>
-            <label class="field" data-setting-group="home">
+            <label class="field" data-setting-group="notes">
               <span>笔记风格</span>
               <select id="noteStyle">
-                <option value="study" selected>学习笔记</option>
-                <option value="concise">重点速记</option>
-                <option value="exam">考点复习</option>
-                <option value="lecture">课程讲义</option>
-                <option value="concept">概念精讲</option>
-                <option value="code">代码教程</option>
-                <option value="academic">论文导读</option>
-                <option value="language">语言学习</option>
+                <option value="study" selected>学习笔记 · 通用课程</option>
+                <option value="concise">重点速记 · 快速回顾</option>
+                <option value="exam">考点复习 · 备考刷题</option>
+                <option value="lecture">课程讲义 · 完整整理</option>
+                <option value="concept">概念精讲 · 理论理解</option>
+                <option value="code">代码教程 · 操作与示例</option>
+                <option value="academic">论文导读 · 学术阅读</option>
+                <option value="language">语言学习 · 双语表达</option>
               </select>
             </label>
-            <label class="field" data-setting-group="home">
+            <label class="field" data-setting-group="notes">
               <span>笔记格式</span>
               <select id="noteTemplate">
-                <option value="standard" selected>标准结构</option>
-                <option value="timeline">时间轴笔记</option>
-                <option value="cornell">康奈尔笔记</option>
-                <option value="qa">问答复习</option>
-                <option value="visual-handout">图文讲义</option>
-                <option value="mindmap">层级脑图</option>
-                <option value="flashcards">记忆卡片</option>
-                <option value="formula-sheet">公式清单</option>
-                <option value="bilingual">双语对照</option>
+                <option value="standard" selected>标准结构 · 章节与重点</option>
+                <option value="timeline">时间轴 · 按视频进度</option>
+                <option value="cornell">康奈尔 · 记录与复盘</option>
+                <option value="qa">问答复习 · 自测题</option>
+                <option value="visual-handout">图文讲义 · PPT/操作课</option>
+                <option value="mindmap">层级脑图 · 知识关系</option>
+                <option value="flashcards">记忆卡片 · 碎片复习</option>
+                <option value="formula-sheet">公式清单 · 理工课程</option>
+                <option value="bilingual">双语对照 · 语言课程</option>
               </select>
             </label>
             <label class="field" data-setting-group="processing">
@@ -516,6 +536,8 @@
                 </button>
               </div>
             </details>
+            <p id="exportStatus" class="export-status" aria-live="polite"></p>
+            <button id="openExportFolderButton" class="export-folder-button" type="button" hidden>打开导出文件夹</button>
           </div>
         </div>
 
@@ -574,6 +596,6 @@
       </section>
     </div>
 
-    <script src="/web/app.js?v=20260711-onboarding-flow"></script>
+    <script src="/web/app.js?v=20260711-v015"></script>
   </body>
 </html>

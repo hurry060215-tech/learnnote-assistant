@@ -310,14 +310,14 @@ assert.match(stylesCss, /\.workspace-panel \.source-pane\s*\{\s*order: 4;/);
 assert.match(stylesCss, /\.workspace-panel \.source-route-rail\s*\{\s*display: none;/);
 assert.match(stylesCss, /\.capture-flow\s*\{\s*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);/);
 assert.match(indexHtml, /id="toggleWorkspaceButton"/);
-assert.match(indexHtml, /styles\.css\?v=20260710-bv-input/);
-assert.match(indexHtml, /app\.js\?v=20260711-onboarding-flow/);
+assert.match(indexHtml, /styles\.css\?v=20260711-v015/);
+assert.match(indexHtml, /app\.js\?v=20260711-v015/);
 assert.match(indexHtml, /id="sourceRouteRail"/);
 assert.match(indexHtml, /id="urlPreflightReport"/);
 assert.match(indexHtml, /href="#settingsView" data-app-view="settings" title="设置"/);
 assert.doesNotMatch(indexHtml, /href="#settings" title="设置"/);
-assert.match(indexHtml, /workspace\.css\?v=20260711-focus-settings/);
-assert.match(indexHtml, /product\.css\?v=20260711-editorial-client/);
+assert.match(indexHtml, /workspace\.css\?v=20260711-v015/);
+assert.match(indexHtml, /product\.css\?v=20260711-v015/);
 assert.match(indexHtml, /<body data-app-view="workspace">/);
 assert.match(indexHtml, /id="settingsView"/);
 assert.match(indexHtml, /data-settings-tab="general"/);
@@ -1231,9 +1231,19 @@ assert.match(elements.get("#detail").innerHTML, /继续切片总结/);
 assert.match(elements.get("#detail").innerHTML, /data-rerun-from-media="task-note-download-only"/);
 assert.doesNotMatch(elements.get("#detail").innerHTML, /不会继续转写、切片或总结/);
 assert.equal(elements.get("#subtitlesButton").disabled, false);
-context.window.location.assignedUrls = [];
-elements.get("#subtitlesButton").onclick();
-assert.equal(context.window.location.assignedUrls.at(-1), "/api/tasks/task-note-download-only/exports/subtitles");
+const nativeExports = [];
+context.window.pywebview = {
+  api: {
+    async export_task(taskId, exportType) {
+      nativeExports.push([taskId, exportType]);
+      return { ok: true, filename: "lesson.srt" };
+    }
+  }
+};
+await elements.get("#subtitlesButton").onclick();
+assert.deepEqual(nativeExports.at(-1), ["task-note-download-only", "subtitles"]);
+assert.match(elements.get("#exportStatus").textContent, /lesson\.srt/);
+delete context.window.pywebview;
 context.fetch = originalFetchForDownloadNote;
 
 const originalFetchForDiagnostics = context.fetch;

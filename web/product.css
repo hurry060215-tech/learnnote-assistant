@@ -2254,3 +2254,160 @@ body.theme-dark .settings-view {
     padding-left: 20px;
   }
 }
+
+/* Usability closeout: readable defaults, compact settings, visible exports. */
+.settings-header,
+.settings-layout {
+  width: min(100%, 1060px);
+  margin-right: auto;
+  margin-left: auto;
+}
+
+.settings-header h2 {
+  font-size: 30px;
+  font-weight: 650;
+}
+
+.settings-menu {
+  gap: 24px;
+}
+
+.settings-pane {
+  padding-top: 28px;
+}
+
+.settings-section-heading h3 {
+  font-size: 18px;
+  font-weight: 650;
+}
+
+.settings-section-heading p,
+.setting-row small,
+.settings-option-slot .field > small {
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.settings-option-slot {
+  max-width: 900px;
+  grid-template-columns: repeat(2, minmax(280px, 1fr));
+  column-gap: 24px;
+}
+
+.settings-option-slot .field {
+  gap: 7px;
+  padding: 14px 0;
+}
+
+.settings-option-slot .field > span {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.settings-option-slot .field input,
+.settings-option-slot .field select,
+.setting-field input {
+  min-height: 44px;
+  border-color: var(--product-line-strong);
+  border-radius: 6px;
+  background: #fff;
+  font-size: 14px;
+  font-weight: 400;
+}
+
+.settings-option-slot .visual-toggle {
+  min-height: 64px;
+  padding: 12px 0;
+  border: 0;
+  border-bottom: 1px solid var(--product-line);
+  border-radius: 0;
+  background: transparent;
+  grid-column: 1 / -1;
+}
+
+.settings-option-slot .visual-toggle input {
+  width: 42px !important;
+  height: 24px !important;
+  min-height: 24px;
+  padding: 0;
+  border-radius: 999px;
+}
+
+.settings-option-slot .visual-toggle b {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.note-preset-hint {
+  margin: 0;
+  padding: 0 22px 14px;
+  color: var(--product-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.note-preset-field {
+  min-width: min(100%, 340px);
+}
+
+.note-preset-field select {
+  font-weight: 650;
+}
+
+.export-status {
+  max-width: 300px;
+  margin: 0;
+  overflow: hidden;
+  color: var(--product-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.export-folder-button {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--product-line-strong);
+  border-radius: 5px;
+  color: var(--product-accent-strong);
+  background: #fff;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+body[data-ui-density="90"] .setting-row,
+body[data-ui-density="90"] .nav-item {
+  min-height: 44px;
+}
+
+body[data-ui-density="110"] .setting-row {
+  min-height: 76px;
+}
+
+body[data-ui-density="110"] .workspace-panel {
+  row-gap: 8px;
+}
+
+@media (max-width: 820px) {
+  .workspace-panel .source-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .workspace-panel .source-tab {
+    width: auto;
+    min-width: 0;
+  }
+
+  .settings-option-slot {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .settings-option-slot .visual-toggle {
+    grid-column: 1;
+  }
+}

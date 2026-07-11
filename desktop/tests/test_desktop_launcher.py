@@ -75,6 +75,39 @@ class DesktopLauncherTests(unittest.TestCase):
         with patch.object(desktop, "read_secret", return_value=""):
             self.assertFalse(desktop.configure_model_runtime())
 
+    def test_native_export_saves_backend_artifact_under_data_directory(self):
+        class Response:
+            headers = {"Content-Disposition": "attachment; filename*=UTF-8''course-note.md"}
+
+            def raise_for_status(self):
+                return None
+
+            def iter_content(self, chunk_size):
+                self.chunk_size = chunk_size
+                return iter((b"# Course\n", b"notes\n"))
+
+        with tempfile.TemporaryDirectory(dir=ROOT / "data") as temp_dir:
+            api = desktop.DesktopApi(Path(temp_dir), "http://127.0.0.1:18766")
+            with patch.object(desktop.requests, "get", return_value=Response()) as request:
+                result = api.export_task("abcdef123456", "markdown")
+            target = Path(result["path"])
+            self.assertEqual(Path(temp_dir) / "exports", target.parent)
+            self.assertEqual("course-note.md", target.name)
+            self.assertEqual(b"# Course\nnotes\n", target.read_bytes())
+            request.assert_called_once_with(
+                "http://127.0.0.1:18766/api/tasks/abcdef123456/exports/markdown",
+                stream=True,
+                timeout=(5.0, 180.0),
+            )
+
+    def test_native_export_rejects_unknown_task_or_type(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / "data") as temp_dir:
+            api = desktop.DesktopApi(Path(temp_dir), "http://127.0.0.1:18766")
+            with self.assertRaises(ValueError):
+                api.export_task("../secrets", "markdown")
+            with self.assertRaises(ValueError):
+                api.export_task("abcdef123456", "unknown")
+
     def test_release_build_analyzes_dynamic_backend_imports(self):
         workflow = (ROOT / ".github" / "workflows" / "desktop-release.yml").read_text(encoding="utf-8")
         self.assertIn('--paths "backend"', workflow)

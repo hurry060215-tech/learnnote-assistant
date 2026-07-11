@@ -4837,14 +4837,41 @@ async function health() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ extension_version: extensionVersion, protocol_version: UX_PROTOCOL_VERSION })
     }).catch(() => null);
-    const data = await fetch(`${backendUrl}/health`).then(r => r.json());
+    let response;
+    try {
+      response = await fetch(`${backendUrl}/health`);
+      if (!response?.ok && response?.ok !== undefined) throw new Error("health failed");
+    } catch (initialError) {
+      let discovered = null;
+      for (let port = 8765; port < 8785; port += 1) {
+        const candidate = `http://127.0.0.1:${port}`;
+        if (candidate === backendUrl) continue;
+        try {
+          const candidateResponse = await fetch(`${candidate}/health`);
+          if (!candidateResponse?.ok && candidateResponse?.ok !== undefined) continue;
+          const candidateData = await candidateResponse.json();
+          if (!candidateData?.app_version || Number(candidateData?.protocol_version || 0) !== UX_PROTOCOL_VERSION) continue;
+          discovered = { candidate, data: candidateData };
+          break;
+        } catch {
+          continue;
+        }
+      }
+      if (!discovered) throw initialError;
+      backendUrl = discovered.candidate;
+      if (els.backendUrlInput) els.backendUrlInput.value = backendUrl;
+      if (HAS_EXTENSION_API) await chrome.storage.local.set({ backendUrl });
+      response = { json: async () => discovered.data };
+    }
+    const data = await response.json();
     lastHealthData = data;
     syncModelProviderPresets(data);
     els.backendStatus.textContent = data.ffmpeg ? "本地服务已连接" : "媒体组件需要修复";
     els.backendStatus.style.color = data.ffmpeg ? "#159947" : "#c27803";
     updateHealthVisionStatus(data);
   } catch {
-    els.backendStatus.textContent = "后端未连接";
+    els.backendStatus.textContent = "请先打开 LearnNote 客户端";
+    els.backendStatus.title = "扩展需要连接正在运行的 LearnNote 桌面客户端";
     els.backendStatus.style.color = "#d92d20";
   }
 }

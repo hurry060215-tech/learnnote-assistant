@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import socket
 import sys
 import threading
 import time
 import webbrowser
 from pathlib import Path
+from urllib.parse import unquote
 
 import requests
 import uvicorn
@@ -22,8 +24,23 @@ DESKTOP_MODEL_NAME = "kimi-k2.6"
 
 
 class DesktopApi:
-    def __init__(self, data_dir: Path):
+    EXPORT_TYPES = {
+        "markdown": ".md",
+        "bundle": ".zip",
+        "manifest": ".json",
+        "diagnostics": ".md",
+        "visual-windows": ".json",
+        "subtitles": ".srt",
+        "media": ".mp4",
+        "audit": ".md",
+        "qa": ".json",
+        "resource-inventory": ".json",
+        "page-preflight-report": ".json",
+    }
+
+    def __init__(self, data_dir: Path, backend_url: str = ""):
         self.data_dir = data_dir
+        self.backend_url = backend_url.rstrip("/") or os.getenv("LEARNNOTE_BACKEND_ORIGIN", "http://127.0.0.1:8765").rstrip("/")
 
     def save_model_key(self, provider: str, api_key: str) -> dict:
         write_secret(provider, api_key)
@@ -39,6 +56,51 @@ class DesktopApi:
     def open_data_folder(self) -> dict:
         os.startfile(self.data_dir)  # type: ignore[attr-defined]
         return {"ok": True}
+
+    def export_task(self, task_id: str, export_type: str) -> dict:
+        task_id = str(task_id or "").strip()
+        export_type = str(export_type or "").strip().lower()
+        clip_match = re.fullmatch(r"clips/(W\d{3})", export_type)
+        if not re.fullmatch(r"[a-f0-9]{12}", task_id) or (export_type not in self.EXPORT_TYPES and not clip_match):
+            raise ValueError("Unsupported task export")
+        fallback_suffix = ".mp4" if clip_match else self.EXPORT_TYPES[export_type]
+
+        response = requests.get(
+            f"{self.backend_url}/api/tasks/{task_id}/exports/{export_type}",
+            stream=True,
+            timeout=(5.0, 180.0),
+        )
+        response.raise_for_status()
+        disposition = response.headers.get("Content-Disposition", "")
+        filename_match = re.search(r"filename\*=UTF-8''([^;]+)", disposition, flags=re.I)
+        if not filename_match:
+            filename_match = re.search(r'filename="?([^";]+)', disposition, flags=re.I)
+        filename = unquote(filename_match.group(1)) if filename_match else f"{task_id}-{export_type.replace('/', '-')}{fallback_suffix}"
+        filename = re.sub(r'[<>:"/\\|?*\x00-\x1f]+', "_", Path(filename).name).strip(" .")
+        if not filename:
+            filename = f"{task_id}-{export_type.replace('/', '-')}{fallback_suffix}"
+
+        export_dir = (self.data_dir / "exports").resolve()
+        export_dir.mkdir(parents=True, exist_ok=True)
+        target = (export_dir / filename).resolve()
+        if target.parent != export_dir:
+            raise ValueError("Unsafe export filename")
+        stem, suffix = target.stem, target.suffix
+        index = 2
+        while target.exists():
+            target = export_dir / f"{stem} ({index}){suffix}"
+            index += 1
+        with target.open("wb") as output:
+            for chunk in response.iter_content(chunk_size=1024 * 1024):
+                if chunk:
+                    output.write(chunk)
+        return {"ok": True, "path": str(target), "filename": target.name, "bytes": target.stat().st_size}
+
+    def open_export_folder(self) -> dict:
+        export_dir = self.data_dir / "exports"
+        export_dir.mkdir(parents=True, exist_ok=True)
+        os.startfile(export_dir)  # type: ignore[attr-defined]
+        return {"ok": True, "path": str(export_dir)}
 
     def check_update(self) -> dict:
         try:
@@ -137,6 +199,8 @@ def run() -> int:
     from app.main import app
     import webview
 
+    webview.settings["ALLOW_DOWNLOADS"] = True
+
     backend_url = f"http://127.0.0.1:{port}"
     config = uvicorn.Config(
         app,
@@ -160,7 +224,7 @@ def run() -> int:
             min_size=(1024, 700),
             text_select=True,
             confirm_close=False,
-            js_api=DesktopApi(data_dir),
+            js_api=DesktopApi(data_dir, backend_url),
         )
         window.events.loaded += lambda: window.set_title("LearnNote - Video Learning Notes")
         webview.start(debug=args.debug, private_mode=False)

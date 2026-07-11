@@ -49,6 +49,13 @@ const DEFAULT_APP_SETTINGS = Object.freeze({
   noteTemplate: "standard",
   summaryDepth: "standard"
 });
+const NOTE_PRESETS = Object.freeze({
+  course: { style: "study", template: "standard", depth: "standard" },
+  review: { style: "exam", template: "qa", depth: "standard" },
+  tutorial: { style: "code", template: "visual-handout", depth: "deep" },
+  timeline: { style: "concise", template: "timeline", depth: "brief" },
+  academic: { style: "academic", template: "standard", depth: "deep" }
+});
 const MAINSTREAM_MODEL_PROVIDER_KEYS = new Set([
   "openai", "groq", "gemini", "dashscope", "deepseek", "kimi", "zhipu", "doubao", "minimax", "qianfan"
 ]);
@@ -351,8 +358,11 @@ const els = {
   visualUnderstanding: document.querySelector("#visualUnderstanding"),
   transcriber: document.querySelector("#transcriber"),
   whisperModel: document.querySelector("#whisperModel"),
+  asrModelHint: document.querySelector("#asrModelHint"),
+  notePreset: document.querySelector("#notePreset"),
   noteStyle: document.querySelector("#noteStyle"),
   noteTemplate: document.querySelector("#noteTemplate"),
+  notePresetHint: document.querySelector("#notePresetHint"),
   summaryDepth: document.querySelector("#summaryDepth"),
   llmProvider: document.querySelector("#llmProvider"),
   providerHint: document.querySelector("#providerHint"),
@@ -378,6 +388,8 @@ const els = {
   subtitlesButton: document.querySelector("#subtitlesButton"),
   mediaButton: document.querySelector("#mediaButton"),
   downloadButton: document.querySelector("#downloadButton"),
+  exportStatus: document.querySelector("#exportStatus"),
+  openExportFolderButton: document.querySelector("#openExportFolderButton"),
   onboardingOverlay: document.querySelector("#onboardingOverlay"),
   closeOnboardingButton: document.querySelector("#closeOnboardingButton"),
   skipOnboardingButton: document.querySelector("#skipOnboardingButton"),
@@ -441,8 +453,9 @@ function applyAppSettings() {
   if (document.body?.dataset) {
     document.body.dataset.textSize = appSettings.textSize;
     document.body.dataset.colorTheme = appSettings.colorTheme;
+    document.body.dataset.uiDensity = appSettings.uiScale;
   }
-  if (document.documentElement?.style) document.documentElement.style.zoom = `${appSettings.uiScale}%`;
+  if (document.documentElement?.style) document.documentElement.style.zoom = "";
 
   if (els.settingAutoOpenNote) els.settingAutoOpenNote.checked = appSettings.autoOpenNote;
   if (els.settingTaskNotifications) els.settingTaskNotifications.checked = appSettings.taskNotifications;
@@ -455,6 +468,7 @@ function applyAppSettings() {
   if (els.noteStyle) els.noteStyle.value = appSettings.noteStyle;
   if (els.noteTemplate) els.noteTemplate.value = appSettings.noteTemplate;
   if (els.summaryDepth) els.summaryDepth.value = appSettings.summaryDepth;
+  syncNotePresetFromOptions();
 
   els.settingsSegmentButtons?.forEach?.(button => {
     const setting = button.parentElement?.dataset?.setting;
@@ -467,6 +481,7 @@ function organizeSettingsOptions() {
     home: document.querySelector("#homeQuickOptionsSlot"),
     model: document.querySelector("#settingsModelSlot"),
     transcriber: document.querySelector("#settingsTranscriberSlot"),
+    notes: document.querySelector("#settingsNotesSlot"),
     processing: document.querySelector("#settingsProcessingSlot")
   };
   const controls = document.querySelectorAll?.("[data-setting-group]") || [];
@@ -3358,6 +3373,61 @@ function syncTranscriberModelDefault(force = false) {
   } else if (transcriber === "groq" && (force || LOCAL_ASR_MODELS.has(model))) {
     els.whisperModel.value = "whisper-large-v3";
   }
+  const engine = transcriber === "faster-whisper" ? "local" : transcriber === "groq" ? "groq" : "openai";
+  Array.from(els.whisperModel.options || []).forEach(option => {
+    const available = option.dataset.asrEngine === engine;
+    option.hidden = !available;
+    option.disabled = !available;
+  });
+  if (els.asrModelHint) {
+    const hints = {
+      tiny: "tiny 适合快速预览，中文准确率较低。",
+      base: "base 占用较低，适合配置有限的电脑。",
+      small: "small 适合中文课程，速度与准确率较平衡。",
+      medium: "medium 更准确，但长视频处理更慢、占用更多内存。",
+      "large-v3": "large-v3 本地精度更高，但首次下载较大，CPU 转写长视频会很慢。",
+      "whisper-1": "远程转写，需要 OpenAI-compatible ASR Key。",
+      "whisper-large-v3": "Groq 远程转写，需要 Groq Key。"
+    };
+    els.asrModelHint.textContent = hints[els.whisperModel.value] || "选择与转写引擎匹配的模型。";
+  }
+}
+
+function updateNotePresetHint() {
+  if (!els.notePresetHint) return;
+  const presetHints = {
+    course: "适合大多数课程：按章节整理概念、例子、重点与复习题。",
+    review: "面向考试：优先提取考点、易错点，并生成问答自测。",
+    tutorial: "适合软件与代码演示：保留画面步骤、命令和排错过程。",
+    timeline: "适合快速回顾：沿时间轴保留关键结论与跳转点。",
+    academic: "适合讲座与论文：整理研究问题、方法、证据和局限。",
+    custom: "已在设置中自定义笔记风格、格式或摘要深度。"
+  };
+  els.notePresetHint.textContent = presetHints[els.notePreset?.value || "custom"] || presetHints.custom;
+}
+
+function syncNotePresetFromOptions() {
+  if (!els.notePreset) return;
+  const match = Object.entries(NOTE_PRESETS).find(([, value]) =>
+    value.style === (els.noteStyle?.value || "study") &&
+    value.template === (els.noteTemplate?.value || "standard") &&
+    value.depth === (els.summaryDepth?.value || "standard")
+  );
+  els.notePreset.value = match?.[0] || "";
+  updateNotePresetHint();
+}
+
+function applyNotePreset(name) {
+  const preset = NOTE_PRESETS[name];
+  if (!preset) return;
+  if (els.noteStyle) els.noteStyle.value = preset.style;
+  if (els.noteTemplate) els.noteTemplate.value = preset.template;
+  if (els.summaryDepth) els.summaryDepth.value = preset.depth;
+  appSettings.noteStyle = preset.style;
+  appSettings.noteTemplate = preset.template;
+  appSettings.summaryDepth = preset.depth;
+  storeAppSettings();
+  updateNotePresetHint();
 }
 
 function healthVisionReady(data) {
@@ -7270,40 +7340,59 @@ els.statusFilter.onchange = () => {
 };
 els.copyButton.onclick = async () => navigator.clipboard.writeText(await noteForTask(selectedTaskId) || "");
 if (els.continueFromMediaButton) els.continueFromMediaButton.onclick = () => rerunTaskFromMedia(selectedTaskId);
-els.bundleButton.onclick = () => {
-  if (!selectedTaskId) return;
-  window.location.assign(apiUrl(`/api/tasks/${encodeURIComponent(selectedTaskId)}/exports/bundle`));
-};
-if (els.manifestButton) {
-  els.manifestButton.onclick = () => {
-    if (!selectedTaskId) return;
-    window.location.assign(apiUrl(`/api/tasks/${encodeURIComponent(selectedTaskId)}/exports/manifest`));
-  };
+async function exportTaskArtifact(taskId, exportType, button = null) {
+  if (!taskId) return;
+  const api = desktopApi();
+  if (els.exportStatus) els.exportStatus.textContent = "正在导出…";
+  if (button) button.disabled = true;
+  try {
+    if (api?.export_task) {
+      const result = await api.export_task(taskId, exportType);
+      if (els.exportStatus) els.exportStatus.textContent = result?.filename ? `已保存：${result.filename}` : "导出完成";
+      if (els.openExportFolderButton) els.openExportFolderButton.hidden = false;
+      return;
+    }
+    const link = document.createElement("a");
+    link.href = apiUrl(`/api/tasks/${encodeURIComponent(taskId)}/exports/${exportType}`);
+    link.download = "";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    if (els.exportStatus) els.exportStatus.textContent = "下载已开始";
+  } catch (error) {
+    if (els.exportStatus) els.exportStatus.textContent = `导出失败：${error?.message || "请确认任务产物存在"}`;
+  } finally {
+    if (button) button.disabled = false;
+  }
 }
-els.diagnosticsButton.onclick = () => {
-  if (!selectedTaskId) return;
-  window.location.assign(apiUrl(`/api/tasks/${encodeURIComponent(selectedTaskId)}/exports/diagnostics`));
-};
+
+const exportSelectedTask = (exportType, button) => exportTaskArtifact(selectedTaskId, exportType, button);
+
+els.bundleButton.onclick = () => exportSelectedTask("bundle", els.bundleButton);
+if (els.manifestButton) {
+  els.manifestButton.onclick = () => exportSelectedTask("manifest", els.manifestButton);
+}
+els.diagnosticsButton.onclick = () => exportSelectedTask("diagnostics", els.diagnosticsButton);
 if (els.visualWindowsButton) {
-  els.visualWindowsButton.onclick = () => {
-    if (!selectedTaskId) return;
-    window.location.assign(apiUrl(`/api/tasks/${encodeURIComponent(selectedTaskId)}/exports/visual-windows`));
-  };
+  els.visualWindowsButton.onclick = () => exportSelectedTask("visual-windows", els.visualWindowsButton);
 }
 if (els.subtitlesButton) {
-  els.subtitlesButton.onclick = () => {
-    if (!selectedTaskId) return;
-    window.location.assign(apiUrl(`/api/tasks/${encodeURIComponent(selectedTaskId)}/exports/subtitles`));
-  };
+  els.subtitlesButton.onclick = () => exportSelectedTask("subtitles", els.subtitlesButton);
 }
-els.mediaButton.onclick = () => {
-  if (!selectedTaskId) return;
-  window.location.assign(apiUrl(`/api/tasks/${encodeURIComponent(selectedTaskId)}/exports/media`));
-};
-els.downloadButton.onclick = () => {
-  if (!selectedTaskId) return;
-  window.location.assign(apiUrl(`/api/tasks/${encodeURIComponent(selectedTaskId)}/exports/markdown`));
-};
+els.mediaButton.onclick = () => exportSelectedTask("media", els.mediaButton);
+els.downloadButton.onclick = () => exportSelectedTask("markdown", els.downloadButton);
+els.openExportFolderButton?.addEventListener?.("click", () => desktopApi()?.open_export_folder?.());
+
+document.addEventListener?.("click", event => {
+  if (!desktopApi()?.export_task) return;
+  const link = event.target?.closest?.('a[href*="/exports/"]');
+  if (!link) return;
+  const href = String(link.getAttribute?.("href") || "");
+  const match = href.match(/\/api\/tasks\/([^/]+)\/exports\/(.+)$/);
+  if (!match) return;
+  event.preventDefault?.();
+  exportTaskArtifact(decodeURIComponent(match[1]), decodeURIComponent(match[2]), link);
+});
 
 els.dropzone.addEventListener("dragover", event => {
   event.preventDefault();
@@ -7424,9 +7513,11 @@ window.addEventListener?.("pywebviewready", initializeDesktopBridge);
 ].filter(Boolean).forEach(control => {
   control.addEventListener("change", () => {
     refreshOptionDependentUi();
+    if (control === els.noteStyle || control === els.noteTemplate || control === els.summaryDepth) syncNotePresetFromOptions();
     if ([els.llmProvider, els.transcriber, els.whisperModel].includes(control)) saveModelSettings();
   });
 });
+els.notePreset?.addEventListener?.("change", () => applyNotePreset(els.notePreset.value));
 els.llmModel?.addEventListener("input", () => {
   updateHealthVisionStatus();
   updateStartupReadiness();
@@ -7449,6 +7540,8 @@ initializeDesktopBridge();
 initializeResponsiveChrome();
 loadModelSettings();
 applyModelProviderPreset(false);
+syncTranscriberModelDefault(false);
+updateNotePresetHint();
 updateModelProviderHint();
 initializeWorkspaceView();
 if (!hasExplicitTaskRoute()) {

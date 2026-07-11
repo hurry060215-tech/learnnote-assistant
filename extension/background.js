@@ -1378,6 +1378,19 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
     notifyContextUpdated(tabId, "navigation");
   }
 });
+
+async function configureSidePanelBehavior() {
+  try {
+    await chrome.sidePanel?.setPanelBehavior?.({ openPanelOnActionClick: true });
+  } catch {
+    // Older Chromium builds fall back to the explicit action click handler.
+  }
+}
+
+chrome.runtime.onInstalled?.addListener?.(() => configureSidePanelBehavior());
+chrome.runtime.onStartup?.addListener?.(() => configureSidePanelBehavior());
+configureSidePanelBehavior();
+
 chrome.action.onClicked.addListener(tab => {
   const intent = {
     action: "summarize-current-video",
@@ -1386,7 +1399,9 @@ chrome.action.onClicked.addListener(tab => {
   };
   chrome.storage?.local?.set?.({ pendingSidePanelIntent: intent });
   chrome.runtime.sendMessage?.({ type: "sidepanel-action-intent", intent }).catch?.(() => {});
-  if (chrome.sidePanel?.open) chrome.sidePanel.open({ tabId: tab.id });
+  if (chrome.sidePanel?.open && tab?.id !== undefined) {
+    chrome.sidePanel.open({ tabId: tab.id })?.catch?.(() => {});
+  }
 });
 
 async function activeTab() {
@@ -1429,6 +1444,23 @@ async function collectFramePageData(tab, frameId) {
     for (const resource of page.resources || []) addResource(tab.id, resource, false);
     return page;
   } catch {
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id, frameIds: [frameId] },
+        files: ["page_hook.js"],
+        world: "MAIN"
+      });
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id, frameIds: [frameId] },
+        files: ["content.js"]
+      });
+      const response = await chrome.tabs.sendMessage(tab.id, { type: "collect-page-data" }, { frameId });
+      const page = rememberFramePage(tab.id, frameId, response, tab);
+      for (const resource of page.resources || []) addResource(tab.id, resource, false);
+      return page;
+    } catch {
+      // Restricted pages still get a minimal, explicit fallback below.
+    }
     try {
       const [injected] = await chrome.scripting.executeScript({
         target: { tabId: tab.id, frameIds: [frameId] },
