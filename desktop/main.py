@@ -47,10 +47,10 @@ class DesktopApi:
     def __init__(self, data_dir: Path, backend_url: str = ""):
         self.data_dir = data_dir
         self.backend_url = backend_url.rstrip("/") or os.getenv("LEARNNOTE_BACKEND_ORIGIN", "http://127.0.0.1:8765").rstrip("/")
-        self.window = None
+        self._window = None
 
-    def bind_window(self, window) -> None:
-        self.window = window
+    def _bind_window(self, window) -> None:
+        self._window = window
 
     def save_model_key(self, provider: str, api_key: str) -> dict:
         write_secret(provider, api_key)
@@ -266,7 +266,7 @@ class DesktopApi:
             raise ValueError("Update installer is not ready")
         root = application_root().resolve()
         app_path = (root / "LearnNote.exe").resolve()
-        if root.drive.upper() == "C:" or not app_path.is_file() or self.window is None:
+        if root.drive.upper() == "C:" or not app_path.is_file() or self._window is None:
             raise RuntimeError("Automatic update is only available in the installed desktop client")
 
         def ps_literal(value: Path | str) -> str:
@@ -293,7 +293,7 @@ class DesktopApi:
             cwd=str(update_dir),
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
-        threading.Timer(0.4, self.window.destroy).start()
+        threading.Timer(0.4, self._window.destroy).start()
         return {"ok": True, "installing": True, "version": version}
 
     def open_release(self, url: str) -> dict:
@@ -406,7 +406,7 @@ def run() -> int:
             confirm_close=False,
             js_api=desktop_api,
         )
-        desktop_api.bind_window(window)
+        desktop_api._bind_window(window)
         window.events.loaded += lambda: window.set_title("LearnNote - Video Learning Notes")
         webview.start(debug=args.debug, private_mode=False)
     finally:

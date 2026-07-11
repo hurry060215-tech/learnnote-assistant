@@ -220,7 +220,7 @@ class DesktopLauncherTests(unittest.TestCase):
             installer.write_bytes(b"verified installer")
             (root / "LearnNote.exe").write_bytes(b"desktop app")
             api = desktop.DesktopApi(data_dir)
-            api.bind_window(Window())
+            api._bind_window(Window())
             with (
                 patch.object(desktop, "application_root", return_value=root),
                 patch.object(desktop.subprocess, "Popen") as popen,
