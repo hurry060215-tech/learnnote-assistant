@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>LearnNote</title>
-    <link rel="stylesheet" href="sidepanel.css?v=20260711-sidepanel-visual-v2">
+    <link rel="stylesheet" href="sidepanel.css?v=20260711-first-run-flow">
   </head>
   <body data-ui="learnnote-sidepanel-v2">
     <header class="app-header">
@@ -38,6 +38,17 @@
         <button id="cancelBackendSettingsButton" type="button">取消</button>
         <button id="saveBackendSettingsButton" type="button">保存并检查</button>
       </div>
+    </section>
+
+    <section id="firstRunCard" class="first-run-card" hidden aria-label="首次使用">
+      <div>
+        <strong>第一次使用 LearnNote？</strong>
+        <small>用 1 分钟检查本地服务、扩展和 AI 模型。</small>
+      </div>
+      <button id="firstRunButton" type="button">开始设置</button>
+      <button id="dismissFirstRunButton" class="icon-button" type="button" title="关闭" aria-label="关闭首次使用提示">
+        <svg viewBox="0 0 24 24"><path d="M5 5l14 14M19 5L5 19"/></svg>
+      </button>
     </section>
 
     <main class="side-shell">
@@ -111,14 +122,6 @@
           <svg viewBox="0 0 24 24"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
           总结当前视频
         </button>
-        <button id="preflightButton">
-          <svg viewBox="0 0 24 24"><path d="M9 12l2 2 4-5"/><path d="M20 12a8 8 0 1 1-16 0 8 8 0 0 1 16 0z"/></svg>
-          预检资源
-        </button>
-        <button id="downloadOnlyButton">
-          <svg viewBox="0 0 24 24"><path d="M12 3v11M7 9l5 5 5-5M5 19h14"/></svg>
-          下载到本地
-        </button>
         <button id="continueFromMediaButton" hidden disabled>
           <svg viewBox="0 0 24 24"><path d="M4 5h16v4H4zM4 15h16v4H4z"/><path d="M8 9v6M16 9v6"/></svg>
           继续切片总结
@@ -127,10 +130,23 @@
           <svg viewBox="0 0 24 24"><path d="M12 3v12M7 8l5-5 5 5M4 17v3h16v-3"/></svg>
           上传本地视频
         </button>
-        <button id="textButton">
-          <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
-          只总结文本
-        </button>
+        <details class="side-advanced-actions">
+          <summary>更多方式</summary>
+          <div>
+            <button id="preflightButton">
+              <svg viewBox="0 0 24 24"><path d="M9 12l2 2 4-5"/><path d="M20 12a8 8 0 1 1-16 0 8 8 0 0 1 16 0z"/></svg>
+              检查视频来源
+            </button>
+            <button id="downloadOnlyButton">
+              <svg viewBox="0 0 24 24"><path d="M12 3v11M7 9l5 5 5-5M5 19h14"/></svg>
+              只下载视频
+            </button>
+            <button id="textButton">
+              <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+              只总结页面文字
+            </button>
+          </div>
+        </details>
         <input id="fileInput" type="file" accept="video/*,.mp4,.m4v,.mov,.mkv,.webm,.flv,.avi">
       </section>
 
@@ -315,40 +331,30 @@
       <section class="result-panel">
         <div class="result-tabs" role="tablist" aria-label="任务结果">
           <button class="result-tab active" role="tab" aria-selected="true" data-tab="note">学习笔记</button>
-          <button class="result-tab" role="tab" aria-selected="false" data-tab="transcript">字幕</button>
-          <button class="result-tab" role="tab" aria-selected="false" data-tab="slices">学习切片</button>
-          <button class="result-tab" role="tab" aria-selected="false" data-tab="frames">画面网格</button>
-          <button class="result-tab" role="tab" aria-selected="false" data-tab="qa">问答</button>
-          <button class="result-tab" role="tab" aria-selected="false" data-tab="diagnostics">下载诊断</button>
-          <button id="bundleButton" class="icon-button" title="导出资料包" aria-label="导出资料包">
-            <svg viewBox="0 0 24 24"><path d="M4 7h16v13H4z"/><path d="M4 7l2-3h12l2 3"/><path d="M9 12h6"/></svg>
-          </button>
-          <button id="diagnosticsButton" class="icon-button" title="导出诊断" aria-label="导出诊断">
-            <svg viewBox="0 0 24 24"><path d="M6 3h9l3 3v15H6z"/><path d="M14 3v4h4"/><path d="M9 11h6M9 15h6M9 19h3"/></svg>
-          </button>
-          <button id="visualWindowsButton" class="icon-button" title="导出切片索引" aria-label="导出切片索引">
-            <svg viewBox="0 0 24 24"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/><path d="M7.5 11v2M16.5 11v2M11 7.5h2M11 16.5h2"/></svg>
-          </button>
-          <button id="manifestButton" class="icon-button" title="导出任务清单" aria-label="导出任务清单">
-            <svg viewBox="0 0 24 24"><path d="M6 3h9l3 3v15H6z"/><path d="M14 3v4h4"/><path d="M9 10h6M9 14h6M9 18h4"/></svg>
-          </button>
-          <button id="subtitlesButton" class="icon-button" title="导出字幕" aria-label="导出字幕">
-            <svg viewBox="0 0 24 24"><path d="M5 4h14v16H5z"/><path d="M8 9h8M8 13h5M8 17h7"/></svg>
-          </button>
-          <button id="mediaButton" class="icon-button" title="导出本地视频" aria-label="导出本地视频">
-            <svg viewBox="0 0 24 24"><path d="M5 5h14v14H5z"/><path d="M10 9l5 3-5 3z"/></svg>
-          </button>
-          <button id="downloadButton" class="icon-button" title="导出 Markdown" aria-label="导出 Markdown">
-            <svg viewBox="0 0 24 24"><path d="M12 3v11M7 9l5 5 5-5M5 19h14"/></svg>
-          </button>
-          <button id="copyButton" class="icon-button" title="复制笔记" aria-label="复制笔记">
-            <svg viewBox="0 0 24 24"><path d="M8 8h11v13H8zM5 16H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h11a1 1 0 0 1 1 1v1"/></svg>
-          </button>
+          <button class="result-tab" role="tab" aria-selected="false" data-tab="slices">画面与时间轴</button>
+          <button class="result-tab" role="tab" aria-selected="false" data-tab="qa">问这节课</button>
+          <details id="resultAdvancedMenu" class="result-advanced-menu">
+            <summary>高级</summary>
+            <div>
+              <button class="result-tab" role="tab" aria-selected="false" data-tab="transcript">完整字幕</button>
+              <button class="result-tab" role="tab" aria-selected="false" data-tab="frames">原始画面</button>
+              <button class="result-tab" role="tab" aria-selected="false" data-tab="diagnostics">任务诊断</button>
+              <hr>
+              <button id="bundleButton" type="button">导出资料包</button>
+              <button id="subtitlesButton" type="button">导出字幕</button>
+              <button id="mediaButton" type="button">导出本地视频</button>
+              <button id="downloadButton" type="button">导出 Markdown</button>
+              <button id="copyButton" type="button">复制笔记</button>
+              <button id="visualWindowsButton" type="button" hidden>导出切片索引</button>
+              <button id="manifestButton" type="button" hidden>导出任务清单</button>
+              <button id="diagnosticsButton" type="button" hidden>导出诊断</button>
+            </div>
+          </details>
         </div>
         <div id="result" class="result-body muted">任务完成后显示结构化结果</div>
       </section>
     </main>
 
-    <script src="sidepanel.js?v=20260708-side-workbench"></script>
+    <script src="sidepanel.js?v=20260711-first-run-flow"></script>
   </body>
 </html>

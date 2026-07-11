@@ -112,12 +112,20 @@
                 <label class="setting-row setting-switch"><span><strong>完成后打开笔记</strong><small>任务完成时切换到笔记结果</small></span><input id="settingAutoOpenNote" type="checkbox" checked></label>
                 <label class="setting-row setting-switch"><span><strong>任务完成通知</strong><small>使用系统通知提醒</small></span><input id="settingTaskNotifications" type="checkbox"></label>
                 <label class="setting-row setting-switch"><span><strong>默认隐藏历史栏</strong><small>让新建笔记区域更宽</small></span><input id="settingCompactHistory" type="checkbox" checked></label>
+                <div class="setting-row">
+                  <div><strong>首次使用引导</strong><small>重新检查本地服务、浏览器扩展和 AI 模型</small></div>
+                  <button id="openOnboardingButton" class="secondary action-button" type="button">重新打开</button>
+                </div>
               </div>
             </section>
 
             <section class="settings-pane" data-settings-pane="model">
               <div class="settings-section-heading"><h3>AI 模型</h3><p>用于文字整理和画面理解。</p></div>
               <div id="settingsModelSlot" class="settings-option-slot"></div>
+              <div id="nativeCredentialSettings" class="native-settings-row" hidden>
+                <div><strong>Windows 凭据管理器</strong><small id="nativeCredentialStatus">API Key 可加密保存到当前 Windows 用户</small></div>
+                <div><button id="saveCredentialButton" class="secondary action-button" type="button">保存当前 Key</button><button id="deleteCredentialButton" class="secondary action-button" type="button">清除</button></div>
+              </div>
             </section>
             <section class="settings-pane" data-settings-pane="transcriber">
               <div class="settings-section-heading"><h3>转写</h3><p>优先使用字幕，没有字幕时再识别音频。</p></div>
@@ -132,7 +140,17 @@
               <div class="settings-rows">
                 <label class="setting-row setting-field"><span><strong>后端地址</strong><small>修改后重新载入客户端</small></span><input id="settingApiBase" type="url" placeholder="http://127.0.0.1:8765"></label>
                 <div class="setting-row"><div><strong>数据目录</strong><small id="settingDataPath">正在读取...</small></div><span id="settingDataDrive" class="setting-value">本地</span></div>
+                <div class="setting-row"><div><strong>已用空间</strong><small id="settingStorageBreakdown">正在统计任务和视频文件</small></div><span id="settingStorageUsage" class="setting-value">-</span></div>
                 <label class="setting-row setting-switch"><span><strong>链接生成前预检</strong><small>先确认媒体是否可访问</small></span><input id="settingAutoPreflight" type="checkbox" checked></label>
+                <div class="setting-row">
+                  <div><strong>清理旧任务</strong><small>保留最近 10 个任务，只清理 30 天前的已结束任务</small></div>
+                  <div class="setting-inline-actions"><button id="previewCleanupButton" class="secondary action-button" type="button">查看可清理内容</button><button id="applyCleanupButton" class="secondary action-button" type="button" disabled>确认清理</button></div>
+                </div>
+                <div class="setting-row"><div><strong>客户端版本</strong><small id="settingCompatibility">正在检查扩展兼容性</small></div><span id="settingAppVersion" class="setting-value">-</span></div>
+                <div id="nativeDesktopSettings" class="setting-row" hidden>
+                  <div><strong>桌面客户端</strong><small id="updateStatus">可打开数据目录或手动检查新版本</small></div>
+                  <div class="setting-inline-actions"><button id="openDataFolderButton" class="secondary action-button" type="button">打开数据目录</button><button id="checkUpdateButton" class="secondary action-button" type="button">检查更新</button><button id="openReleaseButton" class="secondary action-button" type="button" hidden>查看新版本</button></div>
+                </div>
               </div>
             </section>
             <section class="settings-pane" data-settings-pane="privacy">
@@ -165,13 +183,13 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4z"/><path d="M4 9h16M9 19V9"/></svg>
             <span><b>当前页面</b><small>从扩展侧栏读取正在播放的视频</small></span>
           </button>
-          <button class="source-tab" data-source="local">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5M4 17v3h16v-3"/></svg>
-            <span><b>本地视频</b><small>拖入 mp4、flv、avi、mkv、webm 等文件</small></span>
-          </button>
           <button class="source-tab" data-source="url">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.07 0l2.12-2.12a5 5 0 0 0-7.07-7.07L11 4.93"/><path d="M14 11a5 5 0 0 0-7.07 0L4.8 13.12a5 5 0 0 0 7.07 7.07L13 19.07"/></svg>
             <span><b>视频链接</b><small>解析网页或直接媒体链接</small></span>
+          </button>
+          <button class="source-tab" data-source="local">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5M4 17v3h16v-3"/></svg>
+            <span><b>本地视频</b><small>拖入 mp4、flv、avi、mkv、webm 等文件</small></span>
           </button>
         </div>
 
@@ -243,8 +261,8 @@
                   <svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z"/><path d="M8 9h8M8 13h5"/><path d="M17 16l3 3M20 16l-3 3"/></svg>
                 </span>
                 <div>
-                  <strong id="browserCaptureTitle">先打开课程视频</strong>
-                  <div id="browserBridgeStatus" class="capture-status-grid">扩展读取播放器、媒体请求和一次性 cookie，后端只下载可访问的视频地址。</div>
+                  <strong id="browserCaptureTitle">播放视频后，从扩展侧栏一键生成笔记</strong>
+                  <div id="browserBridgeStatus" class="capture-status-grid">打开 LearnNote 扩展侧栏，点击“总结当前视频”。</div>
                 </div>
                 <em>非录制</em>
               </div>
@@ -252,46 +270,35 @@
               <div class="capture-flow" aria-label="当前页交接流程">
                 <div>
                   <span>01</span>
-                  <strong>播放课程页</strong>
-                  <small>让视频播放几秒，捕获真实请求。</small>
+                  <strong>播放视频</strong>
+                  <small>打开你正在学习的视频。</small>
                 </div>
                 <div>
                   <span>02</span>
-                  <strong>预检候选</strong>
-                  <small>优先主视频、manifest 和请求头。</small>
+                  <strong>侧栏开始</strong>
+                  <small>点击“总结当前视频”。</small>
                 </div>
                 <div>
                   <span>03</span>
-                  <strong>本地总结</strong>
-                  <small>下载后转写、切片、图文总结。</small>
+                  <strong>阅读笔记</strong>
+                  <small>完成后自动回到结果页。</small>
                 </div>
-              </div>
-
-              <div class="capture-signals" aria-label="可直取线索">
-                <span>MP4/FLV/WebM</span>
-                <span>HLS/DASH</span>
-                <span>yt-dlp 页面解析</span>
-                <span>Blob/MSE 来源映射</span>
               </div>
 
               <div class="browser-actions">
                 <button id="copyBackendButton" class="secondary action-button" type="button">
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8h11v13H8zM5 16H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h11a1 1 0 0 1 1 1v1"/></svg>
-                  复制后端地址
+                  复制连接地址
                 </button>
                 <button id="browserRefreshButton" class="secondary action-button" type="button">
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 0 1-13.66 5.66M4 12A8 8 0 0 1 17.66 6.34M20 4v6h-6M4 20v-6h6"/></svg>
-                  刷新当前页状态
+                  我已在侧栏开始
                 </button>
               </div>
             </div>
 
             <div id="browserRouteSummary" class="browser-route-summary" aria-label="当前页直取状态"></div>
 
-            <div class="boundary-note">
-              <strong>不录制、不刷课、不绕过 DRM。</strong>
-              <small>检测不到可访问媒体 URL 时，任务会给出失败原因，并保留本地视频入口。</small>
-            </div>
           </div>
         </section>
 
@@ -505,17 +512,60 @@
         </div>
 
         <div class="result-tabs" role="tablist" aria-label="任务结果">
-          <button class="result-tab active" role="tab" aria-selected="true" data-tab="note">笔记</button>
-          <button class="result-tab" role="tab" aria-selected="false" data-tab="transcript">字幕</button>
-          <button class="result-tab" role="tab" aria-selected="false" data-tab="slices">学习切片</button>
-          <button class="result-tab" role="tab" aria-selected="false" data-tab="frames">画面网格</button>
-          <button class="result-tab" role="tab" aria-selected="false" data-tab="qa">问答</button>
-          <button class="result-tab" role="tab" aria-selected="false" data-tab="diagnostics">诊断</button>
+          <button class="result-tab active" role="tab" aria-selected="true" data-tab="note">学习笔记</button>
+          <button class="result-tab" role="tab" aria-selected="false" data-tab="slices">画面与时间轴</button>
+          <button class="result-tab" role="tab" aria-selected="false" data-tab="qa">问这节课</button>
+          <details class="result-tool-tabs">
+            <summary>高级工具</summary>
+            <div>
+              <button class="result-tab" role="tab" aria-selected="false" data-tab="transcript">完整字幕</button>
+              <button class="result-tab" role="tab" aria-selected="false" data-tab="frames">原始画面</button>
+              <button class="result-tab" role="tab" aria-selected="false" data-tab="diagnostics">任务诊断</button>
+            </div>
+          </details>
         </div>
         <div id="detail" class="detail empty">任务完成后显示结构化结果。</div>
       </section>
     </main>
 
-    <script src="/web/app.js?v=20260711-product-redesign"></script>
+    <div id="onboardingOverlay" class="onboarding-overlay" hidden>
+      <section class="onboarding-dialog" role="dialog" aria-modal="true" aria-labelledby="onboardingTitle">
+        <header>
+          <div>
+            <h2 id="onboardingTitle">欢迎使用 LearnNote</h2>
+            <p>完成下面三项，就可以从当前视频生成学习笔记。</p>
+          </div>
+          <button id="closeOnboardingButton" class="icon-button" type="button" aria-label="关闭引导" title="关闭引导">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19"/></svg>
+          </button>
+        </header>
+        <div class="onboarding-steps">
+          <article data-onboarding-step="backend">
+            <span class="onboarding-step-icon" aria-hidden="true">1</span>
+            <div><strong>连接本地服务</strong><small>用于下载和处理视频</small></div>
+            <em id="onboardingBackendStatus">正在检查</em>
+            <button id="onboardingRetryButton" type="button">重新检查</button>
+          </article>
+          <article data-onboarding-step="extension">
+            <span class="onboarding-step-icon" aria-hidden="true">2</span>
+            <div><strong>连接浏览器扩展</strong><small>用于读取当前播放页</small></div>
+            <em id="onboardingExtensionStatus">等待连接</em>
+            <button id="onboardingExtensionButton" type="button">查看安装位置</button>
+          </article>
+          <article data-onboarding-step="model">
+            <span class="onboarding-step-icon" aria-hidden="true">3</span>
+            <div><strong>配置 AI 模型</strong><small>用于生成笔记和理解画面</small></div>
+            <em id="onboardingModelStatus">等待配置</em>
+            <button id="onboardingModelButton" type="button">去配置</button>
+          </article>
+        </div>
+        <footer>
+          <button id="skipOnboardingButton" class="secondary action-button" type="button">稍后设置</button>
+          <button id="finishOnboardingButton" class="primary action-button" type="button">开始使用</button>
+        </footer>
+      </section>
+    </div>
+
+    <script src="/web/app.js?v=20260711-onboarding-flow"></script>
   </body>
 </html>

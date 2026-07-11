@@ -31,6 +31,7 @@ const RESULT_TAB_NAMES = new Set(["note", "transcript", "slices", "frames", "qa"
 const LOCAL_ASR_MODELS = new Set(["tiny", "base", "small", "medium", "large", "large-v2", "large-v3"]);
 const MODEL_SETTINGS_STORAGE_KEY = "learnnote_model_settings";
 const APP_SETTINGS_STORAGE_KEY = "learnnote_app_settings";
+const ONBOARDING_STORAGE_KEY = "learnnote_onboarding_v1";
 const DEFAULT_APP_SETTINGS = Object.freeze({
   uiScale: "100",
   textSize: "standard",
@@ -258,6 +259,8 @@ let lastTranscriptTaskId = "";
 let tasks = [];
 let taskQuery = "";
 let taskStatusFilter = "all";
+const HISTORY_PAGE_SIZE = 30;
+let historyVisibleLimit = HISTORY_PAGE_SIZE;
 let urlPreflightResourceUrl = "";
 let urlPreflightResult = null;
 let urlPagePreflightUrl = "";
@@ -266,6 +269,10 @@ let urlPagePreflightReport = null;
 let lastHealthData = null;
 let pendingLocalFile = null;
 let pendingRerunNotice = null;
+let pendingCleanupPreview = null;
+let desktopCredentialKey = "";
+let desktopCredentialProvider = "";
+let pendingReleaseUrl = "";
 let appSettings = { ...DEFAULT_APP_SETTINGS };
 let taskStatusSnapshot = new Map();
 let taskStatusSnapshotReady = false;
@@ -290,10 +297,26 @@ const els = {
   settingApiBase: document.querySelector("#settingApiBase"),
   settingDataPath: document.querySelector("#settingDataPath"),
   settingDataDrive: document.querySelector("#settingDataDrive"),
+  settingStorageUsage: document.querySelector("#settingStorageUsage"),
+  settingStorageBreakdown: document.querySelector("#settingStorageBreakdown"),
+  previewCleanupButton: document.querySelector("#previewCleanupButton"),
+  applyCleanupButton: document.querySelector("#applyCleanupButton"),
+  settingAppVersion: document.querySelector("#settingAppVersion"),
+  settingCompatibility: document.querySelector("#settingCompatibility"),
+  nativeCredentialSettings: document.querySelector("#nativeCredentialSettings"),
+  nativeCredentialStatus: document.querySelector("#nativeCredentialStatus"),
+  saveCredentialButton: document.querySelector("#saveCredentialButton"),
+  deleteCredentialButton: document.querySelector("#deleteCredentialButton"),
+  nativeDesktopSettings: document.querySelector("#nativeDesktopSettings"),
+  openDataFolderButton: document.querySelector("#openDataFolderButton"),
+  checkUpdateButton: document.querySelector("#checkUpdateButton"),
+  openReleaseButton: document.querySelector("#openReleaseButton"),
+  updateStatus: document.querySelector("#updateStatus"),
   settingsSavedStatus: document.querySelector("#settingsSavedStatus"),
   saveSettingsButton: document.querySelector("#saveSettingsButton"),
   resetSettingsButton: document.querySelector("#resetSettingsButton"),
   openProcessingSettingsButton: document.querySelector("#openProcessingSettingsButton"),
+  openOnboardingButton: document.querySelector("#openOnboardingButton"),
   readingModeButton: document.querySelector("#readingModeButton"),
   sourceTabs: document.querySelectorAll(".source-tab"),
   panes: document.querySelectorAll(".source-pane"),
@@ -352,7 +375,17 @@ const els = {
   manifestButton: document.querySelector("#manifestButton"),
   subtitlesButton: document.querySelector("#subtitlesButton"),
   mediaButton: document.querySelector("#mediaButton"),
-  downloadButton: document.querySelector("#downloadButton")
+  downloadButton: document.querySelector("#downloadButton"),
+  onboardingOverlay: document.querySelector("#onboardingOverlay"),
+  closeOnboardingButton: document.querySelector("#closeOnboardingButton"),
+  skipOnboardingButton: document.querySelector("#skipOnboardingButton"),
+  finishOnboardingButton: document.querySelector("#finishOnboardingButton"),
+  onboardingRetryButton: document.querySelector("#onboardingRetryButton"),
+  onboardingExtensionButton: document.querySelector("#onboardingExtensionButton"),
+  onboardingModelButton: document.querySelector("#onboardingModelButton"),
+  onboardingBackendStatus: document.querySelector("#onboardingBackendStatus"),
+  onboardingExtensionStatus: document.querySelector("#onboardingExtensionStatus"),
+  onboardingModelStatus: document.querySelector("#onboardingModelStatus")
 };
 
 function escapeHtml(value) {
@@ -449,6 +482,7 @@ function showSettingsPane(name = "general") {
 
 function showAppView(view = "workspace") {
   const settingsMode = view === "settings";
+  const wasSettingsMode = document.body?.classList?.contains("settings-mode");
   const normalizedView = ["workspace", "notes", "history", "settings"].includes(view) ? view : "workspace";
   if (document.body?.dataset) document.body.dataset.appView = normalizedView;
   document.body?.classList?.toggle("settings-mode", settingsMode);
@@ -457,7 +491,158 @@ function showAppView(view = "workspace") {
     const active = settingsMode ? item.dataset.appView === "settings" : item.dataset.appView === view || (view === "workspace" && item.dataset.appView === "workspace");
     item.classList?.toggle("active", active);
   });
-  if (settingsMode) showSettingsPane("general");
+  if (settingsMode) {
+    if (!wasSettingsMode) showSettingsPane("general");
+    loadStorageSummary();
+  }
+}
+
+function onboardingWasCompleted() {
+  try {
+    return window.localStorage?.getItem(ONBOARDING_STORAGE_KEY) === "complete";
+  } catch {
+    return false;
+  }
+}
+
+function setOnboardingCompleted(value = true) {
+  try {
+    if (value) window.localStorage?.setItem(ONBOARDING_STORAGE_KEY, "complete");
+    else window.localStorage?.removeItem(ONBOARDING_STORAGE_KEY);
+  } catch {
+    // Private browsing may disable persistent storage.
+  }
+}
+
+function updateOnboardingStatus(data = lastHealthData) {
+  const backendReady = Boolean(data?.ok && data?.ffmpeg);
+  const extensionReady = Boolean(data?.extension_connected);
+  const modelReady = Boolean(data?.llm_model_configured || els.llmApiKey?.value?.trim() || desktopCredentialKey);
+  const states = {
+    backend: [backendReady, els.onboardingBackendStatus, backendReady ? "已连接" : data?.ok ? "需要安装媒体组件" : "未连接"],
+    extension: [extensionReady, els.onboardingExtensionStatus, extensionReady ? "已连接" : "等待扩展连接"],
+    model: [modelReady, els.onboardingModelStatus, modelReady ? (data?.default_llm_provider || "已配置") : "可稍后配置"]
+  };
+  Object.entries(states).forEach(([name, [ready, node, label]]) => {
+    if (node) node.textContent = label;
+    document.querySelector?.(`[data-onboarding-step="${name}"]`)?.classList?.toggle("ready", Boolean(ready));
+  });
+  if (els.finishOnboardingButton) {
+    els.finishOnboardingButton.textContent = backendReady ? "开始使用" : "先进入工作台";
+  }
+}
+
+function openOnboarding() {
+  if (!els.onboardingOverlay) return;
+  els.onboardingOverlay.hidden = false;
+  document.body?.classList?.add("onboarding-open");
+  updateOnboardingStatus();
+  window.setTimeout?.(() => els.closeOnboardingButton?.focus?.(), 0);
+}
+
+function closeOnboarding(complete = false) {
+  if (complete) setOnboardingCompleted(true);
+  if (els.onboardingOverlay) els.onboardingOverlay.hidden = true;
+  document.body?.classList?.remove("onboarding-open");
+}
+
+function extensionInstallPath(data = lastHealthData) {
+  const root = String(data?.data_paths?.root || "").replace(/[\\/]data[\\/]?$/i, "");
+  return root ? `${root}\\extension` : "D:\\Projects\\learnnote-assistant\\extension";
+}
+
+function desktopApi() {
+  return window.pywebview?.api || null;
+}
+
+async function loadDesktopCredential() {
+  const api = desktopApi();
+  if (!api) return;
+  const provider = els.llmProvider?.value || "custom";
+  try {
+    const result = await api.load_model_key(provider);
+    desktopCredentialKey = result?.api_key || "";
+    desktopCredentialProvider = desktopCredentialKey ? provider : "";
+    if (els.nativeCredentialStatus) {
+      els.nativeCredentialStatus.textContent = desktopCredentialKey
+        ? `${modelProviderLabel(provider)} 的 Key 已安全保存`
+        : `${modelProviderLabel(provider)} 尚未保存 Key`;
+    }
+  } catch {
+    desktopCredentialKey = "";
+    desktopCredentialProvider = "";
+    if (els.nativeCredentialStatus) els.nativeCredentialStatus.textContent = "无法读取 Windows 凭据管理器";
+  }
+  updateOnboardingStatus();
+}
+
+async function saveDesktopCredential() {
+  const api = desktopApi();
+  const provider = els.llmProvider?.value || "custom";
+  const key = els.llmApiKey?.value?.trim() || "";
+  if (!api || !key) {
+    if (els.nativeCredentialStatus) els.nativeCredentialStatus.textContent = "请先输入 API Key";
+    return;
+  }
+  await api.save_model_key(provider, key);
+  desktopCredentialKey = key;
+  desktopCredentialProvider = provider;
+  els.llmApiKey.value = "";
+  els.llmApiKey.placeholder = "已安全保存；输入新 Key 可替换";
+  if (els.nativeCredentialStatus) els.nativeCredentialStatus.textContent = `${modelProviderLabel(provider)} 的 Key 已安全保存`;
+  updateOnboardingStatus();
+}
+
+async function deleteDesktopCredential() {
+  const api = desktopApi();
+  const provider = els.llmProvider?.value || "custom";
+  if (!api) return;
+  await api.delete_model_key(provider);
+  desktopCredentialKey = "";
+  desktopCredentialProvider = "";
+  if (els.nativeCredentialStatus) els.nativeCredentialStatus.textContent = `${modelProviderLabel(provider)} 尚未保存 Key`;
+  updateOnboardingStatus();
+}
+
+function initializeDesktopBridge() {
+  const available = Boolean(desktopApi());
+  if (els.nativeCredentialSettings) els.nativeCredentialSettings.hidden = !available;
+  if (els.nativeDesktopSettings) els.nativeDesktopSettings.hidden = !available;
+  if (available) loadDesktopCredential();
+}
+
+function semverParts(value) {
+  const match = String(value || "").match(/^(\d+)\.(\d+)\.(\d+)$/);
+  return match ? match.slice(1).map(Number) : null;
+}
+
+function isNewerVersion(latest, current) {
+  const left = semverParts(latest);
+  const right = semverParts(current);
+  if (!left || !right) return false;
+  for (let index = 0; index < 3; index += 1) {
+    if (left[index] !== right[index]) return left[index] > right[index];
+  }
+  return false;
+}
+
+async function checkDesktopUpdate() {
+  const api = desktopApi();
+  if (!api || !els.checkUpdateButton) return;
+  els.checkUpdateButton.disabled = true;
+  if (els.updateStatus) els.updateStatus.textContent = "正在检查新版本";
+  try {
+    const result = await api.check_update();
+    const current = lastHealthData?.app_version || "0.0.0";
+    pendingReleaseUrl = result?.release_url || "";
+    const newer = result?.ok && isNewerVersion(result.latest_version, current);
+    if (els.updateStatus) els.updateStatus.textContent = result?.ok
+      ? newer ? `发现 v${result.latest_version}，更新前请先关闭正在运行的任务` : `当前 v${current} 已是最新版本`
+      : "暂时无法连接 GitHub，请稍后重试";
+    if (els.openReleaseButton) els.openReleaseButton.hidden = !newer;
+  } finally {
+    els.checkUpdateButton.disabled = false;
+  }
 }
 
 function updateSettingsStorageInfo(data = lastHealthData) {
@@ -466,6 +651,73 @@ function updateSettingsStorageInfo(data = lastHealthData) {
   if (els.settingDataDrive) {
     els.settingDataDrive.textContent = paths.all_on_data_drive === false ? "检查路径" : (paths.data_drive || "本地");
     els.settingDataDrive.classList?.toggle("warning", paths.all_on_data_drive === false);
+  }
+  if (els.settingAppVersion) els.settingAppVersion.textContent = data?.app_version ? `v${data.app_version}` : "-";
+  if (els.settingCompatibility) {
+    els.settingCompatibility.textContent = data?.extension_compatible === false
+      ? "浏览器扩展与本地客户端版本不兼容，请更新后重试"
+      : data?.extension_connected
+        ? `扩展 ${data.extension_version ? `v${data.extension_version}` : "已连接"} · 兼容`
+        : "扩展尚未连接，不影响本地视频和链接任务";
+  }
+}
+
+async function loadStorageSummary() {
+  if (!els.settingStorageUsage) return;
+  try {
+    const data = await fetchJson(apiUrl("/api/storage"));
+    els.settingStorageUsage.textContent = fmtBytes(data.total_bytes || 0) || "0 B";
+    const categories = data.categories || {};
+    els.settingStorageBreakdown.textContent = `任务 ${fmtBytes(categories.tasks || 0) || "0 B"} · 上传 ${fmtBytes(categories.uploads || 0) || "0 B"} · 模型 ${fmtBytes(categories.model_cache || 0) || "0 B"}`;
+  } catch {
+    els.settingStorageUsage.textContent = "暂不可用";
+    if (els.settingStorageBreakdown) els.settingStorageBreakdown.textContent = "本地服务连接后可查看";
+  }
+}
+
+async function previewStorageCleanup() {
+  if (!els.previewCleanupButton) return;
+  els.previewCleanupButton.disabled = true;
+  try {
+    pendingCleanupPreview = await fetchJson(apiUrl("/api/storage/cleanup"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ retention_days: 30, keep_recent: 10, dry_run: true })
+    });
+    const count = pendingCleanupPreview.candidates?.length || 0;
+    const size = fmtBytes(pendingCleanupPreview.reclaimable_bytes || 0) || "0 B";
+    els.previewCleanupButton.textContent = count ? `${count} 个任务 · ${size}` : "没有可清理内容";
+    if (els.applyCleanupButton) els.applyCleanupButton.disabled = count === 0;
+    if (els.settingsSavedStatus) {
+      els.settingsSavedStatus.textContent = count
+        ? `已找到 ${count} 个旧任务，确认后才会删除`
+        : "当前没有符合条件的旧任务";
+    }
+  } catch (error) {
+    if (els.settingsSavedStatus) els.settingsSavedStatus.textContent = error?.message || "清理预览失败，请检查本地服务";
+  } finally {
+    els.previewCleanupButton.disabled = false;
+  }
+}
+
+async function applyStorageCleanup() {
+  if (!pendingCleanupPreview?.candidates?.length) return;
+  const count = pendingCleanupPreview.candidates.length;
+  if (typeof window.confirm === "function" && !window.confirm(`确认删除 ${count} 个 30 天前的已结束任务？`)) return;
+  els.applyCleanupButton.disabled = true;
+  try {
+    await fetchJson(apiUrl("/api/storage/cleanup"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ retention_days: 30, keep_recent: 10, dry_run: false })
+    });
+    pendingCleanupPreview = null;
+    els.previewCleanupButton.textContent = "查看可清理内容";
+    if (els.settingsSavedStatus) els.settingsSavedStatus.textContent = `已清理 ${count} 个旧任务`;
+    await Promise.all([loadStorageSummary(), loadTasks()]);
+  } catch (error) {
+    if (els.settingsSavedStatus) els.settingsSavedStatus.textContent = error?.message || "清理失败，请稍后重试";
+    els.applyCleanupButton.disabled = false;
   }
 }
 
@@ -622,10 +874,17 @@ async function fetchJson(url, options = {}) {
   const response = await fetch(url, options);
   const contentType = response.headers?.get?.("content-type") || "";
   if (response.ok === false) {
-    const message = contentType.includes("application/json")
-      ? JSON.stringify(await response.json().catch(() => ({})))
+    const payload = contentType.includes("application/json") ? await response.json().catch(() => ({})) : {};
+    const raw = contentType.includes("application/json")
+      ? apiErrorMessage(payload, "")
       : (typeof response.text === "function" ? await response.text().catch(() => "") : "");
-    throw new Error(message || `HTTP ${response.status}`);
+    const code = String(payload?.detail?.code || payload?.code || "");
+    const guide = code ? errorGuideForCode(code, raw) : null;
+    const error = new Error(guide?.title || raw || "操作没有完成，请稍后重试");
+    error.code = code;
+    error.status = response.status;
+    error.detail = raw;
+    throw error;
   }
   if (contentType && !contentType.includes("application/json")) {
     throw new Error(`Expected JSON from ${url}`);
@@ -1947,7 +2206,9 @@ function activeVideoText(active) {
 
 function statusText(task) {
   if (task.status === "success") return "已完成";
-  if (task.status === "failed") return task.error_code || "失败";
+  if (task.status === "failed") return "需要处理";
+  if (task.status === "cancelling") return "正在停止";
+  if (task.status === "cancelled") return "已停止";
   if (task.status === "queued") return "排队中";
   return task.message || task.phase;
 }
@@ -2057,16 +2318,16 @@ const ERROR_GUIDES = {
     body: ""
   },
   auth_required: {
-    title: "资源需要登录态",
-    body: "重新打开课程页面并确认已登录，再从扩展侧边栏创建任务；后端只会在点击任务时同步一次当前域 cookie。"
+    title: "当前登录状态已失效",
+    body: "重新打开课程页面并确认可以正常播放，然后从扩展侧栏再次生成。"
   },
   drm_or_encrypted: {
-    title: "页面触发了 DRM/EME 加密媒体信号",
+    title: "这个视频来源无法直接保存",
     body: ""
   },
   download_forbidden: {
-    title: "媒体服务器拒绝下载",
-    body: "通常是 Referer、cookie 或时效签名不匹配。回到原页面重新播放并立刻开始任务，或选择另一个候选资源。"
+    title: "视频地址已经失效",
+    body: "回到原页面重新播放，再立刻从扩展侧栏生成；也可以改用本地视频。"
   },
   unsupported_manifest: {
     title: "manifest 或分片无法合并",
@@ -2074,12 +2335,19 @@ const ERROR_GUIDES = {
   },
   processing_failed: {
     title: "本地处理失败",
-    body: "下载可能成功，但转音频、转写、抽帧或总结阶段失败。请查看诊断里的阶段和本地 data/tasks 产物。"
+    body: "视频可能已保存。请点击重试继续生成；仍失败时再打开高级工具查看诊断。"
   },
   task_interrupted: {
     title: "任务已中断并自动收口",
     body: "任务超过 6 小时没有进度，通常是后端退出或系统重启。旧记录和已下载文件仍保留；有本地媒体时可继续切片总结，否则重新创建任务。"
-  }
+  },
+  recapture_required: {
+    title: "需要从视频页面重新发起",
+    body: "回到正在播放的视频页，点击 LearnNote 扩展图标重新生成。"
+  },
+  task_still_running: { title: "任务仍在运行", body: "请先停止任务，再重试或删除。" },
+  task_not_running: { title: "任务已经结束", body: "刷新任务列表即可查看最新状态。" },
+  task_not_found: { title: "任务已不存在", body: "它可能已被清理，请刷新任务列表。" }
 };
 
 function directCapabilityFormatsText() {
@@ -2092,7 +2360,7 @@ function directCapabilityManifestText() {
 }
 
 function directFailureBoundaryText() {
-  return healthDirectBoundaryText() || "不录制 · 不绕过 DRM · 不刷课";
+  return healthDirectBoundaryText() || "当前来源无法直接保存";
 }
 
 function errorGuideForCode(code, fallbackBody = "") {
@@ -2106,7 +2374,7 @@ function errorGuideForCode(code, fallbackBody = "") {
   if (code === "drm_or_encrypted") {
     return {
       ...guide,
-      body: `${directFailureBoundaryText()}。可直取 ${directCapabilityFormatsText()} 不存在时，只能使用本地视频入口。`
+      body: "当前页面没有提供可保存的视频文件。你仍可以上传本地视频，使用同一套转写、切片和笔记流程。"
     };
   }
   if (code === "unsupported_manifest") {
@@ -2127,7 +2395,7 @@ function failureGuide(task) {
   return `<div class="failure-guide">
     <strong>${escapeHtml(guide.title)}</strong>
     <p>${escapeHtml(guide.body)}</p>
-    ${lastAttempt ? `<small>最近尝试：${escapeHtml([lastAttempt.strategy, lastAttempt.code, lastAttempt.status_code ? `HTTP ${lastAttempt.status_code}` : "", lastAttempt.message].filter(Boolean).join(" · "))}</small>` : ""}
+    ${lastAttempt ? `<small>已保留完整诊断信息，可在高级工具中查看。</small>` : ""}
     <ul>
       ${steps.map(step => `<li>${escapeHtml(step)}</li>`).join("")}
     </ul>
@@ -3070,7 +3338,7 @@ function readOptions() {
   };
   const llmModel = els.llmModel.value.trim();
   const llmBaseUrl = els.llmBaseUrl.value.trim();
-  const llmApiKey = els.llmApiKey.value.trim();
+  const llmApiKey = els.llmApiKey.value.trim() || (desktopCredentialProvider === (els.llmProvider?.value || "custom") ? desktopCredentialKey : "");
   if (llmModel) options.llm_model = llmModel;
   if (llmBaseUrl) options.llm_base_url = llmBaseUrl;
   if (llmApiKey) options.llm_api_key = llmApiKey;
@@ -3395,19 +3663,15 @@ function refreshEmptyWorkbenchReadiness() {
 
 function updateHealthVisionStatus(data = lastHealthData) {
   if (!data || !els.browserBridgeStatus) return;
-  const mediaText = String(els.browserBridgeStatus.dataset.mediaText || els.browserBridgeStatus.textContent || "").trim();
-  const visionText = healthVisionText(data);
-  els.browserBridgeStatus.dataset.mediaText = mediaText;
-  els.browserBridgeStatus.title = `${mediaText} ${visionText}`.trim();
-  els.browserBridgeStatus.classList.add("capture-status-grid");
   const connected = Boolean(data.extension_connected);
+  const readyText = connected
+    ? "视频播放后，点击扩展侧栏里的“总结当前视频”"
+    : "打开课程视频，再点击 LearnNote 扩展图标";
+  els.browserBridgeStatus.dataset.mediaText = readyText;
+  els.browserBridgeStatus.title = readyText;
+  els.browserBridgeStatus.classList.add("capture-status-grid");
   els.browserBridgeStatus.innerHTML = `
-    <span class="capture-status-chip bridge ${connected ? "ready" : "pending"}"><b>${connected ? "扩展已连接" : "第 1 步"}</b>${connected ? "播放视频几秒，再在侧栏点击“检测当前页”" : "打开课程视频，再打开 LearnNote 扩展侧栏"}</span>
-    <span class="capture-status-chip media"><b>媒体</b>${escapeHtml(healthMediaChipText(data))}</span>
-    <span class="capture-status-chip direct"><b>直取</b>${escapeHtml(healthDirectChipText(data))}</span>
-    <span class="capture-status-chip vision ${healthVisionReady(data) ? "ready" : "pending"}"><b>视觉</b>${escapeHtml(healthVisionChipText(data))}</span>
-    <span class="capture-status-chip asr"><b>转写</b>${escapeHtml(healthAsrChipText(data))}</span>
-    <span class="capture-status-chip data ${healthDataPathsReady(data) ? "ready" : "pending"}"><b>数据</b>${escapeHtml(healthDataChipText(data))}</span>
+    <span class="capture-status-chip bridge ${connected ? "ready" : "pending"}"><b>${connected ? "可以开始" : "下一步"}</b>${escapeHtml(readyText)}</span>
   `;
 }
 
@@ -3444,30 +3708,34 @@ async function checkHealth() {
   try {
     const data = await fetchJson(apiUrl("/health"));
     syncModelProviderPresets(data);
-    els.health.className = data.ffmpeg ? "health ok" : "health bad";
-    els.health.textContent = data.ffmpeg
-      ? data.ffprobe_optional ? "后端可用 · ffprobe 可选" : "本地后端可用"
-      : "ffmpeg 缺失";
+    els.health.className = data.ffmpeg && data.extension_compatible !== false ? "health ok" : "health bad";
+    els.health.textContent = data.extension_compatible === false
+      ? "扩展需要更新"
+      : data.ffmpeg ? "本地服务已连接" : "媒体组件需要修复";
+    els.health.title = data.extension_compatible === false
+      ? "浏览器扩展与本地客户端版本不兼容；请在设置中查看版本信息。"
+      : "";
     if (els.browserBridgeStatus) {
       els.browserBridgeStatus.textContent = data.ffmpeg
-        ? data.ffprobe_optional
-          ? "ffmpeg 可用，缺少 ffprobe 时会用 ffmpeg 输出解析时长；仍可下载、转写、切片和图文总结。"
-          : "扩展读取播放器、媒体请求和一次性 cookie，后端只下载可访问的视频地址。"
-        : "后端已连接，但 ffmpeg 缺失；当前页直取后无法完成合并/切片。";
+        ? "打开课程视频，再点击 LearnNote 扩展图标。"
+        : "本地媒体组件需要修复，修复后才能处理视频。";
       updateHealthVisionStatus(data);
       updateBrowserFirstUse(data);
       updateStartupReadiness(data);
       refreshEmptyWorkbenchReadiness();
+      updateOnboardingStatus(data);
     }
   } catch {
+    lastHealthData = null;
     els.health.className = "health bad";
-    els.health.textContent = "后端未连接";
+    els.health.textContent = "本地服务未连接";
     if (els.browserBridgeStatus) {
-      els.browserBridgeStatus.textContent = "先启动本地后端，再从扩展 Side Panel 创建当前页任务。";
+      els.browserBridgeStatus.textContent = "请先启动 LearnNote 客户端。";
     }
     if (els.browserCaptureTitle) els.browserCaptureTitle.textContent = "先启动 LearnNote 后端";
     updateStartupReadiness(null);
     refreshEmptyWorkbenchReadiness();
+    updateOnboardingStatus(null);
   }
 }
 
@@ -3607,10 +3875,11 @@ function taskMatchesFilters(task) {
 function renderTasks() {
   els.taskCount.textContent = String(tasks.length);
   els.successCount.textContent = String(tasks.filter(task => task.status === "success").length);
-  els.runningCount.textContent = String(tasks.filter(task => task.status === "running" || task.status === "queued").length);
+  els.runningCount.textContent = String(tasks.filter(task => ["running", "queued", "cancelling"].includes(task.status)).length);
   els.failedCount.textContent = String(tasks.filter(task => task.status === "failed").length);
 
-  const visibleTasks = sortedVisibleTasks(tasks.filter(taskMatchesFilters), selectedTaskId);
+  const filteredTasks = sortedVisibleTasks(tasks.filter(taskMatchesFilters), selectedTaskId);
+  const visibleTasks = filteredTasks.slice(0, historyVisibleLimit);
 
   if (!tasks.length) {
     els.tasks.innerHTML = emptyTaskQueueHtml();
@@ -3622,7 +3891,7 @@ function renderTasks() {
   }
 
   els.tasks.innerHTML = visibleTasks.map(task => `
-    <button class="task status-${escapeHtml(task.status)} ${task.id === selectedTaskId ? "selected" : ""}" data-id="${escapeHtml(task.id)}">
+    <article class="task status-${escapeHtml(task.status)} ${task.id === selectedTaskId ? "selected" : ""}" data-id="${escapeHtml(task.id)}" tabindex="0">
       ${taskPreviewHtml(task)}
       <div class="task-body">
         <div class="task-headline">
@@ -3631,22 +3900,76 @@ function renderTasks() {
         </div>
         <small class="task-meta-line">${escapeHtml(taskMetaLine(task))}</small>
         ${taskChipsHtml(task)}
-        ${taskHandoffHtml(task)}
-        ${taskAuditMiniHtml(task)}
-        ${stageRail(task)}
         <div class="progress"><span style="width:${task.progress || 0}%"></span></div>
+        <div class="task-controls" aria-label="任务操作">
+          <button type="button" data-task-action="open">${task.note_path ? "查看笔记" : "查看详情"}</button>
+          ${["running", "queued", "cancelling"].includes(task.status) ? `<button type="button" data-task-action="cancel">停止</button>` : ""}
+          ${["failed", "cancelled"].includes(task.status) ? `<button type="button" data-task-action="retry">重试</button>` : ""}
+          ${["success", "failed", "cancelled"].includes(task.status) ? `<button type="button" data-task-action="delete">删除</button>` : ""}
+        </div>
       </div>
+    </article>
+  `).join("") + (filteredTasks.length > visibleTasks.length ? `
+    <button class="history-load-more" type="button" data-history-load-more>
+      再显示 ${Math.min(HISTORY_PAGE_SIZE, filteredTasks.length - visibleTasks.length)} 条
     </button>
-  `).join("");
+  ` : "");
 
   document.querySelectorAll(".task").forEach(button => {
-    button.onclick = async () => {
+    button.onclick = async event => {
+      const action = event.target.closest?.("[data-task-action]")?.dataset?.taskAction;
+      if (action) {
+        event.stopPropagation?.();
+        await runTaskAction(button.dataset.id, action);
+        return;
+      }
       selectTask(button.dataset.id);
+      showAppView("notes");
       renderTasks();
       await renderDetail();
       focusResultPanelOnMobile();
     };
   });
+  document.querySelector("[data-history-load-more]")?.addEventListener("click", () => {
+    historyVisibleLimit += HISTORY_PAGE_SIZE;
+    renderTasks();
+  });
+}
+
+async function runTaskAction(taskId, action) {
+  if (!taskId) return;
+  if (action === "open") {
+    selectTask(taskId);
+    showAppView("notes");
+    renderTasks();
+    await renderDetail();
+    focusResultPanelOnMobile();
+    return;
+  } else if (action === "cancel") {
+    await fetchJson(apiUrl(`/api/tasks/${encodeURIComponent(taskId)}/cancel`), { method: "POST" });
+  } else if (action === "retry") {
+    try {
+      const data = await fetchJson(apiUrl(`/api/tasks/${encodeURIComponent(taskId)}/retry`), { method: "POST" });
+      if (data.task_id) {
+        selectTask(data.task_id);
+        taskStatusFilter = "all";
+        if (els.statusFilter) els.statusFilter.value = "all";
+        showAppView("notes");
+      }
+    } catch {
+      const task = tasks.find(item => item.id === taskId);
+      if (task?.source_type === "current_page") {
+        setSource("browser");
+        showAppView("workspace");
+        if (els.browserBridgeStatus) els.browserBridgeStatus.textContent = "请回到视频页面，点击扩展图标重新发起。";
+      }
+    }
+  } else if (action === "delete") {
+    if (typeof window.confirm === "function" && !window.confirm("确认删除这个任务及其本地文件？")) return;
+    await fetchJson(apiUrl(`/api/tasks/${encodeURIComponent(taskId)}`), { method: "DELETE" });
+    if (selectedTaskId === taskId) selectedTaskId = null;
+  }
+  await loadTasks();
 }
 
 function emptyTaskQueueHtml() {
@@ -6650,7 +6973,10 @@ async function preflightUrlTask() {
 
 async function uploadSelectedFile(fileOverride = null) {
   const file = fileOverride || els.fileInput.files?.[0] || pendingLocalFile;
-  if (!file) return;
+  if (!file) {
+    els.fileInput?.click?.();
+    return;
+  }
   pendingLocalFile = file;
   if (!isSupportedLocalVideoFile(file)) {
     els.fileName.textContent = `${file.name} 暂不支持，请选择 mp4 / m4v / mov / flv / avi / mkv / webm 等视频文件`;
@@ -6798,7 +7124,7 @@ if (els.browserRouteSummary) {
     }
     if (routeAction.dataset.browserRouteAction === "open-extension") {
       await copyBackendUrl(routeAction);
-      setBrowserExtensionHandoffStatus(backendDisplayUrl());
+      setBrowserExtensionHandoffStatus(API || window.location?.origin || DEFAULT_BACKEND_ORIGIN);
       return;
     }
     if (routeAction.dataset.browserRouteAction === "local-video") {
@@ -6854,6 +7180,7 @@ if (els.llmProvider) {
   els.llmProvider.onchange = () => {
     applyModelProviderPreset(true);
     saveModelSettings();
+    loadDesktopCredential();
     updateHealthVisionStatus();
     updateStartupReadiness();
   };
@@ -6890,10 +7217,12 @@ els.uploadButton.onclick = uploadSelectedFile;
 els.refreshButton.onclick = () => loadTasks();
 els.taskSearch.oninput = () => {
   taskQuery = els.taskSearch.value;
+  historyVisibleLimit = HISTORY_PAGE_SIZE;
   renderTasks();
 };
 els.statusFilter.onchange = () => {
   taskStatusFilter = els.statusFilter.value;
+  historyVisibleLimit = HISTORY_PAGE_SIZE;
   renderTasks();
 };
 els.copyButton.onclick = async () => navigator.clipboard.writeText(await noteForTask(selectedTaskId) || "");
@@ -6973,6 +7302,42 @@ els.openProcessingSettingsButton?.addEventListener?.("click", () => {
   showAppView("settings");
   showSettingsPane("processing");
 });
+els.openOnboardingButton?.addEventListener?.("click", openOnboarding);
+els.closeOnboardingButton?.addEventListener?.("click", () => closeOnboarding(false));
+els.skipOnboardingButton?.addEventListener?.("click", () => closeOnboarding(true));
+els.finishOnboardingButton?.addEventListener?.("click", () => {
+  closeOnboarding(true);
+  showAppView("workspace");
+  setSource("browser");
+});
+els.onboardingRetryButton?.addEventListener?.("click", async () => {
+  els.onboardingRetryButton.disabled = true;
+  try {
+    await checkHealth();
+  } finally {
+    els.onboardingRetryButton.disabled = false;
+  }
+});
+els.onboardingExtensionButton?.addEventListener?.("click", async () => {
+  const path = extensionInstallPath();
+  try {
+    await navigator.clipboard?.writeText?.(path);
+    els.onboardingExtensionButton.textContent = "目录已复制";
+  } catch {
+    els.onboardingExtensionButton.textContent = path;
+  }
+});
+els.onboardingModelButton?.addEventListener?.("click", () => {
+  closeOnboarding(false);
+  showAppView("settings");
+  showSettingsPane("model");
+});
+els.onboardingOverlay?.addEventListener?.("click", event => {
+  if (event.target === els.onboardingOverlay) closeOnboarding(false);
+});
+document.addEventListener?.("keydown", event => {
+  if (event.key === "Escape" && !els.onboardingOverlay?.hidden) closeOnboarding(false);
+});
 els.settingsMenuButtons?.forEach?.(button => {
   button.addEventListener("click", () => showSettingsPane(button.dataset.settingsTab));
 });
@@ -6987,6 +7352,16 @@ els.settingsSegmentButtons?.forEach?.(button => {
 });
 els.saveSettingsButton?.addEventListener?.("click", saveAppSettingsFromUi);
 els.resetSettingsButton?.addEventListener?.("click", resetAppSettings);
+els.previewCleanupButton?.addEventListener?.("click", previewStorageCleanup);
+els.applyCleanupButton?.addEventListener?.("click", applyStorageCleanup);
+els.saveCredentialButton?.addEventListener?.("click", saveDesktopCredential);
+els.deleteCredentialButton?.addEventListener?.("click", deleteDesktopCredential);
+els.openDataFolderButton?.addEventListener?.("click", () => desktopApi()?.open_data_folder?.());
+els.checkUpdateButton?.addEventListener?.("click", checkDesktopUpdate);
+els.openReleaseButton?.addEventListener?.("click", () => {
+  if (pendingReleaseUrl) desktopApi()?.open_release?.(pendingReleaseUrl);
+});
+window.addEventListener?.("pywebviewready", initializeDesktopBridge);
 
 [
   els.frameInterval,
@@ -7022,6 +7397,7 @@ els.llmApiKey?.addEventListener("input", () => {
 loadAppSettings();
 organizeSettingsOptions();
 applyAppSettings();
+initializeDesktopBridge();
 initializeResponsiveChrome();
 loadModelSettings();
 applyModelProviderPreset(false);
@@ -7034,6 +7410,9 @@ if (!hasExplicitTaskRoute()) {
 renderSourceWorkflow();
 checkHealth();
 loadTasks();
+if ((currentUrlParam(["setup"]) === "1" || !onboardingWasCompleted()) && !hasExplicitTaskRoute()) {
+  window.setTimeout?.(openOnboarding, 220);
+}
 setInterval(() => {
   checkHealth();
   loadTasks();

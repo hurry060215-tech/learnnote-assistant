@@ -82,13 +82,15 @@ const sidepanelCss = await readFile(new URL("../sidepanel.css", import.meta.url)
 vm.runInContext(sidepanelCode, context);
 await new Promise(resolve => setTimeout(resolve, 0));
 assert.match(sidepanelHtml, /<div class="result-tabs" role="tablist" aria-label="任务结果">/);
-assert.match(sidepanelHtml, /data-tab="transcript">字幕/);
-assert.match(sidepanelHtml, /data-tab="slices">学习切片/);
-assert.match(sidepanelHtml, /data-tab="frames">画面网格/);
-assert.match(sidepanelHtml, /data-tab="qa">问答/);
-assert.match(sidepanelHtml, /data-tab="diagnostics">下载诊断/);
+assert.match(sidepanelHtml, /data-tab="transcript">完整字幕/);
+assert.match(sidepanelHtml, /data-tab="slices">画面与时间轴/);
+assert.match(sidepanelHtml, /data-tab="frames">原始画面/);
+assert.match(sidepanelHtml, /data-tab="qa">问这节课/);
+assert.match(sidepanelHtml, /data-tab="diagnostics">任务诊断/);
 assert.match(sidepanelHtml, /id="subtitlesButton"/);
-assert.match(sidepanelHtml, /下载到本地/);
+assert.match(sidepanelHtml, /只下载视频/);
+assert.match(sidepanelHtml, /id="firstRunCard"/);
+assert.match(sidepanelHtml, /id="resultAdvancedMenu"/);
 assert.match(sidepanelHtml, /class="product-mode-bar"/);
 assert.match(sidepanelHtml, /id="studyModeButton"/);
 assert.match(sidepanelHtml, /id="diagnosticModeButton"/);
@@ -102,14 +104,9 @@ assert.match(sidepanelCss, /\.study-flow-board/);
 assert.equal(elements.get("#resourcePanel").hidden, true);
 assert.equal(elements.get("#studyModeButton").classList.contains("active"), true);
 assert.equal(elements.get("#diagnosticModeButton").classList.contains("active"), false);
-assert.equal(elements.get("#backendStatus").classList.contains("backend-status-grid"), true);
-assert.match(elements.get("#backendStatus").innerHTML, /backend-status-chip bridge/);
-assert.match(elements.get("#backendStatus").innerHTML, /当前标签页/);
-assert.match(elements.get("#backendStatus").innerHTML, /backend-status-chip media/);
-assert.match(elements.get("#backendStatus").innerHTML, /OpenAI · gpt-4\.1-mini/);
-assert.match(elements.get("#backendStatus").innerHTML, /gpt-4\.1-mini/);
-assert.match(elements.get("#backendStatus").innerHTML, /backend-status-chip data ready/);
-assert.match(elements.get("#backendStatus").innerHTML, /D: · data/);
+assert.equal(elements.get("#backendStatus").classList.contains("backend-status-grid"), false);
+assert.equal(elements.get("#backendStatus").textContent, "本地服务已连接");
+assert.doesNotMatch(elements.get("#backendStatus").innerHTML, /ffprobe|OpenAI|data ready|当前标签页/);
 context.updateHealthVisionStatus({
   ffmpeg: true,
   ffprobe_optional: true,
@@ -117,10 +114,8 @@ context.updateHealthVisionStatus({
   default_llm_provider: "openai",
   default_llm_base_host: "api.openai.com"
 });
-assert.match(elements.get("#backendStatus").innerHTML, /backend-status-chip data pending/);
-assert.match(elements.get("#backendStatus").innerHTML, /data · 待检测/);
-assert.doesNotMatch(elements.get("#backendStatus").innerHTML, /路径异常/);
-assert.match(elements.get("#backendStatus").title, /视觉模型/);
+assert.equal(elements.get("#backendStatus").textContent, "本地服务已连接");
+assert.equal(elements.get("#backendStatus").title, "本地服务已连接");
 const qaPanelInitialHtml = context.qaPanelHtml({ id: "side-qa-test" });
 assert.match(qaPanelInitialHtml, /id="qaForm"/);
 assert.match(qaPanelInitialHtml, /id="qaQuestion"/);

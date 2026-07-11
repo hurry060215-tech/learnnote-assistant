@@ -136,8 +136,7 @@ assert.equal(elements.get("#transcriber").value, "faster-whisper");
 assert.equal(elements.get("#whisperModel").value, "small");
 assert.match(elements.get("#providerHint").innerHTML, /高级/);
 assert.match(elements.get("#providerHint").innerHTML, /手动填写 OpenAI-compatible 端点/);
-assert.match(elements.get("#backendStatus").innerHTML, /backend-status-chip asr/);
-assert.match(elements.get("#backendStatus").innerHTML, /本地 faster-whisper · small/);
+assert.doesNotMatch(elements.get("#backendStatus").innerHTML, /backend-status-chip|faster-whisper|small/);
 
 assert.equal(context.normalizeBackendUrl("127.0.0.1:8000/"), "http://127.0.0.1:8000");
 assert.equal(context.normalizeBackendUrl("localhost:8765/workbench"), "http://localhost:8765");
@@ -202,11 +201,8 @@ assert.match(elements.get("#providerHint").innerHTML, /主流/);
 assert.match(elements.get("#providerHint").innerHTML, /支持图文总结/);
 elements.get("#llmApiKey").value = "";
 context.updateHealthVisionStatus({ ffmpeg: true, vision_model_configured: false });
-assert.match(elements.get("#backendStatus").innerHTML, /待填 · Gemini/);
-assert.match(elements.get("#backendStatus").innerHTML, /本地 faster-whisper · small/);
-assert.match(elements.get("#backendStatus").innerHTML, /backend-status-chip direct/);
-assert.match(elements.get("#backendStatus").innerHTML, /mp4\/mkv\/webm\/flv\/m3u8\/mpd/);
-assert.match(elements.get("#backendStatus").innerHTML, /不录制 · 不绕过 DRM · 不刷课/);
+assert.match(elements.get("#backendStatus").textContent, /本地服务已连接/);
+assert.doesNotMatch(elements.get("#backendStatus").textContent, /Gemini|faster-whisper|mp4|DRM/);
 
 elements.get("#llmProvider").value = "dashscope";
 context.applyModelProviderPreset(true);

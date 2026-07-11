@@ -1,4 +1,5 @@
 const DEFAULT_BACKEND = "http://127.0.0.1:8765";
+const UX_PROTOCOL_VERSION = 1;
 const HAS_EXTENSION_API = typeof chrome !== "undefined" && Boolean(chrome.runtime?.sendMessage && chrome.storage?.local);
 const LOCAL_VIDEO_EXT_RE = /\.(mp4|m4v|mov|mkv|webm|flv|avi)$/i;
 const RESULT_TAB_NAMES = new Set(["note", "transcript", "slices", "frames", "qa", "diagnostics"]);
@@ -302,7 +303,10 @@ const els = {
   backendSettingsPanel: document.querySelector("#backendSettingsPanel"),
   backendUrlInput: document.querySelector("#backendUrlInput"),
   saveBackendSettingsButton: document.querySelector("#saveBackendSettingsButton"),
-  cancelBackendSettingsButton: document.querySelector("#cancelBackendSettingsButton")
+  cancelBackendSettingsButton: document.querySelector("#cancelBackendSettingsButton"),
+  firstRunCard: document.querySelector("#firstRunCard"),
+  firstRunButton: document.querySelector("#firstRunButton"),
+  dismissFirstRunButton: document.querySelector("#dismissFirstRunButton")
 };
 
 function escapeHtml(value) {
@@ -736,6 +740,29 @@ function taskMediaPreviewUrl(task) {
 
 function openWorkbench(taskId = currentTaskId, tabName = selectedTab) {
   const url = workbenchUrl(taskId, tabName);
+  if (HAS_EXTENSION_API) chrome.tabs.create({ url });
+  else window.open(url, "_blank", "noopener");
+}
+
+async function setFirstRunSeen() {
+  if (HAS_EXTENSION_API) await chrome.storage.local.set({ firstRunSeenV1: true });
+  if (els.firstRunCard) els.firstRunCard.hidden = true;
+}
+
+async function initializeFirstRunCard() {
+  if (!els.firstRunCard) return;
+  let seen = false;
+  if (HAS_EXTENSION_API) {
+    const stored = await chrome.storage.local.get({ firstRunSeenV1: false });
+    seen = Boolean(stored.firstRunSeenV1);
+  }
+  els.firstRunCard.hidden = seen;
+}
+
+async function openFirstRunGuide() {
+  await setFirstRunSeen();
+  const separator = backendUrl.includes("?") ? "&" : "?";
+  const url = `${backendUrl.replace(/\/$/, "")}/${separator}setup=1`;
   if (HAS_EXTENSION_API) chrome.tabs.create({ url });
   else window.open(url, "_blank", "noopener");
 }
@@ -4793,30 +4820,27 @@ function healthDataPathsReady(data) {
 
 function updateHealthVisionStatus(data = lastHealthData) {
   if (!data || !els.backendStatus) return;
-  const mediaText = String(els.backendStatus.dataset.mediaText || els.backendStatus.textContent || "").trim();
-  const visionText = healthVisionText(data);
-  els.backendStatus.dataset.mediaText = mediaText;
-  els.backendStatus.title = `${mediaText} ${visionText}`.trim();
-  els.backendStatus.classList.add("backend-status-grid");
-  els.backendStatus.innerHTML = `
-    <span class="backend-status-chip bridge"><b>桥接</b>当前标签页</span>
-    <span class="backend-status-chip media"><b>媒体</b>${escapeHtml(healthMediaChipText(data))}</span>
-    <span class="backend-status-chip direct"><b>直取</b>${escapeHtml(healthDirectChipText(data))}</span>
-    <span class="backend-status-chip vision ${healthVisionReady(data) ? "ready" : "pending"}"><b>视觉</b>${escapeHtml(healthVisionChipText(data))}</span>
-    <span class="backend-status-chip asr"><b>转写</b>${escapeHtml(healthAsrChipText(data))}</span>
-    <span class="backend-status-chip data ${healthDataPathsReady(data) ? "ready" : "pending"}"><b>数据</b>${escapeHtml(healthDataChipText(data))}</span>
-  `;
+  const text = data.extension_compatible === false
+    ? "客户端版本不兼容，请更新"
+    : data.ffmpeg ? "本地服务已连接" : "媒体组件需要修复";
+  els.backendStatus.dataset.mediaText = text;
+  els.backendStatus.title = text;
+  els.backendStatus.classList.remove("backend-status-grid");
+  els.backendStatus.textContent = text;
 }
 
 async function health() {
   try {
-    await fetch(`${backendUrl}/api/extension/heartbeat`, { method: "POST" }).catch(() => null);
+    const extensionVersion = HAS_EXTENSION_API ? String(chrome.runtime.getManifest?.().version || "") : "";
+    await fetch(`${backendUrl}/api/extension/heartbeat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ extension_version: extensionVersion, protocol_version: UX_PROTOCOL_VERSION })
+    }).catch(() => null);
     const data = await fetch(`${backendUrl}/health`).then(r => r.json());
     lastHealthData = data;
     syncModelProviderPresets(data);
-    els.backendStatus.textContent = data.ffmpeg
-      ? data.ffprobe_optional ? "后端可用 · ffprobe 可选" : "本地后端可用"
-      : "ffmpeg 缺失";
+    els.backendStatus.textContent = data.ffmpeg ? "本地服务已连接" : "媒体组件需要修复";
     els.backendStatus.style.color = data.ffmpeg ? "#159947" : "#c27803";
     updateHealthVisionStatus(data);
   } catch {
@@ -8198,6 +8222,8 @@ els.openWebButton.onclick = () => {
   openWorkbench();
 };
 els.settingsButton.onclick = openBackendSettingsPanel;
+if (els.firstRunButton) els.firstRunButton.onclick = openFirstRunGuide;
+if (els.dismissFirstRunButton) els.dismissFirstRunButton.onclick = setFirstRunSeen;
 if (els.saveBackendSettingsButton) {
   els.saveBackendSettingsButton.onclick = () => saveSettings();
 }
@@ -8250,7 +8276,7 @@ if (HAS_EXTENSION_API && chrome.runtime.onMessage?.addListener) {
 renderPanelMode();
 
 loadSettings().then(async () => {
-  await Promise.all([health(), collect(), loadTaskHistory()]);
+  await Promise.all([health(), collect(), loadTaskHistory(), initializeFirstRunCard()]);
   await consumePendingSidePanelIntent();
   if (typeof setInterval === "function") setInterval(health, 10000);
 });

@@ -227,12 +227,18 @@ def wait_for_service_worker(debug_port: int, timeout_seconds: float = 30) -> dic
                     probe = CdpWebSocket(target["webSocketDebuggerUrl"])
                     probe.call("Runtime.enable", timeout=5)
                     result = probe.call("Runtime.evaluate", {
-                        "expression": "chrome.runtime.getManifest().name",
+                        "expression": "chrome.runtime.getManifest()",
                         "returnByValue": True,
                     }, timeout=5)
-                    name = result.get("result", {}).get("value", "")
+                    manifest = result.get("result", {}).get("value", {})
+                    name = str(manifest.get("name", "")) if isinstance(manifest, dict) else ""
                     seen_label = f"{url} name={name}"
-                    if name == "LearnNote 当前页助手":
+                    side_panel = manifest.get("side_panel", {}) if isinstance(manifest, dict) else {}
+                    if (
+                        name.startswith("LearnNote")
+                        and manifest.get("manifest_version") == 3
+                        and side_panel.get("default_path") == "sidepanel.html"
+                    ):
                         return target
                 except Exception as exc:
                     seen_label = f"{url} probe_error={exc}"
