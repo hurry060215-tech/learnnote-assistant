@@ -362,17 +362,83 @@ def configure_model_runtime() -> bool:
     return True
 
 
-def configure_webview_runtime() -> None:
-    existing = os.environ.get("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "").strip()
-    required = "--disable-gpu"
-    if required not in existing.split():
-        os.environ["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = " ".join(filter(None, (existing, required)))
+def webview_browser_arguments(remote_debug_port: int = 0) -> str:
+    arguments = [
+        "--disable-features=ElasticOverscroll",
+        "--allow-file-access-from-files",
+        "--disable-gpu",
+    ]
+    if remote_debug_port:
+        arguments.append(f"--remote-debugging-port={remote_debug_port}")
+    return " ".join(arguments)
+
+
+def configure_webview_runtime(webview_module, remote_debug_port: int = 0) -> None:
+    from webview.platforms import edgechromium as edge
+
+    if getattr(edge.EdgeChrome, "_learnnote_runtime", False):
+        return
+
+    class LearnNoteEdgeChrome(edge.EdgeChrome):
+        _learnnote_runtime = True
+
+        def __init__(self, form, window, cache_dir: str):
+            self.pywebview_window = window
+            self.webview = edge.WebView2()
+            props = edge.CoreWebView2CreationProperties()
+
+            runtime_path = webview_module.settings["WEBVIEW2_RUNTIME_PATH"]
+            if runtime_path:
+                if not os.path.isabs(runtime_path):
+                    runtime_path = os.path.join(edge.get_app_root(), runtime_path)
+                if os.path.exists(runtime_path):
+                    props.BrowserExecutableFolder = runtime_path
+
+            props.UserDataFolder = cache_dir
+            self.user_data_folder = props.UserDataFolder
+            props.set_IsInPrivateModeEnabled(edge._state["private_mode"])
+            props.AdditionalBrowserArguments = webview_browser_arguments(remote_debug_port)
+            self.webview.CreationProperties = props
+
+            self.form = form
+            form.Controls.Add(self.webview)
+            self.js_results = {}
+            self.js_result_semaphore = edge.Semaphore(0)
+            self.webview.Dock = edge.WinForms.DockStyle.Fill
+            self.webview.BringToFront()
+            self.webview.CoreWebView2InitializationCompleted += self.on_webview_ready
+            self.webview.NavigationStarting += self.on_navigation_start
+            self.webview.NavigationCompleted += self.on_navigation_completed
+            self.webview.WebMessageReceived += self.on_script_notify
+            self.syncContextTaskScheduler = edge.TaskScheduler.FromCurrentSynchronizationContext()
+            self.webview.DefaultBackgroundColor = edge.Color.FromArgb(
+                255,
+                int(window.background_color.lstrip("#")[0:2], 16),
+                int(window.background_color.lstrip("#")[2:4], 16),
+                int(window.background_color.lstrip("#")[4:6], 16),
+            )
+            if window.transparent:
+                self.webview.DefaultBackgroundColor = edge.Color.Transparent
+
+            self.url = None
+            self.ishtml = False
+            self.html = edge.DEFAULT_HTML
+            self.webview.EnsureCoreWebView2Async(None)
+
+    edge.EdgeChrome = LearnNoteEdgeChrome
+
+
+def webview_storage_path(data_dir: Path) -> Path:
+    path = (data_dir / "webview-profile").resolve()
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 def run() -> int:
     parser = argparse.ArgumentParser(description="Launch the LearnNote Windows desktop client.")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--debug", action="store_true")
+    parser.add_argument("--webview-debug-port", type=int, default=0, help=argparse.SUPPRESS)
     args = parser.parse_args()
 
     root = application_root()
@@ -381,11 +447,11 @@ def run() -> int:
     port = available_port(args.port)
     data_dir = configure_runtime(root, port)
     configure_model_runtime()
-    configure_webview_runtime()
 
     from app.main import app
     import webview
 
+    configure_webview_runtime(webview, args.webview_debug_port)
     webview.settings["ALLOW_DOWNLOADS"] = True
 
     backend_url = f"http://127.0.0.1:{port}"
@@ -417,7 +483,11 @@ def run() -> int:
         )
         desktop_api._bind_window(window)
         window.events.loaded += lambda: window.set_title("LearnNote - Video Learning Notes")
-        webview.start(debug=args.debug, private_mode=False)
+        webview.start(
+            debug=args.debug,
+            private_mode=False,
+            storage_path=str(webview_storage_path(data_dir)),
+        )
     finally:
         server.should_exit = True
         thread.join(timeout=8)
