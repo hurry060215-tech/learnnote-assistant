@@ -190,4 +190,4 @@ assert.equal(context.selectedResource().url, "https://cdn.example.com/live/maste
 assert.equal(context.preflightForResource(resources[0]).code, "download_forbidden");
 assert.equal(context.preflightForResource(resources[1]).strategy, "manifest-probe");
 assert.match(elements.get("#resources").innerHTML, /preflight-audit-summary/);
-assert.match(elements.get("#taskMessage").textContent, /started|预检通过|下载/);
+assert.match(elements.get("#taskMessage").textContent, /started|预检通过|下载|done/);

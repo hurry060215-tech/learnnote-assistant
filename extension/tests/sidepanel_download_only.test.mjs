@@ -258,7 +258,7 @@ await context.openTaskExport("media");
 
 assert.equal(calls.export.type, "download-task-export");
 assert.equal(calls.export.url, "http://127.0.0.1:8765/api/tasks/download-only-task/exports/media");
-assert.equal(calls.openedTab, null);
+assert.equal(calls.openedTab?.url, "http://127.0.0.1:8765/?task=download-only-task&tab=note");
 assert.equal(elements.get("#taskMessage").textContent, "已开始下载本地视频。");
 
 let rerunPayload = null;

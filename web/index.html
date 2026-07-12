@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>LearnNote 学习视频笔记</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="/web/styles.css?v=20260712-v0117">
-    <link rel="stylesheet" href="/web/workspace.css?v=20260712-v0117">
-    <link rel="stylesheet" href="/web/product.css?v=20260712-v0117">
+    <link rel="stylesheet" href="/web/styles.css?v=20260712-v0118">
+    <link rel="stylesheet" href="/web/workspace.css?v=20260712-v0118">
+    <link rel="stylesheet" href="/web/product.css?v=20260712-v0118">
   </head>
   <body data-app-view="workspace">
     <header class="topbar">
@@ -20,9 +20,9 @@
       </div>
       <div class="topbar-actions">
         <span id="health" class="health">检查中</span>
-        <button id="openAiAssistantButton" class="assistant-launch-button" type="button" aria-expanded="false">
+        <button id="openAiAssistantButton" class="assistant-launch-button" type="button" aria-expanded="false" aria-controls="aiAssistantDrawer">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v11H9l-4 4z"/><path d="M9 9h6M9 12h4"/></svg>
-          问 AI
+          AI 助手
         </button>
         <button id="toggleWorkspaceButton" class="icon-button" title="折叠/展开工作区" aria-label="折叠/展开工作区" aria-pressed="false">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4z"/><path d="M14 5v14"/><path d="M9 9l-3 3 3 3"/></svg>
@@ -612,7 +612,7 @@
 
     <aside id="aiAssistantDrawer" class="ai-assistant-drawer" hidden aria-label="AI 学习助手">
       <header>
-        <div><span>学习助手</span><strong>随时问当前笔记</strong><small id="assistantTaskLabel">请先在笔记库选择一篇笔记</small></div>
+        <div><span>AI 学习助手</span><strong>边看边问，不离开笔记</strong><small id="assistantTaskLabel">请先在笔记库选择一篇笔记</small></div>
         <button id="closeAiAssistantButton" class="icon-button" type="button" aria-label="关闭 AI 助手"><svg viewBox="0 0 24 24"><path d="M5 5l14 14M19 5 5 19"/></svg></button>
       </header>
       <div id="assistantConversation" class="assistant-conversation"><div class="assistant-empty"><strong>从一个具体问题开始</strong><p>回答会引用这篇笔记的字幕、时间点和画面切片。</p></div></div>
@@ -622,8 +622,8 @@
         <button type="button" data-assistant-question="根据这节课给我出三道复习题">生成复习题</button>
       </div>
       <form id="assistantForm" class="assistant-composer">
-        <textarea id="assistantQuestion" rows="2" maxlength="1000" placeholder="问这篇笔记..."></textarea>
-        <button class="primary action-button" type="submit">发送</button>
+        <textarea id="assistantQuestion" rows="2" maxlength="1000" placeholder="输入问题，Enter 发送"></textarea>
+        <button class="primary action-button" type="submit" aria-label="发送问题">发送</button>
       </form>
     </aside>
 
@@ -641,6 +641,6 @@
       </section>
     </div>
 
-    <script src="/web/app.js?v=20260712-v0117"></script>
+    <script src="/web/app.js?v=20260712-v0118"></script>
   </body>
 </html>

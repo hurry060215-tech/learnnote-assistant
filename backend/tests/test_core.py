@@ -3065,6 +3065,7 @@ class DownloaderBoundaryTests(unittest.TestCase):
             self.assertEqual(captured["options"]["http_headers"]["User-Agent"], "Chrome Playback UA")
             self.assertEqual(captured["options"]["http_headers"]["Referer"], "https://course.example.com/lesson/1")
             self.assertEqual(captured["options"]["http_headers"]["Origin"], "https://course.example.com")
+            self.assertTrue(captured["options"]["noplaylist"])
             self.assertTrue(Path(captured["options"]["ffmpeg_location"]).is_file())
             self.assertEqual(progress_events, [(4096, 8192, "https://cdn.example.com/lesson.m3u8")])
             self.assertEqual(downloader.resolved_title, "fake")
@@ -3110,9 +3111,10 @@ class DownloaderBoundaryTests(unittest.TestCase):
 
         self.assertTrue(captured["media_exists"])
         cmd = captured["cmd"]
-        self.assertEqual(captured["timeout"], 90)
+        self.assertEqual(captured["timeout"], 1800)
         self.assertIn("-m", cmd)
         self.assertIn("yt_dlp", cmd)
+        self.assertIn("--no-playlist", cmd)
         self.assertIn("--cookies", cmd)
         self.assertEqual(cmd[cmd.index("--cookies") + 1], str(cookie_file))
         self.assertIn("--socket-timeout", cmd)
@@ -3152,7 +3154,7 @@ class DownloaderBoundaryTests(unittest.TestCase):
                     )
 
         self.assertEqual(ctx.exception.code, "yt_dlp_timeout")
-        self.assertIn("90", ctx.exception.message)
+        self.assertIn("1800", ctx.exception.message)
 
     def test_ffmpeg_cookie_option_keeps_domain_scoped_cookies(self) -> None:
         cookie_text = ffmpeg_cookies_option(

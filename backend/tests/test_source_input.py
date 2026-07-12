@@ -20,9 +20,9 @@ class SourceInputTests(unittest.TestCase):
         bv = normalize_source_input("BV1xx411c7mD")
         av = normalize_source_input("av170001")
 
-        self.assertEqual(bv.url, "https://www.bilibili.com/video/BV1xx411c7mD")
+        self.assertEqual(bv.url, "https://www.bilibili.com/video/BV1xx411c7mD?p=1")
         self.assertEqual(bv.source_id, "BV1xx411c7mD")
-        self.assertEqual(av.url, "https://www.bilibili.com/video/av170001")
+        self.assertEqual(av.url, "https://www.bilibili.com/video/av170001?p=1")
         self.assertEqual(av.platform, "bilibili")
 
     def test_copied_text_extracts_supported_url(self) -> None:
@@ -30,6 +30,13 @@ class SourceInputTests(unittest.TestCase):
 
         self.assertEqual(source.url, "https://www.bilibili.com/video/BV1xx411c7mD?p=2")
         self.assertEqual(source.default_title, "B站视频 · BV1xx411c7mD")
+
+    def test_bilibili_page_without_part_defaults_to_first_part(self) -> None:
+        source = normalize_source_input("https://www.bilibili.com/video/BV181wezqEgK")
+        selected = normalize_source_input("https://www.bilibili.com/video/BV181wezqEgK?p=7")
+
+        self.assertEqual(source.url, "https://www.bilibili.com/video/BV181wezqEgK?p=1")
+        self.assertEqual(selected.url, "https://www.bilibili.com/video/BV181wezqEgK?p=7")
 
     def test_normalize_api_reports_invalid_plain_text(self) -> None:
         client = TestClient(app)

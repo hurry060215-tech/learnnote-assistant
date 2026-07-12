@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>LearnNote</title>
-    <link rel="stylesheet" href="sidepanel.css?v=20260712-v0117">
+    <link rel="stylesheet" href="sidepanel.css?v=20260712-v0118">
   </head>
   <body data-ui="learnnote-sidepanel-v2" data-source-mode="summarize">
     <header class="app-header">
@@ -12,7 +12,7 @@
         <div class="mark" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M8 4h12l5 5v19H8z"/><path d="M20 4v6h6M12 15h9M12 20h7"/></svg></div>
         <div>
           <h1>LearnNote</h1>
-          <p id="backendStatus">连接本地后端...</p>
+          <p id="backendStatus">正在连接客户端...</p>
         </div>
       </div>
       <div class="header-actions">
@@ -53,7 +53,7 @@
 
     <main class="side-shell">
       <section class="current-card">
-        <div class="source-switcher" aria-label="学习来源">
+        <div class="source-switcher" hidden aria-label="学习来源">
           <button type="button" class="active" data-source-action="summarize">
             <svg viewBox="0 0 24 24"><path d="M5 5h14v10H5z"/><path d="M10 19h4"/><path d="M12 15v4"/></svg>
             当前页视频
@@ -67,7 +67,7 @@
             页面文本
           </button>
         </div>
-        <div class="product-mode-bar" aria-label="面板视图">
+        <div class="product-mode-bar" hidden aria-label="面板视图">
           <button id="studyModeButton" type="button" class="active" data-panel-mode="study">
             <svg viewBox="0 0 24 24"><path d="M5 5h14v14H5z"/><path d="M8 9h8M8 13h5M8 17h6"/></svg>
             学习流程
@@ -77,7 +77,7 @@
             诊断证据
           </button>
         </div>
-        <div id="sourceRouteRail" class="source-route-rail" aria-label="学习来源状态"></div>
+        <div id="sourceRouteRail" class="source-route-rail" hidden aria-label="学习来源状态"></div>
         <div class="section-head">
           <div>
             <span>当前播放页</span>
@@ -89,7 +89,7 @@
         </div>
         <small id="pageUrl" class="page-url"></small>
         <div id="activeVideo" class="playback-card">等待播放状态</div>
-        <div id="currentStudyCard" class="current-study-card" aria-label="当前页学习任务"></div>
+        <div id="currentStudyCard" class="current-study-card" hidden aria-label="当前页学习任务"></div>
         <label class="learning-goal-control" hidden>
           <span>
             <b>这次想得到什么</b>
@@ -103,7 +103,7 @@
           </select>
         </label>
         <div class="client-handoff-card">
-          <div><strong>设置与结果都在客户端</strong><small>扩展只负责读取当前播放页并安全交给 LearnNote。</small></div>
+          <div><strong>其余操作都在客户端</strong><small>扩展只把当前播放页交给 LearnNote。</small></div>
           <button id="openClientPrimaryButton" type="button">打开客户端</button>
         </div>
       </section>
@@ -111,7 +111,7 @@
       <section class="actions">
         <button id="summarizeButton" class="primary">
           <svg viewBox="0 0 24 24"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
-          总结当前视频
+          发送到客户端总结
         </button>
         <button id="continueFromMediaButton" hidden disabled>
           <svg viewBox="0 0 24 24"><path d="M4 5h16v4H4zM4 15h16v4H4z"/><path d="M8 9v6M16 9v6"/></svg>
@@ -262,7 +262,7 @@
       </section>
       </details>
 
-      <details id="localVideoCard" class="local-video-card" aria-label="本地视频同管线">
+      <details id="localVideoCard" class="local-video-card" hidden aria-label="本地视频同管线">
         <summary class="local-video-summary">
           <div>
             <span>本地视频</span>
@@ -295,7 +295,7 @@
         <p id="taskMessage">暂无任务</p>
       </section>
 
-      <details class="history-panel compact-disclosure">
+      <details class="history-panel compact-disclosure" hidden>
         <summary>最近任务</summary>
         <div class="section-head compact">
           <span>客户端中的最近记录</span>
@@ -306,12 +306,11 @@
         <div id="taskHistory" class="task-history muted">等待任务生成后显示最近记录</div>
       </details>
 
-      <details class="result-panel compact-disclosure">
+      <details class="result-panel compact-disclosure" hidden>
         <summary>任务预览</summary>
         <div class="result-tabs" role="tablist" aria-label="任务结果">
           <button class="result-tab active" role="tab" aria-selected="true" data-tab="note">学习笔记</button>
           <button class="result-tab" role="tab" aria-selected="false" data-tab="slices">画面与时间轴</button>
-          <button class="result-tab" role="tab" aria-selected="false" data-tab="qa">问这节课</button>
           <details id="resultAdvancedMenu" class="result-advanced-menu">
             <summary>高级</summary>
             <div>
@@ -334,6 +333,6 @@
       </details>
     </main>
 
-    <script src="sidepanel.js?v=20260712-v0117"></script>
+    <script src="sidepanel.js?v=20260712-v0118"></script>
   </body>
 </html>

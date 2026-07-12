@@ -2725,6 +2725,28 @@ body[data-app-view="workspace"] .quick-note-heading button {
 .assistant-composer { display: grid; grid-template-columns: 1fr auto; gap: 10px; padding: 14px 18px 18px; }
 .assistant-composer textarea { min-height: 48px; resize: none; border: 1px solid var(--product-line-strong); border-radius: 8px; padding: 11px 12px; font: inherit; }
 
+@media (min-width: 1101px) {
+  .topbar,
+  .app-shell {
+    transition: margin-right 180ms ease;
+  }
+
+  body.assistant-open .topbar,
+  body.assistant-open .app-shell {
+    margin-right: min(420px, 34vw);
+  }
+
+  .ai-assistant-drawer {
+    width: min(420px, 34vw);
+  }
+}
+
+@media (max-width: 1100px) {
+  .ai-assistant-drawer {
+    width: min(420px, calc(100vw - 56px));
+  }
+}
+
 .note-version-overlay { position: fixed; z-index: 90; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(20, 34, 40, .38); }
 .note-version-overlay[hidden] { display: none; }
 .note-version-dialog { width: min(680px, 100%); max-height: calc(100vh - 48px); overflow: auto; border-radius: 8px; background: #fff; box-shadow: 0 28px 80px rgba(17, 35, 42, .24); }

@@ -7305,6 +7305,26 @@ body {
 .mark { background: #087f7c; }
 .mark svg { width: 21px; height: 21px; fill: none; stroke: #fff; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 
+/* The extension is only a current-page handoff; the desktop owns the product UI. */
+.source-switcher,
+.product-mode-bar,
+.source-route-rail,
+.current-study-card,
+.resource-panel,
+.options-disclosure,
+.local-video-card,
+.history-panel,
+.result-panel,
+.side-advanced-actions { display: none !important; }
+.first-run-card { display: none !important; }
+
+.side-shell { gap: 14px; padding-bottom: 18px; }
+.current-card { padding-bottom: 16px; }
+.client-handoff-card { margin-top: 14px; }
+.actions { position: static; padding: 0 14px; background: transparent; box-shadow: none; }
+.actions .primary { min-height: 48px; font-size: 15px; }
+.progress-panel { margin: 0 14px; }
+
 h1 {
   font-weight: 900;
 }
@@ -13534,4 +13554,26 @@ body[data-ui="learnnote-sidepanel-v2"] .first-run-card {
 .compact-disclosure > :not(summary) {
   margin-left: 12px;
   margin-right: 12px;
+}
+
+body[data-ui="learnnote-sidepanel-v2"][data-source-mode="summarize"] .actions {
+  position: static;
+  display: block !important;
+  order: 3;
+  padding: 0 14px;
+  background: transparent;
+  box-shadow: none;
+}
+
+body[data-ui="learnnote-sidepanel-v2"][data-source-mode="summarize"] .actions > :not(#summarizeButton) {
+  display: none !important;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] #summarizeButton {
+  display: flex !important;
+  width: 100%;
+  min-height: 50px;
+  justify-content: center;
+  border-radius: 7px;
+  font-size: 15px;
 }

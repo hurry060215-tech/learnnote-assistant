@@ -308,6 +308,8 @@ let lastDetailFingerprint = "__unrendered__";
 let qaState = { taskId: "", question: "", answer: "", source: "", warning: "", citations: [], historyCount: 0, recent: [], loading: false };
 let noteVersionTaskId = "";
 let assistantMessages = [];
+let assistantHistoryRequestId = 0;
+const ASSISTANT_OPEN_KEY = "learnnote.aiAssistantOpen";
 
 const els = {
   health: document.querySelector("#health"),
@@ -1248,7 +1250,7 @@ function selectTask(taskId, { clearCaches = true, syncUrl = true } = {}) {
   if (changed) {
     lastDetailFingerprint = "__unrendered__";
     assistantMessages = [];
-    if (document.body?.classList?.contains("assistant-open")) renderAssistant();
+    if (document.body?.classList?.contains("assistant-open")) loadAssistantHistory();
   }
   if (changed && clearCaches) clearTaskCaches();
   if (syncUrl) syncSelectedTaskUrl(taskId);
@@ -3400,17 +3402,20 @@ function normalizeSourceInput(value) {
     const sourceId = idMatch ? (idMatch[1] ? `BV${idMatch[1]}` : `av${idMatch[2]}`) : "";
     const platform = bilibili ? "bilibili" : youtube ? "youtube" : "web";
     const platformLabel = bilibili ? "B站视频" : youtube ? "YouTube 视频" : mediaKind(url) === "unknown" ? "网页链接" : "媒体直链";
-    return { valid: true, raw, url, platform, sourceId, label: sourceId ? `${platformLabel} · ${sourceId}` : platformLabel };
+    const partMatch = bilibili ? url.match(/[?&]p=(\d+)/i) : null;
+    const partNumber = partMatch && Number(partMatch[1]) > 0 ? Number(partMatch[1]) : bilibili && sourceId ? 1 : 0;
+    const normalizedUrl = bilibili && sourceId && !partMatch ? `${url}${url.includes("?") ? "&" : "?"}p=1` : url;
+    return { valid: true, raw, url: normalizedUrl, platform, sourceId, partNumber, label: sourceId ? `${platformLabel} · ${sourceId}${partNumber ? ` · 第 ${partNumber} 集` : ""}` : platformLabel };
   }
   const bv = raw.match(/(?:^|[^A-Za-z0-9])BV([A-Za-z0-9]{10})(?![A-Za-z0-9])/i);
   if (bv) {
     const sourceId = `BV${bv[1]}`;
-    return { valid: true, raw, url: `https://www.bilibili.com/video/${sourceId}`, platform: "bilibili", sourceId, label: `B站视频 · ${sourceId}` };
+    return { valid: true, raw, url: `https://www.bilibili.com/video/${sourceId}?p=1`, platform: "bilibili", sourceId, partNumber: 1, label: `B站视频 · ${sourceId} · 第 1 集` };
   }
   const av = raw.match(/(?:^|[^A-Za-z0-9])av(\d{1,20})(?![A-Za-z0-9])/i);
   if (av) {
     const sourceId = `av${av[1]}`;
-    return { valid: true, raw, url: `https://www.bilibili.com/video/${sourceId}`, platform: "bilibili", sourceId, label: `B站视频 · ${sourceId}` };
+    return { valid: true, raw, url: `https://www.bilibili.com/video/${sourceId}?p=1`, platform: "bilibili", sourceId, partNumber: 1, label: `B站视频 · ${sourceId} · 第 1 集` };
   }
   return { valid: false, raw, url: "", platform: "", sourceId: "", label: "请输入 BV/AV 号或完整链接" };
 }
@@ -5911,13 +5916,38 @@ function renderAssistant() {
   els.assistantConversation.scrollTop = els.assistantConversation.scrollHeight;
 }
 
+async function loadAssistantHistory() {
+  const task = assistantSelectedTask();
+  const requestId = ++assistantHistoryRequestId;
+  assistantMessages = [];
+  renderAssistant();
+  if (!task) return;
+  try {
+    const response = await fetch(taskQaUrl(task.id));
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload?.detail?.message || payload?.detail || "历史问答读取失败");
+    if (requestId !== assistantHistoryRequestId || assistantSelectedTask()?.id !== task.id) return;
+    assistantMessages = (Array.isArray(payload.items) ? payload.items : []).slice(-30).flatMap(item => [
+      { role: "user", text: String(item?.question || "") },
+      { role: "assistant", text: String(item?.answer || "没有保存回答。") }
+    ]).filter(message => message.text);
+  } catch (error) {
+    if (requestId !== assistantHistoryRequestId) return;
+    assistantMessages = [{ role: "assistant", text: error?.message || "历史问答读取失败。" }];
+  }
+  renderAssistant();
+}
+
 function setAssistantOpen(open) {
   if (!els.aiAssistantDrawer) return;
   els.aiAssistantDrawer.hidden = !open;
   document.body.classList.toggle("assistant-open", open);
   els.openAiAssistantButton?.setAttribute("aria-expanded", String(open));
-  renderAssistant();
-  if (open) window.setTimeout(() => els.assistantQuestion?.focus(), 80);
+  try { window.localStorage?.setItem(ASSISTANT_OPEN_KEY, open ? "1" : "0"); } catch { /* ignore */ }
+  if (open) {
+    loadAssistantHistory();
+    window.setTimeout(() => els.assistantQuestion?.focus(), 80);
+  }
 }
 
 async function submitAssistantQuestion(questionValue = "") {
@@ -7630,7 +7660,8 @@ async function startUrlTask(mode = "video") {
     return;
   }
   const directResource = manualUrlResource(url);
-  if (mode === "video" && appSettings.autoPreflight && !directResource && !selectedPagePreflightReport(url)) {
+  const knownPageResolver = source.platform === "bilibili" || source.platform === "youtube";
+  if (mode === "video" && appSettings.autoPreflight && !knownPageResolver && !directResource && !selectedPagePreflightReport(url)) {
     await preflightUrlTask();
   }
   const resource = directResource || manualUrlResource(url);
@@ -8191,6 +8222,12 @@ els.assistantForm?.addEventListener?.("submit", event => {
   event.preventDefault();
   submitAssistantQuestion();
 });
+els.assistantQuestion?.addEventListener?.("keydown", event => {
+  if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+    event.preventDefault();
+    submitAssistantQuestion();
+  }
+});
 document.querySelectorAll?.("[data-assistant-question]")?.forEach?.(button => {
   button.addEventListener("click", () => submitAssistantQuestion(button.dataset.assistantQuestion));
 });
@@ -8279,6 +8316,9 @@ if (!hasExplicitTaskRoute()) {
 renderSourceWorkflow();
 checkHealth();
 loadTasks();
+try {
+  if (window.localStorage?.getItem(ASSISTANT_OPEN_KEY) === "1") setAssistantOpen(true);
+} catch { /* ignore */ }
 if ((currentUrlParam(["setup"]) === "1" || !onboardingWasCompleted()) && !hasExplicitTaskRoute()) {
   window.setTimeout?.(openOnboarding, 220);
 }

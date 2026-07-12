@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import re
-from urllib.parse import unquote, urlparse
+from urllib.parse import parse_qsl, unquote, urlencode, urlparse, urlunparse
 
 
 HTTP_URL_RE = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
@@ -69,6 +69,16 @@ def _bilibili_id_from_url(url: str) -> str:
     return ""
 
 
+def _canonical_bilibili_part_url(url: str, source_id: str) -> str:
+    if not source_id:
+        return url
+    parsed = urlparse(url)
+    query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    part = str(query.get("p") or "").strip()
+    query["p"] = part if part.isdigit() and int(part) > 0 else "1"
+    return urlunparse(parsed._replace(query=urlencode(query)))
+
+
 def normalize_source_input(value: str) -> NormalizedSource:
     raw = str(value or "").strip().strip("\"'")
     if not raw:
@@ -82,18 +92,20 @@ def normalize_source_input(value: str) -> NormalizedSource:
             raise SourceInputError("链接必须是有效的 http 或 https 地址。")
         platform = _url_platform(url)
         source_id = _bilibili_id_from_url(url) if platform == "bilibili" else ""
+        if platform == "bilibili" and source_id:
+            url = _canonical_bilibili_part_url(url, source_id)
         return NormalizedSource(raw, url, platform, source_id, "url", url != raw)
 
     bvid = BVID_RE.search(raw)
     if bvid:
         source_id = f"BV{bvid.group(1)}"
-        url = f"https://www.bilibili.com/video/{source_id}"
+        url = f"https://www.bilibili.com/video/{source_id}?p=1"
         return NormalizedSource(raw, url, "bilibili", source_id, "bvid", True)
 
     avid = AVID_RE.search(raw)
     if avid:
         source_id = f"av{avid.group(1)}"
-        url = f"https://www.bilibili.com/video/{source_id}"
+        url = f"https://www.bilibili.com/video/{source_id}?p=1"
         return NormalizedSource(raw, url, "bilibili", source_id, "avid", True)
 
     raise SourceInputError("无法识别该输入。可粘贴 B站 BV/AV 号、B站/YouTube 页面链接，或 mp4/m3u8/mpd 直链。")

@@ -2,7 +2,7 @@ const DEFAULT_BACKEND = "http://127.0.0.1:8765";
 const UX_PROTOCOL_VERSION = 1;
 const HAS_EXTENSION_API = typeof chrome !== "undefined" && Boolean(chrome.runtime?.sendMessage && chrome.storage?.local);
 const LOCAL_VIDEO_EXT_RE = /\.(mp4|m4v|mov|mkv|webm|flv|avi)$/i;
-const RESULT_TAB_NAMES = new Set(["note", "transcript", "slices", "frames", "qa", "diagnostics"]);
+const RESULT_TAB_NAMES = new Set(["note", "transcript", "slices", "frames", "diagnostics"]);
 const LOCAL_ASR_MODELS = new Set(["tiny", "base", "small", "medium", "large", "large-v2", "large-v3"]);
 const MODEL_SETTINGS_STORAGE_KEY = "modelSettings";
 const MAINSTREAM_MODEL_PROVIDER_KEYS = new Set([
@@ -5576,11 +5576,14 @@ async function startTask(mode = "video") {
     }
     const mediaCandidateReady = await waitForMediaCandidateBeforeStart(mode);
     if (isMediaTaskMode(mode) && !mediaCandidateReady) {
-      els.taskMessage.textContent = mode === "download_only"
-        ? "还没有读取到可下载的视频资源；先播放课程视频几秒后重新检测，或改用本地视频上传。"
-        : missingCurrentVideoEvidenceMessage();
-      renderContext();
-      return;
+      if (!canAttemptBackendPageFallback(mode)) {
+        els.taskMessage.textContent = mode === "download_only"
+          ? "还没有读取到可下载的视频资源；请在客户端改用视频链接或本地视频。"
+          : missingCurrentVideoEvidenceMessage();
+        renderContext();
+        return;
+      }
+      els.taskMessage.textContent = "当前页未暴露直链，正在交给客户端按视频页面解析。";
     }
     const candidates = preflightCandidatesForStart(mode);
     if (candidates.length) {
@@ -5619,6 +5622,7 @@ async function startTask(mode = "video") {
     lastNote = "";
     await loadTaskHistory();
     pollTask();
+    await openWorkbench(currentTaskId, "note");
   } finally {
     els.summarizeButton.disabled = false;
     if (els.downloadOnlyButton) els.downloadOnlyButton.disabled = false;
@@ -7052,7 +7056,6 @@ function learningPathHtml(markdown, task) {
   const hasNote = Boolean(task.note_path || markdown);
   const hasTranscript = hasReadableTranscript(task);
   const hasVisuals = windows.length > 0;
-  const hasQa = Boolean(hasNote);
   const steps = [
     {
       number: "01",
@@ -7080,21 +7083,12 @@ function learningPathHtml(markdown, task) {
       target: "transcript",
       enabled: hasTranscript,
       state: hasTranscript ? "ready" : "wait"
-    },
-    {
-      number: "04",
-      label: "问答复习",
-      value: task.qa?.history_count ? `${task.qa.history_count} 条` : hasQa ? "可提问" : "等待笔记",
-      detail: hasQa ? "基于笔记、字幕和画面索引追问。" : "先生成笔记再提问。",
-      target: "qa",
-      enabled: hasQa,
-      state: task.qa?.history_count ? "ready" : hasQa ? "active" : "wait"
     }
   ];
   return `<section class="learning-path" aria-label="学习路径">
     <header>
       <span>学习路径</span>
-      <strong>读笔记 → 看切片 → 核字幕 → 提问</strong>
+      <strong>读笔记 → 看切片 → 核字幕</strong>
     </header>
     <div class="learning-path-steps">
       ${steps.map(step => `<article class="${escapeHtml(step.state)}">
@@ -7144,13 +7138,6 @@ function noteReviewWorkbench(markdown, task) {
       detail: hasTranscript ? "点击时间戳可回到本地视频定位。" : asrOptionText(task.options || {}),
       action: reviewCommandButton("transcript", "核对字幕", hasTranscript)
     },
-    {
-      state: task.qa?.history_count ? "ready" : hasNote ? "active" : "wait",
-      label: "问答复习",
-      value: task.qa?.history_count ? `${task.qa.history_count} 条记录` : hasNote ? "可提问" : "等待笔记",
-      detail: hasNote ? "基于笔记、字幕和画面索引回答。" : "笔记生成后启用任务问答。",
-      action: reviewCommandButton("qa", "打开问答", hasNote)
-    }
   ];
   const exports = [
     task.note_path ? `<button type="button" data-export="markdown">Markdown</button>` : "",
@@ -7169,7 +7156,7 @@ function noteReviewWorkbench(markdown, task) {
   const primary = canContinueMedia
     ? `<button type="button" data-rerun-from-media="${escapeHtml(task.id)}">继续切片总结</button>`
     : hasNote
-      ? `<button type="button" data-switch-result-tab="qa">问这节课</button>`
+      ? `<button type="button" data-open-workbench="${escapeHtml(task.id)}">在客户端阅读</button>`
       : `<button type="button" data-switch-result-tab="diagnostics">查看阶段检查</button>`;
   const detail = canContinueMedia
     ? `视频已直取到本地，下一步复用 ${mediaName} 进入转写、抽帧和图文总结。`

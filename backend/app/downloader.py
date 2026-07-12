@@ -128,7 +128,7 @@ YTDLP_HTTP_HEADER_ORDER = (
 REQUEST_BODY_REPLAY_METHODS = {"POST", "PUT", "PATCH"}
 MAX_REPLAY_BODY_BYTES = 64 * 1024
 YTDLP_SOCKET_TIMEOUT_SECONDS = 20
-YTDLP_DOWNLOAD_TIMEOUT_SECONDS = 90
+YTDLP_DOWNLOAD_TIMEOUT_SECONDS = 1800
 YTDLP_RETRIES = 1
 YTDLP_FRAGMENT_RETRIES = 1
 YTDLP_EXTRACTOR_RETRIES = 1
@@ -2960,6 +2960,7 @@ class MediaDownloader:
             "extractor_retries": YTDLP_EXTRACTOR_RETRIES,
             "skip_download": True,
             "http_headers": http_headers,
+            "noplaylist": True,
         }
         if cookie_file:
             probe_opts["cookiefile"] = str(cookie_file)
@@ -3052,6 +3053,7 @@ class MediaDownloader:
             "outtmpl": outtmpl,
             "format": "bestvideo*+bestaudio/best",
             "merge_output_format": "mp4",
+            "noplaylist": True,
             "quiet": True,
             "no_warnings": True,
             "logger": QuietYtdlpLogger(),
@@ -3168,6 +3170,7 @@ class MediaDownloader:
             "yt_dlp",
             "--no-warnings",
             "--no-progress",
+            "--no-playlist",
             "--socket-timeout",
             str(YTDLP_SOCKET_TIMEOUT_SECONDS),
             "--retries",
