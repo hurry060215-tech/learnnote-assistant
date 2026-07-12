@@ -53,6 +53,12 @@ def audit_workspace(browser, base_url: str, output: Path, report: list[dict]) ->
     page.on("console", lambda message: errors.append(message.text) if message.type == "error" else None)
     page.goto(base_url, wait_until="domcontentloaded")
     page.wait_for_timeout(4200)
+    onboarding = page.locator("#onboardingOverlay:not([hidden])")
+    if onboarding.count():
+        page.locator("#skipOnboardingButton").click()
+        page.wait_for_timeout(250)
+    if page.locator("#onboardingOverlay:not([hidden])").count():
+        raise RuntimeError("Onboarding overlay still intercepts the workspace after dismissal.")
     capture(page, output, "client-current-page", report, errors)
     page.evaluate("() => fetch('/api/extension/heartbeat', { method: 'POST' }).then(() => checkHealth())")
     page.wait_for_timeout(300)
@@ -112,10 +118,25 @@ def audit_workspace(browser, base_url: str, output: Path, report: list[dict]) ->
 
     for tab in ("note", "transcript", "slices", "frames", "qa", "diagnostics"):
         locator = page.locator(f'button[data-tab="{tab}"]')
+        if not locator.is_visible() and page.locator("#resultAdvancedMenu").count():
+            page.locator("#resultAdvancedMenu").evaluate("element => element.open = true")
         if locator.is_visible():
             locator.click()
             page.locator("#resultPanel").evaluate("element => element.scrollIntoView({ block: 'start' })")
             page.wait_for_timeout(350)
+            if tab == "diagnostics" and page.locator("[data-diagnostic-font-size]").count():
+                page.locator("[data-diagnostic-font-size]").fill("21")
+                page.locator('[data-diagnostic-density="compact"]').click()
+                page.locator('[data-diagnostic-detail="full"]').click()
+                page.wait_for_timeout(250)
+                state = page.evaluate("""() => ({
+                  font: document.querySelector('[data-diagnostic-font-size]')?.value,
+                  density: document.querySelector('.diagnostic-summary-panel')?.dataset.diagnosticDensity,
+                  technicalOpen: document.querySelector('.diagnostic-technical')?.open,
+                  pipelineStages: document.querySelectorAll('.diagnostic-pipeline li').length
+                })""")
+                if state != {"font": "21", "density": "compact", "technicalOpen": True, "pipelineStages": 4}:
+                    raise RuntimeError(f"Diagnostic controls did not apply correctly: {state}")
             capture(page, output, f"client-result-{tab}", report, errors)
 
     page.set_viewport_size({"width": 390, "height": 844})

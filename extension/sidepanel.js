@@ -299,6 +299,7 @@ const els = {
   mediaButton: document.querySelector("#mediaButton"),
   downloadButton: document.querySelector("#downloadButton"),
   openWebButton: document.querySelector("#openWebButton"),
+  openClientPrimaryButton: document.querySelector("#openClientPrimaryButton"),
   studyModeButton: document.querySelector("#studyModeButton"),
   diagnosticModeButton: document.querySelector("#diagnosticModeButton"),
   settingsButton: document.querySelector("#settingsButton"),
@@ -786,10 +787,24 @@ function taskMediaPreviewUrl(task) {
   return `${backendUrl.replace(/\/$/, "")}/api/tasks/${encodeURIComponent(task.id)}/media`;
 }
 
-function openWorkbench(taskId = currentTaskId, tabName = selectedTab) {
+async function openWorkbench(taskId = currentTaskId, tabName = selectedTab) {
   const url = workbenchUrl(taskId, tabName);
-  if (HAS_EXTENSION_API) chrome.tabs.create({ url });
-  else window.open(url, "_blank", "noopener");
+  if (!HAS_EXTENSION_API) {
+    window.open(url, "_blank", "noopener");
+    return;
+  }
+  try {
+    const response = await fetch(`${backendUrl}/api/desktop/focus`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ task_id: taskId || "", tab: tabName || "note" })
+    });
+    const result = await response.json();
+    if (result?.ok && result?.available) return;
+  } catch {
+    // Fall back to the local web workbench when the desktop bridge is unavailable.
+  }
+  chrome.tabs.create({ url });
 }
 
 async function setFirstRunSeen() {
@@ -1532,6 +1547,17 @@ function readOptions() {
   if (llmBaseUrl) options.llm_base_url = llmBaseUrl;
   if (llmApiKey) options.llm_api_key = llmApiKey;
   return options;
+}
+
+async function readClientTaskOptions() {
+  try {
+    const response = await fetch(`${backendUrl}/api/preferences`);
+    if (!response.ok) return readOptions();
+    const payload = await response.json();
+    return payload?.task_options && typeof payload.task_options === "object" ? payload.task_options : readOptions();
+  } catch {
+    return readOptions();
+  }
 }
 
 function syncTranscriberModelDefault(force = false) {
@@ -5582,7 +5608,7 @@ async function startTask(mode = "video") {
       resources: isMediaTaskMode(mode) ? selectedResourcesForMediaTask() : [],
       pagePreflightReport: isMediaTaskMode(mode) ? lastPagePreflightReport : null,
       mode,
-      options: readOptions()
+      options: await readClientTaskOptions()
     });
     if (response.error) {
       els.taskMessage.textContent = response.error;
@@ -8537,6 +8563,7 @@ els.downloadButton.onclick = () => {
 els.openWebButton.onclick = () => {
   openWorkbench();
 };
+if (els.openClientPrimaryButton) els.openClientPrimaryButton.onclick = () => openWorkbench();
 els.settingsButton.onclick = openBackendSettingsPanel;
 if (els.firstRunButton) els.firstRunButton.onclick = openFirstRunGuide;
 if (els.dismissFirstRunButton) els.dismissFirstRunButton.onclick = setFirstRunSeen;

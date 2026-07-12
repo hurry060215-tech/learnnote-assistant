@@ -44,10 +44,13 @@ const DEFAULT_APP_SETTINGS = Object.freeze({
   autoPreflight: true,
   frameInterval: "20",
   gridSize: "3x3",
+  gridColumns: "3",
+  gridRows: "3",
   visualUnderstanding: true,
   noteStyle: "study",
   noteTemplate: "standard",
-  summaryDepth: "standard"
+  summaryDepth: "standard",
+  customNoteProfile: null
 });
 const LEGACY_NOTE_PRESETS = Object.freeze({
   course: { style: "study", template: "standard", depth: "standard" },
@@ -61,6 +64,16 @@ const LEARNING_GOALS = Object.freeze({
   deep: { style: "concept", template: "standard", depth: "deep" },
   review: { style: "concise", template: "standard", depth: "brief" },
   exam: { style: "exam", template: "qa", depth: "standard" }
+});
+const NOTE_STYLE_PROFILES = Object.freeze({
+  study: { title: "学习笔记", description: "适合大多数课程，兼顾理解、例子和复习。", sections: ["课程主题", "核心概念", "例子与演示", "易错点", "复习问题"] },
+  concise: { title: "重点速记", description: "适合快速回顾，只保留结论、关键词和行动项。", sections: ["一句话总结", "关键结论", "关键词", "待复习"] },
+  exam: { title: "考点复习", description: "适合备考，把知识点转成考点、陷阱与自测题。", sections: ["考试范围", "高频考点", "易错陷阱", "自测题", "答案要点"] },
+  lecture: { title: "课程讲义", description: "适合系统课程，保留讲授顺序、解释和补充材料。", sections: ["课程目标", "章节讲义", "概念解释", "课堂示例", "课后任务"] },
+  concept: { title: "概念精讲", description: "适合理论内容，强调定义、关系、推导和边界。", sections: ["核心问题", "概念定义", "概念关系", "推导过程", "理解检查"] },
+  code: { title: "代码教程", description: "适合软件操作和编程演示，突出步骤、代码与排错。", sections: ["实现目标", "环境与依赖", "操作步骤", "关键代码", "常见错误"] },
+  academic: { title: "论文导读", description: "适合论文与学术报告，按问题、方法、证据和局限组织。", sections: ["研究问题", "方法设计", "关键结果", "证据评价", "局限与启发"] },
+  language: { title: "语言学习", description: "适合外语课程，整理表达、语境、语法和练习。", sections: ["主题语境", "核心表达", "语法说明", "例句", "练习"] }
 });
 const MAINSTREAM_MODEL_PROVIDER_KEYS = new Set([
   "openai", "groq", "gemini", "dashscope", "deepseek", "kimi", "zhipu", "doubao", "minimax", "qianfan"
@@ -365,7 +378,12 @@ const els = {
   statusFilter: document.querySelector("#statusFilter"),
   frameInterval: document.querySelector("#frameInterval"),
   gridSize: document.querySelector("#gridSize"),
+  gridColumns: document.querySelector("#gridColumns"),
+  gridRows: document.querySelector("#gridRows"),
+  visualWindowEstimate: document.querySelector("#visualWindowEstimate"),
   visualUnderstanding: document.querySelector("#visualUnderstanding"),
+  visualUnderstandingButton: document.querySelector("#visualUnderstandingButton"),
+  visualUnderstandingHint: document.querySelector("#visualUnderstandingHint"),
   transcriber: document.querySelector("#transcriber"),
   whisperModel: document.querySelector("#whisperModel"),
   asrModelHint: document.querySelector("#asrModelHint"),
@@ -376,6 +394,13 @@ const els = {
   noteStyle: document.querySelector("#noteStyle"),
   noteTemplate: document.querySelector("#noteTemplate"),
   summaryDepth: document.querySelector("#summaryDepth"),
+  noteProfileTitle: document.querySelector("#noteProfileTitle"),
+  noteProfileDescription: document.querySelector("#noteProfileDescription"),
+  noteProfileOutline: document.querySelector("#noteProfileOutline"),
+  noteProfileStatus: document.querySelector("#noteProfileStatus"),
+  importNoteProfileButton: document.querySelector("#importNoteProfileButton"),
+  downloadNoteProfileExampleButton: document.querySelector("#downloadNoteProfileExampleButton"),
+  noteProfileFile: document.querySelector("#noteProfileFile"),
   llmProvider: document.querySelector("#llmProvider"),
   providerHint: document.querySelector("#providerHint"),
   llmModel: document.querySelector("#llmModel"),
@@ -419,6 +444,120 @@ function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[ch]));
 }
 
+function normalizeCustomNoteProfile(value) {
+  if (!value || typeof value !== "object") return null;
+  const name = String(value.name || "").trim().slice(0, 80);
+  const description = String(value.description || "").trim().slice(0, 240);
+  const prompt = String(value.prompt || "").trim().slice(0, 4000);
+  const sections = Array.isArray(value.sections)
+    ? value.sections.map(item => String(item || "").trim().slice(0, 80)).filter(Boolean).slice(0, 16)
+    : [];
+  if (!name || !prompt || !sections.length) return null;
+  return {
+    name,
+    description,
+    prompt,
+    sections,
+    template: String(value.template || "standard").trim().slice(0, 40),
+    depth: ["brief", "standard", "deep"].includes(value.depth) ? value.depth : "standard"
+  };
+}
+
+function ensureCustomProfileOption() {
+  if (!els.noteStyle) return;
+  let option = Array.from(els.noteStyle.options || []).find(item => item.value === "custom");
+  if (!appSettings.customNoteProfile) {
+    option?.remove?.();
+    return;
+  }
+  if (!option) {
+    option = document.createElement("option");
+    option.value = "custom";
+    els.noteStyle.appendChild(option);
+  }
+  option.textContent = `${appSettings.customNoteProfile.name} · 自定义`;
+}
+
+function activeNoteProfile() {
+  if (els.noteStyle?.value === "custom" && appSettings.customNoteProfile) return appSettings.customNoteProfile;
+  return NOTE_STYLE_PROFILES[els.noteStyle?.value || "study"] || NOTE_STYLE_PROFILES.study;
+}
+
+function refreshNoteProfilePreview() {
+  const profile = activeNoteProfile();
+  const templateLabel = els.noteTemplate?.selectedOptions?.[0]?.textContent?.trim() || "标准结构";
+  if (els.noteProfileTitle) els.noteProfileTitle.textContent = profile.name || profile.title;
+  if (els.noteProfileDescription) els.noteProfileDescription.textContent = profile.description || "按自定义提示词组织笔记。";
+  if (els.noteProfileOutline) els.noteProfileOutline.textContent = profile.sections.map((section, index) => `${index ? "##" : "#"} ${section}`).join("\n");
+  if (els.noteProfileStatus) els.noteProfileStatus.textContent = `${templateLabel} · ${els.summaryDepth?.selectedOptions?.[0]?.textContent?.trim() || "标准"}深度`;
+}
+
+async function importNoteProfile(file) {
+  if (!file) return;
+  try {
+    if (file.size > 64 * 1024) throw new Error("风格文件不能超过 64 KB");
+    const parsed = JSON.parse(await file.text());
+    const profile = normalizeCustomNoteProfile(parsed);
+    if (!profile) throw new Error("需要 name、prompt 和至少一个 sections 条目");
+    appSettings.customNoteProfile = profile;
+    appSettings.noteStyle = "custom";
+    appSettings.noteTemplate = profile.template;
+    appSettings.summaryDepth = profile.depth;
+    ensureCustomProfileOption();
+    if (els.noteStyle) els.noteStyle.value = "custom";
+    if (els.noteTemplate && Array.from(els.noteTemplate.options || []).some(item => item.value === profile.template)) els.noteTemplate.value = profile.template;
+    if (els.summaryDepth) els.summaryDepth.value = profile.depth;
+    storeAppSettings();
+    refreshNoteProfilePreview();
+    if (els.noteProfileStatus) els.noteProfileStatus.textContent = `已导入 ${profile.name}`;
+  } catch (error) {
+    if (els.noteProfileStatus) els.noteProfileStatus.textContent = `导入失败：${error?.message || "文件格式不正确"}`;
+  } finally {
+    if (els.noteProfileFile) els.noteProfileFile.value = "";
+  }
+}
+
+function downloadNoteProfileExample() {
+  const sample = {
+    name: "我的课程笔记",
+    description: "适合需要概念解释、步骤和复习问题的课程。",
+    prompt: "先解释概念，再整理操作步骤；保留材料支持的例子与时间点，不要编造内容。",
+    sections: ["课程主题", "核心概念", "操作步骤", "易错点", "复习问题"],
+    template: "standard",
+    depth: "standard"
+  };
+  const blob = new Blob([JSON.stringify(sample, null, 2)], { type: "application/json" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = "learnnote-style-example.json";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(link.href), 0);
+}
+
+function syncVisualUnderstandingUi() {
+  const enabled = els.visualUnderstanding?.checked !== false;
+  els.visualUnderstandingButton?.setAttribute?.("aria-checked", enabled ? "true" : "false");
+  els.visualUnderstandingButton?.classList?.toggle("active", enabled);
+  for (const control of [els.frameInterval, els.gridColumns, els.gridRows]) {
+    if (control) control.disabled = !enabled;
+  }
+  const visual = readVisualSliceOptions();
+  if (els.gridSize) els.gridSize.value = `${visual.grid_columns}x${visual.grid_rows}`;
+  if (els.visualWindowEstimate) {
+    const seconds = visual.frame_interval * visual.grid_columns * visual.grid_rows;
+    els.visualWindowEstimate.textContent = enabled
+      ? `每个窗口约覆盖 ${seconds < 60 ? `${seconds} 秒` : `${Math.round(seconds / 6) / 10} 分钟`}、包含 ${visual.grid_columns * visual.grid_rows} 帧。`
+      : "图文理解已关闭，不会抽帧或调用视觉模型。";
+  }
+  if (els.visualUnderstandingHint) {
+    els.visualUnderstandingHint.textContent = enabled
+      ? "将截图与对应字幕一起交给视觉模型；可自由调整抽帧间隔和窗口行列。"
+      : "只转写音频并生成文本笔记，不抽帧、不调用视觉模型。";
+  }
+}
+
 function normalizedAppSettings(value = {}) {
   const settings = { ...DEFAULT_APP_SETTINGS, ...(value && typeof value === "object" ? value : {}) };
   const legacyPreset = LEGACY_NOTE_PRESETS[value?.notePreset];
@@ -432,12 +571,17 @@ function normalizedAppSettings(value = {}) {
   if (!["system", "light", "dark"].includes(settings.theme)) settings.theme = "light";
   if (!["teal", "ocean", "forest", "graphite"].includes(settings.colorTheme)) settings.colorTheme = "teal";
   if (!["browser", "local", "url"].includes(settings.defaultSource)) settings.defaultSource = "browser";
-  if (!["10", "20", "30", "60"].includes(String(settings.frameInterval))) settings.frameInterval = "20";
-  if (!["2x3", "3x3", "4x3"].includes(settings.gridSize)) settings.gridSize = "3x3";
+  settings.frameInterval = String(boundedNumber(settings.frameInterval, 20, 1, 600));
+  const legacyGrid = String(settings.gridSize || "3x3").split("x");
+  settings.gridColumns = String(boundedNumber(value?.gridColumns ?? legacyGrid[0], 3, 1, 6));
+  settings.gridRows = String(boundedNumber(value?.gridRows ?? legacyGrid[1], 3, 1, 6));
+  settings.gridSize = `${settings.gridColumns}x${settings.gridRows}`;
   if (settings.noteStyle === "outline") settings.noteStyle = "concise";
-  if (!["study", "concise", "exam", "lecture", "concept", "code", "academic", "language"].includes(settings.noteStyle)) settings.noteStyle = "study";
+  if (!["study", "concise", "exam", "lecture", "concept", "code", "academic", "language", "custom"].includes(settings.noteStyle)) settings.noteStyle = "study";
   if (!["standard", "timeline", "cornell", "qa", "visual-handout", "mindmap", "flashcards", "formula-sheet", "bilingual"].includes(settings.noteTemplate)) settings.noteTemplate = "standard";
   if (!["brief", "standard", "deep"].includes(settings.summaryDepth)) settings.summaryDepth = "standard";
+  settings.customNoteProfile = normalizeCustomNoteProfile(settings.customNoteProfile);
+  if (settings.noteStyle === "custom" && !settings.customNoteProfile) settings.noteStyle = "study";
   for (const key of ["autoOpenNote", "taskNotifications", "compactHistory", "autoPreflight", "visualUnderstanding"]) {
     settings[key] = Boolean(settings[key]);
   }
@@ -482,11 +626,17 @@ function applyAppSettings() {
   if (els.settingAutoPreflight) els.settingAutoPreflight.checked = appSettings.autoPreflight;
   if (els.settingApiBase) els.settingApiBase.value = API || window.location?.origin || DEFAULT_BACKEND_ORIGIN;
   if (els.frameInterval) els.frameInterval.value = appSettings.frameInterval;
-  if (els.gridSize) els.gridSize.value = appSettings.gridSize;
+  if (els.gridColumns) els.gridColumns.value = appSettings.gridColumns;
+  if (els.gridRows) els.gridRows.value = appSettings.gridRows;
+  if (els.gridSize) els.gridSize.value = `${appSettings.gridColumns}x${appSettings.gridRows}`;
   if (els.visualUnderstanding) els.visualUnderstanding.checked = appSettings.visualUnderstanding;
   if (els.noteStyle) els.noteStyle.value = appSettings.noteStyle;
   if (els.noteTemplate) els.noteTemplate.value = appSettings.noteTemplate;
   if (els.summaryDepth) els.summaryDepth.value = appSettings.summaryDepth;
+  ensureCustomProfileOption();
+  if (appSettings.customNoteProfile && els.noteStyle) els.noteStyle.value = "custom";
+  refreshNoteProfilePreview();
+  syncVisualUnderstandingUi();
   syncLearningGoalFromOptions();
 
   els.settingsSegmentButtons?.forEach?.(button => {
@@ -801,7 +951,9 @@ async function saveAppSettingsFromUi() {
   appSettings.compactHistory = Boolean(els.settingCompactHistory?.checked);
   appSettings.autoPreflight = Boolean(els.settingAutoPreflight?.checked);
   appSettings.frameInterval = els.frameInterval?.value || "20";
-  appSettings.gridSize = els.gridSize?.value || "3x3";
+  appSettings.gridColumns = String(boundedNumber(els.gridColumns?.value, 3, 1, 6));
+  appSettings.gridRows = String(boundedNumber(els.gridRows?.value, 3, 1, 6));
+  appSettings.gridSize = `${appSettings.gridColumns}x${appSettings.gridRows}`;
   appSettings.visualUnderstanding = els.visualUnderstanding?.checked !== false;
   appSettings.noteStyle = els.noteStyle?.value || "study";
   appSettings.noteTemplate = els.noteTemplate?.value || "standard";
@@ -815,6 +967,15 @@ async function saveAppSettingsFromUi() {
     try { await Notification.requestPermission(); } catch { /* ignore */ }
   }
   storeAppSettings();
+  const sharedOptions = readOptions();
+  delete sharedOptions.llm_api_key;
+  delete sharedOptions.llm_base_url;
+  delete sharedOptions.llm_model;
+  await fetchJson(apiUrl("/api/preferences"), {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ task_options: sharedOptions })
+  });
   saveModelSettings();
   applyAppSettings();
   setHistoryCollapsed(appSettings.compactHistory);
@@ -2651,21 +2812,41 @@ function diagnosticRecoveryHtml(task) {
 function loadDiagnosticView() {
   try {
     return {
-      size: localStorage.getItem("learnnote.diagnosticSize") === "large" ? "large" : "standard",
+      fontSize: Math.min(22, Math.max(14, Number(localStorage.getItem("learnnote.diagnosticFontSize")) || 17)),
+      density: localStorage.getItem("learnnote.diagnosticDensity") === "compact" ? "compact" : "comfortable",
       detail: localStorage.getItem("learnnote.diagnosticDetail") === "full" ? "full" : "essential"
     };
   } catch {
-    return { size: "standard", detail: "essential" };
+    return { fontSize: 17, density: "comfortable", detail: "essential" };
   }
 }
 
 function saveDiagnosticView() {
   try {
-    localStorage.setItem("learnnote.diagnosticSize", diagnosticView.size);
+    localStorage.setItem("learnnote.diagnosticFontSize", String(diagnosticView.fontSize));
+    localStorage.setItem("learnnote.diagnosticDensity", diagnosticView.density);
     localStorage.setItem("learnnote.diagnosticDetail", diagnosticView.detail);
   } catch {
     // Preferences are optional in restricted browser contexts.
   }
+}
+
+function diagnosticPipeline(task) {
+  const phase = String(task?.phase || "").toLowerCase();
+  const failed = task?.status === "failed";
+  const stages = [
+    ["获取视频", Boolean(task?.media_path), ["downloading", "download", "resolving"]],
+    ["生成字幕", Boolean(task?.transcript_path || task?.browser_subtitles?.length), ["transcribing", "transcript", "audio"]],
+    ["提取画面", Boolean(visualWindows(task).length) || task?.options?.visual_understanding === false, ["frames", "visual", "slicing"]],
+    ["生成笔记", Boolean(task?.note_path), ["summarizing", "summary", "note"]]
+  ];
+  const activeIndex = stages.findIndex(([, done, aliases]) => !done && aliases.some(alias => phase.includes(alias)));
+  const firstIncompleteIndex = stages.findIndex(([, done]) => !done);
+  return `<ol class="diagnostic-pipeline" aria-label="任务处理阶段">${stages.map(([label, done], index) => {
+    const state = done ? "done" : failed && (activeIndex === index || (activeIndex < 0 && firstIncompleteIndex === index)) ? "failed" : activeIndex === index ? "active" : "pending";
+    const status = state === "done" ? "完成" : state === "failed" ? "停在这里" : state === "active" ? "处理中" : "等待";
+    return `<li class="${state}"><span>${index + 1}</span><div><strong>${label}</strong><small>${status}</small></div></li>`;
+  }).join("")}</ol>`;
 }
 
 function diagnosticUserDetail(task) {
@@ -2696,16 +2877,20 @@ function diagnosticSummaryPanel(task) {
   ];
   const title = failed ? "任务没有完整跑通" : running ? "任务仍在处理中" : success ? "任务完成，结果可以使用" : "等待任务状态";
   const detail = success ? "视频、字幕、画面切片和笔记产物已经完成检查。" : diagnosticUserDetail(task);
-  return `<section class="diagnostic-summary-panel ${failed ? "error" : running ? "running" : success ? "success" : "pending"}" data-diagnostic-scale="${escapeHtml(diagnosticView.size)}">
+  return `<section class="diagnostic-summary-panel ${failed ? "error" : running ? "running" : success ? "success" : "pending"}" data-diagnostic-density="${escapeHtml(diagnosticView.density)}" style="--diagnostic-font-size:${diagnosticView.fontSize}px">
     <header>
       <div><span>${failed ? "需要处理" : running ? "处理中" : success ? "状态正常" : "待检查"}</span><strong>${escapeHtml(title)}</strong><p>${escapeHtml(detail)}</p></div>
       <div class="diagnostic-view-controls" aria-label="诊断显示设置">
-        <button type="button" data-diagnostic-size="standard" class="${diagnosticView.size === "standard" ? "active" : ""}">标准字</button>
-        <button type="button" data-diagnostic-size="large" class="${diagnosticView.size === "large" ? "active" : ""}">大字</button>
+        <label><span>字号 <b>${diagnosticView.fontSize}px</b></span><input type="range" min="14" max="22" step="1" value="${diagnosticView.fontSize}" data-diagnostic-font-size></label>
+        <div class="diagnostic-density-control" role="group" aria-label="信息密度">
+          <button type="button" data-diagnostic-density="comfortable" class="${diagnosticView.density === "comfortable" ? "active" : ""}">舒展</button>
+          <button type="button" data-diagnostic-density="compact" class="${diagnosticView.density === "compact" ? "active" : ""}">紧凑</button>
+        </div>
         <button type="button" data-diagnostic-detail="essential" class="${diagnosticView.detail === "essential" ? "active" : ""}">只看重点</button>
         <button type="button" data-diagnostic-detail="full" class="${diagnosticView.detail === "full" ? "active" : ""}">完整证据</button>
       </div>
     </header>
+    ${diagnosticPipeline(task)}
     <div class="diagnostic-key-checks">${checks.map(([label, value, ok]) => `<article class="${ok ? "pass" : "warn"}"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></article>`).join("")}</div>
   </section>`;
 }
@@ -3450,11 +3635,11 @@ function boundedNumber(value, fallback, min, max) {
 }
 
 function readVisualSliceOptions() {
-  const [rawCols, rawRows] = String(els.gridSize?.value || "3x3").split("x").map(Number);
+  const [legacyCols, legacyRows] = String(els.gridSize?.value || "3x3").split("x").map(Number);
   return {
     frame_interval: boundedNumber(els.frameInterval?.value, 20, 1, 600),
-    grid_columns: boundedNumber(rawCols, 3, 1, 6),
-    grid_rows: boundedNumber(rawRows, 3, 1, 6)
+    grid_columns: boundedNumber(els.gridColumns?.value || legacyCols, 3, 1, 6),
+    grid_rows: boundedNumber(els.gridRows?.value || legacyRows, 3, 1, 6)
   };
 }
 
@@ -3564,6 +3749,12 @@ function readOptions() {
     note_template: els.noteTemplate?.value || "standard",
     summary_depth: els.summaryDepth.value || "standard"
   };
+  const profile = els.noteStyle?.value === "custom" ? appSettings.customNoteProfile : null;
+  if (profile) {
+    options.note_profile_name = profile.name;
+    options.note_profile_prompt = profile.prompt;
+    options.note_profile_sections = profile.sections;
+  }
   const llmModel = els.llmModel.value.trim();
   const llmBaseUrl = els.llmBaseUrl.value.trim();
   const llmApiKey = els.llmApiKey.value.trim() || (desktopCredentialProvider === (els.llmProvider?.value || "custom") ? desktopCredentialKey : "");
@@ -5701,9 +5892,21 @@ function bindQaActions(task) {
 }
 
 function bindTaskOverviewActions() {
-  document.querySelectorAll("[data-diagnostic-size]").forEach(button => {
+  document.querySelectorAll("[data-diagnostic-font-size]").forEach(input => {
+    input.oninput = () => {
+      diagnosticView.fontSize = Math.min(22, Math.max(14, Number(input.value) || 17));
+      const panel = input.closest(".diagnostic-summary-panel");
+      if (panel) panel.style.setProperty("--diagnostic-font-size", `${diagnosticView.fontSize}px`);
+      const value = input.closest("label")?.querySelector("b");
+      if (value) value.textContent = `${diagnosticView.fontSize}px`;
+    };
+    input.onchange = () => {
+      saveDiagnosticView();
+    };
+  });
+  document.querySelectorAll("[data-diagnostic-density]").forEach(button => {
     button.onclick = () => {
-      diagnosticView.size = button.dataset.diagnosticSize === "large" ? "large" : "standard";
+      diagnosticView.density = button.dataset.diagnosticDensity === "compact" ? "compact" : "comfortable";
       saveDiagnosticView();
       renderDetail();
     };
@@ -7772,10 +7975,26 @@ els.openReleaseButton?.addEventListener?.("click", () => {
   if (pendingReleaseUrl) desktopApi()?.open_release?.(pendingReleaseUrl);
 });
 window.addEventListener?.("pywebviewready", initializeDesktopBridge);
+els.importNoteProfileButton?.addEventListener?.("click", () => els.noteProfileFile?.click());
+els.downloadNoteProfileExampleButton?.addEventListener?.("click", downloadNoteProfileExample);
+els.noteProfileFile?.addEventListener?.("change", () => importNoteProfile(els.noteProfileFile.files?.[0]));
+els.visualUnderstandingButton?.addEventListener?.("click", () => {
+  if (!els.visualUnderstanding) return;
+  els.visualUnderstanding.checked = !els.visualUnderstanding.checked;
+  els.visualUnderstanding.dispatchEvent(new Event("change", { bubbles: true }));
+});
+for (const control of [els.frameInterval, els.gridColumns, els.gridRows]) {
+  control?.addEventListener?.("input", () => {
+    syncVisualUnderstandingUi();
+    refreshOptionDependentUi();
+  });
+}
 
 [
   els.frameInterval,
   els.gridSize,
+  els.gridColumns,
+  els.gridRows,
   els.visualUnderstanding,
   els.noteStyle,
   els.noteTemplate,
@@ -7785,8 +8004,12 @@ window.addEventListener?.("pywebviewready", initializeDesktopBridge);
   els.whisperModel
 ].filter(Boolean).forEach(control => {
   control.addEventListener("change", () => {
+    if ([els.frameInterval, els.gridSize, els.gridColumns, els.gridRows, els.visualUnderstanding].includes(control)) syncVisualUnderstandingUi();
     refreshOptionDependentUi();
-    if (control === els.noteStyle || control === els.noteTemplate || control === els.summaryDepth) syncLearningGoalFromOptions();
+    if (control === els.noteStyle || control === els.noteTemplate || control === els.summaryDepth) {
+      syncLearningGoalFromOptions();
+      refreshNoteProfilePreview();
+    }
     if ([els.llmProvider, els.transcriber, els.whisperModel].includes(control)) saveModelSettings();
   });
 });

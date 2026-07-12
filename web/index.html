@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>LearnNote 学习视频笔记</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="/web/styles.css?v=20260712-v0114">
-    <link rel="stylesheet" href="/web/workspace.css?v=20260712-v0114">
-    <link rel="stylesheet" href="/web/product.css?v=20260712-v0114">
+    <link rel="stylesheet" href="/web/styles.css?v=20260712-v0115">
+    <link rel="stylesheet" href="/web/workspace.css?v=20260712-v0115">
+    <link rel="stylesheet" href="/web/product.css?v=20260712-v0115">
   </head>
   <body data-app-view="workspace">
     <header class="topbar">
@@ -347,28 +347,25 @@
           <div class="option-grid">
             <label class="field" data-setting-group="processing">
               <span>切片间隔</span>
-              <select id="frameInterval">
-                <option value="10">10 秒</option>
-                <option value="20" selected>20 秒</option>
-                <option value="30">30 秒</option>
-                <option value="60">60 秒</option>
-              </select>
+              <div class="number-setting"><input id="frameInterval" type="number" min="1" max="600" step="1" value="20"><em>秒/帧</em></div>
+              <small>1-600 秒，数值越小越容易捕捉画面变化。</small>
             </label>
-            <label class="field" data-setting-group="processing">
+            <div class="field" data-setting-group="processing">
               <span>视觉窗口</span>
-              <select id="gridSize">
-                <option value="3x3" selected>3x3 · 约 3 分钟</option>
-                <option value="2x3">2x3 · 紧凑</option>
-                <option value="4x3">4x3 · 长窗口</option>
-              </select>
-            </label>
-            <label class="field visual-toggle wide" data-setting-group="processing">
-              <input id="visualUnderstanding" type="checkbox" checked>
-              <span>
+              <div class="grid-dimension-setting"><label><input id="gridColumns" type="number" min="1" max="6" step="1" value="3"><small>列</small></label><b>×</b><label><input id="gridRows" type="number" min="1" max="6" step="1" value="3"><small>行</small></label></div>
+              <input id="gridSize" type="hidden" value="3x3">
+              <small id="visualWindowEstimate">每个窗口约覆盖 3 分钟、包含 9 帧。</small>
+            </div>
+            <div class="field wide" data-setting-group="processing">
+              <input id="visualUnderstanding" type="checkbox" checked hidden>
+              <button id="visualUnderstandingButton" class="visual-mode-toggle active" type="button" role="switch" aria-checked="true">
+                <i aria-hidden="true"></i>
+                <span>
                 <b>开启图文理解</b>
-                <small>抽帧生成视觉窗口；关闭后只做转写和文本笔记。</small>
-              </span>
-            </label>
+                <small id="visualUnderstandingHint">将截图与对应字幕一起交给视觉模型；关闭后不抽帧，只生成文本笔记。</small>
+                </span>
+              </button>
+            </div>
             <label class="field" data-setting-group="transcriber">
               <span>转写引擎</span>
               <select id="transcriber">
@@ -417,6 +414,13 @@
                 <option value="bilingual">双语对照 · 语言课程</option>
               </select>
             </label>
+            <section class="note-style-studio wide" data-setting-group="notes" aria-label="笔记风格预览">
+              <header><div><span>当前风格示例</span><strong id="noteProfileTitle">学习笔记</strong></div><nav><button id="downloadNoteProfileExampleButton" type="button">下载示例</button><button id="importNoteProfileButton" type="button">导入风格</button></nav></header>
+              <p id="noteProfileDescription">适合大多数课程，按主题、概念、例子、易错点和复习题组织。</p>
+              <pre id="noteProfileOutline"># 课程主题\n## 核心概念\n## 例子与演示\n## 易错点\n## 复习问题</pre>
+              <small id="noteProfileStatus">选择上方风格和格式，可立即查看输出框架。</small>
+              <input id="noteProfileFile" type="file" accept="application/json,.json,.learnnote-style.json" hidden>
+            </section>
             <label class="field" data-setting-group="processing">
               <span>摘要深度</span>
               <select id="summaryDepth">
@@ -598,6 +602,6 @@
       </section>
     </div>
 
-    <script src="/web/app.js?v=20260712-v0114"></script>
+    <script src="/web/app.js?v=20260712-v0115"></script>
   </body>
 </html>

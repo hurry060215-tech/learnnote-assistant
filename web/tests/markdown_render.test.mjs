@@ -311,14 +311,14 @@ assert.match(stylesCss, /\.workspace-panel \.source-pane\s*\{\s*order: 4;/);
 assert.match(stylesCss, /\.workspace-panel \.source-route-rail\s*\{\s*display: none;/);
 assert.match(stylesCss, /\.capture-flow\s*\{\s*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);/);
 assert.match(indexHtml, /id="toggleWorkspaceButton"/);
-assert.match(indexHtml, /styles\.css\?v=20260712-v0114/);
-assert.match(indexHtml, /app\.js\?v=20260712-v0114/);
+assert.match(indexHtml, /styles\.css\?v=20260712-v0115/);
+assert.match(indexHtml, /app\.js\?v=20260712-v0115/);
 assert.match(indexHtml, /id="sourceRouteRail"/);
 assert.match(indexHtml, /id="urlPreflightReport"/);
 assert.match(indexHtml, /href="#settingsView" data-app-view="settings" title="设置"/);
 assert.doesNotMatch(indexHtml, /href="#settings" title="设置"/);
-assert.match(indexHtml, /workspace\.css\?v=20260712-v0114/);
-assert.match(indexHtml, /product\.css\?v=20260712-v0114/);
+assert.match(indexHtml, /workspace\.css\?v=20260712-v0115/);
+assert.match(indexHtml, /product\.css\?v=20260712-v0115/);
 assert.match(indexHtml, /<body data-app-view="workspace">/);
 assert.match(indexHtml, /id="settingsView"/);
 assert.match(indexHtml, /data-settings-tab="general"/);
@@ -3108,6 +3108,8 @@ assert.equal(elements.get("#uploadButton").disabled, false);
 let rerunPayload = null;
 elements.get("#frameInterval").value = "0";
 elements.get("#gridSize").value = "7xnope";
+elements.get("#gridColumns").value = "7";
+elements.get("#gridRows").value = "nope";
 let boundedOptions = context.readOptions();
 assert.equal(boundedOptions.frame_interval, 1);
 assert.equal(boundedOptions.grid_columns, 6);
@@ -3115,6 +3117,8 @@ assert.equal(boundedOptions.grid_rows, 3);
 assert.match(context.visualPlanText(), /1秒 · 6x3/);
 elements.get("#frameInterval").value = "30";
 elements.get("#gridSize").value = "4x3";
+elements.get("#gridColumns").value = "4";
+elements.get("#gridRows").value = "3";
 elements.get("#noteTemplate").value = "cornell";
 elements.get("#llmProvider").value = "groq";
 context.applyModelProviderPreset(true);
@@ -3281,12 +3285,26 @@ assert.deepEqual(
     autoPreflight: true,
     frameInterval: "20",
     gridSize: "3x3",
+    gridColumns: "3",
+    gridRows: "3",
     visualUnderstanding: true,
     noteStyle: "study",
     noteTemplate: "standard",
-    summaryDepth: "standard"
+    summaryDepth: "standard",
+    customNoteProfile: null
   }
 );
+const customProfile = context.normalizeCustomNoteProfile({
+  name: "Lab notes",
+  description: "Methods and evidence",
+  prompt: "Preserve methods, parameters, and evidence.",
+  sections: ["Question", "Methods", "Results"],
+  template: "timeline",
+  depth: "deep"
+});
+assert.equal(customProfile.name, "Lab notes");
+assert.deepEqual(JSON.parse(JSON.stringify(customProfile.sections)), ["Question", "Methods", "Results"]);
+assert.equal(context.normalizeCustomNoteProfile({ name: "Missing prompt", sections: ["A"] }), null);
 vm.runInContext(`appSettings = normalizedAppSettings({
   theme: "dark",
   textSize: "large",

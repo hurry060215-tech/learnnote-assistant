@@ -224,6 +224,8 @@ def note_template_instruction(options: TaskOptions) -> str:
 
 def note_style_instruction(options: TaskOptions) -> str:
     style = str(options.note_style or "study").strip().lower()
+    if style == "custom" and options.note_profile_prompt:
+        return f"自定义风格 {options.note_profile_name or '用户模板'}：{options.note_profile_prompt}"
     mapping = {
         "study": "学习笔记：解释概念、保留例子和易错点，结尾给出可执行的复习任务。",
         "concise": "重点速记：只保留高价值结论、关键词和时间点，避免重复背景。",
@@ -321,8 +323,17 @@ def summary_depth_instruction(options: TaskOptions) -> str:
 
 
 def note_generation_contract(options: TaskOptions) -> str:
+    custom_profile = ""
+    if options.note_profile_prompt:
+        sections = "、".join(item for item in options.note_profile_sections if str(item).strip())
+        custom_profile = (
+            f"用户导入风格：{options.note_profile_name or '自定义'}。\n"
+            f"风格要求：{options.note_profile_prompt}\n"
+            f"章节框架：{sections or '按内容自然组织'}。\n"
+            "自定义风格不能覆盖真实性、时间戳来源和不编造内容等共同约束。\n"
+        )
     return (
-        f"学习目标：{learning_goal_instruction(options)}\n"
+        custom_profile + f"学习目标：{learning_goal_instruction(options)}\n"
         f"深度约束：{summary_depth_instruction(options)}\n"
         "共同约束：时间戳只能来自字幕段或画面窗口；不要编造画面、例题或事实。"
         "没有对应内容时省略可选章节，不要用空章节或套话补齐。"

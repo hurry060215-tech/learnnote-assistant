@@ -11,7 +11,7 @@ import threading
 import time
 import webbrowser
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from urllib.parse import quote, unquote, urlparse
 
 import requests
 import uvicorn
@@ -482,6 +482,17 @@ def run() -> int:
             js_api=desktop_api,
         )
         desktop_api._bind_window(window)
+        def focus_desktop(payload: dict | None = None) -> None:
+            body = payload or {}
+            task_id = str(body.get("task_id") or "")
+            tab = str(body.get("tab") or "note")
+            if re.fullmatch(r"[a-f0-9]{12}", task_id):
+                safe_tab = tab if tab in {"note", "slices", "qa", "diagnostics", "transcript", "frames"} else "note"
+                window.load_url(f"{backend_url}/?task={quote(task_id)}&tab={quote(safe_tab)}")
+            window.restore()
+            window.show()
+
+        app.state.desktop_focus = focus_desktop
         window.events.loaded += lambda: window.set_title("LearnNote - Video Learning Notes")
         webview.start(
             debug=args.debug,

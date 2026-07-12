@@ -28,7 +28,7 @@ from .models import CurrentPageTaskRequest, MediaPreflightRequest, MediaPrefligh
 from .processor import enrich_resource_candidates_with_active_video, process_current_page_task, process_local_video_task, read_note, read_transcript, read_visual_index
 from .runtime import ffmpeg_bin, ffprobe_bin
 from .source_input import SourceInputError, clean_task_title, normalize_source_input
-from .storage import cleanup_tasks, create_task, delete_task, get_task, list_tasks, read_json, request_task_cancel, storage_summary, task_dir, update_task, write_json
+from .storage import atomic_write_text, cleanup_tasks, create_task, delete_task, get_task, list_tasks, read_json, request_task_cancel, storage_summary, task_dir, update_task, write_json
 from .summarizer import chat_completion_provider_kwargs, llm_base_host, llm_model_supports_vision, llm_provider_name, visual_window_review_question_lines
 
 ensure_dirs()
@@ -2883,6 +2883,39 @@ def automatic_diagnostics(payload: dict | None = Body(default=None)) -> dict:
 @app.get("/api/health")
 def api_health() -> dict:
     return health_payload()
+
+
+@app.post("/api/desktop/focus")
+def desktop_focus(payload: dict | None = Body(default=None)) -> dict:
+    callback = getattr(app.state, "desktop_focus", None)
+    if not callable(callback):
+        return {"ok": False, "available": False}
+    callback(payload or {})
+    return {"ok": True, "available": True}
+
+
+@app.get("/api/preferences")
+def get_preferences() -> dict:
+    path = DATA_DIR / "preferences.json"
+    if not path.is_file():
+        return {"task_options": TaskOptions().model_dump(exclude={"llm_api_key", "llm_base_url", "llm_model"})}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        options = TaskOptions.model_validate(payload.get("task_options") or {})
+    except (OSError, ValueError, ValidationError):
+        options = TaskOptions()
+    return {"task_options": options.model_dump(exclude={"llm_api_key", "llm_base_url", "llm_model"})}
+
+
+@app.put("/api/preferences")
+def put_preferences(payload: dict = Body(...)) -> dict:
+    try:
+        options = TaskOptions.model_validate(payload.get("task_options") or {})
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail="Invalid task preferences") from exc
+    public_options = options.model_dump(exclude={"llm_api_key", "llm_base_url", "llm_model"})
+    atomic_write_text(DATA_DIR / "preferences.json", json.dumps({"task_options": public_options}, ensure_ascii=False, indent=2))
+    return {"ok": True, "task_options": public_options}
 
 
 @app.post("/api/extension/heartbeat")

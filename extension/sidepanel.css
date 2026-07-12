@@ -11948,6 +11948,30 @@ body[data-panel-mode="diagnostics"] .resource-panel {
 
 .result-body .diagnostic-technical-body { padding-top: 6px; }
 
+.client-handoff-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px solid #cfe5e5;
+  border-radius: 6px;
+  background: #f3fafa;
+}
+
+.client-handoff-card div { display: grid; gap: 4px; }
+.client-handoff-card strong { color: #17383b; font-size: 14px; }
+.client-handoff-card small { color: #64777a; font-size: 12px; line-height: 1.45; }
+.client-handoff-card button {
+  min-height: 36px;
+  padding: 0 13px;
+  border-color: #0d9698;
+  background: #0d9698;
+  color: #fff;
+  font-weight: 700;
+}
+
 .diagnostic-chain {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -13481,4 +13505,30 @@ body[data-ui="learnnote-sidepanel-v2"] .first-run-card {
 @media (max-width: 360px) {
   .learning-goal-control { grid-template-columns: 1fr; }
   .evidence-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 10px; }
+}
+.compact-disclosure {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.compact-disclosure > summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.compact-disclosure[open] > summary {
+  border-bottom: 1px solid var(--line);
+  color: var(--text);
+}
+
+.compact-disclosure > :not(summary) {
+  margin-left: 12px;
+  margin-right: 12px;
 }

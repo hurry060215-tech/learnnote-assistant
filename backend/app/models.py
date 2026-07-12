@@ -95,6 +95,9 @@ class TaskOptions(BaseModel):
     note_style: str = "study"
     note_template: str = "standard"
     summary_depth: str = "standard"
+    note_profile_name: str = Field(default="", max_length=80)
+    note_profile_prompt: str = Field(default="", max_length=4000)
+    note_profile_sections: list[str] = Field(default_factory=list, max_length=16)
     llm_base_url: str | None = None
     llm_api_key: str | None = None
     llm_model: str | None = None

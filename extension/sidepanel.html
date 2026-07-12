@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>LearnNote</title>
-    <link rel="stylesheet" href="sidepanel.css?v=20260712-v0114">
+    <link rel="stylesheet" href="sidepanel.css?v=20260712-v0115">
   </head>
   <body data-ui="learnnote-sidepanel-v2" data-source-mode="summarize">
     <header class="app-header">
@@ -90,7 +90,7 @@
         <small id="pageUrl" class="page-url"></small>
         <div id="activeVideo" class="playback-card">等待播放状态</div>
         <div id="currentStudyCard" class="current-study-card" aria-label="当前页学习任务"></div>
-        <label class="learning-goal-control">
+        <label class="learning-goal-control" hidden>
           <span>
             <b>这次想得到什么</b>
             <small>默认会根据视频内容自动安排结构</small>
@@ -102,6 +102,10 @@
             <option value="exam">备考自测</option>
           </select>
         </label>
+        <div class="client-handoff-card">
+          <div><strong>设置与结果都在客户端</strong><small>扩展只负责读取当前播放页并安全交给 LearnNote。</small></div>
+          <button id="openClientPrimaryButton" type="button">打开客户端</button>
+        </div>
       </section>
 
       <section class="actions">
@@ -113,15 +117,15 @@
           <svg viewBox="0 0 24 24"><path d="M4 5h16v4H4zM4 15h16v4H4z"/><path d="M8 9v6M16 9v6"/></svg>
           继续切片总结
         </button>
-        <button id="uploadButton">
+        <button id="uploadButton" hidden>
           <svg viewBox="0 0 24 24"><path d="M12 3v12M7 8l5-5 5 5M4 17v3h16v-3"/></svg>
           上传本地视频
         </button>
-        <button id="textButton">
+        <button id="textButton" hidden>
           <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
           总结当前页面文字
         </button>
-        <details class="side-advanced-actions">
+        <details class="side-advanced-actions" hidden>
           <summary>更多方式</summary>
           <div>
             <button id="preflightButton">
@@ -156,7 +160,7 @@
         <div id="resourceInspector" class="resource-inspector muted"></div>
       </section>
 
-      <details id="optionsDisclosure" class="options-disclosure">
+      <details id="optionsDisclosure" class="options-disclosure" hidden>
         <summary>
           <span>处理参数</span>
           <small>切片、转写、图文总结模型</small>
@@ -291,17 +295,19 @@
         <p id="taskMessage">暂无任务</p>
       </section>
 
-      <section class="history-panel">
+      <details class="history-panel compact-disclosure">
+        <summary>最近任务</summary>
         <div class="section-head compact">
-          <span>生成历史</span>
+          <span>客户端中的最近记录</span>
           <button id="refreshHistoryButton" class="icon-button" title="刷新历史" aria-label="刷新历史">
             <svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 0 1-13.66 5.66M4 12A8 8 0 0 1 17.66 6.34M20 4v6h-6M4 20v-6h6"/></svg>
           </button>
         </div>
         <div id="taskHistory" class="task-history muted">等待任务生成后显示最近记录</div>
-      </section>
+      </details>
 
-      <section class="result-panel">
+      <details class="result-panel compact-disclosure">
+        <summary>任务预览</summary>
         <div class="result-tabs" role="tablist" aria-label="任务结果">
           <button class="result-tab active" role="tab" aria-selected="true" data-tab="note">学习笔记</button>
           <button class="result-tab" role="tab" aria-selected="false" data-tab="slices">画面与时间轴</button>
@@ -325,9 +331,9 @@
           </details>
         </div>
         <div id="result" class="result-body muted">任务完成后显示结构化结果</div>
-      </section>
+      </details>
     </main>
 
-    <script src="sidepanel.js?v=20260712-v0114"></script>
+    <script src="sidepanel.js?v=20260712-v0115"></script>
   </body>
 </html>
