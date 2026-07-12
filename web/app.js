@@ -290,6 +290,7 @@ let pendingDesktopUpdate = null;
 let appSettings = { ...DEFAULT_APP_SETTINGS };
 let taskStatusSnapshot = new Map();
 let taskStatusSnapshotReady = false;
+let lastDetailFingerprint = "__unrendered__";
 let qaState = { taskId: "", question: "", answer: "", source: "", warning: "", citations: [], historyCount: 0, recent: [], loading: false };
 
 const els = {
@@ -1019,8 +1020,23 @@ function selectTask(taskId, { clearCaches = true, syncUrl = true } = {}) {
   if (!taskId) return;
   const changed = selectedTaskId !== taskId;
   selectedTaskId = taskId;
+  if (changed) lastDetailFingerprint = "__unrendered__";
   if (changed && clearCaches) clearTaskCaches();
   if (syncUrl) syncSelectedTaskUrl(taskId);
+}
+
+function taskDetailFingerprint(task) {
+  if (!task?.id) return "";
+  return [
+    task.id,
+    selectedTab,
+    task.status || "",
+    task.note_path || "",
+    task.transcript_path || "",
+    task.media_path || "",
+    task.frame_grids?.length || 0,
+    task.visual_windows?.length || 0
+  ].join("|");
 }
 
 function safeNoteMediaUrl(value) {
@@ -1055,8 +1071,10 @@ function apiErrorMessage(payload, fallback) {
 
 function inlineMarkdown(value) {
   return escapeHtml(value)
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>')
     .replace(/`([^`]+)`/g, "<code>$1</code>")
-    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/~~([^~]+)~~/g, "<del>$1</del>");
 }
 
 function plainHeadingText(value) {
@@ -1079,6 +1097,28 @@ function noteHeadingId(value, counts = new Map()) {
   return count ? `${base}-${count + 1}` : base;
 }
 
+function markdownTableCells(line) {
+  const trimmed = String(line || "").trim().replace(/^\|/, "").replace(/\|$/, "");
+  if (!trimmed.includes("|")) return [];
+  return trimmed.split("|").map(cell => cell.trim());
+}
+
+function markdownTableAlignment(line) {
+  const cells = markdownTableCells(line);
+  if (!cells.length || cells.some(cell => !/^:?-{3,}:?$/.test(cell.replace(/\s+/g, "")))) return null;
+  return cells.map(cell => {
+    const value = cell.replace(/\s+/g, "");
+    if (value.startsWith(":") && value.endsWith(":")) return "center";
+    if (value.endsWith(":")) return "right";
+    return "left";
+  });
+}
+
+function markdownTableHtml(header, rows, alignments) {
+  const style = index => ` style="text-align:${alignments[index] || "left"}"`;
+  return `<div class="markdown-table-wrap"><table><thead><tr>${header.map((cell, index) => `<th${style(index)}>${inlineMarkdown(cell)}</th>`).join("")}</tr></thead><tbody>${rows.map(row => `<tr>${header.map((_, index) => `<td${style(index)}>${inlineMarkdown(row[index] || "")}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+}
+
 function markdownToHtml(markdown) {
   const lines = String(markdown || "").replace(/\r\n?/g, "\n").split("\n");
   const html = [];
@@ -1092,7 +1132,8 @@ function markdownToHtml(markdown) {
     }
   };
 
-  for (const rawLine of lines) {
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const rawLine = lines[lineIndex];
     const line = rawLine.trimEnd();
     if (line.startsWith("```")) {
       closeList();
@@ -1110,6 +1151,27 @@ function markdownToHtml(markdown) {
     }
     if (!line.trim()) {
       closeList();
+      continue;
+    }
+    if (/^\s*---+\s*$/.test(line)) {
+      closeList();
+      html.push("<hr>");
+      continue;
+    }
+    const tableHeader = markdownTableCells(line);
+    const tableAlignments = lineIndex + 1 < lines.length ? markdownTableAlignment(lines[lineIndex + 1]) : null;
+    if (tableHeader.length && tableAlignments && tableAlignments.length === tableHeader.length) {
+      closeList();
+      const rows = [];
+      lineIndex += 2;
+      while (lineIndex < lines.length) {
+        const cells = markdownTableCells(lines[lineIndex]);
+        if (!cells.length) break;
+        rows.push(cells);
+        lineIndex += 1;
+      }
+      lineIndex -= 1;
+      html.push(markdownTableHtml(tableHeader, rows, tableAlignments));
       continue;
     }
     const image = /^!\[([^\]]*)\]\(([^)]+)\)$/.exec(line.trim());
@@ -3987,6 +4049,7 @@ async function loadTasks() {
     renderTasks();
     renderBrowserRouteSummary();
     renderSourceWorkflow();
+    lastDetailFingerprint = "__unrendered__";
     await renderDetail();
     return;
   }
@@ -4001,7 +4064,8 @@ async function loadTasks() {
   renderTasks();
   renderBrowserRouteSummary();
   renderSourceWorkflow();
-  await renderDetail();
+  const selected = tasks.find(task => task.id === selectedTaskId) || null;
+  if (taskDetailFingerprint(selected) !== lastDetailFingerprint) await renderDetail();
 }
 
 function taskMatchesFilters(task) {
@@ -6702,11 +6766,7 @@ function learningSliceWorkbench(task, transcript = null) {
       </nav>
     </section>
     ${visualStudyOverviewHtml(task, transcript)}
-    ${visualStudyNavigatorHtml(task, transcript)}
-    ${visualStudyReviewPathHtml(task, transcript)}
-    ${visualStudyCorrelationHtml(task, transcript)}
     ${visualStudyHandoutHtml(task, transcript)}
-    ${visualStudyDeck(task, transcript)}
   </div>`;
 }
 
@@ -6881,6 +6941,7 @@ function bindEmptyWorkbenchActions() {
 async function renderDetail() {
   const task = await taskRecord();
   if (!task) {
+    lastDetailFingerprint = "__empty__";
     els.selectedTitle.textContent = "选择一个任务";
     els.selectedSource.textContent = "结果工作区";
     els.resultMeta.textContent = "";
@@ -6901,6 +6962,8 @@ async function renderDetail() {
     updateContinueFromMediaAction(null);
     return;
   }
+
+  lastDetailFingerprint = taskDetailFingerprint(task);
 
   els.selectedTitle.textContent = displayTaskTitle(task);
   els.selectedSource.textContent = `${sourceText(task)} · ${statusText(task)}`;
@@ -6952,7 +7015,7 @@ async function renderDetail() {
     const workbench = selectedTab === "frames"
       ? visualFrameWorkbench(task, transcript)
       : learningSliceWorkbench(task, transcript);
-    els.detail.innerHTML = `${mediaSeekDockHtml(task)}${learningPathHtml(lastNote, task)}${visionEvidenceBar(task)}${workbench}`;
+    els.detail.innerHTML = `${mediaSeekDockHtml(task)}${workbench}`;
     bindTaskOverviewActions();
     return;
   }

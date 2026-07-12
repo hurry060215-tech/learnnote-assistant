@@ -4602,6 +4602,48 @@ input[type="file"] {
   font-variant-numeric: tabular-nums;
 }
 
+.markdown-table-wrap {
+  width: 100%;
+  margin: 16px 0 20px;
+  overflow-x: auto;
+  border: 1px solid var(--line, #dce6e7);
+  border-radius: 6px;
+  background: var(--surface, #fff);
+}
+
+.markdown-table-wrap table {
+  width: 100%;
+  min-width: 480px;
+  border-collapse: collapse;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.markdown-table-wrap th,
+.markdown-table-wrap td {
+  padding: 10px 12px;
+  border-right: 1px solid var(--line, #dce6e7);
+  border-bottom: 1px solid var(--line, #dce6e7);
+  vertical-align: top;
+}
+
+.markdown-table-wrap th {
+  color: var(--ink, #102a34);
+  background: color-mix(in srgb, var(--accent, #0f9f9a) 8%, white);
+  font-weight: 700;
+}
+
+.markdown-table-wrap tr:last-child td { border-bottom: 0; }
+.markdown-table-wrap th:last-child,
+.markdown-table-wrap td:last-child { border-right: 0; }
+
+.markdown-note hr {
+  height: 1px;
+  margin: 24px 0;
+  border: 0;
+  background: var(--line, #dce6e7);
+}
+
 .side-time-seek,
 .side-window-seek,
 .side-checkpoint-seek,

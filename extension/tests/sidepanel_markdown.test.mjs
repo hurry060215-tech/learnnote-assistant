@@ -382,6 +382,18 @@ assert.doesNotMatch(html, /src="javascript:alert/);
 assert.match(html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
 assert.doesNotMatch(html, /<script>/);
 
+const tableHtml = context.markdownToHtml(`| 参数 | 含义 | 数值 |
+|:---|:---|---:|
+| \`min_cells\` | 最少细胞数 | 3 |
+---
+[查看截图](http://127.0.0.1:8765/api/tasks/demo/assets/grid.jpg)`);
+assert.match(tableHtml, /class="markdown-table-wrap"/);
+assert.match(tableHtml, /<th style="text-align:left">参数<\/th>/);
+assert.match(tableHtml, /<td style="text-align:right">3<\/td>/);
+assert.doesNotMatch(tableHtml, /<p>\| 参数 \|/);
+assert.match(tableHtml, /<hr>/);
+assert.match(tableHtml, /<a href="http:\/\/127\.0\.0\.1:8765\/api\/tasks\/demo\/assets\/grid\.jpg"/);
+
 const outlineHtml = context.noteOutline(`# 当前页学习笔记
 
 ## 时间轴重点

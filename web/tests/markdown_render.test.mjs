@@ -830,12 +830,25 @@ const html = context.markdownToHtml(`## 画面索引
 
 ![W001](http://127.0.0.1:8765/api/tasks/demo/grids/grid_000.jpg)
 ![bad](javascript:alert(1))
+
+| 参数 | 含义 | 数值 |
+|:---|:---|---:|
+| \`min_cells\` | 最少细胞数 | 3 |
+
+---
+[查看截图](http://127.0.0.1:8765/api/tasks/demo/assets/grid.jpg)
 `);
 
 assert.match(html, /<h2 id="note-画面索引">画面索引<\/h2>/);
 assert.match(html, /<figure class="note-image-frame">/);
 assert.match(html, /src="http:\/\/127\.0\.0\.1:8765\/api\/tasks\/demo\/grids\/grid_000\.jpg"/);
 assert.doesNotMatch(html, /src="javascript:alert/);
+assert.match(html, /class="markdown-table-wrap"/);
+assert.match(html, /<th style="text-align:left">参数<\/th>/);
+assert.match(html, /<td style="text-align:right">3<\/td>/);
+assert.doesNotMatch(html, /<p>\| 参数 \|/);
+assert.match(html, /<hr>/);
+assert.match(html, /<a href="http:\/\/127\.0\.0\.1:8765\/api\/tasks\/demo\/assets\/grid\.jpg"/);
 
 const outlineHtml = context.noteOutline(`# Smoke Current Page Video
 
@@ -1109,18 +1122,9 @@ assert.match(sliceWorkbenchHtml, /class="visual-study-overview"/);
 assert.match(sliceWorkbenchHtml, /切片总览/);
 assert.match(sliceWorkbenchHtml, /图文证据完整/);
 assert.match(sliceWorkbenchHtml, /2\/2 已参与/);
-assert.match(sliceWorkbenchHtml, /class="visual-study-navigator"/);
-assert.match(sliceWorkbenchHtml, /复习队列/);
-assert.match(sliceWorkbenchHtml, /按画面窗口回看/);
 assert.match(sliceWorkbenchHtml, /W001/);
 assert.match(sliceWorkbenchHtml, /已进视觉|本地索引/);
-assert.match(sliceWorkbenchHtml, /9 帧 · 1 字幕/);
-assert.match(sliceWorkbenchHtml, /class="visual-review-path"/);
-assert.match(sliceWorkbenchHtml, /复核路线/);
-assert.match(sliceWorkbenchHtml, /按时间线快速复核/);
-assert.match(sliceWorkbenchHtml, /class="visual-study-correlation"/);
-assert.match(sliceWorkbenchHtml, /局部总结/);
-assert.match(sliceWorkbenchHtml, /复习动作/);
+assert.match(sliceWorkbenchHtml, /网格图已参与图文总结 · 9 帧/);
 assert.match(sliceWorkbenchHtml, /class="visual-study-handout"/);
 assert.match(sliceWorkbenchHtml, /切片讲义时间轴/);
 assert.match(sliceWorkbenchHtml, /画面-字幕-总结对齐/);
@@ -1128,7 +1132,10 @@ assert.match(sliceWorkbenchHtml, /data-media-seek-time="180\.000"/);
 assert.match(sliceWorkbenchHtml, /data-switch-result-tab="transcript"/);
 assert.match(sliceWorkbenchHtml, /\/api\/tasks\/task-slice-workbench\/exports\/visual-windows/);
 assert.match(sliceWorkbenchHtml, /\/api\/tasks\/task-slice-workbench\/exports\/bundle/);
-assert.match(sliceWorkbenchHtml, /class="visual-study-deck"/);
+assert.doesNotMatch(sliceWorkbenchHtml, /class="visual-study-navigator"/);
+assert.doesNotMatch(sliceWorkbenchHtml, /class="visual-review-path"/);
+assert.doesNotMatch(sliceWorkbenchHtml, /class="visual-study-correlation"/);
+assert.doesNotMatch(sliceWorkbenchHtml, /class="visual-study-deck"/);
 assert.match(sliceWorkbenchHtml, /data-media-seek-time="0\.000"/);
 assert.doesNotMatch(sliceWorkbenchHtml, /<script>bad/);
 
