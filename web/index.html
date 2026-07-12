@@ -5,14 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>LearnNote 学习视频笔记</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="/web/styles.css?v=20260712-v0116">
-    <link rel="stylesheet" href="/web/workspace.css?v=20260712-v0116">
-    <link rel="stylesheet" href="/web/product.css?v=20260712-v0116">
+    <link rel="stylesheet" href="/web/styles.css?v=20260712-v0117">
+    <link rel="stylesheet" href="/web/workspace.css?v=20260712-v0117">
+    <link rel="stylesheet" href="/web/product.css?v=20260712-v0117">
   </head>
   <body data-app-view="workspace">
     <header class="topbar">
       <div class="brand">
-        <div class="brand-mark">LN</div>
+        <div class="brand-mark" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M8 4h12l5 5v19H8z"/><path d="M20 4v6h6M12 15h9M12 20h7"/></svg></div>
         <div>
           <h1>LearnNote</h1>
           <p>学习视频笔记工作台</p>
@@ -20,6 +20,10 @@
       </div>
       <div class="topbar-actions">
         <span id="health" class="health">检查中</span>
+        <button id="openAiAssistantButton" class="assistant-launch-button" type="button" aria-expanded="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v11H9l-4 4z"/><path d="M9 9h6M9 12h4"/></svg>
+          问 AI
+        </button>
         <button id="toggleWorkspaceButton" class="icon-button" title="折叠/展开工作区" aria-label="折叠/展开工作区" aria-pressed="false">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4z"/><path d="M14 5v14"/><path d="M9 9l-3 3 3 3"/></svg>
         </button>
@@ -509,6 +513,7 @@
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8h11v13H8zM5 16H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h11a1 1 0 0 1 1 1v1"/></svg>
             </button>
             <button id="unifiedExportButton" class="result-export-button" type="button">统一导出</button>
+            <button id="newNoteVersionButton" class="result-version-button" type="button" hidden>生成新版本</button>
             <details id="resultMoreActions" class="result-more">
               <summary class="icon-button result-more-trigger" title="高级导出与诊断" aria-label="高级导出与诊断">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h.01M12 12h.01M19 12h.01"/></svg>
@@ -554,13 +559,12 @@
         <div class="result-tabs" role="tablist" aria-label="任务结果">
           <button class="result-tab active" role="tab" aria-selected="true" data-tab="note">学习笔记</button>
           <button class="result-tab" role="tab" aria-selected="false" data-tab="slices">画面与时间轴</button>
-          <button class="result-tab" role="tab" aria-selected="false" data-tab="qa">问这节课</button>
           <details class="result-tool-tabs">
             <summary>高级工具</summary>
             <div>
               <button class="result-tab" role="tab" aria-selected="false" data-tab="transcript">完整字幕</button>
               <button class="result-tab" role="tab" aria-selected="false" data-tab="frames">原始画面</button>
-              <button class="result-tab" role="tab" aria-selected="false" data-tab="diagnostics">任务诊断</button>
+              <button class="result-tab" role="tab" aria-selected="false" data-tab="diagnostics">处理检查</button>
             </div>
           </details>
         </div>
@@ -606,6 +610,37 @@
       </section>
     </div>
 
-    <script src="/web/app.js?v=20260712-v0116"></script>
+    <aside id="aiAssistantDrawer" class="ai-assistant-drawer" hidden aria-label="AI 学习助手">
+      <header>
+        <div><span>学习助手</span><strong>随时问当前笔记</strong><small id="assistantTaskLabel">请先在笔记库选择一篇笔记</small></div>
+        <button id="closeAiAssistantButton" class="icon-button" type="button" aria-label="关闭 AI 助手"><svg viewBox="0 0 24 24"><path d="M5 5l14 14M19 5 5 19"/></svg></button>
+      </header>
+      <div id="assistantConversation" class="assistant-conversation"><div class="assistant-empty"><strong>从一个具体问题开始</strong><p>回答会引用这篇笔记的字幕、时间点和画面切片。</p></div></div>
+      <div class="assistant-suggestions">
+        <button type="button" data-assistant-question="用三点总结这节课的核心内容">总结核心内容</button>
+        <button type="button" data-assistant-question="哪些地方最容易理解错？">找出易错点</button>
+        <button type="button" data-assistant-question="根据这节课给我出三道复习题">生成复习题</button>
+      </div>
+      <form id="assistantForm" class="assistant-composer">
+        <textarea id="assistantQuestion" rows="2" maxlength="1000" placeholder="问这篇笔记..."></textarea>
+        <button class="primary action-button" type="submit">发送</button>
+      </form>
+    </aside>
+
+    <div id="noteVersionOverlay" class="note-version-overlay" hidden>
+      <section class="note-version-dialog" role="dialog" aria-modal="true" aria-labelledby="noteVersionTitle">
+        <header><div><span>生成另一个版本</span><h2 id="noteVersionTitle">重新整理这篇笔记</h2><p>复用已经下载的视频，不重新下载。</p></div><button id="closeNoteVersionButton" class="icon-button" type="button" aria-label="关闭"><svg viewBox="0 0 24 24"><path d="M5 5l14 14M19 5 5 19"/></svg></button></header>
+        <div class="note-version-source"><span>原视频</span><strong id="noteVersionSourceTitle">-</strong></div>
+        <div class="note-version-grid">
+          <label><span>笔记用途</span><select id="noteVersionStyle"><option value="study">认真学习</option><option value="concise">快速回顾</option><option value="exam">备考自测</option><option value="lecture">课堂讲义</option><option value="concept">概念精讲</option><option value="code">代码教程</option><option value="academic">论文精读</option></select></label>
+          <label><span>内容结构</span><select id="noteVersionTemplate"><option value="standard">标准学习笔记</option><option value="timeline">按时间轴</option><option value="cornell">康奈尔笔记</option><option value="qa">问答整理</option><option value="visual-handout">图文讲义</option><option value="flashcards">记忆卡片</option></select></label>
+          <label><span>详细程度</span><select id="noteVersionDepth"><option value="brief">简洁</option><option value="standard" selected>标准</option><option value="deep">深入</option></select></label>
+          <label class="note-version-switch"><span><b>结合视频画面</b><small>使用现有切片重新理解演示与 PPT</small></span><input id="noteVersionVisual" type="checkbox" checked></label>
+        </div>
+        <footer><span id="noteVersionStatus" role="status"></span><button id="createNoteVersionButton" class="primary action-button" type="button">生成新版本</button></footer>
+      </section>
+    </div>
+
+    <script src="/web/app.js?v=20260712-v0117"></script>
   </body>
 </html>

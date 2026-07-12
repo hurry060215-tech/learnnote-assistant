@@ -306,9 +306,18 @@ let taskStatusSnapshot = new Map();
 let taskStatusSnapshotReady = false;
 let lastDetailFingerprint = "__unrendered__";
 let qaState = { taskId: "", question: "", answer: "", source: "", warning: "", citations: [], historyCount: 0, recent: [], loading: false };
+let noteVersionTaskId = "";
+let assistantMessages = [];
 
 const els = {
   health: document.querySelector("#health"),
+  openAiAssistantButton: document.querySelector("#openAiAssistantButton"),
+  aiAssistantDrawer: document.querySelector("#aiAssistantDrawer"),
+  closeAiAssistantButton: document.querySelector("#closeAiAssistantButton"),
+  assistantTaskLabel: document.querySelector("#assistantTaskLabel"),
+  assistantConversation: document.querySelector("#assistantConversation"),
+  assistantForm: document.querySelector("#assistantForm"),
+  assistantQuestion: document.querySelector("#assistantQuestion"),
   refreshButton: document.querySelector("#refreshButton"),
   toggleWorkspaceButton: document.querySelector("#toggleWorkspaceButton"),
   toggleHistoryButton: document.querySelector("#toggleHistoryButton"),
@@ -424,6 +433,7 @@ const els = {
   continueFromMediaButton: document.querySelector("#continueFromMediaButton"),
   copyButton: document.querySelector("#copyButton"),
   unifiedExportButton: document.querySelector("#unifiedExportButton"),
+  newNoteVersionButton: document.querySelector("#newNoteVersionButton"),
   bundleButton: document.querySelector("#bundleButton"),
   diagnosticsButton: document.querySelector("#diagnosticsButton"),
   visualWindowsButton: document.querySelector("#visualWindowsButton"),
@@ -442,7 +452,16 @@ const els = {
   onboardingModelButton: document.querySelector("#onboardingModelButton"),
   onboardingBackendStatus: document.querySelector("#onboardingBackendStatus"),
   onboardingExtensionStatus: document.querySelector("#onboardingExtensionStatus"),
-  onboardingModelStatus: document.querySelector("#onboardingModelStatus")
+  onboardingModelStatus: document.querySelector("#onboardingModelStatus"),
+  noteVersionOverlay: document.querySelector("#noteVersionOverlay"),
+  closeNoteVersionButton: document.querySelector("#closeNoteVersionButton"),
+  noteVersionSourceTitle: document.querySelector("#noteVersionSourceTitle"),
+  noteVersionStyle: document.querySelector("#noteVersionStyle"),
+  noteVersionTemplate: document.querySelector("#noteVersionTemplate"),
+  noteVersionDepth: document.querySelector("#noteVersionDepth"),
+  noteVersionVisual: document.querySelector("#noteVersionVisual"),
+  noteVersionStatus: document.querySelector("#noteVersionStatus"),
+  createNoteVersionButton: document.querySelector("#createNoteVersionButton")
 };
 
 function escapeHtml(value) {
@@ -1226,7 +1245,11 @@ function selectTask(taskId, { clearCaches = true, syncUrl = true } = {}) {
   if (!taskId) return;
   const changed = selectedTaskId !== taskId;
   selectedTaskId = taskId;
-  if (changed) lastDetailFingerprint = "__unrendered__";
+  if (changed) {
+    lastDetailFingerprint = "__unrendered__";
+    assistantMessages = [];
+    if (document.body?.classList?.contains("assistant-open")) renderAssistant();
+  }
   if (changed && clearCaches) clearTaskCaches();
   if (syncUrl) syncSelectedTaskUrl(taskId);
 }
@@ -2835,6 +2858,9 @@ function recoveryStepItems(task) {
 }
 
 function diagnosticRecoveryHtml(task) {
+  if (task?.status === "success" && task?.note_path) {
+    return `<section class="diagnostic-recovery success" aria-label="检查结论"><strong>检查完成</strong><p>视频、字幕、画面和笔记均可正常使用。需要另一种整理方式，可以点击上方“生成新版本”。</p></section>`;
+  }
   const steps = recoveryStepItems(task);
   const recovery = task?.recovery || {};
   const primary = recovery.primary_action || null;
@@ -2856,12 +2882,12 @@ function diagnosticRecoveryHtml(task) {
 function loadDiagnosticView() {
   try {
     return {
-      fontSize: Math.min(22, Math.max(14, Number(localStorage.getItem("learnnote.diagnosticFontSize")) || 17)),
+      fontSize: Math.min(24, Math.max(16, Number(localStorage.getItem("learnnote.diagnosticFontSize")) || 19)),
       density: localStorage.getItem("learnnote.diagnosticDensity") === "compact" ? "compact" : "comfortable",
       detail: localStorage.getItem("learnnote.diagnosticDetail") === "full" ? "full" : "essential"
     };
   } catch {
-    return { fontSize: 17, density: "comfortable", detail: "essential" };
+    return { fontSize: 19, density: "comfortable", detail: "essential" };
   }
 }
 
@@ -2925,7 +2951,7 @@ function diagnosticSummaryPanel(task) {
     <header>
       <div><span>${failed ? "需要处理" : running ? "处理中" : success ? "状态正常" : "待检查"}</span><strong>${escapeHtml(title)}</strong><p>${escapeHtml(detail)}</p></div>
       <div class="diagnostic-view-controls" aria-label="诊断显示设置">
-        <label><span>字号 <b>${diagnosticView.fontSize}px</b></span><input type="range" min="14" max="22" step="1" value="${diagnosticView.fontSize}" data-diagnostic-font-size></label>
+        <label><span>字号 <b>${diagnosticView.fontSize}px</b></span><input type="range" min="16" max="24" step="1" value="${diagnosticView.fontSize}" data-diagnostic-font-size></label>
         <div class="diagnostic-density-control" role="group" aria-label="信息密度">
           <button type="button" data-diagnostic-density="comfortable" class="${diagnosticView.density === "comfortable" ? "active" : ""}">舒展</button>
           <button type="button" data-diagnostic-density="compact" class="${diagnosticView.density === "compact" ? "active" : ""}">紧凑</button>
@@ -2980,6 +3006,7 @@ function recoveryActionsHtml(task, skipKeys = new Set()) {
     const skipped = skipKeys instanceof Set ? skipKeys : new Set(skipKeys || []);
     const rendered = structured
       .filter(action => !skipped.has(action.key) && !skipped.has(action.ui_intent))
+      .filter(action => diagnosticView.detail === "full" || !["inspect_diagnostics", "export_diagnostics", "export_audit", "inspect_audit"].includes(action.ui_intent || action.key || ""))
       .map(action => recoveryActionButtonHtml(action, task))
       .filter(Boolean);
     return `<div class="recovery-actions">${rendered.join("")}</div>`;
@@ -4407,6 +4434,37 @@ function recentTaskTime(task) {
   return `${value.getMonth() + 1}月${value.getDate()}日`;
 }
 
+function noteVersionInfo(task) {
+  if (!task?.id) return { rootId: "", index: 1, total: 1 };
+  let rootId = task.id;
+  let cursor = task;
+  const seen = new Set();
+  while (cursor?.source_task_id && !seen.has(cursor.source_task_id)) {
+    seen.add(cursor.source_task_id);
+    rootId = cursor.source_task_id;
+    cursor = tasks.find(item => item.id === cursor.source_task_id);
+  }
+  const members = tasks
+    .filter(item => {
+      let itemRoot = item.id;
+      let current = item;
+      const visited = new Set();
+      while (current?.source_task_id && !visited.has(current.source_task_id)) {
+        visited.add(current.source_task_id);
+        itemRoot = current.source_task_id;
+        current = tasks.find(candidate => candidate.id === current.source_task_id);
+      }
+      return itemRoot === rootId;
+    })
+    .sort((left, right) => String(left.created_at || "").localeCompare(String(right.created_at || "")));
+  return { rootId, index: Math.max(1, members.findIndex(item => item.id === task.id) + 1), total: Math.max(1, members.length) };
+}
+
+function noteVersionBadge(task) {
+  const version = noteVersionInfo(task);
+  return version.total > 1 ? `<em class="note-version-badge">版本 ${version.index}/${version.total}</em>` : "";
+}
+
 function renderRecentNotes() {
   if (!els.recentNotesList) return;
   const recent = tasks.filter(task => task.status === "success" && task.note_path).slice(0, 4);
@@ -4458,7 +4516,7 @@ function renderTasks() {
       ${taskPreviewHtml(task)}
       <div class="task-body">
         <div class="task-headline">
-          <strong>${escapeHtml(displayTaskTitle(task))}</strong>
+          <strong>${escapeHtml(displayTaskTitle(task))}${noteVersionBadge(task)}</strong>
           <span class="task-status-pill ${escapeHtml(taskStatusClass(task))}">${escapeHtml(statusText(task))} · ${task.progress || 0}%</span>
         </div>
         <small class="task-meta-line">${escapeHtml(taskMetaLine(task))}</small>
@@ -4466,6 +4524,7 @@ function renderTasks() {
         <div class="progress"><span style="width:${task.progress || 0}%"></span></div>
         <div class="task-controls" aria-label="任务操作">
           <button type="button" data-task-action="open">${task.note_path ? "查看笔记" : "查看详情"}</button>
+          ${canCreateNoteVersion(task) ? `<button type="button" data-task-action="version">新建笔记版本</button>` : ""}
           ${["running", "queued", "cancelling"].includes(task.status) ? `<button type="button" data-task-action="cancel">停止</button>` : ""}
           ${["failed", "cancelled"].includes(task.status) ? `<button type="button" data-task-action="retry">重试</button>` : ""}
           ${["success", "failed", "cancelled"].includes(task.status) ? `<button type="button" data-task-action="delete">删除</button>` : ""}
@@ -4507,6 +4566,9 @@ async function runTaskAction(taskId, action) {
     renderTasks();
     await renderDetail();
     focusResultPanelOnMobile();
+    return;
+  } else if (action === "version") {
+    openNoteVersionDialog(taskId);
     return;
   } else if (action === "cancel") {
     await fetchJson(apiUrl(`/api/tasks/${encodeURIComponent(taskId)}/cancel`), { method: "POST" });
@@ -5761,18 +5823,19 @@ function taskRouteEvidenceHtml(task) {
   </div>`;
 }
 
-async function rerunTaskFromMedia(taskId) {
+async function rerunTaskFromMedia(taskId, optionOverrides = null) {
   if (!taskId) return;
   els.resultMeta.textContent = "正在复用已下载视频，并按当前切片、ASR 和视觉模型参数创建完整笔记任务...";
   const response = await fetch(taskRerunUrl(taskId), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(readOptions())
+    body: JSON.stringify({ ...readOptions(), ...(optionOverrides || {}) })
   });
   if (!response.ok) {
     const detail = await response.json().catch(() => ({}));
-    els.resultMeta.textContent = detail?.detail?.message || detail?.detail || "无法复用已下载视频。";
-    return;
+    const message = detail?.detail?.message || detail?.detail || "无法复用已下载视频。";
+    els.resultMeta.textContent = message;
+    throw new Error(message);
   }
   const data = await response.json();
   pendingRerunNotice = {
@@ -5785,6 +5848,99 @@ async function rerunTaskFromMedia(taskId) {
   syncSelectedTaskUrl(selectedTaskId);
   await loadTasks();
   focusResultPanelOnMobile();
+}
+
+function canCreateNoteVersion(task) {
+  return Boolean(task?.id && ["success", "failed"].includes(task.status) && (task.media_path || task.source_media_path || task.reuse?.media_available));
+}
+
+function openNoteVersionDialog(taskId) {
+  const task = tasks.find(item => item.id === taskId);
+  if (!canCreateNoteVersion(task) || !els.noteVersionOverlay) return;
+  noteVersionTaskId = taskId;
+  els.noteVersionSourceTitle.textContent = displayTaskTitle(task);
+  els.noteVersionStyle.value = task.options?.note_style || "study";
+  els.noteVersionTemplate.value = task.options?.note_template || "standard";
+  els.noteVersionDepth.value = task.options?.summary_depth || "standard";
+  els.noteVersionVisual.checked = task.options?.visual_understanding !== false;
+  els.noteVersionStatus.textContent = "";
+  els.noteVersionOverlay.hidden = false;
+  document.body.classList.add("modal-open");
+  els.noteVersionStyle.focus();
+}
+
+function closeNoteVersionDialog() {
+  if (els.noteVersionOverlay) els.noteVersionOverlay.hidden = true;
+  document.body.classList.remove("modal-open");
+  noteVersionTaskId = "";
+}
+
+async function createNoteVersion() {
+  if (!noteVersionTaskId || !els.createNoteVersionButton) return;
+  els.createNoteVersionButton.disabled = true;
+  els.noteVersionStatus.textContent = "正在创建新版本...";
+  const taskId = noteVersionTaskId;
+  try {
+    await rerunTaskFromMedia(taskId, {
+      note_style: els.noteVersionStyle.value,
+      note_template: els.noteVersionTemplate.value,
+      summary_depth: els.noteVersionDepth.value,
+      visual_understanding: els.noteVersionVisual.checked
+    });
+    closeNoteVersionDialog();
+  } catch (error) {
+    els.noteVersionStatus.textContent = error?.message || "新版本创建失败";
+  } finally {
+    els.createNoteVersionButton.disabled = false;
+  }
+}
+
+function assistantSelectedTask() {
+  return tasks.find(task => task.id === selectedTaskId && task.note_path) || tasks.find(task => task.status === "success" && task.note_path) || null;
+}
+
+function renderAssistant() {
+  const task = assistantSelectedTask();
+  if (els.assistantTaskLabel) els.assistantTaskLabel.textContent = task ? displayTaskTitle(task) : "请先在笔记库选择一篇笔记";
+  if (!els.assistantConversation) return;
+  if (!assistantMessages.length) {
+    els.assistantConversation.innerHTML = `<div class="assistant-empty"><strong>${task ? "从一个具体问题开始" : "还没有选择笔记"}</strong><p>${task ? "回答会引用这篇笔记的字幕、时间点和画面切片。" : "打开笔记库选择一篇已完成的笔记。"}</p></div>`;
+    return;
+  }
+  els.assistantConversation.innerHTML = assistantMessages.map(message => `<article class="assistant-message ${escapeHtml(message.role)}"><span>${message.role === "user" ? "你" : "LearnNote"}</span><div>${message.role === "assistant" ? markdownToHtml(message.text) : escapeHtml(message.text)}</div></article>`).join("");
+  els.assistantConversation.scrollTop = els.assistantConversation.scrollHeight;
+}
+
+function setAssistantOpen(open) {
+  if (!els.aiAssistantDrawer) return;
+  els.aiAssistantDrawer.hidden = !open;
+  document.body.classList.toggle("assistant-open", open);
+  els.openAiAssistantButton?.setAttribute("aria-expanded", String(open));
+  renderAssistant();
+  if (open) window.setTimeout(() => els.assistantQuestion?.focus(), 80);
+}
+
+async function submitAssistantQuestion(questionValue = "") {
+  const task = assistantSelectedTask();
+  const question = String(questionValue || els.assistantQuestion?.value || "").trim();
+  if (!task || !question) return;
+  assistantMessages.push({ role: "user", text: question });
+  assistantMessages.push({ role: "assistant", text: "正在查找笔记证据...", loading: true });
+  if (els.assistantQuestion) els.assistantQuestion.value = "";
+  renderAssistant();
+  try {
+    const response = await fetch(taskQaUrl(task.id), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question, options: readOptions() })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload?.detail?.message || payload?.detail || "回答失败");
+    assistantMessages[assistantMessages.length - 1] = { role: "assistant", text: payload.answer || "没有找到足够的信息。" };
+  } catch (error) {
+    assistantMessages[assistantMessages.length - 1] = { role: "assistant", text: error?.message || "回答失败，请检查模型设置。" };
+  }
+  renderAssistant();
 }
 
 async function copyBackendUrl(feedbackButton = els.copyBackendButton) {
@@ -5936,9 +6092,12 @@ function bindQaActions(task) {
 }
 
 function bindTaskOverviewActions() {
+  document.querySelectorAll("[data-open-assistant]").forEach(button => {
+    button.onclick = () => setAssistantOpen(true);
+  });
   document.querySelectorAll("[data-diagnostic-font-size]").forEach(input => {
     input.oninput = () => {
-      diagnosticView.fontSize = Math.min(22, Math.max(14, Number(input.value) || 17));
+      diagnosticView.fontSize = Math.min(24, Math.max(16, Number(input.value) || 19));
       const panel = input.closest(".diagnostic-summary-panel");
       if (panel) panel.style.setProperty("--diagnostic-font-size", `${diagnosticView.fontSize}px`);
       const value = input.closest("label")?.querySelector("b");
@@ -5952,14 +6111,17 @@ function bindTaskOverviewActions() {
     button.onclick = () => {
       diagnosticView.density = button.dataset.diagnosticDensity === "compact" ? "compact" : "comfortable";
       saveDiagnosticView();
-      renderDetail();
+      document.querySelector(".diagnostic-summary-panel")?.setAttribute("data-diagnostic-density", diagnosticView.density);
+      document.querySelectorAll("[data-diagnostic-density]").forEach(item => item.classList.toggle("active", item.dataset.diagnosticDensity === diagnosticView.density));
     };
   });
   document.querySelectorAll("[data-diagnostic-detail]").forEach(button => {
     button.onclick = () => {
       diagnosticView.detail = button.dataset.diagnosticDetail === "full" ? "full" : "essential";
       saveDiagnosticView();
-      renderDetail();
+      const technical = document.querySelector(".diagnostic-technical");
+      if (technical) technical.open = diagnosticView.detail === "full";
+      document.querySelectorAll("[data-diagnostic-detail]").forEach(item => item.classList.toggle("active", item.dataset.diagnosticDetail === diagnosticView.detail));
     };
   });
   document.querySelectorAll("[data-rerun-from-media]").forEach(button => {
@@ -5993,6 +6155,10 @@ function focusVisualWindow(windowId) {
 
 function switchResultTab(tabName, focusWindowId = "") {
   const normalizedTab = normalizeResultTabName(tabName);
+  if (normalizedTab === "qa") {
+    setAssistantOpen(true);
+    return;
+  }
   if (!RESULT_TAB_NAMES.has(normalizedTab)) return;
   if (selectedTab !== normalizedTab) {
     selectedTab = normalizedTab;
@@ -6199,7 +6365,7 @@ function noteReviewWorkbench(markdown, task) {
       label: "问答复习",
       value: task.qa?.history_count ? `${task.qa.history_count} 条记录` : hasNote ? "可提问" : "等待笔记",
       detail: hasNote ? "基于笔记、字幕和画面索引回答。" : "笔记生成后启用任务问答。",
-      action: reviewCommandButton("qa", "打开问答", hasNote)
+      action: hasNote ? `<button type="button" data-open-assistant>打开学习助手</button>` : `<button type="button" disabled>笔记生成后可用</button>`
     }
   ];
   const exports = [
@@ -6219,7 +6385,7 @@ function noteReviewWorkbench(markdown, task) {
   const primary = canContinueMedia
     ? `<button type="button" data-rerun-from-media="${escapeHtml(task.id)}">继续切片总结</button>`
     : hasNote
-      ? `<button type="button" data-switch-result-tab="qa">问这节课</button>`
+      ? `<button type="button" data-open-assistant>打开学习助手</button>`
       : `<button type="button" data-switch-result-tab="diagnostics">查看阶段检查</button>`;
   const detail = canContinueMedia
     ? `视频已直取到本地，下一步复用 ${mediaName} 进入转写、抽帧和图文总结。`
@@ -7281,6 +7447,7 @@ async function renderDetail() {
     lastNoteTaskId = "";
     els.copyButton.disabled = true;
     if (els.unifiedExportButton) els.unifiedExportButton.disabled = true;
+    if (els.newNoteVersionButton) els.newNoteVersionButton.hidden = true;
     els.bundleButton.disabled = true;
     els.diagnosticsButton.disabled = true;
     if (els.visualWindowsButton) els.visualWindowsButton.disabled = true;
@@ -7295,12 +7462,14 @@ async function renderDetail() {
   lastDetailFingerprint = taskDetailFingerprint(task);
 
   els.selectedTitle.textContent = displayTaskTitle(task);
-  els.selectedSource.textContent = `${sourceText(task)} · ${statusText(task)}`;
+  const version = noteVersionInfo(task);
+  els.selectedSource.textContent = `${sourceText(task)} · ${statusText(task)}${version.total > 1 ? ` · 笔记版本 ${version.index}/${version.total}` : ""}`;
   els.resultMeta.innerHTML = resultMetaChipsHtml(task);
   els.detail.className = "detail";
   const hasNote = Boolean(task.note_path);
   els.copyButton.disabled = !hasNote;
   if (els.unifiedExportButton) els.unifiedExportButton.disabled = !unifiedExportType(task);
+  if (els.newNoteVersionButton) els.newNoteVersionButton.hidden = !canCreateNoteVersion(task);
   els.bundleButton.disabled = !hasTaskBundle(task);
   els.diagnosticsButton.disabled = !hasTaskDiagnostics(task);
   if (els.visualWindowsButton) els.visualWindowsButton.disabled = !hasVisualWindowExport(task);
@@ -7391,7 +7560,7 @@ async function renderDetail() {
       ${diagnosticSummaryPanel(task)}
       ${diagnosticRecoveryHtml(task)}
       <details class="diagnostic-technical"${diagnosticTechnicalOpenAttribute()}>
-      <summary>技术证据与下载尝试 <span>${attempts.length} 条尝试</span></summary>
+      <summary>排查详情 <span>${attempts.length} 条处理记录</span></summary>
       <div class="diagnostic-technical-body">
       ${failureGuide(task)}
       ${chaoxingProfileHtml(task)}
@@ -7888,6 +8057,7 @@ if (els.unifiedExportButton) {
     if (exportType) exportSelectedTask(exportType, els.unifiedExportButton);
   };
 }
+els.newNoteVersionButton?.addEventListener?.("click", () => openNoteVersionDialog(selectedTaskId));
 if (els.manifestButton) {
   els.manifestButton.onclick = () => exportSelectedTask("manifest", els.manifestButton);
 }
@@ -8015,6 +8185,20 @@ els.deleteCredentialButton?.addEventListener?.("click", deleteDesktopCredential)
 els.openDataFolderButton?.addEventListener?.("click", () => desktopApi()?.open_data_folder?.());
 els.changeDataFolderButton?.addEventListener?.("click", changeDataFolder);
 els.restartForDataFolderButton?.addEventListener?.("click", restartForDataFolder);
+els.openAiAssistantButton?.addEventListener?.("click", () => setAssistantOpen(!document.body?.classList?.contains("assistant-open")));
+els.closeAiAssistantButton?.addEventListener?.("click", () => setAssistantOpen(false));
+els.assistantForm?.addEventListener?.("submit", event => {
+  event.preventDefault();
+  submitAssistantQuestion();
+});
+document.querySelectorAll?.("[data-assistant-question]")?.forEach?.(button => {
+  button.addEventListener("click", () => submitAssistantQuestion(button.dataset.assistantQuestion));
+});
+els.closeNoteVersionButton?.addEventListener?.("click", closeNoteVersionDialog);
+els.createNoteVersionButton?.addEventListener?.("click", createNoteVersion);
+els.noteVersionOverlay?.addEventListener?.("click", event => {
+  if (event.target === els.noteVersionOverlay) closeNoteVersionDialog();
+});
 els.checkUpdateButton?.addEventListener?.("click", checkDesktopUpdate);
 els.installUpdateButton?.addEventListener?.("click", installDesktopUpdate);
 els.openReleaseButton?.addEventListener?.("click", () => {

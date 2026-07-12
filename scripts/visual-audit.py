@@ -49,6 +49,11 @@ def capture(page: Page, output: Path, name: str, report: list[dict], errors: lis
 
 def audit_workspace(browser, base_url: str, output: Path, report: list[dict]) -> None:
     page = browser.new_page(viewport={"width": 1440, "height": 900}, device_scale_factor=1)
+    page.route("**/api/tasks/*/qa", lambda route: route.fulfill(
+        status=200,
+        content_type="application/json",
+        body=json.dumps({"answer": "这是视觉审计回答。", "source": "audit", "citations": [], "history_count": 1}, ensure_ascii=False),
+    ))
     errors: list[str] = []
     page.on("console", lambda message: errors.append(message.text) if message.type == "error" else None)
     page.goto(base_url, wait_until="domcontentloaded")
@@ -59,7 +64,20 @@ def audit_workspace(browser, base_url: str, output: Path, report: list[dict]) ->
         page.wait_for_timeout(250)
     if page.locator("#onboardingOverlay:not([hidden])").count():
         raise RuntimeError("Onboarding overlay still intercepts the workspace after dismissal.")
+    if not page.locator("#sourceWorkflow").is_visible() or page.locator("#sourceWorkflow .source-workflow-lane li").count() != 4:
+        raise RuntimeError("Home learning progress is not visible with four stages.")
     capture(page, output, "client-current-page", report, errors)
+
+    page.locator("#openAiAssistantButton").click()
+    page.wait_for_timeout(250)
+    if not page.locator("#aiAssistantDrawer").is_visible():
+        raise RuntimeError("AI assistant drawer did not open.")
+    capture(page, output, "client-ai-assistant", report, errors)
+    page.locator("[data-assistant-question]").first.click()
+    page.wait_for_timeout(250)
+    if "这是视觉审计回答" not in page.locator("#assistantConversation").inner_text():
+        raise RuntimeError("AI assistant suggestion did not submit and render an answer.")
+    page.locator("#closeAiAssistantButton").click()
     page.evaluate("() => fetch('/api/extension/heartbeat', { method: 'POST' }).then(() => checkHealth())")
     page.wait_for_timeout(300)
     capture(page, output, "client-current-page-connected", report, errors)
@@ -115,11 +133,20 @@ def audit_workspace(browser, base_url: str, output: Path, report: list[dict]) ->
 
     page.locator('[data-app-view="notes"]').click()
     page.wait_for_timeout(250)
+    version_button = page.locator("#newNoteVersionButton")
+    if version_button.count() and version_button.is_visible():
+        version_button.click()
+        page.wait_for_timeout(220)
+        if not page.locator("#noteVersionOverlay").is_visible():
+            raise RuntimeError("Note version configuration did not open.")
+        capture(page, output, "client-note-version", report, errors)
+        page.locator("#closeNoteVersionButton").click()
 
-    for tab in ("note", "transcript", "slices", "frames", "qa", "diagnostics"):
+    for tab in ("note", "transcript", "slices", "frames", "diagnostics"):
         locator = page.locator(f'button[data-tab="{tab}"]')
-        if not locator.is_visible() and page.locator("#resultAdvancedMenu").count():
-            page.locator("#resultAdvancedMenu").evaluate("element => element.open = true")
+        advanced_menu = page.locator(".result-tool-tabs")
+        if not locator.is_visible() and advanced_menu.count():
+            advanced_menu.evaluate("element => element.open = true")
         if locator.is_visible():
             locator.click()
             page.locator("#resultPanel").evaluate("element => element.scrollIntoView({ block: 'start' })")

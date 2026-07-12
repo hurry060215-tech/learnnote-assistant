@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "minimum_chrome_version": "116",
   "name": "LearnNote 当前页学习助手",
-  "version": "0.1.16",
+  "version": "0.1.17",
   "description": "直接读取当前页视频、本地视频上传、转写、视觉切片与图文总结。",
   "permissions": [
     "activeTab",
