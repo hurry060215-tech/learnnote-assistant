@@ -362,6 +362,13 @@ def configure_model_runtime() -> bool:
     return True
 
 
+def configure_webview_runtime() -> None:
+    existing = os.environ.get("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "").strip()
+    required = "--disable-gpu"
+    if required not in existing.split():
+        os.environ["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = " ".join(filter(None, (existing, required)))
+
+
 def run() -> int:
     parser = argparse.ArgumentParser(description="Launch the LearnNote Windows desktop client.")
     parser.add_argument("--port", type=int, default=8765)
@@ -374,6 +381,7 @@ def run() -> int:
     port = available_port(args.port)
     data_dir = configure_runtime(root, port)
     configure_model_runtime()
+    configure_webview_runtime()
 
     from app.main import app
     import webview

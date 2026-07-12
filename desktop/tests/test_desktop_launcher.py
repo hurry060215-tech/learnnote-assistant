@@ -76,6 +76,24 @@ class DesktopLauncherTests(unittest.TestCase):
         with patch.object(desktop, "read_secret", return_value=""):
             self.assertFalse(desktop.configure_model_runtime())
 
+    def test_configure_webview_runtime_uses_software_rendering(self):
+        key = "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"
+        previous = os.environ.get(key)
+        try:
+            os.environ[key] = "--enable-features=Example"
+            desktop.configure_webview_runtime()
+            arguments = os.environ[key].split()
+            self.assertIn("--enable-features=Example", arguments)
+            self.assertEqual(1, arguments.count("--disable-gpu"))
+            self.assertNotIn("--disable-gpu-compositing", arguments)
+            desktop.configure_webview_runtime()
+            self.assertEqual(1, os.environ[key].split().count("--disable-gpu"))
+        finally:
+            if previous is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = previous
+
     def test_native_export_saves_backend_artifact_under_data_directory(self):
         class Response:
             headers = {"Content-Disposition": "attachment; filename*=UTF-8''course-note.md"}
