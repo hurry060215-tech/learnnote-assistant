@@ -11836,6 +11836,118 @@ body[data-panel-mode="diagnostics"] .resource-panel {
   font-weight: 800;
 }
 
+.result-body .diagnostic-summary-panel {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 12px;
+  border: 1px solid #cfe0e4;
+  border-left: 5px solid #168571;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 14px;
+}
+
+.result-body .diagnostic-summary-panel.error { border-left-color: #c64d42; }
+.result-body .diagnostic-summary-panel.running { border-left-color: #2f6fd3; }
+
+.result-body .diagnostic-summary-panel header {
+  display: block;
+}
+
+.result-body .diagnostic-summary-panel header div {
+  display: grid;
+  gap: 5px;
+}
+
+.result-body .diagnostic-summary-panel header span {
+  color: #08767c;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.result-body .diagnostic-summary-panel header strong {
+  color: #10272d;
+  font-size: 18px;
+  line-height: 1.35;
+}
+
+.result-body .diagnostic-summary-panel header p {
+  margin: 0;
+  color: #566d73;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.result-body .diagnostic-summary-panel[data-diagnostic-scale="large"] header strong { font-size: 22px; }
+.result-body .diagnostic-summary-panel[data-diagnostic-scale="large"] header p { font-size: 16px; }
+.result-body .diagnostic-summary-panel[data-diagnostic-scale="large"] .diagnostic-key-checks strong { font-size: 16px; }
+
+.result-body .diagnostic-key-checks {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.result-body .diagnostic-key-checks article {
+  display: grid;
+  gap: 3px;
+  border: 1px solid #d9e6e8;
+  border-radius: 7px;
+  background: #f7fbfc;
+  padding: 9px 10px;
+}
+
+.result-body .diagnostic-key-checks article.pass { border-color: rgba(22, 133, 113, .3); }
+.result-body .diagnostic-key-checks article.warn { border-color: rgba(203, 122, 20, .34); }
+.result-body .diagnostic-key-checks span { color: #62767b; font-size: 12px; }
+.result-body .diagnostic-key-checks strong { color: #152c31; font-size: 14px; }
+
+.result-body .diagnostic-view-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.result-body .diagnostic-view-controls button {
+  min-height: 34px;
+  border: 1px solid #c9dadd;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #496267;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.result-body .diagnostic-view-controls button.active {
+  border-color: #0b8795;
+  color: #086b7d;
+  background: #eaf7f7;
+}
+
+.result-body .diagnostic-technical {
+  margin-top: 12px;
+  border-top: 1px solid #d9e6e8;
+}
+
+.result-body .diagnostic-technical > summary {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #183238;
+  font-size: 14px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.result-body .diagnostic-technical > summary span {
+  color: #62767b;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.result-body .diagnostic-technical-body { padding-top: 6px; }
+
 .diagnostic-chain {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

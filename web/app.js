@@ -280,6 +280,7 @@ let urlPagePreflightUrl = "";
 let urlPagePreflightResource = null;
 let urlPagePreflightReport = null;
 let lastHealthData = null;
+let diagnosticView = loadDiagnosticView();
 let pendingLocalFile = null;
 let pendingRerunNotice = null;
 let pendingCleanupPreview = null;
@@ -2632,7 +2633,7 @@ function diagnosticRecoveryHtml(task) {
   const steps = recoveryStepItems(task);
   const recovery = task?.recovery || {};
   const primary = recovery.primary_action || null;
-  const diagnosis = recovery.diagnosis || "";
+  const diagnosis = task?.status === "failed" ? diagnosticUserDetail(task) : recovery.diagnosis || "";
   const summary = diagnosis || primary?.detail
     ? `<div class="recovery-diagnosis">
         ${diagnosis ? `<span>判断</span><strong>${escapeHtml(diagnosis)}</strong>` : ""}
@@ -2645,6 +2646,72 @@ function diagnosticRecoveryHtml(task) {
     <ul>${steps.map(step => `<li>${escapeHtml(step)}</li>`).join("")}</ul>
     ${recoveryActionsHtml(task)}
   </section>`;
+}
+
+function loadDiagnosticView() {
+  try {
+    return {
+      size: localStorage.getItem("learnnote.diagnosticSize") === "large" ? "large" : "standard",
+      detail: localStorage.getItem("learnnote.diagnosticDetail") === "full" ? "full" : "essential"
+    };
+  } catch {
+    return { size: "standard", detail: "essential" };
+  }
+}
+
+function saveDiagnosticView() {
+  try {
+    localStorage.setItem("learnnote.diagnosticSize", diagnosticView.size);
+    localStorage.setItem("learnnote.diagnosticDetail", diagnosticView.detail);
+  } catch {
+    // Preferences are optional in restricted browser contexts.
+  }
+}
+
+function diagnosticUserDetail(task) {
+  const messages = {
+    yt_dlp_timeout: "视频下载等待超时。可以重新尝试；若页面需要登录，请先确认视频能够正常播放。",
+    auth_required: "当前登录信息不足或已经失效。请重新登录并刷新视频页后再试。",
+    no_media_found: "页面暂未暴露可下载的视频资源。请先播放几秒，再让扩展重新检测。",
+    download_forbidden: "视频地址已找到，但站点拒绝了当前下载请求。请刷新页面或改用本地视频。",
+    drm_or_encrypted: "该视频使用受保护的加密播放，无法直接保存。可以上传已有的本地视频继续生成笔记。",
+    unsupported_manifest: "已发现视频流，但当前格式暂时无法合并。可以重试或改用本地视频。",
+    media_mismatch: "下载内容与当前页面不一致，任务已停止，避免生成错误笔记。"
+  };
+  if (messages[task?.error_code]) return messages[task.error_code];
+  const fallback = task?.summary_warning || task?.recovery?.diagnosis || task?.message || "正在汇总诊断信息。";
+  return String(fallback).replace(/\s+/g, " ").slice(0, 160);
+}
+
+function diagnosticSummaryPanel(task) {
+  const success = task?.status === "success";
+  const failed = task?.status === "failed";
+  const running = ["queued", "running", "cancelling"].includes(task?.status);
+  const windows = visualWindows(task).length;
+  const checks = [
+    ["视频", task?.media_path ? "已保存" : task?.mode === "page_text" ? "不需要" : "未生成", Boolean(task?.media_path) || task?.mode === "page_text"],
+    ["字幕", task?.transcript_path || task?.browser_subtitles?.length ? "可用" : "未生成", Boolean(task?.transcript_path || task?.browser_subtitles?.length)],
+    ["画面", windows ? `${windows} 个窗口` : task?.options?.visual_understanding === false ? "已关闭" : "未生成", Boolean(windows) || task?.options?.visual_understanding === false],
+    ["笔记", task?.note_path ? "可用" : task?.mode === "download_only" ? "仅下载" : "未生成", Boolean(task?.note_path) || task?.mode === "download_only"]
+  ];
+  const title = failed ? "任务没有完整跑通" : running ? "任务仍在处理中" : success ? "任务完成，结果可以使用" : "等待任务状态";
+  const detail = success ? "视频、字幕、画面切片和笔记产物已经完成检查。" : diagnosticUserDetail(task);
+  return `<section class="diagnostic-summary-panel ${failed ? "error" : running ? "running" : success ? "success" : "pending"}" data-diagnostic-scale="${escapeHtml(diagnosticView.size)}">
+    <header>
+      <div><span>${failed ? "需要处理" : running ? "处理中" : success ? "状态正常" : "待检查"}</span><strong>${escapeHtml(title)}</strong><p>${escapeHtml(detail)}</p></div>
+      <div class="diagnostic-view-controls" aria-label="诊断显示设置">
+        <button type="button" data-diagnostic-size="standard" class="${diagnosticView.size === "standard" ? "active" : ""}">标准字</button>
+        <button type="button" data-diagnostic-size="large" class="${diagnosticView.size === "large" ? "active" : ""}">大字</button>
+        <button type="button" data-diagnostic-detail="essential" class="${diagnosticView.detail === "essential" ? "active" : ""}">只看重点</button>
+        <button type="button" data-diagnostic-detail="full" class="${diagnosticView.detail === "full" ? "active" : ""}">完整证据</button>
+      </div>
+    </header>
+    <div class="diagnostic-key-checks">${checks.map(([label, value, ok]) => `<article class="${ok ? "pass" : "warn"}"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></article>`).join("")}</div>
+  </section>`;
+}
+
+function diagnosticTechnicalOpenAttribute() {
+  return diagnosticView.detail === "full" ? " open" : "";
 }
 
 function recoveryActionButtonHtml(action, task) {
@@ -5634,6 +5701,20 @@ function bindQaActions(task) {
 }
 
 function bindTaskOverviewActions() {
+  document.querySelectorAll("[data-diagnostic-size]").forEach(button => {
+    button.onclick = () => {
+      diagnosticView.size = button.dataset.diagnosticSize === "large" ? "large" : "standard";
+      saveDiagnosticView();
+      renderDetail();
+    };
+  });
+  document.querySelectorAll("[data-diagnostic-detail]").forEach(button => {
+    button.onclick = () => {
+      diagnosticView.detail = button.dataset.diagnosticDetail === "full" ? "full" : "essential";
+      saveDiagnosticView();
+      renderDetail();
+    };
+  });
   document.querySelectorAll("[data-rerun-from-media]").forEach(button => {
     button.onclick = () => rerunTaskFromMedia(button.dataset.rerunFromMedia);
   });
@@ -7060,8 +7141,12 @@ async function renderDetail() {
       </div>
     ` : "暂无下载尝试记录";
     els.detail.innerHTML = `
-      ${failureGuide(task)}
+      ${diagnosticSummaryPanel(task)}
       ${diagnosticRecoveryHtml(task)}
+      <details class="diagnostic-technical"${diagnosticTechnicalOpenAttribute()}>
+      <summary>技术证据与下载尝试 <span>${attempts.length} 条尝试</span></summary>
+      <div class="diagnostic-technical-body">
+      ${failureGuide(task)}
       ${chaoxingProfileHtml(task)}
       ${taskBrowserEvidenceHtml(task)}
       ${directExtractionEvidenceHtml(task)}
@@ -7104,7 +7189,10 @@ async function renderDetail() {
         <dt>错误</dt><dd>${escapeHtml(task.error_detail || task.error_code || "-")}</dd>
         <dt>尝试记录</dt><dd>${attemptHtml}</dd>
       </dl>
+      </div>
+      </details>
     `;
+    bindTaskOverviewActions();
     return;
   }
 
