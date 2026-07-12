@@ -28,6 +28,22 @@ body {
   font-size: calc(15px * var(--ln-type-scale, 1));
 }
 
+body.desktop-runtime .source-pane,
+body.desktop-runtime .settings-pane,
+body.desktop-runtime .browser-capture-card.extension-connected .capture-icon,
+body.desktop-runtime .onboarding-overlay,
+body.desktop-runtime .onboarding-dialog {
+  animation: none !important;
+}
+
+body.desktop-runtime .result-panel,
+body.desktop-runtime .result-detail,
+body.desktop-runtime #detail,
+body.desktop-runtime .media-seek-dock,
+body.desktop-runtime .learning-video-shell {
+  background-color: var(--product-surface);
+}
+
 body[data-color-theme="ocean"] {
   --product-accent: #1c70b7;
   --product-accent-strong: #15598f;

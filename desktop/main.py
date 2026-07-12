@@ -402,6 +402,7 @@ def run() -> int:
             width=1440,
             height=900,
             min_size=(1024, 700),
+            background_color="#f6f8fa",
             text_select=True,
             confirm_close=False,
             js_api=desktop_api,

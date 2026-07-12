@@ -3918,6 +3918,7 @@ function updateBrowserFirstUse(data = lastHealthData) {
 async function checkHealth() {
   try {
     const data = await fetchJson(apiUrl("/health"));
+    document.body?.classList?.toggle("desktop-runtime", String(data.deployment_mode || "").toLowerCase() === "desktop");
     syncModelProviderPresets(data);
     els.health.className = data.ffmpeg && data.extension_compatible !== false ? "health ok" : "health bad";
     els.health.textContent = data.extension_compatible === false
