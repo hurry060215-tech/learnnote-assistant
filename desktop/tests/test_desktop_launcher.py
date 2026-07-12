@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import hashlib
+import json
 import os
 import tempfile
 import unittest
@@ -51,6 +52,41 @@ class DesktopLauncherTests(unittest.TestCase):
                     os.environ.pop(key, None)
                 else:
                     os.environ[key] = value
+
+    def test_configure_runtime_uses_saved_custom_data_directory(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / "data") as root_dir, tempfile.TemporaryDirectory(dir=ROOT / "data") as custom_dir:
+            root = Path(root_dir)
+            custom = Path(custom_dir).resolve()
+            (root / "learnnote-config.json").write_text(json.dumps({"data_dir": str(custom)}), encoding="utf-8")
+            self.assertEqual(custom, desktop.configure_runtime(root, 18767))
+
+    def test_choose_data_directory_migrates_and_persists_selection(self):
+        class Window:
+            def create_file_dialog(self, *_args, **_kwargs):
+                return [str(target)]
+
+        class Response:
+            ok = True
+
+            @staticmethod
+            def json():
+                return []
+
+        with tempfile.TemporaryDirectory(dir=ROOT / "data") as root_dir, tempfile.TemporaryDirectory(dir=ROOT / "data") as source_dir, tempfile.TemporaryDirectory(dir=ROOT / "data") as target_dir:
+            root = Path(root_dir)
+            source = Path(source_dir)
+            target = Path(target_dir)
+            (source / "tasks").mkdir()
+            (source / "tasks" / "note.md").write_text("lesson", encoding="utf-8")
+            api = desktop.DesktopApi(source, "http://127.0.0.1:18766", root)
+            api._bind_window(Window())
+            with patch.object(desktop.requests, "get", return_value=Response()):
+                result = api.choose_data_directory(True)
+            self.assertTrue(result["ok"])
+            self.assertTrue(result["restart_required"])
+            self.assertEqual("lesson", (target / "tasks" / "note.md").read_text(encoding="utf-8"))
+            saved = json.loads((root / "learnnote-config.json").read_text(encoding="utf-8"))
+            self.assertEqual(str(target.resolve()), saved["data_dir"])
 
     def test_configure_model_runtime_uses_secure_kimi_credential(self):
         keys = (

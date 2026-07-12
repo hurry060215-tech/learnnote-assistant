@@ -7,7 +7,7 @@
     <meta name="theme-color" content="#0b9186">
     <title>LearnNote - 把视频变成真正学得会的笔记</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%230b9186'/%3E%3Cpath d='M18 15h23a6 6 0 0 1 6 6v28H24a6 6 0 0 1-6-6V15Zm8 10h13M26 33h13M26 41h8' fill='none' stroke='white' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E">
-    <link rel="stylesheet" href="./styles.css?v=0.1.3">
+    <link rel="stylesheet" href="./styles.css?v=0.1.4">
   </head>
   <body>
     <header class="site-header">
@@ -18,13 +18,13 @@
         <span>LearnNote</span>
       </a>
       <nav aria-label="主导航">
-        <a href="#result">功能</a>
+        <a href="#result">笔记效果</a>
         <a href="#workflow">如何使用</a>
         <a href="#download">下载</a>
       </nav>
       <a class="button button-primary header-download" href="https://github.com/hurry060215-tech/learnnote-assistant/releases/latest">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 20h14"/></svg>
-        下载 Windows 版
+        下载客户端
       </a>
       <button class="menu-button" type="button" aria-expanded="false" aria-label="打开导航">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
@@ -35,22 +35,22 @@
       <section class="hero">
         <div class="hero-inner">
           <div class="hero-copy">
-            <h1>把视频，变成<br><span>真正学得会</span>的笔记</h1>
-            <p>当前网页、本地视频，都能整理成字幕、画面切片和结构化笔记。</p>
+            <span class="hero-kicker">为视频学习设计的 Windows 客户端</span>
+            <h1>看完视频，<br><span>留下真正能复习</span><br>的笔记</h1>
+            <p>打开正在播放的课程，或拖入本地视频。LearnNote 自动整理字幕、关键画面和知识结构。</p>
             <div class="hero-actions">
               <a class="button button-primary button-large" href="https://github.com/hurry060215-tech/learnnote-assistant/releases/latest">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5.5 10 4v7H3V5.5Zm8-1.7L21 2v9H11V3.8ZM3 12h7v7l-7-1.3V12Zm8 0h10v10l-10-1.8V12Z" class="fill"/></svg>
-                下载 Windows 版
+                免费下载客户端
               </a>
-              <a class="button button-secondary button-large" href="https://github.com/hurry060215-tech/learnnote-assistant/releases/latest/download/LearnNote-Browser-Extension.zip">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3v4M16 3v4M5 8h14v5a7 7 0 0 1-14 0V8ZM12 20v2"/></svg>
-                安装浏览器扩展
+              <a class="button button-secondary button-large" href="#workflow">
+                看看怎么使用
               </a>
             </div>
             <ul class="trust-line" aria-label="产品特点">
-              <li><svg viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 4.6 2.8 8.1 7 10 4.2-1.9 7-5.4 7-10V6l-7-3Z"/><path d="m9 12 2 2 4-5"/></svg>本地处理</li>
-              <li><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>不录屏</li>
-              <li><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 20h14"/></svg>随时导出</li>
+              <li><svg viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 4.6 2.8 8.1 7 10 4.2-1.9 7-5.4 7-10V6l-7-3Z"/><path d="m9 12 2 2 4-5"/></svg>视频保存在本机</li>
+              <li><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>自动字幕与画面</li>
+              <li><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 20h14"/></svg>Markdown 随时导出</li>
             </ul>
           </div>
 
@@ -76,20 +76,33 @@
             <span class="step-number">1</span>
             <div class="step-icon"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18M10 12l5 3-5 3v-6Z"/></svg></div>
             <h3>打开视频</h3>
-            <p>支持 Bilibili、YouTube、学习平台和本地视频。</p>
+            <p>网页视频用浏览器扩展发送，本地视频直接拖入客户端。</p>
           </article>
           <article>
             <span class="step-number">2</span>
             <div class="step-icon"><svg viewBox="0 0 24 24"><path d="m4 20 11-11 3 3L7 23H4v-3ZM14 5l2-2M19 8l2-2M6 9H3M10 4V1"/></svg></div>
             <h3>一键整理</h3>
-            <p>自动生成字幕、画面切片，并整理成结构化笔记。</p>
+            <p>选择学习目的，其余交给 LearnNote 自动完成。</p>
           </article>
           <article>
             <span class="step-number">3</span>
             <div class="step-icon"><svg viewBox="0 0 24 24"><path d="M6 3h9l3 3v15H6V3Z"/><path d="M14 3v4h4M9 11h6M9 15h6M9 19h4"/></svg></div>
             <h3>开始复习</h3>
-            <p>按章节回顾要点、画面和问题，把看过变成学会。</p>
+            <p>沿时间轴核对原话与画面，再导出自己的复习资料。</p>
           </article>
+        </div>
+      </section>
+
+      <section class="note-style-section">
+        <div class="section-title reveal">
+          <h2>同一段视频，按你的学习目的整理</h2>
+          <p>不需要理解复杂参数。选择你现在要做的事，笔记结构会自动调整。</p>
+        </div>
+        <div class="note-style-list reveal">
+          <article><span>01</span><h3>认真学习</h3><p>概念、解释、案例、易错点和复习问题。</p></article>
+          <article><span>02</span><h3>快速回顾</h3><p>压缩成结论、要点和关键时间点。</p></article>
+          <article><span>03</span><h3>准备考试</h3><p>考点、记忆线索、易混内容与自测题。</p></article>
+          <article><span>04</span><h3>自定义模板</h3><p>导入自己的结构，让每次笔记保持一致。</p></article>
         </div>
       </section>
 
@@ -142,13 +155,13 @@
       <section class="control-section">
         <div class="control-inner">
           <div class="control-copy reveal">
-            <h2>内容留在你的设备，选择留给你</h2>
-            <p>视频和笔记由本地客户端处理；需要更深入的图文理解时，再连接你选择的模型。</p>
+            <h2>保存在哪里、怎么整理，都由你决定</h2>
+            <p>视频、字幕和笔记保存在你选择的文件夹。需要更深入的画面理解时，再连接自己的 AI 服务。</p>
           </div>
           <div class="control-list reveal">
             <article>
               <svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 20h14"/></svg>
-              <div><h3>本地保存</h3><p>视频与笔记保存在你的设备上，随时打开，离线可用。</p></div>
+              <div><h3>保存位置可更改</h3><p>选择任意非系统盘文件夹，也能把已有任务一起迁移过去。</p></div>
             </article>
             <article>
               <svg viewBox="0 0 24 24"><path d="M8 12V6M16 18v-6M5 9h6M13 15h6"/></svg>
@@ -166,16 +179,16 @@
         <div class="download-inner reveal">
           <div>
             <h2>下一段视频，交给 <span>LearnNote</span> 整理</h2>
-            <p>可选择安装包或便携版；安装客户端后，再把浏览器扩展固定到工具栏。</p>
+            <p>先安装 Windows 客户端。需要整理网页视频时，再安装浏览器扩展。</p>
           </div>
           <div class="download-actions">
             <a class="button button-primary button-large" href="https://github.com/hurry060215-tech/learnnote-assistant/releases/latest">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5.5 10 4v7H3V5.5Zm8-1.7L21 2v9H11V3.8ZM3 12h7v7l-7-1.3V12Zm8 0h10v10l-10-1.8V12Z" class="fill"/></svg>
-              下载 Windows 版
+              下载 Windows 客户端
             </a>
             <a class="button button-secondary button-large" href="https://github.com/hurry060215-tech/learnnote-assistant/releases/latest/download/LearnNote-Browser-Extension.zip">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3v4M16 3v4M5 8h14v5a7 7 0 0 1-14 0V8ZM12 20v2"/></svg>
-              安装浏览器扩展
+              客户端装好后下载扩展
             </a>
           </div>
         </div>
@@ -191,6 +204,6 @@
         <a href="https://github.com/hurry060215-tech/learnnote-assistant/issues">反馈</a>
       </nav>
     </footer>
-    <script src="./app.js?v=0.1.3"></script>
+    <script src="./app.js?v=0.1.4"></script>
   </body>
 </html>

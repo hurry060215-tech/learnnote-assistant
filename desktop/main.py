@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import os
 import re
+import shutil
 import socket
 import subprocess
 import sys
@@ -44,8 +46,9 @@ class DesktopApi:
         "page-preflight-report": ".json",
     }
 
-    def __init__(self, data_dir: Path, backend_url: str = ""):
+    def __init__(self, data_dir: Path, backend_url: str = "", app_root: Path | None = None):
         self.data_dir = data_dir
+        self.app_root = (app_root or data_dir.parent).resolve()
         self.backend_url = backend_url.rstrip("/") or os.getenv("LEARNNOTE_BACKEND_ORIGIN", "http://127.0.0.1:8765").rstrip("/")
         self._window = None
 
@@ -65,6 +68,67 @@ class DesktopApi:
 
     def open_data_folder(self) -> dict:
         os.startfile(self.data_dir)  # type: ignore[attr-defined]
+        return {"ok": True}
+
+    def choose_data_directory(self, migrate: bool = True) -> dict:
+        if self._window is None:
+            return {"ok": False, "code": "desktop_window_unavailable", "message": "客户端窗口尚未就绪。"}
+        import webview
+
+        selected = self._window.create_file_dialog(webview.FOLDER_DIALOG, directory=str(self.data_dir.parent))
+        if not selected:
+            return {"ok": False, "cancelled": True}
+        raw_path = selected[0] if isinstance(selected, (list, tuple)) else selected
+        target = Path(str(raw_path)).expanduser().resolve()
+        if target.drive.upper() == "C:":
+            return {"ok": False, "code": "system_drive_not_allowed", "message": "请选择 D 盘或其他非系统盘。"}
+        if target == self.data_dir.resolve():
+            return {"ok": True, "unchanged": True, "path": str(target)}
+        if self.data_dir.resolve() in target.parents:
+            return {"ok": False, "code": "nested_data_directory", "message": "新位置不能放在当前数据目录里面。"}
+        try:
+            target.mkdir(parents=True, exist_ok=True)
+            probe = target / ".learnnote-write-test"
+            probe.write_text("ok", encoding="utf-8")
+            probe.unlink()
+        except OSError:
+            return {"ok": False, "code": "directory_not_writable", "message": "所选文件夹无法写入，请换一个位置。"}
+
+        if migrate:
+            try:
+                response = requests.get(f"{self.backend_url}/api/tasks", timeout=3.0)
+                running = [task for task in (response.json() if response.ok else []) if task.get("status") in {"queued", "running", "cancelling"}]
+            except (requests.RequestException, ValueError):
+                running = []
+            if running:
+                return {"ok": False, "code": "tasks_running", "message": "还有任务正在处理，请完成或停止任务后再迁移。"}
+            try:
+                shutil.copytree(
+                    self.data_dir,
+                    target,
+                    dirs_exist_ok=True,
+                    ignore=shutil.ignore_patterns("webview-profile", "temp", "*.lock"),
+                )
+            except OSError as exc:
+                return {"ok": False, "code": "migration_failed", "message": f"迁移没有完成：{exc}"}
+
+        config_path = self.app_root / "learnnote-config.json"
+        temp_path = config_path.with_suffix(".tmp")
+        temp_path.write_text(json.dumps({"data_dir": str(target)}, ensure_ascii=False, indent=2), encoding="utf-8")
+        temp_path.replace(config_path)
+        return {
+            "ok": True,
+            "path": str(target),
+            "migrated": bool(migrate),
+            "restart_required": True,
+            "message": "现有数据已迁移，重启客户端后使用新位置。" if migrate else "新位置已保存，重启客户端后生效。",
+        }
+
+    def restart_application(self) -> dict:
+        command = [sys.executable] if getattr(sys, "frozen", False) else [sys.executable, str(Path(__file__).resolve())]
+        subprocess.Popen(command, cwd=str(self.app_root), creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        if self._window is not None:
+            threading.Timer(0.35, self._window.destroy).start()
         return {"ok": True}
 
     def export_task(self, task_id: str, export_type: str) -> dict:
@@ -340,6 +404,16 @@ def wait_for_backend(url: str, timeout: float = 25.0) -> None:
 
 def configure_runtime(root: Path, port: int) -> Path:
     data_dir = root / "data"
+    config_path = root / "learnnote-config.json"
+    try:
+        configured = json.loads(config_path.read_text(encoding="utf-8")) if config_path.exists() else {}
+        configured_path = str(configured.get("data_dir") or "").strip()
+        if configured_path:
+            candidate = Path(configured_path).expanduser().resolve()
+            if candidate.drive and candidate.drive.upper() != "C:":
+                data_dir = candidate
+    except (OSError, ValueError, json.JSONDecodeError):
+        data_dir = root / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
     os.environ["LEARNNOTE_DATA_DIR"] = str(data_dir)
     os.environ["LEARNNOTE_BACKEND_ORIGIN"] = f"http://127.0.0.1:{port}"
@@ -469,7 +543,7 @@ def run() -> int:
 
     try:
         wait_for_backend(backend_url)
-        desktop_api = DesktopApi(data_dir, backend_url)
+        desktop_api = DesktopApi(data_dir, backend_url, root)
         window = webview.create_window(
             "LearnNote",
             backend_url,

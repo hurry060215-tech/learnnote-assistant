@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>LearnNote 学习视频笔记</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="/web/styles.css?v=20260712-v0115">
-    <link rel="stylesheet" href="/web/workspace.css?v=20260712-v0115">
-    <link rel="stylesheet" href="/web/product.css?v=20260712-v0115">
+    <link rel="stylesheet" href="/web/styles.css?v=20260712-v0116">
+    <link rel="stylesheet" href="/web/workspace.css?v=20260712-v0116">
+    <link rel="stylesheet" href="/web/product.css?v=20260712-v0116">
   </head>
   <body data-app-view="workspace">
     <header class="topbar">
@@ -144,7 +144,11 @@
               <div class="settings-section-heading"><h3>下载与存储</h3><p>客户端只连接本机后端。</p></div>
               <div class="settings-rows">
                 <label class="setting-row setting-field"><span><strong>后端地址</strong><small>修改后重新载入客户端</small></span><input id="settingApiBase" type="url" placeholder="http://127.0.0.1:8765"></label>
-                <div class="setting-row"><div><strong>数据目录</strong><small id="settingDataPath">正在读取...</small></div><span id="settingDataDrive" class="setting-value">本地</span></div>
+                <div class="setting-row storage-location-row">
+                  <div><strong>视频与笔记保存位置</strong><small id="settingDataPath">正在读取...</small></div>
+                  <div class="setting-inline-actions"><span id="settingDataDrive" class="setting-value">本地</span><span id="dataFolderNativeActions" class="setting-inline-actions" hidden><button id="changeDataFolderButton" class="secondary action-button" type="button">更改位置</button><button id="openDataFolderButton" class="secondary action-button" type="button">打开文件夹</button></span></div>
+                </div>
+                <div id="dataMigrationNotice" class="storage-migration-notice" hidden role="status"><div><strong>新位置已经准备好</strong><small id="dataMigrationMessage"></small></div><button id="restartForDataFolderButton" class="primary action-button" type="button">立即重启</button></div>
                 <div class="setting-row"><div><strong>已用空间</strong><small id="settingStorageBreakdown">正在统计任务和视频文件</small></div><span id="settingStorageUsage" class="setting-value">-</span></div>
                 <label class="setting-row setting-switch"><span><strong>链接生成前预检</strong><small>先确认媒体是否可访问</small></span><input id="settingAutoPreflight" type="checkbox" checked></label>
                 <div class="setting-row">
@@ -154,7 +158,7 @@
                 <div class="setting-row"><div><strong>客户端版本</strong><small id="settingCompatibility">正在检查扩展兼容性</small></div><span id="settingAppVersion" class="setting-value">-</span></div>
                 <div id="nativeDesktopSettings" class="setting-row" hidden>
                   <div><strong>桌面客户端</strong><small id="updateStatus">检查并安装 LearnNote 正式版本</small></div>
-                  <div class="setting-inline-actions"><button id="openDataFolderButton" class="secondary action-button" type="button">打开数据目录</button><button id="checkUpdateButton" class="secondary action-button" type="button">检查更新</button><button id="installUpdateButton" class="primary action-button" type="button" hidden>下载并安装</button><button id="openReleaseButton" class="secondary action-button" type="button" hidden>版本说明</button></div>
+                  <div class="setting-inline-actions"><button id="checkUpdateButton" class="secondary action-button" type="button">检查更新</button><button id="installUpdateButton" class="primary action-button" type="button" hidden>下载并安装</button><button id="openReleaseButton" class="secondary action-button" type="button" hidden>版本说明</button></div>
                 </div>
               </div>
             </section>
@@ -602,6 +606,6 @@
       </section>
     </div>
 
-    <script src="/web/app.js?v=20260712-v0115"></script>
+    <script src="/web/app.js?v=20260712-v0116"></script>
   </body>
 </html>

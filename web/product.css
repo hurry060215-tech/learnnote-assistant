@@ -1800,6 +1800,31 @@ body.theme-dark .result-panel blockquote { color: var(--product-muted); }
   gap: 8px;
 }
 
+.storage-location-row .setting-inline-actions { flex-wrap: wrap; justify-content: flex-end; }
+
+.storage-migration-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin: 12px 0;
+  padding: 16px 18px;
+  border: 1px solid rgba(11, 145, 134, .3);
+  border-radius: 8px;
+  background: #eef9f7;
+}
+
+.storage-migration-notice[hidden] { display: none; }
+.storage-migration-notice > div { display: grid; gap: 4px; min-width: 0; }
+.storage-migration-notice strong { font-size: 15px; }
+.storage-migration-notice small { color: var(--product-muted); line-height: 1.5; overflow-wrap: anywhere; }
+
+@media (max-width: 760px) {
+  .storage-location-row,
+  .storage-migration-notice { align-items: stretch; flex-direction: column; }
+  .storage-location-row .setting-inline-actions { justify-content: flex-start; }
+}
+
 .native-settings-row {
   display: flex;
   min-height: 72px;

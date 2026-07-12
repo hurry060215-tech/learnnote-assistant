@@ -338,6 +338,11 @@ const els = {
   deleteCredentialButton: document.querySelector("#deleteCredentialButton"),
   nativeDesktopSettings: document.querySelector("#nativeDesktopSettings"),
   openDataFolderButton: document.querySelector("#openDataFolderButton"),
+  dataFolderNativeActions: document.querySelector("#dataFolderNativeActions"),
+  changeDataFolderButton: document.querySelector("#changeDataFolderButton"),
+  dataMigrationNotice: document.querySelector("#dataMigrationNotice"),
+  dataMigrationMessage: document.querySelector("#dataMigrationMessage"),
+  restartForDataFolderButton: document.querySelector("#restartForDataFolderButton"),
   checkUpdateButton: document.querySelector("#checkUpdateButton"),
   installUpdateButton: document.querySelector("#installUpdateButton"),
   openReleaseButton: document.querySelector("#openReleaseButton"),
@@ -794,6 +799,7 @@ function initializeDesktopBridge() {
   const available = Boolean(desktopApi());
   if (els.nativeCredentialSettings) els.nativeCredentialSettings.hidden = !available;
   if (els.nativeDesktopSettings) els.nativeDesktopSettings.hidden = !available;
+  if (els.dataFolderNativeActions) els.dataFolderNativeActions.hidden = !available;
   if (available) loadDesktopCredential();
 }
 
@@ -896,6 +902,44 @@ async function loadStorageSummary() {
   } catch {
     els.settingStorageUsage.textContent = "暂不可用";
     if (els.settingStorageBreakdown) els.settingStorageBreakdown.textContent = "本地服务连接后可查看";
+  }
+}
+
+async function changeDataFolder() {
+  const api = desktopApi();
+  if (!api?.choose_data_directory || !els.changeDataFolderButton) return;
+  els.changeDataFolderButton.disabled = true;
+  const original = els.changeDataFolderButton.textContent;
+  els.changeDataFolderButton.textContent = "选择中...";
+  try {
+    const result = await api.choose_data_directory(true);
+    if (result?.cancelled) return;
+    if (!result?.ok) throw new Error(result?.message || "无法更改保存位置");
+    if (result.unchanged) {
+      if (els.settingsSavedStatus) els.settingsSavedStatus.textContent = "已经在使用这个位置";
+      return;
+    }
+    if (els.dataMigrationMessage) els.dataMigrationMessage.textContent = `${result.message || "重启后生效"} 新位置：${result.path}`;
+    if (els.dataMigrationNotice) els.dataMigrationNotice.hidden = false;
+  } catch (error) {
+    if (els.settingsSavedStatus) els.settingsSavedStatus.textContent = error?.message || "无法更改保存位置";
+  } finally {
+    els.changeDataFolderButton.disabled = false;
+    els.changeDataFolderButton.textContent = original;
+  }
+}
+
+async function restartForDataFolder() {
+  const api = desktopApi();
+  if (!api?.restart_application || !els.restartForDataFolderButton) return;
+  els.restartForDataFolderButton.disabled = true;
+  els.restartForDataFolderButton.textContent = "正在重启...";
+  try {
+    await api.restart_application();
+  } catch (error) {
+    els.restartForDataFolderButton.disabled = false;
+    els.restartForDataFolderButton.textContent = "立即重启";
+    if (els.settingsSavedStatus) els.settingsSavedStatus.textContent = error?.message || "重启失败，请手动重新打开客户端";
   }
 }
 
@@ -7969,6 +8013,8 @@ els.applyCleanupButton?.addEventListener?.("click", applyStorageCleanup);
 els.saveCredentialButton?.addEventListener?.("click", saveDesktopCredential);
 els.deleteCredentialButton?.addEventListener?.("click", deleteDesktopCredential);
 els.openDataFolderButton?.addEventListener?.("click", () => desktopApi()?.open_data_folder?.());
+els.changeDataFolderButton?.addEventListener?.("click", changeDataFolder);
+els.restartForDataFolderButton?.addEventListener?.("click", restartForDataFolder);
 els.checkUpdateButton?.addEventListener?.("click", checkDesktopUpdate);
 els.installUpdateButton?.addEventListener?.("click", installDesktopUpdate);
 els.openReleaseButton?.addEventListener?.("click", () => {
