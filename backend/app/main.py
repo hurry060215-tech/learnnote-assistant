@@ -2738,6 +2738,148 @@ def health() -> dict:
     return health_payload()
 
 
+def _automatic_diagnostic_rules(context: dict, task: TaskRecord | None) -> tuple[str, str, list[dict], list[dict]]:
+    findings: list[dict] = []
+    actions: list[dict] = []
+
+    def finding(severity: str, title: str, detail: str) -> None:
+        findings.append({"severity": severity, "title": title, "detail": detail})
+
+    def action(key: str, label: str, detail: str) -> None:
+        actions.append({"key": key, "label": label, "detail": detail})
+
+    page_url = str(context.get("page_url") or "")
+    tab_url = str(context.get("tab_url") or "")
+    candidate_count = max(0, int(context.get("candidate_count") or 0))
+    downloadable_count = max(0, int(context.get("downloadable_count") or 0))
+    active_video = bool(context.get("active_video"))
+    drm_detected = bool(context.get("drm_detected"))
+    extension_version = str(context.get("extension_version") or "")
+    backend_version = str(context.get("backend_version") or APP_VERSION)
+    page_host = (urlsplit(tab_url or page_url).hostname or "").lower()
+    page_resolver = page_host == "youtu.be" or page_host.endswith("youtube.com") or page_host.endswith("bilibili.com")
+
+    if page_url and tab_url and page_url.split("#", 1)[0] != tab_url.split("#", 1)[0]:
+        finding("error", "当前页上下文已串页", "扩展缓存页面 URL 与 Chrome 当前标签 URL 不一致，可能总结上一条视频。")
+        action("redetect", "重新检测当前页", "清空旧视频上下文并重新读取当前标签。")
+    elif tab_url or page_url:
+        finding("pass", "当前页 URL 已对齐", tab_url or page_url)
+
+    if extension_version and extension_version != backend_version:
+        finding("warn", "扩展与客户端版本不同", f"扩展 {extension_version}，客户端 {backend_version}。")
+        action("reload_extension", "刷新浏览器扩展", "在扩展管理页重新加载 D:\\LearnNote\\Extension。")
+
+    if drm_detected:
+        finding("error", "检测到加密媒体信号", "当前页面可能只暴露 DRM/EME 流，不能通过普通下载路线还原。")
+        action("local", "改用本地视频", "导入你有权访问的本地视频，继续同一套转写和切片流程。")
+    elif downloadable_count:
+        finding("pass", "发现可直取媒体", f"{downloadable_count}/{candidate_count} 个候选可进入预检。")
+        action("preflight", "预检最佳候选", "确认本地后端可以访问媒体地址后再开始总结。")
+    elif page_resolver:
+        finding("pass", "当前站点支持页面解析", "即使没有媒体候选，也可以直接把视频页面交给 yt-dlp。")
+        action("summarize", "直接总结当前视频", "按当前页面 URL 下载视频，不等待播放器 DOM 证据。")
+    elif active_video:
+        finding("warn", "播放器已出现但没有直链", "继续播放并重新检测，让扩展捕获 manifest、分片或播放接口。")
+        action("redetect", "播放后重新检测", "保持视频播放数秒，再刷新当前页媒体上下文。")
+    else:
+        finding("warn", "尚未读取播放器", "当前页没有活动视频或媒体候选。")
+        action("redetect", "重新读取当前页", "确认处于视频详情页并让播放器实际开始播放。")
+
+    if task:
+        if task.status == "failed":
+            finding("error", "最近任务失败", f"{task.error_code or task.failed_phase or 'unknown'}：{_clip_text(task.error_detail or task.message, 220)}")
+            action("task_diagnostics", "查看任务诊断", "打开最近任务的下载尝试、失败阶段和恢复建议。")
+        elif task.status in {"queued", "running", "cancelling"}:
+            finding("info", "任务仍在处理", f"{task.phase}：{_clip_text(task.message, 180)}")
+        elif task.status == "success":
+            finding("pass", "最近任务已完成", f"任务 {task.id} 已生成可用产物。")
+
+    severity = "error" if any(item["severity"] == "error" for item in findings) else "warn" if any(item["severity"] == "warn" for item in findings) else "pass"
+    summary = {
+        "error": "发现会阻断或导致内容不一致的问题。",
+        "warn": "主链路可继续，但有需要处理的风险。",
+        "pass": "当前页、下载路线和客户端状态没有发现明显阻断。",
+    }[severity]
+    return severity, summary, findings, actions
+
+
+@app.post("/api/diagnostics/auto")
+def automatic_diagnostics(payload: dict | None = Body(default=None)) -> dict:
+    body = payload or {}
+    context = body.get("context") if isinstance(body.get("context"), dict) else {}
+    task = None
+    task_id = str(body.get("task_id") or "").strip()
+    if re.fullmatch(r"[a-f0-9]{12}", task_id):
+        try:
+            task = get_task(task_id)
+        except Exception:
+            task = None
+
+    severity, summary, findings, actions = _automatic_diagnostic_rules(context, task)
+    ai_analysis = ""
+    ai_source = "rules"
+    options_payload = body.get("options") if isinstance(body.get("options"), dict) else {}
+    try:
+        options = TaskOptions.model_validate(options_payload)
+    except ValidationError:
+        options = TaskOptions()
+    api_key = options.llm_api_key or LLM_API_KEY
+    base_url = options.llm_base_url or LLM_BASE_URL
+    model = options.llm_model or LLM_MODEL
+    if api_key:
+        try:
+            from openai import OpenAI
+
+            safe_context = {
+                "page_url": context.get("page_url"),
+                "tab_url": context.get("tab_url"),
+                "active_video": bool(context.get("active_video")),
+                "candidate_count": context.get("candidate_count"),
+                "downloadable_count": context.get("downloadable_count"),
+                "playback_matched_count": context.get("playback_matched_count"),
+                "drm_detected": bool(context.get("drm_detected")),
+                "extension_version": context.get("extension_version"),
+                "backend_version": context.get("backend_version"),
+                "task": {"id": task.id, "status": task.status, "phase": task.phase, "error_code": task.error_code, "error_detail": _clip_text(task.error_detail, 240)} if task else None,
+                "rule_findings": findings,
+            }
+            response = OpenAI(api_key=api_key, base_url=base_url).chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": (
+                    "你是 LearnNote 本地客户端的故障诊断助手。请根据下面脱敏状态，用中文给出不超过 180 字的判断。"
+                    "先说根因，再说用户下一步；不要猜测未提供的事实，不要要求绕过 DRM，不要输出 JSON。"
+                    "candidate_count 为 0 只表示扩展没有抓到直链，不等于 yt-dlp 失败；B站和 YouTube 可以直接按页面解析。"
+                    "如果 task.status 是 success，严禁声称下载、解析或任务失败。规则检查结果是事实，不能与其矛盾。\n\n"
+                    + json.dumps(safe_context, ensure_ascii=False)
+                )}],
+                **chat_completion_provider_kwargs(base_url),
+            )
+            ai_analysis = _clip_text(response.choices[0].message.content or "", 600)
+            contradicts_success = bool(
+                task
+                and task.status == "success"
+                and re.search(r"(?:yt-dlp|下载|解析|任务).{0,12}(?:失败|未成功|异常)", ai_analysis, re.I)
+            )
+            if contradicts_success:
+                ai_analysis = ""
+            if ai_analysis:
+                ai_source = "llm"
+        except Exception as exc:
+            ai_analysis = f"AI 分析暂不可用，已保留本地规则诊断：{type(exc).__name__}。"
+
+    return {
+        "ok": True,
+        "severity": severity,
+        "summary": summary,
+        "findings": findings,
+        "actions": actions,
+        "ai_analysis": ai_analysis,
+        "source": ai_source,
+        "provider": llm_provider_name(base_url),
+        "model": model,
+    }
+
+
 @app.get("/api/health")
 def api_health() -> dict:
     return health_payload()

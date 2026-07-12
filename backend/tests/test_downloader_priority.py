@@ -1767,7 +1767,7 @@ class DownloaderPriorityTests(unittest.TestCase):
     def test_manifest_download_uses_final_redirect_url_for_ffmpeg(self) -> None:
         captured: dict = {}
 
-        def fake_run(cmd, capture_output, text):
+        def fake_run(cmd, capture_output, text, **kwargs):
             captured["cmd"] = cmd
             output = Path(cmd[-1])
             output.parent.mkdir(parents=True, exist_ok=True)
@@ -1798,7 +1798,7 @@ class DownloaderPriorityTests(unittest.TestCase):
     def test_manifest_download_allows_extensionless_segments_and_keys(self) -> None:
         captured: dict = {}
 
-        def fake_run(cmd, capture_output, text):
+        def fake_run(cmd, capture_output, text, **kwargs):
             captured["cmd"] = cmd
             output = Path(cmd[-1])
             output.parent.mkdir(parents=True, exist_ok=True)
@@ -1835,7 +1835,7 @@ class DownloaderPriorityTests(unittest.TestCase):
     def test_unknown_candidate_uses_resolved_manifest_url(self) -> None:
         captured: dict = {}
 
-        def fake_run(cmd, capture_output, text):
+        def fake_run(cmd, capture_output, text, **kwargs):
             captured["cmd"] = cmd
             output = Path(cmd[-1])
             output.parent.mkdir(parents=True, exist_ok=True)
@@ -1882,7 +1882,7 @@ class DownloaderPriorityTests(unittest.TestCase):
     def test_manifest_download_replays_post_body_to_local_manifest(self) -> None:
         captured: dict = {}
 
-        def fake_run(cmd, capture_output, text):
+        def fake_run(cmd, capture_output, text, **kwargs):
             captured["cmd"] = cmd
             output = Path(cmd[-1])
             output.parent.mkdir(parents=True, exist_ok=True)
@@ -1933,7 +1933,7 @@ class DownloaderPriorityTests(unittest.TestCase):
     def test_direct_video_candidate_with_audio_url_uses_two_ffmpeg_inputs(self) -> None:
         captured: dict = {}
 
-        def fake_run(cmd, capture_output, text):
+        def fake_run(cmd, capture_output, text, **kwargs):
             captured["cmd"] = cmd
             output = Path(cmd[-1])
             output.parent.mkdir(parents=True, exist_ok=True)
@@ -2041,7 +2041,7 @@ class DownloaderPriorityTests(unittest.TestCase):
     def test_manifest_download_prefers_existing_resolved_url_for_probe(self) -> None:
         captured: dict = {}
 
-        def fake_run(cmd, capture_output, text):
+        def fake_run(cmd, capture_output, text, **kwargs):
             captured["cmd"] = cmd
             output = Path(cmd[-1])
             output.parent.mkdir(parents=True, exist_ok=True)

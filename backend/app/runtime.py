@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 import shutil
+import subprocess
+import sys
 
 
 def ffmpeg_bin() -> str | None:
@@ -24,3 +26,16 @@ def ffprobe_bin() -> str | None:
     if env_path:
         return env_path
     return shutil.which("ffprobe")
+
+
+def hidden_subprocess_kwargs() -> dict:
+    """Prevent command windows from flashing when launched by the desktop GUI."""
+    if sys.platform != "win32":
+        return {}
+    startupinfo = subprocess.STARTUPINFO()
+    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    startupinfo.wShowWindow = subprocess.SW_HIDE
+    return {
+        "creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        "startupinfo": startupinfo,
+    }

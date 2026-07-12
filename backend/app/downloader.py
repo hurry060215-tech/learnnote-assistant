@@ -18,7 +18,7 @@ from urllib.parse import unquote, urljoin, urlparse, urlunparse
 import requests
 
 from .models import BrowserCookie, DownloadAttempt, MediaPreflightResult, ResourceCandidate
-from .runtime import ffmpeg_bin
+from .runtime import ffmpeg_bin, hidden_subprocess_kwargs
 from .source_input import clean_task_title
 
 
@@ -3102,6 +3102,7 @@ class MediaDownloader:
                     capture_output=True,
                     text=True,
                     timeout=YTDLP_DOWNLOAD_TIMEOUT_SECONDS,
+                    **hidden_subprocess_kwargs(),
                 )
             except subprocess.TimeoutExpired as exc:
                 output = _truncate_process_output(exc.stderr or exc.stdout)
@@ -3382,7 +3383,7 @@ class MediaDownloader:
             "+faststart",
             str(output),
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, **hidden_subprocess_kwargs())
         if result.returncode != 0:
             stderr = (result.stderr or "").lower()
             if "403" in stderr or "401" in stderr:
@@ -3549,7 +3550,7 @@ class MediaDownloader:
             cmd += ["-f", kind]
         cmd += ["-user_agent", user_agent, "-i", str(local_manifest or url), "-c", "copy", str(output)]
         self._notify_status("正在用 ffmpeg 合并 HLS/DASH 分片", 35, candidate)
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, **hidden_subprocess_kwargs())
         if result.returncode != 0:
             stderr = (result.stderr or "").lower()
             if "403" in stderr or "401" in stderr:

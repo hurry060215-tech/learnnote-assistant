@@ -11767,6 +11767,75 @@ body[data-panel-mode="diagnostics"] .resource-panel {
   opacity: 0.68;
 }
 
+.automatic-diagnostic {
+  display: grid;
+  gap: 7px;
+  border: 1px solid #cfe0ed;
+  border-radius: 8px;
+  background: #f7fbfc;
+  padding: 8px;
+}
+
+.automatic-diagnostic.error {
+  border-color: #efc7c7;
+  background: #fff8f8;
+}
+
+.automatic-diagnostic.warn {
+  border-color: #ead9b0;
+  background: #fffbf2;
+}
+
+.automatic-diagnostic-analysis {
+  margin: 0;
+  color: #25374a;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.automatic-diagnostic-findings {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.automatic-diagnostic-findings article {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  border-left: 3px solid #4fa5a2;
+  background: #ffffff;
+  padding: 6px 7px;
+}
+
+.automatic-diagnostic-findings article.error { border-left-color: #d85c5c; }
+.automatic-diagnostic-findings article.warn { border-left-color: #c98b24; }
+
+.automatic-diagnostic-findings b,
+.automatic-diagnostic-findings small {
+  overflow-wrap: anywhere;
+}
+
+.automatic-diagnostic-findings b { font-size: 10.5px; }
+.automatic-diagnostic-findings small { color: #647386; font-size: 9.5px; line-height: 1.4; }
+
+.automatic-diagnostic nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.automatic-diagnostic nav button {
+  min-height: 26px;
+  border: 1px solid #bcd5df;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #176d70;
+  padding: 4px 8px;
+  font-size: 10px;
+  font-weight: 800;
+}
+
 .diagnostic-chain {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -38,7 +38,7 @@ from app.downloader import (
     source_rank,
     ytdlp_headers_from_browser_context,
 )
-from app.main import diagnostic_recovery_profile, render_bundle_manifest, render_diagnostics_markdown, task_audit_summary
+from app.main import _automatic_diagnostic_rules, diagnostic_recovery_profile, render_bundle_manifest, render_diagnostics_markdown, task_audit_summary
 from app.models import ActiveVideoInfo, BrowserCookie, CurrentPageTaskRequest, DownloadAttempt, DrmSignal, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
 from app.processor import ContentMismatchError, build_summary_diagnostics, cookie_sync_summary, download_progress_updater, download_status_updater, enrich_resource_candidates_with_active_video, process_current_page_task, process_local_video_task, read_note, read_transcript, redacted_request_dump, redacted_resource, validate_summary_evidence
 from app.summarizer import MAX_GRIDS_PER_VISION_CALL, MAX_VISION_GRIDS, build_visual_windows, chat_completion_provider_kwargs, ensure_visual_appendix, learning_goal, learning_goal_instruction, llm_model_supports_vision, llm_provider_name, local_markdown_note, summarize_with_diagnostics, summarize_with_diagnostics_audit, summary_depth_instruction
@@ -51,6 +51,29 @@ tempfile.tempdir = str(TEST_RUN_DIR)
 
 
 class ResourceDetectionTests(unittest.TestCase):
+    def test_automatic_diagnostics_detects_spa_context_mismatch(self) -> None:
+        severity, summary, findings, actions = _automatic_diagnostic_rules({
+            "page_url": "https://www.bilibili.com/video/BV1R7G66KEBi/",
+            "tab_url": "https://www.bilibili.com/video/BV1ovGX6GEdr/",
+            "candidate_count": 0,
+            "downloadable_count": 0,
+        }, None)
+        self.assertEqual(severity, "error")
+        self.assertIn("阻断", summary)
+        self.assertTrue(any(item["title"] == "当前页上下文已串页" for item in findings))
+        self.assertTrue(any(item["key"] == "redetect" for item in actions))
+
+    def test_automatic_diagnostics_allows_bilibili_page_resolver(self) -> None:
+        severity, _, findings, actions = _automatic_diagnostic_rules({
+            "page_url": "https://www.bilibili.com/video/BV1ovGX6GEdr/",
+            "tab_url": "https://www.bilibili.com/video/BV1ovGX6GEdr/",
+            "candidate_count": 0,
+            "downloadable_count": 0,
+        }, None)
+        self.assertEqual(severity, "pass")
+        self.assertTrue(any(item["title"] == "当前站点支持页面解析" for item in findings))
+        self.assertTrue(any(item["key"] == "summarize" for item in actions))
+
     def test_python_tempdir_uses_project_test_run_dir(self) -> None:
         self.assertEqual(Path(tempfile.gettempdir()).resolve(), TEST_RUN_DIR.resolve())
 
@@ -277,7 +300,8 @@ class ResourceDetectionTests(unittest.TestCase):
             returncode = 0
             stderr = ""
 
-        def fake_run(cmd, capture_output=True, text=True):
+        def fake_run(cmd, capture_output=True, text=True, **kwargs):
+            self.assertIn("creationflags", kwargs)
             Path(cmd[-1]).write_bytes(b"\x00\x00\x00\x18ftypmp42" + (b"hls-video" * 512))
             return FakeCompleted()
 
@@ -3048,9 +3072,10 @@ class DownloaderBoundaryTests(unittest.TestCase):
     def test_ytdlp_cli_receives_browser_context_and_timeout(self) -> None:
         captured: dict = {}
 
-        def fake_run(cmd, capture_output, text, timeout):
+        def fake_run(cmd, capture_output, text, timeout, **kwargs):
             captured["cmd"] = cmd
             captured["timeout"] = timeout
+            captured["creationflags"] = kwargs.get("creationflags")
             output = Path(cmd[cmd.index("-o") + 1].replace("%(ext)s", "mp4"))
             output.parent.mkdir(parents=True, exist_ok=True)
             output.write_bytes(b"0" * 5000)
@@ -3111,7 +3136,8 @@ class DownloaderBoundaryTests(unittest.TestCase):
         fake_module = types.ModuleType("yt_dlp")
         fake_module.__file__ = "D:/tools/yt_dlp/__init__.py"
 
-        def fake_run(cmd, capture_output, text, timeout):
+        def fake_run(cmd, capture_output, text, timeout, **kwargs):
+            self.assertIn("creationflags", kwargs)
             raise subprocess.TimeoutExpired(cmd, timeout, stderr="waiting for video data")
 
         with tempfile.TemporaryDirectory() as tmp, patch.dict(sys.modules, {"yt_dlp": fake_module}):
@@ -3147,8 +3173,9 @@ class DownloaderBoundaryTests(unittest.TestCase):
     def test_manifest_ffmpeg_receives_cookie_jar_and_browser_headers(self) -> None:
         captured: dict = {}
 
-        def fake_run(cmd, capture_output, text):
+        def fake_run(cmd, capture_output, text, **kwargs):
             captured["cmd"] = cmd
+            captured["creationflags"] = kwargs.get("creationflags")
             output = Path(cmd[-1])
             output.parent.mkdir(parents=True, exist_ok=True)
             output.write_bytes(b"0" * 5000)

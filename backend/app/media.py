@@ -12,7 +12,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 from .config import BACKEND_ORIGIN
 from .models import FrameGrid
-from .runtime import ffmpeg_bin, ffprobe_bin
+from .runtime import ffmpeg_bin, ffprobe_bin, hidden_subprocess_kwargs
 
 
 class MediaProcessingError(RuntimeError):
@@ -20,7 +20,7 @@ class MediaProcessingError(RuntimeError):
 
 
 def _run(cmd: list[str], message: str) -> None:
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, capture_output=True, text=True, **hidden_subprocess_kwargs())
     if result.returncode != 0:
         raise MediaProcessingError(f"{message}: {result.stderr[:500]}")
 
@@ -46,6 +46,7 @@ def probe_duration(path: Path) -> float:
             ],
             capture_output=True,
             text=True,
+            **hidden_subprocess_kwargs(),
         )
         if result.returncode == 0:
             try:
@@ -65,6 +66,7 @@ def probe_duration(path: Path) -> float:
         ],
         capture_output=True,
         text=True,
+        **hidden_subprocess_kwargs(),
     )
     match = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", result.stderr or "")
     if not match:
@@ -191,6 +193,7 @@ def extract_embedded_subtitle(video_path: Path, output_path: Path) -> Path | Non
         ],
         capture_output=True,
         text=True,
+        **hidden_subprocess_kwargs(),
     )
     if result.returncode != 0 or not output_path.exists() or output_path.stat().st_size <= 0:
         output_path.unlink(missing_ok=True)
@@ -353,6 +356,7 @@ def extract_frames(
             ],
             capture_output=True,
             text=True,
+            **hidden_subprocess_kwargs(),
         )
         if result.returncode != 0 or not out.exists():
             continue

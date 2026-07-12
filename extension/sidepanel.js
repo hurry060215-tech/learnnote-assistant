@@ -231,8 +231,10 @@ let contextRefreshTimer = 0;
 let isCollectingContext = false;
 let pendingContextRefresh = false;
 let currentTabId = null;
+let currentTabUrl = "";
 let taskHistory = [];
 let lastHealthData = null;
+let automaticDiagnostic = { status: "idle", taskId: "", result: null, error: "" };
 let pendingLocalFile = null;
 let activeSource = "summarize";
 let panelMode = "study";
@@ -4149,6 +4151,7 @@ function currentDiagnosticOverviewHtml() {
       </div>
       <nav class="diagnostic-overview-actions" aria-label="诊断操作">
         <em>${escapeHtml(signal.selected ? selectedResourceLabel(signal.selected) : "未选择候选")}</em>
+        <button type="button" data-automatic-diagnostic ${automaticDiagnostic.status === "loading" ? "disabled" : ""}>${automaticDiagnostic.status === "loading" ? "诊断中" : "AI 自动诊断"}</button>
         <button type="button" data-cookie-diagnostic ${cookieLoading ? "disabled" : ""}>${cookieLoading ? "检查中" : "检查登录态"}</button>
       </nav>
     </header>
@@ -4167,7 +4170,80 @@ function currentDiagnosticOverviewHtml() {
       }).join("")}
     </div>
     ${cookieDiagnosticHtml()}
+    ${automaticDiagnosticHtml()}
   </section>`;
+}
+
+function automaticDiagnosticHtml() {
+  if (automaticDiagnostic.status === "idle") return "";
+  if (automaticDiagnostic.status === "loading") {
+    return `<section class="automatic-diagnostic loading"><strong>正在汇总当前页、下载路线和最近任务...</strong></section>`;
+  }
+  if (automaticDiagnostic.status === "error") {
+    return `<section class="automatic-diagnostic error"><strong>自动诊断失败</strong><p>${escapeHtml(automaticDiagnostic.error || "本地诊断接口暂不可用。")}</p></section>`;
+  }
+  const result = automaticDiagnostic.result || {};
+  const findings = Array.isArray(result.findings) ? result.findings : [];
+  const actions = Array.isArray(result.actions) ? result.actions : [];
+  return `<section class="automatic-diagnostic ${escapeHtml(result.severity || "pass")}">
+    <header><div><span>${result.source === "llm" ? "AI 诊断" : "本地诊断"}</span><strong>${escapeHtml(result.summary || "诊断完成")}</strong></div><em>${escapeHtml(result.model || "规则引擎")}</em></header>
+    ${result.ai_analysis ? `<p class="automatic-diagnostic-analysis">${escapeHtml(result.ai_analysis)}</p>` : ""}
+    <div class="automatic-diagnostic-findings">${findings.map(item => `<article class="${escapeHtml(item.severity || "info")}"><b>${escapeHtml(item.title || "检查项")}</b><small>${escapeHtml(item.detail || "")}</small></article>`).join("")}</div>
+    <nav>${actions.map(item => automaticDiagnosticActionHtml(item)).join("")}</nav>
+  </section>`;
+}
+
+function automaticDiagnosticActionHtml(item = {}) {
+  const key = String(item.key || "");
+  const label = escapeHtml(item.label || "处理");
+  const title = item.detail ? ` title="${escapeHtml(item.detail)}"` : "";
+  if (["redetect", "preflight", "summarize", "local"].includes(key)) {
+    return `<button type="button" data-route-action="${escapeHtml(key)}"${title}>${label}</button>`;
+  }
+  if (key === "task_diagnostics") return `<button type="button" data-switch-result-tab="diagnostics"${title}>${label}</button>`;
+  return `<button type="button" disabled${title}>${label}</button>`;
+}
+
+async function runAutomaticDiagnostic({ taskId = currentTaskId, silent = false } = {}) {
+  if (automaticDiagnostic.status === "loading") return null;
+  automaticDiagnostic = { status: "loading", taskId: taskId || "", result: null, error: "" };
+  renderDiagnosticOverview();
+  if (!silent) els.taskMessage.textContent = "正在自动诊断当前页和最近任务...";
+  try {
+    await health();
+    if (!silent) await collect();
+    const extensionVersion = HAS_EXTENSION_API ? String(chrome.runtime.getManifest?.().version || "") : "";
+    const response = await fetch(`${backendUrl}/api/diagnostics/auto`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        task_id: taskId || "",
+        context: {
+          page_url: page?.page_url || "",
+          tab_url: currentTabUrl || "",
+          active_video: hasActiveVideoSignal(page?.active_video),
+          candidate_count: candidateResources().length,
+          downloadable_count: directExtractionCandidates().length,
+          playback_matched_count: playbackMatchedCandidates().length,
+          drm_detected: Boolean(page?.drm_detected || page?.active_video?.drm_detected),
+          extension_version: extensionVersion,
+          backend_version: lastHealthData?.app_version || ""
+        },
+        options: readOptions()
+      })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.ok) throw new Error(apiErrorMessage(result, "自动诊断接口返回失败。"));
+    automaticDiagnostic = { status: "ready", taskId: taskId || "", result, error: "" };
+    if (!silent) els.taskMessage.textContent = result.summary || "自动诊断完成。";
+    renderDiagnosticOverview();
+    return result;
+  } catch (error) {
+    automaticDiagnostic = { status: "error", taskId: taskId || "", result: null, error: error?.message || String(error) };
+    if (!silent) els.taskMessage.textContent = automaticDiagnostic.error;
+    renderDiagnosticOverview();
+    return null;
+  }
 }
 
 function renderDiagnosticOverview() {
@@ -5032,6 +5108,7 @@ async function collectContextNow() {
     cookieDiagnostic = { status: "idle", summary: null, error: "", checked_at: 0 };
   }
   currentTabId = response.tab?.id ?? null;
+  currentTabUrl = response.tab?.url || response.page?.page_url || "";
   page = response.page;
   resources = resourcesWithActiveVideoCandidate(response.resources || [], page?.active_video);
   excludedResourceUrls = new Set([...excludedResourceUrls].filter(url => resources.some(item => item.url === url)));
@@ -5587,6 +5664,9 @@ async function pollTask() {
   const taskMessage = currentTask.error_detail || rerunFromMediaProgressMessage(currentTask) || currentTask.message || currentTask.phase;
   const elapsed = ["running", "queued", "cancelling"].includes(currentTask.status) ? taskElapsedText(currentTask) : "";
   els.taskMessage.textContent = [taskMessage, elapsed ? `已用时 ${elapsed}` : ""].filter(Boolean).join(" · ");
+  if (currentTask.status === "failed" && automaticDiagnostic.taskId !== currentTask.id) {
+    runAutomaticDiagnostic({ taskId: currentTask.id, silent: true });
+  }
   if (currentTask.status === "success" || (currentTask.status === "failed" && hasReadableTaskArtifacts(currentTask))) {
     await loadResult();
     await loadTaskHistory();
@@ -8171,6 +8251,21 @@ els.resources.addEventListener("click", event => {
 });
 if (els.diagnosticOverview) {
   els.diagnosticOverview.addEventListener("click", event => {
+    const automaticButton = event.target.closest("[data-automatic-diagnostic]");
+    if (automaticButton) {
+      runAutomaticDiagnostic();
+      return;
+    }
+    const routeButton = event.target.closest("[data-route-action]");
+    if (routeButton) {
+      handleRouteAction(routeButton.dataset.routeAction);
+      return;
+    }
+    const tabButton = event.target.closest("[data-switch-result-tab]");
+    if (tabButton) {
+      switchResultTab(tabButton.dataset.switchResultTab || "diagnostics");
+      return;
+    }
     const button = event.target.closest("[data-cookie-diagnostic]");
     if (!button) return;
     inspectCookieContext();
