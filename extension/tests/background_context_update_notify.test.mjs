@@ -129,5 +129,18 @@ const titleFallbackMerged = context.mergePageContexts({ title: "Browser Tab Less
   }, 2, {})
 ]);
 
-assert.equal(titleFallbackMerged.title, "Player Lesson");
+assert.equal(titleFallbackMerged.title, "Browser Tab Lesson");
+assert.equal(titleFallbackMerged.page_url, "https://course.example.com");
+
+const spaNavigationMerged = context.mergePageContexts({
+  title: "Current Bilibili video",
+  url: "https://www.bilibili.com/video/BV1ovGX6GEdr"
+}, [context.normalizePageForFrame({
+  title: "Previous Bilibili video",
+  page_url: "https://www.bilibili.com/video/BV1R7G66KEBi",
+  active_video: { src: "blob:https://www.bilibili.com/old", paused: false }
+}, 0, {})]);
+
+assert.equal(spaNavigationMerged.title, "Current Bilibili video");
+assert.equal(spaNavigationMerged.page_url, "https://www.bilibili.com/video/BV1ovGX6GEdr");
 assert.equal(context.bestPageTitle("????", "Clean Lesson"), "Clean Lesson");

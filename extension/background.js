@@ -1041,8 +1041,8 @@ function mergePageContexts(tab = {}, pages = []) {
     }
   }
   return {
-    title: bestPageTitle(top.title, activePage?.title, tab.title),
-    page_url: top.page_url || tab.url || activePage?.page_url || "",
+    title: bestPageTitle(tab.title, top.title, activePage?.title),
+    page_url: tab.url || top.page_url || activePage?.page_url || "",
     page_text: textParts.join("\n\n--- iframe ---\n\n").slice(0, 60000),
     active_video: activePage?.active_video || null,
     browser_subtitles: browserSubtitles.sort((a, b) => a.start - b.start || a.end - b.end),
@@ -1483,11 +1483,21 @@ async function collectFramePageData(tab, frameId) {
 }
 
 async function collectPageData(tab) {
+  const rememberedBeforeCollect = [...(pageStateByTab.get(tab.id)?.values() || [])];
+  const rememberedTop = rememberedBeforeCollect.find(page => (page.frame_id ?? 0) === 0) || rememberedBeforeCollect[0];
+  const rememberedUrl = String(rememberedTop?.page_url || "").split("#")[0];
+  const currentTabUrl = String(tab.url || "").split("#")[0];
+  const contextReset = Boolean(rememberedUrl && currentTabUrl && rememberedUrl !== currentTabUrl);
+  if (contextReset) {
+    pageStateByTab.delete(tab.id);
+    resourceByTab.delete(tab.id);
+    clearCaptureLog(tab.id);
+  }
   const frameInfos = await getAllFrameInfos(tab.id);
   const frameIds = [...new Set([0, ...(frameInfos || []).map(frame => frame.frameId).filter(frameId => frameId !== undefined)])];
   await Promise.all(frameIds.map(frameId => collectFramePageData(tab, frameId)));
   const remembered = [...(pageStateByTab.get(tab.id)?.values() || [])];
-  return mergePageContexts(tab, remembered);
+  return { ...mergePageContexts(tab, remembered), context_reset: contextReset };
 }
 
 globalThis.__learnnoteE2E = {
@@ -1788,7 +1798,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const tab = await tabForMessage(message);
       const page = await collectPageData(tab);
       const activePage = page;
-      const captureLog = await loadCaptureLog(tab.id);
+      const captureLog = page.context_reset ? { resources: [], updated_at: 0 } : await loadCaptureLog(tab.id);
       const resources = mergeAndRankResources([
         ...(page.resources || []),
         ...(resourceByTab.get(tab.id) || []),
