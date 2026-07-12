@@ -2002,6 +2002,26 @@ function canAttemptBackendPageFallback(mode = "video") {
   return /^https?:\/\//i.test(pageUrl);
 }
 
+function canResolveCurrentPageWithoutMediaEvidence(mode = "video") {
+  if (!isMediaTaskMode(mode)) return false;
+  const pageUrl = String(page?.page_url || "").trim();
+  if (!pageUrl) return false;
+  try {
+    const parsed = new URL(pageUrl);
+    const host = parsed.hostname.toLowerCase();
+    if (host === "youtu.be") return Boolean(parsed.pathname.replace(/^\/+/, ""));
+    if (host === "youtube.com" || host.endsWith(".youtube.com")) {
+      return parsed.pathname === "/watch" && Boolean(parsed.searchParams.get("v"));
+    }
+    if (host === "bilibili.com" || host.endsWith(".bilibili.com")) {
+      return /^\/video\/(?:BV[0-9A-Za-z]{10}|av\d+)/i.test(parsed.pathname);
+    }
+  } catch {
+    return false;
+  }
+  return false;
+}
+
 function preflightFallbackStartMessage(result) {
   const reason = result?.message || result?.code || "直取候选暂不可用";
   return `${reason}；继续创建任务，交给后端页面扫描、iframe fallback 和 yt-dlp 继续尝试。`;
@@ -4270,6 +4290,11 @@ function renderReadiness() {
     els.readiness.textContent = `只看到未映射的 blob 或分片线索；${healthDirectDetectorText()} 会继续捕获可访问媒体，${healthDirectBoundaryText()}。`;
     return;
   }
+  if (canResolveCurrentPageWithoutMediaEvidence("video")) {
+    els.readiness.className = "readiness warn";
+    els.readiness.textContent = "当前视频页可直接交给本地 yt-dlp 解析；不需要等待扩展先抓到媒体直链。";
+    return;
+  }
   els.readiness.className = "readiness bad";
   els.readiness.textContent = "当前页还没有可下载媒体候选；可先播放几秒后重新检测。";
 }
@@ -4313,6 +4338,7 @@ function routeSummaryState() {
   if (downloadableCount) return "candidate";
   if (drmDetected) return "blocked";
   if (activeStream) return "blocked";
+  if (canResolveCurrentPageWithoutMediaEvidence("video")) return "fallback";
   if (resources.length && canFallback) return "fallback";
   if (resources.length) return "blocked";
   return "empty";
@@ -4341,11 +4367,12 @@ function routeSummaryCopy(state) {
     };
   }
   if (state === "fallback") {
+    const pageResolver = canResolveCurrentPageWithoutMediaEvidence("video");
     return {
-      badge: "需兜底",
-      title: "直链不稳，保留后端解析路线",
-      action: "可以继续开始任务；若仍失败，使用本地视频入口走同一套切片总结。",
-      detail: checked ? `${checked.message || checked.code || "预检未通过"}；${fallbackText}` : fallbackText
+      badge: pageResolver ? "页面可直取" : "需兜底",
+      title: pageResolver ? "可直接按视频页面下载" : "直链不稳，保留后端解析路线",
+      action: pageResolver ? "点击“总结当前视频”，本地 yt-dlp 会解析页面、下载视频，再生成字幕和画面切片。" : "可以继续开始任务；若仍失败，使用本地视频入口走同一套切片总结。",
+      detail: pageResolver ? "不依赖播放器 DOM 或扩展先捕获媒体请求；登录态会在开始任务时同步。" : checked ? `${checked.message || checked.code || "预检未通过"}；${fallbackText}` : fallbackText
     };
   }
   if (state === "blocked") {
@@ -4697,6 +4724,9 @@ function hasCurrentVideoEvidence(items = resources) {
 }
 
 function missingCurrentVideoEvidenceMessage() {
+  if (canResolveCurrentPageWithoutMediaEvidence("video")) {
+    return "当前站点支持按视频页面直取；即使播放器 DOM 没有暴露媒体地址，也可以直接交给本地 yt-dlp 下载并总结。";
+  }
   return "已打开当前页助手；还没有读取到正在播放的视频或可直取媒体线索。先播放课程视频几秒后重新检测，或改用本地视频上传/页面文本总结。";
 }
 
@@ -4715,6 +4745,7 @@ async function waitForOneClickMediaCandidate() {
 async function waitForMediaCandidateBeforeStart(mode = "video") {
   if (!isMediaTaskMode(mode)) return true;
   if (preflightCandidatesForStart(mode).length) return true;
+  if (canResolveCurrentPageWithoutMediaEvidence(mode)) return true;
   for (let attempt = 0; attempt < ONE_CLICK_RESOURCE_WAIT_ATTEMPTS; attempt += 1) {
     if (preflightCandidatesForStart(mode).length) return true;
     if (attempt === ONE_CLICK_RESOURCE_WAIT_ATTEMPTS - 1 && hasCurrentVideoEvidence(resources) && canAttemptBackendPageFallback(mode)) return true;
@@ -4725,7 +4756,9 @@ async function waitForMediaCandidateBeforeStart(mode = "video") {
     await sleep(ONE_CLICK_RESOURCE_WAIT_DELAY_MS);
     await collect();
   }
-  return preflightCandidatesForStart(mode).length || (hasCurrentVideoEvidence(resources) && canAttemptBackendPageFallback(mode));
+  return preflightCandidatesForStart(mode).length
+    || canResolveCurrentPageWithoutMediaEvidence(mode)
+    || (hasCurrentVideoEvidence(resources) && canAttemptBackendPageFallback(mode));
 }
 
 async function runSidePanelIntent(intent) {
@@ -5469,7 +5502,7 @@ async function runPreflight() {
     }
     const candidates = preflightCandidatesForStart("video");
     if (!candidates.length) {
-      if (hasCurrentVideoEvidence(resources) && canAttemptBackendPageFallback("video")) {
+      if (canResolveCurrentPageWithoutMediaEvidence("video") || (hasCurrentVideoEvidence(resources) && canAttemptBackendPageFallback("video"))) {
         try {
           els.taskMessage.textContent = "正在交给后端扫描当前页播放资源...";
           const result = await preflightPageCandidates([]);

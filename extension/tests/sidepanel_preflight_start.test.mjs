@@ -59,6 +59,7 @@ const context = {
   navigator: { clipboard: { writeText() {} } },
   window: { open() {} },
   FormData: class FormData {},
+  URL,
   fetch: async url => {
     const value = String(url);
     if (value.endsWith("/health")) {
@@ -171,6 +172,30 @@ selectedResourceUrl = "blob:https://course.example.com/player";
 
 assert.equal(context.preflightCandidatesForStart("video").length, 0);
 assert.equal(context.canAttemptBackendPageFallback("video"), false);
+
+vm.runInContext(`
+page = {
+  title: "Bilibili video",
+  page_url: "https://www.bilibili.com/video/BV1R7G66KEBi/",
+  page_text: "",
+  active_video: null,
+  frames: []
+};
+resources = [];
+selectedResourceUrl = "";
+`, context);
+
+assert.equal(context.canResolveCurrentPageWithoutMediaEvidence("video"), true);
+assert.equal(await context.waitForMediaCandidateBeforeStart("video"), true);
+assert.equal(context.routeSummaryState(), "fallback");
+assert.match(context.routeSummaryCopy("fallback").title, /直接按视频页面下载/);
+assert.match(context.routeSummaryActionsHtml("fallback"), /data-route-action="summarize"/);
+
+vm.runInContext(`page.page_url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";`, context);
+assert.equal(context.canResolveCurrentPageWithoutMediaEvidence("video"), true);
+
+vm.runInContext(`page.page_url = "https://course.example.com/lesson";`, context);
+assert.equal(context.canResolveCurrentPageWithoutMediaEvidence("video"), false);
 
 const activeOnlyCandidates = context.resourcesWithActiveVideoCandidate([], {
   src: "https://cdn.example.com/current-player?id=active",
