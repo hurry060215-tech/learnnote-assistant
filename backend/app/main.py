@@ -2392,6 +2392,32 @@ def _score_excerpt(text: str, terms: set[str]) -> int:
     return sum(lowered.count(term.lower()) * min(4, max(1, len(term))) for term in terms)
 
 
+def _strict_transcript_evidence_requested(question: str) -> bool:
+    text = re.sub(r"\s+", "", str(question or "").lower())
+    transcript_source = r"(?:字幕|转写|原话|台词|transcript)"
+    return bool(
+        re.search(rf"(?:只|仅|必须|务必).{{0,8}}{transcript_source}", text)
+        or re.search(rf"{transcript_source}(?:证据|为准|回答)", text)
+        or (
+            re.search(transcript_source, text)
+            and re.search(r"不要(?:使用|依据|根据|看|用)?.{0,4}(?:笔记|总结|画面)", text)
+        )
+    )
+
+
+def _citation_is_trusted(citation: dict) -> bool:
+    if not isinstance(citation, dict):
+        return False
+    text = _clip_text(str(citation.get("text") or ""), 1800)
+    if not text:
+        return False
+    return not browser_subtitle_text_is_player_ui(text)
+
+
+def _sanitize_citations(citations: list[dict]) -> list[dict]:
+    return [citation for citation in citations if _citation_is_trusted(citation)]
+
+
 def _note_evidence_chunks(note: str, limit: int = 80) -> list[dict]:
     chunks: list[dict] = []
     heading = ""
@@ -2536,6 +2562,7 @@ def _task_qa_context(task: TaskRecord) -> tuple[str, list[dict]]:
                 "target_tab": "slices",
             })
 
+    citations = _sanitize_citations(citations)
     context = "\n\n".join(
         f"[{item.get('source')}] {item.get('label')}: {item.get('text')}"
         for item in citations
@@ -2551,6 +2578,7 @@ def _rank_citations_for_question(
 ) -> list[dict]:
     ranked = []
     related_terms = related_terms or set()
+    citations = _sanitize_citations(citations)
     for index, citation in enumerate(citations):
         if not isinstance(citation, dict):
             continue
@@ -2634,11 +2662,8 @@ def _qa_history_messages(history: list[dict]) -> list[dict]:
     messages: list[dict] = []
     for item in history[-4:]:
         question = _clip_text(str(item.get("question") or ""), 600)
-        answer = _clip_text(str(item.get("answer") or ""), 1200)
         if question:
             messages.append({"role": "user", "content": question})
-        if answer:
-            messages.append({"role": "assistant", "content": answer})
     return messages
 
 
@@ -2677,7 +2702,20 @@ def read_task_qa_history(task_id: str) -> list[dict]:
         items = data.get("items", [])
     else:
         items = []
-    return [item for item in items if isinstance(item, dict)]
+    sanitized_items: list[dict] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        sanitized = dict(item)
+        citations = item.get("citations") if isinstance(item.get("citations"), list) else []
+        trusted_citations = _sanitize_citations(citations)
+        # A historical answer whose entire evidence trail is player chrome or
+        # danmaku should not remain visible after the evidence is rejected.
+        if citations and not trusted_citations:
+            continue
+        sanitized["citations"] = trusted_citations
+        sanitized_items.append(sanitized)
+    return sanitized_items
 
 
 def append_task_qa_history(task: TaskRecord, request: TaskQuestionRequest, result: dict) -> tuple[dict, list[dict]]:
@@ -2703,7 +2741,7 @@ def append_task_qa_history(task: TaskRecord, request: TaskQuestionRequest, resul
                 "start": citation.get("start") if isinstance(citation.get("start"), (int, float)) else None,
                 "end": citation.get("end") if isinstance(citation.get("end"), (int, float)) else None,
             }
-            for citation in (result.get("citations") or [])[:12]
+            for citation in _sanitize_citations(result.get("citations") or [])[:12]
             if isinstance(citation, dict)
         ],
     }
@@ -2873,10 +2911,26 @@ def task_qa_suggestions(task: TaskRecord, limit: int = 7) -> list[dict]:
 def _answer_task_question(task: TaskRecord, request: TaskQuestionRequest) -> dict:
     options = merge_task_options(task.options, request.options)
     context, all_citations = _task_qa_context(task)
+    strict_transcript = _strict_transcript_evidence_requested(request.question)
+    if strict_transcript:
+        all_citations = [citation for citation in all_citations if citation.get("source") == "transcript"]
+        if not all_citations:
+            return {
+                "answer": "没有找到可信的字幕或转写证据，无法只依据字幕回答这个问题。请先重新生成字幕或核对转写结果。",
+                "source": "insufficient-evidence",
+                "warning": "trusted_transcript_missing",
+                "provider": "",
+                "model": "",
+                "citations": [],
+            }
+        context = "\n\n".join(
+            f"[{item.get('source')}] {item.get('label')}: {item.get('text')}"
+            for item in all_citations
+        )
     if not context.strip():
         raise HTTPException(status_code=404, detail={"code": "task_context_missing", "message": "任务还没有可用于问答的笔记、字幕或画面索引。"})
 
-    history = _recent_qa_history(task.id) if _is_follow_up_question(request.question) else []
+    history = [] if strict_transcript else (_recent_qa_history(task.id) if _is_follow_up_question(request.question) else [])
     question_terms = _question_terms(request.question)
     citations = _rank_citations_for_question(
         all_citations,

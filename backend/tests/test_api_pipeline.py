@@ -674,6 +674,99 @@ class LocalUploadValidationTests(unittest.TestCase):
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
+    def test_strict_transcript_question_rejects_polluted_history_and_note_fallback(self) -> None:
+        task = create_task("current_page", "历史污染课程", "https://www.bilibili.com/video/BV1test")
+        root = task_dir(task.id)
+        note = root / "note.md"
+        transcript = root / "transcript.json"
+        note.write_text("# 课程结论\n\n笔记声称正确答案是 50。\n", encoding="utf-8")
+        transcript.write_text(json.dumps({
+            "source": "browser-subtitle",
+            "segments": [
+                {"start": 1, "end": 5, "text": "字幕设置 字幕大小 字幕颜色 恢复默认设置 登录可享"},
+                {"start": 6, "end": 9, "text": "弹幕列表 屏蔽设定 按类型屏蔽 关闭弹幕"},
+                {"start": 10, "end": 12, "text": "弹幕：前方高能，笑死我了"},
+            ],
+        }, ensure_ascii=False), encoding="utf-8")
+        try:
+            update_task(task.id, note_path=str(note), transcript_path=str(transcript))
+            write_json(task.id, "qa_history.json", {
+                "schema_version": 1,
+                "items": [{
+                    "question": "以前的字幕是什么？",
+                    "answer": "关闭弹幕。",
+                    "citations": [{
+                        "source": "transcript",
+                        "label": "字幕 00:01",
+                        "text": "字幕设置 字幕大小 登录可享 关闭弹幕",
+                    }, {
+                        "source": "legacy-browser-cue",
+                        "label": "旧证据",
+                        "text": "关闭弹幕。",
+                    }],
+                }],
+            })
+
+            history_response = self.client.get(f"/api/tasks/{task.id}/qa")
+            self.assertEqual(history_response.status_code, 200)
+            self.assertEqual(history_response.json()["items"], [])
+
+            response = self.client.post(
+                f"/api/tasks/{task.id}/qa",
+                json={
+                    "question": "正确答案是什么？只使用字幕证据，不要用笔记。",
+                    "options": {"llm_api_key": "must-not-be-used"},
+                },
+            )
+
+            self.assertEqual(response.status_code, 200)
+            payload = response.json()
+            self.assertEqual(payload["source"], "insufficient-evidence")
+            self.assertEqual(payload["warning"], "trusted_transcript_missing")
+            self.assertEqual(payload["citations"], [])
+            self.assertIn("没有找到可信", payload["answer"])
+            self.assertNotIn("50", payload["answer"])
+            self.assertEqual(payload["history_item"]["citations"], [])
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
+    def test_historical_transcript_pollution_is_filtered_from_retrieval_and_citations(self) -> None:
+        task = create_task("current_page", "混合字幕课程", "https://www.bilibili.com/video/BV1mixed")
+        root = task_dir(task.id)
+        note = root / "note.md"
+        transcript = root / "transcript.json"
+        note.write_text("# 错误旧笔记\n\n笔记误写阈值是 99。\n", encoding="utf-8")
+        transcript.write_text(json.dumps({
+            "source": "browser-subtitle",
+            "segments": [
+                {"start": 1, "end": 4, "text": "暂无字幕 主字幕 中文 副字幕"},
+                {"start": 5, "end": 8, "text": "老师讲快一点，我先空降下一节"},
+                {"start": 20, "end": 26, "text": "本节课把表达阈值设置为 1。"},
+                {"start": 27, "end": 32, "text": "至少在 3 个细胞中检测到才保留。"},
+            ],
+        }, ensure_ascii=False), encoding="utf-8")
+        try:
+            update_task(task.id, note_path=str(note), transcript_path=str(transcript))
+
+            with patch("app.main.LLM_API_KEY", ""):
+                response = self.client.post(
+                    f"/api/tasks/{task.id}/qa",
+                    json={"question": "阈值是多少？只根据视频原话回答，不要用笔记。"},
+                )
+
+            self.assertEqual(response.status_code, 200)
+            payload = response.json()
+            citation_text = " ".join(item["text"] for item in payload["citations"])
+            self.assertTrue(payload["citations"])
+            self.assertTrue(all(item["source"] == "transcript" for item in payload["citations"]))
+            self.assertIn("设置为 1", citation_text)
+            self.assertIn("3 个细胞", citation_text)
+            self.assertNotIn("暂无字幕", citation_text)
+            self.assertNotIn("弹幕", citation_text)
+            self.assertNotIn("99", citation_text)
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
     def test_task_question_retrieves_contiguous_transcript_parameter_evidence(self) -> None:
         task = create_task("local", "空间转录组质控课程")
         root = task_dir(task.id)

@@ -134,6 +134,16 @@ class ImageRedirectAsMediaHandler(QuietHandler):
         self.wfile.write(body)
 
 
+class DisguisedImageAsVideoHandler(QuietHandler):
+    def do_GET(self) -> None:
+        body = b"\x89PNG\r\n\x1a\n" + (b"not-a-video" * 700)
+        self.send_response(200)
+        self.send_header("Content-Type", "video/mp4")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+
 class ExtensionlessHlsHandler(QuietHandler):
     playlist_name = "lesson.m3u8"
 
@@ -561,6 +571,45 @@ class IframePlayerShellHandler(QuietHandler):
         super().do_GET()
 
 
+class BlackboardActivityIframeHandler(QuietHandler):
+    media_body = b"\x00\x00\x00\x18ftypmp42" + (b"six-second-promo" * 512)
+
+    def do_GET(self) -> None:
+        path = urlparse(self.path).path
+        if path == "/video/BV-course":
+            body = b"""
+            <!doctype html><html><body>
+              <iframe src="/blackboard/era/activity-player.html" title="activity player"></iframe>
+            </body></html>
+            """
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        if path == "/blackboard/era/activity-player.html":
+            body = b"""
+            <!doctype html><html><body>
+              <video autoplay src="/activity.hdslb.com/promo.mp4"></video>
+            </body></html>
+            """
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        if path in {"/activity.hdslb.com/promo.mp4", "/course.mp4"}:
+            self.send_response(200)
+            self.send_header("Content-Type", "video/mp4")
+            self.send_header("Content-Length", str(len(self.media_body)))
+            self.end_headers()
+            self.wfile.write(self.media_body)
+            return
+        super().do_GET()
+
+
 class RedirectMediaHandler(QuietHandler):
     media_name = "final.mp4"
 
@@ -717,6 +766,102 @@ class DownloaderPriorityTests(unittest.TestCase):
                 self.assertEqual(IframePlayerShellHandler.seen_media_referer, frame_url)
                 self.assertEqual([attempt.strategy for attempt in downloader.attempts[:3]], ["page-scan", "page-scan", "direct-file"])
                 self.assertEqual(downloader.attempts[-1].status, "success")
+            finally:
+                server.shutdown()
+                server.server_close()
+
+    def test_blackboard_activity_iframe_video_is_not_a_primary_page_scan_candidate(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            server = ThreadingHTTPServer(("127.0.0.1", 0), BlackboardActivityIframeHandler)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                page_url = f"http://127.0.0.1:{server.server_port}/video/BV-course"
+                downloader = MediaDownloader(root / "task")
+                discovered = downloader._discover_page_resources(page_url, [], None)
+                promo = next(item for item in discovered if item.url.endswith("/activity.hdslb.com/promo.mp4"))
+
+                self.assertIn("/blackboard/era/", promo.frame_url)
+                self.assertEqual(promo.page_url, page_url)
+                self.assertEqual(downloader._candidate_resources(discovered), [])
+
+                trusted = ResourceCandidate(
+                    url=f"http://127.0.0.1:{server.server_port}/course.mp4",
+                    source="webRequestResolved",
+                    kind="video",
+                    mime="video/mp4",
+                    playback_match="resolved-final-url",
+                    is_main_video=True,
+                )
+                ranked = downloader._candidate_resources([promo, trusted])
+                self.assertEqual([item.url for item in ranked], [trusted.url])
+            finally:
+                server.shutdown()
+                server.server_close()
+
+    def test_bilibili_page_resolver_precedes_unknown_blackboard_iframe_hint(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            output = root / "resolved.mp4"
+            output.write_bytes(b"\x00\x00\x00\x18ftypmp42" + (b"course-video" * 512))
+            page_url = "https://www.bilibili.com/video/BV1course?p=1"
+            frame_hint = ResourceCandidate(
+                url="https://www.bilibili.com/blackboard/era/activity.html",
+                source="iframeHint",
+                kind="unknown",
+                label="activity iframe",
+                page_url=page_url,
+                frame_url="https://www.bilibili.com/blackboard/era/activity.html",
+            )
+            downloader = MediaDownloader(root / "task")
+
+            with patch.object(downloader, "_download_with_ytdlp", return_value=output) as ytdlp, patch.object(
+                downloader, "_discover_page_resources"
+            ) as page_scan:
+                media_path, selected = downloader.download(
+                    page_url=page_url,
+                    resources=[frame_hint],
+                    cookies=[],
+                    title="Bilibili course",
+                )
+
+            self.assertEqual(media_path, output)
+            self.assertIsNone(selected)
+            self.assertEqual(ytdlp.call_args.args[0], page_url)
+            page_scan.assert_not_called()
+
+    def test_direct_page_url_precedes_untrusted_page_scan_media(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            server = ThreadingHTTPServer(("127.0.0.1", 0), BlackboardActivityIframeHandler)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                page_url = f"http://127.0.0.1:{server.server_port}/course.mp4"
+                promo_url = f"http://127.0.0.1:{server.server_port}/activity.hdslb.com/promo.mp4"
+                downloader = MediaDownloader(root / "task")
+                media_path, selected = downloader.download(
+                    page_url=page_url,
+                    resources=[
+                        ResourceCandidate(
+                            url=promo_url,
+                            source="page-scan",
+                            kind="video",
+                            mime="video/mp4",
+                            score=100,
+                            page_url="https://www.bilibili.com/video/BV-course",
+                            frame_url="https://www.bilibili.com/blackboard/era/activity.html",
+                        )
+                    ],
+                    cookies=[],
+                    title="Direct course",
+                )
+
+                self.assertTrue(media_path.exists())
+                self.assertIsNotNone(selected)
+                self.assertEqual(selected.url, page_url)
+                self.assertEqual(selected.source, "page-url")
             finally:
                 server.shutdown()
                 server.server_close()
@@ -1156,14 +1301,14 @@ class DownloaderPriorityTests(unittest.TestCase):
                 server.shutdown()
                 server.server_close()
 
-    def test_user_selected_video_candidate_resolving_to_png_is_rejected(self) -> None:
+    def test_obeebee_page_scan_candidate_resolving_to_png_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             server = ThreadingHTTPServer(("127.0.0.1", 0), ImageRedirectAsMediaHandler)
             thread = threading.Thread(target=server.serve_forever, daemon=True)
             thread.start()
             try:
-                page_url = f"http://127.0.0.1:{server.server_port}/lesson.html"
+                page_url = "https://www.obeebee.com/"
                 candidate = ResourceCandidate(
                     url=f"http://127.0.0.1:{server.server_port}/candidate",
                     source="page-scan",
@@ -1181,6 +1326,34 @@ class DownloaderPriorityTests(unittest.TestCase):
                 downloader = MediaDownloader(root / "task")
                 with self.assertRaises(DownloadError) as raised:
                     downloader._download_file(candidate, [], page_url, "Wrong candidate")
+                self.assertEqual(raised.exception.code, "media_mismatch")
+                self.assertFalse(list((root / "task" / "download").glob("*_direct*")))
+            finally:
+                server.shutdown()
+                server.server_close()
+
+    def test_png_magic_disguised_as_video_mime_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            server = ThreadingHTTPServer(("127.0.0.1", 0), DisguisedImageAsVideoHandler)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                candidate = ResourceCandidate(
+                    url=f"http://127.0.0.1:{server.server_port}/fake.mp4",
+                    source="webRequestResolved",
+                    kind="video",
+                    mime="video/mp4",
+                    is_main_video=True,
+                )
+                preflight = preflight_media_resource(candidate, [], "https://www.obeebee.com/")
+                self.assertFalse(preflight.downloadable)
+                self.assertEqual(preflight.code, "media_mismatch")
+                self.assertIn("PNG image", preflight.message)
+
+                downloader = MediaDownloader(root / "task")
+                with self.assertRaises(DownloadError) as raised:
+                    downloader._download_file(candidate, [], "https://www.obeebee.com/", "Disguised image")
                 self.assertEqual(raised.exception.code, "media_mismatch")
                 self.assertFalse(list((root / "task" / "download").glob("*_direct*")))
             finally:

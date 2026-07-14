@@ -1,6 +1,6 @@
 #define MyAppName "LearnNote"
 #ifndef MyAppVersion
-  #define MyAppVersion "0.1.23"
+  #define MyAppVersion "0.1.24"
 #endif
 
 [Setup]
@@ -24,6 +24,8 @@ UninstallDisplayIcon={app}\LearnNote.exe
 
 [Files]
 Source: "..\dist\LearnNote\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "data\*"
+; Keep the unpacked MV3 extension at a stable, user-visible path.
+Source: "..\extension\*"; DestDir: "{app}\extension"; Flags: ignoreversion recursesubdirs; Excludes: "tests\*"
 
 [Icons]
 Name: "{group}\LearnNote"; Filename: "{app}\LearnNote.exe"

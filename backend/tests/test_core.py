@@ -57,17 +57,26 @@ class ResourceDetectionTests(unittest.TestCase):
         self.assertTrue(browser_subtitle_text_is_player_ui(player_menu))
         self.assertTrue(browser_subtitle_text_is_player_ui("主字幕 中文"))
         self.assertTrue(browser_subtitle_text_is_player_ui("字幕 添加字幕"))
+        self.assertTrue(browser_subtitle_text_is_player_ui("关闭弹幕。"))
+        self.assertTrue(browser_subtitle_text_is_player_ui("弹幕列表 屏蔽设定 按类型屏蔽 关闭弹幕"))
+        self.assertTrue(browser_subtitle_text_is_player_ui("弹幕：前方高能，笑死我了"))
+        self.assertTrue(browser_subtitle_text_is_player_ui("老师讲快一点，我先空降下一节"))
         self.assertFalse(browser_subtitle_text_is_player_ui(course_text))
+        self.assertFalse(browser_subtitle_text_is_player_ui("老师解释弹幕系统如何影响视频社区互动"))
 
         transcript = transcript_from_browser_subtitles([
             BrowserSubtitleCue(start=0, end=5, text=player_menu),
             BrowserSubtitleCue(start=5, end=6, text="暂无字幕 主字幕 中文 副字幕"),
             BrowserSubtitleCue(start=5, end=6, text="字幕大小 适中 最小 较小 适中 较大 最大"),
+            BrowserSubtitleCue(start=6, end=7, text="弹幕：前方高能，笑死我了"),
+            BrowserSubtitleCue(start=7, end=8, text="老师讲快一点，我先空降下一节"),
             BrowserSubtitleCue(start=6, end=10, text="表达阈值设为 1，至少在 3 个细胞中检测到"),
         ])
         self.assertEqual(len(transcript.segments), 1)
         self.assertIn("表达阈值", transcript.full_text)
         self.assertNotIn("登录可享", transcript.full_text)
+        self.assertNotIn("前方高能", transcript.full_text)
+        self.assertNotIn("空降下一节", transcript.full_text)
 
     def test_automatic_diagnostics_detects_spa_context_mismatch(self) -> None:
         severity, summary, findings, actions = _automatic_diagnostic_rules({

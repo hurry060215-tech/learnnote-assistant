@@ -26,9 +26,9 @@ data/config/
 data/wheelhouse*/
 data/tasks/
 data/static/
+data/
 extension/.DS_Store
 build/
 dist/
 dist-installer/
-LearnNote.spec
 LearnNote-*.zip

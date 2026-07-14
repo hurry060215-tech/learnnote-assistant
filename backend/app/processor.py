@@ -25,16 +25,25 @@ ASR_FAILURE_SOURCES = {"missing-faster-whisper", "faster-whisper-error"}
 PLAYER_UI_SUBTITLE_MARKERS = (
     "字幕设置", "字幕大小", "字幕颜色", "描边方式", "默认位置", "背景不透明度",
     "恢复默认设置", "关闭弹幕", "登录可享", "原声翻译体验反馈", "添加字幕",
+    "弹幕设置", "弹幕列表", "发送弹幕", "发个友善的弹幕", "按类型屏蔽", "屏蔽设定",
 )
 PLAYER_UI_SUBTITLE_SIGNATURES = (
     "B站自研的AI原声翻译功能", "本视频开启原声翻译时不支持关闭字幕",
     "暂无字幕 主字幕", "主字幕 中文 副字幕", "适中 最小 较小 适中 较大 最大",
     "红色 白色 红色 紫色", "左下角 底部居中 右下角", "无描边 重墨 描边",
+    "弹幕列表 屏蔽设定", "按类型屏蔽 按用户屏蔽", "发个友善的弹幕", "请先登录后发表评论",
+    "弹幕礼仪", "高级弹幕", "历史弹幕", "弹幕：",
 )
 PLAYER_UI_EXACT_SUBTITLE_TEXTS = {
     "字幕", "主字幕", "副字幕", "添加字幕", "字幕 添加字幕", "主字幕 中文", "主字幕 中文 副字幕",
     "暂无字幕", "关闭", "其它设置", "等比缩放", "淡入淡出", "背景不透明度", "默认位置",
+    "弹幕", "弹幕设置", "弹幕列表", "关闭弹幕", "发送弹幕", "发个友善的弹幕", "屏蔽设定",
+    "按类型屏蔽", "按用户屏蔽", "弹幕礼仪", "高级弹幕", "历史弹幕",
 }
+PLAYER_DANMAKU_COMMENT_SIGNATURES = (
+    "前方高能", "笑死我了", "一键三连", "爷青回", "开幕雷击", "空降成功",
+    "课代表来了", "老师讲快一点", "老师讲得太快", "求课代表", "下饭视频",
+)
 
 
 @dataclass
@@ -390,13 +399,26 @@ def browser_subtitle_text_is_player_ui(text: str) -> bool:
     normalized = " ".join(str(text or "").split())
     if not normalized:
         return False
-    if normalized in PLAYER_UI_EXACT_SUBTITLE_TEXTS:
+    trimmed = normalized.strip(" \t\r\n,，。:：;；!?！？()（）[]【】")
+    if trimmed in PLAYER_UI_EXACT_SUBTITLE_TEXTS:
         return True
     if any(signature in normalized for signature in PLAYER_UI_SUBTITLE_SIGNATURES):
         return True
+    if any(signature in normalized for signature in PLAYER_DANMAKU_COMMENT_SIGNATURES):
+        return True
+    if re.search(r"哈{3,}|(?:^|\s)6{3,}(?:\s|$)", normalized, flags=re.I):
+        return True
     marker_hits = sum(marker in normalized for marker in PLAYER_UI_SUBTITLE_MARKERS)
     repeated_ui_labels = sum(normalized.count(marker) - 1 for marker in PLAYER_UI_SUBTITLE_MARKERS)
-    return marker_hits >= 3 or (marker_hits >= 2 and repeated_ui_labels >= 2)
+    if marker_hits >= 3 or (marker_hits >= 2 and repeated_ui_labels >= 2):
+        return True
+    # Historical extension versions occasionally stored the complete Bilibili
+    # player control row as one cue. Repeated short labels are not speech.
+    danmaku_controls = sum(
+        marker in normalized
+        for marker in ("弹幕设置", "弹幕列表", "关闭弹幕", "发送弹幕", "屏蔽设定", "按类型屏蔽")
+    )
+    return danmaku_controls >= 2
 
 
 def transcript_from_browser_subtitles(segments: list[BrowserSubtitleCue]) -> TranscriptResult:

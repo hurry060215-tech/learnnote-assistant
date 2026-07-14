@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>LearnNote 学习视频笔记</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="/web/styles.css?v=20260714-v0123">
-    <link rel="stylesheet" href="/web/workspace.css?v=20260714-v0123">
-    <link rel="stylesheet" href="/web/product.css?v=20260714-v0123">
+    <link rel="stylesheet" href="/web/styles.css?v=20260714-v0124">
+    <link rel="stylesheet" href="/web/workspace.css?v=20260714-v0124">
+    <link rel="stylesheet" href="/web/product.css?v=20260714-v0124">
   </head>
   <body data-app-view="workspace">
     <header class="topbar">
@@ -187,20 +187,21 @@
         <div class="panel-heading">
           <span class="eyeless">LearnNote 工作台</span>
           <strong>新建学习笔记</strong>
+          <p class="panel-subtitle">选择视频来源，设置学习目标，然后交给 LearnNote 整理成可追溯的学习笔记。</p>
         </div>
 
         <div id="sourceRouteRail" class="source-route-rail" aria-label="学习入口路线"></div>
 
         <div class="source-tabs" role="tablist" aria-label="视频来源">
-          <button class="source-tab active" data-source="browser">
+          <button class="source-tab active" data-source="browser" type="button" role="tab" aria-selected="true">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4z"/><path d="M4 9h16M9 19V9"/></svg>
             <span><b>当前页面</b><small>从扩展侧栏读取正在播放的视频</small></span>
           </button>
-          <button class="source-tab" data-source="url">
+          <button class="source-tab" data-source="url" type="button" role="tab" aria-selected="false">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.07 0l2.12-2.12a5 5 0 0 0-7.07-7.07L11 4.93"/><path d="M14 11a5 5 0 0 0-7.07 0L4.8 13.12a5 5 0 0 0 7.07 7.07L13 19.07"/></svg>
             <span><b>视频链接</b><small>解析网页或直接媒体链接</small></span>
           </button>
-          <button class="source-tab" data-source="local">
+          <button class="source-tab" data-source="local" type="button" role="tab" aria-selected="false">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5M4 17v3h16v-3"/></svg>
             <span><b>本地视频</b><small>拖入 mp4、flv、avi、mkv、webm 等文件</small></span>
           </button>
@@ -652,6 +653,6 @@
       </section>
     </div>
 
-    <script src="/web/app.js?v=20260714-v0123"></script>
+    <script src="/web/app.js?v=20260714-v0124"></script>
   </body>
 </html>

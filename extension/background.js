@@ -342,6 +342,55 @@ function playableEndpointScore(resource = {}) {
   return Math.min(100, 38 + rank * 8 + hostBoost);
 }
 
+function isImageResource(resource = {}) {
+  return /^image\//i.test(String(resource.mime || resource.headers?.["content-type"] || "")) || resource.kind === "image";
+}
+
+function isLearningFrameUrl(value = "") {
+  return /(?:^|\.)chaoxing\.com$|(?:^|\.)xuexitong\.com$/i.test(urlHost(value));
+}
+
+function isActivityOrAdUrl(value = "") {
+  const url = String(value || "");
+  if (!url || isLearningFrameUrl(url)) return false;
+  let host = "";
+  let path = "";
+  try {
+    const parsed = new URL(url);
+    host = parsed.hostname;
+    path = parsed.pathname;
+  } catch {
+    return false;
+  }
+  return /(?:^|\.)obeebee\.com$/i.test(host) ||
+    /(?:^|\.)activity\.hdslb\.com$/i.test(host) ||
+    (/(?:^|\.)bilibili\.com$/i.test(host) && /\/(?:blackboard|activity|festival)(?:\/|$)/i.test(path)) ||
+    /(?:^|[._-])ads?(?:[._-]|$)|advert/i.test(host) ||
+    /\/(?:ads?|advert(?:isement)?|promo)(?:\/|$)/i.test(path);
+}
+
+function resourceContextUrl(resource = {}) {
+  return resource.frame_url || resource.page_url || resource.initiator || resource.url || "";
+}
+
+function resourceVisibilityRank(resource = {}) {
+  if (resource.frame_visible === false || resource.is_visible === false || ["hidden", "offscreen"].includes(resource.visibility)) return 0;
+  if (resource.is_visible === true || resource.frame_visible === true || resource.visibility === "visible") return 2;
+  return 1;
+}
+
+function isShortDecorativeVideo(resource = {}) {
+  const duration = Number(resource.duration || 0);
+  const area = Number(resource.visible_area || resource.frame_visible_area || 0);
+  return duration > 0 && duration <= 45 && area > 0 && area <= 640 * 360;
+}
+
+function resourceContextRank(resource = {}) {
+  if (isActivityOrAdUrl(resourceContextUrl(resource))) return 0;
+  if (isShortDecorativeVideo(resource)) return 1;
+  return 2;
+}
+
 function sourceRank(source = "") {
   if (source === "pageHookMediaSource" || source === "pageHookBlobSource") return 7;
   if (String(source || "").startsWith("pageHookPlayer")) return 6;
@@ -374,6 +423,8 @@ function playbackMatchRank(match = "") {
 function compareResourceCandidates(a = {}, b = {}) {
   const left = [
     a.user_selected ? 1 : 0,
+    resourceContextRank(a),
+    resourceVisibilityRank(a),
     a.is_main_video ? 1 : 0,
     playbackMatchRank(a.playback_match),
     isDirectResourceCandidate(a) ? 1 : 0,
@@ -386,6 +437,8 @@ function compareResourceCandidates(a = {}, b = {}) {
   ];
   const right = [
     b.user_selected ? 1 : 0,
+    resourceContextRank(b),
+    resourceVisibilityRank(b),
     b.is_main_video ? 1 : 0,
     playbackMatchRank(b.playback_match),
     isDirectResourceCandidate(b) ? 1 : 0,
@@ -404,7 +457,7 @@ function compareResourceCandidates(a = {}, b = {}) {
 
 function mergeAndRankResources(resources, page = {}, tab = {}, { preserveOrder = false } = {}) {
   const baseResources = Array.isArray(resources) ? resources : resourceByTab.get(tab?.id) || [];
-  const hinted = (baseResources || []).map(item => withPlaybackHints(item, page, tab));
+  const hinted = (baseResources || []).filter(item => !isImageResource(item)).map(item => withPlaybackHints(item, page, tab));
   const byUrl = new Map();
   for (const item of hinted) {
     const previous = byUrl.get(item.url);
@@ -495,11 +548,26 @@ function withPlaybackHints(resource, page = {}, tab = {}) {
   const hinted = addActiveVideoRequestContext({ ...resource, kind }, page, tab);
   let boost = 0;
   let match = hinted.playback_match || "";
+  const applyActiveEvidence = () => {
+    hinted.visibility = active.visibility || hinted.visibility || "unknown";
+    hinted.is_visible = active.is_visible ?? hinted.is_visible ?? null;
+    hinted.visible_area = active.visible_area ?? hinted.visible_area ?? null;
+    hinted.rendered_width = active.rendered_width ?? hinted.rendered_width ?? null;
+    hinted.rendered_height = active.rendered_height ?? hinted.rendered_height ?? null;
+    hinted.width = active.width ?? hinted.width ?? null;
+    hinted.height = active.height ?? hinted.height ?? null;
+    hinted.duration = active.duration ?? hinted.duration ?? null;
+    hinted.paused = active.paused ?? hinted.paused ?? null;
+    hinted.frame_visible = active.frame_visible ?? hinted.frame_visible ?? null;
+    hinted.frame_visibility = active.frame_visibility || hinted.frame_visibility || "unknown";
+    hinted.frame_visible_area = active.frame_visible_area ?? hinted.frame_visible_area ?? null;
+  };
 
   if (activeSrc && hinted.url === activeSrc) {
     boost += 20;
     match = match || "exact-src";
     hinted.is_main_video = true;
+    applyActiveEvidence();
   }
 
   if (activeSrc && hinted.blob_url === activeSrc && isDownloadableKind(kind)) {
@@ -525,6 +593,7 @@ function withPlaybackHints(resource, page = {}, tab = {}) {
     boost += 10;
     match = match || "blob-source";
     hinted.is_main_video = true;
+    applyActiveEvidence();
   }
 
   const veryRecent = hinted.time_stamp && Date.now() - hinted.time_stamp < 45 * 1000;
@@ -542,6 +611,7 @@ function withPlaybackHints(resource, page = {}, tab = {}) {
     boost += kind === "fragment" ? sameActiveFrame ? 18 : 14 : sameActiveFrame ? 22 : 18;
     match = ["exact-src", "blob-source"].includes(match) ? match : "range-near-playhead";
     hinted.is_main_video = true;
+    applyActiveEvidence();
     hinted.current_time = active.current_time ?? hinted.current_time ?? null;
     hinted.duration = active.duration ?? hinted.duration ?? null;
   }
@@ -561,6 +631,7 @@ function withPlaybackHints(resource, page = {}, tab = {}) {
       ? match
       : "fragment-near-playhead";
     hinted.is_main_video = true;
+    applyActiveEvidence();
     hinted.current_time = active.current_time ?? hinted.current_time ?? null;
     hinted.duration = active.duration ?? hinted.duration ?? null;
   }
@@ -615,6 +686,14 @@ function mergeResource(previous, incoming) {
   merged.duration = incoming.duration ?? previous.duration ?? null;
   merged.width = incoming.width ?? previous.width ?? null;
   merged.height = incoming.height ?? previous.height ?? null;
+  merged.visibility = incoming.visibility !== "unknown" ? incoming.visibility : previous.visibility || "unknown";
+  merged.is_visible = incoming.is_visible ?? previous.is_visible ?? null;
+  merged.visible_area = incoming.visible_area ?? previous.visible_area ?? null;
+  merged.rendered_width = incoming.rendered_width ?? previous.rendered_width ?? null;
+  merged.rendered_height = incoming.rendered_height ?? previous.rendered_height ?? null;
+  merged.frame_visible = incoming.frame_visible ?? previous.frame_visible ?? null;
+  merged.frame_visibility = incoming.frame_visibility !== "unknown" ? incoming.frame_visibility : previous.frame_visibility || "unknown";
+  merged.frame_visible_area = incoming.frame_visible_area ?? previous.frame_visible_area ?? null;
   merged.status_code = incoming.status_code ?? previous.status_code ?? null;
   merged.content_length = incoming.content_length ?? previous.content_length ?? null;
   merged.mse_append_bytes = incoming.mse_append_bytes ?? previous.mse_append_bytes ?? null;
@@ -963,6 +1042,7 @@ function normalizePageForFrame(page = {}, frameId = 0, tab = {}) {
     active_video: page.active_video || null,
     browser_subtitles: normalizeBrowserSubtitles(page.browser_subtitles),
     resources: Array.isArray(page.resources) ? page.resources : [],
+    frame_elements: Array.isArray(page.frame_elements) ? page.frame_elements : [],
     drm_detected: Boolean(page.drm_detected),
     drm_signals: Array.isArray(page.drm_signals) ? page.drm_signals : [],
     frame_id: frameId
@@ -999,17 +1079,104 @@ function hasActiveVideoSignal(page = {}) {
   return Boolean(active?.src || active?.src_object);
 }
 
+function normalizedFrameUrl(value = "") {
+  try {
+    const parsed = new URL(value);
+    parsed.hash = "";
+    return parsed.href;
+  } catch {
+    return String(value || "").split("#")[0];
+  }
+}
+
+function frameElementEvidenceForPage(page = {}, pages = []) {
+  const pageUrl = normalizedFrameUrl(page.page_url);
+  if (!pageUrl || (page.frame_id ?? 0) === 0) return null;
+  const candidates = pages.flatMap(owner => owner.frame_elements || []);
+  for (const owner of pages) {
+    const evidence = (owner.frame_elements || []).find(item => normalizedFrameUrl(item.src) === pageUrl);
+    if (evidence) return evidence;
+  }
+  const sameSiteCandidates = candidates.filter(item => sameSite(item.src, pageUrl));
+  if (sameSiteCandidates.length === 1) return sameSiteCandidates[0];
+  if (isLearningFrameUrl(pageUrl)) {
+    const learningCandidates = candidates.filter(item => isLearningFrameUrl(item.src));
+    if (learningCandidates.length === 1) return learningCandidates[0];
+  }
+  if (isActivityOrAdUrl(pageUrl)) {
+    const activityCandidates = candidates.filter(item => isActivityOrAdUrl(item.src));
+    if (activityCandidates.length === 1) return activityCandidates[0];
+  }
+  return null;
+}
+
+function applyFrameEvidence(page = {}, evidence = null) {
+  const withFrameIdentity = {
+    ...page,
+    active_video: page.active_video ? {
+      ...page.active_video,
+      frame_id: page.active_video.frame_id ?? page.frame_id ?? 0,
+      frame_url: page.active_video.frame_url || page.page_url || ""
+    } : null,
+    resources: (page.resources || []).map(resource => ({
+      ...resource,
+      frame_id: resource.frame_id ?? page.frame_id ?? 0,
+      frame_url: resource.frame_url || page.page_url || "",
+      page_url: resource.page_url || page.page_url || ""
+    }))
+  };
+  if (!evidence) return withFrameIdentity;
+  const frameFields = {
+    frame_visibility: evidence.visibility || "unknown",
+    frame_visible: evidence.is_visible ?? null,
+    frame_visible_area: evidence.visible_area ?? null,
+    frame_width: evidence.rendered_width ?? null,
+    frame_height: evidence.rendered_height ?? null
+  };
+  return {
+    ...withFrameIdentity,
+    active_video: withFrameIdentity.active_video ? { ...withFrameIdentity.active_video, ...frameFields } : null,
+    resources: withFrameIdentity.resources.map(resource => ({ ...resource, ...frameFields }))
+  };
+}
+
+function activePageRank(page = {}) {
+  const active = page.active_video || {};
+  const contextUrl = active.frame_url || page.page_url || "";
+  const visible = active.is_visible !== false && active.frame_visible !== false && !["hidden", "offscreen"].includes(active.visibility);
+  const area = Math.min(
+    Number(active.visible_area || Number.MAX_SAFE_INTEGER),
+    Number(active.frame_visible_area || Number.MAX_SAFE_INTEGER)
+  );
+  return [
+    visible ? 1 : 0,
+    isActivityOrAdUrl(contextUrl) ? 0 : 1,
+    !active.paused ? 1 : 0,
+    Number.isFinite(area) && area !== Number.MAX_SAFE_INTEGER ? area : 0,
+    isLearningFrameUrl(contextUrl) ? 1 : 0,
+    Number(active.duration || 0)
+  ];
+}
+
+function compareActivePages(a = {}, b = {}) {
+  const left = activePageRank(a);
+  const right = activePageRank(b);
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index] !== right[index]) return right[index] - left[index];
+  }
+  return Number(a.frame_id || 0) - Number(b.frame_id || 0);
+}
+
 function mergePageContexts(tab = {}, pages = []) {
   const byFrame = new Map();
   for (const page of pages) {
     if (!page) continue;
     byFrame.set(page.frame_id ?? 0, page);
   }
-  const ordered = [...byFrame.values()].sort((a, b) => (a.frame_id ?? 0) - (b.frame_id ?? 0));
+  const rawOrdered = [...byFrame.values()].sort((a, b) => (a.frame_id ?? 0) - (b.frame_id ?? 0));
+  const ordered = rawOrdered.map(page => applyFrameEvidence(page, frameElementEvidenceForPage(page, rawOrdered)));
   const top = ordered.find(page => (page.frame_id ?? 0) === 0) || ordered[0] || {};
-  const activePage = ordered.find(page => hasActiveVideoSignal(page) && !page.active_video.paused) ||
-    ordered.find(hasActiveVideoSignal) ||
-    null;
+  const activePage = ordered.filter(hasActiveVideoSignal).sort(compareActivePages)[0] || null;
   const textParts = [];
   const seenText = new Set();
   const browserSubtitles = [];
@@ -1054,6 +1221,8 @@ function mergePageContexts(tab = {}, pages = []) {
       title: page.title || "",
       page_url: page.page_url || "",
       has_active_video: hasActiveVideoSignal(page),
+      visibility: page.active_video?.frame_visibility || page.active_video?.visibility || "unknown",
+      visible_area: page.active_video?.frame_visible_area ?? page.active_video?.visible_area ?? null,
       drm_detected: Boolean(page.drm_detected || page.active_video?.drm_detected),
       resource_count: (page.resources || []).length
     }))

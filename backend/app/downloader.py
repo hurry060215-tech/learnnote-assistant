@@ -142,6 +142,11 @@ YTDLP_FIRST_HOSTS = {
     "www.youtube.com",
     "youtu.be",
 }
+PAGE_SCAN_SOURCE_PREFIXES = ("page-scan", "page-frame-scan")
+NON_PRIMARY_FRAME_RE = re.compile(
+    r"(^|[./?&=_-])(ad|ads|advert|advertisement|banner|campaign|promo|promotion|activity|event|blackboard|era)([./?&=_-]|$)",
+    re.I,
+)
 
 
 class DownloadError(RuntimeError):
@@ -1718,6 +1723,8 @@ def rank_media_candidates(resources: list[ResourceCandidate]) -> list[ResourceCa
     for order, item in enumerate(_attach_companion_audio_resources(enrich_with_inferred_manifest_resources(resources))):
         if not item.url or item.url.startswith(("chrome-extension:", "data:")):
             continue
+        if _is_untrusted_page_scan_candidate(item):
+            continue
         kind = effective_resource_kind(item)
         item.kind = kind
         boost = (8 if item.is_main_video else 0) + (10 if item.playback_match else 0)
@@ -1826,6 +1833,89 @@ def _non_media_content_type(content_type: str) -> bool:
     if any(marker in mime for marker in ("mpegurl", "dash+xml")):
         return False
     return mime.startswith("image/") or _textish_content_type(mime)
+
+
+def _binary_video_signature(body: bytes) -> str:
+    sample = body[:4096]
+    if len(sample) >= 12 and sample[4:8] in {b"ftyp", b"styp", b"sidx", b"moov", b"mdat", b"wide", b"free"}:
+        if sample[4:8] == b"ftyp" and sample[8:12].upper() in {b"M4A ", b"M4B ", b"F4A ", b"F4B "}:
+            return ""
+        return "iso-bmff"
+    if sample.startswith(b"\x1a\x45\xdf\xa3"):
+        return "ebml"
+    if sample.startswith(b"FLV"):
+        return "flv"
+    if len(sample) >= 12 and sample.startswith(b"RIFF") and sample[8:12] == b"AVI ":
+        return "avi"
+    if sample.startswith(b"\x30\x26\xb2\x75\x8e\x66\xcf\x11\xa6\xd9\x00\xaa\x00\x62\xce\x6c"):
+        return "asf"
+    if sample.startswith((b"\x00\x00\x01\xba", b"\x00\x00\x01\xb3")):
+        return "mpeg"
+    if len(sample) >= 377 and sample[0] == 0x47 and sample[188] == 0x47 and sample[376] == 0x47:
+        return "mpeg-ts"
+    return ""
+
+
+def _binary_non_video_signature(body: bytes) -> str:
+    sample = body[:64]
+    if len(sample) >= 12 and sample[4:8] == b"ftyp" and sample[8:12].upper() in {b"M4A ", b"M4B ", b"F4A ", b"F4B "}:
+        return "ISO-BMFF audio"
+    signatures = (
+        (b"\x89PNG\r\n\x1a\n", "PNG image"),
+        (b"\xff\xd8\xff", "JPEG image"),
+        (b"GIF87a", "GIF image"),
+        (b"GIF89a", "GIF image"),
+        (b"RIFF", "RIFF non-video"),
+        (b"ID3", "MP3 audio"),
+        (b"fLaC", "FLAC audio"),
+        (b"%PDF-", "PDF document"),
+        (b"PK\x03\x04", "ZIP archive"),
+    )
+    for signature, label in signatures:
+        if sample.startswith(signature):
+            if signature == b"RIFF" and len(sample) >= 12 and sample[8:12] == b"AVI ":
+                continue
+            return label
+    return ""
+
+
+def _binary_video_mismatch(body: bytes, content_type: str) -> str:
+    mime = (content_type or "").split(";", 1)[0].strip().lower()
+    if mime.startswith("audio/"):
+        return f"audio MIME {mime}"
+    if _binary_video_signature(body):
+        return ""
+    detected = _binary_non_video_signature(body)
+    if detected:
+        return detected
+    return "unrecognized video container signature"
+
+
+def _same_site_host(left: str, right: str) -> bool:
+    left_host = (urlparse(left or "").hostname or "").lower().strip(".")
+    right_host = (urlparse(right or "").hostname or "").lower().strip(".")
+    if not left_host or not right_host:
+        return True
+    return left_host == right_host or left_host.endswith(f".{right_host}") or right_host.endswith(f".{left_host}")
+
+
+def _is_untrusted_page_scan_candidate(candidate: ResourceCandidate) -> bool:
+    source = (candidate.source or "").lower()
+    if not source.startswith(PAGE_SCAN_SOURCE_PREFIXES):
+        return False
+    if candidate.user_selected or candidate.is_main_video or candidate.playback_match:
+        return False
+
+    top_page = candidate.page_url or ""
+    frame_url = candidate.frame_url or ""
+    referer = (candidate.request_headers or {}).get("Referer", "")
+    frame_context = frame_url or (referer if referer and referer != top_page else "")
+    suspicious_context = any(
+        NON_PRIMARY_FRAME_RE.search(value or "")
+        for value in (candidate.url, frame_url, referer, candidate.label)
+    )
+    third_party_frame = bool(frame_context and top_page and not _same_site_host(frame_context, top_page))
+    return suspicious_context or third_party_frame
 
 
 def _looks_like_login_or_error(body: bytes) -> bool:
@@ -2221,6 +2311,16 @@ def preflight_media_resource(
                     code="download_forbidden",
                     message="媒体预检没有读到任何视频字节。",
                 )
+            if probe_kind == "video":
+                mismatch = _binary_video_mismatch(body, content_type)
+                if mismatch:
+                    return MediaPreflightResult(
+                        **base,
+                        ok=True,
+                        downloadable=False,
+                        code="media_mismatch",
+                        message=f"Candidate did not contain a recognized video container ({mismatch}).",
+                    )
 
             return MediaPreflightResult(
                 **{**base, "warnings": attempt_warnings},
@@ -2258,7 +2358,7 @@ def preflight_media_resource(
                 if kind == "video" and candidate.audio_url:
                     return _preflight_companion_audio(candidate, cookies, referer, timeout, result)
                 return result
-            if result.code == "drm_or_encrypted":
+            if result.code in {"drm_or_encrypted", "media_mismatch"}:
                 return result
         assert first_result is not None
         return first_result
@@ -2416,6 +2516,22 @@ class MediaDownloader:
         cookies: list[BrowserCookie],
         title: str,
     ) -> tuple[Path, ResourceCandidate | None]:
+        page_kind = classify_resource(urlparse(page_url).path)
+        if page_kind in {"video", "hls", "dash"} and not any(item.url == page_url for item in resources):
+            resources = [
+                ResourceCandidate(
+                    url=page_url,
+                    source="page-url",
+                    kind=page_kind,
+                    mime=_mime_for_kind(page_kind),
+                    score=100,
+                    label="input media URL",
+                    is_main_video=True,
+                    playback_match="exact-src",
+                    page_url=page_url,
+                ),
+                *resources,
+            ]
         resources = self._with_inferred_manifest_resources(resources)
         has_only_unresolved_blob_media = any(item.url.startswith("blob:") for item in resources) and not any(
             effective_resource_kind(item) in {"hls", "dash", "video"} for item in resources
@@ -2507,7 +2623,7 @@ class MediaDownloader:
                         last_error = DownloadError("download_forbidden", str(exc))
             return None
 
-        if not candidates and not resources and _prefer_ytdlp_before_page_scan(page_url):
+        if not candidates and not has_only_unresolved_blob_media and _prefer_ytdlp_before_page_scan(page_url):
             media_path = try_page_ytdlp_fallbacks()
             if media_path:
                 return media_path, None
@@ -2730,6 +2846,13 @@ class MediaDownloader:
                 if not context_candidate or item.url != context_candidate.url:
                     merged_headers.pop("Content-Type", None)
                 item.request_headers = merged_headers
+                if context_candidate:
+                    item.page_url = item.page_url or context_candidate.page_url or referer
+                    item.frame_url = item.frame_url or context_candidate.frame_url
+                    item.is_main_video = item.is_main_video or context_candidate.is_main_video
+                    item.playback_match = item.playback_match or context_candidate.playback_match
+                else:
+                    item.page_url = item.page_url or page_url
             return resources
 
         try:
@@ -3303,6 +3426,12 @@ class MediaDownloader:
                 manifest_kind, manifest_mime = _manifest_kind_from_body(first_chunk.decode("utf-8", errors="ignore"), content_type)
                 if manifest_kind in {"hls", "dash"}:
                     raise ManifestEndpointDetected(manifest_kind, manifest_mime)
+                mismatch = _binary_video_mismatch(first_chunk, content_type)
+                if mismatch:
+                    raise DownloadError(
+                        "media_mismatch",
+                        f"Candidate did not contain a recognized video container ({mismatch}); refusing to save it as video.",
+                    )
                 suffix = _media_suffix_from_response(response.url or url, content_type, content_disposition)
                 output = self.download_dir / f"{_clean_filename(title)}_direct{suffix}"
                 total = candidate.content_length or _response_content_length(response)
@@ -3331,6 +3460,8 @@ class MediaDownloader:
             candidate.mime = detected.mime
             return self._download_manifest(candidate, cookies, referer, title)
         except DownloadError as first_error:
+            if first_error.code == "media_mismatch":
+                raise first_error
             if request_body is not None:
                 raise first_error
             range_headers = dict(base_headers)

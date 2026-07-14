@@ -708,7 +708,7 @@ function showAppView(view = "workspace") {
   if (document.body?.dataset) document.body.dataset.appView = normalizedView;
   document.body?.classList?.toggle("settings-mode", settingsMode);
   if (els.settingsView) els.settingsView.hidden = !settingsMode;
-  document.querySelectorAll?.("[data-app-view]")?.forEach?.(item => {
+  document.querySelectorAll?.(".nav-item[data-app-view]")?.forEach?.(item => {
     const active = settingsMode ? item.dataset.appView === "settings" : item.dataset.appView === view || (view === "workspace" && item.dataset.appView === "workspace");
     item.classList?.toggle("active", active);
   });
@@ -2574,7 +2574,9 @@ function sourceWorkflowHtml(source = selectedSource, task = workflowTaskForSourc
 function renderSourceWorkflow() {
   renderSourceRouteRail();
   if (!els.sourceWorkflow) return;
-  els.sourceWorkflow.innerHTML = sourceWorkflowHtml();
+  const task = workflowTaskForSource(selectedSource);
+  els.sourceWorkflow.classList.toggle("idle", !task);
+  els.sourceWorkflow.innerHTML = sourceWorkflowHtml(selectedSource, task);
 }
 
 function drmSignalText(signals = []) {
@@ -4316,12 +4318,17 @@ async function checkHealth() {
 
 function setSource(source) {
   selectedSource = source;
-  els.sourceTabs.forEach(tab => tab.classList.toggle("active", tab.dataset.source === source));
+  els.sourceTabs.forEach(tab => {
+    const selected = tab.dataset.source === source;
+    tab.classList.toggle("active", selected);
+    tab.setAttribute("aria-selected", selected ? "true" : "false");
+    tab.tabIndex = selected ? 0 : -1;
+  });
   els.panes.forEach(pane => pane.classList.toggle("active", pane.id === `${source}Source`));
-  if (els.generateNoteLabel) els.generateNoteLabel.textContent = source === "browser" ? "在浏览器侧栏开始" : "生成笔记";
+  if (els.generateNoteLabel) els.generateNoteLabel.textContent = source === "browser" ? "检查扩展任务" : "生成笔记";
   if (els.generateNoteHint) {
     els.generateNoteHint.textContent = source === "browser"
-      ? "客户端不读取其他浏览器窗口；当前页任务由扩展侧栏安全交接"
+      ? "先在视频页的 LearnNote 扩展侧栏中开始；返回这里可检查任务并查看进度"
       : source === "local" ? "选择视频后直接上传处理" : "自动识别页面或媒体链接";
   }
   renderSourceWorkflow();
@@ -5947,6 +5954,13 @@ function assistantSelectedTask() {
   return tasks.find(task => task.status === "success" && task.note_path) || null;
 }
 
+function assistantTaskKindLabel(task) {
+  if (!task) return "";
+  if (task.source_type === "page_text" || task.mode === "page_text") return "页面文本笔记";
+  if (task.source_type === "local") return "本地视频笔记";
+  return "视频笔记";
+}
+
 function assistantCitationTarget(citation = {}) {
   if (RESULT_TAB_NAMES.has(citation.target_tab)) return citation.target_tab;
   if (citation.source === "visual_window" || citation.window_id) return "slices";
@@ -5986,9 +6000,16 @@ function bindAssistantEvidenceActions() {
 
 function renderAssistant({ revealLatestAnswer = false } = {}) {
   const task = assistantSelectedTask();
-  if (els.assistantTaskLabel) els.assistantTaskLabel.textContent = task ? displayTaskTitle(task) : "请先在笔记库选择一篇笔记";
+  if (els.assistantTaskLabel) {
+    els.assistantTaskLabel.textContent = task
+      ? `${assistantTaskKindLabel(task)} · ${displayTaskTitle(task)}`
+      : "请先在笔记库选择一篇笔记";
+  }
   if (els.assistantGroundingState) {
-    els.assistantGroundingState.textContent = task ? (assistantBusy ? "正在检索" : "已连接证据") : "等待选择";
+    const textOnly = task && (task.source_type === "page_text" || task.mode === "page_text");
+    els.assistantGroundingState.textContent = task
+      ? (assistantBusy ? "正在检索" : textOnly ? "仅页面文本" : "已连接视频证据")
+      : "等待选择";
     els.assistantGroundingState.classList.toggle("busy", assistantBusy);
     els.assistantGroundingState.classList.toggle("ready", Boolean(task && !assistantBusy));
   }
@@ -7915,9 +7936,22 @@ async function generateNoteFromSelectedSource() {
       await uploadSelectedFile(pendingLocalFile || els.fileInput?.files?.[0]);
       return;
     }
-    openOnboarding();
-    if (els.generateNoteHint) els.generateNoteHint.textContent = "在正在播放的视频页点击 LearnNote 扩展图标，再点“总结当前视频”";
+    if (els.generateNoteLabel) els.generateNoteLabel.textContent = "正在检查...";
+    await loadTasks();
+    const currentTask = preferredCurrentPageTask();
+    if (currentTask?.id) {
+      selectTask(currentTask.id);
+      renderSourceWorkflow();
+      if (els.generateNoteHint) {
+        els.generateNoteHint.textContent = currentTask.status === "success"
+          ? "已找到最近的当前页笔记，可以前往笔记库查看"
+          : `${taskPhaseLabel(currentTask)} · ${Math.max(0, Math.min(100, Number(currentTask.progress || 0)))}%`;
+      }
+    } else if (els.generateNoteHint) {
+      els.generateNoteHint.textContent = "还没有收到当前页任务。请在视频页打开 LearnNote 扩展，点击“总结当前视频”";
+    }
   } finally {
+    if (selectedSource === "browser" && els.generateNoteLabel) els.generateNoteLabel.textContent = "检查扩展任务";
     els.generateNoteButton.disabled = false;
   }
 }
@@ -8241,16 +8275,18 @@ els.fileInput.onchange = () => {
   setSource("local");
 };
 
-document.querySelectorAll?.("[data-app-view]")?.forEach?.(item => {
+document.querySelectorAll?.(".nav-item[data-app-view]")?.forEach?.(item => {
   item.addEventListener("click", event => {
+    event.preventDefault();
     const view = item.dataset.appView;
     if (view === "settings") {
-      event.preventDefault();
       showAppView("settings");
+      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
       return;
     }
     showAppView(view || "workspace");
     if (view === "history") setHistoryCollapsed(false);
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   });
 });
 

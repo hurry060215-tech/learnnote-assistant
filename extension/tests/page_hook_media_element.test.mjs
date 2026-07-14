@@ -27,6 +27,10 @@ class HTMLMediaElement extends Element {
     this.children = [];
     this._src = "";
     this._currentSrc = "";
+    this.clientWidth = 0;
+    this.clientHeight = 0;
+    this.duration = Number.NaN;
+    this.paused = true;
   }
 
   get src() {
@@ -111,6 +115,10 @@ const hookCode = await readFile(new URL("../page_hook.js", import.meta.url), "ut
 vm.runInContext(hookCode, context);
 
 const directVideo = new context.HTMLVideoElement();
+directVideo.clientWidth = 1280;
+directVideo.clientHeight = 720;
+directVideo.duration = 900;
+directVideo.paused = false;
 directVideo.src = "https://cdn.example.com/playback?id=src-assignment&token=1";
 directVideo.currentSrc = "https://cdn.example.com/playback?id=current-src-assignment&token=1";
 
@@ -137,6 +145,10 @@ assert.equal(
   "video",
   "expected extensionless video.src assignment to use video-element fallback kind"
 );
+assert.equal(byUrl.get("https://cdn.example.com/playback?id=src-assignment&token=1")?.visibility, "visible");
+assert.equal(byUrl.get("https://cdn.example.com/playback?id=src-assignment&token=1")?.visible_area, 1280 * 720);
+assert.equal(byUrl.get("https://cdn.example.com/playback?id=src-assignment&token=1")?.duration, 900);
+assert.equal(byUrl.get("https://cdn.example.com/playback?id=src-assignment&token=1")?.paused, false);
 assert.equal(
   byUrl.get("https://cdn.example.com/playback?id=current-src-assignment&token=1")?.kind,
   "video",

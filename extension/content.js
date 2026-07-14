@@ -490,6 +490,7 @@ function resource(url, source, label, mime = "", video = null, isMainVideo = fal
   if (!absolute) return null;
   const effectiveMime = mime || mimeFromPlaybackElementContext(absolute, source, label, video, playbackMatch);
   const kind = classify(absolute, effectiveMime);
+  const visibility = video ? elementVisibilityEvidence(video) : {};
   return {
     url: absolute,
     source,
@@ -504,6 +505,7 @@ function resource(url, source, label, mime = "", video = null, isMainVideo = fal
     duration: video && Number.isFinite(video.duration) ? Number(video.duration || 0) : null,
     width: video ? Number(video.videoWidth || video.clientWidth || 0) : null,
     height: video ? Number(video.videoHeight || video.clientHeight || 0) : null,
+    ...visibility,
     time_stamp: Date.now()
   };
 }
@@ -704,6 +706,7 @@ function comparePageResources(a = {}, b = {}) {
 }
 
 function rememberHookResource(item) {
+  if (/^image\//i.test(String(item?.mime || ""))) return;
   const normalized = resource(item.url, item.source || "pageHook", item.label || "page hook", item.mime || "");
   if (!normalized) return;
   normalized.kind = item.kind || normalized.kind;
@@ -722,6 +725,11 @@ function rememberHookResource(item) {
   normalized.request_body = item.request_body || {};
   normalized.audio_url = absoluteUrl(item.audio_url || "") || "";
   normalized.audio_mime = item.audio_mime || "";
+  normalized.visibility = item.visibility || normalized.visibility || "unknown";
+  normalized.is_visible = item.is_visible ?? normalized.is_visible ?? null;
+  normalized.visible_area = item.visible_area ?? normalized.visible_area ?? null;
+  normalized.rendered_width = item.rendered_width ?? normalized.rendered_width ?? null;
+  normalized.rendered_height = item.rendered_height ?? normalized.rendered_height ?? null;
   const existing = hookResources.find(entry => entry.url === normalized.url);
   if (existing) {
     Object.assign(existing, normalized, {
@@ -739,7 +747,12 @@ function rememberHookResource(item) {
       request_headers: { ...(existing.request_headers || {}), ...(normalized.request_headers || {}) },
       request_body: { ...(existing.request_body || {}), ...(normalized.request_body || {}) },
       audio_url: normalized.audio_url || existing.audio_url || "",
-      audio_mime: normalized.audio_mime || existing.audio_mime || ""
+      audio_mime: normalized.audio_mime || existing.audio_mime || "",
+      visibility: normalized.visibility !== "unknown" ? normalized.visibility : existing.visibility || "unknown",
+      is_visible: normalized.is_visible ?? existing.is_visible ?? null,
+      visible_area: normalized.visible_area ?? existing.visible_area ?? null,
+      rendered_width: normalized.rendered_width ?? existing.rendered_width ?? null,
+      rendered_height: normalized.rendered_height ?? existing.rendered_height ?? null
     });
   } else {
     hookResources.unshift(normalized);
@@ -1253,6 +1266,64 @@ function collectVideos() {
   return deepQuerySelectorAll("video").map((video, index) => ({ video, index }));
 }
 
+function elementVisibilityEvidence(element) {
+  if (!element) return {
+    visibility: "unknown",
+    is_visible: null,
+    visible_area: null,
+    rendered_width: null,
+    rendered_height: null
+  };
+  let rect = null;
+  try {
+    rect = element.getBoundingClientRect?.() || null;
+  } catch {
+    rect = null;
+  }
+  const width = Math.max(0, Number(rect?.width ?? element.clientWidth ?? element.videoWidth ?? 0));
+  const height = Math.max(0, Number(rect?.height ?? element.clientHeight ?? element.videoHeight ?? 0));
+  let style = null;
+  try {
+    style = typeof window.getComputedStyle === "function" ? window.getComputedStyle(element) : null;
+  } catch {
+    style = null;
+  }
+  const explicitlyHidden = Boolean(
+    element.hidden ||
+    readAttribute(element, "aria-hidden") === "true" ||
+    style?.display === "none" ||
+    style?.visibility === "hidden" ||
+    Number(style?.opacity ?? 1) <= 0
+  );
+  const viewportWidth = Math.max(0, Number(window.innerWidth || document.documentElement?.clientWidth || width));
+  const viewportHeight = Math.max(0, Number(window.innerHeight || document.documentElement?.clientHeight || height));
+  const hasRectPosition = rect && Number.isFinite(Number(rect.left)) && Number.isFinite(Number(rect.top));
+  const intersectionWidth = hasRectPosition
+    ? Math.max(0, Math.min(Number(rect.right ?? (rect.left + width)), viewportWidth) - Math.max(Number(rect.left), 0))
+    : width;
+  const intersectionHeight = hasRectPosition
+    ? Math.max(0, Math.min(Number(rect.bottom ?? (rect.top + height)), viewportHeight) - Math.max(Number(rect.top), 0))
+    : height;
+  const visibleArea = explicitlyHidden ? 0 : intersectionWidth * intersectionHeight;
+  const isVisible = !explicitlyHidden && width > 0 && height > 0 && visibleArea > 0;
+  return {
+    visibility: explicitlyHidden ? "hidden" : isVisible ? "visible" : hasRectPosition ? "offscreen" : "unknown",
+    is_visible: isVisible,
+    visible_area: visibleArea,
+    rendered_width: width,
+    rendered_height: height
+  };
+}
+
+function collectFrameElementEvidence() {
+  return deepQuerySelectorAll("iframe").map((iframe, index) => ({
+    index,
+    src: absoluteUrl(iframe.src || readAttribute(iframe, "src")),
+    title: readAttribute(iframe, "title") || iframe.name || "",
+    ...elementVisibilityEvidence(iframe)
+  })).filter(item => item.src);
+}
+
 function mediaElementUrl(element) {
   return element?.currentSrc ||
     element?.src ||
@@ -1299,14 +1370,27 @@ function hasVideoSourceSignal(video) {
 }
 
 function pickMainVideo(videos = collectVideos()) {
-  const playing = videos.find(({ video }) => !video.paused && !video.ended && video.readyState >= 2);
-  if (playing) return playing;
   return videos
     .filter(({ video }) => hasVideoSourceSignal(video))
     .sort((a, b) => {
-      const areaA = Number(a.video.videoWidth || a.video.clientWidth || 0) * Number(a.video.videoHeight || a.video.clientHeight || 0);
-      const areaB = Number(b.video.videoWidth || b.video.clientWidth || 0) * Number(b.video.videoHeight || b.video.clientHeight || 0);
-      return areaB - areaA;
+      const evidenceA = elementVisibilityEvidence(a.video);
+      const evidenceB = elementVisibilityEvidence(b.video);
+      const rankA = [
+        evidenceA.is_visible ? 1 : 0,
+        !a.video.paused && !a.video.ended && a.video.readyState >= 2 ? 1 : 0,
+        Number(evidenceA.visible_area || 0),
+        Number(a.video.videoWidth || 0) * Number(a.video.videoHeight || 0)
+      ];
+      const rankB = [
+        evidenceB.is_visible ? 1 : 0,
+        !b.video.paused && !b.video.ended && b.video.readyState >= 2 ? 1 : 0,
+        Number(evidenceB.visible_area || 0),
+        Number(b.video.videoWidth || 0) * Number(b.video.videoHeight || 0)
+      ];
+      for (let index = 0; index < rankA.length; index += 1) {
+        if (rankA[index] !== rankB[index]) return rankB[index] - rankA[index];
+      }
+      return a.index - b.index;
     })[0] || null;
 }
 
@@ -1317,6 +1401,7 @@ function activeVideoInfo() {
   const { video, index } = withSource;
   const drm = drmByVideo.get(video) || {};
   const srcObject = videoSrcObjectInfo(video);
+  const visibility = elementVisibilityEvidence(video);
   return {
     src: absoluteUrl(video.currentSrc || video.src),
     poster_url: absoluteUrl(video.poster || readAttribute(video, "poster")),
@@ -1326,6 +1411,7 @@ function activeVideoInfo() {
     paused: Boolean(video.paused),
     width: Number(video.videoWidth || video.clientWidth || 0),
     height: Number(video.videoHeight || video.clientHeight || 0),
+    ...visibility,
     frame_id: 0,
     frame_url: location.href,
     label: `video#${index + 1}`,
@@ -1669,7 +1755,12 @@ function mergePageResource(previous, incoming) {
     request_headers: { ...(secondary.request_headers || {}), ...(primary.request_headers || {}) },
     request_body: { ...(secondary.request_body || {}), ...(primary.request_body || {}) },
     audio_url: primary.audio_url || secondary.audio_url || "",
-    audio_mime: primary.audio_mime || secondary.audio_mime || ""
+    audio_mime: primary.audio_mime || secondary.audio_mime || "",
+    visibility: primary.visibility !== "unknown" ? primary.visibility : secondary.visibility || "unknown",
+    is_visible: primary.is_visible ?? secondary.is_visible ?? null,
+    visible_area: primary.visible_area ?? secondary.visible_area ?? null,
+    rendered_width: primary.rendered_width ?? secondary.rendered_width ?? null,
+    rendered_height: primary.rendered_height ?? secondary.rendered_height ?? null
   };
 }
 
@@ -1690,13 +1781,15 @@ function collectPageData() {
     browser_subtitles: browserSubtitles,
     drm_detected: Boolean(active?.drm_detected || drm.length),
     drm_signals: drm,
-    resources: [...byUrl.values()].sort(comparePageResources).slice(0, 80)
+    resources: [...byUrl.values()].filter(item => !/^image\//i.test(String(item.mime || ""))).sort(comparePageResources).slice(0, 80),
+    frame_elements: collectFrameElementEvidence()
   };
 }
 
 function pageSignature(data) {
   const active = data.active_video || {};
   const topResources = (data.resources || []).slice(0, 12).map(item => `${item.url}|${item.kind}|${item.score}`).join(";");
+  const frames = (data.frame_elements || []).map(item => `${item.src}|${item.visibility}|${Math.round(item.visible_area || 0)}`).join(";");
   const drm = (data.drm_signals || []).map(item => `${item.source}|${item.key_system}|${item.init_data_type}`).join(";");
   const subtitleTail = (data.browser_subtitles || []).slice(-3).map(item => `${Math.floor(item.start || 0)}|${item.text}`).join(";");
   return [
@@ -1705,6 +1798,9 @@ function pageSignature(data) {
     active.src_object ? `srcObject:${active.src_object_type || "MediaStream"}:${active.src_object_video_tracks || 0}:${active.src_object_audio_tracks || 0}` : "",
     Math.floor(active.current_time || 0),
     active.paused ? "paused" : "playing",
+    active.visibility || "unknown",
+    Math.round(active.visible_area || 0),
+    frames,
     subtitleTail,
     data.drm_detected ? "drm" : "",
     drm,

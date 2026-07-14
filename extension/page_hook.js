@@ -284,7 +284,7 @@
     const seen = new Set();
     for (const item of resources || []) {
       const url = normalizeUrl(item.url);
-      if (!url || seen.has(url)) continue;
+      if (!url || seen.has(url) || /^image\//i.test(String(item.mime || ""))) continue;
       const kind = item.kind && item.kind !== "unknown"
         ? item.kind
         : responseMediaKind(url, item.mime || "", item.headers || {});
@@ -316,6 +316,13 @@
         mse_append_magic: item.mse_append_magic || "",
         mse_append_mime: item.mse_append_mime || "",
         mse_append_detected_kind: item.mse_append_detected_kind || "",
+        visibility: item.visibility || "unknown",
+        is_visible: item.is_visible ?? null,
+        visible_area: item.visible_area ?? null,
+        rendered_width: item.rendered_width ?? null,
+        rendered_height: item.rendered_height ?? null,
+        duration: item.duration ?? null,
+        paused: item.paused ?? null,
         time_stamp: Date.now()
       });
     }
@@ -343,7 +350,14 @@
           mse_append_count: item.mse_append_count ?? existing.mse_append_count ?? null,
           mse_append_magic: item.mse_append_magic || existing.mse_append_magic || "",
           mse_append_mime: item.mse_append_mime || existing.mse_append_mime || "",
-          mse_append_detected_kind: item.mse_append_detected_kind || existing.mse_append_detected_kind || ""
+          mse_append_detected_kind: item.mse_append_detected_kind || existing.mse_append_detected_kind || "",
+          visibility: item.visibility !== "unknown" ? item.visibility : existing.visibility || "unknown",
+          is_visible: item.is_visible ?? existing.is_visible ?? null,
+          visible_area: item.visible_area ?? existing.visible_area ?? null,
+          rendered_width: item.rendered_width ?? existing.rendered_width ?? null,
+          rendered_height: item.rendered_height ?? existing.rendered_height ?? null,
+          duration: item.duration ?? existing.duration ?? null,
+          paused: item.paused ?? existing.paused ?? null
         });
       } else {
         bufferedResources.unshift(item);
@@ -1477,7 +1491,7 @@
     return output;
   }
 
-  function emitPlayerSources(value, fallbackKind, label) {
+  function emitPlayerSources(value, fallbackKind, label, evidence = {}) {
     const resources = [];
     const seen = new Set();
     for (const candidate of sourceCandidates(value)) {
@@ -1494,7 +1508,8 @@
         kind,
         mime: endpoint?.mime || mimeForKind(kind),
         label,
-        score: scoreForKind(kind, { manifest: 99, video: 92, audio: 40, other: 64 })
+        score: scoreForKind(kind, { manifest: 99, video: 92, audio: 40, other: 64 }),
+        ...evidence
       });
     }
     emit(resources);
@@ -1758,9 +1773,36 @@
     return "";
   }
 
+  function mediaElementEvidence(element) {
+    const media = isSourceElement(element) ? element?.parentElement : element;
+    if (!isMediaElement(media)) return {};
+    let rect = null;
+    let style = null;
+    try {
+      rect = media.getBoundingClientRect?.() || null;
+      style = typeof window.getComputedStyle === "function" ? window.getComputedStyle(media) : null;
+    } catch {
+      rect = null;
+      style = null;
+    }
+    const width = Math.max(0, Number(rect?.width ?? media.clientWidth ?? media.videoWidth ?? 0));
+    const height = Math.max(0, Number(rect?.height ?? media.clientHeight ?? media.videoHeight ?? 0));
+    const hidden = Boolean(media.hidden || style?.display === "none" || style?.visibility === "hidden" || Number(style?.opacity ?? 1) <= 0);
+    const area = hidden ? 0 : width * height;
+    return {
+      visibility: hidden ? "hidden" : area > 0 ? "visible" : "unknown",
+      is_visible: hidden ? false : area > 0 ? true : null,
+      visible_area: area || 0,
+      rendered_width: width,
+      rendered_height: height,
+      duration: Number.isFinite(media.duration) ? Number(media.duration || 0) : null,
+      paused: typeof media.paused === "boolean" ? media.paused : null
+    };
+  }
+
   function emitMediaElementSource(element, value, label) {
     if (!value) return;
-    emitPlayerSources(value, mediaElementFallbackKind(element), label);
+    emitPlayerSources(value, mediaElementFallbackKind(element), label, mediaElementEvidence(element));
   }
 
   function collectMediaElementCurrentSources(element) {
