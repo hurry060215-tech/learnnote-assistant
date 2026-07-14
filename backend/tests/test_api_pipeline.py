@@ -19,6 +19,7 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
+from app import main as main_module
 from app.config import DATA_DIR
 from app.downloader import DownloadError
 from app.main import app, diagnostic_recovery_profile, local_upload_filename, render_bundle_manifest, render_diagnostics_markdown, render_task_audit_markdown, render_visual_windows_markdown
@@ -672,6 +673,61 @@ class LocalUploadValidationTests(unittest.TestCase):
             self.assertTrue(all(item["source"] == "transcript" for item in payload["citations"]))
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
+    def test_task_question_retrieves_contiguous_transcript_parameter_evidence(self) -> None:
+        task = create_task("local", "空间转录组质控课程")
+        root = task_dir(task.id)
+        note = root / "note.md"
+        transcript = root / "transcript.json"
+        note.write_text(
+            "# 质控过滤\n\n三个参数分别控制表达阈值、基因最少检出细胞数和 spot 最少基因数。\n",
+            encoding="utf-8",
+        )
+        segments = [
+            {"start": index * 2, "end": index * 2 + 1, "text": f"课程铺垫 {index}"}
+            for index in range(305)
+        ]
+        segments.extend([
+            {"start": 620, "end": 626, "text": "接下来演示质控过滤参数。"},
+            {"start": 626, "end": 634, "text": "表达阈值设置为 1，达到后认为基因被检测到。"},
+            {"start": 638, "end": 648, "text": "基因至少在 3 个细胞中被检测到才保留。"},
+            {"start": 652, "end": 664, "text": "每个 spot 至少检测到 50 个基因才保留。"},
+        ])
+        transcript.write_text(json.dumps({"segments": segments}, ensure_ascii=False), encoding="utf-8")
+        try:
+            update_task(task.id, note_path=str(note), transcript_path=str(transcript))
+
+            with patch("app.main.LLM_API_KEY", ""):
+                response = self.client.post(
+                    f"/api/tasks/{task.id}/qa",
+                    json={"question": "视频里的三个质控参数数值是什么？只根据字幕回答。"},
+                )
+
+            self.assertEqual(response.status_code, 200)
+            payload = response.json()
+            citation_text = " ".join(item["text"] for item in payload["citations"])
+            self.assertIn("设置为 1", citation_text)
+            self.assertIn("3 个细胞", citation_text)
+            self.assertIn("50 个基因", citation_text)
+            self.assertTrue(all(item["source"] == "transcript" for item in payload["citations"]))
+            self.assertTrue(any(item.get("granularity") == "window" for item in payload["citations"]))
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
+    def test_task_question_adds_next_transcript_window_for_continuous_explanation(self) -> None:
+        citations = [
+            {"source": "transcript", "granularity": "window", "label": "字幕 07:00-09:00", "start": 420.0, "text": "开始介绍质控参数，表达阈值设为 1"},
+            {"source": "transcript", "granularity": "window", "label": "字幕 08:00-10:00", "start": 480.0, "text": "至少在 3 个细胞检测到，每个 spot 至少 50 个基因"},
+            {"source": "transcript", "granularity": "window", "label": "字幕 09:00-11:00", "start": 540.0, "text": "运行过滤并查看结果"},
+        ]
+        ranked = main_module._rank_citations_for_question(
+            citations,
+            {"质控", "参数", "__source_transcript__"},
+            limit=2,
+        )
+        self.assertEqual([item["start"] for item in ranked], [420.0, 480.0])
+        self.assertIn("3 个细胞", ranked[1]["text"])
+        self.assertIn("50 个基因", ranked[1]["text"])
 
     def test_stale_media_path_is_not_reported_reusable(self) -> None:
         task = create_task("current_page", "Missing media", "https://course.example.com/lesson", mode="download_only")

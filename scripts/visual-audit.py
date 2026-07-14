@@ -49,11 +49,32 @@ def capture(page: Page, output: Path, name: str, report: list[dict], errors: lis
 
 def audit_workspace(browser, base_url: str, output: Path, report: list[dict]) -> None:
     page = browser.new_page(viewport={"width": 1440, "height": 900}, device_scale_factor=1)
-    page.route("**/api/tasks/*/qa", lambda route: route.fulfill(
-        status=200,
-        content_type="application/json",
-        body=json.dumps({"answer": "这是视觉审计回答。", "source": "audit", "citations": [], "history_count": 1}, ensure_ascii=False),
-    ))
+    assistant_history: list[dict] = []
+
+    def assistant_response(route) -> None:
+        if route.request.method == "GET":
+            payload = {"items": assistant_history}
+        else:
+            payload = {
+                "answer": "### 这节课的三个重点\n\n1. 先确认数据维度与质控范围，再开始下游分析。\n2. 质控参数需要结合表达阈值、最少细胞数和单细胞检测特征数。\n3. 结论必须能回到字幕时间点或画面切片核对，不能用通用知识补全课程没有讲过的内容。",
+                "source": "llm",
+                "citations": [
+                    {"source": "transcript", "label": "字幕片段", "start": 209, "time_range": "03:29 - 03:35", "text": "数据集共有 634 行、624 列，先确认维度再进入质控流程。"},
+                    {"source": "transcript", "label": "连续字幕", "start": 426, "time_range": "07:06 - 08:04", "text": "表达检测阈值设为 1，至少在 3 个细胞中检测到，并保留每个细胞至少检测到 50 个特征。"},
+                    {"source": "visual_window", "window_id": "W003", "start": 420, "time_range": "07:00 - 10:00", "text": "参数设置界面显示三个质控字段及对应数值。"},
+                    {"source": "note", "label": "质控步骤", "time_range": "07:00", "text": "笔记中的质控参数表与字幕证据一致。"},
+                ],
+                "history_count": 1,
+            }
+            assistant_history.append({
+                "question": "用三点总结这节课的核心内容",
+                "answer": payload["answer"],
+                "source": payload["source"],
+                "citations": payload["citations"],
+            })
+        route.fulfill(status=200, content_type="application/json", body=json.dumps(payload, ensure_ascii=False))
+
+    page.route("**/api/tasks/*/qa", assistant_response)
     errors: list[str] = []
     page.on("console", lambda message: errors.append(message.text) if message.type == "error" else None)
     page.goto(base_url, wait_until="domcontentloaded")
@@ -83,9 +104,23 @@ def audit_workspace(browser, base_url: str, output: Path, report: list[dict]) ->
     capture(page, output, "client-ai-assistant", report, errors)
     page.locator("[data-assistant-question]").first.click()
     page.wait_for_timeout(250)
-    if "这是视觉审计回答" not in page.locator("#assistantConversation").inner_text():
+    if "三个重点" not in page.locator("#assistantConversation").inner_text():
         raise RuntimeError("AI assistant suggestion did not submit and render an answer.")
+    if page.locator(".assistant-evidence button").count() != 4:
+        raise RuntimeError("AI assistant evidence cards did not render completely.")
+    capture(page, output, "client-ai-assistant-answer", report, errors)
+    page.locator("#expandAiAssistantButton").click()
+    page.wait_for_timeout(220)
+    if page.locator("body").evaluate("element => !element.classList.contains('assistant-wide')"):
+        raise RuntimeError("AI assistant wide mode did not activate.")
+    capture(page, output, "client-ai-assistant-answer-wide", report, errors)
+    page.locator(".assistant-evidence button").nth(1).click()
+    page.wait_for_timeout(180)
+    if not page.locator(".assistant-evidence button.located").count():
+        raise RuntimeError("AI assistant evidence click did not provide located feedback after history reload.")
     page.locator("#closeAiAssistantButton").click()
+    page.locator("#workspaceNav").click()
+    page.wait_for_timeout(180)
     page.evaluate("() => fetch('/api/extension/heartbeat', { method: 'POST' }).then(() => checkHealth())")
     page.wait_for_timeout(300)
     capture(page, output, "client-current-page-connected", report, errors)

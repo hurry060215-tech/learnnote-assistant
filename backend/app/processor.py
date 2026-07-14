@@ -22,6 +22,19 @@ from .transcriber import transcript_from_subtitle, transcribe_audio, transcribe_
 SAFE_RESPONSE_HEADER_NAMES = {"content-type", "content-disposition", "content-length", "content-range", "accept-ranges"}
 REMOTE_ASR_TRANSCRIBERS = {"openai", "openai-compatible", "openai-compatible-asr", "groq", "groq-asr"}
 ASR_FAILURE_SOURCES = {"missing-faster-whisper", "faster-whisper-error"}
+PLAYER_UI_SUBTITLE_MARKERS = (
+    "字幕设置", "字幕大小", "字幕颜色", "描边方式", "默认位置", "背景不透明度",
+    "恢复默认设置", "关闭弹幕", "登录可享", "原声翻译体验反馈", "添加字幕",
+)
+PLAYER_UI_SUBTITLE_SIGNATURES = (
+    "B站自研的AI原声翻译功能", "本视频开启原声翻译时不支持关闭字幕",
+    "暂无字幕 主字幕", "主字幕 中文 副字幕", "适中 最小 较小 适中 较大 最大",
+    "红色 白色 红色 紫色", "左下角 底部居中 右下角", "无描边 重墨 描边",
+)
+PLAYER_UI_EXACT_SUBTITLE_TEXTS = {
+    "字幕", "主字幕", "副字幕", "添加字幕", "字幕 添加字幕", "主字幕 中文", "主字幕 中文 副字幕",
+    "暂无字幕", "关闭", "其它设置", "等比缩放", "淡入淡出", "背景不透明度", "默认位置",
+}
 
 
 @dataclass
@@ -373,12 +386,25 @@ def attempted_resource_candidate(resources: list[ResourceCandidate], attempts: l
     return None
 
 
+def browser_subtitle_text_is_player_ui(text: str) -> bool:
+    normalized = " ".join(str(text or "").split())
+    if not normalized:
+        return False
+    if normalized in PLAYER_UI_EXACT_SUBTITLE_TEXTS:
+        return True
+    if any(signature in normalized for signature in PLAYER_UI_SUBTITLE_SIGNATURES):
+        return True
+    marker_hits = sum(marker in normalized for marker in PLAYER_UI_SUBTITLE_MARKERS)
+    repeated_ui_labels = sum(normalized.count(marker) - 1 for marker in PLAYER_UI_SUBTITLE_MARKERS)
+    return marker_hits >= 3 or (marker_hits >= 2 and repeated_ui_labels >= 2)
+
+
 def transcript_from_browser_subtitles(segments: list[BrowserSubtitleCue]) -> TranscriptResult:
     cleaned: list[TranscriptSegment] = []
     seen: set[tuple[int, int, str]] = set()
     for cue in sorted(segments, key=lambda item: (item.start, item.end, item.text)):
         text = " ".join(str(cue.text or "").split())
-        if not text:
+        if not text or browser_subtitle_text_is_player_ui(text):
             continue
         start = max(0.0, float(cue.start or 0))
         end = max(start, float(cue.end or start))

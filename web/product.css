@@ -2921,10 +2921,10 @@ body.assistant-wide .ai-assistant-drawer { width: var(--assistant-wide-width); }
 .assistant-message > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .assistant-message > header span { color: var(--product-muted); font-size: 12px; font-weight: 720; }
 .assistant-message > header small { color: var(--product-faint); font-size: 11px; }
-.assistant-message > div { min-width: 0; overflow-wrap: anywhere; border-radius: 8px; padding: 13px 15px; font-size: 14px; line-height: 1.7; }
+.assistant-message > div { min-width: 0; overflow-wrap: anywhere; border-radius: 8px; padding: 14px 16px; font-size: 15px; line-height: 1.72; }
 .assistant-message.user > div { width: fit-content; max-width: calc(100% - 34px); margin-left: auto; color: #163638; background: #e3f4f2; }
 .assistant-message.assistant > div { border: 1px solid var(--product-line); background: #fff; box-shadow: 0 1px 2px rgba(24, 54, 61, .03); }
-.assistant-message .markdown-note { min-width: 0; max-width: 100%; color: inherit; font-size: 14px; line-height: 1.7; }
+.assistant-message .markdown-note { min-width: 0; max-width: 100%; color: inherit; font-size: 15px; line-height: 1.72; }
 .assistant-message .markdown-note h1 { font-size: 20px; }
 .assistant-message .markdown-note h2 { margin-top: 24px; font-size: 17px; }
 .assistant-message .markdown-note h3 { margin-top: 20px; font-size: 15px; }
@@ -2941,17 +2941,24 @@ body.assistant-wide .ai-assistant-drawer { width: var(--assistant-wide-width); }
 .assistant-evidence { margin-top: 9px; }
 .assistant-evidence > header { display: flex; align-items: center; gap: 6px; color: var(--product-accent-strong); font-size: 12px; font-weight: 700; }
 .assistant-evidence > header b { min-width: 18px; display: inline-grid; place-items: center; border-radius: 4px; color: #fff; background: var(--product-accent); font-size: 10px; }
-.assistant-evidence > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin-top: 8px; }
-.assistant-evidence button { min-width: 0; display: grid; gap: 3px; border: 1px solid var(--product-line); border-radius: 7px; padding: 9px 10px; color: var(--product-text); background: #fff; text-align: left; }
-.assistant-evidence button:hover { border-color: #a7cecb; background: #f2faf9; }
-.assistant-evidence button span { color: var(--product-accent-strong); font-size: 12px; font-weight: 720; }
-.assistant-evidence button small { overflow: hidden; color: var(--product-muted); font-size: 11px; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
+.assistant-evidence > div { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; margin-top: 8px; }
+.assistant-evidence button { position: relative; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px 12px; border: 1px solid var(--product-line); border-radius: 7px; padding: 11px 12px; color: var(--product-text); background: #fff; text-align: left; transition: border-color 150ms ease, background 150ms ease, transform 150ms ease; }
+.assistant-evidence button:hover { border-color: #8fc3bf; background: #f2faf9; transform: translateY(-1px); }
+.assistant-evidence button:active { transform: translateY(0) scale(.995); }
+.assistant-evidence button:focus-visible { outline: 2px solid rgba(11, 153, 148, .3); outline-offset: 2px; }
+.assistant-evidence button.located { border-color: var(--product-accent); background: #edf8f7; }
+.assistant-evidence button span { min-width: 0; overflow: hidden; color: var(--product-text); font-size: 12px; font-weight: 720; text-overflow: ellipsis; white-space: nowrap; }
+.assistant-evidence button span em { margin-right: 7px; border-radius: 4px; padding: 2px 5px; color: var(--product-accent-strong); background: #e7f5f3; font-size: 10px; font-style: normal; }
+.assistant-evidence button small { display: -webkit-box; grid-column: 1 / -1; overflow: hidden; color: var(--product-muted); font-size: 12px; line-height: 1.5; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+.assistant-evidence button i { align-self: center; color: var(--product-accent-strong); font-size: 11px; font-style: normal; font-weight: 700; white-space: nowrap; }
 .assistant-warning { margin: 8px 0 0; color: var(--product-warning); font-size: 11px; line-height: 1.5; }
 
 .assistant-suggestions { gap: 8px; padding: 11px 18px; border-color: var(--product-line); background: #fff; scrollbar-width: none; }
 .assistant-suggestions::-webkit-scrollbar { display: none; }
 .assistant-suggestions button { min-height: 34px; border-radius: 7px; color: #49636a; background: #fff; }
-.assistant-suggestions button:hover { border-color: #9fcac7; color: var(--product-accent-strong); background: #eff9f8; }
+.assistant-suggestions button { transition: border-color 150ms ease, color 150ms ease, background 150ms ease, transform 150ms ease; }
+.assistant-suggestions button:hover { border-color: #9fcac7; color: var(--product-accent-strong); background: #eff9f8; transform: translateY(-1px); }
+.assistant-suggestions button:active { transform: translateY(0) scale(.98); }
 
 .assistant-composer { display: grid; grid-template-columns: 1fr; gap: 0; margin: 0; padding: 12px 18px 18px; border-top: 1px solid var(--product-line); background: #fff; }
 .assistant-composer textarea { width: 100%; min-height: 76px; max-height: 180px; resize: vertical; border: 1px solid var(--product-line-strong); border-bottom: 0; border-radius: 8px 8px 0 0; padding: 12px 13px 5px; color: var(--product-text); background: #fff; font-size: 14px; line-height: 1.55; outline: 0; }
@@ -2960,6 +2967,8 @@ body.assistant-wide .ai-assistant-drawer { width: var(--assistant-wide-width); }
 .assistant-composer footer small { overflow: hidden; color: var(--product-faint); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .assistant-composer footer button { min-width: 82px; min-height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border-radius: 7px; }
 .assistant-composer footer button svg { width: 16px; height: 16px; }
+
+body.assistant-wide .assistant-evidence > div { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
 @media (min-width: 1101px) {
   body.assistant-open .topbar,

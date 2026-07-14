@@ -26,7 +26,7 @@ from .config import BACKEND_ORIGIN, DATA_DIR, DEPLOYMENT_MODE, LLM_API_KEY, LLM_
 from .downloader import MediaDownloader, effective_resource_kind, fallback_page_contexts, preflight_media_resource, rank_media_candidates
 from .media import MediaProcessingError, extract_video_clip, probe_duration
 from .models import CurrentPageTaskRequest, MediaPreflightRequest, MediaPreflightResult, PagePreflightRequest, RerunFromMediaRequest, ResourceCandidate, SourceInputRequest, StorageCleanupRequest, TaskOptions, TaskQuestionRequest, TaskRecord, now_iso
-from .processor import enrich_resource_candidates_with_active_video, process_current_page_task, process_local_video_task, read_note, read_transcript, read_visual_index
+from .processor import browser_subtitle_text_is_player_ui, enrich_resource_candidates_with_active_video, process_current_page_task, process_local_video_task, read_note, read_transcript, read_visual_index
 from .runtime import ffmpeg_bin, ffprobe_bin
 from .source_input import SourceInputError, clean_task_title, normalize_source_input
 from .storage import atomic_write_text, cleanup_tasks, create_task, delete_task, get_task, list_tasks, read_json, request_task_cancel, storage_summary, task_dir, update_task, write_json
@@ -2418,6 +2418,61 @@ def _note_evidence_chunks(note: str, limit: int = 80) -> list[dict]:
     return chunks
 
 
+def _transcript_window_chunks(segments: list[dict], window_seconds: int = 120, step_seconds: int = 60) -> list[dict]:
+    valid_segments = []
+    for segment in segments:
+        if not isinstance(segment, dict):
+            continue
+        text = _clip_text(str(segment.get("text") or ""), 700)
+        if not text or browser_subtitle_text_is_player_ui(text):
+            continue
+        valid_segments.append({
+            "start": _safe_seconds(segment.get("start")),
+            "end": _safe_seconds(segment.get("end")),
+            "text": text,
+        })
+    if not valid_segments:
+        return []
+
+    groups: list[list[dict]] = []
+    for item in valid_segments:
+        if not groups or item["start"] - groups[-1][-1]["end"] > 30:
+            groups.append([item])
+        else:
+            groups[-1].append(item)
+
+    chunks = []
+    for group in groups:
+        first_start = int(group[0]["start"] // step_seconds) * step_seconds
+        final_end = max(item["end"] for item in group)
+        window_start = first_start
+        while window_start < final_end:
+            window_end = window_start + window_seconds
+            members = [
+                item for item in group
+                if item["end"] > window_start and item["start"] < window_end
+            ]
+            if members:
+                text = _clip_text(" ".join(item["text"] for item in members), 1800)
+                if browser_subtitle_text_is_player_ui(text):
+                    window_start += step_seconds
+                    continue
+                start = _format_timestamp(window_start)
+                end = _format_timestamp(min(window_end, final_end))
+                chunks.append({
+                    "source": "transcript",
+                    "granularity": "window",
+                    "label": f"字幕 {start}-{end}",
+                    "text": text,
+                    "start": float(window_start),
+                    "end": float(min(window_end, final_end)),
+                    "time_range": f"{start}-{end}",
+                    "target_tab": "transcript",
+                })
+            window_start += step_seconds
+    return chunks
+
+
 def _task_qa_context(task: TaskRecord) -> tuple[str, list[dict]]:
     citations: list[dict] = []
     try:
@@ -2433,11 +2488,12 @@ def _task_qa_context(task: TaskRecord) -> tuple[str, list[dict]]:
         transcript = {}
     segments = transcript.get("segments") if isinstance(transcript, dict) else []
     if isinstance(segments, list) and segments:
-        for segment in segments[:300]:
+        citations.extend(_transcript_window_chunks(segments))
+        for segment in segments[:3000]:
             if not isinstance(segment, dict):
                 continue
             text = _clip_text(str(segment.get("text") or ""), 700)
-            if not text:
+            if not text or browser_subtitle_text_is_player_ui(text):
                 continue
             start_seconds = _safe_seconds(segment.get("start"))
             end_seconds = _safe_seconds(segment.get("end"))
@@ -2517,6 +2573,24 @@ def _rank_citations_for_question(
     relevance_floor = max(1, int(top_score * 0.2))
     relevant = [citation for score, _index, citation in ranked if score >= relevance_floor][:limit]
     if relevant:
+        if "__source_transcript__" in terms:
+            windows_by_start = {
+                int(float(citation.get("start") or 0)): citation
+                for citation in citations
+                if citation.get("source") == "transcript" and citation.get("granularity") == "window"
+            }
+            expanded: list[dict] = []
+            seen_ids: set[int] = set()
+            for citation in relevant:
+                for item in (citation, windows_by_start.get(int(float(citation.get("start") or -60)) + 60)):
+                    if not item or id(item) in seen_ids:
+                        continue
+                    expanded.append(item)
+                    seen_ids.add(id(item))
+                    if len(expanded) >= limit:
+                        return expanded
+            if expanded:
+                return expanded
         return relevant
 
     # Broad requests such as “总结一下” still need a small, source-diverse sample.
@@ -2834,6 +2908,8 @@ def _answer_task_question(task: TaskRecord, request: TaskQuestionRequest) -> dic
                             "历史对话仅用于理解追问指代，不是事实证据。禁止补充常识、猜测或虚构内容。"
                             "不得编造证据中不存在的时间窗、W 编号、页码、步骤或原文引语；"
                             "只有证据逐字包含的内容才能使用引号。证据不足时直接说“现有证据不足”，"
+                            "分析操作演示时要区分当前设置与假设示例：‘这里设为/达到/我们认为/我们设置的是 X’表示演示采用 X，"
+                            "‘可以改成/比方说 X’仅表示替代示例；应综合相邻时间窗，不要因为 ASR 错写参数名而忽略明确的数值和含义。"
                             "不要假装知道，也不要推荐不存在的回看位置。默认用中文简洁直接回答，"
                             "通常 1-3 个短段落或不超过 5 个要点，不复述问题，不描述你的工作过程。"
                         ),

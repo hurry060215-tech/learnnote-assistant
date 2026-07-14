@@ -39,8 +39,8 @@ from app.downloader import (
     ytdlp_headers_from_browser_context,
 )
 from app.main import _automatic_diagnostic_rules, diagnostic_recovery_profile, render_bundle_manifest, render_diagnostics_markdown, task_audit_summary
-from app.models import ActiveVideoInfo, BrowserCookie, CurrentPageTaskRequest, DownloadAttempt, DrmSignal, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
-from app.processor import ContentMismatchError, build_summary_diagnostics, cookie_sync_summary, download_progress_updater, download_status_updater, enrich_resource_candidates_with_active_video, process_current_page_task, process_local_video_task, read_note, read_transcript, redacted_request_dump, redacted_resource, validate_summary_evidence
+from app.models import ActiveVideoInfo, BrowserCookie, BrowserSubtitleCue, CurrentPageTaskRequest, DownloadAttempt, DrmSignal, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
+from app.processor import ContentMismatchError, browser_subtitle_text_is_player_ui, build_summary_diagnostics, cookie_sync_summary, download_progress_updater, download_status_updater, enrich_resource_candidates_with_active_video, process_current_page_task, process_local_video_task, read_note, read_transcript, redacted_request_dump, redacted_resource, transcript_from_browser_subtitles, validate_summary_evidence
 from app.summarizer import MAX_GRIDS_PER_VISION_CALL, MAX_VISION_GRIDS, build_visual_windows, chat_completion_provider_kwargs, ensure_visual_appendix, learning_goal, learning_goal_instruction, llm_model_supports_vision, llm_provider_name, local_markdown_note, summarize_with_diagnostics, summarize_with_diagnostics_audit, summary_depth_instruction
 from app.storage import create_task, get_task, read_json, save_task, task_dir, write_json
 from app.transcriber import resolve_whisper_model, transcribe_audio_openai_compatible, transcript_from_subtitle
@@ -51,6 +51,24 @@ tempfile.tempdir = str(TEST_RUN_DIR)
 
 
 class ResourceDetectionTests(unittest.TestCase):
+    def test_browser_subtitle_filter_rejects_player_menu_but_keeps_course_text(self) -> None:
+        player_menu = "字幕设置 字幕大小 字幕颜色 登录可享 关闭弹幕 恢复默认设置 字幕大小"
+        course_text = "老师演示如何设置字幕大小，并解释视觉无障碍设计"
+        self.assertTrue(browser_subtitle_text_is_player_ui(player_menu))
+        self.assertTrue(browser_subtitle_text_is_player_ui("主字幕 中文"))
+        self.assertTrue(browser_subtitle_text_is_player_ui("字幕 添加字幕"))
+        self.assertFalse(browser_subtitle_text_is_player_ui(course_text))
+
+        transcript = transcript_from_browser_subtitles([
+            BrowserSubtitleCue(start=0, end=5, text=player_menu),
+            BrowserSubtitleCue(start=5, end=6, text="暂无字幕 主字幕 中文 副字幕"),
+            BrowserSubtitleCue(start=5, end=6, text="字幕大小 适中 最小 较小 适中 较大 最大"),
+            BrowserSubtitleCue(start=6, end=10, text="表达阈值设为 1，至少在 3 个细胞中检测到"),
+        ])
+        self.assertEqual(len(transcript.segments), 1)
+        self.assertIn("表达阈值", transcript.full_text)
+        self.assertNotIn("登录可享", transcript.full_text)
+
     def test_automatic_diagnostics_detects_spa_context_mismatch(self) -> None:
         severity, summary, findings, actions = _automatic_diagnostic_rules({
             "page_url": "https://www.bilibili.com/video/BV1R7G66KEBi/",
