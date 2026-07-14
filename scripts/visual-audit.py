@@ -68,6 +68,14 @@ def audit_workspace(browser, base_url: str, output: Path, report: list[dict]) ->
         raise RuntimeError("Home learning progress is not visible with four stages.")
     capture(page, output, "client-current-page", report, errors)
 
+    page.locator("#openProcessingSettingsButton").click()
+    page.wait_for_timeout(180)
+    processing_tab = page.locator('button[data-settings-tab="processing"]')
+    if page.locator("body").get_attribute("data-app-view") != "settings" or "active" not in (processing_tab.get_attribute("class") or ""):
+        raise RuntimeError("Advanced processing settings did not open from the home workspace.")
+    page.locator("#settingsCloseButton").click()
+    page.wait_for_timeout(180)
+
     page.locator("#openAiAssistantButton").click()
     page.wait_for_timeout(250)
     if not page.locator("#aiAssistantDrawer").is_visible():
@@ -133,6 +141,21 @@ def audit_workspace(browser, base_url: str, output: Path, report: list[dict]) ->
 
     page.locator('[data-app-view="notes"]').click()
     page.wait_for_timeout(250)
+    if page.locator("#aiAssistantDrawer").is_visible():
+        page.locator("#closeAiAssistantButton").click()
+    page.locator("#openAiAssistantButton").click()
+    page.wait_for_timeout(220)
+    if not page.locator("#aiAssistantDrawer").is_visible() or not page.locator("#assistantQuestion").evaluate("element => document.activeElement === element"):
+        raise RuntimeError("AI assistant did not remain usable beside the note reader.")
+    capture(page, output, "client-note-assistant", report, errors)
+    page.locator("#closeAiAssistantButton").click()
+    assistant_action = page.locator("[data-open-assistant]").first
+    if assistant_action.count() and assistant_action.is_visible():
+        assistant_action.click()
+        page.wait_for_timeout(220)
+        if not page.locator("#aiAssistantDrawer").is_visible() or not page.locator("#assistantQuestion").evaluate("element => document.activeElement === element"):
+            raise RuntimeError("Recommended AI assistant action did not open and focus the question composer.")
+        page.locator("#closeAiAssistantButton").click()
     version_button = page.locator("#newNoteVersionButton")
     if version_button.count() and version_button.is_visible():
         version_button.click()

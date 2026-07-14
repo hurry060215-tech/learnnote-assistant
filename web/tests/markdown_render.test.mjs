@@ -311,14 +311,14 @@ assert.match(stylesCss, /\.workspace-panel \.source-pane\s*\{\s*order: 4;/);
 assert.match(stylesCss, /\.workspace-panel \.source-route-rail\s*\{\s*display: none;/);
 assert.match(stylesCss, /\.capture-flow\s*\{\s*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);/);
 assert.match(indexHtml, /id="toggleWorkspaceButton"/);
-assert.match(indexHtml, /styles\.css\?v=20260714-v0120/);
-assert.match(indexHtml, /app\.js\?v=20260714-v0120/);
+assert.match(indexHtml, /styles\.css\?v=20260714-v0121/);
+assert.match(indexHtml, /app\.js\?v=20260714-v0121/);
 assert.match(indexHtml, /id="sourceRouteRail"/);
 assert.match(indexHtml, /id="urlPreflightReport"/);
 assert.match(indexHtml, /href="#settingsView" data-app-view="settings" title="设置"/);
 assert.doesNotMatch(indexHtml, /href="#settings" title="设置"/);
-assert.match(indexHtml, /workspace\.css\?v=20260714-v0120/);
-assert.match(indexHtml, /product\.css\?v=20260714-v0120/);
+assert.match(indexHtml, /workspace\.css\?v=20260714-v0121/);
+assert.match(indexHtml, /product\.css\?v=20260714-v0121/);
 assert.match(indexHtml, /<body data-app-view="workspace">/);
 assert.match(indexHtml, /id="settingsView"/);
 assert.match(indexHtml, /data-settings-tab="general"/);
@@ -1795,6 +1795,7 @@ const taskOverviewHtml = context.taskOverview({
   visual_windows: [],
   next_actions: [
     { key: "continue_from_media", label: "从 media.mp4 继续", detail: "复用已下载视频进入切片总结。", intent: "rerun_from_media" },
+    { key: "ask_assistant", label: "打开 AI 助手", detail: "围绕当前任务继续追问。", intent: "open_assistant", target: "current_task" },
     { key: "export_media", label: "导出 media.mp4", detail: "核对本地视频。", intent: "export", target: "media" },
     { key: "view_diagnostics", label: "看下载诊断", detail: "查看候选和失败原因。", intent: "switch_tab", target: "diagnostics" }
   ]
@@ -1842,6 +1843,7 @@ assert.match(taskOverviewHtml, /class="task-next-actions"/);
 assert.match(taskOverviewHtml, /推荐下一步/);
 assert.match(taskOverviewHtml, /从 media\.mp4 继续/);
 assert.match(taskOverviewHtml, /data-rerun-from-media="task-web-overview"/);
+assert.match(taskOverviewHtml, /class="next-action assistant-action" data-open-assistant/);
 assert.match(taskOverviewHtml, /data-switch-result-tab="diagnostics"/);
 assert.match(taskOverviewHtml, /\/api\/tasks\/task-web-overview\/exports\/media/);
 assert.match(taskOverviewHtml, /data-switch-result-tab="diagnostics"/);

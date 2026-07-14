@@ -5654,6 +5654,9 @@ function taskNextActionsHtml(task) {
     if (action.intent === "rerun_from_media") {
       return `<button type="button" class="next-action primary" data-rerun-from-media="${escapeHtml(task.id)}">${content}</button>`;
     }
+    if (action.intent === "open_assistant") {
+      return `<button type="button" class="next-action assistant-action" data-open-assistant>${content}</button>`;
+    }
     if (action.intent === "switch_tab" && action.target) {
       return `<button type="button" class="next-action" data-switch-result-tab="${escapeHtml(action.target)}">${content}</button>`;
     }
@@ -6230,7 +6233,10 @@ function bindQaActions(task) {
 
 function bindTaskOverviewActions() {
   document.querySelectorAll("[data-open-assistant]").forEach(button => {
-    button.onclick = () => setAssistantOpen(true);
+    button.onclick = () => {
+      setAssistantOpen(true);
+      window.setTimeout(() => els.assistantQuestion?.focus?.(), 180);
+    };
   });
   document.querySelectorAll("[data-diagnostic-font-size]").forEach(input => {
     input.oninput = () => {
