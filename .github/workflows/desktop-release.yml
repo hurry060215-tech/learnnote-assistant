@@ -45,6 +45,7 @@ jobs:
             --hidden-import pythonnet `
             desktop/main.py
           Copy-Item README.md dist/LearnNote/README.md
+          Copy-Item extension dist/LearnNote/extension -Recurse -Force
           Compress-Archive -Path dist/LearnNote/* -DestinationPath LearnNote-Windows-x64.zip
           $version = (Get-Content extension/manifest.json -Raw -Encoding UTF8 | ConvertFrom-Json).version
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$version" scripts/learnnote-installer.iss
