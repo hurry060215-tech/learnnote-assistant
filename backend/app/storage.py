@@ -14,6 +14,7 @@ from .source_input import clean_task_title
 
 _lock = threading.RLock()
 STALE_TASK_AFTER = timedelta(hours=6)
+STALE_CANCELLING_AFTER = timedelta(minutes=5)
 
 
 def new_task_id() -> str:
@@ -261,12 +262,21 @@ def reconcile_stale_tasks(
     *,
     now: datetime | None = None,
     max_age: timedelta = STALE_TASK_AFTER,
+    cancelling_max_age: timedelta = STALE_CANCELLING_AFTER,
 ) -> list[TaskRecord]:
     current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     for record in records:
+        updated = _parse_iso_datetime(record.updated_at) or _parse_iso_datetime(record.cancel_requested_at) or _parse_iso_datetime(record.created_at)
+        if record.status == "cancelling":
+            if updated and current - updated > cancelling_max_age:
+                record.status = "cancelled"
+                record.phase = "cancelled"
+                record.message = "任务已停止，已生成的文件仍然保留"
+                record.cancelled_at = now_iso()
+                save_task(record)
+            continue
         if record.status not in {"queued", "running"}:
             continue
-        updated = _parse_iso_datetime(record.updated_at) or _parse_iso_datetime(record.created_at)
         if not updated or current - updated <= max_age:
             continue
         has_media = any(

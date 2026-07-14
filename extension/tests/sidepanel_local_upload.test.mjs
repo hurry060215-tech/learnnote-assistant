@@ -79,6 +79,7 @@ class FakeFormData {
 }
 
 const uploadBodies = [];
+const openedTabs = [];
 const lessonFile = { name: "local-lesson.mp4", size: 123456, type: "video/mp4" };
 let uploadShouldFail = false;
 
@@ -153,7 +154,9 @@ const context = {
       }
     },
     tabs: {
-      create() {}
+      create(options) {
+        openedTabs.push(options);
+      }
     }
   },
   setTimeout,
@@ -168,9 +171,9 @@ const sidepanelCss = await readFile(new URL("../sidepanel.css", import.meta.url)
 vm.runInContext(sidepanelCode, context);
 
 await new Promise(resolve => setTimeout(resolve, 0));
-assert.match(sidepanelHtml, /sidepanel\.css\?v=20260712-v0118/);
+assert.match(sidepanelHtml, /sidepanel\.css\?v=20260714-v0119/);
 assert.match(sidepanelHtml, /<body data-ui="learnnote-sidepanel-v2" data-source-mode="summarize">/);
-assert.match(sidepanelHtml, /sidepanel\.js\?v=20260712-v0118/);
+assert.match(sidepanelHtml, /sidepanel\.js\?v=20260714-v0119/);
 assert.doesNotMatch(sidepanelHtml, /class="capture-cockpit"/);
 assert.match(sidepanelHtml, /class="learning-goal-control"/);
 assert.match(sidepanelHtml, /自动整理/);
@@ -201,12 +204,16 @@ assert.equal(context.isSupportedLocalVideoFile({ name: "lesson.avi", type: "" })
 assert.equal(context.isSupportedLocalVideoFile({ name: "bad.txt", type: "text/plain" }), false);
 
 elements.get("#chooseLocalButton").onclick();
-assert.equal(elements.get("#fileInput").clicks, 1);
-assert.equal(elements.get("#localVideoCard").classList.contains("focus-pulse"), true);
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.equal(elements.get("#fileInput").clicks, 0);
+assert.equal(openedTabs.length, 1);
+assert.equal(openedTabs[0].url, "http://127.0.0.1:8765");
+assert.match(elements.get("#taskMessage").textContent, /客户端.*本地视频/);
 
 elements.get("#uploadButton").onclick();
-assert.equal(elements.get("#fileInput").clicks, 2);
-assert.equal(elements.get("#localVideoCard").classList.contains("focus-pulse"), true);
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.equal(elements.get("#fileInput").clicks, 0);
+assert.equal(openedTabs.length, 2);
 
 elements.get("#fileInput").files = [lessonFile];
 await context.uploadLocal();

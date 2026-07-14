@@ -1998,8 +1998,8 @@ def preflight_media_resource(
             kind=kind,
             url=candidate.url,
             resolved_url=resolved_url,
-            code="drm_or_encrypted",
-            message="浏览器只暴露 blob URL，后端无法直接下载；需要可见 mp4/FLV/m3u8/mpd 或本地视频。",
+            code="no_media_found",
+            message="浏览器只暴露 blob URL，尚未发现可直接下载的 mp4/FLV/m3u8/mpd；blob 本身不能证明媒体受 DRM 保护。",
         )
     if kind not in {"video", "hls", "dash"}:
         return MediaPreflightResult(
@@ -2428,8 +2428,8 @@ class MediaDownloader:
                         strategy="blob-unrecoverable",
                         candidate=item,
                         status="skipped",
-                        code="drm_or_encrypted",
-                        message="页面只暴露 blob 媒体地址，未发现可下载的 manifest 或视频文件。",
+                        code="no_media_found",
+                        message="页面只暴露 blob 媒体地址，未发现可下载的 manifest 或视频文件；没有 EME 信号时不判定为 DRM。",
                     )
                 elif kind == "fragment":
                     self._record_attempt(
@@ -2440,7 +2440,7 @@ class MediaDownloader:
                         message="检测到媒体分片，但没有对应 manifest，不能作为独立视频下载。",
                     )
             if not _is_http_url(page_url):
-                raise DownloadError("drm_or_encrypted", "页面只暴露 blob 媒体地址，未发现可下载 manifest 或视频文件。")
+                raise DownloadError("no_media_found", "页面只暴露 blob 媒体地址，未发现可下载 manifest 或视频文件。")
 
         cookie_file = write_netscape_cookie_file(cookies, self.task_path / "cookies.txt") if cookies else None
 

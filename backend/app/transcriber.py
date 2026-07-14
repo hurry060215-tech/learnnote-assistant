@@ -4,7 +4,7 @@ from pathlib import Path
 import re
 from urllib.parse import urlparse
 
-from .config import DEFAULT_WHISPER_COMPUTE_TYPE, DEFAULT_WHISPER_DEVICE, LLM_API_KEY, LLM_BASE_URL, MODEL_CACHE_DIR, configure_local_caches
+from .config import DEFAULT_WHISPER_COMPUTE_TYPE, DEFAULT_WHISPER_DEVICE, LLM_API_KEY, LLM_BASE_URL, LLM_MAX_RETRIES, LLM_REQUEST_TIMEOUT_SECONDS, MODEL_CACHE_DIR, configure_local_caches
 from .models import TaskOptions, TranscriptResult, TranscriptSegment
 
 
@@ -226,7 +226,12 @@ def transcribe_audio_openai_compatible(audio_path: Path, options: TaskOptions) -
         )
 
     try:
-        client = OpenAI(api_key=api_key, base_url=options.llm_base_url or LLM_BASE_URL)
+        client = OpenAI(
+            api_key=api_key,
+            base_url=options.llm_base_url or LLM_BASE_URL,
+            timeout=LLM_REQUEST_TIMEOUT_SECONDS,
+            max_retries=LLM_MAX_RETRIES,
+        )
         with audio_path.open("rb") as audio_file:
             try:
                 response = client.audio.transcriptions.create(

@@ -100,6 +100,40 @@ class StaleTaskTests(unittest.TestCase):
             self.assertEqual(record.status, "running")
             self.assertEqual(record.error_code, "")
 
+    def test_list_tasks_finalizes_stale_cancelling_task(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, patch("app.storage.TASK_DIR", Path(tmp)):
+            task = create_task("local", "cancelled course")
+            task.status = "cancelling"
+            task.phase = "cancelling"
+            task.cancel_requested = True
+            task.cancel_requested_at = (datetime.now(timezone.utc) - timedelta(minutes=8)).isoformat()
+            task.updated_at = task.cancel_requested_at
+            task_path = Path(tmp) / task.id / "task.json"
+            task_path.write_text(task.model_dump_json(indent=2), encoding="utf-8")
+
+            [record] = list_tasks()
+
+            self.assertEqual(record.status, "cancelled")
+            self.assertEqual(record.phase, "cancelled")
+            self.assertTrue(record.cancelled_at)
+            self.assertTrue(record.cancel_requested)
+
+    def test_list_tasks_keeps_recent_cancelling_task_in_progress(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, patch("app.storage.TASK_DIR", Path(tmp)):
+            task = create_task("local", "recent cancellation")
+            task.status = "cancelling"
+            task.phase = "cancelling"
+            task.cancel_requested = True
+            task.cancel_requested_at = (datetime.now(timezone.utc) - timedelta(minutes=2)).isoformat()
+            task.updated_at = task.cancel_requested_at
+            task_path = Path(tmp) / task.id / "task.json"
+            task_path.write_text(task.model_dump_json(indent=2), encoding="utf-8")
+
+            [record] = list_tasks()
+
+            self.assertEqual(record.status, "cancelling")
+            self.assertFalse(record.cancelled_at)
+
 
 if __name__ == "__main__":
     unittest.main()

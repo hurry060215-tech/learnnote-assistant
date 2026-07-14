@@ -753,6 +753,12 @@ body.settings-mode .app-shell {
 .workspace-panel .source-workflow-lane li.done b { background: #e5f5f1; color: var(--product-success); }
 .workspace-panel .source-workflow-lane li.active { border-color: var(--product-blue); }
 .workspace-panel .source-workflow-lane li.active b { background: #e8f1ff; color: var(--product-blue); }
+.workspace-panel .source-workflow-live-progress { display: grid; gap: 8px; margin-top: 16px; }
+.workspace-panel .source-workflow-live-progress > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.workspace-panel .source-workflow-live-progress strong { color: var(--product-text); font-size: 14px; }
+.workspace-panel .source-workflow-live-progress span { color: var(--product-accent-strong); font-size: 15px; font-weight: 800; }
+.workspace-panel .source-workflow-live-progress > i { height: 7px; overflow: hidden; border-radius: 4px; background: #e5edef; }
+.workspace-panel .source-workflow-live-progress > i > b { display: block; height: 100%; border-radius: inherit; background: var(--product-accent); transition: width 240ms ease; }
 .workspace-panel .source-workflow-card footer { min-height: 32px; display: flex; align-items: center; justify-content: space-between; border: 0; padding: 0; }
 .workspace-panel .source-workflow-card footer span { font-size: 14px; font-weight: 700; }
 .workspace-panel .source-workflow-card footer button { min-height: 32px; border: 0; background: transparent; color: var(--product-accent-strong); font-weight: 700; }
@@ -2703,11 +2709,11 @@ body[data-app-view="workspace"] .quick-note-heading button {
 .result-version-button { min-height: 38px; border: 1px solid var(--product-line-strong); border-radius: 7px; padding: 0 13px; color: var(--product-text); background: #fff; font-weight: 700; }
 .note-version-badge { display: inline-flex; margin-left: 8px; color: var(--product-accent-strong); font-size: 11px; font-style: normal; font-weight: 750; vertical-align: middle; }
 
-.ai-assistant-drawer { position: fixed; z-index: 80; top: 58px; right: 0; bottom: 0; width: min(420px, 100vw); display: grid; grid-template-rows: auto 1fr auto auto; border-left: 1px solid var(--product-line); background: #fff; box-shadow: -18px 0 42px rgba(18, 38, 46, .12); }
+.ai-assistant-drawer { position: fixed; z-index: 80; top: 58px; right: 0; bottom: 0; width: min(400px, 100vw); display: grid; grid-template-rows: auto 1fr auto auto; border-left: 1px solid var(--product-line); background: #fff; box-shadow: -10px 0 30px rgba(18, 38, 46, .08); }
 .ai-assistant-drawer[hidden] { display: none; }
 .ai-assistant-drawer > header { display: flex; justify-content: space-between; gap: 18px; padding: 22px 22px 18px; border-bottom: 1px solid var(--product-line); }
 .ai-assistant-drawer > header > div { display: grid; gap: 3px; }
-.ai-assistant-drawer > header span { color: var(--product-accent-strong); font-size: 12px; font-weight: 750; }
+.ai-assistant-drawer > header span { color: var(--product-accent-strong); font-size: 13px; font-weight: 750; }
 .ai-assistant-drawer > header strong { font-size: 20px; }
 .ai-assistant-drawer > header small { max-width: 310px; color: var(--product-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .assistant-conversation { min-height: 0; overflow: auto; padding: 22px; }
@@ -2715,15 +2721,17 @@ body[data-app-view="workspace"] .quick-note-heading button {
 .assistant-empty strong { font-size: 18px; }
 .assistant-empty p { margin: 0; color: var(--product-muted); line-height: 1.6; }
 .assistant-message { display: grid; gap: 6px; margin-bottom: 20px; }
-.assistant-message > span { color: var(--product-muted); font-size: 12px; font-weight: 700; }
+.assistant-message > span { color: var(--product-muted); font-size: 13px; font-weight: 700; }
 .assistant-message > div { border-radius: 8px; padding: 12px 14px; line-height: 1.65; }
 .assistant-message.user > div { margin-left: 42px; background: #eaf7f5; }
 .assistant-message.assistant > div { border: 1px solid var(--product-line); background: #fff; }
 .assistant-message .markdown-note { padding: 0; }
 .assistant-suggestions { display: flex; gap: 7px; overflow-x: auto; padding: 10px 18px; border-top: 1px solid var(--product-line); }
-.assistant-suggestions button { flex: 0 0 auto; min-height: 32px; border: 1px solid var(--product-line-strong); border-radius: 16px; padding: 0 11px; background: #fff; color: var(--product-muted); font-size: 12px; }
+.assistant-suggestions button { flex: 0 0 auto; min-height: 34px; border: 1px solid var(--product-line-strong); border-radius: 17px; padding: 0 12px; background: #fff; color: var(--product-muted); font-size: 13px; }
+.assistant-suggestions button:disabled { border-color: var(--product-line); background: #f5f7f8; color: #97a3a8; }
 .assistant-composer { display: grid; grid-template-columns: 1fr auto; gap: 10px; padding: 14px 18px 18px; }
 .assistant-composer textarea { min-height: 48px; resize: none; border: 1px solid var(--product-line-strong); border-radius: 8px; padding: 11px 12px; font: inherit; }
+.assistant-composer textarea:disabled { border-color: var(--product-line); background: #f5f7f8; color: var(--product-muted); }
 
 @media (min-width: 1101px) {
   .topbar,
@@ -2733,17 +2741,38 @@ body[data-app-view="workspace"] .quick-note-heading button {
 
   body.assistant-open .topbar,
   body.assistant-open .app-shell {
-    margin-right: min(420px, 34vw);
+    margin-right: min(400px, 32vw);
   }
 
   .ai-assistant-drawer {
-    width: min(420px, 34vw);
+    width: min(400px, 32vw);
   }
 }
 
 @media (max-width: 1100px) {
   .ai-assistant-drawer {
     width: min(420px, calc(100vw - 56px));
+  }
+}
+
+@media (max-width: 620px) {
+  body.assistant-open .topbar,
+  body.assistant-open .app-shell {
+    margin-right: 0;
+  }
+
+  .ai-assistant-drawer {
+    top: 54px;
+    left: 0;
+    width: auto;
+  }
+
+  .assistant-launch-button {
+    flex: 0 0 38px;
+    width: 38px;
+    padding: 0;
+    justify-content: center;
+    font-size: 0;
   }
 }
 

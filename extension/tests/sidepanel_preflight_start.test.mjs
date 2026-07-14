@@ -194,6 +194,9 @@ assert.match(context.routeSummaryActionsHtml("fallback"), /data-route-action="su
 vm.runInContext(`page.page_url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";`, context);
 assert.equal(context.canResolveCurrentPageWithoutMediaEvidence("video"), true);
 
+vm.runInContext(`page.page_url = "https://mooc1.chaoxing.com/mycourse/studentstudy?chapterId=42";`, context);
+assert.equal(context.canResolveCurrentPageWithoutMediaEvidence("video"), true);
+
 vm.runInContext(`page.page_url = "https://course.example.com/lesson";`, context);
 assert.equal(context.canResolveCurrentPageWithoutMediaEvidence("video"), false);
 

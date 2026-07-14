@@ -27,7 +27,7 @@ let API = resolveApiBase();
 const MEDIA_RE = /\.(mp4|m4v|webm|mov|mkv|flv|avi)(\?|#|$)/i;
 const HLS_RE = /\.(m3u8|mpd)(\?|#|$)/i;
 const LOCAL_VIDEO_EXT_RE = /\.(mp4|m4v|mov|mkv|webm|flv|avi)$/i;
-const RESULT_TAB_NAMES = new Set(["note", "transcript", "slices", "frames", "qa", "diagnostics"]);
+const RESULT_TAB_NAMES = new Set(["note", "transcript", "slices", "frames", "diagnostics"]);
 const LOCAL_ASR_MODELS = new Set(["tiny", "base", "small", "medium", "large", "large-v2", "large-v3"]);
 const MODEL_SETTINGS_STORAGE_KEY = "learnnote_model_settings";
 const APP_SETTINGS_STORAGE_KEY = "learnnote_app_settings";
@@ -309,6 +309,7 @@ let qaState = { taskId: "", question: "", answer: "", source: "", warning: "", c
 let noteVersionTaskId = "";
 let assistantMessages = [];
 let assistantHistoryRequestId = 0;
+let assistantContextTaskId = "";
 const ASSISTANT_OPEN_KEY = "learnnote.aiAssistantOpen";
 
 const els = {
@@ -320,6 +321,8 @@ const els = {
   assistantConversation: document.querySelector("#assistantConversation"),
   assistantForm: document.querySelector("#assistantForm"),
   assistantQuestion: document.querySelector("#assistantQuestion"),
+  assistantSubmitButton: document.querySelector("#assistantSubmitButton"),
+  assistantSuggestions: document.querySelectorAll("[data-assistant-question]"),
   refreshButton: document.querySelector("#refreshButton"),
   toggleWorkspaceButton: document.querySelector("#toggleWorkspaceButton"),
   toggleHistoryButton: document.querySelector("#toggleHistoryButton"),
@@ -706,6 +709,9 @@ function showAppView(view = "workspace") {
   if (settingsMode) {
     if (!wasSettingsMode) showSettingsPane("general");
     loadStorageSummary();
+  }
+  if (normalizedView === "notes" && assistantSelectedTask() && assistantOpenPreference() !== false) {
+    setAssistantOpen(true, { persist: false });
   }
 }
 
@@ -1251,6 +1257,9 @@ function selectTask(taskId, { clearCaches = true, syncUrl = true } = {}) {
     lastDetailFingerprint = "__unrendered__";
     assistantMessages = [];
     if (document.body?.classList?.contains("assistant-open")) loadAssistantHistory();
+    else if (document.body?.dataset?.appView === "notes" && assistantSelectedTask() && assistantOpenPreference() !== false) {
+      setAssistantOpen(true, { persist: false });
+    }
   }
   if (changed && clearCaches) clearTaskCaches();
   if (syncUrl) syncSelectedTaskUrl(taskId);
@@ -1262,6 +1271,10 @@ function taskDetailFingerprint(task) {
     task.id,
     selectedTab,
     task.status || "",
+    task.phase || "",
+    Number(task.progress || 0),
+    task.error_code || "",
+    task.error_detail || "",
     task.note_path || "",
     task.transcript_path || "",
     task.media_path || "",
@@ -2510,6 +2523,15 @@ function sourceWorkflowActionsHtml(source, task = null) {
   </div>`;
 }
 
+function sourceWorkflowProgressHtml(task = null) {
+  if (!task || !["running", "queued", "cancelling"].includes(task.status)) return "";
+  const progress = Math.max(0, Math.min(100, Number(task.progress || 0)));
+  return `<div class="source-workflow-live-progress" role="progressbar" aria-label="任务处理进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progress}">
+    <div><strong>${escapeHtml(taskPhaseLabel(task))}</strong><span>${progress}%</span></div>
+    <i><b style="width:${progress}%"></b></i>
+  </div>`;
+}
+
 function sourceWorkflowHtml(source = selectedSource, task = workflowTaskForSource(source)) {
   const config = workflowSourceConfig(source, task);
   const state = task ? statusText(task) : "等待开始";
@@ -2535,6 +2557,7 @@ function sourceWorkflowHtml(source = selectedSource, task = workflowTaskForSourc
       ${currentOptionSummaryItems().map(item => `<span>${escapeHtml(item)}</span>`).join("")}
     </div>
     ${sourceWorkflowActionsHtml(source, task)}
+    ${sourceWorkflowProgressHtml(task)}
     <footer>
       <span>${escapeHtml(state)}</span>
       ${task ? `<button type="button" data-select-workflow-task="${escapeHtml(task.id)}">查看最近任务</button>` : `<em>选择入口后开始处理</em>`}
@@ -4372,6 +4395,7 @@ function initializeWorkspaceView() {
   setHistoryCollapsed(taskRoute && storedUiFlag("learnnote.historyCollapsed"), false);
   setReadingMode(taskRoute && storedUiFlag("learnnote.readingMode"), false);
   renderResultTabState();
+  if (taskRoute) showAppView("notes");
 }
 
 async function loadTasks() {
@@ -4401,6 +4425,12 @@ async function loadTasks() {
   renderSourceWorkflow();
   const selected = tasks.find(task => task.id === selectedTaskId) || null;
   if (taskDetailFingerprint(selected) !== lastDetailFingerprint) await renderDetail();
+  const assistantTask = assistantSelectedTask();
+  if (document.body?.dataset?.appView === "notes" && assistantTask && assistantOpenPreference() !== false && !document.body?.classList?.contains("assistant-open")) {
+    setAssistantOpen(true, { persist: false });
+  } else if (document.body?.classList?.contains("assistant-open") && (assistantTask?.id || "") !== assistantContextTaskId) {
+    loadAssistantHistory();
+  }
 }
 
 function taskMatchesFilters(task) {
@@ -5901,12 +5931,22 @@ async function createNoteVersion() {
 }
 
 function assistantSelectedTask() {
-  return tasks.find(task => task.id === selectedTaskId && task.note_path) || tasks.find(task => task.status === "success" && task.note_path) || null;
+  if (selectedTaskId) {
+    const selected = tasks.find(task => task.id === selectedTaskId);
+    return selected?.note_path ? selected : null;
+  }
+  return tasks.find(task => task.status === "success" && task.note_path) || null;
 }
 
 function renderAssistant() {
   const task = assistantSelectedTask();
   if (els.assistantTaskLabel) els.assistantTaskLabel.textContent = task ? displayTaskTitle(task) : "请先在笔记库选择一篇笔记";
+  if (els.assistantQuestion) {
+    els.assistantQuestion.disabled = !task;
+    els.assistantQuestion.placeholder = task ? "输入问题，Enter 发送" : "选择一篇已完成的笔记后即可提问";
+  }
+  if (els.assistantSubmitButton) els.assistantSubmitButton.disabled = !task;
+  els.assistantSuggestions?.forEach?.(button => { button.disabled = !task; });
   if (!els.assistantConversation) return;
   if (!assistantMessages.length) {
     els.assistantConversation.innerHTML = `<div class="assistant-empty"><strong>${task ? "从一个具体问题开始" : "还没有选择笔记"}</strong><p>${task ? "回答会引用这篇笔记的字幕、时间点和画面切片。" : "打开笔记库选择一篇已完成的笔记。"}</p></div>`;
@@ -5919,6 +5959,7 @@ function renderAssistant() {
 async function loadAssistantHistory() {
   const task = assistantSelectedTask();
   const requestId = ++assistantHistoryRequestId;
+  assistantContextTaskId = task?.id || "";
   assistantMessages = [];
   renderAssistant();
   if (!task) return;
@@ -5938,12 +5979,23 @@ async function loadAssistantHistory() {
   renderAssistant();
 }
 
-function setAssistantOpen(open) {
+function assistantOpenPreference() {
+  try {
+    const stored = window.localStorage?.getItem(ASSISTANT_OPEN_KEY);
+    return stored === "1" ? true : stored === "0" ? false : null;
+  } catch {
+    return null;
+  }
+}
+
+function setAssistantOpen(open, { persist = true } = {}) {
   if (!els.aiAssistantDrawer) return;
   els.aiAssistantDrawer.hidden = !open;
   document.body.classList.toggle("assistant-open", open);
   els.openAiAssistantButton?.setAttribute("aria-expanded", String(open));
-  try { window.localStorage?.setItem(ASSISTANT_OPEN_KEY, open ? "1" : "0"); } catch { /* ignore */ }
+  if (persist) {
+    try { window.localStorage?.setItem(ASSISTANT_OPEN_KEY, open ? "1" : "0"); } catch { /* ignore */ }
+  }
   if (open) {
     loadAssistantHistory();
     window.setTimeout(() => els.assistantQuestion?.focus(), 80);
@@ -6157,6 +6209,9 @@ function bindTaskOverviewActions() {
   document.querySelectorAll("[data-rerun-from-media]").forEach(button => {
     button.onclick = () => rerunTaskFromMedia(button.dataset.rerunFromMedia);
   });
+  document.querySelectorAll("[data-open-note-version]").forEach(button => {
+    button.onclick = () => openNoteVersionDialog(button.dataset.openNoteVersion);
+  });
   document.querySelectorAll("[data-switch-result-tab]").forEach(button => {
     button.onclick = () => switchResultTab(button.dataset.switchResultTab, button.dataset.focusVisualWindow || "");
   });
@@ -6185,10 +6240,6 @@ function focusVisualWindow(windowId) {
 
 function switchResultTab(tabName, focusWindowId = "") {
   const normalizedTab = normalizeResultTabName(tabName);
-  if (normalizedTab === "qa") {
-    setAssistantOpen(true);
-    return;
-  }
   if (!RESULT_TAB_NAMES.has(normalizedTab)) return;
   if (selectedTab !== normalizedTab) {
     selectedTab = normalizedTab;
@@ -6298,7 +6349,6 @@ function learningPathHtml(markdown, task) {
   const hasNote = Boolean(task.note_path || markdown);
   const hasTranscript = hasReadableTranscript(task);
   const hasVisuals = windows.length > 0;
-  const hasQa = Boolean(hasNote);
   const steps = [
     {
       number: "01",
@@ -6326,21 +6376,12 @@ function learningPathHtml(markdown, task) {
       target: "transcript",
       enabled: hasTranscript,
       state: hasTranscript ? "ready" : "wait"
-    },
-    {
-      number: "04",
-      label: "问答复习",
-      value: task.qa?.history_count ? `${task.qa.history_count} 条` : hasQa ? "可提问" : "等待笔记",
-      detail: hasQa ? "基于笔记、字幕和画面索引追问。" : "先生成笔记再提问。",
-      target: "qa",
-      enabled: hasQa,
-      state: task.qa?.history_count ? "ready" : hasQa ? "active" : "wait"
     }
   ];
   return `<section class="learning-path" aria-label="学习路径">
     <header>
       <span>学习路径</span>
-      <strong>读笔记 → 看切片 → 核字幕 → 提问</strong>
+      <strong>读笔记 → 看切片 → 核字幕</strong>
     </header>
     <div class="learning-path-steps">
       ${steps.map(step => `<article class="${escapeHtml(step.state)}">
@@ -6389,13 +6430,6 @@ function noteReviewWorkbench(markdown, task) {
       value: hasTranscript ? "可核对" : "等待转写",
       detail: hasTranscript ? "点击时间戳可回到本地视频定位。" : asrOptionText(task.options || {}),
       action: reviewCommandButton("transcript", "核对字幕", hasTranscript)
-    },
-    {
-      state: task.qa?.history_count ? "ready" : hasNote ? "active" : "wait",
-      label: "问答复习",
-      value: task.qa?.history_count ? `${task.qa.history_count} 条记录` : hasNote ? "可提问" : "等待笔记",
-      detail: hasNote ? "基于笔记、字幕和画面索引回答。" : "笔记生成后启用任务问答。",
-      action: hasNote ? `<button type="button" data-open-assistant>打开学习助手</button>` : `<button type="button" disabled>笔记生成后可用</button>`
     }
   ];
   const exports = [
@@ -6415,7 +6449,7 @@ function noteReviewWorkbench(markdown, task) {
   const primary = canContinueMedia
     ? `<button type="button" data-rerun-from-media="${escapeHtml(task.id)}">继续切片总结</button>`
     : hasNote
-      ? `<button type="button" data-open-assistant>打开学习助手</button>`
+      ? `<button type="button" data-open-note-version="${escapeHtml(task.id)}">生成另一版笔记</button>`
       : `<button type="button" data-switch-result-tab="diagnostics">查看阶段检查</button>`;
   const detail = canContinueMedia
     ? `视频已直取到本地，下一步复用 ${mediaName} 进入转写、抽帧和图文总结。`
@@ -7548,14 +7582,6 @@ async function renderDetail() {
     return;
   }
 
-  if (selectedTab === "qa") {
-    els.detail.className = "detail";
-    els.detail.innerHTML = `${taskOverview(task)}${qaPanelHtml(task)}`;
-    bindTaskOverviewActions();
-    bindQaActions(task);
-    return;
-  }
-
   if (selectedTab === "diagnostics") {
     const selected = task.selected_resource || {};
     const attempts = task.download_attempts || [];
@@ -8052,6 +8078,9 @@ async function exportTaskArtifact(taskId, exportType, button = null) {
   try {
     if (api?.export_task) {
       const result = await api.export_task(taskId, exportType);
+      if (result?.ok === false) {
+        throw new Error(result.error || result.message || "客户端未能保存导出文件");
+      }
       if (els.exportStatus) els.exportStatus.textContent = result?.filename ? `已保存：${result.filename}` : "导出完成";
       if (els.openExportFolderButton) els.openExportFolderButton.hidden = false;
       return;
@@ -8316,9 +8345,7 @@ if (!hasExplicitTaskRoute()) {
 renderSourceWorkflow();
 checkHealth();
 loadTasks();
-try {
-  if (window.localStorage?.getItem(ASSISTANT_OPEN_KEY) === "1") setAssistantOpen(true);
-} catch { /* ignore */ }
+if (assistantOpenPreference() === true) setAssistantOpen(true, { persist: false });
 if ((currentUrlParam(["setup"]) === "1" || !onboardingWasCompleted()) && !hasExplicitTaskRoute()) {
   window.setTimeout?.(openOnboarding, 220);
 }

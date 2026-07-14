@@ -3045,7 +3045,7 @@ class DownloaderPriorityTests(unittest.TestCase):
         self.assertTrue(result.ok)
         self.assertFalse(result.downloadable)
         self.assertEqual(result.strategy, "blob-unrecoverable")
-        self.assertEqual(result.code, "drm_or_encrypted")
+        self.assertEqual(result.code, "no_media_found")
 
 
 if __name__ == "__main__":

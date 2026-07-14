@@ -70,7 +70,7 @@ class DesktopLauncherTests(unittest.TestCase):
 
             @staticmethod
             def json():
-                return []
+                return {"tasks": []}
 
         with tempfile.TemporaryDirectory(dir=ROOT / "data") as root_dir, tempfile.TemporaryDirectory(dir=ROOT / "data") as source_dir, tempfile.TemporaryDirectory(dir=ROOT / "data") as target_dir:
             root = Path(root_dir)
@@ -87,6 +87,30 @@ class DesktopLauncherTests(unittest.TestCase):
             self.assertEqual("lesson", (target / "tasks" / "note.md").read_text(encoding="utf-8"))
             saved = json.loads((root / "learnnote-config.json").read_text(encoding="utf-8"))
             self.assertEqual(str(target.resolve()), saved["data_dir"])
+
+    def test_choose_data_directory_blocks_migration_while_task_is_running(self):
+        class Window:
+            def create_file_dialog(self, *_args, **_kwargs):
+                return [str(target)]
+
+        class Response:
+            ok = True
+
+            @staticmethod
+            def json():
+                return {"tasks": [{"id": "active-task", "status": "running"}]}
+
+        with tempfile.TemporaryDirectory(dir=ROOT / "data") as root_dir, tempfile.TemporaryDirectory(dir=ROOT / "data") as source_dir, tempfile.TemporaryDirectory(dir=ROOT / "data") as target_dir:
+            root = Path(root_dir)
+            source = Path(source_dir)
+            target = Path(target_dir)
+            api = desktop.DesktopApi(source, "http://127.0.0.1:18766", root)
+            api._bind_window(Window())
+            with patch.object(desktop.requests, "get", return_value=Response()):
+                result = api.choose_data_directory(True)
+            self.assertFalse(result["ok"])
+            self.assertEqual("tasks_running", result["code"])
+            self.assertFalse((root / "learnnote-config.json").exists())
 
     def test_configure_model_runtime_uses_secure_kimi_credential(self):
         keys = (

@@ -5,6 +5,7 @@ from io import BytesIO
 import base64
 import hmac
 import json
+import mimetypes
 import re
 import shutil
 import tempfile
@@ -21,7 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 
 from . import API_VERSION, APP_VERSION, TASK_SCHEMA_VERSION, UX_PROTOCOL_VERSION
-from .config import BACKEND_ORIGIN, DATA_DIR, DEPLOYMENT_MODE, LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, MODEL_CACHE_DIR, PUBLIC_DEPLOYMENT, PUBLIC_PASSWORD, PUBLIC_USERNAME, STATIC_DIR, TASK_DIR, TEMP_DIR, UPLOAD_DIR, WEB_DIR, ensure_dirs
+from .config import BACKEND_ORIGIN, DATA_DIR, DEPLOYMENT_MODE, LLM_API_KEY, LLM_BASE_URL, LLM_MAX_RETRIES, LLM_MODEL, LLM_REQUEST_TIMEOUT_SECONDS, MODEL_CACHE_DIR, PUBLIC_DEPLOYMENT, PUBLIC_PASSWORD, PUBLIC_USERNAME, STATIC_DIR, TASK_DIR, TEMP_DIR, UPLOAD_DIR, WEB_DIR, ensure_dirs
 from .downloader import MediaDownloader, effective_resource_kind, fallback_page_contexts, preflight_media_resource, rank_media_candidates
 from .media import MediaProcessingError, extract_video_clip, probe_duration
 from .models import CurrentPageTaskRequest, MediaPreflightRequest, MediaPreflightResult, PagePreflightRequest, RerunFromMediaRequest, ResourceCandidate, SourceInputRequest, StorageCleanupRequest, TaskOptions, TaskQuestionRequest, TaskRecord, now_iso
@@ -217,6 +218,19 @@ def media_download_filename(task: TaskRecord, path: Path) -> str:
     if name and name.lower() != "media.mp4":
         return name[:160]
     return media_filename(task.id, task.title)
+
+
+def media_content_type(path: Path) -> str:
+    stable_types = {
+        ".avi": "video/x-msvideo",
+        ".flv": "video/x-flv",
+        ".m4v": "video/x-m4v",
+        ".mkv": "video/x-matroska",
+        ".mov": "video/quicktime",
+        ".mp4": "video/mp4",
+        ".webm": "video/webm",
+    }
+    return stable_types.get(path.suffix.lower()) or mimetypes.guess_type(path.name)[0] or "application/octet-stream"
 
 
 def diagnostics_filename(task_id: str, title: str) -> str:
@@ -1367,13 +1381,13 @@ def diagnostic_recovery_profile(task: TaskRecord) -> dict:
         confidence = "high"
         severity = "partial"
         next_action = "export_markdown"
-    elif "drm_or_encrypted" in codes or task.drm_detected or selected_kind == "blob":
+    elif "drm_or_encrypted" in codes or task.drm_detected:
         primary_code = "drm_or_encrypted"
         diagnosis = (
             f"{mse_boundary_summary} 需要继续播放并重新检测真实 manifest/mp4 请求，"
             "否则改用本地视频入口。"
         ) if mse_boundary_summary else "页面没有暴露可还原的直接媒体资源，或触发了 DRM/EME 边界。"
-        confidence = "high" if task.drm_detected or selected_kind == "blob" else "medium"
+        confidence = "high" if task.drm_detected else "medium"
         severity = "hard_boundary"
         next_action = "local_upload"
     elif "auth_required" in codes:
@@ -1394,6 +1408,16 @@ def diagnostic_recovery_profile(task: TaskRecord) -> dict:
         confidence = "medium"
         severity = "recoverable"
         next_action = "play_longer_and_redetect"
+    elif selected_kind == "blob":
+        primary_code = "no_media_found"
+        diagnosis = (
+            f"{mse_boundary_summary} 需要继续播放并重新检测真实 manifest/mp4 请求。"
+            if mse_boundary_summary
+            else "当前只有 blob 播放线索，尚未发现可直接下载的 manifest 或媒体文件。"
+        )
+        confidence = "high" if mse_boundary_summary else "medium"
+        severity = "recoverable"
+        next_action = "play_and_redetect"
     elif "no_media_found" in codes or (task.status == "failed" and not task.download_attempts):
         primary_code = "no_media_found"
         diagnosis = "当前页还没有暴露 mp4、m3u8、mpd 或 yt-dlp 可解析的下载入口。"
@@ -1415,7 +1439,7 @@ def diagnostic_recovery_profile(task: TaskRecord) -> dict:
 
     if is_chaoxing:
         boundary_notes.append("学习通/超星第一版只复用当前页面暴露的真实媒体 URL、Referer 和 Cookie，不刷课、不伪造学习进度、不自动答题。")
-    if "drm_or_encrypted" in codes or task.drm_detected or selected_kind == "blob":
+    if "drm_or_encrypted" in codes or task.drm_detected:
         boundary_notes.append("不会录制、破解或绕过 DRM/EME；blob 只有在扩展捕获到真实 manifest/媒体请求时才可直取。")
     if mse_boundary_summary:
         boundary_notes.append(f"{mse_boundary_summary} 这只能作为播放证据，不能替代直接媒体下载。")
@@ -1780,7 +1804,7 @@ def page_preflight_report(request: PagePreflightRequest) -> dict:
             )
 
     direct_candidate_count = sum(1 for item in ranked if effective_resource_kind(item) in {"video", "hls", "dash"})
-    has_drm_boundary = request.drm_detected or any(effective_resource_kind(item) == "blob" for item in request.resources)
+    has_drm_boundary = request.drm_detected
 
     if selected_url:
         code = ""
@@ -1789,7 +1813,12 @@ def page_preflight_report(request: PagePreflightRequest) -> dict:
         code = "drm_or_encrypted"
         message = "页面只暴露 blob/DRM 播放线索，没有可交给后端下载的 mp4、m3u8 或 mpd。"
     elif ranked:
-        code = "download_forbidden"
+        preflight_codes = [str(item["preflight"].get("code") or "") for item in candidates]
+        code = (
+            "no_media_found"
+            if preflight_codes and all(item in {"no_media_found", "not_probed"} for item in preflight_codes)
+            else "download_forbidden"
+        )
         message = "整页预检没有发现可直接下载的候选；可继续播放后重新检测，或改用本地视频上传。"
     elif has_drm_boundary:
         code = "drm_or_encrypted"
@@ -2684,7 +2713,12 @@ def _answer_task_question(task: TaskRecord, request: TaskQuestionRequest) -> dic
         try:
             from openai import OpenAI
 
-            client = OpenAI(api_key=api_key, base_url=base_url)
+            client = OpenAI(
+                api_key=api_key,
+                base_url=base_url,
+                timeout=LLM_REQUEST_TIMEOUT_SECONDS,
+                max_retries=LLM_MAX_RETRIES,
+            )
             response = client.chat.completions.create(
                 model=model,
                 messages=[
@@ -2843,7 +2877,12 @@ def automatic_diagnostics(payload: dict | None = Body(default=None)) -> dict:
                 "task": {"id": task.id, "status": task.status, "phase": task.phase, "error_code": task.error_code, "error_detail": _clip_text(task.error_detail, 240)} if task else None,
                 "rule_findings": findings,
             }
-            response = OpenAI(api_key=api_key, base_url=base_url).chat.completions.create(
+            response = OpenAI(
+                api_key=api_key,
+                base_url=base_url,
+                timeout=LLM_REQUEST_TIMEOUT_SECONDS,
+                max_retries=LLM_MAX_RETRIES,
+            ).chat.completions.create(
                 model=model,
                 messages=[{"role": "user", "content": (
                     "你是 LearnNote 本地客户端的故障诊断助手。请根据下面脱敏状态，用中文给出不超过 180 字的判断。"
@@ -3498,7 +3537,7 @@ def api_export_media(task_id: str) -> FileResponse:
             f"filename*=UTF-8''{quote(filename)}"
         )
     }
-    return FileResponse(path, media_type="video/mp4", headers=headers)
+    return FileResponse(path, media_type=media_content_type(path), headers=headers)
 
 
 @app.get("/api/tasks/{task_id}/exports/clips/{window_id}")
@@ -3588,7 +3627,7 @@ def api_preview_media(task_id: str) -> FileResponse:
         ),
         "Cache-Control": "private, max-age=60",
     }
-    return FileResponse(path, media_type="video/mp4", headers=headers)
+    return FileResponse(path, media_type=media_content_type(path), headers=headers)
 
 
 @app.get("/api/tasks/{task_id}/assets/{filename}")

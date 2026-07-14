@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 from urllib.parse import urlparse
 
-from .config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
+from .config import LLM_API_KEY, LLM_BASE_URL, LLM_MAX_RETRIES, LLM_MODEL, LLM_REQUEST_TIMEOUT_SECONDS
 from .media import image_to_data_url
 from .models import FrameGrid, TaskOptions, TranscriptResult, VisualWindow
 
@@ -903,7 +903,12 @@ def summarize_with_llm(
     base_url = options.llm_base_url or LLM_BASE_URL
     provider_kwargs = chat_completion_provider_kwargs(base_url)
     try:
-        client = OpenAI(api_key=api_key, base_url=base_url)
+        client = OpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            timeout=LLM_REQUEST_TIMEOUT_SECONDS,
+            max_retries=LLM_MAX_RETRIES,
+        )
     except Exception as exc:
         _record_llm_event(events, "client_init", "client_init_failed", exc, model=model)
         return None

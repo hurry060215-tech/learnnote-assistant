@@ -76,6 +76,7 @@ const documentStub = {
 };
 
 const startCalls = [];
+const openedTabs = [];
 let preflightCalls = 0;
 
 const context = {
@@ -180,7 +181,9 @@ const context = {
       }
     },
     tabs: {
-      create() {}
+      create(options) {
+        openedTabs.push(options);
+      }
     }
   },
   setTimeout,
@@ -205,11 +208,13 @@ assert.match(sourceRouteRail.innerHTML, /待预检|可总结/);
 assert.match(sourceRouteRail.innerHTML, /视频 · 直接下载|1 个直取候选/);
 
 await sourceButtons[1].listeners.click();
-assert.equal(sourceButtons[0].classList.contains("active"), false);
-assert.equal(sourceButtons[1].classList.contains("active"), true);
-assert.equal(elements.get("#localVideoCard").scrollCount, 1);
-assert.equal(elements.get("#localVideoCard").dataset.localState, "idle");
+assert.equal(sourceButtons[0].classList.contains("active"), true);
+assert.equal(sourceButtons[1].classList.contains("active"), false);
+assert.equal(elements.get("#localVideoCard").scrollCount, 0);
 assert.equal(elements.get("#fileInput").clicks, 0);
+assert.equal(openedTabs.length, 1);
+assert.equal(openedTabs[0].url, "http://127.0.0.1:8765");
+assert.match(elements.get("#taskMessage").textContent, /客户端.*本地视频/);
 assert.deepEqual(startCalls, []);
 assert.match(sourceRouteRail.innerHTML, /data-source-route="local" data-state="wait"/);
 
@@ -233,5 +238,7 @@ await sourceRouteRail.listeners.click({
     }
   }
 });
-assert.equal(sourceButtons[0].classList.contains("active"), false);
-assert.equal(sourceButtons[1].classList.contains("active"), true);
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.equal(sourceButtons[0].classList.contains("active"), true);
+assert.equal(sourceButtons[1].classList.contains("active"), false);
+assert.equal(openedTabs.length, 2);

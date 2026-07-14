@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>LearnNote 学习视频笔记</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="/web/styles.css?v=20260712-v0118">
-    <link rel="stylesheet" href="/web/workspace.css?v=20260712-v0118">
-    <link rel="stylesheet" href="/web/product.css?v=20260712-v0118">
+    <link rel="stylesheet" href="/web/styles.css?v=20260714-v0119">
+    <link rel="stylesheet" href="/web/workspace.css?v=20260714-v0119">
+    <link rel="stylesheet" href="/web/product.css?v=20260714-v0119">
   </head>
   <body data-app-view="workspace">
     <header class="topbar">
@@ -22,7 +22,7 @@
         <span id="health" class="health">检查中</span>
         <button id="openAiAssistantButton" class="assistant-launch-button" type="button" aria-expanded="false" aria-controls="aiAssistantDrawer">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v11H9l-4 4z"/><path d="M9 9h6M9 12h4"/></svg>
-          AI 助手
+          AI 侧栏
         </button>
         <button id="toggleWorkspaceButton" class="icon-button" title="折叠/展开工作区" aria-label="折叠/展开工作区" aria-pressed="false">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4z"/><path d="M14 5v14"/><path d="M9 9l-3 3 3 3"/></svg>
@@ -610,12 +610,12 @@
       </section>
     </div>
 
-    <aside id="aiAssistantDrawer" class="ai-assistant-drawer" hidden aria-label="AI 学习助手">
+    <aside id="aiAssistantDrawer" class="ai-assistant-drawer" hidden aria-label="AI 学习侧栏">
       <header>
-        <div><span>AI 学习助手</span><strong>边看边问，不离开笔记</strong><small id="assistantTaskLabel">请先在笔记库选择一篇笔记</small></div>
-        <button id="closeAiAssistantButton" class="icon-button" type="button" aria-label="关闭 AI 助手"><svg viewBox="0 0 24 24"><path d="M5 5l14 14M19 5 5 19"/></svg></button>
+        <div><span>AI 学习侧栏</span><strong>随时提问</strong><small id="assistantTaskLabel">请先在笔记库选择一篇笔记</small></div>
+        <button id="closeAiAssistantButton" class="icon-button" type="button" aria-label="收起 AI 侧栏"><svg viewBox="0 0 24 24"><path d="M5 5l14 14M19 5 5 19"/></svg></button>
       </header>
-      <div id="assistantConversation" class="assistant-conversation"><div class="assistant-empty"><strong>从一个具体问题开始</strong><p>回答会引用这篇笔记的字幕、时间点和画面切片。</p></div></div>
+      <div id="assistantConversation" class="assistant-conversation" aria-live="polite"><div class="assistant-empty"><strong>从一个具体问题开始</strong><p>回答会引用当前笔记的字幕、时间点和画面切片。</p></div></div>
       <div class="assistant-suggestions">
         <button type="button" data-assistant-question="用三点总结这节课的核心内容">总结核心内容</button>
         <button type="button" data-assistant-question="哪些地方最容易理解错？">找出易错点</button>
@@ -623,7 +623,7 @@
       </div>
       <form id="assistantForm" class="assistant-composer">
         <textarea id="assistantQuestion" rows="2" maxlength="1000" placeholder="输入问题，Enter 发送"></textarea>
-        <button class="primary action-button" type="submit" aria-label="发送问题">发送</button>
+        <button id="assistantSubmitButton" class="primary action-button" type="submit" aria-label="发送问题">发送</button>
       </form>
     </aside>
 
@@ -641,6 +641,6 @@
       </section>
     </div>
 
-    <script src="/web/app.js?v=20260712-v0118"></script>
+    <script src="/web/app.js?v=20260714-v0119"></script>
   </body>
 </html>

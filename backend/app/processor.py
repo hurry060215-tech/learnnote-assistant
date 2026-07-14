@@ -55,6 +55,10 @@ def validate_summary_evidence(transcript: TranscriptResult, frames: list[Path], 
     )
 
 
+def has_visual_summary_evidence(frames: list[Path], media_duration: float) -> bool:
+    return media_duration >= 2 and len({path.name for path in frames}) >= 2
+
+
 def _check_cancel(task_id: str) -> None:
     if get_task(task_id).cancel_requested:
         mark_task_cancelled(task_id)
@@ -1155,8 +1159,19 @@ def _process_video_file(
     record.visual_index_path = str(visual_index_path)
     save_task(record)
 
-    if not asr_error:
-        validate_summary_evidence(transcript, frames, media_duration)
+    if asr_error and not has_visual_summary_evidence(frames, media_duration):
+        update_task(
+            task_id,
+            status="failed",
+            phase="failed",
+            progress=100,
+            message=asr_error,
+            error_code="asr_failed",
+            error_detail=asr_error,
+        )
+        return
+
+    validate_summary_evidence(transcript, frames, media_duration)
 
     update_task(task_id, phase="summarizing", progress=84, message="正在生成 Markdown 笔记")
     _check_cancel(task_id)

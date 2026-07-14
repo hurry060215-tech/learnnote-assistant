@@ -97,8 +97,15 @@ class DesktopApi:
         if migrate:
             try:
                 response = requests.get(f"{self.backend_url}/api/tasks", timeout=3.0)
-                running = [task for task in (response.json() if response.ok else []) if task.get("status") in {"queued", "running", "cancelling"}]
-            except (requests.RequestException, ValueError):
+                payload = response.json() if response.ok else []
+                task_items = payload.get("tasks", []) if isinstance(payload, dict) else payload
+                if not isinstance(task_items, list):
+                    task_items = []
+                running = [
+                    task for task in task_items
+                    if isinstance(task, dict) and task.get("status") in {"queued", "running", "cancelling"}
+                ]
+            except (requests.RequestException, TypeError, ValueError):
                 running = []
             if running:
                 return {"ok": False, "code": "tasks_running", "message": "还有任务正在处理，请完成或停止任务后再迁移。"}

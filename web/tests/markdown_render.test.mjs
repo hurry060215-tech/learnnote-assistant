@@ -311,14 +311,14 @@ assert.match(stylesCss, /\.workspace-panel \.source-pane\s*\{\s*order: 4;/);
 assert.match(stylesCss, /\.workspace-panel \.source-route-rail\s*\{\s*display: none;/);
 assert.match(stylesCss, /\.capture-flow\s*\{\s*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);/);
 assert.match(indexHtml, /id="toggleWorkspaceButton"/);
-assert.match(indexHtml, /styles\.css\?v=20260712-v0118/);
-assert.match(indexHtml, /app\.js\?v=20260712-v0118/);
+assert.match(indexHtml, /styles\.css\?v=20260714-v0119/);
+assert.match(indexHtml, /app\.js\?v=20260714-v0119/);
 assert.match(indexHtml, /id="sourceRouteRail"/);
 assert.match(indexHtml, /id="urlPreflightReport"/);
 assert.match(indexHtml, /href="#settingsView" data-app-view="settings" title="设置"/);
 assert.doesNotMatch(indexHtml, /href="#settings" title="设置"/);
-assert.match(indexHtml, /workspace\.css\?v=20260712-v0118/);
-assert.match(indexHtml, /product\.css\?v=20260712-v0118/);
+assert.match(indexHtml, /workspace\.css\?v=20260714-v0119/);
+assert.match(indexHtml, /product\.css\?v=20260714-v0119/);
 assert.match(indexHtml, /<body data-app-view="workspace">/);
 assert.match(indexHtml, /id="settingsView"/);
 assert.match(indexHtml, /data-settings-tab="general"/);
@@ -333,6 +333,10 @@ assert.match(indexHtml, /class="result-tab active" role="tab" aria-selected="tru
 assert.match(indexHtml, /class="result-tab" role="tab" aria-selected="false" data-tab="slices">画面与时间轴/);
 assert.doesNotMatch(indexHtml, /data-tab="qa">问这节课/);
 assert.match(indexHtml, /id="aiAssistantDrawer"/);
+assert.match(indexHtml, /id="openAiAssistantButton"[\s\S]*AI 侧栏/);
+assert.doesNotMatch(indexHtml, /data-tab="qa"|data-open-assistant/);
+assert.match(webCode, /if \(taskRoute\) showAppView\("notes"\)/);
+assert.match(webCode, /assistantContextTaskId = task\?\.id \|\| ""/);
 assert.match(indexHtml, /class="result-tab" role="tab" aria-selected="false" data-tab="diagnostics">处理检查/);
 assert.match(indexHtml, /id="onboardingOverlay"/);
 assert.match(indexHtml, /id="openOnboardingButton"/);
@@ -436,6 +440,48 @@ assert.match(indexHtml, /title="导出字幕"/);
 assert.match(indexHtml, /id="resultMoreActions"/);
 assert.match(indexHtml, /class="result-more-panel"/);
 assert.match(indexHtml, /id="unifiedExportButton"[^>]*>统一导出</);
+assert.match(indexHtml, /id="assistantSubmitButton"[^>]*type="submit"/);
+assert.match(productCss, /@media \(max-width: 620px\)[\s\S]*\.ai-assistant-drawer\s*\{[\s\S]*left:\s*0;[\s\S]*width:\s*auto;/);
+assert.match(productCss, /@media \(max-width: 620px\)[\s\S]*\.assistant-launch-button\s*\{[\s\S]*font-size:\s*0;/);
+
+const progressFingerprint = context.taskDetailFingerprint({
+  id: "task-progress",
+  status: "running",
+  phase: "downloading",
+  progress: 12
+});
+assert.notEqual(progressFingerprint, context.taskDetailFingerprint({
+  id: "task-progress",
+  status: "running",
+  phase: "transcribing",
+  progress: 48
+}));
+const liveProgressHtml = context.sourceWorkflowProgressHtml({
+  id: "task-progress",
+  status: "running",
+  phase: "transcribing",
+  progress: 48
+});
+assert.match(liveProgressHtml, /role="progressbar"/);
+assert.match(liveProgressHtml, /aria-valuenow="48"/);
+assert.match(liveProgressHtml, /48%/);
+assert.equal(context.sourceWorkflowProgressHtml({ status: "success", progress: 100 }), "");
+
+vm.runInContext(`tasks = [
+  { id: "selected-running", title: "当前运行任务", status: "running", progress: 42 },
+  { id: "older-note", title: "另一篇旧笔记", status: "success", note_path: "note.md" }
+]; selectedTaskId = "selected-running";`, context);
+assert.equal(context.assistantSelectedTask(), null);
+context.renderAssistant();
+assert.equal(elements.get("#assistantQuestion").disabled, true);
+assert.equal(elements.get("#assistantSubmitButton").disabled, true);
+assert.match(elements.get("#assistantConversation").innerHTML, /还没有选择笔记/);
+
+vm.runInContext(`selectedTaskId = "older-note";`, context);
+context.renderAssistant();
+assert.equal(context.assistantSelectedTask().id, "older-note");
+assert.equal(elements.get("#assistantQuestion").disabled, false);
+assert.equal(elements.get("#assistantSubmitButton").disabled, false);
 assert.equal((indexHtml.match(/id="resultMeta"/g) || []).length, 1);
 assert.match(indexHtml, /id="generateNoteButton"[\s\S]*在浏览器侧栏开始/);
 assert.doesNotMatch(indexHtml, /id="notePreset"/);
@@ -1261,6 +1307,11 @@ context.window.pywebview = {
 await elements.get("#subtitlesButton").onclick();
 assert.deepEqual(nativeExports.at(-1), ["task-note-download-only", "subtitles"]);
 assert.match(elements.get("#exportStatus").textContent, /lesson\.srt/);
+context.window.pywebview.api.export_task = async () => ({ ok: false, error: "目标文件夹不可写" });
+await elements.get("#subtitlesButton").onclick();
+assert.match(elements.get("#exportStatus").textContent, /导出失败/);
+assert.match(elements.get("#exportStatus").textContent, /目标文件夹不可写/);
+assert.equal(elements.get("#subtitlesButton").disabled, false);
 delete context.window.pywebview;
 context.fetch = originalFetchForDownloadNote;
 
@@ -1618,14 +1669,13 @@ assert.match(reviewWorkbenchHtml, /复习工作台/);
 assert.match(reviewWorkbenchHtml, /复习笔记/);
 assert.match(reviewWorkbenchHtml, /学习切片/);
 assert.match(reviewWorkbenchHtml, /字幕时间轴/);
-assert.match(reviewWorkbenchHtml, /问答复习/);
 assert.match(reviewWorkbenchHtml, /学习路径/);
-assert.match(reviewWorkbenchHtml, /读笔记 → 看切片 → 核字幕 → 提问/);
+assert.match(reviewWorkbenchHtml, /读笔记 → 看切片 → 核字幕/);
+assert.doesNotMatch(reviewWorkbenchHtml, /data-switch-result-tab="qa"|问答复习|打开学习助手/);
 assert.match(reviewWorkbenchHtml, /高级诊断/);
 assert.doesNotMatch(reviewWorkbenchHtml, /直取诊断/);
 assert.match(reviewWorkbenchHtml, /3 个标题/);
-assert.match(reviewWorkbenchHtml, /2 条记录/);
-assert.match(reviewWorkbenchHtml, /data-switch-result-tab="qa"/);
+assert.match(reviewWorkbenchHtml, /data-open-note-version="task-review-workbench"/);
 assert.match(reviewWorkbenchHtml, /data-switch-result-tab="slices"/);
 assert.match(reviewWorkbenchHtml, /data-switch-result-tab="diagnostics"/);
 assert.match(reviewWorkbenchHtml, /\/api\/tasks\/task-review-workbench\/exports\/markdown/);
@@ -1634,8 +1684,8 @@ assert.match(reviewWorkbenchHtml, /\/api\/tasks\/task-review-workbench\/exports\
 assert.match(reviewWorkbenchHtml, /\/api\/tasks\/task-review-workbench\/exports\/media/);
 assert.match(reviewWorkbenchHtml, /\/api\/tasks\/task-review-workbench\/exports\/bundle/);
 assert.match(reviewWorkbenchHtml, /\/api\/tasks\/task-review-workbench\/exports\/diagnostics/);
-assert.match(stylesCss, /\.review-command-grid[\s\S]*grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)/);
-assert.match(stylesCss, /@container \(max-width: 960px\)[\s\S]*\.review-command-grid[\s\S]*repeat\(3, minmax\(0, 1fr\)\)/);
+assert.match(stylesCss, /\.review-command-grid[\s\S]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/);
+assert.match(stylesCss, /@container \(max-width: 960px\)[\s\S]*\.review-command-grid[\s\S]*repeat\(2, minmax\(0, 1fr\)\)/);
 assert.match(stylesCss, /@container \(max-width: 960px\)[\s\S]*\.learning-path-steps[\s\S]*repeat\(2, minmax\(0, 1fr\)\)/);
 
 const partialReviewWorkbenchHtml = context.noteReviewWorkbench("", {

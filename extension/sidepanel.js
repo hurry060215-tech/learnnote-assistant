@@ -234,6 +234,7 @@ let currentTabId = null;
 let currentTabUrl = "";
 let taskHistory = [];
 let lastHealthData = null;
+let clientConnectionState = "checking";
 let automaticDiagnostic = { status: "idle", taskId: "", result: null, error: "" };
 let diagnosticView = loadDiagnosticView();
 let pendingLocalFile = null;
@@ -788,10 +789,15 @@ function taskMediaPreviewUrl(task) {
 }
 
 async function openWorkbench(taskId = currentTaskId, tabName = selectedTab) {
+  const connected = clientConnectionState === "connected" || await health();
+  if (!connected) {
+    els.taskMessage.textContent = "LearnNote 客户端尚未启动。请先打开客户端，再重新发送当前页。";
+    return false;
+  }
   const url = workbenchUrl(taskId, tabName);
   if (!HAS_EXTENSION_API) {
     window.open(url, "_blank", "noopener");
-    return;
+    return true;
   }
   try {
     const response = await fetch(`${backendUrl}/api/desktop/focus`, {
@@ -800,11 +806,19 @@ async function openWorkbench(taskId = currentTaskId, tabName = selectedTab) {
       body: JSON.stringify({ task_id: taskId || "", tab: tabName || "note" })
     });
     const result = await response.json();
-    if (result?.ok && result?.available) return;
+    if (result?.ok && result?.available) return true;
   } catch {
     // Fall back to the local web workbench when the desktop bridge is unavailable.
   }
   chrome.tabs.create({ url });
+  return true;
+}
+
+async function openClientForLocalVideo() {
+  els.taskMessage.textContent = "正在打开 LearnNote 客户端...";
+  const opened = await openWorkbench("", "note");
+  if (opened) els.taskMessage.textContent = "已交给客户端；请在首页选择或拖入本地视频。";
+  return opened;
 }
 
 async function setFirstRunSeen() {
@@ -2045,6 +2059,7 @@ function canResolveCurrentPageWithoutMediaEvidence(mode = "video") {
     if (host === "bilibili.com" || host.endsWith(".bilibili.com")) {
       return /^\/video\/(?:BV[0-9A-Za-z]{10}|av\d+)/i.test(parsed.pathname);
     }
+    if (/(^|\.)(chaoxing\.com|xuexitong\.com|fanya\.chaoxing\.com)$/i.test(host)) return true;
   } catch {
     return false;
   }
@@ -5135,14 +5150,19 @@ async function health() {
     }
     const data = await response.json();
     lastHealthData = data;
+    clientConnectionState = "connected";
     syncModelProviderPresets(data);
     els.backendStatus.textContent = data.ffmpeg ? "本地服务已连接" : "媒体组件需要修复";
     els.backendStatus.style.color = data.ffmpeg ? "#159947" : "#c27803";
     updateHealthVisionStatus(data);
+    return true;
   } catch {
+    lastHealthData = null;
+    clientConnectionState = "offline";
     els.backendStatus.textContent = "请先打开 LearnNote 客户端";
     els.backendStatus.title = "扩展需要连接正在运行的 LearnNote 桌面客户端";
     els.backendStatus.style.color = "#d92d20";
+    return false;
   }
 }
 
@@ -5568,6 +5588,11 @@ async function startTask(mode = "video") {
   if (els.downloadOnlyButton) els.downloadOnlyButton.disabled = true;
   if (els.textButton) els.textButton.disabled = true;
   try {
+    const clientReady = clientConnectionState === "connected" || await health();
+    if (!clientReady) {
+      els.taskMessage.textContent = "LearnNote 客户端尚未启动。请先打开客户端，再重新发送当前页。";
+      return;
+    }
     els.taskMessage.textContent = isMediaTaskMode(mode) ? "正在刷新当前播放页和媒体候选..." : "正在刷新当前页面文本...";
     const refreshed = await collect();
     if (!refreshed || !page) {
@@ -5576,7 +5601,7 @@ async function startTask(mode = "video") {
     }
     const mediaCandidateReady = await waitForMediaCandidateBeforeStart(mode);
     if (isMediaTaskMode(mode) && !mediaCandidateReady) {
-      if (!canAttemptBackendPageFallback(mode)) {
+      if (!canResolveCurrentPageWithoutMediaEvidence(mode)) {
         els.taskMessage.textContent = mode === "download_only"
           ? "还没有读取到可下载的视频资源；请在客户端改用视频链接或本地视频。"
           : missingCurrentVideoEvidenceMessage();
@@ -5614,7 +5639,14 @@ async function startTask(mode = "video") {
       options: await readClientTaskOptions()
     });
     if (response.error) {
-      els.taskMessage.textContent = response.error;
+      if (/failed to fetch|network|connection|refused|无法连接|连接失败/i.test(String(response.error))) {
+        clientConnectionState = "offline";
+        els.backendStatus.textContent = "请先打开 LearnNote 客户端";
+        els.backendStatus.style.color = "#d92d20";
+        els.taskMessage.textContent = "无法连接 LearnNote 客户端。请确认客户端已启动，再重新发送当前页。";
+      } else {
+        els.taskMessage.textContent = response.error;
+      }
       return;
     }
     currentTaskId = response.task_id;
@@ -5623,6 +5655,16 @@ async function startTask(mode = "video") {
     await loadTaskHistory();
     pollTask();
     await openWorkbench(currentTaskId, "note");
+  } catch (error) {
+    const detail = String(error?.message || error || "");
+    if (/failed to fetch|network|connection|refused|receiving end does not exist/i.test(detail)) {
+      clientConnectionState = "offline";
+      els.backendStatus.textContent = "请先打开 LearnNote 客户端";
+      els.backendStatus.style.color = "#d92d20";
+      els.taskMessage.textContent = "无法连接 LearnNote 客户端。请确认客户端已启动，再重新发送当前页。";
+    } else {
+      els.taskMessage.textContent = `发送当前页失败：${detail || "请重新检测后再试。"}`;
+    }
   } finally {
     els.summarizeButton.disabled = false;
     if (els.downloadOnlyButton) els.downloadOnlyButton.disabled = false;
@@ -8270,15 +8312,11 @@ if (els.llmProvider) els.llmProvider.onchange = () => {
   saveModelSettings();
 };
 els.uploadButton.onclick = () => {
-  setSourceSwitcherActive("local");
-  pulseTarget(els.localVideoCard || els.localDrop);
-  els.fileInput.click();
+  openClientForLocalVideo();
 };
 if (els.chooseLocalButton) {
   els.chooseLocalButton.onclick = () => {
-    setSourceSwitcherActive("local");
-    pulseTarget(els.localVideoCard || els.localDrop);
-    els.fileInput.click();
+    openClientForLocalVideo();
   };
 }
 if (els.localOptionsButton) {
@@ -8341,9 +8379,7 @@ els.resources.addEventListener("click", event => {
   if (action === "redetect") {
     collect();
   } else if (action === "local") {
-    setSourceSwitcherActive("local");
-    pulseTarget(els.localVideoCard || els.localDrop);
-    els.fileInput.click();
+    openClientForLocalVideo();
   } else if (action === "text") {
     startTask("page_text");
   }
@@ -8453,8 +8489,8 @@ async function handleSourceSwitch(action) {
   const source = action === "local" || action === "text" ? action : "summarize";
   setSourceSwitcherActive(source);
   if (source === "local") {
-    setLocalUploadState(localUploadFocusState());
-    pulseTarget(els.localVideoCard || els.localDrop);
+    setSourceSwitcherActive("summarize");
+    await openClientForLocalVideo();
   } else if (source === "text") {
     pulseTarget(els.textButton);
   } else {

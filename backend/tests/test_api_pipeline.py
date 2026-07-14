@@ -348,6 +348,25 @@ class LocalUploadValidationTests(unittest.TestCase):
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
+    def test_media_export_and_preview_preserve_original_webm_content_type(self) -> None:
+        task = create_task("local", "Original WebM")
+        media = task_dir(task.id) / "original.webm"
+        media.write_bytes(b"fake webm bytes")
+        try:
+            update_task(task.id, source_media_path=str(media))
+
+            export = self.client.get(f"/api/tasks/{task.id}/exports/media")
+            preview = self.client.get(f"/api/tasks/{task.id}/media")
+
+            self.assertEqual(export.status_code, 200)
+            self.assertEqual(export.headers["content-type"], "video/webm")
+            self.assertIn("original.webm", export.headers["content-disposition"])
+            self.assertEqual(preview.status_code, 200)
+            self.assertEqual(preview.headers["content-type"], "video/webm")
+            self.assertIn("inline", preview.headers["content-disposition"])
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
     def test_task_question_answers_from_note_and_transcript_without_llm_key(self) -> None:
         task = create_task("local", "函数封装课程", "https://course.example/lesson")
         root = task_dir(task.id)
@@ -1179,6 +1198,28 @@ class LocalUploadValidationTests(unittest.TestCase):
         self.assertEqual(report["candidate_count"], 0)
         self.assertEqual(report["downloadable_count"], 0)
 
+    def test_page_preflight_does_not_infer_drm_from_blob_alone(self) -> None:
+        response = self.client.post(
+            "/api/media/preflight-current-page",
+            json={
+                "page_url": "https://course.example.com/lesson",
+                "drm_detected": False,
+                "probe_limit": 1,
+                "resources": [
+                    {
+                        "url": "blob:https://course.example.com/player",
+                        "kind": "blob",
+                        "source": "activeVideo",
+                    },
+                ],
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        report = response.json()["report"]
+        self.assertFalse(report["ready"])
+        self.assertEqual(report["code"], "no_media_found")
+
     def test_diagnostics_include_chaoxing_recovery_hint(self) -> None:
         task = create_task("current_page", "学习通课程", "https://mooc1.chaoxing.com/mycourse/studentstudy")
         try:
@@ -1511,8 +1552,9 @@ class LocalUploadValidationTests(unittest.TestCase):
             self.assertEqual(direct["selected_candidate"]["safe_request_header_names"], ["Referer"])
             self.assertNotIn("Cookie", direct["selected_candidate"]["safe_request_header_names"])
             self.assertNotIn("Authorization", json.dumps(direct, ensure_ascii=False))
-            self.assertEqual(recovery["code"], "drm_or_encrypted")
-            self.assertEqual(recovery["next_action"], "local_upload")
+            self.assertEqual(recovery["code"], "no_media_found")
+            self.assertEqual(recovery["severity"], "recoverable")
+            self.assertEqual(recovery["next_action"], "play_and_redetect")
             self.assertIn("MSE appendBuffer 播放证据", recovery["diagnosis"])
             self.assertIn("不是可下载 URL", recovery["diagnosis"])
             self.assertTrue(any("MSE appendBuffer 播放证据" in step for step in recovery["steps"]))

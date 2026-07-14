@@ -32,6 +32,8 @@ DEFAULT_WHISPER_COMPUTE_TYPE = os.getenv("LEARNNOTE_WHISPER_COMPUTE_TYPE", "int8
 LLM_BASE_URL = os.getenv("LEARNNOTE_LLM_BASE_URL", "https://api.openai.com/v1")
 LLM_API_KEY = os.getenv("LEARNNOTE_LLM_API_KEY", "")
 LLM_MODEL = os.getenv("LEARNNOTE_LLM_MODEL", "gpt-4.1-mini")
+LLM_REQUEST_TIMEOUT_SECONDS = max(10.0, float(os.getenv("LEARNNOTE_LLM_REQUEST_TIMEOUT_SECONDS", "120")))
+LLM_MAX_RETRIES = max(0, min(3, int(os.getenv("LEARNNOTE_LLM_MAX_RETRIES", "1"))))
 
 
 def configure_local_caches() -> None:

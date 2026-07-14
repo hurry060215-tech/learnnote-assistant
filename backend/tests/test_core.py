@@ -15,7 +15,7 @@ from unittest.mock import patch
 
 from pydantic import ValidationError
 
-from app.config import DATA_DIR, TEMP_DIR
+from app.config import DATA_DIR, LLM_MAX_RETRIES, LLM_REQUEST_TIMEOUT_SECONDS, TEMP_DIR
 from app.downloader import (
     DownloadError,
     MediaDownloader,
@@ -1184,6 +1184,7 @@ class TranscriberBoundaryTests(unittest.TestCase):
 
     def test_openai_compatible_asr_parses_verbose_segments(self) -> None:
         calls = []
+        client_kwargs = []
 
         class FakeTranscriptions:
             def create(self, **kwargs):
@@ -1199,6 +1200,7 @@ class TranscriberBoundaryTests(unittest.TestCase):
 
         class FakeOpenAI:
             def __init__(self, **kwargs):
+                client_kwargs.append(kwargs)
                 self.kwargs = kwargs
                 self.audio = types.SimpleNamespace(transcriptions=FakeTranscriptions())
 
@@ -1224,6 +1226,8 @@ class TranscriberBoundaryTests(unittest.TestCase):
         self.assertEqual([segment.text for segment in transcript.segments], ["第一句", "第二句"])
         self.assertEqual(calls[0]["model"], "whisper-1")
         self.assertEqual(calls[0]["response_format"], "verbose_json")
+        self.assertEqual(client_kwargs[0]["timeout"], LLM_REQUEST_TIMEOUT_SECONDS)
+        self.assertEqual(client_kwargs[0]["max_retries"], LLM_MAX_RETRIES)
 
     def test_groq_asr_missing_key_warning_includes_provider_model_and_base(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1306,7 +1310,7 @@ class ProcessorBoundaryTests(unittest.TestCase):
             40,
         )
 
-    def test_asr_failure_keeps_media_and_note_but_marks_task_failed(self) -> None:
+    def test_asr_failure_without_visual_evidence_does_not_generate_unsupported_note(self) -> None:
         task = create_task("local", "ASR failure")
         input_path = task_dir(task.id) / "upload.mp4"
         input_path.write_bytes(b"fake mp4")
@@ -1319,11 +1323,6 @@ class ProcessorBoundaryTests(unittest.TestCase):
                 target.write_bytes(b"audio")
                 return target
 
-            def fake_summary(title, transcript, grids, options, page_url, page_context):
-                self.assertEqual(transcript.full_text, "")
-                self.assertEqual(transcript.segments, [])
-                return "# Visual fallback", "local-template", ""
-
             with patch("app.processor.normalize_video", side_effect=fake_normalize), \
                 patch("app.processor.extract_audio", side_effect=fake_extract_audio), \
                 patch(
@@ -1335,7 +1334,7 @@ class ProcessorBoundaryTests(unittest.TestCase):
                         segments=[TranscriptSegment(start=0, end=0, text="model download failed")],
                     ),
                 ), \
-                patch("app.processor.summarize_with_diagnostics", side_effect=fake_summary):
+                patch("app.processor.summarize_with_diagnostics") as summarize:
                 process_local_video_task(
                     task.id,
                     input_path,
@@ -1348,7 +1347,8 @@ class ProcessorBoundaryTests(unittest.TestCase):
             self.assertEqual(record.error_code, "asr_failed")
             self.assertIn("model download failed", record.error_detail)
             self.assertTrue(Path(record.media_path).is_file())
-            self.assertTrue(Path(record.note_path).is_file())
+            self.assertEqual(record.note_path, "")
+            summarize.assert_not_called()
             transcript = read_transcript(task.id)
             self.assertEqual(transcript["source"], "faster-whisper-error")
             self.assertEqual(transcript["full_text"], "")
@@ -2490,7 +2490,7 @@ class ProcessorBoundaryTests(unittest.TestCase):
 
 
 class DownloaderBoundaryTests(unittest.TestCase):
-    def test_blob_only_resources_fail_as_encrypted_or_unrecoverable(self) -> None:
+    def test_blob_only_resources_fail_as_no_media_without_drm_signal(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             downloader = MediaDownloader(Path(tmp))
             with self.assertRaises(DownloadError) as ctx:
@@ -2500,9 +2500,10 @@ class DownloaderBoundaryTests(unittest.TestCase):
                     cookies=[],
                     title="Blob only",
                 )
-            self.assertEqual(ctx.exception.code, "drm_or_encrypted")
+            self.assertNotEqual(ctx.exception.code, "drm_or_encrypted")
             self.assertEqual(downloader.attempts[0].strategy, "blob-unrecoverable")
             self.assertEqual(downloader.attempts[0].status, "skipped")
+            self.assertEqual(downloader.attempts[0].code, "no_media_found")
 
     def test_blob_with_fragments_keeps_fragment_diagnostics(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -2517,7 +2518,7 @@ class DownloaderBoundaryTests(unittest.TestCase):
                     cookies=[],
                     title="Blob with fragments",
             )
-            self.assertEqual(ctx.exception.code, "drm_or_encrypted")
+            self.assertNotEqual(ctx.exception.code, "drm_or_encrypted")
             self.assertEqual([attempt.strategy for attempt in downloader.attempts[:2]], ["blob-unrecoverable", "skip-fragment"])
             self.assertIn("page-scan", [attempt.strategy for attempt in downloader.attempts])
             self.assertIn("page-ytdlp", [attempt.strategy for attempt in downloader.attempts])
@@ -3585,6 +3586,7 @@ class SummaryFallbackTests(unittest.TestCase):
         from app.summarizer import summarize_with_llm
 
         calls = []
+        client_kwargs = []
 
         class FakeCompletions:
             def create(self, **kwargs):
@@ -3595,6 +3597,7 @@ class SummaryFallbackTests(unittest.TestCase):
 
         class FakeOpenAI:
             def __init__(self, **kwargs):
+                client_kwargs.append(kwargs)
                 self.chat = types.SimpleNamespace(completions=FakeCompletions())
 
         fake_openai = types.ModuleType("openai")
@@ -3618,6 +3621,8 @@ class SummaryFallbackTests(unittest.TestCase):
         self.assertIn("6-8 题", prompt)
         self.assertNotIn("结构必须包含：课程主题", prompt)
         self.assertEqual(transcript.full_text, "timestamped source")
+        self.assertEqual(client_kwargs[0]["timeout"], LLM_REQUEST_TIMEOUT_SECONDS)
+        self.assertEqual(client_kwargs[0]["max_retries"], LLM_MAX_RETRIES)
 
     def test_local_note_keeps_page_context_separate_from_transcript(self) -> None:
         transcript = TranscriptResult(
