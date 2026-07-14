@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import threading
 import uuid
@@ -129,10 +130,19 @@ def _directory_size(path: Path) -> int:
     if not path.exists():
         return 0
     total = 0
-    for item in path.rglob("*"):
+    pending = [path]
+    while pending:
+        current = pending.pop()
         try:
-            if item.is_file():
-                total += item.stat().st_size
+            with os.scandir(current) as entries:
+                for entry in entries:
+                    try:
+                        if entry.is_dir(follow_symlinks=False):
+                            pending.append(Path(entry.path))
+                        elif entry.is_file(follow_symlinks=False):
+                            total += entry.stat(follow_symlinks=False).st_size
+                    except OSError:
+                        continue
         except OSError:
             continue
     return total

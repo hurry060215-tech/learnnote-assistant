@@ -6,8 +6,10 @@ import io
 import json
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
+import types
 import unittest
 import zipfile
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -444,7 +446,10 @@ class LocalUploadValidationTests(unittest.TestCase):
             self.assertTrue(any("3 个概念" in item for item in suggestion_questions))
             self.assertTrue(any("画面索引" in item for item in suggestion_questions))
             next_action_keys = [item["key"] for item in task_payload["next_actions"]]
-            self.assertIn("ask_qa", next_action_keys)
+            self.assertIn("ask_assistant", next_action_keys)
+            assistant_action = next(item for item in task_payload["next_actions"] if item["key"] == "ask_assistant")
+            self.assertEqual(assistant_action["intent"], "open_assistant")
+            self.assertEqual(assistant_action["target"], "current_task")
             self.assertIn("review_slices", next_action_keys)
             self.assertIn("export_markdown", next_action_keys)
             self.assertIn("export_bundle", next_action_keys)
@@ -464,7 +469,7 @@ class LocalUploadValidationTests(unittest.TestCase):
             self.assertEqual(manifest_payload["qa"]["history_count"], 1)
             self.assertTrue(manifest_payload["qa"]["suggestions"])
             self.assertIn("next_actions", manifest_payload)
-            self.assertIn("ask_qa", [item["key"] for item in manifest_payload["next_actions"]])
+            self.assertIn("ask_assistant", [item["key"] for item in manifest_payload["next_actions"]])
             self.assertEqual(manifest_payload["artifacts"]["qa"], "qa.md")
             self.assertEqual(manifest_payload["artifacts"]["qa_history"], "qa_history.json")
 
@@ -503,12 +508,168 @@ class LocalUploadValidationTests(unittest.TestCase):
             self.assertEqual(response.status_code, 200)
             task_payload = response.json()["task"]
             next_action_keys = [item["key"] for item in task_payload["next_actions"]]
-            self.assertIn("ask_qa", next_action_keys)
+            self.assertIn("ask_assistant", next_action_keys)
             self.assertIn("review_transcript", next_action_keys)
             self.assertIn("export_bundle", next_action_keys)
             self.assertNotIn("export_markdown", next_action_keys)
             self.assertTrue(task_payload["qa"]["suggestions"])
             self.assertTrue(any(item["source"] == "transcript" for item in task_payload["qa"]["suggestions"]))
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
+    def test_task_question_filters_unrelated_evidence_without_llm_key(self) -> None:
+        task = create_task("local", "混合课程证据")
+        root = task_dir(task.id)
+        note = root / "note.md"
+        transcript = root / "transcript.json"
+        note.write_text(
+            "# 函数封装\n\n函数封装能够复用处理逻辑并减少重复代码。\n\n"
+            "# 光合作用\n\n叶绿体吸收光能并合成有机物。\n",
+            encoding="utf-8",
+        )
+        transcript.write_text(json.dumps({
+            "segments": [
+                {"start": 8, "end": 14, "text": "函数封装让调用方只关心输入和输出。"},
+                {"start": 80, "end": 90, "text": "叶绿体是光合作用的重要场所。"},
+            ],
+        }, ensure_ascii=False), encoding="utf-8")
+        try:
+            update_task(task.id, note_path=str(note), transcript_path=str(transcript))
+            write_json(task.id, "qa_history.json", {
+                "schema_version": 1,
+                "items": [{
+                    "question": "这个平台有什么历史意义？",
+                    "answer": "它具有平台历史意义。",
+                    "citations": [{"source": "note", "text": "这个视频具有重要的平台历史意义。"}],
+                }],
+            })
+
+            with patch("app.main.LLM_API_KEY", ""):
+                response = self.client.post(
+                    f"/api/tasks/{task.id}/qa",
+                    json={"question": "函数封装有什么作用？"},
+                )
+
+            self.assertEqual(response.status_code, 200)
+            payload = response.json()
+            self.assertEqual(payload["source"], "local-extractive")
+            self.assertIn("复用", payload["answer"])
+            self.assertNotIn("API Key", payload["answer"])
+            citation_text = " ".join(item["text"] for item in payload["citations"])
+            self.assertIn("函数封装", citation_text)
+            self.assertNotIn("叶绿体", citation_text)
+            self.assertNotIn("光合作用", citation_text)
+
+            with patch("app.main.LLM_API_KEY", ""):
+                follow_up = self.client.post(
+                    f"/api/tasks/{task.id}/qa",
+                    json={"question": "那它具体解决了什么问题？"},
+                )
+            self.assertEqual(follow_up.status_code, 200)
+            follow_up_payload = follow_up.json()
+            follow_up_citations = " ".join(item["text"] for item in follow_up_payload["citations"])
+            self.assertIn("函数封装", follow_up_citations)
+            self.assertNotIn("叶绿体", follow_up_citations)
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
+    def test_task_question_uses_recent_history_and_strict_grounding_prompt(self) -> None:
+        task = create_task("local", "递归课程")
+        root = task_dir(task.id)
+        note = root / "note.md"
+        note.write_text(
+            "# 递归\n\n递归函数必须设置终止条件，否则调用会持续深入。\n\n"
+            "# 排序\n\n冒泡排序会比较相邻元素。\n",
+            encoding="utf-8",
+        )
+        history = [
+            {
+                "question": f"历史问题 {index}" if index < 4 else "递归的终止条件是什么？",
+                "answer": f"历史回答 {index}" if index < 4 else "终止条件用于停止继续调用。",
+                "citations": [{"source": "note", "text": "递归函数必须设置终止条件。"}] if index == 4 else [],
+            }
+            for index in range(5)
+        ]
+        calls = []
+
+        class FakeCompletions:
+            def create(self, **kwargs):
+                calls.append(kwargs)
+                return types.SimpleNamespace(
+                    choices=[types.SimpleNamespace(message=types.SimpleNamespace(content="因为没有终止条件时调用不会停止。"))]
+                )
+
+        class FakeOpenAI:
+            def __init__(self, **kwargs):
+                self.chat = types.SimpleNamespace(completions=FakeCompletions())
+
+        fake_openai = types.ModuleType("openai")
+        fake_openai.OpenAI = FakeOpenAI
+        try:
+            update_task(task.id, note_path=str(note))
+            write_json(task.id, "qa_history.json", {"schema_version": 1, "items": history})
+
+            with patch.dict(sys.modules, {"openai": fake_openai}):
+                response = self.client.post(
+                    f"/api/tasks/{task.id}/qa",
+                    json={"question": "那为什么必须有它？", "options": {"llm_api_key": "test-key"}},
+                )
+
+            self.assertEqual(response.status_code, 200)
+            payload = response.json()
+            self.assertEqual(payload["source"], "llm")
+            self.assertEqual(len(calls), 1)
+            messages = calls[0]["messages"]
+            self.assertEqual(messages[0]["role"], "system")
+            system_prompt = messages[0]["content"]
+            self.assertIn("历史对话仅用于理解追问指代，不是事实证据", system_prompt)
+            self.assertIn("不得编造证据中不存在的时间窗、W 编号", system_prompt)
+            self.assertIn("默认用中文简洁直接回答", system_prompt)
+            conversation = "\n".join(str(item["content"]) for item in messages[1:])
+            self.assertNotIn("历史问题 0", conversation)
+            self.assertIn("递归的终止条件是什么", conversation)
+            self.assertIn("那为什么必须有它", conversation)
+            self.assertIn("递归函数必须设置终止条件", messages[-1]["content"])
+            self.assertNotIn("冒泡排序", messages[-1]["content"])
+            citation_text = " ".join(item["text"] for item in payload["citations"])
+            self.assertIn("终止条件", citation_text)
+            self.assertNotIn("冒泡排序", citation_text)
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
+    def test_task_question_honors_negative_instruction_and_transcript_intent(self) -> None:
+        task = create_task("local", "来源意图课程")
+        root = task_dir(task.id)
+        note = root / "note.md"
+        transcript = root / "transcript.json"
+        note.write_text(
+            "# 平台历史\n\n这个视频具有重要的平台历史意义。\n\n"
+            "# 课程内容\n\n说话者站在动物园的大象前。\n",
+            encoding="utf-8",
+        )
+        transcript.write_text(json.dumps({
+            "segments": [
+                {"start": 1, "end": 6, "text": "Here we are in front of the elephants."},
+                {"start": 6, "end": 11, "text": "They have really long trunks."},
+            ],
+        }, ensure_ascii=False), encoding="utf-8")
+        try:
+            update_task(task.id, note_path=str(note), transcript_path=str(transcript))
+
+            with patch("app.main.LLM_API_KEY", ""):
+                response = self.client.post(
+                    f"/api/tasks/{task.id}/qa",
+                    json={"question": "视频中说话人介绍了什么？只根据视频原话回答，不要讨论平台历史。"},
+                )
+
+            self.assertEqual(response.status_code, 200)
+            payload = response.json()
+            self.assertEqual(payload["source"], "local-extractive")
+            self.assertIn("elephants", payload["answer"])
+            self.assertIn("long trunks", payload["answer"])
+            self.assertNotIn("平台历史", payload["answer"])
+            self.assertTrue(payload["citations"])
+            self.assertTrue(all(item["source"] == "transcript" for item in payload["citations"]))
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 

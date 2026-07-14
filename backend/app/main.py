@@ -2366,28 +2366,66 @@ def _clip_text(value: str, limit: int) -> str:
 
 def _question_terms(question: str) -> set[str]:
     text = str(question or "").lower()
-    terms = {item for item in re.findall(r"[a-z0-9_]{2,}|[\u4e00-\u9fff]{1,4}", text, re.I) if item.strip()}
+    focus_text = re.split(r"(?:不要|别再?|无需|不必|避免|排除|不讨论)", text, maxsplit=1)[0].strip() or text
+    terms = {item for item in re.findall(r"[a-z0-9_]{2,}", focus_text, re.I) if item.strip()}
+    for phrase in re.findall(r"[\u4e00-\u9fff]+", focus_text):
+        if len(phrase) <= 8:
+            terms.add(phrase)
+        for size in range(2, min(4, len(phrase)) + 1):
+            terms.update(phrase[index:index + size] for index in range(len(phrase) - size + 1))
+    if re.search(r"原话|说话|讲了|讲的|字幕|转写|台词|transcript", text):
+        terms.add("__source_transcript__")
+    if re.search(r"画面|截图|视觉|演示|操作|界面|切片|ppt|slide", text):
+        terms.add("__source_visual__")
+    terms.difference_update({
+        "什么", "怎么", "如何", "一下", "这个", "那个", "哪些", "是否", "可以", "请问",
+        "视频", "回答", "根据", "只根", "只根据", "介绍", "说话人",
+        "the", "and", "what", "how", "this", "that", "with", "from",
+    })
     if not terms:
-        terms.update(char for char in text if char.strip())
+        terms.update(char for char in focus_text if char.strip())
     return terms
 
 
 def _score_excerpt(text: str, terms: set[str]) -> int:
     lowered = str(text or "").lower()
-    return sum(lowered.count(term.lower()) for term in terms)
+    return sum(lowered.count(term.lower()) * min(4, max(1, len(term))) for term in terms)
+
+
+def _note_evidence_chunks(note: str, limit: int = 80) -> list[dict]:
+    chunks: list[dict] = []
+    heading = ""
+    for raw_block in re.split(r"\n{2,}|(?=^#{1,6}\s)", note, flags=re.M):
+        block = raw_block.strip()
+        if not block:
+            continue
+        heading_match = re.match(r"^#{1,6}\s+(.+)", block)
+        if heading_match:
+            heading = _clip_text(heading_match.group(1), 100)
+            if "\n" not in block:
+                continue
+        text = _clip_text(block, 900)
+        if len(text) < 2:
+            continue
+        chunks.append({
+            "source": "note",
+            "label": heading or f"笔记片段 {len(chunks) + 1}",
+            "text": text,
+            "target_tab": "note",
+        })
+        if len(chunks) >= limit:
+            break
+    return chunks
 
 
 def _task_qa_context(task: TaskRecord) -> tuple[str, list[dict]]:
     citations: list[dict] = []
-    blocks: list[str] = []
     try:
         note = read_note(task.id)
     except Exception:
         note = ""
     if note.strip():
-        excerpt = _clip_text(note, 18000)
-        blocks.append(f"## NOTE\n{excerpt}")
-        citations.append({"source": "note", "label": "Markdown note", "text": _clip_text(excerpt, 500)})
+        citations.extend(_note_evidence_chunks(note))
 
     try:
         transcript = read_transcript(task.id)
@@ -2395,16 +2433,25 @@ def _task_qa_context(task: TaskRecord) -> tuple[str, list[dict]]:
         transcript = {}
     segments = transcript.get("segments") if isinstance(transcript, dict) else []
     if isinstance(segments, list) and segments:
-        lines = []
         for segment in segments[:300]:
-            start = _format_timestamp(segment.get("start", 0) if isinstance(segment, dict) else 0)
-            text = segment.get("text", "") if isinstance(segment, dict) else ""
-            if text:
-                lines.append(f"{start} {text}")
-        if lines:
-            excerpt = _clip_text("\n".join(lines), 16000)
-            blocks.append(f"## TRANSCRIPT\n{excerpt}")
-            citations.append({"source": "transcript", "label": "Timestamped transcript", "text": _clip_text(excerpt, 500)})
+            if not isinstance(segment, dict):
+                continue
+            text = _clip_text(str(segment.get("text") or ""), 700)
+            if not text:
+                continue
+            start_seconds = _safe_seconds(segment.get("start"))
+            end_seconds = _safe_seconds(segment.get("end"))
+            start = _format_timestamp(start_seconds)
+            end = _format_timestamp(end_seconds)
+            citations.append({
+                "source": "transcript",
+                "label": f"字幕 {start}",
+                "text": text,
+                "start": start_seconds,
+                "end": end_seconds,
+                "time_range": f"{start}-{end}",
+                "target_tab": "transcript",
+            })
 
     try:
         visual_index = read_visual_index(task.id)
@@ -2412,17 +2459,15 @@ def _task_qa_context(task: TaskRecord) -> tuple[str, list[dict]]:
         visual_index = {}
     windows = visual_index.get("windows") if isinstance(visual_index, dict) else []
     if isinstance(windows, list) and windows:
-        lines = []
-        for window in windows[:80]:
+        for window_index, window in enumerate(windows[:80], start=1):
             if not isinstance(window, dict):
                 continue
-            window_id = window.get("id") or f"W{len(lines) + 1:03d}"
+            window_id = window.get("id") or f"W{window_index:03d}"
             start_seconds = _safe_seconds(window.get("start"))
             end_seconds = _safe_seconds(window.get("end"))
             start = _format_timestamp(start_seconds)
             end = _format_timestamp(end_seconds)
             excerpt = _clip_text(window.get("transcript_excerpt", ""), 260)
-            lines.append(f"{window_id} {start}-{end} {excerpt}")
             citations.append({
                 "source": "visual_window",
                 "label": window_id,
@@ -2434,16 +2479,22 @@ def _task_qa_context(task: TaskRecord) -> tuple[str, list[dict]]:
                 "grid_url": str(window.get("grid_url") or ""),
                 "target_tab": "slices",
             })
-        if lines:
-            excerpt = _clip_text("\n".join(lines), 10000)
-            blocks.append(f"## VISUAL WINDOWS\n{excerpt}")
-            citations.append({"source": "visual_windows", "label": "Visual window index", "text": _clip_text(excerpt, 500)})
 
-    return "\n\n".join(blocks), citations
+    context = "\n\n".join(
+        f"[{item.get('source')}] {item.get('label')}: {item.get('text')}"
+        for item in citations
+    )
+    return context, citations
 
 
-def _rank_citations_for_question(citations: list[dict], terms: set[str], limit: int = 4) -> list[dict]:
+def _rank_citations_for_question(
+    citations: list[dict],
+    terms: set[str],
+    related_terms: set[str] | None = None,
+    limit: int = 6,
+) -> list[dict]:
     ranked = []
+    related_terms = related_terms or set()
     for index, citation in enumerate(citations):
         if not isinstance(citation, dict):
             continue
@@ -2452,57 +2503,96 @@ def _rank_citations_for_question(citations: list[dict], terms: set[str], limit: 
             str(citation.get("text") or ""),
             str(citation.get("window_id") or ""),
         ])
-        score = _score_excerpt(text, terms)
+        current_score = _score_excerpt(text, terms)
+        history_score = _score_excerpt(text, related_terms)
+        score = current_score * 6 + history_score
         source = str(citation.get("source") or "")
-        if source.startswith("visual"):
-            score += 1
+        if "__source_transcript__" in terms and source == "transcript":
+            score += 10000
+        if "__source_visual__" in terms and source.startswith("visual"):
+            score += 10000
         ranked.append((score, -index, citation))
     ranked.sort(key=lambda item: (item[0], item[1]), reverse=True)
-    return [citation for score, _index, citation in ranked if score > 0][:limit] or [citation for _score, _index, citation in ranked[:limit]]
+    top_score = ranked[0][0] if ranked else 0
+    relevance_floor = max(1, int(top_score * 0.2))
+    relevant = [citation for score, _index, citation in ranked if score >= relevance_floor][:limit]
+    if relevant:
+        return relevant
 
-
-def _local_task_answer(question: str, context: str, citations: list[dict]) -> tuple[str, list[dict]]:
-    terms = _question_terms(question)
-    chunks = [chunk.strip() for chunk in re.split(r"\n{2,}|(?<=[。！？.!?])\s+", context or "") if chunk.strip()]
-    ranked = sorted(
-        ((chunk, _score_excerpt(chunk, terms)) for chunk in chunks),
-        key=lambda item: (item[1], len(item[0])),
-        reverse=True,
-    )
-    selected = [chunk for chunk, score in ranked if score > 0][:5] or [chunk for chunk, _score in ranked[:5]]
-    selected = [_clip_text(chunk, 420) for chunk in selected if chunk]
-    answer_lines = [
-        "## 回答",
-        "",
-        "当前没有可用的问答模型配置，下面是基于已生成笔记、字幕和画面索引抽取的相关证据：",
-        "",
-    ]
-    if selected:
-        answer_lines.extend(f"- {item}" for item in selected)
-    else:
-        answer_lines.append("- 这个任务还没有足够的笔记、字幕或画面索引可用于回答。")
-    answer_lines.extend([
-        "",
-        "## 建议",
-        "",
-        "- 若要获得综合推理式回答，请在任务参数中配置 OpenAI-compatible / Groq / Gemini 等模型 API Key。",
-    ])
-    local_citations = [
-        {"source": "local-excerpt", "label": f"Excerpt {index}", "text": text}
-        for index, text in enumerate(selected, start=1)
-    ]
-    seen = {(item.get("source"), item.get("label"), item.get("text")) for item in local_citations}
-    for citation in _rank_citations_for_question(citations, terms):
-        key = (citation.get("source"), citation.get("label"), citation.get("text"))
-        if key in seen:
+    # Broad requests such as “总结一下” still need a small, source-diverse sample.
+    fallback: list[dict] = []
+    seen_sources: set[str] = set()
+    for _score, _index, citation in ranked:
+        source = str(citation.get("source") or "")
+        if source in seen_sources and len(fallback) < 3:
             continue
-        local_citations.append(citation)
-        seen.add(key)
-        if len(local_citations) >= 8:
+        fallback.append(citation)
+        seen_sources.add(source)
+        if len(fallback) >= min(3, limit):
             break
-    if not local_citations:
-        local_citations = citations[:3]
-    return "\n".join(answer_lines), local_citations
+    return fallback
+
+
+def _recent_qa_history(task_id: str, limit: int = 4) -> list[dict]:
+    return read_task_qa_history(task_id)[-limit:]
+
+
+def _is_follow_up_question(question: str) -> bool:
+    text = re.sub(r"\s+", "", str(question or "").lower())
+    return bool(re.search(
+        r"^(那|那么|所以|然后|还有|另外|刚才|前面|上面)|"
+        r"(它|这个|那个|上述|前述|前面提到|刚才提到|继续说|展开说|为什么必须有它)",
+        text,
+    ))
+
+
+def _qa_history_terms(history: list[dict]) -> set[str]:
+    terms: set[str] = set()
+    for item in history:
+        terms.update(_question_terms(str(item.get("question") or "")))
+        for citation in item.get("citations") or []:
+            if isinstance(citation, dict):
+                terms.update(_question_terms(str(citation.get("text") or "")))
+    return terms
+
+
+def _qa_history_messages(history: list[dict]) -> list[dict]:
+    messages: list[dict] = []
+    for item in history[-4:]:
+        question = _clip_text(str(item.get("question") or ""), 600)
+        answer = _clip_text(str(item.get("answer") or ""), 1200)
+        if question:
+            messages.append({"role": "user", "content": question})
+        if answer:
+            messages.append({"role": "assistant", "content": answer})
+    return messages
+
+
+def _qa_evidence_prompt(citations: list[dict]) -> str:
+    lines = []
+    for index, citation in enumerate(citations, start=1):
+        metadata = " · ".join(
+            str(citation.get(key) or "") for key in ("window_id", "time_range") if citation.get(key)
+        )
+        suffix = f" ({metadata})" if metadata else ""
+        lines.append(
+            f"[E{index}] {citation.get('label') or citation.get('source')}{suffix}: "
+            f"{_clip_text(str(citation.get('text') or ''), 900)}"
+        )
+    return "\n".join(lines)
+
+
+def _local_task_answer(question: str, citations: list[dict]) -> tuple[str, list[dict]]:
+    if not citations:
+        return "现有笔记、字幕和画面索引中没有找到与这个问题相关的内容。", []
+    excerpts = []
+    for citation in citations[:3]:
+        text = _clip_text(str(citation.get("text") or ""), 360)
+        if text:
+            excerpts.append(f"- {text}")
+    if not excerpts:
+        return "现有证据不足，暂时无法回答这个问题。", citations
+    return "根据现有内容：\n" + "\n".join(excerpts), citations
 
 
 def read_task_qa_history(task_id: str) -> list[dict]:
@@ -2643,7 +2733,13 @@ def task_next_actions(task: TaskRecord, limit: int = 9) -> list[dict]:
             "rerun_from_media",
         )
     if qa_ready:
-        add("ask_qa", "问这个任务", "基于笔记、字幕和画面索引继续追问。", "switch_tab", "qa")
+        add(
+            "ask_assistant",
+            "打开 AI 助手",
+            "在侧栏中基于当前任务的笔记、字幕和画面索引继续追问。",
+            "open_assistant",
+            "current_task",
+        )
     if note_ready:
         add("export_markdown", "导出 Markdown", "保存当前学习笔记。", "export", "markdown")
     if visual_ready:
@@ -2702,9 +2798,18 @@ def task_qa_suggestions(task: TaskRecord, limit: int = 7) -> list[dict]:
 
 def _answer_task_question(task: TaskRecord, request: TaskQuestionRequest) -> dict:
     options = merge_task_options(task.options, request.options)
-    context, citations = _task_qa_context(task)
+    context, all_citations = _task_qa_context(task)
     if not context.strip():
         raise HTTPException(status_code=404, detail={"code": "task_context_missing", "message": "任务还没有可用于问答的笔记、字幕或画面索引。"})
+
+    history = _recent_qa_history(task.id) if _is_follow_up_question(request.question) else []
+    question_terms = _question_terms(request.question)
+    citations = _rank_citations_for_question(
+        all_citations,
+        question_terms,
+        related_terms=_qa_history_terms(history),
+    )
+    evidence_prompt = _qa_evidence_prompt(citations)
 
     api_key = options.llm_api_key or LLM_API_KEY
     base_url = options.llm_base_url or LLM_BASE_URL
@@ -2723,15 +2828,26 @@ def _answer_task_question(task: TaskRecord, request: TaskQuestionRequest) -> dic
                 model=model,
                 messages=[
                     {
+                        "role": "system",
+                        "content": (
+                            "你是 LearnNote 的课程问答助手。只能依据当前消息中列出的 E 编号证据回答；"
+                            "历史对话仅用于理解追问指代，不是事实证据。禁止补充常识、猜测或虚构内容。"
+                            "不得编造证据中不存在的时间窗、W 编号、页码、步骤或原文引语；"
+                            "只有证据逐字包含的内容才能使用引号。证据不足时直接说“现有证据不足”，"
+                            "不要假装知道，也不要推荐不存在的回看位置。默认用中文简洁直接回答，"
+                            "通常 1-3 个短段落或不超过 5 个要点，不复述问题，不描述你的工作过程。"
+                        ),
+                    },
+                    *_qa_history_messages(history),
+                    {
                         "role": "user",
                         "content": (
-                            "你是课程学习助手。请只根据给定的笔记、字幕和画面索引回答问题；"
-                            "如果证据不足，明确说证据不足，并指出需要回看哪些时间窗。\n\n"
+                            f"任务：{task.title}\n"
                             f"问题：{request.question}\n\n"
-                            f"任务标题：{task.title}\n来源：{task.page_url or '-'}\n\n"
-                            f"{context[:42000]}"
+                            "可用证据：\n"
+                            f"{evidence_prompt or '（没有检索到相关证据）'}"
                         ),
-                    }
+                    },
                 ],
                 **chat_completion_provider_kwargs(base_url),
             )
@@ -2743,10 +2859,10 @@ def _answer_task_question(task: TaskRecord, request: TaskQuestionRequest) -> dic
                     "warning": "",
                     "provider": llm_provider_name(base_url),
                     "model": model,
-                    "citations": citations[:8],
+                    "citations": citations,
                 }
         except Exception as exc:
-            local_answer, local_citations = _local_task_answer(request.question, context, citations)
+            local_answer, local_citations = _local_task_answer(request.question, citations)
             return {
                 "answer": local_answer,
                 "source": "local-extractive",
@@ -2756,7 +2872,7 @@ def _answer_task_question(task: TaskRecord, request: TaskQuestionRequest) -> dic
                 "citations": local_citations,
             }
 
-    local_answer, local_citations = _local_task_answer(request.question, context, citations)
+    local_answer, local_citations = _local_task_answer(request.question, citations)
     return {
         "answer": local_answer,
         "source": "local-extractive",

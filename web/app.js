@@ -310,18 +310,23 @@ let noteVersionTaskId = "";
 let assistantMessages = [];
 let assistantHistoryRequestId = 0;
 let assistantContextTaskId = "";
+let assistantBusy = false;
 const ASSISTANT_OPEN_KEY = "learnnote.aiAssistantOpen";
+const ASSISTANT_WIDE_KEY = "learnnote.aiAssistantWide";
 
 const els = {
   health: document.querySelector("#health"),
   openAiAssistantButton: document.querySelector("#openAiAssistantButton"),
   aiAssistantDrawer: document.querySelector("#aiAssistantDrawer"),
   closeAiAssistantButton: document.querySelector("#closeAiAssistantButton"),
+  expandAiAssistantButton: document.querySelector("#expandAiAssistantButton"),
   assistantTaskLabel: document.querySelector("#assistantTaskLabel"),
+  assistantGroundingState: document.querySelector("#assistantGroundingState"),
   assistantConversation: document.querySelector("#assistantConversation"),
   assistantForm: document.querySelector("#assistantForm"),
   assistantQuestion: document.querySelector("#assistantQuestion"),
   assistantSubmitButton: document.querySelector("#assistantSubmitButton"),
+  assistantSubmitLabel: document.querySelector("#assistantSubmitLabel"),
   assistantSuggestions: document.querySelectorAll("[data-assistant-question]"),
   refreshButton: document.querySelector("#refreshButton"),
   toggleWorkspaceButton: document.querySelector("#toggleWorkspaceButton"),
@@ -5938,21 +5943,58 @@ function assistantSelectedTask() {
   return tasks.find(task => task.status === "success" && task.note_path) || null;
 }
 
+function assistantCitationTarget(citation = {}) {
+  if (RESULT_TAB_NAMES.has(citation.target_tab)) return citation.target_tab;
+  if (citation.source === "visual_window" || citation.window_id) return "slices";
+  if (citation.source === "transcript") return "transcript";
+  return "note";
+}
+
+function assistantEvidenceHtml(citations = []) {
+  const allItems = (Array.isArray(citations) ? citations : []).filter(item => item && typeof item === "object");
+  const items = allItems.slice(0, 4);
+  if (!items.length) return "";
+  return `<section class="assistant-evidence"><header><span>回答依据</span><b>${allItems.length}</b></header><div>${items.map((item, index) => {
+    const target = assistantCitationTarget(item);
+    const label = item.window_id || item.label || (item.source === "transcript" ? "字幕" : item.source === "note" ? "笔记" : `依据 ${index + 1}`);
+    const meta = item.time_range ? ` · ${item.time_range}` : "";
+    return `<button type="button" data-assistant-target-tab="${escapeHtml(target)}" data-assistant-window="${escapeHtml(item.window_id || "")}" data-assistant-time="${escapeHtml(item.start ?? "")}"><span>${escapeHtml(label)}${escapeHtml(meta)}</span><small>${escapeHtml(item.text || "点击回到对应内容")}</small></button>`;
+  }).join("")}</div></section>`;
+}
+
+function bindAssistantEvidenceActions() {
+  document.querySelectorAll("[data-assistant-target-tab]").forEach(button => {
+    button.onclick = () => {
+      showAppView("notes");
+      switchResultTab(button.dataset.assistantTargetTab, button.dataset.assistantWindow || "");
+      const seekTime = Number(button.dataset.assistantTime);
+      if (Number.isFinite(seekTime) && seekTime >= 0) window.setTimeout(() => seekLearningVideo(seekTime, button), 80);
+    };
+  });
+}
+
 function renderAssistant() {
   const task = assistantSelectedTask();
   if (els.assistantTaskLabel) els.assistantTaskLabel.textContent = task ? displayTaskTitle(task) : "请先在笔记库选择一篇笔记";
-  if (els.assistantQuestion) {
-    els.assistantQuestion.disabled = !task;
-    els.assistantQuestion.placeholder = task ? "输入问题，Enter 发送" : "选择一篇已完成的笔记后即可提问";
+  if (els.assistantGroundingState) {
+    els.assistantGroundingState.textContent = task ? (assistantBusy ? "正在检索" : "已连接证据") : "等待选择";
+    els.assistantGroundingState.classList.toggle("busy", assistantBusy);
+    els.assistantGroundingState.classList.toggle("ready", Boolean(task && !assistantBusy));
   }
-  if (els.assistantSubmitButton) els.assistantSubmitButton.disabled = !task;
-  els.assistantSuggestions?.forEach?.(button => { button.disabled = !task; });
+  if (els.assistantQuestion) {
+    els.assistantQuestion.disabled = !task || assistantBusy;
+    els.assistantQuestion.placeholder = task ? "针对这篇笔记提问..." : "选择一篇已完成的笔记后即可提问";
+  }
+  if (els.assistantSubmitButton) els.assistantSubmitButton.disabled = !task || assistantBusy;
+  if (els.assistantSubmitLabel) els.assistantSubmitLabel.textContent = assistantBusy ? "思考中" : "发送";
+  els.assistantSuggestions?.forEach?.(button => { button.disabled = !task || assistantBusy; });
   if (!els.assistantConversation) return;
   if (!assistantMessages.length) {
-    els.assistantConversation.innerHTML = `<div class="assistant-empty"><strong>${task ? "从一个具体问题开始" : "还没有选择笔记"}</strong><p>${task ? "回答会引用这篇笔记的字幕、时间点和画面切片。" : "打开笔记库选择一篇已完成的笔记。"}</p></div>`;
+    els.assistantConversation.innerHTML = `<div class="assistant-empty"><span aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 5h14v11H9l-4 4z"/><path d="M9 9h6M9 12h4"/></svg></span><strong>${task ? "从一个具体问题开始" : "还没有选择笔记"}</strong><p>${task ? "回答会严格依据这篇笔记的字幕、时间点和画面切片。" : "打开笔记库，选择一篇已完成的笔记。"}</p></div>`;
     return;
   }
-  els.assistantConversation.innerHTML = assistantMessages.map(message => `<article class="assistant-message ${escapeHtml(message.role)}"><span>${message.role === "user" ? "你" : "LearnNote"}</span><div>${message.role === "assistant" ? markdownToHtml(message.text) : escapeHtml(message.text)}</div></article>`).join("");
+  els.assistantConversation.innerHTML = assistantMessages.map(message => `<article class="assistant-message ${escapeHtml(message.role)}${message.loading ? " loading" : ""}"><header><span>${message.role === "user" ? "你" : "AI 助教"}</span>${message.role === "assistant" && message.source ? `<small>${escapeHtml(message.source === "llm" ? "模型回答" : "本地证据")}</small>` : ""}</header><div>${message.loading ? `<span class="assistant-thinking"><i></i><i></i><i></i>正在核对笔记证据</span>` : message.role === "assistant" ? markdownToHtml(message.text) : escapeHtml(message.text)}</div>${message.role === "assistant" && !message.loading ? assistantEvidenceHtml(message.citations) : ""}${message.warning && message.warning !== "missing_api_key" ? `<p class="assistant-warning">${escapeHtml(message.warning)}</p>` : ""}</article>`).join("");
+  bindAssistantEvidenceActions();
   els.assistantConversation.scrollTop = els.assistantConversation.scrollHeight;
 }
 
@@ -5970,7 +6012,7 @@ async function loadAssistantHistory() {
     if (requestId !== assistantHistoryRequestId || assistantSelectedTask()?.id !== task.id) return;
     assistantMessages = (Array.isArray(payload.items) ? payload.items : []).slice(-30).flatMap(item => [
       { role: "user", text: String(item?.question || "") },
-      { role: "assistant", text: String(item?.answer || "没有保存回答。") }
+      { role: "assistant", text: String(item?.answer || "没有保存回答。"), citations: item?.citations || [], source: item?.source || "", warning: item?.warning || "" }
     ]).filter(message => message.text);
   } catch (error) {
     if (requestId !== assistantHistoryRequestId) return;
@@ -6002,12 +6044,23 @@ function setAssistantOpen(open, { persist = true } = {}) {
   }
 }
 
+function setAssistantWide(wide, persist = true) {
+  document.body?.classList?.toggle("assistant-wide", Boolean(wide));
+  els.expandAiAssistantButton?.setAttribute("aria-pressed", String(Boolean(wide)));
+  els.expandAiAssistantButton?.setAttribute("aria-label", wide ? "恢复 AI 侧栏宽度" : "扩宽 AI 侧栏");
+  els.expandAiAssistantButton?.setAttribute("title", wide ? "恢复侧栏宽度" : "扩宽侧栏");
+  if (persist) {
+    try { window.localStorage?.setItem(ASSISTANT_WIDE_KEY, wide ? "1" : "0"); } catch { /* ignore */ }
+  }
+}
+
 async function submitAssistantQuestion(questionValue = "") {
   const task = assistantSelectedTask();
   const question = String(questionValue || els.assistantQuestion?.value || "").trim();
   if (!task || !question) return;
   assistantMessages.push({ role: "user", text: question });
-  assistantMessages.push({ role: "assistant", text: "正在查找笔记证据...", loading: true });
+  assistantMessages.push({ role: "assistant", text: "", loading: true });
+  assistantBusy = true;
   if (els.assistantQuestion) els.assistantQuestion.value = "";
   renderAssistant();
   try {
@@ -6018,9 +6071,11 @@ async function submitAssistantQuestion(questionValue = "") {
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload?.detail?.message || payload?.detail || "回答失败");
-    assistantMessages[assistantMessages.length - 1] = { role: "assistant", text: payload.answer || "没有找到足够的信息。" };
+    assistantMessages[assistantMessages.length - 1] = { role: "assistant", text: payload.answer || "没有找到足够的信息。", citations: payload.citations || [], source: payload.source || "", warning: payload.warning || "" };
   } catch (error) {
     assistantMessages[assistantMessages.length - 1] = { role: "assistant", text: error?.message || "回答失败，请检查模型设置。" };
+  } finally {
+    assistantBusy = false;
   }
   renderAssistant();
 }
@@ -8247,6 +8302,7 @@ els.changeDataFolderButton?.addEventListener?.("click", changeDataFolder);
 els.restartForDataFolderButton?.addEventListener?.("click", restartForDataFolder);
 els.openAiAssistantButton?.addEventListener?.("click", () => setAssistantOpen(!document.body?.classList?.contains("assistant-open")));
 els.closeAiAssistantButton?.addEventListener?.("click", () => setAssistantOpen(false));
+els.expandAiAssistantButton?.addEventListener?.("click", () => setAssistantWide(!document.body?.classList?.contains("assistant-wide")));
 els.assistantForm?.addEventListener?.("submit", event => {
   event.preventDefault();
   submitAssistantQuestion();
@@ -8346,6 +8402,7 @@ renderSourceWorkflow();
 checkHealth();
 loadTasks();
 if (assistantOpenPreference() === true) setAssistantOpen(true, { persist: false });
+try { if (window.localStorage?.getItem(ASSISTANT_WIDE_KEY) === "1") setAssistantWide(true, false); } catch { /* ignore */ }
 if ((currentUrlParam(["setup"]) === "1" || !onboardingWasCompleted()) && !hasExplicitTaskRoute()) {
   window.setTimeout?.(openOnboarding, 220);
 }

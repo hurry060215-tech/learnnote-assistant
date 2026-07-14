@@ -11,7 +11,7 @@ from app import APP_VERSION, UX_PROTOCOL_VERSION
 from app.main import app
 from app.models import CurrentPageTaskRequest
 from app.processor import process_page_text_task
-from app.storage import create_task, get_task, update_task
+from app.storage import _directory_size, create_task, get_task, update_task
 
 
 class TaskManagementApiTests(unittest.TestCase):
@@ -83,6 +83,14 @@ class TaskManagementApiTests(unittest.TestCase):
         deleted = self.client.delete(f"/api/tasks/{finished.id}")
         self.assertEqual(deleted.status_code, 200)
         self.assertFalse((self.paths["TASK_DIR"] / finished.id).exists())
+
+    def test_directory_size_tolerates_disappearing_directory(self) -> None:
+        artifact = self.paths["TASK_DIR"] / "stable.bin"
+        artifact.write_bytes(b"12345")
+        self.assertEqual(_directory_size(self.paths["TASK_DIR"]), 5)
+
+        with patch("app.storage.os.scandir", side_effect=FileNotFoundError("removed during scan")):
+            self.assertEqual(_directory_size(self.paths["TASK_DIR"]), 0)
 
 
 if __name__ == "__main__":
