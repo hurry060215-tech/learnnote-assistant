@@ -1,6 +1,6 @@
 #define MyAppName "LearnNote"
 #ifndef MyAppVersion
-  #define MyAppVersion "0.1.25"
+  #define MyAppVersion "0.1.26"
 #endif
 
 [Setup]
@@ -31,6 +31,7 @@ Source: "..\extension\*"; DestDir: "{app}\extension"; Flags: ignoreversion recur
 ; Remove development artifacts shipped by older builds without touching user data.
 Type: filesandordirs; Name: "{app}\_internal\backend\app\__pycache__"
 Type: filesandordirs; Name: "{app}\_internal\extension\tests"
+Type: filesandordirs; Name: "{app}\_internal\web\tests"
 Type: filesandordirs; Name: "{app}\_internal\backend\.venv"
 Type: filesandordirs; Name: "{app}\extension\tests"
 

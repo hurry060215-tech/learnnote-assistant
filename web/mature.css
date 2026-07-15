@@ -1,4 +1,4 @@
-/* LearnNote 0.1.25 product shell: source-first creation, evidence-first reading. */
+/* LearnNote 0.1.26 product shell: source-first creation, evidence-first reading. */
 :root {
   --mature-ink: #14222b;
   --mature-muted: #66747d;
@@ -337,6 +337,7 @@ body[data-app-view="workspace"] #startupReadiness { display: none !important; }
 }
 
 body[data-app-view="workspace"] #sourceWorkflow.idle,
+body[data-app-view="workspace"] #sourceWorkflow.settled,
 body[data-app-view="workspace"] #sourceWorkflow:empty { display: none !important; }
 
 body[data-app-view="workspace"] .workspace-panel > .source-tabs { order: 1; }

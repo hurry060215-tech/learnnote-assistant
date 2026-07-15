@@ -7,7 +7,6 @@ datas = [
     ('backend/requirements.txt', 'backend'),
     ('backend/requirements.desktop.txt', 'backend'),
     ('backend/requirements.deploy.txt', 'backend'),
-    ('web', 'web'),
 ]
 binaries = []
 hiddenimports = ['app.main', 'clr', 'pythonnet']
@@ -37,6 +36,7 @@ a = Analysis(
     optimize=0,
 )
 a.datas += Tree('backend/app', prefix='backend/app', excludes=['__pycache__', '*.pyc'])
+a.datas += Tree('web', prefix='web', excludes=['tests', 'tests/*'])
 a.datas += Tree('extension', prefix='extension', excludes=['tests', 'tests/*'])
 pyz = PYZ(a.pure)
 

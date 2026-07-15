@@ -29,11 +29,31 @@ async function main() {
     throw new Error(`Wide navigation labels are not stable: ${JSON.stringify(wideNavigation)}`);
   }
   await page.waitForTimeout(500);
+  const settledWorkflowVisible = await page.locator("#sourceWorkflow.settled").isVisible().catch(() => false);
+  if (settledWorkflowVisible) {
+    throw new Error("A completed historical workflow still occupies the create workspace");
+  }
   await page.screenshot({ path: `${output}-create-1440.png`, omitBackground: false });
 
+  const hasCurrentPageTask = await page.evaluate(async () => {
+    const response = await fetch("/api/tasks");
+    const payload = await response.json();
+    return (payload.tasks || []).some(task => task.source_type === "current_page"
+      && task?.selected_resource?.source !== "manual"
+      && !String(task?.selected_resource?.request_type || "").startsWith("manual"));
+  });
+  if (hasCurrentPageTask) {
+    await page.locator('#generateNoteButton').click();
+    await page.waitForFunction(() => document.body.dataset.appView === "notes");
+  } else {
+    await page.locator('[data-app-view="notes"]').click();
+  }
+
   await page.setViewportSize({ width: 1024, height: 768 });
-  await page.locator('[data-app-view="notes"]').click();
   await page.waitForTimeout(500);
+  if (!await page.locator(".queue-panel").isVisible()) {
+    throw new Error("The note list is hidden when entering the note library");
+  }
   const tasks = page.locator("#tasks .task");
   if (!await tasks.count()) throw new Error("No task is available for the note-list layout audit");
   if (!await tasks.first().evaluate(element => element.classList.contains("selected"))) {
@@ -88,7 +108,7 @@ async function main() {
   await browser.close();
 
   if (consoleErrors.length) throw new Error(`Browser console errors: ${consoleErrors.join(" | ")}`);
-  process.stdout.write(JSON.stringify({ ok: true, wideNavigation, layout, overlap, screenshots: 3 }));
+  process.stdout.write(JSON.stringify({ ok: true, wideNavigation, layout, overlap, hasCurrentPageTask, screenshots: 3 }));
 }
 
 main().catch(error => {

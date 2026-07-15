@@ -31,6 +31,7 @@ const RESULT_TAB_NAMES = new Set(["note", "transcript", "slices", "frames", "dia
 const LOCAL_ASR_MODELS = new Set(["tiny", "base", "small", "medium", "large", "large-v2", "large-v3"]);
 const MODEL_SETTINGS_STORAGE_KEY = "learnnote_model_settings";
 const APP_SETTINGS_STORAGE_KEY = "learnnote_app_settings";
+const APP_LAYOUT_MIGRATION_KEY = "learnnote_layout_notes_visible_v2";
 const ONBOARDING_STORAGE_KEY = "learnnote_onboarding_v1";
 const DEFAULT_APP_SETTINGS = Object.freeze({
   uiScale: "100",
@@ -40,7 +41,7 @@ const DEFAULT_APP_SETTINGS = Object.freeze({
   defaultSource: "browser",
   autoOpenNote: true,
   taskNotifications: false,
-  compactHistory: true,
+  compactHistory: false,
   autoPreflight: true,
   frameInterval: "20",
   gridSize: "3x3",
@@ -625,7 +626,12 @@ function normalizedAppSettings(value = {}) {
 
 function loadAppSettings() {
   try {
-    appSettings = normalizedAppSettings(JSON.parse(window.localStorage?.getItem(APP_SETTINGS_STORAGE_KEY) || "{}"));
+    const stored = JSON.parse(window.localStorage?.getItem(APP_SETTINGS_STORAGE_KEY) || "{}");
+    if (window.localStorage?.getItem(APP_LAYOUT_MIGRATION_KEY) !== "complete") {
+      stored.compactHistory = false;
+      window.localStorage?.setItem(APP_LAYOUT_MIGRATION_KEY, "complete");
+    }
+    appSettings = normalizedAppSettings(stored);
   } catch {
     appSettings = { ...DEFAULT_APP_SETTINGS };
   }
@@ -1266,7 +1272,7 @@ function selectTask(taskId, { clearCaches = true, syncUrl = true } = {}) {
     lastDetailFingerprint = "__unrendered__";
     assistantMessages = [];
     if (document.body?.classList?.contains("assistant-open")) loadAssistantHistory();
-    else if (document.body?.dataset?.appView === "notes" && assistantSelectedTask() && assistantOpenPreference() !== false) {
+    else if (document.body?.dataset?.appView === "notes" && assistantSelectedTask() && assistantOpenPreference() === true) {
       setAssistantOpen(true, { persist: false });
     }
   }
@@ -1706,6 +1712,20 @@ function currentPageDisplayRank(task) {
   return 7;
 }
 
+function currentPageActivityRank(task) {
+  if (task?.status === "running") return 0;
+  if (task?.status === "queued") return 1;
+  if (task?.status === "success") return 2;
+  if (task?.status === "failed") return 3;
+  if (task?.status === "cancelled") return 4;
+  return 5;
+}
+
+function taskRecency(task) {
+  const timestamp = Date.parse(task?.created_at || task?.updated_at || "");
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
 function currentPageDisplayTask(list, { includeManual = false } = {}) {
   const candidates = (Array.isArray(list) ? list : [])
     .filter(task => task?.source_type === "current_page")
@@ -1715,7 +1735,10 @@ function currentPageDisplayTask(list, { includeManual = false } = {}) {
   }
   return candidates
     .map((task, index) => ({ task, index }))
-    .sort((a, b) => currentPageDisplayRank(a.task) - currentPageDisplayRank(b.task) || a.index - b.index)[0]?.task || null;
+    .sort((a, b) => currentPageActivityRank(a.task) - currentPageActivityRank(b.task)
+      || taskRecency(b.task) - taskRecency(a.task)
+      || currentPageDisplayRank(a.task) - currentPageDisplayRank(b.task)
+      || a.index - b.index)[0]?.task || null;
 }
 
 function preferredCurrentPageTask() {
@@ -2579,6 +2602,8 @@ function renderSourceWorkflow() {
   if (!els.sourceWorkflow) return;
   const task = workflowTaskForSource(selectedSource);
   els.sourceWorkflow.classList.toggle("idle", !task);
+  els.sourceWorkflow.classList.toggle("settled", task?.status === "success");
+  els.sourceWorkflow.classList.toggle("active", ["running", "queued", "cancelling"].includes(task?.status));
   els.sourceWorkflow.innerHTML = sourceWorkflowHtml(selectedSource, task);
 }
 
@@ -4328,7 +4353,7 @@ function setSource(source) {
     tab.tabIndex = selected ? 0 : -1;
   });
   els.panes.forEach(pane => pane.classList.toggle("active", pane.id === `${source}Source`));
-  if (els.generateNoteLabel) els.generateNoteLabel.textContent = source === "browser" ? "检查扩展任务" : "生成笔记";
+  if (els.generateNoteLabel) els.generateNoteLabel.textContent = source === "browser" ? "查看当前页任务" : "生成笔记";
   if (els.generateNoteHint) {
     els.generateNoteHint.textContent = source === "browser"
       ? "先在视频页的 LearnNote 扩展侧栏中开始；返回这里可检查任务并查看进度"
@@ -7989,18 +8014,20 @@ async function generateNoteFromSelectedSource() {
     await loadTasks();
     const currentTask = preferredCurrentPageTask();
     if (currentTask?.id) {
+      showAppView("notes");
       selectTask(currentTask.id);
-      renderSourceWorkflow();
+      renderTasks();
+      await renderDetail();
       if (els.generateNoteHint) {
         els.generateNoteHint.textContent = currentTask.status === "success"
-          ? "已找到最近的当前页笔记，可以前往笔记库查看"
+          ? "已打开最近的当前页笔记"
           : `${taskPhaseLabel(currentTask)} · ${Math.max(0, Math.min(100, Number(currentTask.progress || 0)))}%`;
       }
     } else if (els.generateNoteHint) {
       els.generateNoteHint.textContent = "还没有收到当前页任务。请在视频页打开 LearnNote 扩展，点击“总结当前视频”";
     }
   } finally {
-    if (selectedSource === "browser" && els.generateNoteLabel) els.generateNoteLabel.textContent = "检查扩展任务";
+    if (selectedSource === "browser" && els.generateNoteLabel) els.generateNoteLabel.textContent = "查看当前页任务";
     els.generateNoteButton.disabled = false;
   }
 }

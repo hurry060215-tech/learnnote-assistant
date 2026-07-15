@@ -220,6 +220,10 @@ assert.equal(context.currentPageDisplayTask([
   { id: "reuse-current", status: "success", source_type: "current_page", reuse: { media_available: true } }
 ]).id, "reuse-current");
 assert.equal(context.currentPageDisplayTask([
+  { id: "older-full-note", status: "success", source_type: "current_page", created_at: "2026-07-10T10:00:00Z", media_path: "media.mp4", note_path: "note.md" },
+  { id: "latest-download", status: "success", source_type: "current_page", created_at: "2026-07-12T10:00:00Z", media_path: "media.mp4", mode: "download_only" }
+]).id, "latest-download");
+assert.equal(context.currentPageDisplayTask([
   { id: "manual-url", status: "success", source_type: "current_page", media_path: "media.mp4", selected_resource: { source: "manual", request_type: "manual-forced" } },
   { id: "browser-current", status: "success", source_type: "current_page", media_path: "media.mp4", note_path: "note.md", selected_resource: { source: "webRequest" } }
 ]).id, "browser-current");
@@ -313,8 +317,8 @@ assert.match(stylesCss, /\.workspace-panel \.source-route-rail\s*\{\s*display: n
 assert.match(stylesCss, /\.capture-flow\s*\{\s*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);/);
 assert.match(indexHtml, /id="toggleWorkspaceButton"/);
 assert.match(indexHtml, /styles\.css\?v=20260714-v0124/);
-assert.match(indexHtml, /app\.js\?v=20260715-v0125c/);
-assert.match(indexHtml, /mature\.css\?v=20260715-v0125/);
+assert.match(indexHtml, /app\.js\?v=20260716-v0126/);
+assert.match(indexHtml, /mature\.css\?v=20260716-v0126/);
 assert.match(indexHtml, /id="sourceRouteRail"/);
 assert.match(indexHtml, /id="urlPreflightReport"/);
 assert.match(indexHtml, /href="#settingsView" data-app-view="settings" title="设置"/);
@@ -322,6 +326,8 @@ assert.doesNotMatch(indexHtml, /href="#settings" title="设置"/);
 assert.match(indexHtml, /workspace\.css\?v=20260714-v0124/);
 assert.match(indexHtml, /product\.css\?v=20260714-v0124/);
 assert.match(indexHtml, /<body data-app-view="workspace">/);
+assert.match(indexHtml, /进入笔记时收起笔记列表/);
+assert.doesNotMatch(indexHtml, /id="settingCompactHistory" type="checkbox" checked/);
 assert.match(indexHtml, /id="settingsView"/);
 assert.match(indexHtml, /data-settings-tab="general"/);
 assert.match(indexHtml, /data-settings-tab="model"/);
@@ -528,6 +534,8 @@ assert.match(productCss, /\.note-workbench\s*\{[\s\S]*grid-template-columns:\s*m
 assert.match(productCss, /\.reading-rail\s*\{[\s\S]*position:\s*sticky;[\s\S]*min-width:\s*220px;[\s\S]*max-width:\s*260px;/);
 assert.match(productCss, /body\[data-app-view="notes"\] \.note-workbench > \.markdown-note[\s\S]*grid-column:\s*1;/);
 assert.match(productCss, /body\[data-app-view="notes"\] \.note-workbench > \.reading-rail[\s\S]*grid-column:\s*2;[\s\S]*order:\s*0;/);
+assert.match(matureCss, /#sourceWorkflow\.settled/);
+assert.match(webCode, /assistantOpenPreference\(\) === true/);
 assert.match(indexHtml, /data-tab="slices">画面与时间轴/);
 assert.ok(
   indexHtml.indexOf('id="browserRouteSummary"') < indexHtml.indexOf('id="sourceWorkflow"'),
@@ -3357,7 +3365,7 @@ assert.deepEqual(
     defaultSource: "browser",
     autoOpenNote: true,
     taskNotifications: false,
-    compactHistory: true,
+    compactHistory: false,
     autoPreflight: true,
     frameInterval: "20",
     gridSize: "3x3",
