@@ -214,6 +214,7 @@ let resources = [];
 let captureLog = { total: 0, restored: 0, updated_at: 0 };
 let selectedResourceUrl = "";
 let resourceSelectionPinned = false;
+let currentPlaybackSessionId = "";
 let excludedResourceUrls = new Set();
 let resourceFilter = "all";
 let currentTaskId = "";
@@ -2011,6 +2012,7 @@ function defaultKindPriority(item = {}) {
 
 function defaultResourceRank(item = {}) {
   return [
+    Number(item.playback_session_rank || 0),
     isDirectExtractionCandidate(item) ? 1 : 0,
     item.playback_match || item.is_main_video ? 1 : 0,
     playableEndpointPriority(item),
@@ -5196,6 +5198,7 @@ function resetContextForTab(tabId = null) {
   contextGeneration += 1;
   currentTabId = tabId;
   currentTabUrl = "";
+  currentPlaybackSessionId = "";
   page = null;
   resources = [];
   captureLog = { total: 0, restored: 0, updated_at: 0 };
@@ -5245,6 +5248,17 @@ async function collectContextNow() {
   }
   currentTabId = response.tab?.id ?? null;
   currentTabUrl = response.tab?.url || response.page?.page_url || "";
+  const nextPlaybackSessionId = String(response.page?.playback_session_id || "");
+  if (currentPlaybackSessionId && nextPlaybackSessionId && currentPlaybackSessionId !== nextPlaybackSessionId) {
+    selectedResourceUrl = "";
+    resourceSelectionPinned = false;
+    excludedResourceUrls = new Set();
+    preflight = null;
+    preflightResourceUrl = "";
+    preflightResultsByUrl = new Map();
+    lastPagePreflightReport = null;
+  }
+  currentPlaybackSessionId = nextPlaybackSessionId;
   page = response.page;
   resources = resourcesWithActiveVideoCandidate(response.resources || [], page?.active_video);
   excludedResourceUrls = new Set([...excludedResourceUrls].filter(url => resources.some(item => item.url === url)));

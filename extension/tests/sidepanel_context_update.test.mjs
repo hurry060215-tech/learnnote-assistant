@@ -78,6 +78,7 @@ const context = {
             page: {
               title: `Course player ${collectCalls}`,
               page_url: `https://course.example.com/lesson-${activeTabId}`,
+              playback_session_id: `session-${activeTabId}-${collectCalls}`,
               page_text: "lesson text",
               active_video: collectCalls > 1 ? {
                 src: "https://cdn.example.com/lesson.mp4",
@@ -136,6 +137,8 @@ assert.match(elements.get("#activeVideo").innerHTML, /播放中/);
 assert.match(elements.get("#activeVideo").innerHTML, /已锁定/);
 assert.doesNotMatch(elements.get("#activeVideo").innerHTML, /Frame|播放器尺寸|cdn\.example\.com/);
 
+vm.runInContext(`resourceSelectionPinned = true; selectedResourceUrl = "https://cdn.example.com/lesson.mp4";`, context);
+
 onMessageListener({ type: "current-context-updated", tabId: 7, reason: "media" });
 await new Promise(resolve => setTimeout(resolve, 0));
 assert.equal(collectCalls, 2);
@@ -145,3 +148,5 @@ await new Promise(resolve => setTimeout(resolve, 0));
 assert.equal(collectCalls, 3);
 assert.equal(sentMessages.at(-1).targetTabId, 99);
 assert.match(elements.get("#taskMessage").textContent, /刷新候选资源/);
+assert.equal(vm.runInContext("resourceSelectionPinned", context), false, "expected a changed playback session to release the previous resource pin");
+assert.equal(vm.runInContext("currentPlaybackSessionId", context), "session-99-3");

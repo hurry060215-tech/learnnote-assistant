@@ -391,6 +391,34 @@ function resourceContextRank(resource = {}) {
   return 2;
 }
 
+function playbackSessionRank(resource = {}, page = {}, tab = {}) {
+  if (resource.source === "activeVideo") return 3;
+  const contextUrls = new Set([
+    tab.url,
+    page.page_url,
+    page.active_video?.frame_url,
+    ...(page.frames || []).map(frame => frame.page_url)
+  ].map(normalizedFrameUrl).filter(Boolean));
+  const resourceUrls = [resource.frame_url, resource.page_url]
+    .map(normalizedFrameUrl)
+    .filter(Boolean);
+  if (resourceUrls.some(url => contextUrls.has(url))) return 3;
+
+  const sameOriginButDifferentDocument = resourceUrls.some(resourceUrl => {
+    try {
+      const resourceOrigin = new URL(resourceUrl).origin;
+      return [...contextUrls].some(contextUrl => new URL(contextUrl).origin === resourceOrigin);
+    } catch {
+      return false;
+    }
+  });
+  if (sameOriginButDifferentDocument) return 0;
+
+  const activeFrameId = page.active_video?.frame_id;
+  if (activeFrameId !== null && activeFrameId !== undefined && resource.frame_id === activeFrameId) return 2;
+  return 1;
+}
+
 function sourceRank(source = "") {
   if (source === "pageHookMediaSource" || source === "pageHookBlobSource") return 7;
   if (String(source || "").startsWith("pageHookPlayer")) return 6;
@@ -423,6 +451,7 @@ function playbackMatchRank(match = "") {
 function compareResourceCandidates(a = {}, b = {}) {
   const left = [
     a.user_selected ? 1 : 0,
+    Number(a.playback_session_rank || 0),
     resourceContextRank(a),
     resourceVisibilityRank(a),
     a.is_main_video ? 1 : 0,
@@ -437,6 +466,7 @@ function compareResourceCandidates(a = {}, b = {}) {
   ];
   const right = [
     b.user_selected ? 1 : 0,
+    Number(b.playback_session_rank || 0),
     resourceContextRank(b),
     resourceVisibilityRank(b),
     b.is_main_video ? 1 : 0,
@@ -546,6 +576,7 @@ function withPlaybackHints(resource, page = {}, tab = {}) {
   const activeFrameId = active.frame_id ?? null;
   const kind = resource.kind || classify(resource.url || "", resource.mime || "");
   const hinted = addActiveVideoRequestContext({ ...resource, kind }, page, tab);
+  hinted.playback_session_rank = playbackSessionRank(hinted, page, tab);
   let boost = 0;
   let match = hinted.playback_match || "";
   const applyActiveEvidence = () => {
@@ -1089,6 +1120,17 @@ function normalizedFrameUrl(value = "") {
   }
 }
 
+function playbackSessionId(page = {}, tab = {}) {
+  const active = page.active_video || {};
+  return [
+    normalizedFrameUrl(tab.url || page.page_url || ""),
+    normalizedFrameUrl(active.frame_url || ""),
+    String(active.src || active.blob_url || "").trim(),
+    String(active.poster_url || "").trim(),
+    Math.round(Number(active.duration || 0))
+  ].join("|");
+}
+
 function frameElementEvidenceForPage(page = {}, pages = []) {
   const pageUrl = normalizedFrameUrl(page.page_url);
   if (!pageUrl || (page.frame_id ?? 0) === 0) return null;
@@ -1207,7 +1249,7 @@ function mergePageContexts(tab = {}, pages = []) {
       drmSignals.push(signal);
     }
   }
-  return {
+  const merged = {
     title: bestPageTitle(tab.title, top.title, activePage?.title),
     page_url: tab.url || top.page_url || activePage?.page_url || "",
     page_text: textParts.join("\n\n--- iframe ---\n\n").slice(0, 60000),
@@ -1227,6 +1269,8 @@ function mergePageContexts(tab = {}, pages = []) {
       resource_count: (page.resources || []).length
     }))
   };
+  merged.playback_session_id = playbackSessionId(merged, tab);
+  return merged;
 }
 
 function addResource(tabId, resource, notify = true) {

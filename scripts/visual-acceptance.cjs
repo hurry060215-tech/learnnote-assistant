@@ -68,21 +68,45 @@ async function main() {
     if (!task || !title || !list || !nav) return { missing: true };
     const original = title.textContent;
     const before = task.getBoundingClientRect();
+    const shortHeight = before.height;
     title.textContent = "这是一个非常长的学习视频标题，用来验证不同长度字段不会撑开左侧列表或改变整个框的宽度";
     const after = task.getBoundingClientRect();
     title.textContent = original;
     return {
       beforeWidth: before.width,
       afterWidth: after.width,
+      shortHeight,
+      longHeight: after.height,
       listWidth: list.getBoundingClientRect().width,
       navWidth: nav.getBoundingClientRect().width,
       horizontalOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1
     };
   });
   if (layout.missing) throw new Error("No task is available for the note-list layout audit");
-  if (Math.abs(layout.beforeWidth - layout.afterWidth) > 0.5 || layout.horizontalOverflow) {
+  if (Math.abs(layout.beforeWidth - layout.afterWidth) > 0.5 || Math.abs(layout.shortHeight - layout.longHeight) > 0.5 || layout.horizontalOverflow) {
     throw new Error(`Long note titles changed the left-column layout: ${JSON.stringify(layout)}`);
   }
+  if (Math.abs(layout.shortHeight - 84) > 0.5) {
+    throw new Error(`Note rows do not keep a stable height: ${JSON.stringify(layout)}`);
+  }
+
+  await page.locator('[data-app-view="settings"]').click();
+  await page.waitForTimeout(250);
+  const settingsMenu = await page.evaluate(() => {
+    const menu = document.querySelector('.settings-menu');
+    const buttons = [...document.querySelectorAll('.settings-menu button')];
+    return {
+      width: menu?.getBoundingClientRect().width || 0,
+      widths: buttons.map(button => button.getBoundingClientRect().width),
+      heights: buttons.map(button => button.getBoundingClientRect().height)
+    };
+  });
+  if (Math.abs(settingsMenu.width - 220) > 0.5 || settingsMenu.widths.some(width => Math.abs(width - 220) > 0.5) || settingsMenu.heights.some(height => Math.abs(height - 48) > 0.5)) {
+    throw new Error(`Settings navigation changes size with label length: ${JSON.stringify(settingsMenu)}`);
+  }
+  await page.screenshot({ path: `${output}-settings-1024.png` });
+  await page.locator('[data-app-view="notes"]').click();
+  await page.waitForTimeout(250);
   await page.screenshot({ path: `${output}-notes-1024.png` });
 
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -108,7 +132,7 @@ async function main() {
   await browser.close();
 
   if (consoleErrors.length) throw new Error(`Browser console errors: ${consoleErrors.join(" | ")}`);
-  process.stdout.write(JSON.stringify({ ok: true, wideNavigation, layout, overlap, hasCurrentPageTask, screenshots: 3 }));
+  process.stdout.write(JSON.stringify({ ok: true, wideNavigation, layout, overlap, hasCurrentPageTask, screenshots: 4 }));
 }
 
 main().catch(error => {

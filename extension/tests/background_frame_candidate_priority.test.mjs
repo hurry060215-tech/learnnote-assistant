@@ -161,3 +161,40 @@ assert.ok(
   ranked.findIndex(item => item.url.includes("obeebee.com")) > ranked.findIndex(item => item.url.includes("chaoxing.com")),
   "expected third-party advertising video to rank below the learning player"
 );
+
+const switchedPage = {
+  ...page,
+  page_url: "https://www.bilibili.com/video/BV-current/",
+  active_video: {
+    src: "blob:https://www.bilibili.com/current",
+    frame_id: 0,
+    frame_url: "https://www.bilibili.com/video/BV-current/",
+    paused: false,
+    current_time: 18,
+    duration: 600
+  },
+  frames: [{ frame_id: 0, page_url: "https://www.bilibili.com/video/BV-current/" }]
+};
+const switchedRanked = context.mergeAndRankResources([{
+  url: "https://cdn.example.com/old-video.m4s",
+  source: "webRequest",
+  kind: "video",
+  score: 100,
+  is_main_video: true,
+  playback_match: "range-near-playhead",
+  frame_id: 0,
+  frame_url: "https://www.bilibili.com/video/BV-old/",
+  page_url: "https://www.bilibili.com/video/BV-old/"
+}, {
+  url: "https://cdn.example.com/current-video.m4s",
+  source: "webRequest",
+  kind: "video",
+  score: 60,
+  frame_id: 0,
+  frame_url: "https://www.bilibili.com/video/BV-current/",
+  page_url: "https://www.bilibili.com/video/BV-current/"
+}], switchedPage, { id: 7, url: switchedPage.page_url });
+
+assert.equal(switchedRanked[0].url, "https://cdn.example.com/current-video.m4s", "expected the current playback document to beat a high-score resource cached from the previous video");
+assert.equal(switchedRanked[0].playback_session_rank, 3);
+assert.equal(switchedRanked[1].playback_session_rank, 0);

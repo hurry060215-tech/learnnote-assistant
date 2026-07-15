@@ -583,3 +583,67 @@ body.assistant-wide .ai-assistant-drawer { width: var(--assistant-current-width)
   .workspace-panel .source-tab { padding: 0 8px; }
   .learning-goal-group label > span { grid-template-columns: 1fr; gap: 2px; padding: 8px 12px 8px 42px; }
 }
+
+/* Keep every left-side surface stable when labels and task titles vary. */
+.settings-layout {
+  grid-template-columns: 220px minmax(0, 1fr);
+}
+.settings-menu {
+  display: flex;
+  flex-direction: column;
+  width: 220px;
+  min-width: 220px;
+  max-width: 220px;
+}
+.settings-menu button {
+  flex: 0 0 48px;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  height: 48px;
+  min-height: 48px;
+  max-height: 48px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (min-width: 901px) {
+  .settings-layout {
+    display: grid !important;
+    grid-template-columns: 220px minmax(0, 1fr) !important;
+    align-items: start;
+  }
+  .settings-content {
+    grid-column: 2;
+    min-width: 0;
+  }
+}
+body[data-app-view="notes"] .task {
+  height: 84px;
+  min-height: 84px;
+  max-height: 84px;
+  overflow: hidden;
+}
+body[data-app-view="notes"] .task-headline {
+  height: 60px;
+  align-content: center;
+}
+body[data-app-view="notes"] .task-controls {
+  display: none !important;
+}
+
+@media (max-width: 900px) {
+  .settings-menu {
+    flex-direction: row;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+  .settings-menu button {
+    flex: 0 0 auto;
+    width: auto;
+    max-width: 180px;
+  }
+}
