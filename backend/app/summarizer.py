@@ -11,6 +11,14 @@ from .models import FrameGrid, TaskOptions, TranscriptResult, VisualWindow
 MAX_GRIDS_PER_VISION_CALL = 4
 MAX_VISION_GRIDS = 80
 MAX_LLM_ERROR_MESSAGE = 240
+PAGE_UI_EXACT_TEXTS = {
+    "字幕", "主字幕", "副字幕", "添加字幕", "暂无字幕", "关闭", "弹幕", "弹幕设置",
+    "弹幕列表", "关闭弹幕", "发送弹幕", "播放", "暂停", "倍速", "自动播放", "网页全屏", "全屏",
+}
+PAGE_UI_MARKERS = (
+    "字幕设置", "字幕大小", "字幕颜色", "恢复默认设置", "关闭弹幕", "弹幕设置", "弹幕列表",
+    "发送弹幕", "按类型屏蔽", "按用户屏蔽", "播放速度", "自动播放", "网页全屏",
+)
 
 
 def llm_provider_name(base_url: str) -> str:
@@ -1113,33 +1121,107 @@ def _clean_outline_lines(text: str, limit: int = 8) -> list[str]:
     return _sentences(text, limit=limit)
 
 
+def _page_text_line_is_player_ui(text: str) -> bool:
+    normalized = re.sub(r"\s+", " ", text or "").strip(" -•\t,，。:：;；!?！？()（）[]【】")
+    if not normalized:
+        return False
+    if normalized in PAGE_UI_EXACT_TEXTS:
+        return True
+    marker_hits = sum(marker in normalized for marker in PAGE_UI_MARKERS)
+    return marker_hits >= 3
+
+
+def _clean_page_context(text: str) -> str:
+    lines = []
+    for raw in re.split(r"[\r\n]+", text or ""):
+        cleaned = re.sub(r"\s+", " ", raw).strip()
+        if cleaned and not _page_text_line_is_player_ui(cleaned):
+            lines.append(cleaned)
+    return "\n".join(lines)
+
+
 def _bullet_lines(items: list[str], fallback: str) -> list[str]:
     if not items:
         return [f"- {fallback}"]
     return [f"- {item}" for item in items]
 
 
-def summarize_page_text_with_diagnostics(title: str, page_url: str, page_text: str, options: TaskOptions) -> tuple[str, str, str]:
-    transcript = TranscriptResult(
-        language="unknown",
-        source="page-text",
-        full_text=page_text,
-        segments=[],
+def _page_text_provenance_notice(has_browser_subtitles: bool) -> str:
+    inputs = "页面 DOM 文本和未经媒体校验的浏览器字幕线索" if has_browser_subtitles else "页面 DOM 文本"
+    return (
+        f"> 来源质量：低。本笔记仅基于{inputs}；未取得视频文件、音轨或画面证据，"
+        "不能视为视频字幕或完整视频笔记。"
     )
-    generated = summarize_with_llm(title, transcript, [], options, page_url)
-    if generated:
-        note, source = generated
-        return note, source, ""
+
+
+def _summarize_page_text_with_llm(
+    title: str,
+    page_url: str,
+    page_body: str,
+    subtitle_body: str,
+    options: TaskOptions,
+) -> str | None:
+    api_key = options.llm_api_key or LLM_API_KEY
+    if not api_key:
+        return None
+    try:
+        from openai import OpenAI
+    except Exception:
+        return None
+
+    base_url = options.llm_base_url or LLM_BASE_URL
+    model = options.llm_model or LLM_MODEL
+    try:
+        client = OpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            timeout=LLM_REQUEST_TIMEOUT_SECONDS,
+            max_retries=LLM_MAX_RETRIES,
+        )
+        response = client.chat.completions.create(
+            model=model,
+            messages=[{
+                "role": "user",
+                "content": (
+                    "你是严谨的学习资料整理助手。以下输入不是已验证的视频转写。"
+                    "页面 DOM 文本可能包含导航、按钮、播放器控件、评论或其他界面字符串；"
+                    "浏览器字幕线索也可能不完整。只总结输入中明确出现的内容，不得称其为视频字幕，"
+                    "不得声称已观看、听取或完整总结视频，不得补写视频中未被证据支持的细节。\n"
+                    "请输出 Markdown，并在开头保留来源限制说明。\n"
+                    f"笔记风格：{options.note_style}；笔记模板：{options.note_template}；详略程度：{options.summary_depth}。\n"
+                    f"标题：{title}\n页面 URL：{page_url}\n\n"
+                    f"页面 DOM 文本（低可信上下文）：\n{page_body[:50000] or '(empty)'}\n\n"
+                    f"浏览器字幕线索（未经媒体校验）：\n{subtitle_body[:10000] or '(empty)'}"
+                ),
+            }],
+            **chat_completion_provider_kwargs(base_url),
+        )
+    except Exception:
+        return None
+    generated = (response.choices[0].message.content or "").strip()
+    return generated or None
+
+
+def summarize_page_text_with_diagnostics(title: str, page_url: str, page_text: str, options: TaskOptions) -> tuple[str, str, str]:
     text = (page_text or "").strip()
     page_body, subtitle_body = _split_page_text_sections(text)
+    page_body = _clean_page_context(page_body)
+    notice = _page_text_provenance_notice(bool(subtitle_body))
+    generated = _summarize_page_text_with_llm(title, page_url, page_body, subtitle_body, options)
+    if generated:
+        note = generated if notice in generated else f"{notice}\n\n{generated}"
+        return note, "page-text-llm", "缺少可信视频证据；结果仅基于页面文本和未经媒体校验的浏览器字幕线索。"
     page_points = _clean_outline_lines(page_body, limit=8)
     subtitle_points = _clean_outline_lines(subtitle_body, limit=8)
     all_points = page_points or subtitle_points
-    excerpt = text[:1200] + ("..." if len(text) > 1200 else "")
+    clean_combined_text = "\n\n".join(part for part in (page_body, subtitle_body) if part)
+    excerpt = clean_combined_text[:1200] + ("..." if len(clean_combined_text) > 1200 else "")
     note = "\n".join([
         f"# {title or '当前页面文本总结'}",
         "",
         f"来源：{page_url}",
+        "",
+        notice,
         "",
         "## 页面要点",
         "",
@@ -1167,7 +1249,7 @@ def summarize_page_text_with_diagnostics(title: str, page_url: str, page_text: s
         "4. 如果稍后改用本地视频或直取成功，哪些时间段/章节最值得优先切片复核？",
         "",
     ])
-    return note, "local-template", "文本/LLM 总结调用失败或不可用，已降级为本地页面文本模板。"
+    return note, "local-template", "缺少可信视频证据；已降级为本地页面文本模板，不能视为视频字幕或完整视频笔记。"
 
 
 def summarize_page_text(title: str, page_url: str, page_text: str, options: TaskOptions) -> str:

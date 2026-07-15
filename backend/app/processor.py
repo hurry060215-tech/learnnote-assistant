@@ -589,6 +589,12 @@ def write_page_text_artifacts(task_id: str, request: CurrentPageTaskRequest, all
         "browser_subtitle_count": len(transcript.segments),
         "combined_text_char_count": len(page_text),
         "used_page_text_fallback": True,
+        "source_kind": "page_text_with_browser_cues" if transcript.segments else "page_text",
+        "source_quality": "low",
+        "evidence_quality": "low",
+        "video_evidence": "missing",
+        "can_claim_video_content": False,
+        "evidence_warning": "No verified media, audio, or visual evidence is available.",
     })
     summary_diagnostics_path = write_json(task_id, "summary_diagnostics.json", summary_diagnostics)
     return PageTextArtifacts(

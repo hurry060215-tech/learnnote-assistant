@@ -89,6 +89,7 @@ assert.equal(startCalls, 0);
 assert.equal(openedTabs, 0);
 assert.equal(elements.get("#summarizeButton").disabled, false);
 assert.match(elements.get("#backendStatus").textContent, /请先打开 LearnNote 客户端/);
+assert.equal(elements.get("#backendStatus").dataset.connectionState, "offline");
 assert.match(elements.get("#taskMessage").textContent, /客户端尚未启动/);
 
 const opened = await context.openWorkbench("", "note");

@@ -147,6 +147,7 @@ const indexHtml = await readFile(new URL("../index.html", import.meta.url), "utf
 const stylesCss = await readFile(new URL("../styles.css", import.meta.url), "utf8");
 const workspaceCss = await readFile(new URL("../workspace.css", import.meta.url), "utf8");
 const productCss = await readFile(new URL("../product.css", import.meta.url), "utf8");
+const matureCss = await readFile(new URL("../mature.css", import.meta.url), "utf8");
 vm.runInContext(webCode, context);
 
 await new Promise(resolve => setTimeout(resolve, 0));
@@ -312,7 +313,8 @@ assert.match(stylesCss, /\.workspace-panel \.source-route-rail\s*\{\s*display: n
 assert.match(stylesCss, /\.capture-flow\s*\{\s*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);/);
 assert.match(indexHtml, /id="toggleWorkspaceButton"/);
 assert.match(indexHtml, /styles\.css\?v=20260714-v0124/);
-assert.match(indexHtml, /app\.js\?v=20260714-v0124/);
+assert.match(indexHtml, /app\.js\?v=20260715-v0125c/);
+assert.match(indexHtml, /mature\.css\?v=20260715-v0125/);
 assert.match(indexHtml, /id="sourceRouteRail"/);
 assert.match(indexHtml, /id="urlPreflightReport"/);
 assert.match(indexHtml, /href="#settingsView" data-app-view="settings" title="设置"/);
@@ -336,12 +338,17 @@ assert.match(indexHtml, /id="aiAssistantDrawer"/);
 assert.match(webCode, /function assistantTaskKindLabel\(task\)/);
 assert.match(webCode, /页面文本笔记/);
 assert.match(webCode, /已连接视频证据/);
+assert.match(webCode, /这不是完整的视频笔记/);
+assert.match(webCode, /当前笔记缺少可核对的视频证据/);
+assert.match(matureCss, /box-shadow: inset 3px 0 0 var\(--mature-teal\)/);
+assert.match(matureCss, /\.task-headline > strong[\s\S]*overflow-wrap: anywhere/);
 assert.match(indexHtml, /id="openAiAssistantButton"[\s\S]*AI 助教/);
 assert.match(indexHtml, /id="expandAiAssistantButton"/);
 assert.match(indexHtml, /id="assistantGroundingState"/);
 assert.doesNotMatch(indexHtml, /data-tab="qa"|data-open-assistant/);
 assert.match(webCode, /if \(taskRoute\) showAppView\("notes"\)/);
 assert.match(webCode, /assistantContextTaskId = task\?\.id \|\| ""/);
+assert.match(webCode, /assistantOpenPreference\(\) === true/);
 assert.match(indexHtml, /class="result-tab" role="tab" aria-selected="false" data-tab="diagnostics">处理检查/);
 assert.match(indexHtml, /id="onboardingOverlay"/);
 assert.match(indexHtml, /id="openOnboardingButton"/);

@@ -79,7 +79,15 @@ const context = {
               title: `Course player ${collectCalls}`,
               page_url: `https://course.example.com/lesson-${activeTabId}`,
               page_text: "lesson text",
-              active_video: null,
+              active_video: collectCalls > 1 ? {
+                src: "https://cdn.example.com/lesson.mp4",
+                current_time: 42,
+                duration: 600,
+                paused: false,
+                is_visible: true,
+                width: 1280,
+                height: 720
+              } : null,
               frames: []
             },
             resources: collectCalls > 1 ? [{
@@ -119,8 +127,14 @@ onMessageListener({ type: "current-context-updated", tabId: 99, reason: "tab-act
 await new Promise(resolve => setTimeout(resolve, 0));
 
 assert.equal(collectCalls, 2);
+assert.equal(sentMessages[1].targetTabId, 99);
 assert.equal(elements.get("#resourceCount").textContent, "1");
 assert.match(elements.get("#taskMessage").textContent, /当前标签页/);
+assert.equal(elements.get("#pageIdentityLabel").textContent, "正在播放的视频");
+assert.equal(elements.get("#pageUrl").textContent, "course.example.com");
+assert.match(elements.get("#activeVideo").innerHTML, /播放中/);
+assert.match(elements.get("#activeVideo").innerHTML, /已锁定/);
+assert.doesNotMatch(elements.get("#activeVideo").innerHTML, /Frame|播放器尺寸|cdn\.example\.com/);
 
 onMessageListener({ type: "current-context-updated", tabId: 7, reason: "media" });
 await new Promise(resolve => setTimeout(resolve, 0));

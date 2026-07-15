@@ -41,7 +41,7 @@ from app.downloader import (
 from app.main import _automatic_diagnostic_rules, diagnostic_recovery_profile, render_bundle_manifest, render_diagnostics_markdown, task_audit_summary
 from app.models import ActiveVideoInfo, BrowserCookie, BrowserSubtitleCue, CurrentPageTaskRequest, DownloadAttempt, DrmSignal, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
 from app.processor import ContentMismatchError, browser_subtitle_text_is_player_ui, build_summary_diagnostics, cookie_sync_summary, download_progress_updater, download_status_updater, enrich_resource_candidates_with_active_video, process_current_page_task, process_local_video_task, read_note, read_transcript, redacted_request_dump, redacted_resource, transcript_from_browser_subtitles, validate_summary_evidence
-from app.summarizer import MAX_GRIDS_PER_VISION_CALL, MAX_VISION_GRIDS, build_visual_windows, chat_completion_provider_kwargs, ensure_visual_appendix, learning_goal, learning_goal_instruction, llm_model_supports_vision, llm_provider_name, local_markdown_note, summarize_with_diagnostics, summarize_with_diagnostics_audit, summary_depth_instruction
+from app.summarizer import MAX_GRIDS_PER_VISION_CALL, MAX_VISION_GRIDS, build_visual_windows, chat_completion_provider_kwargs, ensure_visual_appendix, learning_goal, learning_goal_instruction, llm_model_supports_vision, llm_provider_name, local_markdown_note, summarize_page_text_with_diagnostics, summarize_with_diagnostics, summarize_with_diagnostics_audit, summary_depth_instruction
 from app.storage import create_task, get_task, read_json, save_task, task_dir, write_json
 from app.transcriber import resolve_whisper_model, transcribe_audio_openai_compatible, transcript_from_subtitle
 
@@ -2244,6 +2244,9 @@ class ProcessorBoundaryTests(unittest.TestCase):
             self.assertTrue(record.summary_diagnostics["used_page_text_fallback"])
             self.assertEqual(record.summary_diagnostics["browser_subtitle_count"], 2)
             self.assertGreater(record.summary_diagnostics["page_text_char_count"], 0)
+            self.assertEqual(record.summary_diagnostics["source_quality"], "low")
+            self.assertEqual(record.summary_diagnostics["video_evidence"], "missing")
+            self.assertFalse(record.summary_diagnostics["can_claim_video_content"])
             transcript = read_transcript(task.id)
             self.assertEqual(transcript["source"], "browser-subtitle")
             self.assertEqual([segment["text"] for segment in transcript["segments"]], ["老师讲到参数传递", "然后演示返回值"])
@@ -2254,6 +2257,7 @@ class ProcessorBoundaryTests(unittest.TestCase):
             self.assertIn("## 页面要点", note)
             self.assertIn("## 浏览器字幕线索", note)
             self.assertIn("## 兜底学习笔记", note)
+            self.assertIn("不能视为视频字幕或完整视频笔记", note)
             self.assertIn("直取视频不可用时", note)
             self.assertIn("哪些步骤只靠文本还不够", note)
             report = render_diagnostics_markdown(record)
@@ -2311,6 +2315,8 @@ class ProcessorBoundaryTests(unittest.TestCase):
             self.assertTrue(record.summary_diagnostics_path)
             self.assertTrue(record.summary_diagnostics["used_page_text_fallback"])
             self.assertEqual(record.summary_diagnostics["browser_subtitle_count"], 1)
+            self.assertEqual(record.summary_diagnostics["evidence_quality"], "low")
+            self.assertFalse(record.summary_diagnostics["can_claim_video_content"])
             self.assertIn("download_forbidden", record.summary_warning)
             self.assertIn("signed URL expired", record.summary_warning)
             self.assertEqual(record.download_attempts[0].message, "signed URL expired")
@@ -3439,6 +3445,58 @@ class DownloaderBoundaryTests(unittest.TestCase):
 
 
 class SummaryFallbackTests(unittest.TestCase):
+    def test_page_text_summary_uses_dedicated_unverified_context_prompt(self) -> None:
+        calls = []
+
+        class FakeCompletions:
+            def create(self, **kwargs):
+                calls.append(kwargs)
+                return types.SimpleNamespace(
+                    choices=[types.SimpleNamespace(message=types.SimpleNamespace(content="# Page context note"))]
+                )
+
+        class FakeOpenAI:
+            def __init__(self, **kwargs):
+                self.chat = types.SimpleNamespace(completions=FakeCompletions())
+
+        fake_openai = types.ModuleType("openai")
+        fake_openai.OpenAI = FakeOpenAI
+        page_text = (
+            "字幕设置 字幕大小 字幕颜色 关闭弹幕\n"
+            "Chapter 4 explains dynamic programming.\n\n"
+            "--- 浏览器字幕 ---\n\nThe teacher introduces memoization."
+        )
+
+        with patch.dict(sys.modules, {"openai": fake_openai}):
+            note, source, warning = summarize_page_text_with_diagnostics(
+                "Dynamic programming",
+                "https://course.example.com/lesson",
+                page_text,
+                TaskOptions(llm_api_key="test-key"),
+            )
+
+        prompt = calls[0]["messages"][0]["content"]
+        self.assertEqual(source, "page-text-llm")
+        self.assertIn("不是已验证的视频转写", prompt)
+        self.assertIn("页面 DOM 文本（低可信上下文）", prompt)
+        self.assertNotIn("字幕设置 字幕大小 字幕颜色", prompt)
+        self.assertIn("未经媒体校验", note)
+        self.assertIn("缺少可信视频证据", warning)
+
+    def test_local_page_text_note_drops_player_controls_and_states_limit(self) -> None:
+        note, source, warning = summarize_page_text_with_diagnostics(
+            "Functions",
+            "https://course.example.com/lesson",
+            "字幕设置 字幕大小 字幕颜色 关闭弹幕\n函数封装可以复用逻辑。",
+            TaskOptions(),
+        )
+
+        self.assertEqual(source, "local-template")
+        self.assertNotIn("字幕设置 字幕大小 字幕颜色", note)
+        self.assertIn("函数封装可以复用逻辑", note)
+        self.assertIn("不能视为视频字幕或完整视频笔记", note)
+        self.assertIn("缺少可信视频证据", warning)
+
     def test_visual_windows_align_frame_grids_with_transcript_segments(self) -> None:
         transcript = TranscriptResult(
             source="unit",

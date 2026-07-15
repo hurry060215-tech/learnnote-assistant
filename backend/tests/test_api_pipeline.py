@@ -93,6 +93,74 @@ class LocalUploadValidationTests(unittest.TestCase):
     def setUp(self) -> None:
         self.client = TestClient(app)
 
+    def test_task_payload_marks_page_text_fallback_as_unverified_video_evidence(self) -> None:
+        task = create_task("page_text", "DOM fallback", "https://course.example.com/lesson", mode="page_text")
+        note = task_dir(task.id) / "note.md"
+        note.write_text("# DOM fallback", encoding="utf-8")
+        try:
+            update_task(
+                task.id,
+                status="success",
+                phase="completed",
+                note_path=str(note),
+                summary_diagnostics={
+                    "used_page_text_fallback": True,
+                    "page_text_char_count": 120,
+                    "browser_subtitle_count": 0,
+                },
+            )
+
+            response = self.client.get(f"/api/tasks/{task.id}")
+
+            self.assertEqual(response.status_code, 200)
+            payload = response.json()["task"]
+            self.assertEqual(payload["source_quality"]["kind"], "page_text")
+            self.assertEqual(payload["source_quality"]["level"], "low")
+            self.assertEqual(payload["evidence_quality"]["video_evidence"], "missing")
+            self.assertFalse(payload["evidence_quality"]["can_claim_video_content"])
+            self.assertTrue(payload["evidence_quality"]["degraded"])
+            self.assertIn("must not be presented", payload["evidence_quality"]["reason"])
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
+    def test_task_payload_marks_media_with_transcript_and_visuals_as_verified(self) -> None:
+        task = create_task("local", "Verified lesson", mode="local")
+        media = task_dir(task.id) / "media.mp4"
+        transcript = task_dir(task.id) / "transcript.json"
+        media.write_bytes(b"verified-media")
+        transcript.write_text(json.dumps({
+            "source": "faster-whisper",
+            "segments": [{"start": 0, "end": 4, "text": "Verified lesson content"}],
+            "full_text": "Verified lesson content",
+        }), encoding="utf-8")
+        try:
+            update_task(
+                task.id,
+                status="success",
+                phase="completed",
+                media_path=str(media),
+                transcript_path=str(transcript),
+                frame_grids=[FrameGrid(
+                    path=str(task_dir(task.id) / "grid.jpg"),
+                    url=f"/api/tasks/{task.id}/assets/grid.jpg",
+                    start=0,
+                    end=20,
+                    frame_count=2,
+                )],
+            )
+
+            response = self.client.get(f"/api/tasks/{task.id}")
+
+            payload = response.json()["task"]
+            self.assertEqual(payload["source_quality"]["kind"], "local_media")
+            self.assertEqual(payload["source_quality"]["level"], "high")
+            self.assertEqual(payload["evidence_quality"]["level"], "high")
+            self.assertEqual(payload["evidence_quality"]["video_evidence"], "verified")
+            self.assertTrue(payload["evidence_quality"]["can_claim_video_content"])
+            self.assertFalse(payload["evidence_quality"]["degraded"])
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
     def test_web_index_references_mounted_static_assets(self) -> None:
         response = self.client.get("/")
 

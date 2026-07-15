@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="/web/styles.css?v=20260714-v0124">
     <link rel="stylesheet" href="/web/workspace.css?v=20260714-v0124">
     <link rel="stylesheet" href="/web/product.css?v=20260714-v0124">
+    <link rel="stylesheet" href="/web/mature.css?v=20260715-v0125">
   </head>
   <body data-app-view="workspace">
     <header class="topbar">
@@ -46,9 +47,9 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h11a2 2 0 0 1 2 2v16l-4-2-4 2-4-2-4 2V5a2 2 0 0 1 2-2z"/><path d="M8 8h7M8 12h6"/></svg>
           <span>笔记库</span>
         </a>
-        <a class="nav-item" href="#tasks" data-app-view="history" title="历史记录" aria-label="历史记录">
+        <a class="nav-item" href="#tasks" data-app-view="history" title="任务" aria-label="任务">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v6h6"/><path d="M12 7v5l3 2"/></svg>
-          <span>历史记录</span>
+          <span>任务</span>
         </a>
         <a id="settingsNav" class="nav-item" href="#settingsView" data-app-view="settings" title="设置" aria-label="设置">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5z"/><path d="M9 8h6M9 12h6M9 16h3"/></svg>
@@ -185,9 +186,8 @@
 
       <aside id="workspace" class="workspace-panel">
         <div class="panel-heading">
-          <span class="eyeless">LearnNote 工作台</span>
           <strong>新建学习笔记</strong>
-          <p class="panel-subtitle">选择视频来源，设置学习目标，然后交给 LearnNote 整理成可追溯的学习笔记。</p>
+          <p class="panel-subtitle">选择学习内容，生成结构清晰、可以回到原视频核对的笔记。</p>
         </div>
 
         <div id="sourceRouteRail" class="source-route-rail" aria-label="学习入口路线"></div>
@@ -275,8 +275,8 @@
                   <svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z"/><path d="M8 9h8M8 13h5"/><path d="M17 16l3 3M20 16l-3 3"/></svg>
                 </span>
                 <div>
-                  <strong id="browserCaptureTitle">播放视频后，从扩展侧栏一键生成笔记</strong>
-                  <div id="browserBridgeStatus" class="capture-status-grid">打开 LearnNote 扩展侧栏，点击“总结当前视频”。</div>
+                  <strong id="browserCaptureTitle">打开课程视频，再从浏览器扩展发送</strong>
+                  <div id="browserBridgeStatus" class="capture-status-grid">扩展会自动选择正在播放、画面可见的视频。</div>
                 </div>
                 <em>非录制</em>
               </div>
@@ -302,11 +302,11 @@
               <div class="browser-actions">
                 <button id="copyBackendButton" class="secondary action-button" type="button">
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8h11v13H8zM5 16H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h11a1 1 0 0 1 1 1v1"/></svg>
-                  复制连接地址
+                  复制服务地址
                 </button>
                 <button id="browserRefreshButton" class="secondary action-button" type="button">
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 0 1-13.66 5.66M4 12A8 8 0 0 1 17.66 6.34M20 4v6h-6M4 20v-6h6"/></svg>
-                  检查扩展连接
+                  重新检查
                 </button>
               </div>
             </div>
@@ -316,16 +316,16 @@
           </div>
         </section>
 
-        <section class="quick-note-options" aria-label="学习目标">
+        <section class="quick-note-options" aria-label="输出预设">
           <div class="quick-note-heading">
-            <strong>学习目标</strong>
+            <strong>输出预设</strong>
             <button id="openProcessingSettingsButton" type="button">高级设置</button>
           </div>
-          <div id="homeQuickOptionsSlot" class="learning-goal-group" role="radiogroup" aria-label="选择学习目标">
-            <label><input type="radio" name="learningGoal" value="auto" checked><span>自动</span></label>
-            <label><input type="radio" name="learningGoal" value="deep"><span>深入理解</span></label>
-            <label><input type="radio" name="learningGoal" value="review"><span>快速回顾</span></label>
-            <label><input type="radio" name="learningGoal" value="exam"><span>备考自测</span></label>
+          <div id="homeQuickOptionsSlot" class="learning-goal-group" role="radiogroup" aria-label="选择输出预设">
+            <label><input type="radio" name="learningGoal" value="auto" checked><span><b>智能整理</b><small>根据内容自动选择结构</small></span></label>
+            <label><input type="radio" name="learningGoal" value="deep"><span><b>课堂精讲</b><small>概念脉络 · 例题步骤 · 易错点</small></span></label>
+            <label><input type="radio" name="learningGoal" value="review"><span><b>快速复习</b><small>重点清单 · 记忆提示 · 关键时间点</small></span></label>
+            <label><input type="radio" name="learningGoal" value="exam"><span><b>考前梳理</b><small>考点总结 · 公式定理 · 自测题</small></span></label>
           </div>
         </section>
 
@@ -653,6 +653,6 @@
       </section>
     </div>
 
-    <script src="/web/app.js?v=20260714-v0124"></script>
+    <script src="/web/app.js?v=20260715-v0125c"></script>
   </body>
 </html>

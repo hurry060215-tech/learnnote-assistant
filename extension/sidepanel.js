@@ -232,6 +232,7 @@ let isCollectingContext = false;
 let pendingContextRefresh = false;
 let currentTabId = null;
 let currentTabUrl = "";
+let contextGeneration = 0;
 let taskHistory = [];
 let lastHealthData = null;
 let clientConnectionState = "checking";
@@ -243,6 +244,7 @@ let panelMode = "study";
 
 const els = {
   backendStatus: document.querySelector("#backendStatus"),
+  pageIdentityLabel: document.querySelector("#pageIdentityLabel"),
   pageTitle: document.querySelector("#pageTitle"),
   pageUrl: document.querySelector("#pageUrl"),
   activeVideo: document.querySelector("#activeVideo"),
@@ -5111,6 +5113,7 @@ function updateHealthVisionStatus(data = lastHealthData) {
   els.backendStatus.dataset.mediaText = text;
   els.backendStatus.title = text;
   els.backendStatus.classList.remove("backend-status-grid");
+  els.backendStatus.dataset.connectionState = data.extension_compatible === false ? "incompatible" : data.ffmpeg ? "connected" : "degraded";
   els.backendStatus.textContent = text;
 }
 
@@ -5159,6 +5162,7 @@ async function health() {
   } catch {
     lastHealthData = null;
     clientConnectionState = "offline";
+    els.backendStatus.dataset.connectionState = "offline";
     els.backendStatus.textContent = "请先打开 LearnNote 客户端";
     els.backendStatus.title = "扩展需要连接正在运行的 LearnNote 桌面客户端";
     els.backendStatus.style.color = "#d92d20";
@@ -5188,7 +5192,26 @@ function shouldAcceptContextUpdate(message = {}) {
   return message.tabId === currentTabId;
 }
 
+function resetContextForTab(tabId = null) {
+  contextGeneration += 1;
+  currentTabId = tabId;
+  currentTabUrl = "";
+  page = null;
+  resources = [];
+  captureLog = { total: 0, restored: 0, updated_at: 0 };
+  selectedResourceUrl = "";
+  resourceSelectionPinned = false;
+  excludedResourceUrls = new Set();
+  preflight = null;
+  preflightResourceUrl = "";
+  preflightResultsByUrl = new Map();
+  lastPagePreflightReport = null;
+  cookieDiagnostic = { status: "idle", summary: null, error: "", checked_at: 0 };
+}
+
 async function collectContextNow() {
+  const requestGeneration = ++contextGeneration;
+  const requestedTabId = currentTabId;
   els.pageTitle.textContent = "读取中...";
   els.resources.innerHTML = `<p class="muted">正在检测媒体资源...</p>`;
   if (!HAS_EXTENSION_API) {
@@ -5207,13 +5230,15 @@ async function collectContextNow() {
   }
   const response = await chrome.runtime.sendMessage({
     type: "get-current-context",
-    targetTabId: currentTabId
+    targetTabId: requestedTabId
   });
+  if (requestGeneration !== contextGeneration) return false;
   if (response.error) {
     els.resources.innerHTML = `<p class="muted">${escapeHtml(response.error)}</p>`;
     return false;
   }
   const nextTabId = response.tab?.id ?? null;
+  if (requestedTabId !== null && nextTabId !== null && requestedTabId !== nextTabId) return false;
   if (currentTabId !== null && nextTabId !== null && currentTabId !== nextTabId) {
     resourceSelectionPinned = false;
     cookieDiagnostic = { status: "idle", summary: null, error: "", checked_at: 0 };
@@ -5260,7 +5285,7 @@ async function collect() {
 
 function renderContext() {
   els.pageTitle.textContent = page?.title || "Untitled";
-  els.pageUrl.textContent = page?.page_url || "";
+  els.pageUrl.textContent = hostFromUrl(page?.page_url) || "当前标签页";
   const active = page?.active_video;
   const frames = page?.frames || [];
   const visibleResources = filteredResources();
@@ -5269,28 +5294,27 @@ function renderContext() {
   }
   if (hasActiveVideoSignal(active)) {
     const state = active.drm_detected ? "blocked" : active.paused ? "paused" : "playing";
+    const identity = active.drm_detected ? "受保护的视频" : active.paused ? "当前可见视频" : "正在播放的视频";
+    const source = playbackSourceLabel(active);
+    if (els.pageIdentityLabel) els.pageIdentityLabel.textContent = identity;
     els.activeVideo.className = `playback-card active-video-card ${state}`;
     els.activeVideo.innerHTML = `
       <div class="active-video-top">
-        <span>${active.drm_detected ? "DRM/EME" : active.paused ? "暂停" : "播放中"}</span>
+        <span>${active.drm_detected ? "暂不可发送" : active.paused ? "已识别" : "播放中"}</span>
         <strong>${escapeHtml(fmt(active.current_time))} / ${escapeHtml(fmt(active.duration))}</strong>
       </div>
-      <div class="active-video-metrics">
-        <span><b>${escapeHtml(playbackSourceLabel(active))}</b>源类型</span>
-        <span><b>${escapeHtml(`${active.width || 0}x${active.height || 0}`)}</b>播放器尺寸</span>
-        <span><b>${escapeHtml(active.frame_id ?? "-")}</b>Frame</span>
-      </div>
       ${safeNoteMediaUrl(active.poster_url) ? `<img class="active-video-poster" src="${safeNoteMediaUrl(active.poster_url)}" alt="当前视频封面">` : ""}
-      <code>${escapeHtml(activeSrcObjectOnly(active) ? srcObjectText(active) : compactUrl(active.src))}</code>
+      <p>${escapeHtml(active.drm_detected ? "LearnNote 不会绕过视频保护。" : `${source || "页面播放器"}已锁定，发送后将在客户端继续处理。`)}</p>
     `;
   } else {
+    if (els.pageIdentityLabel) els.pageIdentityLabel.textContent = "当前页面";
     els.activeVideo.className = `playback-card active-video-card ${frames.length ? "scanning" : "idle"}`;
     els.activeVideo.innerHTML = `
       <div class="active-video-top">
-        <span>${frames.length ? "扫描中" : "等待播放"}</span>
-        <strong>${frames.length ? `已扫描 ${frames.length} 个 frame` : "未读取到 HTML5 播放状态"}</strong>
+        <span>${frames.length ? "识别中" : "等待视频"}</span>
+        <strong>${frames.length ? "正在查找可见播放器" : "尚未发现正在播放的视频"}</strong>
       </div>
-      <p>${frames.length ? "继续播放几秒后重新检测，扩展会把媒体请求和播放器 frame 对齐。" : "先播放课程视频，再重新检测当前页媒体资源。"}</p>
+      <p>${frames.length ? "继续播放几秒，识别结果会自动更新。" : "请先在页面中播放视频，LearnNote 会自动识别。"}</p>
     `;
   }
   renderPlaybackReadiness();
@@ -5641,6 +5665,7 @@ async function startTask(mode = "video") {
     if (response.error) {
       if (/failed to fetch|network|connection|refused|无法连接|连接失败/i.test(String(response.error))) {
         clientConnectionState = "offline";
+        els.backendStatus.dataset.connectionState = "offline";
         els.backendStatus.textContent = "请先打开 LearnNote 客户端";
         els.backendStatus.style.color = "#d92d20";
         els.taskMessage.textContent = "无法连接 LearnNote 客户端。请确认客户端已启动，再重新发送当前页。";
@@ -5659,6 +5684,7 @@ async function startTask(mode = "video") {
     const detail = String(error?.message || error || "");
     if (/failed to fetch|network|connection|refused|receiving end does not exist/i.test(detail)) {
       clientConnectionState = "offline";
+      els.backendStatus.dataset.connectionState = "offline";
       els.backendStatus.textContent = "请先打开 LearnNote 客户端";
       els.backendStatus.style.color = "#d92d20";
       els.taskMessage.textContent = "无法连接 LearnNote 客户端。请确认客户端已启动，再重新发送当前页。";
@@ -8628,6 +8654,9 @@ els.llmApiKey?.addEventListener("input", () => updateHealthVisionStatus());
 if (HAS_EXTENSION_API && chrome.runtime.onMessage?.addListener) {
   chrome.runtime.onMessage.addListener(message => {
     if (shouldAcceptContextUpdate(message)) {
+      if (message.reason === "tab-activated") {
+        resetContextForTab(message.tabId ?? null);
+      }
       scheduleContextRefresh(message.reason || "media");
       return;
     }

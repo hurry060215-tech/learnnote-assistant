@@ -908,6 +908,7 @@ def render_bundle_manifest(task: TaskRecord, transcript: dict, visual_index: dic
         if Path(grid.path).name
     ]
     qa_history = read_task_qa_history(task.id)
+    source_quality, evidence_quality = task_source_evidence_quality(task)
 
     return {
         "schema_version": 1,
@@ -929,6 +930,8 @@ def render_bundle_manifest(task: TaskRecord, transcript: dict, visual_index: dic
             "error_detail": task.error_detail,
         },
         "options": options_payload,
+        "source_quality": source_quality,
+        "evidence_quality": evidence_quality,
         "source": {
             "resource_inventory": {
                 "export": "resource_inventory.json" if resource_inventory else "",
@@ -1665,8 +1668,106 @@ def task_reuse_evidence(task: TaskRecord) -> dict:
     }
 
 
+def task_source_evidence_quality(task: TaskRecord) -> tuple[dict, dict]:
+    diagnostics = task.summary_diagnostics or {}
+    has_media = task_media_file_exists(task)
+    transcript_source = _task_transcript_source(task)
+    has_timed_transcript = bool(
+        task.transcript_path
+        and transcript_source
+        and transcript_source not in {"unknown", "page-text", "no-audio"}
+        and not transcript_source.endswith(("-error", "-missing-key", "-missing-sdk"))
+    )
+    has_visual_evidence = bool(
+        task.frame_grids
+        or task.visual_windows
+        or diagnostics.get("extracted_frame_count")
+        or diagnostics.get("frame_grid_count")
+    )
+    submitted_browser_cue_count = len(task.browser_subtitles or [])
+    browser_cue_count = int(diagnostics.get("browser_subtitle_count") or 0)
+    if transcript_source == "browser-subtitle" and task.transcript_path:
+        try:
+            transcript_payload = read_transcript(task.id)
+            browser_cue_count = len(transcript_payload.get("segments") or [])
+        except (OSError, ValueError, TypeError):
+            browser_cue_count = 0
+    page_text_only = task.source_type == "page_text" or bool(diagnostics.get("used_page_text_fallback"))
+
+    if task.source_type == "local":
+        source_kind = "local_media"
+    elif has_media:
+        source_kind = "current_page_media"
+    elif browser_cue_count or submitted_browser_cue_count:
+        source_kind = "browser_subtitle_cues"
+    elif page_text_only:
+        source_kind = "page_text"
+    else:
+        source_kind = "unresolved_current_page"
+
+    if has_media:
+        source_level = "high"
+        source_reason = "A reusable media file is available."
+    elif browser_cue_count:
+        source_level = "low"
+        source_reason = "Filtered browser subtitle cues are available, but no media file was verified."
+    elif submitted_browser_cue_count:
+        source_level = "low"
+        source_reason = "Browser cues were submitted but have not been validated or verified against media."
+    elif page_text_only:
+        source_level = "low"
+        source_reason = "Only page DOM text is available; it may contain player controls or other UI text."
+    else:
+        source_level = "none"
+        source_reason = "No reusable media or content evidence is available."
+
+    if has_media and has_timed_transcript and has_visual_evidence:
+        evidence_level = "high"
+    elif has_media and (has_timed_transcript or has_visual_evidence):
+        evidence_level = "medium"
+    elif has_media or browser_cue_count:
+        evidence_level = "low"
+    else:
+        evidence_level = "none"
+
+    can_claim_video_content = bool(has_media and (has_timed_transcript or has_visual_evidence))
+    if can_claim_video_content:
+        evidence_reason = "Video claims are backed by verified media and transcript or visual evidence."
+    elif has_media:
+        evidence_reason = "Media exists, but no usable transcript or visual evidence supports a video note yet."
+    elif browser_cue_count:
+        evidence_reason = "Browser subtitle cues are partial and are not independently verified against media."
+    elif page_text_only:
+        evidence_reason = "Page text is context only and must not be presented as video subtitles or a video note."
+    else:
+        evidence_reason = "Trusted video evidence is missing."
+
+    source_quality = {
+        "kind": source_kind,
+        "level": source_level,
+        "reason": source_reason,
+    }
+    evidence_quality = {
+        "level": evidence_level,
+        "video_evidence": "verified" if can_claim_video_content else "partial" if has_media or browser_cue_count else "missing",
+        "has_media": has_media,
+        "has_timed_transcript": has_timed_transcript,
+        "transcript_source": transcript_source,
+        "has_visual_evidence": has_visual_evidence,
+        "browser_subtitle_cue_count": browser_cue_count,
+        "submitted_browser_subtitle_cue_count": submitted_browser_cue_count,
+        "can_claim_video_content": can_claim_video_content,
+        "degraded": not can_claim_video_content,
+        "reason": evidence_reason,
+    }
+    return source_quality, evidence_quality
+
+
 def task_payload(task: TaskRecord) -> dict:
     payload = task.model_dump(mode="json")
+    source_quality, evidence_quality = task_source_evidence_quality(task)
+    payload["source_quality"] = source_quality
+    payload["evidence_quality"] = evidence_quality
     payload["direct_extraction"] = direct_extraction_evidence(task)
     payload["audit"] = task_audit_summary(task)
     payload["recovery"] = diagnostic_recovery_profile(task)
@@ -3238,7 +3339,7 @@ def create_from_current_page(request: CurrentPageTaskRequest, background_tasks: 
     if request.browser_subtitles:
         task = update_task(task.id, browser_subtitles=request.browser_subtitles)
     background_tasks.add_task(process_current_page_task, task.id, request)
-    return {"task_id": task.id, "task": task}
+    return {"task_id": task.id, "task": task_payload(task)}
 
 
 @app.post("/api/media/preflight")
@@ -3302,7 +3403,7 @@ async def create_from_local(
         message="Local upload saved; queued for processing",
     )
     background_tasks.add_task(process_local_video_task, task.id, upload_path, title or safe_name, parsed_options)
-    return {"task_id": task.id, "task": task}
+    return {"task_id": task.id, "task": task_payload(task)}
 
 
 @app.post("/api/tasks/{task_id}/rerun-from-media")
@@ -3385,7 +3486,7 @@ def create_from_existing_media(
         source_subtitle_path,
         subtitle_source,
     )
-    return {"task_id": task.id, "task": task, "source_task_id": source.id}
+    return {"task_id": task.id, "task": task_payload(task), "source_task_id": source.id}
 
 
 @app.get("/api/tasks")

@@ -13577,3 +13577,135 @@ body[data-ui="learnnote-sidepanel-v2"] #summarizeButton {
   border-radius: 7px;
   font-size: 15px;
 }
+
+/* Product bridge: the default panel shows only identity, connection, and handoff. */
+body[data-ui="learnnote-sidepanel-v2"] #backendStatus {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted) !important;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] #backendStatus::before {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 50%;
+  background: #9aa8a8;
+  content: "";
+}
+
+body[data-ui="learnnote-sidepanel-v2"] #backendStatus[data-connection-state="connected"]::before {
+  background: #159947;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] #backendStatus[data-connection-state="degraded"]::before,
+body[data-ui="learnnote-sidepanel-v2"] #backendStatus[data-connection-state="incompatible"]::before {
+  background: #c27803;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] #backendStatus[data-connection-state="offline"]::before {
+  background: #d92d20;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .side-shell {
+  gap: 10px;
+  padding-top: 16px;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .current-card {
+  gap: 10px;
+  padding: 16px;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .current-card > .section-head {
+  padding: 0;
+  border-top: 0;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .current-card #pageUrl {
+  display: block;
+  margin-top: -7px;
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+body[data-ui="learnnote-sidepanel-v2"][data-panel-mode="study"] .current-card #activeVideo {
+  display: grid;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .current-card .active-video-card {
+  gap: 8px;
+  margin: 2px 0 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-soft);
+  box-shadow: none;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .current-card .active-video-card.playing {
+  border-color: #a9d9d4;
+  background: #f2fbfa;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .current-card .active-video-card .active-video-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .current-card .active-video-card .active-video-top span {
+  color: var(--accent-strong);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .current-card .active-video-card .active-video-top strong {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .current-card .active-video-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .current-card .active-video-poster {
+  max-height: 132px;
+  margin: 0;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .progress-panel,
+body[data-ui="learnnote-sidepanel-v2"] .history-panel,
+body[data-ui="learnnote-sidepanel-v2"] .result-panel,
+body[data-ui="learnnote-sidepanel-v2"] .options-disclosure,
+body[data-ui="learnnote-sidepanel-v2"] .local-video-card,
+body[data-ui="learnnote-sidepanel-v2"] .client-handoff-card {
+  display: none !important;
+}
+
+body[data-ui="learnnote-sidepanel-v2"][data-source-mode="summarize"] .actions {
+  order: 2;
+  padding: 0;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] #summarizeButton {
+  min-height: 52px;
+  border: 0;
+  background: var(--accent-strong);
+}
+
+body[data-ui="learnnote-sidepanel-v2"] #summarizeButton:hover {
+  background: #076d69;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] #summarizeButton:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}

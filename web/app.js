@@ -716,8 +716,10 @@ function showAppView(view = "workspace") {
     if (!wasSettingsMode) showSettingsPane("general");
     loadStorageSummary();
   }
-  if (normalizedView === "notes" && assistantSelectedTask() && assistantOpenPreference() !== false) {
+  if (normalizedView === "notes" && assistantSelectedTask() && assistantOpenPreference() === true) {
     setAssistantOpen(true, { persist: false });
+  } else {
+    setAssistantOpen(false, { persist: false });
   }
 }
 
@@ -1243,6 +1245,7 @@ function normalizeResultTabName(tabName) {
 
 function syncSelectedTaskUrl(taskId) {
   if (!taskId || !window?.history?.replaceState) return;
+  if (document.body?.dataset?.appView === "workspace") return;
   const path = window.location?.pathname || "/";
   const hash = window.location?.hash || "";
   if (typeof URLSearchParams === "undefined") {
@@ -4439,7 +4442,7 @@ async function loadTasks() {
   const selected = tasks.find(task => task.id === selectedTaskId) || null;
   if (taskDetailFingerprint(selected) !== lastDetailFingerprint) await renderDetail();
   const assistantTask = assistantSelectedTask();
-  if (document.body?.dataset?.appView === "notes" && assistantTask && assistantOpenPreference() !== false && !document.body?.classList?.contains("assistant-open")) {
+  if (document.body?.dataset?.appView === "notes" && assistantTask && assistantOpenPreference() === true && !document.body?.classList?.contains("assistant-open")) {
     setAssistantOpen(true, { persist: false });
   } else if (document.body?.classList?.contains("assistant-open") && (assistantTask?.id || "") !== assistantContextTaskId) {
     loadAssistantHistory();
@@ -5957,8 +5960,40 @@ function assistantSelectedTask() {
 function assistantTaskKindLabel(task) {
   if (!task) return "";
   if (task.source_type === "page_text" || task.mode === "page_text") return "页面文本笔记";
+  if (task.evidence_quality?.can_claim_video_content === false) return "待补充视频证据";
   if (task.source_type === "local") return "本地视频笔记";
   return "视频笔记";
+}
+
+function noteEvidenceNoticeHtml(task) {
+  if (!task) return "";
+  const pageTextOnly = task.source_type === "page_text" || task.mode === "page_text";
+  const evidenceMissing = task.evidence_quality?.can_claim_video_content === false;
+  if (!pageTextOnly && !evidenceMissing) return "";
+  const title = pageTextOnly ? "这不是完整的视频笔记" : "当前笔记缺少可核对的视频证据";
+  const detail = pageTextOnly
+    ? "当前任务只读取到网页文字，没有取得可信的视频、字幕或画面。正文仅适合作为页面摘要。"
+    : "媒体处理尚未形成可核对的字幕或画面证据，正文不能代表完整视频内容。";
+  return `<section class="note-evidence-notice" role="status">
+    <div><strong>${escapeHtml(title)}</strong><p>${escapeHtml(detail)}</p></div>
+    <button type="button" data-retry-video-source>重新获取视频</button>
+  </section>`;
+}
+
+function noteProvenanceHtml(task) {
+  if (!task) return "";
+  const pageTextOnly = task.source_type === "page_text" || task.mode === "page_text";
+  const sourceHost = hostFromUrl(task.page_url || task.selected_resource?.page_url || task.selected_resource?.url) || sourceText(task);
+  const evidence = task.evidence_quality || {};
+  const transcriptReady = evidence.has_timed_transcript ?? hasReadableTranscript(task);
+  const windowCount = visualWindows(task).length;
+  const items = pageTextOnly
+    ? [["来源", sourceHost], ["内容", "仅页面文字"], ["视频", "未获取"], ["画面", "未获取"]]
+    : [["来源", sourceHost], ["视频", (evidence.has_media ?? Boolean(task.media_path)) ? "已保存" : "未保存"], ["字幕", transcriptReady ? "可核对" : "未生成"], ["画面", windowCount ? `${windowCount} 个窗口` : evidence.has_visual_evidence ? "已生成" : "未生成"]];
+  return `<section class="note-provenance" aria-label="笔记证据范围">
+    <header><strong>证据范围</strong><span>${pageTextOnly ? "页面摘要" : "视频笔记"}</span></header>
+    <div>${items.map(([label, value]) => `<span><b>${escapeHtml(label)}</b>${escapeHtml(value)}</span>`).join("")}</div>
+  </section>`;
 }
 
 function assistantCitationTarget(citation = {}) {
@@ -6007,8 +6042,9 @@ function renderAssistant({ revealLatestAnswer = false } = {}) {
   }
   if (els.assistantGroundingState) {
     const textOnly = task && (task.source_type === "page_text" || task.mode === "page_text");
+    const groundedVideo = task?.evidence_quality?.can_claim_video_content !== false;
     els.assistantGroundingState.textContent = task
-      ? (assistantBusy ? "正在检索" : textOnly ? "仅页面文本" : "已连接视频证据")
+      ? (assistantBusy ? "正在检索" : textOnly ? "仅页面文本" : groundedVideo ? "已连接视频证据" : "视频证据不足")
       : "等待选择";
     els.assistantGroundingState.classList.toggle("busy", assistantBusy);
     els.assistantGroundingState.classList.toggle("ready", Boolean(task && !assistantBusy));
@@ -6022,7 +6058,11 @@ function renderAssistant({ revealLatestAnswer = false } = {}) {
   els.assistantSuggestions?.forEach?.(button => { button.disabled = !task || assistantBusy; });
   if (!els.assistantConversation) return;
   if (!assistantMessages.length) {
-    els.assistantConversation.innerHTML = `<div class="assistant-empty"><span aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 5h14v11H9l-4 4z"/><path d="M9 9h6M9 12h4"/></svg></span><strong>${task ? "从一个具体问题开始" : "还没有选择笔记"}</strong><p>${task ? "回答会严格依据这篇笔记的字幕、时间点和画面切片。" : "打开笔记库，选择一篇已完成的笔记。"}</p></div>`;
+    const pageTextOnly = task && (task.source_type === "page_text" || task.mode === "page_text");
+    const groundingCopy = pageTextOnly
+      ? "当前只具备页面文字，回答不会声称来自视频、字幕或画面。"
+      : "回答会严格依据这篇笔记的字幕、时间点和画面切片。";
+    els.assistantConversation.innerHTML = `<div class="assistant-empty"><span aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 5h14v11H9l-4 4z"/><path d="M9 9h6M9 12h4"/></svg></span><strong>${task ? "从一个具体问题开始" : "还没有选择笔记"}</strong><p>${task ? groundingCopy : "打开笔记库，选择一篇已完成的笔记。"}</p></div>`;
     return;
   }
   els.assistantConversation.innerHTML = assistantMessages.map(message => `<article class="assistant-message ${escapeHtml(message.role)}${message.loading ? " loading" : ""}"><header><span>${message.role === "user" ? "你" : "AI 助教"}</span>${message.role === "assistant" && message.source ? `<small>${escapeHtml(message.source === "llm" ? "模型回答" : "本地证据")}</small>` : ""}</header><div>${message.loading ? `<span class="assistant-thinking"><i></i><i></i><i></i>正在核对笔记证据</span>` : message.role === "assistant" ? markdownToHtml(message.text) : escapeHtml(message.text)}</div>${message.role === "assistant" && !message.loading ? assistantEvidenceHtml(message.citations) : ""}${message.warning && message.warning !== "missing_api_key" ? `<p class="assistant-warning">${escapeHtml(message.warning)}</p>` : ""}</article>`).join("");
@@ -6044,6 +6084,7 @@ async function loadAssistantHistory() {
   assistantMessages = [];
   renderAssistant();
   if (!task) return;
+  if (task.evidence_quality?.can_claim_video_content === false) return;
   try {
     const response = await fetch(taskQaUrl(task.id));
     const payload = await response.json().catch(() => ({}));
@@ -7646,6 +7687,8 @@ async function renderDetail() {
     const pendingContext = lastNote ? "" : `${taskOverview(task)}${failureGuide(task)}`;
     els.detail.innerHTML = `
       <div class="note-shell">
+        ${noteEvidenceNoticeHtml(task)}
+        ${noteProvenanceHtml(task)}
         <div class="note-workbench">
           <article class="markdown-note">${lastNote ? markdownToHtml(lastNote) : emptyNoteHtml}</article>
           ${readingRail(lastNote, task)}
@@ -7653,6 +7696,12 @@ async function renderDetail() {
         ${pendingContext}
       </div>
     `;
+    const retryVideoButton = els.detail.querySelector?.("[data-retry-video-source]");
+    if (retryVideoButton) retryVideoButton.onclick = () => {
+      showAppView("workspace");
+      setSource("browser");
+      window.scrollTo?.({ top: 0, behavior: "smooth" });
+    };
     bindTaskOverviewActions();
     return;
   }
@@ -8285,6 +8334,10 @@ document.querySelectorAll?.(".nav-item[data-app-view]")?.forEach?.(item => {
       return;
     }
     showAppView(view || "workspace");
+    if (view === "workspace") {
+      selectedTaskId = "";
+      if (window.history?.replaceState) window.history.replaceState(null, "", `${window.location.pathname}#workspace`);
+    }
     if (view === "history") setHistoryCollapsed(false);
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   });

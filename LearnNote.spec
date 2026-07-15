@@ -1,14 +1,13 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_submodules
 from PyInstaller.utils.hooks import collect_all
+from PyInstaller.building.datastruct import Tree
 
 datas = [
-    ('backend/app', 'backend/app'),
     ('backend/requirements.txt', 'backend'),
     ('backend/requirements.desktop.txt', 'backend'),
     ('backend/requirements.deploy.txt', 'backend'),
     ('web', 'web'),
-    ('extension', 'extension'),
 ]
 binaries = []
 hiddenimports = ['app.main', 'clr', 'pythonnet']
@@ -37,6 +36,8 @@ a = Analysis(
     noarchive=False,
     optimize=0,
 )
+a.datas += Tree('backend/app', prefix='backend/app', excludes=['__pycache__', '*.pyc'])
+a.datas += Tree('extension', prefix='extension', excludes=['tests', 'tests/*'])
 pyz = PYZ(a.pure)
 
 exe = EXE(
