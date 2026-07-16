@@ -23,7 +23,7 @@ from pydantic import ValidationError
 
 from . import API_VERSION, APP_VERSION, TASK_SCHEMA_VERSION, UX_PROTOCOL_VERSION
 from .config import BACKEND_ORIGIN, DATA_DIR, DEPLOYMENT_MODE, LLM_API_KEY, LLM_BASE_URL, LLM_MAX_RETRIES, LLM_MODEL, LLM_REQUEST_TIMEOUT_SECONDS, MODEL_CACHE_DIR, PUBLIC_DEPLOYMENT, PUBLIC_PASSWORD, PUBLIC_USERNAME, STATIC_DIR, TASK_DIR, TEMP_DIR, UPLOAD_DIR, WEB_DIR, ensure_dirs
-from .downloader import MediaDownloader, effective_resource_kind, fallback_page_contexts, preflight_media_resource, rank_media_candidates
+from .downloader import MediaDownloader, effective_resource_kind, fallback_page_contexts, media_file_video_signature, preflight_media_resource, rank_media_candidates
 from .media import MediaProcessingError, extract_video_clip, probe_duration
 from .models import CurrentPageTaskRequest, MediaPreflightRequest, MediaPreflightResult, PagePreflightRequest, RerunFromMediaRequest, ResourceCandidate, SourceInputRequest, StorageCleanupRequest, TaskOptions, TaskQuestionRequest, TaskRecord, now_iso
 from .processor import browser_subtitle_text_is_player_ui, enrich_resource_candidates_with_active_video, process_current_page_task, process_local_video_task, read_note, read_transcript, read_visual_index
@@ -171,7 +171,34 @@ def task_media_path(task: TaskRecord) -> Path | None:
 
 
 def task_media_file_exists(task: TaskRecord) -> bool:
-    return task_media_path(task) is not None
+    return task_media_validation(task)[0] == "verified"
+
+
+def task_media_source_is_definitively_non_video(task: TaskRecord) -> bool:
+    successful_attempts = [attempt for attempt in task.download_attempts if attempt.status == "success"]
+    sources = successful_attempts or ([task.selected_resource] if task.selected_resource else [])
+    if not sources:
+        return False
+
+    def is_non_video(source: object) -> bool:
+        mime = str(getattr(source, "mime", "") or "").split(";", 1)[0].strip().lower()
+        if mime.startswith("image/") or mime in {"application/json", "application/xml", "text/html", "text/plain"}:
+            return True
+        resolved_url = str(getattr(source, "resolved_url", "") or getattr(source, "url", "") or "")
+        path = urlsplit(resolved_url).path.lower()
+        return path.endswith((".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".ico", ".json", ".html"))
+
+    return all(is_non_video(source) for source in sources)
+
+
+def task_media_validation(task: TaskRecord) -> tuple[str, str]:
+    media_path = task_media_path(task)
+    if media_path is None:
+        return "missing", ""
+    signature = media_file_video_signature(media_path)
+    if not signature or task_media_source_is_definitively_non_video(task):
+        return "invalid", signature
+    return "verified", signature
 
 
 def task_media_ready_for_rerun(task: TaskRecord, *, allow_existing_note: bool = False) -> bool:
@@ -1625,10 +1652,13 @@ def task_reuse_evidence(task: TaskRecord) -> dict:
     transcript_ready = bool(task.transcript_path and Path(task.transcript_path).is_file())
     note_ready = bool(task.note_path and Path(task.note_path).is_file())
     has_visual_slices = bool(task.frame_grids or task.visual_windows)
-    media_available = task_media_file_exists(task)
+    media_validation, media_signature = task_media_validation(task)
+    media_available = media_validation == "verified"
     is_download_only = task.mode == "download_only"
     rerun_ready = task_media_ready_for_rerun(task)
-    if rerun_ready:
+    if media_validation == "invalid":
+        suggested_next_step = "download_media"
+    elif rerun_ready:
         suggested_next_step = "rerun_from_media"
     elif note_ready and has_visual_slices:
         suggested_next_step = "review_visual_windows"
@@ -1643,6 +1673,8 @@ def task_reuse_evidence(task: TaskRecord) -> dict:
 
     return {
         "media_available": media_available,
+        "media_validation": media_validation,
+        "media_signature": media_signature,
         "media_path_recorded": task.media_path,
         "source_task_id": task.source_task_id,
         "source_media_path": task.source_media_path,
@@ -1670,7 +1702,11 @@ def task_reuse_evidence(task: TaskRecord) -> dict:
 
 def task_source_evidence_quality(task: TaskRecord) -> tuple[dict, dict]:
     diagnostics = task.summary_diagnostics or {}
-    has_media = task_media_file_exists(task)
+    media_validation, media_signature = task_media_validation(task)
+    has_media = media_validation == "verified"
+    media_path_exists = media_validation != "missing"
+    invalid_media = media_validation == "invalid"
+    invalid_media_source = invalid_media and task_media_source_is_definitively_non_video(task)
     transcript_source = _task_transcript_source(task)
     has_timed_transcript = bool(
         task.transcript_path
@@ -1694,7 +1730,9 @@ def task_source_evidence_quality(task: TaskRecord) -> tuple[dict, dict]:
             browser_cue_count = 0
     page_text_only = task.source_type == "page_text" or bool(diagnostics.get("used_page_text_fallback"))
 
-    if task.source_type == "local":
+    if invalid_media:
+        source_kind = "invalid_media"
+    elif task.source_type == "local":
         source_kind = "local_media"
     elif has_media:
         source_kind = "current_page_media"
@@ -1705,7 +1743,10 @@ def task_source_evidence_quality(task: TaskRecord) -> tuple[dict, dict]:
     else:
         source_kind = "unresolved_current_page"
 
-    if has_media:
+    if invalid_media:
+        source_level = "none"
+        source_reason = "The saved file came from a definitively non-video source." if invalid_media_source else "A saved media path exists, but the file is not a recognized video container."
+    elif has_media:
         source_level = "high"
         source_reason = "A reusable media file is available."
     elif browser_cue_count:
@@ -1731,7 +1772,9 @@ def task_source_evidence_quality(task: TaskRecord) -> tuple[dict, dict]:
         evidence_level = "none"
 
     can_claim_video_content = bool(has_media and (has_timed_transcript or has_visual_evidence))
-    if can_claim_video_content:
+    if invalid_media:
+        evidence_reason = "The download resolved to an image or page asset; existing note claims must not be treated as video evidence." if invalid_media_source else "The saved file is not a recognized video container; existing note claims must not be treated as video evidence."
+    elif can_claim_video_content:
         evidence_reason = "Video claims are backed by verified media and transcript or visual evidence."
     elif has_media:
         evidence_reason = "Media exists, but no usable transcript or visual evidence supports a video note yet."
@@ -1749,8 +1792,11 @@ def task_source_evidence_quality(task: TaskRecord) -> tuple[dict, dict]:
     }
     evidence_quality = {
         "level": evidence_level,
-        "video_evidence": "verified" if can_claim_video_content else "partial" if has_media or browser_cue_count else "missing",
+        "video_evidence": "invalid" if invalid_media else "verified" if can_claim_video_content else "partial" if has_media or browser_cue_count else "missing",
         "has_media": has_media,
+        "media_path_exists": media_path_exists,
+        "media_validation": media_validation,
+        "media_signature": media_signature,
         "has_timed_transcript": has_timed_transcript,
         "transcript_source": transcript_source,
         "has_visual_evidence": has_visual_evidence,

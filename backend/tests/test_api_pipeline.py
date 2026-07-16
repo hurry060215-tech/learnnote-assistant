@@ -30,6 +30,7 @@ from app.storage import create_task, task_dir, update_task, write_json
 
 
 TEST_RUN_DIR = DATA_DIR / "test-runs"
+TEST_VIDEO_BYTES = b"\x00\x00\x00\x18ftypmp42" + (b"learnnote-test-video" * 32)
 
 
 class PagePreflightGateHandler(SimpleHTTPRequestHandler):
@@ -127,7 +128,7 @@ class LocalUploadValidationTests(unittest.TestCase):
         task = create_task("local", "Verified lesson", mode="local")
         media = task_dir(task.id) / "media.mp4"
         transcript = task_dir(task.id) / "transcript.json"
-        media.write_bytes(b"verified-media")
+        media.write_bytes(TEST_VIDEO_BYTES)
         transcript.write_text(json.dumps({
             "source": "faster-whisper",
             "segments": [{"start": 0, "end": 4, "text": "Verified lesson content"}],
@@ -158,6 +159,54 @@ class LocalUploadValidationTests(unittest.TestCase):
             self.assertEqual(payload["evidence_quality"]["video_evidence"], "verified")
             self.assertTrue(payload["evidence_quality"]["can_claim_video_content"])
             self.assertFalse(payload["evidence_quality"]["degraded"])
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
+    def test_task_payload_rejects_saved_image_as_video_evidence(self) -> None:
+        task = create_task("current_page", "Invalid captured resource", "https://course.example.com/lesson")
+        media = task_dir(task.id) / "media.mp4"
+        media.write_bytes(TEST_VIDEO_BYTES)
+        try:
+            update_task(
+                task.id,
+                status="success",
+                phase="completed",
+                media_path=str(media),
+                selected_resource=ResourceCandidate(
+                    url="https://assets.example.com/poster.png",
+                    resolved_url="https://assets.example.com/poster.png",
+                    source="page-scan",
+                    kind="video",
+                    mime="image/png",
+                ),
+                download_attempts=[DownloadAttempt(
+                    strategy="direct-file",
+                    url="https://assets.example.com/poster.png",
+                    status="success",
+                    mime="image/png",
+                    resolved_url="https://assets.example.com/poster.png",
+                )],
+                frame_grids=[FrameGrid(
+                    path=str(task_dir(task.id) / "grid.jpg"),
+                    url=f"/api/tasks/{task.id}/assets/grid.jpg",
+                    start=0,
+                    end=20,
+                    frame_count=2,
+                )],
+            )
+
+            response = self.client.get(f"/api/tasks/{task.id}")
+
+            self.assertEqual(response.status_code, 200)
+            payload = response.json()["task"]
+            self.assertEqual(payload["source_quality"]["kind"], "invalid_media")
+            self.assertEqual(payload["source_quality"]["level"], "none")
+            self.assertEqual(payload["evidence_quality"]["video_evidence"], "invalid")
+            self.assertEqual(payload["evidence_quality"]["media_validation"], "invalid")
+            self.assertTrue(payload["evidence_quality"]["media_path_exists"])
+            self.assertFalse(payload["evidence_quality"]["has_media"])
+            self.assertFalse(payload["evidence_quality"]["can_claim_video_content"])
+            self.assertFalse(payload["reuse"]["media_available"])
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
@@ -406,7 +455,7 @@ class LocalUploadValidationTests(unittest.TestCase):
     def test_media_preview_endpoint_streams_inline_video(self) -> None:
         task = create_task("local", "Preview media")
         media = task_dir(task.id) / "media.mp4"
-        media.write_bytes(b"fake mp4 preview bytes")
+        media.write_bytes(TEST_VIDEO_BYTES)
         try:
             update_task(task.id, media_path=str(media))
 
@@ -415,14 +464,14 @@ class LocalUploadValidationTests(unittest.TestCase):
             self.assertEqual(response.status_code, 200)
             self.assertIn("video/mp4", response.headers["content-type"])
             self.assertIn("inline", response.headers["content-disposition"])
-            self.assertEqual(response.content, b"fake mp4 preview bytes")
+            self.assertEqual(response.content, TEST_VIDEO_BYTES)
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
     def test_media_export_and_preview_preserve_original_webm_content_type(self) -> None:
         task = create_task("local", "Original WebM")
         media = task_dir(task.id) / "original.webm"
-        media.write_bytes(b"fake webm bytes")
+        media.write_bytes(TEST_VIDEO_BYTES)
         try:
             update_task(task.id, source_media_path=str(media))
 
@@ -947,7 +996,7 @@ class LocalUploadValidationTests(unittest.TestCase):
         media = work_dir / "downloaded-original.mp4"
         try:
             work_dir.mkdir(parents=True, exist_ok=True)
-            media.write_bytes(b"fake mp4 bytes")
+            media.write_bytes(TEST_VIDEO_BYTES)
             update_task(
                 task.id,
                 status="failed",
@@ -961,7 +1010,7 @@ class LocalUploadValidationTests(unittest.TestCase):
             self.assertEqual(export.status_code, 200)
             self.assertIn("attachment", export.headers["content-disposition"])
             self.assertIn("downloaded-original.mp4", export.headers["content-disposition"])
-            self.assertEqual(export.content, b"fake mp4 bytes")
+            self.assertEqual(export.content, TEST_VIDEO_BYTES)
 
             preview = self.client.get(f"/api/tasks/{task.id}/media")
             self.assertEqual(preview.status_code, 200)
@@ -982,7 +1031,7 @@ class LocalUploadValidationTests(unittest.TestCase):
         grid = work_dir / "grids" / "grid_000.jpg"
         try:
             grid.parent.mkdir(parents=True, exist_ok=True)
-            media.write_bytes(b"fake mp4 bytes")
+            media.write_bytes(TEST_VIDEO_BYTES)
             grid.write_bytes(b"fake jpg bytes")
             update_task(
                 task.id,
@@ -1143,7 +1192,7 @@ class LocalUploadValidationTests(unittest.TestCase):
     def test_task_list_includes_embedded_audit_summary(self) -> None:
         task = create_task("current_page", "List audit", "https://course.example.com/lesson")
         media = task_dir(task.id) / "media.mp4"
-        media.write_bytes(b"fake mp4 bytes")
+        media.write_bytes(TEST_VIDEO_BYTES)
         try:
             update_task(task.id, status="success", phase="completed", progress=100, media_path=str(media))
 
@@ -1164,7 +1213,7 @@ class LocalUploadValidationTests(unittest.TestCase):
         work_dir = task_dir(task.id)
         media = work_dir / "media.mp4"
         try:
-            media.write_bytes(b"fake source media")
+            media.write_bytes(TEST_VIDEO_BYTES)
             update_task(
                 task.id,
                 status="success",
@@ -1215,7 +1264,7 @@ class LocalUploadValidationTests(unittest.TestCase):
         work_dir = task_dir(task.id)
         media = work_dir / "media.mp4"
         try:
-            media.write_bytes(b"fake source media")
+            media.write_bytes(TEST_VIDEO_BYTES)
             update_task(
                 task.id,
                 status="success",

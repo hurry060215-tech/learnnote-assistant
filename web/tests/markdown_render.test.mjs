@@ -325,8 +325,8 @@ assert.match(stylesCss, /\.workspace-panel \.source-route-rail\s*\{\s*display: n
 assert.match(stylesCss, /\.capture-flow\s*\{\s*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);/);
 assert.match(indexHtml, /id="toggleWorkspaceButton"/);
 assert.match(indexHtml, /styles\.css\?v=20260714-v0124/);
-assert.match(indexHtml, /app\.js\?v=20260716-v0127/);
-assert.match(indexHtml, /mature\.css\?v=20260716-v0127/);
+assert.match(indexHtml, /app\.js\?v=20260716-v0128/);
+assert.match(indexHtml, /mature\.css\?v=20260716-v0128/);
 assert.match(indexHtml, /id="sourceRouteRail"/);
 assert.match(indexHtml, /id="urlPreflightReport"/);
 assert.match(indexHtml, /href="#settingsView" data-app-view="settings" title="设置"/);
@@ -350,6 +350,11 @@ assert.match(indexHtml, /class="result-tab" role="tab" aria-selected="false" dat
 assert.doesNotMatch(indexHtml, /data-tab="qa">问这节课/);
 assert.match(indexHtml, /id="aiAssistantDrawer"/);
 assert.match(webCode, /function assistantTaskKindLabel\(task\)/);
+assert.equal(context.assistantTaskKindLabel({ evidence_quality: { video_evidence: "invalid", can_claim_video_content: false } }), "视频来源无效");
+assert.match(context.noteEvidenceNoticeHtml({ evidence_quality: { video_evidence: "invalid", can_claim_video_content: false } }), /保存的不是视频/);
+assert.match(context.noteProvenanceHtml({ evidence_quality: { video_evidence: "invalid", has_media: false } }), /无效文件/);
+assert.match(matureCss, /\.nav-rail,[\s\S]*min-width:\s*var\(--mature-nav\) !important;[\s\S]*max-width:\s*var\(--mature-nav\) !important;/);
+assert.match(matureCss, /\.nav-item,[\s\S]*width:\s*168px !important;[\s\S]*max-width:\s*168px !important;/);
 assert.match(webCode, /页面文本笔记/);
 assert.match(webCode, /已连接视频证据/);
 assert.match(webCode, /这不是完整的视频笔记/);

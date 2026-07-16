@@ -6009,6 +6009,7 @@ function assistantSelectedTask() {
 function assistantTaskKindLabel(task) {
   if (!task) return "";
   if (task.source_type === "page_text" || task.mode === "page_text") return "页面文本笔记";
+  if (task.evidence_quality?.video_evidence === "invalid") return "视频来源无效";
   if (task.evidence_quality?.can_claim_video_content === false) return "待补充视频证据";
   if (task.source_type === "local") return "本地视频笔记";
   return "视频笔记";
@@ -6017,10 +6018,13 @@ function assistantTaskKindLabel(task) {
 function noteEvidenceNoticeHtml(task) {
   if (!task) return "";
   const pageTextOnly = task.source_type === "page_text" || task.mode === "page_text";
+  const invalidMedia = task.evidence_quality?.video_evidence === "invalid";
   const evidenceMissing = task.evidence_quality?.can_claim_video_content === false;
   if (!pageTextOnly && !evidenceMissing) return "";
-  const title = pageTextOnly ? "这不是完整的视频笔记" : "当前笔记缺少可核对的视频证据";
-  const detail = pageTextOnly
+  const title = invalidMedia ? "当前任务保存的不是视频" : pageTextOnly ? "这不是完整的视频笔记" : "当前笔记缺少可核对的视频证据";
+  const detail = invalidMedia
+    ? "扫描结果误命中了图片或页面资源，现有正文不能作为当前视频的总结。请重新获取正在播放的视频后再生成。"
+    : pageTextOnly
     ? "当前任务只读取到网页文字，没有取得可信的视频、字幕或画面。正文仅适合作为页面摘要。"
     : "媒体处理尚未形成可核对的字幕或画面证据，正文不能代表完整视频内容。";
   return `<section class="note-evidence-notice" role="status">
@@ -6034,11 +6038,12 @@ function noteProvenanceHtml(task) {
   const pageTextOnly = task.source_type === "page_text" || task.mode === "page_text";
   const sourceHost = hostFromUrl(task.page_url || task.selected_resource?.page_url || task.selected_resource?.url) || sourceText(task);
   const evidence = task.evidence_quality || {};
+  const invalidMedia = evidence.video_evidence === "invalid";
   const transcriptReady = evidence.has_timed_transcript ?? hasReadableTranscript(task);
   const windowCount = visualWindows(task).length;
   const items = pageTextOnly
     ? [["来源", sourceHost], ["内容", "仅页面文字"], ["视频", "未获取"], ["画面", "未获取"]]
-    : [["来源", sourceHost], ["视频", (evidence.has_media ?? Boolean(task.media_path)) ? "已保存" : "未保存"], ["字幕", transcriptReady ? "可核对" : "未生成"], ["画面", windowCount ? `${windowCount} 个窗口` : evidence.has_visual_evidence ? "已生成" : "未生成"]];
+    : [["来源", sourceHost], ["视频", invalidMedia ? "无效文件" : (evidence.has_media ?? Boolean(task.media_path)) ? "已保存" : "未保存"], ["字幕", transcriptReady ? "可核对" : "未生成"], ["画面", windowCount ? `${windowCount} 个窗口` : evidence.has_visual_evidence ? "已生成" : "未生成"]];
   return `<section class="note-provenance" aria-label="笔记证据范围">
     <header><strong>证据范围</strong><span>${pageTextOnly ? "页面摘要" : "视频笔记"}</span></header>
     <div>${items.map(([label, value]) => `<span><b>${escapeHtml(label)}</b>${escapeHtml(value)}</span>`).join("")}</div>

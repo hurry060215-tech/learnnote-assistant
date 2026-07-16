@@ -1856,6 +1856,15 @@ def _binary_video_signature(body: bytes) -> str:
     return ""
 
 
+def media_file_video_signature(path: Path) -> str:
+    """Return a recognized video container signature for a saved media file."""
+    try:
+        with Path(path).open("rb") as handle:
+            return _binary_video_signature(handle.read(4096))
+    except (OSError, ValueError):
+        return ""
+
+
 def _binary_non_video_signature(body: bytes) -> str:
     sample = body[:64]
     if len(sample) >= 12 and sample[4:8] == b"ftyp" and sample[8:12].upper() in {b"M4A ", b"M4B ", b"F4A ", b"F4B "}:
