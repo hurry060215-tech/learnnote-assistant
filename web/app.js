@@ -285,6 +285,7 @@ let lastTranscript = null;
 let lastTranscriptTaskId = "";
 let tasks = [];
 let taskListLoadPromise = null;
+let lastTaskListFingerprint = "__unrendered__";
 let taskQuery = "";
 let taskStatusFilter = "all";
 const HISTORY_PAGE_SIZE = 30;
@@ -4483,15 +4484,21 @@ async function loadTasksOnce() {
     }
     return;
   }
-  handleTaskStatusTransitions(data.tasks || []);
-  tasks = data.tasks || [];
+  const nextTasks = data.tasks || [];
+  const nextTaskListFingerprint = taskListFingerprint(nextTasks);
+  const taskListChanged = nextTaskListFingerprint !== lastTaskListFingerprint;
+  handleTaskStatusTransitions(nextTasks);
+  tasks = nextTasks;
   if (selectedTaskId && !tasks.some(task => task.id === selectedTaskId)) selectedTaskId = null;
   if (!selectedTaskId) {
     const initialTask = preferredInitialTask(tasks);
     if (initialTask) selectTask(initialTask.id, { clearCaches: false });
   }
   else if (selectedTaskId) syncSelectedTaskUrl(selectedTaskId);
-  renderTasks();
+  if (taskListChanged) {
+    renderTasks();
+    lastTaskListFingerprint = nextTaskListFingerprint;
+  }
   renderBrowserRouteSummary();
   renderSourceWorkflow();
   const selected = tasks.find(task => task.id === selectedTaskId) || null;
@@ -4502,6 +4509,23 @@ async function loadTasksOnce() {
   } else if (document.body?.classList?.contains("assistant-open") && (assistantTask?.id || "") !== assistantContextTaskId) {
     loadAssistantHistory();
   }
+}
+
+function taskListFingerprint(items = []) {
+  return JSON.stringify(items.map(task => [
+    task.id,
+    task.status,
+    task.phase,
+    Number(task.progress || 0),
+    task.updated_at || "",
+    task.title || "",
+    task.note_path || "",
+    task.media_path || "",
+    task.transcript_path || "",
+    task.source_task_id || "",
+    task.error_code || "",
+    task.evidence_quality?.video_evidence || ""
+  ]));
 }
 
 function taskMatchesFilters(task) {

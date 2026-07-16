@@ -260,6 +260,10 @@ assert.match(webCode, /if \(appSettings\.autoOpenNote[\s\S]*showAppView\("notes"
 assert.doesNotMatch(webCode, /task\.evidence_quality\?\.can_claim_video_content === false\) return;/);
 assert.match(webCode, /const response = await fetch\(apiUrl\(`\/api\/tasks\/\$\{encodeURIComponent\(taskId\)\}\/exports\/\$\{exportType\}`\)\)[\s\S]*if \(!response\.ok\)[\s\S]*await response\.blob\(\)/);
 assert.match(webCode, /if \(taskListLoadPromise\) return taskListLoadPromise/);
+assert.match(webCode, /const taskListChanged = nextTaskListFingerprint !== lastTaskListFingerprint/);
+assert.match(webCode, /if \(taskListChanged\) \{\s*renderTasks\(\);\s*lastTaskListFingerprint = nextTaskListFingerprint;/);
+assert.equal(context.taskListFingerprint([{ id: "stable", status: "success", progress: 100, updated_at: "1" }]), context.taskListFingerprint([{ id: "stable", status: "success", progress: 100, updated_at: "1" }]));
+assert.notEqual(context.taskListFingerprint([{ id: "active", status: "running", progress: 30, updated_at: "1" }]), context.taskListFingerprint([{ id: "active", status: "running", progress: 31, updated_at: "2" }]));
 assert.doesNotMatch(webCode, /catch \{\s*tasks = \[\];\s*selectedTaskId = null;/);
 assert.equal(elements.get("#browserBridgeStatus").classList.contains("capture-status-grid"), true);
 assert.match(elements.get("#browserBridgeStatus").innerHTML, /capture-status-chip bridge/);
@@ -325,8 +329,8 @@ assert.match(stylesCss, /\.workspace-panel \.source-route-rail\s*\{\s*display: n
 assert.match(stylesCss, /\.capture-flow\s*\{\s*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);/);
 assert.match(indexHtml, /id="toggleWorkspaceButton"/);
 assert.match(indexHtml, /styles\.css\?v=20260714-v0124/);
-assert.match(indexHtml, /app\.js\?v=20260716-v0129/);
-assert.match(indexHtml, /mature\.css\?v=20260716-v0129/);
+assert.match(indexHtml, /app\.js\?v=20260716-v0130/);
+assert.match(indexHtml, /mature\.css\?v=20260716-v0130/);
 assert.match(indexHtml, /id="sourceRouteRail"/);
 assert.match(indexHtml, /id="urlPreflightReport"/);
 assert.match(indexHtml, /href="#settingsView" data-app-view="settings" title="设置"/);
