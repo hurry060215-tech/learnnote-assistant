@@ -719,6 +719,12 @@ function showAppView(view = "workspace") {
   const wasSettingsMode = document.body?.classList?.contains("settings-mode");
   const normalizedView = ["workspace", "notes", "history", "settings"].includes(view) ? view : "workspace";
   if (document.body?.dataset) document.body.dataset.appView = normalizedView;
+  document.body?.classList?.remove("queue-collapsed");
+  document.body?.classList?.remove("workspace-collapsed");
+  document.body?.classList?.remove("reading-mode");
+  setPressed(els.toggleHistoryButton, false);
+  setPressed(els.toggleWorkspaceButton, false);
+  setPressed(els.readingModeButton, false);
   document.body?.classList?.toggle("settings-mode", settingsMode);
   if (els.settingsView) els.settingsView.hidden = !settingsMode;
   document.querySelectorAll?.(".nav-item[data-app-view]")?.forEach?.(item => {

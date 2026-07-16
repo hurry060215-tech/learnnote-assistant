@@ -56,6 +56,13 @@ async function main() {
   }
   const tasks = page.locator("#tasks .task");
   if (!await tasks.count()) throw new Error("No task is available for the note-list layout audit");
+  const taskInteraction = await tasks.first().evaluate(element => ({
+    pointerEvents: getComputedStyle(element).pointerEvents,
+    opacity: getComputedStyle(element.closest(".queue-panel") || element).opacity
+  }));
+  if (taskInteraction.pointerEvents === "none" || taskInteraction.opacity === "0") {
+    throw new Error(`Note rows are visible but not clickable: ${JSON.stringify(taskInteraction)}`);
+  }
   if (!await tasks.first().evaluate(element => element.classList.contains("selected"))) {
     await tasks.first().evaluate(element => element.click());
   }

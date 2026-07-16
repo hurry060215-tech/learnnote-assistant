@@ -44,7 +44,7 @@ async function auditPage(page, viewport, outputPath) {
 }
 
 async function main() {
-  const output = (process.argv[3] || "D:/LearnNote/audit/site-v0128").replace(/\\/g, "/");
+  const output = (process.argv[3] || "D:/LearnNote/audit/site-v0129").replace(/\\/g, "/");
   const browser = await chromium.launch({ executablePath: "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe", headless: true });
   const page = await browser.newPage();
   const consoleErrors = [];
