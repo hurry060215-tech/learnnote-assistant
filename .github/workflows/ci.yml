@@ -16,20 +16,27 @@ jobs:
         with:
           node-version: "24"
       - name: Install backend dependencies
-        working-directory: backend
-        run: python -m pip install -r requirements.txt
+        run: python -m pip install -r backend/requirements.desktop.txt
       - name: Python checks
         env:
           PYTHONPATH: backend
         run: |
           python -m compileall backend/app
           python -m unittest discover backend/tests
-      - name: Extension and web JavaScript syntax
+      - name: Extension and web checks
+        shell: pwsh
         run: |
           node --check extension/background.js
           node --check extension/content.js
+          node --check extension/page_hook.js
           node --check extension/sidepanel.js
           node --check web/app.js
+          Get-ChildItem extension/tests/*.test.mjs | ForEach-Object { node $_.FullName }
+          node web/tests/markdown_render.test.mjs
+      - name: Desktop and release checks
+        run: |
+          python -m unittest discover scripts/tests -p "test_*.py"
+          python -m unittest desktop.tests.test_desktop_launcher
       - name: Release packaging smoke
         shell: pwsh
         run: |

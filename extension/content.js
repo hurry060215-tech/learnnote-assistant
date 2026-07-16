@@ -72,6 +72,17 @@ let pendingPushTimer = 0;
 let lastPushAt = 0;
 let lastSignature = "";
 let watchersStarted = false;
+let pageIdentity = `content:1:${String(location.href || "")}`;
+let performanceNavigationStart = 0;
+
+function resetPageResources(nextIdentity = "") {
+  pageIdentity = nextIdentity || `content:${Date.now()}:${String(location.href || "")}`;
+  hookResources.length = 0;
+  drmSignals.length = 0;
+  visibleSubtitleHistory.length = 0;
+  lastSignature = "";
+  performanceNavigationStart = Number(performance.now?.() || 0);
+}
 
 function classify(url, mime = "") {
   const lower = String(url || "").toLowerCase();
@@ -706,6 +717,7 @@ function comparePageResources(a = {}, b = {}) {
 }
 
 function rememberHookResource(item) {
+  if (item?.page_identity && item.page_identity !== pageIdentity) return;
   if (/^image\//i.test(String(item?.mime || ""))) return;
   const normalized = resource(item.url, item.source || "pageHook", item.label || "page hook", item.mime || "");
   if (!normalized) return;
@@ -798,6 +810,8 @@ function collectDrmSignals() {
 function installPageHookBridge() {
   window.addEventListener("message", event => {
     if (event.source !== window || event.data?.source !== "learnnote-page-hook") return;
+    const incomingIdentity = String(event.data.page_identity || "");
+    if (incomingIdentity && incomingIdentity !== pageIdentity) resetPageResources(incomingIdentity);
     for (const item of event.data.resources || []) rememberHookResource(item);
     for (const item of event.data.drm || []) rememberDrmSignal(item);
     if ((event.data.resources || []).length || (event.data.drm || []).length) schedulePush(120, true);
@@ -1704,6 +1718,7 @@ function collectDomResources() {
 function collectPerformanceResources() {
   const resources = [];
   for (const entry of performance.getEntriesByType("resource")) {
+    if (performanceNavigationStart > 0 && Number.isFinite(Number(entry.startTime)) && Number(entry.startTime) < performanceNavigationStart) continue;
     const name = entry.name || "";
     const kind = performanceKind(entry);
     if (kind !== "unknown" || performanceLooksLikeMediaEndpoint(name)) {
@@ -1781,7 +1796,12 @@ function collectPageData() {
     browser_subtitles: browserSubtitles,
     drm_detected: Boolean(active?.drm_detected || drm.length),
     drm_signals: drm,
-    resources: [...byUrl.values()].filter(item => !/^image\//i.test(String(item.mime || ""))).sort(comparePageResources).slice(0, 80),
+    resources: [...byUrl.values()]
+      .filter(item => !item.page_identity || item.page_identity === pageIdentity)
+      .map(item => ({ ...item, page_url: item.page_url || location.href, page_identity: pageIdentity }))
+      .sort(comparePageResources)
+      .slice(0, 80),
+    page_identity: pageIdentity,
     frame_elements: collectFrameElementEvidence()
   };
 }
@@ -1948,6 +1968,15 @@ function startWatchers() {
     schedulePush(400);
   }, 5000);
 }
+
+window.addEventListener("popstate", () => {
+  resetPageResources();
+  schedulePush(120, true);
+});
+window.addEventListener("hashchange", () => {
+  resetPageResources();
+  schedulePush(120, true);
+});
 
 installPageHookBridge();
 if (document.readyState === "loading") {

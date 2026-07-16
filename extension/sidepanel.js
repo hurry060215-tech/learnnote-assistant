@@ -207,6 +207,12 @@ function updateModelProviderHint() {
 const PENDING_INTENT_TTL_MS = 15000;
 const ONE_CLICK_RESOURCE_WAIT_ATTEMPTS = 4;
 const ONE_CLICK_RESOURCE_WAIT_DELAY_MS = 900;
+const HEALTH_FETCH_TIMEOUT_MS = 4000;
+const HEALTH_DISCOVERY_TIMEOUT_MS = 1000;
+const CRITICAL_REQUEST_TIMEOUT_MS = 15000;
+const POLL_FETCH_TIMEOUT_MS = 8000;
+const POLL_RETRY_BASE_MS = 2500;
+const POLL_RETRY_MAX_MS = 20000;
 
 let backendUrl = DEFAULT_BACKEND;
 let page = null;
@@ -234,14 +240,82 @@ let pendingContextRefresh = false;
 let currentTabId = null;
 let currentTabUrl = "";
 let contextGeneration = 0;
+let contextEpoch = 0;
 let taskHistory = [];
 let lastHealthData = null;
 let clientConnectionState = "checking";
+let lastConnectionError = "";
 let automaticDiagnostic = { status: "idle", taskId: "", result: null, error: "" };
 let diagnosticView = loadDiagnosticView();
 let pendingLocalFile = null;
 let activeSource = "summarize";
 let panelMode = "study";
+
+function timeoutError(label = "请求") {
+  const error = new Error(`${label}超时，请检查 LearnNote 客户端连接后重试。`);
+  error.code = "request_timeout";
+  return error;
+}
+
+function staleContextError(label = "操作") {
+  const error = new Error(`页面或播放内容已切换，已丢弃旧的${label}结果。请在当前页面重试。`);
+  error.code = "stale_context";
+  return error;
+}
+
+function isTimeoutError(error) {
+  return error?.code === "request_timeout" || error?.name === "TimeoutError" || error?.name === "AbortError";
+}
+
+function isStaleContextError(error) {
+  return error?.code === "stale_context";
+}
+
+async function withTimeout(promise, timeoutMs = CRITICAL_REQUEST_TIMEOUT_MS, label = "请求") {
+  const pending = Promise.resolve(promise);
+  await Promise.resolve();
+  let timer = 0;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(timeoutError(label)), timeoutMs);
+  });
+  try {
+    return await Promise.race([pending, timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = CRITICAL_REQUEST_TIMEOUT_MS, label = "请求") {
+  if (typeof AbortController === "undefined") return fetch(url, options);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (error) {
+    if (controller.signal.aborted) throw timeoutError(label);
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function captureContextSnapshot() {
+  return {
+    epoch: contextEpoch,
+    tabId: currentTabId,
+    playbackSessionId: currentPlaybackSessionId,
+    pageUrl: String(page?.page_url || currentTabUrl || "")
+  };
+}
+
+function assertCurrentContext(snapshot, label = "操作") {
+  if (!snapshot || snapshot.epoch !== contextEpoch
+    || snapshot.tabId !== currentTabId
+    || snapshot.playbackSessionId !== currentPlaybackSessionId
+    || snapshot.pageUrl !== String(page?.page_url || currentTabUrl || "")) {
+    throw staleContextError(label);
+  }
+}
 
 const els = {
   backendStatus: document.querySelector("#backendStatus"),
@@ -799,22 +873,27 @@ async function openWorkbench(taskId = currentTaskId, tabName = selectedTab) {
   }
   const url = workbenchUrl(taskId, tabName);
   if (!HAS_EXTENSION_API) {
-    window.open(url, "_blank", "noopener");
-    return true;
+    return Boolean(window.open(url, "_blank", "noopener"));
   }
   try {
-    const response = await fetch(`${backendUrl}/api/desktop/focus`, {
+    const response = await fetchWithTimeout(`${backendUrl}/api/desktop/focus`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ task_id: taskId || "", tab: tabName || "note" })
-    });
+    }, HEALTH_FETCH_TIMEOUT_MS, "唤起客户端");
     const result = await response.json();
     if (result?.ok && result?.available) return true;
   } catch {
     // Fall back to the local web workbench when the desktop bridge is unavailable.
   }
-  chrome.tabs.create({ url });
-  return true;
+  try {
+    const tab = await chrome.tabs.create({ url });
+    if (tab) return true;
+  } catch {
+    // The caller reports the failed handoff instead of claiming success.
+  }
+  els.taskMessage.textContent = "无法唤起 LearnNote 客户端，也未能打开本地工作台。请检查扩展的标签页权限后重试。";
+  return false;
 }
 
 async function openClientForLocalVideo() {
@@ -1416,7 +1495,7 @@ function renderTaskHistory() {
 async function loadTaskHistory() {
   if (!els.taskHistory) return;
   try {
-    const data = await fetch(`${backendUrl}/api/tasks`).then(r => r.json());
+    const data = await fetchWithTimeout(`${backendUrl}/api/tasks`, {}, CRITICAL_REQUEST_TIMEOUT_MS, "读取任务历史").then(r => r.json());
     taskHistory = data.tasks || [];
     if (!currentTaskId) {
       const previewTask = sortedHistoryTasks(taskHistory, "")[0];
@@ -1568,7 +1647,7 @@ function readOptions() {
 
 async function readClientTaskOptions() {
   try {
-    const response = await fetch(`${backendUrl}/api/preferences`);
+    const response = await fetchWithTimeout(`${backendUrl}/api/preferences`, {}, HEALTH_FETCH_TIMEOUT_MS, "读取客户端设置");
     if (!response.ok) return readOptions();
     const payload = await response.json();
     return payload?.task_options && typeof payload.task_options === "object" ? payload.task_options : readOptions();
@@ -5122,31 +5201,33 @@ function updateHealthVisionStatus(data = lastHealthData) {
 async function health() {
   try {
     const extensionVersion = HAS_EXTENSION_API ? String(chrome.runtime.getManifest?.().version || "") : "";
-    await fetch(`${backendUrl}/api/extension/heartbeat`, {
+    await fetchWithTimeout(`${backendUrl}/api/extension/heartbeat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ extension_version: extensionVersion, protocol_version: UX_PROTOCOL_VERSION })
-    }).catch(() => null);
+    }, HEALTH_FETCH_TIMEOUT_MS, "客户端心跳").catch(() => null);
     let response;
     try {
-      response = await fetch(`${backendUrl}/health`);
+      response = await fetchWithTimeout(`${backendUrl}/health`, {}, HEALTH_FETCH_TIMEOUT_MS, "客户端健康检查");
       if (!response?.ok && response?.ok !== undefined) throw new Error("health failed");
     } catch (initialError) {
-      let discovered = null;
+      const discoveries = [];
       for (let port = 8765; port < 8785; port += 1) {
         const candidate = `http://127.0.0.1:${port}`;
         if (candidate === backendUrl) continue;
-        try {
-          const candidateResponse = await fetch(`${candidate}/health`);
-          if (!candidateResponse?.ok && candidateResponse?.ok !== undefined) continue;
-          const candidateData = await candidateResponse.json();
-          if (!candidateData?.app_version || Number(candidateData?.protocol_version || 0) !== UX_PROTOCOL_VERSION) continue;
-          discovered = { candidate, data: candidateData };
-          break;
-        } catch {
-          continue;
-        }
+        discoveries.push((async () => {
+          try {
+            const candidateResponse = await fetchWithTimeout(`${candidate}/health`, {}, HEALTH_DISCOVERY_TIMEOUT_MS, "客户端端口探测");
+            if (!candidateResponse?.ok && candidateResponse?.ok !== undefined) return null;
+            const candidateData = await candidateResponse.json();
+            if (!candidateData?.app_version || Number(candidateData?.protocol_version || 0) !== UX_PROTOCOL_VERSION) return null;
+            return { candidate, data: candidateData };
+          } catch {
+            return null;
+          }
+        })());
       }
+      const discovered = (await Promise.all(discoveries)).find(Boolean) || null;
       if (!discovered) throw initialError;
       backendUrl = discovered.candidate;
       if (els.backendUrlInput) els.backendUrlInput.value = backendUrl;
@@ -5156,14 +5237,16 @@ async function health() {
     const data = await response.json();
     lastHealthData = data;
     clientConnectionState = "connected";
+    lastConnectionError = "";
     syncModelProviderPresets(data);
     els.backendStatus.textContent = data.ffmpeg ? "本地服务已连接" : "媒体组件需要修复";
     els.backendStatus.style.color = data.ffmpeg ? "#159947" : "#c27803";
     updateHealthVisionStatus(data);
     return true;
-  } catch {
+  } catch (error) {
     lastHealthData = null;
     clientConnectionState = "offline";
+    lastConnectionError = isTimeoutError(error) ? "timeout" : "offline";
     els.backendStatus.dataset.connectionState = "offline";
     els.backendStatus.textContent = "请先打开 LearnNote 客户端";
     els.backendStatus.title = "扩展需要连接正在运行的 LearnNote 桌面客户端";
@@ -5196,6 +5279,7 @@ function shouldAcceptContextUpdate(message = {}) {
 
 function resetContextForTab(tabId = null) {
   contextGeneration += 1;
+  contextEpoch += 1;
   currentTabId = tabId;
   currentTabUrl = "";
   currentPlaybackSessionId = "";
@@ -5246,9 +5330,14 @@ async function collectContextNow() {
     resourceSelectionPinned = false;
     cookieDiagnostic = { status: "idle", summary: null, error: "", checked_at: 0 };
   }
-  currentTabId = response.tab?.id ?? null;
-  currentTabUrl = response.tab?.url || response.page?.page_url || "";
+  const nextTabUrl = response.tab?.url || response.page?.page_url || "";
   const nextPlaybackSessionId = String(response.page?.playback_session_id || "");
+  const contextChanged = (currentTabId !== null && nextTabId !== null && currentTabId !== nextTabId)
+    || (currentPlaybackSessionId && nextPlaybackSessionId && currentPlaybackSessionId !== nextPlaybackSessionId)
+    || (currentTabUrl && nextTabUrl && currentTabUrl !== nextTabUrl);
+  if (contextChanged) contextEpoch += 1;
+  currentTabId = nextTabId;
+  currentTabUrl = nextTabUrl;
   if (currentPlaybackSessionId && nextPlaybackSessionId && currentPlaybackSessionId !== nextPlaybackSessionId) {
     selectedResourceUrl = "";
     resourceSelectionPinned = false;
@@ -5451,13 +5540,13 @@ function preflightCandidatesForStart(mode = "video") {
 }
 
 async function requestResourcePreflight(resource) {
-  const response = await chrome.runtime.sendMessage({
+  const response = await withTimeout(chrome.runtime.sendMessage({
     type: "preflight-current-resource",
     backendUrl,
     targetTabId: currentTabId,
     page,
     resource
-  });
+  }), CRITICAL_REQUEST_TIMEOUT_MS, "资源预检");
   if (response.error) {
     return {
       ok: false,
@@ -5472,14 +5561,14 @@ async function requestResourcePreflight(resource) {
 
 async function requestPagePreflightReport(candidates) {
   const resourcesForReport = mergePageFallbackContextCandidates(candidates || []);
-  const response = await chrome.runtime.sendMessage({
+  const response = await withTimeout(chrome.runtime.sendMessage({
     type: "preflight-current-page",
     backendUrl,
     targetTabId: currentTabId,
     page,
     resources: resourcesForReport,
     probeLimit: 3
-  });
+  }), CRITICAL_REQUEST_TIMEOUT_MS, "页面预检");
   if (response.error) throw new Error(response.error);
   return response.report || null;
 }
@@ -5575,8 +5664,9 @@ function pagePreflightHasUnprobedCandidates(result, candidates = []) {
   return total > probed || candidates.length > probed;
 }
 
-async function preflightPageCandidates(candidates) {
+async function preflightPageCandidates(candidates, snapshot = captureContextSnapshot()) {
   const report = await requestPagePreflightReport(candidates || []);
+  assertCurrentContext(snapshot, "预检");
   lastPagePreflightReport = report || null;
   const applied = applyPagePreflightReport(report);
   els.taskMessage.textContent = report.message || (report.ready ? "整页预检通过" : "整页预检未通过");
@@ -5585,7 +5675,7 @@ async function preflightPageCandidates(candidates) {
   return applied || result ? result : null;
 }
 
-async function preflightBestResource(mode = "video") {
+async function preflightBestResource(mode = "video", snapshot = captureContextSnapshot()) {
   const candidates = preflightCandidatesForStart(mode);
   if (!candidates.length) return null;
 
@@ -5598,7 +5688,9 @@ async function preflightBestResource(mode = "video") {
     : "正在预检直取候选...";
 
   for (const candidate of candidates) {
-    const result = rememberPreflightResult(candidate, await requestResourcePreflight(candidate));
+    const response = await requestResourcePreflight(candidate);
+    assertCurrentContext(snapshot, "预检");
+    const result = rememberPreflightResult(candidate, response);
     lastResult = result;
     if (result?.downloadable) {
       selectedResourceUrl = candidate.url;
@@ -5628,7 +5720,9 @@ async function startTask(mode = "video") {
   try {
     const clientReady = clientConnectionState === "connected" || await health();
     if (!clientReady) {
-      els.taskMessage.textContent = "LearnNote 客户端尚未启动。请先打开客户端，再重新发送当前页。";
+      els.taskMessage.textContent = lastConnectionError === "timeout"
+        ? "连接 LearnNote 客户端超时。请确认客户端正在运行且未被防火墙拦截，然后重试。"
+        : "LearnNote 客户端尚未启动。请先打开客户端，再重新发送当前页。";
       return;
     }
     els.taskMessage.textContent = isMediaTaskMode(mode) ? "正在刷新当前播放页和媒体候选..." : "正在刷新当前页面文本...";
@@ -5638,6 +5732,7 @@ async function startTask(mode = "video") {
       return;
     }
     const mediaCandidateReady = await waitForMediaCandidateBeforeStart(mode);
+    const operationContext = captureContextSnapshot();
     if (isMediaTaskMode(mode) && !mediaCandidateReady) {
       if (!canResolveCurrentPageWithoutMediaEvidence(mode)) {
         els.taskMessage.textContent = mode === "download_only"
@@ -5652,11 +5747,12 @@ async function startTask(mode = "video") {
     if (candidates.length) {
       let checked = null;
       try {
-        checked = await preflightPageCandidates(candidates);
-      } catch {
+        checked = await preflightPageCandidates(candidates, operationContext);
+      } catch (error) {
+        if (isStaleContextError(error) || isTimeoutError(error)) throw error;
         // Keep one-click start usable when the aggregate preflight endpoint is unavailable.
       }
-      if (!checked || pagePreflightHasUnprobedCandidates(checked, candidates)) checked = await preflightBestResource(mode);
+      if (!checked || pagePreflightHasUnprobedCandidates(checked, candidates)) checked = await preflightBestResource(mode, operationContext);
       if (!checked?.downloadable) {
         if (!canAttemptBackendPageFallback(mode)) {
           els.taskMessage.textContent = preflightBlockMessage(checked);
@@ -5666,7 +5762,9 @@ async function startTask(mode = "video") {
         els.taskMessage.textContent = preflightFallbackStartMessage(checked);
       }
     }
-    const response = await chrome.runtime.sendMessage({
+    const taskOptions = await readClientTaskOptions();
+    assertCurrentContext(operationContext, "任务启动");
+    const response = await withTimeout(chrome.runtime.sendMessage({
       type: "start-current-task",
       backendUrl,
       targetTabId: currentTabId,
@@ -5674,8 +5772,9 @@ async function startTask(mode = "video") {
       resources: isMediaTaskMode(mode) ? selectedResourcesForMediaTask() : [],
       pagePreflightReport: isMediaTaskMode(mode) ? lastPagePreflightReport : null,
       mode,
-      options: await readClientTaskOptions()
-    });
+      options: taskOptions
+    }), CRITICAL_REQUEST_TIMEOUT_MS, "任务启动");
+    assertCurrentContext(operationContext, "任务启动");
     if (response.error) {
       if (/failed to fetch|network|connection|refused|无法连接|连接失败/i.test(String(response.error))) {
         clientConnectionState = "offline";
@@ -5696,7 +5795,11 @@ async function startTask(mode = "video") {
     await openWorkbench(currentTaskId, "note");
   } catch (error) {
     const detail = String(error?.message || error || "");
-    if (/failed to fetch|network|connection|refused|receiving end does not exist/i.test(detail)) {
+    if (isStaleContextError(error)) {
+      els.taskMessage.textContent = detail;
+    } else if (isTimeoutError(error)) {
+      els.taskMessage.textContent = `${detail} 操作按钮已恢复，可直接重试。`;
+    } else if (/failed to fetch|network|connection|refused|receiving end does not exist/i.test(detail)) {
       clientConnectionState = "offline";
       els.backendStatus.dataset.connectionState = "offline";
       els.backendStatus.textContent = "请先打开 LearnNote 客户端";
@@ -5728,12 +5831,20 @@ async function preflightSelectedResource({ silent = false } = {}) {
     return null;
   }
   els.preflightButton.disabled = true;
+  const operationContext = captureContextSnapshot();
   if (!silent) els.taskMessage.textContent = "正在预检直取可行性...";
   try {
-    preflight = rememberPreflightResult(resource, await requestResourcePreflight(resource));
+    const response = await requestResourcePreflight(resource);
+    assertCurrentContext(operationContext, "预检");
+    preflight = rememberPreflightResult(resource, response);
     els.taskMessage.textContent = preflight.message || (preflight.downloadable ? "预检通过" : "预检未通过");
     renderContext();
     return preflight;
+  } catch (error) {
+    els.taskMessage.textContent = isStaleContextError(error) || isTimeoutError(error)
+      ? error.message
+      : `预检失败：${error?.message || "请稍后重试。"}`;
+    return null;
   } finally {
     els.preflightButton.disabled = false;
   }
@@ -5755,13 +5866,15 @@ async function runPreflight() {
       return null;
     }
     const candidates = preflightCandidatesForStart("video");
+    const operationContext = captureContextSnapshot();
     if (!candidates.length) {
       if (canResolveCurrentPageWithoutMediaEvidence("video") || (hasCurrentVideoEvidence(resources) && canAttemptBackendPageFallback("video"))) {
         try {
           els.taskMessage.textContent = "正在交给后端扫描当前页播放资源...";
-          const result = await preflightPageCandidates([]);
+          const result = await preflightPageCandidates([], operationContext);
           return result?.report || result;
-        } catch {
+        } catch (error) {
+          if (isStaleContextError(error) || isTimeoutError(error)) throw error;
           // Fall back to the user-facing recovery message below.
         }
       }
@@ -5769,12 +5882,18 @@ async function runPreflight() {
       return null;
     }
     try {
-      const result = await preflightPageCandidates(candidates);
+      const result = await preflightPageCandidates(candidates, operationContext);
       if (result?.report && !pagePreflightHasUnprobedCandidates(result, candidates)) return result.report;
-    } catch {
+    } catch (error) {
+      if (isStaleContextError(error) || isTimeoutError(error)) throw error;
       // Fall through to the older per-resource preflight path.
     }
-    return await preflightBestResource("video");
+    return await preflightBestResource("video", operationContext);
+  } catch (error) {
+    els.taskMessage.textContent = isStaleContextError(error) || isTimeoutError(error)
+      ? error.message
+      : `预检失败：${error?.message || "请稍后重试。"}`;
+    return null;
   } finally {
     els.preflightButton.disabled = false;
     els.summarizeButton.disabled = false;
@@ -5802,7 +5921,7 @@ async function uploadLocal(fileOverride = null) {
   form.append("options", JSON.stringify(readOptions()));
   els.taskMessage.textContent = "上传本地视频...";
   try {
-    const response = await fetch(`${backendUrl}/api/tasks/from-local`, { method: "POST", body: form });
+    const response = await fetchWithTimeout(`${backendUrl}/api/tasks/from-local`, { method: "POST", body: form }, CRITICAL_REQUEST_TIMEOUT_MS, "本地任务启动");
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.task_id) {
       const message = apiErrorMessage(data, "本地视频上传失败，请确认后端可用并重试。");
@@ -5828,10 +5947,26 @@ async function uploadLocal(fileOverride = null) {
   }
 }
 
-async function pollTask() {
-  if (!currentTaskId) return;
-  const data = await fetch(`${backendUrl}/api/tasks/${currentTaskId}`).then(r => r.json());
-  currentTask = taskFromPayload(data);
+async function pollTask(taskId = currentTaskId, retryCount = 0) {
+  if (!taskId || taskId !== currentTaskId) return;
+  let data;
+  let task;
+  try {
+    const response = await fetchWithTimeout(`${backendUrl}/api/tasks/${taskId}`, {}, POLL_FETCH_TIMEOUT_MS, "任务状态读取");
+    if (response?.ok === false) throw new Error(`HTTP ${response.status || "error"}`);
+    data = await response.json();
+    task = taskFromPayload(data);
+    if (!task?.id) throw new Error("invalid task response");
+  } catch (error) {
+    if (taskId !== currentTaskId) return;
+    const delay = Math.min(POLL_RETRY_BASE_MS * (2 ** Math.min(retryCount, 3)), POLL_RETRY_MAX_MS);
+    const reason = isTimeoutError(error) ? "请求超时" : "网络或响应异常";
+    els.taskMessage.textContent = `与 LearnNote 客户端暂时断开（${reason}），将在 ${Math.ceil(delay / 1000)} 秒后重试。`;
+    setTimeout(() => pollTask(taskId, retryCount + 1), delay);
+    return;
+  }
+  if (taskId !== currentTaskId) return;
+  currentTask = task;
   const index = taskHistory.findIndex(task => task.id === currentTask.id);
   if (index >= 0) taskHistory[index] = currentTask;
   else taskHistory.unshift(currentTask);
@@ -5851,7 +5986,7 @@ async function pollTask() {
   }
   renderResult();
   if (currentTask.status !== "failed") {
-    setTimeout(pollTask, 2500);
+    setTimeout(() => pollTask(taskId, 0), POLL_RETRY_BASE_MS);
   }
 }
 
@@ -8670,6 +8805,8 @@ if (HAS_EXTENSION_API && chrome.runtime.onMessage?.addListener) {
     if (shouldAcceptContextUpdate(message)) {
       if (message.reason === "tab-activated") {
         resetContextForTab(message.tabId ?? null);
+      } else {
+        contextEpoch += 1;
       }
       scheduleContextRefresh(message.reason || "media");
       return;

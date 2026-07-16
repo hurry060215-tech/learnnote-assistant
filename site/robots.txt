@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://hurry060215-tech.github.io/learnnote-assistant/sitemap.xml

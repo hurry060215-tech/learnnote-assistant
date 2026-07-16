@@ -11,6 +11,8 @@ const partitionKeyLookups = [];
 const storageData = {};
 const storageWrites = [];
 const storageRemovals = [];
+let delayNextStorageGet = false;
+let resolveDelayedStorageGet = null;
 
 async function waitForStorageKey(key) {
   for (let index = 0; index < 10; index += 1) {
@@ -52,6 +54,12 @@ const context = {
             if (Object.prototype.hasOwnProperty.call(storageData, key)) {
               result[key] = storageData[key];
             }
+          }
+          if (delayNextStorageGet) {
+            delayNextStorageGet = false;
+            return new Promise(resolve => {
+              resolveDelayedStorageGet = () => resolve(result);
+            });
           }
           return result;
         },
@@ -1070,6 +1078,51 @@ context.clearCaptureLog(222);
 await Promise.resolve();
 assert.equal(storageData[captureKey], undefined);
 assert.deepEqual(storageRemovals, [captureKey]);
+
+delayNextStorageGet = true;
+context.addResource(224, {
+  url: "https://media.cdn.example.com/late/lesson.mp4",
+  source: "webRequest",
+  kind: "video",
+  page_url: "https://course.example.com/old-lesson"
+}, false);
+for (let index = 0; index < 10 && !resolveDelayedStorageGet; index += 1) {
+  await new Promise(resolve => setTimeout(resolve, 0));
+}
+assert.equal(typeof resolveDelayedStorageGet, "function");
+const lateCaptureKey = context.captureLogStorageKey(224);
+context.clearCaptureLog(224);
+resolveDelayedStorageGet();
+await new Promise(resolve => setTimeout(resolve, 0));
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.equal(storageData[lateCaptureKey], undefined, "cleared capture logs must not be revived by an older async write");
+
+storageData[context.captureLogStorageKey(225)] = {
+  tab_id: 225,
+  epoch: 0,
+  updated_at: Date.now() - (31 * 60 * 1000),
+  resources: [{ url: "https://cdn.example.com/expired.mp4" }]
+};
+assert.equal((await context.loadCaptureLog(225)).resources.length, 0, "expired capture logs must not join the current playback session");
+
+context.rememberRequestHeaders({
+  requestId: "old-navigation-request",
+  tabId: 226,
+  type: "media",
+  url: "https://cdn.example.com/old-navigation.mp4",
+  requestHeaders: []
+});
+const oldRequestEpoch = context.peekRequestEpoch("old-navigation-request");
+context.clearCaptureLog(226);
+context.recordResponseMedia({
+  requestId: "old-navigation-request",
+  tabId: 226,
+  type: "media",
+  url: "https://cdn.example.com/old-navigation.mp4",
+  statusCode: 200,
+  responseHeaders: [{ name: "content-type", value: "video/mp4" }]
+}, {}, {}, oldRequestEpoch);
+assert.equal(context.mergeAndRankResources(undefined, {}, { id: 226 }).length, 0, "requests started before navigation must not enter the new capture epoch");
 
 context.addResource(223, {
   url: "https://media.cdn.example.com/api/play",

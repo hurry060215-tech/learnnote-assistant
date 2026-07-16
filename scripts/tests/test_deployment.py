@@ -3,6 +3,8 @@ from __future__ import annotations
 import subprocess
 import sys
 import os
+import json
+import re
 import unittest
 from pathlib import Path
 
@@ -48,6 +50,20 @@ class DeploymentContractTests(unittest.TestCase):
         self.assertIn("packages: write", workflow)
         self.assertIn("docker/build-push-action", workflow)
         self.assertIn("ghcr.io/${{ github.repository }}", workflow)
+
+    def test_public_release_versions_stay_aligned(self) -> None:
+        manifest_version = json.loads((ROOT / "extension" / "manifest.json").read_text(encoding="utf-8"))["version"]
+        backend_source = (ROOT / "backend" / "app" / "__init__.py").read_text(encoding="utf-8")
+        installer_source = (ROOT / "scripts" / "learnnote-installer.iss").read_text(encoding="utf-8")
+        site_source = (ROOT / "site" / "index.html").read_text(encoding="utf-8")
+        backend_version = re.search(r'APP_VERSION\s*=\s*"([^"]+)"', backend_source)
+        installer_version = re.search(r'#define MyAppVersion\s+"([^"]+)"', installer_source)
+
+        self.assertIsNotNone(backend_version)
+        self.assertIsNotNone(installer_version)
+        self.assertEqual(manifest_version, backend_version.group(1))
+        self.assertEqual(manifest_version, installer_version.group(1))
+        self.assertIn(f"v{manifest_version}", site_source)
 
 
 if __name__ == "__main__":

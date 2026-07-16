@@ -284,6 +284,7 @@ let lastNoteTaskId = "";
 let lastTranscript = null;
 let lastTranscriptTaskId = "";
 let tasks = [];
+let taskListLoadPromise = null;
 let taskQuery = "";
 let taskStatusFilter = "all";
 const HISTORY_PAGE_SIZE = 30;
@@ -313,6 +314,12 @@ let assistantHistoryRequestId = 0;
 let assistantContextTaskId = "";
 let assistantBusy = false;
 let assistantLocatedEvidenceKey = "";
+
+const ACTIVE_TASK_STATUSES = new Set(["running", "queued", "cancelling"]);
+
+function isActiveTask(task) {
+  return ACTIVE_TASK_STATUSES.has(task?.status);
+}
 const ASSISTANT_OPEN_KEY = "learnnote.aiAssistantOpen";
 const ASSISTANT_WIDE_KEY = "learnnote.aiAssistantWide";
 
@@ -884,6 +891,14 @@ async function checkDesktopUpdate() {
       els.installUpdateButton.textContent = pendingDesktopUpdate ? `更新到 v${result.latest_version}` : "下载并安装";
     }
     if (els.openReleaseButton) els.openReleaseButton.hidden = !newer;
+  } catch (error) {
+    pendingDesktopUpdate = null;
+    pendingReleaseUrl = "";
+    if (els.installUpdateButton) els.installUpdateButton.hidden = true;
+    if (els.openReleaseButton) els.openReleaseButton.hidden = true;
+    if (els.updateStatus) els.updateStatus.textContent = error?.message
+      ? `检查失败：${error.message}`
+      : "检查失败，请确认网络后重试";
   } finally {
     els.checkUpdateButton.disabled = false;
   }
@@ -892,7 +907,7 @@ async function checkDesktopUpdate() {
 async function installDesktopUpdate() {
   const api = desktopApi();
   if (!api || !pendingDesktopUpdate || !els.installUpdateButton) return;
-  const activeTasks = tasks.filter(task => task.status === "running" || task.status === "queued");
+  const activeTasks = tasks.filter(isActiveTask);
   if (activeTasks.length) {
     if (els.updateStatus) els.updateStatus.textContent = `还有 ${activeTasks.length} 个任务正在处理，完成后再更新`;
     return;
@@ -1095,6 +1110,7 @@ function handleTaskStatusTransitions(nextTasks) {
     try { new Notification("LearnNote", { body: `${displayTaskTitle(latest)} 已生成` }); } catch { /* ignore */ }
   }
   if (appSettings.autoOpenNote && !document.body?.classList?.contains?.("settings-mode")) {
+    showAppView("notes");
     selectTask(latest.id);
     selectedTab = "note";
     renderResultTabState();
@@ -4440,17 +4456,25 @@ function initializeWorkspaceView() {
 }
 
 async function loadTasks() {
+  if (taskListLoadPromise) return taskListLoadPromise;
+  taskListLoadPromise = loadTasksOnce();
+  try {
+    return await taskListLoadPromise;
+  } finally {
+    taskListLoadPromise = null;
+  }
+}
+
+async function loadTasksOnce() {
   let data = { tasks: [] };
   try {
     data = await fetchJson(apiUrl("/api/tasks"));
   } catch {
-    tasks = [];
-    selectedTaskId = null;
-    renderTasks();
-    renderBrowserRouteSummary();
-    renderSourceWorkflow();
-    lastDetailFingerprint = "__unrendered__";
-    await renderDetail();
+    if (els.health) {
+      els.health.className = "health bad";
+      els.health.textContent = "连接暂时中断，正在重试";
+      els.health.title = "当前内容已保留；LearnNote 会自动重新连接本地服务。";
+    }
     return;
   }
   handleTaskStatusTransitions(data.tasks || []);
@@ -4476,7 +4500,7 @@ async function loadTasks() {
 
 function taskMatchesFilters(task) {
   if (taskStatusFilter !== "all") {
-    const running = task.status === "running" || task.status === "queued";
+    const running = isActiveTask(task);
     if (taskStatusFilter === "running" && !running) return false;
     if (taskStatusFilter !== "running" && task.status !== taskStatusFilter) return false;
   }
@@ -6109,7 +6133,6 @@ async function loadAssistantHistory() {
   assistantMessages = [];
   renderAssistant();
   if (!task) return;
-  if (task.evidence_quality?.can_claim_video_content === false) return;
   try {
     const response = await fetch(taskQaUrl(task.id));
     const payload = await response.json().catch(() => ({}));
@@ -8271,13 +8294,27 @@ async function exportTaskArtifact(taskId, exportType, button = null) {
       if (els.openExportFolderButton) els.openExportFolderButton.hidden = false;
       return;
     }
+    const response = await fetch(apiUrl(`/api/tasks/${encodeURIComponent(taskId)}/exports/${exportType}`));
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload?.detail?.message || payload?.detail || `服务器返回 ${response.status}`);
+    }
+    const blob = await response.blob();
+    const disposition = response.headers?.get?.("content-disposition") || "";
+    const encodedName = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+    const plainName = disposition.match(/filename="?([^";]+)"?/i)?.[1];
+    const filename = encodedName
+      ? decodeURIComponent(encodedName)
+      : plainName || `learnnote-${taskId}-${exportType}`;
+    const objectUrl = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.href = apiUrl(`/api/tasks/${encodeURIComponent(taskId)}/exports/${exportType}`);
-    link.download = "";
+    link.href = objectUrl;
+    link.download = filename;
     document.body.appendChild(link);
     link.click();
     link.remove();
-    if (els.exportStatus) els.exportStatus.textContent = "下载已开始";
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+    if (els.exportStatus) els.exportStatus.textContent = `下载已开始：${filename}`;
   } catch (error) {
     if (els.exportStatus) els.exportStatus.textContent = `导出失败：${error?.message || "请确认任务产物存在"}`;
   } finally {

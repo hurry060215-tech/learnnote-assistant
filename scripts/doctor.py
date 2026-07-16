@@ -6,6 +6,8 @@ import os
 import shutil
 import subprocess
 import sys
+import urllib.error
+import urllib.request
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -153,6 +155,16 @@ def manifest_check() -> Check:
 
 
 def llm_check() -> Check:
+    try:
+        with urllib.request.urlopen("http://127.0.0.1:8765/health", timeout=1.0) as response:
+            health = json.loads(response.read().decode("utf-8"))
+        if health.get("llm_model_configured"):
+            provider = str(health.get("default_llm_provider") or "configured")
+            model = str(health.get("default_llm_model") or "configured")
+            vision = "vision ready" if health.get("vision_model_configured") else "text only"
+            return Check("multimodal API", "PASS", f"desktop configuration detected; provider={provider}; model={model}; {vision}")
+    except (OSError, ValueError, urllib.error.URLError, json.JSONDecodeError):
+        pass
     api_key = os.getenv("LEARNNOTE_LLM_API_KEY", "")
     base = os.getenv("LEARNNOTE_LLM_BASE_URL", "https://api.openai.com/v1")
     model = os.getenv("LEARNNOTE_LLM_MODEL", "gpt-4.1-mini")

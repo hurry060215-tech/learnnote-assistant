@@ -356,7 +356,9 @@ class DesktopApi:
             f"$log = {ps_literal(log_path)}",
             "$arguments = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', ('/DIR=\"' + $installDir + '\"'), ('/LOG=\"' + $log + '\"'))",
             "$result = Start-Process -FilePath $installer -ArgumentList $arguments -WindowStyle Hidden -Wait -PassThru",
-            "if ($result.ExitCode -eq 0) { Start-Process -FilePath $app -WorkingDirectory $installDir }",
+            "Add-Content -LiteralPath $log -Value ('LearnNote updater exit code: ' + $result.ExitCode)",
+            "Start-Process -FilePath $app -WorkingDirectory $installDir",
+            "if ($result.ExitCode -ne 0) { exit $result.ExitCode }",
         ]) + "\n"
         script_path.write_text(script, encoding="utf-8-sig")
         subprocess.Popen(

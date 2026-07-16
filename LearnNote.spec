@@ -37,7 +37,6 @@ a = Analysis(
 )
 a.datas += Tree('backend/app', prefix='backend/app', excludes=['__pycache__', '*.pyc'])
 a.datas += Tree('web', prefix='web', excludes=['tests', 'tests/*'])
-a.datas += Tree('extension', prefix='extension', excludes=['tests', 'tests/*'])
 pyz = PYZ(a.pure)
 
 exe = EXE(

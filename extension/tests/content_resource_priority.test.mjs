@@ -46,6 +46,9 @@ const context = {
     observe() {}
   },
   performance: {
+    now() {
+      return 100;
+    },
     getEntriesByType(type) {
       return type === "resource" ? performanceEntries : [];
     }
@@ -115,3 +118,28 @@ const sourceElementSorted = [
 
 assert.equal(sourceElementSorted[0].url, "https://cdn.example.com/current-source.mp4");
 assert.equal(sourceElementSorted[0].playback_match, "source-element");
+
+performanceEntries.push(
+  { name: "https://cdn.example.com/old/lesson.mp4", initiatorType: "fetch", startTime: 20 },
+  { name: "https://cdn.example.com/new/lesson.mp4", initiatorType: "fetch", startTime: 120 }
+);
+context.resetPageResources("page-2");
+context.rememberHookResource({
+  url: "https://cdn.example.com/old/hook.mp4",
+  source: "pageHookRequest",
+  kind: "video",
+  page_identity: "page-1"
+});
+context.rememberHookResource({
+  url: "https://cdn.example.com/new/hook.mp4",
+  source: "pageHookRequest",
+  kind: "video",
+  page_identity: "page-2"
+});
+messageListener({ type: "collect-page-data" }, {}, data => {
+  response = data;
+});
+assert.equal(response.resources.some(item => item.url.includes("/old/")), false);
+assert.equal(response.resources.some(item => item.url === "https://cdn.example.com/new/lesson.mp4"), true);
+assert.equal(response.resources.some(item => item.url === "https://cdn.example.com/new/hook.mp4"), true);
+assert.equal(response.resources.every(item => item.page_identity === "page-2"), true);

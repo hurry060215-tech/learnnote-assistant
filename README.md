@@ -198,7 +198,7 @@ docker compose --env-file .env.deploy up --build -d
 
 Open `http://localhost:8765`. Data, uploads, task history, screenshots, and model caches persist in the `learnnote-data` volume. The container runs as a non-root user and exposes an unauthenticated `/health` endpoint only; the website and task APIs require the configured username/password. For a domain, put the container behind an HTTPS reverse proxy and set `LEARNNOTE_PUBLIC_ORIGIN` to the final origin.
 
-Images are published from `main` to `ghcr.io/hurry060215-tech/learnnote-assistant:latest`. Because the source repository is private, authenticate Docker to GHCR before pulling unless package visibility is changed explicitly.
+Images are published from `main` to `ghcr.io/hurry060215-tech/learnnote-assistant:latest`. Container package visibility is managed separately from the public source repository; authenticate Docker when the GHCR package is not public.
 
 ### Temporary Protected Processing URL
 

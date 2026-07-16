@@ -105,6 +105,30 @@ async function main() {
     throw new Error(`Settings navigation changes size with label length: ${JSON.stringify(settingsMenu)}`);
   }
   await page.screenshot({ path: `${output}-settings-1024.png` });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(250);
+  const mobileSettings = await page.evaluate(() => {
+    const nav = document.querySelector(".nav-rail")?.getBoundingClientRect();
+    const shell = document.querySelector(".settings-view")?.getBoundingClientRect();
+    return nav && shell ? {
+      nav: { top: nav.top, bottom: nav.bottom, width: nav.width, height: nav.height },
+      shell: { top: shell.top, bottom: shell.bottom, width: shell.width },
+      viewport: { width: innerWidth, height: innerHeight },
+      horizontalOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1
+    } : { missing: true };
+  });
+  if (mobileSettings.missing
+      || Math.abs(mobileSettings.nav.height - 58) > 0.5
+      || Math.abs(mobileSettings.nav.width - mobileSettings.viewport.width) > 0.5
+      || Math.abs(mobileSettings.nav.bottom - mobileSettings.viewport.height) > 0.5
+      || mobileSettings.horizontalOverflow) {
+    throw new Error(`Mobile settings navigation is not anchored to the bottom: ${JSON.stringify(mobileSettings)}`);
+  }
+  await page.screenshot({ path: `${output}-settings-390.png`, fullPage: true });
+
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await page.waitForTimeout(250);
   await page.locator('[data-app-view="notes"]').click();
   await page.waitForTimeout(250);
   await page.screenshot({ path: `${output}-notes-1024.png` });
@@ -132,7 +156,7 @@ async function main() {
   await browser.close();
 
   if (consoleErrors.length) throw new Error(`Browser console errors: ${consoleErrors.join(" | ")}`);
-  process.stdout.write(JSON.stringify({ ok: true, wideNavigation, layout, overlap, hasCurrentPageTask, screenshots: 4 }));
+  process.stdout.write(JSON.stringify({ ok: true, wideNavigation, layout, mobileSettings, overlap, hasCurrentPageTask, screenshots: 5 }));
 }
 
 main().catch(error => {

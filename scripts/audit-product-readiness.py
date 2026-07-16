@@ -288,6 +288,8 @@ def build_matrix(*, include_acceptance_gate: bool = True) -> list[ReadinessItem]
     public_site_html = read_text(ROOT / "site" / "index.html")
     public_site_css = read_text(ROOT / "site" / "styles.css")
     public_site_start = read_text(ROOT / "scripts" / "start-public-site.ps1")
+    public_site_audit = read_text(ROOT / "scripts" / "site-visual-acceptance.cjs")
+    public_site_workflow = read_text(ROOT / ".github" / "workflows" / "pages.yml")
     readme = read_text(ROOT / "README.md")
     audits = collect_site_audits()
 
@@ -485,14 +487,16 @@ def build_matrix(*, include_acceptance_gate: bool = True) -> list[ReadinessItem]
         has_all(public_site_html + public_site_css, [
             "LearnNote",
             "下载 Windows 版",
-            "安装浏览器扩展",
-            "笔记，不只是摘要",
-            "从你正在看的地方开始",
-            "内容留在你的设备，选择留给你",
-            "learnnote-desktop.png",
-            "learnnote-note.png",
+            "浏览器扩展",
+            "把正在看的视频",
+            "三步，把视频变成可复习的知识",
+            "从你已经在看的地方开始",
+            "learnnote-workspace-v0126.png",
+            "learnnote-reader-v0126.png",
         ])
         and has_all(public_site_start, ["http.server", "cloudflared", "No login is required"])
+        and has_all(public_site_audit, ["contentVisible", "imagesReady", "Installer link is not a release asset", "Mobile navigation did not open"])
+        and has_all(public_site_workflow, ["actions/upload-pages-artifact", "actions/deploy-pages", "site"])
         and "password" not in public_site_html.lower()
     )
     rows.append(item(
@@ -502,8 +506,10 @@ def build_matrix(*, include_acceptance_gate: bool = True) -> list[ReadinessItem]
         "The public site is static, requires no login, exposes no processing API, shows the real desktop client, and links to Windows releases." if public_site_ready else "Public-site separation or deployment evidence is incomplete.",
         [
             (ROOT / "site" / "index.html", "public product, workflow, privacy, and download content"),
-            (ROOT / "site" / "assets" / "learnnote-desktop.png", "real desktop-client screenshot"),
-            (ROOT / "site" / "assets" / "learnnote-note.png", "real structured-note screenshot"),
+            (ROOT / "site" / "assets" / "learnnote-workspace-v0126.png", "real desktop workspace screenshot"),
+            (ROOT / "site" / "assets" / "learnnote-reader-v0126.png", "real note reader and AI sidebar screenshot"),
+            (ROOT / "scripts" / "site-visual-acceptance.cjs", "desktop/mobile visual and interaction acceptance"),
+            (ROOT / ".github" / "workflows" / "pages.yml", "GitHub Pages deployment"),
             (ROOT / "scripts" / "start-public-site.ps1", "no-login static public tunnel"),
         ],
     ))

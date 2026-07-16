@@ -577,9 +577,28 @@ body.assistant-wide .ai-assistant-drawer { width: var(--assistant-current-width)
 
 @media (max-width: 680px) {
   .app-shell { display: block !important; }
-  .nav-rail { position: fixed; inset: auto 0 0; width: 100% !important; height: 58px; z-index: 50; flex-direction: row; justify-content: space-around; padding: 5px; border: 0; border-top: 1px solid var(--mature-line); }
+  .nav-rail,
+  body.queue-collapsed .nav-rail,
+  body.workspace-collapsed .nav-rail,
+  body.settings-mode .nav-rail,
+  body.assistant-open .nav-rail {
+    position: fixed;
+    inset: auto 0 0 !important;
+    top: auto !important;
+    bottom: 0 !important;
+    width: 100% !important;
+    height: 58px !important;
+    min-height: 58px !important;
+    z-index: 50;
+    flex-direction: row;
+    justify-content: space-around;
+    padding: 5px;
+    border: 0;
+    border-top: 1px solid var(--mature-line);
+  }
   .nav-item, body[data-app-view] .nav-item { width: 52px !important; min-width: 52px !important; }
   body[data-app-view="workspace"] .workspace-panel { padding: 24px 16px 86px; }
+  body.settings-mode .settings-view { padding-bottom: 78px; }
   .workspace-panel .source-tab { padding: 0 8px; }
   .learning-goal-group label > span { grid-template-columns: 1fr; gap: 2px; padding: 8px 12px 8px 42px; }
 }

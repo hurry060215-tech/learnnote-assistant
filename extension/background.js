@@ -11,9 +11,12 @@ const resourceByTab = new Map();
 const pageStateByTab = new Map();
 const requestHeadersByRequestId = new Map();
 const requestBodiesByRequestId = new Map();
+const requestEpochByRequestId = new Map();
 const contextUpdateTimers = new Map();
+const captureEpochByTab = new Map();
 const MAX_REQUEST_BODY_BYTES = 64 * 1024;
 const MAX_CAPTURE_LOG_RESOURCES = 120;
+const CAPTURE_LOG_TTL_MS = 30 * 60 * 1000;
 const CAPTURE_LOG_KEY_PREFIX = "captureLog:";
 const REQUEST_HEADER_ALLOWLIST = new Set([
   "accept",
@@ -742,6 +745,16 @@ function captureLogStorageKey(tabId) {
   return `${CAPTURE_LOG_KEY_PREFIX}${tabId}`;
 }
 
+function captureEpoch(tabId) {
+  return Number(captureEpochByTab.get(tabId) || 0);
+}
+
+function advanceCaptureEpoch(tabId) {
+  const next = captureEpoch(tabId) + 1;
+  captureEpochByTab.set(tabId, next);
+  return next;
+}
+
 function safePersistedRequestHeaders(headers = {}) {
   const safe = {};
   for (const [name, value] of Object.entries(headers || {})) {
@@ -796,6 +809,7 @@ function captureLogResource(resource = {}) {
     blob_url: resource.blob_url || "",
     frame_url: resource.frame_url || "",
     page_url: resource.page_url || "",
+    page_identity: resource.page_identity || "",
     tab_id: resource.tab_id ?? null,
     frame_id: resource.frame_id ?? null,
     current_time: resource.current_time ?? null,
@@ -829,9 +843,13 @@ async function loadCaptureLog(tabId) {
     const key = captureLogStorageKey(tabId);
     const data = await chrome.storage.local.get({ [key]: null });
     const log = data?.[key] || {};
+    const updatedAt = Number(log.updated_at || 0);
+    const expired = !updatedAt || Date.now() - updatedAt > CAPTURE_LOG_TTL_MS;
+    const epochMismatch = captureEpochByTab.has(tabId) && Number(log.epoch || 0) !== captureEpoch(tabId);
+    if (expired || epochMismatch) return { resources: [], updated_at: 0 };
     return {
       resources: Array.isArray(log.resources) ? log.resources : [],
-      updated_at: Number(log.updated_at || 0)
+      updated_at: updatedAt
     };
   } catch {
     return { resources: [], updated_at: 0 };
@@ -842,15 +860,20 @@ function persistCaptureResource(tabId, resource = {}) {
   if (!chrome.storage?.local?.get || !chrome.storage?.local?.set || tabId === undefined || tabId < 0) return;
   const persisted = captureLogResource(resource);
   if (!persisted) return;
+  const epoch = captureEpoch(tabId);
   (async () => {
     try {
       const key = captureLogStorageKey(tabId);
       const data = await chrome.storage.local.get({ [key]: null });
-      const existing = Array.isArray(data?.[key]?.resources) ? data[key].resources : [];
+      if (captureEpoch(tabId) !== epoch) return;
+      const existingLog = data?.[key] || {};
+      const existing = Number(existingLog.epoch || 0) === epoch && Array.isArray(existingLog.resources) ? existingLog.resources : [];
       const merged = mergeAndRankResources([persisted, ...existing], {}, {}, { preserveOrder: false }).slice(0, MAX_CAPTURE_LOG_RESOURCES);
+      if (captureEpoch(tabId) !== epoch) return;
       await chrome.storage.local.set({
         [key]: {
           tab_id: tabId,
+          epoch,
           updated_at: Date.now(),
           resources: merged
         }
@@ -862,7 +885,9 @@ function persistCaptureResource(tabId, resource = {}) {
 }
 
 function clearCaptureLog(tabId) {
-  if (!chrome.storage?.local || tabId === undefined || tabId < 0) return;
+  if (tabId === undefined || tabId < 0) return;
+  advanceCaptureEpoch(tabId);
+  if (!chrome.storage?.local) return;
   const key = captureLogStorageKey(tabId);
   try {
     if (chrome.storage.local.remove) {
@@ -925,11 +950,14 @@ function normalizeRequestHeaders(requestHeaders = []) {
 }
 
 function rememberRequestHeaders(details) {
-  if (!details?.requestId || !looksLikeMediaRequest(details)) return;
+  if (!details?.requestId) return;
+  requestEpochByRequestId.set(details.requestId, { epoch: captureEpoch(details.tabId), time: Date.now() });
+  trimRequestContextCaches();
+  if (!looksLikeMediaRequest(details)) return;
   const headers = normalizeRequestHeaders(details.requestHeaders || []);
-  if (!Object.keys(headers).length) return;
   requestHeadersByRequestId.set(details.requestId, {
     headers,
+    epoch: captureEpoch(details.tabId),
     time: Date.now()
   });
   if (requestHeadersByRequestId.size <= 300) return;
@@ -945,6 +973,10 @@ function trimRequestContextCaches() {
   if (requestBodiesByRequestId.size > 300) {
     const oldest = [...requestBodiesByRequestId.entries()].sort((a, b) => a[1].time - b[1].time).slice(0, 60);
     for (const [requestId] of oldest) requestBodiesByRequestId.delete(requestId);
+  }
+  if (requestEpochByRequestId.size > 1000) {
+    const oldest = [...requestEpochByRequestId.entries()].sort((a, b) => a[1].time - b[1].time).slice(0, 200);
+    for (const [requestId] of oldest) requestEpochByRequestId.delete(requestId);
   }
 }
 
@@ -984,13 +1016,19 @@ function requestBodyFromRaw(raw = []) {
 }
 
 function rememberRequestBody(details = {}) {
-  if (!details?.requestId || !looksLikeMediaRequest(details)) return;
+  if (!details?.requestId) return;
+  requestEpochByRequestId.set(details.requestId, { epoch: captureEpoch(details.tabId), time: Date.now() });
+  if (!looksLikeMediaRequest(details)) {
+    trimRequestContextCaches();
+    return;
+  }
   const method = String(details.method || "").toUpperCase();
   if (!["POST", "PUT", "PATCH"].includes(method)) return;
   const body = requestBodyFromFormData(details.requestBody?.formData) || requestBodyFromRaw(details.requestBody?.raw);
   if (!body?.content && !requestBodyHasContent(details)) return;
   requestBodiesByRequestId.set(details.requestId, {
     body: body?.content ? body : { type: "dropped", reason: "too_large_or_binary" },
+    epoch: captureEpoch(details.tabId),
     time: Date.now()
   });
   trimRequestContextCaches();
@@ -1010,11 +1048,18 @@ function peekRequestBody(requestId) {
   return requestBodiesByRequestId.get(requestId)?.body || {};
 }
 
+function peekRequestEpoch(requestId) {
+  const entry = requestEpochByRequestId.get(requestId) || requestHeadersByRequestId.get(requestId) || requestBodiesByRequestId.get(requestId);
+  return entry?.epoch;
+}
+
 function takeRequestContext(requestId) {
+  const epoch = peekRequestEpoch(requestId);
   const headers = takeRequestHeaders(requestId);
   const body = peekRequestBody(requestId);
   requestBodiesByRequestId.delete(requestId);
-  return { headers, body };
+  requestEpochByRequestId.delete(requestId);
+  return { headers, body, epoch };
 }
 
 function frameStates(tabId) {
@@ -1076,6 +1121,7 @@ function normalizePageForFrame(page = {}, frameId = 0, tab = {}) {
     frame_elements: Array.isArray(page.frame_elements) ? page.frame_elements : [],
     drm_detected: Boolean(page.drm_detected),
     drm_signals: Array.isArray(page.drm_signals) ? page.drm_signals : [],
+    page_identity: page.page_identity || "",
     frame_id: frameId
   };
   if (normalized.active_video) {
@@ -1089,8 +1135,9 @@ function normalizePageForFrame(page = {}, frameId = 0, tab = {}) {
     ...resource,
     frame_id: resource.frame_id ?? frameId,
     frame_url: resource.frame_url || normalized.page_url || "",
-    page_url: resource.page_url || normalized.page_url || ""
-  }));
+    page_url: resource.page_url || normalized.page_url || "",
+    page_identity: resource.page_identity || normalized.page_identity || ""
+  })).filter(resource => !normalized.page_identity || !resource.page_identity || resource.page_identity === normalized.page_identity);
   normalized.drm_signals = normalized.drm_signals.map(signal => ({
     ...signal,
     frame_id: signal.frame_id ?? frameId,
@@ -1294,6 +1341,7 @@ function addResource(tabId, resource, notify = true) {
     blob_url: resource.blob_url || "",
     frame_url: resource.frame_url || "",
     page_url: resource.page_url || "",
+    page_identity: resource.page_identity || "",
     tab_id: tabId,
     frame_id: resource.frame_id ?? null,
     current_time: resource.current_time ?? null,
@@ -1328,6 +1376,7 @@ function addResource(tabId, resource, notify = true) {
       blob_url: normalized.blob_url || existing.blob_url || "",
       frame_url: normalized.frame_url || existing.frame_url || "",
       page_url: normalized.page_url || existing.page_url || "",
+      page_identity: normalized.page_identity || existing.page_identity || "",
       current_time: normalized.current_time ?? existing.current_time ?? null,
       duration: normalized.duration ?? existing.duration ?? null,
       width: normalized.width ?? existing.width ?? null,
@@ -1438,8 +1487,9 @@ function isLocalLearnNoteTaskFile(url = "") {
   return LOCAL_TASK_FILE_RE.test(String(url || ""));
 }
 
-function recordResponseMedia(details = {}, requestHeaders = {}, requestBody = peekRequestBody(details.requestId)) {
+function recordResponseMedia(details = {}, requestHeaders = {}, requestBody = peekRequestBody(details.requestId), requestEpoch = peekRequestEpoch(details.requestId)) {
   if (isLocalLearnNoteTaskFile(details.url || "")) return;
+  if (requestEpoch !== undefined && requestEpoch !== captureEpoch(details.tabId)) return;
   const headers = responseHeadersObject(details.responseHeaders || []);
   const mime = headers["content-type"] || "";
   const kind = classifyCompletedRequest(details, mime, requestHeaders, headers);
@@ -1471,8 +1521,9 @@ function recordResponseMedia(details = {}, requestHeaders = {}, requestBody = pe
   notifyContextUpdated(details.tabId, "media");
 }
 
-function recordRedirectMedia(details = {}, requestHeaders = {}, requestBody = peekRequestBody(details.requestId)) {
+function recordRedirectMedia(details = {}, requestHeaders = {}, requestBody = peekRequestBody(details.requestId), requestEpoch = peekRequestEpoch(details.requestId)) {
   if (isLocalLearnNoteTaskFile(details.url || "") || isLocalLearnNoteTaskFile(details.redirectUrl || "")) return;
+  if (requestEpoch !== undefined && requestEpoch !== captureEpoch(details.tabId)) return;
   const headers = responseHeadersObject(details.responseHeaders || []);
   const redirectUrl = details.redirectUrl || responseResolvedUrl(details.url || "", headers);
   if (isLocalLearnNoteTaskFile(redirectUrl)) return;
@@ -1527,7 +1578,7 @@ function addResolvedMediaResource(tabId, resource = {}) {
 
 function registerHeadersReceivedListener(options) {
   chrome.webRequest.onHeadersReceived.addListener(
-    details => recordResponseMedia(details, peekRequestHeaders(details.requestId), peekRequestBody(details.requestId)),
+    details => recordResponseMedia(details, peekRequestHeaders(details.requestId), peekRequestBody(details.requestId), peekRequestEpoch(details.requestId)),
     { urls: ["<all_urls>"] },
     options
   );
@@ -1541,7 +1592,7 @@ try {
 
 function registerBeforeRedirectListener(options) {
   chrome.webRequest.onBeforeRedirect.addListener(
-    details => recordRedirectMedia(details, peekRequestHeaders(details.requestId), peekRequestBody(details.requestId)),
+    details => recordRedirectMedia(details, peekRequestHeaders(details.requestId), peekRequestBody(details.requestId), peekRequestEpoch(details.requestId)),
     { urls: ["<all_urls>"] },
     options
   );
@@ -1556,7 +1607,7 @@ try {
 chrome.webRequest.onCompleted.addListener(
   details => {
     const context = takeRequestContext(details.requestId);
-    recordResponseMedia(details, context.headers, context.body);
+    recordResponseMedia(details, context.headers, context.body, context.epoch);
   },
   { urls: ["<all_urls>"] },
   ["responseHeaders"]
@@ -1591,6 +1642,18 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
     notifyContextUpdated(tabId, "navigation");
   }
 });
+if (chrome.webNavigation?.onHistoryStateUpdated?.addListener) {
+  chrome.webNavigation.onHistoryStateUpdated.addListener(details => {
+    if ((details?.frameId ?? 0) !== 0 || details?.tabId === undefined) return;
+    resourceByTab.delete(details.tabId);
+    pageStateByTab.delete(details.tabId);
+    clearCaptureLog(details.tabId);
+    const timer = contextUpdateTimers.get(details.tabId);
+    if (timer) clearTimeout(timer);
+    contextUpdateTimers.delete(details.tabId);
+    notifyContextUpdated(details.tabId, "navigation");
+  });
+}
 
 async function configureSidePanelBehavior() {
   try {
@@ -1998,6 +2061,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === "page-media-detected" && sender.tab?.id !== undefined) {
       const tabId = sender.tab.id;
       const frameId = sender.frameId ?? 0;
+      if (frameId === 0 && message.page?.page_url && sender.tab?.url && String(message.page.page_url) !== String(sender.tab.url)) {
+        sendResponse({ ok: true, stale: true });
+        return;
+      }
       const page = rememberFramePage(tabId, frameId, message.page || {}, sender.tab || {});
       for (const resource of page.resources || []) {
         addResource(tabId, resource);

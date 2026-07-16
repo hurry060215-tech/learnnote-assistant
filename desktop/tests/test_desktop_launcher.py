@@ -306,7 +306,9 @@ class DesktopLauncherTests(unittest.TestCase):
         self.assertTrue(result["installing"])
         self.assertIn("Wait-Process", script)
         self.assertIn("/VERYSILENT", script)
+        self.assertIn("LearnNote updater exit code", script)
         self.assertIn("Start-Process -FilePath $app", script)
+        self.assertIn("if ($result.ExitCode -ne 0)", script)
         popen.assert_called_once()
         timer.assert_called_once()
         timer.return_value.start.assert_called_once()
@@ -318,6 +320,8 @@ class DesktopLauncherTests(unittest.TestCase):
         self.assertIn("--collect-submodules fastapi", workflow)
         self.assertIn('--version-file "build/learnnote-version.txt"', workflow)
         self.assertIn("LearnNote-Setup-x64.exe", workflow)
+        self.assertNotIn('--add-data "extension;extension"', workflow)
+        self.assertIn("LearnNote-Browser-Extension-v*.zip", workflow)
 
     def test_installer_defaults_to_d_drive_and_rejects_c_drive(self):
         installer = (ROOT / "scripts" / "learnnote-installer.iss").read_text(encoding="utf-8")

@@ -183,6 +183,7 @@ const context = {
     tabs: {
       create(options) {
         openedTabs.push(options);
+        return Promise.resolve({ id: openedTabs.length, ...options });
       }
     }
   },

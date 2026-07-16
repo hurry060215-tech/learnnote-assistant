@@ -42,7 +42,10 @@ const context = {
       },
       onMessage: listener()
     },
-    webNavigation: { getAllFrames() {} },
+    webNavigation: {
+      getAllFrames() {},
+      onHistoryStateUpdated: listener("historyStateUpdated")
+    },
     sidePanel: { open() {} },
     scripting: { executeScript() {} },
     cookies: { getAll() {} }
@@ -77,6 +80,17 @@ context.addResource(42, {
 
 assert.equal(messages.length, 0);
 
+context.addResource(78, {
+  url: "https://cdn.example.com/old-spa-video.mp4",
+  source: "webRequest",
+  kind: "video"
+}, false);
+assert.equal(context.mergeAndRankResources(undefined, {}, { id: 78 }).length, 1);
+listeners.historyStateUpdated({ tabId: 78, frameId: 0, url: "https://course.example.com/lesson-2" });
+assert.equal(context.mergeAndRankResources(undefined, {}, { id: 78 }).length, 0);
+assert.equal(messages.at(-1).reason, "navigation");
+
+messages.length = 0;
 listeners.tabActivated({ tabId: 77 });
 assert.equal(messages.length, 1);
 assert.equal(messages[0].tabId, 77);

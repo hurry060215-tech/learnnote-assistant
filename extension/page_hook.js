@@ -101,7 +101,26 @@
   const sourceBufferMediaSource = new WeakMap();
   const sourceBufferMimeByObject = new WeakMap();
   const sourceBufferAppendStats = new WeakMap();
+  const mediaSourcePageIdentity = new WeakMap();
+  const globalConfigIdentityByName = new Map();
   let patchingLatePlayerGlobal = false;
+  let pageEpoch = 1;
+
+  function currentPageUrl() {
+    return String(location.href || "");
+  }
+
+  function currentPageIdentity() {
+    return `${pageEpoch}:${currentPageUrl()}`;
+  }
+
+  function globalConfigMeta(name, value, forceCurrent = false) {
+    const previous = globalConfigIdentityByName.get(name);
+    if (!forceCurrent && previous && previous.value === value) return previous.meta;
+    const meta = { page_url: currentPageUrl(), page_identity: currentPageIdentity() };
+    globalConfigIdentityByName.set(name, { value, meta });
+    return meta;
+  }
 
   function normalizeUrl(raw) {
     if (!raw) return "";
@@ -274,15 +293,33 @@
     return { kind: "unknown", mime: "" };
   }
 
-  function post(resources = [], drm = []) {
-    if (!resources?.length && !drm?.length) return;
-    window.postMessage({ source: "learnnote-page-hook", resources, drm }, "*");
+  function post(resources = [], drm = [], navigation = false) {
+    if (!navigation && !resources?.length && !drm?.length) return;
+    window.postMessage({
+      source: "learnnote-page-hook",
+      resources,
+      drm,
+      navigation,
+      page_url: currentPageUrl(),
+      page_identity: currentPageIdentity()
+    }, "*");
+  }
+
+  function resetForNavigation() {
+    pageEpoch += 1;
+    bufferedResources.length = 0;
+    drmSignals.length = 0;
+    blobSourceByUrl.clear();
+    blobUrlOrder.length = 0;
+    post([], [], true);
   }
 
   function emit(resources) {
     const deduped = [];
     const seen = new Set();
     for (const item of resources || []) {
+      const pageIdentity = item.page_identity || currentPageIdentity();
+      if (pageIdentity !== currentPageIdentity()) continue;
       const url = normalizeUrl(item.url);
       if (!url || seen.has(url) || /^image\//i.test(String(item.mime || ""))) continue;
       const kind = item.kind && item.kind !== "unknown"
@@ -323,6 +360,8 @@
         rendered_height: item.rendered_height ?? null,
         duration: item.duration ?? null,
         paused: item.paused ?? null,
+        page_url: item.page_url || currentPageUrl(),
+        page_identity: pageIdentity,
         time_stamp: Date.now()
       });
     }
@@ -374,6 +413,7 @@
       init_data_type: String(signal.init_data_type || ""),
       label: signal.label || "encrypted media",
       page_url: location.href,
+      page_identity: currentPageIdentity(),
       time_stamp: Date.now()
     };
     const signature = [normalized.source, normalized.key_system, normalized.init_data_type, normalized.label].join("|");
@@ -575,7 +615,9 @@
       initiator: response.url || url || "",
       headers,
       request_headers: requestHeaders,
-      request_body: requestBody
+      request_body: requestBody,
+      page_url: currentPageUrl(),
+      page_identity: currentPageIdentity()
     };
   }
 
@@ -606,7 +648,9 @@
       initiator: xhr.responseURL || url || "",
       headers,
       request_headers: xhr.__learnNoteRequestHeaders || {},
-      request_body: xhr.__learnNoteRequestBody || {}
+      request_body: xhr.__learnNoteRequestBody || {},
+      page_url: xhr.__learnNotePageUrl || currentPageUrl(),
+      page_identity: xhr.__learnNotePageIdentity || currentPageIdentity()
     };
   }
 
@@ -621,7 +665,9 @@
       initiator: item.initiator || meta.initiator || "",
       headers: { ...(item.headers || {}), ...(meta.headers || {}) },
       request_headers: { ...(item.request_headers || {}), ...(meta.request_headers || {}) },
-      request_body: { ...(item.request_body || {}), ...(meta.request_body || {}) }
+      request_body: { ...(item.request_body || {}), ...(meta.request_body || {}) },
+      page_url: item.page_url || meta.page_url || currentPageUrl(),
+      page_identity: item.page_identity || meta.page_identity || currentPageIdentity()
     };
   }
 
@@ -1448,9 +1494,9 @@
         continue;
       }
       if (typeof value === "string") {
-        resources.push(...collectMediaUrlsFromText(value.slice(0, MAX_TEXT_BYTES), "pageHookGlobal", `global ${name}`, "", seen));
+        resources.push(...collectMediaUrlsFromText(value.slice(0, MAX_TEXT_BYTES), "pageHookGlobal", `global ${name}`, "", seen, globalConfigMeta(name, value)));
       } else if (value && typeof value === "object") {
-        resources.push(...collectJsonMediaUrls(value, "pageHookGlobal", `global ${name}`, [name], null, [], seen));
+        resources.push(...collectJsonMediaUrls(value, "pageHookGlobal", `global ${name}`, [name], null, [], seen, new WeakSet(), globalConfigMeta(name, value)));
       }
       if (resources.length >= 60) break;
     }
@@ -1931,10 +1977,11 @@
     try {
       const seen = new Set();
       const label = `global ${name}`;
+      const meta = globalConfigMeta(name, value, true);
       if (typeof value === "string") {
-        emit(collectMediaUrlsFromText(value.slice(0, MAX_TEXT_BYTES), "pageHookGlobal", label, "", seen));
+        emit(collectMediaUrlsFromText(value.slice(0, MAX_TEXT_BYTES), "pageHookGlobal", label, "", seen, meta));
       } else if (value && typeof value === "object") {
-        emit(collectJsonMediaUrls(value, "pageHookGlobal", label, [name], null, [], seen));
+        emit(collectJsonMediaUrls(value, "pageHookGlobal", label, [name], null, [], seen, new WeakSet(), meta));
       }
     } catch {
       // Runtime player configs are best-effort hints only.
@@ -2001,12 +2048,12 @@
     }
   }
 
-  function inspectRealtimeMessageData(data, source, label, responseUrl = "") {
+  function inspectRealtimeMessageData(data, source, label, responseUrl = "", meta = {}) {
     try {
       if (typeof data !== "string") return;
       const text = data.slice(0, MAX_TEXT_BYTES);
       if (!text || (!MEDIA_HINT_RE.test(text) && !JSON_MEDIA_KEY_RE.test(text) && !ENCODED_MEDIA_URL_RE.test(text))) return;
-      extractUrlsFromText(text, source, label, "", responseUrl);
+      extractUrlsFromText(text, source, label, "", responseUrl, meta);
     } catch {
       // Realtime message sniffing is best-effort and must not affect playback.
     }
@@ -2017,11 +2064,12 @@
       const OriginalWebSocket = window.WebSocket;
       if (typeof OriginalWebSocket !== "function" || OriginalWebSocket.__learnNotePatched) return;
       function LearnNoteWebSocket(...args) {
+        const pageMeta = { page_url: currentPageUrl(), page_identity: currentPageIdentity() };
         const socket = new OriginalWebSocket(...args);
         const endpoint = normalizeUrl(args[0] || "");
         try {
           socket.addEventListener?.("message", event => {
-            inspectRealtimeMessageData(event?.data, "pageHookWebSocket", "websocket message", endpoint);
+            inspectRealtimeMessageData(event?.data, "pageHookWebSocket", "websocket message", endpoint, pageMeta);
           });
         } catch {
           // Some WebSocket wrappers do not expose EventTarget methods.
@@ -2046,11 +2094,12 @@
       const OriginalEventSource = window.EventSource;
       if (typeof OriginalEventSource !== "function" || OriginalEventSource.__learnNotePatched) return;
       function LearnNoteEventSource(...args) {
+        const pageMeta = { page_url: currentPageUrl(), page_identity: currentPageIdentity() };
         const source = new OriginalEventSource(...args);
         const endpoint = normalizeUrl(args[0] || "");
         try {
           source.addEventListener?.("message", event => {
-            inspectRealtimeMessageData(event?.data, "pageHookEventSource", "eventsource message", endpoint);
+            inspectRealtimeMessageData(event?.data, "pageHookEventSource", "eventsource message", endpoint, pageMeta);
           });
         } catch {
           // Some EventSource wrappers do not expose EventTarget methods.
@@ -2103,11 +2152,12 @@
     return applyResponseMeta(blobMeta(sourceUrl, mime, source, label), meta);
   }
 
-  function inspectCacheResponse(response, request, label) {
+  function inspectCacheResponse(response, request, label, pageMeta = {}) {
     if (!response || typeof response !== "object") return;
     const url = response.url || requestUrl(request);
     const mime = response.headers?.get?.("content-type") || "";
     const meta = fetchResponseMeta(response, url, normalizeRequestHeaderMap(request?.headers));
+    Object.assign(meta, pageMeta);
     rememberResponseMeta(response, meta);
     emit([applyResponseMeta({ url: responseSourceUrl(response, url), source: "pageHookCache", label, mime }, meta)]);
     try {
@@ -2129,12 +2179,16 @@
   if (typeof window.fetch === "function") {
     const originalFetch = window.fetch;
     window.fetch = async function (...args) {
+      const requestPageUrl = currentPageUrl();
+      const requestPageIdentity = currentPageIdentity();
       const method = fetchRequestMethod(args[0], args[1] || {});
       const requestBody = await fetchRequestBodyFromInput(method, args[0], args[1] || {});
       const response = await originalFetch.apply(this, args);
       const url = response.url || requestUrl(args[0]);
       const mime = response.headers?.get?.("content-type") || "";
       const meta = fetchResponseMeta(response, url, fetchRequestHeaders(args[0], args[1] || {}), method, requestBody);
+      meta.page_url = requestPageUrl;
+      meta.page_identity = requestPageIdentity;
       rememberResponseMeta(response, meta);
       emit([applyResponseMeta({ url, source: "pageHookRequest", label: "fetch", mime }, meta)]);
       try {
@@ -2286,9 +2340,10 @@
     if (typeof cache.match === "function") {
       const originalMatch = cache.match;
       cache.match = async function (request, ...rest) {
+        const pageMeta = { page_url: currentPageUrl(), page_identity: currentPageIdentity() };
         const response = await originalMatch.call(this, request, ...rest);
         try {
-          inspectCacheResponse(response, request, "cache match");
+          inspectCacheResponse(response, request, "cache match", pageMeta);
         } catch {
           // Cache reads must stay transparent.
         }
@@ -2298,9 +2353,10 @@
     if (typeof cache.matchAll === "function") {
       const originalMatchAll = cache.matchAll;
       cache.matchAll = async function (request, ...rest) {
+        const pageMeta = { page_url: currentPageUrl(), page_identity: currentPageIdentity() };
         const responses = await originalMatchAll.call(this, request, ...rest);
         try {
-          for (const response of responses || []) inspectCacheResponse(response, request, "cache matchAll");
+          for (const response of responses || []) inspectCacheResponse(response, request, "cache matchAll", pageMeta);
         } catch {
           // Cache reads must stay transparent.
         }
@@ -2354,9 +2410,10 @@
   if (window.caches?.match && !window.caches.__learnNoteMatchPatched) {
     const originalCachesMatch = window.caches.match;
     window.caches.match = async function (request, ...rest) {
+      const pageMeta = { page_url: currentPageUrl(), page_identity: currentPageIdentity() };
       const response = await originalCachesMatch.call(this, request, ...rest);
       try {
-        inspectCacheResponse(response, request, "cache storage match");
+        inspectCacheResponse(response, request, "cache storage match", pageMeta);
       } catch {
         // CacheStorage reads must stay transparent.
       }
@@ -2477,6 +2534,9 @@
     window.MediaSource.prototype.addSourceBuffer = function (...args) {
       const sourceBuffer = originalAddSourceBuffer.apply(this, args);
       try {
+        if (!mediaSourcePageIdentity.has(this)) {
+          mediaSourcePageIdentity.set(this, { page_url: currentPageUrl(), page_identity: currentPageIdentity() });
+        }
         sourceBufferMediaSource.set(sourceBuffer, this);
         sourceBufferMimeByObject.set(sourceBuffer, String(args[0] || ""));
       } catch {
@@ -2505,6 +2565,7 @@
       blob_url: blobUrl,
       playback_match: "blob-source",
       score: evidence.mse_append_detected_kind === "video" || evidence.mse_append_detected_kind === "fragment" ? 82 : evidence.mse_append_detected_kind === "audio" ? 40 : 72,
+      ...(mediaSourcePageIdentity.get(mediaSource) || {}),
       ...evidence
     }]);
   }
@@ -2552,6 +2613,8 @@
     XMLHttpRequest.prototype.open = function (method, url, ...rest) {
       this.__learnNoteUrl = url;
       this.__learnNoteMethod = method;
+      this.__learnNotePageUrl = currentPageUrl();
+      this.__learnNotePageIdentity = currentPageIdentity();
       this.__learnNoteRequestHeaders = {};
       return originalOpen.call(this, method, url, ...rest);
     };
@@ -2666,9 +2729,23 @@
   setTimeout(scanGlobalConfig, 2000);
   setTimeout(patchKnownPlayerLibraries, 3000);
 
+  if (window.history) {
+    for (const methodName of ["pushState", "replaceState"]) {
+      const original = window.history[methodName];
+      if (typeof original !== "function") continue;
+      window.history[methodName] = function (...args) {
+        const result = original.apply(this, args);
+        resetForNavigation();
+        return result;
+      };
+    }
+  }
+  window.addEventListener("popstate", resetForNavigation);
+  window.addEventListener("hashchange", resetForNavigation);
+
   window.addEventListener("message", event => {
     if (event.source !== window || event.data?.source !== "learnnote-content-ready") return;
     scanGlobalConfig();
-    post(bufferedResources, drmSignals);
+    post(bufferedResources, drmSignals, true);
   });
 })();

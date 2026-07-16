@@ -253,6 +253,14 @@ assert.match(stylesCss, /@media \(max-width: 900px\)[\s\S]*\.app-shell,[\s\S]*ma
 assert.match(stylesCss, /\.recovery-decision\s*\{/);
 assert.match(stylesCss, /\.recovery-decision-metrics\s*\{/);
 assert.match(stylesCss, /@media \(max-width: 900px\)[\s\S]*\.recovery-decision\s*\{[\s\S]*grid-template-columns:\s*1fr;/);
+assert.match(matureCss, /@media \(max-width: 680px\)[\s\S]*body\.settings-mode \.nav-rail[\s\S]*top:\s*auto !important;[\s\S]*height:\s*58px !important;/);
+assert.match(webCode, /function isActiveTask\(task\)[\s\S]*ACTIVE_TASK_STATUSES\.has/);
+assert.match(webCode, /const activeTasks = tasks\.filter\(isActiveTask\)/);
+assert.match(webCode, /if \(appSettings\.autoOpenNote[\s\S]*showAppView\("notes"\);[\s\S]*selectTask\(latest\.id\)/);
+assert.doesNotMatch(webCode, /task\.evidence_quality\?\.can_claim_video_content === false\) return;/);
+assert.match(webCode, /const response = await fetch\(apiUrl\(`\/api\/tasks\/\$\{encodeURIComponent\(taskId\)\}\/exports\/\$\{exportType\}`\)\)[\s\S]*if \(!response\.ok\)[\s\S]*await response\.blob\(\)/);
+assert.match(webCode, /if \(taskListLoadPromise\) return taskListLoadPromise/);
+assert.doesNotMatch(webCode, /catch \{\s*tasks = \[\];\s*selectedTaskId = null;/);
 assert.equal(elements.get("#browserBridgeStatus").classList.contains("capture-status-grid"), true);
 assert.match(elements.get("#browserBridgeStatus").innerHTML, /capture-status-chip bridge/);
 assert.match(elements.get("#browserBridgeStatus").innerHTML, /打开课程视频，再点击 LearnNote 扩展图标/);
