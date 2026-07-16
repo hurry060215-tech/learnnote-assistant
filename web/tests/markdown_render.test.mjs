@@ -325,8 +325,8 @@ assert.match(stylesCss, /\.workspace-panel \.source-route-rail\s*\{\s*display: n
 assert.match(stylesCss, /\.capture-flow\s*\{\s*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);/);
 assert.match(indexHtml, /id="toggleWorkspaceButton"/);
 assert.match(indexHtml, /styles\.css\?v=20260714-v0124/);
-assert.match(indexHtml, /app\.js\?v=20260716-v0126/);
-assert.match(indexHtml, /mature\.css\?v=20260716-v0126/);
+assert.match(indexHtml, /app\.js\?v=20260716-v0127/);
+assert.match(indexHtml, /mature\.css\?v=20260716-v0127/);
 assert.match(indexHtml, /id="sourceRouteRail"/);
 assert.match(indexHtml, /id="urlPreflightReport"/);
 assert.match(indexHtml, /href="#settingsView" data-app-view="settings" title="设置"/);

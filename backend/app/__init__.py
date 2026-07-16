@@ -1,6 +1,6 @@
 """LearnNote Assistant backend."""
 
-APP_VERSION = "0.1.26"
+APP_VERSION = "0.1.27"
 API_VERSION = 1
 UX_PROTOCOL_VERSION = 1
 TASK_SCHEMA_VERSION = 1
