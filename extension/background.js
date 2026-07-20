@@ -7,6 +7,10 @@ const PLAYBACK_ENDPOINT_RE = /m3u8|mpd|video|audio|media|subtitle|caption|stream
 const LOCAL_EXPORT_KIND_RE = /(?:(?:markdown|visual-windows|bundle|diagnostics|media|manifest|audit|subtitles|qa|resource-inventory|page-preflight-report)|clips\/[^/?#]+)/;
 const LOCAL_TASK_FILE_RE = new RegExp(`^https?:\\/\\/(?:127\\.0\\.0\\.1|localhost)(?::\\d+)?\\/api\\/tasks\\/[^/]+(?:\\/media|\\/exports\\/${LOCAL_EXPORT_KIND_RE.source})(?:[?#].*)?$`, "i");
 const LOCAL_EXPORT_RE = new RegExp(`^https?:\\/\\/(?:127\\.0\\.0\\.1|localhost)(?::\\d+)?\\/api\\/tasks\\/[^/]+\\/exports\\/${LOCAL_EXPORT_KIND_RE.source}(?:[?#].*)?$`, "i");
+const DEFAULT_BACKEND_URL = "http://127.0.0.1:8765";
+const EXTENSION_PROTOCOL_VERSION = 1;
+const BACKEND_HEARTBEAT_ALARM = "learnnote-backend-heartbeat";
+const BACKEND_HEARTBEAT_PERIOD_MINUTES = 0.5;
 const resourceByTab = new Map();
 const pageStateByTab = new Map();
 const requestHeadersByRequestId = new Map();
@@ -54,6 +58,62 @@ const REQUEST_HEADER_CANONICAL = {
   "x-requested-with": "X-Requested-With"
 };
 const PERSISTED_REQUEST_HEADER_DENYLIST = new Set(["authorization", "cookie", "proxy-authorization"]);
+
+async function storedBackendUrl() {
+  if (!chrome.storage?.local?.get) return DEFAULT_BACKEND_URL;
+  try {
+    const stored = await chrome.storage.local.get(["backendUrl"]);
+    const value = String(stored?.backendUrl || "").trim();
+    if (/^http:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?$/i.test(value)) return value;
+  } catch {
+    // Use the stable desktop default when extension storage is unavailable.
+  }
+  return DEFAULT_BACKEND_URL;
+}
+
+async function sendBackendHeartbeat(backendUrl) {
+  if (typeof fetch !== "function") return false;
+  const extensionVersion = String(chrome.runtime?.getManifest?.().version || "");
+  try {
+    const response = await fetch(`${backendUrl}/api/extension/heartbeat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        extension_version: extensionVersion,
+        protocol_version: EXTENSION_PROTOCOL_VERSION,
+        source: "background"
+      })
+    });
+    return response?.ok !== false;
+  } catch {
+    return false;
+  }
+}
+
+async function heartbeatInstalledClient() {
+  const preferred = await storedBackendUrl();
+  if (await sendBackendHeartbeat(preferred)) return true;
+  if (preferred !== DEFAULT_BACKEND_URL && await sendBackendHeartbeat(DEFAULT_BACKEND_URL)) {
+    await chrome.storage?.local?.set?.({ backendUrl: DEFAULT_BACKEND_URL });
+    return true;
+  }
+  return false;
+}
+
+function scheduleBackendHeartbeat() {
+  chrome.alarms?.create?.(BACKEND_HEARTBEAT_ALARM, {
+    delayInMinutes: 0.05,
+    periodInMinutes: BACKEND_HEARTBEAT_PERIOD_MINUTES
+  });
+  heartbeatInstalledClient().catch(() => false);
+}
+
+chrome.runtime?.onInstalled?.addListener?.(scheduleBackendHeartbeat);
+chrome.runtime?.onStartup?.addListener?.(scheduleBackendHeartbeat);
+chrome.alarms?.onAlarm?.addListener?.(alarm => {
+  if (alarm?.name === BACKEND_HEARTBEAT_ALARM) heartbeatInstalledClient().catch(() => false);
+});
+scheduleBackendHeartbeat();
 
 function backendErrorMessage(payload, fallback) {
   const detail = payload?.detail;

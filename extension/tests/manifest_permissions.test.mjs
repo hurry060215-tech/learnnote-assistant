@@ -12,6 +12,7 @@ assert.deepEqual(new Set(manifest.permissions), new Set([
   "webNavigation",
   "cookies",
   "storage",
+  "alarms",
   "sidePanel",
   "downloads"
 ]));

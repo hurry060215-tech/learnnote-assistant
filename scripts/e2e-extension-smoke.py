@@ -613,6 +613,20 @@ def main() -> None:
         cdp.call("Runtime.enable")
         print(f"PASS extension service worker: {service_worker.get('url')}")
 
+        heartbeat_deadline = time.time() + 10
+        heartbeat_health = {}
+        while time.time() < heartbeat_deadline:
+            heartbeat_health = request_json("GET", f"{backend}/health", timeout=3)
+            if heartbeat_health.get("extension_connected"):
+                break
+            time.sleep(0.25)
+        if not heartbeat_health.get("extension_connected"):
+            raise RuntimeError(f"Background extension heartbeat did not reach the backend: {heartbeat_health}")
+        print(
+            "PASS background extension heartbeat without opening Side Panel: "
+            f"version={heartbeat_health.get('extension_version')}"
+        )
+
         run_browser_checks(cdp, backend, samples)
         print(f"PASS real browser extension smoke: browser={browser} profile={profile_dir}")
     finally:

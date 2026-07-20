@@ -136,13 +136,34 @@ class DesktopLauncherTests(unittest.TestCase):
         with patch.object(desktop, "read_secret", return_value=""):
             self.assertFalse(desktop.configure_model_runtime())
 
-    def test_webview_arguments_use_software_rendering_and_optional_debug_port(self):
+    def test_webview_arguments_keep_hardware_media_decode_and_optional_debug_port(self):
         arguments = desktop.webview_browser_arguments().split()
-        self.assertIn("--disable-gpu", arguments)
+        self.assertNotIn("--disable-gpu", arguments)
         self.assertNotIn("--disable-gpu-compositing", arguments)
         self.assertFalse(any(item.startswith("--remote-debugging-port=") for item in arguments))
         debug_arguments = desktop.webview_browser_arguments(19223).split()
         self.assertIn("--remote-debugging-port=19223", debug_arguments)
+
+    def test_setup_browser_extension_opens_management_page_and_exact_folder(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / "data") as temp_dir:
+            root = Path(temp_dir)
+            extension = root / "extension"
+            extension.mkdir()
+            (extension / "manifest.json").write_text('{"version":"9.8.7"}', encoding="utf-8")
+            browser = root / "msedge.exe"
+            browser.write_bytes(b"")
+            api = desktop.DesktopApi(root / "data", app_root=root)
+            with (
+                patch.object(desktop, "supported_browser", return_value=(browser, "edge")),
+                patch.object(desktop.subprocess, "Popen") as popen,
+                patch.object(desktop.os, "startfile", create=True) as startfile,
+            ):
+                result = api.setup_browser_extension()
+            self.assertTrue(result["ok"])
+            self.assertEqual("9.8.7", result["version"])
+            popen.assert_called_once()
+            self.assertEqual([str(browser), "edge://extensions"], popen.call_args.args[0])
+            startfile.assert_called_once_with(extension.resolve())
 
     def test_webview_profile_stays_under_data_directory(self):
         with tempfile.TemporaryDirectory(dir=ROOT / "data") as temp_dir:
@@ -320,6 +341,10 @@ class DesktopLauncherTests(unittest.TestCase):
         self.assertIn("--collect-submodules fastapi", workflow)
         self.assertIn('--version-file "build/learnnote-version.txt"', workflow)
         self.assertIn("LearnNote-Setup-x64.exe", workflow)
+        self.assertNotIn('--add-data "backend;backend"', workflow)
+        self.assertNotIn('--add-data "web;web"', workflow)
+        self.assertNotIn("Copy-Item extension dist/LearnNote/extension -Recurse", workflow)
+        self.assertIn("audit-release-tree.py dist/LearnNote", workflow)
         self.assertNotIn('--add-data "extension;extension"', workflow)
         self.assertIn("LearnNote-Browser-Extension-v*.zip", workflow)
 

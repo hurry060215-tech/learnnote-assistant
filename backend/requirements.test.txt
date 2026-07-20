@@ -1,0 +1,2 @@
+-r requirements.desktop.txt
+httpx2>=2.7,<3

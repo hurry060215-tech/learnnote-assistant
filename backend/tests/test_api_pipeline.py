@@ -2097,6 +2097,33 @@ class LocalUploadValidationTests(unittest.TestCase):
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
+    def test_timestamped_transcript_can_export_generated_srt_and_bundle(self) -> None:
+        task = create_task("local", "Transcript subtitle export", "")
+        transcript = task_dir(task.id) / "transcript.json"
+        transcript.write_text(json.dumps({
+            "source": "faster-whisper",
+            "segments": [
+                {"start": 1.25, "end": 3.5, "text": "第一段转写"},
+                {"start": 4.0, "end": 6.0, "text": "第二段转写"},
+            ],
+            "full_text": "第一段转写 第二段转写",
+        }, ensure_ascii=False), encoding="utf-8")
+        try:
+            update_task(task.id, status="success", phase="completed", progress=100, transcript_path=str(transcript))
+            subtitle_export = self.client.get(f"/api/tasks/{task.id}/exports/subtitles")
+            self.assertEqual(200, subtitle_export.status_code)
+            self.assertIn("00:00:01,250 --> 00:00:03,500", subtitle_export.text)
+            self.assertIn("第一段转写", subtitle_export.text)
+
+            manifest = self.client.get(f"/api/tasks/{task.id}/exports/manifest").json()
+            self.assertEqual("subtitles/generated-transcript.srt", manifest["artifacts"]["subtitles"])
+            bundle = self.client.get(f"/api/tasks/{task.id}/exports/bundle")
+            with zipfile.ZipFile(io.BytesIO(bundle.content)) as archive:
+                self.assertIn("subtitles/generated-transcript.srt", archive.namelist())
+                self.assertIn("第二段转写", archive.read("subtitles/generated-transcript.srt").decode("utf-8"))
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
     @unittest.skipUnless(ffmpeg_bin(), "ffmpeg or ffprobe is required for local upload content validation")
     def test_local_upload_rejects_fake_video_before_task_creation(self) -> None:
         response = self.client.post(

@@ -211,13 +211,15 @@ def _md5(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _image_pixels(image: Image.Image):
+    if hasattr(image, "get_flattened_data"):
+        return image.get_flattened_data()
+    return image.getdata()
+
+
 def _average_hash(path: Path, size: int = 8) -> int:
     with Image.open(path) as image:
-        pixels = list(
-            image.convert("L")
-            .resize((size, size), Image.Resampling.LANCZOS)
-            .getdata()
-        )
+        pixels = list(_image_pixels(image.convert("L").resize((size, size), Image.Resampling.LANCZOS)))
     if not pixels:
         return 0
     average = sum(pixels) / len(pixels)
@@ -230,7 +232,7 @@ def _average_hash(path: Path, size: int = 8) -> int:
 
 def _mean_luma(path: Path) -> float:
     with Image.open(path) as image:
-        pixels = list(image.convert("L").resize((16, 16), Image.Resampling.BILINEAR).getdata())
+        pixels = list(_image_pixels(image.convert("L").resize((16, 16), Image.Resampling.BILINEAR)))
     if not pixels:
         return 0.0
     return sum(pixels) / len(pixels)

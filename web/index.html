@@ -165,6 +165,10 @@
                   <div><strong>桌面客户端</strong><small id="updateStatus">检查并安装 LearnNote 正式版本</small></div>
                   <div class="setting-inline-actions"><button id="checkUpdateButton" class="secondary action-button" type="button">检查更新</button><button id="installUpdateButton" class="primary action-button" type="button" hidden>下载并安装</button><button id="openReleaseButton" class="secondary action-button" type="button" hidden>版本说明</button></div>
                 </div>
+                <div id="nativeExtensionSettings" class="setting-row" hidden>
+                  <div><strong>浏览器扩展</strong><small id="nativeExtensionStatus">用于把当前播放页交给客户端</small></div>
+                  <button id="setupExtensionButton" class="secondary action-button" type="button">修复连接</button>
+                </div>
               </div>
             </section>
             <section class="settings-pane" data-settings-pane="privacy">
@@ -595,7 +599,7 @@
             <span class="onboarding-step-icon" aria-hidden="true">2</span>
             <div><strong>连接浏览器扩展</strong><small>用于读取当前播放页</small></div>
             <em id="onboardingExtensionStatus">等待连接</em>
-            <button id="onboardingExtensionButton" type="button">查看安装位置</button>
+            <button id="onboardingExtensionButton" type="button">安装或修复</button>
           </article>
           <article data-onboarding-step="model">
             <span class="onboarding-step-icon" aria-hidden="true">3</span>

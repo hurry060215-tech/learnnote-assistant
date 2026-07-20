@@ -366,6 +366,9 @@ const els = {
   saveCredentialButton: document.querySelector("#saveCredentialButton"),
   deleteCredentialButton: document.querySelector("#deleteCredentialButton"),
   nativeDesktopSettings: document.querySelector("#nativeDesktopSettings"),
+  nativeExtensionSettings: document.querySelector("#nativeExtensionSettings"),
+  nativeExtensionStatus: document.querySelector("#nativeExtensionStatus"),
+  setupExtensionButton: document.querySelector("#setupExtensionButton"),
   openDataFolderButton: document.querySelector("#openDataFolderButton"),
   dataFolderNativeActions: document.querySelector("#dataFolderNativeActions"),
   changeDataFolderButton: document.querySelector("#changeDataFolderButton"),
@@ -797,6 +800,30 @@ function extensionInstallPath(data = lastHealthData) {
   return root ? `${root}\\extension` : "D:\\Projects\\learnnote-assistant\\extension";
 }
 
+async function setupDesktopExtension(button = els.setupExtensionButton) {
+  const api = desktopApi();
+  if (button) button.disabled = true;
+  try {
+    if (api?.setup_browser_extension) {
+      const result = await api.setup_browser_extension();
+      const message = result?.message || (result?.ok ? "扩展安装目录已打开" : "无法打开扩展安装目录");
+      if (els.nativeExtensionStatus) els.nativeExtensionStatus.textContent = message;
+      if (els.onboardingExtensionStatus) els.onboardingExtensionStatus.textContent = result?.ok ? "等待浏览器确认" : "需要处理";
+      return result;
+    }
+    const path = extensionInstallPath();
+    await navigator.clipboard?.writeText?.(path);
+    if (els.nativeExtensionStatus) els.nativeExtensionStatus.textContent = `安装目录已复制：${path}`;
+    return { ok: true, path };
+  } catch (error) {
+    const message = error?.message || "没有打开扩展安装页";
+    if (els.nativeExtensionStatus) els.nativeExtensionStatus.textContent = message;
+    return { ok: false, message };
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
 function desktopApi() {
   return window.pywebview?.api || null;
 }
@@ -854,6 +881,7 @@ function initializeDesktopBridge() {
   const available = Boolean(desktopApi());
   if (els.nativeCredentialSettings) els.nativeCredentialSettings.hidden = !available;
   if (els.nativeDesktopSettings) els.nativeDesktopSettings.hidden = !available;
+  if (els.nativeExtensionSettings) els.nativeExtensionSettings.hidden = !available;
   if (els.dataFolderNativeActions) els.dataFolderNativeActions.hidden = !available;
   if (available) loadDesktopCredential();
 }
@@ -952,6 +980,11 @@ function updateSettingsStorageInfo(data = lastHealthData) {
       : data?.extension_connected
         ? `扩展 ${data.extension_version ? `v${data.extension_version}` : "已连接"} · 兼容`
         : "扩展尚未连接，不影响本地视频和链接任务";
+  }
+  if (els.nativeExtensionStatus) {
+    els.nativeExtensionStatus.textContent = data?.extension_connected
+      ? `已连接${data?.extension_version ? ` · v${data.extension_version}` : ""}`
+      : "尚未连接，可自动打开安装页完成修复";
   }
 }
 
@@ -5044,7 +5077,7 @@ function hasReusableSubtitle(task) {
 
 function hasExportableSubtitle(task) {
   const reuse = task?.reuse || {};
-  return Boolean(task?.subtitle_path || reuse.subtitle_available);
+  return Boolean(task?.subtitle_path || task?.transcript_path || reuse.subtitle_available || reuse.transcript_ready);
 }
 
 function hasExportableMedia(task) {
@@ -8469,13 +8502,7 @@ els.onboardingRetryButton?.addEventListener?.("click", async () => {
   }
 });
 els.onboardingExtensionButton?.addEventListener?.("click", async () => {
-  const path = extensionInstallPath();
-  try {
-    await navigator.clipboard?.writeText?.(path);
-    els.onboardingExtensionButton.textContent = "目录已复制";
-  } catch {
-    els.onboardingExtensionButton.textContent = path;
-  }
+  await setupDesktopExtension(els.onboardingExtensionButton);
 });
 els.onboardingModelButton?.addEventListener?.("click", () => {
   closeOnboarding(false);
@@ -8531,6 +8558,7 @@ els.noteVersionOverlay?.addEventListener?.("click", event => {
   if (event.target === els.noteVersionOverlay) closeNoteVersionDialog();
 });
 els.checkUpdateButton?.addEventListener?.("click", checkDesktopUpdate);
+els.setupExtensionButton?.addEventListener?.("click", () => setupDesktopExtension(els.setupExtensionButton));
 els.installUpdateButton?.addEventListener?.("click", installDesktopUpdate);
 els.openReleaseButton?.addEventListener?.("click", () => {
   if (pendingReleaseUrl) desktopApi()?.open_release?.(pendingReleaseUrl);

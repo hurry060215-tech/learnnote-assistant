@@ -177,12 +177,13 @@ class MediaPipelineTests(unittest.TestCase):
                 window_label_area = image.crop((4, 4, 118, 34))
                 blue_pixels = sum(
                     1
-                    for red, green, blue in window_label_area.getdata()
+                    for red, green, blue in (window_label_area.get_flattened_data() if hasattr(window_label_area, "get_flattened_data") else window_label_area.getdata())
                     if blue > red + 20 and blue > green + 10
                 )
                 self.assertGreater(blue_pixels, 20)
                 label_area = image.crop((4, 154, 92, 178))
-                dark_pixels = sum(1 for pixel in label_area.getdata() if sum(pixel[:3]) < 180)
+                label_pixels = label_area.get_flattened_data() if hasattr(label_area, "get_flattened_data") else label_area.getdata()
+                dark_pixels = sum(1 for pixel in label_pixels if sum(pixel[:3]) < 180)
                 self.assertGreater(dark_pixels, 20)
 
     def test_static_video_keeps_periodic_visual_coverage(self) -> None:

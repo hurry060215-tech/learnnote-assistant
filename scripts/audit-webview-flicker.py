@@ -92,6 +92,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Audit LearnNote WebView repaint stability through CDP.")
     parser.add_argument("--port", type=int, default=9223)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--playback-seconds", type=float, default=15.0)
+    parser.add_argument("--sample-interval", type=float, default=5.0)
+    parser.add_argument("--task-id", default="")
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
 
@@ -121,7 +124,45 @@ def main() -> int:
         click(client, '[data-app-view="workspace"]')
         time.sleep(0.25)
         click(client, '[data-app-view="notes"]')
+        if args.task_id:
+            selected = False
+            render_deadline = time.monotonic() + 15
+            while time.monotonic() < render_deadline and not selected:
+                selected = client.evaluate(
+                    """
+                    (async () => {
+                      const taskId = %s;
+                      if (typeof selectTask !== 'function' || typeof renderDetail !== 'function') return false;
+                      if (!Array.isArray(tasks)) return false;
+                      if (!tasks.some(task => task.id === taskId)) {
+                        const response = await fetch(apiUrl(`/api/tasks/${encodeURIComponent(taskId)}`));
+                        if (!response.ok) return false;
+                        const task = taskFromPayload(await response.json());
+                        if (!task?.id) return false;
+                        tasks = [task, ...tasks];
+                      }
+                      selectTask(taskId);
+                      showAppView('notes');
+                      renderTasks();
+                      await renderDetail();
+                      return selectedTaskId === taskId;
+                    })()
+                    """ % json.dumps(args.task_id)
+                )
+                if not selected:
+                    time.sleep(0.5)
+            if not selected:
+                raise RuntimeError(f"Task {args.task_id} could not be selected")
         navigation = capture_sequence(client, args.output, "navigation")
+
+        click(client, '[data-tab="slices"]')
+        video_deadline = time.monotonic() + 15
+        while time.monotonic() < video_deadline:
+            if client.evaluate("Boolean(document.querySelector('#detail video'))"):
+                break
+            time.sleep(0.5)
+        else:
+            raise RuntimeError("The visual timeline did not render a video player")
 
         video_before = client.evaluate(
             """
@@ -133,7 +174,6 @@ def main() -> int:
             })()
             """
         )
-        click(client, '[data-tab="slices"]')
         slices = capture_sequence(client, args.output, "slices")
         video_after = client.evaluate(
             """
@@ -162,45 +202,81 @@ def main() -> int:
             })()
             """
         )
-        playback_frames = [screenshot_metrics(client, args.output, "playback-start")]
-        time.sleep(1)
-        playback_frames.append(screenshot_metrics(client, args.output, "playback-1s"))
-        time.sleep(2.5)
-        playback_frames.append(screenshot_metrics(client, args.output, "playback-3.5s"))
-        playback_after_poll = client.evaluate(
+        playback_initial = client.evaluate(
             """
             (() => {
               const video = document.querySelector('#detail video');
-              if (!video) return null;
-              return {
-                currentTime: video.currentTime,
-                paused: video.paused,
-                sameNode: video.dataset.flickerAudit === 'same-node',
-                readyState: video.readyState,
-                src: video.currentSrc || video.src
-              };
+              return video ? { currentTime: video.currentTime, src: video.currentSrc || video.src } : null;
             })()
             """
         )
+        playback_frames = [screenshot_metrics(client, args.output, "playback-start")]
+        playback_samples = []
+        playback_started_at = time.monotonic()
+        next_sample = min(max(0.5, args.sample_interval), max(0.5, args.playback_seconds))
+        while True:
+            elapsed = time.monotonic() - playback_started_at
+            if elapsed >= args.playback_seconds:
+                break
+            sleep_for = min(next_sample - elapsed, args.playback_seconds - elapsed)
+            if sleep_for > 0:
+                time.sleep(sleep_for)
+            elapsed = time.monotonic() - playback_started_at
+            sample = client.evaluate(
+                """
+                (() => {
+                  const video = document.querySelector('#detail video');
+                  if (!video) return null;
+                  return {
+                    currentTime: video.currentTime,
+                    paused: video.paused,
+                    ended: video.ended,
+                    sameNode: video.dataset.flickerAudit === 'same-node',
+                    readyState: video.readyState,
+                    networkState: video.networkState,
+                    src: video.currentSrc || video.src
+                  };
+                })()
+                """
+            )
+            playback_samples.append({"elapsed": round(elapsed, 3), "video": sample})
+            playback_frames.append(screenshot_metrics(client, args.output, f"playback-{round(elapsed)}s"))
+            next_sample += max(0.5, args.sample_interval)
+        playback_after_poll = playback_samples[-1]["video"] if playback_samples else None
 
         all_frames = [baseline, *navigation, *slices, *playback_frames]
+        active_playback_frames = playback_frames[1:] or playback_frames
         playback_continuous = bool(
             playback_started
+            and playback_initial
             and playback_after_poll
             and playback_after_poll.get("sameNode")
-            and playback_after_poll.get("currentTime", 0) >= 2.5
-            and not playback_after_poll.get("paused")
+            and playback_after_poll.get("currentTime", 0) - playback_initial.get("currentTime", 0) >= max(2.5, args.playback_seconds * 0.7)
+            and playback_after_poll.get("readyState", 0) >= 2
+            and (not playback_after_poll.get("paused") or playback_after_poll.get("ended"))
+            and all(
+                sample.get("video")
+                and sample["video"].get("sameNode")
+                and sample["video"].get("readyState", 0) >= 2
+                and sample["video"].get("src") == playback_after_poll.get("src")
+                for sample in playback_samples
+            )
         )
         report = {
             "target_url": page.get("url"),
             "frames": all_frames,
             "max_black_ratio": max(item["black_ratio"] for item in all_frames),
             "max_dark_ratio": max(item["dark_ratio"] for item in all_frames),
+            "max_active_playback_black_ratio": max(item["black_ratio"] for item in active_playback_frames),
             "video_before": video_before,
             "video_after": video_after,
             "playback_after_poll": playback_after_poll,
+            "playback_initial": playback_initial,
+            "playback_seconds": args.playback_seconds,
+            "playback_samples": playback_samples,
             "playback_continuous": playback_continuous,
-            "passed": all(item["black_ratio"] < 0.01 for item in all_frames) and playback_continuous,
+            "blank_frame_detected": any(item["black_ratio"] >= 0.85 for item in active_playback_frames),
+            "passed": all(item["black_ratio"] < 0.85 for item in active_playback_frames) and playback_continuous,
         }
         (args.output / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
         print(json.dumps(report, ensure_ascii=False, indent=2))

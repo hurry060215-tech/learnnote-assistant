@@ -31,6 +31,24 @@ DESKTOP_MODEL_BASE_URL = "https://api.moonshot.cn/v1"
 DESKTOP_MODEL_NAME = "kimi-k2.6"
 
 
+def supported_browser() -> tuple[Path | None, str]:
+    candidates = [
+        (Path(os.environ.get("PROGRAMFILES", "")) / "Google/Chrome/Application/chrome.exe", "chrome"),
+        (Path(os.environ.get("LOCALAPPDATA", "")) / "Google/Chrome/Application/chrome.exe", "chrome"),
+        (Path(os.environ.get("PROGRAMFILES(X86)", "")) / "Google/Chrome/Application/chrome.exe", "chrome"),
+        (Path(os.environ.get("PROGRAMFILES(X86)", "")) / "Microsoft/Edge/Application/msedge.exe", "edge"),
+        (Path(os.environ.get("PROGRAMFILES", "")) / "Microsoft/Edge/Application/msedge.exe", "edge"),
+    ]
+    for candidate, name in candidates:
+        if candidate.is_file():
+            return candidate, name
+    for executable, name in (("chrome", "chrome"), ("msedge", "edge")):
+        resolved = shutil.which(executable)
+        if resolved:
+            return Path(resolved), name
+    return None, ""
+
+
 class DesktopApi:
     EXPORT_TYPES = {
         "markdown": ".md",
@@ -69,6 +87,39 @@ class DesktopApi:
     def open_data_folder(self) -> dict:
         os.startfile(self.data_dir)  # type: ignore[attr-defined]
         return {"ok": True}
+
+    def setup_browser_extension(self) -> dict:
+        extension_dir = (self.app_root / "extension").resolve()
+        manifest_path = extension_dir / "manifest.json"
+        if not manifest_path.is_file():
+            return {
+                "ok": False,
+                "code": "extension_files_missing",
+                "message": "客户端缺少浏览器扩展文件，请先更新或重新安装 LearnNote。",
+            }
+        browser_path, browser_name = supported_browser()
+        if browser_path is None:
+            return {
+                "ok": False,
+                "code": "browser_not_found",
+                "path": str(extension_dir),
+                "message": "没有找到 Chrome 或 Edge。请打开浏览器扩展管理页后加载此目录。",
+            }
+        management_url = "edge://extensions" if browser_name == "edge" else "chrome://extensions"
+        subprocess.Popen(
+            [str(browser_path), management_url],
+            cwd=str(self.app_root),
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        os.startfile(extension_dir)  # type: ignore[attr-defined]
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        return {
+            "ok": True,
+            "browser": browser_name,
+            "path": str(extension_dir),
+            "version": str(manifest.get("version") or ""),
+            "message": "扩展页和安装目录已打开。开启开发者模式，点击“加载已解压的扩展程序”，选择刚打开的 extension 文件夹。",
+        }
 
     def choose_data_directory(self, migrate: bool = True) -> dict:
         if self._window is None:
@@ -449,7 +500,6 @@ def webview_browser_arguments(remote_debug_port: int = 0) -> str:
     arguments = [
         "--disable-features=ElasticOverscroll",
         "--allow-file-access-from-files",
-        "--disable-gpu",
     ]
     if remote_debug_port:
         arguments.append(f"--remote-debugging-port={remote_debug_port}")

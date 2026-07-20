@@ -38,7 +38,10 @@ app = FastAPI(title="LearnNote Assistant", version=APP_VERSION)
 _extension_heartbeat_at = 0.0
 _extension_version = ""
 _extension_protocol_version = 0
-EXTENSION_HEARTBEAT_TTL_SECONDS = 20.0
+# Side Panel heartbeats arrive every 10 seconds. The MV3 background worker also
+# wakes on a 30-second alarm so the desktop can report a loaded extension even
+# when its panel is closed.
+EXTENSION_HEARTBEAT_TTL_SECONDS = 75.0
 TRUSTED_BROWSER_ORIGIN_RE = re.compile(r"^(chrome-extension://[a-z]+|moz-extension://[a-z0-9-]+|https?://(localhost|127\.0\.0\.1)(:\d+)?)$")
 WRITE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
@@ -296,6 +299,30 @@ def subtitles_filename(task_id: str, title: str, suffix: str = ".srt") -> str:
     stem = stem[:120] or f"learnnote-{task_id}"
     suffix = suffix if suffix.lower() in {".srt", ".vtt", ".ass", ".ssa"} else ".srt"
     return f"{stem}-subtitles{suffix}"
+
+
+def _srt_timestamp(seconds: float) -> str:
+    millis = round(max(0.0, float(seconds or 0)) * 1000)
+    hours, remainder = divmod(millis, 3_600_000)
+    minutes, remainder = divmod(remainder, 60_000)
+    secs, millis = divmod(remainder, 1000)
+    return f"{hours:02}:{minutes:02}:{secs:02},{millis:03}"
+
+
+def render_transcript_srt(transcript: dict) -> str:
+    blocks = []
+    for index, segment in enumerate(transcript.get("segments") or [], start=1):
+        if not isinstance(segment, dict):
+            continue
+        text = str(segment.get("text") or "").strip()
+        if not text:
+            continue
+        start = float(segment.get("start") or 0)
+        end = float(segment.get("end") or 0)
+        if end <= start:
+            end = start + 0.001
+        blocks.append(f"{index}\n{_srt_timestamp(start)} --> {_srt_timestamp(end)}\n{text}")
+    return "\n\n".join(blocks) + ("\n" if blocks else "")
 
 
 def qa_filename(task_id: str, title: str) -> str:
@@ -1048,7 +1075,13 @@ def render_bundle_manifest(task: TaskRecord, transcript: dict, visual_index: dic
         },
         "artifacts": {
             "note": "note.md" if task.note_path else "",
-            "subtitles": f"subtitles/{Path(task.subtitle_path).name}" if task.subtitle_path else "",
+            "subtitles": (
+                f"subtitles/{Path(task.subtitle_path).name}"
+                if task.subtitle_path
+                else "subtitles/generated-transcript.srt"
+                if task.transcript_path and transcript.get("segments")
+                else ""
+            ),
             "audit": "audit.md",
             "diagnostics": "diagnostics.md",
             "qa": "qa.md" if qa_history else "",
@@ -3774,6 +3807,7 @@ def api_export_bundle(task_id: str) -> Response:
     manifest = render_bundle_manifest(task, transcript, visual_index)
     resource_inventory = read_resource_inventory(task)
     page_preflight = read_page_preflight_report(task)
+    generated_subtitles = "" if task.subtitle_path else render_transcript_srt(transcript)
     has_artifact = bool(
         note.strip()
         or transcript.get("segments")
@@ -3808,6 +3842,8 @@ def api_export_bundle(task_id: str) -> Response:
             archive.writestr("page_preflight_report.json", json.dumps(page_preflight, ensure_ascii=False, indent=2))
         if task.subtitle_path:
             _write_file_if_exists(archive, task.subtitle_path, f"subtitles/{Path(task.subtitle_path).name}")
+        elif generated_subtitles:
+            archive.writestr("subtitles/generated-transcript.srt", generated_subtitles)
         if task.summary_diagnostics:
             archive.writestr("summary_diagnostics.json", json.dumps(task.summary_diagnostics, ensure_ascii=False, indent=2))
         for index, grid in enumerate(task.frame_grids):
@@ -3901,9 +3937,36 @@ def api_export_audit(task_id: str) -> PlainTextResponse:
 
 
 @app.get("/api/tasks/{task_id}/exports/subtitles")
-def api_export_subtitles(task_id: str) -> FileResponse:
-    task, path = _task_subtitle_file(task_id)
-    suffix = path.suffix.lower() or ".srt"
+def api_export_subtitles(task_id: str) -> Response:
+    try:
+        task = get_task(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Task not found") from exc
+    path = Path(task.subtitle_path) if task.subtitle_path else None
+    if path and path.is_file():
+        suffix = path.suffix.lower() or ".srt"
+        filename = subtitles_filename(task.id, task.title, suffix)
+        headers = {
+            "Content-Disposition": (
+                f'attachment; filename="learnnote-{task.id}-subtitles{suffix}"; '
+                f"filename*=UTF-8''{quote(filename)}"
+            )
+        }
+        media_type = {
+            ".vtt": "text/vtt",
+            ".srt": "application/x-subrip",
+            ".ass": "text/plain",
+            ".ssa": "text/plain",
+        }.get(suffix, "text/plain")
+        return FileResponse(path, media_type=media_type, headers=headers)
+    try:
+        transcript = read_transcript(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Subtitles not found") from exc
+    rendered = render_transcript_srt(transcript)
+    if not rendered:
+        raise HTTPException(status_code=404, detail="Subtitles not found")
+    suffix = ".srt"
     filename = subtitles_filename(task.id, task.title, suffix)
     headers = {
         "Content-Disposition": (
@@ -3911,13 +3974,7 @@ def api_export_subtitles(task_id: str) -> FileResponse:
             f"filename*=UTF-8''{quote(filename)}"
         )
     }
-    media_type = {
-        ".vtt": "text/vtt",
-        ".srt": "application/x-subrip",
-        ".ass": "text/plain",
-        ".ssa": "text/plain",
-    }.get(suffix, "text/plain")
-    return FileResponse(path, media_type=media_type, headers=headers)
+    return PlainTextResponse(rendered, media_type="application/x-subrip", headers=headers)
 
 
 @app.get("/api/tasks/{task_id}/exports/media")
