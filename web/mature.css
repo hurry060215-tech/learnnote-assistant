@@ -1,4 +1,4 @@
-/* LearnNote 0.1.31 product shell: source-first creation, evidence-first reading. */
+/* LearnNote 0.1.32 product shell: source-first creation, evidence-first reading. */
 :root {
   --mature-ink: #14222b;
   --mature-muted: #66747d;
@@ -670,4 +670,64 @@ body[data-app-view="notes"] .task-controls {
     width: auto;
     max-width: 180px;
   }
+}
+
+/* Destructive library actions stay visible without competing with primary study actions. */
+.queue-tools {
+  grid-template-columns: minmax(0, 1fr) 92px auto;
+}
+.danger-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid #dfb2b5;
+  border-radius: 5px;
+  background: #fff;
+  color: #9b3036;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.danger-button:hover {
+  border-color: #ca7f84;
+  background: #fff4f4;
+}
+.danger-button:focus-visible {
+  outline: 2px solid rgba(202, 127, 132, .3);
+  outline-offset: 2px;
+}
+.danger-button:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+.danger-button svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.setting-danger-row {
+  border: 1px solid #efd3d4;
+  background: #fffafa;
+}
+body[data-app-view="notes"] .queue-tools {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+@media (max-width: 680px) {
+  .queue-tools,
+  body[data-app-view="notes"] .queue-tools {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .queue-tools select { display: none; }
 }

@@ -359,6 +359,8 @@ const els = {
   settingStorageBreakdown: document.querySelector("#settingStorageBreakdown"),
   previewCleanupButton: document.querySelector("#previewCleanupButton"),
   applyCleanupButton: document.querySelector("#applyCleanupButton"),
+  deleteAllTasksButton: document.querySelector("#deleteAllTasksButton"),
+  deleteAllTasksSettingsButton: document.querySelector("#deleteAllTasksSettingsButton"),
   settingAppVersion: document.querySelector("#settingAppVersion"),
   settingCompatibility: document.querySelector("#settingCompatibility"),
   nativeCredentialSettings: document.querySelector("#nativeCredentialSettings"),
@@ -763,13 +765,20 @@ function setOnboardingCompleted(value = true) {
   }
 }
 
+function extensionVersionMatches(data = lastHealthData) {
+  const appVersion = String(data?.app_version || "").trim();
+  const extensionVersion = String(data?.extension_version || "").trim();
+  return !appVersion || !extensionVersion || appVersion === extensionVersion;
+}
+
 function updateOnboardingStatus(data = lastHealthData) {
   const backendReady = Boolean(data?.ok && data?.ffmpeg);
-  const extensionReady = Boolean(data?.extension_connected);
+  const extensionConnected = Boolean(data?.extension_connected);
+  const extensionReady = extensionConnected && extensionVersionMatches(data);
   const modelReady = Boolean(data?.llm_model_configured || els.llmApiKey?.value?.trim() || desktopCredentialKey);
   const states = {
     backend: [backendReady, els.onboardingBackendStatus, backendReady ? "已连接" : data?.ok ? "需要安装媒体组件" : "未连接"],
-    extension: [extensionReady, els.onboardingExtensionStatus, extensionReady ? "已连接" : "等待扩展连接"],
+    extension: [extensionReady, els.onboardingExtensionStatus, extensionReady ? "已连接" : extensionConnected ? "已连接旧版，需重新加载" : "等待扩展连接"],
     model: [modelReady, els.onboardingModelStatus, modelReady ? (data?.default_llm_provider || "已配置") : "可稍后配置"]
   };
   Object.entries(states).forEach(([name, [ready, node, label]]) => {
@@ -975,15 +984,20 @@ function updateSettingsStorageInfo(data = lastHealthData) {
   }
   if (els.settingAppVersion) els.settingAppVersion.textContent = data?.app_version ? `v${data.app_version}` : "-";
   if (els.settingCompatibility) {
+    const versionMatches = extensionVersionMatches(data);
     els.settingCompatibility.textContent = data?.extension_compatible === false
       ? "浏览器扩展与本地客户端版本不兼容，请更新后重试"
       : data?.extension_connected
-        ? `扩展 ${data.extension_version ? `v${data.extension_version}` : "已连接"} · 兼容`
+        ? versionMatches
+          ? `扩展 ${data.extension_version ? `v${data.extension_version}` : "已连接"} · 已同步`
+          : `扩展 v${data.extension_version || "旧版"} 已连接 · 请在 Chrome 扩展页重新加载`
         : "扩展尚未连接，不影响本地视频和链接任务";
   }
   if (els.nativeExtensionStatus) {
     els.nativeExtensionStatus.textContent = data?.extension_connected
-      ? `已连接${data?.extension_version ? ` · v${data.extension_version}` : ""}`
+      ? extensionVersionMatches(data)
+        ? `已连接${data?.extension_version ? ` · v${data.extension_version}` : ""}`
+        : `已连接旧版 v${data?.extension_version || "-"}，请重新加载`
       : "尚未连接，可自动打开安装页完成修复";
   }
 }
@@ -1082,6 +1096,43 @@ async function applyStorageCleanup() {
   } catch (error) {
     if (els.settingsSavedStatus) els.settingsSavedStatus.textContent = error?.message || "清理失败，请稍后重试";
     els.applyCleanupButton.disabled = false;
+  }
+}
+
+async function deleteAllTasksFromClient() {
+  const terminalTasks = tasks.filter(task => ["success", "failed", "cancelled"].includes(task.status));
+  const activeTasks = tasks.filter(task => ["queued", "running", "cancelling"].includes(task.status));
+  if (activeTasks.length) {
+    if (els.settingsSavedStatus) els.settingsSavedStatus.textContent = "仍有任务正在处理，请停止或等待完成后再删除全部。";
+    return;
+  }
+  if (!terminalTasks.length) {
+    if (els.settingsSavedStatus) els.settingsSavedStatus.textContent = "当前没有可删除的已结束任务。";
+    return;
+  }
+  const confirmed = typeof window.confirm !== "function" || window.confirm(
+    `确认删除全部 ${terminalTasks.length} 个已结束任务及其本地文件？此操作无法撤销。`
+  );
+  if (!confirmed) return;
+  for (const button of [els.deleteAllTasksButton, els.deleteAllTasksSettingsButton]) {
+    if (button) button.disabled = true;
+  }
+  try {
+    const result = await fetchJson(apiUrl("/api/tasks?confirm=delete_all_tasks"), { method: "DELETE" });
+    selectedTaskId = null;
+    lastDetailFingerprint = "__unrendered__";
+    clearTaskCaches();
+    assistantMessages = [];
+    historyVisibleLimit = HISTORY_PAGE_SIZE;
+    await Promise.all([loadTasks(), loadStorageSummary()]);
+    const count = Number(result.deleted_count || terminalTasks.length);
+    if (els.settingsSavedStatus) els.settingsSavedStatus.textContent = `已删除 ${count} 个任务，释放 ${fmtBytes(result.reclaimed_bytes || 0) || "0 B"}。`;
+  } catch (error) {
+    if (els.settingsSavedStatus) els.settingsSavedStatus.textContent = error?.message || "删除全部任务失败，请稍后重试。";
+  } finally {
+    for (const button of [els.deleteAllTasksButton, els.deleteAllTasksSettingsButton]) {
+      if (button) button.disabled = false;
+    }
   }
 }
 
@@ -4324,14 +4375,18 @@ function refreshEmptyWorkbenchReadiness() {
 function updateHealthVisionStatus(data = lastHealthData) {
   if (!data || !els.browserBridgeStatus) return;
   const connected = Boolean(data.extension_connected);
-  const readyText = connected
+  const currentVersion = extensionVersionMatches(data);
+  const ready = connected && currentVersion;
+  const readyText = ready
     ? "视频播放后，点击扩展侧栏里的“总结当前视频”"
-    : "打开课程视频，再点击 LearnNote 扩展图标";
+    : connected
+      ? "扩展已连接旧版，请在 Chrome 扩展页重新加载"
+      : "打开课程视频，再点击 LearnNote 扩展图标";
   els.browserBridgeStatus.dataset.mediaText = readyText;
   els.browserBridgeStatus.title = readyText;
   els.browserBridgeStatus.classList.add("capture-status-grid");
   els.browserBridgeStatus.innerHTML = `
-    <span class="capture-status-chip bridge ${connected ? "ready" : "pending"}"><b>${connected ? "可以开始" : "下一步"}</b>${escapeHtml(readyText)}</span>
+    <span class="capture-status-chip bridge ${ready ? "ready" : "pending"}"><b>${ready ? "可以开始" : "下一步"}</b>${escapeHtml(readyText)}</span>
   `;
 }
 
@@ -4369,12 +4424,17 @@ async function checkHealth() {
     const data = await fetchJson(apiUrl("/health"));
     document.body?.classList?.toggle("desktop-runtime", String(data.deployment_mode || "").toLowerCase() === "desktop");
     syncModelProviderPresets(data);
-    els.health.className = data.ffmpeg && data.extension_compatible !== false ? "health ok" : "health bad";
+    const extensionCurrent = !data.extension_connected || extensionVersionMatches(data);
+    els.health.className = data.ffmpeg && data.extension_compatible !== false && extensionCurrent ? "health ok" : "health bad";
     els.health.textContent = data.extension_compatible === false
       ? "扩展需要更新"
+      : !extensionCurrent
+        ? "扩展需要重新加载"
       : data.ffmpeg ? "本地服务已连接" : "媒体组件需要修复";
     els.health.title = data.extension_compatible === false
       ? "浏览器扩展与本地客户端版本不兼容；请在设置中查看版本信息。"
+      : !extensionCurrent
+        ? "客户端已更新，但 Chrome 仍在运行旧扩展；请在扩展管理页重新加载 LearnNote。"
       : "";
     if (els.browserBridgeStatus) {
       els.browserBridgeStatus.textContent = data.ffmpeg
@@ -8531,6 +8591,8 @@ els.saveSettingsButton?.addEventListener?.("click", saveAppSettingsFromUi);
 els.resetSettingsButton?.addEventListener?.("click", resetAppSettings);
 els.previewCleanupButton?.addEventListener?.("click", previewStorageCleanup);
 els.applyCleanupButton?.addEventListener?.("click", applyStorageCleanup);
+els.deleteAllTasksButton?.addEventListener?.("click", deleteAllTasksFromClient);
+els.deleteAllTasksSettingsButton?.addEventListener?.("click", deleteAllTasksFromClient);
 els.saveCredentialButton?.addEventListener?.("click", saveDesktopCredential);
 els.deleteCredentialButton?.addEventListener?.("click", deleteDesktopCredential);
 els.openDataFolderButton?.addEventListener?.("click", () => desktopApi()?.open_data_folder?.());

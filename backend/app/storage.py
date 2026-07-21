@@ -193,6 +193,25 @@ def delete_task(task_id: str) -> dict[str, Any]:
         return {"task_id": task_id, "reclaimed_bytes": task_bytes + upload_bytes}
 
 
+def delete_all_tasks() -> dict[str, Any]:
+    with _lock:
+        records = list_tasks()
+        active = [task for task in records if task.status in {"queued", "running", "cancelling"}]
+        if active:
+            raise RuntimeError("active_tasks")
+        deleted = []
+        reclaimed = 0
+        for record in records:
+            result = delete_task(record.id)
+            deleted.append(record.id)
+            reclaimed += int(result.get("reclaimed_bytes") or 0)
+        return {
+            "deleted_task_ids": deleted,
+            "deleted_count": len(deleted),
+            "reclaimed_bytes": reclaimed,
+        }
+
+
 def cleanup_tasks(retention_days: int = 30, keep_recent: int = 10, dry_run: bool = True) -> dict[str, Any]:
     cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
     terminal = [task for task in list_tasks() if task.status in {"success", "failed", "cancelled"}]

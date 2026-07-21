@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="/web/styles.css?v=20260714-v0124">
     <link rel="stylesheet" href="/web/workspace.css?v=20260714-v0124">
     <link rel="stylesheet" href="/web/product.css?v=20260714-v0124">
-    <link rel="stylesheet" href="/web/mature.css?v=20260716-v0130">
+    <link rel="stylesheet" href="/web/mature.css?v=20260721-v0132">
   </head>
   <body data-app-view="workspace">
     <header class="topbar">
@@ -159,6 +159,10 @@
                 <div class="setting-row">
                   <div><strong>清理旧任务</strong><small>保留最近 10 个任务，只清理 30 天前的已结束任务</small></div>
                   <div class="setting-inline-actions"><button id="previewCleanupButton" class="secondary action-button" type="button">查看可清理内容</button><button id="applyCleanupButton" class="secondary action-button" type="button" disabled>确认清理</button></div>
+                </div>
+                <div class="setting-row setting-danger-row">
+                  <div><strong>删除全部任务</strong><small>删除全部已结束任务及其独占本地文件；运行中的任务不会被删除</small></div>
+                  <button id="deleteAllTasksSettingsButton" class="danger-button" type="button">删除全部</button>
                 </div>
                 <div class="setting-row"><div><strong>客户端版本</strong><small id="settingCompatibility">正在检查扩展兼容性</small></div><span id="settingAppVersion" class="setting-value">-</span></div>
                 <div id="nativeDesktopSettings" class="setting-row" hidden>
@@ -498,6 +502,10 @@
             <option value="success">已完成</option>
             <option value="failed">失败</option>
           </select>
+          <button id="deleteAllTasksButton" class="danger-button queue-delete-all" type="button" title="删除全部已结束任务">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"/></svg>
+            <span>删除全部</span>
+          </button>
         </div>
         <div class="queue-stats">
           <span><b id="successCount">0</b>完成</span>
@@ -657,6 +665,6 @@
       </section>
     </div>
 
-    <script src="/web/app.js?v=20260716-v0130"></script>
+    <script src="/web/app.js?v=20260721-v0132"></script>
   </body>
 </html>

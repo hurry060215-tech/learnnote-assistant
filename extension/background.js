@@ -2136,7 +2136,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     if (message.type === "get-current-context") {
       const tab = await tabForMessage(message);
-      const page = await collectPageData(tab);
+      const rememberedPages = [...(pageStateByTab.get(tab.id)?.values() || [])];
+      const rememberedTop = rememberedPages.find(page => (page.frame_id ?? 0) === 0) || rememberedPages[0] || null;
+      const rememberedUrl = String(rememberedTop?.page_url || "").split("#")[0];
+      const tabUrl = String(tab.url || "").split("#")[0];
+      const canUseCached = Boolean(message.useCached && rememberedPages.length && rememberedUrl && rememberedUrl === tabUrl);
+      const page = canUseCached ? mergePageContexts(tab, rememberedPages) : await collectPageData(tab);
       const activePage = page;
       const captureLog = page.context_reset ? { resources: [], updated_at: 0 } : await loadCaptureLog(tab.id);
       const resources = mergeAndRankResources([

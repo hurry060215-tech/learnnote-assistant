@@ -66,6 +66,9 @@ const drmSignals = [];
 const drmByVideo = new WeakMap();
 const observedMutationRoots = new WeakSet();
 const DEEP_QUERY_LIMIT = 2500;
+const STATIC_SCAN_TTL_MS = 30000;
+const COURSE_TEXT_TTL_MS = 30000;
+const PERIODIC_SCAN_MS = 15000;
 const MAX_VISIBLE_SUBTITLE_HISTORY = 1200;
 const visibleSubtitleHistory = [];
 let pendingPushTimer = 0;
@@ -74,6 +77,10 @@ let lastSignature = "";
 let watchersStarted = false;
 let pageIdentity = `content:1:${String(location.href || "")}`;
 let performanceNavigationStart = 0;
+let cachedStableDomResources = [];
+let stableDomResourcesAt = 0;
+let cachedCourseText = "";
+let courseTextAt = 0;
 
 function resetPageResources(nextIdentity = "") {
   pageIdentity = nextIdentity || `content:${Date.now()}:${String(location.href || "")}`;
@@ -81,6 +88,10 @@ function resetPageResources(nextIdentity = "") {
   drmSignals.length = 0;
   visibleSubtitleHistory.length = 0;
   lastSignature = "";
+  cachedStableDomResources = [];
+  stableDomResourcesAt = 0;
+  cachedCourseText = "";
+  courseTextAt = 0;
   performanceNavigationStart = Number(performance.now?.() || 0);
 }
 
@@ -1676,7 +1687,11 @@ function bindVideoTextTracks(video) {
   }
 }
 
-function collectDomResources() {
+function collectStableDomResources(force = false) {
+  const now = Date.now();
+  if (!force && stableDomResourcesAt && now - stableDomResourcesAt < STATIC_SCAN_TTL_MS) {
+    return cachedStableDomResources.map(item => ({ ...item }));
+  }
   const resources = [
     ...collectUrlEmbeddedResources(location.href, "locationHint", "current page URL"),
     ...collectIframeEmbeddedResources(),
@@ -1684,19 +1699,6 @@ function collectDomResources() {
     ...collectDeclaredMediaResources(),
     ...collectInlineScriptResources()
   ];
-  const videos = collectVideos();
-  const main = pickMainVideo(videos);
-  for (const { video, index } of videos) {
-    const isMain = main?.video === video;
-    resources.push(resource(mediaElementUrl(video), "activeVideo", `当前视频 #${index + 1}`, video.type || "", video, isMain, isMain ? "exact-src" : ""));
-    for (const source of video.querySelectorAll("source")) {
-      resources.push(resource(mediaElementUrl(source), "dom", `video source #${index + 1}`, source.type || "", video, isMain, isMain ? "source-element" : ""));
-    }
-    for (const track of video.querySelectorAll("track")) {
-      const label = [track.kind || "subtitle", track.srclang || "", track.label || ""].filter(Boolean).join(" ");
-      resources.push(resource(mediaElementUrl(track), "subtitleTrack", label || `subtitle #${index + 1}`, "text/vtt", video, isMain));
-    }
-  }
   for (const source of deepQuerySelectorAll("source")) {
     resources.push(resource(mediaElementUrl(source), "dom", "source", source.type || ""));
   }
@@ -1712,7 +1714,28 @@ function collectDomResources() {
       resources.push(resource(iframe.src, "dom", "iframe"));
     }
   }
-  return resources.filter(Boolean);
+  cachedStableDomResources = resources.filter(Boolean).map(item => ({ ...item }));
+  stableDomResourcesAt = now;
+  return cachedStableDomResources.map(item => ({ ...item }));
+}
+
+function collectDomResources(forceFullScan = false) {
+  const stableResources = collectStableDomResources(forceFullScan);
+  const resources = [];
+  const videos = collectVideos();
+  const main = pickMainVideo(videos);
+  for (const { video, index } of videos) {
+    const isMain = main?.video === video;
+    resources.push(resource(mediaElementUrl(video), "activeVideo", `当前视频 #${index + 1}`, video.type || "", video, isMain, isMain ? "exact-src" : ""));
+    for (const source of video.querySelectorAll("source")) {
+      resources.push(resource(mediaElementUrl(source), "dom", `video source #${index + 1}`, source.type || "", video, isMain, isMain ? "source-element" : ""));
+    }
+    for (const track of video.querySelectorAll("track")) {
+      const label = [track.kind || "subtitle", track.srclang || "", track.label || ""].filter(Boolean).join(" ");
+      resources.push(resource(mediaElementUrl(track), "subtitleTrack", label || `subtitle #${index + 1}`, "text/vtt", video, isMain));
+    }
+  }
+  return [...resources, ...stableResources].filter(Boolean);
 }
 
 function collectPerformanceResources() {
@@ -1734,14 +1757,18 @@ function collectPerformanceResources() {
   return resources.filter(Boolean);
 }
 
-function collectCourseText() {
+function collectCourseText(force = false) {
+  const now = Date.now();
+  if (!force && courseTextAt && now - courseTextAt < COURSE_TEXT_TTL_MS) return cachedCourseText;
   const candidates = [
     ...deepQuerySelectorAll("h1,h2,h3,.course-title,.chapter-title,.ans-job-icon,.title,.name")
   ];
   const headings = candidates.map(el => el.textContent?.trim()).filter(Boolean).slice(0, 40).join("\n");
   const body = document.body?.innerText || "";
   const shadowText = collectShadowTexts();
-  return [headings, body, shadowText].filter(Boolean).join("\n\n").slice(0, 60000);
+  cachedCourseText = [headings, body, shadowText].filter(Boolean).join("\n\n").slice(0, 60000);
+  courseTextAt = now;
+  return cachedCourseText;
 }
 
 function mergePageResource(previous, incoming) {
@@ -1779,8 +1806,8 @@ function mergePageResource(previous, incoming) {
   };
 }
 
-function collectPageData() {
-  const all = [...collectDomResources(), ...collectPerformanceResources(), ...collectHookResources()];
+function collectPageData(forceFullScan = false) {
+  const all = [...collectDomResources(forceFullScan), ...collectPerformanceResources(), ...collectHookResources()];
   const byUrl = new Map();
   for (const item of all) {
     byUrl.set(item.url, mergePageResource(byUrl.get(item.url), item));
@@ -1791,7 +1818,7 @@ function collectPageData() {
   return {
     title: document.title,
     page_url: location.href,
-    page_text: collectCourseText(),
+    page_text: collectCourseText(forceFullScan),
     active_video: active,
     browser_subtitles: browserSubtitles,
     drm_detected: Boolean(active?.drm_detected || drm.length),
@@ -1816,7 +1843,7 @@ function pageSignature(data) {
     location.href,
     active.src || "",
     active.src_object ? `srcObject:${active.src_object_type || "MediaStream"}:${active.src_object_video_tracks || 0}:${active.src_object_audio_tracks || 0}` : "",
-    Math.floor(active.current_time || 0),
+    Math.floor((active.current_time || 0) / 15),
     active.paused ? "paused" : "playing",
     active.visibility || "unknown",
     Math.round(active.visible_area || 0),
@@ -1828,8 +1855,8 @@ function pageSignature(data) {
   ].join("|");
 }
 
-function pushDetectedMedia(force = false) {
-  const data = collectPageData();
+function pushDetectedMedia(force = false, forceFullScan = false) {
+  const data = collectPageData(forceFullScan);
   if (!data.resources.length && !data.active_video && !data.drm_detected) return;
   const signature = pageSignature(data);
   if (!force && signature === lastSignature) return;
@@ -1887,7 +1914,7 @@ function observeRoot(observer, root) {
       childList: true,
       subtree: true,
       attributes: true,
-      characterData: true,
+      characterData: false,
       attributeFilter: [...STATIC_MEDIA_ATTRS, "currentSrc", "type", "poster", "crossorigin"]
     });
     observedMutationRoots.add(root);
@@ -1902,12 +1929,19 @@ function observeOpenShadowRoots(observer) {
   }
 }
 
+function observeAddedShadowRoots(observer, node) {
+  if (!node || node.nodeType !== Node.ELEMENT_NODE) return;
+  if (node.shadowRoot) observeRoot(observer, node.shadowRoot);
+  for (const host of safeQueryAll(node, "*")) {
+    if (host?.shadowRoot) observeRoot(observer, host.shadowRoot);
+  }
+}
+
 function installMutationObserver() {
   if (!document.documentElement) return;
   const observer = new MutationObserver(mutations => {
     let relevant = false;
     let subtitleRelevant = false;
-    observeOpenShadowRoots(observer);
     for (const mutation of mutations) {
       if (mutation.type === "attributes") {
         const target = mutation.target;
@@ -1918,6 +1952,7 @@ function installMutationObserver() {
         subtitleRelevant = true;
       }
       for (const node of mutation.addedNodes || []) {
+        observeAddedShadowRoots(observer, node);
         if (isMediaNode(node)) {
           relevant = true;
         }
@@ -1927,8 +1962,12 @@ function installMutationObserver() {
       }
     }
     if (!relevant && !subtitleRelevant) return;
-    if (relevant) bindVideos();
-    schedulePush(subtitleRelevant ? 160 : 250, true);
+    if (relevant) {
+      stableDomResourcesAt = 0;
+      bindVideos();
+    }
+    if (subtitleRelevant) courseTextAt = 0;
+    schedulePush(subtitleRelevant ? 300 : 500);
   });
   observeRoot(observer, document.documentElement);
   observeOpenShadowRoots(observer);
@@ -1953,7 +1992,7 @@ function installPerformanceObserver() {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type !== "collect-page-data") return;
   bindVideos();
-  sendResponse(collectPageData());
+  sendResponse(collectPageData(true));
 });
 
 function startWatchers() {
@@ -1962,11 +2001,12 @@ function startWatchers() {
   bindVideos();
   installMutationObserver();
   installPerformanceObserver();
-  setTimeout(() => pushDetectedMedia(true), 800);
+  setTimeout(() => pushDetectedMedia(true, true), 800);
   setInterval(() => {
+    if (document.hidden) return;
     bindVideos();
     schedulePush(400);
-  }, 5000);
+  }, PERIODIC_SCAN_MS);
 }
 
 window.addEventListener("popstate", () => {

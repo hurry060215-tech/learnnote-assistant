@@ -19,6 +19,8 @@ const makeElement = () => ({
 });
 
 const documentStub = {
+  hidden: false,
+  addEventListener() {},
   querySelector(selector) {
     if (!elements.has(selector)) elements.set(selector, makeElement());
     return elements.get(selector);
@@ -116,6 +118,7 @@ vm.runInContext(sidepanelCode, context);
 
 await new Promise(resolve => setTimeout(resolve, 0));
 assert.equal(collectCalls, 1);
+assert.equal(sentMessages[0].useCached, false);
 assert.equal(typeof onMessageListener, "function");
 assert.equal(context.shouldAcceptContextUpdate({ type: "current-context-updated" }), true);
 
@@ -129,6 +132,7 @@ await new Promise(resolve => setTimeout(resolve, 0));
 
 assert.equal(collectCalls, 2);
 assert.equal(sentMessages[1].targetTabId, 99);
+assert.equal(sentMessages[1].useCached, true);
 assert.equal(elements.get("#resourceCount").textContent, "1");
 assert.match(elements.get("#taskMessage").textContent, /当前标签页/);
 assert.equal(elements.get("#pageIdentityLabel").textContent, "正在播放的视频");
@@ -145,8 +149,13 @@ assert.equal(collectCalls, 2);
 
 onMessageListener({ type: "current-context-updated", tabId: 99, reason: "media" });
 await new Promise(resolve => setTimeout(resolve, 0));
+assert.equal(collectCalls, 2, "expected rapid passive updates to be coalesced");
+vm.runInContext("lastPassiveContextRefreshAt = 0", context);
+onMessageListener({ type: "current-context-updated", tabId: 99, reason: "media" });
+await new Promise(resolve => setTimeout(resolve, 0));
 assert.equal(collectCalls, 3);
 assert.equal(sentMessages.at(-1).targetTabId, 99);
+assert.equal(sentMessages.at(-1).useCached, true);
 assert.match(elements.get("#taskMessage").textContent, /刷新候选资源/);
 assert.equal(vm.runInContext("resourceSelectionPinned", context), false, "expected a changed playback session to release the previous resource pin");
 assert.equal(vm.runInContext("currentPlaybackSessionId", context), "session-99-3");

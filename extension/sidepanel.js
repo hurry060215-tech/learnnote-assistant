@@ -213,6 +213,8 @@ const CRITICAL_REQUEST_TIMEOUT_MS = 15000;
 const POLL_FETCH_TIMEOUT_MS = 8000;
 const POLL_RETRY_BASE_MS = 2500;
 const POLL_RETRY_MAX_MS = 20000;
+const PASSIVE_CONTEXT_REFRESH_MIN_MS = 5000;
+const HEALTH_REFRESH_MS = 15000;
 
 let backendUrl = DEFAULT_BACKEND;
 let page = null;
@@ -235,6 +237,7 @@ let preflightResultsByUrl = new Map();
 let lastPagePreflightReport = null;
 let cookieDiagnostic = { status: "idle", summary: null, error: "", checked_at: 0 };
 let contextRefreshTimer = 0;
+let lastPassiveContextRefreshAt = 0;
 let isCollectingContext = false;
 let pendingContextRefresh = false;
 let currentTabId = null;
@@ -5257,15 +5260,18 @@ async function health() {
 
 function scheduleContextRefresh(reason = "media", delay = 350) {
   if (!HAS_EXTENSION_API) return;
+  const now = Date.now();
+  if (reason !== "tab-activated" && reason !== "pending" && now - lastPassiveContextRefreshAt < PASSIVE_CONTEXT_REFRESH_MIN_MS) return;
   if (contextRefreshTimer) clearTimeout(contextRefreshTimer);
   contextRefreshTimer = setTimeout(() => {
     contextRefreshTimer = 0;
+    lastPassiveContextRefreshAt = Date.now();
     if (!currentTaskId && reason !== "pending") {
       els.taskMessage.textContent = reason === "tab-activated"
         ? "已切换到当前标签页，正在读取播放上下文..."
         : "检测到当前页媒体变化，正在刷新候选资源...";
     }
-    collect();
+    collect(false);
   }, delay);
 }
 
@@ -5296,7 +5302,7 @@ function resetContextForTab(tabId = null) {
   cookieDiagnostic = { status: "idle", summary: null, error: "", checked_at: 0 };
 }
 
-async function collectContextNow() {
+async function collectContextNow(forceRefresh = true) {
   const requestGeneration = ++contextGeneration;
   const requestedTabId = currentTabId;
   els.pageTitle.textContent = "读取中...";
@@ -5317,7 +5323,8 @@ async function collectContextNow() {
   }
   const response = await chrome.runtime.sendMessage({
     type: "get-current-context",
-    targetTabId: requestedTabId
+    targetTabId: requestedTabId,
+    useCached: !forceRefresh
   });
   if (requestGeneration !== contextGeneration) return false;
   if (response.error) {
@@ -5367,7 +5374,7 @@ async function collectContextNow() {
   return true;
 }
 
-async function collect() {
+async function collect(forceRefresh = true) {
   if (isCollectingContext) {
     pendingContextRefresh = true;
     return false;
@@ -5375,7 +5382,7 @@ async function collect() {
   isCollectingContext = true;
   let ok = false;
   try {
-    ok = await collectContextNow();
+    ok = await collectContextNow(forceRefresh);
   } finally {
     isCollectingContext = false;
     if (pendingContextRefresh) {
@@ -8825,5 +8832,10 @@ renderPanelMode();
 loadSettings().then(async () => {
   await Promise.all([health(), collect(), loadTaskHistory(), initializeFirstRunCard()]);
   await consumePendingSidePanelIntent();
-  if (typeof setInterval === "function") setInterval(health, 10000);
+  if (typeof setInterval === "function") setInterval(health, HEALTH_REFRESH_MS);
+});
+
+window.addEventListener?.("focus", () => health());
+document.addEventListener?.("visibilitychange", () => {
+  if (!document.hidden) health();
 });

@@ -29,7 +29,7 @@ from .models import CurrentPageTaskRequest, MediaPreflightRequest, MediaPrefligh
 from .processor import browser_subtitle_text_is_player_ui, enrich_resource_candidates_with_active_video, process_current_page_task, process_local_video_task, read_note, read_transcript, read_visual_index
 from .runtime import ffmpeg_bin, ffprobe_bin
 from .source_input import SourceInputError, clean_task_title, normalize_source_input
-from .storage import atomic_write_text, cleanup_tasks, create_task, delete_task, get_task, list_tasks, read_json, request_task_cancel, storage_summary, task_dir, update_task, write_json
+from .storage import atomic_write_text, cleanup_tasks, create_task, delete_all_tasks, delete_task, get_task, list_tasks, read_json, request_task_cancel, storage_summary, task_dir, update_task, write_json
 from .summarizer import chat_completion_provider_kwargs, llm_base_host, llm_model_supports_vision, llm_provider_name, visual_window_review_question_lines
 
 ensure_dirs()
@@ -3581,6 +3581,24 @@ def api_storage_summary() -> dict:
 @app.post("/api/storage/cleanup")
 def api_storage_cleanup(request: StorageCleanupRequest) -> dict:
     return cleanup_tasks(request.retention_days, request.keep_recent, request.dry_run)
+
+
+@app.delete("/api/tasks")
+def api_delete_all_tasks(confirm: str = "") -> dict:
+    if confirm != "delete_all_tasks":
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "confirmation_required", "message": "请先确认删除全部任务。"},
+        )
+    try:
+        return delete_all_tasks()
+    except RuntimeError as exc:
+        if str(exc) == "active_tasks":
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "tasks_still_running", "message": "仍有任务正在处理，请停止或等待完成后再删除全部。"},
+            ) from exc
+        raise
 
 
 @app.post("/api/tasks/{task_id}/cancel")

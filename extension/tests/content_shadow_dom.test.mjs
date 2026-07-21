@@ -147,6 +147,7 @@ let messageListener = null;
 let windowMessageListener = null;
 const observedRoots = [];
 const observeOptions = [];
+const intervalDelays = [];
 const context = {
   console,
   URL,
@@ -201,7 +202,8 @@ const context = {
     return 0;
   },
   clearTimeout() {},
-  setInterval() {
+  setInterval(_callback, delay) {
+    intervalDelays.push(delay);
     return 0;
   }
 };
@@ -288,4 +290,5 @@ assert.equal(extensionless.request_headers["Content-Type"], "application/json");
 assert.equal(extensionless.request_body.content, "{\"lesson\":\"shadow\"}");
 assert.match(response.page_text, /Shadow lesson title/);
 assert.ok(observedRoots.includes(shadowRoot), "expected open shadow roots to be observed for later media mutations");
-assert.ok(observeOptions.some(options => options?.characterData), "expected subtitle DOM text changes to refresh context");
+assert.ok(observeOptions.every(options => options?.characterData === false), "expected broad character-data observation to stay disabled");
+assert.deepEqual(intervalDelays, [15000], "expected lightweight periodic refresh instead of a five-second full scan");

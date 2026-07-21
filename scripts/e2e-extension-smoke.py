@@ -613,6 +613,15 @@ def main() -> None:
         cdp.call("Runtime.enable")
         print(f"PASS extension service worker: {service_worker.get('url')}")
 
+        heartbeat_setup = eval_service_worker(cdp, f"""
+async () => {{
+  await chrome.storage.local.set({{ backendUrl: {json.dumps(backend)} }});
+  return {{ heartbeat: await heartbeatInstalledClient() }};
+}}
+""")
+        if not heartbeat_setup.get("heartbeat"):
+            raise RuntimeError(f"Extension could not reach the isolated test backend: {heartbeat_setup}")
+
         heartbeat_deadline = time.time() + 10
         heartbeat_health = {}
         while time.time() < heartbeat_deadline:

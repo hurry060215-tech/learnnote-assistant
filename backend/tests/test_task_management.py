@@ -92,6 +92,36 @@ class TaskManagementApiTests(unittest.TestCase):
         with patch("app.storage.os.scandir", side_effect=FileNotFoundError("removed during scan")):
             self.assertEqual(_directory_size(self.paths["TASK_DIR"]), 0)
 
+    def test_delete_all_tasks_requires_confirmation_and_rejects_active_work(self) -> None:
+        finished = create_task("local", "Finished")
+        update_task(finished.id, status="success", phase="completed", progress=100)
+        active = create_task("local", "Active")
+        update_task(active.id, status="running", phase="transcribing")
+
+        missing_confirmation = self.client.delete("/api/tasks")
+        self.assertEqual(missing_confirmation.status_code, 400)
+
+        blocked = self.client.delete("/api/tasks?confirm=delete_all_tasks")
+        self.assertEqual(blocked.status_code, 409)
+        self.assertIsNotNone(get_task(finished.id))
+        self.assertIsNotNone(get_task(active.id))
+
+    def test_delete_all_tasks_removes_terminal_records_and_artifacts(self) -> None:
+        records = []
+        for index, status in enumerate(("success", "failed", "cancelled")):
+            record = create_task("local", f"Finished {index}")
+            update_task(record.id, status=status, phase="completed" if status == "success" else status)
+            artifact = self.paths["TASK_DIR"] / record.id / "artifact.bin"
+            artifact.write_bytes(b"12345")
+            records.append(record)
+
+        deleted = self.client.delete("/api/tasks?confirm=delete_all_tasks")
+        self.assertEqual(deleted.status_code, 200)
+        self.assertEqual(deleted.json()["deleted_count"], 3)
+        self.assertGreaterEqual(deleted.json()["reclaimed_bytes"], 15)
+        for record in records:
+            self.assertFalse((self.paths["TASK_DIR"] / record.id).exists())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -172,9 +172,9 @@ const sidepanelCss = await readFile(new URL("../sidepanel.css", import.meta.url)
 vm.runInContext(sidepanelCode, context);
 
 await new Promise(resolve => setTimeout(resolve, 0));
-assert.match(sidepanelHtml, /sidepanel\.css\?v=20260715-bridge/);
+assert.match(sidepanelHtml, /sidepanel\.css\?v=20260721-v0132/);
 assert.match(sidepanelHtml, /<body data-ui="learnnote-sidepanel-v2" data-source-mode="summarize">/);
-assert.match(sidepanelHtml, /sidepanel\.js\?v=20260715-bridge/);
+assert.match(sidepanelHtml, /sidepanel\.js\?v=20260721-v0132/);
 assert.doesNotMatch(sidepanelHtml, /class="capture-cockpit"/);
 assert.match(sidepanelHtml, /class="learning-goal-control"/);
 assert.match(sidepanelHtml, /自动整理/);
