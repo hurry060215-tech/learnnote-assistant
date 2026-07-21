@@ -274,6 +274,14 @@ function isStaleContextError(error) {
   return error?.code === "stale_context";
 }
 
+function setHandoffStatus(message = "", state = "info") {
+  if (!els.handoffStatus) return;
+  const text = String(message || "").trim();
+  els.handoffStatus.textContent = text;
+  els.handoffStatus.dataset.state = state;
+  els.handoffStatus.hidden = !text;
+}
+
 async function withTimeout(promise, timeoutMs = CRITICAL_REQUEST_TIMEOUT_MS, label = "请求") {
   const pending = Promise.resolve(promise);
   await Promise.resolve();
@@ -367,6 +375,7 @@ const els = {
   progressBar: document.querySelector("#progressBar"),
   taskPhase: document.querySelector("#taskPhase"),
   taskMessage: document.querySelector("#taskMessage"),
+  handoffStatus: document.querySelector("#handoffStatus"),
   refreshHistoryButton: document.querySelector("#refreshHistoryButton"),
   taskHistory: document.querySelector("#taskHistory"),
   resultTabs: document.querySelectorAll(".result-tab"),
@@ -5717,38 +5726,46 @@ async function preflightBestResource(mode = "video", snapshot = captureContextSn
 }
 
 async function startTask(mode = "video") {
+  const report = (message, state = "info") => {
+    els.taskMessage.textContent = message;
+    setHandoffStatus(message, state);
+  };
   if (!HAS_EXTENSION_API) {
-    els.taskMessage.textContent = "请在 Chrome/Edge 扩展 Side Panel 中读取当前页视频。";
+    report("请在 Chrome/Edge 扩展 Side Panel 中读取当前页视频。", "error");
     return;
   }
   els.summarizeButton.disabled = true;
+  els.summarizeButton.setAttribute?.("aria-busy", "true");
   if (els.downloadOnlyButton) els.downloadOnlyButton.disabled = true;
   if (els.textButton) els.textButton.disabled = true;
   try {
     const clientReady = clientConnectionState === "connected" || await health();
     if (!clientReady) {
-      els.taskMessage.textContent = lastConnectionError === "timeout"
+      report(lastConnectionError === "timeout"
         ? "连接 LearnNote 客户端超时。请确认客户端正在运行且未被防火墙拦截，然后重试。"
-        : "LearnNote 客户端尚未启动。请先打开客户端，再重新发送当前页。";
+        : "LearnNote 客户端尚未启动。请先打开客户端，再重新发送当前页。", "error");
       return;
     }
-    els.taskMessage.textContent = isMediaTaskMode(mode) ? "正在刷新当前播放页和媒体候选..." : "正在刷新当前页面文本...";
+    report(isMediaTaskMode(mode) ? "正在发送当前视频到 LearnNote..." : "正在发送当前页面文字到 LearnNote...");
+    const refreshAlreadyRunning = isCollectingContext;
     const refreshed = await collect();
-    if (!refreshed || !page) {
-      els.taskMessage.textContent = "刷新当前页面失败，无法确认最新播放资源；请重新打开页面或刷新后再试。";
+    // Passive media refreshes can overlap an explicit click. The already-rendered
+    // context is valid input and must not make the primary action silently abort.
+    if (!refreshed && (!page || !refreshAlreadyRunning)) {
+      report("刷新当前页面失败，暂时无法确认最新播放内容。请刷新视频页后重试。", "error");
       return;
     }
     const mediaCandidateReady = await waitForMediaCandidateBeforeStart(mode);
     const operationContext = captureContextSnapshot();
     if (isMediaTaskMode(mode) && !mediaCandidateReady) {
       if (!canResolveCurrentPageWithoutMediaEvidence(mode)) {
-        els.taskMessage.textContent = mode === "download_only"
+        report(mode === "download_only"
           ? "还没有读取到可下载的视频资源；请在客户端改用视频链接或本地视频。"
-          : missingCurrentVideoEvidenceMessage();
+          : missingCurrentVideoEvidenceMessage(), "error");
         renderContext();
         return;
       }
-      els.taskMessage.textContent = "当前页未暴露直链，正在交给客户端按视频页面解析。";
+      report("当前页未暴露直链，正在交给客户端按视频页面解析。");
     }
     const candidates = preflightCandidatesForStart(mode);
     if (candidates.length) {
@@ -5762,11 +5779,11 @@ async function startTask(mode = "video") {
       if (!checked || pagePreflightHasUnprobedCandidates(checked, candidates)) checked = await preflightBestResource(mode, operationContext);
       if (!checked?.downloadable) {
         if (!canAttemptBackendPageFallback(mode)) {
-          els.taskMessage.textContent = preflightBlockMessage(checked);
+          report(preflightBlockMessage(checked), "error");
           renderContext();
           return;
         }
-        els.taskMessage.textContent = preflightFallbackStartMessage(checked);
+        report(preflightFallbackStartMessage(checked));
       }
     }
     const taskOptions = await readClientTaskOptions();
@@ -5788,13 +5805,14 @@ async function startTask(mode = "video") {
         els.backendStatus.dataset.connectionState = "offline";
         els.backendStatus.textContent = "请先打开 LearnNote 客户端";
         els.backendStatus.style.color = "#d92d20";
-        els.taskMessage.textContent = "无法连接 LearnNote 客户端。请确认客户端已启动，再重新发送当前页。";
+        report("无法连接 LearnNote 客户端。请确认客户端已启动，再重新发送当前页。", "error");
       } else {
-        els.taskMessage.textContent = response.error;
+        report(response.error, "error");
       }
       return;
     }
     currentTaskId = response.task_id;
+    report("客户端已接收，正在下载并生成笔记。", "success");
     transcriptCache = null;
     lastNote = "";
     await loadTaskHistory();
@@ -5803,20 +5821,21 @@ async function startTask(mode = "video") {
   } catch (error) {
     const detail = String(error?.message || error || "");
     if (isStaleContextError(error)) {
-      els.taskMessage.textContent = detail;
+      report(detail, "error");
     } else if (isTimeoutError(error)) {
-      els.taskMessage.textContent = `${detail} 操作按钮已恢复，可直接重试。`;
+      report(`${detail} 操作按钮已恢复，可直接重试。`, "error");
     } else if (/failed to fetch|network|connection|refused|receiving end does not exist/i.test(detail)) {
       clientConnectionState = "offline";
       els.backendStatus.dataset.connectionState = "offline";
       els.backendStatus.textContent = "请先打开 LearnNote 客户端";
       els.backendStatus.style.color = "#d92d20";
-      els.taskMessage.textContent = "无法连接 LearnNote 客户端。请确认客户端已启动，再重新发送当前页。";
+      report("无法连接 LearnNote 客户端。请确认客户端已启动，再重新发送当前页。", "error");
     } else {
-      els.taskMessage.textContent = `发送当前页失败：${detail || "请重新检测后再试。"}`;
+      report(`发送当前页失败：${detail || "请重新检测后再试。"}`, "error");
     }
   } finally {
     els.summarizeButton.disabled = false;
+    els.summarizeButton.removeAttribute?.("aria-busy");
     if (els.downloadOnlyButton) els.downloadOnlyButton.disabled = false;
     if (els.textButton) els.textButton.disabled = false;
   }

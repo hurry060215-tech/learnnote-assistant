@@ -13565,8 +13565,28 @@ body[data-ui="learnnote-sidepanel-v2"][data-source-mode="summarize"] .actions {
   box-shadow: none;
 }
 
-body[data-ui="learnnote-sidepanel-v2"][data-source-mode="summarize"] .actions > :not(#summarizeButton) {
+body[data-ui="learnnote-sidepanel-v2"][data-source-mode="summarize"] .actions > :not(#summarizeButton):not(#handoffStatus) {
   display: none !important;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .handoff-status {
+  display: block;
+  margin: 9px 2px 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .handoff-status[hidden] {
+  display: none;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .handoff-status[data-state="success"] {
+  color: #087a45;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .handoff-status[data-state="error"] {
+  color: #b42318;
 }
 
 body[data-ui="learnnote-sidepanel-v2"] #summarizeButton {

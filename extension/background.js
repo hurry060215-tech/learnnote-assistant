@@ -2201,7 +2201,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           options: message.options || {}
         })
       });
-      sendResponse(await backendJsonResponse(res, "预检候选资源失败。"));
+      sendResponse(await backendJsonResponse(res, "创建当前页任务失败。"));
       return;
     }
 

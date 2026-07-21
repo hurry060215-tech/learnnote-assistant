@@ -263,3 +263,43 @@ assert.doesNotMatch(handoffPanel.elements.get("#taskMessage").textContent, /已�
 allowTabCreate = true;
 assert.equal(await handoffPanel.context.openClientForLocalVideo(), true);
 assert.match(handoffPanel.elements.get("#taskMessage").textContent, /已交给客户端/);
+
+let overlapStarts = 0;
+const overlapPanel = makePanel({
+  fetchImpl: baseFetch(async value => {
+    if (!value.endsWith("/api/tasks/overlap-task")) return null;
+    return {
+      ok: true,
+      json: async () => ({ task: { id: "overlap-task", status: "failed", phase: "failed", progress: 100, message: "test stop" } })
+    };
+  }),
+  async sendMessage(message) {
+    if (message.type === "get-current-context") return { tab: { id: 7, url: page.page_url }, page, resources };
+    if (message.type === "preflight-current-page") {
+      return {
+        report: {
+          ok: true,
+          ready: true,
+          selected_url: resources[0].url,
+          candidate_count: 1,
+          probed_count: 1,
+          downloadable_count: 1,
+          candidates: [{ resource: resources[0], preflight: { ok: true, downloadable: true } }]
+        }
+      };
+    }
+    if (message.type === "start-current-task") {
+      overlapStarts += 1;
+      return { task_id: "overlap-task" };
+    }
+    throw new Error(`unexpected message: ${message.type}`);
+  }
+});
+await new Promise(resolve => setTimeout(resolve, 0));
+vm.runInContext("isCollectingContext = true", overlapPanel.context);
+await overlapPanel.context.startTask("video");
+vm.runInContext("isCollectingContext = false", overlapPanel.context);
+assert.equal(overlapStarts, 1, "an overlapping passive refresh must not swallow the explicit send click");
+assert.equal(overlapPanel.elements.get("#handoffStatus").hidden, false);
+assert.equal(overlapPanel.elements.get("#handoffStatus").dataset.state, "success");
+assert.match(overlapPanel.elements.get("#handoffStatus").textContent, /客户端已接收/);
