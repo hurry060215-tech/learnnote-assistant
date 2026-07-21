@@ -5221,6 +5221,34 @@ function updateHealthVisionStatus(data = lastHealthData) {
   els.backendStatus.textContent = text;
 }
 
+function versionParts(value = "") {
+  return String(value || "").split(".").map(part => Number.parseInt(part, 10) || 0).slice(0, 3);
+}
+
+function isNewerVersion(candidate = "", current = "") {
+  const next = versionParts(candidate);
+  const active = versionParts(current);
+  for (let index = 0; index < 3; index += 1) {
+    if ((next[index] || 0) !== (active[index] || 0)) return (next[index] || 0) > (active[index] || 0);
+  }
+  return false;
+}
+
+async function reloadExtensionForClientUpdate(data = {}, extensionVersion = "") {
+  const appVersion = String(data?.app_version || "").trim();
+  if (!HAS_EXTENSION_API || !appVersion || !extensionVersion || !isNewerVersion(appVersion, extensionVersion)) return false;
+  if (typeof chrome.runtime.reload !== "function") return false;
+  const key = "lastAutoReloadForAppVersion";
+  const stored = await chrome.storage.local.get({ [key]: "" });
+  if (stored[key] === appVersion) return false;
+  await chrome.storage.local.set({ [key]: appVersion });
+  els.backendStatus.dataset.connectionState = "checking";
+  els.backendStatus.textContent = `正在加载新版扩展 ${appVersion}...`;
+  setHandoffStatus("客户端已更新，正在自动重载浏览器扩展...");
+  setTimeout(() => chrome.runtime.reload(), 250);
+  return true;
+}
+
 async function health() {
   try {
     const extensionVersion = HAS_EXTENSION_API ? String(chrome.runtime.getManifest?.().version || "") : "";
@@ -5258,6 +5286,7 @@ async function health() {
       response = { json: async () => discovered.data };
     }
     const data = await response.json();
+    if (await reloadExtensionForClientUpdate(data, extensionVersion)) return true;
     lastHealthData = data;
     clientConnectionState = "connected";
     lastConnectionError = "";

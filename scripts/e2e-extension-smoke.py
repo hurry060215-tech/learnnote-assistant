@@ -266,6 +266,31 @@ def eval_service_worker(cdp: CdpWebSocket, expression: str, timeout: float = 90)
     return json.loads(value)
 
 
+def wait_for_page_target(debug_port: int, target_url: str, timeout_seconds: float = 15) -> dict:
+    deadline = time.time() + timeout_seconds
+    while time.time() < deadline:
+        for target in debug_json(debug_port, "/json/list"):
+            if target.get("type") == "page" and target.get("url") == target_url:
+                return target
+        time.sleep(0.25)
+    raise RuntimeError(f"Timed out waiting for browser target: {target_url}")
+
+
+def eval_page(cdp: CdpWebSocket, expression: str, timeout: float = 30) -> dict:
+    wrapped = f"JSON.stringify(({expression}))"
+    result = cdp.call("Runtime.evaluate", {
+        "expression": wrapped,
+        "awaitPromise": True,
+        "returnByValue": True,
+    }, timeout=timeout)
+    if result.get("exceptionDetails"):
+        raise RuntimeError(f"Page CDP evaluation failed: {result['exceptionDetails']}")
+    value = result.get("result", {}).get("value")
+    if value is None:
+        raise RuntimeError(f"Page CDP evaluation returned no value: {result}")
+    return json.loads(value)
+
+
 def open_extension_tabs(cdp: CdpWebSocket, urls: list[str]) -> dict[str, int]:
     expression = f"""
 async () => {{
@@ -415,7 +440,73 @@ async () => {{
     return wait_for_task_media(backend, payload["task_id"])
 
 
-def run_browser_checks(cdp: CdpWebSocket, backend: str, samples: str) -> None:
+def click_sidepanel_summary(
+    cdp: CdpWebSocket,
+    debug_port: int,
+    backend: str,
+    source_tab_id: int,
+) -> dict:
+    opened = eval_service_worker(cdp, f"""
+async () => {{
+  await chrome.tabs.update({int(source_tab_id)}, {{ active: true }});
+  const url = chrome.runtime.getURL("sidepanel.html");
+  const panel = await chrome.tabs.create({{ url, active: false }});
+  return {{ id: panel.id, url }};
+}}
+""")
+    panel_url = str(opened.get("url") or "")
+    target = wait_for_page_target(debug_port, panel_url)
+    panel_cdp = CdpWebSocket(target["webSocketDebuggerUrl"])
+    try:
+        panel_cdp.call("Runtime.enable")
+        deadline = time.time() + 15
+        ready: dict = {}
+        while time.time() < deadline:
+            ready = eval_page(panel_cdp, """(() => {
+  const button = document.querySelector("#summarizeButton");
+  const status = document.querySelector("#backendStatus");
+  return { ready: Boolean(button && !button.disabled), connection: status?.dataset?.connectionState || "" };
+})()""")
+            if ready.get("ready") and ready.get("connection") == "connected":
+                break
+            time.sleep(0.25)
+        if not ready.get("ready") or ready.get("connection") != "connected":
+            raise AssertionError(f"Side Panel did not become ready: {ready}")
+
+        eval_page(panel_cdp, """(() => {
+  document.querySelector("#summarizeButton").click();
+  return { clicked: true };
+})()""")
+        deadline = time.time() + 30
+        state: dict = {}
+        while time.time() < deadline:
+            state = eval_page(panel_cdp, """(() => {
+  const progress = document.querySelector("#handoffProgress");
+  const status = document.querySelector("#handoffStatus");
+  return {
+    taskId: typeof currentTaskId === "string" ? currentTaskId : "",
+    progress: Number(progress?.getAttribute("aria-valuenow") || 0),
+    message: status?.textContent || "",
+    state: status?.dataset?.state || "",
+    buttonDisabled: Boolean(document.querySelector("#summarizeButton")?.disabled),
+  };
+})()""")
+            if state.get("taskId") and state.get("progress") == 100 and state.get("state") == "success":
+                break
+            if state.get("state") == "error":
+                raise AssertionError(f"Side Panel send failed: {state}")
+            time.sleep(0.25)
+        if not state.get("taskId") or state.get("progress") != 100:
+            raise AssertionError(f"Side Panel did not create a client task: {state}")
+        task = request_json("GET", f"{backend}/api/tasks/{state['taskId']}").get("task", {})
+        if task.get("id") != state["taskId"]:
+            raise AssertionError(f"Side Panel task was not persisted by client: {task}")
+        return state
+    finally:
+        panel_cdp.close()
+
+
+def run_browser_checks(cdp: CdpWebSocket, debug_port: int, backend: str, samples: str) -> None:
     mp4_page = f"{samples}/mp4.html"
     hls_page = f"{samples}/hls.html"
     post_page = f"{samples}/post-api.html"
@@ -428,6 +519,8 @@ def run_browser_checks(cdp: CdpWebSocket, backend: str, samples: str) -> None:
     mp4 = assert_resource(mp4_context, "mp4", lambda item: "/media/sample.mp4" in item.get("url", "") and item.get("kind") == "video")
     preflight(backend, mp4_page, mp4, "mp4")
     print(f"PASS extension collect mp4: resources={len(mp4_context['resources'])} captured={mp4_context['captured_count']}")
+    sidepanel = click_sidepanel_summary(cdp, debug_port, backend, tab_ids[mp4_page])
+    print(f"PASS Side Panel click -> client task: {sidepanel['taskId']} progress={sidepanel['progress']}")
     mp4_task = start_extension_download_only_task(cdp, backend, tab_ids[mp4_page], mp4)
     print(f"PASS extension start download_only mp4: {mp4_task.get('id')} -> {mp4_task.get('media_path')}")
 
@@ -636,7 +729,7 @@ async () => {{
             f"version={heartbeat_health.get('extension_version')}"
         )
 
-        run_browser_checks(cdp, backend, samples)
+        run_browser_checks(cdp, args.debug_port, backend, samples)
         print(f"PASS real browser extension smoke: browser={browser} profile={profile_dir}")
     finally:
         if cdp:

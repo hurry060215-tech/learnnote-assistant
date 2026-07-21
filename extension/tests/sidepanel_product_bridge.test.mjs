@@ -11,7 +11,7 @@ assert.match(html, /id="handoffProgress"[^>]*role="progressbar"[^>]*aria-valueno
 assert.match(html, /id="handoffStatus"[^>]*role="status"[^>]*aria-live="polite"/);
 assert.doesNotMatch(html, /id="openClientPrimaryButton"/);
 assert.doesNotMatch(html, /发送到客户端总结/);
-assert.equal([...html.matchAll(/sidepanel\.(?:css|js)\?v=20260721-v0134/g)].length, 2);
+assert.equal([...html.matchAll(/sidepanel\.(?:css|js)\?v=20260721-v0135/g)].length, 2);
 
 assert.match(css, /data-panel-mode="study"[^\n]*\.current-card #activeVideo\s*\{\s*display: grid;/);
 assert.match(css, /#backendStatus\[data-connection-state="connected"\]::before/);
