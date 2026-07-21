@@ -13565,8 +13565,33 @@ body[data-ui="learnnote-sidepanel-v2"][data-source-mode="summarize"] .actions {
   box-shadow: none;
 }
 
-body[data-ui="learnnote-sidepanel-v2"][data-source-mode="summarize"] .actions > :not(#summarizeButton):not(#handoffStatus) {
+body[data-ui="learnnote-sidepanel-v2"][data-source-mode="summarize"] .actions > :not(#summarizeButton):not(#handoffProgress):not(#handoffStatus) {
   display: none !important;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .handoff-progress {
+  height: 5px;
+  margin: 10px 2px 0;
+  overflow: hidden;
+  border-radius: 5px;
+  background: #dfe9e9;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .handoff-progress[hidden] {
+  display: none;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .handoff-progress > span {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #0e8f89, #54b7ad);
+  transition: width 240ms ease;
+}
+
+body[data-ui="learnnote-sidepanel-v2"] .handoff-progress[data-state="error"] > span {
+  background: #d94b43;
 }
 
 body[data-ui="learnnote-sidepanel-v2"] .handoff-status {

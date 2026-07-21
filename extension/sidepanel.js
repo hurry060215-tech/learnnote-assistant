@@ -282,6 +282,16 @@ function setHandoffStatus(message = "", state = "info") {
   els.handoffStatus.hidden = !text;
 }
 
+function setHandoffProgress(value = 0, state = "info") {
+  if (!els.handoffProgress) return;
+  const progress = Math.max(0, Math.min(100, Number(value) || 0));
+  els.handoffProgress.hidden = false;
+  els.handoffProgress.dataset.state = state;
+  els.handoffProgress.setAttribute?.("aria-valuenow", String(progress));
+  const bar = els.handoffProgress.querySelector?.("span");
+  if (bar?.style) bar.style.width = `${progress}%`;
+}
+
 async function withTimeout(promise, timeoutMs = CRITICAL_REQUEST_TIMEOUT_MS, label = "请求") {
   const pending = Promise.resolve(promise);
   await Promise.resolve();
@@ -375,6 +385,7 @@ const els = {
   progressBar: document.querySelector("#progressBar"),
   taskPhase: document.querySelector("#taskPhase"),
   taskMessage: document.querySelector("#taskMessage"),
+  handoffProgress: document.querySelector("#handoffProgress"),
   handoffStatus: document.querySelector("#handoffStatus"),
   refreshHistoryButton: document.querySelector("#refreshHistoryButton"),
   taskHistory: document.querySelector("#taskHistory"),
@@ -5726,9 +5737,12 @@ async function preflightBestResource(mode = "video", snapshot = captureContextSn
 }
 
 async function startTask(mode = "video") {
-  const report = (message, state = "info") => {
+  let handoffProgress = 0;
+  const report = (message, state = "info", progress = null) => {
     els.taskMessage.textContent = message;
     setHandoffStatus(message, state);
+    if (progress !== null) handoffProgress = progress;
+    setHandoffProgress(handoffProgress, state);
   };
   if (!HAS_EXTENSION_API) {
     report("请在 Chrome/Edge 扩展 Side Panel 中读取当前页视频。", "error");
@@ -5736,6 +5750,7 @@ async function startTask(mode = "video") {
   }
   els.summarizeButton.disabled = true;
   els.summarizeButton.setAttribute?.("aria-busy", "true");
+  report("正在连接 LearnNote 客户端...", "info", 10);
   if (els.downloadOnlyButton) els.downloadOnlyButton.disabled = true;
   if (els.textButton) els.textButton.disabled = true;
   try {
@@ -5746,7 +5761,7 @@ async function startTask(mode = "video") {
         : "LearnNote 客户端尚未启动。请先打开客户端，再重新发送当前页。", "error");
       return;
     }
-    report(isMediaTaskMode(mode) ? "正在发送当前视频到 LearnNote..." : "正在发送当前页面文字到 LearnNote...");
+    report(isMediaTaskMode(mode) ? "正在读取当前视频..." : "正在读取当前页面文字...", "info", 28);
     const refreshAlreadyRunning = isCollectingContext;
     const refreshed = await collect();
     // Passive media refreshes can overlap an explicit click. The already-rendered
@@ -5755,6 +5770,7 @@ async function startTask(mode = "video") {
       report("刷新当前页面失败，暂时无法确认最新播放内容。请刷新视频页后重试。", "error");
       return;
     }
+    report("已读取当前页面，正在确认视频来源...", "info", 45);
     const mediaCandidateReady = await waitForMediaCandidateBeforeStart(mode);
     const operationContext = captureContextSnapshot();
     if (isMediaTaskMode(mode) && !mediaCandidateReady) {
@@ -5769,6 +5785,7 @@ async function startTask(mode = "video") {
     }
     const candidates = preflightCandidatesForStart(mode);
     if (candidates.length) {
+      report("正在检查视频是否可以直接下载...", "info", 60);
       let checked = null;
       try {
         checked = await preflightPageCandidates(candidates, operationContext);
@@ -5786,8 +5803,10 @@ async function startTask(mode = "video") {
         report(preflightFallbackStartMessage(checked));
       }
     }
+    report("视频来源已确认，正在读取客户端设置...", "info", 74);
     const taskOptions = await readClientTaskOptions();
     assertCurrentContext(operationContext, "任务启动");
+    report("正在创建下载与总结任务...", "info", 88);
     const response = await withTimeout(chrome.runtime.sendMessage({
       type: "start-current-task",
       backendUrl,
@@ -5812,7 +5831,7 @@ async function startTask(mode = "video") {
       return;
     }
     currentTaskId = response.task_id;
-    report("客户端已接收，正在下载并生成笔记。", "success");
+    report("客户端已接收，正在下载并生成笔记。", "success", 100);
     transcriptCache = null;
     lastNote = "";
     await loadTaskHistory();
@@ -8831,8 +8850,6 @@ if (HAS_EXTENSION_API && chrome.runtime.onMessage?.addListener) {
     if (shouldAcceptContextUpdate(message)) {
       if (message.reason === "tab-activated") {
         resetContextForTab(message.tabId ?? null);
-      } else {
-        contextEpoch += 1;
       }
       scheduleContextRefresh(message.reason || "media");
       return;

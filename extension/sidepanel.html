@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>LearnNote</title>
-    <link rel="stylesheet" href="sidepanel.css?v=20260721-v0133">
+    <link rel="stylesheet" href="sidepanel.css?v=20260721-v0134">
   </head>
   <body data-ui="learnnote-sidepanel-v2" data-source-mode="summarize">
     <header class="app-header">
@@ -109,6 +109,9 @@
           <svg viewBox="0 0 24 24"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
           发送到 LearnNote
         </button>
+        <div id="handoffProgress" class="handoff-progress" role="progressbar" aria-label="发送进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden>
+          <span></span>
+        </div>
         <p id="handoffStatus" class="handoff-status" role="status" aria-live="polite" hidden></p>
         <button id="continueFromMediaButton" hidden disabled>
           <svg viewBox="0 0 24 24"><path d="M4 5h16v4H4zM4 15h16v4H4z"/><path d="M8 9v6M16 9v6"/></svg>
@@ -330,6 +333,6 @@
       </details>
     </main>
 
-    <script src="sidepanel.js?v=20260721-v0133"></script>
+    <script src="sidepanel.js?v=20260721-v0134"></script>
   </body>
 </html>

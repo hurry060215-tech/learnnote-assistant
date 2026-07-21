@@ -15,6 +15,7 @@ function deferred() {
 }
 
 function makeElement() {
+  const attributes = new Map();
   return {
     addEventListener() {},
     classList: { add() {}, remove() {}, toggle() {} },
@@ -29,7 +30,10 @@ function makeElement() {
     hidden: false,
     onclick: null,
     onchange: null,
-    files: []
+    files: [],
+    setAttribute(name, value) { attributes.set(name, String(value)); },
+    removeAttribute(name) { attributes.delete(name); },
+    getAttribute(name) { return attributes.get(name) ?? null; }
   };
 }
 
@@ -141,7 +145,7 @@ const stalePanel = makePanel({
 await new Promise(resolve => setTimeout(resolve, 0));
 const stalePreflightRun = stalePanel.context.runPreflight();
 await new Promise(resolve => setTimeout(resolve, 0));
-stalePanel.getOnMessage()({ type: "current-context-updated", tabId: 7, reason: "media" });
+stalePanel.getOnMessage()({ type: "current-context-updated", tabId: 7, reason: "tab-activated" });
 firstPreflight.resolve({
   report: {
     ok: true,
@@ -303,3 +307,54 @@ assert.equal(overlapStarts, 1, "an overlapping passive refresh must not swallow 
 assert.equal(overlapPanel.elements.get("#handoffStatus").hidden, false);
 assert.equal(overlapPanel.elements.get("#handoffStatus").dataset.state, "success");
 assert.match(overlapPanel.elements.get("#handoffStatus").textContent, /客户端已接收/);
+assert.equal(overlapPanel.elements.get("#handoffProgress").getAttribute("aria-valuenow"), "100");
+
+const livePreflight = deferred();
+let livePreflightCalls = 0;
+let liveStarts = 0;
+const livePanel = makePanel({
+  fetchImpl: baseFetch(async value => {
+    if (!value.endsWith("/api/tasks/live-task")) return null;
+    return {
+      ok: true,
+      json: async () => ({ task: { id: "live-task", status: "failed", phase: "failed", progress: 100, message: "test stop" } })
+    };
+  }),
+  async sendMessage(message) {
+    if (message.type === "get-current-context") return { tab: { id: 7, url: page.page_url }, page, resources };
+    if (message.type === "preflight-current-page") {
+      livePreflightCalls += 1;
+      return livePreflight.promise;
+    }
+    if (message.type === "start-current-task") {
+      liveStarts += 1;
+      return { task_id: "live-task" };
+    }
+    throw new Error(`unexpected message: ${message.type}`);
+  }
+});
+await new Promise(resolve => setTimeout(resolve, 0));
+const liveStart = livePanel.context.startTask("video");
+for (let attempt = 0; attempt < 20 && !livePreflightCalls; attempt += 1) {
+  await new Promise(resolve => setTimeout(resolve, 0));
+}
+assert.equal(livePreflightCalls, 1, "expected the current video to enter preflight");
+livePanel.getOnMessage()({ type: "current-context-updated", tabId: 7, reason: "media" });
+livePreflight.resolve({
+  report: {
+    ok: true,
+    ready: true,
+    selected_url: resources[0].url,
+    candidate_count: 1,
+    probed_count: 1,
+    downloadable_count: 1,
+    candidates: [{ resource: resources[0], preflight: { ok: true, downloadable: true } }]
+  }
+});
+const liveResult = await Promise.race([
+  liveStart.then(() => "done"),
+  new Promise(resolve => setTimeout(() => resolve("timeout"), 1500))
+]);
+assert.equal(liveResult, "done", "same-video playback update should not leave the send action pending");
+assert.equal(liveStarts, 1, "same-video playback updates must not cancel an in-flight preflight");
+assert.doesNotMatch(livePanel.elements.get("#taskMessage").textContent, /已丢弃旧的/);
