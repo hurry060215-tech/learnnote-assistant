@@ -1203,7 +1203,7 @@ def _process_video_file(
             task_id,
             phase="transcribing",
             progress=52,
-            message="正在使用远程 ASR 转写音频" if use_remote_asr(options) else "正在转写音频",
+            message="正在使用远程 ASR 转写音频" if use_remote_asr(options) else "正在加载本地转写模型并生成字幕，首次使用会稍久",
         )
         if audio_path:
             transcript = transcribe_extracted_audio(audio_path, options)

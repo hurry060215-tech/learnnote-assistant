@@ -70,6 +70,28 @@ class NoteProfileTests(unittest.TestCase):
         self.assertIn("`docker pull example/image`", note)
         self.assertIn("00:00:07", note)
         self.assertNotIn("## 概念精讲", note)
+        self.assertNotIn("学习目标与笔记格式", note)
+        self.assertNotIn("旧风格兼容", note)
+
+    def test_operation_tutorial_does_not_turn_narration_into_a_command(self):
+        transcript = TranscriptResult(
+            source="faster-whisper",
+            full_text="Docker installation starts by opening settings. Save the configuration.",
+            segments=[
+                TranscriptSegment(start=0, end=3, text="Docker installation starts by opening settings"),
+                TranscriptSegment(start=3, end=5, text="Save the configuration"),
+            ],
+        )
+
+        note = local_markdown_note(
+            "Docker setup",
+            transcript,
+            [],
+            options=TaskOptions(note_style="operation-tutorial", note_template="visual-handout", summary_depth="deep"),
+        )
+
+        self.assertIn("材料中未出现可逐字核对的完整命令", note)
+        self.assertNotIn("`Docker installation starts by opening settings`", note)
 
 
 if __name__ == "__main__":

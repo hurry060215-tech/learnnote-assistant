@@ -35,6 +35,8 @@
     urlInput: q("#editorialUrlInput"), inspectUrl: q("#editorialInspectUrl"), urlStatus: q("#editorialUrlStatus"),
     fileInput: q("#editorialFileInput"), dropzone: q("#editorialDropzone"), localStatus: q("#editorialLocalStatus"),
     receiveBrowser: q("#editorialReceiveBrowser"), browserStatus: q("#editorialBrowserStatus"),
+    browserConnection: q("#editorialBrowserConnection"), browserWaitBar: q("#editorialBrowserWaitBar"),
+    browserSetup: q("#editorialBrowserSetup"),
     confirm: q("#editorialMediaConfirm"), cover: q("#editorialMediaCover"), source: q("#editorialMediaSource"),
     title: q("#editorialConfirmTitle"), subtitle: q("#editorialMediaSubtitle"), duration: q("#editorialDuration"),
     audio: q("#editorialAudioState"), subtitles: q("#editorialSubtitleState"), visual: q("#editorialVisualState"),
@@ -45,17 +47,43 @@
     progress: q("#editorialProgress"), progressTitle: q("#editorialProgressTitle"), currentAction: q("#editorialCurrentAction"),
     progressValue: q("#editorialProgressValue"), progressBar: q("#editorialProgressBar"), progressSteps: q("#editorialProgressSteps"),
     eta: q("#editorialEta"), technicalLog: q("#editorialTechnicalLog"), failureAction: q("#editorialFailureAction"),
-    openLibrary: q("#editorialOpenLibrary")
+    openLibrary: q("#editorialOpenLibrary"), continueCard: q("#editorialContinue"),
+    continueKicker: q("#editorialContinueKicker"), continueTitle: q("#editorialContinueTitle"),
+    continueMeta: q("#editorialContinueMeta"), continueAction: q("#editorialContinueAction")
   };
 
   if (!ui.home) return;
 
   let draft = null;
   let localObjectUrl = "";
-  let editorialTaskId = "";
+  let editorialTaskId = storedEditorialTaskId();
   let customPurpose = null;
+  let browserWatchTimer = 0;
+  let browserWatchStartedAt = 0;
+  let browserWatchGeneration = 0;
+  let browserPollPending = false;
+
+  function storedEditorialTaskId() {
+    try { return window.sessionStorage?.getItem("learnnote.editorialTaskId") || ""; } catch { return ""; }
+  }
+
+  function storeEditorialTaskId(value) {
+    editorialTaskId = String(value || "");
+    try {
+      if (editorialTaskId) window.sessionStorage?.setItem("learnnote.editorialTaskId", editorialTaskId);
+      else window.sessionStorage?.removeItem("learnnote.editorialTaskId");
+    } catch {}
+  }
+
+  function stopBrowserWatch() {
+    browserWatchGeneration += 1;
+    if (browserWatchTimer) window.clearInterval(browserWatchTimer);
+    browserWatchTimer = 0;
+    browserPollPending = false;
+  }
 
   function showOnly(target) {
+    if (target !== ui.browserEntry) stopBrowserWatch();
     ui.home.classList.toggle("focused", target !== ui.choices);
     for (const element of [ui.choices, ui.urlEntry, ui.localEntry, ui.browserEntry, ui.confirm, ui.progress]) {
       if (element) element.hidden = element !== target;
@@ -64,9 +92,9 @@
 
   function resetHome() {
     draft = null;
-    editorialTaskId = "";
     ui.confirmStatus.textContent = "";
     showOnly(ui.choices);
+    renderContinueCard();
   }
 
   function sourceLabel(source) {
@@ -424,23 +452,81 @@
     });
   }
 
-  async function receiveBrowser() {
+  function browserHandoffTask() {
+    if (!Array.isArray(tasks)) return null;
+    return tasks.find(item => item?.awaiting_confirmation && item?.source_type === "current_page") || null;
+  }
+
+  function setBrowserWaitProgress(value) {
+    const progress = Math.max(0, Math.min(100, Math.round(Number(value) || 0)));
+    if (ui.browserWaitBar) {
+      ui.browserWaitBar.style.width = `${progress}%`;
+      ui.browserWaitBar.parentElement?.setAttribute("aria-valuenow", String(progress));
+    }
+  }
+
+  function renderBrowserConnection(health = {}) {
+    const connected = Boolean(health.extension_connected);
+    const appVersion = String(health.app_version || "").trim();
+    const extensionVersion = String(health.extension_version || "").trim();
+    const versionCurrent = !appVersion || !extensionVersion || appVersion === extensionVersion;
+    if (ui.browserConnection) {
+      ui.browserConnection.dataset.state = connected && versionCurrent ? "connected" : "disconnected";
+      ui.browserConnection.textContent = connected
+        ? versionCurrent ? `扩展已连接${extensionVersion ? ` · v${extensionVersion}` : ""}` : `扩展版本较旧 · v${extensionVersion || "-"}`
+        : "扩展尚未连接";
+    }
+    if (ui.browserSetup) ui.browserSetup.hidden = connected && versionCurrent;
+    return connected && versionCurrent;
+  }
+
+  async function receiveBrowser({ automatic = false, generation = browserWatchGeneration } = {}) {
+    if (browserPollPending) return false;
+    browserPollPending = true;
     ui.receiveBrowser.disabled = true;
-    ui.browserStatus.textContent = "正在读取扩展交接状态...";
+    if (!automatic) ui.browserStatus.textContent = "正在读取扩展交接状态...";
     try {
+      let health = {};
+      try { health = await fetchJson(apiUrl("/api/health")); } catch {}
+      if (generation !== browserWatchGeneration) return false;
+      const connected = renderBrowserConnection(health);
       if (typeof loadTasks === "function") await loadTasks();
-      const task = Array.isArray(tasks)
-        ? tasks.find(item => item?.awaiting_confirmation && item?.source_type === "current_page")
-          || (typeof preferredCurrentPageTask === "function" ? preferredCurrentPageTask() : null)
-        : null;
+      if (generation !== browserWatchGeneration) return false;
+      const task = browserHandoffTask();
       if (!task) {
-        ui.browserStatus.textContent = "还没有收到视频。请在正在播放的视频页打开 LearnNote 扩展并发送。";
-        return;
+        ui.browserStatus.textContent = connected
+          ? "已连接。保持视频播放，在扩展里点击“发送到 LearnNote”，这里会自动出现确认页。"
+          : "客户端正在运行，但扩展没有连接。重新加载扩展后，这里会自动继续。";
+        return false;
       }
+      setBrowserWaitProgress(100);
+      storeEditorialTaskId(task.id);
       renderDraft(currentBrowserDraft(task));
+      return true;
     } finally {
       ui.receiveBrowser.disabled = false;
+      browserPollPending = false;
     }
+  }
+
+  function beginBrowserWatch() {
+    stopBrowserWatch();
+    const generation = browserWatchGeneration;
+    browserWatchStartedAt = Date.now();
+    setBrowserWaitProgress(7);
+    ui.browserStatus.textContent = "正在等待扩展发送当前视频...";
+    receiveBrowser({ automatic: true, generation });
+    browserWatchTimer = window.setInterval(() => {
+      const elapsed = Math.max(0, Date.now() - browserWatchStartedAt);
+      setBrowserWaitProgress(Math.min(92, 7 + elapsed / 900));
+      renderBrowserConnection(typeof lastHealthData === "object" ? lastHealthData : {});
+      const task = browserHandoffTask();
+      if (task) {
+        setBrowserWaitProgress(100);
+        storeEditorialTaskId(task.id);
+        renderDraft(currentBrowserDraft(task));
+      }
+    }, 900);
   }
 
   function buildLocalTaskForm(localDraft, options) {
@@ -490,7 +576,7 @@
       } else {
         data = await startDeferredBrowserTask(draft.taskId, readOptions());
       }
-      editorialTaskId = data?.task_id || draft.taskId;
+      storeEditorialTaskId(data?.task_id || draft.taskId);
       if (!editorialTaskId) throw new Error("任务没有返回有效编号");
       if (typeof selectTask === "function") selectTask(editorialTaskId);
       showOnly(ui.progress);
@@ -528,6 +614,71 @@
     return minutes < 60 ? `${minutes} 分钟` : `${Math.floor(minutes / 60)} 小时 ${minutes % 60} 分钟`;
   }
 
+  function friendlyTaskAction(task = {}) {
+    if (task.status === "success") return "笔记已经整理完成";
+    if (task.status === "failed") {
+      const failureLabels = {
+        no_media_found: "没有找到可下载的视频资源",
+        auth_required: "登录状态已失效，请重新打开视频页",
+        drm_or_encrypted: "该视频不能通过当前页面直接获取",
+        download_forbidden: "视频服务器拒绝了下载请求",
+        unsupported_manifest: "暂时无法合并这个视频流",
+        insufficient_evidence: "字幕或画面依据不足，已停止生成",
+        task_interrupted: "客户端上次处理中断，可以重新尝试"
+      };
+      const localized = failureLabels[String(task.error_code || "").toLowerCase()];
+      const detail = String(task.error_detail || task.message || "").trim();
+      return localized || (/[\u3400-\u9fff]/.test(detail) ? detail : "处理未完成，请按下方建议继续");
+    }
+    const raw = String(task.message || "").trim();
+    const normalized = raw.toLowerCase();
+    const technicalOrEnglish = !/[\u3400-\u9fff]/.test(raw)
+      || /queued|saved|processing|download|transcrib|extract|summar|markdown|local upload|current page/i.test(raw);
+    if (raw && !technicalOrEnglish) return raw;
+    if (/queued|saved|waiting|awaiting/.test(normalized)) return "视频已接收，正在排队";
+    const actions = [
+      "正在获取视频文件",
+      "正在核对声音、字幕和画面",
+      "正在生成可核对的字幕",
+      "正在提取关键画面",
+      "正在整理笔记结构"
+    ];
+    return actions[workflowStageIndex(task)] || "正在准备任务";
+  }
+
+  function resumableTask() {
+    if (!Array.isArray(tasks)) return null;
+    const awaiting = tasks.find(item => item?.awaiting_confirmation && item?.source_type === "current_page");
+    if (awaiting) return { task: awaiting, kind: "confirm" };
+    const active = tasks.find(item => ["queued", "running", "cancelling"].includes(item?.status));
+    if (active) return { task: active, kind: "progress" };
+    const recent = tasks.find(item => item?.status === "success" && item?.note_path);
+    return recent ? { task: recent, kind: "note" } : null;
+  }
+
+  function renderContinueCard() {
+    if (!ui.continueCard) return;
+    const candidate = resumableTask();
+    if (!candidate || ui.choices?.hidden) {
+      ui.continueCard.hidden = true;
+      return;
+    }
+    const { task, kind } = candidate;
+    ui.continueCard.hidden = false;
+    ui.continueKicker.textContent = kind === "confirm" ? "浏览器已发送" : kind === "progress" ? "任务仍在处理" : "最近完成";
+    ui.continueTitle.textContent = typeof displayTaskTitle === "function" ? displayTaskTitle(task) : task.title || "未命名视频";
+    ui.continueMeta.textContent = kind === "confirm"
+      ? "确认声音、字幕和画面后再开始"
+      : kind === "progress" ? `${friendlyTaskAction(task)} · ${Number(task.progress || 0)}%` : "笔记、字幕和画面索引已准备好";
+    ui.continueAction.textContent = kind === "confirm" ? "确认视频" : kind === "progress" ? "查看进度" : "打开笔记";
+    ui.continueAction.onclick = () => {
+      storeEditorialTaskId(task.id);
+      if (kind === "confirm") renderDraft(currentBrowserDraft(task));
+      else if (kind === "progress") { showOnly(ui.progress); renderEditorialProgress(); }
+      else openTask(task);
+    };
+  }
+
   function technicalSummary(task) {
     const coverage = task.evidence_coverage || {};
     const attempts = Array.isArray(task.download_attempts) ? task.download_attempts : [];
@@ -558,7 +709,7 @@
     }
     try {
       const data = await fetchJson(apiUrl(`/api/tasks/${encodeURIComponent(task.id)}/retry`), { method: "POST" });
-      editorialTaskId = data.task_id || task.id;
+      storeEditorialTaskId(data.task_id || task.id);
       await loadTasks();
     } catch (error) {
       ui.currentAction.textContent = error?.message || "重试失败，请查看技术日志。";
@@ -580,11 +731,7 @@
     const progress = Math.max(0, Math.min(100, Number(task.progress || 0)));
     const stageIndex = workflowStageIndex(task);
     ui.progressTitle.textContent = typeof displayTaskTitle === "function" ? displayTaskTitle(task) : task.title || "处理视频内容";
-    ui.currentAction.textContent = task.status === "success"
-      ? "笔记已经整理完成"
-      : task.status === "failed"
-        ? (task.message || task.error_detail || "处理没有完成")
-        : (task.message || STAGES[stageIndex]);
+    ui.currentAction.textContent = friendlyTaskAction(task);
     ui.progressValue.textContent = `${progress}%`;
     ui.progressBar.style.width = `${progress}%`;
     ui.progressBar.parentElement?.setAttribute("aria-valuenow", String(progress));
@@ -606,11 +753,17 @@
     if (typeof setSource === "function") setSource(source);
     showOnly(source === "url" ? ui.urlEntry : source === "local" ? ui.localEntry : ui.browserEntry);
     if (source === "url") window.setTimeout(() => ui.urlInput.focus(), 0);
+    if (source === "browser") beginBrowserWatch();
   }));
   qa("[data-editorial-back]").forEach(button => button.addEventListener("click", resetHome));
   ui.inspectUrl.addEventListener("click", inspectUrl);
   ui.urlInput.addEventListener("keydown", event => { if (event.key === "Enter") inspectUrl(); });
   ui.receiveBrowser.addEventListener("click", receiveBrowser);
+  ui.browserSetup?.addEventListener("click", () => {
+    stopBrowserWatch();
+    if (typeof showAppView === "function") showAppView("settings");
+    if (typeof showSettingsPane === "function") showSettingsPane("connection");
+  });
   ui.fileInput.addEventListener("change", () => inspectLocalFile(ui.fileInput.files?.[0]));
   for (const eventName of ["dragenter", "dragover"]) ui.dropzone.addEventListener(eventName, event => { event.preventDefault(); ui.dropzone.classList.add("dragover"); });
   for (const eventName of ["dragleave", "drop"]) ui.dropzone.addEventListener(eventName, event => { event.preventDefault(); ui.dropzone.classList.remove("dragover"); });
@@ -625,7 +778,12 @@
   if (originalRenderTasks) {
     renderTasks = function editorialRenderTasks(...args) {
       const result = originalRenderTasks.apply(this, args);
+      const remembered = tasks.find(item => item.id === editorialTaskId);
+      if (remembered && ["queued", "running", "cancelling"].includes(remembered.status) && !ui.choices.hidden) {
+        showOnly(ui.progress);
+      }
       renderEditorialProgress();
+      renderContinueCard();
       return result;
     };
   }
@@ -646,6 +804,8 @@
     startDeferredBrowserTask,
     applyPurpose,
     currentBrowserDraft,
+    friendlyTaskAction,
+    resumableTask,
     displayDuration,
     displayEstimate
   });

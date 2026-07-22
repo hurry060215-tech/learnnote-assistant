@@ -703,6 +703,34 @@ def ensure_visual_appendix(markdown: str, transcript: TranscriptResult, grids: l
     return f"{note}\n\n{appendix}" if note else appendix
 
 
+def _looks_like_shell_command(command: str, explicit: bool = False) -> bool:
+    tokens = re.sub(r"\s+", " ", command or "").strip().split(" ")
+    if len(tokens) < 2:
+        return False
+    tool = tokens[0].lower()
+    argument = tokens[1].lower().rstrip(".,:;")
+    known_subcommands = {
+        "docker": {"build", "compose", "exec", "images", "info", "inspect", "login", "logs", "network", "ps", "pull", "push", "restart", "rm", "rmi", "run", "start", "stop", "version", "volume"},
+        "podman": {"build", "compose", "exec", "images", "info", "inspect", "login", "logs", "network", "ps", "pull", "push", "restart", "rm", "rmi", "run", "start", "stop", "version", "volume"},
+        "pip": {"download", "freeze", "install", "list", "show", "uninstall", "wheel"},
+        "pip3": {"download", "freeze", "install", "list", "show", "uninstall", "wheel"},
+        "npm": {"ci", "exec", "install", "link", "publish", "run", "start", "test", "uninstall", "update"},
+        "pnpm": {"add", "build", "dlx", "exec", "install", "remove", "run", "start", "test", "update"},
+        "yarn": {"add", "build", "install", "remove", "run", "start", "test", "upgrade"},
+        "conda": {"activate", "create", "deactivate", "env", "install", "list", "remove", "run", "update"},
+        "git": {"add", "branch", "checkout", "clone", "commit", "diff", "fetch", "log", "merge", "pull", "push", "rebase", "remote", "restore", "status", "switch"},
+    }
+    if explicit or argument.startswith("-") or argument.startswith(("http://", "https://")):
+        return True
+    if tool in known_subcommands:
+        return argument in known_subcommands[tool]
+    if tool in {"python", "python3"}:
+        return argument in {"-m", "-c"} or argument.endswith(".py")
+    if tool in {"ffmpeg", "yt-dlp", "curl", "wget", "winget", "brew", "choco"}:
+        return True
+    return False
+
+
 def _grid_image_content_items(entries: list[VisionGridEntry]) -> list[dict]:
     items: list[dict] = []
     for original_index, grid in entries:
@@ -787,7 +815,8 @@ def _operation_tutorial_sections(transcript: TranscriptResult, grids: list[Frame
     for segment in segments:
         for match in command_pattern.finditer(segment.text or ""):
             command = re.sub(r"\s+", " ", match.group(1)).strip(" .")
-            if command and command not in command_matches:
+            explicit = bool(re.match(r"^\s*(?:run|execute)\s+", match.group(0), re.I)) or bool(re.match(r"^\s*[$>`]", match.group(0)))
+            if command and _looks_like_shell_command(command, explicit=explicit) and command not in command_matches:
                 command_matches.append(command)
     lines += ["", "## 命令与参数", ""]
     if command_matches:
@@ -827,21 +856,24 @@ def _local_goal_note(
         lines += [f"来源：{page_url}", ""]
     if transcript.warning:
         lines += [f"> 转写提示：{transcript.warning}", ""]
-    lines.extend(_learning_context_lines(title, transcript, windows, page_url, page_context))
-    lines += [
-        "## 学习目标与笔记格式",
-        "",
-        f"- 当前目标：{goal_labels[goal]}",
-        f"- 目标结构：{learning_goal_instruction(options)}",
-        f"- 深度约束：{summary_depth_instruction(options)}",
-        f"- 旧风格兼容：{note_style_instruction(options)}",
-        f"- 旧格式兼容：{note_template_instruction(options)}",
-        "",
-    ]
-
-    if str(options.note_style or "").strip().lower().replace("_", "-") == "operation-tutorial":
+    use_case = str(options.note_style or "").strip().lower().replace("_", "-")
+    if use_case == "operation-tutorial":
         lines.extend(_operation_tutorial_sections(transcript, grids))
         return ensure_visual_appendix("\n".join(lines).rstrip() + "\n", transcript, grids)
+
+    lines.extend(_learning_context_lines(title, transcript, windows, page_url, page_context))
+    depth_labels = {"brief": "简洁", "standard": "标准", "deep": "详细"}
+    depth_label = depth_labels.get(str(options.summary_depth or "standard").strip().lower(), "标准")
+    lines += [f"> 整理方式：{goal_labels[goal]} · {depth_label}", ""]
+    template = str(options.note_template or "standard").strip().lower().replace("_", "-")
+    if use_case not in {"classroom-review", "exam-review", "quick-summary"} and (use_case != "study" or template != "standard"):
+        lines += [
+            "## 本篇整理重点",
+            "",
+            f"- 内容重点：{note_style_instruction(options)}",
+            f"- 笔记格式：{note_template_instruction(options)}",
+            "",
+        ]
 
     if goal == "quick":
         lines += ["## 一页速览", ""]
@@ -906,15 +938,7 @@ def local_markdown_note(title: str, transcript: TranscriptResult, grids: list[Fr
     windows = build_visual_windows(transcript, grids)
 
     lines.extend(_learning_context_lines(title, transcript, windows, page_url, page_context))
-    lines += [
-        "## 学习目标与笔记格式",
-        "",
-        f"- {learning_goal_instruction(resolved_options)}",
-        f"- {summary_depth_instruction(resolved_options)}",
-        f"- 风格：{note_style_instruction(resolved_options)}",
-        f"- 结构：{note_template_instruction(resolved_options)}",
-        "",
-    ]
+    lines += ["> 整理方式：智能整理 · 标准", ""]
 
     lines += ["## 课程主题", ""]
     if transcript.full_text and "未安装 faster-whisper" not in transcript.full_text:
@@ -1093,8 +1117,9 @@ def summarize_with_llm(
                                 "画面索引必须保留 W 编号、时间范围和画面网格 URL，方便用户回看截图。\n"
                                 f"笔记风格：{options.note_style}；笔记模板：{options.note_template}；详略程度：{options.summary_depth}。\n"
                                 f"{note_generation_contract(options)}\n"
-                                f"旧风格兼容偏好：{note_style_instruction(options)}\n"
-                                f"旧格式兼容偏好：{note_template_instruction(options)}\n"
+                                f"用途要求：{note_style_instruction(options)}\n"
+                                f"版式要求：{note_template_instruction(options)}\n"
+                                "不要在成品笔记中复述模型提示、内部参数、风格名称、深度约束或兼容说明；直接输出读者需要的正文。\n"
                                 f"标题：{title}\n来源：{page_url}\n\n"
                                 f"画面索引清单：\n{frame_index}\n\n"
                                 f"完整字幕节选：\n{transcript.full_text[:60000]}\n\n"
@@ -1123,8 +1148,9 @@ def summarize_with_llm(
                 "你是严谨的课程学习笔记助手。请结合字幕输出 Markdown。\n"
                 f"笔记风格：{options.note_style}；笔记模板：{options.note_template}；详略程度：{options.summary_depth}。\n"
                 f"{note_generation_contract(options)}\n"
-                f"旧风格兼容偏好：{note_style_instruction(options)}\n"
-                f"旧格式兼容偏好：{note_template_instruction(options)}\n"
+                f"用途要求：{note_style_instruction(options)}\n"
+                f"版式要求：{note_template_instruction(options)}\n"
+                "不要在成品笔记中复述模型提示、内部参数、风格名称、深度约束或兼容说明；直接输出读者需要的正文。\n"
                 f"标题：{title}\n来源：{page_url}\n\n字幕：\n{transcript.full_text[:60000]}"
             ),
         }

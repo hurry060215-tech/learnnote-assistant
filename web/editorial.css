@@ -288,6 +288,82 @@ body.workspace-mode #workspace.workspace-panel {
   color: var(--editorial-accent-dark);
 }
 
+.editorial-browser-watch { min-width: 0; }
+.editorial-browser-watch-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.editorial-browser-watch-head > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--editorial-ink);
+  font-size: 14px;
+  font-weight: 720;
+}
+.editorial-browser-watch-head > span::before {
+  content: "";
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #8ba0a4;
+  box-shadow: 0 0 0 4px rgba(93, 116, 122, .11);
+}
+.editorial-browser-watch-head > span[data-state="connected"]::before { background: #16866d; box-shadow: 0 0 0 4px rgba(22, 134, 109, .12); }
+.editorial-browser-watch-head > span[data-state="disconnected"]::before { background: #c26a3c; box-shadow: 0 0 0 4px rgba(194, 106, 60, .12); }
+.editorial-browser-watch-head .editorial-secondary-button { min-height: 38px; padding: 0 14px; font-size: 13px; }
+.editorial-browser-watch-track {
+  height: 6px;
+  margin-top: 16px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: #e3ecec;
+}
+.editorial-browser-watch-track i {
+  display: block;
+  width: 7%;
+  height: 100%;
+  background: var(--editorial-accent);
+  transition: width 350ms ease;
+}
+#editorialBrowserEntry .editorial-inline-status { grid-column: auto; min-height: 0; margin: 12px 0 0; }
+#editorialBrowserSetup { min-height: 34px; margin-top: 4px; padding: 0; }
+
+.editorial-continue {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-top: 22px;
+  padding: 18px 20px;
+  border: 1px solid var(--editorial-line);
+  border-left: 3px solid var(--editorial-accent);
+  border-radius: 7px;
+  background: #fff;
+  box-shadow: 0 12px 34px rgba(16, 47, 56, .045);
+}
+.editorial-continue span,
+.editorial-continue strong,
+.editorial-continue small { display: block; }
+.editorial-continue span { color: var(--editorial-accent); font-size: 12px; font-weight: 750; }
+.editorial-continue strong { margin-top: 4px; color: var(--editorial-ink); font-size: 16px; }
+.editorial-continue small { margin-top: 5px; color: var(--editorial-muted); font-size: 13px; }
+.editorial-continue button {
+  min-width: 112px;
+  min-height: 42px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 7px;
+  background: var(--editorial-accent);
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 720;
+  cursor: pointer;
+}
+
 .editorial-confirm {
   display: grid;
   grid-template-columns: 42px 240px minmax(0, 1fr);
@@ -438,6 +514,7 @@ body.theme-dark .editorial-purpose-choices strong { color: #edf6f5; }
 body.theme-dark .editorial-entry,
 body.theme-dark .editorial-confirm,
 body.theme-dark .editorial-progress-panel,
+body.theme-dark .editorial-continue,
 body.theme-dark .editorial-purpose-choices span { background: #142c30; border-color: #315055; }
 body.theme-dark .editorial-source-choices { border-color: #315055; }
 body.theme-dark .editorial-source-choices > button { border-color: #315055; }
@@ -462,6 +539,7 @@ body.theme-dark .editorial-source-choices > button { border-color: #315055; }
   .editorial-intro { align-items: flex-start; margin-bottom: 25px; }
   .editorial-intro h1 { font-size: 34px; }
   .editorial-text-action { display: none; }
+  #editorialBrowserSetup:not([hidden]) { display: inline-flex; align-items: center; }
   .editorial-entry,
   .editorial-confirm,
   .editorial-progress-panel { margin-top: 20px; padding: 22px 18px; }
@@ -480,6 +558,8 @@ body.theme-dark .editorial-source-choices > button { border-color: #315055; }
   .editorial-confirm-footer { align-items: stretch; flex-direction: column; }
   .editorial-confirm-footer button { width: 100%; }
   .editorial-progress-panel > header > strong { font-size: 26px; }
+  .editorial-continue { align-items: stretch; flex-direction: column; }
+  .editorial-continue button { width: 100%; }
   .editorial-progress-steps { grid-template-columns: 1fr; gap: 14px; }
   .editorial-progress-steps li { padding: 0 0 0 26px; }
   .editorial-progress-steps li::before { top: 12px; bottom: -16px; left: 6px; width: 1px; height: auto; right: auto; }
