@@ -9,6 +9,9 @@ on:
       - "Dockerfile"
       - ".dockerignore"
       - "compose.yaml"
+      - "compose.local.yaml"
+      - "scripts/start-docker-local.ps1"
+      - "scripts/tests/test_deployment.py"
       - ".github/workflows/container.yml"
   workflow_dispatch:
 

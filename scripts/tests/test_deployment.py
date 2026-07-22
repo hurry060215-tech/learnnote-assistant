@@ -25,6 +25,17 @@ class DeploymentContractTests(unittest.TestCase):
         self.assertIn("LEARNNOTE_PUBLIC_PASSWORD", compose)
         self.assertIn("restart: unless-stopped", compose)
 
+    def test_local_container_is_loopback_only_and_uses_d_drive_bind_mount(self) -> None:
+        compose = (ROOT / "compose.local.yaml").read_text(encoding="utf-8")
+        launcher = (ROOT / "scripts" / "start-docker-local.ps1").read_text(encoding="utf-8")
+
+        self.assertIn('127.0.0.1:${LEARNNOTE_PORT:-8876}:8765', compose)
+        self.assertIn("LEARNNOTE_DEPLOYMENT_MODE: local", compose)
+        self.assertIn("${LEARNNOTE_DATA_PATH:-D:/LearnNote/docker-data}", compose)
+        self.assertNotIn("LEARNNOTE_PUBLIC_PASSWORD", compose)
+        self.assertIn('D:\\LearnNote\\docker-data', launcher)
+        self.assertIn("Docker data must be stored on the D drive", launcher)
+
     def test_public_mode_refuses_short_or_missing_password(self) -> None:
         code = "import app.config"
         env = {

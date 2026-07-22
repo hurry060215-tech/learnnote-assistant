@@ -188,6 +188,30 @@ cd D:\Projects\learnnote-assistant
 D:\Projects\learnnote-assistant\extension
 ```
 
+## Docker 部署
+
+Docker 适合把 LearnNote 后端和 Web 工作台运行在本机、NAS 或服务器上。浏览器当前页功能仍建议使用 Windows 客户端；扩展默认只连接本机 `127.0.0.1`。
+
+本机 Windows 部署会使用 `8876` 端口，避免与桌面客户端的 `8765` 冲突，并将全部容器数据绑定到 `D:\LearnNote\docker-data`：
+
+```powershell
+.\scripts\start-docker-local.ps1 -Build
+```
+
+启动后访问 `http://127.0.0.1:8876`。停止容器：
+
+```powershell
+.\scripts\start-docker-local.ps1 -Stop
+```
+
+端口和 D 盘数据目录均可修改：
+
+```powershell
+.\scripts\start-docker-local.ps1 -Port 8877 -DataPath D:\LearnNote\docker-data-2
+```
+
+服务器部署使用 `compose.yaml`，必须设置至少 12 位的 `LEARNNOTE_PUBLIC_PASSWORD`，并通过 HTTPS 反向代理对外提供服务。不要把远程管理页面直接暴露在明文 HTTP 上。
+
 ## 开发与验证
 
 窄范围修改优先运行：

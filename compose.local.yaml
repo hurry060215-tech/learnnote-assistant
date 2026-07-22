@@ -1,0 +1,28 @@
+services:
+  learnnote:
+    image: ghcr.io/hurry060215-tech/learnnote-assistant:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    init: true
+    ports:
+      - "127.0.0.1:${LEARNNOTE_PORT:-8876}:8765"
+    environment:
+      LEARNNOTE_DEPLOYMENT_MODE: local
+      LEARNNOTE_DATA_DIR: /app/data
+      LEARNNOTE_BACKEND_ORIGIN: "http://127.0.0.1:${LEARNNOTE_PORT:-8876}"
+      LEARNNOTE_WHISPER_MODEL: "${LEARNNOTE_WHISPER_MODEL:-small}"
+      LEARNNOTE_WHISPER_DEVICE: "${LEARNNOTE_WHISPER_DEVICE:-cpu}"
+      LEARNNOTE_WHISPER_COMPUTE_TYPE: "${LEARNNOTE_WHISPER_COMPUTE_TYPE:-int8}"
+    volumes:
+      - type: bind
+        source: "${LEARNNOTE_DATA_PATH:-D:/LearnNote/docker-data}"
+        target: /app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import json,urllib.request; assert json.load(urllib.request.urlopen('http://127.0.0.1:8765/health', timeout=3))['ok']"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 6
+
