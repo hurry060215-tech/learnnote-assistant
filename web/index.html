@@ -9,6 +9,7 @@
     <link rel="stylesheet" href="/web/workspace.css?v=20260714-v0124">
     <link rel="stylesheet" href="/web/product.css?v=20260714-v0124">
     <link rel="stylesheet" href="/web/mature.css?v=20260721-v0135">
+    <link rel="stylesheet" href="/web/editorial.css?v=20260722-v0142">
   </head>
   <body data-app-view="workspace">
     <header class="topbar">
@@ -193,6 +194,106 @@
       </section>
 
       <aside id="workspace" class="workspace-panel">
+        <section id="editorialHome" class="editorial-home" aria-labelledby="editorialHomeTitle">
+          <header class="editorial-intro">
+            <div>
+              <span class="editorial-kicker">新建学习笔记</span>
+              <h1 id="editorialHomeTitle">从一段视频开始</h1>
+              <p>选择视频来源，确认内容无误后再生成笔记。</p>
+            </div>
+            <button id="editorialOpenLibrary" class="editorial-text-action" type="button">打开笔记库</button>
+          </header>
+
+          <div id="editorialSourceChoices" class="editorial-source-choices" role="group" aria-label="选择视频来源">
+            <button type="button" data-editorial-source="url">
+              <span class="editorial-source-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1M14 11a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1"/></svg></span>
+              <span><strong>粘贴视频链接</strong><small>B 站、YouTube 或媒体直链</small></span>
+              <svg class="editorial-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>
+            </button>
+            <button type="button" data-editorial-source="browser">
+              <span class="editorial-source-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4zM4 9h16M9 19V9"/></svg></span>
+              <span><strong>从浏览器接收当前视频</strong><small>读取扩展刚刚发送的播放内容</small></span>
+              <svg class="editorial-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>
+            </button>
+            <button type="button" data-editorial-source="local">
+              <span class="editorial-source-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 8l5-5 5 5M4 18h16v3H4z"/></svg></span>
+              <span><strong>拖入本地视频</strong><small>MP4、MKV、WebM、MOV、M4S</small></span>
+              <svg class="editorial-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>
+            </button>
+          </div>
+
+          <section id="editorialUrlEntry" class="editorial-entry" hidden aria-label="粘贴视频链接">
+            <button class="editorial-back" type="button" data-editorial-back aria-label="返回来源选择"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
+            <div class="editorial-entry-copy"><span>视频链接</span><strong>粘贴要学习的视频</strong></div>
+            <div class="editorial-link-row">
+              <input id="editorialUrlInput" type="text" inputmode="url" autocomplete="off" spellcheck="false" placeholder="BV 号或 https://...">
+              <button id="editorialInspectUrl" type="button">识别视频</button>
+            </div>
+            <p id="editorialUrlStatus" class="editorial-inline-status" role="status"></p>
+          </section>
+
+          <section id="editorialLocalEntry" class="editorial-entry" hidden aria-label="拖入本地视频">
+            <button class="editorial-back" type="button" data-editorial-back aria-label="返回来源选择"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
+            <div class="editorial-entry-copy"><span>本地视频</span><strong>拖入文件或从电脑选择</strong></div>
+            <label id="editorialDropzone" class="editorial-dropzone">
+              <input id="editorialFileInput" type="file" accept="video/*,.mp4,.m4v,.mov,.mkv,.webm,.flv,.avi,.m4s">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5M4 18h16v3H4z"/></svg>
+              <span><strong>把视频拖到这里</strong><small>选择文件后只做检查，不会立即上传</small></span>
+            </label>
+            <p id="editorialLocalStatus" class="editorial-inline-status" role="status"></p>
+          </section>
+
+          <section id="editorialBrowserEntry" class="editorial-entry" hidden aria-label="从浏览器接收当前视频">
+            <button class="editorial-back" type="button" data-editorial-back aria-label="返回来源选择"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
+            <div class="editorial-entry-copy"><span>浏览器交接</span><strong>接收刚刚发送的视频</strong><p>在视频页打开 LearnNote 扩展并发送，然后回到这里检查。</p></div>
+            <button id="editorialReceiveBrowser" class="editorial-secondary-button" type="button">检查接收状态</button>
+            <p id="editorialBrowserStatus" class="editorial-inline-status" role="status"></p>
+          </section>
+
+          <section id="editorialMediaConfirm" class="editorial-confirm" hidden aria-labelledby="editorialConfirmTitle">
+            <button class="editorial-back" type="button" data-editorial-back aria-label="重新选择视频"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
+            <div id="editorialMediaCover" class="editorial-media-cover"><span>LN</span></div>
+            <div class="editorial-media-summary">
+              <span id="editorialMediaSource" class="editorial-kicker">视频已识别</span>
+              <h2 id="editorialConfirmTitle">确认视频内容</h2>
+              <p id="editorialMediaSubtitle">开始前检查声音、字幕和画面是否完整。</p>
+              <dl class="editorial-media-facts">
+                <div><dt>时长</dt><dd id="editorialDuration">等待检测</dd></div>
+                <div><dt>声音</dt><dd id="editorialAudioState">等待检测</dd></div>
+                <div><dt>字幕</dt><dd id="editorialSubtitleState">等待检测</dd></div>
+                <div><dt>画面</dt><dd id="editorialVisualState">等待检测</dd></div>
+                <div><dt>预计耗时</dt><dd id="editorialEstimate">正在估算</dd></div>
+              </dl>
+            </div>
+
+            <section class="editorial-note-purpose" aria-labelledby="editorialPurposeTitle">
+              <header><div><span class="editorial-kicker">笔记用途</span><h3 id="editorialPurposeTitle">这次准备怎么学？</h3></div><button id="editorialImportTemplate" type="button">导入 YAML / JSON</button></header>
+              <input id="editorialTemplateFile" type="file" accept="application/json,application/yaml,text/yaml,.json,.yaml,.yml" hidden>
+              <div id="editorialPurposeChoices" class="editorial-purpose-choices" role="radiogroup" aria-label="选择笔记用途">
+                <label><input type="radio" name="editorialPurpose" value="review" checked><span><strong>课堂复习</strong><small>知识点、解释、易错点、复习题</small></span></label>
+                <label><input type="radio" name="editorialPurpose" value="tutorial"><span><strong>操作教程</strong><small>步骤、界面变化、命令、常见错误</small></span></label>
+                <label><input type="radio" name="editorialPurpose" value="exam"><span><strong>考试整理</strong><small>定义、考点、记忆卡片、练习题</small></span></label>
+                <label><input type="radio" name="editorialPurpose" value="quick"><span><strong>快速摘要</strong><small>结论和关键时间轴</small></span></label>
+                <label><input type="radio" name="editorialPurpose" value="custom"><span><strong>自定义模板</strong><small id="editorialCustomTemplateName">导入自己的结构</small></span></label>
+              </div>
+              <div id="editorialPurposePreview" class="editorial-purpose-preview" aria-live="polite"></div>
+            </section>
+
+            <footer class="editorial-confirm-footer">
+              <p id="editorialConfirmStatus" role="status"></p>
+              <button id="editorialStartTask" type="button">开始生成笔记</button>
+            </footer>
+          </section>
+
+          <section id="editorialProgress" class="editorial-progress-panel" hidden aria-labelledby="editorialProgressTitle">
+            <header><div><span class="editorial-kicker">正在生成</span><h2 id="editorialProgressTitle">处理视频内容</h2><p id="editorialCurrentAction">准备任务...</p></div><strong id="editorialProgressValue">0%</strong></header>
+            <div class="editorial-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="editorialProgressBar"></i></div>
+            <ol id="editorialProgressSteps" class="editorial-progress-steps"></ol>
+            <div class="editorial-progress-meta"><span>预计剩余 <strong id="editorialEta">正在估算</strong></span></div>
+            <div id="editorialFailureAction" class="editorial-failure-action" hidden></div>
+            <details class="editorial-technical-log"><summary>查看技术日志</summary><pre id="editorialTechnicalLog">等待任务信息...</pre></details>
+          </section>
+        </section>
         <div class="panel-heading">
           <strong>新建学习笔记</strong>
           <p class="panel-subtitle">选择学习内容，生成结构清晰、可以回到原视频核对的笔记。</p>
@@ -264,7 +365,7 @@
 
         <section id="localSource" class="source-pane">
           <label id="dropzone" class="dropzone">
-            <input id="fileInput" type="file" accept="video/*,.mp4,.m4v,.mov,.mkv,.webm,.flv,.avi">
+            <input id="fileInput" type="file" accept="video/*,.mp4,.m4v,.mov,.mkv,.webm,.flv,.avi,.m4s">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5M4 17v3h16v-3"/></svg>
             <strong>拖入视频文件</strong>
             <small id="fileName">mp4 / flv / avi / webm / mov / mkv</small>
@@ -407,7 +508,14 @@
             <label class="field" data-setting-group="notes">
               <span>笔记风格</span>
               <select id="noteStyle">
-                <option value="study" selected>学习笔记 · 通用课程</option>
+                <optgroup label="按学习用途">
+                  <option value="classroom-review" selected>课堂复习 · 知识点与复习题</option>
+                  <option value="operation-tutorial">操作教程 · 步骤、命令与排错</option>
+                  <option value="exam-review">考试整理 · 考点与练习题</option>
+                  <option value="quick-summary">快速摘要 · 结论与时间轴</option>
+                </optgroup>
+                <optgroup label="高级风格">
+                <option value="study">学习笔记 · 通用课程</option>
                 <option value="concise">重点速记 · 快速回顾</option>
                 <option value="exam">考点复习 · 备考刷题</option>
                 <option value="lecture">课程讲义 · 完整整理</option>
@@ -415,6 +523,7 @@
                 <option value="code">代码教程 · 操作与示例</option>
                 <option value="academic">论文导读 · 学术阅读</option>
                 <option value="language">语言学习 · 双语表达</option>
+                </optgroup>
               </select>
             </label>
             <label class="field" data-setting-group="notes">
@@ -665,6 +774,7 @@
       </section>
     </div>
 
-    <script src="/web/app.js?v=20260721-v0135"></script>
+    <script src="/web/app.js?v=20260722-v0142"></script>
+    <script src="/web/editorial.js?v=20260722-v0143"></script>
   </body>
 </html>

@@ -1170,6 +1170,122 @@ function bestPageTitle(...values) {
   return "";
 }
 
+function canonicalSourcePageUrl(value = "") {
+  try {
+    const url = new URL(value);
+    url.hash = "";
+    url.hostname = url.hostname.toLowerCase();
+    const keep = new Set(["v", "p", "list", "index", "courseId", "clazzid", "knowledgeId", "chapterId", "objectid"]);
+    for (const key of [...url.searchParams.keys()]) {
+      if (!keep.has(key)) url.searchParams.delete(key);
+    }
+    if ((url.protocol === "https:" && url.port === "443") || (url.protocol === "http:" && url.port === "80")) url.port = "";
+    url.pathname = url.pathname.replace(/\/{2,}/g, "/");
+    if (url.pathname !== "/") url.pathname = url.pathname.replace(/\/$/, "");
+    url.searchParams.sort();
+    return url.href;
+  } catch {
+    return String(value || "").split("#")[0].trim();
+  }
+}
+
+function sourcePlatformIdentity(urlValue = "", page = {}) {
+  const url = String(urlValue || "");
+  const bilibili = /(?:bilibili\.com\/video\/|b23\.tv\/)(BV[0-9A-Za-z]+)/i.exec(url);
+  if (bilibili) return { platform: "bilibili", platformVideoId: bilibili[1] };
+  try {
+    const parsed = new URL(url);
+    if (/youtube\.com$/i.test(parsed.hostname) || /youtu\.be$/i.test(parsed.hostname)) {
+      const id = /youtu\.be$/i.test(parsed.hostname) ? parsed.pathname.split("/").filter(Boolean)[0] : parsed.searchParams.get("v");
+      return { platform: "youtube", platformVideoId: id || "" };
+    }
+    if (/chaoxing\.com$/i.test(parsed.hostname) || /xuexitong/i.test(parsed.hostname)) {
+      const active = page.active_video || {};
+      const id = parsed.searchParams.get("objectid") || parsed.searchParams.get("knowledgeId") || active.objectid || page.objectid || "";
+      return { platform: "chaoxing", platformVideoId: String(id) };
+    }
+    return { platform: parsed.hostname.replace(/^www\./, "") || "web", platformVideoId: "" };
+  } catch {
+    return { platform: "web", platformVideoId: "" };
+  }
+}
+
+function stableSourceMediaUrl(value = "") {
+  try {
+    const url = new URL(value);
+    url.hash = "";
+    const volatile = /^(?:token|sign|signature|expires?|deadline|auth|auth_key|wsSecret|wsTime|timestamp|ts|t|rnd|random|callback)$/i;
+    for (const key of [...url.searchParams.keys()]) {
+      if (volatile.test(key)) url.searchParams.delete(key);
+    }
+    url.searchParams.sort();
+    return url.href;
+  } catch {
+    return String(value || "").split("#")[0];
+  }
+}
+
+function sourceFingerprintHash(value = "") {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+function sourceResourceFingerprint(page = {}, resources = []) {
+  const stable = [];
+  const active = page.active_video || {};
+  const activeSrc = active.current_src || active.currentSrc || active.src || "";
+  if (activeSrc) stable.push(`active:${stableSourceMediaUrl(activeSrc)}`);
+  const ranked = [...(resources || [])]
+    .filter(item => item?.url && !/subtitle|caption|vtt|srt/i.test(String(item.kind || "")))
+    .sort((left, right) => Number(right.score || 0) - Number(left.score || 0));
+  for (const item of ranked) {
+    const url = stableSourceMediaUrl(item.resolved_url || item.url);
+    if (!url) continue;
+    const key = `${String(item.kind || "media").toLowerCase()}:${url}`;
+    if (!stable.includes(key)) stable.push(key);
+    if (stable.length >= 12) break;
+  }
+  return sourceFingerprintHash(stable.sort().join("\n") || "no-media");
+}
+
+function buildSourceIdentity(tab = {}, page = {}, resources = [], capturedAt = Date.now()) {
+  const pageUrl = page.page_url || tab.url || "";
+  const platform = sourcePlatformIdentity(pageUrl, page);
+  const active = page.active_video || {};
+  const platformVideoId = platform.platformVideoId || "";
+  return {
+    tab_id: Number.isFinite(Number(tab.id)) ? Number(tab.id) : null,
+    canonical_page_url: canonicalSourcePageUrl(pageUrl),
+    platform: platform.platform,
+    platform_video_id: platformVideoId,
+    BVID: platform.platform === "bilibili" ? platformVideoId : "",
+    page_title: bestPageTitle(page.title, tab.title),
+    active_video: { current_src: String(active.current_src || active.currentSrc || active.src || "").trim() },
+    resource_fingerprint: sourceResourceFingerprint(page, resources),
+    captured_at: new Date(capturedAt).toISOString()
+  };
+}
+
+function sourceIdentityKey(identity = {}) {
+  return [
+    identity.tab_id ?? "",
+    identity.canonical_page_url || "",
+    identity.platform || "",
+    identity.platform_video_id || identity.BVID || "",
+    identity.page_title || "",
+    identity.active_video?.current_src || "",
+    identity.resource_fingerprint || ""
+  ].join("\u001f");
+}
+
+function sourceIdentityMatches(expected, actual) {
+  return Boolean(expected && actual && sourceIdentityKey(expected) === sourceIdentityKey(actual));
+}
+
 function normalizePageForFrame(page = {}, frameId = 0, tab = {}) {
   const normalized = {
     title: bestPageTitle(page.title, tab.title),
@@ -2178,12 +2294,29 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     if (message.type === "start-current-task") {
       const tab = await tabForMessage(message);
-      const page = message.page || await collectPageData(tab);
+      const expectedIdentity = message.sourceIdentity || message.source_identity || null;
+      const page = expectedIdentity ? await collectPageData(tab) : (message.page || await collectPageData(tab));
+      const captureLog = expectedIdentity ? await loadCaptureLog(tab.id) : { resources: [] };
+      const identityResources = mergeAndRankResources([
+        ...(page.resources || []),
+        ...(resourceByTab.get(tab.id) || []),
+        ...(captureLog.resources || [])
+      ], page, tab).slice(0, 30);
+      const sourceIdentity = buildSourceIdentity(tab, page, identityResources);
+      if (expectedIdentity && !sourceIdentityMatches(expectedIdentity, sourceIdentity)) {
+        sendResponse({
+          error: "页面或播放内容已切换，已拒绝旧的预检结果。请在当前页面重新发送。",
+          code: "stale_source_identity",
+          source_identity: sourceIdentity
+        });
+        return;
+      }
       const resources = mergeAndRankResources(message.resources, page, tab, { preserveOrder: Array.isArray(message.resources) });
       const partitionKeys = await cookiePartitionKeysForContext(page, tab, resources);
       const cookies = await cookiesForUrls(cookieUrlsForContext(page, tab, resources), partitionKeys);
       const backendUrl = message.backendUrl || "http://127.0.0.1:8765";
-      const res = await fetch(`${backendUrl}/api/tasks/from-current-page`, {
+      const taskEndpoint = `${backendUrl}/api/tasks/from-current-page${message.defer === true ? "?defer=true" : ""}`;
+      const res = await fetch(taskEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -2194,6 +2327,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           page_preflight_report: message.pagePreflightReport || {},
           active_video: page.active_video || null,
           browser_subtitles: page.browser_subtitles || [],
+          source_identity: sourceIdentity,
           drm_detected: Boolean(page.drm_detected),
           drm_signals: page.drm_signals || [],
           resources,
@@ -2233,6 +2367,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const tab = await tabForMessage(message);
       const page = message.page || await collectPageData(tab);
       const resources = mergeAndRankResources(message.resources, page, tab, { preserveOrder: Array.isArray(message.resources) });
+      const sourceIdentity = message.sourceIdentity || message.source_identity || buildSourceIdentity(tab, page, resources);
       const partitionKeys = await cookiePartitionKeysForContext(page, tab, resources);
       const cookies = await cookiesForUrls(cookieUrlsForContext(page, tab, resources), partitionKeys);
       const backendUrl = message.backendUrl || "http://127.0.0.1:8765";
@@ -2243,6 +2378,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           page_url: page.page_url || tab.url,
           active_video: page.active_video || null,
           resources,
+          source_identity: sourceIdentity,
           cookies,
           drm_detected: Boolean(page.drm_detected),
           probe_limit: message.probeLimit ?? 3

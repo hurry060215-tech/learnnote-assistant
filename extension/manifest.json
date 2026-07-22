@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "minimum_chrome_version": "116",
-  "name": "LearnNote 当前页学习助手",
-  "version": "0.1.35",
-  "description": "直接读取当前页视频、本地视频上传、转写、视觉切片与图文总结。",
+  "name": "LearnNote 当前视频助手",
+  "version": "0.1.36",
+  "description": "识别当前正在播放的视频，并安全交接到本机 LearnNote 客户端。",
   "permissions": [
     "activeTab",
     "tabs",
@@ -25,7 +25,7 @@
     "service_worker": "background.js"
   },
   "action": {
-    "default_title": "打开 LearnNote 当前页学习助手"
+    "default_title": "打开 LearnNote 当前视频助手"
   },
   "side_panel": {
     "default_path": "sidepanel.html"

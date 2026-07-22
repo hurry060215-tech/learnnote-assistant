@@ -11,7 +11,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 from .config import BACKEND_ORIGIN
-from .models import FrameGrid
+from .models import FrameGrid, FrameSample, MediaIntegrity, MediaTrackInfo
 from .runtime import ffmpeg_bin, ffprobe_bin, hidden_subprocess_kwargs
 
 
@@ -73,6 +73,170 @@ def probe_duration(path: Path) -> float:
         return 0
     hours, minutes, seconds = match.groups()
     return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+
+
+def file_sha256(path: Path, chunk_size: int = 1024 * 1024) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        while chunk := handle.read(chunk_size):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _safe_float(value: object) -> float:
+    try:
+        result = float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0
+    return result if math.isfinite(result) and result >= 0 else 0.0
+
+
+def _integrity_status(has_video: bool, has_audio: bool) -> tuple[str, list[str]]:
+    if has_video and has_audio:
+        return "ready", []
+    if has_video:
+        return "video_only", ["missing_audio_track"]
+    if has_audio:
+        return "audio_only", ["missing_video_track"]
+    return "no_media", ["missing_video_and_audio_tracks"]
+
+
+def _integrity_from_ffprobe(path: Path, probe: str) -> MediaIntegrity | None:
+    result = subprocess.run(
+        [
+            probe,
+            "-v",
+            "error",
+            "-show_entries",
+            "format=format_name,duration,size:stream=index,codec_type,codec_name,duration,width,height,channels:stream_tags=language,title",
+            "-of",
+            "json",
+            str(path),
+        ],
+        capture_output=True,
+        text=True,
+        **hidden_subprocess_kwargs(),
+    )
+    if result.returncode != 0:
+        return None
+    try:
+        payload = json.loads(result.stdout or "{}")
+    except json.JSONDecodeError:
+        return None
+    tracks: list[MediaTrackInfo] = []
+    for raw in payload.get("streams") or []:
+        raw_type = str(raw.get("codec_type") or "unknown").lower()
+        track_type = raw_type if raw_type in {"video", "audio", "subtitle", "data"} else "unknown"
+        tags = raw.get("tags") if isinstance(raw.get("tags"), dict) else {}
+        tracks.append(MediaTrackInfo(
+            index=int(raw.get("index") or 0),
+            type=track_type,
+            codec=str(raw.get("codec_name") or ""),
+            duration=_safe_float(raw.get("duration")),
+            language=str(tags.get("language") or ""),
+            title=str(tags.get("title") or ""),
+            width=int(raw["width"]) if raw.get("width") is not None else None,
+            height=int(raw["height"]) if raw.get("height") is not None else None,
+            channels=int(raw["channels"]) if raw.get("channels") is not None else None,
+        ))
+    format_data = payload.get("format") if isinstance(payload.get("format"), dict) else {}
+    return _build_media_integrity(
+        path,
+        tracks,
+        duration=_safe_float(format_data.get("duration")),
+        container=str(format_data.get("format_name") or ""),
+        probe_backend="ffprobe",
+    )
+
+
+def _integrity_from_ffmpeg(path: Path, ffmpeg: str) -> MediaIntegrity:
+    result = subprocess.run(
+        [ffmpeg, "-hide_banner", "-i", str(path)],
+        capture_output=True,
+        text=True,
+        **hidden_subprocess_kwargs(),
+    )
+    stderr = result.stderr or ""
+    tracks: list[MediaTrackInfo] = []
+    stream_pattern = re.compile(
+        r"Stream\s+#\S+?(?:\((?P<language>[^)]+)\))?:\s+(?P<type>Video|Audio|Subtitle|Data):\s+(?P<codec>[^,\s]+)",
+        re.I,
+    )
+    for index, match in enumerate(stream_pattern.finditer(stderr)):
+        track_type = match.group("type").lower()
+        tracks.append(MediaTrackInfo(
+            index=index,
+            type=track_type if track_type in {"video", "audio", "subtitle", "data"} else "unknown",
+            codec=match.group("codec"),
+            language=match.group("language") or "",
+        ))
+    container_match = re.search(r"Input #0,\s*([^,\r\n]+(?:,[^,\r\n]+)*)\s*,\s*from", stderr)
+    return _build_media_integrity(
+        path,
+        tracks,
+        duration=probe_duration(path),
+        container=container_match.group(1).strip() if container_match else "",
+        probe_backend="ffmpeg",
+        warnings=[] if tracks else ["stream_metadata_unavailable"],
+    )
+
+
+def _build_media_integrity(
+    path: Path,
+    tracks: list[MediaTrackInfo],
+    *,
+    duration: float,
+    container: str,
+    probe_backend: str,
+    warnings: list[str] | None = None,
+) -> MediaIntegrity:
+    video_tracks = [track for track in tracks if track.type == "video"]
+    audio_tracks = [track for track in tracks if track.type == "audio"]
+    subtitle_tracks = [track for track in tracks if track.type == "subtitle"]
+    status, blocking_reasons = _integrity_status(bool(video_tracks), bool(audio_tracks))
+    if duration <= 0:
+        status = "invalid"
+        blocking_reasons.append("invalid_or_missing_duration")
+    return MediaIntegrity(
+        status=status,
+        probe_backend=probe_backend,
+        file_size=path.stat().st_size if path.is_file() else 0,
+        sha256=file_sha256(path) if path.is_file() else "",
+        duration=duration,
+        container=container,
+        stream_count=len(tracks),
+        video_stream_count=len(video_tracks),
+        audio_stream_count=len(audio_tracks),
+        subtitle_stream_count=len(subtitle_tracks),
+        has_video=bool(video_tracks),
+        has_audio=bool(audio_tracks),
+        has_subtitles=bool(subtitle_tracks),
+        video_codec=video_tracks[0].codec if video_tracks else "",
+        audio_codec=audio_tracks[0].codec if audio_tracks else "",
+        subtitle_codec=subtitle_tracks[0].codec if subtitle_tracks else "",
+        tracks=tracks,
+        blocking_reasons=list(dict.fromkeys(blocking_reasons)),
+        warnings=list(warnings or []),
+    )
+
+
+def probe_media_integrity(path: Path) -> MediaIntegrity:
+    if not path.is_file() or path.stat().st_size <= 0:
+        return MediaIntegrity(status="invalid", blocking_reasons=["empty_or_missing_file"])
+    probe = ffprobe_bin()
+    if probe:
+        integrity = _integrity_from_ffprobe(path, probe)
+        if integrity is not None:
+            return integrity
+    ffmpeg = ffmpeg_bin()
+    if ffmpeg:
+        return _integrity_from_ffmpeg(path, ffmpeg)
+    return MediaIntegrity(
+        status="invalid",
+        file_size=path.stat().st_size,
+        sha256=file_sha256(path),
+        blocking_reasons=["ffmpeg_or_ffprobe_required"],
+    )
 
 
 def normalize_video(input_path: Path, output_path: Path) -> Path:
@@ -311,29 +475,143 @@ def _sample_frame_timestamps(
     return sorted(selected[:max_frames])
 
 
-def extract_frames(
+def detect_scene_change_timestamps(
+    video_path: Path,
+    *,
+    threshold: float = 0.22,
+    max_scenes: int = 600,
+) -> list[int]:
+    ffmpeg = ffmpeg_bin()
+    if not ffmpeg or max_scenes <= 0:
+        return []
+    threshold = min(0.95, max(0.05, float(threshold)))
+    result = subprocess.run(
+        [
+            ffmpeg,
+            "-hide_banner",
+            "-loglevel",
+            "info",
+            "-i",
+            str(video_path),
+            "-an",
+            "-vf",
+            f"select=gt(scene\\,{threshold:.3f}),showinfo",
+            "-frames:v",
+            str(max_scenes),
+            "-f",
+            "null",
+            "-",
+        ],
+        capture_output=True,
+        text=True,
+        **hidden_subprocess_kwargs(),
+    )
+    values: set[int] = set()
+    for raw in re.findall(r"pts_time:([0-9]+(?:\.[0-9]+)?)", result.stderr or ""):
+        values.add(max(0, int(round(float(raw)))))
+    return sorted(values)[:max_scenes]
+
+
+def _adaptive_frame_plan(
+    duration: float,
+    interval: int,
+    max_frames: int,
+    scene_timestamps: list[int],
+    anchor_timestamps: list[float] | None,
+) -> list[tuple[int, list[str]]]:
+    if duration <= 0 or max_frames <= 0:
+        return []
+    baseline = _sample_frame_timestamps(duration, interval, max_frames=max_frames)
+    anchors = _normalize_frame_anchor_timestamps(duration, anchor_timestamps)
+    last_seekable = max(0, int(math.ceil(duration)) - 1)
+    scenes = sorted({min(last_seekable, max(0, int(value))) for value in scene_timestamps})
+    reasons: dict[int, set[str]] = {}
+    for value in baseline:
+        reasons.setdefault(value, set()).add("coverage")
+    context_values: list[int] = []
+    for value in scenes:
+        reasons.setdefault(value, set()).update({"scene_change", "content_change"})
+        for context_value in (max(0, value - 1), min(last_seekable, value + 1)):
+            reasons.setdefault(context_value, set()).add("interaction_context")
+            context_values.append(context_value)
+    for value in anchors:
+        reasons.setdefault(value, set()).add("playback_anchor")
+    reasons.setdefault(0, set()).add("start")
+    reasons.setdefault(last_seekable, set()).add("tail")
+
+    if max_frames == 1:
+        selected = {anchors[0] if anchors else baseline[0]}
+        return [(value, sorted(reasons[value])) for value in sorted(selected)]
+
+    def evenly_spaced(values: list[int], limit: int) -> list[int]:
+        unique = sorted(set(values))
+        if limit <= 0:
+            return []
+        if len(unique) <= limit:
+            return unique
+        if limit == 1:
+            return [unique[len(unique) // 2]]
+        indices = {round(index * (len(unique) - 1) / (limit - 1)) for index in range(limit)}
+        return [unique[index] for index in sorted(indices)]
+
+    # Coverage owns the majority of the budget and is selected across the full
+    # timeline before scene changes are considered.
+    coverage_budget = min(len(baseline), max(2, int(math.ceil(max_frames * 0.60))))
+    coverage_values = evenly_spaced(baseline, coverage_budget)
+    selected_order = []
+    for value in [*anchors, *coverage_values]:
+        if value not in selected_order and len(selected_order) < max_frames:
+            selected_order.append(value)
+
+    scene_budget = max_frames - len(selected_order)
+    available_scene_context = [
+        value for value in [*scenes, *context_values]
+        if value not in selected_order
+    ]
+    scene_context = evenly_spaced(available_scene_context, scene_budget)
+    for value in scene_context:
+        if value not in selected_order and len(selected_order) < max_frames:
+            selected_order.append(value)
+
+    if len(selected_order) < max_frames:
+        for value in evenly_spaced(baseline, max_frames):
+            if value not in selected_order:
+                selected_order.append(value)
+            if len(selected_order) >= max_frames:
+                break
+    selected = set(selected_order)
+    return [(value, sorted(reasons[value])) for value in sorted(selected)]
+
+
+def extract_frames_adaptive(
     video_path: Path,
     frame_dir: Path,
     interval: int,
     max_frames: int = 900,
     anchor_timestamps: list[float] | None = None,
-) -> list[Path]:
+    scene_threshold: float = 0.22,
+) -> tuple[list[Path], list[FrameSample]]:
     require_ffmpeg()
     ffmpeg = ffmpeg_bin()
     frame_dir.mkdir(parents=True, exist_ok=True)
     duration = probe_duration(video_path)
     if duration <= 0:
-        return []
+        return [], []
     interval = max(1, interval)
     coverage_gap = max(5, interval)
-    timestamps = _sample_frame_timestamps(duration, interval, max_frames, anchor_timestamps)
-    anchor_set = set(_normalize_frame_anchor_timestamps(duration, anchor_timestamps))
+    scene_timestamps = detect_scene_change_timestamps(
+        video_path,
+        threshold=scene_threshold,
+        max_scenes=max_frames,
+    )
+    plan = _adaptive_frame_plan(duration, interval, max_frames, scene_timestamps, anchor_timestamps)
     frames: list[Path] = []
+    samples: list[FrameSample] = []
     last_hash = ""
     last_average_hash: int | None = None
     last_mean_luma: float | None = None
     last_kept_timestamp: float | None = None
-    for index, ts in enumerate(timestamps):
+    for index, (ts, reasons) in enumerate(plan):
         out = frame_dir / f"frame_{index:04d}_{ts:06d}.jpg"
         seek_start = max(0, ts - 3)
         precise_offset = ts - seek_start
@@ -365,7 +643,8 @@ def extract_frames(
         current_hash = _md5(out)
         current_average_hash = _average_hash(out)
         current_mean_luma = _mean_luma(out)
-        if ts not in anchor_set and not _should_keep_sampled_frame(
+        important = bool({"scene_change", "content_change", "interaction_context", "playback_anchor", "start", "tail"}.intersection(reasons))
+        if not important and not _should_keep_sampled_frame(
             current_hash=current_hash,
             current_average_hash=current_average_hash,
             current_mean_luma=current_mean_luma,
@@ -383,6 +662,30 @@ def extract_frames(
         last_mean_luma = current_mean_luma
         last_kept_timestamp = float(ts)
         frames.append(out)
+        samples.append(FrameSample(
+            path=str(out),
+            timestamp=float(ts),
+            reasons=reasons,
+            important=important,
+            sha256=file_sha256(out),
+        ))
+    return frames, samples
+
+
+def extract_frames(
+    video_path: Path,
+    frame_dir: Path,
+    interval: int,
+    max_frames: int = 900,
+    anchor_timestamps: list[float] | None = None,
+) -> list[Path]:
+    frames, _samples = extract_frames_adaptive(
+        video_path,
+        frame_dir,
+        interval,
+        max_frames=max_frames,
+        anchor_timestamps=anchor_timestamps,
+    )
     return frames
 
 
@@ -490,6 +793,7 @@ def build_frame_grids(
                 end=end,
                 frame_count=len(group),
                 frame_timestamps=timestamps,
+                frame_paths=[str(frame) for frame in group],
             )
         )
     return grids

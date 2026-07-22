@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import unittest
 
-from app.models import TaskOptions
-from app.summarizer import note_generation_contract, note_style_instruction
+from app.models import FrameGrid, TaskOptions, TranscriptResult, TranscriptSegment
+from app.summarizer import local_markdown_note, note_generation_contract, note_style_instruction, note_template_instruction
 
 
 class NoteProfileTests(unittest.TestCase):
@@ -26,6 +26,50 @@ class NoteProfileTests(unittest.TestCase):
             TaskOptions(note_profile_prompt="x" * 4001)
         with self.assertRaises(ValueError):
             TaskOptions(note_profile_sections=[str(index) for index in range(17)])
+
+    def test_operation_tutorial_contract_requires_evidenced_actions(self):
+        options = TaskOptions(note_style="operation-tutorial", note_template="operation-tutorial")
+
+        contract = note_generation_contract(options)
+        combined = " ".join([contract, note_style_instruction(options), note_template_instruction(options)]).lower()
+
+        for required in ("steps", "interface changes", "commands", "common errors", "evidence"):
+            self.assertIn(required, combined)
+        self.assertIn("omit unsupported", combined)
+
+    def test_new_note_use_cases_are_mapped_to_prompts(self):
+        for use_case in ("classroom-review", "exam-review", "quick-summary"):
+            options = TaskOptions(note_style=use_case, note_template=use_case)
+            self.assertNotEqual(note_style_instruction(options), note_style_instruction(TaskOptions()))
+            self.assertNotEqual(note_template_instruction(options), note_template_instruction(TaskOptions()))
+
+    def test_operation_tutorial_local_fallback_uses_actionable_sections(self):
+        transcript = TranscriptResult(
+            source="faster-whisper",
+            full_text=(
+                "Open settings. Select the model provider. Run docker pull example/image. "
+                "If the connection fails, check the API key."
+            ),
+            segments=[
+                TranscriptSegment(start=0, end=2, text="Open settings"),
+                TranscriptSegment(start=2, end=4, text="Select the model provider"),
+                TranscriptSegment(start=4, end=7, text="Run docker pull example/image"),
+                TranscriptSegment(start=7, end=10, text="If the connection fails, check the API key"),
+            ],
+        )
+        grids = [FrameGrid(path="grid.jpg", url="/grid.jpg", start=0, end=10, frame_count=2, frame_timestamps=[0, 7])]
+        note = local_markdown_note(
+            "Docker setup",
+            transcript,
+            grids,
+            options=TaskOptions(note_style="operation-tutorial", note_template="visual-handout", summary_depth="deep"),
+        )
+
+        for heading in ("## 操作步骤", "## 界面变化", "## 命令与参数", "## 常见错误与处理"):
+            self.assertIn(heading, note)
+        self.assertIn("`docker pull example/image`", note)
+        self.assertIn("00:00:07", note)
+        self.assertNotIn("## 概念精讲", note)
 
 
 if __name__ == "__main__":

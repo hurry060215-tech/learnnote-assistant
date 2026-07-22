@@ -8,10 +8,11 @@ import time
 from pathlib import Path
 from urllib.parse import urldefrag
 
-from .config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
+from .config import BACKEND_ORIGIN, LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
 from .downloader import DownloadError, MediaDownloader, classify_resource, effective_resource_kind, infer_manifest_url_from_fragment
-from .media import build_frame_grids, extract_audio, extract_embedded_subtitle, extract_frames, normalize_video, probe_duration
-from .models import ActiveVideoInfo, BrowserSubtitleCue, CurrentPageTaskRequest, DownloadAttempt, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
+from .media import build_frame_grids, extract_audio, extract_embedded_subtitle, extract_frames, extract_frames_adaptive, normalize_video, probe_duration, probe_media_integrity
+from .models import ActiveVideoInfo, BrowserSubtitleCue, CurrentPageTaskRequest, DownloadAttempt, FrameGrid, FrameSample, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
+from .reliability import calculate_evidence_coverage, current_page_source_identity, evidence_coverage_markdown, validate_source_identity
 from .storage import get_task, mark_task_cancelled, save_task, task_dir, update_task, write_json
 from .source_input import clean_task_title
 from .summarizer import MAX_GRIDS_PER_VISION_CALL, MAX_VISION_GRIDS, build_visual_windows, llm_base_host, llm_model_supports_vision, llm_provider_name, select_vision_grid_entries, summarize_page_text_with_diagnostics, summarize_with_diagnostics_audit as summarize_with_diagnostics
@@ -933,6 +934,12 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
         _check_cancel(task_id)
     except TaskCancelled:
         return
+    expected_identity = get_task(task_id).source_identity
+    actual_identity = current_page_source_identity(request)
+    identity_reasons = validate_source_identity(expected_identity, actual_identity)
+    if identity_reasons:
+        _fail(task_id, "source_changed", f"Source changed before processing: {', '.join(identity_reasons)}")
+        return
     request.resources = enrich_resources_with_active_video(request)
     write_json(task_id, "request.json", redacted_request_dump(request))
     write_resource_inventory(task_id, request)
@@ -988,6 +995,15 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
             normalized = work_dir / "media.mp4"
             normalize_video(media_path, normalized)
             _check_cancel(task_id)
+            integrity = probe_media_integrity(normalized)
+            integrity_path = write_json(task_id, "media_integrity.json", integrity.model_dump(mode="json"))
+            record = get_task(task_id)
+            update_task(
+                task_id,
+                media_integrity=integrity,
+                media_integrity_path=str(integrity_path),
+                source_identity=record.source_identity.model_copy(update={"media_sha256": integrity.sha256}),
+            )
             transcript_path = ""
             subtitle_path = ""
             page_subtitle_path = maybe_download_page_subtitle(downloader, request)
@@ -1097,6 +1113,25 @@ def _process_video_file(
     _check_cancel(task_id)
     update_task(task_id, status="running", phase="processing_video", progress=25, message="正在标准化视频")
 
+    integrity = probe_media_integrity(input_path)
+    integrity_path = write_json(task_id, "media_integrity.json", integrity.model_dump(mode="json"))
+    record = get_task(task_id)
+    source_identity = record.source_identity.model_copy(update={"media_sha256": integrity.sha256})
+    update_task(
+        task_id,
+        media_integrity=integrity,
+        media_integrity_path=str(integrity_path),
+        source_identity=source_identity,
+        message="Media integrity checked",
+    )
+    if record.source_type == "local" and record.source_identity.resource_fingerprint:
+        if record.source_identity.resource_fingerprint != integrity.sha256:
+            raise ContentMismatchError("Local media fingerprint changed before processing.")
+    if integrity.status in {"invalid", "no_media"}:
+        raise ContentMismatchError(
+            f"Media integrity check failed ({integrity.status}): {', '.join(integrity.blocking_reasons)}"
+        )
+
     normalized = work_dir / "media.mp4"
     remember_reusable_media(task_id, input_path)
     normalize_video(input_path, normalized)
@@ -1130,6 +1165,27 @@ def _process_video_file(
         if embedded_subtitle:
             update_task(task_id, subtitle_path=str(embedded_subtitle), message="已检测到视频内嵌字幕，正在解析字幕")
             transcript = parse_subtitle_or_none(embedded_subtitle, source="embedded-subtitle")
+
+    if integrity.status in {"video_only", "audio_only"}:
+        blocked_coverage = calculate_evidence_coverage(
+            integrity,
+            transcript or TranscriptResult(source="missing-subtitle"),
+            [],
+            visual_enabled=options.visual_understanding,
+        )
+        blocked_path = write_json(
+            task_id,
+            "evidence_coverage.json",
+            blocked_coverage.model_dump(mode="json"),
+        )
+        update_task(
+            task_id,
+            evidence_coverage=blocked_coverage,
+            evidence_coverage_path=str(blocked_path),
+        )
+        raise ContentMismatchError(
+            f"Single-track media ({integrity.status}) cannot produce a composite video note; both video and audio tracks are required."
+        )
 
     audio_path: Path | None = None
     if transcript is None:
@@ -1168,17 +1224,20 @@ def _process_video_file(
     frames: list[Path] = []
     grids = []
     frame_extraction_warning = ""
-    media_duration = probe_duration(normalized)
+    media_duration = integrity.duration
+    frame_samples: list[FrameSample] = []
     if options.visual_understanding:
         update_task(task_id, phase="extracting_frames", progress=68, message="正在抽帧并生成画面网格")
         frame_dir = work_dir / "frames"
         grid_dir = work_dir / "grids"
-        frames = extract_frames(
+        frames, frame_samples = extract_frames_adaptive(
             normalized,
             frame_dir,
             max(1, options.frame_interval),
             anchor_timestamps=frame_anchor_timestamps,
         )
+        for sample in frame_samples:
+            sample.url = f"{BACKEND_ORIGIN}/api/tasks/{task_id}/frames/{Path(sample.path).name}"
         _check_cancel(task_id)
         grids = build_frame_grids(
             task_id,
@@ -1189,6 +1248,9 @@ def _process_video_file(
             max(1, options.frame_interval),
             media_duration=media_duration,
         )
+        important_paths = {sample.path for sample in frame_samples if sample.important}
+        for grid in grids:
+            grid.important_frame_paths = [path for path in grid.frame_paths if path in important_paths]
         if not frames:
             frame_extraction_warning = (
                 "已启用画面理解，但未能从完整视频提取任何画面帧；本任务没有视觉切片，"
@@ -1203,6 +1265,14 @@ def _process_video_file(
             "task_id": task_id,
             "title": title,
             "page_url": page_url,
+            "sampling": {
+                "strategy": "scene-change-plus-coverage",
+                "scene_threshold": 0.22,
+                "sample_count": len(frame_samples),
+                "important_frame_count": sum(sample.important for sample in frame_samples),
+            },
+            "important_frames": [sample.model_dump(mode="json") for sample in frame_samples if sample.important],
+            "frames": [sample.model_dump(mode="json") for sample in frame_samples],
             "windows": [window.model_dump(mode="json") for window in visual_windows],
         },
     )
@@ -1225,7 +1295,27 @@ def _process_video_file(
         )
         return
 
-    validate_summary_evidence(transcript, frames, media_duration)
+    evidence_coverage = calculate_evidence_coverage(
+        integrity,
+        transcript,
+        frame_samples,
+        visual_enabled=options.visual_understanding,
+    )
+    evidence_coverage_path = write_json(
+        task_id,
+        "evidence_coverage.json",
+        evidence_coverage.model_dump(mode="json"),
+    )
+    update_task(
+        task_id,
+        evidence_coverage=evidence_coverage,
+        evidence_coverage_path=str(evidence_coverage_path),
+    )
+    if not evidence_coverage.can_summarize:
+        raise ContentMismatchError(
+            "Evidence reliability gate blocked summary generation: "
+            + ", ".join(evidence_coverage.blocking_reasons)
+        )
 
     update_task(task_id, phase="summarizing", progress=84, message="正在生成 Markdown 笔记")
     _check_cancel(task_id)
@@ -1236,6 +1326,9 @@ def _process_video_file(
     else:
         note, summary_source, summary_warning = summary_result
         llm_events = []
+    evidence_section = evidence_coverage_markdown(integrity, evidence_coverage)
+    if "## 依据与覆盖" not in note:
+        note = f"{note.rstrip()}\n\n{evidence_section}\n"
     if frame_extraction_warning:
         summary_warning = "；".join(filter(None, [summary_warning, frame_extraction_warning]))
     summary_diagnostics = build_summary_diagnostics(
@@ -1253,6 +1346,8 @@ def _process_video_file(
         frame_extraction_warning=frame_extraction_warning,
         frame_anchor_timestamps=frame_anchor_timestamps,
     )
+    summary_diagnostics["media_integrity"] = integrity.model_dump(mode="json")
+    summary_diagnostics["evidence_coverage"] = evidence_coverage.model_dump(mode="json")
     summary_diagnostics_path = write_json(task_id, "summary_diagnostics.json", summary_diagnostics)
     note_path = work_dir / "note.md"
     note_path.write_text(note, encoding="utf-8")

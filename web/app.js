@@ -24,9 +24,9 @@ function apiUrl(path) {
 }
 
 let API = resolveApiBase();
-const MEDIA_RE = /\.(mp4|m4v|webm|mov|mkv|flv|avi)(\?|#|$)/i;
+const MEDIA_RE = /\.(mp4|m4v|webm|mov|mkv|flv|avi|m4s)(\?|#|$)/i;
 const HLS_RE = /\.(m3u8|mpd)(\?|#|$)/i;
-const LOCAL_VIDEO_EXT_RE = /\.(mp4|m4v|mov|mkv|webm|flv|avi)$/i;
+const LOCAL_VIDEO_EXT_RE = /\.(mp4|m4v|mov|mkv|webm|flv|avi|m4s)$/i;
 const RESULT_TAB_NAMES = new Set(["note", "transcript", "slices", "frames", "diagnostics"]);
 const LOCAL_ASR_MODELS = new Set(["tiny", "base", "small", "medium", "large", "large-v2", "large-v3"]);
 const MODEL_SETTINGS_STORAGE_KEY = "learnnote_model_settings";
@@ -67,6 +67,10 @@ const LEARNING_GOALS = Object.freeze({
   exam: { style: "exam", template: "qa", depth: "standard" }
 });
 const NOTE_STYLE_PROFILES = Object.freeze({
+  "classroom-review": { title: "课堂复习", description: "按知识点组织解释，保留易错点并生成复习题。", sections: ["课程主题", "核心知识点", "概念解释", "易错点", "复习题"] },
+  "operation-tutorial": { title: "操作教程", description: "按演示顺序整理界面变化、命令、步骤和故障处理。", sections: ["完成目标", "准备工作", "操作步骤", "命令与参数", "常见错误"] },
+  "exam-review": { title: "考试整理", description: "围绕定义、考点、记忆卡片和练习题组织。", sections: ["考试范围", "核心定义", "高频考点", "记忆卡片", "练习题"] },
+  "quick-summary": { title: "快速摘要", description: "只保留结论、关键依据和时间轴。", sections: ["一句话结论", "关键要点", "重要时间轴"] },
   study: { title: "学习笔记", description: "适合大多数课程，兼顾理解、例子和复习。", sections: ["课程主题", "核心概念", "例子与演示", "易错点", "复习问题"] },
   concise: { title: "重点速记", description: "适合快速回顾，只保留结论、关键词和行动项。", sections: ["一句话总结", "关键结论", "关键词", "待复习"] },
   exam: { title: "考点复习", description: "适合备考，把知识点转成考点、陷阱与自测题。", sections: ["考试范围", "高频考点", "易错陷阱", "自测题", "答案要点"] },
@@ -8546,7 +8550,7 @@ els.openProcessingSettingsButton?.addEventListener?.("click", () => {
   showSettingsPane("processing");
 });
 els.openOnboardingButton?.addEventListener?.("click", openOnboarding);
-els.closeOnboardingButton?.addEventListener?.("click", () => closeOnboarding(false));
+els.closeOnboardingButton?.addEventListener?.("click", () => closeOnboarding(true));
 els.skipOnboardingButton?.addEventListener?.("click", () => closeOnboarding(true));
 els.finishOnboardingButton?.addEventListener?.("click", () => {
   closeOnboarding(true);
@@ -8570,10 +8574,10 @@ els.onboardingModelButton?.addEventListener?.("click", () => {
   showSettingsPane("model");
 });
 els.onboardingOverlay?.addEventListener?.("click", event => {
-  if (event.target === els.onboardingOverlay) closeOnboarding(false);
+  if (event.target === els.onboardingOverlay) closeOnboarding(true);
 });
 document.addEventListener?.("keydown", event => {
-  if (event.key === "Escape" && !els.onboardingOverlay?.hidden) closeOnboarding(false);
+  if (event.key === "Escape" && !els.onboardingOverlay?.hidden) closeOnboarding(true);
 });
 els.settingsMenuButtons?.forEach?.(button => {
   button.addEventListener("click", () => showSettingsPane(button.dataset.settingsTab));

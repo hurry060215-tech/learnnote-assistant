@@ -39,10 +39,27 @@ from app.downloader import (
     ytdlp_headers_from_browser_context,
 )
 from app.main import _automatic_diagnostic_rules, diagnostic_recovery_profile, render_bundle_manifest, render_diagnostics_markdown, task_audit_summary
-from app.models import ActiveVideoInfo, BrowserCookie, BrowserSubtitleCue, CurrentPageTaskRequest, DownloadAttempt, DrmSignal, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
+from app.models import ActiveVideoInfo, BrowserCookie, BrowserSubtitleCue, CurrentPageTaskRequest, DownloadAttempt, DrmSignal, EvidenceCoverage, FrameGrid, MediaIntegrity, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
 from app.processor import ContentMismatchError, browser_subtitle_text_is_player_ui, build_summary_diagnostics, cookie_sync_summary, download_progress_updater, download_status_updater, enrich_resource_candidates_with_active_video, process_current_page_task, process_local_video_task, read_note, read_transcript, redacted_request_dump, redacted_resource, transcript_from_browser_subtitles, validate_summary_evidence
 from app.summarizer import MAX_GRIDS_PER_VISION_CALL, MAX_VISION_GRIDS, build_visual_windows, chat_completion_provider_kwargs, ensure_visual_appendix, learning_goal, learning_goal_instruction, llm_model_supports_vision, llm_provider_name, local_markdown_note, summarize_page_text_with_diagnostics, summarize_with_diagnostics, summarize_with_diagnostics_audit, summary_depth_instruction
 from app.storage import create_task, get_task, read_json, save_task, task_dir, write_json
+
+
+def ready_media_integrity(duration: float = 120) -> MediaIntegrity:
+    return MediaIntegrity(
+        status="ready",
+        duration=duration,
+        has_video=True,
+        has_audio=True,
+        video_stream_count=1,
+        audio_stream_count=1,
+        stream_count=2,
+        sha256="b" * 64,
+    )
+
+
+def ready_evidence_coverage() -> EvidenceCoverage:
+    return EvidenceCoverage(status="ready", can_summarize=True)
 from app.transcriber import resolve_whisper_model, transcribe_audio_openai_compatible, transcript_from_subtitle
 
 TEST_RUN_DIR = DATA_DIR / "test-runs"
@@ -1350,7 +1367,8 @@ class ProcessorBoundaryTests(unittest.TestCase):
                 target.write_bytes(b"audio")
                 return target
 
-            with patch("app.processor.normalize_video", side_effect=fake_normalize), \
+            with patch("app.processor.probe_media_integrity", return_value=ready_media_integrity()), \
+                patch("app.processor.normalize_video", side_effect=fake_normalize), \
                 patch("app.processor.extract_audio", side_effect=fake_extract_audio), \
                 patch(
                     "app.processor.transcribe_audio",
@@ -1399,7 +1417,9 @@ class ProcessorBoundaryTests(unittest.TestCase):
                 target.write_bytes(b"audio")
                 return target
 
-            with patch("app.processor.normalize_video", side_effect=fake_normalize) as normalize:
+            with patch("app.processor.probe_media_integrity", return_value=ready_media_integrity(1)), \
+                patch("app.processor.calculate_evidence_coverage", return_value=ready_evidence_coverage()), \
+                patch("app.processor.normalize_video", side_effect=fake_normalize) as normalize:
                 with patch("app.processor.extract_audio", side_effect=fake_extract_audio):
                     with patch(
                         "app.processor.transcribe_audio",
@@ -1409,7 +1429,7 @@ class ProcessorBoundaryTests(unittest.TestCase):
                             segments=[TranscriptSegment(start=0, end=1, text="normalized transcript")],
                         ),
                     ):
-                        with patch("app.processor.extract_frames", return_value=[]):
+                        with patch("app.processor.extract_frames_adaptive", return_value=([], [])):
                             with patch("app.processor.build_frame_grids", return_value=[]):
                                 with patch(
                                     "app.processor.summarize_with_diagnostics",
@@ -1455,6 +1475,7 @@ class ProcessorBoundaryTests(unittest.TestCase):
 
                 try:
                     with patch("app.processor.MediaDownloader", FakeDownloader), \
+                        patch("app.processor.probe_media_integrity", return_value=ready_media_integrity()), \
                         patch("app.processor.normalize_video", side_effect=RuntimeError("normalize failed")):
                         process_current_page_task(task.id, request)
 
@@ -1681,7 +1702,9 @@ class ProcessorBoundaryTests(unittest.TestCase):
                 target.write_bytes(b"audio")
                 return target
 
-            with patch("app.processor.normalize_video", side_effect=fake_normalize), \
+            with patch("app.processor.probe_media_integrity", return_value=ready_media_integrity(1)), \
+                patch("app.processor.calculate_evidence_coverage", return_value=ready_evidence_coverage()), \
+                patch("app.processor.normalize_video", side_effect=fake_normalize), \
                 patch("app.processor.extract_audio", side_effect=fake_extract_audio), \
                 patch("app.processor.transcribe_audio", side_effect=AssertionError("local faster-whisper should not run")), \
                 patch(
@@ -1692,7 +1715,7 @@ class ProcessorBoundaryTests(unittest.TestCase):
                         segments=[TranscriptSegment(start=0, end=1, text="remote transcript")],
                     ),
                 ) as remote_asr, \
-                patch("app.processor.extract_frames", return_value=[]), \
+                patch("app.processor.extract_frames_adaptive", return_value=([], [])), \
                 patch("app.processor.build_frame_grids", return_value=[]), \
                 patch("app.processor.summarize_with_diagnostics", return_value=("# Remote ASR", "local-template", "")):
                 process_local_video_task(task.id, input_path, "Remote ASR", options)
@@ -1725,11 +1748,13 @@ class ProcessorBoundaryTests(unittest.TestCase):
                 target.write_text("1\n00:00:00,000 --> 00:00:02,000\nembedded cue\n\n", encoding="utf-8")
                 return target
 
-            with patch("app.processor.normalize_video", side_effect=fake_normalize), \
+            with patch("app.processor.probe_media_integrity", return_value=ready_media_integrity(2)), \
+                patch("app.processor.calculate_evidence_coverage", return_value=ready_evidence_coverage()), \
+                patch("app.processor.normalize_video", side_effect=fake_normalize), \
                 patch("app.processor.extract_embedded_subtitle", side_effect=fake_extract_embedded_subtitle), \
                 patch("app.processor.extract_audio", side_effect=AssertionError("audio extraction should be skipped")), \
                 patch("app.processor.transcribe_audio", side_effect=AssertionError("ASR should be skipped")), \
-                patch("app.processor.extract_frames", return_value=[]), \
+                patch("app.processor.extract_frames_adaptive", return_value=([], [])), \
                 patch("app.processor.build_frame_grids", return_value=[]), \
                 patch("app.processor.summarize_with_diagnostics", return_value=("# Embedded subtitle lesson", "local-template", "")):
                 process_local_video_task(task.id, input_path, "Embedded subtitle lesson", TaskOptions())
@@ -1929,6 +1954,7 @@ class ProcessorBoundaryTests(unittest.TestCase):
             )
 
             with patch("app.processor.MediaDownloader", FakeDownloader), \
+                patch("app.processor.probe_media_integrity", return_value=ready_media_integrity(4)), \
                 patch("app.processor.normalize_video", side_effect=fake_normalize), \
                 patch("app.processor.extract_audio", side_effect=AssertionError("audio extraction should be skipped")), \
                 patch("app.processor.transcribe_audio", side_effect=AssertionError("Whisper should be skipped")), \
@@ -1990,9 +2016,10 @@ class ProcessorBoundaryTests(unittest.TestCase):
             )
 
             with patch("app.processor.MediaDownloader", FakeDownloader), \
+                patch("app.processor.probe_media_integrity", return_value=ready_media_integrity(120)), \
+                patch("app.processor.calculate_evidence_coverage", return_value=ready_evidence_coverage()), \
                 patch("app.processor.normalize_video", side_effect=fake_normalize), \
-                patch("app.processor.probe_duration", return_value=120), \
-                patch("app.processor.extract_frames", return_value=[]) as extract, \
+                patch("app.processor.extract_frames_adaptive", return_value=([], [])) as extract, \
                 patch("app.processor.build_frame_grids", return_value=[]), \
                 patch(
                     "app.processor.summarize_with_diagnostics",
@@ -2065,6 +2092,8 @@ class ProcessorBoundaryTests(unittest.TestCase):
             )
 
             with patch("app.processor.MediaDownloader", FakeDownloader), \
+                patch("app.processor.probe_media_integrity", return_value=ready_media_integrity()), \
+                patch("app.processor.calculate_evidence_coverage", return_value=ready_evidence_coverage()), \
                 patch("app.processor.normalize_video", side_effect=fake_normalize), \
                 patch("app.processor.extract_audio", side_effect=AssertionError("audio extraction should be skipped")), \
                 patch("app.processor.transcribe_audio", side_effect=AssertionError("Whisper should be skipped")), \
@@ -2133,6 +2162,8 @@ class ProcessorBoundaryTests(unittest.TestCase):
             )
 
             with patch("app.processor.MediaDownloader", FakeDownloader), \
+                patch("app.processor.probe_media_integrity", return_value=ready_media_integrity()), \
+                patch("app.processor.calculate_evidence_coverage", return_value=ready_evidence_coverage()), \
                 patch("app.processor.normalize_video", side_effect=fake_normalize), \
                 patch("app.processor.extract_audio", side_effect=AssertionError("audio extraction should be skipped")), \
                 patch("app.processor.transcribe_audio", side_effect=AssertionError("Whisper should be skipped")), \
@@ -2198,6 +2229,8 @@ class ProcessorBoundaryTests(unittest.TestCase):
             )
 
             with patch("app.processor.MediaDownloader", FakeDownloader), \
+                patch("app.processor.probe_media_integrity", return_value=ready_media_integrity()), \
+                patch("app.processor.calculate_evidence_coverage", return_value=ready_evidence_coverage()), \
                 patch("app.processor.normalize_video", side_effect=fake_normalize), \
                 patch("app.processor.transcript_from_subtitle", side_effect=fake_transcript_from_subtitle), \
                 patch("app.processor.extract_audio", side_effect=AssertionError("audio extraction should be skipped")), \

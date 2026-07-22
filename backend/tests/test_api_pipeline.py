@@ -24,7 +24,7 @@ from app.config import DATA_DIR
 from app.downloader import DownloadError
 from app.main import app, diagnostic_recovery_profile, local_upload_filename, render_bundle_manifest, render_diagnostics_markdown, render_task_audit_markdown, render_visual_windows_markdown
 from app.media import MediaProcessingError
-from app.models import ActiveVideoInfo, DownloadAttempt, FrameGrid, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
+from app.models import ActiveVideoInfo, DownloadAttempt, FrameGrid, MediaIntegrity, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
 from app.runtime import ffmpeg_bin
 from app.storage import create_task, task_dir, update_task, write_json
 
@@ -421,7 +421,13 @@ class LocalUploadValidationTests(unittest.TestCase):
         self.assertFalse(list((DATA_DIR / "uploads").glob("pending_*lesson.mp4")))
 
     def test_local_upload_records_source_media_path_before_processing(self) -> None:
-        with patch("app.main.validate_local_upload_file") as validate, \
+        with patch("app.main.validate_local_upload_file", return_value=MediaIntegrity(
+            status="ready",
+            duration=60,
+            has_video=True,
+            has_audio=True,
+            sha256="a" * 64,
+        )) as validate, \
             patch("app.main.process_local_video_task") as process_task:
             response = self.client.post(
                 "/api/tasks/from-local",
@@ -2429,7 +2435,7 @@ class ApiPipelineTests(unittest.TestCase):
             finally:
                 shutil.rmtree(task_dir(task_id), ignore_errors=True)
 
-    def test_silent_local_video_continues_with_frame_grid_without_transcript(self) -> None:
+    def test_silent_local_video_is_blocked_before_composite_summary(self) -> None:
         with tempfile.TemporaryDirectory(dir=TEST_RUN_DIR) as tmp:
             video = make_silent_video(Path(tmp))
             with patch("app.processor.transcribe_audio", side_effect=AssertionError("Whisper should not run without an extracted audio track")):
@@ -2447,19 +2453,15 @@ class ApiPipelineTests(unittest.TestCase):
             task_id = response.json()["task_id"]
             try:
                 task = self.client.get(f"/api/tasks/{task_id}").json()["task"]
-                self.assertEqual(task["status"], "success")
+                self.assertEqual(task["status"], "failed")
+                self.assertEqual(task["error_code"], "media_mismatch")
                 self.assertTrue(Path(task["media_path"]).exists())
                 self.assertFalse(task["audio_path"])
-                self.assertTrue(task["frame_grids"])
-                self.assertTrue(task["visual_windows"])
-                transcript = self.client.get(f"/api/tasks/{task_id}/transcript").json()
-                self.assertEqual(transcript["source"], "no-audio")
-                self.assertEqual(transcript["segments"], [])
-                self.assertIn("音轨", transcript["warning"])
-                note = self.client.get(f"/api/tasks/{task_id}/note").text
-                self.assertIn("Silent visual lesson", note)
-                self.assertIn("转写提示", note)
-                self.assertIn("画面索引", note)
+                self.assertEqual(task["media_integrity"]["status"], "video_only")
+                self.assertFalse(task["evidence_coverage"]["can_summarize"])
+                self.assertIn("media_tracks", task["evidence_coverage"]["blocking_reasons"])
+                self.assertFalse(task["frame_grids"])
+                self.assertFalse(task["note_path"])
             finally:
                 shutil.rmtree(task_dir(task_id), ignore_errors=True)
 

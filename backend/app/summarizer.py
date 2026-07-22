@@ -217,6 +217,11 @@ def _source_host(page_url: str) -> str:
 def note_template_instruction(options: TaskOptions) -> str:
     template = str(options.note_template or "standard").strip().lower()
     mapping = {
+        "classroom-review": "Classroom review: organize knowledge points, explanations, common mistakes, and review questions supported by the source.",
+        "operation-tutorial": "Operation tutorial: document verified steps, visible interface changes, exact commands, and evidenced common errors; omit any unsupported step or result.",
+        "exam-review": "Exam review: organize definitions, testable points, memory cards, and practice questions using only source-supported facts.",
+        "quick-summary": "Quick summary: keep only supported conclusions and a compact timestamped timeline.",
+        "custom": "Custom profile: follow note_profile_name, note_profile_prompt, and note_profile_sections without weakening evidence constraints.",
         "standard": "标准学习笔记：按课程主题、时间轴重点、核心概念、例题/演示步骤、易错点、复习问题组织。",
         "timeline": "时间轴模板：优先按时间段组织，每段保留关键结论、画面证据、字幕依据和回看动作。",
         "cornell": "康奈尔模板：每个主题输出线索栏、笔记栏和课后总结，并在末尾生成复习问题。",
@@ -235,6 +240,10 @@ def note_style_instruction(options: TaskOptions) -> str:
     if style == "custom" and options.note_profile_prompt:
         return f"自定义风格 {options.note_profile_name or '用户模板'}：{options.note_profile_prompt}"
     mapping = {
+        "classroom-review": "Classroom review: explain concepts, preserve examples and common mistakes, then create evidence-grounded review questions.",
+        "operation-tutorial": "Operation tutorial: require steps, interface changes, commands, and common errors. Every item must cite transcript or visual evidence; never invent missing operations.",
+        "exam-review": "Exam review: extract definitions, test points, memory cards, and answerable practice questions grounded in the material.",
+        "quick-summary": "Quick summary: output only key conclusions and timestamped navigation, with no speculative background.",
         "study": "学习笔记：解释概念、保留例子和易错点，结尾给出可执行的复习任务。",
         "concise": "重点速记：只保留高价值结论、关键词和时间点，避免重复背景。",
         "outline": "重点速记：只保留高价值结论、关键词和时间点，避免重复背景。",
@@ -253,6 +262,11 @@ def learning_goal(options: TaskOptions) -> str:
     style = str(options.note_style or "").strip().lower().replace("_", "-")
     template = str(options.note_template or "").strip().lower().replace("_", "-")
     explicit_goals = {
+        "classroom-review": "deep",
+        "operation-tutorial": "deep",
+        "exam-review": "exam",
+        "quick-summary": "quick",
+        "custom": "auto",
         "auto": "auto",
         "automatic": "auto",
         "default": "auto",
@@ -340,8 +354,23 @@ def note_generation_contract(options: TaskOptions) -> str:
             f"章节框架：{sections or '按内容自然组织'}。\n"
             "自定义风格不能覆盖真实性、时间戳来源和不编造内容等共同约束。\n"
         )
+    style_use_case = str(options.note_style or "").strip().lower().replace("_", "-")
+    template_use_case = str(options.note_template or "").strip().lower().replace("_", "-")
+    supported_use_cases = {"classroom-review", "operation-tutorial", "exam-review", "quick-summary", "custom"}
+    use_case = style_use_case if style_use_case in supported_use_cases else template_use_case
+    use_case_contracts = {
+        "classroom-review": "Required use case: knowledge points, explanations, common mistakes, and review questions; include only source-supported items.\n",
+        "operation-tutorial": (
+            "Required use case: operation tutorial. Organize verified steps in execution order; for each step capture visible interface changes, exact commands when present, and evidenced common errors. "
+            "Every step and error must be supported by transcript timestamps or visual-window evidence. Omit unsupported commands, clicks, outcomes, and troubleshooting advice.\n"
+        ),
+        "exam-review": "Required use case: definitions, testable points, memory cards, and practice questions; answers must be derivable from the evidence.\n",
+        "quick-summary": "Required use case: concise conclusions and timestamped timeline only; remove repetition and unsupported context.\n",
+        "custom": "Required use case: apply the imported note_profile fields while preserving all shared evidence rules.\n",
+    }
     return (
-        custom_profile + f"学习目标：{learning_goal_instruction(options)}\n"
+        use_case_contracts.get(use_case, "")
+        + custom_profile + f"学习目标：{learning_goal_instruction(options)}\n"
         f"深度约束：{summary_depth_instruction(options)}\n"
         "共同约束：时间戳只能来自字幕段或画面窗口；不要编造画面、例题或事实。"
         "没有对应内容时省略可选章节，不要用空章节或套话补齐。"
@@ -701,6 +730,85 @@ def _grid_image_content_items(entries: list[VisionGridEntry]) -> list[dict]:
     return items
 
 
+def _operation_tutorial_sections(transcript: TranscriptResult, grids: list[FrameGrid]) -> list[str]:
+    segments = [segment for segment in transcript.segments if re.sub(r"\s+", " ", segment.text or "").strip()]
+    if not segments:
+        segments = [
+            TranscriptSegment(start=0.0, end=0.0, text=text)
+            for text in _sentences(transcript.full_text, limit=16)
+        ]
+
+    interface_pattern = re.compile(
+        r"\b(open|click|select|choose|settings?|menu|window|panel|dialog|save|enter|screen|page|tab)\b|"
+        r"打开|点击|选择|设置|菜单|窗口|面板|弹窗|保存|输入|页面|选项卡",
+        re.I,
+    )
+    command_pattern = re.compile(
+        r"(?:^|[\n`$>]\s*|\b(?:run|execute)\s+)((?:docker|podman|pip|pip3|npm|pnpm|yarn|conda|python|python3|git|ffmpeg|yt-dlp|curl|wget|winget|brew|choco)\s+[^\n`]+)",
+        re.I,
+    )
+    error_pattern = re.compile(
+        r"\b(error|failed?|failure|cannot|can't|unable|timeout|denied|not found|troubleshoot)\b|"
+        r"错误|失败|报错|异常|无法|超时|拒绝|找不到|排错|故障",
+        re.I,
+    )
+
+    lines = ["## 操作目标", ""]
+    first_step = re.sub(r"\s+", " ", segments[0].text).strip() if segments else ""
+    lines.append(f"- {first_step}" if first_step else "- 材料未明确说明操作目标，请先回看开头确认。")
+
+    lines += ["", "## 准备工作", ""]
+    lines.append("- 材料未单独说明前置条件；从第一个有时间戳的操作开始，不补写未展示的安装或配置。")
+
+    lines += ["", "## 操作步骤", ""]
+    if segments:
+        for index, segment in enumerate(segments[:24], start=1):
+            text = re.sub(r"\s+", " ", segment.text).strip()
+            lines.append(f"{index}. `{_format_ts(segment.start)}` {text}")
+    else:
+        lines.append("1. 暂无可核对的字幕步骤；请先补充字幕或重新转写。")
+
+    lines += ["", "## 界面变化", ""]
+    interface_segments = [segment for segment in segments if interface_pattern.search(segment.text or "")]
+    if interface_segments:
+        for segment in interface_segments[:12]:
+            text = re.sub(r"\s+", " ", segment.text).strip()
+            lines.append(f"- `{_format_ts(segment.start)}` {text}")
+    elif grids:
+        for index, grid in enumerate(grids[:8], start=1):
+            lines.append(
+                f"- W{index:03d} `{_format_ts(grid.start)} - {_format_ts(grid.end)}`："
+                f"字幕未说明界面状态；只按截图复核，不推断未展示的点击结果。"
+            )
+    else:
+        lines.append("- 没有可核对的界面变化证据。")
+
+    command_matches: list[str] = []
+    for segment in segments:
+        for match in command_pattern.finditer(segment.text or ""):
+            command = re.sub(r"\s+", " ", match.group(1)).strip(" .")
+            if command and command not in command_matches:
+                command_matches.append(command)
+    lines += ["", "## 命令与参数", ""]
+    if command_matches:
+        lines.extend(f"- `{command}`" for command in command_matches[:16])
+    else:
+        lines.append("- 材料中未出现可逐字核对的完整命令；不要把口头操作描述改写成可执行命令。")
+
+    error_segments = [segment for segment in segments if error_pattern.search(segment.text or "")]
+    lines += ["", "## 常见错误与处理", ""]
+    if error_segments:
+        for segment in error_segments[:12]:
+            text = re.sub(r"\s+", " ", segment.text).strip()
+            lines.append(f"- `{_format_ts(segment.start)}` {text}")
+    else:
+        lines.append("- 材料没有展示可核对的报错或处理结果；不补写通用故障。")
+
+    lines += ["", "## 完成检查", ""]
+    lines.append("- 按上面的时间点回看原视频，逐项确认界面状态、命令文本和最终结果；未被画面或字幕证实的步骤保持为待确认。")
+    return lines
+
+
 def _local_goal_note(
     title: str,
     transcript: TranscriptResult,
@@ -730,6 +838,10 @@ def _local_goal_note(
         f"- 旧格式兼容：{note_template_instruction(options)}",
         "",
     ]
+
+    if str(options.note_style or "").strip().lower().replace("_", "-") == "operation-tutorial":
+        lines.extend(_operation_tutorial_sections(transcript, grids))
+        return ensure_visual_appendix("\n".join(lines).rstrip() + "\n", transcript, grids)
 
     if goal == "quick":
         lines += ["## 一页速览", ""]

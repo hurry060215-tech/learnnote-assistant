@@ -148,7 +148,10 @@ const stylesCss = await readFile(new URL("../styles.css", import.meta.url), "utf
 const workspaceCss = await readFile(new URL("../workspace.css", import.meta.url), "utf8");
 const productCss = await readFile(new URL("../product.css", import.meta.url), "utf8");
 const matureCss = await readFile(new URL("../mature.css", import.meta.url), "utf8");
+const editorialCss = await readFile(new URL("../editorial.css", import.meta.url), "utf8");
+const editorialCode = await readFile(new URL("../editorial.js", import.meta.url), "utf8");
 vm.runInContext(webCode, context);
+vm.runInContext(editorialCode, context);
 
 await new Promise(resolve => setTimeout(resolve, 0));
 await new Promise(resolve => setTimeout(resolve, 0));
@@ -182,6 +185,115 @@ assert.equal(context.resolveApiBase(
   { getItem: () => "http://localhost:9000/" }
 ), "http://localhost:9000");
 assert.match(indexHtml, /id="startupReadiness"/);
+assert.match(indexHtml, /id="editorialSourceChoices"/);
+assert.match(indexHtml, /id="editorialMediaConfirm"/);
+assert.match(indexHtml, /id="editorialProgressSteps"/);
+assert.match(indexHtml, /开始生成笔记/);
+assert.deepEqual(Array.from(context.window.LearnNoteEditorial.stages), ["获取视频", "检查内容", "生成字幕", "理解画面", "整理笔记"]);
+assert.equal(context.window.LearnNoteEditorial.workflowStageIndex({ workflow_stage: "vision" }), 3);
+assert.equal(context.window.LearnNoteEditorial.workflowStageIndex({ phase: "transcribing" }), 2);
+assert.equal(context.window.LearnNoteEditorial.workflowStageIndex({ phase: "summarizing" }), 4);
+assert.equal(context.window.LearnNoteEditorial.workflowStageIndex({ workflow_stage: "acquire_media" }), 0);
+assert.equal(context.window.LearnNoteEditorial.workflowStageIndex({ workflow_stage: "check_content" }), 1);
+assert.equal(context.window.LearnNoteEditorial.workflowStageIndex({ workflow_stage: "generate_transcript" }), 2);
+assert.equal(context.window.LearnNoteEditorial.workflowStageIndex({ workflow_stage: "understand_visuals" }), 3);
+assert.equal(context.window.LearnNoteEditorial.workflowStageIndex({ workflow_stage: "compose_note" }), 4);
+assert.equal(context.window.LearnNoteEditorial.purposes.review.style, "classroom-review");
+assert.equal(context.window.LearnNoteEditorial.purposes.tutorial.style, "operation-tutorial");
+assert.equal(context.window.LearnNoteEditorial.purposes.exam.style, "exam-review");
+assert.equal(context.window.LearnNoteEditorial.purposes.quick.style, "quick-summary");
+const compatibleDraft = context.window.LearnNoteEditorial.mediaDraft("url", {
+  title: "Compatibility lesson",
+  duration: 420,
+  estimated_seconds: 120,
+  media_integrity: { has_audio: true, has_video: true, has_subtitles: false }
+});
+assert.equal(compatibleDraft.title, "Compatibility lesson");
+assert.equal(compatibleDraft.duration, 420);
+assert.equal(compatibleDraft.audio, true);
+assert.equal(compatibleDraft.visual, true);
+assert.equal(compatibleDraft.subtitles, false);
+const legacyDraft = context.window.LearnNoteEditorial.mediaDraft("url", { report: { downloadable: true } }, { title: "Legacy", duration: 60, visual: true });
+assert.equal(legacyDraft.title, "Legacy");
+assert.equal(legacyDraft.visual, true);
+assert.equal(legacyDraft.audio, null);
+const deferredDraft = context.window.LearnNoteEditorial.mediaDraft("browser", {
+  title: "Deferred lesson",
+  media_integrity: { status: "invalid", has_audio: false, has_video: false, blocking_reasons: [] }
+});
+assert.equal(deferredDraft.audio, null);
+assert.equal(deferredDraft.visual, null);
+const videoOnlyDraft = context.window.LearnNoteEditorial.mediaDraft("local", {
+  title: "Video only",
+  integrity: { status: "video_only", has_audio: false, has_video: true, blocking_reasons: ["missing_audio"] }
+});
+assert.equal(videoOnlyDraft.audio, false);
+assert.equal(videoOnlyDraft.visual, true);
+const subtitleOnlyBrowserDraft = context.window.LearnNoteEditorial.currentBrowserDraft({
+  id: "subtitle-only",
+  title: "Subtitle only",
+  source_type: "current_page",
+  browser_subtitles: [{ start: 0, end: 1, text: "hello" }],
+  media_integrity: { status: "invalid", has_audio: false, has_video: false, blocking_reasons: [] }
+});
+assert.equal(subtitleOnlyBrowserDraft.audio, null);
+const handoffBrowserDraft = context.window.LearnNoteEditorial.currentBrowserDraft({
+  id: "handoff-ready",
+  title: "Handoff ready",
+  source_type: "current_page",
+  handoff_integrity: { status: "ready", has_audio: true, has_video: true, has_subtitles: false },
+  media_integrity: { status: "invalid", has_audio: false, has_video: false, blocking_reasons: [] }
+});
+assert.equal(handoffBrowserDraft.audio, true);
+assert.equal(handoffBrowserDraft.visual, true);
+const yamlProfile = context.window.LearnNoteEditorial.parseYaml("name: 操作教程\ndescription: 记录步骤\nprompt: |\n  保留命令和错误\nsections:\n  - 准备工作\n  - 操作步骤");
+assert.equal(yamlProfile.name, "操作教程");
+assert.equal(yamlProfile.prompt, "保留命令和错误");
+assert.deepEqual(Array.from(yamlProfile.sections), ["准备工作", "操作步骤"]);
+const videoOnlyMarkers = context.window.LearnNoteEditorial.scanIsoBmffTrackMarkers([
+  Uint8Array.from([0x76, 0x69, 0x64, 0x65])
+]);
+assert.equal(videoOnlyMarkers.video, true);
+assert.equal(videoOnlyMarkers.audio, false);
+const completeMarkers = context.window.LearnNoteEditorial.scanIsoBmffTrackMarkers([
+  Uint8Array.from([0x76, 0x69, 0x64, 0x65, 0x00, 0x73, 0x6f, 0x75, 0x6e])
+]);
+assert.equal(completeMarkers.video, true);
+assert.equal(completeMarkers.audio, true);
+const stagedForm = context.window.LearnNoteEditorial.buildLocalTaskForm({
+  title: "Large lesson",
+  file: "must-not-be-sent",
+  payload: { staging_token: "stage-123" }
+}, { note_style: "study" });
+assert.equal(stagedForm.get("staging_token"), "stage-123");
+assert.equal(stagedForm.get("file"), undefined);
+const fallbackForm = context.window.LearnNoteEditorial.buildLocalTaskForm({
+  title: "Fallback lesson",
+  file: "fallback-file",
+  payload: {}
+}, {});
+assert.equal(fallbackForm.get("staging_token"), undefined);
+assert.equal(fallbackForm.get("file"), "fallback-file");
+let deferredStartRequest = null;
+const deferredStartResult = await context.window.LearnNoteEditorial.startDeferredBrowserTask(
+  "deferred/task",
+  { note_style: "code", visual_understanding: true },
+  async (url, init) => {
+    deferredStartRequest = { url, init };
+    return { task_id: "started-task" };
+  }
+);
+assert.equal(deferredStartResult.task_id, "started-task");
+assert.match(deferredStartRequest.url, /\/api\/tasks\/deferred%2Ftask\/start$/);
+assert.equal(deferredStartRequest.init.method, "POST");
+assert.deepEqual(JSON.parse(deferredStartRequest.init.body), { note_style: "code", visual_understanding: true });
+assert.equal(Object.hasOwn(JSON.parse(deferredStartRequest.init.body), "options"), false);
+assert.match(editorialCss, /\.editorial-source-choices\s*\{/);
+assert.match(editorialCss, /grid-template-columns:\s*repeat\(3,/);
+assert.match(editorialCss, /@media \(max-width: 640px\)/);
+assert.doesNotMatch(editorialCss, /font-size\s*:[^;]*(?:clamp\(|\d+(?:\.\d+)?vw)/i);
+assert.doesNotMatch(editorialCss, /(?:linear|radial)-gradient/i);
+assert.match(editorialCss, /\.editorial-home\.focused \.editorial-intro\s*\{\s*display:\s*none;/);
 assert.equal(context.safeNoteMediaUrl("/api/tasks/task-web/assets/grid_001.jpg"), "http://127.0.0.1:8765/api/tasks/task-web/assets/grid_001.jpg");
 vm.runInContext(`API = "http://127.0.0.1:8766";`, context);
 assert.equal(context.safeNoteMediaUrl("/api/tasks/task-web/assets/grid_001.jpg"), "http://127.0.0.1:8766/api/tasks/task-web/assets/grid_001.jpg");
@@ -336,8 +448,10 @@ assert.match(indexHtml, /id="deleteAllTasksSettingsButton"/);
 assert.match(webCode, /\/api\/tasks\?confirm=delete_all_tasks/);
 assert.match(matureCss, /\.danger-button\s*\{/);
 assert.match(indexHtml, /styles\.css\?v=20260714-v0124/);
-assert.match(indexHtml, /app\.js\?v=20260721-v0135/);
+assert.match(indexHtml, /app\.js\?v=20260722-v0142/);
 assert.match(indexHtml, /mature\.css\?v=20260721-v0135/);
+assert.match(indexHtml, /editorial\.css\?v=20260722-v0142/);
+assert.match(indexHtml, /editorial\.js\?v=20260722-v0143/);
 assert.match(indexHtml, /id="sourceRouteRail"/);
 assert.match(indexHtml, /id="urlPreflightReport"/);
 assert.match(indexHtml, /href="#settingsView" data-app-view="settings" title="设置"/);
@@ -618,7 +732,7 @@ const blockedGateHtml = context.emptyReadinessGatesHtml({
 assert.match(blockedGateHtml, /section class="block"/);
 assert.match(blockedGateHtml, /后端未就绪/);
 assert.match(blockedGateHtml, /DashScope/);
-assert.match(indexHtml, /accept="video\/\*,\.mp4,\.m4v,\.mov,\.mkv,\.webm,\.flv,\.avi"/);
+assert.match(indexHtml, /accept="video\/\*,\.mp4,\.m4v,\.mov,\.mkv,\.webm,\.flv,\.avi,\.m4s"/);
 assert.match(indexHtml, /data-tab="frames">原始画面/);
 const qaPanelInitialHtml = context.qaPanelHtml({ id: "task-qa-test" });
 assert.match(qaPanelInitialHtml, /id="qaForm"/);

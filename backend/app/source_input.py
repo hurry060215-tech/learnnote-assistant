@@ -124,7 +124,7 @@ def fallback_title_for_url(url: str) -> str:
     parsed = urlparse(str(url or ""))
     path = Path(unquote(parsed.path))
     stem = path.stem.strip(" ._-")
-    if path.suffix.lower() in {".mp4", ".m4v", ".mov", ".mkv", ".webm", ".flv", ".avi"} and stem and len(stem) >= 3 and not title_looks_corrupted(stem):
+    if path.suffix.lower() in {".mp4", ".m4s", ".m4v", ".mov", ".mkv", ".webm", ".flv", ".avi"} and stem and len(stem) >= 3 and not title_looks_corrupted(stem):
         return stem[:160]
     host = (parsed.hostname or "").removeprefix("www.")
     if host:

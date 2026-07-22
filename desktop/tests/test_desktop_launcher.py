@@ -336,10 +336,13 @@ class DesktopLauncherTests(unittest.TestCase):
 
     def test_release_build_analyzes_dynamic_backend_imports(self):
         workflow = (ROOT / ".github" / "workflows" / "desktop-release.yml").read_text(encoding="utf-8")
-        self.assertIn('--paths "backend"', workflow)
-        self.assertIn("--hidden-import app.main", workflow)
-        self.assertIn("--collect-submodules fastapi", workflow)
-        self.assertIn('--version-file "build/learnnote-version.txt"', workflow)
+        spec = (ROOT / "LearnNote.spec").read_text(encoding="utf-8")
+        self.assertIn("pyinstaller --noconfirm --clean LearnNote.spec", workflow)
+        self.assertIn("pathex=['backend']", spec)
+        self.assertIn("hiddenimports = ['app.main'", spec)
+        self.assertIn("collect_submodules('fastapi')", spec)
+        self.assertIn("version='build\\\\learnnote-version.txt'", spec)
+        self.assertIn("Tree('web', prefix='web'", spec)
         self.assertIn("LearnNote-Setup-x64.exe", workflow)
         self.assertNotIn('--add-data "backend;backend"', workflow)
         self.assertNotIn('--add-data "web;web"', workflow)

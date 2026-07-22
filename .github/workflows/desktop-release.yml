@@ -39,29 +39,7 @@ jobs:
       - name: Build portable desktop client
         run: |
           python scripts/generate-version-file.py build/learnnote-version.txt
-          pyinstaller --noconfirm --clean --onedir --windowed --name LearnNote `
-            --version-file "build/learnnote-version.txt" `
-            --paths "backend" `
-            --add-data "backend/requirements.txt;backend" `
-            --add-data "backend/requirements.desktop.txt;backend" `
-            --add-data "backend/requirements.deploy.txt;backend" `
-            --add-data "web/index.html;web" `
-            --add-data "web/app.js;web" `
-            --add-data "web/styles.css;web" `
-            --add-data "web/product.css;web" `
-            --add-data "web/mature.css;web" `
-            --add-data "web/workspace.css;web" `
-            --hidden-import app.main `
-            --collect-submodules app `
-            --collect-submodules fastapi `
-            --collect-submodules starlette `
-            --collect-submodules uvicorn `
-            --collect-all webview `
-            --collect-all imageio_ffmpeg `
-            --collect-all faster_whisper `
-            --hidden-import clr `
-            --hidden-import pythonnet `
-            desktop/main.py
+          pyinstaller --noconfirm --clean LearnNote.spec
           Copy-Item README.md dist/LearnNote/README.md
           ./scripts/package-extension.ps1 -OutputPath build/LearnNote-Browser-Extension.zip
           Expand-Archive -LiteralPath build/LearnNote-Browser-Extension.zip -DestinationPath dist/LearnNote/extension -Force

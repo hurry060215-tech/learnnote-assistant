@@ -263,6 +263,8 @@ def build_matrix(*, include_acceptance_gate: bool = True) -> list[ReadinessItem]
     sidepanel_html = read_text(ROOT / "extension" / "sidepanel.html")
     sidepanel_js = read_text(ROOT / "extension" / "sidepanel.js")
     sidepanel_css = read_text(ROOT / "extension" / "sidepanel.css")
+    background_js = read_text(ROOT / "extension" / "background.js")
+    page_hook = read_text(ROOT / "extension" / "page_hook.js")
     backend_main = read_text(ROOT / "backend" / "app" / "main.py")
     processor = read_text(ROOT / "backend" / "app" / "processor.py")
     media = read_text(ROOT / "backend" / "app" / "media.py")
@@ -295,24 +297,24 @@ def build_matrix(*, include_acceptance_gate: bool = True) -> list[ReadinessItem]
 
     rows: list[ReadinessItem] = []
     ui_ready = (
-        has_all(sidepanel_html, ["currentStudyCard", "sourceRouteRail", "taskHistory", "result-tab", "diagnosticModeButton"])
-        and has_all(sidepanel_js, ["setPanelMode", "study-flow-board", "study-next-step", "panelMode === \"diagnostics\"", "review-command-grid", "review-advanced-row"])
-        and has_all(sidepanel_css, ["current-study-card", "study-flow-board", "study-next-step", "review-command-grid", "diagnostics"])
+        has_all(sidepanel_html, ["connectionCard", "videoTitle", "integrityGrid", "sendButton", "handoffProgress", "data-client-view=\"settings\"", "data-client-view=\"diagnostics\""])
+        and has_all(sidepanel_js, ["sameSourceIdentity", "preflight-current-page", "start-current-task", "setProgress", "openClient"])
+        and has_all(sidepanel_css, ["connection-card", "video-card", "integrity-grid", "handoff-progress", "client-links"])
     )
     rows.append(item(
         "side_panel_product_flow",
-        "BiliNote-style Side Panel flow",
+        "Focused Side Panel handoff flow",
         "pass" if ui_ready else "fail",
         (
-            "Study mode foregrounds current video, next action, slice summary, history, and keeps adapter/resource details behind diagnostics."
+            "The extension only identifies the current video, verifies source identity, sends it to the client, and shows handoff progress."
             if ui_ready else "Side Panel product-flow tokens are missing."
         ),
         [
-            (ROOT / "extension" / "sidepanel.html", "study/diagnostics tabs, current task card, history, result tabs"),
-            (ROOT / "extension" / "sidepanel.js", "study-flow board, next-step card, and diagnostics-only adapter/resource details"),
-            (ROOT / "extension" / "sidepanel.css", "product-flow, next-step, and diagnostic styling"),
+            (ROOT / "extension" / "sidepanel.html", "connection, current video, integrity, send progress, and client links"),
+            (ROOT / "extension" / "sidepanel.js", "source identity validation, deferred handoff, and client navigation"),
+            (ROOT / "extension" / "sidepanel.css", "compact handoff and integrity styling"),
         ],
-        "Restore the study/diagnostics split and keep raw resource/adapter details out of the default study view." if not ui_ready else "",
+        "Restore the focused identify/send/progress contract and keep settings and diagnostics in the client." if not ui_ready else "",
     ))
 
     direct_ready = has_all(sidepanel_js + audit_real_site + backend_main, [
@@ -351,18 +353,12 @@ def build_matrix(*, include_acceptance_gate: bool = True) -> list[ReadinessItem]
         ],
     ))
 
-    visual_ready = has_all(processor + media + backend_main + sidepanel_js, [
-        "visual_index.json",
-        "build_frame_grids",
-        "build_visual_windows",
-        "visualStudyDeck",
-        "transcript-window",
-    ]) and has_all(web_js + web_css + sidepanel_js + sidepanel_css, [
+    visual_ready = has_all(web_js + web_css, [
         "visualStudyOverviewHtml",
         "visualStudyReviewPathHtml",
         "visualStudyHandoutHtml",
         "visual-study-correlation",
-    ])
+    ]) and has_all(processor + media + backend_main, ["visual_index.json", "build_frame_grids", "build_visual_windows"])
     rows.append(item(
         "visual_slice_notes",
         "Slice and visual-summary result page",
@@ -371,14 +367,13 @@ def build_matrix(*, include_acceptance_gate: bool = True) -> list[ReadinessItem]
         [
             (ROOT / "backend" / "app" / "processor.py", "visual index and window generation"),
             (ROOT / "backend" / "app" / "media.py", "frame-grid generation"),
-            (ROOT / "extension" / "sidepanel.js", "visual study deck, transcript windows, review path, handout"),
             (ROOT / "web" / "app.js", "Web visual study overview, review path, handout, evidence matrix"),
         ],
     ))
 
     learning_ready = (
         has_all(audit_real_site, ["ananas", "playurl", "objectid", "dtoken", "iframe", "cookie", "require_learning_profile"])
-        and has_all(sidepanel_js + sidepanel_css, ["chaoxingProfileHtml", "chaoxing-profile", "chaoxing-mode-flow"])
+        and has_all(web_js + web_css, ["chaoxingProfileHtml", "chaoxing-profile", "chaoxing-mode-flow"])
     )
     rows.append(item(
         "learning_platform_diagnostics",
@@ -387,8 +382,8 @@ def build_matrix(*, include_acceptance_gate: bool = True) -> list[ReadinessItem]
         "Learning profile exposes ananas/playurl/objectid/dtoken/iframe/cookie and missing-step guidance." if learning_ready else "Learning-platform diagnostic evidence is incomplete.",
         [
             (ROOT / "scripts" / "audit-real-site.py", "learning profile and gate signals"),
-            (ROOT / "extension" / "sidepanel.js", "Side Panel learning-platform diagnosis"),
-            (ROOT / "extension" / "sidepanel.css", "learning-platform diagnostic styling"),
+            (ROOT / "web" / "app.js", "Client learning-platform diagnosis"),
+            (ROOT / "web" / "styles.css", "Client learning-platform diagnostic styling"),
         ],
     ))
 
@@ -514,7 +509,7 @@ def build_matrix(*, include_acceptance_gate: bool = True) -> list[ReadinessItem]
         ],
     ))
 
-    generic_ready = has_all(sidepanel_js + audit_real_site + samples, [
+    generic_ready = has_all(background_js + page_hook + audit_real_site + samples, [
         "playUrl",
         "streamUrl",
         "manifestUrl",
@@ -523,16 +518,15 @@ def build_matrix(*, include_acceptance_gate: bool = True) -> list[ReadinessItem]
         "iframe",
         "request_body",
         "referer",
-        "workbenchUniversalAdapterItems",
-        "workbench-adapter-ladder",
-    ]) and has_any(sidepanel_js + samples, ["videoUrl", "hls", "dashUrl", "play_url", "/api/lesson/resolve"])
+    ]) and has_any(background_js + page_hook + samples, ["videoUrl", "hls", "dashUrl", "play_url", "/api/lesson/resolve"])
     rows.append(item(
         "generic_adapter_direction",
         "Generic website adapter direction",
         "pass" if generic_ready else "fail",
         "Generic direct-download routes cover DOM/performance/webRequest/page-hook/API/body/iframe/blob-MSE clues plus a non-Chaoxing nested player API sample instead of a single site-only path." if generic_ready else "Generic adapter evidence is too site-specific or incomplete.",
         [
-            (ROOT / "extension" / "sidepanel.js", "candidate ranking and preflight source switching"),
+            (ROOT / "extension" / "background.js", "candidate ranking, request evidence, and deferred handoff"),
+            (ROOT / "extension" / "page_hook.js", "page APIs, MediaSource, and response-body clues"),
             (ROOT / "scripts" / "audit-real-site.py", "generic signal profile"),
             (ROOT / "scripts" / "serve-samples.py", "site-agnostic regression mocks"),
         ],

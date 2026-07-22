@@ -4,335 +4,71 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>LearnNote</title>
-    <link rel="stylesheet" href="sidepanel.css?v=20260721-v0135">
+    <link rel="stylesheet" href="sidepanel.css?v=20260722-v2">
   </head>
-  <body data-ui="learnnote-sidepanel-v2" data-source-mode="summarize">
+  <body>
     <header class="app-header">
-      <div class="brand">
-        <div class="mark" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M8 4h12l5 5v19H8z"/><path d="M20 4v6h6M12 15h9M12 20h7"/></svg></div>
-        <div>
-          <h1>LearnNote</h1>
-          <p id="backendStatus" data-connection-state="checking" aria-live="polite">正在连接 LearnNote...</p>
-        </div>
-      </div>
-      <div class="header-actions">
-        <button id="openWebButton" class="icon-button" title="打开本地工作台" aria-label="打开本地工作台">
-          <svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z"/><path d="M4 9h16M9 19V9"/></svg>
-        </button>
-        <button id="settingsButton" class="icon-button" title="后端设置" aria-label="后端设置">
-          <svg viewBox="0 0 24 24"><path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6V20a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-.6 1.7 1.7 0 0 0-1.88.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1H4a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 .6-1 1.7 1.7 0 0 0-.34-1.88l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6V4a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 .6 1.7 1.7 0 0 0 1.88-.34l.06-.06A2 2 0 1 1 19.8 7.06l-.06.06A1.7 1.7 0 0 0 19.4 9c.22.33.42.66.6 1H20a2 2 0 1 1 0 4h-.09c-.18.34-.38.67-.51 1z"/></svg>
-        </button>
-      </div>
+      <a class="brand" href="#" id="openClientBrand" aria-label="打开 LearnNote 客户端">
+        <span class="brand-mark" aria-hidden="true">L</span>
+        <span><strong>LearnNote</strong><small>当前视频助手</small></span>
+      </a>
+      <button class="icon-button" id="refreshButton" type="button" title="重新识别" aria-label="重新识别当前视频">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.34 5.66M20 4v7h-7"/></svg>
+      </button>
     </header>
 
-    <section id="backendSettingsPanel" class="backend-settings-panel" hidden aria-label="后端连接设置">
-      <div>
-        <span>本地后端</span>
-        <strong>只连接 127.0.0.1 / localhost</strong>
-      </div>
-      <label>
-        <span>地址</span>
-        <input id="backendUrlInput" type="url" inputmode="url" placeholder="http://127.0.0.1:8765">
-      </label>
-      <div class="backend-settings-actions">
-        <button id="cancelBackendSettingsButton" type="button">取消</button>
-        <button id="saveBackendSettingsButton" type="button">保存并检查</button>
-      </div>
-    </section>
-
-    <section id="firstRunCard" class="first-run-card" hidden aria-label="首次使用">
-      <div>
-        <strong>第一次使用 LearnNote？</strong>
-        <small>用 1 分钟检查本地服务、扩展和 AI 模型。</small>
-      </div>
-      <button id="firstRunButton" type="button">开始设置</button>
-      <button id="dismissFirstRunButton" class="icon-button" type="button" title="关闭" aria-label="关闭首次使用提示">
-        <svg viewBox="0 0 24 24"><path d="M5 5l14 14M19 5L5 19"/></svg>
-      </button>
-    </section>
-
-    <main class="side-shell">
-      <section class="current-card">
-        <div class="source-switcher" hidden aria-label="学习来源">
-          <button type="button" class="active" data-source-action="summarize">
-            <svg viewBox="0 0 24 24"><path d="M5 5h14v10H5z"/><path d="M10 19h4"/><path d="M12 15v4"/></svg>
-            当前页视频
-          </button>
-          <button type="button" data-source-action="local">
-            <svg viewBox="0 0 24 24"><path d="M12 3v12M7 8l5-5 5 5M4 17v3h16v-3"/></svg>
-            本地视频
-          </button>
-          <button type="button" data-source-action="text">
-            <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
-            页面文本
-          </button>
-        </div>
-        <div class="product-mode-bar" hidden aria-label="面板视图">
-          <button id="studyModeButton" type="button" class="active" data-panel-mode="study">
-            <svg viewBox="0 0 24 24"><path d="M5 5h14v14H5z"/><path d="M8 9h8M8 13h5M8 17h6"/></svg>
-            学习流程
-          </button>
-          <button id="diagnosticModeButton" type="button" data-panel-mode="diagnostics">
-            <svg viewBox="0 0 24 24"><path d="M4 5h16v5H4zM4 14h16v5H4z"/><path d="M8 10v4M16 10v4"/></svg>
-            诊断证据
-          </button>
-        </div>
-        <div id="sourceRouteRail" class="source-route-rail" hidden aria-label="学习来源状态"></div>
-        <div class="section-head">
-          <div>
-            <span id="pageIdentityLabel">当前视频</span>
-            <strong id="pageTitle">读取中...</strong>
-          </div>
-          <button id="redetectButton" class="icon-button" title="重新检测" aria-label="重新检测">
-            <svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 0 1-13.66 5.66M4 12A8 8 0 0 1 17.66 6.34M20 4v6h-6M4 20v-6h6"/></svg>
-          </button>
-        </div>
-        <small id="pageUrl" class="page-url"></small>
-        <div id="activeVideo" class="playback-card" aria-live="polite">正在识别当前视频...</div>
-        <div id="currentStudyCard" class="current-study-card" hidden aria-label="当前页学习任务"></div>
-        <label class="learning-goal-control" hidden>
-          <span>
-            <b>这次想得到什么</b>
-            <small>默认会根据视频内容自动安排结构</small>
-          </span>
-          <select id="noteStyle">
-            <option value="study" selected>自动整理</option>
-            <option value="concept">深入理解</option>
-            <option value="concise">快速回顾</option>
-            <option value="exam">备考自测</option>
-          </select>
-        </label>
+    <main>
+      <section id="connectionCard" class="connection-card" data-state="checking" aria-live="polite">
+        <span class="status-dot" aria-hidden="true"></span>
+        <div><strong id="connectionTitle">正在连接客户端</strong><small id="connectionDetail">LearnNote 需要在本机运行</small></div>
+        <button id="openClientButton" type="button">打开客户端</button>
       </section>
 
-      <section class="actions">
-        <button id="summarizeButton" class="primary">
-          <svg viewBox="0 0 24 24"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
-          发送到 LearnNote
+      <section class="video-card" aria-labelledby="videoTitle">
+        <div class="eyebrow-row">
+          <span id="platformLabel">当前页面</span>
+          <span id="playingBadge" class="playing-badge" hidden><i></i>正在播放</span>
+        </div>
+        <h1 id="videoTitle">正在识别当前视频...</h1>
+        <p id="videoMeta" class="video-meta">请在视频页面开始播放</p>
+
+        <div id="integrityGrid" class="integrity-grid" aria-label="媒体完整性预检">
+          <article data-kind="video" data-state="checking"><span>画面</span><strong>检测中</strong></article>
+          <article data-kind="audio" data-state="unknown"><span>声音</span><strong>未确认</strong></article>
+          <article data-kind="subtitle" data-state="unknown"><span>字幕</span><strong>未确认</strong></article>
+        </div>
+
+        <div class="preflight-summary">
+          <div><span>可用候选</span><strong id="candidateCount">0</strong></div>
+          <div><span>播放器时长</span><strong id="durationValue">--</strong></div>
+          <div><span>预计交接</span><strong id="estimateValue">--</strong></div>
+        </div>
+
+        <p id="preflightMessage" class="preflight-message" role="status" aria-live="polite">正在读取播放器和媒体请求...</p>
+      </section>
+
+      <section class="handoff-card">
+        <button id="sendButton" class="primary-button" type="button" disabled>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+          <span>发送到客户端</span>
         </button>
-        <div id="handoffProgress" class="handoff-progress" role="progressbar" aria-label="发送进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden>
+        <div id="handoffProgress" class="handoff-progress" role="progressbar" aria-label="交接进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden>
           <span></span>
         </div>
-        <p id="handoffStatus" class="handoff-status" role="status" aria-live="polite" hidden></p>
-        <button id="continueFromMediaButton" hidden disabled>
-          <svg viewBox="0 0 24 24"><path d="M4 5h16v4H4zM4 15h16v4H4z"/><path d="M8 9v6M16 9v6"/></svg>
-          继续切片总结
-        </button>
-        <button id="uploadButton" hidden>
-          <svg viewBox="0 0 24 24"><path d="M12 3v12M7 8l5-5 5 5M4 17v3h16v-3"/></svg>
-          上传本地视频
-        </button>
-        <button id="textButton" hidden>
-          <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
-          总结当前页面文字
-        </button>
-        <details class="side-advanced-actions" hidden>
-          <summary>更多方式</summary>
-          <div>
-            <button id="preflightButton">
-              <svg viewBox="0 0 24 24"><path d="M9 12l2 2 4-5"/><path d="M20 12a8 8 0 1 1-16 0 8 8 0 0 1 16 0z"/></svg>
-              检查视频来源
-            </button>
-            <button id="downloadOnlyButton">
-              <svg viewBox="0 0 24 24"><path d="M12 3v11M7 9l5 5 5-5M5 19h14"/></svg>
-              只下载视频
-            </button>
-          </div>
-        </details>
-        <input id="fileInput" type="file" accept="video/*,.mp4,.m4v,.mov,.mkv,.webm,.flv,.avi">
+        <div class="handoff-row">
+          <p id="handoffStatus" class="handoff-status" role="status" aria-live="polite">识别完成后即可发送</p>
+          <span id="handoffPercent" hidden>0%</span>
+        </div>
+        <button id="openTaskButton" class="secondary-button" type="button" hidden>在客户端查看任务</button>
       </section>
 
-      <section id="resourcePanel" class="resource-panel" hidden>
-        <div class="section-head compact">
-          <span>候选资源</span>
-          <b id="resourceCount">0</b>
-        </div>
-        <div id="diagnosticOverview" class="diagnostic-overview" aria-label="当前页直取证据链"></div>
-        <div id="readiness" class="readiness">等待检测</div>
-        <div id="routeSummary" class="route-summary" aria-label="学习路线"></div>
-        <div id="extractionPlan" class="extraction-plan" aria-label="下载路线"></div>
-        <div class="direct-flow" aria-label="当前页直取流程">
-          <span>检测媒体</span>
-          <span>预检直链</span>
-          <span>下载到本地</span>
-          <span>切片总结</span>
-        </div>
-        <div id="resources" class="resource-list"></div>
-        <div id="resourceInspector" class="resource-inspector muted"></div>
-      </section>
-
-      <details id="optionsDisclosure" class="options-disclosure" hidden>
-        <summary>
-          <span>处理参数</span>
-          <small>切片、转写、图文总结模型</small>
-        </summary>
-      <section class="option-panel">
-        <label>
-          <span>切片</span>
-          <select id="frameInterval">
-            <option value="10">10 秒</option>
-            <option value="20" selected>20 秒</option>
-            <option value="30">30 秒</option>
-            <option value="60">60 秒</option>
-          </select>
-        </label>
-        <label>
-          <span>视觉窗口</span>
-          <select id="gridSize">
-            <option value="3x3" selected>3x3</option>
-            <option value="2x3">2x3</option>
-            <option value="4x3">4x3</option>
-          </select>
-        </label>
-        <label class="visual-toggle wide">
-          <input id="visualUnderstanding" type="checkbox" checked>
-          <span>
-            <b>开启图文理解</b>
-            <small>抽帧生成视觉窗口；关闭后只做转写和文本笔记。</small>
-          </span>
-        </label>
-        <label>
-          <span>引擎</span>
-          <select id="transcriber">
-            <option value="faster-whisper" selected>本地</option>
-            <option value="openai-compatible">OpenAI</option>
-            <option value="groq">Groq</option>
-          </select>
-        </label>
-        <label>
-          <span>转写</span>
-          <select id="whisperModel">
-            <option value="tiny">tiny</option>
-            <option value="small" selected>small</option>
-            <option value="medium">medium</option>
-            <option value="whisper-1">whisper-1</option>
-            <option value="whisper-large-v3">whisper-large-v3</option>
-          </select>
-        </label>
-        <label>
-          <span>结构覆盖</span>
-          <select id="noteTemplate">
-            <option value="standard" selected>标准</option>
-            <option value="timeline">时间轴</option>
-            <option value="cornell">康奈尔</option>
-            <option value="qa">问答</option>
-            <option value="visual-handout">图文讲义</option>
-            <option value="mindmap">层级脑图</option>
-            <option value="flashcards">记忆卡片</option>
-            <option value="formula-sheet">公式清单</option>
-            <option value="bilingual">双语对照</option>
-          </select>
-        </label>
-        <label>
-          <span>深度</span>
-          <select id="summaryDepth">
-            <option value="brief">简洁</option>
-            <option value="standard" selected>标准</option>
-            <option value="deep">深入</option>
-          </select>
-        </label>
-        <label>
-          <span>模型服务</span>
-          <select id="llmProvider">
-            <option value="openai">OpenAI</option>
-            <option value="groq">Groq</option>
-            <option value="gemini">Google Gemini</option>
-            <option value="dashscope">通义千问 DashScope</option>
-            <option value="deepseek">DeepSeek</option>
-            <option value="kimi" selected>Kimi 月之暗面</option>
-            <option value="zhipu">智谱 GLM</option>
-            <option value="doubao">豆包 火山方舟</option>
-            <option value="minimax">MiniMax</option>
-            <option value="qianfan">百度千帆 ERNIE</option>
-            <option value="custom">手动兼容端点</option>
-          </select>
-        </label>
-        <p id="providerHint" class="provider-hint" aria-live="polite"></p>
-        <label>
-          <span>视觉模型</span>
-          <input id="llmModel" type="text" placeholder="kimi-k2.6">
-        </label>
-        <label class="wide">
-          <span>Base URL</span>
-          <input id="llmBaseUrl" type="url" placeholder="https://api.moonshot.cn/v1">
-        </label>
-        <label class="wide">
-          <span>API Key（仅本次任务）</span>
-          <input id="llmApiKey" type="password" autocomplete="off" placeholder="留空则本地降级">
-        </label>
-      </section>
-      </details>
-
-      <details id="localVideoCard" class="local-video-card" hidden aria-label="本地视频同管线">
-        <summary class="local-video-summary">
-          <div>
-            <span>本地视频</span>
-            <strong>平台不可直取时，拖入文件继续生成图文笔记</strong>
-          </div>
-          <em data-local-video-status>待选择</em>
-        </summary>
-        <ol class="workbench-local-pipeline" aria-label="本地视频处理步骤">
-          <li><b>导入</b><em>mp4 / mkv / webm</em></li>
-          <li><b>转写</b><em>字幕优先，ASR 兜底</em></li>
-          <li><b>切片</b><em>抽帧网格 + 时间窗</em></li>
-          <li><b>笔记</b><em>图文总结 + 资料包</em></li>
-        </ol>
-        <label id="localDrop" class="local-drop">
-          <svg viewBox="0 0 24 24"><path d="M12 3v12M7 8l5-5 5 5M4 17v3h16v-3"/></svg>
-          <span id="localDropText">拖入 mp4 / flv / avi / mkv / webm 作为兜底入口</span>
-        </label>
-        <div class="local-video-actions">
-          <button id="chooseLocalButton" type="button">选择本地视频</button>
-          <button id="localOptionsButton" type="button">处理参数</button>
-        </div>
-      </details>
-
-      <section class="progress-panel">
-        <div class="section-head compact">
-          <span>处理进度</span>
-          <b id="taskPhase">-</b>
-        </div>
-        <div class="progress"><span id="progressBar"></span></div>
-        <p id="taskMessage">暂无任务</p>
-      </section>
-
-      <details class="history-panel compact-disclosure" hidden>
-        <summary>最近任务</summary>
-        <div class="section-head compact">
-          <span>客户端中的最近记录</span>
-          <button id="refreshHistoryButton" class="icon-button" title="刷新历史" aria-label="刷新历史">
-            <svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 0 1-13.66 5.66M4 12A8 8 0 0 1 17.66 6.34M20 4v6h-6M4 20v-6h6"/></svg>
-          </button>
-        </div>
-        <div id="taskHistory" class="task-history muted">等待任务生成后显示最近记录</div>
-      </details>
-
-      <details class="result-panel compact-disclosure" hidden>
-        <summary>任务预览</summary>
-        <div class="result-tabs" role="tablist" aria-label="任务结果">
-          <button class="result-tab active" role="tab" aria-selected="true" data-tab="note">学习笔记</button>
-          <button class="result-tab" role="tab" aria-selected="false" data-tab="slices">画面与时间轴</button>
-          <details id="resultAdvancedMenu" class="result-advanced-menu">
-            <summary>高级</summary>
-            <div>
-              <button class="result-tab" role="tab" aria-selected="false" data-tab="transcript">完整字幕</button>
-              <button class="result-tab" role="tab" aria-selected="false" data-tab="frames">原始画面</button>
-              <button class="result-tab" role="tab" aria-selected="false" data-tab="diagnostics">任务诊断</button>
-              <hr>
-              <button id="bundleButton" type="button">导出资料包</button>
-              <button id="subtitlesButton" type="button">导出字幕</button>
-              <button id="mediaButton" type="button">导出本地视频</button>
-              <button id="downloadButton" type="button">导出 Markdown</button>
-              <button id="copyButton" type="button">复制笔记</button>
-              <button id="visualWindowsButton" type="button" hidden>导出切片索引</button>
-              <button id="manifestButton" type="button" hidden>导出任务清单</button>
-              <button id="diagnosticsButton" type="button" hidden>导出诊断</button>
-            </div>
-          </details>
-        </div>
-        <div id="result" class="result-body muted">任务完成后显示结构化结果</div>
-      </details>
+      <nav class="client-links" aria-label="客户端功能">
+        <button type="button" data-client-view="settings"><span>设置</span><small>模型、转写与视频处理</small><b>›</b></button>
+        <button type="button" data-client-view="diagnostics"><span>连接与诊断</span><small>在客户端检查完整链路</small><b>›</b></button>
+      </nav>
     </main>
 
-    <script src="sidepanel.js?v=20260721-v0135"></script>
+    <footer>扩展只负责识别和交接，视频处理与笔记都在本机客户端完成。</footer>
+    <script src="sidepanel.js?v=20260722-v2"></script>
   </body>
 </html>

@@ -218,6 +218,85 @@ class TranscriptResult(BaseModel):
     warning: str = ""
 
 
+class MediaTrackInfo(BaseModel):
+    index: int = 0
+    type: Literal["video", "audio", "subtitle", "data", "unknown"] = "unknown"
+    codec: str = ""
+    duration: float = 0
+    language: str = ""
+    title: str = ""
+    width: int | None = None
+    height: int | None = None
+    channels: int | None = None
+
+
+class MediaIntegrity(BaseModel):
+    status: Literal["ready", "video_only", "audio_only", "no_media", "invalid"] = "invalid"
+    probe_backend: str = ""
+    provisional: bool = False
+    file_size: int = 0
+    sha256: str = ""
+    duration: float = 0
+    container: str = ""
+    stream_count: int = 0
+    video_stream_count: int = 0
+    audio_stream_count: int = 0
+    subtitle_stream_count: int = 0
+    has_video: bool = False
+    has_audio: bool = False
+    has_subtitles: bool = False
+    video_codec: str = ""
+    audio_codec: str = ""
+    subtitle_codec: str = ""
+    tracks: list[MediaTrackInfo] = Field(default_factory=list)
+    blocking_reasons: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class SourceIdentity(BaseModel):
+    page_url: str = ""
+    platform: str = ""
+    platform_id: str = ""
+    title: str = ""
+    resource_fingerprint: str = ""
+    media_sha256: str = ""
+
+
+class EvidenceGate(BaseModel):
+    name: str
+    passed: bool = False
+    status: Literal["passed", "failed", "skipped"] = "failed"
+    detail: str = ""
+
+
+class EvidenceCoverage(BaseModel):
+    status: Literal["ready", "blocked", "not_checked"] = "not_checked"
+    can_summarize: bool = False
+    transcript_source: str = ""
+    transcript_char_count: int = 0
+    transcript_covered_seconds: float = 0
+    transcript_coverage_ratio: float = 0
+    checkpoint_count: int = 0
+    matched_transcript_checkpoints: int = 0
+    matched_visual_checkpoints: int = 0
+    timeline_consistency_ratio: float = 0
+    visual_coverage_ratio: float = 0
+    platform_subtitle_coverage_ratio: float = 0
+    local_transcription_coverage_ratio: float = 0
+    visual_frame_count: int = 0
+    gates: list[EvidenceGate] = Field(default_factory=list)
+    blocking_reasons: list[str] = Field(default_factory=list)
+
+
+class FrameSample(BaseModel):
+    path: str
+    url: str = ""
+    timestamp: float
+    reasons: list[str] = Field(default_factory=list)
+    important: bool = False
+    sha256: str = ""
+
+
 class FrameGrid(BaseModel):
     path: str
     url: str
@@ -225,6 +304,8 @@ class FrameGrid(BaseModel):
     end: float
     frame_count: int
     frame_timestamps: list[float] = Field(default_factory=list)
+    frame_paths: list[str] = Field(default_factory=list)
+    important_frame_paths: list[str] = Field(default_factory=list)
 
 
 class VisualWindow(BaseModel):
@@ -275,10 +356,12 @@ class TaskRecord(BaseModel):
     mode: TaskMode = "video"
     title: str
     page_url: str = ""
+    source_identity: SourceIdentity = Field(default_factory=SourceIdentity)
     phase: TaskPhase = "queued"
     status: Literal["queued", "running", "cancelling", "cancelled", "success", "failed"] = "queued"
     progress: int = 0
     message: str = "Queued"
+    awaiting_confirmation: bool = False
     error_code: str = ""
     error_detail: str = ""
     failed_phase: str = ""
@@ -303,6 +386,11 @@ class TaskRecord(BaseModel):
     subtitle_path: str = ""
     transcript_path: str = ""
     visual_index_path: str = ""
+    media_integrity_path: str = ""
+    media_integrity: MediaIntegrity = Field(default_factory=MediaIntegrity)
+    handoff_integrity: MediaIntegrity = Field(default_factory=MediaIntegrity)
+    evidence_coverage_path: str = ""
+    evidence_coverage: EvidenceCoverage = Field(default_factory=EvidenceCoverage)
     note_path: str = ""
     summary_source: str = ""
     summary_warning: str = ""

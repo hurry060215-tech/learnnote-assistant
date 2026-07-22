@@ -9,6 +9,7 @@ import mimetypes
 import re
 import shutil
 import tempfile
+import threading
 import time
 from uuid import uuid4
 from zipfile import ZIP_DEFLATED, ZipFile
@@ -24,9 +25,10 @@ from pydantic import ValidationError
 from . import API_VERSION, APP_VERSION, TASK_SCHEMA_VERSION, UX_PROTOCOL_VERSION
 from .config import BACKEND_ORIGIN, DATA_DIR, DEPLOYMENT_MODE, LLM_API_KEY, LLM_BASE_URL, LLM_MAX_RETRIES, LLM_MODEL, LLM_REQUEST_TIMEOUT_SECONDS, MODEL_CACHE_DIR, PUBLIC_DEPLOYMENT, PUBLIC_PASSWORD, PUBLIC_USERNAME, STATIC_DIR, TASK_DIR, TEMP_DIR, UPLOAD_DIR, WEB_DIR, ensure_dirs
 from .downloader import MediaDownloader, effective_resource_kind, fallback_page_contexts, media_file_video_signature, preflight_media_resource, rank_media_candidates
-from .media import MediaProcessingError, extract_video_clip, probe_duration
-from .models import CurrentPageTaskRequest, MediaPreflightRequest, MediaPreflightResult, PagePreflightRequest, RerunFromMediaRequest, ResourceCandidate, SourceInputRequest, StorageCleanupRequest, TaskOptions, TaskQuestionRequest, TaskRecord, now_iso
-from .processor import browser_subtitle_text_is_player_ui, enrich_resource_candidates_with_active_video, process_current_page_task, process_local_video_task, read_note, read_transcript, read_visual_index
+from .media import MediaProcessingError, extract_video_clip, probe_duration, probe_media_integrity
+from .models import CurrentPageTaskRequest, MediaIntegrity, MediaPreflightRequest, MediaPreflightResult, PagePreflightRequest, RerunFromMediaRequest, ResourceCandidate, SourceInputRequest, StorageCleanupRequest, TaskOptions, TaskQuestionRequest, TaskRecord, now_iso
+from .processor import browser_subtitle_text_is_player_ui, enrich_resource_candidates_with_active_video, process_current_page_task, process_local_video_task, read_note, read_transcript, read_visual_index, redacted_request_dump, redacted_resource
+from .reliability import current_page_source_identity, local_source_identity
 from .runtime import ffmpeg_bin, ffprobe_bin
 from .source_input import SourceInputError, clean_task_title, normalize_source_input
 from .storage import atomic_write_text, cleanup_tasks, create_task, delete_all_tasks, delete_task, get_task, list_tasks, read_json, request_task_cancel, storage_summary, task_dir, update_task, write_json
@@ -38,6 +40,8 @@ app = FastAPI(title="LearnNote Assistant", version=APP_VERSION)
 _extension_heartbeat_at = 0.0
 _extension_version = ""
 _extension_protocol_version = 0
+_deferred_handoffs: dict[str, CurrentPageTaskRequest] = {}
+_deferred_handoffs_lock = threading.RLock()
 # Side Panel heartbeats arrive every 10 seconds. The MV3 background worker also
 # wakes on a 30-second alarm so the desktop can report a loaded extension even
 # when its panel is closed.
@@ -93,9 +97,10 @@ app.mount("/web", StaticFiles(directory=str(WEB_DIR)), name="web")
 
 
 _FILENAME_RESERVED_RE = re.compile(r'[\\/:*?"<>|\r\n]+')
-LOCAL_VIDEO_EXTENSIONS = {".mp4", ".m4v", ".mov", ".mkv", ".webm", ".flv", ".avi"}
+LOCAL_VIDEO_EXTENSIONS = {".mp4", ".m4s", ".m4v", ".mov", ".mkv", ".webm", ".flv", ".avi"}
 LOCAL_VIDEO_MIME_EXTENSIONS = {
     "video/mp4": ".mp4",
+    "video/iso.segment": ".m4s",
     "video/x-m4v": ".m4v",
     "video/quicktime": ".mov",
     "video/x-matroska": ".mkv",
@@ -105,6 +110,7 @@ LOCAL_VIDEO_MIME_EXTENSIONS = {
     "video/x-msvideo": ".avi",
 }
 LOCAL_UPLOAD_CHUNK_SIZE = 1024 * 1024
+STAGED_UPLOAD_MAX_AGE_SECONDS = 24 * 60 * 60
 QA_HISTORY_FILE = "qa_history.json"
 
 
@@ -121,7 +127,7 @@ def local_upload_filename(filename: str | None, content_type: str | None = "") -
             status_code=400,
             detail={
                 "code": "unsupported_local_file",
-                "message": "本地视频仅支持 mp4、m4v、mov、mkv、webm、flv、avi。",
+                "message": "本地视频仅支持 mp4、m4s、m4v、mov、mkv、webm、flv、avi。",
             },
         )
     stem = Path(safe_name).stem[:120].strip(" ._") or "local-video"
@@ -132,13 +138,26 @@ def local_upload_error(code: str, message: str, status_code: int = 400) -> HTTPE
     return HTTPException(status_code=status_code, detail={"code": code, "message": message})
 
 
-def validate_local_upload_file(path: Path) -> None:
+def validate_local_upload_file(path: Path) -> MediaIntegrity:
     if not path.exists() or path.stat().st_size <= 0:
         raise local_upload_error("empty_local_file", "本地视频文件为空，请重新选择有效的视频文件。")
-    if ffprobe_bin() or ffmpeg_bin():
-        duration = probe_duration(path)
-        if duration <= 0:
-            raise local_upload_error("invalid_local_video", "无法读取本地视频时长，请确认文件不是空壳或损坏的视频。")
+    integrity = probe_media_integrity(path)
+    if integrity.status in {"invalid", "no_media"}:
+        raise local_upload_error("invalid_local_video", "文件中没有可读取的音视频轨道或有效时长。")
+    return integrity
+
+
+def cleanup_expired_staged_uploads(now: float | None = None) -> int:
+    cutoff = float(now if now is not None else time.time()) - STAGED_UPLOAD_MAX_AGE_SECONDS
+    removed = 0
+    for path in UPLOAD_DIR.glob("staged_*"):
+        try:
+            if path.is_file() and path.stat().st_mtime < cutoff:
+                path.unlink()
+                removed += 1
+        except OSError:
+            continue
+    return removed
 
 
 def merge_task_options(base: TaskOptions | None, overrides: TaskOptions | None) -> TaskOptions:
@@ -150,6 +169,56 @@ def merge_task_options(base: TaskOptions | None, overrides: TaskOptions | None) 
             if field in override_values:
                 merged[field] = override_values[field]
     return TaskOptions.model_validate(merged)
+
+
+def build_handoff_integrity(request: CurrentPageTaskRequest) -> MediaIntegrity:
+    active = request.active_video
+    has_video = bool(active and (active.src or active.src_object_video_tracks > 0))
+    has_audio = bool(active and active.src_object_audio_tracks > 0)
+    duration_candidates = [float(active.duration or 0)] if active else []
+    has_subtitles = any(
+        str(cue.text or "").strip() and not browser_subtitle_text_is_player_ui(cue.text)
+        for cue in request.browser_subtitles
+    )
+    for resource in request.resources:
+        kind = effective_resource_kind(resource)
+        declared_kind = str(resource.kind or "").strip().lower()
+        mime = str(resource.mime or "").lower()
+        if kind in {"video", "hls", "dash"} or declared_kind in {"video", "hls", "dash"} or mime.startswith("video/"):
+            has_video = True
+        if kind == "audio" or declared_kind == "audio" or mime.startswith("audio/") or bool(resource.audio_url):
+            has_audio = True
+        if kind == "subtitle" or declared_kind == "subtitle":
+            has_subtitles = True
+        if resource.duration:
+            duration_candidates.append(float(resource.duration))
+    duration = max((value for value in duration_candidates if value > 0), default=0.0)
+    if has_video and has_audio:
+        status = "ready"
+        blocking_reasons = []
+    elif has_video:
+        status = "video_only"
+        blocking_reasons = ["audio_track_not_yet_confirmed"]
+    elif has_audio:
+        status = "audio_only"
+        blocking_reasons = ["video_track_not_yet_confirmed"]
+    else:
+        status = "no_media"
+        blocking_reasons = ["media_tracks_not_yet_confirmed"]
+    return MediaIntegrity(
+        status=status,
+        probe_backend="browser-handoff",
+        provisional=True,
+        duration=duration,
+        stream_count=int(has_video) + int(has_audio) + int(has_subtitles),
+        video_stream_count=int(has_video),
+        audio_stream_count=int(has_audio),
+        subtitle_stream_count=int(has_subtitles),
+        has_video=has_video,
+        has_audio=has_audio,
+        has_subtitles=has_subtitles,
+        blocking_reasons=blocking_reasons,
+    )
 
 
 def rerun_options_from_body(body: RerunFromMediaRequest | TaskOptions | None) -> TaskOptions | None:
@@ -1842,8 +1911,35 @@ def task_source_evidence_quality(task: TaskRecord) -> tuple[dict, dict]:
     return source_quality, evidence_quality
 
 
+def task_workflow_stage(task: TaskRecord) -> str:
+    phase = task.failed_phase if task.phase == "failed" and task.failed_phase else task.phase
+    if phase in {"queued", "detecting", "downloading"}:
+        return "acquire_media"
+    if phase == "processing_video":
+        return "check_content"
+    if phase == "transcribing":
+        return "generate_transcript"
+    if phase == "extracting_frames":
+        return "understand_visuals"
+    return "compose_note"
+
+
+def task_eta_seconds(task: TaskRecord) -> int:
+    if task.status in {"success", "failed", "cancelled"}:
+        return 0
+    duration = float(task.media_integrity.duration or 0)
+    estimated_total = max(30, round(duration * 0.65 + 45))
+    return max(0, round(estimated_total * (100 - max(0, min(100, task.progress))) / 100))
+
+
 def task_payload(task: TaskRecord) -> dict:
     payload = task.model_dump(mode="json")
+    payload["media_integrity"] = task.media_integrity.model_dump(mode="json")
+    payload["handoff_integrity"] = task.handoff_integrity.model_dump(mode="json")
+    payload["evidence_coverage"] = task.evidence_coverage.model_dump(mode="json")
+    payload["source_identity"] = task.source_identity.model_dump(mode="json")
+    payload["workflow_stage"] = task_workflow_stage(task)
+    payload["eta_seconds"] = task_eta_seconds(task)
     source_quality, evidence_quality = task_source_evidence_quality(task)
     payload["source_quality"] = source_quality
     payload["evidence_quality"] = evidence_quality
@@ -3404,7 +3500,7 @@ def extension_heartbeat(payload: dict | None = Body(default=None)) -> dict:
 
 
 @app.post("/api/tasks/from-current-page")
-def create_from_current_page(request: CurrentPageTaskRequest, background_tasks: BackgroundTasks) -> dict:
+def create_from_current_page(request: CurrentPageTaskRequest, background_tasks: BackgroundTasks, defer: bool = False) -> dict:
     raw_page_url = request.page_url
     try:
         source = normalize_source_input(raw_page_url)
@@ -3413,11 +3509,72 @@ def create_from_current_page(request: CurrentPageTaskRequest, background_tasks: 
     explicit_title = request.title if request.title.strip() and request.title.strip() != raw_page_url.strip() else ""
     title = clean_task_title(explicit_title, source.url, source.default_title)
     request = request.model_copy(update={"page_url": source.url, "title": title})
+    source_identity = current_page_source_identity(request)
     source_type = "page_text" if request.mode == "page_text" else "current_page"
     task = create_task(source_type=source_type, title=title, page_url=source.url, options=request.options, mode=request.mode)
+    task = update_task(task.id, source_identity=source_identity)
     if request.browser_subtitles:
         task = update_task(task.id, browser_subtitles=request.browser_subtitles)
+    if defer:
+        highest_score_resource = max(request.resources, key=lambda item: item.score, default=None)
+        handoff_integrity = build_handoff_integrity(request)
+        task = update_task(
+            task.id,
+            awaiting_confirmation=True,
+            status="queued",
+            phase="queued",
+            progress=0,
+            message="Awaiting confirmation in LearnNote",
+            active_video=request.active_video,
+            browser_subtitles=request.browser_subtitles,
+            selected_resource=redacted_resource(highest_score_resource) if highest_score_resource else None,
+            handoff_integrity=handoff_integrity,
+        )
+        write_json(task.id, "deferred_preflight.json", redacted_request_dump(request))
+        with _deferred_handoffs_lock:
+            _deferred_handoffs[task.id] = request.model_copy(deep=True)
+        return {"task_id": task.id, "task": task_payload(task)}
     background_tasks.add_task(process_current_page_task, task.id, request)
+    return {"task_id": task.id, "task": task_payload(task)}
+
+
+@app.post("/api/tasks/{task_id}/start")
+def start_deferred_current_page_task(
+    task_id: str,
+    background_tasks: BackgroundTasks,
+    options: TaskOptions | None = Body(default=None),
+) -> dict:
+    try:
+        task = get_task(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail={"code": "task_not_found", "message": "Task not found"}) from exc
+    if task.status != "queued" or not task.awaiting_confirmation:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "not_awaiting_confirmation", "message": "Task is not waiting for confirmation."},
+        )
+    with _deferred_handoffs_lock:
+        deferred_request = _deferred_handoffs.get(task_id)
+    if deferred_request is None:
+        raise HTTPException(
+            status_code=410,
+            detail={
+                "code": "handoff_expired",
+                "message": "The browser handoff expired after the backend restarted. Send the current page again.",
+            },
+        )
+    merged_options = merge_task_options(deferred_request.options, options)
+    deferred_request = deferred_request.model_copy(update={"options": merged_options}, deep=True)
+    public_options = merged_options.model_copy(update={"llm_api_key": None})
+    task = update_task(
+        task_id,
+        awaiting_confirmation=False,
+        options=public_options,
+        message="Confirmed; queued for processing",
+    )
+    background_tasks.add_task(process_current_page_task, task.id, deferred_request)
+    with _deferred_handoffs_lock:
+        _deferred_handoffs.pop(task_id, None)
     return {"task_id": task.id, "task": task_payload(task)}
 
 
@@ -3445,43 +3602,96 @@ def api_normalize_source(request: SourceInputRequest) -> dict:
         raise HTTPException(status_code=422, detail={"code": "invalid_source_input", "message": str(exc)}) from exc
 
 
-@app.post("/api/tasks/from-local")
-async def create_from_local(
-    background_tasks: BackgroundTasks,
-    file: UploadFile = File(...),
-    title: str = Form(""),
-    options: str = Form("{}"),
-) -> dict:
+@app.post("/api/media/preflight-local")
+async def api_preflight_local(file: UploadFile = File(...)) -> dict:
+    cleanup_expired_staged_uploads()
     safe_name = local_upload_filename(file.filename, file.content_type)
+    staging_token = uuid4().hex
+    staged_path = UPLOAD_DIR / f"staged_{staging_token}_{safe_name}"
     try:
-        parsed_options = TaskOptions.model_validate(json.loads(options or "{}"))
-    except (json.JSONDecodeError, TypeError, ValidationError) as exc:
-        raise local_upload_error("invalid_task_options", f"本地视频处理参数无效：{exc}", status_code=422) from exc
-    pending_path = UPLOAD_DIR / f"pending_{uuid4().hex}_{safe_name}"
-    try:
-        with pending_path.open("wb") as output:
+        with staged_path.open("wb") as output:
             while True:
                 chunk = await file.read(LOCAL_UPLOAD_CHUNK_SIZE)
                 if not chunk:
                     break
                 output.write(chunk)
-        validate_local_upload_file(pending_path)
+        integrity = validate_local_upload_file(staged_path)
     except HTTPException:
-        pending_path.unlink(missing_ok=True)
+        staged_path.unlink(missing_ok=True)
         raise
     except Exception as exc:
-        pending_path.unlink(missing_ok=True)
-        raise local_upload_error("local_upload_failed", f"保存本地视频失败：{exc}", status_code=500) from exc
+        staged_path.unlink(missing_ok=True)
+        raise local_upload_error("local_preflight_failed", f"本地媒体预检失败：{exc}", status_code=500) from exc
+    estimated_seconds = max(30, round(integrity.duration * 0.65 + 45))
+    return {
+        "title": Path(safe_name).stem,
+        "duration": integrity.duration,
+        "estimated_seconds": estimated_seconds,
+        "integrity": integrity.model_dump(mode="json"),
+        "source_fingerprint": integrity.sha256,
+        "staging_token": staging_token,
+    }
 
-    task = create_task(source_type="local", title=title or safe_name, options=parsed_options, mode="local")
+
+@app.post("/api/tasks/from-local")
+async def create_from_local(
+    background_tasks: BackgroundTasks,
+    file: UploadFile | None = File(default=None),
+    title: str = Form(""),
+    options: str = Form("{}"),
+    staging_token: str = Form(""),
+) -> dict:
+    try:
+        parsed_options = TaskOptions.model_validate(json.loads(options or "{}"))
+    except (json.JSONDecodeError, TypeError, ValidationError) as exc:
+        raise local_upload_error("invalid_task_options", f"本地视频处理参数无效：{exc}", status_code=422) from exc
+
+    token = staging_token.strip().lower()
+    if token and file is not None:
+        raise local_upload_error("ambiguous_local_source", "请使用预检 token 或直接上传文件，不要同时提交。")
+    if token:
+        if not re.fullmatch(r"[a-f0-9]{32}", token):
+            raise local_upload_error("invalid_staging_token", "预检 token 无效。")
+        staged_matches = list(UPLOAD_DIR.glob(f"staged_{token}_*"))
+        if len(staged_matches) != 1 or not staged_matches[0].is_file():
+            raise local_upload_error("staging_token_not_found", "预检文件不存在或已被使用。", status_code=404)
+        pending_path = staged_matches[0]
+        safe_name = pending_path.name.split(f"staged_{token}_", 1)[-1]
+        integrity = validate_local_upload_file(pending_path)
+    else:
+        if file is None:
+            raise local_upload_error("missing_local_file", "请选择本地媒体文件或提交 staging_token。")
+        safe_name = local_upload_filename(file.filename, file.content_type)
+        pending_path = UPLOAD_DIR / f"pending_{uuid4().hex}_{safe_name}"
+        try:
+            with pending_path.open("wb") as output:
+                while True:
+                    chunk = await file.read(LOCAL_UPLOAD_CHUNK_SIZE)
+                    if not chunk:
+                        break
+                    output.write(chunk)
+            integrity = validate_local_upload_file(pending_path)
+        except HTTPException:
+            pending_path.unlink(missing_ok=True)
+            raise
+        except Exception as exc:
+            pending_path.unlink(missing_ok=True)
+            raise local_upload_error("local_upload_failed", f"保存本地视频失败：{exc}", status_code=500) from exc
+
+    effective_title = title or Path(safe_name).stem
+    task = create_task(source_type="local", title=effective_title, options=parsed_options, mode="local")
     upload_path = UPLOAD_DIR / f"{task.id}_{safe_name}"
     pending_path.replace(upload_path)
+    integrity_path = write_json(task.id, "media_integrity.json", integrity.model_dump(mode="json"))
     task = update_task(
         task.id,
         source_media_path=str(upload_path),
+        media_integrity=integrity,
+        media_integrity_path=str(integrity_path),
+        source_identity=local_source_identity(effective_title, integrity),
         message="Local upload saved; queued for processing",
     )
-    background_tasks.add_task(process_local_video_task, task.id, upload_path, title or safe_name, parsed_options)
+    background_tasks.add_task(process_local_video_task, task.id, upload_path, effective_title, parsed_options)
     return {"task_id": task.id, "task": task_payload(task)}
 
 
@@ -3514,7 +3724,7 @@ def create_from_existing_media(
     if media_path.stat().st_size <= 0:
         raise HTTPException(status_code=400, detail={"code": "media_not_found", "message": "Downloaded media file is empty"})
     try:
-        validate_local_upload_file(media_path)
+        rerun_integrity = validate_local_upload_file(media_path)
     except HTTPException as exc:
         detail = exc.detail if isinstance(exc.detail, dict) else {"code": "invalid_local_video", "message": str(exc.detail)}
         detail["code"] = "media_not_found"
@@ -3532,6 +3742,8 @@ def create_from_existing_media(
         task.id,
         source_task_id=source.id,
         source_media_path=str(media_path),
+        media_integrity=rerun_integrity,
+        source_identity=local_source_identity(source.title or media_path.stem, rerun_integrity),
         selected_resource=source.selected_resource,
         download_attempts=source.download_attempts,
         active_video=source.active_video,
@@ -4104,3 +4316,11 @@ def api_asset(task_id: str, filename: str) -> FileResponse:
     if not path.exists():
         raise HTTPException(status_code=404, detail="Asset not found")
     return FileResponse(path)
+
+
+@app.get("/api/tasks/{task_id}/frames/{filename}")
+def api_original_frame(task_id: str, filename: str) -> FileResponse:
+    path = task_dir(task_id) / "frames" / Path(filename).name
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Frame not found")
+    return FileResponse(path, media_type="image/jpeg")

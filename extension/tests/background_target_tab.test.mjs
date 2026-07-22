@@ -142,3 +142,16 @@ assert.equal(capturedPreflightBody.page_url, "https://course.example.com/lesson-
 assert.deepEqual(capturedPreflightBody.active_video, activeVideo);
 assert.equal(capturedPreflightBody.resources[0].url, "https://cdn.example.com/current.mp4");
 assert.equal(capturedPreflightBody.probe_limit, 2);
+assert.deepEqual(capturedPreflightBody.source_identity, {
+  tab_id: 11,
+  canonical_page_url: "https://course.example.com/lesson-11",
+  platform: "course.example.com",
+  platform_video_id: "",
+  BVID: "",
+  page_title: "Course 11",
+  active_video: { current_src: "https://cdn.example.com/current.mp4" },
+  resource_fingerprint: capturedPreflightBody.source_identity.resource_fingerprint,
+  captured_at: capturedPreflightBody.source_identity.captured_at
+});
+assert.match(capturedPreflightBody.source_identity.resource_fingerprint, /^[0-9a-f]{8}$/);
+assert.match(capturedPreflightBody.source_identity.captured_at, /^\d{4}-\d{2}-\d{2}T/);
