@@ -1,509 +1,229 @@
-# LearnNote Assistant
+# LearnNote
 
-BiliNote-style browser learning assistant for direct current-page video extraction, local video upload, transcription, frame-grid visual understanding, and Markdown note generation.
+> 把正在播放的课程或本地视频，整理成可以核对画面、回到时间点、继续追问的学习笔记。
 
-This project intentionally does **not** record the browser tab and does **not** bypass DRM, login, or course progress systems. It downloads media only when the current page exposes a normal accessible URL, HLS/DASH manifest, yt-dlp supported page, or a cookie-authorized resource visible to the active browser session.
+[![Latest Release](https://img.shields.io/github/v/release/hurry060215-tech/learnnote-assistant?label=最新版&color=0f9d98)](https://github.com/hurry060215-tech/learnnote-assistant/releases/latest)
+[![Windows](https://img.shields.io/badge/Windows-10%2F11-1677ff)](https://github.com/hurry060215-tech/learnnote-assistant/releases/latest)
+[![Chrome / Edge](https://img.shields.io/badge/Chrome%20%2F%20Edge-MV3-15a39a)](https://github.com/hurry060215-tech/learnnote-assistant/releases/latest)
 
-## Features
+[产品网站](https://learnnote-study.hurry060215.chatgpt.site) · [下载最新版](https://github.com/hurry060215-tech/learnnote-assistant/releases/latest) · [反馈问题](https://github.com/hurry060215-tech/learnnote-assistant/issues)
 
-- Chrome/Edge MV3 extension with a Side Panel.
-- BiliNote-style workspace UI: source selection, processing options, task history, note/transcript/frame/diagnostic result tabs.
-- Richer BiliNote-style reading workspace with task search/filter, status counters, Markdown rendering, frame-grid preview, and failure recovery hints.
-- BiliNote-style task stage rail for download, transcription, frame slicing, note generation, and completion.
-- Bilibili link entry accepts a full B站 URL, bare `BV...`/`av...` ID, or copied text containing one; the backend normalizes it to a video page, downloads through yt-dlp, merges separate audio/video with the project ffmpeg, and replaces the placeholder with the real video title.
-- Transcript timeline view aligns each subtitle segment with its frame-grid visual window, so notes can be reviewed by time slice instead of as a flat transcript.
-- Web UI subtitle timestamps and visual-window checkpoints can seek the local `media.mp4` preview for time-anchored review.
-- Markdown note export from both the local Web UI and the browser Side Panel.
-- Task audit export from both UIs: a Markdown report of the direct-extraction route, stage gates, reuse readiness, recovery recommendation, and privacy boundary.
-- Study bundle export from both UIs: Markdown note, `audit.md`, diagnostics, task metadata, transcript JSON, visual-window index, frame-grid screenshots, and a redacted machine-readable `manifest.json` in one zip.
-- Standalone manifest export from both UIs for the current task route, audit gates, media evidence, transcript/visual-window counts, and artifact list.
-- Current-page media detection from DOM, all-frame content scripts, Performance entries, and `webRequest`.
-- `webRequest` captures media candidates as soon as response headers arrive, so long-running video/range streams do not have to finish before they can be selected.
-- Main-world fetch/XHR hook for media URLs exposed in text, JSON, playlist, or script responses before they appear in `<video>`.
-- JSON/HTML script media-field discovery for extensionless player APIs such as `hls`, `dashUrl`, `playUrl`, or `videoUrl` when sibling metadata or field names identify HLS/DASH/video content.
-- Runtime page-global player config discovery: common globals such as `lessonPlayerConfig`, `coursePlayerConfig`, `ananasVideoInfo`, and `__playInfo` are watched even when assigned after extension injection, so late SPA/player setup can still expose mp4/FLV/HLS/DASH candidates.
-- URL-encoded and base64-wrapped media field values are decoded during page scanning and main-world response inspection.
-- Blob/MSE-backed player recovery: when a page fetches an accessible media response as a `Blob`, `ArrayBuffer`, or `ReadableStream` chunk, constructs a `Blob`, or appends the buffer to a `MediaSource`/`SourceBuffer`, the extension maps that generated `blob:` playback URL back to the original mp4/FLV/HLS/DASH request and ranks it as the current video candidate.
-- Backend page scanner for manually pasted page URLs, so the local Web UI can try direct media extraction before yt-dlp fallback.
-- Backend page scanning also decodes JS-escaped bare media URLs such as `https:\/\/...m3u8` even when they are stored in generic player variables rather than obvious `videoUrl` fields.
-- Manual URL tasks can explicitly force a pasted extensionless link to be treated as a video file, HLS manifest, or DASH manifest instead of only relying on suffix detection.
-- Manual URL tasks in the Web UI can preflight direct media links before task creation and can run download-only mode to save an exportable local `media.mp4` without transcription or summarization.
-- Iframe/player-page fallback: when the top course page is only a shell, the backend also tries the active frame URL, candidate page URL, Referer, and initiator as page-scan and yt-dlp fallback targets.
-- Backend player-iframe scan: when a manually pasted or browser-sent page only contains a course/player iframe, the backend follows that player frame with the page's browser context and scans it for mp4/FLV/HLS/DASH URLs before falling back to yt-dlp.
-- EME/DRM signal detection: the extension records `encrypted`, `setMediaKeys`, and `requestMediaKeySystemAccess` evidence so encrypted pages fail with a clear reason instead of pretending a normal direct URL was missed.
-- Cookie handoff from the current browser session to the local backend at task start.
-- Cookie handoff includes the top page, active media URL, player iframe URLs, candidate page/frame URLs, initiator, Referer, and Origin domains so iframe-based course players keep their browser session context.
-- Non-sensitive browser request headers such as `Referer`, `Origin`, `User-Agent`, `Accept`, `Accept-Language`, `Sec-Fetch-*`, `Sec-CH-UA*`, and `X-Requested-With` are captured for media candidates and reused by backend downloads.
-- Bounded text/form POST bodies from recent playback-related XHR/fetch requests are kept in extension memory and handed to the backend only with the selected task, letting JSON play APIs be replayed locally to resolve the real media URL.
-- Local FastAPI backend on `127.0.0.1:8765`.
-- Download order: selected browser/media candidate first, then yt-dlp page resolver fallback with the current browser session's cookie file and safe request headers.
-- Download diagnostics: every task records the direct-file, manifest-ffmpeg, skipped blob/fragment, and yt-dlp attempts with status, HTTP code, content length, output file, and failure reason.
-- Direct-file downloads reject HTTP 200 login/error HTML bodies before they enter the media pipeline, so expired cookies fail as `auth_required` instead of becoming confusing ffmpeg processing errors.
-- Local video upload from both the Side Panel and the local web UI.
-- Shared processing pipeline: normalize every downloaded or uploaded video into project-local `media.mp4`, extract audio, transcribe, slice frames, build frame grids, generate a visual-window index, summarize.
-- Multimodal LLM summaries run in visual-window batches and then merge the local window notes into the final Markdown note.
-- Browser subtitle cues, page subtitle tracks, yt-dlp platform subtitles (`.vtt`, `.srt`, `.ass`, `.ssa`), and embedded text subtitles are preferred over Whisper when available.
-- Structured failure codes: `no_media_found`, `auth_required`, `drm_or_encrypted`, `download_forbidden`, `unsupported_manifest`, `processing_failed`.
+![LearnNote 新建学习笔记工作台](site/assets/learnnote-workspace-v0126.png)
 
-## What Works Now
+## LearnNote 是什么
 
-- Paste a B站 URL or `BV...`/`av...` ID into Web UI **链接解析**, then choose **生成链接笔记**, **预检链接**, or **只下载到本地**. YouTube and other yt-dlp-supported page URLs use the same entry.
-- Direct current-page task creation from the extension Side Panel.
-- DOM, iframe-aware content scripts, Performance, active `<video>` state, and `webRequest` resource discovery.
-- Page-network hook discovery for mp4/FLV/HLS/DASH/subtitle URLs embedded in fetch/XHR text responses. The hook also records Blob object URL, fetch stream chunk, and MediaSource source mappings when the page builds playback from accessible media responses; it does not record playback or inspect binary video payloads.
-- Page-global player config discovery: the page hook scans bounded common globals such as `__playInfo`, `playerConfig`, `videoInfo`, `lessonPlayerConfig`, and matching video/player/media keys for mp4/FLV/HLS/DASH/subtitle URLs, including encoded fields and late runtime assignments, without recording playback.
-- Extensionless manifest-body discovery: if a player endpoint such as `/api/play?lesson=...` returns an HLS/DASH manifest body with a generic MIME like `application/octet-stream`, the page hook promotes the response URL itself to a direct HLS/DASH candidate.
-- Backend page-text scanning for manually submitted URLs: HTML/JSON/script responses are scanned for absolute or relative mp4/FLV/HLS/DASH/subtitle URLs before yt-dlp is tried.
-- Extensionless API URL scanning: JSON fields or inline script fields like `hls`, `dashUrl`, `playUrl`, and `videoUrl` can become candidates even when the URL is `/stream?lesson=...` instead of ending in `.m3u8`, `.mpd`, `.flv`, or `.mp4`.
-- Extensionless browser media request capture: if Chrome reports a `webRequest` as `media`, the extension keeps it as a direct video candidate even when the URL is `/play?id=...` and the server only returns a generic MIME type.
-- Frame-aware context aggregation: the extension asks every reachable frame for page text, active video state, and media resources before ranking candidates.
-- Frame-aware fallback download: if the outer page cannot be resolved, backend page scanning and yt-dlp fallback are retried against the detected player iframe, candidate page URL, Referer, and request initiator.
-- Course-shell fallback: backend page scanning can now follow obvious player iframes from a shell page and reuse the iframe URL as Referer for media discovered inside that player page.
-- Dynamic SPA video detection through MutationObserver, media event binding, periodic rescans, and PerformanceObserver resource updates.
-- Cookie collection at task start/preflight for the page URL, active frame URLs, resolved/redirected media URLs, request initiators, and media domains. On browsers that expose partitioned-cookie APIs, the extension also asks the active tab/frame for the matching partition key before syncing cookies.
-- Browser-context download replay: direct media, subtitles, ffmpeg HLS/DASH merges, and yt-dlp page fallback reuse safe request headers plus the task-start cookie jar where applicable. Captured `Cookie` and `Authorization` headers are never replayed from request metadata; cookies are synced only through the explicit task/preflight handoff.
-- POST playback API replay: when the browser reaches a `/play`/`stream` JSON endpoint through a text or form POST, the extension can hand its bounded request body to the backend so preflight/download resolves the embedded mp4/FLV/m3u8/mpd URL instead of retrying the endpoint as a plain GET.
-- JSON playback endpoints with multiple embedded source URLs are preflighted in order, so an expired or forbidden first source can be skipped when a backup mp4/FLV/HLS/DASH source is still reachable.
-- Browser-context preflight: selected mp4/FLV/HLS/DASH candidates can be checked with a small local backend probe before the full download. The result reports strategy, HTTP status, MIME type, content length, bytes checked, safe request-header names, and structured failure codes.
-- Side Panel task start now preflights ranked direct-download candidates in order and automatically switches to the first reachable mp4/FLV/HLS/DASH resource, so a stale or forbidden top candidate does not stop the workflow when another visible media URL works.
-- Side Panel also has a download-only current-page action: it uses the same preflight, cookie handoff, direct downloader, manifest merge, and yt-dlp fallback, then saves an exportable local `media.mp4` without transcription, slicing, or summarization.
-- Download-only tasks retain browser/player subtitle cues, so `继续切片总结` can reuse already captured subtitles instead of falling back to ASR.
-- For players that render captions only as visible DOM overlays, the extension keeps a bounded in-page subtitle history while the lesson plays, instead of only sending the single caption currently on screen.
-- Main-video ranking based on the actively playing `<video>` first, then the largest visible video element.
-- Candidate evidence from `webRequest`, including request type, HTTP status, MIME type, content length, initiator, and frame id when available.
-- Long-running media responses are added from `onHeadersReceived`, then merged again on completion if the request later finishes.
-- Playback-aware candidate ranking: the Side Panel boosts exact current `<video>` sources, same-frame media requests, recoverable Blob/ArrayBuffer/ReadableStream/MediaSource source mappings, and recent requests from Blob/MSE-backed players before starting a task.
-- DRM-aware failure boundary: if a page triggers EME/DRM signals and exposes no downloadable mp4/FLV/HLS/DASH candidate, the task fails early as `drm_or_encrypted` and keeps the key-system/init-data evidence in diagnostics.
-- Recoverable fragment URLs such as `.../master.m3u8/segment.ts` or `.../manifest.mpd/chunk.m4s` are promoted to inferred manifest candidates.
-- Plain `.ts` / `.m4s` fragment clues near the current playback can also trigger a sibling manifest preflight (`master.m3u8`, `index.m3u8`, `manifest.mpd`, etc.) before the app gives up on direct extraction.
-- Subtitle discovery from `<track>` elements, Performance entries, and `webRequest`.
-- Direct video download for exposed MP4/FLV/WebM/MOV/MKV URLs.
-- HLS/DASH manifest download through ffmpeg when a manifest URL is visible.
-- yt-dlp page URL fallback for supported websites when direct browser resources are not usable.
-- Local video upload from the extension and the local web UI.
-- Shared video processing: remux/standardize local and downloaded videos to `media.mp4`, extract audio, transcribe with local `faster-whisper` or OpenAI-compatible/Groq ASR when selected, extract frames, keep periodic visual anchors even on static slides, generate frame grids, and emit Markdown notes.
-- Transcript priority: browser/player subtitle cues first, page or yt-dlp platform subtitle second, embedded text subtitle third, then selected ASR engine fallback.
-- Configurable slicing: frame interval, grid layout, ASR model, and note style.
-- Web UI and Side Panel diagnostic tabs show the selected resource, browser evidence, and every backend download attempt.
-- Web UI and Side Panel task actions can export `audit.md` separately, and the zip bundle includes the same report so direct extraction evidence remains portable.
-- Side Panel direct-extraction console shows whether the selected candidate is a downloadable file, HLS/DASH manifest, subtitle, blob clue, or fragment clue, plus reused request-header names and request evidence.
-- Side Panel has an explicit direct-extraction preflight button: it syncs cookies only when clicked and asks the local backend to verify whether the selected candidate is actually reachable before starting the full task.
-- Side Panel also runs that reachability preflight automatically before `总结当前视频`; if every direct candidate fails but the current page has a normal HTTP(S) URL, it still creates the task so backend page scanning, iframe fallback, and yt-dlp can continue. Pages with no usable page fallback keep the local upload fallback visible.
-- Full HLS/DASH downloads repeat a backend manifest probe before invoking ffmpeg, so expired-login HTML or DRM markers return structured `auth_required` / `drm_or_encrypted` errors instead of a generic merge failure.
-- Side Panel supports a local video drop target as the non-recording fallback when the current page only exposes unrecoverable blob/fragment clues.
-- Diagnostics also show which safe request-header names were available for a selected media candidate without exposing cookie or authorization values. Persisted task debug files redact cookie values and browser request-header values.
-- Blob and media-fragment requests are kept as diagnostic clues instead of being hidden, but they are not treated as independently downloadable video files.
-- Extensionless Performance resource entries initiated by `<video>`, `<audio>`, or subtitle tracks are kept as media candidates, so `/play?id=...` style URLs are not missed only because they lack `.mp4`, `.flv`, or `.m3u8`.
-- Recent byte-range media requests near the active playhead are treated as stronger evidence for the currently playing video, which helps avoid selecting ads or background preloads.
-- Current-page tasks retain the active player snapshot used at task start, including playback time, duration, frame id, dimensions, source URL, and DRM marker for later diagnostics.
-- Task records retain the frame interval, grid layout, ASR model, note style, and visual-understanding setting used for that run.
-- Multimodal prompts are organized by frame-grid windows, pairing each visual slice with the transcript segment from the same time range. Long videos are summarized in batches so later frame grids are not silently dropped.
-- Task diagnostics record whether the note came from a vision LLM, text LLM, or the local frame-index template, including the downgrade reason when the model call is unavailable.
-- Each completed video task writes `visual_index.json`, exposes `/api/tasks/{task_id}/visual-index`, and returns `visual_windows` in the task record so the UI and future vision-model calls can reuse the same frame-grid/transcript alignment.
-- The Web UI and Side Panel render transcript segments grouped under the corresponding `W001`/`W002` visual windows, keeping the frame grid, time range, and subtitle lines together for BiliNote-style review.
-- Generated notes can be copied or exported as Markdown files with the task title as the filename.
-- Deterministic fallback notes when no LLM key or ASR model is installed.
+LearnNote 是一个以 **Windows 桌面客户端** 为核心的视频学习助手。它不录制浏览器标签页，而是尽可能读取当前页面已经加载的视频资源，把视频下载到本地后再完成字幕获取、语音转写、画面切片和笔记生成。
 
-## Quick Start
+你可以从三种入口开始：
 
-For a first run on Windows, print the machine-specific checklist first:
+- **当前页面**：在 B 站、YouTube、学习通等视频页打开浏览器扩展，一键发送到 LearnNote。
+- **视频链接**：粘贴 B 站网址、BV/av 号、YouTube 地址或普通视频链接。
+- **本地视频**：拖入 MP4、MKV、WebM、MOV 等文件，直接使用完整处理流程。
 
-```powershell
-cd D:\Projects\learnnote-assistant
-.\scripts\first-run-checklist.ps1
-```
+浏览器扩展只负责识别当前页面并发送任务。下载、转写、切片、总结、笔记库、AI 问答和导出都在桌面客户端中完成。
 
-The checklist summarizes D-drive data paths, Python/ffmpeg/yt-dlp readiness, optional `faster-whisper` and visual API gaps, Chrome/Edge availability, the unpacked extension path, the backend URL, sample-site URL, and the product verification command. It also separates required blockers from optional capability warnings: if only `WARN` items remain, the base workflow can still run with subtitle/remote-ASR/local-note fallbacks. It does not start services or read browser cookies. To write a machine-specific first-run guide under `data\first-run-guide.md`:
+## 核心能力
 
-```powershell
-.\scripts\first-run-checklist.ps1 -WriteGuide
-```
+### 当前页视频直取
 
-Use the product launcher first. It keeps runtime files under the D-drive project `data\` directory, runs the local doctor, prints the extension load path, sets the backend origin, and then starts FastAPI:
+- 识别页面中的 MP4、FLV、HLS、DASH、iframe 播放器和 yt-dlp 支持页面。
+- 在用户点击发送时同步当前登录会话需要的 Cookie 和安全请求头。
+- 自动预检候选资源，跳过失效链接并选择当前可访问的视频。
+- 支持 B 站完整网址、`BV...`、`av...` 以及 YouTube 等常见视频页面。
+- 下载失败时给出具体原因和下一步，而不是生成与视频无关的笔记。
 
-```powershell
-cd D:\Projects\learnnote-assistant
-.\start-learnnote.ps1
-```
+### 字幕、转写与画面理解
 
-For first-run verification, start the backend and local regression sample site together:
+- 优先使用浏览器字幕、平台字幕和视频内嵌字幕。
+- 没有字幕时可使用本地 `faster-whisper` 或 OpenAI-compatible / Groq ASR。
+- 按自定义间隔抽取关键帧，组合成视觉窗口，并与对应时间段字幕对齐。
+- 支持视觉模型时，结合 PPT、板书、代码和操作演示生成多模态笔记。
+- 没有视觉模型时，仍可生成基于字幕和画面索引的文本笔记。
 
-```powershell
-cd D:\Projects\learnnote-assistant
-.\start-learnnote.ps1 -WithSamples
-```
+### 可继续使用的笔记
 
-This prints the Side Panel backend URL plus sample pages for direct MP4, HLS manifest, blob iframe fallback, POST play API replay, a generic nested player API, and the Chaoxing-style diagnostic mock. The sample server is stopped when the launcher exits, and its logs stay under `data\logs` on the D-drive project path.
+- 时间轴笔记、字幕、画面切片和本地视频可以互相定位。
+- 同一个视频可以更换结构和风格，生成多个笔记版本。
+- 阅读时可在 AI 侧栏围绕当前课程继续提问。
+- 支持 Markdown、字幕、诊断报告、媒体文件和完整学习资料包导出。
+- 任务诊断会说明视频来源、下载路径、字幕来源、模型降级和修复建议。
 
-The fastest first-use path is a five-minute product loop:
+![LearnNote 笔记阅读与 AI 助教](site/assets/learnnote-reader-v0126.png)
 
-1. `.\scripts\first-run-checklist.ps1`: confirm there are no `FAIL` items. `WARN` means optional quality is missing, not that the base workflow is blocked.
-2. `.\start-learnnote.ps1 -WithSamples`: start FastAPI plus the local MP4/HLS/blob/API/learning-platform sample site. Runtime files and logs stay under `D:\Projects\learnnote-assistant\data`.
-3. Load the unpacked extension from `D:\Projects\learnnote-assistant\extension`, then keep the Side Panel backend URL as `http://127.0.0.1:8765`.
-4. Open `http://127.0.0.1:8777/mp4.html` or `http://127.0.0.1:8777/chaoxing-mock.html`, play the video for a few seconds, then click Side Panel `预检资源` or `总结当前视频`.
-5. Expected first success: the Side Panel shows a normal learning flow, a task writes artifacts under `data\tasks\{task_id}`, and the result tabs show note, transcript, slices, frame grids, and diagnostics.
-6. When changing downloader, extension, startup, or UI code, run `.\scripts\verify-product.ps1 -Browser edge`.
-7. Before handoff, run `.\scripts\audit-product-acceptance.ps1 -Browser edge`; add `-LearningUrl "<logged-in-course-url>"` only when a real logged-in course page is available.
-8. Run `.\scripts\audit-product-readiness.ps1` to see the product closure matrix. It reports code/local evidence as `pass` and keeps live-site checks as `manual` until real browser audit reports prove them.
+## 五分钟开始使用
 
-Open the local web UI after startup:
+### 1. 安装桌面客户端
+
+从 [Releases](https://github.com/hurry060215-tech/learnnote-assistant/releases/latest) 下载：
+
+- `LearnNote-Setup-x64.exe`：Windows 安装版，推荐大多数用户使用。
+- `LearnNote-Windows-x64.zip`：免安装便携版。
+- `LearnNote-Browser-Extension-*.zip`：单独下载浏览器扩展时使用。
+- `SHA256SUMS.txt`：安装包校验值。
+
+建议安装到 `D:\LearnNote` 或其他非系统盘。视频、模型和任务产物的数据目录可以在客户端设置中修改。
+
+### 2. 启动 LearnNote
+
+运行 `LearnNote.exe`。客户端后端默认只监听：
 
 ```text
 http://127.0.0.1:8765
 ```
 
-## Windows Desktop Client
+这不是需要登录的网站，而是桌面客户端在本机使用的服务地址。
 
-The primary product is the local Windows desktop client. It opens in its own WebView2 window, starts FastAPI on `127.0.0.1`, stores tasks under the D-drive project directory, and shuts down the backend it owns when the window closes:
+### 3. 连接浏览器扩展
 
-```powershell
-.\start-desktop.ps1
+1. 在客户端打开 **设置 → 浏览器扩展**。
+2. 点击 **修复连接**，让客户端打开扩展目录和浏览器扩展管理页。
+3. 在 `chrome://extensions` 或 `edge://extensions` 开启 **开发者模式**。
+4. 点击 **加载已解压的扩展程序**，选择客户端显示的 `extension` 文件夹。
+5. 回到视频页，刷新一次页面，再打开 LearnNote 扩展侧栏。
+
+扩展显示“本地服务已连接”后，播放目标视频并点击 **发送到 LearnNote**。任务会自动出现在桌面客户端。
+
+### 4. 选择笔记方式
+
+首次使用建议保持默认配置：
+
+- 笔记结构：**智能整理**
+- 转写：**本地 faster-whisper / small**
+- 视觉理解：有视觉模型时开启
+- 切片间隔：20 秒
+- 视觉窗口：3 × 3
+
+课程以讲解为主可选“课堂精讲”，临时复习可选“快速复习”，备考时可选“考前梳理”。同一个视频之后可以重新选择配置，不必重新下载。
+
+## 支持范围
+
+| 来源 | 推荐入口 | 说明 |
+| --- | --- | --- |
+| Bilibili | 视频网址、BV/av 号、当前页扩展 | 优先使用 yt-dlp，扩展可补充当前登录会话 |
+| YouTube | 视频网址、当前页扩展 | 公开或当前账号可访问的视频 |
+| 学习通 / 超星 | 当前页扩展 | 需要先登录并播放；页面必须向浏览器暴露可访问的视频资源 |
+| 普通 MP4 / HLS / DASH | 视频链接或当前页扩展 | 支持直接文件和常见流媒体清单 |
+| 本地视频 | 客户端拖拽上传 | 最稳定，不依赖网站解析 |
+
+如果网页采用受保护的加密播放，或没有向浏览器提供可复用的视频地址，LearnNote 会停止下载并提示改用本地视频。它不会代替用户完成课程、伪造进度或绕过网站权限。
+
+## 模型配置
+
+模型统一在客户端 **设置 → AI 模型 / 转写** 中配置。当前支持常见 OpenAI-compatible 服务以及内置提供商预设：
+
+- Kimi、通义千问、智谱 GLM
+- DeepSeek、豆包、MiniMax、百度千帆
+- OpenAI、Groq、Gemini 和自定义兼容接口
+
+需要看懂 PPT、板书、代码界面或操作过程时，请选择明确支持图片输入的视觉模型。DeepSeek 等纯文本模型适合根据字幕生成文本笔记，但不会分析画面。
+
+API Key 可以保存在 Windows 凭据管理器中，不会写入任务 JSON、诊断文件或导出资料。不要把密钥提交到 Git 仓库。
+
+## 工作流程
+
+```mermaid
+flowchart LR
+    A[视频页或本地视频] --> B[LearnNote 桌面客户端]
+    C[Chrome / Edge 扩展] -->|发送当前页| B
+    B --> D[下载或导入视频]
+    D --> E[平台字幕 / Whisper 转写]
+    D --> F[抽帧与视觉窗口]
+    E --> G[多模态笔记]
+    F --> G
+    G --> H[阅读 · 追问 · 重生成 · 导出]
 ```
 
-The first run installs `pywebview` into the D-drive virtual environment. Tagged releases publish `LearnNote-Setup-x64.exe`, the portable `LearnNote-Windows-x64.zip`, a separate `LearnNote-Browser-Extension.zip`, and `SHA256SUMS.txt`. Install or extract the client to D: (or another non-system drive), run `LearnNote.exe`, then load the unpacked extension from a stable directory. The browser extension remains the current-page handoff: it detects the playing page and sends accessible media evidence to the desktop backend without recording the tab. The desktop client can keep provider API keys in Windows Credential Manager; keys are not written to task JSON, localStorage, diagnostics, or exports.
+所有任务默认保存在本机数据目录中。当前页 Cookie 只在用户主动发送或预检任务时读取，并仅交给本地后端处理。
 
-## Public Website
+## 常见问题
 
-`site/` is the no-login public LearnNote introduction and download website. It is deliberately static: it does not expose FastAPI, accept video uploads, read browser cookies, or receive model API keys.
+### 扩展已经加载，为什么没有发送到客户端？
 
-Permanent website: `https://hurry060215-tech.github.io/learnnote-assistant/`
+先确认客户端正在运行，扩展顶部显示“本地服务已连接”。如果仍然失败：
 
-Preview it locally:
+1. 客户端进入 **设置 → 浏览器扩展 → 修复连接**。
+2. 在扩展管理页点击 LearnNote 的 **重新加载**。
+3. 刷新视频页面并重新播放几秒钟。
+4. 确认扩展和客户端来自同一个发布版本。
 
-```powershell
-python -m http.server 8790 --bind 127.0.0.1 --directory site
-```
+### 视频明明在播放，为什么没有识别到？
 
-Start a temporary public site with no login prompt:
+有些播放器会先创建 `blob:` 地址，再在后台加载真正的视频。LearnNote 会尝试从网络请求、iframe 和播放器配置中恢复资源；如果页面只提供无法复用的加密数据，扩展会提示使用链接解析或本地上传。
 
-```powershell
-.\scripts\start-public-site.ps1 -Detach
-.\scripts\stop-public-site.ps1
-```
+### 为什么笔记和视频内容不一致？
 
-The Windows download buttons point to the latest GitHub Release. The same static directory can be uploaded to any static host; GitHub Pages requires either a public repository or an account plan that supports Pages for private repositories.
+在任务诊断中检查三项：下载到的视频是否正确、字幕来源是否可靠、视觉模型是否真的启用。LearnNote 不会把错误页或模型报错当成课程内容；证据不足时应重新获取视频或更换字幕 / 转写设置。
 
-## Optional Personal Server Deployment
+### 一定需要下载客户端吗？
 
-The complete processing application can still be deployed privately for one owner. Unlike the public introduction site, this surface includes FastAPI, yt-dlp, FFmpeg, faster-whisper, uploads, task history, and persistent artifacts, so public mode requires HTTP Basic authentication.
+是。当前版本以桌面客户端为处理核心；浏览器扩展只是当前页入口，宣传网站只用于介绍和下载产品。
 
-### Docker / VPS
+## 从源码运行
 
-Copy the deployment environment file and replace the password with at least 12 random characters:
-
-```bash
-cp .env.deploy.example .env.deploy
-docker compose --env-file .env.deploy up --build -d
-```
-
-Open `http://localhost:8765`. Data, uploads, task history, screenshots, and model caches persist in the `learnnote-data` volume. The container runs as a non-root user and exposes an unauthenticated `/health` endpoint only; the website and task APIs require the configured username/password. For a domain, put the container behind an HTTPS reverse proxy and set `LEARNNOTE_PUBLIC_ORIGIN` to the final origin.
-
-Images are published from `main` to `ghcr.io/hurry060215-tech/learnnote-assistant:latest`. Container package visibility is managed separately from the public source repository; authenticate Docker when the GHCR package is not public.
-
-### Temporary Protected Processing URL
-
-On Windows, this starts a separate empty data workspace and an optional Cloudflare Quick Tunnel. The generated password is written under the ignored D-drive `data\config` directory and is never committed:
+要求：Windows 10/11、PowerShell、Python 3.11+、Chrome 或 Edge。ffmpeg 和 yt-dlp 可由启动脚本检查和配置。
 
 ```powershell
-.\scripts\start-public-preview.ps1 -Tunnel
-# detached mode
-.\scripts\start-public-preview.ps1 -Tunnel -Detach
-.\scripts\stop-public-preview.ps1
-```
-
-This protected processing URL is for personal remote access, not the public LearnNote website. Keep current-page browser-cookie extraction on the local extension/backend path.
-
-Load the browser extension:
-
-1. Open `chrome://extensions` or `edge://extensions`.
-2. Enable Developer Mode.
-3. Click "Load unpacked".
-4. Select `D:\Projects\learnnote-assistant\extension`.
-5. Open a video page, click the extension icon, then use the Side Panel.
-
-The launcher runs the same readiness check as `.\scripts\doctor.ps1`. `PASS` means the base local workflow can run. `WARN` marks optional capability gaps such as missing `faster-whisper` or no multimodal API key. `FAIL` gives the command or path to fix before starting the backend. To install the optional local ASR dependency during startup:
-
-```powershell
+git clone https://github.com/hurry060215-tech/learnnote-assistant.git D:\Projects\learnnote-assistant
 cd D:\Projects\learnnote-assistant
-.\start-learnnote.ps1 -InstallAsr
-```
-
-If port `8765` is occupied, start the backend on another local port and put the same address in the Side Panel backend settings:
-
-```powershell
-.\start-learnnote.ps1 -Port 8766
-```
-
-For automation or backend-only debugging, `start-backend.ps1` remains available:
-
-```powershell
-.\start-backend.ps1 -Port 8765
-```
-
-The extension only accepts local backend origins (`127.0.0.1` or `localhost`), and its manifest keeps localhost permissions host-wide so non-default ports continue to work. Each launcher run sets `LEARNNOTE_BACKEND_ORIGIN` to the selected local port for the current PowerShell session, replacing a stale value from an earlier run so generated frame-grid, media, and export links point at the running backend.
-
-## Local Browser Regression Samples
-
-Use these pages before testing real course sites. They exercise the same generic extraction routes without depending on any external login state.
-
-Start the backend in one terminal:
-
-```powershell
-cd D:\Projects\learnnote-assistant
+.\scripts\first-run-checklist.ps1
 .\start-learnnote.ps1
 ```
 
-Start the sample site in another terminal:
+安装本地 Whisper：
 
 ```powershell
-cd D:\Projects\learnnote-assistant
-.\scripts\serve-samples.ps1
-```
-
-Or run the product launcher with `-WithSamples` to start the backend and sample site together:
-
-```powershell
-cd D:\Projects\learnnote-assistant
-.\start-learnnote.ps1 -WithSamples
-```
-
-Open:
-
-```text
-http://127.0.0.1:8777
-```
-
-The sample server writes generated media fixtures to `data\test-runs\samples` on the D-drive project path. It does not commit binary videos to the repository.
-
-Recommended browser checks with the unpacked extension loaded:
-
-- `MP4`: open `http://127.0.0.1:8777/mp4.html`, play the video, then use `预检资源` or `总结当前视频`. Expected route: direct `/media/sample.mp4`.
-- `HLS`: open `http://127.0.0.1:8777/hls.html`. Chrome may not play native HLS, but the extension should detect `/hls/master.m3u8` from DOM and backend ffmpeg should merge it.
-- `Blob iframe`: open `http://127.0.0.1:8777/blob-iframe.html`. Expected route: iframe/player context plus blob-source mapping; no tab recording.
-- `POST play API`: open `http://127.0.0.1:8777/post-api.html`. Expected route: XHR/POST candidate with safe headers and bounded body, resolving `playUrl` or `sources` to the real media URL.
-- `Generic API`: open `http://127.0.0.1:8777/generic-player.html`. Expected route: generic XHR/POST candidate with JSON body replay, resolving nested `streamUrl`, `manifestUrl`, `play_url`, or fallback source fields to real media.
-- `学习通 mock`: open `http://127.0.0.1:8777/chaoxing-mock.html`. Expected route: outer course page plus iframe player, `ananas/status/play` POST body with `objectid`/`dtoken`, visible cookie, Referer/Origin/XHR evidence, then normal media preflight. This is only a local diagnostic mock; it does not fake progress, answer questions, or call private course-completion APIs.
-
-Run the product verification gate after broad downloader, detector, Side Panel, or startup changes:
-
-```powershell
-cd D:\Projects\learnnote-assistant
-.\scripts\verify-product.ps1
-```
-
-That script runs the local doctor, a backend/sample smoke, and a real Edge MV3 extension smoke. It auto-picks loopback ports, keeps runtime artifacts under the D-drive project `data\` tree, and validates MP4, HLS, POST play API, generic nested player API, blob iframe fallback, the local Chaoxing-style evidence chain, and an extension-started download-only task. Use Chrome explicitly when browser-specific behavior matters:
-
-```powershell
-.\scripts\verify-product.ps1 -Browser chrome
-```
-
-Before handoff, run the product acceptance gate. It stitches the important evidence together: local doctor, real Edge/Chrome extension sample smoke, yt-dlp real-site task probe, learning-platform mock gate, and the product readiness matrix. If you have a logged-in course page, pass it so the real learning-platform row is audited in the same run:
-
-```powershell
-cd D:\Projects\learnnote-assistant
-.\scripts\audit-product-acceptance.ps1 -Browser edge
-.\scripts\audit-product-acceptance.ps1 -Browser edge -LearningUrl "https://mooc1.chaoxing.com/..."
-```
-
-The acceptance report is written under `data\test-runs\product-acceptance\{timestamp}\summary.md`. Without `-LearningUrl`, the gate can reuse a completed real learning-platform direct task after converting it into a redacted audit with `scripts\audit-learning-task-evidence.py --require-ready`; if no such task exists, the row remains manual.
-
-Run the product readiness audit when deciding whether the current build is actually ready to hand off:
-
-```powershell
-cd D:\Projects\learnnote-assistant
-.\scripts\audit-product-readiness.ps1
-```
-
-This matrix maps the current objective to evidence: BiliNote-style Side Panel flow, non-recording direct extraction, local video upload, visual slice notes, learning-platform diagnostics, local regression samples, startup/onboarding, generic adapter direction, and live-site audit coverage. It deliberately does not count local mocks as real YouTube/Bilibili/Chaoxing proof. To make those rows pass, create real reports with `.\scripts\audit-real-site.ps1 ... -Preflight -RequireReady` and, for learning platforms, `-RequireLearningProfile`.
-
-Run the narrower local backend/sample smoke gate when changing downloader or detector contracts and you want faster failure isolation:
-
-```powershell
-cd D:\Projects\learnnote-assistant
-.\scripts\e2e-local-smoke.ps1 -BackendPort 8790 -SamplesPort 8791
-```
-
-That script starts a temporary backend and sample server, then verifies MP4 preflight, HLS preflight, POST play API preflight, a real download-only task that writes `media.mp4`, and iframe/page fallback preflight. Add `-OpenBrowser` to also launch Chrome/Edge with a temporary profile and the unpacked extension opened on the sample site:
-
-```powershell
-.\scripts\e2e-local-smoke.ps1 -OpenBrowser
-```
-
-Run the real extension smoke when changing browser collection, `webRequest`, iframe fallback, or Side Panel start contracts:
-
-```powershell
-cd D:\Projects\learnnote-assistant
-.\scripts\e2e-extension-smoke.ps1
-```
-
-That script launches a temporary Edge profile with the unpacked extension, starts the backend and sample server, then verifies the real MV3 service worker plus content/background collection for MP4, an extension-started `download_only` task that writes `media.mp4`, HLS, POST play API request body replay, generic nested player API replay, blob iframe page-scan fallback, and the local 学习通-style mock (`ananas/playurl/objectid/dtoken/iframe/cookie`). Use Chrome explicitly when needed:
-
-```powershell
-.\scripts\e2e-extension-smoke.ps1 -Browser chrome
-```
-
-For real sites, use the same evidence model instead of a site-specific assumption:
-
-- A direct media URL, HLS/DASH manifest, or yt-dlp supported page is enough.
-- If the page uses a player API, the Side Panel diagnostics should show `播放 API`, `POST/body`, `Referer`, `Origin`, `XHR`, `iframe`, Cookie count, and preflight status when those signals are available.
-- If the page only exposes DRM/EME, unrecoverable `blob:`, or `MediaStream/srcObject`, the app should fail clearly and point to local upload instead of recording the tab.
-
-Use the real-site audit script when checking YouTube/B站/学习通 or any other live site. It launches Chrome/Edge with the unpacked extension, starts the local backend, collects the same browser evidence as the Side Panel, optionally runs cookie-aware backend preflight, and writes redacted `audit.md` / `audit.json` reports under `data\test-runs\site-audits`:
-
-```powershell
-cd D:\Projects\learnnote-assistant
-.\scripts\audit-real-site.ps1 "https://example.com/video-page" -Preflight
-```
-
-Use gate mode when you want the command itself to fail unless the page is actually ready for direct extraction:
-
-```powershell
-.\scripts\audit-real-site.ps1 "https://example.com/video-page" -Preflight -RequireReady
-```
-
-For yt-dlp-supported pages such as YouTube, Bilibili, or a generic extractor page, use a real download-only task probe plus a metadata-only yt-dlp probe instead of only resource preflight. This proves that the page is yt-dlp-resolvable and that the current-page workflow can save `media.mp4` locally:
-
-```powershell
-.\scripts\audit-real-site.ps1 "https://samplelib.com/sample-mp4.html" -TaskProbe -YtdlpProbe -RequireReady -TaskTimeout 180
-```
-
-To verify the backend page fallback without using captured browser media resources, add `-TaskProbePageOnly`. This is useful when you want to test page scanning / yt-dlp fallback separately from the extension's resource ranking:
-
-```powershell
-.\scripts\audit-real-site.ps1 "https://example.com/video-page" -TaskProbe -TaskProbePageOnly -YtdlpProbe -RequireReady -TaskTimeout 180
-```
-
-For logged-in course pages, use the learning-platform wrapper. It keeps the browser profile under the D-drive project data directory, pauses for login/playback, runs cookie-aware preflight, and requires the learning signal checklist by default:
-
-```powershell
-cd D:\Projects\learnnote-assistant
-.\scripts\audit-learning-platform.ps1 "https://mooc1.chaoxing.com/..." -KeepBrowser
-```
-
-Rehearse the same gate against the local Chaoxing-style mock without using a real account:
-
-```powershell
-.\scripts\audit-learning-platform.ps1 -Mock
-```
-
-When the browser opens for a real site, log in if needed, play the target video for a few seconds, then return to the terminal and press Enter. The report starts with `Readiness`, `Failure reason`, and `Next step`, then expands the generic chain: browser playback evidence, auth/cookie context, replayable API body or direct media URL, and download preflight. For learning-platform pages it also lists `ananas`, `playurl/play_url`, `objectid`, `dtoken`, `iframe`, and `cookie` as a checklist instead of hiding them in raw logs. The wrapper enables `-RequireLearningProfile`; tune it with `-LearningRequiredSignals "ananas,playurl,iframe,cookie"` if a site does not use Chaoxing-style `objectid`/`dtoken`. Reports keep only evidence summaries: Cookie/Authorization values are not written, POST body content is replaced with field names and evidence flags, and URL query values are redacted.
-
-## Local Storage On D
-
-On this machine the project lives at `D:\Projects\learnnote-assistant`. The startup script creates a project-local virtual environment at `.venv` and keeps runtime outputs under the project `data\` directory. Set `LEARNNOTE_VENV_DIR` first if you want a different D-drive venv path:
-
-- `data\uploads` for local uploads.
-- `data\tasks` for task artifacts and generated notes.
-- `data\model-cache` for Hugging Face / faster-whisper model cache.
-- `data\pip-cache` for pip downloads.
-- `data\temp` for backend process temporary files.
-- `data\test-runs` for generated local test videos.
-- `data\browser-profiles` for optional real-site audit browser profiles.
-- `data\test-runs\site-audits` for redacted real-site and local browser audit reports used by `audit-product-readiness.ps1`.
-
-To install the optional local ASR dependency into the D-drive project venv:
-
-```powershell
-cd D:\Projects\learnnote-assistant
 .\start-learnnote.ps1 -InstallAsr
 .\scripts\doctor.ps1
 ```
 
-You can override the Python used to create the venv without changing where project dependencies and task data are stored:
+加载源码扩展时，在浏览器扩展管理页选择：
 
-```powershell
-$env:LEARNNOTE_BOOTSTRAP_PYTHON="D:\Python312\python.exe"
-.\start-learnnote.ps1
+```text
+D:\Projects\learnnote-assistant\extension
 ```
 
-## Optional Model Settings
+## 开发与验证
 
-Transcription defaults to local `faster-whisper` with the `small` model, and can be switched per task to an OpenAI-compatible/Groq ASR endpoint. If ASR fails, LearnNote retains the downloaded media and diagnostic artifacts but marks the task failed instead of treating an error message as course content.
-
-Windows defaults to CPU/int8 for reliability:
+窄范围修改优先运行：
 
 ```powershell
-$env:LEARNNOTE_WHISPER_DEVICE="cpu"
-$env:LEARNNOTE_WHISPER_COMPUTE_TYPE="int8"
-```
-
-If your CUDA runtime is correctly installed, you can opt into GPU manually:
-
-```powershell
-$env:LEARNNOTE_WHISPER_DEVICE="cuda"
-$env:LEARNNOTE_WHISPER_COMPUTE_TYPE="float16"
-```
-
-For OpenAI-compatible multimodal summary, set:
-
-```powershell
-$env:LEARNNOTE_LLM_API_KEY="..."
-$env:LEARNNOTE_LLM_BASE_URL="https://api.openai.com/v1"
-$env:LEARNNOTE_LLM_MODEL="gpt-4.1-mini"
-```
-
-The same Base URL and API Key fields are reused when the task's transcriber is set to `OpenAI-compatible ASR` or `Groq ASR`. For OpenAI use `whisper-1`; for Groq-style endpoints choose `whisper-large-v3` or the model name supported by that endpoint.
-
-The Web UI and Side Panel include built-in OpenAI-compatible presets. Presets only fill the Base URL and model defaults; keys entered in either UI remain task-scoped, and providers without an ASR capability keep local `faster-whisper` transcription.
-
-| Provider | Default model | Summary input |
-| --- | --- | --- |
-| DeepSeek | `deepseek-v4-flash` | Transcript/text |
-| 通义千问 Qwen | `qwen-vl-max` | Transcript + frame grids |
-| Kimi 月之暗面 | `kimi-k2.6` | Transcript + frame grids |
-| 智谱 GLM | `glm-5v-turbo` | Transcript + frame grids |
-| 豆包 火山方舟 | `doubao-seed-2-0-lite-260215` | Transcript/text |
-| MiniMax | `MiniMax-M2.7` | Transcript/text |
-| 百度千帆 ERNIE | `ernie-4.5-8k-preview` | Transcript + frame grids |
-| OpenAI / Groq / Gemini | Provider preset | Capabilities shown in the UI |
-
-Every model field remains editable. This is important for providers such as Volcengine Ark that may require a console-created endpoint or a region-specific model ID.
-
-For a reusable local-only configuration, create `data/config/model-profiles/<name>.env` with
-`LEARNNOTE_LLM_BASE_URL`, `LEARNNOTE_LLM_API_KEY`, and `LEARNNOTE_LLM_MODEL`, then start with
-`./start-learnnote.ps1 -ModelProfile <name>`. The entire `data/config/` directory is ignored by Git,
-and the launcher reports only the profile name. DeepSeek's official API is OpenAI-compatible and can
-be used for transcript/text summarization, but its current models are text-only; use a vision-capable
-provider when frame-grid image understanding is required.
-
-For example, a profile named `ln` is started with:
-
-```powershell
-.\start-learnnote.ps1 -ModelProfile ln
-```
-
-Without a model key, the backend generates a deterministic local Markdown note from transcript segments and frame-grid indexes.
-
-## Development Checks
-
-```powershell
-cd D:\Projects\learnnote-assistant
 .\scripts\audit-stage.ps1
 ```
 
-The stage audit checks working-tree changes, or the last commit when the tree is clean, and runs the narrow Node/Python checks that match the touched files. Use the full suite when changing broad contracts:
+完整产品验收：
 
 ```powershell
-.venv\Scripts\python.exe -m compileall backend\app
-$env:PYTHONPATH="backend"
-.venv\Scripts\python.exe -m unittest discover backend\tests
-node --check extension\background.js
-node --check extension\content.js
-node --check extension\sidepanel.js
-node --check web\app.js
-```
-
-Before calling the product complete, run:
-
-```powershell
+.\scripts\verify-product.ps1 -Browser edge
 .\scripts\audit-product-readiness.ps1
 ```
 
-Use `-RequireRealSiteAudits` when you want the command to fail until public MP4/HLS, yt-dlp-supported, and logged-in learning-platform audit rows have real non-local evidence.
+扩展与当前页流程：
 
-## Boundaries
+```powershell
+.\scripts\e2e-extension-smoke.ps1 -Browser edge
+```
 
-- `blob:` URLs without an underlying `.m3u8`, `.mpd`, video file request, or recoverable fetch/XHR Blob/ArrayBuffer/ReadableStream/MediaSource source mapping are reported as `drm_or_encrypted`.
-- Fragment URLs such as isolated `.m4s` or `.ts` segments are not downloaded by themselves; they are used only to infer or preflight a real HLS/DASH manifest.
-- The Learning Tong / Chaoxing first pass is deliberately lightweight: it relies on media URLs exposed to the browser and cookies from your active session.
-- If a course page uses DRM/EME or never exposes a media manifest/video URL to the browser, the app reports a failure and asks you to use the local upload path.
+真实网站验证会访问第三方站点，应使用你有权访问的内容，并遵守对应网站条款：
+
+```powershell
+.\scripts\audit-real-site.ps1 "https://example.com/video" -Preflight -RequireReady
+```
+
+## 项目结构
+
+```text
+backend/      FastAPI 后端、下载器、转写、切片和笔记任务
+desktop/      Windows 桌面壳与更新、安装相关逻辑
+extension/    Chrome / Edge Manifest V3 扩展
+web/          桌面客户端中的工作台与笔记库界面
+scripts/      启动、诊断、测试和发布脚本
+site/         GitHub Pages 宣传页面
+```
+
+## 隐私与数据
+
+- 客户端后端默认仅监听 `127.0.0.1`。
+- 视频、字幕、截图、模型缓存和任务产物保存在用户选择的本地数据目录。
+- Cookie 仅在用户主动发起当前页任务时读取，不会持续后台采集。
+- 导出和诊断会隐藏 Cookie、Authorization 和敏感请求参数。
+- 本项目用于整理用户有权访问的视频内容，不用于刷课、自动答题或伪造学习进度。
