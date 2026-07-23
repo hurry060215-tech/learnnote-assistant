@@ -16,6 +16,9 @@ jobs:
       PYINSTALLER_CONFIG_DIR: D:\LearnNoteBuildCache\pyinstaller
       TMP: D:\LearnNoteBuildCache\temp
       TEMP: D:\LearnNoteBuildCache\temp
+      SIGNING_CERT_BASE64: ${{ secrets.WINDOWS_SIGNING_CERT_BASE64 }}
+      SIGNING_CERT_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERT_PASSWORD }}
+      SIGNING_TIMESTAMP_URL: ${{ secrets.WINDOWS_SIGNING_TIMESTAMP_URL }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -53,12 +56,8 @@ jobs:
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$version" scripts/learnnote-installer.iss
           Copy-Item dist-installer/LearnNote-Setup-x64.exe LearnNote-Setup-x64.exe
       - name: Sign Windows installer
-        if: ${{ secrets.WINDOWS_SIGNING_CERT_BASE64 != '' }}
+        if: env.SIGNING_CERT_BASE64 != ''
         shell: pwsh
-        env:
-          SIGNING_CERT_BASE64: ${{ secrets.WINDOWS_SIGNING_CERT_BASE64 }}
-          SIGNING_CERT_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERT_PASSWORD }}
-          SIGNING_TIMESTAMP_URL: ${{ secrets.WINDOWS_SIGNING_TIMESTAMP_URL }}
         run: |
           $certificate = Join-Path $env:RUNNER_TEMP "learnnote-signing.pfx"
           [IO.File]::WriteAllBytes($certificate, [Convert]::FromBase64String($env:SIGNING_CERT_BASE64))
