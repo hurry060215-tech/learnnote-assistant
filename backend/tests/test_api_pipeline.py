@@ -2,6 +2,7 @@
 
 import functools
 import base64
+import hashlib
 import io
 import json
 import shutil
@@ -2378,6 +2379,16 @@ class ApiPipelineTests(unittest.TestCase):
                 manifest_direct = manifest_export.json()
                 self.assertEqual(manifest_direct["task"]["id"], task_id)
                 self.assertEqual(manifest_direct["visual"]["window_count"], len(task["visual_windows"]))
+                self.assertEqual(
+                    manifest_direct["media_integrity"]["exported"]["sha256"],
+                    hashlib.sha256(media_export.content).hexdigest(),
+                )
+                self.assertEqual(
+                    manifest_direct["media_integrity"]["exported"]["file_size"],
+                    len(media_export.content),
+                )
+                self.assertTrue(manifest_direct["media_integrity"]["source"]["sha256"])
+                self.assertIn("same_file", manifest_direct["media_integrity"])
                 bundle = self.client.get(f"/api/tasks/{task_id}/exports/bundle")
                 self.assertEqual(bundle.status_code, 200)
                 self.assertEqual(bundle.headers["content-type"], "application/zip")
@@ -2415,6 +2426,10 @@ class ApiPipelineTests(unittest.TestCase):
                     self.assertEqual(manifest_payload["schema_version"], 1)
                     self.assertEqual(manifest_payload["task"]["id"], task_id)
                     self.assertEqual(manifest_payload["task"]["source_type"], "local")
+                    self.assertEqual(
+                        manifest_payload["media_integrity"]["exported"]["sha256"],
+                        hashlib.sha256(media_export.content).hexdigest(),
+                    )
                     self.assertEqual(manifest_payload["visual"]["window_count"], len(task["visual_windows"]))
                     self.assertEqual(manifest_payload["transcript"]["segment_count"], 2)
                     self.assertEqual(manifest_payload["study"]["review_deck"], "visual_windows.md")

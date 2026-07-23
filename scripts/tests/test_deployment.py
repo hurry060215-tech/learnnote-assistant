@@ -76,6 +76,29 @@ class DeploymentContractTests(unittest.TestCase):
         self.assertEqual(manifest_version, installer_version.group(1))
         self.assertIn(f"v{manifest_version}", site_source)
 
+    def test_real_extension_smoke_tracks_the_current_sidepanel_contract(self) -> None:
+        sidepanel = (ROOT / "extension" / "sidepanel.html").read_text(encoding="utf-8")
+        smoke = (ROOT / "scripts" / "e2e-extension-smoke.py").read_text(encoding="utf-8")
+
+        self.assertIn('id="sendButton"', sidepanel)
+        self.assertIn('id="connectionCard"', sidepanel)
+        self.assertIn('querySelector("#sendButton")', smoke)
+        self.assertIn('querySelector("#connectionCard")', smoke)
+        self.assertNotIn('querySelector("#summarizeButton")', smoke)
+        self.assertNotIn('querySelector("#backendStatus")', smoke)
+
+    def test_release_workflow_smoke_tests_installer_and_supports_signing(self) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "desktop-release.yml").read_text(encoding="utf-8")
+        smoke = (ROOT / "scripts" / "test-release-installer.ps1").read_text(encoding="utf-8")
+
+        self.assertIn("test-release-installer.ps1", workflow)
+        self.assertIn("WINDOWS_SIGNING_CERT_BASE64", workflow)
+        self.assertIn("signtool verify", workflow)
+        self.assertIn("LearnNote.exe", smoke)
+        self.assertIn("unins000.exe", smoke)
+        self.assertIn("user-data-must-survive.txt", smoke)
+        self.assertIn("D:\\LearnNoteReleaseSmoke", smoke)
+
 
 if __name__ == "__main__":
     unittest.main()

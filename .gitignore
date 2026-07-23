@@ -32,3 +32,5 @@ build/
 dist/
 dist-installer/
 LearnNote-*.zip
+LearnNote-Setup-x64.exe
+node_modules/

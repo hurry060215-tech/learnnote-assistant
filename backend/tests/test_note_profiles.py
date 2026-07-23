@@ -3,10 +3,38 @@ from __future__ import annotations
 import unittest
 
 from app.models import FrameGrid, TaskOptions, TranscriptResult, TranscriptSegment
-from app.summarizer import local_markdown_note, note_generation_contract, note_style_instruction, note_template_instruction
+from app.summarizer import local_markdown_note, note_generation_contract, note_grounding_issues, note_style_instruction, note_template_instruction
 
 
 class NoteProfileTests(unittest.TestCase):
+    def test_grounding_rejects_wrong_duration_and_unsupported_terms(self):
+        transcript = TranscriptResult(
+            language="zh",
+            segments=[TranscriptSegment(start=0, end=96, text="梯度决定方向，学习率决定步长。")],
+            full_text="梯度决定方向，学习率决定步长。",
+            source="faster-whisper",
+        )
+        grids = [FrameGrid(path="grid.jpg", start=0, end=96, frame_count=2, frame_timestamps=[0, 90], url="/grid.jpg")]
+        issues = note_grounding_issues(
+            "这节微课共 6 分钟。\n## 例题\n使用 Adam、Kaggle 和 NumPy 完成练习。",
+            transcript,
+            grids,
+        )
+        self.assertTrue(any(item.startswith("duration_mismatch:") for item in issues))
+        self.assertTrue(any(item.startswith("unsupported_terms:") for item in issues))
+        self.assertIn("unsupported_example_section", issues)
+
+    def test_grounding_accepts_source_supported_note(self):
+        transcript = TranscriptResult(
+            language="zh",
+            segments=[TranscriptSegment(start=0, end=96, text="梯度决定方向，学习率决定步长。")],
+            full_text="梯度决定方向，学习率决定步长。",
+            source="faster-whisper",
+        )
+        grids = [FrameGrid(path="grid.jpg", start=0, end=96, frame_count=2, frame_timestamps=[0, 90], url="/grid.jpg")]
+        note = "# 梯度下降\n\n- 梯度决定方向。\n- 学习率决定步长。\n\n## 自测题\n\n学习率控制什么？"
+        self.assertEqual(note_grounding_issues(note, transcript, grids), [])
+
     def test_custom_profile_enters_generation_contract(self):
         options = TaskOptions(
             note_style="custom",

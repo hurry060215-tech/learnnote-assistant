@@ -1,0 +1,10 @@
+{
+  "name": "learnnote-assistant-release-tools",
+  "private": true,
+  "scripts": {
+    "test:site": "node scripts/site-visual-acceptance.cjs"
+  },
+  "devDependencies": {
+    "playwright": "1.61.1"
+  }
+}

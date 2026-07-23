@@ -2525,6 +2525,18 @@ class MediaDownloader:
         cookies: list[BrowserCookie],
         title: str,
     ) -> tuple[Path, ResourceCandidate | None]:
+        try:
+            return self._download(page_url, resources, cookies, title)
+        finally:
+            (self.task_path / "cookies.txt").unlink(missing_ok=True)
+
+    def _download(
+        self,
+        page_url: str,
+        resources: list[ResourceCandidate],
+        cookies: list[BrowserCookie],
+        title: str,
+    ) -> tuple[Path, ResourceCandidate | None]:
         page_kind = classify_resource(urlparse(page_url).path)
         if page_kind in {"video", "hls", "dash"} and not any(item.url == page_url for item in resources):
             resources = [
@@ -2715,6 +2727,18 @@ class MediaDownloader:
         raise DownloadError("no_media_found", "没有发现可直接下载的视频、HLS 或 DASH 资源。")
 
     def download_subtitle(
+        self,
+        resources: list[ResourceCandidate],
+        cookies: list[BrowserCookie],
+        referer: str,
+        title: str,
+    ) -> Path | None:
+        try:
+            return self._download_subtitle(resources, cookies, referer, title)
+        finally:
+            (self.task_path / "subtitle_cookies.txt").unlink(missing_ok=True)
+
+    def _download_subtitle(
         self,
         resources: list[ResourceCandidate],
         cookies: list[BrowserCookie],

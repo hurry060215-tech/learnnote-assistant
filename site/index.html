@@ -9,15 +9,15 @@
     <meta property="og:description" content="当前页直取、本地视频、字幕转写、视觉切片与证据化笔记。">
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://hurry060215-tech.github.io/learnnote-assistant/">
-    <meta property="og:image" content="https://hurry060215-tech.github.io/learnnote-assistant/assets/learnnote-reader-v0126.png">
+    <meta property="og:image" content="https://hurry060215-tech.github.io/learnnote-assistant/assets/learnnote-case-gradient.png">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="LearnNote - 把视频整理成真正能复习的笔记">
     <meta name="twitter:description" content="当前页直取、本地视频、字幕转写、视觉切片与证据化笔记。">
-    <meta name="twitter:image" content="https://hurry060215-tech.github.io/learnnote-assistant/assets/learnnote-reader-v0126.png">
+    <meta name="twitter:image" content="https://hurry060215-tech.github.io/learnnote-assistant/assets/learnnote-case-gradient.png">
     <title>LearnNote - 视频学习笔记客户端</title>
     <link rel="canonical" href="https://hurry060215-tech.github.io/learnnote-assistant/">
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='11' fill='%230b948f'/%3E%3Cpath d='M18 14h24a5 5 0 0 1 5 5v31H24a6 6 0 0 1-6-6V14Zm9 11h12M27 34h12M27 43h8' fill='none' stroke='white' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E">
-    <link rel="stylesheet" href="./styles.css?v=0.1.37">
+    <link rel="stylesheet" href="./styles.css?v=0.1.38">
   </head>
   <body>
     <header class="site-header">
@@ -29,11 +29,11 @@
       </a>
       <nav id="siteNavigation" aria-label="主导航">
         <a href="#workflow">工作方式</a>
-        <a href="#reader">笔记体验</a>
+        <a href="#case">真实案例</a>
         <a href="#download">下载</a>
         <a href="https://github.com/hurry060215-tech/learnnote-assistant">GitHub</a>
       </nav>
-      <a class="button primary header-download" data-release-link href="https://github.com/hurry060215-tech/learnnote-assistant/releases/download/v0.1.37/LearnNote-Setup-x64.exe">
+      <a class="button primary header-download" data-release-link href="https://github.com/hurry060215-tech/learnnote-assistant/releases/download/v0.1.38/LearnNote-Setup-x64.exe">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 20h14"/></svg>
         下载 Windows 版
       </a>
@@ -49,14 +49,14 @@
           <h2>把正在看的视频，<br>整理成真正能复习的笔记</h2>
           <p>从当前课程页、本地视频或视频链接开始。LearnNote 在你的电脑上完成下载、转写与切片，再把原话、画面和知识结构放进同一份笔记。</p>
           <div class="hero-actions">
-            <a class="button primary large" data-release-link href="https://github.com/hurry060215-tech/learnnote-assistant/releases/download/v0.1.37/LearnNote-Setup-x64.exe">
+            <a class="button primary large" data-release-link href="https://github.com/hurry060215-tech/learnnote-assistant/releases/download/v0.1.38/LearnNote-Setup-x64.exe">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5.5 10 4v7H3V5.5Zm8-1.7L21 2v9H11V3.8ZM3 12h7v7l-7-1.3V12Zm8 0h10v10l-10-1.8V12Z" class="fill"/></svg>
               下载 Windows 版
             </a>
             <a class="button secondary large" href="#workflow">查看工作方式</a>
           </div>
           <div class="hero-meta" aria-label="产品信息">
-            <span><b data-release-version>v0.1.37</b> 当前版本</span>
+            <span><b data-release-version>v0.1.38</b> 当前版本</span>
             <span><b>Windows 10+</b> 主力平台</span>
             <span><b>Chrome / Edge</b> 当前页扩展</span>
           </div>
@@ -104,24 +104,53 @@
         </div>
       </section>
 
-      <section id="reader" class="reader-section">
-        <div class="reader-copy reveal">
-          <h2>阅读、核对、追问，<br>都在同一个工作区</h2>
-          <p>左侧切换笔记，中间专注阅读，右侧随时向 AI 追问这节课。回答只使用当前任务的字幕、画面和笔记证据。</p>
-          <dl>
-            <div><dt>时间轴</dt><dd>从重点直接回到对应片段</dd></div>
-            <div><dt>画面与字幕</dt><dd>核对演示步骤、PPT 和原话</dd></div>
-            <div><dt>多版笔记</dt><dd>保留同一视频的不同学习结构</dd></div>
-            <div><dt>随时提问</dt><dd>问题与答案留在当前课程上下文</dd></div>
-          </dl>
-        </div>
-        <figure class="app-frame reader-frame reveal" aria-label="LearnNote 笔记阅读与 AI 提问界面">
-          <div class="app-frame-bar">
-            <span><i></i>LearnNote · 学习笔记</span>
-            <span aria-hidden="true">—　□　×</span>
+      <section id="case" class="case-section">
+        <header class="case-heading reveal">
+          <div>
+            <span class="section-kicker">可复现的真实案例</span>
+            <h2>梯度下降与学习率：<br>为什么训练会震荡</h2>
           </div>
-          <img src="./assets/learnnote-reader-v0126.png" alt="LearnNote 笔记库、结构化笔记和 AI 助手侧栏">
-        </figure>
+          <p>这不是占位截图。我们制作了一段 01:36 的中文教学微课，让 LearnNote 从本地视频开始，完整执行转写、抽帧、视觉理解和证据化笔记生成。</p>
+        </header>
+
+        <div class="case-stage reveal">
+          <figure class="app-frame case-frame" aria-label="LearnNote 梯度下降微课真实处理结果">
+            <div class="app-frame-bar">
+              <span><i></i>LearnNote · 梯度下降与学习率</span>
+              <span aria-hidden="true">真实任务 6c3cb3f0512d</span>
+            </div>
+            <img src="./assets/learnnote-case-gradient.png" alt="LearnNote 客户端中已完成的梯度下降微课笔记，包含时间轴、核心概念和 AI 课程助手">
+          </figure>
+          <div class="case-facts" aria-label="案例处理证据">
+            <article><strong>96.2%</strong><span>字幕时间覆盖</span></article>
+            <article><strong>10 帧</strong><span>真实画面切片</span></article>
+            <article><strong>2 组</strong><span>多模态视觉窗口</span></article>
+            <article><strong>5 / 5</strong><span>时间轴与画面检查点</span></article>
+          </div>
+        </div>
+
+        <div class="case-detail reveal">
+          <div class="case-note">
+            <span class="section-kicker">生成结果节选</span>
+            <h3>学习率决定每次更新的步长</h3>
+            <p>学习率太小时，参数每次移动距离有限，收敛缓慢；学习率太大时，更新会跨过低点并在两侧来回震荡。笔记把这个结论分别对齐到字幕和损失曲线画面。</p>
+            <ol>
+              <li><time>00:00</time><span>梯度下降的目标与更新方向</span></li>
+              <li><time>00:31</time><span>学习率过小：下降稳定但速度慢</span></li>
+              <li><time>00:56</time><span>学习率过大：跨过最低点并震荡</span></li>
+              <li><time>01:18</time><span>调参顺序：先稳定，再逐步提速</span></li>
+            </ol>
+          </div>
+          <figure class="case-grid">
+            <img src="./assets/learnnote-case-grid.jpg" alt="梯度下降微课的九宫格真实画面切片，展示损失曲线和不同学习率效果">
+            <figcaption>首个视觉窗口 · 9 张原始视频画面 · 00:00-01:00</figcaption>
+          </figure>
+        </div>
+
+        <div class="case-proof reveal">
+          <p><strong>可信度保护：</strong>模型第一次扩写了视频中没有出现的工具和案例，LearnNote 的证据检查触发修订，最终笔记只保留字幕与画面能够支持的内容。</p>
+          <a href="https://github.com/hurry060215-tech/learnnote-assistant/blob/main/scripts/generate-marketing-case.ps1">查看案例生成脚本</a>
+        </div>
       </section>
 
       <section class="source-band" aria-label="支持的开始方式">
@@ -135,6 +164,21 @@
         </div>
       </section>
 
+      <section class="trust-section" aria-label="隐私与安全">
+        <div class="trust-heading reveal">
+          <span class="section-kicker">数据边界清楚可见</span>
+          <h2>客户端处理，联网能力由你决定</h2>
+          <p>视频、字幕与任务产物默认保存在你选择的本地目录。只有启用云端转写或 AI 模型时，所需内容才会发送给对应服务商。</p>
+        </div>
+        <div class="trust-list reveal">
+          <article><strong>本机服务</strong><span>桌面后端只监听 127.0.0.1</span></article>
+          <article><strong>密钥保护</strong><span>Windows 凭据管理器保存 API Key</span></article>
+          <article><strong>按需交接</strong><span>扩展仅在点击发送后提交页面证据</span></article>
+          <article><strong>更新校验</strong><span>安装包下载后核对来源与 SHA-256</span></article>
+        </div>
+        <p class="trust-links"><a href="https://github.com/hurry060215-tech/learnnote-assistant/blob/main/PRIVACY.md">隐私说明</a><a href="https://github.com/hurry060215-tech/learnnote-assistant/blob/main/SECURITY.md">安全说明</a></p>
+      </section>
+
       <section id="download" class="download-section">
         <div class="download-copy reveal">
           <h2>安装 LearnNote，<br>整理下一段视频</h2>
@@ -143,13 +187,13 @@
         <div class="download-options reveal">
           <article>
             <div class="download-icon windows" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 5.5 10 4v7H3V5.5Zm8-1.7L21 2v9H11V3.8ZM3 12h7v7l-7-1.3V12Zm8 0h10v10l-10-1.8V12Z" class="fill"/></svg></div>
-            <div><h3>Windows 客户端</h3><p><span data-release-version>v0.1.37</span> · Windows 10 及以上</p></div>
-            <a class="button primary" data-release-link href="https://github.com/hurry060215-tech/learnnote-assistant/releases/download/v0.1.37/LearnNote-Setup-x64.exe">下载安装</a>
+            <div><h3>Windows 客户端</h3><p><span data-release-version>v0.1.38</span> · Windows 10 及以上</p></div>
+            <a class="button primary" data-release-link href="https://github.com/hurry060215-tech/learnnote-assistant/releases/download/v0.1.38/LearnNote-Setup-x64.exe">下载安装</a>
           </article>
           <article>
             <div class="download-icon extension" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 3v4M16 3v4M5 8h14v5a7 7 0 0 1-14 0V8ZM12 20v2"/></svg></div>
             <div><h3>浏览器扩展</h3><p>Chrome / Edge · 配合客户端使用</p></div>
-            <a class="button secondary" data-extension-link href="https://github.com/hurry060215-tech/learnnote-assistant/releases/download/v0.1.37/LearnNote-Browser-Extension-v0.1.37.zip">下载扩展</a>
+            <a class="button secondary" data-extension-link href="https://github.com/hurry060215-tech/learnnote-assistant/releases/download/v0.1.38/LearnNote-Browser-Extension-v0.1.38.zip">下载扩展</a>
           </article>
         </div>
       </section>
@@ -161,9 +205,10 @@
       <nav aria-label="页脚导航">
         <a href="https://github.com/hurry060215-tech/learnnote-assistant">GitHub</a>
         <a href="https://github.com/hurry060215-tech/learnnote-assistant/blob/main/README.md">使用文档</a>
+        <a href="https://github.com/hurry060215-tech/learnnote-assistant/blob/main/PRIVACY.md">隐私</a>
         <a href="https://github.com/hurry060215-tech/learnnote-assistant/issues">反馈</a>
       </nav>
     </footer>
-    <script src="./app.js?v=0.1.37"></script>
+    <script src="./app.js?v=0.1.38"></script>
   </body>
 </html>

@@ -11,7 +11,7 @@
 [![Browser](https://img.shields.io/badge/browser-Chrome%20%7C%20Edge-15a39a)](https://github.com/hurry060215-tech/learnnote-assistant/releases/latest)
 [![Extension](https://img.shields.io/badge/extension-Manifest%20V3-314b52)](extension/manifest.json)
 
-[官方网站](https://learnnote-study.hurry060215.chatgpt.site) · [下载](https://github.com/hurry060215-tech/learnnote-assistant/releases/latest) · [问题反馈](https://github.com/hurry060215-tech/learnnote-assistant/issues)
+[官方网站](https://learnnote-study.hurry060215.chatgpt.site) · [下载](https://github.com/hurry060215-tech/learnnote-assistant/releases/latest) · [安全说明](SECURITY.md) · [隐私说明](PRIVACY.md) · [问题反馈](https://github.com/hurry060215-tech/learnnote-assistant/issues)
 
 </div>
 
@@ -251,6 +251,8 @@ site/         GitHub Pages 宣传页面
 ```
 
 ## 隐私与数据
+
+完整说明见 [隐私说明](PRIVACY.md) 和 [安全说明](SECURITY.md)。
 
 - 客户端后端默认仅监听 `127.0.0.1`。
 - 视频、字幕、截图、模型缓存和任务产物保存在用户选择的本地数据目录。

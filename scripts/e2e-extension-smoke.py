@@ -463,9 +463,9 @@ async () => {{
         ready: dict = {}
         while time.time() < deadline:
             ready = eval_page(panel_cdp, """(() => {
-  const button = document.querySelector("#summarizeButton");
-  const status = document.querySelector("#backendStatus");
-  return { ready: Boolean(button && !button.disabled), connection: status?.dataset?.connectionState || "" };
+  const button = document.querySelector("#sendButton");
+  const status = document.querySelector("#connectionCard");
+  return { ready: Boolean(button && !button.disabled), connection: status?.dataset?.state || "" };
 })()""")
             if ready.get("ready") and ready.get("connection") == "connected":
                 break
@@ -474,7 +474,7 @@ async () => {{
             raise AssertionError(f"Side Panel did not become ready: {ready}")
 
         eval_page(panel_cdp, """(() => {
-  document.querySelector("#summarizeButton").click();
+  document.querySelector("#sendButton").click();
   return { clicked: true };
 })()""")
         deadline = time.time() + 30
@@ -488,7 +488,7 @@ async () => {{
     progress: Number(progress?.getAttribute("aria-valuenow") || 0),
     message: status?.textContent || "",
     state: status?.dataset?.state || "",
-    buttonDisabled: Boolean(document.querySelector("#summarizeButton")?.disabled),
+    buttonDisabled: Boolean(document.querySelector("#sendButton")?.disabled),
   };
 })()""")
             if state.get("taskId") and state.get("progress") == 100 and state.get("state") == "success":

@@ -3194,6 +3194,29 @@ class DownloaderBoundaryTests(unittest.TestCase):
         self.assertIn("Referer: https://course.example.com/lesson/1", cmd)
         self.assertIn("Origin: https://course.example.com", cmd)
 
+    def test_temporary_cookie_files_are_removed_after_download_attempts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            downloader = MediaDownloader(Path(tmp))
+            media_cookie = Path(tmp) / "cookies.txt"
+            subtitle_cookie = Path(tmp) / "subtitle_cookies.txt"
+
+            def fail_media(*_args, **_kwargs):
+                media_cookie.write_text("temporary media cookie", encoding="utf-8")
+                raise DownloadError("download_forbidden", "expected")
+
+            def finish_subtitle(*_args, **_kwargs):
+                subtitle_cookie.write_text("temporary subtitle cookie", encoding="utf-8")
+                return None
+
+            with patch.object(downloader, "_download", side_effect=fail_media):
+                with self.assertRaises(DownloadError):
+                    downloader.download("https://example.com/video", [], [], "lesson")
+            self.assertFalse(media_cookie.exists())
+
+            with patch.object(downloader, "_download_subtitle", side_effect=finish_subtitle):
+                self.assertIsNone(downloader.download_subtitle([], [], "https://example.com/lesson", "lesson"))
+            self.assertFalse(subtitle_cookie.exists())
+
     def test_frozen_desktop_uses_embedded_ytdlp_library(self) -> None:
         fake_module = types.ModuleType("yt_dlp")
         fake_module.__file__ = "D:/LearnNote/_internal/yt_dlp/__init__.py"
@@ -3672,13 +3695,13 @@ class SummaryFallbackTests(unittest.TestCase):
 
         self.assertIn("至少 60%", brief)
         self.assertIn("500-900", brief)
-        self.assertIn("0-1 个", brief)
+        self.assertIn("材料本身出现例题时最多保留 1 个", brief)
         self.assertIn("恰好 2 题", brief)
         self.assertIn("至少 80%", standard)
-        self.assertIn("1-2 个", standard)
+        self.assertIn("材料本身出现例题时保留 1-2 个", standard)
         self.assertIn("恰好 4 题", standard)
         self.assertIn("至少 95%", deep)
-        self.assertIn("2-4 个", deep)
+        self.assertIn("材料本身出现例题时最多保留 2-4 个", deep)
         self.assertIn("6-8 题", deep)
 
     def test_local_learning_goals_do_not_share_the_same_forced_sections(self) -> None:

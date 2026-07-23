@@ -12,6 +12,10 @@ permissions:
 jobs:
   build-windows:
     runs-on: windows-latest
+    env:
+      PYINSTALLER_CONFIG_DIR: D:\LearnNoteBuildCache\pyinstaller
+      TMP: D:\LearnNoteBuildCache\temp
+      TEMP: D:\LearnNoteBuildCache\temp
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -48,6 +52,23 @@ jobs:
           $version = (Get-Content extension/manifest.json -Raw -Encoding UTF8 | ConvertFrom-Json).version
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$version" scripts/learnnote-installer.iss
           Copy-Item dist-installer/LearnNote-Setup-x64.exe LearnNote-Setup-x64.exe
+      - name: Sign Windows installer
+        if: ${{ secrets.WINDOWS_SIGNING_CERT_BASE64 != '' }}
+        shell: pwsh
+        env:
+          SIGNING_CERT_BASE64: ${{ secrets.WINDOWS_SIGNING_CERT_BASE64 }}
+          SIGNING_CERT_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERT_PASSWORD }}
+          SIGNING_TIMESTAMP_URL: ${{ secrets.WINDOWS_SIGNING_TIMESTAMP_URL }}
+        run: |
+          $certificate = Join-Path $env:RUNNER_TEMP "learnnote-signing.pfx"
+          [IO.File]::WriteAllBytes($certificate, [Convert]::FromBase64String($env:SIGNING_CERT_BASE64))
+          $timestamp = if ($env:SIGNING_TIMESTAMP_URL) { $env:SIGNING_TIMESTAMP_URL } else { "http://timestamp.digicert.com" }
+          & signtool sign /fd SHA256 /td SHA256 /tr $timestamp /f $certificate /p $env:SIGNING_CERT_PASSWORD LearnNote-Setup-x64.exe
+          & signtool verify /pa /v LearnNote-Setup-x64.exe
+          Remove-Item -LiteralPath $certificate -Force
+      - name: Smoke-test installed release
+        shell: pwsh
+        run: ./scripts/test-release-installer.ps1 -InstallerPath LearnNote-Setup-x64.exe
       - name: Package browser extension
         shell: pwsh
         run: |

@@ -330,15 +330,16 @@ def summary_depth_instruction(options: TaskOptions) -> str:
     constraints = {
         "brief": (
             "简洁深度：覆盖字幕中至少 60% 的高价值知识点；正文目标 500-900 个中文字符；"
-            "例题/应用练习 0-1 个；复习或自测题恰好 2 题。"
+            "材料本身出现例题时最多保留 1 个；复习或自测题恰好 2 题，答案只能由材料推出。"
         ),
         "standard": (
             "标准深度：覆盖字幕中至少 80% 的高价值知识点；正文目标 1000-1800 个中文字符；"
-            "例题/应用练习 1-2 个；复习或自测题恰好 4 题。"
+            "材料本身出现例题时保留 1-2 个；复习或自测题恰好 4 题，答案只能由材料推出。"
         ),
         "deep": (
-            "深入深度：覆盖字幕中至少 95% 的高价值知识点及其前提和联系；正文目标 2200-3600 个中文字符；"
-            "例题/应用练习 2-4 个；复习或自测题 6-8 题。"
+            "深入深度：覆盖字幕中至少 95% 的高价值知识点及材料明确给出的前提和联系；"
+            "篇幅随证据量自然增长，不为了达到字数扩写外部知识；材料本身出现例题时最多保留 2-4 个；"
+            "复习或自测题 6-8 题，答案只能由材料推出。"
         ),
     }
     return constraints.get(depth, constraints["standard"])
@@ -372,9 +373,158 @@ def note_generation_contract(options: TaskOptions) -> str:
         use_case_contracts.get(use_case, "")
         + custom_profile + f"学习目标：{learning_goal_instruction(options)}\n"
         f"深度约束：{summary_depth_instruction(options)}\n"
-        "共同约束：时间戳只能来自字幕段或画面窗口；不要编造画面、例题或事实。"
+        "共同约束：时间戳只能来自字幕段或画面窗口；不要编造时长、画面、例题、公式、工具、事实或课程没有给出的通用建议。"
+        "自拟问题必须标为“自测题”，答案只能由材料直接推出，不能伪装成老师讲过的例题。"
         "没有对应内容时省略可选章节，不要用空章节或套话补齐。"
     )
+
+
+def _evidence_duration_seconds(transcript: TranscriptResult, grids: list[FrameGrid]) -> float:
+    segment_end = max((float(segment.end or 0) for segment in transcript.segments), default=0.0)
+    grid_end = max((float(grid.end or 0) for grid in grids), default=0.0)
+    return max(segment_end, grid_end)
+
+
+def _evidence_contract(transcript: TranscriptResult, grids: list[FrameGrid]) -> str:
+    duration = _evidence_duration_seconds(transcript, grids)
+    return (
+        f"证据边界：视频有效时长约 {_format_ts(duration)}（{duration:.1f} 秒），"
+        f"字幕 {len(transcript.segments)} 段，画面窗口 {len(grids)} 个。"
+        "不得把窗口数量、页数或模板编号误写成课程时长。"
+    )
+
+
+_GROUNDING_TOKEN_ALLOWLIST = {
+    "api", "http", "https", "jpg", "jpeg", "png", "markdown", "learnnote",
+    "grid", "assets", "tasks", "new", "old", "cdot", "frac", "nabla", "text",
+    "theta", "eta", "note", "quick", "merged", "partial", "fallback", "recovered",
+    "from", "transcript", "with", "images", "vision", "only",
+}
+
+
+def note_grounding_issues(
+    note: str,
+    transcript: TranscriptResult,
+    grids: list[FrameGrid],
+    visual_evidence: str = "",
+) -> list[str]:
+    text = str(note or "").strip()
+    if not text:
+        return ["empty_note"]
+
+    issues: list[str] = []
+    duration = _evidence_duration_seconds(transcript, grids)
+    opening = text[:1200]
+    duration_pattern = re.compile(
+        r"(?:本材料|本课程|这节(?:课|微课)|该视频|视频).{0,24}?(\d+(?:\.\d+)?)\s*(小时|分钟|秒)",
+        re.S,
+    )
+    for value, unit in duration_pattern.findall(opening):
+        claimed = float(value) * {"小时": 3600, "分钟": 60, "秒": 1}[unit]
+        tolerance = max(8.0, duration * 0.18)
+        if duration > 0 and abs(claimed - duration) > tolerance:
+            issues.append(f"duration_mismatch:{claimed:.1f}!={duration:.1f}")
+            break
+
+    evidence = f"{transcript.full_text}\n{visual_evidence}".lower()
+    evidence_tokens = {
+        token.lower().strip("._-")
+        for token in re.findall(r"[A-Za-z][A-Za-z0-9+_.-]{2,}", evidence)
+    }
+    note_without_urls = re.sub(r"https?://\S+", " ", text)
+    unsupported_tokens = sorted({
+        token
+        for token in (
+            item.lower().strip("._-")
+            for item in re.findall(r"[A-Za-z][A-Za-z0-9+_.-]{2,}", note_without_urls)
+        )
+        if token not in evidence_tokens
+        and token not in _GROUNDING_TOKEN_ALLOWLIST
+        and not re.fullmatch(r"w\d{3}", token)
+    })
+    if unsupported_tokens:
+        issues.append("unsupported_terms:" + ",".join(unsupported_tokens[:12]))
+
+    source_has_example = bool(re.search(r"例题|示例|例子|案例|演示", evidence))
+    has_claimed_example_section = bool(re.search(r"(?m)^#{2,4}\s*(?:例题|示例|案例)", text))
+    if has_claimed_example_section and not source_has_example:
+        issues.append("unsupported_example_section")
+    return issues
+
+
+def _repair_grounded_note(
+    client,
+    model: str,
+    provider_kwargs: dict,
+    candidate: str,
+    transcript: TranscriptResult,
+    grids: list[FrameGrid],
+    visual_evidence: str,
+    issues: list[str],
+    events: list[dict] | None,
+) -> str:
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=[{
+                "role": "user",
+                "content": (
+                    "你是学习笔记的事实核查编辑。下面的候选笔记包含超出证据或时长错误。"
+                    "请直接输出修订后的 Markdown，不要解释修改过程。\n"
+                    "只允许保留字幕和画面摘要能支持的课程内容；删除外部工具、通用经验、老师没有讲过的例题和无依据建议。"
+                    "可以保留自测题，但必须明确写“自测题”，且答案可由证据直接推出。\n"
+                    f"{_evidence_contract(transcript, grids)}\n"
+                    f"检测问题：{'; '.join(issues)}\n\n"
+                    f"字幕：\n{transcript.full_text[:60000]}\n\n"
+                    f"画面摘要：\n{visual_evidence[:30000]}\n\n"
+                    f"候选笔记：\n{candidate[:60000]}"
+                ),
+            }],
+            **provider_kwargs,
+        )
+        return (response.choices[0].message.content or "").strip()
+    except Exception as exc:
+        _record_llm_event(events, "grounding_repair", "api_error", exc, model=model)
+        return ""
+
+
+def _validated_generated_note(
+    client,
+    model: str,
+    provider_kwargs: dict,
+    candidate: str,
+    transcript: TranscriptResult,
+    grids: list[FrameGrid],
+    visual_evidence: str,
+    events: list[dict] | None,
+) -> str:
+    issues = note_grounding_issues(candidate, transcript, grids, visual_evidence)
+    if not issues:
+        return candidate.strip()
+    _record_llm_event(events, "grounding_validation", "repair_required", issues=issues, model=model)
+    repaired = _repair_grounded_note(
+        client,
+        model,
+        provider_kwargs,
+        candidate,
+        transcript,
+        grids,
+        visual_evidence,
+        issues,
+        events,
+    )
+    remaining = note_grounding_issues(repaired, transcript, grids, visual_evidence)
+    if repaired and not remaining:
+        _record_llm_event(events, "grounding_validation", "repaired", model=model)
+        return repaired
+    _record_llm_event(
+        events,
+        "grounding_validation",
+        "rejected",
+        issues=remaining or ["empty_repair"],
+        model=model,
+    )
+    return ""
 
 
 def _depth_counts(options: TaskOptions) -> tuple[int, int]:
@@ -1117,6 +1267,7 @@ def summarize_with_llm(
                                 "画面索引必须保留 W 编号、时间范围和画面网格 URL，方便用户回看截图。\n"
                                 f"笔记风格：{options.note_style}；笔记模板：{options.note_template}；详略程度：{options.summary_depth}。\n"
                                 f"{note_generation_contract(options)}\n"
+                                f"{_evidence_contract(transcript, grids)}\n"
                                 f"用途要求：{note_style_instruction(options)}\n"
                                 f"版式要求：{note_template_instruction(options)}\n"
                                 "不要在成品笔记中复述模型提示、内部参数、风格名称、深度约束或兼容说明；直接输出读者需要的正文。\n"
@@ -1130,7 +1281,19 @@ def summarize_with_llm(
                     **provider_kwargs,
                 )
                 generated = response.choices[0].message.content or ""
-                note = ensure_visual_appendix(generated, transcript, grids) or ""
+                grounded = _validated_generated_note(
+                    client,
+                    model,
+                    provider_kwargs,
+                    generated,
+                    transcript,
+                    grids,
+                    merge_prompt,
+                    events,
+                )
+                if not grounded:
+                    return None
+                note = ensure_visual_appendix(grounded, transcript, grids) or ""
                 return (note, "vision-llm") if note else None
             except Exception as exc:
                 _record_llm_event(events, "vision_merge", "api_error", exc, model=model)
@@ -1148,6 +1311,7 @@ def summarize_with_llm(
                 "你是严谨的课程学习笔记助手。请结合字幕输出 Markdown。\n"
                 f"笔记风格：{options.note_style}；笔记模板：{options.note_template}；详略程度：{options.summary_depth}。\n"
                 f"{note_generation_contract(options)}\n"
+                f"{_evidence_contract(transcript, grids)}\n"
                 f"用途要求：{note_style_instruction(options)}\n"
                 f"版式要求：{note_template_instruction(options)}\n"
                 "不要在成品笔记中复述模型提示、内部参数、风格名称、深度约束或兼容说明；直接输出读者需要的正文。\n"
@@ -1164,7 +1328,19 @@ def summarize_with_llm(
             **provider_kwargs,
         )
         generated = response.choices[0].message.content or ""
-        note = ensure_visual_appendix(generated, transcript, grids) or ""
+        grounded = _validated_generated_note(
+            client,
+            model,
+            provider_kwargs,
+            generated,
+            transcript,
+            grids,
+            transcript.full_text,
+            events,
+        )
+        if not grounded:
+            return None
+        note = ensure_visual_appendix(grounded, transcript, grids) or ""
         return (note, "text-llm") if note else None
     except Exception as exc:
         _record_llm_event(events, "text_summary", "api_error", exc, model=model)

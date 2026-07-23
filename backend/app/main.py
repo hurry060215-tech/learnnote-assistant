@@ -1032,6 +1032,14 @@ def render_bundle_manifest(task: TaskRecord, transcript: dict, visual_index: dic
     ]
     qa_history = read_task_qa_history(task.id)
     source_quality, evidence_quality = task_source_evidence_quality(task)
+    source_media_integrity = task.media_integrity.model_dump(mode="json")
+    exported_media_integrity: dict = {}
+    exported_media = task_media_path(task)
+    if exported_media and exported_media.is_file():
+        try:
+            exported_media_integrity = probe_media_integrity(exported_media).model_dump(mode="json")
+        except (MediaProcessingError, OSError):
+            exported_media_integrity = {}
 
     return {
         "schema_version": 1,
@@ -1055,6 +1063,14 @@ def render_bundle_manifest(task: TaskRecord, transcript: dict, visual_index: dic
         "options": options_payload,
         "source_quality": source_quality,
         "evidence_quality": evidence_quality,
+        "media_integrity": {
+            "source": source_media_integrity,
+            "exported": exported_media_integrity,
+            "same_file": bool(
+                source_media_integrity.get("sha256")
+                and source_media_integrity.get("sha256") == exported_media_integrity.get("sha256")
+            ),
+        },
         "source": {
             "resource_inventory": {
                 "export": "resource_inventory.json" if resource_inventory else "",

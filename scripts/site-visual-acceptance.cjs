@@ -1,4 +1,5 @@
 const { chromium } = require("playwright");
+const fs = require("node:fs");
 
 async function auditPage(page, viewport, outputPath) {
   await page.setViewportSize(viewport);
@@ -13,6 +14,10 @@ async function auditPage(page, viewport, outputPath) {
     const images = [...document.querySelectorAll("main img")];
     const revealElements = [...document.querySelectorAll(".reveal")];
     const primaryDownload = document.querySelector("[data-release-link]");
+    const caseSection = document.querySelector("#case");
+    const caseImage = document.querySelector(".case-frame img");
+    const caseFacts = [...document.querySelectorAll(".case-facts article")];
+    const privacyLink = document.querySelector('a[href*="PRIVACY.md"]');
     return {
       h1: h1?.textContent?.trim(),
       h1Size: Number.parseFloat(getComputedStyle(h1).fontSize),
@@ -20,10 +25,18 @@ async function auditPage(page, viewport, outputPath) {
       heroBottom: hero?.getBoundingClientRect().bottom || 0,
       workflowTop: workflow?.getBoundingClientRect().top || 0,
       overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
-      imagesReady: images.length === 2 && images.every(image => image.complete && image.naturalWidth > 900),
+      imagesReady: images.length === 3 && images.every(image => image.complete && image.naturalWidth > 900),
       contentVisible: revealElements.length > 0 && revealElements.every(element => Number.parseFloat(getComputedStyle(element).opacity) === 1),
       downloadHref: primaryDownload?.href || "",
-      releaseText: document.querySelector("[data-release-version]")?.textContent?.trim() || ""
+      releaseText: document.querySelector("[data-release-version]")?.textContent?.trim() || "",
+      caseReady: Boolean(
+        caseSection
+        && caseImage?.naturalWidth > 1200
+        && caseFacts.length === 4
+        && caseSection.textContent.includes("梯度下降与学习率")
+        && caseSection.textContent.includes("96.2%")
+      ),
+      privacyReady: Boolean(privacyLink)
     };
   });
 
@@ -31,6 +44,8 @@ async function auditPage(page, viewport, outputPath) {
   if (audit.overflow > 1) throw new Error(`Horizontal overflow at ${viewport.width}px: ${audit.overflow}`);
   if (!audit.imagesReady) throw new Error(`Product screenshots did not load at ${viewport.width}px`);
   if (!audit.contentVisible) throw new Error(`Offscreen site content is hidden at ${viewport.width}px`);
+  if (!audit.caseReady) throw new Error(`Reproducible case study is incomplete at ${viewport.width}px`);
+  if (!audit.privacyReady) throw new Error(`Privacy disclosure link is missing at ${viewport.width}px`);
   if (!/LearnNote-Setup-x64\.exe$/.test(audit.downloadHref)) throw new Error(`Installer link is not a release asset: ${audit.downloadHref}`);
   if (!/^v\d+\.\d+\.\d+$/.test(audit.releaseText)) throw new Error(`Invalid release label: ${audit.releaseText}`);
   if (viewport.width >= 1000 && audit.workflowTop > viewport.height + 72) {
@@ -45,7 +60,11 @@ async function auditPage(page, viewport, outputPath) {
 
 async function main() {
   const output = (process.argv[3] || "D:/LearnNote/audit/site-v0130").replace(/\\/g, "/");
-  const browser = await chromium.launch({ executablePath: "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe", headless: true });
+  const edge = "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe";
+  const browser = await chromium.launch({
+    ...(fs.existsSync(edge) ? { executablePath: edge } : {}),
+    headless: true
+  });
   const page = await browser.newPage();
   const consoleErrors = [];
   page.on("console", message => {

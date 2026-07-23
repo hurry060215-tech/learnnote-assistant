@@ -293,6 +293,8 @@ def build_matrix(*, include_acceptance_gate: bool = True) -> list[ReadinessItem]
     public_site_audit = read_text(ROOT / "scripts" / "site-visual-acceptance.cjs")
     public_site_workflow = read_text(ROOT / ".github" / "workflows" / "pages.yml")
     readme = read_text(ROOT / "README.md")
+    privacy = read_text(ROOT / "PRIVACY.md")
+    security = read_text(ROOT / "SECURITY.md")
     audits = collect_site_audits()
 
     rows: list[ReadinessItem] = []
@@ -336,18 +338,18 @@ def build_matrix(*, include_acceptance_gate: bool = True) -> list[ReadinessItem]
         ],
     ))
 
-    local_video_ready = has_all(sidepanel_html + backend_main + processor, [
-        "from-local",
-        "upload",
-        "process_local_video_task",
-    ]) or has_all(backend_main + processor, ["api_tasks_from_local", "process_local_video_task"])
+    local_video_ready = (
+        has_all(web_html + web_js, ["fileInput", "uploadButton", "/api/tasks/from-local", "uploadSelectedFile"])
+        and has_all(backend_main + processor, ["create_from_local", "process_local_video_task"])
+    )
     rows.append(item(
         "local_video_pipeline",
         "Local video upload pipeline",
         "pass" if local_video_ready else "fail",
         "Local upload enters the same media/transcript/frame/note pipeline." if local_video_ready else "Local upload task route or processor is missing.",
         [
-            (ROOT / "extension" / "sidepanel.html", "local video upload/drop target"),
+            (ROOT / "web" / "index.html", "client local-video picker and drop target"),
+            (ROOT / "web" / "app.js", "client upload and local-task creation"),
             (ROOT / "backend" / "app" / "main.py", "local upload API"),
             (ROOT / "backend" / "app" / "processor.py", "local video processor"),
         ],
@@ -486,11 +488,18 @@ def build_matrix(*, include_acceptance_gate: bool = True) -> list[ReadinessItem]
             "把正在看的视频",
             "三步，把视频变成可复习的知识",
             "从你已经在看的地方开始",
+            "可复现的真实案例",
+            "梯度下降与学习率",
+            "96.2%",
+            "可信度保护",
+            "数据边界清楚可见",
             "learnnote-workspace-v0126.png",
-            "learnnote-reader-v0126.png",
+            "learnnote-case-gradient.png",
+            "learnnote-case-grid.jpg",
         ])
+        and has_all(privacy + security, ["LearnNote", "API", "browser"])
         and has_all(public_site_start, ["http.server", "cloudflared", "No login is required"])
-        and has_all(public_site_audit, ["contentVisible", "imagesReady", "Installer link is not a release asset", "Mobile navigation did not open"])
+        and has_all(public_site_audit, ["contentVisible", "imagesReady", "caseReady", "privacyReady", "Installer link is not a release asset", "Mobile navigation did not open"])
         and has_all(public_site_workflow, ["actions/upload-pages-artifact", "actions/deploy-pages", "site"])
         and "password" not in public_site_html.lower()
     )
@@ -498,11 +507,14 @@ def build_matrix(*, include_acceptance_gate: bool = True) -> list[ReadinessItem]
         "public_marketing_site",
         "No-login public marketing site",
         "pass" if public_site_ready else "fail",
-        "The public site is static, requires no login, exposes no processing API, shows the real desktop client, and links to Windows releases." if public_site_ready else "Public-site separation or deployment evidence is incomplete.",
+        "The static no-login site shows a reproducible teaching case, real client evidence, clear data boundaries, and verified release links without exposing processing APIs." if public_site_ready else "Public-site case, privacy, visual acceptance, or deployment evidence is incomplete.",
         [
-            (ROOT / "site" / "index.html", "public product, workflow, privacy, and download content"),
+            (ROOT / "site" / "index.html", "public product, reproducible case, privacy, and download content"),
             (ROOT / "site" / "assets" / "learnnote-workspace-v0126.png", "real desktop workspace screenshot"),
-            (ROOT / "site" / "assets" / "learnnote-reader-v0126.png", "real note reader and AI sidebar screenshot"),
+            (ROOT / "site" / "assets" / "learnnote-case-gradient.png", "real completed teaching-note task screenshot"),
+            (ROOT / "site" / "assets" / "learnnote-case-grid.jpg", "real visual-window frame grid"),
+            (ROOT / "PRIVACY.md", "data handling and external-service disclosure"),
+            (ROOT / "SECURITY.md", "supported version and vulnerability reporting"),
             (ROOT / "scripts" / "site-visual-acceptance.cjs", "desktop/mobile visual and interaction acceptance"),
             (ROOT / ".github" / "workflows" / "pages.yml", "GitHub Pages deployment"),
             (ROOT / "scripts" / "start-public-site.ps1", "no-login static public tunnel"),
