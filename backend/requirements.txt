@@ -1,5 +1,5 @@
 fastapi>=0.111
-uvicorn[standard]>=0.30
+uvicorn[standard]>=0.51.0
 python-multipart>=0.0.9
 requests>=2.32
 pydantic>=2.7
