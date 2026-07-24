@@ -326,7 +326,7 @@ body.workspace-mode #workspace.workspace-panel {
   width: 7%;
   height: 100%;
   background: var(--editorial-accent);
-  transition: width 350ms ease;
+  transition: width 12s linear;
 }
 #editorialBrowserEntry .editorial-inline-status { grid-column: auto; min-height: 0; margin: 12px 0 0; }
 #editorialBrowserSetup { min-height: 34px; margin-top: 4px; padding: 0; }
@@ -477,6 +477,20 @@ body.workspace-mode #workspace.workspace-panel {
 .editorial-progress-panel > header > strong { color: var(--editorial-accent); font-size: 32px; line-height: 1; }
 .editorial-progress-track { height: 8px; margin-top: 30px; overflow: hidden; border-radius: 4px; background: #e5eeee; }
 .editorial-progress-track i { display: block; width: 0; height: 100%; background: var(--editorial-accent); transition: width 300ms ease; }
+
+.editorial-home,
+.editorial-entry,
+.editorial-confirm,
+.editorial-progress-panel {
+  contain: layout paint;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .editorial-browser-watch-track i,
+  .editorial-progress-track i {
+    transition-duration: 1ms;
+  }
+}
 .editorial-progress-steps {
   display: grid;
   grid-template-columns: repeat(5, 1fr);

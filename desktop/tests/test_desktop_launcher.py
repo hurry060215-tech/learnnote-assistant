@@ -175,6 +175,29 @@ class DesktopLauncherTests(unittest.TestCase):
             self.assertEqual(data_dir / "webview-profile", profile)
             self.assertTrue(profile.is_dir())
 
+    def test_desktop_focus_route_avoids_reloading_same_task(self):
+        target = desktop.desktop_focus_target(
+            "http://127.0.0.1:18766",
+            "abcdef123456",
+            "frames",
+        )
+        self.assertEqual(
+            "http://127.0.0.1:18766/?task=abcdef123456&tab=frames",
+            target,
+        )
+        self.assertTrue(desktop.desktop_route_matches(
+            "http://127.0.0.1:18766/?tab=frames&task=abcdef123456#resultPanel",
+            target,
+        ))
+        self.assertFalse(desktop.desktop_route_matches(
+            "http://127.0.0.1:18766/?task=abcdef123456&tab=note",
+            target,
+        ))
+        self.assertEqual(
+            "",
+            desktop.desktop_focus_target("http://127.0.0.1:18766", "../bad", "note"),
+        )
+
     def test_native_export_saves_backend_artifact_under_data_directory(self):
         class Response:
             headers = {"Content-Disposition": "attachment; filename*=UTF-8''course-note.md"}

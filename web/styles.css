@@ -12739,3 +12739,81 @@ body.reading-mode .app-shell {
 .result-panel {
   background: #ffffff;
 }
+
+/* Interaction stability: final overrides pin tracks after the legacy cascade. */
+.nav-rail {
+  min-width: 0;
+}
+
+.nav-item {
+  min-width: 38px;
+  flex: 0 0 auto;
+}
+
+.nav-item span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-panel,
+.queue-panel,
+.result-panel {
+  scrollbar-gutter: stable;
+}
+
+.task {
+  grid-template-columns: 80px minmax(0, 1fr);
+  contain: layout paint;
+  content-visibility: auto;
+  contain-intrinsic-size: 86px;
+}
+
+.task-body,
+.task-headline,
+.task-headline strong {
+  min-width: 0;
+}
+
+.task-headline strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-status-pill {
+  min-width: 94px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.task .progress > span,
+.source-workflow-live-progress b {
+  will-change: width;
+}
+
+.source-workflow-live-progress span,
+.editorial-progress-panel header > strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.media-preview-card video {
+  aspect-ratio: 16 / 9;
+  min-height: 0;
+  background: #07131c;
+  contain: layout paint;
+  transform: translateZ(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .task,
+  .nav-item,
+  .media-preview-card video,
+  .task .progress > span,
+  .source-workflow-live-progress b {
+    animation: none !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+}

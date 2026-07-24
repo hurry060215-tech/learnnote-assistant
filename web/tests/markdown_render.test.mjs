@@ -428,9 +428,10 @@ assert.doesNotMatch(webCode, /task\.evidence_quality\?\.can_claim_video_content 
 assert.match(webCode, /const response = await fetch\(apiUrl\(`\/api\/tasks\/\$\{encodeURIComponent\(taskId\)\}\/exports\/\$\{exportType\}`\)\)[\s\S]*if \(!response\.ok\)[\s\S]*await response\.blob\(\)/);
 assert.match(webCode, /if \(taskListLoadPromise\) return taskListLoadPromise/);
 assert.match(webCode, /const taskListChanged = nextTaskListFingerprint !== lastTaskListFingerprint/);
-assert.match(webCode, /if \(taskListChanged\) \{\s*renderTasks\(\);\s*lastTaskListFingerprint = nextTaskListFingerprint;/);
+assert.match(webCode, /else if \(taskListLiveChanged\) \{\s*patchTaskListLiveState\(nextTasks\);/);
 assert.equal(context.taskListFingerprint([{ id: "stable", status: "success", progress: 100, updated_at: "1" }]), context.taskListFingerprint([{ id: "stable", status: "success", progress: 100, updated_at: "1" }]));
-assert.notEqual(context.taskListFingerprint([{ id: "active", status: "running", progress: 30, updated_at: "1" }]), context.taskListFingerprint([{ id: "active", status: "running", progress: 31, updated_at: "2" }]));
+assert.equal(context.taskListFingerprint([{ id: "active", status: "running", progress: 30, updated_at: "1" }]), context.taskListFingerprint([{ id: "active", status: "running", progress: 31, updated_at: "2" }]));
+assert.notEqual(context.taskListLiveFingerprint([{ id: "active", status: "running", progress: 30, updated_at: "1" }]), context.taskListLiveFingerprint([{ id: "active", status: "running", progress: 31, updated_at: "2" }]));
 assert.doesNotMatch(webCode, /catch \{\s*tasks = \[\];\s*selectedTaskId = null;/);
 assert.equal(elements.get("#browserBridgeStatus").classList.contains("capture-status-grid"), true);
 assert.match(elements.get("#browserBridgeStatus").innerHTML, /capture-status-chip bridge/);
@@ -499,11 +500,11 @@ assert.match(indexHtml, /id="deleteAllTasksButton"/);
 assert.match(indexHtml, /id="deleteAllTasksSettingsButton"/);
 assert.match(webCode, /\/api\/tasks\?confirm=delete_all_tasks/);
 assert.match(matureCss, /\.danger-button\s*\{/);
-assert.match(indexHtml, /styles\.css\?v=20260714-v0124/);
-assert.match(indexHtml, /app\.js\?v=20260722-v0142/);
+assert.match(indexHtml, /styles\.css\?v=20260724-ui1/);
+assert.match(indexHtml, /app\.js\?v=20260724-ui1/);
 assert.match(indexHtml, /mature\.css\?v=20260721-v0135/);
-assert.match(indexHtml, /editorial\.css\?v=20260722-v0146/);
-assert.match(indexHtml, /editorial\.js\?v=20260722-v0146/);
+assert.match(indexHtml, /editorial\.css\?v=20260724-ui1/);
+assert.match(indexHtml, /editorial\.js\?v=20260724-ui1/);
 assert.match(indexHtml, /id="sourceRouteRail"/);
 assert.match(indexHtml, /id="urlPreflightReport"/);
 assert.match(indexHtml, /href="#settingsView" data-app-view="settings" title="设置"/);
@@ -669,6 +670,44 @@ assert.notEqual(progressFingerprint, context.taskDetailFingerprint({
   phase: "transcribing",
   progress: 48
 }));
+vm.runInContext(`selectedTab = "frames";`, context);
+const stableMediaFingerprint = context.taskDetailFingerprint({
+  id: "task-progress",
+  status: "running",
+  phase: "extracting_frames",
+  progress: 62,
+  media_path: "D:/media.mp4",
+  visual_windows: [{ id: "W001" }]
+});
+assert.equal(stableMediaFingerprint, context.taskDetailFingerprint({
+  id: "task-progress",
+  status: "running",
+  phase: "summarizing",
+  progress: 88,
+  media_path: "D:/media.mp4",
+  visual_windows: [{ id: "W001" }]
+}));
+vm.runInContext(`selectedTab = "note";`, context);
+assert.equal(context.window.LearnNoteTasks.nextPollDelay([], false), 8000);
+assert.equal(context.window.LearnNoteTasks.nextPollDelay([{ status: "running" }], false), 1800);
+assert.equal(context.window.LearnNoteTasks.nextPollDelay([{ status: "running" }], true), 30000);
+let taskSubscriberCalls = 0;
+const unsubscribeTaskSubscriber = context.window.LearnNoteTasks.subscribe(() => { taskSubscriberCalls += 1; });
+context.notifyTaskUpdateSubscribers();
+unsubscribeTaskSubscriber();
+context.notifyTaskUpdateSubscribers();
+assert.equal(taskSubscriberCalls, 1);
+assert.equal(typeof elements.get("#tasks").listeners.click, "function");
+assert.equal(typeof elements.get("#tasks").listeners.keydown, "function");
+assert.doesNotMatch(webCode, /setInterval\s*\(/);
+assert.doesNotMatch(editorialCode, /originalRenderTasks|renderTasks\s*=\s*function editorialRenderTasks/);
+assert.match(editorialCode, /LearnNoteTasks\?\.subscribe/);
+assert.match(stylesCss, /Interaction stability: final overrides/);
+assert.match(stylesCss, /\.task\s*\{[\s\S]*grid-template-columns:\s*80px minmax\(0, 1fr\);/);
+assert.match(stylesCss, /\.media-preview-card video\s*\{[\s\S]*aspect-ratio:\s*16 \/ 9;/);
+assert.match(stylesCss, /scrollbar-gutter:\s*stable/);
+assert.match(stylesCss, /content-visibility:\s*auto/);
+assert.match(stylesCss, /\.task-status-pill\s*\{[\s\S]*font-variant-numeric:\s*tabular-nums/);
 const liveProgressHtml = context.sourceWorkflowProgressHtml({
   id: "task-progress",
   status: "running",

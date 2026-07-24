@@ -290,6 +290,7 @@ let lastTranscriptTaskId = "";
 let tasks = [];
 let taskListLoadPromise = null;
 let lastTaskListFingerprint = "__unrendered__";
+let lastTaskListLiveFingerprint = "__unrendered__";
 let taskQuery = "";
 let taskStatusFilter = "all";
 const HISTORY_PAGE_SIZE = 30;
@@ -312,6 +313,13 @@ let appSettings = { ...DEFAULT_APP_SETTINGS };
 let taskStatusSnapshot = new Map();
 let taskStatusSnapshotReady = false;
 let lastDetailFingerprint = "__unrendered__";
+let detailRenderGeneration = 0;
+let lastBrowserRouteSummaryHtml = "";
+let lastSourceRouteRailHtml = "";
+let lastSourceWorkflowHtml = "";
+let uiPollTimer = 0;
+let lastHealthCheckAt = 0;
+const taskUpdateSubscribers = new Set();
 let qaState = { taskId: "", question: "", answer: "", source: "", warning: "", citations: [], historyCount: 0, recent: [], loading: false };
 let noteVersionTaskId = "";
 let assistantMessages = [];
@@ -1411,12 +1419,14 @@ function selectTask(taskId, { clearCaches = true, syncUrl = true } = {}) {
 
 function taskDetailFingerprint(task) {
   if (!task?.id) return "";
+  const stableMediaView = Boolean(task.media_path)
+    && ["transcript", "slices", "frames"].includes(selectedTab);
   return [
     task.id,
     selectedTab,
-    task.status || "",
-    task.phase || "",
-    Number(task.progress || 0),
+    stableMediaView ? (task.status === "failed" ? "failed" : "media-ready") : task.status || "",
+    stableMediaView ? "" : task.phase || "",
+    stableMediaView ? "" : Number(task.progress || 0),
     task.error_code || "",
     task.error_detail || "",
     task.note_path || "",
@@ -2159,7 +2169,11 @@ function browserRouteEmptyHandoffHtml() {
 function renderBrowserRouteSummary() {
   if (!els.browserRouteSummary) return;
   const task = preferredCurrentPageTask();
-  els.browserRouteSummary.innerHTML = task ? browserRouteSummaryHtml(task) : browserRouteEmptyHandoffHtml();
+  const html = task ? browserRouteSummaryHtml(task) : browserRouteEmptyHandoffHtml();
+  if (html !== lastBrowserRouteSummaryHtml) {
+    els.browserRouteSummary.innerHTML = html;
+    lastBrowserRouteSummaryHtml = html;
+  }
   updateBrowserFirstUse();
 }
 
@@ -2253,7 +2267,10 @@ function sourceRouteRailHtml() {
 
 function renderSourceRouteRail() {
   if (!els.sourceRouteRail) return;
-  els.sourceRouteRail.innerHTML = sourceRouteRailHtml();
+  const html = sourceRouteRailHtml();
+  if (html === lastSourceRouteRailHtml) return;
+  els.sourceRouteRail.innerHTML = html;
+  lastSourceRouteRailHtml = html;
 }
 
 function workflowSourceConfig(source, task = null) {
@@ -2733,7 +2750,10 @@ function renderSourceWorkflow() {
   els.sourceWorkflow.classList.toggle("idle", !task);
   els.sourceWorkflow.classList.toggle("settled", task?.status === "success");
   els.sourceWorkflow.classList.toggle("active", ["running", "queued", "cancelling"].includes(task?.status));
-  els.sourceWorkflow.innerHTML = sourceWorkflowHtml(selectedSource, task);
+  const html = sourceWorkflowHtml(selectedSource, task);
+  if (html === lastSourceWorkflowHtml) return;
+  els.sourceWorkflow.innerHTML = html;
+  lastSourceWorkflowHtml = html;
 }
 
 function drmSignalText(signals = []) {
@@ -4479,6 +4499,8 @@ async function checkHealth() {
     updateStartupReadiness(null);
     refreshEmptyWorkbenchReadiness();
     updateOnboardingStatus(null);
+  } finally {
+    lastHealthCheckAt = Date.now();
   }
 }
 
@@ -4601,7 +4623,9 @@ async function loadTasksOnce() {
   }
   const nextTasks = data.tasks || [];
   const nextTaskListFingerprint = taskListFingerprint(nextTasks);
+  const nextTaskListLiveFingerprint = taskListLiveFingerprint(nextTasks);
   const taskListChanged = nextTaskListFingerprint !== lastTaskListFingerprint;
+  const taskListLiveChanged = nextTaskListLiveFingerprint !== lastTaskListLiveFingerprint;
   handleTaskStatusTransitions(nextTasks);
   tasks = nextTasks;
   if (selectedTaskId && !tasks.some(task => task.id === selectedTaskId)) selectedTaskId = null;
@@ -4613,9 +4637,14 @@ async function loadTasksOnce() {
   if (taskListChanged) {
     renderTasks();
     lastTaskListFingerprint = nextTaskListFingerprint;
+  } else if (taskListLiveChanged) {
+    patchTaskListLiveState(nextTasks);
   }
+  lastTaskListLiveFingerprint = nextTaskListLiveFingerprint;
   renderBrowserRouteSummary();
   renderSourceWorkflow();
+  if (taskListChanged || taskListLiveChanged) notifyTaskUpdateSubscribers();
+  if (uiPollTimer) scheduleUiPoll();
   const selected = tasks.find(task => task.id === selectedTaskId) || null;
   if (taskDetailFingerprint(selected) !== lastDetailFingerprint) await renderDetail();
   const assistantTask = assistantSelectedTask();
@@ -4626,13 +4655,54 @@ async function loadTasksOnce() {
   }
 }
 
+function subscribeTaskUpdates(listener) {
+  if (typeof listener !== "function") return () => {};
+  taskUpdateSubscribers.add(listener);
+  return () => taskUpdateSubscribers.delete(listener);
+}
+
+function notifyTaskUpdateSubscribers() {
+  for (const listener of taskUpdateSubscribers) {
+    try {
+      listener(tasks);
+    } catch (error) {
+      console.warn?.("LearnNote task subscriber failed", error);
+    }
+  }
+}
+
+function nextUiPollDelay(items = tasks, hidden = document.visibilityState === "hidden") {
+  if (hidden) return 30000;
+  return (Array.isArray(items) && items.some(isActiveTask)) ? 1800 : 8000;
+}
+
+function scheduleUiPoll(delay = nextUiPollDelay()) {
+  if (!window.setTimeout) return;
+  if (uiPollTimer) window.clearTimeout?.(uiPollTimer);
+  uiPollTimer = window.setTimeout(runUiPollCycle, Math.max(250, Number(delay) || 0));
+}
+
+async function runUiPollCycle() {
+  uiPollTimer = 0;
+  const requests = [loadTasks()];
+  if (Date.now() - lastHealthCheckAt >= 15000) requests.push(checkHealth());
+  await Promise.allSettled(requests);
+  scheduleUiPoll();
+}
+
+function handleVisibilityPollChange() {
+  if (document.visibilityState === "hidden") {
+    scheduleUiPoll(30000);
+    return;
+  }
+  scheduleUiPoll(100);
+}
+
 function taskListFingerprint(items = []) {
   return JSON.stringify(items.map(task => [
     task.id,
     task.status,
     task.phase,
-    Number(task.progress || 0),
-    task.updated_at || "",
     task.title || "",
     task.note_path || "",
     task.media_path || "",
@@ -4641,6 +4711,32 @@ function taskListFingerprint(items = []) {
     task.error_code || "",
     task.evidence_quality?.video_evidence || ""
   ]));
+}
+
+function taskListLiveFingerprint(items = []) {
+  return JSON.stringify(items.map(task => [
+    task.id,
+    Number(task.progress || 0),
+    task.updated_at || ""
+  ]));
+}
+
+function patchTaskListLiveState(items = tasks) {
+  const byId = new Map((Array.isArray(items) ? items : []).map(task => [task.id, task]));
+  els.tasks?.querySelectorAll?.(".task[data-id]")?.forEach?.(item => {
+    const task = byId.get(item.dataset.id);
+    if (!task) return;
+    const progress = Math.max(0, Math.min(100, Number(task.progress || 0)));
+    const status = item.querySelector?.(".task-status-pill");
+    if (status) status.textContent = `${statusText(task)} · ${progress}%`;
+    const bar = item.querySelector?.(".progress > span");
+    if (bar) bar.style.width = `${progress}%`;
+  });
+  els.recentNotesList?.querySelectorAll?.("[data-recent-task]")?.forEach?.(item => {
+    const task = byId.get(item.dataset.recentTask);
+    const time = item.querySelector?.("time");
+    if (task && time) time.textContent = recentTaskTime(task);
+  });
 }
 
 function taskMatchesFilters(task) {
@@ -4727,13 +4823,51 @@ function renderRecentNotes() {
       <time>${escapeHtml(recentTaskTime(task))}</time>
     </button>
   `).join("");
-  document.querySelectorAll("[data-recent-task]").forEach(button => {
-    button.addEventListener("click", async () => {
-      selectTask(button.dataset.recentTask);
-      showAppView("notes");
-      renderTasks();
-      await renderDetail();
-    });
+}
+
+function syncTaskSelection() {
+  els.tasks?.querySelectorAll?.(".task")?.forEach?.(item => {
+    item.classList.toggle("selected", item.dataset.id === selectedTaskId);
+  });
+}
+
+async function openTaskFromList(taskId) {
+  if (!taskId) return;
+  selectTask(taskId);
+  syncTaskSelection();
+  showAppView("notes");
+  await renderDetail();
+  focusResultPanelOnMobile();
+}
+
+function bindTaskListEvents() {
+  els.tasks?.addEventListener?.("click", async event => {
+    const taskElement = event.target?.closest?.(".task");
+    if (!taskElement?.dataset?.id) {
+      if (event.target?.closest?.("[data-history-load-more]")) {
+        historyVisibleLimit += HISTORY_PAGE_SIZE;
+        renderTasks();
+      }
+      return;
+    }
+    const action = event.target.closest?.("[data-task-action]")?.dataset?.taskAction;
+    if (action) {
+      event.stopPropagation?.();
+      await runTaskAction(taskElement.dataset.id, action);
+      return;
+    }
+    await openTaskFromList(taskElement.dataset.id);
+  });
+  els.tasks?.addEventListener?.("keydown", async event => {
+    if (!["Enter", " "].includes(event.key) || event.target?.closest?.("[data-task-action]")) return;
+    const taskElement = event.target?.closest?.(".task");
+    if (!taskElement?.dataset?.id) return;
+    event.preventDefault?.();
+    await openTaskFromList(taskElement.dataset.id);
+  });
+  els.recentNotesList?.addEventListener?.("click", async event => {
+    const button = event.target?.closest?.("[data-recent-task]");
+    if (button?.dataset?.recentTask) await openTaskFromList(button.dataset.recentTask);
   });
 }
 
@@ -4781,36 +4915,12 @@ function renderTasks() {
       再显示 ${Math.min(HISTORY_PAGE_SIZE, filteredTasks.length - visibleTasks.length)} 条
     </button>
   ` : "");
-
-  document.querySelectorAll(".task").forEach(button => {
-    button.onclick = async event => {
-      const action = event.target.closest?.("[data-task-action]")?.dataset?.taskAction;
-      if (action) {
-        event.stopPropagation?.();
-        await runTaskAction(button.dataset.id, action);
-        return;
-      }
-      selectTask(button.dataset.id);
-      showAppView("notes");
-      renderTasks();
-      await renderDetail();
-      focusResultPanelOnMobile();
-    };
-  });
-  document.querySelector("[data-history-load-more]")?.addEventListener("click", () => {
-    historyVisibleLimit += HISTORY_PAGE_SIZE;
-    renderTasks();
-  });
 }
 
 async function runTaskAction(taskId, action) {
   if (!taskId) return;
   if (action === "open") {
-    selectTask(taskId);
-    showAppView("notes");
-    renderTasks();
-    await renderDetail();
-    focusResultPanelOnMobile();
+    await openTaskFromList(taskId);
     return;
   } else if (action === "version") {
     openNoteVersionDialog(taskId);
@@ -7834,7 +7944,11 @@ function bindEmptyWorkbenchActions() {
 }
 
 async function renderDetail() {
+  const generation = ++detailRenderGeneration;
+  const requestedTaskId = selectedTaskId;
+  const requestedTab = selectedTab;
   const task = await taskRecord();
+  if (generation !== detailRenderGeneration || requestedTaskId !== selectedTaskId || requestedTab !== selectedTab) return;
   if (!task) {
     lastDetailFingerprint = "__empty__";
     els.selectedTitle.textContent = "选择一个任务";
@@ -7881,6 +7995,7 @@ async function renderDetail() {
 
   if (selectedTab === "note") {
     lastNote = await noteForTask(task.id);
+    if (generation !== detailRenderGeneration || requestedTaskId !== selectedTaskId || requestedTab !== selectedTab) return;
     const emptyNoteHtml = hasExportableMedia(task) ? downloadOnlyEmptyNoteHtml(task) : "<p>笔记尚未生成。</p>";
     const pendingContext = lastNote ? "" : `${taskOverview(task)}${failureGuide(task)}`;
     els.detail.innerHTML = `
@@ -7918,6 +8033,7 @@ async function renderDetail() {
       return;
     }
     const transcript = await transcriptForTask(task);
+    if (generation !== detailRenderGeneration || requestedTaskId !== selectedTaskId || requestedTab !== selectedTab) return;
     const workbench = selectedTab === "frames"
       ? visualFrameWorkbench(task, transcript)
       : learningSliceWorkbench(task, transcript);
@@ -7930,6 +8046,7 @@ async function renderDetail() {
     const selected = task.selected_resource || {};
     const attempts = task.download_attempts || [];
     const transcript = await transcriptForTask(task);
+    if (generation !== detailRenderGeneration || requestedTaskId !== selectedTaskId || requestedTab !== selectedTab) return;
     const transcriptSource = transcript?.source ? transcriptSourceText(transcript.source) : "-";
     const attemptHtml = attempts.length ? `
       <div class="attempt-list">
@@ -8013,6 +8130,7 @@ async function renderDetail() {
   }
 
   const transcript = await transcriptForTask(task) || {};
+  if (generation !== detailRenderGeneration || requestedTaskId !== selectedTaskId || requestedTab !== selectedTab) return;
   if (!transcript.segments?.length) {
     els.detail.className = "detail empty";
     els.detail.textContent = transcript.warning || "转写尚未生成。";
@@ -8722,12 +8840,16 @@ if (!hasExplicitTaskRoute()) {
 renderSourceWorkflow();
 checkHealth();
 loadTasks();
+bindTaskListEvents();
+window.LearnNoteTasks = Object.freeze({
+  subscribe: subscribeTaskUpdates,
+  nextPollDelay: nextUiPollDelay,
+  runPollCycle: runUiPollCycle
+});
 if (assistantOpenPreference() === true) setAssistantOpen(true, { persist: false });
 try { if (window.localStorage?.getItem(ASSISTANT_WIDE_KEY) === "1") setAssistantWide(true, false); } catch { /* ignore */ }
 if ((currentUrlParam(["setup"]) === "1" || !onboardingWasCompleted()) && !hasExplicitTaskRoute()) {
   window.setTimeout?.(openOnboarding, 220);
 }
-setInterval(() => {
-  checkHealth();
-  loadTasks();
-}, 3000);
+scheduleUiPoll();
+document.addEventListener?.("visibilitychange", handleVisibilityPollChange);

@@ -59,7 +59,6 @@
   let editorialTaskId = storedEditorialTaskId();
   let customPurpose = null;
   let browserWatchTimer = 0;
-  let browserWatchStartedAt = 0;
   let browserWatchGeneration = 0;
   let browserPollPending = false;
 
@@ -77,7 +76,7 @@
 
   function stopBrowserWatch() {
     browserWatchGeneration += 1;
-    if (browserWatchTimer) window.clearInterval(browserWatchTimer);
+    if (browserWatchTimer) window.clearTimeout?.(browserWatchTimer);
     browserWatchTimer = 0;
     browserPollPending = false;
   }
@@ -525,21 +524,15 @@
   function beginBrowserWatch() {
     stopBrowserWatch();
     const generation = browserWatchGeneration;
-    browserWatchStartedAt = Date.now();
     setBrowserWaitProgress(7);
     ui.browserStatus.textContent = "正在等待扩展发送当前视频...";
     receiveBrowser({ automatic: true, generation });
-    browserWatchTimer = window.setInterval(() => {
-      const elapsed = Math.max(0, Date.now() - browserWatchStartedAt);
-      setBrowserWaitProgress(Math.min(92, 7 + elapsed / 900));
+    browserWatchTimer = window.setTimeout?.(() => {
+      if (generation !== browserWatchGeneration) return;
+      setBrowserWaitProgress(92);
       renderBrowserConnection(typeof lastHealthData === "object" ? lastHealthData : {});
-      const task = browserHandoffTask();
-      if (task) {
-        setBrowserWaitProgress(100);
-        storeEditorialTaskId(task.id);
-        renderDraft(currentBrowserDraft(task));
-      }
-    }, 900);
+      browserWatchTimer = 0;
+    }, 40) || 0;
   }
 
   function buildLocalTaskForm(localDraft, options) {
@@ -787,19 +780,20 @@
   ui.start.addEventListener("click", startTask);
   ui.openLibrary.addEventListener("click", () => { if (typeof showAppView === "function") showAppView("notes"); });
 
-  const originalRenderTasks = typeof renderTasks === "function" ? renderTasks : null;
-  if (originalRenderTasks) {
-    renderTasks = function editorialRenderTasks(...args) {
-      const result = originalRenderTasks.apply(this, args);
-      const remembered = tasks.find(item => item.id === editorialTaskId);
-      if (remembered && ["queued", "running", "cancelling"].includes(remembered.status) && !ui.choices.hidden) {
-        showOnly(ui.progress);
-      }
-      renderEditorialProgress();
-      renderContinueCard();
-      return result;
-    };
-  }
+  window.LearnNoteTasks?.subscribe?.(() => {
+    const remembered = tasks.find(item => item.id === editorialTaskId);
+    if (remembered && ["queued", "running", "cancelling"].includes(remembered.status) && !ui.choices.hidden) {
+      showOnly(ui.progress);
+    }
+    const handoff = browserHandoffTask();
+    if (handoff && !ui.browserEntry.hidden) {
+      setBrowserWaitProgress(100);
+      storeEditorialTaskId(handoff.id);
+      renderDraft(currentBrowserDraft(handoff));
+    }
+    renderEditorialProgress();
+    renderContinueCard();
+  });
 
   const savedCustom = typeof appSettings !== "undefined" ? appSettings.customNoteProfile : null;
   if (savedCustom) {
