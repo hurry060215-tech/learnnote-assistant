@@ -44,13 +44,36 @@ jobs:
           Get-ChildItem extension/tests/*.test.mjs | ForEach-Object { node $_.FullName }
           node web/tests/markdown_render.test.mjs
       - name: Build portable desktop client
+        shell: pwsh
         run: |
           python scripts/generate-version-file.py build/learnnote-version.txt
           pyinstaller --noconfirm --clean LearnNote.spec
-          Copy-Item README.md dist/LearnNote/README.md
+          @(
+            "README.md",
+            "LICENSE",
+            "NOTICE",
+            "THIRD_PARTY_NOTICES.md",
+            "PRIVACY.md",
+            "SECURITY.md",
+            "SUPPORT.md"
+          ) | ForEach-Object { Copy-Item $_ "dist/LearnNote/$_" }
+          Copy-Item third_party dist/LearnNote/third_party -Recurse
           ./scripts/package-extension.ps1 -OutputPath build/LearnNote-Browser-Extension.zip
           Expand-Archive -LiteralPath build/LearnNote-Browser-Extension.zip -DestinationPath dist/LearnNote/extension -Force
           python scripts/audit-release-tree.py dist/LearnNote --output build/release-tree-audit.json
+      - name: Sign Windows executable
+        if: env.SIGNING_CERT_BASE64 != ''
+        shell: pwsh
+        run: |
+          $certificate = Join-Path $env:RUNNER_TEMP "learnnote-signing.pfx"
+          [IO.File]::WriteAllBytes($certificate, [Convert]::FromBase64String($env:SIGNING_CERT_BASE64))
+          $timestamp = if ($env:SIGNING_TIMESTAMP_URL) { $env:SIGNING_TIMESTAMP_URL } else { "http://timestamp.digicert.com" }
+          & signtool sign /fd SHA256 /td SHA256 /tr $timestamp /f $certificate /p $env:SIGNING_CERT_PASSWORD dist/LearnNote/LearnNote.exe
+          & signtool verify /pa /v dist/LearnNote/LearnNote.exe
+          Remove-Item -LiteralPath $certificate -Force
+      - name: Package Windows release
+        shell: pwsh
+        run: |
           Compress-Archive -Path dist/LearnNote/* -DestinationPath LearnNote-Windows-x64.zip
           $version = (Get-Content extension/manifest.json -Raw -Encoding UTF8 | ConvertFrom-Json).version
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$version" scripts/learnnote-installer.iss
@@ -68,6 +91,31 @@ jobs:
       - name: Smoke-test installed release
         shell: pwsh
         run: ./scripts/test-release-installer.ps1 -InstallerPath LearnNote-Setup-x64.exe
+      - name: Smoke-test upgrade from previous release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $currentTag = "${{ github.ref_name }}"
+          $previous = gh release list --repo "${{ github.repository }}" --limit 20 --json tagName,isDraft,isPrerelease,publishedAt |
+            ConvertFrom-Json |
+            Where-Object { -not $_.isDraft -and -not $_.isPrerelease -and $_.tagName -ne $currentTag } |
+            Sort-Object publishedAt -Descending |
+            Select-Object -First 1
+          if (-not $previous) {
+            Write-Host "No previous stable release is available; skipping cover-upgrade smoke."
+            exit 0
+          }
+          $previousDir = Join-Path $env:RUNNER_TEMP "previous-release"
+          New-Item -ItemType Directory -Path $previousDir -Force | Out-Null
+          gh release download $previous.tagName `
+            --repo "${{ github.repository }}" `
+            --pattern "LearnNote-Setup-x64.exe" `
+            --dir $previousDir
+          ./scripts/test-upgrade-installer.ps1 `
+            -PreviousInstallerPath (Join-Path $previousDir "LearnNote-Setup-x64.exe") `
+            -CurrentInstallerPath "$PWD/LearnNote-Setup-x64.exe"
       - name: Package browser extension
         shell: pwsh
         run: |

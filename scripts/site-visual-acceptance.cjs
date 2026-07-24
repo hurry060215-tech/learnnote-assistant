@@ -17,7 +17,8 @@ async function auditPage(page, viewport, outputPath) {
     const caseSection = document.querySelector("#case");
     const caseImage = document.querySelector(".case-frame img");
     const caseFacts = [...document.querySelectorAll(".case-facts article")];
-    const privacyLink = document.querySelector('a[href*="PRIVACY.md"]');
+    const privacyLink = document.querySelector('a[href$="privacy.html"]');
+    const securityLink = document.querySelector('a[href$="security.html"]');
     return {
       h1: h1?.textContent?.trim(),
       h1Size: Number.parseFloat(getComputedStyle(h1).fontSize),
@@ -36,7 +37,7 @@ async function auditPage(page, viewport, outputPath) {
         && caseSection.textContent.includes("梯度下降与学习率")
         && caseSection.textContent.includes("96.2%")
       ),
-      privacyReady: Boolean(privacyLink)
+      privacyReady: Boolean(privacyLink && securityLink)
     };
   });
 
@@ -74,6 +75,17 @@ async function main() {
   const desktop = await auditPage(page, { width: 1440, height: 900 }, `${output}-desktop.png`);
   const mobile = await auditPage(page, { width: 390, height: 844 }, `${output}-mobile.png`);
 
+  for (const [path, heading] of [["privacy.html", "隐私说明"], ["security.html", "安全说明"]]) {
+    await page.goto(new URL(path, process.argv[2] || "http://127.0.0.1:8793").toString(), { waitUntil: "networkidle" });
+    if (await page.locator("h1").textContent() !== heading) throw new Error(`${path} has an invalid heading`);
+    if (await page.locator(".legal-document").count() !== 1) throw new Error(`${path} is missing its legal document`);
+    if (await page.locator("img.brand-mark").evaluate(image => !image.complete || image.naturalWidth !== 32)) {
+      throw new Error(`${path} brand mark did not load`);
+    }
+  }
+
+  await page.goto(process.argv[2] || "http://127.0.0.1:8793", { waitUntil: "networkidle" });
+  await page.setViewportSize({ width: 390, height: 844 });
   const menu = page.locator(".menu-button");
   if (await menu.count() !== 1) throw new Error("Mobile menu button is missing or duplicated");
   await menu.click();

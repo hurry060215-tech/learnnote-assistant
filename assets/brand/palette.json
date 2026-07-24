@@ -1,0 +1,17 @@
+{
+  "name": "LearnNote",
+  "style": "flat",
+  "gradient": false,
+  "colors": {
+    "ink": "#123B43",
+    "teal": "#0B8583",
+    "teal_dark": "#075F62",
+    "mint": "#BDEDE4",
+    "paper": "#FFFFFF"
+  },
+  "concept": [
+    "open book",
+    "play",
+    "notes"
+  ]
+}

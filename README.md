@@ -10,8 +10,11 @@
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-1677ff)](https://github.com/hurry060215-tech/learnnote-assistant/releases/latest)
 [![Browser](https://img.shields.io/badge/browser-Chrome%20%7C%20Edge-15a39a)](https://github.com/hurry060215-tech/learnnote-assistant/releases/latest)
 [![Extension](https://img.shields.io/badge/extension-Manifest%20V3-314b52)](extension/manifest.json)
+[![CI](https://github.com/hurry060215-tech/learnnote-assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/hurry060215-tech/learnnote-assistant/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/hurry060215-tech/learnnote-assistant/actions/workflows/codeql.yml/badge.svg)](https://github.com/hurry060215-tech/learnnote-assistant/actions/workflows/codeql.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-0b948f)](LICENSE)
 
-[官方网站](https://learnnote-study.hurry060215.chatgpt.site) · [下载](https://github.com/hurry060215-tech/learnnote-assistant/releases/latest) · [安全说明](SECURITY.md) · [隐私说明](PRIVACY.md) · [问题反馈](https://github.com/hurry060215-tech/learnnote-assistant/issues)
+[官方网站](https://hurry060215-tech.github.io/learnnote-assistant/) · [下载](https://github.com/hurry060215-tech/learnnote-assistant/releases/latest) · [使用支持](SUPPORT.md) · [贡献指南](CONTRIBUTING.md) · [安全说明](SECURITY.md) · [隐私说明](PRIVACY.md)
 
 </div>
 
@@ -82,12 +85,14 @@ http://127.0.0.1:8765
 ### 3. 连接浏览器扩展
 
 1. 在客户端打开 **设置 → 浏览器扩展**。
-2. 点击 **修复连接**，让客户端打开扩展目录和浏览器扩展管理页。
+2. 点击 **安装扩展**，让客户端打开扩展目录和浏览器扩展管理页。
 3. 在 `chrome://extensions` 或 `edge://extensions` 开启 **开发者模式**。
 4. 点击 **加载已解压的扩展程序**，选择客户端显示的 `extension` 文件夹。
 5. 回到视频页，刷新一次页面，再打开 LearnNote 扩展侧栏。
 
 扩展显示“本地服务已连接”后，播放目标视频并点击 **发送到 LearnNote**。任务会自动出现在桌面客户端。
+
+客户端升级后如果显示“扩展版本较旧”，点击 **更新扩展**，然后在扩展管理页的 LearnNote 卡片上点击 **重新加载**。通过商店安装的正式扩展在审核上架后将由浏览器自动更新。
 
 ### 4. 选择笔记方式
 
@@ -259,3 +264,14 @@ site/         GitHub Pages 宣传页面
 - Cookie 仅在用户主动发起当前页任务时读取，不会持续后台采集。
 - 导出和诊断会隐藏 Cookie、Authorization 和敏感请求参数。
 - 本项目用于整理用户有权访问的视频内容，不用于刷课、自动答题或伪造学习进度。
+
+## 开源与贡献
+
+LearnNote 采用 [Apache License 2.0](LICENSE) 开源。依赖组件和媒体工具的许可信息见 [第三方声明](THIRD_PARTY_NOTICES.md)。
+
+- 提交代码前请阅读 [贡献指南](CONTRIBUTING.md) 和 [行为准则](CODE_OF_CONDUCT.md)。
+- 使用问题、功能建议和脱敏诊断见 [支持说明](SUPPORT.md)。
+- 敏感漏洞请使用 GitHub 的 [私密漏洞报告](https://github.com/hurry060215-tech/learnnote-assistant/security/advisories/new)。
+- 发布变化见 [CHANGELOG.md](CHANGELOG.md)，维护者流程见 [docs/RELEASING.md](docs/RELEASING.md)。
+
+浏览器扩展的商店文案和权限依据位于 [extension/STORE_LISTING.md](extension/STORE_LISTING.md) 与 [extension/PERMISSION_JUSTIFICATION.md](extension/PERMISSION_JUSTIFICATION.md)。

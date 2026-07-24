@@ -93,7 +93,12 @@ class DeploymentContractTests(unittest.TestCase):
 
         self.assertIn("test-release-installer.ps1", workflow)
         self.assertIn("WINDOWS_SIGNING_CERT_BASE64", workflow)
+        self.assertIn("signtool sign /fd SHA256", workflow)
+        self.assertIn("dist/LearnNote/LearnNote.exe", workflow)
         self.assertIn("signtool verify", workflow)
+        self.assertIn("test-upgrade-installer.ps1", workflow)
+        self.assertIn("THIRD_PARTY_NOTICES.md", workflow)
+        self.assertIn("Copy-Item third_party", workflow)
         self.assertIn("LearnNote.exe", smoke)
         self.assertIn("unins000.exe", smoke)
         self.assertIn("user-data-must-survive.txt", smoke)

@@ -66,10 +66,11 @@ For a non-sensitive security hardening request, open a
 with the affected version, Windows/browser version, reproduction steps, and a
 redacted diagnostic report.
 
-For a vulnerability that could expose data or credentials, use the repository
-Security tab's **Report a vulnerability** option if it is available. If private
-vulnerability reporting is unavailable, open a minimal public issue asking the
-maintainer for a private contact channel, without disclosing technical details.
+For a vulnerability that could expose data or credentials, use the
+[private vulnerability report](https://github.com/hurry060215-tech/learnnote-assistant/security/advisories/new).
+If private vulnerability reporting is unavailable, open a minimal public issue
+asking the maintainer for a private contact channel, without disclosing
+technical details.
 
 Reports should include:
 
@@ -82,3 +83,42 @@ Reports should include:
 
 Please allow the maintainer time to investigate and publish a fix before
 disclosing sensitive details.
+
+## Scope
+
+In scope:
+
+- unauthorized access to the localhost API from a web or extension origin;
+- leakage of cookies, authorization headers, API keys, signed URLs, private
+  task data, transcripts, or video frames;
+- unsafe updater, installer, export, archive, or data-directory behavior;
+- a bypass of an explicit LearnNote authorization or redaction control.
+
+Generally out of scope:
+
+- a website refusing or changing its media format;
+- content unavailable because of DRM, permissions, an expired session, or a
+  provider policy;
+- model quality, hallucination, or prompt injection without a security impact;
+- attacks that require an already-compromised operating system or browser
+  profile;
+- social engineering, denial of service, and automated scans without a
+  demonstrated product-specific impact;
+- requests to bypass DRM, paywalls, account permissions, or learning-progress
+  controls.
+
+Research must use content and accounts you are authorized to test. Do not
+access, retain, alter, or disclose another user's data. Avoid privacy violations,
+service degradation, and destructive testing.
+
+## Response and disclosure
+
+The project is maintained on a best-effort basis. The maintainer will try to
+acknowledge a complete report within seven days, then communicate severity,
+remediation, and disclosure timing as the investigation progresses. This is a
+target, not a service-level agreement.
+
+Please give the maintainer a reasonable opportunity to publish a fix before
+public disclosure. Good-faith research that follows this policy will not be
+treated as hostile by the project, but this policy cannot authorize testing
+against third-party websites, providers, accounts, or infrastructure.

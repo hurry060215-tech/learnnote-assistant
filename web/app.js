@@ -813,12 +813,25 @@ function extensionInstallPath(data = lastHealthData) {
   return root ? `${root}\\extension` : "D:\\Projects\\learnnote-assistant\\extension";
 }
 
+function extensionSetupAction(data = lastHealthData) {
+  const connected = Boolean(data?.extension_connected);
+  const current = extensionVersionMatches(data);
+  if (connected && !current) {
+    return {
+      label: "更新扩展",
+      title: `客户端 v${data?.app_version || "-"} · 浏览器扩展 v${data?.extension_version || "-"}`,
+    };
+  }
+  if (connected) return { label: "重新加载", title: "打开扩展管理页和安装目录" };
+  return { label: "安装扩展", title: "打开扩展管理页和安装目录" };
+}
+
 async function setupDesktopExtension(button = els.setupExtensionButton) {
   const api = desktopApi();
   if (button) button.disabled = true;
   try {
     if (api?.setup_browser_extension) {
-      const result = await api.setup_browser_extension();
+      const result = await api.setup_browser_extension(lastHealthData?.extension_version || "");
       const message = result?.message || (result?.ok ? "扩展安装目录已打开" : "无法打开扩展安装目录");
       if (els.nativeExtensionStatus) els.nativeExtensionStatus.textContent = message;
       if (els.onboardingExtensionStatus) els.onboardingExtensionStatus.textContent = result?.ok ? "等待浏览器确认" : "需要处理";
@@ -1003,6 +1016,11 @@ function updateSettingsStorageInfo(data = lastHealthData) {
         ? `已连接${data?.extension_version ? ` · v${data.extension_version}` : ""}`
         : `已连接旧版 v${data?.extension_version || "-"}，请重新加载`
       : "尚未连接，可自动打开安装页完成修复";
+  }
+  if (els.setupExtensionButton) {
+    const action = extensionSetupAction(data);
+    els.setupExtensionButton.textContent = action.label;
+    els.setupExtensionButton.title = action.title;
   }
 }
 

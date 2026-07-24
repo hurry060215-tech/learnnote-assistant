@@ -377,6 +377,9 @@ assert.match(webCode, /function isActiveTask\(task\)[\s\S]*ACTIVE_TASK_STATUSES\
 assert.match(webCode, /function extensionVersionMatches\(data = lastHealthData\)/);
 assert.equal(context.extensionVersionMatches({ app_version: "0.1.35", extension_version: "0.1.35" }), true);
 assert.equal(context.extensionVersionMatches({ app_version: "0.1.35", extension_version: "0.1.34" }), false);
+assert.equal(context.extensionSetupAction({ app_version: "0.1.35", extension_version: "0.1.34", extension_connected: true }).label, "更新扩展");
+assert.equal(context.extensionSetupAction({ app_version: "0.1.35", extension_version: "0.1.35", extension_connected: true }).label, "重新加载");
+assert.equal(context.extensionSetupAction({ app_version: "0.1.35", extension_connected: false }).label, "安装扩展");
 assert.match(webCode, /const activeTasks = tasks\.filter\(isActiveTask\)/);
 assert.match(webCode, /if \(appSettings\.autoOpenNote[\s\S]*showAppView\("notes"\);[\s\S]*selectTask\(latest\.id\)/);
 assert.doesNotMatch(webCode, /task\.evidence_quality\?\.can_claim_video_content === false\) return;/);

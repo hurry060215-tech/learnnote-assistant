@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="LearnNote 安全说明">
+    <title>安全说明 · LearnNote</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="./assets/learnnote-mark-32.png">
+    <link rel="stylesheet" href="./styles.css?v=0.1.39">
+  </head>
+  <body class="legal-page">
+    <header class="legal-header"><a class="brand" href="./"><img class="brand-mark" src="./assets/learnnote-mark-32.png" width="34" height="34" alt=""><strong>LearnNote</strong></a><a href="./">返回官网</a></header>
+    <main class="legal-document">
+      <p class="eyebrow">SECURITY</p>
+      <h1>安全说明</h1>
+      <p class="legal-lead">LearnNote 的默认安全边界是本机桌面客户端。公开服务器部署会改变这一边界，部署者需要自行负责 HTTPS、认证、防火墙、备份和访问日志。</p>
+
+      <h2>已经实现的保护</h2>
+      <ul>
+        <li>桌面后端默认只监听 <code>127.0.0.1</code>。</li>
+        <li>更新器只接受官方 GitHub Release 路径，并验证 SHA-256。</li>
+        <li>保存的模型密钥使用 Windows 凭据管理器。</li>
+        <li>任务快照、诊断和导出会隐藏 Cookie、Authorization、API Key 及敏感请求字段。</li>
+        <li>下载任务结束后会清理临时 Cookie 文件。</li>
+      </ul>
+
+      <h2>边界</h2>
+      <p>同一 Windows 用户下运行的其他恶意软件仍可能访问 localhost 或本地数据目录。LearnNote 不绕过 DRM、账号权限、付费墙或学习进度系统。</p>
+
+      <h2>报告漏洞</h2>
+      <p>敏感问题请使用 GitHub Security 页面的私密漏洞报告，不要在公开 Issue 中提交 Cookie、API Key、私人视频地址、个人数据或未脱敏任务包。</p>
+      <p><a class="button primary" href="https://github.com/hurry060215-tech/learnnote-assistant/security/advisories/new">私密报告安全问题</a></p>
+
+      <p class="legal-footnote">完整政策见 <a href="https://github.com/hurry060215-tech/learnnote-assistant/blob/main/SECURITY.md">SECURITY.md</a>。</p>
+    </main>
+  </body>
+</html>

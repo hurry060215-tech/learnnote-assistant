@@ -1,6 +1,6 @@
 #define MyAppName "LearnNote"
 #ifndef MyAppVersion
-  #define MyAppVersion "0.1.38"
+  #define MyAppVersion "0.1.39"
 #endif
 
 [Setup]
@@ -8,12 +8,19 @@ AppId={{A173D688-10E4-46FB-8B34-596A9A9BD08E}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher=LearnNote
+AppPublisherURL=https://hurry060215-tech.github.io/learnnote-assistant/
+AppSupportURL=https://github.com/hurry060215-tech/learnnote-assistant/issues
+AppUpdatesURL=https://github.com/hurry060215-tech/learnnote-assistant/releases/latest
+VersionInfoCompany=LearnNote contributors
+VersionInfoDescription=LearnNote local-first video learning assistant
+LicenseFile=..\LICENSE
 DefaultDirName=D:\LearnNote
 DefaultGroupName=LearnNote
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=..\dist-installer
 OutputBaseFilename=LearnNote-Setup-x64
+SetupIconFile=..\assets\brand\learnnote.ico
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
