@@ -116,7 +116,7 @@ def validate_preset(preset: dict, seen_keys: set[str]) -> list[str]:
     return errors
 
 
-def live_check(preset: dict, api_key: str, timeout: float) -> dict:
+def live_check(preset: dict, api_key: str, timeout: float) -> None:
     try:
         from openai import OpenAI
     except ImportError as exc:
@@ -141,13 +141,7 @@ def live_check(preset: dict, api_key: str, timeout: float) -> dict:
     )
     text = str(response.choices[0].message.content or "").strip()
     if "LEARNNOTE_PROVIDER_OK" not in text:
-        raise RuntimeError(f"Provider returned an unexpected response: {text[:160]!r}")
-    return {
-        "provider": preset["key"],
-        "model": preset["model"],
-        "status": "pass",
-        "response": "LEARNNOTE_PROVIDER_OK",
-    }
+        raise RuntimeError("Provider returned an unexpected response; content was redacted.")
 
 
 def main() -> int:
@@ -195,7 +189,11 @@ def main() -> int:
                 report["mode"] = "live"
                 report["network_attempted"] = True
                 try:
-                    report["live_result"] = live_check(selected, api_key, max(5.0, args.timeout))
+                    live_check(selected, api_key, max(5.0, args.timeout))
+                    report["live_result"] = {
+                        "provider": args.live_provider,
+                        "status": "pass",
+                    }
                 except Exception:
                     errors.append(
                         f"{args.live_provider}: live check failed; response details were redacted."
