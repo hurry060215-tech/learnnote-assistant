@@ -1,6 +1,6 @@
 fastapi>=0.111
 uvicorn[standard]>=0.30
-python-multipart>=0.0.9
+python-multipart>=0.0.32
 requests>=2.32
 pydantic>=2.7
 eval-type-backport>=0.2.2; python_version < "3.10"
