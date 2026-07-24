@@ -8,7 +8,7 @@ const sent = await harness.api.sendToClient();
 assert.equal(sent, true);
 const preflightMessages = harness.sentMessages.filter(item => item.type === "preflight-current-page");
 const startMessage = harness.sentMessages.find(item => item.type === "start-current-task");
-assert.ok(preflightMessages.length >= 2, "initial and send-time preflight should both run");
+assert.equal(preflightMessages.length, 1, "fresh initialization preflight should be reused during send");
 assert.ok(startMessage, "task handoff should be sent");
 assert.equal(startMessage.defer, true);
 assert.equal(startMessage.targetTabId, 7);
@@ -21,9 +21,11 @@ assert.equal(startMessage.sourceIdentity.page_title, "示例课程");
 assert.match(startMessage.sourceIdentity.active_video.current_src, /video\.m4s/);
 assert.match(startMessage.sourceIdentity.resource_fingerprint, /^[0-9a-f]{8}$/);
 assert.match(startMessage.sourceIdentity.captured_at, /^\d{4}-\d{2}-\d{2}T/);
+assert.match(startMessage.handoffId, /^ln-[0-9a-f]{8}-[a-z0-9]+$/);
 assert.equal(harness.elements.get("#handoffProgress").getAttribute("aria-valuenow"), "100");
 assert.equal(harness.progressBar.style.width, "100%");
-assert.equal(harness.elements.get("#handoffStatus").textContent, "已发送，等待在客户端确认。");
+assert.equal(harness.elements.get("#handoffStatus").textContent, "任务已创建，并已在客户端打开。");
+assert.equal(harness.elements.get("#sendButtonLabel").textContent, "已发送到客户端");
 assert.equal(harness.elements.get("#openTaskButton").hidden, false);
 
 const switched = videoContext({ bvid: "BV9SWITCHED99", title: "另一节课" });
@@ -34,3 +36,32 @@ assert.equal(staleHarness.sentMessages.some(item => item.type === "start-current
 assert.equal(staleHarness.elements.get("#handoffProgress").getAttribute("aria-valuenow"), "0");
 assert.match(staleHarness.elements.get("#handoffStatus").textContent, /页面或播放内容已切换/);
 assert.match(staleHarness.elements.get("#preflightMessage").textContent, /旧预检已清除|旧预检结果/);
+
+const renewed = videoContext({
+  title: "示例课程（播放器标题已更新）",
+  resource: "https://cdn.example.com/video.m4s?token=renewed"
+});
+renewed.resources[1].url = "https://cdn.example.com/audio.m4s?token=renewed";
+const stableHarness = await createSidepanelHarness({ contexts: [page, renewed] });
+assert.equal(await stableHarness.api.sendToClient(), true, "title and signed resource renewal must not be treated as a page switch");
+assert.equal(stableHarness.sentMessages.filter(item => item.type === "start-current-task").length, 1);
+
+const retryHarness = await createSidepanelHarness({
+  contexts: [page, page, page],
+  starts: [new Error("temporary disconnect"), { task_id: "abc123def456", accepted: true, deduplicated: true }]
+});
+assert.equal(await retryHarness.api.sendToClient(), false);
+assert.equal(await retryHarness.api.sendToClient(), true);
+const retryStarts = retryHarness.sentMessages.filter(item => item.type === "start-current-task");
+assert.equal(retryStarts.length, 2);
+assert.equal(retryStarts[0].handoffId, retryStarts[1].handoffId, "retry must reuse the same handoff id");
+
+const doubleClickHarness = await createSidepanelHarness({ contexts: [page, page], startDelayMs: 30 });
+const firstClick = doubleClickHarness.api.sendToClient();
+const secondClick = doubleClickHarness.api.sendToClient();
+assert.deepEqual(await Promise.all([firstClick, secondClick]), [true, false]);
+assert.equal(
+  doubleClickHarness.sentMessages.filter(item => item.type === "start-current-task").length,
+  1,
+  "concurrent clicks must create one handoff request"
+);

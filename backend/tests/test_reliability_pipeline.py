@@ -296,6 +296,9 @@ class DeferredHandoffTests(unittest.TestCase):
     def _cleanup(self, task_id: str) -> None:
         with main_module._deferred_handoffs_lock:
             main_module._deferred_handoffs.pop(task_id, None)
+            for handoff_id, mapped_task_id in list(main_module._handoff_task_ids.items()):
+                if mapped_task_id == task_id:
+                    main_module._handoff_task_ids.pop(handoff_id, None)
         shutil.rmtree(task_dir(task_id), ignore_errors=True)
 
     def test_deferred_handoff_waits_for_start_and_redacts_disk_copy(self) -> None:
@@ -346,6 +349,98 @@ class DeferredHandoffTests(unittest.TestCase):
             self.assertEqual(response.status_code, 410)
             self.assertEqual(response.json()["detail"]["code"], "handoff_expired")
         finally:
+            self._cleanup(task_id)
+
+    def test_retried_handoff_is_idempotent_and_restores_deferred_request(self) -> None:
+        payload = {**self.payload, "handoff_id": "ln-retry-handoff-0001"}
+        with patch("app.main.process_current_page_task") as process:
+            first = self.client.post("/api/tasks/from-current-page?defer=true", json=payload)
+            self.assertEqual(first.status_code, 200, first.text)
+            task_id = first.json()["task_id"]
+            try:
+                self.assertFalse(first.json()["deduplicated"])
+                with main_module._deferred_handoffs_lock:
+                    main_module._deferred_handoffs.pop(task_id, None)
+
+                retried = self.client.post("/api/tasks/from-current-page?defer=true", json=payload)
+                self.assertEqual(retried.status_code, 200, retried.text)
+                self.assertEqual(retried.json()["task_id"], task_id)
+                self.assertTrue(retried.json()["deduplicated"])
+
+                started = self.client.post(f"/api/tasks/{task_id}/start", json={})
+                self.assertEqual(started.status_code, 200, started.text)
+                self.assertFalse(started.json().get("already_started", False))
+                process.assert_called_once()
+
+                repeated_start = self.client.post(f"/api/tasks/{task_id}/start", json={})
+                self.assertEqual(repeated_start.status_code, 200, repeated_start.text)
+                self.assertTrue(repeated_start.json()["already_started"])
+                process.assert_called_once()
+            finally:
+                self._cleanup(task_id)
+
+    def test_handoff_id_cannot_be_reused_for_a_different_source(self) -> None:
+        payload = {**self.payload, "handoff_id": "ln-conflict-handoff-0001"}
+        created = self.client.post("/api/tasks/from-current-page?defer=true", json=payload)
+        self.assertEqual(created.status_code, 200, created.text)
+        task_id = created.json()["task_id"]
+        try:
+            conflict = self.client.post(
+                "/api/tasks/from-current-page?defer=true",
+                json={**payload, "page_url": "https://www.bilibili.com/video/BV9different"},
+            )
+            self.assertEqual(conflict.status_code, 409, conflict.text)
+            self.assertEqual(conflict.json()["detail"]["code"], "handoff_id_conflict")
+        finally:
+            self._cleanup(task_id)
+
+    def test_generic_page_tracking_changes_keep_the_same_handoff(self) -> None:
+        payload = {
+            **self.payload,
+            "handoff_id": "ln-tracking-handoff-0001",
+            "page_url": "https://course.example.com/lesson?utm_source=first",
+        }
+        created = self.client.post("/api/tasks/from-current-page?defer=true", json=payload)
+        self.assertEqual(created.status_code, 200, created.text)
+        task_id = created.json()["task_id"]
+        try:
+            retried = self.client.post(
+                "/api/tasks/from-current-page?defer=true",
+                json={**payload, "page_url": "https://course.example.com/lesson?utm_source=renewed"},
+            )
+            self.assertEqual(retried.status_code, 200, retried.text)
+            self.assertEqual(retried.json()["task_id"], task_id)
+            self.assertTrue(retried.json()["deduplicated"])
+        finally:
+            self._cleanup(task_id)
+
+    def test_desktop_focus_confirms_task_and_hides_callback_errors(self) -> None:
+        created = self.client.post("/api/tasks/from-current-page?defer=true", json=self.payload)
+        self.assertEqual(created.status_code, 200, created.text)
+        task_id = created.json()["task_id"]
+        previous = getattr(main_module.app.state, "desktop_focus", None)
+        calls = []
+        try:
+            main_module.app.state.desktop_focus = lambda body: calls.append(body)
+            focused = self.client.post("/api/desktop/focus", json={"task_id": task_id, "tab": "note"})
+            self.assertEqual(focused.status_code, 200, focused.text)
+            self.assertTrue(focused.json()["focused"])
+            self.assertEqual(focused.json()["task_id"], task_id)
+            self.assertEqual(calls[0]["task_id"], task_id)
+
+            main_module.app.state.desktop_focus = lambda _body: (_ for _ in ()).throw(RuntimeError("private detail"))
+            failed = self.client.post("/api/desktop/focus", json={"task_id": task_id})
+            self.assertEqual(failed.status_code, 200, failed.text)
+            self.assertEqual(failed.json()["code"], "focus_failed")
+            self.assertNotIn("private detail", failed.text)
+        finally:
+            if previous is None:
+                try:
+                    delattr(main_module.app.state, "desktop_focus")
+                except AttributeError:
+                    pass
+            else:
+                main_module.app.state.desktop_focus = previous
             self._cleanup(task_id)
 
     def test_subtitles_do_not_imply_handoff_audio(self) -> None:

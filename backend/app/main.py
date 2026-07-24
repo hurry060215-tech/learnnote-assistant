@@ -14,7 +14,7 @@ import time
 from uuid import uuid4
 from zipfile import ZIP_DEFLATED, ZipFile
 from pathlib import Path
-from urllib.parse import quote, urlsplit
+from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
 
 from fastapi import BackgroundTasks, Body, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -41,6 +41,7 @@ _extension_heartbeat_at = 0.0
 _extension_version = ""
 _extension_protocol_version = 0
 _deferred_handoffs: dict[str, CurrentPageTaskRequest] = {}
+_handoff_task_ids: dict[str, str] = {}
 _deferred_handoffs_lock = threading.RLock()
 # Side Panel heartbeats arrive every 10 seconds. The MV3 background worker also
 # wakes on a 30-second alarm so the desktop can report a loaded extension even
@@ -3473,11 +3474,23 @@ def api_health() -> dict:
 
 @app.post("/api/desktop/focus")
 def desktop_focus(payload: dict | None = Body(default=None)) -> dict:
+    body = payload or {}
+    task_id = str(body.get("task_id") or "").strip()
+    if task_id:
+        if not re.fullmatch(r"[a-f0-9]{12}", task_id):
+            raise HTTPException(status_code=422, detail={"code": "invalid_task_id", "message": "Invalid task id"})
+        try:
+            get_task(task_id)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail={"code": "task_not_found", "message": "Task not found"}) from exc
     callback = getattr(app.state, "desktop_focus", None)
     if not callable(callback):
-        return {"ok": False, "available": False}
-    callback(payload or {})
-    return {"ok": True, "available": True}
+        return {"ok": False, "available": False, "task_id": task_id}
+    try:
+        callback(body)
+    except Exception:
+        return {"ok": False, "available": True, "task_id": task_id, "code": "focus_failed"}
+    return {"ok": True, "available": True, "focused": True, "task_id": task_id}
 
 
 @app.get("/api/preferences")
@@ -3524,6 +3537,55 @@ def extension_heartbeat(payload: dict | None = Body(default=None)) -> dict:
     }
 
 
+def _existing_handoff_task(handoff_id: str) -> TaskRecord | None:
+    if not handoff_id:
+        return None
+    task_id = _handoff_task_ids.get(handoff_id, "")
+    if task_id:
+        try:
+            return get_task(task_id)
+        except FileNotFoundError:
+            _handoff_task_ids.pop(handoff_id, None)
+    for task in list_tasks():
+        if task.handoff_id == handoff_id:
+            _handoff_task_ids[handoff_id] = task.id
+            return task
+    return None
+
+
+def _handoff_page_key(value: str) -> str:
+    try:
+        parsed = urlsplit(value)
+    except ValueError:
+        return value.split("#", 1)[0].strip()
+    keep = {"v", "p", "list", "index", "courseId", "clazzid", "knowledgeId", "chapterId", "objectid"}
+    query = urlencode(sorted((key, item) for key, item in parse_qsl(parsed.query, keep_blank_values=True) if key in keep))
+    path = re.sub(r"/{2,}", "/", parsed.path or "/")
+    if path != "/":
+        path = path.rstrip("/")
+    netloc = (parsed.hostname or "").lower()
+    if parsed.port and not ((parsed.scheme == "https" and parsed.port == 443) or (parsed.scheme == "http" and parsed.port == 80)):
+        netloc = f"{netloc}:{parsed.port}"
+    return urlunsplit((parsed.scheme.lower(), netloc, path, query, ""))
+
+
+def _same_handoff_source(task: TaskRecord, source_identity, source_url: str) -> bool:
+    existing_id = str(task.source_identity.platform_id or "")
+    incoming_id = str(source_identity.platform_id or "")
+    if existing_id and incoming_id:
+        return task.source_identity.platform == source_identity.platform and existing_id == incoming_id
+    return _handoff_page_key(task.page_url) == _handoff_page_key(source_url)
+
+
+def _handoff_response(task: TaskRecord, *, deduplicated: bool) -> dict:
+    return {
+        "accepted": True,
+        "deduplicated": deduplicated,
+        "task_id": task.id,
+        "task": task_payload(task),
+    }
+
+
 @app.post("/api/tasks/from-current-page")
 def create_from_current_page(request: CurrentPageTaskRequest, background_tasks: BackgroundTasks, defer: bool = False) -> dict:
     raw_page_url = request.page_url
@@ -3536,31 +3598,45 @@ def create_from_current_page(request: CurrentPageTaskRequest, background_tasks: 
     request = request.model_copy(update={"page_url": source.url, "title": title})
     source_identity = current_page_source_identity(request)
     source_type = "page_text" if request.mode == "page_text" else "current_page"
-    task = create_task(source_type=source_type, title=title, page_url=source.url, options=request.options, mode=request.mode)
-    task = update_task(task.id, source_identity=source_identity)
-    if request.browser_subtitles:
-        task = update_task(task.id, browser_subtitles=request.browser_subtitles)
-    if defer:
-        highest_score_resource = max(request.resources, key=lambda item: item.score, default=None)
-        handoff_integrity = build_handoff_integrity(request)
-        task = update_task(
-            task.id,
-            awaiting_confirmation=True,
-            status="queued",
-            phase="queued",
-            progress=0,
-            message="Awaiting confirmation in LearnNote",
-            active_video=request.active_video,
-            browser_subtitles=request.browser_subtitles,
-            selected_resource=redacted_resource(highest_score_resource) if highest_score_resource else None,
-            handoff_integrity=handoff_integrity,
-        )
-        write_json(task.id, "deferred_preflight.json", redacted_request_dump(request))
-        with _deferred_handoffs_lock:
+    with _deferred_handoffs_lock:
+        existing = _existing_handoff_task(request.handoff_id)
+        if existing:
+            if not _same_handoff_source(existing, source_identity, source.url) or existing.mode != request.mode:
+                raise HTTPException(
+                    status_code=409,
+                    detail={"code": "handoff_id_conflict", "message": "This handoff id belongs to a different source."},
+                )
+            if defer and existing.awaiting_confirmation:
+                _deferred_handoffs[existing.id] = request.model_copy(deep=True)
+                write_json(existing.id, "deferred_preflight.json", redacted_request_dump(request))
+            return _handoff_response(existing, deduplicated=True)
+
+        task = create_task(source_type=source_type, title=title, page_url=source.url, options=request.options, mode=request.mode)
+        task = update_task(task.id, handoff_id=request.handoff_id, source_identity=source_identity)
+        if request.handoff_id:
+            _handoff_task_ids[request.handoff_id] = task.id
+        if request.browser_subtitles:
+            task = update_task(task.id, browser_subtitles=request.browser_subtitles)
+        if defer:
+            highest_score_resource = max(request.resources, key=lambda item: item.score, default=None)
+            handoff_integrity = build_handoff_integrity(request)
+            task = update_task(
+                task.id,
+                awaiting_confirmation=True,
+                status="queued",
+                phase="queued",
+                progress=0,
+                message="Awaiting confirmation in LearnNote",
+                active_video=request.active_video,
+                browser_subtitles=request.browser_subtitles,
+                selected_resource=redacted_resource(highest_score_resource) if highest_score_resource else None,
+                handoff_integrity=handoff_integrity,
+            )
+            write_json(task.id, "deferred_preflight.json", redacted_request_dump(request))
             _deferred_handoffs[task.id] = request.model_copy(deep=True)
-        return {"task_id": task.id, "task": task_payload(task)}
+            return _handoff_response(task, deduplicated=False)
     background_tasks.add_task(process_current_page_task, task.id, request)
-    return {"task_id": task.id, "task": task_payload(task)}
+    return _handoff_response(task, deduplicated=False)
 
 
 @app.post("/api/tasks/{task_id}/start")
@@ -3573,6 +3649,13 @@ def start_deferred_current_page_task(
         task = get_task(task_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail={"code": "task_not_found", "message": "Task not found"}) from exc
+    if not task.awaiting_confirmation and task.status in {"queued", "running", "success", "failed"}:
+        return {
+            "accepted": True,
+            "already_started": True,
+            "task_id": task.id,
+            "task": task_payload(task),
+        }
     if task.status != "queued" or not task.awaiting_confirmation:
         raise HTTPException(
             status_code=409,
