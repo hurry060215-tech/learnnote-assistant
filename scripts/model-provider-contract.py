@@ -196,8 +196,10 @@ def main() -> int:
                 report["network_attempted"] = True
                 try:
                     report["live_result"] = live_check(selected, api_key, max(5.0, args.timeout))
-                except Exception as exc:
-                    errors.append(f"{args.live_provider}: live check failed: {exc}")
+                except Exception:
+                    errors.append(
+                        f"{args.live_provider}: live check failed; response details were redacted."
+                    )
 
     report["errors"] = errors
     report["status"] = "pass" if not errors else "fail"

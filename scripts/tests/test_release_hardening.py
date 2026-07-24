@@ -26,6 +26,7 @@ class ReleaseHardeningContractTests(unittest.TestCase):
 
     def test_model_provider_offline_contract_executes_without_credentials(self) -> None:
         script = ROOT / "scripts" / "model-provider-contract.py"
+        source = script.read_text(encoding="utf-8")
         result = subprocess.run(
             [sys.executable, str(script)],
             cwd=ROOT,
@@ -40,6 +41,8 @@ class ReleaseHardeningContractTests(unittest.TestCase):
         self.assertEqual(report["mode"], "offline")
         self.assertFalse(report["network_attempted"])
         self.assertGreaterEqual(report["provider_count"], 8)
+        self.assertIn("response details were redacted", source)
+        self.assertNotIn("live check failed: {exc}", source)
 
     def test_long_video_gate_defaults_to_one_hour_without_asr_or_llm(self) -> None:
         source = (ROOT / "scripts" / "long-video-reliability.py").read_text(encoding="utf-8")
