@@ -84,11 +84,18 @@ h1 { margin: 10px 0 6px; font-size: 20px; line-height: 1.38; overflow-wrap: anyw
 .primary-button:not(:disabled):hover { background: #087b77; }
 .secondary-button { margin-top: 10px; border: 1px solid #b9d5d4; color: #0b706d; background: #fff; }
 .handoff-progress { height: 7px; margin-top: 13px; border-radius: 999px; background: #e4eeee; overflow: hidden; }
-.handoff-progress > span { display: block; width: 0; height: 100%; border-radius: inherit; background: #18a298; transition: width 240ms ease; }
+.handoff-progress > span { display: block; width: 0; height: 100%; border-radius: inherit; background: #18a298; transition: width 240ms ease; will-change: width; }
+.handoff-progress[data-state="active"] > span { background: linear-gradient(90deg, #0f8f89 0%, #35b9ad 50%, #0f8f89 100%); background-size: 200% 100%; animation: handoff-flow 1.4s linear infinite; }
+.handoff-progress[data-state="success"] > span { background: #159b81; }
 .handoff-progress[data-state="error"] > span { background: #d45d57; }
 .handoff-row { margin-top: 9px; min-height: 20px; display: flex; justify-content: space-between; gap: 10px; color: #667e84; }
 .handoff-status { margin: 0; font-size: 12px; line-height: 18px; }
 #handoffPercent { font-size: 12px; font-weight: 750; color: #0b706d; }
+
+@keyframes handoff-flow {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
+}
 
 .client-links { overflow: hidden; }
 .client-links button { width: 100%; min-height: 58px; border: 0; border-bottom: 1px solid #e4ecec; background: #fff; padding: 10px 13px; display: grid; grid-template-columns: minmax(0,1fr) auto; grid-template-rows: auto auto; text-align: left; }

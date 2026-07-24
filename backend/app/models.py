@@ -132,6 +132,11 @@ class BrowserSubtitleCue(BaseModel):
 
 
 class CurrentPageTaskRequest(BaseModel):
+    handoff_id: str = Field(
+        default="",
+        max_length=128,
+        pattern=r"^(?:[A-Za-z0-9][A-Za-z0-9._:-]{7,127})?$",
+    )
     mode: CurrentPageTaskMode = "video"
     page_url: str
     title: str = ""
@@ -352,6 +357,7 @@ class DownloadAttempt(BaseModel):
 
 class TaskRecord(BaseModel):
     id: str
+    handoff_id: str = ""
     source_type: Literal["current_page", "local", "page_text"]
     mode: TaskMode = "video"
     title: str

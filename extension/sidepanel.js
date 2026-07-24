@@ -3,6 +3,7 @@ const PROTOCOL_VERSION = 1;
 const HEALTH_TIMEOUT_MS = 2200;
 const REQUEST_TIMEOUT_MS = 20000;
 const PASSIVE_REFRESH_DELAY_MS = 450;
+const PREFLIGHT_TTL_MS = 30000;
 const LOCAL_BACKEND_RE = /^http:\/\/(?:127\.0\.0\.1|localhost)(?::\d{1,5})?\/?$/i;
 const MEDIA_KIND_RE = /^(?:video|media|mp4|hls|dash|manifest|playlist)$/i;
 const AUDIO_KIND_RE = /audio/i;
@@ -26,6 +27,7 @@ const els = {
   estimateValue: document.querySelector("#estimateValue"),
   preflightMessage: document.querySelector("#preflightMessage"),
   sendButton: document.querySelector("#sendButton"),
+  sendButtonLabel: document.querySelector("#sendButtonLabel"),
   handoffProgress: document.querySelector("#handoffProgress"),
   handoffStatus: document.querySelector("#handoffStatus"),
   handoffPercent: document.querySelector("#handoffPercent"),
@@ -39,10 +41,14 @@ let displayedIdentity = null;
 let preflightReport = null;
 let preflightIdentity = null;
 let currentTaskId = "";
-let collecting = false;
 let sending = false;
 let refreshTimer = 0;
 let contextGeneration = 0;
+let collectRequest = null;
+let preflightRequest = null;
+let preflightAt = 0;
+let preflightFingerprint = "";
+let activeHandoff = null;
 
 function withTimeout(promise, timeoutMs, label) {
   let timer = 0;
@@ -76,17 +82,23 @@ function canonicalPageUrl(value = "") {
   }
 }
 
+function hostnameMatches(hostname = "", domain = "") {
+  const host = String(hostname || "").toLowerCase().replace(/\.$/, "");
+  const root = String(domain || "").toLowerCase().replace(/\.$/, "");
+  return host === root || host.endsWith(`.${root}`);
+}
+
 function platformIdentity(urlValue = "", page = {}) {
   const url = String(urlValue || "");
   const bilibili = /(?:bilibili\.com\/video\/|b23\.tv\/)(BV[0-9A-Za-z]+)/i.exec(url);
   if (bilibili) return { platform: "bilibili", platformVideoId: bilibili[1], label: "哔哩哔哩" };
   try {
     const parsed = new URL(url);
-    if (/youtube\.com$/i.test(parsed.hostname) || /youtu\.be$/i.test(parsed.hostname)) {
-      const id = /youtu\.be$/i.test(parsed.hostname) ? parsed.pathname.split("/").filter(Boolean)[0] : parsed.searchParams.get("v");
+    if (hostnameMatches(parsed.hostname, "youtube.com") || hostnameMatches(parsed.hostname, "youtu.be")) {
+      const id = hostnameMatches(parsed.hostname, "youtu.be") ? parsed.pathname.split("/").filter(Boolean)[0] : parsed.searchParams.get("v");
       return { platform: "youtube", platformVideoId: id || "", label: "YouTube" };
     }
-    if (/chaoxing\.com$/i.test(parsed.hostname) || /xuexitong/i.test(parsed.hostname)) {
+    if (hostnameMatches(parsed.hostname, "chaoxing.com") || /xuexitong/i.test(parsed.hostname)) {
       const active = page.active_video || {};
       const id = parsed.searchParams.get("objectid") || parsed.searchParams.get("knowledgeId") || active.objectid || page.objectid || "";
       return { platform: "chaoxing", platformVideoId: String(id), label: "学习通 / 超星" };
@@ -173,8 +185,63 @@ function sourceIdentityKey(identity = {}) {
   ].join("\u001f");
 }
 
+function sourceContinuityKey(identity = {}) {
+  return [
+    identity.tab_id ?? "",
+    identity.canonical_page_url || "",
+    identity.platform || "",
+    identity.platform_video_id || identity.BVID || "",
+    stableMediaUrl(identity.active_video?.current_src || "")
+  ].join("\u001f");
+}
+
 function sameSourceIdentity(left, right) {
-  return Boolean(left && right && sourceIdentityKey(left) === sourceIdentityKey(right));
+  if (!left || !right) return false;
+  const leftTab = Number(left.tab_id);
+  const rightTab = Number(right.tab_id);
+  if (Number.isFinite(leftTab) && Number.isFinite(rightTab) && leftTab !== rightTab) return false;
+  if (left.canonical_page_url && right.canonical_page_url && left.canonical_page_url !== right.canonical_page_url) return false;
+  const leftVideoId = String(left.platform_video_id || left.BVID || "");
+  const rightVideoId = String(right.platform_video_id || right.BVID || "");
+  if (leftVideoId && rightVideoId && leftVideoId !== rightVideoId) return false;
+  const leftSrc = stableMediaUrl(left.active_video?.current_src || "");
+  const rightSrc = stableMediaUrl(right.active_video?.current_src || "");
+  if (!leftVideoId && !rightVideoId && leftSrc && rightSrc && leftSrc !== rightSrc) return false;
+  return Boolean(left.canonical_page_url || right.canonical_page_url || leftVideoId || rightVideoId || leftSrc || rightSrc);
+}
+
+function resetSourceState() {
+  preflightReport = null;
+  preflightIdentity = null;
+  preflightAt = 0;
+  preflightFingerprint = "";
+  preflightRequest = null;
+  activeHandoff = null;
+  currentTaskId = "";
+  els.openTaskButton.hidden = true;
+  els.sendButtonLabel.textContent = "发送到客户端";
+}
+
+function preflightCacheKey(identity = displayedIdentity) {
+  return `${sourceContinuityKey(identity)}\u001f${identity?.resource_fingerprint || ""}`;
+}
+
+function hasFreshPreflight(identity = displayedIdentity) {
+  return Boolean(
+    preflightReport
+    && preflightIdentity
+    && sameSourceIdentity(preflightIdentity, identity)
+    && preflightFingerprint === preflightCacheKey(identity)
+    && Date.now() - preflightAt < PREFLIGHT_TTL_MS
+  );
+}
+
+function handoffId(identity = displayedIdentity) {
+  const sourceKey = sourceContinuityKey(identity);
+  if (activeHandoff?.sourceKey === sourceKey) return activeHandoff.id;
+  const id = `ln-${fnv1a(sourceKey)}-${Date.now().toString(36)}`;
+  activeHandoff = { sourceKey, id };
+  return id;
 }
 
 function mediaCandidates(context = currentContext) {
@@ -258,7 +325,8 @@ function renderContext(message = "") {
 
   const hasPage = Boolean(identity?.canonical_page_url && !/^(?:chrome|edge|about):/i.test(identity.canonical_page_url));
   const hasMediaEvidence = evidence.video === true || candidates.length > 0;
-  els.sendButton.disabled = sending || !clientConnected || !hasPage || !hasMediaEvidence;
+  const alreadySent = Boolean(currentTaskId && activeHandoff?.sourceKey === sourceContinuityKey(identity));
+  els.sendButton.disabled = sending || alreadySent || !clientConnected || !hasPage || !hasMediaEvidence;
   if (message) {
     els.preflightMessage.textContent = message;
   } else if (!hasPage) {
@@ -330,14 +398,15 @@ async function collectContext(force = true, targetTabId = null) {
     renderContext("请在 Chrome 或 Edge 的 LearnNote 扩展中识别当前视频。");
     return null;
   }
-  if (collecting) return currentContext;
-  collecting = true;
+  const requestedTabId = targetTabId ?? currentContext?.tab?.id ?? null;
+  if (collectRequest?.targetTabId === requestedTabId) return collectRequest.promise;
   const generation = ++contextGeneration;
   els.refreshButton.disabled = true;
-  try {
+  const promise = (async () => {
+   try {
     const response = await withTimeout(chrome.runtime.sendMessage({
       type: "get-current-context",
-      targetTabId: targetTabId ?? currentContext?.tab?.id ?? null,
+      targetTabId: requestedTabId,
       useCached: !force
     }), REQUEST_TIMEOUT_MS, "读取当前页面");
     if (generation !== contextGeneration) return currentContext;
@@ -352,10 +421,7 @@ async function collectContext(force = true, targetTabId = null) {
     currentContext = next;
     displayedIdentity = nextIdentity;
     if (changed) {
-      preflightReport = null;
-      preflightIdentity = null;
-      currentTaskId = "";
-      els.openTaskButton.hidden = true;
+      resetSourceState();
     }
     renderContext(changed ? "页面或播放内容已切换，旧预检已清除。请确认后再发送。" : "");
     return next;
@@ -364,16 +430,25 @@ async function collectContext(force = true, targetTabId = null) {
     renderContext(`识别失败：${error?.message || "请刷新页面后重试"}`);
     return null;
   } finally {
-    collecting = false;
-    els.refreshButton.disabled = false;
+    if (generation === contextGeneration) {
+      collectRequest = null;
+      els.refreshButton.disabled = false;
+    }
   }
+  })();
+  collectRequest = { targetTabId: requestedTabId, promise };
+  return promise;
 }
 
 async function runPreflight(identity = displayedIdentity) {
   if (!clientConnected || !currentContext || !identity) return null;
   const candidates = mediaCandidates(currentContext);
   if (!candidates.length && !currentContext.page?.active_video) return null;
-  try {
+  if (hasFreshPreflight(identity)) return preflightReport;
+  const requestKey = preflightCacheKey(identity);
+  if (preflightRequest?.key === requestKey) return preflightRequest.promise;
+  const promise = (async () => {
+   try {
     const response = await withTimeout(chrome.runtime.sendMessage({
       type: "preflight-current-page",
       backendUrl,
@@ -387,6 +462,8 @@ async function runPreflight(identity = displayedIdentity) {
     if (!sameSourceIdentity(identity, displayedIdentity)) return null;
     preflightReport = response?.report || null;
     preflightIdentity = identity;
+    preflightAt = Date.now();
+    preflightFingerprint = requestKey;
     els.preflightMessage.dataset.state = preflightReport?.ready ? "ready" : "info";
     renderContext();
     return preflightReport;
@@ -396,7 +473,12 @@ async function runPreflight(identity = displayedIdentity) {
       renderContext(`已检测到媒体候选，但下载预检暂不可用：${error?.message || "客户端将继续检查"}`);
     }
     return null;
+  } finally {
+    if (preflightRequest?.key === requestKey) preflightRequest = null;
   }
+  })();
+  preflightRequest = { key: requestKey, promise };
+  return promise;
 }
 
 async function refreshAndPreflight({ force = true } = {}) {
@@ -415,6 +497,8 @@ async function sendToClient() {
   if (sending || !displayedIdentity) return false;
   sending = true;
   els.sendButton.disabled = true;
+  els.sendButton.setAttribute("aria-busy", "true");
+  els.sendButtonLabel.textContent = "正在发送...";
   els.openTaskButton.hidden = true;
   const expectedIdentity = displayedIdentity;
   try {
@@ -427,66 +511,47 @@ async function sendToClient() {
     const freshIdentity = buildSourceIdentity(fresh);
     if (!sameSourceIdentity(expectedIdentity, freshIdentity)) {
       displayedIdentity = freshIdentity;
-      preflightReport = null;
-      preflightIdentity = null;
+      resetSourceState();
       renderContext(pageSwitchMessage());
       setProgress(0, pageSwitchMessage(), "error");
       return false;
     }
 
-    setProgress(46, "正在校验媒体完整性...");
-    await runPreflight(freshIdentity);
+    setProgress(48, hasFreshPreflight(freshIdentity) ? "已复用刚刚的媒体预检" : "正在校验媒体完整性...");
+    if (!hasFreshPreflight(freshIdentity)) await runPreflight(freshIdentity);
     if (!sameSourceIdentity(freshIdentity, displayedIdentity)) {
       setProgress(0, pageSwitchMessage(), "error");
       return false;
     }
 
-    setProgress(70, "正在进行发送前最终校验...");
-    const finalResponse = await withTimeout(chrome.runtime.sendMessage({
-      type: "get-current-context",
-      targetTabId: freshIdentity.tab_id,
-      useCached: false
-    }), REQUEST_TIMEOUT_MS, "最终校验");
-    if (finalResponse?.error) throw new Error(finalResponse.error);
-    const finalContext = {
-      tab: finalResponse?.tab || {},
-      page: finalResponse?.page || {},
-      resources: Array.isArray(finalResponse?.resources) ? finalResponse.resources : []
-    };
-    const finalIdentity = buildSourceIdentity(finalContext);
-    if (!sameSourceIdentity(freshIdentity, finalIdentity)) {
-      currentContext = finalContext;
-      displayedIdentity = finalIdentity;
-      preflightReport = null;
-      preflightIdentity = null;
-      renderContext(pageSwitchMessage());
-      setProgress(0, pageSwitchMessage(), "error");
-      return false;
-    }
-
-    setProgress(88, "正在发送视频来源到客户端...");
+    setProgress(76, "正在发送视频来源到客户端...");
     const response = await withTimeout(chrome.runtime.sendMessage({
       type: "start-current-task",
       backendUrl,
-      targetTabId: finalIdentity.tab_id,
-      page: finalContext.page,
-      resources: mediaCandidates(finalContext),
-      pagePreflightReport: sameSourceIdentity(preflightIdentity, finalIdentity) ? preflightReport : null,
-      sourceIdentity: finalIdentity,
+      targetTabId: freshIdentity.tab_id,
+      page: fresh.page,
+      resources: mediaCandidates(fresh),
+      pagePreflightReport: sameSourceIdentity(preflightIdentity, freshIdentity) ? preflightReport : null,
+      sourceIdentity: freshIdentity,
+      handoffId: handoffId(freshIdentity),
       defer: true,
       mode: "video"
     }), REQUEST_TIMEOUT_MS, "发送到客户端");
     if (response?.error) throw new Error(response.error);
     currentTaskId = String(response?.task_id || "");
-    setProgress(100, "已发送，等待在客户端确认。", "success");
+    if (!currentTaskId) throw new Error("客户端未确认任务创建，请重试");
+    setProgress(92, response?.deduplicated ? "任务已存在，正在打开客户端..." : "任务已创建，正在打开客户端...");
     els.openTaskButton.hidden = !currentTaskId;
-    if (currentTaskId) await openClient("task", currentTaskId, "note");
+    const opened = await openClient("task", currentTaskId, "note");
+    setProgress(100, opened ? "任务已创建，并已在客户端打开。" : "任务已创建；点击下方按钮打开。", "success");
     return true;
   } catch (error) {
     setProgress(Number(els.handoffProgress.getAttribute("aria-valuenow") || 0), error?.message || "发送失败，请重试", "error");
     return false;
   } finally {
     sending = false;
+    els.sendButton.setAttribute("aria-busy", "false");
+    els.sendButtonLabel.textContent = currentTaskId ? "已发送到客户端" : "重试发送";
     const preservedMessage = els.preflightMessage.textContent;
     renderContext(preservedMessage);
   }
@@ -575,7 +640,10 @@ globalThis.__learnnoteSidepanel = {
   resourceFingerprint,
   buildSourceIdentity,
   sourceIdentityKey,
+  sourceContinuityKey,
   sameSourceIdentity,
+  hasFreshPreflight,
+  handoffId,
   integrityEvidence,
   collectContext,
   runPreflight,

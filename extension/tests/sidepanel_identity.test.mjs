@@ -26,6 +26,8 @@ assert.equal(harness.api.resourceFingerprint(first.page, first.resources), harne
 
 const switched = videoContext({ bvid: "BV9SWITCHED99", title: "另一节课" });
 assert.equal(harness.api.sameSourceIdentity(identity, harness.api.buildSourceIdentity(switched)), false);
+const titleUpdated = videoContext({ title: "示例课程 - 播放中" });
+assert.equal(harness.api.sameSourceIdentity(identity, harness.api.buildSourceIdentity(titleUpdated)), true);
 assert.equal(harness.integrityItems.get("video").strong.textContent, "已检测");
 assert.equal(harness.integrityItems.get("audio").strong.textContent, "已检测");
 assert.equal(harness.integrityItems.get("subtitle").strong.textContent, "已检测");

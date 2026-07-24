@@ -137,6 +137,27 @@ async function backendJsonResponse(res, fallback) {
   return payload;
 }
 
+async function postJsonWithRetry(url, body, fallback, attempts = 2) {
+  let lastError = null;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      if (response.ok !== false || response.status < 500 || attempt === attempts - 1) {
+        return await backendJsonResponse(response, fallback);
+      }
+    } catch (error) {
+      lastError = error;
+      if (attempt === attempts - 1) break;
+    }
+    await new Promise(resolve => setTimeout(resolve, 250 * (attempt + 1)));
+  }
+  return { ok: false, error: lastError?.message || fallback };
+}
+
 function mediaKindFromMime(mime = "") {
   const type = String(mime || "").toLowerCase();
   if (type.includes("mpegurl") || type.includes("application/x-mpegurl")) return "hls";
@@ -1189,17 +1210,23 @@ function canonicalSourcePageUrl(value = "") {
   }
 }
 
+function sourceHostnameMatches(hostname = "", domain = "") {
+  const host = String(hostname || "").toLowerCase().replace(/\.$/, "");
+  const root = String(domain || "").toLowerCase().replace(/\.$/, "");
+  return host === root || host.endsWith(`.${root}`);
+}
+
 function sourcePlatformIdentity(urlValue = "", page = {}) {
   const url = String(urlValue || "");
   const bilibili = /(?:bilibili\.com\/video\/|b23\.tv\/)(BV[0-9A-Za-z]+)/i.exec(url);
   if (bilibili) return { platform: "bilibili", platformVideoId: bilibili[1] };
   try {
     const parsed = new URL(url);
-    if (/youtube\.com$/i.test(parsed.hostname) || /youtu\.be$/i.test(parsed.hostname)) {
-      const id = /youtu\.be$/i.test(parsed.hostname) ? parsed.pathname.split("/").filter(Boolean)[0] : parsed.searchParams.get("v");
+    if (sourceHostnameMatches(parsed.hostname, "youtube.com") || sourceHostnameMatches(parsed.hostname, "youtu.be")) {
+      const id = sourceHostnameMatches(parsed.hostname, "youtu.be") ? parsed.pathname.split("/").filter(Boolean)[0] : parsed.searchParams.get("v");
       return { platform: "youtube", platformVideoId: id || "" };
     }
-    if (/chaoxing\.com$/i.test(parsed.hostname) || /xuexitong/i.test(parsed.hostname)) {
+    if (sourceHostnameMatches(parsed.hostname, "chaoxing.com") || /xuexitong/i.test(parsed.hostname)) {
       const active = page.active_video || {};
       const id = parsed.searchParams.get("objectid") || parsed.searchParams.get("knowledgeId") || active.objectid || page.objectid || "";
       return { platform: "chaoxing", platformVideoId: String(id) };
@@ -1283,7 +1310,20 @@ function sourceIdentityKey(identity = {}) {
 }
 
 function sourceIdentityMatches(expected, actual) {
-  return Boolean(expected && actual && sourceIdentityKey(expected) === sourceIdentityKey(actual));
+  if (!expected || !actual) return false;
+  const expectedTab = Number(expected.tab_id);
+  const actualTab = Number(actual.tab_id);
+  if (Number.isFinite(expectedTab) && Number.isFinite(actualTab) && expectedTab !== actualTab) return false;
+  const expectedUrl = String(expected.canonical_page_url || "");
+  const actualUrl = String(actual.canonical_page_url || "");
+  if (expectedUrl && actualUrl && expectedUrl !== actualUrl) return false;
+  const expectedVideoId = String(expected.platform_video_id || expected.BVID || "");
+  const actualVideoId = String(actual.platform_video_id || actual.BVID || "");
+  if (expectedVideoId && actualVideoId && expectedVideoId !== actualVideoId) return false;
+  const expectedSrc = stableSourceMediaUrl(expected.active_video?.current_src || "");
+  const actualSrc = stableSourceMediaUrl(actual.active_video?.current_src || "");
+  if (!expectedVideoId && !actualVideoId && expectedSrc && actualSrc && expectedSrc !== actualSrc) return false;
+  return Boolean(expectedUrl || actualUrl || expectedVideoId || actualVideoId || expectedSrc || actualSrc);
 }
 
 function normalizePageForFrame(page = {}, frameId = 0, tab = {}) {
@@ -2316,10 +2356,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const cookies = await cookiesForUrls(cookieUrlsForContext(page, tab, resources), partitionKeys);
       const backendUrl = message.backendUrl || "http://127.0.0.1:8765";
       const taskEndpoint = `${backendUrl}/api/tasks/from-current-page${message.defer === true ? "?defer=true" : ""}`;
-      const res = await fetch(taskEndpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const payload = await postJsonWithRetry(taskEndpoint, {
+          handoff_id: String(message.handoffId || message.handoff_id || ""),
           mode: message.mode || "video",
           page_url: page.page_url || tab.url,
           title: bestPageTitle(page.title, tab.title),
@@ -2333,9 +2371,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           resources,
           cookies,
           options: message.options || {}
-        })
-      });
-      sendResponse(await backendJsonResponse(res, "创建当前页任务失败。"));
+        }, "创建当前页任务失败。");
+      if (!payload?.error && !payload?.task_id) {
+        sendResponse({ ok: false, error: "客户端未确认任务创建，请重试。", code: "task_creation_unconfirmed" });
+        return;
+      }
+      sendResponse(payload);
       return;
     }
 

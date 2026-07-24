@@ -36,11 +36,11 @@ function element() {
   };
 }
 
-export async function createSidepanelHarness({ contexts = [], preflight = null, start = null, health = null } = {}) {
+export async function createSidepanelHarness({ contexts = [], preflight = null, start = null, starts = [], startDelayMs = 0, health = null, focus = null } = {}) {
   const selectors = [
     "#connectionCard", "#connectionTitle", "#connectionDetail", "#openClientButton", "#openClientBrand",
     "#refreshButton", "#platformLabel", "#playingBadge", "#videoTitle", "#videoMeta", "#integrityGrid",
-    "#candidateCount", "#durationValue", "#estimateValue", "#preflightMessage", "#sendButton",
+    "#candidateCount", "#durationValue", "#estimateValue", "#preflightMessage", "#sendButton", "#sendButtonLabel",
     "#handoffProgress", "#handoffStatus", "#handoffPercent", "#openTaskButton"
   ];
   const elements = new Map(selectors.map(selector => [selector, element()]));
@@ -64,6 +64,7 @@ export async function createSidepanelHarness({ contexts = [], preflight = null, 
   const sentMessages = [];
   const openedTabs = [];
   let contextIndex = 0;
+  let startIndex = 0;
   let runtimeListener = null;
   const fetchCalls = [];
   const documentStub = {
@@ -87,7 +88,7 @@ export async function createSidepanelHarness({ contexts = [], preflight = null, 
         return { ok: true, json: async () => health || ({ app_version: "0.1.40" }) };
       }
       if (String(url).endsWith("/api/desktop/focus")) {
-        return { ok: true, json: async () => ({ ok: true, available: true }) };
+        return { ok: true, json: async () => focus || ({ ok: true, available: true, focused: true }) };
       }
       throw new Error(`Unexpected fetch: ${url}`);
     },
@@ -107,7 +108,12 @@ export async function createSidepanelHarness({ contexts = [], preflight = null, 
             return structuredClone(preflight || { report: { ok: true, ready: true, message: "预检通过" } });
           }
           if (message.type === "start-current-task") {
-            return structuredClone(start || { task_id: "abc123def456" });
+            if (startDelayMs) await new Promise(resolve => setTimeout(resolve, startDelayMs));
+            const value = starts.length
+              ? starts[Math.min(startIndex++, starts.length - 1)]
+              : (start || { task_id: "abc123def456", accepted: true, task: { awaiting_confirmation: true } });
+            if (value instanceof Error) throw value;
+            return structuredClone(value);
           }
           throw new Error(`Unexpected message: ${message.type}`);
         }
