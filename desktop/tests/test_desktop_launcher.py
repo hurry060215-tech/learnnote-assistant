@@ -158,9 +158,12 @@ class DesktopLauncherTests(unittest.TestCase):
                 patch.object(desktop.subprocess, "Popen") as popen,
                 patch.object(desktop.os, "startfile", create=True) as startfile,
             ):
-                result = api.setup_browser_extension()
+                result = api.setup_browser_extension("9.8.6")
             self.assertTrue(result["ok"])
             self.assertEqual("9.8.7", result["version"])
+            self.assertEqual("9.8.6", result["loaded_version"])
+            self.assertTrue(result["requires_reload"])
+            self.assertIn("重新加载", result["message"])
             popen.assert_called_once()
             self.assertEqual([str(browser), "edge://extensions"], popen.call_args.args[0])
             startfile.assert_called_once_with(extension.resolve())

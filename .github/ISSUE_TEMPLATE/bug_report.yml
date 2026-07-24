@@ -1,0 +1,93 @@
+name: Bug report
+description: Report a reproducible LearnNote client, extension, processing, or export problem.
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a problem. Remove API keys, cookies, authorization headers, signed media URLs, private course information, and personal data before submitting.
+
+        For a possible security or privacy vulnerability, use the private process in [SECURITY.md](https://github.com/hurry060215-tech/learnnote-assistant/blob/main/SECURITY.md) instead of this form.
+  - type: input
+    id: learnnote_version
+    attributes:
+      label: LearnNote version
+      description: Find this in Settings or the release filename.
+      placeholder: "e.g. 0.1.39"
+    validations:
+      required: true
+  - type: input
+    id: extension_version
+    attributes:
+      label: Browser extension version
+      description: Enter "not involved" when the issue does not use the extension.
+      placeholder: "e.g. 0.1.39 or not involved"
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      options:
+        - Desktop client
+        - Browser extension connection
+        - Current-page detection or download
+        - Local video upload
+        - Transcription or subtitles
+        - Visual slicing or timeline
+        - Note generation or AI question
+        - Export
+        - Settings, update, or installation
+        - Docker or self-hosted deployment
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Include Windows, Chrome/Edge, or Docker versions relevant to the problem.
+      placeholder: "Windows 11 24H2, Edge 138"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: Use a public test page or redacted description. Do not upload media you cannot redistribute.
+      placeholder: |
+        1. Start LearnNote.
+        2. Open ...
+        3. Click ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed behavior
+      description: Include the task phase and structured error code if shown.
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Redacted diagnostics
+      description: Paste only redacted logs or attach a redacted diagnostic report.
+      render: text
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety checklist
+      options:
+        - label: I reproduced this on the latest release or current main branch.
+          required: true
+        - label: I removed secrets, cookies, authorization headers, signed URLs, personal data, and private course information.
+          required: true
+        - label: I am authorized to share every attached file, screenshot, URL, and media sample.
+          required: true

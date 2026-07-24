@@ -1,0 +1,77 @@
+name: Media or site compatibility
+description: Report a page or media source that LearnNote cannot detect or process.
+title: "[Compatibility] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        LearnNote does not record tabs, bypass DRM or access controls, grant download rights, complete lessons, or fabricate progress. Reports requesting those behaviors will be closed.
+
+        Prefer a public test page. Do not post authenticated URLs, cookies, request headers, paid course files, or private account data.
+  - type: input
+    id: versions
+    attributes:
+      label: LearnNote and extension versions
+      placeholder: "Client 0.1.38, extension 0.1.38"
+    validations:
+      required: true
+  - type: input
+    id: site
+    attributes:
+      label: Site or source type
+      description: A domain is enough when the exact page is private.
+      placeholder: "example.edu, direct MP4, HLS, DASH, blob/MSE"
+    validations:
+      required: true
+  - type: dropdown
+    id: access
+    attributes:
+      label: Access type
+      options:
+        - Public page
+        - Free account login
+        - Paid or institutional account
+        - Local file owned or authorized by me
+        - Other authorized source
+    validations:
+      required: true
+  - type: dropdown
+    id: stage
+    attributes:
+      label: Failure stage
+      options:
+        - Extension cannot connect to the client
+        - No current video detected
+        - Preflight rejects or changes source
+        - Task is not sent to the client
+        - Download fails
+        - Download succeeds but wrong media is used
+        - Transcription or note is wrong
+        - Unsure
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Redacted detection evidence
+      description: Describe resource type, task error code, and whether playback exposed MP4, HLS, DASH, blob/MSE, iframe, or EME/DRM signals. Do not paste URLs with query tokens.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: Explain what was playing and when detection was run.
+    validations:
+      required: true
+  - type: checkboxes
+    id: boundaries
+    attributes:
+      label: Authorization and privacy
+      options:
+        - label: I am authorized to access and process the reported content.
+          required: true
+        - label: This request does not ask LearnNote to bypass DRM, permissions, a paywall, or learning-progress controls.
+          required: true
+        - label: I removed cookies, credentials, signed URLs, personal data, and unredacted private course information.
+          required: true

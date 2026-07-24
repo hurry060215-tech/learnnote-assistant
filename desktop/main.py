@@ -88,7 +88,7 @@ class DesktopApi:
         os.startfile(self.data_dir)  # type: ignore[attr-defined]
         return {"ok": True}
 
-    def setup_browser_extension(self) -> dict:
+    def setup_browser_extension(self, loaded_version: str = "") -> dict:
         extension_dir = (self.app_root / "extension").resolve()
         manifest_path = extension_dir / "manifest.json"
         if not manifest_path.is_file():
@@ -113,12 +113,24 @@ class DesktopApi:
         )
         os.startfile(extension_dir)  # type: ignore[attr-defined]
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        installed_version = str(manifest.get("version") or "").strip()
+        loaded_version = str(loaded_version or "").strip()
+        requires_reload = bool(loaded_version and installed_version and loaded_version != installed_version)
+        message = (
+            f"扩展管理页已打开。LearnNote 扩展文件已更新到 v{installed_version}，"
+            "请在扩展卡片上点击“重新加载”，然后刷新视频页面。"
+            if requires_reload
+            else "扩展页和安装目录已打开。首次使用请开启开发者模式，点击“加载已解压的扩展程序”，选择 extension 文件夹；已加载过则点击“重新加载”。"
+        )
         return {
             "ok": True,
             "browser": browser_name,
             "path": str(extension_dir),
-            "version": str(manifest.get("version") or ""),
-            "message": "扩展页和安装目录已打开。开启开发者模式，点击“加载已解压的扩展程序”，选择刚打开的 extension 文件夹。",
+            "version": installed_version,
+            "installed_version": installed_version,
+            "loaded_version": loaded_version,
+            "requires_reload": requires_reload,
+            "message": message,
         }
 
     def choose_data_directory(self, migrate: bool = True) -> dict:

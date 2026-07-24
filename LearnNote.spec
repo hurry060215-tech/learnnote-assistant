@@ -53,6 +53,7 @@ exe = EXE(
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
+    icon='assets\\brand\\learnnote.ico',
     codesign_identity=None,
     entitlements_file=None,
     version='build\\learnnote-version.txt',

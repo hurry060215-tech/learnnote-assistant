@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="LearnNote 隐私说明">
+    <title>隐私说明 · LearnNote</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="./assets/learnnote-mark-32.png">
+    <link rel="stylesheet" href="./styles.css?v=0.1.39">
+  </head>
+  <body class="legal-page">
+    <header class="legal-header"><a class="brand" href="./"><img class="brand-mark" src="./assets/learnnote-mark-32.png" width="34" height="34" alt=""><strong>LearnNote</strong></a><a href="./">返回官网</a></header>
+    <main class="legal-document">
+      <p class="eyebrow">PRIVACY</p>
+      <h1>隐私说明</h1>
+      <p class="legal-lead">LearnNote 是本地优先的视频学习助手。普通桌面工作流不需要 LearnNote 账号，也不会把任务上传到 LearnNote 运营的云服务。</p>
+
+      <h2>本地保存</h2>
+      <p>视频、字幕、音频、抽帧、笔记、模型缓存、任务记录和导出文件保存在用户选择的数据目录。Windows 客户端默认只在 <code>127.0.0.1</code> 启动本地服务。</p>
+
+      <h2>浏览器扩展</h2>
+      <p>扩展会观察当前页面的视频元素、iframe、字幕和媒体网络请求，用于识别用户正在播放的视频。只有在用户打开或重新执行预检、选择候选资源或点击发送时，扩展才会把页面证据及所需登录 Cookie 交给本机 LearnNote 服务。</p>
+      <p>候选缓存最多保存 120 项、最长 30 分钟，不保存 Cookie 或 Authorization 值。页面切换、标签页关闭或检测上下文重置后会清理。</p>
+
+      <h2>外部服务</h2>
+      <p>下载视频时会访问相应网页、媒体主机和 CDN。使用远程转写、文本模型或视觉模型时，所需音频、转写片段、问题或画面网格会发送给用户主动配置的提供商。本地 faster-whisper 转写不会向模型 API 上传音频。</p>
+
+      <h2>API Key</h2>
+      <p>安装版客户端可把 API Key 保存到 Windows 凭据管理器。LearnNote 不会故意把密钥写入任务 JSON、诊断或导出资料。</p>
+
+      <h2>遥测与广告</h2>
+      <p>当前开源版本不包含广告、行为跟踪、产品分析或自动崩溃上报。</p>
+
+      <h2>删除与分享</h2>
+      <p>用户可以在客户端删除任务或清理数据目录。诊断与导出会隐藏已知敏感字段，但在公开分享前仍应检查标题、页面域名、字幕、截图和时间信息。</p>
+
+      <p class="legal-footnote">完整、可审计的英文政策见 GitHub 仓库中的 <a href="https://github.com/hurry060215-tech/learnnote-assistant/blob/main/PRIVACY.md">PRIVACY.md</a>。</p>
+    </main>
+  </body>
+</html>

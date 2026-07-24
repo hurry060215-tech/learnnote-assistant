@@ -21,11 +21,20 @@ class ReleaseTreeAuditTests(unittest.TestCase):
         extension.mkdir()
         for name in MODULE.REQUIRED_EXTENSION_FILES:
             (extension / name).write_text(name, encoding="utf-8")
+        icons = extension / "icons"
+        icons.mkdir()
+        for name in MODULE.REQUIRED_EXTENSION_ICONS:
+            (icons / name).write_bytes(b"png")
+
+    def populate_legal_files(self, root: Path) -> None:
+        for name in MODULE.REQUIRED_ROOT_FILES:
+            (root / name).write_text(name, encoding="utf-8")
 
     def test_clean_runtime_tree_passes(self):
         with tempfile.TemporaryDirectory(dir=ROOT / "data") as temp_dir:
             root = Path(temp_dir)
             self.populate_extension(root)
+            self.populate_legal_files(root)
             (root / "LearnNote.exe").write_bytes(b"exe")
             self.assertTrue(MODULE.audit_release_tree(root)["passed"])
 
@@ -33,6 +42,7 @@ class ReleaseTreeAuditTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=ROOT / "data") as temp_dir:
             root = Path(temp_dir)
             self.populate_extension(root)
+            self.populate_legal_files(root)
             tests = root / "_internal" / "backend" / "tests"
             tests.mkdir(parents=True)
             (tests / "test_api.py").write_text("", encoding="utf-8")

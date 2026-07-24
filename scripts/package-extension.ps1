@@ -21,6 +21,9 @@ $files = @(
   "sidepanel.js",
   "INSTALL.txt"
 )
+$directories = @(
+  "icons"
+)
 
 $manifestPath = Join-Path $extensionDir "manifest.json"
 $manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -35,6 +38,21 @@ $packageFiles = foreach ($name in $files) {
   }
   $path
 }
+$packageDirectories = foreach ($name in $directories) {
+  $path = Join-Path $extensionDir $name
+  if (-not (Test-Path -LiteralPath $path -PathType Container)) {
+    throw "Missing extension package directory: $path"
+  }
+  $path
+}
+
+$requiredIconSizes = @(16, 32, 48, 128)
+foreach ($size in $requiredIconSizes) {
+  $iconPath = Join-Path $extensionDir "icons\icon$size.png"
+  if (-not (Test-Path -LiteralPath $iconPath -PathType Leaf)) {
+    throw "Missing extension icon: $iconPath"
+  }
+}
 
 $outputDir = Split-Path -Parent $OutputPath
 New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
@@ -42,7 +60,7 @@ if (Test-Path -LiteralPath $OutputPath) {
   Remove-Item -LiteralPath $OutputPath -Force
 }
 
-Compress-Archive -LiteralPath $packageFiles -DestinationPath $OutputPath -CompressionLevel Optimal
+Compress-Archive -LiteralPath ($packageFiles + $packageDirectories) -DestinationPath $OutputPath -CompressionLevel Optimal
 $hash = (Get-FileHash -LiteralPath $OutputPath -Algorithm SHA256).Hash.ToLowerInvariant()
 
 [pscustomobject]@{
