@@ -1,4 +1,4 @@
-/* LearnNote 0.1.40 product shell: source-first creation, evidence-first reading. */
+/* LearnNote 0.1.41 product shell: source-first creation, evidence-first reading. */
 :root {
   --mature-ink: #14222b;
   --mature-muted: #66747d;
@@ -659,6 +659,14 @@ body[data-app-view="notes"] .task-controls {
 }
 
 @media (max-width: 900px) {
+  body[data-app-view="notes"] .queue-panel {
+    display: none !important;
+  }
+  body[data-app-view="notes"] .result-panel {
+    grid-column: 1;
+    width: 100%;
+    min-width: 0;
+  }
   .settings-menu {
     flex-direction: row;
     width: 100%;
