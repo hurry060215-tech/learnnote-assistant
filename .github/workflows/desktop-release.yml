@@ -131,7 +131,7 @@ jobs:
             "$hash  $asset"
           }
           $lines | Set-Content -LiteralPath SHA256SUMS.txt -Encoding ascii
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: LearnNote-release-assets
           path: |
