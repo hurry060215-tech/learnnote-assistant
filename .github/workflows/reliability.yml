@@ -24,20 +24,23 @@ jobs:
       - name: Release hardening contracts
         run: python -m unittest discover scripts/tests -p "test_release_hardening.py"
       - name: Offline model-provider contract
-        run: python scripts/model-provider-contract.py --json-output "${{ runner.temp }}/model-provider-contract.json"
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force build/reliability | Out-Null
+          python scripts/model-provider-contract.py --json-output build/reliability/model-provider-contract.json
       - name: Synthetic 60-minute media and frame gate
         run: >
           python scripts/long-video-reliability.py
-          --output-dir "D:/LearnNoteReliability/long-video"
+          --output-dir "build/reliability/long-video"
           --keep-artifacts
       - name: Upload offline reliability evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: offline-reliability-${{ github.run_id }}
           path: |
-            ${{ runner.temp }}/model-provider-contract.json
-            D:/LearnNoteReliability/long-video/report.json
+            build/reliability/model-provider-contract.json
+            build/reliability/long-video/report.json
           if-no-files-found: warn
           retention-days: 14
 
@@ -65,7 +68,7 @@ jobs:
             -Browser edge
       - name: Upload redacted public audit
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: public-sample-audit-${{ github.run_id }}
           path: data/test-runs/site-audits/
