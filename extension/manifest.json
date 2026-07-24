@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "minimum_chrome_version": "116",
   "name": "LearnNote 当前视频助手",
-  "version": "0.1.39",
+  "version": "0.1.40",
   "description": "识别当前正在播放的视频，并安全交接到本机 LearnNote 客户端。",
   "homepage_url": "https://hurry060215-tech.github.io/learnnote-assistant/",
   "permissions": [
