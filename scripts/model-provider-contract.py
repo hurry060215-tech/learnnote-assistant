@@ -144,6 +144,17 @@ def live_check(preset: dict, api_key: str, timeout: float) -> None:
         raise RuntimeError("Provider returned an unexpected response; content was redacted.")
 
 
+def run_live_check(preset: dict, key_env: str, timeout: float) -> str:
+    api_key = os.getenv(key_env) or os.getenv("LEARNNOTE_LLM_API_KEY", "")
+    if not api_key:
+        return "missing_key"
+    try:
+        live_check(preset, api_key, timeout)
+    except Exception:
+        return "failed"
+    return "passed"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Validate LearnNote model-provider presets offline; network calls require explicit --live-provider."
@@ -180,24 +191,22 @@ def main() -> int:
         else:
             default_env = f"LEARNNOTE_{args.live_provider.upper().replace('-', '_')}_API_KEY"
             key_env = args.api_key_env or default_env
-            api_key = os.getenv(key_env) or os.getenv("LEARNNOTE_LLM_API_KEY", "")
-            if not api_key:
+            outcome = run_live_check(selected, key_env, max(5.0, args.timeout))
+            if outcome == "missing_key":
                 errors.append(
                     f"Live provider key is missing; set {key_env} or LEARNNOTE_LLM_API_KEY."
+                )
+            elif outcome == "failed":
+                errors.append(
+                    f"{args.live_provider}: live check failed; response details were redacted."
                 )
             else:
                 report["mode"] = "live"
                 report["network_attempted"] = True
-                try:
-                    live_check(selected, api_key, max(5.0, args.timeout))
-                    report["live_result"] = {
-                        "provider": args.live_provider,
-                        "status": "pass",
-                    }
-                except Exception:
-                    errors.append(
-                        f"{args.live_provider}: live check failed; response details were redacted."
-                    )
+                report["live_result"] = {
+                    "provider": args.live_provider,
+                    "status": "pass",
+                }
 
     report["errors"] = errors
     report["status"] = "pass" if not errors else "fail"
