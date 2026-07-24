@@ -45,6 +45,7 @@ class ReleaseHardeningContractTests(unittest.TestCase):
         self.assertIn("content was redacted", source)
         self.assertNotIn("live check failed: {exc}", source)
         self.assertNotIn("unexpected response: {text", source)
+        self.assertNotIn("set {key_env}", source)
 
     def test_long_video_gate_defaults_to_one_hour_without_asr_or_llm(self) -> None:
         source = (ROOT / "scripts" / "long-video-reliability.py").read_text(encoding="utf-8")

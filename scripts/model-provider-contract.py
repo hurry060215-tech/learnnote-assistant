@@ -194,7 +194,8 @@ def main() -> int:
             outcome = run_live_check(selected, key_env, max(5.0, args.timeout))
             if outcome == "missing_key":
                 errors.append(
-                    f"Live provider key is missing; set {key_env} or LEARNNOTE_LLM_API_KEY."
+                    "Live provider key is missing; set the provider-specific environment "
+                    "variable or LEARNNOTE_LLM_API_KEY."
                 )
             elif outcome == "failed":
                 errors.append(
