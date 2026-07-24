@@ -13,7 +13,7 @@ import threading
 import time
 import webbrowser
 from pathlib import Path
-from urllib.parse import quote, unquote, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 
 import requests
 import uvicorn
@@ -579,6 +579,25 @@ def webview_storage_path(data_dir: Path) -> Path:
     return path
 
 
+def desktop_focus_target(backend_url: str, task_id: str, tab: str) -> str:
+    if not re.fullmatch(r"[a-f0-9]{12}", task_id):
+        return ""
+    safe_tab = tab if tab in {"note", "slices", "qa", "diagnostics", "transcript", "frames"} else "note"
+    return f"{backend_url}/?task={quote(task_id)}&tab={quote(safe_tab)}"
+
+
+def desktop_route_matches(current_url: str, target_url: str) -> bool:
+    if not current_url or not target_url:
+        return False
+    current = urlparse(current_url)
+    target = urlparse(target_url)
+    if (current.scheme, current.netloc, current.path) != (target.scheme, target.netloc, target.path):
+        return False
+    current_query = parse_qs(current.query)
+    target_query = parse_qs(target.query)
+    return current_query.get("task") == target_query.get("task") and current_query.get("tab") == target_query.get("tab")
+
+
 def run() -> int:
     parser = argparse.ArgumentParser(description="Launch the LearnNote Windows desktop client.")
     parser.add_argument("--port", type=int, default=8765)
@@ -631,9 +650,14 @@ def run() -> int:
             body = payload or {}
             task_id = str(body.get("task_id") or "")
             tab = str(body.get("tab") or "note")
-            if re.fullmatch(r"[a-f0-9]{12}", task_id):
-                safe_tab = tab if tab in {"note", "slices", "qa", "diagnostics", "transcript", "frames"} else "note"
-                window.load_url(f"{backend_url}/?task={quote(task_id)}&tab={quote(safe_tab)}")
+            target_url = desktop_focus_target(backend_url, task_id, tab)
+            if target_url:
+                try:
+                    current_url = str(window.get_current_url() or "")
+                except Exception:
+                    current_url = ""
+                if not desktop_route_matches(current_url, target_url):
+                    window.load_url(target_url)
             window.restore()
             window.show()
 
