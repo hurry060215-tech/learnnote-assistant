@@ -15,6 +15,12 @@ LOCAL_ASR_MODELS = {"tiny", "base", "small", "medium", "large", "large-v2", "lar
 MAX_ASR_ERROR_MESSAGE = 240
 
 
+def _hostname_matches(hostname: str, domain: str) -> bool:
+    normalized_host = (hostname or "").lower().rstrip(".")
+    normalized_domain = domain.lower().rstrip(".")
+    return normalized_host == normalized_domain or normalized_host.endswith(f".{normalized_domain}")
+
+
 def resolve_whisper_model(model_size: str) -> str:
     requested = str(model_size or "small").strip() or "small"
     explicit_path = Path(requested)
@@ -28,7 +34,7 @@ def resolve_whisper_model(model_size: str) -> str:
 
 def _remote_asr_base_host(base_url: str) -> str:
     parsed = urlparse(base_url or "")
-    return parsed.netloc or parsed.path.strip("/") or ""
+    return (parsed.hostname or "").lower().rstrip(".")
 
 
 def _remote_asr_provider(options: TaskOptions) -> str:
@@ -36,15 +42,15 @@ def _remote_asr_provider(options: TaskOptions) -> str:
     if selected in {"groq", "groq-asr"}:
         return "groq"
     host = (_remote_asr_base_host(options.llm_base_url or LLM_BASE_URL)).lower()
-    if "groq.com" in host:
+    if _hostname_matches(host, "groq.com"):
         return "groq"
-    if "openai.com" in host:
+    if _hostname_matches(host, "openai.com"):
         return "openai"
-    if "dashscope.aliyuncs.com" in host:
+    if _hostname_matches(host, "dashscope.aliyuncs.com"):
         return "dashscope"
-    if "siliconflow.cn" in host:
+    if _hostname_matches(host, "siliconflow.cn"):
         return "siliconflow"
-    if "openrouter.ai" in host:
+    if _hostname_matches(host, "openrouter.ai"):
         return "openrouter"
     if host in {"127.0.0.1", "localhost"}:
         return "local-openai-compatible"

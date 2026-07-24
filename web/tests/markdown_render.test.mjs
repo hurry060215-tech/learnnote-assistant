@@ -53,6 +53,48 @@ const makeElement = () => ({
   }
 });
 
+function htmlStartTagNames(markup) {
+  const source = String(markup);
+  const names = [];
+  for (let offset = 0; offset < source.length; offset += 1) {
+    if (source.charCodeAt(offset) !== 60) continue;
+    let cursor = offset + 1;
+    while (cursor < source.length && " \t\n\f\r".includes(source[cursor])) cursor += 1;
+    if (source[cursor] === "/" || source[cursor] === "!" || source[cursor] === "?") continue;
+    const start = cursor;
+    while (cursor < source.length) {
+      const code = source.charCodeAt(cursor);
+      const isNameCharacter =
+        (code >= 48 && code <= 57) ||
+        (code >= 65 && code <= 90) ||
+        (code >= 97 && code <= 122) ||
+        code === 45 ||
+        code === 58;
+      if (!isNameCharacter) break;
+      cursor += 1;
+    }
+    if (cursor > start) names.push(source.slice(start, cursor).toLowerCase());
+  }
+  return names;
+}
+
+function assertNoExecutableElements(markup) {
+  assert.equal(
+    htmlStartTagNames(markup).some(tagName => tagName === "script"),
+    false,
+    "rendered markup must not contain script elements"
+  );
+}
+
+assert.deepEqual(
+  htmlStartTagNames('<SCRIPT type="text/javascript"><div><script/x>'),
+  ["script", "div", "script"]
+);
+assert.throws(
+  () => assertNoExecutableElements('<SCRIPT type="text/javascript">bad()</SCRIPT>'),
+  /must not contain script elements/
+);
+
 const resultTabs = ["note", "transcript", "slices", "frames", "qa", "diagnostics"]
   .map(tab => {
     const element = makeElement();
@@ -714,7 +756,7 @@ assert.match(browserWorkflowStatusHtml, /hls · 浏览器请求/);
 assert.match(browserWorkflowStatusHtml, /media\.mp4/);
 assert.match(browserWorkflowStatusHtml, /1 个视觉窗口/);
 assert.match(browserWorkflowStatusHtml, /不可还原 blob、DRM 或签名过期时切到本地视频/);
-assert.doesNotMatch(browserWorkflowStatusHtml, /<script>/);
+assertNoExecutableElements(browserWorkflowStatusHtml);
 
 const localWorkflowStatusHtml = context.sourceWorkflowStatusHtml("local");
 assert.match(localWorkflowStatusHtml, /本地视频/);
@@ -732,7 +774,7 @@ assert.match(readyGateHtml, /class="empty-readiness-gates"/);
 assert.match(readyGateHtml, /section class="pass"/);
 assert.match(readyGateHtml, /直取\/切片就绪/);
 assert.match(readyGateHtml, /DashScope · qwen-vl-max/);
-assert.doesNotMatch(readyGateHtml, /<script>bad/);
+assertNoExecutableElements(readyGateHtml);
 
 const blockedGateHtml = context.emptyReadinessGatesHtml({
   ffmpeg: false,
@@ -857,7 +899,7 @@ assert.match(routeSummaryHtml, /资源证据/);
 assert.match(routeSummaryHtml, /本地落地/);
 assert.match(routeSummaryHtml, /学习笔记/);
 assert.match(routeSummaryHtml, /视觉窗口/);
-assert.doesNotMatch(routeSummaryHtml, /<script>bad/);
+assertNoExecutableElements(routeSummaryHtml);
 
 const queueChipTask = {
   id: "queue-chip-task",
@@ -886,7 +928,7 @@ assert.match(queueHandoffHtml, /来源<\/b>直取 · 视频/);
 assert.match(queueHandoffHtml, /媒体<\/b>media\.mp4 已保存/);
 assert.match(queueHandoffHtml, /切片<\/b>1 个切片窗口/);
 assert.match(queueHandoffHtml, /动作<\/b>下一步：核对画面笔记/);
-assert.doesNotMatch(queueHandoffHtml, /<script>/);
+assertNoExecutableElements(queueHandoffHtml);
 const queueAuditMiniHtml = context.taskAuditMiniHtml(queueChipTask);
 assert.match(queueAuditMiniHtml, /class="task-audit-mini"/);
 assert.match(queueAuditMiniHtml, /任务检查/);
@@ -920,7 +962,7 @@ assert.match(resultMetaHtml, /内容<\/b>视频 · 字幕 · 1 画面/);
 assert.match(resultMetaHtml, /笔记<\/b>可阅读/);
 assert.doesNotMatch(resultMetaHtml, /导出<\/b>/);
 assert.doesNotMatch(resultMetaHtml, /20 秒切片/);
-assert.doesNotMatch(resultMetaHtml, /<script>bad/);
+assertNoExecutableElements(resultMetaHtml);
 assert.match(stylesCss, /\.result-meta-chips[\s\S]*flex-wrap:\s*wrap/);
 assert.match(stylesCss, /\.result-meta-chips \.success,[\s\S]*\.result-meta-chips \.pass/);
 
@@ -1006,7 +1048,7 @@ assert.match(visionEvidenceHtml, /data-switch-result-tab="diagnostics"/);
 assert.match(visionEvidenceHtml, /\/api\/tasks\/vision-task\/exports\/bundle/);
 assert.match(visionEvidenceHtml, /\/api\/tasks\/vision-task\/exports\/manifest/);
 assert.match(visionEvidenceHtml, /&lt;script&gt;bad\(\)&lt;\/script&gt; warning/);
-assert.doesNotMatch(visionEvidenceHtml, /<script>bad/);
+assertNoExecutableElements(visionEvidenceHtml);
 
 const blockedRouteSummaryHtml = context.browserRouteSummaryHtml({
   id: "task-route-blocked",
@@ -1023,7 +1065,7 @@ assert.match(blockedRouteSummaryHtml, /不可直取/);
 assert.match(blockedRouteSummaryHtml, /data-browser-route-action="local-video"/);
 assert.match(blockedRouteSummaryHtml, /&lt;script&gt;bad\(\)&lt;\/script&gt; DRM/);
 assert.doesNotMatch(blockedRouteSummaryHtml, /导出本地视频/);
-assert.doesNotMatch(blockedRouteSummaryHtml, /<script>bad/);
+assertNoExecutableElements(blockedRouteSummaryHtml);
 
 const emptyBrowserGateHtml = context.browserRouteSummaryHtml(null);
 assert.match(emptyBrowserGateHtml, /class="browser-bridge-gate"/);
@@ -1047,7 +1089,7 @@ assert.match(emptyBrowserHandoffHtml, /data-browser-route-action="local-video"/)
 const extensionHandoffHtml = context.browserExtensionHandoffHtml("http://127.0.0.1:8765");
 assert.match(extensionHandoffHtml, /后端 http:\/\/127\.0\.0\.1:8765 已复制/);
 assert.match(extensionHandoffHtml, /Chrome\/Edge 侧栏点击“总结当前视频”/);
-assert.doesNotMatch(extensionHandoffHtml, /<script>/);
+assertNoExecutableElements(extensionHandoffHtml);
 
 const extensionStatusHtml = context.browserExtensionHandoffStatusHtml("http://127.0.0.1:8765");
 assert.match(extensionStatusHtml, /capture-status-chip bridge handoff/);
@@ -1131,7 +1173,7 @@ assert.match(railHtml, /class="visual-rail"/);
 assert.match(railHtml, /W001/);
 assert.match(railHtml, /00:00:00 - 00:03:00/);
 assert.match(railHtml, /src="http:\/\/127\.0\.0\.1:8765\/api\/tasks\/demo\/grids\/grid_000\.jpg"/);
-assert.doesNotMatch(railHtml, /<script>/);
+assertNoExecutableElements(railHtml);
 assert.match(railHtml, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
 
 const readingRailHtml = context.readingRail("## 第一节", {
@@ -1255,7 +1297,7 @@ assert.match(visualDeckHtml, /导出片段/);
 assert.match(visualDeckHtml, /data-media-seek-time="0\.000"/);
 assert.match(visualDeckHtml, /data-window-start="180\.000"/);
 assert.match(visualDeckHtml, />回看此段<\/button>/);
-assert.doesNotMatch(visualDeckHtml, /<script>bad/);
+assertNoExecutableElements(visualDeckHtml);
 
 const visualCorrelationHtml = context.visualStudyCorrelationHtml({
   id: "task-visual-correlation",
@@ -1305,7 +1347,7 @@ assert.match(visualCorrelationHtml, /对照 PPT 标题和公式/);
 assert.match(visualCorrelationHtml, /data-focus-visual-window="W001"/);
 assert.match(visualCorrelationHtml, /data-switch-result-tab="note"/);
 assert.match(visualCorrelationHtml, /data-media-seek-time="180\.000"/);
-assert.doesNotMatch(visualCorrelationHtml, /<script>alert/);
+assertNoExecutableElements(visualCorrelationHtml);
 assert.match(visualCorrelationHtml, /&lt;script&gt;alert\(2\)&lt;\/script&gt; 本段讲解第一章概念/);
 
 const sliceWorkbenchHtml = context.learningSliceWorkbench({
@@ -1366,7 +1408,7 @@ assert.doesNotMatch(sliceWorkbenchHtml, /class="visual-review-path"/);
 assert.doesNotMatch(sliceWorkbenchHtml, /class="visual-study-correlation"/);
 assert.doesNotMatch(sliceWorkbenchHtml, /class="visual-study-deck"/);
 assert.match(sliceWorkbenchHtml, /data-media-seek-time="0\.000"/);
-assert.doesNotMatch(sliceWorkbenchHtml, /<script>bad/);
+assertNoExecutableElements(sliceWorkbenchHtml);
 
 const frameWorkbenchHtml = context.visualFrameWorkbench({
   id: "task-frame-workbench",
@@ -1395,7 +1437,7 @@ assert.match(frameWorkbenchHtml, /<dt>网格<\/dt><dd>3x3<\/dd>/);
 assert.match(frameWorkbenchHtml, /data-switch-result-tab="slices"/);
 assert.match(frameWorkbenchHtml, /class="visual-study-correlation"/);
 assert.match(frameWorkbenchHtml, /class="visual-study-deck"/);
-assert.doesNotMatch(frameWorkbenchHtml, /<script>bad/);
+assertNoExecutableElements(frameWorkbenchHtml);
 
 const pendingSliceHtml = context.pendingSliceWorkbench({
   id: "task-pending-slice",
@@ -1652,7 +1694,7 @@ assert.match(visualDeckWithTranscriptHtml, /自测问题/);
 assert.match(visualDeckWithTranscriptHtml, /这句“老师讲解概念定义”在画面中对应的标题、公式、代码或操作状态是什么？/);
 assert.match(visualDeckWithTranscriptHtml, /核对截图里的板书/);
 assert.doesNotMatch(visualDeckWithTranscriptHtml, /不属于这个窗口/);
-assert.doesNotMatch(visualDeckWithTranscriptHtml, /<script>/);
+assertNoExecutableElements(visualDeckWithTranscriptHtml);
 
 const mediaPreviewHtml = context.mediaPreviewHtml({
   id: "task-media-preview",
@@ -1735,7 +1777,7 @@ assert.match(studyBarHtml, /data-switch-result-tab="frames"/);
 assert.match(studyBarHtml, /data-switch-result-tab="transcript"/);
 assert.match(studyBarHtml, /\/api\/tasks\/task-study-map\/exports\/bundle/);
 assert.match(studyBarHtml, /\/api\/tasks\/task-study-map\/exports\/manifest/);
-assert.doesNotMatch(studyBarHtml, /<script>bad/);
+assertNoExecutableElements(studyBarHtml);
 assert.match(studyBarHtml, /&lt;script&gt;bad\(\)&lt;\/script&gt; 课程/);
 
 const exportCtaHtml = context.noteExportCtaBar({
@@ -2032,7 +2074,7 @@ assert.match(taskOverviewHtml, /切片检查/);
 assert.match(taskOverviewHtml, /总结检查/);
 assert.match(taskOverviewHtml, /pipeline-audit-actions/);
 assert.match(taskOverviewHtml, /data-rerun-from-media="task-web-overview"/);
-assert.doesNotMatch(taskOverviewHtml, /<script>bad/);
+assertNoExecutableElements(taskOverviewHtml);
 assert.match(taskOverviewHtml, /&lt;script&gt;bad\(\)&lt;\/script&gt; 课程/);
 
 const directResponseOverviewHtml = context.taskOverview({
@@ -2147,7 +2189,7 @@ const unsafeAuditHtml = context.pipelineAuditHtml({
   download_attempts: []
 });
 assert.match(unsafeAuditHtml, /&lt;script&gt;bad\(\)&lt;\/script&gt;/);
-assert.doesNotMatch(unsafeAuditHtml, /<script>bad/);
+assertNoExecutableElements(unsafeAuditHtml);
 assert.match(unsafeAuditHtml, /data-recovery-source="local"/);
 const fallbackTaskOverviewHtml = context.taskOverview({
   id: "task-web-fallback",
@@ -2204,7 +2246,7 @@ assert.match(failureGuideHtml, /class="recovery-actions"/);
 assert.match(failureGuideHtml, /data-recovery-source="local"/);
 assert.match(failureGuideHtml, /data-switch-result-tab="diagnostics"/);
 assert.match(failureGuideHtml, /导出 Markdown/);
-assert.doesNotMatch(failureGuideHtml, /<script>bad/);
+assertNoExecutableElements(failureGuideHtml);
 const diagnosticRecoveryHtml = context.diagnosticRecoveryHtml({
   id: "task-recovery",
   status: "success",
@@ -2259,7 +2301,7 @@ assert.match(diagnosticRecoveryHtml, /data-rerun-from-media="task-recovery"/);
 assert.doesNotMatch(diagnosticRecoveryHtml, /\/api\/tasks\/task-recovery\/exports\/diagnostics/);
 assert.doesNotMatch(diagnosticRecoveryHtml, /\/api\/tasks\/task-recovery\/exports\/audit/);
 assert.match(diagnosticRecoveryHtml, /data-recovery-source="local"/);
-assert.doesNotMatch(diagnosticRecoveryHtml, /<script>bad/);
+assertNoExecutableElements(diagnosticRecoveryHtml);
 const recoveryDecisionHtml = context.recoveryDecisionHtml({
   id: "task-decision",
   status: "failed",
@@ -2317,7 +2359,7 @@ assert.match(recoveryDecisionHtml, /download_forbidden/);
 assert.match(recoveryDecisionHtml, /1 条路线/);
 assert.match(recoveryDecisionHtml, /仅可访问媒体/);
 assert.match(recoveryDecisionHtml, /Referer/);
-assert.doesNotMatch(recoveryDecisionHtml, /<script>bad/);
+assertNoExecutableElements(recoveryDecisionHtml);
 const recoveryNextStepHtml = context.nextStepHtml({
   id: "task-decision",
   status: "failed",
@@ -2447,7 +2489,7 @@ const failedNextStepHtml = context.nextStepHtml({
 assert.match(failedNextStepHtml, /直取链路需要处理/);
 assert.match(failedNextStepHtml, /signed URL expired/);
 assert.match(failedNextStepHtml, /data-recovery-source="local"/);
-assert.doesNotMatch(failedNextStepHtml, /<script>bad/);
+assertNoExecutableElements(failedNextStepHtml);
 
 const taskChipsHtml = context.taskChipsHtml({
   title: "<script>bad()</script>",
@@ -2468,7 +2510,7 @@ assert.match(taskChipsHtml, /HLS/);
 assert.doesNotMatch(taskChipsHtml, /2 窗口/);
 assert.match(taskChipsHtml, /2 次尝试/);
 assert.match(taskChipsHtml, /download_forbidden/);
-assert.doesNotMatch(taskChipsHtml, /<script>bad/);
+assertNoExecutableElements(taskChipsHtml);
 
 const backendAuditHtml = context.pipelineAuditHtml({
   status: "success",
@@ -2615,7 +2657,7 @@ assert.match(visualCoverageHtml, /1\/3/);
 assert.match(visualCoverageHtml, /缺图 W002/);
 assert.match(visualCoverageHtml, /超限省略 W099/);
 assert.match(visualCoverageHtml, /&lt;script&gt;bad\(\)&lt;\/script&gt;/);
-assert.doesNotMatch(visualCoverageHtml, /<script>bad/);
+assertNoExecutableElements(visualCoverageHtml);
 
 const routeReadyHtml = context.browserRouteSummaryHtml({
   id: "route-ready",
@@ -2633,7 +2675,7 @@ const routeReadyHtml = context.browserRouteSummaryHtml({
 assert.match(routeReadyHtml, /browser-route-summary-card ready/);
 assert.match(routeReadyHtml, /最近当前页直取已生成笔记/);
 assert.match(routeReadyHtml, /hls · 1 次下载尝试 · 1 个视觉窗口/);
-assert.doesNotMatch(routeReadyHtml, /<script>bad/);
+assertNoExecutableElements(routeReadyHtml);
 
 const playerSourceOverview = context.taskOverview({
   id: "player-source-task",
@@ -2665,7 +2707,7 @@ assert.match(playerSourceOverview, /浏览器证据/);
 assert.match(playerSourceOverview, /总结证据/);
 assert.match(playerSourceOverview, /class="visual-coverage"/);
 assert.match(playerSourceOverview, /等待抽帧生成视觉窗口/);
-assert.doesNotMatch(playerSourceOverview, /<script>bad/);
+assertNoExecutableElements(playerSourceOverview);
 
 const manifestGuessOverview = context.taskOverview({
   id: "manifest-guess-task",
@@ -2788,7 +2830,7 @@ assert.match(rerunRouteEvidenceHtml, /复用来源/);
 assert.match(rerunRouteEvidenceHtml, /download-only-task/);
 assert.match(rerunRouteEvidenceHtml, /media\.mp4/);
 assert.match(rerunRouteEvidenceHtml, /&lt;script&gt;bad\(\)&lt;\/script&gt;/);
-assert.doesNotMatch(rerunRouteEvidenceHtml, /<script>bad/);
+assertNoExecutableElements(rerunRouteEvidenceHtml);
 
 const localUploadEvidenceHtml = context.taskRouteEvidenceHtml({
   source_type: "local",
@@ -2800,7 +2842,7 @@ assert.match(localUploadEvidenceHtml, /上传原片/);
 assert.match(localUploadEvidenceHtml, /local-task_queued-local\.mp4/);
 assert.match(localUploadEvidenceHtml, /data\/uploads/);
 assert.match(localUploadEvidenceHtml, /&lt;script&gt;/);
-assert.doesNotMatch(localUploadEvidenceHtml, /<script>/);
+assertNoExecutableElements(localUploadEvidenceHtml);
 
 const routeDownloadedHtml = context.browserRouteSummaryHtml({
   id: "route-downloaded",
@@ -2830,7 +2872,7 @@ assert.match(routeBlockedHtml, /browser-route-summary-card blocked/);
 assert.match(routeBlockedHtml, /不录制 · 不绕过 DRM · 不刷课/);
 assert.match(routeBlockedHtml, /本地视频兜底/);
 assert.match(routeBlockedHtml, /&lt;script&gt;bad\(\)&lt;\/script&gt; encrypted/);
-assert.doesNotMatch(routeBlockedHtml, /<script>bad/);
+assertNoExecutableElements(routeBlockedHtml);
 
 const browserWorkflowHtml = context.sourceWorkflowHtml("browser", {
   id: "task-workflow-browser",
@@ -2908,7 +2950,7 @@ assert.match(routeRailHtml, /class="source-route-item ready"/);
 assert.match(routeRailHtml, /已成稿/);
 assert.match(routeRailHtml, /class="source-route-item blocked"/);
 assert.match(routeRailHtml, /download_forbidden/);
-assert.doesNotMatch(routeRailHtml, /<script>/);
+assertNoExecutableElements(routeRailHtml);
 vm.runInContext(`tasks = [];`, context);
 
 const localWorkflowHtml = context.sourceWorkflowHtml("local", null);
@@ -3056,7 +3098,7 @@ assert.match(timelineHtml, /00:00:00 - 00:03:00/);
 assert.match(timelineHtml, /第一段字幕/);
 assert.match(timelineHtml, /W002/);
 assert.match(timelineHtml, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
-assert.doesNotMatch(timelineHtml, /<script>/);
+assertNoExecutableElements(timelineHtml);
 
 const plainTimelineHtml = context.transcriptTimeline({
   source: "browser-subtitle",

@@ -607,6 +607,52 @@ class LocalUploadValidationTests(unittest.TestCase):
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
+    def test_task_question_llm_failure_returns_redacted_warning(self) -> None:
+        task = create_task("local", "Safe QA failure")
+        note = task_dir(task.id) / "note.md"
+        note.write_text("# Lesson\n\nFunctions reduce repeated code.\n", encoding="utf-8")
+
+        class FailingCompletions:
+            def create(self, **kwargs):
+                raise RuntimeError(
+                    "Traceback (most recent call last): C:\\secret\\service.py "
+                    "sk-secretvalue123456 Bearer abcdefghijklmnop "
+                    "https://user:password@api.example/v1?api_key=secret"
+                )
+
+        class FakeOpenAI:
+            def __init__(self, **kwargs):
+                self.chat = types.SimpleNamespace(completions=FailingCompletions())
+
+        fake_openai = types.ModuleType("openai")
+        fake_openai.OpenAI = FakeOpenAI
+        try:
+            update_task(task.id, note_path=str(note))
+            with patch.dict(sys.modules, {"openai": fake_openai}):
+                response = self.client.post(
+                    f"/api/tasks/{task.id}/qa",
+                    json={
+                        "question": "What do functions do?",
+                        "options": {
+                            "llm_api_key": "test-key",
+                            "llm_base_url": "https://api.openai.com/v1",
+                        },
+                    },
+                )
+
+            self.assertEqual(response.status_code, 200)
+            payload = response.json()
+            self.assertEqual(payload["source"], "local-extractive")
+            self.assertEqual(payload["warning"], "llm_qa_failed")
+            encoded = json.dumps(payload)
+            self.assertNotIn("Traceback", encoded)
+            self.assertNotIn("service.py", encoded)
+            self.assertNotIn("secretvalue", encoded)
+            self.assertNotIn("password", encoded)
+            self.assertNotIn("api_key", encoded)
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
     def test_task_next_actions_allow_qa_from_transcript_without_note(self) -> None:
         task = create_task("local", "Transcript only lesson", "https://course.example/lesson")
         root = task_dir(task.id)

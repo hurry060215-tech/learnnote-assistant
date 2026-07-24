@@ -21,31 +21,37 @@ PAGE_UI_MARKERS = (
 )
 
 
+def _hostname_matches(hostname: str, domain: str) -> bool:
+    normalized_host = (hostname or "").lower().rstrip(".")
+    normalized_domain = domain.lower().rstrip(".")
+    return normalized_host == normalized_domain or normalized_host.endswith(f".{normalized_domain}")
+
+
 def llm_provider_name(base_url: str) -> str:
     host = (urlparse(base_url or "").hostname or "").lower()
-    if "openai.com" in host:
+    if _hostname_matches(host, "openai.com"):
         return "openai"
-    if "groq.com" in host:
+    if _hostname_matches(host, "groq.com"):
         return "groq"
-    if "generativelanguage.googleapis.com" in host:
+    if _hostname_matches(host, "generativelanguage.googleapis.com"):
         return "gemini"
-    if "dashscope.aliyuncs.com" in host:
+    if _hostname_matches(host, "dashscope.aliyuncs.com"):
         return "dashscope"
-    if "siliconflow.cn" in host:
+    if _hostname_matches(host, "siliconflow.cn"):
         return "siliconflow"
-    if "openrouter.ai" in host:
+    if _hostname_matches(host, "openrouter.ai"):
         return "openrouter"
-    if "deepseek.com" in host:
+    if _hostname_matches(host, "deepseek.com"):
         return "deepseek"
-    if "moonshot.cn" in host or "platform.kimi.com" in host:
+    if _hostname_matches(host, "moonshot.cn") or _hostname_matches(host, "platform.kimi.com"):
         return "kimi"
-    if "bigmodel.cn" in host:
+    if _hostname_matches(host, "bigmodel.cn"):
         return "zhipu"
-    if "volces.com" in host:
+    if _hostname_matches(host, "volces.com"):
         return "doubao"
-    if "minimaxi.com" in host or "minimax.io" in host:
+    if _hostname_matches(host, "minimaxi.com") or _hostname_matches(host, "minimax.io"):
         return "minimax"
-    if "baidubce.com" in host or "baiduqianfan.ai" in host:
+    if _hostname_matches(host, "baidubce.com") or _hostname_matches(host, "baiduqianfan.ai"):
         return "qianfan"
     if host in {"127.0.0.1", "localhost"}:
         return "local-openai-compatible"
@@ -81,7 +87,7 @@ def llm_model_supports_vision(base_url: str, model: str) -> bool:
 
 def llm_base_host(base_url: str) -> str:
     parsed = urlparse(base_url or "")
-    return parsed.netloc or parsed.path.strip("/") or ""
+    return (parsed.hostname or "").lower().rstrip(".")
 
 
 def _safe_llm_error(exc: BaseException) -> str:

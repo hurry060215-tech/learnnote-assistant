@@ -1,15 +1,20 @@
 from __future__ import annotations
 
 import http.cookiejar
+import http.client
 import html
+import ipaddress
 import json
 import os
 import re
+import socket
+import ssl
 import subprocess
 import sys
 import time
 import xml.etree.ElementTree as ET
 from base64 import b64decode, urlsafe_b64decode
+from contextlib import contextmanager
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Callable, Optional
@@ -32,12 +37,31 @@ MANIFEST_EXT_RE = re.compile(r"\.(m3u8|mpd)(\?|#|$)", re.I)
 FRAGMENT_EXT_RE = re.compile(r"\.(m4s|ts)(\?|#|$)", re.I)
 SUBTITLE_EXT_RE = re.compile(r"\.(vtt|srt|ass|ssa)(\?|#|$)", re.I)
 TEXT_MEDIA_HINT_RE = re.compile(r"\.(mp4|m4v|webm|mov|mkv|flv|avi|m4a|mp3|aac|opus|ogg|oga|wav|m3u8|mpd|m4s|ts|vtt|srt|ass|ssa)([?#]|[\"'\s<>]|$)", re.I)
-TEXT_MEDIA_URL_RE = re.compile(
-    r"(?:https?:)?//[^\s\"'<>\\]+\.(?:mp4|m4v|webm|mov|mkv|flv|avi|m4a|mp3|aac|opus|ogg|oga|wav|m3u8|mpd|m4s|ts|vtt|srt|ass|ssa)(?:\?[^\s\"'<>\\]*)?"
-    r"|(?:/[^\s\"'<>\\]+)\.(?:mp4|m4v|webm|mov|mkv|flv|avi|m4a|mp3|aac|opus|ogg|oga|wav|m3u8|mpd|m4s|ts|vtt|srt|ass|ssa)(?:\?[^\s\"'<>\\]*)?"
-    r"|(?:[A-Za-z0-9._~!$&()*+,;=:@%-]+/)*[A-Za-z0-9._~!$&()*+,;=:@%-]+\.(?:mp4|m4v|webm|mov|mkv|flv|avi|m4a|mp3|aac|opus|ogg|oga|wav|m3u8|mpd|m4s|ts|vtt|srt|ass|ssa)(?:\?[^\s\"'<>\\]*)?",
-    re.I,
+TEXT_MEDIA_SUFFIXES = (
+    ".mp4",
+    ".m4v",
+    ".webm",
+    ".mov",
+    ".mkv",
+    ".flv",
+    ".avi",
+    ".m4a",
+    ".mp3",
+    ".aac",
+    ".opus",
+    ".ogg",
+    ".oga",
+    ".wav",
+    ".m3u8",
+    ".mpd",
+    ".m4s",
+    ".ts",
+    ".vtt",
+    ".srt",
+    ".ass",
+    ".ssa",
 )
+TEXT_MEDIA_TOKEN_DELIMITERS = frozenset(" \t\r\n\"'<>\\")
 ENCODED_MEDIA_URL_RE = re.compile(
     r"https?%(?:25)*3A(?:(?:%(?:25)*2F)|/){2}[^\s\"'<>\\]+?(?:\.|%(?:25)*2E)(?:mp4|m4v|webm|mov|mkv|flv|avi|m4a|mp3|aac|opus|ogg|oga|wav|m3u8|mpd|m4s|ts|vtt|srt|ass|ssa)(?:[^\s\"'<>\\]*)?",
     re.I,
@@ -161,6 +185,10 @@ class ManifestEndpointDetected(RuntimeError):
         super().__init__(kind)
         self.kind = kind
         self.mime = mime
+
+
+class UnsafeMediaTarget(requests.RequestException):
+    pass
 
 
 class QuietYtdlpLogger:
@@ -455,6 +483,33 @@ def _manifest_kind_from_body(text: str, content_type: str = "") -> tuple[str, st
     if re.search(r"<MPD(?:\s|>)", head, re.I) or (not looks_html and "dash+xml" in content_type):
         return "dash", "application/dash+xml"
     return "unknown", ""
+
+
+def _hls_encryption_flags(text: str) -> tuple[bool, bool]:
+    """Return (DRM-like key, AES-128 key) with linear manifest parsing."""
+    drm_like = False
+    aes_128 = False
+    for raw_line in (text or "").splitlines():
+        line = raw_line.lstrip()
+        if not line.upper().startswith("#EXT-X-KEY:"):
+            continue
+        attributes = line.split(":", 1)[1]
+        upper_attributes = attributes.upper()
+        method = ""
+        for field in attributes.split(","):
+            name, separator, value = field.partition("=")
+            if separator and name.strip().upper() == "METHOD":
+                method = value.strip().strip("\"'").upper()
+                break
+        if method.startswith("SAMPLE-AES") or any(
+            marker in upper_attributes for marker in ("SKD://", "WIDEVINE", "FAIRPLAY")
+        ):
+            drm_like = True
+        if method == "AES-128":
+            aes_128 = True
+        if drm_like and aes_128:
+            break
+    return drm_like, aes_128
 
 
 def _absolute_manifest_uri(value: str, base_url: str) -> str:
@@ -1220,6 +1275,51 @@ def _media_scan_text_variants(text: str) -> list[str]:
     return variants
 
 
+def _iter_media_url_tokens(text: str):
+    """Yield URL-like media tokens with a bounded, single-pass scanner."""
+    start = 0
+    length = len(text)
+    while start < length:
+        while start < length and text[start] in TEXT_MEDIA_TOKEN_DELIMITERS:
+            start += 1
+        end = start
+        while end < length and text[end] not in TEXT_MEDIA_TOKEN_DELIMITERS:
+            end += 1
+        if end <= start:
+            break
+
+        token = text[start:end].strip("()[]{};,")
+        lowered = token.lower()
+        suffix_end = -1
+        for suffix in TEXT_MEDIA_SUFFIXES:
+            position = lowered.find(suffix)
+            while position >= 0:
+                candidate_end = position + len(suffix)
+                if candidate_end == len(token) or token[candidate_end] in "?#":
+                    suffix_end = max(suffix_end, candidate_end)
+                    break
+                position = lowered.find(suffix, position + 1)
+
+        if suffix_end > 0:
+            scheme_positions = [
+                position
+                for marker in ("https://", "http://", "//")
+                if (position := lowered.rfind(marker, 0, suffix_end)) >= 0
+            ]
+            if scheme_positions:
+                token = token[max(scheme_positions):]
+            else:
+                prefix = token[:suffix_end]
+                assignment = max(prefix.rfind("="), prefix.rfind(":"))
+                if assignment >= 0:
+                    token = token[assignment + 1:]
+                token = token.lstrip("([{,;")
+            token = token.rstrip(")]},;.")
+            if token:
+                yield token
+        start = end + 1
+
+
 def extract_media_resources_from_text(text: str, base_url: str, source: str = "page-scan") -> list[ResourceCandidate]:
     if not text:
         return []
@@ -1233,8 +1333,8 @@ def extract_media_resources_from_text(text: str, base_url: str, source: str = "p
         resources.extend(extract_media_resources_from_encoded_url_text(searchable, base_url, source, seen))
         if not TEXT_MEDIA_HINT_RE.search(searchable):
             continue
-        for match in TEXT_MEDIA_URL_RE.finditer(searchable):
-            url = normalize_media_url(match.group(0), base_url)
+        for raw_url in _iter_media_url_tokens(searchable):
+            url = normalize_media_url(raw_url, base_url)
             if not url or url in seen:
                 continue
             kind = classify_resource(url)
@@ -1325,6 +1425,199 @@ def ytdlp_headers_from_browser_context(page_url: str, resources: list[ResourceCa
 
 def _is_http_url(url: str) -> bool:
     return bool(re.match(r"^https?://", url or "", re.I))
+
+
+def _url_origin(url: str) -> tuple[str, str, int] | None:
+    try:
+        parsed = urlparse(url or "")
+        if parsed.scheme.lower() not in {"http", "https"} or not parsed.hostname:
+            return None
+        if parsed.username is not None or parsed.password is not None:
+            return None
+        host = parsed.hostname.rstrip(".").lower()
+        if "%" in host:
+            return None
+        try:
+            host = ipaddress.ip_address(host).compressed
+        except ValueError:
+            host = host.encode("idna").decode("ascii")
+        port = parsed.port or (443 if parsed.scheme.lower() == "https" else 80)
+    except (UnicodeError, ValueError):
+        return None
+    return parsed.scheme.lower(), host, port
+
+
+def _trusted_page_for_target(target_url: str, *page_urls: str) -> str:
+    target_origin = _url_origin(target_url)
+    for page_url in page_urls:
+        if target_origin and _url_origin(page_url) == target_origin:
+            return page_url
+    return next((page_url for page_url in page_urls if page_url), "")
+
+
+def _validated_media_target(url: str, trusted_page_url: str) -> tuple[str, str, str, int]:
+    """Validate a media URL and pin one of its already-checked destination IPs."""
+    if any(ord(character) < 32 for character in (url or "")):
+        raise UnsafeMediaTarget("媒体地址包含无效控制字符。")
+    origin = _url_origin(url)
+    if not origin:
+        raise UnsafeMediaTarget("媒体地址必须是无用户名或密码的 HTTP(S) URL。")
+    scheme, host, port = origin
+    parsed = urlparse(url)
+    try:
+        address_info = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    except OSError as exc:
+        raise UnsafeMediaTarget(f"媒体地址无法解析：{host}") from exc
+
+    addresses: list[ipaddress.IPv4Address | ipaddress.IPv6Address] = []
+    for item in address_info:
+        raw_address = item[4][0].split("%", 1)[0]
+        try:
+            address = ipaddress.ip_address(raw_address)
+        except ValueError as exc:
+            raise UnsafeMediaTarget("媒体地址解析结果无效。") from exc
+        if address not in addresses:
+            addresses.append(address)
+    if not addresses:
+        raise UnsafeMediaTarget("媒体地址没有可连接的目标地址。")
+
+    local_addresses = [address for address in addresses if not address.is_global]
+    for address in local_addresses:
+        if address.is_unspecified or address.is_multicast or address.is_link_local or address.is_reserved:
+            raise UnsafeMediaTarget("媒体地址指向不可访问的本地或保留网络。")
+    if local_addresses:
+        trusted_origin = _url_origin(trusted_page_url)
+        if trusted_origin != origin or len(local_addresses) != len(addresses):
+            raise UnsafeMediaTarget("媒体地址指向本机或私有网络，但与当前页面不同源。")
+
+    normalized_url = urlunparse(parsed._replace(fragment=""))
+    return normalized_url, addresses[0].compressed, host, port
+
+
+class _PinnedHTTPSConnection(http.client.HTTPSConnection):
+    def __init__(self, host: str, pinned_address: str, port: int, timeout: int):
+        super().__init__(host, port=port, timeout=timeout, context=ssl.create_default_context())
+        self._pinned_address = pinned_address
+
+    def connect(self) -> None:
+        self.sock = socket.create_connection(
+            (self._pinned_address, self.port),
+            self.timeout,
+            self.source_address,
+        )
+        self.sock = self._context.wrap_socket(self.sock, server_hostname=self.host)
+
+
+class _PinnedHTTPResponse:
+    def __init__(
+        self,
+        response: http.client.HTTPResponse,
+        connection: http.client.HTTPConnection,
+        url: str,
+    ):
+        self._response = response
+        self._connection = connection
+        self.status_code = response.status
+        self.headers = requests.structures.CaseInsensitiveDict(response.getheaders())
+        self.url = url
+
+    def iter_content(self, chunk_size: int = 8192):
+        while True:
+            chunk = self._response.read(chunk_size)
+            if not chunk:
+                break
+            yield chunk
+
+    def close(self) -> None:
+        try:
+            self._response.close()
+        finally:
+            self._connection.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
+
+
+def _request_path(url: str) -> str:
+    parsed = urlparse(url)
+    return urlunparse(("", "", parsed.path or "/", parsed.params, parsed.query, ""))
+
+
+def _host_header(host: str, port: int, scheme: str) -> str:
+    rendered_host = f"[{host}]" if ":" in host else host
+    default_port = 443 if scheme == "https" else 80
+    return rendered_host if port == default_port else f"{rendered_host}:{port}"
+
+
+@contextmanager
+def _open_validated_media_response(
+    method: str,
+    url: str,
+    *,
+    trusted_page_url: str,
+    headers: dict[str, str],
+    body: bytes | None,
+    timeout: int,
+):
+    current_url = url
+    current_method = (method or "GET").upper()
+    current_body = body
+    current_headers = {name: _safe_header_value(value) for name, value in headers.items() if value}
+    if current_method not in {"GET", "HEAD", "POST", "PUT", "PATCH"}:
+        raise UnsafeMediaTarget("媒体预检使用了不允许的 HTTP 方法。")
+
+    response_wrapper: _PinnedHTTPResponse | None = None
+    try:
+        for _ in range(6):
+            safe_url, pinned_address, host, port = _validated_media_target(current_url, trusted_page_url)
+            scheme = urlparse(safe_url).scheme.lower()
+            request_headers = dict(current_headers)
+            request_headers["Host"] = _host_header(host, port, scheme)
+            request_headers["Accept-Encoding"] = "identity"
+            connection: http.client.HTTPConnection
+            if scheme == "https":
+                connection = _PinnedHTTPSConnection(host, pinned_address, port, timeout)
+            else:
+                connection = http.client.HTTPConnection(pinned_address, port=port, timeout=timeout)
+            try:
+                connection.request(
+                    current_method,
+                    _request_path(safe_url),
+                    body=current_body,
+                    headers=request_headers,
+                )
+                raw_response = connection.getresponse()
+            except (OSError, ssl.SSLError, http.client.HTTPException) as exc:
+                connection.close()
+                raise requests.ConnectionError(f"媒体预检连接失败：{exc}") from exc
+
+            response_wrapper = _PinnedHTTPResponse(raw_response, connection, safe_url)
+            location = response_wrapper.headers.get("location", "")
+            if response_wrapper.status_code not in {301, 302, 303, 307, 308} or not location:
+                yield response_wrapper
+                return
+
+            next_url = urljoin(safe_url, location)
+            if _url_origin(next_url) != _url_origin(safe_url):
+                for sensitive_header in ("Authorization", "Cookie", "Origin"):
+                    current_headers.pop(sensitive_header, None)
+            if response_wrapper.status_code == 303 or (
+                response_wrapper.status_code in {301, 302} and current_method == "POST"
+            ):
+                current_method = "GET"
+                current_body = None
+                current_headers.pop("Content-Type", None)
+                current_headers.pop("Content-Length", None)
+            response_wrapper.close()
+            response_wrapper = None
+            current_url = next_url
+        raise requests.TooManyRedirects("媒体地址重定向次数过多。")
+    finally:
+        if response_wrapper is not None:
+            response_wrapper.close()
 
 
 def _is_scannable_play_endpoint(candidate: ResourceCandidate) -> bool:
@@ -2125,14 +2418,13 @@ def preflight_media_resource(
     def probe_once(headers: dict[str, str], attempt_warnings: list[str]) -> MediaPreflightResult:
         probe_kind = kind
         probe_strategy = strategy
-        with requests.request(
+        with _open_validated_media_response(
             request_method,
             resolved_url,
+            trusted_page_url=_trusted_page_for_target(resolved_url, candidate.page_url, referer),
             headers=headers,
-            data=request_body,
-            stream=True,
+            body=request_body,
             timeout=timeout,
-            allow_redirects=True,
         ) as response:
             body = _read_probe_bytes(response)
             content_type = response.headers.get("content-type", "")
@@ -2288,7 +2580,8 @@ def preflight_media_resource(
                 text = body.decode("utf-8", errors="ignore")
                 if "#EXTM3U" not in text and "mpegurl" not in content_type.lower():
                     attempt_warnings.append("响应不像标准 HLS manifest，实际下载可能失败。")
-                if re.search(r"#EXT-X-KEY:[^\n]*(SAMPLE-AES|skd://|widevine|fairplay)", text, re.I):
+                drm_like_key, aes_128_key = _hls_encryption_flags(text)
+                if drm_like_key:
                     return MediaPreflightResult(
                         **{**base, "warnings": attempt_warnings},
                         ok=True,
@@ -2296,7 +2589,7 @@ def preflight_media_resource(
                         code="drm_or_encrypted",
                         message="HLS manifest 疑似 DRM/加密流，第一版不尝试绕过。",
                     )
-                if re.search(r"#EXT-X-KEY:[^\n]*METHOD=AES-128", text, re.I):
+                if aes_128_key:
                     attempt_warnings.append("HLS 使用 AES-128 key，ffmpeg 仍可能因 key 权限失败。")
 
             if probe_kind == "dash":
@@ -2414,7 +2707,14 @@ def _preflight_companion_audio(
     headers.setdefault("Range", "bytes=0-4095")
 
     try:
-        with requests.get(audio_url, headers=headers, stream=True, timeout=timeout, allow_redirects=True) as response:
+        with _open_validated_media_response(
+            "GET",
+            audio_url,
+            trusted_page_url=_trusted_page_for_target(audio_url, candidate.page_url, referer),
+            headers=headers,
+            body=None,
+            timeout=timeout,
+        ) as response:
             body = _read_probe_bytes(response)
             content_type = response.headers.get("content-type", "")
             content_disposition = response.headers.get("content-disposition", "")
@@ -3619,8 +3919,10 @@ class MediaDownloader:
                 if manifest_kind == kind:
                     candidate.kind = manifest_kind
                     candidate.mime = manifest_mime or candidate.mime
-                if kind == "hls" and re.search(r"#EXT-X-KEY:[^\n]*(SAMPLE-AES|skd://|widevine|fairplay)", text, re.I):
-                    raise DownloadError("drm_or_encrypted", "HLS manifest appears to use DRM/encrypted streaming.")
+                if kind == "hls":
+                    drm_like_key, _ = _hls_encryption_flags(text)
+                    if drm_like_key:
+                        raise DownloadError("drm_or_encrypted", "HLS manifest appears to use DRM/encrypted streaming.")
                 if kind == "dash" and re.search(r"ContentProtection|widevine|playready|urn:uuid", text, re.I):
                     raise DownloadError("drm_or_encrypted", "DASH manifest contains ContentProtection and may be DRM protected.")
         except DownloadError:
@@ -3667,8 +3969,10 @@ class MediaDownloader:
                     raise DownloadError("unsupported_manifest", "Replayed playback request did not return an HLS/DASH manifest.")
                 if kind in {"hls", "dash"} and manifest_kind != kind:
                     raise DownloadError("unsupported_manifest", f"Replayed playback request returned {manifest_kind}, expected {kind}.")
-                if manifest_kind == "hls" and re.search(r"#EXT-X-KEY:[^\n]*(SAMPLE-AES|skd://|widevine|fairplay)", text, re.I):
-                    raise DownloadError("drm_or_encrypted", "HLS manifest appears to use DRM/encrypted streaming.")
+                if manifest_kind == "hls":
+                    drm_like_key, _ = _hls_encryption_flags(text)
+                    if drm_like_key:
+                        raise DownloadError("drm_or_encrypted", "HLS manifest appears to use DRM/encrypted streaming.")
                 if manifest_kind == "dash" and re.search(r"ContentProtection|widevine|playready|urn:uuid", text, re.I):
                     raise DownloadError("drm_or_encrypted", "DASH manifest contains ContentProtection and may be DRM protected.")
 

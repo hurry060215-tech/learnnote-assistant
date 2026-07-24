@@ -60,7 +60,7 @@ def ready_media_integrity(duration: float = 120) -> MediaIntegrity:
 
 def ready_evidence_coverage() -> EvidenceCoverage:
     return EvidenceCoverage(status="ready", can_summarize=True)
-from app.transcriber import resolve_whisper_model, transcribe_audio_openai_compatible, transcript_from_subtitle
+from app.transcriber import _remote_asr_provider, resolve_whisper_model, transcribe_audio_openai_compatible, transcript_from_subtitle
 
 TEST_RUN_DIR = DATA_DIR / "test-runs"
 TEST_RUN_DIR.mkdir(parents=True, exist_ok=True)
@@ -117,6 +117,22 @@ class ResourceDetectionTests(unittest.TestCase):
         self.assertEqual(severity, "pass")
         self.assertTrue(any(item["title"] == "当前站点支持页面解析" for item in findings))
         self.assertTrue(any(item["key"] == "summarize" for item in actions))
+
+    def test_automatic_diagnostics_rejects_provider_hostname_lookalikes(self) -> None:
+        for page_url in (
+            "https://notbilibili.com/video/example",
+            "https://www.bilibili.com.attacker.example/video/example",
+            "https://youtube.com.attacker.example/watch?v=example",
+        ):
+            severity, _, findings, actions = _automatic_diagnostic_rules({
+                "page_url": page_url,
+                "tab_url": page_url,
+                "candidate_count": 0,
+                "downloadable_count": 0,
+            }, None)
+            self.assertEqual(severity, "warn")
+            self.assertFalse(any(item["key"] == "summarize" for item in actions))
+            self.assertFalse(any("yt-dlp" in item["detail"] for item in findings))
 
     def test_python_tempdir_uses_project_test_run_dir(self) -> None:
         self.assertEqual(Path(tempfile.gettempdir()).resolve(), TEST_RUN_DIR.resolve())
@@ -1293,6 +1309,24 @@ class TranscriberBoundaryTests(unittest.TestCase):
         self.assertIn("stage=configuration", transcript.warning)
         self.assertIn("code=missing_api_key", transcript.warning)
         self.assertNotIn("sk-", transcript.warning)
+
+    def test_remote_asr_provider_requires_domain_boundary(self) -> None:
+        self.assertEqual(
+            _remote_asr_provider(TaskOptions(llm_base_url="https://api.groq.com/openai/v1")),
+            "groq",
+        )
+        self.assertEqual(
+            _remote_asr_provider(TaskOptions(llm_base_url="https://api.groq.com.attacker.example/v1")),
+            "openai-compatible",
+        )
+        self.assertEqual(
+            _remote_asr_provider(TaskOptions(llm_base_url="https://notopenai.com/v1")),
+            "openai-compatible",
+        )
+        self.assertEqual(
+            _remote_asr_provider(TaskOptions(transcriber="groq", llm_base_url="https://attacker.example/v1")),
+            "groq",
+        )
 
     def test_remote_asr_error_warning_redacts_secret_like_values(self) -> None:
         class FakeTranscriptions:
@@ -4046,6 +4080,17 @@ class SummaryFallbackTests(unittest.TestCase):
             llm_provider_name("https://generativelanguage.googleapis.com/v1beta/openai/"),
             "gemini",
         )
+
+    def test_llm_provider_name_requires_domain_boundary(self) -> None:
+        expected = {
+            "https://api.openai.com.evil.example/v1": "openai-compatible",
+            "https://notgroq.com/openai/v1": "openai-compatible",
+            "https://api.deepseek.com.attacker.example/v1": "openai-compatible",
+            "https://platform.kimi.com.attacker.example/v1": "openai-compatible",
+            "https://open.bigmodel.cn.attacker.example/v4": "openai-compatible",
+        }
+        for base_url, provider in expected.items():
+            self.assertEqual(llm_provider_name(base_url), provider)
 
     def test_deepseek_uses_non_thinking_text_mode(self) -> None:
         self.assertEqual(llm_provider_name("https://api.deepseek.com"), "deepseek")

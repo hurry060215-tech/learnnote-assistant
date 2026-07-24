@@ -157,8 +157,20 @@ const ranked = context.mergeAndRankResources([
 
 assert.equal(ranked[0].url, "https://mooc1.chaoxing.com/ananas/status/play?id=lesson-1");
 assert.ok(!ranked.some(item => item.mime === "image/png"), "expected image MIME candidates to be filtered");
+const rankedHostIndex = hostname => ranked.findIndex(item => {
+  try {
+    const candidateUrl = new URL(item.url);
+    return candidateUrl.protocol === "https:" && candidateUrl.hostname === hostname;
+  } catch {
+    return false;
+  }
+});
+const advertisingHostIndex = rankedHostIndex("media.obeebee.com");
+const learningHostIndex = rankedHostIndex("mooc1.chaoxing.com");
+assert.notEqual(advertisingHostIndex, -1, "expected the advertising candidate to remain visible for ranking");
+assert.notEqual(learningHostIndex, -1, "expected the learning-player candidate to remain visible for ranking");
 assert.ok(
-  ranked.findIndex(item => item.url.includes("obeebee.com")) > ranked.findIndex(item => item.url.includes("chaoxing.com")),
+  advertisingHostIndex > learningHostIndex,
   "expected third-party advertising video to rank below the learning player"
 );
 

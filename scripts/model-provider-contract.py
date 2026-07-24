@@ -32,7 +32,7 @@ ALLOWED_TRANSCRIBERS = {"faster-whisper", "openai-compatible", "groq"}
 def load_runtime_helpers():
     source_path = BACKEND / "app" / "summarizer.py"
     tree = ast.parse(source_path.read_text(encoding="utf-8"), filename=str(source_path))
-    helper_names = {"llm_provider_name", "llm_model_supports_vision"}
+    helper_names = {"_hostname_matches", "llm_provider_name", "llm_model_supports_vision"}
     helpers = [
         node
         for node in tree.body

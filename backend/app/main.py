@@ -3283,12 +3283,12 @@ def _answer_task_question(task: TaskRecord, request: TaskQuestionRequest) -> dic
                     "model": model,
                     "citations": citations,
                 }
-        except Exception as exc:
+        except Exception:
             local_answer, local_citations = _local_task_answer(request.question, citations)
             return {
                 "answer": local_answer,
                 "source": "local-extractive",
-                "warning": f"LLM QA failed: {type(exc).__name__}: {_clip_text(str(exc), 240)}",
+                "warning": "llm_qa_failed",
                 "provider": llm_provider_name(base_url),
                 "model": model,
                 "citations": local_citations,
@@ -3310,6 +3310,12 @@ def health() -> dict:
     return health_payload()
 
 
+def _hostname_matches(hostname: str, domain: str) -> bool:
+    normalized_host = (hostname or "").lower().rstrip(".")
+    normalized_domain = domain.lower().rstrip(".")
+    return normalized_host == normalized_domain or normalized_host.endswith(f".{normalized_domain}")
+
+
 def _automatic_diagnostic_rules(context: dict, task: TaskRecord | None) -> tuple[str, str, list[dict], list[dict]]:
     findings: list[dict] = []
     actions: list[dict] = []
@@ -3329,7 +3335,10 @@ def _automatic_diagnostic_rules(context: dict, task: TaskRecord | None) -> tuple
     extension_version = str(context.get("extension_version") or "")
     backend_version = str(context.get("backend_version") or APP_VERSION)
     page_host = (urlsplit(tab_url or page_url).hostname or "").lower()
-    page_resolver = page_host == "youtu.be" or page_host.endswith("youtube.com") or page_host.endswith("bilibili.com")
+    page_resolver = any(
+        _hostname_matches(page_host, domain)
+        for domain in ("youtu.be", "youtube.com", "bilibili.com")
+    )
 
     if page_url and tab_url and page_url.split("#", 1)[0] != tab_url.split("#", 1)[0]:
         finding("error", "当前页上下文已串页", "扩展缓存页面 URL 与 Chrome 当前标签 URL 不一致，可能总结上一条视频。")
