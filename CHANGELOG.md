@@ -4,6 +4,16 @@ All notable changes to LearnNote are documented here. The project follows semant
 
 ## Unreleased
 
+## 0.1.40 - 2026-07-24
+
+### Security
+
+- Media preflight now validates DNS results, pins the checked destination, and revalidates every redirect before connecting.
+- Provider detection requires exact host or subdomain boundaries instead of accepting lookalike hostnames.
+- Task question fallback responses no longer expose exception details, local paths, or provider credentials.
+- Replaced potentially expensive media URL and HLS key regular expressions with bounded linear parsers.
+- Strengthened browser object URL validation and security regression tests.
+
 ## 0.1.39 - 2026-07-24
 
 ### Added

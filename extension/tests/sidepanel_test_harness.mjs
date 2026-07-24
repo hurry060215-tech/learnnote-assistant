@@ -84,7 +84,7 @@ export async function createSidepanelHarness({ contexts = [], preflight = null, 
       fetchCalls.push({ url: String(url), options });
       if (String(url).endsWith("/health")) {
         if (health instanceof Error) throw health;
-        return { ok: true, json: async () => health || ({ app_version: "0.1.39" }) };
+        return { ok: true, json: async () => health || ({ app_version: "0.1.40" }) };
       }
       if (String(url).endsWith("/api/desktop/focus")) {
         return { ok: true, json: async () => ({ ok: true, available: true }) };
