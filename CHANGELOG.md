@@ -4,6 +4,22 @@ All notable changes to LearnNote are documented here. The project follows semant
 
 ## Unreleased
 
+## 0.1.41 - 2026-07-24
+
+### Changed
+
+- Browser handoff now reuses fresh media preflight results and opens the accepted task directly in the desktop client.
+- Task polling is adaptive and updates live progress in place instead of rebuilding the task library and media reader.
+- Desktop focus requests no longer reload the same task route, preserving video playback and reading position.
+- The public container image is available anonymously from GHCR.
+
+### Fixed
+
+- Stable video identity no longer treats title updates, signed URL renewal, or resource-list changes as a different page.
+- Retried extension handoffs are idempotent and cannot create duplicate tasks.
+- Concurrent send clicks are collapsed into a single handoff request.
+- Mobile note reading no longer places the fixed desktop library pane over the video and timeline.
+
 ## 0.1.40 - 2026-07-24
 
 ### Security

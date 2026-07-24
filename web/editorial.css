@@ -580,3 +580,15 @@ body.theme-dark .editorial-source-choices > button { border-color: #315055; }
   .editorial-progress-steps li:last-child::before { display: none; }
   .editorial-progress-steps li::after { top: 2px; }
 }
+
+@media (max-width: 900px) {
+  html body[data-app-view="notes"] main.app-shell section.queue-panel {
+    display: none !important;
+  }
+
+  body[data-app-view="notes"] .result-panel {
+    grid-column: 1 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+}
