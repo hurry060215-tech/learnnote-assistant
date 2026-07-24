@@ -365,7 +365,20 @@
 
   async function fallbackVideoMetadata(file) {
     if (localObjectUrl) URL.revokeObjectURL(localObjectUrl);
-    localObjectUrl = URL.createObjectURL(file);
+    const objectUrl = URL.createObjectURL(file);
+    let safeObjectUrl = "";
+    try {
+      const parsedObjectUrl = new URL(objectUrl);
+      if (parsedObjectUrl.protocol !== "blob:" || parsedObjectUrl.origin !== window.location.origin) {
+        throw new TypeError("Unexpected local media URL");
+      }
+      safeObjectUrl = parsedObjectUrl.href;
+      localObjectUrl = safeObjectUrl;
+    } catch (error) {
+      URL.revokeObjectURL(objectUrl);
+      localObjectUrl = "";
+      throw error;
+    }
     return new Promise(resolve => {
       const video = document.createElement("video");
       video.preload = "metadata";
@@ -385,7 +398,7 @@
         finish({ duration: video.duration, visual: tracks.video ?? visual, audio: tracks.audio, subtitles: false, thumbnail });
       };
       video.onerror = () => finish({ visual: null, audio: null, subtitles: false });
-      video.src = localObjectUrl;
+      video.src = safeObjectUrl;
     });
   }
 

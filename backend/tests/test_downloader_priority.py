@@ -5,6 +5,7 @@ import json
 import subprocess
 import tempfile
 import threading
+import time
 import unittest
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -12,7 +13,13 @@ from urllib.parse import quote, urlparse
 from unittest.mock import patch
 
 from app.config import DATA_DIR
-from app.downloader import DownloadError, MediaDownloader, preflight_media_resource
+from app.downloader import (
+    DownloadError,
+    MediaDownloader,
+    _hls_encryption_flags,
+    extract_media_resources_from_text,
+    preflight_media_resource,
+)
 from app.models import BrowserCookie, ResourceCandidate
 from app.runtime import ffmpeg_bin
 
@@ -1315,6 +1322,7 @@ class DownloaderPriorityTests(unittest.TestCase):
                     kind="video",
                     score=100,
                     user_selected=True,
+                    page_url=f"http://127.0.0.1:{server.server_port}/lesson",
                 )
 
                 preflight = preflight_media_resource(candidate, [], page_url)
@@ -1345,6 +1353,7 @@ class DownloaderPriorityTests(unittest.TestCase):
                     kind="video",
                     mime="video/mp4",
                     is_main_video=True,
+                    page_url=f"http://127.0.0.1:{server.server_port}/lesson",
                 )
                 preflight = preflight_media_resource(candidate, [], "https://www.obeebee.com/")
                 self.assertFalse(preflight.downloadable)
@@ -2163,6 +2172,7 @@ class DownloaderPriorityTests(unittest.TestCase):
                         mime="video/mp4",
                         audio_url=audio_url,
                         audio_mime="audio/mp4",
+                        page_url=f"http://127.0.0.1:{server.server_port}/lesson",
                         request_headers={"Referer": SplitAVPreflightHandler.required_referer},
                     ),
                     [BrowserCookie(name="AUTH", value="ok", domain="127.0.0.1")],
@@ -2196,6 +2206,7 @@ class DownloaderPriorityTests(unittest.TestCase):
                         mime="video/mp4",
                         audio_url=audio_url,
                         audio_mime="audio/mp4",
+                        page_url=f"http://127.0.0.1:{server.server_port}/lesson",
                         request_headers={"Referer": SplitAVPreflightHandler.required_referer},
                     ),
                     [BrowserCookie(name="AUTH", value="ok", domain="127.0.0.1")],
@@ -2838,6 +2849,7 @@ class DownloaderPriorityTests(unittest.TestCase):
                         kind="video",
                         mime="video/mp4",
                         score=100,
+                        page_url=f"http://127.0.0.1:{server.server_port}/lesson",
                         request_headers={
                             "Origin": HeaderGateHandler.required_origin,
                             "Referer": HeaderGateHandler.required_referer,
@@ -3085,6 +3097,7 @@ class DownloaderPriorityTests(unittest.TestCase):
                         kind="hls",
                         mime="application/vnd.apple.mpegurl",
                         score=100,
+                        page_url=f"http://127.0.0.1:{server.server_port}/lesson",
                     ),
                     [],
                     "https://course.example.com/lesson",
@@ -3115,6 +3128,7 @@ class DownloaderPriorityTests(unittest.TestCase):
                         kind="fragment",
                         playback_match="fragment-near-playhead",
                         score=40,
+                        page_url=f"http://127.0.0.1:{server.server_port}/lesson",
                     ),
                     [],
                     "https://course.example.com/lesson",
@@ -3172,6 +3186,7 @@ class DownloaderPriorityTests(unittest.TestCase):
                         kind="video",
                         mime="video/mp4",
                         score=100,
+                        page_url=f"http://127.0.0.1:{server.server_port}/lesson",
                     ),
                     [],
                     "https://course.example.com/lesson",
@@ -3197,7 +3212,13 @@ class DownloaderPriorityTests(unittest.TestCase):
             try:
                 media_url = f"http://127.0.0.1:{server.server_port}/{video.name}"
                 result = preflight_media_resource(
-                    ResourceCandidate(url=media_url, source="webRequest", kind="video", mime="video/mp4"),
+                    ResourceCandidate(
+                        url=media_url,
+                        source="webRequest",
+                        kind="video",
+                        mime="video/mp4",
+                        page_url=f"http://127.0.0.1:{server.server_port}/lesson",
+                    ),
                     [],
                     HeaderGateHandler.required_referer,
                 )
@@ -3208,6 +3229,75 @@ class DownloaderPriorityTests(unittest.TestCase):
             finally:
                 server.shutdown()
                 server.server_close()
+
+    def test_preflight_blocks_cross_origin_loopback_target(self) -> None:
+        result = preflight_media_resource(
+            ResourceCandidate(
+                url="http://127.0.0.1:9/private.mp4",
+                source="webRequest",
+                kind="video",
+                mime="video/mp4",
+                page_url="https://course.example.com/lesson",
+            ),
+            [],
+            "https://course.example.com/lesson",
+        )
+        self.assertFalse(result.ok)
+        self.assertFalse(result.downloadable)
+        self.assertEqual(result.code, "download_forbidden")
+        self.assertIn("私有网络", result.message)
+
+    def test_preflight_revalidates_redirect_target_against_private_network_boundary(self) -> None:
+        class PrivateRedirectHandler(QuietHandler):
+            def do_GET(self) -> None:
+                self.send_response(302)
+                self.send_header("Location", "http://127.0.0.1:9/private.mp4")
+                self.end_headers()
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), PrivateRedirectHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            media_url = f"http://127.0.0.1:{server.server_port}/gate.mp4"
+            page_url = f"http://127.0.0.1:{server.server_port}/lesson"
+            result = preflight_media_resource(
+                ResourceCandidate(
+                    url=media_url,
+                    source="webRequest",
+                    kind="video",
+                    mime="video/mp4",
+                    page_url=page_url,
+                ),
+                [],
+                page_url,
+            )
+            self.assertFalse(result.ok)
+            self.assertFalse(result.downloadable)
+            self.assertEqual(result.code, "download_forbidden")
+            self.assertIn("私有网络", result.message)
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    def test_media_text_scanner_handles_long_punctuation_input_in_linear_time(self) -> None:
+        started = time.perf_counter()
+        resources = extract_media_resources_from_text(
+            ("!" * 200_000) + ".mp4",
+            "https://course.example.com/lesson/",
+        )
+        elapsed = time.perf_counter() - started
+        self.assertLess(elapsed, 2.0)
+        self.assertEqual(len(resources), 1)
+        self.assertEqual(resources[0].kind, "video")
+
+    def test_hls_key_parser_handles_repeated_tags_in_linear_time(self) -> None:
+        manifest = ("#EXT-X-KEY:" * 50_000) + "\n#EXT-X-KEY:METHOD=SAMPLE-AES"
+        started = time.perf_counter()
+        drm_like, aes_128 = _hls_encryption_flags(manifest)
+        elapsed = time.perf_counter() - started
+        self.assertLess(elapsed, 2.0)
+        self.assertTrue(drm_like)
+        self.assertFalse(aes_128)
 
     def test_preflight_keeps_blob_as_non_downloadable(self) -> None:
         result = preflight_media_resource(

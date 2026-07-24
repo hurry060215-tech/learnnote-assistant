@@ -454,11 +454,18 @@ const cookieSyncUrls = context.cookieUrlsForContext(
   }]
 );
 
-assert.ok(cookieSyncUrls.includes("https://media.cdn.example.com/hls/master.m3u8?token=abc"));
-assert.ok(cookieSyncUrls.includes("https://media.cdn.example.com/hls/master.m3u8?token=resolved"));
-assert.ok(cookieSyncUrls.includes("https://course.example.com/player"));
-assert.ok(cookieSyncUrls.includes("https://course.example.com"));
-assert.ok(cookieSyncUrls.includes("https://media.cdn.example.com/hls/master.m3u8?token=redirect"));
+const parsedCookieSyncUrls = cookieSyncUrls.map(value => new URL(value));
+const hasCookieSyncUrl = ({ hostname, pathname, search = "" }) => parsedCookieSyncUrls.some(url =>
+  url.protocol === "https:" &&
+  url.hostname === hostname &&
+  url.pathname === pathname &&
+  url.search === search
+);
+assert.ok(hasCookieSyncUrl({ hostname: "media.cdn.example.com", pathname: "/hls/master.m3u8", search: "?token=abc" }));
+assert.ok(hasCookieSyncUrl({ hostname: "media.cdn.example.com", pathname: "/hls/master.m3u8", search: "?token=resolved" }));
+assert.ok(hasCookieSyncUrl({ hostname: "course.example.com", pathname: "/player" }));
+assert.ok(hasCookieSyncUrl({ hostname: "course.example.com", pathname: "/" }));
+assert.ok(hasCookieSyncUrl({ hostname: "media.cdn.example.com", pathname: "/hls/master.m3u8", search: "?token=redirect" }));
 
 const partitionKeys = await context.cookiePartitionKeysForContext(
   {
