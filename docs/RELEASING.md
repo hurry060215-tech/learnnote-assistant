@@ -26,7 +26,7 @@ The release workflow supports Authenticode signing for both `LearnNote.exe` and 
 - `WINDOWS_SIGNING_CERT_PASSWORD`: PFX password;
 - `WINDOWS_SIGNING_TIMESTAMP_URL`: RFC 3161 timestamp URL, optional.
 
-Without the certificate, builds remain reproducible and checksum-verified but Windows can display an unknown-publisher warning.
+Without the certificate, builds remain checksum-verified but Windows can display an unknown-publisher warning. The current dependency ranges and hosted build tools do not provide bit-for-bit reproducible binaries.
 
 ## Browser stores
 
@@ -43,6 +43,6 @@ After approval, add store IDs and official listing URLs to the website and READM
 
 ## Docker and website
 
-- The container workflow publishes GHCR images from `main`.
+- The container workflow publishes `latest` and commit-SHA images from `main`, plus an immutable semantic-version image for each `vX.Y.Z` tag.
 - GitHub Pages deploys only after desktop/mobile visual acceptance.
 - A remote Docker deployment changes the local-only security boundary. Follow `SECURITY.md` and require HTTPS and authentication.

@@ -12,7 +12,7 @@ body:
     id: versions
     attributes:
       label: LearnNote and extension versions
-      placeholder: "Client 0.1.38, extension 0.1.38"
+      placeholder: "Client version, extension version"
     validations:
       required: true
   - type: input

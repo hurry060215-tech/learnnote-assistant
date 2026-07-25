@@ -61,12 +61,16 @@ class DeploymentContractTests(unittest.TestCase):
         self.assertIn("packages: write", workflow)
         self.assertIn("docker/build-push-action", workflow)
         self.assertIn("ghcr.io/${{ github.repository }}", workflow)
+        self.assertIn('tags: ["v*"]', workflow)
+        self.assertIn("type=semver,pattern={{version}}", workflow)
 
     def test_public_release_versions_stay_aligned(self) -> None:
         manifest_version = json.loads((ROOT / "extension" / "manifest.json").read_text(encoding="utf-8"))["version"]
         backend_source = (ROOT / "backend" / "app" / "__init__.py").read_text(encoding="utf-8")
         installer_source = (ROOT / "scripts" / "learnnote-installer.iss").read_text(encoding="utf-8")
         site_source = (ROOT / "site" / "index.html").read_text(encoding="utf-8")
+        compose_source = (ROOT / "compose.yaml").read_text(encoding="utf-8")
+        local_compose_source = (ROOT / "compose.local.yaml").read_text(encoding="utf-8")
         backend_version = re.search(r'APP_VERSION\s*=\s*"([^"]+)"', backend_source)
         installer_version = re.search(r'#define MyAppVersion\s+"([^"]+)"', installer_source)
 
@@ -75,6 +79,8 @@ class DeploymentContractTests(unittest.TestCase):
         self.assertEqual(manifest_version, backend_version.group(1))
         self.assertEqual(manifest_version, installer_version.group(1))
         self.assertIn(f"v{manifest_version}", site_source)
+        self.assertIn(f"${{LEARNNOTE_IMAGE_TAG:-{manifest_version}}}", compose_source)
+        self.assertIn(f"${{LEARNNOTE_IMAGE_TAG:-{manifest_version}}}", local_compose_source)
 
     def test_real_extension_smoke_tracks_the_current_sidepanel_contract(self) -> None:
         sidepanel = (ROOT / "extension" / "sidepanel.html").read_text(encoding="utf-8")

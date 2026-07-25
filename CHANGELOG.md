@@ -4,6 +4,20 @@ All notable changes to LearnNote are documented here. The project follows semant
 
 ## Unreleased
 
+## 0.1.42 - 2026-07-25
+
+### Changed
+
+- GitHub Actions release, Pages, container, dependency-review, and checkout steps use their current Node 24-compatible major versions.
+- Release workflows pin third-party Actions to reviewed commit SHAs while retaining their major-version comments for maintenance.
+- Dependabot only raises Python and npm version requirements when the existing constraints do not already allow the update.
+- Backend minimums now include the FastAPI, Uvicorn, multipart, Requests, and yt-dlp versions exercised by the final release gates.
+- Container releases now publish immutable semantic-version tags alongside `latest` and commit-SHA tags.
+
+### Fixed
+
+- Release metadata, website links, browser-extension assets, and installer fallback version now stay aligned; issue templates no longer hard-code a stale example version.
+
 ## 0.1.41 - 2026-07-24
 
 ### Changed
