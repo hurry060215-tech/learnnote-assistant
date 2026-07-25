@@ -13,7 +13,7 @@ body:
     attributes:
       label: LearnNote version
       description: Find this in Settings or the release filename.
-      placeholder: "e.g. 0.1.39"
+      placeholder: "e.g. latest release"
     validations:
       required: true
   - type: input
@@ -21,7 +21,7 @@ body:
     attributes:
       label: Browser extension version
       description: Enter "not involved" when the issue does not use the extension.
-      placeholder: "e.g. 0.1.39 or not involved"
+      placeholder: "e.g. latest release or not involved"
     validations:
       required: true
   - type: dropdown

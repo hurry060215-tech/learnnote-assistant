@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 import unittest
@@ -11,6 +12,15 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class ReleaseHardeningContractTests(unittest.TestCase):
+    def test_external_actions_are_pinned_to_commit_shas(self) -> None:
+        uses_pattern = re.compile(r"^\s*(?:-\s*)?uses:\s+([^@\s]+)@([^\s#]+)", re.MULTILINE)
+
+        for workflow_path in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
+            workflow = workflow_path.read_text(encoding="utf-8")
+            for action, reference in uses_pattern.findall(workflow):
+                with self.subTest(workflow=workflow_path.name, action=action):
+                    self.assertRegex(reference, r"^[0-9a-f]{40}$")
+
     def test_upgrade_gate_is_d_drive_scoped_and_checks_preservation(self) -> None:
         source = (ROOT / "scripts" / "test-upgrade-installer.ps1").read_text(encoding="utf-8")
 
@@ -68,7 +78,7 @@ class ReleaseHardeningContractTests(unittest.TestCase):
         self.assertIn("test_release_hardening.py", workflow)
         self.assertIn("samplelib.com/sample-mp4.html", workflow)
         self.assertIn("-RequireReady", workflow)
-        self.assertIn("actions/upload-artifact@v6", workflow)
+        self.assertRegex(workflow, r"actions/upload-artifact@[0-9a-f]{40} # v6")
         self.assertIn("build/reliability/model-provider-contract.json", workflow)
         self.assertNotIn("runner.temp", workflow)
         self.assertNotIn("secrets.", workflow)

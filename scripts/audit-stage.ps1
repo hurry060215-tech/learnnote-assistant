@@ -105,15 +105,8 @@ if (Test-Any @("backend/app/main.py", "backend/app/processor.py", "backend/tests
 if (Test-Any @("extension/background.js", "extension/tests/background_*.test.mjs")) {
   $ran = $true
   Invoke-Step "Background syntax" { node --check extension\background.js }
-  foreach ($test in @(
-    "extension\tests\background_request_headers.test.mjs",
-    "extension\tests\background_target_tab.test.mjs",
-    "extension\tests\background_mediasource_rank.test.mjs",
-    "extension\tests\background_context_update_notify.test.mjs",
-    "extension\tests\background_download_export.test.mjs",
-    "extension\tests\background_action_intent.test.mjs"
-  )) {
-    Invoke-Step $test { node $test }
+  foreach ($test in @(Get-ChildItem extension\tests\background_*.test.mjs | Sort-Object Name)) {
+    Invoke-Step $test.FullName { node $test.FullName }
   }
 }
 
@@ -125,21 +118,8 @@ if (Test-Any @("extension/manifest.json", "extension/tests/manifest_*.test.mjs")
 if (Test-Any @("extension/sidepanel.js", "extension/sidepanel.css", "extension/sidepanel.html", "extension/tests/sidepanel_*.test.mjs")) {
   $ran = $true
   Invoke-Step "Side Panel syntax" { node --check extension\sidepanel.js }
-  foreach ($test in @(
-    "extension\tests\sidepanel_preflight_start.test.mjs",
-    "extension\tests\sidepanel_preflight_fallback.test.mjs",
-    "extension\tests\sidepanel_page_preflight_continues_queue.test.mjs",
-    "extension\tests\sidepanel_start_page_preflight_report.test.mjs",
-    "extension\tests\sidepanel_direct_response_preflight.test.mjs",
-    "extension\tests\sidepanel_download_only.test.mjs",
-    "extension\tests\sidepanel_failed_fallback_result.test.mjs",
-    "extension\tests\sidepanel_local_upload.test.mjs",
-    "extension\tests\sidepanel_run_preflight_blob_fallback.test.mjs",
-    "extension\tests\sidepanel_source_switcher.test.mjs",
-    "extension\tests\sidepanel_slices_tab.test.mjs",
-    "extension\tests\sidepanel_markdown.test.mjs"
-  )) {
-    Invoke-Step $test { node $test }
+  foreach ($test in @(Get-ChildItem extension\tests\sidepanel_*.test.mjs | Sort-Object Name)) {
+    Invoke-Step $test.FullName { node $test.FullName }
   }
 }
 
@@ -148,16 +128,10 @@ if (Test-Any @("extension/content.js", "extension/page_hook.js", "extension/test
   Invoke-Step "Content script syntax" { node --check extension\content.js }
   Invoke-Step "Page hook syntax" { node --check extension\page_hook.js }
   foreach ($test in @(
-    "extension\tests\content_static_hints.test.mjs",
-    "extension\tests\content_shadow_dom.test.mjs",
-    "extension\tests\page_hook_arraybuffer_text.test.mjs",
-    "extension\tests\page_hook_late_global_config.test.mjs",
-    "extension\tests\page_hook_websocket_eventsource.test.mjs",
-    "extension\tests\page_hook_response_json.test.mjs",
-    "extension\tests\page_hook_mediasource.test.mjs",
-    "extension\tests\page_hook_media_element.test.mjs"
-  )) {
-    Invoke-Step $test { node $test }
+    Get-ChildItem extension\tests\content_*.test.mjs
+    Get-ChildItem extension\tests\page_hook_*.test.mjs
+  ) | Sort-Object Name) {
+    Invoke-Step $test.FullName { node $test.FullName }
   }
 }
 

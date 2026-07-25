@@ -195,7 +195,7 @@ D:\Projects\learnnote-assistant\extension
 
 ## Docker 部署
 
-Docker 适合把 LearnNote 后端和 Web 工作台运行在本机、NAS 或服务器上。浏览器当前页功能仍建议使用 Windows 客户端；扩展默认只连接本机 `127.0.0.1`。
+Docker 适合把 LearnNote 后端和 Web 工作台运行在本机、NAS 或服务器上。官方镜像当前仅发布 `linux/amd64`；ARM NAS 需要自行构建。浏览器当前页功能仍建议使用 Windows 客户端；扩展默认只连接本机 `127.0.0.1`。
 
 本机 Windows 部署会使用 `8876` 端口，避免与桌面客户端的 `8765` 冲突，并将全部容器数据绑定到 `D:\LearnNote\docker-data`：
 
