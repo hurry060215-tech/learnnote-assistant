@@ -4,6 +4,10 @@ All notable changes to LearnNote are documented here. The project follows semant
 
 ## Unreleased
 
+### Changed
+
+- GitHub Release publication now uses the runner's authenticated `gh` CLI, removing the final Node 20 action-runtime warning.
+
 ## 0.1.42 - 2026-07-25
 
 ### Changed
