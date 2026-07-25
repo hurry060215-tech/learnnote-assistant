@@ -7,6 +7,7 @@ All notable changes to LearnNote are documented here. The project follows semant
 ### Changed
 
 - GitHub Release publication now uses the runner's authenticated `gh` CLI, removing the final Node 20 action-runtime warning.
+- Container and Pages workflows use the latest reviewed major releases of their pinned Actions; website visual tests use Playwright 1.62.
 
 ## 0.1.42 - 2026-07-25
 
