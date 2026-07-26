@@ -95,6 +95,15 @@ function resetPageResources(nextIdentity = "") {
   performanceNavigationStart = Number(performance.now?.() || 0);
 }
 
+function isSubtitleEndpointUrl(url = "") {
+  try {
+    const parsed = new URL(String(url || ""), location.href);
+    return /(?:^|[/?&=._-])(?:subtitle|subtitles|caption|captions)(?:[/?&=._-]|$)/i.test(parsed.pathname);
+  } catch {
+    return /(?:^|[/?&=._-])(?:subtitle|subtitles|caption|captions)(?:[/?&=._-]|$)/i.test(String(url || ""));
+  }
+}
+
 function classify(url, mime = "") {
   const lower = String(url || "").toLowerCase();
   const type = String(mime || "").toLowerCase();
@@ -102,9 +111,9 @@ function classify(url, mime = "") {
   if (FRAGMENT_RE.test(lower)) return "fragment";
   if (type.includes("mpegurl") || lower.includes(".m3u8")) return "hls";
   if (type.includes("dash+xml") || lower.includes(".mpd")) return "dash";
+  if (type.includes("text/vtt") || type.includes("subrip") || SUBTITLE_RE.test(lower) || isSubtitleEndpointUrl(lower)) return "subtitle";
   if (type.includes("video/") || VIDEO_RE.test(lower)) return "video";
   if (type.includes("audio/") || AUDIO_RE.test(lower)) return "audio";
-  if (type.includes("text/vtt") || type.includes("subrip") || SUBTITLE_RE.test(lower)) return "subtitle";
   return "unknown";
 }
 
@@ -279,6 +288,7 @@ function looksLikeMediaValue(value, hint = "") {
 function looksLikePlaybackEndpointValue(value, hint = "") {
   const text = decodeURIComponentSafe(decodeJsStringEscapes(String(value || ""))).trim();
   if (!text || !STATIC_MEDIA_KEY_RE.test(hint)) return false;
+  if (isSubtitleEndpointUrl(text)) return false;
   if (!/^(https?:)?\/\//i.test(text) && !text.startsWith("/") && !text.includes("/")) return false;
   if (MEDIA_RE.test(text) || FRAGMENT_RE.test(text) || SUBTITLE_RE.test(text) || text.includes(".m3u8") || text.includes(".mpd")) return false;
   return /(^|[/?&=._-])(api|ananas|play|player|stream|video|audio|media|source|sources|sourcelist|main|master|manifest|backup|backups|cdn|baseurl|base_url|base-url|host|domain|vod|quality|qualities|definition|definitions|format|formats|profile|profiles|variant|variants|rendition|renditions|level|levels|track|tracks|hls|dash|playlist|m3u8|mpd|objectid|dtoken)([/?&=._-]|$)/i.test(text);
@@ -732,10 +742,11 @@ function rememberHookResource(item) {
   if (/^image\//i.test(String(item?.mime || ""))) return;
   const normalized = resource(item.url, item.source || "pageHook", item.label || "page hook", item.mime || "");
   if (!normalized) return;
-  normalized.kind = item.kind || normalized.kind;
-  normalized.score = Math.max(normalized.score, Number(item.score || 0));
-  normalized.is_main_video = Boolean(item.is_main_video || normalized.is_main_video);
-  normalized.playback_match = item.playback_match || normalized.playback_match || "";
+  const subtitleEndpoint = isSubtitleEndpointUrl(normalized.url);
+  normalized.kind = subtitleEndpoint ? "subtitle" : item.kind || normalized.kind;
+  normalized.score = subtitleEndpoint ? scoreForKind("subtitle") : Math.max(normalized.score, Number(item.score || 0));
+  normalized.is_main_video = subtitleEndpoint ? false : Boolean(item.is_main_video || normalized.is_main_video);
+  normalized.playback_match = subtitleEndpoint ? "" : item.playback_match || normalized.playback_match || "";
   normalized.blob_url = absoluteUrl(item.blob_url || "") || "";
   normalized.request_type = item.request_type || "";
   normalized.method = item.method || "";

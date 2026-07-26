@@ -19,6 +19,10 @@ from app.config import DATA_DIR, LLM_MAX_RETRIES, LLM_REQUEST_TIMEOUT_SECONDS, T
 from app.downloader import (
     DownloadError,
     MediaDownloader,
+    YTDLP_EXTRACTOR_RETRIES,
+    YTDLP_FRAGMENT_RETRIES,
+    YTDLP_RETRIES,
+    _classify_ytdlp_error,
     _rewrite_dash_manifest_for_local_file,
     _should_run_ytdlp_cli,
     choose_ytdlp_subtitle_language,
@@ -776,6 +780,27 @@ class ResourceDetectionTests(unittest.TestCase):
         self.assertEqual(headers["X-Requested-With"], "XMLHttpRequest")
         self.assertNotIn("Cookie", headers)
         self.assertEqual(headers["Authorization"], "Bearer bad")
+
+    def test_ytdlp_without_browser_context_keeps_native_user_agent(self) -> None:
+        headers = ytdlp_headers_from_browser_context("https://www.bilibili.com/video/BV1xx411c7mD", [])
+
+        self.assertNotIn("User-Agent", headers)
+        self.assertEqual(headers["Referer"], "https://www.bilibili.com/video/BV1xx411c7mD")
+
+    def test_ytdlp_tls_eof_is_retryable_and_not_forbidden(self) -> None:
+        message = "[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1010)"
+
+        self.assertEqual(_classify_ytdlp_error(message), "network_tls_error")
+        self.assertGreaterEqual(YTDLP_RETRIES, 3)
+        self.assertGreaterEqual(YTDLP_FRAGMENT_RETRIES, 3)
+        self.assertGreaterEqual(YTDLP_EXTRACTOR_RETRIES, 3)
+
+    def test_bilibili_subtitle_endpoint_is_not_video(self) -> None:
+        url = "https://api.bilibili.com/x/v2/subtitle/web/view?oid=39879182370&video_type=1"
+        candidate = ResourceCandidate(url=url, kind="video", mime="application/octet-stream", score=100)
+
+        self.assertEqual(classify_resource(url, "application/octet-stream"), "subtitle")
+        self.assertEqual(effective_resource_kind(candidate), "subtitle")
 
     def test_fallback_page_urls_include_active_iframe_and_referer_context(self) -> None:
         urls = fallback_page_urls(

@@ -168,12 +168,22 @@ function mediaKindFromMime(mime = "") {
   return "unknown";
 }
 
+function isSubtitleEndpointUrl(url = "") {
+  try {
+    const parsed = new URL(String(url || ""));
+    return /(?:^|[/?&=._-])(?:subtitle|subtitles|caption|captions)(?:[/?&=._-]|$)/i.test(parsed.pathname);
+  } catch {
+    return /(?:^|[/?&=._-])(?:subtitle|subtitles|caption|captions)(?:[/?&=._-]|$)/i.test(String(url || ""));
+  }
+}
+
 function classify(url, mime = "") {
   const lower = url.toLowerCase();
   const mimeKind = mediaKindFromMime(mime);
   if (lower.startsWith("blob:")) return "blob";
   if (FRAGMENT_RE.test(lower)) return "fragment";
   if (mimeKind !== "unknown") return mimeKind;
+  if (isSubtitleEndpointUrl(lower)) return "subtitle";
   if (lower.includes(".m3u8")) return "hls";
   if (lower.includes(".mpd")) return "dash";
   if (VIDEO_RE.test(lower)) return "video";
@@ -381,6 +391,7 @@ function hasReplayableRequestBody(resource = {}) {
 }
 
 function playableEndpointRank(resource = {}) {
+  if (resource.kind === "subtitle" || isSubtitleEndpointUrl(resource.url || "")) return 0;
   if (!PLAYBACK_ENDPOINT_RE.test(resource.url || "")) return 0;
   const requestType = String(resource.request_type || "").toLowerCase();
   const source = String(resource.source || "").toLowerCase();

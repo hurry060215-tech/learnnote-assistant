@@ -185,7 +185,9 @@ def build_handoff_integrity(request: CurrentPageTaskRequest) -> MediaIntegrity:
         kind = effective_resource_kind(resource)
         declared_kind = str(resource.kind or "").strip().lower()
         mime = str(resource.mime or "").lower()
-        if kind in {"video", "hls", "dash"} or declared_kind in {"video", "hls", "dash"} or mime.startswith("video/"):
+        if kind in {"video", "hls", "dash"} or (
+            kind != "subtitle" and (declared_kind in {"video", "hls", "dash"} or mime.startswith("video/"))
+        ):
             has_video = True
         if kind == "audio" or declared_kind == "audio" or mime.startswith("audio/") or bool(resource.audio_url):
             has_audio = True
@@ -1380,6 +1382,8 @@ def diagnostic_recovery_steps(task: TaskRecord) -> list[str]:
         add(f"{mse_boundary_summary} 请继续播放几秒并重新检测真实 manifest/mp4 请求；如果仍只有 blob/MSE 证据，就使用本地视频入口。")
     if "auth_required" in codes:
         add("重新打开课程页面并确认登录有效，播放几秒后立刻从扩展侧栏重新创建任务，让 Cookie 和媒体请求保持新鲜。")
+    if "network_tls_error" in codes:
+        add("视频服务器的 TLS 连接被提前断开；后端已自动重试。请稍后重试一次，并检查代理、网络过滤或安全软件是否中断大文件 HTTPS 连接。")
     if "download_forbidden" in codes:
         add("媒体服务器拒绝下载时，优先检查 Referer/Origin、登录态和时效签名；回到原页面继续播放后重新检测，或选择另一个候选资源。")
     if "unsupported_manifest" in codes:
@@ -1545,6 +1549,12 @@ def diagnostic_recovery_profile(task: TaskRecord) -> dict:
         confidence = "high"
         severity = "recoverable"
         next_action = "refresh_login_and_retry"
+    elif "network_tls_error" in codes:
+        primary_code = "network_tls_error"
+        diagnosis = "视频服务器的 TLS 连接在下载过程中被提前断开；这不是 HTTP 拒绝，通常可以重试。"
+        confidence = "high"
+        severity = "recoverable"
+        next_action = "refresh_playback_and_retry"
     elif "download_forbidden" in codes:
         primary_code = "download_forbidden"
         diagnosis = "媒体地址被防盗链、时效签名、Referer/Origin 或服务端策略拒绝。"
@@ -3618,7 +3628,22 @@ def create_from_current_page(request: CurrentPageTaskRequest, background_tasks: 
         if request.browser_subtitles:
             task = update_task(task.id, browser_subtitles=request.browser_subtitles)
         if defer:
-            highest_score_resource = max(request.resources, key=lambda item: item.score, default=None)
+            media_resources = [
+                item for item in request.resources
+                if effective_resource_kind(item) != "subtitle"
+            ]
+            highest_score_resource = max(
+                media_resources,
+                key=lambda item: (
+                    1 if item.user_selected else 0,
+                    1 if item.is_main_video else 0,
+                    1 if item.playback_match else 0,
+                    1 if effective_resource_kind(item) in {"video", "hls", "dash"} else 0,
+                    item.score or 0,
+                    item.content_length or 0,
+                ),
+                default=None,
+            )
             handoff_integrity = build_handoff_integrity(request)
             task = update_task(
                 task.id,
@@ -3929,6 +3954,23 @@ def api_cancel_task(task_id: str) -> dict:
         raise HTTPException(status_code=404, detail={"code": "task_not_found", "message": "任务不存在"}) from exc
     if task.status in {"success", "failed", "cancelled"}:
         raise HTTPException(status_code=409, detail={"code": "task_not_running", "message": "任务已经结束"})
+    if task.awaiting_confirmation:
+        with _deferred_handoffs_lock:
+            _deferred_handoffs.pop(task.id, None)
+            for handoff_id, mapped_task_id in list(_handoff_task_ids.items()):
+                if mapped_task_id == task.id:
+                    _handoff_task_ids.pop(handoff_id, None)
+        task = update_task(
+            task.id,
+            awaiting_confirmation=False,
+            cancel_requested=True,
+            cancel_requested_at=now_iso(),
+            status="cancelled",
+            phase="cancelled",
+            message="已放弃待确认任务",
+            cancelled_at=now_iso(),
+        )
+        return {"task": task_payload(task)}
     task = request_task_cancel(task_id)
     return {"task": task_payload(task)}
 

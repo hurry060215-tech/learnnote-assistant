@@ -107,6 +107,7 @@ DOWNLOAD_FAILURE_PRIORITY = {
     "auth_required": 40,
     "yt_dlp_timeout": 35,
     "download_timeout": 35,
+    "network_tls_error": 34,
     "download_forbidden": 30,
     "unsupported_manifest": 20,
     "no_media_found": 10,
@@ -153,9 +154,9 @@ REQUEST_BODY_REPLAY_METHODS = {"POST", "PUT", "PATCH"}
 MAX_REPLAY_BODY_BYTES = 64 * 1024
 YTDLP_SOCKET_TIMEOUT_SECONDS = 20
 YTDLP_DOWNLOAD_TIMEOUT_SECONDS = 1800
-YTDLP_RETRIES = 1
-YTDLP_FRAGMENT_RETRIES = 1
-YTDLP_EXTRACTOR_RETRIES = 1
+YTDLP_RETRIES = 3
+YTDLP_FRAGMENT_RETRIES = 3
+YTDLP_EXTRACTOR_RETRIES = 3
 YTDLP_FIRST_HOSTS = {
     "b23.tv",
     "bilibili.com",
@@ -221,6 +222,14 @@ def _classify_ytdlp_error(message: str) -> str:
     lowered = (message or "").lower()
     if "timed out" in lowered or "timeout" in lowered:
         return "yt_dlp_timeout"
+    if any(marker in lowered for marker in (
+        "unexpected_eof_while_reading",
+        "eof occurred in violation of protocol",
+        "tlsv1 alert",
+        "ssl: eof",
+        "ssl eof",
+    )):
+        return "network_tls_error"
     if any(marker in lowered for marker in ("login", "cookie", "sign in", "private video", "members-only")):
         return "auth_required"
     if any(marker in lowered for marker in ("drm", "encrypted", "eme")):
@@ -1417,7 +1426,6 @@ def ytdlp_headers_from_browser_context(page_url: str, resources: list[ResourceCa
             if value and name not in headers:
                 headers[name] = value
 
-    headers.setdefault("User-Agent", "Mozilla/5.0 LearnNoteAssistant/0.1")
     if page_url:
         headers.setdefault("Referer", _safe_header_value(page_url))
     return headers
@@ -1731,6 +1739,13 @@ def classify_resource(url: str, mime: str = "") -> str:
         return "hls"
     if "dash+xml" in mime_lower or ".mpd" in lowered:
         return "dash"
+    try:
+        parsed = urlparse(url)
+        subtitle_context = parsed.path
+    except (TypeError, ValueError):
+        subtitle_context = lowered
+    if re.search(r"(?:^|[/?&=._-])(?:subtitle|subtitles|caption|captions)(?:[/?&=._-]|$)", subtitle_context, re.I):
+        return "subtitle"
     if "audio/" in mime_lower or "application/ogg" in mime_lower or AUDIO_EXT_RE.search(lowered):
         return "audio"
     if "video/" in mime_lower or "application/mp4" in mime_lower or MEDIA_EXT_RE.search(lowered):
@@ -3576,6 +3591,8 @@ class MediaDownloader:
                     raise DownloadError("auth_required", "yt-dlp 页面下载失败，可能需要登录态 cookie。")
                 if code == "yt_dlp_timeout":
                     raise DownloadError("yt_dlp_timeout", f"yt-dlp 页面下载超时：{output[:300]}")
+                if code == "network_tls_error":
+                    raise DownloadError("network_tls_error", f"yt-dlp 与视频服务器的 TLS 连接被提前断开，已自动重试：{output[:300]}")
                 if code == "drm_or_encrypted":
                     raise DownloadError("drm_or_encrypted", f"yt-dlp 检测到加密或 DRM 限制：{output[:300]}")
                 if code == "no_media_found":
@@ -3599,6 +3616,8 @@ class MediaDownloader:
                     raise DownloadError("auth_required", "yt-dlp 页面下载失败，可能需要登录态 cookie。") from exc
                 if code == "yt_dlp_timeout":
                     raise DownloadError("yt_dlp_timeout", f"yt-dlp 页面下载超时：{message[:300]}") from exc
+                if code == "network_tls_error":
+                    raise DownloadError("network_tls_error", f"yt-dlp 与视频服务器的 TLS 连接被提前断开，已自动重试：{message[:300]}") from exc
                 if code == "drm_or_encrypted":
                     raise DownloadError("drm_or_encrypted", f"yt-dlp 检测到加密或 DRM 限制：{message[:300]}") from exc
                 if code == "no_media_found":

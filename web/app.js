@@ -2906,7 +2906,7 @@ const PIPELINE_STEPS = [
   { key: "completed", label: "完成" }
 ];
 
-const DOWNLOAD_ERROR_CODES = new Set(["no_media_found", "auth_required", "drm_or_encrypted", "download_forbidden", "unsupported_manifest", "media_mismatch"]);
+const DOWNLOAD_ERROR_CODES = new Set(["no_media_found", "auth_required", "drm_or_encrypted", "network_tls_error", "download_forbidden", "unsupported_manifest", "media_mismatch"]);
 
 const ERROR_GUIDES = {
   no_media_found: {
@@ -2916,6 +2916,10 @@ const ERROR_GUIDES = {
   auth_required: {
     title: "当前登录状态已失效",
     body: "重新打开课程页面并确认可以正常播放，然后从扩展侧栏再次生成。"
+  },
+  network_tls_error: {
+    title: "视频连接被提前断开",
+    body: "系统已经自动重试。这不是服务器明确拒绝；请稍后再试，并检查代理或安全软件是否中断 HTTPS 下载。"
   },
   drm_or_encrypted: {
     title: "这个视频来源无法直接保存",
@@ -3036,6 +3040,9 @@ function recoveryStepItems(task) {
   if (codes.has("auth_required")) {
     add("重新打开课程页并确认登录有效，播放几秒后立刻重新创建任务。");
   }
+  if (codes.has("network_tls_error")) {
+    add("TLS 连接在下载中被提前断开。请稍后重试，并检查代理、网络过滤或安全软件。");
+  }
   if (codes.has("download_forbidden")) {
     add("回到原页面继续播放后重新检测，优先选择带 Referer/Origin 或当前播放匹配的候选。");
   }
@@ -3132,6 +3139,7 @@ function diagnosticPipeline(task) {
 function diagnosticUserDetail(task) {
   const messages = {
     yt_dlp_timeout: "视频下载等待超时。可以重新尝试；若页面需要登录，请先确认视频能够正常播放。",
+    network_tls_error: "视频服务器的 TLS 连接被提前断开，系统已自动重试；这不是服务器明确拒绝。请稍后重试并检查代理或安全软件。",
     auth_required: "当前登录信息不足或已经失效。请重新登录并刷新视频页后再试。",
     no_media_found: "页面暂未暴露可下载的视频资源。请先播放几秒，再让扩展重新检测。",
     download_forbidden: "视频地址已找到，但站点拒绝了当前下载请求。请刷新页面或改用本地视频。",
@@ -4906,7 +4914,7 @@ function renderTasks() {
           ${canCreateNoteVersion(task) ? `<button type="button" data-task-action="version">新建笔记版本</button>` : ""}
           ${["running", "queued", "cancelling"].includes(task.status) ? `<button type="button" data-task-action="cancel">停止</button>` : ""}
           ${["failed", "cancelled"].includes(task.status) ? `<button type="button" data-task-action="retry">重试</button>` : ""}
-          ${["success", "failed", "cancelled"].includes(task.status) ? `<button type="button" data-task-action="delete">删除</button>` : ""}
+          ${task.awaiting_confirmation || ["success", "failed", "cancelled"].includes(task.status) ? `<button type="button" data-task-action="delete">${task.awaiting_confirmation ? "放弃并删除" : "删除"}</button>` : ""}
         </div>
       </div>
     </article>
@@ -4919,6 +4927,7 @@ function renderTasks() {
 
 async function runTaskAction(taskId, action) {
   if (!taskId) return;
+  const task = tasks.find(item => item.id === taskId);
   if (action === "open") {
     await openTaskFromList(taskId);
     return;
@@ -4945,7 +4954,13 @@ async function runTaskAction(taskId, action) {
       }
     }
   } else if (action === "delete") {
-    if (typeof window.confirm === "function" && !window.confirm("确认删除这个任务及其本地文件？")) return;
+    const confirmation = task?.awaiting_confirmation
+      ? "确认放弃这个待确认任务并删除本地记录？"
+      : "确认删除这个任务及其本地文件？";
+    if (typeof window.confirm === "function" && !window.confirm(confirmation)) return;
+    if (task?.awaiting_confirmation) {
+      await fetchJson(apiUrl(`/api/tasks/${encodeURIComponent(taskId)}/cancel`), { method: "POST" });
+    }
     await fetchJson(apiUrl(`/api/tasks/${encodeURIComponent(taskId)}`), { method: "DELETE" });
     if (selectedTaskId === taskId) selectedTaskId = null;
   }

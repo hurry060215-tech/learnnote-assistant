@@ -157,13 +157,22 @@
     return text;
   }
 
+  function isSubtitleEndpointUrl(url = "") {
+    try {
+      const parsed = new URL(String(url || ""), location.href);
+      return /(?:^|[/?&=._-])(?:subtitle|subtitles|caption|captions)(?:[/?&=._-]|$)/i.test(parsed.pathname);
+    } catch {
+      return /(?:^|[/?&=._-])(?:subtitle|subtitles|caption|captions)(?:[/?&=._-]|$)/i.test(String(url || ""));
+    }
+  }
+
   function mediaKind(url, mime = "") {
     const lower = String(url || "").toLowerCase();
     const type = String(mime || "").toLowerCase();
     if (FRAGMENT_RE.test(lower)) return "fragment";
     if (type.includes("mpegurl") || lower.includes(".m3u8")) return "hls";
     if (type.includes("dash+xml") || lower.includes(".mpd")) return "dash";
-    if (type.includes("text/vtt") || type.includes("subrip") || /\.(vtt|srt|ass|ssa)(\?|#|$)/i.test(lower)) return "subtitle";
+    if (type.includes("text/vtt") || type.includes("subrip") || /\.(vtt|srt|ass|ssa)(\?|#|$)/i.test(lower) || isSubtitleEndpointUrl(lower)) return "subtitle";
     if (type.includes("video/") || /\.(mp4|m4v|webm|mov|mkv|flv|avi)(\?|#|$)/i.test(lower)) return "video";
     if (type.includes("audio/") || /\.(m4a|mp3|aac|opus|ogg|oga|wav)(\?|#|$)/i.test(lower)) return "audio";
     return "unknown";
@@ -283,11 +292,13 @@
   }
 
   function mediaUrlHint(url = "") {
+    if (isSubtitleEndpointUrl(url)) return false;
     return /(^|[/?&=._-])(m3u8|mpd|hls|dash|manifest|playlist|master|main|backup|backups|source|sources|sourcelist|cdn|baseurl|base_url|base-url|host|domain|stream|play|video|audio|media|vod|quality|qualities|definition|definitions|format|formats|profile|profiles|variant|variants|rendition|renditions|level|levels|track|tracks|ananas|objectid|dtoken|fileid|httpmd)([/?&=._-]|$)/i.test(String(url || ""));
   }
 
   function endpointKindHint(url = "") {
     const text = String(url || "").toLowerCase();
+    if (isSubtitleEndpointUrl(text)) return { kind: "subtitle", mime: "text/vtt" };
     if (/(^|[/?&=._-])audio([/?&=._-]|$)/i.test(text)) return { kind: "audio", mime: "audio/mp4" };
     if (mediaUrlHint(text)) return { kind: "video", mime: "video/mp4" };
     return { kind: "unknown", mime: "" };

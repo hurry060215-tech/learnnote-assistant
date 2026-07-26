@@ -451,8 +451,6 @@ body[data-app-view="notes"] .task-controls > * {
   min-width: 0;
   max-width: 100%;
 }
-body[data-app-view="notes"] .task-controls [data-task-action="delete"] { display: none; }
-
 body[data-app-view="workspace"].assistant-open .topbar,
 body[data-app-view="workspace"].assistant-open .app-shell {
   right: 0 !important;
@@ -645,17 +643,20 @@ body.assistant-wide .ai-assistant-drawer { width: var(--assistant-current-width)
   }
 }
 body[data-app-view="notes"] .task {
-  height: 84px;
+  height: auto;
   min-height: 84px;
-  max-height: 84px;
-  overflow: hidden;
+  max-height: none;
+  overflow: visible;
 }
 body[data-app-view="notes"] .task-headline {
-  height: 60px;
+  min-height: 60px;
+  height: auto;
   align-content: center;
 }
 body[data-app-view="notes"] .task-controls {
-  display: none !important;
+  display: flex !important;
+  flex-wrap: wrap;
+  justify-content: flex-start;
 }
 
 @media (max-width: 900px) {
