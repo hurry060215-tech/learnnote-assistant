@@ -81,6 +81,16 @@ context.rememberHookResource({
   playback_match: "blob-source",
   blob_url: "blob:https://course.example.com/current"
 });
+context.rememberHookResource({
+  url: "https://api.bilibili.com/x/v2/subtitle/web/view?oid=39879182370&video_type=1",
+  source: "pageHookRequest",
+  kind: "video",
+  label: "xhr",
+  mime: "application/octet-stream",
+  score: 100,
+  is_main_video: true,
+  playback_match: "blob-same-frame"
+});
 
 let response = null;
 messageListener({ type: "collect-page-data" }, {}, data => {
@@ -88,7 +98,7 @@ messageListener({ type: "collect-page-data" }, {}, data => {
 });
 
 assert.ok(response.resources.length <= 80);
-assert.equal(response.resources.length, 71);
+assert.equal(response.resources.length, 72);
 assert.equal(response.resources[0].url, "https://cdn.example.com/current/video/init-0001.m4s");
 assert.equal(response.resources[0].playback_match, "blob-source");
 assert.equal(response.resources[0].is_main_video, true);
@@ -96,6 +106,11 @@ assert.ok(
   response.resources.some(item => item.url === "https://cdn.example.com/current/video/init-0001.m4s"),
   "expected current playback match to survive the 60-resource truncation"
 );
+const subtitleEndpoint = response.resources.find(item => item.url.includes("/subtitle/web/view"));
+assert.equal(subtitleEndpoint.kind, "subtitle");
+assert.equal(subtitleEndpoint.is_main_video, false);
+assert.equal(subtitleEndpoint.playback_match, "");
+assert.ok(subtitleEndpoint.score <= 65);
 
 const sourceElementSorted = [
   {

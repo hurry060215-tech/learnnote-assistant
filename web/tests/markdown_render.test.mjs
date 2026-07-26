@@ -192,6 +192,9 @@ const productCss = await readFile(new URL("../product.css", import.meta.url), "u
 const matureCss = await readFile(new URL("../mature.css", import.meta.url), "utf8");
 const editorialCss = await readFile(new URL("../editorial.css", import.meta.url), "utf8");
 const editorialCode = await readFile(new URL("../editorial.js", import.meta.url), "utf8");
+assert.doesNotMatch(matureCss, /body\[data-app-view="notes"\]\s+\.task-controls\s*\{\s*display:\s*none\s*!important/);
+assert.match(matureCss, /body\[data-app-view="notes"\]\s+\.task-controls\s*\{[^}]*display:\s*flex\s*!important/);
+assert.match(webCode, /task\.awaiting_confirmation\s*\?\s*"放弃并删除"\s*:\s*"删除"/);
 vm.runInContext(webCode, context);
 vm.runInContext(editorialCode, context);
 

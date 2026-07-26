@@ -338,6 +338,59 @@ class DeferredHandoffTests(unittest.TestCase):
             finally:
                 self._cleanup(task_id)
 
+    def test_deferred_handoff_ignores_subtitle_endpoint_as_selected_video(self) -> None:
+        payload = {
+            **self.payload,
+            "resources": [
+                {
+                    "url": "https://api.bilibili.com/x/v2/subtitle/web/view?oid=39879182370&video_type=1",
+                    "source": "pageHookRequest",
+                    "kind": "video",
+                    "mime": "application/octet-stream",
+                    "score": 100,
+                    "is_main_video": True,
+                    "playback_match": "blob-same-frame",
+                },
+                {
+                    "url": "https://cdn.example.com/video.mp4",
+                    "source": "webRequest",
+                    "kind": "video",
+                    "mime": "video/mp4",
+                    "score": 90,
+                },
+            ],
+        }
+        created = self.client.post("/api/tasks/from-current-page?defer=true", json=payload)
+        self.assertEqual(created.status_code, 200, created.text)
+        task_id = created.json()["task_id"]
+        try:
+            task = created.json()["task"]
+            self.assertEqual(task["selected_resource"]["url"], "https://cdn.example.com/video.mp4")
+            self.assertTrue(task["handoff_integrity"]["has_subtitles"])
+        finally:
+            self._cleanup(task_id)
+
+    def test_cancel_deferred_handoff_finishes_immediately_and_can_delete(self) -> None:
+        payload = {**self.payload, "handoff_id": "ln-cancel-handoff-0001"}
+        created = self.client.post("/api/tasks/from-current-page?defer=true", json=payload)
+        self.assertEqual(created.status_code, 200, created.text)
+        task_id = created.json()["task_id"]
+        try:
+            cancelled = self.client.post(f"/api/tasks/{task_id}/cancel")
+            self.assertEqual(cancelled.status_code, 200, cancelled.text)
+            task = cancelled.json()["task"]
+            self.assertEqual(task["status"], "cancelled")
+            self.assertFalse(task["awaiting_confirmation"])
+            with main_module._deferred_handoffs_lock:
+                self.assertNotIn(task_id, main_module._deferred_handoffs)
+                self.assertNotIn("ln-cancel-handoff-0001", main_module._handoff_task_ids)
+
+            deleted = self.client.delete(f"/api/tasks/{task_id}")
+            self.assertEqual(deleted.status_code, 200, deleted.text)
+            self.assertFalse((main_module.TASK_DIR / task_id).exists())
+        finally:
+            self._cleanup(task_id)
+
     def test_missing_in_memory_handoff_returns_expired(self) -> None:
         created = self.client.post("/api/tasks/from-current-page?defer=true", json=self.payload)
         self.assertEqual(created.status_code, 200, created.text)

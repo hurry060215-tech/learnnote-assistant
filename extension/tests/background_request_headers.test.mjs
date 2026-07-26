@@ -205,6 +205,18 @@ assert.equal(
   }, "application/octet-stream"),
   "unknown"
 );
+const bilibiliSubtitleEndpoint = "https://api.bilibili.com/x/v2/subtitle/web/view?oid=39879182370&video_type=1";
+assert.equal(
+  context.classifyCompletedRequest({
+    url: bilibiliSubtitleEndpoint,
+    type: "xmlhttprequest"
+  }, "application/octet-stream"),
+  "subtitle"
+);
+assert.equal(
+  context.playableEndpointRank({ url: bilibiliSubtitleEndpoint, kind: "subtitle", source: "pageHookRequest" }),
+  0
+);
 assert.equal(
   context.classifyCompletedRequest(
     {
