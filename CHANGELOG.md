@@ -4,10 +4,19 @@ All notable changes to LearnNote are documented here. The project follows semant
 
 ## Unreleased
 
+## 0.1.43 - 2026-07-26
+
 ### Changed
 
 - GitHub Release publication now uses the runner's authenticated `gh` CLI, removing the final Node 20 action-runtime warning.
 - Container and Pages workflows use the latest reviewed major releases of their pinned Actions; website visual tests use Playwright 1.62.
+
+### Fixed
+
+- Browser media detection no longer promotes Bilibili subtitle and caption endpoints to the primary video resource.
+- Pending or confirmation-stage tasks can be abandoned and deleted immediately from the note library instead of becoming stuck in cancellation.
+- yt-dlp TLS EOF failures use bounded retry with backoff and report a retryable network error instead of incorrectly claiming that the video server refused the request.
+- Browser request context now forwards the real page user agent only when available and otherwise leaves yt-dlp request-header selection intact.
 
 ## 0.1.42 - 2026-07-25
 
