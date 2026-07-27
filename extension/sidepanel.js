@@ -4,6 +4,7 @@ const HEALTH_TIMEOUT_MS = 2200;
 const REQUEST_TIMEOUT_MS = 20000;
 const PASSIVE_REFRESH_DELAY_MS = 450;
 const PREFLIGHT_TTL_MS = 30000;
+const CLIENT_TAB_ACTIVATION_SUPPRESS_MS = 3000;
 const LOCAL_BACKEND_RE = /^http:\/\/(?:127\.0\.0\.1|localhost)(?::\d{1,5})?\/?$/i;
 const MEDIA_KIND_RE = /^(?:video|media|mp4|hls|dash|manifest|playlist)$/i;
 const AUDIO_KIND_RE = /audio/i;
@@ -49,6 +50,7 @@ let preflightRequest = null;
 let preflightAt = 0;
 let preflightFingerprint = "";
 let activeHandoff = null;
+let suppressTabActivationUntil = 0;
 
 function withTimeout(promise, timeoutMs, label) {
   let timer = 0;
@@ -585,6 +587,7 @@ async function openClient(view = "workspace", taskId = "", tab = "note") {
   }
   try {
     if (!HAS_EXTENSION_API || !chrome.tabs?.create) throw new Error("extension API unavailable");
+    suppressTabActivationUntil = Date.now() + CLIENT_TAB_ACTIVATION_SUPPRESS_MS;
     await chrome.tabs.create({ url: targetUrl });
     return true;
   } catch {
@@ -619,6 +622,7 @@ function bindEvents() {
   });
   if (HAS_EXTENSION_API) chrome.runtime?.onMessage?.addListener?.(message => {
     if (message?.type !== "current-context-updated") return;
+    if (message.reason === "tab-activated" && Date.now() < suppressTabActivationUntil) return;
     if (message.reason !== "tab-activated" && displayedIdentity?.tab_id !== null && message.tabId !== displayedIdentity?.tab_id) return;
     scheduleRefresh(message.reason || "media", message.reason === "tab-activated" ? message.tabId : null);
   });
