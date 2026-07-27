@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 from app import main as main_module
 from app.config import DATA_DIR, UPLOAD_DIR
 from app.main import STAGED_UPLOAD_MAX_AGE_SECONDS, app, build_handoff_integrity, cleanup_expired_staged_uploads, local_upload_filename
-from app.media import _adaptive_frame_plan, probe_media_integrity
+from app.media import _adaptive_frame_plan, _integrity_from_ffmpeg, probe_media_integrity
 from app.models import CurrentPageTaskRequest, EvidenceCoverage, FrameSample, MediaIntegrity, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment
 from app.processor import ContentMismatchError, _process_video_file
 from app.reliability import calculate_evidence_coverage, current_page_source_identity, evidence_coverage_markdown, validate_source_identity
@@ -231,6 +231,36 @@ class LocalMediaContractTests(unittest.TestCase):
         self.assertTrue(integrity.video_codec)
         self.assertEqual(integrity.stream_count, 1)
         self.assertEqual(len(integrity.sha256), 64)
+
+    def test_ffmpeg_fallback_probes_unicode_media_path(self) -> None:
+        path = self.root / "中文视频.mp4"
+        subprocess.run([
+            self.ffmpeg,
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc=duration=1:size=160x90:rate=5",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:duration=1",
+            "-shortest",
+            "-pix_fmt",
+            "yuv420p",
+            str(path),
+        ], check=True)
+
+        integrity = _integrity_from_ffmpeg(path, self.ffmpeg)
+
+        self.assertEqual(integrity.status, "ready")
+        self.assertTrue(integrity.has_video)
+        self.assertTrue(integrity.has_audio)
+        self.assertGreater(integrity.duration, 0)
+        self.assertEqual(integrity.stream_count, 2)
 
     def test_preflight_token_can_create_task_without_reupload(self) -> None:
         client = TestClient(app)

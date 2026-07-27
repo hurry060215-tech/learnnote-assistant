@@ -20,7 +20,14 @@ class MediaProcessingError(RuntimeError):
 
 
 def _run(cmd: list[str], message: str) -> None:
-    result = subprocess.run(cmd, capture_output=True, text=True, **hidden_subprocess_kwargs())
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        **hidden_subprocess_kwargs(),
+    )
     if result.returncode != 0:
         raise MediaProcessingError(f"{message}: {result.stderr[:500]}")
 
@@ -46,6 +53,8 @@ def probe_duration(path: Path) -> float:
             ],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             **hidden_subprocess_kwargs(),
         )
         if result.returncode == 0:
@@ -66,6 +75,8 @@ def probe_duration(path: Path) -> float:
         ],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         **hidden_subprocess_kwargs(),
     )
     match = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", result.stderr or "")
@@ -115,6 +126,8 @@ def _integrity_from_ffprobe(path: Path, probe: str) -> MediaIntegrity | None:
         ],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         **hidden_subprocess_kwargs(),
     )
     if result.returncode != 0:
@@ -154,6 +167,8 @@ def _integrity_from_ffmpeg(path: Path, ffmpeg: str) -> MediaIntegrity:
         [ffmpeg, "-hide_banner", "-i", str(path)],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         **hidden_subprocess_kwargs(),
     )
     stderr = result.stderr or ""
@@ -357,6 +372,8 @@ def extract_embedded_subtitle(video_path: Path, output_path: Path) -> Path | Non
         ],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         **hidden_subprocess_kwargs(),
     )
     if result.returncode != 0 or not output_path.exists() or output_path.stat().st_size <= 0:
@@ -504,6 +521,8 @@ def detect_scene_change_timestamps(
         ],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         **hidden_subprocess_kwargs(),
     )
     values: set[int] = set()
@@ -636,6 +655,8 @@ def extract_frames_adaptive(
             ],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             **hidden_subprocess_kwargs(),
         )
         if result.returncode != 0 or not out.exists():
