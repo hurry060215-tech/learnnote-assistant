@@ -4,6 +4,20 @@ All notable changes to LearnNote are documented here. The project follows semant
 
 ## Unreleased
 
+## 0.1.44 - 2026-07-27
+
+### Changed
+
+- Bilibili and other yt-dlp-first platforms now resolve the page before direct browser media candidates so separate DASH audio and video streams are merged when possible.
+- GitHub Actions use the reviewed setup-python 7.0.0, docker/metadata-action 6.2.0, and upload-artifact 7.0.1 releases.
+
+### Fixed
+
+- Provisional browser handoff evidence no longer reports an unconfirmed audio track as definitively missing or blocks note generation.
+- Windows media probing explicitly decodes FFmpeg and FFprobe output as UTF-8, preventing complete videos with Chinese filenames from being misreported as missing all tracks and duration.
+- Direct browser media candidates remain available when the preferred page resolver cannot acquire the media.
+- Opening the browser fallback for a newly created task no longer makes the extension side panel discard the completed handoff when that client tab becomes active.
+
 ## 0.1.43 - 2026-07-26
 
 ### Changed

@@ -39,3 +39,14 @@ await new Promise(resolve => setTimeout(resolve, 520));
 const activationCollect = activationHarness.sentMessages.filter(item => item.type === "get-current-context").at(-1);
 assert.equal(activationCollect.targetTabId, 9);
 assert.equal(activationHarness.api.getState().displayedIdentity.tab_id, 9);
+
+const clientFallbackHarness = await createSidepanelHarness({
+  contexts: [first, first, activated],
+  focus: { ok: true, available: false, focused: false }
+});
+assert.equal(await clientFallbackHarness.api.sendToClient(), true);
+assert.equal(clientFallbackHarness.api.getState().currentTaskId, "abc123def456");
+clientFallbackHarness.emit({ type: "current-context-updated", reason: "tab-activated", tabId: 9 });
+await new Promise(resolve => setTimeout(resolve, 520));
+assert.equal(clientFallbackHarness.api.getState().displayedIdentity.tab_id, 7);
+assert.equal(clientFallbackHarness.api.getState().currentTaskId, "abc123def456");
