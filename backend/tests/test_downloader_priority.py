@@ -838,6 +838,75 @@ class DownloaderPriorityTests(unittest.TestCase):
             self.assertEqual(ytdlp.call_args.args[0], page_url)
             page_scan.assert_not_called()
 
+    def test_bilibili_page_resolver_precedes_direct_video_candidate(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            output = root / "resolved.mp4"
+            output.write_bytes(b"\x00\x00\x00\x18ftypmp42" + (b"complete-video" * 512))
+            page_url = "https://www.bilibili.com/video/BV1course?p=1"
+            video_only = ResourceCandidate(
+                url="https://upos-sz-mirrorcos.bilivideo.com/video-only.m4s",
+                source="webRequest",
+                kind="video",
+                mime="video/mp4",
+                score=100,
+                is_main_video=True,
+                playback_match="resolved-final-url",
+                page_url=page_url,
+            )
+            downloader = MediaDownloader(root / "task")
+
+            with patch.object(downloader, "_download_with_ytdlp", return_value=output) as ytdlp, patch.object(
+                downloader, "_download_candidate"
+            ) as direct:
+                media_path, selected = downloader.download(
+                    page_url=page_url,
+                    resources=[video_only],
+                    cookies=[],
+                    title="Bilibili course",
+                )
+
+            self.assertEqual(media_path, output)
+            self.assertIsNone(selected)
+            self.assertEqual(ytdlp.call_args.args[0], page_url)
+            direct.assert_not_called()
+            self.assertEqual(downloader.attempts[0].strategy, "page-ytdlp")
+
+    def test_bilibili_direct_candidate_remains_fallback_when_page_resolver_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            output = root / "candidate.mp4"
+            output.write_bytes(b"\x00\x00\x00\x18ftypmp42" + (b"candidate-video" * 512))
+            page_url = "https://www.bilibili.com/video/BV1course?p=1"
+            candidate = ResourceCandidate(
+                url="https://cdn.example.com/combined.mp4",
+                source="webRequest",
+                kind="video",
+                mime="video/mp4",
+                score=100,
+                is_main_video=True,
+                page_url=page_url,
+            )
+            downloader = MediaDownloader(root / "task")
+
+            with patch.object(
+                downloader,
+                "_download_with_ytdlp",
+                side_effect=DownloadError("download_forbidden", "resolver failed"),
+            ) as ytdlp, patch.object(downloader, "_download_candidate", return_value=output) as direct:
+                media_path, selected = downloader.download(
+                    page_url=page_url,
+                    resources=[candidate],
+                    cookies=[],
+                    title="Bilibili course",
+                )
+
+            self.assertEqual(media_path, output)
+            self.assertEqual(selected, candidate)
+            ytdlp.assert_called()
+            direct.assert_called_once_with(candidate, [], page_url, "Bilibili course")
+            self.assertEqual([attempt.strategy for attempt in downloader.attempts], ["page-ytdlp", "direct-file"])
+
     def test_direct_page_url_precedes_untrusted_page_scan_media(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

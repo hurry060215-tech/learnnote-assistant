@@ -2911,25 +2911,6 @@ class MediaDownloader:
                     )
         last_error: DownloadError | None = None
         failed_media_candidates: list[ResourceCandidate] = []
-        for candidate in candidates:
-            try:
-                media_path = self._download_candidate(candidate, cookies, page_url, title)
-                self._record_attempt(
-                    strategy=self._strategy_for_candidate(candidate),
-                    candidate=candidate,
-                    status="success",
-                    message="浏览器候选资源直取成功。",
-                    output_path=media_path,
-                )
-                return media_path, candidate
-            except DownloadError as exc:
-                self._record_attempt(strategy=self._strategy_for_candidate(candidate), candidate=candidate, status="failed", code=exc.code, message=exc.message)
-                failed_urls.add(candidate.url)
-                if effective_resource_kind(candidate) in {"hls", "dash", "video"}:
-                    failed_media_candidates.append(candidate)
-                last_error = exc
-                continue
-
         page_fallbacks = fallback_page_contexts(page_url, resources)
         attempted_ytdlp_pages: set[str] = set()
 
@@ -2959,12 +2940,35 @@ class MediaDownloader:
                         last_error = DownloadError("download_forbidden", str(exc))
             return None
 
-        if not candidates and not has_only_unresolved_blob_media and _prefer_ytdlp_before_page_scan(page_url):
+        if not has_only_unresolved_blob_media and _prefer_ytdlp_before_page_scan(page_url):
             media_path = try_page_ytdlp_fallbacks()
             if media_path:
                 return media_path, None
-            if last_error and last_error.code in {"yt_dlp_timeout", "auth_required", "drm_or_encrypted", "download_forbidden"}:
+            if (
+                not candidates
+                and last_error
+                and last_error.code in {"yt_dlp_timeout", "auth_required", "drm_or_encrypted", "download_forbidden"}
+            ):
                 raise self._download_error_with_attempt_summary(last_error)
+
+        for candidate in candidates:
+            try:
+                media_path = self._download_candidate(candidate, cookies, page_url, title)
+                self._record_attempt(
+                    strategy=self._strategy_for_candidate(candidate),
+                    candidate=candidate,
+                    status="success",
+                    message="浏览器候选资源直取成功。",
+                    output_path=media_path,
+                )
+                return media_path, candidate
+            except DownloadError as exc:
+                self._record_attempt(strategy=self._strategy_for_candidate(candidate), candidate=candidate, status="failed", code=exc.code, message=exc.message)
+                failed_urls.add(candidate.url)
+                if effective_resource_kind(candidate) in {"hls", "dash", "video"}:
+                    failed_media_candidates.append(candidate)
+                last_error = exc
+                continue
 
         for fallback_url, context_candidate in page_fallbacks:
             page_scan_resources = self._discover_page_resources(fallback_url, cookies, context_candidate)
