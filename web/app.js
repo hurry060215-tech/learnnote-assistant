@@ -711,6 +711,11 @@ function applyAppSettings() {
   });
 }
 
+const systemThemeMedia = window.matchMedia?.("(prefers-color-scheme: dark)");
+systemThemeMedia?.addEventListener?.("change", () => {
+  if (appSettings.theme === "system") applyAppSettings();
+});
+
 function organizeSettingsOptions() {
   const slots = {
     home: document.querySelector("#homeQuickOptionsSlot"),

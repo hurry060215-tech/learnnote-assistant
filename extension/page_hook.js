@@ -169,13 +169,28 @@
   function mediaKind(url, mime = "") {
     const lower = String(url || "").toLowerCase();
     const type = String(mime || "").toLowerCase();
-    if (FRAGMENT_RE.test(lower)) return "fragment";
-    if (type.includes("mpegurl") || lower.includes(".m3u8")) return "hls";
-    if (type.includes("dash+xml") || lower.includes(".mpd")) return "dash";
+    if (type.startsWith("image/") || isClearlyNonMediaAssetUrl(lower)) return "unknown";
+    if (type.includes("mpegurl")) return "hls";
+    if (type.includes("dash+xml")) return "dash";
+    if (!FRAGMENT_RE.test(lower) && lower.includes(".m3u8")) return "hls";
+    if (!FRAGMENT_RE.test(lower) && lower.includes(".mpd")) return "dash";
     if (type.includes("text/vtt") || type.includes("subrip") || /\.(vtt|srt|ass|ssa)(\?|#|$)/i.test(lower) || isSubtitleEndpointUrl(lower)) return "subtitle";
     if (type.includes("video/") || /\.(mp4|m4v|webm|mov|mkv|flv|avi)(\?|#|$)/i.test(lower)) return "video";
     if (type.includes("audio/") || /\.(m4a|mp3|aac|opus|ogg|oga|wav)(\?|#|$)/i.test(lower)) return "audio";
+    if (FRAGMENT_RE.test(lower)) return "fragment";
     return "unknown";
+  }
+
+  function isClearlyNonMediaAssetUrl(url = "") {
+    let pathname = String(url || "").toLowerCase();
+    try {
+      pathname = new URL(String(url || ""), location.href).pathname.toLowerCase();
+    } catch {
+      // Keep the raw value for malformed URLs.
+    }
+    if (/\.(?:css|js|mjs|map|wasm|woff2?|ttf|otf|eot)(?:$|[?#])/i.test(pathname)) return true;
+    if (/\.(?:jpe?g|png|gif|webp|avif|svg|ico)(?:$|[?#])/i.test(pathname)) return true;
+    return /\.(?:jpe?g|png|gif|webp)(?:@|%40)[^/?#]*\.(?:avi|avif|webp)(?:$|[?#])/i.test(pathname);
   }
 
   function mediaKindFromContentDisposition(value = "", mime = "") {

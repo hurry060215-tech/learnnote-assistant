@@ -1,4 +1,4 @@
-/* LearnNote 0.1.44 product shell: source-first creation, evidence-first reading. */
+/* LearnNote 0.1.45 product shell: source-first creation, evidence-first reading. */
 :root {
   --mature-ink: #14222b;
   --mature-muted: #66747d;
@@ -701,6 +701,301 @@ body[data-app-view="notes"] .task-controls {
   font-weight: 700;
   white-space: nowrap;
   cursor: pointer;
+}
+
+/* Final appearance layer. These tokens intentionally come last so every shell
+   surface follows the user's theme and palette selection. */
+body {
+  --appearance-accent: #0b9792;
+  --appearance-accent-strong: #087772;
+  --appearance-accent-soft: #e9f7f5;
+  --appearance-focus: rgba(11, 151, 146, .26);
+  --appearance-bg: #f5f8f9;
+  --appearance-surface: #ffffff;
+  --appearance-surface-soft: #f8fafb;
+  --appearance-line: #dfe7e8;
+  --appearance-line-strong: #cbd7d9;
+  --appearance-text: #17272c;
+  --appearance-muted: #66777c;
+  --appearance-control-height: 42px;
+  --appearance-row-height: 66px;
+  --appearance-space: 14px;
+  --ln-accent: var(--appearance-accent);
+  --ln-accent-dark: var(--appearance-accent-strong);
+  --ln-soft: var(--appearance-accent-soft);
+  --ln-bg: var(--appearance-bg);
+  --ln-surface: var(--appearance-surface);
+  --ln-line: var(--appearance-line);
+  --ln-line-strong: var(--appearance-line-strong);
+  --ln-text: var(--appearance-text);
+  --ln-muted: var(--appearance-muted);
+  --product-accent: var(--appearance-accent);
+  --product-accent-strong: var(--appearance-accent-strong);
+  --product-bg: var(--appearance-bg);
+  --product-surface: var(--appearance-surface);
+  --product-surface-soft: var(--appearance-surface-soft);
+  --product-text: var(--appearance-text);
+  --product-muted: var(--appearance-muted);
+  --product-line: var(--appearance-line);
+  --product-line-strong: var(--appearance-line-strong);
+  --mature-teal: var(--appearance-accent);
+  --mature-teal-dark: var(--appearance-accent-strong);
+}
+
+body[data-color-theme="ocean"] {
+  --appearance-accent: #2478c8;
+  --appearance-accent-strong: #175da0;
+  --appearance-accent-soft: #ebf4fc;
+  --appearance-focus: rgba(36, 120, 200, .25);
+}
+
+body[data-color-theme="forest"] {
+  --appearance-accent: #318060;
+  --appearance-accent-strong: #246247;
+  --appearance-accent-soft: #ebf5ef;
+  --appearance-focus: rgba(49, 128, 96, .25);
+}
+
+body[data-color-theme="graphite"] {
+  --appearance-accent: #586b74;
+  --appearance-accent-strong: #3f5159;
+  --appearance-accent-soft: #eef2f3;
+  --appearance-focus: rgba(88, 107, 116, .24);
+}
+
+body[data-text-size="compact"] { --ln-type-scale: .94; }
+body[data-text-size="standard"] { --ln-type-scale: 1; }
+body[data-text-size="large"] { --ln-type-scale: 1.12; }
+
+body[data-ui-density="90"] {
+  --appearance-control-height: 38px;
+  --appearance-row-height: 56px;
+  --appearance-space: 10px;
+}
+
+body[data-ui-density="110"] {
+  --appearance-control-height: 46px;
+  --appearance-row-height: 76px;
+  --appearance-space: 18px;
+}
+
+body,
+html {
+  color: var(--appearance-text);
+  background: var(--appearance-bg);
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible,
+a:focus-visible {
+  outline-color: var(--appearance-focus);
+}
+
+.brand-mark,
+#generateNoteButton,
+.primary,
+.progress-fill {
+  background-color: var(--appearance-accent);
+}
+
+.nav-item.active,
+body[data-app-view] .nav-item.active {
+  color: var(--appearance-accent-strong);
+  background: var(--appearance-accent-soft);
+  box-shadow: inset 3px 0 0 var(--appearance-accent);
+}
+
+.settings-menu button.active {
+  border-left-color: var(--appearance-accent);
+  color: var(--appearance-accent-strong);
+  background: var(--appearance-accent-soft);
+}
+
+.segment-control button {
+  min-height: var(--appearance-control-height);
+}
+
+.segment-control button.active {
+  color: var(--appearance-accent-strong);
+  background: var(--appearance-accent-soft);
+  box-shadow: inset 0 -2px 0 var(--appearance-accent);
+}
+
+.setting-row {
+  min-height: var(--appearance-row-height);
+  padding-top: var(--appearance-space);
+  padding-bottom: var(--appearance-space);
+}
+
+.appearance-preview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 210px;
+  gap: 28px;
+  align-items: center;
+  margin-top: 18px;
+  padding: calc(var(--appearance-space) + 4px) 20px;
+  border: 1px solid var(--appearance-line);
+  border-radius: 7px;
+  background: var(--appearance-surface-soft);
+}
+
+.appearance-preview-copy {
+  display: grid;
+  gap: 5px;
+}
+
+.appearance-preview-copy span {
+  color: var(--appearance-accent-strong);
+  font-size: calc(12px * var(--ln-type-scale));
+  font-weight: 700;
+}
+
+.appearance-preview-copy strong {
+  color: var(--appearance-text);
+  font-size: calc(17px * var(--ln-type-scale));
+  font-weight: 650;
+}
+
+.appearance-preview-copy small {
+  color: var(--appearance-muted);
+  font-size: calc(13px * var(--ln-type-scale));
+  line-height: 1.5;
+}
+
+.appearance-preview-sample {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr);
+  gap: 7px 9px;
+  align-items: center;
+}
+
+.appearance-preview-sample > i {
+  grid-row: span 2;
+  width: 12px;
+  height: 38px;
+  border-radius: 3px;
+  background: var(--appearance-accent);
+}
+
+.appearance-preview-sample > span {
+  height: 7px;
+  border-radius: 2px;
+  background: var(--appearance-line-strong);
+}
+
+.appearance-preview-sample > span:nth-of-type(2) {
+  width: 72%;
+}
+
+.appearance-preview-sample button {
+  grid-column: 1 / -1;
+  min-height: var(--appearance-control-height);
+  border: 0;
+  border-radius: 5px;
+  color: #fff;
+  background: var(--appearance-accent);
+  font-size: calc(13px * var(--ln-type-scale));
+  font-weight: 650;
+  pointer-events: none;
+}
+
+body.theme-dark {
+  --appearance-bg: #10191c;
+  --appearance-surface: #162226;
+  --appearance-surface-soft: #1b2a2e;
+  --appearance-line: #2b3d42;
+  --appearance-line-strong: #3c5258;
+  --appearance-text: #edf4f4;
+  --appearance-muted: #a9b8bc;
+  --appearance-accent: #3fc1b9;
+  --appearance-accent-strong: #8bddd7;
+  --appearance-accent-soft: #1b3b3b;
+  color-scheme: dark;
+}
+
+body.theme-dark[data-color-theme="ocean"] {
+  --appearance-accent: #61ace9;
+  --appearance-accent-strong: #a7d5f5;
+  --appearance-accent-soft: #1c3447;
+}
+
+body.theme-dark[data-color-theme="forest"] {
+  --appearance-accent: #61bf91;
+  --appearance-accent-strong: #a0ddba;
+  --appearance-accent-soft: #1d382d;
+}
+
+body.theme-dark[data-color-theme="graphite"] {
+  --appearance-accent: #9cafb7;
+  --appearance-accent-strong: #d4dfe3;
+  --appearance-accent-soft: #29363b;
+}
+
+body.theme-dark,
+body.theme-dark .topbar,
+body.theme-dark .nav-rail,
+body.theme-dark .workspace-panel,
+body.theme-dark .queue-panel,
+body.theme-dark .result-panel,
+body.theme-dark .settings-view,
+body.theme-dark .settings-actions,
+body.theme-dark .source-tabs,
+body.theme-dark .source-pane,
+body.theme-dark .browser-capture-card,
+body.theme-dark .dropzone,
+body.theme-dark .settings-option-slot,
+body.theme-dark .quick-note-options,
+body.theme-dark .detail,
+body.theme-dark .result-tabs,
+body.theme-dark .ai-assistant-drawer {
+  color: var(--appearance-text);
+  background: var(--appearance-surface);
+  border-color: var(--appearance-line);
+}
+
+body.theme-dark .nav-rail {
+  background: #131f22;
+}
+
+body.theme-dark .appearance-preview,
+body.theme-dark .task,
+body.theme-dark .diagnostic-summary-panel,
+body.theme-dark .note-outline,
+body.theme-dark .visual-rail,
+body.theme-dark .reading-actions-rail,
+body.theme-dark .reading-artifacts-rail {
+  color: var(--appearance-text);
+  background: var(--appearance-surface-soft);
+  border-color: var(--appearance-line);
+}
+
+body.theme-dark :is(input, select, textarea, .segment-control, .segment-control button, .secondary, .icon-button) {
+  color: var(--appearance-text);
+  background: var(--appearance-surface);
+  border-color: var(--appearance-line-strong);
+}
+
+body.theme-dark .segment-control button.active,
+body.theme-dark .settings-menu button.active,
+body.theme-dark .nav-item.active {
+  color: var(--appearance-accent-strong);
+  background: var(--appearance-accent-soft);
+}
+
+@media (max-width: 720px) {
+  .appearance-preview {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (min-width: 681px) and (max-width: 900px) {
+  body.settings-mode .settings-view {
+    width: calc(100% - var(--mature-nav));
+    margin-left: var(--mature-nav);
+  }
 }
 .danger-button:hover {
   border-color: #ca7f84;

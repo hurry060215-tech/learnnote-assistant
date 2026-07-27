@@ -39,3 +39,13 @@ def hidden_subprocess_kwargs() -> dict:
         "creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0),
         "startupinfo": startupinfo,
     }
+
+
+def text_subprocess_kwargs() -> dict:
+    """Decode CLI output deterministically, including UTF-8 media paths on Windows."""
+    return {
+        "text": True,
+        "encoding": "utf-8",
+        "errors": "replace",
+        **hidden_subprocess_kwargs(),
+    }

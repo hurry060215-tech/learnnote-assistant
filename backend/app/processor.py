@@ -455,20 +455,38 @@ def has_downloadable_subtitle_candidate(resources: list[ResourceCandidate]) -> b
 
 
 def browser_subtitles_look_partial(segments: list[BrowserSubtitleCue], min_count: int = 8, min_span_seconds: float = 45.0) -> bool:
-    cleaned: list[tuple[float, float, str]] = []
-    for cue in segments or []:
-        text = " ".join(str(cue.text or "").split())
-        if not text:
-            continue
-        start = max(0.0, float(cue.start or 0))
-        end = max(start, float(cue.end or start))
-        cleaned.append((start, end, text))
-    if not cleaned:
+    transcript = transcript_from_browser_subtitles(segments)
+    if len(transcript.segments) < min_count:
         return True
-    if len(cleaned) >= min_count:
+    span = max(item.end for item in transcript.segments) - min(item.start for item in transcript.segments)
+    if span < min_span_seconds:
+        return True
+    windows: dict[tuple[int, int], int] = {}
+    for item in transcript.segments:
+        key = (round(item.start), round(item.end))
+        windows[key] = windows.get(key, 0) + 1
+    largest_collision = max(windows.values(), default=0)
+    return largest_collision >= 4 and largest_collision / max(1, len(transcript.segments)) >= 0.4
+
+
+def browser_subtitles_are_reliable(segments: list[BrowserSubtitleCue], media_duration: float = 0.0) -> bool:
+    transcript = transcript_from_browser_subtitles(segments)
+    if not transcript.segments:
         return False
-    span = max(end for _, end, _ in cleaned) - min(start for start, _, _ in cleaned)
-    return span < min_span_seconds
+    windows: dict[tuple[int, int], int] = {}
+    for item in transcript.segments:
+        key = (round(item.start), round(item.end))
+        windows[key] = windows.get(key, 0) + 1
+    largest_collision = max(windows.values(), default=0)
+    if largest_collision >= 4 and largest_collision / len(transcript.segments) >= 0.4:
+        return False
+    start = min(item.start for item in transcript.segments)
+    end = max(item.end for item in transcript.segments)
+    span = max(0.0, end - start)
+    duration = max(0.0, float(media_duration or 0))
+    if duration > 0:
+        return span / duration >= 0.55
+    return not browser_subtitles_look_partial(segments)
 
 
 def should_download_page_subtitle(request: CurrentPageTaskRequest) -> bool:
@@ -1139,6 +1157,7 @@ def _process_video_file(
     update_task(task_id, media_path=str(normalized))
     audio_warning = ""
     transcript: TranscriptResult | None = None
+    browser_fallback_transcript = transcript_from_browser_subtitles(browser_subtitles or [])
 
     if subtitle_path:
         owned_subtitle_path = subtitle_path
@@ -1152,13 +1171,10 @@ def _process_video_file(
         update_task(task_id, subtitle_path=str(owned_subtitle_path), message="已检测到页面字幕，正在解析字幕")
         transcript = parse_subtitle_or_none(owned_subtitle_path, source=subtitle_source or "page-subtitle")
 
-    if transcript is None and browser_subtitles:
-        update_task(task_id, message="已读取浏览器播放器字幕，正在生成带时间戳转写")
+    if transcript is None and browser_subtitles and browser_subtitles_are_reliable(browser_subtitles, integrity.duration):
+        update_task(task_id, message="已读取完整的浏览器播放器字幕，正在生成带时间戳转写")
         transcript = transcript_from_browser_subtitles(browser_subtitles)
-        if not transcript.segments:
-            transcript = None
-        else:
-            update_task(task_id, subtitle_path=write_browser_subtitles_srt(task_id, transcript))
+        update_task(task_id, subtitle_path=write_browser_subtitles_srt(task_id, transcript))
 
     if transcript is None:
         embedded_subtitle = extract_embedded_subtitle(input_path, work_dir / "embedded_subtitle.srt")
@@ -1210,6 +1226,21 @@ def _process_video_file(
             _check_cancel(task_id)
         else:
             transcript = TranscriptResult(source="no-audio", warning=audio_warning)
+
+    if (
+        browser_fallback_transcript.segments
+        and (
+            transcript is None
+            or not transcript.segments
+            or transcript.source in ASR_FAILURE_SOURCES | {"no-audio"}
+        )
+    ):
+        transcript = browser_fallback_transcript.model_copy(
+            update={
+                "warning": "音轨转写不可用，已退回到浏览器当前可见字幕；内容可能不完整。"
+            }
+        )
+        update_task(task_id, subtitle_path=write_browser_subtitles_srt(task_id, transcript))
 
     if transcript is None:
         transcript = TranscriptResult(source="no-audio", warning=audio_warning)

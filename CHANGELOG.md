@@ -4,6 +4,18 @@ All notable changes to LearnNote are documented here. The project follows semant
 
 ## Unreleased
 
+## 0.1.45 - 2026-07-28
+
+### Changed
+
+- Browser captions only replace audio transcription when their timeline coverage is credible; comments, danmaku bursts, and partial visible captions remain fallback evidence.
+- Appearance settings now apply consistently across the client with working light/dark themes, four palettes, three text sizes, three density levels, and a live preview.
+
+### Fixed
+
+- Bilibili `audio/mp4` M4S resources are classified as audio instead of generic fragments, while cover images, scripts, styles, and pseudo MIME URLs are excluded from media candidates.
+- The settings page no longer overlaps the fixed navigation rail between 681 and 900 pixels.
+
 ## 0.1.44 - 2026-07-27
 
 ### Changed

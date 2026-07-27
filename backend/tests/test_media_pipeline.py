@@ -8,7 +8,7 @@ from pathlib import Path
 from PIL import Image
 
 from app.config import DATA_DIR
-from app.media import _average_hash, _hamming_distance, _sample_frame_timestamps, _should_keep_sampled_frame, build_frame_grids, extract_audio, extract_embedded_subtitle, extract_frames, probe_duration
+from app.media import _average_hash, _hamming_distance, _sample_frame_timestamps, _should_keep_sampled_frame, build_frame_grids, extract_audio, extract_embedded_subtitle, extract_frames, probe_duration, probe_media_integrity
 from app.runtime import ffmpeg_bin
 
 
@@ -136,7 +136,7 @@ class MediaPipelineTests(unittest.TestCase):
         TEST_RUN_DIR.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(dir=TEST_RUN_DIR) as tmp:
             root = Path(tmp)
-            video = root / "synthetic.mp4"
+            video = root / "中文课程-含声音.mp4"
             subprocess.run(
                 [
                     ffmpeg,
@@ -161,6 +161,10 @@ class MediaPipelineTests(unittest.TestCase):
             )
 
             self.assertGreater(probe_duration(video), 2.5)
+            integrity = probe_media_integrity(video)
+            self.assertEqual(integrity.status, "ready")
+            self.assertTrue(integrity.has_video)
+            self.assertTrue(integrity.has_audio)
 
             audio = extract_audio(video, root / "audio.wav")
             self.assertTrue(audio.exists())

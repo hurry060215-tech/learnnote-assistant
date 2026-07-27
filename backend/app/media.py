@@ -12,7 +12,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 from .config import BACKEND_ORIGIN
 from .models import FrameGrid, FrameSample, MediaIntegrity, MediaTrackInfo
-from .runtime import ffmpeg_bin, ffprobe_bin, hidden_subprocess_kwargs
+from .runtime import ffmpeg_bin, ffprobe_bin, text_subprocess_kwargs
 
 
 class MediaProcessingError(RuntimeError):
@@ -20,14 +20,7 @@ class MediaProcessingError(RuntimeError):
 
 
 def _run(cmd: list[str], message: str) -> None:
-    result = subprocess.run(
-        cmd,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        **hidden_subprocess_kwargs(),
-    )
+    result = subprocess.run(cmd, capture_output=True, **text_subprocess_kwargs())
     if result.returncode != 0:
         raise MediaProcessingError(f"{message}: {result.stderr[:500]}")
 
@@ -52,10 +45,7 @@ def probe_duration(path: Path) -> float:
                 str(path),
             ],
             capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            **hidden_subprocess_kwargs(),
+            **text_subprocess_kwargs(),
         )
         if result.returncode == 0:
             try:
@@ -74,10 +64,7 @@ def probe_duration(path: Path) -> float:
             str(path),
         ],
         capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        **hidden_subprocess_kwargs(),
+        **text_subprocess_kwargs(),
     )
     match = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", result.stderr or "")
     if not match:
@@ -125,10 +112,7 @@ def _integrity_from_ffprobe(path: Path, probe: str) -> MediaIntegrity | None:
             str(path),
         ],
         capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        **hidden_subprocess_kwargs(),
+        **text_subprocess_kwargs(),
     )
     if result.returncode != 0:
         return None
@@ -166,10 +150,7 @@ def _integrity_from_ffmpeg(path: Path, ffmpeg: str) -> MediaIntegrity:
     result = subprocess.run(
         [ffmpeg, "-hide_banner", "-i", str(path)],
         capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        **hidden_subprocess_kwargs(),
+        **text_subprocess_kwargs(),
     )
     stderr = result.stderr or ""
     tracks: list[MediaTrackInfo] = []
@@ -371,10 +352,7 @@ def extract_embedded_subtitle(video_path: Path, output_path: Path) -> Path | Non
             str(output_path),
         ],
         capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        **hidden_subprocess_kwargs(),
+        **text_subprocess_kwargs(),
     )
     if result.returncode != 0 or not output_path.exists() or output_path.stat().st_size <= 0:
         output_path.unlink(missing_ok=True)
@@ -520,10 +498,7 @@ def detect_scene_change_timestamps(
             "-",
         ],
         capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        **hidden_subprocess_kwargs(),
+        **text_subprocess_kwargs(),
     )
     values: set[int] = set()
     for raw in re.findall(r"pts_time:([0-9]+(?:\.[0-9]+)?)", result.stderr or ""):
@@ -654,10 +629,7 @@ def extract_frames_adaptive(
                 str(out),
             ],
             capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            **hidden_subprocess_kwargs(),
+            **text_subprocess_kwargs(),
         )
         if result.returncode != 0 or not out.exists():
             continue

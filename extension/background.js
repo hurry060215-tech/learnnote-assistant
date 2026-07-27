@@ -181,15 +181,28 @@ function classify(url, mime = "") {
   const lower = url.toLowerCase();
   const mimeKind = mediaKindFromMime(mime);
   if (lower.startsWith("blob:")) return "blob";
-  if (FRAGMENT_RE.test(lower)) return "fragment";
+  if (String(mime || "").toLowerCase().startsWith("image/") || isClearlyNonMediaAssetUrl(lower)) return "unknown";
+  if (!FRAGMENT_RE.test(lower) && lower.includes(".m3u8")) return "hls";
+  if (!FRAGMENT_RE.test(lower) && lower.includes(".mpd")) return "dash";
   if (mimeKind !== "unknown") return mimeKind;
   if (isSubtitleEndpointUrl(lower)) return "subtitle";
-  if (lower.includes(".m3u8")) return "hls";
-  if (lower.includes(".mpd")) return "dash";
+  if (FRAGMENT_RE.test(lower)) return "fragment";
   if (VIDEO_RE.test(lower)) return "video";
   if (AUDIO_RE.test(lower)) return "audio";
   if (SUBTITLE_RE.test(lower)) return "subtitle";
   return "unknown";
+}
+
+function isClearlyNonMediaAssetUrl(url = "") {
+  let pathname = String(url || "").toLowerCase();
+  try {
+    pathname = new URL(String(url || "")).pathname.toLowerCase();
+  } catch {
+    // Keep the raw value for malformed URLs.
+  }
+  if (/\.(?:css|js|mjs|map|wasm|woff2?|ttf|otf|eot)(?:$|[?#])/i.test(pathname)) return true;
+  if (/\.(?:jpe?g|png|gif|webp|avif|svg|ico)(?:$|[?#])/i.test(pathname)) return true;
+  return /\.(?:jpe?g|png|gif|webp)(?:@|%40)[^/?#]*\.(?:avi|avif|webp)(?:$|[?#])/i.test(pathname);
 }
 
 function filenameFromContentDisposition(value = "") {

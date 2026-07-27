@@ -55,6 +55,7 @@ const STATIC_QUOTED_VALUE_RE = /["']((?:\\u[0-9a-fA-F]{4}|\\x[0-9a-fA-F]{2}|\\.|
 const STATIC_MEDIA_KEY_RE = /(url|uri|path|src|address|file|fileid|objectid|dtoken|download|httpmd|play|playlist|media|video|audio|stream|source|sourcelist|main|master|manifest|backup|backups|cdn|baseurl|base_url|host|domain|video.?list|audio.?list|quality|qualities|definition|definitions|format|formats|profile|profiles|variant|variants|rendition|renditions|level|levels|track|tracks|hls|m3u8|dash|mpd|segment|fragment|chunk|subtitle|caption)/i;
 const STATIC_ATTRIBUTE_KEY_RE = /(url|uri|path|src|address|file|objectid|dtoken|download|httpmd|play|playlist|player|config|option|param|media|video|audio|stream|source|sourcelist|main|master|manifest|backup|backups|cdn|baseurl|base_url|host|domain|video.?list|audio.?list|quality|qualities|definition|definitions|format|formats|profile|profiles|variant|variants|rendition|renditions|level|levels|track|tracks|hls|m3u8|dash|mpd|segment|fragment|chunk|subtitle|caption)/i;
 const VISIBLE_SUBTITLE_HINT_RE = /(subtitle|subtitles|caption|captions|closed.?caption|text[-_ ]?track|texttrack|\bcue(?:s)?\b|vtt|\bcc\b|字幕|ytp-caption|vjs-text-track|jw-text-track|plyr__captions|shaka-text-container|xgplayer[-_ ].*(text|subtitle|caption)|dplayer[-_ ].*subtitle|bilibili.*subtitle|bpx.*subtitle|ananas.*(subtitle|caption|texttrack)|chaoxing.*(subtitle|caption|texttrack))/i;
+const VISIBLE_NON_SUBTITLE_HINT_RE = /(danmaku|bullet[-_ ]?comment|comment[-_ ]?(?:list|item|content)|reply[-_ ]?(?:list|item|content)|live[-_ ]?chat|弹幕|评论区|评论列表)/i;
 const VISIBLE_SUBTITLE_ATTR_RE = /^(data-|aria-|role$|lang$|srclang$|class$|id$|title$)/i;
 const VISIBLE_SUBTITLE_ROLE_RE = /^(log|status|marquee)$/i;
 const B64ISH_RE = /^[A-Za-z0-9+/_=-]{16,}$/;
@@ -108,13 +109,28 @@ function classify(url, mime = "") {
   const lower = String(url || "").toLowerCase();
   const type = String(mime || "").toLowerCase();
   if (lower.startsWith("blob:")) return "blob";
-  if (FRAGMENT_RE.test(lower)) return "fragment";
-  if (type.includes("mpegurl") || lower.includes(".m3u8")) return "hls";
-  if (type.includes("dash+xml") || lower.includes(".mpd")) return "dash";
+  if (type.startsWith("image/") || isClearlyNonMediaAssetUrl(lower)) return "unknown";
+  if (type.includes("mpegurl")) return "hls";
+  if (type.includes("dash+xml")) return "dash";
+  if (!FRAGMENT_RE.test(lower) && lower.includes(".m3u8")) return "hls";
+  if (!FRAGMENT_RE.test(lower) && lower.includes(".mpd")) return "dash";
   if (type.includes("text/vtt") || type.includes("subrip") || SUBTITLE_RE.test(lower) || isSubtitleEndpointUrl(lower)) return "subtitle";
   if (type.includes("video/") || VIDEO_RE.test(lower)) return "video";
   if (type.includes("audio/") || AUDIO_RE.test(lower)) return "audio";
+  if (FRAGMENT_RE.test(lower)) return "fragment";
   return "unknown";
+}
+
+function isClearlyNonMediaAssetUrl(url = "") {
+  let pathname = String(url || "").toLowerCase();
+  try {
+    pathname = new URL(String(url || ""), location.href).pathname.toLowerCase();
+  } catch {
+    // Keep the raw value for malformed or relative URLs.
+  }
+  if (/\.(?:css|js|mjs|map|wasm|woff2?|ttf|otf|eot)(?:$|[?#])/i.test(pathname)) return true;
+  if (/\.(?:jpe?g|png|gif|webp|avif|svg|ico)(?:$|[?#])/i.test(pathname)) return true;
+  return /\.(?:jpe?g|png|gif|webp)(?:@|%40)[^/?#]*\.(?:avi|avif|webp)(?:$|[?#])/i.test(pathname);
 }
 
 function inferManifestUrl(url) {
@@ -279,6 +295,8 @@ function mimeFromHint(hint = "") {
 function looksLikeMediaValue(value, hint = "") {
   const text = String(value || "").trim();
   if (text.length < 4 || /\s/.test(text)) return false;
+  if (/^(?:video|audio|application|text)\/[a-z0-9.+-]+(?:\s*;\s*codecs?=.+)?$/i.test(text)) return false;
+  if (isClearlyNonMediaAssetUrl(text)) return false;
   if (MEDIA_RE.test(text) || FRAGMENT_RE.test(text) || SUBTITLE_RE.test(text) || text.includes(".m3u8") || text.includes(".mpd")) return true;
   if (/%2f|%3a|%3f|%3d|%26/i.test(text)) return STATIC_MEDIA_KEY_RE.test(hint) || MEDIA_RE.test(decodeURIComponentSafe(text));
   if (/^(https?:)?\/\//i.test(text) || text.startsWith("/")) return STATIC_MEDIA_KEY_RE.test(hint);
@@ -510,6 +528,20 @@ function resourceFromHint(value, source, label, hint = "", video = null, isMainV
     const trimmed = String(candidate || "").trim();
     if (trimmed[0] === "{" || trimmed[0] === "[") continue;
     if (!looksLikeMediaValue(candidate, hint || label)) continue;
+    try {
+      const parsed = new URL(candidate, location.href);
+      const current = new URL(location.href);
+      if (
+        parsed.origin === current.origin &&
+        parsed.pathname.replace(/\/+$/, "") === current.pathname.replace(/\/+$/, "") &&
+        parsed.search === current.search &&
+        !MEDIA_RE.test(parsed.pathname)
+      ) {
+        continue;
+      }
+    } catch {
+      // Invalid candidates are rejected by resource().
+    }
     const endpointMime = looksLikePlaybackEndpointValue(candidate, `${hint} ${label}`) ? "video/mp4" : "";
     const item = resource(candidate, source, label, mimeFromHint(`${hint} ${label}`) || endpointMime, video, isMainVideo, playbackMatch);
     if (item && item.kind !== "unknown") return item;
@@ -1560,6 +1592,7 @@ function looksLikeVisibleSubtitleElement(element) {
   const text = elementText(element);
   if (text.length < 2 || text.length > 260) return false;
   const hint = elementHintText(element);
+  if (VISIBLE_NON_SUBTITLE_HINT_RE.test(hint)) return false;
   if (VISIBLE_SUBTITLE_HINT_RE.test(hint)) return true;
   const role = readAttribute(element, "role");
   const ariaLive = readAttribute(element, "aria-live");

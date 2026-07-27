@@ -44,7 +44,7 @@ from app.downloader import (
 )
 from app.main import _automatic_diagnostic_rules, diagnostic_recovery_profile, render_bundle_manifest, render_diagnostics_markdown, task_audit_summary
 from app.models import ActiveVideoInfo, BrowserCookie, BrowserSubtitleCue, CurrentPageTaskRequest, DownloadAttempt, DrmSignal, EvidenceCoverage, FrameGrid, MediaIntegrity, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
-from app.processor import ContentMismatchError, browser_subtitle_text_is_player_ui, build_summary_diagnostics, cookie_sync_summary, download_progress_updater, download_status_updater, enrich_resource_candidates_with_active_video, process_current_page_task, process_local_video_task, read_note, read_transcript, redacted_request_dump, redacted_resource, transcript_from_browser_subtitles, validate_summary_evidence
+from app.processor import ContentMismatchError, browser_subtitle_text_is_player_ui, browser_subtitles_are_reliable, browser_subtitles_look_partial, build_summary_diagnostics, cookie_sync_summary, download_progress_updater, download_status_updater, enrich_resource_candidates_with_active_video, process_current_page_task, process_local_video_task, read_note, read_transcript, redacted_request_dump, redacted_resource, transcript_from_browser_subtitles, validate_summary_evidence
 from app.summarizer import MAX_GRIDS_PER_VISION_CALL, MAX_VISION_GRIDS, build_visual_windows, chat_completion_provider_kwargs, ensure_visual_appendix, learning_goal, learning_goal_instruction, llm_model_supports_vision, llm_provider_name, local_markdown_note, summarize_page_text_with_diagnostics, summarize_with_diagnostics, summarize_with_diagnostics_audit, summary_depth_instruction
 from app.storage import create_task, get_task, read_json, save_task, task_dir, write_json
 
@@ -98,6 +98,22 @@ class ResourceDetectionTests(unittest.TestCase):
         self.assertNotIn("登录可享", transcript.full_text)
         self.assertNotIn("前方高能", transcript.full_text)
         self.assertNotIn("空降下一节", transcript.full_text)
+
+    def test_browser_subtitle_quality_rejects_bilibili_comment_burst(self) -> None:
+        cues = [
+            BrowserSubtitleCue(start=24, end=30, text=f"页面评论 {index}")
+            for index in range(36)
+        ]
+        self.assertTrue(browser_subtitles_look_partial(cues))
+        self.assertFalse(browser_subtitles_are_reliable(cues, media_duration=513))
+
+    def test_browser_subtitle_quality_accepts_full_timeline_track(self) -> None:
+        cues = [
+            BrowserSubtitleCue(start=index * 10, end=index * 10 + 8, text=f"课程字幕第 {index + 1} 段")
+            for index in range(12)
+        ]
+        self.assertFalse(browser_subtitles_look_partial(cues))
+        self.assertTrue(browser_subtitles_are_reliable(cues, media_duration=120))
 
     def test_automatic_diagnostics_detects_spa_context_mismatch(self) -> None:
         severity, summary, findings, actions = _automatic_diagnostic_rules({
@@ -801,6 +817,22 @@ class ResourceDetectionTests(unittest.TestCase):
 
         self.assertEqual(classify_resource(url, "application/octet-stream"), "subtitle")
         self.assertEqual(effective_resource_kind(candidate), "subtitle")
+
+    def test_m4s_kind_uses_response_mime_before_fragment_fallback(self) -> None:
+        url = "https://xy-v6-bilivideo.com/upgcxcode/audio-track.m4s?deadline=1"
+        self.assertEqual(classify_resource(url, "audio/mp4"), "audio")
+        self.assertEqual(classify_resource(url, "video/mp4"), "video")
+        self.assertEqual(classify_resource(url), "fragment")
+
+    def test_bilibili_cover_transform_and_static_assets_are_not_media(self) -> None:
+        cover = "https://i2.hdslb.com/bfs/archive/example.jpg@336w_190h_1c_!web-video-rcmd-cover.avi"
+        script = "https://s1.hdslb.com/bfs/static/jinkela/video/video.07dc20e5.js"
+        self.assertEqual(classify_resource(cover, "video/mp4"), "unknown")
+        self.assertEqual(classify_resource(script, "video/mp4"), "unknown")
+        self.assertEqual(
+            effective_resource_kind(ResourceCandidate(url=cover, kind="video", mime="video/mp4", source="domHint")),
+            "unknown",
+        )
 
     def test_fallback_page_urls_include_active_iframe_and_referer_context(self) -> None:
         urls = fallback_page_urls(
@@ -2033,6 +2065,74 @@ class ProcessorBoundaryTests(unittest.TestCase):
             self.assertEqual(transcript["source"], "browser-subtitle")
             self.assertEqual([segment["text"] for segment in transcript["segments"]], ["first browser cue", "second browser cue"])
             self.assertIn("first browser cue", read_note(task.id))
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
+    def test_current_page_uses_audio_asr_instead_of_bilibili_comment_burst(self) -> None:
+        task = create_task("current_page", "Bilibili audio lesson", "https://www.bilibili.com/video/BV1xx411c7mD")
+        source_path = task_dir(task.id) / "download.mp4"
+
+        class FakeDownloader:
+            def __init__(self, work_dir: Path, progress_callback=None, status_callback=None):
+                self.attempts = []
+
+            def download(self, page_url, resources, cookies, title):
+                source_path.write_bytes(b"downloaded video")
+                return source_path, None
+
+            def download_subtitle(self, resources, cookies, referer, title):
+                return None
+
+        def fake_normalize(source: Path, target: Path) -> Path:
+            target.write_bytes(b"normalized video")
+            return target
+
+        def fake_extract_audio(source: Path, target: Path) -> Path:
+            target.write_bytes(b"real audio")
+            return target
+
+        def fake_transcribe(audio_path: Path, model_size: str = "small") -> TranscriptResult:
+            return TranscriptResult(
+                language="zh",
+                source="faster-whisper",
+                segments=[TranscriptSegment(start=0, end=8, text="这是从真实音轨识别出的课程内容")],
+                full_text="这是从真实音轨识别出的课程内容",
+            )
+
+        def fake_summary(title, transcript, grids, options, page_url, page_context=""):
+            self.assertEqual(transcript.source, "faster-whisper")
+            self.assertIn("真实音轨", transcript.full_text)
+            self.assertNotIn("页面评论", transcript.full_text)
+            return ("# Bilibili audio lesson\n\n真实音轨内容", "local-template", "")
+
+        try:
+            request = CurrentPageTaskRequest(
+                page_url="https://www.bilibili.com/video/BV1xx411c7mD",
+                title="Bilibili audio lesson",
+                resources=[],
+                browser_subtitles=[
+                    {"start": 24, "end": 30, "text": f"页面评论 {index}"}
+                    for index in range(36)
+                ],
+                options=TaskOptions(visual_understanding=False),
+            )
+            with (
+                patch("app.processor.MediaDownloader", FakeDownloader),
+                patch("app.processor.probe_media_integrity", return_value=ready_media_integrity(120)),
+                patch("app.processor.calculate_evidence_coverage", return_value=ready_evidence_coverage()),
+                patch("app.processor.normalize_video", side_effect=fake_normalize),
+                patch("app.processor.extract_audio", side_effect=fake_extract_audio),
+                patch("app.processor.transcribe_audio", side_effect=fake_transcribe),
+                patch("app.processor.summarize_with_diagnostics", side_effect=fake_summary),
+            ):
+                process_current_page_task(task.id, request)
+
+            record = get_task(task.id)
+            self.assertEqual(record.status, "success")
+            self.assertTrue(record.audio_path.endswith("audio.wav"))
+            transcript = read_transcript(task.id)
+            self.assertEqual(transcript["source"], "faster-whisper")
+            self.assertIn("真实音轨", transcript["full_text"])
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
@@ -3498,6 +3598,37 @@ class DownloaderBoundaryTests(unittest.TestCase):
             self.assertIsNone(selected)
             ytdlp.assert_called_once()
             self.assertEqual(downloader.attempts[-1].strategy, "page-ytdlp")
+
+    def test_bilibili_page_resolver_runs_before_video_only_candidate(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            media = root / "bilibili-merged.mp4"
+            media.write_bytes(b"0" * 5000)
+            downloader = MediaDownloader(root / "task")
+            video_only = ResourceCandidate(
+                url="https://xy-v6-bilivideo.com/upgcxcode/video-only.m4s?deadline=1",
+                source="webRequest",
+                kind="video",
+                mime="video/mp4",
+                score=100,
+                is_main_video=True,
+            )
+
+            with (
+                patch.object(downloader, "_download_with_ytdlp", return_value=media) as ytdlp,
+                patch.object(downloader, "_download_candidate", side_effect=AssertionError("video-only candidate must not run first")),
+            ):
+                media_path, selected = downloader.download(
+                    page_url="https://www.bilibili.com/video/BV1xx411c7mD",
+                    resources=[video_only],
+                    cookies=[],
+                    title="Bilibili separated AV",
+                )
+
+            self.assertEqual(media_path, media)
+            self.assertIsNone(selected)
+            ytdlp.assert_called_once()
+            self.assertEqual(downloader.attempts[0].strategy, "page-ytdlp")
 
     def test_subtitle_fallback_downloads_platform_caption_with_ytdlp(self) -> None:
         calls = []

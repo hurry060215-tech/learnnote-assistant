@@ -23,7 +23,7 @@ from urllib.parse import unquote, urljoin, urlparse, urlunparse
 import requests
 
 from .models import BrowserCookie, DownloadAttempt, MediaPreflightResult, ResourceCandidate
-from .runtime import ffmpeg_bin, hidden_subprocess_kwargs
+from .runtime import ffmpeg_bin, text_subprocess_kwargs
 from .source_input import clean_task_title
 
 
@@ -1733,11 +1733,15 @@ def classify_resource(url: str, mime: str = "") -> str:
     mime_lower = mime.lower()
     if lowered.startswith("blob:"):
         return "blob"
-    if FRAGMENT_EXT_RE.search(lowered):
-        return "fragment"
-    if "mpegurl" in mime_lower or "m3u8" in lowered:
+    if mime_lower.startswith("image/") or _is_clearly_non_media_asset_url(url):
+        return "unknown"
+    if "mpegurl" in mime_lower:
         return "hls"
-    if "dash+xml" in mime_lower or ".mpd" in lowered:
+    if "dash+xml" in mime_lower:
+        return "dash"
+    if not FRAGMENT_EXT_RE.search(lowered) and "m3u8" in lowered:
+        return "hls"
+    if not FRAGMENT_EXT_RE.search(lowered) and ".mpd" in lowered:
         return "dash"
     try:
         parsed = urlparse(url)
@@ -1746,16 +1750,38 @@ def classify_resource(url: str, mime: str = "") -> str:
         subtitle_context = lowered
     if re.search(r"(?:^|[/?&=._-])(?:subtitle|subtitles|caption|captions)(?:[/?&=._-]|$)", subtitle_context, re.I):
         return "subtitle"
-    if "audio/" in mime_lower or "application/ogg" in mime_lower or AUDIO_EXT_RE.search(lowered):
+    if "audio/" in mime_lower or "application/ogg" in mime_lower:
         return "audio"
-    if "video/" in mime_lower or "application/mp4" in mime_lower or MEDIA_EXT_RE.search(lowered):
+    if "video/" in mime_lower or "application/mp4" in mime_lower:
         return "video"
-    if "text/vtt" in mime_lower or "subrip" in mime_lower or SUBTITLE_EXT_RE.search(lowered):
+    if "text/vtt" in mime_lower or "subrip" in mime_lower:
+        return "subtitle"
+    if FRAGMENT_EXT_RE.search(lowered):
+        return "fragment"
+    if AUDIO_EXT_RE.search(lowered):
+        return "audio"
+    if MEDIA_EXT_RE.search(lowered):
+        return "video"
+    if SUBTITLE_EXT_RE.search(lowered):
         return "subtitle"
     return "unknown"
 
 
+def _is_clearly_non_media_asset_url(url: str) -> bool:
+    try:
+        path = urlparse(url or "").path.lower()
+    except (TypeError, ValueError):
+        path = str(url or "").lower()
+    if re.search(r"\.(?:css|js|mjs|map|wasm|woff2?|ttf|otf|eot)$", path, re.I):
+        return True
+    if re.search(r"\.(?:jpe?g|png|gif|webp|avif|svg|ico)$", path, re.I):
+        return True
+    return bool(re.search(r"\.(?:jpe?g|png|gif|webp)(?:@|%40)[^/?#]*\.(?:avi|avif|webp)$", path, re.I))
+
+
 def effective_resource_kind(candidate: ResourceCandidate) -> str:
+    if _is_clearly_non_media_asset_url(candidate.resolved_url or candidate.url) or str(candidate.mime or "").lower().startswith("image/"):
+        return "unknown"
     if candidate.resolved_url and candidate.resolved_url != candidate.url:
         resolved = classify_resource(candidate.resolved_url, candidate.mime)
         if resolved in {"hls", "dash", "video", "audio", "subtitle"}:
@@ -3577,9 +3603,8 @@ class MediaDownloader:
                 result = subprocess.run(
                     cmd,
                     capture_output=True,
-                    text=True,
                     timeout=YTDLP_DOWNLOAD_TIMEOUT_SECONDS,
-                    **hidden_subprocess_kwargs(),
+                    **text_subprocess_kwargs(),
                 )
             except subprocess.TimeoutExpired as exc:
                 output = _truncate_process_output(exc.stderr or exc.stdout)
@@ -3873,7 +3898,7 @@ class MediaDownloader:
             "+faststart",
             str(output),
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True, **hidden_subprocess_kwargs())
+        result = subprocess.run(cmd, capture_output=True, **text_subprocess_kwargs())
         if result.returncode != 0:
             stderr = (result.stderr or "").lower()
             if "403" in stderr or "401" in stderr:
@@ -4044,7 +4069,7 @@ class MediaDownloader:
             cmd += ["-f", kind]
         cmd += ["-user_agent", user_agent, "-i", str(local_manifest or url), "-c", "copy", str(output)]
         self._notify_status("正在用 ffmpeg 合并 HLS/DASH 分片", 35, candidate)
-        result = subprocess.run(cmd, capture_output=True, text=True, **hidden_subprocess_kwargs())
+        result = subprocess.run(cmd, capture_output=True, **text_subprocess_kwargs())
         if result.returncode != 0:
             stderr = (result.stderr or "").lower()
             if "403" in stderr or "401" in stderr:
