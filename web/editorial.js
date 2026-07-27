@@ -151,22 +151,24 @@
     const body = payload?.preflight || payload?.report || payload || {};
     const integrity = integrityObject(payload);
     const integrityStatus = String(integrity.status || "").toLowerCase();
+    const integrityProvisional = integrity.provisional === true;
     const integrityChecked = ["ready", "video_only", "audio_only", "no_media"].includes(integrityStatus)
       || (!integrityStatus && [integrity.has_audio, integrity.has_video, integrity.has_subtitles].some(value => typeof value === "boolean"))
       || (integrityStatus === "invalid" && Array.isArray(integrity.blocking_reasons) && integrity.blocking_reasons.length > 0);
+    const integritySignal = value => integrityProvisional && value === false ? undefined : value;
     const duration = finiteNumber(body.duration, body.duration_seconds, payload.duration, payload.duration_seconds, extras.duration);
     const audio = boolSignal(
-      integrityChecked ? integrity.has_audio : undefined, integrity.audio_present, integrity.audio,
+      integrityChecked ? integritySignal(integrity.has_audio) : undefined, integrity.audio_present, integrity.audio,
       body.has_audio, body.audio_present, body.audio_stream,
       extras.audio
     );
     const subtitles = boolSignal(
-      integrityChecked ? integrity.has_subtitles : undefined, integrity.subtitle_present, integrity.subtitles,
+      integrityChecked ? integritySignal(integrity.has_subtitles) : undefined, integrity.subtitle_present, integrity.subtitles,
       body.has_subtitles, body.subtitle_present, body.subtitle_count,
       extras.subtitles
     );
     const visual = boolSignal(
-      integrityChecked ? integrity.has_video : undefined, integrity.video_present, integrity.visual,
+      integrityChecked ? integritySignal(integrity.has_video) : undefined, integrity.video_present, integrity.visual,
       body.has_video, body.video_present, body.video_stream,
       extras.visual
     );

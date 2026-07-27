@@ -279,6 +279,20 @@ const videoOnlyDraft = context.window.LearnNoteEditorial.mediaDraft("local", {
 });
 assert.equal(videoOnlyDraft.audio, false);
 assert.equal(videoOnlyDraft.visual, true);
+const provisionalVideoDraft = context.window.LearnNoteEditorial.mediaDraft("browser", {
+  title: "Browser handoff",
+  integrity: {
+    status: "video_only",
+    provisional: true,
+    has_audio: false,
+    has_video: true,
+    has_subtitles: false,
+    blocking_reasons: ["audio_track_not_yet_confirmed"]
+  }
+});
+assert.equal(provisionalVideoDraft.audio, null);
+assert.equal(provisionalVideoDraft.visual, true);
+assert.equal(provisionalVideoDraft.subtitles, null);
 const subtitleOnlyBrowserDraft = context.window.LearnNoteEditorial.currentBrowserDraft({
   id: "subtitle-only",
   title: "Subtitle only",
