@@ -540,6 +540,28 @@ class DeferredHandoffTests(unittest.TestCase):
         self.assertFalse(integrity.has_audio)
         self.assertEqual(integrity.status, "video_only")
 
+    def test_capture_stream_audio_marks_browser_handoff_ready(self) -> None:
+        request = CurrentPageTaskRequest(
+            page_url="https://www.bilibili.com/video/BV1TEST12345",
+            active_video={
+                "src": "blob:https://www.bilibili.com/player",
+                "duration": 571,
+                "paused": False,
+                "capture_stream_track_count": 2,
+                "capture_stream_video_tracks": 1,
+                "capture_stream_audio_tracks": 1,
+                "audio_decoded_byte_count": 4096,
+                "has_audio": True,
+            },
+        )
+
+        integrity = build_handoff_integrity(request)
+
+        self.assertTrue(integrity.has_video)
+        self.assertTrue(integrity.has_audio)
+        self.assertEqual(integrity.status, "ready")
+        self.assertEqual(integrity.duration, 571)
+
 
 if __name__ == "__main__":
     unittest.main()

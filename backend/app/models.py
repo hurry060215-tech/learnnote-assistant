@@ -111,6 +111,11 @@ class ActiveVideoInfo(BaseModel):
     src_object_track_count: int = 0
     src_object_video_tracks: int = 0
     src_object_audio_tracks: int = 0
+    capture_stream_track_count: int = 0
+    capture_stream_video_tracks: int = 0
+    capture_stream_audio_tracks: int = 0
+    audio_decoded_byte_count: int = 0
+    has_audio: bool = False
     frame_url: str = ""
     current_time: float = 0
     duration: float = 0

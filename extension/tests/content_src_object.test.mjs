@@ -21,6 +21,7 @@ class FakeVideo {
     this.clientWidth = 1280;
     this.clientHeight = 720;
     this.textTracks = [];
+    this.webkitAudioDecodedByteCount = 4096;
     this.srcObject = {
       constructor: { name: "MediaStream" },
       getTracks() {
@@ -42,6 +43,17 @@ class FakeVideo {
   }
 
   addEventListener() {}
+
+  captureStream() {
+    return {
+      getTracks() {
+        return [
+          { kind: "video", readyState: "live" },
+          { kind: "audio", readyState: "live" }
+        ];
+      }
+    };
+  }
 }
 
 const video = new FakeVideo();
@@ -111,6 +123,11 @@ assert.equal(response.active_video.src_object_type, "MediaStream");
 assert.equal(response.active_video.src_object_track_count, 2);
 assert.equal(response.active_video.src_object_video_tracks, 1);
 assert.equal(response.active_video.src_object_audio_tracks, 1);
+assert.equal(response.active_video.capture_stream_track_count, 2);
+assert.equal(response.active_video.capture_stream_video_tracks, 1);
+assert.equal(response.active_video.capture_stream_audio_tracks, 1);
+assert.equal(response.active_video.audio_decoded_byte_count, 4096);
+assert.equal(response.active_video.has_audio, true);
 assert.equal(response.active_video.paused, false);
 assert.equal(response.active_video.frame_url, "https://course.example.com/stream-lesson");
 assert.equal(response.resources.length, 0);

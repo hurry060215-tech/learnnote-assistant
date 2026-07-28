@@ -4,8 +4,9 @@ const MEDIA_RE = /\.(mp4|m4v|webm|mov|mkv|flv|avi|m4a|mp3|aac|opus|ogg|oga|wav|m
 const FRAGMENT_RE = /\.(m4s|ts)(\?|#|$)/i;
 const SUBTITLE_RE = /\.(vtt|srt|ass|ssa)(\?|#|$)/i;
 const MEDIA_EXT_PATTERN = "mp4|m4v|webm|mov|mkv|flv|avi|m4a|mp3|aac|opus|ogg|oga|wav|m3u8|mpd|m4s|ts|vtt|srt|ass|ssa";
-const MEDIA_URL_RE = new RegExp(`(?:https?:)?//[^\\s"'<>\\\\]+\\.(?:${MEDIA_EXT_PATTERN})(?:\\?[^\\s"'<>\\\\]*)?|(?:/[^\\s"'<>\\\\]+)\\.(?:${MEDIA_EXT_PATTERN})(?:\\?[^\\s"'<>\\\\]*)?|(?:[A-Za-z0-9._~!$&()*+,;=:@%-]+/)*[A-Za-z0-9._~!$&()*+,;=:@%-]+\\.(?:${MEDIA_EXT_PATTERN})(?:\\?[^\\s"'<>\\\\]*)?`, "gi");
+const MEDIA_URL_RE = new RegExp(`(?:https?:)?//[^\\s"'<>\\\\]+\\.(?:${MEDIA_EXT_PATTERN})(?=$|[?#])(?:[?#][^\\s"'<>\\\\]*)?|(?:/[^\\s"'<>\\\\]+)\\.(?:${MEDIA_EXT_PATTERN})(?=$|[?#])(?:[?#][^\\s"'<>\\\\]*)?|(?:[A-Za-z0-9._~!$&()*+,;=:@%-]+/)*[A-Za-z0-9._~!$&()*+,;=:@%-]+\\.(?:${MEDIA_EXT_PATTERN})(?=$|[?#])(?:[?#][^\\s"'<>\\\\]*)?`, "gi");
 const ENCODED_MEDIA_URL_RE = new RegExp(`https?%(?:25)*3A(?:(?:%(?:25)*2F)|/){2}[^\\s"'<>\\\\]+?(?:\\.|%(?:25)*2E)(?:${MEDIA_EXT_PATTERN})(?:[^\\s"'<>\\\\]*)?`, "gi");
+const IMAGE_URL_RE = /\.(?:avif|webp|jpe?g|png|gif|bmp|svg)(?:@[^/?#]*)?(?:[?#]|$)/i;
 const STATIC_MEDIA_ATTRS = [
   "src",
   "href",
@@ -62,6 +63,7 @@ const B64ISH_RE = /^[A-Za-z0-9+/_=-]{16,}$/;
 const boundVideos = new WeakSet();
 const boundTextTracks = new WeakSet();
 const boundTextTrackLists = new WeakSet();
+const capturedStreamByVideo = new WeakMap();
 const hookResources = [];
 const drmSignals = [];
 const drmByVideo = new WeakMap();
@@ -108,6 +110,7 @@ function isSubtitleEndpointUrl(url = "") {
 function classify(url, mime = "") {
   const lower = String(url || "").toLowerCase();
   const type = String(mime || "").toLowerCase();
+  if (IMAGE_URL_RE.test(lower)) return "unknown";
   if (lower.startsWith("blob:")) return "blob";
   if (type.startsWith("image/") || isClearlyNonMediaAssetUrl(lower)) return "unknown";
   if (type.includes("mpegurl")) return "hls";
@@ -551,7 +554,7 @@ function resourceFromHint(value, source, label, hint = "", video = null, isMainV
 
 function resource(url, source, label, mime = "", video = null, isMainVideo = false, playbackMatch = "") {
   const absolute = absoluteUrl(url);
-  if (!absolute) return null;
+  if (!absolute || IMAGE_URL_RE.test(absolute)) return null;
   const effectiveMime = mime || mimeFromPlaybackElementContext(absolute, source, label, video, playbackMatch);
   const kind = classify(absolute, effectiveMime);
   const visibility = video ? elementVisibilityEvidence(video) : {};
@@ -1433,6 +1436,34 @@ function videoSrcObjectInfo(video) {
   };
 }
 
+function videoCaptureStreamInfo(video) {
+  const decodedAudioBytes = Math.max(0, Number(video?.webkitAudioDecodedByteCount || 0));
+  let stream = capturedStreamByVideo.get(video) || null;
+  if (!stream && typeof video?.captureStream === "function") {
+    try {
+      stream = video.captureStream();
+      if (stream) capturedStreamByVideo.set(video, stream);
+    } catch {
+      stream = null;
+    }
+  }
+  let tracks = [];
+  try {
+    tracks = typeof stream?.getTracks === "function" ? Array.from(stream.getTracks() || []) : [];
+  } catch {
+    tracks = [];
+  }
+  const audioTracks = tracks.filter(track => track?.kind === "audio" && track?.readyState !== "ended").length;
+  const videoTracks = tracks.filter(track => track?.kind === "video" && track?.readyState !== "ended").length;
+  return {
+    capture_stream_track_count: tracks.length,
+    capture_stream_video_tracks: videoTracks,
+    capture_stream_audio_tracks: audioTracks,
+    audio_decoded_byte_count: decodedAudioBytes,
+    has_audio: audioTracks > 0 || decodedAudioBytes > 0
+  };
+}
+
 function hasVideoSourceSignal(video) {
   return Boolean(video.currentSrc || video.src || video.querySelector("source[src]") || videoSrcObjectInfo(video).src_object);
 }
@@ -1469,11 +1500,13 @@ function activeVideoInfo() {
   const { video, index } = withSource;
   const drm = drmByVideo.get(video) || {};
   const srcObject = videoSrcObjectInfo(video);
+  const captureStream = videoCaptureStreamInfo(video);
   const visibility = elementVisibilityEvidence(video);
   return {
     src: absoluteUrl(video.currentSrc || video.src),
     poster_url: absoluteUrl(video.poster || readAttribute(video, "poster")),
     ...srcObject,
+    ...captureStream,
     current_time: Number(video.currentTime || 0),
     duration: Number.isFinite(video.duration) ? Number(video.duration || 0) : 0,
     paused: Boolean(video.paused),

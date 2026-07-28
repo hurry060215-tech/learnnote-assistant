@@ -33,6 +33,19 @@ assert.equal(harness.integrityItems.get("audio").strong.textContent, "已检测"
 assert.equal(harness.integrityItems.get("subtitle").strong.textContent, "已检测");
 
 const activated = videoContext({ tabId: 9, bvid: "BV9SWITCHED99", title: "另一标签页" });
+const capturedAudio = videoContext({ audio: false });
+capturedAudio.page.active_video = {
+  ...capturedAudio.page.active_video,
+  src: "blob:https://www.bilibili.com/player",
+  capture_stream_track_count: 2,
+  capture_stream_video_tracks: 1,
+  capture_stream_audio_tracks: 1,
+  audio_decoded_byte_count: 4096,
+  has_audio: true
+};
+const capturedAudioHarness = await createSidepanelHarness({ contexts: [capturedAudio] });
+assert.equal(capturedAudioHarness.integrityItems.get("audio").dataset.state, "found");
+
 const activationHarness = await createSidepanelHarness({ contexts: [first, activated] });
 activationHarness.emit({ type: "current-context-updated", reason: "tab-activated", tabId: 9 });
 await new Promise(resolve => setTimeout(resolve, 520));

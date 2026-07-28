@@ -282,7 +282,13 @@ function integrityEvidence(context = currentContext, report = preflightReport) {
     const kind = String(item?.kind || "");
     return !AUDIO_KIND_RE.test(kind) && !SUBTITLE_KIND_RE.test(kind) && (MEDIA_KIND_RE.test(kind) || /\.(?:mp4|m3u8|mpd|m4s)(?:$|[?#])/i.test(String(item?.url || "")));
   }));
-  const audioEvidence = Boolean(Number(active.src_object_audio_tracks || 0) > 0 || candidates.some(item => AUDIO_KIND_RE.test(String(item?.kind || "")) || /^audio\//i.test(String(item?.mime || item?.content_type || ""))));
+  const audioEvidence = Boolean(
+    active.has_audio === true ||
+    Number(active.src_object_audio_tracks || 0) > 0 ||
+    Number(active.capture_stream_audio_tracks || 0) > 0 ||
+    Number(active.audio_decoded_byte_count || 0) > 0 ||
+    candidates.some(item => AUDIO_KIND_RE.test(String(item?.kind || "")) || /^audio\//i.test(String(item?.mime || item?.content_type || "")))
+  );
   const subtitleEvidence = Boolean((page.browser_subtitles || []).length || candidates.some(item => SUBTITLE_KIND_RE.test(String(item?.kind || item?.mime || item?.content_type || ""))));
   return {
     video: explicit.video === null ? (videoEvidence ? true : null) : explicit.video,
