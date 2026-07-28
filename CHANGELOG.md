@@ -4,6 +4,13 @@ All notable changes to LearnNote are documented here. The project follows semant
 
 ## Unreleased
 
+## 0.1.48 - 2026-07-28
+
+### Fixed
+
+- New notes no longer embed raw browser-page recommendations, ads, player controls, or comments in the learning context, and existing notes hide the legacy noisy block when displayed.
+- The desktop note outline now remains visible and clickable on the right while the document scrolls.
+
 ## 0.1.47 - 2026-07-28
 
 ### Fixed
