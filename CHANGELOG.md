@@ -4,6 +4,12 @@ All notable changes to LearnNote are documented here. The project follows semant
 
 ## Unreleased
 
+## 0.1.50 - 2026-07-28
+
+### Fixed
+
+- Republishes the verified 0.1.49 fixes under a new immutable release after the original release page could not accept its already-built assets.
+
 ## 0.1.49 - 2026-07-28
 
 ### Fixed
