@@ -649,6 +649,8 @@ def src_object_failure_message(request: CurrentPageTaskRequest) -> str:
         tracks.append(f"{active.src_object_video_tracks} video")
     if active and active.src_object_audio_tracks:
         tracks.append(f"{active.src_object_audio_tracks} audio")
+    elif active and (active.capture_stream_audio_tracks or active.audio_decoded_byte_count or active.has_audio):
+        tracks.append("browser-confirmed audio")
     track_detail = f"（{', '.join(tracks)}）" if tracks else ""
     return f"当前 HTML5 播放器使用 {stream_type}{track_detail}，页面没有暴露可交给后端下载的 mp4/FLV/m3u8/mpd URL；不会录制标签页，请使用本地视频入口或页面文本兜底。"
 

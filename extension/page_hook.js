@@ -3,8 +3,9 @@
   window.__learnNotePageHookInstalled = true;
 
   const MEDIA_EXT_PATTERN = "mp4|m4v|webm|mov|mkv|flv|avi|m4a|mp3|aac|opus|ogg|oga|wav|m3u8|mpd|m4s|ts|vtt|srt|ass|ssa";
-  const MEDIA_URL_RE = new RegExp(`(?:https?:)?//[^\\s"'<>\\\\]+\\.(?:${MEDIA_EXT_PATTERN})(?:\\?[^\\s"'<>\\\\]*)?|(?:/[^\\s"'<>\\\\]+)\\.(?:${MEDIA_EXT_PATTERN})(?:\\?[^\\s"'<>\\\\]*)?|(?:[A-Za-z0-9._~!$&()*+,;=:@%-]+/)*[A-Za-z0-9._~!$&()*+,;=:@%-]+\\.(?:${MEDIA_EXT_PATTERN})(?:\\?[^\\s"'<>\\\\]*)?`, "gi");
+  const MEDIA_URL_RE = new RegExp(`(?:https?:)?//[^\\s"'<>\\\\]+\\.(?:${MEDIA_EXT_PATTERN})(?=$|[?#])(?:[?#][^\\s"'<>\\\\]*)?|(?:/[^\\s"'<>\\\\]+)\\.(?:${MEDIA_EXT_PATTERN})(?=$|[?#])(?:[?#][^\\s"'<>\\\\]*)?|(?:[A-Za-z0-9._~!$&()*+,;=:@%-]+/)*[A-Za-z0-9._~!$&()*+,;=:@%-]+\\.(?:${MEDIA_EXT_PATTERN})(?=$|[?#])(?:[?#][^\\s"'<>\\\\]*)?`, "gi");
   const ENCODED_MEDIA_URL_RE = new RegExp(`https?%(?:25)*3A(?:(?:%(?:25)*2F)|/){2}[^\\s"'<>\\\\]+?(?:\\.|%(?:25)*2E)(?:${MEDIA_EXT_PATTERN})(?:[^\\s"'<>\\\\]*)?`, "gi");
+  const IMAGE_URL_RE = /\.(?:avif|webp|jpe?g|png|gif|bmp|svg)(?:@[^/?#]*)?(?:[?#]|$)/i;
   const MEDIA_HINT_RE = new RegExp(`\\.(?:${MEDIA_EXT_PATTERN})(?:[?#]|["'\\s<>]|$)`, "i");
   const FRAGMENT_RE = /\.(?:m4s|ts)(?:\?|#|$)/i;
   const TEXT_TYPE_RE = /json|text|javascript|mpegurl|dash\+xml|xml|x-mpegurl/i;
@@ -347,17 +348,20 @@
       const pageIdentity = item.page_identity || currentPageIdentity();
       if (pageIdentity !== currentPageIdentity()) continue;
       const url = normalizeUrl(item.url);
-      if (!url || seen.has(url) || /^image\//i.test(String(item.mime || ""))) continue;
-      const kind = item.kind && item.kind !== "unknown"
+      if (!url || seen.has(url) || IMAGE_URL_RE.test(url) || /^image\//i.test(String(item.mime || ""))) continue;
+      let kind = item.kind && item.kind !== "unknown"
         ? item.kind
         : responseMediaKind(url, item.mime || "", item.headers || {});
+      const label = String(item.label || "");
+      if (kind === "fragment" && /(?:^|[\s/])audio(?:[\s/]|$)/i.test(label)) kind = "audio";
+      if (kind === "fragment" && /(?:^|[\s/])video(?:[\s/]|$)/i.test(label)) kind = "video";
       if (kind === "unknown") continue;
       seen.add(url);
       deduped.push({
         url,
         source: item.source || "pageHook",
         kind,
-        mime: item.mime || "",
+        mime: item.mime || (kind === "audio" ? "audio/mp4" : kind === "video" ? "video/mp4" : ""),
         label: item.label || "page hook",
         score: item.score || scoreForKind(kind, { manifest: 96, video: 88, audio: 38, other: 62 }),
         playback_match: item.playback_match || "",
@@ -392,6 +396,7 @@
       });
     }
     if (!deduped.length) return;
+    attachSplitTrackAudioUrls(deduped);
     for (const item of deduped) {
       const existing = bufferedResources.find(resource => resource.url === item.url);
       if (existing) {
@@ -802,10 +807,17 @@
   }
 
   function kindFromJsonContext(keys, url, parent) {
+    if (IMAGE_URL_RE.test(String(url || ""))) return { kind: "unknown", mime: "" };
     const urlKind = mediaKind(url, "");
-    if (urlKind !== "unknown") return { kind: urlKind, mime: mimeForKind(urlKind) };
     const keyContext = keys.join(" ").toLowerCase();
     const mimeContext = jsonContextMime(parent).toLowerCase();
+    if (urlKind === "fragment" && (keyContext.includes("audio") || mimeContext.includes("audio/"))) {
+      return { kind: "audio", mime: "audio/mp4" };
+    }
+    if (urlKind === "fragment" && (keyContext.includes("video") || mimeContext.includes("video/"))) {
+      return { kind: "video", mime: "video/mp4" };
+    }
+    if (urlKind !== "unknown") return { kind: urlKind, mime: mimeForKind(urlKind) };
     if (keyContext.includes("mpegurl") || keyContext.includes("x-mpegurl") || keyContext.includes("m3u8") || keyContext.includes("hls")) {
       return { kind: "hls", mime: "application/vnd.apple.mpegurl" };
     }
@@ -1025,6 +1037,41 @@
     video.audio_mime = audio.mime || "audio/mp4";
     video.score = Math.min(100, Math.max(Number(video.score || 0), 92));
     video.label = `${video.label || "video"} + audio`;
+  }
+
+  function attachSplitTrackAudioUrls(resources = []) {
+    for (const item of resources) {
+      if (item?.kind !== "fragment") continue;
+      const label = String(item.label || "");
+      if (/(?:^|[\s/])audio(?:[\s/]|$)/i.test(label)) {
+        item.kind = "audio";
+        item.mime = "audio/mp4";
+        item.score = Math.max(Number(item.score || 0), scoreForKind("audio"));
+      } else if (/(?:^|[\s/])video(?:[\s/]|$)/i.test(label)) {
+        item.kind = "video";
+        item.mime = "video/mp4";
+        item.score = Math.max(Number(item.score || 0), scoreForKind("video"));
+      }
+    }
+    const audios = resources.filter(item =>
+      item?.kind === "audio" &&
+      item.url &&
+      /(?:^|[\s/])audio(?:[\s/]|$)/i.test(String(item.label || ""))
+    );
+    const videos = resources.filter(item =>
+      item?.kind === "video" &&
+      item.url &&
+      /(?:^|[\s/])video(?:[\s/]|$)/i.test(String(item.label || ""))
+    );
+    if (!audios.length || !videos.length) return;
+    const audio = audios.find(item => /base.?url/i.test(String(item.label || ""))) || audios[0];
+    for (const video of videos) {
+      if (video.audio_url) continue;
+      video.audio_url = audio.url;
+      video.audio_mime = audio.mime || "audio/mp4";
+      video.score = Math.min(100, Math.max(Number(video.score || 0), 92));
+      video.label = `${video.label || "video"} + audio`;
+    }
   }
 
   function collectJsonMediaUrls(node, source, label, keys = [], parent = null, output = [], seen = new Set(), visited = new WeakSet(), meta = {}, inheritedBases = []) {
@@ -1368,6 +1415,7 @@
       }
       if (resources.length >= 40) break;
     }
+    attachSplitTrackAudioUrls(resources);
     return resources;
   }
 

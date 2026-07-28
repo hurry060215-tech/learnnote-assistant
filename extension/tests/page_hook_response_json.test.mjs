@@ -121,6 +121,16 @@ const context = {
     },
     genericAudioEndpoint: {
       source: "/api/audio/backup?id=42&token=b"
+    },
+    bilibiliDash: {
+      video: [
+        { baseUrl: "https://cdn.example.com/bili/video-1080.m4s?token=v1" },
+        { baseUrl: "https://cdn.example.com/bili/video-720.m4s?token=v2" }
+      ],
+      audio: [
+        { baseUrl: "https://cdn.example.com/bili/audio-192.m4s?token=a1" },
+        { baseUrl: "https://cdn.example.com/bili/audio-128.m4s?token=a2" }
+      ]
     }
   });
   },
@@ -175,6 +185,8 @@ const ambiguousAudio = resources.find(resource => resource.url === "https://cour
 const bareBackupEndpoint = resources.find(resource => resource.url === "https://course.example.com/backup?id=json-backup&token=ok");
 const bareMainEndpoint = resources.find(resource => resource.url === "https://course.example.com/main?id=json-main&token=ok");
 const genericAudioEndpoint = resources.find(resource => resource.url === "https://course.example.com/api/audio/backup?id=42&token=b");
+const biliVideos = resources.filter(resource => /\/bili\/video-\d+\.m4s/.test(resource.url));
+const biliAudios = resources.filter(resource => /\/bili\/audio-\d+\.m4s/.test(resource.url));
 
 assert.ok(hls, "expected Response.json() body to expose the encoded HLS URL");
 assert.equal(hls.kind, "hls");
@@ -259,3 +271,12 @@ assert.equal(bareMainEndpoint.mime, "video/mp4");
 
 assert.ok(genericAudioEndpoint, "expected generic source field with audio endpoint URL to be detected");
 assert.equal(genericAudioEndpoint.kind, "audio");
+
+assert.equal(biliVideos.length, 2, "expected Bilibili DASH video tracks to be retained as video candidates");
+assert.equal(biliAudios.length, 2, "expected Bilibili DASH audio tracks to be retained as audio evidence");
+for (const video of biliVideos) {
+  assert.equal(video.kind, "video");
+  assert.equal(video.audio_url, "https://cdn.example.com/bili/audio-192.m4s?token=a1");
+  assert.equal(video.audio_mime, "audio/mp4");
+}
+for (const audio of biliAudios) assert.equal(audio.kind, "audio");

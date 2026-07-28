@@ -451,7 +451,9 @@ function playableEndpointScore(resource = {}) {
 }
 
 function isImageResource(resource = {}) {
-  return /^image\//i.test(String(resource.mime || resource.headers?.["content-type"] || "")) || resource.kind === "image";
+  return /^image\//i.test(String(resource.mime || resource.headers?.["content-type"] || "")) ||
+    resource.kind === "image" ||
+    /\.(?:avif|webp|jpe?g|png|gif|bmp|svg)(?:@[^/?#]*)?(?:[?#]|$)/i.test(String(resource.url || ""));
 }
 
 function isLearningFrameUrl(value = "") {
@@ -684,6 +686,11 @@ function withPlaybackHints(resource, page = {}, tab = {}) {
   const activeFrameId = active.frame_id ?? null;
   const kind = resource.kind || classify(resource.url || "", resource.mime || "");
   const hinted = addActiveVideoRequestContext({ ...resource, kind }, page, tab);
+  const sourceCanBindToActivePlayback = hinted.source === "activeVideo" ||
+    hinted.source === "dom" ||
+    hinted.source === "webRequest" ||
+    hinted.source === "webRequestResolved" ||
+    String(hinted.source || "").startsWith("pageHook");
   hinted.playback_session_rank = playbackSessionRank(hinted, page, tab);
   let boost = 0;
   let match = hinted.playback_match || "";
@@ -720,6 +727,7 @@ function withPlaybackHints(resource, page = {}, tab = {}) {
     hinted.frame_id !== null &&
     hinted.frame_id !== undefined &&
     hinted.frame_id === activeFrameId &&
+    sourceCanBindToActivePlayback &&
     (isDownloadableKind(kind) || (kind === "fragment" && activeSrc.startsWith("blob:")))
   ) {
     boost += kind === "fragment" ? 14 : activeSrc.startsWith("blob:") ? 16 : 12;

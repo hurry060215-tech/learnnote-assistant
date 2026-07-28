@@ -4,6 +4,15 @@ All notable changes to LearnNote are documented here. The project follows semant
 
 ## Unreleased
 
+## 0.1.46 - 2026-07-28
+
+### Fixed
+
+- Bilibili DASH video and audio fragments are classified and paired before handoff instead of remaining unconfirmed fragments.
+- Playing media can confirm audio from live `captureStream()` tracks and decoded-audio bytes even when the extension attaches after playback has started.
+- AVIF and transformed image covers are excluded from media candidates instead of being mistaken for AVI video.
+- Weak static media hints can no longer outrank verified same-frame playback resources.
+
 ## 0.1.45 - 2026-07-28
 
 ### Changed

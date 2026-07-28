@@ -216,6 +216,12 @@ const htmlVideo = new FakeElement("video", {
 const plainUrlScript = new FakeElement("script", {
   textContent: "window.__payload='https://cdn.example.com/static/plain-url.m3u8?token=script-plain';"
 });
+const bilibiliAvifCover = new FakeElement("img", {
+  src: "https://i1.hdslb.com/bfs/archive/cover.avif"
+});
+const bilibiliTransformedCover = new FakeElement("img", {
+  src: "https://i1.hdslb.com/bfs/archive/cover.jpg@336w_190h_1c_!web-video-rcmd-cover.avi"
+});
 const srcdocIframe = new FakeElement("iframe", {
   title: "Inline player",
   srcdoc: String.raw`<script>window.__player={hls:"https:\/\/cdn.example.com\/static\/iframe-srcdoc\/master.m3u8\x3Ftoken\x3Dsrcdoc"};</script>`
@@ -232,7 +238,7 @@ sameOriginIframe.contentDocument = {
     textContent: ""
   }
 };
-const html = new FakeElement("html", {}, [player, packedPlayer, playUrlAliasPlayer, manifestAliasPlayer, backupAliasPlayer, doubleEncodedPlayer, onclickPlayer, paramPlayer, lazyPathPlayer, lazyUriPlayer, ordinaryPathLink, configPlayer, nakedPlayer, vendorPlayer, preloadVideo, preloadHls, prefetchPlayApi, ogVideo, htmlVideo, script, plainEncodedScript, plainDoubleEncodedScript, mixedEncodedScript, jsEscapedScript, jsEscapedPayloadScript, nestedMediaKeyScript, splitBaseScript, endpointContainerScript, qualityContainerScript, segmentScript, plainUrlScript, srcdocIframe, sameOriginIframe]);
+const html = new FakeElement("html", {}, [player, packedPlayer, playUrlAliasPlayer, manifestAliasPlayer, backupAliasPlayer, doubleEncodedPlayer, onclickPlayer, paramPlayer, lazyPathPlayer, lazyUriPlayer, ordinaryPathLink, configPlayer, nakedPlayer, vendorPlayer, preloadVideo, preloadHls, prefetchPlayApi, ogVideo, htmlVideo, script, plainEncodedScript, plainDoubleEncodedScript, mixedEncodedScript, jsEscapedScript, jsEscapedPayloadScript, nestedMediaKeyScript, splitBaseScript, endpointContainerScript, qualityContainerScript, segmentScript, plainUrlScript, bilibiliAvifCover, bilibiliTransformedCover, srcdocIframe, sameOriginIframe]);
 
 let messageListener = null;
 const context = {
@@ -366,7 +372,9 @@ const plainScriptHls = response.resources.find(item => item.url === "https://cdn
 const iframeSrcdocHls = response.resources.find(item => item.url === "https://cdn.example.com/static/iframe-srcdoc/master.m3u8?token=srcdoc");
 const iframeDocumentVideo = response.resources.find(item => item.url === "https://cdn.example.com/static/iframe-doc/lesson.mp4?token=doc");
 const malformedEncodedUrls = response.resources.filter(item => /\/https%3A%2F%2F/i.test(item.url));
+const bilibiliImageHints = response.resources.filter(item => item.url.includes("i1.hdslb.com/bfs/archive/cover"));
 
+assert.equal(bilibiliImageHints.length, 0, "expected Bilibili AVIF and transformed image covers not to be treated as AVI media");
 assert.ok(pageUrlHls, "expected current page URL query to expose encoded HLS URL");
 assert.equal(pageUrlHls.kind, "hls");
 assert.equal(pageUrlHls.source, "locationHint");

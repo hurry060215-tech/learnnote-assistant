@@ -175,7 +175,15 @@ def merge_task_options(base: TaskOptions | None, overrides: TaskOptions | None) 
 def build_handoff_integrity(request: CurrentPageTaskRequest) -> MediaIntegrity:
     active = request.active_video
     has_video = bool(active and (active.src or active.src_object_video_tracks > 0))
-    has_audio = bool(active and active.src_object_audio_tracks > 0)
+    has_audio = bool(
+        active
+        and (
+            active.has_audio
+            or active.src_object_audio_tracks > 0
+            or active.capture_stream_audio_tracks > 0
+            or active.audio_decoded_byte_count > 0
+        )
+    )
     duration_candidates = [float(active.duration or 0)] if active else []
     has_subtitles = any(
         str(cue.text or "").strip() and not browser_subtitle_text_is_player_ui(cue.text)
