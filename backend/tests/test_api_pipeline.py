@@ -992,6 +992,61 @@ class LocalUploadValidationTests(unittest.TestCase):
         self.assertIn("3 个细胞", ranked[1]["text"])
         self.assertIn("50 个基因", ranked[1]["text"])
 
+    def test_summary_question_uses_timeline_transcript_and_removes_legacy_page_context(self) -> None:
+        task = create_task("current_page", "雅思口语答题", "https://www.bilibili.com/video/BV1summary")
+        root = task_dir(task.id)
+        note = root / "note.md"
+        transcript = root / "transcript.json"
+        note.write_text(
+            "\n".join([
+                "# 雅思口语答题",
+                "",
+                "## 学习上下文",
+                "",
+                "- 文本来源：faster-whisper",
+                "- Page context: captured from the current browser page and used only as course/chapter context, not as transcript.",
+                "  推荐视频 广告 播放器按钮 评论区 自动连播",
+                "- 使用方式：按时间轴复习。",
+                "",
+                "## 概念精讲",
+                "",
+                "- 讲者演示如何组织口语回答。",
+            ]),
+            encoding="utf-8",
+        )
+        transcript.write_text(json.dumps({
+            "source": "faster-whisper",
+            "segments": [
+                {"start": 0, "end": 50, "text": "开头回应口语水平质疑，并说明会展示真实答题思路。"},
+                {"start": 130, "end": 190, "text": "中段分析儿童使用社交媒体时的注意力和判断风险。"},
+                {"start": 260, "end": 320, "text": "结尾主张用监护、监管和媒体素养教育替代全面禁止。"},
+            ],
+        }, ensure_ascii=False), encoding="utf-8")
+        try:
+            update_task(task.id, note_path=str(note), transcript_path=str(transcript))
+
+            context, all_citations = main_module._task_qa_context(main_module.get_task(task.id))
+            self.assertNotIn("推荐视频", context)
+            self.assertNotIn("自动连播", context)
+
+            with patch("app.main.LLM_API_KEY", ""):
+                response = self.client.post(
+                    f"/api/tasks/{task.id}/qa",
+                    json={"question": "用三点总结这节课的核心内容"},
+                )
+
+            self.assertEqual(response.status_code, 200)
+            payload = response.json()
+            self.assertGreaterEqual(len(payload["citations"]), 3)
+            self.assertTrue(all(item["source"] == "transcript" for item in payload["citations"]))
+            citation_text = " ".join(item["text"] for item in payload["citations"])
+            self.assertIn("真实答题思路", citation_text)
+            self.assertIn("注意力和判断风险", citation_text)
+            self.assertIn("监管和媒体素养教育", citation_text)
+            self.assertNotIn("推荐视频", citation_text)
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
+
     def test_stale_media_path_is_not_reported_reusable(self) -> None:
         task = create_task("current_page", "Missing media", "https://course.example.com/lesson", mode="download_only")
         missing_media = task_dir(task.id) / "media.mp4"
