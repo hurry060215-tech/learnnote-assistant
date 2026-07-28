@@ -15,7 +15,7 @@ from unittest.mock import patch
 
 from pydantic import ValidationError
 
-from app.config import DATA_DIR, LLM_MAX_RETRIES, LLM_REQUEST_TIMEOUT_SECONDS, TEMP_DIR
+from app.config import DATA_DIR, LLM_MAX_RETRIES, LLM_REQUEST_TIMEOUT_SECONDS, TEMP_DIR, configure_local_caches
 from app.downloader import (
     DownloadError,
     MediaDownloader,
@@ -44,7 +44,7 @@ from app.downloader import (
 )
 from app.main import _automatic_diagnostic_rules, diagnostic_recovery_profile, render_bundle_manifest, render_diagnostics_markdown, task_audit_summary
 from app.models import ActiveVideoInfo, BrowserCookie, BrowserSubtitleCue, CurrentPageTaskRequest, DownloadAttempt, DrmSignal, EvidenceCoverage, FrameGrid, MediaIntegrity, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
-from app.processor import ContentMismatchError, browser_subtitle_text_is_player_ui, browser_subtitles_are_reliable, browser_subtitles_look_partial, build_summary_diagnostics, cookie_sync_summary, download_progress_updater, download_status_updater, enrich_resource_candidates_with_active_video, process_current_page_task, process_local_video_task, read_note, read_transcript, redacted_request_dump, redacted_resource, transcript_from_browser_subtitles, validate_summary_evidence
+from app.processor import ContentMismatchError, browser_subtitle_text_is_player_ui, browser_subtitles_are_reliable, browser_subtitles_look_partial, build_summary_diagnostics, cookie_sync_summary, download_progress_updater, download_status_updater, enrich_resource_candidates_with_active_video, process_current_page_task, process_local_video_task, read_note, read_transcript, redacted_request_dump, redacted_resource, transcript_from_browser_subtitles, transcribe_with_task_progress, validate_summary_evidence
 from app.summarizer import MAX_GRIDS_PER_VISION_CALL, MAX_VISION_GRIDS, build_visual_windows, chat_completion_provider_kwargs, ensure_visual_appendix, learning_goal, learning_goal_instruction, llm_model_supports_vision, llm_provider_name, local_markdown_note, summarize_page_text_with_diagnostics, summarize_with_diagnostics, summarize_with_diagnostics_audit, summary_depth_instruction
 from app.storage import create_task, get_task, read_json, save_task, task_dir, write_json
 
@@ -64,7 +64,7 @@ def ready_media_integrity(duration: float = 120) -> MediaIntegrity:
 
 def ready_evidence_coverage() -> EvidenceCoverage:
     return EvidenceCoverage(status="ready", can_summarize=True)
-from app.transcriber import _remote_asr_provider, resolve_whisper_model, transcribe_audio_openai_compatible, transcript_from_subtitle
+from app.transcriber import _remote_asr_provider, resolve_whisper_model, transcribe_audio, transcribe_audio_openai_compatible, transcript_from_subtitle
 
 TEST_RUN_DIR = DATA_DIR / "test-runs"
 TEST_RUN_DIR.mkdir(parents=True, exist_ok=True)
@@ -1287,6 +1287,25 @@ class ResourceDetectionTests(unittest.TestCase):
 
 
 class TranscriberBoundaryTests(unittest.TestCase):
+    def test_learnnote_cache_overrides_machine_wide_cache_variables(self) -> None:
+        with tempfile.TemporaryDirectory(dir=TEST_RUN_DIR) as temp_dir:
+            model_root = Path(temp_dir) / "models"
+            with (
+                patch("app.config.MODEL_CACHE_DIR", model_root),
+                patch.dict(
+                    os.environ,
+                    {
+                        "HF_HOME": "D:/OtherApp/huggingface",
+                        "HUGGINGFACE_HUB_CACHE": "D:/OtherApp/hub",
+                        "XDG_CACHE_HOME": "D:/OtherApp/xdg",
+                    },
+                ),
+            ):
+                configure_local_caches()
+                self.assertEqual(os.environ["HF_HOME"], str(model_root / "huggingface"))
+                self.assertEqual(os.environ["HUGGINGFACE_HUB_CACHE"], str(model_root / "huggingface" / "hub"))
+                self.assertEqual(os.environ["XDG_CACHE_HOME"], str(model_root / "xdg"))
+
     def test_local_whisper_model_is_preferred_over_hub_name(self) -> None:
         with tempfile.TemporaryDirectory(dir=TEST_RUN_DIR) as temp_dir:
             model_root = Path(temp_dir)
@@ -1298,6 +1317,63 @@ class TranscriberBoundaryTests(unittest.TestCase):
             with patch("app.transcriber.MODEL_CACHE_DIR", model_root):
                 self.assertEqual(resolve_whisper_model("small"), str(local_model))
                 self.assertEqual(resolve_whisper_model("medium"), "medium")
+
+    def test_local_transcription_reports_segment_progress(self) -> None:
+        events = []
+
+        class FakeWhisperModel:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            def transcribe(self, _audio_path, vad_filter=True):
+                if not vad_filter:
+                    raise AssertionError("VAD should remain enabled")
+                return (
+                    iter(
+                        [
+                            types.SimpleNamespace(start=0, end=4, text=" first "),
+                            types.SimpleNamespace(start=4, end=9, text=" second "),
+                        ]
+                    ),
+                    types.SimpleNamespace(language="en", duration=9),
+                )
+
+        fake_module = types.ModuleType("faster_whisper")
+        fake_module.WhisperModel = FakeWhisperModel
+        with tempfile.TemporaryDirectory(dir=TEST_RUN_DIR) as temp_dir:
+            audio = Path(temp_dir) / "audio.wav"
+            audio.write_bytes(b"audio")
+            with patch.dict(sys.modules, {"faster_whisper": fake_module}):
+                result = transcribe_audio(audio, progress_callback=lambda seconds, stage: events.append((seconds, stage)))
+
+        self.assertEqual(result.full_text, "first\nsecond")
+        self.assertIn((0, "loading_model"), events)
+        self.assertIn((0, "model_ready"), events)
+        self.assertIn((4.0, "transcribing"), events)
+        self.assertEqual(events[-1], (9.0, "complete"))
+
+    def test_task_transcription_progress_uses_processed_audio_time(self) -> None:
+        task = create_task("local", "Progress heartbeat")
+
+        def fake_transcribe(_audio_path, _options, progress_callback=None):
+            progress_callback(60, "transcribing")
+            return TranscriptResult(source="unit", full_text="done")
+
+        try:
+            with patch("app.processor.transcribe_extracted_audio", side_effect=fake_transcribe):
+                result = transcribe_with_task_progress(
+                    task.id,
+                    Path("audio.wav"),
+                    TaskOptions(),
+                    media_duration=120,
+                )
+            record = get_task(task.id)
+            self.assertEqual(result.full_text, "done")
+            self.assertEqual(record.phase, "transcribing")
+            self.assertEqual(record.progress, 59)
+            self.assertIn("01:00 / 02:00", record.message)
+        finally:
+            shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
     def test_openai_compatible_asr_parses_verbose_segments(self) -> None:
         calls = []
@@ -2091,7 +2167,7 @@ class ProcessorBoundaryTests(unittest.TestCase):
             target.write_bytes(b"real audio")
             return target
 
-        def fake_transcribe(audio_path: Path, model_size: str = "small") -> TranscriptResult:
+        def fake_transcribe(audio_path: Path, model_size: str = "small", progress_callback=None) -> TranscriptResult:
             return TranscriptResult(
                 language="zh",
                 source="faster-whisper",

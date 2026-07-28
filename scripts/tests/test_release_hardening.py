@@ -78,7 +78,7 @@ class ReleaseHardeningContractTests(unittest.TestCase):
         self.assertIn("test_release_hardening.py", workflow)
         self.assertIn("samplelib.com/sample-mp4.html", workflow)
         self.assertIn("-RequireReady", workflow)
-        self.assertRegex(workflow, r"actions/upload-artifact@[0-9a-f]{40} # v6")
+        self.assertRegex(workflow, r"actions/upload-artifact@[0-9a-f]{40} # v7")
         self.assertIn("build/reliability/model-provider-contract.json", workflow)
         self.assertNotIn("runner.temp", workflow)
         self.assertNotIn("secrets.", workflow)
