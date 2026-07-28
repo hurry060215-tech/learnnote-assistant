@@ -1630,6 +1630,21 @@ function markdownToHtml(markdown) {
   return html.join("");
 }
 
+function sanitizeNoteMarkdown(markdown) {
+  const lines = String(markdown || "").replace(/\r\n?/g, "\n").split("\n");
+  const cleaned = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!/^\s*-\s*Page context:\s*captured from the current browser page\b/i.test(lines[index])) {
+      cleaned.push(lines[index]);
+      continue;
+    }
+    while (index + 1 < lines.length && /^(?: {2,}|\t)\S/.test(lines[index + 1])) {
+      index += 1;
+    }
+  }
+  return cleaned.join("\n");
+}
+
 function noteOutline(markdown, limit = 12) {
   const lines = String(markdown || "").replace(/\r\n?/g, "\n").split("\n");
   const headingIds = new Map();
@@ -8016,6 +8031,7 @@ async function renderDetail() {
   if (selectedTab === "note") {
     lastNote = await noteForTask(task.id);
     if (generation !== detailRenderGeneration || requestedTaskId !== selectedTaskId || requestedTab !== selectedTab) return;
+    const displayNote = sanitizeNoteMarkdown(lastNote);
     const emptyNoteHtml = hasExportableMedia(task) ? downloadOnlyEmptyNoteHtml(task) : "<p>笔记尚未生成。</p>";
     const pendingContext = lastNote ? "" : `${taskOverview(task)}${failureGuide(task)}`;
     els.detail.innerHTML = `
@@ -8023,8 +8039,8 @@ async function renderDetail() {
         ${noteEvidenceNoticeHtml(task)}
         ${noteProvenanceHtml(task)}
         <div class="note-workbench">
-          <article class="markdown-note">${lastNote ? markdownToHtml(lastNote) : emptyNoteHtml}</article>
-          ${readingRail(lastNote, task)}
+          <article class="markdown-note">${displayNote ? markdownToHtml(displayNote) : emptyNoteHtml}</article>
+          ${readingRail(displayNote, task)}
         </div>
         ${pendingContext}
       </div>

@@ -782,6 +782,8 @@ assert.equal(elements.get("#generateNoteHint").textContent, "选择视频后直�
 context.setSource("browser");
 assert.match(productCss, /\.note-workbench\s*\{[\s\S]*grid-template-columns:\s*minmax\(720px, 820px\) minmax\(220px, 260px\)/);
 assert.match(productCss, /\.reading-rail\s*\{[\s\S]*position:\s*sticky;[\s\S]*min-width:\s*220px;[\s\S]*max-width:\s*260px;/);
+assert.match(productCss, /body\[data-app-view="notes"\] \.result-panel,\s*body\[data-app-view="history"\] \.result-panel\s*\{[\s\S]*overflow:\s*visible;/);
+assert.match(productCss, /body\[data-app-view="notes"\] \.result-panel \.detail,\s*body\[data-app-view="history"\] \.result-panel \.detail\s*\{[\s\S]*overflow:\s*visible;/);
 assert.match(productCss, /body\[data-app-view="notes"\] \.note-workbench > \.markdown-note[\s\S]*grid-column:\s*1;/);
 assert.match(productCss, /body\[data-app-view="notes"\] \.note-workbench > \.reading-rail[\s\S]*grid-column:\s*2;[\s\S]*order:\s*0;/);
 assert.match(matureCss, /#sourceWorkflow\.settled/);
@@ -1176,6 +1178,20 @@ assert.match(html, /<td style="text-align:right">3<\/td>/);
 assert.doesNotMatch(html, /<p>\| 参数 \|/);
 assert.match(html, /<hr>/);
 assert.match(html, /<a href="http:\/\/127\.0\.0\.1:8765\/api\/tasks\/demo\/assets\/grid\.jpg"/);
+
+const sanitizedLegacyNote = context.sanitizeNoteMarkdown(`# Lesson
+
+## 学习上下文
+
+- 文本来源：faster-whisper
+- Page context: captured from the current browser page and used only as course/chapter context, not as transcript.
+  unrelated recommendations, ads, player controls and comments
+- 主题线索：Lesson
+`);
+assert.doesNotMatch(sanitizedLegacyNote, /Page context/);
+assert.doesNotMatch(sanitizedLegacyNote, /unrelated recommendations/);
+assert.match(sanitizedLegacyNote, /文本来源：faster-whisper/);
+assert.match(sanitizedLegacyNote, /主题线索：Lesson/);
 
 const outlineHtml = context.noteOutline(`# Smoke Current Page Video
 

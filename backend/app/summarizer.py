@@ -564,12 +564,10 @@ def _page_context_excerpt(page_context: str = "", limit: int = 1800) -> str:
 
 
 def _page_context_markdown_lines(page_context: str = "") -> list[str]:
-    excerpt = _page_context_excerpt(page_context)
-    if not excerpt:
+    if not _page_context_excerpt(page_context):
         return []
     return [
-        "- Page context: captured from the current browser page and used only as course/chapter context, not as transcript.",
-        f"  {excerpt}",
+        "- 页面上下文：已采集，仅用于辅助识别课程标题与章节；不作为转写或笔记证据。",
     ]
 
 
