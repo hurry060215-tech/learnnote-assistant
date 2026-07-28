@@ -4,6 +4,13 @@ All notable changes to LearnNote are documented here. The project follows semant
 
 ## Unreleased
 
+## 0.1.49 - 2026-07-28
+
+### Fixed
+
+- The notes workspace now provides persistent controls for collapsing the navigation rail and notes list, plus a focus-reading mode that hides both panes.
+- The advanced actions menu now uses grouped, labeled commands and no longer overflows or stretches the page with hidden task metadata.
+
 ## 0.1.48 - 2026-07-28
 
 ### Fixed
