@@ -2729,10 +2729,32 @@ def _sanitize_citations(citations: list[dict]) -> list[dict]:
     return [citation for citation in citations if _citation_is_trusted(citation)]
 
 
+def _sanitize_note_markdown_for_qa(note: str) -> str:
+    """Remove legacy browser-page context that was never course evidence."""
+    lines = str(note or "").replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    cleaned: list[str] = []
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        if re.match(
+            r"^\s*-\s*Page context:\s*captured from the current browser page\b",
+            line,
+            flags=re.I,
+        ):
+            index += 1
+            while index < len(lines) and re.match(r"^(?: {2,}|\t)\S", lines[index]):
+                index += 1
+            continue
+        cleaned.append(line)
+        index += 1
+    return "\n".join(cleaned)
+
+
 def _note_evidence_chunks(note: str, limit: int = 80) -> list[dict]:
     chunks: list[dict] = []
     heading = ""
-    for raw_block in re.split(r"\n{2,}|(?=^#{1,6}\s)", note, flags=re.M):
+    clean_note = _sanitize_note_markdown_for_qa(note)
+    for raw_block in re.split(r"\n{2,}|(?=^#{1,6}\s)", clean_note, flags=re.M):
         block = raw_block.strip()
         if not block:
             continue
@@ -2944,6 +2966,47 @@ def _rank_citations_for_question(
         if len(fallback) >= min(3, limit):
             break
     return fallback
+
+
+def _is_broad_summary_question(question: str) -> bool:
+    text = re.sub(r"\s+", "", str(question or "").lower())
+    return bool(re.search(
+        r"总结|概括|核心内容|主要内容|主要讲|讲了(?:什么|啥)|内容是什么|"
+        r"summar(?:y|ize)|overview|keypoints|mainpoints",
+        text,
+    ))
+
+
+def _summary_citations(citations: list[dict], limit: int = 6) -> list[dict]:
+    """Prefer non-overlapping transcript windows spanning the full timeline."""
+    trusted = _sanitize_citations(citations)
+    windows = sorted(
+        (
+            item for item in trusted
+            if item.get("source") == "transcript" and item.get("granularity") == "window"
+        ),
+        key=lambda item: float(item.get("start") or 0),
+    )
+    selected: list[dict] = []
+    last_end = -1.0
+    for item in windows:
+        start = float(item.get("start") or 0)
+        if selected and start < last_end:
+            continue
+        selected.append(item)
+        last_end = float(item.get("end") or start)
+        if len(selected) >= limit:
+            return selected
+    if selected:
+        selected_ids = {id(item) for item in selected}
+        for item in windows:
+            if id(item) in selected_ids:
+                continue
+            selected.append(item)
+            if len(selected) >= limit:
+                break
+        return sorted(selected, key=lambda item: float(item.get("start") or 0))
+    return _rank_citations_for_question(trusted, set(), limit=limit)
 
 
 def _recent_qa_history(task_id: str, limit: int = 4) -> list[dict]:
@@ -3243,11 +3306,14 @@ def _answer_task_question(task: TaskRecord, request: TaskQuestionRequest) -> dic
 
     history = [] if strict_transcript else (_recent_qa_history(task.id) if _is_follow_up_question(request.question) else [])
     question_terms = _question_terms(request.question)
-    citations = _rank_citations_for_question(
-        all_citations,
-        question_terms,
-        related_terms=_qa_history_terms(history),
-    )
+    if _is_broad_summary_question(request.question):
+        citations = _summary_citations(all_citations)
+    else:
+        citations = _rank_citations_for_question(
+            all_citations,
+            question_terms,
+            related_terms=_qa_history_terms(history),
+        )
     evidence_prompt = _qa_evidence_prompt(citations)
 
     api_key = options.llm_api_key or LLM_API_KEY
