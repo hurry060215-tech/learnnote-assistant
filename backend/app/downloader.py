@@ -1776,7 +1776,18 @@ def _is_clearly_non_media_asset_url(url: str) -> bool:
         return True
     if re.search(r"\.(?:jpe?g|png|gif|webp|avif|svg|ico)$", path, re.I):
         return True
-    return bool(re.search(r"\.(?:jpe?g|png|gif|webp)(?:@|%40)[^/?#]*\.(?:avi|avif|webp)$", path, re.I))
+    image_extensions = (".jpg", ".jpeg", ".png", ".gif", ".webp")
+    transformed_extensions = (".avi", ".avif", ".webp")
+    for marker in ("@", "%40"):
+        source, found, transform = path.partition(marker)
+        if (
+            found
+            and source.endswith(image_extensions)
+            and transform.endswith(transformed_extensions)
+            and "/" not in transform
+        ):
+            return True
+    return False
 
 
 def effective_resource_kind(candidate: ResourceCandidate) -> str:

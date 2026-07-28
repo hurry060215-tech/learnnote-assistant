@@ -826,8 +826,12 @@ class ResourceDetectionTests(unittest.TestCase):
 
     def test_bilibili_cover_transform_and_static_assets_are_not_media(self) -> None:
         cover = "https://i2.hdslb.com/bfs/archive/example.jpg@336w_190h_1c_!web-video-rcmd-cover.avi"
+        encoded_cover = "https://i2.hdslb.com/bfs/archive/example.png%40336w_190h_1c.webp"
+        adversarial_cover = "https://i2.hdslb.com/bfs/archive/example.png@" + (".gif@" * 10000) + "cover.avif"
         script = "https://s1.hdslb.com/bfs/static/jinkela/video/video.07dc20e5.js"
         self.assertEqual(classify_resource(cover, "video/mp4"), "unknown")
+        self.assertEqual(classify_resource(encoded_cover, "video/mp4"), "unknown")
+        self.assertEqual(classify_resource(adversarial_cover, "video/mp4"), "unknown")
         self.assertEqual(classify_resource(script, "video/mp4"), "unknown")
         self.assertEqual(
             effective_resource_kind(ResourceCandidate(url=cover, kind="video", mime="video/mp4", source="domHint")),

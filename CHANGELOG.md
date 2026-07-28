@@ -11,6 +11,7 @@ All notable changes to LearnNote are documented here. The project follows semant
 - The notes workspace now provides persistent controls for collapsing the navigation rail and notes list, plus a focus-reading mode that hides both panes.
 - The advanced actions menu now uses grouped, labeled commands and no longer overflows or stretches the page with hidden task metadata.
 - Broad AI assistant summary questions now use transcript windows across the full timeline, while legacy browser recommendations and player-page text are removed from assistant evidence.
+- Bilibili transformed-cover detection now uses bounded string parsing instead of an expensive user-controlled regular expression.
 
 ## 0.1.48 - 2026-07-28
 
