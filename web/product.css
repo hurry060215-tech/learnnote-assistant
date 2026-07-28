@@ -4275,8 +4275,14 @@ body[data-app-view="workspace"] .queue-panel {
 /* Reading layout must override the older responsive rail ordering. */
 body[data-app-view="notes"] .result-panel .detail,
 body[data-app-view="history"] .result-panel .detail {
+  overflow: visible;
   padding-right: 0;
   padding-left: 0;
+}
+
+body[data-app-view="notes"] .result-panel,
+body[data-app-view="history"] .result-panel {
+  overflow: visible;
 }
 
 body[data-app-view="notes"] .note-workbench,

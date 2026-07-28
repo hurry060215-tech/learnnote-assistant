@@ -4031,7 +4031,7 @@ class SummaryFallbackTests(unittest.TestCase):
         self.assertEqual(client_kwargs[0]["timeout"], LLM_REQUEST_TIMEOUT_SECONDS)
         self.assertEqual(client_kwargs[0]["max_retries"], LLM_MAX_RETRIES)
 
-    def test_local_note_keeps_page_context_separate_from_transcript(self) -> None:
+    def test_local_note_does_not_dump_raw_page_context_into_note(self) -> None:
         transcript = TranscriptResult(
             source="unit",
             full_text="timestamped transcript line",
@@ -4047,8 +4047,9 @@ class SummaryFallbackTests(unittest.TestCase):
             page_context="Chapter 7 dynamic programming homework prompt",
         )
 
-        self.assertIn("Chapter 7 dynamic programming homework prompt", note)
-        self.assertIn("not as transcript", note)
+        self.assertIn("页面上下文：已采集", note)
+        self.assertIn("不作为转写或笔记证据", note)
+        self.assertNotIn("Chapter 7 dynamic programming homework prompt", note)
         self.assertEqual(transcript.full_text, "timestamped transcript line")
 
     def test_summary_diagnostics_report_local_fallback_without_api_key(self) -> None:
