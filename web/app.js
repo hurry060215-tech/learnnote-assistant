@@ -351,6 +351,7 @@ const els = {
   assistantSubmitLabel: document.querySelector("#assistantSubmitLabel"),
   assistantSuggestions: document.querySelectorAll("[data-assistant-question]"),
   refreshButton: document.querySelector("#refreshButton"),
+  toggleNavigationButton: document.querySelector("#toggleNavigationButton"),
   toggleWorkspaceButton: document.querySelector("#toggleWorkspaceButton"),
   toggleHistoryButton: document.querySelector("#toggleHistoryButton"),
   workspaceNav: document.querySelector("#workspaceNav"),
@@ -465,6 +466,7 @@ const els = {
   selectedSource: document.querySelector("#selectedSource"),
   selectedTitle: document.querySelector("#selectedTitle"),
   resultMeta: document.querySelector("#resultMeta"),
+  resultMoreActions: document.querySelector("#resultMoreActions"),
   resultTabs: document.querySelectorAll(".result-tab"),
   detail: document.querySelector("#detail"),
   continueFromMediaButton: document.querySelector("#continueFromMediaButton"),
@@ -742,12 +744,7 @@ function showAppView(view = "workspace") {
   const wasSettingsMode = document.body?.classList?.contains("settings-mode");
   const normalizedView = ["workspace", "notes", "history", "settings"].includes(view) ? view : "workspace";
   if (document.body?.dataset) document.body.dataset.appView = normalizedView;
-  document.body?.classList?.remove("queue-collapsed");
-  document.body?.classList?.remove("workspace-collapsed");
-  document.body?.classList?.remove("reading-mode");
-  setPressed(els.toggleHistoryButton, false);
-  setPressed(els.toggleWorkspaceButton, false);
-  setPressed(els.readingModeButton, false);
+  syncLayoutForView(normalizedView);
   document.body?.classList?.toggle("settings-mode", settingsMode);
   if (els.settingsView) els.settingsView.hidden = !settingsMode;
   document.querySelectorAll?.(".nav-item[data-app-view]")?.forEach?.(item => {
@@ -4588,22 +4585,48 @@ function setPressed(button, pressed) {
   button.classList?.toggle("active", Boolean(pressed));
 }
 
+function setLayoutControlLabel(button, active, inactiveLabel, activeLabel) {
+  if (!button) return;
+  const label = active ? activeLabel : inactiveLabel;
+  button.title = label;
+  button.setAttribute?.("aria-label", label);
+}
+
+function setNavigationCollapsed(collapsed, persist = true) {
+  document.body?.classList?.toggle("navigation-collapsed", Boolean(collapsed));
+  setPressed(els.toggleNavigationButton, collapsed);
+  setLayoutControlLabel(els.toggleNavigationButton, collapsed, "收起导航栏", "展开导航栏");
+  if (persist) storeUiFlag("learnnote.navigationCollapsed", collapsed);
+}
+
 function setHistoryCollapsed(collapsed, persist = true) {
   document.body?.classList?.toggle("queue-collapsed", Boolean(collapsed));
   setPressed(els.toggleHistoryButton, collapsed);
+  setLayoutControlLabel(els.toggleHistoryButton, collapsed, "收起笔记列表", "展开笔记列表");
   if (persist) storeUiFlag("learnnote.historyCollapsed", collapsed);
 }
 
 function setWorkspaceCollapsed(collapsed, persist = true) {
   document.body?.classList?.toggle("workspace-collapsed", Boolean(collapsed));
   setPressed(els.toggleWorkspaceButton, collapsed);
+  setLayoutControlLabel(els.toggleWorkspaceButton, collapsed, "收起创建区", "展开创建区");
   if (persist) storeUiFlag("learnnote.workspaceCollapsed", collapsed);
 }
 
 function setReadingMode(enabled, persist = true) {
   document.body?.classList?.toggle("reading-mode", Boolean(enabled));
   setPressed(els.readingModeButton, enabled);
+  setLayoutControlLabel(els.readingModeButton, enabled, "进入专注阅读", "退出专注阅读");
   if (persist) storeUiFlag("learnnote.readingMode", enabled);
+}
+
+function syncLayoutForView(view = document.body?.dataset?.appView || "workspace") {
+  const normalizedView = ["workspace", "notes", "history", "settings"].includes(view) ? view : "workspace";
+  const notesLike = normalizedView === "notes" || normalizedView === "history";
+  setNavigationCollapsed(storedUiFlag("learnnote.navigationCollapsed"), false);
+  setWorkspaceCollapsed(normalizedView === "workspace" && storedUiFlag("learnnote.workspaceCollapsed"), false);
+  setHistoryCollapsed(notesLike && storedUiFlag("learnnote.historyCollapsed"), false);
+  setReadingMode(normalizedView === "notes" && storedUiFlag("learnnote.readingMode"), false);
 }
 
 function renderResultTabState() {
@@ -4620,9 +4643,7 @@ function hasExplicitTaskRoute() {
 
 function initializeWorkspaceView() {
   const taskRoute = hasExplicitTaskRoute();
-  setWorkspaceCollapsed(taskRoute && storedUiFlag("learnnote.workspaceCollapsed"), false);
-  setHistoryCollapsed(taskRoute && storedUiFlag("learnnote.historyCollapsed"), false);
-  setReadingMode(taskRoute && storedUiFlag("learnnote.readingMode"), false);
+  syncLayoutForView(taskRoute ? "notes" : "workspace");
   renderResultTabState();
   if (taskRoute) showAppView("notes");
 }
@@ -8549,6 +8570,12 @@ els.startUrlButton.onclick = () => startUrlTask("video");
 if (els.generateNoteButton) els.generateNoteButton.onclick = generateNoteFromSelectedSource;
 if (els.preflightUrlButton) els.preflightUrlButton.onclick = preflightUrlTask;
 if (els.downloadUrlButton) els.downloadUrlButton.onclick = () => startUrlTask("download_only");
+if (els.toggleNavigationButton) {
+  els.toggleNavigationButton.onclick = () => {
+    const collapsed = !document.body?.classList?.contains?.("navigation-collapsed");
+    setNavigationCollapsed(collapsed);
+  };
+}
 if (els.toggleWorkspaceButton) {
   els.toggleWorkspaceButton.onclick = () => {
     const collapsed = !document.body?.classList?.contains?.("workspace-collapsed");
@@ -8566,6 +8593,15 @@ if (els.readingModeButton) {
     const enabled = !document.body?.classList?.contains?.("reading-mode");
     setReadingMode(enabled);
   };
+}
+if (els.resultMoreActions) {
+  els.resultMoreActions.addEventListener?.("click", event => {
+    const action = event.target?.closest?.("button");
+    if (!action || action.disabled) return;
+    window.setTimeout?.(() => {
+      els.resultMoreActions.open = false;
+    }, 0);
+  });
 }
 els.copyBackendButton.onclick = () => copyBackendUrl(els.copyBackendButton);
 els.browserRefreshButton.onclick = () => loadTasks();
