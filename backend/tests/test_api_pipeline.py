@@ -2283,7 +2283,7 @@ def make_hls(root: Path, source: Path) -> Path:
     return playlist
 
 
-def fake_transcribe_audio(audio_path: Path, model_size: str = "small") -> TranscriptResult:
+def fake_transcribe_audio(audio_path: Path, model_size: str = "small", progress_callback=None) -> TranscriptResult:
     return TranscriptResult(
         language="zh",
         source="unit",

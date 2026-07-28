@@ -37,9 +37,15 @@ LLM_MAX_RETRIES = max(0, min(3, int(os.getenv("LEARNNOTE_LLM_MAX_RETRIES", "1"))
 
 
 def configure_local_caches() -> None:
-    os.environ.setdefault("HF_HOME", str(MODEL_CACHE_DIR / "huggingface"))
-    os.environ.setdefault("XDG_CACHE_HOME", str(MODEL_CACHE_DIR / "xdg"))
-    os.environ.setdefault("TORCH_HOME", str(MODEL_CACHE_DIR / "torch"))
+    huggingface_cache = MODEL_CACHE_DIR / "huggingface"
+    # LearnNote's storage page and cleanup tools own this directory. Generic
+    # machine-wide cache variables must not silently redirect desktop models
+    # into another application's cache.
+    os.environ["HF_HOME"] = str(huggingface_cache)
+    os.environ["HUGGINGFACE_HUB_CACHE"] = str(huggingface_cache / "hub")
+    os.environ["HF_HUB_CACHE"] = str(huggingface_cache / "hub")
+    os.environ["XDG_CACHE_HOME"] = str(MODEL_CACHE_DIR / "xdg")
+    os.environ["TORCH_HOME"] = str(MODEL_CACHE_DIR / "torch")
     os.environ["TMP"] = str(TEMP_DIR)
     os.environ["TEMP"] = str(TEMP_DIR)
     os.environ["TMPDIR"] = str(TEMP_DIR)

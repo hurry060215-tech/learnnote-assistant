@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import re
+from collections.abc import Callable
 from urllib.parse import urlparse
 
 from .config import DEFAULT_WHISPER_COMPUTE_TYPE, DEFAULT_WHISPER_DEVICE, LLM_API_KEY, LLM_BASE_URL, LLM_MAX_RETRIES, LLM_REQUEST_TIMEOUT_SECONDS, MODEL_CACHE_DIR, configure_local_caches
@@ -139,8 +140,14 @@ def transcript_from_subtitle(path: Path, source: str = "page-subtitle") -> Trans
     )
 
 
-def transcribe_audio(audio_path: Path, model_size: str = "small") -> TranscriptResult:
+def transcribe_audio(
+    audio_path: Path,
+    model_size: str = "small",
+    progress_callback: Callable[[float, str], None] | None = None,
+) -> TranscriptResult:
     configure_local_caches()
+    if progress_callback:
+        progress_callback(0, "loading_model")
     try:
         from faster_whisper import WhisperModel
     except Exception:
@@ -160,12 +167,18 @@ def transcribe_audio(audio_path: Path, model_size: str = "small") -> TranscriptR
 
     try:
         model = WhisperModel(resolve_whisper_model(model_size), device=DEFAULT_WHISPER_DEVICE, compute_type=DEFAULT_WHISPER_COMPUTE_TYPE)
+        if progress_callback:
+            progress_callback(0, "model_ready")
         segments_iter, info = model.transcribe(str(audio_path), vad_filter=True)
         segments: list[TranscriptSegment] = []
         for item in segments_iter:
             text = item.text.strip()
             if text:
                 segments.append(TranscriptSegment(start=float(item.start), end=float(item.end), text=text))
+            if progress_callback:
+                progress_callback(float(item.end), "transcribing")
+        if progress_callback:
+            progress_callback(float(getattr(info, "duration", 0) or 0), "complete")
         return TranscriptResult(
             language=getattr(info, "language", "unknown") or "unknown",
             source="faster-whisper",

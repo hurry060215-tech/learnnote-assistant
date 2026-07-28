@@ -4,6 +4,13 @@ All notable changes to LearnNote are documented here. The project follows semant
 
 ## Unreleased
 
+## 0.1.47 - 2026-07-28
+
+### Fixed
+
+- Local transcription now publishes an eight-second heartbeat and processed-audio progress instead of appearing frozen at 52% during long CPU transcriptions.
+- LearnNote now keeps Hugging Face, XDG, and Torch model caches inside its configured data directory even when another desktop application defines machine-wide cache variables.
+
 ## 0.1.46 - 2026-07-28
 
 ### Fixed
