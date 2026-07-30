@@ -4,6 +4,12 @@ All notable changes to LearnNote are documented here. The project follows semant
 
 ## Unreleased
 
+## 0.1.51 - 2026-07-30
+
+### Fixed
+
+- Result export and advanced-tool popovers now close after selection, on outside clicks, and with Escape instead of remaining over the note.
+
 ## 0.1.50 - 2026-07-28
 
 ### Fixed

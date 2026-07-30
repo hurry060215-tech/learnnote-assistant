@@ -521,7 +521,7 @@ assert.match(indexHtml, /id="deleteAllTasksSettingsButton"/);
 assert.match(webCode, /\/api\/tasks\?confirm=delete_all_tasks/);
 assert.match(matureCss, /\.danger-button\s*\{/);
 assert.match(indexHtml, /styles\.css\?v=20260724-ui3/);
-assert.match(indexHtml, /app\.js\?v=20260728-ui4/);
+assert.match(indexHtml, /app\.js\?v=20260730-ui5/);
 assert.match(indexHtml, /mature\.css\?v=20260728-ui4/);
 assert.match(indexHtml, /editorial\.css\?v=20260724-ui3/);
 assert.match(indexHtml, /editorial\.js\?v=20260724-ui3/);
