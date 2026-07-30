@@ -467,6 +467,7 @@ const els = {
   selectedTitle: document.querySelector("#selectedTitle"),
   resultMeta: document.querySelector("#resultMeta"),
   resultMoreActions: document.querySelector("#resultMoreActions"),
+  resultToolTabs: document.querySelector("details.result-tool-tabs"),
   resultTabs: document.querySelectorAll(".result-tab"),
   detail: document.querySelector("#detail"),
   continueFromMediaButton: document.querySelector("#continueFromMediaButton"),
@@ -4637,6 +4638,16 @@ function renderResultTabState() {
   });
 }
 
+function closeResultMenus(except = null) {
+  let closed = false;
+  [els.resultMoreActions, els.resultToolTabs].forEach(menu => {
+    if (!menu || menu === except || !menu.open) return;
+    menu.open = false;
+    closed = true;
+  });
+  return closed;
+}
+
 function hasExplicitTaskRoute() {
   return Boolean(taskIdFromCurrentUrl());
 }
@@ -8563,7 +8574,11 @@ if (els.llmProvider) {
 }
 
 els.resultTabs.forEach(tab => {
-  tab.onclick = () => switchResultTab(tab.dataset.tab);
+  tab.onclick = () => {
+    switchResultTab(tab.dataset.tab);
+    const parentMenu = tab.closest?.("details.result-tool-tabs");
+    if (parentMenu) parentMenu.open = false;
+  };
 });
 
 els.startUrlButton.onclick = () => startUrlTask("video");
@@ -8603,6 +8618,10 @@ if (els.resultMoreActions) {
     }, 0);
   });
 }
+document.addEventListener?.("click", event => {
+  const activeMenu = event.target?.closest?.("#resultMoreActions, details.result-tool-tabs") || null;
+  closeResultMenus(activeMenu);
+});
 els.copyBackendButton.onclick = () => copyBackendUrl(els.copyBackendButton);
 els.browserRefreshButton.onclick = () => loadTasks();
 els.uploadButton.onclick = uploadSelectedFile;
@@ -8785,7 +8804,9 @@ els.onboardingOverlay?.addEventListener?.("click", event => {
   if (event.target === els.onboardingOverlay) closeOnboarding(true);
 });
 document.addEventListener?.("keydown", event => {
-  if (event.key === "Escape" && !els.onboardingOverlay?.hidden) closeOnboarding(true);
+  if (event.key !== "Escape") return;
+  closeResultMenus();
+  if (!els.onboardingOverlay?.hidden) closeOnboarding(true);
 });
 els.settingsMenuButtons?.forEach?.(button => {
   button.addEventListener("click", () => showSettingsPane(button.dataset.settingsTab));
