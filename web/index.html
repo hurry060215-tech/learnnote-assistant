@@ -193,7 +193,7 @@
                 <div class="setting-row"><div><strong>客户端版本</strong><small id="settingCompatibility">正在检查扩展兼容性</small></div><span id="settingAppVersion" class="setting-value">-</span></div>
                 <div id="nativeDesktopSettings" class="setting-row" hidden>
                   <div><strong>桌面客户端</strong><small id="updateStatus">检查并安装 LearnNote 正式版本</small></div>
-                  <div class="setting-inline-actions"><button id="checkUpdateButton" class="secondary action-button" type="button">检查更新</button><button id="installUpdateButton" class="primary action-button" type="button" hidden>下载并安装</button><button id="openReleaseButton" class="secondary action-button" type="button" hidden>版本说明</button></div>
+                  <div class="setting-inline-actions"><button id="viewReleaseNotesButton" class="secondary action-button" type="button">本版本更新</button><button id="checkUpdateButton" class="secondary action-button" type="button">检查更新</button><button id="installUpdateButton" class="primary action-button" type="button" hidden>下载并安装</button><button id="openReleaseButton" class="secondary action-button" type="button" hidden>GitHub 版本页</button></div>
                 </div>
                 <div id="nativeExtensionSettings" class="setting-row" hidden>
                   <div><strong>浏览器扩展</strong><small id="nativeExtensionStatus">用于把当前播放页交给客户端</small></div>
@@ -825,7 +825,29 @@
       </section>
     </div>
 
-<script src="/web/app.js?v=20260730-ui5"></script>
+    <div id="releaseNotesOverlay" class="release-notes-overlay" hidden>
+      <section class="release-notes-dialog" role="dialog" aria-modal="true" aria-labelledby="releaseNotesTitle">
+        <header>
+          <div>
+            <span>版本更新</span>
+            <h2 id="releaseNotesTitle">LearnNote 有新变化</h2>
+            <p id="releaseNotesSummary"></p>
+          </div>
+          <button id="closeReleaseNotesButton" class="icon-button" type="button" aria-label="关闭更新说明" title="关闭">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19"/></svg>
+          </button>
+        </header>
+        <div class="release-notes-meta"><strong id="releaseNotesVersion">v-</strong><span id="releaseNotesDate"></span></div>
+        <div id="releaseNotesHighlights" class="release-notes-highlights"></div>
+        <section id="releaseNotesFixesSection" class="release-notes-fixes">
+          <h3>修复与改进</h3>
+          <ul id="releaseNotesFixes"></ul>
+        </section>
+        <footer><small>之后可在“设置 → 下载与存储”中重新查看</small><button id="confirmReleaseNotesButton" class="primary action-button" type="button">知道了</button></footer>
+      </section>
+    </div>
+
+<script src="/web/app.js?v=20260801-release-notes"></script>
     <script src="/web/editorial.js?v=20260724-ui3"></script>
   </body>
 </html>

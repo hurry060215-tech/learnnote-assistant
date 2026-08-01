@@ -4,6 +4,11 @@ All notable changes to LearnNote are documented here. The project follows semant
 
 ## Unreleased
 
+### Added
+
+- The desktop client now shows concise release notes after the first launch of an updated version and keeps the current version notes available from Settings.
+- Release packaging checks now require an in-app release-note entry matching the client version.
+
 ## 0.1.52 - 2026-08-01
 
 ### Fixed

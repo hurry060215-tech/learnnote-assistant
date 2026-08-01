@@ -246,6 +246,50 @@ class DesktopApi:
         os.startfile(export_dir)  # type: ignore[attr-defined]
         return {"ok": True, "path": str(export_dir)}
 
+    def get_release_notes(self, version: str = "") -> dict:
+        notes_path = bundled_root() / "web" / "release-notes.json"
+        if not notes_path.is_file():
+            notes_path = self.app_root / "web" / "release-notes.json"
+        try:
+            payload = json.loads(notes_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            return {"ok": False, "message": f"无法读取版本更新说明：{exc}"}
+
+        requested = str(version or payload.get("current") or "").strip()
+        if not re.fullmatch(r"\d+\.\d+\.\d+", requested):
+            return {"ok": False, "message": "版本号无效"}
+        note = next(
+            (item for item in payload.get("releases") or [] if str(item.get("version") or "") == requested),
+            None,
+        )
+        if not isinstance(note, dict):
+            return {"ok": False, "message": f"没有找到 v{requested} 的更新说明"}
+
+        state_path = self.data_dir / "config" / "release-notes.json"
+        try:
+            state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.is_file() else {}
+        except (OSError, ValueError):
+            state = {}
+        return {
+            "ok": True,
+            "note": note,
+            "seen": str(state.get("seen_version") or "") == requested,
+        }
+
+    def mark_release_notes_seen(self, version: str) -> dict:
+        version = str(version or "").strip()
+        if not re.fullmatch(r"\d+\.\d+\.\d+", version):
+            raise ValueError("Invalid release-notes version")
+        state_path = self.data_dir / "config" / "release-notes.json"
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = state_path.with_suffix(".tmp")
+        temporary.write_text(
+            json.dumps({"seen_version": version, "seen_at": int(time.time())}, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        temporary.replace(state_path)
+        return {"ok": True, "seen_version": version}
+
     def check_update(self) -> dict:
         try:
             response = requests.get(

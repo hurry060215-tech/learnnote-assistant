@@ -309,6 +309,9 @@ let desktopCredentialKey = "";
 let desktopCredentialProvider = "";
 let pendingReleaseUrl = "";
 let pendingDesktopUpdate = null;
+let releaseNotesRequested = false;
+let pendingReleaseNote = null;
+let currentReleaseNote = null;
 let appSettings = { ...DEFAULT_APP_SETTINGS };
 let taskStatusSnapshot = new Map();
 let taskStatusSnapshotReady = false;
@@ -393,6 +396,7 @@ const els = {
   checkUpdateButton: document.querySelector("#checkUpdateButton"),
   installUpdateButton: document.querySelector("#installUpdateButton"),
   openReleaseButton: document.querySelector("#openReleaseButton"),
+  viewReleaseNotesButton: document.querySelector("#viewReleaseNotesButton"),
   updateStatus: document.querySelector("#updateStatus"),
   settingsSavedStatus: document.querySelector("#settingsSavedStatus"),
   saveSettingsButton: document.querySelector("#saveSettingsButton"),
@@ -501,7 +505,17 @@ const els = {
   noteVersionDepth: document.querySelector("#noteVersionDepth"),
   noteVersionVisual: document.querySelector("#noteVersionVisual"),
   noteVersionStatus: document.querySelector("#noteVersionStatus"),
-  createNoteVersionButton: document.querySelector("#createNoteVersionButton")
+  createNoteVersionButton: document.querySelector("#createNoteVersionButton"),
+  releaseNotesOverlay: document.querySelector("#releaseNotesOverlay"),
+  closeReleaseNotesButton: document.querySelector("#closeReleaseNotesButton"),
+  confirmReleaseNotesButton: document.querySelector("#confirmReleaseNotesButton"),
+  releaseNotesTitle: document.querySelector("#releaseNotesTitle"),
+  releaseNotesSummary: document.querySelector("#releaseNotesSummary"),
+  releaseNotesVersion: document.querySelector("#releaseNotesVersion"),
+  releaseNotesDate: document.querySelector("#releaseNotesDate"),
+  releaseNotesHighlights: document.querySelector("#releaseNotesHighlights"),
+  releaseNotesFixesSection: document.querySelector("#releaseNotesFixesSection"),
+  releaseNotesFixes: document.querySelector("#releaseNotesFixes")
 };
 
 function escapeHtml(value) {
@@ -817,6 +831,7 @@ function closeOnboarding(complete = false) {
   if (complete) setOnboardingCompleted(true);
   if (els.onboardingOverlay) els.onboardingOverlay.hidden = true;
   document.body?.classList?.remove("onboarding-open");
+  maybeOpenPendingReleaseNotes();
 }
 
 function extensionInstallPath(data = lastHealthData) {
@@ -920,7 +935,89 @@ function initializeDesktopBridge() {
   if (els.nativeDesktopSettings) els.nativeDesktopSettings.hidden = !available;
   if (els.nativeExtensionSettings) els.nativeExtensionSettings.hidden = !available;
   if (els.dataFolderNativeActions) els.dataFolderNativeActions.hidden = !available;
-  if (available) loadDesktopCredential();
+  if (available) {
+    loadDesktopCredential();
+    if (!releaseNotesRequested) {
+      releaseNotesRequested = true;
+      window.setTimeout?.(() => loadDesktopReleaseNotes(true), 420);
+    }
+  }
+}
+
+function renderReleaseNotes(note) {
+  if (!note || !els.releaseNotesOverlay) return false;
+  currentReleaseNote = note;
+  if (els.releaseNotesTitle) els.releaseNotesTitle.textContent = note.title || "LearnNote 有新变化";
+  if (els.releaseNotesSummary) els.releaseNotesSummary.textContent = note.summary || "本版本包含体验改进与问题修复。";
+  if (els.releaseNotesVersion) els.releaseNotesVersion.textContent = `v${note.version || "-"}`;
+  if (els.releaseNotesDate) els.releaseNotesDate.textContent = note.date || "";
+  if (els.releaseNotesHighlights) {
+    els.releaseNotesHighlights.replaceChildren();
+    (Array.isArray(note.highlights) ? note.highlights : []).forEach((item, index) => {
+      const article = document.createElement("article");
+      const marker = document.createElement("span");
+      const body = document.createElement("div");
+      const title = document.createElement("strong");
+      const description = document.createElement("p");
+      marker.textContent = String(index + 1).padStart(2, "0");
+      title.textContent = item?.title || "体验改进";
+      description.textContent = item?.description || "";
+      body.append(title, description);
+      article.append(marker, body);
+      els.releaseNotesHighlights.append(article);
+    });
+  }
+  const fixes = Array.isArray(note.fixes) ? note.fixes.filter(Boolean) : [];
+  if (els.releaseNotesFixes) {
+    els.releaseNotesFixes.replaceChildren();
+    fixes.forEach(value => {
+      const item = document.createElement("li");
+      item.textContent = value;
+      els.releaseNotesFixes.append(item);
+    });
+  }
+  if (els.releaseNotesFixesSection) els.releaseNotesFixesSection.hidden = fixes.length === 0;
+  return true;
+}
+
+function openReleaseNotesDialog(note) {
+  if (!renderReleaseNotes(note)) return;
+  els.releaseNotesOverlay.hidden = false;
+  document.body?.classList?.add("release-notes-open");
+  window.setTimeout?.(() => els.confirmReleaseNotesButton?.focus?.(), 0);
+}
+
+function maybeOpenPendingReleaseNotes() {
+  if (!pendingReleaseNote || !els.onboardingOverlay?.hidden) return;
+  const note = pendingReleaseNote;
+  pendingReleaseNote = null;
+  openReleaseNotesDialog(note);
+}
+
+async function closeReleaseNotesDialog() {
+  if (els.releaseNotesOverlay) els.releaseNotesOverlay.hidden = true;
+  document.body?.classList?.remove("release-notes-open");
+  const version = currentReleaseNote?.version;
+  currentReleaseNote = null;
+  if (version) {
+    try { await desktopApi()?.mark_release_notes_seen?.(version); } catch { /* Non-blocking preference state. */ }
+  }
+}
+
+async function loadDesktopReleaseNotes(autoOpen = false) {
+  const api = desktopApi();
+  if (!api?.get_release_notes) return;
+  try {
+    const result = await api.get_release_notes("");
+    if (!result?.ok || !result.note || (autoOpen && result.seen)) return;
+    if (autoOpen && !els.onboardingOverlay?.hidden) {
+      pendingReleaseNote = result.note;
+      return;
+    }
+    openReleaseNotesDialog(result.note);
+  } catch (error) {
+    if (!autoOpen && els.updateStatus) els.updateStatus.textContent = `无法读取更新说明：${error?.message || "请稍后重试"}`;
+  }
 }
 
 function semverParts(value) {
@@ -8857,6 +8954,15 @@ els.setupExtensionButton?.addEventListener?.("click", () => setupDesktopExtensio
 els.installUpdateButton?.addEventListener?.("click", installDesktopUpdate);
 els.openReleaseButton?.addEventListener?.("click", () => {
   if (pendingReleaseUrl) desktopApi()?.open_release?.(pendingReleaseUrl);
+});
+els.viewReleaseNotesButton?.addEventListener?.("click", () => loadDesktopReleaseNotes(false));
+els.closeReleaseNotesButton?.addEventListener?.("click", closeReleaseNotesDialog);
+els.confirmReleaseNotesButton?.addEventListener?.("click", closeReleaseNotesDialog);
+els.releaseNotesOverlay?.addEventListener?.("click", event => {
+  if (event.target === els.releaseNotesOverlay) closeReleaseNotesDialog();
+});
+document.addEventListener?.("keydown", event => {
+  if (event.key === "Escape" && !els.releaseNotesOverlay?.hidden) closeReleaseNotesDialog();
 });
 window.addEventListener?.("pywebviewready", initializeDesktopBridge);
 els.importNoteProfileButton?.addEventListener?.("click", () => els.noteProfileFile?.click());

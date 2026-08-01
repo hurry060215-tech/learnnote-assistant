@@ -71,6 +71,7 @@ class DeploymentContractTests(unittest.TestCase):
         site_source = (ROOT / "site" / "index.html").read_text(encoding="utf-8")
         compose_source = (ROOT / "compose.yaml").read_text(encoding="utf-8")
         local_compose_source = (ROOT / "compose.local.yaml").read_text(encoding="utf-8")
+        release_notes = json.loads((ROOT / "web" / "release-notes.json").read_text(encoding="utf-8"))
         backend_version = re.search(r'APP_VERSION\s*=\s*"([^"]+)"', backend_source)
         installer_version = re.search(r'#define MyAppVersion\s+"([^"]+)"', installer_source)
 
@@ -81,6 +82,8 @@ class DeploymentContractTests(unittest.TestCase):
         self.assertIn(f"v{manifest_version}", site_source)
         self.assertIn(f"${{LEARNNOTE_IMAGE_TAG:-{manifest_version}}}", compose_source)
         self.assertIn(f"${{LEARNNOTE_IMAGE_TAG:-{manifest_version}}}", local_compose_source)
+        self.assertEqual(manifest_version, release_notes["current"])
+        self.assertIn(manifest_version, {item["version"] for item in release_notes["releases"]})
 
     def test_real_extension_smoke_tracks_the_current_sidepanel_contract(self) -> None:
         sidepanel = (ROOT / "extension" / "sidepanel.html").read_text(encoding="utf-8")

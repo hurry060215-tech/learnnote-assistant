@@ -329,6 +329,30 @@ class DesktopLauncherTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 api.install_update("9.8.7", str(unrelated))
 
+    def test_release_notes_are_bundled_and_seen_state_stays_in_data_directory(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / "data") as temp_dir:
+            root = Path(temp_dir)
+            notes_dir = root / "web"
+            notes_dir.mkdir()
+            (notes_dir / "release-notes.json").write_text(json.dumps({
+                "current": "9.8.7",
+                "releases": [{"version": "9.8.7", "title": "Release", "highlights": []}],
+            }), encoding="utf-8")
+            data_dir = root / "data"
+            api = desktop.DesktopApi(data_dir, app_root=root)
+            with patch.object(desktop, "bundled_root", return_value=root):
+                first = api.get_release_notes()
+                marked = api.mark_release_notes_seen("9.8.7")
+                second = api.get_release_notes("9.8.7")
+
+            self.assertTrue(first["ok"])
+            self.assertFalse(first["seen"])
+            self.assertEqual("9.8.7", first["note"]["version"])
+            self.assertEqual("9.8.7", marked["seen_version"])
+            self.assertTrue(second["seen"])
+            state = json.loads((data_dir / "config" / "release-notes.json").read_text(encoding="utf-8"))
+            self.assertEqual("9.8.7", state["seen_version"])
+
     def test_update_install_schedules_wait_install_and_restart_script(self):
         class Window:
             def destroy(self):
