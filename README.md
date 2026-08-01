@@ -223,6 +223,22 @@ cd D:\Projects\learnnote-assistant
 D:\Projects\learnnote-assistant\extension
 ```
 
+## Obsidian 插件
+
+LearnNote 可以把已完成的视频笔记直接同步到 Obsidian。插件会导入结构化笔记、带时间戳字幕、视觉窗口、关键帧索引和课程问答记录，并允许在 Obsidian 侧栏继续围绕当前课程提问。
+
+- 重复同步只更新 LearnNote 生成的内容，`我的补充` 下的个人笔记会保留。
+- 插件只连接本机 `127.0.0.1:8765`，视频处理和模型配置仍由 LearnNote 客户端负责。
+- 当前支持 Obsidian 桌面版；移动端不能直接连接电脑上的本机服务。
+
+源码、安装说明和开发命令见 [`integrations/obsidian-learnnote`](integrations/obsidian-learnnote/README.md)。构建可安装压缩包：
+
+```powershell
+.\scripts\package-obsidian-plugin.ps1
+```
+
+默认产物保存到 `D:\LearnNote\releases\obsidian`。
+
 ## Docker 部署
 
 Docker 适合把 LearnNote 后端和 Web 工作台运行在本机、NAS 或服务器上。官方镜像当前仅发布 `linux/amd64`；ARM NAS 需要自行构建。浏览器当前页功能仍建议使用 Windows 客户端；扩展默认只连接本机 `127.0.0.1`。
@@ -280,6 +296,7 @@ Docker 适合把 LearnNote 后端和 Web 工作台运行在本机、NAS 或服�
 backend/      FastAPI 后端、下载器、转写、切片和笔记任务
 desktop/      Windows 桌面壳与更新、安装相关逻辑
 extension/    Chrome / Edge Manifest V3 扩展
+integrations/ Obsidian 等知识工具集成
 web/          桌面客户端中的工作台与笔记库界面
 scripts/      启动、诊断、测试和发布脚本
 site/         GitHub Pages 宣传页面
@@ -289,6 +306,7 @@ site/         GitHub Pages 宣传页面
 
 ### 正在完善
 
+- [x] Obsidian 桌面插件：任务导入、增量同步和课程问答
 - [ ] Chrome / Edge 扩展商店发布与自动更新
 - [ ] 更稳定的 Bilibili、YouTube、学习通真实页面适配
 - [ ] 长视频断点恢复、模型重试和任务迁移
@@ -296,6 +314,7 @@ site/         GitHub Pages 宣传页面
 
 ### 计划能力
 
+- [ ] Notion 集成与数据库属性映射
 - [ ] PDF、Markdown 与普通网页资料导入
 - [ ] 视频笔记与文档资料的统一检索 / RAG
 - [ ] 概念关系与知识图谱视图

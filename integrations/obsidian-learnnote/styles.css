@@ -1,0 +1,192 @@
+.learnnote-view {
+  --ln-accent: var(--interactive-accent);
+  --ln-border: var(--background-modifier-border);
+  --ln-muted: var(--text-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  height: 100%;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.learnnote-view-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.learnnote-view-header h2 {
+  margin: 0 0 2px;
+  font-size: 20px;
+  letter-spacing: 0;
+}
+
+.learnnote-view-header small,
+.learnnote-question-context {
+  color: var(--ln-muted);
+  font-size: 13px;
+}
+
+.learnnote-view-header button {
+  width: 34px;
+  height: 34px;
+  padding: 7px;
+}
+
+.learnnote-search {
+  width: 100%;
+  min-height: 36px;
+  font-size: 14px;
+}
+
+.learnnote-task-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.learnnote-task-card {
+  padding: 11px 12px;
+  border: 1px solid var(--ln-border);
+  border-radius: 6px;
+  background: var(--background-primary);
+  transition: border-color 140ms ease, background-color 140ms ease;
+}
+
+.learnnote-task-card:hover,
+.learnnote-task-card.is-selected {
+  border-color: var(--ln-accent);
+  background: var(--background-secondary-alt);
+}
+
+.learnnote-task-title {
+  display: block;
+  width: 100%;
+  height: auto;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  color: var(--text-normal);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.45;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.learnnote-task-title:hover {
+  background: transparent;
+}
+
+.learnnote-task-meta,
+.learnnote-task-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.learnnote-task-meta {
+  margin-top: 6px;
+  color: var(--ln-muted);
+  font-size: 12px;
+}
+
+.learnnote-task-meta .is-imported {
+  color: var(--text-success);
+}
+
+.learnnote-task-actions {
+  margin-top: 10px;
+}
+
+.learnnote-task-actions button {
+  min-height: 30px;
+  padding: 4px 12px;
+  font-size: 13px;
+}
+
+.learnnote-question-pane {
+  padding-top: 14px;
+  border-top: 1px solid var(--ln-border);
+}
+
+.learnnote-question-pane h3 {
+  margin: 0 0 3px;
+  font-size: 16px;
+}
+
+.learnnote-question-context {
+  margin: 0 0 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.learnnote-conversation {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 280px;
+  margin-bottom: 10px;
+  overflow-y: auto;
+}
+
+.learnnote-message {
+  max-width: 92%;
+  padding: 9px 11px;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.learnnote-message.is-user {
+  align-self: flex-end;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.learnnote-message.is-assistant {
+  align-self: flex-start;
+  background: var(--background-secondary);
+  color: var(--text-normal);
+}
+
+.learnnote-question-pane textarea {
+  width: 100%;
+  min-height: 76px;
+  resize: vertical;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.learnnote-send {
+  width: 100%;
+  min-height: 36px;
+  margin-top: 8px;
+}
+
+.learnnote-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 20px 12px;
+  color: var(--ln-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.learnnote-empty strong {
+  color: var(--text-normal);
+  font-size: 14px;
+}
+
+.learnnote-settings-intro {
+  max-width: 660px;
+  color: var(--text-muted);
+}

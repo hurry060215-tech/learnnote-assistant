@@ -1,0 +1,41 @@
+name: Obsidian plugin
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "integrations/obsidian-learnnote/**"
+      - ".github/workflows/obsidian-plugin.yml"
+  pull_request:
+    paths:
+      - "integrations/obsidian-learnnote/**"
+      - ".github/workflows/obsidian-plugin.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: integrations/obsidian-learnnote
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: integrations/obsidian-learnnote/package-lock.json
+      - run: npm ci
+      - run: npm run verify
+      - run: git diff --exit-code -- main.js
+      - uses: actions/upload-artifact@v4
+        with:
+          name: learnnote-obsidian
+          path: |
+            integrations/obsidian-learnnote/main.js
+            integrations/obsidian-learnnote/manifest.json
+            integrations/obsidian-learnnote/styles.css
+            integrations/obsidian-learnnote/README.md

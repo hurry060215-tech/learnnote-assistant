@@ -1,0 +1,29 @@
+{
+  "name": "learnnote-obsidian",
+  "version": "0.1.0",
+  "description": "Obsidian integration for the local-first LearnNote Assistant",
+  "main": "main.js",
+  "type": "module",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc --noEmit --skipLibCheck && node esbuild.config.mjs production",
+    "test": "node --test tests/*.test.mjs",
+    "verify": "npm run test && npm run build"
+  },
+  "keywords": [
+    "obsidian",
+    "learnnote",
+    "video-notes",
+    "learning-assistant"
+  ],
+  "license": "Apache-2.0",
+  "dependencies": {
+    "fflate": "^0.8.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.17",
+    "esbuild": "0.25.5",
+    "obsidian": "latest",
+    "typescript": "^5.8.3"
+  }
+}
