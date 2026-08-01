@@ -1731,6 +1731,12 @@ function responseResolvedUrl(url = "", headers = {}) {
   }
 }
 
+function requestContextUrl(details = {}, requestHeaders = {}) {
+  const referer = String(requestHeaders.Referer || requestHeaders.referer || "").trim();
+  if (/^https?:\/\//i.test(referer)) return referer;
+  return details.documentUrl || details.initiator || "";
+}
+
 function isLocalLearnNoteTaskFile(url = "") {
   return LOCAL_TASK_FILE_RE.test(String(url || ""));
 }
@@ -1744,6 +1750,7 @@ function recordResponseMedia(details = {}, requestHeaders = {}, requestBody = pe
   if (kind === "unknown") return;
   const contentLength = Number(headers["content-length"] || 0);
   const resolvedUrl = responseResolvedUrl(details.url || "", headers);
+  const contextUrl = requestContextUrl(details, requestHeaders);
   const resource = {
     url: details.url,
     resolved_url: resolvedUrl,
@@ -1757,8 +1764,8 @@ function recordResponseMedia(details = {}, requestHeaders = {}, requestBody = pe
     content_length: Number.isFinite(contentLength) && contentLength > 0 ? contentLength : null,
     initiator: details.initiator || "",
     frame_id: details.frameId ?? null,
-    frame_url: details.documentUrl || "",
-    page_url: details.documentUrl || details.initiator || "",
+    frame_url: contextUrl,
+    page_url: contextUrl,
     time_stamp: details.timeStamp || Date.now(),
     request_headers: requestHeaders,
     request_body: requestBody || {},
@@ -1782,6 +1789,7 @@ function recordRedirectMedia(details = {}, requestHeaders = {}, requestBody = pe
   const kind = redirectKind !== "unknown" ? redirectKind : currentKind;
   if (kind === "unknown") return;
   const contentLength = Number(headers["content-length"] || 0);
+  const contextUrl = requestContextUrl(details, requestHeaders);
   const resource = {
     url: details.url,
     resolved_url: redirectUrl || "",
@@ -1795,8 +1803,8 @@ function recordRedirectMedia(details = {}, requestHeaders = {}, requestBody = pe
     content_length: Number.isFinite(contentLength) && contentLength > 0 ? contentLength : null,
     initiator: details.initiator || "",
     frame_id: details.frameId ?? null,
-    frame_url: details.documentUrl || "",
-    page_url: details.documentUrl || details.initiator || "",
+    frame_url: contextUrl,
+    page_url: contextUrl,
     time_stamp: details.timeStamp || Date.now(),
     request_headers: requestHeaders,
     request_body: requestBody || {},

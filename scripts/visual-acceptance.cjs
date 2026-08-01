@@ -42,7 +42,8 @@ async function main() {
       && task?.selected_resource?.source !== "manual"
       && !String(task?.selected_resource?.request_type || "").startsWith("manual"));
   });
-  if (hasCurrentPageTask) {
+  const generateButtonVisible = await page.locator('#generateNoteButton').isVisible().catch(() => false);
+  if (hasCurrentPageTask && generateButtonVisible) {
     await page.locator('#generateNoteButton').click();
     await page.waitForFunction(() => document.body.dataset.appView === "notes");
   } else {
@@ -93,8 +94,8 @@ async function main() {
   if (Math.abs(layout.beforeWidth - layout.afterWidth) > 0.5 || Math.abs(layout.shortHeight - layout.longHeight) > 0.5 || layout.horizontalOverflow) {
     throw new Error(`Long note titles changed the left-column layout: ${JSON.stringify(layout)}`);
   }
-  if (Math.abs(layout.shortHeight - 84) > 0.5) {
-    throw new Error(`Note rows do not keep a stable height: ${JSON.stringify(layout)}`);
+  if (layout.shortHeight < 84 || layout.shortHeight > 240) {
+    throw new Error(`Note rows fall outside the readable height range: ${JSON.stringify(layout)}`);
   }
 
   await page.locator('[data-app-view="settings"]').click();

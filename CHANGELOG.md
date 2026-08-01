@@ -4,6 +4,13 @@ All notable changes to LearnNote are documented here. The project follows semant
 
 ## Unreleased
 
+## 0.1.52 - 2026-08-01
+
+### Fixed
+
+- Media requests from nested course players now retain the iframe's actual Referer, so Chaoxing-style POST playback APIs keep the correct lesson context during extension handoff.
+- Visual acceptance now follows the currently visible workspace state and accepts responsive task rows with restored actions instead of stalling on historical tasks or enforcing the obsolete fixed row height.
+
 ## 0.1.51 - 2026-07-30
 
 ### Fixed

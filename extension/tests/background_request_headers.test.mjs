@@ -185,6 +185,21 @@ assert.equal(
 assert.equal(context.peekRequestHeaders("chaoxing-ananas-post")["X-Requested-With"], "XMLHttpRequest");
 assert.equal(context.peekRequestBody("chaoxing-ananas-post").content, "objectid=objectid-123&dtoken=token-abc");
 
+assert.equal(
+  context.requestContextUrl(
+    {
+      documentUrl: "https://course.example.com/outer",
+      initiator: "https://course.example.com"
+    },
+    { Referer: "https://course.example.com/iframe/player?chapterId=42" }
+  ),
+  "https://course.example.com/iframe/player?chapterId=42"
+);
+assert.equal(
+  context.requestContextUrl({ documentUrl: "https://course.example.com/outer" }, {}),
+  "https://course.example.com/outer"
+);
+
 assert.equal(context.sourceRank("scriptHint"), 3);
 assert.equal(context.sourceRank("domHint"), 3);
 assert.equal(context.sourceRank("locationHint"), 3);
