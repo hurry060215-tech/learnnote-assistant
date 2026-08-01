@@ -1,10 +1,12 @@
 <div align="center">
 
-# LearnNote
+# LearnNote Assistant
 
-**面向视频课程的本地 AI 学习助手**
+**基于 AI Agent 的本地视频学习与知识管理助手**
 
-从当前网页、视频链接或本地文件生成带字幕、画面和时间轴依据的学习笔记。
+把网页课程、视频链接和本地视频转化为有字幕、画面与时间轴依据的结构化知识笔记。
+
+*An AI-powered learning assistant that turns browser videos and local media into grounded, structured study notes.*
 
 [![Latest Release](https://img.shields.io/github/v/release/hurry060215-tech/learnnote-assistant?label=release&color=0f9d98)](https://github.com/hurry060215-tech/learnnote-assistant/releases/latest)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-1677ff)](https://github.com/hurry060215-tech/learnnote-assistant/releases/latest)
@@ -20,7 +22,15 @@
 
 ---
 
-## 项目简介
+## 🎬 Demo
+
+<div align="center">
+  <img src="docs/assets/learnnote-demo.gif" alt="LearnNote 从视频来源到结构化笔记、视觉切片和阅读结果的演示" width="960">
+</div>
+
+> 真实客户端界面：选择视频来源 → 转写与视觉切片 → 生成结构化笔记 → 阅读、追问和导出。
+
+## 为什么是 LearnNote
 
 LearnNote 是一个以 **Windows 桌面客户端** 为核心的视频学习助手。它不录制浏览器标签页，而是尽可能读取当前页面已经加载的视频资源，把视频下载到本地后再完成字幕获取、语音转写、画面切片和笔记生成。
 
@@ -33,7 +43,14 @@ LearnNote 是一个以 **Windows 桌面客户端** 为核心的视频学习助�
 > [!IMPORTANT]
 > 浏览器扩展只负责识别当前页面并发送任务。下载、转写、切片、总结、笔记库、AI 问答和导出都在桌面客户端中完成。
 
-## 核心能力
+| 普通字幕摘要 | LearnNote |
+| --- | --- |
+| 只处理一段文本 | 对齐视频、字幕、关键帧和时间轴 |
+| 页面抓错也可能继续总结 | 下载与证据不足时停止并给出诊断 |
+| 一次性输出 | 可重生成不同版本、继续提问并导出资料包 |
+| 依赖云端上传 | 支持本地转写，数据目录由用户控制 |
+
+## 🚀 Features
 
 ### 当前页视频直取
 
@@ -59,7 +76,17 @@ LearnNote 是一个以 **Windows 桌面客户端** 为核心的视频学习助�
 - 支持 Markdown、字幕、诊断报告、媒体文件和完整学习资料包导出。
 - 任务诊断会说明视频来源、下载路径、字幕来源、模型降级和修复建议。
 
-## 快速开始
+## 📸 Screenshots
+
+| 从当前页或本地视频开始 | 阅读结构化学习笔记 |
+| --- | --- |
+| <img src="site/assets/learnnote-workspace-v0126.png" alt="LearnNote 新建学习笔记界面" width="680"> | <img src="site/assets/learnnote-case-gradient.png" alt="LearnNote 结构化笔记结果" width="680"> |
+
+| 画面与字幕按时间窗口对齐 | 笔记库、版本与导出 |
+| --- | --- |
+| <img src="site/assets/learnnote-case-grid.jpg" alt="LearnNote 视觉关键帧窗口" width="680"> | <img src="site/assets/learnnote-note.png" alt="LearnNote 笔记阅读界面" width="680"> |
+
+## ⚡ Quick Start
 
 ### 1. 安装桌面客户端
 
@@ -130,18 +157,21 @@ http://127.0.0.1:8765
 
 API Key 可以保存在 Windows 凭据管理器中，不会写入任务 JSON、诊断文件或导出资料。不要把密钥提交到 Git 仓库。
 
-## 工作流程
+## 🧠 Architecture
 
 ```mermaid
 flowchart LR
-    A[视频页或本地视频] --> B[LearnNote 桌面客户端]
-    C[Chrome / Edge 扩展] -->|发送当前页| B
-    B --> D[下载或导入视频]
-    D --> E[平台字幕 / Whisper 转写]
-    D --> F[抽帧与视觉窗口]
-    E --> G[多模态笔记]
-    F --> G
-    G --> H[阅读 · 追问 · 重生成 · 导出]
+    A["网页视频"] --> B["Chrome / Edge MV3 扩展"]
+    C["视频链接或本地文件"] --> D["Windows 桌面客户端"]
+    B -->|"媒体候选 · Cookie · Referer"| D
+    D --> E["FastAPI 本地任务服务"]
+    E --> F["yt-dlp / ffmpeg 直取与标准化"]
+    F --> G["平台字幕 / faster-whisper"]
+    F --> H["抽帧 · 去重 · 视觉窗口"]
+    G --> I["LLM / 多模态分段总结"]
+    H --> I
+    I --> J["笔记库 · 课程问答 · 多版本 · 导出"]
+    J --> K["用户可控的本地数据目录"]
 ```
 
 所有任务默认保存在本机数据目录中。当前页 Cookie 只在用户主动发送或预检任务时读取，并仅交给本地后端处理。
@@ -254,6 +284,25 @@ web/          桌面客户端中的工作台与笔记库界面
 scripts/      启动、诊断、测试和发布脚本
 site/         GitHub Pages 宣传页面
 ```
+
+## 🛣 Roadmap
+
+### 正在完善
+
+- [ ] Chrome / Edge 扩展商店发布与自动更新
+- [ ] 更稳定的 Bilibili、YouTube、学习通真实页面适配
+- [ ] 长视频断点恢复、模型重试和任务迁移
+- [ ] macOS 桌面客户端构建与签名
+
+### 计划能力
+
+- [ ] PDF、Markdown 与普通网页资料导入
+- [ ] 视频笔记与文档资料的统一检索 / RAG
+- [ ] 概念关系与知识图谱视图
+- [ ] 基于笔记和复习记录生成学习计划
+- [ ] 可分享的脱敏学习资料包
+
+Roadmap 表示开发方向，不代表当前发布版本已经支持。请通过 [Issues](https://github.com/hurry060215-tech/learnnote-assistant/issues) 提交可复现问题或讨论优先级。
 
 ## 隐私与数据
 
