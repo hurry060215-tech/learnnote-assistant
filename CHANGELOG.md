@@ -4,8 +4,11 @@ All notable changes to LearnNote are documented here. The project follows semant
 
 ## Unreleased
 
+## 0.1.53 - 2026-08-06
+
 ### Added
 
+- An Obsidian companion plugin can import and resync completed LearnNote tasks, preserve personal additions, and continue evidence-grounded course Q&A from the Obsidian sidebar.
 - The desktop client now shows concise release notes after the first launch of an updated version and keeps the current version notes available from Settings.
 - Release packaging checks now require an in-app release-note entry matching the client version.
 
