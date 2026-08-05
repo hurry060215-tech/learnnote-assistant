@@ -27,11 +27,26 @@ try {
 
   $executable = Join-Path $installDir "LearnNote.exe"
   $manifest = Join-Path $installDir "extension\manifest.json"
+  $releaseNotes = Join-Path $installDir "_internal\web\release-notes.json"
   $uninstaller = Join-Path $installDir "unins000.exe"
-  foreach ($required in @($executable, $manifest, $uninstaller)) {
+  foreach ($required in @($executable, $manifest, $releaseNotes, $uninstaller)) {
     if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
       throw "Installed release is missing $required"
     }
+  }
+
+  $manifestData = Get-Content -LiteralPath $manifest -Raw -Encoding UTF8 | ConvertFrom-Json
+  $releaseData = Get-Content -LiteralPath $releaseNotes -Raw -Encoding UTF8 | ConvertFrom-Json
+  $version = [string]$manifestData.version
+  if ([string]$releaseData.current -ne $version) {
+    throw "Installed release notes version $($releaseData.current) does not match extension version $version."
+  }
+  $currentNote = @($releaseData.releases | Where-Object { [string]$_.version -eq $version }) | Select-Object -First 1
+  if (-not $currentNote -or -not [string]$currentNote.title -or -not [string]$currentNote.summary) {
+    throw "Installed release notes have no complete entry for v$version."
+  }
+  if (@($currentNote.highlights).Count -lt 1) {
+    throw "Installed release notes for v$version must include at least one user-facing highlight."
   }
 
   Set-Content -LiteralPath (Join-Path $installDir "learnnote-config.json") `
@@ -53,7 +68,7 @@ try {
     throw "Uninstall removed the configured user data directory."
   }
 
-  Write-Host "PASS installer smoke: install, executable startup, extension files, uninstall, data preservation"
+  Write-Host "PASS installer smoke: install, startup, extension, release notes, uninstall, data preservation"
 }
 finally {
   foreach ($target in @($installDir, $dataDir)) {

@@ -114,6 +114,8 @@ class DeploymentContractTests(unittest.TestCase):
         self.assertIn("LearnNote.exe", smoke)
         self.assertIn("unins000.exe", smoke)
         self.assertIn("user-data-must-survive.txt", smoke)
+        self.assertIn("_internal\\web\\release-notes.json", smoke)
+        self.assertIn("Installed release notes version", smoke)
         self.assertIn("D:\\LearnNoteReleaseSmoke", smoke)
 
 

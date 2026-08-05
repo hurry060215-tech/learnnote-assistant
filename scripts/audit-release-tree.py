@@ -32,6 +32,9 @@ REQUIRED_ROOT_FILES = {
     "SUPPORT.md",
     "THIRD_PARTY_NOTICES.md",
 }
+REQUIRED_BUNDLED_FILES = {
+    Path("_internal/web/release-notes.json"),
+}
 GPL_LICENSE_PATH = Path("third_party/licenses/GPL-3.0.txt")
 FFMPEG_SOURCE_PATH = Path("third_party/FFMPEG_SOURCE.md")
 
@@ -53,6 +56,7 @@ def audit_release_tree(root: Path) -> dict:
     missing_extension_icons = sorted(REQUIRED_EXTENSION_ICONS - extension_icons)
     root_files = {path.name for path in root.iterdir() if path.is_file()}
     missing_root = sorted(REQUIRED_ROOT_FILES - root_files)
+    missing_bundled = sorted(path.as_posix() for path in REQUIRED_BUNDLED_FILES if not (root / path).is_file())
     license_errors: list[str] = []
     ffmpeg_builds: list[dict] = []
     for executable in files:
@@ -95,6 +99,7 @@ def audit_release_tree(root: Path) -> dict:
         "unexpected_extension": unexpected_extension,
         "missing_extension_icons": missing_extension_icons,
         "missing_root": missing_root,
+        "missing_bundled": missing_bundled,
         "ffmpeg_builds": ffmpeg_builds,
         "license_errors": license_errors,
         "passed": (
@@ -104,6 +109,7 @@ def audit_release_tree(root: Path) -> dict:
             and not unexpected_extension
             and not missing_extension_icons
             and not missing_root
+            and not missing_bundled
             and not license_errors
         ),
     }

@@ -30,11 +30,18 @@ class ReleaseTreeAuditTests(unittest.TestCase):
         for name in MODULE.REQUIRED_ROOT_FILES:
             (root / name).write_text(name, encoding="utf-8")
 
+    def populate_bundled_files(self, root: Path) -> None:
+        for relative in MODULE.REQUIRED_BUNDLED_FILES:
+            target = root / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text("{}", encoding="utf-8")
+
     def test_clean_runtime_tree_passes(self):
         with tempfile.TemporaryDirectory(dir=ROOT / "data") as temp_dir:
             root = Path(temp_dir)
             self.populate_extension(root)
             self.populate_legal_files(root)
+            self.populate_bundled_files(root)
             (root / "LearnNote.exe").write_bytes(b"exe")
             self.assertTrue(MODULE.audit_release_tree(root)["passed"])
 
@@ -43,12 +50,22 @@ class ReleaseTreeAuditTests(unittest.TestCase):
             root = Path(temp_dir)
             self.populate_extension(root)
             self.populate_legal_files(root)
+            self.populate_bundled_files(root)
             tests = root / "_internal" / "backend" / "tests"
             tests.mkdir(parents=True)
             (tests / "test_api.py").write_text("", encoding="utf-8")
             result = MODULE.audit_release_tree(root)
             self.assertFalse(result["passed"])
             self.assertEqual(1, len(result["forbidden"]))
+
+    def test_missing_release_notes_fail(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / "data") as temp_dir:
+            root = Path(temp_dir)
+            self.populate_extension(root)
+            self.populate_legal_files(root)
+            result = MODULE.audit_release_tree(root)
+            self.assertFalse(result["passed"])
+            self.assertEqual(["_internal/web/release-notes.json"], result["missing_bundled"])
 
 
 if __name__ == "__main__":

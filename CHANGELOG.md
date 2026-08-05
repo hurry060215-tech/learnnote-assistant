@@ -9,6 +9,11 @@ All notable changes to LearnNote are documented here. The project follows semant
 - The desktop client now shows concise release notes after the first launch of an updated version and keeps the current version notes available from Settings.
 - Release packaging checks now require an in-app release-note entry matching the client version.
 
+### Fixed
+
+- Release-tree and installed-client smoke tests now fail when bundled release notes are missing, incomplete, or version-mismatched.
+- The Obsidian plugin workflow now pins third-party Actions to reviewed commit SHAs, restoring the repository reliability gate.
+
 ## 0.1.52 - 2026-08-01
 
 ### Fixed
