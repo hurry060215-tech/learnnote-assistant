@@ -83,7 +83,7 @@ await new Promise(resolve => setImmediate(resolve));
 
 assert.equal(alarms.length, 1);
 assert.equal(alarms[0].name, "learnnote-backend-heartbeat");
-assert.equal(alarms[0].options.periodInMinutes, 0.5);
+assert.equal(alarms[0].options.periodInMinutes, 2);
 assert.equal(requests.length, 1);
 assert.equal(requests[0].url, "http://127.0.0.1:8765/api/extension/heartbeat");
 assert.deepEqual(JSON.parse(requests[0].options.body), {

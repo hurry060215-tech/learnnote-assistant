@@ -2079,40 +2079,8 @@ function installPerformanceObserver() {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type !== "collect-page-data") return;
-  bindVideos();
   sendResponse(collectPageData(true));
 });
 
-function startWatchers() {
-  if (watchersStarted) return;
-  watchersStarted = true;
-  bindVideos();
-  installMutationObserver();
-  installPerformanceObserver();
-  setTimeout(() => {
-    if (window === window.top || document.querySelector("video,audio")) pushDetectedMedia(true, true);
-  }, 800);
-  setInterval(() => {
-    if (document.hidden) return;
-    if (window !== window.top && !document.querySelector("video,audio")) return;
-    bindVideos();
-    schedulePush(400);
-  }, PERIODIC_SCAN_MS);
-}
-
-window.addEventListener("popstate", () => {
-  resetPageResources();
-  schedulePush(120, true);
-});
-window.addEventListener("hashchange", () => {
-  resetPageResources();
-  schedulePush(120, true);
-});
-
-installPageHookBridge();
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", startWatchers, { once: true });
-  setTimeout(startWatchers, 1000);
-} else {
-  startWatchers();
-}
+// This file is injected on demand by the Side Panel. Keep it snapshot-only so
+// closing LearnNote leaves no observers, timers, or page-world hooks behind.

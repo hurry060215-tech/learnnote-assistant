@@ -10,7 +10,7 @@ const LOCAL_EXPORT_RE = new RegExp(`^https?:\\/\\/(?:127\\.0\\.0\\.1|localhost)(
 const DEFAULT_BACKEND_URL = "http://127.0.0.1:8765";
 const EXTENSION_PROTOCOL_VERSION = 1;
 const BACKEND_HEARTBEAT_ALARM = "learnnote-backend-heartbeat";
-const BACKEND_HEARTBEAT_PERIOD_MINUTES = 0.5;
+const BACKEND_HEARTBEAT_PERIOD_MINUTES = 2;
 const resourceByTab = new Map();
 const pageStateByTab = new Map();
 const requestHeadersByRequestId = new Map();
@@ -18,6 +18,8 @@ const requestBodiesByRequestId = new Map();
 const requestEpochByRequestId = new Map();
 const contextUpdateTimers = new Map();
 const captureEpochByTab = new Map();
+const activeCaptureUntilByTab = new Map();
+const ACTIVE_CAPTURE_TTL_MS = 5 * 60 * 1000;
 const MAX_REQUEST_BODY_BYTES = 64 * 1024;
 const MAX_CAPTURE_LOG_RESOURCES = 120;
 const CAPTURE_LOG_TTL_MS = 30 * 60 * 1000;
@@ -58,6 +60,21 @@ const REQUEST_HEADER_CANONICAL = {
   "x-requested-with": "X-Requested-With"
 };
 const PERSISTED_REQUEST_HEADER_DENYLIST = new Set(["authorization", "cookie", "proxy-authorization"]);
+
+function activateCapture(tabId) {
+  const normalized = Number(tabId);
+  if (!Number.isFinite(normalized) || normalized < 0) return false;
+  activeCaptureUntilByTab.set(normalized, Date.now() + ACTIVE_CAPTURE_TTL_MS);
+  return true;
+}
+
+function captureActive(tabId) {
+  const normalized = Number(tabId);
+  const expiresAt = Number(activeCaptureUntilByTab.get(normalized) || 0);
+  if (expiresAt > Date.now()) return true;
+  activeCaptureUntilByTab.delete(normalized);
+  return false;
+}
 
 async function storedBackendUrl() {
   if (!chrome.storage?.local?.get) return DEFAULT_BACKEND_URL;
@@ -1693,7 +1710,9 @@ const MEDIA_REQUEST_FILTER = {
 
 function registerBeforeSendHeadersListener(options) {
   chrome.webRequest.onBeforeSendHeaders.addListener(
-    rememberRequestHeaders,
+    details => {
+      if (captureActive(details.tabId)) rememberRequestHeaders(details);
+    },
     MEDIA_REQUEST_FILTER,
     options
   );
@@ -1701,7 +1720,9 @@ function registerBeforeSendHeadersListener(options) {
 
 if (chrome.webRequest.onBeforeRequest?.addListener) {
   chrome.webRequest.onBeforeRequest.addListener(
-    rememberRequestBody,
+    details => {
+      if (captureActive(details.tabId)) rememberRequestBody(details);
+    },
     MEDIA_REQUEST_FILTER,
     ["requestBody"]
   );
@@ -1838,7 +1859,11 @@ function addResolvedMediaResource(tabId, resource = {}) {
 
 function registerHeadersReceivedListener(options) {
   chrome.webRequest.onHeadersReceived.addListener(
-    details => recordResponseMedia(details, peekRequestHeaders(details.requestId), peekRequestBody(details.requestId), peekRequestEpoch(details.requestId)),
+    details => {
+      if (captureActive(details.tabId)) {
+        recordResponseMedia(details, peekRequestHeaders(details.requestId), peekRequestBody(details.requestId), peekRequestEpoch(details.requestId));
+      }
+    },
     MEDIA_REQUEST_FILTER,
     options
   );
@@ -1852,7 +1877,11 @@ try {
 
 function registerBeforeRedirectListener(options) {
   chrome.webRequest.onBeforeRedirect.addListener(
-    details => recordRedirectMedia(details, peekRequestHeaders(details.requestId), peekRequestBody(details.requestId), peekRequestEpoch(details.requestId)),
+    details => {
+      if (captureActive(details.tabId)) {
+        recordRedirectMedia(details, peekRequestHeaders(details.requestId), peekRequestBody(details.requestId), peekRequestEpoch(details.requestId));
+      }
+    },
     MEDIA_REQUEST_FILTER,
     options
   );
@@ -1866,6 +1895,7 @@ try {
 
 chrome.webRequest.onCompleted.addListener(
   details => {
+    if (!captureActive(details.tabId)) return;
     const context = takeRequestContext(details.requestId);
     recordResponseMedia(details, context.headers, context.body, context.epoch);
   },
@@ -1874,7 +1904,9 @@ chrome.webRequest.onCompleted.addListener(
 );
 
 chrome.webRequest.onErrorOccurred.addListener(
-  details => takeRequestContext(details.requestId),
+  details => {
+    if (captureActive(details.tabId)) takeRequestContext(details.requestId);
+  },
   MEDIA_REQUEST_FILTER
 );
 
@@ -1885,6 +1917,7 @@ chrome.tabs.onRemoved.addListener(tabId => {
   const timer = contextUpdateTimers.get(tabId);
   if (timer) clearTimeout(timer);
   contextUpdateTimers.delete(tabId);
+  activeCaptureUntilByTab.delete(tabId);
 });
 if (chrome.tabs.onActivated?.addListener) {
   chrome.tabs.onActivated.addListener(activeInfo => {
@@ -1928,6 +1961,7 @@ chrome.runtime.onStartup?.addListener?.(() => configureSidePanelBehavior());
 configureSidePanelBehavior();
 
 chrome.action.onClicked.addListener(tab => {
+  activateCapture(tab?.id);
   const intent = {
     action: "summarize-current-video",
     tabId: tab?.id ?? null,
@@ -2331,6 +2365,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     if (message.type === "get-current-context") {
       const tab = await tabForMessage(message);
+      activateCapture(tab.id);
       const rememberedPages = [...(pageStateByTab.get(tab.id)?.values() || [])];
       const rememberedTop = rememberedPages.find(page => (page.frame_id ?? 0) === 0) || rememberedPages[0] || null;
       const rememberedUrl = String(rememberedTop?.page_url || "").split("#")[0];
@@ -2359,6 +2394,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     if (message.type === "inspect-cookie-context") {
       const tab = await tabForMessage(message);
+      activateCapture(tab.id);
       const page = message.page || await collectPageData(tab);
       const resources = mergeAndRankResources(message.resources, page, tab, { preserveOrder: Array.isArray(message.resources) });
       const partitionKeys = await cookiePartitionKeysForContext(page, tab, resources);
@@ -2373,6 +2409,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     if (message.type === "start-current-task") {
       const tab = await tabForMessage(message);
+      activateCapture(tab.id);
       const expectedIdentity = message.sourceIdentity || message.source_identity || null;
       const page = expectedIdentity ? await collectPageData(tab) : (message.page || await collectPageData(tab));
       const captureLog = expectedIdentity ? await loadCaptureLog(tab.id) : { resources: [] };
@@ -2421,6 +2458,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     if (message.type === "preflight-current-resource") {
       const tab = await tabForMessage(message);
+      activateCapture(tab.id);
       const page = message.page || await collectPageData(tab);
       const resource = mergeAndRankResources(message.resource ? [message.resource] : [], page, tab, { preserveOrder: true })[0];
       if (!resource?.url) {
@@ -2445,6 +2483,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     if (message.type === "preflight-current-page") {
       const tab = await tabForMessage(message);
+      activateCapture(tab.id);
       const page = message.page || await collectPageData(tab);
       const resources = mergeAndRankResources(message.resources, page, tab, { preserveOrder: Array.isArray(message.resources) });
       const sourceIdentity = message.sourceIdentity || message.source_identity || buildSourceIdentity(tab, page, resources);

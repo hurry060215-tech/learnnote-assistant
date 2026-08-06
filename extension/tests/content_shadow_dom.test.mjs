@@ -245,8 +245,7 @@ context.__learnNoteHookEventData = {
     request_body: { type: "text", content: "{\"lesson\":\"shadow\"}" }
   }]
 };
-assert.ok(windowMessageListener, "expected content script to install page hook bridge");
-vm.runInContext("__learnNoteWindowMessageListener({ source: window, data: __learnNoteHookEventData })", context);
+assert.equal(windowMessageListener, null, "snapshot mode must not install a page-world message bridge");
 
 let response = null;
 messageListener({ type: "collect-page-data" }, {}, data => {
@@ -258,9 +257,8 @@ const urls = new Set(response.resources.map(item => item.url));
 assert.equal(response.active_video.src, "https://cdn.example.com/api/current?id=shadow&token=1");
 assert.equal(response.active_video.paused, false);
 assert.equal(hiddenTrack.mode, "hidden");
-assert.ok(hiddenTrack.listeners.includes("cuechange"), "expected subtitle cue changes to trigger page context refreshes");
-assert.ok(textTrackList.listeners.includes("addtrack"), "expected newly loaded subtitle tracks to be watched");
-assert.ok(textTrackList.listeners.includes("change"), "expected subtitle track mode changes to refresh context");
+assert.deepEqual(hiddenTrack.listeners, [], "snapshot mode must not retain subtitle listeners");
+assert.deepEqual(textTrackList.listeners, [], "snapshot mode must not retain track-list listeners");
 assert.deepEqual(JSON.parse(JSON.stringify(response.browser_subtitles)), [
   { start: 0, end: 2.5, text: "Welcome to the lesson" },
   { start: 2.5, end: 5, text: "Shadow DOM caption cue" },
@@ -270,25 +268,11 @@ assert.ok(urls.has("https://cdn.example.com/api/current?id=shadow&token=1"));
 assert.ok(urls.has("https://cdn.example.com/shadow/playlist.m3u8?token=1"));
 assert.ok(urls.has("https://cdn.example.com/shadow/captions.vtt"));
 assert.ok(urls.has("https://course.example.com/player?video=shadow"));
-const hookPostResource = response.resources.find(item => item.url === "https://course.example.com/api/post-play");
-assert.ok(hookPostResource, `expected page hook POST resource, got ${JSON.stringify(response.resources.map(item => [item.url, item.source, item.kind, item.score]).slice(0, 12))}`);
-assert.equal(hookPostResource.method, "POST");
-assert.equal(hookPostResource.request_type, "fetch");
-assert.equal(hookPostResource.request_headers["Content-Type"], "application/x-www-form-urlencoded");
-assert.equal(hookPostResource.request_body.content, "lesson=shadow&token=ok");
 const activeVideoResource = response.resources.find(item => item.url === "https://cdn.example.com/api/current?id=shadow&token=1");
 assert.equal(activeVideoResource.kind, "video");
 assert.equal(activeVideoResource.mime, "video/mp4");
 assert.equal(activeVideoResource.source, "activeVideo");
-const extensionless = response.resources.find(item => item.url === "https://cdn.example.com/api/play?id=shadow");
-assert.equal(extensionless.kind, "video");
-assert.equal(extensionless.source, "pageHookBody");
-assert.equal(extensionless.request_type, "fetch");
-assert.equal(extensionless.content_length, 7340032);
-assert.equal(extensionless.method, "POST");
-assert.equal(extensionless.request_headers["Content-Type"], "application/json");
-assert.equal(extensionless.request_body.content, "{\"lesson\":\"shadow\"}");
 assert.match(response.page_text, /Shadow lesson title/);
-assert.ok(observedRoots.includes(shadowRoot), "expected open shadow roots to be observed for later media mutations");
-assert.ok(observeOptions.every(options => options?.characterData === false), "expected broad character-data observation to stay disabled");
-assert.deepEqual(intervalDelays, [60000], "expected a low-frequency safety refresh instead of continuous page scanning");
+assert.deepEqual(observedRoots, [], "snapshot mode must not leave MutationObservers behind");
+assert.deepEqual(observeOptions, []);
+assert.deepEqual(intervalDelays, [], "snapshot mode must not leave periodic scans behind");

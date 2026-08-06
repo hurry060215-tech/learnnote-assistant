@@ -6,13 +6,17 @@ const background = await readFile(new URL("../background.js", import.meta.url), 
 const content = await readFile(new URL("../content.js", import.meta.url), "utf8");
 
 assert.equal(
-  manifest.content_scripts.some(script => script.js?.includes("page_hook.js")),
-  false,
-  "the invasive MAIN-world hook must never run automatically on every page"
+  (manifest.content_scripts || []).length,
+  0,
+  "LearnNote must not inject scripts until the user opens the Side Panel"
 );
 assert.match(background, /types:\s*\["media",\s*"xmlhttprequest"\]/);
+assert.match(background, /const ACTIVE_CAPTURE_TTL_MS = 5 \* 60 \* 1000;/);
+assert.match(background, /if \(captureActive\(details\.tabId\)\)/);
+assert.match(background, /const BACKEND_HEARTBEAT_PERIOD_MINUTES = 2;/);
 assert.doesNotMatch(background, /files:\s*\["page_hook\.js"\]/);
-assert.match(content, /const PERIODIC_SCAN_MS = 60000;/);
+assert.doesNotMatch(content, /\bstartWatchers\(\);/);
+assert.doesNotMatch(content, /setInterval\s*\(/);
 assert.match(content, /const selector = "video,source,track,iframe";/);
 assert.match(content, /attributeFilter:\s*\["src",\s*"currentSrc",\s*"type"\]/);
 assert.doesNotMatch(content, /for \(const host of safeQueryAll\(node, "\*"\)\)/);
