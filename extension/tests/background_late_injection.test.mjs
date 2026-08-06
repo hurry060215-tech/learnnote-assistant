@@ -61,8 +61,8 @@ const response = await new Promise(resolve => {
 });
 
 assert.equal(sendAttempts, 2);
-assert.equal(injections.length, 2);
-assert.deepEqual(injections.map(item => item.files?.[0]), ["page_hook.js", "content.js"]);
-assert.equal(injections[0].world, "MAIN");
+assert.equal(injections.length, 1);
+assert.deepEqual(injections.map(item => item.files?.[0]), ["content.js"]);
+assert.equal(injections[0].world, undefined);
 assert.equal(response.page.active_video.src, "https://cdn.example/lesson.mp4");
 assert.equal(response.resources[0].url, "https://cdn.example/lesson.mp4");

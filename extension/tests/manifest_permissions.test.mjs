@@ -24,7 +24,7 @@ assert.equal(hostPermissions.has("http://localhost/*"), true);
 assert.equal(hostPermissions.has("http://127.0.0.1:8765/*"), false);
 
 assert.equal(manifest.side_panel.default_path, "sidepanel.html");
-assert.equal(manifest.content_scripts.some(item => item.js?.includes("page_hook.js") && item.all_frames === true && item.world === "MAIN"), true);
+assert.equal(manifest.content_scripts.some(item => item.js?.includes("page_hook.js")), false);
 assert.equal(manifest.content_scripts.some(item => item.js?.includes("content.js") && item.all_frames === true), true);
 for (const script of manifest.content_scripts) {
   assert.equal(script.match_about_blank, true);

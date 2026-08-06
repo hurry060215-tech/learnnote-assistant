@@ -4,6 +4,12 @@ All notable changes to LearnNote are documented here. The project follows semant
 
 ## Unreleased
 
+### Fixed
+
+- The browser extension no longer installs invasive page-world hooks for fetch, streams, MediaSource, WebSocket, and player libraries on every page and iframe.
+- Media request capture is limited to media and XHR traffic; DOM and Performance scans now use narrower mutation rules, incremental resource caching, and a 60-second fallback interval.
+- Late extension recovery injects only the isolated lightweight content collector, preventing video playback and complex pages from stalling after detection starts.
+
 ## 0.1.53 - 2026-08-06
 
 ### Added

@@ -1064,9 +1064,9 @@ function normalizeRequestHeaders(requestHeaders = []) {
 
 function rememberRequestHeaders(details) {
   if (!details?.requestId) return;
+  if (!looksLikeMediaRequest(details)) return;
   requestEpochByRequestId.set(details.requestId, { epoch: captureEpoch(details.tabId), time: Date.now() });
   trimRequestContextCaches();
-  if (!looksLikeMediaRequest(details)) return;
   const headers = normalizeRequestHeaders(details.requestHeaders || []);
   requestHeadersByRequestId.set(details.requestId, {
     headers,
@@ -1130,11 +1130,10 @@ function requestBodyFromRaw(raw = []) {
 
 function rememberRequestBody(details = {}) {
   if (!details?.requestId) return;
-  requestEpochByRequestId.set(details.requestId, { epoch: captureEpoch(details.tabId), time: Date.now() });
   if (!looksLikeMediaRequest(details)) {
-    trimRequestContextCaches();
     return;
   }
+  requestEpochByRequestId.set(details.requestId, { epoch: captureEpoch(details.tabId), time: Date.now() });
   const method = String(details.method || "").toUpperCase();
   if (!["POST", "PUT", "PATCH"].includes(method)) return;
   const body = requestBodyFromFormData(details.requestBody?.formData) || requestBodyFromRaw(details.requestBody?.raw);
@@ -1687,10 +1686,15 @@ function addResource(tabId, resource, notify = true) {
   if (notify) notifyContextUpdated(tabId, "media");
 }
 
+const MEDIA_REQUEST_FILTER = {
+  urls: ["<all_urls>"],
+  types: ["media", "xmlhttprequest"]
+};
+
 function registerBeforeSendHeadersListener(options) {
   chrome.webRequest.onBeforeSendHeaders.addListener(
     rememberRequestHeaders,
-    { urls: ["<all_urls>"] },
+    MEDIA_REQUEST_FILTER,
     options
   );
 }
@@ -1698,7 +1702,7 @@ function registerBeforeSendHeadersListener(options) {
 if (chrome.webRequest.onBeforeRequest?.addListener) {
   chrome.webRequest.onBeforeRequest.addListener(
     rememberRequestBody,
-    { urls: ["<all_urls>"] },
+    MEDIA_REQUEST_FILTER,
     ["requestBody"]
   );
 }
@@ -1835,7 +1839,7 @@ function addResolvedMediaResource(tabId, resource = {}) {
 function registerHeadersReceivedListener(options) {
   chrome.webRequest.onHeadersReceived.addListener(
     details => recordResponseMedia(details, peekRequestHeaders(details.requestId), peekRequestBody(details.requestId), peekRequestEpoch(details.requestId)),
-    { urls: ["<all_urls>"] },
+    MEDIA_REQUEST_FILTER,
     options
   );
 }
@@ -1849,7 +1853,7 @@ try {
 function registerBeforeRedirectListener(options) {
   chrome.webRequest.onBeforeRedirect.addListener(
     details => recordRedirectMedia(details, peekRequestHeaders(details.requestId), peekRequestBody(details.requestId), peekRequestEpoch(details.requestId)),
-    { urls: ["<all_urls>"] },
+    MEDIA_REQUEST_FILTER,
     options
   );
 }
@@ -1865,13 +1869,13 @@ chrome.webRequest.onCompleted.addListener(
     const context = takeRequestContext(details.requestId);
     recordResponseMedia(details, context.headers, context.body, context.epoch);
   },
-  { urls: ["<all_urls>"] },
+  MEDIA_REQUEST_FILTER,
   ["responseHeaders"]
 );
 
 chrome.webRequest.onErrorOccurred.addListener(
   details => takeRequestContext(details.requestId),
-  { urls: ["<all_urls>"] }
+  MEDIA_REQUEST_FILTER
 );
 
 chrome.tabs.onRemoved.addListener(tabId => {
@@ -1977,11 +1981,6 @@ async function collectFramePageData(tab, frameId) {
     return page;
   } catch {
     try {
-      await chrome.scripting.executeScript({
-        target: { tabId: tab.id, frameIds: [frameId] },
-        files: ["page_hook.js"],
-        world: "MAIN"
-      });
       await chrome.scripting.executeScript({
         target: { tabId: tab.id, frameIds: [frameId] },
         files: ["content.js"]

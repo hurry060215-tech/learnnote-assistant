@@ -71,7 +71,8 @@ const observedMutationRoots = new WeakSet();
 const DEEP_QUERY_LIMIT = 2500;
 const STATIC_SCAN_TTL_MS = 30000;
 const COURSE_TEXT_TTL_MS = 30000;
-const PERIODIC_SCAN_MS = 15000;
+const PERIODIC_SCAN_MS = 60000;
+const MAX_CACHED_PERFORMANCE_RESOURCES = 160;
 const MAX_VISIBLE_SUBTITLE_HISTORY = 1200;
 const visibleSubtitleHistory = [];
 let pendingPushTimer = 0;
@@ -84,6 +85,8 @@ let cachedStableDomResources = [];
 let stableDomResourcesAt = 0;
 let cachedCourseText = "";
 let courseTextAt = 0;
+let performanceResourceCursor = 0;
+let cachedPerformanceResources = [];
 
 function resetPageResources(nextIdentity = "") {
   pageIdentity = nextIdentity || `content:${Date.now()}:${String(location.href || "")}`;
@@ -95,6 +98,8 @@ function resetPageResources(nextIdentity = "") {
   stableDomResourcesAt = 0;
   cachedCourseText = "";
   courseTextAt = 0;
+  performanceResourceCursor = 0;
+  cachedPerformanceResources = [];
   performanceNavigationStart = Number(performance.now?.() || 0);
 }
 
@@ -1816,8 +1821,13 @@ function collectDomResources(forceFullScan = false) {
 }
 
 function collectPerformanceResources() {
-  const resources = [];
-  for (const entry of performance.getEntriesByType("resource")) {
+  const entries = performance.getEntriesByType("resource");
+  if (performanceResourceCursor > entries.length) {
+    performanceResourceCursor = 0;
+    cachedPerformanceResources = [];
+  }
+  const resources = [...cachedPerformanceResources];
+  for (const entry of entries.slice(performanceResourceCursor)) {
     if (performanceNavigationStart > 0 && Number.isFinite(Number(entry.startTime)) && Number(entry.startTime) < performanceNavigationStart) continue;
     const name = entry.name || "";
     const kind = performanceKind(entry);
@@ -1831,7 +1841,11 @@ function collectPerformanceResources() {
       resources.push(item);
     }
   }
-  return resources.filter(Boolean);
+  performanceResourceCursor = entries.length;
+  const byUrl = new Map();
+  for (const item of resources.filter(Boolean)) byUrl.set(item.url, mergePageResource(byUrl.get(item.url), item));
+  cachedPerformanceResources = [...byUrl.values()].slice(-MAX_CACHED_PERFORMANCE_RESOURCES);
+  return cachedPerformanceResources.map(item => ({ ...item }));
 }
 
 function collectCourseText(force = false) {
@@ -1978,10 +1992,10 @@ function bindVideos() {
 
 function isMediaNode(node) {
   if (!node || node.nodeType !== Node.ELEMENT_NODE) return false;
-  const selector = `video,source,track,iframe,script,${STATIC_MEDIA_SELECTOR}`;
+  const selector = "video,source,track,iframe";
   if (node.matches?.(selector)) return true;
   if (node.querySelector?.(selector)) return true;
-  return Boolean(node.shadowRoot && deepQuerySelectorAll(selector, node.shadowRoot, 20).length);
+  return Boolean(node.shadowRoot && node.shadowRoot.querySelector?.(selector));
 }
 
 function observeRoot(observer, root) {
@@ -1992,7 +2006,7 @@ function observeRoot(observer, root) {
       subtree: true,
       attributes: true,
       characterData: false,
-      attributeFilter: [...STATIC_MEDIA_ATTRS, "currentSrc", "type", "poster", "crossorigin"]
+      attributeFilter: ["src", "currentSrc", "type"]
     });
     observedMutationRoots.add(root);
   } catch {
@@ -2009,9 +2023,6 @@ function observeOpenShadowRoots(observer) {
 function observeAddedShadowRoots(observer, node) {
   if (!node || node.nodeType !== Node.ELEMENT_NODE) return;
   if (node.shadowRoot) observeRoot(observer, node.shadowRoot);
-  for (const host of safeQueryAll(node, "*")) {
-    if (host?.shadowRoot) observeRoot(observer, host.shadowRoot);
-  }
 }
 
 function installMutationObserver() {
@@ -2078,9 +2089,12 @@ function startWatchers() {
   bindVideos();
   installMutationObserver();
   installPerformanceObserver();
-  setTimeout(() => pushDetectedMedia(true, true), 800);
+  setTimeout(() => {
+    if (window === window.top || document.querySelector("video,audio")) pushDetectedMedia(true, true);
+  }, 800);
   setInterval(() => {
     if (document.hidden) return;
+    if (window !== window.top && !document.querySelector("video,audio")) return;
     bindVideos();
     schedulePush(400);
   }, PERIODIC_SCAN_MS);

@@ -291,4 +291,4 @@ assert.equal(extensionless.request_body.content, "{\"lesson\":\"shadow\"}");
 assert.match(response.page_text, /Shadow lesson title/);
 assert.ok(observedRoots.includes(shadowRoot), "expected open shadow roots to be observed for later media mutations");
 assert.ok(observeOptions.every(options => options?.characterData === false), "expected broad character-data observation to stay disabled");
-assert.deepEqual(intervalDelays, [15000], "expected lightweight periodic refresh instead of a five-second full scan");
+assert.deepEqual(intervalDelays, [60000], "expected a low-frequency safety refresh instead of continuous page scanning");
