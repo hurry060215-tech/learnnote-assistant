@@ -623,6 +623,7 @@
   }
 
   function friendlyTaskAction(task = {}) {
+    if (task.awaiting_confirmation && task.status === "queued") return "视频已接收，等待你确认";
     if (task.status === "success") return "笔记已经整理完成";
     if (task.status === "failed") {
       const failureLabels = {
@@ -632,7 +633,8 @@
         download_forbidden: "视频服务器拒绝了下载请求",
         unsupported_manifest: "暂时无法合并这个视频流",
         insufficient_evidence: "字幕或画面依据不足，已停止生成",
-        task_interrupted: "客户端上次处理中断，可以重新尝试"
+        task_interrupted: "客户端上次处理中断，可以重新尝试",
+        handoff_expired: "视频交接已失效，请回到原视频页重新发送"
       };
       const localized = failureLabels[String(task.error_code || "").toLowerCase()];
       const detail = String(task.error_detail || task.message || "").trim();

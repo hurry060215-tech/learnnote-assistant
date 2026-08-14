@@ -549,6 +549,37 @@ body.theme-dark .editorial-source-choices > button { border-color: #315055; }
 }
 
 @media (max-width: 640px) {
+  body.settings-mode .settings-menu,
+  body[data-app-view="settings"] .settings-menu {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    gap: 6px !important;
+    margin-bottom: 20px !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    border-bottom: 0 !important;
+  }
+  body.settings-mode .settings-menu button,
+  body[data-app-view="settings"] .settings-menu button {
+    box-sizing: border-box;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    min-height: 42px;
+    height: auto !important;
+    padding: 8px 10px !important;
+    border: 1px solid var(--editorial-line) !important;
+    border-radius: 8px;
+    white-space: normal;
+    text-align: center;
+  }
+  body.settings-mode .settings-menu button.active,
+  body[data-app-view="settings"] .settings-menu button.active {
+    border-color: var(--editorial-accent) !important;
+  }
   .editorial-home { width: min(100% - 24px, 520px); padding: 30px 0 88px; }
   .editorial-intro { align-items: flex-start; margin-bottom: 25px; }
   .editorial-intro h1 { font-size: 34px; }

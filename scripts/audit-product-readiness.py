@@ -53,6 +53,24 @@ def has_any(text: str, tokens: Iterable[str]) -> bool:
     return any(token.lower() in lower for token in tokens)
 
 
+def startup_bootstrap_contract(
+    launcher: str,
+    backend_start: str,
+    desktop_start: str,
+    desktop_requirements: str,
+) -> bool:
+    bootstrap_call = launcher.find("$backendScript @bootstrapArgs")
+    doctor_call = launcher.find("& $doctorScript")
+    return (
+        bootstrap_call >= 0
+        and doctor_call >= 0
+        and bootstrap_call < doctor_call
+        and has_all(backend_start, ["[switch]$BootstrapOnly", "--python 3.12 --seed", "if ($BootstrapOnly)", "return"])
+        and has_all(desktop_start, ["[switch]$InstallAsr", "BootstrapOnly", "start-backend.ps1"])
+        and "faster-whisper" not in desktop_requirements.lower()
+    )
+
+
 def item(
     key: str,
     title: str,
@@ -275,6 +293,7 @@ def build_matrix(*, include_acceptance_gate: bool = True) -> list[ReadinessItem]
     first_run = read_text(ROOT / "scripts" / "first-run-checklist.ps1")
     doctor = read_text(ROOT / "scripts" / "doctor.py")
     launcher = read_text(ROOT / "start-learnnote.ps1")
+    backend_start = read_text(ROOT / "start-backend.ps1")
     web_html = read_text(ROOT / "web" / "index.html")
     web_js = read_text(ROOT / "web" / "app.js")
     web_css = read_text(ROOT / "web" / "styles.css")
@@ -425,17 +444,20 @@ def build_matrix(*, include_acceptance_gate: bool = True) -> list[ReadinessItem]
         ])
         and has_all(web_html + web_js + backend_main, ["startupReadiness", "startupReadinessItems", "yt_dlp_available"])
         and has_all(doctor, ["project location", "backend runtime", "script_check"])
+        and startup_bootstrap_contract(launcher, backend_start, desktop_start, desktop_requirements)
     )
     rows.append(item(
         "startup_onboarding",
         "Startup and installation experience",
         "pass" if startup_ready else "fail",
-        "D-drive paths, ffmpeg/yt-dlp/faster-whisper checks, extension loading, backend startup, API key setup, and guide output are documented/checkable." if startup_ready else "Startup/onboarding readiness is incomplete.",
+        "Fresh-clone bootstrap runs before doctor, desktop ASR is opt-in with visible installation progress, and D-drive/browser/API-key setup remains checkable." if startup_ready else "Startup/onboarding readiness is incomplete or the fresh-clone bootstrap contract is broken.",
         [
             (ROOT / "scripts" / "first-run-checklist.ps1", "machine-specific first-run guide"),
             (ROOT / "scripts" / "doctor.py", "runtime and dependency checks"),
             (ROOT / "scripts" / "audit-product-acceptance.ps1", "product acceptance gate"),
             (ROOT / "start-learnnote.ps1", "D-drive launcher"),
+            (ROOT / "start-backend.ps1", "fresh-clone Python and dependency bootstrap"),
+            (ROOT / "start-desktop.ps1", "desktop runtime with opt-in ASR"),
             (ROOT / "web" / "index.html", "startup readiness card"),
             (ROOT / "web" / "app.js", "startup readiness health rendering"),
             (ROOT / "README.md", "Quick Start and real-site audit instructions"),

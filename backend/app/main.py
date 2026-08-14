@@ -3748,7 +3748,7 @@ def start_deferred_current_page_task(
         task = get_task(task_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail={"code": "task_not_found", "message": "Task not found"}) from exc
-    if not task.awaiting_confirmation and task.status in {"queued", "running", "success", "failed"}:
+    if not task.awaiting_confirmation and task.status in {"queued", "running", "success"}:
         return {
             "accepted": True,
             "already_started": True,
@@ -3763,6 +3763,7 @@ def start_deferred_current_page_task(
     with _deferred_handoffs_lock:
         deferred_request = _deferred_handoffs.get(task_id)
     if deferred_request is None:
+        expire_deferred_handoff(task_id)
         raise HTTPException(
             status_code=410,
             detail={
@@ -3783,6 +3784,18 @@ def start_deferred_current_page_task(
     with _deferred_handoffs_lock:
         _deferred_handoffs.pop(task_id, None)
     return {"task_id": task.id, "task": task_payload(task)}
+
+
+def expire_deferred_handoff(task_id: str):
+    return update_task(
+        task_id,
+        awaiting_confirmation=False,
+        status="failed",
+        phase="failed",
+        message="Browser handoff expired; send the current page again",
+        error_code="handoff_expired",
+        error_detail="The backend restarted before confirmation. Return to the video page and send it again.",
+    )
 
 
 @app.post("/api/media/preflight")
@@ -3989,7 +4002,16 @@ def create_from_existing_media(
 
 @app.get("/api/tasks")
 def api_list_tasks() -> dict:
-    return {"tasks": [task_payload(task) for task in list_tasks()]}
+    records = list_tasks()
+    with _deferred_handoffs_lock:
+        live_handoffs = set(_deferred_handoffs)
+    records = [
+        expire_deferred_handoff(task.id)
+        if task.awaiting_confirmation and task.id not in live_handoffs
+        else task
+        for task in records
+    ]
+    return {"tasks": [task_payload(task) for task in records]}
 
 
 @app.get("/api/storage")

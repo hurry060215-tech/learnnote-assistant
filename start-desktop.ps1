@@ -1,6 +1,7 @@
 param(
   [int]$Port = 8765,
   [switch]$Debug,
+  [switch]$InstallAsr,
   [switch]$SkipInstall
 )
 
@@ -10,15 +11,17 @@ $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $python = Join-Path $projectRoot ".venv\Scripts\python.exe"
 $requirements = Join-Path $projectRoot "backend\requirements.desktop.txt"
 $launcher = Join-Path $projectRoot "desktop\main.py"
+$backendBootstrap = Join-Path $projectRoot "start-backend.ps1"
 
 if (-not $projectRoot.StartsWith("D:\", [System.StringComparison]::OrdinalIgnoreCase)) {
   throw "LearnNote Desktop must run from D: on this machine. Current path: $projectRoot"
 }
-if (-not (Test-Path -LiteralPath $python)) {
-  throw "D-drive virtual environment is missing: $python"
-}
-
 if (-not $SkipInstall) {
+  $bootstrapArgs = @{ BootstrapOnly = $true; Port = $Port }
+  if ($InstallAsr) {
+    $bootstrapArgs.InstallAsr = $true
+  }
+  & $backendBootstrap @bootstrapArgs
   $env:PIP_CACHE_DIR = Join-Path $projectRoot "data\pip-cache"
   & $python -c "import webview" 2>$null
   if ($LASTEXITCODE -ne 0) {
@@ -28,6 +31,10 @@ if (-not $SkipInstall) {
       throw "Desktop runtime installation failed."
     }
   }
+}
+
+if (-not (Test-Path -LiteralPath $python)) {
+  throw "D-drive virtual environment is missing: $python. Run without -SkipInstall to create it."
 }
 
 $arguments = @($launcher, "--port", $Port)

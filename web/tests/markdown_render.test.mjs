@@ -246,6 +246,7 @@ assert.equal(context.window.LearnNoteEditorial.workflowStageIndex({ workflow_sta
 assert.equal(context.window.LearnNoteEditorial.workflowStageIndex({ workflow_stage: "understand_visuals" }), 3);
 assert.equal(context.window.LearnNoteEditorial.workflowStageIndex({ workflow_stage: "compose_note" }), 4);
 assert.equal(context.window.LearnNoteEditorial.friendlyTaskAction({ status: "queued", message: "Local upload saved; queued for processing" }), "视频已接收，正在排队");
+assert.equal(context.window.LearnNoteEditorial.friendlyTaskAction({ status: "queued", awaiting_confirmation: true }), "视频已接收，等待你确认");
 assert.equal(context.window.LearnNoteEditorial.friendlyTaskAction({ status: "running", workflow_stage: "understand_visuals", message: "Extracting adaptive frames" }), "正在提取关键画面");
 assert.equal(context.window.LearnNoteEditorial.friendlyTaskAction({ status: "failed", error_code: "auth_required", error_detail: "HTTP 401" }), "登录状态已失效，请重新打开视频页");
 assert.equal(context.window.LearnNoteEditorial.purposes.review.style, "classroom-review");
@@ -756,6 +757,10 @@ assert.match(liveProgressHtml, /role="progressbar"/);
 assert.match(liveProgressHtml, /aria-valuenow="48"/);
 assert.match(liveProgressHtml, /48%/);
 assert.equal(context.sourceWorkflowProgressHtml({ status: "success", progress: 100 }), "");
+assert.equal(context.sourceWorkflowProgressHtml({ status: "queued", awaiting_confirmation: true, progress: 0 }), "");
+assert.equal(context.statusText({ status: "queued", awaiting_confirmation: true }), "等待确认");
+assert.equal(context.taskPhaseLabel({ status: "queued", awaiting_confirmation: true }), "等待确认视频");
+assert.equal(context.directRouteState({ status: "queued", awaiting_confirmation: true }), "awaiting_confirmation");
 
 vm.runInContext(`tasks = [
   { id: "selected-running", title: "当前运行任务", status: "running", progress: 42 },
@@ -1000,6 +1005,12 @@ const queueChipTask = {
 
 assert.equal(JSON.stringify(context.taskChipItems(queueChipTask)), JSON.stringify(["当前 src", "视频", "media.mp4", "笔记", "1 窗口"]));
 assert.equal(context.taskMetaLine(queueChipTask), "直取 · 视频");
+assert.equal(context.taskMetaLine({
+  status: "queued",
+  awaiting_confirmation: true,
+  source_type: "current_page",
+  created_at: "2020-01-01T00:00:00Z"
+}), "页面解析 · 等待确认");
 const queueHandoffHtml = context.taskHandoffHtml(queueChipTask);
 assert.match(queueHandoffHtml, /class="task-handoff done"/);
 assert.match(queueHandoffHtml, /学习接力/);

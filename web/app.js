@@ -333,8 +333,12 @@ let assistantLocatedEvidenceKey = "";
 
 const ACTIVE_TASK_STATUSES = new Set(["running", "queued", "cancelling"]);
 
+function taskAwaitingConfirmation(task = {}) {
+  return Boolean(task?.awaiting_confirmation && task?.status === "queued");
+}
+
 function isActiveTask(task) {
-  return ACTIVE_TASK_STATUSES.has(task?.status);
+  return ACTIVE_TASK_STATUSES.has(task?.status) && !taskAwaitingConfirmation(task);
 }
 const ASSISTANT_OPEN_KEY = "learnnote.aiAssistantOpen";
 const ASSISTANT_WIDE_KEY = "learnnote.aiAssistantWide";
@@ -1231,7 +1235,12 @@ async function applyStorageCleanup() {
 
 async function deleteAllTasksFromClient() {
   const terminalTasks = tasks.filter(task => ["success", "failed", "cancelled"].includes(task.status));
-  const activeTasks = tasks.filter(task => ["queued", "running", "cancelling"].includes(task.status));
+  const pendingConfirmations = tasks.filter(taskAwaitingConfirmation);
+  const activeTasks = tasks.filter(isActiveTask);
+  if (pendingConfirmations.length) {
+    if (els.settingsSavedStatus) els.settingsSavedStatus.textContent = "仍有等待确认的视频，请先确认或放弃这些交接任务。";
+    return;
+  }
   if (activeTasks.length) {
     if (els.settingsSavedStatus) els.settingsSavedStatus.textContent = "仍有任务正在处理，请停止或等待完成后再删除全部。";
     return;
@@ -1437,7 +1446,9 @@ async function fetchJson(url, options = {}) {
       : (typeof response.text === "function" ? await response.text().catch(() => "") : "");
     const code = String(payload?.detail?.code || payload?.code || "");
     const guide = code ? errorGuideForCode(code, raw) : null;
-    const error = new Error(guide?.title || raw || "操作没有完成，请稍后重试");
+    const title = guide?.title || raw || "操作没有完成，请稍后重试";
+    const body = String(guide?.body || raw || "").trim();
+    const error = new Error(body && body !== title ? `${title}：${body}` : title);
     error.code = code;
     error.status = response.status;
     error.detail = raw;
@@ -2001,6 +2012,7 @@ function preferredCurrentPageTask() {
 
 function directRouteState(task) {
   if (!task) return "empty";
+  if (taskAwaitingConfirmation(task)) return "awaiting_confirmation";
   if (task.status === "running" || task.status === "queued") return "running";
   if (task.status === "success" && hasExportableMedia(task) && task.note_path) return "ready";
   if (task.status === "success" && hasExportableMedia(task)) return "downloaded";
@@ -2015,6 +2027,14 @@ function directRouteCopy(task) {
   const selected = task?.selected_resource || {};
   const attempts = task?.download_attempts || [];
   const mediaName = taskMediaDisplayName(task);
+  if (state === "awaiting_confirmation") {
+    return {
+      badge: "等待确认",
+      title: "视频已发送，等待你确认",
+      detail: "尚未开始下载、转写或生成笔记",
+      hint: "在 LearnNote 中核对视频标题和来源后，点击开始生成。"
+    };
+  }
   if (state === "ready") {
     return {
       badge: "可复习",
@@ -2449,6 +2469,7 @@ function workflowActiveIndex(task) {
 
 function workflowStepState(task, index) {
   if (!task) return "pending";
+  if (taskAwaitingConfirmation(task)) return "pending";
   const activeIndex = workflowActiveIndex(task);
   if (task.status === "failed") {
     if (index < activeIndex) return "done";
@@ -2817,7 +2838,7 @@ function sourceWorkflowActionsHtml(source, task = null) {
 }
 
 function sourceWorkflowProgressHtml(task = null) {
-  if (!task || !["running", "queued", "cancelling"].includes(task.status)) return "";
+  if (!task || !isActiveTask(task)) return "";
   const progress = Math.max(0, Math.min(100, Number(task.progress || 0)));
   return `<div class="source-workflow-live-progress" role="progressbar" aria-label="任务处理进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progress}">
     <div><strong>${escapeHtml(taskPhaseLabel(task))}</strong><span>${progress}%</span></div>
@@ -2864,7 +2885,7 @@ function renderSourceWorkflow() {
   const task = workflowTaskForSource(selectedSource);
   els.sourceWorkflow.classList.toggle("idle", !task);
   els.sourceWorkflow.classList.toggle("settled", task?.status === "success");
-  els.sourceWorkflow.classList.toggle("active", ["running", "queued", "cancelling"].includes(task?.status));
+  els.sourceWorkflow.classList.toggle("active", isActiveTask(task));
   const html = sourceWorkflowHtml(selectedSource, task);
   if (html === lastSourceWorkflowHtml) return;
   els.sourceWorkflow.innerHTML = html;
@@ -2893,6 +2914,7 @@ function activeVideoText(active) {
 }
 
 function statusText(task) {
+  if (taskAwaitingConfirmation(task)) return "等待确认";
   if (task.status === "success") return "已完成";
   if (task.status === "failed") return "需要处理";
   if (task.status === "cancelling") return "正在停止";
@@ -2902,6 +2924,7 @@ function statusText(task) {
 }
 
 function taskPhaseLabel(task = {}) {
+  if (taskAwaitingConfirmation(task)) return "等待确认视频";
   if (task.status === "success" || task.phase === "completed") return "完成";
   if (task.status === "failed") return "需要处理";
   return ({
@@ -3063,6 +3086,14 @@ const ERROR_GUIDES = {
   recapture_required: {
     title: "需要从视频页面重新发起",
     body: "回到正在播放的视频页，点击 LearnNote 扩展图标重新生成。"
+  },
+  handoff_expired: {
+    title: "视频交接已失效",
+    body: "后端在确认前重启了。请回到正在播放的视频页，再点击 LearnNote 扩展图标重新发送。"
+  },
+  not_awaiting_confirmation: {
+    title: "这个任务已经不再等待确认",
+    body: "刷新任务列表查看最新状态；需要重新生成时，请从原视频页再次发起。"
   },
   task_still_running: { title: "任务仍在运行", body: "请先停止任务，再重试或删除。" },
   task_not_running: { title: "任务已经结束", body: "刷新任务列表即可查看最新状态。" },
@@ -5031,7 +5062,7 @@ function bindTaskListEvents() {
 function renderTasks() {
   els.taskCount.textContent = String(tasks.length);
   els.successCount.textContent = String(tasks.filter(task => task.status === "success").length);
-  els.runningCount.textContent = String(tasks.filter(task => ["running", "queued", "cancelling"].includes(task.status)).length);
+  els.runningCount.textContent = String(tasks.filter(isActiveTask).length);
   els.failedCount.textContent = String(tasks.filter(task => task.status === "failed").length);
   renderRecentNotes();
 
@@ -5053,15 +5084,15 @@ function renderTasks() {
       <div class="task-body">
         <div class="task-headline">
           <strong>${escapeHtml(displayTaskTitle(task))}${noteVersionBadge(task)}</strong>
-          <span class="task-status-pill ${escapeHtml(taskStatusClass(task))}">${escapeHtml(statusText(task))} · ${task.progress || 0}%</span>
+          <span class="task-status-pill ${escapeHtml(taskStatusClass(task))}">${escapeHtml(statusText(task))}${taskAwaitingConfirmation(task) ? "" : ` · ${task.progress || 0}%`}</span>
         </div>
         <small class="task-meta-line">${escapeHtml(taskMetaLine(task))}</small>
         ${taskChipsHtml(task)}
-        <div class="progress"><span style="width:${task.progress || 0}%"></span></div>
+        ${taskAwaitingConfirmation(task) ? "" : `<div class="progress"><span style="width:${task.progress || 0}%"></span></div>`}
         <div class="task-controls" aria-label="任务操作">
           <button type="button" data-task-action="open">${task.note_path ? "查看笔记" : "查看详情"}</button>
           ${canCreateNoteVersion(task) ? `<button type="button" data-task-action="version">新建笔记版本</button>` : ""}
-          ${["running", "queued", "cancelling"].includes(task.status) ? `<button type="button" data-task-action="cancel">停止</button>` : ""}
+          ${isActiveTask(task) ? `<button type="button" data-task-action="cancel">停止</button>` : ""}
           ${["failed", "cancelled"].includes(task.status) ? `<button type="button" data-task-action="retry">重试</button>` : ""}
           ${task.awaiting_confirmation || ["success", "failed", "cancelled"].includes(task.status) ? `<button type="button" data-task-action="delete">${task.awaiting_confirmation ? "放弃并删除" : "删除"}</button>` : ""}
         </div>
@@ -5302,6 +5333,7 @@ function taskAuditMiniHtml(task) {
 }
 
 function taskMetaLine(task) {
+  if (taskAwaitingConfirmation(task)) return [sourceText(task), "等待确认"].filter(Boolean).join(" · ");
   return [
     sourceText(task),
     task.status === "running" || task.status === "queued" ? taskPhaseLabel(task) : "",
@@ -5361,6 +5393,7 @@ function taskBrief(task) {
 function taskStatusClass(task) {
   if (task.status === "success") return "success";
   if (task.status === "failed") return "failed";
+  if (taskAwaitingConfirmation(task)) return "idle";
   if (task.status === "running" || task.status === "queued") return "running";
   return "idle";
 }

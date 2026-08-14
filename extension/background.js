@@ -2066,6 +2066,12 @@ async function collectPageData(tab) {
 }
 
 globalThis.__learnnoteE2E = {
+  async armCaptureForTab(tabId) {
+    const normalizedTabId = Number(tabId);
+    if (!Number.isFinite(normalizedTabId)) return false;
+    activateCapture(normalizedTabId);
+    return captureActive(normalizedTabId);
+  },
   async collectContextForTab(tabId) {
     const tab = await chrome.tabs.get(Number(tabId));
     const page = await collectPageData(tab);

@@ -128,6 +128,13 @@ if ($previousBackendOrigin -and $previousBackendOrigin -ne $backendUrl) {
   Write-Host "Origin note: replaced previous LEARNNOTE_BACKEND_ORIGIN=$previousBackendOrigin for this session." -ForegroundColor DarkYellow
 }
 
+Write-Step "Preparing local runtime"
+$bootstrapArgs = @{ BootstrapOnly = $true; Port = $Port; ModelProfile = $ModelProfile }
+if ($InstallAsr) {
+  $bootstrapArgs.InstallAsr = $true
+}
+& $backendScript @bootstrapArgs
+
 if (-not $SkipDoctor) {
   Write-Step "Readiness check"
   $doctorArgs = @()

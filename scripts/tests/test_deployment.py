@@ -88,6 +88,8 @@ class DeploymentContractTests(unittest.TestCase):
     def test_real_extension_smoke_tracks_the_current_sidepanel_contract(self) -> None:
         sidepanel = (ROOT / "extension" / "sidepanel.html").read_text(encoding="utf-8")
         smoke = (ROOT / "scripts" / "e2e-extension-smoke.py").read_text(encoding="utf-8")
+        self.assertIn("armCaptureForTab", smoke)
+        self.assertIn('url: "about:blank"', smoke)
 
         self.assertIn('id="sendButton"', sidepanel)
         self.assertIn('id="connectionCard"', sidepanel)
