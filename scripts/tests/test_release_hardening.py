@@ -57,6 +57,23 @@ class ReleaseHardeningContractTests(unittest.TestCase):
         self.assertNotIn("unexpected response: {text", source)
         self.assertNotIn("set {key_env}", source)
 
+    def test_evidence_quality_benchmark_is_offline_and_passes(self) -> None:
+        script = ROOT / "scripts" / "evidence-quality-benchmark.py"
+        result = subprocess.run(
+            [sys.executable, str(script)],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+        report = json.loads(result.stdout)
+        self.assertEqual(report["status"], "pass")
+        self.assertEqual(report["mode"], "offline-grounding-fixtures")
+        self.assertFalse(report["network_attempted"])
+        self.assertEqual(report["case_count"], 3)
+        self.assertEqual(report["passed_count"], 3)
+
     def test_long_video_gate_defaults_to_one_hour_without_asr_or_llm(self) -> None:
         source = (ROOT / "scripts" / "long-video-reliability.py").read_text(encoding="utf-8")
 
