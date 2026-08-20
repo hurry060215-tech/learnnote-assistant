@@ -9,6 +9,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.adapters import MEDIA_ADAPTER_CONTRACT_VERSION, media_adapter_for_url, media_adapter_descriptors
 from app.source_input import clean_task_title, normalize_source_input, title_looks_corrupted
 from app.storage import create_task, list_tasks
 from app.text_cleanup import correct_common_zh_asr_text, correct_transcript_terms
@@ -16,6 +17,15 @@ from app.models import TranscriptResult, TranscriptSegment
 
 
 class SourceInputTests(unittest.TestCase):
+    def test_media_adapter_registry_has_versioned_generic_and_platform_boundaries(self) -> None:
+        self.assertEqual(MEDIA_ADAPTER_CONTRACT_VERSION, 1)
+        self.assertEqual(media_adapter_for_url("https://www.bilibili.com/video/BV1xx411c7mD").adapter_id, "bilibili")
+        self.assertEqual(media_adapter_for_url("https://m.youtube.com/watch?v=abc").adapter_id, "youtube")
+        self.assertEqual(media_adapter_for_url("https://cdn.example.com/lesson.m3u8").adapter_id, "web")
+        descriptors = media_adapter_descriptors()
+        self.assertEqual({item["id"] for item in descriptors}, {"bilibili", "youtube", "web"})
+        self.assertTrue(all(item["contract_version"] == 1 for item in descriptors))
+
     def test_bvid_and_avid_are_normalized_to_bilibili_pages(self) -> None:
         bv = normalize_source_input("BV1xx411c7mD")
         av = normalize_source_input("av170001")

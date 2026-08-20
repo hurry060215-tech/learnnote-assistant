@@ -23,6 +23,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 
 from . import API_VERSION, APP_VERSION, TASK_SCHEMA_VERSION, UX_PROTOCOL_VERSION
+from .adapters import MEDIA_ADAPTER_CONTRACT_VERSION, media_adapter_descriptors
 from .config import BACKEND_ORIGIN, DATA_DIR, DEPLOYMENT_MODE, LLM_API_KEY, LLM_BASE_URL, LLM_MAX_RETRIES, LLM_MODEL, LLM_REQUEST_TIMEOUT_SECONDS, MODEL_CACHE_DIR, PUBLIC_DEPLOYMENT, PUBLIC_PASSWORD, PUBLIC_USERNAME, STATIC_DIR, TASK_DIR, TEMP_DIR, UPLOAD_DIR, WEB_DIR, ensure_dirs
 from .downloader import MediaDownloader, effective_resource_kind, fallback_page_contexts, media_file_video_signature, preflight_media_resource, rank_media_candidates
 from .media import MediaProcessingError, extract_video_clip, probe_duration, probe_media_integrity
@@ -2620,6 +2621,8 @@ ASSISTANT_CAPABILITIES = {
         "outputs": ["media.mp4", "transcript.json", "visual_index.json", "note.md", "qa.md", "bundle.zip"],
     },
     "non_goals": ["tab_recording", "drm_bypass", "progress_spoofing", "auto_answering"],
+    "media_adapter_contract_version": MEDIA_ADAPTER_CONTRACT_VERSION,
+    "media_adapters": media_adapter_descriptors(),
 }
 
 
@@ -2667,6 +2670,7 @@ def health_payload() -> dict:
         "data_paths": data_paths_payload(),
         "model_provider_presets": MODEL_PROVIDER_PRESETS,
         "assistant_capabilities": ASSISTANT_CAPABILITIES,
+        "media_adapters": media_adapter_descriptors(),
     }
 
 
