@@ -73,6 +73,8 @@ class TaskManagementApiTests(unittest.TestCase):
         restored = get_task(task.id)
         self.assertEqual(restored.checkpoint, "media_ready")
         self.assertEqual(restored.checkpoint_updated_at, "2026-08-21T00:00:00+00:00")
+        payload = self.client.get(f"/api/tasks/{task.id}").json()["task"]
+        self.assertEqual(payload["recovery"]["checkpoint"], "media_ready")
 
         no_media = create_task("current_page", "Needs recapture", page_url="https://example.com/video")
         update_task(no_media.id, status="failed", phase="failed", error_code="no_media_found")

@@ -1632,6 +1632,8 @@ def diagnostic_recovery_profile(task: TaskRecord) -> dict:
         "selected_kind": selected_kind,
         "selected_source": selected_source,
         "selected_url": selected_url,
+        "checkpoint": task.checkpoint,
+        "checkpoint_updated_at": task.checkpoint_updated_at,
         "attempt_count": len(task.download_attempts),
         "latest_attempt": {
             "strategy": latest_attempt.strategy,
