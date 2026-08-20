@@ -811,7 +811,7 @@ function updateOnboardingStatus(data = lastHealthData) {
   const modelReady = Boolean(data?.llm_model_configured || els.llmApiKey?.value?.trim() || desktopCredentialKey);
   const states = {
     backend: [backendReady, els.onboardingBackendStatus, backendReady ? "已连接" : data?.ok ? "需要安装媒体组件" : "未连接"],
-    extension: [extensionReady, els.onboardingExtensionStatus, extensionReady ? "已连接" : extensionConnected ? "已连接旧版，需重新加载" : "等待扩展连接"],
+    extension: [extensionReady, els.onboardingExtensionStatus, extensionReady ? "已连接" : extensionConnected ? "已连接旧版，需重新加载" : "可稍后配置"],
     model: [modelReady, els.onboardingModelStatus, modelReady ? (data?.default_llm_provider || "已配置") : "可稍后配置"]
   };
   Object.entries(states).forEach(([name, [ready, node, label]]) => {
@@ -4455,10 +4455,10 @@ function startupReadinessItems(data = lastHealthData) {
       detail: hasHealthDataPaths(data) ? data.data_paths.root : "任务、上传和缓存应落在项目 data 目录。"
     },
     {
-      state: "active",
+      state: data?.extension_connected && extensionVersionMatches(data) ? "pass" : connected ? "warn" : "wait",
       label: "浏览器扩展",
-      value: "手动加载",
-      detail: `${projectPath}\\extension`
+      value: data?.extension_connected && extensionVersionMatches(data) ? "已连接" : "可选配置",
+      detail: data?.extension_connected && extensionVersionMatches(data) ? "当前页视频可以从扩展侧栏交接。" : `${projectPath}\\extension；本地视频和链接不需要扩展。`
     },
     {
       state: "ready",

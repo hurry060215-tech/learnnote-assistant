@@ -750,7 +750,7 @@
         <header>
           <div>
             <h2 id="onboardingTitle">欢迎使用 LearnNote</h2>
-            <p>完成下面三项，就可以从当前视频生成学习笔记。</p>
+            <p>先确认本地服务即可开始；浏览器扩展和 AI 模型按需配置。</p>
           </div>
           <button id="closeOnboardingButton" class="icon-button" type="button" aria-label="关闭引导" title="关闭引导">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19"/></svg>
@@ -763,17 +763,17 @@
             <em id="onboardingBackendStatus">正在检查</em>
             <button id="onboardingRetryButton" type="button">重新检查</button>
           </article>
-          <article data-onboarding-step="extension">
-            <span class="onboarding-step-icon" aria-hidden="true">2</span>
-            <div><strong>连接浏览器扩展</strong><small>用于读取当前播放页</small></div>
-            <em id="onboardingExtensionStatus">等待连接</em>
-            <button id="onboardingExtensionButton" type="button">安装或修复</button>
-          </article>
-          <article data-onboarding-step="model">
-            <span class="onboarding-step-icon" aria-hidden="true">3</span>
-            <div><strong>配置 AI 模型</strong><small>用于生成笔记和理解画面</small></div>
-            <em id="onboardingModelStatus">等待配置</em>
-            <button id="onboardingModelButton" type="button">去配置</button>
+            <article data-onboarding-step="extension">
+              <span class="onboarding-step-icon" aria-hidden="true">2</span>
+              <div><strong>连接浏览器扩展（可选）</strong><small>用于读取当前播放页；本地视频和链接不需要它</small></div>
+              <em id="onboardingExtensionStatus">稍后配置</em>
+              <button id="onboardingExtensionButton" type="button">安装或修复</button>
+            </article>
+            <article data-onboarding-step="model">
+              <span class="onboarding-step-icon" aria-hidden="true">3</span>
+              <div><strong>配置 AI 模型（可选）</strong><small>没有 API Key 也可以先用本地转写和降级笔记</small></div>
+              <em id="onboardingModelStatus">稍后配置</em>
+              <button id="onboardingModelButton" type="button">去配置</button>
           </article>
         </div>
         <footer>
@@ -847,7 +847,7 @@
       </section>
     </div>
 
-<script src="/web/app.js?v=20260801-release-notes"></script>
-    <script src="/web/editorial.js?v=20260724-ui3"></script>
+<script src="/web/app.js?v=20260821-onboarding1"></script>
+    <script src="/web/editorial.js?v=20260821-onboarding1"></script>
   </body>
 </html>
