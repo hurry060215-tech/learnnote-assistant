@@ -377,6 +377,8 @@ class TaskRecord(BaseModel):
     error_detail: str = ""
     failed_phase: str = ""
     retry_count: int = 0
+    checkpoint: str = ""
+    checkpoint_updated_at: str = ""
     cancel_requested: bool = False
     cancel_requested_at: str = ""
     cancelled_at: str = ""

@@ -12,7 +12,7 @@ from urllib.parse import urldefrag
 from .config import BACKEND_ORIGIN, LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
 from .downloader import DownloadError, MediaDownloader, classify_resource, effective_resource_kind, infer_manifest_url_from_fragment
 from .media import build_frame_grids, extract_audio, extract_embedded_subtitle, extract_frames, extract_frames_adaptive, normalize_video, probe_duration, probe_media_integrity
-from .models import ActiveVideoInfo, BrowserSubtitleCue, CurrentPageTaskRequest, DownloadAttempt, FrameGrid, FrameSample, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow
+from .models import ActiveVideoInfo, BrowserSubtitleCue, CurrentPageTaskRequest, DownloadAttempt, FrameGrid, FrameSample, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow, now_iso
 from .reliability import calculate_evidence_coverage, current_page_source_identity, evidence_coverage_markdown, validate_source_identity
 from .storage import get_task, mark_task_cancelled, save_task, task_dir, update_task, write_json
 from .source_input import clean_task_title
@@ -66,6 +66,11 @@ class TaskCancelled(Exception):
 
 class ContentMismatchError(Exception):
     pass
+
+
+def mark_checkpoint(task_id: str, name: str) -> None:
+    """Persist the last durable artifact boundary for restart/recovery UX."""
+    update_task(task_id, checkpoint=name, checkpoint_updated_at=now_iso())
 
 
 def validate_summary_evidence(transcript: TranscriptResult, frames: list[Path], media_duration: float) -> None:
@@ -1079,6 +1084,7 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
             request.title = resolved_title
             update_task(task_id, title=resolved_title)
         remember_reusable_media(task_id, media_path)
+        mark_checkpoint(task_id, "media_downloaded")
         if selected:
             update_task(task_id, selected_resource=redacted_resource(selected))
         if request.mode == "download_only":
@@ -1120,6 +1126,7 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
                 transcript_path=transcript_path,
                 download_attempts=downloader.attempts,
             )
+            mark_checkpoint(task_id, "download_ready")
             return
         subtitle_path = maybe_download_page_subtitle(downloader, request)
         update_task(task_id, download_attempts=downloader.attempts)
@@ -1229,6 +1236,7 @@ def _process_video_file(
     normalize_video(input_path, normalized)
     _check_cancel(task_id)
     update_task(task_id, media_path=str(normalized))
+    mark_checkpoint(task_id, "media_ready")
     audio_warning = ""
     transcript: TranscriptResult | None = None
     browser_fallback_transcript = transcript_from_browser_subtitles(browser_subtitles or [])
@@ -1325,6 +1333,7 @@ def _process_video_file(
     transcript_path = work_dir / "transcript.json"
     transcript_path.write_text(transcript.model_dump_json(indent=2), encoding="utf-8")
     update_task(task_id, transcript_path=str(transcript_path))
+    mark_checkpoint(task_id, "transcript_ready")
 
     frames: list[Path] = []
     grids = []
@@ -1387,6 +1396,7 @@ def _process_video_file(
     record.visual_windows = visual_windows
     record.visual_index_path = str(visual_index_path)
     save_task(record)
+    mark_checkpoint(task_id, "visual_ready")
 
     if asr_error and not has_visual_summary_evidence(frames, media_duration):
         update_task(
@@ -1484,6 +1494,7 @@ def _process_video_file(
             message="任务完成，但未生成视觉切片" if frame_extraction_warning else "任务完成",
             **final_fields,
         )
+        mark_checkpoint(task_id, "note_ready")
 
 
 def read_transcript(task_id: str) -> dict:

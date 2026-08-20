@@ -65,6 +65,15 @@ class TaskManagementApiTests(unittest.TestCase):
         )
         self.assertEqual(get_task(active.id).status, "cancelled")
 
+    def test_task_checkpoint_defaults_are_backward_compatible(self) -> None:
+        task = create_task("local", "Checkpoint task")
+        self.assertEqual(task.checkpoint, "")
+        self.assertEqual(task.checkpoint_updated_at, "")
+        update_task(task.id, checkpoint="media_ready", checkpoint_updated_at="2026-08-21T00:00:00+00:00")
+        restored = get_task(task.id)
+        self.assertEqual(restored.checkpoint, "media_ready")
+        self.assertEqual(restored.checkpoint_updated_at, "2026-08-21T00:00:00+00:00")
+
         no_media = create_task("current_page", "Needs recapture", page_url="https://example.com/video")
         update_task(no_media.id, status="failed", phase="failed", error_code="no_media_found")
         retry = self.client.post(f"/api/tasks/{no_media.id}/retry")
