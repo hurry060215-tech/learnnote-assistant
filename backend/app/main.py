@@ -26,7 +26,7 @@ from . import API_VERSION, APP_VERSION, TASK_SCHEMA_VERSION, UX_PROTOCOL_VERSION
 from .config import BACKEND_ORIGIN, DATA_DIR, DEPLOYMENT_MODE, LLM_API_KEY, LLM_BASE_URL, LLM_MAX_RETRIES, LLM_MODEL, LLM_REQUEST_TIMEOUT_SECONDS, MODEL_CACHE_DIR, PUBLIC_DEPLOYMENT, PUBLIC_PASSWORD, PUBLIC_USERNAME, STATIC_DIR, TASK_DIR, TEMP_DIR, UPLOAD_DIR, WEB_DIR, ensure_dirs
 from .downloader import MediaDownloader, effective_resource_kind, fallback_page_contexts, media_file_video_signature, preflight_media_resource, rank_media_candidates
 from .media import MediaProcessingError, extract_video_clip, probe_duration, probe_media_integrity
-from .models import CurrentPageTaskRequest, MediaIntegrity, MediaPreflightRequest, MediaPreflightResult, PagePreflightRequest, RerunFromMediaRequest, ResourceCandidate, SourceInputRequest, StorageCleanupRequest, TaskOptions, TaskQuestionRequest, TaskRecord, now_iso
+from .models import CurrentPageTaskRequest, EvidenceCoverage, MediaIntegrity, MediaPreflightRequest, MediaPreflightResult, PagePreflightRequest, RerunFromMediaRequest, ResourceCandidate, SourceInputRequest, StorageCleanupRequest, TaskOptions, TaskQuestionRequest, TaskRecord, now_iso
 from .processor import browser_subtitle_text_is_player_ui, enrich_resource_candidates_with_active_video, process_current_page_task, process_local_video_task, read_note, read_transcript, read_visual_index, redacted_request_dump, redacted_resource
 from .reliability import current_page_source_identity, local_source_identity
 from .runtime import ffmpeg_bin, ffprobe_bin
@@ -4000,6 +4000,83 @@ def create_from_existing_media(
         subtitle_source,
     )
     return {"task_id": task.id, "task": task_payload(task), "source_task_id": source.id}
+
+
+@app.post("/api/tasks/{task_id}/resume")
+def resume_task_from_checkpoint(
+    task_id: str,
+    background_tasks: BackgroundTasks,
+    request: RerunFromMediaRequest | TaskOptions | None = Body(default=None),
+) -> dict:
+    try:
+        source = get_task(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail={"code": "task_not_found", "message": "任务不存在"}) from exc
+    if source.status in {"queued", "running", "cancelling"}:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "task_still_running", "message": "任务已经在处理中。"},
+        )
+    media_path = task_media_path(source)
+    if not media_path or not media_path.is_file() or media_path.stat().st_size <= 0:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "media_not_found", "message": "没有找到可恢复的本地媒体，请重新从当前页面发起。"},
+        )
+    parsed_options = merge_task_options(source.options, rerun_options_from_body(request))
+    task = update_task(
+        task_id,
+        status="queued",
+        phase="queued",
+        progress=0,
+        message=f"从恢复检查点继续：{source.checkpoint or 'media_ready'}",
+        error_code="",
+        error_detail="",
+        failed_phase="",
+        cancel_requested=False,
+        cancel_requested_at="",
+        cancelled_at="",
+        note_path="",
+        transcript_path="",
+        audio_path="",
+        visual_index_path="",
+        evidence_coverage_path="",
+        evidence_coverage=EvidenceCoverage(),
+        frame_grids=[],
+        visual_windows=[],
+        summary_source="",
+        summary_warning="",
+        summary_diagnostics_path="",
+        summary_diagnostics={},
+        options=parsed_options.model_copy(update={"llm_api_key": None}),
+        retry_count=source.retry_count + 1,
+    )
+    source_transcript_source = ""
+    try:
+        source_transcript_source = str(read_transcript(source.id).get("source") or "")
+    except Exception:
+        source_transcript_source = ""
+    source_subtitle_path = Path(source.subtitle_path) if source.subtitle_path else None
+    if source_subtitle_path and not source_subtitle_path.exists():
+        source_subtitle_path = None
+    source_browser_subtitles = source.browser_subtitles
+    subtitle_source = "page-subtitle"
+    if source_transcript_source == "browser-subtitle" and source_browser_subtitles:
+        source_subtitle_path = None
+    elif source_transcript_source == "browser-subtitle" and source_subtitle_path:
+        subtitle_source = "browser-subtitle"
+    background_tasks.add_task(
+        process_local_video_task,
+        task.id,
+        media_path,
+        task.title,
+        parsed_options,
+        source.page_url,
+        source_browser_subtitles,
+        source_subtitle_path,
+        subtitle_source,
+    )
+    return {"task_id": task.id, "resumed": True, "task": task_payload(task)}
 
 
 @app.get("/api/tasks")

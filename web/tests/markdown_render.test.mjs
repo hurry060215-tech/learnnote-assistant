@@ -2500,6 +2500,19 @@ assert.equal(context.canContinueFromDownloadedMedia({
   media_path: "D:/media.mp4",
   note_path: ""
 }), false);
+assert.equal(context.canResumeFromCheckpoint({
+  id: "task-checkpoint",
+  status: "failed",
+  checkpoint: "media_ready",
+  media_path: "D:/media.mp4",
+  note_path: ""
+}), true);
+assert.equal(context.canResumeFromCheckpoint({
+  id: "task-no-checkpoint",
+  status: "failed",
+  media_path: "D:/media.mp4",
+  note_path: ""
+}), false);
 assert.equal(context.canContinueFromDownloadedMedia({
   id: "task-processing-failed",
   status: "failed",

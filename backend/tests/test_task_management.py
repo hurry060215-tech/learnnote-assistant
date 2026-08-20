@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from app import APP_VERSION, UX_PROTOCOL_VERSION
 from app.main import app
-from app.models import CurrentPageTaskRequest
+from app.models import CurrentPageTaskRequest, MediaIntegrity
 from app.processor import process_page_text_task
 from app.storage import _directory_size, create_task, get_task, update_task
 
@@ -94,6 +94,29 @@ class TaskManagementApiTests(unittest.TestCase):
         deleted = self.client.delete(f"/api/tasks/{finished.id}")
         self.assertEqual(deleted.status_code, 200)
         self.assertFalse((self.paths["TASK_DIR"] / finished.id).exists())
+
+    def test_resume_reuses_existing_task_and_media_checkpoint(self) -> None:
+        source = create_task("local", "Recoverable lesson")
+        media = self.paths["TASK_DIR"] / source.id / "media.mp4"
+        media.write_bytes(b"recoverable-media")
+        update_task(
+            source.id,
+            status="failed",
+            phase="failed",
+            progress=100,
+            media_path=str(media),
+            checkpoint="media_ready",
+            error_code="processing_failed",
+            error_detail="interrupted",
+        )
+        with patch("app.main.validate_local_upload_file", return_value=MediaIntegrity(status="ready", sha256="recover")), patch("app.main.process_local_video_task") as process:
+            resumed = self.client.post(f"/api/tasks/{source.id}/resume", json={})
+        self.assertEqual(resumed.status_code, 200, resumed.text)
+        self.assertTrue(resumed.json()["resumed"])
+        self.assertEqual(resumed.json()["task_id"], source.id)
+        self.assertEqual(resumed.json()["task"]["status"], "queued")
+        self.assertEqual(resumed.json()["task"]["checkpoint"], "media_ready")
+        process.assert_called_once()
 
     def test_directory_size_tolerates_disappearing_directory(self) -> None:
         artifact = self.paths["TASK_DIR"] / "stable.bin"

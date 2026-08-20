@@ -5093,7 +5093,7 @@ function renderTasks() {
           <button type="button" data-task-action="open">${task.note_path ? "查看笔记" : "查看详情"}</button>
           ${canCreateNoteVersion(task) ? `<button type="button" data-task-action="version">新建笔记版本</button>` : ""}
           ${isActiveTask(task) ? `<button type="button" data-task-action="cancel">停止</button>` : ""}
-          ${["failed", "cancelled"].includes(task.status) ? `<button type="button" data-task-action="retry">重试</button>` : ""}
+          ${["failed", "cancelled"].includes(task.status) ? `<button type="button" data-task-action="retry">${canResumeFromCheckpoint(task) ? "从检查点继续" : "重试"}</button>` : ""}
           ${task.awaiting_confirmation || ["success", "failed", "cancelled"].includes(task.status) ? `<button type="button" data-task-action="delete">${task.awaiting_confirmation ? "放弃并删除" : "删除"}</button>` : ""}
         </div>
       </div>
@@ -5118,7 +5118,10 @@ async function runTaskAction(taskId, action) {
     await fetchJson(apiUrl(`/api/tasks/${encodeURIComponent(taskId)}/cancel`), { method: "POST" });
   } else if (action === "retry") {
     try {
-      const data = await fetchJson(apiUrl(`/api/tasks/${encodeURIComponent(taskId)}/retry`), { method: "POST" });
+      const endpoint = canResumeFromCheckpoint(task)
+        ? taskResumeUrl(taskId)
+        : apiUrl(`/api/tasks/${encodeURIComponent(taskId)}/retry`);
+      const data = await fetchJson(endpoint, { method: "POST" });
       if (data.task_id) {
         selectTask(data.task_id);
         taskStatusFilter = "all";
@@ -5415,6 +5418,10 @@ function taskRerunUrl(taskId) {
   return apiUrl(`/api/tasks/${encodeURIComponent(taskId)}/rerun-from-media`);
 }
 
+function taskResumeUrl(taskId) {
+  return apiUrl(`/api/tasks/${encodeURIComponent(taskId)}/resume`);
+}
+
 function taskQaUrl(taskId) {
   return apiUrl(`/api/tasks/${encodeURIComponent(taskId)}/qa`);
 }
@@ -5503,6 +5510,16 @@ function canContinueFromDownloadedMedia(task) {
   const finished = task?.status === "success" || task?.status === "failed";
   const reuse = task?.reuse || {};
   return Boolean(task?.id && finished && !task.note_path && reuse.rerun_from_media_ready);
+}
+
+function canResumeFromCheckpoint(task) {
+  return Boolean(
+    task?.id
+    && task.status === "failed"
+    && task.checkpoint
+    && !task.note_path
+    && (task.media_path || task.source_media_path || task.reuse?.media_available)
+  );
 }
 
 function downloadOnlyEmptyNoteHtml(task) {
