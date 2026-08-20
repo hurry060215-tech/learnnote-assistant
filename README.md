@@ -304,24 +304,17 @@ site/         GitHub Pages 宣传页面
 
 ## 🛣 Roadmap
 
-### 正在完善
+当前 12–18 个月的唯一权威路线图位于：
 
-- [x] Obsidian 桌面插件：任务导入、增量同步和课程问答
-- [ ] Chrome / Edge 扩展商店发布与自动更新
-- [ ] 更稳定的 Bilibili、YouTube、学习通真实页面适配
-- [ ] 长视频断点恢复、模型重试和任务迁移
-- [ ] macOS 桌面客户端构建与签名
+[LearnNote 本地优先产品路线图 #52](https://github.com/hurry060215-tech/learnnote-assistant/issues/52)
 
-### 计划能力
+路线图按 `v0.1.54`、`v0.2`、`v0.3`、`v0.4` 和 `v1.0` 分阶段维护，包含 18 个 Epic、依赖关系、验收标准和隐私边界。README 只保留产品方向摘要，避免与 GitHub Issue 产生两份失同步的任务清单。
 
-- [ ] Notion 集成与数据库属性映射
-- [ ] PDF、Markdown 与普通网页资料导入
-- [ ] 视频笔记与文档资料的统一检索 / RAG
-- [ ] 概念关系与知识图谱视图
-- [ ] 基于笔记和复习记录生成学习计划
-- [ ] 可分享的脱敏学习资料包
+- 当前核心方向：可信发布、首次使用、可恢复任务、来源适配、证据质量和本地数据安全。
+- 中期方向：本地资料库、PDF/Markdown/网页导入、引用式 RAG 和学习复习闭环。
+- 长期方向：Obsidian/Notion/脱敏资料包生态，以及 macOS 与更广泛的本地部署。
 
-Roadmap 表示开发方向，不代表当前发布版本已经支持。请通过 [Issues](https://github.com/hurry060215-tech/learnnote-assistant/issues) 提交可复现问题或讨论优先级。
+路线图是开发方向，不代表当前发布版本已经支持。请通过 [Issues](https://github.com/hurry060215-tech/learnnote-assistant/issues) 提交可复现问题或讨论优先级。
 
 ## 隐私与数据
 
