@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import json
 import re
-import shutil
 import time
 from pathlib import Path
 from urllib.parse import urldefrag
 
-from .asr_pipeline import ASR_FAILURE_SOURCES, asr_failure_detail, transcribe_with_task_progress as _asr_transcribe_with_task_progress, use_remote_asr
+from .asr_pipeline import asr_failure_detail, transcribe_with_task_progress as _asr_transcribe_with_task_progress, use_remote_asr
 from .downloader import DownloadError, MediaDownloader, classify_resource, effective_resource_kind, infer_manifest_url_from_fragment
 from .media import build_frame_grids, extract_audio, extract_embedded_subtitle, extract_frames_adaptive, normalize_video, probe_media_integrity
 from .models import ActiveVideoInfo, BrowserSubtitleCue, CurrentPageTaskRequest, DownloadAttempt, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, now_iso
@@ -32,12 +31,12 @@ from .summarizer import build_visual_windows, summarize_page_text_with_diagnosti
 from .summary_diagnostics import build_summary_diagnostics
 from .text_cleanup import correct_transcript_terms
 from .transcriber import transcribe_audio, transcribe_audio_openai_compatible, transcript_from_subtitle
+from .transcript_pipeline import prepare_transcript as _prepare_transcript, TranscriptArtifacts
 from .visual_pipeline import extract_visual_evidence as _extract_visual_evidence, write_visual_index
 
 
 SAFE_RESPONSE_HEADER_NAMES = {"content-type", "content-disposition", "content-length", "content-range", "accept-ranges"}
 REMOTE_ASR_TRANSCRIBERS = {"openai", "openai-compatible", "openai-compatible-asr", "groq", "groq-asr"}
-ASR_FAILURE_SOURCES = {"missing-faster-whisper", "faster-whisper-error"}
 PLAYER_UI_SUBTITLE_MARKERS = (
     "字幕设置", "字幕大小", "字幕颜色", "描边方式", "默认位置", "背景不透明度",
     "恢复默认设置", "关闭弹幕", "登录可享", "原声翻译体验反馈", "添加字幕",
@@ -87,6 +86,39 @@ def extract_visual_evidence(
         frame_anchor_timestamps,
         extract_frames_fn=extract_frames_adaptive,
         build_grids_fn=build_frame_grids,
+    )
+
+
+def prepare_transcript(
+    task_id: str,
+    input_path: Path,
+    normalized_path: Path,
+    integrity,
+    options: TaskOptions,
+    subtitle_path: Path | None,
+    browser_subtitles: list[BrowserSubtitleCue] | None,
+    subtitle_source: str,
+) -> TranscriptArtifacts:
+    return _prepare_transcript(
+        task_id,
+        input_path,
+        normalized_path,
+        integrity,
+        options,
+        subtitle_path,
+        browser_subtitles,
+        subtitle_source,
+        parse_subtitle_or_none=parse_subtitle_or_none,
+        browser_subtitles_are_reliable=browser_subtitles_are_reliable,
+        extract_embedded_subtitle=extract_embedded_subtitle,
+        extract_audio=extract_audio,
+        transcribe_with_task_progress=transcribe_with_task_progress,
+        transcript_from_browser_subtitles=transcript_from_browser_subtitles,
+        write_browser_subtitles_srt=write_browser_subtitles_srt,
+        correct_transcript_terms=correct_transcript_terms,
+        use_remote_asr=use_remote_asr,
+        asr_failure_detail=asr_failure_detail,
+        calculate_evidence_coverage=calculate_evidence_coverage,
     )
 PLAYER_UI_SUBTITLE_SIGNATURES = (
     "B站自研的AI原声翻译功能", "本视频开启原声翻译时不支持关闭字幕",
@@ -912,102 +944,18 @@ def _process_video_file(
     _check_cancel(task_id)
     update_task(task_id, media_path=str(normalized))
     mark_checkpoint(task_id, "media_ready")
-    audio_warning = ""
-    transcript: TranscriptResult | None = None
-    browser_fallback_transcript = transcript_from_browser_subtitles(browser_subtitles or [])
-
-    if subtitle_path:
-        owned_subtitle_path = subtitle_path
-        try:
-            if subtitle_path.resolve().parent != work_dir.resolve():
-                owned_subtitle_path = work_dir / subtitle_path.name
-                if owned_subtitle_path.resolve() != subtitle_path.resolve():
-                    shutil.copy2(subtitle_path, owned_subtitle_path)
-        except OSError:
-            owned_subtitle_path = subtitle_path
-        update_task(task_id, subtitle_path=str(owned_subtitle_path), message="已检测到页面字幕，正在解析字幕")
-        transcript = parse_subtitle_or_none(owned_subtitle_path, source=subtitle_source or "page-subtitle")
-
-    if transcript is None and browser_subtitles and browser_subtitles_are_reliable(browser_subtitles, integrity.duration):
-        update_task(task_id, message="已读取完整的浏览器播放器字幕，正在生成带时间戳转写")
-        transcript = transcript_from_browser_subtitles(browser_subtitles)
-        update_task(task_id, subtitle_path=write_browser_subtitles_srt(task_id, transcript))
-
-    if transcript is None:
-        embedded_subtitle = extract_embedded_subtitle(input_path, work_dir / "embedded_subtitle.srt")
-        if embedded_subtitle:
-            update_task(task_id, subtitle_path=str(embedded_subtitle), message="已检测到视频内嵌字幕，正在解析字幕")
-            transcript = parse_subtitle_or_none(embedded_subtitle, source="embedded-subtitle")
-
-    if integrity.status in {"video_only", "audio_only"}:
-        blocked_coverage = calculate_evidence_coverage(
-            integrity,
-            transcript or TranscriptResult(source="missing-subtitle"),
-            [],
-            visual_enabled=options.visual_understanding,
-        )
-        blocked_path = write_json(
-            task_id,
-            "evidence_coverage.json",
-            blocked_coverage.model_dump(mode="json"),
-        )
-        update_task(
-            task_id,
-            evidence_coverage=blocked_coverage,
-            evidence_coverage_path=str(blocked_path),
-        )
-        raise ContentMismatchError(
-            f"Single-track media ({integrity.status}) cannot produce a composite video note; both video and audio tracks are required."
-        )
-
-    audio_path: Path | None = None
-    if transcript is None:
-        update_task(task_id, phase="processing_video", progress=38, message="正在提取音频")
-        audio_path = work_dir / "audio.wav"
-        try:
-            extract_audio(normalized, audio_path)
-            _check_cancel(task_id)
-            update_task(task_id, audio_path=str(audio_path))
-        except Exception as exc:
-            audio_path = None
-            audio_warning = f"未能提取可转写音轨：{exc}；已继续使用画面切片生成笔记。"
-
-        update_task(
-            task_id,
-            phase="transcribing",
-            progress=52,
-            message="正在使用远程 ASR 转写音频" if use_remote_asr(options) else "正在加载本地转写模型并生成字幕，首次使用会稍久",
-        )
-        if audio_path:
-            transcript = transcribe_with_task_progress(task_id, audio_path, options, integrity.duration)
-            _check_cancel(task_id)
-        else:
-            transcript = TranscriptResult(source="no-audio", warning=audio_warning)
-
-    if (
-        browser_fallback_transcript.segments
-        and (
-            transcript is None
-            or not transcript.segments
-            or transcript.source in ASR_FAILURE_SOURCES | {"no-audio"}
-        )
-    ):
-        transcript = browser_fallback_transcript.model_copy(
-            update={
-                "warning": "音轨转写不可用，已退回到浏览器当前可见字幕；内容可能不完整。"
-            }
-        )
-        update_task(task_id, subtitle_path=write_browser_subtitles_srt(task_id, transcript))
-
-    if transcript is None:
-        transcript = TranscriptResult(source="no-audio", warning=audio_warning)
-    transcript = correct_transcript_terms(transcript)
-    asr_error = asr_failure_detail(transcript)
-    if asr_error:
-        transcript = transcript.model_copy(update={"segments": [], "full_text": ""})
-    transcript_path = work_dir / "transcript.json"
-    transcript_path.write_text(transcript.model_dump_json(indent=2), encoding="utf-8")
-    update_task(task_id, transcript_path=str(transcript_path))
+    transcript_artifacts = prepare_transcript(
+        task_id,
+        input_path,
+        normalized,
+        integrity,
+        options,
+        subtitle_path,
+        browser_subtitles,
+        subtitle_source,
+    )
+    transcript = transcript_artifacts.transcript
+    asr_error = transcript_artifacts.asr_error
     mark_checkpoint(task_id, "transcript_ready")
 
     media_duration = integrity.duration
