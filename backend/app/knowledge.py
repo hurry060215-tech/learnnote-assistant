@@ -170,6 +170,28 @@ def search_evidence(query: str = "", limit: int = 12) -> list[dict[str, object]]
     return result
 
 
+def evidence_for_task(task_id: str, limit: int = 200) -> list[dict[str, object]]:
+    if not str(task_id or "").strip():
+        return []
+    connection = _connect()
+    try:
+        rows = connection.execute(
+            "SELECT * FROM source_evidence WHERE task_id = ? ORDER BY created_at ASC LIMIT ?",
+            (str(task_id or "")[:128], max(1, min(int(limit or 200), 500))),
+        ).fetchall()
+    finally:
+        connection.close()
+    return [
+        {
+            "evidence_id": row["evidence_id"], "schema_version": int(row["schema_version"]),
+            "source_type": row["source_type"], "title": row["title"], "source_uri": row["source_uri"],
+            "locator": row["locator"], "text": row["text"], "task_id": row["task_id"],
+            "metadata": json.loads(row["metadata_json"] or "{}"),
+        }
+        for row in rows
+    ]
+
+
 def answer_from_evidence(question: str, limit: int = 6) -> dict[str, object]:
     hits = search_evidence(question, limit)
     if not hits:

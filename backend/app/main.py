@@ -29,7 +29,7 @@ from .config import BACKEND_ORIGIN, DATA_DIR, DEPLOYMENT_MODE, LLM_API_KEY, LLM_
 from .downloader import MediaDownloader, effective_resource_kind, fallback_page_contexts, media_file_video_signature, preflight_media_resource, rank_media_candidates
 from .media import MediaProcessingError, extract_video_clip, probe_duration, probe_media_integrity
 from .library import backup_library, duplicate_groups, library_status, rebuild_index, restore_library, search_library
-from .knowledge import add_evidence, answer_from_evidence, extract_import_text, search_evidence
+from .knowledge import add_evidence, answer_from_evidence, evidence_for_task, extract_import_text, search_evidence
 from .integrations import integration_manifest, notion_export_payload
 from .models import CurrentPageTaskRequest, EvidenceCoverage, MediaIntegrity, MediaPreflightRequest, MediaPreflightResult, PagePreflightRequest, RerunFromMediaRequest, ResourceCandidate, SourceEvidence, SourceInputRequest, StorageCleanupRequest, StudyCard, StudyReviewRequest, TaskOptions, TaskQuestionRequest, TaskRecord, now_iso
 from .observability import read_task_events, redacted_support_manifest
@@ -4272,6 +4272,16 @@ def api_study_proposals(payload: dict | None = Body(default=None)) -> dict:
         except ValidationError:
             continue
     return {"proposals": [card.model_dump(mode="json") for card in propose_cards(evidence, int(body.get("limit") or 20))]}
+
+
+@app.post("/api/tasks/{task_id}/study-proposals")
+def api_task_study_proposals(task_id: str, limit: int = 20) -> dict:
+    try:
+        task = get_task(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Task not found") from exc
+    evidence = [SourceEvidence.model_validate(item) for item in evidence_for_task(task.id)]
+    return {"task_id": task.id, "proposals": [card.model_dump(mode="json") for card in propose_cards(evidence, limit)]}
 
 
 @app.post("/api/study/cards")
