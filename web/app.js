@@ -501,6 +501,7 @@ const els = {
   notionExportButton: document.querySelector("#notionExportButton"),
   diagnosticsButton: document.querySelector("#diagnosticsButton"),
   supportPackageButton: document.querySelector("#supportPackageButton"),
+  studyProposalButton: document.querySelector("#studyProposalButton"),
   visualWindowsButton: document.querySelector("#visualWindowsButton"),
   manifestButton: document.querySelector("#manifestButton"),
   subtitlesButton: document.querySelector("#subtitlesButton"),
@@ -5594,6 +5595,35 @@ async function reviewStudyCard(cardId, rating) {
   }
 }
 
+async function generateStudyCardsFromTask(taskId) {
+  if (!taskId || !els.exportStatus) return;
+  els.studyProposalButton?.setAttribute?.("disabled", "disabled");
+  els.exportStatus.textContent = "正在根据时间戳证据生成复习卡片候选…";
+  try {
+    const result = await fetchJson(apiUrl(`/api/tasks/${encodeURIComponent(taskId)}/study-proposals?limit=8`), { method: "POST" });
+    const proposals = Array.isArray(result?.proposals) ? result.proposals : [];
+    if (!proposals.length) {
+      els.exportStatus.textContent = "当前任务没有足够的文字证据，未生成卡片。";
+      return;
+    }
+    const selected = proposals.filter(card => window.confirm(`确认加入复习卡片？\n\n${card.front}\n${String(card.back || "").slice(0, 180)}`));
+    if (!selected.length) {
+      els.exportStatus.textContent = "已取消；候选卡片没有写入复习库。";
+      return;
+    }
+    await fetchJson(apiUrl("/api/study/cards"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cards: selected })
+    });
+    els.exportStatus.textContent = `已加入 ${selected.length} 张复习卡片；可在设置中查看到期卡片。`;
+  } catch (error) {
+    els.exportStatus.textContent = error?.message || "复习卡片生成失败。";
+  } finally {
+    els.studyProposalButton?.removeAttribute?.("disabled");
+  }
+}
+
 function taskResumeUrl(taskId) {
   return apiUrl(`/api/tasks/${encodeURIComponent(taskId)}/resume`);
 }
@@ -8357,6 +8387,7 @@ async function renderDetail() {
     if (els.notionExportButton) els.notionExportButton.disabled = true;
     els.diagnosticsButton.disabled = true;
     if (els.supportPackageButton) els.supportPackageButton.disabled = true;
+    if (els.studyProposalButton) els.studyProposalButton.disabled = true;
     if (els.visualWindowsButton) els.visualWindowsButton.disabled = true;
     if (els.manifestButton) els.manifestButton.disabled = true;
     if (els.subtitlesButton) els.subtitlesButton.disabled = true;
@@ -8382,6 +8413,7 @@ async function renderDetail() {
   if (els.notionExportButton) els.notionExportButton.disabled = !hasNote;
   els.diagnosticsButton.disabled = !hasTaskDiagnostics(task);
   if (els.supportPackageButton) els.supportPackageButton.disabled = !task?.id;
+  if (els.studyProposalButton) els.studyProposalButton.disabled = task.status !== "success" || !task.note_path;
   if (els.visualWindowsButton) els.visualWindowsButton.disabled = !hasVisualWindowExport(task);
   if (els.manifestButton) els.manifestButton.disabled = !hasTaskBundle(task);
   if (els.subtitlesButton) els.subtitlesButton.disabled = !hasExportableSubtitle(task);
@@ -9036,6 +9068,7 @@ if (els.manifestButton) {
 }
 els.diagnosticsButton.onclick = () => exportSelectedTask("diagnostics", els.diagnosticsButton);
 els.supportPackageButton?.addEventListener?.("click", () => exportSelectedTask("support-package", els.supportPackageButton));
+els.studyProposalButton?.addEventListener?.("click", () => generateStudyCardsFromTask(selectedTaskId));
 if (els.visualWindowsButton) {
   els.visualWindowsButton.onclick = () => exportSelectedTask("visual-windows", els.visualWindowsButton);
 }
