@@ -720,6 +720,8 @@ body {
   --appearance-control-height: 42px;
   --appearance-row-height: 66px;
   --appearance-space: 14px;
+  --ln-ui-scale: 1;
+  --ln-text-scale: 1;
   --ln-accent: var(--appearance-accent);
   --ln-accent-dark: var(--appearance-accent-strong);
   --ln-soft: var(--appearance-accent-soft);
@@ -763,9 +765,9 @@ body[data-color-theme="graphite"] {
   --appearance-focus: rgba(88, 107, 116, .24);
 }
 
-body[data-text-size="compact"] { --ln-type-scale: .94; }
-body[data-text-size="standard"] { --ln-type-scale: 1; }
-body[data-text-size="large"] { --ln-type-scale: 1.12; }
+body[data-text-size="compact"] { --ln-text-scale: .94; --ln-type-scale: calc(var(--ln-text-scale) * var(--ln-ui-scale, 1)); }
+body[data-text-size="standard"] { --ln-text-scale: 1; --ln-type-scale: calc(var(--ln-text-scale) * var(--ln-ui-scale, 1)); }
+body[data-text-size="large"] { --ln-text-scale: 1.12; --ln-type-scale: calc(var(--ln-text-scale) * var(--ln-ui-scale, 1)); }
 
 body[data-ui-density="90"] {
   --appearance-control-height: 38px;
@@ -774,9 +776,56 @@ body[data-ui-density="90"] {
 }
 
 body[data-ui-density="110"] {
+  --ln-ui-scale: 1.1;
   --appearance-control-height: 46px;
   --appearance-row-height: 76px;
   --appearance-space: 18px;
+}
+
+body[data-ui-density="90"] { --ln-ui-scale: .9; }
+body[data-ui-density="100"] { --ln-ui-scale: 1; }
+body[data-ui-density="125"] {
+  --ln-ui-scale: 1.25;
+  --appearance-control-height: 50px;
+  --appearance-row-height: 82px;
+  --appearance-space: 20px;
+}
+body[data-ui-density="150"] {
+  --ln-ui-scale: 1.5;
+  --appearance-control-height: 54px;
+  --appearance-row-height: 90px;
+  --appearance-space: 22px;
+}
+body[data-ui-density="175"] {
+  --ln-ui-scale: 1.75;
+  --appearance-control-height: 58px;
+  --appearance-row-height: 98px;
+  --appearance-space: 24px;
+}
+body[data-ui-density="200"] {
+  --ln-ui-scale: 2;
+  --appearance-control-height: 62px;
+  --appearance-row-height: 108px;
+  --appearance-space: 26px;
+}
+
+/* Large accessibility scales must reflow segmented controls instead of
+   clipping their labels inside the desktop-width shell. */
+body[data-ui-density="150"] .segment-control,
+body[data-ui-density="175"] .segment-control,
+body[data-ui-density="200"] .segment-control {
+  min-width: 0;
+  overflow: visible;
+  grid-auto-flow: row;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+body[data-ui-density="150"] .segment-control button,
+body[data-ui-density="175"] .segment-control button,
+body[data-ui-density="200"] .segment-control button {
+  min-width: 0;
+  border-bottom: 1px solid var(--appearance-line);
+  overflow-wrap: anywhere;
 }
 
 body,

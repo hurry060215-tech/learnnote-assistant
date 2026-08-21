@@ -11,9 +11,12 @@ const css = fs.readFileSync(path.join(root, "web", "mature.css"), "utf8");
 
 test("appearance settings expose a live preview and all supported choices", () => {
   assert.match(html, /class="appearance-preview"/);
-  for (const value of ["90", "100", "110", "compact", "standard", "large", "system", "light", "dark", "teal", "ocean", "forest", "graphite"]) {
+  for (const value of ["90", "100", "110", "125", "150", "175", "200", "compact", "standard", "large", "system", "light", "dark", "teal", "ocean", "forest", "graphite"]) {
     assert.match(html, new RegExp(`data-value="${value}"`));
   }
+  assert.match(html, /data-i18n="settingsTitle"/);
+  assert.match(html, /data-i18n="interfaceScale"/);
+  assert.match(html, /data-i18n-aria="collapseNavigation"/);
 });
 
 test("appearance choices map to final CSS tokens", () => {
@@ -25,6 +28,8 @@ test("appearance choices map to final CSS tokens", () => {
     'body[data-text-size="large"]',
     'body[data-ui-density="90"]',
     'body[data-ui-density="110"]',
+    'body[data-ui-density="150"]',
+    'body[data-ui-density="200"]',
     "body.theme-dark"
   ]) {
     assert.ok(css.includes(selector), `missing CSS contract for ${selector}`);
@@ -33,10 +38,14 @@ test("appearance choices map to final CSS tokens", () => {
   assert.match(css, /--appearance-row-height:/);
   assert.match(css, /@media \(min-width: 681px\) and \(max-width: 900px\)/);
   assert.match(css, /margin-left: var\(--mature-nav\)/);
+  assert.match(css, /grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
 });
 
 test("system theme updates while the client is open", () => {
   assert.match(app, /matchMedia\?\.\("\(prefers-color-scheme: dark\)"\)/);
   assert.match(app, /systemThemeMedia\?\.addEventListener\?\.\("change"/);
   assert.match(app, /appSettings\.theme === "system"/);
+  assert.match(app, /"200"/);
+  assert.match(app, /i18nDefault/);
+  assert.match(app, /i18nAria/);
 });

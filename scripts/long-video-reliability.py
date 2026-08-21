@@ -16,6 +16,7 @@ if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
 
 from app.media import build_frame_grids, extract_frames_adaptive, probe_media_integrity  # noqa: E402
+from app.resource_monitor import ResourceMonitor  # noqa: E402
 from app.runtime import ffmpeg_bin, hidden_subprocess_kwargs  # noqa: E402
 
 
@@ -112,6 +113,18 @@ def main() -> int:
     parser.add_argument("--grid-rows", type=int, default=3)
     parser.add_argument("--scene-threshold", type=float, default=0.30)
     parser.add_argument("--duration-tolerance", type=float, default=3.0)
+    parser.add_argument(
+        "--memory-budget-mb",
+        type=int,
+        default=0,
+        help="Fail when peak process RSS exceeds this value; 0 disables enforcement.",
+    )
+    parser.add_argument(
+        "--min-free-disk-mb",
+        type=int,
+        default=0,
+        help="Fail when free space falls below this value; 0 disables enforcement.",
+    )
     parser.add_argument("--regenerate", action="store_true", help="Regenerate the cached synthetic media.")
     parser.add_argument("--keep-artifacts", action="store_true")
     args = parser.parse_args()
@@ -122,6 +135,8 @@ def main() -> int:
         parser.error("--frame-interval must be >= 1 and --max-frames must be >= 2.")
     if args.grid_columns < 1 or args.grid_rows < 1:
         parser.error("Grid dimensions must be positive.")
+    if args.memory_budget_mb < 0 or args.min_free_disk_mb < 0:
+        parser.error("Resource budgets must be zero or positive.")
 
     output_dir = args.output_dir.expanduser().resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -136,6 +151,7 @@ def main() -> int:
     generated = not args.media
 
     started = time.monotonic()
+    resource_monitor = ResourceMonitor(output_dir).start()
     try:
         if args.media:
             if not media_path.is_file():
@@ -197,6 +213,20 @@ def main() -> int:
         if not grids or any(not Path(grid.path).is_file() for grid in grids):
             raise RuntimeError("Frame grid generation did not produce valid grid files.")
 
+        resource_summary = resource_monitor.stop().as_dict()
+        peak_rss = resource_summary.get("rss_peak_bytes")
+        if args.memory_budget_mb and isinstance(peak_rss, int) and peak_rss > args.memory_budget_mb * 1024 * 1024:
+            raise RuntimeError(
+                f"Peak process RSS {peak_rss / 1024 / 1024:.1f} MB exceeded "
+                f"the {args.memory_budget_mb} MB memory budget."
+            )
+        min_free = resource_summary.get("disk_free_min_bytes")
+        if args.min_free_disk_mb and isinstance(min_free, int) and min_free < args.min_free_disk_mb * 1024 * 1024:
+            raise RuntimeError(
+                f"Free disk space {min_free / 1024 / 1024:.1f} MB fell below "
+                f"the {args.min_free_disk_mb} MB safety floor."
+            )
+
         report = {
             "status": "pass",
             "mode": "media-and-frames-only",
@@ -215,18 +245,29 @@ def main() -> int:
             "first_frame_seconds": min(timestamps),
             "last_frame_seconds": max(timestamps),
             "grid_count": len(grids),
+            "resource_budget": {
+                "memory_budget_mb": args.memory_budget_mb or None,
+                "min_free_disk_mb": args.min_free_disk_mb or None,
+                "observed": resource_summary,
+            },
             "elapsed_seconds": round(time.monotonic() - started, 3),
         }
         report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
         print(json.dumps(report, ensure_ascii=False))
         return 0
     except Exception as exc:
+        resource_summary = resource_monitor.stop().as_dict()
         failure = {
             "status": "fail",
             "mode": "media-and-frames-only",
             "api_calls": 0,
             "transcription_attempted": False,
             "error": str(exc),
+            "resource_budget": {
+                "memory_budget_mb": args.memory_budget_mb or None,
+                "min_free_disk_mb": args.min_free_disk_mb or None,
+                "observed": resource_summary,
+            },
             "elapsed_seconds": round(time.monotonic() - started, 3),
         }
         report_path.write_text(json.dumps(failure, ensure_ascii=False, indent=2), encoding="utf-8")
