@@ -31,7 +31,8 @@ def _connect() -> sqlite3.Connection:
            back TEXT NOT NULL, source_evidence_ids TEXT NOT NULL, status TEXT NOT NULL,
            due_at TEXT NOT NULL, stability REAL NOT NULL, difficulty REAL NOT NULL,
            reps INTEGER NOT NULL, lapses INTEGER NOT NULL, last_reviewed_at TEXT NOT NULL,
-           fsrs_state TEXT NOT NULL DEFAULT 'Learning', step INTEGER NOT NULL DEFAULT 0
+           fsrs_state TEXT NOT NULL DEFAULT 'Learning', step INTEGER NOT NULL DEFAULT 0,
+           position INTEGER NOT NULL DEFAULT 0
         )"""
     )
     connection.execute(
@@ -57,6 +58,8 @@ def _connect() -> sqlite3.Connection:
         connection.execute("ALTER TABLE study_cards ADD COLUMN fsrs_state TEXT NOT NULL DEFAULT 'Learning'")
     if "step" not in columns:
         connection.execute("ALTER TABLE study_cards ADD COLUMN step INTEGER NOT NULL DEFAULT 0")
+    if "position" not in columns:
+        connection.execute("ALTER TABLE study_cards ADD COLUMN position INTEGER NOT NULL DEFAULT 0")
     connection.commit()
     return connection
 
@@ -69,7 +72,7 @@ def _row_to_card(row: sqlite3.Row) -> StudyCard:
         status=row["status"], due_at=row["due_at"], stability=float(row["stability"]),
         difficulty=float(row["difficulty"]), reps=int(row["reps"]), lapses=int(row["lapses"]),
         last_reviewed_at=row["last_reviewed_at"],
-        fsrs_state=str(row["fsrs_state"] or "Learning"), step=int(row["step"] or 0),
+        fsrs_state=str(row["fsrs_state"] or "Learning"), step=int(row["step"] or 0), position=int(row["position"] or 0),
     )
 
 
@@ -105,12 +108,12 @@ def save_cards(cards: list[StudyCard]) -> list[StudyCard]:
             connection.execute(
                 """INSERT OR REPLACE INTO study_cards
                    (card_id, schema_version, front, back, source_evidence_ids, status, due_at,
-                    stability, difficulty, reps, lapses, last_reviewed_at, fsrs_state, step)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    stability, difficulty, reps, lapses, last_reviewed_at, fsrs_state, step, position)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (item.card_id, item.schema_version, item.front, item.back,
                  json.dumps(item.source_evidence_ids, ensure_ascii=False), item.status, item.due_at,
                  item.stability, item.difficulty, item.reps, item.lapses, item.last_reviewed_at,
-                 item.fsrs_state, int(item.step or 0)),
+                 item.fsrs_state, int(item.step or 0), int(item.position)),
             )
             stored.append(item)
         connection.commit()
@@ -136,9 +139,9 @@ def list_cards(status: str = "", limit: int = 200) -> list[StudyCard]:
     connection = _connect()
     try:
         if status in {"active", "suspended", "deleted"}:
-            rows = connection.execute("SELECT * FROM study_cards WHERE status = ? ORDER BY due_at ASC LIMIT ?", (status, max(1, min(int(limit or 200), 500)))).fetchall()
+            rows = connection.execute("SELECT * FROM study_cards WHERE status = ? ORDER BY position ASC, due_at ASC LIMIT ?", (status, max(1, min(int(limit or 200), 500)))).fetchall()
         else:
-            rows = connection.execute("SELECT * FROM study_cards ORDER BY due_at ASC LIMIT ?", (max(1, min(int(limit or 200), 500)),)).fetchall()
+            rows = connection.execute("SELECT * FROM study_cards ORDER BY position ASC, due_at ASC LIMIT ?", (max(1, min(int(limit or 200), 500)),)).fetchall()
     finally:
         connection.close()
     return [_row_to_card(row) for row in rows]
@@ -153,6 +156,19 @@ def set_card_status(card_id: str, status: str) -> StudyCard:
         if row is None:
             raise ValueError("card_not_found")
         connection.execute("UPDATE study_cards SET status = ? WHERE card_id = ?", (status, card_id))
+        connection.commit()
+        return _row_to_card(connection.execute("SELECT * FROM study_cards WHERE card_id = ?", (card_id,)).fetchone())
+    finally:
+        connection.close()
+
+
+def set_card_position(card_id: str, position: int) -> StudyCard:
+    connection = _connect()
+    try:
+        row = connection.execute("SELECT * FROM study_cards WHERE card_id = ?", (card_id,)).fetchone()
+        if row is None:
+            raise ValueError("card_not_found")
+        connection.execute("UPDATE study_cards SET position = ? WHERE card_id = ?", (max(0, min(int(position), 1000000)), card_id))
         connection.commit()
         return _row_to_card(connection.execute("SELECT * FROM study_cards WHERE card_id = ?", (card_id,)).fetchone())
     finally:
