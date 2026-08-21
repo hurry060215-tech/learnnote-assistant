@@ -5,6 +5,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from . import TASK_SCHEMA_VERSION
+
 
 TaskPhase = Literal[
     "queued",
@@ -399,6 +401,7 @@ class DownloadAttempt(BaseModel):
 
 
 class TaskRecord(BaseModel):
+    schema_version: int = Field(default=TASK_SCHEMA_VERSION, ge=1)
     id: str
     handoff_id: str = ""
     source_type: Literal["current_page", "local", "page_text"]

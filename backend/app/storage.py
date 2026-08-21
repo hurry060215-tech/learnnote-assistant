@@ -12,6 +12,7 @@ from typing import Any
 from .config import DATA_DIR, MODEL_CACHE_DIR, STATIC_DIR, TASK_DIR, TEMP_DIR, UPLOAD_DIR, ensure_dirs
 from .library import index_task, remove_task
 from .models import TaskOptions, TaskRecord, now_iso
+from .migrations import migrate_task_record, migrate_task_payload
 from .observability import record_task_event
 from .source_input import clean_task_title
 
@@ -84,6 +85,7 @@ def create_task(
 
 def save_task(record: TaskRecord) -> None:
     with _lock:
+        record = migrate_task_record(record)
         record.updated_at = now_iso()
         atomic_write_text(task_file(record.id), record.model_dump_json(indent=2))
         index_task(record)
@@ -94,7 +96,8 @@ def get_task(task_id: str) -> TaskRecord:
         path = task_file(task_id)
         if not path.exists():
             raise FileNotFoundError(task_id)
-        return TaskRecord.model_validate_json(path.read_text(encoding="utf-8"))
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        return TaskRecord.model_validate(migrate_task_payload(payload))
 
 
 def update_task(task_id: str, **changes: Any) -> TaskRecord:
@@ -292,7 +295,7 @@ def list_tasks() -> list[TaskRecord]:
     records: list[TaskRecord] = []
     for path in TASK_DIR.glob("*/task.json"):
         try:
-            record = TaskRecord.model_validate_json(path.read_text(encoding="utf-8"))
+            record = TaskRecord.model_validate(migrate_task_payload(json.loads(path.read_text(encoding="utf-8"))))
             records.append(record)
         except Exception:
             continue
