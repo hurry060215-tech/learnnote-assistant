@@ -12,6 +12,7 @@ from .media import build_frame_grids, extract_audio, extract_embedded_subtitle, 
 from .models import ActiveVideoInfo, BrowserSubtitleCue, CurrentPageTaskRequest, DownloadAttempt, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, now_iso
 from .local_video_task import run_local_video_task
 from .page_text_pipeline import PageTextArtifacts, build_page_text_artifacts as _build_page_text_artifacts
+from .note_pipeline import finish_note_task
 from .reliability import calculate_evidence_coverage, current_page_source_identity, evidence_coverage_markdown, validate_source_identity
 from .processor_state import (
     ContentMismatchError,
@@ -982,103 +983,29 @@ def _process_video_file(
     save_task(record)
     mark_checkpoint(task_id, "visual_ready")
 
-    if asr_error and not has_visual_summary_evidence(frames, media_duration):
-        update_task(
-            task_id,
-            status="failed",
-            phase="failed",
-            progress=100,
-            message=asr_error,
-            error_code="asr_failed",
-            error_detail=asr_error,
-        )
-        return
-
-    evidence_coverage = calculate_evidence_coverage(
-        integrity,
+    finish_note_task(
+        task_id,
+        title,
+        page_url,
+        options,
         transcript,
+        grids,
+        visual_windows,
+        frames,
         frame_samples,
-        visual_enabled=options.visual_understanding,
+        integrity,
+        asr_error,
+        frame_extraction_warning,
+        page_context,
+        frame_anchor_timestamps,
+        has_visual_summary_evidence=has_visual_summary_evidence,
+        calculate_evidence_coverage=calculate_evidence_coverage,
+        evidence_coverage_markdown=evidence_coverage_markdown,
+        summarize_with_diagnostics=summarize_with_diagnostics,
+        build_summary_diagnostics=build_summary_diagnostics,
+        check_cancel=_check_cancel,
+        mark_checkpoint=mark_checkpoint,
     )
-    evidence_coverage_path = write_json(
-        task_id,
-        "evidence_coverage.json",
-        evidence_coverage.model_dump(mode="json"),
-    )
-    update_task(
-        task_id,
-        evidence_coverage=evidence_coverage,
-        evidence_coverage_path=str(evidence_coverage_path),
-    )
-    if not evidence_coverage.can_summarize:
-        raise ContentMismatchError(
-            "Evidence reliability gate blocked summary generation: "
-            + ", ".join(evidence_coverage.blocking_reasons)
-        )
-
-    update_task(task_id, phase="summarizing", progress=84, message="正在生成 Markdown 笔记")
-    _check_cancel(task_id)
-    summary_result = summarize_with_diagnostics(title, transcript, grids, options, page_url, page_context)
-    _check_cancel(task_id)
-    if len(summary_result) == 4:
-        note, summary_source, summary_warning, llm_events = summary_result
-    else:
-        note, summary_source, summary_warning = summary_result
-        llm_events = []
-    evidence_section = evidence_coverage_markdown(integrity, evidence_coverage)
-    if "## 依据与覆盖" not in note:
-        note = f"{note.rstrip()}\n\n{evidence_section}\n"
-    if frame_extraction_warning:
-        summary_warning = "；".join(filter(None, [summary_warning, frame_extraction_warning]))
-    summary_diagnostics = build_summary_diagnostics(
-        task_id=task_id,
-        title=title,
-        page_url=page_url,
-        options=options,
-        grids=grids,
-        visual_windows=visual_windows,
-        summary_source=summary_source,
-        summary_warning=summary_warning,
-        llm_events=llm_events,
-        page_context=page_context,
-        extracted_frame_count=len(frames) if options.visual_understanding else None,
-        frame_extraction_warning=frame_extraction_warning,
-        frame_anchor_timestamps=frame_anchor_timestamps,
-    )
-    summary_diagnostics["media_integrity"] = integrity.model_dump(mode="json")
-    summary_diagnostics["evidence_coverage"] = evidence_coverage.model_dump(mode="json")
-    summary_diagnostics_path = write_json(task_id, "summary_diagnostics.json", summary_diagnostics)
-    note_path = work_dir / "note.md"
-    note_path.write_text(note, encoding="utf-8")
-
-    final_fields = {
-        "note_path": str(note_path),
-        "summary_source": summary_source,
-        "summary_warning": summary_warning,
-        "summary_diagnostics_path": str(summary_diagnostics_path),
-        "summary_diagnostics": summary_diagnostics,
-    }
-    if asr_error:
-        update_task(
-            task_id,
-            status="failed",
-            phase="failed",
-            progress=100,
-            message=asr_error,
-            error_code="asr_failed",
-            error_detail=asr_error,
-            **final_fields,
-        )
-    else:
-        update_task(
-            task_id,
-            status="success",
-            phase="completed",
-            progress=100,
-            message="任务完成，但未生成视觉切片" if frame_extraction_warning else "任务完成",
-            **final_fields,
-        )
-        mark_checkpoint(task_id, "note_ready")
 
 
 def read_transcript(task_id: str) -> dict:
