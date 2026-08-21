@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
 import re
 import shutil
@@ -13,6 +12,7 @@ from .downloader import DownloadError, MediaDownloader, classify_resource, effec
 from .media import build_frame_grids, extract_audio, extract_embedded_subtitle, extract_frames_adaptive, normalize_video, probe_media_integrity
 from .models import ActiveVideoInfo, BrowserSubtitleCue, CurrentPageTaskRequest, DownloadAttempt, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, now_iso
 from .local_video_task import run_local_video_task
+from .page_text_pipeline import PageTextArtifacts, build_page_text_artifacts as _build_page_text_artifacts
 from .reliability import calculate_evidence_coverage, current_page_source_identity, evidence_coverage_markdown, validate_source_identity
 from .processor_state import (
     ContentMismatchError,
@@ -105,18 +105,6 @@ PLAYER_DANMAKU_COMMENT_SIGNATURES = (
     "前方高能", "笑死我了", "一键三连", "爷青回", "开幕雷击", "空降成功",
     "课代表来了", "老师讲快一点", "老师讲得太快", "求课代表", "下饭视频",
 )
-
-
-@dataclass
-class PageTextArtifacts:
-    note_path: str = ""
-    subtitle_path: str = ""
-    transcript_path: str = ""
-    created: bool = False
-    summary_source: str = ""
-    summary_warning: str = ""
-    summary_diagnostics_path: str = ""
-    summary_diagnostics: dict | None = None
 
 
 def remember_reusable_media(task_id: str, path: Path) -> bool:
@@ -595,50 +583,15 @@ def cookie_sync_summary(cookies: list) -> dict:
 
 
 def write_page_text_artifacts(task_id: str, request: CurrentPageTaskRequest, allow_empty: bool = True) -> PageTextArtifacts:
-    transcript = transcript_from_browser_subtitles(request.browser_subtitles)
-    page_text = page_text_with_browser_subtitles(request.page_text, transcript)
-    if not allow_empty and not page_text.strip():
-        return PageTextArtifacts()
-    transcript_path = ""
-    subtitle_path = ""
-    if transcript.segments:
-        subtitle_path = write_browser_subtitles_srt(task_id, transcript)
-        transcript_path = str(write_json(task_id, "transcript.json", transcript.model_dump(mode="json")))
-    note, summary_source, summary_warning = summarize_page_text_with_diagnostics(request.title, request.page_url, page_text, request.options)
-    note_path = task_dir(task_id) / "note.md"
-    note_path.write_text(note, encoding="utf-8")
-    summary_diagnostics = build_summary_diagnostics(
-        task_id=task_id,
-        title=request.title,
-        page_url=request.page_url,
-        options=request.options,
-        grids=[],
-        visual_windows=[],
-        summary_source=summary_source,
-        summary_warning=summary_warning,
-    )
-    summary_diagnostics.update({
-        "page_text_char_count": len((request.page_text or "").strip()),
-        "browser_subtitle_count": len(transcript.segments),
-        "combined_text_char_count": len(page_text),
-        "used_page_text_fallback": True,
-        "source_kind": "page_text_with_browser_cues" if transcript.segments else "page_text",
-        "source_quality": "low",
-        "evidence_quality": "low",
-        "video_evidence": "missing",
-        "can_claim_video_content": False,
-        "evidence_warning": "No verified media, audio, or visual evidence is available.",
-    })
-    summary_diagnostics_path = write_json(task_id, "summary_diagnostics.json", summary_diagnostics)
-    return PageTextArtifacts(
-        note_path=str(note_path),
-        subtitle_path=subtitle_path,
-        transcript_path=transcript_path,
-        created=True,
-        summary_source=summary_source,
-        summary_warning=summary_warning,
-        summary_diagnostics_path=str(summary_diagnostics_path),
-        summary_diagnostics=summary_diagnostics,
+    return _build_page_text_artifacts(
+        task_id,
+        request,
+        allow_empty=allow_empty,
+        transcript_from_browser_subtitles=transcript_from_browser_subtitles,
+        page_text_with_browser_subtitles=page_text_with_browser_subtitles,
+        write_browser_subtitles_srt=write_browser_subtitles_srt,
+        summarize_page_text_with_diagnostics=summarize_page_text_with_diagnostics,
+        build_summary_diagnostics=build_summary_diagnostics,
     )
 
 
