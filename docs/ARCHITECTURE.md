@@ -18,6 +18,7 @@ API routers (routers/*.py)
 - `adapters.py` 是来源契约；站点特例不能反向污染 API 或任务模型。
 - `downloader.py` 只负责候选排序、预检和下载策略；不生成学习笔记。
 - `downloader_policy.py` 只保存下载错误分类、重试优先级和 yt-dlp 进程策略；它不发起网络请求，便于独立测试和复用。
+- `processor_state.py` 只负责取消、失败收口、checkpoint、证据门禁和资源报告；`processor.py` 负责阶段编排，不把状态持久化细节重新复制回流水线。
 - `routers/knowledge_study.py` owns knowledge and study routes; `routers/library.py`
   owns index/search/backup/restore routes; `routers/system.py` owns integration,
   desktop-focus, and preference routes. They import domain services directly and
