@@ -55,3 +55,18 @@ test("static UI copy translates accessibility attributes", () => {
   assert.equal(attributes.get("aria-label"), "主导航");
   assert.equal(attributes.get("placeholder"), "搜索术语或问题");
 });
+
+test("static UI copy rebinds dynamically rendered text without losing the Chinese source", () => {
+  const node = { nodeValue: "完成后打开笔记", parentElement: { closest: () => null } };
+  const context = {};
+  vm.runInNewContext(source, context);
+  const document = makeTextDocument(node);
+
+  context.LearnNoteI18n.applyStatic(document, "en-US");
+  assert.equal(node.nodeValue, "Open the note when complete");
+  node.nodeValue = "搜索术语或问题";
+  context.LearnNoteI18n.applyStatic(document, "en-US");
+  assert.equal(node.nodeValue, "Search terms or questions");
+  context.LearnNoteI18n.applyStatic(document, "zh-CN");
+  assert.equal(node.nodeValue, "搜索术语或问题");
+});

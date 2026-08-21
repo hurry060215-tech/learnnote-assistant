@@ -315,7 +315,92 @@
     ,"搜索术语或问题": "Search terms or questions"
     ,"搜索标题、来源或错误": "Search titles, sources, or errors"
     ,"留空则使用后端环境变量或本地降级": "Leave blank to use the backend environment or local fallback"
+    ,"获取视频": "Get video"
+    ,"检查内容": "Check content"
+    ,"生成字幕": "Generate transcript"
+    ,"理解画面": "Understand visuals"
+    ,"整理笔记": "Organize notes"
+    ,"课堂复习": "Class review"
+    ,"按知识点组织解释，保留易错点并在末尾生成复习题。": "Organize explanations by concept, keep pitfalls, and add review questions."
+    ,"课程主题": "Course topic"
+    ,"核心知识点": "Core concepts"
+    ,"概念解释": "Concept explanations"
+    ,"易错点": "Common pitfalls"
+    ,"复习题": "Review questions"
+    ,"跟随演示顺序记录界面变化、命令、操作步骤和排错方法。": "Follow the demonstration order for UI changes, commands, steps, and troubleshooting."
+    ,"完成目标": "Goal"
+    ,"准备工作": "Preparation"
+    ,"操作步骤": "Steps"
+    ,"命令与参数": "Commands and parameters"
+    ,"常见错误": "Common errors"
+    ,"把定义和考点整理成便于记忆、自测和回顾的复习材料。": "Turn definitions and exam points into material for memory, self-tests, and review."
+    ,"考试范围": "Exam scope"
+    ,"核心定义": "Core definitions"
+    ,"高频考点": "Frequent exam points"
+    ,"记忆卡片": "Flashcards"
+    ,"练习题": "Exercises"
+    ,"只保留结论、关键依据和可以回到原视频核对的时间点。": "Keep conclusions, key evidence, and timestamps you can verify in the original video."
+    ,"一句话结论": "One-line conclusion"
+    ,"关键要点": "Key points"
+    ,"重要时间轴": "Important timeline"
+    ,"浏览器当前页": "Current browser page"
+    ,"视频已识别": "Video identified"
+    ,"暂未获取": "Not available yet"
+    ,"已发现": "Found"
+    ,"缺少声音": "Audio missing"
+    ,"未发现": "Not found"
+    ,"可在转写后生成": "Can be generated during transcription"
+    ,"缺少画面": "Visuals missing"
+    ,"这个文件没有声音轨，补充音频或重新获取完整视频后才能生成可靠笔记。": "This file has no audio track. Add audio or obtain a complete video for reliable notes."
+    ,"没有检测到视频画面，请重新选择媒体。": "No video track was detected. Choose another media file."
+    ,"先导入自定义模板": "Import a custom template first"
+    ,"支持 YAML 或 JSON，需包含 name、prompt 和 sections。": "YAML or JSON is supported and must include name, prompt, and sections."
+    ,"按自定义结构整理": "Organize with the custom structure"
+    ,"模板文件不能超过 64 KB": "Template files must be 64 KB or smaller"
+    ,"模板需要 name、prompt 和至少一个 sections 条目": "The template needs name, prompt, and at least one sections entry"
+    ,"模板导入失败：文件格式不正确": "Template import failed: invalid file format"
+    ,"正在检查视频轨道和时长...": "Checking video tracks and duration..."
+    ,"已使用本机视频信息完成检查；上传将在确认后开始。": "Local video checks are complete; upload starts after confirmation."
+    ,"正在识别视频信息...": "Inspecting video information..."
+    ,"链接识别失败": "Link inspection failed"
+    ,"没有识别到可用视频，请检查链接或登录状态。": "No usable video was found. Check the link or sign-in state."
+    ,"扩展尚未连接": "Extension not connected"
+    ,"正在读取扩展交接状态...": "Reading extension handoff status..."
+    ,"正在等待扩展发送当前视频...": "Waiting for the extension to send the current video..."
+    ,"正在创建任务...": "Creating task..."
+    ,"本地视频上传失败。": "Local video upload failed."
+    ,"任务没有返回有效编号": "The task did not return a valid ID"
+    ,"任务创建失败，请重试。": "Task creation failed. Try again."
+    ,"笔记已经整理完成": "The note is ready"
+    ,"没有找到可下载的视频资源": "No downloadable video resource was found"
+    ,"登录状态已失效，请重新打开视频页": "Your sign-in state expired. Reopen the video page."
+    ,"该视频不能通过当前页面直接获取": "This video cannot be acquired directly from the current page"
+    ,"视频服务器拒绝了下载请求": "The video server rejected the download request"
+    ,"暂时无法合并这个视频流": "This video stream cannot be combined yet"
+    ,"字幕或画面依据不足，已停止生成": "Subtitle or visual evidence is insufficient; generation stopped"
+    ,"客户端上次处理中断，可以重新尝试": "The previous task was interrupted; you can retry"
+    ,"视频交接已失效，请回到原视频页重新发送": "The video handoff expired; return to the video page and send it again"
+    ,"处理未完成，请按下方建议继续": "Processing did not finish; follow the recovery steps below"
+    ,"正在获取视频文件": "Getting the video file"
+    ,"正在核对声音、字幕和画面": "Checking audio, subtitles, and visuals"
+    ,"正在生成可核对的字幕": "Generating verifiable subtitles"
+    ,"正在提取关键画面": "Extracting key visuals"
+    ,"正在整理笔记结构": "Organizing the note structure"
+    ,"正在准备任务": "Preparing task"
+    ,"浏览器已发送": "Sent by browser"
+    ,"任务仍在处理": "Task in progress"
+    ,"最近完成": "Recently completed"
+    ,"确认声音、字幕和画面后再开始": "Confirm audio, subtitles, and visuals before starting"
+    ,"查看进度": "View progress"
+    ,"笔记、字幕和画面索引已准备好": "The note, transcript, and visual index are ready"
+    ,"确认视频": "Confirm video"
+    ,"打开笔记": "Open note"
+    ,"本次处理未完成。": "This task did not finish."
   });
+
+  let activeLocale = "zh-CN";
+  let observerInstalled = false;
+  let observerScheduled = false;
 
   function applyStaticAttributes(roots, locale) {
     const attributes = ["aria-label", "title", "placeholder"];
@@ -335,8 +420,27 @@
     });
   }
 
+  function scheduleDynamicApply(document) {
+    if (activeLocale !== "en-US" || observerScheduled) return;
+    observerScheduled = true;
+    const schedule = global.queueMicrotask || (callback => global.setTimeout(callback, 0));
+    schedule(() => {
+      observerScheduled = false;
+      applyStatic(document, activeLocale);
+    });
+  }
+
+  function installObserver(document) {
+    if (observerInstalled || !global.MutationObserver || !document?.body) return;
+    const observer = new global.MutationObserver(() => scheduleDynamicApply(document));
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+    observerInstalled = true;
+  }
+
   function applyStatic(document, locale) {
     if (!document?.createTreeWalker) return;
+    activeLocale = locale === "en-US" ? "en-US" : "zh-CN";
+    installObserver(document);
     const roots = document.querySelectorAll(".topbar, #mainNavigation, #settingsView, #workspace, #onboardingOverlay, #aiAssistantDrawer, #noteVersionOverlay, #releaseNotesOverlay");
     const walker = document.createTreeWalker(document.body, 4);
     let node;
@@ -344,17 +448,30 @@
       const parent = node.parentElement;
       if (!parent || ![...roots].some(root => root.contains(parent))) continue;
       if (parent.closest("[data-i18n], input, textarea, script, style, .markdown-note, [data-user-content]")) continue;
-      const original = node.__learnnoteDefaultText ?? node.nodeValue ?? "";
-      node.__learnnoteDefaultText = original;
+      const current = node.nodeValue ?? "";
+      const previousTranslation = node.__learnnoteLastTranslatedText;
+      let original = node.__learnnoteDefaultText;
+      if (original === undefined || (previousTranslation && current !== previousTranslation)) {
+        const candidate = current;
+        const candidateText = candidate.trim();
+        if (staticText[candidateText]) {
+          original = candidate;
+          node.__learnnoteDefaultText = original;
+        }
+      }
       if (locale !== "en-US") {
-        node.nodeValue = original;
+        if (original !== undefined) node.nodeValue = original;
+        node.__learnnoteLastTranslatedText = node.nodeValue ?? "";
         continue;
       }
+      if (original === undefined) continue;
       const trimmed = original.trim();
       if (!trimmed || !staticText[trimmed]) continue;
       const leading = original.slice(0, original.indexOf(trimmed));
       const trailing = original.slice(original.indexOf(trimmed) + trimmed.length);
-      node.nodeValue = `${leading}${staticText[trimmed]}${trailing}`;
+      const translated = `${leading}${staticText[trimmed]}${trailing}`;
+      node.nodeValue = translated;
+      node.__learnnoteLastTranslatedText = translated;
     }
     applyStaticAttributes(roots, locale);
   }
