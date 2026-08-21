@@ -14,6 +14,7 @@ from .downloader import DownloadError, MediaDownloader, classify_resource, effec
 from .media import build_frame_grids, extract_audio, extract_embedded_subtitle, extract_frames, extract_frames_adaptive, normalize_video, probe_duration, probe_media_integrity
 from .models import ActiveVideoInfo, BrowserSubtitleCue, CurrentPageTaskRequest, DownloadAttempt, FrameGrid, FrameSample, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow, now_iso
 from .reliability import calculate_evidence_coverage, current_page_source_identity, evidence_coverage_markdown, validate_source_identity
+from .resource_monitor import ResourceMonitor
 from .storage import get_task, mark_task_cancelled, save_task, task_dir, update_task, write_json
 from .source_input import clean_task_title
 from .summarizer import MAX_GRIDS_PER_VISION_CALL, MAX_VISION_GRIDS, build_visual_windows, llm_base_host, llm_model_supports_vision, llm_provider_name, select_vision_grid_entries, summarize_page_text_with_diagnostics, summarize_with_diagnostics_audit as summarize_with_diagnostics
@@ -75,6 +76,39 @@ class ResourceBudgetError(Exception):
 def mark_checkpoint(task_id: str, name: str) -> None:
     """Persist the last durable artifact boundary for restart/recovery UX."""
     update_task(task_id, checkpoint=name, checkpoint_updated_at=now_iso())
+
+
+def _start_task_resource_monitor(task_id: str) -> tuple[ResourceMonitor, float]:
+    monitor = ResourceMonitor(task_dir(task_id), interval_seconds=1.0).start()
+    return monitor, time.monotonic()
+
+
+def _persist_task_resource_usage(task_id: str, monitor: ResourceMonitor, started_at: float) -> None:
+    """Persist local resource evidence without changing the task outcome."""
+
+    try:
+        observed = monitor.stop().as_dict()
+        try:
+            outcome = get_task(task_id).status
+        except Exception:
+            outcome = "unknown"
+        report = {
+            "schema_version": 1,
+            "task_id": task_id,
+            "outcome": outcome,
+            "elapsed_seconds": round(max(0.0, time.monotonic() - started_at), 3),
+            "observed": observed,
+            "privacy": "process counters and local free space only; no task content, URL, cookie, or model payload",
+        }
+        path = write_json(task_id, "resource_usage.json", report)
+        update_task(task_id, resource_usage_path=str(path))
+    except Exception:
+        # Resource evidence is diagnostic; a monitor or disk failure must not
+        # hide the original processing result.
+        try:
+            monitor.stop()
+        except Exception:
+            pass
 
 
 def validate_summary_evidence(transcript: TranscriptResult, frames: list[Path], media_duration: float) -> None:
@@ -1031,6 +1065,7 @@ def complete_with_download_failure_fallback(task_id: str, request: CurrentPageTa
 
 
 def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> None:
+    resource_monitor, resource_started_at = _start_task_resource_monitor(task_id)
     try:
         _check_cancel(task_id)
     except TaskCancelled:
@@ -1176,6 +1211,8 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
         _fail(task_id, "resource_budget_exceeded", str(exc))
     except Exception as exc:
         _fail(task_id, "processing_failed", str(exc))
+    finally:
+        _persist_task_resource_usage(task_id, resource_monitor, resource_started_at)
 
 
 def process_local_video_task(
@@ -1188,6 +1225,7 @@ def process_local_video_task(
     subtitle_path: Path | None = None,
     subtitle_source: str = "page-subtitle",
 ) -> None:
+    resource_monitor, resource_started_at = _start_task_resource_monitor(task_id)
     try:
         _check_cancel(task_id)
         _process_video_file(
@@ -1209,6 +1247,8 @@ def process_local_video_task(
         _fail(task_id, "resource_budget_exceeded", str(exc))
     except Exception as exc:
         _fail(task_id, "processing_failed", str(exc))
+    finally:
+        _persist_task_resource_usage(task_id, resource_monitor, resource_started_at)
 
 
 def _process_video_file(

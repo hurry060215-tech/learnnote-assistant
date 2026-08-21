@@ -4705,6 +4705,29 @@ def api_export_resource_inventory(task_id: str) -> Response:
     return Response(json.dumps(inventory, ensure_ascii=False, indent=2), media_type="application/json; charset=utf-8", headers=headers)
 
 
+@app.get("/api/tasks/{task_id}/exports/resource-usage")
+def api_export_resource_usage(task_id: str) -> Response:
+    try:
+        task = get_task(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Task not found") from exc
+    path = Path(task.resource_usage_path) if task.resource_usage_path else task_dir(task.id) / "resource_usage.json"
+    if not path.is_file() or path.resolve().parent != task_dir(task.id).resolve():
+        raise HTTPException(status_code=404, detail="Resource usage not found")
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail="Resource usage is invalid") from exc
+    filename = evidence_json_filename(task.id, task.title, "resource-usage")
+    headers = {
+        "Content-Disposition": (
+            f'attachment; filename="learnnote-{task.id}-resource-usage.json"; '
+            f"filename*=UTF-8''{quote(filename)}"
+        )
+    }
+    return Response(json.dumps(payload, ensure_ascii=False, indent=2), media_type="application/json; charset=utf-8", headers=headers)
+
+
 @app.get("/api/tasks/{task_id}/exports/page-preflight-report")
 def api_export_page_preflight_report(task_id: str) -> Response:
     try:
