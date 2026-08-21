@@ -194,7 +194,7 @@ def extract_import_text(filename: str, content: bytes, content_type: str = "") -
             raise ValueError("pdf_text_extraction_unavailable") from exc
     decoded = content.decode("utf-8", errors="replace")
     if suffix in {".html", ".htm"} or "html" in content_type.lower():
-        decoded = re.sub(r"<script[\s\S]*?</script>|<style[\s\S]*?</style>", " ", decoded, flags=re.I)
+        decoded = re.sub(r"<script\b[\s\S]*?</script\s*>|<style\b[\s\S]*?</style\s*>", " ", decoded, flags=re.I)
         decoded = re.sub(r"<[^>]+>", " ", decoded)
         decoded = html.unescape(decoded)
         return " ".join(decoded.split()), "webpage"
