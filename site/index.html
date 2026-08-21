@@ -33,13 +33,13 @@
         </a>
 
         <nav id="site-nav" class="nav" aria-label="主导航">
-          <a class="nav-link appear appear--scale" style="--d:.14s" href="#features"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l3 3v15H6zM15 3v4h4M9 11h6M9 15h6"></path></svg><span>功能</span></a>
-          <a class="nav-link appear appear--soft" style="--d:.24s" href="#privacy"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 20 6v5c0 5.1-3.2 8.5-8 10-4.8-1.5-8-4.9-8-10V6z"></path></svg><span>隐私与本地</span></a>
-          <a class="nav-link appear appear--scale" style="--d:.34s" href="#workflow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11M8 10l4 4 4-4M5 20h14"></path></svg><span>如何工作</span></a>
+          <a class="nav-link appear appear--scale" style="--d:.14s" data-section="features" href="#features"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l3 3v15H6zM15 3v4h4M9 11h6M9 15h6"></path></svg><span>功能</span></a>
+          <a class="nav-link appear appear--soft" style="--d:.24s" data-section="privacy" href="#privacy"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 20 6v5c0 5.1-3.2 8.5-8 10-4.8-1.5-8-4.9-8-10V6z"></path></svg><span>隐私与本地</span></a>
+          <a class="nav-link appear appear--scale" style="--d:.34s" data-section="workflow" href="#workflow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11M8 10l4 4 4-4M5 20h14"></path></svg><span>如何工作</span></a>
           <a class="nav-link appear appear--soft" style="--d:.44s" href="https://github.com/hurry060215-tech/learnnote-assistant/blob/main/README.md"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M9.7 9a2.5 2.5 0 1 1 3.3 2.4c-.8.3-1 1-1 1.8M12 17h.01"></path></svg><span>使用文档</span></a>
         </nav>
 
-        <a class="btn btn-solid header-cta appear appear--scale" style="--d:.28s" data-release-link href="https://github.com/hurry060215-tech/learnnote-assistant/releases/download/v0.1.54/LearnNote-Setup-x64.exe">
+        <a class="btn btn-solid header-cta appear appear--scale" style="--d:.28s" data-release-link href="https://github.com/hurry060215-tech/learnnote-assistant/releases/download/v0.1.53/LearnNote-Setup-x64.exe">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path class="fill" d="M3 5.5 10 4v7H3V5.5Zm8-1.7L21 2v9H11V3.8ZM3 12h7v7l-7-1.3V12Zm8 0h10v10l-10-1.8V12Z"></path></svg>
           <span class="cta-long">下载 Windows 版</span><span class="cta-short">下载</span>
         </a>
@@ -48,6 +48,7 @@
           <span class="burger-lines" aria-hidden="true"><i></i><i></i><i></i></span>
         </button>
       </header>
+      <span class="scroll-progress" aria-hidden="true"></span>
 
       <main>
         <section class="intro-stage" id="top">
@@ -66,7 +67,7 @@
           <p class="lede appear appear--soft" style="--d:.72s">把正在看的视频交给 LearnNote，从当前页面、视频链接或本地文件开始。LearnNote 将字幕、关键画面与时间轴整理进同一份<span class="nowrap">笔记</span>，让每个结论都有出处。</p>
 
           <div class="hero-actions">
-            <a class="btn btn-solid appear appear--btn" style="--d:.88s" data-release-link href="https://github.com/hurry060215-tech/learnnote-assistant/releases/download/v0.1.54/LearnNote-Setup-x64.exe">
+            <a class="btn btn-solid appear appear--btn" style="--d:.88s" data-release-link href="https://github.com/hurry060215-tech/learnnote-assistant/releases/download/v0.1.53/LearnNote-Setup-x64.exe">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path class="fill" d="M3 5.5 10 4v7H3V5.5Zm8-1.7L21 2v9H11V3.8ZM3 12h7v7l-7-1.3V12Zm8 0h10v10l-10-1.8V12Z"></path></svg>
               下载 Windows 版
             </a>
@@ -139,7 +140,7 @@
 
           <figure class="product-frame reveal" aria-label="LearnNote Windows 客户端工作台">
             <div class="frame-bar"><span><i></i><i></i><i></i></span><b>LearnNote · 新建学习笔记</b><small>Windows 工作台</small></div>
-            <img src="./assets/learnnote-workspace-v0126.png" alt="LearnNote 新建学习笔记工作台，包含当前页面、视频链接和本地视频入口">
+            <img src="./assets/learnnote-workspace-v0126.png" loading="lazy" decoding="async" alt="LearnNote 新建学习笔记工作台，包含当前页面、视频链接和本地视频入口">
           </figure>
         </section>
 
@@ -155,7 +156,7 @@
             <article><span>04</span><h3>问答与导出</h3><p>围绕当前课程继续追问，并导出 Markdown、字幕、诊断报告、媒体文件或完整学习资料包。</p></article>
           </div>
           <figure class="frame-strip reveal">
-            <img src="./assets/learnnote-case-grid.jpg" alt="梯度下降微课的真实画面切片，展示字幕与关键画面按时间窗口对齐">
+            <img src="./assets/learnnote-case-grid.jpg" loading="lazy" decoding="async" alt="梯度下降微课的真实画面切片，展示字幕与关键画面按时间窗口对齐">
             <figcaption><strong>视觉窗口 W001</strong><span>6 张真实视频画面 · 00:00–01:00 · 与字幕时间段对齐</span></figcaption>
           </figure>
         </section>
@@ -163,7 +164,7 @@
         <section class="section case-section" id="case">
           <figure class="case-media reveal">
             <div class="frame-bar"><span><i></i><i></i><i></i></span><b>LearnNote · 梯度下降与学习率</b><small>真实任务</small></div>
-            <img src="./assets/learnnote-case-gradient.png" alt="LearnNote 生成的梯度下降微课结构化笔记，包含时间轴、核心概念和课程助手">
+            <img src="./assets/learnnote-case-gradient.png" loading="lazy" decoding="async" alt="LearnNote 生成的梯度下降微课结构化笔记，包含时间轴、核心概念和课程助手">
           </figure>
           <div class="case-copy reveal">
             <p class="section-index"><span>D</span> 可复现的真实案例</p>
@@ -206,8 +207,8 @@
           <div class="download-mark"><svg viewBox="0 0 24 24"><path d="M3 4.8c3.1-.8 6-.1 9 2v13c-3-2.1-5.9-2.8-9-2z"></path><path d="M21 4.8c-3.1-.8-6-.1-9 2v13c3-2.1 5.9-2.8 9-2z"></path></svg></div>
           <h2>整理下一段视频，<br><em>继续你的学习</em></h2>
           <p>安装 Windows 客户端，再按需连接浏览器扩展。视频处理、模型配置和数据目录始终由你掌控。</p>
-          <div class="download-actions"><a class="btn btn-solid" data-release-link href="https://github.com/hurry060215-tech/learnnote-assistant/releases/download/v0.1.54/LearnNote-Setup-x64.exe">下载 Windows 客户端</a><a class="btn btn-ghost" data-extension-link href="https://github.com/hurry060215-tech/learnnote-assistant/releases/download/v0.1.54/LearnNote-Browser-Extension-v0.1.54.zip">下载浏览器扩展</a></div>
-          <small>Windows 10 / 11 · 当前正式版 <span data-release-version>v0.1.54</span></small>
+          <div class="download-actions"><a class="btn btn-solid" data-release-link href="https://github.com/hurry060215-tech/learnnote-assistant/releases/download/v0.1.53/LearnNote-Setup-x64.exe">下载 Windows 客户端</a><a class="btn btn-ghost" data-extension-link href="https://github.com/hurry060215-tech/learnnote-assistant/releases/download/v0.1.53/LearnNote-Browser-Extension-v0.1.53.zip">下载浏览器扩展</a></div>
+          <small>Windows 10 / 11 · 当前正式版 <span data-release-version>v0.1.53</span></small>
         </section>
       </main>
 

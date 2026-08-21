@@ -4,6 +4,8 @@
   const navigation = document.querySelector("#site-nav");
   const backdrop = document.querySelector(".menu-backdrop");
   const header = document.querySelector(".header");
+  const sectionLinks = [...document.querySelectorAll("[data-section]")];
+  const trackedSections = sectionLinks.map(link => document.getElementById(link.dataset.section)).filter(Boolean);
 
   const closeMenu = () => {
     document.body.classList.remove("menu-open");
@@ -28,9 +30,24 @@
   window.addEventListener("resize", () => {
     if (window.matchMedia("(min-width: 901px)").matches) closeMenu();
   });
-  window.addEventListener("scroll", () => {
+  const updateScrollUI = () => {
     header?.classList.toggle("scrolled", window.scrollY > 24);
-  }, { passive: true });
+    const maxScroll = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+    document.documentElement.style.setProperty("--scroll-progress", String(Math.min(1, Math.max(0, window.scrollY / maxScroll))));
+    let current = trackedSections[0]?.id;
+    trackedSections.forEach(section => {
+      if (section.getBoundingClientRect().top <= 130) current = section.id;
+    });
+    sectionLinks.forEach(link => {
+      const active = link.dataset.section === current;
+      link.classList.toggle("active", active);
+      if (active) link.setAttribute("aria-current", "location");
+      else link.removeAttribute("aria-current");
+    });
+  };
+  window.addEventListener("scroll", updateScrollUI, { passive: true });
+  window.addEventListener("resize", updateScrollUI);
+  updateScrollUI();
 
   document.querySelectorAll(".appear").forEach(element => {
     element.addEventListener("animationend", () => element.classList.add("is-in"), { once: true });
