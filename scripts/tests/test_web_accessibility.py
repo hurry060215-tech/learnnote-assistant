@@ -21,6 +21,8 @@ class WebAccessibilityContractTests(unittest.TestCase):
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         for element_id in ("knowledgeImportButton", "knowledgeSearchInput", "studyDueButton", "supportPackageButton"):
             self.assertIn(f'id="{element_id}"', html)
+        self.assertIn('id="settingLocale"', html)
+        self.assertIn('value="en-US"', html)
         self.assertIn('aria-label="本地资料库检索结果"', html)
         self.assertIn('aria-label="到期复习卡片"', html)
 

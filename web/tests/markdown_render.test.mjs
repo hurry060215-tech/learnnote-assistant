@@ -3675,6 +3675,7 @@ assert.equal(invalidSourceInput.valid, false);
 assert.deepEqual(
   JSON.parse(JSON.stringify(context.normalizedAppSettings({ uiScale: "999", textSize: "huge", defaultSource: "bad" }))),
   {
+    locale: "zh-CN",
     uiScale: "100",
     textSize: "standard",
     theme: "light",
