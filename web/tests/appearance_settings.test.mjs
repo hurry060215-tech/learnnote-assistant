@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const html = fs.readFileSync(path.join(root, "web", "index.html"), "utf8");
 const app = fs.readFileSync(path.join(root, "web", "app.js"), "utf8");
+const i18n = fs.readFileSync(path.join(root, "web", "i18n.js"), "utf8");
 const css = fs.readFileSync(path.join(root, "web", "mature.css"), "utf8");
 
 test("appearance settings expose a live preview and all supported choices", () => {
@@ -17,6 +18,7 @@ test("appearance settings expose a live preview and all supported choices", () =
   assert.match(html, /data-i18n="settingsTitle"/);
   assert.match(html, /data-i18n="interfaceScale"/);
   assert.match(html, /data-i18n-aria="collapseNavigation"/);
+  assert.match(html, /src="\/web\/i18n\.js/);
 });
 
 test("appearance choices map to final CSS tokens", () => {
@@ -48,4 +50,6 @@ test("system theme updates while the client is open", () => {
   assert.match(app, /"200"/);
   assert.match(app, /i18nDefault/);
   assert.match(app, /i18nAria/);
+  assert.match(app, /LearnNoteI18n/);
+  assert.match(i18n, /global\.LearnNoteI18n/);
 });
