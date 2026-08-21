@@ -92,6 +92,8 @@ class ReleaseHardeningContractTests(unittest.TestCase):
         self.assertIn("schedule:", workflow)
         self.assertIn("model-provider-contract.py", workflow)
         self.assertIn("long-video-reliability.py", workflow)
+        self.assertIn("30/60/180-minute resource matrix", workflow)
+        self.assertIn("--duration-seconds $duration", workflow)
         self.assertIn("test_release_hardening.py", workflow)
         self.assertIn("samplelib.com/sample-mp4.html", workflow)
         self.assertIn("-RequireReady", workflow)
