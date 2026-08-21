@@ -470,7 +470,7 @@
       const leading = original.slice(0, original.indexOf(trimmed));
       const trailing = original.slice(original.indexOf(trimmed) + trimmed.length);
       const translated = `${leading}${staticText[trimmed]}${trailing}`;
-      node.nodeValue = translated;
+      if (node.nodeValue !== translated) node.nodeValue = translated;
       node.__learnnoteLastTranslatedText = translated;
     }
     applyStaticAttributes(roots, locale);
