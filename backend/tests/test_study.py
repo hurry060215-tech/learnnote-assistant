@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from app.models import SourceEvidence
-from app.study import due_cards, export_study_data, list_cards, propose_cards, review_card, review_history, save_cards, set_card_status, study_summary
+from app.study import due_cards, export_study_data, get_study_plan, list_cards, propose_cards, review_card, review_history, save_cards, set_card_status, study_summary, update_study_plan
 
 
 class StudyLoopTests(unittest.TestCase):
@@ -32,6 +32,11 @@ class StudyLoopTests(unittest.TestCase):
                 exported = export_study_data()
                 self.assertEqual(exported["algorithm"], "fsrs-6.3.2")
                 self.assertEqual(len(exported["reviews"]), 1)
+                plan = get_study_plan()
+                self.assertEqual(plan.daily_target, 10)
+                updated_plan = update_study_plan("复习", 20, True)
+                self.assertEqual(updated_plan.daily_target, 20)
+                self.assertTrue(updated_plan.paused)
 
 
 if __name__ == "__main__":

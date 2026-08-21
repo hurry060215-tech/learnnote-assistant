@@ -12,7 +12,7 @@ from fsrs import Scheduler as FsrsScheduler
 from fsrs import State as FsrsState
 
 from .config import DATA_DIR, ensure_dirs
-from .models import SourceEvidence, StudyCard
+from .models import SourceEvidence, StudyCard, StudyPlan
 
 
 STUDY_SCHEMA_VERSION = 2
@@ -32,6 +32,13 @@ def _connect() -> sqlite3.Connection:
            due_at TEXT NOT NULL, stability REAL NOT NULL, difficulty REAL NOT NULL,
            reps INTEGER NOT NULL, lapses INTEGER NOT NULL, last_reviewed_at TEXT NOT NULL,
            fsrs_state TEXT NOT NULL DEFAULT 'Learning', step INTEGER NOT NULL DEFAULT 0
+        )"""
+    )
+    connection.execute(
+        """CREATE TABLE IF NOT EXISTS study_plans (
+           plan_id TEXT PRIMARY KEY, schema_version INTEGER NOT NULL, title TEXT NOT NULL,
+           daily_target INTEGER NOT NULL, paused INTEGER NOT NULL, timezone TEXT NOT NULL,
+           created_at TEXT NOT NULL, updated_at TEXT NOT NULL
         )"""
     )
     connection.execute(
@@ -246,4 +253,41 @@ def export_study_data() -> dict[str, object]:
         "exported_at": datetime.now(timezone.utc).isoformat(),
         "cards": [card.model_dump(mode="json") for card in list_cards(limit=1000)],
         "reviews": review_history(limit=5000),
+        "plan": get_study_plan().model_dump(mode="json"),
     }
+
+
+def get_study_plan() -> StudyPlan:
+    now = datetime.now(timezone.utc).isoformat()
+    connection = _connect()
+    try:
+        row = connection.execute("SELECT * FROM study_plans WHERE plan_id = 'default'").fetchone()
+        if row is None:
+            connection.execute(
+                "INSERT INTO study_plans(plan_id, schema_version, title, daily_target, paused, timezone, created_at, updated_at) VALUES ('default', ?, ?, ?, 0, 'UTC', ?, ?)",
+                (STUDY_SCHEMA_VERSION, "本地学习计划", 10, now, now),
+            )
+            connection.commit()
+            return StudyPlan(schema_version=STUDY_SCHEMA_VERSION, created_at=now, updated_at=now)
+        return StudyPlan(
+            schema_version=max(int(row["schema_version"]), STUDY_SCHEMA_VERSION), plan_id=row["plan_id"],
+            title=row["title"], daily_target=int(row["daily_target"]), paused=bool(row["paused"]),
+            timezone=row["timezone"], created_at=row["created_at"], updated_at=row["updated_at"],
+        )
+    finally:
+        connection.close()
+
+
+def update_study_plan(title: str, daily_target: int, paused: bool) -> StudyPlan:
+    current = get_study_plan()
+    now = datetime.now(timezone.utc).isoformat()
+    connection = _connect()
+    try:
+        connection.execute(
+            "UPDATE study_plans SET schema_version=?, title=?, daily_target=?, paused=?, updated_at=? WHERE plan_id='default'",
+            (STUDY_SCHEMA_VERSION, str(title or "本地学习计划")[:120], max(1, min(int(daily_target), 200)), int(bool(paused)), now),
+        )
+        connection.commit()
+        return current.model_copy(update={"schema_version": STUDY_SCHEMA_VERSION, "title": str(title or "本地学习计划")[:120], "daily_target": max(1, min(int(daily_target), 200)), "paused": bool(paused), "updated_at": now})
+    finally:
+        connection.close()

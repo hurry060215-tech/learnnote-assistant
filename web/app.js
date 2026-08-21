@@ -393,6 +393,9 @@ const els = {
   knowledgeSearchResults: document.querySelector("#knowledgeSearchResults"),
   studyDueButton: document.querySelector("#studyDueButton"),
   studyExportButton: document.querySelector("#studyExportButton"),
+  studyPlanTarget: document.querySelector("#studyPlanTarget"),
+  studyPlanPaused: document.querySelector("#studyPlanPaused"),
+  studyPlanSaveButton: document.querySelector("#studyPlanSaveButton"),
   studyDueList: document.querySelector("#studyDueList"),
   previewCleanupButton: document.querySelector("#previewCleanupButton"),
   applyCleanupButton: document.querySelector("#applyCleanupButton"),
@@ -5642,6 +5645,38 @@ async function loadStudyDue() {
   }
 }
 
+async function loadStudyPlan() {
+  try {
+    const result = await fetchJson(apiUrl("/api/study/plan"));
+    const plan = result?.plan || {};
+    if (els.studyPlanTarget) els.studyPlanTarget.value = String(plan.daily_target || 10);
+    if (els.studyPlanPaused) els.studyPlanPaused.checked = Boolean(plan.paused);
+  } catch {
+    // Study plan is optional; keep the local defaults visible.
+  }
+}
+
+async function saveStudyPlan() {
+  if (!els.studyPlanSaveButton) return;
+  els.studyPlanSaveButton.disabled = true;
+  try {
+    await fetchJson(apiUrl("/api/study/plan"), {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        daily_target: Number(els.studyPlanTarget?.value || 10),
+        paused: Boolean(els.studyPlanPaused?.checked),
+        title: "本地学习计划"
+      })
+    });
+    if (els.studyDueList) els.studyDueList.textContent = "学习计划已保存。";
+  } catch (error) {
+    if (els.studyDueList) els.studyDueList.textContent = error?.message || "学习计划保存失败。";
+  } finally {
+    els.studyPlanSaveButton.disabled = false;
+  }
+}
+
 async function exportStudyData() {
   if (!els.studyExportButton) return;
   els.studyExportButton.disabled = true;
@@ -9285,6 +9320,8 @@ els.knowledgeSearchInput?.addEventListener?.("keydown", event => {
 });
 els.studyDueButton?.addEventListener?.("click", loadStudyDue);
 els.studyExportButton?.addEventListener?.("click", exportStudyData);
+els.studyPlanSaveButton?.addEventListener?.("click", saveStudyPlan);
+loadStudyPlan();
 els.applyCleanupButton?.addEventListener?.("click", applyStorageCleanup);
 els.deleteAllTasksButton?.addEventListener?.("click", deleteAllTasksFromClient);
 els.deleteAllTasksSettingsButton?.addEventListener?.("click", deleteAllTasksFromClient);

@@ -12885,3 +12885,18 @@ body.reading-mode .app-shell {
   flex-wrap: wrap;
   gap: 6px;
 }
+
+.study-plan-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.study-plan-controls input[type="number"] {
+  width: 76px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 8px;
+}
