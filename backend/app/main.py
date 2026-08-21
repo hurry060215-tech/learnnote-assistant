@@ -28,7 +28,7 @@ from .adapters import MEDIA_ADAPTER_CONTRACT_VERSION, media_adapter_descriptors
 from .config import BACKEND_ORIGIN, DATA_DIR, DEPLOYMENT_MODE, LLM_API_KEY, LLM_BASE_URL, LLM_MAX_RETRIES, LLM_MODEL, LLM_REQUEST_TIMEOUT_SECONDS, MODEL_CACHE_DIR, PUBLIC_DEPLOYMENT, PUBLIC_PASSWORD, PUBLIC_USERNAME, STATIC_DIR, TASK_DIR, TEMP_DIR, UPLOAD_DIR, WEB_DIR, ensure_dirs
 from .downloader import MediaDownloader, effective_resource_kind, fallback_page_contexts, media_file_video_signature, preflight_media_resource, rank_media_candidates
 from .media import MediaProcessingError, extract_video_clip, probe_duration, probe_media_integrity
-from .library import backup_library, library_status, rebuild_index, restore_library, search_library
+from .library import backup_library, duplicate_groups, library_status, rebuild_index, restore_library, search_library
 from .knowledge import add_evidence, answer_from_evidence, extract_import_text, search_evidence
 from .integrations import integration_manifest
 from .models import CurrentPageTaskRequest, EvidenceCoverage, MediaIntegrity, MediaPreflightRequest, MediaPreflightResult, PagePreflightRequest, RerunFromMediaRequest, ResourceCandidate, SourceEvidence, SourceInputRequest, StorageCleanupRequest, StudyCard, StudyReviewRequest, TaskOptions, TaskQuestionRequest, TaskRecord, now_iso
@@ -4158,6 +4158,11 @@ def api_library_status() -> dict:
 @app.get("/api/library/search")
 def api_library_search(q: str = "", limit: int = 50) -> dict:
     return {"query": q, "results": search_library(q, limit)}
+
+
+@app.get("/api/library/duplicates")
+def api_library_duplicates() -> dict:
+    return {"groups": duplicate_groups()}
 
 
 @app.post("/api/library/rebuild")

@@ -5,8 +5,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from app.library import backup_library, index_task, library_status, rebuild_index, restore_library, search_library
-from app.models import TaskRecord
+from app.library import backup_library, duplicate_groups, index_task, library_status, rebuild_index, restore_library, search_library
+from app.models import SourceIdentity, TaskRecord
 
 
 class LocalLibraryIndexTests(unittest.TestCase):
@@ -72,6 +72,22 @@ class LocalLibraryIndexTests(unittest.TestCase):
                 restored = restore_library(backup)
                 self.assertEqual(restored["indexed_task_count"], 1)
                 self.assertEqual(search_library("Backup")[0]["task_id"], "backup-task")
+
+    def test_duplicate_groups_use_media_fingerprint(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            tasks = root / "tasks"
+            tasks.mkdir()
+            with patch("app.library.DATA_DIR", root), patch("app.library.TASK_DIR", tasks), patch("app.library.TEMP_DIR", root / "temp"), patch("app.knowledge.DATA_DIR", root):
+                for task_id in ("duplicate-a", "duplicate-b"):
+                    record = TaskRecord(
+                        id=task_id, source_type="local", mode="local", title=task_id,
+                        source_identity=SourceIdentity(media_sha256="same-sha"),
+                        created_at="2026-08-21T00:00:00+00:00", updated_at="2026-08-21T00:00:00+00:00",
+                    )
+                    index_task(record)
+                groups = duplicate_groups()
+                self.assertEqual(groups[0]["count"], 2)
 
 
 if __name__ == "__main__":

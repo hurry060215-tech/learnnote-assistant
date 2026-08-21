@@ -181,9 +181,10 @@
                 </div>
                 <div class="setting-row">
                   <div><strong>资料库索引</strong><small>只备份本地搜索索引；任务 JSON 和视频仍保留在原目录</small></div>
-                  <div class="setting-inline-actions"><button id="backupLibraryButton" class="secondary action-button" type="button">导出索引备份</button><button id="restoreLibraryButton" class="secondary action-button" type="button">恢复索引</button><input id="libraryBackupInput" type="file" accept=".sqlite3,application/vnd.sqlite3" hidden></div>
+                  <div class="setting-inline-actions"><button id="checkLibraryDuplicatesButton" class="secondary action-button" type="button">检查重复</button><button id="backupLibraryButton" class="secondary action-button" type="button">导出索引备份</button><button id="restoreLibraryButton" class="secondary action-button" type="button">恢复索引</button><input id="libraryBackupInput" type="file" accept=".sqlite3,application/vnd.sqlite3" hidden></div>
                 </div>
                 <p id="libraryBackupStatus" class="settings-inline-status" role="status" aria-live="polite"></p>
+                <p id="libraryDuplicateStatus" class="settings-inline-status" role="status" aria-live="polite"></p>
                 <div class="setting-row">
                   <div><strong>导入学习资料</strong><small>PDF、Markdown 和网页 HTML 只在本机提取文本，保留可追溯来源。</small></div>
                   <div class="setting-inline-actions"><button id="knowledgeImportButton" class="secondary action-button" type="button">选择文件</button><input id="knowledgeImportInput" type="file" accept=".pdf,.md,.markdown,.html,.htm,.txt" hidden></div>

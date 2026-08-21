@@ -13,7 +13,7 @@ from .models import TaskRecord
 from .knowledge import add_evidence, remove_task_evidence
 
 
-LIBRARY_SCHEMA_VERSION = 1
+LIBRARY_SCHEMA_VERSION = 2
 LIBRARY_BACKUP_MAX_BYTES = 128 * 1024 * 1024
 _lock = threading.RLock()
 
@@ -65,11 +65,16 @@ def _ensure_schema(connection: sqlite3.Connection) -> bool:
           updated_at TEXT NOT NULL,
           note_path TEXT NOT NULL,
           media_path TEXT NOT NULL,
+          fingerprint TEXT NOT NULL DEFAULT '',
           content TEXT NOT NULL
         );
-        INSERT OR REPLACE INTO library_meta(key, value) VALUES ('schema_version', '1');
+        INSERT OR REPLACE INTO library_meta(key, value) VALUES ('schema_version', '2');
         """
     )
+    columns = {row[1] for row in connection.execute("PRAGMA table_info(library_tasks)").fetchall()}
+    if "fingerprint" not in columns:
+        connection.execute("ALTER TABLE library_tasks ADD COLUMN fingerprint TEXT NOT NULL DEFAULT ''")
+        connection.commit()
     try:
         connection.execute(
             "CREATE VIRTUAL TABLE IF NOT EXISTS library_tasks_fts USING fts5(task_id UNINDEXED, title, source, content)"
@@ -101,13 +106,14 @@ def index_task(record: TaskRecord) -> bool:
                 connection.execute(
                     """
                     INSERT INTO library_tasks(task_id, title, source, source_type, mode, status, checkpoint,
-                                              created_at, updated_at, note_path, media_path, content)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                              created_at, updated_at, note_path, media_path, fingerprint, content)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(task_id) DO UPDATE SET
                       title=excluded.title, source=excluded.source, source_type=excluded.source_type,
                       mode=excluded.mode, status=excluded.status, checkpoint=excluded.checkpoint,
                       created_at=excluded.created_at, updated_at=excluded.updated_at,
-                      note_path=excluded.note_path, media_path=excluded.media_path, content=excluded.content
+                      note_path=excluded.note_path, media_path=excluded.media_path,
+                      fingerprint=excluded.fingerprint, content=excluded.content
                     """,
                     (
                         record.id,
@@ -121,6 +127,7 @@ def index_task(record: TaskRecord) -> bool:
                         record.updated_at,
                         record.note_path,
                         record.media_path or record.source_media_path,
+                        record.source_identity.media_sha256,
                         content,
                     ),
                 )
@@ -253,6 +260,26 @@ def library_status() -> dict[str, object]:
             connection.close()
 
 
+def duplicate_groups() -> list[dict[str, object]]:
+    """Return media-fingerprint groups that can be reviewed before cleanup."""
+    with _lock:
+        connection, _ = _connect()
+        try:
+            rows = connection.execute(
+                """SELECT fingerprint, COUNT(*) AS count, GROUP_CONCAT(task_id) AS task_ids
+                   FROM library_tasks
+                   WHERE fingerprint != ''
+                   GROUP BY fingerprint HAVING COUNT(*) > 1
+                   ORDER BY count DESC"""
+            ).fetchall()
+            return [
+                {"fingerprint": row["fingerprint"], "count": int(row["count"]), "task_ids": str(row["task_ids"] or "").split(",")}
+                for row in rows
+            ]
+        finally:
+            connection.close()
+
+
 def backup_library() -> Path:
     """Create a SQLite-consistent local backup outside the live database file."""
     export_dir = DATA_DIR / "exports"
@@ -292,7 +319,7 @@ def restore_library(backup_path: Path) -> dict[str, object]:
             source.close()
     except sqlite3.Error as exc:
         raise ValueError("library_backup_invalid") from exc
-    if integrity.lower() != "ok" or not schema or str(schema[0]) != str(LIBRARY_SCHEMA_VERSION) or not table:
+    if integrity.lower() != "ok" or not schema or str(schema[0]) not in {"1", str(LIBRARY_SCHEMA_VERSION)} or not table:
         raise ValueError("library_backup_schema_mismatch")
 
     ensure_dirs()

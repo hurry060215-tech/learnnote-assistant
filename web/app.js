@@ -381,6 +381,8 @@ const els = {
   restoreLibraryButton: document.querySelector("#restoreLibraryButton"),
   libraryBackupInput: document.querySelector("#libraryBackupInput"),
   libraryBackupStatus: document.querySelector("#libraryBackupStatus"),
+  checkLibraryDuplicatesButton: document.querySelector("#checkLibraryDuplicatesButton"),
+  libraryDuplicateStatus: document.querySelector("#libraryDuplicateStatus"),
   knowledgeImportButton: document.querySelector("#knowledgeImportButton"),
   knowledgeImportInput: document.querySelector("#knowledgeImportInput"),
   knowledgeImportStatus: document.querySelector("#knowledgeImportStatus"),
@@ -5463,6 +5465,23 @@ async function restoreLibraryIndex(file) {
   }
 }
 
+async function checkLibraryDuplicates() {
+  if (!els.libraryDuplicateStatus) return;
+  els.checkLibraryDuplicatesButton?.setAttribute?.("disabled", "disabled");
+  els.libraryDuplicateStatus.textContent = "正在检查媒体指纹…";
+  try {
+    const result = await fetchJson(apiUrl("/api/library/duplicates"));
+    const groups = Array.isArray(result?.groups) ? result.groups : [];
+    els.libraryDuplicateStatus.textContent = groups.length
+      ? `发现 ${groups.length} 组重复媒体；请在删除前核对任务内容。`
+      : "没有发现相同媒体指纹。";
+  } catch (error) {
+    els.libraryDuplicateStatus.textContent = error?.message || "重复检查失败。";
+  } finally {
+    els.checkLibraryDuplicatesButton?.removeAttribute?.("disabled");
+  }
+}
+
 async function importKnowledgeFile(file) {
   if (!file || !els.knowledgeImportStatus) return;
   els.knowledgeImportButton?.setAttribute?.("disabled", "disabled");
@@ -9127,6 +9146,7 @@ els.previewCleanupButton?.addEventListener?.("click", previewStorageCleanup);
 els.backupLibraryButton?.addEventListener?.("click", backupLibraryIndex);
 els.restoreLibraryButton?.addEventListener?.("click", () => els.libraryBackupInput?.click?.());
 els.libraryBackupInput?.addEventListener?.("change", () => restoreLibraryIndex(els.libraryBackupInput.files?.[0]));
+els.checkLibraryDuplicatesButton?.addEventListener?.("click", checkLibraryDuplicates);
 els.knowledgeImportButton?.addEventListener?.("click", () => els.knowledgeImportInput?.click?.());
 els.knowledgeImportInput?.addEventListener?.("change", () => importKnowledgeFile(els.knowledgeImportInput.files?.[0]));
 els.knowledgeSearchButton?.addEventListener?.("click", searchKnowledge);
