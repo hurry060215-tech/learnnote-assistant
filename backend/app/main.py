@@ -55,6 +55,8 @@ _deferred_handoffs_lock = threading.RLock()
 # when its panel is closed.
 EXTENSION_HEARTBEAT_TTL_SECONDS = 75.0
 PAIRING_TTL_SECONDS = 10 * 60
+_pairing_token = ""
+_pairing_expires_at = 0.0
 TRUSTED_BROWSER_ORIGIN_RE = re.compile(r"^(chrome-extension://[a-z]+|moz-extension://[a-z0-9-]+|https?://(localhost|127\.0\.0\.1)(:\d+)?)$")
 WRITE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
@@ -110,20 +112,12 @@ async def enforce_trusted_write_origin(request: Request, call_next):
     return await call_next(request)
 
 
-def _pairing_path() -> Path:
-    return DATA_DIR / "pairing.json"
-
-
 def _pairing_token_valid(value: str) -> bool:
+    global _pairing_token, _pairing_expires_at
     candidate = str(value or "").strip()
     if not candidate:
         return False
-    try:
-        payload = json.loads(_pairing_path().read_text(encoding="utf-8"))
-        expires = float(payload.get("expires_at") or 0)
-        return expires > time.time() and hmac.compare_digest(candidate, str(payload.get("token") or ""))
-    except (OSError, ValueError, TypeError):
-        return False
+    return _pairing_expires_at > time.time() and hmac.compare_digest(candidate, _pairing_token)
 
 app.mount("/data", StaticFiles(directory=str(DATA_DIR)), name="data")
 app.mount("/web", StaticFiles(directory=str(WEB_DIR)), name="web")
@@ -3602,11 +3596,13 @@ def api_integrations_manifest() -> dict:
 @app.get("/api/pairing/issue")
 def api_pairing_issue(request: Request) -> dict:
     """Issue a short-lived token to a local extension during pairing."""
+    global _pairing_token, _pairing_expires_at
     client_host = str(getattr(request.client, "host", "") or "")
     if client_host not in {"127.0.0.1", "::1", "localhost", "testclient"}:
         raise HTTPException(status_code=403, detail={"code": "pairing_local_only", "message": "配对只能在本机完成。"})
-    payload = {"token": token_urlsafe(32), "issued_at": time.time(), "expires_at": time.time() + PAIRING_TTL_SECONDS}
-    atomic_write_text(_pairing_path(), json.dumps(payload, ensure_ascii=False))
+    _pairing_token = token_urlsafe(32)
+    _pairing_expires_at = time.time() + PAIRING_TTL_SECONDS
+    payload = {"token": _pairing_token, "issued_at": time.time(), "expires_at": _pairing_expires_at}
     return {"ok": True, "token": payload["token"], "expires_at": payload["expires_at"], "ttl_seconds": PAIRING_TTL_SECONDS}
 
 
