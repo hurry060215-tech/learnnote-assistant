@@ -8,6 +8,7 @@ yt-dlp>=2026.7.4
 Pillow>=10.4
 openai>=1.40
 imageio-ffmpeg>=0.5.1
+fsrs>=6.3,<7
 
 # Installed by start-backend.ps1 -InstallAsr for real local transcription:
 # faster-whisper>=1.1.1

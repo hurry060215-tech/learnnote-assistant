@@ -1,16 +1,23 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import sqlite3
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from uuid import uuid4
+
+from fsrs import Card as FsrsCard
+from fsrs import Rating as FsrsRating
+from fsrs import Scheduler as FsrsScheduler
+from fsrs import State as FsrsState
 
 from .config import DATA_DIR, ensure_dirs
 from .models import SourceEvidence, StudyCard
 
 
-STUDY_SCHEMA_VERSION = 1
+STUDY_SCHEMA_VERSION = 2
+FSRS_ALGORITHM = "fsrs-6.3.2"
+_SCHEDULER = FsrsScheduler(enable_fuzzing=False)
 
 
 def _connect() -> sqlite3.Connection:
@@ -23,20 +30,28 @@ def _connect() -> sqlite3.Connection:
            card_id TEXT PRIMARY KEY, schema_version INTEGER NOT NULL, front TEXT NOT NULL,
            back TEXT NOT NULL, source_evidence_ids TEXT NOT NULL, status TEXT NOT NULL,
            due_at TEXT NOT NULL, stability REAL NOT NULL, difficulty REAL NOT NULL,
-           reps INTEGER NOT NULL, lapses INTEGER NOT NULL, last_reviewed_at TEXT NOT NULL
+           reps INTEGER NOT NULL, lapses INTEGER NOT NULL, last_reviewed_at TEXT NOT NULL,
+           fsrs_state TEXT NOT NULL DEFAULT 'Learning', step INTEGER NOT NULL DEFAULT 0
         )"""
     )
+    columns = {row[1] for row in connection.execute("PRAGMA table_info(study_cards)").fetchall()}
+    if "fsrs_state" not in columns:
+        connection.execute("ALTER TABLE study_cards ADD COLUMN fsrs_state TEXT NOT NULL DEFAULT 'Learning'")
+    if "step" not in columns:
+        connection.execute("ALTER TABLE study_cards ADD COLUMN step INTEGER NOT NULL DEFAULT 0")
+    connection.commit()
     return connection
 
 
 def _row_to_card(row: sqlite3.Row) -> StudyCard:
     return StudyCard(
-        schema_version=int(row["schema_version"]),
+        schema_version=int(row["schema_version"]), algorithm=FSRS_ALGORITHM,
         card_id=row["card_id"], front=row["front"], back=row["back"],
         source_evidence_ids=json.loads(row["source_evidence_ids"] or "[]"),
         status=row["status"], due_at=row["due_at"], stability=float(row["stability"]),
         difficulty=float(row["difficulty"]), reps=int(row["reps"]), lapses=int(row["lapses"]),
         last_reviewed_at=row["last_reviewed_at"],
+        fsrs_state=str(row["fsrs_state"] or "Learning"), step=int(row["step"] or 0),
     )
 
 
@@ -64,6 +79,7 @@ def save_cards(cards: list[StudyCard]) -> list[StudyCard]:
         for card in cards:
             item = card.model_copy(update={
                 "schema_version": STUDY_SCHEMA_VERSION,
+                "algorithm": FSRS_ALGORITHM,
                 "card_id": card.card_id or uuid4().hex,
                 "status": "active" if card.status == "proposed" else card.status,
                 "due_at": card.due_at or now,
@@ -71,11 +87,12 @@ def save_cards(cards: list[StudyCard]) -> list[StudyCard]:
             connection.execute(
                 """INSERT OR REPLACE INTO study_cards
                    (card_id, schema_version, front, back, source_evidence_ids, status, due_at,
-                    stability, difficulty, reps, lapses, last_reviewed_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    stability, difficulty, reps, lapses, last_reviewed_at, fsrs_state, step)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (item.card_id, item.schema_version, item.front, item.back,
                  json.dumps(item.source_evidence_ids, ensure_ascii=False), item.status, item.due_at,
-                 item.stability, item.difficulty, item.reps, item.lapses, item.last_reviewed_at),
+                 item.stability, item.difficulty, item.reps, item.lapses, item.last_reviewed_at,
+                 item.fsrs_state, int(item.step or 0)),
             )
             stored.append(item)
         connection.commit()
@@ -134,35 +151,45 @@ def review_card(card_id: str, rating: int) -> StudyCard:
             raise ValueError("card_not_found")
         card = _row_to_card(row)
         now = datetime.now(timezone.utc)
-        if rating == 1:
-            interval = timedelta(minutes=10)
-            stability = max(1.0, card.stability * 0.5)
-            lapses = card.lapses + 1
-        elif rating == 2:
-            interval = timedelta(days=max(1, round(card.stability)))
-            stability = max(1.0, card.stability * 1.2)
-            lapses = card.lapses
-        elif rating == 3:
-            interval = timedelta(days=max(1, round(card.stability * 1.8)))
-            stability = card.stability * 1.8
-            lapses = card.lapses
-        else:
-            interval = timedelta(days=max(2, round(card.stability * 2.5)))
-            stability = card.stability * 2.5
-            lapses = card.lapses
+        state = getattr(FsrsState, card.fsrs_state, FsrsState.Learning)
+        due = _parse_datetime(card.due_at) or now
+        last_review = _parse_datetime(card.last_reviewed_at)
+        fsrs_card = FsrsCard(
+            card_id=int(hashlib.sha256(card.card_id.encode("utf-8")).hexdigest()[:15], 16),
+            state=state,
+            step=card.step,
+            stability=card.stability,
+            difficulty=card.difficulty,
+            due=due,
+            last_review=last_review,
+        )
+        next_card, _review_log = _SCHEDULER.review_card(fsrs_card, FsrsRating(rating), review_datetime=now)
+        lapses = card.lapses + (1 if rating == 1 else 0)
         updated = card.model_copy(update={
-            "due_at": (now + interval).isoformat(),
-            "stability": round(min(stability, 3650.0), 4),
-            "difficulty": round(max(1.0, min(10.0, card.difficulty + (0.5 if rating == 1 else -0.15 if rating == 4 else 0))), 4),
+            "schema_version": STUDY_SCHEMA_VERSION,
+            "algorithm": FSRS_ALGORITHM,
+            "due_at": next_card.due.astimezone(timezone.utc).isoformat(),
+            "stability": round(float(next_card.stability or card.stability), 4),
+            "difficulty": round(float(next_card.difficulty or card.difficulty), 4),
+            "fsrs_state": next_card.state.name,
+            "step": next_card.step,
             "reps": card.reps + 1,
             "lapses": lapses,
             "last_reviewed_at": now.isoformat(),
         })
         connection.execute(
-            "UPDATE study_cards SET due_at=?, stability=?, difficulty=?, reps=?, lapses=?, last_reviewed_at=? WHERE card_id=?",
-            (updated.due_at, updated.stability, updated.difficulty, updated.reps, updated.lapses, updated.last_reviewed_at, card_id),
+            "UPDATE study_cards SET schema_version=?, due_at=?, stability=?, difficulty=?, reps=?, lapses=?, last_reviewed_at=?, fsrs_state=?, step=? WHERE card_id=?",
+            (updated.schema_version, updated.due_at, updated.stability, updated.difficulty, updated.reps, updated.lapses, updated.last_reviewed_at, updated.fsrs_state, updated.step, card_id),
         )
         connection.commit()
         return updated
     finally:
         connection.close()
+
+
+def _parse_datetime(value: str) -> datetime | None:
+    try:
+        parsed = datetime.fromisoformat(str(value or "").replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed.astimezone(timezone.utc)

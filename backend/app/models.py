@@ -293,6 +293,7 @@ class SourceEvidence(BaseModel):
 
 class StudyCard(BaseModel):
     schema_version: int = 1
+    algorithm: str = "fsrs-6.3.2"
     card_id: str = ""
     front: str = Field(min_length=1, max_length=1000)
     back: str = Field(min_length=1, max_length=4000)
@@ -301,6 +302,8 @@ class StudyCard(BaseModel):
     due_at: str = ""
     stability: float = 1.0
     difficulty: float = 5.0
+    fsrs_state: str = "Learning"
+    step: int | None = 0
     reps: int = 0
     lapses: int = 0
     last_reviewed_at: str = ""
