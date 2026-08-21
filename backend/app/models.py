@@ -289,6 +289,27 @@ class SourceEvidence(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class StudyCard(BaseModel):
+    schema_version: int = 1
+    card_id: str = ""
+    front: str = Field(min_length=1, max_length=1000)
+    back: str = Field(min_length=1, max_length=4000)
+    source_evidence_ids: list[str] = Field(default_factory=list, max_length=8)
+    status: Literal["proposed", "active", "suspended", "deleted"] = "proposed"
+    due_at: str = ""
+    stability: float = 1.0
+    difficulty: float = 5.0
+    reps: int = 0
+    lapses: int = 0
+    last_reviewed_at: str = ""
+
+
+class StudyReviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    rating: Literal[1, 2, 3, 4]
+
+
 class EvidenceGate(BaseModel):
     name: str
     passed: bool = False

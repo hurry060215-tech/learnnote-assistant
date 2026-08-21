@@ -30,7 +30,8 @@ from .downloader import MediaDownloader, effective_resource_kind, fallback_page_
 from .media import MediaProcessingError, extract_video_clip, probe_duration, probe_media_integrity
 from .library import backup_library, library_status, rebuild_index, restore_library, search_library
 from .knowledge import add_evidence, answer_from_evidence, extract_import_text, search_evidence
-from .models import CurrentPageTaskRequest, EvidenceCoverage, MediaIntegrity, MediaPreflightRequest, MediaPreflightResult, PagePreflightRequest, RerunFromMediaRequest, ResourceCandidate, SourceEvidence, SourceInputRequest, StorageCleanupRequest, TaskOptions, TaskQuestionRequest, TaskRecord, now_iso
+from .models import CurrentPageTaskRequest, EvidenceCoverage, MediaIntegrity, MediaPreflightRequest, MediaPreflightResult, PagePreflightRequest, RerunFromMediaRequest, ResourceCandidate, SourceEvidence, SourceInputRequest, StorageCleanupRequest, StudyCard, StudyReviewRequest, TaskOptions, TaskQuestionRequest, TaskRecord, now_iso
+from .study import due_cards, propose_cards, review_card, save_cards
 from .processor import browser_subtitle_text_is_player_ui, enrich_resource_candidates_with_active_video, process_current_page_task, process_local_video_task, read_note, read_transcript, read_visual_index, redacted_request_dump, redacted_resource
 from .reliability import current_page_source_identity, local_source_identity
 from .runtime import ffmpeg_bin, ffprobe_bin
@@ -4249,6 +4250,50 @@ def api_knowledge_ask(payload: dict | None = Body(default=None)) -> dict:
     if not question:
         raise HTTPException(status_code=422, detail={"code": "question_required", "message": "请输入问题。"})
     return answer_from_evidence(question, int(body.get("limit") or 6))
+
+
+@app.post("/api/study/proposals")
+def api_study_proposals(payload: dict | None = Body(default=None)) -> dict:
+    body = payload or {}
+    raw = body.get("evidence") if isinstance(body.get("evidence"), list) else []
+    evidence: list[SourceEvidence] = []
+    for item in raw:
+        try:
+            evidence.append(SourceEvidence.model_validate(item))
+        except ValidationError:
+            continue
+    return {"proposals": [card.model_dump(mode="json") for card in propose_cards(evidence, int(body.get("limit") or 20))]}
+
+
+@app.post("/api/study/cards")
+def api_study_cards(payload: dict | None = Body(default=None)) -> dict:
+    body = payload or {}
+    raw = body.get("cards") if isinstance(body.get("cards"), list) else []
+    cards: list[StudyCard] = []
+    for item in raw:
+        try:
+            cards.append(StudyCard.model_validate(item))
+        except ValidationError:
+            continue
+    if not cards:
+        raise HTTPException(status_code=422, detail={"code": "cards_required", "message": "至少确认一张记忆卡片。"})
+    return {"cards": [card.model_dump(mode="json") for card in save_cards(cards)]}
+
+
+@app.get("/api/study/due")
+def api_study_due(limit: int = 50) -> dict:
+    return {"cards": [card.model_dump(mode="json") for card in due_cards(limit)]}
+
+
+@app.post("/api/study/cards/{card_id}/review")
+def api_study_review(card_id: str, request: StudyReviewRequest) -> dict:
+    try:
+        card = review_card(card_id, request.rating)
+    except ValueError as exc:
+        code = str(exc)
+        status = 404 if code == "card_not_found" else 422
+        raise HTTPException(status_code=status, detail={"code": code, "message": "记忆卡片不存在或评分无效。"}) from exc
+    return {"card": card.model_dump(mode="json")}
 
 
 @app.post("/api/storage/cleanup")
