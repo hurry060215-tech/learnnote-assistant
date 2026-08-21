@@ -4250,7 +4250,13 @@ async def api_knowledge_import_file(file: UploadFile = File(...)) -> dict:
 
 @app.get("/api/knowledge/search")
 def api_knowledge_search(q: str = "", limit: int = 12, mode: str = "lexical") -> dict:
-    return {"query": q, "mode": mode, "results": search_evidence(q, limit, mode)}
+    try:
+        results = search_evidence(q, limit, mode)
+    except RuntimeError as exc:
+        if str(exc) == "local_embedding_unavailable":
+            raise HTTPException(status_code=409, detail={"code": str(exc), "message": "可选本地 embedding 尚未安装。"}) from exc
+        raise
+    return {"query": q, "mode": mode, "results": results}
 
 
 @app.get("/api/knowledge/embedding-status")
@@ -4271,7 +4277,12 @@ def api_knowledge_ask(payload: dict | None = Body(default=None)) -> dict:
     question = str(body.get("question") or "").strip()
     if not question:
         raise HTTPException(status_code=422, detail={"code": "question_required", "message": "请输入问题。"})
-    return answer_from_evidence(question, int(body.get("limit") or 6), str(body.get("mode") or "lexical"))
+    try:
+        return answer_from_evidence(question, int(body.get("limit") or 6), str(body.get("mode") or "lexical"))
+    except RuntimeError as exc:
+        if str(exc) == "local_embedding_unavailable":
+            raise HTTPException(status_code=409, detail={"code": str(exc), "message": "可选本地 embedding 尚未安装。"}) from exc
+        raise
 
 
 @app.post("/api/study/proposals")
