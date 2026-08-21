@@ -53,6 +53,9 @@ class DesktopApi:
     EXPORT_TYPES = {
         "markdown": ".md",
         "bundle": ".zip",
+        "sanitized-bundle": ".zip",
+        "support-package": ".zip",
+        "notion": ".json",
         "manifest": ".json",
         "diagnostics": ".md",
         "visual-windows": ".json",
