@@ -5,7 +5,7 @@ LearnNote 当前采用“行为不变、逐步拆分”的策略。任务目录�
 ## 后端依赖方向
 
 ```text
-API (main.py)
+API routers (routers/*.py)
   -> application flows (processor.py)
       -> domain models (models.py)
       -> adapters/downloader/media
@@ -17,6 +17,10 @@ API (main.py)
 - `library.py`、`knowledge.py`、`study.py` 和 `observability.py` 都是本地可重建投影，不能成为任务事实源。
 - `adapters.py` 是来源契约；站点特例不能反向污染 API 或任务模型。
 - `downloader.py` 只负责候选排序、预检和下载策略；不生成学习笔记。
+- `routers/knowledge_study.py` owns knowledge and study routes; `routers/system.py`
+  owns integration, desktop-focus, and preference routes. They import domain
+  services directly and never import `main.py`, preventing route registration
+  from becoming a second application-service boundary.
 
 ## 前端边界
 
@@ -26,4 +30,4 @@ API (main.py)
 
 ## 拆分验收
 
-新模块必须拥有：公开输入/输出 schema、至少一个离线测试、失败恢复动作、隐私说明和迁移/重建路径。大型单体的进一步拆分应保持旧 API、任务文件和导出路径兼容，并在 CI 中逐步加入循环依赖与模块大小检查。
+新模块必须拥有：公开输入/输出 schema、至少一个离线测试、失败恢复动作、隐私说明和迁移/重建路径。大型单体的进一步拆分应保持旧 API、任务文件和导出路径兼容，并在 CI 中逐步加入循环依赖与模块大小检查。当前已完成知识/学习与系统路由的第一阶段拆分；下载器、处理器和前端仍按同一策略继续拆分。
