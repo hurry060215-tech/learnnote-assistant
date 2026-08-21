@@ -30,7 +30,7 @@ from .downloader import MediaDownloader, effective_resource_kind, fallback_page_
 from .media import MediaProcessingError, extract_video_clip, probe_duration, probe_media_integrity
 from .library import backup_library, duplicate_groups, library_status, rebuild_index, restore_library, search_library
 from .knowledge import add_evidence, answer_from_evidence, evidence_for_task, extract_import_text, remove_evidence, search_evidence
-from .integrations import integration_manifest, notion_export_payload
+from .integrations import notion_export_payload
 from .embeddings import embedding_status
 from .models import CurrentPageTaskRequest, EvidenceCoverage, MediaIntegrity, MediaPreflightRequest, MediaPreflightResult, PagePreflightRequest, RerunFromMediaRequest, ResourceCandidate, SourceEvidence, SourceInputRequest, StorageCleanupRequest, StudyCard, StudyCardPositionRequest, StudyCardStatusRequest, StudyPlanUpdateRequest, StudyReviewRequest, TaskOptions, TaskQuestionRequest, TaskRecord, now_iso
 from .observability import read_task_events, redacted_support_manifest
@@ -39,8 +39,9 @@ from .processor import browser_subtitle_text_is_player_ui, enrich_resource_candi
 from .reliability import current_page_source_identity, local_source_identity
 from .runtime import ffmpeg_bin, ffprobe_bin
 from .source_input import SourceInputError, clean_task_title, normalize_source_input
-from .storage import atomic_write_text, cleanup_tasks, create_task, delete_all_tasks, delete_task, get_task, list_tasks, read_json, request_task_cancel, storage_summary, task_dir, update_task, write_json
+from .storage import cleanup_tasks, create_task, delete_all_tasks, delete_task, get_task, list_tasks, read_json, request_task_cancel, storage_summary, task_dir, update_task, write_json
 from .routers.knowledge_study import knowledge_router, study_router, task_study_router
+from .routers.system import system_router
 from .summarizer import chat_completion_provider_kwargs, llm_base_host, llm_model_supports_vision, llm_provider_name, visual_window_review_question_lines
 
 ensure_dirs()
@@ -49,6 +50,7 @@ app = FastAPI(title="LearnNote Assistant", version=APP_VERSION)
 app.include_router(knowledge_router)
 app.include_router(study_router)
 app.include_router(task_study_router)
+app.include_router(system_router)
 _extension_heartbeat_at = 0.0
 _extension_version = ""
 _extension_protocol_version = 0
@@ -3593,11 +3595,6 @@ def api_health() -> dict:
     return health_payload()
 
 
-@app.get("/api/integrations/manifest")
-def api_integrations_manifest() -> dict:
-    return integration_manifest()
-
-
 @app.get("/api/pairing/issue")
 def api_pairing_issue(request: Request) -> dict:
     """Issue a short-lived token to a local extension during pairing."""
@@ -3609,51 +3606,6 @@ def api_pairing_issue(request: Request) -> dict:
     _pairing_expires_at = time.time() + PAIRING_TTL_SECONDS
     payload = {"token": _pairing_token, "issued_at": time.time(), "expires_at": _pairing_expires_at}
     return {"ok": True, "token": payload["token"], "expires_at": payload["expires_at"], "ttl_seconds": PAIRING_TTL_SECONDS}
-
-
-@app.post("/api/desktop/focus")
-def desktop_focus(payload: dict | None = Body(default=None)) -> dict:
-    body = payload or {}
-    task_id = str(body.get("task_id") or "").strip()
-    if task_id:
-        if not re.fullmatch(r"[a-f0-9]{12}", task_id):
-            raise HTTPException(status_code=422, detail={"code": "invalid_task_id", "message": "Invalid task id"})
-        try:
-            get_task(task_id)
-        except FileNotFoundError as exc:
-            raise HTTPException(status_code=404, detail={"code": "task_not_found", "message": "Task not found"}) from exc
-    callback = getattr(app.state, "desktop_focus", None)
-    if not callable(callback):
-        return {"ok": False, "available": False, "task_id": task_id}
-    try:
-        callback(body)
-    except Exception:
-        return {"ok": False, "available": True, "task_id": task_id, "code": "focus_failed"}
-    return {"ok": True, "available": True, "focused": True, "task_id": task_id}
-
-
-@app.get("/api/preferences")
-def get_preferences() -> dict:
-    path = DATA_DIR / "preferences.json"
-    if not path.is_file():
-        return {"task_options": TaskOptions().model_dump(exclude={"llm_api_key", "llm_base_url", "llm_model"})}
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-        options = TaskOptions.model_validate(payload.get("task_options") or {})
-    except (OSError, ValueError, ValidationError):
-        options = TaskOptions()
-    return {"task_options": options.model_dump(exclude={"llm_api_key", "llm_base_url", "llm_model"})}
-
-
-@app.put("/api/preferences")
-def put_preferences(payload: dict = Body(...)) -> dict:
-    try:
-        options = TaskOptions.model_validate(payload.get("task_options") or {})
-    except ValidationError as exc:
-        raise HTTPException(status_code=422, detail="Invalid task preferences") from exc
-    public_options = options.model_dump(exclude={"llm_api_key", "llm_base_url", "llm_model"})
-    atomic_write_text(DATA_DIR / "preferences.json", json.dumps({"task_options": public_options}, ensure_ascii=False, indent=2))
-    return {"ok": True, "task_options": public_options}
 
 
 @app.post("/api/extension/heartbeat")
