@@ -13,6 +13,7 @@ from .asr_pipeline import ASR_FAILURE_SOURCES, asr_failure_detail, transcribe_ex
 from .downloader import DownloadError, MediaDownloader, classify_resource, effective_resource_kind, infer_manifest_url_from_fragment
 from .media import build_frame_grids, extract_audio, extract_embedded_subtitle, extract_frames, extract_frames_adaptive, normalize_video, probe_duration, probe_media_integrity
 from .models import ActiveVideoInfo, BrowserSubtitleCue, CurrentPageTaskRequest, DownloadAttempt, FrameGrid, FrameSample, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow, now_iso
+from .local_video_task import run_local_video_task
 from .reliability import calculate_evidence_coverage, current_page_source_identity, evidence_coverage_markdown, validate_source_identity
 from .processor_state import (
     ContentMismatchError,
@@ -873,30 +874,17 @@ def process_local_video_task(
     subtitle_path: Path | None = None,
     subtitle_source: str = "page-subtitle",
 ) -> None:
-    resource_monitor, resource_started_at = start_task_resource_monitor(task_id)
-    try:
-        _check_cancel(task_id)
-        _process_video_file(
-            task_id=task_id,
-            input_path=input_path,
-            title=title,
-            page_url=page_url,
-            options=options,
-            subtitle_path=subtitle_path,
-            browser_subtitles=browser_subtitles,
-            subtitle_source=subtitle_source,
-            page_context="",
-        )
-    except TaskCancelled:
-        return
-    except ContentMismatchError as exc:
-        _fail(task_id, "media_mismatch", str(exc))
-    except ResourceBudgetError as exc:
-        _fail(task_id, "resource_budget_exceeded", str(exc))
-    except Exception as exc:
-        _fail(task_id, "processing_failed", str(exc))
-    finally:
-        persist_task_resource_usage(task_id, resource_monitor, resource_started_at)
+    run_local_video_task(
+        task_id,
+        input_path,
+        title,
+        options,
+        page_url=page_url,
+        browser_subtitles=browser_subtitles,
+        subtitle_path=subtitle_path,
+        subtitle_source=subtitle_source,
+        process_video_file=_process_video_file,
+    )
 
 
 def _process_video_file(
