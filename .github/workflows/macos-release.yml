@@ -35,6 +35,7 @@ jobs:
         env:
           PYTHONPATH: backend
         run: |
+          mkdir -p data
           python -m unittest discover desktop/tests -p "test_*.py"
           python -m unittest discover scripts/tests -p "test_*.py"
       - name: Build unsigned macOS app bundle
