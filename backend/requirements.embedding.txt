@@ -1,0 +1,3 @@
+# Optional local semantic retrieval. This is never installed by the default
+# desktop/bootstrap path and does not upload the learning library.
+sentence-transformers>=3.0,<6

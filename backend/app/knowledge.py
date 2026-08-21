@@ -11,6 +11,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from .config import DATA_DIR, ensure_dirs
+from .embeddings import semantic_rank
 from .models import SourceEvidence
 
 
@@ -170,8 +171,10 @@ def remove_evidence(evidence_id: str) -> bool:
         connection.close()
 
 
-def search_evidence(query: str = "", limit: int = 12) -> list[dict[str, object]]:
+def search_evidence(query: str = "", limit: int = 12, mode: str = "lexical") -> list[dict[str, object]]:
     limit = max(1, min(int(limit or 12), 50))
+    semantic_mode = str(mode or "lexical").lower() in {"embedding", "semantic", "local-embedding"}
+    query_limit = 500 if semantic_mode else limit
     connection = _connect()
     try:
         term = _fts_query(query)
@@ -182,7 +185,7 @@ def search_evidence(query: str = "", limit: int = 12) -> list[dict[str, object]]
                        JOIN source_evidence e ON e.evidence_id = f.evidence_id
                        WHERE source_evidence_fts MATCH ?
                        ORDER BY score ASC, e.created_at DESC LIMIT ?""",
-                    (term, limit),
+                    (term, query_limit),
                 ).fetchall()
             except sqlite3.OperationalError:
                 rows = []
@@ -190,17 +193,17 @@ def search_evidence(query: str = "", limit: int = 12) -> list[dict[str, object]]
                 like = f"%{str(query).strip()}%"
                 rows = connection.execute(
                     "SELECT * FROM source_evidence WHERE title LIKE ? OR source_uri LIKE ? OR locator LIKE ? OR text LIKE ? ORDER BY created_at DESC LIMIT ?",
-                    (like, like, like, like, limit),
+                    (like, like, like, like, query_limit),
                 ).fetchall()
         else:
             if term:
                 like = f"%{str(query).strip()}%"
                 rows = connection.execute(
                     "SELECT * FROM source_evidence WHERE title LIKE ? OR source_uri LIKE ? OR locator LIKE ? OR text LIKE ? ORDER BY created_at DESC LIMIT ?",
-                    (like, like, like, like, limit),
+                    (like, like, like, like, query_limit),
                 ).fetchall()
             else:
-                rows = connection.execute("SELECT * FROM source_evidence ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
+                rows = connection.execute("SELECT * FROM source_evidence ORDER BY created_at DESC LIMIT ?", (query_limit,)).fetchall()
     finally:
         connection.close()
     result: list[dict[str, object]] = []
@@ -217,6 +220,8 @@ def search_evidence(query: str = "", limit: int = 12) -> list[dict[str, object]]
             "metadata": json.loads(row["metadata_json"] or "{}"),
             "score": float(row["score"]) if "score" in row.keys() and row["score"] is not None else 0.0,
         })
+    if semantic_mode:
+        return semantic_rank(query, result, limit)
     return result
 
 
@@ -242,14 +247,15 @@ def evidence_for_task(task_id: str, limit: int = 200) -> list[dict[str, object]]
     ]
 
 
-def answer_from_evidence(question: str, limit: int = 6) -> dict[str, object]:
-    hits = search_evidence(question, limit)
+def answer_from_evidence(question: str, limit: int = 6, mode: str = "lexical") -> dict[str, object]:
+    hits = search_evidence(question, limit, mode)
     if not hits:
         return {
             "answer": "资料库中没有找到足够的证据，未生成无依据答案。",
             "grounded": False,
             "citations": [],
             "results": [],
+            "retrieval_method": mode,
         }
     snippets = []
     citations = []
@@ -268,6 +274,7 @@ def answer_from_evidence(question: str, limit: int = 6) -> dict[str, object]:
         "grounded": True,
         "citations": citations,
         "results": hits,
+        "retrieval_method": mode,
     }
 
 

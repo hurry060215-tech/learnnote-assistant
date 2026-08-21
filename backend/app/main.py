@@ -31,6 +31,7 @@ from .media import MediaProcessingError, extract_video_clip, probe_duration, pro
 from .library import backup_library, duplicate_groups, library_status, rebuild_index, restore_library, search_library
 from .knowledge import add_evidence, answer_from_evidence, evidence_for_task, extract_import_text, remove_evidence, search_evidence
 from .integrations import integration_manifest, notion_export_payload
+from .embeddings import embedding_status
 from .models import CurrentPageTaskRequest, EvidenceCoverage, MediaIntegrity, MediaPreflightRequest, MediaPreflightResult, PagePreflightRequest, RerunFromMediaRequest, ResourceCandidate, SourceEvidence, SourceInputRequest, StorageCleanupRequest, StudyCard, StudyCardStatusRequest, StudyReviewRequest, TaskOptions, TaskQuestionRequest, TaskRecord, now_iso
 from .observability import read_task_events, redacted_support_manifest
 from .study import due_cards, list_cards, propose_cards, review_card, review_history, save_cards, set_card_status, study_summary
@@ -2633,7 +2634,7 @@ MODEL_PROVIDER_PRESETS = [
 
 
 ASSISTANT_CAPABILITIES = {
-    "routes": ["current_page_direct", "local_upload", "download_only", "rerun_from_media", "page_text", "task_qa", "library_search", "knowledge_import", "knowledge_search", "study_loop", "study_proposals", "study_summary", "task_events", "support_package", "integration_manifest", "notion_export"],
+    "routes": ["current_page_direct", "local_upload", "download_only", "rerun_from_media", "page_text", "task_qa", "library_search", "knowledge_import", "knowledge_search", "knowledge_embedding_status", "study_loop", "study_proposals", "study_summary", "task_events", "support_package", "integration_manifest", "notion_export"],
     "direct_media": {
         "file_extensions": ["mp4", "m4v", "mov", "mkv", "webm", "flv", "avi"],
         "manifests": ["m3u8", "mpd"],
@@ -4248,8 +4249,13 @@ async def api_knowledge_import_file(file: UploadFile = File(...)) -> dict:
 
 
 @app.get("/api/knowledge/search")
-def api_knowledge_search(q: str = "", limit: int = 12) -> dict:
-    return {"query": q, "results": search_evidence(q, limit)}
+def api_knowledge_search(q: str = "", limit: int = 12, mode: str = "lexical") -> dict:
+    return {"query": q, "mode": mode, "results": search_evidence(q, limit, mode)}
+
+
+@app.get("/api/knowledge/embedding-status")
+def api_knowledge_embedding_status() -> dict:
+    return embedding_status()
 
 
 @app.delete("/api/knowledge/evidence/{evidence_id}")
@@ -4265,7 +4271,7 @@ def api_knowledge_ask(payload: dict | None = Body(default=None)) -> dict:
     question = str(body.get("question") or "").strip()
     if not question:
         raise HTTPException(status_code=422, detail={"code": "question_required", "message": "请输入问题。"})
-    return answer_from_evidence(question, int(body.get("limit") or 6))
+    return answer_from_evidence(question, int(body.get("limit") or 6), str(body.get("mode") or "lexical"))
 
 
 @app.post("/api/study/proposals")
