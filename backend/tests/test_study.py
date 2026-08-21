@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from app.models import SourceEvidence
-from app.study import due_cards, export_study_data, get_study_plan, list_cards, propose_cards, review_card, review_history, save_cards, set_card_status, study_summary, update_study_plan
+from app.study import due_cards, export_study_data, get_study_plan, list_cards, propose_cards, review_card, review_history, save_cards, set_card_position, set_card_status, study_summary, update_study_plan
 
 
 class StudyLoopTests(unittest.TestCase):
@@ -37,6 +37,8 @@ class StudyLoopTests(unittest.TestCase):
                 updated_plan = update_study_plan("复习", 20, True)
                 self.assertEqual(updated_plan.daily_target, 20)
                 self.assertTrue(updated_plan.paused)
+                reordered = set_card_position(stored[0].card_id, 42)
+                self.assertEqual(reordered.position, 42)
 
 
 if __name__ == "__main__":

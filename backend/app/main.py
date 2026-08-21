@@ -32,9 +32,9 @@ from .library import backup_library, duplicate_groups, library_status, rebuild_i
 from .knowledge import add_evidence, answer_from_evidence, evidence_for_task, extract_import_text, remove_evidence, search_evidence
 from .integrations import integration_manifest, notion_export_payload
 from .embeddings import embedding_status
-from .models import CurrentPageTaskRequest, EvidenceCoverage, MediaIntegrity, MediaPreflightRequest, MediaPreflightResult, PagePreflightRequest, RerunFromMediaRequest, ResourceCandidate, SourceEvidence, SourceInputRequest, StorageCleanupRequest, StudyCard, StudyCardStatusRequest, StudyPlanUpdateRequest, StudyReviewRequest, TaskOptions, TaskQuestionRequest, TaskRecord, now_iso
+from .models import CurrentPageTaskRequest, EvidenceCoverage, MediaIntegrity, MediaPreflightRequest, MediaPreflightResult, PagePreflightRequest, RerunFromMediaRequest, ResourceCandidate, SourceEvidence, SourceInputRequest, StorageCleanupRequest, StudyCard, StudyCardPositionRequest, StudyCardStatusRequest, StudyPlanUpdateRequest, StudyReviewRequest, TaskOptions, TaskQuestionRequest, TaskRecord, now_iso
 from .observability import read_task_events, redacted_support_manifest
-from .study import due_cards, export_study_data, get_study_plan, list_cards, propose_cards, review_card, review_history, save_cards, set_card_status, study_summary, update_study_plan
+from .study import due_cards, export_study_data, get_study_plan, list_cards, propose_cards, review_card, review_history, save_cards, set_card_position, set_card_status, study_summary, update_study_plan
 from .processor import browser_subtitle_text_is_player_ui, enrich_resource_candidates_with_active_video, process_current_page_task, process_local_video_task, read_note, read_transcript, read_visual_index, redacted_request_dump, redacted_resource
 from .reliability import current_page_source_identity, local_source_identity
 from .runtime import ffmpeg_bin, ffprobe_bin
@@ -4341,6 +4341,15 @@ def api_study_card_status(card_id: str, request: StudyCardStatusRequest) -> dict
         code = str(exc)
         status = 404 if code == "card_not_found" else 422
         raise HTTPException(status_code=status, detail={"code": code, "message": "卡片不存在或状态无效。"}) from exc
+    return {"card": card.model_dump(mode="json")}
+
+
+@app.post("/api/study/cards/{card_id}/reorder")
+def api_study_card_reorder(card_id: str, request: StudyCardPositionRequest) -> dict:
+    try:
+        card = set_card_position(card_id, request.position)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail={"code": str(exc), "message": "卡片不存在。"}) from exc
     return {"card": card.model_dump(mode="json")}
 
 

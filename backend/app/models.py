@@ -304,6 +304,7 @@ class StudyCard(BaseModel):
     difficulty: float = 5.0
     fsrs_state: str = "Learning"
     step: int | None = 0
+    position: int = 0
     reps: int = 0
     lapses: int = 0
     last_reviewed_at: str = ""
@@ -319,6 +320,12 @@ class StudyCardStatusRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     status: Literal["active", "suspended", "deleted"]
+
+
+class StudyCardPositionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    position: int = Field(ge=0, le=1000000)
 
 
 class StudyPlan(BaseModel):
