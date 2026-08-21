@@ -34,6 +34,7 @@ const APP_SETTINGS_STORAGE_KEY = "learnnote_app_settings";
 const APP_LAYOUT_MIGRATION_KEY = "learnnote_layout_notes_visible_v2";
 const ONBOARDING_STORAGE_KEY = "learnnote_onboarding_v1";
 const DEFAULT_APP_SETTINGS = Object.freeze({
+  locale: "zh-CN",
   uiScale: "100",
   textSize: "standard",
   theme: "light",
@@ -53,6 +54,18 @@ const DEFAULT_APP_SETTINGS = Object.freeze({
   noteTemplate: "standard",
   summaryDepth: "standard",
   customNoteProfile: null
+});
+const UI_COPY = Object.freeze({
+  "en-US": {
+    settingsClose: "Back to workspace",
+    advancedSettings: "Show advanced settings",
+    saveSettings: "Save settings",
+    resetSettings: "Reset defaults",
+    settingsNav: "Settings",
+    workspaceNav: "Workspace",
+    notesNav: "Notes",
+    historyNav: "Tasks"
+  }
 });
 const LEGACY_NOTE_PRESETS = Object.freeze({
   course: { style: "study", template: "standard", depth: "standard" },
@@ -373,6 +386,7 @@ const els = {
   settingTaskNotifications: document.querySelector("#settingTaskNotifications"),
   settingCompactHistory: document.querySelector("#settingCompactHistory"),
   settingAutoPreflight: document.querySelector("#settingAutoPreflight"),
+  settingLocale: document.querySelector("#settingLocale"),
   settingAdvancedOptions: document.querySelector("#settingAdvancedOptions"),
   settingApiBase: document.querySelector("#settingApiBase"),
   settingDataPath: document.querySelector("#settingDataPath"),
@@ -666,6 +680,7 @@ function syncVisualUnderstandingUi() {
 
 function normalizedAppSettings(value = {}) {
   const settings = { ...DEFAULT_APP_SETTINGS, ...(value && typeof value === "object" ? value : {}) };
+  if (!["zh-CN", "en-US"].includes(String(settings.locale))) settings.locale = "zh-CN";
   const legacyPreset = LEGACY_NOTE_PRESETS[value?.notePreset];
   if (legacyPreset) {
     if (!value.noteStyle) settings.noteStyle = legacyPreset.style;
@@ -734,6 +749,21 @@ function applyAdvancedSettingsUi() {
   }
 }
 
+function applyLocale() {
+  const locale = appSettings.locale === "en-US" ? "en-US" : "zh-CN";
+  if (document.documentElement) document.documentElement.lang = locale;
+  const copy = UI_COPY[locale] || {};
+  document.querySelectorAll("[data-i18n]").forEach(element => {
+    const key = element.dataset.i18n;
+    if (copy[key]) element.textContent = copy[key];
+  });
+  if (els.settingLocale) els.settingLocale.value = locale;
+  const advanced = document.querySelector("#settingAdvancedOptions")?.closest?.("label")?.querySelector?.("strong");
+  if (advanced && copy.advancedSettings) advanced.textContent = copy.advancedSettings;
+  if (els.saveSettingsButton && copy.saveSettings) els.saveSettingsButton.textContent = copy.saveSettings;
+  if (els.resetSettingsButton && copy.resetSettings) els.resetSettingsButton.textContent = copy.resetSettings;
+}
+
 function applyAppSettings() {
   appSettings = normalizedAppSettings(appSettings);
   const dark = appSettings.theme === "dark" || (appSettings.theme === "system" && systemPrefersDark());
@@ -750,6 +780,7 @@ function applyAppSettings() {
   if (els.settingCompactHistory) els.settingCompactHistory.checked = appSettings.compactHistory;
   if (els.settingAutoPreflight) els.settingAutoPreflight.checked = appSettings.autoPreflight;
   if (els.settingAdvancedOptions) els.settingAdvancedOptions.checked = appSettings.advancedSettings;
+  applyLocale();
   if (els.settingApiBase) els.settingApiBase.value = API || window.location?.origin || DEFAULT_BACKEND_ORIGIN;
   if (els.frameInterval) els.frameInterval.value = appSettings.frameInterval;
   if (els.gridColumns) els.gridColumns.value = appSettings.gridColumns;
@@ -1320,6 +1351,7 @@ async function saveAppSettingsFromUi() {
   appSettings.taskNotifications = Boolean(els.settingTaskNotifications?.checked);
   appSettings.compactHistory = Boolean(els.settingCompactHistory?.checked);
   appSettings.autoPreflight = Boolean(els.settingAutoPreflight?.checked);
+  appSettings.locale = els.settingLocale?.value || "zh-CN";
   appSettings.advancedSettings = Boolean(els.settingAdvancedOptions?.checked);
   appSettings.frameInterval = els.frameInterval?.value || "20";
   appSettings.gridColumns = String(boundedNumber(els.gridColumns?.value, 3, 1, 6));
@@ -9305,6 +9337,10 @@ els.saveSettingsButton?.addEventListener?.("click", saveAppSettingsFromUi);
 els.resetSettingsButton?.addEventListener?.("click", resetAppSettings);
 els.settingAdvancedOptions?.addEventListener?.("change", () => {
   appSettings.advancedSettings = Boolean(els.settingAdvancedOptions.checked);
+  applyAppSettings();
+});
+els.settingLocale?.addEventListener?.("change", () => {
+  appSettings.locale = els.settingLocale.value;
   applyAppSettings();
 });
 els.previewCleanupButton?.addEventListener?.("click", previewStorageCleanup);

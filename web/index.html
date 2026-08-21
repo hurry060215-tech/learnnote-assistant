@@ -54,19 +54,19 @@
       <nav id="mainNavigation" class="nav-rail" aria-label="主导航">
         <a id="workspaceNav" class="nav-item active" href="#workspace" data-app-view="workspace" title="创建笔记" aria-label="创建笔记">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></svg>
-          <span>新建笔记</span>
+          <span data-i18n="workspaceNav">新建笔记</span>
         </a>
         <a class="nav-item" href="#resultPanel" data-app-view="notes" title="笔记库" aria-label="笔记库">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h11a2 2 0 0 1 2 2v16l-4-2-4 2-4-2-4 2V5a2 2 0 0 1 2-2z"/><path d="M8 8h7M8 12h6"/></svg>
-          <span>笔记库</span>
+          <span data-i18n="notesNav">笔记库</span>
         </a>
         <a class="nav-item" href="#tasks" data-app-view="history" title="任务" aria-label="任务">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v6h6"/><path d="M12 7v5l3 2"/></svg>
-          <span>任务</span>
+          <span data-i18n="historyNav">任务</span>
         </a>
         <a id="settingsNav" class="nav-item" href="#settingsView" data-app-view="settings" title="设置" aria-label="设置">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5z"/><path d="M9 8h6M9 12h6M9 16h3"/></svg>
-          <span>设置</span>
+          <span data-i18n="settingsNav">设置</span>
         </a>
       </nav>
 
@@ -76,7 +76,7 @@
             <h2>设置</h2>
             <p>调整界面与视频处理方式</p>
           </div>
-          <button id="settingsCloseButton" class="secondary action-button" type="button">返回工作台</button>
+          <button id="settingsCloseButton" class="secondary action-button" type="button" data-i18n="settingsClose">返回工作台</button>
         </header>
 
         <div class="settings-layout">
@@ -118,6 +118,7 @@
                     <button class="active" type="button" data-value="teal"><i class="theme-swatch teal"></i>青绿</button><button type="button" data-value="ocean"><i class="theme-swatch ocean"></i>海蓝</button><button type="button" data-value="forest"><i class="theme-swatch forest"></i>森林</button><button type="button" data-value="graphite"><i class="theme-swatch graphite"></i>石墨</button>
                   </div>
                 </div>
+                <label class="setting-row setting-field"><span><strong>界面语言</strong><small>切换常用导航、设置和操作文案</small></span><select id="settingLocale" aria-label="界面语言"><option value="zh-CN">中文</option><option value="en-US">English</option></select></label>
               </div>
               <div class="appearance-preview" aria-label="外观实时预览">
                 <div class="appearance-preview-copy">
