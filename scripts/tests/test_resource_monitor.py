@@ -35,6 +35,8 @@ class ResourceMonitorTests(unittest.TestCase):
         workflow = (Path(__file__).resolve().parents[2] / ".github" / "workflows" / "reliability.yml").read_text(encoding="utf-8")
         self.assertIn("cancel-reliability.py", workflow)
         self.assertIn("build/reliability/cancel/report.json", workflow)
+        self.assertIn("full-local-task-reliability.py", workflow)
+        self.assertIn("build/reliability/full-local-task/report.json", workflow)
 
 
 if __name__ == "__main__":

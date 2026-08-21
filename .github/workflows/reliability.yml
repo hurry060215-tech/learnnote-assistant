@@ -58,6 +58,13 @@ jobs:
           python scripts/cancel-reliability.py `
             --duration-seconds 180 `
             --output-dir build/reliability/cancel
+      - name: Complete local 60-second task gate
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force build/reliability/full-local-task | Out-Null
+          python scripts/full-local-task-reliability.py `
+            --duration-seconds 60 `
+            --output-dir build/reliability/full-local-task
           }
       - name: Upload offline reliability evidence
         if: always()
@@ -69,6 +76,7 @@ jobs:
             build/reliability/long-video/report.json
             build/reliability/long-video-matrix/**/report.json
             build/reliability/cancel/report.json
+            build/reliability/full-local-task/report.json
           if-no-files-found: warn
           retention-days: 14
 
