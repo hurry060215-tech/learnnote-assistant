@@ -23,6 +23,7 @@ API routers (routers/*.py)
 - `asr_pipeline.py` 负责本地/远程 ASR 选择、转写进度心跳和 ASR 失败分类；它通过 processor_state 检查取消，不直接编排视频阶段。
 - `local_video_task.py` 负责本地视频入口的资源监控、取消和统一错误收口；实际视频阶段通过注入的处理函数执行，避免入口逻辑复制。
 - `visual_pipeline.py` 负责抽帧、画面网格、重要帧标记和视觉索引写入；`processor.py` 只编排字幕、视觉窗口、证据门禁和总结阶段。
+- `page_text_pipeline.py` 负责页面文本/浏览器字幕兜底产物和脱敏总结诊断写入；processor 只注入现有字幕、总结和诊断回调，保持兼容 patch 点。
 - `downloader_policy.py` 只保存下载错误分类、重试优先级和 yt-dlp 进程策略；它不发起网络请求，便于独立测试和复用。
 - `processor_state.py` 只负责取消、失败收口、checkpoint、证据门禁和资源报告；`processor.py` 负责阶段编排，不把状态持久化细节重新复制回流水线。
 - `summary_diagnostics.py` 只负责总结/视觉调用的脱敏诊断计划和失败分类；`processor.py` 只负责把诊断结果接回任务阶段，不直接维护诊断规则。
