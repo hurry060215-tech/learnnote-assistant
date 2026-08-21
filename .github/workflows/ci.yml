@@ -22,6 +22,7 @@ jobs:
           PYTHONPATH: backend
         run: |
           python -m compileall backend/app
+          python scripts/check-architecture.py
           python -m unittest discover backend/tests
           python scripts/evidence-quality-benchmark.py
       - name: Extension and web checks

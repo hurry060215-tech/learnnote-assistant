@@ -316,6 +316,8 @@ site/         GitHub Pages 宣传页面
 
 路线图是开发方向，不代表当前发布版本已经支持。请通过 [Issues](https://github.com/hurry060215-tech/learnnote-assistant/issues) 提交可复现问题或讨论优先级。
 
+平台支持和跨平台晋级门槛见 [平台支持矩阵](docs/PLATFORM_SUPPORT.md)。
+
 ## 隐私与数据
 
 完整说明见 [隐私说明](PRIVACY.md) 和 [安全说明](SECURITY.md)。
