@@ -742,6 +742,7 @@ function applyLocale() {
   const locale = appSettings.locale === "en-US" ? "en-US" : "zh-CN";
   if (document.documentElement) document.documentElement.lang = locale;
   const copy = UI_COPY[locale] || {};
+  globalThis.LearnNoteI18n?.applyStatic?.(document, locale);
   document.querySelectorAll("[data-i18n]").forEach(element => {
     const key = element.dataset.i18n;
     if (!element.dataset.i18nDefault) element.dataset.i18nDefault = element.textContent;
