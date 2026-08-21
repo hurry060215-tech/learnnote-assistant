@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from app.library import index_task, library_status, rebuild_index, search_library
+from app.library import backup_library, index_task, library_status, rebuild_index, restore_library, search_library
 from app.models import TaskRecord
 
 
@@ -45,6 +45,29 @@ class LocalLibraryIndexTests(unittest.TestCase):
                 rebuilt = rebuild_index()
                 self.assertEqual(rebuilt["indexed"], 1)
                 self.assertEqual(search_library("梯度")[0]["task_id"], "lesson-1")
+
+    def test_backup_and_restore_validate_schema_and_preserve_index(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            tasks = root / "tasks"
+            tasks.mkdir()
+            with patch("app.library.DATA_DIR", root), patch("app.library.TASK_DIR", tasks), patch("app.library.TEMP_DIR", root / "temp"):
+                (root / "temp").mkdir()
+                record = TaskRecord(
+                    id="backup-task",
+                    source_type="local",
+                    mode="local",
+                    title="Backup lesson",
+                    created_at="2026-08-21T00:00:00+00:00",
+                    updated_at="2026-08-21T00:00:00+00:00",
+                )
+                self.assertTrue(index_task(record))
+                backup = backup_library()
+                self.assertTrue(backup.is_file())
+                (root / "library.sqlite3").unlink()
+                restored = restore_library(backup)
+                self.assertEqual(restored["indexed_task_count"], 1)
+                self.assertEqual(search_library("Backup")[0]["task_id"], "backup-task")
 
 
 if __name__ == "__main__":

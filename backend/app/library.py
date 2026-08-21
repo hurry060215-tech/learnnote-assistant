@@ -3,14 +3,17 @@ from __future__ import annotations
 import re
 import sqlite3
 import threading
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from uuid import uuid4
 
-from .config import DATA_DIR, TASK_DIR, ensure_dirs
+from .config import DATA_DIR, TASK_DIR, TEMP_DIR, ensure_dirs
 from .models import TaskRecord
 
 
 LIBRARY_SCHEMA_VERSION = 1
+LIBRARY_BACKUP_MAX_BYTES = 128 * 1024 * 1024
 _lock = threading.RLock()
 
 
@@ -214,3 +217,61 @@ def library_status() -> dict[str, object]:
             }
         finally:
             connection.close()
+
+
+def backup_library() -> Path:
+    """Create a SQLite-consistent local backup outside the live database file."""
+    export_dir = DATA_DIR / "exports"
+    export_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    target = export_dir / f"learnnote-library-{stamp}-{uuid4().hex[:8]}.sqlite3"
+    with _lock:
+        source, _ = _connect()
+        destination = sqlite3.connect(target)
+        try:
+            source.backup(destination)
+            destination.commit()
+        finally:
+            destination.close()
+            source.close()
+    return target
+
+
+def restore_library(backup_path: Path) -> dict[str, object]:
+    """Validate and atomically restore an uploaded SQLite index."""
+    candidate = Path(backup_path).resolve()
+    if not candidate.is_file():
+        raise ValueError("library_backup_missing")
+    if candidate.stat().st_size > LIBRARY_BACKUP_MAX_BYTES:
+        raise ValueError("library_backup_too_large")
+    try:
+        source = sqlite3.connect(candidate)
+        try:
+            integrity = str(source.execute("PRAGMA integrity_check").fetchone()[0])
+            schema = source.execute(
+                "SELECT value FROM library_meta WHERE key = 'schema_version'"
+            ).fetchone()
+            table = source.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'library_tasks'"
+            ).fetchone()
+        finally:
+            source.close()
+    except sqlite3.Error as exc:
+        raise ValueError("library_backup_invalid") from exc
+    if integrity.lower() != "ok" or not schema or str(schema[0]) != str(LIBRARY_SCHEMA_VERSION) or not table:
+        raise ValueError("library_backup_schema_mismatch")
+
+    ensure_dirs()
+    target = _db_path()
+    temporary = TEMP_DIR / f"library-restore-{uuid4().hex}.sqlite3"
+    with _lock:
+        source = sqlite3.connect(candidate)
+        destination = sqlite3.connect(temporary)
+        try:
+            source.backup(destination)
+            destination.commit()
+        finally:
+            destination.close()
+            source.close()
+        temporary.replace(target)
+    return library_status()
