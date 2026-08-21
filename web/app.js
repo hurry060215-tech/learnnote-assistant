@@ -381,6 +381,14 @@ const els = {
   restoreLibraryButton: document.querySelector("#restoreLibraryButton"),
   libraryBackupInput: document.querySelector("#libraryBackupInput"),
   libraryBackupStatus: document.querySelector("#libraryBackupStatus"),
+  knowledgeImportButton: document.querySelector("#knowledgeImportButton"),
+  knowledgeImportInput: document.querySelector("#knowledgeImportInput"),
+  knowledgeImportStatus: document.querySelector("#knowledgeImportStatus"),
+  knowledgeSearchInput: document.querySelector("#knowledgeSearchInput"),
+  knowledgeSearchButton: document.querySelector("#knowledgeSearchButton"),
+  knowledgeSearchResults: document.querySelector("#knowledgeSearchResults"),
+  studyDueButton: document.querySelector("#studyDueButton"),
+  studyDueList: document.querySelector("#studyDueList"),
   previewCleanupButton: document.querySelector("#previewCleanupButton"),
   applyCleanupButton: document.querySelector("#applyCleanupButton"),
   deleteAllTasksButton: document.querySelector("#deleteAllTasksButton"),
@@ -5455,6 +5463,115 @@ async function restoreLibraryIndex(file) {
   }
 }
 
+async function importKnowledgeFile(file) {
+  if (!file || !els.knowledgeImportStatus) return;
+  els.knowledgeImportButton?.setAttribute?.("disabled", "disabled");
+  els.knowledgeImportStatus.textContent = `正在导入 ${file.name}…`;
+  try {
+    const form = new FormData();
+    form.append("file", file, file.name);
+    const result = await fetchJson(apiUrl("/api/knowledge/import-file"), { method: "POST", body: form });
+    const evidence = result?.evidence || {};
+    els.knowledgeImportStatus.textContent = `已导入：${evidence.title || file.name}；证据已写入本地资料库。`;
+  } catch (error) {
+    els.knowledgeImportStatus.textContent = error?.message || "资料导入失败，请检查文件格式。";
+  } finally {
+    els.knowledgeImportButton?.removeAttribute?.("disabled");
+    if (els.knowledgeImportInput) els.knowledgeImportInput.value = "";
+  }
+}
+
+async function searchKnowledge() {
+  if (!els.knowledgeSearchResults) return;
+  const query = String(els.knowledgeSearchInput?.value || "").trim();
+  if (!query) {
+    els.knowledgeSearchResults.replaceChildren();
+    return;
+  }
+  els.knowledgeSearchResults.textContent = "正在搜索本地证据…";
+  try {
+    const result = await fetchJson(apiUrl(`/api/knowledge/search?q=${encodeURIComponent(query)}&limit=8`));
+    els.knowledgeSearchResults.replaceChildren();
+    const hits = Array.isArray(result?.results) ? result.results : [];
+    if (!hits.length) {
+      const empty = document.createElement("p");
+      empty.className = "knowledge-empty";
+      empty.textContent = "没有找到证据；未生成无依据答案。";
+      els.knowledgeSearchResults.append(empty);
+      return;
+    }
+    hits.forEach(item => {
+      const article = document.createElement("article");
+      article.className = "knowledge-result";
+      const heading = document.createElement("strong");
+      heading.textContent = `${item.title || "未命名资料"} · ${item.locator || "本地证据"}`;
+      const excerpt = document.createElement("p");
+      excerpt.textContent = String(item.text || "").slice(0, 360);
+      article.append(heading, excerpt);
+      els.knowledgeSearchResults.append(article);
+    });
+  } catch (error) {
+    els.knowledgeSearchResults.textContent = error?.message || "资料库检索失败。";
+  }
+}
+
+function renderStudyDue(cards) {
+  if (!els.studyDueList) return;
+  els.studyDueList.replaceChildren();
+  if (!Array.isArray(cards) || !cards.length) {
+    const empty = document.createElement("p");
+    empty.className = "knowledge-empty";
+    empty.textContent = "当前没有到期卡片。确认资料证据后，可在复习 API 中加入卡片。";
+    els.studyDueList.append(empty);
+    return;
+  }
+  cards.forEach(card => {
+    const article = document.createElement("article");
+    article.className = "study-card";
+    const front = document.createElement("strong");
+    front.textContent = card.front || "记忆卡片";
+    const back = document.createElement("p");
+    back.textContent = card.back || "";
+    const actions = document.createElement("div");
+    actions.className = "study-card-actions";
+    [[1, "重来"], [3, "记住"], [4, "简单"]].forEach(([rating, label]) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "secondary action-button";
+      button.textContent = label;
+      button.addEventListener("click", () => reviewStudyCard(card.card_id, rating));
+      actions.append(button);
+    });
+    article.append(front, back, actions);
+    els.studyDueList.append(article);
+  });
+}
+
+async function loadStudyDue() {
+  if (!els.studyDueList) return;
+  els.studyDueList.textContent = "正在读取复习记录…";
+  try {
+    const result = await fetchJson(apiUrl("/api/study/due?limit=20"));
+    renderStudyDue(result?.cards || []);
+  } catch (error) {
+    els.studyDueList.textContent = error?.message || "无法读取复习卡片。";
+  }
+}
+
+async function reviewStudyCard(cardId, rating) {
+  if (!cardId) return;
+  try {
+    await fetchJson(apiUrl(`/api/study/cards/${encodeURIComponent(cardId)}/review`), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rating })
+    });
+    await loadStudyDue();
+  } catch (error) {
+    if (els.studyDueList) els.studyDueList.textContent = error?.message || "复习记录保存失败。";
+  }
+}
+
 function taskResumeUrl(taskId) {
   return apiUrl(`/api/tasks/${encodeURIComponent(taskId)}/resume`);
 }
@@ -9010,6 +9127,13 @@ els.previewCleanupButton?.addEventListener?.("click", previewStorageCleanup);
 els.backupLibraryButton?.addEventListener?.("click", backupLibraryIndex);
 els.restoreLibraryButton?.addEventListener?.("click", () => els.libraryBackupInput?.click?.());
 els.libraryBackupInput?.addEventListener?.("change", () => restoreLibraryIndex(els.libraryBackupInput.files?.[0]));
+els.knowledgeImportButton?.addEventListener?.("click", () => els.knowledgeImportInput?.click?.());
+els.knowledgeImportInput?.addEventListener?.("change", () => importKnowledgeFile(els.knowledgeImportInput.files?.[0]));
+els.knowledgeSearchButton?.addEventListener?.("click", searchKnowledge);
+els.knowledgeSearchInput?.addEventListener?.("keydown", event => {
+  if (event.key === "Enter") searchKnowledge();
+});
+els.studyDueButton?.addEventListener?.("click", loadStudyDue);
 els.applyCleanupButton?.addEventListener?.("click", applyStorageCleanup);
 els.deleteAllTasksButton?.addEventListener?.("click", deleteAllTasksFromClient);
 els.deleteAllTasksSettingsButton?.addEventListener?.("click", deleteAllTasksFromClient);

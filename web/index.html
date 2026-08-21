@@ -184,6 +184,21 @@
                   <div class="setting-inline-actions"><button id="backupLibraryButton" class="secondary action-button" type="button">导出索引备份</button><button id="restoreLibraryButton" class="secondary action-button" type="button">恢复索引</button><input id="libraryBackupInput" type="file" accept=".sqlite3,application/vnd.sqlite3" hidden></div>
                 </div>
                 <p id="libraryBackupStatus" class="settings-inline-status" role="status" aria-live="polite"></p>
+                <div class="setting-row">
+                  <div><strong>导入学习资料</strong><small>PDF、Markdown 和网页 HTML 只在本机提取文本，保留可追溯来源。</small></div>
+                  <div class="setting-inline-actions"><button id="knowledgeImportButton" class="secondary action-button" type="button">选择文件</button><input id="knowledgeImportInput" type="file" accept=".pdf,.md,.markdown,.html,.htm,.txt" hidden></div>
+                </div>
+                <p id="knowledgeImportStatus" class="settings-inline-status" role="status" aria-live="polite"></p>
+                <div class="setting-row knowledge-search-setting">
+                  <div><strong>本地资料库检索</strong><small>回答只使用已索引的本地证据；没有证据时不会编造。</small></div>
+                  <div class="knowledge-search-controls"><input id="knowledgeSearchInput" type="search" placeholder="搜索术语或问题"><button id="knowledgeSearchButton" class="secondary action-button" type="button">搜索</button></div>
+                </div>
+                <div id="knowledgeSearchResults" class="knowledge-results" role="region" aria-live="polite" aria-label="本地资料库检索结果"></div>
+                <div class="setting-row">
+                  <div><strong>本地复习卡片</strong><small>只读取你确认过的卡片和复习记录，不读取课程平台进度。</small></div>
+                  <button id="studyDueButton" class="secondary action-button" type="button">查看到期卡片</button>
+                </div>
+                <div id="studyDueList" class="study-due-list" role="region" aria-live="polite" aria-label="到期复习卡片"></div>
                 <div id="dataMigrationNotice" class="storage-migration-notice" hidden role="status"><div><strong>新位置已经准备好</strong><small id="dataMigrationMessage"></small></div><button id="restartForDataFolderButton" class="primary action-button" type="button">立即重启</button></div>
                 <div class="setting-row"><div><strong>已用空间</strong><small id="settingStorageBreakdown">正在统计任务和视频文件</small></div><span id="settingStorageUsage" class="setting-value">-</span></div>
                 <label class="setting-row setting-switch"><span><strong>链接生成前预检</strong><small>先确认媒体是否可访问</small></span><input id="settingAutoPreflight" type="checkbox" checked></label>

@@ -30,7 +30,9 @@ from .downloader import MediaDownloader, effective_resource_kind, fallback_page_
 from .media import MediaProcessingError, extract_video_clip, probe_duration, probe_media_integrity
 from .library import backup_library, library_status, rebuild_index, restore_library, search_library
 from .knowledge import add_evidence, answer_from_evidence, extract_import_text, search_evidence
+from .integrations import integration_manifest
 from .models import CurrentPageTaskRequest, EvidenceCoverage, MediaIntegrity, MediaPreflightRequest, MediaPreflightResult, PagePreflightRequest, RerunFromMediaRequest, ResourceCandidate, SourceEvidence, SourceInputRequest, StorageCleanupRequest, StudyCard, StudyReviewRequest, TaskOptions, TaskQuestionRequest, TaskRecord, now_iso
+from .observability import read_task_events, redacted_support_manifest
 from .study import due_cards, propose_cards, review_card, save_cards
 from .processor import browser_subtitle_text_is_player_ui, enrich_resource_candidates_with_active_video, process_current_page_task, process_local_video_task, read_note, read_transcript, read_visual_index, redacted_request_dump, redacted_resource
 from .reliability import current_page_source_identity, local_source_identity
@@ -2637,7 +2639,7 @@ MODEL_PROVIDER_PRESETS = [
 
 
 ASSISTANT_CAPABILITIES = {
-    "routes": ["current_page_direct", "local_upload", "download_only", "rerun_from_media", "page_text", "task_qa", "library_search", "knowledge_import", "knowledge_search", "study_loop"],
+    "routes": ["current_page_direct", "local_upload", "download_only", "rerun_from_media", "page_text", "task_qa", "library_search", "knowledge_import", "knowledge_search", "study_loop", "integration_manifest"],
     "direct_media": {
         "file_extensions": ["mp4", "m4v", "mov", "mkv", "webm", "flv", "avi"],
         "manifests": ["m3u8", "mpd"],
@@ -3590,6 +3592,11 @@ def automatic_diagnostics(payload: dict | None = Body(default=None)) -> dict:
 @app.get("/api/health")
 def api_health() -> dict:
     return health_payload()
+
+
+@app.get("/api/integrations/manifest")
+def api_integrations_manifest() -> dict:
+    return integration_manifest()
 
 
 @app.get("/api/pairing/issue")
@@ -4652,6 +4659,41 @@ def api_export_sanitized_bundle(task_id: str) -> Response:
     filename = f"learnnote-{task.id}-sanitized-study.zip"
     headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
     return Response(buffer.getvalue(), media_type="application/zip", headers=headers)
+
+
+@app.get("/api/tasks/{task_id}/events")
+def api_task_events(task_id: str, limit: int = 500) -> dict:
+    try:
+        get_task(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Task not found") from exc
+    events = read_task_events(task_id, limit)
+    return {"task_id": task_id, "schema_version": 1, "events": events}
+
+
+@app.get("/api/tasks/{task_id}/exports/support-package")
+def api_export_support_package(task_id: str) -> Response:
+    """Create a small, redacted support package for reproducible diagnosis."""
+    try:
+        task = get_task(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Task not found") from exc
+    events = read_task_events(task_id)
+    manifest = redacted_support_manifest(task_id, events)
+    diagnostics = render_diagnostics_markdown(task)
+    audit = render_task_audit_markdown(task)
+    buffer = BytesIO()
+    with ZipFile(buffer, "w", ZIP_DEFLATED) as archive:
+        archive.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
+        archive.writestr("events.json", json.dumps(events, ensure_ascii=False, indent=2))
+        archive.writestr("diagnostics.md", diagnostics)
+        archive.writestr("audit.md", audit)
+    filename = f"learnnote-{task.id}-support-package.zip"
+    return Response(
+        buffer.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.get("/api/tasks/{task_id}/exports/diagnostics")

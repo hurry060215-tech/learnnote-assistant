@@ -12,6 +12,7 @@ from typing import Any
 from .config import DATA_DIR, MODEL_CACHE_DIR, STATIC_DIR, TASK_DIR, TEMP_DIR, UPLOAD_DIR, ensure_dirs
 from .library import index_task, remove_task
 from .models import TaskOptions, TaskRecord, now_iso
+from .observability import record_task_event
 from .source_input import clean_task_title
 
 _lock = threading.RLock()
@@ -77,6 +78,7 @@ def create_task(
         updated_at=now_iso(),
     )
     save_task(record)
+    record_task_event(record.id, "task_created", phase=record.phase, status=record.status, message="Task created")
     return record
 
 
@@ -98,9 +100,33 @@ def get_task(task_id: str) -> TaskRecord:
 def update_task(task_id: str, **changes: Any) -> TaskRecord:
     with _lock:
         record = get_task(task_id)
+        previous_phase = record.phase
+        previous_status = record.status
+        previous_checkpoint = record.checkpoint
         for key, value in changes.items():
             setattr(record, key, value)
         save_task(record)
+        if (
+            record.phase != previous_phase
+            or record.status != previous_status
+            or record.checkpoint != previous_checkpoint
+            or record.error_code
+            or "message" in changes
+        ):
+            safe_changes = {
+                key: value
+                for key, value in changes.items()
+                if key in {"progress", "checkpoint", "checkpoint_updated_at", "failed_phase", "retry_count"}
+            }
+            record_task_event(
+                task_id,
+                "task_updated",
+                phase=record.phase,
+                status=record.status,
+                error_code=record.error_code,
+                message=record.message,
+                details=safe_changes,
+            )
         return record
 
 
