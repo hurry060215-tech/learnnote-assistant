@@ -46,3 +46,5 @@ jobs:
           if (-not (Test-Path "$env:RUNNER_TEMP/LearnNote-Browser-Extension.zip")) {
             throw "Extension package was not created."
           }
+          $manifestVersion = (Get-Content extension/manifest.json -Raw | ConvertFrom-Json).version
+          python scripts/validate-store-package.py "$env:RUNNER_TEMP/LearnNote-Browser-Extension.zip" --version $manifestVersion
