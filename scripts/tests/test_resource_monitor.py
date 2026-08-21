@@ -31,6 +31,11 @@ class ResourceMonitorTests(unittest.TestCase):
         self.assertIn("rss_peak_bytes", payload)
         self.assertIn("disk_free_min_bytes", payload)
 
+    def test_reliability_workflow_includes_cancellation_gate(self) -> None:
+        workflow = (Path(__file__).resolve().parents[2] / ".github" / "workflows" / "reliability.yml").read_text(encoding="utf-8")
+        self.assertIn("cancel-reliability.py", workflow)
+        self.assertIn("build/reliability/cancel/report.json", workflow)
+
 
 if __name__ == "__main__":
     unittest.main()
