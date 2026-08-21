@@ -8,11 +8,10 @@ import time
 from pathlib import Path
 from urllib.parse import urldefrag
 
-from .config import BACKEND_ORIGIN
-from .asr_pipeline import ASR_FAILURE_SOURCES, asr_failure_detail, transcribe_extracted_audio as _asr_transcribe_extracted_audio, transcribe_with_task_progress as _asr_transcribe_with_task_progress, use_remote_asr
+from .asr_pipeline import ASR_FAILURE_SOURCES, asr_failure_detail, transcribe_with_task_progress as _asr_transcribe_with_task_progress, use_remote_asr
 from .downloader import DownloadError, MediaDownloader, classify_resource, effective_resource_kind, infer_manifest_url_from_fragment
-from .media import build_frame_grids, extract_audio, extract_embedded_subtitle, extract_frames, extract_frames_adaptive, normalize_video, probe_duration, probe_media_integrity
-from .models import ActiveVideoInfo, BrowserSubtitleCue, CurrentPageTaskRequest, DownloadAttempt, FrameGrid, FrameSample, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, VisualWindow, now_iso
+from .media import build_frame_grids, extract_audio, extract_embedded_subtitle, extract_frames_adaptive, normalize_video, probe_media_integrity
+from .models import ActiveVideoInfo, BrowserSubtitleCue, CurrentPageTaskRequest, DownloadAttempt, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, now_iso
 from .local_video_task import run_local_video_task
 from .reliability import calculate_evidence_coverage, current_page_source_identity, evidence_coverage_markdown, validate_source_identity
 from .processor_state import (
@@ -33,6 +32,7 @@ from .summarizer import build_visual_windows, summarize_page_text_with_diagnosti
 from .summary_diagnostics import build_summary_diagnostics
 from .text_cleanup import correct_transcript_terms
 from .transcriber import transcribe_audio, transcribe_audio_openai_compatible, transcript_from_subtitle
+from .visual_pipeline import extract_visual_evidence as _extract_visual_evidence, write_visual_index
 
 
 SAFE_RESPONSE_HEADER_NAMES = {"content-type", "content-disposition", "content-length", "content-range", "accept-ranges"}
@@ -65,6 +65,28 @@ def transcribe_with_task_progress(
         options,
         media_duration,
         transcribe_fn=transcribe_extracted_audio,
+    )
+
+
+def extract_visual_evidence(
+    task_id: str,
+    normalized_path: Path,
+    title: str,
+    page_url: str,
+    options: TaskOptions,
+    media_duration: float,
+    frame_anchor_timestamps: list[float] | None = None,
+):
+    return _extract_visual_evidence(
+        task_id,
+        normalized_path,
+        title,
+        page_url,
+        options,
+        media_duration,
+        frame_anchor_timestamps,
+        extract_frames_fn=extract_frames_adaptive,
+        build_grids_fn=build_frame_grids,
     )
 PLAYER_UI_SUBTITLE_SIGNATURES = (
     "B站自研的AI原声翻译功能", "本视频开启原声翻译时不支持关闭字幕",
@@ -1035,62 +1057,22 @@ def _process_video_file(
     update_task(task_id, transcript_path=str(transcript_path))
     mark_checkpoint(task_id, "transcript_ready")
 
-    frames: list[Path] = []
-    grids = []
-    frame_extraction_warning = ""
     media_duration = integrity.duration
-    frame_samples: list[FrameSample] = []
-    if options.visual_understanding:
-        update_task(task_id, phase="extracting_frames", progress=68, message="正在抽帧并生成画面网格")
-        frame_dir = work_dir / "frames"
-        grid_dir = work_dir / "grids"
-        frames, frame_samples = extract_frames_adaptive(
-            normalized,
-            frame_dir,
-            max(1, options.frame_interval),
-            max_frames=max(60, min(2400, int(options.max_frame_count) // (2 if options.low_resource_mode else 1))),
-            anchor_timestamps=frame_anchor_timestamps,
-        )
-        for sample in frame_samples:
-            sample.url = f"{BACKEND_ORIGIN}/api/tasks/{task_id}/frames/{Path(sample.path).name}"
-        _check_cancel(task_id)
-        grids = build_frame_grids(
-            task_id,
-            frames,
-            grid_dir,
-            max(1, options.grid_columns),
-            max(1, options.grid_rows),
-            max(1, options.frame_interval),
-            media_duration=media_duration,
-        )
-        important_paths = {sample.path for sample in frame_samples if sample.important}
-        for grid in grids:
-            grid.important_frame_paths = [path for path in grid.frame_paths if path in important_paths]
-        if not frames:
-            frame_extraction_warning = (
-                "已启用画面理解，但未能从完整视频提取任何画面帧；本任务没有视觉切片，"
-                "请检查视频是否包含可解码的视频轨道。"
-            )
-
-    visual_windows = build_visual_windows(transcript, grids)
-    visual_index_path = write_json(
+    visual_artifacts = extract_visual_evidence(
         task_id,
-        "visual_index.json",
-        {
-            "task_id": task_id,
-            "title": title,
-            "page_url": page_url,
-            "sampling": {
-                "strategy": "scene-change-plus-coverage",
-                "scene_threshold": 0.22,
-                "sample_count": len(frame_samples),
-                "important_frame_count": sum(sample.important for sample in frame_samples),
-            },
-            "important_frames": [sample.model_dump(mode="json") for sample in frame_samples if sample.important],
-            "frames": [sample.model_dump(mode="json") for sample in frame_samples],
-            "windows": [window.model_dump(mode="json") for window in visual_windows],
-        },
+        normalized,
+        title,
+        page_url,
+        options,
+        media_duration,
+        frame_anchor_timestamps,
     )
+    frames = visual_artifacts.frames
+    frame_samples = visual_artifacts.frame_samples
+    grids = visual_artifacts.grids
+    frame_extraction_warning = visual_artifacts.warning
+    visual_windows = build_visual_windows(transcript, grids)
+    visual_index_path = write_visual_index(task_id, title, page_url, frame_samples, visual_windows)
 
     record = get_task(task_id)
     record.frame_grids = grids
