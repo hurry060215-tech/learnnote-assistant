@@ -502,6 +502,11 @@ def build_matrix(*, include_acceptance_gate: bool = True) -> list[ReadinessItem]
         ],
     ))
 
+    public_site_audit_contract = (
+        has_all(public_site_audit, ["proofsVisible", "backgroundReady", "privacyLink", "Installer link is not a release asset", "Mobile menu did not open"])
+        or has_all(public_site_audit, ["contentVisible", "imagesReady", "caseReady", "privacyReady", "Installer link is not a release asset", "Mobile navigation did not open"])
+        or has_all(public_site_audit, ["sectionsReady", "imagesReady", "revealsVisible", "Installer link is invalid", "Release label is invalid", "Mobile menu did not open"])
+    )
     public_site_ready = (
         has_all(public_site_html + public_site_css, [
             "LearnNote",
@@ -521,7 +526,7 @@ def build_matrix(*, include_acceptance_gate: bool = True) -> list[ReadinessItem]
         ])
         and has_all(privacy + security, ["LearnNote", "API", "browser"])
         and has_all(public_site_start, ["http.server", "cloudflared", "No login is required"])
-        and has_all(public_site_audit, ["contentVisible", "imagesReady", "caseReady", "privacyReady", "Installer link is not a release asset", "Mobile navigation did not open"])
+        and public_site_audit_contract
         and has_all(public_site_workflow, ["actions/upload-pages-artifact", "actions/deploy-pages", "site"])
         and "password" not in public_site_html.lower()
     )

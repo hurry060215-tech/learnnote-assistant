@@ -1,76 +1,79 @@
 const { chromium } = require("playwright");
 const fs = require("node:fs");
 
+async function revealWholePage(page, viewport) {
+  const height = await page.evaluate(() => document.documentElement.scrollHeight);
+  const step = Math.max(500, Math.round(viewport.height * .72));
+  for (let y = 0; y < height; y += step) {
+    await page.evaluate(value => window.scrollTo(0, value), y);
+    await page.waitForTimeout(90);
+  }
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.waitForTimeout(250);
+}
+
 async function auditPage(page, viewport, outputPath) {
   await page.setViewportSize(viewport);
   await page.goto(process.argv[2] || "http://127.0.0.1:8793", { waitUntil: "networkidle" });
-  await page.waitForTimeout(350);
+  await page.waitForTimeout(2200);
+  await revealWholePage(page, viewport);
 
   const audit = await page.evaluate(() => {
-    const hero = document.querySelector(".hero");
-    const workflow = document.querySelector("#workflow");
     const h1 = document.querySelector("h1");
-    const heroHeading = document.querySelector(".hero h2");
+    const proofs = [...document.querySelectorAll(".proof")];
     const images = [...document.querySelectorAll("main img")];
+    const sectionIds = ["workflow", "product", "features", "case", "privacy", "faq", "download"];
     const revealElements = [...document.querySelectorAll(".reveal")];
-    const primaryDownload = document.querySelector("[data-release-link]");
-    const caseSection = document.querySelector("#case");
-    const caseImage = document.querySelector(".case-frame img");
-    const caseFacts = [...document.querySelectorAll(".case-facts article")];
-    const privacyLink = document.querySelector('a[href$="privacy.html"]');
-    const securityLink = document.querySelector('a[href$="security.html"]');
+    const photo = document.querySelector(".hero-photo");
     return {
-      h1: h1?.textContent?.trim(),
+      h1: h1?.textContent?.replace(/\s+/g, "").trim() || "",
       h1Size: Number.parseFloat(getComputedStyle(h1).fontSize),
-      heroHeadingSize: Number.parseFloat(getComputedStyle(heroHeading).fontSize),
-      heroBottom: hero?.getBoundingClientRect().bottom || 0,
-      workflowTop: workflow?.getBoundingClientRect().top || 0,
-      overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      bodyBackground: getComputedStyle(document.body).backgroundColor,
+      overflowX: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      pageHeight: document.documentElement.scrollHeight,
+      navCount: document.querySelectorAll("#site-nav a").length,
+      proofCount: proofs.length,
+      sectionsReady: sectionIds.every(id => Boolean(document.getElementById(id))),
       imagesReady: images.length === 3 && images.every(image => image.complete && image.naturalWidth > 900),
-      contentVisible: revealElements.length > 0 && revealElements.every(element => Number.parseFloat(getComputedStyle(element).opacity) === 1),
-      downloadHref: primaryDownload?.href || "",
+      revealsVisible: revealElements.length >= 10 && revealElements.every(element => Number.parseFloat(getComputedStyle(element).opacity) === 1),
+      downloadHref: document.querySelector("[data-release-link]")?.href || "",
       releaseText: document.querySelector("[data-release-version]")?.textContent?.trim() || "",
-      caseReady: Boolean(
-        caseSection
-        && caseImage?.naturalWidth > 1200
-        && caseFacts.length === 4
-        && caseSection.textContent.includes("梯度下降与学习率")
-        && caseSection.textContent.includes("96.2%")
-      ),
-      privacyReady: Boolean(privacyLink && securityLink)
+      noUnsafeMedia: document.querySelectorAll("video, iframe, form, canvas").length === 0,
+      backgroundReady: getComputedStyle(photo).backgroundImage.includes("learnnote-fiber-wave-v2.png")
+        && performance.getEntriesByType("resource").some(entry => entry.name.includes("learnnote-fiber-wave-v2.png")),
+      privacyLinks: Boolean(document.querySelector('a[href="./privacy.html"]') && document.querySelector('a[href="./security.html"]')),
+      copy: document.body.innerText
     };
   });
 
-  if (audit.h1 !== "LearnNote") throw new Error(`Unexpected H1: ${audit.h1}`);
-  if (audit.overflow > 1) throw new Error(`Horizontal overflow at ${viewport.width}px: ${audit.overflow}`);
-  if (!audit.imagesReady) throw new Error(`Product screenshots did not load at ${viewport.width}px`);
-  if (!audit.contentVisible) throw new Error(`Offscreen site content is hidden at ${viewport.width}px`);
-  if (!audit.caseReady) throw new Error(`Reproducible case study is incomplete at ${viewport.width}px`);
-  if (!audit.privacyReady) throw new Error(`Privacy disclosure link is missing at ${viewport.width}px`);
-  if (!/LearnNote-Setup-x64\.exe$/.test(audit.downloadHref)) throw new Error(`Installer link is not a release asset: ${audit.downloadHref}`);
-  if (!/^v\d+\.\d+\.\d+$/.test(audit.releaseText)) throw new Error(`Invalid release label: ${audit.releaseText}`);
-  if (viewport.width >= 1000 && audit.workflowTop > viewport.height + 72) {
-    throw new Error(`The next section is not hinted in the desktop first viewport: ${audit.workflowTop}`);
+  if (audit.h1 !== "听懂每一段内容写出有依据的笔记") throw new Error(`Unexpected H1: ${audit.h1}`);
+  if (audit.bodyBackground !== "rgb(0, 0, 0)") throw new Error(`Body is not pure black: ${audit.bodyBackground}`);
+  if (audit.overflowX > 1) throw new Error(`Horizontal overflow at ${viewport.width}px: ${audit.overflowX}`);
+  if (audit.pageHeight < viewport.height * 4.5) throw new Error(`Long-form page is too short at ${viewport.width}px: ${audit.pageHeight}`);
+  if (audit.navCount !== 4 || audit.proofCount !== 3) throw new Error(`Navigation or hero proof rail is incomplete at ${viewport.width}px`);
+  if (!audit.sectionsReady) throw new Error(`One or more long-form sections are missing at ${viewport.width}px`);
+  if (!audit.imagesReady) throw new Error(`Product screenshots are incomplete at ${viewport.width}px`);
+  if (!audit.revealsVisible) throw new Error(`Scroll-revealed content remains hidden at ${viewport.width}px`);
+  if (!audit.noUnsafeMedia || !audit.backgroundReady) throw new Error(`Unsafe media or missing local background at ${viewport.width}px`);
+  if (!audit.privacyLinks) throw new Error(`Privacy or security link is missing at ${viewport.width}px`);
+  if (!/LearnNote-Setup-x64\.exe$/.test(audit.downloadHref)) throw new Error(`Installer link is invalid: ${audit.downloadHref}`);
+  if (!/^v\d+\.\d+\.\d+$/.test(audit.releaseText)) throw new Error(`Release label is invalid: ${audit.releaseText}`);
+  for (const text of ["当前页面 / 视频链接 / 本地视频", "字幕、画面和笔记", "可信度保护", "不会绕过 DRM", "常见问题"]) {
+    if (!audit.copy.includes(text)) throw new Error(`Required LearnNote copy is missing: ${text}`);
   }
-  if (audit.h1Size < (viewport.width >= 1000 ? 60 : 44)) throw new Error(`H1 is too small: ${audit.h1Size}`);
-  if (audit.heroHeadingSize < (viewport.width >= 1000 ? 34 : 26)) throw new Error(`Hero heading is too small: ${audit.heroHeadingSize}`);
+  if (audit.h1Size < (viewport.width >= 1000 ? 52 : 40)) throw new Error(`H1 is too small: ${audit.h1Size}`);
 
   await page.screenshot({ path: outputPath, fullPage: true });
   return audit;
 }
 
 async function main() {
-  const output = (process.argv[3] || "D:/LearnNote/audit/site-v0130").replace(/\\/g, "/");
+  const output = (process.argv[3] || "D:/LearnNote/audit/site-long-form").replace(/\\/g, "/");
   const edge = "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe";
-  const browser = await chromium.launch({
-    ...(fs.existsSync(edge) ? { executablePath: edge } : {}),
-    headless: true
-  });
+  const browser = await chromium.launch({ ...(fs.existsSync(edge) ? { executablePath: edge } : {}), headless: true });
   const page = await browser.newPage();
   const consoleErrors = [];
-  page.on("console", message => {
-    if (message.type() === "error") consoleErrors.push(message.text());
-  });
+  page.on("console", message => { if (message.type() === "error") consoleErrors.push(message.text()); });
 
   const desktop = await auditPage(page, { width: 1440, height: 900 }, `${output}-desktop.png`);
   const mobile = await auditPage(page, { width: 390, height: 844 }, `${output}-mobile.png`);
@@ -78,26 +81,26 @@ async function main() {
   for (const [path, heading] of [["privacy.html", "隐私说明"], ["security.html", "安全说明"]]) {
     await page.goto(new URL(path, process.argv[2] || "http://127.0.0.1:8793").toString(), { waitUntil: "networkidle" });
     if (await page.locator("h1").textContent() !== heading) throw new Error(`${path} has an invalid heading`);
-    if (await page.locator(".legal-document").count() !== 1) throw new Error(`${path} is missing its legal document`);
-    if (await page.locator("img.brand-mark").evaluate(image => !image.complete || image.naturalWidth !== 32)) {
-      throw new Error(`${path} brand mark did not load`);
-    }
+    if (await page.locator(".legal-document").count() !== 1 || !await page.locator(".legal-document").isVisible()) throw new Error(`${path} legal content is unavailable`);
   }
 
-  await page.goto(process.argv[2] || "http://127.0.0.1:8793", { waitUntil: "networkidle" });
   await page.setViewportSize({ width: 390, height: 844 });
-  const menu = page.locator(".menu-button");
-  if (await menu.count() !== 1) throw new Error("Mobile menu button is missing or duplicated");
+  await page.goto(process.argv[2] || "http://127.0.0.1:8793", { waitUntil: "networkidle" });
+  const menu = page.locator(".burger");
   await menu.click();
-  if (!await page.locator("#siteNavigation").isVisible()) throw new Error("Mobile navigation did not open");
-  if (await menu.getAttribute("aria-expanded") !== "true") throw new Error("Mobile navigation state is not exposed");
+  await page.waitForTimeout(350);
+  const menuState = await page.evaluate(() => {
+    const nav = document.querySelector("#site-nav");
+    const rect = nav?.getBoundingClientRect();
+    return { expanded: document.querySelector(".burger")?.getAttribute("aria-expanded"), visible: nav && getComputedStyle(nav).visibility === "visible", fullViewport: Boolean(rect && rect.width >= innerWidth - 2 && rect.height >= innerHeight - 2) };
+  });
+  if (menuState.expanded !== "true" || !menuState.visible || !menuState.fullViewport) throw new Error(`Mobile menu did not open: ${JSON.stringify(menuState)}`);
+  await page.keyboard.press("Escape");
+  if (await menu.getAttribute("aria-expanded") !== "false") throw new Error("Escape did not close the mobile menu");
 
   await browser.close();
   if (consoleErrors.length) throw new Error(`Browser console errors: ${consoleErrors.join(" | ")}`);
   process.stdout.write(JSON.stringify({ ok: true, desktop, mobile, screenshots: 2 }));
 }
 
-main().catch(error => {
-  process.stderr.write(`${error.stack || error}\n`);
-  process.exit(1);
-});
+main().catch(error => { process.stderr.write(`${error.stack || error}\n`); process.exit(1); });

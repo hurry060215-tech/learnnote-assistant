@@ -3,211 +3,222 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="LearnNote 是一款本地优先的视频学习笔记客户端，把当前网页、本地视频和视频链接整理成字幕、画面切片与可复习的结构化笔记。">
-    <meta name="theme-color" content="#ffffff">
-    <meta property="og:title" content="LearnNote - 把视频整理成真正能复习的笔记">
-    <meta property="og:description" content="当前页直取、本地视频、字幕转写、视觉切片与证据化笔记。">
+    <meta name="description" content="LearnNote 是一款本地优先的视频学习笔记客户端，把当前网页、本地视频和视频链接整理成字幕、关键画面与可复习的结构化笔记。">
+    <meta name="theme-color" content="#000000">
+    <meta property="og:title" content="LearnNote — 听懂每一段内容，写出有依据的笔记">
+    <meta property="og:description" content="当前页面、视频链接和本地视频，都能成为有字幕、画面与时间轴依据的学习笔记。">
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://hurry060215-tech.github.io/learnnote-assistant/">
     <meta property="og:image" content="https://hurry060215-tech.github.io/learnnote-assistant/assets/learnnote-case-gradient.png">
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="LearnNote - 把视频整理成真正能复习的笔记">
-    <meta name="twitter:description" content="当前页直取、本地视频、字幕转写、视觉切片与证据化笔记。">
+    <meta name="twitter:title" content="LearnNote — 听懂每一段内容，写出有依据的笔记">
+    <meta name="twitter:description" content="当前页面、视频链接和本地视频，都能成为有字幕、画面与时间轴依据的学习笔记。">
     <meta name="twitter:image" content="https://hurry060215-tech.github.io/learnnote-assistant/assets/learnnote-case-gradient.png">
-    <title>LearnNote - 视频学习笔记客户端</title>
+    <title>LearnNote — 听懂每一段内容，写出有依据的笔记</title>
     <link rel="canonical" href="https://hurry060215-tech.github.io/learnnote-assistant/">
-    <link rel="icon" type="image/png" sizes="32x32" href="data:image/png;base64,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">
-    <link rel="stylesheet" href="./styles.css?v=0.1.53">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='white'%3E%3Cpath d='M3 4.8c3.1-.8 6-.1 9 2v13c-3-2.1-5.9-2.8-9-2z'/%3E%3Cpath d='M21 4.8c-3.1-.8-6-.1-9 2v13c3-2.1 5.9-2.8 9-2z'/%3E%3C/svg%3E">
+    <link rel="stylesheet" href="./styles.css?v=0.2.1">
   </head>
-  <body>
-    <header class="site-header">
-      <a class="brand" href="#top" aria-label="LearnNote 首页">
-        <img class="brand-mark" src="data:image/png;base64,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" width="34" height="34" alt="">
-        <span>LearnNote</span>
-      </a>
-      <nav id="siteNavigation" aria-label="主导航">
-        <a href="#workflow">工作方式</a>
-        <a href="#case">真实案例</a>
-        <a href="#download">下载</a>
-        <a href="https://github.com/hurry060215-tech/learnnote-assistant">GitHub</a>
-      </nav>
-      <a class="button primary header-download" data-release-link href="https://github.com/hurry060215-tech/learnnote-assistant/releases/download/v0.1.54/LearnNote-Setup-x64.exe">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 20h14"/></svg>
-        下载 Windows 版
-      </a>
-      <button class="menu-button" type="button" aria-controls="siteNavigation" aria-expanded="false" aria-label="打开导航">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
-      </button>
-    </header>
+  <body class="landing-page" style="background:#000;color:#fff">
+    <div class="grain" aria-hidden="true"></div>
+    <div class="hero-photo" aria-hidden="true"></div>
 
-    <main id="top">
-      <section class="hero">
-        <div class="hero-copy">
-          <h1>LearnNote</h1>
-          <h2>把正在看的视频，<br>整理成真正能复习的笔记</h2>
-          <p>从当前课程页、本地视频或视频链接开始。LearnNote 在你的电脑上完成下载、转写与切片，再把原话、画面和知识结构放进同一份笔记。</p>
+    <div class="page">
+      <div class="menu-backdrop" aria-hidden="true"></div>
+
+      <header class="header">
+        <a class="logo appear appear--scale" style="--d:.06s" href="#top" aria-label="LearnNote 首页">
+          <svg class="logo-mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4.8c3.1-.8 6-.1 9 2v13c-3-2.1-5.9-2.8-9-2z"></path><path d="M21 4.8c-3.1-.8-6-.1-9 2v13c3-2.1 5.9-2.8 9-2z"></path><path d="M12 6.8v13"></path></svg>
+          <span>LearnNote</span>
+        </a>
+
+        <nav id="site-nav" class="nav" aria-label="主导航">
+          <a class="nav-link appear appear--scale" style="--d:.14s" href="#features"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l3 3v15H6zM15 3v4h4M9 11h6M9 15h6"></path></svg><span>功能</span></a>
+          <a class="nav-link appear appear--soft" style="--d:.24s" href="#privacy"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 20 6v5c0 5.1-3.2 8.5-8 10-4.8-1.5-8-4.9-8-10V6z"></path></svg><span>隐私与本地</span></a>
+          <a class="nav-link appear appear--scale" style="--d:.34s" href="#workflow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11M8 10l4 4 4-4M5 20h14"></path></svg><span>如何工作</span></a>
+          <a class="nav-link appear appear--soft" style="--d:.44s" href="https://github.com/hurry060215-tech/learnnote-assistant/blob/main/README.md"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M9.7 9a2.5 2.5 0 1 1 3.3 2.4c-.8.3-1 1-1 1.8M12 17h.01"></path></svg><span>使用文档</span></a>
+        </nav>
+
+        <a class="btn btn-solid header-cta appear appear--scale" style="--d:.28s" data-release-link href="https://github.com/hurry060215-tech/learnnote-assistant/releases/download/v0.1.54/LearnNote-Setup-x64.exe">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path class="fill" d="M3 5.5 10 4v7H3V5.5Zm8-1.7L21 2v9H11V3.8ZM3 12h7v7l-7-1.3V12Zm8 0h10v10l-10-1.8V12Z"></path></svg>
+          <span class="cta-long">下载 Windows 版</span><span class="cta-short">下载</span>
+        </a>
+
+        <button class="burger appear appear--scale" style="--d:.28s" type="button" aria-controls="site-nav" aria-expanded="false" aria-label="打开导航">
+          <span class="burger-lines" aria-hidden="true"><i></i><i></i><i></i></span>
+        </button>
+      </header>
+
+      <main>
+        <section class="intro-stage" id="top">
+          <div class="hero">
+            <div class="hero-copy">
+          <div class="badge appear appear--pop" style="--d:.20s">
+            <svg class="badge-star" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.6C12.55 2.6 12.88 3.15 13.08 4.7c.62 4.7 1.52 5.6 6.22 6.22 1.55.2 2.1.53 2.1 1.08s-.55.88-2.1 1.08c-4.7.62-5.6 1.52-6.22 6.22-.2 1.55-.53 2.1-1.08 2.1s-.88-.55-1.08-2.1c-.62-4.7-1.52-5.6-6.22-6.22C3.15 12.88 2.6 12.55 2.6 12s.55-.88 2.1-1.08c4.7-.62 5.6-1.52 6.22-6.22C11.12 3.15 11.45 2.6 12 2.6Z"></path></svg>
+            <span>为深度学习而设计</span>
+          </div>
+
+          <h1>
+            <span class="headline-line appear appear--mask" style="--d:.38s">听懂每一段内容</span>
+            <span class="headline-line appear appear--mask" style="--d:.56s">写出有依据的 <em>笔记</em></span>
+          </h1>
+
+          <p class="lede appear appear--soft" style="--d:.72s">把正在看的视频交给 LearnNote，从当前页面、视频链接或本地文件开始。LearnNote 将字幕、关键画面与时间轴整理进同一份<span class="nowrap">笔记</span>，让每个结论都有出处。</p>
+
           <div class="hero-actions">
-            <a class="button primary large" data-release-link href="https://github.com/hurry060215-tech/learnnote-assistant/releases/download/v0.1.54/LearnNote-Setup-x64.exe">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5.5 10 4v7H3V5.5Zm8-1.7L21 2v9H11V3.8ZM3 12h7v7l-7-1.3V12Zm8 0h10v10l-10-1.8V12Z" class="fill"/></svg>
+            <a class="btn btn-solid appear appear--btn" style="--d:.88s" data-release-link href="https://github.com/hurry060215-tech/learnnote-assistant/releases/download/v0.1.54/LearnNote-Setup-x64.exe">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path class="fill" d="M3 5.5 10 4v7H3V5.5Zm8-1.7L21 2v9H11V3.8ZM3 12h7v7l-7-1.3V12Zm8 0h10v10l-10-1.8V12Z"></path></svg>
               下载 Windows 版
             </a>
-            <a class="button secondary large" href="#workflow">查看工作方式</a>
+            <a class="btn btn-ghost appear appear--side" style="--d:1.02s" href="#workflow">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"></circle><path class="fill" d="m10 8.5 5.5 3.5-5.5 3.5z"></path></svg>
+              了解如何使用
+            </a>
           </div>
-          <div class="hero-meta" aria-label="产品信息">
-            <span><b data-release-version>v0.1.54</b> 当前版本</span>
-            <span><b>Windows 10+</b> 主力平台</span>
-            <span><b>Chrome / Edge</b> 当前页扩展</span>
+            </div>
           </div>
-        </div>
 
-        <figure class="app-frame hero-frame" aria-label="LearnNote Windows 客户端工作台">
-          <div class="app-frame-bar">
-            <span><i></i>LearnNote</span>
-            <span aria-hidden="true">—　□　×</span>
+          <div class="proof-rail" aria-label="LearnNote 产品证明">
+        <article class="proof appear appear--stat" style="--d:1.08s">
+          <div class="proof-icon"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M5 16h3M24 16h3M10 11v10M16 7v18M22 11v10"></path><circle cx="5" cy="16" r="1.5" class="fill"></circle><circle cx="27" cy="16" r="1.5" class="fill"></circle></svg></div>
+          <div class="proof-copy"><strong>三种输入，灵活适配</strong><span>当前页面 / 视频链接 / 本地视频</span><a href="#workflow">查看支持的来源 <i>→</i></a></div>
+        </article>
+
+        <article class="proof appear appear--stat" style="--d:1.22s">
+          <div class="proof-icon"><svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="9"></circle><circle cx="16" cy="16" r="3"></circle><path d="M16 3v5M16 24v5M3 16h5M24 16h5"></path></svg></div>
+          <div class="proof-copy"><strong>字幕覆盖率 96.2%</strong><span>基于 01:36 真实微课案例</span><a href="#case">查看实测详情 <i>→</i></a></div>
+        </article>
+
+        <article class="proof appear appear--stat" style="--d:1.36s">
+          <div class="proof-icon"><svg viewBox="0 0 32 32" aria-hidden="true"><rect x="8" y="13" width="16" height="13" rx="3"></rect><path d="M11 13V9a5 5 0 0 1 10 0v4M16 18v4"></path></svg></div>
+          <div class="proof-copy"><strong>本地优先，连接可控</strong><span>远程模型仅在你配置后按需连接</span><a href="#privacy">了解隐私与连接方式 <i>→</i></a></div>
+        </article>
           </div>
-          <img src="./assets/learnnote-workspace-v0126.png" alt="LearnNote 客户端的新建学习笔记工作台，包含当前页面、视频链接和本地视频入口">
-        </figure>
-      </section>
+        </section>
 
-      <section id="workflow" class="workflow-section">
-        <header class="section-heading reveal">
-          <h2>三步，把视频变成可复习的知识</h2>
-          <p>操作路径保持简单，复杂处理留在客户端后台完成。</p>
-        </header>
-        <div class="workflow-line reveal">
-          <article>
-            <span class="step-index">01</span>
-            <div class="step-visual browser-step" aria-hidden="true">
-              <div class="mini-browser"><i></i><strong>课程正在播放</strong><span>发送到 LearnNote</span></div>
-            </div>
-            <h3>选择正在看的内容</h3>
-            <p>网页视频从扩展侧栏发送；本地文件直接拖入；B 站和常见视频链接也可以粘贴处理。</p>
-          </article>
-          <article>
-            <span class="step-index">02</span>
-            <div class="step-visual process-step" aria-hidden="true">
-              <span>视频</span><i></i><span>字幕</span><i></i><span>画面</span>
-            </div>
-            <h3>在本地处理与对齐</h3>
-            <p>下载、转写、关键帧和视觉窗口按时间轴组织。首页只显示当前任务进度，不让参数淹没操作。</p>
-          </article>
-          <article>
-            <span class="step-index">03</span>
-            <div class="step-visual note-step" aria-hidden="true">
-              <strong>核心概念</strong><span>原话 12:48</span><span>画面 08</span>
-            </div>
-            <h3>获得有出处的笔记</h3>
-            <p>结论能回到字幕和画面核对；同一视频可以按认真学习、快速回顾或备考重新整理。</p>
-          </article>
-        </div>
-      </section>
-
-      <section id="case" class="case-section">
-        <header class="case-heading reveal">
-          <div>
-            <span class="section-kicker">可复现的真实案例</span>
-            <h2>梯度下降与学习率：<br>为什么训练会震荡</h2>
+        <section class="section workflow-section" id="workflow">
+          <div class="section-heading reveal">
+            <p class="section-index"><span>A</span> 从来源到笔记 · LearnNote 的真实工作流</p>
+            <h2>一条线，<br><em>从任何来源到结构化笔记</em></h2>
+            <p>不是只做一段字幕摘要。LearnNote 先确认视频，再对齐字幕与画面，最后输出能够继续阅读、追问和导出的知识。</p>
+            <p class="workflow-proof-copy">三步，把视频变成可复习的知识：从你已经在看的地方开始，让每个结论都保留原话、画面和时间轴出处。</p>
           </div>
-          <p>这不是占位截图。我们制作了一段 01:36 的中文教学微课，让 LearnNote 从本地视频开始，完整执行转写、抽帧、视觉理解和证据化笔记生成。</p>
-        </header>
 
-        <div class="case-stage reveal">
-          <figure class="app-frame case-frame" aria-label="LearnNote 梯度下降微课真实处理结果">
-            <div class="app-frame-bar">
-              <span><i></i>LearnNote · 梯度下降与学习率</span>
-              <span aria-hidden="true">真实任务 6c3cb3f0512d</span>
+          <div class="workflow-map reveal" aria-label="LearnNote 处理流程">
+            <div class="source-stack">
+              <div class="source-row"><span class="source-symbol"><svg viewBox="0 0 24 24"><path d="M3 5h18v14H3zM7 9h5M7 13h10"></path></svg></span><span><strong>当前页面</strong><small>从浏览器扩展发送正在播放的视频</small></span></div>
+              <div class="source-row"><span class="source-symbol"><svg viewBox="0 0 24 24"><path d="M9 15 15 9M7.5 12.5l-2 2a3.5 3.5 0 0 0 5 5l2-2M16.5 11.5l2-2a3.5 3.5 0 0 0-5-5l-2 2"></path></svg></span><span><strong>视频链接</strong><small>B 站、YouTube 与常见媒体链接</small></span></div>
+              <div class="source-row"><span class="source-symbol"><svg viewBox="0 0 24 24"><path d="M3 6h7l2 2h9v11H3zM10 11l5 3-5 3z"></path></svg></span><span><strong>本地视频</strong><small>MP4、MKV、WebM、MOV 等文件</small></span></div>
             </div>
-            <img src="./assets/learnnote-case-gradient.png" alt="LearnNote 客户端中已完成的梯度下降微课笔记，包含时间轴、核心概念和 AI 课程助手">
+
+            <div class="process-line">
+              <div class="process-step"><span>01</span><i><svg viewBox="0 0 24 24"><path d="M12 3v11M8 10l4 4 4-4M5 20h14"></path></svg></i><strong>获取视频</strong><small>解析可用资源与字幕</small></div>
+              <div class="process-step"><span>02</span><i><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h12M4 17h8"></path></svg></i><strong>生成字幕</strong><small>平台字幕或语音转写</small></div>
+              <div class="process-step"><span>03</span><i><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="m7 15 3-3 2 2 3-4 3 5"></path></svg></i><strong>理解画面</strong><small>PPT、板书、代码与演示</small></div>
+              <div class="process-step"><span>04</span><i><svg viewBox="0 0 24 24"><path d="M6 3h9l3 3v15H6zM15 3v4h4M9 12h6M9 16h6"></path></svg></i><strong>整理笔记</strong><small>结构化总结与证据引用</small></div>
+            </div>
+
+            <div class="output-panel">
+              <span>结构化学习结果</span>
+              <ul><li>核心要点与章节</li><li>字幕与时间轴</li><li>关键画面窗口</li><li>课程问答</li><li>多版本与导出</li></ul>
+            </div>
+          </div>
+        </section>
+
+        <section class="section workspace-section" id="product">
+          <div class="workspace-copy reveal">
+            <p class="section-index"><span>B</span> 在桌面端完成真正的理解与整理</p>
+            <h2>浏览器扩展只负责<br><em>把当前页面交给 LearnNote</em></h2>
+            <p>下载、转写、关键帧、视觉理解、笔记整理、课程问答和导出，都由 Windows 桌面客户端统一完成。</p>
+            <div class="workspace-capabilities">
+              <div><b>01</b><span><strong>当前页交接</strong><small>确认标题、来源和候选媒体后再开始</small></span></div>
+              <div><b>02</b><span><strong>处理过程可见</strong><small>获取、字幕、画面和笔记阶段清楚呈现</small></span></div>
+              <div><b>03</b><span><strong>失败有明确原因</strong><small>不会用错误页面或模型报错生成笔记</small></span></div>
+              <div><b>04</b><span><strong>同一视频可多次整理</strong><small>智能整理、课堂精讲、快速复习与考前梳理</small></span></div>
+            </div>
+          </div>
+
+          <figure class="product-frame reveal" aria-label="LearnNote Windows 客户端工作台">
+            <div class="frame-bar"><span><i></i><i></i><i></i></span><b>LearnNote · 新建学习笔记</b><small>Windows 工作台</small></div>
+            <img src="./assets/learnnote-workspace-v0126.png" alt="LearnNote 新建学习笔记工作台，包含当前页面、视频链接和本地视频入口">
           </figure>
-          <div class="case-facts" aria-label="案例处理证据">
-            <article><strong>96.2%</strong><span>字幕时间覆盖</span></article>
-            <article><strong>10 帧</strong><span>真实画面切片</span></article>
-            <article><strong>2 组</strong><span>多模态视觉窗口</span></article>
-            <article><strong>5 / 5</strong><span>时间轴与画面检查点</span></article>
-          </div>
-        </div>
+        </section>
 
-        <div class="case-detail reveal">
-          <div class="case-note">
-            <span class="section-kicker">生成结果节选</span>
-            <h3>学习率决定每次更新的步长</h3>
-            <p>学习率太小时，参数每次移动距离有限，收敛缓慢；学习率太大时，更新会跨过低点并在两侧来回震荡。笔记把这个结论分别对齐到字幕和损失曲线画面。</p>
-            <ol>
-              <li><time>00:00</time><span>梯度下降的目标与更新方向</span></li>
-              <li><time>00:31</time><span>学习率过小：下降稳定但速度慢</span></li>
-              <li><time>00:56</time><span>学习率过大：跨过最低点并震荡</span></li>
-              <li><time>01:18</time><span>调参顺序：先稳定，再逐步提速</span></li>
-            </ol>
+        <section class="section features-section" id="features">
+          <header class="feature-heading reveal">
+            <p class="section-index"><span>C</span> 不只是摘要</p>
+            <h2>字幕、画面和笔记，<br><em>不再彼此分离</em></h2>
+          </header>
+          <div class="feature-columns reveal">
+            <article><span>01</span><h3>字幕与转写</h3><p>优先使用浏览器字幕、平台字幕和内嵌字幕；没有字幕时可选择本地 faster-whisper 或用户配置的远程 ASR。</p></article>
+            <article><span>02</span><h3>画面与时间轴</h3><p>按时间窗口提取关键帧，把 PPT、板书、代码界面和操作演示与对应字幕放在一起理解。</p></article>
+            <article><span>03</span><h3>可继续使用的笔记</h3><p>时间轴、字幕、画面切片和本地视频可以互相定位，同一视频还能生成多个结构与风格版本。</p></article>
+            <article><span>04</span><h3>问答与导出</h3><p>围绕当前课程继续追问，并导出 Markdown、字幕、诊断报告、媒体文件或完整学习资料包。</p></article>
           </div>
-          <figure class="case-grid">
-            <img src="./assets/learnnote-case-grid.jpg" alt="梯度下降微课的九宫格真实画面切片，展示损失曲线和不同学习率效果">
-            <figcaption>首个视觉窗口 · 9 张原始视频画面 · 00:00-01:00</figcaption>
+          <figure class="frame-strip reveal">
+            <img src="./assets/learnnote-case-grid.jpg" alt="梯度下降微课的真实画面切片，展示字幕与关键画面按时间窗口对齐">
+            <figcaption><strong>视觉窗口 W001</strong><span>6 张真实视频画面 · 00:00–01:00 · 与字幕时间段对齐</span></figcaption>
           </figure>
-        </div>
+        </section>
 
-        <div class="case-proof reveal">
-          <p><strong>可信度保护：</strong>模型第一次扩写了视频中没有出现的工具和案例，LearnNote 的证据检查触发修订，最终笔记只保留字幕与画面能够支持的内容。</p>
-          <a href="https://github.com/hurry060215-tech/learnnote-assistant/blob/main/scripts/generate-marketing-case.ps1">查看案例生成脚本</a>
-        </div>
-      </section>
-
-      <section class="source-band" aria-label="支持的开始方式">
-        <div class="source-band-inner reveal">
-          <h2>从你已经在看的地方开始</h2>
-          <div class="source-options">
-            <article><span>当前页面</span><p>播放课程后打开扩展侧栏，客户端接手后续处理。</p></article>
-            <article><span>本地视频</span><p>拖入 mp4、mkv、webm 等常见格式，使用同一套笔记管线。</p></article>
-            <article><span>视频链接</span><p>粘贴 B 站 BV 号、视频页或可访问的媒体链接。</p></article>
+        <section class="section case-section" id="case">
+          <figure class="case-media reveal">
+            <div class="frame-bar"><span><i></i><i></i><i></i></span><b>LearnNote · 梯度下降与学习率</b><small>真实任务</small></div>
+            <img src="./assets/learnnote-case-gradient.png" alt="LearnNote 生成的梯度下降微课结构化笔记，包含时间轴、核心概念和课程助手">
+          </figure>
+          <div class="case-copy reveal">
+            <p class="section-index"><span>D</span> 可复现的真实案例</p>
+            <h2>笔记知道，<br><em>自己从哪里来</em></h2>
+            <p>我们制作了一段 01:36 的梯度下降微课，让 LearnNote 完整执行转写、抽帧、视觉理解和证据化笔记生成。</p>
+            <div class="case-metrics"><span><strong>96.2%</strong><small>字幕时间覆盖</small></span><span><strong>10</strong><small>真实画面切片</small></span><span><strong>5 / 5</strong><small>时间轴检查点</small></span></div>
+            <p class="case-proof"><strong>可信度保护：</strong>模型第一次扩写了视频中没有出现的工具和案例，证据检查触发修订，最终笔记只保留字幕与画面能够支持的内容。</p>
+            <a class="orange-link" href="https://github.com/hurry060215-tech/learnnote-assistant/blob/main/scripts/generate-marketing-case.ps1">查看案例生成脚本 <span>→</span></a>
           </div>
-        </div>
-      </section>
+        </section>
 
-      <section class="trust-section" aria-label="隐私与安全">
-        <div class="trust-heading reveal">
-          <span class="section-kicker">数据边界清楚可见</span>
-          <h2>客户端处理，联网能力由你决定</h2>
-          <p>视频、字幕与任务产物默认保存在你选择的本地目录。只有启用云端转写或 AI 模型时，所需内容才会发送给对应服务商。</p>
-        </div>
-        <div class="trust-list reveal">
-          <article><strong>本机服务</strong><span>桌面后端只监听 127.0.0.1</span></article>
-          <article><strong>密钥保护</strong><span>Windows 凭据管理器保存 API Key</span></article>
-          <article><strong>按需交接</strong><span>扩展仅在点击发送后提交页面证据</span></article>
-          <article><strong>更新校验</strong><span>安装包下载后核对来源与 SHA-256</span></article>
-        </div>
-        <p class="trust-links"><a href="./privacy.html">隐私说明</a><a href="./security.html">安全说明</a></p>
-      </section>
+        <section class="section privacy-section" id="privacy">
+          <div class="privacy-heading reveal">
+            <p class="section-index"><span>E</span> 数据边界清楚可见</p>
+            <h2>你的学习资料，<br><em>留在你的手里</em></h2>
+            <p>LearnNote 以本地桌面客户端为处理核心。视频、字幕、截图、模型缓存和任务产物保存在你选择的数据目录。</p>
+            <p class="privacy-links"><a href="./privacy.html">完整隐私说明</a><a href="./security.html">安全说明</a></p>
+          </div>
+          <div class="boundary-list reveal">
+            <div><span>01</span><strong>127.0.0.1</strong><p>桌面后端默认只监听本机地址。</p></div>
+            <div><span>02</span><strong>按需交接</strong><p>只有在你确认或点击发送后，扩展才把页面证据交给本机服务。</p></div>
+            <div><span>03</span><strong>Windows 凭据管理器</strong><p>安装版可安全保存 API Key，不写入任务 JSON、诊断或导出资料。</p></div>
+            <div><span>04</span><strong>来源与 SHA-256 校验</strong><p>客户端更新只接受官方 Release 路径，并在下载后检查摘要。</p></div>
+            <div><span>05</span><strong>不会绕过 DRM</strong><p>受保护播放或无法复用的媒体资源会停止并提示改用本地视频。</p></div>
+          </div>
+        </section>
 
-      <section id="download" class="download-section">
-        <div class="download-copy reveal">
-          <h2>安装 LearnNote，<br>整理下一段视频</h2>
-          <p>客户端是完整工作台；浏览器扩展只负责把当前播放页交给客户端。</p>
-        </div>
-        <div class="download-options reveal">
-          <article>
-            <div class="download-icon windows" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 5.5 10 4v7H3V5.5Zm8-1.7L21 2v9H11V3.8ZM3 12h7v7l-7-1.3V12Zm8 0h10v10l-10-1.8V12Z" class="fill"/></svg></div>
-            <div><h3>Windows 客户端</h3><p><span data-release-version>v0.1.54</span> · Windows 10 及以上</p></div>
-            <a class="button primary" data-release-link href="https://github.com/hurry060215-tech/learnnote-assistant/releases/download/v0.1.54/LearnNote-Setup-x64.exe">下载安装</a>
-          </article>
-          <article>
-            <div class="download-icon extension" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 3v4M16 3v4M5 8h14v5a7 7 0 0 1-14 0V8ZM12 20v2"/></svg></div>
-            <div><h3>浏览器扩展</h3><p>Chrome / Edge · 配合客户端使用</p></div>
-            <a class="button secondary" data-extension-link href="https://github.com/hurry060215-tech/learnnote-assistant/releases/download/v0.1.54/LearnNote-Browser-Extension-v0.1.54.zip">下载扩展</a>
-          </article>
-        </div>
-      </section>
-    </main>
+        <section class="section faq-section" id="faq">
+          <header class="faq-heading reveal"><p class="section-index"><span>F</span> 常见问题</p><h2>开始之前，<br><em>你可能还想确认这些</em></h2></header>
+          <div class="faq-list reveal">
+            <details><summary>一定需要安装客户端吗？<span>+</span></summary><p>是。浏览器扩展只是当前页面入口，下载、转写、切片、笔记库、问答和导出都由桌面客户端完成。</p></details>
+            <details><summary>没有字幕的视频还能处理吗？<span>+</span></summary><p>可以。你可以使用本地 faster-whisper，或配置兼容的远程语音转写服务。</p></details>
+            <details><summary>纯文本模型能看懂 PPT 和操作画面吗？<span>+</span></summary><p>不能。需要理解 PPT、板书、代码界面或操作过程时，应选择明确支持图片输入的视觉模型。</p></details>
+            <details><summary>为什么有些网页视频无法获取？<span>+</span></summary><p>LearnNote 只处理当前页面可访问的媒体资源，不绕过 DRM、付费墙、账号权限或学习进度系统。</p></details>
+          </div>
+        </section>
 
-    <footer>
-      <a class="brand footer-brand" href="#top"><img class="brand-mark" src="data:image/png;base64,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" width="29" height="29" alt=""><span>LearnNote</span></a>
-      <p>让每一段视频，都变成可以继续学习的内容。</p>
-      <nav aria-label="页脚导航">
-        <a href="https://github.com/hurry060215-tech/learnnote-assistant">GitHub</a>
-        <a href="https://github.com/hurry060215-tech/learnnote-assistant/blob/main/README.md">使用文档</a>
-        <a href="./privacy.html">隐私</a>
-        <a href="./security.html">安全</a>
-        <a href="https://github.com/hurry060215-tech/learnnote-assistant/issues">反馈</a>
-      </nav>
-    </footer>
-    <script src="./app.js?v=0.1.53"></script>
+        <section class="download-section" id="download">
+          <div class="download-glow" aria-hidden="true"></div>
+          <div class="download-mark"><svg viewBox="0 0 24 24"><path d="M3 4.8c3.1-.8 6-.1 9 2v13c-3-2.1-5.9-2.8-9-2z"></path><path d="M21 4.8c-3.1-.8-6-.1-9 2v13c3-2.1 5.9-2.8 9-2z"></path></svg></div>
+          <h2>整理下一段视频，<br><em>继续你的学习</em></h2>
+          <p>安装 Windows 客户端，再按需连接浏览器扩展。视频处理、模型配置和数据目录始终由你掌控。</p>
+          <div class="download-actions"><a class="btn btn-solid" data-release-link href="https://github.com/hurry060215-tech/learnnote-assistant/releases/download/v0.1.54/LearnNote-Setup-x64.exe">下载 Windows 客户端</a><a class="btn btn-ghost" data-extension-link href="https://github.com/hurry060215-tech/learnnote-assistant/releases/download/v0.1.54/LearnNote-Browser-Extension-v0.1.54.zip">下载浏览器扩展</a></div>
+          <small>Windows 10 / 11 · 当前正式版 <span data-release-version>v0.1.54</span></small>
+        </section>
+      </main>
+
+      <footer class="site-footer">
+        <a class="footer-brand" href="#top"><svg viewBox="0 0 24 24"><path d="M3 4.8c3.1-.8 6-.1 9 2v13c-3-2.1-5.9-2.8-9-2z"></path><path d="M21 4.8c-3.1-.8-6-.1-9 2v13c3-2.1 5.9-2.8 9-2z"></path></svg><strong>LearnNote</strong></a>
+        <p>让每一段视频，都变成可以继续学习的内容。</p>
+        <nav aria-label="页脚导航"><a href="https://github.com/hurry060215-tech/learnnote-assistant">GitHub</a><a href="./privacy.html">隐私</a><a href="./security.html">安全</a><a href="https://github.com/hurry060215-tech/learnnote-assistant/issues">反馈</a></nav>
+      </footer>
+    </div>
+
+    <script src="./app.js?v=0.2.1"></script>
   </body>
 </html>
