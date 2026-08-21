@@ -5472,11 +5472,11 @@ function taskStatusClass(task) {
 }
 
 function taskExportUrl(task, type) {
-  return apiUrl(`/api/tasks/${encodeURIComponent(task.id)}/exports/${type}`);
+  return globalThis.LearnNoteTaskLinks?.exportUrl?.(apiUrl, task, type) || apiUrl(`/api/tasks/${encodeURIComponent(task.id)}/exports/${type}`);
 }
 
 function taskClipExportUrl(task, windowId) {
-  return taskExportUrl(task, `clips/${encodeURIComponent(windowId || "window")}`);
+  return globalThis.LearnNoteTaskLinks?.clipExportUrl?.(apiUrl, task, windowId) || taskExportUrl(task, `clips/${encodeURIComponent(windowId || "window")}`);
 }
 
 function taskMediaPreviewUrl(task) {
@@ -5485,7 +5485,7 @@ function taskMediaPreviewUrl(task) {
 }
 
 function taskRerunUrl(taskId) {
-  return apiUrl(`/api/tasks/${encodeURIComponent(taskId)}/rerun-from-media`);
+  return globalThis.LearnNoteTaskLinks?.rerunUrl?.(apiUrl, taskId) || apiUrl(`/api/tasks/${encodeURIComponent(taskId)}/rerun-from-media`);
 }
 
 async function backupLibraryIndex() {
@@ -5770,11 +5770,11 @@ async function generateStudyCardsFromTask(taskId) {
 }
 
 function taskResumeUrl(taskId) {
-  return apiUrl(`/api/tasks/${encodeURIComponent(taskId)}/resume`);
+  return globalThis.LearnNoteTaskLinks?.resumeUrl?.(apiUrl, taskId) || apiUrl(`/api/tasks/${encodeURIComponent(taskId)}/resume`);
 }
 
 function taskQaUrl(taskId) {
-  return apiUrl(`/api/tasks/${encodeURIComponent(taskId)}/qa`);
+  return globalThis.LearnNoteTaskLinks?.qaUrl?.(apiUrl, taskId) || apiUrl(`/api/tasks/${encodeURIComponent(taskId)}/qa`);
 }
 
 function hasTaskBundle(task) {
