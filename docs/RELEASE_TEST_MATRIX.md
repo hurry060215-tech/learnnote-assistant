@@ -11,7 +11,7 @@ not require user accounts, browser login state, or API keys.
 | Installer smoke | `.\scripts\test-release-installer.ps1 -InstallerPath .\LearnNote-Setup-x64.exe` | Clean install, startup, extension files, uninstall | None | App starts and external data survives uninstall |
 | Cover upgrade | `.\scripts\test-upgrade-installer.ps1 -PreviousInstallerPath <old.exe> -CurrentInstallerPath <new.exe>` | Previous-to-current upgrade under `D:\LearnNoteUpgradeSmoke` | None | Configuration and external data survive, extension version increases, upgraded app starts |
 | Long-video media | `python scripts/long-video-reliability.py` | Synthetic 60-minute MP4, media integrity, adaptive frames, 3x3 grids | None | Audio/video tracks, duration, timeline coverage, frames, and grids are valid |
-| Long-video resource matrix | `python scripts/long-video-reliability.py --duration-seconds 30/60/180` | 30, 60 and 180-minute media/frame budget coverage | None | Each duration reaches the first frame, tail, valid grids, and produces a report |
+| Long-video resource matrix | `python scripts/long-video-reliability.py --duration-seconds 30/60/180 --memory-budget-mb 512 --min-free-disk-mb 512` | 30, 60 and 180-minute media/frame coverage plus process RSS, CPU and free-disk samples | None | Each duration reaches the first frame, tail, valid grids, records resource counters, and stops when an explicit safety budget is exceeded |
 | Provider presets | `python scripts/model-provider-contract.py` | Offline schema, URL, classifier, ASR, and vision checks | None | Every preset is internally consistent and no network call occurs |
 | Explicit provider live check | `python scripts/model-provider-contract.py --live-provider kimi` | One short completion for the selected provider | Explicit provider API key | The configured model returns the contract marker |
 | Public sample acquisition | `.\scripts\audit-real-site.ps1 "https://samplelib.com/sample-mp4.html" -TaskProbe -YtdlpProbe -RequireReady -Browser edge` | Public, no-login MP4 sample | Public internet only | Evidence reaches `ready_to_download` and a local download task succeeds |
@@ -45,7 +45,9 @@ transcribe audio, call a language model, or send images to a visual API.
 The scheduled reliability workflow additionally runs a bounded 30/60/180-minute
 matrix. The matrix uses low-bitrate synthetic media and a fixed frame budget;
 it is a resource/coverage gate, not a claim that a full 180-minute transcription
-has been completed on every machine.
+has been completed on every machine. Each report includes process CPU percentage,
+peak RSS, and minimum free disk space. The default scheduled safety floor is
+512 MB RSS and 512 MB free disk; local runs can disable enforcement with `0`.
 
 ```powershell
 python scripts/long-video-reliability.py `

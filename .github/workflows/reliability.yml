@@ -32,6 +32,8 @@ jobs:
         run: >
           python scripts/long-video-reliability.py
           --output-dir "build/reliability/long-video"
+          --memory-budget-mb 512
+          --min-free-disk-mb 512
           --keep-artifacts
       - name: Synthetic 30/60/180-minute resource matrix
         shell: pwsh
@@ -44,6 +46,8 @@ jobs:
               --duration-seconds $duration `
               --frame-interval $interval `
               --max-frames 40 `
+              --memory-budget-mb 512 `
+              --min-free-disk-mb 512 `
               --output-dir $target `
               --keep-artifacts
             if ($LASTEXITCODE -ne 0) { throw "Long-video matrix failed at ${duration}s" }

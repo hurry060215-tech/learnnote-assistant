@@ -64,7 +64,49 @@ const UI_COPY = Object.freeze({
     settingsNav: "Settings",
     workspaceNav: "Workspace",
     notesNav: "Notes",
-    historyNav: "Tasks"
+    historyNav: "Tasks",
+    navigation: "Navigation",
+    createArea: "Create",
+    listArea: "List",
+    focusMode: "Focus",
+    assistant: "AI tutor",
+    collapseNavigation: "Collapse navigation",
+    collapseWorkspace: "Collapse create area",
+    collapseHistory: "Collapse note list",
+    readingMode: "Enter focus reading",
+    settingsTitle: "Settings",
+    settingsSubtitle: "Adjust the interface and video processing",
+    settingsGeneral: "General",
+    settingsModel: "AI model",
+    settingsTranscriber: "Transcription",
+    settingsNotes: "Notes",
+    settingsProcessing: "Video processing",
+    settingsConnection: "Downloads and storage",
+    settingsPrivacy: "Privacy",
+    appearanceHeading: "Interface",
+    appearanceDescription: "Make common actions clearer and easier to read.",
+    interfaceScale: "Interface scale",
+    interfaceScaleHint: "Adjust spacing and readable text size",
+    textSize: "Text size",
+    textSizeHint: "Does not change the window layout",
+    theme: "Theme",
+    themeHint: "Follow the system or choose an appearance",
+    colorTheme: "Color theme",
+    colorThemeHint: "Accent color is used for actions and selection",
+    localeLabel: "Interface language",
+    localeHint: "Switch common navigation, settings, and action labels",
+    preview: "Live preview",
+    previewTitle: "Clear, restrained, easy to scan",
+    previewHint: "Changes apply immediately; save at the bottom to keep them.",
+    defaultBehavior: "Default behavior",
+    defaultSource: "Default input",
+    defaultSourceHint: "Show this source first when the client opens",
+    sourceBrowser: "Current page",
+    sourceLocal: "Local video",
+    sourceUrl: "Video link",
+    reopenOnboarding: "Open again",
+    settingsAdvancedLabel: "Show advanced settings",
+    settingsAdvancedHint: "Reveal model, transcription, note, and video details"
   }
 });
 const LEGACY_NOTE_PRESETS = Object.freeze({
@@ -687,7 +729,7 @@ function normalizedAppSettings(value = {}) {
     if (!value.noteTemplate) settings.noteTemplate = legacyPreset.template;
     if (!value.summaryDepth) settings.summaryDepth = legacyPreset.depth;
   }
-  if (!["90", "100", "110", "125"].includes(String(settings.uiScale))) settings.uiScale = "100";
+  if (!["90", "100", "110", "125", "150", "175", "200"].includes(String(settings.uiScale))) settings.uiScale = "100";
   if (!["compact", "standard", "large"].includes(settings.textSize)) settings.textSize = "standard";
   if (!["system", "light", "dark"].includes(settings.theme)) settings.theme = "light";
   if (!["teal", "ocean", "forest", "graphite"].includes(settings.colorTheme)) settings.colorTheme = "teal";
@@ -755,7 +797,14 @@ function applyLocale() {
   const copy = UI_COPY[locale] || {};
   document.querySelectorAll("[data-i18n]").forEach(element => {
     const key = element.dataset.i18n;
-    if (copy[key]) element.textContent = copy[key];
+    if (!element.dataset.i18nDefault) element.dataset.i18nDefault = element.textContent;
+    element.textContent = copy[key] || element.dataset.i18nDefault;
+  });
+  document.querySelectorAll("[data-i18n-aria]").forEach(element => {
+    const key = element.dataset.i18nAria;
+    if (!element.dataset.i18nAriaDefault) element.dataset.i18nAriaDefault = element.getAttribute("aria-label") || "";
+    const value = copy[key] || element.dataset.i18nAriaDefault;
+    if (value) element.setAttribute("aria-label", value);
   });
   if (els.settingLocale) els.settingLocale.value = locale;
   const advanced = document.querySelector("#settingAdvancedOptions")?.closest?.("label")?.querySelector?.("strong");
