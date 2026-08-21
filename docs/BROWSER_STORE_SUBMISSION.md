@@ -30,3 +30,15 @@ LearnNote 是面向个人学习者的本地优先视频知识助手。扩展只�
 3. 手工验证首次安装、侧栏打开、服务未启动、配对过期、来源登录态和拒绝 DRM 页面。
 4. 截图不得包含 Cookie、签名 URL、真实课程标题或用户数据。
 5. 审核说明明确：扩展不是录屏器，不提供 DRM/权限绕过，不代刷课程进度。
+
+## 可选自动提交
+
+`.github/workflows/store-submit.yml` 只接受手动触发。默认 `apply=false`，
+只打包、校验并输出 SHA-256，不发起网络请求；只有同时显式选择 `apply`
+和配置相应 secrets 才会上传草稿，`publish=true` 才会提交审核。
+
+Chrome 需要 `LEARNNOTE_CHROME_ACCESS_TOKEN`、
+`LEARNNOTE_CHROME_PUBLISHER_ID`、`LEARNNOTE_CHROME_ITEM_ID`；Edge 需要
+`LEARNNOTE_EDGE_API_KEY`、`LEARNNOTE_EDGE_CLIENT_ID`、
+`LEARNNOTE_EDGE_PRODUCT_ID`。缺少任意凭据时，CLI 返回
+`blocked_missing_credentials`，不会尝试上传，也不会打印 secret 值。
