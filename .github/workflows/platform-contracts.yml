@@ -1,0 +1,44 @@
+name: Platform contracts
+
+on:
+  push:
+    paths:
+      - "backend/app/**"
+      - "docs/PLATFORM_SUPPORT.md"
+      - "docs/ARCHITECTURE.md"
+      - ".github/workflows/platform-contracts.yml"
+  pull_request:
+    paths:
+      - "backend/app/**"
+      - "docs/PLATFORM_SUPPORT.md"
+      - "docs/ARCHITECTURE.md"
+      - ".github/workflows/platform-contracts.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  python-local-contract:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.test.txt
+      - name: Install test dependencies
+        run: python -m pip install -r backend/requirements.test.txt
+      - name: Import local backend and run portable contracts
+        shell: bash
+        env:
+          PYTHONPATH: backend
+        run: |
+          python -m compileall backend/app
+          python -m unittest backend/tests/test_migrations.py backend/tests/test_integrations.py backend/tests/test_knowledge.py
+          python -c "from app.main import health_payload; print(health_payload()['assistant_capabilities']['media_adapter_contract_version'])"
