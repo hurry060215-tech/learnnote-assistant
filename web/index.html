@@ -179,6 +179,11 @@
                   <div><strong>视频与笔记保存位置</strong><small id="settingDataPath">正在读取...</small></div>
                   <div class="setting-inline-actions"><span id="settingDataDrive" class="setting-value">本地</span><span id="dataFolderNativeActions" class="setting-inline-actions" hidden><button id="changeDataFolderButton" class="secondary action-button" type="button">更改位置</button><button id="openDataFolderButton" class="secondary action-button" type="button">打开文件夹</button></span></div>
                 </div>
+                <div class="setting-row">
+                  <div><strong>资料库索引</strong><small>只备份本地搜索索引；任务 JSON 和视频仍保留在原目录</small></div>
+                  <div class="setting-inline-actions"><button id="backupLibraryButton" class="secondary action-button" type="button">导出索引备份</button><button id="restoreLibraryButton" class="secondary action-button" type="button">恢复索引</button><input id="libraryBackupInput" type="file" accept=".sqlite3,application/vnd.sqlite3" hidden></div>
+                </div>
+                <p id="libraryBackupStatus" class="settings-inline-status" role="status" aria-live="polite"></p>
                 <div id="dataMigrationNotice" class="storage-migration-notice" hidden role="status"><div><strong>新位置已经准备好</strong><small id="dataMigrationMessage"></small></div><button id="restartForDataFolderButton" class="primary action-button" type="button">立即重启</button></div>
                 <div class="setting-row"><div><strong>已用空间</strong><small id="settingStorageBreakdown">正在统计任务和视频文件</small></div><span id="settingStorageUsage" class="setting-value">-</span></div>
                 <label class="setting-row setting-switch"><span><strong>链接生成前预检</strong><small>先确认媒体是否可访问</small></span><input id="settingAutoPreflight" type="checkbox" checked></label>

@@ -377,6 +377,10 @@ const els = {
   settingDataDrive: document.querySelector("#settingDataDrive"),
   settingStorageUsage: document.querySelector("#settingStorageUsage"),
   settingStorageBreakdown: document.querySelector("#settingStorageBreakdown"),
+  backupLibraryButton: document.querySelector("#backupLibraryButton"),
+  restoreLibraryButton: document.querySelector("#restoreLibraryButton"),
+  libraryBackupInput: document.querySelector("#libraryBackupInput"),
+  libraryBackupStatus: document.querySelector("#libraryBackupStatus"),
   previewCleanupButton: document.querySelector("#previewCleanupButton"),
   applyCleanupButton: document.querySelector("#applyCleanupButton"),
   deleteAllTasksButton: document.querySelector("#deleteAllTasksButton"),
@@ -5418,6 +5422,39 @@ function taskRerunUrl(taskId) {
   return apiUrl(`/api/tasks/${encodeURIComponent(taskId)}/rerun-from-media`);
 }
 
+async function backupLibraryIndex() {
+  if (!els.backupLibraryButton) return;
+  els.backupLibraryButton.disabled = true;
+  if (els.libraryBackupStatus) els.libraryBackupStatus.textContent = "正在生成本地索引备份...";
+  try {
+    const result = await fetchJson(apiUrl("/api/library/backup"), { method: "POST" });
+    if (els.libraryBackupStatus) els.libraryBackupStatus.textContent = `备份已生成：${result.name || "library.sqlite3"}`;
+    if (result.download_url) window.location.href = apiUrl(result.download_url);
+  } catch (error) {
+    if (els.libraryBackupStatus) els.libraryBackupStatus.textContent = error?.message || "索引备份失败，请检查本地服务";
+  } finally {
+    els.backupLibraryButton.disabled = false;
+  }
+}
+
+async function restoreLibraryIndex(file) {
+  if (!file || !els.restoreLibraryButton) return;
+  els.restoreLibraryButton.disabled = true;
+  if (els.libraryBackupStatus) els.libraryBackupStatus.textContent = "正在校验并恢复索引...";
+  try {
+    const form = new FormData();
+    form.append("file", file, file.name);
+    await fetchJson(apiUrl("/api/library/restore"), { method: "POST", body: form });
+    if (els.libraryBackupStatus) els.libraryBackupStatus.textContent = "索引已恢复；任务目录仍保持不变。";
+    await Promise.all([loadStorageSummary(), loadTasks()]);
+  } catch (error) {
+    if (els.libraryBackupStatus) els.libraryBackupStatus.textContent = error?.message || "索引恢复失败，请选择有效的 LearnNote SQLite 备份";
+  } finally {
+    els.restoreLibraryButton.disabled = false;
+    if (els.libraryBackupInput) els.libraryBackupInput.value = "";
+  }
+}
+
 function taskResumeUrl(taskId) {
   return apiUrl(`/api/tasks/${encodeURIComponent(taskId)}/resume`);
 }
@@ -8970,6 +9007,9 @@ els.settingsSegmentButtons?.forEach?.(button => {
 els.saveSettingsButton?.addEventListener?.("click", saveAppSettingsFromUi);
 els.resetSettingsButton?.addEventListener?.("click", resetAppSettings);
 els.previewCleanupButton?.addEventListener?.("click", previewStorageCleanup);
+els.backupLibraryButton?.addEventListener?.("click", backupLibraryIndex);
+els.restoreLibraryButton?.addEventListener?.("click", () => els.libraryBackupInput?.click?.());
+els.libraryBackupInput?.addEventListener?.("change", () => restoreLibraryIndex(els.libraryBackupInput.files?.[0]));
 els.applyCleanupButton?.addEventListener?.("click", applyStorageCleanup);
 els.deleteAllTasksButton?.addEventListener?.("click", deleteAllTasksFromClient);
 els.deleteAllTasksSettingsButton?.addEventListener?.("click", deleteAllTasksFromClient);
