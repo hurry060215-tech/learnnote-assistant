@@ -58,12 +58,12 @@ jobs:
           python scripts/cancel-reliability.py `
             --duration-seconds 180 `
             --output-dir build/reliability/cancel
-      - name: Complete local 60-second task gate
+      - name: Complete local 60-minute task gate
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force build/reliability/full-local-task | Out-Null
           python scripts/full-local-task-reliability.py `
-            --duration-seconds 60 `
+            --duration-seconds 3600 `
             --output-dir build/reliability/full-local-task
           }
       - name: Upload offline reliability evidence

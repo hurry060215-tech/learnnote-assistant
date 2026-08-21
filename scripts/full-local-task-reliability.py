@@ -68,7 +68,7 @@ def main() -> int:
     options = TaskOptions(
         visual_understanding=True,
         max_frame_count=60,
-        frame_interval=15,
+        frame_interval=max(15, args.duration_seconds // 60),
         low_resource_mode=True,
         llm_api_key="",
     )
