@@ -40,11 +40,15 @@ from .reliability import current_page_source_identity, local_source_identity
 from .runtime import ffmpeg_bin, ffprobe_bin
 from .source_input import SourceInputError, clean_task_title, normalize_source_input
 from .storage import atomic_write_text, cleanup_tasks, create_task, delete_all_tasks, delete_task, get_task, list_tasks, read_json, request_task_cancel, storage_summary, task_dir, update_task, write_json
+from .routers.knowledge_study import knowledge_router, study_router, task_study_router
 from .summarizer import chat_completion_provider_kwargs, llm_base_host, llm_model_supports_vision, llm_provider_name, visual_window_review_question_lines
 
 ensure_dirs()
 
 app = FastAPI(title="LearnNote Assistant", version=APP_VERSION)
+app.include_router(knowledge_router)
+app.include_router(study_router)
+app.include_router(task_study_router)
 _extension_heartbeat_at = 0.0
 _extension_version = ""
 _extension_protocol_version = 0
@@ -4217,7 +4221,6 @@ async def api_library_restore(file: UploadFile = File(...)) -> dict:
         temporary.unlink(missing_ok=True)
 
 
-@app.post("/api/knowledge/evidence")
 def api_knowledge_evidence(evidence: SourceEvidence) -> dict:
     """Store a user-selected citation anchor; no remote fetch is performed."""
     try:
@@ -4227,7 +4230,6 @@ def api_knowledge_evidence(evidence: SourceEvidence) -> dict:
     return {"ok": True, "evidence": stored.model_dump(mode="json")}
 
 
-@app.post("/api/knowledge/import-file")
 async def api_knowledge_import_file(file: UploadFile = File(...)) -> dict:
     filename = Path(file.filename or "evidence.txt").name
     content = await file.read()
@@ -4248,7 +4250,6 @@ async def api_knowledge_import_file(file: UploadFile = File(...)) -> dict:
     return {"ok": True, "evidence": stored.model_dump(mode="json")}
 
 
-@app.get("/api/knowledge/search")
 def api_knowledge_search(q: str = "", limit: int = 12, mode: str = "lexical") -> dict:
     try:
         results = search_evidence(q, limit, mode)
@@ -4259,19 +4260,16 @@ def api_knowledge_search(q: str = "", limit: int = 12, mode: str = "lexical") ->
     return {"query": q, "mode": mode, "results": results}
 
 
-@app.get("/api/knowledge/embedding-status")
 def api_knowledge_embedding_status() -> dict:
     return embedding_status()
 
 
-@app.delete("/api/knowledge/evidence/{evidence_id}")
 def api_knowledge_delete_evidence(evidence_id: str) -> dict:
     if not remove_evidence(evidence_id):
         raise HTTPException(status_code=404, detail={"code": "evidence_not_found", "message": "证据不存在。"})
     return {"ok": True, "evidence_id": evidence_id}
 
 
-@app.post("/api/knowledge/ask")
 def api_knowledge_ask(payload: dict | None = Body(default=None)) -> dict:
     body = payload or {}
     question = str(body.get("question") or "").strip()
@@ -4285,7 +4283,6 @@ def api_knowledge_ask(payload: dict | None = Body(default=None)) -> dict:
         raise
 
 
-@app.post("/api/study/proposals")
 def api_study_proposals(payload: dict | None = Body(default=None)) -> dict:
     body = payload or {}
     raw = body.get("evidence") if isinstance(body.get("evidence"), list) else []
@@ -4298,7 +4295,6 @@ def api_study_proposals(payload: dict | None = Body(default=None)) -> dict:
     return {"proposals": [card.model_dump(mode="json") for card in propose_cards(evidence, int(body.get("limit") or 20))]}
 
 
-@app.post("/api/tasks/{task_id}/study-proposals")
 def api_task_study_proposals(task_id: str, limit: int = 20) -> dict:
     try:
         task = get_task(task_id)
@@ -4308,7 +4304,6 @@ def api_task_study_proposals(task_id: str, limit: int = 20) -> dict:
     return {"task_id": task.id, "proposals": [card.model_dump(mode="json") for card in propose_cards(evidence, limit)]}
 
 
-@app.post("/api/study/cards")
 def api_study_cards(payload: dict | None = Body(default=None)) -> dict:
     body = payload or {}
     raw = body.get("cards") if isinstance(body.get("cards"), list) else []
@@ -4323,17 +4318,14 @@ def api_study_cards(payload: dict | None = Body(default=None)) -> dict:
     return {"cards": [card.model_dump(mode="json") for card in save_cards(cards)]}
 
 
-@app.get("/api/study/due")
 def api_study_due(limit: int = 50) -> dict:
     return {"cards": [card.model_dump(mode="json") for card in due_cards(limit)]}
 
 
-@app.get("/api/study/cards")
 def api_study_list_cards(status: str = "", limit: int = 200) -> dict:
     return {"cards": [card.model_dump(mode="json") for card in list_cards(status, limit)]}
 
 
-@app.patch("/api/study/cards/{card_id}")
 def api_study_card_status(card_id: str, request: StudyCardStatusRequest) -> dict:
     try:
         card = set_card_status(card_id, request.status)
@@ -4344,7 +4336,6 @@ def api_study_card_status(card_id: str, request: StudyCardStatusRequest) -> dict
     return {"card": card.model_dump(mode="json")}
 
 
-@app.post("/api/study/cards/{card_id}/reorder")
 def api_study_card_reorder(card_id: str, request: StudyCardPositionRequest) -> dict:
     try:
         card = set_card_position(card_id, request.position)
@@ -4353,32 +4344,26 @@ def api_study_card_reorder(card_id: str, request: StudyCardPositionRequest) -> d
     return {"card": card.model_dump(mode="json")}
 
 
-@app.get("/api/study/summary")
 def api_study_summary() -> dict:
     return study_summary()
 
 
-@app.get("/api/study/reviews")
 def api_study_reviews(card_id: str = "", limit: int = 200) -> dict:
     return {"reviews": review_history(card_id, limit)}
 
 
-@app.get("/api/study/export")
 def api_study_export() -> dict:
     return export_study_data()
 
 
-@app.get("/api/study/plan")
 def api_study_plan() -> dict:
     return {"plan": get_study_plan().model_dump(mode="json")}
 
 
-@app.put("/api/study/plan")
 def api_update_study_plan(request: StudyPlanUpdateRequest) -> dict:
     return {"plan": update_study_plan(request.title, request.daily_target, request.paused).model_dump(mode="json")}
 
 
-@app.post("/api/study/cards/{card_id}/review")
 def api_study_review(card_id: str, request: StudyReviewRequest) -> dict:
     try:
         card = review_card(card_id, request.rating)
