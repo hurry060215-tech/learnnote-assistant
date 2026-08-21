@@ -119,7 +119,7 @@ async function sendBackendHeartbeat(backendUrl) {
   try {
     const response = await fetch(`${backendUrl}/api/extension/heartbeat`, {
       method: "POST",
-      headers: await pairingHeaders(backendUrl, { "Content-Type": "application/json" }),
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         extension_version: extensionVersion,
         protocol_version: EXTENSION_PROTOCOL_VERSION,
