@@ -39,6 +39,9 @@ class LocalLibraryIndexTests(unittest.TestCase):
                 result = search_library("学习率")
                 self.assertEqual(result[0]["task_id"], "lesson-1")
                 self.assertNotIn("token=secret", result[0]["source"])
+                from app.knowledge import search_evidence
+                evidence = search_evidence("梯度")
+                self.assertTrue(any(item["locator"] == "0.0-0.0s" or item["locator"] == "transcript" for item in evidence))
                 status = library_status()
                 self.assertEqual(status["indexed_task_count"], 1)
                 (root / "library.sqlite3").unlink()

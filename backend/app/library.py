@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 import sqlite3
 import threading
@@ -148,7 +149,9 @@ def index_task(record: TaskRecord) -> bool:
             if note:
                 add_evidence(record_to_evidence(record, note, "note"))
             if transcript:
-                add_evidence(record_to_evidence(record, transcript, "transcript"))
+                transcript_items = transcript_evidence(record, transcript)
+                for item in transcript_items:
+                    add_evidence(item)
         return indexed
     except (OSError, sqlite3.Error):
         return False
@@ -167,6 +170,33 @@ def record_to_evidence(record: TaskRecord, text: str, kind: str):
         task_id=record.id,
         metadata={"kind": kind, "checkpoint": record.checkpoint},
     )
+
+
+def transcript_evidence(record: TaskRecord, raw: str):
+    from .models import SourceEvidence
+
+    try:
+        payload = json.loads(raw)
+    except (TypeError, ValueError):
+        payload = {}
+    segments = payload.get("segments") if isinstance(payload, dict) else []
+    items = []
+    for index, segment in enumerate(segments or []):
+        if not isinstance(segment, dict) or not str(segment.get("text") or "").strip():
+            continue
+        start = float(segment.get("start") or 0)
+        end = float(segment.get("end") or start)
+        items.append(SourceEvidence(
+            evidence_id=f"task-{record.id}-transcript-{index:05d}",
+            source_type="video",
+            title=record.title,
+            source_uri=record.page_url,
+            locator=f"{start:.1f}-{end:.1f}s",
+            text=str(segment.get("text") or ""),
+            task_id=record.id,
+            metadata={"kind": "transcript", "start": start, "end": end},
+        ))
+    return items or [record_to_evidence(record, raw, "transcript")]
 
 
 def remove_task(task_id: str) -> bool:

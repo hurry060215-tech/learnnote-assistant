@@ -48,6 +48,16 @@ button {
   cursor: pointer;
 }
 
+:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+
+@media (forced-colors: active) {
+  :focus-visible { outline: 3px solid CanvasText; }
+  button, input, select, textarea { border: 1px solid CanvasText; }
+}
+
 svg {
   width: 18px;
   height: 18px;
