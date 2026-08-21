@@ -21,9 +21,10 @@ class SourceInputTests(unittest.TestCase):
         self.assertEqual(MEDIA_ADAPTER_CONTRACT_VERSION, 1)
         self.assertEqual(media_adapter_for_url("https://www.bilibili.com/video/BV1xx411c7mD").adapter_id, "bilibili")
         self.assertEqual(media_adapter_for_url("https://m.youtube.com/watch?v=abc").adapter_id, "youtube")
+        self.assertEqual(media_adapter_for_url("https://mooc1.chaoxing.com/mycourse").adapter_id, "chaoxing")
         self.assertEqual(media_adapter_for_url("https://cdn.example.com/lesson.m3u8").adapter_id, "web")
         descriptors = media_adapter_descriptors()
-        self.assertEqual({item["id"] for item in descriptors}, {"bilibili", "youtube", "web"})
+        self.assertEqual({item["id"] for item in descriptors}, {"bilibili", "youtube", "chaoxing", "web"})
         self.assertTrue(all(item["contract_version"] == 1 for item in descriptors))
 
     def test_bvid_and_avid_are_normalized_to_bilibili_pages(self) -> None:

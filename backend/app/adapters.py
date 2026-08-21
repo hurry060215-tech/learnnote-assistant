@@ -47,6 +47,12 @@ MEDIA_ADAPTERS: tuple[MediaAdapterDescriptor, ...] = (
         notes="yt-dlp first; only process pages the user is authorized to access.",
     ),
     MediaAdapterDescriptor(
+        adapter_id="chaoxing",
+        version=1,
+        domains=("chaoxing.com", "xuexitong.com", "mooc1.com", "mooc2.com"),
+        notes="Authorized browser handoff only; preserve login boundary and never bypass DRM or course progress controls.",
+    ),
+    MediaAdapterDescriptor(
         adapter_id="web",
         version=1,
         domains=(),
