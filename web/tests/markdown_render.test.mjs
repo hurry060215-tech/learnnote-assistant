@@ -3684,6 +3684,7 @@ assert.deepEqual(
     taskNotifications: false,
     compactHistory: false,
     autoPreflight: true,
+    advancedSettings: false,
     frameInterval: "20",
     gridSize: "3x3",
     gridColumns: "3",

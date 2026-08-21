@@ -43,6 +43,7 @@ const DEFAULT_APP_SETTINGS = Object.freeze({
   taskNotifications: false,
   compactHistory: false,
   autoPreflight: true,
+  advancedSettings: false,
   frameInterval: "20",
   gridSize: "3x3",
   gridColumns: "3",
@@ -372,6 +373,7 @@ const els = {
   settingTaskNotifications: document.querySelector("#settingTaskNotifications"),
   settingCompactHistory: document.querySelector("#settingCompactHistory"),
   settingAutoPreflight: document.querySelector("#settingAutoPreflight"),
+  settingAdvancedOptions: document.querySelector("#settingAdvancedOptions"),
   settingApiBase: document.querySelector("#settingApiBase"),
   settingDataPath: document.querySelector("#settingDataPath"),
   settingDataDrive: document.querySelector("#settingDataDrive"),
@@ -682,7 +684,7 @@ function normalizedAppSettings(value = {}) {
   if (!["brief", "standard", "deep"].includes(settings.summaryDepth)) settings.summaryDepth = "standard";
   settings.customNoteProfile = normalizeCustomNoteProfile(settings.customNoteProfile);
   if (settings.noteStyle === "custom" && !settings.customNoteProfile) settings.noteStyle = "study";
-  for (const key of ["autoOpenNote", "taskNotifications", "compactHistory", "autoPreflight", "visualUnderstanding"]) {
+  for (const key of ["autoOpenNote", "taskNotifications", "compactHistory", "autoPreflight", "visualUnderstanding", "advancedSettings"]) {
     settings[key] = Boolean(settings[key]);
   }
   return settings;
@@ -714,6 +716,20 @@ function systemPrefersDark() {
   return Boolean(window.matchMedia?.("(prefers-color-scheme: dark)")?.matches);
 }
 
+function applyAdvancedSettingsUi() {
+  const enabled = Boolean(appSettings.advancedSettings);
+  document.querySelectorAll("[data-setting-advanced]").forEach(element => {
+    element.hidden = !enabled;
+  });
+  document.querySelectorAll("[data-setting-advanced-pane]").forEach(element => {
+    element.hidden = !enabled;
+    if (!enabled) element.classList.remove("active");
+  });
+  if (!enabled && document.querySelector(".settings-pane.active[data-setting-advanced-pane]")) {
+    showSettingsPane("general");
+  }
+}
+
 function applyAppSettings() {
   appSettings = normalizedAppSettings(appSettings);
   const dark = appSettings.theme === "dark" || (appSettings.theme === "system" && systemPrefersDark());
@@ -729,6 +745,7 @@ function applyAppSettings() {
   if (els.settingTaskNotifications) els.settingTaskNotifications.checked = appSettings.taskNotifications;
   if (els.settingCompactHistory) els.settingCompactHistory.checked = appSettings.compactHistory;
   if (els.settingAutoPreflight) els.settingAutoPreflight.checked = appSettings.autoPreflight;
+  if (els.settingAdvancedOptions) els.settingAdvancedOptions.checked = appSettings.advancedSettings;
   if (els.settingApiBase) els.settingApiBase.value = API || window.location?.origin || DEFAULT_BACKEND_ORIGIN;
   if (els.frameInterval) els.frameInterval.value = appSettings.frameInterval;
   if (els.gridColumns) els.gridColumns.value = appSettings.gridColumns;
@@ -739,6 +756,7 @@ function applyAppSettings() {
   if (els.noteTemplate) els.noteTemplate.value = appSettings.noteTemplate;
   if (els.summaryDepth) els.summaryDepth.value = appSettings.summaryDepth;
   ensureCustomProfileOption();
+  applyAdvancedSettingsUi();
   if (appSettings.customNoteProfile && els.noteStyle) els.noteStyle.value = "custom";
   refreshNoteProfilePreview();
   syncVisualUnderstandingUi();
@@ -1298,6 +1316,7 @@ async function saveAppSettingsFromUi() {
   appSettings.taskNotifications = Boolean(els.settingTaskNotifications?.checked);
   appSettings.compactHistory = Boolean(els.settingCompactHistory?.checked);
   appSettings.autoPreflight = Boolean(els.settingAutoPreflight?.checked);
+  appSettings.advancedSettings = Boolean(els.settingAdvancedOptions?.checked);
   appSettings.frameInterval = els.frameInterval?.value || "20";
   appSettings.gridColumns = String(boundedNumber(els.gridColumns?.value, 3, 1, 6));
   appSettings.gridRows = String(boundedNumber(els.gridRows?.value, 3, 1, 6));
@@ -9187,6 +9206,10 @@ els.settingsSegmentButtons?.forEach?.(button => {
 });
 els.saveSettingsButton?.addEventListener?.("click", saveAppSettingsFromUi);
 els.resetSettingsButton?.addEventListener?.("click", resetAppSettings);
+els.settingAdvancedOptions?.addEventListener?.("change", () => {
+  appSettings.advancedSettings = Boolean(els.settingAdvancedOptions.checked);
+  applyAppSettings();
+});
 els.previewCleanupButton?.addEventListener?.("click", previewStorageCleanup);
 els.backupLibraryButton?.addEventListener?.("click", backupLibraryIndex);
 els.restoreLibraryButton?.addEventListener?.("click", () => els.libraryBackupInput?.click?.());

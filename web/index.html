@@ -82,10 +82,10 @@
         <div class="settings-layout">
           <nav class="settings-menu" aria-label="设置分类">
             <button class="active" type="button" data-settings-tab="general">通用</button>
-            <button type="button" data-settings-tab="model">AI 模型</button>
-            <button type="button" data-settings-tab="transcriber">转写</button>
-            <button type="button" data-settings-tab="notes">笔记</button>
-            <button type="button" data-settings-tab="processing">视频处理</button>
+            <button type="button" data-settings-tab="model" data-setting-advanced>AI 模型</button>
+            <button type="button" data-settings-tab="transcriber" data-setting-advanced>转写</button>
+            <button type="button" data-settings-tab="notes" data-setting-advanced>笔记</button>
+            <button type="button" data-settings-tab="processing" data-setting-advanced>视频处理</button>
             <button type="button" data-settings-tab="connection">下载与存储</button>
             <button type="button" data-settings-tab="privacy">隐私</button>
           </nav>
@@ -148,10 +148,11 @@
                   <div><strong>首次使用引导</strong><small>重新检查本地服务、浏览器扩展和 AI 模型</small></div>
                   <button id="openOnboardingButton" class="secondary action-button" type="button">重新打开</button>
                 </div>
+                <label class="setting-row setting-switch"><span><strong>显示高级设置</strong><small>默认隐藏模型、转写、笔记模板和视频处理细节</small></span><input id="settingAdvancedOptions" type="checkbox"></label>
               </div>
             </section>
 
-            <section class="settings-pane" data-settings-pane="model">
+            <section class="settings-pane" data-settings-pane="model" data-setting-advanced-pane>
               <div class="settings-section-heading"><h3>AI 模型</h3><p>用于文字整理和画面理解。</p></div>
               <div id="settingsModelSlot" class="settings-option-slot"></div>
               <div id="nativeCredentialSettings" class="native-settings-row" hidden>
@@ -159,22 +160,22 @@
                 <div><button id="saveCredentialButton" class="secondary action-button" type="button">保存当前 Key</button><button id="deleteCredentialButton" class="secondary action-button" type="button">清除</button></div>
               </div>
             </section>
-            <section class="settings-pane" data-settings-pane="transcriber">
+            <section class="settings-pane" data-settings-pane="transcriber" data-setting-advanced-pane>
               <div class="settings-section-heading"><h3>转写</h3><p>优先使用字幕，没有字幕时再识别音频。</p></div>
               <div id="settingsTranscriberSlot" class="settings-option-slot"></div>
             </section>
-            <section class="settings-pane" data-settings-pane="notes">
+            <section class="settings-pane" data-settings-pane="notes" data-setting-advanced-pane>
               <div class="settings-section-heading"><h3>笔记细节</h3><p>主页预设会自动选择合适组合，也可以在这里精细调整。</p></div>
               <div id="settingsNotesSlot" class="settings-option-slot"></div>
             </section>
-            <section class="settings-pane" data-settings-pane="processing">
+            <section class="settings-pane" data-settings-pane="processing" data-setting-advanced-pane>
               <div class="settings-section-heading"><h3>视频处理</h3><p>控制切片密度与笔记结构。</p></div>
               <div id="settingsProcessingSlot" class="settings-option-slot"></div>
             </section>
             <section class="settings-pane" data-settings-pane="connection">
               <div class="settings-section-heading"><h3>下载与存储</h3><p>客户端只连接本机后端。</p></div>
               <div class="settings-rows">
-                <label class="setting-row setting-field"><span><strong>后端地址</strong><small>修改后重新载入客户端</small></span><input id="settingApiBase" type="url" placeholder="http://127.0.0.1:8765"></label>
+                <label class="setting-row setting-field" data-setting-advanced><span><strong>后端地址</strong><small>修改后重新载入客户端</small></span><input id="settingApiBase" type="url" placeholder="http://127.0.0.1:8765"></label>
                 <div class="setting-row storage-location-row">
                   <div><strong>视频与笔记保存位置</strong><small id="settingDataPath">正在读取...</small></div>
                   <div class="setting-inline-actions"><span id="settingDataDrive" class="setting-value">本地</span><span id="dataFolderNativeActions" class="setting-inline-actions" hidden><button id="changeDataFolderButton" class="secondary action-button" type="button">更改位置</button><button id="openDataFolderButton" class="secondary action-button" type="button">打开文件夹</button></span></div>
