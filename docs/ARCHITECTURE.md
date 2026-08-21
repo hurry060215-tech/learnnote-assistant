@@ -26,6 +26,7 @@ API routers (routers/*.py)
 ## 前端边界
 
 - `web/app.js` 只负责 UI 编排和 API 调用；资料库导入、检索、复习动作使用独立函数，不能把 Cookie 或模型 Key 写入 localStorage。
+- `web/i18n.js` 只提供版本化的界面文案资源；应用脚本通过 `LearnNoteI18n` 读取文案，缺失资源时回退到 HTML 默认中文，不阻断任务流程。
 - `extension/` 只负责用户触发的当前页采集和本地交接；不执行转写、总结或后台录屏。
 - `integrations/` 只能通过版本化 manifest 和导出端点读取任务；不得读取 LearnNote 内部路径。
 
