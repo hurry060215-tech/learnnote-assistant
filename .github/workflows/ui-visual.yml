@@ -1,0 +1,61 @@
+name: UI visual acceptance
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - "scripts/accessibility-visual-acceptance.cjs"
+      - ".github/workflows/ui-visual.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  accessibility-visual:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.test.txt
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "24"
+          cache: npm
+      - name: Install visual test dependencies
+        run: |
+          python -m pip install -r backend/requirements.test.txt
+          npm ci
+      - name: Start isolated local backend
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force build/ui-visual-data | Out-Null
+          $env:PYTHONPATH = "backend"
+          $env:LEARNNOTE_DATA_DIR = "$PWD/build/ui-visual-data"
+          $server = Start-Process -FilePath python -ArgumentList @("-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8765") -PassThru -WindowStyle Hidden
+          try {
+            $ready = $false
+            for ($attempt = 0; $attempt -lt 30; $attempt++) {
+              try {
+                $response = Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8765/health
+                if ($response.StatusCode -eq 200) { $ready = $true; break }
+              } catch { }
+              Start-Sleep -Seconds 1
+            }
+            if (-not $ready) { throw "Local backend did not become ready." }
+            node scripts/accessibility-visual-acceptance.cjs http://127.0.0.1:8765/web/index.html build/ui-visual
+          } finally {
+            if ($server -and -not $server.HasExited) { Stop-Process -Id $server.Id -Force }
+          }
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: ui-visual-${{ github.run_id }}
+          path: build/ui-visual
+          if-no-files-found: warn
+          retention-days: 14
