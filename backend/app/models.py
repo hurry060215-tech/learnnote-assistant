@@ -321,6 +321,25 @@ class StudyCardStatusRequest(BaseModel):
     status: Literal["active", "suspended", "deleted"]
 
 
+class StudyPlan(BaseModel):
+    schema_version: int = 1
+    plan_id: str = "default"
+    title: str = "本地学习计划"
+    daily_target: int = Field(default=10, ge=1, le=200)
+    paused: bool = False
+    timezone: str = "UTC"
+    created_at: str = ""
+    updated_at: str = ""
+
+
+class StudyPlanUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(default="本地学习计划", max_length=120)
+    daily_target: int = Field(default=10, ge=1, le=200)
+    paused: bool = False
+
+
 class EvidenceGate(BaseModel):
     name: str
     passed: bool = False
