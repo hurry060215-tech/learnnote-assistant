@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import DATA_DIR, MODEL_CACHE_DIR, STATIC_DIR, TASK_DIR, TEMP_DIR, UPLOAD_DIR, ensure_dirs
+from .library import index_task, remove_task
 from .models import TaskOptions, TaskRecord, now_iso
 from .source_input import clean_task_title
 
@@ -83,6 +84,7 @@ def save_task(record: TaskRecord) -> None:
     with _lock:
         record.updated_at = now_iso()
         atomic_write_text(task_file(record.id), record.model_dump_json(indent=2))
+        index_task(record)
 
 
 def get_task(task_id: str) -> TaskRecord:
@@ -177,6 +179,7 @@ def delete_task(task_id: str) -> dict[str, Any]:
         task_bytes = _directory_size(task_path)
         if task_path.exists():
             shutil.rmtree(task_path)
+        remove_task(record.id)
         upload_bytes = 0
         if owned_upload:
             try:

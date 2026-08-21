@@ -27,6 +27,7 @@ from .adapters import MEDIA_ADAPTER_CONTRACT_VERSION, media_adapter_descriptors
 from .config import BACKEND_ORIGIN, DATA_DIR, DEPLOYMENT_MODE, LLM_API_KEY, LLM_BASE_URL, LLM_MAX_RETRIES, LLM_MODEL, LLM_REQUEST_TIMEOUT_SECONDS, MODEL_CACHE_DIR, PUBLIC_DEPLOYMENT, PUBLIC_PASSWORD, PUBLIC_USERNAME, STATIC_DIR, TASK_DIR, TEMP_DIR, UPLOAD_DIR, WEB_DIR, ensure_dirs
 from .downloader import MediaDownloader, effective_resource_kind, fallback_page_contexts, media_file_video_signature, preflight_media_resource, rank_media_candidates
 from .media import MediaProcessingError, extract_video_clip, probe_duration, probe_media_integrity
+from .library import library_status, rebuild_index, search_library
 from .models import CurrentPageTaskRequest, EvidenceCoverage, MediaIntegrity, MediaPreflightRequest, MediaPreflightResult, PagePreflightRequest, RerunFromMediaRequest, ResourceCandidate, SourceInputRequest, StorageCleanupRequest, TaskOptions, TaskQuestionRequest, TaskRecord, now_iso
 from .processor import browser_subtitle_text_is_player_ui, enrich_resource_candidates_with_active_video, process_current_page_task, process_local_video_task, read_note, read_transcript, read_visual_index, redacted_request_dump, redacted_resource
 from .reliability import current_page_source_identity, local_source_identity
@@ -2608,7 +2609,7 @@ MODEL_PROVIDER_PRESETS = [
 
 
 ASSISTANT_CAPABILITIES = {
-    "routes": ["current_page_direct", "local_upload", "download_only", "rerun_from_media", "page_text", "task_qa"],
+    "routes": ["current_page_direct", "local_upload", "download_only", "rerun_from_media", "page_text", "task_qa", "library_search"],
     "direct_media": {
         "file_extensions": ["mp4", "m4v", "mov", "mkv", "webm", "flv", "avi"],
         "manifests": ["m3u8", "mpd"],
@@ -4100,6 +4101,21 @@ def api_list_tasks() -> dict:
 @app.get("/api/storage")
 def api_storage_summary() -> dict:
     return storage_summary()
+
+
+@app.get("/api/library/status")
+def api_library_status() -> dict:
+    return library_status()
+
+
+@app.get("/api/library/search")
+def api_library_search(q: str = "", limit: int = 50) -> dict:
+    return {"query": q, "results": search_library(q, limit)}
+
+
+@app.post("/api/library/rebuild")
+def api_library_rebuild() -> dict:
+    return rebuild_index()
 
 
 @app.post("/api/storage/cleanup")
