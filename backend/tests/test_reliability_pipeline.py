@@ -431,6 +431,26 @@ class DeferredHandoffTests(unittest.TestCase):
             response = self.client.post(f"/api/tasks/{task_id}/start", json={})
             self.assertEqual(response.status_code, 410)
             self.assertEqual(response.json()["detail"]["code"], "handoff_expired")
+            expired = self.client.get(f"/api/tasks/{task_id}").json()["task"]
+            self.assertEqual(expired["status"], "failed")
+            self.assertEqual(expired["error_code"], "handoff_expired")
+            self.assertFalse(expired["awaiting_confirmation"])
+        finally:
+            self._cleanup(task_id)
+
+    def test_task_list_expires_handoff_lost_after_backend_restart(self) -> None:
+        created = self.client.post("/api/tasks/from-current-page?defer=true", json=self.payload)
+        self.assertEqual(created.status_code, 200, created.text)
+        task_id = created.json()["task_id"]
+        try:
+            with main_module._deferred_handoffs_lock:
+                main_module._deferred_handoffs.pop(task_id, None)
+            listed = self.client.get("/api/tasks")
+            self.assertEqual(listed.status_code, 200, listed.text)
+            expired = next(task for task in listed.json()["tasks"] if task["id"] == task_id)
+            self.assertEqual(expired["status"], "failed")
+            self.assertEqual(expired["error_code"], "handoff_expired")
+            self.assertFalse(expired["awaiting_confirmation"])
         finally:
             self._cleanup(task_id)
 

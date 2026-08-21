@@ -27,6 +27,11 @@ desktop = load_module()
 
 
 class DesktopLauncherTests(unittest.TestCase):
+    def test_export_allowlist_includes_sanitized_and_integration_artifacts(self):
+        self.assertEqual(desktop.DesktopApi.EXPORT_TYPES["sanitized-bundle"], ".zip")
+        self.assertEqual(desktop.DesktopApi.EXPORT_TYPES["support-package"], ".zip")
+        self.assertEqual(desktop.DesktopApi.EXPORT_TYPES["notion"], ".json")
+
     def test_available_port_returns_loopback_bindable_port(self):
         port = desktop.available_port(18765)
         self.assertGreaterEqual(port, 18765)

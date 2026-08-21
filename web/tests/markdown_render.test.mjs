@@ -246,6 +246,7 @@ assert.equal(context.window.LearnNoteEditorial.workflowStageIndex({ workflow_sta
 assert.equal(context.window.LearnNoteEditorial.workflowStageIndex({ workflow_stage: "understand_visuals" }), 3);
 assert.equal(context.window.LearnNoteEditorial.workflowStageIndex({ workflow_stage: "compose_note" }), 4);
 assert.equal(context.window.LearnNoteEditorial.friendlyTaskAction({ status: "queued", message: "Local upload saved; queued for processing" }), "视频已接收，正在排队");
+assert.equal(context.window.LearnNoteEditorial.friendlyTaskAction({ status: "queued", awaiting_confirmation: true }), "视频已接收，等待你确认");
 assert.equal(context.window.LearnNoteEditorial.friendlyTaskAction({ status: "running", workflow_stage: "understand_visuals", message: "Extracting adaptive frames" }), "正在提取关键画面");
 assert.equal(context.window.LearnNoteEditorial.friendlyTaskAction({ status: "failed", error_code: "auth_required", error_detail: "HTTP 401" }), "登录状态已失效，请重新打开视频页");
 assert.equal(context.window.LearnNoteEditorial.purposes.review.style, "classroom-review");
@@ -518,16 +519,19 @@ assert.match(indexHtml, /id="taskSidebar"/);
 assert.match(indexHtml, /class="layout-toggle-group"/);
 assert.match(indexHtml, /id="deleteAllTasksButton"/);
 assert.match(indexHtml, /id="deleteAllTasksSettingsButton"/);
+assert.match(indexHtml, /id="backupLibraryButton"/);
+assert.match(indexHtml, /id="restoreLibraryButton"/);
+assert.match(indexHtml, /id="libraryBackupInput"/);
 assert.match(webCode, /\/api\/tasks\?confirm=delete_all_tasks/);
 assert.match(matureCss, /\.danger-button\s*\{/);
 assert.match(indexHtml, /styles\.css\?v=20260724-ui3/);
-assert.match(indexHtml, /app\.js\?v=20260801-release-notes/);
+assert.match(indexHtml, /app\.js\?v=20260821-onboarding1/);
 assert.match(indexHtml, /id="viewReleaseNotesButton"/);
 assert.match(indexHtml, /id="releaseNotesOverlay"/);
 assert.match(indexHtml, /id="confirmReleaseNotesButton"/);
 assert.match(indexHtml, /mature\.css\?v=20260728-ui4/);
 assert.match(indexHtml, /editorial\.css\?v=20260724-ui3/);
-assert.match(indexHtml, /editorial\.js\?v=20260724-ui3/);
+assert.match(indexHtml, /editorial\.js\?v=20260821-onboarding1/);
 assert.match(indexHtml, /id="sourceRouteRail"/);
 assert.match(indexHtml, /id="urlPreflightReport"/);
 assert.match(indexHtml, /href="#settingsView" data-app-view="settings" title="设置"/);
@@ -578,6 +582,9 @@ assert.match(webCode, /assistantContextTaskId = task\?\.id \|\| ""/);
 assert.match(webCode, /assistantOpenPreference\(\) === true/);
 assert.match(indexHtml, /class="result-tab" role="tab" aria-selected="false" data-tab="diagnostics">处理检查/);
 assert.match(indexHtml, /id="onboardingOverlay"/);
+assert.match(indexHtml, /先确认本地服务即可开始；浏览器扩展和 AI 模型按需配置/);
+assert.match(indexHtml, /连接浏览器扩展（可选）/);
+assert.match(indexHtml, /配置 AI 模型（可选）/);
 assert.match(indexHtml, /id="openOnboardingButton"/);
 assert.match(indexHtml, /id="installUpdateButton"[\s\S]*下载并安装/);
 assert.match(indexHtml, /id="llmProvider"/);
@@ -756,6 +763,10 @@ assert.match(liveProgressHtml, /role="progressbar"/);
 assert.match(liveProgressHtml, /aria-valuenow="48"/);
 assert.match(liveProgressHtml, /48%/);
 assert.equal(context.sourceWorkflowProgressHtml({ status: "success", progress: 100 }), "");
+assert.equal(context.sourceWorkflowProgressHtml({ status: "queued", awaiting_confirmation: true, progress: 0 }), "");
+assert.equal(context.statusText({ status: "queued", awaiting_confirmation: true }), "等待确认");
+assert.equal(context.taskPhaseLabel({ status: "queued", awaiting_confirmation: true }), "等待确认视频");
+assert.equal(context.directRouteState({ status: "queued", awaiting_confirmation: true }), "awaiting_confirmation");
 
 vm.runInContext(`tasks = [
   { id: "selected-running", title: "当前运行任务", status: "running", progress: 42 },
@@ -1000,6 +1011,12 @@ const queueChipTask = {
 
 assert.equal(JSON.stringify(context.taskChipItems(queueChipTask)), JSON.stringify(["当前 src", "视频", "media.mp4", "笔记", "1 窗口"]));
 assert.equal(context.taskMetaLine(queueChipTask), "直取 · 视频");
+assert.equal(context.taskMetaLine({
+  status: "queued",
+  awaiting_confirmation: true,
+  source_type: "current_page",
+  created_at: "2020-01-01T00:00:00Z"
+}), "页面解析 · 等待确认");
 const queueHandoffHtml = context.taskHandoffHtml(queueChipTask);
 assert.match(queueHandoffHtml, /class="task-handoff done"/);
 assert.match(queueHandoffHtml, /学习接力/);
@@ -2486,6 +2503,19 @@ assert.equal(context.canContinueFromDownloadedMedia({
   media_path: "D:/media.mp4",
   note_path: ""
 }), false);
+assert.equal(context.canResumeFromCheckpoint({
+  id: "task-checkpoint",
+  status: "failed",
+  checkpoint: "media_ready",
+  media_path: "D:/media.mp4",
+  note_path: ""
+}), true);
+assert.equal(context.canResumeFromCheckpoint({
+  id: "task-no-checkpoint",
+  status: "failed",
+  media_path: "D:/media.mp4",
+  note_path: ""
+}), false);
 assert.equal(context.canContinueFromDownloadedMedia({
   id: "task-processing-failed",
   status: "failed",
@@ -3654,6 +3684,7 @@ assert.deepEqual(
     taskNotifications: false,
     compactHistory: false,
     autoPreflight: true,
+    advancedSettings: false,
     frameInterval: "20",
     gridSize: "3x3",
     gridColumns: "3",

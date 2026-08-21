@@ -5,6 +5,17 @@ export interface LearnNoteHealth {
   local_asr_available?: boolean;
 }
 
+export interface LearnNoteIntegrationManifest {
+  schema_version: number;
+  product?: string;
+  app_version?: string;
+  api_version?: string;
+  protocol_version?: number;
+  task_schema_version?: number;
+  exports?: Record<string, string>;
+  privacy?: Record<string, boolean>;
+}
+
 export interface LearnNoteTask {
   id: string;
   title: string;

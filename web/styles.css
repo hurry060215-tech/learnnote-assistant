@@ -48,6 +48,16 @@ button {
   cursor: pointer;
 }
 
+:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+
+@media (forced-colors: active) {
+  :focus-visible { outline: 3px solid CanvasText; }
+  button, input, select, textarea { border: 1px solid CanvasText; }
+}
+
 svg {
   width: 18px;
   height: 18px;
@@ -12816,4 +12826,77 @@ body.reading-mode .app-shell {
     transition-duration: 1ms !important;
     scroll-behavior: auto !important;
   }
+}
+/* Local knowledge and study loop controls */
+.knowledge-search-setting {
+  align-items: start;
+}
+
+.knowledge-search-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.knowledge-search-controls input {
+  min-width: 210px;
+  border: 1px solid var(--line, #d6e0eb);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--text, #1f2937);
+  background: var(--surface, #fff);
+}
+
+.knowledge-results,
+.study-due-list {
+  display: grid;
+  gap: 8px;
+  margin: -2px 0 12px;
+}
+
+.knowledge-result,
+.study-card {
+  display: grid;
+  gap: 5px;
+  border: 1px solid var(--line, #d6e0eb);
+  border-radius: 8px;
+  background: var(--surface, #fff);
+  padding: 10px 12px;
+}
+
+.knowledge-result strong,
+.study-card strong {
+  color: var(--text, #1f2937);
+  font-size: 13px;
+}
+
+.knowledge-result p,
+.study-card p,
+.knowledge-empty {
+  margin: 0;
+  color: var(--muted, #64748b);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.study-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.study-plan-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.study-plan-controls input[type="number"] {
+  width: 76px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 8px;
 }

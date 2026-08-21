@@ -69,6 +69,8 @@ actionClick({ id: 123, url: "https://course.example.com/lesson" });
 
 assert.equal(vm.runInContext("captureActive(123)", context), true);
 assert.equal(vm.runInContext("captureActive(124)", context), false);
+assert.equal(await context.__learnnoteE2E.armCaptureForTab(124), true);
+assert.equal(vm.runInContext("captureActive(124)", context), true);
 assert.equal(sidePanelOpens.length, 1);
 assert.equal(sidePanelOpens[0].tabId, 123);
 assert.equal(storageWrites.length, 1);

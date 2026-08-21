@@ -2,6 +2,7 @@ import { requestUrl } from "obsidian";
 import { normalizeBackendUrl } from "./core.mjs";
 import type {
   LearnNoteHealth,
+  LearnNoteIntegrationManifest,
   LearnNoteTask,
   QuestionHistoryItem,
   QuestionResult,
@@ -33,6 +34,10 @@ export class LearnNoteApi {
 
   health(): Promise<LearnNoteHealth> {
     return this.json<LearnNoteHealth>("/api/health");
+  }
+
+  integrationManifest(): Promise<LearnNoteIntegrationManifest> {
+    return this.json<LearnNoteIntegrationManifest>("/api/integrations/manifest");
   }
 
   async tasks(): Promise<LearnNoteTask[]> {

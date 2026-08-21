@@ -61,6 +61,14 @@ class ProductReadinessAuditTest(unittest.TestCase):
         self.assertIn("startup_onboarding", keys)
         self.assertIn("real_site_ytdlp", keys)
 
+    def test_startup_bootstrap_contract_checks_order_and_optional_asr(self):
+        launcher = "$backendScript @bootstrapArgs\n& $doctorScript"
+        backend = "[switch]$BootstrapOnly --python 3.12 --seed if ($BootstrapOnly) { return }"
+        desktop = "[switch]$InstallAsr BootstrapOnly start-backend.ps1"
+        self.assertTrue(audit_product_readiness.startup_bootstrap_contract(launcher, backend, desktop, "pywebview"))
+        self.assertFalse(audit_product_readiness.startup_bootstrap_contract("& $doctorScript\n$backendScript @bootstrapArgs", backend, desktop, "pywebview"))
+        self.assertFalse(audit_product_readiness.startup_bootstrap_contract(launcher, backend, desktop, "faster-whisper"))
+
     def test_learning_audit_requires_full_signal_set(self):
         complete = {
             "path": Path("audit.json"),

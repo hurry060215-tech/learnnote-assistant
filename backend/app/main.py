@@ -11,6 +11,7 @@ import shutil
 import tempfile
 import threading
 import time
+from secrets import token_urlsafe
 from uuid import uuid4
 from zipfile import ZIP_DEFLATED, ZipFile
 from pathlib import Path
@@ -23,10 +24,17 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 
 from . import API_VERSION, APP_VERSION, TASK_SCHEMA_VERSION, UX_PROTOCOL_VERSION
+from .adapters import MEDIA_ADAPTER_CONTRACT_VERSION, media_adapter_descriptors
 from .config import BACKEND_ORIGIN, DATA_DIR, DEPLOYMENT_MODE, LLM_API_KEY, LLM_BASE_URL, LLM_MAX_RETRIES, LLM_MODEL, LLM_REQUEST_TIMEOUT_SECONDS, MODEL_CACHE_DIR, PUBLIC_DEPLOYMENT, PUBLIC_PASSWORD, PUBLIC_USERNAME, STATIC_DIR, TASK_DIR, TEMP_DIR, UPLOAD_DIR, WEB_DIR, ensure_dirs
 from .downloader import MediaDownloader, effective_resource_kind, fallback_page_contexts, media_file_video_signature, preflight_media_resource, rank_media_candidates
 from .media import MediaProcessingError, extract_video_clip, probe_duration, probe_media_integrity
-from .models import CurrentPageTaskRequest, MediaIntegrity, MediaPreflightRequest, MediaPreflightResult, PagePreflightRequest, RerunFromMediaRequest, ResourceCandidate, SourceInputRequest, StorageCleanupRequest, TaskOptions, TaskQuestionRequest, TaskRecord, now_iso
+from .library import backup_library, duplicate_groups, library_status, rebuild_index, restore_library, search_library
+from .knowledge import add_evidence, answer_from_evidence, evidence_for_task, extract_import_text, remove_evidence, search_evidence
+from .integrations import integration_manifest, notion_export_payload
+from .embeddings import embedding_status
+from .models import CurrentPageTaskRequest, EvidenceCoverage, MediaIntegrity, MediaPreflightRequest, MediaPreflightResult, PagePreflightRequest, RerunFromMediaRequest, ResourceCandidate, SourceEvidence, SourceInputRequest, StorageCleanupRequest, StudyCard, StudyCardStatusRequest, StudyPlanUpdateRequest, StudyReviewRequest, TaskOptions, TaskQuestionRequest, TaskRecord, now_iso
+from .observability import read_task_events, redacted_support_manifest
+from .study import due_cards, export_study_data, get_study_plan, list_cards, propose_cards, review_card, review_history, save_cards, set_card_status, study_summary, update_study_plan
 from .processor import browser_subtitle_text_is_player_ui, enrich_resource_candidates_with_active_video, process_current_page_task, process_local_video_task, read_note, read_transcript, read_visual_index, redacted_request_dump, redacted_resource
 from .reliability import current_page_source_identity, local_source_identity
 from .runtime import ffmpeg_bin, ffprobe_bin
@@ -47,6 +55,9 @@ _deferred_handoffs_lock = threading.RLock()
 # wakes on a 30-second alarm so the desktop can report a loaded extension even
 # when its panel is closed.
 EXTENSION_HEARTBEAT_TTL_SECONDS = 75.0
+PAIRING_TTL_SECONDS = 10 * 60
+_pairing_token = ""
+_pairing_expires_at = 0.0
 TRUSTED_BROWSER_ORIGIN_RE = re.compile(r"^(chrome-extension://[a-z]+|moz-extension://[a-z0-9-]+|https?://(localhost|127\.0\.0\.1)(:\d+)?)$")
 WRITE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
@@ -91,7 +102,23 @@ async def enforce_trusted_write_origin(request: Request, call_next):
     trusted_origin = bool(TRUSTED_BROWSER_ORIGIN_RE.fullmatch(origin) or request_origin_matches_host(request, origin))
     if request.method.upper() in WRITE_METHODS and request.url.path.startswith("/api/") and origin and not trusted_origin:
         return Response("Forbidden origin", status_code=403)
+    if (
+        request.method.upper() in WRITE_METHODS
+        and request.url.path.startswith("/api/")
+        and origin.startswith(("chrome-extension://", "moz-extension://"))
+        and request.url.path not in {"/api/pairing/issue", "/api/extension/heartbeat"}
+        and not _pairing_token_valid(request.headers.get("x-learnnote-pairing", ""))
+    ):
+        return Response("Extension pairing required", status_code=401)
     return await call_next(request)
+
+
+def _pairing_token_valid(value: str) -> bool:
+    global _pairing_token, _pairing_expires_at
+    candidate = str(value or "").strip()
+    if not candidate:
+        return False
+    return _pairing_expires_at > time.time() and hmac.compare_digest(candidate, _pairing_token)
 
 app.mount("/data", StaticFiles(directory=str(DATA_DIR)), name="data")
 app.mount("/web", StaticFiles(directory=str(WEB_DIR)), name="web")
@@ -1632,6 +1659,8 @@ def diagnostic_recovery_profile(task: TaskRecord) -> dict:
         "selected_kind": selected_kind,
         "selected_source": selected_source,
         "selected_url": selected_url,
+        "checkpoint": task.checkpoint,
+        "checkpoint_updated_at": task.checkpoint_updated_at,
         "attempt_count": len(task.download_attempts),
         "latest_attempt": {
             "strategy": latest_attempt.strategy,
@@ -2605,7 +2634,7 @@ MODEL_PROVIDER_PRESETS = [
 
 
 ASSISTANT_CAPABILITIES = {
-    "routes": ["current_page_direct", "local_upload", "download_only", "rerun_from_media", "page_text", "task_qa"],
+    "routes": ["current_page_direct", "local_upload", "download_only", "rerun_from_media", "page_text", "task_qa", "library_search", "knowledge_import", "knowledge_search", "knowledge_embedding_status", "study_loop", "study_proposals", "study_summary", "study_export", "study_plan", "task_events", "support_package", "integration_manifest", "notion_export"],
     "direct_media": {
         "file_extensions": ["mp4", "m4v", "mov", "mkv", "webm", "flv", "avi"],
         "manifests": ["m3u8", "mpd"],
@@ -2616,8 +2645,11 @@ ASSISTANT_CAPABILITIES = {
         "default_frame_interval": 20,
         "default_grid": "3x3",
         "outputs": ["media.mp4", "transcript.json", "visual_index.json", "note.md", "qa.md", "bundle.zip"],
+        "resource_budget": {"default_mb": 4096, "max_frame_count": 900, "low_resource_mode": True},
     },
     "non_goals": ["tab_recording", "drm_bypass", "progress_spoofing", "auto_answering"],
+    "media_adapter_contract_version": MEDIA_ADAPTER_CONTRACT_VERSION,
+    "media_adapters": media_adapter_descriptors(),
 }
 
 
@@ -2665,6 +2697,7 @@ def health_payload() -> dict:
         "data_paths": data_paths_payload(),
         "model_provider_presets": MODEL_PROVIDER_PRESETS,
         "assistant_capabilities": ASSISTANT_CAPABILITIES,
+        "media_adapters": media_adapter_descriptors(),
     }
 
 
@@ -3556,6 +3589,24 @@ def api_health() -> dict:
     return health_payload()
 
 
+@app.get("/api/integrations/manifest")
+def api_integrations_manifest() -> dict:
+    return integration_manifest()
+
+
+@app.get("/api/pairing/issue")
+def api_pairing_issue(request: Request) -> dict:
+    """Issue a short-lived token to a local extension during pairing."""
+    global _pairing_token, _pairing_expires_at
+    client_host = str(getattr(request.client, "host", "") or "")
+    if client_host not in {"127.0.0.1", "::1", "localhost", "testclient"}:
+        raise HTTPException(status_code=403, detail={"code": "pairing_local_only", "message": "配对只能在本机完成。"})
+    _pairing_token = token_urlsafe(32)
+    _pairing_expires_at = time.time() + PAIRING_TTL_SECONDS
+    payload = {"token": _pairing_token, "issued_at": time.time(), "expires_at": _pairing_expires_at}
+    return {"ok": True, "token": payload["token"], "expires_at": payload["expires_at"], "ttl_seconds": PAIRING_TTL_SECONDS}
+
+
 @app.post("/api/desktop/focus")
 def desktop_focus(payload: dict | None = Body(default=None)) -> dict:
     body = payload or {}
@@ -3748,7 +3799,7 @@ def start_deferred_current_page_task(
         task = get_task(task_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail={"code": "task_not_found", "message": "Task not found"}) from exc
-    if not task.awaiting_confirmation and task.status in {"queued", "running", "success", "failed"}:
+    if not task.awaiting_confirmation and task.status in {"queued", "running", "success"}:
         return {
             "accepted": True,
             "already_started": True,
@@ -3763,6 +3814,7 @@ def start_deferred_current_page_task(
     with _deferred_handoffs_lock:
         deferred_request = _deferred_handoffs.get(task_id)
     if deferred_request is None:
+        expire_deferred_handoff(task_id)
         raise HTTPException(
             status_code=410,
             detail={
@@ -3783,6 +3835,18 @@ def start_deferred_current_page_task(
     with _deferred_handoffs_lock:
         _deferred_handoffs.pop(task_id, None)
     return {"task_id": task.id, "task": task_payload(task)}
+
+
+def expire_deferred_handoff(task_id: str):
+    return update_task(
+        task_id,
+        awaiting_confirmation=False,
+        status="failed",
+        phase="failed",
+        message="Browser handoff expired; send the current page again",
+        error_code="handoff_expired",
+        error_detail="The backend restarted before confirmation. Return to the video page and send it again.",
+    )
 
 
 @app.post("/api/media/preflight")
@@ -3987,14 +4051,333 @@ def create_from_existing_media(
     return {"task_id": task.id, "task": task_payload(task), "source_task_id": source.id}
 
 
+@app.post("/api/tasks/{task_id}/resume")
+def resume_task_from_checkpoint(
+    task_id: str,
+    background_tasks: BackgroundTasks,
+    request: RerunFromMediaRequest | TaskOptions | None = Body(default=None),
+) -> dict:
+    try:
+        source = get_task(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail={"code": "task_not_found", "message": "任务不存在"}) from exc
+    if source.status in {"queued", "running", "cancelling"}:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "task_still_running", "message": "任务已经在处理中。"},
+        )
+    media_path = task_media_path(source)
+    if not media_path or not media_path.is_file() or media_path.stat().st_size <= 0:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "media_not_found", "message": "没有找到可恢复的本地媒体，请重新从当前页面发起。"},
+        )
+    parsed_options = merge_task_options(source.options, rerun_options_from_body(request))
+    task = update_task(
+        task_id,
+        status="queued",
+        phase="queued",
+        progress=0,
+        message=f"从恢复检查点继续：{source.checkpoint or 'media_ready'}",
+        error_code="",
+        error_detail="",
+        failed_phase="",
+        cancel_requested=False,
+        cancel_requested_at="",
+        cancelled_at="",
+        note_path="",
+        transcript_path="",
+        audio_path="",
+        visual_index_path="",
+        evidence_coverage_path="",
+        evidence_coverage=EvidenceCoverage(),
+        frame_grids=[],
+        visual_windows=[],
+        summary_source="",
+        summary_warning="",
+        summary_diagnostics_path="",
+        summary_diagnostics={},
+        options=parsed_options.model_copy(update={"llm_api_key": None}),
+        retry_count=source.retry_count + 1,
+    )
+    source_transcript_source = ""
+    try:
+        source_transcript_source = str(read_transcript(source.id).get("source") or "")
+    except Exception:
+        source_transcript_source = ""
+    source_subtitle_path = Path(source.subtitle_path) if source.subtitle_path else None
+    if source_subtitle_path and not source_subtitle_path.exists():
+        source_subtitle_path = None
+    source_browser_subtitles = source.browser_subtitles
+    subtitle_source = "page-subtitle"
+    if source_transcript_source == "browser-subtitle" and source_browser_subtitles:
+        source_subtitle_path = None
+    elif source_transcript_source == "browser-subtitle" and source_subtitle_path:
+        subtitle_source = "browser-subtitle"
+    background_tasks.add_task(
+        process_local_video_task,
+        task.id,
+        media_path,
+        task.title,
+        parsed_options,
+        source.page_url,
+        source_browser_subtitles,
+        source_subtitle_path,
+        subtitle_source,
+    )
+    return {"task_id": task.id, "resumed": True, "task": task_payload(task)}
+
+
 @app.get("/api/tasks")
 def api_list_tasks() -> dict:
-    return {"tasks": [task_payload(task) for task in list_tasks()]}
+    records = list_tasks()
+    with _deferred_handoffs_lock:
+        live_handoffs = set(_deferred_handoffs)
+    records = [
+        expire_deferred_handoff(task.id)
+        if task.awaiting_confirmation and task.id not in live_handoffs
+        else task
+        for task in records
+    ]
+    return {"tasks": [task_payload(task) for task in records]}
 
 
 @app.get("/api/storage")
 def api_storage_summary() -> dict:
     return storage_summary()
+
+
+@app.get("/api/library/status")
+def api_library_status() -> dict:
+    return library_status()
+
+
+@app.get("/api/library/search")
+def api_library_search(q: str = "", limit: int = 50) -> dict:
+    return {"query": q, "results": search_library(q, limit)}
+
+
+@app.get("/api/library/duplicates")
+def api_library_duplicates() -> dict:
+    return {"groups": duplicate_groups()}
+
+
+@app.post("/api/library/rebuild")
+def api_library_rebuild() -> dict:
+    return rebuild_index()
+
+
+@app.post("/api/library/backup")
+def api_library_backup() -> dict:
+    path = backup_library()
+    return {
+        "status": "pass",
+        "path": str(path),
+        "name": path.name,
+        "download_url": f"/api/library/backup/{path.name}",
+        "bytes": path.stat().st_size,
+    }
+
+
+@app.get("/api/library/backup/{name}")
+def api_library_backup_file(name: str) -> FileResponse:
+    candidate = (DATA_DIR / "exports" / name).resolve()
+    export_root = (DATA_DIR / "exports").resolve()
+    if Path(name).name != name or candidate.parent != export_root or candidate.suffix.lower() != ".sqlite3" or not candidate.is_file():
+        raise HTTPException(status_code=404, detail={"code": "library_backup_not_found", "message": "备份文件不存在。"})
+    return FileResponse(candidate, media_type="application/vnd.sqlite3", filename=candidate.name)
+
+
+@app.post("/api/library/restore")
+async def api_library_restore(file: UploadFile = File(...)) -> dict:
+    temporary = TEMP_DIR / f"library-upload-{uuid4().hex}.sqlite3"
+    try:
+        written = 0
+        with temporary.open("wb") as handle:
+            while True:
+                chunk = await file.read(1024 * 1024)
+                if not chunk:
+                    break
+                written += len(chunk)
+                if written > 128 * 1024 * 1024:
+                    raise HTTPException(status_code=413, detail={"code": "library_backup_too_large", "message": "资料库备份超过 128 MB。"})
+                handle.write(chunk)
+        try:
+            return restore_library(temporary)
+        except ValueError as exc:
+            code = str(exc)
+            messages = {
+                "library_backup_missing": "备份文件不存在。",
+                "library_backup_too_large": "资料库备份超过 128 MB。",
+                "library_backup_invalid": "资料库备份不是有效的 SQLite 文件。",
+                "library_backup_schema_mismatch": "资料库备份版本不兼容或缺少必要表。",
+            }
+            raise HTTPException(status_code=400, detail={"code": code, "message": messages.get(code, "资料库备份无法恢复。")}) from exc
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+@app.post("/api/knowledge/evidence")
+def api_knowledge_evidence(evidence: SourceEvidence) -> dict:
+    """Store a user-selected citation anchor; no remote fetch is performed."""
+    try:
+        stored = add_evidence(evidence)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail={"code": str(exc), "message": "证据文本不能为空。"}) from exc
+    return {"ok": True, "evidence": stored.model_dump(mode="json")}
+
+
+@app.post("/api/knowledge/import-file")
+async def api_knowledge_import_file(file: UploadFile = File(...)) -> dict:
+    filename = Path(file.filename or "evidence.txt").name
+    content = await file.read()
+    if len(content) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail={"code": "evidence_file_too_large", "message": "导入文件不能超过 20 MB。"})
+    try:
+        text, source_type = extract_import_text(filename, content, file.content_type or "")
+        stored = add_evidence(SourceEvidence(
+            source_type=source_type,
+            title=Path(filename).stem[:500],
+            source_uri=f"local://{filename}",
+            locator="file",
+            text=text,
+            metadata={"filename": filename, "content_type": file.content_type or ""},
+        ))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail={"code": str(exc), "message": "无法从该文件提取可检索文本。"}) from exc
+    return {"ok": True, "evidence": stored.model_dump(mode="json")}
+
+
+@app.get("/api/knowledge/search")
+def api_knowledge_search(q: str = "", limit: int = 12, mode: str = "lexical") -> dict:
+    try:
+        results = search_evidence(q, limit, mode)
+    except RuntimeError as exc:
+        if str(exc) == "local_embedding_unavailable":
+            raise HTTPException(status_code=409, detail={"code": str(exc), "message": "可选本地 embedding 尚未安装。"}) from exc
+        raise
+    return {"query": q, "mode": mode, "results": results}
+
+
+@app.get("/api/knowledge/embedding-status")
+def api_knowledge_embedding_status() -> dict:
+    return embedding_status()
+
+
+@app.delete("/api/knowledge/evidence/{evidence_id}")
+def api_knowledge_delete_evidence(evidence_id: str) -> dict:
+    if not remove_evidence(evidence_id):
+        raise HTTPException(status_code=404, detail={"code": "evidence_not_found", "message": "证据不存在。"})
+    return {"ok": True, "evidence_id": evidence_id}
+
+
+@app.post("/api/knowledge/ask")
+def api_knowledge_ask(payload: dict | None = Body(default=None)) -> dict:
+    body = payload or {}
+    question = str(body.get("question") or "").strip()
+    if not question:
+        raise HTTPException(status_code=422, detail={"code": "question_required", "message": "请输入问题。"})
+    try:
+        return answer_from_evidence(question, int(body.get("limit") or 6), str(body.get("mode") or "lexical"))
+    except RuntimeError as exc:
+        if str(exc) == "local_embedding_unavailable":
+            raise HTTPException(status_code=409, detail={"code": str(exc), "message": "可选本地 embedding 尚未安装。"}) from exc
+        raise
+
+
+@app.post("/api/study/proposals")
+def api_study_proposals(payload: dict | None = Body(default=None)) -> dict:
+    body = payload or {}
+    raw = body.get("evidence") if isinstance(body.get("evidence"), list) else []
+    evidence: list[SourceEvidence] = []
+    for item in raw:
+        try:
+            evidence.append(SourceEvidence.model_validate(item))
+        except ValidationError:
+            continue
+    return {"proposals": [card.model_dump(mode="json") for card in propose_cards(evidence, int(body.get("limit") or 20))]}
+
+
+@app.post("/api/tasks/{task_id}/study-proposals")
+def api_task_study_proposals(task_id: str, limit: int = 20) -> dict:
+    try:
+        task = get_task(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Task not found") from exc
+    evidence = [SourceEvidence.model_validate(item) for item in evidence_for_task(task.id)]
+    return {"task_id": task.id, "proposals": [card.model_dump(mode="json") for card in propose_cards(evidence, limit)]}
+
+
+@app.post("/api/study/cards")
+def api_study_cards(payload: dict | None = Body(default=None)) -> dict:
+    body = payload or {}
+    raw = body.get("cards") if isinstance(body.get("cards"), list) else []
+    cards: list[StudyCard] = []
+    for item in raw:
+        try:
+            cards.append(StudyCard.model_validate(item))
+        except ValidationError:
+            continue
+    if not cards:
+        raise HTTPException(status_code=422, detail={"code": "cards_required", "message": "至少确认一张记忆卡片。"})
+    return {"cards": [card.model_dump(mode="json") for card in save_cards(cards)]}
+
+
+@app.get("/api/study/due")
+def api_study_due(limit: int = 50) -> dict:
+    return {"cards": [card.model_dump(mode="json") for card in due_cards(limit)]}
+
+
+@app.get("/api/study/cards")
+def api_study_list_cards(status: str = "", limit: int = 200) -> dict:
+    return {"cards": [card.model_dump(mode="json") for card in list_cards(status, limit)]}
+
+
+@app.patch("/api/study/cards/{card_id}")
+def api_study_card_status(card_id: str, request: StudyCardStatusRequest) -> dict:
+    try:
+        card = set_card_status(card_id, request.status)
+    except ValueError as exc:
+        code = str(exc)
+        status = 404 if code == "card_not_found" else 422
+        raise HTTPException(status_code=status, detail={"code": code, "message": "卡片不存在或状态无效。"}) from exc
+    return {"card": card.model_dump(mode="json")}
+
+
+@app.get("/api/study/summary")
+def api_study_summary() -> dict:
+    return study_summary()
+
+
+@app.get("/api/study/reviews")
+def api_study_reviews(card_id: str = "", limit: int = 200) -> dict:
+    return {"reviews": review_history(card_id, limit)}
+
+
+@app.get("/api/study/export")
+def api_study_export() -> dict:
+    return export_study_data()
+
+
+@app.get("/api/study/plan")
+def api_study_plan() -> dict:
+    return {"plan": get_study_plan().model_dump(mode="json")}
+
+
+@app.put("/api/study/plan")
+def api_update_study_plan(request: StudyPlanUpdateRequest) -> dict:
+    return {"plan": update_study_plan(request.title, request.daily_target, request.paused).model_dump(mode="json")}
+
+
+@app.post("/api/study/cards/{card_id}/review")
+def api_study_review(card_id: str, request: StudyReviewRequest) -> dict:
+    try:
+        card = review_card(card_id, request.rating)
+    except ValueError as exc:
+        code = str(exc)
+        status = 404 if code == "card_not_found" else 422
+        raise HTTPException(status_code=status, detail={"code": code, "message": "记忆卡片不存在或评分无效。"}) from exc
+    return {"card": card.model_dump(mode="json")}
 
 
 @app.post("/api/storage/cleanup")
@@ -4312,6 +4695,99 @@ def api_export_bundle(task_id: str) -> Response:
         )
     }
     return Response(buffer.getvalue(), media_type="application/zip", headers=headers)
+
+
+@app.get("/api/tasks/{task_id}/exports/sanitized-bundle")
+def api_export_sanitized_bundle(task_id: str) -> Response:
+    """Export a shareable study bundle without media, cookies, signed URLs, or diagnostics."""
+    try:
+        task = get_task(task_id)
+        note = read_note(task_id)
+        transcript = read_transcript(task_id)
+        visual_index = read_visual_index(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Task not found") from exc
+    qa_history = read_task_qa_history(task.id)
+    if not note.strip() and not transcript.get("segments") and not visual_index.get("windows"):
+        raise HTTPException(status_code=404, detail="Shareable study artifacts not found")
+    safe_manifest = {
+        "schema_version": 1,
+        "bundle_type": "sanitized-study",
+        "privacy": {
+            "original_media": False,
+            "cookies": False,
+            "signed_urls": False,
+            "diagnostics": False,
+            "source_paths": False,
+        },
+        "task": {"id": task.id, "title": task.title, "source_type": task.source_type, "status": task.status},
+        "artifacts": {"note": bool(note.strip()), "transcript": bool(transcript.get("segments")), "visual_index": bool(visual_index.get("windows")), "qa": bool(qa_history)},
+    }
+    buffer = BytesIO()
+    with ZipFile(buffer, "w", ZIP_DEFLATED) as archive:
+        archive.writestr("manifest.json", json.dumps(safe_manifest, ensure_ascii=False, indent=2))
+        if note.strip():
+            archive.writestr("note.md", note)
+        archive.writestr("transcript.json", json.dumps(transcript, ensure_ascii=False, indent=2))
+        archive.writestr("visual_index.json", json.dumps(visual_index, ensure_ascii=False, indent=2))
+        if qa_history:
+            archive.writestr("qa_history.json", json.dumps({"schema_version": 1, "items": qa_history}, ensure_ascii=False, indent=2))
+    filename = f"learnnote-{task.id}-sanitized-study.zip"
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    return Response(buffer.getvalue(), media_type="application/zip", headers=headers)
+
+
+@app.get("/api/tasks/{task_id}/events")
+def api_task_events(task_id: str, limit: int = 500) -> dict:
+    try:
+        get_task(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Task not found") from exc
+    events = read_task_events(task_id, limit)
+    return {"task_id": task_id, "schema_version": 1, "events": events}
+
+
+@app.get("/api/tasks/{task_id}/exports/support-package")
+def api_export_support_package(task_id: str) -> Response:
+    """Create a small, redacted support package for reproducible diagnosis."""
+    try:
+        task = get_task(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Task not found") from exc
+    events = read_task_events(task_id)
+    manifest = redacted_support_manifest(task_id, events)
+    diagnostics = render_diagnostics_markdown(task)
+    audit = render_task_audit_markdown(task)
+    buffer = BytesIO()
+    with ZipFile(buffer, "w", ZIP_DEFLATED) as archive:
+        archive.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
+        archive.writestr("events.json", json.dumps(events, ensure_ascii=False, indent=2))
+        archive.writestr("diagnostics.md", diagnostics)
+        archive.writestr("audit.md", audit)
+    filename = f"learnnote-{task.id}-support-package.zip"
+    return Response(
+        buffer.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.get("/api/tasks/{task_id}/exports/notion")
+def api_export_notion_payload(task_id: str) -> Response:
+    try:
+        task = get_task(task_id)
+        note = read_note(task_id)
+        transcript = read_transcript(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Task not found") from exc
+    if not note.strip():
+        raise HTTPException(status_code=404, detail="Note not found")
+    payload = notion_export_payload(task, note, transcript)
+    return Response(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        media_type="application/json; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="learnnote-{task.id}-notion.json"'},
+    )
 
 
 @app.get("/api/tasks/{task_id}/exports/diagnostics")

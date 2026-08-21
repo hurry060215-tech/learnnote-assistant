@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from app import APP_VERSION, UX_PROTOCOL_VERSION
 from app.main import app
-from app.models import CurrentPageTaskRequest
+from app.models import CurrentPageTaskRequest, MediaIntegrity
 from app.processor import process_page_text_task
 from app.storage import _directory_size, create_task, get_task, update_task
 
@@ -52,6 +52,8 @@ class TaskManagementApiTests(unittest.TestCase):
         self.assertEqual(payload["protocol_version"], UX_PROTOCOL_VERSION)
         self.assertEqual(payload["extension_version"], APP_VERSION)
         self.assertTrue(payload["extension_compatible"])
+        self.assertEqual(payload["assistant_capabilities"]["media_adapter_contract_version"], 1)
+        self.assertEqual({item["id"] for item in payload["media_adapters"]}, {"bilibili", "youtube", "chaoxing", "web"})
 
     def test_cancel_retry_delete_and_storage_summary(self) -> None:
         active = create_task("local", "Active task")
@@ -64,6 +66,17 @@ class TaskManagementApiTests(unittest.TestCase):
             CurrentPageTaskRequest(mode="page_text", page_url="https://example.com", page_text="sample"),
         )
         self.assertEqual(get_task(active.id).status, "cancelled")
+
+    def test_task_checkpoint_defaults_are_backward_compatible(self) -> None:
+        task = create_task("local", "Checkpoint task")
+        self.assertEqual(task.checkpoint, "")
+        self.assertEqual(task.checkpoint_updated_at, "")
+        update_task(task.id, checkpoint="media_ready", checkpoint_updated_at="2026-08-21T00:00:00+00:00")
+        restored = get_task(task.id)
+        self.assertEqual(restored.checkpoint, "media_ready")
+        self.assertEqual(restored.checkpoint_updated_at, "2026-08-21T00:00:00+00:00")
+        payload = self.client.get(f"/api/tasks/{task.id}").json()["task"]
+        self.assertEqual(payload["recovery"]["checkpoint"], "media_ready")
 
         no_media = create_task("current_page", "Needs recapture", page_url="https://example.com/video")
         update_task(no_media.id, status="failed", phase="failed", error_code="no_media_found")
@@ -83,6 +96,29 @@ class TaskManagementApiTests(unittest.TestCase):
         deleted = self.client.delete(f"/api/tasks/{finished.id}")
         self.assertEqual(deleted.status_code, 200)
         self.assertFalse((self.paths["TASK_DIR"] / finished.id).exists())
+
+    def test_resume_reuses_existing_task_and_media_checkpoint(self) -> None:
+        source = create_task("local", "Recoverable lesson")
+        media = self.paths["TASK_DIR"] / source.id / "media.mp4"
+        media.write_bytes(b"recoverable-media")
+        update_task(
+            source.id,
+            status="failed",
+            phase="failed",
+            progress=100,
+            media_path=str(media),
+            checkpoint="media_ready",
+            error_code="processing_failed",
+            error_detail="interrupted",
+        )
+        with patch("app.main.validate_local_upload_file", return_value=MediaIntegrity(status="ready", sha256="recover")), patch("app.main.process_local_video_task") as process:
+            resumed = self.client.post(f"/api/tasks/{source.id}/resume", json={})
+        self.assertEqual(resumed.status_code, 200, resumed.text)
+        self.assertTrue(resumed.json()["resumed"])
+        self.assertEqual(resumed.json()["task_id"], source.id)
+        self.assertEqual(resumed.json()["task"]["status"], "queued")
+        self.assertEqual(resumed.json()["task"]["checkpoint"], "media_ready")
+        process.assert_called_once()
 
     def test_directory_size_tolerates_disappearing_directory(self) -> None:
         artifact = self.paths["TASK_DIR"] / "stable.bin"

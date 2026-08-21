@@ -5,6 +5,8 @@ from pathlib import Path
 import re
 from urllib.parse import parse_qsl, unquote, urlencode, urlparse, urlunparse
 
+from .adapters import media_adapter_for_url
+
 
 HTTP_URL_RE = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
 BVID_RE = re.compile(r"(?<![A-Za-z0-9])BV([A-Za-z0-9]{10})(?![A-Za-z0-9])", re.IGNORECASE)
@@ -50,12 +52,7 @@ def _strip_trailing_url_punctuation(value: str) -> str:
 
 
 def _url_platform(url: str) -> str:
-    host = (urlparse(url).hostname or "").lower()
-    if host == "b23.tv" or host.endswith(".bilibili.com"):
-        return "bilibili"
-    if host in {"youtu.be", "youtube.com", "www.youtube.com", "m.youtube.com"} or host.endswith(".youtube.com"):
-        return "youtube"
-    return "web"
+    return media_adapter_for_url(url).adapter_id
 
 
 def _bilibili_id_from_url(url: str) -> str:

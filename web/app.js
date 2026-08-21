@@ -43,6 +43,7 @@ const DEFAULT_APP_SETTINGS = Object.freeze({
   taskNotifications: false,
   compactHistory: false,
   autoPreflight: true,
+  advancedSettings: false,
   frameInterval: "20",
   gridSize: "3x3",
   gridColumns: "3",
@@ -333,8 +334,12 @@ let assistantLocatedEvidenceKey = "";
 
 const ACTIVE_TASK_STATUSES = new Set(["running", "queued", "cancelling"]);
 
+function taskAwaitingConfirmation(task = {}) {
+  return Boolean(task?.awaiting_confirmation && task?.status === "queued");
+}
+
 function isActiveTask(task) {
-  return ACTIVE_TASK_STATUSES.has(task?.status);
+  return ACTIVE_TASK_STATUSES.has(task?.status) && !taskAwaitingConfirmation(task);
 }
 const ASSISTANT_OPEN_KEY = "learnnote.aiAssistantOpen";
 const ASSISTANT_WIDE_KEY = "learnnote.aiAssistantWide";
@@ -368,11 +373,30 @@ const els = {
   settingTaskNotifications: document.querySelector("#settingTaskNotifications"),
   settingCompactHistory: document.querySelector("#settingCompactHistory"),
   settingAutoPreflight: document.querySelector("#settingAutoPreflight"),
+  settingAdvancedOptions: document.querySelector("#settingAdvancedOptions"),
   settingApiBase: document.querySelector("#settingApiBase"),
   settingDataPath: document.querySelector("#settingDataPath"),
   settingDataDrive: document.querySelector("#settingDataDrive"),
   settingStorageUsage: document.querySelector("#settingStorageUsage"),
   settingStorageBreakdown: document.querySelector("#settingStorageBreakdown"),
+  backupLibraryButton: document.querySelector("#backupLibraryButton"),
+  restoreLibraryButton: document.querySelector("#restoreLibraryButton"),
+  libraryBackupInput: document.querySelector("#libraryBackupInput"),
+  libraryBackupStatus: document.querySelector("#libraryBackupStatus"),
+  checkLibraryDuplicatesButton: document.querySelector("#checkLibraryDuplicatesButton"),
+  libraryDuplicateStatus: document.querySelector("#libraryDuplicateStatus"),
+  knowledgeImportButton: document.querySelector("#knowledgeImportButton"),
+  knowledgeImportInput: document.querySelector("#knowledgeImportInput"),
+  knowledgeImportStatus: document.querySelector("#knowledgeImportStatus"),
+  knowledgeSearchInput: document.querySelector("#knowledgeSearchInput"),
+  knowledgeSearchButton: document.querySelector("#knowledgeSearchButton"),
+  knowledgeSearchResults: document.querySelector("#knowledgeSearchResults"),
+  studyDueButton: document.querySelector("#studyDueButton"),
+  studyExportButton: document.querySelector("#studyExportButton"),
+  studyPlanTarget: document.querySelector("#studyPlanTarget"),
+  studyPlanPaused: document.querySelector("#studyPlanPaused"),
+  studyPlanSaveButton: document.querySelector("#studyPlanSaveButton"),
+  studyDueList: document.querySelector("#studyDueList"),
   previewCleanupButton: document.querySelector("#previewCleanupButton"),
   applyCleanupButton: document.querySelector("#applyCleanupButton"),
   deleteAllTasksButton: document.querySelector("#deleteAllTasksButton"),
@@ -479,7 +503,11 @@ const els = {
   unifiedExportButton: document.querySelector("#unifiedExportButton"),
   newNoteVersionButton: document.querySelector("#newNoteVersionButton"),
   bundleButton: document.querySelector("#bundleButton"),
+  sanitizedBundleButton: document.querySelector("#sanitizedBundleButton"),
+  notionExportButton: document.querySelector("#notionExportButton"),
   diagnosticsButton: document.querySelector("#diagnosticsButton"),
+  supportPackageButton: document.querySelector("#supportPackageButton"),
+  studyProposalButton: document.querySelector("#studyProposalButton"),
   visualWindowsButton: document.querySelector("#visualWindowsButton"),
   manifestButton: document.querySelector("#manifestButton"),
   subtitlesButton: document.querySelector("#subtitlesButton"),
@@ -660,7 +688,7 @@ function normalizedAppSettings(value = {}) {
   if (!["brief", "standard", "deep"].includes(settings.summaryDepth)) settings.summaryDepth = "standard";
   settings.customNoteProfile = normalizeCustomNoteProfile(settings.customNoteProfile);
   if (settings.noteStyle === "custom" && !settings.customNoteProfile) settings.noteStyle = "study";
-  for (const key of ["autoOpenNote", "taskNotifications", "compactHistory", "autoPreflight", "visualUnderstanding"]) {
+  for (const key of ["autoOpenNote", "taskNotifications", "compactHistory", "autoPreflight", "visualUnderstanding", "advancedSettings"]) {
     settings[key] = Boolean(settings[key]);
   }
   return settings;
@@ -692,6 +720,20 @@ function systemPrefersDark() {
   return Boolean(window.matchMedia?.("(prefers-color-scheme: dark)")?.matches);
 }
 
+function applyAdvancedSettingsUi() {
+  const enabled = Boolean(appSettings.advancedSettings);
+  document.querySelectorAll("[data-setting-advanced]").forEach(element => {
+    element.hidden = !enabled;
+  });
+  document.querySelectorAll("[data-setting-advanced-pane]").forEach(element => {
+    element.hidden = !enabled;
+    if (!enabled) element.classList.remove("active");
+  });
+  if (!enabled && document.querySelector(".settings-pane.active[data-setting-advanced-pane]")) {
+    showSettingsPane("general");
+  }
+}
+
 function applyAppSettings() {
   appSettings = normalizedAppSettings(appSettings);
   const dark = appSettings.theme === "dark" || (appSettings.theme === "system" && systemPrefersDark());
@@ -707,6 +749,7 @@ function applyAppSettings() {
   if (els.settingTaskNotifications) els.settingTaskNotifications.checked = appSettings.taskNotifications;
   if (els.settingCompactHistory) els.settingCompactHistory.checked = appSettings.compactHistory;
   if (els.settingAutoPreflight) els.settingAutoPreflight.checked = appSettings.autoPreflight;
+  if (els.settingAdvancedOptions) els.settingAdvancedOptions.checked = appSettings.advancedSettings;
   if (els.settingApiBase) els.settingApiBase.value = API || window.location?.origin || DEFAULT_BACKEND_ORIGIN;
   if (els.frameInterval) els.frameInterval.value = appSettings.frameInterval;
   if (els.gridColumns) els.gridColumns.value = appSettings.gridColumns;
@@ -717,6 +760,7 @@ function applyAppSettings() {
   if (els.noteTemplate) els.noteTemplate.value = appSettings.noteTemplate;
   if (els.summaryDepth) els.summaryDepth.value = appSettings.summaryDepth;
   ensureCustomProfileOption();
+  applyAdvancedSettingsUi();
   if (appSettings.customNoteProfile && els.noteStyle) els.noteStyle.value = "custom";
   refreshNoteProfilePreview();
   syncVisualUnderstandingUi();
@@ -807,7 +851,7 @@ function updateOnboardingStatus(data = lastHealthData) {
   const modelReady = Boolean(data?.llm_model_configured || els.llmApiKey?.value?.trim() || desktopCredentialKey);
   const states = {
     backend: [backendReady, els.onboardingBackendStatus, backendReady ? "已连接" : data?.ok ? "需要安装媒体组件" : "未连接"],
-    extension: [extensionReady, els.onboardingExtensionStatus, extensionReady ? "已连接" : extensionConnected ? "已连接旧版，需重新加载" : "等待扩展连接"],
+    extension: [extensionReady, els.onboardingExtensionStatus, extensionReady ? "已连接" : extensionConnected ? "已连接旧版，需重新加载" : "可稍后配置"],
     model: [modelReady, els.onboardingModelStatus, modelReady ? (data?.default_llm_provider || "已配置") : "可稍后配置"]
   };
   Object.entries(states).forEach(([name, [ready, node, label]]) => {
@@ -1231,7 +1275,12 @@ async function applyStorageCleanup() {
 
 async function deleteAllTasksFromClient() {
   const terminalTasks = tasks.filter(task => ["success", "failed", "cancelled"].includes(task.status));
-  const activeTasks = tasks.filter(task => ["queued", "running", "cancelling"].includes(task.status));
+  const pendingConfirmations = tasks.filter(taskAwaitingConfirmation);
+  const activeTasks = tasks.filter(isActiveTask);
+  if (pendingConfirmations.length) {
+    if (els.settingsSavedStatus) els.settingsSavedStatus.textContent = "仍有等待确认的视频，请先确认或放弃这些交接任务。";
+    return;
+  }
   if (activeTasks.length) {
     if (els.settingsSavedStatus) els.settingsSavedStatus.textContent = "仍有任务正在处理，请停止或等待完成后再删除全部。";
     return;
@@ -1271,6 +1320,7 @@ async function saveAppSettingsFromUi() {
   appSettings.taskNotifications = Boolean(els.settingTaskNotifications?.checked);
   appSettings.compactHistory = Boolean(els.settingCompactHistory?.checked);
   appSettings.autoPreflight = Boolean(els.settingAutoPreflight?.checked);
+  appSettings.advancedSettings = Boolean(els.settingAdvancedOptions?.checked);
   appSettings.frameInterval = els.frameInterval?.value || "20";
   appSettings.gridColumns = String(boundedNumber(els.gridColumns?.value, 3, 1, 6));
   appSettings.gridRows = String(boundedNumber(els.gridRows?.value, 3, 1, 6));
@@ -1437,7 +1487,9 @@ async function fetchJson(url, options = {}) {
       : (typeof response.text === "function" ? await response.text().catch(() => "") : "");
     const code = String(payload?.detail?.code || payload?.code || "");
     const guide = code ? errorGuideForCode(code, raw) : null;
-    const error = new Error(guide?.title || raw || "操作没有完成，请稍后重试");
+    const title = guide?.title || raw || "操作没有完成，请稍后重试";
+    const body = String(guide?.body || raw || "").trim();
+    const error = new Error(body && body !== title ? `${title}：${body}` : title);
     error.code = code;
     error.status = response.status;
     error.detail = raw;
@@ -2001,6 +2053,7 @@ function preferredCurrentPageTask() {
 
 function directRouteState(task) {
   if (!task) return "empty";
+  if (taskAwaitingConfirmation(task)) return "awaiting_confirmation";
   if (task.status === "running" || task.status === "queued") return "running";
   if (task.status === "success" && hasExportableMedia(task) && task.note_path) return "ready";
   if (task.status === "success" && hasExportableMedia(task)) return "downloaded";
@@ -2015,6 +2068,14 @@ function directRouteCopy(task) {
   const selected = task?.selected_resource || {};
   const attempts = task?.download_attempts || [];
   const mediaName = taskMediaDisplayName(task);
+  if (state === "awaiting_confirmation") {
+    return {
+      badge: "等待确认",
+      title: "视频已发送，等待你确认",
+      detail: "尚未开始下载、转写或生成笔记",
+      hint: "在 LearnNote 中核对视频标题和来源后，点击开始生成。"
+    };
+  }
   if (state === "ready") {
     return {
       badge: "可复习",
@@ -2449,6 +2510,7 @@ function workflowActiveIndex(task) {
 
 function workflowStepState(task, index) {
   if (!task) return "pending";
+  if (taskAwaitingConfirmation(task)) return "pending";
   const activeIndex = workflowActiveIndex(task);
   if (task.status === "failed") {
     if (index < activeIndex) return "done";
@@ -2817,7 +2879,7 @@ function sourceWorkflowActionsHtml(source, task = null) {
 }
 
 function sourceWorkflowProgressHtml(task = null) {
-  if (!task || !["running", "queued", "cancelling"].includes(task.status)) return "";
+  if (!task || !isActiveTask(task)) return "";
   const progress = Math.max(0, Math.min(100, Number(task.progress || 0)));
   return `<div class="source-workflow-live-progress" role="progressbar" aria-label="任务处理进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progress}">
     <div><strong>${escapeHtml(taskPhaseLabel(task))}</strong><span>${progress}%</span></div>
@@ -2864,7 +2926,7 @@ function renderSourceWorkflow() {
   const task = workflowTaskForSource(selectedSource);
   els.sourceWorkflow.classList.toggle("idle", !task);
   els.sourceWorkflow.classList.toggle("settled", task?.status === "success");
-  els.sourceWorkflow.classList.toggle("active", ["running", "queued", "cancelling"].includes(task?.status));
+  els.sourceWorkflow.classList.toggle("active", isActiveTask(task));
   const html = sourceWorkflowHtml(selectedSource, task);
   if (html === lastSourceWorkflowHtml) return;
   els.sourceWorkflow.innerHTML = html;
@@ -2893,6 +2955,7 @@ function activeVideoText(active) {
 }
 
 function statusText(task) {
+  if (taskAwaitingConfirmation(task)) return "等待确认";
   if (task.status === "success") return "已完成";
   if (task.status === "failed") return "需要处理";
   if (task.status === "cancelling") return "正在停止";
@@ -2902,6 +2965,7 @@ function statusText(task) {
 }
 
 function taskPhaseLabel(task = {}) {
+  if (taskAwaitingConfirmation(task)) return "等待确认视频";
   if (task.status === "success" || task.phase === "completed") return "完成";
   if (task.status === "failed") return "需要处理";
   return ({
@@ -3063,6 +3127,14 @@ const ERROR_GUIDES = {
   recapture_required: {
     title: "需要从视频页面重新发起",
     body: "回到正在播放的视频页，点击 LearnNote 扩展图标重新生成。"
+  },
+  handoff_expired: {
+    title: "视频交接已失效",
+    body: "后端在确认前重启了。请回到正在播放的视频页，再点击 LearnNote 扩展图标重新发送。"
+  },
+  not_awaiting_confirmation: {
+    title: "这个任务已经不再等待确认",
+    body: "刷新任务列表查看最新状态；需要重新生成时，请从原视频页再次发起。"
   },
   task_still_running: { title: "任务仍在运行", body: "请先停止任务，再重试或删除。" },
   task_not_running: { title: "任务已经结束", body: "刷新任务列表即可查看最新状态。" },
@@ -4424,10 +4496,10 @@ function startupReadinessItems(data = lastHealthData) {
       detail: hasHealthDataPaths(data) ? data.data_paths.root : "任务、上传和缓存应落在项目 data 目录。"
     },
     {
-      state: "active",
+      state: data?.extension_connected && extensionVersionMatches(data) ? "pass" : connected ? "warn" : "wait",
       label: "浏览器扩展",
-      value: "手动加载",
-      detail: `${projectPath}\\extension`
+      value: data?.extension_connected && extensionVersionMatches(data) ? "已连接" : "可选配置",
+      detail: data?.extension_connected && extensionVersionMatches(data) ? "当前页视频可以从扩展侧栏交接。" : `${projectPath}\\extension；本地视频和链接不需要扩展。`
     },
     {
       state: "ready",
@@ -5031,7 +5103,7 @@ function bindTaskListEvents() {
 function renderTasks() {
   els.taskCount.textContent = String(tasks.length);
   els.successCount.textContent = String(tasks.filter(task => task.status === "success").length);
-  els.runningCount.textContent = String(tasks.filter(task => ["running", "queued", "cancelling"].includes(task.status)).length);
+  els.runningCount.textContent = String(tasks.filter(isActiveTask).length);
   els.failedCount.textContent = String(tasks.filter(task => task.status === "failed").length);
   renderRecentNotes();
 
@@ -5053,16 +5125,16 @@ function renderTasks() {
       <div class="task-body">
         <div class="task-headline">
           <strong>${escapeHtml(displayTaskTitle(task))}${noteVersionBadge(task)}</strong>
-          <span class="task-status-pill ${escapeHtml(taskStatusClass(task))}">${escapeHtml(statusText(task))} · ${task.progress || 0}%</span>
+          <span class="task-status-pill ${escapeHtml(taskStatusClass(task))}">${escapeHtml(statusText(task))}${taskAwaitingConfirmation(task) ? "" : ` · ${task.progress || 0}%`}</span>
         </div>
         <small class="task-meta-line">${escapeHtml(taskMetaLine(task))}</small>
         ${taskChipsHtml(task)}
-        <div class="progress"><span style="width:${task.progress || 0}%"></span></div>
+        ${taskAwaitingConfirmation(task) ? "" : `<div class="progress"><span style="width:${task.progress || 0}%"></span></div>`}
         <div class="task-controls" aria-label="任务操作">
           <button type="button" data-task-action="open">${task.note_path ? "查看笔记" : "查看详情"}</button>
           ${canCreateNoteVersion(task) ? `<button type="button" data-task-action="version">新建笔记版本</button>` : ""}
-          ${["running", "queued", "cancelling"].includes(task.status) ? `<button type="button" data-task-action="cancel">停止</button>` : ""}
-          ${["failed", "cancelled"].includes(task.status) ? `<button type="button" data-task-action="retry">重试</button>` : ""}
+          ${isActiveTask(task) ? `<button type="button" data-task-action="cancel">停止</button>` : ""}
+          ${["failed", "cancelled"].includes(task.status) ? `<button type="button" data-task-action="retry">${canResumeFromCheckpoint(task) ? "从检查点继续" : "重试"}</button>` : ""}
           ${task.awaiting_confirmation || ["success", "failed", "cancelled"].includes(task.status) ? `<button type="button" data-task-action="delete">${task.awaiting_confirmation ? "放弃并删除" : "删除"}</button>` : ""}
         </div>
       </div>
@@ -5087,7 +5159,10 @@ async function runTaskAction(taskId, action) {
     await fetchJson(apiUrl(`/api/tasks/${encodeURIComponent(taskId)}/cancel`), { method: "POST" });
   } else if (action === "retry") {
     try {
-      const data = await fetchJson(apiUrl(`/api/tasks/${encodeURIComponent(taskId)}/retry`), { method: "POST" });
+      const endpoint = canResumeFromCheckpoint(task)
+        ? taskResumeUrl(taskId)
+        : apiUrl(`/api/tasks/${encodeURIComponent(taskId)}/retry`);
+      const data = await fetchJson(endpoint, { method: "POST" });
       if (data.task_id) {
         selectTask(data.task_id);
         taskStatusFilter = "all";
@@ -5302,6 +5377,7 @@ function taskAuditMiniHtml(task) {
 }
 
 function taskMetaLine(task) {
+  if (taskAwaitingConfirmation(task)) return [sourceText(task), "等待确认"].filter(Boolean).join(" · ");
   return [
     sourceText(task),
     task.status === "running" || task.status === "queued" ? taskPhaseLabel(task) : "",
@@ -5361,6 +5437,7 @@ function taskBrief(task) {
 function taskStatusClass(task) {
   if (task.status === "success") return "success";
   if (task.status === "failed") return "failed";
+  if (taskAwaitingConfirmation(task)) return "idle";
   if (task.status === "running" || task.status === "queued") return "running";
   return "idle";
 }
@@ -5380,6 +5457,291 @@ function taskMediaPreviewUrl(task) {
 
 function taskRerunUrl(taskId) {
   return apiUrl(`/api/tasks/${encodeURIComponent(taskId)}/rerun-from-media`);
+}
+
+async function backupLibraryIndex() {
+  if (!els.backupLibraryButton) return;
+  els.backupLibraryButton.disabled = true;
+  if (els.libraryBackupStatus) els.libraryBackupStatus.textContent = "正在生成本地索引备份...";
+  try {
+    const result = await fetchJson(apiUrl("/api/library/backup"), { method: "POST" });
+    if (els.libraryBackupStatus) els.libraryBackupStatus.textContent = `备份已生成：${result.name || "library.sqlite3"}`;
+    if (result.download_url) window.location.href = apiUrl(result.download_url);
+  } catch (error) {
+    if (els.libraryBackupStatus) els.libraryBackupStatus.textContent = error?.message || "索引备份失败，请检查本地服务";
+  } finally {
+    els.backupLibraryButton.disabled = false;
+  }
+}
+
+async function restoreLibraryIndex(file) {
+  if (!file || !els.restoreLibraryButton) return;
+  els.restoreLibraryButton.disabled = true;
+  if (els.libraryBackupStatus) els.libraryBackupStatus.textContent = "正在校验并恢复索引...";
+  try {
+    const form = new FormData();
+    form.append("file", file, file.name);
+    await fetchJson(apiUrl("/api/library/restore"), { method: "POST", body: form });
+    if (els.libraryBackupStatus) els.libraryBackupStatus.textContent = "索引已恢复；任务目录仍保持不变。";
+    await Promise.all([loadStorageSummary(), loadTasks()]);
+  } catch (error) {
+    if (els.libraryBackupStatus) els.libraryBackupStatus.textContent = error?.message || "索引恢复失败，请选择有效的 LearnNote SQLite 备份";
+  } finally {
+    els.restoreLibraryButton.disabled = false;
+    if (els.libraryBackupInput) els.libraryBackupInput.value = "";
+  }
+}
+
+async function checkLibraryDuplicates() {
+  if (!els.libraryDuplicateStatus) return;
+  els.checkLibraryDuplicatesButton?.setAttribute?.("disabled", "disabled");
+  els.libraryDuplicateStatus.textContent = "正在检查媒体指纹…";
+  try {
+    const result = await fetchJson(apiUrl("/api/library/duplicates"));
+    const groups = Array.isArray(result?.groups) ? result.groups : [];
+    els.libraryDuplicateStatus.textContent = groups.length
+      ? `发现 ${groups.length} 组重复媒体；请在删除前核对任务内容。`
+      : "没有发现相同媒体指纹。";
+  } catch (error) {
+    els.libraryDuplicateStatus.textContent = error?.message || "重复检查失败。";
+  } finally {
+    els.checkLibraryDuplicatesButton?.removeAttribute?.("disabled");
+  }
+}
+
+async function importKnowledgeFile(file) {
+  if (!file || !els.knowledgeImportStatus) return;
+  els.knowledgeImportButton?.setAttribute?.("disabled", "disabled");
+  els.knowledgeImportStatus.textContent = `正在导入 ${file.name}…`;
+  try {
+    const form = new FormData();
+    form.append("file", file, file.name);
+    const result = await fetchJson(apiUrl("/api/knowledge/import-file"), { method: "POST", body: form });
+    const evidence = result?.evidence || {};
+    els.knowledgeImportStatus.textContent = `已导入：${evidence.title || file.name}；证据已写入本地资料库。`;
+  } catch (error) {
+    els.knowledgeImportStatus.textContent = error?.message || "资料导入失败，请检查文件格式。";
+  } finally {
+    els.knowledgeImportButton?.removeAttribute?.("disabled");
+    if (els.knowledgeImportInput) els.knowledgeImportInput.value = "";
+  }
+}
+
+async function searchKnowledge() {
+  if (!els.knowledgeSearchResults) return;
+  const query = String(els.knowledgeSearchInput?.value || "").trim();
+  if (!query) {
+    els.knowledgeSearchResults.replaceChildren();
+    return;
+  }
+  els.knowledgeSearchResults.textContent = "正在搜索本地证据…";
+  try {
+    const result = await fetchJson(apiUrl(`/api/knowledge/search?q=${encodeURIComponent(query)}&limit=8`));
+    els.knowledgeSearchResults.replaceChildren();
+    const hits = Array.isArray(result?.results) ? result.results : [];
+    if (!hits.length) {
+      const empty = document.createElement("p");
+      empty.className = "knowledge-empty";
+      empty.textContent = "没有找到证据；未生成无依据答案。";
+      els.knowledgeSearchResults.append(empty);
+      return;
+    }
+    hits.forEach(item => {
+      const article = document.createElement("article");
+      article.className = "knowledge-result";
+      const heading = document.createElement("strong");
+      heading.textContent = `${item.title || "未命名资料"} · ${item.locator || "本地证据"}`;
+      const excerpt = document.createElement("p");
+      excerpt.textContent = String(item.text || "").slice(0, 360);
+      const actions = document.createElement("div");
+      actions.className = "study-card-actions";
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "secondary action-button";
+      remove.textContent = "删除证据";
+      remove.addEventListener("click", async () => {
+        if (typeof window.confirm === "function" && !window.confirm("删除这条本地证据？原始任务文件不会被删除。")) return;
+        try {
+          await fetchJson(apiUrl(`/api/knowledge/evidence/${encodeURIComponent(item.evidence_id)}`), { method: "DELETE" });
+          await searchKnowledge();
+        } catch (error) {
+          if (els.knowledgeSearchResults) els.knowledgeSearchResults.textContent = error?.message || "证据删除失败。";
+        }
+      });
+      actions.append(remove);
+      article.append(heading, excerpt, actions);
+      els.knowledgeSearchResults.append(article);
+    });
+  } catch (error) {
+    els.knowledgeSearchResults.textContent = error?.message || "资料库检索失败。";
+  }
+}
+
+function renderStudyDue(cards) {
+  if (!els.studyDueList) return;
+  els.studyDueList.replaceChildren();
+  if (!Array.isArray(cards) || !cards.length) {
+    const empty = document.createElement("p");
+    empty.className = "knowledge-empty";
+    empty.textContent = "当前没有到期卡片。确认资料证据后，可在复习 API 中加入卡片。";
+    els.studyDueList.append(empty);
+    return;
+  }
+  cards.forEach(card => {
+    const article = document.createElement("article");
+    article.className = "study-card";
+    const front = document.createElement("strong");
+    front.textContent = card.front || "记忆卡片";
+    const back = document.createElement("p");
+    back.textContent = card.back || "";
+    const actions = document.createElement("div");
+    actions.className = "study-card-actions";
+    [[1, "重来"], [3, "记住"], [4, "简单"]].forEach(([rating, label]) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "secondary action-button";
+      button.textContent = label;
+      button.addEventListener("click", () => reviewStudyCard(card.card_id, rating));
+      actions.append(button);
+    });
+    [["suspended", "暂停"], ["deleted", "删除"]].forEach(([status, label]) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "secondary action-button";
+      button.textContent = label;
+      button.addEventListener("click", () => updateStudyCardStatus(card.card_id, status));
+      actions.append(button);
+    });
+    article.append(front, back, actions);
+    els.studyDueList.append(article);
+  });
+}
+
+async function updateStudyCardStatus(cardId, status) {
+  try {
+    await fetchJson(apiUrl(`/api/study/cards/${encodeURIComponent(cardId)}`), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status })
+    });
+    await loadStudyDue();
+  } catch (error) {
+    if (els.studyDueList) els.studyDueList.textContent = error?.message || "卡片状态保存失败。";
+  }
+}
+
+async function loadStudyDue() {
+  if (!els.studyDueList) return;
+  els.studyDueList.textContent = "正在读取复习记录…";
+  try {
+    const [result, summary] = await Promise.all([
+      fetchJson(apiUrl("/api/study/due?limit=20")),
+      fetchJson(apiUrl("/api/study/summary"))
+    ]);
+    if (els.studyDueButton) els.studyDueButton.textContent = `到期 ${Number(summary?.due_count || 0)} · 今日 ${Number(summary?.reviewed_today || 0)}`;
+    renderStudyDue(result?.cards || []);
+  } catch (error) {
+    els.studyDueList.textContent = error?.message || "无法读取复习卡片。";
+  }
+}
+
+async function loadStudyPlan() {
+  try {
+    const result = await fetchJson(apiUrl("/api/study/plan"));
+    const plan = result?.plan || {};
+    if (els.studyPlanTarget) els.studyPlanTarget.value = String(plan.daily_target || 10);
+    if (els.studyPlanPaused) els.studyPlanPaused.checked = Boolean(plan.paused);
+  } catch {
+    // Study plan is optional; keep the local defaults visible.
+  }
+}
+
+async function saveStudyPlan() {
+  if (!els.studyPlanSaveButton) return;
+  els.studyPlanSaveButton.disabled = true;
+  try {
+    await fetchJson(apiUrl("/api/study/plan"), {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        daily_target: Number(els.studyPlanTarget?.value || 10),
+        paused: Boolean(els.studyPlanPaused?.checked),
+        title: "本地学习计划"
+      })
+    });
+    if (els.studyDueList) els.studyDueList.textContent = "学习计划已保存。";
+  } catch (error) {
+    if (els.studyDueList) els.studyDueList.textContent = error?.message || "学习计划保存失败。";
+  } finally {
+    els.studyPlanSaveButton.disabled = false;
+  }
+}
+
+async function exportStudyData() {
+  if (!els.studyExportButton) return;
+  els.studyExportButton.disabled = true;
+  try {
+    const payload = await fetchJson(apiUrl("/api/study/export"));
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `learnnote-study-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(link.href);
+  } catch (error) {
+    if (els.studyDueList) els.studyDueList.textContent = error?.message || "复习记录导出失败。";
+  } finally {
+    els.studyExportButton.disabled = false;
+  }
+}
+
+async function reviewStudyCard(cardId, rating) {
+  if (!cardId) return;
+  try {
+    await fetchJson(apiUrl(`/api/study/cards/${encodeURIComponent(cardId)}/review`), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rating })
+    });
+    await loadStudyDue();
+  } catch (error) {
+    if (els.studyDueList) els.studyDueList.textContent = error?.message || "复习记录保存失败。";
+  }
+}
+
+async function generateStudyCardsFromTask(taskId) {
+  if (!taskId || !els.exportStatus) return;
+  els.studyProposalButton?.setAttribute?.("disabled", "disabled");
+  els.exportStatus.textContent = "正在根据时间戳证据生成复习卡片候选…";
+  try {
+    const result = await fetchJson(apiUrl(`/api/tasks/${encodeURIComponent(taskId)}/study-proposals?limit=8`), { method: "POST" });
+    const proposals = Array.isArray(result?.proposals) ? result.proposals : [];
+    if (!proposals.length) {
+      els.exportStatus.textContent = "当前任务没有足够的文字证据，未生成卡片。";
+      return;
+    }
+    const selected = proposals.filter(card => window.confirm(`确认加入复习卡片？\n\n${card.front}\n${String(card.back || "").slice(0, 180)}`));
+    if (!selected.length) {
+      els.exportStatus.textContent = "已取消；候选卡片没有写入复习库。";
+      return;
+    }
+    await fetchJson(apiUrl("/api/study/cards"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cards: selected })
+    });
+    els.exportStatus.textContent = `已加入 ${selected.length} 张复习卡片；可在设置中查看到期卡片。`;
+  } catch (error) {
+    els.exportStatus.textContent = error?.message || "复习卡片生成失败。";
+  } finally {
+    els.studyProposalButton?.removeAttribute?.("disabled");
+  }
+}
+
+function taskResumeUrl(taskId) {
+  return apiUrl(`/api/tasks/${encodeURIComponent(taskId)}/resume`);
 }
 
 function taskQaUrl(taskId) {
@@ -5470,6 +5832,16 @@ function canContinueFromDownloadedMedia(task) {
   const finished = task?.status === "success" || task?.status === "failed";
   const reuse = task?.reuse || {};
   return Boolean(task?.id && finished && !task.note_path && reuse.rerun_from_media_ready);
+}
+
+function canResumeFromCheckpoint(task) {
+  return Boolean(
+    task?.id
+    && task.status === "failed"
+    && task.checkpoint
+    && !task.note_path
+    && (task.media_path || task.source_media_path || task.reuse?.media_available)
+  );
 }
 
 function downloadOnlyEmptyNoteHtml(task) {
@@ -8127,7 +8499,11 @@ async function renderDetail() {
     if (els.unifiedExportButton) els.unifiedExportButton.disabled = true;
     if (els.newNoteVersionButton) els.newNoteVersionButton.hidden = true;
     els.bundleButton.disabled = true;
+    if (els.sanitizedBundleButton) els.sanitizedBundleButton.disabled = true;
+    if (els.notionExportButton) els.notionExportButton.disabled = true;
     els.diagnosticsButton.disabled = true;
+    if (els.supportPackageButton) els.supportPackageButton.disabled = true;
+    if (els.studyProposalButton) els.studyProposalButton.disabled = true;
     if (els.visualWindowsButton) els.visualWindowsButton.disabled = true;
     if (els.manifestButton) els.manifestButton.disabled = true;
     if (els.subtitlesButton) els.subtitlesButton.disabled = true;
@@ -8149,7 +8525,11 @@ async function renderDetail() {
   if (els.unifiedExportButton) els.unifiedExportButton.disabled = !unifiedExportType(task);
   if (els.newNoteVersionButton) els.newNoteVersionButton.hidden = !canCreateNoteVersion(task);
   els.bundleButton.disabled = !hasTaskBundle(task);
+  if (els.sanitizedBundleButton) els.sanitizedBundleButton.disabled = !hasTaskBundle(task);
+  if (els.notionExportButton) els.notionExportButton.disabled = !hasNote;
   els.diagnosticsButton.disabled = !hasTaskDiagnostics(task);
+  if (els.supportPackageButton) els.supportPackageButton.disabled = !task?.id;
+  if (els.studyProposalButton) els.studyProposalButton.disabled = task.status !== "success" || !task.note_path;
   if (els.visualWindowsButton) els.visualWindowsButton.disabled = !hasVisualWindowExport(task);
   if (els.manifestButton) els.manifestButton.disabled = !hasTaskBundle(task);
   if (els.subtitlesButton) els.subtitlesButton.disabled = !hasExportableSubtitle(task);
@@ -8789,6 +9169,8 @@ function unifiedExportType(task) {
 }
 
 els.bundleButton.onclick = () => exportSelectedTask("bundle", els.bundleButton);
+els.sanitizedBundleButton?.addEventListener?.("click", () => exportSelectedTask("sanitized-bundle", els.sanitizedBundleButton));
+els.notionExportButton?.addEventListener?.("click", () => exportSelectedTask("notion", els.notionExportButton));
 if (els.unifiedExportButton) {
   els.unifiedExportButton.onclick = () => {
     const task = tasks.find(item => item.id === selectedTaskId);
@@ -8801,6 +9183,8 @@ if (els.manifestButton) {
   els.manifestButton.onclick = () => exportSelectedTask("manifest", els.manifestButton);
 }
 els.diagnosticsButton.onclick = () => exportSelectedTask("diagnostics", els.diagnosticsButton);
+els.supportPackageButton?.addEventListener?.("click", () => exportSelectedTask("support-package", els.supportPackageButton));
+els.studyProposalButton?.addEventListener?.("click", () => generateStudyCardsFromTask(selectedTaskId));
 if (els.visualWindowsButton) {
   els.visualWindowsButton.onclick = () => exportSelectedTask("visual-windows", els.visualWindowsButton);
 }
@@ -8919,7 +9303,25 @@ els.settingsSegmentButtons?.forEach?.(button => {
 });
 els.saveSettingsButton?.addEventListener?.("click", saveAppSettingsFromUi);
 els.resetSettingsButton?.addEventListener?.("click", resetAppSettings);
+els.settingAdvancedOptions?.addEventListener?.("change", () => {
+  appSettings.advancedSettings = Boolean(els.settingAdvancedOptions.checked);
+  applyAppSettings();
+});
 els.previewCleanupButton?.addEventListener?.("click", previewStorageCleanup);
+els.backupLibraryButton?.addEventListener?.("click", backupLibraryIndex);
+els.restoreLibraryButton?.addEventListener?.("click", () => els.libraryBackupInput?.click?.());
+els.libraryBackupInput?.addEventListener?.("change", () => restoreLibraryIndex(els.libraryBackupInput.files?.[0]));
+els.checkLibraryDuplicatesButton?.addEventListener?.("click", checkLibraryDuplicates);
+els.knowledgeImportButton?.addEventListener?.("click", () => els.knowledgeImportInput?.click?.());
+els.knowledgeImportInput?.addEventListener?.("change", () => importKnowledgeFile(els.knowledgeImportInput.files?.[0]));
+els.knowledgeSearchButton?.addEventListener?.("click", searchKnowledge);
+els.knowledgeSearchInput?.addEventListener?.("keydown", event => {
+  if (event.key === "Enter") searchKnowledge();
+});
+els.studyDueButton?.addEventListener?.("click", loadStudyDue);
+els.studyExportButton?.addEventListener?.("click", exportStudyData);
+els.studyPlanSaveButton?.addEventListener?.("click", saveStudyPlan);
+loadStudyPlan();
 els.applyCleanupButton?.addEventListener?.("click", applyStorageCleanup);
 els.deleteAllTasksButton?.addEventListener?.("click", deleteAllTasksFromClient);
 els.deleteAllTasksSettingsButton?.addEventListener?.("click", deleteAllTasksFromClient);

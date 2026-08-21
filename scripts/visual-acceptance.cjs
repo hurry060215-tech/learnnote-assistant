@@ -119,18 +119,39 @@ async function main() {
   const mobileSettings = await page.evaluate(() => {
     const nav = document.querySelector(".nav-rail")?.getBoundingClientRect();
     const shell = document.querySelector(".settings-view")?.getBoundingClientRect();
+    const menuElement = document.querySelector(".settings-menu");
+    const menu = menuElement?.getBoundingClientRect();
+    const buttons = [...document.querySelectorAll(".settings-menu button")].map(button => {
+      const rect = button.getBoundingClientRect();
+      return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width };
+    });
     return nav && shell ? {
       nav: { top: nav.top, bottom: nav.bottom, width: nav.width, height: nav.height },
       shell: { top: shell.top, bottom: shell.bottom, width: shell.width },
       viewport: { width: innerWidth, height: innerHeight },
-      horizontalOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1
+      horizontalOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+      menu: menu ? {
+        left: menu.left,
+        right: menu.right,
+        width: menu.width,
+        scrollWidth: menuElement.scrollWidth,
+        clientWidth: menuElement.clientWidth,
+        overflowX: getComputedStyle(menuElement).overflowX
+      } : null,
+      buttons,
+      menuRows: new Set(buttons.map(button => Math.round(button.top))).size
     } : { missing: true };
   });
   if (mobileSettings.missing
       || Math.abs(mobileSettings.nav.height - 58) > 0.5
       || Math.abs(mobileSettings.nav.width - mobileSettings.viewport.width) > 0.5
       || Math.abs(mobileSettings.nav.bottom - mobileSettings.viewport.height) > 0.5
-      || mobileSettings.horizontalOverflow) {
+      || mobileSettings.horizontalOverflow
+      || !mobileSettings.menu
+      || mobileSettings.menu.scrollWidth > mobileSettings.menu.clientWidth + 1
+      || ["auto", "scroll"].includes(mobileSettings.menu.overflowX)
+      || mobileSettings.menuRows < 2
+      || mobileSettings.buttons.some(button => button.left < -0.5 || button.right > mobileSettings.viewport.width + 0.5)) {
     throw new Error(`Mobile settings navigation is not anchored to the bottom: ${JSON.stringify(mobileSettings)}`);
   }
   await page.screenshot({ path: `${output}-settings-390.png`, fullPage: true });

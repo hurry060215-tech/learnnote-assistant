@@ -298,9 +298,12 @@ async () => {{
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
   const opened = {{}};
   for (const url of urls) {{
-    const tab = await chrome.tabs.create({{ url, active: true }});
+    const tab = await chrome.tabs.create({{ url: "about:blank", active: true }});
+    const armed = await globalThis.__learnnoteE2E.armCaptureForTab(tab.id);
+    if (!armed) throw new Error("failed to arm on-demand capture for tab " + tab.id);
     opened[url] = tab.id;
-    await sleep(350);
+    await chrome.tabs.update(tab.id, {{ url, active: true }});
+    await sleep(500);
   }}
   return {{ opened }};
 }}

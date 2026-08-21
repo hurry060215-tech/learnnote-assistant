@@ -5,6 +5,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from . import TASK_SCHEMA_VERSION
+
 
 TaskPhase = Literal[
     "queued",
@@ -92,6 +94,9 @@ class TaskOptions(BaseModel):
     frame_interval: int = Field(default=20, ge=1, le=600)
     grid_columns: int = Field(default=3, ge=1, le=6)
     grid_rows: int = Field(default=3, ge=1, le=6)
+    max_frame_count: int = Field(default=900, ge=60, le=2400)
+    resource_budget_mb: int = Field(default=4096, ge=256, le=102400)
+    low_resource_mode: bool = False
     note_style: str = "study"
     note_template: str = "standard"
     summary_depth: str = "standard"
@@ -272,6 +277,69 @@ class SourceIdentity(BaseModel):
     media_sha256: str = ""
 
 
+class SourceEvidence(BaseModel):
+    """A stable, user-visible citation anchor shared by video and documents."""
+
+    schema_version: int = 1
+    evidence_id: str = ""
+    source_type: Literal["video", "pdf", "markdown", "webpage", "task"] = "task"
+    title: str = ""
+    source_uri: str = ""
+    locator: str = ""
+    text: str = ""
+    task_id: str = ""
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class StudyCard(BaseModel):
+    schema_version: int = 1
+    algorithm: str = "fsrs-6.3.2"
+    card_id: str = ""
+    front: str = Field(min_length=1, max_length=1000)
+    back: str = Field(min_length=1, max_length=4000)
+    source_evidence_ids: list[str] = Field(default_factory=list, max_length=8)
+    status: Literal["proposed", "active", "suspended", "deleted"] = "proposed"
+    due_at: str = ""
+    stability: float = 1.0
+    difficulty: float = 5.0
+    fsrs_state: str = "Learning"
+    step: int | None = 0
+    reps: int = 0
+    lapses: int = 0
+    last_reviewed_at: str = ""
+
+
+class StudyReviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    rating: Literal[1, 2, 3, 4]
+
+
+class StudyCardStatusRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["active", "suspended", "deleted"]
+
+
+class StudyPlan(BaseModel):
+    schema_version: int = 1
+    plan_id: str = "default"
+    title: str = "本地学习计划"
+    daily_target: int = Field(default=10, ge=1, le=200)
+    paused: bool = False
+    timezone: str = "UTC"
+    created_at: str = ""
+    updated_at: str = ""
+
+
+class StudyPlanUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(default="本地学习计划", max_length=120)
+    daily_target: int = Field(default=10, ge=1, le=200)
+    paused: bool = False
+
+
 class EvidenceGate(BaseModel):
     name: str
     passed: bool = False
@@ -361,6 +429,7 @@ class DownloadAttempt(BaseModel):
 
 
 class TaskRecord(BaseModel):
+    schema_version: int = Field(default=TASK_SCHEMA_VERSION, ge=1)
     id: str
     handoff_id: str = ""
     source_type: Literal["current_page", "local", "page_text"]
@@ -377,6 +446,8 @@ class TaskRecord(BaseModel):
     error_detail: str = ""
     failed_phase: str = ""
     retry_count: int = 0
+    checkpoint: str = ""
+    checkpoint_updated_at: str = ""
     cancel_requested: bool = False
     cancel_requested_at: str = ""
     cancelled_at: str = ""
