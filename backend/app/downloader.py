@@ -23,6 +23,17 @@ from urllib.parse import unquote, urljoin, urlparse, urlunparse
 import requests
 
 from .models import BrowserCookie, DownloadAttempt, MediaPreflightResult, ResourceCandidate
+from .downloader_policy import (
+    DOWNLOAD_FAILURE_PRIORITY,
+    DownloadError,
+    ManifestEndpointDetected,
+    QuietYtdlpLogger,
+    UnsafeMediaTarget,
+    classify_ytdlp_error as _classify_ytdlp_error,
+    prefer_ytdlp_before_page_scan as _prefer_ytdlp_before_page_scan,
+    should_run_ytdlp_cli as _should_run_ytdlp_cli,
+    truncate_process_output as _truncate_process_output,
+)
 from .runtime import ffmpeg_bin, text_subprocess_kwargs
 from .source_input import clean_task_title
 
@@ -101,17 +112,6 @@ MEDIA_CONTENT_TYPE_SUFFIXES = {
 }
 SUBTITLE_EXTENSIONS = {".vtt", ".srt", ".ass", ".ssa"}
 SUBTITLE_LANGUAGE_PREFERENCES = ("zh-CN", "zh-Hans", "zh-Hant", "zh", "en", "en-US")
-DOWNLOAD_FAILURE_PRIORITY = {
-    "drm_or_encrypted": 50,
-    "media_mismatch": 45,
-    "auth_required": 40,
-    "yt_dlp_timeout": 35,
-    "download_timeout": 35,
-    "network_tls_error": 34,
-    "download_forbidden": 30,
-    "unsupported_manifest": 20,
-    "no_media_found": 10,
-}
 BROWSER_REQUEST_HEADER_ALLOWLIST = {
     "accept": "Accept",
     "accept-language": "Accept-Language",
@@ -157,94 +157,11 @@ YTDLP_DOWNLOAD_TIMEOUT_SECONDS = 1800
 YTDLP_RETRIES = 3
 YTDLP_FRAGMENT_RETRIES = 3
 YTDLP_EXTRACTOR_RETRIES = 3
-YTDLP_FIRST_HOSTS = {
-    "b23.tv",
-    "bilibili.com",
-    "m.bilibili.com",
-    "www.bilibili.com",
-    "youtube.com",
-    "m.youtube.com",
-    "www.youtube.com",
-    "youtu.be",
-}
 PAGE_SCAN_SOURCE_PREFIXES = ("page-scan", "page-frame-scan")
 NON_PRIMARY_FRAME_RE = re.compile(
     r"(^|[./?&=_-])(ad|ads|advert|advertisement|banner|campaign|promo|promotion|activity|event|blackboard|era)([./?&=_-]|$)",
     re.I,
 )
-
-
-class DownloadError(RuntimeError):
-    def __init__(self, code: str, message: str):
-        super().__init__(message)
-        self.code = code
-        self.message = message
-
-
-class ManifestEndpointDetected(RuntimeError):
-    def __init__(self, kind: str, mime: str):
-        super().__init__(kind)
-        self.kind = kind
-        self.mime = mime
-
-
-class UnsafeMediaTarget(requests.RequestException):
-    pass
-
-
-class QuietYtdlpLogger:
-    def debug(self, message: str) -> None:
-        return
-
-    def warning(self, message: str) -> None:
-        return
-
-    def error(self, message: str) -> None:
-        return
-
-
-def _should_run_ytdlp_cli(yt_dlp_module: object) -> bool:
-    # A frozen desktop executable is not a Python interpreter. Running
-    # ``LearnNote.exe -m yt_dlp`` feeds yt-dlp arguments to the desktop CLI.
-    return not getattr(sys, "frozen", False) and bool(getattr(yt_dlp_module, "__file__", ""))
-
-
-def _truncate_process_output(value: object, limit: int = 500) -> str:
-    if isinstance(value, bytes):
-        text = value.decode("utf-8", errors="replace")
-    else:
-        text = str(value or "")
-    text = text.strip()
-    return text[:limit]
-
-
-def _classify_ytdlp_error(message: str) -> str:
-    lowered = (message or "").lower()
-    if "timed out" in lowered or "timeout" in lowered:
-        return "yt_dlp_timeout"
-    if any(marker in lowered for marker in (
-        "unexpected_eof_while_reading",
-        "eof occurred in violation of protocol",
-        "tlsv1 alert",
-        "ssl: eof",
-        "ssl eof",
-    )):
-        return "network_tls_error"
-    if any(marker in lowered for marker in ("login", "cookie", "sign in", "private video", "members-only")):
-        return "auth_required"
-    if any(marker in lowered for marker in ("drm", "encrypted", "eme")):
-        return "drm_or_encrypted"
-    if "unsupported url" in lowered or "no suitable extractor" in lowered:
-        return "no_media_found"
-    return "download_forbidden"
-
-
-def _prefer_ytdlp_before_page_scan(page_url: str) -> bool:
-    try:
-        host = (urlparse(page_url).hostname or "").lower()
-    except Exception:
-        return False
-    return host in YTDLP_FIRST_HOSTS
 
 
 def _clean_filename(value: str) -> str:

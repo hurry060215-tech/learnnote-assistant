@@ -17,6 +17,7 @@ API routers (routers/*.py)
 - `library.py`、`knowledge.py`、`study.py` 和 `observability.py` 都是本地可重建投影，不能成为任务事实源。
 - `adapters.py` 是来源契约；站点特例不能反向污染 API 或任务模型。
 - `downloader.py` 只负责候选排序、预检和下载策略；不生成学习笔记。
+- `downloader_policy.py` 只保存下载错误分类、重试优先级和 yt-dlp 进程策略；它不发起网络请求，便于独立测试和复用。
 - `routers/knowledge_study.py` owns knowledge and study routes; `routers/library.py`
   owns index/search/backup/restore routes; `routers/system.py` owns integration,
   desktop-focus, and preference routes. They import domain services directly and
