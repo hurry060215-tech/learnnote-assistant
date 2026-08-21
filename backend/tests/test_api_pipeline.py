@@ -1843,6 +1843,9 @@ class LocalUploadValidationTests(unittest.TestCase):
                 resource_inventory_path=str(inventory_path),
                 page_preflight_report_path=str(preflight_path),
             )
+            usage_path = task_dir(task.id) / "resource_usage.json"
+            usage_path.write_text(json.dumps({"schema_version": 1, "task_id": task.id, "observed": {"rss_peak_bytes": 123}}), encoding="utf-8")
+            task = update_task(task.id, resource_usage_path=str(usage_path))
 
             diagnostics = render_diagnostics_markdown(task)
             recovery = diagnostic_recovery_profile(task)
@@ -1873,6 +1876,10 @@ class LocalUploadValidationTests(unittest.TestCase):
             self.assertEqual(inventory_export.json()["candidate_count"], 1)
             self.assertNotIn("UID=secret", inventory_export.text)
             self.assertNotIn("secret-token", inventory_export.text)
+            usage_export = self.client.get(f"/api/tasks/{task.id}/exports/resource-usage")
+            self.assertEqual(usage_export.status_code, 200)
+            self.assertEqual(usage_export.json()["observed"]["rss_peak_bytes"], 123)
+            self.assertIn("resource-usage", usage_export.headers["content-disposition"])
             preflight_export = self.client.get(f"/api/tasks/{task.id}/exports/page-preflight-report")
             self.assertEqual(preflight_export.status_code, 200)
             self.assertIn("application/json", preflight_export.headers["content-type"])
@@ -1882,6 +1889,7 @@ class LocalUploadValidationTests(unittest.TestCase):
             try:
                 self.assertEqual(self.client.get(f"/api/tasks/{empty_task.id}/exports/resource-inventory").status_code, 404)
                 self.assertEqual(self.client.get(f"/api/tasks/{empty_task.id}/exports/page-preflight-report").status_code, 404)
+                self.assertEqual(self.client.get(f"/api/tasks/{empty_task.id}/exports/resource-usage").status_code, 404)
             finally:
                 shutil.rmtree(task_dir(empty_task.id), ignore_errors=True)
 
