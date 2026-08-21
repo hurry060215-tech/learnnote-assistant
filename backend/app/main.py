@@ -30,7 +30,7 @@ from .downloader import MediaDownloader, effective_resource_kind, fallback_page_
 from .media import MediaProcessingError, extract_video_clip, probe_duration, probe_media_integrity
 from .library import backup_library, duplicate_groups, library_status, rebuild_index, restore_library, search_library
 from .knowledge import add_evidence, answer_from_evidence, extract_import_text, search_evidence
-from .integrations import integration_manifest
+from .integrations import integration_manifest, notion_export_payload
 from .models import CurrentPageTaskRequest, EvidenceCoverage, MediaIntegrity, MediaPreflightRequest, MediaPreflightResult, PagePreflightRequest, RerunFromMediaRequest, ResourceCandidate, SourceEvidence, SourceInputRequest, StorageCleanupRequest, StudyCard, StudyReviewRequest, TaskOptions, TaskQuestionRequest, TaskRecord, now_iso
 from .observability import read_task_events, redacted_support_manifest
 from .study import due_cards, propose_cards, review_card, save_cards
@@ -4698,6 +4698,24 @@ def api_export_support_package(task_id: str) -> Response:
         buffer.getvalue(),
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.get("/api/tasks/{task_id}/exports/notion")
+def api_export_notion_payload(task_id: str) -> Response:
+    try:
+        task = get_task(task_id)
+        note = read_note(task_id)
+        transcript = read_transcript(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Task not found") from exc
+    if not note.strip():
+        raise HTTPException(status_code=404, detail="Note not found")
+    payload = notion_export_payload(task, note, transcript)
+    return Response(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        media_type="application/json; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="learnnote-{task.id}-notion.json"'},
     )
 
 
