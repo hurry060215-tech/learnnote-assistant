@@ -20,6 +20,11 @@ class UiVisualContractTests(unittest.TestCase):
         self.assertIn("accessibility-visual-acceptance.cjs", workflow)
         self.assertIn("actions/upload-artifact", workflow)
 
+    def test_i18n_audit_script_is_present(self) -> None:
+        script = (ROOT / "scripts" / "audit-i18n.py").read_text(encoding="utf-8")
+        self.assertIn("missing_keys", script)
+        self.assertIn("i18n_before_app", script)
+
 
 if __name__ == "__main__":
     unittest.main()
