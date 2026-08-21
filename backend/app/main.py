@@ -2637,7 +2637,7 @@ MODEL_PROVIDER_PRESETS = [
 
 
 ASSISTANT_CAPABILITIES = {
-    "routes": ["current_page_direct", "local_upload", "download_only", "rerun_from_media", "page_text", "task_qa", "library_search"],
+    "routes": ["current_page_direct", "local_upload", "download_only", "rerun_from_media", "page_text", "task_qa", "library_search", "knowledge_import", "knowledge_search", "study_loop"],
     "direct_media": {
         "file_extensions": ["mp4", "m4v", "mov", "mkv", "webm", "flv", "avi"],
         "manifests": ["m3u8", "mpd"],
@@ -2648,6 +2648,7 @@ ASSISTANT_CAPABILITIES = {
         "default_frame_interval": 20,
         "default_grid": "3x3",
         "outputs": ["media.mp4", "transcript.json", "visual_index.json", "note.md", "qa.md", "bundle.zip"],
+        "resource_budget": {"default_mb": 4096, "max_frame_count": 900, "low_resource_mode": True},
     },
     "non_goals": ["tab_recording", "drm_bypass", "progress_spoofing", "auto_answering"],
     "media_adapter_contract_version": MEDIA_ADAPTER_CONTRACT_VERSION,
