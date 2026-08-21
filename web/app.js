@@ -497,7 +497,10 @@ const els = {
   unifiedExportButton: document.querySelector("#unifiedExportButton"),
   newNoteVersionButton: document.querySelector("#newNoteVersionButton"),
   bundleButton: document.querySelector("#bundleButton"),
+  sanitizedBundleButton: document.querySelector("#sanitizedBundleButton"),
+  notionExportButton: document.querySelector("#notionExportButton"),
   diagnosticsButton: document.querySelector("#diagnosticsButton"),
+  supportPackageButton: document.querySelector("#supportPackageButton"),
   visualWindowsButton: document.querySelector("#visualWindowsButton"),
   manifestButton: document.querySelector("#manifestButton"),
   subtitlesButton: document.querySelector("#subtitlesButton"),
@@ -8350,7 +8353,10 @@ async function renderDetail() {
     if (els.unifiedExportButton) els.unifiedExportButton.disabled = true;
     if (els.newNoteVersionButton) els.newNoteVersionButton.hidden = true;
     els.bundleButton.disabled = true;
+    if (els.sanitizedBundleButton) els.sanitizedBundleButton.disabled = true;
+    if (els.notionExportButton) els.notionExportButton.disabled = true;
     els.diagnosticsButton.disabled = true;
+    if (els.supportPackageButton) els.supportPackageButton.disabled = true;
     if (els.visualWindowsButton) els.visualWindowsButton.disabled = true;
     if (els.manifestButton) els.manifestButton.disabled = true;
     if (els.subtitlesButton) els.subtitlesButton.disabled = true;
@@ -8372,7 +8378,10 @@ async function renderDetail() {
   if (els.unifiedExportButton) els.unifiedExportButton.disabled = !unifiedExportType(task);
   if (els.newNoteVersionButton) els.newNoteVersionButton.hidden = !canCreateNoteVersion(task);
   els.bundleButton.disabled = !hasTaskBundle(task);
+  if (els.sanitizedBundleButton) els.sanitizedBundleButton.disabled = !hasTaskBundle(task);
+  if (els.notionExportButton) els.notionExportButton.disabled = !hasNote;
   els.diagnosticsButton.disabled = !hasTaskDiagnostics(task);
+  if (els.supportPackageButton) els.supportPackageButton.disabled = !task?.id;
   if (els.visualWindowsButton) els.visualWindowsButton.disabled = !hasVisualWindowExport(task);
   if (els.manifestButton) els.manifestButton.disabled = !hasTaskBundle(task);
   if (els.subtitlesButton) els.subtitlesButton.disabled = !hasExportableSubtitle(task);
@@ -9012,6 +9021,8 @@ function unifiedExportType(task) {
 }
 
 els.bundleButton.onclick = () => exportSelectedTask("bundle", els.bundleButton);
+els.sanitizedBundleButton?.addEventListener?.("click", () => exportSelectedTask("sanitized-bundle", els.sanitizedBundleButton));
+els.notionExportButton?.addEventListener?.("click", () => exportSelectedTask("notion", els.notionExportButton));
 if (els.unifiedExportButton) {
   els.unifiedExportButton.onclick = () => {
     const task = tasks.find(item => item.id === selectedTaskId);
@@ -9024,6 +9035,7 @@ if (els.manifestButton) {
   els.manifestButton.onclick = () => exportSelectedTask("manifest", els.manifestButton);
 }
 els.diagnosticsButton.onclick = () => exportSelectedTask("diagnostics", els.diagnosticsButton);
+els.supportPackageButton?.addEventListener?.("click", () => exportSelectedTask("support-package", els.supportPackageButton));
 if (els.visualWindowsButton) {
   els.visualWindowsButton.onclick = () => exportSelectedTask("visual-windows", els.visualWindowsButton);
 }
