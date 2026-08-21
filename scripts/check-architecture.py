@@ -7,7 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "backend" / "app"
 BOUNDARY_MODULES = {"library", "knowledge", "study", "integrations", "observability"}
-ROUTER_MODULES = {"knowledge_study", "system"}
+ROUTER_MODULES = {"knowledge_study", "library", "system"}
 FORBIDDEN_FROM_BOUNDARY = {"main", "processor", "downloader"}
 
 
