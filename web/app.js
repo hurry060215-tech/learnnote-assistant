@@ -392,6 +392,7 @@ const els = {
   knowledgeSearchButton: document.querySelector("#knowledgeSearchButton"),
   knowledgeSearchResults: document.querySelector("#knowledgeSearchResults"),
   studyDueButton: document.querySelector("#studyDueButton"),
+  studyExportButton: document.querySelector("#studyExportButton"),
   studyDueList: document.querySelector("#studyDueList"),
   previewCleanupButton: document.querySelector("#previewCleanupButton"),
   applyCleanupButton: document.querySelector("#applyCleanupButton"),
@@ -5641,6 +5642,26 @@ async function loadStudyDue() {
   }
 }
 
+async function exportStudyData() {
+  if (!els.studyExportButton) return;
+  els.studyExportButton.disabled = true;
+  try {
+    const payload = await fetchJson(apiUrl("/api/study/export"));
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `learnnote-study-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(link.href);
+  } catch (error) {
+    if (els.studyDueList) els.studyDueList.textContent = error?.message || "复习记录导出失败。";
+  } finally {
+    els.studyExportButton.disabled = false;
+  }
+}
+
 async function reviewStudyCard(cardId, rating) {
   if (!cardId) return;
   try {
@@ -9263,6 +9284,7 @@ els.knowledgeSearchInput?.addEventListener?.("keydown", event => {
   if (event.key === "Enter") searchKnowledge();
 });
 els.studyDueButton?.addEventListener?.("click", loadStudyDue);
+els.studyExportButton?.addEventListener?.("click", exportStudyData);
 els.applyCleanupButton?.addEventListener?.("click", applyStorageCleanup);
 els.deleteAllTasksButton?.addEventListener?.("click", deleteAllTasksFromClient);
 els.deleteAllTasksSettingsButton?.addEventListener?.("click", deleteAllTasksFromClient);

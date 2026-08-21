@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from app.models import SourceEvidence
-from app.study import due_cards, list_cards, propose_cards, review_card, review_history, save_cards, set_card_status, study_summary
+from app.study import due_cards, export_study_data, list_cards, propose_cards, review_card, review_history, save_cards, set_card_status, study_summary
 
 
 class StudyLoopTests(unittest.TestCase):
@@ -29,6 +29,9 @@ class StudyLoopTests(unittest.TestCase):
                 self.assertEqual(list_cards("suspended")[0].card_id, stored[0].card_id)
                 self.assertEqual(len(review_history(stored[0].card_id)), 1)
                 self.assertEqual(study_summary()["reviewed_today"], 1)
+                exported = export_study_data()
+                self.assertEqual(exported["algorithm"], "fsrs-6.3.2")
+                self.assertEqual(len(exported["reviews"]), 1)
 
 
 if __name__ == "__main__":

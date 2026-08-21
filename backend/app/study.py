@@ -237,3 +237,13 @@ def study_summary() -> dict[str, object]:
     finally:
         connection.close()
     return {"schema_version": STUDY_SCHEMA_VERSION, "algorithm": FSRS_ALGORITHM, "counts": counts, "due_count": due, "reviewed_today": reviewed_today}
+
+
+def export_study_data() -> dict[str, object]:
+    return {
+        "schema_version": STUDY_SCHEMA_VERSION,
+        "algorithm": FSRS_ALGORITHM,
+        "exported_at": datetime.now(timezone.utc).isoformat(),
+        "cards": [card.model_dump(mode="json") for card in list_cards(limit=1000)],
+        "reviews": review_history(limit=5000),
+    }
