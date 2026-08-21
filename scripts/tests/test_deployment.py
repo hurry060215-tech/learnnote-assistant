@@ -120,6 +120,18 @@ class DeploymentContractTests(unittest.TestCase):
         self.assertIn("Installed release notes version", smoke)
         self.assertIn("D:\\LearnNoteReleaseSmoke", smoke)
 
+    def test_macos_preview_workflow_has_unsigned_safe_fallback_and_optional_notarization(self) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "macos-release.yml").read_text(encoding="utf-8")
+        spec = (ROOT / "LearnNote.macos.spec").read_text(encoding="utf-8")
+        self.assertIn("runs-on: macos-latest", workflow)
+        self.assertIn("LearnNote.macos.spec", workflow)
+        self.assertIn("LearnNote-macOS-unsigned.zip", workflow)
+        self.assertIn("xcrun notarytool submit", workflow)
+        self.assertIn("codesign --verify", workflow)
+        self.assertIn("APPLE_CERTIFICATE_BASE64", workflow)
+        self.assertIn('name="LearnNote.app"', spec)
+        self.assertIn("optional_package in", spec)
+
 
 if __name__ == "__main__":
     unittest.main()
