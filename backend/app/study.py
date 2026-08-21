@@ -56,7 +56,7 @@ def _connect() -> sqlite3.Connection:
 
 def _row_to_card(row: sqlite3.Row) -> StudyCard:
     return StudyCard(
-        schema_version=int(row["schema_version"]), algorithm=FSRS_ALGORITHM,
+        schema_version=max(int(row["schema_version"]), STUDY_SCHEMA_VERSION), algorithm=FSRS_ALGORITHM,
         card_id=row["card_id"], front=row["front"], back=row["back"],
         source_evidence_ids=json.loads(row["source_evidence_ids"] or "[]"),
         status=row["status"], due_at=row["due_at"], stability=float(row["stability"]),
