@@ -4614,6 +4614,46 @@ def api_export_bundle(task_id: str) -> Response:
     return Response(buffer.getvalue(), media_type="application/zip", headers=headers)
 
 
+@app.get("/api/tasks/{task_id}/exports/sanitized-bundle")
+def api_export_sanitized_bundle(task_id: str) -> Response:
+    """Export a shareable study bundle without media, cookies, signed URLs, or diagnostics."""
+    try:
+        task = get_task(task_id)
+        note = read_note(task_id)
+        transcript = read_transcript(task_id)
+        visual_index = read_visual_index(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Task not found") from exc
+    qa_history = read_task_qa_history(task.id)
+    if not note.strip() and not transcript.get("segments") and not visual_index.get("windows"):
+        raise HTTPException(status_code=404, detail="Shareable study artifacts not found")
+    safe_manifest = {
+        "schema_version": 1,
+        "bundle_type": "sanitized-study",
+        "privacy": {
+            "original_media": False,
+            "cookies": False,
+            "signed_urls": False,
+            "diagnostics": False,
+            "source_paths": False,
+        },
+        "task": {"id": task.id, "title": task.title, "source_type": task.source_type, "status": task.status},
+        "artifacts": {"note": bool(note.strip()), "transcript": bool(transcript.get("segments")), "visual_index": bool(visual_index.get("windows")), "qa": bool(qa_history)},
+    }
+    buffer = BytesIO()
+    with ZipFile(buffer, "w", ZIP_DEFLATED) as archive:
+        archive.writestr("manifest.json", json.dumps(safe_manifest, ensure_ascii=False, indent=2))
+        if note.strip():
+            archive.writestr("note.md", note)
+        archive.writestr("transcript.json", json.dumps(transcript, ensure_ascii=False, indent=2))
+        archive.writestr("visual_index.json", json.dumps(visual_index, ensure_ascii=False, indent=2))
+        if qa_history:
+            archive.writestr("qa_history.json", json.dumps({"schema_version": 1, "items": qa_history}, ensure_ascii=False, indent=2))
+    filename = f"learnnote-{task.id}-sanitized-study.zip"
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    return Response(buffer.getvalue(), media_type="application/zip", headers=headers)
+
+
 @app.get("/api/tasks/{task_id}/exports/diagnostics")
 def api_export_diagnostics(task_id: str) -> PlainTextResponse:
     try:
