@@ -154,6 +154,15 @@ def remove_task(task_id: str) -> bool:
 
 
 def rebuild_index() -> dict[str, int | str]:
+    with _lock:
+        connection, fts_available = _connect()
+        try:
+            connection.execute("DELETE FROM library_tasks")
+            if fts_available:
+                connection.execute("DELETE FROM library_tasks_fts")
+            connection.commit()
+        finally:
+            connection.close()
     indexed = 0
     skipped = 0
     for path in sorted(TASK_DIR.glob("*/task.json")):

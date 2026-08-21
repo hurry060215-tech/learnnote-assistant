@@ -45,6 +45,10 @@ class LocalLibraryIndexTests(unittest.TestCase):
                 rebuilt = rebuild_index()
                 self.assertEqual(rebuilt["indexed"], 1)
                 self.assertEqual(search_library("梯度")[0]["task_id"], "lesson-1")
+                (task_dir / "task.json").unlink()
+                rebuilt_empty = rebuild_index()
+                self.assertEqual(rebuilt_empty["indexed"], 0)
+                self.assertEqual(library_status()["indexed_task_count"], 0)
 
     def test_backup_and_restore_validate_schema_and_preserve_index(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
