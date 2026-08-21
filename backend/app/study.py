@@ -34,6 +34,17 @@ def _connect() -> sqlite3.Connection:
            fsrs_state TEXT NOT NULL DEFAULT 'Learning', step INTEGER NOT NULL DEFAULT 0
         )"""
     )
+    connection.execute(
+        """CREATE TABLE IF NOT EXISTS study_reviews (
+           review_id INTEGER PRIMARY KEY AUTOINCREMENT,
+           card_id TEXT NOT NULL,
+           rating INTEGER NOT NULL,
+           reviewed_at TEXT NOT NULL,
+           due_at TEXT NOT NULL,
+           stability REAL NOT NULL,
+           difficulty REAL NOT NULL
+        )"""
+    )
     columns = {row[1] for row in connection.execute("PRAGMA table_info(study_cards)").fetchall()}
     if "fsrs_state" not in columns:
         connection.execute("ALTER TABLE study_cards ADD COLUMN fsrs_state TEXT NOT NULL DEFAULT 'Learning'")
@@ -181,6 +192,10 @@ def review_card(card_id: str, rating: int) -> StudyCard:
             "UPDATE study_cards SET schema_version=?, due_at=?, stability=?, difficulty=?, reps=?, lapses=?, last_reviewed_at=?, fsrs_state=?, step=? WHERE card_id=?",
             (updated.schema_version, updated.due_at, updated.stability, updated.difficulty, updated.reps, updated.lapses, updated.last_reviewed_at, updated.fsrs_state, updated.step, card_id),
         )
+        connection.execute(
+            "INSERT INTO study_reviews(card_id, rating, reviewed_at, due_at, stability, difficulty) VALUES (?, ?, ?, ?, ?, ?)",
+            (card_id, rating, updated.last_reviewed_at, updated.due_at, updated.stability, updated.difficulty),
+        )
         connection.commit()
         return updated
     finally:
@@ -193,3 +208,32 @@ def _parse_datetime(value: str) -> datetime | None:
     except (TypeError, ValueError):
         return None
     return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed.astimezone(timezone.utc)
+
+
+def review_history(card_id: str = "", limit: int = 200) -> list[dict[str, object]]:
+    connection = _connect()
+    try:
+        cap = max(1, min(int(limit or 200), 1000))
+        if card_id:
+            rows = connection.execute("SELECT * FROM study_reviews WHERE card_id = ? ORDER BY reviewed_at DESC LIMIT ?", (card_id, cap)).fetchall()
+        else:
+            rows = connection.execute("SELECT * FROM study_reviews ORDER BY reviewed_at DESC LIMIT ?", (cap,)).fetchall()
+    finally:
+        connection.close()
+    return [dict(row) for row in rows]
+
+
+def study_summary() -> dict[str, object]:
+    now = datetime.now(timezone.utc)
+    today = now.date().isoformat()
+    connection = _connect()
+    try:
+        counts = {
+            str(row["status"]): int(row["count"])
+            for row in connection.execute("SELECT status, COUNT(*) AS count FROM study_cards GROUP BY status")
+        }
+        due = int(connection.execute("SELECT COUNT(*) FROM study_cards WHERE status = 'active' AND (due_at = '' OR due_at <= ?)", (now.isoformat(),)).fetchone()[0])
+        reviewed_today = int(connection.execute("SELECT COUNT(*) FROM study_reviews WHERE reviewed_at LIKE ?", (f"{today}%",)).fetchone()[0])
+    finally:
+        connection.close()
+    return {"schema_version": STUDY_SCHEMA_VERSION, "algorithm": FSRS_ALGORITHM, "counts": counts, "due_count": due, "reviewed_today": reviewed_today}

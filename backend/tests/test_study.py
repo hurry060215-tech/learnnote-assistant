@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from app.models import SourceEvidence
-from app.study import due_cards, list_cards, propose_cards, review_card, save_cards, set_card_status
+from app.study import due_cards, list_cards, propose_cards, review_card, review_history, save_cards, set_card_status, study_summary
 
 
 class StudyLoopTests(unittest.TestCase):
@@ -27,6 +27,8 @@ class StudyLoopTests(unittest.TestCase):
                 suspended = set_card_status(stored[0].card_id, "suspended")
                 self.assertEqual(suspended.status, "suspended")
                 self.assertEqual(list_cards("suspended")[0].card_id, stored[0].card_id)
+                self.assertEqual(len(review_history(stored[0].card_id)), 1)
+                self.assertEqual(study_summary()["reviewed_today"], 1)
 
 
 if __name__ == "__main__":

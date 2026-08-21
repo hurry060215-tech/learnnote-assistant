@@ -33,7 +33,7 @@ from .knowledge import add_evidence, answer_from_evidence, evidence_for_task, ex
 from .integrations import integration_manifest, notion_export_payload
 from .models import CurrentPageTaskRequest, EvidenceCoverage, MediaIntegrity, MediaPreflightRequest, MediaPreflightResult, PagePreflightRequest, RerunFromMediaRequest, ResourceCandidate, SourceEvidence, SourceInputRequest, StorageCleanupRequest, StudyCard, StudyCardStatusRequest, StudyReviewRequest, TaskOptions, TaskQuestionRequest, TaskRecord, now_iso
 from .observability import read_task_events, redacted_support_manifest
-from .study import due_cards, list_cards, propose_cards, review_card, save_cards, set_card_status
+from .study import due_cards, list_cards, propose_cards, review_card, review_history, save_cards, set_card_status, study_summary
 from .processor import browser_subtitle_text_is_player_ui, enrich_resource_candidates_with_active_video, process_current_page_task, process_local_video_task, read_note, read_transcript, read_visual_index, redacted_request_dump, redacted_resource
 from .reliability import current_page_source_identity, local_source_identity
 from .runtime import ffmpeg_bin, ffprobe_bin
@@ -2633,7 +2633,7 @@ MODEL_PROVIDER_PRESETS = [
 
 
 ASSISTANT_CAPABILITIES = {
-    "routes": ["current_page_direct", "local_upload", "download_only", "rerun_from_media", "page_text", "task_qa", "library_search", "knowledge_import", "knowledge_search", "study_loop", "study_proposals", "task_events", "support_package", "integration_manifest", "notion_export"],
+    "routes": ["current_page_direct", "local_upload", "download_only", "rerun_from_media", "page_text", "task_qa", "library_search", "knowledge_import", "knowledge_search", "study_loop", "study_proposals", "study_summary", "task_events", "support_package", "integration_manifest", "notion_export"],
     "direct_media": {
         "file_extensions": ["mp4", "m4v", "mov", "mkv", "webm", "flv", "avi"],
         "manifests": ["m3u8", "mpd"],
@@ -4325,6 +4325,16 @@ def api_study_card_status(card_id: str, request: StudyCardStatusRequest) -> dict
         status = 404 if code == "card_not_found" else 422
         raise HTTPException(status_code=status, detail={"code": code, "message": "卡片不存在或状态无效。"}) from exc
     return {"card": card.model_dump(mode="json")}
+
+
+@app.get("/api/study/summary")
+def api_study_summary() -> dict:
+    return study_summary()
+
+
+@app.get("/api/study/reviews")
+def api_study_reviews(card_id: str = "", limit: int = 200) -> dict:
+    return {"reviews": review_history(card_id, limit)}
 
 
 @app.post("/api/study/cards/{card_id}/review")

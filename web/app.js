@@ -5630,7 +5630,11 @@ async function loadStudyDue() {
   if (!els.studyDueList) return;
   els.studyDueList.textContent = "正在读取复习记录…";
   try {
-    const result = await fetchJson(apiUrl("/api/study/due?limit=20"));
+    const [result, summary] = await Promise.all([
+      fetchJson(apiUrl("/api/study/due?limit=20")),
+      fetchJson(apiUrl("/api/study/summary"))
+    ]);
+    if (els.studyDueButton) els.studyDueButton.textContent = `到期 ${Number(summary?.due_count || 0)} · 今日 ${Number(summary?.reviewed_today || 0)}`;
     renderStudyDue(result?.cards || []);
   } catch (error) {
     els.studyDueList.textContent = error?.message || "无法读取复习卡片。";
