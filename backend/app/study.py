@@ -64,6 +64,7 @@ def save_cards(cards: list[StudyCard]) -> list[StudyCard]:
         for card in cards:
             item = card.model_copy(update={
                 "schema_version": STUDY_SCHEMA_VERSION,
+                "card_id": card.card_id or uuid4().hex,
                 "status": "active" if card.status == "proposed" else card.status,
                 "due_at": card.due_at or now,
             })
@@ -72,7 +73,7 @@ def save_cards(cards: list[StudyCard]) -> list[StudyCard]:
                    (card_id, schema_version, front, back, source_evidence_ids, status, due_at,
                     stability, difficulty, reps, lapses, last_reviewed_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (item.card_id or uuid4().hex, item.schema_version, item.front, item.back,
+                (item.card_id, item.schema_version, item.front, item.back,
                  json.dumps(item.source_evidence_ids, ensure_ascii=False), item.status, item.due_at,
                  item.stability, item.difficulty, item.reps, item.lapses, item.last_reviewed_at),
             )
