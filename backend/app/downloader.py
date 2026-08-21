@@ -34,8 +34,7 @@ from .downloader_policy import (
     should_run_ytdlp_cli as _should_run_ytdlp_cli,
     truncate_process_output as _truncate_process_output,
 )
-from .media_kinds import classify_resource as _contract_classify_resource
-from .media_kinds import effective_resource_kind as _contract_effective_resource_kind
+from .media_kinds import classify_resource, effective_resource_kind
 from .runtime import ffmpeg_bin, text_subprocess_kwargs
 from .source_input import clean_task_title
 
@@ -1645,92 +1644,6 @@ def choose_ytdlp_subtitle_language(info: dict) -> tuple[str, bool]:
         for lang in subtitles:
             return str(lang), automatic
     return "", False
-
-
-def classify_resource(url: str, mime: str = "") -> str:
-    lowered = url.lower()
-    mime_lower = mime.lower()
-    if lowered.startswith("blob:"):
-        return "blob"
-    if mime_lower.startswith("image/") or _is_clearly_non_media_asset_url(url):
-        return "unknown"
-    if "mpegurl" in mime_lower:
-        return "hls"
-    if "dash+xml" in mime_lower:
-        return "dash"
-    if not FRAGMENT_EXT_RE.search(lowered) and "m3u8" in lowered:
-        return "hls"
-    if not FRAGMENT_EXT_RE.search(lowered) and ".mpd" in lowered:
-        return "dash"
-    try:
-        parsed = urlparse(url)
-        subtitle_context = parsed.path
-    except (TypeError, ValueError):
-        subtitle_context = lowered
-    if re.search(r"(?:^|[/?&=._-])(?:subtitle|subtitles|caption|captions)(?:[/?&=._-]|$)", subtitle_context, re.I):
-        return "subtitle"
-    if "audio/" in mime_lower or "application/ogg" in mime_lower:
-        return "audio"
-    if "video/" in mime_lower or "application/mp4" in mime_lower:
-        return "video"
-    if "text/vtt" in mime_lower or "subrip" in mime_lower:
-        return "subtitle"
-    if FRAGMENT_EXT_RE.search(lowered):
-        return "fragment"
-    if AUDIO_EXT_RE.search(lowered):
-        return "audio"
-    if MEDIA_EXT_RE.search(lowered):
-        return "video"
-    if SUBTITLE_EXT_RE.search(lowered):
-        return "subtitle"
-    return "unknown"
-
-
-def _is_clearly_non_media_asset_url(url: str) -> bool:
-    try:
-        path = urlparse(url or "").path.lower()
-    except (TypeError, ValueError):
-        path = str(url or "").lower()
-    if re.search(r"\.(?:css|js|mjs|map|wasm|woff2?|ttf|otf|eot)$", path, re.I):
-        return True
-    if re.search(r"\.(?:jpe?g|png|gif|webp|avif|svg|ico)$", path, re.I):
-        return True
-    image_extensions = (".jpg", ".jpeg", ".png", ".gif", ".webp")
-    transformed_extensions = (".avi", ".avif", ".webp")
-    for marker in ("@", "%40"):
-        source, found, transform = path.partition(marker)
-        if (
-            found
-            and source.endswith(image_extensions)
-            and transform.endswith(transformed_extensions)
-            and "/" not in transform
-        ):
-            return True
-    return False
-
-
-def effective_resource_kind(candidate: ResourceCandidate) -> str:
-    if _is_clearly_non_media_asset_url(candidate.resolved_url or candidate.url) or str(candidate.mime or "").lower().startswith("image/"):
-        return "unknown"
-    if candidate.resolved_url and candidate.resolved_url != candidate.url:
-        resolved = classify_resource(candidate.resolved_url, candidate.mime)
-        if resolved in {"hls", "dash", "video", "audio", "subtitle"}:
-            return resolved
-    inferred = classify_resource(candidate.url, candidate.mime)
-    if inferred != "unknown":
-        return inferred
-    declared = (candidate.kind or "").lower()
-    if declared in {"video", "audio", "hls", "dash", "subtitle", "fragment", "blob"}:
-        return declared
-    if _is_scannable_play_endpoint(candidate):
-        return "video"
-    return "unknown"
-
-
-# Compatibility names remain exported from downloader while the pure
-# classification contract is owned by media_kinds.py.
-classify_resource = _contract_classify_resource
-effective_resource_kind = _contract_effective_resource_kind
 
 
 def score_kind(url: str, source: str, kind: str) -> int:
