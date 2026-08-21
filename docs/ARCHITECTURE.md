@@ -20,6 +20,7 @@ API routers (routers/*.py)
 - `media_kinds.py` 只负责无网络的媒体类型识别和有效类型归一化；`downloader.py` 保留兼容导出，避免旧调用方迁移时改变行为。
 - `downloader_policy.py` 只保存下载错误分类、重试优先级和 yt-dlp 进程策略；它不发起网络请求，便于独立测试和复用。
 - `processor_state.py` 只负责取消、失败收口、checkpoint、证据门禁和资源报告；`processor.py` 负责阶段编排，不把状态持久化细节重新复制回流水线。
+- `summary_diagnostics.py` 只负责总结/视觉调用的脱敏诊断计划和失败分类；`processor.py` 只负责把诊断结果接回任务阶段，不直接维护诊断规则。
 - `routers/knowledge_study.py` owns knowledge and study routes; `routers/library.py`
   owns index/search/backup/restore routes; `routers/system.py` owns integration,
   desktop-focus, and preference routes. They import domain services directly and
