@@ -28,7 +28,6 @@ from .adapters import MEDIA_ADAPTER_CONTRACT_VERSION, media_adapter_descriptors
 from .config import BACKEND_ORIGIN, DATA_DIR, DEPLOYMENT_MODE, LLM_API_KEY, LLM_BASE_URL, LLM_MAX_RETRIES, LLM_MODEL, LLM_REQUEST_TIMEOUT_SECONDS, MODEL_CACHE_DIR, PUBLIC_DEPLOYMENT, PUBLIC_PASSWORD, PUBLIC_USERNAME, STATIC_DIR, TASK_DIR, TEMP_DIR, UPLOAD_DIR, WEB_DIR, ensure_dirs
 from .downloader import MediaDownloader, effective_resource_kind, fallback_page_contexts, media_file_video_signature, preflight_media_resource, rank_media_candidates
 from .media import MediaProcessingError, extract_video_clip, probe_duration, probe_media_integrity
-from .library import backup_library, duplicate_groups, library_status, rebuild_index, restore_library, search_library
 from .knowledge import add_evidence, answer_from_evidence, evidence_for_task, extract_import_text, remove_evidence, search_evidence
 from .integrations import notion_export_payload
 from .embeddings import embedding_status
@@ -42,6 +41,7 @@ from .source_input import SourceInputError, clean_task_title, normalize_source_i
 from .storage import cleanup_tasks, create_task, delete_all_tasks, delete_task, get_task, list_tasks, read_json, request_task_cancel, storage_summary, task_dir, update_task, write_json
 from .routers.knowledge_study import knowledge_router, study_router, task_study_router
 from .routers.system import system_router
+from .routers.library import library_router
 from .summarizer import chat_completion_provider_kwargs, llm_base_host, llm_model_supports_vision, llm_provider_name, visual_window_review_question_lines
 
 ensure_dirs()
@@ -51,6 +51,7 @@ app.include_router(knowledge_router)
 app.include_router(study_router)
 app.include_router(task_study_router)
 app.include_router(system_router)
+app.include_router(library_router)
 _extension_heartbeat_at = 0.0
 _extension_version = ""
 _extension_protocol_version = 0
@@ -4101,76 +4102,6 @@ def api_list_tasks() -> dict:
 @app.get("/api/storage")
 def api_storage_summary() -> dict:
     return storage_summary()
-
-
-@app.get("/api/library/status")
-def api_library_status() -> dict:
-    return library_status()
-
-
-@app.get("/api/library/search")
-def api_library_search(q: str = "", limit: int = 50) -> dict:
-    return {"query": q, "results": search_library(q, limit)}
-
-
-@app.get("/api/library/duplicates")
-def api_library_duplicates() -> dict:
-    return {"groups": duplicate_groups()}
-
-
-@app.post("/api/library/rebuild")
-def api_library_rebuild() -> dict:
-    return rebuild_index()
-
-
-@app.post("/api/library/backup")
-def api_library_backup() -> dict:
-    path = backup_library()
-    return {
-        "status": "pass",
-        "path": str(path),
-        "name": path.name,
-        "download_url": f"/api/library/backup/{path.name}",
-        "bytes": path.stat().st_size,
-    }
-
-
-@app.get("/api/library/backup/{name}")
-def api_library_backup_file(name: str) -> FileResponse:
-    candidate = (DATA_DIR / "exports" / name).resolve()
-    export_root = (DATA_DIR / "exports").resolve()
-    if Path(name).name != name or candidate.parent != export_root or candidate.suffix.lower() != ".sqlite3" or not candidate.is_file():
-        raise HTTPException(status_code=404, detail={"code": "library_backup_not_found", "message": "备份文件不存在。"})
-    return FileResponse(candidate, media_type="application/vnd.sqlite3", filename=candidate.name)
-
-
-@app.post("/api/library/restore")
-async def api_library_restore(file: UploadFile = File(...)) -> dict:
-    temporary = TEMP_DIR / f"library-upload-{uuid4().hex}.sqlite3"
-    try:
-        written = 0
-        with temporary.open("wb") as handle:
-            while True:
-                chunk = await file.read(1024 * 1024)
-                if not chunk:
-                    break
-                written += len(chunk)
-                if written > 128 * 1024 * 1024:
-                    raise HTTPException(status_code=413, detail={"code": "library_backup_too_large", "message": "资料库备份超过 128 MB。"})
-                handle.write(chunk)
-        try:
-            return restore_library(temporary)
-        except ValueError as exc:
-            code = str(exc)
-            messages = {
-                "library_backup_missing": "备份文件不存在。",
-                "library_backup_too_large": "资料库备份超过 128 MB。",
-                "library_backup_invalid": "资料库备份不是有效的 SQLite 文件。",
-                "library_backup_schema_mismatch": "资料库备份版本不兼容或缺少必要表。",
-            }
-            raise HTTPException(status_code=400, detail={"code": code, "message": messages.get(code, "资料库备份无法恢复。")}) from exc
-    finally:
-        temporary.unlink(missing_ok=True)
 
 
 def api_knowledge_evidence(evidence: SourceEvidence) -> dict:
