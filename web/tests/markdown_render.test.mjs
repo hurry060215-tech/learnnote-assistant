@@ -185,6 +185,7 @@ context.window.localStorage.setItem("learnnote_model_settings", JSON.stringify({
   whisper_model: "small"
 }));
 const webCode = await readFile(new URL("../app.js", import.meta.url), "utf8");
+const markdownCode = await readFile(new URL("../markdown.js", import.meta.url), "utf8");
 const indexHtml = await readFile(new URL("../index.html", import.meta.url), "utf8");
 const stylesCss = await readFile(new URL("../styles.css", import.meta.url), "utf8");
 const workspaceCss = await readFile(new URL("../workspace.css", import.meta.url), "utf8");
@@ -195,6 +196,7 @@ const editorialCode = await readFile(new URL("../editorial.js", import.meta.url)
 assert.doesNotMatch(matureCss, /body\[data-app-view="notes"\]\s+\.task-controls\s*\{\s*display:\s*none\s*!important/);
 assert.match(matureCss, /body\[data-app-view="notes"\]\s+\.task-controls\s*\{[^}]*display:\s*flex\s*!important/);
 assert.match(webCode, /task\.awaiting_confirmation\s*\?\s*"放弃并删除"\s*:\s*"删除"/);
+vm.runInContext(markdownCode, context);
 vm.runInContext(webCode, context);
 vm.runInContext(editorialCode, context);
 
@@ -235,6 +237,8 @@ assert.match(indexHtml, /id="editorialMediaConfirm"/);
 assert.match(indexHtml, /id="editorialProgressSteps"/);
 assert.match(indexHtml, /id="editorialBrowserWaitBar"/);
 assert.match(indexHtml, /id="editorialContinue"/);
+assert.match(indexHtml, /src="\/web\/markdown\.js/);
+assert.equal(typeof context.LearnNoteMarkdown.markdownToHtml, "function");
 assert.match(indexHtml, /开始生成笔记/);
 assert.deepEqual(Array.from(context.window.LearnNoteEditorial.stages), ["获取视频", "检查内容", "生成字幕", "理解画面", "整理笔记"]);
 assert.equal(context.window.LearnNoteEditorial.workflowStageIndex({ workflow_stage: "vision" }), 3);

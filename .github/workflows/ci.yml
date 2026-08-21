@@ -35,7 +35,7 @@ jobs:
           node --check extension/sidepanel.js
           node --check web/app.js
           Get-ChildItem extension/tests/*.test.mjs | ForEach-Object { node $_.FullName }
-          node web/tests/markdown_render.test.mjs
+          Get-ChildItem web/tests/*.test.mjs | ForEach-Object { node $_.FullName }
       - name: Desktop and release checks
         run: |
           python -m unittest discover scripts/tests -p "test_*.py"

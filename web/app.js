@@ -1629,6 +1629,8 @@ function safeNoteMediaUrl(value) {
   return "";
 }
 
+globalThis.LearnNoteMarkdown?.configure?.({ safeNoteMediaUrl });
+
 function safeExternalUrl(value) {
   const raw = String(value || "").trim();
   return /^https?:\/\//i.test(raw) ? raw : "";
@@ -1649,6 +1651,7 @@ function apiErrorMessage(payload, fallback) {
 }
 
 function inlineMarkdown(value) {
+  if (globalThis.LearnNoteMarkdown?.inlineMarkdown) return globalThis.LearnNoteMarkdown.inlineMarkdown(value);
   return escapeHtml(value)
     .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>')
     .replace(/`([^`]+)`/g, "<code>$1</code>")
@@ -1699,6 +1702,7 @@ function markdownTableHtml(header, rows, alignments) {
 }
 
 function markdownToHtml(markdown) {
+  if (globalThis.LearnNoteMarkdown?.markdownToHtml) return globalThis.LearnNoteMarkdown.markdownToHtml(markdown);
   const lines = String(markdown || "").replace(/\r\n?/g, "\n").split("\n");
   const html = [];
   const headingIds = new Map();
@@ -1807,6 +1811,7 @@ function markdownToHtml(markdown) {
 }
 
 function sanitizeNoteMarkdown(markdown) {
+  if (globalThis.LearnNoteMarkdown?.sanitizeNoteMarkdown) return globalThis.LearnNoteMarkdown.sanitizeNoteMarkdown(markdown);
   const lines = String(markdown || "").replace(/\r\n?/g, "\n").split("\n");
   const cleaned = [];
   for (let index = 0; index < lines.length; index += 1) {
@@ -1822,6 +1827,7 @@ function sanitizeNoteMarkdown(markdown) {
 }
 
 function noteOutline(markdown, limit = 12) {
+  if (globalThis.LearnNoteMarkdown?.noteOutline) return globalThis.LearnNoteMarkdown.noteOutline(markdown, limit);
   const lines = String(markdown || "").replace(/\r\n?/g, "\n").split("\n");
   const headingIds = new Map();
   const headings = [];

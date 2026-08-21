@@ -42,7 +42,7 @@ jobs:
           python -m unittest discover scripts/tests -p "test_*.py"
           python -m unittest desktop.tests.test_desktop_launcher
           Get-ChildItem extension/tests/*.test.mjs | ForEach-Object { node $_.FullName }
-          node web/tests/markdown_render.test.mjs
+          Get-ChildItem web/tests/*.test.mjs | ForEach-Object { node $_.FullName }
       - name: Build portable desktop client
         shell: pwsh
         run: |
