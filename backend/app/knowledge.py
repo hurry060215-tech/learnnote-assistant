@@ -61,12 +61,21 @@ def _connect() -> sqlite3.Connection:
           created_at TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS source_evidence_task_idx ON source_evidence(task_id);
-        CREATE VIRTUAL TABLE IF NOT EXISTS source_evidence_fts USING fts5(
-          evidence_id UNINDEXED, title, source_uri, locator, text
-        );
         """
     )
+    try:
+        connection.execute(
+            """CREATE VIRTUAL TABLE IF NOT EXISTS source_evidence_fts USING fts5(
+               evidence_id UNINDEXED, title, source_uri, locator, text
+            )"""
+        )
+    except sqlite3.OperationalError:
+        pass
     return connection
+
+
+def _fts_available(connection: sqlite3.Connection) -> bool:
+    return bool(connection.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'source_evidence_fts'").fetchone())
 
 
 def _tokens(value: str) -> list[str]:
@@ -106,11 +115,12 @@ def add_evidence(evidence: SourceEvidence) -> SourceEvidence:
                 datetime.now(timezone.utc).isoformat(),
             ),
         )
-        connection.execute("DELETE FROM source_evidence_fts WHERE evidence_id = ?", (item.evidence_id,))
-        connection.execute(
-            "INSERT INTO source_evidence_fts(evidence_id, title, source_uri, locator, text) VALUES (?, ?, ?, ?, ?)",
-            (item.evidence_id, item.title, item.source_uri, item.locator, item.text),
-        )
+        if _fts_available(connection):
+            connection.execute("DELETE FROM source_evidence_fts WHERE evidence_id = ?", (item.evidence_id,))
+            connection.execute(
+                "INSERT INTO source_evidence_fts(evidence_id, title, source_uri, locator, text) VALUES (?, ?, ?, ?, ?)",
+                (item.evidence_id, item.title, item.source_uri, item.locator, item.text),
+            )
         connection.commit()
     finally:
         connection.close()
@@ -124,8 +134,9 @@ def remove_task_evidence(task_id: str) -> None:
     try:
         ids = [row[0] for row in connection.execute("SELECT evidence_id FROM source_evidence WHERE task_id = ?", (task_id,))]
         connection.execute("DELETE FROM source_evidence WHERE task_id = ?", (task_id,))
-        for evidence_id in ids:
-            connection.execute("DELETE FROM source_evidence_fts WHERE evidence_id = ?", (evidence_id,))
+        if _fts_available(connection):
+            for evidence_id in ids:
+                connection.execute("DELETE FROM source_evidence_fts WHERE evidence_id = ?", (evidence_id,))
         connection.commit()
     finally:
         connection.close()
@@ -136,8 +147,9 @@ def clear_task_evidence() -> None:
     try:
         ids = [row[0] for row in connection.execute("SELECT evidence_id FROM source_evidence WHERE task_id != ''")]
         connection.execute("DELETE FROM source_evidence WHERE task_id != ''")
-        for evidence_id in ids:
-            connection.execute("DELETE FROM source_evidence_fts WHERE evidence_id = ?", (evidence_id,))
+        if _fts_available(connection):
+            for evidence_id in ids:
+                connection.execute("DELETE FROM source_evidence_fts WHERE evidence_id = ?", (evidence_id,))
         connection.commit()
     finally:
         connection.close()
@@ -150,7 +162,8 @@ def remove_evidence(evidence_id: str) -> bool:
         if row is None:
             return False
         connection.execute("DELETE FROM source_evidence WHERE evidence_id = ?", (row[0],))
-        connection.execute("DELETE FROM source_evidence_fts WHERE evidence_id = ?", (row[0],))
+        if _fts_available(connection):
+            connection.execute("DELETE FROM source_evidence_fts WHERE evidence_id = ?", (row[0],))
         connection.commit()
         return True
     finally:
@@ -162,14 +175,17 @@ def search_evidence(query: str = "", limit: int = 12) -> list[dict[str, object]]
     connection = _connect()
     try:
         term = _fts_query(query)
-        if term:
-            rows = connection.execute(
-                """SELECT e.*, bm25(source_evidence_fts) AS score FROM source_evidence_fts f
-                   JOIN source_evidence e ON e.evidence_id = f.evidence_id
-                   WHERE source_evidence_fts MATCH ?
-                   ORDER BY score ASC, e.created_at DESC LIMIT ?""",
-                (term, limit),
-            ).fetchall()
+        if term and _fts_available(connection):
+            try:
+                rows = connection.execute(
+                    """SELECT e.*, bm25(source_evidence_fts) AS score FROM source_evidence_fts f
+                       JOIN source_evidence e ON e.evidence_id = f.evidence_id
+                       WHERE source_evidence_fts MATCH ?
+                       ORDER BY score ASC, e.created_at DESC LIMIT ?""",
+                    (term, limit),
+                ).fetchall()
+            except sqlite3.OperationalError:
+                rows = []
             if not rows:
                 like = f"%{str(query).strip()}%"
                 rows = connection.execute(
@@ -177,7 +193,14 @@ def search_evidence(query: str = "", limit: int = 12) -> list[dict[str, object]]
                     (like, like, like, like, limit),
                 ).fetchall()
         else:
-            rows = connection.execute("SELECT * FROM source_evidence ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
+            if term:
+                like = f"%{str(query).strip()}%"
+                rows = connection.execute(
+                    "SELECT * FROM source_evidence WHERE title LIKE ? OR source_uri LIKE ? OR locator LIKE ? OR text LIKE ? ORDER BY created_at DESC LIMIT ?",
+                    (like, like, like, like, limit),
+                ).fetchall()
+            else:
+                rows = connection.execute("SELECT * FROM source_evidence ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
     finally:
         connection.close()
     result: list[dict[str, object]] = []

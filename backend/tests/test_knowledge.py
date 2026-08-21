@@ -46,6 +46,13 @@ class KnowledgeEvidenceTests(unittest.TestCase):
         self.assertIn("正文", text)
         self.assertNotIn("secret", text)
 
+    def test_like_fallback_is_used_when_fts_is_unavailable(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch("app.knowledge.DATA_DIR", Path(tmp)), patch("app.knowledge._fts_available", return_value=False):
+                stored = add_evidence(SourceEvidence(title="Fallback", text="本地检索回退内容"))
+                hits = search_evidence("回退")
+                self.assertEqual(hits[0]["evidence_id"], stored.evidence_id)
+
 
 if __name__ == "__main__":
     unittest.main()
