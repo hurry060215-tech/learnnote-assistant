@@ -53,7 +53,7 @@ class TaskManagementApiTests(unittest.TestCase):
         self.assertEqual(payload["extension_version"], APP_VERSION)
         self.assertTrue(payload["extension_compatible"])
         self.assertEqual(payload["assistant_capabilities"]["media_adapter_contract_version"], 1)
-        self.assertEqual({item["id"] for item in payload["media_adapters"]}, {"bilibili", "youtube", "web"})
+        self.assertEqual({item["id"] for item in payload["media_adapters"]}, {"bilibili", "youtube", "chaoxing", "web"})
 
     def test_cancel_retry_delete_and_storage_summary(self) -> None:
         active = create_task("local", "Active task")
