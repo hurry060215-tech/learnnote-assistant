@@ -11,7 +11,7 @@ from uuid import uuid4
 
 from .config import DATA_DIR, TASK_DIR, TEMP_DIR, ensure_dirs
 from .models import TaskRecord
-from .knowledge import add_evidence, remove_task_evidence
+from .knowledge import add_evidence, clear_task_evidence, remove_task_evidence
 
 
 LIBRARY_SCHEMA_VERSION = 2
@@ -227,6 +227,7 @@ def rebuild_index() -> dict[str, int | str]:
             connection.close()
     indexed = 0
     skipped = 0
+    clear_task_evidence()
     for path in sorted(TASK_DIR.glob("*/task.json")):
         try:
             record = TaskRecord.model_validate_json(path.read_text(encoding="utf-8"))

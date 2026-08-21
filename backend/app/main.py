@@ -29,7 +29,7 @@ from .config import BACKEND_ORIGIN, DATA_DIR, DEPLOYMENT_MODE, LLM_API_KEY, LLM_
 from .downloader import MediaDownloader, effective_resource_kind, fallback_page_contexts, media_file_video_signature, preflight_media_resource, rank_media_candidates
 from .media import MediaProcessingError, extract_video_clip, probe_duration, probe_media_integrity
 from .library import backup_library, duplicate_groups, library_status, rebuild_index, restore_library, search_library
-from .knowledge import add_evidence, answer_from_evidence, evidence_for_task, extract_import_text, search_evidence
+from .knowledge import add_evidence, answer_from_evidence, evidence_for_task, extract_import_text, remove_evidence, search_evidence
 from .integrations import integration_manifest, notion_export_payload
 from .models import CurrentPageTaskRequest, EvidenceCoverage, MediaIntegrity, MediaPreflightRequest, MediaPreflightResult, PagePreflightRequest, RerunFromMediaRequest, ResourceCandidate, SourceEvidence, SourceInputRequest, StorageCleanupRequest, StudyCard, StudyCardStatusRequest, StudyReviewRequest, TaskOptions, TaskQuestionRequest, TaskRecord, now_iso
 from .observability import read_task_events, redacted_support_manifest
@@ -4250,6 +4250,13 @@ async def api_knowledge_import_file(file: UploadFile = File(...)) -> dict:
 @app.get("/api/knowledge/search")
 def api_knowledge_search(q: str = "", limit: int = 12) -> dict:
     return {"query": q, "results": search_evidence(q, limit)}
+
+
+@app.delete("/api/knowledge/evidence/{evidence_id}")
+def api_knowledge_delete_evidence(evidence_id: str) -> dict:
+    if not remove_evidence(evidence_id):
+        raise HTTPException(status_code=404, detail={"code": "evidence_not_found", "message": "证据不存在。"})
+    return {"ok": True, "evidence_id": evidence_id}
 
 
 @app.post("/api/knowledge/ask")

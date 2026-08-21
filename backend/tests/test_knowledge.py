@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from app.knowledge import add_evidence, answer_from_evidence, evidence_for_task, extract_import_text, search_evidence
+from app.knowledge import add_evidence, answer_from_evidence, evidence_for_task, extract_import_text, remove_evidence, search_evidence
 from app.models import SourceEvidence
 
 
@@ -29,6 +29,8 @@ class KnowledgeEvidenceTests(unittest.TestCase):
                 self.assertEqual(answer["citations"][0]["locator"], "paragraph 2")
 
                 self.assertEqual(evidence_for_task(""), [])
+                self.assertTrue(remove_evidence(stored.evidence_id))
+                self.assertEqual(search_evidence("学习率"), [])
 
     def test_missing_evidence_is_explicitly_blocked(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -131,6 +131,32 @@ def remove_task_evidence(task_id: str) -> None:
         connection.close()
 
 
+def clear_task_evidence() -> None:
+    connection = _connect()
+    try:
+        ids = [row[0] for row in connection.execute("SELECT evidence_id FROM source_evidence WHERE task_id != ''")]
+        connection.execute("DELETE FROM source_evidence WHERE task_id != ''")
+        for evidence_id in ids:
+            connection.execute("DELETE FROM source_evidence_fts WHERE evidence_id = ?", (evidence_id,))
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def remove_evidence(evidence_id: str) -> bool:
+    connection = _connect()
+    try:
+        row = connection.execute("SELECT evidence_id FROM source_evidence WHERE evidence_id = ?", (str(evidence_id or "")[:128],)).fetchone()
+        if row is None:
+            return False
+        connection.execute("DELETE FROM source_evidence WHERE evidence_id = ?", (row[0],))
+        connection.execute("DELETE FROM source_evidence_fts WHERE evidence_id = ?", (row[0],))
+        connection.commit()
+        return True
+    finally:
+        connection.close()
+
+
 def search_evidence(query: str = "", limit: int = 12) -> list[dict[str, object]]:
     limit = max(1, min(int(limit or 12), 50))
     connection = _connect()
@@ -138,10 +164,10 @@ def search_evidence(query: str = "", limit: int = 12) -> list[dict[str, object]]
         term = _fts_query(query)
         if term:
             rows = connection.execute(
-                """SELECT e.* FROM source_evidence_fts f
+                """SELECT e.*, bm25(source_evidence_fts) AS score FROM source_evidence_fts f
                    JOIN source_evidence e ON e.evidence_id = f.evidence_id
                    WHERE source_evidence_fts MATCH ?
-                   ORDER BY e.created_at DESC LIMIT ?""",
+                   ORDER BY score ASC, e.created_at DESC LIMIT ?""",
                 (term, limit),
             ).fetchall()
             if not rows:
@@ -166,6 +192,7 @@ def search_evidence(query: str = "", limit: int = 12) -> list[dict[str, object]]
             "text": row["text"],
             "task_id": row["task_id"],
             "metadata": json.loads(row["metadata_json"] or "{}"),
+            "score": float(row["score"]) if "score" in row.keys() and row["score"] is not None else 0.0,
         })
     return result
 

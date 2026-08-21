@@ -5549,7 +5549,23 @@ async function searchKnowledge() {
       heading.textContent = `${item.title || "未命名资料"} · ${item.locator || "本地证据"}`;
       const excerpt = document.createElement("p");
       excerpt.textContent = String(item.text || "").slice(0, 360);
-      article.append(heading, excerpt);
+      const actions = document.createElement("div");
+      actions.className = "study-card-actions";
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "secondary action-button";
+      remove.textContent = "删除证据";
+      remove.addEventListener("click", async () => {
+        if (typeof window.confirm === "function" && !window.confirm("删除这条本地证据？原始任务文件不会被删除。")) return;
+        try {
+          await fetchJson(apiUrl(`/api/knowledge/evidence/${encodeURIComponent(item.evidence_id)}`), { method: "DELETE" });
+          await searchKnowledge();
+        } catch (error) {
+          if (els.knowledgeSearchResults) els.knowledgeSearchResults.textContent = error?.message || "证据删除失败。";
+        }
+      });
+      actions.append(remove);
+      article.append(heading, excerpt, actions);
       els.knowledgeSearchResults.append(article);
     });
   } catch (error) {
