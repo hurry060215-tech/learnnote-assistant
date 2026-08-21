@@ -38,10 +38,10 @@ jobs:
       - name: Synthetic 30/60/180-minute resource matrix
         shell: pwsh
         run: |
-          $durations = @(30, 60, 180)
+          $durations = @(1800, 3600, 10800)
           foreach ($duration in $durations) {
-            $target = "build/reliability/long-video-matrix/$duration"
-            $interval = [Math]::Max(15, [Math]::Floor($duration / 6))
+            $target = "build/reliability/long-video-matrix/$duration-seconds"
+            $interval = [Math]::Max(30, [Math]::Floor($duration / 40))
             python scripts/long-video-reliability.py `
               --duration-seconds $duration `
               --frame-interval $interval `

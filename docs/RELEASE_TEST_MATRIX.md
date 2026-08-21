@@ -11,7 +11,7 @@ not require user accounts, browser login state, or API keys.
 | Installer smoke | `.\scripts\test-release-installer.ps1 -InstallerPath .\LearnNote-Setup-x64.exe` | Clean install, startup, extension files, uninstall | None | App starts and external data survives uninstall |
 | Cover upgrade | `.\scripts\test-upgrade-installer.ps1 -PreviousInstallerPath <old.exe> -CurrentInstallerPath <new.exe>` | Previous-to-current upgrade under `D:\LearnNoteUpgradeSmoke` | None | Configuration and external data survive, extension version increases, upgraded app starts |
 | Long-video media | `python scripts/long-video-reliability.py` | Synthetic 60-minute MP4, media integrity, adaptive frames, 3x3 grids | None | Audio/video tracks, duration, timeline coverage, frames, and grids are valid |
-| Long-video resource matrix | `python scripts/long-video-reliability.py --duration-seconds 30/60/180 --memory-budget-mb 512 --min-free-disk-mb 512` | 30, 60 and 180-minute media/frame coverage plus process RSS, CPU and free-disk samples | None | Each duration reaches the first frame, tail, valid grids, records resource counters, and stops when an explicit safety budget is exceeded |
+| Long-video resource matrix | `python scripts/long-video-reliability.py --duration-seconds 1800/3600/10800 --memory-budget-mb 512 --min-free-disk-mb 512` | Real 30, 60 and 180-minute synthetic media/frame coverage plus process RSS, CPU and free-disk samples | None | Each duration reaches the first frame, tail, valid grids, records resource counters, and stops when an explicit safety budget is exceeded |
 | Local-task cancellation | `python scripts/cancel-reliability.py --duration-seconds 180` | Real local processing task, cancellation request, durable cancelled state and task resource report | None | Cancellation reaches `cancelled` within the gate timeout, leaves the resource report, and makes zero remote calls |
 | Complete local task | `python scripts/full-local-task-reliability.py --duration-seconds 3600` | Full local 60-minute media/transcript/visual/note pipeline using synthetic media and synthetic timed subtitles | None | A 60-minute task reaches `success`, writes note/transcript/visual/resource artifacts, and makes zero remote calls |
 | Provider presets | `python scripts/model-provider-contract.py` | Offline schema, URL, classifier, ASR, and vision checks | None | Every preset is internally consistent and no network call occurs |
@@ -45,7 +45,7 @@ timeline coverage, and grid generation. It does not load faster-whisper,
 transcribe audio, call a language model, or send images to a visual API.
 
 The scheduled reliability workflow additionally runs a bounded 30/60/180-minute
-matrix. The matrix uses low-bitrate synthetic media and a fixed frame budget;
+matrix (1800/3600/10800 seconds). The matrix uses low-bitrate synthetic media and a fixed frame budget;
 it is a resource/coverage gate, not a claim that a full 180-minute transcription
 has been completed on every machine. Each report includes process CPU percentage,
 peak RSS, and minimum free disk space. The default scheduled safety floor is
