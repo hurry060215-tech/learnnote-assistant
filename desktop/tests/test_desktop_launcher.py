@@ -47,7 +47,8 @@ class DesktopLauncherTests(unittest.TestCase):
             with tempfile.TemporaryDirectory(dir=ROOT / "data") as temp_dir:
                 root = Path(temp_dir)
                 data_dir = desktop.configure_runtime(root, 18766)
-                self.assertEqual(root / "data", data_dir)
+                expected = (root / "data") if os.name == "nt" else desktop.default_data_directory(root)
+                self.assertEqual(expected, data_dir)
                 self.assertEqual(str(data_dir), os.environ["LEARNNOTE_DATA_DIR"])
                 self.assertEqual("http://127.0.0.1:18766", os.environ["LEARNNOTE_BACKEND_ORIGIN"])
                 self.assertEqual("desktop", os.environ["LEARNNOTE_DEPLOYMENT_MODE"])
@@ -169,9 +170,17 @@ class DesktopLauncherTests(unittest.TestCase):
             self.assertEqual("9.8.6", result["loaded_version"])
             self.assertTrue(result["requires_reload"])
             self.assertIn("重新加载", result["message"])
-            popen.assert_called_once()
-            self.assertEqual([str(browser), "edge://extensions"], popen.call_args.args[0])
-            startfile.assert_called_once_with(extension.resolve())
+            calls = popen.call_args_list
+            self.assertGreaterEqual(len(calls), 1)
+            self.assertEqual([str(browser), "edge://extensions"], calls[0].args[0])
+            if os.name == "nt":
+                popen.assert_called_once()
+                startfile.assert_called_once_with(extension.resolve())
+            else:
+                startfile.assert_not_called()
+                self.assertEqual(2, len(calls))
+                self.assertIn(calls[1].args[0][0], {"open", "xdg-open"})
+                self.assertEqual(str(extension.resolve()), calls[1].args[0][1])
 
     def test_webview_profile_stays_under_data_directory(self):
         with tempfile.TemporaryDirectory(dir=ROOT / "data") as temp_dir:
