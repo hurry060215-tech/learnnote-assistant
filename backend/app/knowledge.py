@@ -5,6 +5,7 @@ import json
 import re
 import sqlite3
 from io import BytesIO
+from html.parser import HTMLParser
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -15,6 +16,25 @@ from .models import SourceEvidence
 
 KNOWLEDGE_SCHEMA_VERSION = 1
 _TOKEN_RE = re.compile(r"[A-Za-z0-9_\u4e00-\u9fff-]{2,}")
+
+
+class _VisibleTextParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self._hidden_depth = 0
+        self.parts: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs) -> None:
+        if tag.lower() in {"script", "style", "noscript", "template"}:
+            self._hidden_depth += 1
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.lower() in {"script", "style", "noscript", "template"} and self._hidden_depth:
+            self._hidden_depth -= 1
+
+    def handle_data(self, data: str) -> None:
+        if not self._hidden_depth:
+            self.parts.append(data)
 
 
 def _db_path() -> Path:
@@ -194,8 +214,8 @@ def extract_import_text(filename: str, content: bytes, content_type: str = "") -
             raise ValueError("pdf_text_extraction_unavailable") from exc
     decoded = content.decode("utf-8", errors="replace")
     if suffix in {".html", ".htm"} or "html" in content_type.lower():
-        decoded = re.sub(r"<script\b[\s\S]*?</script\s*>|<style\b[\s\S]*?</style\s*>", " ", decoded, flags=re.I)
-        decoded = re.sub(r"<[^>]+>", " ", decoded)
-        decoded = html.unescape(decoded)
-        return " ".join(decoded.split()), "webpage"
+        parser = _VisibleTextParser()
+        parser.feed(decoded)
+        parser.close()
+        return " ".join(" ".join(parser.parts).split()), "webpage"
     return decoded, "markdown" if suffix in {".md", ".markdown"} else "task"
