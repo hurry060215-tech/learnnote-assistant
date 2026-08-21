@@ -5,7 +5,7 @@
 | 平台 | 桌面客户端 | 本地后端/容器 | 浏览器扩展交接 | 数据目录与凭据 | 当前门槛 |
 | --- | --- | --- | --- | --- | --- |
 | Windows x64 | 可用：便携包、安装器、升级 smoke | 可用 | 可用：Chrome/Edge 真实 smoke | 可用：可迁移数据目录，凭据不写任务 | 需要用户授权浏览器页面和本地服务 |
-| macOS arm64/x64 | 预览：`scripts/start-macos.sh` + pywebview 核心路径 | 预览：Python/容器路径需人工验证 | 可用：浏览器侧栏可连接本地服务 | 预览：macOS Keychain；签名/公证待证 | 尚无签名、公证和原生更新器证据 |
+| macOS arm64/x64 | 预览：`scripts/start-macos.sh` + `LearnNote.macos.spec` bundle workflow | 预览：Python/容器路径需人工验证 | 可用：浏览器侧栏可连接本地服务 | 预览：macOS Keychain；签名/公证按 secrets 条件启用 | 尚无签名、公证和原生更新器证据 |
 | Linux x64 | 预览：`scripts/start-linux.sh` + pywebview 核心路径 | 预览：Docker/手动 Python | 可用：浏览器扩展可连接本地服务 | 预览：由用户管理目录和凭据 | 不承诺发行版级桌面集成 |
 | ARM NAS | 不提供桌面承诺 | 计划 | 计划 | 计划 | 需要 ARM ffmpeg、模型和存储基准 |
 | Docker (linux/amd64) | 不适用 | 可用：compose/镜像构建 | 可用：浏览器连接用户明确暴露的本地端口 | 可用：挂载卷；不启用官方云同步 | 需要用户自行保护端口和反向代理 |
@@ -20,3 +20,8 @@
 ## 晋级门槛
 
 macOS 进入实现前，Windows v0.2–v0.4 的任务恢复、来源适配、资料库、引用检索和导出 manifest 必须保持稳定；Linux/ARM 只有在 ffmpeg、模型缓存、磁盘预算和取消响应有实测数据后，才从“预览/计划”升级。
+
+The macOS workflow always produces an unsigned preview artifact when Apple
+signing and notarization secrets are absent. It only publishes a signed asset
+after `codesign`, `notarytool`, and `stapler` verification succeed; missing
+secrets are never replaced with fake signatures or an implicit trust claim.

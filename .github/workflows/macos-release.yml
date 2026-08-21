@@ -1,0 +1,75 @@
+name: macOS Desktop Preview
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_NOTARY_APPLE_ID: ${{ secrets.APPLE_NOTARY_APPLE_ID }}
+      APPLE_NOTARY_PASSWORD: ${{ secrets.APPLE_NOTARY_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.test.txt
+      - name: Install macOS build dependencies
+        run: |
+          python -m pip install -r backend/requirements.test.txt
+          python -m pip install pyinstaller
+      - name: Run macOS contract and desktop tests
+        env:
+          PYTHONPATH: backend
+        run: |
+          python -m unittest discover desktop/tests -p "test_*.py"
+          python -m unittest discover scripts/tests -p "test_*.py"
+      - name: Build unsigned macOS app bundle
+        run: |
+          python scripts/generate-version-file.py build/learnnote-version.txt
+          pyinstaller --noconfirm --clean LearnNote.macos.spec
+          mkdir -p dist/LearnNote.app/Contents/Resources/LearnNote
+          cp README.md LICENSE NOTICE THIRD_PARTY_NOTICES.md PRIVACY.md SECURITY.md SUPPORT.md dist/LearnNote.app/Contents/Resources/LearnNote/
+          cp -R third_party dist/LearnNote.app/Contents/Resources/LearnNote/third_party
+      - name: Sign and notarize macOS bundle when credentials are configured
+        if: env.APPLE_SIGNING_IDENTITY != '' && env.APPLE_CERTIFICATE_BASE64 != '' && env.APPLE_NOTARY_APPLE_ID != '' && env.APPLE_NOTARY_PASSWORD != '' && env.APPLE_TEAM_ID != ''
+        run: |
+          certificate="$RUNNER_TEMP/learnnote-signing.p12"
+          echo "$APPLE_CERTIFICATE_BASE64" | base64 --decode > "$certificate"
+          security create-keychain -p "$RUNNER_TEMP" "$RUNNER_TEMP/learnnote.keychain-db"
+          security unlock-keychain -p "$RUNNER_TEMP" "$RUNNER_TEMP/learnnote.keychain-db"
+          security import "$certificate" -k "$RUNNER_TEMP/learnnote.keychain-db" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$RUNNER_TEMP" "$RUNNER_TEMP/learnnote.keychain-db"
+          codesign --force --deep --options runtime --timestamp --sign "$APPLE_SIGNING_IDENTITY" dist/LearnNote.app
+          ditto -c -k --sequesterRsrc --keepParent dist/LearnNote.app LearnNote-macOS.zip
+          xcrun notarytool submit LearnNote-macOS.zip --apple-id "$APPLE_NOTARY_APPLE_ID" --password "$APPLE_NOTARY_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
+          xcrun stapler staple dist/LearnNote.app
+          codesign --verify --deep --strict --verbose=2 dist/LearnNote.app
+          rm -f "$certificate"
+      - name: Package unsigned macOS preview
+        if: env.APPLE_SIGNING_IDENTITY == '' || env.APPLE_CERTIFICATE_BASE64 == '' || env.APPLE_NOTARY_APPLE_ID == '' || env.APPLE_NOTARY_PASSWORD == '' || env.APPLE_TEAM_ID == ''
+        run: ditto -c -k --sequesterRsrc --keepParent dist/LearnNote.app LearnNote-macOS-unsigned.zip
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: LearnNote-macOS-${{ github.run_id }}
+          path: LearnNote-macOS*.zip
+          if-no-files-found: error
+          retention-days: 14
+      - name: Publish signed macOS asset
+        if: startsWith(github.ref, 'refs/tags/v') && env.APPLE_SIGNING_IDENTITY != '' && env.APPLE_CERTIFICATE_BASE64 != '' && env.APPLE_NOTARY_APPLE_ID != '' && env.APPLE_NOTARY_PASSWORD != '' && env.APPLE_TEAM_ID != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.ref_name }}" LearnNote-macOS.zip --repo "${{ github.repository }}" --clobber
