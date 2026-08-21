@@ -20,6 +20,7 @@ API routers (routers/*.py)
 - `media_kinds.py` 只负责无网络的媒体类型识别和有效类型归一化；`downloader.py` 保留兼容导出，避免旧调用方迁移时改变行为。
 - `media_candidate_ranking.py` 只负责候选评分、播放匹配、伴随音频配对和去重；页面扫描/Manifest 推断仍由 downloader 编排后交给该纯决策模块。
 - `media_transport.py` 负责 SSRF 防护、DNS 结果固定、TLS/HTTP 连接、重定向和响应包装；它不决定候选来源或笔记内容。
+- `asr_pipeline.py` 负责本地/远程 ASR 选择、转写进度心跳和 ASR 失败分类；它通过 processor_state 检查取消，不直接编排视频阶段。
 - `downloader_policy.py` 只保存下载错误分类、重试优先级和 yt-dlp 进程策略；它不发起网络请求，便于独立测试和复用。
 - `processor_state.py` 只负责取消、失败收口、checkpoint、证据门禁和资源报告；`processor.py` 负责阶段编排，不把状态持久化细节重新复制回流水线。
 - `summary_diagnostics.py` 只负责总结/视觉调用的脱敏诊断计划和失败分类；`processor.py` 只负责把诊断结果接回任务阶段，不直接维护诊断规则。
