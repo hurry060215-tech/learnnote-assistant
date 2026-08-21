@@ -34,7 +34,7 @@ class LocalLibraryIndexTests(unittest.TestCase):
                 updated_at="2026-08-21T00:00:00+00:00",
             )
             (task_dir / "task.json").write_text(record.model_dump_json(indent=2), encoding="utf-8")
-            with patch("app.library.DATA_DIR", root), patch("app.library.TASK_DIR", tasks):
+            with patch("app.library.DATA_DIR", root), patch("app.library.TASK_DIR", tasks), patch("app.knowledge.DATA_DIR", root):
                 self.assertTrue(index_task(record))
                 result = search_library("学习率")
                 self.assertEqual(result[0]["task_id"], "lesson-1")
@@ -55,7 +55,7 @@ class LocalLibraryIndexTests(unittest.TestCase):
             root = Path(tmp)
             tasks = root / "tasks"
             tasks.mkdir()
-            with patch("app.library.DATA_DIR", root), patch("app.library.TASK_DIR", tasks), patch("app.library.TEMP_DIR", root / "temp"):
+            with patch("app.library.DATA_DIR", root), patch("app.library.TASK_DIR", tasks), patch("app.library.TEMP_DIR", root / "temp"), patch("app.knowledge.DATA_DIR", root):
                 (root / "temp").mkdir()
                 record = TaskRecord(
                     id="backup-task",

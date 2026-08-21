@@ -92,6 +92,9 @@ class TaskOptions(BaseModel):
     frame_interval: int = Field(default=20, ge=1, le=600)
     grid_columns: int = Field(default=3, ge=1, le=6)
     grid_rows: int = Field(default=3, ge=1, le=6)
+    max_frame_count: int = Field(default=900, ge=60, le=2400)
+    resource_budget_mb: int = Field(default=4096, ge=256, le=102400)
+    low_resource_mode: bool = False
     note_style: str = "study"
     note_template: str = "standard"
     summary_depth: str = "standard"
@@ -270,6 +273,20 @@ class SourceIdentity(BaseModel):
     title: str = ""
     resource_fingerprint: str = ""
     media_sha256: str = ""
+
+
+class SourceEvidence(BaseModel):
+    """A stable, user-visible citation anchor shared by video and documents."""
+
+    schema_version: int = 1
+    evidence_id: str = ""
+    source_type: Literal["video", "pdf", "markdown", "webpage", "task"] = "task"
+    title: str = ""
+    source_uri: str = ""
+    locator: str = ""
+    text: str = ""
+    task_id: str = ""
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class EvidenceGate(BaseModel):

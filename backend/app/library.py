@@ -10,6 +10,7 @@ from uuid import uuid4
 
 from .config import DATA_DIR, TASK_DIR, TEMP_DIR, ensure_dirs
 from .models import TaskRecord
+from .knowledge import add_evidence, remove_task_evidence
 
 
 LIBRARY_SCHEMA_VERSION = 1
@@ -130,11 +131,35 @@ def index_task(record: TaskRecord) -> bool:
                         (record.id, record.title, source, content),
                     )
                 connection.commit()
-                return True
+                indexed = True
             finally:
                 connection.close()
+        if indexed:
+            # Keep the task directory as the source of truth while exposing a
+            # citation-ready projection for local retrieval.
+            remove_task_evidence(record.id)
+            if note:
+                add_evidence(record_to_evidence(record, note, "note"))
+            if transcript:
+                add_evidence(record_to_evidence(record, transcript, "transcript"))
+        return indexed
     except (OSError, sqlite3.Error):
         return False
+
+
+def record_to_evidence(record: TaskRecord, text: str, kind: str):
+    from .models import SourceEvidence
+
+    return SourceEvidence(
+        evidence_id=f"task-{record.id}-{kind}",
+        source_type="video" if kind == "transcript" else "task",
+        title=record.title,
+        source_uri=record.page_url,
+        locator="transcript" if kind == "transcript" else "note",
+        text=text,
+        task_id=record.id,
+        metadata={"kind": kind, "checkpoint": record.checkpoint},
+    )
 
 
 def remove_task(task_id: str) -> bool:

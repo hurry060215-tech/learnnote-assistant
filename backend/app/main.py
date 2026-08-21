@@ -11,6 +11,7 @@ import shutil
 import tempfile
 import threading
 import time
+from secrets import token_urlsafe
 from uuid import uuid4
 from zipfile import ZIP_DEFLATED, ZipFile
 from pathlib import Path
@@ -28,7 +29,8 @@ from .config import BACKEND_ORIGIN, DATA_DIR, DEPLOYMENT_MODE, LLM_API_KEY, LLM_
 from .downloader import MediaDownloader, effective_resource_kind, fallback_page_contexts, media_file_video_signature, preflight_media_resource, rank_media_candidates
 from .media import MediaProcessingError, extract_video_clip, probe_duration, probe_media_integrity
 from .library import backup_library, library_status, rebuild_index, restore_library, search_library
-from .models import CurrentPageTaskRequest, EvidenceCoverage, MediaIntegrity, MediaPreflightRequest, MediaPreflightResult, PagePreflightRequest, RerunFromMediaRequest, ResourceCandidate, SourceInputRequest, StorageCleanupRequest, TaskOptions, TaskQuestionRequest, TaskRecord, now_iso
+from .knowledge import add_evidence, answer_from_evidence, extract_import_text, search_evidence
+from .models import CurrentPageTaskRequest, EvidenceCoverage, MediaIntegrity, MediaPreflightRequest, MediaPreflightResult, PagePreflightRequest, RerunFromMediaRequest, ResourceCandidate, SourceEvidence, SourceInputRequest, StorageCleanupRequest, TaskOptions, TaskQuestionRequest, TaskRecord, now_iso
 from .processor import browser_subtitle_text_is_player_ui, enrich_resource_candidates_with_active_video, process_current_page_task, process_local_video_task, read_note, read_transcript, read_visual_index, redacted_request_dump, redacted_resource
 from .reliability import current_page_source_identity, local_source_identity
 from .runtime import ffmpeg_bin, ffprobe_bin
@@ -49,6 +51,7 @@ _deferred_handoffs_lock = threading.RLock()
 # wakes on a 30-second alarm so the desktop can report a loaded extension even
 # when its panel is closed.
 EXTENSION_HEARTBEAT_TTL_SECONDS = 75.0
+PAIRING_TTL_SECONDS = 10 * 60
 TRUSTED_BROWSER_ORIGIN_RE = re.compile(r"^(chrome-extension://[a-z]+|moz-extension://[a-z0-9-]+|https?://(localhost|127\.0\.0\.1)(:\d+)?)$")
 WRITE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
@@ -93,7 +96,31 @@ async def enforce_trusted_write_origin(request: Request, call_next):
     trusted_origin = bool(TRUSTED_BROWSER_ORIGIN_RE.fullmatch(origin) or request_origin_matches_host(request, origin))
     if request.method.upper() in WRITE_METHODS and request.url.path.startswith("/api/") and origin and not trusted_origin:
         return Response("Forbidden origin", status_code=403)
+    if (
+        request.method.upper() in WRITE_METHODS
+        and request.url.path.startswith("/api/")
+        and origin.startswith(("chrome-extension://", "moz-extension://"))
+        and request.url.path not in {"/api/pairing/issue", "/api/extension/heartbeat"}
+        and not _pairing_token_valid(request.headers.get("x-learnnote-pairing", ""))
+    ):
+        return Response("Extension pairing required", status_code=401)
     return await call_next(request)
+
+
+def _pairing_path() -> Path:
+    return DATA_DIR / "pairing.json"
+
+
+def _pairing_token_valid(value: str) -> bool:
+    candidate = str(value or "").strip()
+    if not candidate:
+        return False
+    try:
+        payload = json.loads(_pairing_path().read_text(encoding="utf-8"))
+        expires = float(payload.get("expires_at") or 0)
+        return expires > time.time() and hmac.compare_digest(candidate, str(payload.get("token") or ""))
+    except (OSError, ValueError, TypeError):
+        return False
 
 app.mount("/data", StaticFiles(directory=str(DATA_DIR)), name="data")
 app.mount("/web", StaticFiles(directory=str(WEB_DIR)), name="web")
@@ -3563,6 +3590,17 @@ def api_health() -> dict:
     return health_payload()
 
 
+@app.get("/api/pairing/issue")
+def api_pairing_issue(request: Request) -> dict:
+    """Issue a short-lived token to a local extension during pairing."""
+    client_host = str(getattr(request.client, "host", "") or "")
+    if client_host not in {"127.0.0.1", "::1", "localhost", "testclient"}:
+        raise HTTPException(status_code=403, detail={"code": "pairing_local_only", "message": "配对只能在本机完成。"})
+    payload = {"token": token_urlsafe(32), "issued_at": time.time(), "expires_at": time.time() + PAIRING_TTL_SECONDS}
+    atomic_write_text(_pairing_path(), json.dumps(payload, ensure_ascii=False))
+    return {"ok": True, "token": payload["token"], "expires_at": payload["expires_at"], "ttl_seconds": PAIRING_TTL_SECONDS}
+
+
 @app.post("/api/desktop/focus")
 def desktop_focus(payload: dict | None = Body(default=None)) -> dict:
     body = payload or {}
@@ -4166,6 +4204,51 @@ async def api_library_restore(file: UploadFile = File(...)) -> dict:
             raise HTTPException(status_code=400, detail={"code": code, "message": messages.get(code, "资料库备份无法恢复。")}) from exc
     finally:
         temporary.unlink(missing_ok=True)
+
+
+@app.post("/api/knowledge/evidence")
+def api_knowledge_evidence(evidence: SourceEvidence) -> dict:
+    """Store a user-selected citation anchor; no remote fetch is performed."""
+    try:
+        stored = add_evidence(evidence)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail={"code": str(exc), "message": "证据文本不能为空。"}) from exc
+    return {"ok": True, "evidence": stored.model_dump(mode="json")}
+
+
+@app.post("/api/knowledge/import-file")
+async def api_knowledge_import_file(file: UploadFile = File(...)) -> dict:
+    filename = Path(file.filename or "evidence.txt").name
+    content = await file.read()
+    if len(content) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail={"code": "evidence_file_too_large", "message": "导入文件不能超过 20 MB。"})
+    try:
+        text, source_type = extract_import_text(filename, content, file.content_type or "")
+        stored = add_evidence(SourceEvidence(
+            source_type=source_type,
+            title=Path(filename).stem[:500],
+            source_uri=f"local://{filename}",
+            locator="file",
+            text=text,
+            metadata={"filename": filename, "content_type": file.content_type or ""},
+        ))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail={"code": str(exc), "message": "无法从该文件提取可检索文本。"}) from exc
+    return {"ok": True, "evidence": stored.model_dump(mode="json")}
+
+
+@app.get("/api/knowledge/search")
+def api_knowledge_search(q: str = "", limit: int = 12) -> dict:
+    return {"query": q, "results": search_evidence(q, limit)}
+
+
+@app.post("/api/knowledge/ask")
+def api_knowledge_ask(payload: dict | None = Body(default=None)) -> dict:
+    body = payload or {}
+    question = str(body.get("question") or "").strip()
+    if not question:
+        raise HTTPException(status_code=422, detail={"code": "question_required", "message": "请输入问题。"})
+    return answer_from_evidence(question, int(body.get("limit") or 6))
 
 
 @app.post("/api/storage/cleanup")

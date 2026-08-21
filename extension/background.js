@@ -88,13 +88,38 @@ async function storedBackendUrl() {
   return DEFAULT_BACKEND_URL;
 }
 
+async function pairingHeaders(backendUrl, headers = {}) {
+  const normalized = String(backendUrl || DEFAULT_BACKEND_URL).replace(/\/$/, "");
+  try {
+    const stored = await chrome.storage.local.get({ pairingTokens: {} });
+    const cached = stored?.pairingTokens?.[normalized];
+    if (!cached || Number(cached.expiresAt || 0) <= Date.now() + 15000) {
+      const response = await fetch(`${normalized}/api/pairing/issue`);
+      const payload = await response.json().catch(() => ({}));
+      if (response.ok && payload?.token) {
+        const pairingTokens = { ...(stored?.pairingTokens || {}), [normalized]: {
+          token: String(payload.token),
+          expiresAt: Number(payload.expires_at || 0) * 1000
+        }};
+        await chrome.storage.local.set({ pairingTokens });
+        return { ...headers, "X-LearnNote-Pairing": String(payload.token) };
+      }
+    } else {
+      return { ...headers, "X-LearnNote-Pairing": String(cached.token) };
+    }
+  } catch {
+    // The backend will return a clear 401 if pairing is unavailable.
+  }
+  return { ...headers };
+}
+
 async function sendBackendHeartbeat(backendUrl) {
   if (typeof fetch !== "function") return false;
   const extensionVersion = String(chrome.runtime?.getManifest?.().version || "");
   try {
     const response = await fetch(`${backendUrl}/api/extension/heartbeat`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: await pairingHeaders(backendUrl, { "Content-Type": "application/json" }),
       body: JSON.stringify({
         extension_version: extensionVersion,
         protocol_version: EXTENSION_PROTOCOL_VERSION,
@@ -160,7 +185,7 @@ async function postJsonWithRetry(url, body, fallback, attempts = 2) {
     try {
       const response = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: await pairingHeaders(new URL(url).origin, { "Content-Type": "application/json" }),
         body: JSON.stringify(body)
       });
       if (response.ok !== false || response.status < 500 || attempt === attempts - 1) {
@@ -2105,7 +2130,7 @@ globalThis.__learnnoteE2E = {
     const cookies = await cookiesForUrls(cookieUrlsForContext(page, tab, resources), partitionKeys);
     const res = await fetch(`${backendUrl}/api/media/preflight-current-page`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: await pairingHeaders(backendUrl, { "Content-Type": "application/json" }),
       body: JSON.stringify({
         page_url: page.page_url || tab.url,
         resources,
@@ -2144,7 +2169,7 @@ globalThis.__learnnoteE2E = {
     const cookies = await cookiesForUrls(cookieUrlsForContext(page, tab, resources), partitionKeys);
     const res = await fetch(`${backendUrl}/api/tasks/from-current-page`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: await pairingHeaders(backendUrl, { "Content-Type": "application/json" }),
       body: JSON.stringify({
         mode,
         page_url: page.page_url || tab.url,
@@ -2476,7 +2501,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const backendUrl = message.backendUrl || "http://127.0.0.1:8765";
       const res = await fetch(`${backendUrl}/api/media/preflight`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: await pairingHeaders(backendUrl, { "Content-Type": "application/json" }),
         body: JSON.stringify({
           page_url: page.page_url || tab.url,
           resource,
@@ -2498,7 +2523,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const backendUrl = message.backendUrl || "http://127.0.0.1:8765";
       const res = await fetch(`${backendUrl}/api/media/preflight-current-page`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: await pairingHeaders(backendUrl, { "Content-Type": "application/json" }),
         body: JSON.stringify({
           page_url: page.page_url || tab.url,
           active_video: page.active_video || null,

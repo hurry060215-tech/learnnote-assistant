@@ -68,6 +68,10 @@ class ContentMismatchError(Exception):
     pass
 
 
+class ResourceBudgetError(Exception):
+    pass
+
+
 def mark_checkpoint(task_id: str, name: str) -> None:
     """Persist the last durable artifact boundary for restart/recovery UX."""
     update_task(task_id, checkpoint=name, checkpoint_updated_at=now_iso())
@@ -1079,6 +1083,13 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
         )
         media_path, selected = downloader.download(request.page_url, request.resources, request.cookies, request.title)
         _check_cancel(task_id)
+        try:
+            if media_path.stat().st_size > int(request.options.resource_budget_mb) * 1024 * 1024:
+                raise ResourceBudgetError(
+                    f"媒体文件超过当前任务预算 {request.options.resource_budget_mb} MB。"
+                )
+        except OSError:
+            pass
         resolved_title = clean_task_title(getattr(downloader, "resolved_title", ""), request.page_url, request.title)
         if resolved_title != request.title:
             request.title = resolved_title
@@ -1161,6 +1172,8 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
         _fail(task_id, exc.code, detail)
     except ContentMismatchError as exc:
         _fail(task_id, "media_mismatch", str(exc))
+    except ResourceBudgetError as exc:
+        _fail(task_id, "resource_budget_exceeded", str(exc))
     except Exception as exc:
         _fail(task_id, "processing_failed", str(exc))
 
@@ -1192,6 +1205,8 @@ def process_local_video_task(
         return
     except ContentMismatchError as exc:
         _fail(task_id, "media_mismatch", str(exc))
+    except ResourceBudgetError as exc:
+        _fail(task_id, "resource_budget_exceeded", str(exc))
     except Exception as exc:
         _fail(task_id, "processing_failed", str(exc))
 
@@ -1229,6 +1244,15 @@ def _process_video_file(
     if integrity.status in {"invalid", "no_media"}:
         raise ContentMismatchError(
             f"Media integrity check failed ({integrity.status}): {', '.join(integrity.blocking_reasons)}"
+        )
+    budget_bytes = int(options.resource_budget_mb) * 1024 * 1024
+    try:
+        source_bytes = input_path.stat().st_size
+    except OSError:
+        source_bytes = 0
+    if source_bytes > budget_bytes:
+        raise ResourceBudgetError(
+            f"媒体文件为 {source_bytes / 1024 / 1024:.0f} MB，超过当前任务预算 {options.resource_budget_mb} MB。"
         )
 
     normalized = work_dir / "media.mp4"
@@ -1348,6 +1372,7 @@ def _process_video_file(
             normalized,
             frame_dir,
             max(1, options.frame_interval),
+            max_frames=max(60, min(2400, int(options.max_frame_count) // (2 if options.low_resource_mode else 1))),
             anchor_timestamps=frame_anchor_timestamps,
         )
         for sample in frame_samples:
