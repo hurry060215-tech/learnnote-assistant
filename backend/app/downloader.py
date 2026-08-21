@@ -34,6 +34,8 @@ from .downloader_policy import (
     should_run_ytdlp_cli as _should_run_ytdlp_cli,
     truncate_process_output as _truncate_process_output,
 )
+from .media_kinds import classify_resource as _contract_classify_resource
+from .media_kinds import effective_resource_kind as _contract_effective_resource_kind
 from .runtime import ffmpeg_bin, text_subprocess_kwargs
 from .source_input import clean_task_title
 
@@ -1723,6 +1725,12 @@ def effective_resource_kind(candidate: ResourceCandidate) -> str:
     if _is_scannable_play_endpoint(candidate):
         return "video"
     return "unknown"
+
+
+# Compatibility names remain exported from downloader while the pure
+# classification contract is owned by media_kinds.py.
+classify_resource = _contract_classify_resource
+effective_resource_kind = _contract_effective_resource_kind
 
 
 def score_kind(url: str, source: str, kind: str) -> int:
