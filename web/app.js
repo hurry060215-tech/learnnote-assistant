@@ -7454,7 +7454,8 @@ function noteReviewWorkbench(markdown, task) {
     hasDiagnostics ? `<a href="${escapeHtml(taskExportUrl(task, "diagnostics"))}">导出诊断</a>` : "",
     hasAudit ? `<a href="${escapeHtml(taskExportUrl(task, "audit"))}">导出审计</a>` : "",
     task.resource_inventory_path ? `<a href="${escapeHtml(taskExportUrl(task, "resource-inventory"))}">候选证据</a>` : "",
-    task.page_preflight_report_path ? `<a href="${escapeHtml(taskExportUrl(task, "page-preflight-report"))}">预检报告</a>` : ""
+    task.page_preflight_report_path ? `<a href="${escapeHtml(taskExportUrl(task, "page-preflight-report"))}">预检报告</a>` : "",
+    task.resource_usage_path ? `<a href="${escapeHtml(taskExportUrl(task, "resource-usage"))}">资源报告</a>` : ""
   ].filter(Boolean);
   const primary = canContinueMedia
     ? `<button type="button" data-rerun-from-media="${escapeHtml(task.id)}">继续切片总结</button>`
