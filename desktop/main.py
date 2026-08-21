@@ -88,7 +88,7 @@ class DesktopApi:
         return {"ok": True, "provider": provider, "deleted": delete_secret(provider)}
 
     def open_data_folder(self) -> dict:
-        os.startfile(self.data_dir)  # type: ignore[attr-defined]
+        open_local_path(self.data_dir)
         return {"ok": True}
 
     def setup_browser_extension(self, loaded_version: str = "") -> dict:
@@ -114,7 +114,7 @@ class DesktopApi:
             cwd=str(self.app_root),
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
-        os.startfile(extension_dir)  # type: ignore[attr-defined]
+        open_local_path(extension_dir)
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         installed_version = str(manifest.get("version") or "").strip()
         loaded_version = str(loaded_version or "").strip()
@@ -246,7 +246,7 @@ class DesktopApi:
     def open_export_folder(self) -> dict:
         export_dir = self.data_dir / "exports"
         export_dir.mkdir(parents=True, exist_ok=True)
-        os.startfile(export_dir)  # type: ignore[attr-defined]
+        open_local_path(export_dir)
         return {"ok": True, "path": str(export_dir)}
 
     def get_release_notes(self, version: str = "") -> dict:
@@ -492,6 +492,27 @@ def application_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
+def open_local_path(path: Path) -> None:
+    resolved = str(Path(path).resolve())
+    if os.name == "nt":
+        os.startfile(Path(resolved))  # type: ignore[attr-defined]
+    elif sys.platform == "darwin":
+        subprocess.Popen(["open", resolved])
+    else:
+        subprocess.Popen(["xdg-open", resolved])
+
+
+def default_data_directory(root: Path) -> Path:
+    configured = str(os.getenv("LEARNNOTE_DATA_DIR") or "").strip()
+    if configured:
+        return Path(configured).expanduser().resolve()
+    if sys.platform == "darwin":
+        return (Path.home() / "Library" / "Application Support" / "LearnNote").resolve()
+    if os.name != "nt":
+        return (Path(os.getenv("XDG_DATA_HOME", str(Path.home() / ".local" / "share"))) / "LearnNote").resolve()
+    return (root / "data").resolve()
+
+
 def bundled_root() -> Path:
     return Path(getattr(sys, "_MEIPASS", application_root())).resolve()
 
@@ -522,17 +543,17 @@ def wait_for_backend(url: str, timeout: float = 25.0) -> None:
 
 
 def configure_runtime(root: Path, port: int) -> Path:
-    data_dir = root / "data"
+    data_dir = default_data_directory(root)
     config_path = root / "learnnote-config.json"
     try:
         configured = json.loads(config_path.read_text(encoding="utf-8")) if config_path.exists() else {}
         configured_path = str(configured.get("data_dir") or "").strip()
         if configured_path:
             candidate = Path(configured_path).expanduser().resolve()
-            if candidate.drive and candidate.drive.upper() != "C:":
+            if os.name != "nt" or (candidate.drive and candidate.drive.upper() != "C:"):
                 data_dir = candidate
     except (OSError, ValueError, json.JSONDecodeError):
-        data_dir = root / "data"
+        data_dir = default_data_directory(root)
     data_dir.mkdir(parents=True, exist_ok=True)
     os.environ["LEARNNOTE_DATA_DIR"] = str(data_dir)
     os.environ["LEARNNOTE_BACKEND_ORIGIN"] = f"http://127.0.0.1:{port}"
@@ -653,7 +674,7 @@ def run() -> int:
     args = parser.parse_args()
 
     root = application_root()
-    if root.drive.upper() == "C:":
+    if os.name == "nt" and root.drive.upper() == "C:":
         raise RuntimeError("LearnNote Desktop must be installed on D: or another non-system drive.")
     port = available_port(args.port)
     data_dir = configure_runtime(root, port)
@@ -662,7 +683,8 @@ def run() -> int:
     from app.main import app
     import webview
 
-    configure_webview_runtime(webview, args.webview_debug_port)
+    if os.name == "nt":
+        configure_webview_runtime(webview, args.webview_debug_port)
     webview.settings["ALLOW_DOWNLOADS"] = True
 
     backend_url = f"http://127.0.0.1:{port}"

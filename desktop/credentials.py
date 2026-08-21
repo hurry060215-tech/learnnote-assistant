@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import ctypes
 import os
+import subprocess
+import sys
 from ctypes import wintypes
 
 
@@ -54,6 +56,13 @@ def write_secret(provider: str, secret: str) -> None:
     value = str(secret or "")
     if not value:
         raise ValueError("API Key cannot be empty.")
+    if os.name != "nt":
+        if sys.platform != "darwin":
+            raise RuntimeError("Secure desktop credentials require macOS Keychain or Windows Credential Manager.")
+        result = subprocess.run(["security", "add-generic-password", "-U", "-a", "LearnNote", "-s", credential_target(provider), "-w", value], capture_output=True, text=True)
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr.strip() or "macOS Keychain write failed")
+        return
     encoded = value.encode("utf-16-le")
     blob = (ctypes.c_ubyte * len(encoded)).from_buffer_copy(encoded)
     credential = CREDENTIALW()
@@ -68,6 +77,13 @@ def write_secret(provider: str, secret: str) -> None:
 
 
 def read_secret(provider: str) -> str:
+    if os.name != "nt":
+        if sys.platform != "darwin":
+            raise RuntimeError("Secure desktop credentials require macOS Keychain or Windows Credential Manager.")
+        result = subprocess.run(["security", "find-generic-password", "-a", "LearnNote", "-s", credential_target(provider), "-w"], capture_output=True, text=True)
+        if result.returncode != 0:
+            return ""
+        return result.stdout.strip()
     library = _advapi32()
     pointer = PCREDENTIALW()
     if not library.CredReadW(credential_target(provider), CRED_TYPE_GENERIC, 0, ctypes.byref(pointer)):
@@ -86,6 +102,13 @@ def read_secret(provider: str) -> str:
 
 
 def delete_secret(provider: str) -> bool:
+    if os.name != "nt":
+        if sys.platform != "darwin":
+            raise RuntimeError("Secure desktop credentials require macOS Keychain or Windows Credential Manager.")
+        result = subprocess.run(["security", "delete-generic-password", "-a", "LearnNote", "-s", credential_target(provider)], capture_output=True, text=True)
+        if result.returncode == 0:
+            return True
+        return False
     library = _advapi32()
     if library.CredDeleteW(credential_target(provider), CRED_TYPE_GENERIC, 0):
         return True
