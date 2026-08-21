@@ -312,6 +312,12 @@ class StudyReviewRequest(BaseModel):
     rating: Literal[1, 2, 3, 4]
 
 
+class StudyCardStatusRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["active", "suspended", "deleted"]
+
+
 class EvidenceGate(BaseModel):
     name: str
     passed: bool = False

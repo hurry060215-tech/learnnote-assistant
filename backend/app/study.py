@@ -97,6 +97,33 @@ def due_cards(limit: int = 50) -> list[StudyCard]:
     return [_row_to_card(row) for row in rows]
 
 
+def list_cards(status: str = "", limit: int = 200) -> list[StudyCard]:
+    connection = _connect()
+    try:
+        if status in {"active", "suspended", "deleted"}:
+            rows = connection.execute("SELECT * FROM study_cards WHERE status = ? ORDER BY due_at ASC LIMIT ?", (status, max(1, min(int(limit or 200), 500)))).fetchall()
+        else:
+            rows = connection.execute("SELECT * FROM study_cards ORDER BY due_at ASC LIMIT ?", (max(1, min(int(limit or 200), 500)),)).fetchall()
+    finally:
+        connection.close()
+    return [_row_to_card(row) for row in rows]
+
+
+def set_card_status(card_id: str, status: str) -> StudyCard:
+    if status not in {"active", "suspended", "deleted"}:
+        raise ValueError("invalid_status")
+    connection = _connect()
+    try:
+        row = connection.execute("SELECT * FROM study_cards WHERE card_id = ?", (card_id,)).fetchone()
+        if row is None:
+            raise ValueError("card_not_found")
+        connection.execute("UPDATE study_cards SET status = ? WHERE card_id = ?", (status, card_id))
+        connection.commit()
+        return _row_to_card(connection.execute("SELECT * FROM study_cards WHERE card_id = ?", (card_id,)).fetchone())
+    finally:
+        connection.close()
+
+
 def review_card(card_id: str, rating: int) -> StudyCard:
     if rating not in {1, 2, 3, 4}:
         raise ValueError("invalid_rating")

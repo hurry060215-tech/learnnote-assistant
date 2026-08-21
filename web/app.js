@@ -5584,9 +5584,30 @@ function renderStudyDue(cards) {
       button.addEventListener("click", () => reviewStudyCard(card.card_id, rating));
       actions.append(button);
     });
+    [["suspended", "暂停"], ["deleted", "删除"]].forEach(([status, label]) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "secondary action-button";
+      button.textContent = label;
+      button.addEventListener("click", () => updateStudyCardStatus(card.card_id, status));
+      actions.append(button);
+    });
     article.append(front, back, actions);
     els.studyDueList.append(article);
   });
+}
+
+async function updateStudyCardStatus(cardId, status) {
+  try {
+    await fetchJson(apiUrl(`/api/study/cards/${encodeURIComponent(cardId)}`), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status })
+    });
+    await loadStudyDue();
+  } catch (error) {
+    if (els.studyDueList) els.studyDueList.textContent = error?.message || "卡片状态保存失败。";
+  }
 }
 
 async function loadStudyDue() {
