@@ -70,3 +70,15 @@ test("static UI copy rebinds dynamically rendered text without losing the Chines
   context.LearnNoteI18n.applyStatic(document, "zh-CN");
   assert.equal(node.nodeValue, "搜索术语或问题");
 });
+
+test("dynamic numeric status text translates known fragments", () => {
+  const node = { nodeValue: "预计约 5 分钟 · 已完成", parentElement: { closest: () => null } };
+  const context = {};
+  vm.runInNewContext(source, context);
+  const document = makeTextDocument(node);
+
+  context.LearnNoteI18n.applyStatic(document, "en-US");
+  assert.equal(node.nodeValue, "Estimated about 5 min · Completed");
+  context.LearnNoteI18n.applyStatic(document, "zh-CN");
+  assert.equal(node.nodeValue, "预计约 5 分钟 · 已完成");
+});
