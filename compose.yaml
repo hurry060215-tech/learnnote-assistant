@@ -1,6 +1,6 @@
 services:
   learnnote:
-    image: ghcr.io/hurry060215-tech/learnnote-assistant:${LEARNNOTE_IMAGE_TAG:-0.1.54}
+    image: ghcr.io/hurry060215-tech/learnnote-assistant:${LEARNNOTE_IMAGE_TAG:-0.1.55}
     build:
       context: .
       dockerfile: Dockerfile
