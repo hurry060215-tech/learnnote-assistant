@@ -4,7 +4,7 @@
 
 ## 合并前
 
-- [ ] 在 [PR #49](https://github.com/hurry060215-tech/learnnote-assistant/pull/49) 完成 Code Owner review。
+- [ ] 在对应发布 PR 中完成 Code Owner review（v0.1.55 使用 [PR #123](https://github.com/hurry060215-tech/learnnote-assistant/pull/123)）。
 - [ ] 确认 required checks、CodeQL、Dependency Review、Obsidian verify 全部通过。
 - [ ] 检查 `APP_VERSION`、扩展 manifest、安装器、Docker 默认 tag、Release Notes 和官网下载链接均为 `0.1.55`。
 - [ ] 确认没有把本地 Cookie、模型 Key、`data/` 任务产物或签名 URL 提交到仓库。

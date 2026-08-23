@@ -4,6 +4,14 @@ All notable changes to LearnNote are documented here. The project follows semant
 
 ## Unreleased
 
+No unreleased changes.
+
+## 0.1.55 - 2026-08-23
+
+### Added
+
+- Subtitle-first local study workflow, dynamic bilingual status copy, and evidence-grounded local task outputs are now included in the verified release.
+
 ### Fixed
 
 - The browser extension no longer installs invasive page-world hooks for fetch, streams, MediaSource, WebSocket, and player libraries on every page and iframe.
