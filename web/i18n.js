@@ -312,6 +312,15 @@
     ,"复用已经下载的视频，不重新下载。": "Reuse the downloaded video without downloading again."
     ,"关闭更新说明": "Close release notes"
     ,"关闭": "Close"
+    ,"预计": "Estimated "
+    ,"约 ": "about "
+    ," 秒": " sec"
+    ," 分钟": " min"
+    ," 小时": " hr"
+    ,"已完成": "Completed"
+    ,"视频已接收，正在排队": "Video received and queued"
+    ,"视频已接收，等待你确认": "Video received; waiting for your confirmation"
+    ,"没有检测到可用视频，请检查链接或登录状态。": "No usable video was found. Check the link or sign-in state."
     ,"BV 号或 https://...": "BV ID or https://..."
     ,"默认使用页面标题或文件名": "Use the page title or filename by default"
     ,"搜索术语或问题": "Search terms or questions"
@@ -403,6 +412,13 @@
   let activeLocale = "zh-CN";
   let observerInstalled = false;
   let observerScheduled = false;
+  const staticFragments = Object.freeze(
+    Object.entries(staticText).filter(([key]) => key.length >= 2).sort((left, right) => right[0].length - left[0].length)
+  );
+
+  function translateStaticValue(value) {
+    return staticFragments.reduce((result, [from, to]) => result.split(from).join(to), String(value ?? ""));
+  }
 
   function applyStaticAttributes(roots, locale) {
     const attributes = ["aria-label", "title", "placeholder"];
@@ -456,7 +472,7 @@
       if (original === undefined || (previousTranslation && current !== previousTranslation)) {
         const candidate = current;
         const candidateText = candidate.trim();
-        if (staticText[candidateText]) {
+        if (translateStaticValue(candidateText) !== candidateText) {
           original = candidate;
           node.__learnnoteDefaultText = original;
         }
@@ -468,10 +484,11 @@
       }
       if (original === undefined) continue;
       const trimmed = original.trim();
-      if (!trimmed || !staticText[trimmed]) continue;
+      if (!trimmed) continue;
       const leading = original.slice(0, original.indexOf(trimmed));
       const trailing = original.slice(original.indexOf(trimmed) + trimmed.length);
-      const translated = `${leading}${staticText[trimmed]}${trailing}`;
+      const translated = `${leading}${translateStaticValue(trimmed)}${trailing}`;
+      if (translated === original && !staticText[trimmed]) continue;
       if (node.nodeValue !== translated) node.nodeValue = translated;
       node.__learnnoteLastTranslatedText = translated;
     }
