@@ -4324,6 +4324,7 @@ class SummaryFallbackTests(unittest.TestCase):
             "https://notgroq.com/openai/v1": "openai-compatible",
             "https://api.deepseek.com.attacker.example/v1": "openai-compatible",
             "https://platform.kimi.com.attacker.example/v1": "openai-compatible",
+            "https://api.xiaomimimo.com.attacker.example/v1": "openai-compatible",
             "https://open.bigmodel.cn.attacker.example/v4": "openai-compatible",
         }
         for base_url, provider in expected.items():
@@ -4339,9 +4340,15 @@ class SummaryFallbackTests(unittest.TestCase):
             chat_completion_provider_kwargs("https://api.moonshot.cn/v1"),
             {"extra_body": {"thinking": {"type": "disabled"}}},
         )
+        self.assertEqual(llm_provider_name("https://api.xiaomimimo.com/v1"), "xiaomi")
+        self.assertEqual(
+            chat_completion_provider_kwargs("https://api.xiaomimimo.com/v1"),
+            {"extra_body": {"thinking": {"type": "disabled"}}},
+        )
         self.assertEqual(chat_completion_provider_kwargs("https://api.openai.com/v1"), {"temperature": 0.2})
         self.assertFalse(llm_model_supports_vision("https://api.deepseek.com", "deepseek-v4-flash"))
         self.assertTrue(llm_model_supports_vision("https://api.moonshot.cn/v1", "kimi-k2.6"))
+        self.assertTrue(llm_model_supports_vision("https://api.xiaomimimo.com/v1", "mimo-v2.5"))
         self.assertTrue(llm_model_supports_vision("https://open.bigmodel.cn/api/paas/v4", "glm-5v-turbo"))
         self.assertFalse(llm_model_supports_vision("https://api.minimaxi.com/v1", "MiniMax-M2.7"))
 

@@ -634,6 +634,8 @@ def _safe_request_header_names(names) -> list[str]:
 
 def _direct_extraction_route(task: TaskRecord) -> str:
     media_exists = task_media_file_exists(task)
+    if task.mode == "subtitle_only":
+        return "browser_subtitles_only"
     if task.source_type == "local":
         return "local_video_pipeline"
     if task.source_type == "page_text" or task.mode == "page_text":
@@ -1698,20 +1700,21 @@ def task_audit_gates(task: TaskRecord) -> list[dict[str, str]]:
     attempts = task.download_attempts or []
     diagnostics = task.summary_diagnostics or {}
     is_page_text = task.source_type == "page_text" or bool(diagnostics.get("used_page_text_fallback"))
+    is_subtitle_only = task.mode == "subtitle_only"
     is_local = task.source_type == "local"
     is_download_only = task.mode == "download_only"
-    has_route = bool(selected and (selected.url or selected.kind)) or is_local or is_page_text
+    has_route = bool(selected and (selected.url or selected.kind)) or is_local or is_page_text or is_subtitle_only
     has_media = task_media_file_exists(task)
     has_transcript = bool(task.transcript_path)
     has_visuals = bool(task.visual_windows or task.frame_grids or diagnostics.get("frame_grid_count"))
     has_note = bool(task.note_path)
-    visual_disabled = task.options.visual_understanding is False or is_page_text
+    visual_disabled = task.options.visual_understanding is False or is_page_text or is_subtitle_only
     selected_kind = selected.kind if selected else ""
     selected_source = selected.source if selected else ""
     selected_match = selected.playback_match if selected else ""
     transcript_value = (
         "browser subtitles saved"
-        if is_download_only and has_transcript
+        if is_subtitle_only or (is_download_only and has_transcript)
         else "download-only route"
         if is_download_only
         else "transcript ready"
@@ -1719,7 +1722,9 @@ def task_audit_gates(task: TaskRecord) -> list[dict[str, str]]:
         else ("browser/page text fallback" if is_page_text and has_note else task.phase or "waiting")
     )
     transcript_detail = (
-        "timestamped browser subtitles are available; rerun from media can reuse them"
+        "timestamped browser subtitles are available; this task intentionally skipped media"
+        if is_subtitle_only
+        else "timestamped browser subtitles are available; rerun from media can reuse them"
         if is_download_only and has_transcript
         else "media saved; rerun from media to transcribe"
         if is_download_only
@@ -1729,12 +1734,16 @@ def task_audit_gates(task: TaskRecord) -> list[dict[str, str]]:
     )
     visual_count = len(task.visual_windows) or len(task.frame_grids) or diagnostics.get("frame_grid_count")
     visual_value = (
-        "download-only route"
+        "subtitle-only route"
+        if is_subtitle_only
+        else "download-only route"
         if is_download_only
         else ("disabled" if visual_disabled else (f"{visual_count} windows" if has_visuals else task.phase or "waiting"))
     )
     visual_detail = (
-        "media saved; rerun from media to slice frames"
+        "字幕速记模式未下载媒体；可从当前页面启动深度图文"
+        if is_subtitle_only
+        else "media saved; rerun from media to slice frames"
         if is_download_only
         else (
             "visual route disabled for this task"
@@ -1747,12 +1756,16 @@ def task_audit_gates(task: TaskRecord) -> list[dict[str, str]]:
         )
     )
     summary_value = (
-        "download-only route"
+        "subtitle-only route"
+        if is_subtitle_only
+        else "download-only route"
         if is_download_only
         else (task.summary_source or ("note ready" if has_note else task.phase or "waiting"))
     )
     summary_detail = (
-        "media saved; generate full note from media when needed"
+        "字幕速记已完成；可继续生成深度图文笔记"
+        if is_subtitle_only
+        else "media saved; generate full note from media when needed"
         if is_download_only
         else (task.summary_warning or f"{task.options.note_style} / {task.options.note_template} / {task.options.summary_depth}")
     )
@@ -1768,9 +1781,9 @@ def task_audit_gates(task: TaskRecord) -> list[dict[str, str]]:
         {
             "key": "media",
             "label": "Media gate",
-            "state": _audit_gate_state(task, has_media, skipped=is_page_text),
-            "value": "page text route" if is_page_text else ("media.mp4" if has_media else task.error_code or "waiting"),
-            "detail": "downloaded media is reusable" if has_media else (f"{len(attempts)} download attempts" if attempts else "waiting for direct download or resolver"),
+            "state": _audit_gate_state(task, has_media, skipped=is_page_text or is_subtitle_only),
+            "value": "subtitle-only route" if is_subtitle_only else ("page text route" if is_page_text else ("media.mp4" if has_media else task.error_code or "waiting")),
+            "detail": "media intentionally skipped; subtitle evidence is saved" if is_subtitle_only else ("downloaded media is reusable" if has_media else (f"{len(attempts)} download attempts" if attempts else "waiting for direct download or resolver")),
         },
         {
             "key": "transcript",
@@ -1786,7 +1799,7 @@ def task_audit_gates(task: TaskRecord) -> list[dict[str, str]]:
         {
             "key": "visual",
             "label": "Visual slicing gate",
-            "state": _audit_gate_state(task, has_visuals, skipped=visual_disabled or is_download_only),
+            "state": _audit_gate_state(task, has_visuals, skipped=visual_disabled or is_download_only or is_subtitle_only),
             "value": visual_value,
             "detail": visual_detail,
         },
@@ -1902,8 +1915,11 @@ def task_source_evidence_quality(task: TaskRecord) -> tuple[dict, dict]:
         except (OSError, ValueError, TypeError):
             browser_cue_count = 0
     page_text_only = task.source_type == "page_text" or bool(diagnostics.get("used_page_text_fallback"))
+    subtitle_only = task.mode == "subtitle_only" or diagnostics.get("source_kind") == "subtitle_only"
 
-    if invalid_media:
+    if subtitle_only:
+        source_kind = "browser_subtitles_only"
+    elif invalid_media:
         source_kind = "invalid_media"
     elif task.source_type == "local":
         source_kind = "local_media"
@@ -1916,7 +1932,10 @@ def task_source_evidence_quality(task: TaskRecord) -> tuple[dict, dict]:
     else:
         source_kind = "unresolved_current_page"
 
-    if invalid_media:
+    if subtitle_only:
+        source_level = "high"
+        source_reason = "Complete browser subtitle cues passed the local coverage and player-UI checks; media was intentionally skipped."
+    elif invalid_media:
         source_level = "none"
         source_reason = "The saved file came from a definitively non-video source." if invalid_media_source else "A saved media path exists, but the file is not a recognized video container."
     elif has_media:
@@ -1935,7 +1954,9 @@ def task_source_evidence_quality(task: TaskRecord) -> tuple[dict, dict]:
         source_level = "none"
         source_reason = "No reusable media or content evidence is available."
 
-    if has_media and has_timed_transcript and has_visual_evidence:
+    if subtitle_only and has_timed_transcript:
+        evidence_level = "medium"
+    elif has_media and has_timed_transcript and has_visual_evidence:
         evidence_level = "high"
     elif has_media and (has_timed_transcript or has_visual_evidence):
         evidence_level = "medium"
@@ -1945,7 +1966,9 @@ def task_source_evidence_quality(task: TaskRecord) -> tuple[dict, dict]:
         evidence_level = "none"
 
     can_claim_video_content = bool(has_media and (has_timed_transcript or has_visual_evidence))
-    if invalid_media:
+    if subtitle_only:
+        evidence_reason = "The note is grounded in complete timestamped browser subtitles; visual claims are intentionally unavailable."
+    elif invalid_media:
         evidence_reason = "The download resolved to an image or page asset; existing note claims must not be treated as video evidence." if invalid_media_source else "The saved file is not a recognized video container; existing note claims must not be treated as video evidence."
     elif can_claim_video_content:
         evidence_reason = "Video claims are backed by verified media and transcript or visual evidence."
@@ -1965,7 +1988,7 @@ def task_source_evidence_quality(task: TaskRecord) -> tuple[dict, dict]:
     }
     evidence_quality = {
         "level": evidence_level,
-        "video_evidence": "invalid" if invalid_media else "verified" if can_claim_video_content else "partial" if has_media or browser_cue_count else "missing",
+        "video_evidence": "subtitle_only" if subtitle_only else "invalid" if invalid_media else "verified" if can_claim_video_content else "partial" if has_media or browser_cue_count else "missing",
         "has_media": has_media,
         "media_path_exists": media_path_exists,
         "media_validation": media_validation,
@@ -2432,6 +2455,17 @@ MODEL_PROVIDER_PRESETS = [
         "capabilities": ["text", "vision"],
     },
     {
+        "key": "xiaomi",
+        "label": "小米 MiMo",
+        "base_url": "https://api.xiaomimimo.com/v1",
+        "model": "mimo-v2.5",
+        "transcriber": "faster-whisper",
+        "whisper_model": "small",
+        "tier": "mainstream",
+        "recommended": True,
+        "capabilities": ["text", "vision"],
+    },
+    {
         "key": "zhipu",
         "label": "智谱 GLM",
         "base_url": "https://open.bigmodel.cn/api/paas/v4",
@@ -2479,7 +2513,7 @@ MODEL_PROVIDER_PRESETS = [
 
 
 ASSISTANT_CAPABILITIES = {
-    "routes": ["current_page_direct", "local_upload", "download_only", "rerun_from_media", "page_text", "task_qa", "library_search", "knowledge_import", "knowledge_search", "knowledge_embedding_status", "study_loop", "study_proposals", "study_summary", "study_export", "study_plan", "task_events", "support_package", "integration_manifest", "notion_export"],
+    "routes": ["current_page_direct", "subtitle_only", "local_upload", "download_only", "rerun_from_media", "page_text", "task_qa", "library_search", "knowledge_import", "knowledge_search", "knowledge_embedding_status", "study_loop", "study_proposals", "study_summary", "study_export", "study_plan", "task_events", "support_package", "integration_manifest", "notion_export"],
     "direct_media": {
         "file_extensions": ["mp4", "m4v", "mov", "mkv", "webm", "flv", "avi"],
         "manifests": ["m3u8", "mpd"],

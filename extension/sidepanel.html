@@ -49,6 +49,11 @@
       </section>
 
       <section class="handoff-card">
+        <div class="processing-mode-choices" role="radiogroup" aria-label="选择处理方式">
+          <button type="button" data-processing-mode="quick" class="active" aria-pressed="true"><strong>快速速览</strong><small>完整字幕优先</small></button>
+          <button type="button" data-processing-mode="study" aria-pressed="false"><strong>标准学习</strong><small>字幕或本地 ASR</small></button>
+          <button type="button" data-processing-mode="deep" aria-pressed="false"><strong>深度图文</strong><small>视频与画面证据</small></button>
+        </div>
         <button id="sendButton" class="primary-button" type="button" disabled>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
           <span id="sendButtonLabel">发送到客户端</span>
@@ -63,13 +68,34 @@
         <button id="openTaskButton" class="secondary-button" type="button" hidden>在客户端查看任务</button>
       </section>
 
+      <section id="quickResultCard" class="quick-result-card" hidden aria-label="快速学习结果">
+        <header class="quick-result-header">
+          <div><span>当前视频速记</span><strong id="quickResultStatus">等待字幕速记</strong></div>
+          <button id="quickDeepButton" class="secondary-button compact-button" type="button">深度图文</button>
+        </header>
+        <nav class="quick-tabs" role="tablist" aria-label="快速学习结果">
+          <button type="button" class="active" data-quick-tab="summary" role="tab" aria-selected="true">速览</button>
+          <button type="button" data-quick-tab="transcript" role="tab" aria-selected="false">字幕</button>
+          <button type="button" data-quick-tab="ask" role="tab" aria-selected="false">提问</button>
+        </nav>
+        <div id="quickSummaryPanel" class="quick-panel" data-quick-panel="summary"></div>
+        <div id="quickTranscriptPanel" class="quick-panel" data-quick-panel="transcript" hidden></div>
+        <div id="quickAskPanel" class="quick-panel" data-quick-panel="ask" hidden>
+          <div id="quickAskConversation" class="quick-ask-conversation"><p>回答只引用当前视频的字幕证据。</p></div>
+          <form id="quickAskForm" class="quick-ask-form">
+            <textarea id="quickAskQuestion" rows="2" maxlength="1000" placeholder="针对这段视频提问…"></textarea>
+            <button class="primary-button compact-button" type="submit">发送问题</button>
+          </form>
+        </div>
+      </section>
+
       <nav class="client-links" aria-label="客户端功能">
         <button type="button" data-client-view="settings"><span>设置</span><small>模型、转写与视频处理</small><b>›</b></button>
         <button type="button" data-client-view="diagnostics"><span>连接与诊断</span><small>在客户端检查完整链路</small><b>›</b></button>
       </nav>
     </main>
 
-    <footer>扩展只负责识别和交接，视频处理与笔记都在本机客户端完成。</footer>
+    <footer>字幕速记直接显示在侧栏；深度视频处理、视觉理解和资料导出仍在本机客户端完成。</footer>
     <script src="sidepanel.js?v=0.1.54"></script>
   </body>
 </html>

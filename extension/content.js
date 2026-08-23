@@ -2078,6 +2078,21 @@ function installPerformanceObserver() {
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === "seek-current-video") {
+    const seconds = Number(message.seconds);
+    const video = pickMainVideo(collectVideos())?.video || null;
+    if (!video || !Number.isFinite(seconds) || seconds < 0) {
+      sendResponse({ ok: false, error: "当前页面没有可定位的视频。" });
+      return;
+    }
+    try {
+      video.currentTime = seconds;
+      sendResponse({ ok: true, current_time: Number(video.currentTime || seconds) });
+    } catch (error) {
+      sendResponse({ ok: false, error: error?.message || "视频定位失败。" });
+    }
+    return;
+  }
   if (message.type !== "collect-page-data") return;
   sendResponse(collectPageData(true));
 });

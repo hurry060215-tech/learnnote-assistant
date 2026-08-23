@@ -79,6 +79,12 @@ h1 { margin: 10px 0 6px; font-size: 20px; line-height: 1.38; overflow-wrap: anyw
 .preflight-message[data-state="ready"] { color: #08766d; }
 
 .handoff-card { padding: 14px; }
+.processing-mode-choices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; margin-bottom: 12px; }
+.processing-mode-choices button { min-width: 0; border: 1px solid #dce8e8; border-radius: 6px; background: #f8fafa; color: #587177; padding: 7px 4px; text-align: center; }
+.processing-mode-choices button.active { border-color: #72c6bc; background: #eaf8f5; color: #087b77; }
+.processing-mode-choices strong, .processing-mode-choices small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.processing-mode-choices strong { font-size: 11px; }
+.processing-mode-choices small { margin-top: 2px; font-size: 9px; }
 .primary-button, .secondary-button { width: 100%; min-height: 46px; border-radius: 7px; font-weight: 750; }
 .primary-button { border: 0; color: white; background: #0f8f89; display: flex; justify-content: center; align-items: center; gap: 9px; box-shadow: 0 8px 20px rgba(15,143,137,.18); }
 .primary-button:not(:disabled):hover { background: #087b77; }
@@ -91,6 +97,30 @@ h1 { margin: 10px 0 6px; font-size: 20px; line-height: 1.38; overflow-wrap: anyw
 .handoff-row { margin-top: 9px; min-height: 20px; display: flex; justify-content: space-between; gap: 10px; color: #667e84; }
 .handoff-status { margin: 0; font-size: 12px; line-height: 18px; }
 #handoffPercent { font-size: 12px; font-weight: 750; color: #0b706d; }
+
+.quick-result-card { background: #fff; border: 1px solid #b9dcd7; border-radius: 8px; padding: 14px; box-shadow: 0 8px 22px rgba(15, 143, 137, .08); }
+.quick-result-header { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.quick-result-header div { display: grid; gap: 3px; min-width: 0; }
+.quick-result-header span { color: #71858a; font-size: 11px; }
+.quick-result-header strong { font-size: 14px; overflow-wrap: anywhere; }
+.compact-button { width: auto; min-height: 34px; padding: 7px 11px; font-size: 12px; margin-top: 0; }
+.quick-tabs { display: flex; gap: 4px; margin-top: 14px; border-bottom: 1px solid #e4eeee; }
+.quick-tabs button { border: 0; border-bottom: 2px solid transparent; background: transparent; color: #71858a; padding: 8px 10px; font-size: 12px; font-weight: 700; }
+.quick-tabs button.active { color: #0b706d; border-bottom-color: #0f8f89; }
+.quick-panel { padding-top: 12px; color: #36545a; font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.quick-panel h1, .quick-panel h2, .quick-panel h3 { margin: 8px 0 4px; font-size: 14px; }
+.quick-panel p { margin: 5px 0; }
+.quick-panel ul, .quick-panel ol { margin: 5px 0 8px; padding-left: 20px; }
+.quick-panel code { padding: 1px 4px; border-radius: 4px; background: #eef6f5; color: #0b706d; }
+.quick-transcript-cue { display: grid; grid-template-columns: 50px minmax(0,1fr); gap: 8px; width: 100%; text-align: left; border: 0; border-bottom: 1px solid #edf3f3; background: transparent; color: #36545a; padding: 7px 0; }
+.quick-transcript-cue:hover { color: #087b77; background: #f5fbfa; }
+.quick-transcript-cue time { color: #0b8a81; font-variant-numeric: tabular-nums; }
+.quick-ask-conversation { max-height: 220px; overflow: auto; }
+.quick-ask-conversation article { border-bottom: 1px solid #edf3f3; padding: 7px 0; }
+.quick-ask-conversation article strong { display: block; color: #0b706d; font-size: 11px; }
+.quick-ask-form { display: grid; gap: 8px; margin-top: 10px; }
+.quick-ask-form textarea { width: 100%; resize: vertical; min-height: 54px; border: 1px solid #cbdede; border-radius: 6px; padding: 8px; font: inherit; font-size: 12px; }
+.quick-ask-form .compact-button { justify-self: end; }
 
 @keyframes handoff-flow {
   from { background-position: 100% 0; }

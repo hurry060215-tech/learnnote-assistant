@@ -138,6 +138,7 @@ def live_check(preset: dict, api_key: str, timeout: float) -> None:
         ],
         max_tokens=24,
         temperature=0,
+        **({"extra_body": {"thinking": {"type": "disabled"}}} if llm_provider_name(preset["base_url"]) == "xiaomi" else {}),
     )
     text = str(response.choices[0].message.content or "").strip()
     if "LEARNNOTE_PROVIDER_OK" not in text:

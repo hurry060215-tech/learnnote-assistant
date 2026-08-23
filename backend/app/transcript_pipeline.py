@@ -8,7 +8,7 @@ from collections.abc import Callable
 
 from .models import BrowserSubtitleCue, TaskOptions, TranscriptResult
 from .processor_state import ContentMismatchError, check_cancel
-from .storage import task_dir, update_task
+from .storage import task_dir, update_task, write_json
 
 
 @dataclass

@@ -21,8 +21,8 @@ TaskPhase = Literal[
     "cancelled",
     "failed",
 ]
-TaskMode = Literal["video", "page_text", "download_only", "local", "rerun_from_media"]
-CurrentPageTaskMode = Literal["video", "page_text", "download_only"]
+TaskMode = Literal["video", "subtitle_only", "page_text", "download_only", "local", "rerun_from_media"]
+CurrentPageTaskMode = Literal["video", "subtitle_only", "page_text", "download_only"]
 
 
 class ResourceCandidate(BaseModel):

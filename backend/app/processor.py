@@ -9,7 +9,7 @@ from urllib.parse import urldefrag
 from .asr_pipeline import asr_failure_detail, transcribe_with_task_progress as _asr_transcribe_with_task_progress, use_remote_asr
 from .downloader import DownloadError, MediaDownloader, classify_resource, effective_resource_kind, infer_manifest_url_from_fragment
 from .media import build_frame_grids, extract_audio, extract_embedded_subtitle, extract_frames_adaptive, normalize_video, probe_media_integrity
-from .models import ActiveVideoInfo, BrowserSubtitleCue, CurrentPageTaskRequest, DownloadAttempt, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, now_iso
+from .models import ActiveVideoInfo, BrowserSubtitleCue, CurrentPageTaskRequest, DownloadAttempt, EvidenceCoverage, EvidenceGate, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, now_iso
 from .local_video_task import run_local_video_task
 from .page_text_pipeline import PageTextArtifacts, build_page_text_artifacts as _build_page_text_artifacts
 from .note_pipeline import finish_note_task
@@ -34,6 +34,9 @@ from .text_cleanup import correct_transcript_terms
 from .transcriber import transcribe_audio, transcribe_audio_openai_compatible, transcript_from_subtitle
 from .transcript_pipeline import prepare_transcript as _prepare_transcript, TranscriptArtifacts
 from .visual_pipeline import extract_visual_evidence as _extract_visual_evidence, write_visual_index
+
+# Backward-compatible patch point retained for integrations and older tests.
+extract_frames = extract_frames_adaptive
 
 
 SAFE_RESPONSE_HEADER_NAMES = {"content-type", "content-disposition", "content-length", "content-range", "accept-ranges"}
@@ -740,6 +743,9 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
     if request.mode == "page_text":
         process_page_text_task(task_id, request)
         return
+    if request.mode == "subtitle_only":
+        process_subtitle_only_task(task_id, request)
+        return
 
     work_dir = task_dir(task_id)
     try:
@@ -870,6 +876,124 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
         _fail(task_id, "processing_failed", str(exc))
     finally:
         persist_task_resource_usage(task_id, resource_monitor, resource_started_at)
+
+
+def process_subtitle_only_task(task_id: str, request: CurrentPageTaskRequest) -> None:
+    """Create a grounded note from a complete browser subtitle stream."""
+    try:
+        _check_cancel(task_id)
+        update_task(
+            task_id,
+            status="running",
+            phase="transcribing",
+            progress=20,
+            message="已取得完整字幕，跳过视频下载、ASR 和画面分析",
+            active_video=request.active_video,
+            browser_subtitles=request.browser_subtitles,
+            cookie_summary={},
+        )
+        duration = request.active_video.duration if request.active_video else 0
+        transcript = transcript_from_browser_subtitles(request.browser_subtitles)
+        if not browser_subtitles_are_reliable(request.browser_subtitles, duration):
+            raise ContentMismatchError("当前页面字幕覆盖不足或与播放器 UI 混杂，未创建字幕速记。请改用标准学习或深度图文模式。")
+        if not transcript.segments:
+            raise ContentMismatchError("当前页面没有可验证的完整字幕，请改用音频转写或本地视频。")
+
+        subtitle_path = write_browser_subtitles_srt(task_id, transcript)
+        transcript_path = task_dir(task_id) / "transcript.json"
+        transcript_path.write_text(transcript.model_dump_json(indent=2), encoding="utf-8")
+        update_task(
+            task_id,
+            subtitle_path=subtitle_path,
+            transcript_path=str(transcript_path),
+            progress=45,
+            message="字幕已保存，正在生成快速速览",
+            checkpoint="transcript_ready",
+        )
+
+        options = request.options.model_copy(update={
+            "visual_understanding": False,
+            "note_style": "quick-summary",
+            "note_template": "timeline",
+            "summary_depth": "brief",
+        })
+        note, summary_source, summary_warning, llm_events = summarize_with_diagnostics(
+            request.title,
+            transcript,
+            [],
+            options,
+            request.page_url,
+            "",
+        )
+        provenance = "> 证据来源：浏览器平台字幕（已通过覆盖和播放器 UI 检查）；本版本未下载视频或分析画面。"
+        if provenance not in note:
+            note = f"{provenance}\n\n{note.lstrip()}"
+        note_path = task_dir(task_id) / "note.md"
+        note_path.write_text(note, encoding="utf-8")
+        covered_seconds = max(0.0, max(item.end for item in transcript.segments) - min(item.start for item in transcript.segments))
+        coverage_ratio = covered_seconds / duration if duration > 0 else 1.0
+        coverage = EvidenceCoverage(
+            status="ready",
+            can_summarize=True,
+            transcript_source="browser-subtitle",
+            transcript_char_count=len(transcript.full_text),
+            transcript_covered_seconds=covered_seconds,
+            transcript_coverage_ratio=coverage_ratio,
+            platform_subtitle_coverage_ratio=coverage_ratio,
+            gates=[
+                EvidenceGate(name="browser_subtitle", passed=True, status="passed", detail="字幕覆盖通过完整性和播放器 UI 检查"),
+                EvidenceGate(name="media", passed=False, status="skipped", detail="字幕速记模式不下载媒体"),
+                EvidenceGate(name="visual", passed=False, status="skipped", detail="字幕速记模式不分析画面"),
+            ],
+        )
+        coverage_path = write_json(task_id, "evidence_coverage.json", coverage.model_dump(mode="json"))
+        diagnostics = build_summary_diagnostics(
+            task_id=task_id,
+            title=request.title,
+            page_url=request.page_url,
+            options=options,
+            grids=[],
+            visual_windows=[],
+            summary_source=summary_source,
+            summary_warning=summary_warning,
+            llm_events=llm_events,
+        )
+        diagnostics.update({
+            "source_kind": "subtitle_only",
+            "source_quality": "high",
+            "evidence_quality": "subtitle",
+            "video_evidence": "not_downloaded",
+            "can_claim_video_content": False,
+            "subtitle_coverage_ratio": coverage_ratio,
+            "browser_subtitle_count": len(transcript.segments),
+            "media_pipeline_skipped": True,
+            "asr_skipped": True,
+            "visual_pipeline_skipped": True,
+        })
+        diagnostics_path = write_json(task_id, "summary_diagnostics.json", diagnostics)
+        update_task(
+            task_id,
+            status="success",
+            phase="completed",
+            progress=100,
+            message="字幕速记完成；可继续在桌面端生成深度图文笔记",
+            options=options.model_copy(update={"llm_api_key": None}),
+            note_path=str(note_path),
+            summary_source=summary_source,
+            summary_warning=summary_warning,
+            summary_diagnostics_path=str(diagnostics_path),
+            summary_diagnostics=diagnostics,
+            evidence_coverage_path=str(coverage_path),
+            evidence_coverage=coverage,
+            checkpoint="note_ready",
+        )
+        mark_checkpoint(task_id, "note_ready")
+    except TaskCancelled:
+        return
+    except ContentMismatchError as exc:
+        _fail(task_id, "subtitle_incomplete", str(exc))
+    except Exception as exc:
+        _fail(task_id, "processing_failed", str(exc))
 
 
 def process_local_video_task(

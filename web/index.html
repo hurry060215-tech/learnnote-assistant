@@ -56,13 +56,17 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></svg>
           <span data-i18n="workspaceNav">新建笔记</span>
         </a>
-        <a class="nav-item" href="#resultPanel" data-app-view="notes" title="笔记库" aria-label="笔记库">
+        <a class="nav-item" href="#resultPanel" data-app-view="notes" title="资料库" aria-label="资料库">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h11a2 2 0 0 1 2 2v16l-4-2-4 2-4-2-4 2V5a2 2 0 0 1 2-2z"/><path d="M8 8h7M8 12h6"/></svg>
-          <span data-i18n="notesNav">笔记库</span>
+          <span data-i18n="notesNav">资料库</span>
         </a>
         <a class="nav-item" href="#tasks" data-app-view="history" title="任务" aria-label="任务">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v6h6"/><path d="M12 7v5l3 2"/></svg>
           <span data-i18n="historyNav">任务</span>
+        </a>
+        <a class="nav-item" href="#studyView" data-app-view="study" title="复习" aria-label="复习">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h6M8 16h4"/></svg>
+          <span data-i18n="studyNav">复习</span>
         </a>
         <a id="settingsNav" class="nav-item" href="#settingsView" data-app-view="settings" title="设置" aria-label="设置">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5z"/><path d="M9 8h6M9 12h6M9 16h3"/></svg>
@@ -245,6 +249,15 @@
         </div>
       </section>
 
+      <section id="studyView" class="study-view" hidden aria-label="复习">
+        <header class="study-view-header">
+          <div><span class="editorial-kicker">本地复习</span><h1>把看过的内容记住</h1><p>只使用你确认过的字幕和笔记卡片，不读取课程平台进度。</p></div>
+          <button id="studyViewRefreshButton" class="secondary action-button" type="button">刷新到期卡片</button>
+        </header>
+        <div id="studyViewSummary" class="study-view-summary" aria-live="polite">正在读取复习记录…</div>
+        <section class="study-view-due-section"><header><h2>今天需要复习</h2><small>完成一张卡片后，间隔会按本地复习记录更新。</small></header><div id="studyViewDueList" class="study-due-list"></div></section>
+      </section>
+
       <aside id="workspace" class="workspace-panel">
         <section id="editorialHome" class="editorial-home" aria-labelledby="editorialHomeTitle">
           <header class="editorial-intro">
@@ -334,10 +347,9 @@
               <header><div><span class="editorial-kicker">笔记用途</span><h3 id="editorialPurposeTitle">这次准备怎么学？</h3></div><button id="editorialImportTemplate" type="button">导入 YAML / JSON</button></header>
               <input id="editorialTemplateFile" type="file" accept="application/json,application/yaml,text/yaml,.json,.yaml,.yml" hidden>
               <div id="editorialPurposeChoices" class="editorial-purpose-choices" role="radiogroup" aria-label="选择笔记用途">
-                <label><input type="radio" name="editorialPurpose" value="review" checked><span><strong>课堂复习</strong><small>知识点、解释、易错点、复习题</small></span></label>
-                <label><input type="radio" name="editorialPurpose" value="tutorial"><span><strong>操作教程</strong><small>步骤、界面变化、命令、常见错误</small></span></label>
-                <label><input type="radio" name="editorialPurpose" value="exam"><span><strong>考试整理</strong><small>定义、考点、记忆卡片、练习题</small></span></label>
-                <label><input type="radio" name="editorialPurpose" value="quick"><span><strong>快速摘要</strong><small>结论和关键时间轴</small></span></label>
+                <label><input type="radio" name="editorialPurpose" value="quick"><span><strong>快速速览</strong><small>结论、重点和关键时间轴</small></span></label>
+                <label><input type="radio" name="editorialPurpose" value="study" checked><span><strong>标准学习</strong><small>知识点、解释、例子和复习题</small></span></label>
+                <label><input type="radio" name="editorialPurpose" value="deep"><span><strong>深度图文</strong><small>画面证据、操作细节和概念关系</small></span></label>
                 <label><input type="radio" name="editorialPurpose" value="custom"><span><strong>自定义模板</strong><small id="editorialCustomTemplateName">导入自己的结构</small></span></label>
               </div>
               <div id="editorialPurposePreview" class="editorial-purpose-preview" aria-live="polite"></div>
@@ -495,10 +507,10 @@
             <button id="openProcessingSettingsButton" type="button">高级设置</button>
           </div>
           <div id="homeQuickOptionsSlot" class="learning-goal-group" role="radiogroup" aria-label="选择输出预设">
-            <label><input type="radio" name="learningGoal" value="auto" checked><span><b>智能整理</b><small>根据内容自动选择结构</small></span></label>
-            <label><input type="radio" name="learningGoal" value="deep"><span><b>课堂精讲</b><small>概念脉络 · 例题步骤 · 易错点</small></span></label>
-            <label><input type="radio" name="learningGoal" value="review"><span><b>快速复习</b><small>重点清单 · 记忆提示 · 关键时间点</small></span></label>
-            <label><input type="radio" name="learningGoal" value="exam"><span><b>考前梳理</b><small>考点总结 · 公式定理 · 自测题</small></span></label>
+            <label><input type="radio" name="learningGoal" value="quick"><span><b>快速速览</b><small>字幕优先 · 结论和关键时间轴</small></span></label>
+            <label><input type="radio" name="learningGoal" value="study" checked><span><b>标准学习</b><small>知识点 · 解释 · 复习题</small></span></label>
+            <label><input type="radio" name="learningGoal" value="deep"><span><b>深度图文</b><small>画面证据 · 操作细节 · 概念关系</small></span></label>
+            <label hidden class="legacy-learning-goal"><input type="radio" name="learningGoal" value="exam"><span><b>考试整理</b><small>兼容旧设置与导入模板</small></span></label>
           </div>
         </section>
 
@@ -628,6 +640,7 @@
                 <option value="dashscope">通义千问 DashScope</option>
                 <option value="deepseek">DeepSeek</option>
                 <option value="kimi" selected>Kimi 月之暗面</option>
+                <option value="xiaomi">小米 MiMo</option>
                 <option value="zhipu">智谱 GLM</option>
                 <option value="doubao">豆包 火山方舟</option>
                 <option value="minimax">MiniMax</option>
@@ -700,6 +713,7 @@
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8h11v13H8zM5 16H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h11a1 1 0 0 1 1 1v1"/></svg>
             </button>
             <button id="unifiedExportButton" class="result-export-button" type="button">统一导出</button>
+            <button id="studyProposalPrimaryButton" class="result-version-button" type="button">生成复习卡片</button>
             <button id="newNoteVersionButton" class="result-version-button" type="button" hidden>生成新版本</button>
             <details id="resultMoreActions" class="result-more">
               <summary class="icon-button result-more-trigger" title="高级导出与诊断" aria-label="高级导出与诊断">
@@ -887,6 +901,14 @@
           <ul id="releaseNotesFixes"></ul>
         </section>
         <footer><small>之后可在“设置 → 下载与存储”中重新查看</small><button id="confirmReleaseNotesButton" class="primary action-button" type="button">知道了</button></footer>
+      </section>
+    </div>
+
+    <div id="studyProposalOverlay" class="study-proposal-overlay" hidden>
+      <section class="study-proposal-dialog" role="dialog" aria-modal="true" aria-labelledby="studyProposalTitle">
+        <header><div><span>本地复习</span><h2 id="studyProposalTitle">确认复习卡片</h2><p>批量选择并编辑后写入本地复习库。</p></div><button id="closeStudyProposalButton" class="icon-button" type="button" aria-label="取消">×</button></header>
+        <div id="studyProposalList" class="study-proposal-list"></div>
+        <footer><span id="studyProposalSelectionStatus">已选择 0 张</span><button id="cancelStudyProposalButton" class="secondary action-button" type="button">取消</button><button id="confirmStudyProposalButton" class="primary action-button" type="button">加入复习库</button></footer>
       </section>
     </div>
 

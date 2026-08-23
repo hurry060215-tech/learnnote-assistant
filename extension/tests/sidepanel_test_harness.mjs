@@ -81,6 +81,8 @@ export async function createSidepanelHarness({ contexts = [], preflight = null, 
     window: { addEventListener() {}, open() { return true; } },
     setTimeout,
     clearTimeout,
+    setInterval,
+    clearInterval,
     fetch: async (url, options = {}) => {
       fetchCalls.push({ url: String(url), options });
       if (String(url).endsWith("/health")) {
@@ -89,6 +91,15 @@ export async function createSidepanelHarness({ contexts = [], preflight = null, 
       }
       if (String(url).endsWith("/api/desktop/focus")) {
         return { ok: true, json: async () => focus || ({ ok: true, available: true, focused: true }) };
+      }
+      if (/\/api\/tasks\/[^/]+\/note$/.test(String(url))) {
+        return { ok: true, text: async () => "# 快速速记\n\n- 关键知识点" };
+      }
+      if (/\/api\/tasks\/[^/]+\/transcript$/.test(String(url))) {
+        return { ok: true, json: async () => ({ segments: [{ start: 0, end: 2, text: "字幕" }] }) };
+      }
+      if (/\/api\/tasks\/[^/]+$/.test(String(url))) {
+        return { ok: true, json: async () => ({ task: { id: "abc123def456", status: "success", note_path: "note.md" } }) };
       }
       throw new Error(`Unexpected fetch: ${url}`);
     },

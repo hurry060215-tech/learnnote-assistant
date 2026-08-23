@@ -12828,6 +12828,24 @@ body.reading-mode .app-shell {
   }
 }
 /* Local knowledge and study loop controls */
+.study-view { padding: clamp(26px, 5vw, 64px); max-width: 1080px; width: 100%; margin: 0 auto; }
+.study-view-header { display: flex; justify-content: space-between; align-items: end; gap: 24px; margin-bottom: 28px; }
+.study-view-header h1 { margin: 6px 0; font-size: clamp(28px, 4vw, 44px); }
+.study-view-header p { margin: 0; color: var(--product-muted, #71858a); }
+.study-view-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 26px; }
+.study-view-summary > span { display: grid; gap: 4px; padding: 16px; background: #f4f9f8; border: 1px solid #dcebea; border-radius: 10px; }
+.study-view-summary b { color: #087b77; font-size: 22px; }
+.study-view-summary small { color: #71858a; }
+.study-view-due-section { padding: 20px; background: #fff; border: 1px solid #dce8e8; border-radius: 12px; }
+.study-view-due-section > header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 14px; }
+.study-view-due-section h2 { margin: 0; font-size: 18px; }
+.study-view-due-section small { color: #71858a; }
+.study-view .study-card { background: #f9fcfc; }
+@media (max-width: 680px) {
+  .study-view-header { align-items: start; flex-direction: column; }
+  .study-view-summary { grid-template-columns: 1fr; }
+  .study-view-due-section > header { align-items: start; flex-direction: column; }
+}
 .knowledge-search-setting {
   align-items: start;
 }

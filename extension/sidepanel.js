@@ -32,7 +32,16 @@ const els = {
   handoffProgress: document.querySelector("#handoffProgress"),
   handoffStatus: document.querySelector("#handoffStatus"),
   handoffPercent: document.querySelector("#handoffPercent"),
-  openTaskButton: document.querySelector("#openTaskButton")
+  openTaskButton: document.querySelector("#openTaskButton"),
+  quickResultCard: document.querySelector("#quickResultCard"),
+  quickResultStatus: document.querySelector("#quickResultStatus"),
+  quickDeepButton: document.querySelector("#quickDeepButton"),
+  quickSummaryPanel: document.querySelector("#quickSummaryPanel"),
+  quickTranscriptPanel: document.querySelector("#quickTranscriptPanel"),
+  quickAskPanel: document.querySelector("#quickAskPanel"),
+  quickAskConversation: document.querySelector("#quickAskConversation"),
+  quickAskForm: document.querySelector("#quickAskForm"),
+  quickAskQuestion: document.querySelector("#quickAskQuestion")
 };
 
 let backendUrl = DEFAULT_BACKEND_URL;
@@ -51,6 +60,153 @@ let preflightAt = 0;
 let preflightFingerprint = "";
 let activeHandoff = null;
 let suppressTabActivationUntil = 0;
+let currentTaskMode = "";
+let quickPollTimer = 0;
+let quickTranscript = [];
+let selectedProcessingMode = "quick";
+
+function processingOptions(mode = selectedProcessingMode) {
+  if (mode === "deep") return { visual_understanding: true, frame_interval: 20, grid_columns: 3, grid_rows: 3, note_style: "lecture", note_template: "visual-handout", summary_depth: "deep" };
+  if (mode === "study") return { visual_understanding: false, note_style: "classroom-review", note_template: "standard", summary_depth: "standard" };
+  return { visual_understanding: false, note_style: "quick-summary", note_template: "timeline", summary_depth: "brief" };
+}
+
+function setProcessingMode(mode = "quick") {
+  selectedProcessingMode = ["quick", "study", "deep"].includes(mode) ? mode : "quick";
+  document.querySelectorAll?.("[data-processing-mode]").forEach(button => {
+    const active = button.dataset.processingMode === selectedProcessingMode;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+  renderContext();
+}
+
+function subtitleCues(context = currentContext) {
+  return (context?.page?.browser_subtitles || [])
+    .map(item => ({ start: Number(item?.start || 0), end: Number(item?.end || item?.start || 0), text: String(item?.text || "").trim() }))
+    .filter(item => item.text && Number.isFinite(item.start) && Number.isFinite(item.end) && item.end >= item.start)
+    .sort((a, b) => a.start - b.start || a.end - b.end);
+}
+
+function hasReliableBrowserSubtitles(context = currentContext) {
+  const cues = subtitleCues(context);
+  if (cues.length < 8) return false;
+  const duration = Number(context?.page?.active_video?.duration || 0);
+  const span = Math.max(0, cues[cues.length - 1].end - cues[0].start);
+  if (duration > 0) return span / duration >= 0.55;
+  return span >= 45;
+}
+
+function escapeQuickHtml(value = "") {
+  return String(value).replace(/[&<>\"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" })[char]);
+}
+
+function renderQuickMarkdown(markdown = "") {
+  const lines = String(markdown || "").split(/\r?\n/);
+  const html = [];
+  let list = false;
+  const closeList = () => { if (list) { html.push("</ul>"); list = false; } };
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) { closeList(); continue; }
+    const heading = /^(#{1,3})\s+(.+)$/.exec(line);
+    const bullet = /^[-*]\s+(.+)$/.exec(line);
+    if (heading) { closeList(); html.push(`<h${heading[1].length}>${escapeQuickHtml(heading[2])}</h${heading[1].length}>`); continue; }
+    if (bullet) { if (!list) { html.push("<ul>"); list = true; } html.push(`<li>${escapeQuickHtml(bullet[1])}</li>`); continue; }
+    closeList();
+    html.push(`<p>${escapeQuickHtml(line).replace(/`([^`]+)`/g, "<code>$1</code>")}</p>`);
+  }
+  closeList();
+  return html.join("") || "<p>正在等待速记结果…</p>";
+}
+
+function formatCueTime(seconds) {
+  const total = Math.max(0, Math.round(Number(seconds || 0)));
+  const minutes = Math.floor(total / 60);
+  return `${String(minutes).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+}
+
+function stopQuickPolling() {
+  if (quickPollTimer) clearInterval(quickPollTimer);
+  quickPollTimer = 0;
+}
+
+function showQuickResult(status = "正在生成字幕速记…") {
+  if (!els.quickResultCard) return;
+  els.quickResultCard.hidden = false;
+  if (els.quickResultStatus) els.quickResultStatus.textContent = status;
+}
+
+function renderQuickTranscript(cues = quickTranscript) {
+  if (!els.quickTranscriptPanel) return;
+  els.quickTranscriptPanel.innerHTML = cues.length
+    ? cues.map(cue => `<button type="button" class="quick-transcript-cue" data-seek-time="${Number(cue.start).toFixed(3)}"><time>${formatCueTime(cue.start)}</time><span>${escapeQuickHtml(cue.text)}</span></button>`).join("")
+    : "<p>字幕尚未读取。</p>";
+  els.quickTranscriptPanel.querySelectorAll?.("[data-seek-time]").forEach(button => {
+    button.addEventListener("click", async () => {
+      if (!HAS_EXTENSION_API || !displayedIdentity?.tab_id) return;
+      await chrome.runtime.sendMessage({ type: "seek-current-video", targetTabId: displayedIdentity.tab_id, seconds: Number(button.dataset.seekTime) });
+    });
+  });
+}
+
+function setQuickTab(tabName = "summary") {
+  document.querySelectorAll?.("[data-quick-tab]").forEach(button => {
+    const active = button.dataset.quickTab === tabName;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", String(active));
+  });
+  document.querySelectorAll?.("[data-quick-panel]").forEach(panel => {
+    panel.hidden = panel.dataset.quickPanel !== tabName;
+  });
+}
+
+async function fetchQuickTask(taskId = currentTaskId) {
+  const response = await fetchWithTimeout(`${backendUrl}/api/tasks/${encodeURIComponent(taskId)}`);
+  if (!response.ok) throw new Error(`任务查询失败（HTTP ${response.status}）`);
+  return response.json();
+}
+
+async function loadQuickArtifacts(task) {
+  const [noteResponse, transcriptResponse] = await Promise.all([
+    fetchWithTimeout(`${backendUrl}/api/tasks/${encodeURIComponent(task.id)}/note`),
+    fetchWithTimeout(`${backendUrl}/api/tasks/${encodeURIComponent(task.id)}/transcript`)
+  ]);
+  const note = noteResponse.ok ? await noteResponse.text() : "";
+  const transcript = transcriptResponse.ok ? await transcriptResponse.json() : {};
+  quickTranscript = Array.isArray(transcript?.segments) ? transcript.segments : [];
+  if (els.quickSummaryPanel) els.quickSummaryPanel.innerHTML = renderQuickMarkdown(note);
+  renderQuickTranscript(quickTranscript);
+  showQuickResult(task.summary_warning ? `速记完成 · ${task.summary_warning}` : "速记完成 · 未下载视频或分析画面");
+}
+
+async function pollQuickTask() {
+  if (!currentTaskId || currentTaskMode !== "subtitle_only") return;
+  try {
+    const payload = await fetchQuickTask(currentTaskId);
+    const task = payload?.task || payload;
+    if (task.status === "failed" || task.status === "cancelled") {
+      stopQuickPolling();
+      showQuickResult(task.error_detail || task.message || "字幕速记失败，请改用深度图文模式");
+      if (els.quickSummaryPanel) els.quickSummaryPanel.innerHTML = `<p>${escapeQuickHtml(task.error_detail || task.message || "字幕速记失败")}</p>`;
+      return;
+    }
+    showQuickResult(task.note_path ? "正在载入速记结果…" : (task.message || "正在生成字幕速记…"));
+    if (task.note_path && task.status === "success") {
+      stopQuickPolling();
+      await loadQuickArtifacts(task);
+      setProgress(100, "字幕速记已完成，可继续深度图文学习。", "success");
+    }
+  } catch (error) {
+    showQuickResult(error?.message || "正在等待本地服务响应…");
+  }
+}
+
+function startQuickPolling() {
+  stopQuickPolling();
+  pollQuickTask();
+  quickPollTimer = setInterval(pollQuickTask, 1200);
+}
 
 function withTimeout(promise, timeoutMs, label) {
   let timer = 0;
@@ -213,6 +369,7 @@ function sameSourceIdentity(left, right) {
 }
 
 function resetSourceState() {
+  stopQuickPolling();
   preflightReport = null;
   preflightIdentity = null;
   preflightAt = 0;
@@ -220,6 +377,9 @@ function resetSourceState() {
   preflightRequest = null;
   activeHandoff = null;
   currentTaskId = "";
+  currentTaskMode = "";
+  quickTranscript = [];
+  if (els.quickResultCard) els.quickResultCard.hidden = true;
   els.openTaskButton.hidden = true;
   els.sendButtonLabel.textContent = "发送到客户端";
 }
@@ -313,6 +473,7 @@ function renderContext(message = "") {
   const identity = currentContext ? buildSourceIdentity(currentContext) : null;
   const platform = platformIdentity(page.page_url || tab.url || "", page);
   const candidates = mediaCandidates();
+  const subtitleReady = hasReliableBrowserSubtitles(currentContext);
   const title = identity?.page_title || "未识别到视频页面";
   const duration = Number(active.duration || 0);
   const playing = Boolean(active && active.paused === false && (active.src || active.src_object));
@@ -326,7 +487,7 @@ function renderContext(message = "") {
   els.playingBadge.hidden = !playing;
   els.candidateCount.textContent = String(candidates.length);
   els.durationValue.textContent = formatDuration(duration);
-  els.estimateValue.textContent = candidates.length || active.src ? "约 5–15 秒" : "--";
+  els.estimateValue.textContent = selectedProcessingMode === "quick" && subtitleReady ? "字幕速记 10–30 秒" : (candidates.length || active.src ? "按视频时长估算" : "--");
   setIntegrityItem("video", evidence.video);
   setIntegrityItem("audio", evidence.audio);
   setIntegrityItem("subtitle", evidence.subtitle);
@@ -334,11 +495,20 @@ function renderContext(message = "") {
   const hasPage = Boolean(identity?.canonical_page_url && !/^(?:chrome|edge|about):/i.test(identity.canonical_page_url));
   const hasMediaEvidence = evidence.video === true || candidates.length > 0;
   const alreadySent = Boolean(currentTaskId && activeHandoff?.sourceKey === sourceContinuityKey(identity));
-  els.sendButton.disabled = sending || alreadySent || !clientConnected || !hasPage || !hasMediaEvidence;
+  const quickUnavailable = selectedProcessingMode === "quick" && !subtitleReady;
+  els.sendButton.disabled = sending || alreadySent || !clientConnected || !hasPage || (quickUnavailable && !hasMediaEvidence) || (!quickUnavailable && !hasMediaEvidence);
+  els.sendButtonLabel.textContent = currentTaskId
+    ? (currentTaskMode === "subtitle_only" ? "速记已开始" : "已发送到客户端")
+    : selectedProcessingMode === "quick" ? (subtitleReady ? "快速生成字幕速记" : "快速速览需要完整字幕")
+      : selectedProcessingMode === "study" ? "开始标准学习" : "开始深度图文";
   if (message) {
     els.preflightMessage.textContent = message;
   } else if (!hasPage) {
     els.preflightMessage.textContent = "请切换到正在播放视频的页面。";
+  } else if (selectedProcessingMode === "quick" && subtitleReady) {
+    els.preflightMessage.textContent = "已取得覆盖充分的浏览器字幕，可以直接生成速览；不会下载视频、调用 ASR 或分析画面。";
+  } else if (selectedProcessingMode === "quick") {
+    els.preflightMessage.textContent = "当前字幕覆盖不足；请选择标准学习使用 ASR，或选择深度图文分析视频。";
   } else if (!hasMediaEvidence) {
     els.preflightMessage.textContent = "还没有检测到播放器或媒体候选，请播放几秒后重新识别。";
   } else if (preflightReport?.ready || preflightReport?.downloadable_count > 0) {
@@ -450,6 +620,7 @@ async function collectContext(force = true, targetTabId = null) {
 
 async function runPreflight(identity = displayedIdentity) {
   if (!clientConnected || !currentContext || !identity) return null;
+  if (selectedProcessingMode === "quick" && hasReliableBrowserSubtitles(currentContext)) return null;
   const candidates = mediaCandidates(currentContext);
   if (!candidates.length && !currentContext.page?.active_video) return null;
   if (hasFreshPreflight(identity)) return preflightReport;
@@ -493,7 +664,7 @@ async function refreshAndPreflight({ force = true } = {}) {
   els.preflightMessage.dataset.state = "info";
   els.preflightMessage.textContent = "正在读取播放器和媒体请求...";
   const context = await collectContext(force);
-  if (context && clientConnected) await runPreflight(displayedIdentity);
+  if (context && clientConnected && !(selectedProcessingMode === "quick" && hasReliableBrowserSubtitles(context))) await runPreflight(displayedIdentity);
   return context;
 }
 
@@ -501,7 +672,7 @@ function pageSwitchMessage() {
   return "页面或播放内容已切换，已丢弃旧预检结果。请确认当前视频后重新发送。";
 }
 
-async function sendToClient() {
+async function sendToClient(modeOverride = "") {
   if (sending || !displayedIdentity) return false;
   sending = true;
   els.sendButton.disabled = true;
@@ -525,6 +696,35 @@ async function sendToClient() {
       return false;
     }
 
+    const requestedMode = modeOverride === "video" ? "deep" : (modeOverride || selectedProcessingMode);
+    const effectiveMode = requestedMode === "quick" && !hasReliableBrowserSubtitles(fresh) ? "study" : requestedMode;
+    const quick = effectiveMode === "quick";
+    if (quick) {
+      currentTaskMode = "subtitle_only";
+      setProgress(48, "已取得完整字幕，跳过媒体预检和视频处理...");
+      const response = await withTimeout(chrome.runtime.sendMessage({
+        type: "start-current-task",
+        backendUrl,
+        targetTabId: freshIdentity.tab_id,
+        page: fresh.page,
+        resources: [],
+        sourceIdentity: freshIdentity,
+        handoffId: handoffId(freshIdentity),
+        defer: false,
+        mode: "subtitle_only",
+        options: processingOptions("quick")
+      }), REQUEST_TIMEOUT_MS, "创建字幕速记任务");
+      if (response?.error) throw new Error(response.error);
+      currentTaskId = String(response?.task_id || "");
+      if (!currentTaskId) throw new Error("客户端未确认字幕速记任务");
+      els.openTaskButton.hidden = false;
+      showQuickResult("正在生成字幕速记…");
+      setQuickTab("summary");
+      startQuickPolling();
+      setProgress(72, "字幕已交给本地服务，正在生成速览...");
+      return true;
+    }
+
     setProgress(48, hasFreshPreflight(freshIdentity) ? "已复用刚刚的媒体预检" : "正在校验媒体完整性...");
     if (!hasFreshPreflight(freshIdentity)) await runPreflight(freshIdentity);
     if (!sameSourceIdentity(freshIdentity, displayedIdentity)) {
@@ -532,6 +732,10 @@ async function sendToClient() {
       return false;
     }
 
+    currentTaskMode = "video";
+    const videoHandoffId = effectiveMode === "deep" && activeHandoff?.sourceKey === sourceContinuityKey(freshIdentity)
+      ? (activeHandoff = null, handoffId(freshIdentity))
+      : handoffId(freshIdentity);
     setProgress(76, "正在发送视频来源到客户端...");
     const response = await withTimeout(chrome.runtime.sendMessage({
       type: "start-current-task",
@@ -541,9 +745,10 @@ async function sendToClient() {
       resources: mediaCandidates(fresh),
       pagePreflightReport: sameSourceIdentity(preflightIdentity, freshIdentity) ? preflightReport : null,
       sourceIdentity: freshIdentity,
-      handoffId: handoffId(freshIdentity),
+      handoffId: videoHandoffId,
       defer: true,
-      mode: "video"
+      mode: "video",
+      options: processingOptions(effectiveMode)
     }), REQUEST_TIMEOUT_MS, "发送到客户端");
     if (response?.error) throw new Error(response.error);
     currentTaskId = String(response?.task_id || "");
@@ -559,7 +764,9 @@ async function sendToClient() {
   } finally {
     sending = false;
     els.sendButton.setAttribute("aria-busy", "false");
-    els.sendButtonLabel.textContent = currentTaskId ? "已发送到客户端" : "重试发送";
+    els.sendButtonLabel.textContent = currentTaskMode === "subtitle_only"
+      ? (currentTaskId ? "速记已开始" : "重试速记")
+      : (currentTaskId ? "已发送到客户端" : "重试发送");
     const preservedMessage = els.preflightMessage.textContent;
     renderContext(preservedMessage);
   }
@@ -617,12 +824,50 @@ function scheduleRefresh(reason = "media", targetTabId = null) {
 function bindEvents() {
   els.refreshButton?.addEventListener("click", () => refreshAndPreflight({ force: true }));
   els.sendButton?.addEventListener("click", sendToClient);
+  els.quickDeepButton?.addEventListener("click", () => { setProcessingMode("deep"); sendToClient("video"); });
+  document.querySelectorAll?.("[data-processing-mode]").forEach(button => {
+    button.addEventListener("click", () => setProcessingMode(button.dataset.processingMode || "quick"));
+  });
   els.openClientButton?.addEventListener("click", () => openClient("workspace"));
   els.openClientBrand?.addEventListener("click", event => {
     event.preventDefault();
     openClient("workspace");
   });
   els.openTaskButton?.addEventListener("click", () => openClient("task", currentTaskId, "note"));
+  document.querySelectorAll?.("[data-quick-tab]").forEach(button => {
+    button.addEventListener("click", () => setQuickTab(button.dataset.quickTab || "summary"));
+  });
+  els.quickAskForm?.addEventListener("submit", async event => {
+    event.preventDefault();
+    const question = String(els.quickAskQuestion?.value || "").trim();
+    if (!question || !currentTaskId || !els.quickAskConversation) return;
+    const entry = document.createElement?.("article");
+    if (entry) {
+      entry.innerHTML = `<strong>你</strong><p>${escapeQuickHtml(question)}</p>`;
+      els.quickAskConversation.appendChild(entry);
+    }
+    try {
+      const response = await fetchWithTimeout(`${backendUrl}/api/tasks/${encodeURIComponent(currentTaskId)}/qa`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question })
+      });
+      if (!response.ok) throw new Error(`提问失败（HTTP ${response.status}）`);
+      const result = await response.json();
+      const answer = document.createElement?.("article");
+      if (answer) {
+        answer.innerHTML = `<strong>LearnNote</strong>${renderQuickMarkdown(result?.answer || "没有找到可引用的字幕证据。")}`;
+        els.quickAskConversation.appendChild(answer);
+      }
+      if (els.quickAskQuestion) els.quickAskQuestion.value = "";
+    } catch (error) {
+      const answer = document.createElement?.("article");
+      if (answer) {
+        answer.innerHTML = `<strong>提示</strong><p>${escapeQuickHtml(error?.message || "提问失败")}</p>`;
+        els.quickAskConversation.appendChild(answer);
+      }
+    }
+  });
   document.querySelectorAll("[data-client-view]").forEach(button => {
     button.addEventListener("click", () => openClient(button.dataset.clientView || "workspace", currentTaskId, button.dataset.clientView === "diagnostics" && currentTaskId ? "diagnostics" : "note"));
   });
@@ -649,6 +894,9 @@ globalThis.__learnnoteSidepanel = {
   platformIdentity,
   resourceFingerprint,
   buildSourceIdentity,
+  hasReliableBrowserSubtitles,
+  renderQuickMarkdown,
+  renderQuickTranscript,
   sourceIdentityKey,
   sourceContinuityKey,
   sameSourceIdentity,
@@ -659,5 +907,5 @@ globalThis.__learnnoteSidepanel = {
   runPreflight,
   sendToClient,
   openClient,
-  getState: () => ({ backendUrl, clientConnected, currentContext, displayedIdentity, preflightReport, currentTaskId, sending })
+  getState: () => ({ backendUrl, clientConnected, currentContext, displayedIdentity, preflightReport, currentTaskId, currentTaskMode, selectedProcessingMode, sending })
 };
