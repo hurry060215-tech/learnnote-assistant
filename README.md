@@ -150,6 +150,7 @@ http://127.0.0.1:8765
 模型统一在客户端 **设置 → AI 模型 / 转写** 中配置。当前支持常见 OpenAI-compatible 服务以及内置提供商预设：
 
 - Kimi、通义千问、智谱 GLM
+- 小米 MiMo（OpenAI-compatible；`mimo-v2.5` 支持视觉，`mimo-v2.5-pro` 适合纯文本推理）
 - DeepSeek、豆包、MiniMax、百度千帆
 - OpenAI、Groq、Gemini 和自定义兼容接口
 

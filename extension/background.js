@@ -2460,7 +2460,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
       const resources = mergeAndRankResources(message.resources, page, tab, { preserveOrder: Array.isArray(message.resources) });
       const partitionKeys = await cookiePartitionKeysForContext(page, tab, resources);
-      const cookies = await cookiesForUrls(cookieUrlsForContext(page, tab, resources), partitionKeys);
+      const cookies = message.mode === "subtitle_only"
+        ? []
+        : await cookiesForUrls(cookieUrlsForContext(page, tab, resources), partitionKeys);
       const backendUrl = message.backendUrl || "http://127.0.0.1:8765";
       const taskEndpoint = `${backendUrl}/api/tasks/from-current-page${message.defer === true ? "?defer=true" : ""}`;
       const payload = await postJsonWithRetry(taskEndpoint, {
@@ -2484,6 +2486,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return;
       }
       sendResponse(payload);
+      return;
+    }
+
+    if (message.type === "seek-current-video") {
+      const tab = await tabForMessage(message);
+      const seconds = Number(message.seconds);
+      if (!Number.isFinite(seconds) || seconds < 0) {
+        sendResponse({ ok: false, error: "无效的视频时间点。" });
+        return;
+      }
+      try {
+        const result = await chrome.tabs.sendMessage(tab.id, { type: "seek-current-video", seconds });
+        sendResponse(result || { ok: true });
+      } catch (error) {
+        sendResponse({ ok: false, error: error?.message || "当前页面暂不支持定位视频。" });
+      }
       return;
     }
 

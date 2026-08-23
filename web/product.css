@@ -330,7 +330,8 @@ body.settings-mode .app-shell {
 .workspace-panel,
 .result-panel,
 .queue-panel,
-.settings-view {
+.settings-view,
+.study-view {
   grid-column: 2;
   width: 100%;
   max-width: 1240px;
@@ -1102,6 +1103,9 @@ body[data-app-view="notes"] .workspace-panel,
 body[data-app-view="notes"] .queue-panel,
 body[data-app-view="history"] .workspace-panel,
 body[data-app-view="history"] .result-panel,
+body[data-app-view="study"] .workspace-panel,
+body[data-app-view="study"] .queue-panel,
+body[data-app-view="study"] .result-panel,
 body[data-app-view="settings"] .workspace-panel,
 body[data-app-view="settings"] .queue-panel,
 body[data-app-view="settings"] .result-panel {
@@ -1109,7 +1113,8 @@ body[data-app-view="settings"] .result-panel {
 }
 
 body[data-app-view="notes"] .result-panel,
-body[data-app-view="history"] .queue-panel {
+body[data-app-view="history"] .queue-panel,
+body[data-app-view="study"] .study-view {
   display: block !important;
   grid-row: 1;
   min-height: calc(100vh - 64px);
@@ -1128,6 +1133,21 @@ body[data-app-view="workspace"] .result-panel::before {
   font-size: 20px;
   font-weight: 700;
 }
+
+.study-proposal-overlay { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; padding: 24px; background: rgba(18,49,58,.28); }
+.study-proposal-overlay[hidden] { display: none; }
+.study-proposal-dialog { width: min(720px, 100%); max-height: min(780px, 90vh); overflow: auto; background: #fff; border: 1px solid #c9dfdd; border-radius: 14px; box-shadow: 0 24px 80px rgba(18,49,58,.22); padding: 22px; }
+.study-proposal-dialog > header { display: flex; justify-content: space-between; gap: 16px; align-items: start; }
+.study-proposal-dialog > header span { color: var(--product-accent-strong); font-size: 12px; font-weight: 750; }
+.study-proposal-dialog h2 { margin: 4px 0; }
+.study-proposal-dialog p { margin: 0; color: var(--product-muted); }
+.study-proposal-list { display: grid; gap: 10px; margin: 18px 0; }
+.study-proposal-item { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 10px; padding: 12px; border: 1px solid #dce8e8; border-radius: 9px; background: #fbfdfd; }
+.study-proposal-item > input { margin-top: 4px; }
+.study-proposal-item strong { display: block; }
+.study-proposal-item textarea { width: 100%; min-height: 54px; resize: vertical; margin-top: 7px; border: 1px solid #cbdede; border-radius: 6px; padding: 7px; font: inherit; font-size: 13px; }
+.study-proposal-dialog > footer { display: flex; justify-content: end; align-items: center; gap: 8px; }
+.study-proposal-dialog > footer span { margin-right: auto; color: var(--product-muted); font-size: 12px; }
 
 /* Settings use open rows, not panels inside panels. */
 .settings-view {

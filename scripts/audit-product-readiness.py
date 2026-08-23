@@ -318,8 +318,8 @@ def build_matrix(*, include_acceptance_gate: bool = True) -> list[ReadinessItem]
 
     rows: list[ReadinessItem] = []
     ui_ready = (
-        has_all(sidepanel_html, ["connectionCard", "videoTitle", "integrityGrid", "sendButton", "handoffProgress", "data-client-view=\"settings\"", "data-client-view=\"diagnostics\""])
-        and has_all(sidepanel_js, ["sameSourceIdentity", "preflight-current-page", "start-current-task", "setProgress", "openClient"])
+        has_all(sidepanel_html, ["connectionCard", "videoTitle", "integrityGrid", "sendButton", "handoffProgress", "quickResultCard", "data-processing-mode=\"quick\"", "data-client-view=\"settings\"", "data-client-view=\"diagnostics\""])
+        and has_all(sidepanel_js, ["sameSourceIdentity", "hasReliableBrowserSubtitles", "subtitle_only", "preflight-current-page", "start-current-task", "setProgress", "openClient"])
         and has_all(sidepanel_css, ["connection-card", "video-card", "integrity-grid", "handoff-progress", "client-links"])
     )
     rows.append(item(
@@ -327,7 +327,7 @@ def build_matrix(*, include_acceptance_gate: bool = True) -> list[ReadinessItem]
         "Focused Side Panel handoff flow",
         "pass" if ui_ready else "fail",
         (
-            "The extension only identifies the current video, verifies source identity, sends it to the client, and shows handoff progress."
+            "The extension identifies the current video, verifies source identity, offers subtitle-first quick study or deep handoff, and shows grounded progress/results."
             if ui_ready else "Side Panel product-flow tokens are missing."
         ),
         [
@@ -343,6 +343,7 @@ def build_matrix(*, include_acceptance_gate: bool = True) -> list[ReadinessItem]
         "preflight",
         "yt-dlp",
         "cookie",
+        "subtitle_only",
         "no tab recording",
     ]) and has_all(audit_real_site, ["require_ready", "ready_to_download"])
     rows.append(item(

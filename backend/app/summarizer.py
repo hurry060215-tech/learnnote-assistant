@@ -45,6 +45,8 @@ def llm_provider_name(base_url: str) -> str:
         return "deepseek"
     if _hostname_matches(host, "moonshot.cn") or _hostname_matches(host, "platform.kimi.com"):
         return "kimi"
+    if _hostname_matches(host, "xiaomimimo.com"):
+        return "xiaomi"
     if _hostname_matches(host, "bigmodel.cn"):
         return "zhipu"
     if _hostname_matches(host, "volces.com"):
@@ -63,6 +65,8 @@ def chat_completion_provider_kwargs(base_url: str) -> dict:
     if provider == "deepseek":
         return {"temperature": 0.2, "extra_body": {"thinking": {"type": "disabled"}}}
     if provider == "kimi":
+        return {"extra_body": {"thinking": {"type": "disabled"}}}
+    if provider == "xiaomi":
         return {"extra_body": {"thinking": {"type": "disabled"}}}
     return {"temperature": 0.2}
 
@@ -413,6 +417,7 @@ def note_grounding_issues(
     transcript: TranscriptResult,
     grids: list[FrameGrid],
     visual_evidence: str = "",
+    title: str = "",
 ) -> list[str]:
     text = str(note or "").strip()
     if not text:
@@ -432,7 +437,7 @@ def note_grounding_issues(
             issues.append(f"duration_mismatch:{claimed:.1f}!={duration:.1f}")
             break
 
-    evidence = f"{transcript.full_text}\n{visual_evidence}".lower()
+    evidence = f"{title}\n{transcript.full_text}\n{visual_evidence}".lower()
     evidence_tokens = {
         token.lower().strip("._-")
         for token in re.findall(r"[A-Za-z][A-Za-z0-9+_.-]{2,}", evidence)
@@ -468,6 +473,7 @@ def _repair_grounded_note(
     visual_evidence: str,
     issues: list[str],
     events: list[dict] | None,
+    title: str = "",
 ) -> str:
     try:
         response = client.chat.completions.create(
@@ -480,6 +486,7 @@ def _repair_grounded_note(
                     "只允许保留字幕和画面摘要能支持的课程内容；删除外部工具、通用经验、老师没有讲过的例题和无依据建议。"
                     "可以保留自测题，但必须明确写“自测题”，且答案可由证据直接推出。\n"
                     f"{_evidence_contract(transcript, grids)}\n"
+                    f"标题：{title}\n"
                     f"检测问题：{'; '.join(issues)}\n\n"
                     f"字幕：\n{transcript.full_text[:60000]}\n\n"
                     f"画面摘要：\n{visual_evidence[:30000]}\n\n"
@@ -503,8 +510,9 @@ def _validated_generated_note(
     grids: list[FrameGrid],
     visual_evidence: str,
     events: list[dict] | None,
+    title: str = "",
 ) -> str:
-    issues = note_grounding_issues(candidate, transcript, grids, visual_evidence)
+    issues = note_grounding_issues(candidate, transcript, grids, visual_evidence, title)
     if not issues:
         return candidate.strip()
     _record_llm_event(events, "grounding_validation", "repair_required", issues=issues, model=model)
@@ -518,8 +526,9 @@ def _validated_generated_note(
         visual_evidence,
         issues,
         events,
+        title,
     )
-    remaining = note_grounding_issues(repaired, transcript, grids, visual_evidence)
+    remaining = note_grounding_issues(repaired, transcript, grids, visual_evidence, title)
     if repaired and not remaining:
         _record_llm_event(events, "grounding_validation", "repaired", model=model)
         return repaired
@@ -1294,6 +1303,7 @@ def summarize_with_llm(
                     grids,
                     merge_prompt,
                     events,
+                    title,
                 )
                 if not grounded:
                     return None
@@ -1341,6 +1351,7 @@ def summarize_with_llm(
             grids,
             transcript.full_text,
             events,
+            title,
         )
         if not grounded:
             return None

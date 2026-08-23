@@ -64,8 +64,10 @@ const LEGACY_NOTE_PRESETS = Object.freeze({
   academic: { style: "academic", template: "standard", depth: "deep" }
 });
 const LEARNING_GOALS = Object.freeze({
+  quick: { style: "quick-summary", template: "timeline", depth: "brief", visual: false },
+  study: { style: "classroom-review", template: "standard", depth: "standard", visual: false },
+  deep: { style: "lecture", template: "visual-handout", depth: "deep", visual: true },
   auto: { style: "study", template: "standard", depth: "standard" },
-  deep: { style: "concept", template: "standard", depth: "deep" },
   review: { style: "concise", template: "standard", depth: "brief" },
   exam: { style: "exam", template: "qa", depth: "standard" }
 });
@@ -84,7 +86,7 @@ const NOTE_STYLE_PROFILES = Object.freeze({
   language: { title: "语言学习", description: "适合外语课程，整理表达、语境、语法和练习。", sections: ["主题语境", "核心表达", "语法说明", "例句", "练习"] }
 });
 const MAINSTREAM_MODEL_PROVIDER_KEYS = new Set([
-  "openai", "groq", "gemini", "dashscope", "deepseek", "kimi", "zhipu", "doubao", "minimax", "qianfan"
+  "openai", "groq", "gemini", "dashscope", "deepseek", "kimi", "xiaomi", "zhipu", "doubao", "minimax", "qianfan"
 ]);
 const MODEL_PROVIDER_PRESETS = {
   openai: {
@@ -135,6 +137,15 @@ const MODEL_PROVIDER_PRESETS = {
   kimi: {
     baseUrl: "https://api.moonshot.cn/v1",
     model: "kimi-k2.6",
+    transcriber: "faster-whisper",
+    whisperModel: "small",
+    tier: "mainstream",
+    recommended: true,
+    capabilities: ["text", "vision"]
+  },
+  xiaomi: {
+    baseUrl: "https://api.xiaomimimo.com/v1",
+    model: "mimo-v2.5",
     transcriber: "faster-whisper",
     whisperModel: "small",
     tier: "mainstream",
@@ -333,6 +344,7 @@ let assistantHistoryRequestId = 0;
 let assistantContextTaskId = "";
 let assistantBusy = false;
 let assistantLocatedEvidenceKey = "";
+let pendingStudyProposals = [];
 
 const ACTIVE_TASK_STATUSES = new Set(["running", "queued", "cancelling"]);
 
@@ -367,6 +379,10 @@ const els = {
   workspaceNav: document.querySelector("#workspaceNav"),
   settingsNav: document.querySelector("#settingsNav"),
   settingsView: document.querySelector("#settingsView"),
+  studyView: document.querySelector("#studyView"),
+  studyViewSummary: document.querySelector("#studyViewSummary"),
+  studyViewDueList: document.querySelector("#studyViewDueList"),
+  studyViewRefreshButton: document.querySelector("#studyViewRefreshButton"),
   settingsCloseButton: document.querySelector("#settingsCloseButton"),
   settingsMenuButtons: document.querySelectorAll("[data-settings-tab]"),
   settingsPanes: document.querySelectorAll("[data-settings-pane]"),
@@ -511,6 +527,13 @@ const els = {
   diagnosticsButton: document.querySelector("#diagnosticsButton"),
   supportPackageButton: document.querySelector("#supportPackageButton"),
   studyProposalButton: document.querySelector("#studyProposalButton"),
+  studyProposalPrimaryButton: document.querySelector("#studyProposalPrimaryButton"),
+  studyProposalOverlay: document.querySelector("#studyProposalOverlay"),
+  studyProposalList: document.querySelector("#studyProposalList"),
+  studyProposalSelectionStatus: document.querySelector("#studyProposalSelectionStatus"),
+  confirmStudyProposalButton: document.querySelector("#confirmStudyProposalButton"),
+  cancelStudyProposalButton: document.querySelector("#cancelStudyProposalButton"),
+  closeStudyProposalButton: document.querySelector("#closeStudyProposalButton"),
   visualWindowsButton: document.querySelector("#visualWindowsButton"),
   manifestButton: document.querySelector("#manifestButton"),
   subtitlesButton: document.querySelector("#subtitlesButton"),
@@ -829,11 +852,12 @@ function showSettingsPane(name = "general") {
 function showAppView(view = "workspace") {
   const settingsMode = view === "settings";
   const wasSettingsMode = document.body?.classList?.contains("settings-mode");
-  const normalizedView = ["workspace", "notes", "history", "settings"].includes(view) ? view : "workspace";
+  const normalizedView = ["workspace", "notes", "history", "study", "settings"].includes(view) ? view : "workspace";
   if (document.body?.dataset) document.body.dataset.appView = normalizedView;
   syncLayoutForView(normalizedView);
   document.body?.classList?.toggle("settings-mode", settingsMode);
   if (els.settingsView) els.settingsView.hidden = !settingsMode;
+  if (els.studyView) els.studyView.hidden = normalizedView !== "study";
   document.querySelectorAll?.(".nav-item[data-app-view]")?.forEach?.(item => {
     const active = settingsMode ? item.dataset.appView === "settings" : item.dataset.appView === view || (view === "workspace" && item.dataset.appView === "workspace");
     item.classList?.toggle("active", active);
@@ -842,6 +866,7 @@ function showAppView(view = "workspace") {
     if (!wasSettingsMode) showSettingsPane("general");
     loadStorageSummary();
   }
+  if (normalizedView === "study") loadStudyView();
   if (normalizedView === "notes" && assistantSelectedTask() && assistantOpenPreference() === true) {
     setAssistantOpen(true, { persist: false });
   } else {
@@ -3024,6 +3049,7 @@ function taskElapsedText(task = {}) {
 }
 
 function sourceText(task) {
+  if (task.mode === "subtitle_only") return "字幕速记";
   if (task.mode === "download_only") return "当前页下载";
   if (task.mode === "rerun_from_media") return "复用本地视频";
   if (task.source_type === "local") return "本地视频";
@@ -4314,6 +4340,10 @@ function learningGoalFromOptions(style, template, depth) {
     value.style === style && value.template === template && value.depth === depth
   );
   if (exact) return exact[0];
+  if (style === "study" && template === "standard" && depth === "standard") return "study";
+  if (style === "quick-summary" || template === "timeline") return "quick";
+  if (style === "classroom-review") return "study";
+  if (style === "lecture" || template === "visual-handout" || depth === "deep") return "deep";
   if (style === "exam" || template === "qa" || template === "flashcards") return "exam";
   if (depth === "deep") return "deep";
   if (depth === "brief" || style === "concise" || template === "timeline") return "review";
@@ -4335,6 +4365,10 @@ function applyLearningGoal(name) {
   if (els.noteStyle) els.noteStyle.value = preset.style;
   if (els.noteTemplate) els.noteTemplate.value = preset.template;
   if (els.summaryDepth) els.summaryDepth.value = preset.depth;
+  if (typeof preset.visual === "boolean" && els.visualUnderstanding) {
+    els.visualUnderstanding.checked = preset.visual;
+    syncVisualUnderstandingUi();
+  }
   appSettings.noteStyle = preset.style;
   appSettings.noteTemplate = preset.template;
   appSettings.summaryDepth = preset.depth;
@@ -4826,7 +4860,7 @@ function setReadingMode(enabled, persist = true) {
 }
 
 function syncLayoutForView(view = document.body?.dataset?.appView || "workspace") {
-  const normalizedView = ["workspace", "notes", "history", "settings"].includes(view) ? view : "workspace";
+  const normalizedView = ["workspace", "notes", "history", "study", "settings"].includes(view) ? view : "workspace";
   const notesLike = normalizedView === "notes" || normalizedView === "history";
   setNavigationCollapsed(storedUiFlag("learnnote.navigationCollapsed"), false);
   setWorkspaceCollapsed(normalizedView === "workspace" && storedUiFlag("learnnote.workspaceCollapsed"), false);
@@ -5746,9 +5780,61 @@ async function reviewStudyCard(cardId, rating) {
   }
 }
 
+function closeStudyProposalDialog() {
+  pendingStudyProposals = [];
+  if (els.studyProposalOverlay) els.studyProposalOverlay.hidden = true;
+  if (els.studyProposalList) els.studyProposalList.replaceChildren();
+}
+
+function updateStudyProposalSelection() {
+  if (!els.studyProposalList || !els.studyProposalSelectionStatus) return;
+  const count = els.studyProposalList.querySelectorAll("input[type=checkbox]:checked").length;
+  els.studyProposalSelectionStatus.textContent = `已选择 ${count} 张`;
+  if (els.confirmStudyProposalButton) els.confirmStudyProposalButton.disabled = count === 0;
+}
+
+function openStudyProposalDialog(proposals) {
+  if (!els.studyProposalOverlay || !els.studyProposalList) return false;
+  pendingStudyProposals = proposals;
+  els.studyProposalList.innerHTML = proposals.map((card, index) => `
+    <label class="study-proposal-item">
+      <input type="checkbox" data-proposal-index="${index}" checked>
+      <span><strong>${escapeHtml(card.front || "记忆卡片")}</strong><textarea data-proposal-back="${index}">${escapeHtml(card.back || "")}</textarea></span>
+    </label>`).join("");
+  els.studyProposalList.querySelectorAll("input[type=checkbox]").forEach(input => input.addEventListener("change", updateStudyProposalSelection));
+  updateStudyProposalSelection();
+  els.studyProposalOverlay.hidden = false;
+  return true;
+}
+
+async function confirmStudyProposalSelection() {
+  if (!els.studyProposalList || !pendingStudyProposals.length) return;
+  const selected = Array.from(els.studyProposalList.querySelectorAll("input[type=checkbox]:checked")).map(input => {
+    const index = Number(input.dataset.proposalIndex);
+    const back = els.studyProposalList.querySelector(`[data-proposal-back="${index}"]`)?.value || pendingStudyProposals[index]?.back || "";
+    return { ...pendingStudyProposals[index], back };
+  });
+  if (!selected.length) return;
+  if (els.confirmStudyProposalButton) els.confirmStudyProposalButton.disabled = true;
+  try {
+    await fetchJson(apiUrl("/api/study/cards"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cards: selected })
+    });
+    if (els.exportStatus) els.exportStatus.textContent = `已加入 ${selected.length} 张复习卡片；可在“复习”中查看。`;
+    closeStudyProposalDialog();
+    await loadStudyView();
+  } catch (error) {
+    if (els.exportStatus) els.exportStatus.textContent = error?.message || "复习卡片保存失败。";
+    if (els.confirmStudyProposalButton) els.confirmStudyProposalButton.disabled = false;
+  }
+}
+
 async function generateStudyCardsFromTask(taskId) {
   if (!taskId || !els.exportStatus) return;
   els.studyProposalButton?.setAttribute?.("disabled", "disabled");
+  els.studyProposalPrimaryButton?.setAttribute?.("disabled", "disabled");
   els.exportStatus.textContent = "正在根据时间戳证据生成复习卡片候选…";
   try {
     const result = await fetchJson(apiUrl(`/api/tasks/${encodeURIComponent(taskId)}/study-proposals?limit=8`), { method: "POST" });
@@ -5757,26 +5843,73 @@ async function generateStudyCardsFromTask(taskId) {
       els.exportStatus.textContent = "当前任务没有足够的文字证据，未生成卡片。";
       return;
     }
-    const selected = proposals.filter(card => window.confirm(`确认加入复习卡片？\n\n${card.front}\n${String(card.back || "").slice(0, 180)}`));
-    if (!selected.length) {
-      els.exportStatus.textContent = "已取消；候选卡片没有写入复习库。";
-      return;
-    }
-    await fetchJson(apiUrl("/api/study/cards"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ cards: selected })
-    });
-    els.exportStatus.textContent = `已加入 ${selected.length} 张复习卡片；可在设置中查看到期卡片。`;
+    if (!openStudyProposalDialog(proposals)) throw new Error("无法打开复习卡片确认窗口。");
+    els.exportStatus.textContent = "请批量选择并编辑复习卡片。";
   } catch (error) {
     els.exportStatus.textContent = error?.message || "复习卡片生成失败。";
   } finally {
     els.studyProposalButton?.removeAttribute?.("disabled");
+    els.studyProposalPrimaryButton?.removeAttribute?.("disabled");
   }
 }
 
 function taskResumeUrl(taskId) {
   return globalThis.LearnNoteTaskLinks?.resumeUrl?.(apiUrl, taskId) || apiUrl(`/api/tasks/${encodeURIComponent(taskId)}/resume`);
+}
+
+async function loadStudyView() {
+  if (!els.studyViewDueList || !els.studyViewSummary) return;
+  els.studyViewSummary.textContent = "正在读取复习记录…";
+  els.studyViewDueList.textContent = "正在读取到期卡片…";
+  try {
+    const [due, summary, plan] = await Promise.all([
+      fetchJson(apiUrl("/api/study/due?limit=30")),
+      fetchJson(apiUrl("/api/study/summary")),
+      fetchJson(apiUrl("/api/study/plan"))
+    ]);
+    const cards = Array.isArray(due?.cards) ? due.cards : [];
+    els.studyViewSummary.innerHTML = [
+      `<span><b>${Number(summary?.due_count || cards.length)}</b><small>张到期卡片</small></span>`,
+      `<span><b>${Number(summary?.reviewed_today || 0)}</b><small>今日已复习</small></span>`,
+      `<span><b>${Number(plan?.daily_target || 10)}</b><small>每日目标</small></span>`
+    ].join("");
+    els.studyViewDueList.replaceChildren();
+    if (!cards.length) {
+      const empty = document.createElement("p");
+      empty.className = "knowledge-empty";
+      empty.textContent = "当前没有到期卡片。打开一篇完成的笔记，在顶部生成复习卡片即可。";
+      els.studyViewDueList.append(empty);
+      return;
+    }
+    cards.forEach(card => {
+      const article = document.createElement("article");
+      article.className = "study-card";
+      const front = document.createElement("strong");
+      front.textContent = card.front || "记忆卡片";
+      const back = document.createElement("p");
+      back.textContent = card.back || "";
+      const actions = document.createElement("div");
+      actions.className = "study-card-actions";
+      [[1, "重来"], [3, "记住"], [4, "简单"]].forEach(([rating, label]) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "secondary action-button";
+        button.textContent = label;
+        button.addEventListener("click", async () => {
+          await fetchJson(apiUrl(`/api/study/cards/${encodeURIComponent(card.card_id)}/review`), {
+            method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rating })
+          });
+          await loadStudyView();
+        });
+        actions.append(button);
+      });
+      article.append(front, back, actions);
+      els.studyViewDueList.append(article);
+    });
+  } catch (error) {
+    els.studyViewSummary.textContent = error?.message || "复习记录读取失败。";
+    els.studyViewDueList.textContent = "请确认本地服务正在运行。";
+  }
 }
 
 function taskQaUrl(taskId) {
@@ -6834,6 +6967,7 @@ function assistantSelectedTask() {
 
 function assistantTaskKindLabel(task) {
   if (!task) return "";
+  if (task.mode === "subtitle_only") return "字幕速记";
   if (task.source_type === "page_text" || task.mode === "page_text") return "页面文本笔记";
   if (task.evidence_quality?.video_evidence === "invalid") return "视频来源无效";
   if (task.evidence_quality?.can_claim_video_content === false) return "待补充视频证据";
@@ -6843,6 +6977,7 @@ function assistantTaskKindLabel(task) {
 
 function noteEvidenceNoticeHtml(task) {
   if (!task) return "";
+  if (task.mode === "subtitle_only") return "";
   const pageTextOnly = task.source_type === "page_text" || task.mode === "page_text";
   const invalidMedia = task.evidence_quality?.video_evidence === "invalid";
   const evidenceMissing = task.evidence_quality?.can_claim_video_content === false;
@@ -6861,17 +6996,20 @@ function noteEvidenceNoticeHtml(task) {
 
 function noteProvenanceHtml(task) {
   if (!task) return "";
+  const subtitleOnly = task.mode === "subtitle_only";
   const pageTextOnly = task.source_type === "page_text" || task.mode === "page_text";
   const sourceHost = hostFromUrl(task.page_url || task.selected_resource?.page_url || task.selected_resource?.url) || sourceText(task);
   const evidence = task.evidence_quality || {};
   const invalidMedia = evidence.video_evidence === "invalid";
   const transcriptReady = evidence.has_timed_transcript ?? hasReadableTranscript(task);
   const windowCount = visualWindows(task).length;
-  const items = pageTextOnly
+  const items = subtitleOnly
+    ? [["来源", sourceHost], ["内容", "字幕速记"], ["视频", "未下载"], ["画面", "未分析"]]
+    : pageTextOnly
     ? [["来源", sourceHost], ["内容", "仅页面文字"], ["视频", "未获取"], ["画面", "未获取"]]
     : [["来源", sourceHost], ["视频", invalidMedia ? "无效文件" : (evidence.has_media ?? Boolean(task.media_path)) ? "已保存" : "未保存"], ["字幕", transcriptReady ? "可核对" : "未生成"], ["画面", windowCount ? `${windowCount} 个窗口` : evidence.has_visual_evidence ? "已生成" : "未生成"]];
   return `<section class="note-provenance" aria-label="笔记证据范围">
-    <header><strong>证据范围</strong><span>${pageTextOnly ? "页面摘要" : "视频笔记"}</span></header>
+    <header><strong>证据范围</strong><span>${subtitleOnly ? "字幕速记" : pageTextOnly ? "页面摘要" : "视频笔记"}</span></header>
     <div>${items.map(([label, value]) => `<span><b>${escapeHtml(label)}</b>${escapeHtml(value)}</span>`).join("")}</div>
   </section>`;
 }
@@ -8540,6 +8678,7 @@ async function renderDetail() {
     els.diagnosticsButton.disabled = true;
     if (els.supportPackageButton) els.supportPackageButton.disabled = true;
     if (els.studyProposalButton) els.studyProposalButton.disabled = true;
+    if (els.studyProposalPrimaryButton) els.studyProposalPrimaryButton.disabled = true;
     if (els.visualWindowsButton) els.visualWindowsButton.disabled = true;
     if (els.manifestButton) els.manifestButton.disabled = true;
     if (els.subtitlesButton) els.subtitlesButton.disabled = true;
@@ -8566,6 +8705,7 @@ async function renderDetail() {
   els.diagnosticsButton.disabled = !hasTaskDiagnostics(task);
   if (els.supportPackageButton) els.supportPackageButton.disabled = !task?.id;
   if (els.studyProposalButton) els.studyProposalButton.disabled = task.status !== "success" || !task.note_path;
+  if (els.studyProposalPrimaryButton) els.studyProposalPrimaryButton.disabled = task.status !== "success" || !task.note_path;
   if (els.visualWindowsButton) els.visualWindowsButton.disabled = !hasVisualWindowExport(task);
   if (els.manifestButton) els.manifestButton.disabled = !hasTaskBundle(task);
   if (els.subtitlesButton) els.subtitlesButton.disabled = !hasExportableSubtitle(task);
@@ -9221,6 +9361,10 @@ if (els.manifestButton) {
 els.diagnosticsButton.onclick = () => exportSelectedTask("diagnostics", els.diagnosticsButton);
 els.supportPackageButton?.addEventListener?.("click", () => exportSelectedTask("support-package", els.supportPackageButton));
 els.studyProposalButton?.addEventListener?.("click", () => generateStudyCardsFromTask(selectedTaskId));
+els.studyProposalPrimaryButton?.addEventListener?.("click", () => generateStudyCardsFromTask(selectedTaskId));
+els.cancelStudyProposalButton?.addEventListener?.("click", closeStudyProposalDialog);
+els.closeStudyProposalButton?.addEventListener?.("click", closeStudyProposalDialog);
+els.confirmStudyProposalButton?.addEventListener?.("click", confirmStudyProposalSelection);
 if (els.visualWindowsButton) {
   els.visualWindowsButton.onclick = () => exportSelectedTask("visual-windows", els.visualWindowsButton);
 }
@@ -9361,6 +9505,7 @@ els.knowledgeSearchInput?.addEventListener?.("keydown", event => {
 els.studyDueButton?.addEventListener?.("click", loadStudyDue);
 els.studyExportButton?.addEventListener?.("click", exportStudyData);
 els.studyPlanSaveButton?.addEventListener?.("click", saveStudyPlan);
+els.studyViewRefreshButton?.addEventListener?.("click", loadStudyView);
 loadStudyPlan();
 els.applyCleanupButton?.addEventListener?.("click", applyStorageCleanup);
 els.deleteAllTasksButton?.addEventListener?.("click", deleteAllTasksFromClient);

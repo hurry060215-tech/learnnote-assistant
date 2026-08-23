@@ -65,3 +65,18 @@ assert.equal(
   1,
   "concurrent clicks must create one handoff request"
 );
+
+const subtitlePage = videoContext();
+subtitlePage.page.browser_subtitles = Array.from({ length: 12 }, (_, index) => ({
+  start: index * 55,
+  end: index * 55 + 50,
+  text: `第 ${index + 1} 个知识点`
+}));
+const subtitleHarness = await createSidepanelHarness({ contexts: [subtitlePage, subtitlePage] });
+assert.equal(await subtitleHarness.api.sendToClient(), true, "complete browser subtitles should use the fast path");
+const subtitleStart = subtitleHarness.sentMessages.find(item => item.type === "start-current-task");
+assert.ok(subtitleStart, "subtitle-only task should be created");
+assert.equal(subtitleStart.mode, "subtitle_only");
+assert.equal(subtitleStart.defer, false);
+assert.equal(subtitleStart.resources.length, 0);
+assert.equal(subtitleHarness.sentMessages.filter(item => item.type === "preflight-current-page").length, 0);

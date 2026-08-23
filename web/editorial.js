@@ -1,29 +1,42 @@
 (() => {
   const STAGES = ["获取视频", "检查内容", "生成字幕", "理解画面", "整理笔记"];
   const PURPOSES = {
-    review: {
-      title: "课堂复习",
-      summary: "按知识点组织解释，保留易错点并在末尾生成复习题。",
+    study: {
+      title: "标准学习",
+      summary: "按知识点组织解释，保留例子、易错点并生成复习题。",
       sections: ["课程主题", "核心知识点", "概念解释", "易错点", "复习题"],
-      style: "classroom-review", template: "standard", depth: "standard"
+      style: "classroom-review", template: "standard", depth: "standard", visual: false
     },
-    tutorial: {
-      title: "操作教程",
-      summary: "跟随演示顺序记录界面变化、命令、操作步骤和排错方法。",
-      sections: ["完成目标", "准备工作", "操作步骤", "命令与参数", "常见错误"],
-      style: "operation-tutorial", template: "visual-handout", depth: "deep"
-    },
-    exam: {
-      title: "考试整理",
-      summary: "把定义和考点整理成便于记忆、自测和回顾的复习材料。",
-      sections: ["考试范围", "核心定义", "高频考点", "记忆卡片", "练习题"],
-      style: "exam-review", template: "qa", depth: "standard"
+    deep: {
+      title: "深度图文",
+      summary: "保留讲授顺序、画面证据、概念关系和可回看的操作细节。",
+      sections: ["课程目标", "章节讲义", "画面证据", "概念联系", "理解检查"],
+      style: "lecture", template: "visual-handout", depth: "deep", visual: true
     },
     quick: {
       title: "快速摘要",
       summary: "只保留结论、关键依据和可以回到原视频核对的时间点。",
       sections: ["一句话结论", "关键要点", "重要时间轴"],
-      style: "quick-summary", template: "timeline", depth: "brief"
+      style: "quick-summary", template: "timeline", depth: "brief", visual: false
+    },
+    // Backward-compatible aliases for imported templates and existing tests.
+    review: {
+      title: "课堂复习",
+      summary: "按知识点组织解释，保留易错点并生成复习题。",
+      sections: ["课程主题", "核心知识点", "概念解释", "易错点", "复习题"],
+      style: "classroom-review", template: "standard", depth: "standard", visual: false
+    },
+    tutorial: {
+      title: "操作教程",
+      summary: "跟随演示顺序记录界面变化、命令、操作步骤和排错方法。",
+      sections: ["完成目标", "准备工作", "操作步骤", "命令与参数", "常见错误"],
+      style: "operation-tutorial", template: "visual-handout", depth: "deep", visual: true
+    },
+    exam: {
+      title: "考试整理",
+      summary: "把定义和考点整理成便于记忆、自测和回顾的复习材料。",
+      sections: ["考试范围", "核心定义", "高频考点", "记忆卡片", "练习题"],
+      style: "exam-review", template: "qa", depth: "standard", visual: false
     }
   };
 
@@ -231,7 +244,7 @@
   }
 
   function selectedPurposeKey() {
-    return q('input[name="editorialPurpose"]:checked')?.value || "review";
+    return q('input[name="editorialPurpose"]:checked')?.value || "study";
   }
 
   function selectedPurpose() {
@@ -251,6 +264,10 @@
       }
       if (els.noteTemplate) els.noteTemplate.value = purpose.template || "standard";
       if (els.summaryDepth) els.summaryDepth.value = purpose.depth || "standard";
+      if (typeof purpose.visual === "boolean" && els.visualUnderstanding) {
+        els.visualUnderstanding.checked = purpose.visual;
+        if (typeof syncVisualUnderstandingUi === "function") syncVisualUnderstandingUi();
+      }
     }
     if (key === "custom" && customPurpose && typeof appSettings !== "undefined") {
       appSettings.customNoteProfile = customPurpose;

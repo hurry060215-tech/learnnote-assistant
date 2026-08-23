@@ -9,8 +9,8 @@ from fastapi.testclient import TestClient
 
 from app import APP_VERSION, UX_PROTOCOL_VERSION
 from app.main import app
-from app.models import CurrentPageTaskRequest, MediaIntegrity
-from app.processor import process_page_text_task
+from app.models import ActiveVideoInfo, BrowserSubtitleCue, CurrentPageTaskRequest, MediaIntegrity
+from app.processor import process_current_page_task, process_page_text_task
 from app.storage import _directory_size, create_task, get_task, update_task
 
 
@@ -54,6 +54,45 @@ class TaskManagementApiTests(unittest.TestCase):
         self.assertTrue(payload["extension_compatible"])
         self.assertEqual(payload["assistant_capabilities"]["media_adapter_contract_version"], 1)
         self.assertEqual({item["id"] for item in payload["media_adapters"]}, {"bilibili", "youtube", "chaoxing", "web"})
+
+    def test_subtitle_only_skips_media_pipeline_and_creates_grounded_note(self) -> None:
+        task = create_task("current_page", "字幕速记课", "https://www.bilibili.com/video/BV1TEST123", mode="subtitle_only")
+        cues = [BrowserSubtitleCue(start=index * 10, end=index * 10 + 8, text=f"第 {index + 1} 个知识点") for index in range(12)]
+        request = CurrentPageTaskRequest(
+            mode="subtitle_only",
+            page_url="https://www.bilibili.com/video/BV1TEST123",
+            title="字幕速记课",
+            active_video=ActiveVideoInfo(src="https://cdn.example.com/video.mp4", duration=120, paused=False),
+            browser_subtitles=cues,
+        )
+        process_current_page_task(task.id, request)
+        record = get_task(task.id)
+        self.assertEqual(record.status, "success")
+        self.assertEqual(record.mode, "subtitle_only")
+        self.assertFalse(record.media_path)
+        self.assertFalse(record.audio_path)
+        self.assertFalse(record.visual_windows)
+        self.assertTrue(record.transcript_path)
+        self.assertTrue(record.note_path)
+        self.assertEqual(record.summary_diagnostics["source_kind"], "subtitle_only")
+        self.assertTrue(record.summary_diagnostics["media_pipeline_skipped"])
+        self.assertTrue(record.evidence_coverage.can_summarize)
+        self.assertIn("证据来源：浏览器平台字幕", Path(record.note_path).read_text(encoding="utf-8"))
+
+    def test_subtitle_only_rejects_partial_browser_cues(self) -> None:
+        task = create_task("current_page", "不完整字幕", "https://example.com/video", mode="subtitle_only")
+        request = CurrentPageTaskRequest(
+            mode="subtitle_only",
+            page_url="https://example.com/video",
+            title="不完整字幕",
+            active_video=ActiveVideoInfo(src="https://cdn.example.com/video.mp4", duration=120, paused=False),
+            browser_subtitles=[BrowserSubtitleCue(start=0, end=3, text="只有一小段")],
+        )
+        process_current_page_task(task.id, request)
+        record = get_task(task.id)
+        self.assertEqual(record.status, "failed")
+        self.assertEqual(record.error_code, "subtitle_incomplete")
+        self.assertFalse(record.media_path)
 
     def test_cancel_retry_delete_and_storage_summary(self) -> None:
         active = create_task("local", "Active task")
