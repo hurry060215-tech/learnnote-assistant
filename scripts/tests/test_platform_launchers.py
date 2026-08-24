@@ -15,6 +15,11 @@ class PlatformLauncherContractTests(unittest.TestCase):
             self.assertIn("desktop/main.py", source)
             self.assertIn(marker, source)
 
+    def test_windows_launcher_keeps_project_root_on_python_path(self) -> None:
+        source = (ROOT / "start-desktop.ps1").read_text(encoding="utf-8")
+        self.assertIn("PYTHONPATH", source)
+        self.assertIn("$projectRoot", source)
+
 
 if __name__ == "__main__":
     unittest.main()

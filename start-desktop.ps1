@@ -42,6 +42,12 @@ if ($Debug) {
   $arguments += "--debug"
 }
 
+# Running a package module from its file path removes the project root from
+# Python's import path. Keep the root explicit so desktop/main.py can import
+# the desktop package when the launcher is started from any working directory.
+$projectPath = $env:PYTHONPATH
+$env:PYTHONPATH = if ($projectPath) { "$projectRoot;$projectPath" } else { $projectRoot }
+
 Write-Host "Starting LearnNote Desktop..." -ForegroundColor Green
 Write-Host "Data: $projectRoot\data"
 & $python @arguments
