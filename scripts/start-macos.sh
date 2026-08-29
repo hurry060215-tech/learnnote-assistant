@@ -10,6 +10,6 @@ if [[ ! -x "${VENV_DIR}/bin/python" ]]; then
   "${PYTHON_BIN}" -m venv "${VENV_DIR}"
 fi
 "${VENV_DIR}/bin/python" -m pip install -r "${ROOT}/backend/requirements.desktop.txt"
-export PYTHONPATH="${ROOT}/backend${PYTHONPATH:+:${PYTHONPATH}}"
+export PYTHONPATH="${ROOT}:${ROOT}/backend${PYTHONPATH:+:${PYTHONPATH}}"
 export LEARNNOTE_DATA_DIR="${LEARNNOTE_DATA_DIR:-${HOME}/Library/Application Support/LearnNote}"
 exec "${VENV_DIR}/bin/python" "${ROOT}/desktop/main.py" --port "${PORT}" "$@"
