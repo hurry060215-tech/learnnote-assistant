@@ -874,16 +874,17 @@ function showSettingsPane(name = "general") {
 }
 
 function showAppView(view = "workspace") {
-  const settingsMode = view === "settings";
+  const requestedView = view === "history" ? "notes" : view;
+  const settingsMode = requestedView === "settings";
   const wasSettingsMode = document.body?.classList?.contains("settings-mode");
-  const normalizedView = ["workspace", "notes", "history", "study", "settings"].includes(view) ? view : "workspace";
+  const normalizedView = ["workspace", "notes", "study", "settings"].includes(requestedView) ? requestedView : "workspace";
   if (document.body?.dataset) document.body.dataset.appView = normalizedView;
   syncLayoutForView(normalizedView);
   document.body?.classList?.toggle("settings-mode", settingsMode);
   if (els.settingsView) els.settingsView.hidden = !settingsMode;
   if (els.studyView) els.studyView.hidden = normalizedView !== "study";
   document.querySelectorAll?.(".nav-item[data-app-view]")?.forEach?.(item => {
-    const active = settingsMode ? item.dataset.appView === "settings" : item.dataset.appView === view || (view === "workspace" && item.dataset.appView === "workspace");
+    const active = settingsMode ? item.dataset.appView === "settings" : item.dataset.appView === normalizedView || (normalizedView === "workspace" && item.dataset.appView === "workspace");
     item.classList?.toggle("active", active);
   });
   if (settingsMode) {
@@ -4896,8 +4897,9 @@ function setReadingMode(enabled, persist = true) {
 }
 
 function syncLayoutForView(view = document.body?.dataset?.appView || "workspace") {
-  const normalizedView = ["workspace", "notes", "history", "study", "settings"].includes(view) ? view : "workspace";
-  const notesLike = normalizedView === "notes" || normalizedView === "history";
+  const requestedView = view === "history" ? "notes" : view;
+  const normalizedView = ["workspace", "notes", "study", "settings"].includes(requestedView) ? requestedView : "workspace";
+  const notesLike = normalizedView === "notes";
   setNavigationCollapsed(storedUiFlag("learnnote.navigationCollapsed"), false);
   setWorkspaceCollapsed(normalizedView === "workspace" && storedUiFlag("learnnote.workspaceCollapsed"), false);
   setHistoryCollapsed(notesLike && storedUiFlag("learnnote.historyCollapsed"), false);
@@ -5367,10 +5369,11 @@ function bindTaskListEvents() {
       await runTaskAction(taskElement.dataset.id, action);
       return;
     }
+    if (event.target?.closest?.(".task-more")) return;
     await openTaskFromList(taskElement.dataset.id);
   });
   els.tasks?.addEventListener?.("keydown", async event => {
-    if (!["Enter", " "].includes(event.key) || event.target?.closest?.("[data-task-action]")) return;
+    if (!["Enter", " "].includes(event.key) || event.target?.closest?.("[data-task-action], .task-more")) return;
     const taskElement = event.target?.closest?.(".task");
     if (!taskElement?.dataset?.id) return;
     event.preventDefault?.();
@@ -5419,11 +5422,15 @@ function renderTasks() {
         ${taskChipsHtml(task)}
         ${taskProgressExperienceHtml(task)}
         <div class="task-controls" aria-label="任务操作">
-          <button type="button" data-task-action="open">${task.note_path ? "查看笔记" : "查看详情"}</button>
-          ${canCreateNoteVersion(task) ? `<button type="button" data-task-action="version">新建笔记版本</button>` : ""}
           ${isActiveTask(task) ? `<button type="button" data-task-action="cancel">停止</button>` : ""}
           ${["failed", "cancelled"].includes(task.status) ? `<button type="button" data-task-action="retry">${canResumeFromCheckpoint(task) ? "从检查点继续" : "重试"}</button>` : ""}
-          ${task.awaiting_confirmation || ["success", "failed", "cancelled"].includes(task.status) ? `<button type="button" data-task-action="delete">${task.awaiting_confirmation ? "放弃并删除" : "删除"}</button>` : ""}
+          ${canCreateNoteVersion(task) || task.awaiting_confirmation || ["success", "failed", "cancelled"].includes(task.status) ? `<details class="task-more">
+            <summary aria-label="更多操作" title="更多操作">•••</summary>
+            <span class="task-more-menu">
+              ${canCreateNoteVersion(task) ? `<button type="button" data-task-action="version">生成新版本</button>` : ""}
+              ${task.awaiting_confirmation || ["success", "failed", "cancelled"].includes(task.status) ? `<button type="button" data-task-action="delete" class="task-delete-action">${task.awaiting_confirmation ? "放弃并删除" : "删除"}</button>` : ""}
+            </span>
+          </details>` : ""}
         </div>
       </div>
     </article>
@@ -8897,39 +8904,44 @@ function bindEmptyWorkbenchActions() {
     };
   });
 }
-
-function noteReadinessBanner(task, note = "") {
+function noteTrustBarHtml(task, documentValue = null, note = "") {
   if (!task) return "";
+  const sections = visibleNoteDocumentSections(documentValue);
+  const verifiedCount = sections.filter(section => section.verification === "verified").length;
+  const citationCount = sections.reduce((count, section) => count + (section.citations?.length || 0), 0);
+  const evidence = task.evidence_quality || {}, transcriptReady = evidence.has_timed_transcript ?? hasReadableTranscript(task);
+  const visualCount = visualWindows(task).length, active = isActiveTask(task), readable = Boolean(String(note || "").trim());
+  const pageTextOnly = task.source_type === "page_text" || task.mode === "page_text";
+  const evidenceMissing = evidence.can_claim_video_content === false;
+  const invalidMedia = evidence.video_evidence === "invalid";
+  const needsAttention = invalidMedia || pageTextOnly || evidenceMissing || task.status === "failed";
   const progress = Math.max(0, Math.min(100, Number(task.progress || 0)));
-  const readable = Boolean(String(note || "").trim());
-  const active = isActiveTask(task);
-  let state = "verified";
-  let label = "证据可核对";
-  let title = "笔记已完成";
-  let detail = "字幕、画面与来源入口会保留在笔记旁边。";
-  if (active && readable) {
-    state = "draft";
-    label = "草稿可阅读";
-    title = "你可以先开始阅读";
-    detail = `${taskPhaseLabel(task)} · 后续章节与画面证据仍会继续补充。`;
-  } else if (active) {
-    state = "processing";
-    label = `${progress}%`;
-    title = "正在生成第一版草稿";
-    detail = `${taskPhaseLabel(task)} · 字幕大纲就绪后会立即开放阅读。`;
-  } else if (readable && task.status !== "success") {
-    state = "limited";
-    label = "降级草稿";
-    title = "已有内容可以阅读";
-    detail = "部分证据可能缺失，请结合处理检查核对。";
-  } else if (!readable) {
-    return "";
-  }
-  return `<section class="note-readiness-banner ${state}" role="status" aria-label="笔记生成状态">
-    <span>${escapeHtml(label)}</span>
-    <div><strong>${escapeHtml(title)}</strong><small>${escapeHtml(detail)}</small></div>
-    ${active ? `<div class="note-readiness-progress" role="progressbar" aria-label="${escapeHtml(taskPhaseLabel(task))}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progress}"><i style="width:${progress}%"></i></div>` : ""}
-  </section>`;
+  const title = needsAttention
+    ? "这篇笔记需要核对"
+    : active && readable
+    ? "草稿已经可以阅读"
+    : active
+    ? `正在生成 · ${progress}%`
+    : citationCount
+    ? `已生成 · ${citationCount} 个可核对出处`
+    : "已生成 · 出处待补充";
+  const detail = active
+    ? `${taskPhaseLabel(task)}${readable ? "，其余证据会继续补充" : "，字幕草稿就绪后即可阅读"}`
+    : sections.length
+    ? `${verifiedCount}/${sections.length} 节可核对 · ${transcriptReady ? "字幕可用" : "字幕待补充"} · ${visualCount ? `${visualCount} 组关键画面` : "画面待补充"}`
+    : `${transcriptReady ? "字幕可用" : "字幕待补充"} · ${visualCount ? `${visualCount} 组关键画面` : "画面待补充"}`;
+  return `<details class="note-trust-bar${needsAttention ? " needs-attention" : ""}"${needsAttention ? " open" : ""}>
+    <summary>
+      <span class="note-trust-state" aria-hidden="true">${needsAttention ? "!" : active ? "…" : "✓"}</span>
+      <span><strong>${escapeHtml(title)}</strong><small>${escapeHtml(detail)}</small></span>
+      <em>${needsAttention ? "查看并恢复" : "查看出处"}</em>
+    </summary>
+    <div class="note-trust-details">
+      ${noteEvidenceNoticeHtml(task)}
+      ${noteProvenanceHtml(task)}
+      ${noteDocumentEvidenceHtml(documentValue)}
+    </div>
+  </details>`;
 }
 
 function visibleNoteDocumentSections(documentValue) {
@@ -9064,10 +9076,7 @@ async function renderDetail() {
     const pendingContext = lastNote ? "" : `${taskOverview(task)}${failureGuide(task)}`;
     els.detail.innerHTML = `
       <div class="note-shell">
-        ${noteReadinessBanner(task, displayNote)}
-        ${noteEvidenceNoticeHtml(task)}
-        ${noteProvenanceHtml(task)}
-        ${noteDocumentEvidenceHtml(noteDocument)}
+        ${noteTrustBarHtml(task, noteDocument, displayNote)}
         <div class="note-workbench">
           <article class="markdown-note">${displayNote ? markdownToHtml(displayNote) : emptyNoteHtml}</article>
           ${readingRail(displayNote, task)}
@@ -9776,7 +9785,7 @@ document.querySelectorAll?.(".nav-item[data-app-view]")?.forEach?.(item => {
 });
 
 document.querySelector("[data-open-note-library]")?.addEventListener("click", () => {
-  showAppView("history");
+  showAppView("notes");
   setHistoryCollapsed(false);
 });
 

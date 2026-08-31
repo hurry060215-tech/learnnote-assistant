@@ -10,7 +10,7 @@
     <link rel="stylesheet" href="/web/product.css?v=20260714-v0124">
     <link rel="stylesheet" href="/web/mature.css?v=20260728-ui4">
     <link rel="stylesheet" href="/web/editorial.css?v=20260724-ui3">
-    <link rel="stylesheet" href="/web/experience.css?v=20260831-ux1">
+    <link rel="stylesheet" href="/web/experience.css?v=20260831-clarity4">
   </head>
   <body data-app-view="workspace">
     <header class="topbar">
@@ -23,47 +23,36 @@
       </div>
       <div class="topbar-actions">
         <span id="health" class="health">检查中</span>
-        <div class="layout-toggle-group" role="group" aria-label="页面布局">
-          <button id="toggleNavigationButton" class="layout-toggle-button" type="button" title="收起导航栏" aria-label="收起导航栏" data-i18n-aria="collapseNavigation" aria-controls="mainNavigation" aria-pressed="false">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4z"/><path d="M9 5v14"/><path d="M15 9l-3 3 3 3"/></svg>
-            <span data-i18n="navigation">导航</span>
-          </button>
-          <button id="toggleWorkspaceButton" class="layout-toggle-button" type="button" title="收起创建区" aria-label="收起创建区" data-i18n-aria="collapseWorkspace" aria-controls="workspace" aria-pressed="false">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4z"/><path d="M14 5v14"/><path d="M9 9l-3 3 3 3"/></svg>
-            <span data-i18n="createArea">创建区</span>
-          </button>
-          <button id="toggleHistoryButton" class="layout-toggle-button" type="button" title="收起笔记列表" aria-label="收起笔记列表" data-i18n-aria="collapseHistory" aria-controls="taskSidebar" aria-pressed="false">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4z"/><path d="M9 5v14"/><path d="M14 9l3 3-3 3"/></svg>
-            <span data-i18n="listArea">列表</span>
-          </button>
-          <button id="readingModeButton" class="layout-toggle-button" type="button" title="进入专注阅读" aria-label="进入专注阅读" data-i18n-aria="readingMode" aria-pressed="false">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h7a4 4 0 0 1 4 4v10H8a4 4 0 0 0-4 4z"/><path d="M20 5h-7a4 4 0 0 0-4 4v10h7a4 4 0 0 1 4 4z"/></svg>
-            <span data-i18n="focusMode">专注</span>
-          </button>
-        </div>
         <button id="openAiAssistantButton" class="assistant-launch-button" type="button" aria-expanded="false" aria-controls="aiAssistantDrawer">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v11H9l-4 4z"/><path d="M9 9h6M9 12h4"/></svg>
           <span data-i18n="assistant">AI 助教</span>
         </button>
-        <button id="refreshButton" class="icon-button" title="刷新任务" aria-label="刷新任务">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 0 1-13.66 5.66M4 12A8 8 0 0 1 17.66 6.34M20 4v6h-6M4 20v-6h6"/></svg>
-        </button>
+        <details class="topbar-more">
+          <summary class="icon-button" title="更多视图选项" aria-label="更多视图选项">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h.01M12 12h.01M19 12h.01"/></svg>
+          </summary>
+          <div class="topbar-more-panel">
+            <div class="layout-toggle-group" role="group" aria-label="阅读视图">
+              <button id="toggleNavigationButton" class="layout-toggle-button" type="button" title="收起导航栏" aria-label="收起导航栏" data-i18n-aria="collapseNavigation" aria-controls="mainNavigation" aria-pressed="false"><span>导航栏</span></button>
+              <button id="toggleWorkspaceButton" class="layout-toggle-button" type="button" title="收起创建区" aria-label="收起创建区" data-i18n-aria="collapseWorkspace" aria-controls="workspace" aria-pressed="false"><span>创建区</span></button>
+              <button id="toggleHistoryButton" class="layout-toggle-button" type="button" title="收起笔记列表" aria-label="收起笔记列表" data-i18n-aria="collapseHistory" aria-controls="taskSidebar" aria-pressed="false"><span>资料列表</span></button>
+              <button id="readingModeButton" class="layout-toggle-button" type="button" title="进入专注阅读" aria-label="进入专注阅读" data-i18n-aria="readingMode" aria-pressed="false"><span>专注阅读</span></button>
+            </div>
+            <button id="refreshButton" class="topbar-reconnect-button" type="button">重新连接</button>
+          </div>
+        </details>
       </div>
     </header>
 
     <main class="app-shell">
       <nav id="mainNavigation" class="nav-rail" aria-label="主导航">
-        <a id="workspaceNav" class="nav-item active" href="#workspace" data-app-view="workspace" title="创建笔记" aria-label="创建笔记">
+        <a id="workspaceNav" class="nav-item active" href="#workspace" data-app-view="workspace" title="开始" aria-label="开始">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></svg>
-          <span data-i18n="workspaceNav">新建</span>
+          <span data-i18n="workspaceNav">开始</span>
         </a>
         <a class="nav-item" href="#resultPanel" data-app-view="notes" title="资料库" aria-label="资料库">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h11a2 2 0 0 1 2 2v16l-4-2-4 2-4-2-4 2V5a2 2 0 0 1 2-2z"/><path d="M8 8h7M8 12h6"/></svg>
           <span data-i18n="notesNav">资料库</span>
-        </a>
-        <a class="nav-item" href="#tasks" data-app-view="history" title="任务" aria-label="任务">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v6h6"/><path d="M12 7v5l3 2"/></svg>
-          <span data-i18n="historyNav">任务</span>
         </a>
         <a class="nav-item" href="#studyView" data-app-view="study" title="复习" aria-label="复习">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h6M8 16h4"/></svg>
@@ -268,47 +257,42 @@
         <section id="editorialHome" class="editorial-home" aria-labelledby="editorialHomeTitle">
           <header class="editorial-intro">
             <div>
-              <span class="editorial-kicker">新建学习笔记</span>
-              <h1 id="editorialHomeTitle">从一段视频开始</h1>
-              <p>粘贴视频链接，几秒内获得第一份字幕大纲，随后逐步补充画面证据。</p>
+              <span class="editorial-kicker">开始学习</span>
+              <h1 id="editorialHomeTitle">从一段内容开始</h1>
+              <p>先读字幕草稿，再补画面证据。常规链接只需一次点击。</p>
             </div>
-            <button id="editorialOpenLibrary" class="editorial-text-action" type="button">打开笔记库</button>
+            <button id="editorialOpenLibrary" class="editorial-text-action" type="button">打开资料库</button>
           </header>
 
-          <div id="editorialSourceChoices" class="editorial-source-choices" role="group" aria-label="选择视频来源">
-            <button type="button" data-editorial-source="url">
-              <span class="editorial-source-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1M14 11a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1"/></svg></span>
-              <span><strong>粘贴视频链接</strong><small>B 站、YouTube 或媒体直链</small></span>
-              <svg class="editorial-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>
-            </button>
+          <section id="editorialUrlEntry" class="editorial-entry editorial-primary-entry" aria-label="粘贴视频链接">
+            <label class="editorial-entry-copy" for="editorialUrlInput"><span>视频链接</span><strong>粘贴要学习的视频</strong></label>
+            <div class="editorial-link-row">
+              <input id="editorialUrlInput" type="text" inputmode="url" autocomplete="off" spellcheck="false" placeholder="BV 号或 https://...">
+              <button id="editorialInspectUrl" type="button">生成笔记</button>
+            </div>
+            <p id="editorialUrlStatus" class="editorial-inline-status" role="status" aria-live="polite"></p>
+          </section>
+
+          <div id="editorialSourceChoices" class="editorial-source-choices editorial-source-shortcuts" role="group" aria-label="其他内容来源">
             <button type="button" data-editorial-source="browser">
               <span class="editorial-source-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4zM4 9h16M9 19V9"/></svg></span>
-              <span><strong>从浏览器接收当前视频</strong><small>读取扩展刚刚发送的播放内容</small></span>
+              <span><strong>当前视频</strong><small>从浏览器扩展接收</small></span>
               <svg class="editorial-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>
             </button>
             <button type="button" data-editorial-source="local">
               <span class="editorial-source-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 8l5-5 5 5M4 18h16v3H4z"/></svg></span>
-              <span><strong>拖入本地视频</strong><small>MP4、MKV、WebM、MOV、M4S</small></span>
+              <span><strong>本地视频</strong><small>选择或拖入文件</small></span>
               <svg class="editorial-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>
             </button>
           </div>
 
           <button id="editorialKnowledgeImport" class="editorial-material-entry" type="button">
             <span class="editorial-source-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 3h10l4 4v14H5z"/><path d="M14 3v5h5M8 12h8M8 16h6"/></svg></span>
-            <span><strong>导入本地学习资料</strong><small>PDF、Markdown、HTML 或 TXT；保留页码和段落出处</small></span>
+            <span><strong>导入 PDF / Markdown 学习资料</strong><small>保留页码和段落出处</small></span>
             <svg class="editorial-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>
           </button>
           <p id="editorialKnowledgeImportStatus" class="editorial-inline-status editorial-material-status" role="status" aria-live="polite"></p>
-
-          <section id="editorialUrlEntry" class="editorial-entry" hidden aria-label="粘贴视频链接">
-            <button class="editorial-back" type="button" data-editorial-back aria-label="返回来源选择"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
-            <div class="editorial-entry-copy"><span>视频链接</span><strong>粘贴要学习的视频</strong></div>
-            <div class="editorial-link-row">
-              <input id="editorialUrlInput" type="text" inputmode="url" autocomplete="off" spellcheck="false" placeholder="BV 号或 https://...">
-              <button id="editorialInspectUrl" type="button">识别视频</button>
-            </div>
-            <p id="editorialUrlStatus" class="editorial-inline-status" role="status"></p>
-          </section>
+          <p class="editorial-privacy-line">本地优先处理，学习资料默认保存在这台设备</p>
 
           <section id="editorialLocalEntry" class="editorial-entry" hidden aria-label="拖入本地视频">
             <button class="editorial-back" type="button" data-editorial-back aria-label="返回来源选择"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
@@ -688,8 +672,8 @@
       <section id="taskSidebar" class="queue-panel">
         <div class="panel-heading horizontal">
           <div>
-            <span class="eyeless">任务队列</span>
-            <strong>处理记录</strong>
+            <span class="eyeless">个人学习资料</span>
+            <strong>资料库</strong>
           </div>
           <span id="taskCount" class="count">0</span>
         </div>
@@ -726,18 +710,18 @@
             <div id="resultMeta" hidden></div>
           </div>
           <div class="result-actions">
-            <button id="copyButton" class="icon-button" title="复制笔记" aria-label="复制笔记">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8h11v13H8zM5 16H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h11a1 1 0 0 1 1 1v1"/></svg>
-            </button>
-            <button id="unifiedExportButton" class="result-export-button" type="button">统一导出</button>
-            <button id="studyProposalPrimaryButton" class="result-version-button" type="button">生成复习卡片</button>
-            <button id="newNoteVersionButton" class="result-version-button" type="button" hidden>生成新版本</button>
+            <button id="unifiedExportButton" class="result-export-button" type="button">导出</button>
+            <button id="studyProposalPrimaryButton" class="result-version-button" type="button">复习</button>
             <details id="resultMoreActions" class="result-more">
-              <summary class="icon-button result-more-trigger" title="高级导出与诊断" aria-label="高级导出与诊断">
+              <summary class="icon-button result-more-trigger" title="更多操作" aria-label="更多操作">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h.01M12 12h.01M19 12h.01"/></svg>
                 <span>高级</span>
               </summary>
               <div class="result-more-panel" aria-label="高级导出和诊断">
+                <div class="result-quick-menu" aria-label="笔记操作">
+                  <button id="copyButton" class="result-menu-item" type="button"><span>复制笔记</span></button>
+                  <button id="newNoteVersionButton" class="result-menu-item" type="button" hidden>生成新版本</button>
+                </div>
                 <button id="continueFromMediaButton" class="continue-media-button" type="button" hidden disabled>
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v4H4zM4 15h16v4H4z"/><path d="M8 9v6M16 9v6"/></svg>
                   <span>继续切片总结</span>
@@ -779,12 +763,12 @@
                     </button>
                     <button id="visualWindowsButton" class="result-menu-item" type="button">
                       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/><path d="M7.5 11v2M16.5 11v2M11 7.5h2M11 16.5h2"/></svg>
-                      <span>画面切片索引</span>
+                      <span>关键画面索引</span>
                     </button>
                   </div>
                 </section>
                 <section class="result-menu-section" aria-labelledby="resultDiagnosticMenuLabel">
-                  <strong id="resultDiagnosticMenuLabel">检查与诊断</strong>
+                  <strong id="resultDiagnosticMenuLabel">技术信息</strong>
                   <div class="result-menu-items">
                     <button id="studyProposalButton" class="result-menu-item" type="button">
                       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h6M8 16h4"/></svg>
@@ -792,11 +776,11 @@
                     </button>
                     <button id="manifestButton" class="result-menu-item" type="button">
                       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l3 3v15H6z"/><path d="M14 3v4h4"/><path d="M9 10h6M9 14h6M9 18h4"/></svg>
-                      <span>任务清单</span>
+                      <span>技术文件</span>
                     </button>
                     <button id="diagnosticsButton" class="result-menu-item" type="button">
                       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l3 3v15H6z"/><path d="M14 3v4h4"/><path d="M9 11h6M9 15h6M9 19h3"/></svg>
-                      <span>处理诊断</span>
+                      <span>查看问题详情</span>
                     </button>
                     <button id="supportPackageButton" class="result-menu-item" type="button">
                       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4z"/><path d="M8 9h8M8 13h5M8 17h7"/></svg>
@@ -812,14 +796,14 @@
         </div>
 
         <div class="result-tabs" role="tablist" aria-label="任务结果">
-          <button class="result-tab active" role="tab" aria-selected="true" data-tab="note">学习笔记</button>
-          <button class="result-tab" role="tab" aria-selected="false" data-tab="slices">画面与时间轴</button>
+          <button class="result-tab active" role="tab" aria-selected="true" data-tab="note">笔记</button>
+          <button class="result-tab" role="tab" aria-selected="false" data-tab="slices">出处</button>
           <details class="result-tool-tabs">
             <summary>高级工具</summary>
             <div>
               <button class="result-tab" role="tab" aria-selected="false" data-tab="transcript">完整字幕</button>
               <button class="result-tab" role="tab" aria-selected="false" data-tab="frames">原始画面</button>
-              <button class="result-tab" role="tab" aria-selected="false" data-tab="diagnostics">处理检查</button>
+              <button class="result-tab" role="tab" aria-selected="false" data-tab="diagnostics">问题详情</button>
             </div>
           </details>
         </div>
@@ -937,10 +921,10 @@
       </section>
     </div>
 
-<script src="/web/i18n.js?v=20260821-i18n1"></script>
+<script src="/web/i18n.js?v=20260831-clarity1"></script>
     <script src="/web/markdown.js?v=20260831-ux1"></script>
     <script src="/web/task-links.js?v=20260821-task-links1"></script>
-    <script src="/web/app.js?v=20260831-ux1"></script>
-    <script src="/web/editorial.js?v=20260821-onboarding1"></script>
+    <script src="/web/app.js?v=20260831-clarity1"></script>
+    <script src="/web/editorial.js?v=20260831-clarity1"></script>
   </body>
 </html>

@@ -1,19 +1,24 @@
 # LearnNote workspace design specification
 
-These images are the visual acceptance references for the v0.2 experience
-overhaul. They preserve the existing local-first workflow while making the
-first useful note, evidence state, and next action visible earlier.
+These images are visual acceptance references, not screenshots of a released
+build. The v0.3 clarity pass removes the remaining control-panel structure so
+that starting a note and reading it become the two obvious paths.
 
 - `workspace-desktop-v0.2.png`: library, note editor, synchronized evidence.
 - `workspace-mobile-v0.2.png`: first-run capture and progressive draft state.
+- `workspace-desktop-clarity-v0.3.png`: quiet four-destination navigation,
+  compact library, immediate note body, and one evidence drawer.
+- `workspace-mobile-clarity-v0.3.png`: visible URL composer, two compact source
+  shortcuts, and a persistent background-task strip.
 
 ## Product hierarchy
 
-1. The primary task is to start or resume one learning note.
-2. A subtitle-grounded outline becomes readable before deep visual analysis.
-3. Each important claim exposes its evidence type and source locator.
-4. Export and study-card actions are secondary to reading and verification.
-5. Local-first status stays visible without adding an account or cloud model.
+1. The primary task is to paste a source and generate a note in one action.
+2. The note body appears before diagnostics, coverage charts, and export tools.
+3. Evidence is one compact trust summary until the learner asks to inspect it.
+4. Tasks are background state, not a top-level destination beside the library.
+5. Export and review are secondary to reading and verification.
+6. Local-first status stays visible without adding an account or cloud model.
 
 ## Design tokens
 
@@ -47,8 +52,25 @@ available or the user requests reduced transparency.
 
 ## Above-the-fold copy contract
 
-The first-run screen may show only the LearnNote brand, `从一段视频开始`, one
-short progressive-generation explanation, the three source choices, the
-local-first privacy line, an active draft state, and the five navigation labels.
+The first-run screen may show only the LearnNote brand, `从一段内容开始`, one
+short progressive-generation explanation, a URL composer with its primary
+button, two compact source shortcuts, one document-import link, the local-first
+privacy line, an active draft state, and the four navigation labels.
 Technical implementation names such as FFmpeg, yt-dlp, or Whisper belong in
 diagnostics and advanced settings, not in the primary workflow.
+
+## Interaction acceptance
+
+- At 390 x 844 the URL input and `生成笔记` button are both visible without
+  scrolling.
+- A normal public URL creates a task after one primary-button click. A separate
+  confirmation screen appears only for missing tracks, authorization, DRM,
+  ambiguous candidates, or an explicitly chosen custom template.
+- Opening a completed note shows its first paragraph in the upper half of the
+  desktop viewport. At most one compact trust summary precedes the body.
+- The primary navigation contains `开始`, `资料库`, `复习`, and `设置`. Running
+  and failed tasks surface inside a global task strip and library filters.
+- A library row opens on click. Destructive actions live behind an overflow
+  menu and never compete with the reading action.
+- Glass is reserved for navigation, compact task state, and evidence overlays;
+  the long-form reading surface remains opaque and high-contrast.

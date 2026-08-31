@@ -96,8 +96,11 @@
 
   function showOnly(target) {
     if (target !== ui.browserEntry) stopBrowserWatch();
-    ui.home.classList.toggle("focused", target !== ui.choices);
-    for (const element of [ui.choices, ui.urlEntry, ui.localEntry, ui.browserEntry, ui.confirm, ui.progress]) {
+    const idle = target === ui.choices || target === ui.urlEntry;
+    ui.home.classList.toggle("focused", !idle);
+    if (ui.choices) ui.choices.hidden = !idle;
+    if (ui.urlEntry) ui.urlEntry.hidden = !idle;
+    for (const element of [ui.localEntry, ui.browserEntry, ui.confirm, ui.progress]) {
       if (element) element.hidden = element !== target;
     }
   }
@@ -221,7 +224,7 @@
     return /^(blob:|data:image\/|https?:\/\/)/i.test(url) ? url : "";
   }
 
-  function renderDraft(nextDraft) {
+  function renderDraft(nextDraft, { confirm = true } = {}) {
     draft = nextDraft;
     ui.source.textContent = `${sourceLabel(draft.source)} · 视频已识别`;
     ui.title.textContent = draft.title;
@@ -240,7 +243,22 @@
       : "";
     applyPurpose();
     renderPurposePreview();
-    showOnly(ui.confirm);
+    if (confirm) showOnly(ui.confirm);
+  }
+
+  function needsUrlConfirmation(nextDraft) {
+    if (!nextDraft) return true;
+    if (nextDraft.source !== "url") return true;
+    if (selectedPurposeKey() === "custom") return true;
+    if (nextDraft.audio === false || nextDraft.visual === false || nextDraft.ready === false) return true;
+    const integrity = nextDraft.integrity || {};
+    const status = String(integrity.status || "").toLowerCase();
+    if (["invalid", "no_media", "drm", "encrypted", "auth_required", "ambiguous"].includes(status)) return true;
+    const blockers = Array.isArray(integrity.blocking_reasons) ? integrity.blocking_reasons.filter(Boolean) : [];
+    if (blockers.length) return true;
+    const body = nextDraft.payload?.preflight || nextDraft.payload?.report || nextDraft.payload || {};
+    const candidates = Array.isArray(body.candidates) ? body.candidates : Array.isArray(body.resources) ? body.resources : [];
+    return candidates.filter(candidate => candidate?.selected === true || candidate?.usable === true).length > 1;
   }
 
   function selectedPurposeKey() {
@@ -456,7 +474,13 @@
       const payload = await response.json().catch(() => ({}));
       if (response.ok === false) throw new Error(payload?.detail?.message || payload?.detail || payload?.message || "链接识别失败");
       const next = mediaDraft("url", payload, { url: value, title: payload.title || value });
-      renderDraft(next);
+      if (needsUrlConfirmation(next)) {
+        renderDraft(next);
+        return;
+      }
+      renderDraft(next, { confirm: false });
+      ui.urlStatus.textContent = "视频已识别，正在创建标准学习笔记...";
+      await startTask({ statusTarget: ui.urlStatus });
     } catch (error) {
       ui.urlStatus.textContent = error?.message || "没有识别到可用视频，请检查链接或登录状态。";
     } finally {
@@ -572,13 +596,13 @@
     });
   }
 
-  async function startTask() {
+  async function startTask({ statusTarget = ui.confirmStatus } = {}) {
     if (!draft || !applyPurpose()) {
-      ui.confirmStatus.textContent = "请先导入或选择一个可用的笔记模板。";
+      statusTarget.textContent = "请先导入或选择一个可用的笔记模板。";
       return;
     }
     ui.start.disabled = true;
-    ui.confirmStatus.textContent = "正在创建任务...";
+    statusTarget.textContent = "正在创建任务...";
     try {
       let data = null;
       if (draft.source === "local") {
@@ -608,7 +632,7 @@
       renderEditorialProgress();
       if (typeof loadTasks === "function") await loadTasks();
     } catch (error) {
-      ui.confirmStatus.textContent = error?.message || "任务创建失败，请重试。";
+      statusTarget.textContent = error?.message || "任务创建失败，请重试。";
       ui.start.disabled = false;
     }
   }
@@ -835,7 +859,8 @@
     friendlyTaskAction,
     resumableTask,
     displayDuration,
-    displayEstimate
+    displayEstimate,
+    needsUrlConfirmation
   });
   renderPurposePreview();
   showOnly(ui.choices);

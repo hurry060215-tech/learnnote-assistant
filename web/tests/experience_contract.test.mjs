@@ -9,13 +9,14 @@ const html = fs.readFileSync(path.join(root, "web", "index.html"), "utf8");
 const app = fs.readFileSync(path.join(root, "web", "app.js"), "utf8");
 const css = fs.readFileSync(path.join(root, "web", "experience.css"), "utf8");
 
-test("experience layer loads last and keeps five labelled mobile destinations", () => {
+test("experience layer loads last and keeps four purpose-led mobile destinations", () => {
   const editorialIndex = html.indexOf("/web/editorial.css");
   const experienceIndex = html.indexOf("/web/experience.css");
   assert.ok(editorialIndex >= 0 && experienceIndex > editorialIndex);
-  assert.equal((html.match(/class="nav-item(?: active)?"/g) || []).length, 5);
-  for (const label of ["新建", "资料库", "任务", "复习", "设置"]) assert.match(html, new RegExp(`>${label}<`));
-  assert.match(css, /grid-template-columns:\s*repeat\(5, minmax\(0, 1fr\)\)/);
+  assert.equal((html.match(/class="nav-item(?: active)?"/g) || []).length, 4);
+  for (const label of ["开始", "资料库", "复习", "设置"]) assert.match(html, new RegExp(`>${label}<`));
+  assert.doesNotMatch(html, /data-app-view="history"/);
+  assert.match(css, /grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)/);
   assert.match(css, /height:\s*calc\(76px \+ env\(safe-area-inset-bottom\)\)/);
   assert.match(css, /\.nav-item span,[\s\S]*display:\s*block !important/);
 });
@@ -60,7 +61,7 @@ test("reader progressively enhances Markdown with semantic note evidence", () =>
 
 test("local materials and study dashboard reuse live application data", () => {
   assert.match(html, /id="editorialKnowledgeImport"/);
-  assert.match(html, /导入本地学习资料/);
+  assert.match(html, /导入 PDF \/ Markdown 学习资料/);
   assert.match(app, /editorialKnowledgeImport\?\.addEventListener/);
   assert.match(app, /\/api\/library\/materials\/import/);
   assert.match(app, /\/api\/library\/materials\?limit=50/);
