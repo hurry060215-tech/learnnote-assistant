@@ -13,9 +13,12 @@ from uuid import uuid4
 from .config import DATA_DIR, ensure_dirs
 from .embeddings import semantic_rank
 from .models import SourceEvidence
+from .text_cleanup import TextDecodingError, decode_text_bytes
 
 
 KNOWLEDGE_SCHEMA_VERSION = 1
+MAX_IMPORTED_PDF_PAGES = 500
+MAX_EXTRACTED_TEXT_CHARS = 5_000_000
 _TOKEN_RE = re.compile(r"[A-Za-z0-9_\u4e00-\u9fff-]{2,}")
 
 
@@ -247,6 +250,40 @@ def evidence_for_task(task_id: str, limit: int = 200) -> list[dict[str, object]]
     ]
 
 
+def evidence_by_ids(evidence_ids: list[str], limit: int = 100) -> list[dict[str, object]]:
+    ordered = []
+    seen = set()
+    for value in evidence_ids:
+        item = str(value or "")[:128]
+        if item and item not in seen:
+            seen.add(item)
+            ordered.append(item)
+        if len(ordered) >= max(1, min(int(limit or 100), 500)):
+            break
+    if not ordered:
+        return []
+    connection = _connect()
+    try:
+        placeholders = ",".join("?" for _ in ordered)
+        rows = connection.execute(
+            f"SELECT * FROM source_evidence WHERE evidence_id IN ({placeholders})",
+            tuple(ordered),
+        ).fetchall()
+    finally:
+        connection.close()
+    by_id = {str(row["evidence_id"]): row for row in rows}
+    return [
+        {
+            "evidence_id": row["evidence_id"], "schema_version": int(row["schema_version"]),
+            "source_type": row["source_type"], "title": row["title"], "source_uri": row["source_uri"],
+            "locator": row["locator"], "text": row["text"], "task_id": row["task_id"],
+            "metadata": json.loads(row["metadata_json"] or "{}"), "created_at": row["created_at"],
+        }
+        for evidence_id in ordered
+        if (row := by_id.get(evidence_id)) is not None
+    ]
+
+
 def answer_from_evidence(question: str, limit: int = 6, mode: str = "lexical") -> dict[str, object]:
     hits = search_evidence(question, limit, mode)
     if not hits:
@@ -284,14 +321,28 @@ def extract_import_text(filename: str, content: bytes, content_type: str = "") -
         try:
             from pypdf import PdfReader
 
-            reader = PdfReader(Path(filename)) if Path(filename).is_file() else PdfReader(BytesIO(content))
+            reader = PdfReader(BytesIO(content))
+            if len(reader.pages) > MAX_IMPORTED_PDF_PAGES:
+                raise ValueError("pdf_page_limit_exceeded")
             pages = []
+            extracted_chars = 0
             for index, page in enumerate(reader.pages, start=1):
-                pages.append(f"[第 {index} 页]\n{page.extract_text() or ''}")
+                page_text = page.extract_text() or ""
+                extracted_chars += len(page_text)
+                if extracted_chars > MAX_EXTRACTED_TEXT_CHARS:
+                    raise ValueError("extracted_text_too_large")
+                pages.append(f"[第 {index} 页]\n{page_text}")
             return "\n\n".join(pages), "pdf"
+        except ValueError:
+            raise
         except Exception as exc:
             raise ValueError("pdf_text_extraction_unavailable") from exc
-    decoded = content.decode("utf-8", errors="replace")
+    try:
+        decoded = decode_text_bytes(content, source=Path(filename or "document").name).text
+    except TextDecodingError as exc:
+        raise ValueError("text_encoding_unsupported") from exc
+    if len(decoded) > MAX_EXTRACTED_TEXT_CHARS:
+        raise ValueError("extracted_text_too_large")
     if suffix in {".html", ".htm"} or "html" in content_type.lower():
         parser = _VisibleTextParser()
         parser.feed(decoded)

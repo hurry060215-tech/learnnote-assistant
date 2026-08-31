@@ -95,6 +95,9 @@ class TaskOptions(BaseModel):
     grid_columns: int = Field(default=3, ge=1, le=6)
     grid_rows: int = Field(default=3, ge=1, le=6)
     max_frame_count: int = Field(default=900, ge=60, le=2400)
+    frame_extract_batch_size: int = Field(default=12, ge=1, le=32)
+    vision_batch_size: int = Field(default=4, ge=1, le=8)
+    vision_concurrency: int = Field(default=2, ge=1, le=4)
     resource_budget_mb: int = Field(default=4096, ge=256, le=102400)
     low_resource_mode: bool = False
     note_style: str = "study"
@@ -281,13 +284,13 @@ class SourceEvidence(BaseModel):
     """A stable, user-visible citation anchor shared by video and documents."""
 
     schema_version: int = 1
-    evidence_id: str = ""
+    evidence_id: str = Field(default="", max_length=128)
     source_type: Literal["video", "pdf", "markdown", "webpage", "task"] = "task"
-    title: str = ""
-    source_uri: str = ""
-    locator: str = ""
-    text: str = ""
-    task_id: str = ""
+    title: str = Field(default="", max_length=500)
+    source_uri: str = Field(default="", max_length=2000)
+    locator: str = Field(default="", max_length=500)
+    text: str = Field(default="", max_length=2_000_000)
+    task_id: str = Field(default="", max_length=128)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -300,13 +303,13 @@ class StudyCard(BaseModel):
     source_evidence_ids: list[str] = Field(default_factory=list, max_length=8)
     status: Literal["proposed", "active", "suspended", "deleted"] = "proposed"
     due_at: str = ""
-    stability: float = 1.0
-    difficulty: float = 5.0
+    stability: float = Field(default=1.0, ge=0, le=36500, allow_inf_nan=False)
+    difficulty: float = Field(default=5.0, ge=1, le=10, allow_inf_nan=False)
     fsrs_state: str = "Learning"
     step: int | None = 0
     position: int = 0
-    reps: int = 0
-    lapses: int = 0
+    reps: int = Field(default=0, ge=0, le=10_000_000)
+    lapses: int = Field(default=0, ge=0, le=10_000_000)
     last_reviewed_at: str = ""
 
 
@@ -314,6 +317,7 @@ class StudyReviewRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     rating: Literal[1, 2, 3, 4]
+    idempotency_key: str = Field(default="", max_length=128, pattern=r"^[A-Za-z0-9._:-]*$")
 
 
 class StudyCardStatusRequest(BaseModel):

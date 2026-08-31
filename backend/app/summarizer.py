@@ -1,16 +1,30 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+import hashlib
+import json
 import re
+import threading
+import time
 from pathlib import Path
 from urllib.parse import urlparse
 
 from .config import LLM_API_KEY, LLM_BASE_URL, LLM_MAX_RETRIES, LLM_MODEL, LLM_REQUEST_TIMEOUT_SECONDS
 from .media import image_to_data_url
 from .models import FrameGrid, TaskOptions, TranscriptResult, VisualWindow
+from .text_cleanup import TextDecodingError, canonicalize_unicode_text
 
 MAX_GRIDS_PER_VISION_CALL = 4
 MAX_VISION_GRIDS = 80
 MAX_LLM_ERROR_MESSAGE = 240
+VISION_CACHE_SCHEMA_VERSION = 1
+MAX_GLOBAL_VISION_CONCURRENCY = 4
+_VISION_PROVIDER_SEMAPHORE = threading.BoundedSemaphore(MAX_GLOBAL_VISION_CONCURRENCY)
+
+
+class SummarizationCancelled(RuntimeError):
+    pass
 PAGE_UI_EXACT_TEXTS = {
     "字幕", "主字幕", "副字幕", "添加字幕", "暂无字幕", "关闭", "弹幕", "弹幕设置",
     "弹幕列表", "关闭弹幕", "发送弹幕", "播放", "暂停", "倍速", "自动播放", "网页全屏", "全屏",
@@ -801,6 +815,71 @@ def _grid_batches(grids: list[FrameGrid], batch_size: int = MAX_GRIDS_PER_VISION
     return [selected[index: index + batch_size] for index in range(0, len(selected), batch_size)]
 
 
+def _vision_cache_key(
+    model: str,
+    base_url: str,
+    prompt: str,
+    entries: list[VisionGridEntry],
+) -> str:
+    digest = hashlib.sha256()
+    try:
+        parsed = urlparse(str(base_url or ""))
+        endpoint = f"{parsed.scheme.lower()}://{parsed.netloc.lower()}{parsed.path.rstrip('/')}"
+    except (TypeError, ValueError):
+        endpoint = str(base_url or "")[:1000]
+    digest.update(f"v{VISION_CACHE_SCHEMA_VERSION}\0{model}\0{endpoint}\0".encode("utf-8"))
+    digest.update(prompt.encode("utf-8"))
+    for original_index, grid in entries:
+        digest.update(f"\0{original_index}\0{grid.start}\0{grid.end}\0".encode("utf-8"))
+        path = Path(grid.path)
+        if not path.is_file():
+            digest.update(b"missing")
+            continue
+        with path.open("rb") as handle:
+            while chunk := handle.read(1024 * 1024):
+                digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _read_vision_cache(cache_dir: Path | None, cache_key: str) -> str:
+    if cache_dir is None:
+        return ""
+    try:
+        payload = json.loads((cache_dir / f"{cache_key}.json").read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            return ""
+        if payload.get("schema_version") != VISION_CACHE_SCHEMA_VERSION:
+            return ""
+        partial = payload.get("partial")
+        if not isinstance(partial, str):
+            return ""
+        return canonicalize_unicode_text(partial)
+    except (OSError, ValueError, TypeError, AttributeError, TextDecodingError):
+        return ""
+
+
+def _write_vision_cache(cache_dir: Path | None, cache_key: str, partial: str) -> None:
+    if cache_dir is None or not partial.strip():
+        return
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    target = cache_dir / f"{cache_key}.json"
+    temporary = target.with_name(f".{target.name}.tmp")
+    try:
+        temporary.write_text(
+            json.dumps(
+                {
+                    "schema_version": VISION_CACHE_SCHEMA_VERSION,
+                    "partial": canonicalize_unicode_text(partial),
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        temporary.replace(target)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def _grid_index_lines(grids: list[FrameGrid]) -> list[str]:
     return [
         (
@@ -1193,6 +1272,8 @@ def summarize_with_llm(
     page_url: str = "",
     page_context: str = "",
     events: list[dict] | None = None,
+    vision_cache_dir: Path | None = None,
+    cancel_check: Callable[[], bool] | None = None,
 ) -> tuple[str, str] | None:
     api_key = options.llm_api_key or LLM_API_KEY
     if not api_key:
@@ -1206,6 +1287,14 @@ def summarize_with_llm(
         return None
 
     model = options.llm_model or LLM_MODEL
+
+    def check_cancel() -> None:
+        if cancel_check is not None and bool(cancel_check()):
+            raise SummarizationCancelled("summary_cancelled")
+
+    def acquire_provider_slot() -> None:
+        while not _VISION_PROVIDER_SEMAPHORE.acquire(timeout=0.2):
+            check_cancel()
     page_context_prompt = _page_context_prompt(page_context)
     base_url = options.llm_base_url or LLM_BASE_URL
     provider_kwargs = chat_completion_provider_kwargs(base_url)
@@ -1221,42 +1310,123 @@ def summarize_with_llm(
         return None
 
     if grids and llm_model_supports_vision(base_url, model):
-        partials = []
+        partials: list[str] = []
         failed_batches = 0
-        batches = _grid_batches(grids)
-        for index, batch in enumerate(batches, start=1):
+        batches = _grid_batches(grids, options.vision_batch_size)
+
+        def run_vision_batch(index: int, batch: list[VisionGridEntry]):
+            check_cancel()
+            text_prompt = (
+                "你是严谨的课程学习笔记助手。下面是一批视频画面网格和对应字幕。"
+                "请先做局部图文总结，不要写完整总笔记。\n"
+                "每个窗口只需包含时间范围、画面可见信息和字幕重点；操作、PPT、代码、公式或例题线索仅在确实出现时记录。\n"
+                "不要为了统一格式补写易错点、例题或其他未出现的内容。\n"
+                f"标题：{title}\n来源：{page_url}\n批次：{index}\n\n"
+                f"{page_context_prompt}\n"
+                f"{_grid_window_prompt(transcript, batch)}"
+            )
+            cache_key = _vision_cache_key(model, base_url, text_prompt, batch)
+            cached = _read_vision_cache(vision_cache_dir, cache_key)
+            if cached.strip():
+                return index, cached.strip(), None, True, 0
             content: list[dict] = [
                 {
                     "type": "text",
-                    "text": (
-                        "你是严谨的课程学习笔记助手。下面是一批视频画面网格和对应字幕。"
-                        "请先做局部图文总结，不要写完整总笔记。\n"
-                        "每个窗口只需包含时间范围、画面可见信息和字幕重点；操作、PPT、代码、公式或例题线索仅在确实出现时记录。\n"
-                        "不要为了统一格式补写易错点、例题或其他未出现的内容。\n"
-                        f"标题：{title}\n来源：{page_url}\n批次：{index}\n\n"
-                        f"{page_context_prompt}\n"
-                        f"{_grid_window_prompt(transcript, batch)}"
-                    ),
+                    "text": text_prompt,
                 }
             ]
             content.extend(_grid_image_content_items(batch))
             if not any(item.get("type") == "image_url" for item in content):
-                continue
+                return index, "", None, False, 0
+            started_at = time.monotonic()
             try:
-                response = client.chat.completions.create(
-                    model=model,
-                    messages=[{"role": "user", "content": content}],
-                    **provider_kwargs,
-                )
-                partial = response.choices[0].message.content or ""
+                acquire_provider_slot()
+                try:
+                    check_cancel()
+                    response = client.chat.completions.create(
+                        model=model,
+                        messages=[{"role": "user", "content": content}],
+                        **provider_kwargs,
+                    )
+                finally:
+                    _VISION_PROVIDER_SEMAPHORE.release()
+                check_cancel()
+                partial = canonicalize_unicode_text(response.choices[0].message.content or "")
                 if partial.strip():
-                    partials.append(partial.strip())
+                    _write_vision_cache(vision_cache_dir, cache_key, partial.strip())
+                return index, partial.strip(), None, False, round(max(0.0, time.monotonic() - started_at) * 1000)
+            except SummarizationCancelled:
+                raise
             except Exception as exc:
+                return index, "", exc, False, round(max(0.0, time.monotonic() - started_at) * 1000)
+
+        concurrency = 1 if options.low_resource_mode else max(1, min(options.vision_concurrency, len(batches) or 1))
+        results = []
+        if concurrency == 1:
+            for index, batch in enumerate(batches, start=1):
+                check_cancel()
+                results.append(run_vision_batch(index, batch))
+        else:
+            executor = ThreadPoolExecutor(max_workers=concurrency, thread_name_prefix="learnnote-vision")
+            pending_batches = iter(enumerate(batches, start=1))
+            futures = {}
+
+            def submit_one() -> bool:
+                check_cancel()
+                try:
+                    index, batch = next(pending_batches)
+                except StopIteration:
+                    return False
+                futures[executor.submit(run_vision_batch, index, batch)] = index
+                return True
+
+            try:
+                for _ in range(concurrency):
+                    if not submit_one():
+                        break
+                while futures:
+                    check_cancel()
+                    done, _pending = wait(tuple(futures), timeout=0.2, return_when=FIRST_COMPLETED)
+                    if not done:
+                        continue
+                    for future in done:
+                        index = futures.pop(future)
+                        try:
+                            results.append(future.result())
+                        except SummarizationCancelled:
+                            raise
+                        except Exception as exc:
+                            results.append((index, "", exc, False, 0))
+                        submit_one()
+            except Exception:
+                for future in futures:
+                    future.cancel()
+                executor.shutdown(wait=False, cancel_futures=True)
+                raise
+            else:
+                executor.shutdown(wait=True)
+
+        for index, partial, error, cache_hit, duration_ms in sorted(results, key=lambda item: item[0]):
+            if error is not None:
                 failed_batches += 1
-                _record_llm_event(events, "vision_batch", "api_error", exc, batch=index, model=model)
+                code = "mojibake_blocked" if isinstance(error, TextDecodingError) else "api_error"
+                _record_llm_event(
+                    events,
+                    "vision_batch",
+                    code,
+                    error,
+                    batch=index,
+                    model=model,
+                    duration_ms=duration_ms,
+                )
                 continue
+            if cache_hit:
+                _record_llm_event(events, "vision_cache", "success", batch=index, model=model, cache="hit")
+            if partial:
+                partials.append(partial)
 
         if partials:
+            check_cancel()
             merge_prompt = "\n\n".join(f"### 局部图文摘要 {idx}\n{partial}" for idx, partial in enumerate(partials, start=1))
             if failed_batches:
                 merge_prompt = (
@@ -1269,12 +1439,15 @@ def summarize_with_llm(
             if page_context_prompt:
                 frame_index = f"{page_context_prompt}\n{frame_index}"
             try:
-                response = client.chat.completions.create(
-                    model=model,
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": (
+                check_cancel()
+                acquire_provider_slot()
+                try:
+                    response = client.chat.completions.create(
+                        model=model,
+                        messages=[
+                            {
+                                "role": "user",
+                                "content": (
                                 "你是严谨的课程学习笔记助手。请把下面所有局部图文摘要和字幕合并成一份完整 Markdown 学习笔记。"
                                 "必须覆盖所有时间窗口，不要只总结开头。\n\n"
                                 "画面索引必须保留 W 编号、时间范围和画面网格 URL，方便用户回看截图。\n"
@@ -1288,12 +1461,15 @@ def summarize_with_llm(
                                 f"画面索引清单：\n{frame_index}\n\n"
                                 f"完整字幕节选：\n{transcript.full_text[:60000]}\n\n"
                                 f"{merge_prompt}"
-                            ),
-                        }
-                    ],
-                    **provider_kwargs,
-                )
-                generated = response.choices[0].message.content or ""
+                                ),
+                            }
+                        ],
+                        **provider_kwargs,
+                    )
+                finally:
+                    _VISION_PROVIDER_SEMAPHORE.release()
+                check_cancel()
+                generated = canonicalize_unicode_text(response.choices[0].message.content or "")
                 grounded = _validated_generated_note(
                     client,
                     model,
@@ -1307,10 +1483,14 @@ def summarize_with_llm(
                 )
                 if not grounded:
                     return None
+                check_cancel()
                 note = ensure_visual_appendix(grounded, transcript, grids) or ""
                 return (note, "vision-llm") if note else None
+            except SummarizationCancelled:
+                raise
             except Exception as exc:
-                _record_llm_event(events, "vision_merge", "api_error", exc, model=model)
+                code = "mojibake_blocked" if isinstance(exc, TextDecodingError) else "api_error"
+                _record_llm_event(events, "vision_merge", code, exc, model=model)
                 return None
 
     text_transcript_prompt = transcript.full_text[:60000]
@@ -1336,12 +1516,18 @@ def summarize_with_llm(
     transcript.full_text = original_transcript_full_text
 
     try:
-        response = client.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": content}],
-            **provider_kwargs,
-        )
-        generated = response.choices[0].message.content or ""
+        check_cancel()
+        acquire_provider_slot()
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": content}],
+                **provider_kwargs,
+            )
+        finally:
+            _VISION_PROVIDER_SEMAPHORE.release()
+        check_cancel()
+        generated = canonicalize_unicode_text(response.choices[0].message.content or "")
         grounded = _validated_generated_note(
             client,
             model,
@@ -1355,10 +1541,14 @@ def summarize_with_llm(
         )
         if not grounded:
             return None
+        check_cancel()
         note = ensure_visual_appendix(grounded, transcript, grids) or ""
         return (note, "text-llm") if note else None
+    except SummarizationCancelled:
+        raise
     except Exception as exc:
-        _record_llm_event(events, "text_summary", "api_error", exc, model=model)
+        code = "mojibake_blocked" if isinstance(exc, TextDecodingError) else "api_error"
+        _record_llm_event(events, "text_summary", code, exc, model=model)
         return None
 
 
@@ -1369,8 +1559,19 @@ def summarize_with_diagnostics(
     options: TaskOptions,
     page_url: str = "",
     page_context: str = "",
+    vision_cache_dir: Path | None = None,
+    cancel_check: Callable[[], bool] | None = None,
 ) -> tuple[str, str, str]:
-    note, source, warning, _events = summarize_with_diagnostics_audit(title, transcript, grids, options, page_url, page_context)
+    note, source, warning, _events = summarize_with_diagnostics_audit(
+        title,
+        transcript,
+        grids,
+        options,
+        page_url,
+        page_context,
+        vision_cache_dir=vision_cache_dir,
+        cancel_check=cancel_check,
+    )
     return note, source, warning
 
 
@@ -1381,6 +1582,8 @@ def summarize_with_diagnostics_audit(
     options: TaskOptions,
     page_url: str = "",
     page_context: str = "",
+    vision_cache_dir: Path | None = None,
+    cancel_check: Callable[[], bool] | None = None,
 ) -> tuple[str, str, str, list[dict]]:
     events: list[dict] = []
     api_key = options.llm_api_key or LLM_API_KEY
@@ -1392,11 +1595,26 @@ def summarize_with_diagnostics_audit(
             "未配置 OpenAI-compatible API Key，已使用本地画面索引模板生成笔记。",
             events,
         )
-    generated = summarize_with_llm(title, transcript, grids, options, page_url, page_context, events)
+    generated = summarize_with_llm(
+        title,
+        transcript,
+        grids,
+        options,
+        page_url,
+        page_context,
+        events,
+        vision_cache_dir=vision_cache_dir,
+        cancel_check=cancel_check,
+    )
     if generated:
         note, source = generated
         warning = ""
-        failed_vision_batches = [event for event in events if event.get("stage") == "vision_batch"]
+        failed_vision_batches = [
+            event
+            for event in events
+            if event.get("stage") == "vision_batch"
+            and str(event.get("code") or "").lower() not in {"", "ok", "success", "cache_hit"}
+        ]
         if source == "vision-llm" and failed_vision_batches:
             warning = llm_warning_from_events(
                 options,

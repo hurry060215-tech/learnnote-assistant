@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import inspect
 import re
 import time
 from pathlib import Path
@@ -13,6 +14,8 @@ from .models import ActiveVideoInfo, BrowserSubtitleCue, CurrentPageTaskRequest,
 from .local_video_task import run_local_video_task
 from .page_text_pipeline import PageTextArtifacts, build_page_text_artifacts as _build_page_text_artifacts
 from .note_pipeline import finish_note_task
+from .note_document import normalize_note_markdown
+from .pipeline_progress import record_stage_duration, start_pipeline_attempt, write_progressive_draft
 from .reliability import calculate_evidence_coverage, current_page_source_identity, evidence_coverage_markdown, validate_source_identity
 from .processor_state import (
     ContentMismatchError,
@@ -28,7 +31,7 @@ from .processor_state import (
 )
 from .storage import get_task, mark_task_cancelled, save_task, task_dir, update_task, write_json
 from .source_input import clean_task_title
-from .summarizer import build_visual_windows, summarize_page_text_with_diagnostics, summarize_with_diagnostics_audit as summarize_with_diagnostics
+from .summarizer import SummarizationCancelled, build_visual_windows, summarize_page_text_with_diagnostics, summarize_with_diagnostics_audit as summarize_with_diagnostics
 from .summary_diagnostics import build_summary_diagnostics
 from .text_cleanup import correct_transcript_terms
 from .transcriber import transcribe_audio, transcribe_audio_openai_compatible, transcript_from_subtitle
@@ -141,6 +144,32 @@ PLAYER_DANMAKU_COMMENT_SIGNATURES = (
     "前方高能", "笑死我了", "一键三连", "爷青回", "开幕雷击", "空降成功",
     "课代表来了", "老师讲快一点", "老师讲得太快", "求课代表", "下饭视频",
 )
+
+
+def _summarize_with_optional_cache(summary_fn, *args, cache_dir: Path, cancel_check=None):
+    try:
+        parameters = list(inspect.signature(summary_fn).parameters.values())
+        supports_cache = any(
+            parameter.name == "vision_cache_dir" or parameter.kind == inspect.Parameter.VAR_KEYWORD
+            for parameter in parameters
+        )
+    except (TypeError, ValueError):
+        parameters = []
+        supports_cache = False
+    parameter_names = {parameter.name for parameter in parameters}
+    accepts_kwargs = any(parameter.kind == inspect.Parameter.VAR_KEYWORD for parameter in parameters)
+    kwargs = {}
+    if supports_cache:
+        kwargs["vision_cache_dir"] = cache_dir
+    if cancel_check is not None and ("cancel_check" in parameter_names or accepts_kwargs):
+        kwargs["cancel_check"] = cancel_check
+    try:
+        return summary_fn(*args, **kwargs)
+    except TypeError as exc:
+        message = str(exc)
+        if kwargs and "unexpected keyword argument" in message and any(name in message for name in kwargs):
+            return summary_fn(*args)
+        raise
 
 
 def remember_reusable_media(task_id: str, path: Path) -> bool:
@@ -893,6 +922,7 @@ def process_subtitle_only_task(task_id: str, request: CurrentPageTaskRequest) ->
             cookie_summary={},
         )
         duration = request.active_video.duration if request.active_video else 0
+        transcript_started_at = time.monotonic()
         transcript = transcript_from_browser_subtitles(request.browser_subtitles)
         if not browser_subtitles_are_reliable(request.browser_subtitles, duration):
             raise ContentMismatchError("当前页面字幕覆盖不足或与播放器 UI 混杂，未创建字幕速记。请改用标准学习或深度图文模式。")
@@ -910,6 +940,15 @@ def process_subtitle_only_task(task_id: str, request: CurrentPageTaskRequest) ->
             message="字幕已保存，正在生成快速速览",
             checkpoint="transcript_ready",
         )
+        record_stage_duration(task_id, "transcript", transcript_started_at)
+        draft_path = write_progressive_draft(task_id, request.title, transcript)
+        if draft_path:
+            update_task(
+                task_id,
+                note_path=str(draft_path),
+                summary_source="transcript-draft",
+                message="字幕草稿已就绪，正在生成正式速览",
+            )
 
         options = request.options.model_copy(update={
             "visual_understanding": False,
@@ -917,17 +956,45 @@ def process_subtitle_only_task(task_id: str, request: CurrentPageTaskRequest) ->
             "note_template": "timeline",
             "summary_depth": "brief",
         })
-        note, summary_source, summary_warning, llm_events = summarize_with_diagnostics(
-            request.title,
-            transcript,
-            [],
-            options,
-            request.page_url,
-            "",
-        )
+        summary_started_at = time.monotonic()
+        try:
+            note, summary_source, summary_warning, llm_events = _summarize_with_optional_cache(
+                summarize_with_diagnostics,
+                request.title,
+                transcript,
+                [],
+                options,
+                request.page_url,
+                "",
+                cache_dir=task_dir(task_id) / "vision_cache",
+            )
+        finally:
+            record_stage_duration(task_id, "summary", summary_started_at)
         provenance = "> 证据来源：浏览器平台字幕（已通过覆盖和播放器 UI 检查）；本版本未下载视频或分析画面。"
         if provenance not in note:
-            note = f"{provenance}\n\n{note.lstrip()}"
+            stripped_note = note.lstrip()
+            first_line, separator, remainder = stripped_note.partition("\n")
+            if first_line.startswith("# ") and separator:
+                note = f"{first_line}\n\n{provenance}\n\n{remainder.lstrip()}"
+            else:
+                note = f"{provenance}\n\n{stripped_note}"
+        normalized_note = normalize_note_markdown(request.title, note)
+        quality_path = write_json(task_id, "note_quality.json", normalized_note.report)
+        if normalized_note.report.get("blocking"):
+            quarantine_path = task_dir(task_id) / "note.quarantine.md"
+            quarantine_path.write_text(note, encoding="utf-8")
+            update_task(
+                task_id,
+                status="failed",
+                phase="failed",
+                progress=100,
+                error_code="note_quality_failed",
+                error_detail="笔记质量门禁检测到疑似乱码或无效标题结构，已隔离原始结果。",
+                message="笔记质量检查失败，未发布乱码笔记",
+                summary_warning="笔记已隔离到 note.quarantine.md；请检查字幕编码或模型输出。",
+            )
+            return
+        note = normalized_note.markdown
         note_path = task_dir(task_id) / "note.md"
         note_path.write_text(note, encoding="utf-8")
         covered_seconds = max(0.0, max(item.end for item in transcript.segments) - min(item.start for item in transcript.segments))
@@ -969,6 +1036,8 @@ def process_subtitle_only_task(task_id: str, request: CurrentPageTaskRequest) ->
             "media_pipeline_skipped": True,
             "asr_skipped": True,
             "visual_pipeline_skipped": True,
+            "note_quality_path": str(quality_path),
+            "note_quality": normalized_note.report,
         })
         diagnostics_path = write_json(task_id, "summary_diagnostics.json", diagnostics)
         update_task(
@@ -1032,6 +1101,8 @@ def _process_video_file(
     frame_anchor_timestamps: list[float] | None = None,
 ) -> None:
     work_dir = task_dir(task_id)
+    start_pipeline_attempt(task_id)
+    media_started_at = time.monotonic()
     _check_cancel(task_id)
     update_task(task_id, status="running", phase="processing_video", progress=25, message="正在标准化视频")
 
@@ -1069,6 +1140,8 @@ def _process_video_file(
     _check_cancel(task_id)
     update_task(task_id, media_path=str(normalized))
     mark_checkpoint(task_id, "media_ready")
+    record_stage_duration(task_id, "media", media_started_at)
+    transcript_started_at = time.monotonic()
     transcript_artifacts = prepare_transcript(
         task_id,
         input_path,
@@ -1082,8 +1155,18 @@ def _process_video_file(
     transcript = transcript_artifacts.transcript
     asr_error = transcript_artifacts.asr_error
     mark_checkpoint(task_id, "transcript_ready")
+    record_stage_duration(task_id, "transcript", transcript_started_at)
+    draft_path = write_progressive_draft(task_id, title, transcript)
+    if draft_path:
+        update_task(
+            task_id,
+            note_path=str(draft_path),
+            summary_source="transcript-draft",
+            message="字幕草稿已就绪，正在补充画面证据",
+        )
 
     media_duration = integrity.duration
+    visual_started_at = time.monotonic()
     visual_artifacts = extract_visual_evidence(
         task_id,
         normalized,
@@ -1098,7 +1181,14 @@ def _process_video_file(
     grids = visual_artifacts.grids
     frame_extraction_warning = visual_artifacts.warning
     visual_windows = build_visual_windows(transcript, grids)
-    visual_index_path = write_visual_index(task_id, title, page_url, frame_samples, visual_windows)
+    visual_index_path = write_visual_index(
+        task_id,
+        title,
+        page_url,
+        frame_samples,
+        visual_windows,
+        extraction_metrics=visual_artifacts.metrics,
+    )
 
     record = get_task(task_id)
     record.frame_grids = grids
@@ -1106,6 +1196,38 @@ def _process_video_file(
     record.visual_index_path = str(visual_index_path)
     save_task(record)
     mark_checkpoint(task_id, "visual_ready")
+    extraction_metrics = visual_artifacts.metrics.get("frame_extraction") or {}
+    record_stage_duration(
+        task_id,
+        "visual",
+        visual_started_at,
+        frame_count=len(frames),
+        grid_count=len(grids),
+        cache_hit_count=extraction_metrics.get("cached_frame_count", 0),
+        batch_count=extraction_metrics.get("ffmpeg_batch_process_count", 0),
+    )
+
+    def summarize_with_progress(*args, **kwargs):
+        summary_started_at = time.monotonic()
+        summary_status = "completed"
+        try:
+            if kwargs:
+                return summarize_with_diagnostics(*args, **kwargs)
+            return _summarize_with_optional_cache(
+                summarize_with_diagnostics,
+                *args,
+                cache_dir=work_dir / "vision_cache",
+                cancel_check=lambda: bool(get_task(task_id).cancel_requested),
+            )
+        except SummarizationCancelled:
+            summary_status = "cancelled"
+            _check_cancel(task_id)
+            raise
+        except Exception:
+            summary_status = "failed"
+            raise
+        finally:
+            record_stage_duration(task_id, "summary", summary_started_at, status=summary_status)
 
     finish_note_task(
         task_id,
@@ -1125,7 +1247,7 @@ def _process_video_file(
         has_visual_summary_evidence=has_visual_summary_evidence,
         calculate_evidence_coverage=calculate_evidence_coverage,
         evidence_coverage_markdown=evidence_coverage_markdown,
-        summarize_with_diagnostics=summarize_with_diagnostics,
+        summarize_with_diagnostics=summarize_with_progress,
         build_summary_diagnostics=build_summary_diagnostics,
         check_cancel=_check_cancel,
         mark_checkpoint=mark_checkpoint,

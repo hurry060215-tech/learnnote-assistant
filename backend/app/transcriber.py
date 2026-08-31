@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 
 from .config import DEFAULT_WHISPER_COMPUTE_TYPE, DEFAULT_WHISPER_DEVICE, LLM_API_KEY, LLM_BASE_URL, LLM_MAX_RETRIES, LLM_REQUEST_TIMEOUT_SECONDS, MODEL_CACHE_DIR, configure_local_caches
 from .models import TaskOptions, TranscriptResult, TranscriptSegment
+from .text_cleanup import read_canonical_text
 
 
 TIMESTAMP_RE = re.compile(
@@ -98,7 +99,7 @@ def _parse_timestamp(value: str) -> float:
 
 
 def transcript_from_subtitle(path: Path, source: str = "page-subtitle") -> TranscriptResult:
-    text = path.read_text(encoding="utf-8-sig", errors="replace")
+    text = read_canonical_text(path).text
     normalized = re.sub(r"\r+\n", "\n", text)
     normalized = re.sub(r"\r+", "\n", normalized)
     blocks = re.split(r"\n\s*\n", normalized)

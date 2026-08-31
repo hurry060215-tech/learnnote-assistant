@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import TASK_DIR, ensure_dirs
+from .text_cleanup import TextDecodingError, read_canonical_text
 
 
 EVENT_SCHEMA_VERSION = 1
@@ -70,8 +71,8 @@ def read_task_events(task_id: str, limit: int = 500) -> list[dict[str, Any]]:
         return []
     rows: list[dict[str, Any]] = []
     try:
-        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()[-max(1, min(int(limit or 500), 2000)):]
-    except OSError:
+        lines = read_canonical_text(path).text.splitlines()[-max(1, min(int(limit or 500), 2000)):]
+    except (OSError, TextDecodingError):
         return []
     for line in lines:
         try:
@@ -80,6 +81,29 @@ def read_task_events(task_id: str, limit: int = 500) -> list[dict[str, Any]]:
             continue
         if isinstance(value, dict):
             rows.append(value)
+    return rows
+
+
+def read_task_events_after(task_id: str, after: int = 0, limit: int = 500) -> list[tuple[int, dict[str, Any]]]:
+    """Read events with stable absolute line IDs for reconnectable streams."""
+
+    path = events_path(task_id)
+    if not path.is_file():
+        return []
+    try:
+        lines = read_canonical_text(path).text.splitlines()
+    except (OSError, TextDecodingError):
+        return []
+    start = max(0, min(int(after or 0), len(lines)))
+    stop = min(len(lines), start + max(1, min(int(limit or 500), 2000)))
+    rows: list[tuple[int, dict[str, Any]]] = []
+    for index in range(start, stop):
+        try:
+            value = json.loads(lines[index])
+        except ValueError:
+            continue
+        if isinstance(value, dict):
+            rows.append((index + 1, value))
     return rows
 
 

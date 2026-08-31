@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+import json
+import time
 from pathlib import Path
 
 from .config import BACKEND_ORIGIN
@@ -20,6 +22,7 @@ class VisualArtifacts:
     grids: list[FrameGrid]
     warning: str
     visual_index_path: str = ""
+    metrics: dict = field(default_factory=dict)
 
 
 def extract_visual_evidence(
@@ -37,6 +40,12 @@ def extract_visual_evidence(
     frame_samples: list[FrameSample] = []
     grids: list[FrameGrid] = []
     frame_extraction_warning = ""
+    metrics: dict = {
+        "schema_version": 1,
+        "enabled": bool(options.visual_understanding),
+        "frame_extraction": {},
+        "grid_build_ms": 0,
+    }
     if options.visual_understanding:
         update_task(task_id, phase="extracting_frames", progress=68, message="正在抽帧并生成画面网格")
         work_dir = normalized_path.parent
@@ -44,16 +53,26 @@ def extract_visual_evidence(
         grid_dir = work_dir / "grids"
         extract_frames_runner = extract_frames_fn or extract_frames_adaptive
         build_grids_runner = build_grids_fn or build_frame_grids
+        extract_started_at = time.monotonic()
         frames, frame_samples = extract_frames_runner(
             normalized_path,
             frame_dir,
             max(1, options.frame_interval),
             max_frames=max(60, min(2400, int(options.max_frame_count) // (2 if options.low_resource_mode else 1))),
             anchor_timestamps=frame_anchor_timestamps,
+            batch_size=1 if options.low_resource_mode else options.frame_extract_batch_size,
         )
+        metrics["frame_extract_wall_ms"] = round(max(0.0, time.monotonic() - extract_started_at) * 1000)
+        try:
+            extraction_metrics = json.loads((frame_dir / "frame_extraction_metrics.json").read_text(encoding="utf-8"))
+            if isinstance(extraction_metrics, dict):
+                metrics["frame_extraction"] = extraction_metrics
+        except (OSError, ValueError):
+            pass
         for sample in frame_samples:
             sample.url = f"{BACKEND_ORIGIN}/api/tasks/{task_id}/frames/{Path(sample.path).name}"
         check_cancel(task_id)
+        grid_started_at = time.monotonic()
         grids = build_grids_runner(
             task_id,
             frames,
@@ -63,6 +82,7 @@ def extract_visual_evidence(
             max(1, options.frame_interval),
             media_duration=media_duration,
         )
+        metrics["grid_build_ms"] = round(max(0.0, time.monotonic() - grid_started_at) * 1000)
         important_paths = {sample.path for sample in frame_samples if sample.important}
         for grid in grids:
             grid.important_frame_paths = [path for path in grid.frame_paths if path in important_paths]
@@ -72,7 +92,9 @@ def extract_visual_evidence(
                 "请检查视频是否包含可解码的视频轨道。"
             )
 
-    return VisualArtifacts(frames, frame_samples, grids, frame_extraction_warning)
+    metrics["frame_count"] = len(frames)
+    metrics["grid_count"] = len(grids)
+    return VisualArtifacts(frames, frame_samples, grids, frame_extraction_warning, metrics=metrics)
 
 
 def write_visual_index(
@@ -81,6 +103,7 @@ def write_visual_index(
     page_url: str,
     frame_samples: list[FrameSample],
     visual_windows: list,
+    extraction_metrics: dict | None = None,
 ) -> str:
     visual_index_path = write_json(
         task_id,
@@ -95,6 +118,7 @@ def write_visual_index(
                 "sample_count": len(frame_samples),
                 "important_frame_count": sum(sample.important for sample in frame_samples),
             },
+            "performance": dict(extraction_metrics or {}),
             "important_frames": [sample.model_dump(mode="json") for sample in frame_samples if sample.important],
             "frames": [sample.model_dump(mode="json") for sample in frame_samples],
             "windows": [window.model_dump(mode="json") for window in visual_windows],

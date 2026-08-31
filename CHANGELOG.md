@@ -4,7 +4,19 @@ All notable changes to LearnNote are documented here. The project follows semant
 
 ## Unreleased
 
-No unreleased changes.
+### Added
+
+- Subtitle-ready progressive drafts, reconnectable SSE progress, per-attempt timing, batched frame extraction, bounded visual concurrency, and task-local visual caches.
+- Canonical Unicode decoding and mojibake quarantine for UTF-8, UTF-16, GB18030, Shift-JIS and common legacy text paths.
+- Evidence-first note documents, editable Word and print-ready PDF export, first-class local materials, a local study dashboard, and an opt-in community-perspective lane.
+- A restrained glass-assisted desktop/mobile design system with five labelled mobile destinations, accessible 200% scaling, dark-mode fallbacks, and a simplified first-run path.
+
+### Security
+
+- The private data directory is no longer exposed as static web content; task assets use bounded allowlist routes.
+- DOCX, PDF and Notion exports now share secret and signed-URL sanitization.
+- Task and material deletion cascade through local evidence, community context and derived review records; index restore performs a white-listed migration with rollback snapshots.
+- Study-card creation accepts only canonical local evidence and initializes FSRS state on the server.
 
 ## 0.1.55 - 2026-08-23
 

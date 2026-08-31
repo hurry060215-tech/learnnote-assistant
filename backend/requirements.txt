@@ -2,13 +2,17 @@ fastapi>=0.139.2
 uvicorn[standard]>=0.51.0
 python-multipart>=0.0.32
 requests>=2.34.2
+charset-normalizer>=3.4,<4
 pydantic>=2.7
 eval-type-backport>=0.2.2; python_version < "3.10"
 yt-dlp>=2026.7.4
 Pillow>=10.4
+python-docx==1.2.0
+reportlab==4.5.1
+pypdf==6.16.2
 openai>=1.40
 imageio-ffmpeg>=0.5.1
-fsrs>=6.3,<7
+fsrs==6.3.2
 
 # Installed by start-backend.ps1 -InstallAsr for real local transcription:
 # faster-whisper>=1.1.1

@@ -206,9 +206,10 @@ def delete_task(task_id: str) -> dict[str, Any]:
         if TASK_DIR.resolve() not in task_path.parents:
             raise ValueError("invalid_task_path")
         task_bytes = _directory_size(task_path)
+        if not remove_task(record.id):
+            raise RuntimeError("task_index_cleanup_failed")
         if task_path.exists():
             shutil.rmtree(task_path)
-        remove_task(record.id)
         upload_bytes = 0
         if owned_upload:
             try:
