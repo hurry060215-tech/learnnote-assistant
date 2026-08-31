@@ -10,7 +10,7 @@
     <link rel="stylesheet" href="/web/product.css?v=20260714-v0124">
     <link rel="stylesheet" href="/web/mature.css?v=20260728-ui4">
     <link rel="stylesheet" href="/web/editorial.css?v=20260724-ui3">
-    <link rel="stylesheet" href="/web/experience.css?v=20260831-clarity4">
+    <link rel="stylesheet" href="/web/experience.css?v=20260831-model2">
   </head>
   <body data-app-view="workspace">
     <header class="topbar">
@@ -149,6 +149,26 @@
 
             <section class="settings-pane" data-settings-pane="model" data-setting-advanced-pane>
               <div class="settings-section-heading"><h3>AI 模型</h3><p>用于文字整理和画面理解。</p></div>
+              <section id="modelSetupGuide" class="model-setup-guide" aria-labelledby="modelSetupGuideTitle">
+                <header>
+                  <div><span>推荐流程</span><h4 id="modelSetupGuideTitle">三步完成模型配置</h4></div>
+                  <em id="modelSetupState" data-state="idle">尚未验证</em>
+                </header>
+                <p>选择供应商后会自动填写地址和推荐模型。界面只把 Key 交给本机 LearnNote，再由本机直连供应商；桌面端可加密保存到当前 Windows 用户。</p>
+                <div id="modelProviderQuickChoices" class="model-provider-quick-choices" role="group" aria-label="常用模型供应商"></div>
+                <ol class="model-setup-steps">
+                  <li><span>1</span><div><strong>选择供应商</strong><small id="modelSetupProviderSummary">自动填入推荐地址与模型</small></div></li>
+                  <li><span>2</span><div><strong>取得并填写 Key</strong><small>跳转到供应商官方控制台，不经过 LearnNote 服务器</small></div></li>
+                  <li><span>3</span><div><strong>短对话验证</strong><small>真正调用当前模型，不只检查 HTTP 200</small></div></li>
+                </ol>
+                <div class="model-setup-actions">
+                  <button id="openModelProviderButton" class="secondary action-button" type="button">去官网获取 Key</button>
+                  <button id="discoverModelsButton" class="secondary action-button" type="button">发现模型</button>
+                  <button id="testModelConnectionButton" class="secondary action-button" type="button">测试连接</button>
+                  <button id="finishModelSetupButton" class="primary action-button" type="button">测试、保存并返回</button>
+                </div>
+                <p id="modelSetupStatus" class="model-setup-status" role="status" aria-live="polite">选择一个供应商即可开始。</p>
+              </section>
               <div id="settingsModelSlot" class="settings-option-slot"></div>
               <div id="nativeCredentialSettings" class="native-settings-row" hidden>
                 <div><strong>Windows 凭据管理器</strong><small id="nativeCredentialStatus">API Key 可加密保存到当前 Windows 用户</small></div>
@@ -648,7 +668,8 @@
             <p id="providerHint" class="provider-hint" data-setting-group="model" aria-live="polite"></p>
             <label class="field" data-setting-group="model">
               <span>视觉模型</span>
-              <input id="llmModel" type="text" placeholder="kimi-k2.6">
+              <input id="llmModel" type="text" list="availableModelOptions" placeholder="kimi-k2.6">
+              <datalist id="availableModelOptions"></datalist>
             </label>
             <label class="field wide" data-setting-group="model">
               <span>Base URL</span>
@@ -925,6 +946,7 @@
     <script src="/web/markdown.js?v=20260831-ux1"></script>
     <script src="/web/task-links.js?v=20260821-task-links1"></script>
     <script src="/web/app.js?v=20260831-clarity1"></script>
+    <script src="/web/model-setup.js?v=20260831-model1"></script>
     <script src="/web/editorial.js?v=20260831-clarity1"></script>
   </body>
 </html>

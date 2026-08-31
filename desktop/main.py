@@ -20,6 +20,20 @@ import uvicorn
 
 from desktop.credentials import delete_secret, read_secret, write_secret
 
+MODEL_PROVIDER_KEY_URLS = {
+    "openai": "https://platform.openai.com/api-keys",
+    "groq": "https://console.groq.com/keys",
+    "gemini": "https://aistudio.google.com/app/apikey",
+    "dashscope": "https://bailian.console.aliyun.com/?apiKey=1",
+    "deepseek": "https://platform.deepseek.com/api_keys",
+    "kimi": "https://platform.kimi.com/console/api-keys",
+    "xiaomi": "https://platform.xiaomimimo.com/",
+    "zhipu": "https://open.bigmodel.cn/usercenter/apikeys",
+    "doubao": "https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey",
+    "minimax": "https://platform.minimaxi.com/console/access?tab=api-keys",
+    "qianfan": "https://console.bce.baidu.com/qianfan/ais/console/applicationConsole/application",
+}
+
 
 GITHUB_LATEST_RELEASE_API = "https://api.github.com/repos/hurry060215-tech/learnnote-assistant/releases/latest"
 GITHUB_LATEST_RELEASE_PAGE = "https://github.com/hurry060215-tech/learnnote-assistant/releases/latest"
@@ -88,6 +102,14 @@ class DesktopApi:
 
     def delete_model_key(self, provider: str) -> dict:
         return {"ok": True, "provider": provider, "deleted": delete_secret(provider)}
+
+    def open_model_provider(self, provider: str) -> dict:
+        normalized = str(provider or "").strip().lower()
+        url = MODEL_PROVIDER_KEY_URLS.get(normalized, "")
+        if not url:
+            raise ValueError("Unsupported model provider")
+        webbrowser.open(url)
+        return {"ok": True, "provider": normalized, "url": url}
 
     def open_data_folder(self) -> dict:
         open_local_path(self.data_dir)
