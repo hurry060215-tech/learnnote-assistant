@@ -31,6 +31,7 @@ from .downloader_policy import (
     truncate_process_output as _truncate_process_output,
 )
 from .media_kinds import classify_resource, effective_resource_kind
+from .text_cleanup import TextDecodingError, decode_text_bytes, read_canonical_text
 from .media_candidate_ranking import (
     candidate_rank_key,
     kind_rank,
@@ -2966,7 +2967,10 @@ class MediaDownloader:
             return None
 
         subtitle = max(subtitles, key=lambda path: path.stat().st_size)
-        text = subtitle.read_text(encoding="utf-8-sig", errors="replace")
+        try:
+            text = read_canonical_text(subtitle).text
+        except TextDecodingError as exc:
+            raise DownloadError("download_forbidden", "yt-dlp 下载的平台字幕编码无效或包含疑似乱码。") from exc
         text = re.sub(r"\r+\n", "\n", text)
         text = re.sub(r"\r+", "\n", text).strip()
         if not text:
@@ -3067,7 +3071,10 @@ class MediaDownloader:
                     raise DownloadError("no_media_found", f"yt-dlp 不支持当前页面或没有找到可下载视频：{output[:300]}")
                 raise DownloadError("download_forbidden", f"yt-dlp 无法下载当前页面：{output[:300]}")
             if title_capture_path.is_file():
-                captured_title = title_capture_path.read_text(encoding="utf-8", errors="replace").strip().splitlines()
+                try:
+                    captured_title = read_canonical_text(title_capture_path).text.strip().splitlines()
+                except (OSError, TextDecodingError):
+                    captured_title = []
                 if captured_title:
                     self.resolved_title = clean_task_title(captured_title[-1], page_url)
                 title_capture_path.unlink(missing_ok=True)
@@ -3360,11 +3367,13 @@ class MediaDownloader:
                 raise DownloadError("auth_required", f"字幕资源返回 HTTP {response.status_code}。")
             if response.status_code >= 400:
                 raise DownloadError("download_forbidden", f"字幕资源返回 HTTP {response.status_code}。")
-            text = response.content.decode("utf-8-sig", errors="replace")
+            text = decode_text_bytes(response.content, source="downloaded-subtitle").text
             text = re.sub(r"\r+\n", "\n", text)
             text = re.sub(r"\r+", "\n", text).strip()
         except DownloadError:
             raise
+        except TextDecodingError as exc:
+            raise DownloadError("download_forbidden", "字幕编码无效或包含疑似乱码。") from exc
         except Exception as exc:
             raise DownloadError("download_forbidden", f"字幕下载失败：{exc}") from exc
         if not text:

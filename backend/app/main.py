@@ -42,6 +42,8 @@ from .storage import cleanup_tasks, create_task, delete_all_tasks, delete_task, 
 from .routers.knowledge_study import knowledge_router, study_router, task_study_router
 from .routers.system import system_router
 from .routers.library import library_router
+from .routers.notes import notes_router
+from .routers.events import events_router
 from .summarizer import chat_completion_provider_kwargs, llm_base_host, llm_model_supports_vision, llm_provider_name, visual_window_review_question_lines
 
 ensure_dirs()
@@ -52,6 +54,8 @@ app.include_router(study_router)
 app.include_router(task_study_router)
 app.include_router(system_router)
 app.include_router(library_router)
+app.include_router(notes_router)
+app.include_router(events_router)
 _extension_heartbeat_at = 0.0
 _extension_version = ""
 _extension_protocol_version = 0
@@ -67,6 +71,7 @@ _pairing_token = ""
 _pairing_expires_at = 0.0
 TRUSTED_BROWSER_ORIGIN_RE = re.compile(r"^(chrome-extension://[a-z]+|moz-extension://[a-z0-9-]+|https?://(localhost|127\.0\.0\.1)(:\d+)?)$")
 WRITE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+MAX_STRUCTURED_WRITE_BYTES = 2 * 1024 * 1024
 
 app.add_middleware(
     CORSMiddleware,
@@ -75,6 +80,24 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def enforce_structured_write_budget(request: Request, call_next):
+    path = request.url.path
+    bounded = (
+        path.startswith("/api/study/")
+        or path == "/api/knowledge/evidence"
+        or path.endswith("/community-context")
+    )
+    if bounded and request.method.upper() in WRITE_METHODS:
+        try:
+            content_length = int(request.headers.get("content-length") or 0)
+        except ValueError:
+            content_length = MAX_STRUCTURED_WRITE_BYTES + 1
+        if content_length > MAX_STRUCTURED_WRITE_BYTES:
+            return Response("Structured request too large", status_code=413)
+    return await call_next(request)
 
 
 @app.middleware("http")
@@ -127,7 +150,6 @@ def _pairing_token_valid(value: str) -> bool:
         return False
     return _pairing_expires_at > time.time() and hmac.compare_digest(candidate, _pairing_token)
 
-app.mount("/data", StaticFiles(directory=str(DATA_DIR)), name="data")
 app.mount("/web", StaticFiles(directory=str(WEB_DIR)), name="web")
 
 
@@ -4784,15 +4806,29 @@ def api_preview_media(task_id: str) -> FileResponse:
 
 @app.get("/api/tasks/{task_id}/assets/{filename}")
 def api_asset(task_id: str, filename: str) -> FileResponse:
-    path = task_dir(task_id) / "grids" / Path(filename).name
-    if not path.exists():
+    try:
+        get_task(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Task not found") from exc
+    safe_name = Path(filename).name
+    if safe_name != filename or Path(safe_name).suffix.lower() not in {".jpg", ".jpeg", ".png", ".webp"}:
         raise HTTPException(status_code=404, detail="Asset not found")
-    return FileResponse(path)
+    path = (TASK_DIR / task_id / "grids" / safe_name).resolve()
+    if (TASK_DIR.resolve() not in path.parents or not path.is_file()):
+        raise HTTPException(status_code=404, detail="Asset not found")
+    return FileResponse(path, media_type=mimetypes.guess_type(path.name)[0] or "application/octet-stream", headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "private, max-age=300"})
 
 
 @app.get("/api/tasks/{task_id}/frames/{filename}")
 def api_original_frame(task_id: str, filename: str) -> FileResponse:
-    path = task_dir(task_id) / "frames" / Path(filename).name
-    if not path.exists():
+    try:
+        get_task(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Task not found") from exc
+    safe_name = Path(filename).name
+    if safe_name != filename or Path(safe_name).suffix.lower() not in {".jpg", ".jpeg"}:
         raise HTTPException(status_code=404, detail="Frame not found")
-    return FileResponse(path, media_type="image/jpeg")
+    path = (TASK_DIR / task_id / "frames" / safe_name).resolve()
+    if (TASK_DIR.resolve() not in path.parents or not path.is_file()):
+        raise HTTPException(status_code=404, detail="Frame not found")
+    return FileResponse(path, media_type="image/jpeg", headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "private, max-age=300"})

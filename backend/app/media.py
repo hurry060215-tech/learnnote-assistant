@@ -6,6 +6,7 @@ import json
 import math
 import re
 import subprocess
+import time
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont, ImageOps
@@ -13,10 +14,15 @@ from PIL import Image, ImageDraw, ImageFont, ImageOps
 from .config import BACKEND_ORIGIN
 from .models import FrameGrid, FrameSample, MediaIntegrity, MediaTrackInfo
 from .runtime import ffmpeg_bin, ffprobe_bin, text_subprocess_kwargs
+from .text_cleanup import TextDecodingError, read_canonical_text
 
 
 class MediaProcessingError(RuntimeError):
     pass
+
+
+FRAME_CACHE_SCHEMA_VERSION = 1
+DEFAULT_FRAME_EXTRACT_BATCH_SIZE = 12
 
 
 def _run(cmd: list[str], message: str) -> None:
@@ -357,7 +363,11 @@ def extract_embedded_subtitle(video_path: Path, output_path: Path) -> Path | Non
     if result.returncode != 0 or not output_path.exists() or output_path.stat().st_size <= 0:
         output_path.unlink(missing_ok=True)
         return None
-    text = output_path.read_text(encoding="utf-8-sig", errors="replace")
+    try:
+        text = read_canonical_text(output_path).text
+    except TextDecodingError:
+        output_path.unlink(missing_ok=True)
+        return None
     if "-->" not in text:
         output_path.unlink(missing_ok=True)
         return None
@@ -577,6 +587,111 @@ def _adaptive_frame_plan(
     return [(value, sorted(reasons[value])) for value in sorted(selected)]
 
 
+def _frame_cache_payload(
+    video_path: Path,
+    plan: list[tuple[int, list[str]]],
+    *,
+    interval: int,
+    scene_threshold: float,
+) -> dict:
+    stat = video_path.stat()
+    return {
+        "schema_version": FRAME_CACHE_SCHEMA_VERSION,
+        "source_size": stat.st_size,
+        "source_mtime_ns": stat.st_mtime_ns,
+        "interval": int(interval),
+        "scene_threshold": round(float(scene_threshold), 6),
+        "plan": [[int(timestamp), list(reasons)] for timestamp, reasons in plan],
+    }
+
+
+def _read_frame_cache(path: Path) -> dict:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def _write_frame_cache(path: Path, payload: dict) -> None:
+    temporary = path.with_name(f".{path.name}.tmp")
+    try:
+        temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _extract_frame_batch(
+    ffmpeg: str,
+    video_path: Path,
+    requests: list[tuple[int, Path]],
+) -> bool:
+    """Extract arbitrary timestamps with one bounded ffmpeg process.
+
+    Each timestamp is an independently seekable input, so accuracy and output
+    naming remain compatible with the old per-frame implementation while the
+    expensive process startup is amortised across the batch.
+    """
+
+    if not requests:
+        return True
+    command = [ffmpeg, "-y", "-hide_banner", "-loglevel", "error"]
+    for timestamp, _output in requests:
+        command.extend(["-ss", f"{max(0, timestamp):.3f}", "-i", str(video_path)])
+    for input_index, (_timestamp, output) in enumerate(requests):
+        command.extend([
+            "-map",
+            f"{input_index}:v:0",
+            "-frames:v",
+            "1",
+            "-q:v",
+            "3",
+            str(output),
+        ])
+    result = subprocess.run(command, capture_output=True, **text_subprocess_kwargs())
+    return result.returncode == 0
+
+
+def _extract_single_frame(ffmpeg: str, video_path: Path, timestamp: int, output: Path) -> bool:
+    seek_start = max(0, timestamp - 3)
+    precise_offset = timestamp - seek_start
+    result = subprocess.run(
+        [
+            ffmpeg,
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-ss",
+            str(seek_start),
+            "-i",
+            str(video_path),
+            "-ss",
+            str(precise_offset),
+            "-frames:v",
+            "1",
+            "-q:v",
+            "3",
+            str(output),
+        ],
+        capture_output=True,
+        **text_subprocess_kwargs(),
+    )
+    return result.returncode == 0 and _valid_frame_file(output)
+
+
+def _valid_frame_file(path: Path) -> bool:
+    try:
+        if not path.is_file() or path.stat().st_size <= 0:
+            return False
+        with Image.open(path) as image:
+            image.verify()
+        return True
+    except (OSError, ValueError):
+        return False
+
+
 def extract_frames_adaptive(
     video_path: Path,
     frame_dir: Path,
@@ -584,6 +699,7 @@ def extract_frames_adaptive(
     max_frames: int = 900,
     anchor_timestamps: list[float] | None = None,
     scene_threshold: float = 0.22,
+    batch_size: int = DEFAULT_FRAME_EXTRACT_BATCH_SIZE,
 ) -> tuple[list[Path], list[FrameSample]]:
     require_ffmpeg()
     ffmpeg = ffmpeg_bin()
@@ -599,6 +715,54 @@ def extract_frames_adaptive(
         max_scenes=max_frames,
     )
     plan = _adaptive_frame_plan(duration, interval, max_frames, scene_timestamps, anchor_timestamps)
+    batch_size = max(1, min(32, int(batch_size or DEFAULT_FRAME_EXTRACT_BATCH_SIZE)))
+    cache_path = frame_dir / "frame_cache.json"
+    cache_signature = _frame_cache_payload(
+        video_path,
+        plan,
+        interval=interval,
+        scene_threshold=scene_threshold,
+    )
+    cached_state = _read_frame_cache(cache_path)
+    cache_valid = cached_state.get("signature") == cache_signature
+    cached_kept_outputs = {
+        str(name)
+        for name in cached_state.get("kept_outputs", [])
+        if isinstance(name, str)
+    } if cache_valid else set()
+    planned_outputs = [
+        (timestamp, frame_dir / f"frame_{index:04d}_{timestamp:06d}.jpg")
+        for index, (timestamp, _reasons) in enumerate(plan)
+    ]
+    if cache_valid:
+        pending = [
+            (timestamp, output)
+            for timestamp, output in planned_outputs
+            if output.name in cached_kept_outputs
+            and not _valid_frame_file(output)
+        ]
+    else:
+        pending = list(planned_outputs)
+    started_at = time.monotonic()
+    batch_process_count = 0
+    fallback_process_count = 0
+    for start in range(0, len(pending), batch_size):
+        requests = pending[start: start + batch_size]
+        for _timestamp, output in requests:
+            output.unlink(missing_ok=True)
+        batch_process_count += 1
+        batch_ok = _extract_frame_batch(ffmpeg, video_path, requests)
+        missing = [
+            (timestamp, output)
+            for timestamp, output in requests
+            if not _valid_frame_file(output)
+        ]
+        if not batch_ok or missing:
+            for timestamp, output in missing:
+                output.unlink(missing_ok=True)
+                fallback_process_count += 1
+                _extract_single_frame(ffmpeg, video_path, timestamp, output)
+
     frames: list[Path] = []
     samples: list[FrameSample] = []
     last_hash = ""
@@ -607,31 +771,9 @@ def extract_frames_adaptive(
     last_kept_timestamp: float | None = None
     for index, (ts, reasons) in enumerate(plan):
         out = frame_dir / f"frame_{index:04d}_{ts:06d}.jpg"
-        seek_start = max(0, ts - 3)
-        precise_offset = ts - seek_start
-        result = subprocess.run(
-            [
-                ffmpeg,
-                "-y",
-                "-hide_banner",
-                "-loglevel",
-                "error",
-                "-ss",
-                str(seek_start),
-                "-i",
-                str(video_path),
-                "-ss",
-                str(precise_offset),
-                "-frames:v",
-                "1",
-                "-q:v",
-                "3",
-                str(out),
-            ],
-            capture_output=True,
-            **text_subprocess_kwargs(),
-        )
-        if result.returncode != 0 or not out.exists():
+        if cache_valid and out.name not in cached_kept_outputs:
+            continue
+        if not _valid_frame_file(out):
             continue
         current_hash = _md5(out)
         current_average_hash = _average_hash(out)
@@ -662,6 +804,29 @@ def extract_frames_adaptive(
             important=important,
             sha256=file_sha256(out),
         ))
+    _write_frame_cache(
+        cache_path,
+        {
+            "signature": cache_signature,
+            "kept_outputs": [path.name for path in frames],
+        },
+    )
+    metrics = {
+        "schema_version": 1,
+        "planned_frame_count": len(plan),
+        "cached_frame_count": sum(
+            1
+            for _timestamp, output in planned_outputs
+            if cache_valid and output.name in cached_kept_outputs and _valid_frame_file(output)
+        ),
+        "cached_duplicate_skip_count": max(0, len(plan) - len(cached_kept_outputs)) if cache_valid else 0,
+        "kept_frame_count": len(frames),
+        "batch_size": batch_size,
+        "ffmpeg_batch_process_count": batch_process_count,
+        "ffmpeg_fallback_process_count": fallback_process_count,
+        "elapsed_ms": round(max(0.0, time.monotonic() - started_at) * 1000),
+    }
+    _write_frame_cache(frame_dir / "frame_extraction_metrics.json", metrics)
     return frames, samples
 
 

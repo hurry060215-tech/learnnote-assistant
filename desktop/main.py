@@ -56,6 +56,8 @@ class DesktopApi:
         "sanitized-bundle": ".zip",
         "support-package": ".zip",
         "notion": ".json",
+        "docx": ".docx",
+        "pdf": ".pdf",
         "manifest": ".json",
         "diagnostics": ".md",
         "visual-windows": ".json",

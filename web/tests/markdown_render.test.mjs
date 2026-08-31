@@ -480,17 +480,12 @@ assert.match(elements.get("#browserBridgeStatus").innerHTML, /capture-status-chi
 assert.match(elements.get("#browserBridgeStatus").innerHTML, /点击 LearnNote 扩展图标/);
 assert.doesNotMatch(elements.get("#browserBridgeStatus").innerHTML, /data · 待检测|路径异常/);
 assert.match(elements.get("#detail").innerHTML, /class="empty-workbench"/);
-assert.match(elements.get("#detail").innerHTML, /class="empty-demo-board"/);
-assert.match(elements.get("#detail").innerHTML, /class="empty-quick-routes"/);
-assert.match(elements.get("#detail").innerHTML, /class="empty-production-brief"/);
-assert.match(elements.get("#detail").innerHTML, /Markdown · 诊断 · 资料包/);
-assert.match(elements.get("#detail").innerHTML, /当前页直取/);
-assert.match(elements.get("#detail").innerHTML, /读取正在播放的视频/);
-assert.match(elements.get("#detail").innerHTML, /拖入文件直接切片/);
-assert.match(elements.get("#detail").innerHTML, /粘贴页面或媒体链接/);
-assert.match(elements.get("#detail").innerHTML, /直取候选 · HLS/);
-assert.match(elements.get("#detail").innerHTML, /浏览器字幕和转写片段会按视觉窗口对齐/);
-assert.match(elements.get("#detail").innerHTML, /不.*录制页面/);
+assert.match(elements.get("#detail").innerHTML, /class="empty-workbench-mark"/);
+assert.match(elements.get("#detail").innerHTML, /这里会保存你的学习笔记/);
+assert.match(elements.get("#detail").innerHTML, /新建第一篇笔记/);
+assert.match(elements.get("#detail").innerHTML, /所有内容默认只保存在这台设备/);
+assert.equal((elements.get("#detail").innerHTML.match(/data-empty-source=/g) || []).length, 1);
+assert.doesNotMatch(elements.get("#detail").innerHTML, /ffmpeg|yt-dlp|Whisper|HLS|诊断 · 资料包/);
 assert.equal(elements.get("#copyButton").disabled, true);
 assert.equal(elements.get("#visualWindowsButton").disabled, true);
 assert.equal(elements.get("#manifestButton").disabled, true);
@@ -529,7 +524,7 @@ assert.match(indexHtml, /id="libraryBackupInput"/);
 assert.match(webCode, /\/api\/tasks\?confirm=delete_all_tasks/);
 assert.match(matureCss, /\.danger-button\s*\{/);
 assert.match(indexHtml, /styles\.css\?v=20260724-ui3/);
-assert.match(indexHtml, /app\.js\?v=20260821-onboarding1/);
+assert.match(indexHtml, /app\.js\?v=20260831-ux1/);
 assert.match(indexHtml, /id="viewReleaseNotesButton"/);
 assert.match(indexHtml, /id="releaseNotesOverlay"/);
 assert.match(indexHtml, /id="confirmReleaseNotesButton"/);
@@ -1234,6 +1229,25 @@ assert.doesNotMatch(sanitizedLegacyNote, /Page context/);
 assert.doesNotMatch(sanitizedLegacyNote, /unrelated recommendations/);
 assert.match(sanitizedLegacyNote, /文本来源：faster-whisper/);
 assert.match(sanitizedLegacyNote, /主题线索：Lesson/);
+
+const normalizedReaderNote = context.sanitizeNoteMarkdown(`---
+title: 重复标题
+source: local
+---
+
+# 重复标题
+---
+# 重复标题
+
+## 第一节
+正文
+---
+---
+`, { title: "重复标题" });
+assert.doesNotMatch(normalizedReaderNote, /^---/);
+assert.doesNotMatch(normalizedReaderNote, /# 重复标题/);
+assert.match(normalizedReaderNote, /^## 第一节/);
+assert.equal((normalizedReaderNote.match(/^---$/gm) || []).length, 0);
 
 const outlineHtml = context.noteOutline(`# Smoke Current Page Video
 

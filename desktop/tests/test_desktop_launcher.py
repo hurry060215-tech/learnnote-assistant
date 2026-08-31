@@ -238,6 +238,8 @@ class DesktopLauncherTests(unittest.TestCase):
             )
 
     def test_native_export_rejects_unknown_task_or_type(self):
+        self.assertEqual(desktop.DesktopApi.EXPORT_TYPES["docx"], ".docx")
+        self.assertEqual(desktop.DesktopApi.EXPORT_TYPES["pdf"], ".pdf")
         with tempfile.TemporaryDirectory(dir=ROOT / "data") as temp_dir:
             api = desktop.DesktopApi(Path(temp_dir), "http://127.0.0.1:18766")
             with self.assertRaises(ValueError):

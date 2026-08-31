@@ -169,8 +169,32 @@
     return html.join("");
   }
 
-  function sanitizeNoteMarkdown(markdown) {
-    const lines = String(markdown || "").replace(/\r\n?/g, "\n").split("\n");
+  function normalizedTitle(value) {
+    return plainHeadingText(value)
+      .replace(/[\s\u3000]+/g, "")
+      .replace(/[：:|｜·•—–\-_]/g, "")
+      .toLocaleLowerCase();
+  }
+
+  function sanitizeNoteMarkdown(markdown, options = {}) {
+    const requestedTitle = typeof options === "string" ? options : options?.title;
+    const titleKey = normalizedTitle(requestedTitle || "");
+    const sourceLines = String(markdown || "").replace(/\r\n?/g, "\n").split("\n");
+    let start = 0;
+
+    // Generated notes occasionally contain YAML front matter. The surrounding
+    // task header already owns this metadata, so do not expose raw delimiters to
+    // readers. Only treat the opening block as front matter when it contains a
+    // key/value pair, which preserves deliberate horizontal rules in the body.
+    if (/^\s*---\s*$/.test(sourceLines[0] || "")) {
+      const closing = sourceLines.slice(1, 41).findIndex(line => /^\s*---\s*$/.test(line));
+      const block = closing >= 0 ? sourceLines.slice(1, closing + 1) : [];
+      if (closing >= 0 && block.some(line => /^\s*[\w\u4e00-\u9fff-]+\s*:\s*\S/.test(line))) {
+        start = closing + 2;
+      }
+    }
+
+    const lines = sourceLines.slice(start);
     const cleaned = [];
     for (let index = 0; index < lines.length; index += 1) {
       if (!/^\s*-\s*Page context:\s*captured from the current browser page\b/i.test(lines[index])) {
@@ -179,7 +203,28 @@
       }
       while (index + 1 < lines.length && /^(?: {2,}|\t)\S/.test(lines[index + 1])) index += 1;
     }
-    return cleaned.join("\n");
+
+    const isRule = line => /^\s*(?:-{3,}|_{3,}|\*{3,})\s*$/.test(line || "");
+    while (cleaned.length && (!cleaned[0].trim() || isRule(cleaned[0]))) cleaned.shift();
+    while (cleaned.length && (!cleaned.at(-1).trim() || isRule(cleaned.at(-1)))) cleaned.pop();
+
+    // The result header already renders the task title. Remove repeated leading
+    // headings only when they are the same title; chapter headings remain intact.
+    while (titleKey && cleaned.length) {
+      const heading = /^\s*#{1,2}\s+(.+?)\s*$/.exec(cleaned[0]);
+      if (!heading || normalizedTitle(heading[1]) !== titleKey) break;
+      cleaned.shift();
+      while (cleaned.length && (!cleaned[0].trim() || isRule(cleaned[0]))) cleaned.shift();
+    }
+
+    // Collapse accidental repeated separators without flattening intentional
+    // section breaks inside the note.
+    const compact = [];
+    for (const line of cleaned) {
+      if (isRule(line) && isRule(compact.at(-1))) continue;
+      compact.push(line);
+    }
+    return compact.join("\n").trim();
   }
 
   function noteOutline(markdown, limit = 12) {

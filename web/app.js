@@ -299,9 +299,15 @@ let selectedTaskId = taskIdFromCurrentUrl();
 let selectedTab = resultTabFromCurrentUrl();
 let lastNote = "";
 let lastNoteTaskId = "";
+let lastNoteCacheKey = "";
+let lastNoteDocument = null;
+let lastNoteDocumentTaskId = "";
+let lastNoteDocumentCacheKey = "";
 let lastTranscript = null;
 let lastTranscriptTaskId = "";
 let tasks = [];
+let libraryMaterials = [];
+let selectedMaterialId = "";
 let taskListLoadPromise = null;
 let lastTaskListFingerprint = "__unrendered__";
 let lastTaskListLiveFingerprint = "__unrendered__";
@@ -335,8 +341,15 @@ let lastBrowserRouteSummaryHtml = "";
 let lastSourceRouteRailHtml = "";
 let lastSourceWorkflowHtml = "";
 let uiPollTimer = 0;
+let taskStreamRefreshTimer = 0;
 let lastHealthCheckAt = 0;
 const taskUpdateSubscribers = new Set();
+const taskEventSources = new Map();
+const taskEventStreamFallbackUntil = new Map();
+const taskEventStreamCursors = new Map();
+const taskEventStreamOpen = new Set();
+const taskEventStreamFailures = new Map();
+let studyViewRequestGeneration = 0;
 let qaState = { taskId: "", question: "", answer: "", source: "", warning: "", citations: [], historyCount: 0, recent: [], loading: false };
 let noteVersionTaskId = "";
 let assistantMessages = [];
@@ -381,6 +394,10 @@ const els = {
   settingsView: document.querySelector("#settingsView"),
   studyView: document.querySelector("#studyView"),
   studyViewSummary: document.querySelector("#studyViewSummary"),
+  studyViewDashboard: document.querySelector("#studyViewDashboard"),
+  studyViewProgressLabel: document.querySelector("#studyViewProgressLabel"),
+  studyViewProgressBar: document.querySelector("#studyViewProgressBar"),
+  studyViewProgressHint: document.querySelector("#studyViewProgressHint"),
   studyViewDueList: document.querySelector("#studyViewDueList"),
   studyViewRefreshButton: document.querySelector("#studyViewRefreshButton"),
   settingsCloseButton: document.querySelector("#settingsCloseButton"),
@@ -407,6 +424,8 @@ const els = {
   knowledgeImportButton: document.querySelector("#knowledgeImportButton"),
   knowledgeImportInput: document.querySelector("#knowledgeImportInput"),
   knowledgeImportStatus: document.querySelector("#knowledgeImportStatus"),
+  editorialKnowledgeImport: document.querySelector("#editorialKnowledgeImport"),
+  editorialKnowledgeImportStatus: document.querySelector("#editorialKnowledgeImportStatus"),
   knowledgeSearchInput: document.querySelector("#knowledgeSearchInput"),
   knowledgeSearchButton: document.querySelector("#knowledgeSearchButton"),
   knowledgeSearchResults: document.querySelector("#knowledgeSearchResults"),
@@ -510,6 +529,9 @@ const els = {
   runningCount: document.querySelector("#runningCount"),
   failedCount: document.querySelector("#failedCount"),
   tasks: document.querySelector("#tasks"),
+  materialLibrarySection: document.querySelector("#materialLibrarySection"),
+  materialsList: document.querySelector("#materialsList"),
+  refreshMaterialsButton: document.querySelector("#refreshMaterialsButton"),
   selectedSource: document.querySelector("#selectedSource"),
   selectedTitle: document.querySelector("#selectedTitle"),
   resultMeta: document.querySelector("#resultMeta"),
@@ -524,6 +546,8 @@ const els = {
   bundleButton: document.querySelector("#bundleButton"),
   sanitizedBundleButton: document.querySelector("#sanitizedBundleButton"),
   notionExportButton: document.querySelector("#notionExportButton"),
+  docxExportButton: document.querySelector("#docxExportButton"),
+  pdfExportButton: document.querySelector("#pdfExportButton"),
   diagnosticsButton: document.querySelector("#diagnosticsButton"),
   supportPackageButton: document.querySelector("#supportPackageButton"),
   studyProposalButton: document.querySelector("#studyProposalButton"),
@@ -1835,8 +1859,8 @@ function markdownToHtml(markdown) {
   return html.join("");
 }
 
-function sanitizeNoteMarkdown(markdown) {
-  if (globalThis.LearnNoteMarkdown?.sanitizeNoteMarkdown) return globalThis.LearnNoteMarkdown.sanitizeNoteMarkdown(markdown);
+function sanitizeNoteMarkdown(markdown, options = {}) {
+  if (globalThis.LearnNoteMarkdown?.sanitizeNoteMarkdown) return globalThis.LearnNoteMarkdown.sanitizeNoteMarkdown(markdown, options);
   const lines = String(markdown || "").replace(/\r\n?/g, "\n").split("\n");
   const cleaned = [];
   for (let index = 0; index < lines.length; index += 1) {
@@ -1848,7 +1872,19 @@ function sanitizeNoteMarkdown(markdown) {
       index += 1;
     }
   }
-  return cleaned.join("\n");
+  const requestedTitle = typeof options === "string" ? options : options?.title;
+  const titleKey = String(requestedTitle || "").replace(/[`*_~#\s\u3000：:|｜·•—–\-_]/g, "").toLocaleLowerCase();
+  const isRule = line => /^\s*(?:-{3,}|_{3,}|\*{3,})\s*$/.test(line || "");
+  while (cleaned.length && (!cleaned[0].trim() || isRule(cleaned[0]))) cleaned.shift();
+  while (cleaned.length && (!cleaned.at(-1).trim() || isRule(cleaned.at(-1)))) cleaned.pop();
+  while (titleKey && cleaned.length) {
+    const heading = /^\s*#{1,2}\s+(.+?)\s*$/.exec(cleaned[0]);
+    const headingKey = String(heading?.[1] || "").replace(/[`*_~#\s\u3000：:|｜·•—–\-_]/g, "").toLocaleLowerCase();
+    if (!heading || headingKey !== titleKey) break;
+    cleaned.shift();
+    while (cleaned.length && (!cleaned[0].trim() || isRule(cleaned[0]))) cleaned.shift();
+  }
+  return cleaned.join("\n").trim();
 }
 
 function noteOutline(markdown, limit = 12) {
@@ -4897,6 +4933,66 @@ function initializeWorkspaceView() {
   if (taskRoute) showAppView("notes");
 }
 
+function renderLibraryMaterials() {
+  if (!els.materialLibrarySection || !els.materialsList) return;
+  els.materialLibrarySection.hidden = libraryMaterials.length === 0;
+  els.materialsList.innerHTML = libraryMaterials.slice(0, 12).map(material => `
+    <button type="button" class="material-list-item${material.material_id === selectedMaterialId ? " selected" : ""}" data-material-id="${escapeHtml(material.material_id || "")}">
+      <span>${escapeHtml(material.source_type === "pdf" ? "PDF" : material.source_type === "video" ? "视频" : "文档")}</span>
+      <strong>${escapeHtml(material.title || material.filename || "本地资料")}</strong>
+      <small>${Math.max(0, Number(material.anchor_count || 0))} 个出处 · ${material.stored_locally ? "本机可用" : "索引记录"}</small>
+    </button>
+  `).join("");
+}
+
+async function loadLibraryMaterials() {
+  try {
+    const payload = await fetchJson(apiUrl("/api/library/materials?limit=50"));
+    libraryMaterials = Array.isArray(payload?.materials) ? payload.materials : [];
+  } catch {
+    libraryMaterials = [];
+  }
+  renderLibraryMaterials();
+  return libraryMaterials;
+}
+
+async function openLibraryMaterial(materialId) {
+  if (!materialId) return;
+  selectedMaterialId = materialId;
+  selectedTaskId = null;
+  clearTaskCaches();
+  showAppView("notes");
+  renderLibraryMaterials();
+  els.detail.className = "detail";
+  els.detail.innerHTML = '<p class="knowledge-empty">正在读取本地资料出处…</p>';
+  try {
+    const [materialPayload, anchorPayload] = await Promise.all([
+      fetchJson(apiUrl(`/api/library/materials/${encodeURIComponent(materialId)}`)),
+      fetchJson(apiUrl(`/api/library/materials/${encodeURIComponent(materialId)}/anchors?limit=100`))
+    ]);
+    if (selectedMaterialId !== materialId) return;
+    const material = materialPayload?.material || {};
+    const anchors = Array.isArray(anchorPayload?.anchors) ? anchorPayload.anchors : [];
+    els.selectedTitle.textContent = material.title || material.filename || "本地学习资料";
+    els.selectedSource.textContent = `${material.source_type || "document"} · 本地优先`;
+    els.resultMeta.textContent = `${anchors.length} 个可追溯出处`;
+    els.detail.innerHTML = `<article class="material-reader">
+      <header><strong>${escapeHtml(material.title || material.filename || "本地学习资料")}</strong><small>内容和索引仅保存在本机</small></header>
+      ${anchors.length ? anchors.slice(0, 40).map(anchor => `<section id="material-${escapeHtml(anchor.evidence_id || "")}">
+        <span>${escapeHtml(anchor.locator || "出处")}</span>
+        <div class="material-anchor-content">${markdownToHtml(String(anchor.text || "").slice(0, 4000))}</div>
+      </section>`).join("") : '<p class="knowledge-empty">当前资料还没有可显示的文字出处。</p>'}
+    </article>`;
+    lastDetailFingerprint = `material:${materialId}:${material.updated_at || ""}`;
+    [els.copyButton, els.unifiedExportButton, els.bundleButton, els.sanitizedBundleButton, els.notionExportButton, els.docxExportButton, els.pdfExportButton, els.downloadButton]
+      .forEach(button => { if (button) button.disabled = true; });
+  } catch (error) {
+    if (selectedMaterialId !== materialId) return;
+    els.detail.innerHTML = `<p class="knowledge-empty">${escapeHtml(error?.message || "本地资料读取失败。")}</p>`;
+  }
+  focusResultPanelOnMobile();
+}
+
 async function loadTasks() {
   if (taskListLoadPromise) return taskListLoadPromise;
   taskListLoadPromise = loadTasksOnce();
@@ -4926,8 +5022,9 @@ async function loadTasksOnce() {
   const taskListLiveChanged = nextTaskListLiveFingerprint !== lastTaskListLiveFingerprint;
   handleTaskStatusTransitions(nextTasks);
   tasks = nextTasks;
+  syncTaskEventStreams(tasks);
   if (selectedTaskId && !tasks.some(task => task.id === selectedTaskId)) selectedTaskId = null;
-  if (!selectedTaskId) {
+  if (!selectedTaskId && !selectedMaterialId) {
     const initialTask = preferredInitialTask(tasks);
     if (initialTask) selectTask(initialTask.id, { clearCaches: false });
   }
@@ -4944,7 +5041,7 @@ async function loadTasksOnce() {
   if (taskListChanged || taskListLiveChanged) notifyTaskUpdateSubscribers();
   if (uiPollTimer) scheduleUiPoll();
   const selected = tasks.find(task => task.id === selectedTaskId) || null;
-  if (taskDetailFingerprint(selected) !== lastDetailFingerprint) await renderDetail();
+  if (!selectedMaterialId && taskDetailFingerprint(selected) !== lastDetailFingerprint) await renderDetail();
   const assistantTask = assistantSelectedTask();
   if (document.body?.dataset?.appView === "notes" && assistantTask && assistantOpenPreference() === true && !document.body?.classList?.contains("assistant-open")) {
     setAssistantOpen(true, { persist: false });
@@ -4971,7 +5068,112 @@ function notifyTaskUpdateSubscribers() {
 
 function nextUiPollDelay(items = tasks, hidden = document.visibilityState === "hidden") {
   if (hidden) return 30000;
-  return (Array.isArray(items) && items.some(isActiveTask)) ? 1800 : 8000;
+  const activeTasks = (Array.isArray(items) ? items : []).filter(isActiveTask);
+  if (!activeTasks.length) return 8000;
+  return activeTasks.every(task => taskEventStreamOpen.has(task.id)) ? 8000 : 1800;
+}
+
+function scheduleTaskStreamRefresh(delay = 90) {
+  if (!window.setTimeout) return;
+  if (taskStreamRefreshTimer) window.clearTimeout?.(taskStreamRefreshTimer);
+  taskStreamRefreshTimer = window.setTimeout(async () => {
+    taskStreamRefreshTimer = 0;
+    await loadTasks();
+  }, Math.max(0, Number(delay) || 0));
+}
+
+function closeTaskEventStream(taskId, { fallbackMs = 0 } = {}) {
+  taskEventSources.get(taskId)?.close?.();
+  taskEventSources.delete(taskId);
+  taskEventStreamOpen.delete(taskId);
+  if (fallbackMs > 0) taskEventStreamFallbackUntil.set(taskId, Date.now() + fallbackMs);
+  else {
+    taskEventStreamFallbackUntil.delete(taskId);
+    taskEventStreamFailures.delete(taskId);
+  }
+}
+
+function closeTaskEventStreams({ fallbackMs = 0 } = {}) {
+  [...taskEventSources.keys()].forEach(taskId => closeTaskEventStream(taskId, { fallbackMs }));
+}
+
+function applyTaskStreamPayload(taskId, payload = {}) {
+  const current = tasks.find(task => task.id === taskId);
+  if (!current) return;
+  const eventTime = Date.parse(String(payload?.timestamp || ""));
+  const taskTime = Date.parse(String(current.updated_at || ""));
+  if (Number.isFinite(eventTime) && Number.isFinite(taskTime) && eventTime + 1000 < taskTime) return;
+  const details = payload?.details && typeof payload.details === "object" ? payload.details : {};
+  const updates = {
+    status: payload.status,
+    phase: payload.phase,
+    message: payload.message,
+    error_code: payload.error_code,
+    progress: details.progress ?? payload.progress
+  };
+  for (const [key, value] of Object.entries(updates)) {
+    if (value !== undefined && value !== null && value !== "") current[key] = value;
+  }
+  patchTaskListLiveState(tasks);
+  notifyTaskUpdateSubscribers();
+}
+
+function syncTaskEventStreams(items = tasks) {
+  const EventSourceConstructor = window.EventSource;
+  if (typeof EventSourceConstructor !== "function" || document.visibilityState === "hidden") return;
+  const activeIds = new Set((Array.isArray(items) ? items : []).filter(isActiveTask).slice(0, 6).map(task => task.id));
+  [...taskEventSources.keys()].forEach(taskId => {
+    if (!activeIds.has(taskId)) closeTaskEventStream(taskId);
+  });
+  for (const taskId of [...taskEventStreamCursors.keys()]) {
+    if (!activeIds.has(taskId)) {
+      taskEventStreamCursors.delete(taskId);
+      taskEventStreamFallbackUntil.delete(taskId);
+      taskEventStreamFailures.delete(taskId);
+      taskEventStreamOpen.delete(taskId);
+    }
+  }
+  for (const taskId of activeIds) {
+    if (taskEventSources.has(taskId)) continue;
+    if ((taskEventStreamFallbackUntil.get(taskId) || 0) > Date.now()) continue;
+    let source;
+    try {
+      const cursor = Math.max(0, Number(taskEventStreamCursors.get(taskId) || 0));
+      source = new EventSourceConstructor(apiUrl(`/api/tasks/${encodeURIComponent(taskId)}/events/stream?after=${cursor}`));
+    } catch {
+      taskEventStreamFallbackUntil.set(taskId, Date.now() + 15000);
+      continue;
+    }
+    taskEventSources.set(taskId, source);
+    const handleUpdate = event => {
+      const eventCursor = Number(event?.lastEventId || 0);
+      if (Number.isFinite(eventCursor) && eventCursor > 0) taskEventStreamCursors.set(taskId, eventCursor);
+      let payload = {};
+      try { payload = JSON.parse(event?.data || "{}"); } catch { payload = {}; }
+      applyTaskStreamPayload(taskId, payload);
+      if (selectedTaskId === taskId) clearTaskCaches(taskId);
+      scheduleTaskStreamRefresh();
+    };
+    ["task_created", "task_updated"].forEach(name => source.addEventListener?.(name, handleUpdate));
+    ["task_terminal", "task_missing"].forEach(name => source.addEventListener?.(name, event => {
+      handleUpdate(event);
+      closeTaskEventStream(taskId);
+    }));
+    source.onmessage = handleUpdate;
+    source.onopen = () => {
+      taskEventStreamOpen.add(taskId);
+      taskEventStreamFailures.delete(taskId);
+      taskEventStreamFallbackUntil.delete(taskId);
+      if (uiPollTimer) scheduleUiPoll();
+    };
+    source.onerror = () => {
+      taskEventStreamOpen.delete(taskId);
+      const failures = Number(taskEventStreamFailures.get(taskId) || 0) + 1;
+      taskEventStreamFailures.set(taskId, failures);
+      if (failures >= 3) closeTaskEventStream(taskId, { fallbackMs: 15000 });
+      scheduleUiPoll(failures >= 3 ? 250 : 1800);
+    };
+  }
 }
 
 function scheduleUiPoll(delay = nextUiPollDelay()) {
@@ -4990,9 +5192,11 @@ async function runUiPollCycle() {
 
 function handleVisibilityPollChange() {
   if (document.visibilityState === "hidden") {
+    closeTaskEventStreams();
     scheduleUiPoll(30000);
     return;
   }
+  syncTaskEventStreams(tasks);
   scheduleUiPoll(100);
 }
 
@@ -5027,8 +5231,8 @@ function patchTaskListLiveState(items = tasks) {
     const progress = Math.max(0, Math.min(100, Number(task.progress || 0)));
     const status = item.querySelector?.(".task-status-pill");
     if (status) status.textContent = `${statusText(task)} · ${progress}%`;
-    const bar = item.querySelector?.(".progress > span");
-    if (bar) bar.style.width = `${progress}%`;
+    const experience = item.querySelector?.(".task-progress-experience");
+    if (experience) experience.outerHTML = taskProgressExperienceHtml(task);
   });
   els.recentNotesList?.querySelectorAll?.("[data-recent-task]")?.forEach?.(item => {
     const task = byId.get(item.dataset.recentTask);
@@ -5131,6 +5335,8 @@ function syncTaskSelection() {
 
 async function openTaskFromList(taskId) {
   if (!taskId) return;
+  selectedMaterialId = "";
+  renderLibraryMaterials();
   selectTask(taskId);
   syncTaskSelection();
   showAppView("notes");
@@ -5140,6 +5346,13 @@ async function openTaskFromList(taskId) {
 
 function bindTaskListEvents() {
   els.tasks?.addEventListener?.("click", async event => {
+    const emptySource = event.target?.closest?.("[data-empty-source]")?.dataset?.emptySource;
+    if (emptySource) {
+      setSource(emptySource);
+      showAppView("workspace");
+      window.scrollTo?.({ top: 0, left: 0, behavior: "auto" });
+      return;
+    }
     const taskElement = event.target?.closest?.(".task");
     if (!taskElement?.dataset?.id) {
       if (event.target?.closest?.("[data-history-load-more]")) {
@@ -5170,6 +5383,12 @@ function bindTaskListEvents() {
 }
 
 function renderTasks() {
+  const hasTasks = tasks.length > 0;
+  const queueTools = els.taskSearch?.closest?.(".queue-tools");
+  const queueStats = els.taskCount?.closest?.(".queue-panel")?.querySelector?.(".queue-stats");
+  if (queueTools) queueTools.hidden = !hasTasks;
+  if (queueStats) queueStats.hidden = !hasTasks;
+  if (els.deleteAllTasksButton) els.deleteAllTasksButton.hidden = !hasTasks;
   els.taskCount.textContent = String(tasks.length);
   els.successCount.textContent = String(tasks.filter(task => task.status === "success").length);
   els.runningCount.textContent = String(tasks.filter(isActiveTask).length);
@@ -5198,7 +5417,7 @@ function renderTasks() {
         </div>
         <small class="task-meta-line">${escapeHtml(taskMetaLine(task))}</small>
         ${taskChipsHtml(task)}
-        ${taskAwaitingConfirmation(task) ? "" : `<div class="progress"><span style="width:${task.progress || 0}%"></span></div>`}
+        ${taskProgressExperienceHtml(task)}
         <div class="task-controls" aria-label="任务操作">
           <button type="button" data-task-action="open">${task.note_path ? "查看笔记" : "查看详情"}</button>
           ${canCreateNoteVersion(task) ? `<button type="button" data-task-action="version">新建笔记版本</button>` : ""}
@@ -5213,6 +5432,25 @@ function renderTasks() {
       再显示 ${Math.min(HISTORY_PAGE_SIZE, filteredTasks.length - visibleTasks.length)} 条
     </button>
   ` : "");
+}
+
+els.materialsList?.addEventListener?.("click", event => {
+  const button = event.target?.closest?.("[data-material-id]");
+  if (button?.dataset?.materialId) openLibraryMaterial(button.dataset.materialId);
+});
+els.refreshMaterialsButton?.addEventListener?.("click", () => loadLibraryMaterials());
+
+function taskProgressExperienceHtml(task) {
+  if (taskAwaitingConfirmation(task)) return "";
+  const progress = Math.max(0, Math.min(100, Number(task.progress || 0)));
+  const active = isActiveTask(task);
+  const draftReady = active && Boolean(task.note_path);
+  return `<div class="task-progress-experience ${active ? "active" : "settled"}${draftReady ? " draft-ready" : ""}">
+    ${active ? `<div class="task-progress-label"><strong>${escapeHtml(taskPhaseLabel(task))}</strong><span>${progress}%</span></div>` : ""}
+    <div class="progress" role="progressbar" aria-label="${escapeHtml(active ? taskPhaseLabel(task) : statusText(task))}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progress}"><span style="width:${progress}%"></span></div>
+    ${active ? stageRail(task) : ""}
+    ${draftReady ? `<button class="draft-read-action" type="button" data-task-action="open"><span>草稿可阅读</span><small>画面证据仍在补充</small></button>` : ""}
+  </div>`;
 }
 
 async function runTaskAction(taskId, action) {
@@ -5261,23 +5499,12 @@ async function runTaskAction(taskId, action) {
 }
 
 function emptyTaskQueueHtml() {
-  const steps = [
-    ["1", "直取/上传", "当前页候选、链接或本地视频"],
-    ["2", "下载与转写", "ffmpeg / yt-dlp / Whisper"],
-    ["3", "画面切片", "按时间窗生成网格截图"],
-    ["4", "整理笔记", "时间轴、概念、复习题"]
-  ];
   return `<section class="queue-empty-workflow" aria-label="任务队列空状态">
-    <span>暂无任务</span>
-    <strong>选择左侧入口开始生成学习笔记</strong>
-    <p>任务会在这里形成队列；成功后右侧直接进入笔记、字幕、画面切片和下载诊断。</p>
-    <ol>
-      ${steps.map(([index, title, detail]) => `<li>
-        <b>${escapeHtml(index)}</b>
-        <span>${escapeHtml(title)}</span>
-        <small>${escapeHtml(detail)}</small>
-      </li>`).join("")}
-    </ol>
+    <span class="queue-empty-mark" aria-hidden="true">＋</span>
+    <strong>从一段视频开始</strong>
+    <p>几秒内先获得字幕大纲，随后逐步补充画面证据和完整笔记。</p>
+    <button type="button" data-empty-source="browser">新建第一篇笔记</button>
+    <small>支持视频链接、浏览器当前页和本地视频</small>
   </section>`;
 }
 
@@ -5465,19 +5692,51 @@ function taskFromPayload(payload) {
   return task;
 }
 
-async function noteForTask(taskId) {
+function taskContentCacheKey(taskOrId) {
+  const task = typeof taskOrId === "object" && taskOrId ? taskOrId : tasks.find(item => item.id === taskOrId);
+  const taskId = task?.id || String(taskOrId || "");
+  return [taskId, task?.note_path || "", task?.updated_at || "", task?.status || "", task?.phase || ""].join("|");
+}
+
+async function noteForTask(taskOrId) {
+  const taskId = typeof taskOrId === "object" && taskOrId ? taskOrId.id : taskOrId;
   if (!taskId) return "";
-  if (lastNoteTaskId === taskId && lastNote) return lastNote;
+  const cacheKey = taskContentCacheKey(taskOrId);
+  if (lastNoteTaskId === taskId && lastNoteCacheKey === cacheKey && lastNote) return lastNote;
   const response = await fetch(apiUrl(`/api/tasks/${taskId}/note`));
   if (!response.ok) return "";
   lastNote = await response.text();
   lastNoteTaskId = taskId;
+  lastNoteCacheKey = cacheKey;
   return lastNote;
+}
+
+async function noteDocumentForTask(taskOrId) {
+  const taskId = typeof taskOrId === "object" && taskOrId ? taskOrId.id : taskOrId;
+  if (!taskId) return null;
+  const cacheKey = taskContentCacheKey(taskOrId);
+  if (lastNoteDocumentTaskId === taskId && lastNoteDocumentCacheKey === cacheKey && lastNoteDocument) return lastNoteDocument;
+  try {
+    const response = await fetch(apiUrl(`/api/tasks/${encodeURIComponent(taskId)}/note-document`));
+    if (!response.ok) return null;
+    const documentValue = await response.json();
+    if (Number(documentValue?.schema_version || 0) < 1 || !Array.isArray(documentValue?.sections)) return null;
+    lastNoteDocument = documentValue;
+    lastNoteDocumentTaskId = taskId;
+    lastNoteDocumentCacheKey = cacheKey;
+    return documentValue;
+  } catch {
+    return null;
+  }
 }
 
 function clearTaskCaches() {
   lastNote = "";
   lastNoteTaskId = "";
+  lastNoteCacheKey = "";
+  lastNoteDocument = null;
+  lastNoteDocumentTaskId = "";
+  lastNoteDocumentCacheKey = "";
   lastTranscript = null;
   lastTranscriptTaskId = "";
 }
@@ -5579,19 +5838,27 @@ async function checkLibraryDuplicates() {
 }
 
 async function importKnowledgeFile(file) {
-  if (!file || !els.knowledgeImportStatus) return;
+  if (!file) return;
+  const setStatus = message => {
+    if (els.knowledgeImportStatus) els.knowledgeImportStatus.textContent = message;
+    if (els.editorialKnowledgeImportStatus) els.editorialKnowledgeImportStatus.textContent = message;
+  };
   els.knowledgeImportButton?.setAttribute?.("disabled", "disabled");
-  els.knowledgeImportStatus.textContent = `正在导入 ${file.name}…`;
+  els.editorialKnowledgeImport?.setAttribute?.("disabled", "disabled");
+  setStatus(`正在导入 ${file.name}…`);
   try {
     const form = new FormData();
     form.append("file", file, file.name);
-    const result = await fetchJson(apiUrl("/api/knowledge/import-file"), { method: "POST", body: form });
-    const evidence = result?.evidence || {};
-    els.knowledgeImportStatus.textContent = `已导入：${evidence.title || file.name}；证据已写入本地资料库。`;
+    const result = await fetchJson(apiUrl("/api/library/materials/import"), { method: "POST", body: form });
+    const material = result?.material || {};
+    setStatus(`已导入：${material.title || file.name}；${Number(material.anchor_count || 0)} 个出处已进入本地资料库。`);
+    await loadLibraryMaterials();
+    if (material.material_id) await openLibraryMaterial(material.material_id);
   } catch (error) {
-    els.knowledgeImportStatus.textContent = error?.message || "资料导入失败，请检查文件格式。";
+    setStatus(error?.message || "资料导入失败，请检查文件格式。");
   } finally {
     els.knowledgeImportButton?.removeAttribute?.("disabled");
+    els.editorialKnowledgeImport?.removeAttribute?.("disabled");
     if (els.knowledgeImportInput) els.knowledgeImportInput.value = "";
   }
 }
@@ -5812,7 +6079,13 @@ async function confirmStudyProposalSelection() {
   const selected = Array.from(els.studyProposalList.querySelectorAll("input[type=checkbox]:checked")).map(input => {
     const index = Number(input.dataset.proposalIndex);
     const back = els.studyProposalList.querySelector(`[data-proposal-back="${index}"]`)?.value || pendingStudyProposals[index]?.back || "";
-    return { ...pendingStudyProposals[index], back };
+    return {
+      front: pendingStudyProposals[index]?.front || "",
+      back,
+      source_evidence_ids: Array.isArray(pendingStudyProposals[index]?.source_evidence_ids)
+        ? pendingStudyProposals[index].source_evidence_ids.slice(0, 8)
+        : []
+    };
   });
   if (!selected.length) return;
   if (els.confirmStudyProposalButton) els.confirmStudyProposalButton.disabled = true;
@@ -5859,20 +6132,40 @@ function taskResumeUrl(taskId) {
 
 async function loadStudyView() {
   if (!els.studyViewDueList || !els.studyViewSummary) return;
+  const generation = ++studyViewRequestGeneration;
+  els.studyViewDashboard?.setAttribute?.("aria-busy", "true");
   els.studyViewSummary.textContent = "正在读取复习记录…";
   els.studyViewDueList.textContent = "正在读取到期卡片…";
+  if (els.studyViewProgressLabel) els.studyViewProgressLabel.textContent = "正在更新…";
   try {
     const [due, summary, plan] = await Promise.all([
       fetchJson(apiUrl("/api/study/due?limit=30")),
       fetchJson(apiUrl("/api/study/summary")),
       fetchJson(apiUrl("/api/study/plan"))
     ]);
+    if (generation !== studyViewRequestGeneration) return;
     const cards = Array.isArray(due?.cards) ? due.cards : [];
+    const studyPlan = plan?.plan || plan || {};
+    const dueCount = Number(summary?.due_count || cards.length);
+    const reviewedToday = Number(summary?.reviewed_today || 0);
+    const dailyTarget = Math.max(1, Number(studyPlan?.daily_target || 10));
+    const progressPercent = Math.max(0, Math.min(100, Math.round((reviewedToday / dailyTarget) * 100)));
     els.studyViewSummary.innerHTML = [
-      `<span><b>${Number(summary?.due_count || cards.length)}</b><small>张到期卡片</small></span>`,
-      `<span><b>${Number(summary?.reviewed_today || 0)}</b><small>今日已复习</small></span>`,
-      `<span><b>${Number(plan?.daily_target || 10)}</b><small>每日目标</small></span>`
+      `<span><b>${dueCount}</b><small>张到期卡片</small></span>`,
+      `<span><b>${reviewedToday}</b><small>今日已复习</small></span>`,
+      `<span><b>${dailyTarget}</b><small>每日目标</small></span>`
     ].join("");
+    if (els.studyViewProgressLabel) els.studyViewProgressLabel.textContent = `${reviewedToday} / ${dailyTarget}`;
+    if (els.studyViewProgressBar) els.studyViewProgressBar.style.width = `${progressPercent}%`;
+    const progressTrack = els.studyViewProgressBar?.parentElement;
+    progressTrack?.setAttribute?.("aria-valuenow", String(progressPercent));
+    if (els.studyViewProgressHint) {
+      els.studyViewProgressHint.textContent = studyPlan?.paused
+        ? "学习计划已暂停；现有记录仍保存在本机"
+        : reviewedToday >= dailyTarget
+          ? "今日目标已完成"
+          : `再复习 ${Math.max(0, dailyTarget - reviewedToday)} 张即可完成今日目标`;
+    }
     els.studyViewDueList.replaceChildren();
     if (!cards.length) {
       const empty = document.createElement("p");
@@ -5888,27 +6181,55 @@ async function loadStudyView() {
       front.textContent = card.front || "记忆卡片";
       const back = document.createElement("p");
       back.textContent = card.back || "";
+      back.hidden = true;
       const actions = document.createElement("div");
       actions.className = "study-card-actions";
+      actions.hidden = true;
+      const reveal = document.createElement("button");
+      reveal.type = "button";
+      reveal.className = "secondary action-button study-card-reveal";
+      reveal.textContent = "显示答案";
+      reveal.addEventListener("click", () => {
+        back.hidden = false;
+        actions.hidden = false;
+        reveal.hidden = true;
+        back.setAttribute("tabindex", "-1");
+        back.focus?.();
+      });
       [[1, "重来"], [3, "记住"], [4, "简单"]].forEach(([rating, label]) => {
         const button = document.createElement("button");
         button.type = "button";
         button.className = "secondary action-button";
         button.textContent = label;
         button.addEventListener("click", async () => {
-          await fetchJson(apiUrl(`/api/study/cards/${encodeURIComponent(card.card_id)}/review`), {
-            method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rating })
-          });
-          await loadStudyView();
+          if (button.disabled) return;
+          actions.querySelectorAll?.("button")?.forEach?.(item => { item.disabled = true; });
+          const idempotencyKey = globalThis.crypto?.randomUUID?.() || `${card.card_id}-${Date.now()}-${rating}`;
+          try {
+            await fetchJson(apiUrl(`/api/study/cards/${encodeURIComponent(card.card_id)}/review`), {
+              method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rating, idempotency_key: idempotencyKey })
+            });
+            await loadStudyView();
+          } catch (error) {
+            if (generation === studyViewRequestGeneration) {
+              els.studyViewProgressHint.textContent = error?.message || "复习提交失败，请重试。";
+              actions.querySelectorAll?.("button")?.forEach?.(item => { item.disabled = false; });
+            }
+          }
         });
         actions.append(button);
       });
-      article.append(front, back, actions);
+      article.append(front, back, reveal, actions);
       els.studyViewDueList.append(article);
     });
   } catch (error) {
+    if (generation !== studyViewRequestGeneration) return;
     els.studyViewSummary.textContent = error?.message || "复习记录读取失败。";
     els.studyViewDueList.textContent = "请确认本地服务正在运行。";
+    if (els.studyViewProgressLabel) els.studyViewProgressLabel.textContent = "暂时无法读取";
+    if (els.studyViewProgressHint) els.studyViewProgressHint.textContent = "连接恢复后会自动读取本地复习记录";
+  } finally {
+    if (generation === studyViewRequestGeneration) els.studyViewDashboard?.setAttribute?.("aria-busy", "false");
   }
 }
 
@@ -8546,88 +8867,12 @@ function pendingSliceWorkbench(task) {
 
 function emptyResultWorkbench() {
   return `
-    <section class="empty-workbench" aria-label="学习工作区起始页">
-      <div class="empty-hero">
-        <div class="empty-hero-copy">
-          <span>LearnNote 工作区</span>
-          <h3>把正在看的课程视频变成可复习的图文笔记</h3>
-          <p>从扩展 Side Panel 直取当前页可访问的视频资源，或上传本地视频；后端会下载到本机、转写、切片、生成画面网格，再合并成学习笔记。</p>
-          <div class="empty-production-brief" aria-label="本次产出工作台">
-            <section>
-              <b>输入</b>
-              <strong>当前页 / 本地 / 链接</strong>
-              <small>优先直取可访问媒体，不录制页面。</small>
-            </section>
-            <section>
-              <b>处理</b>
-              <strong>下载 · 转写 · 切片</strong>
-              <small>生成字幕、时间轴和视觉窗口。</small>
-            </section>
-            <section>
-              <b>交付</b>
-              <strong>Markdown · 诊断 · 资料包</strong>
-              <small>可直接下载，不写入额外记录。</small>
-            </section>
-          </div>
-          <div class="empty-hero-actions">
-            <button type="button" data-empty-source="browser">当前页直取</button>
-            <button type="button" data-empty-source="local">本地视频</button>
-            <button type="button" data-empty-source="url">链接解析</button>
-          </div>
-        </div>
-        <div class="empty-demo-board" aria-label="图文笔记生成预览">
-          <header>
-            <strong>当前页课程</strong>
-            <span>直取候选 · HLS</span>
-          </header>
-          <div class="empty-demo-video">
-            <div class="empty-demo-play"></div>
-            <span>00:12:48</span>
-          </div>
-          <div class="empty-demo-caption">
-            <time>12:48</time>
-            <span>浏览器字幕和转写片段会按视觉窗口对齐。</span>
-          </div>
-          <div class="empty-demo-grids">
-            ${Array.from({ length: 9 }).map(() => "<i></i>").join("")}
-          </div>
-          <div class="empty-demo-note">
-            <b>生成笔记</b>
-            <span>课程主题、时间轴重点、画面索引、易错点、复习题</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="empty-quick-routes" aria-label="开始路线">
-        <button type="button" class="primary" data-empty-source="browser">
-          <div>
-            <span>当前页直取</span>
-            <strong>读取正在播放的视频</strong>
-            <small>扩展侧栏嗅探媒体请求、播放器源和一次性 Cookie。</small>
-          </div>
-        </button>
-        <button type="button" data-empty-source="local">
-          <div>
-            <span>本地视频</span>
-            <strong>拖入文件直接切片</strong>
-            <small>mp4、mkv、webm、flv、avi 走同一套转写和视觉总结。</small>
-          </div>
-        </button>
-        <button type="button" data-empty-source="url">
-          <div>
-            <span>链接解析</span>
-            <strong>粘贴页面或媒体链接</strong>
-            <small>预检 mp4、m3u8、mpd 或平台页面，再决定下载/总结。</small>
-          </div>
-        </button>
-      </div>
-
-      <div class="empty-flow" aria-label="处理流程">
-        <span><b>01</b>检测媒体</span>
-        <span><b>02</b>预检下载</span>
-        <span><b>03</b>转写切片</span>
-        <span><b>04</b>图文总结</span>
-      </div>
+    <section class="empty-workbench" aria-label="资料库空状态">
+      <span class="empty-workbench-mark" aria-hidden="true">LN</span>
+      <h3>这里会保存你的学习笔记</h3>
+      <p>从正在播放的视频开始，先快速得到可读草稿，再逐步补全字幕、画面和出处。</p>
+      <button type="button" class="empty-workbench-primary" data-empty-source="browser">新建第一篇笔记</button>
+      <small>所有内容默认只保存在这台设备</small>
     </section>
   `;
 }
@@ -8653,6 +8898,99 @@ function bindEmptyWorkbenchActions() {
   });
 }
 
+function noteReadinessBanner(task, note = "") {
+  if (!task) return "";
+  const progress = Math.max(0, Math.min(100, Number(task.progress || 0)));
+  const readable = Boolean(String(note || "").trim());
+  const active = isActiveTask(task);
+  let state = "verified";
+  let label = "证据可核对";
+  let title = "笔记已完成";
+  let detail = "字幕、画面与来源入口会保留在笔记旁边。";
+  if (active && readable) {
+    state = "draft";
+    label = "草稿可阅读";
+    title = "你可以先开始阅读";
+    detail = `${taskPhaseLabel(task)} · 后续章节与画面证据仍会继续补充。`;
+  } else if (active) {
+    state = "processing";
+    label = `${progress}%`;
+    title = "正在生成第一版草稿";
+    detail = `${taskPhaseLabel(task)} · 字幕大纲就绪后会立即开放阅读。`;
+  } else if (readable && task.status !== "success") {
+    state = "limited";
+    label = "降级草稿";
+    title = "已有内容可以阅读";
+    detail = "部分证据可能缺失，请结合处理检查核对。";
+  } else if (!readable) {
+    return "";
+  }
+  return `<section class="note-readiness-banner ${state}" role="status" aria-label="笔记生成状态">
+    <span>${escapeHtml(label)}</span>
+    <div><strong>${escapeHtml(title)}</strong><small>${escapeHtml(detail)}</small></div>
+    ${active ? `<div class="note-readiness-progress" role="progressbar" aria-label="${escapeHtml(taskPhaseLabel(task))}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progress}"><i style="width:${progress}%"></i></div>` : ""}
+  </section>`;
+}
+
+function visibleNoteDocumentSections(documentValue) {
+  const sections = Array.isArray(documentValue?.sections) ? documentValue.sections : [];
+  const documentTitle = plainHeadingText(documentValue?.title || "").replace(/\s+/g, " ").trim();
+  return sections.filter(section => !(
+    Number(section?.level || 0) === 1
+    && plainHeadingText(section?.heading || "").replace(/\s+/g, " ").trim() === documentTitle
+  ));
+}
+
+function noteDocumentEvidenceHtml(documentValue) {
+  const sections = visibleNoteDocumentSections(documentValue);
+  if (!sections.length) return "";
+  const verifiedCount = sections.filter(section => section.verification === "verified").length;
+  const citationCount = sections.reduce((count, section) => count + (section.citations?.length || 0), 0);
+  const coverage = Math.round(Math.max(0, Math.min(1, verifiedCount / sections.length)) * 100);
+  return `<section class="note-document-map" aria-label="章节证据覆盖">
+    <header>
+      <div><span>章节证据</span><strong>${verifiedCount}/${sections.length} 节可核对</strong></div>
+      <small>${citationCount} 个时间出处 · 覆盖 ${coverage}%</small>
+    </header>
+    <div class="note-document-sections">
+      ${sections.slice(0, 12).map(section => {
+        const verified = section.verification === "verified";
+        const citations = Array.isArray(section.citations) ? section.citations : [];
+        return `<button type="button" class="${verified ? "verified" : "unverified"}" data-note-section-id="${escapeHtml(section.section_id || "")}" data-note-heading="${escapeHtml(section.heading || "")}" aria-pressed="false">
+          <span>${verified ? "已核对" : "待补证据"}</span>
+          <strong>${escapeHtml(section.heading || "未命名章节")}</strong>
+          <small>${citations.length ? `${citations.length} 个出处` : "未发现时间出处"}</small>
+        </button>`;
+      }).join("")}
+    </div>
+  </section>`;
+}
+
+function bindNoteDocumentActions(documentValue = null) {
+  const buttons = [...(els.detail?.querySelectorAll?.("[data-note-section-id]") || [])];
+  const headings = [...(els.detail?.querySelectorAll?.(".markdown-note h1, .markdown-note h2, .markdown-note h3") || [])];
+  const sections = visibleNoteDocumentSections(documentValue).slice(0, buttons.length);
+  sections.forEach((section, index) => {
+    const sectionId = String(section?.section_id || "").replace(/[^0-9A-Za-z\u4e00-\u9fff_-]/g, "");
+    if (sectionId && headings[index]) headings[index].id = sectionId;
+  });
+  for (const button of buttons) {
+    button.onclick = () => {
+      const sectionId = String(button.dataset.noteSectionId || "").replace(/[^0-9A-Za-z\u4e00-\u9fff_-]/g, "");
+      const target = sectionId ? els.detail?.querySelector?.(`#${sectionId}`) : null;
+      buttons.forEach(item => {
+        const selected = item === button;
+        item.classList.toggle("selected", selected);
+        item.setAttribute("aria-pressed", selected ? "true" : "false");
+      });
+      if (!target) return;
+      target.setAttribute?.("tabindex", "-1");
+      target.scrollIntoView?.({ behavior: "smooth", block: "start" });
+      target.focus?.({ preventScroll: true });
+    };
+  }
+}
+
 async function renderDetail() {
   const generation = ++detailRenderGeneration;
   const requestedTaskId = selectedTaskId;
@@ -8667,14 +9005,15 @@ async function renderDetail() {
     els.detail.className = "detail empty";
     els.detail.innerHTML = emptyResultWorkbench();
     bindEmptyWorkbenchActions();
-    lastNote = "";
-    lastNoteTaskId = "";
+    clearTaskCaches();
     els.copyButton.disabled = true;
     if (els.unifiedExportButton) els.unifiedExportButton.disabled = true;
     if (els.newNoteVersionButton) els.newNoteVersionButton.hidden = true;
     els.bundleButton.disabled = true;
     if (els.sanitizedBundleButton) els.sanitizedBundleButton.disabled = true;
     if (els.notionExportButton) els.notionExportButton.disabled = true;
+    if (els.docxExportButton) els.docxExportButton.disabled = true;
+    if (els.pdfExportButton) els.pdfExportButton.disabled = true;
     els.diagnosticsButton.disabled = true;
     if (els.supportPackageButton) els.supportPackageButton.disabled = true;
     if (els.studyProposalButton) els.studyProposalButton.disabled = true;
@@ -8702,6 +9041,8 @@ async function renderDetail() {
   els.bundleButton.disabled = !hasTaskBundle(task);
   if (els.sanitizedBundleButton) els.sanitizedBundleButton.disabled = !hasTaskBundle(task);
   if (els.notionExportButton) els.notionExportButton.disabled = !hasNote;
+  if (els.docxExportButton) els.docxExportButton.disabled = !hasNote;
+  if (els.pdfExportButton) els.pdfExportButton.disabled = !hasNote;
   els.diagnosticsButton.disabled = !hasTaskDiagnostics(task);
   if (els.supportPackageButton) els.supportPackageButton.disabled = !task?.id;
   if (els.studyProposalButton) els.studyProposalButton.disabled = task.status !== "success" || !task.note_path;
@@ -8714,15 +9055,19 @@ async function renderDetail() {
   updateContinueFromMediaAction(task);
 
   if (selectedTab === "note") {
-    lastNote = await noteForTask(task.id);
+    lastNote = await noteForTask(task);
     if (generation !== detailRenderGeneration || requestedTaskId !== selectedTaskId || requestedTab !== selectedTab) return;
-    const displayNote = sanitizeNoteMarkdown(lastNote);
+    const displayNote = sanitizeNoteMarkdown(lastNote, { title: displayTaskTitle(task) });
+    const noteDocument = displayNote ? await noteDocumentForTask(task) : null;
+    if (generation !== detailRenderGeneration || requestedTaskId !== selectedTaskId || requestedTab !== selectedTab) return;
     const emptyNoteHtml = hasExportableMedia(task) ? downloadOnlyEmptyNoteHtml(task) : "<p>笔记尚未生成。</p>";
     const pendingContext = lastNote ? "" : `${taskOverview(task)}${failureGuide(task)}`;
     els.detail.innerHTML = `
       <div class="note-shell">
+        ${noteReadinessBanner(task, displayNote)}
         ${noteEvidenceNoticeHtml(task)}
         ${noteProvenanceHtml(task)}
+        ${noteDocumentEvidenceHtml(noteDocument)}
         <div class="note-workbench">
           <article class="markdown-note">${displayNote ? markdownToHtml(displayNote) : emptyNoteHtml}</article>
           ${readingRail(displayNote, task)}
@@ -8736,6 +9081,7 @@ async function renderDetail() {
       setSource("browser");
       window.scrollTo?.({ top: 0, behavior: "smooth" });
     };
+    bindNoteDocumentActions(noteDocument);
     bindTaskOverviewActions();
     return;
   }
@@ -9289,7 +9635,7 @@ els.statusFilter.onchange = () => {
   historyVisibleLimit = HISTORY_PAGE_SIZE;
   renderTasks();
 };
-els.copyButton.onclick = async () => navigator.clipboard.writeText(await noteForTask(selectedTaskId) || "");
+els.copyButton.onclick = async () => navigator.clipboard.writeText(await noteForTask(tasks.find(task => task.id === selectedTaskId) || selectedTaskId) || "");
 if (els.continueFromMediaButton) els.continueFromMediaButton.onclick = () => rerunTaskFromMedia(selectedTaskId);
 async function exportTaskArtifact(taskId, exportType, button = null) {
   if (!taskId) return;
@@ -9347,6 +9693,8 @@ function unifiedExportType(task) {
 els.bundleButton.onclick = () => exportSelectedTask("bundle", els.bundleButton);
 els.sanitizedBundleButton?.addEventListener?.("click", () => exportSelectedTask("sanitized-bundle", els.sanitizedBundleButton));
 els.notionExportButton?.addEventListener?.("click", () => exportSelectedTask("notion", els.notionExportButton));
+els.docxExportButton?.addEventListener?.("click", () => exportSelectedTask("docx", els.docxExportButton));
+els.pdfExportButton?.addEventListener?.("click", () => exportSelectedTask("pdf", els.pdfExportButton));
 if (els.unifiedExportButton) {
   els.unifiedExportButton.onclick = () => {
     const task = tasks.find(item => item.id === selectedTaskId);
@@ -9497,6 +9845,7 @@ els.restoreLibraryButton?.addEventListener?.("click", () => els.libraryBackupInp
 els.libraryBackupInput?.addEventListener?.("change", () => restoreLibraryIndex(els.libraryBackupInput.files?.[0]));
 els.checkLibraryDuplicatesButton?.addEventListener?.("click", checkLibraryDuplicates);
 els.knowledgeImportButton?.addEventListener?.("click", () => els.knowledgeImportInput?.click?.());
+els.editorialKnowledgeImport?.addEventListener?.("click", () => els.knowledgeImportInput?.click?.());
 els.knowledgeImportInput?.addEventListener?.("change", () => importKnowledgeFile(els.knowledgeImportInput.files?.[0]));
 els.knowledgeSearchButton?.addEventListener?.("click", searchKnowledge);
 els.knowledgeSearchInput?.addEventListener?.("keydown", event => {
@@ -9626,6 +9975,7 @@ if (!hasExplicitTaskRoute()) {
 renderSourceWorkflow();
 checkHealth();
 loadTasks();
+loadLibraryMaterials();
 bindTaskListEvents();
 window.LearnNoteTasks = Object.freeze({
   subscribe: subscribeTaskUpdates,

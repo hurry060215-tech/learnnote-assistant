@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
-from .config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
+from .config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, TASK_DIR
 from .models import FrameGrid, TaskOptions, VisualWindow
 from .summarizer import (
     MAX_GRIDS_PER_VISION_CALL,
@@ -48,7 +49,7 @@ def _safe_llm_events(events: list[dict] | None, limit: int = 20) -> list[dict]:
         safe_events.append({
             key: value
             for key, value in event.items()
-            if key in {"stage", "code", "error_type", "message", "batch", "model"}
+            if key in {"stage", "code", "error_type", "message", "batch", "model", "duration_ms", "cache"}
             and value not in (None, "", [])
         })
     return safe_events
@@ -57,7 +58,7 @@ def _safe_llm_events(events: list[dict] | None, limit: int = 20) -> list[dict]:
 def _llm_event_failure(events: list[dict]) -> dict:
     for event in reversed(events or []):
         code = str(event.get("code") or "").strip()
-        if code and code not in {"ok", "success"}:
+        if code and code not in {"ok", "success", "cache_hit"}:
             return event
     return {}
 
@@ -108,7 +109,7 @@ def build_summary_diagnostics(
     omitted_vision_window_ids = [window_id(index) for index in range(len(grids)) if index not in eligible_index_set]
     total_image_count = sum(1 for grid in grids if grid.path and Path(grid.path).is_file())
     eligible_image_count = sum(1 for grid in eligible_grids if grid.path and Path(grid.path).is_file())
-    vision_batch_size = MAX_GRIDS_PER_VISION_CALL
+    vision_batch_size = max(1, int(options.vision_batch_size or MAX_GRIDS_PER_VISION_CALL))
     vision_call_plan = []
     for batch_index, start in enumerate(range(0, len(eligible_entries), vision_batch_size), start=1):
         batch_entries = eligible_entries[start: start + vision_batch_size]
@@ -141,12 +142,18 @@ def build_summary_diagnostics(
     last_llm_failure = _llm_event_failure(safe_llm_events)
     failed_vision_batch_count = sum(
         1 for event in safe_llm_events
-        if event.get("stage") == "vision_batch" and str(event.get("code") or "").lower() not in {"", "ok", "success"}
+        if event.get("stage") == "vision_batch" and str(event.get("code") or "").lower() not in {"", "ok", "success", "cache_hit"}
     )
     llm_failure_code = _llm_failure_code(summary_source, summary_warning, llm_configured)
     if not llm_failure_code and last_llm_failure and summary_source == "local-template":
         llm_failure_code = str(last_llm_failure.get("code") or "llm_unavailable")
     page_context_text = (page_context or "").strip()
+    try:
+        pipeline_metrics = json.loads((TASK_DIR / task_id / "pipeline_metrics.json").read_text(encoding="utf-8"))
+        if not isinstance(pipeline_metrics, dict):
+            pipeline_metrics = {}
+    except (OSError, ValueError):
+        pipeline_metrics = {}
     return {
         "task_id": task_id,
         "title": title,
@@ -181,6 +188,11 @@ def build_summary_diagnostics(
         "available_grid_image_count": total_image_count,
         "vision_grid_limit": MAX_VISION_GRIDS,
         "vision_batch_size": vision_batch_size,
+        "vision_concurrency": 1 if options.low_resource_mode else options.vision_concurrency,
+        "vision_cache_hit_count": sum(
+            1 for event in safe_llm_events
+            if event.get("stage") == "vision_cache" and event.get("cache") == "hit"
+        ),
         "vision_expected_batch_count": len(vision_call_plan),
         "vision_call_status": vision_call_status,
         "vision_call_plan": vision_call_plan,
@@ -199,6 +211,7 @@ def build_summary_diagnostics(
         "all_sent_grids_had_images": eligible_image_count == len(eligible_grids),
         "all_grids_had_images": total_image_count == len(grids),
         "window_ids": [window.id for window in visual_windows],
+        "pipeline_metrics": pipeline_metrics,
     }
 
 
