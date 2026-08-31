@@ -6,6 +6,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from .processor_state import ContentMismatchError
+from .note_document import build_note_document, normalize_note_markdown
 from .storage import task_dir, update_task, write_json
 
 
@@ -89,8 +90,30 @@ def finish_note_task(
         frame_extraction_warning=frame_extraction_warning,
         frame_anchor_timestamps=frame_anchor_timestamps,
     )
+    normalized_note = normalize_note_markdown(title, note)
+    note = normalized_note.markdown
+    note_quality_path = write_json(task_id, "note_quality.json", normalized_note.report)
+    if normalized_note.report["blocking"]:
+        quarantine_path = task_dir(task_id) / "note.quarantine.md"
+        quarantine_path.write_text(note, encoding="utf-8")
+        update_task(
+            task_id,
+            status="failed",
+            phase="failed",
+            progress=100,
+            message="笔记质量检查发现疑似乱码，已阻止不可靠内容进入资料库。",
+            error_code="note_quality_failed",
+            error_detail="疑似乱码内容已保留在本地隔离文件，可在修复编码后重试。",
+            summary_warning="笔记未发布：Unicode/乱码质量门禁未通过",
+        )
+        return
+    note_document = build_note_document(title, note)
+    note_document_path = write_json(task_id, "note_document.json", note_document)
     summary_diagnostics["media_integrity"] = integrity.model_dump(mode="json")
     summary_diagnostics["evidence_coverage"] = evidence_coverage.model_dump(mode="json")
+    summary_diagnostics["note_quality"] = normalized_note.report
+    summary_diagnostics["note_quality_path"] = str(note_quality_path)
+    summary_diagnostics["note_document_path"] = str(note_document_path)
     summary_diagnostics_path = write_json(task_id, "summary_diagnostics.json", summary_diagnostics)
     note_path = task_dir(task_id) / "note.md"
     note_path.write_text(note, encoding="utf-8")

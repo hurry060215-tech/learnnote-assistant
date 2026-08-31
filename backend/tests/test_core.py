@@ -4401,7 +4401,13 @@ class SummaryFallbackTests(unittest.TestCase):
                 segments=[TranscriptSegment(start=index * 180, end=index * 180 + 30, text=f"segment {index}") for index in range(9)],
             )
             with patch.dict(sys.modules, {"openai": fake_openai}):
-                note, source = summarize_with_llm("Long lesson", transcript, grids, TaskOptions(llm_api_key="test-key", note_template="cornell"), "https://course.example")
+                note, source = summarize_with_llm(
+                    "Long lesson",
+                    transcript,
+                    grids,
+                    TaskOptions(llm_api_key="test-key", note_template="cornell", vision_concurrency=1),
+                    "https://course.example",
+                )
 
         self.assertEqual(source, "vision-llm")
         self.assertTrue(note.startswith("merged note"))
@@ -4505,7 +4511,7 @@ class SummaryFallbackTests(unittest.TestCase):
                     "Long lesson",
                     transcript,
                     grids,
-                    TaskOptions(llm_api_key="test-key"),
+                    TaskOptions(llm_api_key="test-key", vision_concurrency=1),
                     "https://course.example",
                 )
 

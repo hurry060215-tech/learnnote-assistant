@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+import os
+from io import BytesIO
 from pathlib import Path
 from unittest.mock import patch
 
@@ -45,6 +47,37 @@ class KnowledgeEvidenceTests(unittest.TestCase):
         self.assertIn("标题", text)
         self.assertIn("正文", text)
         self.assertNotIn("secret", text)
+
+    def test_gb18030_markdown_import_preserves_chinese(self) -> None:
+        text, source_type = extract_import_text("课程.md", "编码正确的学习资料".encode("gb18030"), "text/markdown")
+        self.assertEqual(source_type, "markdown")
+        self.assertEqual(text, "编码正确的学习资料")
+
+    def test_invalid_text_encoding_is_blocked(self) -> None:
+        with self.assertRaisesRegex(ValueError, "text_encoding_unsupported"):
+            extract_import_text("broken.txt", b"\x81\xff\x80", "text/plain")
+
+    def test_pdf_upload_bytes_win_over_same_named_cwd_file(self) -> None:
+        from reportlab.pdfgen import canvas
+
+        def pdf_bytes(text: str) -> bytes:
+            buffer = BytesIO()
+            document = canvas.Canvas(buffer)
+            document.drawString(72, 760, text)
+            document.save()
+            return buffer.getvalue()
+
+        previous = Path.cwd()
+        with tempfile.TemporaryDirectory() as tmp:
+            try:
+                os.chdir(tmp)
+                Path("lesson.pdf").write_bytes(pdf_bytes("SERVER PRIVATE PDF"))
+                text, source_type = extract_import_text("lesson.pdf", pdf_bytes("UPLOADED PDF"), "application/pdf")
+            finally:
+                os.chdir(previous)
+        self.assertEqual(source_type, "pdf")
+        self.assertIn("UPLOADED PDF", text)
+        self.assertNotIn("SERVER PRIVATE PDF", text)
 
     def test_like_fallback_is_used_when_fts_is_unavailable(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

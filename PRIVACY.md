@@ -32,6 +32,13 @@ LearnNote does not intentionally write saved API keys into task JSON,
 diagnostic reports, or export bundles. Source/development deployments that use
 environment variables or custom scripts remain the operator's responsibility.
 
+The guided model setup can run an explicit connection test. That test sends
+the selected provider, model name, API key, and a fixed short `Reply with OK
+only.` message from the local backend to the selected provider. It does not
+include a video, transcript, note, question history, or other learning
+material. The submitted key and provider response are not written to task
+records or support bundles.
+
 ## Browser extension data
 
 The Chrome/Edge extension observes the current tab's video elements, iframe

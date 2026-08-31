@@ -54,8 +54,13 @@ licenses that model.
 | Uvicorn | Local ASGI server | <https://github.com/Kludex/uvicorn> | BSD 3-Clause |
 | Pydantic | Request, settings, and task data validation | <https://github.com/pydantic/pydantic> | MIT |
 | Requests | HTTP client | <https://github.com/psf/requests> | Apache License 2.0 |
+| charset-normalizer | Strict local text-encoding detection for imported subtitles and documents | <https://github.com/jawah/charset_normalizer> | MIT |
 | python-multipart | Local video upload parsing | <https://github.com/Kludex/python-multipart> | Apache License 2.0 |
 | PyWebView | Windows desktop application shell | <https://github.com/r0x0r/pywebview> | BSD 3-Clause |
+| python-docx | Editable Word `.docx` note export | <https://github.com/python-openxml/python-docx> | MIT |
+| ReportLab | Print-ready local PDF note export | <https://www.reportlab.com/opensource/> | BSD 3-Clause |
+| pypdf | Local text extraction from text-based PDF learning materials | <https://github.com/py-pdf/pypdf> | BSD 3-Clause |
+| FSRS | Local spaced-repetition scheduling and review state | <https://github.com/open-spaced-repetition/py-fsrs> | MIT |
 
 PyWebView can use the Microsoft Edge WebView2 Runtime on Windows. WebView2 is
 provided under Microsoft's terms and is not licensed by this repository.

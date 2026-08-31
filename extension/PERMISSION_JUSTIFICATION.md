@@ -24,3 +24,47 @@ Depending on the page and user action, the extension can process page URLs and t
 This data is used only to identify and retrieve the video selected by the user. It is sent to the local LearnNote backend when the user opens or reruns preflight, selects a resource, or sends the task. It is not sent to a LearnNote-operated cloud service.
 
 The desktop client may contact video hosts or user-configured transcription and model providers. Those transfers are described in the public privacy policy.
+
+## Chrome Web Store Privacy practices answers
+
+Use the following values in the Developer Dashboard. Keep the dashboard
+language set to **Chinese (Simplified)**.
+
+### Single purpose
+
+识别用户当前正在浏览或播放的视频页面，获取完成视频识别与交接所需的信息，并在用户主动操作后将该视频安全交接到本机 LearnNote 客户端。
+
+### Data categories handled
+
+- **Web browsing activity:** page URL, title, iframe URL, media URL, and
+  selected media-request metadata. Used only to identify the video selected by
+  the user and to prevent stale-page handoff.
+- **Website content:** limited page text, player metadata, subtitle cues, and
+  selected request evidence. Used only to identify and retrieve the selected
+  video.
+- **Authentication information:** cookies for the current page and selected
+  media domains. Read only during an explicit preflight, candidate selection,
+  or send action; passed to the local downloader to access media the current
+  browser session can already access.
+
+The extension does not sell data, run advertising or analytics, or send data
+to a LearnNote-operated cloud service. The local client may contact video
+hosts or model providers explicitly configured by the user; those transfers
+are disclosed in the linked privacy policy.
+
+### Remote code
+
+**No, this extension does not use remote code.** All executable JavaScript is
+included in the submitted package (`background.js`, `content.js`,
+`page_hook.js`, and `sidepanel.js`). The extension does not load or execute
+remote JavaScript/WASM, use `eval`, use `new Function`, or create remote script
+tags. `chrome.scripting.executeScript` injects only the packaged `content.js`
+or a small function literal defined in the packaged service worker.
+
+### Limited Use certification
+
+LearnNote uses the requested data only to provide the single purpose above.
+Data is transferred only to the local LearnNote service or to a user-selected
+video/model provider when required by an explicit user action. It is not used
+for advertising, profiling, creditworthiness, or unrelated purposes, and it
+is not sold or transferred to human reviewers.

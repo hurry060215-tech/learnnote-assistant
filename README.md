@@ -1,208 +1,191 @@
 <div align="center">
 
-# LearnNote Assistant
+# LearnNote
 
-**基于 AI Agent 的本地视频学习与知识管理助手**
+## 把视频和本地资料，变成能核验、能复习、由你掌控的学习系统
 
-把网页课程、视频链接和本地视频转化为有字幕、画面与时间轴依据的结构化知识笔记。
+从正在看的网页视频、视频链接或本地文件开始。LearnNote 先整理可阅读的字幕与笔记，
+再把关键画面、时间轴和来源证据放回同一条学习路径。
 
-*An AI-powered learning assistant that turns browser videos and local media into grounded, structured study notes.*
+*A local-first, evidence-grounded learning workspace for videos and documents.*
 
-[![Latest Release](https://img.shields.io/github/v/release/hurry060215-tech/learnnote-assistant?label=release&color=0f9d98)](https://github.com/hurry060215-tech/learnnote-assistant/releases/latest)
-[![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-1677ff)](https://github.com/hurry060215-tech/learnnote-assistant/releases/latest)
-[![Browser](https://img.shields.io/badge/browser-Chrome%20%7C%20Edge-15a39a)](https://github.com/hurry060215-tech/learnnote-assistant/releases/latest)
-[![Extension](https://img.shields.io/badge/extension-Manifest%20V3-314b52)](extension/manifest.json)
-[![CI](https://github.com/hurry060215-tech/learnnote-assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/hurry060215-tech/learnnote-assistant/actions/workflows/ci.yml)
-[![CodeQL](https://github.com/hurry060215-tech/learnnote-assistant/actions/workflows/codeql.yml/badge.svg)](https://github.com/hurry060215-tech/learnnote-assistant/actions/workflows/codeql.yml)
-[![License](https://img.shields.io/badge/license-Apache--2.0-0b948f)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/hurry060215-tech/learnnote-assistant?label=stable&color=0f9d98)](https://github.com/hurry060215-tech/learnnote-assistant/releases/latest)
+[![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-1677ff)](https://github.com/hurry060215-tech/learnnote-assistant/releases/latest)
+[![Chrome Web Store](https://img.shields.io/badge/Chrome-Web%20Store-1a936f)](https://chromewebstore.google.com/detail/learnnote-%E5%BD%93%E5%89%8D%E8%A7%86%E9%A2%91%E5%8A%A9%E6%89%8B/mncdchpkpikhacmkbanedpppcddapppe)
+[![License](https://img.shields.io/badge/license-Apache--2.0-314b52)](LICENSE)
 
-[官方网站](https://hurry060215-tech.github.io/learnnote-assistant/) · [下载](https://github.com/hurry060215-tech/learnnote-assistant/releases/latest) · [使用支持](SUPPORT.md) · [贡献指南](CONTRIBUTING.md) · [安全说明](SECURITY.md) · [隐私说明](PRIVACY.md)
+[下载 Windows 稳定版](https://github.com/hurry060215-tech/learnnote-assistant/releases/latest) ·
+[安装 Chrome 扩展](https://chromewebstore.google.com/detail/learnnote-%E5%BD%93%E5%89%8D%E8%A7%86%E9%A2%91%E5%8A%A9%E6%89%8B/mncdchpkpikhacmkbanedpppcddapppe) ·
+[快速开始](#快速开始) ·
+[产品路线图](https://github.com/hurry060215-tech/learnnote-assistant/issues/52)
 
 </div>
 
----
-
-## 🎬 Demo
+> [!NOTE]
+> **当前稳定版是 v0.1.55。** 本 README 同时介绍已经进入 `main`、但尚未随稳定安装包发布的预览能力；它们会明确标为 **main 预览**。
 
 <div align="center">
-  <img src="docs/assets/learnnote-demo.gif" alt="LearnNote 从视频来源到结构化笔记、视觉切片和阅读结果的演示" width="960">
+  <img src="docs/assets/learnnote-workspace-clarity.png" alt="LearnNote main 预览版开始页：直接粘贴链接、接收当前视频、导入本地视频或学习资料" width="960">
 </div>
 
-> 真实客户端界面：选择视频来源 → 转写与视觉切片 → 生成结构化笔记 → 阅读、追问和导出。
+> 上图来自当前 `main` 的隔离本地运行实拍，不是概念设计。v0.1.55 稳定版界面和能力以 Release 安装包为准。
 
-## 为什么是 LearnNote
+## 30 秒理解 LearnNote
 
-LearnNote 是一个以 **Windows 桌面客户端** 为核心的视频学习助手。它不录制浏览器标签页，而是尽可能读取当前页面已经加载的视频资源，把视频下载到本地后再完成字幕获取、语音转写、画面切片和笔记生成。
+| 输入 | 先读 | 核验 | 复习 | 带走 |
+| --- | --- | --- | --- | --- |
+| 当前网页、视频链接、本地视频；文档为 **main 预览** | 字幕与基础笔记准备好后开始阅读 | 回到时间戳和关键画面；页码/段落为 **main 预览** | 围绕证据提问；完整学习卡片体验为 **main 预览** | 导出 Markdown、资料包或同步到自己的工具 |
 
-你可以从三种入口开始：
+LearnNote 不替你刷课，也不承诺“一键学会”。它把最耗时的整理、定位和回顾工作做好，让你更快进入理解、核验和复习。
 
-- **当前页面**：在 B 站、YouTube、学习通等视频页打开浏览器扩展，一键发送到 LearnNote。
-- **视频链接**：粘贴 B 站网址、BV/av 号、YouTube 地址或普通视频链接。
-- **本地视频**：拖入 MP4、MKV、WebM、MOV 等文件，直接使用完整处理流程。
+## 为什么不是普通视频摘要器
 
-> [!IMPORTANT]
-> 浏览器扩展只负责识别当前页面并发送任务。下载、转写、切片、总结、笔记库、AI 问答和导出都在桌面客户端中完成。
-
-| 普通字幕摘要 | LearnNote |
+| 普通视频摘要 | LearnNote |
 | --- | --- |
-| 只处理一段文本 | 对齐视频、字幕、关键帧和时间轴 |
-| 页面抓错也可能继续总结 | 下载与证据不足时停止并给出诊断 |
-| 一次性输出 | 可重生成不同版本、继续提问并导出资料包 |
-| 依赖云端上传 | 支持本地转写，数据目录由用户控制 |
+| 把字幕压缩成一段文字 | 对齐字幕、关键画面和视频时间轴 |
+| 摘要看起来通顺，但出处不清楚 | 重要内容尽可能回到可检查的来源 |
+| 生成完成才看到结果 | **main 预览：**字幕就绪后先开放草稿，画面证据继续补充 |
+| 生成后流程结束 | 笔记可以继续问答、导出并进入本地复习 |
+| 数据边界由云服务决定 | 本地数据目录由用户控制，远程模型按需配置 |
+| 失败时仍可能生成无关内容 | 证据不足时降级、停止或给出恢复建议 |
 
-## 🚀 Features
+## 适合谁
 
-### 当前页视频直取
+- 经常学习 Bilibili、YouTube、学习通、课程录像或技术教程的个人学习者；
+- 需要整理 PPT、板书、公式、代码界面和操作步骤的人；
+- 复习时希望快速跳回原视频或原始文档核对内容的人；
+- 希望视频、PDF、Markdown 和复习记录留在自己设备中的用户。
 
-- 识别页面中的 MP4、FLV、HLS、DASH、iframe 播放器和 yt-dlp 支持页面。
-- 在用户点击发送时同步当前登录会话需要的 Cookie 和安全请求头。
-- 自动预检候选资源，跳过失效链接并选择当前可访问的视频。
-- 支持 B 站完整网址、`BV...`、`av...` 以及 YouTube 等常见视频页面。
-- 下载失败时给出具体原因和下一步，而不是生成与视频无关的笔记。
+如果你只需要无需客户端的一次性云摘要、多人云协作，或希望绕过 DRM、付费墙和课程权限，LearnNote 并不适合这些用途。
 
-### 字幕、转写与画面理解
+## 从输入到真正可用的学习资料
 
-- 优先使用浏览器字幕、平台字幕和视频内嵌字幕。
-- 没有字幕时可使用本地 `faster-whisper` 或 OpenAI-compatible / Groq ASR。
-- 按自定义间隔抽取关键帧，组合成视觉窗口，并与对应时间段字幕对齐。
-- 支持视觉模型时，结合 PPT、板书、代码和操作演示生成多模态笔记。
-- 没有视觉模型时，仍可生成基于字幕和画面索引的文本笔记。
+### 1. 输入
 
-### 可继续使用的笔记
+- **当前网页：**在 Chrome 视频页打开 LearnNote 扩展，确认后发送到本机客户端；
+- **视频链接：**粘贴 B 站网址、BV/av 号、YouTube 地址或普通媒体链接；
+- **本地视频：**导入 MP4、MKV、WebM、MOV 等文件；
+- **main 预览：**PDF、Markdown、HTML、TXT 与本地视频可进入统一资料库。
 
-- 时间轴笔记、字幕、画面切片和本地视频可以互相定位。
-- 同一个视频可以更换结构和风格，生成多个笔记版本。
-- 阅读时可在 AI 侧栏围绕当前课程继续提问。
-- 支持 Markdown、字幕、诊断报告、媒体文件和完整学习资料包导出。
-- 任务诊断会说明视频来源、下载路径、字幕来源、模型降级和修复建议。
+### 2. 先读
 
-## 📸 Screenshots
+- 优先使用平台字幕、浏览器字幕和视频内嵌字幕；
+- 没有字幕时可使用本地 `faster-whisper` 或用户配置的远程 ASR；
+- **main 预览：**字幕完成后先生成可阅读草稿，不必等待全部视觉分析；
+- 任务失败时保留诊断、重试和可恢复阶段，而不是用错误页面凑出笔记。
 
-| 从当前页或本地视频开始 | 阅读结构化学习笔记 |
-| --- | --- |
-| <img src="site/assets/learnnote-workspace-v0126.png" alt="LearnNote 新建学习笔记界面" width="680"> | <img src="site/assets/learnnote-case-gradient.png" alt="LearnNote 结构化笔记结果" width="680"> |
+### 3. 核验
 
-| 画面与字幕按时间窗口对齐 | 笔记库、版本与导出 |
-| --- | --- |
-| <img src="site/assets/learnnote-case-grid.jpg" alt="LearnNote 视觉关键帧窗口" width="680"> | <img src="site/assets/learnnote-note.png" alt="LearnNote 笔记阅读界面" width="680"> |
+- 关键帧按时间窗口与对应字幕一起整理；
+- 配置视觉模型后，可以补充 PPT、板书、代码和操作画面；
+- 没有视觉模型时，仍保留字幕笔记和画面索引，不冒充已经理解画面；
+- **main 预览：**章节带稳定证据 ID、时间戳与验证状态，严重乱码会被隔离。
 
-## ⚡ Quick Start
+### 4. 复习
 
-### 1. 安装桌面客户端
+- 围绕当前课程和本地证据继续提问；
+- 同一个视频可以复用已下载媒体，重新整理为不同用途的笔记；
+- **main 预览：**从真实本地证据生成卡片，并使用本地 FSRS 记录复习；
+- 评论与弹幕只属于可选的“社区观点”层，不会混入课程主证据。
 
-从 [Releases](https://github.com/hurry060215-tech/learnnote-assistant/releases/latest) 下载：
+### 5. 带走
 
-- `LearnNote-Setup-x64.exe`：Windows 安装版，推荐大多数用户使用。
-- `LearnNote-Windows-x64.zip`：免安装便携版。
-- `LearnNote-Browser-Extension-*.zip`：单独下载浏览器扩展时使用。
-- `SHA256SUMS.txt`：安装包校验值。
+- 稳定版支持 Markdown、字幕、诊断、媒体和学习资料包导出；
+- [Obsidian 插件](integrations/obsidian-learnnote/README.md)可以同步结构化笔记，并保留个人补充；
+- **main 预览：**支持可编辑 Word、打印级 PDF 和带来源锚点的本地资料；
+- 导出与诊断会隐藏已知 Cookie、Authorization、API Key 和敏感 URL 参数。
 
-建议安装到 `D:\LearnNote` 或其他非系统盘。视频、模型和任务产物的数据目录可以在客户端设置中修改。
+## 快速开始
 
-### 2. 启动 LearnNote
+### 最简单的方式：先不用浏览器扩展
 
-运行 `LearnNote.exe`。客户端后端默认只监听：
+1. 从 [GitHub Releases](https://github.com/hurry060215-tech/learnnote-assistant/releases/latest) 下载 `LearnNote-Setup-x64.exe`；也可以选择免安装便携包。
+2. 启动 `LearnNote.exe`，粘贴一个公开视频链接，或导入本地视频。
+3. 首次体验先保留默认配置；字幕、转写和画面选项以后都可以调整。
+4. 任务完成后打开笔记，通过时间轴、字幕和画面检查内容来源。
 
-```text
-http://127.0.0.1:8765
-```
+### 需要当前登录页面时
 
-这不是需要登录的网站，而是桌面客户端在本机使用的服务地址。
+1. 安装 [Chrome Web Store 正式扩展](https://chromewebstore.google.com/detail/learnnote-%E5%BD%93%E5%89%8D%E8%A7%86%E9%A2%91%E5%8A%A9%E6%89%8B/mncdchpkpikhacmkbanedpppcddapppe)；
+2. 保持 LearnNote 客户端运行，在目标视频页打开扩展侧栏；
+3. 确认“本地服务已连接”，播放视频并点击 **发送到 LearnNote**；
+4. 任务会出现在本机客户端中。商店版本在新版本审核上架后由 Chrome 自动更新。
 
-### 3. 连接浏览器扩展
+<details>
+<summary>离线 ZIP、Edge 与扩展调试</summary>
 
-1. 在客户端打开 **设置 → 浏览器扩展**。
-2. 点击 **安装扩展**，让客户端打开扩展目录和浏览器扩展管理页。
-3. 在 `chrome://extensions` 或 `edge://extensions` 开启 **开发者模式**。
-4. 点击 **加载已解压的扩展程序**，选择客户端显示的 `extension` 文件夹。
-5. 回到视频页，刷新一次页面，再打开 LearnNote 扩展侧栏。
+Release 中的 `LearnNote-Browser-Extension-*.zip` 可用于离线安装和开发调试。解压后在 `chrome://extensions` 或 `edge://extensions` 开启开发者模式，选择“加载已解压的扩展程序”。离线包不会自动跟随 Chrome Web Store 更新；当前没有声称 Edge Add-ons 商店已正式发布。
 
-扩展显示“本地服务已连接”后，播放目标视频并点击 **发送到 LearnNote**。任务会自动出现在桌面客户端。
+</details>
 
-客户端升级后如果显示“扩展版本较旧”，点击 **更新扩展**，然后在扩展管理页的 LearnNote 卡片上点击 **重新加载**。通过商店安装的正式扩展在审核上架后将由浏览器自动更新。
+## 稳定版与 main 预览
 
-### 4. 选择笔记方式
-
-首次使用建议保持默认配置：
-
-- 笔记结构：**智能整理**
-- 转写：**本地 faster-whisper / small**
-- 视觉理解：有视觉模型时开启
-- 切片间隔：20 秒
-- 视觉窗口：3 × 3
-
-课程以讲解为主可选“课堂精讲”，临时复习可选“快速复习”，备考时可选“考前梳理”。同一个视频之后可以重新选择配置，不必重新下载。
-
-## 支持范围
-
-| 来源 | 推荐入口 | 说明 |
+| 能力 | v0.1.55 稳定版 | main 预览 |
 | --- | --- | --- |
-| Bilibili | 视频网址、BV/av 号、当前页扩展 | 优先使用 yt-dlp，扩展可补充当前登录会话 |
-| YouTube | 视频网址、当前页扩展 | 公开或当前账号可访问的视频 |
-| 学习通 / 超星 | 当前页扩展 | 需要先登录并播放；页面必须向浏览器暴露可访问的视频资源 |
-| 普通 MP4 / HLS / DASH | 视频链接或当前页扩展 | 支持直接文件和常见流媒体清单 |
-| 本地视频 | 客户端拖拽上传 | 最稳定，不依赖网站解析 |
+| 当前页、链接、本地视频入口 | 可用 | 持续兼容与诊断改进 |
+| 字幕、ASR、关键帧和多模态笔记 | 可用 | 批量抽帧、受控视觉并发与缓存 |
+| 笔记、字幕、诊断和资料包导出 | 可用 | Word、PDF 与证据优先文档 |
+| 任务进度 | 状态与轮询更新 | 字幕草稿与可重连事件流 |
+| 本地资料与检索 | 基础知识与任务能力 | 文档导入、统一锚点和资料阅读 |
+| 本地复习 | 基础卡片/计划接口 | 学习工作台、证据卡片与完整复习视图 |
 
-如果网页采用受保护的加密播放，或没有向浏览器提供可复用的视频地址，LearnNote 会停止下载并提示改用本地视频。它不会代替用户完成课程、伪造进度或绕过网站权限。
+“已经合并到 main”不等于已经进入 Latest Release。普通用户请以 [Release Notes](https://github.com/hurry060215-tech/learnnote-assistant/releases/latest) 和安装包内版本为准。
 
-## 模型配置
+## 本地优先，但不是永远不联网
 
-模型统一在客户端 **设置 → AI 模型 / 转写** 中配置。当前支持常见 OpenAI-compatible 服务以及内置提供商预设：
+LearnNote 没有官方账号、官方云任务或产品遥测。视频、字幕、截图、笔记、索引和复习记录默认保存在用户选择的数据目录。
 
-- Kimi、通义千问、智谱 GLM
-- 小米 MiMo（OpenAI-compatible；`mimo-v2.5` 支持视觉，`mimo-v2.5-pro` 适合纯文本推理）
-- DeepSeek、豆包、MiniMax、百度千帆
-- OpenAI、Groq、Gemini 和自定义兼容接口
+| 内容 | 默认位置 | 可能联网的时机 |
+| --- | --- | --- |
+| 视频、字幕、关键帧和笔记 | 本机数据目录 | 从来源网站下载媒体时 |
+| 本地 `faster-whisper` | 本机 | 首次下载模型时；本地转写不上传音频 |
+| 远程 ASR | 用户选择的提供商 | 转写时上传所需音频 |
+| 文字或视觉模型 | 用户选择的提供商 | 总结、问答或理解画面时发送必要内容 |
+| 客户端更新 | GitHub Releases | 检查或下载新版本时 |
 
-需要看懂 PPT、板书、代码界面或操作过程时，请选择明确支持图片输入的视觉模型。DeepSeek 等纯文本模型适合根据字幕生成文本笔记，但不会分析画面。
+API Key 不是启动客户端的硬门槛。已有可靠字幕或已经安装本地 ASR 时，可以在不配置远程模型的情况下生成本地降级笔记；如果既没有字幕也没有可用转写能力，LearnNote 不会凭空声称已经得到真实字幕。
 
-API Key 可以保存在 Windows 凭据管理器中，不会写入任务 JSON、诊断文件或导出资料。不要把密钥提交到 Git 仓库。
+完整边界见 [隐私说明](PRIVACY.md) 与 [安全说明](SECURITY.md)。第三方模型的保存、训练和账号政策由对应提供商决定。
 
-## 🧠 Architecture
+## 支持范围与限制
 
-```mermaid
-flowchart LR
-    A["网页视频"] --> B["Chrome / Edge MV3 扩展"]
-    C["视频链接或本地文件"] --> D["Windows 桌面客户端"]
-    B -->|"媒体候选 · Cookie · Referer"| D
-    D --> E["FastAPI 本地任务服务"]
-    E --> F["yt-dlp / ffmpeg 直取与标准化"]
-    F --> G["平台字幕 / faster-whisper"]
-    F --> H["抽帧 · 去重 · 视觉窗口"]
-    G --> I["LLM / 多模态分段总结"]
-    H --> I
-    I --> J["笔记库 · 课程问答 · 多版本 · 导出"]
-    J --> K["用户可控的本地数据目录"]
-```
+| 来源 | 推荐入口 | 当前边界 |
+| --- | --- | --- |
+| Bilibili | 视频链接、BV/av 号、当前页扩展 | 当前账号可访问的公开视频或媒体 |
+| YouTube | 视频链接、当前页扩展 | 公开或当前账号可访问的视频 |
+| 学习通 / 超星 | 当前页扩展 | 需先登录并播放，页面须暴露可访问资源 |
+| 普通 MP4 / HLS / DASH | 链接或当前页扩展 | 支持直接媒体和常见清单 |
+| 本地视频 | 客户端导入 | 最稳定，不依赖站点解析 |
 
-所有任务默认保存在本机数据目录中。当前页 Cookie 只在用户主动发送或预检任务时读取，并仅交给本地后端处理。
+LearnNote 不录制浏览器标签页，不绕过 DRM、付费墙、账号权限或学习进度系统，也不代替用户完成课程。第三方网站随时可能改变播放器和接口；详细状态见 [来源兼容矩阵](docs/SOURCE_COMPATIBILITY_MATRIX.md)。
+
+Windows 10/11 x64 是当前正式桌面支持。macOS 与 Linux 仍是预览路径，不代表已经具备签名、公证、原生更新器或发行版级桌面体验；参见 [平台支持矩阵](docs/PLATFORM_SUPPORT.md)。
 
 ## 常见问题
 
-### 扩展已经加载，为什么没有发送到客户端？
+### 一定需要安装客户端吗？
 
-先确认客户端正在运行，扩展顶部显示“本地服务已连接”。如果仍然失败：
+是。扩展只负责用户触发的当前页识别与本地交接；下载、转写、切片、总结、资料库、问答和导出都由客户端完成。
 
-1. 客户端进入 **设置 → 浏览器扩展 → 修复连接**。
-2. 在扩展管理页点击 LearnNote 的 **重新加载**。
-3. 刷新视频页面并重新播放几秒钟。
-4. 确认扩展和客户端来自同一个发布版本。
+### 为什么有些网页视频无法获取？
 
-### 视频明明在播放，为什么没有识别到？
+LearnNote 只能处理当前浏览器会话有权访问、并且能够复用的媒体资源。DRM、加密流、失效登录态、权限不足或站点更新都可能导致失败，此时建议改用本地视频。
 
-有些播放器会先创建 `blob:` 地址，再在后台加载真正的视频。LearnNote 会尝试从网络请求、iframe 和播放器配置中恢复资源；如果页面只提供无法复用的加密数据，扩展会提示使用链接解析或本地上传。
+### 证据可追溯是否代表笔记一定正确？
 
-### 为什么笔记和视频内容不一致？
+不是。证据对齐和质量门禁用于降低无依据内容，但转写、OCR、时间戳和模型理解仍可能出错。重要内容应回到原视频或原文核验。
 
-在任务诊断中检查三项：下载到的视频是否正确、字幕来源是否可靠、视觉模型是否真的启用。LearnNote 不会把错误页或模型报错当成课程内容；证据不足时应重新获取视频或更换字幕 / 转写设置。
+更多恢复步骤见 [使用支持](SUPPORT.md)。提交公开 Issue 前请先移除私人网址、Cookie、API Key 和未脱敏资料。
 
-### 一定需要下载客户端吗？
+## 路线图
 
-是。当前版本以桌面客户端为处理核心；浏览器扩展只是当前页入口，宣传网站只用于介绍和下载产品。
+- **现在：**速度、证据质量、首次使用和客户端交互；
+- **下一步：**长视频基准、快速 OCR、资料库体验与学习闭环；
+- **以后：**稳定生态集成和经过真实发布验证的跨平台体验。
 
-## 从源码运行
+唯一权威路线图是 [LearnNote 本地优先产品路线图 #52](https://github.com/hurry060215-tech/learnnote-assistant/issues/52)。Issue 表示规划方向，不等同于承诺发布日期。
 
-要求：Windows 10/11、PowerShell、Python 3.11+、Chrome 或 Edge。ffmpeg 和 yt-dlp 可由启动脚本检查和配置。
+## 开发者入口
 
 ```powershell
 git clone https://github.com/hurry060215-tech/learnnote-assistant.git D:\Projects\learnnote-assistant
@@ -211,131 +194,20 @@ cd D:\Projects\learnnote-assistant
 .\start-learnnote.ps1
 ```
 
-安装本地 Whisper：
+- [架构边界](docs/ARCHITECTURE.md) · [本地知识检索](docs/KNOWLEDGE_RETRIEVAL.md) · [平台支持](docs/PLATFORM_SUPPORT.md)
+- [贡献指南](CONTRIBUTING.md) · [发布流程](docs/RELEASING.md) · [发布测试矩阵](docs/RELEASE_TEST_MATRIX.md)
+- [浏览器商店材料](docs/BROWSER_STORE_SUBMISSION.md) · [Obsidian 集成](integrations/obsidian-learnnote/README.md)
+- 完整验证入口：`.\scripts\verify-product.ps1 -Browser edge` 与 `.\scripts\audit-product-readiness.ps1`
 
-```powershell
-.\start-learnnote.ps1 -InstallAsr
-.\scripts\doctor.ps1
-```
+项目核心目录：`backend/`、`desktop/`、`extension/`、`web/`、`integrations/`、`scripts/` 和 `site/`。Docker/服务器部署会改变默认本地安全边界，操作者必须自行配置认证、HTTPS、存储和备份。
 
-加载源码扩展时，在浏览器扩展管理页选择：
+## 开源、反馈与安全
 
-```text
-D:\Projects\learnnote-assistant\extension
-```
+LearnNote 采用 [Apache License 2.0](LICENSE) 开源。第三方组件许可见 [第三方声明](THIRD_PARTY_NOTICES.md)。
 
-## Obsidian 插件
+- 普通问题和功能建议：[GitHub Issues](https://github.com/hurry060215-tech/learnnote-assistant/issues)
+- 使用和脱敏诊断：[SUPPORT.md](SUPPORT.md)
+- 敏感漏洞：[私密漏洞报告](https://github.com/hurry060215-tech/learnnote-assistant/security/advisories/new)
+- 发布变化：[CHANGELOG.md](CHANGELOG.md)
 
-LearnNote 可以把已完成的视频笔记直接同步到 Obsidian。插件会导入结构化笔记、带时间戳字幕、视觉窗口、关键帧索引和课程问答记录，并允许在 Obsidian 侧栏继续围绕当前课程提问。
-
-- 重复同步只更新 LearnNote 生成的内容，`我的补充` 下的个人笔记会保留。
-- 插件只连接本机 `127.0.0.1:8765`，视频处理和模型配置仍由 LearnNote 客户端负责。
-- 当前支持 Obsidian 桌面版；移动端不能直接连接电脑上的本机服务。
-
-源码、安装说明和开发命令见 [`integrations/obsidian-learnnote`](integrations/obsidian-learnnote/README.md)。构建可安装压缩包：
-
-```powershell
-.\scripts\package-obsidian-plugin.ps1
-```
-
-默认产物保存到 `D:\LearnNote\releases\obsidian`。
-
-## Docker 部署
-
-Docker 适合把 LearnNote 后端和 Web 工作台运行在本机、NAS 或服务器上。官方镜像当前仅发布 `linux/amd64`；ARM NAS 需要自行构建。浏览器当前页功能仍建议使用 Windows 客户端；扩展默认只连接本机 `127.0.0.1`。
-
-本机 Windows 部署会使用 `8876` 端口，避免与桌面客户端的 `8765` 冲突，并将全部容器数据绑定到 `D:\LearnNote\docker-data`：
-
-```powershell
-.\scripts\start-docker-local.ps1 -Build
-```
-
-启动后访问 `http://127.0.0.1:8876`。停止容器：
-
-```powershell
-.\scripts\start-docker-local.ps1 -Stop
-```
-
-端口和 D 盘数据目录均可修改：
-
-```powershell
-.\scripts\start-docker-local.ps1 -Port 8877 -DataPath D:\LearnNote\docker-data-2
-```
-
-服务器部署使用 `compose.yaml`，必须设置至少 12 位的 `LEARNNOTE_PUBLIC_PASSWORD`，并通过 HTTPS 反向代理对外提供服务。不要把远程管理页面直接暴露在明文 HTTP 上。
-
-## 开发与验证
-
-窄范围修改优先运行：
-
-```powershell
-.\scripts\audit-stage.ps1
-```
-
-完整产品验收：
-
-```powershell
-.\scripts\verify-product.ps1 -Browser edge
-.\scripts\audit-product-readiness.ps1
-```
-
-扩展与当前页流程：
-
-```powershell
-.\scripts\e2e-extension-smoke.ps1 -Browser edge
-```
-
-真实网站验证会访问第三方站点，应使用你有权访问的内容，并遵守对应网站条款：
-
-```powershell
-.\scripts\audit-real-site.ps1 "https://example.com/video" -Preflight -RequireReady
-```
-
-## 项目结构
-
-```text
-backend/      FastAPI 后端、下载器、转写、切片和笔记任务
-desktop/      Windows 桌面壳与更新、安装相关逻辑
-extension/    Chrome / Edge Manifest V3 扩展
-integrations/ Obsidian 等知识工具集成
-web/          桌面客户端中的工作台与笔记库界面
-scripts/      启动、诊断、测试和发布脚本
-site/         GitHub Pages 宣传页面
-```
-
-## 🛣 Roadmap
-
-当前 12–18 个月的唯一权威路线图位于：
-
-[LearnNote 本地优先产品路线图 #52](https://github.com/hurry060215-tech/learnnote-assistant/issues/52)
-
-路线图按 `v0.1.54`、`v0.2`、`v0.3`、`v0.4` 和 `v1.0` 分阶段维护，包含 18 个 Epic、依赖关系、验收标准和隐私边界。README 只保留产品方向摘要，避免与 GitHub Issue 产生两份失同步的任务清单。
-
-- 当前核心方向：可信发布、首次使用、可恢复任务、来源适配、证据质量和本地数据安全。
-- 中期方向：本地资料库、PDF/Markdown/网页导入、引用式 RAG 和学习复习闭环。
-- 长期方向：Obsidian/Notion/脱敏资料包生态，以及 macOS 与更广泛的本地部署。
-
-路线图是开发方向，不代表当前发布版本已经支持。请通过 [Issues](https://github.com/hurry060215-tech/learnnote-assistant/issues) 提交可复现问题或讨论优先级。
-
-平台支持和跨平台晋级门槛见 [平台支持矩阵](docs/PLATFORM_SUPPORT.md)。
-
-## 隐私与数据
-
-完整说明见 [隐私说明](PRIVACY.md) 和 [安全说明](SECURITY.md)。
-
-- 客户端后端默认仅监听 `127.0.0.1`。
-- 视频、字幕、截图、模型缓存和任务产物保存在用户选择的本地数据目录。
-- Cookie 仅在用户主动发起当前页任务时读取，不会持续后台采集。
-- 导出和诊断会隐藏 Cookie、Authorization 和敏感请求参数。
-- 本项目用于整理用户有权访问的视频内容，不用于刷课、自动答题或伪造学习进度。
-
-## 开源与贡献
-
-LearnNote 采用 [Apache License 2.0](LICENSE) 开源。依赖组件和媒体工具的许可信息见 [第三方声明](THIRD_PARTY_NOTICES.md)。
-
-- 提交代码前请阅读 [贡献指南](CONTRIBUTING.md) 和 [行为准则](CODE_OF_CONDUCT.md)。
-- 使用问题、功能建议和脱敏诊断见 [支持说明](SUPPORT.md)。
-- 敏感漏洞请使用 GitHub 的 [私密漏洞报告](https://github.com/hurry060215-tech/learnnote-assistant/security/advisories/new)。
-- 发布变化见 [CHANGELOG.md](CHANGELOG.md)，维护者流程见 [docs/RELEASING.md](docs/RELEASING.md)。
-
-浏览器扩展的商店文案和权限依据位于 [extension/STORE_LISTING.md](extension/STORE_LISTING.md) 与 [extension/PERMISSION_JUSTIFICATION.md](extension/PERMISSION_JUSTIFICATION.md)。
+> **从视频到证据，从笔记到复习。**

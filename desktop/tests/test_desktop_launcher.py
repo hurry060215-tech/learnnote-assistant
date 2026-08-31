@@ -142,6 +142,23 @@ class DesktopLauncherTests(unittest.TestCase):
         with patch.object(desktop, "read_secret", return_value=""):
             self.assertFalse(desktop.configure_model_runtime())
 
+    def test_open_model_provider_uses_allowlisted_official_url(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / "data") as temp_dir:
+            api = desktop.DesktopApi(Path(temp_dir))
+            with patch.object(desktop.webbrowser, "open") as open_url:
+                result = api.open_model_provider("kimi")
+            self.assertTrue(result["ok"])
+            self.assertEqual("https://platform.kimi.com/console/api-keys", result["url"])
+            open_url.assert_called_once_with(result["url"])
+
+    def test_open_model_provider_rejects_arbitrary_url_or_provider(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / "data") as temp_dir:
+            api = desktop.DesktopApi(Path(temp_dir))
+            with patch.object(desktop.webbrowser, "open") as open_url:
+                with self.assertRaises(ValueError):
+                    api.open_model_provider("https://evil.example/api-key")
+            open_url.assert_not_called()
+
     def test_webview_arguments_keep_hardware_media_decode_and_optional_debug_port(self):
         arguments = desktop.webview_browser_arguments().split()
         self.assertNotIn("--disable-gpu", arguments)
@@ -238,6 +255,8 @@ class DesktopLauncherTests(unittest.TestCase):
             )
 
     def test_native_export_rejects_unknown_task_or_type(self):
+        self.assertEqual(desktop.DesktopApi.EXPORT_TYPES["docx"], ".docx")
+        self.assertEqual(desktop.DesktopApi.EXPORT_TYPES["pdf"], ".pdf")
         with tempfile.TemporaryDirectory(dir=ROOT / "data") as temp_dir:
             api = desktop.DesktopApi(Path(temp_dir), "http://127.0.0.1:18766")
             with self.assertRaises(ValueError):
