@@ -88,9 +88,14 @@ function nodeText(node) {
     .trim();
 }
 
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function functionBlock(source, name) {
-  const declaration = new RegExp(`function\\s+${name.replace(/[$]/g, "\\$")}\\s*\\([^)]*\\)\\s*\\{`, "m").exec(source)
-    || new RegExp(`(?:const|let)\\s+${name.replace(/[$]/g, "\\$")}\\s*=\\s*(?:\\([^)]*\\)|[^=;]+)\\s*=>\\s*\\{`, "m").exec(source);
+  const escapedName = escapeRegExp(name);
+  const declaration = new RegExp(`function\\s+${escapedName}\\s*\\([^)]*\\)\\s*\\{`, "m").exec(source)
+    || new RegExp(`(?:const|let)\\s+${escapedName}\\s*=\\s*(?:\\([^)]*\\)|[^=;]+)\\s*=>\\s*\\{`, "m").exec(source);
   if (!declaration) return "";
   const opening = source.indexOf("{", declaration.index);
   let depth = 0;
@@ -153,7 +158,7 @@ test("ordinary URL submissions use an explicit decision function to bypass confi
     && /confirm|confirmation/i.test(name));
   const decision = candidates.find(name => {
     const body = functionBlock(source, name);
-    const uses = source.match(new RegExp(`\\b${name.replace(/[$]/g, "\\$")}\\b`, "g"))?.length || 0;
+    const uses = source.match(new RegExp(`\\b${escapeRegExp(name)}\\b`, "g"))?.length || 0;
     return uses >= 2 && /\burl\b/i.test(body) && /return\b/.test(body);
   });
   assert.ok(decision, "define and call a URL-aware confirmation bypass decision function");
