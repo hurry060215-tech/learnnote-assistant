@@ -5,7 +5,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const html = fs.readFileSync(path.join(root, "web", "index.html"), "utf8");
+const html = fs.readFileSync(path.join(root, "web", "classic.html"), "utf8");
 const app = fs.readFileSync(path.join(root, "web", "app.js"), "utf8");
 const css = fs.readFileSync(path.join(root, "web", "experience.css"), "utf8");
 const learning = fs.readFileSync(path.join(root, "web", "learning.js"), "utf8");

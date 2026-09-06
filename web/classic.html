@@ -1,0 +1,961 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>LearnNote 学习视频笔记</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="data:image/png;base64,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">
+    <link rel="stylesheet" href="/web/styles.css?v=20260724-ui3">
+    <link rel="stylesheet" href="/web/workspace.css?v=20260714-v0124">
+    <link rel="stylesheet" href="/web/product.css?v=20260714-v0124">
+    <link rel="stylesheet" href="/web/mature.css?v=20260728-ui4">
+    <link rel="stylesheet" href="/web/editorial.css?v=20260724-ui3">
+    <link rel="stylesheet" href="/web/experience.css?v=20260906-v0156">
+  </head>
+  <body data-app-view="workspace">
+    <header class="topbar">
+      <div class="brand">
+        <img class="brand-mark" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAGlUlEQVR42rWX229cVxWHv7X3OWdu9viSxHEDoSRpkYN7iSKi9EKUpAqQCBBNaMNN8IzgpX2oSAlk4ibQ8FDBU8W/gCshVJDalxalpKnUUgmEXFIgresU5zLxZWyPZ+Zc9uLhnLHj2AlxAls6movW7LX2+l32LLh+qQrDw5b/9RoetlQq5vqvvSWfKhWDiAOSnlOnupoi9xrnOiAG52RVCY1R8HCSzPuN6F8zhw9PLuQYGnLtMFmSfGjIFSrPbDDFnp+ockhE1osxd3RwdQ517qpYeTmut060hoZGefJJy0svJYsFZMmLlco2KeZ+L0Huk9psQpIoInpnFahgrUg+j4ZhNQmbjzd/OnS2nTPF5fhxLUK/5IM3xHqf0EYjQtUgIlmRt/+ICE6VKIzxvE5jzCGze+9wcuzYNGAMg4OCiErgVaRQuEtbrQgRH0mzG5GFxxqDNen7ZZCL4BmDZwx2ITY7gyCI+IRhJLl8jxV+jogyOJju1FuplJu+HRVru3FOAWNEiJ2jEUWgYIzgEgcCnrUUfB+nKTpWDPUoJIljUAVr01cg5/vkPA/nHAqKCKg2wWyqHz162QNo+AwY3+8hihQRo6rMhiFrSiV23L2RRzZ/mjWlIh9OTHJhaprz1QnOXb5CMQgwwEyzwfYNG3iwv5+Bteu4r6+PiUaDl8+d4+yFMcZnZsgHAZ6IqFMnuaCgYXwfkBZgrNchxoCIJqpS9AOeemwXOz61kfXlTqxJYdx9z2YcShgnvPjGWX7z7l9Rl/CDnQ/xq/0H8O1S+/juAw9Sna9zenSUp199her8PL4xijE46Fz0gbTtACTO0ZnPsX9wAFGYC0NQss5lLTeGZ/btwYjQb/O8cOAACsTOLdG2iLCuWOKJzw7yizfP8O+5OQJj0FQdutyIsuVUmW22KHheRrhFJSoQJwkxyrbeXu4vdKGqJM4hGfmWqlBJVImdYyUn825oZJIqSADf8/CswVqLNYZ6owHAXKvFFA1EBC9rf5uYbaWICDbbh9UU0G5lGEVUp6aZrM0yUZvhYvUqA5vuZve2+5FrEn1YrfKX0Y84uONzkMHh3YKLejc2MCUIfP5w9h3+/sFH9HR10tVRYk13F2u7y8QuyeLS+Llmi0Mv/JLDDz/M89/6Bpv71t2SUd6wABGhGUZ8dddDfOdLe8l7AQYh1JiJWi3F9BpD8qylVCwyfOZN/vjee/z44Nf43q7P01Mspgy+nQ5YYxi7fIWx8ctMzs5RnZqmVCjw9b2PZpjqkninSrm7i2qtxtMv/hrfWn74hX0kzq2+gPRUhn+OjTN+pUr/2l4euGcT69f0XseSRdLGztGYmmLn1q2c+vY32bN1AFXF3IQLN4WgFUZ8ced2coGPOpfeKXFMsxUuiw/jiHIux5HDT/DUgf14xqCqiAh6OxxoFzHfajHfbKZnXUFObR70d3fzzs+eY9O6dQuGZu9EBde2to122xfajpjVBEBfuZzKL0kQY1a8MVdNwsQpDiWXGVCUJCTOkTi3pAgFwjhOr+Nr7gOXEVNuRwWBZ+nK54mcY3y6xmyzSV9nB535PKUgwLcWl9msADkv3aoehlyo1Sjn82zo7PyvnfBWxh4uzczy+vvneeuDUf42fon5MKSnVKSvo4Mta3v5/u5HKeUCunM56lHE8ddf492LFxmbqXFpdpZiEPDIxo18+d7PsG/zlhtasQCUnj/xmHjBaxqGTsH4xmCMMFWfBxEKvr8gszhxJFHE5g39bO/uZmNQ5E+1Sf58/jzkcvjGEFhLokozDME5ejs6UKAVxwgkUijYpBkebBw9+jsvxcrVjXOgKiJClDg0UcqFPKopHxTwrSWwFskFfDwxxVj1Kkmm865yGZfFqSqeCOVCAQEaaeKUC4qgioH6AgTBTPCPqCOaEWs7SRIVETEIidNlxMzucgLPAnahtfF1bqeZFNO/bAteoIiItlot58UjAIbhYVs79eyUiPxW8nkB4qUme2OVtO3X6c2jdfFHsRTygvJK40dD4wwPW8PIiKIqSRhXXLM5SRD4qEa3UMOqpgNUI3zf1zCsG1+PAMLIiFpOn1bAxEND03bPrjPGeo9LId9BnAjgUHVZMbf3iICIkULBom6WODo092zl7fZgsqiObFzKnTi6xQal50T5ilhb5g5HM1TRKKpj5FVa85X6sZMjy0ez6+ZDgOLJk3eJ7w+Ii8pJkgCrHZgTsBZj/Dmn+n7jyJGPVxpOl69KxfxfxvNKxaw0nv8HT04h6hOu2KgAAAAASUVORK5CYII=" width="36" height="36" alt="">
+        <div>
+          <h1>LearnNote</h1>
+          <p>学习视频笔记工作台</p>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <span id="health" class="health">检查中</span>
+        <button id="openAiAssistantButton" class="assistant-launch-button" type="button" aria-expanded="false" aria-controls="aiAssistantDrawer">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v11H9l-4 4z"/><path d="M9 9h6M9 12h4"/></svg>
+          <span data-i18n="assistant">AI 助教</span>
+        </button>
+        <details class="topbar-more">
+          <summary class="icon-button" title="更多视图选项" aria-label="更多视图选项">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h.01M12 12h.01M19 12h.01"/></svg>
+          </summary>
+          <div class="topbar-more-panel">
+            <div class="layout-toggle-group" role="group" aria-label="阅读视图">
+              <button id="toggleNavigationButton" class="layout-toggle-button" type="button" title="收起导航栏" aria-label="收起导航栏" data-i18n-aria="collapseNavigation" aria-controls="mainNavigation" aria-pressed="false"><span>导航栏</span></button>
+              <button id="toggleWorkspaceButton" class="layout-toggle-button" type="button" title="收起创建区" aria-label="收起创建区" data-i18n-aria="collapseWorkspace" aria-controls="workspace" aria-pressed="false"><span>创建区</span></button>
+              <button id="toggleHistoryButton" class="layout-toggle-button" type="button" title="收起笔记列表" aria-label="收起笔记列表" data-i18n-aria="collapseHistory" aria-controls="taskSidebar" aria-pressed="false"><span>资料列表</span></button>
+              <button id="readingModeButton" class="layout-toggle-button" type="button" title="进入专注阅读" aria-label="进入专注阅读" data-i18n-aria="readingMode" aria-pressed="false"><span>专注阅读</span></button>
+            </div>
+            <button id="refreshButton" class="topbar-reconnect-button" type="button">重新连接</button>
+          </div>
+        </details>
+      </div>
+    </header>
+
+    <main class="app-shell">
+      <nav id="mainNavigation" class="nav-rail" aria-label="主导航">
+        <a id="workspaceNav" class="nav-item active" href="#workspace" data-app-view="workspace" title="开始" aria-label="开始">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></svg>
+          <span data-i18n="workspaceNav">开始</span>
+        </a>
+        <a class="nav-item" href="#resultPanel" data-app-view="notes" title="资料库" aria-label="资料库">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h11a2 2 0 0 1 2 2v16l-4-2-4 2-4-2-4 2V5a2 2 0 0 1 2-2z"/><path d="M8 8h7M8 12h6"/></svg>
+          <span data-i18n="notesNav">资料库</span>
+        </a>
+        <a class="nav-item" href="#studyView" data-app-view="study" title="复习" aria-label="复习">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h6M8 16h4"/></svg>
+          <span data-i18n="studyNav">复习</span>
+        </a>
+        <a id="settingsNav" class="nav-item" href="#settingsView" data-app-view="settings" title="设置" aria-label="设置">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5z"/><path d="M9 8h6M9 12h6M9 16h3"/></svg>
+          <span data-i18n="settingsNav">设置</span>
+        </a>
+      </nav>
+
+      <section id="settingsView" class="settings-view" hidden aria-label="设置">
+        <header class="settings-header">
+          <div>
+            <h2 data-i18n="settingsTitle">设置</h2>
+            <p data-i18n="settingsSubtitle">调整界面与视频处理方式</p>
+          </div>
+          <button id="settingsCloseButton" class="secondary action-button" type="button" data-i18n="settingsClose">返回工作台</button>
+        </header>
+
+        <div class="settings-layout">
+          <nav class="settings-menu" aria-label="设置分类">
+            <button class="active" type="button" data-settings-tab="general" data-i18n="settingsGeneral">通用</button>
+            <button type="button" data-settings-tab="model" data-i18n="settingsModel">AI 模型</button>
+            <button type="button" data-settings-tab="transcriber" data-setting-advanced data-i18n="settingsTranscriber">转写</button>
+            <button type="button" data-settings-tab="notes" data-setting-advanced data-i18n="settingsNotes">笔记</button>
+            <button type="button" data-settings-tab="processing" data-setting-advanced data-i18n="settingsProcessing">视频处理</button>
+            <button type="button" data-settings-tab="connection" data-i18n="settingsConnection">下载与存储</button>
+            <button type="button" data-settings-tab="privacy" data-i18n="settingsPrivacy">隐私</button>
+          </nav>
+
+          <div class="settings-content">
+            <section class="settings-pane active" data-settings-pane="general">
+              <div class="settings-section-heading"><h3 data-i18n="appearanceHeading">界面</h3><p data-i18n="appearanceDescription">让常用操作更清晰、易读。</p></div>
+              <div class="settings-rows">
+                <div class="setting-row">
+                  <div><strong data-i18n="interfaceScale">界面缩放</strong><small data-i18n="interfaceScaleHint">调整留白和可读文字大小</small></div>
+                  <div class="segment-control" data-setting="uiScale">
+                    <button type="button" data-value="90">90%</button><button class="active" type="button" data-value="100">100%</button><button type="button" data-value="110">110%</button><button type="button" data-value="125">125%</button><button type="button" data-value="150">150%</button><button type="button" data-value="175">175%</button><button type="button" data-value="200">200%</button>
+                  </div>
+                </div>
+                <div class="setting-row">
+                  <div><strong data-i18n="textSize">文字大小</strong><small data-i18n="textSizeHint">不改变窗口布局</small></div>
+                  <div class="segment-control" data-setting="textSize">
+                    <button type="button" data-value="compact">紧凑</button><button class="active" type="button" data-value="standard">标准</button><button type="button" data-value="large">大</button>
+                  </div>
+                </div>
+                <div class="setting-row">
+                  <div><strong data-i18n="theme">主题</strong><small data-i18n="themeHint">跟随系统或固定外观</small></div>
+                  <div class="segment-control" data-setting="theme">
+                    <button class="active" type="button" data-value="system">跟随系统</button><button type="button" data-value="light">浅色</button><button type="button" data-value="dark">深色</button>
+                  </div>
+                </div>
+                <div class="setting-row">
+                  <div><strong data-i18n="colorTheme">配色</strong><small data-i18n="colorThemeHint">强调色只用于操作与选中状态</small></div>
+                  <div class="segment-control color-themes" data-setting="colorTheme">
+                    <button class="active" type="button" data-value="teal"><i class="theme-swatch teal"></i>青绿</button><button type="button" data-value="ocean"><i class="theme-swatch ocean"></i>海蓝</button><button type="button" data-value="forest"><i class="theme-swatch forest"></i>森林</button><button type="button" data-value="graphite"><i class="theme-swatch graphite"></i>石墨</button>
+                  </div>
+                </div>
+                <label class="setting-row setting-field"><span><strong data-i18n="localeLabel">界面语言</strong><small data-i18n="localeHint">切换常用导航、设置和操作文案</small></span><select id="settingLocale" aria-label="界面语言" data-i18n-aria="localeLabel"><option value="zh-CN">中文</option><option value="en-US">English</option></select></label>
+              </div>
+              <div class="appearance-preview" aria-label="外观实时预览">
+                <div class="appearance-preview-copy">
+                  <span data-i18n="preview">实时预览</span>
+                  <strong data-i18n="previewTitle">清晰、克制，重点一眼可见</strong>
+                  <small data-i18n="previewHint">调整上方选项后立即生效，点击页面底部“保存设置”保留选择。</small>
+                </div>
+                <div class="appearance-preview-sample" aria-hidden="true">
+                  <i></i>
+                  <span></span>
+                  <span></span>
+                  <button type="button" tabindex="-1">主要操作</button>
+                </div>
+              </div>
+
+              <div class="settings-section-heading"><h3 data-i18n="defaultBehavior">默认行为</h3></div>
+              <div class="settings-rows">
+                <div class="setting-row">
+                  <div><strong data-i18n="defaultSource">默认输入</strong><small data-i18n="defaultSourceHint">打开客户端时优先显示</small></div>
+                  <div class="segment-control" data-setting="defaultSource">
+                    <button class="active" type="button" data-value="browser" data-i18n="sourceBrowser">当前页面</button><button type="button" data-value="local" data-i18n="sourceLocal">本地视频</button><button type="button" data-value="url" data-i18n="sourceUrl">视频链接</button>
+                  </div>
+                </div>
+                <label class="setting-row setting-switch"><span><strong>完成后打开笔记</strong><small>任务完成时切换到笔记结果</small></span><input id="settingAutoOpenNote" type="checkbox" checked></label>
+                <label class="setting-row setting-switch"><span><strong>任务完成通知</strong><small>使用系统通知提醒</small></span><input id="settingTaskNotifications" type="checkbox"></label>
+                <label class="setting-row setting-switch"><span><strong>进入笔记时收起笔记列表</strong><small>默认保留列表，方便在不同笔记之间切换</small></span><input id="settingCompactHistory" type="checkbox"></label>
+                <div class="setting-row">
+                  <div><strong>首次使用引导</strong><small>重新检查本地服务、浏览器扩展和 AI 模型</small></div>
+                  <button id="openOnboardingButton" class="secondary action-button" type="button" data-i18n="reopenOnboarding">重新打开</button>
+                </div>
+                <label class="setting-row setting-switch"><span><strong data-i18n="settingsAdvancedLabel">显示高级设置</strong><small data-i18n="settingsAdvancedHint">显示转写、笔记模板和视频处理的详细参数</small></span><input id="settingAdvancedOptions" type="checkbox"></label>
+              </div>
+            </section>
+
+            <section class="settings-pane" data-settings-pane="model">
+              <div class="settings-section-heading"><h3>AI 模型</h3><p>用于文字整理和画面理解。</p></div>
+              <section id="modelSetupGuide" class="model-setup-guide" aria-labelledby="modelSetupGuideTitle">
+                <header>
+                  <div><span>推荐流程</span><h4 id="modelSetupGuideTitle">三步完成模型配置</h4></div>
+                  <em id="modelSetupState" data-state="idle">尚未验证</em>
+                </header>
+                <p>选择供应商后会自动填写地址和推荐模型。界面只把 Key 交给本机 LearnNote，再由本机直连供应商；桌面端可加密保存到当前 Windows 用户。</p>
+                <div id="modelProviderQuickChoices" class="model-provider-quick-choices" role="group" aria-label="常用模型供应商"></div>
+                <ol class="model-setup-steps">
+                  <li><span>1</span><div><strong>选择供应商</strong><small id="modelSetupProviderSummary">自动填入推荐地址与模型</small></div></li>
+                  <li><span>2</span><div><strong>取得并填写 Key</strong><small>跳转到供应商官方控制台，不经过 LearnNote 服务器</small></div></li>
+                  <li><span>3</span><div><strong>短对话验证</strong><small>真正调用当前模型，不只检查 HTTP 200</small></div></li>
+                </ol>
+                <div class="model-setup-actions">
+                  <button id="openModelProviderButton" class="secondary action-button" type="button">去官网获取 Key</button>
+                  <button id="discoverModelsButton" class="secondary action-button" type="button">发现模型</button>
+                  <button id="testModelConnectionButton" class="secondary action-button" type="button">测试连接</button>
+                  <button id="finishModelSetupButton" class="primary action-button" type="button">测试、保存并返回</button>
+                </div>
+                <p id="modelSetupStatus" class="model-setup-status" role="status" aria-live="polite">选择一个供应商即可开始。</p>
+              </section>
+              <div id="settingsModelSlot" class="settings-option-slot"></div>
+              <div id="nativeCredentialSettings" class="native-settings-row" hidden>
+                <div><strong>Windows 凭据管理器</strong><small id="nativeCredentialStatus">API Key 可加密保存到当前 Windows 用户</small></div>
+                <div><button id="saveCredentialButton" class="secondary action-button" type="button">保存当前 Key</button><button id="deleteCredentialButton" class="secondary action-button" type="button">清除</button></div>
+              </div>
+            </section>
+            <section class="settings-pane" data-settings-pane="transcriber" data-setting-advanced-pane>
+              <div class="settings-section-heading"><h3>转写</h3><p>优先使用字幕，没有字幕时再识别音频。</p></div>
+              <div id="settingsTranscriberSlot" class="settings-option-slot"></div>
+            </section>
+            <section class="settings-pane" data-settings-pane="notes" data-setting-advanced-pane>
+              <div class="settings-section-heading"><h3>笔记细节</h3><p>主页预设会自动选择合适组合，也可以在这里精细调整。</p></div>
+              <div id="settingsNotesSlot" class="settings-option-slot"></div>
+            </section>
+            <section class="settings-pane" data-settings-pane="processing" data-setting-advanced-pane>
+              <div class="settings-section-heading"><h3>视频处理</h3><p>控制切片密度与笔记结构。</p></div>
+              <div id="settingsProcessingSlot" class="settings-option-slot"></div>
+            </section>
+            <section class="settings-pane" data-settings-pane="connection">
+              <div class="settings-section-heading"><h3>下载与存储</h3><p>客户端只连接本机后端。</p></div>
+              <div class="settings-rows">
+                <label class="setting-row setting-field" data-setting-advanced><span><strong>后端地址</strong><small>修改后重新载入客户端</small></span><input id="settingApiBase" type="url" placeholder="http://127.0.0.1:8765"></label>
+                <div class="setting-row storage-location-row">
+                  <div><strong>视频与笔记保存位置</strong><small id="settingDataPath">正在读取...</small></div>
+                  <div class="setting-inline-actions"><span id="settingDataDrive" class="setting-value">本地</span><span id="dataFolderNativeActions" class="setting-inline-actions" hidden><button id="changeDataFolderButton" class="secondary action-button" type="button">更改位置</button><button id="openDataFolderButton" class="secondary action-button" type="button">打开文件夹</button></span></div>
+                </div>
+                <div class="setting-row">
+                  <div><strong>资料库索引</strong><small>只备份本地搜索索引；任务 JSON 和视频仍保留在原目录</small></div>
+                  <div class="setting-inline-actions"><button id="checkLibraryDuplicatesButton" class="secondary action-button" type="button">检查重复</button><button id="backupLibraryButton" class="secondary action-button" type="button">导出索引备份</button><button id="restoreLibraryButton" class="secondary action-button" type="button">恢复索引</button><input id="libraryBackupInput" type="file" accept=".sqlite3,application/vnd.sqlite3" hidden></div>
+                </div>
+                <p id="libraryBackupStatus" class="settings-inline-status" role="status" aria-live="polite"></p>
+                <p id="libraryDuplicateStatus" class="settings-inline-status" role="status" aria-live="polite"></p>
+                <div class="setting-row">
+                  <div><strong>导入学习资料</strong><small>PDF、Markdown 和网页 HTML 只在本机提取文本，保留可追溯来源。</small></div>
+                  <div class="setting-inline-actions"><button id="knowledgeImportButton" class="secondary action-button" type="button">选择文件</button><input id="knowledgeImportInput" type="file" accept=".pdf,.md,.markdown,.html,.htm,.txt" hidden></div>
+                </div>
+                <p id="knowledgeImportStatus" class="settings-inline-status" role="status" aria-live="polite"></p>
+                <div class="setting-row knowledge-search-setting">
+                  <div><strong>本地资料库检索</strong><small>回答只使用已索引的本地证据；没有证据时不会编造。</small></div>
+                  <div class="knowledge-search-controls"><input id="knowledgeSearchInput" type="search" placeholder="搜索术语或问题"><button id="knowledgeSearchButton" class="secondary action-button" type="button">搜索</button></div>
+                </div>
+                <div id="knowledgeSearchResults" class="knowledge-results" role="region" aria-live="polite" aria-label="本地资料库检索结果"></div>
+                <div class="setting-row">
+                  <div><strong>本地复习卡片</strong><small>只读取你确认过的卡片和复习记录，不读取课程平台进度。</small></div>
+                  <div class="setting-inline-actions"><button id="studyDueButton" class="secondary action-button" type="button">查看到期卡片</button><button id="studyExportButton" class="secondary action-button" type="button">导出复习记录</button></div>
+                </div>
+                <div class="setting-row study-plan-row">
+                  <div><strong>本地学习计划</strong><small>设置每天目标；暂停只影响本地提醒和复习视图，不读取课程平台进度。</small></div>
+                  <div class="study-plan-controls"><input id="studyPlanTarget" type="number" min="1" max="200" value="10" aria-label="每日复习目标"><label><input id="studyPlanPaused" type="checkbox"> 暂停</label><label>时区 <input id="studyPlanTimezone" type="text" list="studyTimezones" placeholder="Asia/Shanghai" aria-label="学习时区"></label><datalist id="studyTimezones"><option value="Asia/Shanghai"><option value="Asia/Tokyo"><option value="America/New_York"><option value="Europe/London"><option value="UTC"></datalist><button id="studyPlanSaveButton" class="secondary action-button" type="button">保存计划</button></div>
+                  <button id="rebuildStudyScheduleButton" class="secondary action-button" type="button">按评分历史重建调度</button>
+                </div>
+                <div id="studyDueList" class="study-due-list" role="region" aria-live="polite" aria-label="到期复习卡片"></div>
+                <div id="dataMigrationNotice" class="storage-migration-notice" hidden role="status"><div><strong>新位置已经准备好</strong><small id="dataMigrationMessage"></small></div><button id="restartForDataFolderButton" class="primary action-button" type="button">立即重启</button></div>
+                <div class="setting-row"><div><strong>已用空间</strong><small id="settingStorageBreakdown">正在统计任务和视频文件</small></div><span id="settingStorageUsage" class="setting-value">-</span></div>
+                <label class="setting-row setting-switch"><span><strong>链接生成前预检</strong><small>先确认媒体是否可访问</small></span><input id="settingAutoPreflight" type="checkbox" checked></label>
+                <div class="setting-row">
+                  <div><strong>清理旧任务</strong><small>保留最近 10 个任务，只清理 30 天前的已结束任务</small></div>
+                  <div class="setting-inline-actions"><button id="previewCleanupButton" class="secondary action-button" type="button">查看可清理内容</button><button id="applyCleanupButton" class="secondary action-button" type="button" disabled>确认清理</button></div>
+                </div>
+                <div class="setting-row setting-danger-row">
+                  <div><strong>删除全部任务</strong><small>删除全部已结束任务及其独占本地文件；运行中的任务不会被删除</small></div>
+                  <button id="deleteAllTasksSettingsButton" class="danger-button" type="button">删除全部</button>
+                </div>
+                <div class="setting-row"><div><strong>客户端版本</strong><small id="settingCompatibility">正在检查扩展兼容性</small></div><span id="settingAppVersion" class="setting-value">-</span></div>
+                <div id="nativeDesktopSettings" class="setting-row" hidden>
+                  <div><strong>桌面客户端</strong><small id="updateStatus">检查并安装 LearnNote 正式版本</small></div>
+                  <div class="setting-inline-actions"><button id="viewReleaseNotesButton" class="secondary action-button" type="button">本版本更新</button><button id="checkUpdateButton" class="secondary action-button" type="button">检查更新</button><button id="installUpdateButton" class="primary action-button" type="button" hidden>下载并安装</button><button id="openReleaseButton" class="secondary action-button" type="button" hidden>GitHub 版本页</button></div>
+                </div>
+                <div id="nativeExtensionSettings" class="setting-row" hidden>
+                  <div><strong>浏览器扩展</strong><small id="nativeExtensionStatus">用于把当前播放页交给客户端</small></div>
+                  <button id="setupExtensionButton" class="secondary action-button" type="button">安装扩展</button>
+                </div>
+              </div>
+            </section>
+            <section class="settings-pane" data-settings-pane="privacy">
+              <div class="settings-section-heading"><h3>隐私</h3><p>视频与任务产物默认保留在本机。</p></div>
+              <div class="settings-rows">
+                <div class="setting-row"><div><strong>API Key</strong><small>不会写入任务记录或导出文件</small></div><span class="setting-value">仅本次会话</span></div>
+                <div class="setting-row"><div><strong>浏览器 Cookie</strong><small>仅在点击创建任务时读取相关域</small></div><span class="setting-value">按需读取</span></div>
+              </div>
+            </section>
+
+            <footer class="settings-actions">
+              <span id="settingsSavedStatus" role="status"></span>
+              <button id="resetSettingsButton" class="secondary action-button" type="button">恢复默认</button>
+              <button id="saveSettingsButton" class="primary action-button" type="button">保存设置</button>
+            </footer>
+          </div>
+        </div>
+      </section>
+
+      <section id="studyView" class="study-view" hidden aria-label="复习">
+        <header class="study-view-header">
+          <div><span class="editorial-kicker">本地复习</span><h1>把看过的内容记住</h1><p>只使用你确认过的字幕和笔记卡片，不读取课程平台进度。</p></div>
+          <select id="studyCourseSelect" aria-label="复习课程"><option value="">全部资料</option></select><button id="studyViewRefreshButton" class="secondary action-button" type="button">刷新到期卡片</button>
+        </header>
+        <div id="studyViewSummary" class="study-view-summary" aria-live="polite">正在读取复习记录…</div>
+        <section id="studyViewDashboard" class="study-view-dashboard" aria-label="今日学习进度" aria-live="polite">
+          <div><span>今日进度</span><strong id="studyViewProgressLabel">正在读取…</strong></div>
+          <div class="study-view-progress-track" role="progressbar" aria-label="今日复习目标" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="studyViewProgressBar"></i></div>
+          <small id="studyViewProgressHint">复习记录只保存在本机</small>
+        </section>
+        <section class="study-view-due-section"><header><h2>今天需要复习</h2><small>完成一张卡片后，间隔会按本地复习记录更新。</small></header><div id="studyViewDueList" class="study-due-list"></div></section>
+      </section>
+
+      <aside id="workspace" class="workspace-panel">
+        <section id="editorialHome" class="editorial-home" aria-labelledby="editorialHomeTitle">
+          <header class="editorial-intro">
+            <div>
+              <span class="editorial-kicker">开始学习</span>
+              <h1 id="editorialHomeTitle">从一段内容开始</h1>
+              <p>先读字幕草稿，再补画面证据。常规链接只需一次点击。</p>
+            </div>
+            <button id="editorialOpenLibrary" class="editorial-text-action" type="button">打开资料库</button>
+          </header>
+
+          <section id="editorialUrlEntry" class="editorial-entry editorial-primary-entry" aria-label="粘贴视频链接">
+            <label class="editorial-entry-copy" for="editorialUrlInput"><span>视频链接</span><strong>粘贴要学习的视频</strong></label>
+            <div class="editorial-link-row">
+              <input id="editorialUrlInput" type="text" inputmode="url" autocomplete="off" spellcheck="false" placeholder="BV 号或 https://...">
+              <button id="editorialInspectUrl" type="button">生成笔记</button>
+            </div>
+            <p id="editorialUrlStatus" class="editorial-inline-status" role="status" aria-live="polite"></p>
+          </section>
+
+          <div id="editorialSourceChoices" class="editorial-source-choices editorial-source-shortcuts" role="group" aria-label="其他内容来源">
+            <button type="button" data-editorial-source="browser">
+              <span class="editorial-source-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4zM4 9h16M9 19V9"/></svg></span>
+              <span><strong>当前视频</strong><small>从浏览器扩展接收</small></span>
+              <svg class="editorial-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>
+            </button>
+            <button type="button" data-editorial-source="local">
+              <span class="editorial-source-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 8l5-5 5 5M4 18h16v3H4z"/></svg></span>
+              <span><strong>本地视频</strong><small>选择或拖入文件</small></span>
+              <svg class="editorial-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>
+            </button>
+          </div>
+
+          <button id="editorialKnowledgeImport" class="editorial-material-entry" type="button">
+            <span class="editorial-source-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 3h10l4 4v14H5z"/><path d="M14 3v5h5M8 12h8M8 16h6"/></svg></span>
+            <span><strong>导入 PDF / Markdown 学习资料</strong><small>保留页码和段落出处</small></span>
+            <svg class="editorial-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>
+          </button>
+          <p id="editorialKnowledgeImportStatus" class="editorial-inline-status editorial-material-status" role="status" aria-live="polite"></p>
+          <button type="button" class="editorial-material-entry" data-open-courses><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7v16H4zM14 4h6v16h-6z"/></svg><span>课程归档与批量链接</span><span aria-hidden="true">›</span></button>
+          <p class="editorial-privacy-line">本地优先处理，学习资料默认保存在这台设备</p>
+
+          <section id="editorialLocalEntry" class="editorial-entry" hidden aria-label="拖入本地视频">
+            <button class="editorial-back" type="button" data-editorial-back aria-label="返回来源选择"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
+            <div class="editorial-entry-copy"><span>本地视频</span><strong>拖入文件或从电脑选择</strong></div>
+            <label id="editorialDropzone" class="editorial-dropzone">
+              <input id="editorialFileInput" type="file" accept="video/*,.mp4,.m4v,.mov,.mkv,.webm,.flv,.avi,.m4s">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5M4 18h16v3H4z"/></svg>
+              <span><strong>把视频拖到这里</strong><small>选择文件后只做检查，不会立即上传</small></span>
+            </label>
+            <p id="editorialLocalStatus" class="editorial-inline-status" role="status"></p>
+          </section>
+
+          <section id="editorialBrowserEntry" class="editorial-entry" hidden aria-label="从浏览器接收当前视频">
+            <button class="editorial-back" type="button" data-editorial-back aria-label="返回来源选择"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
+            <div class="editorial-entry-copy"><span>浏览器交接</span><strong>等待当前视频</strong><p>保持视频正在播放，在扩展里点击“发送到 LearnNote”。</p></div>
+            <div class="editorial-browser-watch">
+              <div class="editorial-browser-watch-head">
+                <span id="editorialBrowserConnection" data-state="checking">正在连接客户端与扩展</span>
+                <button id="editorialReceiveBrowser" class="editorial-secondary-button" type="button">重新检查</button>
+              </div>
+              <div class="editorial-browser-watch-track" role="progressbar" aria-label="等待浏览器发送" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="editorialBrowserWaitBar"></i></div>
+              <p id="editorialBrowserStatus" class="editorial-inline-status" role="status">进入后会自动接收，不需要反复刷新。</p>
+              <button id="editorialBrowserSetup" class="editorial-text-action" type="button" hidden>打开连接设置</button>
+            </div>
+          </section>
+
+          <section id="editorialContinue" class="editorial-continue" hidden aria-live="polite">
+            <div><span id="editorialContinueKicker">继续上次任务</span><strong id="editorialContinueTitle">正在读取任务</strong><small id="editorialContinueMeta"></small></div>
+            <button id="editorialContinueAction" type="button">继续</button>
+          </section>
+
+          <section id="editorialMediaConfirm" class="editorial-confirm" hidden aria-labelledby="editorialConfirmTitle">
+            <button class="editorial-back" type="button" data-editorial-back aria-label="重新选择视频"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
+            <div id="editorialMediaCover" class="editorial-media-cover"><span>LN</span></div>
+            <div class="editorial-media-summary">
+              <span id="editorialMediaSource" class="editorial-kicker">视频已识别</span>
+              <h2 id="editorialConfirmTitle">确认视频内容</h2>
+              <p id="editorialMediaSubtitle">开始前检查声音、字幕和画面是否完整。</p>
+              <dl class="editorial-media-facts">
+                <div><dt>时长</dt><dd id="editorialDuration">等待检测</dd></div>
+                <div><dt>声音</dt><dd id="editorialAudioState">等待检测</dd></div>
+                <div><dt>字幕</dt><dd id="editorialSubtitleState">等待检测</dd></div>
+                <div><dt>画面</dt><dd id="editorialVisualState">等待检测</dd></div>
+                <div><dt>预计耗时</dt><dd id="editorialEstimate">正在估算</dd></div>
+              </dl>
+            </div>
+
+            <section class="editorial-note-purpose" aria-labelledby="editorialPurposeTitle">
+              <header><div><span class="editorial-kicker">笔记用途</span><h3 id="editorialPurposeTitle">这次准备怎么学？</h3></div><button id="editorialImportTemplate" type="button">导入 YAML / JSON</button></header>
+              <input id="editorialTemplateFile" type="file" accept="application/json,application/yaml,text/yaml,.json,.yaml,.yml" hidden>
+              <div id="editorialPurposeChoices" class="editorial-purpose-choices" role="radiogroup" aria-label="选择笔记用途">
+                <label><input type="radio" name="editorialPurpose" value="quick"><span><strong>快速速览</strong><small>结论、重点和关键时间轴</small></span></label>
+                <label><input type="radio" name="editorialPurpose" value="study" checked><span><strong>标准学习</strong><small>知识点、解释、例子和复习题</small></span></label>
+                <label><input type="radio" name="editorialPurpose" value="deep"><span><strong>深度图文</strong><small>画面证据、操作细节和概念关系</small></span></label>
+                <label><input type="radio" name="editorialPurpose" value="custom"><span><strong>自定义模板</strong><small id="editorialCustomTemplateName">导入自己的结构</small></span></label>
+              </div>
+              <div id="editorialPurposePreview" class="editorial-purpose-preview" aria-live="polite"></div>
+            </section>
+
+            <footer class="editorial-confirm-footer">
+              <p id="editorialConfirmStatus" role="status"></p>
+              <button id="editorialStartTask" type="button">开始生成笔记</button>
+            </footer>
+          </section>
+
+          <section id="editorialProgress" class="editorial-progress-panel" hidden aria-labelledby="editorialProgressTitle">
+            <header><div><span class="editorial-kicker">正在生成</span><h2 id="editorialProgressTitle">处理视频内容</h2><p id="editorialCurrentAction">准备任务...</p></div><strong id="editorialProgressValue">0%</strong></header>
+            <div class="editorial-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="editorialProgressBar"></i></div>
+            <ol id="editorialProgressSteps" class="editorial-progress-steps"></ol>
+            <div class="editorial-progress-meta"><span>预计剩余 <strong id="editorialEta">正在估算</strong></span></div>
+            <div id="editorialFailureAction" class="editorial-failure-action" hidden></div>
+            <details class="editorial-technical-log"><summary>查看技术日志</summary><pre id="editorialTechnicalLog">等待任务信息...</pre></details>
+          </section>
+        </section>
+        <div class="panel-heading">
+          <strong>新建学习笔记</strong>
+          <p class="panel-subtitle">选择学习内容，生成结构清晰、可以回到原视频核对的笔记。</p>
+        </div>
+
+        <div id="sourceRouteRail" class="source-route-rail" aria-label="学习入口路线"></div>
+
+        <div class="source-tabs" role="tablist" aria-label="视频来源">
+          <button class="source-tab active" data-source="browser" type="button" role="tab" aria-selected="true">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4z"/><path d="M4 9h16M9 19V9"/></svg>
+            <span><b>当前页面</b><small>从扩展侧栏读取正在播放的视频</small></span>
+          </button>
+          <button class="source-tab" data-source="url" type="button" role="tab" aria-selected="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.07 0l2.12-2.12a5 5 0 0 0-7.07-7.07L11 4.93"/><path d="M14 11a5 5 0 0 0-7.07 0L4.8 13.12a5 5 0 0 0 7.07 7.07L13 19.07"/></svg>
+            <span><b>视频链接</b><small>解析网页或直接媒体链接</small></span>
+          </button>
+          <button class="source-tab" data-source="local" type="button" role="tab" aria-selected="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5M4 17v3h16v-3"/></svg>
+            <span><b>本地视频</b><small>拖入 mp4、flv、avi、mkv、webm 等文件</small></span>
+          </button>
+        </div>
+
+        <section id="startupReadiness" class="startup-readiness" aria-label="启动就绪检查">
+          <div class="startup-readiness-head">
+            <span>启动就绪</span>
+            <strong>正在检查本机运行环境</strong>
+          </div>
+        </section>
+
+        <section id="urlSource" class="source-pane">
+          <label class="field">
+            <span>B站 BV号、视频或页面链接</span>
+            <input id="urlInput" type="text" inputmode="url" autocomplete="off" spellcheck="false" placeholder="BV1xx411c7mD 或 https://www.bilibili.com/video/...">
+          </label>
+          <div id="urlSourceIdentity" class="url-source-identity" hidden></div>
+          <div class="url-mode-grid">
+            <label class="field">
+              <span>链接类型</span>
+              <select id="urlMode">
+                <option value="auto" selected>自动识别</option>
+                <option value="page">网页/平台解析</option>
+                <option value="video">视频直连</option>
+                <option value="hls">HLS m3u8</option>
+                <option value="dash">DASH mpd</option>
+              </select>
+            </label>
+            <div id="urlModeHint" class="mode-hint">B站 BV/AV 号会自动转换为视频页；页面链接交给 yt-dlp 和页面扫描，mp4、FLV、m3u8、mpd 会按媒体直链处理。</div>
+          </div>
+          <div id="urlPreflightReport" class="url-preflight-report" aria-label="链接预检报告" hidden></div>
+          <label class="field">
+            <span>笔记标题</span>
+            <input id="titleInput" type="text" placeholder="默认使用页面标题或文件名">
+          </label>
+          <div class="url-actions">
+            <button id="startUrlButton" class="primary action-button">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+              生成链接笔记
+            </button>
+            <button id="preflightUrlButton" class="secondary action-button" type="button">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 12l2 2 4-5"/><path d="M20 12a8 8 0 1 1-16 0 8 8 0 0 1 16 0z"/></svg>
+              预检链接
+            </button>
+            <button id="downloadUrlButton" class="secondary action-button" type="button">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11M7 9l5 5 5-5M5 19h14"/></svg>
+              只下载到本地
+            </button>
+          </div>
+        </section>
+
+        <section id="localSource" class="source-pane">
+          <label id="dropzone" class="dropzone">
+            <input id="fileInput" type="file" accept="video/*,.mp4,.m4v,.mov,.mkv,.webm,.flv,.avi,.m4s">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5M4 17v3h16v-3"/></svg>
+            <strong>拖入视频文件</strong>
+            <small id="fileName">mp4 / flv / avi / webm / mov / mkv</small>
+          </label>
+          <button id="uploadButton" class="primary action-button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5M4 17v3h16v-3"/></svg>
+            上传并生成
+          </button>
+        </section>
+
+        <section id="browserSource" class="source-pane active">
+          <div class="browser-handoff">
+            <div class="browser-capture-card" aria-label="当前页直取启动面板">
+              <div class="browser-capture-head">
+                <span class="capture-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z"/><path d="M8 9h8M8 13h5"/><path d="M17 16l3 3M20 16l-3 3"/></svg>
+                </span>
+                <div>
+                  <strong id="browserCaptureTitle">打开课程视频，再从浏览器扩展发送</strong>
+                  <div id="browserBridgeStatus" class="capture-status-grid">扩展会自动选择正在播放、画面可见的视频。</div>
+                </div>
+                <em>非录制</em>
+              </div>
+
+              <div class="capture-flow" aria-label="当前页交接流程">
+                <div>
+                  <span>01</span>
+                  <strong>播放视频</strong>
+                  <small>打开你正在学习的视频。</small>
+                </div>
+                <div>
+                  <span>02</span>
+                  <strong>侧栏开始</strong>
+                  <small>点击“总结当前视频”。</small>
+                </div>
+                <div>
+                  <span>03</span>
+                  <strong>阅读笔记</strong>
+                  <small>完成后自动回到结果页。</small>
+                </div>
+              </div>
+
+              <div class="browser-actions">
+                <button id="copyBackendButton" class="secondary action-button" type="button">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8h11v13H8zM5 16H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h11a1 1 0 0 1 1 1v1"/></svg>
+                  复制服务地址
+                </button>
+                <button id="browserRefreshButton" class="secondary action-button" type="button">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 0 1-13.66 5.66M4 12A8 8 0 0 1 17.66 6.34M20 4v6h-6M4 20v-6h6"/></svg>
+                  重新检查
+                </button>
+              </div>
+            </div>
+
+            <div id="browserRouteSummary" class="browser-route-summary" aria-label="当前页直取状态"></div>
+
+          </div>
+        </section>
+
+        <section class="quick-note-options" aria-label="输出预设">
+          <div class="quick-note-heading">
+            <strong>输出预设</strong>
+            <button id="openProcessingSettingsButton" type="button">高级设置</button>
+          </div>
+          <div id="homeQuickOptionsSlot" class="learning-goal-group" role="radiogroup" aria-label="选择输出预设">
+            <label><input type="radio" name="learningGoal" value="quick"><span><b>快速速览</b><small>字幕优先 · 结论和关键时间轴</small></span></label>
+            <label><input type="radio" name="learningGoal" value="study" checked><span><b>标准学习</b><small>知识点 · 解释 · 复习题</small></span></label>
+            <label><input type="radio" name="learningGoal" value="deep"><span><b>深度图文</b><small>画面证据 · 操作细节 · 概念关系</small></span></label>
+            <label hidden class="legacy-learning-goal"><input type="radio" name="learningGoal" value="exam"><span><b>考试整理</b><small>兼容旧设置与导入模板</small></span></label>
+          </div>
+        </section>
+
+        <div class="generate-note-row">
+          <button id="generateNoteButton" class="primary action-button" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+            <span id="generateNoteLabel">在浏览器侧栏开始</span>
+          </button>
+          <p id="generateNoteHint" aria-live="polite">客户端不读取其他浏览器窗口；当前页任务由扩展侧栏安全交接</p>
+        </div>
+
+        <aside id="recentNotesRail" class="recent-notes-rail" aria-label="最近笔记">
+          <header>
+            <strong>最近笔记</strong>
+            <button type="button" data-open-note-library>查看全部</button>
+          </header>
+          <div id="recentNotesList" class="recent-notes-list"></div>
+        </aside>
+
+        <section id="sourceWorkflow" class="source-workflow" aria-label="学习生产线"></section>
+
+        <details id="optionsDisclosure" class="options-disclosure">
+          <summary>
+            <span>处理参数</span>
+            <small>切片、转写、图文总结模型</small>
+          </summary>
+
+          <div class="option-grid">
+            <label class="field" data-setting-group="processing">
+              <span>切片间隔</span>
+              <div class="number-setting"><input id="frameInterval" type="number" min="1" max="600" step="1" value="20"><em>秒/帧</em></div>
+              <small>1-600 秒，数值越小越容易捕捉画面变化。</small>
+            </label>
+            <div class="field" data-setting-group="processing">
+              <span>视觉窗口</span>
+              <div class="grid-dimension-setting"><label><input id="gridColumns" type="number" min="1" max="6" step="1" value="3"><small>列</small></label><b>×</b><label><input id="gridRows" type="number" min="1" max="6" step="1" value="3"><small>行</small></label></div>
+              <input id="gridSize" type="hidden" value="3x3">
+              <small id="visualWindowEstimate">每个窗口约覆盖 3 分钟、包含 9 帧。</small>
+            </div>
+            <div class="field wide" data-setting-group="processing">
+              <input id="visualUnderstanding" type="checkbox" checked hidden>
+              <button id="visualUnderstandingButton" class="visual-mode-toggle active" type="button" role="switch" aria-checked="true">
+                <i aria-hidden="true"></i>
+                <span>
+                <b>开启图文理解</b>
+                <small id="visualUnderstandingHint">将截图与对应字幕一起交给视觉模型；关闭后不抽帧，只生成文本笔记。</small>
+                </span>
+              </button>
+            </div>
+            <div class="field" data-setting-group="processing">
+              <span>本地画面文字</span><label><input id="localOcrEnabled" type="checkbox"> 识别关键帧文字（可选本地OCR）</label><small>文字保存在本机；组件不可用时继续生成字幕笔记。</small>
+            </div>
+            <label class="field" data-setting-group="transcriber">
+              <span>转写引擎</span>
+              <select id="transcriber">
+                <option value="faster-whisper" selected>本地 faster-whisper</option>
+                <option value="openai-compatible">OpenAI-compatible ASR</option>
+                <option value="groq">Groq ASR</option>
+              </select>
+            </label>
+            <label class="field" data-setting-group="transcriber">
+              <span>转写模型</span>
+              <select id="whisperModel">
+                <option value="tiny" data-asr-engine="local">tiny · 最快预览</option>
+                <option value="base" data-asr-engine="local">base · 轻量</option>
+                <option value="small" data-asr-engine="local" selected>small · 推荐</option>
+                <option value="medium" data-asr-engine="local">medium · 更准确</option>
+                <option value="large-v3" data-asr-engine="local">large-v3 · 最高精度</option>
+                <option value="whisper-1" data-asr-engine="openai">whisper-1</option>
+                <option value="whisper-large-v3" data-asr-engine="groq">whisper-large-v3</option>
+              </select>
+              <small id="asrModelHint">small 适合中文课程，速度与准确率较平衡。</small>
+            </label>
+            <label class="field" data-setting-group="notes">
+              <span>笔记风格</span>
+              <select id="noteStyle">
+                <optgroup label="按学习用途">
+                  <option value="classroom-review" selected>课堂复习 · 知识点与复习题</option>
+                  <option value="operation-tutorial">操作教程 · 步骤、命令与排错</option>
+                  <option value="exam-review">考试整理 · 考点与练习题</option>
+                  <option value="quick-summary">快速摘要 · 结论与时间轴</option>
+                </optgroup>
+                <optgroup label="高级风格">
+                <option value="study">学习笔记 · 通用课程</option>
+                <option value="concise">重点速记 · 快速回顾</option>
+                <option value="exam">考点复习 · 备考刷题</option>
+                <option value="lecture">课程讲义 · 完整整理</option>
+                <option value="concept">概念精讲 · 理论理解</option>
+                <option value="code">代码教程 · 操作与示例</option>
+                <option value="academic">论文导读 · 学术阅读</option>
+                <option value="language">语言学习 · 双语表达</option>
+                </optgroup>
+              </select>
+            </label>
+            <label class="field" data-setting-group="notes">
+              <span>笔记格式</span>
+              <select id="noteTemplate">
+                <option value="standard" selected>标准结构 · 章节与重点</option>
+                <option value="timeline">时间轴 · 按视频进度</option>
+                <option value="cornell">康奈尔 · 记录与复盘</option>
+                <option value="qa">问答复习 · 自测题</option>
+                <option value="visual-handout">图文讲义 · PPT/操作课</option>
+                <option value="mindmap">层级脑图 · 知识关系</option>
+                <option value="flashcards">记忆卡片 · 碎片复习</option>
+                <option value="formula-sheet">公式清单 · 理工课程</option>
+                <option value="bilingual">双语对照 · 语言课程</option>
+              </select>
+            </label>
+            <section class="note-style-studio wide" data-setting-group="notes" aria-label="笔记风格预览">
+              <header><div><span>当前风格示例</span><strong id="noteProfileTitle">学习笔记</strong></div><nav><button id="downloadNoteProfileExampleButton" type="button">下载示例</button><button id="importNoteProfileButton" type="button">导入风格</button></nav></header>
+              <p id="noteProfileDescription">适合大多数课程，按主题、概念、例子、易错点和复习题组织。</p>
+              <pre id="noteProfileOutline"># 课程主题\n## 核心概念\n## 例子与演示\n## 易错点\n## 复习问题</pre>
+              <small id="noteProfileStatus">选择上方风格和格式，可立即查看输出框架。</small>
+              <input id="noteProfileFile" type="file" accept="application/json,.json,.learnnote-style.json" hidden>
+            </section>
+            <label class="field" data-setting-group="processing">
+              <span>摘要深度</span>
+              <select id="summaryDepth">
+                <option value="brief">简洁</option>
+                <option value="standard" selected>标准</option>
+                <option value="deep">深入</option>
+              </select>
+            </label>
+            <label class="field" data-setting-group="model">
+              <span>模型服务</span>
+              <select id="llmProvider">
+                <option value="openai">OpenAI</option>
+                <option value="groq">Groq</option>
+                <option value="gemini">Google Gemini</option>
+                <option value="dashscope">通义千问 DashScope</option>
+                <option value="deepseek">DeepSeek</option>
+                <option value="kimi" selected>Kimi 月之暗面</option>
+                <option value="xiaomi">小米 MiMo</option>
+                <option value="zhipu">智谱 GLM</option>
+                <option value="doubao">豆包 火山方舟</option>
+                <option value="minimax">MiniMax</option>
+                <option value="qianfan">百度千帆 ERNIE</option>
+                <option value="custom">手动兼容端点</option>
+              </select>
+            </label>
+            <p id="providerHint" class="provider-hint" data-setting-group="model" aria-live="polite"></p>
+            <label class="field" data-setting-group="model">
+              <span>视觉模型</span>
+              <input id="llmModel" type="text" list="availableModelOptions" placeholder="kimi-k2.6">
+              <datalist id="availableModelOptions"></datalist>
+            </label>
+            <label class="field wide" data-setting-group="model">
+              <span>Base URL</span>
+              <input id="llmBaseUrl" type="url" placeholder="https://api.moonshot.cn/v1">
+            </label>
+            <label class="field wide" data-setting-group="model">
+              <span>API Key（仅随本次任务发送，不写入任务记录）</span>
+              <input id="llmApiKey" type="password" autocomplete="off" placeholder="留空则使用后端环境变量或本地降级">
+            </label>
+          </div>
+
+          <div class="workflow-strip" aria-label="处理流程">
+            <span>直取</span>
+            <span>转写</span>
+            <span>切片</span>
+            <span>图文总结</span>
+          </div>
+        </details>
+      </aside>
+
+      <section id="taskSidebar" class="queue-panel">
+        <div class="panel-heading horizontal">
+          <div>
+            <span class="eyeless">个人学习资料</span>
+            <strong>资料库</strong>
+          </div>
+          <span id="taskCount" class="count">0</span>
+        </div>
+        <div class="queue-tools">
+          <button type="button" class="secondary" data-open-courses>课程与引用对照</button>
+          <input id="taskSearch" type="search" placeholder="搜索标题、来源或错误">
+          <select id="statusFilter" aria-label="任务状态筛选">
+            <option value="all">全部</option>
+            <option value="running">运行中</option>
+            <option value="success">已完成</option>
+            <option value="failed">失败</option>
+          </select>
+          <button id="deleteAllTasksButton" class="danger-button queue-delete-all" type="button" title="删除全部已结束任务">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"/></svg>
+            <span>删除全部</span>
+          </button>
+        </div>
+        <div class="queue-stats">
+          <span><b id="successCount">0</b>完成</span>
+          <span><b id="runningCount">0</b>运行</span>
+          <span><b id="failedCount">0</b>失败</span>
+        </div>
+        <section id="materialLibrarySection" class="material-library-section" hidden aria-label="本地学习资料">
+          <header><strong>本地资料</strong><button id="refreshMaterialsButton" type="button">刷新</button></header>
+          <div id="materialsList" class="material-list"></div>
+        </section>
+        <div id="tasks" class="task-list"></div>
+      </section>
+
+      <section id="resultPanel" class="result-panel">
+        <div class="result-header">
+          <div>
+            <span id="selectedSource" class="eyeless">结果工作区</span>
+            <h2 id="selectedTitle">选择一个任务</h2>
+            <div id="resultMeta" hidden></div>
+          </div>
+          <div class="result-actions">
+            <button id="unifiedExportButton" class="result-export-button" type="button">导出</button>
+            <button id="studyProposalPrimaryButton" class="result-version-button" type="button">复习</button>
+            <details id="resultMoreActions" class="result-more">
+              <summary class="icon-button result-more-trigger" title="更多操作" aria-label="更多操作">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h.01M12 12h.01M19 12h.01"/></svg>
+                <span>高级</span>
+              </summary>
+              <div class="result-more-panel" aria-label="高级导出和诊断">
+                <div class="result-quick-menu" aria-label="笔记操作">
+                  <button id="copyButton" class="result-menu-item" type="button"><span>复制笔记</span></button>
+                  <button id="newNoteVersionButton" class="result-menu-item" type="button" hidden>生成新版本</button>
+                </div>
+                <button id="continueFromMediaButton" class="continue-media-button" type="button" hidden disabled>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v4H4zM4 15h16v4H4z"/><path d="M8 9v6M16 9v6"/></svg>
+                  <span>继续切片总结</span>
+                </button>
+                <section class="result-menu-section" aria-labelledby="resultExportMenuLabel">
+                  <strong id="resultExportMenuLabel">导出内容</strong>
+                  <div class="result-menu-items">
+                    <button id="bundleButton" class="result-menu-item" type="button">
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v13H4z"/><path d="M4 7l2-3h12l2 3"/><path d="M9 12h6"/></svg>
+                      <span>完整资料包</span>
+                    </button>
+                    <button id="sanitizedBundleButton" class="result-menu-item" type="button">
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v13H4z"/><path d="M4 7l2-3h12l2 3"/><path d="M8 13h8M8 16h5"/></svg>
+                      <span>脱敏分享包</span>
+                    </button>
+                    <button id="notionExportButton" class="result-menu-item" type="button">
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
+                      <span>Notion JSON</span>
+                    </button>
+                    <button id="docxExportButton" class="result-menu-item" type="button">
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h10l4 4v14H5z"/><path d="M15 3v5h5M8 12h8M8 16h8"/></svg>
+                      <span>Word 文档</span>
+                    </button>
+                    <button id="pdfExportButton" class="result-menu-item" type="button">
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h10l4 4v14H5z"/><path d="M15 3v5h5M8 13h8M8 17h6"/></svg>
+                      <span>打印级 PDF</span>
+                    </button>
+                    <button id="downloadButton" class="result-menu-item" type="button">
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11M7 9l5 5 5-5M5 19h14"/></svg>
+                      <span>Markdown 笔记</span>
+                    </button>
+                    <button id="subtitlesButton" class="result-menu-item" type="button">
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5z"/><path d="M8 9h8M8 13h5M8 17h7"/></svg>
+                      <span>字幕文件</span>
+                    </button>
+                    <button id="mediaButton" class="result-menu-item" type="button">
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v14H5z"/><path d="M10 9l5 3-5 3z"/></svg>
+                      <span>本地视频</span>
+                    </button>
+                    <button id="visualWindowsButton" class="result-menu-item" type="button">
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/><path d="M7.5 11v2M16.5 11v2M11 7.5h2M11 16.5h2"/></svg>
+                      <span>关键画面索引</span>
+                    </button>
+                  </div>
+                </section>
+                <section class="result-menu-section" aria-labelledby="resultDiagnosticMenuLabel">
+                  <strong id="resultDiagnosticMenuLabel">技术信息</strong>
+                  <div class="result-menu-items">
+                    <button id="studyProposalButton" class="result-menu-item" type="button">
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h6M8 16h4"/></svg>
+                      <span>生成复习卡片</span>
+                    </button>
+                    <button id="manifestButton" class="result-menu-item" type="button">
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l3 3v15H6z"/><path d="M14 3v4h4"/><path d="M9 10h6M9 14h6M9 18h4"/></svg>
+                      <span>技术文件</span>
+                    </button>
+                    <button id="diagnosticsButton" class="result-menu-item" type="button">
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l3 3v15H6z"/><path d="M14 3v4h4"/><path d="M9 11h6M9 15h6M9 19h3"/></svg>
+                      <span>查看问题详情</span>
+                    </button>
+                    <button id="supportPackageButton" class="result-menu-item" type="button">
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4z"/><path d="M8 9h8M8 13h5M8 17h7"/></svg>
+                      <span>脱敏诊断包</span>
+                    </button>
+                  </div>
+                </section>
+              </div>
+            </details>
+            <p id="exportStatus" class="export-status" aria-live="polite"></p>
+            <button id="openExportFolderButton" class="export-folder-button" type="button" hidden>打开导出文件夹</button>
+          </div>
+        </div>
+
+        <div class="result-tabs" role="tablist" aria-label="任务结果">
+          <button class="result-tab active" role="tab" aria-selected="true" data-tab="note">笔记</button>
+          <button class="result-tab" role="tab" aria-selected="false" data-tab="slices">出处</button>
+          <details class="result-tool-tabs">
+            <summary>高级工具</summary>
+            <div>
+              <button class="result-tab" role="tab" aria-selected="false" data-tab="transcript">完整字幕</button>
+              <button class="result-tab" role="tab" aria-selected="false" data-tab="frames">原始画面</button>
+              <button class="result-tab" role="tab" aria-selected="false" data-tab="diagnostics">问题详情</button>
+            </div>
+          </details>
+        </div>
+        <div id="detail" class="detail empty">任务完成后显示结构化结果。</div>
+      </section>
+    </main>
+
+    <div id="onboardingOverlay" class="onboarding-overlay" hidden>
+      <section class="onboarding-dialog" role="dialog" aria-modal="true" aria-labelledby="onboardingTitle">
+        <header>
+          <div>
+            <h2 id="onboardingTitle">欢迎使用 LearnNote</h2>
+            <p>先确认本地服务即可开始；浏览器扩展和 AI 模型按需配置。</p>
+          </div>
+          <button id="closeOnboardingButton" class="icon-button" type="button" aria-label="关闭引导" title="关闭引导">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19"/></svg>
+          </button>
+        </header>
+        <div class="onboarding-steps">
+          <article data-onboarding-step="backend">
+            <span class="onboarding-step-icon" aria-hidden="true">1</span>
+            <div><strong>连接本地服务</strong><small>用于下载和处理视频</small></div>
+            <em id="onboardingBackendStatus">正在检查</em>
+            <button id="onboardingRetryButton" type="button">重新检查</button>
+          </article>
+            <article data-onboarding-step="extension">
+              <span class="onboarding-step-icon" aria-hidden="true">2</span>
+              <div><strong>连接浏览器扩展（可选）</strong><small>用于读取当前播放页；本地视频和链接不需要它</small></div>
+              <em id="onboardingExtensionStatus">稍后配置</em>
+              <button id="onboardingExtensionButton" type="button">安装或修复</button>
+            </article>
+            <article data-onboarding-step="model">
+              <span class="onboarding-step-icon" aria-hidden="true">3</span>
+              <div><strong>配置 AI 模型（可选）</strong><small>没有 API Key 也可以先用本地转写和降级笔记</small></div>
+              <em id="onboardingModelStatus">稍后配置</em>
+              <button id="onboardingModelButton" type="button">去配置</button>
+          </article>
+        </div>
+        <footer>
+          <button id="skipOnboardingButton" class="secondary action-button" type="button">稍后设置</button>
+          <button id="finishOnboardingButton" class="primary action-button" type="button">开始使用</button>
+        </footer>
+      </section>
+    </div>
+
+    <aside id="aiAssistantDrawer" class="ai-assistant-drawer" hidden aria-label="AI 学习侧栏">
+      <header class="assistant-header">
+        <div><span>AI 助教</span><strong>围绕当前笔记回答</strong></div>
+        <div class="assistant-header-actions">
+          <button id="expandAiAssistantButton" class="icon-button" type="button" aria-label="扩宽 AI 侧栏" title="扩宽侧栏" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M8 4H4v4M16 4h4v4M8 20H4v-4M16 20h4v-4"/><path d="M9 9l-5-5M15 9l5-5M9 15l-5 5M15 15l5 5"/></svg></button>
+          <button id="closeAiAssistantButton" class="icon-button" type="button" aria-label="收起 AI 侧栏" title="收起侧栏"><svg viewBox="0 0 24 24"><path d="M5 5l14 14M19 5 5 19"/></svg></button>
+        </div>
+      </header>
+      <div class="assistant-context-bar">
+        <i aria-hidden="true"></i>
+        <div><span>当前笔记</span><strong id="assistantTaskLabel">请先在笔记库选择一篇笔记</strong></div>
+        <small id="assistantGroundingState">等待选择</small>
+      </div>
+      <div id="assistantConversation" class="assistant-conversation" aria-live="polite"><div class="assistant-empty"><strong>从一个具体问题开始</strong><p>回答会引用当前笔记的字幕、时间点和画面切片。</p></div></div>
+      <div class="assistant-suggestions">
+        <button type="button" data-assistant-question="用三点总结这节课的核心内容">总结核心内容</button>
+        <button type="button" data-assistant-question="哪些地方最容易理解错？">找出易错点</button>
+        <button type="button" data-assistant-question="根据这节课给我出三道复习题">生成复习题</button>
+      </div>
+      <form id="assistantForm" class="assistant-composer">
+        <textarea id="assistantQuestion" rows="3" maxlength="1000" placeholder="针对这篇笔记提问..."></textarea>
+        <footer>
+          <small>Enter 发送 · Shift + Enter 换行</small>
+          <button id="assistantSubmitButton" class="primary action-button" type="submit" aria-label="发送问题"><span id="assistantSubmitLabel">发送</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12L20 4l-5 16-3-6-8-2z"/><path d="M12 14l8-10"/></svg></button>
+        </footer>
+      </form>
+    </aside>
+
+    <div id="noteVersionOverlay" class="note-version-overlay" hidden>
+      <section class="note-version-dialog" role="dialog" aria-modal="true" aria-labelledby="noteVersionTitle">
+        <header><div><span>生成另一个版本</span><h2 id="noteVersionTitle">重新整理这篇笔记</h2><p>复用已经下载的视频，不重新下载。</p></div><button id="closeNoteVersionButton" class="icon-button" type="button" aria-label="关闭"><svg viewBox="0 0 24 24"><path d="M5 5l14 14M19 5 5 19"/></svg></button></header>
+        <div class="note-version-source"><span>原视频</span><strong id="noteVersionSourceTitle">-</strong></div>
+        <div class="note-version-grid">
+          <label><span>笔记用途</span><select id="noteVersionStyle"><option value="study">认真学习</option><option value="concise">快速回顾</option><option value="exam">备考自测</option><option value="lecture">课堂讲义</option><option value="concept">概念精讲</option><option value="code">代码教程</option><option value="academic">论文精读</option></select></label>
+          <label><span>内容结构</span><select id="noteVersionTemplate"><option value="standard">标准学习笔记</option><option value="timeline">按时间轴</option><option value="cornell">康奈尔笔记</option><option value="qa">问答整理</option><option value="visual-handout">图文讲义</option><option value="flashcards">记忆卡片</option></select></label>
+          <label><span>详细程度</span><select id="noteVersionDepth"><option value="brief">简洁</option><option value="standard" selected>标准</option><option value="deep">深入</option></select></label>
+          <label class="note-version-switch"><span><b>结合视频画面</b><small>使用现有切片重新理解演示与 PPT</small></span><input id="noteVersionVisual" type="checkbox" checked></label>
+        </div>
+        <footer><span id="noteVersionStatus" role="status"></span><button id="createNoteVersionButton" class="primary action-button" type="button">生成新版本</button></footer>
+      </section>
+    </div>
+
+    <div id="releaseNotesOverlay" class="release-notes-overlay" hidden>
+      <section class="release-notes-dialog" role="dialog" aria-modal="true" aria-labelledby="releaseNotesTitle">
+        <header>
+          <div>
+            <span>版本更新</span>
+            <h2 id="releaseNotesTitle">LearnNote 有新变化</h2>
+            <p id="releaseNotesSummary"></p>
+          </div>
+          <button id="closeReleaseNotesButton" class="icon-button" type="button" aria-label="关闭更新说明" title="关闭">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19"/></svg>
+          </button>
+        </header>
+        <div class="release-notes-meta"><strong id="releaseNotesVersion">v-</strong><span id="releaseNotesDate"></span></div>
+        <div id="releaseNotesHighlights" class="release-notes-highlights"></div>
+        <section id="releaseNotesFixesSection" class="release-notes-fixes">
+          <h3>修复与改进</h3>
+          <ul id="releaseNotesFixes"></ul>
+        </section>
+        <footer><small>之后可在“设置 → 下载与存储”中重新查看</small><button id="confirmReleaseNotesButton" class="primary action-button" type="button">知道了</button></footer>
+      </section>
+    </div>
+
+    <div id="studyProposalOverlay" class="study-proposal-overlay" hidden>
+      <section class="study-proposal-dialog" role="dialog" aria-modal="true" aria-labelledby="studyProposalTitle">
+        <header><div><span>本地复习</span><h2 id="studyProposalTitle">确认复习卡片</h2><p>批量选择并编辑后写入本地复习库。</p></div><button id="closeStudyProposalButton" class="icon-button" type="button" aria-label="取消">×</button></header>
+        <div id="studyProposalList" class="study-proposal-list"></div>
+        <footer><span id="studyProposalSelectionStatus">已选择 0 张</span><button id="cancelStudyProposalButton" class="secondary action-button" type="button">取消</button><button id="confirmStudyProposalButton" class="primary action-button" type="button">加入复习库</button></footer>
+      </section>
+    </div>
+
+<script src="/web/i18n.js?v=20260831-clarity1"></script>
+    <script src="/web/markdown.js?v=20260906-v0156"></script>
+    <script src="/web/task-links.js?v=20260821-task-links1"></script>
+    <script src="/web/learning.js?v=20260906"></script>
+    <script src="/web/personal-notes.js?v=20260906"></script>
+    <script src="/web/courses.js?v=20260906"></script>
+    <script src="/web/app.js?v=20260906-v0156"></script>
+    <script src="/web/model-setup.js?v=20260831-model1"></script>
+    <script src="/web/editorial.js?v=20260831-clarity1"></script>
+  </body>
+</html>

@@ -2,6 +2,14 @@
 
 All notable changes to LearnNote are documented here. The project follows semantic versioning while the `0.x` series is under active development.
 
+## 0.2.0 - Redesign preview
+
+- Replace the default application shell with an independent reading workspace: one creation dialog, source panel, editable user revisions, annotations and focused review.
+- Preserve legacy specialist tools at `/web/classic.html` while moving core interactions off the old app script and layered stylesheets.
+- Replace repetitive default fallback templates with explicitly labeled complete transcript extracts. Process long text-model inputs in blocks rather than silently truncating the tail.
+- Redesign the public website and README around actual user workflows and stable release links.
+- Add optimistic edit-conflict checks, full-source preservation tests and a browser interaction gate for the new workspace.
+
 ## 0.1.56 - 2026-09-06
 
 ### Added

@@ -215,16 +215,16 @@ class LocalUploadValidationTests(unittest.TestCase):
         response = self.client.get("/")
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn('/web/styles.css', response.text)
-        self.assertIn('/web/app.js', response.text)
+        self.assertIn('/web/desk.css', response.text)
+        self.assertIn('/web/desk.js', response.text)
 
-        css = self.client.get("/web/styles.css")
-        script = self.client.get("/web/app.js")
+        css = self.client.get("/web/desk.css")
+        script = self.client.get("/web/desk.js")
 
         self.assertEqual(css.status_code, 200)
-        self.assertIn(".app-shell", css.text)
+        self.assertIn(".workspace", css.text)
         self.assertEqual(script.status_code, 200)
-        self.assertIn("loadTasks", script.text)
+        self.assertIn("openItem", script.text)
 
     def test_health_reports_duration_probe_fallback(self) -> None:
         response = self.client.get("/health")
@@ -2451,8 +2451,8 @@ class ApiPipelineTests(unittest.TestCase):
                 self.assertIn("transcript_excerpt", visual_index["windows"][0])
                 note = self.client.get(f"/api/tasks/{task_id}/note").text
                 self.assertIn("Local synthetic lesson", note)
-                self.assertIn("画面-字幕对齐索引", note)
-                self.assertIn("画面索引", note)
+                self.assertIn("字幕摘录", note)
+                self.assertIn("画面参考", note)
                 export = self.client.get(f"/api/tasks/{task_id}/exports/markdown")
                 self.assertEqual(export.status_code, 200)
                 self.assertIn("text/markdown", export.headers["content-type"])
@@ -2924,7 +2924,7 @@ class ApiPipelineTests(unittest.TestCase):
                     self.assertIn(f"Source media: {source_media_path}", rerun_diagnostics.text)
                     rerun_note = self.client.get(f"/api/tasks/{rerun_task_id}/note").text
                     self.assertIn("Download only lesson", rerun_note)
-                    self.assertIn("画面索引", rerun_note)
+                    self.assertIn("画面参考", rerun_note)
                     rerun_bundle = self.client.get(f"/api/tasks/{rerun_task_id}/exports/bundle")
                     self.assertEqual(rerun_bundle.status_code, 200)
                     with zipfile.ZipFile(io.BytesIO(rerun_bundle.content)) as archive:

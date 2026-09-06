@@ -186,7 +186,7 @@ context.window.localStorage.setItem("learnnote_model_settings", JSON.stringify({
 }));
 const webCode = await readFile(new URL("../app.js", import.meta.url), "utf8");
 const markdownCode = await readFile(new URL("../markdown.js", import.meta.url), "utf8");
-const indexHtml = await readFile(new URL("../index.html", import.meta.url), "utf8");
+const indexHtml = await readFile(new URL("../classic.html", import.meta.url), "utf8");
 const stylesCss = await readFile(new URL("../styles.css", import.meta.url), "utf8");
 const workspaceCss = await readFile(new URL("../workspace.css", import.meta.url), "utf8");
 const productCss = await readFile(new URL("../product.css", import.meta.url), "utf8");

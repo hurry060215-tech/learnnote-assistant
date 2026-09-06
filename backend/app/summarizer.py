@@ -246,7 +246,7 @@ def note_template_instruction(options: TaskOptions) -> str:
         "exam-review": "Exam review: organize definitions, testable points, memory cards, and practice questions using only source-supported facts.",
         "quick-summary": "Quick summary: keep only supported conclusions and a compact timestamped timeline.",
         "custom": "Custom profile: follow note_profile_name, note_profile_prompt, and note_profile_sections without weakening evidence constraints.",
-        "standard": "标准学习笔记：按课程主题、时间轴重点、核心概念、例题/演示步骤、易错点、复习问题组织。",
+        "standard": "阅读笔记：用内容本身命名章节，按概念关系或操作顺序组织。解释必须连贯，保留材料中的例子和条件；避免重复的摘要、概念清单和空章节。",
         "timeline": "时间轴模板：优先按时间段组织，每段保留关键结论、画面证据、字幕依据和回看动作。",
         "cornell": "康奈尔模板：每个主题输出线索栏、笔记栏和课后总结，并在末尾生成复习问题。",
         "qa": "问答复习模板：把内容整理成问题、答案、证据时间点和易错提醒，适合背诵复盘。",
@@ -268,7 +268,7 @@ def note_style_instruction(options: TaskOptions) -> str:
         "operation-tutorial": "Operation tutorial: require steps, interface changes, commands, and common errors. Every item must cite transcript or visual evidence; never invent missing operations.",
         "exam-review": "Exam review: extract definitions, test points, memory cards, and answerable practice questions grounded in the material.",
         "quick-summary": "Quick summary: output only key conclusions and timestamped navigation, with no speculative background.",
-        "study": "学习笔记：解释概念、保留例子和易错点，结尾给出可执行的复习任务。",
+        "study": "学习笔记：解释材料中的概念、例子和条件；没有证据时不补写易错点或复习任务。",
         "concise": "重点速记：只保留高价值结论、关键词和时间点，避免重复背景。",
         "outline": "重点速记：只保留高价值结论、关键词和时间点，避免重复背景。",
         "exam": "考点复习：突出定义、公式、常见题型、易错项和自测问题。",
@@ -328,8 +328,8 @@ def learning_goal_instruction(options: TaskOptions) -> str:
     goal = learning_goal(options)
     instructions = {
         "auto": (
-            "自动默认：先判断材料更适合深入理解、快速回顾还是备考自测，再采用对应结构；"
-            "在开头用一行写明所选目标和判断依据。不要为了凑模板生成材料中不存在的章节。"
+            "默认阅读笔记：先用一段话交代材料的具体问题和主要结论，再按主题或操作顺序展开；"
+            "标题必须说明实际内容。每节写清结论、解释、材料中的例子或推导及适用条件；同一内容只讲一次。不要在正文解释整理策略，不要为了凑模板生成材料中不存在的章节。"
         ),
         "deep": (
             "深入理解：严格按“知识地图 → 概念精讲（直觉、定义、机制）→ 证据与应用 → "
@@ -396,7 +396,7 @@ def note_generation_contract(options: TaskOptions) -> str:
     return (
         use_case_contracts.get(use_case, "")
         + custom_profile + f"学习目标：{learning_goal_instruction(options)}\n"
-        f"深度约束：{summary_depth_instruction(options)}\n"
+        f"深度约束：{summary_depth_instruction(options) if learning_goal(options) != 'auto' else {'brief': '精简：保留核心结论和必要前提，省略次要例子。', 'standard': '标准：保留核心解释、原有例子和因果步骤；篇幅随材料，不设最低字数。', 'deep': '详细：保留推导、操作步骤、例子和条件；不扩写材料外的知识。'}.get(options.summary_depth, '篇幅随材料。')}\n"
         "共同约束：时间戳只能来自字幕段或画面窗口；不要编造时长、画面、例题、公式、工具、事实或课程没有给出的通用建议。"
         "自拟问题必须标为“自测题”，答案只能由材料直接推出，不能伪装成老师讲过的例题。"
         "没有对应内容时省略可选章节，不要用空章节或套话补齐。"
@@ -1176,92 +1176,8 @@ def local_markdown_note(title: str, transcript: TranscriptResult, grids: list[Fr
     if learning_goal(resolved_options) != "auto":
         return _local_goal_note(title, transcript, grids, page_url, resolved_options, page_context)
 
-    key_sentences = _sentences(transcript.full_text, limit=6)
-    windows = build_visual_windows(transcript, grids)
-
-    lines.extend(_learning_context_lines(title, transcript, windows, page_url, page_context))
-    lines += ["> 整理方式：智能整理 · 标准", ""]
-
-    lines += ["## 课程主题", ""]
-    if transcript.full_text and "未安装 faster-whisper" not in transcript.full_text:
-        preview = transcript.full_text.replace("\n", " ")[:320]
-        lines += [f"{preview}{'...' if len(transcript.full_text) > 320 else ''}", ""]
-    else:
-        lines += ["根据可下载视频画面和可用文本生成初步笔记。", ""]
-
-    lines += ["## 时间轴重点", ""]
-    lines.extend(_timeline_lines(transcript, grids))
-    lines.append("")
-
-    lines += ["## 学习路线", ""]
-    lines.extend(_study_route_lines(transcript, windows))
-    lines.append("")
-
-    lines += ["## 分段图文摘要", ""]
-    lines.extend(_window_summary_lines(transcript, grids))
-    lines.append("")
-
-    if windows:
-        lines += ["## 视觉切片学习卡", ""]
-        lines.extend(_window_learning_card_lines(windows))
-
-    if windows:
-        lines += ["## 画面-字幕对齐索引", ""]
-        for window in windows:
-            lines.append(
-                f"- {window.id} `{_format_ts(window.start)} - {_format_ts(window.end)}` "
-                f"{window.frame_count} 帧：{window.grid_url}"
-            )
-            if window.transcript_excerpt:
-                lines.append(f"  同步字幕：{window.transcript_excerpt}")
-        lines.append("")
-
-    lines += ["## 核心概念", ""]
-    if key_sentences:
-        for item in key_sentences[:5]:
-            lines.append(f"- {item}")
-    else:
-        lines.append("- 当前任务没有可用字幕；请优先查看画面索引，或安装 faster-whisper 后重新处理。")
-    lines.append("")
-
-    lines += ["## 例题 / 演示步骤", ""]
-    if grids:
-        for grid in grids[:8]:
-            window = _segments_window(transcript, grid.start, grid.end).replace("\n", " ")
-            detail = window[:180] + ("..." if len(window) > 180 else "")
-            lines.append(f"- `{_format_ts(grid.start)} - {_format_ts(grid.end)}` 回看画面网格：{grid.url}")
-            if detail:
-                lines.append(f"  相关字幕：{detail}")
-    else:
-        lines.append("- 未生成画面网格，无法定位演示步骤。")
-    lines.append("")
-
-    lines += ["## 易错点", ""]
-    lines.append("- 对照时间轴回看术语首次出现的位置，避免只记结论、不记使用条件。")
-    lines.append("- 对照画面索引回看界面操作、代码演示、PPT 切换等只靠字幕容易遗漏的内容。")
-    if transcript.warning:
-        lines.append("- 当前转写不完整，关键概念需要结合原视频再次确认。")
-    lines.append("")
-
-    lines += ["## 画面索引", ""]
-    if grids:
-        for index, grid in enumerate(grids, start=1):
-            label = f"W{index:03d} {_format_ts(grid.start)} - {_format_ts(grid.end)}"
-            lines.append(f"- W{index:03d} `{_format_ts(grid.start)} - {_format_ts(grid.end)}` {grid.frame_count} 帧：{grid.url}")
-            lines.append(f"![{label}]({grid.url})")
-    else:
-        lines.append("- 未生成帧预览。")
-    lines.append("")
-
-    lines += [
-        "## 复习问题",
-        "",
-        "1. 这段课程的核心概念是什么？",
-        "2. 哪些画面或演示步骤需要回看？",
-        "3. 哪些术语、公式或操作步骤容易遗漏？",
-        "",
-    ]
-    return "\n".join(lines)
+    from .reading_notes import readable_extract
+    return readable_extract(title, transcript, grids, page_url)
 
 
 def summarize_with_llm(
@@ -1493,11 +1409,28 @@ def summarize_with_llm(
                 _record_llm_event(events, "vision_merge", code, exc, model=model)
                 return None
 
-    text_transcript_prompt = transcript.full_text[:60000]
-    original_transcript_full_text = transcript.full_text
+    from .reading_notes import source_blocks
+    blocks = source_blocks(transcript)
+    if len(blocks) > 3:
+        # Every block is processed. A failure returns an honest full-source fallback,
+        # rather than silently presenting a successful summary of the opening only.
+        sections = []
+        for index, block in enumerate(blocks, 1):
+            check_cancel()
+            partial = summarize_with_llm(
+                title, TranscriptResult(full_text=block), [],
+                options.model_copy(update={"visual_understanding": False}),
+                page_url=page_url, page_context=page_context,
+                events=events, cancel_check=cancel_check,
+            )
+            if not partial:
+                return None
+            body = re.sub(r"^# [^\n]*\n+", "", partial[0], count=1)
+            sections.append(f"## 第 {index} 部分\n\n{body}")
+        return (f"# {title}\n\n" + "\n\n".join(sections), "text-llm")
+    text_transcript_prompt = "\n\n".join(blocks)
     if page_context_prompt:
         text_transcript_prompt = f"{page_context_prompt}\n{text_transcript_prompt}"
-        transcript.full_text = text_transcript_prompt
     content: list[dict] = [
         {
             "type": "text",
@@ -1509,11 +1442,10 @@ def summarize_with_llm(
                 f"用途要求：{note_style_instruction(options)}\n"
                 f"版式要求：{note_template_instruction(options)}\n"
                 "不要在成品笔记中复述模型提示、内部参数、风格名称、深度约束或兼容说明；直接输出读者需要的正文。\n"
-                f"标题：{title}\n来源：{page_url}\n\n字幕：\n{transcript.full_text[:60000]}"
+                f"标题：{title}\n来源：{page_url}\n\n字幕：\n{text_transcript_prompt}"
             ),
         }
     ]
-    transcript.full_text = original_transcript_full_text
 
     try:
         check_cancel()

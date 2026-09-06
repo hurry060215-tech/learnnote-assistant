@@ -3883,30 +3883,12 @@ class SummaryFallbackTests(unittest.TestCase):
         grids = [FrameGrid(path="", url="http://127.0.0.1/grid.jpg", start=0, end=20, frame_count=2, frame_timestamps=[0, 10])]
         note = local_markdown_note("Python lesson", transcript, grids, "https://example.com")
         self.assertIn("# Python lesson", note)
-        self.assertIn("00:00:05", note)
-        self.assertIn("## 学习上下文", note)
-        self.assertIn("课程标题：Python lesson", note)
-        self.assertIn("来源页面：https://example.com（example.com）", note)
-        self.assertIn("文本来源：unit", note)
-        self.assertIn("画面切片：1 个窗口，覆盖 `00:00:00 - 00:00:20`；1/1 个窗口有同步字幕。", note)
-        self.assertIn("主题线索：Python lesson；函数用于封装逻辑。", note)
-        self.assertIn("用 W 编号回看画面网格", note)
-        self.assertIn("## 学习路线", note)
-        self.assertIn("优先回看：W001 `00:00:00 - 00:00:20`", note)
-        self.assertIn("分段图文摘要", note)
-        self.assertIn("视觉切片学习卡", note)
-        self.assertIn("回看目标：对照画面确认本段的板书、PPT 切换、代码/界面操作和例题步骤是否被字幕完整覆盖。", note)
-        self.assertIn("![W001 00:00:00 - 00:00:20](http://127.0.0.1/grid.jpg)", note.split("## 画面-字幕对齐索引")[0])
-        self.assertIn("帧时间：00:00:00, 00:00:10", note.split("## 画面-字幕对齐索引")[0])
-        self.assertIn("窗口检查点", note)
-        self.assertIn("00:00:05` 函数用于封装逻辑。；对照画面确认对应的板书、PPT、代码或操作步骤。", note)
-        self.assertIn("自测问题", note)
-        self.assertIn("00:00:05` 这句“函数用于封装逻辑。”在画面中对应的标题、公式、代码或操作状态是什么？", note)
-        self.assertIn("画面-字幕对齐索引", note)
+        self.assertIn("`00:05` 函数用于封装逻辑。", note)
+        self.assertIn("字幕摘录", note)
+        self.assertEqual(note.count("函数用于封装逻辑。"), 1)
         self.assertIn("http://127.0.0.1/grid.jpg", note)
-        self.assertIn("W001 `00:00:00 - 00:00:20`", note)
-        self.assertIn("![W001 00:00:00 - 00:00:20](http://127.0.0.1/grid.jpg)", note)
-        self.assertIn("复习问题", note)
+        self.assertNotIn("## 易错点", note)
+        self.assertNotIn("## 复习问题", note)
 
     def test_local_note_uses_note_template_option(self) -> None:
         transcript = TranscriptResult(
@@ -4051,8 +4033,8 @@ class SummaryFallbackTests(unittest.TestCase):
             page_context="Chapter 7 dynamic programming homework prompt",
         )
 
-        self.assertIn("页面上下文：已采集", note)
-        self.assertIn("不作为转写或笔记证据", note)
+        self.assertIn("字幕摘录", note)
+        self.assertNotIn("## 学习上下文", note)
         self.assertNotIn("Chapter 7 dynamic programming homework prompt", note)
         self.assertEqual(transcript.full_text, "timestamped transcript line")
 
@@ -4069,9 +4051,9 @@ class SummaryFallbackTests(unittest.TestCase):
 
         self.assertEqual(source, "local-template")
         self.assertIn("API Key", warning)
-        self.assertIn("## 学习路线", note)
-        self.assertIn("## 学习上下文", note)
-        self.assertIn("画面-字幕对齐索引", note)
+        self.assertIn("字幕摘录", note)
+        self.assertIn("画面参考", note)
+        self.assertIn("函数用于封装逻辑。", note)
 
     def test_summary_diagnostics_record_page_context_usage(self) -> None:
         diagnostics = build_summary_diagnostics(
