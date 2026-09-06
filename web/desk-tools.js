@@ -16,7 +16,8 @@ export function installTools(ctx) {
     course = null,
     courses = [],
     proposals = [],
-    batchRunning = false;
+    batchRunning = false,
+    cleanupPolicy = null;
   async function api(path, options) {
     const token = generation;
     const result = await request(path, options);
@@ -220,7 +221,23 @@ export function installTools(ctx) {
     dialog.dataset.sourceId = s.id;
     dialog.dataset.sourceKind = s.kind;
   }
+  function cleanupSummary(result) {
+    const items = result.candidates || [];
+    if (!items.length) return "没有符合当前规则的旧任务。";
+    const size = (bytes) =>
+      (Number(bytes || 0) / 1024 / 1024).toFixed(1) + " MB";
+    return (
+      `${result.dry_run ? "将清理" : "已清理"} ${items.length} 个任务 · ${size(result.dry_run ? result.reclaimable_bytes : result.reclaimed_bytes)}\n\n` +
+      items
+        .map(
+          (item) =>
+            `${item.title}\n${String(item.created_at).slice(0, 10)} · ${size(item.bytes)}`,
+        )
+        .join("\n\n")
+    );
+  }
   async function storage() {
+    cleanupPolicy = null;
     const token = show("存储与诊断", '<p class="muted">正在检查本地存储…</p>');
     const result = await api("/api/storage");
     if (token !== generation) return;
@@ -429,16 +446,17 @@ export function installTools(ctx) {
       );
     },
     cleanup: async () => {
+      if (!cleanupPolicy)
+        throw new Error("请先预览清理范围。修改规则后需要重新预览。");
       if (!confirm("永久删除预览范围中的旧任务及其文件？")) return;
       const r = await api("/api/storage/cleanup", {
         method: "POST",
         body: JSON.stringify({
-          retention_days: Number($("retention").value),
-          keep_recent: Number($("keepRecent").value),
+          ...cleanupPolicy,
           dry_run: false,
         }),
       });
-      $("cleanupPreview").textContent = JSON.stringify(r, null, 2);
+      $("cleanupPreview").textContent = cleanupSummary(r);
       $("executeCleanup").hidden = true;
       await refresh();
     },
@@ -714,8 +732,12 @@ export function installTools(ctx) {
             dry_run: true,
           }),
         });
-        $("cleanupPreview").textContent = JSON.stringify(r, null, 2);
-        $("executeCleanup").hidden = false;
+        $("cleanupPreview").textContent = cleanupSummary(r);
+        cleanupPolicy = {
+          retention_days: Number($("retention").value),
+          keep_recent: Number($("keepRecent").value),
+        };
+        $("executeCleanup").hidden = !r.candidates?.length;
       } else if (form.dataset.annotationId) {
         await api(
           `/api/personal/${dialog.dataset.sourceKind}/${dialog.dataset.sourceId}`,
@@ -731,6 +753,12 @@ export function installTools(ctx) {
         ctx.reloadAnnotations();
       }
     });
+  });
+  dialog.addEventListener("input", (event) => {
+    if (event.target.closest("#cleanupForm")) {
+      cleanupPolicy = null;
+      $("executeCleanup").hidden = true;
+    }
   });
   dialog.addEventListener("cancel", () => {
     generation++;
