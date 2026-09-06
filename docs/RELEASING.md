@@ -20,6 +20,14 @@ This checklist is for maintainers publishing a desktop, extension, container, or
 
 ## Windows signing
 
+发布前还应执行 `python scripts/check-workflow-shells.py` 和 UI visual acceptance。
+`scripts/publish-release.ps1` 会复用未公开的 draft，补齐资产，下载后与 `SHA256SUMS.txt` 逐项比较，再公开。
+可先使用 `-ValidateOnly` 验证本地资产；此模式不调用 GitHub。已公开版本只允许验证，不允许用重跑覆盖二进制。
+
+每次构建额外输出 `LearnNote-SBOM.json`、`LearnNote-Resolved-Requirements.txt` 和 `LearnNote-Build-Source.json`。
+Windows x64/Python 3.12 构建使用 `backend/requirements.windows-py312.lock.txt` 的固定版本（含桌面、OCR和构建工具）。这些文件描述实际构建环境与源码，不等同于逐字节可复现的二进制承诺。tag 工作流会生成 GitHub provenance attestation；需要仓库支持对应 Actions 权限。
+建议将相关 PR 的 UI visual acceptance 也配置为仓库 required check；工作流文件本身不会自动更改分支保护规则。
+
 The release workflow supports Authenticode signing for both `LearnNote.exe` and the installer. Configure these repository Actions secrets:
 
 - `WINDOWS_SIGNING_CERT_BASE64`: base64-encoded PFX certificate;

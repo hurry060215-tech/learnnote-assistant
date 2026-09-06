@@ -69,7 +69,7 @@ async function main() {
     };
   });
   await page.waitForTimeout(200);
-  if (english.lang !== "en-US" || english.title !== "Settings" || english.nav !== "Settings" || !english.close.includes("Back") || english.workspaceTitle !== "Start with a video") {
+  if (english.lang !== "en-US" || english.title !== "Settings" || english.nav !== "Settings" || !english.close.includes("Back") || english.workspaceTitle !== "Start with one source") {
     throw new Error(`English locale contract failed: ${JSON.stringify(english)}`);
   }
 
@@ -98,7 +98,7 @@ async function main() {
       workspaceTitle: document.querySelector("#editorialHomeTitle")?.textContent || ""
     };
   });
-  if (chinese.lang !== "zh-CN" || chinese.title !== "设置" || chinese.nav !== "设置" || chinese.workspaceTitle !== "从一段视频开始") {
+  if (chinese.lang !== "zh-CN" || chinese.title !== "设置" || chinese.nav !== "设置" || chinese.workspaceTitle !== "从一段内容开始") {
     throw new Error(`Chinese locale fallback failed: ${JSON.stringify(chinese)}`);
   }
   await browser.close();

@@ -22,7 +22,7 @@
 </div>
 
 > [!NOTE]
-> **当前稳定版是 v0.1.55。** 本 README 同时介绍已经进入 `main`、但尚未随稳定安装包发布的预览能力；它们会明确标为 **main 预览**。
+> **当前公开稳定版是 v0.1.55；v0.1.56 候选版已完成本地修复与打包，正式发布等待 PR 审核和发布门禁。** 本 README 同时介绍已经进入 `main`、但尚未随稳定安装包发布的预览能力；它们会明确标为 **main 预览**。
 
 <div align="center">
   <img src="docs/assets/learnnote-workspace-clarity.png" alt="LearnNote main 预览版开始页：直接粘贴链接、接收当前视频、导入本地视频或学习资料" width="960">
@@ -198,6 +198,7 @@ cd D:\Projects\learnnote-assistant
 - [贡献指南](CONTRIBUTING.md) · [发布流程](docs/RELEASING.md) · [发布测试矩阵](docs/RELEASE_TEST_MATRIX.md)
 - [浏览器商店材料](docs/BROWSER_STORE_SUBMISSION.md) · [Obsidian 集成](integrations/obsidian-learnnote/README.md)
 - 完整验证入口：`.\scripts\verify-product.ps1 -Browser edge` 与 `.\scripts\audit-product-readiness.ps1`
+- 本轮修复与验收边界：[2026-09-06 优化记录](docs/IMPROVEMENTS_20260906.md)
 
 项目核心目录：`backend/`、`desktop/`、`extension/`、`web/`、`integrations/`、`scripts/` 和 `site/`。Docker/服务器部署会改变默认本地安全边界，操作者必须自行配置认证、HTTPS、存储和备份。
 

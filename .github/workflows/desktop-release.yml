@@ -8,6 +8,12 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
+
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   build-windows:
@@ -25,29 +31,37 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: backend/requirements.test.txt
+          cache-dependency-path: backend/requirements.windows-py312.lock.txt
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: "24"
       - name: Install desktop dependencies
         run: |
-          python -m pip install -r backend/requirements.test.txt
-          python -m pip install pyinstaller
+          python -m pip install -r backend/requirements.windows-py312.lock.txt
+          if ($LASTEXITCODE -ne 0) { throw "Pinned Windows dependency installation failed" }
+          python -c "import faster_whisper, ctranslate2, av, rapidocr_onnxruntime, webview"
+          if ($LASTEXITCODE -ne 0) { throw "Desktop ASR/OCR runtime import failed" }
           choco install innosetup --no-progress -y
+          if ($LASTEXITCODE -ne 0) { throw "Installer compiler installation failed" }
       - name: Run release gate
         shell: pwsh
         run: |
           $env:PYTHONPATH = "backend"
           python -m unittest discover backend/tests
+          if ($LASTEXITCODE -ne 0) { throw "Backend release gate failed" }
           python -m unittest discover scripts/tests -p "test_*.py"
+          if ($LASTEXITCODE -ne 0) { throw "Release script gate failed" }
           python -m unittest desktop.tests.test_desktop_launcher
-          Get-ChildItem extension/tests/*.test.mjs | ForEach-Object { node $_.FullName }
-          Get-ChildItem web/tests/*.test.mjs | ForEach-Object { node $_.FullName }
+          if ($LASTEXITCODE -ne 0) { throw "Desktop release gate failed" }
+          Get-ChildItem extension/tests/*.test.mjs | ForEach-Object { node $_.FullName; if ($LASTEXITCODE -ne 0) { throw "Extension release gate failed" } }
+          Get-ChildItem web/tests/*.test.mjs | ForEach-Object { node $_.FullName; if ($LASTEXITCODE -ne 0) { throw "Web release gate failed" } }
       - name: Build portable desktop client
         shell: pwsh
         run: |
           python scripts/generate-version-file.py build/learnnote-version.txt
+          if ($LASTEXITCODE -ne 0) { throw "Release build or signing command failed" }
           pyinstaller --noconfirm --clean LearnNote.spec
+          if ($LASTEXITCODE -ne 0) { throw "Release build or signing command failed" }
           @(
             "README.md",
             "LICENSE",
@@ -61,6 +75,7 @@ jobs:
           ./scripts/package-extension.ps1 -OutputPath build/LearnNote-Browser-Extension.zip
           Expand-Archive -LiteralPath build/LearnNote-Browser-Extension.zip -DestinationPath dist/LearnNote/extension -Force
           python scripts/audit-release-tree.py dist/LearnNote --output build/release-tree-audit.json
+          if ($LASTEXITCODE -ne 0) { throw "Release build or signing command failed" }
       - name: Sign Windows executable
         if: env.SIGNING_CERT_BASE64 != ''
         shell: pwsh
@@ -69,7 +84,9 @@ jobs:
           [IO.File]::WriteAllBytes($certificate, [Convert]::FromBase64String($env:SIGNING_CERT_BASE64))
           $timestamp = if ($env:SIGNING_TIMESTAMP_URL) { $env:SIGNING_TIMESTAMP_URL } else { "http://timestamp.digicert.com" }
           & signtool sign /fd SHA256 /td SHA256 /tr $timestamp /f $certificate /p $env:SIGNING_CERT_PASSWORD dist/LearnNote/LearnNote.exe
+          if ($LASTEXITCODE -ne 0) { throw "Release build or signing command failed" }
           & signtool verify /pa /v dist/LearnNote/LearnNote.exe
+          if ($LASTEXITCODE -ne 0) { throw "Release build or signing command failed" }
           Remove-Item -LiteralPath $certificate -Force
       - name: Package Windows release
         shell: pwsh
@@ -77,6 +94,7 @@ jobs:
           Compress-Archive -Path dist/LearnNote/* -DestinationPath LearnNote-Windows-x64.zip
           $version = (Get-Content extension/manifest.json -Raw -Encoding UTF8 | ConvertFrom-Json).version
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$version" scripts/learnnote-installer.iss
+          if ($LASTEXITCODE -ne 0) { throw "Release build or signing command failed" }
           Copy-Item dist-installer/LearnNote-Setup-x64.exe LearnNote-Setup-x64.exe
       - name: Sign Windows installer
         if: env.SIGNING_CERT_BASE64 != ''
@@ -86,7 +104,9 @@ jobs:
           [IO.File]::WriteAllBytes($certificate, [Convert]::FromBase64String($env:SIGNING_CERT_BASE64))
           $timestamp = if ($env:SIGNING_TIMESTAMP_URL) { $env:SIGNING_TIMESTAMP_URL } else { "http://timestamp.digicert.com" }
           & signtool sign /fd SHA256 /td SHA256 /tr $timestamp /f $certificate /p $env:SIGNING_CERT_PASSWORD LearnNote-Setup-x64.exe
+          if ($LASTEXITCODE -ne 0) { throw "Release build or signing command failed" }
           & signtool verify /pa /v LearnNote-Setup-x64.exe
+          if ($LASTEXITCODE -ne 0) { throw "Release build or signing command failed" }
           Remove-Item -LiteralPath $certificate -Force
       - name: Smoke-test installed release
         shell: pwsh
@@ -125,12 +145,19 @@ jobs:
           }
           $extensionAsset = "LearnNote-Browser-Extension-v$($manifest.version).zip"
           ./scripts/package-extension.ps1 -OutputPath "$PWD/$extensionAsset"
-          $assets = @("LearnNote-Windows-x64.zip", "LearnNote-Setup-x64.exe", $extensionAsset)
+          python scripts/build-provenance.py
+          if ($LASTEXITCODE -ne 0) { throw "Build inventory failed" }
+          $assets = @("LearnNote-Windows-x64.zip", "LearnNote-Setup-x64.exe", $extensionAsset, "LearnNote-SBOM.json", "LearnNote-Build-Source.json", "LearnNote-Resolved-Requirements.txt")
           $lines = foreach ($asset in $assets) {
             $hash = (Get-FileHash -LiteralPath $asset -Algorithm SHA256).Hash.ToLowerInvariant()
             "$hash  $asset"
           }
           $lines | Set-Content -LiteralPath SHA256SUMS.txt -Encoding ascii
+      - name: Attest release build provenance
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-checksums: SHA256SUMS.txt
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: LearnNote-release-assets
@@ -139,6 +166,9 @@ jobs:
             LearnNote-Setup-x64.exe
             LearnNote-Browser-Extension-v*.zip
             SHA256SUMS.txt
+            LearnNote-SBOM.json
+            LearnNote-Build-Source.json
+            LearnNote-Resolved-Requirements.txt
       - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
@@ -150,12 +180,4 @@ jobs:
           if (-not $extensionAsset) {
             throw "Versioned browser extension asset was not found."
           }
-          gh release create "${{ github.ref_name }}" `
-            "LearnNote-Windows-x64.zip" `
-            "LearnNote-Setup-x64.exe" `
-            $extensionAsset `
-            "SHA256SUMS.txt" `
-            --repo "${{ github.repository }}" `
-            --verify-tag `
-            --generate-notes `
-            --title "LearnNote ${{ github.ref_name }}"
+          ./scripts/publish-release.ps1 -Tag "${{ github.ref_name }}" -Repository "${{ github.repository }}"

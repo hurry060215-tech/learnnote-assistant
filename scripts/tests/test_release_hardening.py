@@ -12,6 +12,13 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class ReleaseHardeningContractTests(unittest.TestCase):
+    def test_windows_lock_contains_local_transcription_runtime(self) -> None:
+        lock = (ROOT / "backend/requirements.windows-py312.lock.txt").read_text(encoding="utf-8")
+        for package in ("faster-whisper", "ctranslate2", "av", "tokenizers"):
+            self.assertRegex(lock, rf"(?m)^{package}==[^\s]+$")
+        spec = (ROOT / "LearnNote.spec").read_text(encoding="utf-8")
+        self.assertIn("collect_all('faster_whisper')", spec)
+
     def test_external_actions_are_pinned_to_commit_shas(self) -> None:
         uses_pattern = re.compile(r"^\s*(?:-\s*)?uses:\s+([^@\s]+)@([^\s#]+)", re.MULTILINE)
 

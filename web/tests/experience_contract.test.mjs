@@ -8,6 +8,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", ".
 const html = fs.readFileSync(path.join(root, "web", "index.html"), "utf8");
 const app = fs.readFileSync(path.join(root, "web", "app.js"), "utf8");
 const css = fs.readFileSync(path.join(root, "web", "experience.css"), "utf8");
+const learning = fs.readFileSync(path.join(root, "web", "learning.js"), "utf8");
 
 test("experience layer loads last and keeps four purpose-led mobile destinations", () => {
   const editorialIndex = html.indexOf("/web/editorial.css");
@@ -67,8 +68,8 @@ test("local materials and study dashboard reuse live application data", () => {
   assert.match(app, /\/api\/library\/materials\?limit=50/);
   assert.match(app, /function openLibraryMaterial/);
   assert.match(html, /id="studyViewDashboard"/);
-  assert.match(app, /reviewedToday \/ dailyTarget/);
-  assert.match(app, /studyViewProgressBar\.style\.width/);
+  assert.match(learning, /reviewed \/ target/);
+  assert.match(learning, /studyViewProgressBar\.style\.width/);
   assert.match(app, /studyViewRequestGeneration/);
   assert.match(app, /idempotency_key/);
   assert.match(html, /id="docxExportButton"[\s\S]*Word 文档/);

@@ -2,9 +2,43 @@
 
 All notable changes to LearnNote are documented here. The project follows semantic versioning while the `0.x` series is under active development.
 
-## Unreleased
+## 0.1.56 - 2026-09-06
 
 ### Added
+
+- Manual courses with ordered sources, bounded public playlist previews, paused batch submission, course-scoped review and citation-based keyword comparison. Shared terms are explicitly not treated as causal or semantic agreement.
+- Learning tasks for selected cached-video ranges with relative timeline labels and conservative subtitle reuse. Clip exports now transcode accurately instead of including an earlier keyframe interval.
+- Optional local RapidOCR with bounded frame sampling, image-hash cache, bounding boxes, confidence and an unreviewed status; OCR-only frames are kept out of vision-model requests.
+- A permanent browser interaction gate for complete document reading, code contrast, review-source access, progress updates and mobile title clearance.
+
+- Durable, bounded local task execution with one heavy worker per data directory, immediate cancellation of queued work, and restart recovery that never persists browser cookies or model keys in the queue.
+- Personal annotations stored independently of generated notes, preserved across note versions and same-file reimports, with optional DOCX/PDF exports containing personal additions.
+- Complete local-source reading with progressive long-document loading, editable export tables, embedded local keyframes, and release SBOM/resolved-dependency evidence.
+
+### Fixed
+
+- Windows desktop builds include the local faster-whisper runtime and validate native ASR/OCR imports before packaging; model weights remain an on-demand download.
+
+- Cancelled queue Futures no longer execute callbacks or stop subsequent work; stopped queues reject new jobs. Build/signing command failures now stop Windows release packaging.
+
+- FSRS graduation no longer writes a null step into SQLite; new cards use native FSRS initialization, and existing schedules can be rebuilt explicitly from complete review histories after a backup. Study exports no longer inherit the 500-row UI pagination limit.
+
+- Restoring the task index no longer replaces the database containing local materials and canonical evidence.
+- Timestamps alone no longer imply verified claims; source matching uses numeric time ranges and preserves existing table-of-contents anchors.
+- Code fences, comments, indentation and paragraphs survive normalization, import, reading and export. Long materials are no longer silently limited to 40 anchors or 4,000 characters per anchor.
+- Study day boundaries and activity follow an IANA timezone, including DST; paused plans reject reviews and hide due-card actions.
+- Review sessions display short extractive source points with visible evidence links, deduplication and live progress, rather than whole-note Markdown answers.
+- Video upload limits and disk reserve checks apply before multipart spooling and during writes; failed uploads clean up partial files.
+- Extension heartbeat expiry now accommodates the two-minute MV3 heartbeat and a delayed tick.
+- Mobile reader headers no longer overlap the top bar; empty libraries have one primary action, model setup is directly discoverable, and code text remains readable in both themes.
+- Reliability workflow braces, outdated visual assertions and masked native-command failures were corrected. Visual acceptance now runs on relevant pull requests.
+
+### Release engineering
+
+- GitHub Releases are assembled as resumable drafts, downloaded and checksum-verified before publication. Published assets are never clobbered by reruns.
+- Release builds emit a CycloneDX inventory, resolved Python versions and source metadata, and request a pinned GitHub provenance attestation. Hosted signing/store/publication checks remain release-time validations.
+
+### Earlier main-preview additions
 
 - Subtitle-ready progressive drafts, reconnectable SSE progress, per-attempt timing, batched frame extraction, bounded visual concurrency, and task-local visual caches.
 - Canonical Unicode decoding and mojibake quarantine for UTF-8, UTF-16, GB18030, Shift-JIS and common legacy text paths.

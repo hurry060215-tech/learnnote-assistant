@@ -14,6 +14,9 @@ from ..models import SourceEvidence, StudyCard, StudyCardPositionRequest, StudyC
 from ..note_document import normalize_note_markdown
 from ..study import clear_study_data, due_cards, export_study_data, get_study_plan, list_cards, propose_cards, review_card, review_history, save_cards, set_card_position, set_card_status, study_dashboard, study_summary, update_study_plan
 from ..storage import get_task
+from ..study import initialize_study_timezone
+from ..study import rebuild_study_schedules
+from ..courses import course_evidence_ids
 from ..task_artifacts import read_task_note, read_task_transcript
 
 
@@ -55,6 +58,14 @@ async def api_knowledge_import_file(file: UploadFile = File(...)) -> dict:
     except ValueError as exc:
         raise HTTPException(status_code=422, detail={"code": str(exc), "message": "无法从该文件提取可检索文本。"}) from exc
     return {"ok": True, "evidence": stored.model_dump(mode="json")}
+
+
+@knowledge_router.get("/evidence/{evidence_id}")
+def api_evidence_source(evidence_id: str) -> dict:
+    items = evidence_by_ids([evidence_id], limit=1)
+    if not items:
+        raise HTTPException(status_code=404, detail={"code": "evidence_missing", "message": "出处已删除或不可用，请重新关联原文。"})
+    return {"evidence": items[0]}
 
 
 @knowledge_router.get("/search")
@@ -139,8 +150,12 @@ def api_study_cards(payload: dict | None = Body(default=None)) -> dict:
 
 
 @study_router.get("/due")
-def api_study_due(limit: int = 50) -> dict:
-    return {"cards": [card.model_dump(mode="json") for card in due_cards(limit)]}
+def api_study_due(limit: int = 50, course_id: str = "") -> dict:
+    try:
+        ids = course_evidence_ids(course_id) if course_id else None
+        return {"cards": [card.model_dump(mode="json") for card in due_cards(limit, ids)], "course_id": course_id}
+    except (ValueError, OSError) as exc:
+        raise HTTPException(status_code=404, detail="课程不可用，请重新选择。") from exc
 
 
 @study_router.get("/cards")
@@ -174,13 +189,30 @@ def api_study_summary() -> dict:
 
 
 @study_router.get("/dashboard")
-def api_study_dashboard(limit: int = 12, activity_days: int = 14) -> dict:
-    return study_dashboard(limit, activity_days)
+def api_study_dashboard(limit: int = 12, activity_days: int = 14, course_id: str = "") -> dict:
+    result = study_dashboard(limit, activity_days)
+    if course_id:
+        try:
+            ids = course_evidence_ids(course_id)
+        except (ValueError, OSError) as exc:
+            raise HTTPException(status_code=404, detail="课程不可用，请重新选择。") from exc
+        for key in ("mistakes", "quiz_queue", "due_cards"):
+            result[key] = [item for item in result[key] if ids.intersection(item.get("source_evidence_ids", []))]
+    result["course_id"] = course_id
+    result["activity_scope"] = "all_sources"
+    return result
 
 
 @study_router.get("/reviews")
 def api_study_reviews(card_id: str = "", limit: int = 200) -> dict:
     return {"reviews": review_history(card_id, limit)}
+
+
+@study_router.post("/rebuild-schedule")
+def api_rebuild_study_schedule(confirm: str = ""):
+    if confirm != "rebuild_from_history":
+        raise HTTPException(status_code=400, detail="请确认按评分历史重建调度。")
+    return rebuild_study_schedules()
 
 
 @study_router.get("/export")
@@ -202,7 +234,18 @@ def api_study_plan() -> dict:
 
 @study_router.put("/plan")
 def api_update_study_plan(request: StudyPlanUpdateRequest) -> dict:
-    return {"plan": update_study_plan(request.title, request.daily_target, request.paused).model_dump(mode="json")}
+    try:
+        return {"plan": update_study_plan(request.title, request.daily_target, request.paused, request.timezone).model_dump(mode="json")}
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail={"code": str(exc), "message": "请选择有效的 IANA 时区，例如 Asia/Shanghai。"}) from exc
+
+
+@study_router.post("/plan/initialize")
+def api_initialize_study_plan(request: StudyPlanUpdateRequest) -> dict:
+    try:
+        return {"plan": initialize_study_timezone(request.timezone or "UTC").model_dump(mode="json")}
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail={"code": str(exc), "message": "无法识别本地时区，请在学习计划中选择时区。"}) from exc
 
 
 @study_router.post("/cards/{card_id}/review")
@@ -211,8 +254,9 @@ def api_study_review(card_id: str, request: StudyReviewRequest) -> dict:
         card = review_card(card_id, request.rating, request.idempotency_key)
     except ValueError as exc:
         code = str(exc)
-        status = 404 if code == "card_not_found" else 422
-        raise HTTPException(status_code=status, detail={"code": code, "message": "记忆卡片不存在或评分无效。"}) from exc
+        status = 404 if code == "card_not_found" else (409 if code == "study_plan_paused" else 422)
+        message = "学习计划已暂停，请恢复计划后再复习。" if code == "study_plan_paused" else "记忆卡片不存在、已暂停或评分无效。"
+        raise HTTPException(status_code=status, detail={"code": code, "message": message}) from exc
     return {"card": card.model_dump(mode="json")}
 
 
@@ -286,7 +330,7 @@ def api_clear_task_community_context(task_id: str, confirm: str = "") -> dict:
     return {"ok": True, "task_id": task_id, "deleted_count": clear_community_context(task_id)}
 
 
-def _document_export_response(task_id: str, export_type: str) -> Response:
+def _document_export_response(task_id: str, export_type: str, include_annotations: bool = False) -> Response:
     try:
         task = get_task(task_id)
         note = read_task_note(task_id)
@@ -296,6 +340,9 @@ def _document_export_response(task_id: str, export_type: str) -> Response:
     if not note.strip():
         raise HTTPException(status_code=404, detail={"code": "note_not_found", "message": "任务还没有可导出的笔记。"})
     note = normalize_note_markdown(task.title, note).markdown
+    if include_annotations:
+        from ..personal_notes import annotation_markdown
+        note += annotation_markdown("task", task_id)
     try:
         artifact = build_docx_export(task, note, transcript) if export_type == "docx" else build_pdf_export(task, note, transcript)
     except DocumentExportUnavailable as exc:
@@ -324,10 +371,10 @@ def _document_export_response(task_id: str, export_type: str) -> Response:
 
 
 @task_study_router.get("/{task_id}/exports/docx")
-def api_export_docx(task_id: str) -> Response:
-    return _document_export_response(task_id, "docx")
+def api_export_docx(task_id: str, include_annotations: bool = False) -> Response:
+    return _document_export_response(task_id, "docx", include_annotations)
 
 
 @task_study_router.get("/{task_id}/exports/pdf")
-def api_export_pdf(task_id: str) -> Response:
-    return _document_export_response(task_id, "pdf")
+def api_export_pdf(task_id: str, include_annotations: bool = False) -> Response:
+    return _document_export_response(task_id, "pdf", include_annotations)

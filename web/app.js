@@ -50,6 +50,7 @@ const DEFAULT_APP_SETTINGS = Object.freeze({
   gridColumns: "3",
   gridRows: "3",
   visualUnderstanding: true,
+  localOcr: false,
   noteStyle: "study",
   noteTemplate: "standard",
   summaryDepth: "standard",
@@ -694,10 +695,11 @@ function downloadNoteProfileExample() {
 
 function syncVisualUnderstandingUi() {
   const enabled = els.visualUnderstanding?.checked !== false;
+  const ocrEnabled = document.querySelector("#localOcrEnabled")?.checked === true;
   els.visualUnderstandingButton?.setAttribute?.("aria-checked", enabled ? "true" : "false");
   els.visualUnderstandingButton?.classList?.toggle("active", enabled);
   for (const control of [els.frameInterval, els.gridColumns, els.gridRows]) {
-    if (control) control.disabled = !enabled;
+    if (control) control.disabled = !enabled && !ocrEnabled;
   }
   const visual = readVisualSliceOptions();
   if (els.gridSize) els.gridSize.value = `${visual.grid_columns}x${visual.grid_rows}`;
@@ -705,12 +707,12 @@ function syncVisualUnderstandingUi() {
     const seconds = visual.frame_interval * visual.grid_columns * visual.grid_rows;
     els.visualWindowEstimate.textContent = enabled
       ? `每个窗口约覆盖 ${seconds < 60 ? `${seconds} 秒` : `${Math.round(seconds / 6) / 10} 分钟`}、包含 ${visual.grid_columns * visual.grid_rows} 帧。`
-      : "图文理解已关闭，不会抽帧或调用视觉模型。";
+      : ocrEnabled ? "只为本地OCR提取少量关键帧，不发送到视觉模型。" : "图文理解已关闭，不会抽帧或调用视觉模型。";
   }
   if (els.visualUnderstandingHint) {
     els.visualUnderstandingHint.textContent = enabled
       ? "将截图与对应字幕一起交给视觉模型；可自由调整抽帧间隔和窗口行列。"
-      : "只转写音频并生成文本笔记，不抽帧、不调用视觉模型。";
+      : ocrEnabled ? "本地OCR只提取文字，不能代替对图形关系和操作过程的理解。" : "只转写音频并生成文本笔记，不抽帧、不调用视觉模型。";
   }
 }
 
@@ -831,6 +833,7 @@ function applyAppSettings() {
   if (els.gridRows) els.gridRows.value = appSettings.gridRows;
   if (els.gridSize) els.gridSize.value = `${appSettings.gridColumns}x${appSettings.gridRows}`;
   if (els.visualUnderstanding) els.visualUnderstanding.checked = appSettings.visualUnderstanding;
+  const ocrControl = document.querySelector("#localOcrEnabled"); if (ocrControl) ocrControl.checked = Boolean(appSettings.localOcr);
   if (els.noteStyle) els.noteStyle.value = appSettings.noteStyle;
   if (els.noteTemplate) els.noteTemplate.value = appSettings.noteTemplate;
   if (els.summaryDepth) els.summaryDepth.value = appSettings.summaryDepth;
@@ -1405,6 +1408,7 @@ async function saveAppSettingsFromUi() {
   appSettings.gridRows = String(boundedNumber(els.gridRows?.value, 3, 1, 6));
   appSettings.gridSize = `${appSettings.gridColumns}x${appSettings.gridRows}`;
   appSettings.visualUnderstanding = els.visualUnderstanding?.checked !== false;
+  appSettings.localOcr = document.querySelector("#localOcrEnabled")?.checked === true;
   appSettings.noteStyle = els.noteStyle?.value || "study";
   appSettings.noteTemplate = els.noteTemplate?.value || "standard";
   appSettings.summaryDepth = els.summaryDepth?.value || "standard";
@@ -1636,6 +1640,9 @@ function selectTask(taskId, { clearCaches = true, syncUrl = true } = {}) {
   if (!taskId) return;
   const changed = selectedTaskId !== taskId;
   selectedTaskId = taskId;
+  selectedMaterialId = "";
+  document.body.classList.remove("reading-material");
+  renderLibraryMaterials();
   if (changed) {
     lastDetailFingerprint = "__unrendered__";
     assistantMessages = [];
@@ -1675,7 +1682,9 @@ function safeNoteMediaUrl(value) {
   const localMatch = /^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?(\/(?:api|data)\/.*)$/i.exec(raw);
   if (localMatch && runtimeBackend) return escapeHtml(`${runtimeBackend}${localMatch[1]}`);
   if (/^\/(?:api|data)\//i.test(raw)) return escapeHtml(runtimeBackend ? `${runtimeBackend}${raw}` : raw);
-  if (/^https?:\/\//i.test(raw)) return escapeHtml(raw);
+    // Imported notes must not contact remote image hosts while being read.
+    // External image URLs remain ordinary, explicitly opened Markdown links.
+    if (/^https?:\/\//i.test(raw)) return "";
   return "";
 }
 
@@ -1729,200 +1738,16 @@ function noteHeadingId(value, counts = new Map()) {
   return count ? `${base}-${count + 1}` : base;
 }
 
-function markdownTableCells(line) {
-  const trimmed = String(line || "").trim().replace(/^\|/, "").replace(/\|$/, "");
-  if (!trimmed.includes("|")) return [];
-  return trimmed.split("|").map(cell => cell.trim());
-}
-
-function markdownTableAlignment(line) {
-  const cells = markdownTableCells(line);
-  if (!cells.length || cells.some(cell => !/^:?-{3,}:?$/.test(cell.replace(/\s+/g, "")))) return null;
-  return cells.map(cell => {
-    const value = cell.replace(/\s+/g, "");
-    if (value.startsWith(":") && value.endsWith(":")) return "center";
-    if (value.endsWith(":")) return "right";
-    return "left";
-  });
-}
-
-function markdownTableHtml(header, rows, alignments) {
-  const style = index => ` style="text-align:${alignments[index] || "left"}"`;
-  return `<div class="markdown-table-wrap"><table><thead><tr>${header.map((cell, index) => `<th${style(index)}>${inlineMarkdown(cell)}</th>`).join("")}</tr></thead><tbody>${rows.map(row => `<tr>${header.map((_, index) => `<td${style(index)}>${inlineMarkdown(row[index] || "")}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
-}
-
 function markdownToHtml(markdown) {
-  if (globalThis.LearnNoteMarkdown?.markdownToHtml) return globalThis.LearnNoteMarkdown.markdownToHtml(markdown);
-  const lines = String(markdown || "").replace(/\r\n?/g, "\n").split("\n");
-  const html = [];
-  const headingIds = new Map();
-  let listType = "";
-  let inCode = false;
-  const closeList = () => {
-    if (listType) {
-      html.push(`</${listType}>`);
-      listType = "";
-    }
-  };
-
-  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
-    const rawLine = lines[lineIndex];
-    const line = rawLine.trimEnd();
-    if (line.startsWith("```")) {
-      closeList();
-      if (inCode) {
-        html.push("</code></pre>");
-      } else {
-        html.push("<pre><code>");
-      }
-      inCode = !inCode;
-      continue;
-    }
-    if (inCode) {
-      html.push(escapeHtml(rawLine) + "\n");
-      continue;
-    }
-    if (!line.trim()) {
-      closeList();
-      continue;
-    }
-    if (/^\s*---+\s*$/.test(line)) {
-      closeList();
-      html.push("<hr>");
-      continue;
-    }
-    const tableHeader = markdownTableCells(line);
-    const tableAlignments = lineIndex + 1 < lines.length ? markdownTableAlignment(lines[lineIndex + 1]) : null;
-    if (tableHeader.length && tableAlignments && tableAlignments.length === tableHeader.length) {
-      closeList();
-      const rows = [];
-      lineIndex += 2;
-      while (lineIndex < lines.length) {
-        const cells = markdownTableCells(lines[lineIndex]);
-        if (!cells.length) break;
-        rows.push(cells);
-        lineIndex += 1;
-      }
-      lineIndex -= 1;
-      html.push(markdownTableHtml(tableHeader, rows, tableAlignments));
-      continue;
-    }
-    const image = /^!\[([^\]]*)\]\(([^)]+)\)$/.exec(line.trim());
-    if (image) {
-      closeList();
-      const src = safeNoteMediaUrl(image[2]);
-      const alt = escapeHtml(image[1] || "frame grid");
-      if (src) {
-        html.push(`<figure class="note-image-frame"><img src="${src}" alt="${alt}"><figcaption>${alt}</figcaption></figure>`);
-      } else {
-        html.push(`<p>${inlineMarkdown(line)}</p>`);
-      }
-      continue;
-    }
-    const heading = /^(#{1,3})\s+(.+)$/.exec(line);
-    if (heading) {
-      closeList();
-      const level = heading[1].length;
-      const id = noteHeadingId(heading[2], headingIds);
-      html.push(`<h${level} id="${escapeHtml(id)}">${inlineMarkdown(heading[2])}</h${level}>`);
-      continue;
-    }
-    const bullet = /^[-*]\s+(.+)$/.exec(line);
-    if (bullet) {
-      if (listType !== "ul") {
-        closeList();
-        html.push("<ul>");
-        listType = "ul";
-      }
-      html.push(`<li>${inlineMarkdown(bullet[1])}</li>`);
-      continue;
-    }
-    const numbered = /^\d+\.\s+(.+)$/.exec(line);
-    if (numbered) {
-      if (listType !== "ol") {
-        closeList();
-        html.push("<ol>");
-        listType = "ol";
-      }
-      html.push(`<li>${inlineMarkdown(numbered[1])}</li>`);
-      continue;
-    }
-    if (line.startsWith(">")) {
-      closeList();
-      html.push(`<blockquote>${inlineMarkdown(line.replace(/^>\s?/, ""))}</blockquote>`);
-      continue;
-    }
-    closeList();
-    html.push(`<p>${inlineMarkdown(line)}</p>`);
-  }
-  closeList();
-  if (inCode) html.push("</code></pre>");
-  return html.join("");
+  return globalThis.LearnNoteMarkdown?.markdownToHtml?.(markdown) || `<pre>${escapeHtml(markdown)}</pre>`;
 }
 
 function sanitizeNoteMarkdown(markdown, options = {}) {
-  if (globalThis.LearnNoteMarkdown?.sanitizeNoteMarkdown) return globalThis.LearnNoteMarkdown.sanitizeNoteMarkdown(markdown, options);
-  const lines = String(markdown || "").replace(/\r\n?/g, "\n").split("\n");
-  const cleaned = [];
-  for (let index = 0; index < lines.length; index += 1) {
-    if (!/^\s*-\s*Page context:\s*captured from the current browser page\b/i.test(lines[index])) {
-      cleaned.push(lines[index]);
-      continue;
-    }
-    while (index + 1 < lines.length && /^(?: {2,}|\t)\S/.test(lines[index + 1])) {
-      index += 1;
-    }
-  }
-  const requestedTitle = typeof options === "string" ? options : options?.title;
-  const titleKey = String(requestedTitle || "").replace(/[`*_~#\s\u3000：:|｜·•—–\-_]/g, "").toLocaleLowerCase();
-  const isRule = line => /^\s*(?:-{3,}|_{3,}|\*{3,})\s*$/.test(line || "");
-  while (cleaned.length && (!cleaned[0].trim() || isRule(cleaned[0]))) cleaned.shift();
-  while (cleaned.length && (!cleaned.at(-1).trim() || isRule(cleaned.at(-1)))) cleaned.pop();
-  while (titleKey && cleaned.length) {
-    const heading = /^\s*#{1,2}\s+(.+?)\s*$/.exec(cleaned[0]);
-    const headingKey = String(heading?.[1] || "").replace(/[`*_~#\s\u3000：:|｜·•—–\-_]/g, "").toLocaleLowerCase();
-    if (!heading || headingKey !== titleKey) break;
-    cleaned.shift();
-    while (cleaned.length && (!cleaned[0].trim() || isRule(cleaned[0]))) cleaned.shift();
-  }
-  return cleaned.join("\n").trim();
+  return globalThis.LearnNoteMarkdown?.sanitizeNoteMarkdown?.(markdown, options) ?? String(markdown || "");
 }
 
 function noteOutline(markdown, limit = 12) {
-  if (globalThis.LearnNoteMarkdown?.noteOutline) return globalThis.LearnNoteMarkdown.noteOutline(markdown, limit);
-  const lines = String(markdown || "").replace(/\r\n?/g, "\n").split("\n");
-  const headingIds = new Map();
-  const headings = [];
-  let inCode = false;
-  for (const rawLine of lines) {
-    const line = rawLine.trimEnd();
-    if (line.startsWith("```")) {
-      inCode = !inCode;
-      continue;
-    }
-    if (inCode) continue;
-    const heading = /^(#{1,3})\s+(.+)$/.exec(line);
-    if (!heading) continue;
-    const text = plainHeadingText(heading[2]);
-    if (!text) continue;
-    headings.push({
-      level: heading[1].length,
-      text,
-      id: noteHeadingId(heading[2], headingIds)
-    });
-  }
-  if (!headings.length) return "";
-  return `<section class="note-outline" aria-label="笔记目录">
-    <div class="visual-rail-head">
-      <strong>笔记目录</strong>
-      <span>${headings.length} 节</span>
-    </div>
-    <div class="note-outline-list">
-      ${headings.slice(0, limit).map(heading => `
-        <a class="level-${heading.level}" href="#${escapeHtml(heading.id)}">${escapeHtml(heading.text)}</a>
-      `).join("")}
-    </div>
-  </section>`;
+  return globalThis.LearnNoteMarkdown?.noteOutline?.(markdown, limit) || "";
 }
 
 function fmt(sec) {
@@ -4269,6 +4094,7 @@ function currentModelSettings() {
     llm_model: els.llmModel?.value?.trim() || "",
     llm_base_url: els.llmBaseUrl?.value?.trim() || "",
     transcriber: els.transcriber?.value || "faster-whisper",
+    local_ocr: document.querySelector("#localOcrEnabled")?.checked === true,
     whisper_model: els.whisperModel?.value || "small"
   };
 }
@@ -4938,7 +4764,7 @@ function initializeWorkspaceView() {
 function renderLibraryMaterials() {
   if (!els.materialLibrarySection || !els.materialsList) return;
   els.materialLibrarySection.hidden = libraryMaterials.length === 0;
-  els.materialsList.innerHTML = libraryMaterials.slice(0, 12).map(material => `
+  els.materialsList.innerHTML = libraryMaterials.map(material => `
     <button type="button" class="material-list-item${material.material_id === selectedMaterialId ? " selected" : ""}" data-material-id="${escapeHtml(material.material_id || "")}">
       <span>${escapeHtml(material.source_type === "pdf" ? "PDF" : material.source_type === "video" ? "视频" : "文档")}</span>
       <strong>${escapeHtml(material.title || material.filename || "本地资料")}</strong>
@@ -4949,18 +4775,21 @@ function renderLibraryMaterials() {
 
 async function loadLibraryMaterials() {
   try {
-    const payload = await fetchJson(apiUrl("/api/library/materials?limit=50"));
+    const payload = await fetchJson(apiUrl("/api/library/materials?limit=500"));
     libraryMaterials = Array.isArray(payload?.materials) ? payload.materials : [];
   } catch {
     libraryMaterials = [];
   }
   renderLibraryMaterials();
+  if (els.taskCount) els.taskCount.textContent = String(tasks.length + libraryMaterials.filter(item => !item.linked_task_id).length);
+  document.body.classList.toggle("library-empty", !tasks.length && !libraryMaterials.length);
   return libraryMaterials;
 }
 
 async function openLibraryMaterial(materialId) {
   if (!materialId) return;
   selectedMaterialId = materialId;
+  document.body.classList.add("reading-material");
   selectedTaskId = null;
   clearTaskCaches();
   showAppView("notes");
@@ -4968,24 +4797,25 @@ async function openLibraryMaterial(materialId) {
   els.detail.className = "detail";
   els.detail.innerHTML = '<p class="knowledge-empty">正在读取本地资料出处…</p>';
   try {
-    const [materialPayload, anchorPayload] = await Promise.all([
+    const [materialPayload, contentPayload] = await Promise.all([
       fetchJson(apiUrl(`/api/library/materials/${encodeURIComponent(materialId)}`)),
-      fetchJson(apiUrl(`/api/library/materials/${encodeURIComponent(materialId)}/anchors?limit=100`))
+      fetchJson(apiUrl(`/api/library/materials/${encodeURIComponent(materialId)}/content`))
     ]);
     if (selectedMaterialId !== materialId) return;
     const material = materialPayload?.material || {};
-    const anchors = Array.isArray(anchorPayload?.anchors) ? anchorPayload.anchors : [];
+    const text = String(contentPayload?.text || "");
     els.selectedTitle.textContent = material.title || material.filename || "本地学习资料";
     els.selectedSource.textContent = `${material.source_type || "document"} · 本地优先`;
-    els.resultMeta.textContent = `${anchors.length} 个可追溯出处`;
-    els.detail.innerHTML = `<article class="material-reader">
-      <header><strong>${escapeHtml(material.title || material.filename || "本地学习资料")}</strong><small>内容和索引仅保存在本机</small></header>
-      ${anchors.length ? anchors.slice(0, 40).map(anchor => `<section id="material-${escapeHtml(anchor.evidence_id || "")}">
-        <span>${escapeHtml(anchor.locator || "出处")}</span>
-        <div class="material-anchor-content">${markdownToHtml(String(anchor.text || "").slice(0, 4000))}</div>
-      </section>`).join("") : '<p class="knowledge-empty">当前资料还没有可显示的文字出处。</p>'}
-    </article>`;
+    els.resultMeta.textContent = `${material.anchor_count || 0} 个出处 · 原文完整保留`;
+    document.querySelectorAll("#tasks .task.selected").forEach(item => item.classList.remove("selected"));
+    globalThis.LearnNoteLearning.renderMaterial({container: els.detail, material, text, markdownToHtml, apiUrl, onStudy: async () => {
+      const result = await fetchJson(apiUrl("/api/study/proposals"), {
+        method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({evidence_ids: material.evidence_ids.slice(0, 100), limit: 12})
+      });
+      if (!openStudyProposalDialog(result.proposals || [])) els.exportStatus.textContent = "当前资料没有适合提炼的文字，请先选择一个知识点。";
+    }});
     lastDetailFingerprint = `material:${materialId}:${material.updated_at || ""}`;
+    globalThis.LearnNotePersonal.attach({container: els.detail, kind: "material", id: materialId, apiUrl, fetchJson});
     [els.copyButton, els.unifiedExportButton, els.bundleButton, els.sanitizedBundleButton, els.notionExportButton, els.docxExportButton, els.pdfExportButton, els.downloadButton]
       .forEach(button => { if (button) button.disabled = true; });
   } catch (error) {
@@ -5392,7 +5222,8 @@ function renderTasks() {
   if (queueTools) queueTools.hidden = !hasTasks;
   if (queueStats) queueStats.hidden = !hasTasks;
   if (els.deleteAllTasksButton) els.deleteAllTasksButton.hidden = !hasTasks;
-  els.taskCount.textContent = String(tasks.length);
+  els.taskCount.textContent = String(tasks.length + libraryMaterials.filter(item => !item.linked_task_id).length);
+  document.body.classList.toggle("library-empty", !tasks.length && !libraryMaterials.length);
   els.successCount.textContent = String(tasks.filter(task => task.status === "success").length);
   els.runningCount.textContent = String(tasks.filter(isActiveTask).length);
   els.failedCount.textContent = String(tasks.filter(task => task.status === "failed").length);
@@ -5988,12 +5819,20 @@ async function loadStudyDue() {
   }
 }
 
+function initializeLocalStudyTimezone() {
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  return fetchJson(apiUrl("/api/study/plan/initialize"), {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({timezone})});
+}
+
 async function loadStudyPlan() {
   try {
+    await initializeLocalStudyTimezone();
     const result = await fetchJson(apiUrl("/api/study/plan"));
     const plan = result?.plan || {};
     if (els.studyPlanTarget) els.studyPlanTarget.value = String(plan.daily_target || 10);
     if (els.studyPlanPaused) els.studyPlanPaused.checked = Boolean(plan.paused);
+    const zone = document.querySelector("#studyPlanTimezone");
+    if (zone) zone.value = plan.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
   } catch {
     // Study plan is optional; keep the local defaults visible.
   }
@@ -6009,7 +5848,8 @@ async function saveStudyPlan() {
       body: JSON.stringify({
         daily_target: Number(els.studyPlanTarget?.value || 10),
         paused: Boolean(els.studyPlanPaused?.checked),
-        title: "本地学习计划"
+        title: "本地学习计划",
+        timezone: document.querySelector("#studyPlanTimezone")?.value || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"
       })
     });
     if (els.studyDueList) els.studyDueList.textContent = "学习计划已保存。";
@@ -6141,103 +5981,59 @@ async function loadStudyView() {
   if (!els.studyViewDueList || !els.studyViewSummary) return;
   const generation = ++studyViewRequestGeneration;
   els.studyViewDashboard?.setAttribute?.("aria-busy", "true");
-  els.studyViewSummary.textContent = "正在读取复习记录…";
   els.studyViewDueList.textContent = "正在读取到期卡片…";
-  if (els.studyViewProgressLabel) els.studyViewProgressLabel.textContent = "正在更新…";
+  els.studyViewSummary.textContent = "正在读取复习记录…";
+  const oldHistory = document.querySelector(".study-review-history"); if (oldHistory) oldHistory.hidden = true;
   try {
-    const [due, summary, plan] = await Promise.all([
-      fetchJson(apiUrl("/api/study/due?limit=30")),
-      fetchJson(apiUrl("/api/study/summary")),
-      fetchJson(apiUrl("/api/study/plan"))
+    await initializeLocalStudyTimezone();
+    const selector = document.querySelector("#studyCourseSelect"), courses = await fetchJson(apiUrl("/api/courses"));
+    const previousCourse = selector?.value || "";
+    if (selector) { selector.innerHTML = '<option value="">全部资料</option>'; for (const course of courses.courses || []) { const option = document.createElement("option"); option.value = course.id; option.textContent = course.title; selector.append(option); } selector.value = previousCourse; }
+    const courseId = selector?.value || "";
+    const [due, summary, plan, dashboard] = await Promise.all([
+      fetchJson(apiUrl(`/api/study/due?limit=30&course_id=${encodeURIComponent(courseId)}`)), fetchJson(apiUrl("/api/study/summary")), fetchJson(apiUrl("/api/study/plan")), fetchJson(apiUrl(`/api/study/dashboard?course_id=${encodeURIComponent(courseId)}`))
     ]);
     if (generation !== studyViewRequestGeneration) return;
-    const cards = Array.isArray(due?.cards) ? due.cards : [];
-    const studyPlan = plan?.plan || plan || {};
-    const dueCount = Number(summary?.due_count || cards.length);
-    const reviewedToday = Number(summary?.reviewed_today || 0);
-    const dailyTarget = Math.max(1, Number(studyPlan?.daily_target || 10));
-    const progressPercent = Math.max(0, Math.min(100, Math.round((reviewedToday / dailyTarget) * 100)));
-    els.studyViewSummary.innerHTML = [
-      `<span><b>${dueCount}</b><small>张到期卡片</small></span>`,
-      `<span><b>${reviewedToday}</b><small>今日已复习</small></span>`,
-      `<span><b>${dailyTarget}</b><small>每日目标</small></span>`
-    ].join("");
-    if (els.studyViewProgressLabel) els.studyViewProgressLabel.textContent = `${reviewedToday} / ${dailyTarget}`;
-    if (els.studyViewProgressBar) els.studyViewProgressBar.style.width = `${progressPercent}%`;
-    const progressTrack = els.studyViewProgressBar?.parentElement;
-    progressTrack?.setAttribute?.("aria-valuenow", String(progressPercent));
-    if (els.studyViewProgressHint) {
-      els.studyViewProgressHint.textContent = studyPlan?.paused
-        ? "学习计划已暂停；现有记录仍保存在本机"
-        : reviewedToday >= dailyTarget
-          ? "今日目标已完成"
-          : `再复习 ${Math.max(0, dailyTarget - reviewedToday)} 张即可完成今日目标`;
-    }
-    els.studyViewDueList.replaceChildren();
-    if (!cards.length) {
-      const empty = document.createElement("p");
-      empty.className = "knowledge-empty";
-      empty.textContent = "当前没有到期卡片。打开一篇完成的笔记，在顶部生成复习卡片即可。";
-      els.studyViewDueList.append(empty);
-      return;
-    }
-    cards.forEach(card => {
-      const article = document.createElement("article");
-      article.className = "study-card";
-      const front = document.createElement("strong");
-      front.textContent = card.front || "记忆卡片";
-      const back = document.createElement("p");
-      back.textContent = card.back || "";
-      back.hidden = true;
-      const actions = document.createElement("div");
-      actions.className = "study-card-actions";
-      actions.hidden = true;
-      const reveal = document.createElement("button");
-      reveal.type = "button";
-      reveal.className = "secondary action-button study-card-reveal";
-      reveal.textContent = "显示答案";
-      reveal.addEventListener("click", () => {
-        back.hidden = false;
-        actions.hidden = false;
-        reveal.hidden = true;
-        back.setAttribute("tabindex", "-1");
-        back.focus?.();
-      });
-      [[1, "重来"], [3, "记住"], [4, "简单"]].forEach(([rating, label]) => {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "secondary action-button";
-        button.textContent = label;
-        button.addEventListener("click", async () => {
-          if (button.disabled) return;
-          actions.querySelectorAll?.("button")?.forEach?.(item => { item.disabled = true; });
-          const idempotencyKey = globalThis.crypto?.randomUUID?.() || `${card.card_id}-${Date.now()}-${rating}`;
-          try {
-            await fetchJson(apiUrl(`/api/study/cards/${encodeURIComponent(card.card_id)}/review`), {
-              method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rating, idempotency_key: idempotencyKey })
-            });
-            await loadStudyView();
-          } catch (error) {
-            if (generation === studyViewRequestGeneration) {
-              els.studyViewProgressHint.textContent = error?.message || "复习提交失败，请重试。";
-              actions.querySelectorAll?.("button")?.forEach?.(item => { item.disabled = false; });
-            }
-          }
+    let remaining = (due?.cards || []).length;
+    globalThis.LearnNoteLearning.renderStudy({
+      els, cards: due?.cards || [], summary: courseId ? {...summary, due_count: remaining, course_scope: true} : summary, plan: plan?.plan || {},
+      onReview: async (id, rating, key) => {
+        await fetchJson(apiUrl(`/api/study/cards/${encodeURIComponent(id)}/review`), {
+          method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({rating, idempotency_key: key})
         });
-        actions.append(button);
-      });
-      article.append(front, back, reveal, actions);
-      els.studyViewDueList.append(article);
+        const fresh = await fetchJson(apiUrl("/api/study/summary")); remaining = Math.max(0, remaining - 1);
+        if (generation !== studyViewRequestGeneration) { if (document.body.dataset.appView === "study") loadStudyView(); return {view_changed: true}; }
+        return courseId ? {...fresh, due_count: remaining} : fresh;
+      },
+      onSource: openLearningEvidence,
+      onCreate: () => showAppView("notes"),
+      onPlan: () => { showAppView("settings"); showSettingsPane("connection"); els.studyPlanTarget?.scrollIntoView?.({block: "center"}); }
     });
+    globalThis.LearnNoteLearning.renderStudyHistory({dashboard, onSource: openLearningEvidence});
   } catch (error) {
-    if (generation !== studyViewRequestGeneration) return;
-    els.studyViewSummary.textContent = error?.message || "复习记录读取失败。";
-    els.studyViewDueList.textContent = "请确认本地服务正在运行。";
-    if (els.studyViewProgressLabel) els.studyViewProgressLabel.textContent = "暂时无法读取";
-    if (els.studyViewProgressHint) els.studyViewProgressHint.textContent = "连接恢复后会自动读取本地复习记录";
+    els.studyViewDueList.textContent = error?.message || "无法读取本地复习记录，请重试。";
   } finally {
     if (generation === studyViewRequestGeneration) els.studyViewDashboard?.setAttribute?.("aria-busy", "false");
   }
+}
+
+function openLearningEvidence(id) {
+  return globalThis.LearnNoteLearning.openEvidence({id, fetchJson, apiUrl, navigate: async evidence => {
+    document.querySelector(".course-dialog")?.close();
+    if (evidence.metadata?.material_id) return openLibraryMaterial(evidence.metadata.material_id);
+    if (evidence.task_id) {
+      selectTask(evidence.task_id); showAppView("notes"); await renderDetail();
+      const match = /^(\d+(?:\.\d+)?)-/.exec(evidence.locator || "");
+      if (match) await openLearningVideoAt(Number(match[1]));
+    }
+  }});
+}
+
+async function openLearningVideoAt(seconds) {
+  const taskId = selectedTaskId;
+  selectedTab = "slices"; renderResultTabState(); syncSelectedTaskUrl(taskId);
+  await renderDetail();
+  if (selectedTaskId === taskId) seekLearningVideo(seconds);
 }
 
 function taskQaUrl(taskId) {
@@ -6747,9 +6543,18 @@ function mediaPreviewHtml(task) {
     <div class="media-preview-copy">
       <span>本地视频核对</span>
       <strong>${escapeHtml(title)}</strong>
-      <small>${escapeHtml(task.media_path || "")}</small>
+      <small>本地媒体，可通过下方导出核对</small>
     </div>
     <video controls preload="metadata" src="${escapeHtml(url)}" data-learning-video></video>
+    <details class="range-learning" data-range-source="${escapeHtml(task.id)}">
+      <summary>只学习选定片段</summary>
+      <p>生成独立笔记，保留原视频。未对齐字幕边界时会重新转写该片段。</p>
+      <label>开始（秒）<input data-range-start type="number" min="0" step="0.1" value="0"></label>
+      <label>结束（秒）<input data-range-end type="number" min="0.1" step="0.1" value="${Math.min(300, Number(task.media_integrity?.duration || task.active_video?.duration || 60))}"></label>
+      <button type="button" data-range-current>从当前播放位置开始</button>
+      <button type="button" data-learn-range>生成片段笔记</button>
+      <p data-range-status role="status"></p>
+    </details>
     <div class="media-preview-actions">
       <span>点击字幕或视觉窗口时间可回看对应画面</span>
       <a href="${escapeHtml(taskExportUrl(task, "media"))}">导出 ${escapeHtml(mediaName)}</a>
@@ -7654,6 +7459,16 @@ function bindQaActions(task) {
 }
 
 function bindTaskOverviewActions() {
+  document.querySelectorAll("[data-range-current]").forEach(button => button.onclick = () => {
+    button.closest(".range-learning").querySelector("[data-range-start]").value = String(document.querySelector("[data-learning-video]")?.currentTime || 0);
+  });
+  document.querySelectorAll("[data-learn-range]").forEach(button => button.onclick = async () => {
+    const group = button.closest(".range-learning"), status = group.querySelector("[data-range-status]"); button.disabled = true;
+    try {
+      const payload = await fetchJson(apiUrl(`/api/tasks/${encodeURIComponent(group.dataset.rangeSource)}/learn-range`), {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({start: Number(group.querySelector("[data-range-start]").value), end: Number(group.querySelector("[data-range-end]").value), options: readOptions()})});
+      status.textContent = "已加入队列，原视频保持不变。"; await loadTasks(); await openTaskFromList(payload.task_id);
+    } catch (error) { status.textContent = error.message || "无法生成片段。"; } finally { button.disabled = false; }
+  });
   document.querySelectorAll("[data-open-assistant]").forEach(button => {
     button.onclick = () => {
       setAssistantOpen(true);
@@ -8907,7 +8722,7 @@ function bindEmptyWorkbenchActions() {
 function noteTrustBarHtml(task, documentValue = null, note = "") {
   if (!task) return "";
   const sections = visibleNoteDocumentSections(documentValue);
-  const verifiedCount = sections.filter(section => section.verification === "verified").length;
+  const verifiedCount = sections.filter(section => ["linked", "verified"].includes(section.verification)).length;
   const citationCount = sections.reduce((count, section) => count + (section.citations?.length || 0), 0);
   const evidence = task.evidence_quality || {}, transcriptReady = evidence.has_timed_transcript ?? hasReadableTranscript(task);
   const visualCount = visualWindows(task).length, active = isActiveTask(task), readable = Boolean(String(note || "").trim());
@@ -8923,14 +8738,16 @@ function noteTrustBarHtml(task, documentValue = null, note = "") {
     : active
     ? `正在生成 · ${progress}%`
     : citationCount
-    ? `已生成 · ${citationCount} 个可核对出处`
+    ? `已生成 · ${citationCount} 个时间定位`
     : "已生成 · 出处待补充";
   const detail = active
     ? `${taskPhaseLabel(task)}${readable ? "，其余证据会继续补充" : "，字幕草稿就绪后即可阅读"}`
     : sections.length
-    ? `${verifiedCount}/${sections.length} 节可核对 · ${transcriptReady ? "字幕可用" : "字幕待补充"} · ${visualCount ? `${visualCount} 组关键画面` : "画面待补充"}`
+    ? `${verifiedCount}/${sections.length} 节关联原文 · ${transcriptReady ? "字幕可用" : "字幕待补充"} · ${visualCount ? `${visualCount} 组关键画面` : "画面待补充"}`
     : `${transcriptReady ? "字幕可用" : "字幕待补充"} · ${visualCount ? `${visualCount} 组关键画面` : "画面待补充"}`;
-  return `<details class="note-trust-bar${needsAttention ? " needs-attention" : ""}"${needsAttention ? " open" : ""}>
+  const range = task.learning_range;
+  const rangeHint = range && Number.isFinite(range.original_start) ? `<p class="range-origin-hint">选定范围：原视频 ${escapeHtml(fmt(range.original_start))}–${escapeHtml(fmt(range.original_end))}；本页时间均从片段起点计。</p>` : "";
+  return `${rangeHint}<details class="note-trust-bar${needsAttention ? " needs-attention" : ""}"${needsAttention ? " open" : ""}>
     <summary>
       <span class="note-trust-state" aria-hidden="true">${needsAttention ? "!" : active ? "…" : "✓"}</span>
       <span><strong>${escapeHtml(title)}</strong><small>${escapeHtml(detail)}</small></span>
@@ -8956,20 +8773,20 @@ function visibleNoteDocumentSections(documentValue) {
 function noteDocumentEvidenceHtml(documentValue) {
   const sections = visibleNoteDocumentSections(documentValue);
   if (!sections.length) return "";
-  const verifiedCount = sections.filter(section => section.verification === "verified").length;
+  const verifiedCount = sections.filter(section => ["linked", "verified"].includes(section.verification)).length;
   const citationCount = sections.reduce((count, section) => count + (section.citations?.length || 0), 0);
   const coverage = Math.round(Math.max(0, Math.min(1, verifiedCount / sections.length)) * 100);
   return `<section class="note-document-map" aria-label="章节证据覆盖">
     <header>
-      <div><span>章节证据</span><strong>${verifiedCount}/${sections.length} 节可核对</strong></div>
+      <div><span>章节证据</span><strong>${verifiedCount}/${sections.length} 节关联原文</strong></div>
       <small>${citationCount} 个时间出处 · 覆盖 ${coverage}%</small>
     </header>
     <div class="note-document-sections">
-      ${sections.slice(0, 12).map(section => {
-        const verified = section.verification === "verified";
+      ${sections.map(section => {
+        const verified = ["linked", "verified"].includes(section.verification);
         const citations = Array.isArray(section.citations) ? section.citations : [];
         return `<button type="button" class="${verified ? "verified" : "unverified"}" data-note-section-id="${escapeHtml(section.section_id || "")}" data-note-heading="${escapeHtml(section.heading || "")}" aria-pressed="false">
-          <span>${verified ? "已核对" : "待补证据"}</span>
+          <span>${verified ? "已关联原文" : section.verification === "located" ? "仅有时间定位" : "待补证据"}</span>
           <strong>${escapeHtml(section.heading || "未命名章节")}</strong>
           <small>${citations.length ? `${citations.length} 个出处` : "未发现时间出处"}</small>
         </button>`;
@@ -8979,23 +8796,28 @@ function noteDocumentEvidenceHtml(documentValue) {
 }
 
 function bindNoteDocumentActions(documentValue = null) {
+  if (selectedTaskId) globalThis.LearnNotePersonal?.attach({container: els.detail, kind: "task", id: selectedTaskId, apiUrl, fetchJson});
   const buttons = [...(els.detail?.querySelectorAll?.("[data-note-section-id]") || [])];
-  const headings = [...(els.detail?.querySelectorAll?.(".markdown-note h1, .markdown-note h2, .markdown-note h3") || [])];
+  const headings = [...(els.detail?.querySelectorAll?.(".markdown-note h1, .markdown-note h2, .markdown-note h3, .markdown-note h4, .markdown-note h5, .markdown-note h6") || [])];
   const sections = visibleNoteDocumentSections(documentValue).slice(0, buttons.length);
-  sections.forEach((section, index) => {
+  const availableHeadings = new Set(headings);
+  sections.forEach(section => {
     const sectionId = String(section?.section_id || "").replace(/[^0-9A-Za-z\u4e00-\u9fff_-]/g, "");
-    if (sectionId && headings[index]) headings[index].id = sectionId;
+    const title = plainHeadingText(section.heading || "");
+    const heading = [...availableHeadings].find(node => node.textContent.trim() === title);
+    if (sectionId && heading) { heading.dataset.noteSourceSection = sectionId; availableHeadings.delete(heading); }
   });
   for (const button of buttons) {
     button.onclick = () => {
       const sectionId = String(button.dataset.noteSectionId || "").replace(/[^0-9A-Za-z\u4e00-\u9fff_-]/g, "");
-      const target = sectionId ? els.detail?.querySelector?.(`#${sectionId}`) : null;
+      const target = sectionId ? els.detail?.querySelector?.(`[data-note-source-section="${sectionId}"]`) : null;
       buttons.forEach(item => {
         const selected = item === button;
         item.classList.toggle("selected", selected);
         item.setAttribute("aria-pressed", selected ? "true" : "false");
       });
       if (!target) return;
+      const disclosure = target.closest?.("details"); if (disclosure) disclosure.open = true;
       target.setAttribute?.("tabindex", "-1");
       target.scrollIntoView?.({ behavior: "smooth", block: "start" });
       target.focus?.({ preventScroll: true });
@@ -9091,6 +8913,8 @@ async function renderDetail() {
       window.scrollTo?.({ top: 0, behavior: "smooth" });
     };
     bindNoteDocumentActions(noteDocument);
+    globalThis.LearnNoteLearning?.collapseContext?.(els.detail);
+    globalThis.LearnNoteLearning?.attachOcr?.({container: els.detail, task, fetchJson, apiUrl, onSeek: openLearningVideoAt});
     bindTaskOverviewActions();
     return;
   }
@@ -9099,7 +8923,7 @@ async function renderDetail() {
     const windows = visualWindows(task);
     if (!windows.length && hasExportableMedia(task)) {
       els.detail.className = "detail";
-      els.detail.innerHTML = pendingSliceWorkbench(task);
+      els.detail.innerHTML = `${mediaSeekDockHtml(task)}${pendingSliceWorkbench(task)}`;
       bindTaskOverviewActions();
       return;
     }
@@ -9998,3 +9822,30 @@ if ((currentUrlParam(["setup"]) === "1" || !onboardingWasCompleted()) && !hasExp
 }
 scheduleUiPoll();
 document.addEventListener?.("visibilitychange", handleVisibilityPollChange);
+
+
+document.querySelectorAll("[data-open-courses]").forEach(button => button.addEventListener("click", () => {
+  globalThis.LearnNoteCourses.open({apiUrl, fetchJson,
+    currentSource: () => document.body.dataset.appView !== "notes" ? null : selectedMaterialId ? {kind: "material", id: selectedMaterialId} : selectedTaskId ? {kind: "task", id: selectedTaskId} : null,
+    navigate: source => source.kind === "material" ? openLibraryMaterial(source.id) : openTaskFromList(source.id),
+    onEvidence: openLearningEvidence,
+    createTask: async (courseId, url) => {
+      const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(url));
+      const hash = [...new Uint8Array(digest)].map(value => value.toString(16).padStart(2, "0")).join("").slice(0, 32);
+      const payload = await fetchJson(apiUrl("/api/tasks/from-current-page"), {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({page_url: url, handoff_id: `course-${courseId}-${hash}`, options: {...readOptions(), visual_understanding: false}})});
+      await loadTasks(); return payload.task;
+    }
+  }).catch(error => { if (els.exportStatus) els.exportStatus.textContent = error.message; });
+}));
+
+document.querySelector("#localOcrEnabled")?.addEventListener("change", syncVisualUnderstandingUi);
+
+document.querySelector("#studyCourseSelect")?.addEventListener("change", loadStudyView);
+
+document.querySelector("#rebuildStudyScheduleButton")?.addEventListener("click", async event => {
+  if (!confirm("按现有评分历史重新计算到期时间？题目和评分记录会保留，旧调度参数会先备份。")) return;
+  const button = event.currentTarget; button.disabled = true;
+  try { const result = await fetchJson(apiUrl("/api/study/rebuild-schedule?confirm=rebuild_from_history"), {method: "POST"}); if (els.studyDueList) els.studyDueList.textContent = `已重建 ${result.updated} 张；${result.skipped_incomplete_history} 张历史不完整，保持原调度。`; }
+  catch (error) { if (els.studyDueList) els.studyDueList.textContent = error.message; }
+  finally { button.disabled = false; }
+});

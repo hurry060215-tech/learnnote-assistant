@@ -38,7 +38,7 @@ class NoteDocumentTests(unittest.TestCase):
         self.assertEqual(section["citations"][0]["start"], 768.0)
         self.assertEqual(section["citations"][0]["end"], 785.0)
         self.assertIn("ev-1", section["source_evidence_ids"])
-        self.assertEqual(section["verification"], "verified")
+        self.assertEqual(section["verification"], "linked")
         self.assertFalse(any(item["heading"] == "课程" and not item["markdown"] for item in document["sections"]))
 
     def test_note_document_route_reads_by_task_id(self) -> None:

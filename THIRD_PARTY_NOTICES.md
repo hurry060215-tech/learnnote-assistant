@@ -46,7 +46,20 @@ terms, privacy policies, retention rules, and geographic restrictions. A model
 being selectable in LearnNote does not mean that LearnNote redistributes or
 licenses that model.
 
-## Application runtime
+## Optional local OCR
+
+| Component | Use | Upstream | Declared license |
+| --- | --- | --- | --- |
+| RapidOCR ONNX Runtime 1.4.4 | Local frame text recognition and bundled OCR model files | <https://github.com/RapidAI/RapidOCR> | Apache-2.0 (distribution metadata) |
+| ONNX Runtime | CPU inference for the OCR lane | <https://github.com/microsoft/onnxruntime> | MIT |
+| OpenCV Python | Local OCR image preprocessing | <https://github.com/opencv/opencv-python> | Apache 2.0; bundled dependencies retain their own notices |
+
+The optional OCR environment is declared in `backend/requirements.ocr.txt` and
+tested on Python 3.12. Distribution notices and model files must accompany
+redistribution; source installs may omit this lane. OCR is disabled by default
+and never uploads frames by itself.
+
+## Application runtime components
 
 | Component | Use in LearnNote | Upstream | License |
 | --- | --- | --- | --- |

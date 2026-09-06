@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 import re
+from types import SimpleNamespace
 from uuid import uuid4
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 
 from ..config import DATA_DIR, TEMP_DIR
 from ..library import (
@@ -19,12 +20,15 @@ from ..library import (
     list_materials,
     material_anchors,
     material_capabilities,
+    material_content,
+    material_source_path,
     rebuild_index,
     register_task_material,
     restore_library,
     search_library,
 )
 from ..storage import get_task
+from ..document_exports import build_docx_export, build_pdf_export, DocumentExportUnavailable
 
 
 library_router = APIRouter(prefix="/api/library", tags=["library"])
@@ -146,6 +150,44 @@ def api_library_material_anchors(material_id: str, limit: int = 500) -> dict:
 @library_router.post("/rebuild")
 def api_library_rebuild() -> dict:
     return rebuild_index()
+
+
+@library_router.get("/materials/{material_id}/content")
+def api_material_content(material_id: str) -> dict:
+    try:
+        return {"text": material_content(material_id), "truncated": False}
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail={"code": str(exc), "message": "原文不可用，请重新导入原文件。"}) from exc
+
+
+@library_router.get("/materials/{material_id}/source")
+def api_material_source(material_id: str) -> FileResponse:
+    try:
+        path = material_source_path(material_id)
+        return FileResponse(path, filename=path.name, media_type="application/octet-stream")
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="Original source unavailable") from exc
+
+
+@library_router.get("/materials/{material_id}/exports/{kind}")
+def api_material_export(material_id: str, kind: str, include_annotations: bool = False) -> Response:
+    if kind not in {"docx", "pdf", "markdown"}:
+        raise HTTPException(status_code=404, detail="Export format unavailable")
+    try:
+        material = get_material(material_id)
+        content = material_content(material_id)
+        if include_annotations:
+            from ..personal_notes import annotation_markdown
+            content += annotation_markdown("material", material_id)
+        if kind == "markdown":
+            return Response(content, media_type="text/markdown; charset=utf-8", headers={"Content-Disposition": f'attachment; filename="material-{material_id}.md"'})
+        task = SimpleNamespace(title=material["title"], page_url="", id=material_id)
+        artifact = build_docx_export(task, content) if kind == "docx" else build_pdf_export(task, content)
+        return Response(artifact.content, media_type=artifact.media_type, headers={"Content-Disposition": f'attachment; filename="material-{material_id}.{kind}"'})
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="Material unavailable") from exc
+    except DocumentExportUnavailable as exc:
+        raise HTTPException(status_code=503, detail="Document export component unavailable") from exc
 
 
 @library_router.post("/backup")

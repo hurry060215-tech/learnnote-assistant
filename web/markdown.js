@@ -69,6 +69,7 @@
 
   function markdownToHtml(markdown) {
     const lines = String(markdown || "").replace(/\r\n?/g, "\n").split("\n");
+    const kinds = markdownLineKinds(lines);
     const html = [];
     const headingIds = new Map();
     let listType = "";
@@ -83,11 +84,11 @@
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
       const rawLine = lines[lineIndex];
       const line = rawLine.trimEnd();
-      if (line.startsWith("```")) {
+      if (kinds[lineIndex] === "open" || kinds[lineIndex] === "close") {
         closeList();
         if (inCode) html.push("</code></pre>");
         else html.push("<pre><code>");
-        inCode = !inCode;
+        inCode = kinds[lineIndex] === "open";
         continue;
       }
       if (inCode) {
@@ -125,10 +126,10 @@
         const src = safeMediaUrl(image[2]);
         const alt = escapeHtml(image[1] || "frame grid");
         if (src) html.push(`<figure class="note-image-frame"><img src="${src}" alt="${alt}"><figcaption>${alt}</figcaption></figure>`);
-        else html.push(`<p>${inlineMarkdown(line)}</p>`);
+        else html.push(`<p class="external-image">${inlineMarkdown(line.replace(/^!/, "外部图片："))}</p>`);
         continue;
       }
-      const heading = /^(#{1,3})\s+(.+)$/.exec(line);
+      const heading = /^(#{1,6})\s+(.+)$/.exec(line);
       if (heading) {
         closeList();
         const level = heading[1].length;
@@ -176,6 +177,16 @@
       .toLocaleLowerCase();
   }
 
+  function markdownLineKinds(lines) {
+    let marker = "", length = 0;
+    return lines.map(line => {
+      const fence = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+      if (!marker && fence) { marker = fence[1][0]; length = fence[1].length; return "open"; }
+      if (marker && fence && fence[1][0] === marker && fence[1].length >= length && !fence[2].trim()) { marker = ""; return "close"; }
+      return marker ? "code" : "prose";
+    });
+  }
+
   function sanitizeNoteMarkdown(markdown, options = {}) {
     const requestedTitle = typeof options === "string" ? options : options?.title;
     const titleKey = normalizedTitle(requestedTitle || "");
@@ -195,9 +206,10 @@
     }
 
     const lines = sourceLines.slice(start);
+    const kinds = markdownLineKinds(lines);
     const cleaned = [];
     for (let index = 0; index < lines.length; index += 1) {
-      if (!/^\s*-\s*Page context:\s*captured from the current browser page\b/i.test(lines[index])) {
+      if (kinds[index] !== "prose" || !/^\s*-\s*Page context:\s*captured from the current browser page\b/i.test(lines[index])) {
         cleaned.push(lines[index]);
         continue;
       }
@@ -220,8 +232,9 @@
     // Collapse accidental repeated separators without flattening intentional
     // section breaks inside the note.
     const compact = [];
-    for (const line of cleaned) {
-      if (isRule(line) && isRule(compact.at(-1))) continue;
+    const cleanedKinds = markdownLineKinds(cleaned);
+    for (const [index, line] of cleaned.entries()) {
+      if (cleanedKinds[index] === "prose" && isRule(line) && isRule(compact.at(-1))) continue;
       compact.push(line);
     }
     return compact.join("\n").trim();
@@ -229,16 +242,12 @@
 
   function noteOutline(markdown, limit = 12) {
     const lines = String(markdown || "").replace(/\r\n?/g, "\n").split("\n");
+    const kinds = markdownLineKinds(lines);
     const headingIds = new Map();
     const headings = [];
-    let inCode = false;
-    for (const rawLine of lines) {
+    for (const [index, rawLine] of lines.entries()) {
       const line = rawLine.trimEnd();
-      if (line.startsWith("```")) {
-        inCode = !inCode;
-        continue;
-      }
-      if (inCode) continue;
+      if (kinds[index] !== "prose") continue;
       const heading = /^(#{1,3})\s+(.+)$/.exec(line);
       if (!heading) continue;
       const text = plainHeadingText(heading[2]);

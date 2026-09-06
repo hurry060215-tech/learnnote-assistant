@@ -91,6 +91,8 @@ class TaskOptions(BaseModel):
     transcriber: str = "faster-whisper"
     whisper_model: str = "small"
     visual_understanding: bool = True
+    local_ocr: bool = False
+    ocr_frame_limit: int = Field(default=12, ge=1, le=24)
     frame_interval: int = Field(default=20, ge=1, le=600)
     grid_columns: int = Field(default=3, ge=1, le=6)
     grid_rows: int = Field(default=3, ge=1, le=6)
@@ -339,6 +341,7 @@ class StudyPlan(BaseModel):
     daily_target: int = Field(default=10, ge=1, le=200)
     paused: bool = False
     timezone: str = "UTC"
+    timezone_initialized: bool = False
     created_at: str = ""
     updated_at: str = ""
 
@@ -349,6 +352,7 @@ class StudyPlanUpdateRequest(BaseModel):
     title: str = Field(default="本地学习计划", max_length=120)
     daily_target: int = Field(default=10, ge=1, le=200)
     paused: bool = False
+    timezone: str | None = Field(default=None, max_length=100)
 
 
 class EvidenceGate(BaseModel):
@@ -464,6 +468,7 @@ class TaskRecord(BaseModel):
     cancelled_at: str = ""
     source_task_id: str = ""
     source_media_path: str = ""
+    learning_range: dict[str, float] = Field(default_factory=dict)
     created_at: str
     updated_at: str
     options: TaskOptions = Field(default_factory=TaskOptions)

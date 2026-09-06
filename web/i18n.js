@@ -53,7 +53,7 @@
       sourceUrl: "Video link",
       reopenOnboarding: "Open again",
       settingsAdvancedLabel: "Show advanced settings",
-      settingsAdvancedHint: "Reveal model, transcription, note, and video details"
+      settingsAdvancedHint: "Reveal transcription, note-template, and video-processing details"
     }
   });
 

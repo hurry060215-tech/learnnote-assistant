@@ -22,7 +22,7 @@ hiddenimports += collect_submodules("fastapi")
 hiddenimports += collect_submodules("starlette")
 hiddenimports += collect_submodules("uvicorn")
 
-for optional_package in ("webview", "imageio_ffmpeg", "faster_whisper"):
+for optional_package in ("webview", "imageio_ffmpeg", "faster_whisper", "tzdata"):
     try:
         package_datas, package_binaries, package_hiddenimports = collect_all(optional_package)
     except ImportError:

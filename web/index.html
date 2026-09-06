@@ -10,7 +10,7 @@
     <link rel="stylesheet" href="/web/product.css?v=20260714-v0124">
     <link rel="stylesheet" href="/web/mature.css?v=20260728-ui4">
     <link rel="stylesheet" href="/web/editorial.css?v=20260724-ui3">
-    <link rel="stylesheet" href="/web/experience.css?v=20260831-model2">
+    <link rel="stylesheet" href="/web/experience.css?v=20260906-v0156">
   </head>
   <body data-app-view="workspace">
     <header class="topbar">
@@ -76,7 +76,7 @@
         <div class="settings-layout">
           <nav class="settings-menu" aria-label="设置分类">
             <button class="active" type="button" data-settings-tab="general" data-i18n="settingsGeneral">通用</button>
-            <button type="button" data-settings-tab="model" data-setting-advanced data-i18n="settingsModel">AI 模型</button>
+            <button type="button" data-settings-tab="model" data-i18n="settingsModel">AI 模型</button>
             <button type="button" data-settings-tab="transcriber" data-setting-advanced data-i18n="settingsTranscriber">转写</button>
             <button type="button" data-settings-tab="notes" data-setting-advanced data-i18n="settingsNotes">笔记</button>
             <button type="button" data-settings-tab="processing" data-setting-advanced data-i18n="settingsProcessing">视频处理</button>
@@ -143,11 +143,11 @@
                   <div><strong>首次使用引导</strong><small>重新检查本地服务、浏览器扩展和 AI 模型</small></div>
                   <button id="openOnboardingButton" class="secondary action-button" type="button" data-i18n="reopenOnboarding">重新打开</button>
                 </div>
-                <label class="setting-row setting-switch"><span><strong data-i18n="settingsAdvancedLabel">显示高级设置</strong><small data-i18n="settingsAdvancedHint">默认隐藏模型、转写、笔记模板和视频处理细节</small></span><input id="settingAdvancedOptions" type="checkbox"></label>
+                <label class="setting-row setting-switch"><span><strong data-i18n="settingsAdvancedLabel">显示高级设置</strong><small data-i18n="settingsAdvancedHint">显示转写、笔记模板和视频处理的详细参数</small></span><input id="settingAdvancedOptions" type="checkbox"></label>
               </div>
             </section>
 
-            <section class="settings-pane" data-settings-pane="model" data-setting-advanced-pane>
+            <section class="settings-pane" data-settings-pane="model">
               <div class="settings-section-heading"><h3>AI 模型</h3><p>用于文字整理和画面理解。</p></div>
               <section id="modelSetupGuide" class="model-setup-guide" aria-labelledby="modelSetupGuideTitle">
                 <header>
@@ -217,7 +217,8 @@
                 </div>
                 <div class="setting-row study-plan-row">
                   <div><strong>本地学习计划</strong><small>设置每天目标；暂停只影响本地提醒和复习视图，不读取课程平台进度。</small></div>
-                  <div class="study-plan-controls"><input id="studyPlanTarget" type="number" min="1" max="200" value="10" aria-label="每日复习目标"><label><input id="studyPlanPaused" type="checkbox"> 暂停</label><button id="studyPlanSaveButton" class="secondary action-button" type="button">保存计划</button></div>
+                  <div class="study-plan-controls"><input id="studyPlanTarget" type="number" min="1" max="200" value="10" aria-label="每日复习目标"><label><input id="studyPlanPaused" type="checkbox"> 暂停</label><label>时区 <input id="studyPlanTimezone" type="text" list="studyTimezones" placeholder="Asia/Shanghai" aria-label="学习时区"></label><datalist id="studyTimezones"><option value="Asia/Shanghai"><option value="Asia/Tokyo"><option value="America/New_York"><option value="Europe/London"><option value="UTC"></datalist><button id="studyPlanSaveButton" class="secondary action-button" type="button">保存计划</button></div>
+                  <button id="rebuildStudyScheduleButton" class="secondary action-button" type="button">按评分历史重建调度</button>
                 </div>
                 <div id="studyDueList" class="study-due-list" role="region" aria-live="polite" aria-label="到期复习卡片"></div>
                 <div id="dataMigrationNotice" class="storage-migration-notice" hidden role="status"><div><strong>新位置已经准备好</strong><small id="dataMigrationMessage"></small></div><button id="restartForDataFolderButton" class="primary action-button" type="button">立即重启</button></div>
@@ -262,7 +263,7 @@
       <section id="studyView" class="study-view" hidden aria-label="复习">
         <header class="study-view-header">
           <div><span class="editorial-kicker">本地复习</span><h1>把看过的内容记住</h1><p>只使用你确认过的字幕和笔记卡片，不读取课程平台进度。</p></div>
-          <button id="studyViewRefreshButton" class="secondary action-button" type="button">刷新到期卡片</button>
+          <select id="studyCourseSelect" aria-label="复习课程"><option value="">全部资料</option></select><button id="studyViewRefreshButton" class="secondary action-button" type="button">刷新到期卡片</button>
         </header>
         <div id="studyViewSummary" class="study-view-summary" aria-live="polite">正在读取复习记录…</div>
         <section id="studyViewDashboard" class="study-view-dashboard" aria-label="今日学习进度" aria-live="polite">
@@ -312,6 +313,7 @@
             <svg class="editorial-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>
           </button>
           <p id="editorialKnowledgeImportStatus" class="editorial-inline-status editorial-material-status" role="status" aria-live="polite"></p>
+          <button type="button" class="editorial-material-entry" data-open-courses><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7v16H4zM14 4h6v16h-6z"/></svg><span>课程归档与批量链接</span><span aria-hidden="true">›</span></button>
           <p class="editorial-privacy-line">本地优先处理，学习资料默认保存在这台设备</p>
 
           <section id="editorialLocalEntry" class="editorial-entry" hidden aria-label="拖入本地视频">
@@ -577,6 +579,9 @@
                 </span>
               </button>
             </div>
+            <div class="field" data-setting-group="processing">
+              <span>本地画面文字</span><label><input id="localOcrEnabled" type="checkbox"> 识别关键帧文字（可选本地OCR）</label><small>文字保存在本机；组件不可用时继续生成字幕笔记。</small>
+            </div>
             <label class="field" data-setting-group="transcriber">
               <span>转写引擎</span>
               <select id="transcriber">
@@ -699,6 +704,7 @@
           <span id="taskCount" class="count">0</span>
         </div>
         <div class="queue-tools">
+          <button type="button" class="secondary" data-open-courses>课程与引用对照</button>
           <input id="taskSearch" type="search" placeholder="搜索标题、来源或错误">
           <select id="statusFilter" aria-label="任务状态筛选">
             <option value="all">全部</option>
@@ -943,9 +949,12 @@
     </div>
 
 <script src="/web/i18n.js?v=20260831-clarity1"></script>
-    <script src="/web/markdown.js?v=20260831-ux1"></script>
+    <script src="/web/markdown.js?v=20260906-v0156"></script>
     <script src="/web/task-links.js?v=20260821-task-links1"></script>
-    <script src="/web/app.js?v=20260831-clarity1"></script>
+    <script src="/web/learning.js?v=20260906"></script>
+    <script src="/web/personal-notes.js?v=20260906"></script>
+    <script src="/web/courses.js?v=20260906"></script>
+    <script src="/web/app.js?v=20260906-v0156"></script>
     <script src="/web/model-setup.js?v=20260831-model1"></script>
     <script src="/web/editorial.js?v=20260831-clarity1"></script>
   </body>

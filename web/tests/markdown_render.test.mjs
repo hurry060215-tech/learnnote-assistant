@@ -369,7 +369,10 @@ assert.equal(context.safeNoteMediaUrl("/api/tasks/task-web/assets/grid_001.jpg")
 vm.runInContext(`API = "http://127.0.0.1:8766";`, context);
 assert.equal(context.safeNoteMediaUrl("/api/tasks/task-web/assets/grid_001.jpg"), "http://127.0.0.1:8766/api/tasks/task-web/assets/grid_001.jpg");
 assert.equal(context.safeNoteMediaUrl("http://127.0.0.1:8765/api/tasks/task-web/assets/grid_001.jpg"), "http://127.0.0.1:8766/api/tasks/task-web/assets/grid_001.jpg");
-assert.equal(context.safeNoteMediaUrl("https://cdn.example.com/image.jpg"), "https://cdn.example.com/image.jpg");
+assert.equal(context.safeNoteMediaUrl("https://cdn.example.com/image.jpg"), "");
+assert.doesNotMatch(context.markdownToHtml("![remote](https://cdn.example.com/image.jpg)"), /<img/);
+assert.match(context.markdownToHtml("~~~~python\n# code comment\nx = 1\n~~~~"), /<pre><code># code comment/);
+assert.doesNotMatch(context.noteOutline("~~~~python\n# code comment\n~~~~"), /code comment/);
 assert.equal(context.safeNoteMediaUrl("javascript:alert(1)"), "");
 vm.runInContext(`API = "";`, context);
 assert.equal(context.displayTaskTitle({
@@ -524,13 +527,13 @@ assert.match(indexHtml, /id="libraryBackupInput"/);
 assert.match(webCode, /\/api\/tasks\?confirm=delete_all_tasks/);
 assert.match(matureCss, /\.danger-button\s*\{/);
 assert.match(indexHtml, /styles\.css\?v=20260724-ui3/);
-assert.match(indexHtml, /app\.js\?v=20260831-clarity1/);
+assert.match(indexHtml, /app\.js\?v=\d{8}-[a-z0-9-]+/);
 assert.match(indexHtml, /id="viewReleaseNotesButton"/);
 assert.match(indexHtml, /id="releaseNotesOverlay"/);
 assert.match(indexHtml, /id="confirmReleaseNotesButton"/);
 assert.match(indexHtml, /mature\.css\?v=20260728-ui4/);
 assert.match(indexHtml, /editorial\.css\?v=20260724-ui3/);
-assert.match(indexHtml, /editorial\.js\?v=20260831-clarity1/);
+assert.match(indexHtml, /editorial\.js\?v=\d{8}-[a-z0-9-]+/);
 assert.match(indexHtml, /id="sourceRouteRail"/);
 assert.match(indexHtml, /id="urlPreflightReport"/);
 assert.match(indexHtml, /href="#settingsView" data-app-view="settings" title="设置"/);
@@ -3709,6 +3712,7 @@ assert.deepEqual(
     gridColumns: "3",
     gridRows: "3",
     visualUnderstanding: true,
+    localOcr: false,
     noteStyle: "study",
     noteTemplate: "standard",
     summaryDepth: "standard",
