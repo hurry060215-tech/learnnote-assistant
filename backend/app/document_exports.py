@@ -10,6 +10,8 @@ from io import BytesIO
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
+from .config import TASK_DIR
+
 
 DOCUMENT_EXPORT_SCHEMA_VERSION = 1
 _MARKDOWN_LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
@@ -52,7 +54,10 @@ def _blocks(markdown: str) -> list[_Block]:
     result: list[_Block] = []
     paragraph: list[str] = []
     code: list[str] = []
+    table: list[str] = []
     in_code = False
+    fence_character = ""
+    fence_length = 0
 
     def flush_paragraph() -> None:
         if paragraph:
@@ -64,18 +69,35 @@ def _blocks(markdown: str) -> list[_Block]:
             result.append(_Block("code", "\n".join(code)))
             code.clear()
 
+    def flush_table() -> None:
+        if table:
+            result.append(_Block("table", "\n".join(table)))
+            table.clear()
+
     for raw_line in str(markdown or "").replace("\r\n", "\n").replace("\r", "\n").split("\n"):
         line = raw_line.rstrip()
-        if line.strip().startswith("```"):
+        fence = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)$", line)
+        if fence and (not in_code or fence.group(1)[0] == fence_character and len(fence.group(1)) >= fence_length and not fence.group(2).strip()):
             if in_code:
                 flush_code()
                 in_code = False
             else:
                 flush_paragraph()
+                flush_table()
                 in_code = True
+                fence_character, fence_length = fence.group(1)[0], len(fence.group(1))
             continue
         if in_code:
             code.append(line)
+            continue
+        if line.strip().startswith("|") and line.strip().endswith("|"):
+            flush_paragraph()
+            table.append(line)
+            continue
+        flush_table()
+        if re.fullmatch(r"!\[[^\]]*\]\([^\n]+\)", line.strip()):
+            flush_paragraph()
+            result.append(_Block("image", line.strip()))
             continue
         if not line.strip():
             flush_paragraph()
@@ -101,7 +123,41 @@ def _blocks(markdown: str) -> list[_Block]:
         paragraph.append(line)
     flush_paragraph()
     flush_code()
+    flush_table()
     return [block for block in result if block.text.strip()]
+
+
+def _table_rows(text: str) -> list[list[str]]:
+    rows = []
+    for line in text.splitlines():
+        cells = [cell.strip().replace("\\|", "|") for cell in re.split(r"(?<!\\)\|", line.strip().strip("|"))]
+        if cells and all(re.fullmatch(r":?-{3,}:?", cell) for cell in cells):
+            continue
+        rows.append(cells)
+    width = max((len(row) for row in rows), default=1)
+    return [row + [""] * (width - len(row)) for row in rows]
+
+
+def _task_image(task, markdown: str) -> tuple[Path | None, str]:
+    match = re.fullmatch(r"!\[([^\]]*)\]\(([^\n]+)\)", markdown)
+    if not match:
+        return None, ""
+    caption, url = match.groups()
+    expected_prefix = f"/api/tasks/{task.id}/"
+    try:
+        parsed = urlsplit(url)
+        if not parsed.path.startswith(expected_prefix):
+            return None, _sanitize_export_text(caption)
+        root = (TASK_DIR / task.id).resolve()
+        # Only embed indexed local frames; never download arbitrary Markdown
+        # URLs or open a user-supplied local filename while exporting.
+        for grid in getattr(task, "frame_grids", []):
+            path = Path(grid.path).resolve()
+            if path.is_relative_to(root) and path.is_file() and Path(parsed.path).name == path.name:
+                return path, _sanitize_export_text(caption)
+    except (ValueError, OSError):
+        pass
+    return None, _sanitize_export_text(caption)
 
 
 def _safe_hyperlink(value: str) -> str:
@@ -220,6 +276,7 @@ def build_docx_export(task, note: str, transcript: dict | None = None) -> Docume
         from docx import Document
         from docx.oxml.ns import qn
         from docx.shared import Cm, Pt
+        from docx.oxml import OxmlElement
     except ImportError as exc:
         raise DocumentExportUnavailable("docx_export_dependency_missing") from exc
 
@@ -258,7 +315,31 @@ def build_docx_export(task, note: str, transcript: dict | None = None) -> Docume
         source_line.add_run(f"\n可追溯字幕片段：{len(segments)} 段")
 
     for block in _content_blocks(note, raw_title):
-        if block.kind == "heading":
+        if block.kind == "table":
+            rows = _table_rows(block.text)
+            if not rows:
+                document.add_paragraph(_sanitize_export_text(block.text))
+                continue
+            table = document.add_table(rows=0, cols=len(rows[0]))
+            table.style = "Table Grid"
+            for index, values in enumerate(rows):
+                cells = table.add_row().cells
+                for cell, value in zip(cells, values):
+                    _add_docx_inline(cell.paragraphs[0], value)
+                if index == 0:
+                    repeat = OxmlElement("w:tblHeader")
+                    table.rows[0]._tr.get_or_add_trPr().append(repeat)
+            document.add_paragraph()
+        elif block.kind == "image":
+            path, caption = _task_image(task, block.text)
+            if path:
+                from PIL import Image
+                with Image.open(path) as image:
+                    width, height = image.size
+                scale = min(16 / max(1, width), 18 / max(1, height))
+                document.add_picture(str(path), width=Cm(width * scale), height=Cm(height * scale))
+            document.add_paragraph(caption or "画面出处；请回原资料核对")
+        elif block.kind == "heading":
             paragraph = document.add_heading(level=max(1, min(block.level, 3)))
             _add_docx_inline(paragraph, block.text)
         elif block.kind == "bullet":
@@ -338,7 +419,7 @@ def build_pdf_export(task, note: str, transcript: dict | None = None) -> Documen
         from reportlab.lib.pagesizes import A4
         from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
         from reportlab.lib.units import mm
-        from reportlab.platypus import Paragraph, Preformatted, SimpleDocTemplate, Spacer
+        from reportlab.platypus import Paragraph, Preformatted, SimpleDocTemplate, Spacer, LongTable, TableStyle, Image as PdfImage
     except ImportError as exc:
         raise DocumentExportUnavailable("pdf_export_dependency_missing") from exc
 
@@ -364,6 +445,8 @@ def build_pdf_export(task, note: str, transcript: dict | None = None) -> Documen
         textColor=colors.HexColor("#17201F"),
         spaceAfter=7,
         wordWrap="CJK",
+        allowWidows=0,
+        allowOrphans=0,
     )
     title_style = ParagraphStyle(
         "LearnNoteTitle",
@@ -374,9 +457,9 @@ def build_pdf_export(task, note: str, transcript: dict | None = None) -> Documen
         spaceAfter=12,
     )
     heading_styles = {
-        1: ParagraphStyle("LearnNoteH1", parent=body, fontSize=16, leading=23, textColor=colors.HexColor("#0F5F58"), spaceBefore=12, spaceAfter=7),
-        2: ParagraphStyle("LearnNoteH2", parent=body, fontSize=13.5, leading=20, textColor=colors.HexColor("#155E58"), spaceBefore=10, spaceAfter=6),
-        3: ParagraphStyle("LearnNoteH3", parent=body, fontSize=11.5, leading=18, textColor=colors.HexColor("#1D514D"), spaceBefore=8, spaceAfter=4),
+        1: ParagraphStyle("LearnNoteH1", parent=body, fontSize=16, leading=23, textColor=colors.HexColor("#0F5F58"), spaceBefore=12, spaceAfter=7, keepWithNext=True),
+        2: ParagraphStyle("LearnNoteH2", parent=body, fontSize=13.5, leading=20, textColor=colors.HexColor("#155E58"), spaceBefore=10, spaceAfter=6, keepWithNext=True),
+        3: ParagraphStyle("LearnNoteH3", parent=body, fontSize=11.5, leading=18, textColor=colors.HexColor("#1D514D"), spaceBefore=8, spaceAfter=4, keepWithNext=True),
     }
     meta = ParagraphStyle("LearnNoteMeta", parent=body, fontSize=8.5, leading=13, textColor=colors.HexColor("#52615F"))
     code = ParagraphStyle("LearnNoteCode", parent=body, fontName=font_name, fontSize=8.5, leading=12, backColor=colors.HexColor("#F2F6F5"), borderPadding=7)
@@ -394,14 +477,30 @@ def build_pdf_export(task, note: str, transcript: dict | None = None) -> Documen
         Spacer(1, 5 * mm),
     ))
     for block in _content_blocks(note, raw_title):
-        if block.kind == "heading":
+        if block.kind == "table":
+            rows = [[Paragraph(_pdf_inline(cell), body) for cell in row] for row in _table_rows(block.text)]
+            if not rows:
+                story.append(Paragraph(html.escape(_sanitize_export_text(block.text)), body))
+                continue
+            table = LongTable(rows, colWidths=[document.width / len(rows[0])] * len(rows[0]), repeatRows=1, splitInRow=1)
+            table.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), .4, colors.HexColor("#ccd9db")), ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#edf4f3")), ("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 7), ("RIGHTPADDING", (0, 0), (-1, -1), 7)]))
+            story.extend((table, Spacer(1, 4 * mm)))
+        elif block.kind == "image":
+            path, caption = _task_image(task, block.text)
+            if path:
+                image = PdfImage(str(path))
+                scale = min(document.width / image.imageWidth, 180 * mm / image.imageHeight)
+                image.drawWidth, image.drawHeight = image.imageWidth * scale, image.imageHeight * scale
+                story.append(image)
+            story.append(Paragraph(html.escape(caption or "画面出处；请回原资料核对"), meta))
+        elif block.kind == "heading":
             story.append(Paragraph(_pdf_inline(block.text), heading_styles[max(1, min(block.level, 3))]))
         elif block.kind == "bullet":
             story.append(Paragraph(_pdf_inline(block.text), bullet, bulletText="•"))
         elif block.kind == "ordered":
             story.append(Paragraph("• " + _pdf_inline(block.text), bullet))
         elif block.kind == "code":
-            story.append(Preformatted(_sanitize_export_text(block.text), code))
+            story.append(Preformatted(_sanitize_export_text(block.text), code, maxLineLength=88))
         else:
             story.append(Paragraph(_pdf_inline(block.text), body))
     story.extend((Spacer(1, 4 * mm), Paragraph("由 LearnNote 在本机生成；原视频、Cookie 与诊断秘密未嵌入此文档。", meta)))

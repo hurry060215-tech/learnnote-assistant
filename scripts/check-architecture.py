@@ -20,6 +20,13 @@ MODULE_SIZE_LIMITS = {
     "backend/app/processor.py": 1700,
     "web/app.js": 10000,
     "web/styles.css": 13500,
+    "web/learning.js": 600,
+    "web/personal-notes.js": 300,
+    "web/courses.js": 500,
+    "backend/app/courses.py": 400,
+    "backend/app/local_ocr.py": 250,
+    "backend/app/task_queue.py": 400,
+    "backend/app/upload_limits.py": 250,
 }
 
 
@@ -80,6 +87,9 @@ def module_size_violations() -> list[str]:
         lines = len(path.read_text(encoding="utf-8").splitlines())
         if lines > limit:
             violations.append(f"{relative} has {lines} lines; limit is {limit}")
+    css_lines = sum(len(path.read_text(encoding="utf-8").splitlines()) for path in (ROOT / "web").glob("*.css"))
+    if css_lines > 24000:
+        violations.append(f"All web CSS has {css_lines} lines; total budget is 24000")
     return violations
 
 

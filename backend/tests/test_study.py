@@ -6,10 +6,44 @@ from pathlib import Path
 from unittest.mock import patch
 
 from app.models import SourceEvidence
+from app.models import StudyCard
+from contextlib import closing
+import sqlite3
 from app.study import due_cards, export_study_data, get_study_plan, list_cards, propose_cards, review_card, review_history, save_cards, set_card_position, set_card_status, study_dashboard, study_summary, update_study_plan
+from app.study import rebuild_study_schedules, clear_study_data
 
 
 class StudyLoopTests(unittest.TestCase):
+    def test_export_is_not_limited_by_the_500_row_ui_page_size(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            with patch('app.study.DATA_DIR',root):
+                cards=save_cards([StudyCard(front=f'card {index}',back='answer',source_evidence_ids=['fixture']) for index in range(510)])
+                with closing(sqlite3.connect(root/'study.sqlite3')) as db:
+                    db.executemany("INSERT INTO study_reviews(card_id,rating,reviewed_at,due_at,stability,difficulty,idempotency_key) VALUES (?,3,'2026-09-06T00:00:00+00:00','',1,1,?)",[(cards[0].card_id,f'review-{index}') for index in range(520)])
+                    db.commit()
+                exported=export_study_data()
+                self.assertEqual(len(exported['cards']),510)
+                self.assertEqual(len(exported['reviews']),520)
+    def test_first_review_matches_fsrs_and_graduation_does_not_write_null_step(self):
+        from fsrs import Card, Rating, Scheduler
+        from datetime import datetime, timezone
+        with tempfile.TemporaryDirectory() as directory:
+            with patch('app.study.DATA_DIR',Path(directory)):
+                item=save_cards(propose_cards([SourceEvidence(evidence_id='e',title='课',text='学习率决定每一步参数更新的步长，并影响收敛速度。')]))[0]
+                first=review_card(item.card_id,3,'one')
+                expected,_=Scheduler(enable_fuzzing=False).review_card(Card(card_id=1),Rating.Good,review_datetime=datetime.now(timezone.utc))
+                self.assertAlmostEqual(first.stability,expected.stability,places=4)
+                second=review_card(item.card_id,3,'two')
+                self.assertEqual(second.fsrs_state,'Review')
+                self.assertEqual(second.step,0)
+                third=review_card(item.card_id,3,'three')
+                self.assertEqual(third.reps,3)
+                result=rebuild_study_schedules()
+                self.assertEqual(result['updated'],1)
+                self.assertEqual(len(review_history(item.card_id)),3)
+                cleared=clear_study_data()
+                self.assertEqual(cleared['deleted_schedule_backups'],1)
     def test_propose_confirm_and_review_card_locally(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             with patch("app.study.DATA_DIR", Path(tmp)):

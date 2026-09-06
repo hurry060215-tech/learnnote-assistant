@@ -22,9 +22,15 @@ jobs:
           PYTHONPATH: backend
         run: |
           python -m compileall backend/app
+          if ($LASTEXITCODE -ne 0) { throw "Python compilation failed" }
           python scripts/check-architecture.py
+          if ($LASTEXITCODE -ne 0) { throw "Architecture checks failed" }
+          python scripts/check-workflow-shells.py
+          if ($LASTEXITCODE -ne 0) { throw "Workflow shell checks failed" }
           python scripts/audit-i18n.py
+          if ($LASTEXITCODE -ne 0) { throw "Localization contract failed" }
           python -m unittest discover backend/tests
+          if ($LASTEXITCODE -ne 0) { throw "Backend tests failed" }
           python scripts/evidence-quality-benchmark.py
       - name: Extension and web checks
         shell: pwsh
@@ -34,12 +40,14 @@ jobs:
           node --check extension/page_hook.js
           node --check extension/sidepanel.js
           node --check web/app.js
-          Get-ChildItem extension/tests/*.test.mjs | ForEach-Object { node $_.FullName }
-          Get-ChildItem web/tests/*.test.mjs | ForEach-Object { node $_.FullName }
+          Get-ChildItem extension/tests/*.test.mjs | ForEach-Object { node $_.FullName; if ($LASTEXITCODE -ne 0) { throw "Extension test failed: $($_.Name)" } }
+          Get-ChildItem web/tests/*.test.mjs | ForEach-Object { node $_.FullName; if ($LASTEXITCODE -ne 0) { throw "Web test failed: $($_.Name)" } }
       - name: Desktop and release checks
         run: |
           python -m unittest discover scripts/tests -p "test_*.py"
+          if ($LASTEXITCODE -ne 0) { throw "Script tests failed" }
           python -m unittest desktop.tests.test_desktop_launcher
+          if ($LASTEXITCODE -ne 0) { throw "Desktop tests failed" }
       - name: Release packaging smoke
         shell: pwsh
         run: |

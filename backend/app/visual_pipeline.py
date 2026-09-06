@@ -13,6 +13,9 @@ from .models import FrameGrid, FrameSample, TaskOptions
 from .processor_state import check_cancel
 from .storage import write_json
 from .storage import update_task
+from .storage import task_dir
+from .local_ocr import recognize_frames
+from .processor_state import TaskCancelled
 
 
 @dataclass
@@ -46,7 +49,7 @@ def extract_visual_evidence(
         "frame_extraction": {},
         "grid_build_ms": 0,
     }
-    if options.visual_understanding:
+    if options.visual_understanding or options.local_ocr:
         update_task(task_id, phase="extracting_frames", progress=68, message="正在抽帧并生成画面网格")
         work_dir = normalized_path.parent
         frame_dir = work_dir / "frames"
@@ -58,7 +61,7 @@ def extract_visual_evidence(
             normalized_path,
             frame_dir,
             max(1, options.frame_interval),
-            max_frames=max(60, min(2400, int(options.max_frame_count) // (2 if options.low_resource_mode else 1))),
+            max_frames=min(24, options.ocr_frame_limit * 2) if options.local_ocr and not options.visual_understanding else max(60, min(2400, int(options.max_frame_count) // (2 if options.low_resource_mode else 1))),
             anchor_timestamps=frame_anchor_timestamps,
             batch_size=1 if options.low_resource_mode else options.frame_extract_batch_size,
         )
@@ -94,7 +97,19 @@ def extract_visual_evidence(
 
     metrics["frame_count"] = len(frames)
     metrics["grid_count"] = len(grids)
-    return VisualArtifacts(frames, frame_samples, grids, frame_extraction_warning, metrics=metrics)
+    if options.local_ocr and frame_samples:
+        update_task(task_id, phase="extracting_frames", message="正在本地识别关键画面文字")
+        try:
+            ocr = recognize_frames(frame_samples, limit=options.ocr_frame_limit, cancel_check=lambda: check_cancel(task_id), cache_dir=task_dir(task_id) / "ocr-cache")
+        except TaskCancelled:
+            raise
+        except Exception as exc:
+            ocr = {"schema_version": 1, "status": "failed", "frames": [], "error_type": type(exc).__name__, "warning": "本地OCR未完成；字幕和画面索引仍然可用。"}
+        write_json(task_id, "ocr.json", ocr)
+        metrics["ocr"] = {key: value for key, value in ocr.items() if key != "frames"}
+    # OCR-only frames must never enter the vision-model request path.
+    summary_grids = grids if options.visual_understanding else []
+    return VisualArtifacts(frames, frame_samples, summary_grids, frame_extraction_warning, metrics=metrics)
 
 
 def write_visual_index(

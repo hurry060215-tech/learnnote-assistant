@@ -1,12 +1,12 @@
-# v0.1.55 发布收口清单
+# v0.1.56 发布收口清单
 
 当前代码与门禁已准备好；下面两步必须由有仓库 Code Owner 权限的账号完成，不能由 CI 代替。
 
 ## 合并前
 
-- [ ] 在对应发布 PR 中完成 Code Owner review（v0.1.55 使用 [PR #123](https://github.com/hurry060215-tech/learnnote-assistant/pull/123)）。
+- [ ] 在对应发布 PR 中完成 Code Owner review。
 - [ ] 确认 required checks、CodeQL、Dependency Review、Obsidian verify 全部通过。
-- [ ] 检查 `APP_VERSION`、扩展 manifest、安装器、Docker 默认 tag、Release Notes 和官网下载链接均为 `0.1.55`。
+- [ ] 检查 `APP_VERSION`、扩展 manifest、安装器、Docker 默认 tag、Release Notes 和官网下载链接均为 `0.1.56`。
 - [ ] 确认没有把本地 Cookie、模型 Key、`data/` 任务产物或签名 URL 提交到仓库。
 
 ## 合并后
@@ -14,15 +14,15 @@
 ```powershell
 git checkout main
 git pull --ff-only origin main
-git tag -a v0.1.55 -m "LearnNote v0.1.55"
-git push origin v0.1.55
+git tag -a v0.1.56 -m "LearnNote v0.1.56"
+git push origin v0.1.56
 ```
 
 Tag 会触发 Desktop Release workflow，生成：
 
 - `LearnNote-Windows-x64.zip`
 - `LearnNote-Setup-x64.exe`
-- `LearnNote-Browser-Extension-v0.1.55.zip`
+- `LearnNote-Browser-Extension-v0.1.56.zip`
 - `SHA256SUMS.txt`
 
 ## 签名与商店

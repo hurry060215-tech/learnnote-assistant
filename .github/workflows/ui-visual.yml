@@ -1,6 +1,12 @@
 name: UI visual acceptance
 
 on:
+  pull_request:
+    paths:
+      - "web/**"
+      - "backend/app/**"
+      - "scripts/*visual*.cjs"
+      - ".github/workflows/ui-visual.yml"
   workflow_dispatch:
   push:
     branches: [main]
@@ -49,6 +55,9 @@ jobs:
             }
             if (-not $ready) { throw "Local backend did not become ready." }
             node scripts/accessibility-visual-acceptance.cjs http://127.0.0.1:8765/web/index.html build/ui-visual
+            if ($LASTEXITCODE -ne 0) { throw "Accessibility visual gate failed" }
+            node scripts/learning-workflow-acceptance.cjs http://127.0.0.1:8765/ build/learning-ui
+            if ($LASTEXITCODE -ne 0) { throw "Learning interaction gate failed" }
           } finally {
             if ($server -and -not $server.HasExited) { Stop-Process -Id $server.Id -Force }
           }
@@ -56,6 +65,8 @@ jobs:
         if: always()
         with:
           name: ui-visual-${{ github.run_id }}
-          path: build/ui-visual
+          path: |
+            build/ui-visual
+            build/learning-ui
           if-no-files-found: warn
           retention-days: 14

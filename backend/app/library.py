@@ -508,7 +508,29 @@ def restore_library(backup_path: Path) -> dict[str, object]:
                 finally:
                     snapshot.close()
                     live.close()
-            temporary.replace(target)
+            # The database also owns documents and canonical evidence. Restore
+            # only the validated task projection in one SQLite transaction;
+            # replacing the whole file silently erased those unrelated tables.
+            live = sqlite3.connect(target)
+            sanitized = sqlite3.connect(temporary)
+            try:
+                live_fts = _ensure_schema(live)
+                live.execute("BEGIN IMMEDIATE")
+                live.execute("DELETE FROM library_tasks")
+                if live_fts:
+                    live.execute("DELETE FROM library_tasks_fts")
+                for row in sanitized.execute("SELECT task_id, title, source, source_type, mode, status, checkpoint, created_at, updated_at, note_path, media_path, fingerprint, content FROM library_tasks"):
+                    live.execute("INSERT INTO library_tasks(task_id,title,source,source_type,mode,status,checkpoint,created_at,updated_at,note_path,media_path,fingerprint,content) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", row)
+                    if live_fts:
+                        live.execute("INSERT INTO library_tasks_fts(task_id,title,source,content) VALUES (?,?,?,?)", (row[0], row[1], row[2], row[12]))
+                live.commit()
+            except Exception:
+                live.rollback()
+                raise
+            finally:
+                sanitized.close()
+                live.close()
+                temporary.unlink(missing_ok=True)
     except Exception:
         temporary.unlink(missing_ok=True)
         raise
@@ -1027,3 +1049,30 @@ def material_anchors(material_id: str, limit: int = 500) -> list[dict[str, objec
             "metadata": metadata,
         })
     return result
+
+
+def material_source_path(material_id: str) -> Path:
+    material = get_material(material_id)
+    root = (DATA_DIR / "materials").resolve()
+    candidate = (root / material["material_id"] / _safe_material_filename(material["filename"])).resolve()
+    if not candidate.is_relative_to(root) or not candidate.is_file():
+        raise ValueError("material_source_missing")
+    return candidate
+
+
+def material_content(material_id: str) -> str:
+    material = get_material(material_id)
+    try:
+        source = material_source_path(material_id)
+        if source.stat().st_size > MATERIAL_IMPORT_MAX_BYTES:
+            raise ValueError("material_file_too_large")
+        text, _ = extract_import_text(source.name, source.read_bytes(), material["content_type"])
+        return text
+    except ValueError as exc:
+        if str(exc) != "material_source_missing":
+            raise
+        # Old index-only documents remain readable from their complete anchors.
+        anchors = material_anchors(material_id, 1000)
+        if not anchors:
+            raise
+        return "\n\n".join(str(item["text"]) for item in anchors)

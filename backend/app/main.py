@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from importlib.util import find_spec
 from io import BytesIO
+from contextlib import asynccontextmanager
+import asyncio
 import base64
 import hmac
 import json
@@ -37,6 +39,7 @@ from .processor import browser_subtitle_text_is_player_ui, process_current_page_
 from .media_preflight import page_preflight_report
 from .reliability import current_page_source_identity, local_source_identity
 from .runtime import ffmpeg_bin, ffprobe_bin
+from .upload_limits import UploadBudgetMiddleware, UploadBudgetExceeded, write_video_upload
 from .source_input import SourceInputError, clean_task_title, normalize_source_input
 from .storage import cleanup_tasks, create_task, delete_all_tasks, delete_task, get_task, list_tasks, read_json, request_task_cancel, storage_summary, task_dir, update_task, write_json
 from .routers.knowledge_study import knowledge_router, study_router, task_study_router
@@ -44,11 +47,25 @@ from .routers.system import system_router
 from .routers.library import library_router
 from .routers.notes import notes_router
 from .routers.events import events_router
+from .routers.personal import personal_router
+from .routers.courses import course_router
+from .routers.ranges import range_router
 from .summarizer import chat_completion_provider_kwargs, llm_base_host, llm_model_supports_vision, llm_provider_name, visual_window_review_question_lines
+
+from .task_queue import schedule_processing, recover_processing, queue_for
 
 ensure_dirs()
 
-app = FastAPI(title="LearnNote Assistant", version=APP_VERSION)
+@asynccontextmanager
+async def lifespan(application):
+    await asyncio.to_thread(recover_processing, DATA_DIR)
+    try:
+        yield
+    finally:
+        await asyncio.to_thread(queue_for(DATA_DIR).stop)
+
+app = FastAPI(title="LearnNote Assistant", version=APP_VERSION, lifespan=lifespan)
+app.add_middleware(UploadBudgetMiddleware)
 app.include_router(knowledge_router)
 app.include_router(study_router)
 app.include_router(task_study_router)
@@ -56,16 +73,18 @@ app.include_router(system_router)
 app.include_router(library_router)
 app.include_router(notes_router)
 app.include_router(events_router)
+app.include_router(personal_router)
+app.include_router(course_router)
+app.include_router(range_router)
 _extension_heartbeat_at = 0.0
 _extension_version = ""
 _extension_protocol_version = 0
 _deferred_handoffs: dict[str, CurrentPageTaskRequest] = {}
 _handoff_task_ids: dict[str, str] = {}
 _deferred_handoffs_lock = threading.RLock()
-# Side Panel heartbeats arrive every 10 seconds. The MV3 background worker also
-# wakes on a 30-second alarm so the desktop can report a loaded extension even
-# when its panel is closed.
-EXTENSION_HEARTBEAT_TTL_SECONDS = 75.0
+# The MV3 background heartbeat runs every two minutes. Allow one delayed tick
+# while distinguishing a recent connection from an active capture session.
+EXTENSION_HEARTBEAT_TTL_SECONDS = 300.0
 PAIRING_TTL_SECONDS = 10 * 60
 _pairing_token = ""
 _pairing_expires_at = 0.0
@@ -87,6 +106,9 @@ async def enforce_structured_write_budget(request: Request, call_next):
     path = request.url.path
     bounded = (
         path.startswith("/api/study/")
+        or path.startswith("/api/personal/")
+        or path.startswith("/api/courses")
+        or path.endswith("/learn-range")
         or path == "/api/knowledge/evidence"
         or path.endswith("/community-context")
     )
@@ -3636,7 +3658,7 @@ def create_from_current_page(request: CurrentPageTaskRequest, background_tasks: 
             write_json(task.id, "deferred_preflight.json", redacted_request_dump(request))
             _deferred_handoffs[task.id] = request.model_copy(deep=True)
             return _handoff_response(task, deduplicated=False)
-    background_tasks.add_task(process_current_page_task, task.id, request)
+    schedule_processing(background_tasks, process_current_page_task, task.id, request)
     return _handoff_response(task, deduplicated=False)
 
 
@@ -3682,7 +3704,7 @@ def start_deferred_current_page_task(
         options=public_options,
         message="Confirmed; queued for processing",
     )
-    background_tasks.add_task(process_current_page_task, task.id, deferred_request)
+    schedule_processing(background_tasks, process_current_page_task, task.id, deferred_request)
     with _deferred_handoffs_lock:
         _deferred_handoffs.pop(task_id, None)
     return {"task_id": task.id, "task": task_payload(task)}
@@ -3731,13 +3753,11 @@ async def api_preflight_local(file: UploadFile = File(...)) -> dict:
     staging_token = uuid4().hex
     staged_path = UPLOAD_DIR / f"staged_{staging_token}_{safe_name}"
     try:
-        with staged_path.open("wb") as output:
-            while True:
-                chunk = await file.read(LOCAL_UPLOAD_CHUNK_SIZE)
-                if not chunk:
-                    break
-                output.write(chunk)
+        await write_video_upload(file, staged_path)
         integrity = validate_local_upload_file(staged_path)
+    except UploadBudgetExceeded as exc:
+        staged_path.unlink(missing_ok=True)
+        raise local_upload_error(exc.code, exc.message, status_code=exc.status) from exc
     except HTTPException:
         staged_path.unlink(missing_ok=True)
         raise
@@ -3786,13 +3806,11 @@ async def create_from_local(
         safe_name = local_upload_filename(file.filename, file.content_type)
         pending_path = UPLOAD_DIR / f"pending_{uuid4().hex}_{safe_name}"
         try:
-            with pending_path.open("wb") as output:
-                while True:
-                    chunk = await file.read(LOCAL_UPLOAD_CHUNK_SIZE)
-                    if not chunk:
-                        break
-                    output.write(chunk)
+            await write_video_upload(file, pending_path)
             integrity = validate_local_upload_file(pending_path)
+        except UploadBudgetExceeded as exc:
+            pending_path.unlink(missing_ok=True)
+            raise local_upload_error(exc.code, exc.message, status_code=exc.status) from exc
         except HTTPException:
             pending_path.unlink(missing_ok=True)
             raise
@@ -3813,7 +3831,7 @@ async def create_from_local(
         source_identity=local_source_identity(effective_title, integrity),
         message="Local upload saved; queued for processing",
     )
-    background_tasks.add_task(process_local_video_task, task.id, upload_path, effective_title, parsed_options)
+    schedule_processing(background_tasks, process_local_video_task, task.id, upload_path, effective_title, parsed_options)
     return {"task_id": task.id, "task": task_payload(task)}
 
 
@@ -3864,6 +3882,7 @@ def create_from_existing_media(
         task.id,
         source_task_id=source.id,
         source_media_path=str(media_path),
+        learning_range=source.learning_range,
         media_integrity=rerun_integrity,
         source_identity=local_source_identity(source.title or media_path.stem, rerun_integrity),
         selected_resource=source.selected_resource,
@@ -3888,8 +3907,8 @@ def create_from_existing_media(
         source_subtitle_path = None
     elif source_transcript_source == "browser-subtitle" and source_subtitle_path:
         subtitle_source = "browser-subtitle"
-    background_tasks.add_task(
-        process_local_video_task,
+    schedule_processing(
+        background_tasks, process_local_video_task,
         task.id,
         media_path,
         task.title,
@@ -3965,8 +3984,8 @@ def resume_task_from_checkpoint(
         source_subtitle_path = None
     elif source_transcript_source == "browser-subtitle" and source_subtitle_path:
         subtitle_source = "browser-subtitle"
-    background_tasks.add_task(
-        process_local_video_task,
+    schedule_processing(
+        background_tasks, process_local_video_task,
         task.id,
         media_path,
         task.title,
@@ -4305,7 +4324,7 @@ def api_visual_index(task_id: str) -> dict:
 
 
 @app.get("/api/tasks/{task_id}/exports/markdown")
-def api_export_markdown(task_id: str) -> PlainTextResponse:
+def api_export_markdown(task_id: str, include_annotations: bool = False) -> PlainTextResponse:
     try:
         task = get_task(task_id)
         note = read_note(task_id)
@@ -4314,6 +4333,9 @@ def api_export_markdown(task_id: str) -> PlainTextResponse:
     if not note.strip():
         raise HTTPException(status_code=404, detail="Note not found")
     filename = markdown_filename(task.id, task.title)
+    if include_annotations:
+        from .personal_notes import annotation_markdown
+        note += annotation_markdown("task", task_id)
     headers = {
         "Content-Disposition": (
             f'attachment; filename="learnnote-{task.id}.md"; '

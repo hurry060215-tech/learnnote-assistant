@@ -1,17 +1,44 @@
 from __future__ import annotations
 
 import unittest
+import tempfile
+from pathlib import Path
+from unittest.mock import patch
 from io import BytesIO
 from zipfile import ZipFile
 
 from pypdf import PdfReader
 
 from app.document_exports import build_docx_export, build_pdf_export
-from app.models import TaskRecord
+from app.models import TaskRecord, FrameGrid
 from app.note_document import normalize_note_markdown
 
 
 class DocumentExportTests(unittest.TestCase):
+    def test_incomplete_table_separator_does_not_break_export(self) -> None:
+        note = self.note + "\n\n| --- | --- |\n"
+        self.assertTrue(build_docx_export(self.task, note).content.startswith(b"PK"))
+        self.assertTrue(build_pdf_export(self.task, note).content.startswith(b"%PDF"))
+    def test_tables_and_local_keyframes_are_editable_and_embedded(self) -> None:
+        from PIL import Image
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            task_dir = root / "export-task"
+            task_dir.mkdir()
+            frame = task_dir / "grid.jpg"
+            Image.new("RGB", (400, 220), "white").save(frame)
+            task = self.task.model_copy(update={"frame_grids": [FrameGrid(path=str(frame), start=0, end=10, frame_count=1, url="/api/tasks/export-task/assets/grid.jpg")]})
+            note = self.note + "\n| 概念 | 含义 |\n| --- | --- |\n| 学习率 | 更新步长 |\n\n![00:10 关键画面](/api/tasks/export-task/assets/grid.jpg)\n"
+            with patch("app.document_exports.TASK_DIR", root):
+                docx = build_docx_export(task, note)
+                pdf = build_pdf_export(task, note)
+            with ZipFile(BytesIO(docx.content)) as archive:
+                self.assertIn("<w:tbl>", archive.read("word/document.xml").decode())
+                self.assertTrue(any(name.startswith("word/media/") for name in archive.namelist()))
+            reader = PdfReader(BytesIO(pdf.content))
+            self.assertIn("更新步长", "".join(page.extract_text() for page in reader.pages))
+            self.assertTrue(any(page.images for page in reader.pages))
+
     def setUp(self) -> None:
         self.task = TaskRecord(
             id="export-task",

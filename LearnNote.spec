@@ -6,6 +6,7 @@ from PyInstaller.building.datastruct import Tree
 datas = [
     ('backend/requirements.txt', 'backend'),
     ('backend/requirements.desktop.txt', 'backend'),
+    ('backend/requirements.ocr.txt', 'backend'),
     ('backend/requirements.deploy.txt', 'backend'),
 ]
 binaries = []
@@ -17,6 +18,10 @@ hiddenimports += collect_submodules('uvicorn')
 tmp_ret = collect_all('webview')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 tmp_ret = collect_all('imageio_ffmpeg')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+tmp_ret = collect_all('tzdata')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+tmp_ret = collect_all('rapidocr_onnxruntime')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 tmp_ret = collect_all('faster_whisper')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]

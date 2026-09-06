@@ -140,10 +140,16 @@ def request_task_cancel(task_id: str) -> TaskRecord:
             return record
         record.cancel_requested = True
         record.cancel_requested_at = now_iso()
-        record.status = "cancelling"
-        record.phase = "cancelling"
-        record.message = "正在停止任务"
+        was_queued = record.status == "queued"
+        record.status = "cancelled" if was_queued else "cancelling"
+        record.phase = record.status
+        record.message = "已取消排队，现有文件保留" if was_queued else "正在停止任务"
+        if was_queued:
+            record.cancelled_at = now_iso()
         save_task(record)
+        if was_queued:
+            from .task_queue import cancel_queued_processing
+            cancel_queued_processing(TASK_DIR.parent, task_id)
         return record
 
 

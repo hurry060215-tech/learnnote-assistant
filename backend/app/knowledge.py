@@ -26,18 +26,42 @@ class _VisibleTextParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self._hidden_depth = 0
+        self._pre_depth = 0
         self.parts: list[str] = []
 
     def handle_starttag(self, tag: str, attrs) -> None:
         if tag.lower() in {"script", "style", "noscript", "template"}:
             self._hidden_depth += 1
+        if self._hidden_depth:
+            return
+        tag = tag.lower()
+        if tag == "pre":
+            self.parts.append("\n\n```\n")
+            self._pre_depth += 1
+        elif not self._pre_depth:
+            if re.fullmatch(r"h[1-6]", tag):
+                self.parts.append("\n\n" + "#" * int(tag[1]) + " ")
+            elif tag in {"p", "div", "section", "article", "blockquote"}:
+                self.parts.append("\n\n")
+            elif tag == "li":
+                self.parts.append("\n- ")
+            elif tag == "br":
+                self.parts.append("\n")
 
     def handle_endtag(self, tag: str) -> None:
         if tag.lower() in {"script", "style", "noscript", "template"} and self._hidden_depth:
             self._hidden_depth -= 1
+            return
+        if self._hidden_depth:
+            return
+        if tag.lower() == "pre" and self._pre_depth:
+            self._pre_depth -= 1
+            self.parts.append("\n```\n\n")
+        elif not self._pre_depth and (tag.lower() in {"p", "div", "section", "article", "blockquote"} or re.fullmatch(r"h[1-6]", tag.lower())):
+            self.parts.append("\n\n")
 
     def handle_data(self, data: str) -> None:
-        if not self._hidden_depth:
+        if not self._hidden_depth and (self._pre_depth or data.strip() or "\n" not in data):
             self.parts.append(data)
 
 
@@ -95,7 +119,9 @@ def add_evidence(evidence: SourceEvidence) -> SourceEvidence:
         "schema_version": KNOWLEDGE_SCHEMA_VERSION,
         "evidence_id": evidence.evidence_id or uuid4().hex,
     })
-    text = " ".join(str(item.text or "").split()).strip()
+    # Search projections may collapse whitespace, but canonical evidence must
+    # retain code fences, paragraphs, tables and indentation for reading/export.
+    text = str(item.text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
     if not text:
         raise ValueError("evidence_text_required")
     item = item.model_copy(update={"text": text[:2_000_000]})
@@ -284,6 +310,14 @@ def evidence_by_ids(evidence_ids: list[str], limit: int = 100) -> list[dict[str,
     ]
 
 
+def evidence_ids_for_task(task_id: str) -> set[str]:
+    connection = _connect()
+    try:
+        return {str(row[0]) for row in connection.execute("SELECT evidence_id FROM source_evidence WHERE task_id=?", (task_id,))}
+    finally:
+        connection.close()
+
+
 def answer_from_evidence(question: str, limit: int = 6, mode: str = "lexical") -> dict[str, object]:
     hits = search_evidence(question, limit, mode)
     if not hits:
@@ -347,5 +381,5 @@ def extract_import_text(filename: str, content: bytes, content_type: str = "") -
         parser = _VisibleTextParser()
         parser.feed(decoded)
         parser.close()
-        return " ".join(" ".join(parser.parts).split()), "webpage"
+        return "".join(parser.parts).strip(), "webpage"
     return decoded, "markdown" if suffix in {".md", ".markdown"} else "task"

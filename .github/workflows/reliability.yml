@@ -51,6 +51,7 @@ jobs:
               --output-dir $target `
               --keep-artifacts
             if ($LASTEXITCODE -ne 0) { throw "Long-video matrix failed at ${duration}s" }
+          }
       - name: Real local-task cancellation gate
         shell: pwsh
         run: |
@@ -65,7 +66,6 @@ jobs:
           python scripts/full-local-task-reliability.py `
             --duration-seconds 3600 `
             --output-dir build/reliability/full-local-task
-          }
       - name: Upload offline reliability evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

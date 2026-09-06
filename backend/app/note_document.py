@@ -17,6 +17,8 @@ import re
 import unicodedata
 from typing import Any, Iterable
 
+from .markdown_structure import prose_text, structural_lines
+
 
 DOCUMENT_SCHEMA_VERSION = 1
 
@@ -81,8 +83,8 @@ def normalize_note_markdown(title: str, markdown: str) -> NoteNormalizationResul
     duplicate_h1 = 0
     body_without_duplicate_title: list[str] = []
     seen_content = False
-    for line in body:
-        heading = _HEADING_RE.match(line)
+    for line, prose in structural_lines(body):
+        heading = _HEADING_RE.match(line) if prose else None
         is_matching_h1 = bool(
             heading
             and len(heading.group(1)) == 1
@@ -106,8 +108,8 @@ def normalize_note_markdown(title: str, markdown: str) -> NoteNormalizationResul
     compact: list[str] = []
     previous_rule = False
     collapsed_rules = 0
-    for line in body_without_duplicate_title:
-        is_rule = line.strip() in {"---", "***", "___"}
+    for line, prose in structural_lines(body_without_duplicate_title):
+        is_rule = prose and line.strip() in {"---", "***", "___"}
         if is_rule and previous_rule:
             collapsed_rules += 1
             continue
@@ -152,8 +154,9 @@ def lint_note_markdown(markdown: str) -> list[dict[str, str]]:
         })
 
     headings: list[tuple[int, str]] = []
-    for line in text.splitlines():
-        match = _HEADING_RE.match(line)
+    _, body = _split_frontmatter(text.splitlines())
+    for line, prose in structural_lines(body):
+        match = _HEADING_RE.match(line) if prose else None
         if match:
             headings.append((len(match.group(1)), match.group(2).strip()))
     h1_count = sum(1 for level, _ in headings if level == 1)
@@ -203,7 +206,7 @@ def _slug(value: str, index: int) -> str:
 def _citations(markdown: str) -> list[dict[str, Any]]:
     citations: list[dict[str, Any]] = []
     seen: set[tuple[float, float]] = set()
-    for match in _TIMESTAMP_RE.finditer(markdown):
+    for match in _TIMESTAMP_RE.finditer(prose_text(markdown)):
         start = _timestamp_seconds(match.group("start"))
         end = _timestamp_seconds(match.group("end")) if match.group("end") else start
         key = (start, end)
@@ -245,7 +248,15 @@ def build_note_document(
             evidence_id = str(item.get("evidence_id") or "")
             if not evidence_id:
                 continue
-            if any(citation["label"] in locator or locator in citation["label"] for citation in citations if locator):
+            # Numeric anchors avoid substring collisions such as 1:23/11:23.
+            ranges = _citations(locator)
+            seconds_range = re.fullmatch(r"(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)s", locator)
+            if seconds_range:
+                ranges.append({"start": float(seconds_range[1]), "end": float(seconds_range[2])})
+            if str(item.get("text") or "").strip() and any(
+                anchor["start"] <= citation["start"] <= anchor["end"]
+                for anchor in ranges for citation in citations
+            ):
                 matched_ids.append(evidence_id)
         sections.append({
             "section_id": _slug(current_heading, len(sections) + 1),
@@ -254,13 +265,15 @@ def build_note_document(
             "markdown": body,
             "citations": citations,
             "source_evidence_ids": matched_ids[:16],
-            "verification": "verified" if citations or matched_ids else "unverified",
+            # A source link is not a factual review. No generated timestamp can
+            # promote itself (or user-supplied metadata) to a verified claim.
+            "verification": "linked" if matched_ids else ("located" if citations else "unverified"),
         })
         current_lines = []
 
     _, document_lines = _split_frontmatter(str(markdown or "").splitlines())
-    for line in document_lines:
-        match = _HEADING_RE.match(line)
+    for line, prose in structural_lines(document_lines):
+        match = _HEADING_RE.match(line) if prose else None
         if match:
             if current_lines or sections:
                 flush()
@@ -284,6 +297,7 @@ def build_note_document(
 
     citation_count = sum(len(section["citations"]) for section in sections)
     verified_count = sum(section["verification"] == "verified" for section in sections)
+    linked_count = sum(bool(section["source_evidence_ids"]) for section in sections)
     return {
         "schema_version": DOCUMENT_SCHEMA_VERSION,
         "title": str(title or "学习笔记"),
@@ -292,8 +306,10 @@ def build_note_document(
         "quality": {
             "section_count": len(sections),
             "verified_section_count": verified_count,
+            "linked_section_count": linked_count,
             "citation_count": citation_count,
-            "coverage_ratio": verified_count / len(sections) if sections else 0.0,
+            "coverage_ratio": linked_count / len(sections) if sections else 0.0,
+            "coverage_kind": "source_links_not_fact_verification",
             "issues": lint_note_markdown(markdown),
         },
     }

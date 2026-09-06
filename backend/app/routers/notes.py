@@ -7,10 +7,20 @@ from fastapi import APIRouter, HTTPException
 from ..knowledge import evidence_for_task
 from ..note_document import build_note_document, normalize_note_markdown
 from ..storage import get_task
+from ..storage import read_json
 from ..task_artifacts import read_task_note
 
 
 notes_router = APIRouter(prefix="/api/tasks", tags=["notes"])
+
+
+@notes_router.get("/{task_id}/ocr")
+def api_ocr(task_id: str):
+    try:
+        get_task(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Task not found") from exc
+    return read_json(task_id, "ocr.json", {"status": "not_requested", "frames": []})
 
 
 @notes_router.get("/{task_id}/note-document")
