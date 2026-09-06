@@ -16,15 +16,13 @@ const fs = require("node:fs");
     assert.equal(await p.locator('a[href*="classic.html"]').count(), 0);
     await p.locator("#newNote").click();
     await p.locator('[data-input="file"]').click();
-    await p
-      .locator("#file")
-      .setInputFiles({
-        name: "完整工作台验收.md",
-        mimeType: "text/markdown",
-        buffer: Buffer.from(
-          "# 完整工作台验收\n\n学习率控制参数更新步长。\n\n## 步长与收敛\n\n较小的学习率可能需要更多次更新。\n",
-        ),
-      });
+    await p.locator("#file").setInputFiles({
+      name: "完整工作台验收.md",
+      mimeType: "text/markdown",
+      buffer: Buffer.from(
+        "# 完整工作台验收\n\n学习率控制参数更新步长。\n\n## 步长与收敛\n\n较小的学习率可能需要更多次更新。\n",
+      ),
+    });
     await p.locator("#createSubmit").click();
     await p.waitForSelector("#reading:not([hidden])");
     await p.waitForFunction(() =>
@@ -84,12 +82,14 @@ const fs = require("node:fs");
     await p.locator("[data-close-tool]").click();
     await p.locator("#moreTools").click();
     await p.locator('[data-action="ask"]').click();
-    await p.locator("#question").fill("学习率");
-    await p.locator("#askForm button").click();
+    await p.locator("#aiQuestion").fill("学习率");
+    await p.locator("#aiSend").click();
     await p.waitForFunction(() =>
-      document.querySelector("#askResult").textContent.includes("参数更新"),
+      document
+        .querySelector(".assistant-answer")
+        ?.textContent.includes("参数更新"),
     );
-    await p.locator("[data-close-tool]").click();
+    await p.locator("#closeAssistant").click();
     await p.locator("#annotationText").fill("需要编辑的个人补充");
     await p.locator("#annotationForm button").click();
     await p.waitForFunction(() =>
@@ -115,6 +115,7 @@ const fs = require("node:fs");
     );
     await p.locator("[data-close-tool]").click();
     await p.locator("#settings").click();
+    await p.locator('[data-settings-section="storage"]').click();
     await p.locator("#settingsDialog summary").click();
     await p.locator("#studyTools").click();
     await p.waitForSelector("#dailyTarget");

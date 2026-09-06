@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import re
 from pathlib import Path
 
 
@@ -87,9 +88,19 @@ def module_size_violations() -> list[str]:
         lines = len(path.read_text(encoding="utf-8").splitlines())
         if lines > limit:
             violations.append(f"{relative} has {lines} lines; limit is {limit}")
-    css_lines = sum(len(path.read_text(encoding="utf-8").splitlines()) for path in (ROOT / "web").glob("*.css"))
-    if css_lines > 24000:
-        violations.append(f"All web CSS has {css_lines} lines; total budget is 24000")
+    # The shipped entry point and historical regression fixtures have separate budgets.
+    # Legacy CSS is excluded by the desktop spec and enforced by release-tree audit.
+    entry = (ROOT / "web/index.html").read_text(encoding="utf-8")
+    active_names = set(re.findall(r'href="/web/([^"?]+\.css)', entry))
+    if not active_names:
+        violations.append("The runtime entry point must declare its local stylesheet")
+    styles = list((ROOT / "web").glob("*.css"))
+    runtime_lines = sum(len(path.read_text(encoding="utf-8").splitlines()) for path in styles if path.name in active_names)
+    legacy_lines = sum(len(path.read_text(encoding="utf-8").splitlines()) for path in styles if path.name not in active_names)
+    if runtime_lines > 1800:
+        violations.append(f"Runtime web CSS has {runtime_lines} lines; budget is 1800")
+    if legacy_lines > 23000:
+        violations.append(f"Historical web CSS has {legacy_lines} lines; budget is 23000")
     return violations
 
 

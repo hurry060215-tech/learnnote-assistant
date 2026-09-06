@@ -65,12 +65,31 @@ let quickPollTimer = 0;
 let quickTranscript = [];
 let selectedProcessingMode = "quick";
 
-function processingOptions(mode = selectedProcessingMode) {
+function baseProcessingOptions(mode = selectedProcessingMode) {
   if (mode === "deep") return { visual_understanding: true, frame_interval: 20, grid_columns: 3, grid_rows: 3, note_style: "lecture", note_template: "visual-handout", summary_depth: "deep" };
   if (mode === "study") return { visual_understanding: false, note_style: "classroom-review", note_template: "standard", summary_depth: "standard" };
   return { visual_understanding: false, note_style: "quick-summary", note_template: "timeline", summary_depth: "brief" };
 }
 
+let quickNoteText = "";
+function processingOptions(mode = selectedProcessingMode) {
+  const options=baseProcessingOptions(mode);
+  const style=document.querySelector?.("#extensionStyle")?.value;
+  const template=document.querySelector?.("#extensionTemplate")?.value;
+  const prompt=document.querySelector?.("#extensionPrompt")?.value;
+  if(style)options.note_style=style;
+  if(template)options.note_template=template;
+  if(prompt)options.note_profile_prompt=String(prompt).slice(0,4000);
+  return options;
+}
+function downloadResult(text,name,type) {
+  const blob=new Blob([text],{type}),url=URL.createObjectURL(blob),a=document.createElement("a");
+  a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+function subtitleSrt(cues) {
+  const stamp=value=>{const ms=Math.max(0,Math.round(Number(value||0)*1000));return `${String(Math.floor(ms/3600000)).padStart(2,"0")}:${String(Math.floor(ms/60000)%60).padStart(2,"0")}:${String(Math.floor(ms/1000)%60).padStart(2,"0")},${String(ms%1000).padStart(3,"0")}`;};
+  return cues.map((c,i)=>`${i+1}\n${stamp(c.start)} --> ${stamp(c.end)}\n${c.text}\n`).join("\n");
+}
 function setProcessingMode(mode = "quick") {
   selectedProcessingMode = ["quick", "study", "deep"].includes(mode) ? mode : "quick";
   document.querySelectorAll?.("[data-processing-mode]").forEach(button => {
@@ -101,6 +120,18 @@ function escapeQuickHtml(value = "") {
   return String(value).replace(/[&<>\"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" })[char]);
 }
 
+function quickInline(text) {
+  return escapeQuickHtml(text).replace(/`?(\b\d{1,3}:\d{2}(?::\d{2})?\b)`?/g,(match,time)=>{
+    const parts=time.split(":").map(Number);if(parts.at(-1)>59||(parts.length===3&&parts[1]>59))return match;
+    const seconds=parts.reduce((total,part)=>total*60+part,0);
+    return `<button type="button" class="summary-time" data-seek-time="${seconds}">${time}</button>`;
+  });
+}
+function bindQuickSeek(container) {
+  container?.querySelectorAll?.("[data-seek-time]").forEach(button=>button.addEventListener("click",async()=>{
+    if(HAS_EXTENSION_API&&displayedIdentity?.tab_id) await chrome.runtime.sendMessage({type:"seek-current-video",targetTabId:displayedIdentity.tab_id,seconds:Number(button.dataset.seekTime)});
+  }));
+}
 function renderQuickMarkdown(markdown = "") {
   const lines = String(markdown || "").split(/\r?\n/);
   const html = [];
@@ -112,9 +143,9 @@ function renderQuickMarkdown(markdown = "") {
     const heading = /^(#{1,3})\s+(.+)$/.exec(line);
     const bullet = /^[-*]\s+(.+)$/.exec(line);
     if (heading) { closeList(); html.push(`<h${heading[1].length}>${escapeQuickHtml(heading[2])}</h${heading[1].length}>`); continue; }
-    if (bullet) { if (!list) { html.push("<ul>"); list = true; } html.push(`<li>${escapeQuickHtml(bullet[1])}</li>`); continue; }
+    if (bullet) { if (!list) { html.push("<ul>"); list = true; } html.push(`<li>${quickInline(bullet[1])}</li>`); continue; }
     closeList();
-    html.push(`<p>${escapeQuickHtml(line).replace(/`([^`]+)`/g, "<code>$1</code>")}</p>`);
+    html.push(`<p>${quickInline(line).replace(/`([^`]+)`/g, "<code>$1</code>")}</p>`);
   }
   closeList();
   return html.join("") || "<p>正在等待速记结果…</p>";
@@ -168,14 +199,18 @@ async function fetchQuickTask(taskId = currentTaskId) {
 }
 
 async function loadQuickArtifacts(task) {
+  const artifactGeneration=contextGeneration;
   const [noteResponse, transcriptResponse] = await Promise.all([
     fetchWithTimeout(`${backendUrl}/api/tasks/${encodeURIComponent(task.id)}/note`),
     fetchWithTimeout(`${backendUrl}/api/tasks/${encodeURIComponent(task.id)}/transcript`)
   ]);
   const note = noteResponse.ok ? await noteResponse.text() : "";
   const transcript = transcriptResponse.ok ? await transcriptResponse.json() : {};
+  if (artifactGeneration !== contextGeneration || task.id !== currentTaskId) return;
+  quickNoteText=note;
   quickTranscript = Array.isArray(transcript?.segments) ? transcript.segments : [];
   if (els.quickSummaryPanel) els.quickSummaryPanel.innerHTML = renderQuickMarkdown(note);
+  bindQuickSeek(els.quickSummaryPanel);
   renderQuickTranscript(quickTranscript);
   showQuickResult(task.summary_warning ? `速记完成 · ${task.summary_warning}` : "速记完成 · 未下载视频或分析画面");
 }
@@ -379,6 +414,7 @@ function resetSourceState() {
   currentTaskId = "";
   currentTaskMode = "";
   quickTranscript = [];
+  quickNoteText = "";
   if (els.quickResultCard) els.quickResultCard.hidden = true;
   els.openTaskButton.hidden = true;
   els.sendButtonLabel.textContent = "发送到客户端";
@@ -777,7 +813,8 @@ function clientUrl(view = "workspace", taskId = "", tab = "note") {
   if (taskId) {
     url.searchParams.set("task", taskId);
     url.searchParams.set("tab", tab);
-  } else if (view && view !== "workspace") {
+  }
+  if (view && view !== "workspace") {
     url.searchParams.set("view", view);
   }
   return url.href;
@@ -880,8 +917,16 @@ function bindEvents() {
   window.addEventListener?.("focus", () => checkClient());
 }
 
+function bindProductActions(){
+  const find=id=>document.querySelector?.("#"+id);
+  find("copyQuickSummary")?.addEventListener?.("click",async()=>{try{if(!quickNoteText)throw new Error("总结尚未生成");await navigator.clipboard.writeText(quickNoteText);els.quickResultStatus.textContent="总结已复制";}catch(e){els.quickResultStatus.textContent=e.message;}});
+  find("saveQuickSummary")?.addEventListener?.("click",()=>{if(quickNoteText)downloadResult(quickNoteText,"LearnNote-summary.md","text/markdown;charset=utf-8");});
+  find("saveQuickSubtitles")?.addEventListener?.("click",()=>{if(quickTranscript.length)downloadResult(subtitleSrt(quickTranscript),"LearnNote-subtitles.srt","text/plain;charset=utf-8");});
+  find("useClientPreferences")?.addEventListener?.("click",async()=>{const status=find("extensionOptionsStatus");try{const response=await fetchWithTimeout(`${backendUrl}/api/preferences`);if(!response.ok)throw new Error("请先连接客户端");const p=(await response.json()).task_options||{};for(const [id,key] of [["extensionStyle","note_style"],["extensionTemplate","note_template"]]){const el=find(id);if(el&&[...el.options].some(o=>o.value===p[key]))el.value=p[key];}if(find("extensionPrompt"))find("extensionPrompt").value=p.note_profile_prompt||"";if(status)status.textContent="已载入客户端的笔记风格、格式和额外要求。";}catch(e){if(status)status.textContent=e.message;}});
+}
 async function initialize() {
   bindEvents();
+  bindProductActions();
   await loadBackendUrl();
   await checkClient();
   await refreshAndPreflight({ force: true });
@@ -895,6 +940,8 @@ globalThis.__learnnoteSidepanel = {
   resourceFingerprint,
   buildSourceIdentity,
   hasReliableBrowserSubtitles,
+  processingOptions,
+  subtitleSrt,
   renderQuickMarkdown,
   renderQuickTranscript,
   sourceIdentityKey,

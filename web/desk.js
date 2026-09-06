@@ -1,6 +1,10 @@
+import { installSettings } from "/web/desk-settings.js";
+import { installProductWorkspace } from "/web/desk-product.js";
 import { installTools } from "/web/desk-tools.js";
 import { api, escapeHtml as esc, timestamp, taskAsset } from "/web/desk-api.js";
 const $ = (id) => document.getElementById(id);
+let renderedCues = [],
+  activeCueIndex = -1;
 const state = {
   items: [],
   selected: null,
@@ -21,11 +25,30 @@ const presets = {
   kimi: ["https://api.moonshot.cn/v1", "moonshot-v1-8k"],
   openai: ["https://api.openai.com/v1", ""],
   local: ["http://127.0.0.1:1234/v1", ""],
+  custom: ["", ""],
 };
 try {
-  state.model = JSON.parse(
-    localStorage.getItem("learnnote.desk.model") || "{}",
-  );
+  const savedModel = localStorage.getItem("learnnote.desk.model");
+  state.model = JSON.parse(savedModel || "{}");
+  if (!savedModel) {
+    const legacy = JSON.parse(
+      localStorage.getItem("learnnote_model_settings") || "{}",
+    );
+    if (legacy.transcriber)
+      state.legacyProcessing = {
+        transcriber: legacy.transcriber,
+        whisper_model: legacy.whisper_model || "small",
+        local_ocr: Boolean(legacy.local_ocr),
+      };
+    if (legacy.llm_base_url) {
+      state.model = {
+        provider: legacy.llm_provider || "custom",
+        base_url: legacy.llm_base_url,
+        model: legacy.llm_model || "",
+      };
+      localStorage.setItem("learnnote.desk.model", JSON.stringify(state.model));
+    }
+  }
   document.body.classList.toggle(
     "dark",
     localStorage.getItem("learnnote.desk.theme") === "dark",
@@ -56,8 +79,14 @@ function options() {
   )
     throw new Error("请在设置中填写当前模型服务的 Key，再开始整理。");
   return {
+    ...state.processing,
     summary_depth: $("depth").value,
-    note_style: "study",
+    note_style:
+      ($("createDialog").open ? $("taskStyle")?.value : "") ||
+      state.processing?.note_style ||
+      "study",
+    note_template:
+      $("taskTemplate")?.value || state.processing?.note_template || "standard",
     visual_understanding: $("vision").checked,
     local_ocr: Boolean($("localOcr")?.checked),
     ...(state.model.base_url
@@ -99,10 +128,21 @@ async function refresh() {
   if (state.refreshing) return;
   state.refreshing = true;
   try {
-    const [tasks, materials] = await Promise.all([
+    const [tasks, materials, health] = await Promise.all([
       api("/api/tasks"),
       api("/api/library/materials?limit=1000"),
+      Date.now() - (state.lastHealthAt || 0) > 15000
+        ? api("/health")
+        : Promise.resolve(null),
     ]);
+    if (health) {
+      state.health = health;
+      state.lastHealthAt = Date.now();
+    }
+    state.connectionError = false;
+    const previousStatuses = new Map(
+      state.items.map((item) => [item.id, item.status]),
+    );
     state.items = [
       ...tasks.tasks.map((t) => ({ ...t, kind: "task" })),
       ...materials.materials
@@ -114,6 +154,7 @@ async function refresh() {
       ),
     );
     drawList();
+    window.dispatchEvent(new CustomEvent("learnnote:library"));
     const selected =
       state.selected &&
       state.items.find(
@@ -127,6 +168,31 @@ async function refresh() {
         await loadEdition(state.epoch);
       }
     }
+    const completed = state.items.filter(
+      (item) =>
+        item.kind === "task" &&
+        item.status === "success" &&
+        previousStatuses.has(item.id) &&
+        previousStatuses.get(item.id) !== "success",
+    );
+    if (
+      state.reading?.notify &&
+      window.Notification &&
+      Notification.permission === "granted"
+    )
+      for (const item of completed)
+        new Notification("LearnNote · 笔记已完成", { body: item.title });
+    if (
+      completed.length &&
+      state.reading?.autoOpen &&
+      !state.editing &&
+      !document.querySelector("dialog[open]")
+    )
+      await openItem(completed[0]);
+  } catch (error) {
+    state.connectionError = true;
+    window.dispatchEvent(new CustomEvent("learnnote:library"));
+    throw error;
   } finally {
     state.refreshing = false;
   }
@@ -137,6 +203,9 @@ async function openItem(item) {
   $("editor").hidden = true;
   $("document").hidden = false;
   state.selected = item;
+  window.dispatchEvent(
+    new CustomEvent("learnnote:selection", { detail: item }),
+  );
   const epoch = ++state.epoch;
   $("welcome").hidden = true;
   $("reading").hidden = false;
@@ -218,6 +287,8 @@ function closeSource() {
   $("player").pause();
 }
 async function openSource(seconds) {
+  renderedCues = [];
+  activeCueIndex = -1;
   const epoch = state.epoch,
     s = state.selected;
   $("sourcePanel").hidden = false;
@@ -244,6 +315,8 @@ async function openSource(seconds) {
             `<button class="cue" data-time="${Number(c.start) || 0}"><small>${timestamp(c.start)}</small>${esc(c.text)}</button>`,
         )
         .join("");
+    renderedCues = [...$("sourceContent").querySelectorAll(".cue")];
+    activeCueIndex = -1;
     if (!cues.length)
       $("sourceContent").append(document.createTextNode("暂无可用字幕。"));
     const player = $("player");
@@ -260,9 +333,21 @@ async function openSource(seconds) {
 }
 $("player").addEventListener("timeupdate", () => {
   const time = $("player").currentTime;
-  const cues = [...$("sourceContent").querySelectorAll(".cue")];
-  const index = cues.findLastIndex((c) => Number(c.dataset.time) <= time);
-  cues.forEach((c, i) => c.classList.toggle("active", i === index));
+  const index = renderedCues.findLastIndex(
+    (c) => Number(c.dataset.time) <= time,
+  );
+  if (index === activeCueIndex) return;
+  renderedCues[activeCueIndex]?.classList.remove("active");
+  renderedCues[index]?.classList.add("active");
+  activeCueIndex = index;
+  const cue = renderedCues[index];
+  if (cue && $("followTranscript")?.checked && cue.getClientRects().length) {
+    const bounds = cue.getBoundingClientRect(),
+      panel = $("sourcePanel").getBoundingClientRect(),
+      video = $("player").getBoundingClientRect();
+    if (bounds.bottom > panel.bottom - 20 || bounds.top < video.bottom + 10)
+      $("sourcePanel").scrollTop += bounds.top - video.bottom - 18;
+  }
 });
 $("player").addEventListener("error", () => {
   if (!$("sourcePanel").hidden)
@@ -287,7 +372,10 @@ $("notes").onclick = (e) => {
     ).catch(failure);
 };
 $("search").oninput = drawList;
-$("refresh").onclick = () => refresh().catch(failure);
+$("refresh").onclick = () => {
+  state.lastHealthAt = 0;
+  refresh().catch(failure);
+};
 $("source").onclick = () =>
   $("sourcePanel").hidden ? openSource().catch(failure) : closeSource();
 $("closeSource").onclick = closeSource;
@@ -371,6 +459,7 @@ $("annotationForm").onsubmit = async (e) => {
 };
 function create() {
   if (!$("createDialog").open) $("createDialog").showModal();
+  window.dispatchEvent(new CustomEvent("learnnote:create"));
 }
 $("newNote").onclick = create;
 $("welcomeNew").onclick = create;
@@ -427,15 +516,7 @@ $("createForm").onsubmit = async (e) => {
         ? { ...result.material, id, kind }
         : { ...result.task, id, kind });
     $("createDialog").close();
-    if (item) {
-      await openItem(item);
-      if (
-        ["media", "transcript", "subtitles", "source"].includes(
-          query.get("tab"),
-        )
-      )
-        await openSource();
-    }
+    if (item) await openItem(item);
     $("url").value = "";
     $("file").value = "";
     $("createStatus").textContent = "";
@@ -516,6 +597,7 @@ $("settingsForm").onsubmit = async (e) => {
       );
     }
     localStorage.setItem("learnnote.desk.model", JSON.stringify(state.model));
+    window.dispatchEvent(new CustomEvent("learnnote:settings"));
     $("settingsDialog").close();
     notice("设置已保存");
   } catch (error) {
@@ -605,10 +687,9 @@ window.addEventListener("beforeunload", (e) => {
 async function loadKey() {
   if (state.model.provider && window.pywebview?.api?.load_model_key) {
     try {
-      const value = await window.pywebview.api.load_model_key(
-        state.model.provider,
-      );
-      if (value.configured) state.key = value.api_key;
+      const provider=state.model.provider;
+      const value = await window.pywebview.api.load_model_key(provider);
+      if (value.configured && state.model.provider===provider) state.key = value.api_key;
     } catch {}
   }
 }
@@ -616,6 +697,21 @@ window.addEventListener("pywebviewready", loadKey);
 async function initialize() {
   try {
     state.health = await api("/health");
+    for (const provider of state.health.model_provider_presets || []) {
+      if (!provider.key || !provider.base_url) continue;
+      presets[provider.key] = [provider.base_url, provider.model];
+      if (
+        ![...$("provider").options].some(
+          (option) => option.value === provider.key,
+        )
+      )
+        $("provider").append(
+          Object.assign(document.createElement("option"), {
+            value: provider.key,
+            textContent: provider.label || provider.key,
+          }),
+        );
+    }
     if (!state.model.base_url && state.health.default_llm_base_url)
       state.model = {
         base_url: state.health.default_llm_base_url,
@@ -634,14 +730,31 @@ async function initialize() {
         (i) => i.kind === match[1] && i.id === decodeURIComponent(match[2]),
       );
     if (item) await openItem(item);
-    else if (state.items.length) {
+    if (query.get("view") === "settings") $("settings").click();
+    else if (
+      query.get("view") === "diagnostics" ||
+      query.get("tab") === "diagnostics"
+    ) {
+      if (state.selected?.kind === "task") await workspaceTools.diagnostics();
+      else await workspaceTools.storage();
+    } else if (item && query.get("tab") === "qa")
+      window.LearnNoteAssistant?.open();
+    else if (
+      item &&
+      ["transcript", "media", "source"].includes(query.get("tab"))
+    )
+      await openSource();
+    else if (item && ["frames", "slices"].includes(query.get("tab")))
+      $("sourceFrames")?.click();
+
+    if (!item && state.items.length) {
       $("welcomeNew").innerHTML = "新建笔记 <span>↗</span>";
     }
   } catch (error) {
     failure(error);
   }
   setInterval(() => {
-    if (!document.hidden) refresh().catch(() => {});
+    if (!document.hidden || state.reading?.notify) refresh().catch(() => {});
   }, 5000);
 }
 initialize();
@@ -681,7 +794,7 @@ window.addEventListener("hashchange", () => {
     openItem(item).catch(failure);
 });
 
-installTools({
+const workspaceTools = installTools({
   state,
   options,
   openItem,
@@ -691,3 +804,20 @@ installTools({
   startReview,
   reloadAnnotations: () => loadAnnotations(state.epoch).catch(failure),
 });
+
+installProductWorkspace({
+  state,
+  options,
+  openItem,
+  openSource,
+  refresh,
+  notice,
+  guard,
+  loadKey,
+});
+
+installSettings({ state, notice, loadKey });
+
+window.addEventListener("learnnote:annotations", () =>
+  loadAnnotations(state.epoch).catch(failure),
+);

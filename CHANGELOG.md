@@ -2,6 +2,14 @@
 
 All notable changes to LearnNote are documented here. The project follows semantic versioning while the `0.x` series is under active development.
 
+## 0.2.2 - Product workbench preview
+
+- Restore a visible AI assistant with contextual conversation history, citations, suggestion prompts and saving answers to annotations.
+- Restore six settings sections, model discovery/provider controls, transcription, style/template profiles, resource controls and reading preferences.
+- Replace the sparse welcome page with source creation, processing presets, runtime status and recent notes; add consistent icons, outline navigation, focus reading and associated versions.
+- Add extension style/format overrides, client preference loading and Markdown/SRT result saving while preserving on-demand capture.
+- Fix the out-of-scope query reference after task creation and retain legacy model configuration on first use.
+
 ## 0.2.1 - Unified workspace preview
 
 - Integrate courses, batch links, cited comparison, review proposals/plans, range learning, OCR, scoped questions, annotation editing and diagnostics into the new workspace.

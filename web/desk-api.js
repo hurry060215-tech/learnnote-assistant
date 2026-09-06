@@ -15,7 +15,12 @@ export async function api(path, options = {}) {
   }
   if (!response.ok)
     throw new Error(
-      value?.detail?.message ||
+      (Array.isArray(value?.detail)
+        ? value.detail
+            .map((item) => `${(item.loc || []).join(".")}: ${item.msg}`)
+            .join("\n")
+        : "") ||
+        value?.detail?.message ||
         value?.detail ||
         `请求失败 (${response.status})`,
     );

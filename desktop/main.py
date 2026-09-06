@@ -671,11 +671,12 @@ def webview_storage_path(data_dir: Path) -> Path:
     return path
 
 
-def desktop_focus_target(backend_url: str, task_id: str, tab: str) -> str:
+def desktop_focus_target(backend_url: str, task_id: str, tab: str, view: str = "workspace") -> str:
+    safe_view = view if view in {"settings", "diagnostics"} else "workspace"
     if not re.fullmatch(r"[a-f0-9]{12}", task_id):
-        return ""
+        return f"{backend_url}/?view={safe_view}" if safe_view != "workspace" else ""
     safe_tab = tab if tab in {"note", "slices", "qa", "diagnostics", "transcript", "frames"} else "note"
-    return f"{backend_url}/?task={quote(task_id)}&tab={quote(safe_tab)}"
+    return f"{backend_url}/?task={quote(task_id)}&tab={quote(safe_tab)}" + (f"&view={safe_view}" if safe_view != "workspace" else "")
 
 
 def desktop_route_matches(current_url: str, target_url: str) -> bool:
@@ -687,7 +688,9 @@ def desktop_route_matches(current_url: str, target_url: str) -> bool:
         return False
     current_query = parse_qs(current.query)
     target_query = parse_qs(target.query)
-    return current_query.get("task") == target_query.get("task") and current_query.get("tab") == target_query.get("tab")
+    selected_hash = re.fullmatch(r"task/([a-f0-9]{12})", current.fragment)
+    current_task = [selected_hash.group(1)] if selected_hash else current_query.get("task")
+    return current_task == target_query.get("task") and current_query.get("tab", ["note"]) == target_query.get("tab", ["note"]) and current_query.get("view", ["workspace"]) == target_query.get("view", ["workspace"])
 
 
 def run() -> int:
@@ -743,7 +746,7 @@ def run() -> int:
             body = payload or {}
             task_id = str(body.get("task_id") or "")
             tab = str(body.get("tab") or "note")
-            target_url = desktop_focus_target(backend_url, task_id, tab)
+            target_url = desktop_focus_target(backend_url, task_id, tab, str(body.get("view") or "workspace"))
             if target_url:
                 try:
                     current_url = str(window.get_current_url() or "")

@@ -1,6 +1,6 @@
 # LearnNote
 
-**把视频与资料，变成可以继续阅读、核对和修改的学习笔记。**
+**面向愿意掌控模型和处理过程的学习者：视频、字幕、图文笔记与 AI 助教，在同一个本地工作台里。**
 
 LearnNote 是一个本地优先的个人学习工具。添加视频或资料，在同一个工作台里读笔记、打开来源、写下自己的理解，然后导出带走。
 
@@ -8,7 +8,7 @@ LearnNote 是一个本地优先的个人学习工具。添加视频或资料，�
 
 > 当前分支正在进行工作台重设计。下文的新界面与编辑流程属于本分支，不代表已进入正式 Release。已发布安装包的版本和功能以下载页说明为准。
 
-![LearnNote 新阅读工作台](docs/assets/learnnote-redesign-workspace.png)
+![LearnNote 新阅读工作台](docs/assets/learnnote-product-workspace.png)
 
 *打包后的 Windows 客户端实拍；内容为演示资料，不代表模型生成质量。*
 
@@ -20,7 +20,7 @@ LearnNote 是一个本地优先的个人学习工具。添加视频或资料，�
 4. 打开 **设置** 配置文字模型，可以生成整理后的笔记。未配置时，结果明确标为字幕摘录。
 5. 在正文中阅读；点击 **查看来源** 打开视频和字幕。使用 **编辑** 修改笔记，或在 **我的补充** 写下自己的理解。
 
-新工作台将笔记列表、阅读和来源放在一起。编辑稿独立保存，原始生成稿仍然保留；导出 Markdown 时使用当前编辑稿。课程在侧栏管理；复习卡、提问、片段学习、OCR、导出与补充编辑均在当前笔记的“更多”菜单中完成。存储、备份、恢复与复习计划在设置中管理。
+工作台首页显示模型、转写、扩展连接与任务状态；AI 助教始终可以直接打开。设置按模型、字幕与转写、笔记模板、视频资源、阅读外观、存储连接分区。新工作台将笔记列表、阅读和来源放在一起。编辑稿独立保存，原始生成稿仍然保留；导出 Markdown 时使用当前编辑稿。课程在侧栏管理；复习卡、提问、片段学习、OCR、导出与补充编辑均在当前笔记的“更多”菜单中完成。存储、备份、恢复与复习计划在设置中管理。
 
 ## 当前浏览器里的视频
 
@@ -32,9 +32,9 @@ LearnNote 是一个本地优先的个人学习工具。添加视频或资料，�
 
 扩展只在用户触发时收集当前页可访问的资源，不录制标签页，也不绕过 DRM、账号权限或课程进度。普通链接不必安装扩展。离线扩展 ZIP 可在 Chrome / Edge 的扩展管理页通过“加载已解压的扩展程序”安装。
 
-![统一的笔记工具](docs/assets/learnnote-unified-tools.png)
+![AI 助教与来源对话](docs/assets/learnnote-product-assistant.png)
 
-*在同一工作台中完成导出、复习、提问与个人补充；视频笔记还提供片段、OCR 和诊断工具。*
+*AI 助教恢复为常驻入口，保留当前来源、对话历史、引用和保存回答。截图是界面验收样本，不代表真实模型效果。*
 
 ## 笔记是怎样得到的
 
@@ -82,7 +82,9 @@ $env:PYTHONPATH = "backend"
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8765
 ```
 
-统一界面：`web/index.html`、`web/desk.css`、`web/desk.js`、`web/desk-api.js`、`web/desk-tools.js`。旧界面仅留在源码中供历史回归，安装包不再包含旧页面和旧主脚本。来源摘录和分块逻辑：`backend/app/reading_notes.py`。
+统一界面：`web/index.html`、`web/desk.css`、`web/desk.js`、`web/desk-api.js`、`web/desk-tools.js`。旧界面仅留在源码中供历史回归，安装包不再包含旧页面和旧主脚本。产品对比与功能恢复依据见 [指定参考整合说明](docs/PRODUCT_REFERENCE_REVIEW.md)。
+
+来源摘录和分块逻辑：`backend/app/reading_notes.py`。
 
 ```powershell
 $env:PYTHONPATH = "backend"

@@ -213,6 +213,11 @@ export function installTools(ctx) {
     dialog.dataset.sourceKind = s.kind;
   }
   function ask() {
+    if (window.LearnNoteAssistant) {
+      dialog.close();
+      window.LearnNoteAssistant.open();
+      return;
+    }
     const s = current();
     show(
       "围绕当前内容提问",
@@ -814,5 +819,5 @@ export function installTools(ctx) {
   prefs.innerHTML =
     '<input id="localOcr" type="checkbox">本地识别画面文字（OCR）';
   $("generationOptions").append(prefs);
-  return { listCourses, studySettings };
+  return { listCourses, studySettings, storage, diagnostics, ocr };
 }
