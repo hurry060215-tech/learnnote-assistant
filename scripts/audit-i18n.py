@@ -6,25 +6,32 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-HTML = ROOT / "web" / "index.html"
+HTML = ROOT / "web" / "classic.html"
+PRIMARY = ROOT / "web" / "index.html"
 RESOURCE = ROOT / "web" / "i18n.js"
 
 
 def audit() -> dict[str, object]:
     html = HTML.read_text(encoding="utf-8")
     resource = RESOURCE.read_text(encoding="utf-8")
+    primary = PRIMARY.read_text(encoding="utf-8")
+    primary_language_declared = 'lang="zh-CN"' in primary
+    primary_keys = set(re.findall(r'data-i18n(?:-aria)?="([A-Za-z0-9_-]+)"', primary))
     html_keys = set(re.findall(r'data-i18n(?:-aria)?="([A-Za-z0-9_-]+)"', html))
     resource_keys = set(re.findall(r"^\s{6}([A-Za-z][A-Za-z0-9_]*)\s*:", resource, re.MULTILINE))
-    missing = sorted(html_keys - resource_keys)
+    missing = sorted((html_keys | primary_keys) - resource_keys)
     script_order = [match.group(1) for match in re.finditer(r'<script src="([^"]+)"', html)]
     i18n_index = next((index for index, value in enumerate(script_order) if "/i18n.js" in value), -1)
     app_index = next((index for index, value in enumerate(script_order) if "/app.js" in value), -1)
     return {
+        "primary_locale": "zh-CN",
+        "primary_scope": "single-language redesign preview",
+        "legacy_page": "classic.html",
         "html_key_count": len(html_keys),
         "resource_key_count": len(resource_keys),
         "missing_keys": missing,
         "i18n_before_app": i18n_index >= 0 and app_index >= 0 and i18n_index < app_index,
-        "passed": not missing and i18n_index >= 0 and app_index >= 0 and i18n_index < app_index,
+        "passed": primary_language_declared and not missing and i18n_index >= 0 and app_index >= 0 and i18n_index < app_index,
     }
 
 
