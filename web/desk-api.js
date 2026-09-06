@@ -35,3 +35,16 @@ export const timestamp = (value) => {
     ? `${Math.floor(seconds / 3600)}:${String(Math.floor(seconds / 60) % 60).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`
     : `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 };
+
+export function taskAsset(value, taskId) {
+  try {
+    const url = new URL(value, location.origin);
+    return ["frames", "assets"].some((kind) =>
+      url.pathname.startsWith(`/api/tasks/${taskId}/${kind}/`),
+    )
+      ? url.pathname
+      : "";
+  } catch {
+    return "";
+  }
+}

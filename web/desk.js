@@ -1,4 +1,5 @@
-import { api, escapeHtml as esc, timestamp } from "/web/desk-api.js";
+import { installTools } from "/web/desk-tools.js";
+import { api, escapeHtml as esc, timestamp, taskAsset } from "/web/desk-api.js";
 const $ = (id) => document.getElementById(id);
 const state = {
   items: [],
@@ -58,6 +59,7 @@ function options() {
     summary_depth: $("depth").value,
     note_style: "study",
     visual_understanding: $("vision").checked,
+    local_ocr: Boolean($("localOcr")?.checked),
     ...(state.model.base_url
       ? { llm_base_url: state.model.base_url, llm_model: state.model.model }
       : {}),
@@ -165,6 +167,12 @@ async function loadEdition(epoch) {
   renderNote();
 }
 function renderNote() {
+  LearnNoteMarkdown.configure({
+    safeNoteMediaUrl: (value) =>
+      state.selected?.kind === "task"
+        ? taskAsset(value, state.selected.id)
+        : "",
+  });
   const heading = state.text.trim().startsWith("# ")
     ? ""
     : `<h1>${esc(state.selected.title)}</h1>`;
@@ -419,7 +427,15 @@ $("createForm").onsubmit = async (e) => {
         ? { ...result.material, id, kind }
         : { ...result.task, id, kind });
     $("createDialog").close();
-    if (item) await openItem(item);
+    if (item) {
+      await openItem(item);
+      if (
+        ["media", "transcript", "subtitles", "source"].includes(
+          query.get("tab"),
+        )
+      )
+        await openSource();
+    }
     $("url").value = "";
     $("file").value = "";
     $("createStatus").textContent = "";
@@ -525,7 +541,7 @@ async function drawReview() {
       .join("");
   }
 }
-$("review").onclick = async () => {
+async function startReview(courseId = "") {
   $("reviewDialog").showModal();
   $("reviewContent").textContent = "正在读取…";
   try {
@@ -535,12 +551,16 @@ $("review").onclick = async () => {
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       }),
     });
-    state.cards = (await api("/api/study/due")).cards;
+    state.cards = (
+      await api(`/api/study/due?course_id=${encodeURIComponent(courseId)}`)
+    ).cards;
     drawReview();
   } catch (error) {
     $("reviewContent").textContent = error.message;
   }
-};
+}
+$("review").onclick = () => startReview();
+
 $("reviewContent").onclick = async (e) => {
   const button = e.target.closest("[data-rating],[data-evidence]");
   if (!button) return;
@@ -604,7 +624,10 @@ async function initialize() {
       };
     await loadKey();
     await refresh();
-    const match = location.hash.match(/^#(task|material)\/(.+)$/);
+    const query = new URLSearchParams(location.search);
+    const match =
+      location.hash.match(/^#(task|material)\/(.+)$/) ||
+      (query.get("task") ? ["", "task", query.get("task")] : null);
     const item =
       match &&
       state.items.find(
@@ -646,6 +669,25 @@ $("regenerate").onclick = async () => {
 
 window.addEventListener("hashchange", () => {
   const match = location.hash.match(/^#(task|material)\/(.+)$/);
-  const item = match && state.items.find(i => i.kind === match[1] && i.id === decodeURIComponent(match[2]));
-  if (item && (state.selected?.id !== item.id || state.selected?.kind !== item.kind)) openItem(item).catch(failure);
+  const item =
+    match &&
+    state.items.find(
+      (i) => i.kind === match[1] && i.id === decodeURIComponent(match[2]),
+    );
+  if (
+    item &&
+    (state.selected?.id !== item.id || state.selected?.kind !== item.kind)
+  )
+    openItem(item).catch(failure);
+});
+
+installTools({
+  state,
+  options,
+  openItem,
+  refresh,
+  notice,
+  guard,
+  startReview,
+  reloadAnnotations: () => loadAnnotations(state.epoch).catch(failure),
 });

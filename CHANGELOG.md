@@ -2,6 +2,14 @@
 
 All notable changes to LearnNote are documented here. The project follows semantic versioning while the `0.x` series is under active development.
 
+## 0.2.1 - Unified workspace preview
+
+- Integrate courses, batch links, cited comparison, review proposals/plans, range learning, OCR, scoped questions, annotation editing and diagnostics into the new workspace.
+- Export saved user revisions to Markdown, DOCX and PDF; optionally include personal annotations.
+- Add storage inspection, explicitly scoped index backup/restore and cleanup preview.
+- Exclude the legacy application shell and assets from desktop packages, enforced by the release-tree audit.
+- Add a full browser acceptance flow for the unified tools and support short complete Chinese review facts.
+
 ## 0.2.0 - Redesign preview
 
 - Replace the default application shell with an independent reading workspace: one creation dialog, source panel, editable user revisions, annotations and focused review.

@@ -239,3 +239,23 @@ async def api_library_restore(file: UploadFile = File(...)) -> dict:
             raise HTTPException(status_code=400, detail={"code": code, "message": messages.get(code, "资料库备份无法恢复。")}) from exc
     finally:
         temporary.unlink(missing_ok=True)
+
+
+@library_router.post("/materials/{material_id}/ask")
+def api_material_ask(material_id: str, payload: dict):
+    question = str(payload.get("question") or "").strip()[:1000]
+    if not question:
+        raise HTTPException(422, "请输入问题。")
+    try:
+        items = material_anchors(material_id, 1000)
+    except ValueError as exc:
+        raise HTTPException(404, "资料不存在。") from exc
+    terms = set(re.findall(r"[A-Za-z0-9_]{2,}|[\u4e00-\u9fff]{2,}", question.lower()))
+    # Chinese phrase bigrams allow local retrieval without a remote model.
+    for phrase in list(terms):
+        if re.fullmatch(r"[\u4e00-\u9fff]+", phrase):
+            terms.update(phrase[i:i+2] for i in range(len(phrase)-1))
+    ranked = sorted(((sum(term in str(item.get("text", "")).lower() for term in terms), item) for item in items),key=lambda pair:pair[0],reverse=True)
+    matches = [item for score,item in ranked[:6] if score]
+    answer = "当前资料中的相关原文（未生成推断）：\n\n" + "\n\n".join(f"{item.get('locator','')}\n{str(item.get('text',''))[:1200]}" for item in matches) if matches else "在当前资料中没有找到相关原文，请换一个更具体的关键词。"
+    return {"answer":answer,"mode":"local_source_extract","material_id":material_id,"evidence_ids":[item["evidence_id"] for item in matches]}

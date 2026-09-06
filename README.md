@@ -20,7 +20,7 @@ LearnNote 是一个本地优先的个人学习工具。添加视频或资料，�
 4. 打开 **设置** 配置文字模型，可以生成整理后的笔记。未配置时，结果明确标为字幕摘录。
 5. 在正文中阅读；点击 **查看来源** 打开视频和字幕。使用 **编辑** 修改笔记，或在 **我的补充** 写下自己的理解。
 
-新工作台将笔记列表、阅读和来源放在一起。编辑稿独立保存，原始生成稿仍然保留；导出 Markdown 时使用当前编辑稿。课程、范围学习、OCR 审阅与完整诊断暂在“设置 → 更多工具”中提供。
+新工作台将笔记列表、阅读和来源放在一起。编辑稿独立保存，原始生成稿仍然保留；导出 Markdown 时使用当前编辑稿。课程在侧栏管理；复习卡、提问、片段学习、OCR、导出与补充编辑均在当前笔记的“更多”菜单中完成。存储、备份、恢复与复习计划在设置中管理。
 
 ## 当前浏览器里的视频
 
@@ -78,7 +78,7 @@ $env:PYTHONPATH = "backend"
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8765
 ```
 
-新界面：`web/index.html`、`web/desk.css`、`web/desk.js`、`web/desk-api.js`。旧工具页：`web/classic.html`，保留过渡期专项能力。来源摘录和分块逻辑：`backend/app/reading_notes.py`。
+统一界面：`web/index.html`、`web/desk.css`、`web/desk.js`、`web/desk-api.js`、`web/desk-tools.js`。旧界面仅留在源码中供历史回归，安装包不再包含旧页面和旧主脚本。来源摘录和分块逻辑：`backend/app/reading_notes.py`。
 
 ```powershell
 $env:PYTHONPATH = "backend"

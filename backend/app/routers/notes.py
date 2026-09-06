@@ -101,3 +101,25 @@ def put_edition(kind: str, source_id: str, request: EditionRequest):
             return state
     except (FileNotFoundError, ValueError) as exc:
         raise HTTPException(404, "Source unavailable") from exc
+
+
+@notes_router.get("/editions/{kind}/{source_id}/exports/{format}")
+def export_edition(kind: str, source_id: str, format: str, include_annotations: bool = False):
+    from types import SimpleNamespace
+    from fastapi.responses import Response
+    from ..personal_notes import annotation_markdown
+    from ..document_exports import build_docx_export, build_pdf_export, sanitize_export_text, DocumentExportUnavailable
+    if format not in {"markdown", "docx", "pdf"}:
+        raise HTTPException(404, "Unsupported export format")
+    value = get_edition(kind, source_id)
+    text = value["text"]
+    if include_annotations:
+        text += annotation_markdown(kind, source_id)
+    if format == "markdown":
+        return Response(sanitize_export_text(text), media_type="text/markdown; charset=utf-8", headers={"Content-Disposition": 'attachment; filename="note.md"'})
+    task = get_task(source_id) if kind == "task" else SimpleNamespace(id=source_id, title=get_material(source_id)["title"], page_url="")
+    try:
+        result = build_docx_export(task, text) if format == "docx" else build_pdf_export(task, text)
+    except DocumentExportUnavailable as exc:
+        raise HTTPException(503, "导出组件不可用，请检查安装包。") from exc
+    return Response(result.content, media_type=result.media_type, headers={"Content-Disposition": f'attachment; filename="note.{format}"'})

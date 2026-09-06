@@ -54,6 +54,8 @@ jobs:
               Start-Sleep -Seconds 1
             }
             if (-not $ready) { throw "Local backend did not become ready." }
+            node scripts/unified-workspace-acceptance.cjs http://127.0.0.1:8765 build/unified-ui
+            if ($LASTEXITCODE -ne 0) { throw "Unified workspace gate failed" }
             node scripts/redesign-acceptance.cjs http://127.0.0.1:8765 build/redesign-ui
             if ($LASTEXITCODE -ne 0) { throw "Redesign interaction gate failed" }
             node scripts/accessibility-visual-acceptance.cjs http://127.0.0.1:8765/web/classic.html build/ui-visual
@@ -68,6 +70,7 @@ jobs:
         with:
           name: ui-visual-${{ github.run_id }}
           path: |
+            build/unified-ui
             build/redesign-ui
             build/ui-visual
             build/learning-ui

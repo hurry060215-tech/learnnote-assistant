@@ -685,3 +685,155 @@ summary {
     transition: none !important;
   }
 }
+
+.tool-only {
+  display: none !important;
+}
+.tools-dialog {
+  width: min(780px, calc(100vw - 28px));
+  padding: 0 30px 24px;
+}
+.tools-dialog > header {
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  padding: 24px 0 16px;
+  z-index: 2;
+  border-bottom: 1px solid var(--line);
+}
+.tool-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 18px 0;
+}
+.tool-actions button,
+.tool-link {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 10px 14px;
+  text-decoration: none;
+  font-size: 13px;
+  display: inline-block;
+}
+.tool-list {
+  margin: 24px 0;
+}
+.tool-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+  padding: 14px 0;
+}
+.tool-row strong {
+  display: block;
+  white-space: normal;
+}
+.tool-row small {
+  display: block;
+  margin-top: 5px;
+}
+.tool-row .grow {
+  flex: 1;
+  text-align: left;
+  white-space: normal;
+}
+.tool-row > span {
+  margin-left: auto;
+}
+.source-picker {
+  max-height: 260px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 8px 14px;
+}
+.tool-choice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  padding: 10px 0;
+}
+.tool-choice input {
+  width: 18px;
+  flex-shrink: 0;
+}
+.tool-choice small {
+  display: block;
+}
+.tool-menu {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.tool-menu button {
+  white-space: normal;
+  text-align: left;
+  padding: 18px;
+  border: 1px solid var(--line);
+}
+.danger {
+  color: var(--danger);
+}
+.proposal,
+.annotation-edit,
+.ocr-frame {
+  padding: 20px 0;
+  border-bottom: 1px solid var(--line);
+}
+.ocr-frame img {
+  max-width: 100%;
+  border-radius: 8px;
+}
+.ocr-frame p {
+  white-space: pre-wrap;
+}
+.ocr-frame small {
+  display: block;
+}
+.tools-dialog pre,
+.source-excerpt,
+.answer {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  line-height: 1.8;
+}
+.tools-dialog pre {
+  max-height: 280px;
+  overflow: auto;
+  background: var(--panel);
+  padding: 15px;
+}
+.source-excerpt {
+  background: var(--tint);
+  padding: 15px;
+}
+.tools-dialog blockquote {
+  border-left: 3px solid var(--line);
+  padding: 10px 20px;
+  margin: 16px 0;
+}
+.tools-dialog blockquote small {
+  display: block;
+}
+.record {
+  border-bottom: 1px solid var(--line);
+  padding: 10px 0;
+  font-size: 13px;
+}
+@media (max-width: 600px) {
+  .tools-dialog {
+    padding: 0 18px 20px;
+  }
+  .tool-menu {
+    grid-template-columns: 1fr;
+  }
+  .tool-actions {
+    gap: 6px;
+  }
+}

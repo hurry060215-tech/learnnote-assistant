@@ -701,6 +701,8 @@ def delete_material(material_id: str) -> dict[str, object]:
             connection.commit()
         finally:
             connection.close()
+    edition_key = hashlib.sha256(f"material:{material_key}".encode()).hexdigest()
+    (DATA_DIR / "user-editions" / f"{edition_key}.json").unlink(missing_ok=True)
     if owns_evidence:
         for evidence_id in evidence_ids:
             remove_evidence(evidence_id)

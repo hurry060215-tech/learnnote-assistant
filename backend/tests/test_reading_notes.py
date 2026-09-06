@@ -54,3 +54,67 @@ class ReadingNotesTests(unittest.TestCase):
         self.assertGreater(len(prompts),3)
         self.assertIn("FINAL_SOURCE_MARKER",prompts[-1])
         self.assertEqual(transcript.full_text,original)
+
+    def test_short_chinese_fact_can_be_reviewed_without_padding(self):
+        from app.study_content import review_points
+        self.assertEqual(review_points("学习率控制参数更新步长。"), [("", "学习率控制参数更新步长。")])
+        self.assertEqual(review_points("好的。"), [])
+
+    def test_edition_export_uses_saved_revision(self):
+        from app.routers.notes import export_edition
+        with tempfile.TemporaryDirectory() as directory, patch("app.routers.notes.DATA_DIR",Path(directory)), patch("app.routers.notes._edition_source",return_value="original"):
+            first=get_edition("task","example")
+            put_edition("task","example",EditionRequest(text="edited final",revision=first["revision"]))
+            result=export_edition("task","example","markdown")
+            self.assertEqual(result.body.decode(),"edited final")
+
+    def test_deleting_task_removes_its_private_edition(self):
+        import hashlib
+        from types import SimpleNamespace
+        from app.storage import delete_task
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory); editions=root/"user-editions";editions.mkdir()
+            entry=editions/(hashlib.sha256(b"task:abc123").hexdigest()+".json")
+            entry.write_text("private edit")
+            record=SimpleNamespace(id="abc123",status="success",source_media_path="")
+            with patch("app.storage.DATA_DIR",root),patch("app.storage.TASK_DIR",root/"tasks"),patch("app.storage.get_task",return_value=record),patch("app.storage.remove_task",return_value=True):
+                delete_task("abc123")
+            self.assertFalse(entry.exists())
+
+    def test_material_question_returns_only_its_own_source(self):
+        from app.routers.library import api_material_ask
+        anchors=[{"text":"学习率控制参数更新步长。","locator":"第 1 段","evidence_id":"own-source"}]
+        with patch("app.routers.library.material_anchors",return_value=anchors):
+            result=api_material_ask("selected-material",{"question":"学习率控制什么？"})
+        self.assertEqual(result["material_id"],"selected-material")
+        self.assertEqual(result["evidence_ids"],["own-source"])
+        self.assertIn("未生成推断",result["answer"])
+
+    def test_first_study_plan_creation_is_atomic_across_readers(self):
+        from concurrent.futures import ThreadPoolExecutor
+        from threading import Barrier
+        from app import study
+        gate=Barrier(4)
+        original_connect=study._connect
+        class Connection:
+            def __init__(self):
+                self.connection=original_connect()
+                self.first=True
+            def __getattr__(self,name):
+                return getattr(self.connection,name)
+            def execute(self,sql,*args):
+                cursor=self.connection.execute(sql,*args)
+                if self.first and sql.startswith("SELECT * FROM study_plans"):
+                    self.first=False
+                    row=cursor.fetchone()
+                    gate.wait(timeout=10)
+                    class Result:
+                        def fetchone(self): return row
+                    return Result()
+                return cursor
+        with tempfile.TemporaryDirectory() as directory,patch("app.study.DATA_DIR",Path(directory)):
+            original_connect().close()
+            with patch("app.study._connect",side_effect=Connection),ThreadPoolExecutor(max_workers=4) as workers:
+                plans=list(workers.map(lambda _:study.get_study_plan(),range(4)))
+            self.assertTrue(all(p.plan_id=="default" for p in plans))
+            self.assertEqual(len({p.created_at for p in plans}),1)

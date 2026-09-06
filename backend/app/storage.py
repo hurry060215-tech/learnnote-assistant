@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import shutil
 import threading
@@ -214,6 +215,8 @@ def delete_task(task_id: str) -> dict[str, Any]:
         task_bytes = _directory_size(task_path)
         if not remove_task(record.id):
             raise RuntimeError("task_index_cleanup_failed")
+        edition_key = hashlib.sha256(f"task:{task_id}".encode()).hexdigest()
+        (DATA_DIR / "user-editions" / f"{edition_key}.json").unlink(missing_ok=True)
         if task_path.exists():
             shutil.rmtree(task_path)
         upload_bytes = 0
