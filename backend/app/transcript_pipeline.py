@@ -7,7 +7,7 @@ from pathlib import Path
 from collections.abc import Callable
 
 from .models import BrowserSubtitleCue, TaskOptions, TranscriptResult
-from .processor_state import ContentMismatchError, check_cancel
+from .processor_state import ContentMismatchError, TaskCancelled, check_cancel
 from .storage import task_dir, update_task, write_json
 
 
@@ -92,6 +92,8 @@ def prepare_transcript(
             extract_audio(normalized_path, audio_path)
             check_cancel(task_id)
             update_task(task_id, audio_path=str(audio_path))
+        except TaskCancelled:
+            raise
         except Exception as exc:
             audio_path = None
             audio_warning = f"未能提取可转写音轨：{exc}；已继续使用画面切片生成笔记。"
@@ -116,6 +118,8 @@ def prepare_transcript(
 
     if transcript is None:
         transcript = TranscriptResult(source="no-audio", warning=audio_warning)
+    check_cancel(task_id)
+    write_json(task_id, "transcript_raw.json", transcript.model_dump(mode="json"))
     transcript = correct_transcript_terms(transcript)
     asr_error = asr_failure_detail(transcript)
     if asr_error:

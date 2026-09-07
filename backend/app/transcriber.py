@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 from .config import DEFAULT_WHISPER_COMPUTE_TYPE, DEFAULT_WHISPER_DEVICE, LLM_API_KEY, LLM_BASE_URL, LLM_MAX_RETRIES, LLM_REQUEST_TIMEOUT_SECONDS, MODEL_CACHE_DIR, configure_local_caches
 from .models import TaskOptions, TranscriptResult, TranscriptSegment
 from .text_cleanup import read_canonical_text
+from .processor_state import TaskCancelled
 
 
 TIMESTAMP_RE = re.compile(
@@ -186,6 +187,8 @@ def transcribe_audio(
             segments=segments,
             full_text="\n".join(seg.text for seg in segments),
         )
+    except TaskCancelled:
+        raise
     except Exception as exc:
         return TranscriptResult(
             language="unknown",
