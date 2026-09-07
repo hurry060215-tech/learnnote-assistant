@@ -330,6 +330,7 @@ export function installProductWorkspace(ctx) {
         (a.created_at || "").localeCompare(b.created_at || ""),
       );
       if (epoch !== assistantEpoch) return;
+      if(!previousSkill && visibleSource === "global") previousSkill=items.at(-1)?.skill?.id||"";
       for (const item of items)
         $("assistantHistory").append(renderMessage(item.question, item));
       if (!items.length)
