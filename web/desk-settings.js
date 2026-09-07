@@ -109,7 +109,7 @@ export function installSettings(ctx) {
     field("prefOcrLimit", "OCR 采样帧数", "number", 12, 'min="1" max="24"') +
     '<label class="check"><input type="checkbox" id="prefLowResource">低资源模式</label><p class="muted">画面理解和 OCR 是否启用，在创建任务时可直接选择。</p>';
   panes.appearance.innerHTML +=
-    '<label for="prefReaderSize">正文字号</label><select id="prefReaderSize"><option value="15">15 px · 紧凑</option><option value="16">16 px · 标准</option><option value="18">18 px · 较大</option><option value="20">20 px · 大字</option></select><label for="prefDensity">界面密度</label><select id="prefDensity"><option value="comfortable">标准</option><option value="compact">紧凑</option></select><label class="check"><input type="checkbox" id="prefAutoOpen">完成后自动打开笔记</label><label class="check"><input type="checkbox" id="prefNotify">任务完成时发送系统通知</label><p class="muted">系统通知需要你授予浏览器或客户端通知权限。</p>';
+    '<label for="prefReaderSize">正文字号</label><select id="prefReaderSize"><option value="15">15 px · 紧凑</option><option value="16">16 px</option><option value="17">17 px · 标准</option><option value="18">18 px · 较大</option><option value="20">20 px · 大字</option></select><label for="prefDensity">界面密度</label><select id="prefDensity"><option value="comfortable">标准</option><option value="compact">紧凑</option></select><label class="check"><input type="checkbox" id="prefAutoOpen">完成后自动打开笔记</label><label class="check"><input type="checkbox" id="prefNotify">任务完成时发送系统通知</label><p class="muted">系统通知需要你授予浏览器或客户端通知权限。</p>';
   panes.storage.insertAdjacentHTML(
     "afterbegin",
     '<p id="settingsDataRoot" class="settings-status"></p><div class="settings-inline-actions"><button type="button" id="openSettingsFolder">打开数据目录</button><button type="button" id="changeSettingsFolder">更改数据位置</button><button type="button" id="extensionSetupSettings">连接浏览器扩展</button></div><p id="connectionReadiness" class="muted"></p>',
@@ -164,6 +164,7 @@ export function installSettings(ctx) {
             : p[key];
     $("prefLowResource").checked = Boolean(p.low_resource_mode);
   }
+  panes.appearance.insertAdjacentHTML("beforeend", '<label for="prefFont">阅读字体</label><select id="prefFont"><option value="sans">清晰黑体</option><option value="serif">书页宋体</option><option value="mono">等宽字体</option></select><label for="prefWidth">阅读宽度</label><select id="prefWidth"><option value="760">专注 · 760 px</option><option value="940">标准 · 940 px</option><option value="1120">宽屏 · 1120 px</option></select><label for="prefLeading">正文行距</label><select id="prefLeading"><option value="1.65">紧凑 · 1.65</option><option value="1.85">舒适 · 1.85</option><option value="2.1">宽松 · 2.1</option></select><label for="prefAccent">强调色</label><select id="prefAccent"><option value="neutral">石墨</option><option value="teal">青绿</option><option value="blue">靛蓝</option><option value="plum">梅紫</option></select><p class="muted">外观保存在当前浏览器或客户端；不会修改笔记内容。深浅主题可用侧栏底部按钮切换。</p>');
   function appearance() {
     let p = {};
     try {
@@ -171,15 +172,23 @@ export function installSettings(ctx) {
         localStorage.getItem("learnnote.reading.preferences") || "{}",
       );
     } catch {}
-    $("prefReaderSize").value = p.size || 16;
+    $("prefReaderSize").value = p.size || 17;
     $("prefDensity").value = p.density || "comfortable";
     $("prefAutoOpen").checked = Boolean(p.autoOpen);
     $("prefNotify").checked = Boolean(p.notify);
     document.documentElement.style.setProperty(
       "--reader-size",
-      (p.size || 16) + "px",
+      (p.size || 17) + "px",
     );
     document.body.classList.toggle("compact-density", p.density === "compact");
+    for (const [id, value] of Object.entries({prefFont:p.font || "sans", prefWidth:p.width || "940", prefLeading:p.leading || "1.85", prefAccent:p.accent || "neutral"})) $(id).value = value;
+    const fonts = {sans:'"Segoe UI", "Microsoft YaHei", sans-serif', serif:'"Noto Serif CJK SC", "SimSun", serif', mono:'Consolas, "Microsoft YaHei", monospace'};
+    const colors = {neutral:"#303832", teal:"#087b83", blue:"#4057a0", plum:"#79516f"};
+    const style = document.documentElement.style;
+    style.setProperty("--reader-font", fonts[p.font] || fonts.sans);
+    style.setProperty("--reader-width", ([760,940,1120].includes(Number(p.width)) ? p.width : 940) + "px");
+    style.setProperty("--reader-leading", [1.65,1.85,2.1].includes(Number(p.leading)) ? p.leading : 1.85);
+    style.setProperty("--chosen-accent", colors[p.accent] || colors.neutral);
     state.reading = p;
   }
   function collect() {
@@ -267,6 +276,10 @@ export function installSettings(ctx) {
       const reading = {
         size: Number($("prefReaderSize").value),
         density: $("prefDensity").value,
+        font: $("prefFont").value,
+        width: $("prefWidth").value,
+        leading: $("prefLeading").value,
+        accent: $("prefAccent").value,
         autoOpen: $("prefAutoOpen").checked,
         notify: $("prefNotify").checked,
       };
