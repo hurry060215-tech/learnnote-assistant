@@ -122,7 +122,7 @@ MEDIA_CONTENT_TYPE_SUFFIXES = {
     "video/x-msvideo": ".avi",
 }
 SUBTITLE_EXTENSIONS = {".vtt", ".srt", ".ass", ".ssa"}
-SUBTITLE_LANGUAGE_PREFERENCES = ("zh-CN", "zh-Hans", "zh-Hant", "zh", "en", "en-US")
+SUBTITLE_LANGUAGE_PREFERENCES = ("zh-CN", "zh-Hans", "zh-Hant", "zh", "ai-zh", "en", "en-US", "ai-en")
 BROWSER_REQUEST_HEADER_ALLOWLIST = {
     "accept": "Accept",
     "accept-language": "Accept-Language",
@@ -1455,6 +1455,7 @@ def choose_ytdlp_subtitle_language(info: dict) -> tuple[str, bool]:
     for subtitles, automatic in subtitle_maps:
         if not isinstance(subtitles, dict) or not subtitles:
             continue
+        subtitles = {lang: tracks for lang, tracks in subtitles.items() if str(lang).lower() not in {"danmaku", "live_chat"}}
         for preferred in SUBTITLE_LANGUAGE_PREFERENCES:
             preferred_lower = preferred.lower()
             for lang in subtitles:
@@ -2890,10 +2891,19 @@ class MediaDownloader:
 
         cookie_file = write_netscape_cookie_file(cookies, self.task_path / "subtitle_cookies.txt") if cookies else None
         http_headers = ytdlp_headers_from_browser_context(page_url, resources)
+        class SubtitleProbeLogger(QuietYtdlpLogger):
+            auth_required = False
+            def warning(self, message):
+                lowered = str(message).lower()
+                if "subtitle" in lowered and any(word in lowered for word in ("logged in", "login", "sign in")):
+                    self.auth_required = True
+        probe_logger = SubtitleProbeLogger()
         probe_opts = {
+            "writesubtitles": True,
+            "writeautomaticsub": True,
             "quiet": True,
             "no_warnings": True,
-            "logger": QuietYtdlpLogger(),
+            "logger": probe_logger,
             "noprogress": True,
             "socket_timeout": YTDLP_SOCKET_TIMEOUT_SECONDS,
             "retries": YTDLP_RETRIES,
@@ -2919,6 +2929,8 @@ class MediaDownloader:
 
         lang, automatic = choose_ytdlp_subtitle_language(info or {})
         if not lang:
+            if probe_logger.auth_required:
+                raise DownloadError("auth_required", "平台字幕需要 B 站登录态；本次未取得可访问字幕，不能判断视频没有字幕。请从已登录的播放器重新交接。")
             return None
 
         outtmpl = str(self.download_dir / f"{_clean_filename(title)}_platform_sub.%(ext)s")
@@ -2946,7 +2958,7 @@ class MediaDownloader:
             opts["cookiefile"] = str(cookie_file)
 
         before = set(self.download_dir.glob("*"))
-        self._notify_status("正在使用 yt-dlp 解析并下载页面视频", 18, (resources or [None])[0])
+        self._notify_status("正在获取平台字幕（不下载视频）", 32, (resources or [None])[0])
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
                 ydl.extract_info(page_url, download=True)
