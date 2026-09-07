@@ -2,6 +2,13 @@
 
 All notable changes to LearnNote are documented here. The project follows semantic versioning while the `0.x` series is under active development.
 
+## 0.2.3 - Global assistant preview
+
+- Add an explicit application skill catalog, transparent routing and global help/status/search/chat without requiring a selected note or a LearnNote account.
+- Preserve source-specific question history with skill metadata, and persist global conversations separately in the local data directory.
+- Add backdrop/Escape dismissal, unsaved-edit protection, semantic tool back navigation and workspace history.
+- Add pinned notes and list sorting; respect reduced-motion preferences and remove obsolete landing-page style rules.
+
 ## 0.2.2 - Product workbench preview
 
 - Restore a visible AI assistant with contextual conversation history, citations, suggestion prompts and saving answers to annotations.

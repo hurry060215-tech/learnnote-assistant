@@ -86,7 +86,7 @@ const fs = require("node:fs");
     await p.locator("#aiSend").click();
     await p.waitForFunction(() =>
       document
-        .querySelector(".assistant-answer")
+        .querySelector(".assistant-turn:last-child .assistant-answer")
         ?.textContent.includes("参数更新"),
     );
     await p.locator("#closeAssistant").click();

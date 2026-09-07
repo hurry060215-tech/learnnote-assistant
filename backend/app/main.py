@@ -3053,6 +3053,7 @@ def append_task_qa_history(task: TaskRecord, request: TaskQuestionRequest, resul
     item = {
         "id": uuid4().hex[:10],
         "created_at": now_iso(),
+        "skill_id": request.skill_id,
         "question": _clip_text(request.question, 1000),
         "answer": str(result.get("answer") or ""),
         "source": str(result.get("source") or ""),
@@ -4299,7 +4300,10 @@ def api_task_question(task_id: str, request: TaskQuestionRequest) -> dict:
         task = get_task(task_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Task not found") from exc
-    result = _answer_task_question(task, request)
+    instructions = {"note.summary": "总结当前内容的重点，保留来源。", "study.quiz": "根据当前来源给出三道自测题、参考答案与出处。"}
+    prefix = instructions.get(request.skill_id, "")
+    effective = request.model_copy(update={"question": f"{prefix} 用户要求：{request.question}"}) if prefix else request
+    result = _answer_task_question(task, effective)
     history_item, history = append_task_qa_history(task, request, result)
     result["history_item"] = history_item
     result["history_count"] = len(history)

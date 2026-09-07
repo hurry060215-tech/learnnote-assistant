@@ -202,6 +202,7 @@ class StorageCleanupRequest(BaseModel):
 class TaskQuestionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    skill_id: Literal["note.qa", "note.summary", "study.quiz"] = "note.qa"
     question: str = Field(min_length=1, max_length=1000)
     options: TaskOptions | None = None
 

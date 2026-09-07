@@ -17,7 +17,8 @@ export function installTools(ctx) {
     courses = [],
     proposals = [],
     batchRunning = false,
-    cleanupPolicy = null;
+    cleanupPolicy = null,
+    backAction = null;
   async function api(path, options) {
     const token = generation;
     const result = await request(path, options);
@@ -27,7 +28,8 @@ export function installTools(ctx) {
   }
   function show(title, body) {
     generation++;
-    dialog.innerHTML = `<header><h2>${esc(title)}</h2><button data-close-tool aria-label="关闭">×</button></header><div id="toolBody">${body}</div><p id="toolStatus" role="status"></p>`;
+    backAction = state.selected ? more : null;
+    dialog.innerHTML = `<header><button data-tool-back type="button" aria-label="返回">← 返回</button><h2>${esc(title)}</h2><button data-close-tool aria-label="关闭">×</button></header><div id="toolBody">${body}</div><p id="toolStatus" role="status"></p>`;
     if (!dialog.open) dialog.showModal();
     return generation;
   }
@@ -78,6 +80,7 @@ export function installTools(ctx) {
       }),
     });
     course = result.course;
+    window.LearnNoteDialogs?.markSaved(dialog);
     return course;
   }
   async function listCourses() {
@@ -85,6 +88,7 @@ export function installTools(ctx) {
     const result = await api("/api/courses");
     if (token !== generation) return;
     courses = result.courses;
+    backAction = null;
     $("toolBody").innerHTML =
       `<p class="muted">把相关笔记放在一起，按自己的顺序学习。</p><button class="primary" data-action="new-course">＋ 新建课程</button><div class="tool-list">${courses.map((c) => `<button class="tool-row" data-course="${c.id}"><strong>${esc(c.title)}</strong><small>${c.paused ? "已暂停" : "学习中"}</small><span>›</span></button>`).join("") || '<p class="muted">还没有课程。</p>'}</div>`;
   }
@@ -98,6 +102,7 @@ export function installTools(ctx) {
           .join("\n"),
       )}</textarea><details><summary>从公开播放列表展开</summary><label for="playlistUrl">播放列表地址</label><input id="playlistUrl" type="url"><button type="button" data-action="playlist">预览链接</button><div id="playlistResult"></div></details><footer><button class="primary">保存课程</button></footer></form>`,
     );
+    backAction = course ? courseView : listCourses;
   }
   async function openCourse(id) {
     const token = show("课程", '<p class="muted">正在读取…</p>');
@@ -111,6 +116,7 @@ export function installTools(ctx) {
       course.title,
       `<div class="tool-actions"><button data-action="courses">所有课程</button><button data-action="edit-course">编辑来源</button><button data-action="pause-course">${course.paused ? "继续课程" : "暂停课程"}</button><button data-action="batch" ${course.paused ? "disabled" : ""}>整理待处理链接</button></div><div class="tool-list">${course.sources.map((s, i) => `<div class="tool-row"><button class="grow" data-open-source="${i}"><strong>${esc(s.title || s.url || s.id)}</strong><small>${s.kind === "url" ? "待整理链接" : s.kind === "task" ? "视频笔记" : "学习资料"}</small></button><button data-move="${i}" data-direction="-1" aria-label="上移" ${i === 0 ? "disabled" : ""}>↑</button><button data-move="${i}" data-direction="1" aria-label="下移" ${i === course.sources.length - 1 ? "disabled" : ""}>↓</button></div>`).join("")}</div><details><summary>对照不同来源</summary><form id="compareForm"><label for="compareQuery">查找共同讨论的内容</label><input id="compareQuery" required placeholder="输入关键词"><button>查找出处</button></form><div id="compareResults"></div></details><footer><button data-action="course-review">复习这门课程</button><button class="danger" data-action="delete-course">删除课程分组</button></footer>`,
     );
+    backAction = listCourses;
   }
   async function studySettings(courseId = "") {
     const token = show("复习与计划", '<p class="muted">正在读取…</p>');
@@ -128,6 +134,13 @@ export function installTools(ctx) {
     const p = plan.plan;
     $("toolBody").innerHTML =
       `<form id="planForm"><label for="dailyTarget">每日目标</label><input id="dailyTarget" type="number" min="1" max="200" value="${p.daily_target}"><label for="studyTimezone">复习时区</label><input id="studyTimezone" value="${esc(p.timezone)}" required><label class="check"><input id="studyPaused" type="checkbox" ${p.paused ? "checked" : ""}>暂停复习提醒与评分</label><button class="primary">保存计划</button></form><div class="tool-actions"><button data-action="start-review" data-course-id="${esc(courseId)}">开始复习${courseId ? "当前课程" : ""}</button>${links([["导出学习记录", "/api/study/export"]])}</div><details><summary>最近评分记录</summary><div>${history.reviews.map((r) => `<p class="record">${esc(r.reviewed_at || r.created_at || "")} · 评分 ${esc(r.rating)}</p>`).join("") || '<p class="muted">还没有评分记录。</p>'}</div></details><details><summary>修复旧版复习调度</summary><p class="muted">根据完整评分历史重新计算计划，并在本地保存原调度备份。</p><button data-action="rebuild-study">按历史重建</button></details>`;
+    backAction = courseId
+      ? () => openCourse(courseId)
+      : () => {
+          dialog.close();
+          $("settings").click();
+          document.querySelector('[data-settings-section="storage"]')?.click();
+        };
   }
   async function propose() {
     const s = current(),
@@ -248,6 +261,11 @@ export function installTools(ctx) {
     if (token !== generation) return;
     $("toolBody").innerHTML =
       `<p class="muted">清理前先预览范围。学习资料保存在本机，不会因关闭窗口而删除。</p><details><summary>查看本地存储信息</summary><pre>${esc(JSON.stringify(result, null, 2))}</pre></details><div class="tool-actions"><button data-action="open-folder">打开数据文件夹</button><button data-action="backup">备份任务索引</button></div><p class="muted">索引备份不包含视频、文档正文、个人修订或复习数据库；完整备份请复制数据文件夹。</p><details><summary>恢复任务索引</summary><form id="restoreForm"><input id="restoreFile" type="file" accept=".sqlite3" required><button>选择备份并恢复</button></form></details><details><summary>清理旧任务</summary><form id="cleanupForm"><label for="retention">保留最近多少天</label><input id="retention" type="number" min="1" max="3650" value="30"><label for="keepRecent">至少保留最近多少个任务</label><input id="keepRecent" type="number" min="0" max="1000" value="10"><button>预览清理范围</button></form><pre id="cleanupPreview"></pre><button id="executeCleanup" hidden class="danger" data-action="cleanup">确认执行清理</button></details>`;
+    backAction = () => {
+      dialog.close();
+      $("settings").click();
+      document.querySelector('[data-settings-section="storage"]')?.click();
+    };
   }
   async function diagnostics() {
     const s = current();
@@ -270,6 +288,7 @@ export function installTools(ctx) {
       "笔记工具",
       `<div class="tool-menu"><button data-action="exports">导出笔记与原始资料</button><button data-action="propose">创建复习卡</button><button data-action="ask">围绕内容提问</button><button data-action="annotations">管理我的补充</button><button data-action="add-to-course">归入课程</button>${s.kind === "task" ? '<button data-action="regenerate">重新整理视频笔记</button><button data-action="range">学习视频片段</button><button data-action="ocr">查看画面文字</button><button data-action="diagnostics">查看处理记录</button><button data-action="community">独立社区观点</button>' : ""}<button class="danger" data-action="delete-source">删除当前内容</button></div>`,
     );
+    backAction = null;
   }
   async function batch() {
     if (batchRunning) return;
@@ -522,6 +541,14 @@ export function installTools(ctx) {
   dialog.addEventListener("click", (event) => {
     const b = event.target.closest("button,a");
     if (!b) return;
+    if (b.hasAttribute("data-tool-back")) {
+      if (window.LearnNoteDialogs && !window.LearnNoteDialogs.canLeave(dialog))
+        return;
+      window.LearnNoteDialogs?.markSaved(dialog);
+      if (backAction) run(b, backAction);
+      else dialog.close();
+      return;
+    }
     if (b.hasAttribute("data-close-tool")) {
       generation++;
       dialog.close();
@@ -754,6 +781,7 @@ export function installTools(ctx) {
             }),
           },
         );
+        window.LearnNoteDialogs?.markSaved(dialog);
         status("补充已更新。");
         ctx.reloadAnnotations();
       }
@@ -764,6 +792,9 @@ export function installTools(ctx) {
       cleanupPolicy = null;
       $("executeCleanup").hidden = true;
     }
+  });
+  dialog.addEventListener("learnnote:dialog-closed", () => {
+    generation++;
   });
   dialog.addEventListener("cancel", () => {
     generation++;

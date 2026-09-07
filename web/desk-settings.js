@@ -282,6 +282,7 @@ export function installSettings(ctx) {
       );
       appearance();
       $("preferencesStatus").textContent = "设置已保存，新任务将使用这些参数。";
+      window.LearnNoteDialogs?.markSaved(dialog);
       window.dispatchEvent(new CustomEvent("learnnote:settings"));
     } catch (e) {
       $("preferencesStatus").textContent = e.message;

@@ -179,3 +179,44 @@ def put_preferences(payload: dict = Body(...)) -> dict:
     public_options = options.model_dump(exclude={"llm_api_key", "llm_base_url", "llm_model"})
     atomic_write_text(DATA_DIR / "preferences.json", json.dumps({"task_options": public_options}, ensure_ascii=False, indent=2))
     return {"ok": True, "task_options": public_options}
+
+
+class AssistantSkillRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    question: str = Field(min_length=1,max_length=1000)
+    skill: str = Field(default="auto",max_length=80)
+    has_source: bool = False
+    options: TaskOptions | None = None
+
+@system_router.get("/api/assistant/skills")
+def assistant_skill_catalog():
+    from ..assistant_skills import SKILLS, GUIDES
+    return {"schema_version":1,"skills":SKILLS,"features":[{"name":title,"description":text,"action":action} for _,title,text,action in GUIDES],"login_required":False}
+
+@system_router.post("/api/assistant/route")
+def assistant_skill_route(request: AssistantSkillRequest):
+    from ..assistant_skills import resolve_skill
+    try:
+        return resolve_skill(request.question,request.skill,request.has_source)
+    except ValueError as exc:
+        raise HTTPException(422,"未知的 Skill，请重新选择。") from exc
+
+@system_router.post("/api/assistant/execute")
+def assistant_skill_execute(request: AssistantSkillRequest):
+    from ..assistant_skills import execute_global
+    try:
+        return execute_global(request.skill,request.question,request.options)
+    except ValueError as exc:
+        raise HTTPException(422,"该 Skill 需要先选择来源并使用对应的内容接口。") from exc
+
+@system_router.get("/api/assistant/history")
+def assistant_global_history():
+    from ..assistant_skills import history
+    return {"items":history()}
+
+@system_router.delete("/api/assistant/history")
+def assistant_clear_history(confirm: str=""):
+    if confirm!="clear_assistant_history":raise HTTPException(400,"请先确认清空全局对话。")
+    from ..assistant_skills import clear_history
+    clear_history()
+    return {"ok":True}

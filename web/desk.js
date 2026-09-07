@@ -1,3 +1,4 @@
+import { installInteractions } from "/web/desk-interactions.js";
 import { installSettings } from "/web/desk-settings.js";
 import { installProductWorkspace } from "/web/desk-product.js";
 import { installTools } from "/web/desk-tools.js";
@@ -100,17 +101,66 @@ function sourcePath(s = state.selected) {
 }
 function drawList() {
   const query = $("search").value.trim().toLowerCase();
-  const rows = state.items.filter((item) =>
-    item.title.toLowerCase().includes(query),
-  );
+  const rows = state.items
+    .filter((item) => item.title.toLowerCase().includes(query))
+    .sort((a, b) => {
+      const pin = (item) =>
+        state.pinned?.has(item.kind + ":" + item.id) ? 1 : 0;
+      if (pin(a) !== pin(b)) return pin(b) - pin(a);
+      if (state.listSort === "title")
+        return a.title.localeCompare(b.title, "zh-CN", { numeric: true });
+      if (state.listSort === "active") {
+        const active = (item) =>
+          ["queued", "running", "cancelling"].includes(item.status) ? 1 : 0;
+        if (active(a) !== active(b)) return active(b) - active(a);
+      }
+      return (b.updated_at || b.created_at || "").localeCompare(
+        a.updated_at || a.created_at || "",
+      );
+    });
+  if ($("libraryVisibleCount"))
+    $("libraryVisibleCount").textContent = rows.length + " 项";
   $("notes").innerHTML = rows.length
     ? rows
         .map(
           (item) =>
-            `<button data-id="${esc(item.id)}" data-kind="${item.kind}" aria-current="${state.selected?.id === item.id && state.selected?.kind === item.kind}"><strong>${esc(item.title || "未命名笔记")}</strong><small>${item.kind === "material" ? "资料原文" : statusLabel(item)}${item.updated_at ? " · " + esc(item.updated_at.slice(0, 10)) : ""}</small></button>`,
+            `<div class="library-row"><button data-id="${esc(item.id)}" data-kind="${item.kind}" aria-current="${state.selected?.id === item.id && state.selected?.kind === item.kind}"><strong>${esc(item.title || "未命名笔记")}</strong><small>${item.kind === "material" ? "资料原文" : statusLabel(item)}${item.updated_at ? " · " + esc(item.updated_at.slice(0, 10)) : ""}</small></button><button class="pin-note" data-pin="${item.kind}:${esc(item.id)}" aria-label="${state.pinned?.has(item.kind + ":" + item.id) ? "取消置顶" : "置顶笔记"}" aria-pressed="${Boolean(state.pinned?.has(item.kind + ":" + item.id))}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M9 3h6l-1 6 3 3v1H7v-1l3-3zM12 13v8"/></svg></button></div>`,
         )
         .join("")
     : `<p class="muted" style="padding:12px">${query ? "没有匹配的笔记" : "添加内容后，笔记会出现在这里。"}</p>`;
+}
+function showHome({ remember = true, check = true } = {}) {
+  if (check && !guard()) return;
+  state.navigation ||= [];
+  if (remember && state.selected)
+    state.navigation.push({ kind: state.selected.kind, id: state.selected.id });
+  state.selected = null;
+  state.epoch++;
+  state.editing = false;
+  $("annotationText").value = "";
+  closeSource();
+  $("reading").hidden = true;
+  $("welcome").hidden = false;
+  $("noteActions").hidden = true;
+  $("breadcrumb").textContent = "学习工作台";
+  history.replaceState(null, "", location.pathname);
+  drawList();
+  window.dispatchEvent(
+    new CustomEvent("learnnote:selection", { detail: null }),
+  );
+  window.dispatchEvent(new Event("learnnote:navigation"));
+}
+async function navigateBack() {
+  if (!guard()) return;
+  const previous = (state.navigation || []).pop();
+  if (previous) {
+    const item = state.items.find(
+      (i) => i.kind === previous.kind && i.id === previous.id,
+    );
+    if (item) await openItem(item, { remember: false, check: false });
+    else showHome({ remember: false, check: false });
+  } else showHome({ remember: false, check: false });
+  window.dispatchEvent(new Event("learnnote:navigation"));
 }
 function statusLabel(task) {
   return task.awaiting_confirmation
@@ -197,8 +247,23 @@ async function refresh() {
     state.refreshing = false;
   }
 }
-async function openItem(item) {
-  if (!guard()) return;
+async function openItem(item, { remember = true, check = true } = {}) {
+  if (check && !guard()) return;
+  state.navigation ||= [];
+  if (
+    remember &&
+    (!state.selected ||
+      state.selected.id !== item.id ||
+      state.selected.kind !== item.kind)
+  ) {
+    state.navigation.push(
+      state.selected
+        ? { kind: state.selected.kind, id: state.selected.id }
+        : null,
+    );
+    state.navigation = state.navigation.slice(-30);
+  }
+  window.dispatchEvent(new Event("learnnote:navigation"));
   state.editing = false;
   $("editor").hidden = true;
   $("document").hidden = false;
@@ -687,9 +752,10 @@ window.addEventListener("beforeunload", (e) => {
 async function loadKey() {
   if (state.model.provider && window.pywebview?.api?.load_model_key) {
     try {
-      const provider=state.model.provider;
+      const provider = state.model.provider;
       const value = await window.pywebview.api.load_model_key(provider);
-      if (value.configured && state.model.provider===provider) state.key = value.api_key;
+      if (value.configured && state.model.provider === provider)
+        state.key = value.api_key;
     } catch {}
   }
 }
@@ -806,6 +872,8 @@ const workspaceTools = installTools({
 });
 
 installProductWorkspace({
+  tools: workspaceTools,
+  showHome,
   state,
   options,
   openItem,
@@ -821,3 +889,5 @@ installSettings({ state, notice, loadKey });
 window.addEventListener("learnnote:annotations", () =>
   loadAnnotations(state.epoch).catch(failure),
 );
+
+installInteractions({ state, drawList, showHome, navigateBack });

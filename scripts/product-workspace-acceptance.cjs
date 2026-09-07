@@ -11,7 +11,7 @@ const fs = require("fs");
   p.on("pageerror", (e) => errors.push(e.message));
   try {
     await p.goto(base);
-    await p.waitForSelector("#runtimeModel");
+    await p.waitForSelector("#runtimeModel", { state: "attached" });
     await p.waitForFunction(
       () => document.querySelector("#welcome").dataset.ready === "true",
     );
@@ -76,9 +76,18 @@ const fs = require("fs");
     await p.locator("#aiAssistant").click();
     await p.locator("#aiQuestion").fill("学习率控制什么？");
     await p.locator("#aiSend").click();
-    await p.waitForSelector(".assistant-turn");
-    assert.match(await p.locator(".assistant-answer").innerText(), /学习率/);
-    await p.locator(".save-ai-note").click();
+    await p.waitForFunction(
+      () =>
+        !document.querySelector("#aiSend").disabled &&
+        document
+          .querySelector(".assistant-turn:last-child .assistant-answer")
+          ?.textContent.includes("学习率"),
+    );
+    assert.match(
+      await p.locator(".assistant-answer").last().innerText(),
+      /学习率/,
+    );
+    await p.locator(".assistant-turn:last-child .save-ai-note").click();
     await p.waitForFunction(() =>
       document.querySelector("#annotationList").textContent.includes("学习率"),
     );

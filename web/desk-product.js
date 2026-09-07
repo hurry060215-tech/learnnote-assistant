@@ -42,7 +42,8 @@ export function installProductWorkspace(ctx) {
     if ($(id))
       $(id).innerHTML = icons[icon] + (label ? `<span>${label}</span>` : "");
   document.querySelector(".brand").innerHTML =
-    icons.book + "<strong>LearnNote</strong>";
+    icons.book +
+    "<div><strong>LearnNote</strong><br><small>本地 · 无需登录</small></div>";
   for (const [id, path, label] of [
     ["edit", '<path d="m4 16 11-11 4 4L8 20H4zM13 7l4 4"/>', "编辑"],
     [
@@ -78,25 +79,179 @@ export function installProductWorkspace(ctx) {
   const launch = document.createElement("button");
   launch.id = "aiAssistant";
   launch.className = "assistant-launch";
-  launch.innerHTML = icons.ai + "<span>AI 助教</span>";
+  launch.innerHTML = icons.ai + "<span>全局助手</span>";
   launch.setAttribute("aria-expanded", "false");
   toolbar.append(launch);
   const pane = document.createElement("aside");
   pane.id = "assistantPanel";
   pane.className = "assistant-panel";
   pane.hidden = true;
-  pane.innerHTML = `<header><strong>${icons.ai} AI 助教</strong><div><button id="wideAssistant" title="扩宽对话">展开</button><button id="fullAssistant" title="铺满工作区">全屏</button><button id="closeAssistant" aria-label="关闭 AI 助教">×</button></div></header><div class="assistant-context"><small>当前上下文</small><strong id="assistantContext">尚未选择笔记</strong><span id="assistantModel"></span></div><div id="assistantHistory" class="assistant-history" role="log" aria-live="polite"></div><div class="assistant-prompts"><button data-prompt="总结这份内容的核心观点，并给出对应出处">总结要点</button><button data-prompt="解释这份内容中最重要的概念和它们的关系">解释概念</button><button data-prompt="根据原文给出三道自测问题，并附上参考答案和出处">帮我自测</button></div><form id="aiForm"><label class="sr-only" for="aiQuestion">向当前笔记提问</label><textarea id="aiQuestion" maxlength="1000" rows="3" required placeholder="围绕当前内容追问，或粘贴一段想弄懂的话…"></textarea><footer><small id="aiStatus">回答与出处一起保留</small><button id="aiSend" class="primary">发送</button></footer></form>`;
+  pane.innerHTML = `<header><strong>${icons.ai} 全局助手</strong><div><button id="wideAssistant" title="扩宽对话">展开</button><button id="fullAssistant" title="铺满工作区">全屏</button><button id="closeAssistant" aria-label="关闭 全局助手">×</button></div></header><div class="assistant-context"><small>当前上下文</small><strong id="assistantContext">尚未选择笔记</strong><span id="assistantModel"></span></div><div id="assistantHistory" class="assistant-history" role="log" aria-live="polite"></div><div class="assistant-prompts"><button data-prompt="你有哪些功能？怎么使用？">使用帮助</button><button data-prompt="总结这份内容的核心观点，并给出对应出处">总结要点</button><button data-prompt="解释这份内容中最重要的概念和它们的关系">解释概念</button><button data-prompt="根据原文给出三道自测问题，并附上参考答案和出处">帮我自测</button></div><form id="aiForm"><label class="sr-only" for="aiQuestion">向当前笔记提问</label><textarea id="aiQuestion" maxlength="1000" rows="3" required placeholder="问操作方法、查资料，或围绕当前内容提问…"></textarea><footer><small id="aiStatus">回答与出处一起保留</small><button id="aiSend" class="primary">发送</button></footer></form>`;
   document.body.append(pane);
+  const skillControls = document.createElement("div");
+  skillControls.className = "assistant-skill-controls";
+  skillControls.innerHTML =
+    '<label for="assistantSkill">选择能力</label><div><select id="assistantSkill" aria-label="选择助理 Skill"><option value="auto">自动选择 Skill（本地匹配）</option></select><button id="skillCatalog">功能目录</button></div><p id="skillExecution" role="status">每次调用会显示 Skill 与上下文范围</p>';
+  pane.querySelector(".assistant-context").before(skillControls);
+  let skills = [],
+    features = [];
+  async function loadSkills() {
+    try {
+      const catalog = await api("/api/assistant/skills");
+      skills = catalog.skills;
+      features = catalog.features || [];
+      for (const skill of skills)
+        $("assistantSkill").append(
+          Object.assign(document.createElement("option"), {
+            value: skill.id,
+            textContent: `${skill.name} · ${skill.requires_source ? "当前内容" : "全局"}`,
+          }),
+        );
+    } catch (error) {
+      $("skillExecution").textContent = "能力目录暂不可用：" + error.message;
+    }
+  }
+  loadSkills();
+  function skillInfo(id) {
+    return (
+      skills.find((s) => s.id === id) || {
+        id: id || "note.qa",
+        name: "历史内容问答",
+        scope: "source",
+        requires_source: true,
+      }
+    );
+  }
+  function openAction(id) {
+    const settings = id.match(
+      /^settings_(model|transcriber|notes|processing|appearance|storage)$/,
+    );
+    if (settings) {
+      $("settings").click();
+      document
+        .querySelector(`[data-settings-section="${settings[1]}"]`)
+        ?.click();
+      return;
+    }
+    const actions = {
+      create: () => $("newNote").click(),
+      browser: () => {
+        $("newNote").click();
+        document.querySelector('[data-input="browser"]').click();
+      },
+      courses: () => $("courses").click(),
+      review: () => $("review").click(),
+      storage: () => ctx.tools.storage(),
+      diagnostics: () =>
+        state.selected?.kind === "task"
+          ? ctx.tools.diagnostics()
+          : ctx.tools.storage(),
+      export: () =>
+        state.selected
+          ? $("export").click()
+          : notice("先选择一份笔记，再导出。"),
+      tools: () =>
+        state.selected ? $("moreTools").click() : notice("先选择一份笔记。"),
+      select_note: () => {
+        document.body.classList.add("menu-open");
+        $("search").focus();
+      },
+      home: () => ctx.showHome(),
+    };
+    if (Object.hasOwn(actions, id)) actions[id]();
+  }
+  $("skillCatalog").onclick = () => {
+    const modal = document.createElement("dialog");
+    modal.className = "skill-catalog-dialog";
+    modal.innerHTML =
+      '<header><h2>助手能力目录</h2><button aria-label="关闭">×</button></header><p class="muted">本地使用，无需登录。操作按钮只打开对应界面；不会自动删除或修改你的文件。</p><div class="skill-catalog">' +
+      skills
+        .map(
+          (s) =>
+            `<button data-pick-skill="${s.id}"><strong>${esc(s.name)}</strong><code>${esc(s.id)}</code><span>${esc(s.description)}</span><small>${s.requires_source ? "需要选中的来源" : s.scope === "library" ? "只读本地资料库" : "不自动读取笔记"} · ${s.execution === "local" ? "本地执行" : "配置模型或明确回退"}</small></button>`,
+        )
+        .join("") +
+      '</div><footer><button id="clearGlobalAssistant">清空全局对话记录</button></footer>';
+    document.body.append(modal);
+    const featureMenu = document.createElement("details");
+    featureMenu.innerHTML =
+      '<summary>工作台功能入口</summary><div class="assistant-action-links">' +
+      features
+        .map(
+          (f, i) => `<button data-feature-index="${i}">${esc(f.name)}</button>`,
+        )
+        .join("") +
+      "</div>";
+    modal.querySelector("footer").before(featureMenu);
+    featureMenu.querySelectorAll("[data-feature-index]").forEach(
+      (button) =>
+        (button.onclick = () => {
+          modal.close();
+          openAction(features[Number(button.dataset.featureIndex)].action);
+        }),
+    );
+    modal.querySelector("header button").onclick = () => modal.close();
+    modal.addEventListener("close", () => modal.remove(), { once: true });
+    modal.querySelectorAll("[data-pick-skill]").forEach(
+      (b) =>
+        (b.onclick = () => {
+          $("assistantSkill").value = b.dataset.pickSkill;
+          $("assistantSkill").dispatchEvent(new Event("change"));
+          modal.close();
+          $("aiQuestion").focus();
+        }),
+    );
+    modal.querySelector("#clearGlobalAssistant").onclick = async () => {
+      if (
+        !confirm("清空全局帮助与通用问答历史？各笔记原有的内容问答记录仍保留。")
+      )
+        return;
+      await api("/api/assistant/history?confirm=clear_assistant_history", {
+        method: "DELETE",
+      });
+      modal.close();
+      loadHistory();
+    };
+    modal.showModal();
+  };
+  $("assistantSkill").onchange = () => {
+    const selected = skills.find((s) => s.id === $("assistantSkill").value);
+    $("skillExecution").textContent = selected
+      ? `${selected.name} · ${selected.id}：${selected.description}`
+      : "根据问题选择 Skill；回复中显示实际调用。";
+    $("assistantContext").textContent = selected
+      ? selected.requires_source
+        ? state.selected?.title || "等待选择来源"
+        : selected.scope === "library"
+          ? "本地资料库"
+          : selected.scope === "conversation"
+            ? "通用对话 · 不自动读资料"
+            : "软件功能与状态 · 全局范围"
+      : state.selected?.title || "全局范围 · 可直接提问";
+  };
+
   let assistantEpoch = 0,
     pending = false;
   const localThreads = new Map(),
     drafts = new Map();
   let visibleSource = "";
   function renderMessage(question, result) {
-    const messageSource = state.selected ? { ...state.selected } : null;
+    const messageSource =
+      result.skill && !result.skill.requires_source
+        ? null
+        : state.selected
+          ? { ...state.selected }
+          : null;
+    const usedSkill = result.skill || skillInfo(result.skill_id);
+    LearnNoteMarkdown.configure({
+      safeNoteMediaUrl: (value) =>
+        messageSource?.kind === "task"
+          ? taskAsset(value, messageSource.id)
+          : "",
+    });
     const block = document.createElement("section");
     block.className = "assistant-turn";
-    block.innerHTML = `<div class="assistant-question">${esc(question)}</div><div class="assistant-answer">${LearnNoteMarkdown.markdownToHtml(result.answer || result.message || "没有返回回答。")}</div>${result.warning ? `<p class="muted">${esc(result.warning)}</p>` : ""}<div class="assistant-citations">${(result.citations || []).map((c, i) => `<button data-citation="${i}">${esc(c.label || c.time_range || "出处 " + (i + 1))}</button>`).join("")}</div><button class="save-ai-note">保存为我的补充</button>`;
+    block.innerHTML = `<div class="assistant-question">${esc(question)}</div><div class="skill-trace"><strong>${esc(usedSkill.name)}</strong><code>${esc(usedSkill.id)}</code><em>${esc({ completed: "已完成", needs_source: "等待来源", needs_configuration: "需要配置", failed: "失败", local_extract: "摘录模式" }[result.execution?.state] || "对话记录")}</em><span>${usedSkill.requires_source ? esc(messageSource?.title || "当前内容") : usedSkill.scope === "library" ? "本地资料库 · 按关键词检索" : usedSkill.scope === "conversation" ? "通用对话 · 未自动读取资料" : "软件功能与状态 · 未读取笔记正文"} · ${result.source === "llm" ? "文字模型" : "本地执行 / 摘录"}</span></div><div class="assistant-answer">${LearnNoteMarkdown.markdownToHtml(result.answer || result.message || "没有返回回答。")}</div>${result.warning ? `<p class="muted">${esc(result.warning)}</p>` : ""}<div class="assistant-citations">${(result.citations || []).map((c, i) => `<button data-citation="${i}">${esc(c.label || c.time_range || "出处 " + (i + 1))}</button>`).join("")}</div><button class="save-ai-note">保存为我的补充</button>`;
     block.querySelectorAll("[data-citation]").forEach(
       (b) =>
         (b.onclick = async () => {
@@ -131,38 +286,52 @@ export function installProductWorkspace(ctx) {
         b.disabled = false;
       }
     };
+    if (!messageSource) block.querySelector(".save-ai-note").hidden = true;
+    if (result.actions?.length) {
+      const actions = document.createElement("div");
+      actions.className = "assistant-action-links";
+      for (const action of result.actions) {
+        const b = document.createElement("button");
+        b.textContent = action.label;
+        b.onclick = () => openAction(action.id);
+        actions.append(b);
+      }
+      block.append(actions);
+    }
     return block;
   }
   async function loadHistory() {
     const epoch = ++assistantEpoch,
       s = state.selected;
     if (visibleSource) drafts.set(visibleSource, $("aiQuestion").value);
-    visibleSource = s ? `${s.kind}:${s.id}` : "";
+    visibleSource = s ? `${s.kind}:${s.id}` : "global";
     $("aiQuestion").value = drafts.get(visibleSource) || "";
     pending = false;
     $("aiSend").disabled = false;
     $("assistantHistory").replaceChildren();
-    $("assistantContext").textContent = s?.title || "请先选择一份笔记";
-    $("assistantModel").textContent =
-      s?.kind === "material"
+    $("assistantContext").textContent = s?.title || "全局范围 · 不需要选择笔记";
+    $("assistantModel").textContent = !s
+      ? "使用帮助与工作环境可在本机直接使用"
+      : s?.kind === "material"
         ? "当前文档 · 本地原文检索"
         : state.model.model || state.health.default_llm_model || "本地证据回答";
-    if (!s) {
-      $("assistantHistory").innerHTML =
-        '<div class="assistant-empty"><h3>边读边问，随时回到出处</h3><p>先在左侧选择视频笔记或资料。你可以总结重点、追问概念，也可以保存回答作为自己的补充。</p></div>';
-      return;
-    }
     try {
-      const items =
-        s.kind === "task"
+      const globalItems = (await api("/api/assistant/history")).items;
+      const sourceItems =
+        s?.kind === "task"
           ? (await api(`/api/tasks/${s.id}/qa`)).items
-          : localThreads.get(s.id) || [];
+          : s
+            ? localThreads.get(s.id) || []
+            : [];
+      const items = [...globalItems, ...sourceItems].sort((a, b) =>
+        (a.created_at || "").localeCompare(b.created_at || ""),
+      );
       if (epoch !== assistantEpoch) return;
       for (const item of items)
         $("assistantHistory").append(renderMessage(item.question, item));
       if (!items.length)
         $("assistantHistory").innerHTML =
-          '<div class="assistant-empty"><strong>从一个具体问题开始</strong><p>回答围绕当前来源；证据不足时会明确说明。</p></div>';
+          '<div class="assistant-empty"><strong>操作不熟悉，也可以直接问</strong><p>例如“怎么配置模型”“如何导出 Word”“检查当前环境”。选择一份内容后，还能总结、追问与自测。每条回复都会标明 Skill。</p></div>';
       $("assistantHistory").scrollTop = $("assistantHistory").scrollHeight;
     } catch (e) {
       if (epoch === assistantEpoch) $("aiStatus").textContent = e.message;
@@ -202,35 +371,94 @@ export function installProductWorkspace(ctx) {
     e.preventDefault();
     if (pending) return;
     const s = state.selected;
-    if (!s) {
-      notice("先选择一份笔记，再向助教提问。");
-      return;
-    }
     const question = $("aiQuestion").value.trim();
     if (!question) return;
     const epoch = assistantEpoch;
     pending = true;
     $("aiSend").disabled = true;
-    $("aiStatus").textContent = "正在读取来源并组织回答…";
+    $("aiStatus").textContent = "正在处理…";
     try {
-      const result = await api(
-        s.kind === "task"
-          ? `/api/tasks/${s.id}/qa`
-          : `/api/library/materials/${s.id}/ask`,
-        {
+      $("skillExecution").textContent = "正在选择 Skill…";
+      const plan = await api("/api/assistant/route", {
+        method: "POST",
+        body: JSON.stringify({
+          question,
+          skill: $("assistantSkill").value,
+          has_source: Boolean(s),
+        }),
+      });
+      if (epoch !== assistantEpoch) return;
+      $("skillExecution").textContent =
+        `${plan.skill.name} · ${plan.skill.id} → ${plan.needs_source ? "等待选择来源" : plan.skill.requires_source ? "读取选中的内容" : plan.skill.execution === "local" ? "本地能力" : "调用配置的文字模型"}`;
+      $("assistantContext").textContent = plan.skill.requires_source
+        ? s?.title || "等待选择来源"
+        : {
+            "product.help": "软件功能说明",
+            "product.status": "本机工作状态",
+            "library.search": "本地资料库",
+            "general.chat": "通用对话 · 不自动读取笔记",
+          }[plan.skill.id] || "全局范围";
+      $("assistantModel").textContent =
+        plan.skill.execution === "local"
+          ? "本地执行 · 无需模型 Key"
+          : plan.skill.requires_source && s?.kind === "material"
+            ? "当前文档 · 原文检索"
+            : state.model.model ||
+              state.health.default_llm_model ||
+              "需要配置文字模型";
+      let result;
+      if (plan.needs_source) {
+        result = {
+          answer:
+            "这个 Skill 需要先选择一份笔记或资料。选择后再发送问题；没有读取其他文件。",
+          skill: plan.skill,
+          source: "local",
+          actions: [{ id: "select_note", label: "选择笔记" }],
+          execution: { state: "needs_source" },
+        };
+      } else if (!plan.skill.requires_source) {
+        result = await api("/api/assistant/execute", {
           method: "POST",
-          body: JSON.stringify(
-            s.kind === "task" ? { question, options: options() } : { question },
-          ),
-        },
-      );
+          body: JSON.stringify({
+            question,
+            skill: plan.skill.id,
+            ...(plan.skill.id === "general.chat" ? { options: options() } : {}),
+          }),
+        });
+      } else {
+        result = await api(
+          s.kind === "task"
+            ? `/api/tasks/${s.id}/qa`
+            : `/api/library/materials/${s.id}/ask`,
+          {
+            method: "POST",
+            body: JSON.stringify(
+              s.kind === "task"
+                ? { question, skill_id: plan.skill.id, options: options() }
+                : { question },
+            ),
+          },
+        );
+        result = { ...result, skill: plan.skill };
+        if (
+          ["study.quiz", "note.summary"].includes(plan.skill.id) &&
+          result.source !== "llm"
+        ) {
+          result.execution = { state: "local_extract" };
+          result.warning =
+            "当前返回本地原文摘录，未调用模型生成总结或自测题。可配置文字模型；也可以从学习工具手动创建复习卡。";
+        }
+      }
+      if (epoch === assistantEpoch)
+        $("skillExecution").textContent =
+          `${plan.skill.name} · ${plan.skill.id} → ${result.execution?.state === "needs_source" ? "等待上下文" : result.execution?.state === "needs_configuration" ? "需要配置模型" : result.execution?.state === "failed" ? "执行失败" : result.execution?.state === "local_extract" ? "原文检索完成，未生成模型内容" : result.source === "llm" ? "模型回答完成" : "本地执行完成"}`;
       if (epoch !== assistantEpoch) return;
       $("assistantHistory").querySelector(".assistant-empty")?.remove();
       $("assistantHistory").append(renderMessage(question, result));
-      if (s.kind === "material")
+      if (s?.kind === "material" && result.skill?.requires_source)
         localThreads.set(s.id, [
           ...(localThreads.get(s.id) || []),
-          { question, ...result },
+          { question, ...result, created_at: new Date().toISOString() },
         ]);
       $("aiQuestion").value = "";
       $("assistantHistory").scrollTop = $("assistantHistory").scrollHeight;
@@ -239,7 +467,11 @@ export function installProductWorkspace(ctx) {
           ? "回答已保存，可查看出处"
           : result.warning || "回答完成，重要内容请核对出处";
     } catch (error) {
-      if (epoch === assistantEpoch) $("aiStatus").textContent = error.message;
+      if (epoch === assistantEpoch) {
+        $("aiStatus").textContent = error.message;
+        $("skillExecution").textContent =
+          "本次调用失败，没有自动执行其他操作。";
+      }
     } finally {
       if (epoch === assistantEpoch) {
         pending = false;
@@ -367,7 +599,7 @@ export function installProductWorkspace(ctx) {
     outline.showModal();
   };
   const home = $("welcome");
-  home.innerHTML = `<div class="home-heading"><div><span class="eyebrow">LEARNNOTE WORKSPACE</span><h1>学习工作台</h1><p>添加内容，选择整理方式，和 AI 一起把知识留下来。</p></div><button id="homePreferences">生成设置 ${icons.settings}</button></div><div class="home-grid"><section class="home-create"><h2>开始一份新笔记</h2><form id="homeUrlForm"><label for="homeUrl">视频链接 / Bilibili BV 号</label><div class="home-input"><input id="homeUrl" placeholder="粘贴视频地址，或输入 BV 号" required><button class="primary">识别链接</button></div></form><div class="home-source-actions"><button id="homeLocal">本地视频 / 文档</button><button id="homeBrowser">浏览器当前视频</button></div><div class="home-modes"><button data-home-depth="brief">快速速览<small>重点与时间轴</small></button><button data-home-depth="standard" class="active">标准学习<small>解释、例子与来源</small></button><button data-home-depth="deep">深入整理<small>推导与操作细节</small></button></div><p id="homeModeSummary" class="muted">当前：标准学习 · 可在生成前调整风格和处理选项</p></section><section class="home-runtime"><h2>当前工作环境</h2><dl><dt>文字模型</dt><dd id="runtimeModel">读取中…</dd><dt>转写</dt><dd id="runtimeAsr">读取中…</dd><dt>浏览器连接</dt><dd id="runtimeExtension">读取中…</dd><dt>处理中</dt><dd id="runtimeQueue">0 个任务</dd></dl><button id="runtimeSettings">管理模型与处理设置</button></section></div><section class="home-recent"><header><h2>最近的笔记</h2><span id="homeLibraryCount"></span></header><div id="homeRecentList"></div></section><button id="welcomeNew" hidden>新建笔记</button>`;
+  home.innerHTML = `<div class="home-heading"><div><span class="eyebrow">LEARNNOTE WORKSPACE</span><h1>学习工作台</h1><p>添加内容，选择整理方式，和 AI 一起把知识留下来。</p></div><button id="homePreferences">生成设置 ${icons.settings}</button></div><div class="home-grid"><section class="home-create"><h2>开始一份新笔记</h2><form id="homeUrlForm"><label for="homeUrl">视频链接 / Bilibili BV 号</label><div class="home-input"><input id="homeUrl" placeholder="粘贴视频地址，或输入 BV 号" required><button class="primary">识别链接</button></div></form><div class="home-source-actions"><button id="homeLocal">本地视频 / 文档</button><button id="homeBrowser">浏览器当前视频</button></div><div class="home-modes"><button data-home-depth="brief">快速速览<small>重点与时间轴</small></button><button data-home-depth="standard" class="active">标准学习<small>解释、例子与来源</small></button><button data-home-depth="deep">深入整理<small>推导与操作细节</small></button></div><p id="homeModeSummary" class="muted">当前：标准学习 · 可在生成前调整风格和处理选项</p></section><details class="home-runtime" id="runtimeDetails"><summary><strong>工作环境</strong><br><small id="runtimeSummary">检查中…</small></summary><dl><dt>文字模型</dt><dd id="runtimeModel">读取中…</dd><dt>转写</dt><dd id="runtimeAsr">读取中…</dd><dt>浏览器连接</dt><dd id="runtimeExtension">读取中…</dd><dt>处理中</dt><dd id="runtimeQueue">0 个任务</dd></dl><button id="runtimeSettings">管理模型与处理设置</button></details></div><section class="home-recent"><header><h2>最近的笔记</h2><span id="homeLibraryCount"></span></header><div id="homeRecentList"></div></section><button id="welcomeNew" hidden>新建笔记</button>`;
   $("welcomeNew").onclick = () => $("newNote").click();
   $("homeUrlForm").onsubmit = async (e) => {
     e.preventDefault();
@@ -425,7 +657,10 @@ export function installProductWorkspace(ctx) {
     $("newNote").click();
     document.querySelector('[data-input="browser"]').click();
   };
-  $("homePreferences").onclick = () => $("settings").click();
+  $("homePreferences").onclick = () => {
+    $("settings").click();
+    document.querySelector('[data-settings-section="notes"]')?.click();
+  };
   $("runtimeSettings").onclick = () => $("settings").click();
   home.querySelectorAll("[data-home-depth]").forEach(
     (b) =>
@@ -442,6 +677,29 @@ export function installProductWorkspace(ctx) {
     const h = state.health;
     if (!h.app_version) return;
     home.dataset.ready = "true";
+    const configured = Boolean(
+      state.key ||
+        (h.llm_model_configured &&
+          (!state.model.base_url ||
+            state.model.base_url === h.default_llm_base_url)),
+    );
+    $("runtimeSummary").textContent =
+      (configured ? "模型设置已保存" : "模型设置待检查") +
+      " · " +
+      (h.local_asr_available ? "转写组件可用" : "优先字幕");
+    if (!$("runtimeDetails").dataset.initialized) {
+      const saved = localStorage.getItem("learnnote.runtime.expanded");
+      $("runtimeDetails").open =
+        saved === null ? !configured : saved === "true";
+      $("runtimeDetails").dataset.initialized = "true";
+      $("runtimeDetails").addEventListener("toggle", () =>
+        localStorage.setItem(
+          "learnnote.runtime.expanded",
+          String($("runtimeDetails").open),
+        ),
+      );
+    }
+
     $("runtimeModel").textContent =
       (state.model.model || h.default_llm_model || "未选择模型") +
       (h.llm_model_configured || state.key ? "" : " · 尚未配置 Key");
