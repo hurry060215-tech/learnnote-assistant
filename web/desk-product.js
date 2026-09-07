@@ -234,7 +234,8 @@ export function installProductWorkspace(ctx) {
     pending = false;
   const localThreads = new Map(),
     drafts = new Map();
-  let visibleSource = "";
+  let visibleSource = "",
+    previousSkill = "";
   function renderMessage(question, result) {
     const messageSource =
       result.skill && !result.skill.requires_source
@@ -304,7 +305,9 @@ export function installProductWorkspace(ctx) {
     const epoch = ++assistantEpoch,
       s = state.selected;
     if (visibleSource) drafts.set(visibleSource, $("aiQuestion").value);
-    visibleSource = s ? `${s.kind}:${s.id}` : "global";
+    const nextScope = s ? `${s.kind}:${s.id}` : "global";
+    if (visibleSource && visibleSource !== nextScope) previousSkill = "";
+    visibleSource = nextScope;
     $("aiQuestion").value = drafts.get(visibleSource) || "";
     pending = false;
     $("aiSend").disabled = false;
@@ -385,9 +388,11 @@ export function installProductWorkspace(ctx) {
           question,
           skill: $("assistantSkill").value,
           has_source: Boolean(s),
+          previous_skill: previousSkill,
         }),
       });
       if (epoch !== assistantEpoch) return;
+      previousSkill = plan.skill.id;
       $("skillExecution").textContent =
         `${plan.skill.name} · ${plan.skill.id} → ${plan.needs_source ? "等待选择来源" : plan.skill.requires_source ? "读取选中的内容" : plan.skill.execution === "local" ? "本地能力" : "调用配置的文字模型"}`;
       $("assistantContext").textContent = plan.skill.requires_source

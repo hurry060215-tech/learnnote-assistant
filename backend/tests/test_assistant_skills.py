@@ -55,3 +55,11 @@ class AssistantSkillTests(unittest.TestCase):
             result=skills.execute_global("general.chat","你好",TaskOptions(llm_base_url="https://different.example/v1"))
             self.assertEqual(result["execution"]["state"],"needs_configuration")
             constructor.assert_not_called()
+
+    def test_help_followup_keeps_topic_instead_of_reading_selected_note(self):
+        self.assertEqual(skills.resolve_skill("下一步呢","auto",True,"product.help")["skill"]["id"],"product.help")
+        with tempfile.TemporaryDirectory() as directory,patch.object(skills,"DATA_DIR",Path(directory)):
+            skills.execute_global("product.help","怎么配置模型")
+            result=skills.execute_global("product.help","下一步呢")
+            self.assertIn("测试连接",result["answer"])
+            self.assertEqual(result["actions"][0]["id"],"settings_model")

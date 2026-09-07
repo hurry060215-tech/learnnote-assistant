@@ -186,6 +186,7 @@ class AssistantSkillRequest(BaseModel):
     question: str = Field(min_length=1,max_length=1000)
     skill: str = Field(default="auto",max_length=80)
     has_source: bool = False
+    previous_skill: str = Field(default="",max_length=80)
     options: TaskOptions | None = None
 
 @system_router.get("/api/assistant/skills")
@@ -197,7 +198,7 @@ def assistant_skill_catalog():
 def assistant_skill_route(request: AssistantSkillRequest):
     from ..assistant_skills import resolve_skill
     try:
-        return resolve_skill(request.question,request.skill,request.has_source)
+        return resolve_skill(request.question,request.skill,request.has_source,request.previous_skill)
     except ValueError as exc:
         raise HTTPException(422,"未知的 Skill，请重新选择。") from exc
 

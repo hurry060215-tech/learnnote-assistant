@@ -24,7 +24,7 @@ SKILLS = [
 BY_ID={skill["id"]:skill for skill in SKILLS}
 _lock=threading.RLock()
 
-def resolve_skill(question: str, requested: str, has_source: bool) -> dict:
+def resolve_skill(question: str, requested: str, has_source: bool, previous_skill: str = "") -> dict:
     if requested != "auto":
         if requested not in BY_ID: raise ValueError("unknown_skill")
         chosen=requested
@@ -35,6 +35,7 @@ def resolve_skill(question: str, requested: str, has_source: bool) -> dict:
         elif re.search(r"界面|弹窗|关闭|工作台|主题|夜间|深色|字号|字体|外观|按钮|打不开|找不到|报错|卡住|没反应|连接不上|删除|清理|导出|导入|怎么用|如何使用|怎么操作|如何操作|在哪里|在哪[里儿]?|设置|配置|软件|客户端|功能|skill|怎么导出|如何导出|怎么导入|怎么删除|如何清理|返回|登录|账号",q): chosen="product.help"
         elif re.search(r"检查环境|当前环境|运行状态|多少任务|当前版本|队列状态",q): chosen="product.status"
         elif re.search(r"搜索资料|搜索笔记|资料库搜索|查找资料",q): chosen="library.search"
+        elif previous_skill in BY_ID and re.fullmatch(r"(那|然后|接下来|下一步|继续|为什么|怎么弄|怎么做|再详细一点|说详细点)[呢啊吗？?！!。 .]*",q.strip()): chosen=previous_skill
         elif has_source and re.search(r"总结|概括|摘要",q): chosen="note.summary"
         elif has_source and re.search(r"自测|测验|出题|考考",q): chosen="study.quiz"
         elif has_source: chosen="note.qa"
@@ -83,6 +84,9 @@ def execute_global(skill_id: str, question: str, options=None) -> dict:
     result={"skill":BY_ID[skill_id],"source":"local","actions":[],"citations":[],"execution":{"state":"completed","automatic_actions":False}}
     if skill_id=="product.help":
         matches=[entry for entry in GUIDES if re.search(entry[0],question,re.I)][:2]
+        if not matches and re.fullmatch(r"(那|然后|接下来|下一步|继续|为什么|怎么弄|怎么做|再详细一点|说详细点)[呢啊吗？?！!。 .]*",question.strip()):
+            previous=next((t for t in reversed(history()) if t.get("skill",{}).get("id")=="product.help"),None)
+            if previous:matches=[entry for entry in GUIDES if re.search(entry[0],previous["question"],re.I)][:2]
         if matches:
             result["answer"]="\n\n".join(f"### {title}\n{text}" for _,title,text,_ in matches)
             result["actions"]=[{"id":action,"label":"打开"+title} for _,title,_,action in matches]
@@ -118,8 +122,8 @@ def execute_global(skill_id: str, question: str, options=None) -> dict:
             from openai import OpenAI
             model=getattr(options,"llm_model",None) or LLM_MODEL
             base=getattr(options,"llm_base_url",None) or LLM_BASE_URL
-            previous=[t for t in history() if t.get("skill",{}).get("id")=="general.chat"][-4:]
-            messages=[{"role":"system","content":"你是 LearnNote 的全局助手。当前是通用问答，没有读取用户笔记或文件，也没有浏览网页或执行操作的工具。不要声称已经执行、下载、删除或修改。涉及软件操作时建议用户切换使用帮助 Skill。"}]
+            previous=[t for t in history() if t.get("skill",{}).get("id") in {"general.chat","product.help"}][-4:]
+            messages=[{"role":"system","content":"你是 LearnNote 的全局助手。当前是通用问答，没有读取用户笔记或文件，也没有浏览网页或执行操作的工具。不要声称已经执行、下载、删除或修改。涉及软件操作时，只根据下面的功能说明回答，未列出的能力不要编造；可以建议使用帮助 Skill 打开操作入口。\n软件功能：\n" + "\n".join(title+"："+text for _,title,text,_ in GUIDES)}]
             for turn in previous:
                 messages.extend([{"role":"user","content":turn["question"]},{"role":"assistant","content":turn["answer"][:4000]}])
             messages.append({"role":"user","content":sanitize_export_text(question)})
