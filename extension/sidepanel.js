@@ -528,14 +528,14 @@ function renderContext(message = "") {
   setIntegrityItem("audio", evidence.audio);
   setIntegrityItem("subtitle", evidence.subtitle);
 
-  const hasPage = Boolean(identity?.canonical_page_url && !/^(?:chrome|edge|about):/i.test(identity.canonical_page_url));
+  const hasPage = Boolean(identity?.canonical_page_url && !/^(?:chrome|edge|about):/i.test(identity.canonical_page_url) && !/^https?:\/\/(?:www\.)?bilibili\.com\/?(?:[?#].*)?$/i.test(identity.canonical_page_url));
   const hasMediaEvidence = evidence.video === true || candidates.length > 0;
   const alreadySent = Boolean(currentTaskId && activeHandoff?.sourceKey === sourceContinuityKey(identity));
   const quickUnavailable = selectedProcessingMode === "quick" && !subtitleReady;
   els.sendButton.disabled = sending || alreadySent || !clientConnected || !hasPage || (quickUnavailable && !hasMediaEvidence) || (!quickUnavailable && !hasMediaEvidence);
   els.sendButtonLabel.textContent = currentTaskId
     ? (currentTaskMode === "subtitle_only" ? "速记已开始" : "已发送到客户端")
-    : selectedProcessingMode === "quick" ? (subtitleReady ? "快速生成字幕速记" : "快速速览需要完整字幕")
+    : selectedProcessingMode === "quick" ? (subtitleReady ? "快速生成字幕速记" : "获取字幕并整理")
       : selectedProcessingMode === "study" ? "开始标准学习" : "开始深度图文";
   if (message) {
     els.preflightMessage.textContent = message;
@@ -544,7 +544,7 @@ function renderContext(message = "") {
   } else if (selectedProcessingMode === "quick" && subtitleReady) {
     els.preflightMessage.textContent = "已取得覆盖充分的浏览器字幕，可以直接生成速览；不会下载视频、调用 ASR 或分析画面。";
   } else if (selectedProcessingMode === "quick") {
-    els.preflightMessage.textContent = "当前字幕覆盖不足；请选择标准学习使用 ASR，或选择深度图文分析视频。";
+    els.preflightMessage.textContent = "尚未取得完整字幕。发送后优先探测平台字幕；仍不可用时按标准学习转写音频。";
   } else if (!hasMediaEvidence) {
     els.preflightMessage.textContent = "还没有检测到播放器或媒体候选，请播放几秒后重新识别。";
   } else if (preflightReport?.ready || preflightReport?.downloadable_count > 0) {
@@ -594,17 +594,31 @@ async function loadBackendUrl() {
 }
 
 async function checkClient() {
-  setConnection("checking", "正在连接客户端", backendUrl);
-  try {
-    const response = await fetchWithTimeout(`${backendUrl}/health`, {}, HEALTH_TIMEOUT_MS);
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const health = await response.json();
-    setConnection("connected", "客户端已连接", health.app_version ? `LearnNote ${health.app_version} · ${backendUrl}` : backendUrl);
-    return true;
-  } catch {
-    setConnection("offline", "客户端未连接", "先打开 LearnNote，再重新识别当前视频");
-    return false;
+  setConnection("checking", "正在连接 LearnNote", "正在寻找已运行的本机工作台…");
+  const candidates = [backendUrl];
+  if (HAS_EXTENSION_API && chrome.tabs?.query) {
+    try {
+      for (const tab of await chrome.tabs.query({url: ["http://127.0.0.1/*", "http://localhost/*"]})) {
+        const origin = new URL(tab.url).origin;
+        if (LOCAL_BACKEND_RE.test(origin) && !candidates.includes(origin)) candidates.push(origin);
+      }
+    } catch {}
   }
+  if (!candidates.includes(DEFAULT_BACKEND_URL)) candidates.push(DEFAULT_BACKEND_URL);
+  for (const candidate of candidates.slice(0, 8)) {
+    try {
+      const response = await fetchWithTimeout(`${candidate}/health`, {}, HEALTH_TIMEOUT_MS);
+      if (!response.ok) continue;
+      const health = await response.json();
+      if (!health.app_version || health.protocol_version !== PROTOCOL_VERSION || !health.backend_version) continue;
+      backendUrl = candidate;
+      if (HAS_EXTENSION_API) await chrome.storage.local.set({backendUrl});
+      setConnection("connected", "本地工作台已连接", `LearnNote ${health.app_version} · ${backendUrl}`);
+      return true;
+    } catch {}
+  }
+  setConnection("offline", "本地工作台尚未启动", "点击打开客户端启动 App；已启动时可点击右上角重新连接。");
+  return false;
 }
 
 async function collectContext(force = true, targetTabId = null) {
@@ -716,6 +730,9 @@ async function sendToClient(modeOverride = "") {
   els.sendButtonLabel.textContent = "正在发送...";
   els.openTaskButton.hidden = true;
   const expectedIdentity = displayedIdentity;
+  if (/^https?:\/\/(?:www\.)?bilibili\.com\/?(?:[?#].*)?$/i.test(expectedIdentity.canonical_page_url || "")) {
+    sending = false; renderContext("请先打开一条具体视频；首页推荐预览不能作为学习来源。"); return false;
+  }
   try {
     setProgress(8, "正在连接 LearnNote...");
     if (!clientConnected && !(await checkClient())) throw new Error("客户端未运行，请先打开 LearnNote");
@@ -821,24 +838,30 @@ function clientUrl(view = "workspace", taskId = "", tab = "note") {
 }
 
 async function openClient(view = "workspace", taskId = "", tab = "note") {
-  const targetUrl = clientUrl(view, taskId, tab);
-  if (clientConnected) {
+  if (!clientConnected && !await checkClient()) {
+    setConnection("checking", "正在启动本地 App", "首次使用请允许浏览器打开 LearnNote。尚未安装时，请先运行本地 LearnNote App。");
     try {
-      const response = await fetchWithTimeout(`${backendUrl}/api/desktop/focus`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ task_id: taskId, tab, view })
-      }, HEALTH_TIMEOUT_MS);
-      const result = await response.json().catch(() => ({}));
-      if (result?.ok && result?.available) return true;
+      if (HAS_EXTENSION_API && chrome.tabs?.create) await chrome.tabs.create({url: "learnnote://open"});
+      else window.open?.("learnnote://open", "_blank");
     } catch {
-      // The browser workbench is the fallback when the desktop bridge is unavailable.
+      setConnection("offline", "需要先启动 LearnNote App", "双击 LearnNote 后，再点右上角重新连接。");
+      return false;
     }
+    for (let attempt = 0; attempt < 6; attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      if (await checkClient()) return openClient(view, taskId, tab);
+    }
+    setConnection("offline", "尚未连接本地 App", "请确认已安装并打开 LearnNote；浏览器弹出启动确认时请选择允许。");
+    return false;
   }
+  const targetUrl = clientUrl(view, taskId, tab);
   try {
     if (!HAS_EXTENSION_API || !chrome.tabs?.create) throw new Error("extension API unavailable");
     suppressTabActivationUntil = Date.now() + CLIENT_TAB_ACTIVATION_SUPPRESS_MS;
-    await chrome.tabs.create({ url: targetUrl });
+    const tabs = await chrome.tabs.query({url: `${backendUrl}/*`});
+    const existing = tabs.find(item => item.url?.startsWith(`${backendUrl}/`));
+    if (existing && chrome.tabs.update) await chrome.tabs.update(existing.id, {url: targetUrl, active: true});
+    else await chrome.tabs.create({url: targetUrl});
     return true;
   } catch {
     return Boolean(window.open?.(targetUrl, "_blank", "noopener"));

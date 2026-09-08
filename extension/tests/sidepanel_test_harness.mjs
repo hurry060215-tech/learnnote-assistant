@@ -36,7 +36,7 @@ function element() {
   };
 }
 
-export async function createSidepanelHarness({ contexts = [], preflight = null, start = null, starts = [], startDelayMs = 0, health = null, focus = null } = {}) {
+export async function createSidepanelHarness({ contexts = [], preflight = null, start = null, starts = [], startDelayMs = 0, health = null, focus = null, tabs = [], healthByUrl = null } = {}) {
   const selectors = [
     "#connectionCard", "#connectionTitle", "#connectionDetail", "#openClientButton", "#openClientBrand",
     "#refreshButton", "#platformLabel", "#playingBadge", "#videoTitle", "#videoMeta", "#integrityGrid",
@@ -86,8 +86,9 @@ export async function createSidepanelHarness({ contexts = [], preflight = null, 
     fetch: async (url, options = {}) => {
       fetchCalls.push({ url: String(url), options });
       if (String(url).endsWith("/health")) {
+        if (healthByUrl) { const value = healthByUrl[String(url)]; if (!value) throw new Error("offline"); return {ok:true,json:async()=>value}; }
         if (health instanceof Error) throw health;
-        return { ok: true, json: async () => health || ({ app_version: "0.1.52" }) };
+        return { ok: true, json: async () => health || ({ app_version: "0.2.3", backend_version: "0.2.3", protocol_version: 1 }) };
       }
       if (String(url).endsWith("/api/desktop/focus")) {
         return { ok: true, json: async () => focus || ({ ok: true, available: true, focused: true }) };
@@ -105,7 +106,7 @@ export async function createSidepanelHarness({ contexts = [], preflight = null, 
     },
     chrome: {
       storage: { local: { async get(defaults) { return defaults; }, async set() {} } },
-      tabs: { async create(options) { openedTabs.push(options); return options; } },
+      tabs: { async query() { return tabs; }, async create(options) { openedTabs.push(options); return options; } },
       runtime: {
         onMessage: { addListener(listener) { runtimeListener = listener; } },
         async sendMessage(message) {

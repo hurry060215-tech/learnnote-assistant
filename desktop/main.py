@@ -700,6 +700,16 @@ def run() -> int:
     parser.add_argument("--webview-debug-port", type=int, default=0, help=argparse.SUPPRESS)
     args = parser.parse_args()
 
+    # Reuse the running local workspace instead of starting another data directory.
+    try:
+        existing_url = f"http://127.0.0.1:{args.port}"
+        health = requests.get(existing_url + "/health", timeout=1).json()
+        if health.get("app_version") and health.get("backend_version") and health.get("protocol_version") == 1:
+            webbrowser.open(existing_url)
+            return 0
+    except (requests.RequestException, ValueError):
+        pass
+
     root = application_root()
     if os.name == "nt" and root.drive.upper() == "C:":
         raise RuntimeError("LearnNote Desktop must be installed on D: or another non-system drive.")

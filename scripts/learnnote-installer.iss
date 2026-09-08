@@ -42,6 +42,11 @@ Type: filesandordirs; Name: "{app}\_internal\web\tests"
 Type: filesandordirs; Name: "{app}\_internal\backend\.venv"
 Type: filesandordirs; Name: "{app}\extension\tests"
 
+[Registry]
+Root: HKCU; Subkey: "Software\Classes\learnnote"; ValueType: string; ValueData: "URL:LearnNote"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\learnnote"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
+Root: HKCU; Subkey: "Software\Classes\learnnote\shell\open\command"; ValueType: string; ValueData: """{app}\LearnNote.exe"""
+
 [Icons]
 Name: "{group}\LearnNote"; Filename: "{app}\LearnNote.exe"
 Name: "{autodesktop}\LearnNote"; Filename: "{app}\LearnNote.exe"; Tasks: desktopicon
