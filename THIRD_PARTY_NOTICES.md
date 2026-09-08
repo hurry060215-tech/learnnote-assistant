@@ -105,3 +105,7 @@ When adding, removing, or changing a runtime dependency or bundled binary:
 4. document whether user content or credentials leave the local machine.
 
 This file is an attribution aid, not legal advice.
+
+## BiliNote implementation reference
+
+The caption-first flow and Bilibili player API sequence were implemented with reference to JefferyHcool/BiliNote (MIT). See third_party/licenses/BiliNote-LICENSE.txt and docs/PRODUCT_REFERENCE_REVIEW.md. No login or commercial cloud service code is included.

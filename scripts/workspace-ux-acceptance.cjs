@@ -96,6 +96,7 @@ const os = require("node:os");
     await p.locator("#prefReaderSize").selectOption("15");
     p.once("dialog", (dialog) => dialog.accept());
     await p.keyboard.press("Escape");
+    await p.waitForFunction(() => !document.getElementById("settingsDialog").open && getComputedStyle(document.documentElement).getPropertyValue("--reader-size").trim() === "20px");
     assert.equal(
       await p.evaluate(() =>
         getComputedStyle(document.documentElement)

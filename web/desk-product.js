@@ -35,7 +35,7 @@ export function installProductWorkspace(ctx) {
     ["settings", "settings", "设置"],
     ["review", "review", "复习"],
     ["courses", "folder", "课程"],
-    ["menu", "menu", ""],
+
     ["refresh", "refresh", ""],
     ["theme", "theme", ""],
   ])
@@ -65,7 +65,7 @@ export function installProductWorkspace(ctx) {
     button.title = label;
   }
   $("export").hidden = false;
-  $("generationOptions").open = true;
+  $("generationOptions").open = false;
   const playback = document.createElement("div");
   playback.className = "playback-controls";
   playback.innerHTML =
@@ -153,7 +153,9 @@ export function installProductWorkspace(ctx) {
       tools: () =>
         state.selected ? $("moreTools").click() : notice("先选择一份笔记。"),
       select_note: () => {
+        document.body.classList.remove("sidebar-collapsed");
         document.body.classList.add("menu-open");
+        window.dispatchEvent(new Event("resize"));
         $("search").focus();
       },
       home: () => ctx.showHome(),
@@ -502,8 +504,44 @@ export function installProductWorkspace(ctx) {
   readerNav.className = "reader-strip";
   readerNav.id = "readerStrip";
   readerNav.hidden = true;
-  readerNav.innerHTML = `<div id="readerMetadata"></div><div><button id="openOutline">${icons.outline} 大纲 / 导图</button><button id="sourceFrames">画面索引</button><button id="openVersions">${icons.history} 历史版本</button><button id="focusReading">专注阅读</button></div>`;
+  readerNav.innerHTML = `<div id="readerMetadata"></div><div><button id="openOutline">${icons.outline} 内容目录</button><button id="sourceFrames">画面索引</button><button id="openVersions">${icons.history} 历史版本</button><button id="focusReading">专注阅读</button></div>`;
   toolbar.after(readerNav);
+  const pageContents = document.createElement("nav");
+  pageContents.id = "pageContents";
+  pageContents.setAttribute("aria-label", "当前笔记章节");
+  pageContents.hidden = true;
+  document.body.append(pageContents);
+  function drawContents() {
+    const headings = [...$("document").querySelectorAll("h2,h3")].filter(
+      (h) => !h.closest("details:not([open])"),
+    );
+    pageContents.hidden =
+      !state.selected ||
+      !headings.length ||
+      Number(state.reading?.width || 940) > 940;
+    pageContents.innerHTML =
+      "<span>目录</span>" +
+      headings
+        .map(
+          (h, index) =>
+            `<button data-section-index="${index}" style="--level:${Number(h.tagName.slice(1)) - 2}">${esc(h.textContent)}</button>`,
+        )
+        .join("");
+    pageContents.querySelectorAll("button").forEach((button) => {
+      button.onclick = () =>
+        headings[Number(button.dataset.sectionIndex)].scrollIntoView({
+          block: "start",
+          behavior: matchMedia("(prefers-reduced-motion: reduce)").matches
+            ? "instant"
+            : "smooth",
+        });
+    });
+  }
+  window.addEventListener("learnnote:document", drawContents);
+  window.addEventListener("learnnote:settings", drawContents);
+  window.addEventListener("learnnote:selection", () => {
+    pageContents.hidden = true;
+  });
   const outline = document.createElement("dialog");
   outline.id = "outlineDialog";
   document.body.append(outline);
@@ -512,11 +550,20 @@ export function installProductWorkspace(ctx) {
     readerNav.hidden = !s;
     if (!s) return;
     $("sourceFrames").hidden = s.kind !== "task";
-    const quality = s.evidence_coverage || {};
+    const contentType =
+      s.summary_source === "local-template"
+        ? "字幕摘录 · 尚未总结"
+        : s.summary_source
+          ? "AI 整理笔记"
+          : s.transcript_path
+            ? "字幕已取得 · 等待总结"
+            : "正在准备内容";
     $("readerMetadata").textContent =
       s.kind === "material"
         ? "原始资料 · 可编辑修订"
-        : `${s.summary_source === "local-template" ? "字幕摘录" : s.summary_source || "视频笔记"} · ${s.media_integrity?.duration ? timestamp(s.media_integrity.duration) : "时长待确认"} · ${s.frame_grids?.length || 0} 个画面窗口${s.awaiting_confirmation ? " · 等待确认" : ""}`;
+        : `${contentType}${s.media_integrity?.duration ? " · " + timestamp(s.media_integrity.duration) : ""}`;
+    $("sourceFrames").hidden =
+      s.kind !== "task" || !(s.frame_grids || []).length;
   }
   $("sourceFrames").onclick = async () => {
     const s = state.selected;
@@ -549,15 +596,18 @@ export function installProductWorkspace(ctx) {
     $("focusReading").textContent = on ? "退出专注" : "专注阅读";
   };
   $("openOutline").onclick = () => {
-    const headings = [...$("document").querySelectorAll("h1,h2,h3,h4")];
+    const headings = [...$("document").querySelectorAll("h2,h3,h4")];
     outline.innerHTML =
-      '<header><h2>笔记结构</h2><button aria-label="关闭">×</button></header><p class="muted">按当前笔记标题生成的结构大纲，不推断额外概念关系。</p><nav class="outline-tree">' +
+      '<header><h2>笔记结构</h2><button aria-label="关闭">×</button></header><p class="muted">选择章节，直接跳到笔记对应位置。</p><nav class="outline-tree">' +
       headings
         .map(
           (h, i) =>
-            `<button data-heading="${i}" style="--level:${Number(h.tagName.slice(1)) - 1}">${esc(h.textContent)}</button>`,
+            `<button data-heading="${i}" style="--level:${Number(h.tagName.slice(1)) - 2}">${esc(h.textContent)}</button>`,
         )
         .join("") +
+      (headings.length
+        ? ""
+        : '<p class="muted">当前内容还没有章节标题。完成总结后，这里会列出正文目录。</p>') +
       "</nav>";
     outline.querySelector("header button").onclick = () => outline.close();
     outline.querySelectorAll("[data-heading]").forEach(
@@ -565,7 +615,9 @@ export function installProductWorkspace(ctx) {
         (b.onclick = () => {
           outline.close();
           headings[Number(b.dataset.heading)].scrollIntoView({
-            behavior: "smooth",
+            behavior: matchMedia("(prefers-reduced-motion: reduce)").matches
+              ? "instant"
+              : "smooth",
             block: "start",
           });
         }),
@@ -696,12 +748,15 @@ export function installProductWorkspace(ctx) {
     const h = state.health;
     if (!h.app_version) return;
     home.dataset.ready = "true";
-    const configured = Boolean(
-      state.key ||
-        (h.llm_model_configured &&
-          (!state.model.base_url ||
-            state.model.base_url === h.default_llm_base_url)),
-    );
+    const configured = state.model.use_saved_connection
+      ? state.model.base_url === "https://openrouter.ai/api/v1" &&
+        Boolean(state.modelConnectionReady)
+      : Boolean(
+          state.key ||
+            (h.llm_model_configured &&
+              (!state.model.base_url ||
+                state.model.base_url === h.default_llm_base_url)),
+        );
     $("runtimeSummary").textContent =
       (configured ? "模型设置已保存" : "模型设置待检查") +
       " · " +
@@ -720,7 +775,13 @@ export function installProductWorkspace(ctx) {
 
     $("runtimeModel").textContent =
       (state.model.model || h.default_llm_model || "未选择模型") +
-      (h.llm_model_configured || state.key ? "" : " · 尚未配置 Key");
+      (configured
+        ? state.model.use_saved_connection
+          ? " · 使用账号连接"
+          : ""
+        : state.model.use_saved_connection
+          ? " · 账号连接待检查"
+          : " · 尚未配置 Key");
     $("runtimeAsr").textContent = h.local_asr_available
       ? "本地转写组件可用"
       : "优先字幕 · 本地转写未就绪";
@@ -739,7 +800,7 @@ export function installProductWorkspace(ctx) {
         .slice(0, 6)
         .map(
           (item, i) =>
-            `<button class="recent-note" data-recent="${i}">${icons.book}<span><strong>${esc(item.title)}</strong><small>${esc(item.kind === "task" ? (item.status === "success" ? "笔记已完成" : item.message || item.status) : "本地资料")} · ${esc((item.updated_at || "").slice(0, 10))}</small></span></button>`,
+            `<button class="recent-note" data-recent="${i}"><span><strong>${esc(item.title)}</strong><small>${esc(item.kind === "task" ? (item.summary_source === "local-template" ? "字幕已保留 · 待生成总结" : { success: "笔记已完成", failed: "需要处理", cancelled: "已停止", running: "正在整理", queued: item.awaiting_confirmation ? "等待开始" : "排队中" }[item.status] || "正在整理") : "本地资料")} · ${esc((item.updated_at || "").slice(0, 10))}</small></span></button>`,
         )
         .join("") ||
       '<p class="muted">导入内容后，最近笔记和处理状态会显示在这里。</p>';

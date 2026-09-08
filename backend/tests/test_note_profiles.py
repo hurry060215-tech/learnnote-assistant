@@ -1,12 +1,47 @@
 from __future__ import annotations
 
 import unittest
+import tempfile
+from pathlib import Path
+from unittest.mock import MagicMock
 
 from app.models import FrameGrid, TaskOptions, TranscriptResult, TranscriptSegment
 from app.summarizer import local_markdown_note, note_generation_contract, note_grounding_issues, note_style_instruction, note_template_instruction
+from app.summarizer import _validated_generated_note
 
 
 class NoteProfileTests(unittest.TestCase):
+    def test_rejected_name_translation_is_retained_for_local_diagnosis(self):
+        transcript = TranscriptResult(full_text="入住阿曼基沃酒店。")
+        client = MagicMock()
+        candidate = "# 酒店体验\n\n入住阿曼基沃（Amanjiwo）酒店。"
+        client.chat.completions.create.return_value.choices[0].message.content = candidate
+        events = []
+        with tempfile.TemporaryDirectory() as tmp:
+            result = _validated_generated_note(client, "test-model", {}, candidate, transcript, [], "", events, artifact_dir=Path(tmp))
+            self.assertEqual(result, "")
+            self.assertEqual((Path(tmp) / "rejected-summary.md").read_text(encoding="utf-8"), candidate)
+            self.assertFalse((Path(tmp) / "note.md").exists())
+        self.assertEqual(events[-1]["code"], "rejected")
+        repair_prompt = client.chat.completions.create.call_args.kwargs["messages"][0]["content"]
+        self.assertIn("unsupported_terms:amanjiwo", repair_prompt)
+        self.assertIn("保留材料支持的对应中文解释", repair_prompt)
+
+    def test_travel_duration_is_not_claimed_video_duration(self):
+        transcript = TranscriptResult(source="faster-whisper", full_text="坐7小时专属列车，前往酒店入住。",
+            segments=[TranscriptSegment(start=0, end=1857, text="坐7小时专属列车，前往酒店入住。")])
+        for text in ("视频记录了乘坐7小时列车前往酒店的过程。", "该视频探访了要花7小时才能到达的酒店。", "本材料描述坐7小时火车的旅行体验。"):
+            with self.subTest(text=text):
+                self.assertEqual(note_grounding_issues("# 酒店探访\n\n" + text, transcript, []), [])
+        for text in ("本视频时长为7小时。", "视频总时长约7小时。", "这节微课共7小时。"):
+            with self.subTest(text=text):
+                self.assertTrue(any(i.startswith("duration_mismatch:") for i in note_grounding_issues(text, transcript, [])))
+
+    def test_editorial_english_labels_do_not_count_as_unsupported_facts(self):
+        transcript = TranscriptResult(full_text="梯度决定方向，学习率决定步长。")
+        note = "# TL;DR\n\n梯度决定方向。\n\n## Key takeaways\n\n学习率决定步长。\n\n## Overview\n\n梯度与学习率配合。"
+        self.assertEqual(note_grounding_issues(note, transcript, []), [])
+
     def test_grounding_rejects_wrong_duration_and_unsupported_terms(self):
         transcript = TranscriptResult(
             language="zh",

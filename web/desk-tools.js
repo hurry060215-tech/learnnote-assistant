@@ -1,3 +1,4 @@
+import { eventLogHtml, timelineHtml } from "/web/desk-progress.js";
 import {
   api as request,
   escapeHtml as esc,
@@ -270,17 +271,21 @@ export function installTools(ctx) {
   async function diagnostics() {
     const s = current();
     const token = show("这份笔记的处理记录", '<p class="muted">正在读取…</p>');
-    const result = await api(`/api/tasks/${s.id}`);
+    const [result, eventResult] = await Promise.all([
+      api(`/api/tasks/${s.id}`),
+      api(`/api/tasks/${s.id}/events?limit=500`),
+    ]);
     if (token !== generation) return;
     const t = result.task;
     $("toolBody").innerHTML =
-      `<p><strong>${esc(t.title)}</strong></p><p>${esc(t.message || "")}</p><p class="muted">当前阶段：${esc(t.phase)} · 错误代码：${esc(t.error_code || "无")}</p>${links(
+      `<p><strong>${esc(t.title)}</strong></p>${timelineHtml(t, eventResult.events || [])}${eventLogHtml(eventResult.events || [])}<details><summary>诊断详情与日志下载</summary><p class="muted">当前阶段：${esc(t.phase)} · 错误代码：${esc(t.error_code || "无")}</p>${links(
         [
+          ["逐步日志 JSON", `/api/tasks/${s.id}/events?limit=2000`],
           ["脱敏支持包", `/api/tasks/${s.id}/exports/support-package`],
           ["诊断报告", `/api/tasks/${s.id}/exports/diagnostics`],
           ["资源用量", `/api/tasks/${s.id}/exports/resource-usage`],
         ],
-      )}<p class="muted">公开分享前检查标题、截图和学习内容。诊断包不等于匿名数据。</p>`;
+      )}<p class="muted">公开分享前检查标题、截图和学习内容。诊断包不等于匿名数据。</p></details>`;
   }
   function more() {
     const s = current();
@@ -802,7 +807,7 @@ export function installTools(ctx) {
   const courseButton = document.createElement("button");
   courseButton.id = "courses";
   courseButton.textContent = "课程";
-  document.querySelector(".list-heading").prepend(courseButton);
+  document.querySelector(".sidebar footer").prepend(courseButton);
   courseButton.onclick = () => listCourses().catch((e) => notice(e.message));
   const moreButton = document.createElement("button");
   moreButton.id = "moreTools";

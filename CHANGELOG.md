@@ -2,6 +2,16 @@
 
 All notable changes to LearnNote are documented here. The project follows semantic versioning while the `0.x` series is under active development.
 
+## 0.2.5 - Captions-first learning preview
+
+- Query platform/player captions before video download in text-only learning; retain requested note style and depth.
+- Add Bilibili browser-session caption lookup and bounded backend player-API fallback with exact part selection.
+- Distinguish actual AI summaries from transcript fallback, keep errors actionable, and retry summary without repeating extraction.
+- Add recorded task timeline and downloadable processing logs, collapsible sidebar, quieter lists and an on-page outline.
+- Make generated time-range references navigable, including transcript-only sources.
+- Add OpenRouter OAuth PKCE with local callback and bound system credential storage, plus expanded model discovery.
+- Refresh the public website and README with documented source/processing boundaries.
+
 ## 0.2.4 - Workflow reliability preview
 
 - Reconnect the extension, preserve its active workspace, and use the actual subtitle-only path when clicking Send with full captions.

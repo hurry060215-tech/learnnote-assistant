@@ -229,7 +229,10 @@ def _recover_processing(root: Path) -> dict[str, int]:
             update_task(task.id, status="failed", phase="failed", error_code="resume_context_required", message="进度已保存；请重新确认模型或从原网页发送，以恢复需要登录信息的任务。")
             waiting += 1
             continue
-        if row["kind"] in {"local", "range"}:
+        if row["kind"] == "summary":
+            from .processor import process_saved_transcript_task
+            callback = lambda task=task: process_saved_transcript_task(task.id, task.options)
+        elif row["kind"] in {"local", "range"}:
             path = Path(task.source_media_path or task.media_path or "")
             if not path.is_file() or not path.resolve().is_relative_to(Path(root).resolve()):
                 queue.set_state(task.id, "waiting_context")

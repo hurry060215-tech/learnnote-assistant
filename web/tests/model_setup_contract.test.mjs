@@ -46,7 +46,8 @@ test("connection check uses a real short chat and never returns or persists the 
   assert.match(backend, /Reply with OK only\./);
   assert.match(backend, /max_retries=0/);
   assert.match(backend, /TRUSTED_MODEL_API_HOSTS/);
-  assert.match(backend, /api_key=payload\.api_key\.strip\(\)/);
+  assert.match(backend, /api_key=key/);
+  assert.match(backend, /key = payload\.api_key\.strip\(\) or connected_api_key/);
   assert.doesNotMatch(setup, /localStorage[\s\S]{0,120}(?:api[_ -]?key|llmApiKey)/i);
   assert.doesNotMatch(app.match(/function currentModelSettings\(\)[\s\S]*?\n\}/)?.[0] || "", /api[_ -]?key/i);
 });

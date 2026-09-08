@@ -1,74 +1,75 @@
 # LearnNote
 
-**面向愿意掌控模型和处理过程的学习者：视频、字幕、图文笔记与 AI 助教，在同一个本地工作台里。**
+### 看过的内容，变成自己的笔记。
 
-LearnNote 是一个本地优先的个人学习工具。添加视频或资料，在同一个工作台里读笔记、打开来源、写下自己的理解，然后导出带走。
+字幕优先的视频笔记、本地学习资料、可追问的 AI 助手。双击启动 App，在网页工作台里阅读、编辑、回到来源；不用注册 LearnNote 账号。
 
-[下载最新发布版](https://github.com/hurry060215-tech/learnnote-assistant/releases/latest) · [安装浏览器扩展](https://chromewebstore.google.com/detail/learnnote-%E5%BD%93%E5%89%8D%E8%A7%86%E9%A2%91%E5%8A%A9%E6%89%8B/mncdchpkpikhacmkbanedpppcddapppe) · [报告问题](https://github.com/hurry060215-tech/learnnote-assistant/issues)
+[下载 Windows 版](https://github.com/hurry060215-tech/learnnote-assistant/releases/latest) · [产品与使用流程](https://hurry060215-tech.github.io/learnnote-assistant/) · [安装浏览器扩展](docs/EXTENSION_CONNECTION.md) · [使用帮助](SUPPORT.md)
 
-> 当前分支正在进行工作台重设计。下文的新界面与编辑流程属于本分支，不代表已进入正式 Release。已发布安装包的版本和功能以下载页说明为准。
+> **开发分支说明：** 下文介绍当前分支的能力。正式安装包与扩展商店版可能尚未包含这些改进，请以对应 [Release 的版本和更新说明](https://github.com/hurry060215-tech/learnnote-assistant/releases)为准。
 
-![LearnNote 新阅读工作台](docs/assets/learnnote-product-workspace.png)
+![LearnNote 阅读工作台](site/assets/learnnote-reader-current.png)
 
-*打包后的 Windows 客户端实拍；内容为演示资料，不代表模型生成质量。*
+_工作台的界面验收截图，使用演示资料。界面展示不代表真实模型效果。_
 
-[全局助手与 Skill 说明](docs/GLOBAL_ASSISTANT.md) · [扩展连接与本机启动](docs/EXTENSION_CONNECTION.md)
+## 三步开始，不用命令行
 
-## 开始使用
+1. **启动 App。** 下载 Windows 安装包，或解压便携 ZIP 后双击 `LearnNote.exe`。网页工作台连接本机服务，笔记保存在本机。
+2. **添加内容。** 粘贴视频网址、选择本地视频，或导入 PDF、Markdown、TXT、HTML。普通链接不要求安装扩展。
+3. **选择模型并整理。** 在设置中配置文字模型，确认本次来源和处理方式。任务页展示进度和记录；完成后阅读总结、编辑正文或导出。
 
-1. 下载 Windows 安装包或便携 ZIP，启动 `LearnNote.exe`。
-2. 点击 **新建笔记**，粘贴视频链接，或选择本地视频、PDF、Markdown、TXT、HTML。
-3. 视频有字幕时优先使用字幕；没有字幕时，需要可用的转写能力。文档导入后直接阅读原文。
-4. 打开 **设置** 配置文字模型，可以生成整理后的笔记。未配置时，结果明确标为字幕摘录。
-5. 在正文中阅读；点击 **查看来源** 打开视频和字幕。使用 **编辑** 修改笔记，或在 **我的补充** 写下自己的理解。
+已登录的 B 站或课程页面，可以使用浏览器扩展交接当前页面可访问的字幕与资源。在扩展里查看连接和字幕状态，再发送到本机工作台。**只粘贴网址不会自动获取另一个浏览器的登录态。**
 
-工作台首页显示模型、转写、扩展连接与任务状态；全局助手始终可以直接打开；没有选中笔记时也可以问操作方法、检查环境和查看功能目录。每次回复会标明调用的 Skill 与范围。设置按模型、字幕与转写、笔记模板、视频资源、阅读外观、存储连接分区。新工作台将笔记列表、阅读和来源放在一起。编辑稿独立保存，原始生成稿仍然保留；导出 Markdown 时使用当前编辑稿。课程在侧栏管理；复习卡、提问、片段学习、OCR、导出与补充编辑均在当前笔记的“更多”菜单中完成。存储、备份、恢复与复习计划在设置中管理。
+[Chrome 商店](https://chromewebstore.google.com/detail/learnnote-%E5%BD%93%E5%89%8D%E8%A7%86%E9%A2%91%E5%8A%A9%E6%89%8B/mncdchpkpikhacmkbanedpppcddapppe) · [离线安装、唤起 App 与连接排查](docs/EXTENSION_CONNECTION.md)
 
-## 当前浏览器里的视频
+## 从字幕到笔记，每一步清楚可见
 
-需要登录的页面，通常更适合通过扩展交接：
+| 当前条件                 | 程序做什么                                       | 你得到什么                               |
+| ------------------------ | ------------------------------------------------ | ---------------------------------------- |
+| 有可用字幕，无需画面分析 | 读取字幕，跳过视频下载和语音转写，再调用文字模型 | 概览、重点、来源时间点；字幕原文独立保留 |
+| 没有可用字幕             | 获取媒体，按所选方式转写，再整理                 | 可回看时间点的转写与笔记                 |
+| 需要截图或画面理解       | 额外获取视频与必要画面；视觉模型按需处理         | 图文补充和对应来源                       |
+| 没有配置文字模型         | 展示可用原文或字幕，明确结果性质                 | 原文材料，**不是 AI 总结**               |
+| 总结服务报错或额度不足   | 显示失败原因，保留已有字幕；修复配置后重试整理   | 不必为了重做总结重复转写                 |
+| 导入文档                 | 提取可读原文                                     | 本地阅读、检索、批注；扫描 PDF 需先 OCR  |
 
-1. 保持客户端运行，在电脑浏览器打开并播放视频。
-2. 打开 LearnNote 扩展，点击 **发送到 LearnNote**。
-3. 客户端左侧出现任务后，确认并开始整理。
+任务状态区说明当前步骤、已完成和跳过的步骤。处理记录用于查看耗时、提示和失败原因。需要更深入排查时，在任务的 **更多 → 诊断** 中查看记录；分享前仍应检查并移除私人内容。
 
-扩展只在用户触发时收集当前页可访问的资源，不录制标签页，也不绕过 DRM、账号权限或课程进度。普通链接不必安装扩展。离线扩展 ZIP 可在 Chrome / Edge 的扩展管理页通过“加载已解压的扩展程序”安装。
+本地转写采用 faster-whisper。首次使用需要下载对应模型；速度与视频时长、模型大小、CPU/GPU 和硬件环境有关。画面 OCR 用于抽帧文字提取，**完整画面字幕 OCR 尚未作为自动回退流程提供**。
 
-![全局助手与透明 Skill 调用](docs/assets/learnnote-global-assistant.png)
+## 读懂内容，也能继续加工
 
-*全局助手提供显式 Skill 选择，保留当前来源、对话历史、引用和保存回答。截图是界面验收样本，不代表真实模型效果。*
+- **正文与来源分开。** 总结用于组织重点，字幕用于核对原话；通过时间点回到视频，不把时间戳当成事实认证。
+- **全局助手与显式 Skill。** 可以问怎么操作、检查环境、搜索资料，也可围绕选中内容提问、总结、自测；回复展示使用的 Skill、范围和执行方式。
+- **保留自己的理解。** 编辑笔记正文，保存个人补充；原始生成稿与修订稿分别保留。课程、复习卡、学习计划和版本记录继续可用。
+- **按自己习惯阅读。** 折叠侧栏、查看大纲，调整字体、字号、行距、阅读宽度、主题与密度。原有导出、片段学习、OCR 和诊断入口仍可发现。
+- **选择自己的模型。** 可配置文字与视觉服务，使用服务预设或兼容接口；本地模型服务也可连接。模型账号和额度由用户自己的提供商管理。
 
-## 笔记是怎样得到的
+[全局助手与 Skill](docs/GLOBAL_ASSISTANT.md) · [模型与设置帮助](SUPPORT.md) · [Obsidian 集成](integrations/obsidian-learnnote/README.md)
 
-| 情况 | 实际结果 |
-| --- | --- |
-| 有字幕和文字模型 | 根据字幕整理内容，保留来源时间点 |
-| 没有字幕，但本地转写可用 | 先转写，再整理；首次使用需要下载模型权重 |
-| 没有文字模型 | 提供清楚标注的字幕摘录，不伪装成知识提炼 |
-| 开启画面理解且视觉模型可用 | 必要画面发送给你选择的模型，补充视觉内容 |
-| 导入文档 | 保留可提取原文；扫描 PDF 需要先 OCR |
+## 本地优先，有清楚的边界
 
-生成内容仍可能有错。时间戳表示可以回到来源，**不表示事实已经核验**。本地降级笔记不补写通用易错点或凭空出题；长字幕按块处理，避免只读开头。
+视频、字幕、笔记、补充和复习记录默认放在本机。LearnNote 没有自有云任务、产品遥测，也不要求产品账号。
 
-## 本地优先意味着什么
+下载内容会访问来源网站；选择远程文字、视觉或转写服务时，该服务会接收完成任务所需的内容。本地转写不向模型 API 上传音频，但首次需要下载模型权重。桌面端可用系统凭据库保存 API Key；不要把密钥写入仓库、公开 Issue 或截图。
 
-- 视频、字幕、笔记、个人补充和复习记录默认保存在本机。
-- 没有 LearnNote 官方账号、官方云任务或产品遥测。
-- 下载内容会访问来源网站；远程文字、视觉或转写服务会接收完成处理所需的内容。
-- API Key 不写入新工作台的浏览器存储；桌面端可使用系统凭据库保存。
-- 手机窄屏可以阅读界面，但当前桌面服务默认只供本机访问；没有宣称跨设备同步或独立手机 App。
+浏览器扩展在用户触发的工作流中交接当前会话可访问的内容，不录制标签页，不绕过 DRM、账号权限或课程进度。手机窄屏可阅读网页，但默认服务只供本机访问；跨设备同步和独立手机 App 不在当前承诺内。
 
-完整边界：[隐私说明](PRIVACY.md) · [安全说明](SECURITY.md) · [第三方许可](THIRD_PARTY_NOTICES.md)。
+[隐私说明](PRIVACY.md) · [安全说明](SECURITY.md) · [第三方许可](THIRD_PARTY_NOTICES.md)
 
-## 支持范围
+## 支持与反馈
 
-Windows 10 / 11 x64 是主要桌面平台。macOS / Linux 的本地合约检查不等于已完成签名、安装和原生桌面发行验证。
+Windows 10 / 11 x64 是主要桌面平台。支持本地视频、Bilibili、YouTube 和当前会话有权访问的常见媒体资源。站点更新、登录失效或加密播放可能影响获取；可用本地文件继续。
 
-支持来源包括本地视频、Bilibili、YouTube，以及当前会话有权访问的普通 MP4 / HLS / DASH 等资源。站点更新、登录失效或加密播放可能导致获取失败，可改用本地文件。
+macOS / Linux 的基础合约检查不等于已完成原生桌面签名、安装和升级验收。
 
-[来源兼容矩阵](docs/SOURCE_COMPATIBILITY_MATRIX.md) · [平台支持](docs/PLATFORM_SUPPORT.md) · [使用与恢复帮助](SUPPORT.md)
+[来源兼容矩阵](docs/SOURCE_COMPATIBILITY_MATRIX.md) · [平台支持](docs/PLATFORM_SUPPORT.md) · [提交问题](https://github.com/hurry060215-tech/learnnote-assistant/issues)
 
-## 开发运行
+反馈请附输入类型、复现步骤、预期与实际结果，以及已检查的处理记录。安全问题使用[私密漏洞报告](https://github.com/hurry060215-tech/learnnote-assistant/security/advisories/new)，不要公开凭据或未脱敏任务包。
+
+## 参与开发
+
+普通使用请选择安装包。开发环境可运行：
 
 ```powershell
 git clone https://github.com/hurry060215-tech/learnnote-assistant.git D:\Projects\learnnote-assistant
@@ -77,16 +78,7 @@ cd D:\Projects\learnnote-assistant
 .\start-learnnote.ps1
 ```
 
-已配置 Python 环境时，也可运行后端并访问它提供的工作台：
-
-```powershell
-$env:PYTHONPATH = "backend"
-.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8765
-```
-
-统一界面：`web/index.html`、`web/desk.css`、`web/desk.js`、`web/desk-api.js`、`web/desk-tools.js`。旧界面仅留在源码中供历史回归，安装包不再包含旧页面和旧主脚本。产品对比与功能恢复依据见 [指定参考整合说明](docs/PRODUCT_REFERENCE_REVIEW.md)。
-
-来源摘录和分块逻辑：`backend/app/reading_notes.py`。
+后端回归：
 
 ```powershell
 $env:PYTHONPATH = "backend"
@@ -94,10 +86,10 @@ $env:PYTHONPATH = "backend"
 .\.venv\Scripts\python.exe -m unittest discover scripts/tests
 ```
 
-[架构说明](docs/ARCHITECTURE.md) · [贡献指南](CONTRIBUTING.md) · [发布流程](docs/RELEASING.md) · [重设计记录](docs/REDESIGN.md) · [Obsidian 集成](integrations/obsidian-learnnote/README.md)
+主工作台在 `web/desk*`，浏览器扩展在 `extension/`，后端在 `backend/app/`，静态官网在 `site/`。旧界面仅作为源码历史回归参考，不进入桌面发行包。
 
-## 反馈
+[架构](docs/ARCHITECTURE.md) · [贡献指南](CONTRIBUTING.md) · [发布流程](docs/RELEASING.md) · [产品参考与取舍](docs/PRODUCT_REFERENCE_REVIEW.md)
 
-请说明输入类型、复现步骤、预期行为与实际结果。公开 Issue 前移除 Cookie、API Key、私人网址和未脱敏资料。安全问题请使用[私密漏洞报告](https://github.com/hurry060215-tech/learnnote-assistant/security/advisories/new)。
+感谢 [BiliNote](https://github.com/JefferyHcool/BiliNote) 的字幕优先与视频笔记工作流、[Cetle / B 站视频总结](https://api.cetle.cn/) 的字幕与学习工具组织，以及 [Cherry Studio](https://github.com/CherryHQ/cherry-studio) 的多模型客户端交互参考。参考产品结构不意味着这些项目的全部代码采用同一种许可证；来源与复用范围见[参考说明](docs/PRODUCT_REFERENCE_REVIEW.md)。
 
 LearnNote 采用 [Apache License 2.0](LICENSE)。

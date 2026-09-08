@@ -48,7 +48,7 @@ class ReadingNotesTests(unittest.TestCase):
         client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
         original = "可核对的课程内容。" * 8000 + "FINAL_SOURCE_MARKER"
         transcript = TranscriptResult(full_text=original)
-        with patch("openai.OpenAI",return_value=client), patch("app.summarizer._validated_generated_note",side_effect=lambda *args:args[3]):
+        with patch("openai.OpenAI",return_value=client), patch("app.summarizer._validated_generated_note",side_effect=lambda *args, **kwargs:args[3]):
             result = summarize_with_llm("讲义",transcript,[],TaskOptions(llm_api_key="fixture",visual_understanding=False))
         self.assertIsNotNone(result)
         self.assertGreater(len(prompts),3)

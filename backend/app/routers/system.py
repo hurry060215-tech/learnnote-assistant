@@ -27,6 +27,8 @@ TRUSTED_MODEL_API_HOSTS = frozenset({
     "api.moonshot.cn",
     "api.kimi.com",
     "api.xiaomimimo.com",
+    "openrouter.ai",
+    "api.siliconflow.cn",
     "open.bigmodel.cn",
     "ark.cn-beijing.volces.com",
     "api.minimaxi.com",
@@ -42,6 +44,7 @@ class ModelSetupCheckRequest(BaseModel):
     base_url: str = Field(min_length=1, max_length=2048)
     model: str = Field(min_length=1, max_length=256)
     api_key: str = Field(default="", max_length=8192)
+    use_saved_connection: bool = False
     mode: Literal["chat", "models"] = "chat"
 
 
@@ -81,13 +84,15 @@ def _model_check_failure(exc: Exception) -> tuple[str, str]:
 @system_router.post("/api/model/setup/check")
 def check_model_setup(payload: ModelSetupCheckRequest) -> dict:
     base_url, host, local = _validated_model_endpoint(payload.base_url)
-    if not payload.api_key.strip() and not local:
+    from ..model_connections import connected_api_key
+    key = payload.api_key.strip() or connected_api_key(TaskOptions(llm_base_url=base_url, use_saved_connection=payload.use_saved_connection))
+    if not key and not local:
         return {"ok": False, "code": "missing_api_key", "message": "请先填写 API Key。", "provider": payload.provider, "model": payload.model}
     started = time.monotonic()
     try:
         from openai import OpenAI
 
-        client = OpenAI(api_key=payload.api_key.strip() or "local-no-key", base_url=base_url, timeout=18.0, max_retries=0)
+        client = OpenAI(api_key=key or "local-no-key", base_url=base_url, timeout=18.0, max_retries=0)
         if payload.mode == "models":
             response = client.models.list()
             model_ids = sorted({

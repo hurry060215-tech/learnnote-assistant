@@ -1,8 +1,16 @@
+import { installConnections } from "/web/desk-connections.js";
+import { timelineHtml, taskExplanation } from "/web/desk-progress.js";
 import { installInteractions } from "/web/desk-interactions.js";
 import { installSettings } from "/web/desk-settings.js";
 import { installProductWorkspace } from "/web/desk-product.js";
 import { installTools } from "/web/desk-tools.js";
-import { api, escapeHtml as esc, timestamp, taskAsset } from "/web/desk-api.js";
+import {
+  api,
+  escapeHtml as esc,
+  timestamp,
+  timestampRanges,
+  taskAsset,
+} from "/web/desk-api.js";
 const $ = (id) => document.getElementById(id);
 let renderedCues = [],
   activeCueIndex = -1;
@@ -75,12 +83,14 @@ function options() {
   if (
     state.model.base_url &&
     !state.key &&
+    !state.model.use_saved_connection &&
     state.model.base_url !== state.health.default_llm_base_url &&
     !/^http:\/\/(127\.0\.0\.1|localhost)(:|\/)/.test(state.model.base_url)
   )
     throw new Error("请在设置中填写当前模型服务的 Key，再开始整理。");
   return {
     ...state.processing,
+    use_saved_connection: Boolean(state.model.use_saved_connection),
     summary_depth: $("depth").value,
     note_style:
       ($("createDialog").open ? $("taskStyle")?.value : "") ||
@@ -142,7 +152,7 @@ function showHome({ remember = true, check = true } = {}) {
   $("reading").hidden = true;
   $("welcome").hidden = false;
   $("noteActions").hidden = true;
-  $("breadcrumb").textContent = "学习工作台";
+  $("breadcrumb").textContent = "我的学习空间";
   history.replaceState(null, "", location.pathname);
   drawList();
   window.dispatchEvent(
@@ -163,6 +173,7 @@ async function navigateBack() {
   window.dispatchEvent(new Event("learnnote:navigation"));
 }
 function statusLabel(task) {
+  if (task.summary_source === "local-template") return "字幕已保留 · 待总结";
   return task.awaiting_confirmation
     ? "等待确认"
     : {
@@ -305,6 +316,7 @@ async function loadEdition(epoch) {
   if (epoch !== state.epoch || state.editing) return;
   state.text = edition.text;
   state.revision = edition.revision;
+  state.edition = edition;
   renderNote();
 }
 function renderNote() {
@@ -314,13 +326,19 @@ function renderNote() {
         ? taskAsset(value, state.selected.id)
         : "",
   });
-  const heading = state.text.trim().startsWith("# ")
-    ? ""
-    : `<h1>${esc(state.selected.title)}</h1>`;
+  const excerptOnly =
+    state.selected.summary_source === "local-template" &&
+    !state.edition?.edited;
+  const heading =
+    state.text.trim().startsWith("# ") && !excerptOnly
+      ? ""
+      : `<h1>${esc(state.selected.title)}</h1>`;
   $("document").innerHTML =
     heading +
     (state.text.trim()
-      ? LearnNoteMarkdown.markdownToHtml(state.text)
+      ? excerptOnly
+        ? `<p class="muted">这里暂时保留的是字幕摘录。上方可以重新生成总结，原始字幕也可随时核对。</p><details class="transcript-draft"><summary>查看已保留的字幕摘录</summary>${LearnNoteMarkdown.markdownToHtml(state.text.replace(/^# .+\n/, ""))}</details>`
+        : LearnNoteMarkdown.markdownToHtml(state.text)
       : '<p class="muted">笔记准备好后会显示在这里，你可以先查看处理进度。</p>');
   if (state.selected.kind === "task")
     for (const code of $("document").querySelectorAll("code")) {
@@ -336,28 +354,101 @@ function renderNote() {
       button.onclick = () => openSource(seconds).catch(failure);
       code.replaceWith(button);
     }
+  if (state.selected.kind === "task") {
+    const walker = document.createTreeWalker(
+      $("document"),
+      NodeFilter.SHOW_TEXT,
+    );
+    const textNodes = [];
+    while (walker.nextNode()) {
+      const node = walker.currentNode;
+      if (
+        !node.parentElement.closest("pre,code,a,button,script,style") &&
+        timestampRanges(node.textContent).length
+      )
+        textNodes.push(node);
+    }
+    for (const node of textNodes) {
+      const fragment = document.createDocumentFragment();
+      let offset = 0;
+      for (const range of timestampRanges(node.textContent)) {
+        fragment.append(
+          document.createTextNode(node.textContent.slice(offset, range.index)),
+        );
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "time-link";
+        button.textContent = range.label;
+        button.setAttribute("aria-label", `查看原文 ${range.label}`);
+        button.onclick = () => openSource(range.start).catch(failure);
+        fragment.append(button);
+        offset = range.index + range.label.length;
+      }
+      fragment.append(document.createTextNode(node.textContent.slice(offset)));
+      node.replaceWith(fragment);
+    }
+  }
+  window.dispatchEvent(new Event("learnnote:document"));
 }
-function renderStatus() {
+const taskEvents = new Map();
+async function loadTaskEvents(task) {
+  const cached = taskEvents.get(task.id);
+  if (
+    cached?.loading ||
+    (cached?.stamp === task.updated_at && Date.now() - cached.checked < 5000)
+  )
+    return;
+  const record = {
+    ...cached,
+    loading: true,
+    stamp: task.updated_at,
+    checked: Date.now(),
+  };
+  taskEvents.set(task.id, record);
+  try {
+    const value = await api(`/api/tasks/${task.id}/events?limit=500`);
+    record.events = value.events || [];
+  } catch {
+    record.events ||= [];
+  } finally {
+    record.loading = false;
+  }
+  if (state.selected?.id === task.id) renderStatus(false);
+}
+function renderStatus(reload = true) {
   const t = state.selected;
   $("regenerate").hidden = t.kind !== "task" || t.status !== "success";
   const panel = $("taskStatus");
-  panel.hidden = t.kind !== "task" || t.status === "success";
+  panel.hidden = t.kind !== "task";
   if (panel.hidden) return;
+  if (reload) loadTaskEvents(t);
   const stopped = ["failed", "cancelled"].includes(t.status);
+  const needsSummary = Boolean(
+    t.transcript_path &&
+      (t.error_code === "summary_unavailable" ||
+        t.summary_source === "local-template"),
+  );
   const canResume =
     t.resume_available ?? Boolean(t.media_path || t.source_media_path);
   const busy = state.taskAction?.id === t.id;
   const action = t.awaiting_confirmation
-    ? '<button data-task-action="start">确认并开始整理</button>'
-    : stopped
-      ? (canResume
+    ? '<button class="primary" data-task-action="start">开始读取并整理</button>'
+    : needsSummary
+      ? '<button class="primary" data-task-action="retry-summary">重新生成总结</button>'
+      : stopped
+        ? canResume
           ? '<button data-task-action="resume">继续处理已有文件</button>'
-          : '<button data-task-action="new">重新添加来源</button>') +
-        '<button data-task-action="diagnostics">查看原因</button>'
-      : t.status === "cancelling"
-        ? "<span>正在停止，已完成的内容会保留。</span>"
-        : `<progress aria-label="任务处理进度" max="100" value="${Number(t.progress) || 0}"></progress><button data-task-action="cancel">停止处理</button>`;
-  panel.innerHTML = `<strong>${esc(statusLabel(t))}</strong><p>${esc(t.message || "")}</p>${stopped && !canResume ? '<p class="muted">本地没有可继续处理的视频，请重新交接来源或导入文件。</p>' : ""}${action}`;
+          : '<button data-task-action="new">重新添加来源</button>'
+        : ["success", "cancelling"].includes(t.status)
+          ? ""
+          : '<button data-task-action="cancel">停止处理</button>';
+  const title = needsSummary ? "字幕已保留 · 总结尚未完成" : statusLabel(t);
+  const raw =
+    t.message && !["success"].includes(t.status)
+      ? `<details class="task-detail"><summary>当前步骤详情</summary><p>${esc(t.message)}</p></details>`
+      : "";
+  panel.innerHTML = `<div class="task-status-heading"><strong>${esc(title)}</strong><button data-task-action="diagnostics">查看处理记录</button></div><p>${esc(taskExplanation(t))}</p>${timelineHtml(t, taskEvents.get(t.id)?.events || [])}${t.awaiting_confirmation ? `<p class="task-plan">文字整理 · ${esc(state.model.model || state.health.default_llm_model || "尚未配置模型")} · ${t.options?.visual_understanding || t.options?.local_ocr ? "包含画面处理" : "字幕优先"}</p>` : ""}<div class="task-status-actions">${action}</div>${raw}`;
+  panel.dataset.status = needsSummary ? "needs-summary" : t.status;
   for (const button of panel.querySelectorAll("button"))
     button.disabled = Boolean(busy);
 }
@@ -408,6 +499,20 @@ async function openSource(seconds) {
     if (!cues.length)
       $("sourceContent").append(document.createTextNode("暂无可用字幕。"));
     const player = $("player");
+    if (!s.media_path && !s.source_media_path) {
+      player.hidden = true;
+      player.removeAttribute("src");
+      player.load();
+      if (seconds !== undefined && renderedCues.length) {
+        const cue =
+          renderedCues.findLast(
+            (item) => Number(item.dataset.time) <= seconds,
+          ) || renderedCues[0];
+        cue.classList.add("active");
+        cue.scrollIntoView({ block: "nearest", behavior: "instant" });
+      }
+      return;
+    }
     player.hidden = false;
     const url = `/api/tasks/${s.id}/media`;
     if (player.getAttribute("src") !== url) player.src = url;
@@ -443,7 +548,7 @@ $("player").addEventListener("error", () => {
 });
 $("sourceContent").onclick = (e) => {
   const cue = e.target.closest("[data-time]");
-  if (cue) {
+  if (cue && !$("player").hidden) {
     $("player").currentTime = Number(cue.dataset.time);
     $("player")
       .play()
@@ -467,12 +572,6 @@ $("refresh").onclick = () => {
 $("source").onclick = () =>
   $("sourcePanel").hidden ? openSource().catch(failure) : closeSource();
 $("closeSource").onclick = closeSource;
-$("menu").onclick = () => {
-  $("menu").setAttribute(
-    "aria-expanded",
-    String(document.body.classList.toggle("menu-open")),
-  );
-};
 $("edit").onclick = () => {
   state.editing = true;
   $("noteText").value = state.text;
@@ -640,9 +739,10 @@ $("taskStatus").onclick = async (e) => {
       body: JSON.stringify(
         action === "cancel"
           ? {}
-          : action === "resume"
+          : ["resume", "retry-summary"].includes(action)
             ? {
                 ...selected.options,
+                use_saved_connection: Boolean(state.model.use_saved_connection),
                 ...(state.model.base_url
                   ? {
                       llm_base_url: state.model.base_url,
@@ -688,6 +788,11 @@ $("testModel").onclick = async () => {
         base_url: $("baseUrl").value,
         model: $("model").value,
         api_key: $("apiKey").value,
+        use_saved_connection:
+          $("provider").value === "openrouter" &&
+          Boolean(state.model.use_saved_connection) &&
+          $("baseUrl").value.trim() === state.model.base_url &&
+          !$("apiKey").value.trim(),
         mode: "chat",
       }),
     });
@@ -702,6 +807,12 @@ $("testModel").onclick = async () => {
 $("settingsForm").onsubmit = async (e) => {
   e.preventDefault();
   state.model = {
+    use_saved_connection:
+      $("provider").value === "openrouter" &&
+      state.model.provider === "openrouter" &&
+      Boolean(state.model.use_saved_connection) &&
+      $("baseUrl").value.trim() === state.model.base_url &&
+      !$("apiKey").value.trim(),
     provider: $("provider").value,
     base_url: $("baseUrl").value.trim(),
     model: $("model").value.trim(),
@@ -852,15 +963,23 @@ async function initialize() {
 initialize();
 
 $("regenerate").onclick = async () => {
+  const reuseTranscript =
+    state.selected?.transcript_path &&
+    !state.selected?.media_path &&
+    !state.selected?.source_media_path;
   if (
     !guard() ||
-    !confirm("使用当前模型设置重新整理？会创建新笔记，保留原笔记及修改。")
+    !confirm(
+      reuseTranscript
+        ? "使用已有字幕和当前模型重新生成总结？不下载视频或重复转写，手动修改仍保留。"
+        : "使用当前模型设置重新整理？会创建新笔记，保留原笔记及修改。",
+    )
   )
     return;
   $("regenerate").disabled = true;
   try {
     const result = await api(
-      `/api/tasks/${state.selected.id}/rerun-from-media`,
+      `/api/tasks/${state.selected.id}/${reuseTranscript ? "retry-summary" : "rerun-from-media"}`,
       { method: "POST", body: JSON.stringify(options()) },
     );
     await openItem({ ...result.task, id: result.task_id, kind: "task" });
@@ -967,6 +1086,7 @@ installProductWorkspace({
 });
 
 installSettings({ state, notice, loadKey });
+installConnections({ state, notice, loadKey });
 
 window.addEventListener("learnnote:annotations", () =>
   loadAnnotations(state.epoch).catch(failure),

@@ -504,6 +504,8 @@ def build_matrix(*, include_acceptance_gate: bool = True) -> list[ReadinessItem]
     ))
 
     public_site_content_contract = (
+        has_all(public_site_html, ['id="demo-note"', 'id="demo-source"', 'id="demo-outline"', 'id="caption-route"', 'id="transcription-route"', 'id="download"', '/releases/latest', 'privacy.html', '示例'])
+        or
         has_all(public_site_html, ["查看来源", "修改正文", "字幕摘录", "/releases/latest", "隐私说明"])
         or
         has_all(public_site_html + public_site_css, ["LearnNote", "下载 Windows 版", "浏览器扩展", "听懂每一段内容", "从任何来源到结构化笔记", "三种输入", "可复现的真实案例", "梯度下降与学习率", "96.2%", "可信度保护", "数据边界清楚可见", "learnnote-workspace-v0126.png", "learnnote-case-gradient.png", "learnnote-case-grid.jpg"])

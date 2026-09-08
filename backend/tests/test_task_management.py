@@ -65,7 +65,8 @@ class TaskManagementApiTests(unittest.TestCase):
             active_video=ActiveVideoInfo(src="https://cdn.example.com/video.mp4", duration=120, paused=False),
             browser_subtitles=cues,
         )
-        process_current_page_task(task.id, request)
+        with patch("app.processor.summarize_with_diagnostics", return_value=("# 字幕速记课\n\n## 要点\n\n知识点的综合总结。", "text-llm", "", [])):
+            process_current_page_task(task.id, request)
         record = get_task(task.id)
         self.assertEqual(record.status, "success")
         self.assertEqual(record.mode, "subtitle_only")

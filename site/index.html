@@ -5,167 +5,433 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta
       name="description"
-      content="LearnNote 把视频与资料整理为可阅读、可回看来源、可修改的本地学习笔记。"
+      content="LearnNote：字幕优先的视频笔记、本地学习资料和可追问的 AI 助手。双击启动，浏览器里使用，无需 LearnNote 账号。"
     />
-    <title>LearnNote — 让看过的内容，留下自己的理解</title>
+    <meta name="theme-color" content="#ffffff" />
+    <meta
+      property="og:title"
+      content="LearnNote — 看过的内容，变成自己的笔记"
+    />
+    <meta
+      property="og:description"
+      content="从字幕到重点，从问题回到来源。你的本地学习工作台。"
+    />
+    <link rel="icon" href="./assets/learnnote-mark-32.png" />
     <link rel="stylesheet" href="./home.css" />
+    <link
+      rel="preload"
+      href="./assets/fonts/learnnote-site-sans.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
     <link
       rel="canonical"
       href="https://hurry060215-tech.github.io/learnnote-assistant/"
     />
+    <script src="./home.js" defer></script>
+    <title>LearnNote — 看过的内容，变成自己的笔记</title>
   </head>
   <body>
-    <header>
-      <a class="logo" href="#">▥ LearnNote</a>
+    <a class="skip-link" href="#main">跳到正文</a>
+    <svg class="svg-defs" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <symbol id="book" viewBox="0 0 24 24">
+        <path
+          d="M3 4.8c3.1-.8 6-.1 9 2v13c-3-2.1-5.9-2.8-9-2zM21 4.8c-3.1-.8-6-.1-9 2v13c3-2.1 5.9-2.8 9-2zM12 6.8v13"
+        />
+      </symbol>
+      <symbol id="arrow" viewBox="0 0 24 24">
+        <path d="M5 12h14m-6-6 6 6-6 6" />
+      </symbol>
+      <symbol id="external" viewBox="0 0 24 24">
+        <path d="M7 17 17 7M7 7h10v10" />
+      </symbol>
+    </svg>
+    <header class="site-header wrap">
+      <a class="logo" href="./"
+        ><svg aria-hidden="true"><use href="#book" /></svg>LearnNote</a
+      >
       <nav aria-label="主导航">
         <a href="#workspace">工作台</a><a href="#workflow">如何使用</a
-        ><a href="#privacy">数据与隐私</a>
+        ><a href="#download">下载</a
+        ><a
+          class="github-link"
+          href="https://github.com/hurry060215-tech/learnnote-assistant"
+          >GitHub<svg aria-hidden="true"><use href="#external" /></svg
+        ></a>
       </nav>
-      <a
-        class="button small"
-        href="https://github.com/hurry060215-tech/learnnote-assistant/releases/latest"
-        >下载 Windows 版 ↗</a
-      >
     </header>
-    <main>
-      <section class="hero">
-        <div class="eyebrow">你的内容 · 你的理解 · 你的笔记</div>
-        <h1>看完以后，<br />不止是“看过”。</h1>
-        <p>
-          把视频与资料整理成一份能继续读、继续改的笔记。<br />遇到疑问，回到原文；有了想法，写在旁边。
-        </p>
-        <div class="hero-actions">
-          <a
-            class="button"
-            href="https://github.com/hurry060215-tech/learnnote-assistant/releases/latest"
-            >下载 LearnNote <span>↗</span></a
-          ><a class="text-link" href="#workspace">看看新的阅读工作台 ↓</a>
-        </div>
-        <small>Windows 10 / 11 · 本地保存 · 无需 LearnNote 账号</small>
-      </section>
-      <section id="workspace" class="showcase">
-        <div class="section-head">
-          <span class="eyebrow">一个安静的学习空间</span>
-          <p>让正文回到中心，<br />工具在需要的时候出现。</p>
-        </div>
-        <div class="preview">
-          <div class="preview-sidebar">
-            <strong>▥ LearnNote</strong>
-            <div class="mini-new">＋ 新建笔记</div>
-            <small>我的笔记</small>
-            <div class="selected">
-              理解梯度下降<small>视频笔记 · 今天</small>
-            </div>
-            <div>一周阅读记录<small>学习资料 · 昨天</small></div>
+    <main id="main">
+      <section class="hero wrap" aria-labelledby="hero-title">
+        <div>
+          <h1 id="hero-title">看过的内容，<br />变成自己的笔记。</h1>
+          <p class="hero-copy">
+            视频、字幕与资料，在一个本地工作台里<br
+              class="desktop-break"
+            />整理、追问和回看。
+          </p>
+          <div class="hero-actions">
+            <a
+              class="button"
+              href="https://github.com/hurry060215-tech/learnnote-assistant/releases/latest"
+              >下载 Windows 版<svg aria-hidden="true">
+                <use href="#arrow" /></svg></a
+            ><a class="button secondary" href="#extension">安装浏览器扩展</a>
           </div>
-          <div class="preview-paper">
-            <div class="mini-toolbar">
-              理解梯度下降 <span>编辑　查看来源　更多</span>
+          <p class="hero-footnote">本地保存 · 无需 LearnNote 账号</p>
+        </div>
+        <ol class="hero-route" aria-label="内容处理顺序">
+          <li>获取字幕</li>
+          <li>整理笔记</li>
+          <li>回到来源</li>
+        </ol>
+      </section>
+      <section
+        id="workspace"
+        class="showcase wrap"
+        aria-label="交互示例：笔记、来源和大纲"
+      >
+        <div class="workspace-preview">
+          <aside class="preview-sidebar" aria-label="示例笔记列表">
+            <strong>LearnNote</strong>
+            <p class="sidebar-label">我的笔记</p>
+            <p class="selected">理解梯度下降</p>
+            <p>Transformer 核心思想</p>
+            <p>高效学习的方法</p>
+            <p>阅读与写作的关系</p>
+            <span class="sidebar-footer">内容是起点，理解是自己的。</span>
+          </aside>
+          <div class="preview-main">
+            <div class="preview-tabs" role="tablist" aria-label="切换示例视图">
+              <button
+                id="demo-note-tab"
+                role="tab"
+                aria-selected="true"
+                aria-controls="demo-note"
+                data-demo="note"
+              >
+                正文</button
+              ><button
+                id="demo-source-tab"
+                role="tab"
+                aria-selected="false"
+                aria-controls="demo-source"
+                tabindex="-1"
+                data-demo="source"
+              >
+                来源</button
+              ><button
+                id="demo-outline-tab"
+                role="tab"
+                aria-selected="false"
+                aria-controls="demo-outline"
+                tabindex="-1"
+                data-demo="outline"
+              >
+                大纲</button
+              ><span>可切换的阅读示例</span>
             </div>
-            <article>
-              <small>演示内容 · 非自动生成效果承诺</small>
+            <article
+              class="sample-paper"
+              id="demo-note"
+              role="tabpanel"
+              aria-labelledby="demo-note-tab"
+            >
               <h2>理解梯度下降</h2>
-              <p>梯度下降根据当前位置的梯度，逐步调整参数，让损失函数减小。</p>
-              <h3>为什么要控制步长？</h3>
+              <p class="sample-meta">概览、重点与来源，放在一起。</p>
+              <h3>一段话看懂</h3>
               <p>
-                学习率决定每次更新的幅度。步长过大可能越过低点，过小则需要更多次更新。
+                梯度下降通过不断调整参数，寻找更小的损失。每次沿梯度的反方向走一步，而学习率决定这一步有多大。
               </p>
-              <blockquote>00:42　回到视频，查看讲解中的更新过程。</blockquote>
-              <div class="personal">
-                <small>我的补充</small>
-                <p>下次尝试用不同学习率，观察参数更新的轨迹。</p>
+              <h3>核心要点</h3>
+              <ol>
+                <li><strong>方向：</strong>负梯度给出局部下降的方向。</li>
+                <li>
+                  <strong>步长：</strong>学习率太大可能振荡，太小则收敛缓慢。
+                </li>
+                <li>
+                  <strong>边界：</strong
+                  >非凸问题中，局部下降不保证找到全局最优解。
+                </li>
+              </ol>
+              <button class="source-jump" data-open-source>
+                00:42　查看示例中的来源片段<svg aria-hidden="true">
+                  <use href="#arrow" />
+                </svg>
+              </button>
+            </article>
+            <article
+              class="sample-paper"
+              id="demo-source"
+              role="tabpanel"
+              aria-labelledby="demo-source-tab"
+              hidden
+            >
+              <h2>回到内容发生的地方</h2>
+              <p class="sample-meta">字幕保留原话，笔记负责组织理解。</p>
+              <div class="sample-cue">
+                <time>00:12</time>
+                <p>我们希望调整参数，让损失函数的值逐渐减小。</p>
               </div>
+              <div class="sample-cue highlighted">
+                <time>00:42</time>
+                <p>
+                  梯度告诉我们局部上升最快的方向，所以更新时沿它的反方向移动。
+                </p>
+              </div>
+              <div class="sample-cue">
+                <time>01:18</time>
+                <p>学习率控制更新的幅度，过大或过小都会影响优化过程。</p>
+              </div>
+              <p class="sample-note">
+                这里演示笔记与字幕的区别，没有播放或下载真实视频。
+              </p>
+            </article>
+            <article
+              class="sample-paper"
+              id="demo-outline"
+              role="tabpanel"
+              aria-labelledby="demo-outline-tab"
+              hidden
+            >
+              <h2>先看结构，再读细节</h2>
+              <p class="sample-meta">从正文标题生成导航，帮助快速定位。</p>
+              <ol class="sample-outline">
+                <li>
+                  <button data-open-heading="summary">一段话看懂</button>
+                  <p>梯度、参数与损失之间的关系</p>
+                </li>
+                <li>
+                  <button data-open-heading="points">核心要点</button>
+                  <p>更新方向 · 学习率 · 适用边界</p>
+                </li>
+                <li>
+                  <button data-open-source>来源片段</button>
+                  <p>回到字幕，核对讲解的上下文</p>
+                </li>
+              </ol>
             </article>
           </div>
         </div>
         <p class="caption">
-          新工作台预览。正式安装包的功能以对应 Release 说明为准。
+          产品交互示意 · 示例内容。本站介绍当前开发分支，安装包功能以对应
+          <a
+            href="https://github.com/hurry060215-tech/learnnote-assistant/releases"
+            >Release 说明</a
+          >为准。
         </p>
       </section>
-      <section id="workflow" class="workflow">
-        <div>
-          <span class="eyebrow">从内容到理解</span>
-          <h2>少一些配置，<br />多一点真正的学习。</h2>
+      <section
+        id="workflow"
+        class="workflow wrap"
+        aria-labelledby="workflow-title"
+      >
+        <div class="workflow-intro">
+          <h2 id="workflow-title">每一步，<br />都有交代。</h2>
+          <p>
+            先尝试现成字幕，需要时才转写。<br />不确定的地方，回到来源核对。
+          </p>
+          <p class="supporting">
+            完整字幕可用、无需画面分析时，直接整理文字，省去视频下载和语音识别。需要截图、画面理解或本地播放时，再获取视频。
+          </p>
         </div>
-        <ol>
+        <div class="workflow-detail">
+          <div class="route-tabs" role="tablist" aria-label="切换处理方式">
+            <button
+              id="captions-tab"
+              role="tab"
+              aria-selected="true"
+              aria-controls="caption-route"
+              data-route="captions"
+            >
+              有字幕</button
+            ><button
+              id="transcription-tab"
+              role="tab"
+              aria-selected="false"
+              aria-controls="transcription-route"
+              tabindex="-1"
+              data-route="transcription"
+            >
+              需要转写
+            </button>
+          </div>
+          <div
+            id="caption-route"
+            role="tabpanel"
+            aria-labelledby="captions-tab"
+          >
+            <ol class="timeline">
+              <li>
+                <span>01</span>
+                <div>
+                  <h3>获取字幕</h3>
+                  <p>读取已有字幕和时间点；需要登录时，说明访问条件。</p>
+                </div>
+              </li>
+              <li>
+                <span>02</span>
+                <div>
+                  <h3>整理笔记</h3>
+                  <p>用所选模型生成概览与重点，字幕原文独立保留。</p>
+                </div>
+              </li>
+              <li>
+                <span>03</span>
+                <div>
+                  <h3>回看与导出</h3>
+                  <p>定位原片、修改正文、保存补充，再把笔记导出带走。</p>
+                </div>
+              </li>
+            </ol>
+          </div>
+          <div
+            id="transcription-route"
+            role="tabpanel"
+            aria-labelledby="transcription-tab"
+            hidden
+          >
+            <ol class="timeline">
+              <li>
+                <span>01</span>
+                <div>
+                  <h3>检查可用来源</h3>
+                  <p>
+                    确认字幕不可用后获取媒体，不把访问失败说成视频没有字幕。
+                  </p>
+                </div>
+              </li>
+              <li>
+                <span>02</span>
+                <div>
+                  <h3>转写语音</h3>
+                  <p>
+                    本地模型识别音轨；首次使用先下载模型。时长、模型和硬件都会影响速度。
+                  </p>
+                </div>
+              </li>
+              <li>
+                <span>03</span>
+                <div>
+                  <h3>整理并保留记录</h3>
+                  <p>
+                    根据转写生成笔记。模型失败会保留已有文字，便于排查和重试。
+                  </p>
+                </div>
+              </li>
+            </ol>
+          </div>
+          <p class="route-note">
+            流程说明，不是正在执行的任务。实际工作台会显示已完成、当前和跳过的步骤。
+          </p>
+        </div>
+        <div class="feature-notes">
+          <div>
+            <h3>先读懂，再追问</h3>
+            <p>
+              全局助手既能解释操作，也能围绕选中的内容回答；调用的 Skill
+              和范围清楚可见。
+            </p>
+          </div>
+          <div>
+            <h3>过程清楚，结果有据</h3>
+            <p>
+              笔记、字幕与处理记录分开展示。总结失败时保留原文，不拿字幕摘录冒充完成。
+            </p>
+          </div>
+          <div>
+            <h3>资料留在自己手里</h3>
+            <p>正文可以编辑，笔记可以导出；字体、行距和阅读宽度由你调整。</p>
+          </div>
+        </div>
+      </section>
+      <section
+        id="download"
+        class="download wrap"
+        aria-labelledby="download-title"
+      >
+        <div>
+          <h2 id="download-title">从下一段内容开始。</h2>
+          <p>下载安装，双击打开。<br />无需命令行，也无需 LearnNote 账号。</p>
+          <a
+            class="button"
+            href="https://github.com/hurry060215-tech/learnnote-assistant/releases/latest"
+            >下载 Windows 版<svg aria-hidden="true">
+              <use href="#arrow" /></svg></a
+          ><a
+            class="all-releases"
+            href="https://github.com/hurry060215-tech/learnnote-assistant/releases"
+            >查看所有发布版本<svg aria-hidden="true"><use href="#arrow" /></svg
+          ></a>
+          <p class="download-meta">
+            Windows 10 / 11 x64 · 安装版或便携 ZIP<br />下载前可在 Release
+            页面核对版本、文件和更新说明。
+          </p>
+        </div>
+        <ol class="install-steps">
           <li>
             <span>01</span>
             <div>
-              <h3>添加正在学的内容</h3>
+              <h3>启动本地 App</h3>
               <p>
-                粘贴视频链接、选择本地视频或导入资料。需要登录的视频，可从电脑浏览器扩展交接。
+                安装后打开 LearnNote；便携版解压后双击
+                LearnNote.exe。网页工作台连接本机服务。
               </p>
             </div>
           </li>
-          <li>
+          <li id="extension">
             <span>02</span>
             <div>
-              <h3>读笔记，也看得见出处</h3>
-              <p>
-                有字幕就优先使用字幕。配置文字模型后整理内容，时间点帮助你回到原视频检查。
+              <h3>添加你正在学的内容</h3>
+              <p>粘贴网址或导入文件；已登录的视频页面可由扩展交接。</p>
+              <p class="install-links">
+                <a
+                  href="https://chromewebstore.google.com/detail/learnnote-%E5%BD%93%E5%89%8D%E8%A7%86%E9%A2%91%E5%8A%A9%E6%89%8B/mncdchpkpikhacmkbanedpppcddapppe"
+                  >Chrome 商店</a
+                ><a
+                  href="https://github.com/hurry060215-tech/learnnote-assistant/blob/main/docs/EXTENSION_CONNECTION.md"
+                  >离线安装与连接说明</a
+                >
               </p>
             </div>
           </li>
           <li>
             <span>03</span>
             <div>
-              <h3>把它改成自己的笔记</h3>
+              <h3>选择模型，开始整理</h3>
               <p>
-                修改正文，保存自己的补充，导出
-                Markdown。你的修订与原始生成稿分开保留。
+                在设置中连接模型，确认这次的内容和处理方式。没有文字模型时仍可查看字幕，不能生成
+                AI 总结。
               </p>
             </div>
           </li>
         </ol>
       </section>
       <section id="privacy" class="privacy">
-        <span class="eyebrow">本地优先，有清楚的边界</span>
-        <h2>资料放在你的电脑里。<br />模型由你选择。</h2>
-        <div class="privacy-grid">
+        <div class="wrap">
+          <h2>本地优先，也把联网说清楚。</h2>
           <p>
-            <strong>默认保存在本机</strong
-            >视频、字幕、笔记和学习记录放在本地数据目录。没有官方云任务或产品遥测。
+            资料默认保存在本机。下载来源会访问对应网站，远程模型会接收完成任务所需的文字或画面。本地转写不会把音频上传给模型服务，首次需要下载模型。
           </p>
-          <p>
-            <strong>联网时说明去向</strong
-            >下载视频需要访问来源网站；远程模型会接收处理所需的字幕或画面。本地转写首次需要下载模型。
-          </p>
-          <p>
-            <strong>保留判断的空间</strong
-            >生成内容可能有错。来源定位不等于事实核验；没有文字模型时，提供标明性质的字幕摘录。
-          </p>
+          <a href="privacy.html"
+            >阅读隐私说明<svg aria-hidden="true"><use href="#arrow" /></svg
+          ></a>
         </div>
-        <a href="privacy.html">阅读隐私说明 ↗</a>
-      </section>
-      <section class="download">
-        <span class="eyebrow">从下一段内容开始</span>
-        <h2>给学习留下一份<br />可以继续写的笔记。</h2>
-        <a
-          class="button"
-          href="https://github.com/hurry060215-tech/learnnote-assistant/releases/latest"
-          >获取最新发布版 ↗</a
-        >
-        <p>
-          <a href="https://github.com/hurry060215-tech/learnnote-assistant"
-            >查看源码</a
-          >
-          ·
-          <a
-            href="https://github.com/hurry060215-tech/learnnote-assistant/blob/main/README.md"
-            >安装与使用说明</a
-          >
-        </p>
       </section>
     </main>
-    <footer>
-      <a class="logo" href="#">▥ LearnNote</a><span>为个人学习而做。</span>
-      <div>
-        <a href="privacy.html">隐私</a><a href="security.html">安全</a
+    <footer class="wrap">
+      <a class="logo" href="./"
+        ><svg aria-hidden="true"><use href="#book" /></svg>LearnNote</a
+      >
+      <nav aria-label="页脚导航">
+        <a href="privacy.html">隐私说明</a><a href="security.html">安全说明</a
         ><a
-          href="https://github.com/hurry060215-tech/learnnote-assistant/issues"
-          >反馈问题</a
+          href="https://github.com/hurry060215-tech/learnnote-assistant/blob/main/SUPPORT.md"
+          >使用帮助</a
+        ><a href="https://github.com/hurry060215-tech/learnnote-assistant"
+          >GitHub</a
         >
-      </div>
+      </nav>
     </footer>
   </body>
 </html>

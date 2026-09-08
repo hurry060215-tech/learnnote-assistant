@@ -556,6 +556,8 @@ function renderContext(message = "") {
     els.preflightMessage.textContent = "请切换到正在播放视频的页面。";
   } else if (selectedProcessingMode === "quick" && subtitleReady) {
     els.preflightMessage.textContent = "已取得覆盖充分的浏览器字幕，可以直接生成速览；不会下载视频、调用 ASR 或分析画面。";
+  } else if (currentContext?.page?.subtitle_probe?.status === "auth_required") {
+    els.preflightMessage.textContent = "B 站字幕需要有效登录状态。请确认此浏览器已登录并刷新视频，再点重新识别；也可以交接后选择音频转写。";
   } else if (selectedProcessingMode === "quick") {
     els.preflightMessage.textContent = "尚未取得完整字幕。发送后会打开工作台，确认开始后优先探测平台字幕；仍不可用时使用本地语音转写。";
   } else if (!hasMediaEvidence) {

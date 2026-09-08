@@ -21,3 +21,15 @@
 - App 使用资料库级启动锁，重复双击复用实例；重启等待旧进程退出，启动失败提供可见提示。
 
 此次 472 项后端、31 项网页模块与57项脚本回归通过；打包后的 Windows 0.2.4 通过设置、助手、产品工作台与工具流程的浏览器验收。登录站点字幕、真实远程模型、签名安装升级不属于这些模拟与本地验收的通过结论。
+
+## 0.2.5 字幕与账号连接
+
+标准整理会先取得平台或播放器字幕，可用时跳过视频下载、音轨转写与画面处理。需要图文或 OCR 时仍按用户选择获取视频。B 站扩展主动查询当前分 P 的字幕，不保留监听器；字幕不存在、鉴权失败和探测不可用分别处理。
+
+`POST /api/tasks/{id}/retry-summary` 只复用任务所属字幕，重新生成总结；不会再下载、转写。之前生成的正文保存在任务目录 `summary_versions`，个人编辑稿继续独立保留。失败候选正文在任务的 `vision_cache/rejected-summary.md`，处理记录与失败原因从界面可下载。
+
+`GET /api/model/providers` 提供服务商和认证方式；`POST /api/model/setup/check` 支持短对话或模型列表验证。OpenRouter 通过 `/api/connections/openrouter/start` 启动其官方 PKCE 授权，回调绑定同一浏览器、随机 state 和十分钟有效期。凭据仅发给精确的 OpenRouter API 地址；Windows/macOS 使用系统凭据库，其他本机平台仅保留本次服务会话。断开连接删除本机授权副本，不等于撤销供应商账户内的 Key。MiMo 使用其官方 API Key 接口，不提供不存在的 MiMo OAuth。
+
+官方认证文档：https://openrouter.ai/docs/guides/overview/auth/oauth ；MiMo：https://mimo.mi.com/docs/zh-CN/quick-start/summary/first-api-call 。
+
+本轮真实 MiMo 验收使用已有酒店视频音频转写生成六节主题总结，不重新获取视频；自动回归使用隔离资料或模拟服务，不等同于真实网站登录态字幕验证。

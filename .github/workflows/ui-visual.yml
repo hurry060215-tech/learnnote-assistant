@@ -56,6 +56,8 @@ jobs:
             if (-not $ready) { throw "Local backend did not become ready." }
             node scripts/global-assistant-acceptance.cjs http://127.0.0.1:8765 build/global-ui
             if ($LASTEXITCODE -ne 0) { throw "Global assistant and navigation gate failed" }
+            node scripts/reader-workflow-acceptance.cjs http://127.0.0.1:8765 build/reader-ui
+            if ($LASTEXITCODE -ne 0) { throw "Reader timeline and navigation gate failed" }
             node scripts/workspace-ux-acceptance.cjs http://127.0.0.1:8765 build/workspace-ux
             if ($LASTEXITCODE -ne 0) { throw "Workspace settings and assistant continuity gate failed" }
             node scripts/product-workspace-acceptance.cjs http://127.0.0.1:8765 build/product-ui
@@ -78,6 +80,7 @@ jobs:
           path: |
             build/global-ui
             build/workspace-ux
+            build/reader-ui
             build/product-ui
             build/unified-ui
             build/redesign-ui

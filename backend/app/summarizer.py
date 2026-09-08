@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 
 from .config import LLM_API_KEY, LLM_BASE_URL, LLM_MAX_RETRIES, LLM_MODEL, LLM_REQUEST_TIMEOUT_SECONDS
 from .media import image_to_data_url
+from .model_connections import connected_api_key
 from .models import FrameGrid, TaskOptions, TranscriptResult, VisualWindow
 from .text_cleanup import TextDecodingError, canonicalize_unicode_text
 
@@ -111,6 +112,7 @@ def llm_base_host(base_url: str) -> str:
 def _safe_llm_error(exc: BaseException) -> str:
     message = re.sub(r"\s+", " ", str(exc or "")).strip()
     message = re.sub(r"sk-[A-Za-z0-9_-]{8,}", "sk-<redacted>", message)
+    message = re.sub(r"(?i)\b(?:ak|org|proj)-[A-Za-z0-9_-]{6,}", "<redacted>", message)
     message = re.sub(r"(?i)bearer\s+[A-Za-z0-9._~+/=-]{8,}", "Bearer <redacted>", message)
     message = re.sub(r"(?i)(api[_-]?key\s*[=:]\s*)[A-Za-z0-9._~+/=-]{8,}", r"\1<redacted>", message)
     if len(message) > MAX_LLM_ERROR_MESSAGE:
@@ -398,6 +400,7 @@ def note_generation_contract(options: TaskOptions) -> str:
         + custom_profile + f"学习目标：{learning_goal_instruction(options)}\n"
         f"深度约束：{summary_depth_instruction(options) if learning_goal(options) != 'auto' else {'brief': '精简：保留核心结论和必要前提，省略次要例子。', 'standard': '标准：保留核心解释、原有例子和因果步骤；篇幅随材料，不设最低字数。', 'deep': '详细：保留推导、操作步骤、例子和条件；不扩写材料外的知识。'}.get(options.summary_depth, '篇幅随材料。')}\n"
         "共同约束：时间戳只能来自字幕段或画面窗口；不要编造时长、画面、例题、公式、工具、事实或课程没有给出的通用建议。"
+        "外文专有名称只按字幕或画面证据原文书写；字幕只有中文名时保留中文名，禁止自行补写英文译名、品牌或人名。"
         "自拟问题必须标为“自测题”，答案只能由材料直接推出，不能伪装成老师讲过的例题。"
         "没有对应内容时省略可选章节，不要用空章节或套话补齐。"
     )
@@ -423,6 +426,11 @@ _GROUNDING_TOKEN_ALLOWLIST = {
     "grid", "assets", "tasks", "new", "old", "cdot", "frac", "nabla", "text",
     "theta", "eta", "note", "quick", "merged", "partial", "fallback", "recovered",
     "from", "transcript", "with", "images", "vision", "only",
+    "tldr", "overview", "summary", "summaries", "takeaway", "takeaways", "key",
+    "points", "point", "insights", "insight", "conclusion", "conclusions", "faq",
+    "outline", "timeline", "introduction", "context", "details", "review", "notes",
+    "evidence", "limitations", "questions", "answers", "question", "answer",
+    "checklist", "references", "reference", "source", "sources", "vs",
 }
 
 
@@ -441,8 +449,9 @@ def note_grounding_issues(
     duration = _evidence_duration_seconds(transcript, grids)
     opening = text[:1200]
     duration_pattern = re.compile(
-        r"(?:本材料|本课程|这节(?:课|微课)|该视频|视频).{0,24}?(\d+(?:\.\d+)?)\s*(小时|分钟|秒)",
-        re.S,
+        r"(?:本材料|本课程|这节(?:课|微课)|该视频|本视频|视频)\s*(?:的)?\s*"
+        r"(?:总?时长\s*(?:约为|大约|约|为|是|[:：])?|总共|共计|全长|长达|持续|共|约为|大约|约)\s*"
+        r"(?:约|大约|为|是|[:：])?\s*(\d+(?:\.\d+)?)\s*(小时|分钟|秒)",
     )
     for value, unit in duration_pattern.findall(opening):
         claimed = float(value) * {"小时": 3600, "分钟": 60, "秒": 1}[unit]
@@ -457,6 +466,8 @@ def note_grounding_issues(
         for token in re.findall(r"[A-Za-z][A-Za-z0-9+_.-]{2,}", evidence)
     }
     note_without_urls = re.sub(r"https?://\S+", " ", text)
+    # TL;DR is a formatting label, not an invented term from the video.
+    note_without_urls = re.sub(r"\btl\s*[;:/]\s*dr\b", " ", note_without_urls, flags=re.I)
     unsupported_tokens = sorted({
         token
         for token in (
@@ -498,6 +509,9 @@ def _repair_grounded_note(
                     "你是学习笔记的事实核查编辑。下面的候选笔记包含超出证据或时长错误。"
                     "请直接输出修订后的 Markdown，不要解释修改过程。\n"
                     "只允许保留字幕和画面摘要能支持的课程内容；删除外部工具、通用经验、老师没有讲过的例题和无依据建议。"
+                    "外文专有名称只能使用证据原文，禁止自行补写英文译名。"
+                    "对检测问题 unsupported_terms 中逐个列出的外文项，必须删除该外文写法（包括括号译名和标题），"
+                    "保留材料支持的对应中文解释；不得因为你知道某个酒店、品牌或人名的英文名称就继续保留。"
                     "可以保留自测题，但必须明确写“自测题”，且答案可由证据直接推出。\n"
                     f"{_evidence_contract(transcript, grids)}\n"
                     f"标题：{title}\n"
@@ -525,6 +539,7 @@ def _validated_generated_note(
     visual_evidence: str,
     events: list[dict] | None,
     title: str = "",
+    artifact_dir: Path | None = None,
 ) -> str:
     issues = note_grounding_issues(candidate, transcript, grids, visual_evidence, title)
     if not issues:
@@ -553,6 +568,16 @@ def _validated_generated_note(
         issues=remaining or ["empty_repair"],
         model=model,
     )
+    if artifact_dir is not None:
+        try:
+            artifact_dir.mkdir(parents=True, exist_ok=True)
+            (artifact_dir / "rejected-summary.md").write_text(repaired or candidate, encoding="utf-8")
+            (artifact_dir / "rejected-summary-issues.json").write_text(
+                json.dumps({"issues": remaining or issues, "published": False}, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        except OSError:
+            pass
     return ""
 
 
@@ -1191,7 +1216,7 @@ def summarize_with_llm(
     vision_cache_dir: Path | None = None,
     cancel_check: Callable[[], bool] | None = None,
 ) -> tuple[str, str] | None:
-    api_key = options.llm_api_key or LLM_API_KEY
+    api_key = options.llm_api_key or (connected_api_key(options) if options.use_saved_connection else LLM_API_KEY)
     if not api_key:
         _record_llm_event(events, "configuration", "missing_api_key")
         return None
@@ -1396,6 +1421,7 @@ def summarize_with_llm(
                     merge_prompt,
                     events,
                     title,
+                    artifact_dir=vision_cache_dir,
                 )
                 if not grounded:
                     return None
@@ -1470,6 +1496,7 @@ def summarize_with_llm(
             transcript.full_text,
             events,
             title,
+            artifact_dir=vision_cache_dir,
         )
         if not grounded:
             return None
@@ -1518,7 +1545,7 @@ def summarize_with_diagnostics_audit(
     cancel_check: Callable[[], bool] | None = None,
 ) -> tuple[str, str, str, list[dict]]:
     events: list[dict] = []
-    api_key = options.llm_api_key or LLM_API_KEY
+    api_key = options.llm_api_key or (connected_api_key(options) if options.use_saved_connection else LLM_API_KEY)
     if not api_key:
         events.append({"stage": "configuration", "code": "missing_api_key"})
         return (
@@ -1640,7 +1667,7 @@ def _summarize_page_text_with_llm(
     subtitle_body: str,
     options: TaskOptions,
 ) -> str | None:
-    api_key = options.llm_api_key or LLM_API_KEY
+    api_key = options.llm_api_key or (connected_api_key(options) if options.use_saved_connection else LLM_API_KEY)
     if not api_key:
         return None
     try:

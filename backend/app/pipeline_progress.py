@@ -14,7 +14,7 @@ from .text_cleanup import canonicalize_unicode_text, redact_sensitive_url_values
 
 
 PIPELINE_METRICS_SCHEMA_VERSION = 2
-_STAGES = {"media", "transcript", "visual", "summary"}
+_STAGES = {"subtitle_probe", "download", "media", "transcript", "visual", "summary"}
 
 
 def _metrics(task_id: str) -> dict:
@@ -119,7 +119,7 @@ def record_stage_duration(task_id: str, stage: str, started_at: float, status: s
         entry = {
             "sequence": _next_sequence(payload),
             "duration_ms": round(max(0.0, time.monotonic() - float(started_at)) * 1000),
-            "status": status if status in {"completed", "failed", "cancelled"} else "completed",
+            "status": status if status in {"completed", "failed", "cancelled", "skipped"} else "completed",
             "attempt_id": attempt_id,
         }
         for key, value in safe_details.items():
@@ -169,9 +169,9 @@ def write_progressive_draft(task_id: str, title: str, transcript: TranscriptResu
     lines = [
         f"# {clean_title}",
         "",
-        "> 草稿状态：已根据可验证字幕生成首个可用大纲；画面、OCR 与最终总结仍在后台补充。",
+        "> 字幕摘录：原始文字已保存。这里是部分原句预览，不是 AI 总结或章节大纲。",
         "",
-        "## 字幕大纲",
+        "## 原文预览",
         "",
     ]
     for segment in _representative_segments(transcript):
@@ -188,7 +188,7 @@ def write_progressive_draft(task_id: str, title: str, transcript: TranscriptResu
         "",
         "## 当前状态",
         "",
-        "- 字幕文本已经可读；视觉证据与最终结构完成后，本草稿会自动替换为正式笔记。",
+        "- 完整内容保留在字幕页；AI 总结完成后，正文才会更新为提炼后的笔记。",
         "",
     ])
     target = task_dir(task_id) / "draft.md"

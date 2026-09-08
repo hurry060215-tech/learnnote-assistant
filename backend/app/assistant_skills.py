@@ -109,11 +109,12 @@ def execute_global(skill_id: str, question: str, options=None) -> dict:
         base=getattr(options,"llm_base_url",None) or LLM_BASE_URL
         parsed=urlsplit(base)
         if parsed.scheme not in {"http","https"}:raise ValueError("invalid_model_endpoint")
-        explicit_key=getattr(options,"llm_api_key",None)
+        from .model_connections import connected_api_key
+        explicit_key=getattr(options,"llm_api_key",None) or connected_api_key(options)
         if parsed.hostname in {"localhost","127.0.0.1","::1"}:
             key=explicit_key or "local-no-key"
         else:
-            key=explicit_key or (LLM_API_KEY if base.rstrip("/")==LLM_BASE_URL.rstrip("/") else "")
+            key=explicit_key or (LLM_API_KEY if not getattr(options,"use_saved_connection",False) and base.rstrip("/")==LLM_BASE_URL.rstrip("/") else "")
         if not key:
             result["answer"]="通用问答需要配置文字模型。使用帮助、工作环境和资料搜索可以直接在本机使用。"
             result["actions"]=[{"id":"settings_model","label":"配置文字模型"}]

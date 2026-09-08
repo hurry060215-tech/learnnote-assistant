@@ -41,6 +41,34 @@ export const timestamp = (value) => {
     : `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 };
 
+// Plain model references use brackets even when Markdown links are disabled.
+// Return positions only; the renderer creates buttons without injecting HTML.
+export function timestampRanges(text) {
+  const parse = (value) => {
+    const parts = value.split(":").map(Number);
+    if (parts.at(-1) >= 60 || (parts.length === 3 && parts[1] >= 60))
+      return null;
+    return parts.length === 3
+      ? parts[0] * 3600 + parts[1] * 60 + parts[2]
+      : parts[0] * 60 + parts[1];
+  };
+  return [
+    ...String(text).matchAll(
+      /\[(\d{1,3}:\d{2}(?::\d{2})?)\s*[–—~～-]\s*(\d{1,3}:\d{2}(?::\d{2})?)\]/g,
+    ),
+  ]
+    .map((match) => ({
+      index: match.index,
+      label: match[0],
+      start: parse(match[1]),
+      end: parse(match[2]),
+    }))
+    .filter(
+      (range) =>
+        range.start !== null && range.end !== null && range.end >= range.start,
+    );
+}
+
 export function taskAsset(value, taskId) {
   try {
     const url = new URL(value, location.origin);

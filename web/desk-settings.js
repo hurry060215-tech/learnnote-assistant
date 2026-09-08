@@ -303,8 +303,9 @@ export function installSettings(ctx) {
   }
   function applyAppearance(p) {
     const fonts = {
-      sans: '"Segoe UI", "Microsoft YaHei", sans-serif',
-      serif: '"Noto Serif CJK SC", "SimSun", serif',
+      sans: '"Noto Sans SC", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif',
+      serif:
+        '"Noto Serif SC", "Noto Serif CJK SC", "Songti SC", "SimSun", serif',
       mono: 'Consolas, "Microsoft YaHei", monospace',
     };
     const colors = {
@@ -525,6 +526,11 @@ export function installSettings(ctx) {
           base_url: $("baseUrl").value,
           model: $("model").value || "auto",
           api_key: $("apiKey").value,
+          use_saved_connection:
+            $("provider").value === "openrouter" &&
+            Boolean(state.model.use_saved_connection) &&
+            $("baseUrl").value.trim() === state.model.base_url &&
+            !$("apiKey").value.trim(),
           mode: "models",
         }),
       });

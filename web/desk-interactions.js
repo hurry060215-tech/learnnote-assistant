@@ -106,6 +106,69 @@ export function installInteractions({
     '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6-6 6 6 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   document.querySelector(".toolbar").prepend(back);
   back.onclick = navigateBack;
+  const collapse = document.createElement("button");
+  collapse.id = "collapseSidebar";
+  collapse.type = "button";
+  collapse.setAttribute("aria-label", "折叠笔记侧栏");
+  collapse.title = "折叠笔记侧栏";
+  collapse.innerHTML =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg>';
+  document.querySelector(".brand").after(collapse);
+  $("menu").innerHTML = collapse.innerHTML;
+  const compactScreen = () => matchMedia("(max-width: 760px)").matches;
+  function updateSidebar() {
+    const expanded = compactScreen()
+      ? document.body.classList.contains("menu-open")
+      : !document.body.classList.contains("sidebar-collapsed");
+    $("menu").setAttribute("aria-expanded", String(expanded));
+    $("menu").setAttribute(
+      "aria-label",
+      expanded ? "折叠笔记侧栏" : "展开笔记侧栏",
+    );
+    $("menu").title = expanded ? "折叠笔记侧栏" : "展开笔记侧栏";
+    $("sidebar").inert = !expanded;
+  }
+  try {
+    document.body.classList.toggle(
+      "sidebar-collapsed",
+      localStorage.getItem("learnnote.sidebar.collapsed") === "true",
+    );
+  } catch {}
+  $("menu").onclick = () => {
+    if (document.body.classList.contains("focus-reading")) {
+      document.body.classList.remove("focus-reading", "sidebar-collapsed");
+      $("focusReading").textContent = "专注阅读";
+      if (compactScreen()) document.body.classList.add("menu-open");
+      localStorage.setItem("learnnote.sidebar.collapsed", "false");
+      updateSidebar();
+      return;
+    }
+    if (compactScreen()) document.body.classList.toggle("menu-open");
+    else {
+      document.body.classList.toggle("sidebar-collapsed");
+      localStorage.setItem(
+        "learnnote.sidebar.collapsed",
+        String(document.body.classList.contains("sidebar-collapsed")),
+      );
+    }
+    updateSidebar();
+  };
+  collapse.onclick = () => {
+    $("menu").click();
+    $("menu").focus();
+  };
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && compactScreen()) {
+      document.body.classList.remove("menu-open");
+      updateSidebar();
+    }
+  });
+  window.addEventListener("resize", updateSidebar);
+  window.addEventListener("learnnote:selection", () => {
+    if (compactScreen()) document.body.classList.remove("menu-open");
+    updateSidebar();
+  });
+  updateSidebar();
   document.querySelector(".brand").onclick = (event) => {
     event.preventDefault();
     showHome();
@@ -144,7 +207,8 @@ export function installInteractions({
       ?.focus();
   });
   window.addEventListener("learnnote:navigation", () => {
-    back.disabled = !(state.navigation || []).length;
+    back.hidden = !(state.navigation || []).length;
+    back.disabled = false;
   });
-  back.disabled = true;
+  back.hidden = true;
 }
