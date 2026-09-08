@@ -41,7 +41,7 @@ a = Analysis(
     optimize=0,
 )
 a.datas += Tree('backend/app', prefix='backend/app', excludes=['__pycache__', '*.pyc'])
-a.datas += Tree('web', prefix='web', excludes=['tests', 'tests/*'])
+a.datas += Tree('web', prefix='web', excludes=['tests', 'tests/*', 'classic.html', 'app.js', 'editorial.js', 'model-setup.js', 'learning.js', 'personal-notes.js', 'courses.js', 'i18n.js', 'task-links.js', 'styles.css', 'workspace.css', 'product.css', 'mature.css', 'editorial.css', 'experience.css'])
 pyz = PYZ(a.pure)
 
 exe = EXE(

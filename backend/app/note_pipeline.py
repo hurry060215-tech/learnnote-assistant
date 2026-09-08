@@ -8,6 +8,7 @@ from pathlib import Path
 from .processor_state import ContentMismatchError
 from .note_document import build_note_document, normalize_note_markdown
 from .storage import task_dir, update_task, write_json
+from .summary_outcome import has_generated_summary, safe_summary_events, safe_summary_text, summary_failure_message
 
 
 def finish_note_task(
@@ -70,6 +71,22 @@ def finish_note_task(
     else:
         note, summary_source, summary_warning = summary_result
         llm_events = []
+    summary_warning = safe_summary_text(summary_warning)
+    llm_events = safe_summary_events(llm_events)
+    if not has_generated_summary(summary_source):
+        detail = summary_failure_message(summary_warning, llm_events)
+        diagnostics = build_summary_diagnostics(
+            task_id=task_id, title=title, page_url=page_url, options=options,
+            grids=grids, visual_windows=visual_windows, summary_source=summary_source,
+            summary_warning=detail, llm_events=llm_events,
+        )
+        diagnostics["summary_generated"] = False
+        diagnostics_path = write_json(task_id, "summary_diagnostics.json", diagnostics)
+        update_task(task_id, status="failed", phase="failed", progress=100,
+            message=detail, error_code="summary_unavailable", error_detail=detail,
+            checkpoint="transcript_ready", summary_source=summary_source, summary_warning=detail,
+            summary_diagnostics=diagnostics, summary_diagnostics_path=str(diagnostics_path))
+        return
     evidence_section = evidence_coverage_markdown(integrity, evidence_coverage)
     if "## 依据与覆盖" not in note:
         note = f"{note.rstrip()}\n\n{evidence_section}\n"

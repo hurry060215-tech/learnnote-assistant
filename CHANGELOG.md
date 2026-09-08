@@ -2,6 +2,55 @@
 
 All notable changes to LearnNote are documented here. The project follows semantic versioning while the `0.x` series is under active development.
 
+## 0.2.5 - Captions-first learning preview
+
+- Query platform/player captions before video download in text-only learning; retain requested note style and depth.
+- Add Bilibili browser-session caption lookup and bounded backend player-API fallback with exact part selection.
+- Distinguish actual AI summaries from transcript fallback, keep errors actionable, and retry summary without repeating extraction.
+- Add recorded task timeline and downloadable processing logs, collapsible sidebar, quieter lists and an on-page outline.
+- Make generated time-range references navigable, including transcript-only sources.
+- Add OpenRouter OAuth PKCE with local callback and bound system credential storage, plus expanded model discovery.
+- Refresh the public website and README with documented source/processing boundaries.
+
+## 0.2.4 - Workflow reliability preview
+
+- Reconnect the extension, preserve its active workspace, and use the actual subtitle-only path when clicking Send with full captions.
+- Reuse a running desktop instance per data directory; handle startup failures and restart sequencing visibly.
+- Keep existing notes during resume; reuse local ASR only when media fingerprint, ASR settings and cached content match.
+- Save and preview appearance locally, protect unsaved settings by section, and keep assistant drafts through delayed replies.
+- Open settings and source views without reloading the workbench.
+
+## 0.2.3 - Global assistant preview
+
+- Add an explicit application skill catalog, transparent routing and global help/status/search/chat without requiring a selected note or a LearnNote account.
+- Preserve source-specific question history with skill metadata, and persist global conversations separately in the local data directory.
+- Add backdrop/Escape dismissal, unsaved-edit protection, semantic tool back navigation and workspace history.
+- Add pinned notes and list sorting; respect reduced-motion preferences and remove obsolete landing-page style rules.
+
+## 0.2.2 - Product workbench preview
+
+- Restore a visible AI assistant with contextual conversation history, citations, suggestion prompts and saving answers to annotations.
+- Restore six settings sections, model discovery/provider controls, transcription, style/template profiles, resource controls and reading preferences.
+- Replace the sparse welcome page with source creation, processing presets, runtime status and recent notes; add consistent icons, outline navigation, focus reading and associated versions.
+- Add extension style/format overrides, client preference loading and Markdown/SRT result saving while preserving on-demand capture.
+- Fix the out-of-scope query reference after task creation and retain legacy model configuration on first use.
+
+## 0.2.1 - Unified workspace preview
+
+- Integrate courses, batch links, cited comparison, review proposals/plans, range learning, OCR, scoped questions, annotation editing and diagnostics into the new workspace.
+- Export saved user revisions to Markdown, DOCX and PDF; optionally include personal annotations.
+- Add storage inspection, explicitly scoped index backup/restore and cleanup preview.
+- Exclude the legacy application shell and assets from desktop packages, enforced by the release-tree audit.
+- Add a full browser acceptance flow for the unified tools and support short complete Chinese review facts.
+
+## 0.2.0 - Redesign preview
+
+- Replace the default application shell with an independent reading workspace: one creation dialog, source panel, editable user revisions, annotations and focused review.
+- Preserve legacy specialist tools at `/web/classic.html` while moving core interactions off the old app script and layered stylesheets.
+- Replace repetitive default fallback templates with explicitly labeled complete transcript extracts. Process long text-model inputs in blocks rather than silently truncating the tail.
+- Redesign the public website and README around actual user workflows and stable release links.
+- Add optimistic edit-conflict checks, full-source preservation tests and a browser interaction gate for the new workspace.
+
 ## 0.1.56 - 2026-09-06
 
 ### Added

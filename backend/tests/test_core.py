@@ -1604,7 +1604,7 @@ class ProcessorBoundaryTests(unittest.TestCase):
                             with patch("app.processor.build_frame_grids", return_value=[]):
                                 with patch(
                                     "app.processor.summarize_with_diagnostics",
-                                    return_value=("# Local mp4 normalize", "local-template", ""),
+                                    return_value=("# Local mp4 normalize", "text-llm", ""),
                                 ):
                                     process_local_video_task(task.id, input_path, "Local mp4 normalize", TaskOptions())
 
@@ -1888,7 +1888,7 @@ class ProcessorBoundaryTests(unittest.TestCase):
                 ) as remote_asr, \
                 patch("app.processor.extract_frames_adaptive", return_value=([], [])), \
                 patch("app.processor.build_frame_grids", return_value=[]), \
-                patch("app.processor.summarize_with_diagnostics", return_value=("# Remote ASR", "local-template", "")):
+                patch("app.processor.summarize_with_diagnostics", return_value=("# Remote ASR", "text-llm", "")):
                 process_local_video_task(task.id, input_path, "Remote ASR", options)
 
             remote_asr.assert_called_once()
@@ -1927,7 +1927,7 @@ class ProcessorBoundaryTests(unittest.TestCase):
                 patch("app.processor.transcribe_audio", side_effect=AssertionError("ASR should be skipped")), \
                 patch("app.processor.extract_frames_adaptive", return_value=([], [])), \
                 patch("app.processor.build_frame_grids", return_value=[]), \
-                patch("app.processor.summarize_with_diagnostics", return_value=("# Embedded subtitle lesson", "local-template", "")):
+                patch("app.processor.summarize_with_diagnostics", return_value=("# Embedded subtitle lesson", "text-llm", "")):
                 process_local_video_task(task.id, input_path, "Embedded subtitle lesson", TaskOptions())
 
             record = get_task(task.id)
@@ -2106,12 +2106,13 @@ class ProcessorBoundaryTests(unittest.TestCase):
             self.assertEqual(transcript.source, "browser-subtitle")
             self.assertIn("first browser cue", transcript.full_text)
             self.assertIn("second browser cue", transcript.full_text)
-            return ("# Browser subtitle lesson\n\nfirst browser cue", "local-template", "")
+            return ("# Browser subtitle lesson\n\nfirst browser cue", "text-llm", "")
 
         try:
             request = CurrentPageTaskRequest(
                 page_url="https://course.example.com/lesson",
                 title="Browser subtitle lesson",
+                active_video=ActiveVideoInfo(duration=4),
                 resources=[ResourceCandidate(url="https://cdn.example.com/lesson.mp4", source="webRequest", kind="video")],
                 browser_subtitles=[
                     {"start": 0, "end": 2, "text": "first browser cue"},
@@ -2183,7 +2184,7 @@ class ProcessorBoundaryTests(unittest.TestCase):
             self.assertEqual(transcript.source, "faster-whisper")
             self.assertIn("真实音轨", transcript.full_text)
             self.assertNotIn("页面评论", transcript.full_text)
-            return ("# Bilibili audio lesson\n\n真实音轨内容", "local-template", "")
+            return ("# Bilibili audio lesson\n\n真实音轨内容", "text-llm", "")
 
         try:
             request = CurrentPageTaskRequest(
@@ -2262,7 +2263,7 @@ class ProcessorBoundaryTests(unittest.TestCase):
                 patch("app.processor.build_frame_grids", return_value=[]), \
                 patch(
                     "app.processor.summarize_with_diagnostics",
-                    return_value=("# Playhead lesson", "local-template", ""),
+                    return_value=("# Playhead lesson", "text-llm", ""),
                 ):
                 process_current_page_task(task.id, request)
 
@@ -2313,7 +2314,7 @@ class ProcessorBoundaryTests(unittest.TestCase):
             self.assertIn("full page cue one", transcript.full_text)
             self.assertNotIn("only current visible cue", transcript.full_text)
             self.assertIn("Chapter context from current page", page_context)
-            return ("# Partial browser subtitle lesson\n\nfull page cue one", "local-template", "")
+            return ("# Partial browser subtitle lesson\n\nfull page cue one", "text-llm", "")
 
         try:
             request = CurrentPageTaskRequest(
@@ -2384,7 +2385,7 @@ class ProcessorBoundaryTests(unittest.TestCase):
         def fake_summary(title, transcript, grids, options, page_url, page_context=""):
             self.assertEqual(transcript.source, "browser-subtitle")
             self.assertIn("visible fallback cue", transcript.full_text)
-            return ("# Expired subtitle lesson\n\nvisible fallback cue", "local-template", "")
+            return ("# Expired subtitle lesson\n\nvisible fallback cue", "text-llm", "")
 
         try:
             request = CurrentPageTaskRequest(
@@ -2451,7 +2452,7 @@ class ProcessorBoundaryTests(unittest.TestCase):
         def fake_summary(title, transcript, grids, options, page_url, page_context=""):
             self.assertEqual(transcript.source, "browser-subtitle")
             self.assertIn("visible fallback cue", transcript.full_text)
-            return ("# Bad subtitle lesson\n\nvisible fallback cue", "local-template", "")
+            return ("# Bad subtitle lesson\n\nvisible fallback cue", "text-llm", "")
 
         try:
             request = CurrentPageTaskRequest(
@@ -3883,30 +3884,12 @@ class SummaryFallbackTests(unittest.TestCase):
         grids = [FrameGrid(path="", url="http://127.0.0.1/grid.jpg", start=0, end=20, frame_count=2, frame_timestamps=[0, 10])]
         note = local_markdown_note("Python lesson", transcript, grids, "https://example.com")
         self.assertIn("# Python lesson", note)
-        self.assertIn("00:00:05", note)
-        self.assertIn("## 学习上下文", note)
-        self.assertIn("课程标题：Python lesson", note)
-        self.assertIn("来源页面：https://example.com（example.com）", note)
-        self.assertIn("文本来源：unit", note)
-        self.assertIn("画面切片：1 个窗口，覆盖 `00:00:00 - 00:00:20`；1/1 个窗口有同步字幕。", note)
-        self.assertIn("主题线索：Python lesson；函数用于封装逻辑。", note)
-        self.assertIn("用 W 编号回看画面网格", note)
-        self.assertIn("## 学习路线", note)
-        self.assertIn("优先回看：W001 `00:00:00 - 00:00:20`", note)
-        self.assertIn("分段图文摘要", note)
-        self.assertIn("视觉切片学习卡", note)
-        self.assertIn("回看目标：对照画面确认本段的板书、PPT 切换、代码/界面操作和例题步骤是否被字幕完整覆盖。", note)
-        self.assertIn("![W001 00:00:00 - 00:00:20](http://127.0.0.1/grid.jpg)", note.split("## 画面-字幕对齐索引")[0])
-        self.assertIn("帧时间：00:00:00, 00:00:10", note.split("## 画面-字幕对齐索引")[0])
-        self.assertIn("窗口检查点", note)
-        self.assertIn("00:00:05` 函数用于封装逻辑。；对照画面确认对应的板书、PPT、代码或操作步骤。", note)
-        self.assertIn("自测问题", note)
-        self.assertIn("00:00:05` 这句“函数用于封装逻辑。”在画面中对应的标题、公式、代码或操作状态是什么？", note)
-        self.assertIn("画面-字幕对齐索引", note)
+        self.assertIn("`00:05` 函数用于封装逻辑。", note)
+        self.assertIn("字幕摘录", note)
+        self.assertEqual(note.count("函数用于封装逻辑。"), 1)
         self.assertIn("http://127.0.0.1/grid.jpg", note)
-        self.assertIn("W001 `00:00:00 - 00:00:20`", note)
-        self.assertIn("![W001 00:00:00 - 00:00:20](http://127.0.0.1/grid.jpg)", note)
-        self.assertIn("复习问题", note)
+        self.assertNotIn("## 易错点", note)
+        self.assertNotIn("## 复习问题", note)
 
     def test_local_note_uses_note_template_option(self) -> None:
         transcript = TranscriptResult(
@@ -4051,8 +4034,8 @@ class SummaryFallbackTests(unittest.TestCase):
             page_context="Chapter 7 dynamic programming homework prompt",
         )
 
-        self.assertIn("页面上下文：已采集", note)
-        self.assertIn("不作为转写或笔记证据", note)
+        self.assertIn("字幕摘录", note)
+        self.assertNotIn("## 学习上下文", note)
         self.assertNotIn("Chapter 7 dynamic programming homework prompt", note)
         self.assertEqual(transcript.full_text, "timestamped transcript line")
 
@@ -4069,9 +4052,9 @@ class SummaryFallbackTests(unittest.TestCase):
 
         self.assertEqual(source, "local-template")
         self.assertIn("API Key", warning)
-        self.assertIn("## 学习路线", note)
-        self.assertIn("## 学习上下文", note)
-        self.assertIn("画面-字幕对齐索引", note)
+        self.assertIn("字幕摘录", note)
+        self.assertIn("画面参考", note)
+        self.assertIn("函数用于封装逻辑。", note)
 
     def test_summary_diagnostics_record_page_context_usage(self) -> None:
         diagnostics = build_summary_diagnostics(

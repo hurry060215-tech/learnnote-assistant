@@ -5,7 +5,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const html = fs.readFileSync(path.join(root, "web", "index.html"), "utf8");
+const html = fs.readFileSync(path.join(root, "web", "classic.html"), "utf8");
 const setup = fs.readFileSync(path.join(root, "web", "model-setup.js"), "utf8");
 const app = fs.readFileSync(path.join(root, "web", "app.js"), "utf8");
 const css = fs.readFileSync(path.join(root, "web", "experience.css"), "utf8");
@@ -46,7 +46,8 @@ test("connection check uses a real short chat and never returns or persists the 
   assert.match(backend, /Reply with OK only\./);
   assert.match(backend, /max_retries=0/);
   assert.match(backend, /TRUSTED_MODEL_API_HOSTS/);
-  assert.match(backend, /api_key=payload\.api_key\.strip\(\)/);
+  assert.match(backend, /api_key=key/);
+  assert.match(backend, /key = payload\.api_key\.strip\(\) or connected_api_key/);
   assert.doesNotMatch(setup, /localStorage[\s\S]{0,120}(?:api[_ -]?key|llmApiKey)/i);
   assert.doesNotMatch(app.match(/function currentModelSettings\(\)[\s\S]*?\n\}/)?.[0] || "", /api[_ -]?key/i);
 });

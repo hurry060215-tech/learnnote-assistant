@@ -260,6 +260,19 @@ def correct_common_zh_asr_text(value: str) -> str:
 def correct_transcript_terms(transcript: TranscriptResult) -> TranscriptResult:
     if not transcript.segments and not transcript.full_text:
         return transcript
+    # Local speech decoding may emit a replacement token for an uncertain word.
+    # Preserve the raw artifact upstream, mark sparse uncertainty visibly, and
+    # keep imported text and widespread corruption subject to the strict gate.
+    raw_text = "\n".join(segment.text for segment in transcript.segments) if transcript.segments else transcript.full_text
+    missing = raw_text.count("\ufffd")
+    if transcript.source == "faster-whisper" and 0 < missing <= 10 and missing / max(1, len(raw_text)) <= 0.01:
+        locations = [f"{int(segment.start) // 60:02d}:{int(segment.start) % 60:02d}" for segment in transcript.segments if "\ufffd" in segment.text]
+        warning = f"本地语音识别有 {missing} 处字符无法确定，已标记为【识别不清】，请核对原音频" + ("（" + "、".join(locations) + "）" if locations else "") + "。"
+        transcript = transcript.model_copy(update={
+            "segments": [segment.model_copy(update={"text": segment.text.replace("\ufffd", "【识别不清】")}) for segment in transcript.segments],
+            "full_text": transcript.full_text.replace("\ufffd", "【识别不清】"),
+            "warning": "\n".join(filter(None, [transcript.warning, warning])),
+        })
     segments = [
         segment.model_copy(update={"text": correct_common_zh_asr_text(segment.text)})
         for segment in transcript.segments

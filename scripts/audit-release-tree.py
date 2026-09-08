@@ -34,6 +34,18 @@ REQUIRED_ROOT_FILES = {
 }
 REQUIRED_BUNDLED_FILES = {
     Path("_internal/web/release-notes.json"),
+    Path("_internal/web/index.html"),
+    Path("_internal/web/desk.css"),
+    Path("_internal/web/desk.js"),
+    Path("_internal/web/desk-api.js"),
+    Path("_internal/web/desk-tools.js"),
+    Path("_internal/web/desk-product.js"),
+    Path("_internal/web/desk-settings.js"),
+    Path("_internal/web/desk-interactions.js"),
+    Path("_internal/web/desk-progress.js"),
+    Path("_internal/web/desk-connections.js"),
+    Path("_internal/web/markdown.js"),
+
 }
 GPL_LICENSE_PATH = Path("third_party/licenses/GPL-3.0.txt")
 FFMPEG_SOURCE_PATH = Path("third_party/FFMPEG_SOURCE.md")
@@ -57,6 +69,7 @@ def audit_release_tree(root: Path) -> dict:
     root_files = {path.name for path in root.iterdir() if path.is_file()}
     missing_root = sorted(REQUIRED_ROOT_FILES - root_files)
     missing_bundled = sorted(path.as_posix() for path in REQUIRED_BUNDLED_FILES if not (root / path).is_file())
+    legacy_ui = [str(path.relative_to(root)) for path in files if path.parent == root / "_internal/web" and path.name in {'model-setup.js', 'experience.css', 'editorial.js', 'product.css', 'app.js', 'personal-notes.js', 'learning.js', 'styles.css', 'courses.js', 'workspace.css', 'editorial.css', 'i18n.js', 'task-links.js', 'classic.html', 'mature.css'}]
     license_errors: list[str] = []
     ffmpeg_builds: list[dict] = []
     for executable in files:
@@ -100,10 +113,12 @@ def audit_release_tree(root: Path) -> dict:
         "missing_extension_icons": missing_extension_icons,
         "missing_root": missing_root,
         "missing_bundled": missing_bundled,
+        "legacy_ui": legacy_ui,
         "ffmpeg_builds": ffmpeg_builds,
         "license_errors": license_errors,
         "passed": (
             root.is_dir()
+            and not legacy_ui
             and not forbidden
             and not missing_extension
             and not unexpected_extension

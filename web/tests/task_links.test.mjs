@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const source = fs.readFileSync(path.join(root, "web", "task-links.js"), "utf8");
-const html = fs.readFileSync(path.join(root, "web", "index.html"), "utf8");
+const html = fs.readFileSync(path.join(root, "web", "classic.html"), "utf8");
 const app = fs.readFileSync(path.join(root, "web", "app.js"), "utf8");
 
 test("task link helpers stay isolated from the main application bundle", () => {

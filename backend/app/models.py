@@ -111,6 +111,7 @@ class TaskOptions(BaseModel):
     llm_base_url: str | None = None
     llm_api_key: str | None = None
     llm_model: str | None = None
+    use_saved_connection: bool = False
 
 
 class ActiveVideoInfo(BaseModel):
@@ -202,6 +203,7 @@ class StorageCleanupRequest(BaseModel):
 class TaskQuestionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    skill_id: Literal["note.qa", "note.summary", "study.quiz"] = "note.qa"
     question: str = Field(min_length=1, max_length=1000)
     options: TaskOptions | None = None
 

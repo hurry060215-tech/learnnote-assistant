@@ -7,8 +7,9 @@ from pathlib import Path
 from collections.abc import Callable
 
 from .models import BrowserSubtitleCue, TaskOptions, TranscriptResult
-from .processor_state import ContentMismatchError, check_cancel
+from .processor_state import ContentMismatchError, TaskCancelled, check_cancel
 from .storage import task_dir, update_task, write_json
+from .transcript_cache import load_local_transcript, save_local_transcript, media_cache_integrity
 
 
 @dataclass
@@ -85,6 +86,15 @@ def prepare_transcript(
         )
 
     audio_path: Path | None = None
+    cache_integrity = integrity
+    if transcript is None:
+        check_cancel(task_id)
+        cache_integrity = media_cache_integrity(integrity, normalized_path)
+        transcript = load_local_transcript(task_id, cache_integrity, options)
+        if transcript is not None:
+            update_task(task_id, phase="transcribing", progress=66, message="已复用这段视频的本地转写，无需重新识别音频")
+            cached_audio = work_dir / "audio.wav"
+            audio_path = cached_audio if cached_audio.is_file() else None
     if transcript is None:
         update_task(task_id, phase="processing_video", progress=38, message="正在提取音频")
         audio_path = work_dir / "audio.wav"
@@ -92,6 +102,8 @@ def prepare_transcript(
             extract_audio(normalized_path, audio_path)
             check_cancel(task_id)
             update_task(task_id, audio_path=str(audio_path))
+        except TaskCancelled:
+            raise
         except Exception as exc:
             audio_path = None
             audio_warning = f"未能提取可转写音轨：{exc}；已继续使用画面切片生成笔记。"
@@ -116,10 +128,13 @@ def prepare_transcript(
 
     if transcript is None:
         transcript = TranscriptResult(source="no-audio", warning=audio_warning)
+    check_cancel(task_id)
+    write_json(task_id, "transcript_raw.json", transcript.model_dump(mode="json"))
     transcript = correct_transcript_terms(transcript)
     asr_error = asr_failure_detail(transcript)
     if asr_error:
         transcript = transcript.model_copy(update={"segments": [], "full_text": ""})
+    save_local_transcript(task_id, transcript, cache_integrity, options)
     transcript_path = work_dir / "transcript.json"
     transcript_path.write_text(transcript.model_dump_json(indent=2), encoding="utf-8")
     update_task(task_id, transcript_path=str(transcript_path))

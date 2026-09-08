@@ -122,7 +122,7 @@ MEDIA_CONTENT_TYPE_SUFFIXES = {
     "video/x-msvideo": ".avi",
 }
 SUBTITLE_EXTENSIONS = {".vtt", ".srt", ".ass", ".ssa"}
-SUBTITLE_LANGUAGE_PREFERENCES = ("zh-CN", "zh-Hans", "zh-Hant", "zh", "en", "en-US")
+SUBTITLE_LANGUAGE_PREFERENCES = ("zh-CN", "zh-Hans", "zh-Hant", "zh", "ai-zh", "en", "en-US", "ai-en")
 BROWSER_REQUEST_HEADER_ALLOWLIST = {
     "accept": "Accept",
     "accept-language": "Accept-Language",
@@ -1455,6 +1455,7 @@ def choose_ytdlp_subtitle_language(info: dict) -> tuple[str, bool]:
     for subtitles, automatic in subtitle_maps:
         if not isinstance(subtitles, dict) or not subtitles:
             continue
+        subtitles = {lang: tracks for lang, tracks in subtitles.items() if str(lang).lower() not in {"danmaku", "live_chat"}}
         for preferred in SUBTITLE_LANGUAGE_PREFERENCES:
             preferred_lower = preferred.lower()
             for lang in subtitles:
@@ -2282,6 +2283,7 @@ class MediaDownloader:
         self.progress_callback = progress_callback
         self.status_callback = status_callback
         self.resolved_title = ""
+        self.resolved_duration = 0.0
 
     def _notify_progress(self, downloaded: int, total: int | None, candidate: ResourceCandidate) -> None:
         if downloaded <= 0 or not self.progress_callback:
@@ -2544,6 +2546,30 @@ class MediaDownloader:
                 return path
             except DownloadError as exc:
                 self._record_attempt(strategy="subtitle-file", candidate=candidate, status="failed", code=exc.code, message=exc.message)
+
+        from .bilibili_subtitles import BilibiliSubtitleError, fetch_bilibili_subtitle
+        def subtitle_headers(url: str) -> dict[str, str]:
+            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/132.0.0.0 Safari/537.36", "Referer": referer}
+            scoped_cookie = cookie_header_for_url(cookies, url)
+            if scoped_cookie:
+                headers["Cookie"] = scoped_cookie
+            return headers
+        try:
+            direct = fetch_bilibili_subtitle(referer, self.download_dir / "bilibili-platform.srt", subtitle_headers)
+            if direct:
+                self.resolved_title = direct.title
+                self.resolved_duration = direct.duration
+                if direct.path:
+                    self._record_attempt(strategy="subtitle-bilibili", url=referer, status="success",
+                        message="已直接读取 B 站字幕，无需下载视频。", output_path=direct.path)
+                    return direct.path
+        except BilibiliSubtitleError as exc:
+            self._record_attempt(strategy="subtitle-bilibili", url=referer, status="failed", code=exc.code, message=exc.message)
+            if exc.code == "source_changed":
+                raise DownloadError(exc.code, exc.message) from exc
+        except requests.RequestException:
+            self._record_attempt(strategy="subtitle-bilibili", url=referer, status="failed",
+                code="subtitle_unavailable", message="B 站字幕请求未完成，继续尝试平台字幕解析。")
 
         found_platform_subtitle = False
         for fallback_url in fallback_page_urls(referer, resources):
@@ -2890,10 +2916,19 @@ class MediaDownloader:
 
         cookie_file = write_netscape_cookie_file(cookies, self.task_path / "subtitle_cookies.txt") if cookies else None
         http_headers = ytdlp_headers_from_browser_context(page_url, resources)
+        class SubtitleProbeLogger(QuietYtdlpLogger):
+            auth_required = False
+            def warning(self, message):
+                lowered = str(message).lower()
+                if "subtitle" in lowered and any(word in lowered for word in ("logged in", "login", "sign in")):
+                    self.auth_required = True
+        probe_logger = SubtitleProbeLogger()
         probe_opts = {
+            "writesubtitles": True,
+            "writeautomaticsub": True,
             "quiet": True,
             "no_warnings": True,
-            "logger": QuietYtdlpLogger(),
+            "logger": probe_logger,
             "noprogress": True,
             "socket_timeout": YTDLP_SOCKET_TIMEOUT_SECONDS,
             "retries": YTDLP_RETRIES,
@@ -2917,8 +2952,13 @@ class MediaDownloader:
                 return None
             raise DownloadError("download_forbidden", f"yt-dlp 无法探测平台字幕：{message[:300]}") from exc
 
+        if isinstance(info, dict):
+            self.resolved_title = clean_task_title(str(info.get("title") or ""), page_url, title)
+            self.resolved_duration = max(0.0, float(info.get("duration") or 0))
         lang, automatic = choose_ytdlp_subtitle_language(info or {})
         if not lang:
+            if probe_logger.auth_required:
+                raise DownloadError("auth_required", "平台字幕需要 B 站登录态；本次未取得可访问字幕，不能判断视频没有字幕。请从已登录的播放器重新交接。")
             return None
 
         outtmpl = str(self.download_dir / f"{_clean_filename(title)}_platform_sub.%(ext)s")
@@ -2946,7 +2986,7 @@ class MediaDownloader:
             opts["cookiefile"] = str(cookie_file)
 
         before = set(self.download_dir.glob("*"))
-        self._notify_status("正在使用 yt-dlp 解析并下载页面视频", 18, (resources or [None])[0])
+        self._notify_status("正在获取平台字幕（不下载视频）", 32, (resources or [None])[0])
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
                 ydl.extract_info(page_url, download=True)

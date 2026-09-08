@@ -25,6 +25,7 @@ def review_points(text: str) -> list[tuple[str, str]]:
             sentence = sentence.strip()
             # Keep a complete, short quotation. Long material is not truncated
             # into an unanswerable card; users can select/edit it explicitly.
-            if 20 <= len(sentence) <= 360:
+            minimum = 8 if len(re.findall(r"[\u4e00-\u9fff]", sentence)) >= 6 else 20
+            if minimum <= len(sentence) <= 360:
                 points.append((heading, sentence))
     return points

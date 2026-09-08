@@ -1,6 +1,6 @@
 #define MyAppName "LearnNote"
 #ifndef MyAppVersion
-#define MyAppVersion "0.1.56"
+#define MyAppVersion "0.2.5"
 #endif
 
 [Setup]
@@ -41,6 +41,12 @@ Type: filesandordirs; Name: "{app}\_internal\extension\tests"
 Type: filesandordirs; Name: "{app}\_internal\web\tests"
 Type: filesandordirs; Name: "{app}\_internal\backend\.venv"
 Type: filesandordirs; Name: "{app}\extension\tests"
+
+[Registry]
+Root: HKCU; Subkey: "Software\Classes\learnnote"; ValueType: string; ValueData: "URL:LearnNote"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\learnnote"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
+Root: HKCU; Subkey: "Software\Classes\learnnote\DefaultIcon"; ValueType: string; ValueData: """{app}\LearnNote.exe"",0"
+Root: HKCU; Subkey: "Software\Classes\learnnote\shell\open\command"; ValueType: string; ValueData: """{app}\LearnNote.exe"" --protocol ""%1"""
 
 [Icons]
 Name: "{group}\LearnNote"; Filename: "{app}\LearnNote.exe"

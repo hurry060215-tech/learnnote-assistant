@@ -63,6 +63,8 @@ class ReleaseTreeAuditTests(unittest.TestCase):
             root = Path(temp_dir)
             self.populate_extension(root)
             self.populate_legal_files(root)
+            self.populate_bundled_files(root)
+            (root / "_internal/web/release-notes.json").unlink()
             result = MODULE.audit_release_tree(root)
             self.assertFalse(result["passed"])
             self.assertEqual(["_internal/web/release-notes.json"], result["missing_bundled"])

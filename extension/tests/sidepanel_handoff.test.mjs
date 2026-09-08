@@ -24,7 +24,7 @@ assert.match(startMessage.sourceIdentity.captured_at, /^\d{4}-\d{2}-\d{2}T/);
 assert.match(startMessage.handoffId, /^ln-[0-9a-f]{8}-[a-z0-9]+$/);
 assert.equal(harness.elements.get("#handoffProgress").getAttribute("aria-valuenow"), "100");
 assert.equal(harness.progressBar.style.width, "100%");
-assert.equal(harness.elements.get("#handoffStatus").textContent, "任务已创建，并已在客户端打开。");
+assert.equal(harness.elements.get("#handoffStatus").textContent, "已交接到工作台，请确认并开始整理。");
 assert.equal(harness.elements.get("#sendButtonLabel").textContent, "已发送到客户端");
 assert.equal(harness.elements.get("#openTaskButton").hidden, false);
 
@@ -73,7 +73,7 @@ subtitlePage.page.browser_subtitles = Array.from({ length: 12 }, (_, index) => (
   text: `第 ${index + 1} 个知识点`
 }));
 const subtitleHarness = await createSidepanelHarness({ contexts: [subtitlePage, subtitlePage] });
-assert.equal(await subtitleHarness.api.sendToClient(), true, "complete browser subtitles should use the fast path");
+assert.equal(await subtitleHarness.elements.get("#sendButton").dispatch("click"), true, "a real click with complete subtitles must use the fast path");
 const subtitleStart = subtitleHarness.sentMessages.find(item => item.type === "start-current-task");
 assert.ok(subtitleStart, "subtitle-only task should be created");
 assert.equal(subtitleStart.mode, "subtitle_only");

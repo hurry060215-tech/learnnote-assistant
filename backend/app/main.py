@@ -32,7 +32,7 @@ from .media import MediaProcessingError, extract_video_clip, probe_duration, pro
 from .knowledge import add_evidence, answer_from_evidence, evidence_for_task, extract_import_text, remove_evidence, search_evidence
 from .integrations import notion_export_payload
 from .embeddings import embedding_status
-from .models import CurrentPageTaskRequest, EvidenceCoverage, MediaIntegrity, MediaPreflightRequest, PagePreflightRequest, RerunFromMediaRequest, ResourceCandidate, SourceEvidence, SourceInputRequest, StorageCleanupRequest, StudyCard, StudyCardPositionRequest, StudyCardStatusRequest, StudyPlanUpdateRequest, StudyReviewRequest, TaskOptions, TaskQuestionRequest, TaskRecord, now_iso
+from .models import CurrentPageTaskRequest, EvidenceCoverage, MediaIntegrity, MediaPreflightRequest, PagePreflightRequest, RerunFromMediaRequest, ResourceCandidate, SourceEvidence, SourceInputRequest, StorageCleanupRequest, StudyCard, StudyCardPositionRequest, StudyCardStatusRequest, StudyPlanUpdateRequest, StudyReviewRequest, TaskOptions, TaskQuestionRequest, TaskRecord, TranscriptResult, now_iso
 from .observability import read_task_events, redacted_support_manifest
 from .study import due_cards, export_study_data, get_study_plan, list_cards, propose_cards, review_card, review_history, save_cards, set_card_position, set_card_status, study_summary, update_study_plan
 from .processor import browser_subtitle_text_is_player_ui, process_current_page_task, process_local_video_task, read_note, read_transcript, read_visual_index, redacted_request_dump, redacted_resource
@@ -43,6 +43,8 @@ from .upload_limits import UploadBudgetMiddleware, UploadBudgetExceeded, write_v
 from .source_input import SourceInputError, clean_task_title, normalize_source_input
 from .storage import cleanup_tasks, create_task, delete_all_tasks, delete_task, get_task, list_tasks, read_json, request_task_cancel, storage_summary, task_dir, update_task, write_json
 from .routers.knowledge_study import knowledge_router, study_router, task_study_router
+from .model_connections import connected_api_key
+from .routers.connections import connection_router
 from .routers.system import system_router
 from .routers.library import library_router
 from .routers.notes import notes_router
@@ -70,6 +72,7 @@ app.include_router(knowledge_router)
 app.include_router(study_router)
 app.include_router(task_study_router)
 app.include_router(system_router)
+app.include_router(connection_router)
 app.include_router(library_router)
 app.include_router(notes_router)
 app.include_router(events_router)
@@ -1962,7 +1965,7 @@ def task_source_evidence_quality(task: TaskRecord) -> tuple[dict, dict]:
     subtitle_only = task.mode == "subtitle_only" or diagnostics.get("source_kind") == "subtitle_only"
 
     if subtitle_only:
-        source_kind = "browser_subtitles_only"
+        source_kind = "browser_subtitles_only" if transcript_source == "browser-subtitle" else "platform_subtitles_only"
     elif invalid_media:
         source_kind = "invalid_media"
     elif task.source_type == "local":
@@ -1978,7 +1981,7 @@ def task_source_evidence_quality(task: TaskRecord) -> tuple[dict, dict]:
 
     if subtitle_only:
         source_level = "high"
-        source_reason = "Complete browser subtitle cues passed the local coverage and player-UI checks; media was intentionally skipped."
+        source_reason = "Usable platform/player subtitles are available; video download and audio transcription were intentionally skipped."
     elif invalid_media:
         source_level = "none"
         source_reason = "The saved file came from a definitively non-video source." if invalid_media_source else "A saved media path exists, but the file is not a recognized video container."
@@ -2085,6 +2088,7 @@ def task_payload(task: TaskRecord) -> dict:
     payload["audit"] = task_audit_summary(task)
     payload["recovery"] = diagnostic_recovery_profile(task)
     payload["reuse"] = task_reuse_evidence(task)
+    payload["resume_available"] = task_media_file_exists(task)
     payload["next_actions"] = task_next_actions(task)
     qa_history = read_task_qa_history(task.id)
     payload["qa"] = {
@@ -2556,6 +2560,16 @@ MODEL_PROVIDER_PRESETS = [
 ]
 
 
+MODEL_PROVIDER_PRESETS.extend([
+    {"key": "openrouter", "label": "OpenRouter", "base_url": "https://openrouter.ai/api/v1", "model": "openrouter/auto", "transcriber": "faster-whisper", "whisper_model": "small", "tier": "aggregator", "recommended": False, "capabilities": ["text", "vision"], "auth_modes": ["api_key", "oauth_pkce"]},
+    {"key": "siliconflow", "label": "硅基流动 SiliconFlow", "base_url": "https://api.siliconflow.cn/v1", "model": "", "transcriber": "faster-whisper", "whisper_model": "small", "tier": "aggregator", "recommended": False, "capabilities": ["text", "vision"], "auth_modes": ["api_key"]},
+])
+
+@app.get("/api/model/providers")
+def model_provider_catalog():
+    return {"providers": [{**p, "auth_modes": p.get("auth_modes", ["api_key"])} for p in MODEL_PROVIDER_PRESETS], "local_login_required": False}
+
+
 ASSISTANT_CAPABILITIES = {
     "routes": ["current_page_direct", "subtitle_only", "local_upload", "download_only", "rerun_from_media", "page_text", "task_qa", "library_search", "knowledge_import", "knowledge_search", "knowledge_embedding_status", "study_loop", "study_proposals", "study_summary", "study_export", "study_plan", "task_events", "support_package", "integration_manifest", "notion_export"],
     "direct_media": {
@@ -2585,6 +2599,7 @@ def health_payload() -> dict:
     ytdlp_cli = shutil.which("yt-dlp") or shutil.which("yt-dlp.exe") or ""
     return {
         "ok": True,
+        "service": "learnnote",
         "app_version": APP_VERSION,
         "backend_version": APP_VERSION,
         "api_version": API_VERSION,
@@ -3053,6 +3068,7 @@ def append_task_qa_history(task: TaskRecord, request: TaskQuestionRequest, resul
     item = {
         "id": uuid4().hex[:10],
         "created_at": now_iso(),
+        "skill_id": request.skill_id,
         "question": _clip_text(request.question, 1000),
         "answer": str(result.get("answer") or ""),
         "source": str(result.get("source") or ""),
@@ -3272,7 +3288,7 @@ def _answer_task_question(task: TaskRecord, request: TaskQuestionRequest) -> dic
         )
     evidence_prompt = _qa_evidence_prompt(citations)
 
-    api_key = options.llm_api_key or LLM_API_KEY
+    api_key = options.llm_api_key or (connected_api_key(options) if options.use_saved_connection else LLM_API_KEY)
     base_url = options.llm_base_url or LLM_BASE_URL
     model = options.llm_model or LLM_MODEL
     if api_key:
@@ -3445,7 +3461,7 @@ def automatic_diagnostics(payload: dict | None = Body(default=None)) -> dict:
         options = TaskOptions.model_validate(options_payload)
     except ValidationError:
         options = TaskOptions()
-    api_key = options.llm_api_key or LLM_API_KEY
+    api_key = options.llm_api_key or (connected_api_key(options) if options.use_saved_connection else LLM_API_KEY)
     base_url = options.llm_base_url or LLM_BASE_URL
     model = options.llm_model or LLM_MODEL
     if api_key:
@@ -3649,7 +3665,7 @@ def create_from_current_page(request: CurrentPageTaskRequest, background_tasks: 
                 status="queued",
                 phase="queued",
                 progress=0,
-                message="Awaiting confirmation in LearnNote",
+                message="待确认：先尝试读取字幕，再按所选方式整理",
                 active_video=request.active_video,
                 browser_subtitles=request.browser_subtitles,
                 selected_resource=redacted_resource(highest_score_resource) if highest_score_resource else None,
@@ -3702,7 +3718,7 @@ def start_deferred_current_page_task(
         task_id,
         awaiting_confirmation=False,
         options=public_options,
-        message="Confirmed; queued for processing",
+        message="已确认，等待开始处理",
     )
     schedule_processing(background_tasks, process_current_page_task, task.id, deferred_request)
     with _deferred_handoffs_lock:
@@ -3921,6 +3937,44 @@ def create_from_existing_media(
     return {"task_id": task.id, "task": task_payload(task), "source_task_id": source.id}
 
 
+@app.post("/api/tasks/{task_id}/retry-summary")
+def retry_summary(task_id: str, background_tasks: BackgroundTasks, request: TaskOptions | None = Body(default=None)) -> dict:
+    from .models import TranscriptResult
+    from .processor import process_saved_transcript_task
+    try:
+        source = get_task(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(404, "任务不存在。") from exc
+    if source.status in {"running", "queued", "cancelling"}:
+        raise HTTPException(409, "任务已经在处理中。")
+    path = Path(source.transcript_path) if source.transcript_path else None
+    if not path or not path.is_file() or path.resolve().parent != task_dir(task_id).resolve():
+        raise HTTPException(409, "没有可复用的字幕，请先取得字幕或转写。")
+    try:
+        transcript = TranscriptResult.model_validate_json(path.read_bytes())
+        if not transcript.full_text.strip():
+            raise ValueError("empty")
+    except ValueError as exc:
+        raise HTTPException(409, "保存的字幕不可用，请重新取得字幕。") from exc
+    options = merge_task_options(source.options, request)
+    if source.note_path:
+        previous = Path(source.note_path)
+        if previous.is_file() and previous.resolve().parent == task_dir(task_id).resolve():
+            import hashlib
+            content = previous.read_bytes()
+            versions = task_dir(task_id) / "summary_versions"
+            versions.mkdir(exist_ok=True)
+            target = versions / (hashlib.sha256(content).hexdigest() + ".md")
+            if not target.exists():
+                target.write_bytes(content)
+    task = update_task(task_id, status="queued", phase="queued", progress=0, error_code="", error_detail="", failed_phase="",
+        cancel_requested=False, cancel_requested_at="", cancelled_at="", awaiting_confirmation=False,
+        message="使用已保存字幕重新生成总结，不下载视频、不重新转写。", retry_count=source.retry_count+1,
+        options=options.model_copy(update={"llm_api_key":None}))
+    schedule_processing(background_tasks, process_saved_transcript_task, task_id, options, _queue_kind="summary")
+    return {"task_id": task_id, "task": task_payload(task)}
+
+
 @app.post("/api/tasks/{task_id}/resume")
 def resume_task_from_checkpoint(
     task_id: str,
@@ -3943,28 +3997,35 @@ def resume_task_from_checkpoint(
             detail={"code": "media_not_found", "message": "没有找到可恢复的本地媒体，请重新从当前页面发起。"},
         )
     parsed_options = merge_task_options(source.options, rerun_options_from_body(request))
+    # Seed older owned local transcripts before resetting attempt status.
+    # The pipeline checks media hash and ASR settings before reusing this cache.
+    from .transcript_cache import load_local_transcript, save_local_transcript, media_cache_integrity
+    cache_integrity = media_cache_integrity(source.media_integrity, media_path)
+    if source.transcript_path and load_local_transcript(source.id, cache_integrity, source.options) is None:
+        try:
+            owned_path = Path(source.transcript_path).resolve()
+            if owned_path.parent == task_dir(source.id).resolve():
+                cached_transcript = TranscriptResult.model_validate_json(owned_path.read_bytes())
+                save_local_transcript(source.id, cached_transcript, cache_integrity, source.options)
+        except (OSError, ValueError):
+            pass
     task = update_task(
         task_id,
         status="queued",
         phase="queued",
         progress=0,
-        message=f"从恢复检查点继续：{source.checkpoint or 'media_ready'}",
+        message="正在恢复处理，已生成的内容继续保留；匹配的本地转写会自动复用。",
         error_code="",
         error_detail="",
         failed_phase="",
         cancel_requested=False,
         cancel_requested_at="",
         cancelled_at="",
-        note_path="",
-        transcript_path="",
-        audio_path="",
         visual_index_path="",
         evidence_coverage_path="",
         evidence_coverage=EvidenceCoverage(),
         frame_grids=[],
         visual_windows=[],
-        summary_source="",
-        summary_warning="",
         summary_diagnostics_path="",
         summary_diagnostics={},
         options=parsed_options.model_copy(update={"llm_api_key": None}),
@@ -4299,7 +4360,10 @@ def api_task_question(task_id: str, request: TaskQuestionRequest) -> dict:
         task = get_task(task_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Task not found") from exc
-    result = _answer_task_question(task, request)
+    instructions = {"note.summary": "总结当前内容的重点，保留来源。", "study.quiz": "根据当前来源给出三道自测题、参考答案与出处。"}
+    prefix = instructions.get(request.skill_id, "")
+    effective = request.model_copy(update={"question": f"{prefix} 用户要求：{request.question}"}) if prefix else request
+    result = _answer_task_question(task, effective)
     history_item, history = append_task_qa_history(task, request, result)
     result["history_item"] = history_item
     result["history_count"] = len(history)

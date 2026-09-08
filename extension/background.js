@@ -116,9 +116,12 @@ async function pairingHeaders(backendUrl, headers = {}) {
 async function sendBackendHeartbeat(backendUrl) {
   if (typeof fetch !== "function") return false;
   const extensionVersion = String(chrome.runtime?.getManifest?.().version || "");
+  const controller = typeof AbortController === "function" ? new AbortController() : null;
+  const timer = controller ? setTimeout(() => controller.abort(), 3000) : 0;
   try {
     const response = await fetch(`${backendUrl}/api/extension/heartbeat`, {
       method: "POST",
+      ...(controller ? { signal: controller.signal } : {}),
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         extension_version: extensionVersion,
@@ -126,20 +129,21 @@ async function sendBackendHeartbeat(backendUrl) {
         source: "background"
       })
     });
-    return response?.ok !== false;
+    if (!response?.ok) return false;
+    const payload = await response.json();
+    return payload?.ok === true && payload.extension_connected === true && payload.protocol_version === EXTENSION_PROTOCOL_VERSION;
   } catch {
     return false;
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
 
 async function heartbeatInstalledClient() {
   const preferred = await storedBackendUrl();
-  if (await sendBackendHeartbeat(preferred)) return true;
-  if (preferred !== DEFAULT_BACKEND_URL && await sendBackendHeartbeat(DEFAULT_BACKEND_URL)) {
-    await chrome.storage?.local?.set?.({ backendUrl: DEFAULT_BACKEND_URL });
-    return true;
-  }
-  return false;
+  // The side panel discovers/selects a workbench. A background heartbeat must
+  // not silently replace it with another running instance and another library.
+  return sendBackendHeartbeat(preferred);
 }
 
 function scheduleBackendHeartbeat() {
@@ -2072,6 +2076,68 @@ async function collectFramePageData(tab, frameId) {
   }
 }
 
+// Runs only during the user's current-page collection; no hooks or listeners
+// are retained in the website. Browser credentials are sent only to Bilibili.
+async function readBilibiliCaptions(expectedUrl) {
+  const identity = (value) => {
+    const u = new URL(value);
+    return /(^|\.)bilibili\.com$/.test(u.hostname) ? `${u.pathname.replace(/\/$/, "")}?p=${u.searchParams.get("p") || "1"}` : "";
+  };
+  const expected = identity(expectedUrl);
+  if (!expected || identity(location.href) !== expected) return {status:"source_changed", cues:[]};
+  const bvid = new URL(expectedUrl).pathname.match(/\/video\/(BV[0-9A-Za-z]+)/)?.[1];
+  if (!bvid) return {status:"unsupported",cues:[]};
+  async function get(url, credentials) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 4500);
+    try {
+      const r = await fetch(url, {credentials, signal:controller.signal, redirect:"error"});
+      if (!r.ok) throw new Error("subtitle_http");
+      const text = await r.text();
+      if (text.length > 2500000) throw new Error("subtitle_too_large");
+      return JSON.parse(text);
+    } finally {clearTimeout(timer);}
+  }
+  try {
+    const view = await get(`https://api.bilibili.com/x/web-interface/view?bvid=${encodeURIComponent(bvid)}`,"include");
+    const part = Number(new URL(expectedUrl).searchParams.get("p") || 1);
+    const page = view.data?.pages?.find(item => item.page === part);
+    if (view.code !== 0 || !page?.cid) return {status:"unavailable",cues:[]};
+    const info = await get(`https://api.bilibili.com/x/player/wbi/v2?bvid=${encodeURIComponent(bvid)}&cid=${page.cid}`,"include");
+    const tracks = (info.data?.subtitle?.subtitles || []).filter(item => item.subtitle_url && item.lan);
+    tracks.sort((a,b) => {
+      const rank = t => /^zh/.test(t.lan) ? 0 : /^ai-zh/.test(t.lan) ? 1 : /^en/.test(t.lan) ? 2 : 3;
+      return rank(a)-rank(b);
+    });
+    if (info.code !== 0) return {status:info.code === -101 ? "auth_required" : "unavailable",cues:[]};
+    if (!tracks.length) return {status:info.data?.need_login_subtitle ? "auth_required" : "not_found",cues:[]};
+    const target = new URL(tracks[0].subtitle_url, "https://www.bilibili.com");
+    if (target.protocol !== "https:" || !/(^|\.)(bilibili\.com|hdslb\.com|bilivideo\.com)$/.test(target.hostname)) return {status:"untrusted_subtitle_host",cues:[]};
+    const body = await get(target.href,"omit");
+    if (identity(location.href) !== expected) return {status:"source_changed",cues:[]};
+    const cues = (body.body || []).slice(0,10000).filter(c => Number.isFinite(c.from) && Number.isFinite(c.to) && c.from >= 0 && c.to > c.from && typeof c.content === "string")
+      .map(c=>({start:c.from,end:c.to,text:c.content.slice(0,2000)}));
+    return {status:cues.length ? "ready" : "not_found", cues, language:tracks[0].lan, duration:Number(page.duration || view.data.duration || 0)};
+  } catch {return {status:"unavailable",cues:[]};}
+}
+const biliSubtitleCache = new Map();
+async function addBilibiliCaptions(tab, page) {
+  if (!/^https:\/\/(?:www\.)?bilibili\.com\/video\/BV/i.test(tab.url || "") || !captureActive(tab.id)) return page;
+  const key = String(tab.url).split("#")[0];
+  let cached = biliSubtitleCache.get(tab.id);
+  if (!cached || cached.url !== key || Date.now()-cached.at > 30000) {
+    try {
+      const response = await chrome.scripting.executeScript({target:{tabId:tab.id,frameIds:[0]},world:"MAIN",func:readBilibiliCaptions,args:[key]});
+      cached = {url:key,at:Date.now(),result:response[0]?.result || {status:"unavailable",cues:[]}};
+      biliSubtitleCache.set(tab.id,cached);
+      if (biliSubtitleCache.size > 16) biliSubtitleCache.delete(biliSubtitleCache.keys().next().value);
+    } catch {return {...page,subtitle_probe:{status:"unavailable"}};}
+  }
+  const result = cached.result;
+  return {...page,subtitle_probe:{status:result.status,language:result.language || "",cue_count:result.cues?.length || 0},
+    ...(result.status === "ready" ? {browser_subtitles:normalizeBrowserSubtitles(result.cues), active_video:page.active_video ? {...page.active_video,duration:page.active_video.duration || result.duration} : {duration:result.duration}} : {})};
+}
+
 async function collectPageData(tab) {
   const rememberedBeforeCollect = [...(pageStateByTab.get(tab.id)?.values() || [])];
   const rememberedTop = rememberedBeforeCollect.find(page => (page.frame_id ?? 0) === 0) || rememberedBeforeCollect[0];
@@ -2087,7 +2153,7 @@ async function collectPageData(tab) {
   const frameIds = [...new Set([0, ...(frameInfos || []).map(frame => frame.frameId).filter(frameId => frameId !== undefined)])];
   await Promise.all(frameIds.map(frameId => collectFramePageData(tab, frameId)));
   const remembered = [...(pageStateByTab.get(tab.id)?.values() || [])];
-  return { ...mergePageContexts(tab, remembered), context_reset: contextReset };
+  return addBilibiliCaptions(tab, { ...mergePageContexts(tab, remembered), context_reset: contextReset });
 }
 
 globalThis.__learnnoteE2E = {

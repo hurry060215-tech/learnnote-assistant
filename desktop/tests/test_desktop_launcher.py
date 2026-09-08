@@ -27,6 +27,12 @@ desktop = load_module()
 
 
 class DesktopLauncherTests(unittest.TestCase):
+    def test_focus_routes_include_requested_product_section(self):
+        target = desktop.desktop_focus_target("http://127.0.0.1:8765", "", "note", "settings")
+        self.assertEqual(target,"http://127.0.0.1:8765/?view=settings")
+        self.assertFalse(desktop.desktop_route_matches("http://127.0.0.1:8765/",target))
+        self.assertTrue(desktop.desktop_route_matches("http://127.0.0.1:8765/#task/abcdef123456","http://127.0.0.1:8765/?task=abcdef123456&tab=note"))
+
     def test_export_allowlist_includes_sanitized_and_integration_artifacts(self):
         self.assertEqual(desktop.DesktopApi.EXPORT_TYPES["sanitized-bundle"], ".zip")
         self.assertEqual(desktop.DesktopApi.EXPORT_TYPES["support-package"], ".zip")

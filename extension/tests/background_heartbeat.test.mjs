@@ -25,7 +25,7 @@ const context = {
   clearTimeout,
   fetch: async (url, options = {}) => {
     requests.push({ url, options });
-    return { ok: true };
+    return { ok: true, json: async () => ({ ok: true, extension_connected: true, protocol_version: 1 }) };
   },
   chrome: {
     alarms: {

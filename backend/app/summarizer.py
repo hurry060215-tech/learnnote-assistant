@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 
 from .config import LLM_API_KEY, LLM_BASE_URL, LLM_MAX_RETRIES, LLM_MODEL, LLM_REQUEST_TIMEOUT_SECONDS
 from .media import image_to_data_url
+from .model_connections import connected_api_key
 from .models import FrameGrid, TaskOptions, TranscriptResult, VisualWindow
 from .text_cleanup import TextDecodingError, canonicalize_unicode_text
 
@@ -111,6 +112,7 @@ def llm_base_host(base_url: str) -> str:
 def _safe_llm_error(exc: BaseException) -> str:
     message = re.sub(r"\s+", " ", str(exc or "")).strip()
     message = re.sub(r"sk-[A-Za-z0-9_-]{8,}", "sk-<redacted>", message)
+    message = re.sub(r"(?i)\b(?:ak|org|proj)-[A-Za-z0-9_-]{6,}", "<redacted>", message)
     message = re.sub(r"(?i)bearer\s+[A-Za-z0-9._~+/=-]{8,}", "Bearer <redacted>", message)
     message = re.sub(r"(?i)(api[_-]?key\s*[=:]\s*)[A-Za-z0-9._~+/=-]{8,}", r"\1<redacted>", message)
     if len(message) > MAX_LLM_ERROR_MESSAGE:
@@ -246,7 +248,7 @@ def note_template_instruction(options: TaskOptions) -> str:
         "exam-review": "Exam review: organize definitions, testable points, memory cards, and practice questions using only source-supported facts.",
         "quick-summary": "Quick summary: keep only supported conclusions and a compact timestamped timeline.",
         "custom": "Custom profile: follow note_profile_name, note_profile_prompt, and note_profile_sections without weakening evidence constraints.",
-        "standard": "标准学习笔记：按课程主题、时间轴重点、核心概念、例题/演示步骤、易错点、复习问题组织。",
+        "standard": "阅读笔记：用内容本身命名章节，按概念关系或操作顺序组织。解释必须连贯，保留材料中的例子和条件；避免重复的摘要、概念清单和空章节。",
         "timeline": "时间轴模板：优先按时间段组织，每段保留关键结论、画面证据、字幕依据和回看动作。",
         "cornell": "康奈尔模板：每个主题输出线索栏、笔记栏和课后总结，并在末尾生成复习问题。",
         "qa": "问答复习模板：把内容整理成问题、答案、证据时间点和易错提醒，适合背诵复盘。",
@@ -268,7 +270,7 @@ def note_style_instruction(options: TaskOptions) -> str:
         "operation-tutorial": "Operation tutorial: require steps, interface changes, commands, and common errors. Every item must cite transcript or visual evidence; never invent missing operations.",
         "exam-review": "Exam review: extract definitions, test points, memory cards, and answerable practice questions grounded in the material.",
         "quick-summary": "Quick summary: output only key conclusions and timestamped navigation, with no speculative background.",
-        "study": "学习笔记：解释概念、保留例子和易错点，结尾给出可执行的复习任务。",
+        "study": "学习笔记：解释材料中的概念、例子和条件；没有证据时不补写易错点或复习任务。",
         "concise": "重点速记：只保留高价值结论、关键词和时间点，避免重复背景。",
         "outline": "重点速记：只保留高价值结论、关键词和时间点，避免重复背景。",
         "exam": "考点复习：突出定义、公式、常见题型、易错项和自测问题。",
@@ -328,8 +330,8 @@ def learning_goal_instruction(options: TaskOptions) -> str:
     goal = learning_goal(options)
     instructions = {
         "auto": (
-            "自动默认：先判断材料更适合深入理解、快速回顾还是备考自测，再采用对应结构；"
-            "在开头用一行写明所选目标和判断依据。不要为了凑模板生成材料中不存在的章节。"
+            "默认阅读笔记：先用一段话交代材料的具体问题和主要结论，再按主题或操作顺序展开；"
+            "标题必须说明实际内容。每节写清结论、解释、材料中的例子或推导及适用条件；同一内容只讲一次。不要在正文解释整理策略，不要为了凑模板生成材料中不存在的章节。"
         ),
         "deep": (
             "深入理解：严格按“知识地图 → 概念精讲（直觉、定义、机制）→ 证据与应用 → "
@@ -396,8 +398,9 @@ def note_generation_contract(options: TaskOptions) -> str:
     return (
         use_case_contracts.get(use_case, "")
         + custom_profile + f"学习目标：{learning_goal_instruction(options)}\n"
-        f"深度约束：{summary_depth_instruction(options)}\n"
+        f"深度约束：{summary_depth_instruction(options) if learning_goal(options) != 'auto' else {'brief': '精简：保留核心结论和必要前提，省略次要例子。', 'standard': '标准：保留核心解释、原有例子和因果步骤；篇幅随材料，不设最低字数。', 'deep': '详细：保留推导、操作步骤、例子和条件；不扩写材料外的知识。'}.get(options.summary_depth, '篇幅随材料。')}\n"
         "共同约束：时间戳只能来自字幕段或画面窗口；不要编造时长、画面、例题、公式、工具、事实或课程没有给出的通用建议。"
+        "外文专有名称只按字幕或画面证据原文书写；字幕只有中文名时保留中文名，禁止自行补写英文译名、品牌或人名。"
         "自拟问题必须标为“自测题”，答案只能由材料直接推出，不能伪装成老师讲过的例题。"
         "没有对应内容时省略可选章节，不要用空章节或套话补齐。"
     )
@@ -423,6 +426,11 @@ _GROUNDING_TOKEN_ALLOWLIST = {
     "grid", "assets", "tasks", "new", "old", "cdot", "frac", "nabla", "text",
     "theta", "eta", "note", "quick", "merged", "partial", "fallback", "recovered",
     "from", "transcript", "with", "images", "vision", "only",
+    "tldr", "overview", "summary", "summaries", "takeaway", "takeaways", "key",
+    "points", "point", "insights", "insight", "conclusion", "conclusions", "faq",
+    "outline", "timeline", "introduction", "context", "details", "review", "notes",
+    "evidence", "limitations", "questions", "answers", "question", "answer",
+    "checklist", "references", "reference", "source", "sources", "vs",
 }
 
 
@@ -441,8 +449,9 @@ def note_grounding_issues(
     duration = _evidence_duration_seconds(transcript, grids)
     opening = text[:1200]
     duration_pattern = re.compile(
-        r"(?:本材料|本课程|这节(?:课|微课)|该视频|视频).{0,24}?(\d+(?:\.\d+)?)\s*(小时|分钟|秒)",
-        re.S,
+        r"(?:本材料|本课程|这节(?:课|微课)|该视频|本视频|视频)\s*(?:的)?\s*"
+        r"(?:总?时长\s*(?:约为|大约|约|为|是|[:：])?|总共|共计|全长|长达|持续|共|约为|大约|约)\s*"
+        r"(?:约|大约|为|是|[:：])?\s*(\d+(?:\.\d+)?)\s*(小时|分钟|秒)",
     )
     for value, unit in duration_pattern.findall(opening):
         claimed = float(value) * {"小时": 3600, "分钟": 60, "秒": 1}[unit]
@@ -457,6 +466,8 @@ def note_grounding_issues(
         for token in re.findall(r"[A-Za-z][A-Za-z0-9+_.-]{2,}", evidence)
     }
     note_without_urls = re.sub(r"https?://\S+", " ", text)
+    # TL;DR is a formatting label, not an invented term from the video.
+    note_without_urls = re.sub(r"\btl\s*[;:/]\s*dr\b", " ", note_without_urls, flags=re.I)
     unsupported_tokens = sorted({
         token
         for token in (
@@ -498,6 +509,9 @@ def _repair_grounded_note(
                     "你是学习笔记的事实核查编辑。下面的候选笔记包含超出证据或时长错误。"
                     "请直接输出修订后的 Markdown，不要解释修改过程。\n"
                     "只允许保留字幕和画面摘要能支持的课程内容；删除外部工具、通用经验、老师没有讲过的例题和无依据建议。"
+                    "外文专有名称只能使用证据原文，禁止自行补写英文译名。"
+                    "对检测问题 unsupported_terms 中逐个列出的外文项，必须删除该外文写法（包括括号译名和标题），"
+                    "保留材料支持的对应中文解释；不得因为你知道某个酒店、品牌或人名的英文名称就继续保留。"
                     "可以保留自测题，但必须明确写“自测题”，且答案可由证据直接推出。\n"
                     f"{_evidence_contract(transcript, grids)}\n"
                     f"标题：{title}\n"
@@ -525,6 +539,7 @@ def _validated_generated_note(
     visual_evidence: str,
     events: list[dict] | None,
     title: str = "",
+    artifact_dir: Path | None = None,
 ) -> str:
     issues = note_grounding_issues(candidate, transcript, grids, visual_evidence, title)
     if not issues:
@@ -553,6 +568,16 @@ def _validated_generated_note(
         issues=remaining or ["empty_repair"],
         model=model,
     )
+    if artifact_dir is not None:
+        try:
+            artifact_dir.mkdir(parents=True, exist_ok=True)
+            (artifact_dir / "rejected-summary.md").write_text(repaired or candidate, encoding="utf-8")
+            (artifact_dir / "rejected-summary-issues.json").write_text(
+                json.dumps({"issues": remaining or issues, "published": False}, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        except OSError:
+            pass
     return ""
 
 
@@ -1176,92 +1201,8 @@ def local_markdown_note(title: str, transcript: TranscriptResult, grids: list[Fr
     if learning_goal(resolved_options) != "auto":
         return _local_goal_note(title, transcript, grids, page_url, resolved_options, page_context)
 
-    key_sentences = _sentences(transcript.full_text, limit=6)
-    windows = build_visual_windows(transcript, grids)
-
-    lines.extend(_learning_context_lines(title, transcript, windows, page_url, page_context))
-    lines += ["> 整理方式：智能整理 · 标准", ""]
-
-    lines += ["## 课程主题", ""]
-    if transcript.full_text and "未安装 faster-whisper" not in transcript.full_text:
-        preview = transcript.full_text.replace("\n", " ")[:320]
-        lines += [f"{preview}{'...' if len(transcript.full_text) > 320 else ''}", ""]
-    else:
-        lines += ["根据可下载视频画面和可用文本生成初步笔记。", ""]
-
-    lines += ["## 时间轴重点", ""]
-    lines.extend(_timeline_lines(transcript, grids))
-    lines.append("")
-
-    lines += ["## 学习路线", ""]
-    lines.extend(_study_route_lines(transcript, windows))
-    lines.append("")
-
-    lines += ["## 分段图文摘要", ""]
-    lines.extend(_window_summary_lines(transcript, grids))
-    lines.append("")
-
-    if windows:
-        lines += ["## 视觉切片学习卡", ""]
-        lines.extend(_window_learning_card_lines(windows))
-
-    if windows:
-        lines += ["## 画面-字幕对齐索引", ""]
-        for window in windows:
-            lines.append(
-                f"- {window.id} `{_format_ts(window.start)} - {_format_ts(window.end)}` "
-                f"{window.frame_count} 帧：{window.grid_url}"
-            )
-            if window.transcript_excerpt:
-                lines.append(f"  同步字幕：{window.transcript_excerpt}")
-        lines.append("")
-
-    lines += ["## 核心概念", ""]
-    if key_sentences:
-        for item in key_sentences[:5]:
-            lines.append(f"- {item}")
-    else:
-        lines.append("- 当前任务没有可用字幕；请优先查看画面索引，或安装 faster-whisper 后重新处理。")
-    lines.append("")
-
-    lines += ["## 例题 / 演示步骤", ""]
-    if grids:
-        for grid in grids[:8]:
-            window = _segments_window(transcript, grid.start, grid.end).replace("\n", " ")
-            detail = window[:180] + ("..." if len(window) > 180 else "")
-            lines.append(f"- `{_format_ts(grid.start)} - {_format_ts(grid.end)}` 回看画面网格：{grid.url}")
-            if detail:
-                lines.append(f"  相关字幕：{detail}")
-    else:
-        lines.append("- 未生成画面网格，无法定位演示步骤。")
-    lines.append("")
-
-    lines += ["## 易错点", ""]
-    lines.append("- 对照时间轴回看术语首次出现的位置，避免只记结论、不记使用条件。")
-    lines.append("- 对照画面索引回看界面操作、代码演示、PPT 切换等只靠字幕容易遗漏的内容。")
-    if transcript.warning:
-        lines.append("- 当前转写不完整，关键概念需要结合原视频再次确认。")
-    lines.append("")
-
-    lines += ["## 画面索引", ""]
-    if grids:
-        for index, grid in enumerate(grids, start=1):
-            label = f"W{index:03d} {_format_ts(grid.start)} - {_format_ts(grid.end)}"
-            lines.append(f"- W{index:03d} `{_format_ts(grid.start)} - {_format_ts(grid.end)}` {grid.frame_count} 帧：{grid.url}")
-            lines.append(f"![{label}]({grid.url})")
-    else:
-        lines.append("- 未生成帧预览。")
-    lines.append("")
-
-    lines += [
-        "## 复习问题",
-        "",
-        "1. 这段课程的核心概念是什么？",
-        "2. 哪些画面或演示步骤需要回看？",
-        "3. 哪些术语、公式或操作步骤容易遗漏？",
-        "",
-    ]
-    return "\n".join(lines)
+    from .reading_notes import readable_extract
+    return readable_extract(title, transcript, grids, page_url)
 
 
 def summarize_with_llm(
@@ -1275,7 +1216,7 @@ def summarize_with_llm(
     vision_cache_dir: Path | None = None,
     cancel_check: Callable[[], bool] | None = None,
 ) -> tuple[str, str] | None:
-    api_key = options.llm_api_key or LLM_API_KEY
+    api_key = options.llm_api_key or (connected_api_key(options) if options.use_saved_connection else LLM_API_KEY)
     if not api_key:
         _record_llm_event(events, "configuration", "missing_api_key")
         return None
@@ -1480,6 +1421,7 @@ def summarize_with_llm(
                     merge_prompt,
                     events,
                     title,
+                    artifact_dir=vision_cache_dir,
                 )
                 if not grounded:
                     return None
@@ -1493,11 +1435,28 @@ def summarize_with_llm(
                 _record_llm_event(events, "vision_merge", code, exc, model=model)
                 return None
 
-    text_transcript_prompt = transcript.full_text[:60000]
-    original_transcript_full_text = transcript.full_text
+    from .reading_notes import source_blocks
+    blocks = source_blocks(transcript)
+    if len(blocks) > 3:
+        # Every block is processed. A failure returns an honest full-source fallback,
+        # rather than silently presenting a successful summary of the opening only.
+        sections = []
+        for index, block in enumerate(blocks, 1):
+            check_cancel()
+            partial = summarize_with_llm(
+                title, TranscriptResult(full_text=block), [],
+                options.model_copy(update={"visual_understanding": False}),
+                page_url=page_url, page_context=page_context,
+                events=events, cancel_check=cancel_check,
+            )
+            if not partial:
+                return None
+            body = re.sub(r"^# [^\n]*\n+", "", partial[0], count=1)
+            sections.append(f"## 第 {index} 部分\n\n{body}")
+        return (f"# {title}\n\n" + "\n\n".join(sections), "text-llm")
+    text_transcript_prompt = "\n\n".join(blocks)
     if page_context_prompt:
         text_transcript_prompt = f"{page_context_prompt}\n{text_transcript_prompt}"
-        transcript.full_text = text_transcript_prompt
     content: list[dict] = [
         {
             "type": "text",
@@ -1509,11 +1468,10 @@ def summarize_with_llm(
                 f"用途要求：{note_style_instruction(options)}\n"
                 f"版式要求：{note_template_instruction(options)}\n"
                 "不要在成品笔记中复述模型提示、内部参数、风格名称、深度约束或兼容说明；直接输出读者需要的正文。\n"
-                f"标题：{title}\n来源：{page_url}\n\n字幕：\n{transcript.full_text[:60000]}"
+                f"标题：{title}\n来源：{page_url}\n\n字幕：\n{text_transcript_prompt}"
             ),
         }
     ]
-    transcript.full_text = original_transcript_full_text
 
     try:
         check_cancel()
@@ -1538,6 +1496,7 @@ def summarize_with_llm(
             transcript.full_text,
             events,
             title,
+            artifact_dir=vision_cache_dir,
         )
         if not grounded:
             return None
@@ -1586,7 +1545,7 @@ def summarize_with_diagnostics_audit(
     cancel_check: Callable[[], bool] | None = None,
 ) -> tuple[str, str, str, list[dict]]:
     events: list[dict] = []
-    api_key = options.llm_api_key or LLM_API_KEY
+    api_key = options.llm_api_key or (connected_api_key(options) if options.use_saved_connection else LLM_API_KEY)
     if not api_key:
         events.append({"stage": "configuration", "code": "missing_api_key"})
         return (
@@ -1708,7 +1667,7 @@ def _summarize_page_text_with_llm(
     subtitle_body: str,
     options: TaskOptions,
 ) -> str | None:
-    api_key = options.llm_api_key or LLM_API_KEY
+    api_key = options.llm_api_key or (connected_api_key(options) if options.use_saved_connection else LLM_API_KEY)
     if not api_key:
         return None
     try:

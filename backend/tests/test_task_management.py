@@ -65,7 +65,8 @@ class TaskManagementApiTests(unittest.TestCase):
             active_video=ActiveVideoInfo(src="https://cdn.example.com/video.mp4", duration=120, paused=False),
             browser_subtitles=cues,
         )
-        process_current_page_task(task.id, request)
+        with patch("app.processor.summarize_with_diagnostics", return_value=("# 字幕速记课\n\n## 要点\n\n知识点的综合总结。", "text-llm", "", [])):
+            process_current_page_task(task.id, request)
         record = get_task(task.id)
         self.assertEqual(record.status, "success")
         self.assertEqual(record.mode, "subtitle_only")
@@ -150,10 +151,15 @@ class TaskManagementApiTests(unittest.TestCase):
             error_code="processing_failed",
             error_detail="interrupted",
         )
+        note = media.parent / "draft.md"
+        note.write_text("# 已经完成的字幕草稿", encoding="utf-8")
+        update_task(source.id, note_path=str(note), summary_source="transcript-draft")
         with patch("app.main.validate_local_upload_file", return_value=MediaIntegrity(status="ready", sha256="recover")), patch("app.main.process_local_video_task") as process:
             resumed = self.client.post(f"/api/tasks/{source.id}/resume", json={})
         self.assertEqual(resumed.status_code, 200, resumed.text)
         self.assertTrue(resumed.json()["resumed"])
+        self.assertEqual(resumed.json()["task"]["note_path"], str(note))
+        self.assertEqual(resumed.json()["task"]["summary_source"], "transcript-draft")
         self.assertEqual(resumed.json()["task_id"], source.id)
         self.assertEqual(resumed.json()["task"]["status"], "queued")
         self.assertEqual(resumed.json()["task"]["checkpoint"], "media_ready")

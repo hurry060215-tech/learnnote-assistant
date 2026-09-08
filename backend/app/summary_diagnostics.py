@@ -7,6 +7,7 @@ import re
 from pathlib import Path
 
 from .config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, TASK_DIR
+from .model_connections import connected_api_key
 from .models import FrameGrid, TaskOptions, VisualWindow
 from .summarizer import (
     MAX_GRIDS_PER_VISION_CALL,
@@ -49,7 +50,7 @@ def _safe_llm_events(events: list[dict] | None, limit: int = 20) -> list[dict]:
         safe_events.append({
             key: value
             for key, value in event.items()
-            if key in {"stage", "code", "error_type", "message", "batch", "model", "duration_ms", "cache"}
+            if key in {"stage", "code", "error_type", "message", "batch", "model", "duration_ms", "cache", "issues"}
             and value not in (None, "", [])
         })
     return safe_events
@@ -95,7 +96,7 @@ def build_summary_diagnostics(
     eligible_index_set = set(eligible_indices)
     effective_llm_base_url = options.llm_base_url or LLM_BASE_URL
     effective_llm_model = options.llm_model or LLM_MODEL
-    llm_configured = bool(options.llm_api_key or LLM_API_KEY)
+    llm_configured = bool(options.llm_api_key or (connected_api_key(options) if options.use_saved_connection else LLM_API_KEY))
     vision_model_configured = llm_configured and llm_model_supports_vision(effective_llm_base_url, effective_llm_model)
 
     def window_id(index: int) -> str:

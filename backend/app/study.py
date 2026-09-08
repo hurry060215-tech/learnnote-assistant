@@ -444,11 +444,11 @@ def get_study_plan() -> StudyPlan:
         row = connection.execute("SELECT * FROM study_plans WHERE plan_id = 'default'").fetchone()
         if row is None:
             connection.execute(
-                "INSERT INTO study_plans(plan_id, schema_version, title, daily_target, paused, timezone, created_at, updated_at) VALUES ('default', ?, ?, ?, 0, 'UTC', ?, ?)",
+                "INSERT OR IGNORE INTO study_plans(plan_id, schema_version, title, daily_target, paused, timezone, created_at, updated_at) VALUES ('default', ?, ?, ?, 0, 'UTC', ?, ?)",
                 (STUDY_SCHEMA_VERSION, "本地学习计划", 10, now, now),
             )
             connection.commit()
-            return StudyPlan(schema_version=STUDY_SCHEMA_VERSION, created_at=now, updated_at=now)
+            row = connection.execute("SELECT * FROM study_plans WHERE plan_id = 'default'").fetchone()
         return StudyPlan(
             schema_version=max(int(row["schema_version"]), STUDY_SCHEMA_VERSION), plan_id=row["plan_id"],
             title=row["title"], daily_target=int(row["daily_target"]), paused=bool(row["paused"]),

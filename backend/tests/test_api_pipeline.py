@@ -215,16 +215,16 @@ class LocalUploadValidationTests(unittest.TestCase):
         response = self.client.get("/")
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn('/web/styles.css', response.text)
-        self.assertIn('/web/app.js', response.text)
+        self.assertIn('/web/desk.css', response.text)
+        self.assertIn('/web/desk.js', response.text)
 
-        css = self.client.get("/web/styles.css")
-        script = self.client.get("/web/app.js")
+        css = self.client.get("/web/desk.css")
+        script = self.client.get("/web/desk.js")
 
         self.assertEqual(css.status_code, 200)
-        self.assertIn(".app-shell", css.text)
+        self.assertIn(".workspace", css.text)
         self.assertEqual(script.status_code, 200)
-        self.assertIn("loadTasks", script.text)
+        self.assertIn("openItem", script.text)
 
     def test_health_reports_duration_probe_fallback(self) -> None:
         response = self.client.get("/health")
@@ -261,8 +261,8 @@ class LocalUploadValidationTests(unittest.TestCase):
         self.assertIn("groq", preset_keys)
         self.assertIn("dashscope", preset_keys)
         self.assertTrue({"deepseek", "kimi", "zhipu", "doubao", "minimax", "qianfan"}.issubset(preset_keys))
-        self.assertNotIn("siliconflow", preset_keys)
-        self.assertNotIn("openrouter", preset_keys)
+        self.assertIn("siliconflow", preset_keys)
+        self.assertIn("openrouter", preset_keys)
         self.assertNotIn("local-openai", preset_keys)
         openai_preset = next(item for item in payload["model_provider_presets"] if item["key"] == "openai")
         self.assertEqual(openai_preset["tier"], "mainstream")
@@ -2363,6 +2363,17 @@ class ApiPipelineTests(unittest.TestCase):
     def setUp(self) -> None:
         TEST_RUN_DIR.mkdir(parents=True, exist_ok=True)
         self.client = TestClient(app)
+        # Success scenarios explicitly supply model output; missing model behavior has
+        # dedicated fallback tests and must no longer pass as a completed AI note.
+        from app.summarizer import local_markdown_note
+        def successful_summary(title, transcript, grids, options, page_url="", page_context="", **kwargs):
+            return local_markdown_note(title, transcript, grids, page_url, options, page_context), "text-llm", "", []
+        summary_patch = patch("app.processor.summarize_with_diagnostics", side_effect=successful_summary)
+        summary_patch.start()
+        self.addCleanup(summary_patch.stop)
+        platform_patch = patch("app.downloader.MediaDownloader._download_subtitle_with_ytdlp", return_value=None)
+        platform_patch.start()
+        self.addCleanup(platform_patch.stop)
 
     def test_rerun_from_media_accepts_nested_options_request(self) -> None:
         with tempfile.TemporaryDirectory(dir=TEST_RUN_DIR) as tmp:
@@ -2451,8 +2462,8 @@ class ApiPipelineTests(unittest.TestCase):
                 self.assertIn("transcript_excerpt", visual_index["windows"][0])
                 note = self.client.get(f"/api/tasks/{task_id}/note").text
                 self.assertIn("Local synthetic lesson", note)
-                self.assertIn("画面-字幕对齐索引", note)
-                self.assertIn("画面索引", note)
+                self.assertIn("字幕摘录", note)
+                self.assertIn("画面参考", note)
                 export = self.client.get(f"/api/tasks/{task_id}/exports/markdown")
                 self.assertEqual(export.status_code, 200)
                 self.assertIn("text/markdown", export.headers["content-type"])
@@ -2629,8 +2640,8 @@ class ApiPipelineTests(unittest.TestCase):
                     self.assertEqual(task["status"], "success")
                     self.assertEqual(task["options"]["frame_interval"], 1)
                     self.assertEqual(task["selected_resource"]["url"], media_url)
-                    self.assertEqual(task["download_attempts"][0]["strategy"], "direct-file")
-                    self.assertEqual(task["download_attempts"][0]["status"], "success")
+                    self.assertIn("direct-file", [attempt["strategy"] for attempt in task["download_attempts"]])
+                    self.assertTrue(any(attempt["status"] == "success" and not attempt["strategy"].startswith("subtitle-") for attempt in task["download_attempts"]))
                     self.assertTrue(task["frame_grids"])
                     note = self.client.get(f"/api/tasks/{task_id}/note").text
                     self.assertIn("Direct resource lesson", note)
@@ -2713,11 +2724,12 @@ class ApiPipelineTests(unittest.TestCase):
             self.assertEqual(task["selected_resource"]["kind"], "hls")
             self.assertEqual(task["selected_resource"]["request_headers"]["Referer"], "<redacted>")
             self.assertEqual(task["selected_resource"]["request_headers"]["Cookie"], "<redacted>")
-            self.assertEqual(task["download_attempts"][0]["url"], media_url)
-            self.assertEqual([attempt["strategy"] for attempt in task["download_attempts"]], ["manifest-ffmpeg", "candidate-ytdlp", "page-ytdlp"])
+            media_attempts = [attempt for attempt in task["download_attempts"] if not attempt["strategy"].startswith("subtitle-")]
+            self.assertEqual(media_attempts[0]["url"], media_url)
+            self.assertEqual([attempt["strategy"] for attempt in media_attempts], ["manifest-ffmpeg", "candidate-ytdlp", "page-ytdlp"])
             self.assertEqual(task["recovery"]["code"], "download_forbidden")
             self.assertEqual(task["recovery"]["selected_kind"], "hls")
-            self.assertEqual(task["recovery"]["attempt_count"], 3)
+            self.assertEqual(task["recovery"]["attempt_count"], len(task["download_attempts"]))
             self.assertTrue(task["recovery"]["is_chaoxing"])
             self.assertIn("不刷课", " ".join(task["recovery"]["boundary_notes"]))
             self.assertIn("学习通/超星", self.client.get(f"/api/tasks/{task_id}/exports/diagnostics").text)
@@ -2800,7 +2812,7 @@ class ApiPipelineTests(unittest.TestCase):
                     self.assertTrue(task["reuse"]["rerun_from_media_ready"])
                     self.assertEqual(task["reuse"]["suggested_next_step"], "rerun_from_media")
                     self.assertEqual(task["selected_resource"]["url"], media_url)
-                    self.assertEqual(task["download_attempts"][0]["strategy"], "direct-file")
+                    self.assertIn("direct-file", [attempt["strategy"] for attempt in task["download_attempts"]])
                     self.assertTrue(task["direct_extraction"]["no_tab_recording"])
                     self.assertEqual(task["direct_extraction"]["route"], "download_only_to_local_media")
                     self.assertTrue(task["direct_extraction"]["media_landed"])
@@ -2924,7 +2936,7 @@ class ApiPipelineTests(unittest.TestCase):
                     self.assertIn(f"Source media: {source_media_path}", rerun_diagnostics.text)
                     rerun_note = self.client.get(f"/api/tasks/{rerun_task_id}/note").text
                     self.assertIn("Download only lesson", rerun_note)
-                    self.assertIn("画面索引", rerun_note)
+                    self.assertIn("画面参考", rerun_note)
                     rerun_bundle = self.client.get(f"/api/tasks/{rerun_task_id}/exports/bundle")
                     self.assertEqual(rerun_bundle.status_code, 200)
                     with zipfile.ZipFile(io.BytesIO(rerun_bundle.content)) as archive:
@@ -3168,8 +3180,8 @@ class ApiPipelineTests(unittest.TestCase):
                     task = self.client.get(f"/api/tasks/{task_id}").json()["task"]
                     self.assertEqual(task["status"], "success")
                     self.assertEqual(task["selected_resource"]["url"], hls_url)
-                    self.assertEqual(task["download_attempts"][0]["strategy"], "manifest-ffmpeg")
-                    self.assertEqual(task["download_attempts"][0]["status"], "success")
+                    self.assertIn("manifest-ffmpeg", [attempt["strategy"] for attempt in task["download_attempts"]])
+                    self.assertTrue(any(attempt["status"] == "success" and not attempt["strategy"].startswith("subtitle-") for attempt in task["download_attempts"]))
                     self.assertTrue(Path(task["media_path"]).exists())
                     self.assertTrue(task["frame_grids"])
                     note = self.client.get(f"/api/tasks/{task_id}/note").text

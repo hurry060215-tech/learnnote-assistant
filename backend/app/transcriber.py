@@ -6,8 +6,10 @@ from collections.abc import Callable
 from urllib.parse import urlparse
 
 from .config import DEFAULT_WHISPER_COMPUTE_TYPE, DEFAULT_WHISPER_DEVICE, LLM_API_KEY, LLM_BASE_URL, LLM_MAX_RETRIES, LLM_REQUEST_TIMEOUT_SECONDS, MODEL_CACHE_DIR, configure_local_caches
+from .model_connections import connected_api_key
 from .models import TaskOptions, TranscriptResult, TranscriptSegment
 from .text_cleanup import read_canonical_text
+from .processor_state import TaskCancelled
 
 
 TIMESTAMP_RE = re.compile(
@@ -71,6 +73,7 @@ def _remote_asr_source(options: TaskOptions) -> str:
 def _safe_asr_error(exc: BaseException) -> str:
     message = re.sub(r"\s+", " ", str(exc or "")).strip()
     message = re.sub(r"sk-[A-Za-z0-9_-]{8,}", "sk-<redacted>", message)
+    message = re.sub(r"(?i)\b(?:ak|org|proj)-[A-Za-z0-9_-]{6,}", "<redacted>", message)
     message = re.sub(r"(?i)bearer\s+[A-Za-z0-9._~+/=-]{8,}", "Bearer <redacted>", message)
     message = re.sub(r"(?i)(api[_-]?key\s*[=:]\s*)[A-Za-z0-9._~+/=-]{8,}", r"\1<redacted>", message)
     if len(message) > MAX_ASR_ERROR_MESSAGE:
@@ -186,6 +189,8 @@ def transcribe_audio(
             segments=segments,
             full_text="\n".join(seg.text for seg in segments),
         )
+    except TaskCancelled:
+        raise
     except Exception as exc:
         return TranscriptResult(
             language="unknown",
@@ -221,7 +226,7 @@ def _segments_from_remote_response(response) -> list[TranscriptSegment]:
 
 
 def transcribe_audio_openai_compatible(audio_path: Path, options: TaskOptions) -> TranscriptResult:
-    api_key = options.llm_api_key or LLM_API_KEY
+    api_key = options.llm_api_key or (connected_api_key(options) if options.use_saved_connection else LLM_API_KEY)
     source = _remote_asr_source(options)
     if not api_key:
         return TranscriptResult(
