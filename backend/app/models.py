@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from . import TASK_SCHEMA_VERSION
 
@@ -88,6 +88,7 @@ class BrowserCookie(BaseModel):
 class TaskOptions(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    content_mode: Literal["auto", "subtitles", "text", "visual"] = "auto"
     transcriber: str = "faster-whisper"
     whisper_model: str = "small"
     visual_understanding: bool = True
@@ -112,6 +113,16 @@ class TaskOptions(BaseModel):
     llm_api_key: str | None = None
     llm_model: str | None = None
     use_saved_connection: bool = False
+
+
+    @model_validator(mode="after")
+    def explicit_content_mode(self):
+        if self.content_mode in {"subtitles", "text"}:
+            self.visual_understanding = False
+            self.local_ocr = False
+        elif self.content_mode == "visual":
+            self.visual_understanding = True
+        return self
 
 
 class ActiveVideoInfo(BaseModel):

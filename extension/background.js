@@ -2524,8 +2524,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         });
         return;
       }
-      const resources = mergeAndRankResources(message.resources, page, tab, { preserveOrder: Array.isArray(message.resources) });
-      const partitionKeys = await cookiePartitionKeysForContext(page, tab, resources);
+      const gatheredResources = mergeAndRankResources(message.resources, page, tab, { preserveOrder: Array.isArray(message.resources) });
+      // Complete browser subtitles do not need media resources or cookies.
+      const resources = message.mode === "subtitle_only" ? [] : gatheredResources;
+      const partitionKeys = message.mode === "subtitle_only" ? [] : await cookiePartitionKeysForContext(page, tab, resources);
       const cookies = message.mode === "subtitle_only"
         ? []
         : await cookiesForUrls(cookieUrlsForContext(page, tab, resources), partitionKeys);

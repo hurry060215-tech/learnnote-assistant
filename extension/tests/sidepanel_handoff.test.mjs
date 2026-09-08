@@ -25,7 +25,7 @@ assert.match(startMessage.handoffId, /^ln-[0-9a-f]{8}-[a-z0-9]+$/);
 assert.equal(harness.elements.get("#handoffProgress").getAttribute("aria-valuenow"), "100");
 assert.equal(harness.progressBar.style.width, "100%");
 assert.equal(harness.elements.get("#handoffStatus").textContent, "已交接到工作台，请确认并开始整理。");
-assert.equal(harness.elements.get("#sendButtonLabel").textContent, "已发送到客户端");
+assert.equal(harness.elements.get("#sendButtonLabel").textContent, "已发送到工作台");
 assert.equal(harness.elements.get("#openTaskButton").hidden, false);
 
 const switched = videoContext({ bvid: "BV9SWITCHED99", title: "另一节课" });
@@ -77,6 +77,7 @@ assert.equal(await subtitleHarness.elements.get("#sendButton").dispatch("click")
 const subtitleStart = subtitleHarness.sentMessages.find(item => item.type === "start-current-task");
 assert.ok(subtitleStart, "subtitle-only task should be created");
 assert.equal(subtitleStart.mode, "subtitle_only");
+assert.equal(subtitleStart.options.content_mode, "text", "the default creates a real text summary from existing subtitles");
 assert.equal(subtitleStart.defer, false);
 assert.equal(subtitleStart.resources.length, 0);
 assert.equal(subtitleHarness.sentMessages.filter(item => item.type === "preflight-current-page").length, 0);

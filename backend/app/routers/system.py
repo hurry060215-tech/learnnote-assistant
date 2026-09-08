@@ -220,6 +220,17 @@ def assistant_global_history():
     from ..assistant_skills import history
     return {"items":history()}
 
+
+@system_router.post("/api/assistant/execute/stream")
+def assistant_skill_stream(request: AssistantSkillRequest):
+    from ..assistant_skills import BY_ID, execute_global
+    from ..assistant_stream import assistant_stream_response
+    if request.skill not in BY_ID or BY_ID[request.skill]["requires_source"]:
+        raise HTTPException(422, "请先选择来源并使用对应的内容接口。")
+    return assistant_stream_response(lambda emit, control: execute_global(
+        request.skill, request.question, request.options, emit=emit, control=control,
+    ))
+
 @system_router.delete("/api/assistant/history")
 def assistant_clear_history(confirm: str=""):
     if confirm!="clear_assistant_history":raise HTTPException(400,"请先确认清空全局对话。")

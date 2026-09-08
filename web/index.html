@@ -136,6 +136,29 @@
             >获取浏览器扩展 ↗</a
           >
         </div>
+        <fieldset id="contentModeChoices" class="content-mode-choices">
+          <legend>视频处理方式</legend>
+          <label
+            ><input type="radio" name="contentMode" value="subtitles" /><strong
+              >仅提取字幕</strong
+            ><small>只保存已有字幕，不下载视频，不调用模型。</small></label
+          >
+          <label
+            ><input
+              type="radio"
+              name="contentMode"
+              value="text"
+              checked
+            /><strong>文字笔记</strong
+            ><small>优先字幕；缺少字幕时转写音频，再生成总结。</small></label
+          >
+          <label
+            ><input type="radio" name="contentMode" value="visual" /><strong
+              >图文笔记</strong
+            ><small>下载视频，结合字幕与画面，用视觉模型理解。</small></label
+          >
+        </fieldset>
+        <p id="contentModeExplanation" class="muted"></p>
         <details id="generationOptions">
           <summary>整理偏好</summary>
           <label for="depth">笔记长度</label

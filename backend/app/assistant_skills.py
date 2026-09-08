@@ -79,7 +79,7 @@ GUIDES=[
     (r"返回|关闭|退出", "返回与关闭", "窗口支持返回按钮、右上角关闭、Esc 和点击窗口外的遮罩。尚未保存的重要编辑会先提醒；助手的功能按钮只打开相应界面，不会自动执行删除等操作。", "home"),
 ]
 
-def execute_global(skill_id: str, question: str, options=None) -> dict:
+def execute_global(skill_id: str, question: str, options=None, *, emit=None, control=None) -> dict:
     if skill_id not in BY_ID or BY_ID[skill_id]["requires_source"]:raise ValueError("source_skill_requires_existing_endpoint")
     result={"skill":BY_ID[skill_id],"source":"local","actions":[],"citations":[],"execution":{"state":"completed","automatic_actions":False}}
     if skill_id=="product.help":
@@ -129,14 +129,20 @@ def execute_global(skill_id: str, question: str, options=None) -> dict:
                 messages.extend([{"role":"user","content":turn["question"]},{"role":"assistant","content":turn["answer"][:4000]}])
             messages.append({"role":"user","content":sanitize_export_text(question)})
             try:
+                from .assistant_stream import completion_text
+                from .summarizer import chat_completion_provider_kwargs
                 with OpenAI(api_key=key,base_url=base,timeout=30,max_retries=0) as client:
-                    response=client.chat.completions.create(model=model,messages=messages)
-                result["answer"]=response.choices[0].message.content or "模型没有返回回答。"
+                    answer=completion_text(client,model=model,messages=messages,emit=emit,control=control,**chat_completion_provider_kwargs(base))
+                result["answer"]=answer or "模型没有返回回答。"
                 result["source"]="llm"
             except Exception:
+                if emit is not None:
+                    raise
                 result["answer"]="当前文字模型连接失败。可以在设置中测试连接；本地使用帮助和资料搜索仍可用。"
                 result["execution"]["state"]="failed"
                 result["actions"]=[{"id":"settings_model","label":"检查模型连接"}]
+    if control is not None:
+        control.check()
     try:
         record_turn(question,result)
     except (OSError, ValueError):

@@ -123,10 +123,19 @@ export function taskTimeline(task, events = [], now = Date.now()) {
       s.state = "pending";
       s.detail = "尚未开始";
     });
+  if (task.summary_source === "subtitle-extract") {
+    const stage = stages.find((s) => s.key === "summary");
+    stage.state = "skipped";
+    stage.detail = "未要求生成总结";
+  }
   return stages;
 }
-export function timelineHtml(task, events) {
-  return `<ol class="task-timeline" aria-label="实际处理步骤">${taskTimeline(
+export function timelineHtml(
+  task,
+  events,
+  expanded = task.status !== "success",
+) {
+  return `<details class="task-progress-details" data-task-progress="${esc(task.id)}" ${expanded ? "open" : ""}><summary>处理步骤</summary><ol class="task-timeline" aria-label="实际处理步骤">${taskTimeline(
     task,
     events,
   )
@@ -134,9 +143,14 @@ export function timelineHtml(task, events) {
       (s, i) =>
         `<li data-stage="${s.key}" data-state="${s.state}"><span class="timeline-mark" aria-hidden="true">${s.state === "done" ? "✓" : s.state === "skipped" ? "−" : i + 1}</span><div><strong>${s.label}</strong><small>${esc(s.detail)}</small></div></li>`,
     )
-    .join("")}</ol>`;
+    .join("")}</ol></details>`;
 }
 export function taskExplanation(task) {
+  if (task.options?.content_mode === "subtitles")
+    return task.status === "success"
+      ? "已有字幕已保存，可以阅读或导出。本次未下载视频、转写音频或调用模型。"
+      : "仅检查和保存已有字幕。未取得字幕会停止，不会自动下载视频、转写或调用模型。";
+
   if (task.awaiting_confirmation)
     return "来源已送达，还没有开始处理。先尝试直接读取字幕；字幕可用时直接生成笔记。只有缺少字幕或需要画面时，才获取视频。";
   if (
@@ -179,12 +193,12 @@ export function eventLogHtml(events) {
     (e) => e.message || names[e.event] || e.event === "phase_changed",
   );
   return rows.length
-    ? `<ol class="processing-records">${rows
+    ? `<details open><summary>最近 ${Math.min(rows.length, 120)} 条处理记录</summary><ol class="processing-records">${rows
         .slice(-120)
         .map(
           (e) =>
             `<li><time>${esc(new Date(e.timestamp).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }))}</time><div><strong>${esc(names[e.event] || phaseName(e.phase))}</strong><p>${esc(e.event === "stage_timing" ? `${phaseName(e.phase)} · ${e.status === "skipped" ? "无需执行" : elapsedLabel(e.details?.duration_ms || 0)}` : e.message || phaseName(e.phase))}</p></div></li>`,
         )
-        .join("")}</ol>`
+        .join("")}</ol></details>`
     : '<p class="muted">这份旧任务没有可用的逐步记录。可以下载诊断报告查看已保存的状态。</p>';
 }

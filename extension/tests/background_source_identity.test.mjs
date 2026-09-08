@@ -133,3 +133,15 @@ assert.equal(rejected.code, "stale_source_identity");
 assert.match(rejected.error, /页面或播放内容已切换/);
 assert.equal(rejected.source_identity.BVID, "BV9SWITCHED99");
 assert.equal(taskRequests().length, 4, "stale source must be rejected before another backend task creation");
+
+activeBvid = "BV1ABCDEF123";
+const captionTask = await new Promise(resolve => listeners.runtimeMessage({
+  type: "start-current-task", targetTabId: 9,
+  backendUrl: "http://127.0.0.1:8765", sourceIdentity: expectedIdentity,
+  page: initial.page, resources: [], mode: "subtitle_only",
+  options: { content_mode: "subtitles" }
+}, {}, resolve));
+assert.equal(captionTask.task_id, "abc123def456");
+assert.equal(taskRequests().at(-1).body.resources.length, 0, "background must not re-add cached video resources to a subtitle-only handoff");
+assert.equal(taskRequests().at(-1).body.cookies.length, 0);
+assert.equal(taskRequests().at(-1).body.options.content_mode, "subtitles");
