@@ -72,18 +72,55 @@
     const kinds = markdownLineKinds(lines);
     const html = [];
     const headingIds = new Map();
-    let listType = "";
+    const listStack = [];
     let inCode = false;
+    let nestedCodeFence = null;
+    const listMatch = line => /^([ \t]*)([-+*]|\d+[.)])\s+(.+)$/.exec(line);
+    const indentation = value => value.replace(/\t/g, "    ").length;
+    const closeListLevel = () => {
+      const list = listStack.pop();
+      if (list.itemOpen) html.push("</li>");
+      html.push(`</${list.type}>`);
+    };
     const closeList = () => {
-      if (listType) {
-        html.push(`</${listType}>`);
-        listType = "";
+      while (listStack.length) closeListLevel();
+    };
+    const renderListItem = match => {
+      const indent = indentation(match[1]);
+      const type = /^\d/.test(match[2]) ? "ol" : "ul";
+      while (listStack.length && indent < listStack.at(-1).indent) closeListLevel();
+      if (listStack.length && indent === listStack.at(-1).indent && type !== listStack.at(-1).type) closeListLevel();
+      let list = listStack.at(-1);
+      if (!list || indent > list.indent) {
+        const start = Number.parseInt(match[2], 10);
+        const startAttribute = type === "ol" && start !== 1 && Number.isSafeInteger(start) ? ` start="${start}"` : "";
+        html.push(`<${type}${startAttribute}>`);
+        list = { indent, type, itemOpen: false };
+        listStack.push(list);
       }
+      if (list.itemOpen) html.push("</li>");
+      html.push(`<li>${inlineMarkdown(match[3])}`);
+      list.itemOpen = true;
     };
 
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
       const rawLine = lines[lineIndex];
       const line = rawLine.trimEnd();
+      const nestedFence = /^([ \t]*)(`{3,}|~{3,})(.*)$/.exec(line);
+      if (nestedCodeFence) {
+        if (nestedFence && nestedFence[2][0] === nestedCodeFence.marker && nestedFence[2].length >= nestedCodeFence.length && !nestedFence[3].trim()) {
+          html.push("</code></pre>");
+          nestedCodeFence = null;
+          inCode = false;
+        } else html.push(`${escapeHtml(rawLine)}\n`);
+        continue;
+      }
+      if (!inCode && listStack.length && nestedFence && indentation(nestedFence[1]) > listStack.at(-1).indent) {
+        nestedCodeFence = { marker: nestedFence[2][0], length: nestedFence[2].length };
+        inCode = true;
+        html.push("<pre><code>");
+        continue;
+      }
       if (kinds[lineIndex] === "open" || kinds[lineIndex] === "close") {
         closeList();
         if (inCode) html.push("</code></pre>");
@@ -96,7 +133,16 @@
         continue;
       }
       if (!line.trim()) {
-        closeList();
+        // A blank separator within a loose or nested list does not end its
+        // parent item; unrelated following blocks still close the list.
+        let nextIndex = lineIndex + 1;
+        while (nextIndex < lines.length && !lines[nextIndex].trim()) nextIndex += 1;
+        const next = nextIndex < lines.length ? lines[nextIndex] : "";
+        const nextItem = listMatch(next);
+        const continuesList = listStack.length && nextIndex < lines.length && (kinds[nextIndex] === "prose" || kinds[nextIndex] === "open") &&
+          (nextItem ? indentation(nextItem[1]) >= listStack[0].indent : indentation((/^([ \t]*)/.exec(next) || [])[1] || "") > listStack.at(-1).indent);
+        if (!continuesList) closeList();
+        lineIndex = nextIndex - 1;
         continue;
       }
       if (/^\s*---+\s*$/.test(line)) {
@@ -137,24 +183,13 @@
         html.push(`<h${level} id="${escapeHtml(id)}">${inlineMarkdown(heading[2])}</h${level}>`);
         continue;
       }
-      const bullet = /^[-*]\s+(.+)$/.exec(line);
-      if (bullet) {
-        if (listType !== "ul") {
-          closeList();
-          html.push("<ul>");
-          listType = "ul";
-        }
-        html.push(`<li>${inlineMarkdown(bullet[1])}</li>`);
+      const item = listMatch(line);
+      if (item) {
+        renderListItem(item);
         continue;
       }
-      const numbered = /^\d+\.\s+(.+)$/.exec(line);
-      if (numbered) {
-        if (listType !== "ol") {
-          closeList();
-          html.push("<ol>");
-          listType = "ol";
-        }
-        html.push(`<li>${inlineMarkdown(numbered[1])}</li>`);
+      if (listStack.length && indentation((/^([ \t]*)/.exec(line) || [])[1] || "") > listStack.at(-1).indent) {
+        html.push(`<p>${inlineMarkdown(line.trim())}</p>`);
         continue;
       }
       if (line.startsWith(">")) {
@@ -165,8 +200,8 @@
       closeList();
       html.push(`<p>${inlineMarkdown(line)}</p>`);
     }
-    closeList();
     if (inCode) html.push("</code></pre>");
+    closeList();
     return html.join("");
   }
 
