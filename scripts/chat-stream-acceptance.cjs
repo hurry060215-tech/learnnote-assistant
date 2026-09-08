@@ -2,6 +2,8 @@ const { chromium } = require("playwright");
 const http = require("node:http"), assert = require("node:assert/strict"), fs = require("node:fs"), os = require("node:os"), path = require("node:path");
 (async () => {
   const base = process.argv[2] || "http://127.0.0.1:18940", out = process.argv[3] || path.join(os.tmpdir(), "learnnote-stream-ui");
+  const upstream = new URL(base);
+  assert(upstream.protocol === "http:" && ["127.0.0.1", "localhost", "[::1]"].includes(upstream.hostname), "Test upstream must be loopback HTTP");
   fs.mkdirSync(out, { recursive: true });
   let releaseFirst, releaseFinal, releaseHistory, requests = 0, aborted = false, delayHistory = true;
   const responses = new Set();
@@ -26,8 +28,10 @@ const http = require("node:http"), assert = require("node:assert/strict"), fs = 
       if (requests > 1) releaseFirst();
       return;
     }
-    const target = new URL(req.url, base);
-    const proxy = http.request(target, { method: req.method, headers: { ...req.headers, host: target.host } }, (up) => { res.writeHead(up.statusCode, up.headers); up.pipe(res); });
+    if (!req.url.startsWith("/") || req.url.startsWith("//")) { res.writeHead(400); res.end(); return; }
+    // Only the path comes from the browser. The destination is fixed by the
+    // local test runner; absolute/network-path URLs cannot change its host.
+    const proxy = http.request({ hostname: upstream.hostname, port: upstream.port, path: req.url, method: req.method, headers: { ...req.headers, host: upstream.host } }, (up) => { res.writeHead(up.statusCode, up.headers); up.pipe(res); });
     proxy.on("error", () => { res.writeHead(502); res.end(); });
     req.pipe(proxy);
   });
