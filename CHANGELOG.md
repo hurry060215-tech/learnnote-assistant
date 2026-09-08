@@ -2,6 +2,14 @@
 
 All notable changes to LearnNote are documented here. The project follows semantic versioning while the `0.x` series is under active development.
 
+## 0.2.4 - Workflow reliability preview
+
+- Reconnect the extension, preserve its active workspace, and use the actual subtitle-only path when clicking Send with full captions.
+- Reuse a running desktop instance per data directory; handle startup failures and restart sequencing visibly.
+- Keep existing notes during resume; reuse local ASR only when media fingerprint, ASR settings and cached content match.
+- Save and preview appearance locally, protect unsaved settings by section, and keep assistant drafts through delayed replies.
+- Open settings and source views without reloading the workbench.
+
 ## 0.2.3 - Global assistant preview
 
 - Add an explicit application skill catalog, transparent routing and global help/status/search/chat without requiring a selected note or a LearnNote account.

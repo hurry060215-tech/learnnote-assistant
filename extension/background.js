@@ -116,9 +116,12 @@ async function pairingHeaders(backendUrl, headers = {}) {
 async function sendBackendHeartbeat(backendUrl) {
   if (typeof fetch !== "function") return false;
   const extensionVersion = String(chrome.runtime?.getManifest?.().version || "");
+  const controller = typeof AbortController === "function" ? new AbortController() : null;
+  const timer = controller ? setTimeout(() => controller.abort(), 3000) : 0;
   try {
     const response = await fetch(`${backendUrl}/api/extension/heartbeat`, {
       method: "POST",
+      ...(controller ? { signal: controller.signal } : {}),
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         extension_version: extensionVersion,
@@ -126,20 +129,21 @@ async function sendBackendHeartbeat(backendUrl) {
         source: "background"
       })
     });
-    return response?.ok !== false;
+    if (!response?.ok) return false;
+    const payload = await response.json();
+    return payload?.ok === true && payload.extension_connected === true && payload.protocol_version === EXTENSION_PROTOCOL_VERSION;
   } catch {
     return false;
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
 
 async function heartbeatInstalledClient() {
   const preferred = await storedBackendUrl();
-  if (await sendBackendHeartbeat(preferred)) return true;
-  if (preferred !== DEFAULT_BACKEND_URL && await sendBackendHeartbeat(DEFAULT_BACKEND_URL)) {
-    await chrome.storage?.local?.set?.({ backendUrl: DEFAULT_BACKEND_URL });
-    return true;
-  }
-  return false;
+  // The side panel discovers/selects a workbench. A background heartbeat must
+  // not silently replace it with another running instance and another library.
+  return sendBackendHeartbeat(preferred);
 }
 
 function scheduleBackendHeartbeat() {

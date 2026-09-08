@@ -330,7 +330,8 @@ export function installProductWorkspace(ctx) {
         (a.created_at || "").localeCompare(b.created_at || ""),
       );
       if (epoch !== assistantEpoch) return;
-      if(!previousSkill && visibleSource === "global") previousSkill=items.at(-1)?.skill?.id||"";
+      if (!previousSkill && visibleSource === "global")
+        previousSkill = items.at(-1)?.skill?.id || "";
       for (const item of items)
         $("assistantHistory").append(renderMessage(item.question, item));
       if (!items.length)
@@ -345,10 +346,22 @@ export function installProductWorkspace(ctx) {
     pane.hidden = !open;
     document.body.classList.toggle("assistant-visible", open);
     launch.setAttribute("aria-expanded", String(open));
-    if (open) loadHistory();
+    if (open) {
+      const scope = state.selected
+        ? `${state.selected.kind}:${state.selected.id}`
+        : "global";
+      if (!pending || visibleSource !== scope) loadHistory();
+      $("aiQuestion").focus();
+    } else if (pane.contains(document.activeElement)) launch.focus();
   }
   launch.onclick = () => toggleAssistant(pane.hidden);
   $("closeAssistant").onclick = () => toggleAssistant(false);
+  pane.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !document.querySelector("dialog[open]")) {
+      event.preventDefault();
+      toggleAssistant(false);
+    }
+  });
   $("wideAssistant").onclick = () => {
     const wide = document.body.classList.toggle("assistant-wide");
     $("wideAssistant").textContent = wide ? "收窄" : "扩宽";
@@ -466,7 +479,7 @@ export function installProductWorkspace(ctx) {
           ...(localThreads.get(s.id) || []),
           { question, ...result, created_at: new Date().toISOString() },
         ]);
-      $("aiQuestion").value = "";
+      if ($("aiQuestion").value.trim() === question) $("aiQuestion").value = "";
       $("assistantHistory").scrollTop = $("assistantHistory").scrollHeight;
       $("aiStatus").textContent =
         result.source === "llm"
@@ -695,8 +708,7 @@ export function installProductWorkspace(ctx) {
       (h.local_asr_available ? "转写组件可用" : "优先字幕");
     if (!$("runtimeDetails").dataset.initialized) {
       const saved = localStorage.getItem("learnnote.runtime.expanded");
-      $("runtimeDetails").open =
-        saved === "true";
+      $("runtimeDetails").open = saved === "true";
       $("runtimeDetails").dataset.initialized = "true";
       $("runtimeDetails").addEventListener("toggle", () =>
         localStorage.setItem(

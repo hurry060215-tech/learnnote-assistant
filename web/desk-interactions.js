@@ -60,12 +60,20 @@ export function installInteractions({
     true,
   );
   document.addEventListener("input", (event) => {
+    if (event.target.closest?.("#settingsForm") && window.LearnNoteSettings) {
+      window.LearnNoteSettings.updateDirty();
+      return;
+    }
     if (protectedForm(event.target)) {
       const dialog = event.target.closest("dialog");
       if (dialog) dialog.dataset.unsaved = "true";
     }
   });
   document.addEventListener("change", (event) => {
+    if (event.target.closest?.("#settingsForm") && window.LearnNoteSettings) {
+      window.LearnNoteSettings.updateDirty();
+      return;
+    }
     if (protectedForm(event.target)) {
       const dialog = event.target.closest("dialog");
       if (dialog) dialog.dataset.unsaved = "true";

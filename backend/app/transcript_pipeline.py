@@ -9,6 +9,7 @@ from collections.abc import Callable
 from .models import BrowserSubtitleCue, TaskOptions, TranscriptResult
 from .processor_state import ContentMismatchError, TaskCancelled, check_cancel
 from .storage import task_dir, update_task, write_json
+from .transcript_cache import load_local_transcript, save_local_transcript, media_cache_integrity
 
 
 @dataclass
@@ -85,6 +86,15 @@ def prepare_transcript(
         )
 
     audio_path: Path | None = None
+    cache_integrity = integrity
+    if transcript is None:
+        check_cancel(task_id)
+        cache_integrity = media_cache_integrity(integrity, normalized_path)
+        transcript = load_local_transcript(task_id, cache_integrity, options)
+        if transcript is not None:
+            update_task(task_id, phase="transcribing", progress=66, message="已复用这段视频的本地转写，无需重新识别音频")
+            cached_audio = work_dir / "audio.wav"
+            audio_path = cached_audio if cached_audio.is_file() else None
     if transcript is None:
         update_task(task_id, phase="processing_video", progress=38, message="正在提取音频")
         audio_path = work_dir / "audio.wav"
@@ -124,6 +134,7 @@ def prepare_transcript(
     asr_error = asr_failure_detail(transcript)
     if asr_error:
         transcript = transcript.model_copy(update={"segments": [], "full_text": ""})
+    save_local_transcript(task_id, transcript, cache_integrity, options)
     transcript_path = work_dir / "transcript.json"
     transcript_path.write_text(transcript.model_dump_json(indent=2), encoding="utf-8")
     update_task(task_id, transcript_path=str(transcript_path))

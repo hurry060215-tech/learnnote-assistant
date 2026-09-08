@@ -64,6 +64,11 @@ let currentTaskMode = "";
 let quickPollTimer = 0;
 let quickTranscript = [];
 let selectedProcessingMode = "quick";
+let connectionRequest = null;
+let clientOpenRequest = null;
+let quickPollRequest = null;
+let quickQuestionPending = false;
+let activationGeneration = 0;
 
 function baseProcessingOptions(mode = selectedProcessingMode) {
   if (mode === "deep") return { visual_understanding: true, frame_interval: 20, grid_columns: 3, grid_rows: 3, note_style: "lecture", note_template: "visual-handout", summary_depth: "deep" };
@@ -199,14 +204,14 @@ async function fetchQuickTask(taskId = currentTaskId) {
 }
 
 async function loadQuickArtifacts(task) {
-  const artifactGeneration=contextGeneration;
+  const sourceKey = sourceContinuityKey(displayedIdentity);
   const [noteResponse, transcriptResponse] = await Promise.all([
     fetchWithTimeout(`${backendUrl}/api/tasks/${encodeURIComponent(task.id)}/note`),
     fetchWithTimeout(`${backendUrl}/api/tasks/${encodeURIComponent(task.id)}/transcript`)
   ]);
   const note = noteResponse.ok ? await noteResponse.text() : "";
   const transcript = transcriptResponse.ok ? await transcriptResponse.json() : {};
-  if (artifactGeneration !== contextGeneration || task.id !== currentTaskId) return;
+  if (sourceKey !== sourceContinuityKey(displayedIdentity) || task.id !== currentTaskId) return;
   quickNoteText=note;
   quickTranscript = Array.isArray(transcript?.segments) ? transcript.segments : [];
   if (els.quickSummaryPanel) els.quickSummaryPanel.innerHTML = renderQuickMarkdown(note);
@@ -216,9 +221,14 @@ async function loadQuickArtifacts(task) {
 }
 
 async function pollQuickTask() {
-  if (!currentTaskId || currentTaskMode !== "subtitle_only") return;
+  if (!currentTaskId || currentTaskMode !== "subtitle_only" || quickPollRequest) return;
+  const taskId = currentTaskId;
+  const sourceKey = sourceContinuityKey(displayedIdentity);
+  const isCurrent = () => taskId === currentTaskId && sourceKey === sourceContinuityKey(displayedIdentity);
+  quickPollRequest = taskId;
   try {
-    const payload = await fetchQuickTask(currentTaskId);
+    const payload = await fetchQuickTask(taskId);
+    if (!isCurrent()) return;
     const task = payload?.task || payload;
     if (task.status === "failed" || task.status === "cancelled") {
       stopQuickPolling();
@@ -230,10 +240,12 @@ async function pollQuickTask() {
     if (task.note_path && task.status === "success") {
       stopQuickPolling();
       await loadQuickArtifacts(task);
-      setProgress(100, "字幕速记已完成，可继续深度图文学习。", "success");
+      if (isCurrent()) setProgress(100, "字幕速记已完成，可继续深度图文学习。", "success");
     }
   } catch (error) {
-    showQuickResult(error?.message || "正在等待本地服务响应…");
+    if (isCurrent()) showQuickResult(error?.message || "正在等待本地服务响应…");
+  } finally {
+    quickPollRequest = null;
   }
 }
 
@@ -415,6 +427,8 @@ function resetSourceState() {
   currentTaskMode = "";
   quickTranscript = [];
   quickNoteText = "";
+  if (els.quickAskConversation) els.quickAskConversation.innerHTML = "<p>回答只引用当前视频的字幕证据。</p>";
+  if (els.quickAskQuestion) els.quickAskQuestion.value = "";
   if (els.quickResultCard) els.quickResultCard.hidden = true;
   els.openTaskButton.hidden = true;
   els.sendButtonLabel.textContent = "发送到客户端";
@@ -529,10 +543,9 @@ function renderContext(message = "") {
   setIntegrityItem("subtitle", evidence.subtitle);
 
   const hasPage = Boolean(identity?.canonical_page_url && !/^(?:chrome|edge|about):/i.test(identity.canonical_page_url) && !/^https?:\/\/(?:www\.)?bilibili\.com\/?(?:[?#].*)?$/i.test(identity.canonical_page_url));
-  const hasMediaEvidence = evidence.video === true || candidates.length > 0;
+  const hasMediaEvidence = evidence.video === true || candidates.length > 0 || subtitleReady;
   const alreadySent = Boolean(currentTaskId && activeHandoff?.sourceKey === sourceContinuityKey(identity));
-  const quickUnavailable = selectedProcessingMode === "quick" && !subtitleReady;
-  els.sendButton.disabled = sending || alreadySent || !clientConnected || !hasPage || (quickUnavailable && !hasMediaEvidence) || (!quickUnavailable && !hasMediaEvidence);
+  els.sendButton.disabled = sending || alreadySent || !clientConnected || !hasPage || !hasMediaEvidence;
   els.sendButtonLabel.textContent = currentTaskId
     ? (currentTaskMode === "subtitle_only" ? "速记已开始" : "已发送到客户端")
     : selectedProcessingMode === "quick" ? (subtitleReady ? "快速生成字幕速记" : "获取字幕并整理")
@@ -544,7 +557,7 @@ function renderContext(message = "") {
   } else if (selectedProcessingMode === "quick" && subtitleReady) {
     els.preflightMessage.textContent = "已取得覆盖充分的浏览器字幕，可以直接生成速览；不会下载视频、调用 ASR 或分析画面。";
   } else if (selectedProcessingMode === "quick") {
-    els.preflightMessage.textContent = "尚未取得完整字幕。发送后优先探测平台字幕；仍不可用时按标准学习转写音频。";
+    els.preflightMessage.textContent = "尚未取得完整字幕。发送后会打开工作台，确认开始后优先探测平台字幕；仍不可用时使用本地语音转写。";
   } else if (!hasMediaEvidence) {
     els.preflightMessage.textContent = "还没有检测到播放器或媒体候选，请播放几秒后重新识别。";
   } else if (preflightReport?.ready || preflightReport?.downloadable_count > 0) {
@@ -594,31 +607,49 @@ async function loadBackendUrl() {
 }
 
 async function checkClient() {
-  setConnection("checking", "正在连接 LearnNote", "正在寻找已运行的本机工作台…");
-  const candidates = [backendUrl];
-  if (HAS_EXTENSION_API && chrome.tabs?.query) {
-    try {
-      for (const tab of await chrome.tabs.query({url: ["http://127.0.0.1/*", "http://localhost/*"]})) {
-        const origin = new URL(tab.url).origin;
-        if (LOCAL_BACKEND_RE.test(origin) && !candidates.includes(origin)) candidates.push(origin);
+  if (connectionRequest) return connectionRequest;
+  connectionRequest = (async () => {
+    if (!clientConnected) setConnection("checking", "正在连接 LearnNote", "正在寻找已运行的本机工作台…");
+    const probe = async candidate => {
+      try {
+        const response = await fetchWithTimeout(`${candidate}/health`, {}, HEALTH_TIMEOUT_MS);
+        if (!response.ok) return null;
+        const health = await response.json();
+        const isLearnNote = health.service === "learnnote" || (!health.service && health.task_schema_version && typeof health.local_asr_available === "boolean");
+        if (!isLearnNote || !health.app_version || health.protocol_version !== PROTOCOL_VERSION || !health.backend_version) return null;
+        return { candidate, health };
+      } catch { return null; }
+    };
+    let match = await probe(backendUrl);
+    // A task belongs to one local instance. Never open its id against a different library.
+    if (!match && !currentTaskId) {
+      const candidates = [DEFAULT_BACKEND_URL];
+      if (HAS_EXTENSION_API && chrome.tabs?.query) {
+        try {
+          for (const tab of await chrome.tabs.query({ url: ["http://127.0.0.1/*", "http://localhost/*"] })) {
+            try {
+              const origin = new URL(tab.url).origin;
+              if (LOCAL_BACKEND_RE.test(origin) && !candidates.includes(origin)) candidates.push(origin);
+            } catch {}
+          }
+        } catch {}
       }
-    } catch {}
-  }
-  if (!candidates.includes(DEFAULT_BACKEND_URL)) candidates.push(DEFAULT_BACKEND_URL);
-  for (const candidate of candidates.slice(0, 8)) {
-    try {
-      const response = await fetchWithTimeout(`${candidate}/health`, {}, HEALTH_TIMEOUT_MS);
-      if (!response.ok) continue;
-      const health = await response.json();
-      if (!health.app_version || health.protocol_version !== PROTOCOL_VERSION || !health.backend_version) continue;
-      backendUrl = candidate;
-      if (HAS_EXTENSION_API) await chrome.storage.local.set({backendUrl});
-      setConnection("connected", "本地工作台已连接", `LearnNote ${health.app_version} · ${backendUrl}`);
+      const results = await Promise.all(candidates.filter(value => value !== backendUrl).slice(0, 8).map(probe));
+      match = results.find(Boolean);
+    }
+    if (match) {
+      backendUrl = match.candidate;
+      if (HAS_EXTENSION_API) await chrome.storage.local.set({ backendUrl }).catch(() => {});
+      setConnection("connected", "本地工作台已连接", `LearnNote ${match.health.app_version} · ${backendUrl}`);
       return true;
-    } catch {}
-  }
-  setConnection("offline", "本地工作台尚未启动", "点击打开客户端启动 App；已启动时可点击右上角重新连接。");
-  return false;
+    }
+    setConnection("offline", currentTaskId ? "任务所在的工作台已断开" : "本地工作台尚未启动", currentTaskId
+      ? `请重新打开 ${backendUrl} 对应的 LearnNote，再点右上角重新连接。`
+      : "点击打开客户端启动 App；已启动时可点击右上角重新连接。");
+    return false;
+  })();
+  try { return await connectionRequest; }
+  finally { connectionRequest = null; }
 }
 
 async function collectContext(force = true, targetTabId = null) {
@@ -724,18 +755,19 @@ function pageSwitchMessage() {
 
 async function sendToClient(modeOverride = "") {
   if (sending || !displayedIdentity) return false;
+  if (typeof modeOverride !== "string") modeOverride = "";
   sending = true;
   els.sendButton.disabled = true;
   els.sendButton.setAttribute("aria-busy", "true");
   els.sendButtonLabel.textContent = "正在发送...";
   els.openTaskButton.hidden = true;
   const expectedIdentity = displayedIdentity;
-  if (/^https?:\/\/(?:www\.)?bilibili\.com\/?(?:[?#].*)?$/i.test(expectedIdentity.canonical_page_url || "")) {
-    sending = false; renderContext("请先打开一条具体视频；首页推荐预览不能作为学习来源。"); return false;
-  }
   try {
+    if (/^https?:\/\/(?:www\.)?bilibili\.com\/?(?:[?#].*)?$/i.test(expectedIdentity.canonical_page_url || "")) {
+      throw new Error("请先打开一条具体视频；首页推荐预览不能作为学习来源。");
+    }
     setProgress(8, "正在连接 LearnNote...");
-    if (!clientConnected && !(await checkClient())) throw new Error("客户端未运行，请先打开 LearnNote");
+    if (!(await checkClient())) throw new Error("客户端未运行，请先打开 LearnNote");
 
     setProgress(24, "正在重新读取当前页面...");
     const fresh = await collectContext(true);
@@ -809,7 +841,7 @@ async function sendToClient(modeOverride = "") {
     setProgress(92, response?.deduplicated ? "任务已存在，正在打开客户端..." : "任务已创建，正在打开客户端...");
     els.openTaskButton.hidden = !currentTaskId;
     const opened = await openClient("task", currentTaskId, "note");
-    setProgress(100, opened ? "任务已创建，并已在客户端打开。" : "任务已创建；点击下方按钮打开。", "success");
+    setProgress(100, opened ? "已交接到工作台，请确认并开始整理。" : "任务已创建；点击下方按钮打开并确认开始。", "success");
     return true;
   } catch (error) {
     setProgress(Number(els.handoffProgress.getAttribute("aria-valuenow") || 0), error?.message || "发送失败，请重试", "error");
@@ -827,41 +859,62 @@ async function sendToClient(modeOverride = "") {
 
 function clientUrl(view = "workspace", taskId = "", tab = "note") {
   const url = new URL(`${backendUrl}/`);
-  if (taskId) {
-    url.searchParams.set("task", taskId);
-    url.searchParams.set("tab", tab);
-  }
-  if (view && view !== "workspace") {
-    url.searchParams.set("view", view);
-  }
+  if (view === "settings") url.hash = "settings";
+  else if (taskId) url.hash = `task/${encodeURIComponent(taskId)}${tab !== "note" ? `?tab=${encodeURIComponent(tab)}` : ""}`;
+  else if (view === "diagnostics") url.hash = "diagnostics";
   return url.href;
 }
 
 async function openClient(view = "workspace", taskId = "", tab = "note") {
-  if (!clientConnected && !await checkClient()) {
+  if (clientOpenRequest) return clientOpenRequest;
+  els.openClientButton.disabled = true;
+  els.openClientButton.setAttribute("aria-busy", "true");
+  clientOpenRequest = openClientNow(view, taskId, tab);
+  try { return await clientOpenRequest; }
+  finally {
+    clientOpenRequest = null;
+    els.openClientButton.disabled = false;
+    els.openClientButton.setAttribute("aria-busy", "false");
+  }
+}
+
+async function openClientNow(view, taskId, tab) {
+  if (!await checkClient()) {
     setConnection("checking", "正在启动本地 App", "首次使用请允许浏览器打开 LearnNote。尚未安装时，请先运行本地 LearnNote App。");
     try {
-      if (HAS_EXTENSION_API && chrome.tabs?.create) await chrome.tabs.create({url: "learnnote://open"});
-      else window.open?.("learnnote://open", "_blank");
+      suppressTabActivationUntil = Date.now() + 30000;
+      const launchUrl = `learnnote://open?port=${new URL(backendUrl).port || "8765"}`;
+      if (HAS_EXTENSION_API && chrome.tabs?.create) await chrome.tabs.create({url: launchUrl});
+      else window.open?.(launchUrl, "_blank");
     } catch {
       setConnection("offline", "需要先启动 LearnNote App", "双击 LearnNote 后，再点右上角重新连接。");
       return false;
     }
     for (let attempt = 0; attempt < 6; attempt++) {
       await new Promise(resolve => setTimeout(resolve, 1500));
-      if (await checkClient()) return openClient(view, taskId, tab);
+      if (await checkClient()) break;
     }
-    setConnection("offline", "尚未连接本地 App", "请确认已安装并打开 LearnNote；浏览器弹出启动确认时请选择允许。");
-    return false;
+    if (!clientConnected) {
+      suppressTabActivationUntil = 0;
+      setConnection("offline", "尚未连接本地 App", "请确认已安装并打开 LearnNote；浏览器弹出启动确认时请选择允许。");
+      return false;
+    }
   }
   const targetUrl = clientUrl(view, taskId, tab);
   try {
     if (!HAS_EXTENSION_API || !chrome.tabs?.create) throw new Error("extension API unavailable");
     suppressTabActivationUntil = Date.now() + CLIENT_TAB_ACTIVATION_SUPPRESS_MS;
     const tabs = await chrome.tabs.query({url: `${backendUrl}/*`});
-    const existing = tabs.find(item => item.url?.startsWith(`${backendUrl}/`));
-    if (existing && chrome.tabs.update) await chrome.tabs.update(existing.id, {url: targetUrl, active: true});
-    else await chrome.tabs.create({url: targetUrl});
+    const existing = tabs.find(item => {
+      try { const url = new URL(item.url); return url.origin === backendUrl && ["/", "/index.html"].includes(url.pathname); }
+      catch { return false; }
+    });
+    if (existing && chrome.tabs.update) {
+      const destination = new URL(existing.url);
+      if (view !== "workspace" || taskId) destination.hash = new URL(targetUrl).hash;
+      await chrome.tabs.update(existing.id, { url: destination.href, active: true });
+      if (existing.windowId !== undefined) await chrome.windows?.update?.(existing.windowId, { focused: true });
+    } else await chrome.tabs.create({url: targetUrl});
     return true;
   } catch {
     return Boolean(window.open?.(targetUrl, "_blank", "noopener"));
@@ -882,8 +935,11 @@ function scheduleRefresh(reason = "media", targetTabId = null) {
 }
 
 function bindEvents() {
-  els.refreshButton?.addEventListener("click", () => refreshAndPreflight({ force: true }));
-  els.sendButton?.addEventListener("click", sendToClient);
+  els.refreshButton?.addEventListener("click", async () => {
+    await checkClient();
+    return refreshAndPreflight({ force: true });
+  });
+  els.sendButton?.addEventListener("click", () => sendToClient());
   els.quickDeepButton?.addEventListener("click", () => { setProcessingMode("deep"); sendToClient("video"); });
   document.querySelectorAll?.("[data-processing-mode]").forEach(button => {
     button.addEventListener("click", () => setProcessingMode(button.dataset.processingMode || "quick"));
@@ -900,32 +956,45 @@ function bindEvents() {
   els.quickAskForm?.addEventListener("submit", async event => {
     event.preventDefault();
     const question = String(els.quickAskQuestion?.value || "").trim();
-    if (!question || !currentTaskId || !els.quickAskConversation) return;
+    if (!question || !currentTaskId || !els.quickAskConversation || quickQuestionPending) return;
+    quickQuestionPending = true;
+    const taskId = currentTaskId;
+    const sourceKey = sourceContinuityKey(displayedIdentity);
+    const isCurrent = () => taskId === currentTaskId && sourceKey === sourceContinuityKey(displayedIdentity);
+    const submit = els.quickAskForm.querySelector('[type="submit"]');
+    if (submit) submit.disabled = true;
+    els.quickAskForm.setAttribute("aria-busy", "true");
     const entry = document.createElement?.("article");
     if (entry) {
       entry.innerHTML = `<strong>你</strong><p>${escapeQuickHtml(question)}</p>`;
       els.quickAskConversation.appendChild(entry);
     }
     try {
-      const response = await fetchWithTimeout(`${backendUrl}/api/tasks/${encodeURIComponent(currentTaskId)}/qa`, {
+      const response = await fetchWithTimeout(`${backendUrl}/api/tasks/${encodeURIComponent(taskId)}/qa`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question })
       });
       if (!response.ok) throw new Error(`提问失败（HTTP ${response.status}）`);
       const result = await response.json();
+      if (!isCurrent()) return;
       const answer = document.createElement?.("article");
       if (answer) {
         answer.innerHTML = `<strong>LearnNote</strong>${renderQuickMarkdown(result?.answer || "没有找到可引用的字幕证据。")}`;
         els.quickAskConversation.appendChild(answer);
       }
-      if (els.quickAskQuestion) els.quickAskQuestion.value = "";
+      if (els.quickAskQuestion?.value.trim() === question) els.quickAskQuestion.value = "";
     } catch (error) {
+      if (!isCurrent()) return;
       const answer = document.createElement?.("article");
       if (answer) {
         answer.innerHTML = `<strong>提示</strong><p>${escapeQuickHtml(error?.message || "提问失败")}</p>`;
         els.quickAskConversation.appendChild(answer);
       }
+    } finally {
+      quickQuestionPending = false;
+      if (submit) submit.disabled = false;
+      els.quickAskForm.setAttribute("aria-busy", "false");
     }
   });
   document.querySelectorAll("[data-client-view]").forEach(button => {
@@ -933,6 +1002,18 @@ function bindEvents() {
   });
   if (HAS_EXTENSION_API) chrome.runtime?.onMessage?.addListener?.(message => {
     if (message?.type !== "current-context-updated") return;
+    if (message.reason === "tab-activated" && chrome.tabs?.get) {
+      const generation = ++activationGeneration;
+      chrome.tabs.get(message.tabId).then(tab => {
+        if (generation !== activationGeneration) return;
+        try {
+          const url = new URL(tab.url);
+          if (url.protocol === "learnnote:" || LOCAL_BACKEND_RE.test(url.origin)) return;
+        } catch { return; }
+        scheduleRefresh("tab-activated", message.tabId);
+      }).catch(() => {});
+      return;
+    }
     if (message.reason === "tab-activated" && Date.now() < suppressTabActivationUntil) return;
     if (message.reason !== "tab-activated" && displayedIdentity?.tab_id !== null && message.tabId !== displayedIdentity?.tab_id) return;
     scheduleRefresh(message.reason || "media", message.reason === "tab-activated" ? message.tabId : null);
@@ -977,5 +1058,6 @@ globalThis.__learnnoteSidepanel = {
   runPreflight,
   sendToClient,
   openClient,
+  checkClient,
   getState: () => ({ backendUrl, clientConnected, currentContext, displayedIdentity, preflightReport, currentTaskId, currentTaskMode, selectedProcessingMode, sending })
 };

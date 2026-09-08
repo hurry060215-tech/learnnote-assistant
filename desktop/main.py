@@ -11,6 +11,7 @@ import subprocess
 import sys
 import threading
 import time
+import traceback
 import webbrowser
 from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlparse
@@ -19,6 +20,7 @@ import requests
 import uvicorn
 
 from desktop.credentials import delete_secret, read_secret, write_secret
+from desktop.startup import DesktopSession, backend_ready, protocol_port, wait_for_process_exit
 
 MODEL_PROVIDER_KEY_URLS = {
     "openai": "https://platform.openai.com/api-keys",
@@ -204,7 +206,7 @@ class DesktopApi:
                     self.data_dir,
                     target,
                     dirs_exist_ok=True,
-                    ignore=shutil.ignore_patterns("webview-profile", "temp", "*.lock"),
+                    ignore=shutil.ignore_patterns("webview-profile", "temp", "*.lock", ".desktop-session.*"),
                 )
             except OSError as exc:
                 return {"ok": False, "code": "migration_failed", "message": f"迁移没有完成：{exc}"}
@@ -223,6 +225,7 @@ class DesktopApi:
 
     def restart_application(self) -> dict:
         command = [sys.executable] if getattr(sys, "frozen", False) else [sys.executable, str(Path(__file__).resolve())]
+        command.extend(["--wait-for-parent", str(os.getpid()), "--port", str(urlparse(self.backend_url).port or 8765)])
         subprocess.Popen(command, cwd=str(self.app_root), creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         if self._window is not None:
             threading.Timer(0.35, self._window.destroy).start()
@@ -542,7 +545,9 @@ def bundled_root() -> Path:
 
 
 def available_port(preferred: int) -> int:
-    for port in range(preferred, preferred + 20):
+    if not 1 <= preferred <= 65535:
+        raise ValueError("LearnNote 端口必须在 1 到 65535 之间。")
+    for port in range(preferred, min(preferred + 20, 65536)):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             try:
                 sock.bind(("127.0.0.1", port))
@@ -552,21 +557,18 @@ def available_port(preferred: int) -> int:
     raise RuntimeError("No available LearnNote desktop port was found.")
 
 
-def wait_for_backend(url: str, timeout: float = 25.0) -> None:
+def wait_for_backend(url: str, timeout: float = 25.0, worker: threading.Thread | None = None) -> None:
     deadline = time.monotonic() + timeout
-    last_error: Exception | None = None
     while time.monotonic() < deadline:
-        try:
-            response = requests.get(f"{url}/health", timeout=1.0)
-            if response.ok:
-                return
-        except requests.RequestException as exc:
-            last_error = exc
+        if worker is not None and not worker.is_alive():
+            raise RuntimeError("LearnNote 本地服务启动中断，请重新打开应用。")
+        if backend_ready(url):
+            return
         time.sleep(0.15)
-    raise RuntimeError(f"LearnNote backend did not start: {last_error or 'health check timed out'}")
+    raise RuntimeError("LearnNote 本地服务启动超时，请稍后重新打开应用。")
 
 
-def configure_runtime(root: Path, port: int) -> Path:
+def configured_data_directory(root: Path) -> Path:
     data_dir = default_data_directory(root)
     config_path = root / "learnnote-config.json"
     try:
@@ -578,6 +580,11 @@ def configure_runtime(root: Path, port: int) -> Path:
                 data_dir = candidate
     except (OSError, ValueError, json.JSONDecodeError):
         data_dir = default_data_directory(root)
+    return data_dir
+
+
+def configure_runtime(root: Path, port: int) -> Path:
+    data_dir = configured_data_directory(root)
     data_dir.mkdir(parents=True, exist_ok=True)
     os.environ["LEARNNOTE_DATA_DIR"] = str(data_dir)
     os.environ["LEARNNOTE_BACKEND_ORIGIN"] = f"http://127.0.0.1:{port}"
@@ -693,26 +700,46 @@ def desktop_route_matches(current_url: str, target_url: str) -> bool:
     return current_task == target_query.get("task") and current_query.get("tab", ["note"]) == target_query.get("tab", ["note"]) and current_query.get("view", ["workspace"]) == target_query.get("view", ["workspace"])
 
 
-def run() -> int:
+def _run() -> int:
     parser = argparse.ArgumentParser(description="Launch the LearnNote Windows desktop client.")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--debug", action="store_true")
     parser.add_argument("--webview-debug-port", type=int, default=0, help=argparse.SUPPRESS)
+    parser.add_argument("--protocol", default="", help=argparse.SUPPRESS)
+    parser.add_argument("--wait-for-parent", type=int, default=0, help=argparse.SUPPRESS)
     args = parser.parse_args()
-
-    # Reuse the running local workspace instead of starting another data directory.
-    try:
-        existing_url = f"http://127.0.0.1:{args.port}"
-        health = requests.get(existing_url + "/health", timeout=1).json()
-        if health.get("app_version") and health.get("backend_version") and health.get("protocol_version") == 1:
-            webbrowser.open(existing_url)
-            return 0
-    except (requests.RequestException, ValueError):
-        pass
-
+    args.port = protocol_port(args.protocol) or args.port
+    wait_for_process_exit(args.wait_for_parent)
     root = application_root()
     if os.name == "nt" and root.drive.upper() == "C:":
-        raise RuntimeError("LearnNote Desktop must be installed on D: or another non-system drive.")
+        raise RuntimeError("LearnNote 请安装在 D: 或其他非系统盘，再从快捷方式启动。")
+    session = DesktopSession(configured_data_directory(root))
+    try:
+        if not session.acquire():
+            deadline = time.monotonic() + 30
+            while time.monotonic() < deadline:
+                existing_url = session.running_url()
+                if existing_url:
+                    open_workspace(existing_url)
+                    return 0
+                time.sleep(0.2)
+            raise RuntimeError("LearnNote 正在启动或关闭，请稍后重新打开。已有笔记和任务不会被修改。")
+        return run_session(args, root, session)
+    finally:
+        session.close()
+
+
+def open_workspace(url: str) -> None:
+    if not webbrowser.open(url):
+        raise RuntimeError(f"LearnNote 已启动。默认浏览器未能打开，请在浏览器访问 {url}。")
+
+
+def run_session(args, root: Path, session: DesktopSession) -> int:
+    preferred_url = f"http://127.0.0.1:{args.port}"
+    existing_url = preferred_url if backend_ready(preferred_url) else ""
+    if existing_url:
+        open_workspace(existing_url)
+        return 0
     port = available_port(args.port)
     data_dir = configure_runtime(root, port)
     configure_model_runtime()
@@ -738,7 +765,8 @@ def run() -> int:
     thread.start()
 
     try:
-        wait_for_backend(backend_url)
+        wait_for_backend(backend_url, worker=thread)
+        session.publish(backend_url)
         desktop_api = DesktopApi(data_dir, backend_url, root)
         window = webview.create_window(
             "LearnNote",
@@ -780,6 +808,38 @@ def run() -> int:
 
     print(f"LearnNote Desktop closed. Data kept at {data_dir}")
     return 0
+
+
+def report_startup_error(error: Exception) -> None:
+    """Windowless packaged apps must explain failures instead of silently exiting."""
+    log_path = application_root() / "startup-error.log"
+    try:
+        # Stack locations suffice for diagnosis; do not write locals or credentials.
+        log_path.write_text(type(error).__name__ + "\n" + "".join(traceback.format_tb(error.__traceback__)), encoding="utf-8")
+    except OSError:
+        log_path = None
+    message = str(error) if str(error).startswith("LearnNote ") else "LearnNote 启动未完成。请重新打开；若仍失败，请重新解压或更新完整客户端。"
+    if isinstance(error, PermissionError):
+        message = "LearnNote 无法写入应用或数据目录。请检查目录权限，或把完整应用解压到可写入的非系统盘文件夹。"
+    if log_path:
+        message += f"\n\n诊断文件：{log_path}"
+    if os.name == "nt":
+        try:
+            import ctypes
+            ctypes.windll.user32.MessageBoxW(None, message, "LearnNote · 启动提示", 0x10)
+            return
+        except Exception:
+            pass
+    if sys.stderr is not None:
+        print(message, file=sys.stderr)
+
+
+def run() -> int:
+    try:
+        return _run()
+    except Exception as error:
+        report_startup_error(error)
+        return 1
 
 
 if __name__ == "__main__":

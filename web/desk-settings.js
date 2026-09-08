@@ -46,8 +46,14 @@ export function installSettings(ctx) {
         .querySelectorAll("button")
         .forEach((btn) => btn.setAttribute("aria-pressed", String(btn === b)));
       content.scrollTop = 0;
+      b.scrollIntoView({ block: "nearest", inline: "nearest" });
       $("savePreferences").textContent =
-        key === "model" ? "保存模型连接" : "保存处理与阅读设置";
+        key === "model"
+          ? "保存模型连接"
+          : key === "appearance"
+            ? "保存阅读与外观"
+            : "保存处理设置";
+      $("savePreferences").hidden = key === "storage";
     };
   }
   modelNodes.forEach((n) => panes.model.append(n));
@@ -138,8 +144,70 @@ export function installSettings(ctx) {
   footer.innerHTML =
     '<span id="preferencesStatus" role="status">处理参数保存在本机，任务创建时使用当前配置。</span><button type="button" id="savePreferences" class="primary">保存处理与阅读设置</button>';
   form.append(footer);
+  const snapshots = new Map();
+  const processingSections = ["transcriber", "notes", "processing"];
+  const values = (key) =>
+    JSON.stringify(
+      [
+        ...panes[key].querySelectorAll(
+          "input:not([type=file]),select,textarea",
+        ),
+      ].map((input) => [
+        input.id,
+        input.type === "checkbox" ? input.checked : input.value,
+      ]),
+    );
+  const dirty = (key) =>
+    snapshots.has(key) && snapshots.get(key) !== values(key);
+  function updateDirty() {
+    const changed = Object.keys(panes).filter(dirty);
+    if (changed.length) dialog.dataset.unsaved = "true";
+    else delete dialog.dataset.unsaved;
+    nav.querySelectorAll("button").forEach((button) => {
+      const key = button.dataset.settingsSection;
+      button.textContent = labels[key] + (dirty(key) ? " · 未保存" : "");
+    });
+    return changed;
+  }
+  function saved(keys) {
+    keys.forEach((key) => snapshots.set(key, values(key)));
+    return updateDirty();
+  }
+  window.LearnNoteSettings = {
+    updateDirty,
+    modelSaved() {
+      const pending = saved(["model"]);
+      if (pending.length)
+        $("preferencesStatus").textContent =
+          "模型连接已保存；其他分类还有未保存的修改。";
+      else {
+        dialog.close();
+        notice("模型连接已保存");
+      }
+      return true;
+    },
+  };
+  const oldSubmit = form.onsubmit;
+  form.noValidate = true;
+  form.onsubmit = (event) => {
+    if (panes.model.hidden) {
+      event.preventDefault();
+      if (!panes.storage.hidden) return;
+      $("savePreferences").click();
+      return;
+    }
+    if (
+      ![...panes.model.querySelectorAll("input")].every((input) =>
+        input.reportValidity(),
+      )
+    ) {
+      event.preventDefault();
+      return;
+    }
+    return oldSubmit(event);
+  };
   let pref = {};
-  function fill(p) {
+  function fill(p, sections = processingSections) {
     pref = p;
     for (const [id, key] of Object.entries({
       prefTranscriber: "transcriber",
@@ -153,8 +221,13 @@ export function installSettings(ctx) {
       prefConcurrency: "vision_concurrency",
       prefOcrLimit: "ocr_frame_limit",
     }))
-      if (p[key] !== undefined)
-        $(id).value =
+      if (
+        p[key] !== undefined &&
+        sections.includes(
+          $(id).closest("[data-settings-page]").dataset.settingsPage,
+        )
+      ) {
+        const value =
           id === "prefTranscriber"
             ? {
                 openai: "openai-compatible",
@@ -162,35 +235,142 @@ export function installSettings(ctx) {
                 "groq-asr": "groq",
               }[p[key]] || p[key]
             : p[key];
-    $("prefLowResource").checked = Boolean(p.low_resource_mode);
+        if (
+          $(id).tagName === "SELECT" &&
+          ![...$(id).options].some((option) => option.value === String(value))
+        )
+          $(id).add(new Option(`原有配置：${value}`, value));
+        $(id).value = value;
+      }
+    if (sections.includes("processing"))
+      $("prefLowResource").checked = Boolean(p.low_resource_mode);
   }
-  panes.appearance.insertAdjacentHTML("beforeend", '<label for="prefFont">阅读字体</label><select id="prefFont"><option value="sans">清晰黑体</option><option value="serif">书页宋体</option><option value="mono">等宽字体</option></select><label for="prefWidth">阅读宽度</label><select id="prefWidth"><option value="760">专注 · 760 px</option><option value="940">标准 · 940 px</option><option value="1120">宽屏 · 1120 px</option></select><label for="prefLeading">正文行距</label><select id="prefLeading"><option value="1.65">紧凑 · 1.65</option><option value="1.85">舒适 · 1.85</option><option value="2.1">宽松 · 2.1</option></select><label for="prefAccent">强调色</label><select id="prefAccent"><option value="neutral">石墨</option><option value="teal">青绿</option><option value="blue">靛蓝</option><option value="plum">梅紫</option></select><p class="muted">外观保存在当前浏览器或客户端；不会修改笔记内容。深浅主题可用侧栏底部按钮切换。</p>');
-  function appearance() {
-    let p = {};
-    try {
-      p = JSON.parse(
-        localStorage.getItem("learnnote.reading.preferences") || "{}",
-      );
-    } catch {}
-    $("prefReaderSize").value = p.size || 17;
-    $("prefDensity").value = p.density || "comfortable";
-    $("prefAutoOpen").checked = Boolean(p.autoOpen);
-    $("prefNotify").checked = Boolean(p.notify);
-    document.documentElement.style.setProperty(
-      "--reader-size",
-      (p.size || 17) + "px",
+  panes.appearance.insertAdjacentHTML(
+    "beforeend",
+    '<label for="prefFont">阅读字体</label><select id="prefFont"><option value="sans">清晰黑体</option><option value="serif">书页宋体</option><option value="mono">等宽字体</option></select><label for="prefWidth">阅读宽度</label><select id="prefWidth"><option value="760">专注 · 760 px</option><option value="940">标准 · 940 px</option><option value="1120">宽屏 · 1120 px</option></select><label for="prefLeading">正文行距</label><select id="prefLeading"><option value="1.65">紧凑 · 1.65</option><option value="1.85">舒适 · 1.85</option><option value="2.1">宽松 · 2.1</option></select><label for="prefAccent">强调色</label><select id="prefAccent"><option value="neutral">石墨</option><option value="teal">青绿</option><option value="blue">靛蓝</option><option value="plum">梅紫</option></select><p class="muted">外观保存在当前浏览器或客户端；不会修改笔记内容。深浅主题可用侧栏底部按钮切换。</p>',
+  );
+  const preview = document.createElement("div");
+  preview.className = "settings-status";
+  preview.setAttribute("aria-label", "阅读效果预览");
+  preview.innerHTML =
+    "<strong>阅读效果预览</strong><p>清楚的层级、适合的字号与行距，让每一份笔记更容易阅读。</p><small>改变选项即可预览；点击保存后保留。</small>";
+  panes.appearance.querySelector("h3").after(preview);
+  const readingDefaults = {
+    size: 17,
+    density: "comfortable",
+    font: "sans",
+    width: "940",
+    leading: "1.85",
+    accent: "neutral",
+    autoOpen: false,
+    notify: false,
+  };
+  function normalizeReading(value) {
+    const p = value && typeof value === "object" ? value : {};
+    const allowed = {
+      size: [15, 16, 17, 18, 20],
+      density: ["comfortable", "compact"],
+      font: ["sans", "serif", "mono"],
+      width: ["760", "940", "1120"],
+      leading: ["1.65", "1.85", "2.1"],
+      accent: ["neutral", "teal", "blue", "plum"],
+    };
+    return Object.fromEntries(
+      Object.entries(readingDefaults).map(([key, fallback]) => [
+        key,
+        typeof fallback === "boolean"
+          ? p[key] === true
+          : allowed[key].includes(
+                key === "size" ? Number(p[key]) : String(p[key]),
+              )
+            ? key === "size"
+              ? Number(p[key])
+              : String(p[key])
+            : fallback,
+      ]),
     );
-    document.body.classList.toggle("compact-density", p.density === "compact");
-    for (const [id, value] of Object.entries({prefFont:p.font || "sans", prefWidth:p.width || "940", prefLeading:p.leading || "1.85", prefAccent:p.accent || "neutral"})) $(id).value = value;
-    const fonts = {sans:'"Segoe UI", "Microsoft YaHei", sans-serif', serif:'"Noto Serif CJK SC", "SimSun", serif', mono:'Consolas, "Microsoft YaHei", monospace'};
-    const colors = {neutral:"#303832", teal:"#087b83", blue:"#4057a0", plum:"#79516f"};
+  }
+  function readAppearance() {
+    try {
+      return normalizeReading(
+        JSON.parse(
+          localStorage.getItem("learnnote.reading.preferences") || "{}",
+        ),
+      );
+    } catch {
+      return { ...readingDefaults };
+    }
+  }
+  function applyAppearance(p) {
+    const fonts = {
+      sans: '"Segoe UI", "Microsoft YaHei", sans-serif',
+      serif: '"Noto Serif CJK SC", "SimSun", serif',
+      mono: 'Consolas, "Microsoft YaHei", monospace',
+    };
+    const colors = {
+      neutral: "#303832",
+      teal: "#087b83",
+      blue: "#4057a0",
+      plum: "#79516f",
+    };
+    const darkColors = {
+      neutral: "#d5d9d6",
+      teal: "#81d6d5",
+      blue: "#abbdff",
+      plum: "#d9aed0",
+    };
     const style = document.documentElement.style;
-    style.setProperty("--reader-font", fonts[p.font] || fonts.sans);
-    style.setProperty("--reader-width", ([760,940,1120].includes(Number(p.width)) ? p.width : 940) + "px");
-    style.setProperty("--reader-leading", [1.65,1.85,2.1].includes(Number(p.leading)) ? p.leading : 1.85);
-    style.setProperty("--chosen-accent", colors[p.accent] || colors.neutral);
+    style.setProperty("--reader-size", p.size + "px");
+    style.setProperty("--reader-font", fonts[p.font]);
+    style.setProperty("--reader-width", p.width + "px");
+    style.setProperty("--reader-leading", p.leading);
+    style.setProperty("--chosen-accent", colors[p.accent]);
+    style.setProperty("--chosen-accent-dark", darkColors[p.accent]);
+    document.body.classList.toggle("compact-density", p.density === "compact");
+    Object.assign(preview.querySelector("p").style, {
+      fontFamily: fonts[p.font],
+      fontSize: p.size + "px",
+      lineHeight: p.leading,
+    });
+  }
+  function appearance() {
+    const p = readAppearance();
+    for (const [id, key] of Object.entries({
+      prefReaderSize: "size",
+      prefDensity: "density",
+      prefFont: "font",
+      prefWidth: "width",
+      prefLeading: "leading",
+      prefAccent: "accent",
+    }))
+      $(id).value = p[key];
+    $("prefAutoOpen").checked = p.autoOpen;
+    $("prefNotify").checked = p.notify;
+    applyAppearance(p);
     state.reading = p;
   }
+  function collectReading() {
+    return normalizeReading({
+      size: Number($("prefReaderSize").value),
+      density: $("prefDensity").value,
+      font: $("prefFont").value,
+      width: $("prefWidth").value,
+      leading: $("prefLeading").value,
+      accent: $("prefAccent").value,
+      autoOpen: $("prefAutoOpen").checked,
+      notify: $("prefNotify").checked,
+    });
+  }
+  panes.appearance.addEventListener("input", () =>
+    applyAppearance(collectReading()),
+  );
+  panes.appearance.addEventListener("change", () =>
+    applyAppearance(collectReading()),
+  );
+  dialog.addEventListener("close", () => {
+    appearance();
+    saved(Object.keys(panes));
+  });
   function collect() {
     return {
       ...pref,
@@ -207,7 +387,9 @@ export function installSettings(ctx) {
       low_resource_mode: $("prefLowResource").checked,
     };
   }
+  let loadGeneration = 0;
   async function load() {
+    const generation = ++loadGeneration;
     try {
       let result = await api("/api/preferences");
       if (state.legacyProcessing) {
@@ -219,13 +401,15 @@ export function installSettings(ctx) {
         });
         delete state.legacyProcessing;
       }
-      fill(result.task_options);
+      if (generation !== loadGeneration) return;
+      const unchanged = processingSections.filter((key) => !dirty(key));
+      fill(result.task_options, unchanged);
+      saved(unchanged);
       state.processing = result.task_options;
     } catch (e) {
       $("preferencesStatus").textContent = e.message;
     }
-    appearance();
-    const h = state.health;
+    const h = state.health || {};
     $("asrReadiness").textContent = h.local_asr_available
       ? "本地转写运行组件可用；模型权重按需下载。"
       : "本地转写组件未就绪，请检查安装与诊断。";
@@ -252,7 +436,12 @@ export function installSettings(ctx) {
   };
   const oldOpen = $("settings").onclick;
   $("settings").onclick = () => {
+    appearance();
+    fill(state.processing || pref);
     oldOpen();
+    saved(Object.keys(panes));
+    $("preferencesStatus").textContent =
+      "各分类分别保存；阅读与外观无需连接后端。";
     load();
   };
   $("savePreferences").textContent = "保存模型连接";
@@ -264,41 +453,63 @@ export function installSettings(ctx) {
     const button = $("savePreferences");
     button.disabled = true;
     try {
-      for (const input of form.querySelectorAll(
-        "[data-settings-page]:not([hidden]) input",
-      ))
-        if (!input.reportValidity()) return;
-      const result = await api("/api/preferences", {
-        method: "PUT",
-        body: JSON.stringify({ task_options: collect() }),
-      });
-      state.processing = result.task_options;
-      const reading = {
-        size: Number($("prefReaderSize").value),
-        density: $("prefDensity").value,
-        font: $("prefFont").value,
-        width: $("prefWidth").value,
-        leading: $("prefLeading").value,
-        accent: $("prefAccent").value,
-        autoOpen: $("prefAutoOpen").checked,
-        notify: $("prefNotify").checked,
-      };
-      if (
-        reading.notify &&
-        window.Notification &&
-        Notification.permission === "default"
-      )
-        await Notification.requestPermission();
-      localStorage.setItem(
-        "learnnote.reading.preferences",
-        JSON.stringify(reading),
-      );
-      appearance();
-      $("preferencesStatus").textContent = "设置已保存，新任务将使用这些参数。";
-      window.LearnNoteDialogs?.markSaved(dialog);
+      if (!panes.appearance.hidden) {
+        const reading = collectReading();
+        let notificationMessage = "";
+        if (reading.notify) {
+          if (!window.Notification)
+            notificationMessage = "当前浏览器不支持系统通知。";
+          else {
+            const permission =
+              Notification.permission === "default"
+                ? await Notification.requestPermission()
+                : Notification.permission;
+            if (permission !== "granted")
+              notificationMessage = "系统通知未获授权；其他外观设置已保存。";
+          }
+          if (notificationMessage) reading.notify = false;
+        }
+        localStorage.setItem(
+          "learnnote.reading.preferences",
+          JSON.stringify(reading),
+        );
+        appearance();
+        saved(["appearance"]);
+        $("preferencesStatus").textContent =
+          notificationMessage || "阅读与外观已保存在此设备，立即生效。";
+      } else {
+        for (const key of processingSections) {
+          const invalid = [...panes[key].querySelectorAll("input")].find(
+            (input) => !input.checkValidity(),
+          );
+          if (invalid) {
+            nav.querySelector(`[data-settings-section="${key}"]`).click();
+            invalid.reportValidity();
+            return;
+          }
+        }
+        const submitted = collect();
+        const submittedValues = Object.fromEntries(
+          processingSections.map((key) => [key, values(key)]),
+        );
+        const result = await api("/api/preferences", {
+          method: "PUT",
+          body: JSON.stringify({ task_options: submitted }),
+        });
+        state.processing = result.task_options;
+        const unchanged = processingSections.filter(
+          (key) => values(key) === submittedValues[key],
+        );
+        fill(result.task_options, unchanged);
+        saved(unchanged);
+        $("preferencesStatus").textContent =
+          "处理设置已保存，新任务将使用这些参数。";
+      }
+      if (updateDirty().length)
+        $("preferencesStatus").textContent += " 其他分类还有未保存的修改。";
       window.dispatchEvent(new CustomEvent("learnnote:settings"));
     } catch (e) {
-      $("preferencesStatus").textContent = e.message;
+      $("preferencesStatus").textContent = "未能保存：" + e.message;
     } finally {
       button.disabled = false;
     }
@@ -409,11 +620,14 @@ export function installSettings(ctx) {
           Object.entries(data).filter(([k]) => allowed.includes(k)),
         ),
       });
+      updateDirty();
       $("preferencesStatus").textContent = "模板已载入，点击保存后生效。";
     } catch (e) {
       $("preferencesStatus").textContent = e.message;
     }
   };
-  // Initial preference load keeps task creation consistent across desktop and extension.
+  // Apply local appearance before waiting for the backend.
+  appearance();
+  saved(Object.keys(panes));
   load();
 }

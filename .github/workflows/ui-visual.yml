@@ -56,6 +56,8 @@ jobs:
             if (-not $ready) { throw "Local backend did not become ready." }
             node scripts/global-assistant-acceptance.cjs http://127.0.0.1:8765 build/global-ui
             if ($LASTEXITCODE -ne 0) { throw "Global assistant and navigation gate failed" }
+            node scripts/workspace-ux-acceptance.cjs http://127.0.0.1:8765 build/workspace-ux
+            if ($LASTEXITCODE -ne 0) { throw "Workspace settings and assistant continuity gate failed" }
             node scripts/product-workspace-acceptance.cjs http://127.0.0.1:8765 build/product-ui
             if ($LASTEXITCODE -ne 0) { throw "Product workspace gate failed" }
             node scripts/unified-workspace-acceptance.cjs http://127.0.0.1:8765 build/unified-ui
@@ -75,6 +77,7 @@ jobs:
           name: ui-visual-${{ github.run_id }}
           path: |
             build/global-ui
+            build/workspace-ux
             build/product-ui
             build/unified-ui
             build/redesign-ui

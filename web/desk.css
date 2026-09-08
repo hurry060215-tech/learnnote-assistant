@@ -32,7 +32,7 @@ body.dark {
   --ink: #eceee7;
   --muted: #b0b8a9;
   --line: #444b40;
-  --accent: #b5d0a5;
+  --accent: var(--chosen-accent-dark, #b5d0a5);
   --tint: #374731;
   --danger: #ffaaa0;
 }
@@ -1236,7 +1236,7 @@ body.assistant-visible.source-open .assistant-panel {
   display: none;
 }
 .focus-reading .document {
-  max-width: 960px;
+  max-width: var(--reader-width, 940px);
 }
 .compact-density .sidebar {
   gap: 4px;

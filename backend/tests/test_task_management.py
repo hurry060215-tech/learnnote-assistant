@@ -150,10 +150,15 @@ class TaskManagementApiTests(unittest.TestCase):
             error_code="processing_failed",
             error_detail="interrupted",
         )
+        note = media.parent / "draft.md"
+        note.write_text("# 已经完成的字幕草稿", encoding="utf-8")
+        update_task(source.id, note_path=str(note), summary_source="transcript-draft")
         with patch("app.main.validate_local_upload_file", return_value=MediaIntegrity(status="ready", sha256="recover")), patch("app.main.process_local_video_task") as process:
             resumed = self.client.post(f"/api/tasks/{source.id}/resume", json={})
         self.assertEqual(resumed.status_code, 200, resumed.text)
         self.assertTrue(resumed.json()["resumed"])
+        self.assertEqual(resumed.json()["task"]["note_path"], str(note))
+        self.assertEqual(resumed.json()["task"]["summary_source"], "transcript-draft")
         self.assertEqual(resumed.json()["task_id"], source.id)
         self.assertEqual(resumed.json()["task"]["status"], "queued")
         self.assertEqual(resumed.json()["task"]["checkpoint"], "media_ready")

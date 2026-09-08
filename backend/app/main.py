@@ -2085,6 +2085,7 @@ def task_payload(task: TaskRecord) -> dict:
     payload["audit"] = task_audit_summary(task)
     payload["recovery"] = diagnostic_recovery_profile(task)
     payload["reuse"] = task_reuse_evidence(task)
+    payload["resume_available"] = task_media_file_exists(task)
     payload["next_actions"] = task_next_actions(task)
     qa_history = read_task_qa_history(task.id)
     payload["qa"] = {
@@ -2585,6 +2586,7 @@ def health_payload() -> dict:
     ytdlp_cli = shutil.which("yt-dlp") or shutil.which("yt-dlp.exe") or ""
     return {
         "ok": True,
+        "service": "learnnote",
         "app_version": APP_VERSION,
         "backend_version": APP_VERSION,
         "api_version": API_VERSION,
@@ -3944,28 +3946,35 @@ def resume_task_from_checkpoint(
             detail={"code": "media_not_found", "message": "没有找到可恢复的本地媒体，请重新从当前页面发起。"},
         )
     parsed_options = merge_task_options(source.options, rerun_options_from_body(request))
+    # Seed older owned local transcripts before resetting attempt status.
+    # The pipeline checks media hash and ASR settings before reusing this cache.
+    from .transcript_cache import load_local_transcript, save_local_transcript, media_cache_integrity
+    cache_integrity = media_cache_integrity(source.media_integrity, media_path)
+    if source.transcript_path and load_local_transcript(source.id, cache_integrity, source.options) is None:
+        try:
+            owned_path = Path(source.transcript_path).resolve()
+            if owned_path.parent == task_dir(source.id).resolve():
+                cached_transcript = TranscriptResult.model_validate_json(owned_path.read_bytes())
+                save_local_transcript(source.id, cached_transcript, cache_integrity, source.options)
+        except (OSError, ValueError):
+            pass
     task = update_task(
         task_id,
         status="queued",
         phase="queued",
         progress=0,
-        message=f"从恢复检查点继续：{source.checkpoint or 'media_ready'}",
+        message="正在恢复处理，已生成的内容继续保留；匹配的本地转写会自动复用。",
         error_code="",
         error_detail="",
         failed_phase="",
         cancel_requested=False,
         cancel_requested_at="",
         cancelled_at="",
-        note_path="",
-        transcript_path="",
-        audio_path="",
         visual_index_path="",
         evidence_coverage_path="",
         evidence_coverage=EvidenceCoverage(),
         frame_grids=[],
         visual_windows=[],
-        summary_source="",
-        summary_warning="",
         summary_diagnostics_path="",
         summary_diagnostics={},
         options=parsed_options.model_copy(update={"llm_api_key": None}),

@@ -174,7 +174,14 @@ function statusLabel(task) {
         cancelling: "正在取消",
       }[task.status] || "正在整理";
 }
-async function refresh() {
+function refresh() {
+  if (!state.refreshPromise)
+    state.refreshPromise = refreshLibrary().finally(() => {
+      state.refreshPromise = null;
+    });
+  return state.refreshPromise;
+}
+async function refreshLibrary() {
   if (state.refreshing) return;
   state.refreshing = true;
   try {
@@ -336,7 +343,23 @@ function renderStatus() {
   const panel = $("taskStatus");
   panel.hidden = t.kind !== "task" || t.status === "success";
   if (panel.hidden) return;
-  panel.innerHTML = `<strong>${esc(statusLabel(t))}</strong><p>${esc(t.message || "")}</p>${t.awaiting_confirmation ? '<button data-task-action="start">确认并开始整理</button>' : ["failed", "cancelled"].includes(t.status) ? '<button data-task-action="resume">从已有进度恢复</button>' : `<progress max="100" value="${Number(t.progress) || 0}"></progress><button data-task-action="cancel">取消任务</button>`}`;
+  const stopped = ["failed", "cancelled"].includes(t.status);
+  const canResume =
+    t.resume_available ?? Boolean(t.media_path || t.source_media_path);
+  const busy = state.taskAction?.id === t.id;
+  const action = t.awaiting_confirmation
+    ? '<button data-task-action="start">确认并开始整理</button>'
+    : stopped
+      ? (canResume
+          ? '<button data-task-action="resume">继续处理已有文件</button>'
+          : '<button data-task-action="new">重新添加来源</button>') +
+        '<button data-task-action="diagnostics">查看原因</button>'
+      : t.status === "cancelling"
+        ? "<span>正在停止，已完成的内容会保留。</span>"
+        : `<progress aria-label="任务处理进度" max="100" value="${Number(t.progress) || 0}"></progress><button data-task-action="cancel">停止处理</button>`;
+  panel.innerHTML = `<strong>${esc(statusLabel(t))}</strong><p>${esc(t.message || "")}</p>${stopped && !canResume ? '<p class="muted">本地没有可继续处理的视频，请重新交接来源或导入文件。</p>' : ""}${action}`;
+  for (const button of panel.querySelectorAll("button"))
+    button.disabled = Boolean(busy);
 }
 async function loadAnnotations(epoch) {
   const s = state.selected;
@@ -594,22 +617,52 @@ $("createForm").onsubmit = async (e) => {
 };
 $("taskStatus").onclick = async (e) => {
   const button = e.target.closest("[data-task-action]");
-  if (!button) return;
-  button.disabled = true;
+  if (!button || state.taskAction) return;
+  const selected = state.selected,
+    action = button.dataset.taskAction;
+  if (action === "diagnostics") {
+    await workspaceTools.diagnostics().catch(failure);
+    return;
+  }
+  if (action === "new") {
+    $("newNote").click();
+    if (selected.page_url) {
+      document.querySelector('[data-input="url"]').click();
+      $("url").value = selected.page_url;
+    }
+    return;
+  }
+  state.taskAction = { id: selected.id, action };
+  renderStatus();
   try {
-    await api(`/api/tasks/${state.selected.id}/${button.dataset.taskAction}`, {
+    await api(`/api/tasks/${selected.id}/${action}`, {
       method: "POST",
       body: JSON.stringify(
-        button.dataset.taskAction === "cancel" ? {} : options(),
+        action === "cancel"
+          ? {}
+          : action === "resume"
+            ? {
+                ...selected.options,
+                ...(state.model.base_url
+                  ? {
+                      llm_base_url: state.model.base_url,
+                      llm_model: state.model.model,
+                    }
+                  : {}),
+                ...(state.key ? { llm_api_key: state.key } : {}),
+              }
+            : options(),
       ),
     });
     await refresh();
   } catch (error) {
     failure(error);
   } finally {
-    button.disabled = false;
+    state.taskAction = null;
+    if (state.selected) renderStatus();
   }
 };
+
 $("settings").onclick = () => {
   const provider = presets[state.model.provider]
     ? state.model.provider
@@ -663,8 +716,10 @@ $("settingsForm").onsubmit = async (e) => {
     }
     localStorage.setItem("learnnote.desk.model", JSON.stringify(state.model));
     window.dispatchEvent(new CustomEvent("learnnote:settings"));
-    $("settingsDialog").close();
-    notice("设置已保存");
+    if (!window.LearnNoteSettings?.modelSaved()) {
+      $("settingsDialog").close();
+      notice("设置已保存");
+    }
   } catch (error) {
     $("settingsStatus").textContent = error.message;
   }
@@ -786,36 +841,7 @@ async function initialize() {
       };
     await loadKey();
     await refresh();
-    const query = new URLSearchParams(location.search);
-    const match =
-      location.hash.match(/^#(task|material)\/(.+)$/) ||
-      (query.get("task") ? ["", "task", query.get("task")] : null);
-    const item =
-      match &&
-      state.items.find(
-        (i) => i.kind === match[1] && i.id === decodeURIComponent(match[2]),
-      );
-    if (item) await openItem(item);
-    if (query.get("view") === "settings") $("settings").click();
-    else if (
-      query.get("view") === "diagnostics" ||
-      query.get("tab") === "diagnostics"
-    ) {
-      if (state.selected?.kind === "task") await workspaceTools.diagnostics();
-      else await workspaceTools.storage();
-    } else if (item && query.get("tab") === "qa")
-      window.LearnNoteAssistant?.open();
-    else if (
-      item &&
-      ["transcript", "media", "source"].includes(query.get("tab"))
-    )
-      await openSource();
-    else if (item && ["frames", "slices"].includes(query.get("tab")))
-      $("sourceFrames")?.click();
-
-    if (!item && state.items.length) {
-      $("welcomeNew").innerHTML = "新建笔记 <span>↗</span>";
-    }
+    await applyRoute({ initial: true });
   } catch (error) {
     failure(error);
   }
@@ -846,19 +872,75 @@ $("regenerate").onclick = async () => {
   }
 };
 
-window.addEventListener("hashchange", () => {
-  const match = location.hash.match(/^#(task|material)\/(.+)$/);
-  const item =
-    match &&
-    state.items.find(
-      (i) => i.kind === match[1] && i.id === decodeURIComponent(match[2]),
+function readRoute() {
+  const [path, params = ""] = location.hash.slice(1).split("?");
+  const query = new URLSearchParams(params || location.search);
+  const match = path.match(/^(task|material)\/(.+)$/);
+  try {
+    return {
+      kind: match?.[1] || "task",
+      id: match ? decodeURIComponent(match[2]) : query.get("task"),
+      tab: query.get("tab"),
+      view: ["settings", "diagnostics"].includes(path)
+        ? path
+        : query.get("view"),
+    };
+  } catch {
+    return { invalid: true };
+  }
+}
+async function applyRoute({ initial = false } = {}) {
+  const route = readRoute();
+  if (!initial && !guard()) {
+    history.replaceState(
+      null,
+      "",
+      state.selected
+        ? `#${state.selected.kind}/${encodeURIComponent(state.selected.id)}`
+        : location.pathname,
     );
+    return;
+  }
+  if (route.invalid) {
+    notice("链接格式无效，请从左侧重新选择笔记。");
+    return;
+  }
+  const epoch = (state.routeEpoch = (state.routeEpoch || 0) + 1);
+  let item =
+    route.id &&
+    state.items.find((i) => i.kind === route.kind && i.id === route.id);
+  if (route.id && !item && !initial) {
+    await refresh();
+    item = state.items.find((i) => i.kind === route.kind && i.id === route.id);
+  }
+  if (epoch !== state.routeEpoch) return;
   if (
     item &&
     (state.selected?.id !== item.id || state.selected?.kind !== item.kind)
   )
-    openItem(item).catch(failure);
-});
+    await openItem(item, { remember: !initial, check: false });
+  else if (route.id && !item) {
+    notice("这份内容不存在或已被删除，请从左侧重新选择。");
+    return;
+  } else if (!route.id && !route.view && !initial)
+    showHome({ remember: false, check: false });
+  if (epoch !== state.routeEpoch) return;
+  if (route.view === "settings") {
+    if (!$("settingsDialog").open) $("settings").click();
+    else
+      $("settingsDialog")
+        .querySelector("[data-settings-section][aria-pressed=true]")
+        ?.focus();
+  } else if (route.view === "diagnostics" || route.tab === "diagnostics") {
+    if (state.selected?.kind === "task") await workspaceTools.diagnostics();
+    else await workspaceTools.storage();
+  } else if (item && route.tab === "qa") window.LearnNoteAssistant?.open();
+  else if (item && ["transcript", "media", "source"].includes(route.tab))
+    await openSource();
+  else if (item && ["frames", "slices"].includes(route.tab))
+    $("sourceFrames")?.click();
+}
+window.addEventListener("hashchange", () => applyRoute().catch(failure));
 
 const workspaceTools = installTools({
   state,

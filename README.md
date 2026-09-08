@@ -12,7 +12,7 @@ LearnNote 是一个本地优先的个人学习工具。添加视频或资料，�
 
 *打包后的 Windows 客户端实拍；内容为演示资料，不代表模型生成质量。*
 
-[全局助手与 Skill 说明](docs/GLOBAL_ASSISTANT.md)
+[全局助手与 Skill 说明](docs/GLOBAL_ASSISTANT.md) · [扩展连接与本机启动](docs/EXTENSION_CONNECTION.md)
 
 ## 开始使用
 
