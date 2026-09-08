@@ -1,6 +1,7 @@
 import { installConnections } from "/web/desk-connections.js";
 import { timelineHtml, taskExplanation } from "/web/desk-progress.js";
 import { installInteractions } from "/web/desk-interactions.js";
+import { installLayout } from "/web/desk-layout.js";
 import { installSettings } from "/web/desk-settings.js";
 import { installProductWorkspace } from "/web/desk-product.js";
 import { installTools } from "/web/desk-tools.js";
@@ -80,7 +81,11 @@ function guard() {
   return !dirty || confirm("还有未保存的修改或补充。放弃并离开？");
 }
 function options() {
+  const mode = $("createDialog").open
+    ? document.querySelector('[name="contentMode"]:checked')?.value || "text"
+    : "auto";
   if (
+    mode !== "subtitles" &&
     state.model.base_url &&
     !state.key &&
     !state.model.use_saved_connection &&
@@ -90,6 +95,7 @@ function options() {
     throw new Error("请在设置中填写当前模型服务的 Key，再开始整理。");
   return {
     ...state.processing,
+    content_mode: mode,
     use_saved_connection: Boolean(state.model.use_saved_connection),
     summary_depth: $("depth").value,
     note_style:
@@ -98,14 +104,39 @@ function options() {
       "study",
     note_template:
       $("taskTemplate")?.value || state.processing?.note_template || "standard",
-    visual_understanding: $("vision").checked,
-    local_ocr: Boolean($("localOcr")?.checked),
+    visual_understanding:
+      mode === "visual" || (mode === "auto" && $("vision").checked),
+    local_ocr:
+      (mode === "visual" || mode === "auto") && Boolean($("localOcr")?.checked),
     ...(state.model.base_url
       ? { llm_base_url: state.model.base_url, llm_model: state.model.model }
       : {}),
     ...(state.key ? { llm_api_key: state.key } : {}),
   };
 }
+function updateContentMode() {
+  const mode =
+    document.querySelector('[name="contentMode"]:checked')?.value || "text";
+  $("vision").checked = mode === "visual";
+  $("vision").disabled = true;
+  $("vision").closest("label").hidden = true;
+  if ($("localOcr")) $("localOcr").disabled = mode !== "visual";
+  const model =
+    state.model.model || state.health.default_llm_model || "尚未配置";
+  $("contentModeExplanation").textContent =
+    mode === "subtitles"
+      ? "不生成 AI 总结。没有可用字幕时会停下来，不会自动改用语音转写。"
+      : mode === "visual"
+        ? `视觉理解：已启用 · 当前模型：${model}。画面和必要的字幕会发送给该模型。`
+        : `视觉理解：关闭 · 文字模型：${model}。本地转写只在没有可用字幕时进行。`;
+  $("createSubmit").textContent =
+    mode === "subtitles" ? "提取字幕" : "生成笔记";
+}
+for (const choice of document.querySelectorAll('[name="contentMode"]'))
+  choice.addEventListener("change", updateContentMode);
+$("createDialog").addEventListener("toggle", () => {
+  if ($("createDialog").open) updateContentMode();
+});
 function sourcePath(s = state.selected) {
   return `/api/tasks/editions/${s.kind}/${encodeURIComponent(s.id)}`;
 }
@@ -173,6 +204,7 @@ async function navigateBack() {
   window.dispatchEvent(new Event("learnnote:navigation"));
 }
 function statusLabel(task) {
+  if (task.summary_source === "subtitle-extract") return "字幕已提取";
   if (task.summary_source === "local-template") return "字幕已保留 · 待总结";
   return task.awaiting_confirmation
     ? "等待确认"
@@ -309,6 +341,12 @@ async function openItem(item, { remember = true, check = true } = {}) {
   drawList();
   renderStatus();
   await Promise.all([loadEdition(epoch), loadAnnotations(epoch)]);
+  if (
+    epoch === state.epoch &&
+    item.kind === "task" &&
+    (item.media_path || item.source_media_path)
+  )
+    await openSource();
 }
 async function loadEdition(epoch) {
   const selected = state.selected;
@@ -447,7 +485,12 @@ function renderStatus(reload = true) {
     t.message && !["success"].includes(t.status)
       ? `<details class="task-detail"><summary>当前步骤详情</summary><p>${esc(t.message)}</p></details>`
       : "";
-  panel.innerHTML = `<div class="task-status-heading"><strong>${esc(title)}</strong><button data-task-action="diagnostics">查看处理记录</button></div><p>${esc(taskExplanation(t))}</p>${timelineHtml(t, taskEvents.get(t.id)?.events || [])}${t.awaiting_confirmation ? `<p class="task-plan">文字整理 · ${esc(state.model.model || state.health.default_llm_model || "尚未配置模型")} · ${t.options?.visual_understanding || t.options?.local_ocr ? "包含画面处理" : "字幕优先"}</p>` : ""}<div class="task-status-actions">${action}</div>${raw}`;
+  const priorProgress = panel.querySelector("[data-task-progress]");
+  const progressExpanded =
+    priorProgress?.dataset.taskProgress === t.id
+      ? priorProgress.open
+      : t.status !== "success";
+  panel.innerHTML = `<div class="task-status-heading"><strong>${esc(title)}</strong><button data-task-action="diagnostics">查看处理记录</button></div><p>${esc(taskExplanation(t))}</p>${timelineHtml(t, taskEvents.get(t.id)?.events || [], progressExpanded)}${t.awaiting_confirmation ? `<p class="task-plan">${t.options?.content_mode === "subtitles" ? "仅提取字幕 · 不调用模型" : `${t.options?.visual_understanding ? "图文笔记 · 视觉理解已启用" : "文字笔记 · 视觉理解关闭"} · ${esc(state.model.model || state.health.default_llm_model || "尚未配置模型")}`}</p>` : ""}<div class="task-status-actions">${action}</div>${raw}`;
   panel.dataset.status = needsSummary ? "needs-summary" : t.status;
   for (const button of panel.querySelectorAll("button"))
     button.disabled = Boolean(busy);
@@ -460,29 +503,79 @@ async function loadAnnotations(epoch) {
     .map((a) => `<div class="annotation">${esc(a.text)}</div>`)
     .join("");
 }
+let sourceRequest = 0;
 function closeSource() {
+  sourceRequest++;
   $("sourcePanel").hidden = true;
   document.body.classList.remove("source-open");
   $("player").pause();
 }
 async function openSource(seconds) {
+  const s = state.selected;
+  if (!s) return;
+  const panel = $("sourcePanel"),
+    player = $("player"),
+    transcript = $("sourceTranscript"),
+    sourceKey = `${s.kind}:${s.id}:${s.updated_at || ""}`;
+  panel.hidden = false;
+  document.body.classList.add("source-open");
+  const seek = () => {
+    if (seconds === undefined) return;
+    if (transcript) transcript.open = true;
+    if (!player.hidden) {
+      player.currentTime = seconds;
+      player.play().catch(() => {});
+    }
+    if (renderedCues.length) {
+      const cue =
+        renderedCues.findLast((item) => Number(item.dataset.time) <= seconds) ||
+        renderedCues[0];
+      renderedCues.forEach((item) =>
+        item.classList.toggle("active", item === cue),
+      );
+      const content = $("sourceContent"),
+        box = content.getBoundingClientRect();
+      content.scrollTop += cue.getBoundingClientRect().top - box.top - 8;
+    }
+  };
+  if (
+    panel.dataset.sourceKey === sourceKey &&
+    panel.dataset.contentMode === "transcript"
+  ) {
+    seek();
+    panel.scrollIntoView({ block: "nearest", behavior: "instant" });
+    return;
+  }
+  const request = ++sourceRequest;
+  delete panel.dataset.sourceKey;
+  panel.dataset.contentMode = "loading";
   renderedCues = [];
   activeCueIndex = -1;
-  const epoch = state.epoch,
-    s = state.selected;
-  $("sourcePanel").hidden = false;
-  document.body.classList.add("source-open");
+  const epoch = state.epoch;
   $("sourceContent").textContent = "正在打开原始来源…";
-  $("player").hidden = true;
+  if (transcript) transcript.open = true;
+  const hasMedia =
+    s.kind === "task" && Boolean(s.media_path || s.source_media_path);
+  player.hidden = !hasMedia;
+  if (hasMedia) {
+    const url = `/api/tasks/${s.id}/media`;
+    if (player.getAttribute("src") !== url) player.src = url;
+  } else if (player.hasAttribute("src")) {
+    player.removeAttribute("src");
+    player.load();
+  }
   try {
     if (s.kind === "material") {
       const data = await api(`/api/library/materials/${s.id}/content`);
-      if (epoch !== state.epoch) return;
+      if (epoch !== state.epoch || request !== sourceRequest) return;
       $("sourceContent").textContent = data.text;
+      panel.dataset.sourceKey = sourceKey;
+      panel.dataset.contentMode = "transcript";
+      transcript.querySelector("summary").textContent = "查看资料原文";
       return;
     }
     const data = await api(`/api/tasks/${s.id}/transcript`);
-    if (epoch !== state.epoch) return;
+    if (epoch !== state.epoch || request !== sourceRequest) return;
     const cues = data.segments || [];
     $("sourceContent").innerHTML =
       (s.page_url
@@ -498,30 +591,18 @@ async function openSource(seconds) {
     activeCueIndex = -1;
     if (!cues.length)
       $("sourceContent").append(document.createTextNode("暂无可用字幕。"));
-    const player = $("player");
-    if (!s.media_path && !s.source_media_path) {
-      player.hidden = true;
-      player.removeAttribute("src");
-      player.load();
-      if (seconds !== undefined && renderedCues.length) {
-        const cue =
-          renderedCues.findLast(
-            (item) => Number(item.dataset.time) <= seconds,
-          ) || renderedCues[0];
-        cue.classList.add("active");
-        cue.scrollIntoView({ block: "nearest", behavior: "instant" });
-      }
-      return;
+    panel.dataset.sourceKey = sourceKey;
+    panel.dataset.contentMode = "transcript";
+    if (transcript) {
+      transcript.querySelector("summary").textContent =
+        `查看原始字幕${cues.length ? " · " + cues.length + " 段" : ""}`;
+      transcript.open = !hasMedia || seconds !== undefined;
     }
-    player.hidden = false;
-    const url = `/api/tasks/${s.id}/media`;
-    if (player.getAttribute("src") !== url) player.src = url;
-    if (seconds !== undefined) {
-      player.currentTime = seconds;
-      player.play().catch(() => {});
-    }
+    seek();
+    panel.scrollIntoView({ block: "nearest", behavior: "instant" });
   } catch (error) {
-    if (epoch === state.epoch) $("sourceContent").textContent = error.message;
+    if (epoch === state.epoch && request === sourceRequest)
+      $("sourceContent").textContent = error.message;
   }
 }
 $("player").addEventListener("timeupdate", () => {
@@ -536,10 +617,10 @@ $("player").addEventListener("timeupdate", () => {
   const cue = renderedCues[index];
   if (cue && $("followTranscript")?.checked && cue.getClientRects().length) {
     const bounds = cue.getBoundingClientRect(),
-      panel = $("sourcePanel").getBoundingClientRect(),
-      video = $("player").getBoundingClientRect();
-    if (bounds.bottom > panel.bottom - 20 || bounds.top < video.bottom + 10)
-      $("sourcePanel").scrollTop += bounds.top - video.bottom - 18;
+      content = $("sourceContent"),
+      panel = content.getBoundingClientRect();
+    if (bounds.bottom > panel.bottom - 8 || bounds.top < panel.top + 8)
+      content.scrollTop += bounds.top - panel.top - 8;
   }
 });
 $("player").addEventListener("error", () => {
@@ -645,6 +726,7 @@ $("annotationForm").onsubmit = async (e) => {
   }
 };
 function create() {
+  updateContentMode();
   if (!$("createDialog").open) $("createDialog").showModal();
   window.dispatchEvent(new CustomEvent("learnnote:create"));
 }
@@ -661,6 +743,8 @@ for (const button of document.querySelectorAll("[data-input]"))
       $(kind + "Input").hidden = kind !== state.input;
     $("createSubmit").hidden = state.input === "browser";
     $("generationOptions").hidden = state.input === "browser";
+    $("contentModeChoices").hidden = state.input === "browser";
+    $("contentModeExplanation").hidden = state.input === "browser";
     $("createStatus").textContent = "";
   };
 $("createForm").onsubmit = async (e) => {
@@ -1093,3 +1177,4 @@ window.addEventListener("learnnote:annotations", () =>
 );
 
 installInteractions({ state, drawList, showHome, navigateBack });
+installLayout();

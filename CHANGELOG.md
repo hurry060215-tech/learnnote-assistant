@@ -2,6 +2,14 @@
 
 All notable changes to LearnNote are documented here. The project follows semantic versioning while the `0.x` series is under active development.
 
+## 0.2.6 - Streaming assistant and reading layout
+
+- Stream actual provider content for global and source Q&A, with waiting status, stop, timeouts and incomplete-history protection.
+- Simplify the assistant start state; retain Skills and context inside optional details.
+- Place the persistent video player above the note with pinning and resizable sidebars.
+- Make subtitle extraction, text notes and visual notes explicit in creation and extension workflows.
+- Use original caption boundaries and nearby passages for retrieval instead of fixed stepped windows.
+
 ## 0.2.5 - Captions-first learning preview
 
 - Query platform/player captions before video download in text-only learning; retain requested note style and depth.

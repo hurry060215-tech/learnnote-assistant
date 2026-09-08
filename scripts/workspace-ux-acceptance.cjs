@@ -185,24 +185,21 @@ const os = require("node:os");
 
     // Closing the assistant cannot make its pending request disappear or erase a new draft.
     let releaseAnswer;
-    await p.route("**/api/assistant/execute", async (route) => {
+    await p.route("**/api/assistant/execute/stream", async (route) => {
       await new Promise((resolve) => {
         releaseAnswer = resolve;
       });
-      await route.fulfill({
-        json: {
-          answer: "这是本地验收回答。",
-          source: "local",
-          skill: { id: "product.help", name: "使用帮助", scope: "product" },
-          execution: { state: "completed" },
-        },
-      });
+      await route.fulfill({contentType:"text/event-stream", body: "event: result\ndata: " + JSON.stringify({
+          answer: "这是本地验收回答。", source: "local", skill: {id:"product.help",name:"使用帮助",scope:"product"}, execution:{state:"completed"}
+      }) + "\n\n"});
     });
     await p.locator("#aiAssistant").click();
     await p.waitForSelector('#assistantSkill option[value="product.help"]', {
       state: "attached",
     });
+    await p.locator(".assistant-options > summary").click();
     await p.locator("#assistantSkill").selectOption("product.help");
+    await p.locator(".assistant-options > summary").click();
     await p.locator("#aiQuestion").fill("怎么导出？");
     await p.locator("#aiSend").click();
     await waitUntil(() => releaseAnswer);

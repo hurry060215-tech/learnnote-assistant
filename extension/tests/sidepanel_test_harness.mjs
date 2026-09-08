@@ -38,11 +38,11 @@ function element() {
   };
 }
 
-export async function createSidepanelHarness({ contexts = [], preflight = null, start = null, starts = [], startDelayMs = 0, health = null, focus = null, tabs = [], healthByUrl = null, healthDelayMs = 0, fetchOverride = null } = {}) {
+export async function createSidepanelHarness({ contexts = [], preflight = null, start = null, starts = [], startDelayMs = 0, health = null, focus = null, tabs = [], healthByUrl = null, healthDelayMs = 0, fetchOverride = null, stored = {} } = {}) {
   const selectors = [
     "#connectionCard", "#connectionTitle", "#connectionDetail", "#openClientButton", "#openClientBrand",
     "#refreshButton", "#platformLabel", "#playingBadge", "#videoTitle", "#videoMeta", "#integrityGrid",
-    "#candidateCount", "#durationValue", "#estimateValue", "#preflightMessage", "#sendButton", "#sendButtonLabel",
+    "#candidateCount", "#durationValue", "#estimateValue", "#preflightMessage", "#modeDescription", "#sendButton", "#sendButtonLabel",
     "#handoffProgress", "#handoffStatus", "#handoffPercent", "#openTaskButton", "#quickResultStatus",
     "#quickAskForm", "#quickAskQuestion", "#quickAskConversation", "#quickSummaryPanel"
   ];
@@ -71,6 +71,7 @@ export async function createSidepanelHarness({ contexts = [], preflight = null, 
   let startIndex = 0;
   let runtimeListener = null;
   const fetchCalls = [];
+  const storageWrites = [];
   const documentStub = {
     createElement() { return element(); },
     querySelector(selector) { return elements.get(selector) || null; },
@@ -115,7 +116,7 @@ export async function createSidepanelHarness({ contexts = [], preflight = null, 
       throw new Error(`Unexpected fetch: ${url}`);
     },
     chrome: {
-      storage: { local: { async get(defaults) { return defaults; }, async set() {} } },
+      storage: { local: { async get(defaults) { return { ...defaults, ...stored }; }, async set(value) { storageWrites.push(value); } } },
       tabs: { async query() { return tabs; }, async create(options) { openedTabs.push(options); return options; }, async update(id, options) { updatedTabs.push({id, ...options}); return options; } },
       runtime: {
         onMessage: { addListener(listener) { runtimeListener = listener; } },
@@ -157,6 +158,7 @@ export async function createSidepanelHarness({ contexts = [], preflight = null, 
     openedTabs,
     updatedTabs,
     fetchCalls,
+    storageWrites,
     emit(message) { runtimeListener?.(message); }
   };
 }

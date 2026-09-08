@@ -13,7 +13,9 @@ const fs = require("fs");
   const errors = [];
   p.on("pageerror", (e) => errors.push(e.message));
   async function send(text, skill = "auto") {
+    if (!await p.locator(".assistant-options").evaluate(el => el.open)) await p.locator(".assistant-options > summary").click();
     await p.locator("#assistantSkill").selectOption(skill);
+    await p.locator(".assistant-options > summary").click();
     await p.locator("#aiQuestion").fill(text);
     await p.locator("#aiSend").click();
     await p.waitForFunction(() => !document.querySelector("#aiSend").disabled);
@@ -26,7 +28,7 @@ const fs = require("fs");
     });
     await send("怎么导出 Word？");
     assert.match(
-      await p.locator(".assistant-turn").last().innerText(),
+      await p.locator(".assistant-turn").last().textContent(),
       /product.help/,
     );
     assert.match(
@@ -60,6 +62,7 @@ const fs = require("fs");
       await p.locator(".assistant-turn").last().innerText(),
       /先选择/,
     );
+    await p.locator(".assistant-options > summary").click();
     await p.locator("#skillCatalog").click();
     await p.waitForSelector(".skill-catalog");
     assert.equal(await p.locator("[data-pick-skill]").count(), 7);
@@ -87,12 +90,12 @@ const fs = require("fs");
     await p.locator("#aiAssistant").click();
     await send("学习率控制什么？");
     assert.match(
-      await p.locator(".assistant-turn").last().innerText(),
+      await p.locator(".assistant-turn").last().textContent(),
       /note.qa/,
     );
     await send("软件当前版本是什么？");
     assert.match(
-      await p.locator(".assistant-turn").last().innerText(),
+      await p.locator(".assistant-turn").last().textContent(),
       /product.status/,
     );
     await p.locator("#closeAssistant").click();

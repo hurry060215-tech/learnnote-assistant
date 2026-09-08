@@ -2764,42 +2764,15 @@ def _transcript_window_chunks(segments: list[dict], window_seconds: int = 120, s
     if not valid_segments:
         return []
 
-    groups: list[list[dict]] = []
-    for item in valid_segments:
-        if not groups or item["start"] - groups[-1][-1]["end"] > 30:
-            groups.append([item])
-        else:
-            groups[-1].append(item)
-
+    from .transcript_passages import caption_passages
     chunks = []
-    for group in groups:
-        first_start = int(group[0]["start"] // step_seconds) * step_seconds
-        final_end = max(item["end"] for item in group)
-        window_start = first_start
-        while window_start < final_end:
-            window_end = window_start + window_seconds
-            members = [
-                item for item in group
-                if item["end"] > window_start and item["start"] < window_end
-            ]
-            if members:
-                text = _clip_text(" ".join(item["text"] for item in members), 1800)
-                if browser_subtitle_text_is_player_ui(text):
-                    window_start += step_seconds
-                    continue
-                start = _format_timestamp(window_start)
-                end = _format_timestamp(min(window_end, final_end))
-                chunks.append({
-                    "source": "transcript",
-                    "granularity": "window",
-                    "label": f"字幕 {start}-{end}",
-                    "text": text,
-                    "start": float(window_start),
-                    "end": float(min(window_end, final_end)),
-                    "time_range": f"{start}-{end}",
-                    "target_tab": "transcript",
-                })
-            window_start += step_seconds
+    for members in caption_passages(valid_segments, max_seconds=window_seconds):
+        start_seconds = members[0]["start"]
+        end_seconds = max(item["end"] for item in members)
+        start, end = _format_timestamp(start_seconds), _format_timestamp(end_seconds)
+        chunks.append({"source": "transcript", "granularity": "window", "segmentation": "caption_boundaries",
+            "label": f"字幕片段 {start}-{end}", "text": " ".join(item["text"] for item in members),
+            "start": start_seconds, "end": end_seconds, "time_range": f"{start}-{end}", "target_tab": "transcript"})
     return chunks
 
 
@@ -2906,15 +2879,16 @@ def _rank_citations_for_question(
     relevant = [citation for score, _index, citation in ranked if score >= relevance_floor][:limit]
     if relevant:
         if "__source_transcript__" in terms:
-            windows_by_start = {
-                int(float(citation.get("start") or 0)): citation
-                for citation in citations
-                if citation.get("source") == "transcript" and citation.get("granularity") == "window"
-            }
+            windows = sorted(
+                (item for item in citations if item.get("source") == "transcript" and item.get("granularity") == "window"),
+                key=lambda item: float(item.get("start") or 0),
+            )
             expanded: list[dict] = []
             seen_ids: set[int] = set()
             for citation in relevant:
-                for item in (citation, windows_by_start.get(int(float(citation.get("start") or -60)) + 60)):
+                start = float(citation.get("start") or 0)
+                following = [item for item in windows if start < float(item.get("start") or 0) <= start + 120][:2]
+                for item in (citation, *following):
                     if not item or id(item) in seen_ids:
                         continue
                     expanded.append(item)
@@ -3254,7 +3228,7 @@ def task_qa_suggestions(task: TaskRecord, limit: int = 7) -> list[dict]:
     return suggestions
 
 
-def _answer_task_question(task: TaskRecord, request: TaskQuestionRequest) -> dict:
+def _answer_task_question(task: TaskRecord, request: TaskQuestionRequest, *, emit=None, control=None) -> dict:
     options = merge_task_options(task.options, request.options)
     context, all_citations = _task_qa_context(task)
     strict_transcript = _strict_transcript_evidence_requested(request.question)
@@ -3288,49 +3262,58 @@ def _answer_task_question(task: TaskRecord, request: TaskQuestionRequest) -> dic
         )
     evidence_prompt = _qa_evidence_prompt(citations)
 
-    api_key = options.llm_api_key or (connected_api_key(options) if options.use_saved_connection else LLM_API_KEY)
     base_url = options.llm_base_url or LLM_BASE_URL
+    api_key = options.llm_api_key or connected_api_key(options)
+    if not api_key and urlsplit(base_url).hostname in {"localhost", "127.0.0.1", "::1"}:
+        api_key = "local-no-key"
+    elif not api_key and not options.use_saved_connection and base_url.rstrip("/") == LLM_BASE_URL.rstrip("/"):
+        api_key = LLM_API_KEY
     model = options.llm_model or LLM_MODEL
     if api_key:
         try:
             from openai import OpenAI
 
+            from .assistant_stream import completion_text
             client = OpenAI(
                 api_key=api_key,
                 base_url=base_url,
-                timeout=LLM_REQUEST_TIMEOUT_SECONDS,
-                max_retries=LLM_MAX_RETRIES,
+                timeout=30 if emit is not None else LLM_REQUEST_TIMEOUT_SECONDS,
+                max_retries=0 if emit is not None else LLM_MAX_RETRIES,
             )
-            response = client.chat.completions.create(
-                model=model,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            "你是 LearnNote 的课程问答助手。只能依据当前消息中列出的 E 编号证据回答；"
-                            "历史对话仅用于理解追问指代，不是事实证据。禁止补充常识、猜测或虚构内容。"
-                            "不得编造证据中不存在的时间窗、W 编号、页码、步骤或原文引语；"
-                            "只有证据逐字包含的内容才能使用引号。证据不足时直接说“现有证据不足”，"
-                            "分析操作演示时要区分当前设置与假设示例：‘这里设为/达到/我们认为/我们设置的是 X’表示演示采用 X，"
-                            "‘可以改成/比方说 X’仅表示替代示例；应综合相邻时间窗，不要因为 ASR 错写参数名而忽略明确的数值和含义。"
-                            "不要假装知道，也不要推荐不存在的回看位置。默认用中文简洁直接回答，"
-                            "通常 1-3 个短段落或不超过 5 个要点，不复述问题，不描述你的工作过程。"
-                        ),
-                    },
-                    *_qa_history_messages(history),
-                    {
-                        "role": "user",
-                        "content": (
-                            f"任务：{task.title}\n"
-                            f"问题：{request.question}\n\n"
-                            "可用证据：\n"
-                            f"{evidence_prompt or '（没有检索到相关证据）'}"
-                        ),
-                    },
-                ],
-                **chat_completion_provider_kwargs(base_url),
-            )
-            answer = response.choices[0].message.content or ""
+            try:
+                answer = completion_text(client, emit=emit, control=control,
+                    model=model,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": (
+                                "你是 LearnNote 的课程问答助手。只能依据当前消息中列出的 E 编号证据回答；"
+                                "历史对话仅用于理解追问指代，不是事实证据。禁止补充常识、猜测或虚构内容。"
+                                "不得编造证据中不存在的时间窗、W 编号、页码、步骤或原文引语；"
+                                "只有证据逐字包含的内容才能使用引号。证据不足时直接说“现有证据不足”，"
+                                "分析操作演示时要区分当前设置与假设示例：‘这里设为/达到/我们认为/我们设置的是 X’表示演示采用 X，"
+                                "‘可以改成/比方说 X’仅表示替代示例；应综合相邻时间窗，不要因为 ASR 错写参数名而忽略明确的数值和含义。"
+                                "不要假装知道，也不要推荐不存在的回看位置。默认用中文简洁直接回答，"
+                                "通常 1-3 个短段落或不超过 5 个要点，不复述问题，不描述你的工作过程。"
+                            ),
+                        },
+                        *_qa_history_messages(history),
+                        {
+                            "role": "user",
+                            "content": (
+                                f"任务：{task.title}\n"
+                                f"问题：{request.question}\n\n"
+                                "可用证据：\n"
+                                f"{evidence_prompt or '（没有检索到相关证据）'}"
+                            ),
+                        },
+                    ],
+                    **chat_completion_provider_kwargs(base_url),
+                )
+            finally:
+                close = getattr(client, "close", None)
+                if callable(close):
+                    close()
             if answer.strip():
                 return {
                     "answer": answer.strip(),
@@ -3341,6 +3324,8 @@ def _answer_task_question(task: TaskRecord, request: TaskQuestionRequest) -> dic
                     "citations": citations,
                 }
         except Exception:
+            if emit is not None:
+                raise
             local_answer, local_citations = _local_task_answer(request.question, citations)
             return {
                 "answer": local_answer,
@@ -4360,14 +4345,37 @@ def api_task_question(task_id: str, request: TaskQuestionRequest) -> dict:
         task = get_task(task_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Task not found") from exc
+    return _execute_task_qa(task, request)
+
+
+def _execute_task_qa(task: TaskRecord, request: TaskQuestionRequest, *, emit=None, control=None) -> dict:
     instructions = {"note.summary": "总结当前内容的重点，保留来源。", "study.quiz": "根据当前来源给出三道自测题、参考答案与出处。"}
     prefix = instructions.get(request.skill_id, "")
     effective = request.model_copy(update={"question": f"{prefix} 用户要求：{request.question}"}) if prefix else request
-    result = _answer_task_question(task, effective)
+    result = _answer_task_question(task, effective, emit=emit, control=control)
+    if control is not None:
+        control.check()
     history_item, history = append_task_qa_history(task, request, result)
     result["history_item"] = history_item
     result["history_count"] = len(history)
     return result
+
+
+@app.post("/api/tasks/{task_id}/qa/stream")
+def api_task_question_stream(task_id: str, request: TaskQuestionRequest):
+    from .assistant_stream import assistant_stream_response, StreamFailure
+    try:
+        task = get_task(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Task not found") from exc
+
+    def work(emit, control):
+        try:
+            return _execute_task_qa(task, request, emit=emit, control=control)
+        except HTTPException as exc:
+            raise StreamFailure("task_context_missing", "当前资料还没有可用于回答的内容，请先完成提取。") from exc
+
+    return assistant_stream_response(work)
 
 
 @app.get("/api/tasks/{task_id}/qa")

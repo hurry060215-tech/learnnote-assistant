@@ -27,6 +27,8 @@ const els = {
   durationValue: document.querySelector("#durationValue"),
   estimateValue: document.querySelector("#estimateValue"),
   preflightMessage: document.querySelector("#preflightMessage"),
+  modeDescription: document.querySelector("#modeDescription"),
+  extensionOptions: document.querySelector("#extensionOptions"),
   sendButton: document.querySelector("#sendButton"),
   sendButtonLabel: document.querySelector("#sendButtonLabel"),
   handoffProgress: document.querySelector("#handoffProgress"),
@@ -63,7 +65,8 @@ let suppressTabActivationUntil = 0;
 let currentTaskMode = "";
 let quickPollTimer = 0;
 let quickTranscript = [];
-let selectedProcessingMode = "quick";
+let selectedProcessingMode = "study";
+let currentTaskContentMode = "";
 let connectionRequest = null;
 let clientOpenRequest = null;
 let quickPollRequest = null;
@@ -71,9 +74,9 @@ let quickQuestionPending = false;
 let activationGeneration = 0;
 
 function baseProcessingOptions(mode = selectedProcessingMode) {
-  if (mode === "deep") return { visual_understanding: true, frame_interval: 20, grid_columns: 3, grid_rows: 3, note_style: "lecture", note_template: "visual-handout", summary_depth: "deep" };
-  if (mode === "study") return { visual_understanding: false, note_style: "classroom-review", note_template: "standard", summary_depth: "standard" };
-  return { visual_understanding: false, note_style: "quick-summary", note_template: "timeline", summary_depth: "brief" };
+  if (mode === "deep") return { content_mode: "visual", visual_understanding: true, frame_interval: 20, grid_columns: 3, grid_rows: 3, note_style: "lecture", note_template: "visual-handout", summary_depth: "deep" };
+  if (mode === "study") return { content_mode: "text", visual_understanding: false, note_style: "classroom-review", note_template: "standard", summary_depth: "standard" };
+  return { content_mode: "subtitles", visual_understanding: false, note_style: "quick-summary", note_template: "timeline", summary_depth: "brief" };
 }
 
 let quickNoteText = "";
@@ -95,13 +98,18 @@ function subtitleSrt(cues) {
   const stamp=value=>{const ms=Math.max(0,Math.round(Number(value||0)*1000));return `${String(Math.floor(ms/3600000)).padStart(2,"0")}:${String(Math.floor(ms/60000)%60).padStart(2,"0")}:${String(Math.floor(ms/1000)%60).padStart(2,"0")},${String(ms%1000).padStart(3,"0")}`;};
   return cues.map((c,i)=>`${i+1}\n${stamp(c.start)} --> ${stamp(c.end)}\n${c.text}\n`).join("\n");
 }
-function setProcessingMode(mode = "quick") {
-  selectedProcessingMode = ["quick", "study", "deep"].includes(mode) ? mode : "quick";
+function setProcessingMode(mode = "study", persist = true) {
+  if (sending) return;
+  const nextMode = ["quick", "study", "deep"].includes(mode) ? mode : "study";
+  if (nextMode !== selectedProcessingMode && currentTaskId) resetSourceState();
+  selectedProcessingMode = nextMode;
   document.querySelectorAll?.("[data-processing-mode]").forEach(button => {
     const active = button.dataset.processingMode === selectedProcessingMode;
     button.classList.toggle("active", active);
-    button.setAttribute("aria-pressed", String(active));
+    button.setAttribute("aria-checked", String(active));
+    button.setAttribute("tabindex", active ? "0" : "-1");
   });
+  if (persist && HAS_EXTENSION_API) chrome.storage.local.set({ processingMode: selectedProcessingMode }).catch(() => {});
   renderContext();
 }
 
@@ -114,11 +122,18 @@ function subtitleCues(context = currentContext) {
 
 function hasReliableBrowserSubtitles(context = currentContext) {
   const cues = subtitleCues(context);
-  if (cues.length < 8) return false;
+  if (!cues.length) return false;
+  const windows = new Map();
+  for (const cue of cues) {
+    const key = `${Math.round(cue.start)}:${Math.round(cue.end)}`;
+    windows.set(key, (windows.get(key) || 0) + 1);
+  }
+  const largestCollision = Math.max(...windows.values());
+  if (largestCollision >= 4 && largestCollision / cues.length >= 0.4) return false;
   const duration = Number(context?.page?.active_video?.duration || 0);
-  const span = Math.max(0, cues[cues.length - 1].end - cues[0].start);
+  const span = Math.max(0, Math.max(...cues.map(cue => cue.end)) - cues[0].start);
   if (duration > 0) return span / duration >= 0.55;
-  return span >= 45;
+  return cues.length >= 8 && span >= 45;
 }
 
 function escapeQuickHtml(value = "") {
@@ -167,10 +182,12 @@ function stopQuickPolling() {
   quickPollTimer = 0;
 }
 
-function showQuickResult(status = "正在生成字幕速记…") {
+function showQuickResult(status = "正在处理字幕…") {
   if (!els.quickResultCard) return;
   els.quickResultCard.hidden = false;
   if (els.quickResultStatus) els.quickResultStatus.textContent = status;
+  const extractedOnly = currentTaskContentMode === "subtitles";
+  document.querySelectorAll?.('[data-quick-tab="summary"], [data-quick-tab="ask"], #copyQuickSummary, #saveQuickSummary').forEach(item => { item.hidden = extractedOnly; });
 }
 
 function renderQuickTranscript(cues = quickTranscript) {
@@ -217,7 +234,9 @@ async function loadQuickArtifacts(task) {
   if (els.quickSummaryPanel) els.quickSummaryPanel.innerHTML = renderQuickMarkdown(note);
   bindQuickSeek(els.quickSummaryPanel);
   renderQuickTranscript(quickTranscript);
-  showQuickResult(task.summary_warning ? `速记完成 · ${task.summary_warning}` : "速记完成 · 未下载视频或分析画面");
+  const extractedOnly = (task.options?.content_mode || currentTaskContentMode) === "subtitles";
+  showQuickResult(extractedOnly ? "字幕已提取 · 未调用模型" : (task.summary_warning ? `文字笔记 · ${task.summary_warning}` : "文字笔记已完成 · 未下载视频"));
+  if (extractedOnly) setQuickTab("transcript");
 }
 
 async function pollQuickTask() {
@@ -232,15 +251,16 @@ async function pollQuickTask() {
     const task = payload?.task || payload;
     if (task.status === "failed" || task.status === "cancelled") {
       stopQuickPolling();
-      showQuickResult(task.error_detail || task.message || "字幕速记失败，请改用深度图文模式");
-      if (els.quickSummaryPanel) els.quickSummaryPanel.innerHTML = `<p>${escapeQuickHtml(task.error_detail || task.message || "字幕速记失败")}</p>`;
+      showQuickResult(task.error_detail || task.message || "处理未完成，可在工作台查看原因");
+      if (els.quickSummaryPanel) els.quickSummaryPanel.innerHTML = `<p>${escapeQuickHtml(task.error_detail || task.message || "处理未完成")}</p>`;
+      setProgress(100, task.error_detail || task.message || "处理未完成，请查看任务记录。", "error");
       return;
     }
-    showQuickResult(task.note_path ? "正在载入速记结果…" : (task.message || "正在生成字幕速记…"));
+    showQuickResult(task.note_path ? "正在载入结果…" : (task.message || "正在读取字幕…"));
     if (task.note_path && task.status === "success") {
       stopQuickPolling();
       await loadQuickArtifacts(task);
-      if (isCurrent()) setProgress(100, "字幕速记已完成，可继续深度图文学习。", "success");
+      if (isCurrent()) setProgress(100, currentTaskContentMode === "subtitles" ? "已提取字幕原文，可保存 SRT 或选择生成笔记。" : "文字笔记已完成，可阅读、回看或导出。", "success");
     }
   } catch (error) {
     if (isCurrent()) showQuickResult(error?.message || "正在等待本地服务响应…");
@@ -425,12 +445,19 @@ function resetSourceState() {
   activeHandoff = null;
   currentTaskId = "";
   currentTaskMode = "";
+  currentTaskContentMode = "";
   quickTranscript = [];
   quickNoteText = "";
   if (els.quickAskConversation) els.quickAskConversation.innerHTML = "<p>回答只引用当前视频的字幕证据。</p>";
   if (els.quickAskQuestion) els.quickAskQuestion.value = "";
   if (els.quickResultCard) els.quickResultCard.hidden = true;
   els.openTaskButton.hidden = true;
+  els.handoffProgress.hidden = true;
+  els.handoffPercent.hidden = true;
+  els.handoffProgress.setAttribute("aria-valuenow", "0");
+  const progressBar = els.handoffProgress.querySelector("span");
+  if (progressBar) progressBar.style.width = "0%";
+  els.handoffStatus.textContent = "选择整理方式后即可开始";
   els.sendButtonLabel.textContent = "发送到客户端";
 }
 
@@ -537,29 +564,35 @@ function renderContext(message = "") {
   els.playingBadge.hidden = !playing;
   els.candidateCount.textContent = String(candidates.length);
   els.durationValue.textContent = formatDuration(duration);
-  els.estimateValue.textContent = selectedProcessingMode === "quick" && subtitleReady ? "字幕速记 10–30 秒" : (candidates.length || active.src ? "按视频时长估算" : "--");
+  els.estimateValue.textContent = subtitleReady ? "播放器字幕" : "待查询平台";
   setIntegrityItem("video", evidence.video);
   setIntegrityItem("audio", evidence.audio);
   setIntegrityItem("subtitle", evidence.subtitle);
 
   const hasPage = Boolean(identity?.canonical_page_url && !/^(?:chrome|edge|about):/i.test(identity.canonical_page_url) && !/^https?:\/\/(?:www\.)?bilibili\.com\/?(?:[?#].*)?$/i.test(identity.canonical_page_url));
-  const hasMediaEvidence = evidence.video === true || candidates.length > 0 || subtitleReady;
+  const hasMediaEvidence = evidence.video === true || candidates.length > 0 || subtitleReady || (platform.platform === "bilibili" && Boolean(identity?.platform_video_id));
   const alreadySent = Boolean(currentTaskId && activeHandoff?.sourceKey === sourceContinuityKey(identity));
   els.sendButton.disabled = sending || alreadySent || !clientConnected || !hasPage || !hasMediaEvidence;
   els.sendButtonLabel.textContent = currentTaskId
-    ? (currentTaskMode === "subtitle_only" ? "速记已开始" : "已发送到客户端")
-    : selectedProcessingMode === "quick" ? (subtitleReady ? "快速生成字幕速记" : "获取字幕并整理")
-      : selectedProcessingMode === "study" ? "开始标准学习" : "开始深度图文";
+    ? (currentTaskMode === "subtitle_only" ? "已开始处理" : "已发送到工作台")
+    : selectedProcessingMode === "quick" ? "提取字幕原文"
+      : selectedProcessingMode === "study" ? "生成文字笔记" : "生成图文笔记";
+  if (els.modeDescription) els.modeDescription.textContent = selectedProcessingMode === "quick"
+    ? "只读取已有字幕，不下载视频、不识别语音、不调用模型。没有字幕时会停止并说明原因。"
+    : selectedProcessingMode === "study"
+      ? (subtitleReady ? "已取得字幕，将直接交给工作台的文字模型总结；不下载视频、不分析画面。" : "优先读取已有字幕；缺少字幕时，在工作台确认后使用本地语音识别，再由文字模型总结。不分析画面。")
+      : "会获取视频，结合字幕与选取的画面生成笔记。需要工作台配置视觉模型；开始前可确认模型与范围。";
+  if (els.extensionOptions) els.extensionOptions.hidden = selectedProcessingMode === "quick";
   if (message) {
     els.preflightMessage.textContent = message;
   } else if (!hasPage) {
     els.preflightMessage.textContent = "请切换到正在播放视频的页面。";
-  } else if (selectedProcessingMode === "quick" && subtitleReady) {
-    els.preflightMessage.textContent = "已取得覆盖充分的浏览器字幕，可以直接生成速览；不会下载视频、调用 ASR 或分析画面。";
+  } else if (subtitleReady) {
+    els.preflightMessage.textContent = `已取得 ${subtitleCues().length} 段播放器字幕。`;
   } else if (currentContext?.page?.subtitle_probe?.status === "auth_required") {
-    els.preflightMessage.textContent = "B 站字幕需要有效登录状态。请确认此浏览器已登录并刷新视频，再点重新识别；也可以交接后选择音频转写。";
+    els.preflightMessage.textContent = "字幕接口需要有效的 B 站登录状态。请确认已登录并刷新视频，再点重新识别。";
   } else if (selectedProcessingMode === "quick") {
-    els.preflightMessage.textContent = "尚未取得完整字幕。发送后会打开工作台，确认开始后优先探测平台字幕；仍不可用时使用本地语音转写。";
+    els.preflightMessage.textContent = "播放器尚未提供完整字幕；发送到工作台后继续查询平台字幕。";
   } else if (!hasMediaEvidence) {
     els.preflightMessage.textContent = "还没有检测到播放器或媒体候选，请播放几秒后重新识别。";
   } else if (preflightReport?.ready || preflightReport?.downloadable_count > 0) {
@@ -567,7 +600,7 @@ function renderContext(message = "") {
   } else if (preflightReport) {
     els.preflightMessage.textContent = preflightReport.message || "已检测到媒体候选，客户端将在接收后继续解析。";
   } else {
-    els.preflightMessage.textContent = `已检测到 ${candidates.length || 1} 个媒体候选。声音和字幕只在有直接证据时标记。`;
+    els.preflightMessage.textContent = "视频来源已识别，尚未取得完整字幕。";
   }
 }
 
@@ -604,8 +637,9 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = REQUEST_TIMEOUT_M
 
 async function loadBackendUrl() {
   if (!HAS_EXTENSION_API) return;
-  const stored = await chrome.storage.local.get({ backendUrl: DEFAULT_BACKEND_URL });
+  const stored = await chrome.storage.local.get({ backendUrl: DEFAULT_BACKEND_URL, processingMode: "study" });
   backendUrl = normalizedBackendUrl(stored.backendUrl);
+  setProcessingMode(stored.processingMode, false);
 }
 
 async function checkClient() {
@@ -703,7 +737,7 @@ async function collectContext(force = true, targetTabId = null) {
 
 async function runPreflight(identity = displayedIdentity) {
   if (!clientConnected || !currentContext || !identity) return null;
-  if (selectedProcessingMode === "quick" && hasReliableBrowserSubtitles(currentContext)) return null;
+  if (selectedProcessingMode === "quick" || (selectedProcessingMode === "study" && hasReliableBrowserSubtitles(currentContext))) return null;
   const candidates = mediaCandidates(currentContext);
   if (!candidates.length && !currentContext.page?.active_video) return null;
   if (hasFreshPreflight(identity)) return preflightReport;
@@ -747,7 +781,7 @@ async function refreshAndPreflight({ force = true } = {}) {
   els.preflightMessage.dataset.state = "info";
   els.preflightMessage.textContent = "正在读取播放器和媒体请求...";
   const context = await collectContext(force);
-  if (context && clientConnected && !(selectedProcessingMode === "quick" && hasReliableBrowserSubtitles(context))) await runPreflight(displayedIdentity);
+  if (context && clientConnected) await runPreflight(displayedIdentity);
   return context;
 }
 
@@ -758,7 +792,10 @@ function pageSwitchMessage() {
 async function sendToClient(modeOverride = "") {
   if (sending || !displayedIdentity) return false;
   if (typeof modeOverride !== "string") modeOverride = "";
+  const requestedMode = modeOverride === "video" ? "deep" : (modeOverride || selectedProcessingMode);
+  const selectedOptions = processingOptions(requestedMode);
   sending = true;
+  document.querySelectorAll?.("[data-processing-mode]").forEach(button => { button.disabled = true; });
   els.sendButton.disabled = true;
   els.sendButton.setAttribute("aria-busy", "true");
   els.sendButtonLabel.textContent = "正在发送...";
@@ -783,9 +820,8 @@ async function sendToClient(modeOverride = "") {
       return false;
     }
 
-    const requestedMode = modeOverride === "video" ? "deep" : (modeOverride || selectedProcessingMode);
-    const effectiveMode = requestedMode === "quick" && !hasReliableBrowserSubtitles(fresh) ? "study" : requestedMode;
-    const quick = effectiveMode === "quick";
+    const quick = requestedMode !== "deep" && hasReliableBrowserSubtitles(fresh);
+    currentTaskContentMode = selectedOptions.content_mode;
     if (quick) {
       currentTaskMode = "subtitle_only";
       setProgress(48, "已取得完整字幕，跳过媒体预检和视频处理...");
@@ -799,28 +835,28 @@ async function sendToClient(modeOverride = "") {
         handoffId: handoffId(freshIdentity),
         defer: false,
         mode: "subtitle_only",
-        options: processingOptions("quick")
+        options: selectedOptions
       }), REQUEST_TIMEOUT_MS, "创建字幕速记任务");
       if (response?.error) throw new Error(response.error);
       currentTaskId = String(response?.task_id || "");
       if (!currentTaskId) throw new Error("客户端未确认字幕速记任务");
       els.openTaskButton.hidden = false;
-      showQuickResult("正在生成字幕速记…");
-      setQuickTab("summary");
+      showQuickResult(currentTaskContentMode === "subtitles" ? "正在保存字幕原文…" : "正在由文字模型整理…");
+      setQuickTab(currentTaskContentMode === "subtitles" ? "transcript" : "summary");
       startQuickPolling();
-      setProgress(72, "字幕已交给本地服务，正在生成速览...");
+      setProgress(72, currentTaskContentMode === "subtitles" ? "字幕已交给本地服务，正在保存原文…" : "字幕已交给文字模型，正在生成笔记…");
       return true;
     }
 
-    setProgress(48, hasFreshPreflight(freshIdentity) ? "已复用刚刚的媒体预检" : "正在校验媒体完整性...");
-    if (!hasFreshPreflight(freshIdentity)) await runPreflight(freshIdentity);
+    setProgress(48, requestedMode === "quick" ? "准备查询平台字幕，不下载视频…" : (hasFreshPreflight(freshIdentity) ? "已复用刚刚的来源检查" : "正在检查视频来源…"));
+    if (requestedMode !== "quick" && !hasFreshPreflight(freshIdentity)) await runPreflight(freshIdentity);
     if (!sameSourceIdentity(freshIdentity, displayedIdentity)) {
       setProgress(0, pageSwitchMessage(), "error");
       return false;
     }
 
     currentTaskMode = "video";
-    const videoHandoffId = effectiveMode === "deep" && activeHandoff?.sourceKey === sourceContinuityKey(freshIdentity)
+    const videoHandoffId = requestedMode === "deep" && activeHandoff?.sourceKey === sourceContinuityKey(freshIdentity)
       ? (activeHandoff = null, handoffId(freshIdentity))
       : handoffId(freshIdentity);
     setProgress(76, "正在发送视频来源到客户端...");
@@ -829,13 +865,13 @@ async function sendToClient(modeOverride = "") {
       backendUrl,
       targetTabId: freshIdentity.tab_id,
       page: fresh.page,
-      resources: mediaCandidates(fresh),
+      resources: requestedMode === "quick" ? [] : mediaCandidates(fresh),
       pagePreflightReport: sameSourceIdentity(preflightIdentity, freshIdentity) ? preflightReport : null,
       sourceIdentity: freshIdentity,
       handoffId: videoHandoffId,
       defer: true,
       mode: "video",
-      options: processingOptions(effectiveMode)
+      options: selectedOptions
     }), REQUEST_TIMEOUT_MS, "发送到客户端");
     if (response?.error) throw new Error(response.error);
     currentTaskId = String(response?.task_id || "");
@@ -850,6 +886,7 @@ async function sendToClient(modeOverride = "") {
     return false;
   } finally {
     sending = false;
+    document.querySelectorAll?.("[data-processing-mode]").forEach(button => { button.disabled = false; });
     els.sendButton.setAttribute("aria-busy", "false");
     els.sendButtonLabel.textContent = currentTaskMode === "subtitle_only"
       ? (currentTaskId ? "速记已开始" : "重试速记")
@@ -942,9 +979,21 @@ function bindEvents() {
     return refreshAndPreflight({ force: true });
   });
   els.sendButton?.addEventListener("click", () => sendToClient());
-  els.quickDeepButton?.addEventListener("click", () => { setProcessingMode("deep"); sendToClient("video"); });
+  els.quickDeepButton?.addEventListener("click", () => {
+    document.querySelector?.('[data-processing-mode="study"]')?.scrollIntoView?.({ block: "center", behavior: "auto" });
+    document.querySelector?.('[data-processing-mode="study"]')?.focus?.();
+  });
   document.querySelectorAll?.("[data-processing-mode]").forEach(button => {
-    button.addEventListener("click", () => setProcessingMode(button.dataset.processingMode || "quick"));
+    button.addEventListener("click", () => setProcessingMode(button.dataset.processingMode || "study"));
+    button.addEventListener("keydown", event => {
+      if (!["ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight"].includes(event.key)) return;
+      event.preventDefault();
+      const modes = ["quick", "study", "deep"];
+      const delta = event.key === "ArrowDown" || event.key === "ArrowRight" ? 1 : -1;
+      const next = modes[(modes.indexOf(selectedProcessingMode) + delta + modes.length) % modes.length];
+      setProcessingMode(next);
+      document.querySelector?.(`[data-processing-mode="${next}"]`)?.focus?.();
+    });
   });
   els.openClientButton?.addEventListener("click", () => openClient("workspace"));
   els.openClientBrand?.addEventListener("click", event => {
@@ -1047,6 +1096,7 @@ globalThis.__learnnoteSidepanel = {
   buildSourceIdentity,
   hasReliableBrowserSubtitles,
   processingOptions,
+  setProcessingMode,
   subtitleSrt,
   renderQuickMarkdown,
   renderQuickTranscript,
@@ -1061,5 +1111,5 @@ globalThis.__learnnoteSidepanel = {
   sendToClient,
   openClient,
   checkClient,
-  getState: () => ({ backendUrl, clientConnected, currentContext, displayedIdentity, preflightReport, currentTaskId, currentTaskMode, selectedProcessingMode, sending })
+  getState: () => ({ backendUrl, clientConnected, currentContext, displayedIdentity, preflightReport, currentTaskId, currentTaskMode, currentTaskContentMode, selectedProcessingMode, sending })
 };

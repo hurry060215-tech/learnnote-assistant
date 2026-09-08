@@ -8,6 +8,7 @@ from pathlib import Path
 from urllib.parse import urldefrag
 
 from .asr_pipeline import asr_failure_detail, transcribe_with_task_progress as _asr_transcribe_with_task_progress, use_remote_asr
+from .config import LLM_BASE_URL, LLM_MODEL
 from .downloader import DownloadError, MediaDownloader, classify_resource, effective_resource_kind, infer_manifest_url_from_fragment
 from .media import build_frame_grids, extract_audio, extract_embedded_subtitle, extract_frames_adaptive, normalize_video, probe_media_integrity
 from .models import ActiveVideoInfo, BrowserSubtitleCue, CurrentPageTaskRequest, DownloadAttempt, EvidenceCoverage, EvidenceGate, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, now_iso
@@ -33,7 +34,7 @@ from .processor_state import (
 )
 from .storage import get_task, mark_task_cancelled, save_task, task_dir, update_task, write_json
 from .source_input import clean_task_title
-from .summarizer import SummarizationCancelled, build_visual_windows, summarize_page_text_with_diagnostics, summarize_with_diagnostics_audit as summarize_with_diagnostics
+from .summarizer import SummarizationCancelled, build_visual_windows, llm_model_supports_vision, summarize_page_text_with_diagnostics, summarize_with_diagnostics_audit as summarize_with_diagnostics
 from .summary_diagnostics import build_summary_diagnostics
 from .text_cleanup import correct_transcript_terms
 from .transcriber import transcribe_audio, transcribe_audio_openai_compatible, transcript_from_subtitle
@@ -693,6 +694,9 @@ def src_object_failure_message(request: CurrentPageTaskRequest) -> str:
 
 
 def process_page_text_task(task_id: str, request: CurrentPageTaskRequest) -> None:
+    if request.options.content_mode == "subtitles":
+        _fail(task_id, "subtitles_unavailable", "仅提取字幕不会改为页面文本总结，请选择有字幕的视频来源。")
+        return
     try:
         _check_cancel(task_id)
         update_task(task_id, status="running", phase="summarizing", progress=60, message="正在总结当前页面文本")
@@ -739,6 +743,8 @@ def write_download_failure_fallback(task_id: str, request: CurrentPageTaskReques
 
 
 def complete_with_download_failure_fallback(task_id: str, request: CurrentPageTaskRequest, code: str, detail: str) -> bool:
+    if request.options.content_mode == "subtitles":
+        return False
     if not write_download_failure_fallback(task_id, request):
         return False
     record = get_task(task_id)
@@ -759,10 +765,12 @@ def complete_with_download_failure_fallback(task_id: str, request: CurrentPageTa
 
 
 def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> None:
-    resource_monitor, resource_started_at = start_task_resource_monitor(task_id)
     try:
         _check_cancel(task_id)
     except TaskCancelled:
+        return
+    if request.options.content_mode == "visual" and (request.mode == "subtitle_only" or not llm_model_supports_vision(request.options.llm_base_url or LLM_BASE_URL, request.options.llm_model or LLM_MODEL)):
+        _fail(task_id, "visual_model_required", "图文笔记需要可理解画面的模型和视频来源；请选择支持图像的模型，或切换为文字笔记。")
         return
     expected_identity = get_task(task_id).source_identity
     actual_identity = current_page_source_identity(request)
@@ -781,6 +789,11 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
         process_subtitle_only_task(task_id, request)
         return
 
+    if request.options.content_mode == "subtitles" and request.mode == "download_only":
+        _fail(task_id, "subtitles_unavailable", "仅提取字幕不会下载视频，请重新选择处理方式。")
+        return
+
+    resource_monitor, resource_started_at = start_task_resource_monitor(task_id)
     work_dir = task_dir(task_id)
     try:
         update_task(
@@ -792,7 +805,7 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
         )
         start_pipeline_attempt(task_id)
         update_task(task_id, status="running", phase="downloading", progress=5, message="正在优先检查可直接读取的字幕")
-        if request.drm_detected and not has_downloadable_candidate(request.resources):
+        if request.drm_detected and request.options.content_mode != "subtitles" and not has_downloadable_candidate(request.resources):
             message = drm_failure_message(request)
             update_task(
                 task_id,
@@ -838,6 +851,9 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
                 record_stage_duration(task_id, "media", time.monotonic(), status="skipped")
                 record_stage_duration(task_id, "visual", time.monotonic(), status="skipped")
                 process_subtitle_only_task(task_id, request, transcript=direct, start_attempt=False)
+                return
+            if request.options.content_mode == "subtitles":
+                _fail(task_id, "subtitles_unavailable", "没有取得可用的已有字幕。本次未下载视频、未转写、未调用模型；可以在已登录的网页重新识别，或切换为文字笔记。")
                 return
             fallback = "已取得字幕；按你选择的图文模式继续获取画面" if usable else "字幕暂不可用，正在获取媒体以进行转写"
             if not usable and any(a.code == "auth_required" for a in downloader.attempts):
@@ -950,9 +966,12 @@ def process_subtitle_only_task(task_id: str, request: CurrentPageTaskRequest, *,
         _check_cancel(task_id)
         if start_attempt:
             start_pipeline_attempt(task_id)
+        probe_started = time.monotonic()
         duration = request.active_video.duration if request.active_video else 0
         if not browser_subtitles_are_reliable(request.browser_subtitles, duration):
             raise ContentMismatchError("当前字幕覆盖不足，不能代替完整视频内容；请选择标准转写。")
+        if start_attempt:
+            record_stage_duration(task_id, "subtitle_probe", probe_started)
         started = time.monotonic()
         transcript = transcript or transcript_from_browser_subtitles(request.browser_subtitles)
         transcript = correct_transcript_terms(transcript)
@@ -965,6 +984,10 @@ def process_subtitle_only_task(task_id: str, request: CurrentPageTaskRequest, *,
         record_stage_duration(task_id, "transcript", started)
         for stage in ("download", "media", "visual"):
             record_stage_duration(task_id, stage, time.monotonic(), status="skipped")
+        if request.options.content_mode == "subtitles":
+            from .caption_extraction import finish_caption_extraction
+            finish_caption_extraction(task_id, request.title, transcript, subtitle_path)
+            return
         finish_transcript_note(task_id, request.title, request.page_url, transcript, request.options,
             duration=duration, media_skipped=True,
             summarize=lambda *args: _summarize_with_optional_cache(summarize_with_diagnostics, *args,
@@ -1018,6 +1041,27 @@ def process_local_video_task(
     subtitle_path: Path | None = None,
     subtitle_source: str = "page-subtitle",
 ) -> None:
+    if options.content_mode == "visual" and not llm_model_supports_vision(options.llm_base_url or LLM_BASE_URL, options.llm_model or LLM_MODEL):
+        _fail(task_id, "visual_model_required", "当前模型不支持画面理解，请更换视觉模型或选择文字笔记。")
+        return
+    if options.content_mode == "subtitles":
+        from .caption_extraction import finish_caption_extraction
+        try:
+            _check_cancel(task_id)
+            start_pipeline_attempt(task_id)
+            update_task(task_id, status="running", phase="detecting", progress=10, message="检查本地视频中的已有字幕，不转写音频。")
+            subtitle = subtitle_path or extract_embedded_subtitle(input_path, task_dir(task_id) / "embedded_subtitle.srt")
+            transcript = parse_subtitle_or_none(subtitle, source="embedded-subtitle") if subtitle else None
+            if transcript is None or not transcript.segments:
+                _fail(task_id, "subtitles_unavailable", "没有找到本地视频内嵌字幕；可切换为文字笔记进行音频转写。")
+                return
+            _check_cancel(task_id)
+            finish_caption_extraction(task_id, title, transcript, str(subtitle))
+        except TaskCancelled:
+            return
+        except Exception:
+            _fail(task_id, "subtitles_unavailable", "字幕读取失败；本次没有转写音频或调用模型。")
+        return
     run_local_video_task(
         task_id,
         input_path,

@@ -5,13 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>LearnNote</title>
     <link rel="icon" type="image/png" sizes="32x32" href="icons/icon32.png">
-    <link rel="stylesheet" href="sidepanel.css?v=0.2.5">
+    <link rel="stylesheet" href="sidepanel.css?v=0.2.6">
   </head>
   <body>
     <header class="app-header">
       <a class="brand" href="#" id="openClientBrand" aria-label="打开 LearnNote 客户端">
         <img class="brand-mark" src="icons/icon48.png" width="36" height="36" alt="">
-        <span><strong>LearnNote</strong><small>当前视频助手</small></span>
+        <span><strong>LearnNote</strong></span>
       </a>
       <button class="icon-button" id="refreshButton" type="button" title="重新连接并识别视频" aria-label="重新连接并识别当前视频">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.34 5.66M20 4v7h-7"/></svg>
@@ -22,7 +22,7 @@
       <section id="connectionCard" class="connection-card" data-state="checking" aria-live="polite">
         <span class="status-dot" aria-hidden="true"></span>
         <div><strong id="connectionTitle">正在连接客户端</strong><small id="connectionDetail">LearnNote 需要在本机运行</small></div>
-        <button id="openClientButton" type="button">打开客户端</button>
+        <button id="openClientButton" type="button">打开工作台</button>
       </section>
 
       <section class="video-card" aria-labelledby="videoTitle">
@@ -33,6 +33,8 @@
         <h1 id="videoTitle">正在识别当前视频...</h1>
         <p id="videoMeta" class="video-meta">请在视频页面开始播放</p>
 
+        <p id="preflightMessage" class="preflight-message" role="status" aria-live="polite">正在读取播放器字幕…</p>
+        <details class="source-details"><summary>查看来源信息</summary>
         <div id="integrityGrid" class="integrity-grid" aria-label="媒体完整性预检">
           <article data-kind="video" data-state="checking"><span>画面</span><strong>检测中</strong></article>
           <article data-kind="audio" data-state="unknown"><span>声音</span><strong>未确认</strong></article>
@@ -40,25 +42,28 @@
         </div>
 
         <div class="preflight-summary">
-          <div><span>可用候选</span><strong id="candidateCount">0</strong></div>
+          <div><span>媒体来源</span><strong id="candidateCount">0</strong></div>
           <div><span>播放器时长</span><strong id="durationValue">--</strong></div>
-          <div><span>预计交接</span><strong id="estimateValue">--</strong></div>
+          <div><span>文字来源</span><strong id="estimateValue">--</strong></div>
         </div>
 
-        <p id="preflightMessage" class="preflight-message" role="status" aria-live="polite">正在读取播放器和媒体请求...</p>
+        </details>
       </section>
 
       <section class="handoff-card">
+        <h2 class="section-title">如何整理这个视频</h2>
         <div class="processing-mode-choices" role="radiogroup" aria-label="选择处理方式">
-          <button type="button" data-processing-mode="quick" class="active" aria-pressed="true"><strong>快速速览</strong><small>完整字幕优先</small></button>
-          <button type="button" data-processing-mode="study" aria-pressed="false"><strong>标准学习</strong><small>字幕或本地 ASR</small></button>
-          <button type="button" data-processing-mode="deep" aria-pressed="false"><strong>深度图文</strong><small>视频与画面证据</small></button>
+          <button type="button" data-processing-mode="quick" role="radio" aria-checked="false" tabindex="-1"><strong>仅提取字幕</strong><small>保留原文，不调用模型</small></button>
+          <button type="button" data-processing-mode="study" role="radio" class="active" aria-checked="true" tabindex="0"><strong>文字笔记</strong><small>字幕优先，由文字模型总结</small></button>
+          <button type="button" data-processing-mode="deep" role="radio" aria-checked="false" tabindex="-1"><strong>图文笔记</strong><small>结合字幕与画面，需要视觉模型</small></button>
         </div>
+        <p id="modeDescription" class="mode-description">优先读取已有字幕；缺少字幕时，在工作台确认后使用本地语音识别。不分析画面。</p>
+        <details id="extensionOptions" class="extension-options"><summary>笔记偏好</summary>
         <div class="generation-fields">
           <label>总结风格<select id="extensionStyle"><option value="">跟随上方模式</option><option value="study">学习笔记</option><option value="lecture">课程讲义</option><option value="concise">重点速记</option><option value="code">代码教程</option><option value="academic">论文导读</option><option value="exam">考点复习</option></select></label>
           <label>笔记格式<select id="extensionTemplate"><option value="">跟随上方模式</option><option value="standard">结构化笔记</option><option value="timeline">时间轴</option><option value="cornell">康奈尔笔记</option><option value="qa">问答复习</option><option value="mindmap">层级导图</option></select></label>
         </div>
-        <details class="extension-options"><summary>额外要求与客户端偏好</summary><label for="extensionPrompt">额外整理要求</label><textarea id="extensionPrompt" maxlength="4000" rows="3" placeholder="例如：保留关键代码、操作顺序与原文中的例子"></textarea><button id="useClientPreferences" class="secondary-button" type="button">载入客户端笔记偏好</button><p id="extensionOptionsStatus" role="status"></p></details>
+        <label for="extensionPrompt">额外整理要求</label><textarea id="extensionPrompt" maxlength="4000" rows="3" placeholder="例如：保留关键代码、操作顺序与原文中的例子"></textarea><button id="useClientPreferences" class="secondary-button" type="button">载入工作台笔记偏好</button><p id="extensionOptionsStatus" role="status"></p></details>
         <button id="sendButton" class="primary-button" type="button" disabled>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
           <span id="sendButtonLabel">发送到客户端</span>
@@ -75,11 +80,11 @@
 
       <section id="quickResultCard" class="quick-result-card" hidden aria-label="快速学习结果">
         <header class="quick-result-header">
-          <div><span>当前视频速记</span><strong id="quickResultStatus">等待字幕速记</strong></div>
-          <button id="quickDeepButton" class="secondary-button compact-button" type="button">深度图文</button>
+          <div><strong id="quickResultStatus">正在读取字幕</strong></div>
+          <button id="quickDeepButton" class="secondary-button compact-button" type="button">其他整理方式</button>
         </header>
         <nav class="quick-tabs" role="tablist" aria-label="快速学习结果">
-          <button type="button" class="active" data-quick-tab="summary" role="tab" aria-selected="true">速览</button>
+          <button type="button" class="active" data-quick-tab="summary" role="tab" aria-selected="true">笔记</button>
           <button type="button" data-quick-tab="transcript" role="tab" aria-selected="false">字幕</button>
           <button type="button" data-quick-tab="ask" role="tab" aria-selected="false">提问</button>
         </nav>
@@ -96,12 +101,11 @@
       </section>
 
       <nav class="client-links" aria-label="客户端功能">
-        <button type="button" data-client-view="settings"><span>设置</span><small>模型、转写与视频处理</small><b>›</b></button>
-        <button type="button" data-client-view="diagnostics"><span>连接与诊断</span><small>在客户端检查完整链路</small><b>›</b></button>
+        <button type="button" data-client-view="settings"><span>模型与偏好</span><b>›</b></button>
+        <button type="button" data-client-view="diagnostics"><span>连接与诊断</span><b>›</b></button>
       </nav>
     </main>
 
-    <footer>字幕速记直接显示在侧栏；深度视频处理、视觉理解和资料导出仍在本机客户端完成。</footer>
-    <script src="sidepanel.js?v=0.2.5"></script>
+    <script src="sidepanel.js?v=0.2.6"></script>
   </body>
 </html>

@@ -146,6 +146,8 @@ const os = require("node:os");
         "skipped",
     );
     assert.match(await p.locator("#document").innerText(), /核心结论/);
+    assert.equal(await p.locator(".task-progress-details").evaluate(el => el.open), false);
+    await p.locator(".task-progress-details > summary").click();
     assert.match(await p.locator("#taskStatus").innerText(), /无需下载/);
     assert.equal(
       await p
