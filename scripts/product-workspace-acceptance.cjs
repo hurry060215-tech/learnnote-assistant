@@ -40,7 +40,8 @@ const fs = require("fs");
 
     await p.screenshot({ path: `${out}/home.png` });
     await p.locator("#settings").click();
-    assert.equal(await p.locator("[data-settings-section]").count(), 6);
+    assert.deepEqual(await p.locator("[data-settings-section]").evaluateAll(nodes => nodes.map(node => node.dataset.settingsSection)),
+      ["model", "usage", "transcriber", "notes", "processing", "appearance", "storage"]);
     await p.locator('[data-settings-section="notes"]').click();
     await p.locator("#prefStyle").selectOption("code");
     await p.locator("#prefTemplate").selectOption("cornell");
@@ -111,7 +112,7 @@ const fs = require("fs");
         {
           ok: true,
           visible_assistant: true,
-          settings_sections: 6,
+          settings_sections: 7,
           preferences_persisted: true,
           assistant_source_answer: true,
           save_answer: true,
