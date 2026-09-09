@@ -157,3 +157,8 @@ For a non-sensitive question, open a
 Do not post credentials, private URLs, personal data, or unredacted diagnostics
 publicly. For a possible vulnerability or data exposure, use the private
 reporting process described in [SECURITY.md](SECURITY.md).
+# 本地 Token 用量记录
+
+客户端在资料目录的 `token-usage.sqlite3` 中记录更新后模型请求的时间、模型名称、服务域名、用途、完成状态、耗时及服务商返回的输入/输出/总 Token 数。记录不包含 API Key、提示词或回答正文。服务商未返回用量时保留缺失值，不估算为零；该记录不是账号余额或账单，也不包含其他应用的使用量。可以在“设置 → Token 用量”查看累计用量和最近 100 次请求。
+
+个人主页的可选称呼保存在当前浏览器的本地存储中，不创建在线账号。主动打开没有本地视频的 B 站笔记来源时，客户端使用 B 站官方外链播放器，浏览器会向该平台发出播放请求。可选语音模型只在用户点击下载或明确使用本地转写时从模型仓库获取；仅阅读字幕不会触发模型下载。

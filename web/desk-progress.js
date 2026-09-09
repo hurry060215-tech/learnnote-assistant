@@ -154,7 +154,7 @@ export function taskExplanation(task) {
   if (task.awaiting_confirmation)
     return "来源已送达，还没有开始处理。先尝试直接读取字幕；字幕可用时直接生成笔记。只有缺少字幕或需要画面时，才获取视频。";
   if (
-    task.error_code === "summary_unavailable" ||
+    ["summary_unavailable", "note_quality_failed"].includes(task.error_code) ||
     task.summary_source === "local-template"
   )
     return "字幕已经保留，但 AI 总结尚未生成。可以检查模型连接后仅重试总结，不必重新下载或转写。";

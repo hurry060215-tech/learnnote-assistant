@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+const source=readFileSync(new URL('../source-video.js',import.meta.url),'utf8');
+const {sourceVideoEmbed}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+const av=new URL(sourceVideoEmbed('https://www.bilibili.com/video/av117233128837493?p=2',81));
+assert.equal(av.searchParams.get('aid'),'117233128837493');
+assert.equal(av.searchParams.get('p'),'2'); assert.equal(av.searchParams.get('t'),'81');
+assert.equal(av.searchParams.get('autoplay'),'0');
+assert.equal(sourceVideoEmbed('https://bilibili.com.evil.example/video/BV123'), '');
+assert.equal(sourceVideoEmbed('javascript:alert(1)'), '');
+assert.equal(sourceVideoEmbed('https://www.bilibili.com/video/BV123?p=-1'), '');
+console.log('Source video mapping preserves identity, part and timestamp; rejects unsafe URLs');

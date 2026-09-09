@@ -2085,8 +2085,9 @@ async function readBilibiliCaptions(expectedUrl) {
   };
   const expected = identity(expectedUrl);
   if (!expected || identity(location.href) !== expected) return {status:"source_changed", cues:[]};
-  const bvid = new URL(expectedUrl).pathname.match(/\/video\/(BV[0-9A-Za-z]+)/)?.[1];
-  if (!bvid) return {status:"unsupported",cues:[]};
+  const videoId = new URL(expectedUrl).pathname.match(/\/video\/(BV[0-9A-Za-z]+|av[0-9]+)/)?.[1];
+  if (!videoId) return {status:"unsupported",cues:[]};
+  const query = videoId.startsWith("av") ? `aid=${videoId.slice(2)}` : `bvid=${encodeURIComponent(videoId)}`;
   async function get(url, credentials) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 4500);
@@ -2099,11 +2100,14 @@ async function readBilibiliCaptions(expectedUrl) {
     } finally {clearTimeout(timer);}
   }
   try {
-    const view = await get(`https://api.bilibili.com/x/web-interface/view?bvid=${encodeURIComponent(bvid)}`,"include");
+    const view = await get(`https://api.bilibili.com/x/web-interface/view?${query}`,"include");
     const part = Number(new URL(expectedUrl).searchParams.get("p") || 1);
     const page = view.data?.pages?.find(item => item.page === part);
     if (view.code !== 0 || !page?.cid) return {status:"unavailable",cues:[]};
-    const info = await get(`https://api.bilibili.com/x/player/wbi/v2?bvid=${encodeURIComponent(bvid)}&cid=${page.cid}`,"include");
+    let info = await get(`https://api.bilibili.com/x/player/wbi/v2?${query}&cid=${page.cid}`,"include");
+    if (info.code !== 0 && info.code !== -101) {
+      info = await get(`https://api.bilibili.com/x/player/v2?${query}&cid=${page.cid}`,"include");
+    }
     const tracks = (info.data?.subtitle?.subtitles || []).filter(item => item.subtitle_url && item.lan);
     tracks.sort((a,b) => {
       const rank = t => /^zh/.test(t.lan) ? 0 : /^ai-zh/.test(t.lan) ? 1 : /^en/.test(t.lan) ? 2 : 3;
@@ -2122,10 +2126,10 @@ async function readBilibiliCaptions(expectedUrl) {
 }
 const biliSubtitleCache = new Map();
 async function addBilibiliCaptions(tab, page) {
-  if (!/^https:\/\/(?:www\.)?bilibili\.com\/video\/BV/i.test(tab.url || "") || !captureActive(tab.id)) return page;
+  if (!/^https:\/\/(?:www\.)?bilibili\.com\/video\/(?:BV[0-9A-Za-z]+|av[0-9]+)/.test(tab.url || "") || !captureActive(tab.id)) return page;
   const key = String(tab.url).split("#")[0];
   let cached = biliSubtitleCache.get(tab.id);
-  if (!cached || cached.url !== key || Date.now()-cached.at > 30000) {
+  if (!cached || cached.url !== key || Date.now()-cached.at > (cached.result.status === "ready" ? 30000 : 3000)) {
     try {
       const response = await chrome.scripting.executeScript({target:{tabId:tab.id,frameIds:[0]},world:"MAIN",func:readBilibiliCaptions,args:[key]});
       cached = {url:key,at:Date.now(),result:response[0]?.result || {status:"unavailable",cues:[]}};
@@ -2559,6 +2563,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     if (message.type === "seek-current-video") {
       const tab = await tabForMessage(message);
+      if (message.expectedUrl && String(tab.url || "").split("#")[0] !== String(message.expectedUrl).split("#")[0]) {
+        sendResponse({ok:false,error:"视频页面已切换，请刷新字幕后再跳转。"});
+        return;
+      }
       const seconds = Number(message.seconds);
       if (!Number.isFinite(seconds) || seconds < 0) {
         sendResponse({ ok: false, error: "无效的视频时间点。" });

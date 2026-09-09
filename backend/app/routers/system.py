@@ -1,4 +1,5 @@
 from __future__ import annotations
+from ..token_usage import tracked_completion
 
 import json
 import re
@@ -17,6 +18,38 @@ from ..summarizer import chat_completion_provider_kwargs, llm_model_supports_vis
 
 
 system_router = APIRouter(tags=["system"])
+
+
+@system_router.get("/api/local-models/{model}")
+def get_local_model(model: str, request: Request):
+    from .connections import _local_origin
+    from ..local_models import model_status
+    _local_origin(request)
+    try:
+        return model_status(model)
+    except ValueError as exc:
+        raise HTTPException(422, "请选择 tiny、base、small、medium 或 large-v3。") from exc
+
+
+@system_router.post("/api/local-models/{model}/prepare", status_code=202)
+def prepare_local_model(model: str, request: Request):
+    from .connections import _local_origin
+    from ..local_models import prepare_model
+    _local_origin(request, write=True)
+    try:
+        return prepare_model(model)
+    except ValueError as exc:
+        raise HTTPException(422, "不支持的本地模型。") from exc
+    except RuntimeError as exc:
+        raise HTTPException(409, "已有模型正在下载，请等待完成后再试。") from exc
+
+
+@system_router.get("/api/model/usage")
+def get_model_usage(request: Request) -> dict:
+    from .connections import _local_origin
+    from ..token_usage import usage_report
+    _local_origin(request)
+    return usage_report()
 
 TRUSTED_MODEL_API_HOSTS = frozenset({
     "api.openai.com",
@@ -153,7 +186,7 @@ def check_model_setup(payload: ModelSetupCheckRequest) -> dict:
             }
         provider_kwargs = chat_completion_provider_kwargs(base_url)
         provider_kwargs["temperature"] = 0
-        response = client.chat.completions.create(
+        response = tracked_completion(client, purpose="connection_test",
             model=payload.model,
             messages=[{"role": "user", "content": "Reply with OK only."}],
             max_tokens=4,

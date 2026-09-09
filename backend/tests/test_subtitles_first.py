@@ -35,7 +35,7 @@ class SubtitlesFirstTests(unittest.TestCase):
     def test_browser_captions_skip_all_media_and_keep_note_preferences(self):
         request = self.request(browser_subtitles=self.cues, active_video=ActiveVideoInfo(duration=120))
         task = create_task("current_page", request.title, request.page_url)
-        with patch("app.processor.MediaDownloader") as cls, patch("app.processor.summarize_with_diagnostics", return_value=("# 课程\n\n## 要点\n\n这里是内容的综合总结。", "text-llm", "", [])) as summarize:
+        with patch("app.processor.MediaDownloader") as cls, patch("app.processor.summarize_with_diagnostics", return_value=("# 模型改写的课程标题\n\n## 要点\n\n这里是内容的综合总结。", "text-llm", "", [])) as summarize:
             cls.return_value.attempts = []
             cls.return_value.resolved_title = ""
             process_current_page_task(task.id, request)
@@ -46,6 +46,8 @@ class SubtitlesFirstTests(unittest.TestCase):
             self.assertEqual(opts.summary_depth, "detailed")
         record = get_task(task.id)
         self.assertEqual(record.status, "success")
+        self.assertEqual(record.summary_source, "text-llm")
+        self.assertIn("这里是内容的综合总结", Path(record.note_path).read_text(encoding="utf-8"))
         self.assertEqual(record.mode, "subtitle_only")
         self.assertFalse(record.media_path)
         metrics = json.loads((task_dir(task.id) / "pipeline_metrics.json").read_text(encoding="utf-8"))

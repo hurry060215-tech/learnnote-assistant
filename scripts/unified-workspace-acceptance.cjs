@@ -116,7 +116,7 @@ const fs = require("node:fs");
     await p.locator("[data-close-tool]").click();
     await p.locator("#settings").click();
     await p.locator('[data-settings-section="storage"]').click();
-    await p.locator("#settingsDialog summary").click();
+    await p.locator('[data-settings-page="storage"] summary').click();
     await p.locator("#studyTools").click();
     await p.waitForSelector("#dailyTarget");
     await p.locator("#dailyTarget").fill("12");

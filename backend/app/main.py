@@ -3487,12 +3487,14 @@ def automatic_diagnostics(payload: dict | None = Body(default=None)) -> dict:
                 "task": {"id": task.id, "status": task.status, "phase": task.phase, "error_code": task.error_code, "error_detail": _clip_text(task.error_detail, 240)} if task else None,
                 "rule_findings": findings,
             }
-            response = OpenAI(
+            diagnostic_client = OpenAI(
                 api_key=api_key,
                 base_url=base_url,
                 timeout=LLM_REQUEST_TIMEOUT_SECONDS,
                 max_retries=LLM_MAX_RETRIES,
-            ).chat.completions.create(
+            )
+            from .token_usage import tracked_completion
+            response = tracked_completion(diagnostic_client, purpose="diagnostics",
                 model=model,
                 messages=[{"role": "user", "content": (
                     "你是 LearnNote 本地客户端的故障诊断助手。请根据下面脱敏状态，用中文给出不超过 180 字的判断。"

@@ -2214,3 +2214,25 @@ body[data-contents-fit="false"] #pageContents {
     margin-inline: 12px;
   }
 }
+.profile-dialog { width:min(720px, calc(100vw - 32px)); max-height:88vh; padding:28px; border:1px solid var(--line,#e2e5e0); border-radius:16px; }
+.profile-dialog header,.profile-section-title,.profile-inline,.profile-model { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+.profile-dialog header h2 { margin:8px 0 24px; font-size:25px; font-weight:550; }
+.profile-eyebrow,.profile-footnote { font-size:12px; color:var(--muted,#727970); line-height:1.8; }
+.profile-inline input { flex:1; min-width:0; }
+.profile-stats { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin:26px 0; }
+.profile-stats section { padding:18px; border-radius:12px; background:var(--panel,#f3f5f0); }
+.profile-stats span { display:block; font-size:12px; color:var(--muted,#727970); }
+.profile-stats strong { display:block; font-size:26px; font-weight:550; margin-top:10px; font-variant-numeric:tabular-nums; }
+.profile-section { padding:20px 0; border-top:1px solid var(--line,#e2e5e0); }
+.profile-section h3 { margin:0 0 10px; font-weight:550; }
+.profile-section details { margin-top:12px; }
+.profile-section summary { cursor:pointer; padding:8px 0; }
+.profile-model { font-size:13px; line-height:1.7; border-bottom:1px solid var(--line,#e2e5e0); padding:10px 0; overflow-wrap:anywhere; }
+.profile-model small { display:block; color:var(--muted,#727970); }
+.usage-day { display:grid; grid-template-columns:50px 1fr 90px; align-items:center; gap:14px; font-size:12px; margin:10px 0; font-variant-numeric:tabular-nums; }
+.usage-day meter { width:100%; height:14px; accent-color:#687c65; }
+.usage-day > :last-child { text-align:right; }
+@media(max-width:600px) { .profile-dialog { padding:18px; } .profile-stats { gap:8px; } .profile-stats section { padding:12px; } .profile-stats strong { font-size:20px; } }
+#onlinePlayer { width:100%; aspect-ratio:16 / 9; border:0; border-radius:10px; background:#151915; display:block; }
+#onlinePlayer[hidden] { display:none; }
+.rating button small { display:block; font-size:11px; margin-top:6px; opacity:.7; font-weight:400; }

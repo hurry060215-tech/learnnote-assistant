@@ -20,6 +20,7 @@ export function installSettings(ctx) {
     content = body.querySelector(".settings-content");
   const labels = {
     model: "AI 模型",
+    usage: "Token 用量",
     transcriber: "字幕与转写",
     notes: "笔记与模板",
     processing: "视频与资源",
@@ -53,9 +54,32 @@ export function installSettings(ctx) {
           : key === "appearance"
             ? "保存阅读与外观"
             : "保存处理设置";
-      $("savePreferences").hidden = key === "storage";
+      $("savePreferences").hidden = key === "storage" || key === "usage";
+      if (key === "usage") loadUsage();
     };
   }
+  panes.usage.innerHTML += '<p class="muted">仅统计本机 LearnNote 更新后发起的模型请求。Token 使用服务商返回的实际值；未返回用量不记为零。不包含账号余额、其他应用或本地语音转写，也不推算费用。</p><button type="button" id="refreshTokenUsage">刷新用量</button><div id="tokenUsageReport" aria-live="polite"></div>';
+  let usageLoading = false;
+  async function loadUsage() {
+    if (usageLoading) return;
+    usageLoading = true;
+    const target = $("tokenUsageReport");
+    target.textContent = "正在读取用量…";
+    try {
+      const data = await api("/api/model/usage");
+      const t = data.totals, n = value => Number(value).toLocaleString();
+      target.innerHTML = `<h3>${n(t.total_tokens)} Token</h3><p>输入 ${n(t.input_tokens)} · 输出 ${n(t.output_tokens)}</p><p>${n(t.requests)} 次请求 · ${n(t.requests-t.measured_requests)} 次未返回用量</p><h4>最近请求</h4>`;
+      if (!data.recent.length) target.insertAdjacentHTML("beforeend", '<p class="muted">还没有记录。下次生成笔记或询问助手后，可在这里查看。</p>');
+      for (const item of data.recent) {
+        const row = document.createElement("p");
+        const purpose = {note:"笔记生成",assistant:"助手",diagnostics:"连接诊断",connection_test:"连接测试"}[item.purpose] || item.purpose;
+        row.textContent = `${new Date(item.at).toLocaleString()} · ${item.model} · ${purpose} · ${item.total_tokens == null ? "未返回用量" : n(item.total_tokens)+" Token"} · ${item.status === "success" ? "完成" : "未完成"}`;
+        target.append(row);
+      }
+    } catch { target.textContent = "用量暂时无法读取，请点击刷新重试。"; }
+    finally { usageLoading = false; }
+  }
+  $("refreshTokenUsage").onclick = loadUsage;
   modelNodes.forEach((n) => panes.model.append(n));
   const oldModelSave = panes.model.querySelector("footer button.primary");
   if (oldModelSave) oldModelSave.hidden = true;
@@ -69,7 +93,23 @@ export function installSettings(ctx) {
   const field = (id, label, type, value, extra = "") =>
     `<label for="${id}">${label}</label><input id="${id}" type="${type}" value="${value}" ${extra}>`;
   panes.transcriber.innerHTML +=
-    '<p class="muted">优先复用平台或内嵌字幕；缺少字幕时按这里的设置转写。大模型首次使用可能需要下载权重。</p><label for="prefTranscriber">转写方式</label><select id="prefTranscriber"><option value="faster-whisper">本地 faster-whisper</option><option value="openai-compatible">OpenAI 兼容远程转写</option><option value="groq">Groq 远程转写</option></select><label for="prefWhisper">转写模型名称 / 本地规格</label><input id="prefWhisper" list="asrModels" value="small"><datalist id="asrModels"><option value="tiny"><option value="base"><option value="small"><option value="medium"><option value="large-v3"><option value="whisper-1"><option value="whisper-large-v3"></datalist><p id="asrReadiness" class="settings-status"></p><p class="muted">远程转写复用当前模型服务的地址和 Key，请确认它支持音频转写接口，并填写转写模型名称；本地 Whisper 不上传音频。</p>';
+    '<p class="muted">本地语音模型是可选项：有平台字幕时无需下载；也可以使用远程转写。只有选择本地语音识别时才需要准备模型。</p><label for="prefTranscriber">转写方式</label><select id="prefTranscriber"><option value="faster-whisper">本地 faster-whisper</option><option value="openai-compatible">OpenAI 兼容远程转写</option><option value="groq">Groq 远程转写</option></select><label for="prefWhisper">转写模型名称 / 本地规格</label><input id="prefWhisper" list="asrModels" value="small"><datalist id="asrModels"><option value="tiny"><option value="base"><option value="small"><option value="medium"><option value="large-v3"><option value="whisper-1"><option value="whisper-large-v3"></datalist><p id="asrReadiness" class="settings-status"></p><p class="muted">远程转写复用当前模型服务的地址和 Key，请确认它支持音频转写接口，并填写转写模型名称；本地 Whisper 不上传音频。</p>';
+  panes.transcriber.insertAdjacentHTML("beforeend", '<details><summary>可选：准备本地语音模型</summary><p class="muted">从 Hugging Face 模型仓库下载，可在需要离线转写时准备。首次使用无需完成此步骤。</p><select id="prepareAsrModel" aria-label="要准备的本地语音模型"><option value="tiny">tiny · 体积小</option><option value="base">base</option><option value="small" selected>small · 均衡</option><option value="medium">medium</option><option value="large-v3">large-v3 · 占用较大</option></select><div class="settings-inline-actions"><button type="button" id="checkLocalAsr">检查状态</button><button type="button" id="prepareLocalAsr">下载模型</button></div><p id="localAsrDownloadStatus" role="status"></p></details>');
+  let modelPreparing = false;
+  async function checkLocalAsr(prepare = false) {
+    if (modelPreparing) return;
+    modelPreparing = true;
+    const model = $("prepareAsrModel").value;
+    $("localAsrDownloadStatus").textContent = prepare ? "正在提交下载请求…" : "正在检查…";
+    $("prepareLocalAsr").disabled = true;
+    try {
+      const result = await api(`/api/local-models/${encodeURIComponent(model)}${prepare ? "/prepare" : ""}`, prepare ? {method:"POST"} : {});
+      $("localAsrDownloadStatus").textContent = result.message + (result.status === "downloading" ? " 点击检查状态查看是否完成。" : "");
+    } catch(error) { $("localAsrDownloadStatus").textContent = error.message; }
+    finally { modelPreparing = false; $("prepareLocalAsr").disabled = false; }
+  }
+  $("checkLocalAsr").onclick = () => checkLocalAsr();
+  $("prepareLocalAsr").onclick = () => checkLocalAsr(true);
   panes.notes.innerHTML +=
     '<p class="muted">风格控制内容组织，格式控制呈现方式。保留全部配置入口，不用单个“深度”代替它们。</p><label for="prefStyle">笔记风格</label><select id="prefStyle">' +
     Object.entries({

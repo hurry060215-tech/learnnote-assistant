@@ -94,6 +94,14 @@ def normalize_note_markdown(title: str, markdown: str) -> NoteNormalizationResul
             duplicate_h1 += 1
             if not seen_content:
                 continue
+        if heading and len(heading.group(1)) == 1:
+            # A model may paraphrase the video title. We add the canonical title
+            # below, so retaining its opening H1 would manufacture a lint error.
+            if not seen_content:
+                duplicate_h1 += 1
+                continue
+            # Preserve later section text, but keep a single document-level H1.
+            line = "## " + heading.group(2)
         if line.strip():
             seen_content = True
         body_without_duplicate_title.append(line)

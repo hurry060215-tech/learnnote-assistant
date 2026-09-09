@@ -2,6 +2,16 @@
 
 All notable changes to LearnNote are documented here. The project follows semantic versioning while the `0.x` series is under active development.
 
+## 0.2.8 - Reliable summaries and source navigation
+
+- Normalize paraphrased model titles without rejecting otherwise valid summaries; preserve fenced code and later section content.
+- Keep transcript drafts distinct from generated summaries, report actual output validation errors, and offer summary-only retries.
+- Probe both Bilibili av and BV URLs. Preview and search subtitle paragraphs in the extension with source-bound video seeking.
+- Open Bilibili's official player from subtitle-only local notes without downloading video, preserving the selected part and timestamp.
+- Add a local personal overview with provider-reported Token totals, recent usage and review entry points; unknown usage stays unknown.
+- Make local speech model preparation explicit and optional, recognize existing cached models, and surface download failures.
+- Preview FSRS review intervals and preserve submission identity when retrying a failed rating request.
+
 ## 0.2.7 - Persistent settings, drafts and recovery
 
 - Share the selected local model connection across browser, desktop and extension tasks without returning API keys to the page.

@@ -118,10 +118,10 @@ def finish_note_task(
             status="failed",
             phase="failed",
             progress=100,
-            message="笔记质量检查发现疑似乱码，已阻止不可靠内容进入资料库。",
+            message="笔记输出检查未通过，已有资料保留，可直接重试总结。",
             error_code="note_quality_failed",
-            error_detail="疑似乱码内容已保留在本地隔离文件，可在修复编码后重试。",
-            summary_warning="笔记未发布：Unicode/乱码质量门禁未通过",
+            error_detail="；".join(item["message"] for item in normalized_note.report["issues"] if item["severity"] == "error"),
+            summary_warning="笔记未发布：输出检查未通过",
         )
         return
     note_document = build_note_document(title, note)

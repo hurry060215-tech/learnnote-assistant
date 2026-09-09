@@ -150,8 +150,47 @@ function quickInline(text) {
 }
 function bindQuickSeek(container) {
   container?.querySelectorAll?.("[data-seek-time]").forEach(button=>button.addEventListener("click",async()=>{
-    if(HAS_EXTENSION_API&&displayedIdentity?.tab_id) await chrome.runtime.sendMessage({type:"seek-current-video",targetTabId:displayedIdentity.tab_id,seconds:Number(button.dataset.seekTime)});
+    await seekSourceVideo(Number(button.dataset.seekTime));
   }));
+}
+async function seekSourceVideo(seconds) {
+  const status = document.querySelector("#sourceSeekStatus");
+  if (!HAS_EXTENSION_API || !displayedIdentity?.tab_id) return;
+  try {
+    const result = await chrome.runtime.sendMessage({type:"seek-current-video", targetTabId:displayedIdentity.tab_id,
+      expectedUrl:currentContext?.tab?.url || currentContext?.page?.page_url, seconds});
+    if (!result?.ok) throw new Error(result?.error || "请回到原视频页面再试。");
+    if (status) status.textContent = `已定位到 ${formatCueTime(seconds)}`;
+  } catch (error) { if (status) status.textContent = error.message || "暂时无法跳转，请打开原视频。"; }
+}
+
+function groupSubtitleParagraphs(cues) {
+  const groups = [];
+  let current = [], length = 0;
+  for (const cue of cues) {
+    const last = current.at(-1);
+    if (last && (cue.start - last.end > 3 || length >= 360 || (length >= 180 && /[。！？.!?]$/.test(last.text)))) {
+      groups.push(current); current = []; length = 0;
+    }
+    current.push(cue); length += cue.text.length;
+  }
+  if (current.length) groups.push(current);
+  return groups;
+}
+let previewSignature = "";
+function renderSourcePreview() {
+  const card = document.querySelector("#sourcePreviewCard"), content = document.querySelector("#sourcePreviewContent");
+  if (!card || !content) return;
+  const cues = quickTranscript.length && currentTaskId ? quickTranscript : subtitleCues();
+  card.hidden = !cues.length;
+  const query = (document.querySelector("#subtitleSearch")?.value || "").trim().toLocaleLowerCase();
+  const signature = JSON.stringify([displayedIdentity ? sourceContinuityKey(displayedIdentity) : "", cues, query]);
+  if (previewSignature === signature) return;
+  previewSignature = signature;
+  const groups = groupSubtitleParagraphs(cues).filter(group => !query || group.some(cue => cue.text.toLocaleLowerCase().includes(query)));
+  document.querySelector("#sourcePreviewCount").textContent = `${cues.length} 句 · ${groups.length} 段`;
+  content.innerHTML = groups.map((group, index) => `<details class="subtitle-paragraph" ${query || index === 0 ? "open" : ""}><summary><time>${formatCueTime(group[0].start)}</time><span>${escapeQuickHtml(group.map(c=>c.text).join(" ").slice(0,42))}</span></summary>${group.filter(cue=>!query || cue.text.toLocaleLowerCase().includes(query)).map(cue=>`<button class="quick-transcript-cue" type="button" data-seek-time="${cue.start}"><time>${formatCueTime(cue.start)}</time><span>${escapeQuickHtml(cue.text)}</span></button>`).join("")}</details>`).join("") || "<p>没有匹配的字幕。</p>";
+  bindQuickSeek(content);
 }
 function renderQuickMarkdown(markdown = "") {
   const lines = String(markdown || "").split(/\r?\n/);
@@ -199,7 +238,7 @@ function renderQuickTranscript(cues = quickTranscript) {
   els.quickTranscriptPanel.querySelectorAll?.("[data-seek-time]").forEach(button => {
     button.addEventListener("click", async () => {
       if (!HAS_EXTENSION_API || !displayedIdentity?.tab_id) return;
-      await chrome.runtime.sendMessage({ type: "seek-current-video", targetTabId: displayedIdentity.tab_id, seconds: Number(button.dataset.seekTime) });
+      await seekSourceVideo(Number(button.dataset.seekTime));
     });
   });
 }
@@ -235,6 +274,7 @@ async function loadQuickArtifacts(task) {
   if (els.quickSummaryPanel) els.quickSummaryPanel.innerHTML = renderQuickMarkdown(note);
   bindQuickSeek(els.quickSummaryPanel);
   renderQuickTranscript(quickTranscript);
+  renderSourcePreview();
   const extractedOnly = (task.options?.content_mode || currentTaskContentMode) === "subtitles";
   showQuickResult(extractedOnly ? "字幕已提取 · 未调用模型" : (task.summary_warning ? `文字笔记 · ${task.summary_warning}` : "文字笔记已完成 · 未下载视频"));
   if (extractedOnly) setQuickTab("transcript");
@@ -255,6 +295,11 @@ async function pollQuickTask() {
       showQuickResult(task.error_detail || task.message || "处理未完成，可在工作台查看原因");
       if (els.quickSummaryPanel) els.quickSummaryPanel.innerHTML = `<p>${escapeQuickHtml(task.error_detail || task.message || "处理未完成")}</p>`;
       setProgress(100, task.error_detail || task.message || "处理未完成，请查看任务记录。", "error");
+      try {
+        const response = await fetchWithTimeout(`${backendUrl}/api/tasks/${encodeURIComponent(task.id)}/transcript`);
+        const data = response.ok ? await response.json() : {};
+        if (isCurrent()) { quickTranscript = data.segments || []; renderSourcePreview(); }
+      } catch { /* Keep the original task failure visible. */ }
       return;
     }
     showQuickResult(task.note_path ? "正在载入结果…" : (task.message || "正在读取字幕…"));
@@ -545,6 +590,7 @@ function setIntegrityItem(kind, value) {
 }
 
 function renderContext(message = "") {
+  renderSourcePreview();
   const page = currentContext?.page || {};
   const tab = currentContext?.tab || {};
   const active = page.active_video || {};
@@ -569,6 +615,10 @@ function renderContext(message = "") {
   setIntegrityItem("video", evidence.video);
   setIntegrityItem("audio", evidence.audio);
   setIntegrityItem("subtitle", evidence.subtitle);
+  const subtitleLabel = els.integrityGrid?.querySelector('[data-kind="subtitle"] strong');
+  if (subtitleLabel) subtitleLabel.textContent = subtitleReady ? "正文已就绪" : evidence.subtitle === true ? "发现线索" : "未取得正文";
+  if (!subtitleReady && page.subtitle_probe?.status === "auth_required") els.estimateValue.textContent = "需要登录态";
+  else if (!subtitleReady && page.subtitle_probe?.status === "unavailable") els.estimateValue.textContent = "查询失败 · 可刷新重试";
 
   const hasPage = Boolean(identity?.canonical_page_url && !/^(?:chrome|edge|about):/i.test(identity.canonical_page_url) && !/^https?:\/\/(?:www\.)?bilibili\.com\/?(?:[?#].*)?$/i.test(identity.canonical_page_url));
   const hasMediaEvidence = evidence.video === true || candidates.length > 0 || subtitleReady || (platform.platform === "bilibili" && Boolean(identity?.platform_video_id));
@@ -1093,6 +1143,7 @@ function bindEvents() {
 
 function bindProductActions(){
   const find=id=>document.querySelector?.("#"+id);
+  find("subtitleSearch")?.addEventListener?.("input",renderSourcePreview);
   find("copyQuickSummary")?.addEventListener?.("click",async()=>{try{if(!quickNoteText)throw new Error("总结尚未生成");await navigator.clipboard.writeText(quickNoteText);els.quickResultStatus.textContent="总结已复制";}catch(e){els.quickResultStatus.textContent=e.message;}});
   find("saveQuickSummary")?.addEventListener?.("click",()=>{if(quickNoteText)downloadResult(quickNoteText,"LearnNote-summary.md","text/markdown;charset=utf-8");});
   find("saveQuickSubtitles")?.addEventListener?.("click",()=>{if(quickTranscript.length)downloadResult(subtitleSrt(quickTranscript),"LearnNote-subtitles.srt","text/plain;charset=utf-8");});
@@ -1119,6 +1170,7 @@ globalThis.__learnnoteSidepanel = {
   subtitleSrt,
   renderQuickMarkdown,
   renderQuickTranscript,
+  groupSubtitleParagraphs,
   sourceIdentityKey,
   sourceContinuityKey,
   sameSourceIdentity,

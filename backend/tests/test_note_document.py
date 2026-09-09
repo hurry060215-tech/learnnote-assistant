@@ -9,6 +9,18 @@ from app.routers.notes import api_note_document
 
 
 class NoteDocumentTests(unittest.TestCase):
+    def test_paraphrased_model_title_does_not_block_valid_summary(self):
+        result = normalize_note_markdown("原始视频标题 - bilibili", "# 更简洁的总结标题\n\n## 核心观点\n" + "这是材料支持的总结。" * 12)
+        self.assertFalse(result.report["blocking"])
+        self.assertEqual(result.markdown.splitlines()[0], "# 原始视频标题 - bilibili")
+        self.assertEqual(normalize_note_markdown("原始视频标题 - bilibili", result.markdown).markdown, result.markdown)
+
+    def test_later_h1_content_is_preserved_as_section_and_code_untouched(self):
+        result = normalize_note_markdown("标题", "介绍内容\n\n# 另一章节\n正文\n\n```python\n# code comment\n```")
+        self.assertFalse(result.report["blocking"])
+        self.assertIn("## 另一章节", result.markdown)
+        self.assertIn("```python\n# code comment\n```", result.markdown)
+
     def test_normalize_removes_wrapper_duplicate_title_and_control_chars(self) -> None:
         result = normalize_note_markdown(
             "梯度下降",
