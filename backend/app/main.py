@@ -43,7 +43,7 @@ from .upload_limits import UploadBudgetMiddleware, UploadBudgetExceeded, write_v
 from .source_input import SourceInputError, clean_task_title, normalize_source_input
 from .storage import cleanup_tasks, create_task, delete_all_tasks, delete_task, get_task, list_tasks, read_json, request_task_cancel, storage_summary, task_dir, update_task, write_json
 from .routers.knowledge_study import knowledge_router, study_router, task_study_router
-from .model_connections import connected_api_key
+from .model_connections import connected_api_key, resolve_model_options, selected_connection_status
 from .routers.connections import connection_router
 from .routers.system import system_router
 from .routers.library import library_router
@@ -250,7 +250,18 @@ def merge_task_options(base: TaskOptions | None, overrides: TaskOptions | None) 
         for field in explicit_fields:
             if field in override_values:
                 merged[field] = override_values[field]
-    return TaskOptions.model_validate(merged)
+    return resolve_model_options(TaskOptions.model_validate(merged))
+
+
+def require_ready_note_model(options: TaskOptions) -> None:
+    """Explicit AI work must not spend minutes extracting before finding no key."""
+    if options.content_mode not in {"text", "visual"}:
+        return  # Existing auto-mode integrations keep their source-first behavior.
+    from .summarizer import _model_key
+    if not _model_key(resolve_model_options(options)):
+        raise HTTPException(409, {"code": "model_required", "message": "还没有可用的模型连接。请先配置模型，或选择仅提取字幕；本次尚未下载或转写。"})
+    if options.content_mode == "visual" and not llm_model_supports_vision(options.llm_base_url or LLM_BASE_URL, options.llm_model or LLM_MODEL):
+        raise HTTPException(409, {"code": "visual_model_required", "message": "当前模型不支持画面理解，请更换视觉模型或选择文字笔记。"})
 
 
 def build_handoff_integrity(request: CurrentPageTaskRequest) -> MediaIntegrity:
@@ -2597,6 +2608,11 @@ def health_payload() -> dict:
     local_asr_available = find_spec("faster_whisper") is not None
     ytdlp_package_available = find_spec("yt_dlp") is not None
     ytdlp_cli = shutil.which("yt-dlp") or shutil.which("yt-dlp.exe") or ""
+    connection = selected_connection_status()
+    selected = connection["model"] or {}
+    model_base = selected.get("base_url") or LLM_BASE_URL
+    model_name = selected.get("model") or LLM_MODEL
+    model_ready = connection["configured"] if selected else bool(LLM_API_KEY)
     return {
         "ok": True,
         "service": "learnnote",
@@ -2626,12 +2642,14 @@ def health_payload() -> dict:
         "yt_dlp_package_available": ytdlp_package_available,
         "yt_dlp_cli_path": ytdlp_cli,
         "yt_dlp_install_hint": "pip install yt-dlp" if not (ytdlp_package_available or ytdlp_cli) else "",
-        "llm_model_configured": bool(LLM_API_KEY),
-        "vision_model_configured": bool(LLM_API_KEY) and llm_model_supports_vision(LLM_BASE_URL, LLM_MODEL),
-        "default_llm_model": LLM_MODEL,
-        "default_llm_base_url": LLM_BASE_URL,
-        "default_llm_base_host": llm_base_host(LLM_BASE_URL),
-        "default_llm_provider": llm_provider_name(LLM_BASE_URL),
+        "llm_model_configured": model_ready,
+        "vision_model_configured": model_ready and llm_model_supports_vision(model_base, model_name),
+        "default_llm_supports_vision": llm_model_supports_vision(model_base, model_name),
+        "default_llm_model": model_name,
+        "default_llm_base_url": model_base,
+        "default_llm_base_host": llm_base_host(model_base),
+        "default_llm_provider": selected.get("provider") or llm_provider_name(model_base),
+        "default_use_saved_connection": bool(selected.get("use_saved_connection")),
         "data_paths": data_paths_payload(),
         "model_provider_presets": MODEL_PROVIDER_PRESETS,
         "assistant_capabilities": ASSISTANT_CAPABILITIES,
@@ -3446,7 +3464,10 @@ def automatic_diagnostics(payload: dict | None = Body(default=None)) -> dict:
         options = TaskOptions.model_validate(options_payload)
     except ValidationError:
         options = TaskOptions()
-    api_key = options.llm_api_key or (connected_api_key(options) if options.use_saved_connection else LLM_API_KEY)
+    options = resolve_model_options(options)
+    api_key = options.llm_api_key or connected_api_key(options)
+    if not api_key and not options.use_saved_connection and (options.llm_base_url or LLM_BASE_URL).rstrip("/") == LLM_BASE_URL.rstrip("/"):
+        api_key = LLM_API_KEY
     base_url = options.llm_base_url or LLM_BASE_URL
     model = options.llm_model or LLM_MODEL
     if api_key:
@@ -3597,6 +3618,9 @@ def _handoff_response(task: TaskRecord, *, deduplicated: bool) -> dict:
 
 @app.post("/api/tasks/from-current-page")
 def create_from_current_page(request: CurrentPageTaskRequest, background_tasks: BackgroundTasks, defer: bool = False) -> dict:
+    request = request.model_copy(update={"options": resolve_model_options(request.options)})
+    if not defer and request.mode != "download_only":
+        require_ready_note_model(request.options)
     raw_page_url = request.page_url
     try:
         source = normalize_source_input(raw_page_url)
@@ -3697,6 +3721,8 @@ def start_deferred_current_page_task(
             },
         )
     merged_options = merge_task_options(deferred_request.options, options)
+    if deferred_request.mode != "download_only":
+        require_ready_note_model(merged_options)
     deferred_request = deferred_request.model_copy(update={"options": merged_options}, deep=True)
     public_options = merged_options.model_copy(update={"llm_api_key": None})
     task = update_task(
@@ -3785,10 +3811,11 @@ async def create_from_local(
     staging_token: str = Form(""),
 ) -> dict:
     try:
-        parsed_options = TaskOptions.model_validate(json.loads(options or "{}"))
+        parsed_options = resolve_model_options(TaskOptions.model_validate(json.loads(options or "{}")))
     except (json.JSONDecodeError, TypeError, ValidationError) as exc:
         raise local_upload_error("invalid_task_options", f"本地视频处理参数无效：{exc}", status_code=422) from exc
 
+    require_ready_note_model(parsed_options)
     token = staging_token.strip().lower()
     if token and file is not None:
         raise local_upload_error("ambiguous_local_source", "请使用预检 token 或直接上传文件，不要同时提交。")
@@ -3872,6 +3899,7 @@ def create_from_existing_media(
         raise HTTPException(status_code=400, detail=detail) from exc
 
     parsed_options = merge_task_options(source.options, rerun_options_from_body(request))
+    require_ready_note_model(parsed_options)
     task = create_task(
         source_type="local",
         title=source.title or f"Media from {source.id}",
@@ -3922,6 +3950,32 @@ def create_from_existing_media(
     return {"task_id": task.id, "task": task_payload(task), "source_task_id": source.id}
 
 
+def _snapshot_before_retry(task_id: str) -> None:
+    from .summary_versions import snapshot_summary
+    try:
+        snapshot_summary(task_id)
+    except (OSError, ValueError) as exc:
+        raise HTTPException(409, {"code": "summary_backup_failed", "message": "未能保存当前正文的历史版本，本次未启动。请检查本地存储后重试。"}) from exc
+
+
+@app.get("/api/tasks/{task_id}/summary-versions")
+def api_summary_versions(task_id: str) -> dict:
+    from .summary_versions import list_summary_versions
+    try:
+        return list_summary_versions(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(404, "任务不存在。") from exc
+
+
+@app.get("/api/tasks/{task_id}/summary-versions/{version_id}")
+def api_summary_version(task_id: str, version_id: str) -> dict:
+    from .summary_versions import read_summary_version
+    try:
+        return read_summary_version(task_id, version_id)
+    except (OSError, ValueError) as exc:
+        raise HTTPException(404, "历史版本不存在或校验未通过。") from exc
+
+
 @app.post("/api/tasks/{task_id}/retry-summary")
 def retry_summary(task_id: str, background_tasks: BackgroundTasks, request: TaskOptions | None = Body(default=None)) -> dict:
     from .models import TranscriptResult
@@ -3942,16 +3996,12 @@ def retry_summary(task_id: str, background_tasks: BackgroundTasks, request: Task
     except ValueError as exc:
         raise HTTPException(409, "保存的字幕不可用，请重新取得字幕。") from exc
     options = merge_task_options(source.options, request)
-    if source.note_path:
-        previous = Path(source.note_path)
-        if previous.is_file() and previous.resolve().parent == task_dir(task_id).resolve():
-            import hashlib
-            content = previous.read_bytes()
-            versions = task_dir(task_id) / "summary_versions"
-            versions.mkdir(exist_ok=True)
-            target = versions / (hashlib.sha256(content).hexdigest() + ".md")
-            if not target.exists():
-                target.write_bytes(content)
+    if options.content_mode == "subtitles":
+        raise HTTPException(409, {"code": "summary_mode_required", "message": "当前选择仅提取字幕，不调用模型。请明确选择文字笔记后再生成总结。"})
+    if options.content_mode == "visual":
+        raise HTTPException(409, {"code": "visual_resume_required", "message": "图文笔记需要同时分析画面。请从本地视频继续处理，或明确切换为文字笔记后仅根据字幕总结。"})
+    require_ready_note_model(options)
+    _snapshot_before_retry(task_id)
     task = update_task(task_id, status="queued", phase="queued", progress=0, error_code="", error_detail="", failed_phase="",
         cancel_requested=False, cancel_requested_at="", cancelled_at="", awaiting_confirmation=False,
         message="使用已保存字幕重新生成总结，不下载视频、不重新转写。", retry_count=source.retry_count+1,
@@ -3982,6 +4032,7 @@ def resume_task_from_checkpoint(
             detail={"code": "media_not_found", "message": "没有找到可恢复的本地媒体，请重新从当前页面发起。"},
         )
     parsed_options = merge_task_options(source.options, rerun_options_from_body(request))
+    require_ready_note_model(parsed_options)
     # Seed older owned local transcripts before resetting attempt status.
     # The pipeline checks media hash and ASR settings before reusing this cache.
     from .transcript_cache import load_local_transcript, save_local_transcript, media_cache_integrity
@@ -3994,6 +4045,7 @@ def resume_task_from_checkpoint(
                 save_local_transcript(source.id, cached_transcript, cache_integrity, source.options)
         except (OSError, ValueError):
             pass
+    _snapshot_before_retry(task_id)
     task = update_task(
         task_id,
         status="queued",

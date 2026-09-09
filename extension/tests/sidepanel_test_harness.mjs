@@ -44,7 +44,8 @@ export async function createSidepanelHarness({ contexts = [], preflight = null, 
     "#refreshButton", "#platformLabel", "#playingBadge", "#videoTitle", "#videoMeta", "#integrityGrid",
     "#candidateCount", "#durationValue", "#estimateValue", "#preflightMessage", "#modeDescription", "#sendButton", "#sendButtonLabel",
     "#handoffProgress", "#handoffStatus", "#handoffPercent", "#openTaskButton", "#quickResultStatus",
-    "#quickAskForm", "#quickAskQuestion", "#quickAskConversation", "#quickSummaryPanel"
+    "#quickAskForm", "#quickAskQuestion", "#quickAskConversation", "#quickSummaryPanel",
+    "#modelReadiness", "#modelReadinessText", "#configureModelButton"
   ];
   const elements = new Map(selectors.map(selector => [selector, element()]));
   const integrityItems = new Map(["video", "audio", "subtitle"].map(kind => {

@@ -149,6 +149,9 @@ const os = require("node:os");
     await section("model");
     await p.locator("#model").fill("ux-test-model");
     await p.locator("#savePreferences").click();
+    await p.waitForFunction(() =>
+      document.querySelector("#preferencesStatus").textContent.includes("模型连接已保存"),
+    );
     assert(
       await p.locator("#settingsDialog").isVisible(),
       "model save must not discard other sections",

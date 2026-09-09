@@ -51,7 +51,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Backend release gate failed" }
           python -m unittest discover scripts/tests -p "test_*.py"
           if ($LASTEXITCODE -ne 0) { throw "Release script gate failed" }
-          python -m unittest desktop.tests.test_desktop_launcher
+          python -m unittest discover desktop/tests -p "test_*.py"
           if ($LASTEXITCODE -ne 0) { throw "Desktop release gate failed" }
           Get-ChildItem extension/tests/*.test.mjs | ForEach-Object { node $_.FullName; if ($LASTEXITCODE -ne 0) { throw "Extension release gate failed" } }
           Get-ChildItem web/tests/*.test.mjs | ForEach-Object { node $_.FullName; if ($LASTEXITCODE -ne 0) { throw "Web release gate failed" } }

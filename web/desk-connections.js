@@ -1,5 +1,33 @@
 import { api } from "/web/desk-api.js";
 
+// Only connection metadata crosses back into a page. Keys stay in the local
+// service/OS credential store, so changing browser or port does not lose them.
+export async function loadModelConnection(state) {
+  const epoch = state.modelSaveEpoch || 0;
+  const result = await api("/api/model/connection");
+  if (
+    epoch !== (state.modelSaveEpoch || 0) ||
+    document.getElementById("settingsDialog")?.dataset.unsaved
+  )
+    return result;
+  if (result.model) {
+    state.model = result.model;
+    state.key = "";
+    localStorage.setItem("learnnote.desk.model", JSON.stringify(state.model));
+  } else if (state.model.use_saved_connection) {
+    // The shared connection may have been cleared in another window. Do not
+    // silently resurrect that endpoint from this page's localStorage.
+    state.model = {};
+    state.key = "";
+    localStorage.removeItem?.("learnnote.desk.model");
+  }
+  state.modelConnectionReady = Boolean(result.model && result.configured);
+  state.modelConnectionMessage = result.message;
+  state.modelConnectionStorage = result.storage;
+  window.dispatchEvent(new CustomEvent("learnnote:settings"));
+  return result;
+}
+
 export function installConnections({ state, notice }) {
   const $ = (id) => document.getElementById(id);
   const pane = document.querySelector('[data-settings-page="model"]');
@@ -12,11 +40,6 @@ export function installConnections({ state, notice }) {
     try {
       const result = await api("/api/connections");
       const connected = result.openrouter.connected;
-      state.modelConnectionReady = Boolean(
-        connected &&
-          state.model.use_saved_connection &&
-          state.model.base_url === "https://openrouter.ai/api/v1",
-      );
       window.dispatchEvent(new CustomEvent("learnnote:settings"));
       $("providerConnectionStatus").textContent = connected
         ? `OpenRouter 已连接 · ${result.openrouter.storage === "system" ? "凭据保存在系统凭据库" : "连接保留到本机服务关闭"}`
@@ -26,7 +49,6 @@ export function installConnections({ state, notice }) {
         ? "重新授权"
         : "登录 OpenRouter";
     } catch {
-      state.modelConnectionReady = false;
       window.dispatchEvent(new CustomEvent("learnnote:settings"));
       $("providerConnectionStatus").textContent =
         "账号连接当前不可用；可以使用 API Key 或本机模型。";
@@ -60,15 +82,25 @@ export function installConnections({ state, notice }) {
       notice(error.message);
     }
   };
-  $("useOpenRouter").onclick = () => {
+  $("useOpenRouter").onclick = async () => {
     const current =
       $("provider").value === "openrouter" ? $("model").value.trim() : "";
-    state.model = {
+    const selection = {
       provider: "openrouter",
       base_url: "https://openrouter.ai/api/v1",
       model: current || "openrouter/auto",
       use_saved_connection: true,
     };
+    try {
+      const result = await api("/api/model/connection", {
+        method: "PUT",
+        body: JSON.stringify(selection),
+      });
+      state.model = result.model;
+    } catch (error) {
+      notice(error.message);
+      return;
+    }
     state.key = "";
     state.modelConnectionReady = true;
     localStorage.setItem("learnnote.desk.model", JSON.stringify(state.model));
@@ -85,45 +117,29 @@ export function installConnections({ state, notice }) {
   $("disconnectOpenRouter").onclick = async () => {
     try {
       await api("/api/connections/openrouter", { method: "DELETE" });
-      if (
-        state.model.provider === "openrouter" &&
-        state.model.use_saved_connection
-      ) {
-        state.model.use_saved_connection = false;
-        state.key = "";
-        localStorage.setItem(
-          "learnnote.desk.model",
-          JSON.stringify(state.model),
-        );
-      }
+      await loadModelConnection(state);
       await refreshConnection();
     } catch (error) {
       notice(error.message);
     }
   };
   window.addEventListener("storage", (event) => {
-    if (event.key !== "learnnote.desk.model" || !event.newValue) return;
-    try {
-      const next = JSON.parse(event.newValue);
-      if (
-        next.provider !== "openrouter" ||
-        next.base_url !== "https://openrouter.ai/api/v1" ||
-        !next.use_saved_connection
-      )
-        return;
-      if ($("settingsDialog").dataset.unsaved) {
-        notice(
-          "另一窗口已更新模型连接；请先保存或放弃当前设置，再重新打开工作台同步。",
-        );
-        return;
-      }
-      state.model = next;
-      state.key = "";
-      refreshConnection();
-      notice("已同步另一窗口选择的 OpenRouter 连接。");
-    } catch {}
+    if (event.key !== "learnnote.desk.model") return;
+    if ($("settingsDialog").dataset.unsaved) {
+      notice(
+        "另一窗口已更新模型连接；先保存或放弃当前设置，避免覆盖正在编辑的内容。",
+      );
+      return;
+    }
+    loadModelConnection(state)
+      .then(refreshConnection)
+      .catch(() => {});
   });
-  window.addEventListener("focus", refreshConnection);
+  window.addEventListener("focus", () => {
+    loadModelConnection(state)
+      .then(refreshConnection)
+      .catch(() => {});
+  });
   if (location.hash.includes("connection=failed"))
     notice("授权未完成或已过期，可以重新连接。");
   refreshConnection();

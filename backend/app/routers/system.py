@@ -48,6 +48,47 @@ class ModelSetupCheckRequest(BaseModel):
     mode: Literal["chat", "models"] = "chat"
 
 
+class ModelConnectionSaveRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    provider: str = Field(default="custom", min_length=1, max_length=64, pattern=r"^[a-z0-9-]+$")
+    base_url: str = Field(min_length=1, max_length=2048)
+    model: str = Field(min_length=1, max_length=256)
+    api_key: str = Field(default="", max_length=8192)
+    use_saved_connection: bool = False
+
+
+@system_router.get("/api/model/connection")
+def get_selected_model_connection(request: Request) -> dict:
+    from .connections import _local_origin
+    from ..model_connections import selected_connection_status
+    _local_origin(request)
+    return selected_connection_status()
+
+
+@system_router.put("/api/model/connection")
+def put_selected_model_connection(request: Request, payload: ModelConnectionSaveRequest) -> dict:
+    from .connections import _local_origin
+    from ..model_connections import save_selected_connection
+    _local_origin(request, write=True)
+    try:
+        return save_selected_connection(**payload.model_dump())
+    except ValueError as exc:
+        raise HTTPException(422, {"code": "model_connection_invalid", "message": str(exc)}) from exc
+    except Exception as exc:
+        raise HTTPException(503, {"code": "model_connection_save_failed", "message": "未能保存模型设置，请检查资料目录是否可写、系统凭据库是否可用后重试。"}) from exc
+
+
+@system_router.delete("/api/model/connection")
+def delete_selected_model_connection(request: Request) -> dict:
+    from .connections import _local_origin
+    from ..model_connections import clear_selected_connection
+    _local_origin(request, write=True)
+    try:
+        return clear_selected_connection()
+    except Exception as exc:
+        raise HTTPException(503, {"code": "model_connection_clear_failed", "message": "未能清除当前连接，请检查系统凭据库是否可用后重试。"}) from exc
+
+
 def _validated_model_endpoint(base_url: str) -> tuple[str, str, bool]:
     try:
         parsed = urlsplit(base_url.strip())

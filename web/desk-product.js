@@ -1,4 +1,6 @@
 import { assistantStream } from "/web/desk-chat-stream.js";
+import { createDraftStore } from "/web/desk-drafts.js";
+import { installSummaryVersions } from "/web/desk-summary-versions.js";
 import { api, escapeHtml as esc, timestamp, taskAsset } from "/web/desk-api.js";
 const svg = (paths) =>
   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
@@ -249,10 +251,35 @@ export function installProductWorkspace(ctx) {
   let assistantEpoch = 0,
     pending = false,
     activeRequest = null;
+  let draftStorage;
+  try {
+    draftStorage = localStorage;
+  } catch {}
   const localThreads = new Map(),
-    drafts = new Map();
+    drafts = createDraftStore(draftStorage);
   let visibleSource = "",
     previousSkill = "";
+  const saveDraft = () => {
+    if (
+      visibleSource &&
+      drafts.set(visibleSource, $("aiQuestion").value) === false &&
+      $("aiQuestion").value.trim()
+    )
+      $("aiStatus").textContent = "浏览器未能保存草稿，刷新前请先复制输入。";
+  };
+  $("aiQuestion").addEventListener("input", saveDraft);
+  window.addEventListener("pagehide", saveDraft);
+  $("aiQuestion").addEventListener("keydown", (event) => {
+    if (
+      event.key === "Enter" &&
+      (event.ctrlKey || event.metaKey) &&
+      !event.isComposing
+    ) {
+      event.preventDefault();
+      if (!pending) $("aiForm").requestSubmit();
+    }
+  });
+  $("aiSend").title = "发送 · Ctrl / ⌘ + Enter";
   function renderMessage(question, result, originalSource = state.selected) {
     const messageSource =
       result.skill && !result.skill.requires_source
@@ -329,6 +356,9 @@ export function installProductWorkspace(ctx) {
     if (visibleSource && visibleSource !== nextScope) previousSkill = "";
     visibleSource = nextScope;
     $("aiQuestion").value = drafts.get(visibleSource) || "";
+    $("aiStatus").textContent = $("aiQuestion").value
+      ? "已恢复未发送的草稿 · 仅保存在本机"
+      : "";
     pending = false;
     $("aiSend").disabled = false;
     $("assistantHistory").replaceChildren();
@@ -360,7 +390,15 @@ export function installProductWorkspace(ctx) {
           '<div class="assistant-empty"><strong>有什么想问的？</strong><p>直接提问，或围绕当前内容继续聊。</p></div>';
       $("assistantHistory").scrollTop = $("assistantHistory").scrollHeight;
     } catch (e) {
-      if (epoch === assistantEpoch) $("aiStatus").textContent = e.message;
+      if (epoch === assistantEpoch) {
+        $("aiStatus").textContent = e.message;
+        const empty = document.createElement("div");
+        empty.className = "assistant-empty";
+        empty.innerHTML =
+          '<strong>暂时无法读取对话记录</strong><p>草稿已保留，可以稍后重试。</p><button type="button">重新读取记录</button>';
+        empty.querySelector("button").onclick = loadHistory;
+        $("assistantHistory").replaceChildren(empty);
+      }
     }
   }
   function toggleAssistant(open) {
@@ -409,6 +447,7 @@ export function installProductWorkspace(ctx) {
     (b) =>
       (b.onclick = () => {
         $("aiQuestion").value = b.dataset.prompt;
+        saveDraft();
         $("aiQuestion").focus();
       }),
   );
@@ -419,6 +458,7 @@ export function installProductWorkspace(ctx) {
     const s = state.selected;
     const question = $("aiQuestion").value.trim();
     if (!question) return;
+    saveDraft();
     const epoch = ++assistantEpoch;
     pending = true;
     $("aiSend").disabled = true;
@@ -553,10 +593,18 @@ export function installProductWorkspace(ctx) {
           ...(localThreads.get(s.id) || []),
           { question, ...result, created_at: new Date().toISOString() },
         ]);
-      if ($("aiQuestion").value.trim() === question) $("aiQuestion").value = "";
+      if (
+        $("aiQuestion").value.trim() === question &&
+        !["failed", "needs_configuration", "needs_source"].includes(
+          result.execution?.state,
+        )
+      )
+        $("aiQuestion").value = "";
+      saveDraft();
       $("assistantHistory").scrollTop = $("assistantHistory").scrollHeight;
       $("aiStatus").textContent =
-        result.warning || (result.source === "llm"
+        result.warning ||
+        (result.source === "llm"
           ? "回答已保存，可查看出处"
           : "回答完成，重要内容请核对出处");
     } catch (error) {
@@ -638,6 +686,7 @@ export function installProductWorkspace(ctx) {
     readerNav.hidden = !s;
     if (!s) return;
     $("sourceFrames").hidden = s.kind !== "task";
+    $("openVersions").hidden = s.kind !== "task";
     const contentType =
       s.summary_source === "subtitle-extract"
         ? "字幕原文 · 未调用模型"
@@ -715,51 +764,7 @@ export function installProductWorkspace(ctx) {
     );
     outline.showModal();
   };
-  $("openVersions").onclick = () => {
-    const s = state.selected;
-    if (!s) return;
-    const family = new Set([s.id, s.source_task_id].filter(Boolean));
-    for (let pass = 0; pass < state.items.length; pass++) {
-      let changed = false;
-      for (const item of state.items)
-        if (
-          item.kind === "task" &&
-          (family.has(item.id) || family.has(item.source_task_id))
-        ) {
-          if (!family.has(item.id)) {
-            family.add(item.id);
-            changed = true;
-          }
-          if (item.source_task_id && !family.has(item.source_task_id)) {
-            family.add(item.source_task_id);
-            changed = true;
-          }
-        }
-      if (!changed) break;
-    }
-    const rows = state.items.filter(
-      (i) => i.kind === s.kind && family.has(i.id),
-    );
-    outline.innerHTML =
-      '<header><h2>历史版本与关联笔记</h2><button aria-label="关闭">×</button></header>' +
-      rows
-        .map(
-          (item, i) =>
-            `<button class="version-row" data-version="${i}"><strong>${esc(item.title)}</strong><small>${esc(item.updated_at || "")} · ${item.learning_range?.start !== undefined ? "视频片段" : item.source_task_id ? "重新整理" : "原始任务"}${item.id === s.id ? " · 当前" : ""}</small></button>`,
-        )
-        .join("");
-    outline.querySelector("header button").onclick = () => outline.close();
-    outline.querySelectorAll("[data-version]").forEach(
-      (b) =>
-        (b.onclick = () => {
-          outline.close();
-          openItem(rows[Number(b.dataset.version)]).catch((e) =>
-            notice(e.message),
-          );
-        }),
-    );
-    outline.showModal();
-  };
+  installSummaryVersions({ state, openItem, notice });
   const home = $("welcome");
   home.innerHTML = `<div class="home-heading"><div><h1>今天，想学些什么？</h1><p>从一段视频或一份资料开始。</p></div><button id="homePreferences">生成设置 ${icons.settings}</button></div><div class="home-grid"><section class="home-create"><h2>开始一份新笔记</h2><form id="homeUrlForm"><label for="homeUrl">视频链接 / Bilibili BV 号</label><div class="home-input"><input id="homeUrl" placeholder="粘贴视频地址，或输入 BV 号" required><button class="primary">识别链接</button></div></form><div class="home-source-actions"><button id="homeLocal">本地视频 / 文档</button><button id="homeBrowser">浏览器当前视频</button></div><div class="home-modes"><button data-home-depth="brief">快速浏览<small>重点与时间轴</small></button><button data-home-depth="standard" class="active">标准学习<small>解释、例子与来源</small></button><button data-home-depth="deep">深入整理<small>推导与操作细节</small></button></div><p id="homeModeSummary" class="muted">当前：标准学习 · 可在生成前调整风格和处理选项</p></section><details class="home-runtime" id="runtimeDetails"><summary><strong>工作环境</strong><br><small id="runtimeSummary">检查中…</small></summary><dl><dt>文字模型</dt><dd id="runtimeModel">读取中…</dd><dt>转写</dt><dd id="runtimeAsr">读取中…</dd><dt>浏览器连接</dt><dd id="runtimeExtension">读取中…</dd><dt>处理中</dt><dd id="runtimeQueue">0 个任务</dd></dl><button id="runtimeSettings">管理模型与处理设置</button></details></div><section class="home-recent"><header><h2>最近的笔记</h2><span id="homeLibraryCount"></span></header><div id="homeRecentList"></div></section><button id="welcomeNew" hidden>新建笔记</button>`;
   $("welcomeNew").onclick = () => $("newNote").click();
@@ -840,8 +845,7 @@ export function installProductWorkspace(ctx) {
     if (!h.app_version) return;
     home.dataset.ready = "true";
     const configured = state.model.use_saved_connection
-      ? state.model.base_url === "https://openrouter.ai/api/v1" &&
-        Boolean(state.modelConnectionReady)
+      ? Boolean(state.modelConnectionReady)
       : Boolean(
           state.key ||
             (h.llm_model_configured &&

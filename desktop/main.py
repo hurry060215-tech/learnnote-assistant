@@ -42,9 +42,6 @@ GITHUB_LATEST_RELEASE_PAGE = "https://github.com/hurry060215-tech/learnnote-assi
 GITHUB_RELEASE_BASE = "https://github.com/hurry060215-tech/learnnote-assistant/releases"
 WINDOWS_INSTALLER_NAME = "LearnNote-Setup-x64.exe"
 MAX_UPDATE_BYTES = 500 * 1024 * 1024
-DESKTOP_MODEL_PROVIDER = "kimi"
-DESKTOP_MODEL_BASE_URL = "https://api.moonshot.cn/v1"
-DESKTOP_MODEL_NAME = "kimi-k2.6"
 
 
 def supported_browser() -> tuple[Path | None, str]:
@@ -598,14 +595,9 @@ def configure_runtime(root: Path, port: int) -> Path:
 
 
 def configure_model_runtime() -> bool:
-    api_key = read_secret(DESKTOP_MODEL_PROVIDER)
-    if not api_key:
-        return False
-    os.environ["LEARNNOTE_LLM_API_KEY"] = api_key
-    os.environ["LEARNNOTE_LLM_BASE_URL"] = DESKTOP_MODEL_BASE_URL
-    os.environ["LEARNNOTE_LLM_MODEL"] = DESKTOP_MODEL_NAME
-    return True
-
+    # Selected connections are resolved by the local backend for this DATA_DIR.
+    # Never replace an explicit environment/provider with an old Kimi credential.
+    return False
 
 def webview_browser_arguments(remote_debug_port: int = 0) -> str:
     arguments = [
