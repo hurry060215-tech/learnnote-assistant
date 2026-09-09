@@ -1,4 +1,5 @@
 from __future__ import annotations
+from .token_usage import tracked_completion
 
 from collections.abc import Callable
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
@@ -512,7 +513,7 @@ def _repair_grounded_note(
     title: str = "",
 ) -> str:
     try:
-        response = client.chat.completions.create(
+        response = tracked_completion(client,
             model=model,
             messages=[{
                 "role": "user",
@@ -1296,7 +1297,7 @@ def summarize_with_llm(
                 acquire_provider_slot()
                 try:
                     check_cancel()
-                    response = client.chat.completions.create(
+                    response = tracked_completion(client,
                         model=model,
                         messages=[{"role": "user", "content": content}],
                         **provider_kwargs,
@@ -1395,7 +1396,7 @@ def summarize_with_llm(
                 check_cancel()
                 acquire_provider_slot()
                 try:
-                    response = client.chat.completions.create(
+                    response = tracked_completion(client,
                         model=model,
                         messages=[
                             {
@@ -1489,7 +1490,7 @@ def summarize_with_llm(
         check_cancel()
         acquire_provider_slot()
         try:
-            response = client.chat.completions.create(
+            response = tracked_completion(client,
                 model=model,
                 messages=[{"role": "user", "content": content}],
                 **provider_kwargs,
@@ -1698,7 +1699,7 @@ def _summarize_page_text_with_llm(
             timeout=LLM_REQUEST_TIMEOUT_SECONDS,
             max_retries=LLM_MAX_RETRIES,
         )
-        response = client.chat.completions.create(
+        response = tracked_completion(client,
             model=model,
             messages=[{
                 "role": "user",

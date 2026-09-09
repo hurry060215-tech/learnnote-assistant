@@ -85,6 +85,8 @@ def fetch_bilibili_subtitle(page_url: str, output: Path, headers_for) -> Bilibil
         raise BilibiliSubtitleError("subtitle_unavailable", "视频分集信息缺少标识，未取得字幕。")
     result = BilibiliSubtitleResult(title=str(data.get("title") or ""), duration=float(selected.get("duration") or 0))
     player = _get_json("https://api.bilibili.com/x/player/wbi/v2", headers_for, params={**identity, "cid": cid})
+    if player.get("code") not in {0, -101}:
+        player = _get_json("https://api.bilibili.com/x/player/v2", headers_for, params={**identity, "cid": cid})
     if player.get("code") != 0:
         raise BilibiliSubtitleError("subtitle_unavailable", "B 站字幕列表暂不可访问；将继续其他字幕获取方式。")
     pdata = player.get("data") or {}

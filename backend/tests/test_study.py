@@ -14,6 +14,16 @@ from app.study import rebuild_study_schedules, clear_study_data
 
 
 class StudyLoopTests(unittest.TestCase):
+    def test_schedule_preview_does_not_record_review(self):
+        from app.study import review_schedule_preview
+        with tempfile.TemporaryDirectory() as root, patch("app.study.DATA_DIR", Path(root)):
+            card = save_cards([StudyCard(front="Question", back="Answer", source_evidence_ids=["fixture"])])[0]
+            result = review_schedule_preview(card.card_id)
+            self.assertEqual([v["rating"] for v in result["choices"]], [1,2,3,4])
+            self.assertTrue(all(v["interval_seconds"] > 0 for v in result["choices"]))
+            self.assertEqual(review_history(card.card_id), [])
+            self.assertEqual(list_cards()[0].reps, 0)
+
     def test_export_is_not_limited_by_the_500_row_ui_page_size(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory)

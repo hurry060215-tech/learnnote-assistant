@@ -9,6 +9,7 @@ import threading
 import time
 
 from fastapi.responses import StreamingResponse
+from .token_usage import tracked_completion, record_usage
 
 
 class StreamCancelled(Exception):
@@ -62,17 +63,26 @@ class StreamControl:
 def completion_text(client, *, emit=None, control=None, **kwargs):
     """Keep the existing nonstream API; use genuine provider deltas when requested."""
     if emit is None:
-        response = client.chat.completions.create(**kwargs)
+        response = tracked_completion(client, purpose="assistant", **kwargs)
         return response.choices[0].message.content or ""
     control.check()
     control.track(client.close)
     stream = None
+    started, usage, status = time.monotonic(), None, "failed"
     try:
-        stream = client.chat.completions.create(stream=True, **kwargs)
+        try:
+            stream = client.chat.completions.create(stream=True, stream_options={"include_usage": True}, **kwargs)
+        except Exception as exc:
+            # Some compatible providers reject this optional field before starting.
+            if getattr(exc, "status_code", None) not in {400, 422} or "stream_options" not in str(exc):
+                raise
+            stream = client.chat.completions.create(stream=True, **kwargs)
         control.track(stream.close)
         parts, count, finished = [], 0, False
         for chunk in stream:
             control.check()
+            if getattr(chunk, "usage", None) is not None:
+                usage = chunk.usage
             choices = getattr(chunk, "choices", None) or []
             if not choices:
                 continue
@@ -96,8 +106,10 @@ def completion_text(client, *, emit=None, control=None, **kwargs):
         answer = "".join(parts)
         if not answer.strip():
             raise StreamFailure("empty_model_response", "模型没有返回回答，请重试或更换模型。")
+        status = "success"
         return answer
     finally:
+        record_usage(client, kwargs.get("model", ""), "assistant", usage, started, status)
         if stream is not None:
             with suppress(Exception):
                 stream.close()

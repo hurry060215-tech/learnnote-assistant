@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>LearnNote</title>
     <link rel="icon" type="image/png" sizes="32x32" href="icons/icon32.png">
-    <link rel="stylesheet" href="sidepanel.css?v=0.2.7">
+    <link rel="stylesheet" href="sidepanel.css?v=0.2.8">
   </head>
   <body>
     <header class="app-header">
@@ -53,8 +53,8 @@
       <section class="handoff-card">
         <h2 class="section-title">如何整理这个视频</h2>
         <div class="processing-mode-choices" role="radiogroup" aria-label="选择处理方式">
-          <button type="button" data-processing-mode="quick" role="radio" aria-checked="false" tabindex="-1"><strong>仅提取字幕</strong><small>保留原文，不调用模型</small></button>
-          <button type="button" data-processing-mode="study" role="radio" class="active" aria-checked="true" tabindex="0"><strong>文字笔记</strong><small>字幕优先，由文字模型总结</small></button>
+          <button type="button" data-processing-mode="quick" role="radio" aria-checked="false" tabindex="-1"><strong>保存字幕原文</strong><small>只保存逐字内容，不生成总结</small></button>
+          <button type="button" data-processing-mode="study" role="radio" class="active" aria-checked="true" tabindex="0"><strong>生成总结笔记</strong><small>提炼要点、大纲与结论，保留视频出处</small></button>
           <button type="button" data-processing-mode="deep" role="radio" aria-checked="false" tabindex="-1"><strong>图文笔记</strong><small>结合字幕与画面，需要视觉模型</small></button>
         </div>
         <p id="modeDescription" class="mode-description">优先读取已有字幕；缺少字幕时，在工作台确认后使用本地语音识别。不分析画面。</p>
@@ -78,6 +78,15 @@
         </div>
         <button id="openTaskButton" class="secondary-button" type="button" hidden>在客户端查看任务</button>
       </section>
+
+      <details id="sourcePreviewCard" class="quick-result-card source-preview" hidden open>
+        <summary>原文预览 <span id="sourcePreviewCount"></span></summary>
+        <label class="subtitle-search" for="subtitleSearch">搜索字幕</label>
+        <input id="subtitleSearch" type="search" placeholder="输入关键词，点击原文回到视频" maxlength="200">
+        <p class="preview-caption">按停顿与段落长度分组，保留每句原始时间；分组不代表 AI 章节。</p>
+        <p id="sourceSeekStatus" role="status"></p>
+        <div id="sourcePreviewContent" class="subtitle-sections"></div>
+      </details>
 
       <section id="quickResultCard" class="quick-result-card" hidden aria-label="快速学习结果">
         <header class="quick-result-header">
@@ -107,6 +116,6 @@
       </nav>
     </main>
 
-    <script src="sidepanel.js?v=0.2.7"></script>
+    <script src="sidepanel.js?v=0.2.8"></script>
   </body>
 </html>

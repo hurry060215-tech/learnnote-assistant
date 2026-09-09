@@ -48,6 +48,8 @@ REQUIRED_BUNDLED_FILES = {
     Path("_internal/web/desk-connections.js"),
     Path("_internal/web/desk-drafts.js"),
     Path("_internal/web/desk-summary-versions.js"),
+    Path("_internal/web/desk-profile.js"),
+    Path("_internal/web/source-video.js"),
     Path("_internal/web/markdown.js"),
 
 }

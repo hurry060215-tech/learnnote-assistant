@@ -25,6 +25,15 @@ study_router = APIRouter(prefix="/api/study", tags=["study"])
 task_study_router = APIRouter(prefix="/api/tasks", tags=["study"])
 
 
+@study_router.get("/cards/{card_id}/schedule-preview")
+def api_schedule_preview(card_id: str):
+    from ..study import review_schedule_preview
+    try:
+        return review_schedule_preview(card_id)
+    except ValueError as exc:
+        raise HTTPException(404, "卡片不存在。") from exc
+
+
 @knowledge_router.post("/evidence")
 def api_knowledge_evidence(evidence: SourceEvidence) -> dict:
     try:

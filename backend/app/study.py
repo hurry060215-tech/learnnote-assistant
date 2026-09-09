@@ -275,6 +275,35 @@ def set_card_position(card_id: str, position: int) -> StudyCard:
         connection.close()
 
 
+def _scheduler_card(card: StudyCard, now: datetime) -> FsrsCard:
+    state = getattr(FsrsState, card.fsrs_state, FsrsState.Learning)
+    return FsrsCard(
+        card_id=int(hashlib.sha256(card.card_id.encode("utf-8")).hexdigest()[:15], 16),
+        state=state, step=None if state == FsrsState.Review else card.step,
+        stability=card.stability if card.reps else None,
+        difficulty=card.difficulty if card.reps else None,
+        due=_parse_datetime(card.due_at) or now,
+        last_review=_parse_datetime(card.last_reviewed_at),
+    )
+
+
+def review_schedule_preview(card_id: str) -> dict:
+    connection = _connect()
+    try:
+        row = connection.execute("SELECT * FROM study_cards WHERE card_id=?", (card_id,)).fetchone()
+        if row is None:
+            raise ValueError("card_not_found")
+        card = _row_to_card(row)
+    finally:
+        connection.close()
+    now = datetime.now(timezone.utc)
+    choices = []
+    for rating in (1, 2, 3, 4):
+        next_card, _ = _SCHEDULER.review_card(_scheduler_card(card, now), FsrsRating(rating), review_datetime=now)
+        choices.append({"rating":rating,"due_at":next_card.due.isoformat(),"interval_seconds":max(0,round((next_card.due-now).total_seconds()))})
+    return {"card_id":card_id,"algorithm":FSRS_ALGORITHM,"choices":choices}
+
+
 def review_card(card_id: str, rating: int, idempotency_key: str = "") -> StudyCard:
     if rating not in {1, 2, 3, 4}:
         raise ValueError("invalid_rating")
@@ -300,18 +329,7 @@ def review_card(card_id: str, rating: int, idempotency_key: str = "") -> StudyCa
                 connection.commit()
                 return card
         now = datetime.now(timezone.utc)
-        state = getattr(FsrsState, card.fsrs_state, FsrsState.Learning)
-        due = _parse_datetime(card.due_at) or now
-        last_review = _parse_datetime(card.last_reviewed_at)
-        fsrs_card = FsrsCard(
-            card_id=int(hashlib.sha256(card.card_id.encode("utf-8")).hexdigest()[:15], 16),
-            state=state,
-            step=None if state == FsrsState.Review else card.step,
-            stability=card.stability if card.reps else None,
-            difficulty=card.difficulty if card.reps else None,
-            due=due,
-            last_review=last_review,
-        )
+        fsrs_card = _scheduler_card(card, now)
         next_card, _review_log = _SCHEDULER.review_card(fsrs_card, FsrsRating(rating), review_datetime=now)
         lapses = card.lapses + (1 if rating == 1 else 0)
         updated = card.model_copy(update={

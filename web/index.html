@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>LearnNote · 我的笔记</title>
-    <link rel="stylesheet" href="/web/desk.css?v=20260908-reader" />
+    <link rel="stylesheet" href="/web/desk.css?v=20260909-core" />
   </head>
   <body>
     <a class="skip" href="#document">跳到正文</a>
@@ -140,8 +140,8 @@
           <legend>视频处理方式</legend>
           <label
             ><input type="radio" name="contentMode" value="subtitles" /><strong
-              >仅提取字幕</strong
-            ><small>只保存已有字幕，不下载视频，不调用模型。</small></label
+              >保存字幕原文</strong
+            ><small>只保存逐字原文和时间点，不生成 AI 总结。</small></label
           >
           <label
             ><input
@@ -149,8 +149,8 @@
               name="contentMode"
               value="text"
               checked
-            /><strong>文字笔记</strong
-            ><small>优先字幕；缺少字幕时转写音频，再生成总结。</small></label
+            /><strong>生成总结笔记</strong
+            ><small>提炼要点、大纲和结论，保留视频出处；已有字幕时无需下载。</small></label
           >
           <label
             ><input type="radio" name="contentMode" value="visual" /><strong
@@ -225,6 +225,6 @@
     </dialog>
     <div id="notice" role="status" aria-live="polite" hidden></div>
     <script src="/web/markdown.js?v=20260906-v0156"></script>
-    <script type="module" src="/web/desk.js?v=20260908-reader"></script>
+    <script type="module" src="/web/desk.js?v=20260909-core"></script>
   </body>
 </html>

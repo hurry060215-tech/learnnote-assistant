@@ -77,7 +77,7 @@ def finish_transcript_note(task_id: str, title: str, page_url: str, transcript: 
             stage_status = "failed"
             update_task(task_id, status="failed", phase="failed", progress=100,
                 message="总结质量检查未通过；字幕已保留，可以重新总结。", error_code="note_quality_failed",
-                error_detail="疑似乱码或无效标题结构，原始输出已隔离。", checkpoint="transcript_ready")
+                error_detail="；".join(item["message"] for item in normalized.report["issues"] if item["severity"] == "error") + " 原始输出已保留，可直接重试总结。", checkpoint="transcript_ready")
             return
         check_cancel(task_id)
         note_path = work_dir / "note.md"

@@ -692,7 +692,7 @@ export function installProductWorkspace(ctx) {
         ? "字幕原文 · 未调用模型"
         : s.summary_source === "local-template"
           ? "字幕摘录 · 尚未总结"
-          : s.summary_source
+          : ["text-llm", "vision-llm", "page-text-llm"].includes(s.summary_source)
             ? "AI 整理笔记"
             : s.transcript_path
               ? "字幕已取得 · 等待总结"

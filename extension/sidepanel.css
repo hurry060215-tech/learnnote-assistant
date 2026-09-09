@@ -176,3 +176,14 @@ footer { padding: 2px 22px 20px; color: #7a8e93; font-size: 12px; line-height: 1
 .icon-button:hover { background: #f0f2ec; color: #333b2c; }
 .primary-button[aria-busy="true"] svg { animation: pulse 1.2s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+.source-preview > summary { display:flex; align-items:center; justify-content:space-between; font-weight:600; padding:4px 0 12px; cursor:pointer; }
+.source-preview > summary span,.preview-caption { color:var(--muted,#69716e); font-size:12px; font-weight:400; line-height:1.7; }
+.subtitle-search { display:block; margin:8px 0; font-size:12px; }
+#subtitleSearch { width:100%; box-sizing:border-box; padding:10px 12px; border:1px solid #dfe3df; border-radius:8px; background:transparent; color:inherit; }
+.subtitle-sections { max-height:480px; overflow:auto; scrollbar-width:thin; }
+.subtitle-paragraph { border-top:1px solid #e8ebe7; padding:8px 0; }
+.subtitle-paragraph > summary { display:flex; gap:10px; align-items:baseline; cursor:pointer; padding:8px 0; line-height:1.6; }
+.subtitle-paragraph time { font-variant-numeric:tabular-nums; font-size:11px; color:#647367; flex-shrink:0; }
+.subtitle-paragraph .quick-transcript-cue { border:0; border-radius:6px; line-height:1.85; padding:9px 6px; }
+.subtitle-paragraph .quick-transcript-cue:hover { background:#edf2eb; }
+#sourceSeekStatus:empty { display:none; }

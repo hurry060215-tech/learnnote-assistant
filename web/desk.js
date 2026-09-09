@@ -5,6 +5,8 @@ import {
 import { timelineHtml, taskExplanation } from "/web/desk-progress.js";
 import { installInteractions } from "/web/desk-interactions.js";
 import { installLayout } from "/web/desk-layout.js";
+import { installProfile } from "/web/desk-profile.js";
+import { sourceVideoEmbed } from "/web/source-video.js";
 import { installSettings } from "/web/desk-settings.js";
 import { installProductWorkspace } from "/web/desk-product.js";
 import { installTools } from "/web/desk-tools.js";
@@ -489,7 +491,7 @@ function renderStatus(reload = true) {
   const stopped = ["failed", "cancelled"].includes(t.status);
   const needsSummary = Boolean(
     t.transcript_path &&
-      (t.error_code === "summary_unavailable" ||
+      (["summary_unavailable", "note_quality_failed"].includes(t.error_code) ||
         t.summary_source === "local-template"),
   );
   const canResume =
@@ -535,6 +537,7 @@ function closeSource() {
   $("sourcePanel").hidden = true;
   document.body.classList.remove("source-open");
   $("player").pause();
+  $("onlinePlayer")?.removeAttribute("src");
 }
 async function openSource(seconds) {
   const s = state.selected;
@@ -546,6 +549,10 @@ async function openSource(seconds) {
   panel.hidden = false;
   document.body.classList.add("source-open");
   const seek = () => {
+    const remote = $("onlinePlayer");
+    if (remote && !remote.hidden && (seconds !== undefined || !remote.getAttribute("src"))) {
+      remote.src = sourceVideoEmbed(s.page_url, Number(seconds || 0));
+    }
     if (seconds === undefined) return;
     if (transcript) transcript.open = true;
     if (!player.hidden) {
@@ -582,6 +589,18 @@ async function openSource(seconds) {
   if (transcript) transcript.open = true;
   const hasMedia =
     s.kind === "task" && Boolean(s.media_path || s.source_media_path);
+  let online = $("onlinePlayer");
+  if (!online) {
+    online = document.createElement("iframe"); online.id = "onlinePlayer";
+    online.title = "原视频 · Bilibili 在线播放";
+    online.allow = "fullscreen; picture-in-picture";
+    online.referrerPolicy = "strict-origin-when-cross-origin";
+    player.after(online);
+  }
+  const embedUrl = !hasMedia && s.kind === "task" ? sourceVideoEmbed(s.page_url, Number(seconds || 0)) : "";
+  online.hidden = !embedUrl;
+  if (embedUrl) online.src = embedUrl;
+  else online.removeAttribute("src");
   player.hidden = !hasMedia;
   if (hasMedia) {
     const url = `/api/tasks/${s.id}/media`;
@@ -660,6 +679,8 @@ $("sourceContent").onclick = (e) => {
     $("player")
       .play()
       .catch(() => {});
+  } else if (cue) {
+    openSource(Number(cue.dataset.time));
   }
 };
 $("notes").onclick = (e) => {
@@ -973,6 +994,10 @@ async function drawReview() {
     ? `<p class="muted">待复习 ${state.cards.length} 张</p><h3>${esc(card.front)}</h3><button id="reveal" class="primary">显示答案</button><div id="answer" hidden><p class="review-answer">${esc(card.back)}</p><div id="reviewSources"></div><div class="rating">${["忘记了", "有些困难", "记住了", "很轻松"].map((label, i) => `<button data-rating="${i + 1}">${label}</button>`).join("")}</div></div>`
     : '<p>今天的复习已完成。</p><p class="muted">你可以回到笔记，继续阅读和整理。</p>';
   if (card) {
+    const hint = document.createElement("p");
+    hint.className = "muted";
+    hint.textContent = "先尝试回忆，再显示答案。下一次复习会按本次评分与历史记忆情况调整。";
+    $("reviewContent").prepend(hint);
     $("reveal").onclick = () => {
       $("answer").hidden = false;
       $("reveal").hidden = true;
@@ -980,6 +1005,17 @@ async function drawReview() {
     $("reviewSources").innerHTML = (card.source_evidence_ids || [])
       .map((id) => `<button data-evidence="${esc(id)}">查看出处</button>`)
       .join("");
+    try {
+      const schedule = await api(`/api/study/cards/${encodeURIComponent(card.card_id)}/schedule-preview`);
+      if(state.cards[0]?.card_id !== card.card_id || !$("reviewDialog").open) return;
+      for (const choice of schedule.choices) {
+        const button = $("reviewContent").querySelector(`[data-rating="${choice.rating}"]`);
+        if(!button) continue;
+        const seconds = choice.interval_seconds;
+        const label = seconds < 3600 ? `${Math.max(1,Math.round(seconds/60))} 分钟后` : seconds < 86400 ? `${Math.round(seconds/3600)} 小时后` : `${Math.round(seconds/86400)} 天后`;
+        const small = document.createElement("small"); small.textContent = label; button.append(small);
+      }
+    } catch { /* Review remains usable if only the preview request fails. */ }
   }
 }
 async function startReview(courseId = "") {
@@ -1019,13 +1055,17 @@ $("reviewContent").onclick = async (e) => {
     }
     for (const b of $("reviewContent").querySelectorAll("[data-rating]"))
       b.disabled = true;
-    await api(`/api/study/cards/${state.cards[0].card_id}/review`, {
+    const cardId = state.cards[0].card_id;
+    if(state.reviewSubmission?.cardId !== cardId) state.reviewSubmission = {cardId,key:crypto.randomUUID()};
+    const result = await api(`/api/study/cards/${cardId}/review`, {
       method: "POST",
       body: JSON.stringify({
         rating: Number(button.dataset.rating),
-        idempotency_key: crypto.randomUUID(),
+        idempotency_key: state.reviewSubmission.key,
       }),
     });
+    state.reviewSubmission = null;
+    if(result.card?.due_at) notice(`已记录，下次复习：${new Date(result.card.due_at).toLocaleString()}`);
     state.cards.shift();
     drawReview();
   } catch (error) {
@@ -1222,3 +1262,4 @@ window.addEventListener("learnnote:annotations", () =>
 
 installInteractions({ state, drawList, showHome, navigateBack });
 installLayout();
+installProfile({state, notice});
