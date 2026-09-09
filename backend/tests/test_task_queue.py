@@ -140,6 +140,49 @@ class TaskQueueTests(unittest.TestCase):
             self.assertNotIn(secret.encode(), restored.path.read_bytes())
             restored.stop()
 
+    def test_cancel_requested_during_io_error_stays_cancelled(self):
+        from fastapi import BackgroundTasks
+        from app.storage import create_task, get_task, update_task
+        from app.task_queue import schedule_processing
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with patch("app.storage.TASK_DIR", root / "tasks"), patch("app.observability.TASK_DIR", root / "tasks"):
+                task = create_task("local", "停止时的迟到错误")
+                started = threading.Event()
+                def late_failure(task_id):
+                    started.set()
+                    update_task(task_id, cancel_requested=True, status="cancelling", phase="cancelling")
+                    raise OSError("download aborted")
+                schedule_processing(BackgroundTasks(), late_failure, task.id)
+                self.assertTrue(started.wait(2))
+                queue_for(root).stop()
+                self.assertEqual(get_task(task.id).status, "cancelled")
+                self.assertNotEqual(get_task(task.id).error_code, "queued_task_failed")
+
+    def test_restart_retains_browser_subtitles_and_selected_processing_mode(self):
+        from app.models import BrowserSubtitleCue, TaskOptions
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            media = root / "media.mp4"
+            media.write_bytes(b"media fixture")
+            queue = LocalTaskQueue(root)
+            with closing(queue.connect()) as db:
+                db.execute("INSERT INTO jobs(task_id,kind,requires_context,state,updated_at) VALUES ('captions','local',0,'running',0)")
+                db.commit()
+            task = TaskRecord(id="captions", title="已有字幕", source_type="local", source_media_path=str(media),
+                page_url="https://example.com/video", created_at="2026-09-09", updated_at="2026-09-09", status="running",
+                options=TaskOptions(content_mode="subtitles"), browser_subtitles=[BrowserSubtitleCue(start=0, end=10, text="完整字幕")])
+            with patch("app.storage.get_task", return_value=task), patch("app.processor.process_local_video_task") as process:
+                reached = threading.Event()
+                process.side_effect = lambda *args, **kwargs: reached.set()
+                self.assertEqual(recover_processing(root)["recovered"], 1)
+                self.assertTrue(reached.wait(2))
+                queue_for(root).stop()
+            self.assertEqual(process.call_args.args[3].content_mode, "subtitles")
+            self.assertEqual(process.call_args.kwargs["browser_subtitles"], task.browser_subtitles)
+            self.assertEqual(process.call_args.kwargs["page_url"], task.page_url)
+            self.assertEqual(process.call_args.kwargs["subtitle_source"], "browser-subtitle")
+
 
 if __name__ == "__main__":
     unittest.main()

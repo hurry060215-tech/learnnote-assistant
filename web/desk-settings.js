@@ -420,26 +420,24 @@ export function installSettings(ctx) {
       `本机服务 ${location.origin} · 扩展${h.extension_connected ? "已连接" : "等待连接"}`;
   }
   const oldProviderChange = $("provider").onchange;
-  $("provider").onchange = async () => {
+  $("provider").onchange = () => {
     oldProviderChange();
-    const provider = $("provider").value;
-    if (!window.pywebview?.api?.load_model_key) return;
-    try {
-      const result = await window.pywebview.api.load_model_key(provider);
-      if ($("provider").value !== provider) return;
-      $("apiKey").value = result.api_key || "";
-      $("settingsStatus").textContent = result.configured
-        ? "已载入该供应商安全保存的 Key。"
-        : "该供应商尚未保存 Key。";
-    } catch (error) {
-      $("settingsStatus").textContent = error.message;
-    }
+    $("apiKey").placeholder =
+      $("baseUrl").value === state.model.base_url && state.modelConnectionReady
+        ? "已保存；留空继续使用，填写可替换"
+        : "填写 API Key";
+    $("settingsStatus").textContent =
+      "切换服务后请保存连接；不会使用其他地址的 Key。";
   };
   const oldOpen = $("settings").onclick;
   $("settings").onclick = () => {
     appearance();
     fill(state.processing || pref);
     oldOpen();
+    $("apiKey").placeholder = state.modelConnectionReady
+      ? "已保存；留空继续使用，填写可替换"
+      : "API Key";
+    $("settingsStatus").textContent = state.modelConnectionMessage || "";
     saved(Object.keys(panes));
     $("preferencesStatus").textContent =
       "各分类分别保存；阅读与外观无需连接后端。";
@@ -527,7 +525,6 @@ export function installSettings(ctx) {
           model: $("model").value || "auto",
           api_key: $("apiKey").value,
           use_saved_connection:
-            $("provider").value === "openrouter" &&
             Boolean(state.model.use_saved_connection) &&
             $("baseUrl").value.trim() === state.model.base_url &&
             !$("apiKey").value.trim(),
@@ -568,14 +565,23 @@ export function installSettings(ctx) {
       notice("请在当前模型服务提供商的控制台管理 Key；本机服务可能无需 Key。");
   };
   $("forgetModelKey").onclick = async () => {
-    if (!confirm("清除当前供应商保存的 API Key？")) return;
+    if ($("baseUrl").value.trim().replace(/\/$/, "") !== state.model.base_url) {
+      notice("请先选择当前已保存的模型连接，再清除它。");
+      return;
+    }
+    if (!confirm("清除当前模型连接及其保存的 Key？其他服务的凭据不会被清除。"))
+      return;
     try {
-      if (window.pywebview?.api?.delete_model_key)
-        await window.pywebview.api.delete_model_key($("provider").value);
+      await api("/api/model/connection", { method: "DELETE" });
       state.key = "";
+      state.model = { ...state.model, use_saved_connection: false };
+      state.modelConnectionReady = false;
+      state.modelConnectionMessage = "当前模型连接已清除。";
+      localStorage.setItem("learnnote.desk.model", JSON.stringify(state.model));
       $("apiKey").value = "";
-      $("settingsStatus").textContent =
-        "已清除保存的 Key；重启客户端可清除运行时缓存的默认凭据。";
+      $("apiKey").placeholder = "填写 API Key";
+      $("settingsStatus").textContent = "当前连接已清除，其他服务未更改。";
+      window.dispatchEvent(new CustomEvent("learnnote:settings"));
     } catch (e) {
       notice(e.message);
     }

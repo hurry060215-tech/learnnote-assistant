@@ -90,4 +90,6 @@ def finish_transcript_note(task_id: str, title: str, page_url: str, transcript: 
             checkpoint="note_ready", note_path=str(note_path), summary_diagnostics=diagnostics,
             summary_diagnostics_path=str(diag_path), **fields)
     finally:
+        if get_task(task_id).cancel_requested:
+            stage_status = "cancelled"
         record_stage_duration(task_id, "summary", started, status=stage_status)

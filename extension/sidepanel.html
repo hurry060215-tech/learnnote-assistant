@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>LearnNote</title>
     <link rel="icon" type="image/png" sizes="32x32" href="icons/icon32.png">
-    <link rel="stylesheet" href="sidepanel.css?v=0.2.6">
+    <link rel="stylesheet" href="sidepanel.css?v=0.2.7">
   </head>
   <body>
     <header class="app-header">
@@ -58,6 +58,7 @@
           <button type="button" data-processing-mode="deep" role="radio" aria-checked="false" tabindex="-1"><strong>图文笔记</strong><small>结合字幕与画面，需要视觉模型</small></button>
         </div>
         <p id="modeDescription" class="mode-description">优先读取已有字幕；缺少字幕时，在工作台确认后使用本地语音识别。不分析画面。</p>
+        <div id="modelReadiness" class="model-readiness" hidden><span id="modelReadinessText"></span><button type="button" id="configureModelButton" data-client-view="settings" hidden>设置模型</button></div>
         <details id="extensionOptions" class="extension-options"><summary>笔记偏好</summary>
         <div class="generation-fields">
           <label>总结风格<select id="extensionStyle"><option value="">跟随上方模式</option><option value="study">学习笔记</option><option value="lecture">课程讲义</option><option value="concise">重点速记</option><option value="code">代码教程</option><option value="academic">论文导读</option><option value="exam">考点复习</option></select></label>
@@ -106,6 +107,6 @@
       </nav>
     </main>
 
-    <script src="sidepanel.js?v=0.2.6"></script>
+    <script src="sidepanel.js?v=0.2.7"></script>
   </body>
 </html>

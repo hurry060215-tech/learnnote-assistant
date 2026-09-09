@@ -23,10 +23,18 @@ control.
 
 ## API keys
 
-When an API key is saved in the installed Windows client, LearnNote stores it
-in Windows Credential Manager using a `LearnNote/model/<provider>` target. The
-key is loaded into the local application process when required and is sent to
-the selected model provider to authenticate the requested operation.
+Browser and desktop workspaces share the selected model connection through
+their local LearnNote service. On Windows and macOS, keys are stored in the
+system credential store with a target scoped to the data directory and API
+endpoint. The page receives connection metadata, not the saved key. If secure
+storage is unavailable, the UI explicitly reports session-only storage; keys
+are not written to a plaintext fallback file. Legacy desktop credentials may
+still exist under `LearnNote/model/<provider>` until removed separately.
+
+The key is loaded into the local application process when required and sent
+only to its selected API endpoint. Clearing the selected connection removes
+that saved connection; explicitly supplied environment-variable configuration
+is independent and is not deleted.
 
 LearnNote does not intentionally write saved API keys into task JSON,
 diagnostic reports, or export bundles. Source/development deployments that use
@@ -38,6 +46,20 @@ only.` message from the local backend to the selected provider. It does not
 include a video, transcript, note, question history, or other learning
 material. The submitted key and provider response are not written to task
 records or support bundles.
+
+## Drafts and generated versions
+
+Unsent assistant text is stored in the current browser's local storage, scoped
+to the selected note or global conversation, for up to 30 drafts of at most
+1,000 characters each. Successful delivery clears the submitted draft; failed
+requests keep it available. Erasing the input clears its draft. Browser site
+data cleanup removes these device-local drafts.
+
+Before regenerating a note, LearnNote retains an exact local snapshot of the
+previous generated text in the task's `summary_versions` directory. These
+snapshots can be previewed and downloaded without replacing the current user
+edition. They remain with the task's local files and are not uploaded by this
+version-history feature.
 
 ## Browser extension data
 

@@ -56,3 +56,17 @@ class ExplicitModeTests(unittest.TestCase):
  def test_passages_follow_actual_cues_and_pauses(self):
   parts=caption_passages([{'start':13.2,'end':20,'text':'第一段。'},{'start':25.5,'end':39,'text':'后面的另一段。'},{'start':40,'end':42,'text':'接着说。'}])
   self.assertEqual([p[0]['start'] for p in parts],[13.2,25.5]);self.assertEqual(parts[-1][-1]['end'],42)
+ def test_local_caption_resume_uses_saved_browser_captions_without_asr(self):
+  from app.models import MediaIntegrity
+  from app.processor import process_local_video_task
+  from app.storage import update_task
+  options=TaskOptions(content_mode='subtitles')
+  task=create_task('local','已保存的浏览器字幕',options=options)
+  update_task(task.id,media_integrity=MediaIntegrity(status='ready',duration=10))
+  cues=[BrowserSubtitleCue(start=0,end=10,text='这是已经交接的完整字幕。')]
+  with patch('app.processor.extract_embedded_subtitle') as embedded,patch('app.processor.transcribe_with_task_progress') as asr,patch('app.processor.summarize_with_diagnostics') as llm:
+   process_local_video_task(task.id,self.root/'media.mp4',task.title,options,browser_subtitles=cues)
+  embedded.assert_not_called();asr.assert_not_called();llm.assert_not_called()
+  done=get_task(task.id);self.assertEqual(done.status,'success')
+  import json
+  self.assertEqual(json.loads(Path(done.transcript_path).read_text(encoding='utf-8'))['source'],'browser-subtitle')

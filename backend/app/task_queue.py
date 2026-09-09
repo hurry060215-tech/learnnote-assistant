@@ -172,8 +172,13 @@ def schedule_processing(background_tasks, function, task_id: str, *args, **kwarg
         except FileNotFoundError:
             return  # Deleting an unstarted task also cancels its queued work.
         except TaskCancelled:
+            mark_task_cancelled(task_id)
             return
         except Exception:
+            latest = get_task(task_id)
+            if latest.cancel_requested or latest.status == "cancelled":
+                mark_task_cancelled(task_id)
+                return
             update_task(task_id, status="failed", phase="failed", error_code="queued_task_failed", message="处理失败，已保留本地进度，请查看诊断后恢复。")
             raise
 
@@ -243,9 +248,15 @@ def _recover_processing(root: Path) -> dict[str, int]:
                 from .range_learning import process_range_task
                 callback = lambda task=task, path=path: process_range_task(task.id, path, task.title, task.options)
             else:
-                callback = lambda task=task, path=path: process_local_video_task(task.id, path, task.title, task.options, subtitle_path=Path(task.subtitle_path) if task.subtitle_path else None)
+                callback = lambda task=task, path=path: process_local_video_task(
+                    task.id, path, task.title, task.options, page_url=task.page_url,
+                    browser_subtitles=task.browser_subtitles,
+                    subtitle_path=Path(task.subtitle_path) if task.subtitle_path else None,
+                    subtitle_source="browser-subtitle" if task.browser_subtitles else "page-subtitle")
         else:
-            request = CurrentPageTaskRequest(page_url=task.page_url, title=task.title, options=task.options, mode=task.mode, browser_subtitles=task.browser_subtitles)
+            request = CurrentPageTaskRequest(page_url=task.page_url, title=task.title, options=task.options,
+                mode=task.mode, browser_subtitles=task.browser_subtitles, active_video=task.active_video,
+                drm_detected=task.drm_detected, drm_signals=task.drm_signals)
             callback = lambda task=task, request=request: process_current_page_task(task.id, request)
         # Reset the orphaned lease before re-enqueueing the original task ID.
         queue.set_state(task.id, "recovering")

@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 
 from .config import LLM_API_KEY, LLM_BASE_URL, LLM_MAX_RETRIES, LLM_MODEL, LLM_REQUEST_TIMEOUT_SECONDS
 from .media import image_to_data_url
-from .model_connections import connected_api_key
+from .model_connections import connected_api_key, resolve_model_options
 from .models import FrameGrid, TaskOptions, TranscriptResult, VisualWindow
 from .text_cleanup import TextDecodingError, canonicalize_unicode_text
 
@@ -26,6 +26,17 @@ _VISION_PROVIDER_SEMAPHORE = threading.BoundedSemaphore(MAX_GLOBAL_VISION_CONCUR
 
 class SummarizationCancelled(RuntimeError):
     pass
+
+
+def _model_key(options: TaskOptions) -> str:
+    key = options.llm_api_key or connected_api_key(options)
+    base = options.llm_base_url or LLM_BASE_URL
+    if key:
+        return key
+    if (urlparse(base).hostname or "").lower() in {"localhost", "127.0.0.1", "::1"}:
+        return "local-no-key"
+    # Defaults are endpoint-bound too, including an explicit custom provider.
+    return LLM_API_KEY if not options.use_saved_connection and base.rstrip("/") == LLM_BASE_URL.rstrip("/") else ""
 PAGE_UI_EXACT_TEXTS = {
     "字幕", "主字幕", "副字幕", "添加字幕", "暂无字幕", "关闭", "弹幕", "弹幕设置",
     "弹幕列表", "关闭弹幕", "发送弹幕", "播放", "暂停", "倍速", "自动播放", "网页全屏", "全屏",
@@ -1216,7 +1227,8 @@ def summarize_with_llm(
     vision_cache_dir: Path | None = None,
     cancel_check: Callable[[], bool] | None = None,
 ) -> tuple[str, str] | None:
-    api_key = options.llm_api_key or (connected_api_key(options) if options.use_saved_connection else LLM_API_KEY)
+    options = resolve_model_options(options)
+    api_key = _model_key(options)
     if not api_key:
         _record_llm_event(events, "configuration", "missing_api_key")
         return None
@@ -1545,7 +1557,8 @@ def summarize_with_diagnostics_audit(
     cancel_check: Callable[[], bool] | None = None,
 ) -> tuple[str, str, str, list[dict]]:
     events: list[dict] = []
-    api_key = options.llm_api_key or (connected_api_key(options) if options.use_saved_connection else LLM_API_KEY)
+    options = resolve_model_options(options)
+    api_key = _model_key(options)
     if not api_key:
         events.append({"stage": "configuration", "code": "missing_api_key"})
         return (
@@ -1667,7 +1680,8 @@ def _summarize_page_text_with_llm(
     subtitle_body: str,
     options: TaskOptions,
 ) -> str | None:
-    api_key = options.llm_api_key or (connected_api_key(options) if options.use_saved_connection else LLM_API_KEY)
+    options = resolve_model_options(options)
+    api_key = _model_key(options)
     if not api_key:
         return None
     try:

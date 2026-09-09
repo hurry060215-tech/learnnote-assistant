@@ -978,7 +978,7 @@ def process_subtitle_only_task(task_id: str, request: CurrentPageTaskRequest, *,
         subtitle_path = write_browser_subtitles_srt(task_id, transcript)
         transcript_path = write_json(task_id, "transcript.json", transcript.model_dump(mode="json"))
         update_task(task_id, status="running", phase="transcribing", progress=45,
-            message="字幕已保存；跳过视频下载和语音识别，接下来生成 AI 总结",
+            message="字幕已保存，正在整理原文；本次不调用模型" if request.options.content_mode == "subtitles" else "字幕已保存；跳过视频下载和语音识别，接下来生成 AI 总结",
             active_video=request.active_video, subtitle_path=subtitle_path,
             transcript_path=str(transcript_path), checkpoint="transcript_ready")
         record_stage_duration(task_id, "transcript", started)
@@ -1006,6 +1006,9 @@ def process_saved_transcript_task(task_id: str, options: TaskOptions) -> None:
     """Retry only summary from task-owned text, preserving original ASR provenance."""
     try:
         _check_cancel(task_id)
+        if options.content_mode in {"subtitles", "visual"}:
+            _fail(task_id, "summary_mode_required", "当前处理方式不能只生成文字总结，请明确选择文字笔记，或从本地视频继续图文处理。")
+            return
         task = get_task(task_id)
         target = Path(task.transcript_path).resolve()
         if task_dir(task_id).resolve() not in target.parents or not target.is_file():
@@ -1013,6 +1016,8 @@ def process_saved_transcript_task(task_id: str, options: TaskOptions) -> None:
         transcript = TranscriptResult.model_validate_json(target.read_text(encoding="utf-8"))
         if not transcript.segments or not transcript.full_text.strip():
             raise ContentMismatchError("已保存的字幕为空，不能重新总结。")
+        from .summary_versions import snapshot_summary
+        snapshot_summary(task_id)
         start_pipeline_attempt(task_id)
         for stage in ("subtitle_probe", "download", "media", "transcript", "visual"):
             record_stage_duration(task_id, stage, time.monotonic(), status="skipped")
@@ -1050,8 +1055,16 @@ def process_local_video_task(
             _check_cancel(task_id)
             start_pipeline_attempt(task_id)
             update_task(task_id, status="running", phase="detecting", progress=10, message="检查本地视频中的已有字幕，不转写音频。")
-            subtitle = subtitle_path or extract_embedded_subtitle(input_path, task_dir(task_id) / "embedded_subtitle.srt")
-            transcript = parse_subtitle_or_none(subtitle, source="embedded-subtitle") if subtitle else None
+            subtitle = subtitle_path
+            transcript = parse_subtitle_or_none(subtitle, source=subtitle_source or "page-subtitle") if subtitle else None
+            if transcript is None and browser_subtitles:
+                duration = get_task(task_id).media_integrity.duration
+                if browser_subtitles_are_reliable(browser_subtitles, duration):
+                    transcript = transcript_from_browser_subtitles(browser_subtitles)
+                    subtitle = Path(write_browser_subtitles_srt(task_id, transcript))
+            if transcript is None:
+                subtitle = extract_embedded_subtitle(input_path, task_dir(task_id) / "embedded_subtitle.srt")
+                transcript = parse_subtitle_or_none(subtitle, source="embedded-subtitle") if subtitle else None
             if transcript is None or not transcript.segments:
                 _fail(task_id, "subtitles_unavailable", "没有找到本地视频内嵌字幕；可切换为文字笔记进行音频转写。")
                 return
@@ -1089,6 +1102,8 @@ def _process_video_file(
     start_attempt: bool = True,
 ) -> None:
     work_dir = task_dir(task_id)
+    from .summary_versions import snapshot_summary
+    snapshot_summary(task_id)
     if start_attempt:
         start_pipeline_attempt(task_id)
     media_started_at = time.monotonic()
@@ -1146,7 +1161,8 @@ def _process_video_file(
     mark_checkpoint(task_id, "transcript_ready")
     record_stage_duration(task_id, "transcript", transcript_started_at)
     draft_path = write_progressive_draft(task_id, title, transcript)
-    if draft_path:
+    previous_note = get_task(task_id).note_path
+    if draft_path and (not previous_note or not Path(previous_note).is_file()):
         update_task(
             task_id,
             note_path=str(draft_path),

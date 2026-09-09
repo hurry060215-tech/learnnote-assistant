@@ -2,6 +2,15 @@
 
 All notable changes to LearnNote are documented here. The project follows semantic versioning while the `0.x` series is under active development.
 
+## 0.2.7 - Persistent settings, drafts and recovery
+
+- Share the selected local model connection across browser, desktop and extension tasks without returning API keys to the page.
+- Roll back credentials when settings fail to save; remove stale endpoint credentials when clearing or replacing a connection.
+- Keep scoped assistant drafts through reload and failures, and make history loading retryable.
+- Preserve previous generated notes before retry and expose read-only previews, copy and download.
+- Stop explicit AI work before media extraction when the model is not configured; expose sync failures without losing current edits.
+- Keep durable queue results, restored content modes and model endpoints consistent.
+
 ## 0.2.6 - Streaming assistant and reading layout
 
 - Stream actual provider content for global and source Q&A, with waiting status, stop, timeouts and incomplete-history protection.

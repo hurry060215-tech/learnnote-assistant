@@ -106,6 +106,9 @@ def execute_global(skill_id: str, question: str, options=None, *, emit=None, con
         result["answer"]=("本地资料中的匹配原文：\n\n"+"\n\n".join(f"**{item.get('title','来源')}** · {item.get('locator','')}\n{str(item.get('text',''))[:900]}" for item in matches)) if matches else "没有找到匹配原文。请换成更具体的关键词，例如“学习率”。"
         result["citations"]=[{"label":item.get("title","出处"),"text":str(item.get("text",""))[:1200],"evidence_id":item["evidence_id"]} for item in matches]
     else:
+        from .model_connections import resolve_model_options
+        from .models import TaskOptions
+        options=resolve_model_options(options or TaskOptions())
         base=getattr(options,"llm_base_url",None) or LLM_BASE_URL
         parsed=urlsplit(base)
         if parsed.scheme not in {"http","https"}:raise ValueError("invalid_model_endpoint")

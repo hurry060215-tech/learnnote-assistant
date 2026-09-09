@@ -1,4 +1,7 @@
-import { installConnections } from "/web/desk-connections.js";
+import {
+  installConnections,
+  loadModelConnection,
+} from "/web/desk-connections.js";
 import { timelineHtml, taskExplanation } from "/web/desk-progress.js";
 import { installInteractions } from "/web/desk-interactions.js";
 import { installLayout } from "/web/desk-layout.js";
@@ -74,6 +77,27 @@ function notice(message) {
 function failure(error) {
   notice(error.message || String(error));
 }
+const syncStatus = document.createElement("button");
+syncStatus.id = "connectionStatus";
+syncStatus.type = "button";
+syncStatus.className = "muted";
+syncStatus.hidden = true;
+syncStatus.textContent = "同步中断 · 重试";
+syncStatus.title = "已显示内容和正在编辑的文字会保留，点击重新连接本机服务";
+document.querySelector(".toolbar").append(syncStatus);
+syncStatus.onclick = async () => {
+  syncStatus.disabled = true;
+  state.lastHealthAt = 0;
+  try {
+    await refresh();
+  } catch {
+    notice(
+      "暂时无法同步。已显示内容和输入仍保留，请确认 LearnNote App 正在运行。",
+    );
+  } finally {
+    syncStatus.disabled = false;
+  }
+};
 function guard() {
   const dirty =
     (state.editing && $("noteText").value !== state.text) ||
@@ -240,6 +264,7 @@ async function refreshLibrary() {
       state.lastHealthAt = Date.now();
     }
     state.connectionError = false;
+    syncStatus.hidden = true;
     const previousStatuses = new Map(
       state.items.map((item) => [item.id, item.status]),
     );
@@ -291,6 +316,7 @@ async function refreshLibrary() {
       await openItem(completed[0]);
   } catch (error) {
     state.connectionError = true;
+    syncStatus.hidden = false;
     window.dispatchEvent(new CustomEvent("learnnote:library"));
     throw error;
   } finally {
@@ -873,7 +899,6 @@ $("testModel").onclick = async () => {
         model: $("model").value,
         api_key: $("apiKey").value,
         use_saved_connection:
-          $("provider").value === "openrouter" &&
           Boolean(state.model.use_saved_connection) &&
           $("baseUrl").value.trim() === state.model.base_url &&
           !$("apiKey").value.trim(),
@@ -890,33 +915,52 @@ $("testModel").onclick = async () => {
 };
 $("settingsForm").onsubmit = async (e) => {
   e.preventDefault();
-  state.model = {
-    use_saved_connection:
-      $("provider").value === "openrouter" &&
-      state.model.provider === "openrouter" &&
-      Boolean(state.model.use_saved_connection) &&
-      $("baseUrl").value.trim() === state.model.base_url &&
-      !$("apiKey").value.trim(),
+  const collect = () => ({
     provider: $("provider").value,
-    base_url: $("baseUrl").value.trim(),
+    base_url: $("baseUrl").value.trim().replace(/\/$/, ""),
     model: $("model").value.trim(),
-  };
-  state.key = $("apiKey").value.trim();
+    api_key: $("apiKey").value.trim(),
+  });
+  const draft = collect();
+  const snapshot = JSON.stringify(draft);
+  const epoch = (state.modelSaveEpoch = (state.modelSaveEpoch || 0) + 1);
+  $("savePreferences").disabled = true;
+  $("settingsStatus").textContent = "正在保存模型连接…";
   try {
-    if (state.key && window.pywebview?.api?.save_model_key) {
-      await window.pywebview.api.save_model_key(
-        state.model.provider,
-        state.key,
-      );
-    }
+    const result = await api("/api/model/connection", {
+      method: "PUT",
+      body: JSON.stringify({
+        ...draft,
+        use_saved_connection:
+          Boolean(state.model.use_saved_connection) &&
+          draft.base_url === state.model.base_url &&
+          !draft.api_key,
+      }),
+    });
+    if (epoch !== state.modelSaveEpoch) return;
+    state.model = result.model;
+    state.key = "";
+    state.modelConnectionReady = Boolean(result.configured);
+    state.modelConnectionMessage = result.message;
+    state.modelConnectionStorage = result.storage;
     localStorage.setItem("learnnote.desk.model", JSON.stringify(state.model));
     window.dispatchEvent(new CustomEvent("learnnote:settings"));
-    if (!window.LearnNoteSettings?.modelSaved()) {
-      $("settingsDialog").close();
-      notice("设置已保存");
+    if (JSON.stringify(collect()) === snapshot) {
+      $("apiKey").value = "";
+      $("apiKey").placeholder = result.configured
+        ? "已保存；留空继续使用，填写可替换"
+        : "填写 API Key";
+      if (!window.LearnNoteSettings?.modelSaved()) $("settingsDialog").close();
+      notice(result.message);
+    } else {
+      $("settingsStatus").textContent =
+        result.message + " 保存期间的新修改仍在此处，尚未保存。";
+      window.LearnNoteSettings?.updateDirty();
     }
   } catch (error) {
-    $("settingsStatus").textContent = error.message;
+    $("settingsStatus").textContent = "未能保存：" + error.message;
+  } finally {
+    $("savePreferences").disabled = false;
   }
 };
 $("theme").onclick = () => {
@@ -1000,16 +1044,13 @@ window.addEventListener("beforeunload", (e) => {
   }
 });
 async function loadKey() {
-  if (state.model.provider && window.pywebview?.api?.load_model_key) {
-    try {
-      const provider = state.model.provider;
-      const value = await window.pywebview.api.load_model_key(provider);
-      if (value.configured && state.model.provider === provider)
-        state.key = value.api_key;
-    } catch {}
+  try {
+    return await loadModelConnection(state);
+  } catch {
+    // Older/public backends retain explicit per-page configuration.
+    state.modelConnectionReady = false;
   }
 }
-window.addEventListener("pywebviewready", loadKey);
 async function initialize() {
   try {
     state.health = await api("/health");
@@ -1033,6 +1074,9 @@ async function initialize() {
         base_url: state.health.default_llm_base_url,
         model: state.health.default_llm_model,
         provider: state.health.default_llm_provider,
+        use_saved_connection: Boolean(
+          state.health.default_use_saved_connection,
+        ),
       };
     await loadKey();
     await refresh();

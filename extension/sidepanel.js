@@ -48,6 +48,7 @@ const els = {
 
 let backendUrl = DEFAULT_BACKEND_URL;
 let clientConnected = false;
+let modelReadiness = { configured: null, model: "", supportsVision: null };
 let currentContext = null;
 let displayedIdentity = null;
 let preflightReport = null;
@@ -572,11 +573,25 @@ function renderContext(message = "") {
   const hasPage = Boolean(identity?.canonical_page_url && !/^(?:chrome|edge|about):/i.test(identity.canonical_page_url) && !/^https?:\/\/(?:www\.)?bilibili\.com\/?(?:[?#].*)?$/i.test(identity.canonical_page_url));
   const hasMediaEvidence = evidence.video === true || candidates.length > 0 || subtitleReady || (platform.platform === "bilibili" && Boolean(identity?.platform_video_id));
   const alreadySent = Boolean(currentTaskId && activeHandoff?.sourceKey === sourceContinuityKey(identity));
-  els.sendButton.disabled = sending || alreadySent || !clientConnected || !hasPage || !hasMediaEvidence;
+  const needsModel = selectedProcessingMode !== "quick";
+  const modelMissing = needsModel && modelReadiness.configured === false;
+  const visionUnavailable = selectedProcessingMode === "deep" && modelReadiness.supportsVision === false;
+  const readiness = document.querySelector("#modelReadiness");
+  if (readiness) {
+    readiness.hidden = !clientConnected || !needsModel;
+    document.querySelector("#modelReadinessText").textContent = modelMissing
+      ? "还没有可用的模型配置。先在工作台保存模型，或选择仅提取字幕。"
+      : visionUnavailable ? `当前模型 ${modelReadiness.model || ""} 不支持图片。请更换视觉模型，或选择文字笔记。`
+      : modelReadiness.configured ? `工作台模型：${modelReadiness.model || "已配置"}（服务额度以实际请求为准）` : "模型状态尚未确认，可在工作台检查连接。";
+    document.querySelector("#configureModelButton").hidden = !modelMissing && !visionUnavailable;
+  }
+  els.sendButton.disabled = sending || alreadySent || !clientConnected || !hasPage || !hasMediaEvidence || modelMissing || visionUnavailable;
   els.sendButtonLabel.textContent = currentTaskId
     ? (currentTaskMode === "subtitle_only" ? "已开始处理" : "已发送到工作台")
     : selectedProcessingMode === "quick" ? "提取字幕原文"
       : selectedProcessingMode === "study" ? "生成文字笔记" : "生成图文笔记";
+  if (modelMissing && !currentTaskId) els.sendButtonLabel.textContent = "请先在工作台设置模型";
+  else if (visionUnavailable && !currentTaskId) els.sendButtonLabel.textContent = "请先选择视觉模型";
   if (els.modeDescription) els.modeDescription.textContent = selectedProcessingMode === "quick"
     ? "只读取已有字幕，不下载视频、不识别语音、不调用模型。没有字幕时会停止并说明原因。"
     : selectedProcessingMode === "study"
@@ -675,10 +690,12 @@ async function checkClient() {
     }
     if (match) {
       backendUrl = match.candidate;
+      modelReadiness = { configured: typeof match.health.llm_model_configured === "boolean" ? match.health.llm_model_configured : null, model: match.health.default_llm_model || "", supportsVision: match.health.default_llm_supports_vision === false ? false : null };
       if (HAS_EXTENSION_API) await chrome.storage.local.set({ backendUrl }).catch(() => {});
       setConnection("connected", "本地工作台已连接", `LearnNote ${match.health.app_version} · ${backendUrl}`);
       return true;
     }
+    modelReadiness = { configured: null, model: "", supportsVision: null };
     setConnection("offline", currentTaskId ? "任务所在的工作台已断开" : "本地工作台尚未启动", currentTaskId
       ? `请重新打开 ${backendUrl} 对应的 LearnNote，再点右上角重新连接。`
       : "点击打开客户端启动 App；已启动时可点击右上角重新连接。");
@@ -807,6 +824,8 @@ async function sendToClient(modeOverride = "") {
     }
     setProgress(8, "正在连接 LearnNote...");
     if (!(await checkClient())) throw new Error("客户端未运行，请先打开 LearnNote");
+    if (requestedMode !== "quick" && modelReadiness.configured === false) throw new Error("工作台尚未配置可用模型，请先设置模型，或改为仅提取字幕。本次没有开始处理视频。");
+    if (requestedMode === "deep" && modelReadiness.supportsVision === false) throw new Error("当前模型不支持图片，请更换视觉模型或选择文字笔记。本次没有开始处理视频。");
 
     setProgress(24, "正在重新读取当前页面...");
     const fresh = await collectContext(true);
