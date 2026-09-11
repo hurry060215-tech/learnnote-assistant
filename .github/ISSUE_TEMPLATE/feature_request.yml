@@ -1,0 +1,51 @@
+name: Feature request
+description: Propose a focused improvement to the LearnNote learning workflow.
+title: "[Feature] "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: User problem
+      description: Describe the learning task that is difficult today, not only a proposed button or technology.
+    validations:
+      required: true
+  - type: textarea
+    id: workflow
+    attributes:
+      label: Proposed workflow
+      description: Explain the shortest user path from source video to a trustworthy note or answer.
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Primary surface
+      options:
+        - Desktop client
+        - Browser extension
+        - Local backend
+        - Web workspace
+        - Public website
+        - Export or integration
+    validations:
+      required: true
+  - type: textarea
+    id: privacy
+    attributes:
+      label: Data and privacy impact
+      description: State what video, transcript, frames, page evidence, cookies, or model data would be collected, stored, or sent remotely.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: boundaries
+    attributes:
+      label: Project boundaries
+      options:
+        - label: The proposal preserves a configurable local data directory and the default localhost-only backend.
+          required: true
+        - label: The proposal does not require tab recording, DRM/access-control bypass, unauthorized downloading, automatic lesson completion, or fabricated progress.
+          required: true

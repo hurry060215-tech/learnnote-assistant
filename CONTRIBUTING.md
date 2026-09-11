@@ -9,12 +9,8 @@ By submitting a contribution, you agree that it is licensed under the
 
 ## Before opening an issue
 
-Describe the problem or suggestion in your own words; no fixed format or
-checklist is required. Version details, reproduction steps, and screenshots
-are optional and helpful when available.
-
-- If possible, check whether the problem also occurs on the latest release.
-- Searching existing issues may help you find an answer sooner.
+- Use the latest release or current `main` branch.
+- Search existing issues.
 - Remove API keys, cookies, authorization headers, signed media URLs, private
   course names, personal data, and unredacted task artifacts.
 - Use the security reporting process in [SECURITY.md](SECURITY.md) for a
