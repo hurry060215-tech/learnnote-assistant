@@ -2,7 +2,11 @@
 
 ## Where to ask
 
-Use a GitHub issue for reproducible product problems and feature proposals:
+Open a [GitHub issue](https://github.com/hurry060215-tech/learnnote-assistant/issues/new)
+and describe your problem or idea in your own words. There is no required
+template or checklist. Screenshots and extra details are welcome if available.
+
+You can report any of the following:
 
 - **Bug report**: client, extension, export, transcription, visual slicing, or
   note behavior.
@@ -18,7 +22,9 @@ privacy failure, do not open a detailed public issue. Follow
 Community support is best effort. There is no guaranteed response time or
 private one-to-one support channel.
 
-## Before filing
+## Optional troubleshooting
+
+These checks may help diagnose a problem, but are not required to open an issue.
 
 1. Update the desktop client and browser extension to the same latest version.
 2. Confirm the client is running and the extension reports that the local
