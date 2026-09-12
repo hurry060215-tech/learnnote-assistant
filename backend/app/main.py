@@ -3663,7 +3663,7 @@ def create_from_current_page(request: CurrentPageTaskRequest, background_tasks: 
             return _handoff_response(existing, deduplicated=True)
 
         task = create_task(source_type=source_type, title=title, page_url=source.url, options=request.options, mode=request.mode)
-        task = update_task(task.id, handoff_id=request.handoff_id, source_identity=source_identity)
+        task = update_task(task.id, handoff_id=request.handoff_id, source_identity=source_identity, learning_range=request.learning_range)
         if request.handoff_id:
             _handoff_task_ids[request.handoff_id] = task.id
         if request.browser_subtitles:
@@ -3695,6 +3695,7 @@ def create_from_current_page(request: CurrentPageTaskRequest, background_tasks: 
                 message="待确认：先尝试读取字幕，再按所选方式整理",
                 active_video=request.active_video,
                 browser_subtitles=request.browser_subtitles,
+                learning_range=request.learning_range,
                 selected_resource=redacted_resource(highest_score_resource) if highest_score_resource else None,
                 handoff_integrity=handoff_integrity,
             )
