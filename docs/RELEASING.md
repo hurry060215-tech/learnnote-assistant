@@ -38,6 +38,10 @@ Without the certificate, builds remain checksum-verified but Windows can display
 
 ## Browser stores
 
+The Windows release workflow pins Inno Setup 7.1.0 and checks the resolved ISCC
+path before compiling. Verify the compiler version against the official Inno
+Setup download page before changing the pinned build tool.
+
 Store publishing requires maintainer-owned Chrome Web Store and Microsoft Edge Add-ons accounts. The reviewed listing copy and permission rationale live in:
 
 - `extension/STORE_LISTING.md`

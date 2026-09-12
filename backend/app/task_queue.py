@@ -206,7 +206,7 @@ def schedule_processing(background_tasks, function, task_id: str, *args, **kwarg
     explicit_kind = kwargs.pop("_queue_kind", "")
     kind = explicit_kind or ("page" if isinstance(source, CurrentPageTaskRequest) else "local")
     options = source.options if kind == "page" else next((value for value in args if isinstance(value, TaskOptions)), None)
-    if not explicit_kind and options and options.content_mode == "subtitles":
+    if not explicit_kind and not isinstance(source, CurrentPageTaskRequest) and options and options.content_mode == "subtitles":
         kind = "light"
     needs_context = bool(options and options.llm_api_key)
     if kind == "page":

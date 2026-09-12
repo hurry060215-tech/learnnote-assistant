@@ -41,8 +41,14 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Pinned Windows dependency installation failed" }
           python -c "import faster_whisper, ctranslate2, av, rapidocr_onnxruntime, webview"
           if ($LASTEXITCODE -ne 0) { throw "Desktop ASR/OCR runtime import failed" }
-          choco install innosetup --no-progress -y
-          if ($LASTEXITCODE -ne 0) { throw "Installer compiler installation failed" }
+          winget install --id JRSoftware.InnoSetup.7 -e --version 7.1.0 --source winget --accept-source-agreements --accept-package-agreements
+          if ($LASTEXITCODE -ne 0) { throw "Pinned Inno Setup installation failed" }
+          $compiler = @(
+            (Join-Path $env:ProgramFiles "Inno Setup 7\ISCC.exe"),
+            (Join-Path ([Environment]::GetEnvironmentVariable("ProgramFiles(x86)")) "Inno Setup 7\ISCC.exe")
+          ) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+          if (-not $compiler) { throw "Pinned Inno Setup 7.1.0 compiler was not found" }
+          "LEARNNOTE_ISCC=$compiler" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
       - name: Run release gate
         shell: pwsh
         run: |
@@ -95,7 +101,7 @@ jobs:
         run: |
           Compress-Archive -Path dist/LearnNote/* -DestinationPath LearnNote-Windows-x64.zip
           $version = (Get-Content extension/manifest.json -Raw -Encoding UTF8 | ConvertFrom-Json).version
-          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$version" scripts/learnnote-installer.iss
+          & $env:LEARNNOTE_ISCC "/DMyAppVersion=$version" scripts/learnnote-installer.iss
           if ($LASTEXITCODE -ne 0) { throw "Release build or signing command failed" }
           Copy-Item dist-installer/LearnNote-Setup-x64.exe LearnNote-Setup-x64.exe
       - name: Sign Windows installer

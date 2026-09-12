@@ -123,6 +123,12 @@ class ReleaseHardeningContractTests(unittest.TestCase):
         self.assertIn("reliability-freshness.py", release)
         self.assertIn("--require-current-ref", release)
 
+    def test_windows_release_pins_installer_compiler(self) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "desktop-release.yml").read_text(encoding="utf-8")
+        self.assertIn("JRSoftware.InnoSetup.7", workflow)
+        self.assertIn("--version 7.1.0", workflow)
+        self.assertIn("LEARNNOTE_ISCC", workflow)
+
     def test_release_matrix_documents_manual_upgrade_and_credential_boundaries(self) -> None:
         matrix = (ROOT / "docs" / "RELEASE_TEST_MATRIX.md").read_text(encoding="utf-8")
 

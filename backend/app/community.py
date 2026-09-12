@@ -255,6 +255,37 @@ def clear_community_context(task_id: str) -> int:
             connection.close()
 
 
+def sample_community_context(task_id: str, limit: int = 20, seed: str = "") -> dict[str, object]:
+    cap = max(1, min(int(limit or 20), 200))
+    source = list_community_context(task_id, 2000)["items"]
+    if seed:
+        offset = int(hashlib.sha256(str(seed).encode("utf-8")).hexdigest()[:8], 16) % max(1, len(source))
+        source = source[offset:] + source[:offset]
+    return {
+        "schema_version": COMMUNITY_CONTEXT_SCHEMA_VERSION,
+        "task_id": str(task_id or "")[:128],
+        "items": source[:cap],
+        "sampled": True,
+        "seed": str(seed or ""),
+        "evidence_eligible": False,
+        "epistemic_role": "community_perspective_not_source_evidence",
+    }
+
+
+def delete_community_item(task_id: str, item_id: str) -> bool:
+    with _lock:
+        connection = _connect()
+        try:
+            cursor = connection.execute(
+                "DELETE FROM community_context_items WHERE task_id = ? AND item_id = ?",
+                (str(task_id or "")[:128], str(item_id or "")[:128]),
+            )
+            connection.commit()
+            return bool(cursor.rowcount)
+        finally:
+            connection.close()
+
+
 def clear_all_community_context() -> int:
     with _lock:
         connection = _connect()

@@ -6,7 +6,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, Body, File, HTTPException, UploadFile
 from fastapi.responses import Response
 
-from ..community import add_community_context, clear_all_community_context, clear_community_context, community_settings, list_community_context, set_community_enabled
+from ..community import add_community_context, clear_all_community_context, clear_community_context, community_settings, delete_community_item, list_community_context, sample_community_context, set_community_enabled
 from ..document_exports import DocumentExportUnavailable, build_docx_export, build_pdf_export
 from ..embeddings import embedding_status
 from ..knowledge import add_evidence, answer_from_evidence, evidence_by_ids, evidence_for_task, extract_import_text, remove_evidence, search_evidence
@@ -318,6 +318,15 @@ def api_task_community_context(task_id: str, limit: int = 500) -> dict:
     return list_community_context(task_id, limit)
 
 
+@task_study_router.get("/{task_id}/community-context/sample")
+def api_sample_task_community_context(task_id: str, limit: int = 20, seed: str = "") -> dict:
+    try:
+        get_task(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail={"code": "task_not_found", "message": "任务不存在。"}) from exc
+    return sample_community_context(task_id, limit, seed)
+
+
 @task_study_router.post("/{task_id}/community-context")
 def api_add_task_community_context(task_id: str, payload: dict | None = Body(default=None)) -> dict:
     try:
@@ -354,6 +363,17 @@ def api_clear_task_community_context(task_id: str, confirm: str = "") -> dict:
             detail={"code": "confirmation_required", "message": "清空社区观点前需要明确确认。"},
         )
     return {"ok": True, "task_id": task_id, "deleted_count": clear_community_context(task_id)}
+
+
+@task_study_router.delete("/{task_id}/community-context/{item_id}")
+def api_delete_task_community_item(task_id: str, item_id: str) -> dict:
+    try:
+        get_task(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail={"code": "task_not_found", "message": "任务不存在。"}) from exc
+    if not delete_community_item(task_id, item_id):
+        raise HTTPException(status_code=404, detail={"code": "community_item_not_found", "message": "这条社区观点不存在。"})
+    return {"ok": True, "task_id": task_id, "item_id": item_id, "deleted": True}
 
 
 def _document_export_response(task_id: str, export_type: str, include_annotations: bool = False) -> Response:
