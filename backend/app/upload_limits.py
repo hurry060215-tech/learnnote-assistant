@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import shutil
+import threading
 from pathlib import Path
 
 from starlette.responses import JSONResponse
@@ -11,12 +12,44 @@ from .config import TEMP_DIR, UPLOAD_DIR
 MAX_VIDEO_BYTES = 4 * 1024**3
 MIN_FREE_BYTES = 512 * 1024**2
 MULTIPART_OVERHEAD_BYTES = 1024**2
+MAX_CONCURRENT_UPLOAD_BYTES = 8 * MAX_VIDEO_BYTES
+_upload_budget_lock = threading.RLock()
+_active_upload_bytes = 0
 
 
 class UploadBudgetExceeded(ValueError):
     def __init__(self, code: str, status: int, message: str):
         self.code, self.status, self.message = code, status, message
         super().__init__(message)
+
+
+class UploadReservation:
+    """Reserve the cumulative bytes of in-flight uploads, not just one chunk."""
+
+    def __init__(self) -> None:
+        self.reserved = 0
+        self.released = False
+
+    def reserve(self, amount: int) -> None:
+        global _active_upload_bytes
+        amount = max(0, int(amount or 0))
+        with _upload_budget_lock:
+            if _active_upload_bytes + amount > MAX_CONCURRENT_UPLOAD_BYTES:
+                raise UploadBudgetExceeded(
+                    "concurrent_upload_budget",
+                    429,
+                    "同时上传的暂存空间已达到安全预算，请等待其他上传完成后重试。",
+                )
+            _active_upload_bytes += amount
+            self.reserved += amount
+
+    def release(self) -> None:
+        global _active_upload_bytes
+        if self.released:
+            return
+        with _upload_budget_lock:
+            _active_upload_bytes = max(0, _active_upload_bytes - self.reserved)
+        self.released = True
 
 
 def check_upload_space(path: Path, incoming: int = 0) -> None:
@@ -26,6 +59,7 @@ def check_upload_space(path: Path, incoming: int = 0) -> None:
 
 async def write_video_upload(file, path: Path) -> int:
     total = 0
+    reservation = UploadReservation()
     try:
         with path.open("wb") as output:
             while chunk := await file.read(1024**2):
@@ -33,12 +67,14 @@ async def write_video_upload(file, path: Path) -> int:
                 if total > MAX_VIDEO_BYTES:
                     raise UploadBudgetExceeded("video_too_large", 413, "单个视频不能超过 4 GB，请拆分后导入。")
                 check_upload_space(path.parent, len(chunk))
+                reservation.reserve(len(chunk))
                 output.write(chunk)
         return total
     except BaseException:
         path.unlink(missing_ok=True)
         raise
     finally:
+        reservation.release()
         await file.close()
 
 

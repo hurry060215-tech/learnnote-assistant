@@ -494,6 +494,10 @@ function renderStatus(reload = true) {
       (["summary_unavailable", "note_quality_failed"].includes(t.error_code) ||
         t.summary_source === "local-template"),
   );
+  const queueDetail =
+    t.status === "queued" && t.queue?.position
+      ? " · 队列第 " + t.queue.position + " 位 · " + (t.queue.queued_count || 0) + " 个等待"
+      : "";
   const canResume =
     t.resume_available ?? Boolean(t.media_path || t.source_media_path);
   const busy = state.taskAction?.id === t.id;
@@ -508,7 +512,7 @@ function renderStatus(reload = true) {
         : ["success", "cancelling"].includes(t.status)
           ? ""
           : '<button data-task-action="cancel">停止处理</button>';
-  const title = needsSummary ? "字幕已保留 · 总结尚未完成" : statusLabel(t);
+  const title = (needsSummary ? "字幕已保留 · 总结尚未完成" : statusLabel(t)) + queueDetail;
   const raw =
     t.message && !["success"].includes(t.status)
       ? `<details class="task-detail"><summary>当前步骤详情</summary><p>${esc(t.message)}</p></details>`

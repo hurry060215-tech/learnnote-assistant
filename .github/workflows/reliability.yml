@@ -21,6 +21,11 @@ jobs:
           cache-dependency-path: backend/requirements.test.txt
       - name: Install test dependencies
         run: python -m pip install -r backend/requirements.test.txt
+      - name: Verify reliability checkout freshness
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force build/reliability | Out-Null
+          python scripts/reliability-freshness.py --commit "${{ github.sha }}" --require-current-ref --output build/reliability/freshness.json
       - name: Release hardening contracts
         run: python -m unittest discover scripts/tests -p "test_release_hardening.py"
       - name: Offline model-provider contract
@@ -73,6 +78,7 @@ jobs:
           name: offline-reliability-${{ github.run_id }}
           path: |
             build/reliability/model-provider-contract.json
+            build/reliability/freshness.json
             build/reliability/long-video/report.json
             build/reliability/long-video-matrix/**/report.json
             build/reliability/cancel/report.json

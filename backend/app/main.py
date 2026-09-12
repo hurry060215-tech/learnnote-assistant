@@ -39,7 +39,7 @@ from .processor import browser_subtitle_text_is_player_ui, process_current_page_
 from .media_preflight import page_preflight_report
 from .reliability import current_page_source_identity, local_source_identity
 from .runtime import ffmpeg_bin, ffprobe_bin
-from .upload_limits import UploadBudgetMiddleware, UploadBudgetExceeded, write_video_upload
+from .upload_limits import MAX_CONCURRENT_UPLOAD_BYTES, MAX_VIDEO_BYTES, MIN_FREE_BYTES, UploadBudgetMiddleware, UploadBudgetExceeded, write_video_upload
 from .source_input import SourceInputError, clean_task_title, normalize_source_input
 from .storage import cleanup_tasks, create_task, delete_all_tasks, delete_task, get_task, list_tasks, read_json, request_task_cancel, storage_summary, task_dir, update_task, write_json
 from .routers.knowledge_study import knowledge_router, study_router, task_study_router
@@ -54,12 +54,13 @@ from .routers.courses import course_router
 from .routers.ranges import range_router
 from .summarizer import chat_completion_provider_kwargs, llm_base_host, llm_model_supports_vision, llm_provider_name, visual_window_review_question_lines
 
-from .task_queue import schedule_processing, recover_processing, queue_for
+from .task_queue import queue_status, schedule_processing, recover_processing, queue_for
 
 ensure_dirs()
 
 @asynccontextmanager
 async def lifespan(application):
+    await asyncio.to_thread(cleanup_expired_staged_uploads)
     await asyncio.to_thread(recover_processing, DATA_DIR)
     try:
         yield
@@ -2096,6 +2097,7 @@ def task_payload(task: TaskRecord) -> dict:
     payload["source_quality"] = source_quality
     payload["evidence_quality"] = evidence_quality
     payload["direct_extraction"] = direct_extraction_evidence(task)
+    payload["queue"] = queue_status(TASK_DIR.parent, task.id)
     payload["audit"] = task_audit_summary(task)
     payload["recovery"] = diagnostic_recovery_profile(task)
     payload["reuse"] = task_reuse_evidence(task)
@@ -2651,6 +2653,13 @@ def health_payload() -> dict:
         "default_llm_provider": selected.get("provider") or llm_provider_name(model_base),
         "default_use_saved_connection": bool(selected.get("use_saved_connection")),
         "data_paths": data_paths_payload(),
+        "upload_policy": {
+            "schema_version": 1,
+            "max_video_bytes": MAX_VIDEO_BYTES,
+            "max_concurrent_upload_bytes": MAX_CONCURRENT_UPLOAD_BYTES,
+            "min_free_bytes": MIN_FREE_BYTES,
+            "staged_retention_seconds": STAGED_UPLOAD_MAX_AGE_SECONDS,
+        },
         "model_provider_presets": MODEL_PROVIDER_PRESETS,
         "assistant_capabilities": ASSISTANT_CAPABILITIES,
         "media_adapters": media_adapter_descriptors(),

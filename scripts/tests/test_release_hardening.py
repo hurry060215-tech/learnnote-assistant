@@ -111,6 +111,17 @@ class ReleaseHardeningContractTests(unittest.TestCase):
         self.assertNotIn("secrets.", workflow)
         self.assertNotIn("interactive-login", workflow)
 
+    def test_reliability_freshness_gate_is_required_by_workflows(self) -> None:
+        script = (ROOT / "scripts" / "reliability-freshness.py").read_text(encoding="utf-8")
+        reliability = (ROOT / ".github" / "workflows" / "reliability.yml").read_text(encoding="utf-8")
+        release = (ROOT / ".github" / "workflows" / "desktop-release.yml").read_text(encoding="utf-8")
+        self.assertIn("matches_expected_commit", script)
+        self.assertIn("clean_checkout", script)
+        self.assertIn("reliability-freshness.py", reliability)
+        self.assertIn("--require-current-ref", reliability)
+        self.assertIn("reliability-freshness.py", release)
+        self.assertIn("--require-current-ref", release)
+
     def test_release_matrix_documents_manual_upgrade_and_credential_boundaries(self) -> None:
         matrix = (ROOT / "docs" / "RELEASE_TEST_MATRIX.md").read_text(encoding="utf-8")
 
