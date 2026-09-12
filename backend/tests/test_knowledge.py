@@ -7,8 +7,9 @@ from io import BytesIO
 from pathlib import Path
 from unittest.mock import patch
 
-from app.knowledge import add_evidence, answer_from_evidence, evidence_for_task, extract_import_text, remove_evidence, search_evidence
+from app.knowledge import add_evidence, answer_from_evidence, evidence_for_task, extract_import_text, preserve_raw_import, remove_evidence, search_evidence
 from app.models import SourceEvidence
+from app.text_cleanup import TextDecodingError, decode_text_bytes
 
 
 class KnowledgeEvidenceTests(unittest.TestCase):
@@ -52,6 +53,21 @@ class KnowledgeEvidenceTests(unittest.TestCase):
         text, source_type = extract_import_text("课程.md", "编码正确的学习资料".encode("gb18030"), "text/markdown")
         self.assertEqual(source_type, "markdown")
         self.assertEqual(text, "编码正确的学习资料")
+
+    def test_explicit_encoding_reselect_is_strict_and_raw_bytes_are_retained(self) -> None:
+        raw = "编码重选后的资料".encode("gb18030")
+        decoded = decode_text_bytes(raw, encoding="gb18030")
+        self.assertEqual(decoded.encoding, "gb18030")
+        self.assertEqual(decoded.text, "编码重选后的资料")
+        with self.assertRaises(TextDecodingError):
+            decode_text_bytes(raw, encoding="utf-8")
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch("app.knowledge.DATA_DIR", Path(tmp)):
+                info = preserve_raw_import(raw, "课程.md")
+                saved = list((Path(tmp) / "raw-imports").glob("*"))
+            self.assertEqual(info["byte_count"], len(raw))
+            self.assertEqual(len(saved), 1)
+            self.assertEqual(saved[0].read_bytes(), raw)
 
     def test_invalid_text_encoding_is_blocked(self) -> None:
         with self.assertRaisesRegex(ValueError, "text_encoding_unsupported"):

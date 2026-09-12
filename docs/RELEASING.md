@@ -18,6 +18,13 @@ This checklist is for maintainers publishing a desktop, extension, container, or
 6. Open a pull request. `main` requires the `checks` status and resolved review conversations.
 7. After merge, create an annotated `vX.Y.Z` tag. The Desktop Release workflow publishes the installer, portable ZIP, extension ZIP, and checksums.
 
+The desktop Update Center downloads complete official assets in the background.
+Applying an installed-client update is deferred until active tasks are gone;
+the updater snapshots only application files, runs `LearnNote.exe --health-check`
+after Inno Setup exits, and restores the snapshot on installer or health-check
+failure. Portable and source-development directories are never overwritten by
+the bridge.
+
 ## Windows signing
 
 发布前还应执行 `python scripts/check-workflow-shells.py` 和 UI visual acceptance。

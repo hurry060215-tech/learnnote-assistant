@@ -376,6 +376,50 @@ class DesktopLauncherTests(unittest.TestCase):
             self.assertEqual(checksum, result["sha256"])
             self.assertEqual(content, Path(result["path"]).read_bytes())
 
+    def test_managed_extension_install_preserves_locales_and_uses_backup(self):
+        archive = BytesIO()
+        with desktop.ZipFile(archive, "w") as package:
+            package.writestr("manifest.json", '{"manifest_version":3,"version":"9.8.7"}')
+            package.writestr("background.js", "/* updated */")
+            package.writestr("i18n.js", "/* localized */")
+            package.writestr("_locales/zh_CN/messages.json", '{}')
+            package.writestr("_locales/en/messages.json", '{}')
+        content = archive.getvalue()
+        checksum = hashlib.sha256(content).hexdigest()
+        extension_url = (
+            "https://github.com/hurry060215-tech/learnnote-assistant/"
+            "releases/download/v9.8.7/LearnNote-Browser-Extension-v9.8.7.zip"
+        )
+
+        class Response:
+            headers = {"Content-Length": str(len(content))}
+
+            def raise_for_status(self):
+                return None
+
+            def iter_content(self, chunk_size):
+                return iter((content,))
+
+        with tempfile.TemporaryDirectory(dir=ROOT / "data") as temp_dir:
+            root = Path(temp_dir)
+            data_dir = root / "data"
+            target = root / "extension"
+            target.mkdir(parents=True)
+            (target / "manifest.json").write_text('{"version":"0.2.8"}', encoding="utf-8")
+            (target / "background.js").write_text("/* old */", encoding="utf-8")
+            api = desktop.DesktopApi(data_dir, app_root=root)
+            with patch.object(desktop.requests, "get", return_value=Response()):
+                downloaded = api.download_extension_update("9.8.7", extension_url, checksum)
+            with patch.object(desktop.sys, "frozen", True, create=True):
+                result = api.install_extension_update("9.8.7", downloaded["path"], checksum)
+
+            self.assertTrue(result["ok"])
+            self.assertEqual("9.8.7", json.loads((target / "manifest.json").read_text(encoding="utf-8"))["version"])
+            self.assertTrue((target / "i18n.js").is_file())
+            self.assertTrue((target / "_locales" / "en" / "messages.json").is_file())
+            backup = Path(result["backup"])
+            self.assertEqual("0.2.8", json.loads((backup / "manifest.json").read_text(encoding="utf-8"))["version"])
+
     def test_update_check_falls_back_to_release_page_and_checksum_asset(self):
         checksum = "b" * 64
 
@@ -452,6 +496,7 @@ class DesktopLauncherTests(unittest.TestCase):
             installer = data_dir / "installers" / "v9.8.7" / "LearnNote-Setup-x64.exe"
             installer.parent.mkdir(parents=True)
             installer.write_bytes(b"verified installer")
+            (data_dir / "user-data.txt").write_text("keep me", encoding="utf-8")
             (root / "LearnNote.exe").write_bytes(b"desktop app")
             api = desktop.DesktopApi(data_dir)
             api._bind_window(Window())
@@ -462,12 +507,19 @@ class DesktopLauncherTests(unittest.TestCase):
             ):
                 result = api.install_update("9.8.7", str(installer))
             script = (installer.parent / "install-update.ps1").read_text(encoding="utf-8-sig")
+            self.assertTrue(Path(result["rollback"]).is_dir())
+            self.assertTrue((data_dir / "user-data.txt").is_file())
+            self.assertFalse((Path(result["rollback"]) / "data" / "user-data.txt").exists())
         self.assertTrue(result["installing"])
         self.assertIn("Wait-Process", script)
         self.assertIn("/VERYSILENT", script)
         self.assertIn("LearnNote updater exit code", script)
+        self.assertIn("--health-check", script)
+        self.assertIn("Copy-RollbackFiles", script)
+        self.assertIn("update-result.json", script)
         self.assertIn("Start-Process -FilePath $app", script)
         self.assertIn("if ($result.ExitCode -ne 0)", script)
+        self.assertIn("Post-update health check failed", script)
         popen.assert_called_once()
         timer.assert_called_once()
         timer.return_value.start.assert_called_once()

@@ -66,6 +66,23 @@ class UpdateServiceTests(unittest.TestCase):
             self.assertFalse(result["check_due"])
             self.assertIsNone(result["latest"])
 
+    def test_extension_asset_is_not_installable_without_trusted_digest_and_size(self):
+        version = "9.8.7"
+        payload = {
+            "tag_name": "v" + version,
+            "html_url": "https://github.com/hurry060215-tech/learnnote-assistant/releases/tag/v" + version,
+            "assets": [{
+                "name": "LearnNote-Browser-Extension-v9.8.7.zip",
+                "browser_download_url": "https://evil.example/extension.zip",
+                "digest": "sha256:" + "b" * 64,
+                "size": 0,
+            }],
+        }
+        result = update_service._release_payload(payload)
+        self.assertFalse(result["extension"]["available"])
+        self.assertEqual(result["extension"]["url"], "")
+        self.assertEqual(result["extension"]["sha256"], "")
+
     def test_force_check_records_release_time_and_does_not_expose_arbitrary_urls(self):
         content = b"installer"
         checksum = hashlib.sha256(content).hexdigest()

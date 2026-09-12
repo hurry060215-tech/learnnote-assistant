@@ -9,7 +9,7 @@ from fastapi.responses import Response
 from ..community import add_community_context, clear_all_community_context, clear_community_context, community_settings, delete_community_item, list_community_context, sample_community_context, set_community_enabled
 from ..document_exports import DocumentExportUnavailable, build_docx_export, build_pdf_export
 from ..embeddings import embedding_status
-from ..knowledge import add_evidence, answer_from_evidence, evidence_by_ids, evidence_for_task, extract_import_text, remove_evidence, search_evidence
+from ..knowledge import add_evidence, answer_from_evidence, evidence_by_ids, evidence_for_task, extract_import_text, preserve_raw_import, remove_evidence, search_evidence
 from ..models import SourceEvidence, StudyCard, StudyCardPositionRequest, StudyCardStatusRequest, StudyPlanUpdateRequest, StudyReviewRequest
 from ..note_document import normalize_note_markdown
 from ..study import activity_summary, clear_study_data, due_cards, export_study_data, get_study_plan, list_cards, propose_cards, record_activity, review_card, review_history, save_cards, set_card_position, set_card_status, study_dashboard, study_summary, update_study_plan
@@ -44,7 +44,7 @@ def api_knowledge_evidence(evidence: SourceEvidence) -> dict:
 
 
 @knowledge_router.post("/import-file")
-async def api_knowledge_import_file(file: UploadFile = File(...)) -> dict:
+async def api_knowledge_import_file(file: UploadFile = File(...), encoding: str = "") -> dict:
     filename = Path(file.filename or "evidence.txt").name
     content = bytearray()
     while True:
@@ -55,14 +55,15 @@ async def api_knowledge_import_file(file: UploadFile = File(...)) -> dict:
         if len(content) > 20 * 1024 * 1024:
             raise HTTPException(status_code=413, detail={"code": "evidence_file_too_large", "message": "导入文件不能超过 20 MB。"})
     try:
-        text, source_type = extract_import_text(filename, bytes(content), file.content_type or "")
+        text, source_type = extract_import_text(filename, bytes(content), file.content_type or "", encoding=encoding)
+        raw_info = preserve_raw_import(bytes(content), filename)
         stored = add_evidence(SourceEvidence(
             source_type=source_type,
             title=Path(filename).stem[:500],
             source_uri=f"local://{filename}",
             locator="file",
             text=text,
-            metadata={"filename": filename, "content_type": file.content_type or ""},
+            metadata={"filename": filename, "content_type": file.content_type or "", "raw_sha256": raw_info["sha256"], "raw_byte_count": raw_info["byte_count"], "decoding_hint": encoding.strip()[:40]},
         ))
     except ValueError as exc:
         raise HTTPException(status_code=422, detail={"code": str(exc), "message": "无法从该文件提取可检索文本。"}) from exc

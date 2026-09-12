@@ -145,6 +145,13 @@ export function installTools(ctx) {
         const item = document.createElement("article");
         item.className = "record";
         item.textContent = mistake.question + " · 上次评分 " + mistake.reviewed_at;
+        const answer = document.createElement("details");
+        const answerSummary = document.createElement("summary");
+        answerSummary.textContent = "显示答案与复习提示";
+        const answerText = document.createElement("p");
+        answerText.textContent = mistake.answer || "没有保存答案，请重新生成这张卡片。";
+        answer.append(answerSummary, answerText);
+        item.append(answer);
         if (mistake.source_evidence_ids?.length) {
           const source = document.createElement("button");
           source.type = "button";
@@ -402,6 +409,56 @@ export function installTools(ctx) {
     dialog.dataset.sourceId = s.id;
     $("toolBody").innerHTML =
       `<p class="muted">评论与弹幕是独立观点，不作为课程事实或复习证据。不会自动抓取网站内容。</p><button data-action="toggle-community" data-enabled="${r.enabled}">${r.enabled ? "关闭观点层" : "启用观点层"}</button>${r.enabled ? '<form id="communityForm"><label for="communityText">粘贴要保留的观点 · 每行一条</label><textarea id="communityText" required maxlength="20000"></textarea><button>保存观点</button></form>' : ""}<div class="tool-list">${r.items.map((item) => `<blockquote><small>${esc(item.kind)}</small><p>${esc(item.text)}</p></blockquote>`).join("")}</div><button class="danger" data-action="clear-community">清空本任务观点</button>`;
+  }
+  function relationshipGraph(result) {
+    const nodes = (result.nodes || []).slice(0, 24);
+    const edges = (result.edges || []).filter((edge) => nodes.some((node) => node.id === edge.from) && nodes.some((node) => node.id === edge.to));
+    if (!nodes.length || !edges.length) return null;
+    const width = 760, cellWidth = 180, cellHeight = 86, columns = 4;
+    const height = Math.max(180, Math.ceil(nodes.length / columns) * cellHeight + 32);
+    const position = new Map(nodes.map((node, index) => [node.id, { x: 16 + (index % columns) * cellWidth, y: 16 + Math.floor(index / columns) * cellHeight }]));
+    const details = document.createElement("details");
+    details.className = "relationship-graph";
+    const summary = document.createElement("summary");
+    summary.textContent = "关系图（关键词线索，不代表因果或观点一致）";
+    details.append(summary);
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+    svg.setAttribute("role", "img");
+    svg.setAttribute("aria-label", "课程来源关系图");
+    const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
+    title.textContent = "课程来源关系图";
+    svg.append(title);
+    for (const edge of edges) {
+      const from = position.get(edge.from), to = position.get(edge.to);
+      const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      line.setAttribute("x1", String(from.x + 72)); line.setAttribute("y1", String(from.y + 25));
+      line.setAttribute("x2", String(to.x + 72)); line.setAttribute("y2", String(to.y + 25));
+      line.setAttribute("class", "relationship-edge");
+      line.setAttribute("aria-label", `共同关键词：${(edge.terms || []).join("、")}`);
+      svg.append(line);
+    }
+    for (const node of nodes) {
+      const point = position.get(node.id);
+      const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      rect.setAttribute("x", String(point.x)); rect.setAttribute("y", String(point.y));
+      rect.setAttribute("width", "144"); rect.setAttribute("height", "50"); rect.setAttribute("rx", "8");
+      const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      label.setAttribute("x", String(point.x + 8)); label.setAttribute("y", String(point.y + 22));
+      label.textContent = String(node.title || node.id).slice(0, 22);
+      const count = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      count.setAttribute("x", String(point.x + 8)); count.setAttribute("y", String(point.y + 40));
+      count.setAttribute("class", "relationship-node-meta");
+      count.textContent = `${(node.evidence_ids || []).length} 条来源证据`;
+      group.append(rect, label, count); svg.append(group);
+    }
+    details.append(svg);
+    const hint = document.createElement("p");
+    hint.className = "muted";
+    hint.textContent = "图下方的关系列表保留每条关系对应的证据 ID；无法理解图形时可直接使用列表。";
+    details.append(hint);
+    return details;
   }
   async function about() {
     const token = show("关于与更新", "<p>正在读取版本信息…</p>");
@@ -730,6 +787,8 @@ export function installTools(ctx) {
         $("compareResults").innerHTML =
           `<p class="muted">${esc(r.warning)}</p>${r.matches.map((m) => `<blockquote><strong>${esc(m.title)}</strong><small>${esc(m.locator)}</small><p>${esc(m.excerpt)}</p></blockquote>`).join("") || "没有匹配出处。"}`;
         if (form.id === "compareForm" && r.edges?.length) {
+          const graphView = relationshipGraph(r);
+          if (graphView) $("compareResults").append(graphView);
           const graph = document.createElement("details");
           const graphTitle = document.createElement("summary");
           graphTitle.textContent = "关系列表（每条关系保留来源）";

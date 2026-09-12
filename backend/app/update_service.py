@@ -92,15 +92,23 @@ def _release_payload(payload: dict) -> dict:
     installer = _asset(assets.get(INSTALLER_NAME, {}), version=version, name=INSTALLER_NAME)
     extension_name = EXTENSION_ASSET_TEMPLATE.format(version=version)
     extension = assets.get(extension_name, {})
+    extension_url = str(extension.get("browser_download_url") or "")
+    extension_digest = str(extension.get("digest") or "")
+    extension_checksum = extension_digest.removeprefix("sha256:").lower() if extension_digest.startswith("sha256:") else ""
+    extension_size = int(extension.get("size") or 0) if str(extension.get("size") or "0").isdigit() else 0
+    extension_trusted = bool(
+        extension
+        and _official_asset_url(version, extension_url, extension_name)
+        and re.fullmatch(r"[a-f0-9]{64}", extension_checksum)
+        and 0 < extension_size <= MAX_UPDATE_BYTES
+    )
     extension_meta = {
         "name": extension_name,
-        "url": str(extension.get("browser_download_url") or "") if extension and _official_asset_url(version, str(extension.get("browser_download_url") or ""), extension_name) else "",
-        "sha256": str(extension.get("digest") or "").removeprefix("sha256:").lower(),
-        "bytes": int(extension.get("size") or 0) if str(extension.get("size") or "0").isdigit() else 0,
-        "available": bool(extension),
+        "url": extension_url if extension_trusted else "",
+        "sha256": extension_checksum if extension_trusted else "",
+        "bytes": extension_size,
+        "available": extension_trusted,
     }
-    if not re.fullmatch(r"[a-f0-9]{64}", extension_meta["sha256"]):
-        extension_meta["sha256"] = ""
     return {
         "version": version,
         "page_url": page,

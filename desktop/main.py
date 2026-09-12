@@ -508,6 +508,55 @@ class DesktopApi:
             pass
         return client_version, extension_version
 
+    def _create_rollback_snapshot(self, root: Path, version: str) -> Path:
+        """Keep one application-only snapshot before an installed update.
+
+        The snapshot deliberately excludes the configured data directory.  A
+        rollback can therefore restore the program files without replacing
+        notes, models, credentials, ports, shortcuts, or update preferences.
+        """
+        root = root.resolve()
+        data_dir = self.data_dir.resolve()
+        if root == data_dir:
+            raise RuntimeError("更新前无法把应用文件与用户数据分开，原程序未改变。")
+        rollback_root = (data_dir / "updates" / "rollback").resolve()
+        if rollback_root.parent != (data_dir / "updates").resolve():
+            raise ValueError("Unsafe rollback path")
+        rollback_root.mkdir(parents=True, exist_ok=True)
+        for child in rollback_root.iterdir():
+            if child.is_dir() and child.name.startswith("v"):
+                shutil.rmtree(child)
+            elif child.is_file() and child.name.startswith("v"):
+                child.unlink()
+        snapshot = (rollback_root / f"v{version}").resolve()
+        if snapshot.parent != rollback_root:
+            raise ValueError("Unsafe rollback snapshot path")
+
+        def ignore_user_data(path: str, names: list[str]) -> list[str]:
+            ignored: list[str] = []
+            for name in names:
+                candidate = (Path(path) / name).resolve()
+                if candidate == data_dir or data_dir in candidate.parents:
+                    ignored.append(name)
+            return ignored
+
+        shutil.copytree(root, snapshot, ignore=ignore_user_data)
+        (snapshot / "rollback-manifest.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "client_version": str(version),
+                    "created_at": int(time.time()),
+                    "source_root": str(root),
+                    "data_dir_excluded": str(data_dir),
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        return snapshot
+
     def update_status(self, force: bool = False) -> dict:
         try:
             response = requests.get(
@@ -727,7 +776,7 @@ class DesktopApi:
         if stage.exists():
             shutil.rmtree(stage)
         stage.mkdir(parents=True)
-        allowed = {"manifest.json", "background.js", "content.js", "page_hook.js", "sidepanel.html", "sidepanel.css", "sidepanel.js", "INSTALL.txt", "icons"}
+        allowed = {"manifest.json", "background.js", "content.js", "page_hook.js", "sidepanel.html", "sidepanel.css", "sidepanel.js", "i18n.js", "INSTALL.txt", "icons", "_locales"}
         with ZipFile(archive) as package:
             for info in package.infolist():
                 name = Path(info.filename.replace("/", os.sep))
@@ -837,6 +886,8 @@ class DesktopApi:
         app_path = (root / "LearnNote.exe").resolve()
         if root.drive.upper() == "C:" or not app_path.is_file() or self._window is None:
             raise RuntimeError("Automatic update is only available in the installed desktop client")
+        current_version, _ = self._current_update_versions()
+        rollback = self._create_rollback_snapshot(root, current_version or "previous")
 
         def ps_literal(value: Path | str) -> str:
             return "'" + str(value).replace("'", "''") + "'"
@@ -851,11 +902,37 @@ class DesktopApi:
             f"$installer = {ps_literal(installer)}",
             f"$app = {ps_literal(app_path)}",
             f"$installDir = {ps_literal(root)}",
+            f"$dataDir = {ps_literal(self.data_dir.resolve())}",
+            f"$rollback = {ps_literal(rollback)}",
             f"$log = {ps_literal(log_path)}",
+            f"$resultFile = {ps_literal(update_dir / 'update-result.json')}",
+            "function Copy-RollbackFiles {",
+            "  param([string]$Source, [string]$Destination, [string]$PreserveData)",
+            "  Get-ChildItem -LiteralPath $Destination -Force | Where-Object { $_.FullName -ne $PreserveData } | Remove-Item -Recurse -Force",
+            "  Copy-Item -Path (Join-Path $Source '*') -Destination $Destination -Recurse -Force",
+            "}",
+            "function Write-UpdateResult {",
+            "  param([string]$Status, [int]$ExitCode, [string]$Message)",
+            "  @{ schema_version = 1; version = " + ps_literal(version) + "; status = $Status; exit_code = $ExitCode; message = $Message; finished_at = [DateTime]::UtcNow.ToString('o') } | ConvertTo-Json | Set-Content -LiteralPath $resultFile -Encoding UTF8",
+            "}",
             "$arguments = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', ('/DIR=\"' + $installDir + '\"'), ('/LOG=\"' + $log + '\"'))",
             "$result = Start-Process -FilePath $installer -ArgumentList $arguments -WindowStyle Hidden -Wait -PassThru",
             "Add-Content -LiteralPath $log -Value ('LearnNote updater exit code: ' + $result.ExitCode)",
-            "if ($result.ExitCode -ne 0) { Start-Process -FilePath $app -WorkingDirectory $installDir; exit $result.ExitCode }",
+            "if ($result.ExitCode -ne 0) {",
+            "  Copy-RollbackFiles $rollback $installDir $dataDir",
+            "  Write-UpdateResult 'rolled_back' $result.ExitCode 'Installer failed; application files restored.'",
+            "  Start-Process -FilePath $app -WorkingDirectory $installDir",
+            "  exit $result.ExitCode",
+            "}",
+            "$health = Start-Process -FilePath $app -ArgumentList '--health-check' -WorkingDirectory $installDir -WindowStyle Hidden -Wait -PassThru",
+            "Add-Content -LiteralPath $log -Value ('LearnNote post-update health-check exit code: ' + $health.ExitCode)",
+            "if ($health.ExitCode -ne 0) {",
+            "  Copy-RollbackFiles $rollback $installDir $dataDir",
+            "  Write-UpdateResult 'rolled_back' $health.ExitCode 'Post-update health check failed; application files restored.'",
+            "  Start-Process -FilePath $app -WorkingDirectory $installDir",
+            "  exit $health.ExitCode",
+            "}",
+            "Write-UpdateResult 'healthy' 0 'Post-update health check passed.'",
             "Start-Process -FilePath $app -WorkingDirectory $installDir",
         ]) + "\n"
         script_path.write_text(script, encoding="utf-8-sig")
@@ -865,7 +942,7 @@ class DesktopApi:
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         threading.Timer(0.4, self._window.destroy).start()
-        return {"ok": True, "installing": True, "version": version}
+        return {"ok": True, "installing": True, "version": version, "rollback": str(rollback), "result_file": str(update_dir / "update-result.json")}
 
     def open_release(self, url: str) -> dict:
         if not str(url).startswith("https://github.com/hurry060215-tech/learnnote-assistant/releases/"):
@@ -1061,6 +1138,36 @@ def desktop_route_matches(current_url: str, target_url: str) -> bool:
     return current_task == target_query.get("task") and current_query.get("tab", ["note"]) == target_query.get("tab", ["note"]) and current_query.get("view", ["workspace"]) == target_query.get("view", ["workspace"])
 
 
+def run_health_check(root: Path, preferred_port: int = 8765) -> int:
+    """Start only the local service and verify its versioned health contract."""
+    if os.name == "nt" and root.drive.upper() == "C:":
+        raise RuntimeError("LearnNote 请安装在 D: 或其他非系统盘，再执行启动检查。")
+    session = DesktopSession(configured_data_directory(root))
+    if not session.acquire():
+        raise RuntimeError("LearnNote 启动检查无法取得数据目录锁。")
+    server = None
+    thread = None
+    try:
+        port = available_port(preferred_port)
+        configure_runtime(root, port)
+        from app.main import app
+
+        backend_url = f"http://127.0.0.1:{port}"
+        config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning", proxy_headers=False)
+        server = uvicorn.Server(config)
+        server.install_signal_handlers = lambda: None
+        thread = threading.Thread(target=server.run, name="learnnote-health-check", daemon=True)
+        thread.start()
+        wait_for_backend(backend_url, timeout=15.0, worker=thread)
+        return 0
+    finally:
+        if server is not None:
+            server.should_exit = True
+        if thread is not None:
+            thread.join(timeout=5)
+        session.close()
+
+
 def _run() -> int:
     parser = argparse.ArgumentParser(description="Launch the LearnNote Windows desktop client.")
     parser.add_argument("--port", type=int, default=8765)
@@ -1068,12 +1175,15 @@ def _run() -> int:
     parser.add_argument("--webview-debug-port", type=int, default=0, help=argparse.SUPPRESS)
     parser.add_argument("--protocol", default="", help=argparse.SUPPRESS)
     parser.add_argument("--wait-for-parent", type=int, default=0, help=argparse.SUPPRESS)
+    parser.add_argument("--health-check", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
     args.port = protocol_port(args.protocol) or args.port
     wait_for_process_exit(args.wait_for_parent)
     root = application_root()
     if os.name == "nt" and root.drive.upper() == "C:":
         raise RuntimeError("LearnNote 请安装在 D: 或其他非系统盘，再从快捷方式启动。")
+    if args.health_check:
+        return run_health_check(root, args.port)
     session = DesktopSession(configured_data_directory(root))
     try:
         if not session.acquire():

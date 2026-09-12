@@ -150,10 +150,10 @@ try {
   }
 
   $executable = Join-Path $installDir "LearnNote.exe"
-  $startup = Start-Process -FilePath $executable -ArgumentList "--help" `
+  $startup = Start-Process -FilePath $executable -ArgumentList "--health-check" `
     -WindowStyle Hidden -Wait -PassThru
   if ($startup.ExitCode -ne 0) {
-    throw "Upgraded LearnNote executable failed its startup check with code $($startup.ExitCode)."
+    throw "Upgraded LearnNote executable failed its post-install health check with code $($startup.ExitCode)."
   }
 
   $uninstaller = Join-Path $installDir "unins000.exe"

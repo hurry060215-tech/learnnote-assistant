@@ -444,10 +444,16 @@ def study_summary() -> dict[str, object]:
         activity_today = {
             str(row["kind"]): int(row["count"])
             for row in connection.execute(
-                "SELECT kind, COUNT(*) AS count FROM study_activity WHERE occurred_at >= ? AND occurred_at < ? GROUP BY kind",
+                "SELECT kind, COUNT(*) AS count FROM study_activity WHERE kind != 'review' AND occurred_at >= ? AND occurred_at < ? GROUP BY kind",
                 (start.isoformat(), end.isoformat()),
             )
         }
+        review_count = int(connection.execute(
+            "SELECT COUNT(*) FROM study_reviews WHERE reviewed_at >= ? AND reviewed_at < ?",
+            (start.isoformat(), end.isoformat()),
+        ).fetchone()[0])
+        if review_count:
+            activity_today["review"] = review_count
     finally:
         connection.close()
     return {"schema_version": STUDY_SCHEMA_VERSION, "algorithm": FSRS_ALGORITHM, "counts": counts, "due_count": 0 if plan.paused else due, "reviewed_today": reviewed_today, "activity_today": activity_today, "timezone": plan.timezone, "paused": plan.paused}
@@ -479,7 +485,8 @@ def activity_summary(days: int = 30) -> dict[str, object]:
     start = datetime.combine(start_date, datetime.min.time(), tzinfo=zone).astimezone(timezone.utc)
     connection = _connect()
     try:
-        rows = connection.execute("SELECT kind, source_id, occurred_at FROM study_activity WHERE occurred_at >= ? ORDER BY occurred_at DESC", (start.isoformat(),)).fetchall()
+        rows = connection.execute("SELECT kind, source_id, occurred_at FROM study_activity WHERE kind != 'review' AND occurred_at >= ? ORDER BY occurred_at DESC", (start.isoformat(),)).fetchall()
+        review_rows = connection.execute("SELECT card_id, reviewed_at FROM study_reviews WHERE reviewed_at >= ? ORDER BY reviewed_at DESC", (start.isoformat(),)).fetchall()
     finally:
         connection.close()
     by_kind = {kind: 0 for kind in sorted(ACTIVITY_KINDS)}
@@ -492,6 +499,13 @@ def activity_summary(days: int = 30) -> dict[str, object]:
         by_kind[kind] += 1
         day = when.astimezone(zone).date().isoformat()
         by_day.setdefault(day, {item: 0 for item in sorted(ACTIVITY_KINDS)})[kind] += 1
+    for row in review_rows:
+        when = _parse_datetime(row["reviewed_at"])
+        if when is None:
+            continue
+        by_kind["review"] += 1
+        day = when.astimezone(zone).date().isoformat()
+        by_day.setdefault(day, {item: 0 for item in sorted(ACTIVITY_KINDS)})["review"] += 1
     activity = []
     for offset in range(cap):
         day = (start_date + timedelta(days=offset)).isoformat()
@@ -599,9 +613,15 @@ def study_dashboard(limit: int = 12, activity_days: int = 14) -> dict[str, objec
     has_cards = any(value for key, value in (summary.get("counts") or {}).items() if key != "deleted")
     connection = _connect()
     try:
+        range_start = datetime.combine(start_date, datetime.min.time(), tzinfo=zone).astimezone(timezone.utc)
+        range_end = datetime.combine(start_date + timedelta(days=days), datetime.min.time(), tzinfo=zone).astimezone(timezone.utc)
         activity_rows = connection.execute(
-            "SELECT kind, occurred_at FROM study_activity WHERE occurred_at >= ?",
-            (datetime.combine(start_date, datetime.min.time(), tzinfo=zone).astimezone(timezone.utc).isoformat(),),
+            "SELECT kind, occurred_at FROM study_activity WHERE kind != 'review' AND occurred_at >= ? AND occurred_at < ?",
+            (range_start.isoformat(), range_end.isoformat()),
+        ).fetchall()
+        review_rows = connection.execute(
+            "SELECT reviewed_at FROM study_reviews WHERE reviewed_at >= ? AND reviewed_at < ?",
+            (range_start.isoformat(), range_end.isoformat()),
         ).fetchall()
         mistake_rows = connection.execute(
             """SELECT r.review_id, r.card_id, r.rating, r.reviewed_at, r.due_at,
@@ -638,6 +658,11 @@ def study_dashboard(limit: int = 12, activity_days: int = 14) -> dict[str, objec
         if occurred_at and kind in ACTIVITY_KINDS:
             day = occurred_at.astimezone(zone).date().isoformat()
             activity_by_day.setdefault(day, {item: 0 for item in ACTIVITY_KINDS})[kind] += 1
+    for row in review_rows:
+        reviewed_at = _parse_datetime(row["reviewed_at"])
+        if reviewed_at:
+            day = reviewed_at.astimezone(zone).date().isoformat()
+            activity_by_day.setdefault(day, {item: 0 for item in ACTIVITY_KINDS})["review"] += 1
     activity = []
     for offset in range(days):
         day = (start_date + timedelta(days=offset)).isoformat()

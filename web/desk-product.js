@@ -346,6 +346,7 @@ export function installProductWorkspace(ctx) {
               0,
               8000,
             ),
+            anchor: { source_revision: state.revision || "" },
           }),
         });
         notice("已保存到当前笔记的个人补充。");

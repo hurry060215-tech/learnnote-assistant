@@ -1391,7 +1391,10 @@ body.assistant-visible .workspace {
   justify-content: flex-start;
 }
 .update-center-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:16px 0}.update-card{border:1px solid var(--line);border-radius:12px;padding:14px;background:var(--panel)}.update-card h4{margin:0 0 8px}.update-card p{margin:6px 0 0}
+.model-route-panel{margin:16px 0;padding:14px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}.model-route-panel .settings-section-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.model-route-panel h4{margin:0}.model-route-panel .settings-section-heading button{font-size:12px;padding:6px 9px}.model-route-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.model-route-item{padding:10px;border:1px solid var(--line);border-radius:9px;background:var(--paper)}.model-route-item div{display:flex;justify-content:space-between;gap:8px}.model-route-item div span{font-size:11px;color:var(--muted)}.model-route-item.waiting div span{color:#a05b2a}.model-route-item p{font-size:12px;line-height:1.55;margin:7px 0}.model-route-item small{color:var(--muted)}
+.relationship-graph{margin:14px 0;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--panel);overflow:auto}.relationship-graph summary{cursor:pointer;font-weight:700}.relationship-graph svg{display:block;min-width:620px;width:100%;height:auto;margin-top:10px}.relationship-graph rect{fill:var(--paper);stroke:var(--accent);stroke-width:1.2}.relationship-graph text{fill:var(--ink);font-size:12px;font-weight:700}.relationship-graph .relationship-node-meta{fill:var(--muted);font-size:10px;font-weight:400}.relationship-graph .relationship-edge{stroke:var(--accent);stroke-opacity:.45;stroke-width:1.5}
 @media (max-width:700px){.update-center-grid{grid-template-columns:1fr}}
+@media (max-width:700px){.model-route-list{grid-template-columns:1fr}}
 @media (max-width: 1250px) {
   .assistant-panel {
     box-shadow: -20px 0 70px #172b4020;

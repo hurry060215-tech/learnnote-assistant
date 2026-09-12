@@ -293,6 +293,31 @@ export function installSettings(ctx) {
     '<button type="button" id="discoverModelList">发现模型</button><button type="button" id="providerConsole">获取 API Key</button><button type="button" id="forgetModelKey">清除已保存 Key</button><datalist id="availableModels"></datalist>';
   $("model").setAttribute("list", "availableModels");
   $("settingsStatus").before(modelActions);
+  const routePanel = document.createElement("section");
+  routePanel.className = "model-route-panel";
+  routePanel.setAttribute("aria-labelledby", "modelRouteHeading");
+  routePanel.innerHTML =
+    '<div class="settings-section-heading"><h4 id="modelRouteHeading">本地优先处理路线</h4><button type="button" id="refreshModelRoute">刷新</button></div><p id="modelRouteSummary" class="muted" role="status">正在读取字幕、模型和离线就绪度…</p><div id="modelRouteList" class="model-route-list"></div>';
+  panes.model.querySelector("h3").after(routePanel);
+  async function loadModelRoute() {
+    const summary = $("modelRouteSummary"), list = $("modelRouteList");
+    if (!summary || !list) return;
+    summary.textContent = "正在读取字幕、模型和离线就绪度…";
+    try {
+      const route = await api("/api/model/route");
+      summary.textContent = route.offline_ready
+        ? "当前路线可在本机完成，不要求 LearnNote 账号。"
+        : "当前路线会优先使用字幕；缺字幕时请准备本地语音模型或配置远程模型。";
+      list.innerHTML = (route.routes || []).map((item) => `<article class="model-route-item ${item.ready ? "ready" : "waiting"}"><div><strong>${esc(item.label)}</strong><span>${item.ready ? "已就绪" : "待准备"}</span></div><p>${esc(item.detail)}</p><small>${item.network === "required" ? "需要网络" : item.network === "offline_after_model_ready" ? "模型准备后可离线" : "不调用模型"}</small></article>`).join("");
+      if (route.blocking_reasons?.length) {
+        summary.textContent += " " + route.blocking_reasons.join(" ");
+      }
+    } catch (error) {
+      summary.textContent = "模型路线暂时无法读取：" + (error.message || "请稍后重试");
+      list.replaceChildren();
+    }
+  }
+  $("refreshModelRoute").onclick = loadModelRoute;
   const field = (id, label, type, value, extra = "") =>
     `<label for="${id}">${label}</label><input id="${id}" type="${type}" value="${value}" ${extra}>`;
   panes.transcriber.innerHTML +=
@@ -684,6 +709,7 @@ export function installSettings(ctx) {
     saved(Object.keys(panes));
     $("preferencesStatus").textContent =
       "各分类分别保存；阅读与外观无需连接后端。";
+    loadModelRoute();
     load();
   };
   $("savePreferences").textContent = "保存模型连接";
@@ -884,5 +910,6 @@ export function installSettings(ctx) {
   // Apply local appearance before waiting for the backend.
   appearance();
   saved(Object.keys(panes));
+  loadModelRoute();
   load();
 }

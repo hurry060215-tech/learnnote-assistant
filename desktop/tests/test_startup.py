@@ -84,6 +84,11 @@ class StartupTests(unittest.TestCase):
             open_url.assert_called_once_with("http://127.0.0.1:18898")
             configure.assert_not_called()
 
+    def test_health_check_flag_uses_headless_service_probe(self):
+        with patch.object(main.sys, "argv", ["LearnNote.exe", "--health-check"]), patch.object(main, "application_root", return_value=Path("D:/LearnNote")), patch.object(main, "wait_for_process_exit"), patch.object(main, "run_health_check", return_value=0) as health:
+            self.assertEqual(main._run(), 0)
+        health.assert_called_once_with(Path("D:/LearnNote"), 8765)
+
     def test_repeated_launch_waits_for_same_data_session(self):
         session = Mock()
         session.acquire.return_value = False

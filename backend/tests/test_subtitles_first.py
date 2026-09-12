@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 from app.bilibili_subtitles import BilibiliSubtitleError, fetch_bilibili_subtitle
 from app.bilibili_subtitles import BilibiliSubtitleResult
 from app.downloader import MediaDownloader
-from app.models import ActiveVideoInfo, BrowserCookie, BrowserSubtitleCue, CurrentPageTaskRequest, TaskOptions, TranscriptResult, TranscriptSegment
+from app.models import ActiveVideoInfo, BrowserCookie, BrowserSubtitleCue, CurrentPageTaskRequest, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment
 from app.processor import process_current_page_task, process_saved_transcript_task
 from app.storage import create_task, get_task, task_dir, update_task, write_json
 from app.summary_outcome import summary_failure_message
@@ -52,6 +52,27 @@ class SubtitlesFirstTests(unittest.TestCase):
         self.assertFalse(record.media_path)
         metrics = json.loads((task_dir(task.id) / "pipeline_metrics.json").read_text(encoding="utf-8"))
         self.assertEqual(metrics["stages"]["download"]["status"], "skipped")
+
+    def test_direct_subtitle_download_preserves_raw_bytes_and_decode_metadata(self):
+        raw = "1\n00:00:00,000 --> 00:00:02,000\n课程原文\n".encode("gb18030")
+
+        class Response:
+            status_code = 200
+            content = raw
+
+        downloader = MediaDownloader(Path(self.temp.name) / "raw-subtitle-task")
+        with patch("app.downloader.requests.get", return_value=Response()):
+            output = downloader._download_text_file(
+                ResourceCandidate(url="https://example.com/subtitle.vtt", kind="subtitle"),
+                [],
+                "https://example.com/video",
+                "课程",
+            )
+        self.assertIn("课程原文", output.read_text(encoding="utf-8"))
+        self.assertEqual(raw, output.with_name(output.name + ".raw").read_bytes())
+        metadata = json.loads(output.with_name(output.name + ".decode.json").read_text(encoding="utf-8"))
+        self.assertEqual("gb18030", metadata["encoding"])
+        self.assertEqual(len(raw), metadata["byte_count"])
 
     def test_platform_subtitles_probed_before_media_and_skip_download(self):
         request = self.request()
