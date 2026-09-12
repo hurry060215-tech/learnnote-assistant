@@ -55,7 +55,7 @@ pywebview==6.2.1
 pywin32-ctypes==0.2.3
 PyYAML==6.0.3
 rapidocr-onnxruntime==1.4.4
-reportlab==4.5.1
+reportlab==5.0.1
 requests==2.34.2
 setuptools==84.0.0
 shapely==2.1.2
