@@ -19,6 +19,7 @@ export function installSettings(ctx) {
   const nav = body.querySelector("nav"),
     content = body.querySelector(".settings-content");
   const labels = {
+    updates: "更新中心",
     model: "AI 模型",
     usage: "Token 用量",
     transcriber: "字幕与转写",
@@ -54,10 +55,212 @@ export function installSettings(ctx) {
           : key === "appearance"
             ? "保存阅读与外观"
             : "保存处理设置";
-      $("savePreferences").hidden = key === "storage" || key === "usage";
+      $("savePreferences").hidden = key === "storage" || key === "usage" || key === "updates";
       if (key === "usage") loadUsage();
+      if (key === "updates") window.LearnNoteUpdates?.refresh?.(false);
     };
   }
+  panes.updates.innerHTML =
+    "<p class='muted'>正式频道只从 LearnNote 官方发布源读取版本信息。下载在后台进行，只有你点击“重启并更新”时才会安装；普通服务器部署只显示版本说明，不具备本机安装能力。</p>" +
+    "<div class='update-center-grid'>" +
+    "<section class='update-card' aria-labelledby='updateClientHeading'><h4 id='updateClientHeading'>桌面客户端</h4><p id='updateClientVersion' class='settings-status'>当前版本：读取中…</p><p id='updateClientAvailability' class='muted' role='status'></p></section>" +
+    "<section class='update-card' aria-labelledby='updateExtensionHeading'><h4 id='updateExtensionHeading'>浏览器扩展</h4><p id='updateExtensionVersion' class='settings-status'>当前版本：读取中…</p><p id='updateExtensionAvailability' class='muted' role='status'></p><div class='settings-inline-actions'><button type='button' id='downloadExtensionUpdate' hidden>下载解压版更新</button><button type='button' id='cancelExtensionUpdate' hidden>取消下载</button><button type='button' id='applyExtensionUpdate' hidden>更新并打开扩展页</button></div></section>" +
+    "</div>" +
+    "<label class='check'><input type='checkbox' id='updateAutoCheck' checked>启动后每 24 小时检查一次正式版</label>" +
+    "<label class='check'><input type='checkbox' id='updateAutoDownload' checked>发现正式版后在后台下载完整安装包</label>" +
+    "<div class='settings-inline-actions'><button type='button' id='checkUpdates'>立即检查</button><button type='button' id='downloadUpdate' hidden>后台下载</button><button type='button' id='cancelUpdate' hidden>取消下载</button><button type='button' class='primary' id='applyUpdate' hidden>重启并更新</button><a class='tool-link' id='updateReleaseLink' hidden target='_blank' rel='noreferrer'>查看版本说明 ↗</a></div>" +
+    "<p id='updateDownloadStatus' class='settings-status' role='status' aria-live='polite'></p>";
+  let updateStatus = null, updateDownload = null, extensionDownload = null, updatePolling = 0, updateLoading = false;
+  const updateBridge = () => window.pywebview?.api;
+  function normalizeBridgeUpdate(result) {
+    const currentVersion = state.health?.app_version || "0.0.0";
+    const extensionVersion = state.health?.extension_version || "";
+    const versionParts = (value) => String(value || "").split(".").map(Number);
+    const newer = (left, right) => {
+      const a = versionParts(left), b = versionParts(right);
+      return a.length === 3 && b.length === 3 && a.every(Number.isFinite) && b.every(Number.isFinite) && a.some((value, index) => value !== b[index]) && (a[0] > b[0] || (a[0] === b[0] && (a[1] > b[1] || (a[1] === b[1] && a[2] > b[2]))));
+    };
+    return {
+      ok: Boolean(result?.ok),
+      current: { client_version: currentVersion, extension_version: extensionVersion },
+      latest: result?.latest_version ? { version: result.latest_version, release_url: result.release_url || "", client: { url: result.installer_url || "", sha256: result.installer_sha256 || "", installable: Boolean(result.installable) } } : null,
+      client_update_available: newer(result?.latest_version, currentVersion),
+      extension: { current_version: extensionVersion, compatibility: extensionVersion && extensionVersion !== currentVersion ? "version_check_pending" : "compatible", channel: "browser_store_or_managed_unpack", store_update: "browser_managed" },
+      capabilities: { download: Boolean(updateBridge()?.start_update_download || updateBridge()?.download_update), apply: Boolean(updateBridge()?.apply_update || updateBridge()?.install_update) },
+      download: updateDownload || { phase: "idle" },
+      error: result?.message || "",
+    };
+  }
+  function renderUpdateCenter(result) {
+    updateStatus = result;
+    const current = result?.current || {};
+    const latest = result?.latest;
+    $("updateClientVersion").textContent = "当前版本：v" + (current.client_version || "未知");
+    $("updateExtensionVersion").textContent = "当前版本：" + (current.extension_version ? "v" + current.extension_version : "未连接");
+    const clientAvailable = Boolean(result?.client_update_available && latest?.version);
+    $("updateClientAvailability").textContent = clientAvailable
+      ? "发现正式版 v" + latest.version + (latest.client?.installable ? "，安装包已通过来源与校验信息检查。" : "，当前资产暂不可自动安装。")
+      : result?.ok ? "当前已是最新正式版，或当前开发版本不低于正式版。" : "暂时无法检查正式版" + (result?.error ? "：" + result.error : "");
+    const ext = result?.extension || {};
+    const extLatest = latest?.extension;
+    const extAvailable = Boolean(result?.extension_update_available && extLatest?.available);
+    $("updateExtensionAvailability").textContent = extAvailable
+      ? "发现扩展 v" + latest.version + "。商店版由 Chrome / Edge 自己更新；受管理解压版可下载到固定目录。"
+      : ext.compatibility === "compatible"
+        ? "协议兼容。商店版由 Chrome / Edge 自己更新；受管理解压版由客户端维护固定目录。"
+        : ext.current_version ? "版本信息待扩展下一次心跳确认；客户端不会仅因补丁号不同阻断使用。" : "尚未连接扩展；安装方式和商店审核状态不会影响客户端更新。";
+    const bridge = updateBridge();
+    const canDownload = Boolean(clientAvailable && latest?.client?.installable && result?.capabilities?.download && bridge);
+    $("downloadUpdate").hidden = !canDownload || ["downloading", "cancelling", "ready"].includes(updateDownload?.phase);
+    $("cancelUpdate").hidden = !["downloading", "cancelling"].includes(updateDownload?.phase);
+    $("applyUpdate").hidden = !(updateDownload?.phase === "ready" && updateDownload?.path);
+    $("updateReleaseLink").hidden = !latest?.release_url;
+    if (latest?.release_url) $("updateReleaseLink").href = latest.release_url;
+    if (updateDownload?.phase && updateDownload.phase !== "idle") {
+      const done = updateDownload.downloaded_bytes || 0, total = updateDownload.total_bytes || 0;
+      $("updateDownloadStatus").textContent = updateDownload.phase === "downloading"
+        ? "正在后台下载 v" + updateDownload.version + "：" + (total ? done.toLocaleString() + " / " + total.toLocaleString() + " 字节（" + (updateDownload.progress || 0) + "%）" : done.toLocaleString() + " 字节")
+        : updateDownload.phase === "ready" ? "下载完成并已校验。确认没有进行中的任务后，可点击“重启并更新”。"
+          : updateDownload.phase === "failed" ? "下载失败：" + (updateDownload.error || "请重试")
+            : updateDownload.phase === "cancelled" ? "下载已取消，原程序未改变。" : "正在取消下载…";
+    }
+    const canExtensionDownload = Boolean(extAvailable && extLatest?.url && extLatest?.sha256 && bridge?.start_extension_update_download);
+    $("downloadExtensionUpdate").hidden = !canExtensionDownload || ["downloading", "cancelling", "ready"].includes(extensionDownload?.phase);
+    $("cancelExtensionUpdate").hidden = !["downloading", "cancelling"].includes(extensionDownload?.phase);
+    $("applyExtensionUpdate").hidden = !(extensionDownload?.phase === "ready" && extensionDownload?.path);
+  }
+  async function readUpdateStatus(force = false) {
+    if (updateLoading && !force) return updateStatus;
+    updateLoading = true;
+    try {
+      const bridge = updateBridge();
+      let result;
+      if (bridge?.update_status) result = await bridge.update_status(Boolean(force));
+      else if (force && bridge?.check_update) result = normalizeBridgeUpdate(await bridge.check_update());
+      else result = await api("/api/update/status" + (force ? "?force=true" : ""));
+      updateDownload = result.download || updateDownload || { phase: "idle" };
+      extensionDownload = result.extension_download || extensionDownload || { phase: "idle" };
+      if (["ready", "failed", "cancelled"].includes(updateDownload.phase)) clearInterval(updatePolling);
+      if (["ready", "failed", "cancelled"].includes(extensionDownload.phase)) clearInterval(updatePolling);
+      if (result.preferences) {
+        $("updateAutoCheck").checked = result.preferences.auto_check !== false;
+        $("updateAutoDownload").checked = result.preferences.auto_download !== false;
+      }
+      renderUpdateCenter(result);
+      return result;
+    } finally { updateLoading = false; }
+  }
+  async function startUpdateDownload() {
+    const latest = updateStatus?.latest, bridge = updateBridge();
+    if (!latest?.client?.installable || !bridge) return;
+    try {
+      updateDownload = bridge.start_update_download
+        ? await bridge.start_update_download(latest.version, latest.client.url, latest.client.sha256)
+        : { phase: "downloading", version: latest.version };
+      renderUpdateCenter(updateStatus);
+      if (!bridge.start_update_download) {
+        const result = await bridge.download_update(latest.version, latest.client.url, latest.client.sha256);
+        updateDownload = { phase: "ready", version: latest.version, path: result.path, progress: 100 };
+        renderUpdateCenter(updateStatus);
+      }
+      clearInterval(updatePolling);
+      updatePolling = setInterval(() => readUpdateStatus(false).catch(() => {}), 500);
+    } catch (error) {
+      updateDownload = { phase: "failed", error: error.message };
+      renderUpdateCenter(updateStatus);
+    }
+  }
+  async function applyPreparedUpdate() {
+    if (!updateDownload?.path || !updateStatus?.latest || !updateBridge()) return;
+    if (!ctx.guard()) return;
+    const active = state.items.filter((item) => ["queued", "running", "cancelling"].includes(item.status));
+    if (active.length) {
+      $("updateDownloadStatus").textContent = "还有 " + active.length + " 个任务正在处理，完成或停止后再更新。";
+      return;
+    }
+    try {
+      const bridge = updateBridge();
+      const result = bridge.apply_update ? await bridge.apply_update(updateStatus.latest.version, updateDownload.path, updateStatus.latest.client.sha256) : await bridge.install_update(updateStatus.latest.version, updateDownload.path);
+      if (!result?.ok) throw new Error(result?.message || "更新未启动");
+      $("updateDownloadStatus").textContent = "更新已排队，客户端将在关闭后安装并重新启动。";
+    } catch (error) {
+      $("updateDownloadStatus").textContent = error.message || "更新未启动，原程序未改变。";
+    }
+  }
+  async function startExtensionUpdateDownload() {
+    const latest = updateStatus?.latest, bridge = updateBridge(), asset = latest?.extension;
+    if (!asset?.available || !asset.url || !asset.sha256 || !bridge?.start_extension_update_download) return;
+    try {
+      extensionDownload = await bridge.start_extension_update_download(latest.version, asset.url, asset.sha256);
+      renderUpdateCenter(updateStatus);
+      clearInterval(updatePolling);
+      updatePolling = setInterval(() => readUpdateStatus(false).catch(() => {}), 500);
+    } catch (error) {
+      extensionDownload = { phase: "failed", error: error.message };
+      renderUpdateCenter(updateStatus);
+    }
+  }
+  async function applyPreparedExtensionUpdate() {
+    const latest = updateStatus?.latest, bridge = updateBridge(), asset = latest?.extension;
+    if (!extensionDownload?.path || !asset?.sha256 || !bridge?.apply_extension_update) return;
+    if (!ctx.guard()) return;
+    const active = state.items.filter((item) => ["queued", "running", "cancelling"].includes(item.status));
+    if (active.length) {
+      $("updateExtensionAvailability").textContent = "还有 " + active.length + " 个任务正在处理，完成或停止后再更新扩展。";
+      return;
+    }
+    try {
+      const result = await bridge.apply_extension_update(latest.version, extensionDownload.path, asset.sha256);
+      if (!result?.ok) throw new Error(result?.message || "扩展更新未启动");
+      $("updateExtensionAvailability").textContent = result.message || "解压扩展已更新，请在扩展管理页重新加载。";
+      if (bridge.setup_browser_extension) await bridge.setup_browser_extension(state.health?.extension_version || "");
+    } catch (error) {
+      $("updateExtensionAvailability").textContent = error.message || "扩展更新失败，原扩展未改变。";
+    }
+  }
+  async function refreshUpdates(force = false) {
+    try { return await readUpdateStatus(force); }
+    catch (error) {
+      $("updateDownloadStatus").textContent = error.message || "更新状态暂时无法读取。";
+      return null;
+    }
+  }
+  $("checkUpdates").onclick = () => refreshUpdates(true).then((result) => result?.client_update_available && result?.preferences?.auto_download !== false ? startUpdateDownload() : null);
+  $("downloadUpdate").onclick = startUpdateDownload;
+  $("downloadExtensionUpdate").onclick = startExtensionUpdateDownload;
+  $("cancelUpdate").onclick = async () => {
+    const bridge = updateBridge();
+    if (bridge?.cancel_update_download) updateDownload = await bridge.cancel_update_download();
+    renderUpdateCenter(updateStatus);
+  };
+  $("applyUpdate").onclick = applyPreparedUpdate;
+  $("applyExtensionUpdate").onclick = applyPreparedExtensionUpdate;
+  $("cancelExtensionUpdate").onclick = async () => {
+    const bridge = updateBridge();
+    if (bridge?.cancel_extension_update_download) extensionDownload = await bridge.cancel_extension_update_download();
+    renderUpdateCenter(updateStatus);
+  };
+  for (const id of ["updateAutoCheck", "updateAutoDownload"]) $(id).onchange = async () => {
+    const bridge = updateBridge();
+    const payload = { auto_check: $("updateAutoCheck").checked, auto_download: $("updateAutoDownload").checked };
+    try {
+      if (bridge?.set_update_preferences) await bridge.set_update_preferences(payload.auto_check, payload.auto_download);
+      else await api("/api/update/preferences", { method: "PUT", body: JSON.stringify(payload) });
+    } catch (error) { notice(error.message); }
+  };
+  window.LearnNoteUpdates = {
+    refresh: refreshUpdates,
+    startupCheck: async () => {
+      const result = await refreshUpdates(false);
+      const preferences = result?.preferences || {};
+      if (preferences.auto_check === false) return result;
+      if (preferences.last_checked_at && Date.now() / 1000 - preferences.last_checked_at < 24 * 60 * 60) return result;
+      const checked = await refreshUpdates(true);
+      if (checked?.client_update_available && checked.preferences?.auto_download !== false) await startUpdateDownload();
+      return checked;
+    },
+  };
+  setTimeout(() => refreshUpdates(false), 0);
   panes.usage.innerHTML += '<p class="muted">仅统计本机 LearnNote 更新后发起的模型请求。Token 使用服务商返回的实际值；未返回用量不记为零。不包含账号余额、其他应用或本地语音转写，也不推算费用。</p><button type="button" id="refreshTokenUsage">刷新用量</button><div id="tokenUsageReport" aria-live="polite"></div>';
   let usageLoading = false;
   async function loadUsage() {

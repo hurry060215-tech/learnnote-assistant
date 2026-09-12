@@ -11,6 +11,9 @@ from fastapi import APIRouter, Body, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from ..config import DATA_DIR
+from ..update_service import get_preferences as get_update_preferences
+from ..update_service import save_preferences as save_update_preferences
+from ..update_service import status as update_status
 from ..integrations import integration_manifest
 from ..models import TaskOptions
 from ..storage import atomic_write_text, get_task
@@ -18,6 +21,34 @@ from ..summarizer import chat_completion_provider_kwargs, llm_model_supports_vis
 
 
 system_router = APIRouter(tags=["system"])
+
+
+class UpdatePreferences(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    auto_check: bool = True
+    auto_download: bool = True
+    last_checked_at: float = Field(default=0, ge=0)
+
+
+@system_router.get("/api/update/status")
+def api_update_status(force: bool = False) -> dict:
+    return update_status(force=force)
+
+
+@system_router.post("/api/update/check")
+def api_update_check() -> dict:
+    return update_status(force=True)
+
+
+@system_router.get("/api/update/preferences")
+def api_get_update_preferences() -> dict:
+    return {"ok": True, "preferences": get_update_preferences()}
+
+
+@system_router.put("/api/update/preferences")
+def api_put_update_preferences(payload: UpdatePreferences) -> dict:
+    return {"ok": True, "preferences": save_update_preferences(payload.model_dump())}
 
 
 @system_router.get("/api/local-models/{model}")

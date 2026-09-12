@@ -539,8 +539,8 @@ function closeSource() {
   $("player").pause();
   $("onlinePlayer")?.removeAttribute("src");
 }
-async function openSource(seconds) {
-  const s = state.selected;
+async function openSource(seconds, sourceOverride = null) {
+  const s = sourceOverride || state.selected;
   if (!s) return;
   const panel = $("sourcePanel"),
     player = $("player"),
@@ -1121,6 +1121,7 @@ async function initialize() {
     await loadKey();
     await refresh();
     await applyRoute({ initial: true });
+    window.LearnNoteUpdates?.startupCheck?.().catch(() => {});
   } catch (error) {
     failure(error);
   }

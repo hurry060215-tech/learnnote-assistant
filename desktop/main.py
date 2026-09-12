@@ -15,6 +15,7 @@ import traceback
 import webbrowser
 from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlparse
+from zipfile import ZipFile
 
 import requests
 import uvicorn
@@ -41,7 +42,13 @@ GITHUB_LATEST_RELEASE_API = "https://api.github.com/repos/hurry060215-tech/learn
 GITHUB_LATEST_RELEASE_PAGE = "https://github.com/hurry060215-tech/learnnote-assistant/releases/latest"
 GITHUB_RELEASE_BASE = "https://github.com/hurry060215-tech/learnnote-assistant/releases"
 WINDOWS_INSTALLER_NAME = "LearnNote-Setup-x64.exe"
+EXTENSION_ASSET_PREFIX = "LearnNote-Browser-Extension-v"
+EXTENSION_ASSET_SUFFIX = ".zip"
 MAX_UPDATE_BYTES = 500 * 1024 * 1024
+
+
+class _UpdateCancelled(Exception):
+    pass
 
 
 def supported_browser() -> tuple[Path | None, str]:
@@ -87,6 +94,14 @@ class DesktopApi:
         self.app_root = (app_root or data_dir.parent).resolve()
         self.backend_url = backend_url.rstrip("/") or os.getenv("LEARNNOTE_BACKEND_ORIGIN", "http://127.0.0.1:8765").rstrip("/")
         self._window = None
+        self._update_lock = threading.RLock()
+        self._update_cancel = threading.Event()
+        self._update_thread = None
+        self._update_result = None
+        self._update_state = {"phase": "idle", "version": "", "downloaded_bytes": 0, "total_bytes": 0, "progress": 0, "error": ""}
+        self._extension_update_cancel = threading.Event()
+        self._extension_update_thread = None
+        self._extension_update_state = {"phase": "idle", "version": "", "downloaded_bytes": 0, "total_bytes": 0, "progress": 0, "error": ""}
 
     def _bind_window(self, window) -> None:
         self._window = window
@@ -399,7 +414,16 @@ class DesktopApi:
         expected_path = f"/hurry060215-tech/learnnote-assistant/releases/download/v{version}/{WINDOWS_INSTALLER_NAME}"
         return parsed.scheme == "https" and parsed.netloc == "github.com" and parsed.path == expected_path and not parsed.query
 
+    @staticmethod
+    def _valid_extension_url(version: str, url: str) -> bool:
+        parsed = urlparse(str(url or ""))
+        expected_path = f"/hurry060215-tech/learnnote-assistant/releases/download/v{version}/{EXTENSION_ASSET_PREFIX}{version}{EXTENSION_ASSET_SUFFIX}"
+        return parsed.scheme == "https" and parsed.netloc == "github.com" and parsed.path == expected_path and not parsed.query and not parsed.fragment
+
     def download_update(self, version: str, url: str, sha256: str) -> dict:
+        return self._download_update(version, url, sha256)
+
+    def _download_update(self, version: str, url: str, sha256: str, progress=None, cancel_event=None) -> dict:
         version = str(version or "").strip()
         sha256 = str(sha256 or "").strip().lower()
         if not re.fullmatch(r"\d+\.\d+\.\d+", version) or not self._valid_installer_url(version, url):
@@ -420,6 +444,8 @@ class DesktopApi:
                 for chunk in iter(lambda: existing.read(1024 * 1024), b""):
                     cached_digest.update(chunk)
             if cached_digest.hexdigest() == sha256:
+                if progress:
+                    progress(target.stat().st_size, target.stat().st_size)
                 return {
                     "ok": True,
                     "path": str(target),
@@ -446,6 +472,8 @@ class DesktopApi:
         try:
             with partial.open("wb") as output:
                 for chunk in response.iter_content(chunk_size=1024 * 1024):
+                    if cancel_event is not None and cancel_event.is_set():
+                        raise _UpdateCancelled()
                     if not chunk:
                         continue
                     written += len(chunk)
@@ -453,6 +481,8 @@ class DesktopApi:
                         raise ValueError("Update installer is unexpectedly large")
                     digest.update(chunk)
                     output.write(chunk)
+                    if progress:
+                        progress(written, content_length)
             if digest.hexdigest() != sha256:
                 raise ValueError("Update installer checksum mismatch")
             partial.replace(target)
@@ -460,6 +490,340 @@ class DesktopApi:
             partial.unlink(missing_ok=True)
             raise
         return {"ok": True, "path": str(target), "version": version, "bytes": written, "sha256": sha256}
+
+    def _current_update_versions(self) -> tuple[str, str]:
+        extension_version = ""
+        manifest_path = self.app_root / "extension" / "manifest.json"
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            extension_version = str(manifest.get("version") or "").strip()
+        except (OSError, ValueError):
+            pass
+        client_version = extension_version
+        notes_path = self.app_root / "web" / "release-notes.json"
+        try:
+            notes = json.loads(notes_path.read_text(encoding="utf-8"))
+            client_version = str(notes.get("current") or client_version).strip()
+        except (OSError, ValueError):
+            pass
+        return client_version, extension_version
+
+    def update_status(self, force: bool = False) -> dict:
+        try:
+            response = requests.get(
+                f"{self.backend_url}/api/update/status",
+                params={"force": "true" if force else "false"},
+                timeout=4.0,
+            )
+            response.raise_for_status()
+            result = response.json()
+            client_version, extension_version = self._current_update_versions()
+            result.setdefault("current", {}).setdefault("client_version", client_version)
+            if not result.get("current", {}).get("extension_version"):
+                result.setdefault("current", {})["extension_version"] = extension_version
+            with self._update_lock:
+                result["download"] = dict(self._update_state)
+                result["extension_download"] = dict(self._extension_update_state)
+                self._update_result = {
+                    "ok": bool(result.get("ok")),
+                    "latest_version": str((result.get("latest") or {}).get("version") or ""),
+                    "release_url": str((result.get("latest") or {}).get("release_url") or ""),
+                    "installer_url": str(((result.get("latest") or {}).get("client") or {}).get("url") or ""),
+                    "installer_sha256": str(((result.get("latest") or {}).get("client") or {}).get("sha256") or ""),
+                    "installable": bool(((result.get("latest") or {}).get("client") or {}).get("installable")),
+                }
+            return result
+        except (requests.RequestException, ValueError, TypeError):
+            pass
+        with self._update_lock:
+            if force or self._update_result is None:
+                self._update_result = self.check_update()
+            result = dict(self._update_result)
+            state = dict(self._update_state)
+            extension_state = dict(self._extension_update_state)
+        client_version, extension_version = self._current_update_versions()
+        latest = str(result.get("latest_version") or "")
+        return {
+            "ok": bool(result.get("ok")),
+            "current": {"client_version": client_version, "extension_version": extension_version},
+            "latest": {
+                "version": latest,
+                "release_url": result.get("release_url", ""),
+                "client": {
+                    "url": result.get("installer_url", ""),
+                    "sha256": result.get("installer_sha256", ""),
+                    "installable": bool(result.get("installable")),
+                },
+            } if latest else None,
+            "client_update_available": bool(latest and latest != client_version and self._version_is_newer(latest, client_version)),
+            "extension": {
+                "current_version": extension_version,
+                "compatibility": "compatible" if extension_version == client_version else "version_check_pending",
+                "channel": "browser_store_or_managed_unpack",
+                "store_update": "browser_managed",
+            },
+            "download": state,
+            "extension_download": extension_state,
+        }
+
+    @staticmethod
+    def _version_is_newer(candidate: str, current: str) -> bool:
+        try:
+            left = tuple(int(part) for part in candidate.split("."))
+            right = tuple(int(part) for part in current.split("."))
+        except (AttributeError, ValueError):
+            return False
+        return len(left) == len(right) == 3 and left > right
+
+    def start_update_download(self, version: str, url: str, sha256: str) -> dict:
+        with self._update_lock:
+            if self._update_thread and self._update_thread.is_alive():
+                return {"ok": True, **self._update_state}
+            self._update_cancel.clear()
+            self._update_state = {"phase": "downloading", "version": str(version), "downloaded_bytes": 0, "total_bytes": 0, "progress": 0, "error": ""}
+
+            def progress(downloaded: int, total: int | None) -> None:
+                with self._update_lock:
+                    self._update_state.update({
+                        "downloaded_bytes": downloaded,
+                        "total_bytes": int(total or 0),
+                        "progress": round(downloaded / total * 100, 2) if total else 0,
+                    })
+
+            def worker() -> None:
+                try:
+                    result = self._download_update(version, url, sha256, progress, self._update_cancel)
+                    with self._update_lock:
+                        self._update_state.update({"phase": "ready", "progress": 100, "path": result["path"], "sha256": result["sha256"]})
+                except _UpdateCancelled:
+                    with self._update_lock:
+                        self._update_state.update({"phase": "cancelled", "error": ""})
+                except Exception as exc:
+                    with self._update_lock:
+                        self._update_state.update({"phase": "failed", "error": str(exc)})
+
+            self._update_thread = threading.Thread(target=worker, name="learnnote-update-download", daemon=True)
+            self._update_thread.start()
+            return {"ok": True, **self._update_state}
+
+    def cancel_update_download(self) -> dict:
+        with self._update_lock:
+            if self._update_thread and self._update_thread.is_alive():
+                self._update_cancel.set()
+                self._update_state["phase"] = "cancelling"
+            return {"ok": True, **self._update_state}
+
+    def download_extension_update(self, version: str, url: str, sha256: str, cancel_event=None, progress=None) -> dict:
+        version = str(version or "").strip()
+        sha256 = str(sha256 or "").strip().lower()
+        if not re.fullmatch(r"\d+\.\d+\.\d+", version) or not self._valid_extension_url(version, url):
+            raise ValueError("Unsupported extension update URL")
+        if not re.fullmatch(r"[a-f0-9]{64}", sha256):
+            raise ValueError("Invalid extension checksum")
+        update_dir = (self.data_dir / "extension-updates" / f"v{version}").resolve()
+        update_dir.mkdir(parents=True, exist_ok=True)
+        target = (update_dir / f"{EXTENSION_ASSET_PREFIX}{version}{EXTENSION_ASSET_SUFFIX}").resolve()
+        partial = target.with_suffix(".download")
+        if target.parent != update_dir or partial.parent != update_dir:
+            raise ValueError("Unsafe extension update path")
+        if target.is_file():
+            digest = hashlib.sha256(target.read_bytes()).hexdigest()
+            if digest == sha256:
+                if progress:
+                    progress(target.stat().st_size, target.stat().st_size)
+                return {"ok": True, "path": str(target), "version": version, "bytes": target.stat().st_size, "sha256": sha256, "cached": True}
+            target.unlink()
+        response = requests.get(
+            url,
+            stream=True,
+            timeout=(5.0, 180.0),
+            headers={"Accept": "application/zip", "User-Agent": "LearnNote-Desktop-Updater"},
+        )
+        response.raise_for_status()
+        content_length = int(response.headers.get("Content-Length") or 0)
+        if content_length > MAX_UPDATE_BYTES:
+            raise ValueError("Extension update package is unexpectedly large")
+        digest = hashlib.sha256()
+        written = 0
+        try:
+            with partial.open("wb") as output:
+                for chunk in response.iter_content(chunk_size=1024 * 1024):
+                    if cancel_event is not None and cancel_event.is_set():
+                        raise _UpdateCancelled()
+                    if not chunk:
+                        continue
+                    written += len(chunk)
+                    if written > MAX_UPDATE_BYTES:
+                        raise ValueError("Extension update package is unexpectedly large")
+                    digest.update(chunk)
+                    output.write(chunk)
+                    if progress:
+                        progress(written, content_length)
+            if digest.hexdigest() != sha256:
+                raise ValueError("Extension update checksum mismatch")
+            partial.replace(target)
+        except Exception:
+            partial.unlink(missing_ok=True)
+            raise
+        return {"ok": True, "path": str(target), "version": version, "bytes": written, "sha256": sha256}
+
+    def start_extension_update_download(self, version: str, url: str, sha256: str) -> dict:
+        with self._update_lock:
+            if self._extension_update_thread and self._extension_update_thread.is_alive():
+                return {"ok": True, **self._extension_update_state}
+            self._extension_update_cancel.clear()
+            self._extension_update_state = {"phase": "downloading", "version": str(version), "downloaded_bytes": 0, "total_bytes": 0, "progress": 0, "error": ""}
+
+            def progress(downloaded: int, total: int | None) -> None:
+                with self._update_lock:
+                    self._extension_update_state.update({
+                        "downloaded_bytes": downloaded,
+                        "total_bytes": int(total or 0),
+                        "progress": round(downloaded / total * 100, 2) if total else 0,
+                    })
+
+            def worker() -> None:
+                try:
+                    result = self.download_extension_update(version, url, sha256, self._extension_update_cancel, progress)
+                    with self._update_lock:
+                        self._extension_update_state.update({"phase": "ready", "progress": 100, "path": result["path"], "sha256": result["sha256"], "downloaded_bytes": result["bytes"], "total_bytes": result["bytes"]})
+                except _UpdateCancelled:
+                    with self._update_lock:
+                        self._extension_update_state.update({"phase": "cancelled", "error": ""})
+                except Exception as exc:
+                    with self._update_lock:
+                        self._extension_update_state.update({"phase": "failed", "error": str(exc)})
+
+            self._extension_update_thread = threading.Thread(target=worker, name="learnnote-extension-update-download", daemon=True)
+            self._extension_update_thread.start()
+            return {"ok": True, **self._extension_update_state}
+
+    def cancel_extension_update_download(self) -> dict:
+        with self._update_lock:
+            if self._extension_update_thread and self._extension_update_thread.is_alive():
+                self._extension_update_cancel.set()
+                self._extension_update_state["phase"] = "cancelling"
+            return {"ok": True, **self._extension_update_state}
+
+    def install_extension_update(self, version: str, archive_path: str, sha256: str = "") -> dict:
+        version = str(version or "").strip()
+        if not re.fullmatch(r"\d+\.\d+\.\d+", version):
+            raise ValueError("Invalid extension update version")
+        if not getattr(sys, "frozen", False):
+            raise RuntimeError("源码开发环境不会自动覆盖 extension 目录，请手动测试或使用候选安装包。")
+        update_dir = (self.data_dir / "extension-updates" / f"v{version}").resolve()
+        archive = Path(str(archive_path or "")).resolve()
+        expected_path = update_dir / f"{EXTENSION_ASSET_PREFIX}{version}{EXTENSION_ASSET_SUFFIX}"
+        if archive != expected_path or not archive.is_file():
+            raise ValueError("Extension update package is not ready")
+        expected = str(sha256 or "").strip().lower()
+        if expected:
+            digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+            if not re.fullmatch(r"[a-f0-9]{64}", expected) or digest != expected:
+                raise RuntimeError("扩展更新包已变化或校验失败，原扩展未改变。")
+        stage = (self.data_dir / "extension-staging" / f"v{version}").resolve()
+        if stage.parent != (self.data_dir / "extension-staging").resolve():
+            raise ValueError("Unsafe extension staging path")
+        if stage.exists():
+            shutil.rmtree(stage)
+        stage.mkdir(parents=True)
+        allowed = {"manifest.json", "background.js", "content.js", "page_hook.js", "sidepanel.html", "sidepanel.css", "sidepanel.js", "INSTALL.txt", "icons"}
+        with ZipFile(archive) as package:
+            for info in package.infolist():
+                name = Path(info.filename.replace("/", os.sep))
+                if name.is_absolute() or ".." in name.parts or not name.parts or name.parts[0] not in allowed:
+                    raise ValueError("Extension update contains an unsafe path")
+                destination = (stage.joinpath(*name.parts)).resolve()
+                if stage not in destination.parents and destination != stage:
+                    raise ValueError("Extension update escapes staging directory")
+                if info.is_dir():
+                    destination.mkdir(parents=True, exist_ok=True)
+                    continue
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_bytes(package.read(info))
+        manifest_path = stage / "manifest.json"
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise ValueError("Extension update manifest is invalid") from exc
+        if str(manifest.get("version") or "") != version or not (stage / "background.js").is_file():
+            raise ValueError("Extension update manifest does not match the package version")
+        target = (self.app_root / "extension").resolve()
+        if not target.is_dir():
+            raise RuntimeError("当前客户端没有可更新的受管理扩展目录。")
+        current_manifest = target / "manifest.json"
+        current_version = "unknown"
+        try:
+            current_version = str(json.loads(current_manifest.read_text(encoding="utf-8")).get("version") or "unknown")
+        except (OSError, ValueError):
+            pass
+        backup = (self.data_dir / "extension-backup" / f"v{current_version}").resolve()
+        backup.parent.mkdir(parents=True, exist_ok=True)
+        if backup.exists():
+            shutil.rmtree(backup)
+        shutil.copytree(target, backup)
+        try:
+            for child in target.iterdir():
+                if child.is_dir():
+                    shutil.rmtree(child)
+                else:
+                    child.unlink()
+            shutil.copytree(stage, target, dirs_exist_ok=True)
+        except Exception:
+            for child in target.iterdir():
+                if child.is_dir():
+                    shutil.rmtree(child)
+                else:
+                    child.unlink()
+            shutil.copytree(backup, target, dirs_exist_ok=True)
+            raise
+        return {"ok": True, "version": version, "path": str(target), "backup": str(backup), "requires_reload": True, "message": "受管理扩展已更新到固定目录，请在 Chrome/Edge 扩展管理页重新加载；正在交接的任务未被重载。"}
+
+    def apply_extension_update(self, version: str, archive_path: str, sha256: str = "") -> dict:
+        try:
+            response = requests.get(f"{self.backend_url}/api/tasks", timeout=2.0)
+            response.raise_for_status()
+            payload = response.json()
+            tasks = payload.get("tasks", []) if isinstance(payload, dict) else payload
+            active = [item for item in tasks if isinstance(item, dict) and item.get("status") in {"queued", "running", "cancelling"}]
+        except (requests.RequestException, TypeError, ValueError) as exc:
+            raise RuntimeError("无法确认当前任务是否已保存，请完成任务或稍后重试。") from exc
+        if active:
+            raise RuntimeError(f"还有 {len(active)} 个任务正在处理，完成或停止后再更新。")
+        return self.install_extension_update(version, archive_path, sha256)
+
+    def apply_update(self, version: str, installer_path: str, sha256: str = "") -> dict:
+        try:
+            response = requests.get(f"{self.backend_url}/api/tasks", timeout=2.0)
+            response.raise_for_status()
+            payload = response.json()
+            tasks = payload.get("tasks", []) if isinstance(payload, dict) else payload
+            active = [item for item in tasks if isinstance(item, dict) and item.get("status") in {"queued", "running", "cancelling"}]
+        except (requests.RequestException, TypeError, ValueError) as exc:
+            raise RuntimeError("无法确认当前任务是否已保存，请完成任务或稍后重试。") from exc
+        if active:
+            raise RuntimeError(f"还有 {len(active)} 个任务正在处理，完成或停止后再更新。")
+        installer = Path(str(installer_path or "")).resolve()
+        expected = str(sha256 or "").strip().lower()
+        if expected:
+            if not re.fullmatch(r"[a-f0-9]{64}", expected) or not installer.is_file():
+                raise RuntimeError("更新包校验信息无效，原程序未改变。")
+            digest = hashlib.sha256()
+            with installer.open("rb") as stream:
+                for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                    digest.update(chunk)
+            if digest.hexdigest() != expected:
+                raise RuntimeError("更新包已变化或校验失败，原程序未改变。")
+        return self.install_update(version, installer_path)
+
+    def set_update_preferences(self, auto_check: bool = True, auto_download: bool = True) -> dict:
+        response = requests.put(
+            f"{self.backend_url}/api/update/preferences",
+            json={"auto_check": bool(auto_check), "auto_download": bool(auto_download)},
+            timeout=3.0,
+        )
+        response.raise_for_status()
+        return response.json()
 
     def install_update(self, version: str, installer_path: str) -> dict:
         version = str(version or "").strip()
@@ -491,8 +855,8 @@ class DesktopApi:
             "$arguments = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', ('/DIR=\"' + $installDir + '\"'), ('/LOG=\"' + $log + '\"'))",
             "$result = Start-Process -FilePath $installer -ArgumentList $arguments -WindowStyle Hidden -Wait -PassThru",
             "Add-Content -LiteralPath $log -Value ('LearnNote updater exit code: ' + $result.ExitCode)",
+            "if ($result.ExitCode -ne 0) { Start-Process -FilePath $app -WorkingDirectory $installDir; exit $result.ExitCode }",
             "Start-Process -FilePath $app -WorkingDirectory $installDir",
-            "if ($result.ExitCode -ne 0) { exit $result.ExitCode }",
         ]) + "\n"
         script_path.write_text(script, encoding="utf-8-sig")
         subprocess.Popen(

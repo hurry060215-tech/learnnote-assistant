@@ -1219,6 +1219,16 @@ button:has(svg) {
   border: 1px solid var(--line);
   padding: 6px 9px;
 }
+.assistant-citation-previews blockquote {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  border-left: 3px solid var(--accent);
+  background: var(--panel);
+}
+.assistant-citation-previews button {
+  margin-top: 6px;
+  font-size: 12px;
+}
 .save-ai-note {
   margin-top: 10px;
 }
@@ -1387,6 +1397,29 @@ body.assistant-visible .workspace {
 }
 .settings-content section > footer {
   justify-content: flex-start;
+}
+.update-center-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 16px 0;
+}
+.update-card {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px;
+  background: var(--panel);
+}
+.update-card h4 {
+  margin: 0 0 8px;
+}
+.update-card p {
+  margin: 6px 0 0;
+}
+@media (max-width: 700px) {
+  .update-center-grid {
+    grid-template-columns: 1fr;
+  }
 }
 @media (max-width: 1250px) {
   .assistant-panel {

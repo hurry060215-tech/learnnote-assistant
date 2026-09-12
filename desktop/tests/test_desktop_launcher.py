@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import hashlib
+from io import BytesIO
 import json
 import os
 import tempfile
@@ -318,6 +319,62 @@ class DesktopLauncherTests(unittest.TestCase):
             target = Path(result["path"])
             self.assertEqual(Path(temp_dir) / "installers" / "v9.8.7", target.parent)
             self.assertEqual(content, target.read_bytes())
+
+    def test_update_download_runs_in_background_and_reports_progress(self):
+        content = b"background installer bytes"
+        checksum = hashlib.sha256(content).hexdigest()
+        installer_url = (
+            "https://github.com/hurry060215-tech/learnnote-assistant/"
+            "releases/download/v9.8.7/LearnNote-Setup-x64.exe"
+        )
+
+        class Response:
+            headers = {"Content-Length": str(len(content))}
+
+            def raise_for_status(self):
+                return None
+
+            def iter_content(self, chunk_size):
+                return iter((content[:8], content[8:]))
+
+        with tempfile.TemporaryDirectory(dir=ROOT / "data") as temp_dir:
+            api = desktop.DesktopApi(Path(temp_dir))
+            with patch.object(desktop.requests, "get", return_value=Response()):
+                accepted = api.start_update_download("9.8.7", installer_url, checksum)
+                api._update_thread.join(2)
+            self.assertTrue(accepted["ok"])
+            self.assertEqual("ready", api._update_state["phase"])
+            self.assertEqual(100, api._update_state["progress"])
+            self.assertEqual(content, Path(api._update_state["path"]).read_bytes())
+
+    def test_managed_extension_download_verifies_official_zip_asset(self):
+        archive = BytesIO()
+        with desktop.ZipFile(archive, "w") as package:
+            package.writestr("manifest.json", '{"manifest_version":3,"version":"9.8.7"}')
+            package.writestr("background.js", "/* verified */")
+        content = archive.getvalue()
+        checksum = hashlib.sha256(content).hexdigest()
+        extension_url = (
+            "https://github.com/hurry060215-tech/learnnote-assistant/"
+            "releases/download/v9.8.7/LearnNote-Browser-Extension-v9.8.7.zip"
+        )
+
+        class Response:
+            headers = {"Content-Length": str(len(content))}
+
+            def raise_for_status(self):
+                return None
+
+            def iter_content(self, chunk_size):
+                return iter((content,))
+
+        with tempfile.TemporaryDirectory(dir=ROOT / "data") as temp_dir:
+            api = desktop.DesktopApi(Path(temp_dir))
+            with patch.object(desktop.requests, "get", return_value=Response()):
+                result = api.download_extension_update("9.8.7", extension_url, checksum)
+            self.assertTrue(result["ok"])
+            self.assertEqual(checksum, result["sha256"])
+            self.assertEqual(content, Path(result["path"]).read_bytes())
 
     def test_update_check_falls_back_to_release_page_and_checksum_asset(self):
         checksum = "b" * 64
