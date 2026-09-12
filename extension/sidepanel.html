@@ -58,6 +58,12 @@
           <button type="button" data-processing-mode="deep" role="radio" aria-checked="false" tabindex="-1"><strong data-i18n="visualNote">图文笔记</strong><small>结合字幕与画面，需要视觉模型</small></button>
         </div>
         <p id="modeDescription" class="mode-description">优先读取已有字幕；缺少字幕时，在工作台确认后使用本地语音识别。不分析画面。</p>
+        <details id="learningRangeOptions" class="extension-options"><summary>只学习一段（可选）</summary>
+          <div class="generation-fields"><label for="learningRangeStart">开始（秒）<input id="learningRangeStart" type="number" min="0" step="0.1" placeholder="0"></label><label for="learningRangeEnd">结束（秒）<input id="learningRangeEnd" type="number" min="0.1" step="0.1" placeholder="当前视频末尾"></label></div>
+          <button id="useCurrentPositionAsRangeEnd" class="secondary-button" type="button">用当前播放位置填结束</button>
+          <p class="muted">只在点击发送时读取当前播放位置；范围外的字幕不会进入这次任务，原视频仍保留。</p>
+          <p id="learningRangeStatus" role="status"></p>
+        </details>
         <div id="modelReadiness" class="model-readiness" hidden><span id="modelReadinessText"></span><button type="button" id="configureModelButton" data-client-view="settings" hidden>设置模型</button></div>
         <details id="extensionOptions" class="extension-options"><summary>笔记偏好</summary>
         <div class="generation-fields">

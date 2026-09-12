@@ -306,7 +306,7 @@ def _recover_processing(root: Path) -> dict[str, int]:
         else:
             request = CurrentPageTaskRequest(page_url=task.page_url, title=task.title, options=task.options,
                 mode=task.mode, browser_subtitles=task.browser_subtitles, active_video=task.active_video,
-                drm_detected=task.drm_detected, drm_signals=task.drm_signals)
+                learning_range=task.learning_range, drm_detected=task.drm_detected, drm_signals=task.drm_signals)
             callback = lambda task=task, request=request: process_current_page_task(task.id, request)
         # Reset the orphaned lease before re-enqueueing the original task ID.
         queue.set_state(task.id, "recovering")

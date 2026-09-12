@@ -7,6 +7,8 @@ import subprocess
 from app.range_learning import source_range_subtitles, _srt_stamp
 from app.media import extract_video_clip, probe_duration
 from app.runtime import ffmpeg_bin, hidden_subprocess_kwargs
+from app.models import BrowserSubtitleCue
+from app.processor import _learning_range_bounds, _slice_browser_subtitles
 
 
 class RangeLearningTests(unittest.TestCase):
@@ -31,6 +33,18 @@ class RangeLearningTests(unittest.TestCase):
         with patch('app.range_learning.read_json',return_value={"segments":[{"start":0,"end":20,"text":"不能确定哪些字属于选中片段"}]}):
             self.assertEqual(source_range_subtitles('source',5,15),'')
         self.assertEqual(_srt_stamp(3661.125),'01:01:01,125')
+
+    def test_current_page_range_filters_complete_cues_and_keeps_source_offsets(self):
+        cues = [
+            BrowserSubtitleCue(start=0, end=5, text="前段"),
+            BrowserSubtitleCue(start=10, end=15, text="范围内"),
+            BrowserSubtitleCue(start=15, end=20, text="范围末段"),
+            BrowserSubtitleCue(start=20, end=25, text="后段"),
+        ]
+        selected = _slice_browser_subtitles(cues, 10, 20)
+        self.assertEqual([(cue.start, cue.end, cue.text) for cue in selected], [(0, 5, "范围内"), (5, 10, "范围末段")])
+        self.assertEqual(_learning_range_bounds({"start": 10, "end": 20}), (10.0, 20.0))
+        self.assertIsNone(_learning_range_bounds({"start": 20, "end": 10}))
 
 
 if __name__=='__main__':

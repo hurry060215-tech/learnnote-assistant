@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import inspect
+import math
 import re
 import time
 from pathlib import Path
@@ -52,6 +53,26 @@ PLAYER_UI_SUBTITLE_MARKERS = (
     "恢复默认设置", "关闭弹幕", "登录可享", "原声翻译体验反馈", "添加字幕",
     "弹幕设置", "弹幕列表", "发送弹幕", "发个友善的弹幕", "按类型屏蔽", "屏蔽设定",
 )
+
+
+def _learning_range_bounds(value: dict | None) -> tuple[float, float] | None:
+    if not value:
+        return None
+    try:
+        start, end = float(value.get("start")), float(value.get("end"))
+    except (AttributeError, TypeError, ValueError):
+        return None
+    if not math.isfinite(start) or not math.isfinite(end) or start < 0 or end <= start:
+        return None
+    return start, end
+
+
+def _slice_browser_subtitles(cues: list[BrowserSubtitleCue], start: float, end: float) -> list[BrowserSubtitleCue]:
+    result = []
+    for cue in cues:
+        if cue.start >= start and cue.end <= end:
+            result.append(BrowserSubtitleCue(start=cue.start - start, end=cue.end - start, text=cue.text))
+    return result
 
 
 # Compatibility wrappers keep existing test/integration patch points stable
@@ -778,6 +799,10 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
     if identity_reasons:
         _fail(task_id, "source_changed", f"Source changed before processing: {', '.join(identity_reasons)}")
         return
+    selected_range = _learning_range_bounds(request.learning_range)
+    if request.learning_range and selected_range is None:
+        _fail(task_id, "invalid_learning_range", "学习范围无效：结束位置必须大于开始位置。")
+        return
     request.resources = enrich_resources_with_active_video(request)
     write_json(task_id, "request.json", redacted_request_dump(request))
     write_resource_inventory(task_id, request)
@@ -836,6 +861,11 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
             direct = parse_subtitle_or_none(subtitle_path) if subtitle_path else None
             cues = [BrowserSubtitleCue(start=s.start, end=s.end, text=s.text) for s in direct.segments] if direct else request.browser_subtitles
             duration = (request.active_video.duration if request.active_video else 0) or getattr(downloader, "resolved_duration", 0)
+            if selected_range:
+                range_start, range_end = selected_range
+                cues = _slice_browser_subtitles(cues, range_start, range_end)
+                duration = range_end - range_start
+                direct = transcript_from_browser_subtitles(cues) if cues else None
             usable = browser_subtitles_are_reliable(cues, duration)
             record_stage_duration(task_id, "subtitle_probe", probe_started, status="completed" if usable else "skipped")
             resolved_title = clean_task_title(getattr(downloader, "resolved_title", ""), request.page_url, request.title)
@@ -874,7 +904,26 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
         if resolved_title != request.title:
             request.title = resolved_title
             update_task(task_id, title=resolved_title)
+        original_media_path = media_path
         remember_reusable_media(task_id, media_path)
+        if selected_range:
+            range_start, range_end = selected_range
+            duration = (request.active_video.duration if request.active_video else 0) or getattr(downloader, "resolved_duration", 0)
+            if duration and range_end > duration + 0.01:
+                _fail(task_id, "invalid_learning_range", "学习范围超过视频时长，未创建范围笔记。")
+                return
+            clip = work_dir / "selected-range-source.mp4"
+            if not clip.is_file():
+                temporary = clip.with_name("selected-range-source.partial.mp4")
+                extract_video_clip(original_media_path, temporary, range_start, range_end)
+                temporary.replace(clip)
+            media_path = clip
+            update_task(
+                task_id,
+                source_media_path=str(original_media_path),
+                learning_range={"start": range_start, "end": range_end},
+                message="原视频已保留，正在处理选定时间段",
+            )
         mark_checkpoint(task_id, "media_downloaded")
         if selected:
             update_task(task_id, selected_resource=redacted_resource(selected))
@@ -930,7 +979,9 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
             subtitle_path=subtitle_path,
             browser_subtitles=request.browser_subtitles,
             page_context=request.page_text,
-            frame_anchor_timestamps=[request.active_video.current_time] if request.active_video else [],
+            frame_anchor_timestamps=[
+                max(0.0, request.active_video.current_time - selected_range[0]) if selected_range else request.active_video.current_time
+            ] if request.active_video else [],
             start_attempt=False,
         )
     except TaskCancelled:
@@ -968,6 +1019,16 @@ def process_subtitle_only_task(task_id: str, request: CurrentPageTaskRequest, *,
             start_pipeline_attempt(task_id)
         probe_started = time.monotonic()
         duration = request.active_video.duration if request.active_video else 0
+        selected_range = _learning_range_bounds(request.learning_range)
+        if request.learning_range and selected_range is None:
+            raise ContentMismatchError("学习范围无效：结束位置必须大于开始位置。")
+        if selected_range:
+            range_start, range_end = selected_range
+            request = request.model_copy(update={
+                "browser_subtitles": _slice_browser_subtitles(request.browser_subtitles, range_start, range_end),
+                "active_video": request.active_video.model_copy(update={"duration": range_end - range_start, "current_time": 0}) if request.active_video else None,
+            })
+            duration = range_end - range_start
         if not browser_subtitles_are_reliable(request.browser_subtitles, duration):
             raise ContentMismatchError("当前字幕覆盖不足，不能代替完整视频内容；请选择标准转写。")
         if start_attempt:

@@ -68,6 +68,10 @@ def current_page_source_identity(request: CurrentPageTaskRequest) -> SourceIdent
             "duration": round(float(active.duration or 0), 3) if active else 0,
             "frame_id": active.frame_id if active else None,
         },
+        "learning_range": {
+            "start": round(float(request.learning_range.get("start") or 0), 3),
+            "end": round(float(request.learning_range.get("end") or 0), 3),
+        } if request.learning_range else {},
     }
     return SourceIdentity(
         page_url=page_url,
