@@ -137,6 +137,10 @@ class DeploymentContractTests(unittest.TestCase):
         self.assertIn('name="LearnNote.app"', spec)
         self.assertIn("optional_package in", spec)
 
+    def test_container_workflow_builds_documented_amd64_and_arm64_images(self) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "container.yml").read_text(encoding="utf-8")
+        self.assertIn("platforms: linux/amd64,linux/arm64", workflow)
+
 
 if __name__ == "__main__":
     unittest.main()

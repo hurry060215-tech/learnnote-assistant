@@ -281,6 +281,7 @@ async function refreshLibrary() {
         a.updated_at || a.created_at || "",
       ),
     );
+    syncTaskEventStreams(state.items);
     drawList();
     window.dispatchEvent(new CustomEvent("learnnote:library"));
     const selected =
@@ -462,6 +463,46 @@ function renderNote() {
   window.dispatchEvent(new Event("learnnote:document"));
 }
 const taskEvents = new Map();
+const taskEventStreams = new Map();
+const taskEventCursors = new Map();
+function syncTaskEventStreams(items = state.items) {
+  if (typeof EventSource !== "function" || document.hidden) return;
+  const active = new Set(items.filter((item) => item.kind === "task" && ["queued", "running", "cancelling"].includes(item.status)).slice(0, 6).map((item) => item.id));
+  for (const [taskId, source] of taskEventStreams) {
+    if (!active.has(taskId)) {
+      source.close();
+      taskEventStreams.delete(taskId);
+      taskEventCursors.delete(taskId);
+    }
+  }
+  for (const taskId of active) {
+    if (taskEventStreams.has(taskId)) continue;
+    const cursor = Math.max(0, Number(taskEventCursors.get(taskId) || 0));
+    const source = new EventSource("/api/tasks/" + encodeURIComponent(taskId) + "/events/stream?after=" + cursor);
+    const receive = (event) => {
+      const next = Number(event.lastEventId || 0);
+      if (next > Number(taskEventCursors.get(taskId) || 0)) taskEventCursors.set(taskId, next);
+      taskEvents.delete(taskId);
+      refresh().catch(() => {});
+    };
+    ["task_created", "task_updated", "task_terminal", "task_missing"].forEach((name) => source.addEventListener(name, receive));
+    source.onerror = () => {
+      source.close();
+      taskEventStreams.delete(taskId);
+    };
+    taskEventStreams.set(taskId, source);
+  }
+}
+window.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    for (const source of taskEventStreams.values()) source.close();
+    taskEventStreams.clear();
+  } else syncTaskEventStreams();
+});
+window.addEventListener("pagehide", () => {
+  for (const source of taskEventStreams.values()) source.close();
+  taskEventStreams.clear();
+});
 async function loadTaskEvents(task) {
   const cached = taskEvents.get(task.id);
   if (

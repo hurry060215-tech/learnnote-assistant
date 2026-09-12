@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from app.knowledge import add_evidence
-from app.library import backup_library, duplicate_groups, import_document_material, index_task, library_status, list_materials, material_anchors, rebuild_index, register_task_material, restore_library, search_library
+from app.library import apply_material_ocr, backup_library, duplicate_groups, import_document_material, index_task, library_status, list_materials, material_anchors, rebuild_index, register_task_material, restore_library, search_library, material_content
 from app.models import SourceEvidence
 from app.models import SourceIdentity, TaskRecord
 
@@ -200,6 +200,22 @@ class LocalLibraryIndexTests(unittest.TestCase):
                 self.assertEqual(material["source_type"], "pdf")
                 self.assertEqual([item["locator"] for item in anchors], ["page 1", "page 2"])
                 self.assertIn("Evidence on page two", anchors[1]["text"])
+
+    def test_scanned_pdf_can_be_imported_then_indexed_after_optional_ocr(self) -> None:
+        from reportlab.pdfgen import canvas
+        buffer = BytesIO()
+        document = canvas.Canvas(buffer)
+        document.showPage()
+        document.save()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with patch("app.library.DATA_DIR", root), patch("app.library.TASK_DIR", root / "tasks"), patch("app.library.TEMP_DIR", root / "temp"), patch("app.knowledge.DATA_DIR", root):
+                material = import_document_material("scan.pdf", buffer.getvalue(), "application/pdf")
+                self.assertEqual(material["status"], "ocr_required")
+                updated = apply_material_ocr(material["material_id"], {"schema_version": 1, "status": "ready", "engine": "fixture", "pages": [{"page": 1, "text": "扫描页的本地 OCR 文字", "lines": []}]})
+                self.assertEqual(updated["status"], "ready")
+                self.assertEqual(material_anchors(material["material_id"])[0]["locator"], "page 1")
+                self.assertIn("扫描页", material_content(material["material_id"]))
 
 
 if __name__ == "__main__":

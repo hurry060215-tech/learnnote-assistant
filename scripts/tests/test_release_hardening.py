@@ -78,8 +78,9 @@ class ReleaseHardeningContractTests(unittest.TestCase):
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["mode"], "offline-grounding-fixtures")
         self.assertFalse(report["network_attempted"])
-        self.assertEqual(report["case_count"], 3)
-        self.assertEqual(report["passed_count"], 3)
+        self.assertGreaterEqual(report["case_count"], 50)
+        self.assertEqual(report["passed_count"], report["case_count"])
+        self.assertGreaterEqual(report["quality_metrics"]["recall"], 0.95)
 
     def test_long_video_gate_defaults_to_one_hour_without_asr_or_llm(self) -> None:
         source = (ROOT / "scripts" / "long-video-reliability.py").read_text(encoding="utf-8")

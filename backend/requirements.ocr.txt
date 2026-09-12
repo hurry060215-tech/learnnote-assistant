@@ -1,2 +1,3 @@
 # Optional local OCR lane, tested with the project's Python 3.12 runtime.
 rapidocr-onnxruntime==1.4.4
+pymupdf==1.28.2

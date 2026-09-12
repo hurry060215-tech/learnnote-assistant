@@ -127,14 +127,38 @@ export function installTools(ctx) {
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       }),
     });
-    const [plan, history] = await Promise.all([
+    const [plan, history, dashboard] = await Promise.all([
       api("/api/study/plan"),
       api("/api/study/reviews?limit=20"),
+      api("/api/study/dashboard?limit=12&course_id=" + encodeURIComponent(courseId)),
     ]);
     if (token !== generation) return;
     const p = plan.plan;
     $("toolBody").innerHTML =
       `<form id="planForm"><label for="dailyTarget">每日目标</label><input id="dailyTarget" type="number" min="1" max="200" value="${p.daily_target}"><label for="studyTimezone">复习时区</label><input id="studyTimezone" value="${esc(p.timezone)}" required><label class="check"><input id="studyPaused" type="checkbox" ${p.paused ? "checked" : ""}>暂停复习提醒与评分</label><button class="primary">保存计划</button></form><div class="tool-actions"><button data-action="start-review" data-course-id="${esc(courseId)}">开始复习${courseId ? "当前课程" : ""}</button>${links([["导出学习记录", "/api/study/export"]])}</div><details><summary>最近评分记录</summary><div>${history.reviews.map((r) => `<p class="record">${esc(r.reviewed_at || r.created_at || "")} · 评分 ${esc(r.rating)}</p>`).join("") || '<p class="muted">还没有评分记录。</p>'}</div></details><details><summary>修复旧版复习调度</summary><p class="muted">根据完整评分历史重新计算计划，并在本地保存原调度备份。</p><button data-action="rebuild-study">按历史重建</button></details>`;
+    if (dashboard?.mistakes?.length) {
+      const details = document.createElement("details");
+      const summary = document.createElement("summary");
+      summary.textContent = "错题回看 · " + dashboard.mistakes.length + " 条";
+      details.append(summary);
+      for (const mistake of dashboard.mistakes) {
+        const item = document.createElement("article");
+        item.className = "record";
+        item.textContent = mistake.question + " · 上次评分 " + mistake.reviewed_at;
+        if (mistake.source_evidence_ids?.length) {
+          const source = document.createElement("button");
+          source.type = "button";
+          source.textContent = "查看依据";
+          source.onclick = async () => {
+            const evidence = await api("/api/knowledge/evidence/" + encodeURIComponent(mistake.source_evidence_ids[0]));
+            item.append(document.createTextNode("\n" + (evidence.evidence?.locator || "") + " · " + (evidence.evidence?.text || "")));
+          };
+          item.append(source);
+        }
+        details.append(item);
+      }
+      $("toolBody").append(details);
+    }
     backAction = courseId
       ? () => openCourse(courseId)
       : () => {
@@ -293,6 +317,12 @@ export function installTools(ctx) {
       "笔记工具",
       `<div class="tool-menu"><button data-action="exports">导出笔记与原始资料</button><button data-action="propose">创建复习卡</button><button data-action="ask">围绕内容提问</button><button data-action="annotations">管理我的补充</button><button data-action="add-to-course">归入课程</button>${s.kind === "task" ? '<button data-action="regenerate">重新整理视频笔记</button><button data-action="range">学习视频片段</button><button data-action="ocr">查看画面文字</button><button data-action="diagnostics">查看处理记录</button><button data-action="community">独立社区观点</button>' : ""}<button class="danger" data-action="delete-source">删除当前内容</button></div>`,
     );
+    if (s.kind === "material" && s.status === "ocr_required") {
+      const ocrButton = document.createElement("button");
+      ocrButton.dataset.action = "run-material-ocr";
+      ocrButton.textContent = "准备扫描 PDF 的本地 OCR";
+      $("toolBody").querySelector(".tool-menu")?.append(ocrButton);
+    }
     backAction = null;
   }
   async function batch() {
@@ -380,6 +410,14 @@ export function installTools(ctx) {
     $("toolBody").innerHTML =
       `<h3>LearnNote ${esc(h.app_version)}</h3><p>统一阅读工作台 · 数据保存在本机</p><button data-action="check-update">检查正式发布版</button><p id="updateResult" role="status"></p><a class="tool-link" href="https://github.com/hurry060215-tech/learnnote-assistant/releases/latest" target="_blank" rel="noreferrer">打开官方下载页 ↗</a>`;
   }
+  const ocrMaterial = async () => {
+    const s = current();
+    if (!confirm("使用本机可选 OCR 读取扫描 PDF？OCR 结果会保留置信度并标为未核验。")) return;
+    const result = await api("/api/library/materials/" + encodeURIComponent(s.id) + "/ocr", { method: "POST" });
+    await refresh();
+    notice(result.ocr?.warning || "扫描 PDF OCR 已完成，请核对每页文字。");
+    more();
+  };
   const actions = {
     community,
     "toggle-community": async (button) => {
@@ -409,6 +447,7 @@ export function installTools(ctx) {
         : "暂时无法检查更新，请使用官方下载页。";
     },
 
+    "run-material-ocr": ocrMaterial,
     regenerate: () => {
       dialog.close();
       $("regenerate").click();
@@ -690,6 +729,21 @@ export function installTools(ctx) {
         if (token !== generation) return;
         $("compareResults").innerHTML =
           `<p class="muted">${esc(r.warning)}</p>${r.matches.map((m) => `<blockquote><strong>${esc(m.title)}</strong><small>${esc(m.locator)}</small><p>${esc(m.excerpt)}</p></blockquote>`).join("") || "没有匹配出处。"}`;
+        if (form.id === "compareForm" && r.edges?.length) {
+          const graph = document.createElement("details");
+          const graphTitle = document.createElement("summary");
+          graphTitle.textContent = "关系列表（每条关系保留来源）";
+          graph.append(graphTitle);
+          const list = document.createElement("ol");
+          const nodes = new Map((r.nodes || []).map((node) => [node.id, node.title]));
+          for (const edge of r.edges) {
+            const item = document.createElement("li");
+            item.textContent = (nodes.get(edge.from) || edge.from) + " ↔ " + (nodes.get(edge.to) || edge.to) + " · 共同关键词：" + (edge.terms || []).join("、") + " · 证据：" + (edge.evidence_ids || []).join("、");
+            list.append(item);
+          }
+          graph.append(list);
+          $("compareResults").append(graph);
+        }
       } else if (form.id === "planForm") {
         await api("/api/study/plan", {
           method: "PUT",

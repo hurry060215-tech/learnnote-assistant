@@ -36,7 +36,7 @@ export function installProductWorkspace(ctx) {
   for (const [id, icon, label] of [
     ["newNote", "plus", "新建笔记"],
     ["settings", "settings", "设置"],
-    ["review", "review", "复习"],
+    ["review", "review", "学习工作室"],
     ["courses", "folder", "课程"],
 
     ["refresh", "refresh", ""],

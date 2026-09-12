@@ -27,6 +27,16 @@ SUPPORTED_LOCAL_VIDEO_SUFFIXES = {".mp4", ".mkv", ".webm", ".mov", ".m4v", ".avi
 _lock = threading.RLock()
 
 
+def _atomic_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+    try:
+        temporary.write_text(text, encoding="utf-8")
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def _db_path() -> Path:
     return DATA_DIR / "library.sqlite3"
 
@@ -540,6 +550,7 @@ def restore_library(backup_path: Path) -> dict[str, object]:
 
 
 def material_capabilities() -> dict[str, object]:
+    from .pdf_ocr import ocr_available
     return {
         "schema_version": MATERIAL_SCHEMA_VERSION,
         "document_import": {
@@ -547,6 +558,12 @@ def material_capabilities() -> dict[str, object]:
             "suffixes": sorted(SUPPORTED_DOCUMENT_SUFFIXES),
             "max_bytes": MATERIAL_IMPORT_MAX_BYTES,
             "anchors": ["pdf_page", "document_section", "paragraph"],
+            "scanned_pdf_ocr": {
+                "endpoint": "/api/library/materials/{material_id}/ocr",
+                "optional": True,
+                "available": ocr_available(),
+                "verification": "unreviewed",
+            },
         },
         "local_video": {
             "upload_endpoint": "/api/tasks/local",
@@ -781,8 +798,10 @@ def _material_sections(filename: str, content: bytes, content_type: str) -> tupl
                 if len(sections) > MATERIAL_MAX_ANCHORS:
                     raise ValueError("material_anchor_limit_exceeded")
         metadata["anchor_type"] = "document_section"
-    if not sections:
+    if not sections and evidence_source_type != "pdf":
         raise ValueError("material_no_extractable_text")
+    if not sections and evidence_source_type == "pdf":
+        metadata["status"] = "ocr_required"
     return evidence_source_type, sections, metadata
 
 
@@ -857,6 +876,7 @@ def import_document_material(filename: str, content: bytes, content_type: str = 
     now = datetime.now(timezone.utc).isoformat()
     record_source_type = "text" if suffix == ".txt" else evidence_source_type
     metadata.update({"suffix": suffix, "original_filename": safe_name})
+    material_status = str(metadata.get("status") or "ready")
     try:
         with _lock:
             connection, _ = _connect()
@@ -877,7 +897,7 @@ def import_document_material(filename: str, content: bytes, content_type: str = 
                        (material_id, schema_version, title, filename, source_type, content_type,
                         source_uri, sha256, byte_size, status, linked_task_id, anchor_count,
                         evidence_ids_json, owns_evidence, stored_path, metadata_json, created_at, updated_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?, 1, ?, ?, ?, ?)""",
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         material_id,
                         MATERIAL_SCHEMA_VERSION,
@@ -888,9 +908,10 @@ def import_document_material(filename: str, content: bytes, content_type: str = 
                         source_uri,
                         digest,
                         len(content),
-                        "ready",
+                        material_status,
                         len(evidence_ids),
                         json.dumps(evidence_ids, ensure_ascii=False),
+                        1 if evidence_ids else 0,
                         str(stored_path),
                         json.dumps(metadata, ensure_ascii=False),
                         now,
@@ -1069,12 +1090,60 @@ def material_content(material_id: str) -> str:
         if source.stat().st_size > MATERIAL_IMPORT_MAX_BYTES:
             raise ValueError("material_file_too_large")
         text, _ = extract_import_text(source.name, source.read_bytes(), material["content_type"])
+        if material.get("status") == "ocr_required" or (material.get("metadata") or {}).get("ocr_performed"):
+            raise ValueError("material_no_extractable_text")
         return text
     except ValueError as exc:
-        if str(exc) != "material_source_missing":
+        if str(exc) not in {"material_source_missing", "material_no_extractable_text"}:
             raise
         # Old index-only documents remain readable from their complete anchors.
         anchors = material_anchors(material_id, 1000)
         if not anchors:
             raise
         return "\n\n".join(str(item["text"]) for item in anchors)
+
+
+def apply_material_ocr(material_id: str, ocr_result: dict[str, object]) -> dict[str, object]:
+    material = get_material(material_id)
+    if str(material.get("source_type") or "") != "pdf":
+        raise ValueError("material_ocr_requires_pdf")
+    pages = ocr_result.get("pages") if isinstance(ocr_result, dict) else []
+    if not isinstance(pages, list):
+        raise ValueError("material_ocr_invalid_result")
+    for evidence_id in [str(value) for value in material.get("evidence_ids", []) if str(value)]:
+        remove_evidence(evidence_id)
+    evidence_ids: list[str] = []
+    for page in pages:
+        if not isinstance(page, dict):
+            continue
+        text = str(page.get("text") or "").strip()
+        if not text:
+            continue
+        page_number = max(1, int(page.get("page") or 1))
+        evidence_ids.append(add_evidence(record_to_material_evidence(
+            evidence_id=f"material-{material_id}-ocr-{page_number:04d}",
+            source_type="pdf",
+            title=str(material["title"]),
+            source_uri=str(material["source_uri"]),
+            locator=f"page {page_number}",
+            text=text,
+            material_id=material_id,
+            filename=str(material["filename"]),
+        )).evidence_id)
+    root = (DATA_DIR / "materials" / str(material_id)).resolve()
+    if not root.is_relative_to(DATA_DIR.resolve()):
+        raise ValueError("invalid_material_path")
+    ocr_path = root / "ocr.json"
+    _atomic_text(ocr_path, json.dumps(ocr_result, ensure_ascii=False, indent=2))
+    metadata = dict(material.get("metadata") or {})
+    metadata.update({"ocr_performed": True, "ocr_engine": ocr_result.get("engine", ""), "ocr_path": str(ocr_path), "ocr_verified": False})
+    connection, _ = _connect()
+    try:
+        connection.execute(
+            "UPDATE library_materials SET status=?, anchor_count=?, evidence_ids_json=?, owns_evidence=1, metadata_json=?, updated_at=? WHERE material_id=?",
+            ("ready" if evidence_ids else "ocr_required", len(evidence_ids), json.dumps(evidence_ids, ensure_ascii=False), json.dumps(metadata, ensure_ascii=False), datetime.now(timezone.utc).isoformat(), str(material_id)),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+    return get_material(material_id)
