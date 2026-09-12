@@ -29,7 +29,7 @@ from .adapters import MEDIA_ADAPTER_CONTRACT_VERSION, media_adapter_descriptors
 from .config import BACKEND_ORIGIN, DATA_DIR, DEPLOYMENT_MODE, LLM_API_KEY, LLM_BASE_URL, LLM_MAX_RETRIES, LLM_MODEL, LLM_REQUEST_TIMEOUT_SECONDS, MODEL_CACHE_DIR, PUBLIC_DEPLOYMENT, PUBLIC_PASSWORD, PUBLIC_USERNAME, STATIC_DIR, TASK_DIR, TEMP_DIR, UPLOAD_DIR, WEB_DIR, ensure_dirs
 from .downloader import effective_resource_kind, media_file_video_signature, preflight_media_resource
 from .media import MediaProcessingError, extract_video_clip, probe_duration, probe_media_integrity
-from .knowledge import add_evidence, answer_from_evidence, evidence_for_task, extract_import_text, remove_evidence, search_evidence
+from .knowledge import add_evidence, answer_from_evidence, evidence_for_task, extract_import_text, preserve_raw_import, remove_evidence, search_evidence
 from .integrations import notion_export_payload
 from .embeddings import embedding_status
 from .models import CurrentPageTaskRequest, EvidenceCoverage, MediaIntegrity, MediaPreflightRequest, PagePreflightRequest, RerunFromMediaRequest, ResourceCandidate, SourceEvidence, SourceInputRequest, StorageCleanupRequest, StudyCard, StudyCardPositionRequest, StudyCardStatusRequest, StudyPlanUpdateRequest, StudyReviewRequest, TaskOptions, TaskQuestionRequest, TaskRecord, TranscriptResult, now_iso
@@ -4143,20 +4143,21 @@ def api_knowledge_evidence(evidence: SourceEvidence) -> dict:
     return {"ok": True, "evidence": stored.model_dump(mode="json")}
 
 
-async def api_knowledge_import_file(file: UploadFile = File(...)) -> dict:
+async def api_knowledge_import_file(file: UploadFile = File(...), encoding: str = "") -> dict:
     filename = Path(file.filename or "evidence.txt").name
     content = await file.read()
     if len(content) > 20 * 1024 * 1024:
         raise HTTPException(status_code=413, detail={"code": "evidence_file_too_large", "message": "导入文件不能超过 20 MB。"})
     try:
-        text, source_type = extract_import_text(filename, content, file.content_type or "")
+        text, source_type = extract_import_text(filename, content, file.content_type or "", encoding=encoding)
+        raw_info = preserve_raw_import(content, filename)
         stored = add_evidence(SourceEvidence(
             source_type=source_type,
             title=Path(filename).stem[:500],
             source_uri=f"local://{filename}",
             locator="file",
             text=text,
-            metadata={"filename": filename, "content_type": file.content_type or ""},
+            metadata={"filename": filename, "content_type": file.content_type or "", "raw_sha256": raw_info["sha256"], "raw_byte_count": raw_info["byte_count"], "decoding_hint": encoding.strip()[:40]},
         ))
     except ValueError as exc:
         raise HTTPException(status_code=422, detail={"code": str(exc), "message": "无法从该文件提取可检索文本。"}) from exc
