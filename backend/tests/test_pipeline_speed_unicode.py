@@ -36,6 +36,13 @@ class UnicodePipelineTests(unittest.TestCase):
         self.assertEqual(decode_text_bytes("日本語字幕".encode("shift_jis")).text, "日本語字幕")
         self.assertEqual(canonicalize_unicode_text("Ãgua e Ãnimo"), "Ãgua e Ãnimo")
 
+    def test_decoder_reports_raw_bytes_without_replacing_the_source(self) -> None:
+        import hashlib
+        raw = "课程总结".encode("gb18030")
+        decoded = decode_text_bytes(raw)
+        self.assertEqual(decoded.byte_count, len(raw))
+        self.assertEqual(decoded.raw_sha256, hashlib.sha256(raw).hexdigest())
+
     def test_mojibake_is_repaired_or_blocked_without_silent_replacement(self) -> None:
         self.assertEqual(canonicalize_unicode_text("è¯¾ç¨‹æ€»ç»“"), "课程总结")
         gb_mojibake = "中文".encode("utf-8").decode("gb18030")

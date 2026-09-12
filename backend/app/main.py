@@ -1282,6 +1282,7 @@ def render_bundle_manifest(task: TaskRecord, transcript: dict, visual_index: dic
             "transcript": "transcript.json",
             "visual_index": "visual_index.json",
             "summary_diagnostics": "summary_diagnostics.json" if task.summary_diagnostics else "",
+            "claim_evidence": "claim_evidence_map.json" if read_json(task.id, "claim_evidence_map.json", {}) else "",
             "resource_inventory": "resource_inventory.json" if resource_inventory else "",
             "page_preflight_report": "page_preflight_report.json" if page_preflight else "",
             "media_available": task_media_file_exists(task),
@@ -2098,6 +2099,12 @@ def task_payload(task: TaskRecord) -> dict:
     payload["evidence_quality"] = evidence_quality
     payload["direct_extraction"] = direct_extraction_evidence(task)
     payload["queue"] = queue_status(TASK_DIR.parent, task.id)
+    claim_map = read_json(task.id, "claim_evidence_map.json", {})
+    payload["claim_evidence"] = {
+        "path": "claim_evidence_map.json" if claim_map else "",
+        "counts": claim_map.get("counts", {}) if isinstance(claim_map, dict) else {},
+        "quality": claim_map.get("quality", {}) if isinstance(claim_map, dict) else {},
+    }
     payload["audit"] = task_audit_summary(task)
     payload["recovery"] = diagnostic_recovery_profile(task)
     payload["reuse"] = task_reuse_evidence(task)
@@ -4386,6 +4393,18 @@ def api_task_audit(task_id: str) -> dict:
         raise HTTPException(status_code=404, detail="Task not found") from exc
 
 
+@app.get("/api/tasks/{task_id}/claims")
+def api_task_claims(task_id: str) -> dict:
+    try:
+        get_task(task_id)
+        claim_map = read_json(task_id, "claim_evidence_map.json", {})
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Task not found") from exc
+    if not isinstance(claim_map, dict) or not claim_map:
+        raise HTTPException(status_code=404, detail={"code": "claim_map_not_ready", "message": "这份任务尚未生成逐条来源映射。"})
+    return claim_map
+
+
 @app.get("/api/tasks/{task_id}/transcript")
 def api_transcript(task_id: str) -> dict:
     try:
@@ -4570,6 +4589,7 @@ def api_export_bundle(task_id: str) -> Response:
     qa_history = read_task_qa_history(task.id)
     qa_report = render_qa_history_markdown(task, qa_history)
     manifest = render_bundle_manifest(task, transcript, visual_index)
+    claim_map = read_json(task.id, "claim_evidence_map.json", {})
     resource_inventory = read_resource_inventory(task)
     page_preflight = read_page_preflight_report(task)
     generated_subtitles = "" if task.subtitle_path else render_transcript_srt(transcript)
@@ -4611,6 +4631,8 @@ def api_export_bundle(task_id: str) -> Response:
             archive.writestr("subtitles/generated-transcript.srt", generated_subtitles)
         if task.summary_diagnostics:
             archive.writestr("summary_diagnostics.json", json.dumps(task.summary_diagnostics, ensure_ascii=False, indent=2))
+        if isinstance(claim_map, dict) and claim_map:
+            archive.writestr("claim_evidence_map.json", json.dumps(claim_map, ensure_ascii=False, indent=2))
         for index, grid in enumerate(task.frame_grids):
             filename = Path(grid.path).name or f"grid_{index:03d}.jpg"
             _write_file_if_exists(archive, grid.path, f"grids/{filename}")
@@ -4636,6 +4658,7 @@ def api_export_sanitized_bundle(task_id: str) -> Response:
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Task not found") from exc
     qa_history = read_task_qa_history(task.id)
+    claim_map = read_json(task.id, "claim_evidence_map.json", {})
     if not note.strip() and not transcript.get("segments") and not visual_index.get("windows"):
         raise HTTPException(status_code=404, detail="Shareable study artifacts not found")
     safe_manifest = {
@@ -4649,7 +4672,7 @@ def api_export_sanitized_bundle(task_id: str) -> Response:
             "source_paths": False,
         },
         "task": {"id": task.id, "title": task.title, "source_type": task.source_type, "status": task.status},
-        "artifacts": {"note": bool(note.strip()), "transcript": bool(transcript.get("segments")), "visual_index": bool(visual_index.get("windows")), "qa": bool(qa_history)},
+        "artifacts": {"note": bool(note.strip()), "transcript": bool(transcript.get("segments")), "visual_index": bool(visual_index.get("windows")), "qa": bool(qa_history), "claim_evidence": bool(claim_map)},
     }
     buffer = BytesIO()
     with ZipFile(buffer, "w", ZIP_DEFLATED) as archive:
@@ -4660,6 +4683,15 @@ def api_export_sanitized_bundle(task_id: str) -> Response:
         archive.writestr("visual_index.json", json.dumps(visual_index, ensure_ascii=False, indent=2))
         if qa_history:
             archive.writestr("qa_history.json", json.dumps({"schema_version": 1, "items": qa_history}, ensure_ascii=False, indent=2))
+        if isinstance(claim_map, dict) and claim_map:
+            archive.writestr("claim_evidence_map.json", json.dumps({
+                "schema_version": claim_map.get("schema_version", 1),
+                "task_id": task.id,
+                "title": task.title,
+                "claims": claim_map.get("claims", []),
+                "counts": claim_map.get("counts", {}),
+                "quality": claim_map.get("quality", {}),
+            }, ensure_ascii=False, indent=2))
     filename = f"learnnote-{task.id}-sanitized-study.zip"
     headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
     return Response(buffer.getvalue(), media_type="application/zip", headers=headers)

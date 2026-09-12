@@ -42,10 +42,15 @@ def list_annotations(kind: str, source_id: str) -> list[dict]:
         path = _path(kind, source_id)
         if not path.is_file():
             return []
-        return json.loads(path.read_text(encoding="utf-8")).get("annotations", [])
+        items = json.loads(path.read_text(encoding="utf-8")).get("annotations", [])
+        return [
+            {**item, "anchor": item.get("anchor") if isinstance(item.get("anchor"), dict) else {}}
+            for item in items
+            if isinstance(item, dict)
+        ]
 
 
-def save_annotation(kind: str, source_id: str, text: str, quote: str = "", annotation_id: str = "") -> dict:
+def save_annotation(kind: str, source_id: str, text: str, quote: str = "", annotation_id: str = "", anchor: dict | None = None) -> dict:
     if not text.strip():
         raise ValueError("annotation_text_required")
     with _lock:
@@ -54,7 +59,12 @@ def save_annotation(kind: str, source_id: str, text: str, quote: str = "", annot
             raise ValueError("annotation_not_found")
         if len(items) >= 500 and not annotation_id:
             raise ValueError("annotation_limit_reached")
-        item = {"id": annotation_id or uuid4().hex, "text": text.strip(), "quote": quote.strip()}
+        safe_anchor = {}
+        for key in ("source_revision", "locator", "quote_hash", "selected_text"):
+            value = anchor.get(key) if isinstance(anchor, dict) else ""
+            if value:
+                safe_anchor[key] = str(value)[:1000]
+        item = {"id": annotation_id or uuid4().hex, "text": text.strip(), "quote": quote.strip(), "anchor": safe_anchor}
         items = [value for value in items if value["id"] != item["id"]]
         items.append(item)
         atomic_write_text(_path(kind, source_id), json.dumps({"schema_version": 1, "annotations": items}, ensure_ascii=False, indent=2))

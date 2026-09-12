@@ -1,0 +1,19 @@
+{
+  "extensionName": { "message": "LearnNote 当前视频助手" },
+  "extensionDescription": { "message": "识别当前正在播放的视频，并安全交接到本机 LearnNote 客户端。" },
+  "actionTitle": { "message": "打开 LearnNote 当前视频助手" },
+  "openClient": { "message": "打开工作台" },
+  "refreshTitle": { "message": "重新连接并识别视频" },
+  "refreshLabel": { "message": "重新连接并识别当前视频" },
+  "currentPage": { "message": "当前页面" },
+  "playing": { "message": "正在播放" },
+  "sendToClient": { "message": "发送到客户端" },
+  "openTask": { "message": "在客户端查看任务" },
+  "sourceInfo": { "message": "查看来源信息" },
+  "processingMode": { "message": "如何整理这个视频" },
+  "chooseProcessingMode": { "message": "选择处理方式" },
+  "subtitleOnly": { "message": "保存字幕原文" },
+  "summaryNote": { "message": "生成总结笔记" },
+  "visualNote": { "message": "图文笔记" },
+  "clientFeatures": { "message": "客户端功能" }
+}

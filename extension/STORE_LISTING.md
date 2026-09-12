@@ -35,7 +35,11 @@ Productivity
 ## Language
 
 - Primary: Simplified Chinese
-- Secondary: English
+- Secondary: English (runtime strings and manifest metadata)
+
+The extension includes Chrome locale resources in _locales/zh_CN and
+_locales/en. User video titles, subtitles, notes, and imported text are never
+translated or uploaded by the extension.
 
 ## Support and policy URLs
 

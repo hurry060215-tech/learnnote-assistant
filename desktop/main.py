@@ -876,6 +876,11 @@ class DesktopApi:
 
 def application_root() -> Path:
     if getattr(sys, "frozen", False):
+        if sys.platform == "darwin":
+            contents = Path(sys.executable).resolve().parent.parent
+            resources = contents / "Resources" / "LearnNote"
+            if resources.is_dir():
+                return resources
         return Path(sys.executable).resolve().parent
     return Path(__file__).resolve().parents[1]
 

@@ -14,6 +14,7 @@ from ..config import DATA_DIR
 from ..update_service import get_preferences as get_update_preferences
 from ..update_service import save_preferences as save_update_preferences
 from ..update_service import status as update_status
+from ..model_route import plan_route
 from ..integrations import integration_manifest
 from ..models import TaskOptions
 from ..storage import atomic_write_text, get_task
@@ -49,6 +50,25 @@ def api_get_update_preferences() -> dict:
 @system_router.put("/api/update/preferences")
 def api_put_update_preferences(payload: UpdatePreferences) -> dict:
     return {"ok": True, "preferences": save_update_preferences(payload.model_dump())}
+
+
+@system_router.get("/api/model/route")
+def api_model_route() -> dict:
+    from ..config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
+    from ..local_models import model_status
+    from ..summarizer import llm_model_supports_vision
+    from importlib.util import find_spec
+    local_asr = find_spec("faster_whisper") is not None
+    try:
+        local_model_ready = model_status("small").get("status") == "ready"
+    except Exception:
+        local_model_ready = False
+    return plan_route(
+        TaskOptions(),
+        local_asr_available=local_asr and local_model_ready,
+        model_configured=bool(LLM_API_KEY),
+        vision_configured=bool(LLM_API_KEY and llm_model_supports_vision(LLM_BASE_URL, LLM_MODEL)),
+    )
 
 
 @system_router.get("/api/local-models/{model}")

@@ -45,6 +45,10 @@ jobs:
           mkdir -p dist/LearnNote.app/Contents/Resources/LearnNote
           cp README.md LICENSE NOTICE THIRD_PARTY_NOTICES.md PRIVACY.md SECURITY.md SUPPORT.md dist/LearnNote.app/Contents/Resources/LearnNote/
           cp -R third_party dist/LearnNote.app/Contents/Resources/LearnNote/third_party
+          mkdir -p dist/LearnNote.app/Contents/Resources/LearnNote/extension/_locales
+          cp extension/manifest.json extension/background.js extension/content.js extension/page_hook.js extension/sidepanel.html extension/sidepanel.css extension/sidepanel.js extension/i18n.js extension/INSTALL.txt dist/LearnNote.app/Contents/Resources/LearnNote/extension/
+          cp -R extension/icons dist/LearnNote.app/Contents/Resources/LearnNote/extension/icons
+          cp -R extension/_locales/* dist/LearnNote.app/Contents/Resources/LearnNote/extension/_locales/
       - name: Sign and notarize macOS bundle when credentials are configured
         if: env.APPLE_SIGNING_IDENTITY != '' && env.APPLE_CERTIFICATE_BASE64 != '' && env.APPLE_NOTARY_APPLE_ID != '' && env.APPLE_NOTARY_PASSWORD != '' && env.APPLE_TEAM_ID != ''
         run: |

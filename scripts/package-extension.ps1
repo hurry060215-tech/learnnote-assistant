@@ -19,10 +19,12 @@ $files = @(
   "sidepanel.html",
   "sidepanel.css",
   "sidepanel.js",
+  "i18n.js",
   "INSTALL.txt"
 )
 $directories = @(
-  "icons"
+  "icons",
+  "_locales"
 )
 
 $manifestPath = Join-Path $extensionDir "manifest.json"

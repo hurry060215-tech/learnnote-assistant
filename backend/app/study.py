@@ -21,6 +21,7 @@ from .study_content import review_points
 
 STUDY_SCHEMA_VERSION = 3
 FSRS_ALGORITHM = "fsrs-6.3.2"
+ACTIVITY_KINDS = {"reading", "answer", "self_assessment", "review"}
 _SCHEDULER = FsrsScheduler(enable_fuzzing=False)
 
 
@@ -57,6 +58,9 @@ def _connect() -> sqlite3.Connection:
            difficulty REAL NOT NULL
            ,idempotency_key TEXT NOT NULL DEFAULT ''
         )"""
+    )
+    connection.execute(
+        "CREATE TABLE IF NOT EXISTS study_activity (activity_id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, source_id TEXT NOT NULL, occurred_at TEXT NOT NULL)"
     )
     columns = {row[1] for row in connection.execute("PRAGMA table_info(study_cards)").fetchall()}
     if "fsrs_state" not in columns:
@@ -228,6 +232,7 @@ def clear_study_data() -> dict[str, int]:
         card_count = int(connection.execute("SELECT COUNT(*) FROM study_cards").fetchone()[0])
         plan_count = int(connection.execute("SELECT COUNT(*) FROM study_plans").fetchone()[0])
         connection.execute("DELETE FROM study_reviews")
+        connection.execute("DELETE FROM study_activity")
         connection.execute("DELETE FROM study_cards")
         connection.execute("DELETE FROM study_plans")
         backup_root = (DATA_DIR / "study-schedule-backups").resolve()
@@ -352,6 +357,10 @@ def review_card(card_id: str, rating: int, idempotency_key: str = "") -> StudyCa
             "INSERT INTO study_reviews(card_id, rating, reviewed_at, due_at, stability, difficulty, idempotency_key) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (card_id, rating, updated.last_reviewed_at, updated.due_at, updated.stability, updated.difficulty, safe_key),
         )
+        connection.execute(
+            "INSERT INTO study_activity(kind, source_id, occurred_at) VALUES ('review', ?, ?)",
+            (card_id, updated.last_reviewed_at),
+        )
         connection.commit()
         return updated
     finally:
@@ -432,9 +441,62 @@ def study_summary() -> dict[str, object]:
         }
         due = int(connection.execute("SELECT COUNT(*) FROM study_cards WHERE status = 'active' AND (due_at = '' OR due_at <= ?)", (now.isoformat(),)).fetchone()[0])
         reviewed_today = int(connection.execute("SELECT COUNT(*) FROM study_reviews WHERE reviewed_at >= ? AND reviewed_at < ?", (start.isoformat(), end.isoformat())).fetchone()[0])
+        activity_today = {
+            str(row["kind"]): int(row["count"])
+            for row in connection.execute(
+                "SELECT kind, COUNT(*) AS count FROM study_activity WHERE occurred_at >= ? AND occurred_at < ? GROUP BY kind",
+                (start.isoformat(), end.isoformat()),
+            )
+        }
     finally:
         connection.close()
-    return {"schema_version": STUDY_SCHEMA_VERSION, "algorithm": FSRS_ALGORITHM, "counts": counts, "due_count": 0 if plan.paused else due, "reviewed_today": reviewed_today, "timezone": plan.timezone, "paused": plan.paused}
+    return {"schema_version": STUDY_SCHEMA_VERSION, "algorithm": FSRS_ALGORITHM, "counts": counts, "due_count": 0 if plan.paused else due, "reviewed_today": reviewed_today, "activity_today": activity_today, "timezone": plan.timezone, "paused": plan.paused}
+
+
+def record_activity(kind: str, source_id: str = "", occurred_at: str | None = None) -> dict[str, object]:
+    normalized = str(kind or "").strip().lower()
+    if normalized not in ACTIVITY_KINDS:
+        raise ValueError("invalid_activity_kind")
+    when = _parse_datetime(occurred_at or "") or datetime.now(timezone.utc)
+    connection = _connect()
+    try:
+        cursor = connection.execute(
+            "INSERT INTO study_activity(kind, source_id, occurred_at) VALUES (?, ?, ?)",
+            (normalized, str(source_id or "")[:128], when.astimezone(timezone.utc).isoformat()),
+        )
+        connection.commit()
+        return {"activity_id": int(cursor.lastrowid), "kind": normalized, "source_id": str(source_id or "")[:128], "occurred_at": when.astimezone(timezone.utc).isoformat()}
+    finally:
+        connection.close()
+
+
+def activity_summary(days: int = 30) -> dict[str, object]:
+    cap = max(1, min(int(days or 30), 365))
+    now = datetime.now(timezone.utc)
+    plan = get_study_plan()
+    zone = study_timezone(plan.timezone)
+    start_date = now.astimezone(zone).date() - timedelta(days=cap - 1)
+    start = datetime.combine(start_date, datetime.min.time(), tzinfo=zone).astimezone(timezone.utc)
+    connection = _connect()
+    try:
+        rows = connection.execute("SELECT kind, source_id, occurred_at FROM study_activity WHERE occurred_at >= ? ORDER BY occurred_at DESC", (start.isoformat(),)).fetchall()
+    finally:
+        connection.close()
+    by_kind = {kind: 0 for kind in sorted(ACTIVITY_KINDS)}
+    by_day: dict[str, dict[str, int]] = {}
+    for row in rows:
+        kind = str(row["kind"])
+        when = _parse_datetime(row["occurred_at"])
+        if kind not in by_kind or when is None:
+            continue
+        by_kind[kind] += 1
+        day = when.astimezone(zone).date().isoformat()
+        by_day.setdefault(day, {item: 0 for item in sorted(ACTIVITY_KINDS)})[kind] += 1
+    activity = []
+    for offset in range(cap):
+        day = (start_date + timedelta(days=offset)).isoformat()
+        activity.append({"date": day, **by_day.get(day, {item: 0 for item in sorted(ACTIVITY_KINDS)})})
+    return {"schema_version": 1, "timezone": plan.timezone, "days": activity, "by_kind": by_kind}
 
 
 def export_study_data() -> dict[str, object]:
@@ -451,6 +513,7 @@ def export_study_data() -> dict[str, object]:
         "exported_at": datetime.now(timezone.utc).isoformat(),
         "cards": [card.model_dump(mode="json") for card in cards],
         "reviews": reviews,
+        "activity": activity_summary(365)["days"],
         "plan": get_study_plan().model_dump(mode="json"),
     }
 
@@ -537,7 +600,7 @@ def study_dashboard(limit: int = 12, activity_days: int = 14) -> dict[str, objec
     connection = _connect()
     try:
         activity_rows = connection.execute(
-            "SELECT reviewed_at FROM study_reviews WHERE reviewed_at >= ?",
+            "SELECT kind, occurred_at FROM study_activity WHERE occurred_at >= ?",
             (datetime.combine(start_date, datetime.min.time(), tzinfo=zone).astimezone(timezone.utc).isoformat(),),
         ).fetchall()
         mistake_rows = connection.execute(
@@ -568,16 +631,18 @@ def study_dashboard(limit: int = 12, activity_days: int = 14) -> dict[str, objec
     finally:
         connection.close()
 
-    activity_by_day: dict[str, int] = {}
+    activity_by_day: dict[str, dict[str, int]] = {}
     for row in activity_rows:
-        reviewed_at = _parse_datetime(row["reviewed_at"])
-        if reviewed_at:
-            day = reviewed_at.astimezone(zone).date().isoformat()
-            activity_by_day[day] = activity_by_day.get(day, 0) + 1
+        occurred_at = _parse_datetime(row["occurred_at"])
+        kind = str(row["kind"])
+        if occurred_at and kind in ACTIVITY_KINDS:
+            day = occurred_at.astimezone(zone).date().isoformat()
+            activity_by_day.setdefault(day, {item: 0 for item in ACTIVITY_KINDS})[kind] += 1
     activity = []
     for offset in range(days):
         day = (start_date + timedelta(days=offset)).isoformat()
-        activity.append({"date": day, "review_count": activity_by_day.get(day, 0)})
+        daily = activity_by_day.get(day, {item: 0 for item in ACTIVITY_KINDS})
+        activity.append({"date": day, "review_count": daily["review"], "reading_count": daily["reading"], "answer_count": daily["answer"], "self_assessment_count": daily["self_assessment"]})
 
     mastery = {"new": 0, "learning": 0, "needs_attention": 0, "retained": 0}
     mastery.update({row["bucket"]: int(row["count"]) for row in mastery_rows})

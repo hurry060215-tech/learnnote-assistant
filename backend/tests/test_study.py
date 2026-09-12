@@ -9,7 +9,7 @@ from app.models import SourceEvidence
 from app.models import StudyCard
 from contextlib import closing
 import sqlite3
-from app.study import due_cards, export_study_data, get_study_plan, list_cards, propose_cards, review_card, review_history, save_cards, set_card_position, set_card_status, study_dashboard, study_summary, update_study_plan
+from app.study import activity_summary, due_cards, export_study_data, get_study_plan, list_cards, propose_cards, record_activity, review_card, review_history, save_cards, set_card_position, set_card_status, study_dashboard, study_summary, update_study_plan
 from app.study import rebuild_study_schedules, clear_study_data
 
 
@@ -83,6 +83,19 @@ class StudyLoopTests(unittest.TestCase):
                 self.assertTrue(updated_plan.paused)
                 reordered = set_card_position(stored[0].card_id, 42)
                 self.assertEqual(reordered.position, 42)
+
+    def test_activity_kinds_and_plan_timezone_are_preserved(self):
+        with tempfile.TemporaryDirectory() as directory, patch("app.study.DATA_DIR", Path(directory)):
+            update_study_plan("学习", 10, False, "Asia/Shanghai")
+            record_activity("reading", "task:one", "2026-09-12T15:59:00+00:00")
+            record_activity("answer", "task:one", "2026-09-12T16:01:00+00:00")
+            result = activity_summary(3)
+            summary = study_summary()
+        self.assertEqual(result["timezone"], "Asia/Shanghai")
+        self.assertEqual(result["by_kind"]["reading"], 1)
+        self.assertEqual(result["by_kind"]["answer"], 1)
+        self.assertEqual(summary["timezone"], "Asia/Shanghai")
+        self.assertIn("activity_today", summary)
 
     def test_dashboard_combines_due_quiz_mistakes_and_progress_locally(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

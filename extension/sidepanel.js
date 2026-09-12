@@ -856,6 +856,20 @@ function pageSwitchMessage() {
   return "页面或播放内容已切换，已丢弃旧预检结果。请确认当前视频后重新发送。";
 }
 
+async function ensureSitePermission(pageUrl = "") {
+  if (!globalThis.chrome?.permissions?.request) return true;
+  let url;
+  try {
+    url = new URL(pageUrl);
+  } catch {
+    return true;
+  }
+  if (!["http:", "https:"].includes(url.protocol)) return true;
+  const origin = url.protocol + "//" + url.host + "/*";
+  if (await chrome.permissions.contains?.({ origins: [origin] })) return true;
+  return chrome.permissions.request({ origins: [origin] });
+}
+
 async function sendToClient(modeOverride = "") {
   if (sending || !displayedIdentity) return false;
   if (typeof modeOverride !== "string") modeOverride = "";
@@ -874,6 +888,7 @@ async function sendToClient(modeOverride = "") {
     }
     setProgress(8, "正在连接 LearnNote...");
     if (!(await checkClient())) throw new Error("客户端未运行，请先打开 LearnNote");
+    if (!(await ensureSitePermission(expectedIdentity.canonical_page_url))) throw new Error("未获得当前站点权限，未读取或发送页面媒体；如需继续请再次点击发送并允许访问。");
     if (requestedMode !== "quick" && modelReadiness.configured === false) throw new Error("工作台尚未配置可用模型，请先设置模型，或改为仅提取字幕。本次没有开始处理视频。");
     if (requestedMode === "deep" && modelReadiness.supportsVision === false) throw new Error("当前模型不支持图片，请更换视觉模型或选择文字笔记。本次没有开始处理视频。");
 
@@ -1150,6 +1165,7 @@ function bindProductActions(){
   find("useClientPreferences")?.addEventListener?.("click",async()=>{const status=find("extensionOptionsStatus");try{const response=await fetchWithTimeout(`${backendUrl}/api/preferences`);if(!response.ok)throw new Error("请先连接客户端");const p=(await response.json()).task_options||{};for(const [id,key] of [["extensionStyle","note_style"],["extensionTemplate","note_template"]]){const el=find(id);if(el&&[...el.options].some(o=>o.value===p[key]))el.value=p[key];}if(find("extensionPrompt"))find("extensionPrompt").value=p.note_profile_prompt||"";if(status)status.textContent="已载入客户端的笔记风格、格式和额外要求。";}catch(e){if(status)status.textContent=e.message;}});
 }
 async function initialize() {
+  globalThis.LearnNoteI18n?.apply?.(document);
   bindEvents();
   bindProductActions();
   await loadBackendUrl();

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 import re
 import unicodedata
 from pathlib import Path
@@ -35,6 +36,8 @@ class DecodedText:
     encoding: str
     repaired: bool = False
     mojibake_score: int = 0
+    raw_sha256: str = ""
+    byte_count: int = 0
 
 
 _MOJIBAKE_MARKERS = (
@@ -243,7 +246,14 @@ def decode_text_bytes(content: bytes, *, source: str = "", reject_mojibake: bool
     if reject_mojibake and best.mojibake_score >= 4:
         label = f" ({source})" if source else ""
         raise TextDecodingError(f"text_mojibake_detected{label}")
-    return best
+    return DecodedText(
+        text=best.text,
+        encoding=best.encoding,
+        repaired=best.repaired,
+        mojibake_score=best.mojibake_score,
+        raw_sha256=hashlib.sha256(bytes(content or b"")).hexdigest(),
+        byte_count=len(content or b""),
+    )
 
 
 def read_canonical_text(path: Path, *, reject_mojibake: bool = True) -> DecodedText:

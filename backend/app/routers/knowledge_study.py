@@ -12,7 +12,7 @@ from ..embeddings import embedding_status
 from ..knowledge import add_evidence, answer_from_evidence, evidence_by_ids, evidence_for_task, extract_import_text, remove_evidence, search_evidence
 from ..models import SourceEvidence, StudyCard, StudyCardPositionRequest, StudyCardStatusRequest, StudyPlanUpdateRequest, StudyReviewRequest
 from ..note_document import normalize_note_markdown
-from ..study import clear_study_data, due_cards, export_study_data, get_study_plan, list_cards, propose_cards, review_card, review_history, save_cards, set_card_position, set_card_status, study_dashboard, study_summary, update_study_plan
+from ..study import activity_summary, clear_study_data, due_cards, export_study_data, get_study_plan, list_cards, propose_cards, record_activity, review_card, review_history, save_cards, set_card_position, set_card_status, study_dashboard, study_summary, update_study_plan
 from ..storage import get_task
 from ..study import initialize_study_timezone
 from ..study import rebuild_study_schedules
@@ -195,6 +195,23 @@ def api_study_card_reorder(card_id: str, request: StudyCardPositionRequest) -> d
 @study_router.get("/summary")
 def api_study_summary() -> dict:
     return study_summary()
+
+
+@study_router.get("/activity")
+def api_study_activity(days: int = 30) -> dict:
+    return activity_summary(days)
+
+
+@study_router.post("/activity")
+def api_record_study_activity(payload: dict | None = Body(default=None)) -> dict:
+    body = payload or {}
+    try:
+        return {"ok": True, "activity": record_activity(str(body.get("kind") or ""), str(body.get("source_id") or ""))}
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": str(exc), "message": "活动类型必须是 reading、answer、self_assessment 或 review。"},
+        ) from exc
 
 
 @study_router.get("/dashboard")

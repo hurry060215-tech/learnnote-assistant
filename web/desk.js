@@ -19,7 +19,8 @@ import {
 } from "/web/desk-api.js";
 const $ = (id) => document.getElementById(id);
 let renderedCues = [],
-  activeCueIndex = -1;
+  activeCueIndex = -1,
+  sourceCueRender = null;
 const state = {
   items: [],
   selected: null,
@@ -346,6 +347,10 @@ async function openItem(item, { remember = true, check = true } = {}) {
   $("editor").hidden = true;
   $("document").hidden = false;
   state.selected = item;
+  api("/api/study/activity", {
+    method: "POST",
+    body: JSON.stringify({ kind: "reading", source_id: item.kind + ":" + item.id }),
+  }).catch(() => {});
   window.dispatchEvent(
     new CustomEvent("learnnote:selection", { detail: item }),
   );
@@ -523,6 +528,47 @@ function renderStatus(reload = true) {
       ? priorProgress.open
       : t.status !== "success";
   panel.innerHTML = `<div class="task-status-heading"><strong>${esc(title)}</strong><button data-task-action="diagnostics">查看处理记录</button></div><p>${esc(taskExplanation(t))}</p>${timelineHtml(t, taskEvents.get(t.id)?.events || [], progressExpanded)}${t.awaiting_confirmation ? `<p class="task-plan">${t.options?.content_mode === "subtitles" ? "仅提取字幕 · 不调用模型" : `${t.options?.visual_understanding ? "图文笔记 · 视觉理解已启用" : "文字笔记 · 视觉理解关闭"} · ${esc(state.model.model || state.health.default_llm_model || "尚未配置模型")}`}</p>` : ""}<div class="task-status-actions">${action}</div>${raw}`;
+  if (t.claim_evidence?.path) {
+    const details = document.createElement("details");
+    details.className = "claim-evidence-details";
+    const summary = document.createElement("summary");
+    const quality = t.claim_evidence.quality || {};
+    summary.textContent = "逐条来源映射 · " + (quality.claim_count || 0) + " 条 · 已支持 " + (quality.supported_count || 0) + " 条";
+    details.append(summary);
+    const body = document.createElement("div");
+    body.className = "claim-evidence-body";
+    body.textContent = "展开后读取本地映射；这里的支持表示可定位来源，不代表课程事实已经被外部验证。";
+    details.append(body);
+    details.addEventListener("toggle", async () => {
+      if (!details.open || details.dataset.loaded) return;
+      details.dataset.loaded = "true";
+      try {
+        const mapped = await api("/api/tasks/" + t.id + "/claims");
+        const list = document.createElement("ol");
+        for (const claim of mapped.claims || []) {
+          const item = document.createElement("li");
+          const text = document.createElement("span");
+          text.textContent = ({"transcript": "字幕", "visual": "画面", "inference": "推断", "unsupported": "未支持"}[claim.claim_type] || "待核对") + " · " + claim.text;
+          item.append(text);
+          const evidence = (mapped.evidence || []).filter((candidate) => (claim.evidence_ids || []).includes(candidate.evidence_id));
+          for (const candidate of evidence.slice(0, 3)) {
+            const match = String(candidate.locator || "").match(/^([0-9.]+)-/);
+            if (!match || t.kind !== "task") continue;
+            const locate = document.createElement("button");
+            locate.type = "button";
+            locate.textContent = "定位 " + candidate.locator;
+            locate.onclick = () => openSource(Number(match[1]), t).catch(failure);
+            item.append(locate);
+          }
+          list.append(item);
+        }
+        body.replaceChildren(list);
+      } catch (error) {
+        body.textContent = error.message || "逐条来源暂时无法读取。";
+      }
+    });
+    panel.append(details);
+  }
   panel.dataset.status = needsSummary ? "needs-summary" : t.status;
   for (const button of panel.querySelectorAll("button"))
     button.disabled = Boolean(busy);
@@ -542,6 +588,7 @@ function closeSource() {
   document.body.classList.remove("source-open");
   $("player").pause();
   $("onlinePlayer")?.removeAttribute("src");
+  sourceCueRender = null;
 }
 async function openSource(seconds, sourceOverride = null) {
   const s = sourceOverride || state.selected;
@@ -558,6 +605,7 @@ async function openSource(seconds, sourceOverride = null) {
       remote.src = sourceVideoEmbed(s.page_url, Number(seconds || 0));
     }
     if (seconds === undefined) return;
+    if (sourceCueRender) sourceCueRender(seconds);
     if (transcript) transcript.open = true;
     if (!player.hidden) {
       player.currentTime = seconds;
@@ -626,6 +674,50 @@ async function openSource(seconds, sourceOverride = null) {
     const data = await api(`/api/tasks/${s.id}/transcript`);
     if (epoch !== state.epoch || request !== sourceRequest) return;
     const cues = data.segments || [];
+    sourceCueRender = null;
+    if (cues.length > 160) {
+      const content = $("sourceContent");
+      content.innerHTML = s.page_url
+        ? '<a href="' + esc(/^https?:/.test(s.page_url) ? s.page_url : "#") + '" target="_blank" rel="noreferrer">打开原网页 ↗</a>'
+        : "";
+      const viewport = document.createElement("div");
+      viewport.className = "virtual-cues";
+      content.append(viewport);
+      sourceCueRender = (focusSeconds) => {
+        if (typeof focusSeconds === "number") {
+          const focusIndex = cues.findLastIndex((cue) => Number(cue.start) <= focusSeconds);
+          if (focusIndex >= 0) content.scrollTop = Math.max(0, focusIndex * 72 - 80);
+        }
+        const estimatedHeight = 72;
+        const visibleStart = Math.max(0, Math.floor(content.scrollTop / estimatedHeight) - 8);
+        const visibleEnd = Math.min(cues.length, visibleStart + Math.ceil(Math.max(content.clientHeight, 280) / estimatedHeight) + 16);
+        viewport.style.paddingTop = visibleStart * estimatedHeight + "px";
+        viewport.style.paddingBottom = Math.max(0, cues.length - visibleEnd) * estimatedHeight + "px";
+        viewport.replaceChildren(...cues.slice(visibleStart, visibleEnd).map((cue, index) => {
+          const button = document.createElement("button");
+          button.className = "cue";
+          button.dataset.time = String(Number(cue.start) || 0);
+          button.setAttribute("aria-setsize", String(cues.length));
+          button.setAttribute("aria-posinset", String(visibleStart + index + 1));
+          const time = document.createElement("small");
+          time.textContent = timestamp(cue.start);
+          button.append(time, document.createTextNode(String(cue.text || "")));
+          return button;
+        }));
+        renderedCues = [...viewport.querySelectorAll(".cue")];
+      };
+      content.addEventListener("scroll", () => sourceCueRender(), { passive: true });
+      sourceCueRender();
+      panel.dataset.sourceKey = sourceKey;
+      panel.dataset.contentMode = "transcript";
+      if (transcript) {
+        transcript.querySelector("summary").textContent = "查看原始字幕 · " + cues.length + " 段";
+        transcript.open = !hasMedia || seconds !== undefined;
+      }
+      seek();
+      panel.scrollIntoView({ block: "nearest", behavior: "instant" });
+      return;
+    }
     $("sourceContent").innerHTML =
       (s.page_url
         ? `<a href="${esc(/^https?:/.test(s.page_url) ? s.page_url : "#")}" target="_blank" rel="noreferrer">打开原网页 ↗</a>`
@@ -765,7 +857,14 @@ $("annotationForm").onsubmit = async (e) => {
   try {
     await api(`/api/personal/${s.kind}/${s.id}`, {
       method: "POST",
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({
+        text,
+        quote: String(window.getSelection?.() || "").trim().slice(0, 1000),
+        anchor: {
+          source_revision: state.revision,
+          selected_text: String(window.getSelection?.() || "").trim().slice(0, 1000),
+        },
+      }),
     });
     if (epoch !== state.epoch) return;
     $("annotationText").value = "";

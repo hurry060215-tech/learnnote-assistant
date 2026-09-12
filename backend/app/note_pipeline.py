@@ -9,6 +9,7 @@ from .processor_state import ContentMismatchError
 from .note_document import build_note_document, normalize_note_markdown
 from .storage import task_dir, update_task, write_json
 from .summary_outcome import has_generated_summary, safe_summary_events, safe_summary_text, summary_failure_message
+from .claims import build_claim_evidence_map
 
 
 def finish_note_task(
@@ -124,13 +125,17 @@ def finish_note_task(
             summary_warning="笔记未发布：输出检查未通过",
         )
         return
-    note_document = build_note_document(title, note)
+    claim_evidence = build_claim_evidence_map(task_id, title, note, transcript, visual_windows)
+    claim_evidence_path = write_json(task_id, "claim_evidence_map.json", claim_evidence)
+    note_document = build_note_document(title, note, evidence=claim_evidence["evidence"])
     note_document_path = write_json(task_id, "note_document.json", note_document)
     summary_diagnostics["media_integrity"] = integrity.model_dump(mode="json")
     summary_diagnostics["evidence_coverage"] = evidence_coverage.model_dump(mode="json")
     summary_diagnostics["note_quality"] = normalized_note.report
     summary_diagnostics["note_quality_path"] = str(note_quality_path)
     summary_diagnostics["note_document_path"] = str(note_document_path)
+    summary_diagnostics["claim_evidence_map_path"] = str(claim_evidence_path)
+    summary_diagnostics["claim_evidence_quality"] = claim_evidence["quality"]
     summary_diagnostics_path = write_json(task_id, "summary_diagnostics.json", summary_diagnostics)
     note_path = task_dir(task_id) / "note.md"
     note_path.write_text(note, encoding="utf-8")

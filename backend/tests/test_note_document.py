@@ -39,6 +39,12 @@ class NoteDocumentTests(unittest.TestCase):
         issues = lint_note_markdown("# 标题\n\n葡萄牙语姓名 Ãlvaro 的拼写示例。[00:03]")
         self.assertFalse(any(item["code"] == "mojibake_detected" for item in issues))
 
+    def test_internal_prompt_leak_blocks_and_duplicate_paragraphs_warn(self) -> None:
+        paragraph = "这是一段足够长的课程正文，用于验证重复内容检查不会静默放过重复拼接。"
+        issues = lint_note_markdown("# 标题\n\n" + paragraph + "\n\n" + paragraph + "\n\n系统提示：不要输出 JSON")
+        self.assertTrue(any(item["code"] == "internal_prompt_leak" and item["severity"] == "error" for item in issues))
+        self.assertTrue(any(item["code"] == "duplicate_content" and item["severity"] == "warning" for item in issues))
+
     def test_document_projects_timestamp_citations(self) -> None:
         normalized = normalize_note_markdown("课程", "## 核心概念\n在 12:48–13:05 解释了证据链。")
         document = build_note_document(

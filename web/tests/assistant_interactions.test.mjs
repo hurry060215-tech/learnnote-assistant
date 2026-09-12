@@ -16,6 +16,8 @@ assert.doesNotMatch(product, /b\.after\(p\)/);
 assert.match(product, /globalItems\.map\(\(item\) => \(\{ item, source: null \}\)\)/);
 assert.match(product, /sourceItems\.map\(\(item\) => \(\{ item, source: s \}\)\)/);
 assert.match(workspace, /async function openSource\(seconds, sourceOverride = null\)/);
+assert.match(workspace, /cues\.length > 160/);
+assert.match(workspace, /aria-setsize/);
 assert.match(settings, /id='updateClientVersion'/);
 assert.match(settings, /id='updateExtensionVersion'/);
 assert.match(settings, /start_update_download/);

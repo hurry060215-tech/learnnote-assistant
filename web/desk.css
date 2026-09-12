@@ -1219,16 +1219,8 @@ button:has(svg) {
   border: 1px solid var(--line);
   padding: 6px 9px;
 }
-.assistant-citation-previews blockquote {
-  margin: 8px 0 0;
-  padding: 10px 12px;
-  border-left: 3px solid var(--accent);
-  background: var(--panel);
-}
-.assistant-citation-previews button {
-  margin-top: 6px;
-  font-size: 12px;
-}
+.assistant-citation-previews blockquote{margin:8px 0 0;padding:10px 12px;border-left:3px solid var(--accent);background:var(--panel)}
+.assistant-citation-previews button{margin-top:6px;font-size:12px}
 .save-ai-note {
   margin-top: 10px;
 }
@@ -1398,29 +1390,8 @@ body.assistant-visible .workspace {
 .settings-content section > footer {
   justify-content: flex-start;
 }
-.update-center-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  margin: 16px 0;
-}
-.update-card {
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 14px;
-  background: var(--panel);
-}
-.update-card h4 {
-  margin: 0 0 8px;
-}
-.update-card p {
-  margin: 6px 0 0;
-}
-@media (max-width: 700px) {
-  .update-center-grid {
-    grid-template-columns: 1fr;
-  }
-}
+.update-center-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:16px 0}.update-card{border:1px solid var(--line);border-radius:12px;padding:14px;background:var(--panel)}.update-card h4{margin:0 0 8px}.update-card p{margin:6px 0 0}
+@media (max-width:700px){.update-center-grid{grid-template-columns:1fr}}
 @media (max-width: 1250px) {
   .assistant-panel {
     box-shadow: -20px 0 70px #172b4020;
@@ -1935,6 +1906,7 @@ body.sidebar-collapsed {
 .task-status-actions:empty {
   display: none;
 }
+.claim-evidence-details{margin-top:14px;border-top:1px solid var(--line);padding-top:10px}.claim-evidence-body{margin-top:8px;color:var(--muted);font-size:12px}.claim-evidence-body ol{margin:8px 0 0;padding-left:24px}.claim-evidence-body li{margin:8px 0}.claim-evidence-body button{margin-left:8px;font-size:12px}
 .task-status-actions button {
   margin-top: 14px;
   border-color: var(--line);

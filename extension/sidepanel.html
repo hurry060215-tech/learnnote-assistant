@@ -13,7 +13,7 @@
         <img class="brand-mark" src="icons/icon48.png" width="36" height="36" alt="">
         <span><strong>LearnNote</strong></span>
       </a>
-      <button class="icon-button" id="refreshButton" type="button" title="重新连接并识别视频" aria-label="重新连接并识别当前视频">
+      <button class="icon-button" id="refreshButton" type="button" title="重新连接并识别视频" aria-label="重新连接并识别当前视频" data-i18n-title="refreshTitle" data-i18n-aria="refreshLabel">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.34 5.66M20 4v7h-7"/></svg>
       </button>
     </header>
@@ -22,13 +22,13 @@
       <section id="connectionCard" class="connection-card" data-state="checking" aria-live="polite">
         <span class="status-dot" aria-hidden="true"></span>
         <div><strong id="connectionTitle">正在连接客户端</strong><small id="connectionDetail">LearnNote 需要在本机运行</small></div>
-        <button id="openClientButton" type="button">打开工作台</button>
+        <button id="openClientButton" type="button" data-i18n="openClient">打开工作台</button>
       </section>
 
       <section class="video-card" aria-labelledby="videoTitle">
         <div class="eyebrow-row">
-          <span id="platformLabel">当前页面</span>
-          <span id="playingBadge" class="playing-badge" hidden><i></i>正在播放</span>
+          <span id="platformLabel" data-i18n="currentPage">当前页面</span>
+          <span id="playingBadge" class="playing-badge" hidden><i></i><span data-i18n="playing">正在播放</span></span>
         </div>
         <h1 id="videoTitle">正在识别当前视频...</h1>
         <p id="videoMeta" class="video-meta">请在视频页面开始播放</p>
@@ -51,11 +51,11 @@
       </section>
 
       <section class="handoff-card">
-        <h2 class="section-title">如何整理这个视频</h2>
-        <div class="processing-mode-choices" role="radiogroup" aria-label="选择处理方式">
-          <button type="button" data-processing-mode="quick" role="radio" aria-checked="false" tabindex="-1"><strong>保存字幕原文</strong><small>只保存逐字内容，不生成总结</small></button>
-          <button type="button" data-processing-mode="study" role="radio" class="active" aria-checked="true" tabindex="0"><strong>生成总结笔记</strong><small>提炼要点、大纲与结论，保留视频出处</small></button>
-          <button type="button" data-processing-mode="deep" role="radio" aria-checked="false" tabindex="-1"><strong>图文笔记</strong><small>结合字幕与画面，需要视觉模型</small></button>
+        <h2 class="section-title" data-i18n="processingMode">如何整理这个视频</h2>
+        <div class="processing-mode-choices" role="radiogroup" aria-label="选择处理方式" data-i18n-aria="chooseProcessingMode">
+          <button type="button" data-processing-mode="quick" role="radio" aria-checked="false" tabindex="-1"><strong data-i18n="subtitleOnly">保存字幕原文</strong><small>只保存逐字内容，不生成总结</small></button>
+          <button type="button" data-processing-mode="study" role="radio" class="active" aria-checked="true" tabindex="0"><strong data-i18n="summaryNote">生成总结笔记</strong><small>提炼要点、大纲与结论，保留视频出处</small></button>
+          <button type="button" data-processing-mode="deep" role="radio" aria-checked="false" tabindex="-1"><strong data-i18n="visualNote">图文笔记</strong><small>结合字幕与画面，需要视觉模型</small></button>
         </div>
         <p id="modeDescription" class="mode-description">优先读取已有字幕；缺少字幕时，在工作台确认后使用本地语音识别。不分析画面。</p>
         <div id="modelReadiness" class="model-readiness" hidden><span id="modelReadinessText"></span><button type="button" id="configureModelButton" data-client-view="settings" hidden>设置模型</button></div>
@@ -116,6 +116,7 @@
       </nav>
     </main>
 
+    <script src="i18n.js"></script>
     <script src="sidepanel.js?v=0.2.8"></script>
   </body>
 </html>
