@@ -12,6 +12,12 @@ from desktop import main, startup
 
 
 class StartupTests(unittest.TestCase):
+    def test_windowless_server_configuration_does_not_probe_missing_streams(self):
+        with patch.object(main.sys,"stdout",None), patch.object(main.sys,"stderr",None):
+            config=main.server_config(lambda *args:None,18898)
+        self.assertIsNone(config.log_config)
+        self.assertEqual(config.port,18898)
+
     def test_protocol_accepts_local_open_and_validated_port_only(self):
         self.assertIsNone(startup.protocol_port("learnnote://open"))
         self.assertEqual(startup.protocol_port("learnnote://open?port=18898"), 18898)

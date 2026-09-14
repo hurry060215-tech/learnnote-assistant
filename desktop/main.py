@@ -1197,6 +1197,15 @@ def desktop_route_matches(current_url: str, target_url: str) -> bool:
     return current_task == target_query.get("task") and current_query.get("tab", ["note"]) == target_query.get("tab", ["note"]) and current_query.get("view", ["workspace"]) == target_query.get("view", ["workspace"])
 
 
+def server_config(app, port: int, debug: bool = False):
+    # PyInstaller's windowless executable has no stdout/stderr. Uvicorn's
+    # default formatter probes isatty(), which otherwise aborts startup.
+    return uvicorn.Config(app, host="127.0.0.1", port=port,
+                          log_level="info" if debug else "warning",
+                          log_config=uvicorn.config.LOGGING_CONFIG if sys.stdout is not None and sys.stderr is not None else None,
+                          proxy_headers=False)
+
+
 def run_health_check(root: Path, preferred_port: int = 8765) -> int:
     """Start only the local service and verify its versioned health contract."""
     if os.name == "nt" and root.drive.upper() == "C:":
@@ -1212,7 +1221,7 @@ def run_health_check(root: Path, preferred_port: int = 8765) -> int:
         from app.main import app
 
         backend_url = f"http://127.0.0.1:{port}"
-        config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning", proxy_headers=False)
+        config = server_config(app, port)
         server = uvicorn.Server(config)
         server.install_signal_handlers = lambda: None
         thread = threading.Thread(target=server.run, name="learnnote-health-check", daemon=True)
@@ -1282,13 +1291,7 @@ def run_session(args, root: Path, session: DesktopSession) -> int:
     webview.settings["ALLOW_DOWNLOADS"] = True
 
     backend_url = f"http://127.0.0.1:{port}"
-    config = uvicorn.Config(
-        app,
-        host="127.0.0.1",
-        port=port,
-        log_level="info" if args.debug else "warning",
-        proxy_headers=False,
-    )
+    config = server_config(app, port, args.debug)
     server = uvicorn.Server(config)
     server.install_signal_handlers = lambda: None
     thread = threading.Thread(target=server.run, name="learnnote-backend", daemon=True)
@@ -1341,7 +1344,7 @@ def run_session(args, root: Path, session: DesktopSession) -> int:
     return 0
 
 
-def report_startup_error(error: Exception) -> None:
+def report_startup_error(error: Exception, *, interactive: bool = True) -> None:
     """Windowless packaged apps must explain failures instead of silently exiting."""
     log_path = application_root() / "startup-error.log"
     try:
@@ -1354,7 +1357,7 @@ def report_startup_error(error: Exception) -> None:
         message = "LearnNote 无法写入应用或数据目录。请检查目录权限，或把完整应用解压到可写入的非系统盘文件夹。"
     if log_path:
         message += f"\n\n诊断文件：{log_path}"
-    if os.name == "nt":
+    if interactive and os.name == "nt":
         try:
             import ctypes
             ctypes.windll.user32.MessageBoxW(None, message, "LearnNote · 启动提示", 0x10)
@@ -1369,7 +1372,7 @@ def run() -> int:
     try:
         return _run()
     except Exception as error:
-        report_startup_error(error)
+        report_startup_error(error, interactive="--health-check" not in sys.argv)
         return 1
 
 
