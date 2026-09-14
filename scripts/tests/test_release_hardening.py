@@ -37,7 +37,7 @@ class ReleaseHardeningContractTests(unittest.TestCase):
         self.assertIn("CurrentInstallerPath", source)
         self.assertIn("user-data-must-survive.txt", source)
         self.assertIn("learnnote-config.json", source)
-        self.assertIn("Current extension version", source)
+        self.assertIn("Current client version", source)
         self.assertIn("Uninstall removed the configured external data directory", source)
         self.assertNotIn("Remove-Item -LiteralPath $safeBase", source)
 

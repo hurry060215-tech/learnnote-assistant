@@ -68,6 +68,8 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Draft, history and connection recovery gate failed" }
             node scripts/core-output-acceptance.cjs http://127.0.0.1:8765 build/core-output
             if ($LASTEXITCODE -ne 0) { throw "Profile, optional models and subtitle navigation gate failed" }
+            node scripts/update-center-acceptance.cjs http://127.0.0.1:8765
+            if ($LASTEXITCODE -ne 0) { throw "Update controls and unsaved editing guard failed" }
             node scripts/product-workspace-acceptance.cjs http://127.0.0.1:8765 build/product-ui
             if ($LASTEXITCODE -ne 0) { throw "Product workspace gate failed" }
             node scripts/unified-workspace-acceptance.cjs http://127.0.0.1:8765 build/unified-ui

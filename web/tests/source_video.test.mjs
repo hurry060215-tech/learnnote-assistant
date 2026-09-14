@@ -6,6 +6,7 @@ const av=new URL(sourceVideoEmbed('https://www.bilibili.com/video/av117233128837
 assert.equal(av.searchParams.get('aid'),'117233128837493');
 assert.equal(av.searchParams.get('p'),'2'); assert.equal(av.searchParams.get('t'),'81');
 assert.equal(av.searchParams.get('autoplay'),'0');
+assert.equal(new URL(sourceVideoEmbed('https://www.bilibili.com/video/av123',21,300)).searchParams.get('t'),'321');
 assert.equal(sourceVideoEmbed('https://bilibili.com.evil.example/video/BV123'), '');
 assert.equal(sourceVideoEmbed('javascript:alert(1)'), '');
 assert.equal(sourceVideoEmbed('https://www.bilibili.com/video/BV123?p=-1'), '');

@@ -16,6 +16,7 @@ from threading import RLock
 from urllib.parse import urlparse
 
 import requests
+from .storage import atomic_write_text
 
 from . import APP_VERSION, UX_PROTOCOL_VERSION
 from .config import DATA_DIR, DEPLOYMENT_MODE, PROJECT_ROOT
@@ -131,11 +132,22 @@ def fetch_latest_release(*, force: bool = False) -> dict:
         headers={"Accept": "application/vnd.github+json", "User-Agent": "LearnNote-Updater"},
     )
     response.raise_for_status()
-    result = _release_payload(response.json())
+    raw = response.json()
+    result = _release_payload(raw)
     with _cache_lock:
         _release_cache = result
         _release_cache_at = time.time()
+        atomic_write_text(DATA_DIR / "config" / "release-cache.json", json.dumps({"release": raw, "checked_at": _release_cache_at}))
         return {**result, "cached": False, "checked_at": _release_cache_at}
+
+
+def _saved_release() -> dict | None:
+    try:
+        saved = json.loads((DATA_DIR / "config" / "release-cache.json").read_text(encoding="utf-8"))
+        result = _release_payload(saved["release"])
+        return {**result, "checked_at": float(saved["checked_at"]), "cached": True}
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
 
 
 def _extension_version() -> str:
@@ -184,18 +196,15 @@ def save_preferences(payload: dict) -> dict:
 
 def status(*, force: bool = False) -> dict:
     preferences = get_preferences()
-    latest = None
+    latest = _saved_release()
     error = ""
-    due = force or not preferences["last_checked_at"] or time.time() - preferences["last_checked_at"] >= CHECK_INTERVAL_SECONDS
+    due = force or (preferences["auto_check"] and (latest is None or time.time() - latest["checked_at"] >= CHECK_INTERVAL_SECONDS))
     if due:
         try:
-            latest = fetch_latest_release(force=force)
+            latest = fetch_latest_release(force=True)
             preferences = save_preferences({**preferences, "last_checked_at": latest["checked_at"]})
         except (requests.RequestException, ValueError) as exc:
             error = str(exc)
-    else:
-        with _cache_lock:
-            latest = dict(_release_cache) if _release_cache is not None else None
     if latest is not None and DEPLOYMENT_MODE != "desktop":
         latest = {
             **latest,

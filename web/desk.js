@@ -574,7 +574,13 @@ function renderStatus(reload = true) {
     details.className = "claim-evidence-details";
     const summary = document.createElement("summary");
     const quality = t.claim_evidence.quality || {};
-    summary.textContent = "逐条来源映射 · " + (quality.claim_count || 0) + " 条 · 已支持 " + (quality.supported_count || 0) + " 条";
+    summary.textContent = "逐条来源映射 · " + (quality.claim_count || 0) + " 条 · 原文匹配 " + (quality.supported_count || 0) + " 条";
+    if (quality.unsupported_count || quality.inference_count) {
+      const warning = document.createElement("p");
+      warning.className = "muted";
+      warning.textContent = "部分总结或推断尚未获得逐条核对，请展开来源映射检查。时间戳只用于定位，不代表结论已经验证。";
+      panel.append(warning);
+    }
     details.append(summary);
     const body = document.createElement("div");
     body.className = "claim-evidence-body";
@@ -591,7 +597,7 @@ function renderStatus(reload = true) {
           const text = document.createElement("span");
           text.textContent = ({"transcript": "字幕", "visual": "画面", "inference": "推断", "unsupported": "未支持"}[claim.claim_type] || "待核对") + " · " + claim.text;
           item.append(text);
-          const evidence = (mapped.evidence || []).filter((candidate) => (claim.evidence_ids || []).includes(candidate.evidence_id));
+          const evidence = (mapped.evidence || []).filter((candidate) => [...(claim.evidence_ids || []), ...(claim.candidate_evidence_ids || [])].includes(candidate.evidence_id));
           for (const candidate of evidence.slice(0, 3)) {
             const match = String(candidate.locator || "").match(/^([0-9.]+)-/);
             if (!match || t.kind !== "task") continue;
@@ -643,7 +649,7 @@ async function openSource(seconds, sourceOverride = null) {
   const seek = () => {
     const remote = $("onlinePlayer");
     if (remote && !remote.hidden && (seconds !== undefined || !remote.getAttribute("src"))) {
-      remote.src = sourceVideoEmbed(s.page_url, Number(seconds || 0));
+      remote.src = sourceVideoEmbed(s.page_url, Number(seconds || 0), Number(s.learning_range?.start || 0));
     }
     if (seconds === undefined) return;
     if (sourceCueRender) sourceCueRender(seconds);
@@ -690,7 +696,7 @@ async function openSource(seconds, sourceOverride = null) {
     online.referrerPolicy = "strict-origin-when-cross-origin";
     player.after(online);
   }
-  const embedUrl = !hasMedia && s.kind === "task" ? sourceVideoEmbed(s.page_url, Number(seconds || 0)) : "";
+  const embedUrl = !hasMedia && s.kind === "task" ? sourceVideoEmbed(s.page_url, Number(seconds || 0), Number(s.learning_range?.start || 0)) : "";
   online.hidden = !embedUrl;
   if (embedUrl) online.src = embedUrl;
   else online.removeAttribute("src");
@@ -1398,7 +1404,7 @@ installProductWorkspace({
   loadKey,
 });
 
-installSettings({ state, notice, loadKey });
+installSettings({ state, notice, loadKey, guard });
 installConnections({ state, notice, loadKey });
 
 window.addEventListener("learnnote:annotations", () =>

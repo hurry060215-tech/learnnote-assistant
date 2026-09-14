@@ -102,6 +102,23 @@ class DesktopApi:
         self._extension_update_cancel = threading.Event()
         self._extension_update_thread = None
         self._extension_update_state = {"phase": "idle", "version": "", "downloaded_bytes": 0, "total_bytes": 0, "progress": 0, "error": ""}
+        try:
+            saved = json.loads((self.data_dir / "config" / "client-update-state.json").read_text(encoding="utf-8"))
+            version = str(saved.get("version", ""))
+            expected = (self.data_dir / "installers" / f"v{version}" / WINDOWS_INSTALLER_NAME).resolve()
+            if re.fullmatch(r"\d+\.\d+\.\d+", version) and saved.get("phase") == "ready" and Path(saved.get("path", "")).resolve() == expected and expected.is_file() and re.fullmatch(r"[a-f0-9]{64}", str(saved.get("sha256", ""))):
+                self._update_state = saved
+        except (OSError, ValueError, TypeError):
+            pass
+
+    def _remember_download(self, result: dict) -> None:
+        with self._update_lock:
+            self._update_state.update({"phase":"ready", "version":result["version"], "path":result["path"], "sha256":result["sha256"], "progress":100, "downloaded_bytes":result["bytes"], "total_bytes":result["bytes"]})
+            path = self.data_dir / "config" / "client-update-state.json"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = path.with_suffix(".tmp")
+            temporary.write_text(json.dumps(self._update_state), encoding="utf-8")
+            temporary.replace(path)
 
     def _bind_window(self, window) -> None:
         self._window = window
@@ -421,7 +438,9 @@ class DesktopApi:
         return parsed.scheme == "https" and parsed.netloc == "github.com" and parsed.path == expected_path and not parsed.query and not parsed.fragment
 
     def download_update(self, version: str, url: str, sha256: str) -> dict:
-        return self._download_update(version, url, sha256)
+        result = self._download_update(version, url, sha256)
+        self._remember_download(result)
+        return result
 
     def _download_update(self, version: str, url: str, sha256: str, progress=None, cancel_event=None) -> dict:
         version = str(version or "").strip()
@@ -499,8 +518,10 @@ class DesktopApi:
             extension_version = str(manifest.get("version") or "").strip()
         except (OSError, ValueError):
             pass
-        client_version = extension_version
-        notes_path = self.app_root / "web" / "release-notes.json"
+        client_version = ""
+        notes_path = self.app_root / "_internal" / "web" / "release-notes.json"
+        if not notes_path.is_file():
+            notes_path = self.app_root / "web" / "release-notes.json"
         try:
             notes = json.loads(notes_path.read_text(encoding="utf-8"))
             client_version = str(notes.get("current") or client_version).strip()
@@ -517,7 +538,7 @@ class DesktopApi:
         """
         root = root.resolve()
         data_dir = self.data_dir.resolve()
-        if root == data_dir:
+        if root == data_dir or root.is_relative_to(data_dir):
             raise RuntimeError("更新前无法把应用文件与用户数据分开，原程序未改变。")
         rollback_root = (data_dir / "updates" / "rollback").resolve()
         if rollback_root.parent != (data_dir / "updates").resolve():
@@ -558,11 +579,16 @@ class DesktopApi:
         return snapshot
 
     def update_status(self, force: bool = False) -> dict:
+        client_version, _ = self._current_update_versions()
+        with self._update_lock:
+            if re.fullmatch(r"\d+\.\d+\.\d+", client_version) and self._update_state.get("phase") == "ready" and not self._version_is_newer(self._update_state.get("version", ""), client_version):
+                self._update_state = {"phase":"idle", "version":"", "progress":0}
+                (self.data_dir / "config" / "client-update-state.json").unlink(missing_ok=True)
         try:
             response = requests.get(
                 f"{self.backend_url}/api/update/status",
                 params={"force": "true" if force else "false"},
-                timeout=4.0,
+                timeout=12.0,
             )
             response.raise_for_status()
             result = response.json()
@@ -642,8 +668,7 @@ class DesktopApi:
             def worker() -> None:
                 try:
                     result = self._download_update(version, url, sha256, progress, self._update_cancel)
-                    with self._update_lock:
-                        self._update_state.update({"phase": "ready", "progress": 100, "path": result["path"], "sha256": result["sha256"]})
+                    self._remember_download(result)
                 except _UpdateCancelled:
                     with self._update_lock:
                         self._update_state.update({"phase": "cancelled", "error": ""})
@@ -875,6 +900,17 @@ class DesktopApi:
         return response.json()
 
     def install_update(self, version: str, installer_path: str) -> dict:
+        with self._update_lock:
+            if getattr(self, "_installing", False):
+                raise RuntimeError("更新安装已经启动，请等待完成。")
+            self._installing = True
+            try:
+                return self._install_verified_update(version, installer_path)
+            except Exception:
+                self._installing = False
+                raise
+
+    def _install_verified_update(self, version: str, installer_path: str) -> dict:
         version = str(version or "").strip()
         if not re.fullmatch(r"\d+\.\d+\.\d+", version):
             raise ValueError("Invalid update version")
@@ -882,12 +918,19 @@ class DesktopApi:
         installer = Path(str(installer_path or "")).resolve()
         if installer != update_dir / WINDOWS_INSTALLER_NAME or not installer.is_file():
             raise ValueError("Update installer is not ready")
+        expected_hash = self._update_state.get("sha256", "")
+        if self._update_state.get("version") != version or not re.fullmatch(r"[a-f0-9]{64}", expected_hash):
+            raise ValueError("请先通过更新中心下载并校验安装包。")
+        with installer.open("rb") as stream:
+            if hashlib.file_digest(stream, "sha256").hexdigest() != expected_hash:
+                raise ValueError("更新包已变化，原程序未改变。")
         root = application_root().resolve()
         app_path = (root / "LearnNote.exe").resolve()
         if root.drive.upper() == "C:" or not app_path.is_file() or self._window is None:
             raise RuntimeError("Automatic update is only available in the installed desktop client")
         current_version, _ = self._current_update_versions()
         rollback = self._create_rollback_snapshot(root, current_version or "previous")
+        restart_port = int(urlparse(self.backend_url).port or 8765)
 
         def ps_literal(value: Path | str) -> str:
             return "'" + str(value).replace("'", "''") + "'"
@@ -903,12 +946,28 @@ class DesktopApi:
             f"$app = {ps_literal(app_path)}",
             f"$installDir = {ps_literal(root)}",
             f"$dataDir = {ps_literal(self.data_dir.resolve())}",
+            f"$restartPort = {restart_port}",
+            "$env:LEARNNOTE_DATA_DIR = $dataDir",
             f"$rollback = {ps_literal(rollback)}",
             f"$log = {ps_literal(log_path)}",
             f"$resultFile = {ps_literal(update_dir / 'update-result.json')}",
             "function Copy-RollbackFiles {",
             "  param([string]$Source, [string]$Destination, [string]$PreserveData)",
-            "  Get-ChildItem -LiteralPath $Destination -Force | Where-Object { $_.FullName -ne $PreserveData } | Remove-Item -Recurse -Force",
+            "  $Destination = [IO.Path]::GetFullPath($Destination).TrimEnd('\\')",
+            "  $PreserveData = [IO.Path]::GetFullPath($PreserveData).TrimEnd('\\')",
+            "  if ($Destination -eq [IO.Path]::GetPathRoot($Destination).TrimEnd('\\')) { throw 'Unsafe rollback root' }",
+            "  function Clear-ProgramTree([string]$Folder) {",
+            "    foreach ($child in Get-ChildItem -LiteralPath $Folder -Force) {",
+            "      $full = [IO.Path]::GetFullPath($child.FullName).TrimEnd('\\')",
+            "      if (-not $full.StartsWith($Destination + '\\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Rollback path escapes app' }",
+            "      if (($child.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { continue }",
+            "      if ($full.Equals($PreserveData, [StringComparison]::OrdinalIgnoreCase) -or $full.StartsWith($PreserveData + '\\', [StringComparison]::OrdinalIgnoreCase)) { continue }",
+            "      if ($PreserveData.StartsWith($full + '\\', [StringComparison]::OrdinalIgnoreCase)) {",
+            "        if ($child.PSIsContainer) { Clear-ProgramTree $full }",
+            "      } else { Remove-Item -LiteralPath $full -Recurse -Force }",
+            "    }",
+            "  }",
+            "  Clear-ProgramTree $Destination",
             "  Copy-Item -Path (Join-Path $Source '*') -Destination $Destination -Recurse -Force",
             "}",
             "function Write-UpdateResult {",
@@ -921,19 +980,19 @@ class DesktopApi:
             "if ($result.ExitCode -ne 0) {",
             "  Copy-RollbackFiles $rollback $installDir $dataDir",
             "  Write-UpdateResult 'rolled_back' $result.ExitCode 'Installer failed; application files restored.'",
-            "  Start-Process -FilePath $app -WorkingDirectory $installDir",
+            "  Start-Process -FilePath $app -ArgumentList @('--port', $restartPort) -WorkingDirectory $installDir -WindowStyle Hidden",
             "  exit $result.ExitCode",
             "}",
-            "$health = Start-Process -FilePath $app -ArgumentList '--health-check' -WorkingDirectory $installDir -WindowStyle Hidden -Wait -PassThru",
+            "$health = Start-Process -FilePath $app -ArgumentList @('--health-check', '--port', $restartPort) -WorkingDirectory $installDir -WindowStyle Hidden -Wait -PassThru",
             "Add-Content -LiteralPath $log -Value ('LearnNote post-update health-check exit code: ' + $health.ExitCode)",
             "if ($health.ExitCode -ne 0) {",
             "  Copy-RollbackFiles $rollback $installDir $dataDir",
             "  Write-UpdateResult 'rolled_back' $health.ExitCode 'Post-update health check failed; application files restored.'",
-            "  Start-Process -FilePath $app -WorkingDirectory $installDir",
+            "  Start-Process -FilePath $app -ArgumentList @('--port', $restartPort) -WorkingDirectory $installDir -WindowStyle Hidden",
             "  exit $health.ExitCode",
             "}",
             "Write-UpdateResult 'healthy' 0 'Post-update health check passed.'",
-            "Start-Process -FilePath $app -WorkingDirectory $installDir",
+            "Start-Process -FilePath $app -ArgumentList @('--port', $restartPort) -WorkingDirectory $installDir -WindowStyle Hidden",
         ]) + "\n"
         script_path.write_text(script, encoding="utf-8-sig")
         subprocess.Popen(
@@ -1251,6 +1310,7 @@ def run_session(args, root: Path, session: DesktopSession) -> int:
             js_api=desktop_api,
         )
         desktop_api._bind_window(window)
+        app.state.desktop_update_api = desktop_api
         def focus_desktop(payload: dict | None = None) -> None:
             body = payload or {}
             task_id = str(body.get("task_id") or "")

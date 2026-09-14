@@ -77,14 +77,16 @@ class DeploymentContractTests(unittest.TestCase):
 
         self.assertIsNotNone(backend_version)
         self.assertIsNotNone(installer_version)
-        self.assertEqual(manifest_version, backend_version.group(1))
-        self.assertEqual(manifest_version, installer_version.group(1))
+        self.assertEqual(release_notes["component_versions"]["extension"], manifest_version)
+        client_version = backend_version.group(1)
+        self.assertEqual(release_notes["component_versions"]["client"], client_version)
+        self.assertEqual(client_version, installer_version.group(1))
         self.assertIn("/releases/latest", site_source)
         self.assertNotIn("/releases/download/", site_source)
-        self.assertIn(f"${{LEARNNOTE_IMAGE_TAG:-{manifest_version}}}", compose_source)
-        self.assertIn(f"${{LEARNNOTE_IMAGE_TAG:-{manifest_version}}}", local_compose_source)
-        self.assertEqual(manifest_version, release_notes["current"])
-        self.assertIn(manifest_version, {item["version"] for item in release_notes["releases"]})
+        self.assertIn(f"${{LEARNNOTE_IMAGE_TAG:-{client_version}}}", compose_source)
+        self.assertIn(f"${{LEARNNOTE_IMAGE_TAG:-{client_version}}}", local_compose_source)
+        self.assertEqual(client_version, release_notes["current"])
+        self.assertIn(client_version, {item["version"] for item in release_notes["releases"]})
 
     def test_real_extension_smoke_tracks_the_current_sidepanel_contract(self) -> None:
         sidepanel = (ROOT / "extension" / "sidepanel.html").read_text(encoding="utf-8")
@@ -122,7 +124,7 @@ class DeploymentContractTests(unittest.TestCase):
         self.assertIn("unins000.exe", smoke)
         self.assertIn("user-data-must-survive.txt", smoke)
         self.assertIn("_internal\\web\\release-notes.json", smoke)
-        self.assertIn("Installed release notes version", smoke)
+        self.assertIn("Installed extension does not match the declared component version", smoke)
         self.assertIn("D:\\LearnNoteReleaseSmoke", smoke)
 
     def test_macos_preview_workflow_has_unsigned_safe_fallback_and_optional_notarization(self) -> None:

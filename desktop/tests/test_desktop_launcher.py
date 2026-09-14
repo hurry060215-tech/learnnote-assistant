@@ -500,6 +500,7 @@ class DesktopLauncherTests(unittest.TestCase):
             (root / "LearnNote.exe").write_bytes(b"desktop app")
             api = desktop.DesktopApi(data_dir)
             api._bind_window(Window())
+            api._remember_download({"version":"9.8.7", "path":str(installer), "bytes":installer.stat().st_size, "sha256":hashlib.sha256(installer.read_bytes()).hexdigest()})
             with (
                 patch.object(desktop, "application_root", return_value=root),
                 patch.object(desktop.subprocess, "Popen") as popen,

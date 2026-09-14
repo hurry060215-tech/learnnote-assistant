@@ -8,6 +8,7 @@ from pathlib import Path
 
 from .models import EvidenceCoverage, EvidenceGate, TranscriptResult
 from .note_document import build_note_document, normalize_note_markdown
+from .claims import build_claim_evidence_map
 from .pipeline_progress import record_stage_duration, write_progressive_draft
 from .storage import get_task, task_dir, update_task, write_json
 from .summary_outcome import has_generated_summary, safe_summary_events, safe_summary_text, summary_failure_message
@@ -81,6 +82,8 @@ def finish_transcript_note(task_id: str, title: str, page_url: str, transcript: 
             return
         check_cancel(task_id)
         note_path = work_dir / "note.md"
+        claim_map = build_claim_evidence_map(task_id, title, normalized.markdown, transcript)
+        write_json(task_id, "claim_evidence_map.json", claim_map)
         note_path.write_text(normalized.markdown, encoding="utf-8")
         doc_path = write_json(task_id, "note_document.json", build_note_document(title, normalized.markdown))
         diagnostics.update({"note_quality_path": str(quality_path), "note_quality": normalized.report, "note_document_path": str(doc_path)})

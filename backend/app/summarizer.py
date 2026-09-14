@@ -473,6 +473,14 @@ def note_grounding_issues(
             break
 
     evidence = f"{title}\n{transcript.full_text}\n{visual_evidence}".lower()
+    # A valid timestamp cannot establish a contradictory quantity. Leave
+    # structural list numbers/timestamps out of this evidence check.
+    quantities = r"(?<![\d.])(\d+(?:\.\d+)?)\s*(摄氏度|℃|°c|%|％|美元|人民币|万元|元|公斤|千克|毫克|毫米|厘米|kg|mg)"
+    def values(value):
+        return {(float(number), {"℃":"摄氏度", "°c":"摄氏度", "％":"%", "kg":"千克", "公斤":"千克", "mg":"毫克"}.get(unit, unit)) for number, unit in re.findall(quantities, value.lower())}
+    missing_quantities = values(text) - values(evidence)
+    if missing_quantities:
+        issues.append("unsupported_quantity:" + ",".join(f"{number:g}{unit}" for number, unit in sorted(missing_quantities)))
     evidence_tokens = {
         token.lower().strip("._-")
         for token in re.findall(r"[A-Za-z][A-Za-z0-9+_.-]{2,}", evidence)

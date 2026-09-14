@@ -16,6 +16,21 @@ from app.summary_outcome import summary_failure_message
 
 
 class SubtitlesFirstTests(unittest.TestCase):
+    def test_nonzero_range_is_clipped_once_end_to_end(self):
+        cues=[BrowserSubtitleCue(start=300+i*10,end=309+i*10,text=f"第{i}句选中内容") for i in range(12)]
+        request=self.request(browser_subtitles=cues,active_video=ActiveVideoInfo(duration=600),learning_range={"start":300,"end":420})
+        task=create_task("current_page",request.title,request.page_url)
+        with patch("app.processor.MediaDownloader") as downloader, patch("app.processor.maybe_download_page_subtitle",return_value=None), patch("app.processor.summarize_with_diagnostics",return_value=("# 课程\n\n选中的课程内容综合总结。","text-llm","",[])) as summarize:
+            downloader.return_value.attempts=[]
+            downloader.return_value.resolved_title=""
+            process_current_page_task(task.id,request)
+            self.assertEqual(get_task(task.id).status,"success")
+            actual=summarize.call_args.args[1]
+            self.assertEqual(len(actual.segments),12)
+            self.assertEqual(actual.segments[0].start,0)
+            self.assertEqual(actual.segments[-1].end,119)
+            downloader.return_value.download.assert_not_called()
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         root = Path(self.temp.name)

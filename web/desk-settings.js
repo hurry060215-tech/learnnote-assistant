@@ -70,8 +70,23 @@ export function installSettings(ctx) {
     "<label class='check'><input type='checkbox' id='updateAutoDownload' checked>发现正式版后在后台下载完整安装包</label>" +
     "<div class='settings-inline-actions'><button type='button' id='checkUpdates'>立即检查</button><button type='button' id='downloadUpdate' hidden>后台下载</button><button type='button' id='cancelUpdate' hidden>取消下载</button><button type='button' class='primary' id='applyUpdate' hidden>重启并更新</button><a class='tool-link' id='updateReleaseLink' hidden target='_blank' rel='noreferrer'>查看版本说明 ↗</a></div>" +
     "<p id='updateDownloadStatus' class='settings-status' role='status' aria-live='polite'></p>";
-  let updateStatus = null, updateDownload = null, extensionDownload = null, updatePolling = 0, updateLoading = false;
-  const updateBridge = () => window.pywebview?.api;
+  let updateStatus = null, updateDownload = null, extensionDownload = null, updatePolling = 0, updateLoading = false, applyingUpdate = false;
+  async function updateAction(component, action, version) {
+    const body = JSON.stringify({component, action, version});
+    const intent = await api("/api/update/intent", {method:"POST", body});
+    return api("/api/update/action", {method:"POST", body, headers:{"Content-Type":"application/json", "X-LearnNote-Update-Intent":intent.token}});
+  }
+  const httpUpdateBridge = {
+    update_status: (force) => api("/api/update/status" + (force ? "?force=true" : "")),
+    start_update_download: (version) => updateAction("client","download",version),
+    apply_update: (version) => updateAction("client","apply",version),
+    cancel_update_download: () => updateAction("client","cancel",updateDownload?.version || "0.0.0"),
+    start_extension_update_download: (version) => updateAction("extension","download",version),
+    apply_extension_update: (version) => updateAction("extension","apply",version),
+    cancel_extension_update_download: () => updateAction("extension","cancel",extensionDownload?.version || "0.0.0"),
+    set_update_preferences: (auto_check, auto_download) => api("/api/update/preferences", {method:"PUT",body:JSON.stringify({auto_check,auto_download})}),
+  };
+  const updateBridge = () => window.pywebview?.api || (updateStatus?.capabilities?.desktop_controller ? httpUpdateBridge : null);
   function normalizeBridgeUpdate(result) {
     const currentVersion = state.health?.app_version || "0.0.0";
     const extensionVersion = state.health?.extension_version || "";
@@ -114,8 +129,9 @@ export function installSettings(ctx) {
     $("downloadUpdate").hidden = !canDownload || ["downloading", "cancelling", "ready"].includes(updateDownload?.phase);
     $("cancelUpdate").hidden = !["downloading", "cancelling"].includes(updateDownload?.phase);
     $("applyUpdate").hidden = !(updateDownload?.phase === "ready" && updateDownload?.path);
-    $("updateReleaseLink").hidden = !latest?.release_url;
-    if (latest?.release_url) $("updateReleaseLink").href = latest.release_url;
+    const releaseUrl = latest?.page_url || latest?.release_url;
+    $("updateReleaseLink").hidden = !releaseUrl;
+    if (releaseUrl) $("updateReleaseLink").href = releaseUrl;
     if (updateDownload?.phase && updateDownload.phase !== "idle") {
       const done = updateDownload.downloaded_bytes || 0, total = updateDownload.total_bytes || 0;
       $("updateDownloadStatus").textContent = updateDownload.phase === "downloading"
@@ -140,11 +156,11 @@ export function installSettings(ctx) {
       else result = await api("/api/update/status" + (force ? "?force=true" : ""));
       updateDownload = result.download || updateDownload || { phase: "idle" };
       extensionDownload = result.extension_download || extensionDownload || { phase: "idle" };
-      if (["ready", "failed", "cancelled"].includes(updateDownload.phase)) clearInterval(updatePolling);
-      if (["ready", "failed", "cancelled"].includes(extensionDownload.phase)) clearInterval(updatePolling);
+      if (![updateDownload.phase, extensionDownload.phase].some(phase => ["downloading", "cancelling"].includes(phase))) clearInterval(updatePolling);
       if (result.preferences) {
         $("updateAutoCheck").checked = result.preferences.auto_check !== false;
         $("updateAutoDownload").checked = result.preferences.auto_download !== false;
+        saved(["updates"]);
       }
       renderUpdateCenter(result);
       return result;
@@ -171,19 +187,23 @@ export function installSettings(ctx) {
     }
   }
   async function applyPreparedUpdate() {
-    if (!updateDownload?.path || !updateStatus?.latest || !updateBridge()) return;
-    if (!ctx.guard()) return;
+    if (applyingUpdate || !updateDownload?.path || !updateStatus?.latest || !updateBridge()) return;
+    if (updateDirty().length || !ctx.guard()) { $("updateDownloadStatus").textContent = "请先保存未完成的编辑与设置，再进行更新。"; return; }
     const active = state.items.filter((item) => ["queued", "running", "cancelling"].includes(item.status));
     if (active.length) {
       $("updateDownloadStatus").textContent = "还有 " + active.length + " 个任务正在处理，完成或停止后再更新。";
       return;
     }
     try {
+      applyingUpdate = true;
+      $("applyUpdate").disabled = true;
       const bridge = updateBridge();
       const result = bridge.apply_update ? await bridge.apply_update(updateStatus.latest.version, updateDownload.path, updateStatus.latest.client.sha256) : await bridge.install_update(updateStatus.latest.version, updateDownload.path);
       if (!result?.ok) throw new Error(result?.message || "更新未启动");
       $("updateDownloadStatus").textContent = "更新已排队，客户端将在关闭后安装并重新启动。";
     } catch (error) {
+      applyingUpdate = false;
+      $("applyUpdate").disabled = false;
       $("updateDownloadStatus").textContent = error.message || "更新未启动，原程序未改变。";
     }
   }
@@ -203,7 +223,7 @@ export function installSettings(ctx) {
   async function applyPreparedExtensionUpdate() {
     const latest = updateStatus?.latest, bridge = updateBridge(), asset = latest?.extension;
     if (!extensionDownload?.path || !asset?.sha256 || !bridge?.apply_extension_update) return;
-    if (!ctx.guard()) return;
+    if (updateDirty().length || !ctx.guard()) { $("updateExtensionAvailability").textContent = "请先保存未完成的编辑与设置，再进行更新。"; return; }
     const active = state.items.filter((item) => ["queued", "running", "cancelling"].includes(item.status));
     if (active.length) {
       $("updateExtensionAvailability").textContent = "还有 " + active.length + " 个任务正在处理，完成或停止后再更新扩展。";
@@ -246,6 +266,7 @@ export function installSettings(ctx) {
     try {
       if (bridge?.set_update_preferences) await bridge.set_update_preferences(payload.auto_check, payload.auto_download);
       else await api("/api/update/preferences", { method: "PUT", body: JSON.stringify(payload) });
+      saved(["updates"]);
     } catch (error) { notice(error.message); }
   };
   window.LearnNoteUpdates = {

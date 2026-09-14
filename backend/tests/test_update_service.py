@@ -52,7 +52,7 @@ class UpdateServiceTests(unittest.TestCase):
         self.assertEqual(checksum, result["client"]["sha256"])
         self.assertTrue(result["extension"]["available"])
 
-    def test_status_respects_persisted_24_hour_check_interval(self):
+    def test_missing_cache_is_rechecked_even_with_recent_timestamp(self):
         with tempfile.TemporaryDirectory() as directory:
             data_dir = Path(directory)
             (data_dir / "config").mkdir()
@@ -60,11 +60,17 @@ class UpdateServiceTests(unittest.TestCase):
                 json.dumps({"auto_check": True, "auto_download": True, "last_checked_at": 4102444800}),
                 encoding="utf-8",
             )
-            with patch.object(update_service, "DATA_DIR", data_dir), patch.object(update_service.requests, "get") as request:
+            with patch.object(update_service, "DATA_DIR", data_dir), patch.object(update_service.requests, "get", side_effect=update_service.requests.ConnectionError("offline")) as request:
                 result = update_service.status(force=False)
-            request.assert_not_called()
-            self.assertFalse(result["check_due"])
+            request.assert_called_once()
+            self.assertTrue(result["check_due"])
             self.assertIsNone(result["latest"])
+
+    def test_disabled_checks_do_not_access_network(self):
+        with tempfile.TemporaryDirectory() as root, patch.object(update_service, "DATA_DIR", Path(root)), patch.object(update_service.requests, "get") as request:
+            update_service.save_preferences({"auto_check":False})
+            self.assertFalse(update_service.status()["check_due"])
+            request.assert_not_called()
 
     def test_extension_asset_is_not_installable_without_trusted_digest_and_size(self):
         version = "9.8.7"
@@ -109,6 +115,11 @@ class UpdateServiceTests(unittest.TestCase):
             self.assertTrue(result["latest"]["client"]["url"].startswith("https://github.com/"))
             saved = json.loads((Path(directory) / "config" / "update-preferences.json").read_text(encoding="utf-8"))
             self.assertGreater(saved["last_checked_at"], 0)
+            with patch.object(update_service, "DATA_DIR", Path(directory)), patch.object(update_service,"_release_cache",None), patch.object(update_service.requests,"get") as request:
+                restarted = update_service.status()
+                self.assertEqual(restarted["latest"]["version"], "9.8.7")
+                self.assertFalse(restarted["check_due"])
+                request.assert_not_called()
 
 
 if __name__ == "__main__":

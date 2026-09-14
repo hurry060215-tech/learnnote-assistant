@@ -1,4 +1,5 @@
 from __future__ import annotations
+from .claims import safe_claim_projection
 
 from importlib.util import find_spec
 from io import BytesIO
@@ -2099,7 +2100,7 @@ def task_payload(task: TaskRecord) -> dict:
     payload["evidence_quality"] = evidence_quality
     payload["direct_extraction"] = direct_extraction_evidence(task)
     payload["queue"] = queue_status(TASK_DIR.parent, task.id)
-    claim_map = read_json(task.id, "claim_evidence_map.json", {})
+    claim_map = safe_claim_projection(read_json(task.id, "claim_evidence_map.json", {}))
     payload["claim_evidence"] = {
         "path": "claim_evidence_map.json" if claim_map else "",
         "counts": claim_map.get("counts", {}) if isinstance(claim_map, dict) else {},
@@ -4399,7 +4400,7 @@ def api_task_audit(task_id: str) -> dict:
 def api_task_claims(task_id: str) -> dict:
     try:
         get_task(task_id)
-        claim_map = read_json(task_id, "claim_evidence_map.json", {})
+        claim_map = safe_claim_projection(read_json(task_id, "claim_evidence_map.json", {}))
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Task not found") from exc
     if not isinstance(claim_map, dict) or not claim_map:
@@ -4591,7 +4592,7 @@ def api_export_bundle(task_id: str) -> Response:
     qa_history = read_task_qa_history(task.id)
     qa_report = render_qa_history_markdown(task, qa_history)
     manifest = render_bundle_manifest(task, transcript, visual_index)
-    claim_map = read_json(task.id, "claim_evidence_map.json", {})
+    claim_map = safe_claim_projection(read_json(task.id, "claim_evidence_map.json", {}))
     resource_inventory = read_resource_inventory(task)
     page_preflight = read_page_preflight_report(task)
     generated_subtitles = "" if task.subtitle_path else render_transcript_srt(transcript)
@@ -4660,7 +4661,7 @@ def api_export_sanitized_bundle(task_id: str) -> Response:
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Task not found") from exc
     qa_history = read_task_qa_history(task.id)
-    claim_map = read_json(task.id, "claim_evidence_map.json", {})
+    claim_map = safe_claim_projection(read_json(task.id, "claim_evidence_map.json", {}))
     if not note.strip() and not transcript.get("segments") and not visual_index.get("windows"):
         raise HTTPException(status_code=404, detail="Shareable study artifacts not found")
     safe_manifest = {

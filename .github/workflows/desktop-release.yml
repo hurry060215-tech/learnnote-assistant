@@ -100,7 +100,7 @@ jobs:
         shell: pwsh
         run: |
           Compress-Archive -Path dist/LearnNote/* -DestinationPath LearnNote-Windows-x64.zip
-          $version = (Get-Content extension/manifest.json -Raw -Encoding UTF8 | ConvertFrom-Json).version
+          $version = (Get-Content web/release-notes.json -Raw -Encoding UTF8 | ConvertFrom-Json).current
           & $env:LEARNNOTE_ISCC "/DMyAppVersion=$version" scripts/learnnote-installer.iss
           if ($LASTEXITCODE -ne 0) { throw "Release build or signing command failed" }
           Copy-Item dist-installer/LearnNote-Setup-x64.exe LearnNote-Setup-x64.exe
@@ -148,8 +148,9 @@ jobs:
         shell: pwsh
         run: |
           $manifest = Get-Content extension/manifest.json -Raw -Encoding UTF8 | ConvertFrom-Json
-          if ("v$($manifest.version)" -ne "${{ github.ref_name }}" -and "${{ github.ref_type }}" -eq "tag") {
-            throw "Tag ${{ github.ref_name }} does not match extension version v$($manifest.version)."
+          $clientVersion = (Get-Content web/release-notes.json -Raw -Encoding UTF8 | ConvertFrom-Json).current
+          if ("v$clientVersion" -ne "${{ github.ref_name }}" -and "${{ github.ref_type }}" -eq "tag") {
+            throw "Tag ${{ github.ref_name }} does not match client version v$clientVersion."
           }
           $extensionAsset = "LearnNote-Browser-Extension-v$($manifest.version).zip"
           ./scripts/package-extension.ps1 -OutputPath "$PWD/$extensionAsset"

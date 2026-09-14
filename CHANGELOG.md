@@ -2,6 +2,16 @@
 
 All notable changes to LearnNote are documented here. The project follows semantic versioning while the `0.x` series is under active development.
 
+## 0.2.9 - Local acceptance fixes
+
+- Repair update buttons and unsaved-settings protection; retain verified download metadata across restart and honor disabled automatic checks.
+- Protect nested data folders during rollback, reverify packages before execution, and preserve the active port in all restart paths.
+- Expose desktop-owned update actions to the local browser with strict origin checks and single-use intents; server deployments cannot install software.
+- Clip selected subtitle ranges once and map remote playback back to the original video offset.
+- Treat timestamps as location hints rather than support verification; flag ungrounded quantities and mark legacy claim mappings for review.
+- Keep the Google-review extension source and version at 0.2.8. Client, installer and extension versions are independently validated.
+- Add real browser update-control checks and a Windows rollback test with nested data sentinels. This is a local candidate, not a new public release.
+
 ## 0.2.8 - Reliable summaries and source navigation
 
 - Normalize paraphrased model titles without rejecting otherwise valid summaries; preserve fenced code and later section content.

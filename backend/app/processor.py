@@ -860,6 +860,7 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
             update_task(task_id, download_attempts=downloader.attempts)
             direct = parse_subtitle_or_none(subtitle_path) if subtitle_path else None
             cues = [BrowserSubtitleCue(start=s.start, end=s.end, text=s.text) for s in direct.segments] if direct else request.browser_subtitles
+            source_cues = cues
             duration = (request.active_video.duration if request.active_video else 0) or getattr(downloader, "resolved_duration", 0)
             if selected_range:
                 range_start, range_end = selected_range
@@ -873,14 +874,15 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
                 request.title = resolved_title
                 update_task(task_id, title=resolved_title)
             if usable and not request.options.visual_understanding and not request.options.local_ocr:
-                request = request.model_copy(update={"mode": "subtitle_only", "browser_subtitles": cues})
+                # Only the worker clips the source; the probe above is relative.
+                request = request.model_copy(update={"mode": "subtitle_only", "browser_subtitles": source_cues})
                 if duration and not request.active_video:
                     request.active_video = ActiveVideoInfo(duration=duration)
                 update_task(task_id, mode="subtitle_only", browser_subtitles=cues)
                 record_stage_duration(task_id, "download", time.monotonic(), status="skipped")
                 record_stage_duration(task_id, "media", time.monotonic(), status="skipped")
                 record_stage_duration(task_id, "visual", time.monotonic(), status="skipped")
-                process_subtitle_only_task(task_id, request, transcript=direct, start_attempt=False)
+                process_subtitle_only_task(task_id, request, transcript=None if selected_range else direct, start_attempt=False)
                 return
             if request.options.content_mode == "subtitles":
                 _fail(task_id, "subtitles_unavailable", "没有取得可用的已有字幕。本次未下载视频、未转写、未调用模型；可以在已登录的网页重新识别，或切换为文字笔记。")
@@ -970,6 +972,12 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
             return
         update_task(task_id, download_attempts=downloader.attempts)
 
+        if selected_range:
+            original_transcript = parse_subtitle_or_none(subtitle_path) if subtitle_path else None
+            original_cues = [BrowserSubtitleCue(start=s.start, end=s.end, text=s.text) for s in original_transcript.segments] if original_transcript else request.browser_subtitles
+            clipped_cues = _slice_browser_subtitles(original_cues, *selected_range)
+            request = request.model_copy(update={"browser_subtitles": clipped_cues})
+            subtitle_path = write_browser_subtitles_srt(task_id, transcript_from_browser_subtitles(clipped_cues)) if clipped_cues else None
         _process_video_file(
             task_id=task_id,
             input_path=media_path,
@@ -1024,6 +1032,7 @@ def process_subtitle_only_task(task_id: str, request: CurrentPageTaskRequest, *,
             raise ContentMismatchError("学习范围无效：结束位置必须大于开始位置。")
         if selected_range:
             range_start, range_end = selected_range
+            transcript = None
             request = request.model_copy(update={
                 "browser_subtitles": _slice_browser_subtitles(request.browser_subtitles, range_start, range_end),
                 "active_video": request.active_video.model_copy(update={"duration": range_end - range_start, "current_time": 0}) if request.active_video else None,
