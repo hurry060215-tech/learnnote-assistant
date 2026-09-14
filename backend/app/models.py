@@ -171,6 +171,7 @@ class CurrentPageTaskRequest(BaseModel):
     page_preflight_report: dict[str, Any] = Field(default_factory=dict)
     active_video: ActiveVideoInfo | None = None
     browser_subtitles: list[BrowserSubtitleCue] = Field(default_factory=list)
+    learning_range: dict[str, float] = Field(default_factory=dict)
     resources: list[ResourceCandidate] = Field(default_factory=list)
     drm_detected: bool = False
     drm_signals: list[DrmSignal] = Field(default_factory=list)

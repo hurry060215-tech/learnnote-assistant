@@ -118,6 +118,7 @@ const fs = require("node:fs");
     await p.locator('[data-settings-section="storage"]').click();
     await p.locator('[data-settings-page="storage"] summary').click();
     await p.locator("#studyTools").click();
+    await p.getByText("调整每日目标与时区", {exact:true}).click();
     await p.waitForSelector("#dailyTarget");
     await p.locator("#dailyTarget").fill("12");
     await p.locator("#planForm button").click();

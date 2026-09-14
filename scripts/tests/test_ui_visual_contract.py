@@ -24,6 +24,7 @@ class UiVisualContractTests(unittest.TestCase):
         script = (ROOT / "scripts" / "audit-i18n.py").read_text(encoding="utf-8")
         self.assertIn("missing_keys", script)
         self.assertIn("i18n_before_app", script)
+        self.assertIn("extension_locale_mismatch", script)
 
 
 if __name__ == "__main__":

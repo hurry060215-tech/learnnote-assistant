@@ -109,6 +109,51 @@ class TaskQueueTests(unittest.TestCase):
             self.assertEqual(order, list(range(5)))
             self.assertTrue(all(row["state"] == "done" for row in queue.entries()))
 
+    def test_light_work_is_served_between_heavy_jobs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            queue = LocalTaskQueue(Path(directory))
+            first_started, release = threading.Event(), threading.Event()
+            order = []
+
+            def first():
+                first_started.set()
+                release.wait(3)
+                order.append("heavy-1")
+
+            first_future = queue.enqueue("heavy-1", "local", first)
+            self.assertTrue(first_started.wait(2))
+            light = queue.enqueue("light", "light", lambda: order.append("light"))
+            heavy = queue.enqueue("heavy-2", "local", lambda: order.append("heavy-2"))
+            release.set()
+            first_future.result(5)
+            light.result(5)
+            heavy.result(5)
+            queue.stop()
+            self.assertEqual(order, ["heavy-1", "light", "heavy-2"])
+
+    def test_queue_status_reports_durable_position_and_kind(self):
+        with tempfile.TemporaryDirectory() as directory:
+            queue = LocalTaskQueue(Path(directory))
+            started, release = threading.Event(), threading.Event()
+            def hold():
+                started.set()
+                release.wait(15)
+            first = queue.enqueue("first", "local", hold)
+            try:
+                self.assertTrue(started.wait(5))
+                second = queue.enqueue("second", "light", lambda: None)
+                third = queue.enqueue("third", "local", lambda: None)
+                from app.task_queue import queue_status
+                snapshot = queue_status(Path(directory), "second")
+                self.assertEqual(snapshot["kind"], "light")
+                self.assertEqual(snapshot["position"], 1)
+                self.assertEqual(queue_status(Path(directory), "third")["position"], 2)
+                self.assertEqual(queue_status(Path(directory), "first")["position"], 0)
+            finally:
+                release.set()
+                first.result(5)
+                queue.stop()
+
     def test_backpressure_and_failed_job_do_not_stall_queue(self):
         with tempfile.TemporaryDirectory() as directory:
             queue = LocalTaskQueue(Path(directory))

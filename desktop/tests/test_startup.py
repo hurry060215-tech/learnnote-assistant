@@ -12,6 +12,12 @@ from desktop import main, startup
 
 
 class StartupTests(unittest.TestCase):
+    def test_windowless_server_configuration_does_not_probe_missing_streams(self):
+        with patch.object(main.sys,"stdout",None), patch.object(main.sys,"stderr",None):
+            config=main.server_config(lambda *args:None,18898)
+        self.assertIsNone(config.log_config)
+        self.assertEqual(config.port,18898)
+
     def test_protocol_accepts_local_open_and_validated_port_only(self):
         self.assertIsNone(startup.protocol_port("learnnote://open"))
         self.assertEqual(startup.protocol_port("learnnote://open?port=18898"), 18898)
@@ -83,6 +89,11 @@ class StartupTests(unittest.TestCase):
             self.assertEqual(main.run_session(SimpleNamespace(port=18898), Path("unused"), Mock()), 0)
             open_url.assert_called_once_with("http://127.0.0.1:18898")
             configure.assert_not_called()
+
+    def test_health_check_flag_uses_headless_service_probe(self):
+        with patch.object(main.sys, "argv", ["LearnNote.exe", "--health-check"]), patch.object(main, "application_root", return_value=Path("D:/LearnNote")), patch.object(main, "wait_for_process_exit"), patch.object(main, "run_health_check", return_value=0) as health:
+            self.assertEqual(main._run(), 0)
+        health.assert_called_once_with(Path("D:/LearnNote"), 8765)
 
     def test_repeated_launch_waits_for_same_data_session(self):
         session = Mock()

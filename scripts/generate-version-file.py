@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def main() -> int:
     output = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "build" / "learnnote-version.txt"
     manifest = json.loads((ROOT / "extension" / "manifest.json").read_text(encoding="utf-8"))
-    version = str(manifest["version"])
+    version = str(json.loads((ROOT / "web" / "release-notes.json").read_text(encoding="utf-8"))["current"])
     parts = [int(item) for item in version.split(".")]
     if len(parts) != 3:
         raise ValueError(f"Expected MAJOR.MINOR.PATCH, got {version}")

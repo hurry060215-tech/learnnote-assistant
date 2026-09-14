@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import hashlib
 import json
 import re
 import sqlite3
@@ -67,6 +68,24 @@ class _VisibleTextParser(HTMLParser):
 
 def _db_path() -> Path:
     return DATA_DIR / "library.sqlite3"
+
+
+def preserve_raw_import(content: bytes, filename: str = "") -> dict[str, object]:
+    """Store the exact uploaded bytes next to the decoded evidence metadata."""
+    raw = bytes(content or b"")
+    digest = hashlib.sha256(raw).hexdigest()
+    suffix = re.sub(r"[^a-z0-9]+", "", Path(filename or "").suffix.lower())[:12]
+    target = DATA_DIR / "raw-imports" / f"{digest}{suffix}"
+    if not target.is_file():
+        temporary = target.with_name(f".{target.name}.{uuid4().hex}.tmp")
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            temporary.write_bytes(raw)
+            temporary.replace(target)
+        except OSError as exc:
+            temporary.unlink(missing_ok=True)
+            raise ValueError("import_raw_storage_failed") from exc
+    return {"sha256": digest, "byte_count": len(raw)}
 
 
 def _connect() -> sqlite3.Connection:
@@ -349,7 +368,7 @@ def answer_from_evidence(question: str, limit: int = 6, mode: str = "lexical") -
     }
 
 
-def extract_import_text(filename: str, content: bytes, content_type: str = "") -> tuple[str, str]:
+def extract_import_text(filename: str, content: bytes, content_type: str = "", encoding: str = "") -> tuple[str, str]:
     suffix = Path(filename or "").suffix.lower()
     if suffix == ".pdf" or "pdf" in content_type.lower():
         try:
@@ -372,7 +391,7 @@ def extract_import_text(filename: str, content: bytes, content_type: str = "") -
         except Exception as exc:
             raise ValueError("pdf_text_extraction_unavailable") from exc
     try:
-        decoded = decode_text_bytes(content, source=Path(filename or "document").name).text
+        decoded = decode_text_bytes(content, source=Path(filename or "document").name, encoding=encoding).text
     except TextDecodingError as exc:
         raise ValueError("text_encoding_unsupported") from exc
     if len(decoded) > MAX_EXTRACTED_TEXT_CHARS:

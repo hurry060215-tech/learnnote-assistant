@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import codecs
+import hashlib
 import re
 import unicodedata
 from pathlib import Path
@@ -35,6 +37,8 @@ class DecodedText:
     encoding: str
     repaired: bool = False
     mojibake_score: int = 0
+    raw_sha256: str = ""
+    byte_count: int = 0
 
 
 _MOJIBAKE_MARKERS = (
@@ -143,9 +147,23 @@ def canonicalize_unicode_text(value: str, *, reject_mojibake: bool = True) -> st
     return text
 
 
-def _decode_candidates(content: bytes) -> list[tuple[str, str]]:
+def _decode_candidates(content: bytes, requested_encoding: str = "") -> list[tuple[str, str]]:
     if not content:
         return [("utf-8", "")]
+    if requested_encoding:
+        normalized = str(requested_encoding).strip().lower().replace("-", "_")
+        aliases = {"utf8": "utf_8", "utf8_sig": "utf_8_sig", "gb2312": "gb18030"}
+        normalized = aliases.get(normalized, normalized)
+        try:
+            canonical = codecs.lookup(normalized).name.replace("-", "_")
+        except LookupError:
+            return []
+        if canonical not in _ALLOWED_DETECTED_ENCODINGS:
+            return []
+        try:
+            return [(normalized, content.decode(normalized, errors="strict"))]
+        except (UnicodeDecodeError, UnicodeError):
+            return []
     candidates: list[tuple[str, str]] = []
     if content.startswith((b"\xff\xfe\x00\x00", b"\x00\x00\xfe\xff")):
         encodings = ("utf-32",)
@@ -209,11 +227,11 @@ def _decode_quality_penalty(text: str) -> int:
     return penalty
 
 
-def decode_text_bytes(content: bytes, *, source: str = "", reject_mojibake: bool = True) -> DecodedText:
+def decode_text_bytes(content: bytes, *, source: str = "", reject_mojibake: bool = True, encoding: str = "") -> DecodedText:
     """Decode common subtitle encodings strictly; never discard invalid bytes."""
 
     decoded: list[tuple[int, int, DecodedText]] = []
-    for priority, (encoding, raw_text) in enumerate(_decode_candidates(bytes(content or b""))):
+    for priority, (candidate_encoding, raw_text) in enumerate(_decode_candidates(bytes(content or b""), encoding)):
         try:
             repaired_text, repaired = _repair_utf8_mojibake(raw_text)
             text = canonicalize_unicode_text(repaired_text, reject_mojibake=False)
@@ -225,7 +243,7 @@ def decode_text_bytes(content: bytes, *, source: str = "", reject_mojibake: bool
         decoded.append(
             (priority, raw_penalty, DecodedText(
                 text=text,
-                encoding=encoding,
+                encoding=candidate_encoding,
                 repaired=repaired,
                 mojibake_score=mojibake_score(text),
             ))
@@ -243,7 +261,14 @@ def decode_text_bytes(content: bytes, *, source: str = "", reject_mojibake: bool
     if reject_mojibake and best.mojibake_score >= 4:
         label = f" ({source})" if source else ""
         raise TextDecodingError(f"text_mojibake_detected{label}")
-    return best
+    return DecodedText(
+        text=best.text,
+        encoding=best.encoding,
+        repaired=best.repaired,
+        mojibake_score=best.mojibake_score,
+        raw_sha256=hashlib.sha256(bytes(content or b"")).hexdigest(),
+        byte_count=len(content or b""),
+    )
 
 
 def read_canonical_text(path: Path, *, reject_mojibake: bool = True) -> DecodedText:

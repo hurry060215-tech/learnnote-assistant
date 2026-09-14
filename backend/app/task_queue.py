@@ -17,6 +17,7 @@ from typing import Callable
 from .worker_lease import worker_lease
 
 MAX_PENDING_TASKS = 24
+LIGHT_TASK_KINDS = {"light", "summary"}
 
 
 class QueueFull(ValueError):
@@ -32,6 +33,7 @@ class LocalTaskQueue:
         self.jobs: dict[str, tuple[Callable, Future]] = {}
         self.worker: threading.Thread | None = None
         self.stopping = False
+        self.last_kind = ""
         with closing(self.connect()) as db:
             db.execute("CREATE TABLE IF NOT EXISTS jobs (sequence INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT UNIQUE NOT NULL, kind TEXT NOT NULL, requires_context INTEGER NOT NULL, state TEXT NOT NULL, updated_at REAL NOT NULL)")
             db.commit()
@@ -76,8 +78,10 @@ class LocalTaskQueue:
                 if not self.jobs or self.stopping:
                     self.worker = None
                     return
-                task_id = next(iter(self.jobs))
+                task_id = self._next_task_id()
                 callback, future = self.jobs[task_id]
+                row = self._job_row(task_id)
+                self.last_kind = str(row["kind"] if row else "")
                 if not future.set_running_or_notify_cancel():
                     self.jobs.pop(task_id, None)
                     self.set_state(task_id, "cancelled")
@@ -107,6 +111,25 @@ class LocalTaskQueue:
                 future.set_exception(failure)
             else:
                 future.set_result(None)
+
+    def _job_row(self, task_id: str) -> dict | None:
+        with closing(self.connect()) as db:
+            db.row_factory = sqlite3.Row
+            row = db.execute("SELECT * FROM jobs WHERE task_id=?", (task_id,)).fetchone()
+            return dict(row) if row else None
+
+    def _next_task_id(self) -> str:
+        """Alternate light and heavy work while preserving FIFO within a kind."""
+
+        task_ids = list(self.jobs)
+        if not self.last_kind:
+            return task_ids[0]
+        rows = {task_id: self._job_row(task_id) for task_id in task_ids}
+        for task_id in task_ids:
+            kind = str((rows.get(task_id) or {}).get("kind") or "")
+            if (kind in LIGHT_TASK_KINDS) != (self.last_kind in LIGHT_TASK_KINDS):
+                return task_id
+        return task_ids[0]
 
     def stop(self, timeout: float = 10):
         with self.condition:
@@ -148,6 +171,30 @@ def cancel_queued_processing(root: Path, task_id: str) -> bool:
     return queue.cancel_pending(task_id) if queue else False
 
 
+def queue_status(root: Path, task_id: str) -> dict[str, object]:
+    """Return a durable, privacy-safe queue snapshot for one task."""
+
+    entries = queue_for(root).entries()
+    active = [row for row in entries if row["state"] in {"queued", "running", "recovering"}]
+    current = next((row for row in active if row["task_id"] == task_id), None)
+    if current is None:
+        return {
+            "state": next((row["state"] for row in entries if row["task_id"] == task_id), "none"),
+            "position": 0,
+            "queued_count": sum(row["state"] == "queued" for row in active),
+            "running_count": sum(row["state"] == "running" for row in active),
+            "kind": next((row["kind"] for row in entries if row["task_id"] == task_id), ""),
+        }
+    position = (1 + sum(row["state"] == "queued" for row in active if row["sequence"] < current["sequence"])) if current["state"] == "queued" else 0
+    return {
+        "state": current["state"],
+        "position": position,
+        "queued_count": sum(row["state"] == "queued" for row in active),
+        "running_count": sum(row["state"] == "running" for row in active),
+        "kind": current["kind"],
+    }
+
+
 def schedule_processing(background_tasks, function, task_id: str, *args, **kwargs):
     from .models import CurrentPageTaskRequest, TaskOptions
     from .storage import get_task, task_dir, update_task, mark_task_cancelled
@@ -156,8 +203,11 @@ def schedule_processing(background_tasks, function, task_id: str, *args, **kwarg
 
     queue = queue_for(task_dir(task_id).parent.parent)
     source = args[0] if args else None
-    kind = kwargs.pop("_queue_kind", "") or ("page" if isinstance(source, CurrentPageTaskRequest) else "local")
+    explicit_kind = kwargs.pop("_queue_kind", "")
+    kind = explicit_kind or ("page" if isinstance(source, CurrentPageTaskRequest) else "local")
     options = source.options if kind == "page" else next((value for value in args if isinstance(value, TaskOptions)), None)
+    if not explicit_kind and not isinstance(source, CurrentPageTaskRequest) and options and options.content_mode == "subtitles":
+        kind = "light"
     needs_context = bool(options and options.llm_api_key)
     if kind == "page":
         needs_context = needs_context or bool(source.cookies or source.resources or source.page_text)
@@ -256,7 +306,7 @@ def _recover_processing(root: Path) -> dict[str, int]:
         else:
             request = CurrentPageTaskRequest(page_url=task.page_url, title=task.title, options=task.options,
                 mode=task.mode, browser_subtitles=task.browser_subtitles, active_video=task.active_video,
-                drm_detected=task.drm_detected, drm_signals=task.drm_signals)
+                learning_range=task.learning_range, drm_detected=task.drm_detected, drm_signals=task.drm_signals)
             callback = lambda task=task, request=request: process_current_page_task(task.id, request)
         # Reset the orphaned lease before re-enqueueing the original task ID.
         queue.set_state(task.id, "recovering")

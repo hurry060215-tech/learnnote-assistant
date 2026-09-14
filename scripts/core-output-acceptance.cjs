@@ -33,7 +33,7 @@ const fs=require('node:fs'), path=require('node:path'), os=require('node:os'), a
     await ext.route('**/__extension/*',route=>{
       const file=path.basename(new URL(route.request().url()).pathname);
       const icon=/^icon(?:16|32|48|128|256|512)\.png$/.test(file);
-      assert(icon || ['sidepanel.html','sidepanel.css','sidepanel.js'].includes(file));
+      assert(icon || ['sidepanel.html','sidepanel.css','sidepanel.js','i18n.js'].includes(file));
       return route.fulfill({body:fs.readFileSync(path.join(__dirname,'../extension',icon?'icons':'',file)),contentType:icon?'image/png':file.endsWith('.html')?'text/html':file.endsWith('.css')?'text/css':'application/javascript'});
     });
     await ext.route('**/health',r=>r.fulfill({json:{ok:true,service:'learnnote',app_version:'0.2.8',backend_version:'0.2.8',protocol_version:1,llm_model_configured:true,default_llm_model:'验收模型',default_llm_supports_vision:true}}));

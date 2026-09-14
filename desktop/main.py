@@ -15,6 +15,7 @@ import traceback
 import webbrowser
 from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlparse
+from zipfile import ZipFile
 
 import requests
 import uvicorn
@@ -41,7 +42,13 @@ GITHUB_LATEST_RELEASE_API = "https://api.github.com/repos/hurry060215-tech/learn
 GITHUB_LATEST_RELEASE_PAGE = "https://github.com/hurry060215-tech/learnnote-assistant/releases/latest"
 GITHUB_RELEASE_BASE = "https://github.com/hurry060215-tech/learnnote-assistant/releases"
 WINDOWS_INSTALLER_NAME = "LearnNote-Setup-x64.exe"
+EXTENSION_ASSET_PREFIX = "LearnNote-Browser-Extension-v"
+EXTENSION_ASSET_SUFFIX = ".zip"
 MAX_UPDATE_BYTES = 500 * 1024 * 1024
+
+
+class _UpdateCancelled(Exception):
+    pass
 
 
 def supported_browser() -> tuple[Path | None, str]:
@@ -87,6 +94,31 @@ class DesktopApi:
         self.app_root = (app_root or data_dir.parent).resolve()
         self.backend_url = backend_url.rstrip("/") or os.getenv("LEARNNOTE_BACKEND_ORIGIN", "http://127.0.0.1:8765").rstrip("/")
         self._window = None
+        self._update_lock = threading.RLock()
+        self._update_cancel = threading.Event()
+        self._update_thread = None
+        self._update_result = None
+        self._update_state = {"phase": "idle", "version": "", "downloaded_bytes": 0, "total_bytes": 0, "progress": 0, "error": ""}
+        self._extension_update_cancel = threading.Event()
+        self._extension_update_thread = None
+        self._extension_update_state = {"phase": "idle", "version": "", "downloaded_bytes": 0, "total_bytes": 0, "progress": 0, "error": ""}
+        try:
+            saved = json.loads((self.data_dir / "config" / "client-update-state.json").read_text(encoding="utf-8"))
+            version = str(saved.get("version", ""))
+            expected = (self.data_dir / "installers" / f"v{version}" / WINDOWS_INSTALLER_NAME).resolve()
+            if re.fullmatch(r"\d+\.\d+\.\d+", version) and saved.get("phase") == "ready" and Path(saved.get("path", "")).resolve() == expected and expected.is_file() and re.fullmatch(r"[a-f0-9]{64}", str(saved.get("sha256", ""))):
+                self._update_state = saved
+        except (OSError, ValueError, TypeError):
+            pass
+
+    def _remember_download(self, result: dict) -> None:
+        with self._update_lock:
+            self._update_state.update({"phase":"ready", "version":result["version"], "path":result["path"], "sha256":result["sha256"], "progress":100, "downloaded_bytes":result["bytes"], "total_bytes":result["bytes"]})
+            path = self.data_dir / "config" / "client-update-state.json"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = path.with_suffix(".tmp")
+            temporary.write_text(json.dumps(self._update_state), encoding="utf-8")
+            temporary.replace(path)
 
     def _bind_window(self, window) -> None:
         self._window = window
@@ -399,7 +431,18 @@ class DesktopApi:
         expected_path = f"/hurry060215-tech/learnnote-assistant/releases/download/v{version}/{WINDOWS_INSTALLER_NAME}"
         return parsed.scheme == "https" and parsed.netloc == "github.com" and parsed.path == expected_path and not parsed.query
 
+    @staticmethod
+    def _valid_extension_url(version: str, url: str) -> bool:
+        parsed = urlparse(str(url or ""))
+        expected_path = f"/hurry060215-tech/learnnote-assistant/releases/download/v{version}/{EXTENSION_ASSET_PREFIX}{version}{EXTENSION_ASSET_SUFFIX}"
+        return parsed.scheme == "https" and parsed.netloc == "github.com" and parsed.path == expected_path and not parsed.query and not parsed.fragment
+
     def download_update(self, version: str, url: str, sha256: str) -> dict:
+        result = self._download_update(version, url, sha256)
+        self._remember_download(result)
+        return result
+
+    def _download_update(self, version: str, url: str, sha256: str, progress=None, cancel_event=None) -> dict:
         version = str(version or "").strip()
         sha256 = str(sha256 or "").strip().lower()
         if not re.fullmatch(r"\d+\.\d+\.\d+", version) or not self._valid_installer_url(version, url):
@@ -420,6 +463,8 @@ class DesktopApi:
                 for chunk in iter(lambda: existing.read(1024 * 1024), b""):
                     cached_digest.update(chunk)
             if cached_digest.hexdigest() == sha256:
+                if progress:
+                    progress(target.stat().st_size, target.stat().st_size)
                 return {
                     "ok": True,
                     "path": str(target),
@@ -446,6 +491,8 @@ class DesktopApi:
         try:
             with partial.open("wb") as output:
                 for chunk in response.iter_content(chunk_size=1024 * 1024):
+                    if cancel_event is not None and cancel_event.is_set():
+                        raise _UpdateCancelled()
                     if not chunk:
                         continue
                     written += len(chunk)
@@ -453,6 +500,8 @@ class DesktopApi:
                         raise ValueError("Update installer is unexpectedly large")
                     digest.update(chunk)
                     output.write(chunk)
+                    if progress:
+                        progress(written, content_length)
             if digest.hexdigest() != sha256:
                 raise ValueError("Update installer checksum mismatch")
             partial.replace(target)
@@ -461,7 +510,407 @@ class DesktopApi:
             raise
         return {"ok": True, "path": str(target), "version": version, "bytes": written, "sha256": sha256}
 
+    def _current_update_versions(self) -> tuple[str, str]:
+        extension_version = ""
+        manifest_path = self.app_root / "extension" / "manifest.json"
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            extension_version = str(manifest.get("version") or "").strip()
+        except (OSError, ValueError):
+            pass
+        client_version = ""
+        notes_path = self.app_root / "_internal" / "web" / "release-notes.json"
+        if not notes_path.is_file():
+            notes_path = self.app_root / "web" / "release-notes.json"
+        try:
+            notes = json.loads(notes_path.read_text(encoding="utf-8"))
+            client_version = str(notes.get("current") or client_version).strip()
+        except (OSError, ValueError):
+            pass
+        return client_version, extension_version
+
+    def _create_rollback_snapshot(self, root: Path, version: str) -> Path:
+        """Keep one application-only snapshot before an installed update.
+
+        The snapshot deliberately excludes the configured data directory.  A
+        rollback can therefore restore the program files without replacing
+        notes, models, credentials, ports, shortcuts, or update preferences.
+        """
+        root = root.resolve()
+        data_dir = self.data_dir.resolve()
+        if root == data_dir or root.is_relative_to(data_dir):
+            raise RuntimeError("更新前无法把应用文件与用户数据分开，原程序未改变。")
+        rollback_root = (data_dir / "updates" / "rollback").resolve()
+        if rollback_root.parent != (data_dir / "updates").resolve():
+            raise ValueError("Unsafe rollback path")
+        rollback_root.mkdir(parents=True, exist_ok=True)
+        for child in rollback_root.iterdir():
+            if child.is_dir() and child.name.startswith("v"):
+                shutil.rmtree(child)
+            elif child.is_file() and child.name.startswith("v"):
+                child.unlink()
+        snapshot = (rollback_root / f"v{version}").resolve()
+        if snapshot.parent != rollback_root:
+            raise ValueError("Unsafe rollback snapshot path")
+
+        def ignore_user_data(path: str, names: list[str]) -> list[str]:
+            ignored: list[str] = []
+            for name in names:
+                candidate = (Path(path) / name).resolve()
+                if candidate == data_dir or data_dir in candidate.parents:
+                    ignored.append(name)
+            return ignored
+
+        shutil.copytree(root, snapshot, ignore=ignore_user_data)
+        (snapshot / "rollback-manifest.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "client_version": str(version),
+                    "created_at": int(time.time()),
+                    "source_root": str(root),
+                    "data_dir_excluded": str(data_dir),
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        return snapshot
+
+    def update_status(self, force: bool = False) -> dict:
+        client_version, _ = self._current_update_versions()
+        with self._update_lock:
+            if re.fullmatch(r"\d+\.\d+\.\d+", client_version) and self._update_state.get("phase") == "ready" and not self._version_is_newer(self._update_state.get("version", ""), client_version):
+                self._update_state = {"phase":"idle", "version":"", "progress":0}
+                (self.data_dir / "config" / "client-update-state.json").unlink(missing_ok=True)
+        try:
+            response = requests.get(
+                f"{self.backend_url}/api/update/status",
+                params={"force": "true" if force else "false"},
+                timeout=12.0,
+            )
+            response.raise_for_status()
+            result = response.json()
+            client_version, extension_version = self._current_update_versions()
+            result.setdefault("current", {}).setdefault("client_version", client_version)
+            if not result.get("current", {}).get("extension_version"):
+                result.setdefault("current", {})["extension_version"] = extension_version
+            with self._update_lock:
+                result["download"] = dict(self._update_state)
+                result["extension_download"] = dict(self._extension_update_state)
+                self._update_result = {
+                    "ok": bool(result.get("ok")),
+                    "latest_version": str((result.get("latest") or {}).get("version") or ""),
+                    "release_url": str((result.get("latest") or {}).get("release_url") or ""),
+                    "installer_url": str(((result.get("latest") or {}).get("client") or {}).get("url") or ""),
+                    "installer_sha256": str(((result.get("latest") or {}).get("client") or {}).get("sha256") or ""),
+                    "installable": bool(((result.get("latest") or {}).get("client") or {}).get("installable")),
+                }
+            return result
+        except (requests.RequestException, ValueError, TypeError):
+            pass
+        with self._update_lock:
+            if force or self._update_result is None:
+                self._update_result = self.check_update()
+            result = dict(self._update_result)
+            state = dict(self._update_state)
+            extension_state = dict(self._extension_update_state)
+        client_version, extension_version = self._current_update_versions()
+        latest = str(result.get("latest_version") or "")
+        return {
+            "ok": bool(result.get("ok")),
+            "current": {"client_version": client_version, "extension_version": extension_version},
+            "latest": {
+                "version": latest,
+                "release_url": result.get("release_url", ""),
+                "client": {
+                    "url": result.get("installer_url", ""),
+                    "sha256": result.get("installer_sha256", ""),
+                    "installable": bool(result.get("installable")),
+                },
+            } if latest else None,
+            "client_update_available": bool(latest and latest != client_version and self._version_is_newer(latest, client_version)),
+            "extension": {
+                "current_version": extension_version,
+                "compatibility": "compatible" if extension_version == client_version else "version_check_pending",
+                "channel": "browser_store_or_managed_unpack",
+                "store_update": "browser_managed",
+            },
+            "download": state,
+            "extension_download": extension_state,
+        }
+
+    @staticmethod
+    def _version_is_newer(candidate: str, current: str) -> bool:
+        try:
+            left = tuple(int(part) for part in candidate.split("."))
+            right = tuple(int(part) for part in current.split("."))
+        except (AttributeError, ValueError):
+            return False
+        return len(left) == len(right) == 3 and left > right
+
+    def start_update_download(self, version: str, url: str, sha256: str) -> dict:
+        with self._update_lock:
+            if self._update_thread and self._update_thread.is_alive():
+                return {"ok": True, **self._update_state}
+            self._update_cancel.clear()
+            self._update_state = {"phase": "downloading", "version": str(version), "downloaded_bytes": 0, "total_bytes": 0, "progress": 0, "error": ""}
+
+            def progress(downloaded: int, total: int | None) -> None:
+                with self._update_lock:
+                    self._update_state.update({
+                        "downloaded_bytes": downloaded,
+                        "total_bytes": int(total or 0),
+                        "progress": round(downloaded / total * 100, 2) if total else 0,
+                    })
+
+            def worker() -> None:
+                try:
+                    result = self._download_update(version, url, sha256, progress, self._update_cancel)
+                    self._remember_download(result)
+                except _UpdateCancelled:
+                    with self._update_lock:
+                        self._update_state.update({"phase": "cancelled", "error": ""})
+                except Exception as exc:
+                    with self._update_lock:
+                        self._update_state.update({"phase": "failed", "error": str(exc)})
+
+            self._update_thread = threading.Thread(target=worker, name="learnnote-update-download", daemon=True)
+            self._update_thread.start()
+            return {"ok": True, **self._update_state}
+
+    def cancel_update_download(self) -> dict:
+        with self._update_lock:
+            if self._update_thread and self._update_thread.is_alive():
+                self._update_cancel.set()
+                self._update_state["phase"] = "cancelling"
+            return {"ok": True, **self._update_state}
+
+    def download_extension_update(self, version: str, url: str, sha256: str, cancel_event=None, progress=None) -> dict:
+        version = str(version or "").strip()
+        sha256 = str(sha256 or "").strip().lower()
+        if not re.fullmatch(r"\d+\.\d+\.\d+", version) or not self._valid_extension_url(version, url):
+            raise ValueError("Unsupported extension update URL")
+        if not re.fullmatch(r"[a-f0-9]{64}", sha256):
+            raise ValueError("Invalid extension checksum")
+        update_dir = (self.data_dir / "extension-updates" / f"v{version}").resolve()
+        update_dir.mkdir(parents=True, exist_ok=True)
+        target = (update_dir / f"{EXTENSION_ASSET_PREFIX}{version}{EXTENSION_ASSET_SUFFIX}").resolve()
+        partial = target.with_suffix(".download")
+        if target.parent != update_dir or partial.parent != update_dir:
+            raise ValueError("Unsafe extension update path")
+        if target.is_file():
+            digest = hashlib.sha256(target.read_bytes()).hexdigest()
+            if digest == sha256:
+                if progress:
+                    progress(target.stat().st_size, target.stat().st_size)
+                return {"ok": True, "path": str(target), "version": version, "bytes": target.stat().st_size, "sha256": sha256, "cached": True}
+            target.unlink()
+        response = requests.get(
+            url,
+            stream=True,
+            timeout=(5.0, 180.0),
+            headers={"Accept": "application/zip", "User-Agent": "LearnNote-Desktop-Updater"},
+        )
+        response.raise_for_status()
+        content_length = int(response.headers.get("Content-Length") or 0)
+        if content_length > MAX_UPDATE_BYTES:
+            raise ValueError("Extension update package is unexpectedly large")
+        digest = hashlib.sha256()
+        written = 0
+        try:
+            with partial.open("wb") as output:
+                for chunk in response.iter_content(chunk_size=1024 * 1024):
+                    if cancel_event is not None and cancel_event.is_set():
+                        raise _UpdateCancelled()
+                    if not chunk:
+                        continue
+                    written += len(chunk)
+                    if written > MAX_UPDATE_BYTES:
+                        raise ValueError("Extension update package is unexpectedly large")
+                    digest.update(chunk)
+                    output.write(chunk)
+                    if progress:
+                        progress(written, content_length)
+            if digest.hexdigest() != sha256:
+                raise ValueError("Extension update checksum mismatch")
+            partial.replace(target)
+        except Exception:
+            partial.unlink(missing_ok=True)
+            raise
+        return {"ok": True, "path": str(target), "version": version, "bytes": written, "sha256": sha256}
+
+    def start_extension_update_download(self, version: str, url: str, sha256: str) -> dict:
+        with self._update_lock:
+            if self._extension_update_thread and self._extension_update_thread.is_alive():
+                return {"ok": True, **self._extension_update_state}
+            self._extension_update_cancel.clear()
+            self._extension_update_state = {"phase": "downloading", "version": str(version), "downloaded_bytes": 0, "total_bytes": 0, "progress": 0, "error": ""}
+
+            def progress(downloaded: int, total: int | None) -> None:
+                with self._update_lock:
+                    self._extension_update_state.update({
+                        "downloaded_bytes": downloaded,
+                        "total_bytes": int(total or 0),
+                        "progress": round(downloaded / total * 100, 2) if total else 0,
+                    })
+
+            def worker() -> None:
+                try:
+                    result = self.download_extension_update(version, url, sha256, self._extension_update_cancel, progress)
+                    with self._update_lock:
+                        self._extension_update_state.update({"phase": "ready", "progress": 100, "path": result["path"], "sha256": result["sha256"], "downloaded_bytes": result["bytes"], "total_bytes": result["bytes"]})
+                except _UpdateCancelled:
+                    with self._update_lock:
+                        self._extension_update_state.update({"phase": "cancelled", "error": ""})
+                except Exception as exc:
+                    with self._update_lock:
+                        self._extension_update_state.update({"phase": "failed", "error": str(exc)})
+
+            self._extension_update_thread = threading.Thread(target=worker, name="learnnote-extension-update-download", daemon=True)
+            self._extension_update_thread.start()
+            return {"ok": True, **self._extension_update_state}
+
+    def cancel_extension_update_download(self) -> dict:
+        with self._update_lock:
+            if self._extension_update_thread and self._extension_update_thread.is_alive():
+                self._extension_update_cancel.set()
+                self._extension_update_state["phase"] = "cancelling"
+            return {"ok": True, **self._extension_update_state}
+
+    def install_extension_update(self, version: str, archive_path: str, sha256: str = "") -> dict:
+        version = str(version or "").strip()
+        if not re.fullmatch(r"\d+\.\d+\.\d+", version):
+            raise ValueError("Invalid extension update version")
+        if not getattr(sys, "frozen", False):
+            raise RuntimeError("源码开发环境不会自动覆盖 extension 目录，请手动测试或使用候选安装包。")
+        update_dir = (self.data_dir / "extension-updates" / f"v{version}").resolve()
+        archive = Path(str(archive_path or "")).resolve()
+        expected_path = update_dir / f"{EXTENSION_ASSET_PREFIX}{version}{EXTENSION_ASSET_SUFFIX}"
+        if archive != expected_path or not archive.is_file():
+            raise ValueError("Extension update package is not ready")
+        expected = str(sha256 or "").strip().lower()
+        if expected:
+            digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+            if not re.fullmatch(r"[a-f0-9]{64}", expected) or digest != expected:
+                raise RuntimeError("扩展更新包已变化或校验失败，原扩展未改变。")
+        stage = (self.data_dir / "extension-staging" / f"v{version}").resolve()
+        if stage.parent != (self.data_dir / "extension-staging").resolve():
+            raise ValueError("Unsafe extension staging path")
+        if stage.exists():
+            shutil.rmtree(stage)
+        stage.mkdir(parents=True)
+        allowed = {"manifest.json", "background.js", "content.js", "page_hook.js", "sidepanel.html", "sidepanel.css", "sidepanel.js", "i18n.js", "INSTALL.txt", "icons", "_locales"}
+        with ZipFile(archive) as package:
+            for info in package.infolist():
+                name = Path(info.filename.replace("/", os.sep))
+                if name.is_absolute() or ".." in name.parts or not name.parts or name.parts[0] not in allowed:
+                    raise ValueError("Extension update contains an unsafe path")
+                destination = (stage.joinpath(*name.parts)).resolve()
+                if stage not in destination.parents and destination != stage:
+                    raise ValueError("Extension update escapes staging directory")
+                if info.is_dir():
+                    destination.mkdir(parents=True, exist_ok=True)
+                    continue
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_bytes(package.read(info))
+        manifest_path = stage / "manifest.json"
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise ValueError("Extension update manifest is invalid") from exc
+        if str(manifest.get("version") or "") != version or not (stage / "background.js").is_file():
+            raise ValueError("Extension update manifest does not match the package version")
+        target = (self.app_root / "extension").resolve()
+        if not target.is_dir():
+            raise RuntimeError("当前客户端没有可更新的受管理扩展目录。")
+        current_manifest = target / "manifest.json"
+        current_version = "unknown"
+        try:
+            current_version = str(json.loads(current_manifest.read_text(encoding="utf-8")).get("version") or "unknown")
+        except (OSError, ValueError):
+            pass
+        backup = (self.data_dir / "extension-backup" / f"v{current_version}").resolve()
+        backup.parent.mkdir(parents=True, exist_ok=True)
+        if backup.exists():
+            shutil.rmtree(backup)
+        shutil.copytree(target, backup)
+        try:
+            for child in target.iterdir():
+                if child.is_dir():
+                    shutil.rmtree(child)
+                else:
+                    child.unlink()
+            shutil.copytree(stage, target, dirs_exist_ok=True)
+        except Exception:
+            for child in target.iterdir():
+                if child.is_dir():
+                    shutil.rmtree(child)
+                else:
+                    child.unlink()
+            shutil.copytree(backup, target, dirs_exist_ok=True)
+            raise
+        return {"ok": True, "version": version, "path": str(target), "backup": str(backup), "requires_reload": True, "message": "受管理扩展已更新到固定目录，请在 Chrome/Edge 扩展管理页重新加载；正在交接的任务未被重载。"}
+
+    def apply_extension_update(self, version: str, archive_path: str, sha256: str = "") -> dict:
+        try:
+            response = requests.get(f"{self.backend_url}/api/tasks", timeout=2.0)
+            response.raise_for_status()
+            payload = response.json()
+            tasks = payload.get("tasks", []) if isinstance(payload, dict) else payload
+            active = [item for item in tasks if isinstance(item, dict) and item.get("status") in {"queued", "running", "cancelling"}]
+        except (requests.RequestException, TypeError, ValueError) as exc:
+            raise RuntimeError("无法确认当前任务是否已保存，请完成任务或稍后重试。") from exc
+        if active:
+            raise RuntimeError(f"还有 {len(active)} 个任务正在处理，完成或停止后再更新。")
+        return self.install_extension_update(version, archive_path, sha256)
+
+    def apply_update(self, version: str, installer_path: str, sha256: str = "") -> dict:
+        try:
+            response = requests.get(f"{self.backend_url}/api/tasks", timeout=2.0)
+            response.raise_for_status()
+            payload = response.json()
+            tasks = payload.get("tasks", []) if isinstance(payload, dict) else payload
+            active = [item for item in tasks if isinstance(item, dict) and item.get("status") in {"queued", "running", "cancelling"}]
+        except (requests.RequestException, TypeError, ValueError) as exc:
+            raise RuntimeError("无法确认当前任务是否已保存，请完成任务或稍后重试。") from exc
+        if active:
+            raise RuntimeError(f"还有 {len(active)} 个任务正在处理，完成或停止后再更新。")
+        installer = Path(str(installer_path or "")).resolve()
+        expected = str(sha256 or "").strip().lower()
+        if expected:
+            if not re.fullmatch(r"[a-f0-9]{64}", expected) or not installer.is_file():
+                raise RuntimeError("更新包校验信息无效，原程序未改变。")
+            digest = hashlib.sha256()
+            with installer.open("rb") as stream:
+                for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                    digest.update(chunk)
+            if digest.hexdigest() != expected:
+                raise RuntimeError("更新包已变化或校验失败，原程序未改变。")
+        return self.install_update(version, installer_path)
+
+    def set_update_preferences(self, auto_check: bool = True, auto_download: bool = True) -> dict:
+        response = requests.put(
+            f"{self.backend_url}/api/update/preferences",
+            json={"auto_check": bool(auto_check), "auto_download": bool(auto_download)},
+            timeout=3.0,
+        )
+        response.raise_for_status()
+        return response.json()
+
     def install_update(self, version: str, installer_path: str) -> dict:
+        with self._update_lock:
+            if getattr(self, "_installing", False):
+                raise RuntimeError("更新安装已经启动，请等待完成。")
+            self._installing = True
+            try:
+                return self._install_verified_update(version, installer_path)
+            except Exception:
+                self._installing = False
+                raise
+
+    def _install_verified_update(self, version: str, installer_path: str) -> dict:
         version = str(version or "").strip()
         if not re.fullmatch(r"\d+\.\d+\.\d+", version):
             raise ValueError("Invalid update version")
@@ -469,10 +918,19 @@ class DesktopApi:
         installer = Path(str(installer_path or "")).resolve()
         if installer != update_dir / WINDOWS_INSTALLER_NAME or not installer.is_file():
             raise ValueError("Update installer is not ready")
+        expected_hash = self._update_state.get("sha256", "")
+        if self._update_state.get("version") != version or not re.fullmatch(r"[a-f0-9]{64}", expected_hash):
+            raise ValueError("请先通过更新中心下载并校验安装包。")
+        with installer.open("rb") as stream:
+            if hashlib.file_digest(stream, "sha256").hexdigest() != expected_hash:
+                raise ValueError("更新包已变化，原程序未改变。")
         root = application_root().resolve()
         app_path = (root / "LearnNote.exe").resolve()
         if root.drive.upper() == "C:" or not app_path.is_file() or self._window is None:
             raise RuntimeError("Automatic update is only available in the installed desktop client")
+        current_version, _ = self._current_update_versions()
+        rollback = self._create_rollback_snapshot(root, current_version or "previous")
+        restart_port = int(urlparse(self.backend_url).port or 8765)
 
         def ps_literal(value: Path | str) -> str:
             return "'" + str(value).replace("'", "''") + "'"
@@ -487,12 +945,54 @@ class DesktopApi:
             f"$installer = {ps_literal(installer)}",
             f"$app = {ps_literal(app_path)}",
             f"$installDir = {ps_literal(root)}",
+            f"$dataDir = {ps_literal(self.data_dir.resolve())}",
+            f"$restartPort = {restart_port}",
+            "$env:LEARNNOTE_DATA_DIR = $dataDir",
+            f"$rollback = {ps_literal(rollback)}",
             f"$log = {ps_literal(log_path)}",
+            f"$resultFile = {ps_literal(update_dir / 'update-result.json')}",
+            "function Copy-RollbackFiles {",
+            "  param([string]$Source, [string]$Destination, [string]$PreserveData)",
+            "  $Destination = [IO.Path]::GetFullPath($Destination).TrimEnd('\\')",
+            "  $PreserveData = [IO.Path]::GetFullPath($PreserveData).TrimEnd('\\')",
+            "  if ($Destination -eq [IO.Path]::GetPathRoot($Destination).TrimEnd('\\')) { throw 'Unsafe rollback root' }",
+            "  function Clear-ProgramTree([string]$Folder) {",
+            "    foreach ($child in Get-ChildItem -LiteralPath $Folder -Force) {",
+            "      $full = [IO.Path]::GetFullPath($child.FullName).TrimEnd('\\')",
+            "      if (-not $full.StartsWith($Destination + '\\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Rollback path escapes app' }",
+            "      if (($child.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { continue }",
+            "      if ($full.Equals($PreserveData, [StringComparison]::OrdinalIgnoreCase) -or $full.StartsWith($PreserveData + '\\', [StringComparison]::OrdinalIgnoreCase)) { continue }",
+            "      if ($PreserveData.StartsWith($full + '\\', [StringComparison]::OrdinalIgnoreCase)) {",
+            "        if ($child.PSIsContainer) { Clear-ProgramTree $full }",
+            "      } else { Remove-Item -LiteralPath $full -Recurse -Force }",
+            "    }",
+            "  }",
+            "  Clear-ProgramTree $Destination",
+            "  Copy-Item -Path (Join-Path $Source '*') -Destination $Destination -Recurse -Force",
+            "}",
+            "function Write-UpdateResult {",
+            "  param([string]$Status, [int]$ExitCode, [string]$Message)",
+            "  @{ schema_version = 1; version = " + ps_literal(version) + "; status = $Status; exit_code = $ExitCode; message = $Message; finished_at = [DateTime]::UtcNow.ToString('o') } | ConvertTo-Json | Set-Content -LiteralPath $resultFile -Encoding UTF8",
+            "}",
             "$arguments = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', ('/DIR=\"' + $installDir + '\"'), ('/LOG=\"' + $log + '\"'))",
             "$result = Start-Process -FilePath $installer -ArgumentList $arguments -WindowStyle Hidden -Wait -PassThru",
             "Add-Content -LiteralPath $log -Value ('LearnNote updater exit code: ' + $result.ExitCode)",
-            "Start-Process -FilePath $app -WorkingDirectory $installDir",
-            "if ($result.ExitCode -ne 0) { exit $result.ExitCode }",
+            "if ($result.ExitCode -ne 0) {",
+            "  Copy-RollbackFiles $rollback $installDir $dataDir",
+            "  Write-UpdateResult 'rolled_back' $result.ExitCode 'Installer failed; application files restored.'",
+            "  Start-Process -FilePath $app -ArgumentList @('--port', $restartPort) -WorkingDirectory $installDir -WindowStyle Hidden",
+            "  exit $result.ExitCode",
+            "}",
+            "$health = Start-Process -FilePath $app -ArgumentList @('--health-check', '--port', $restartPort) -WorkingDirectory $installDir -WindowStyle Hidden -Wait -PassThru",
+            "Add-Content -LiteralPath $log -Value ('LearnNote post-update health-check exit code: ' + $health.ExitCode)",
+            "if ($health.ExitCode -ne 0) {",
+            "  Copy-RollbackFiles $rollback $installDir $dataDir",
+            "  Write-UpdateResult 'rolled_back' $health.ExitCode 'Post-update health check failed; application files restored.'",
+            "  Start-Process -FilePath $app -ArgumentList @('--port', $restartPort) -WorkingDirectory $installDir -WindowStyle Hidden",
+            "  exit $health.ExitCode",
+            "}",
+            "Write-UpdateResult 'healthy' 0 'Post-update health check passed.'",
+            "Start-Process -FilePath $app -ArgumentList @('--port', $restartPort) -WorkingDirectory $installDir -WindowStyle Hidden",
         ]) + "\n"
         script_path.write_text(script, encoding="utf-8-sig")
         subprocess.Popen(
@@ -501,7 +1001,7 @@ class DesktopApi:
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         threading.Timer(0.4, self._window.destroy).start()
-        return {"ok": True, "installing": True, "version": version}
+        return {"ok": True, "installing": True, "version": version, "rollback": str(rollback), "result_file": str(update_dir / "update-result.json")}
 
     def open_release(self, url: str) -> dict:
         if not str(url).startswith("https://github.com/hurry060215-tech/learnnote-assistant/releases/"):
@@ -512,6 +1012,11 @@ class DesktopApi:
 
 def application_root() -> Path:
     if getattr(sys, "frozen", False):
+        if sys.platform == "darwin":
+            contents = Path(sys.executable).resolve().parent.parent
+            resources = contents / "Resources" / "LearnNote"
+            if resources.is_dir():
+                return resources
         return Path(sys.executable).resolve().parent
     return Path(__file__).resolve().parents[1]
 
@@ -692,6 +1197,45 @@ def desktop_route_matches(current_url: str, target_url: str) -> bool:
     return current_task == target_query.get("task") and current_query.get("tab", ["note"]) == target_query.get("tab", ["note"]) and current_query.get("view", ["workspace"]) == target_query.get("view", ["workspace"])
 
 
+def server_config(app, port: int, debug: bool = False):
+    # PyInstaller's windowless executable has no stdout/stderr. Uvicorn's
+    # default formatter probes isatty(), which otherwise aborts startup.
+    return uvicorn.Config(app, host="127.0.0.1", port=port,
+                          log_level="info" if debug else "warning",
+                          log_config=uvicorn.config.LOGGING_CONFIG if sys.stdout is not None and sys.stderr is not None else None,
+                          proxy_headers=False)
+
+
+def run_health_check(root: Path, preferred_port: int = 8765) -> int:
+    """Start only the local service and verify its versioned health contract."""
+    if os.name == "nt" and root.drive.upper() == "C:":
+        raise RuntimeError("LearnNote 请安装在 D: 或其他非系统盘，再执行启动检查。")
+    session = DesktopSession(configured_data_directory(root))
+    if not session.acquire():
+        raise RuntimeError("LearnNote 启动检查无法取得数据目录锁。")
+    server = None
+    thread = None
+    try:
+        port = available_port(preferred_port)
+        configure_runtime(root, port)
+        from app.main import app
+
+        backend_url = f"http://127.0.0.1:{port}"
+        config = server_config(app, port)
+        server = uvicorn.Server(config)
+        server.install_signal_handlers = lambda: None
+        thread = threading.Thread(target=server.run, name="learnnote-health-check", daemon=True)
+        thread.start()
+        wait_for_backend(backend_url, timeout=15.0, worker=thread)
+        return 0
+    finally:
+        if server is not None:
+            server.should_exit = True
+        if thread is not None:
+            thread.join(timeout=5)
+        session.close()
+
+
 def _run() -> int:
     parser = argparse.ArgumentParser(description="Launch the LearnNote Windows desktop client.")
     parser.add_argument("--port", type=int, default=8765)
@@ -699,12 +1243,15 @@ def _run() -> int:
     parser.add_argument("--webview-debug-port", type=int, default=0, help=argparse.SUPPRESS)
     parser.add_argument("--protocol", default="", help=argparse.SUPPRESS)
     parser.add_argument("--wait-for-parent", type=int, default=0, help=argparse.SUPPRESS)
+    parser.add_argument("--health-check", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
     args.port = protocol_port(args.protocol) or args.port
     wait_for_process_exit(args.wait_for_parent)
     root = application_root()
     if os.name == "nt" and root.drive.upper() == "C:":
         raise RuntimeError("LearnNote 请安装在 D: 或其他非系统盘，再从快捷方式启动。")
+    if args.health_check:
+        return run_health_check(root, args.port)
     session = DesktopSession(configured_data_directory(root))
     try:
         if not session.acquire():
@@ -744,13 +1291,7 @@ def run_session(args, root: Path, session: DesktopSession) -> int:
     webview.settings["ALLOW_DOWNLOADS"] = True
 
     backend_url = f"http://127.0.0.1:{port}"
-    config = uvicorn.Config(
-        app,
-        host="127.0.0.1",
-        port=port,
-        log_level="info" if args.debug else "warning",
-        proxy_headers=False,
-    )
+    config = server_config(app, port, args.debug)
     server = uvicorn.Server(config)
     server.install_signal_handlers = lambda: None
     thread = threading.Thread(target=server.run, name="learnnote-backend", daemon=True)
@@ -772,6 +1313,7 @@ def run_session(args, root: Path, session: DesktopSession) -> int:
             js_api=desktop_api,
         )
         desktop_api._bind_window(window)
+        app.state.desktop_update_api = desktop_api
         def focus_desktop(payload: dict | None = None) -> None:
             body = payload or {}
             task_id = str(body.get("task_id") or "")
@@ -802,7 +1344,7 @@ def run_session(args, root: Path, session: DesktopSession) -> int:
     return 0
 
 
-def report_startup_error(error: Exception) -> None:
+def report_startup_error(error: Exception, *, interactive: bool = True) -> None:
     """Windowless packaged apps must explain failures instead of silently exiting."""
     log_path = application_root() / "startup-error.log"
     try:
@@ -815,7 +1357,7 @@ def report_startup_error(error: Exception) -> None:
         message = "LearnNote 无法写入应用或数据目录。请检查目录权限，或把完整应用解压到可写入的非系统盘文件夹。"
     if log_path:
         message += f"\n\n诊断文件：{log_path}"
-    if os.name == "nt":
+    if interactive and os.name == "nt":
         try:
             import ctypes
             ctypes.windll.user32.MessageBoxW(None, message, "LearnNote · 启动提示", 0x10)
@@ -830,7 +1372,7 @@ def run() -> int:
     try:
         return _run()
     except Exception as error:
-        report_startup_error(error)
+        report_startup_error(error, interactive="--health-check" not in sys.argv)
         return 1
 
 

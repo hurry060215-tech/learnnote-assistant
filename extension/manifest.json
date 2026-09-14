@@ -1,9 +1,10 @@
 {
   "manifest_version": 3,
   "minimum_chrome_version": "116",
-  "name": "LearnNote 当前视频助手",
+  "default_locale": "zh_CN",
+  "name": "__MSG_extensionName__",
   "version": "0.2.8",
-  "description": "识别当前正在播放的视频，并安全交接到本机 LearnNote 客户端。",
+  "description": "__MSG_extensionDescription__",
   "homepage_url": "https://hurry060215-tech.github.io/learnnote-assistant/",
   "permissions": [
     "activeTab",
@@ -18,9 +19,12 @@
     "downloads"
   ],
   "host_permissions": [
-    "<all_urls>",
     "http://127.0.0.1/*",
     "http://localhost/*"
+  ],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -32,7 +36,7 @@
     "128": "icons/icon128.png"
   },
   "action": {
-    "default_title": "打开 LearnNote 当前视频助手",
+    "default_title": "__MSG_actionTitle__",
     "default_icon": {
       "16": "icons/icon16.png",
       "32": "icons/icon32.png",

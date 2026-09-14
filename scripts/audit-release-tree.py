@@ -15,6 +15,7 @@ REQUIRED_EXTENSION_FILES = {
     "sidepanel.html",
     "sidepanel.css",
     "sidepanel.js",
+    "i18n.js",
     "INSTALL.txt",
 }
 REQUIRED_EXTENSION_ICONS = {

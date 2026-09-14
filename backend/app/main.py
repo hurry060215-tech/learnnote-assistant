@@ -1,4 +1,5 @@
 from __future__ import annotations
+from .claims import safe_claim_projection
 
 from importlib.util import find_spec
 from io import BytesIO
@@ -29,7 +30,7 @@ from .adapters import MEDIA_ADAPTER_CONTRACT_VERSION, media_adapter_descriptors
 from .config import BACKEND_ORIGIN, DATA_DIR, DEPLOYMENT_MODE, LLM_API_KEY, LLM_BASE_URL, LLM_MAX_RETRIES, LLM_MODEL, LLM_REQUEST_TIMEOUT_SECONDS, MODEL_CACHE_DIR, PUBLIC_DEPLOYMENT, PUBLIC_PASSWORD, PUBLIC_USERNAME, STATIC_DIR, TASK_DIR, TEMP_DIR, UPLOAD_DIR, WEB_DIR, ensure_dirs
 from .downloader import effective_resource_kind, media_file_video_signature, preflight_media_resource
 from .media import MediaProcessingError, extract_video_clip, probe_duration, probe_media_integrity
-from .knowledge import add_evidence, answer_from_evidence, evidence_for_task, extract_import_text, remove_evidence, search_evidence
+from .knowledge import add_evidence, answer_from_evidence, evidence_for_task, extract_import_text, preserve_raw_import, remove_evidence, search_evidence
 from .integrations import notion_export_payload
 from .embeddings import embedding_status
 from .models import CurrentPageTaskRequest, EvidenceCoverage, MediaIntegrity, MediaPreflightRequest, PagePreflightRequest, RerunFromMediaRequest, ResourceCandidate, SourceEvidence, SourceInputRequest, StorageCleanupRequest, StudyCard, StudyCardPositionRequest, StudyCardStatusRequest, StudyPlanUpdateRequest, StudyReviewRequest, TaskOptions, TaskQuestionRequest, TaskRecord, TranscriptResult, now_iso
@@ -39,7 +40,7 @@ from .processor import browser_subtitle_text_is_player_ui, process_current_page_
 from .media_preflight import page_preflight_report
 from .reliability import current_page_source_identity, local_source_identity
 from .runtime import ffmpeg_bin, ffprobe_bin
-from .upload_limits import UploadBudgetMiddleware, UploadBudgetExceeded, write_video_upload
+from .upload_limits import MAX_CONCURRENT_UPLOAD_BYTES, MAX_VIDEO_BYTES, MIN_FREE_BYTES, UploadBudgetMiddleware, UploadBudgetExceeded, write_video_upload
 from .source_input import SourceInputError, clean_task_title, normalize_source_input
 from .storage import cleanup_tasks, create_task, delete_all_tasks, delete_task, get_task, list_tasks, read_json, request_task_cancel, storage_summary, task_dir, update_task, write_json
 from .routers.knowledge_study import knowledge_router, study_router, task_study_router
@@ -54,12 +55,13 @@ from .routers.courses import course_router
 from .routers.ranges import range_router
 from .summarizer import chat_completion_provider_kwargs, llm_base_host, llm_model_supports_vision, llm_provider_name, visual_window_review_question_lines
 
-from .task_queue import schedule_processing, recover_processing, queue_for
+from .task_queue import queue_status, schedule_processing, recover_processing, queue_for
 
 ensure_dirs()
 
 @asynccontextmanager
 async def lifespan(application):
+    await asyncio.to_thread(cleanup_expired_staged_uploads)
     await asyncio.to_thread(recover_processing, DATA_DIR)
     try:
         yield
@@ -1281,6 +1283,7 @@ def render_bundle_manifest(task: TaskRecord, transcript: dict, visual_index: dic
             "transcript": "transcript.json",
             "visual_index": "visual_index.json",
             "summary_diagnostics": "summary_diagnostics.json" if task.summary_diagnostics else "",
+            "claim_evidence": "claim_evidence_map.json" if read_json(task.id, "claim_evidence_map.json", {}) else "",
             "resource_inventory": "resource_inventory.json" if resource_inventory else "",
             "page_preflight_report": "page_preflight_report.json" if page_preflight else "",
             "media_available": task_media_file_exists(task),
@@ -2096,6 +2099,13 @@ def task_payload(task: TaskRecord) -> dict:
     payload["source_quality"] = source_quality
     payload["evidence_quality"] = evidence_quality
     payload["direct_extraction"] = direct_extraction_evidence(task)
+    payload["queue"] = queue_status(TASK_DIR.parent, task.id)
+    claim_map = safe_claim_projection(read_json(task.id, "claim_evidence_map.json", {}))
+    payload["claim_evidence"] = {
+        "path": "claim_evidence_map.json" if claim_map else "",
+        "counts": claim_map.get("counts", {}) if isinstance(claim_map, dict) else {},
+        "quality": claim_map.get("quality", {}) if isinstance(claim_map, dict) else {},
+    }
     payload["audit"] = task_audit_summary(task)
     payload["recovery"] = diagnostic_recovery_profile(task)
     payload["reuse"] = task_reuse_evidence(task)
@@ -2651,6 +2661,13 @@ def health_payload() -> dict:
         "default_llm_provider": selected.get("provider") or llm_provider_name(model_base),
         "default_use_saved_connection": bool(selected.get("use_saved_connection")),
         "data_paths": data_paths_payload(),
+        "upload_policy": {
+            "schema_version": 1,
+            "max_video_bytes": MAX_VIDEO_BYTES,
+            "max_concurrent_upload_bytes": MAX_CONCURRENT_UPLOAD_BYTES,
+            "min_free_bytes": MIN_FREE_BYTES,
+            "staged_retention_seconds": STAGED_UPLOAD_MAX_AGE_SECONDS,
+        },
         "model_provider_presets": MODEL_PROVIDER_PRESETS,
         "assistant_capabilities": ASSISTANT_CAPABILITIES,
         "media_adapters": media_adapter_descriptors(),
@@ -3647,7 +3664,7 @@ def create_from_current_page(request: CurrentPageTaskRequest, background_tasks: 
             return _handoff_response(existing, deduplicated=True)
 
         task = create_task(source_type=source_type, title=title, page_url=source.url, options=request.options, mode=request.mode)
-        task = update_task(task.id, handoff_id=request.handoff_id, source_identity=source_identity)
+        task = update_task(task.id, handoff_id=request.handoff_id, source_identity=source_identity, learning_range=request.learning_range)
         if request.handoff_id:
             _handoff_task_ids[request.handoff_id] = task.id
         if request.browser_subtitles:
@@ -3679,6 +3696,7 @@ def create_from_current_page(request: CurrentPageTaskRequest, background_tasks: 
                 message="待确认：先尝试读取字幕，再按所选方式整理",
                 active_video=request.active_video,
                 browser_subtitles=request.browser_subtitles,
+                learning_range=request.learning_range,
                 selected_resource=redacted_resource(highest_score_resource) if highest_score_resource else None,
                 handoff_integrity=handoff_integrity,
             )
@@ -4126,20 +4144,21 @@ def api_knowledge_evidence(evidence: SourceEvidence) -> dict:
     return {"ok": True, "evidence": stored.model_dump(mode="json")}
 
 
-async def api_knowledge_import_file(file: UploadFile = File(...)) -> dict:
+async def api_knowledge_import_file(file: UploadFile = File(...), encoding: str = "") -> dict:
     filename = Path(file.filename or "evidence.txt").name
     content = await file.read()
     if len(content) > 20 * 1024 * 1024:
         raise HTTPException(status_code=413, detail={"code": "evidence_file_too_large", "message": "导入文件不能超过 20 MB。"})
     try:
-        text, source_type = extract_import_text(filename, content, file.content_type or "")
+        text, source_type = extract_import_text(filename, content, file.content_type or "", encoding=encoding)
+        raw_info = preserve_raw_import(content, filename)
         stored = add_evidence(SourceEvidence(
             source_type=source_type,
             title=Path(filename).stem[:500],
             source_uri=f"local://{filename}",
             locator="file",
             text=text,
-            metadata={"filename": filename, "content_type": file.content_type or ""},
+            metadata={"filename": filename, "content_type": file.content_type or "", "raw_sha256": raw_info["sha256"], "raw_byte_count": raw_info["byte_count"], "decoding_hint": encoding.strip()[:40]},
         ))
     except ValueError as exc:
         raise HTTPException(status_code=422, detail={"code": str(exc), "message": "无法从该文件提取可检索文本。"}) from exc
@@ -4377,6 +4396,18 @@ def api_task_audit(task_id: str) -> dict:
         raise HTTPException(status_code=404, detail="Task not found") from exc
 
 
+@app.get("/api/tasks/{task_id}/claims")
+def api_task_claims(task_id: str) -> dict:
+    try:
+        get_task(task_id)
+        claim_map = safe_claim_projection(read_json(task_id, "claim_evidence_map.json", {}))
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Task not found") from exc
+    if not isinstance(claim_map, dict) or not claim_map:
+        raise HTTPException(status_code=404, detail={"code": "claim_map_not_ready", "message": "这份任务尚未生成逐条来源映射。"})
+    return claim_map
+
+
 @app.get("/api/tasks/{task_id}/transcript")
 def api_transcript(task_id: str) -> dict:
     try:
@@ -4561,6 +4592,7 @@ def api_export_bundle(task_id: str) -> Response:
     qa_history = read_task_qa_history(task.id)
     qa_report = render_qa_history_markdown(task, qa_history)
     manifest = render_bundle_manifest(task, transcript, visual_index)
+    claim_map = safe_claim_projection(read_json(task.id, "claim_evidence_map.json", {}))
     resource_inventory = read_resource_inventory(task)
     page_preflight = read_page_preflight_report(task)
     generated_subtitles = "" if task.subtitle_path else render_transcript_srt(transcript)
@@ -4602,6 +4634,8 @@ def api_export_bundle(task_id: str) -> Response:
             archive.writestr("subtitles/generated-transcript.srt", generated_subtitles)
         if task.summary_diagnostics:
             archive.writestr("summary_diagnostics.json", json.dumps(task.summary_diagnostics, ensure_ascii=False, indent=2))
+        if isinstance(claim_map, dict) and claim_map:
+            archive.writestr("claim_evidence_map.json", json.dumps(claim_map, ensure_ascii=False, indent=2))
         for index, grid in enumerate(task.frame_grids):
             filename = Path(grid.path).name or f"grid_{index:03d}.jpg"
             _write_file_if_exists(archive, grid.path, f"grids/{filename}")
@@ -4627,6 +4661,7 @@ def api_export_sanitized_bundle(task_id: str) -> Response:
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Task not found") from exc
     qa_history = read_task_qa_history(task.id)
+    claim_map = safe_claim_projection(read_json(task.id, "claim_evidence_map.json", {}))
     if not note.strip() and not transcript.get("segments") and not visual_index.get("windows"):
         raise HTTPException(status_code=404, detail="Shareable study artifacts not found")
     safe_manifest = {
@@ -4640,7 +4675,7 @@ def api_export_sanitized_bundle(task_id: str) -> Response:
             "source_paths": False,
         },
         "task": {"id": task.id, "title": task.title, "source_type": task.source_type, "status": task.status},
-        "artifacts": {"note": bool(note.strip()), "transcript": bool(transcript.get("segments")), "visual_index": bool(visual_index.get("windows")), "qa": bool(qa_history)},
+        "artifacts": {"note": bool(note.strip()), "transcript": bool(transcript.get("segments")), "visual_index": bool(visual_index.get("windows")), "qa": bool(qa_history), "claim_evidence": bool(claim_map)},
     }
     buffer = BytesIO()
     with ZipFile(buffer, "w", ZIP_DEFLATED) as archive:
@@ -4651,6 +4686,15 @@ def api_export_sanitized_bundle(task_id: str) -> Response:
         archive.writestr("visual_index.json", json.dumps(visual_index, ensure_ascii=False, indent=2))
         if qa_history:
             archive.writestr("qa_history.json", json.dumps({"schema_version": 1, "items": qa_history}, ensure_ascii=False, indent=2))
+        if isinstance(claim_map, dict) and claim_map:
+            archive.writestr("claim_evidence_map.json", json.dumps({
+                "schema_version": claim_map.get("schema_version", 1),
+                "task_id": task.id,
+                "title": task.title,
+                "claims": claim_map.get("claims", []),
+                "counts": claim_map.get("counts", {}),
+                "quality": claim_map.get("quality", {}),
+            }, ensure_ascii=False, indent=2))
     filename = f"learnnote-{task.id}-sanitized-study.zip"
     headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
     return Response(buffer.getvalue(), media_type="application/zip", headers=headers)

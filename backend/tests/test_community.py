@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from app.community import add_community_context, clear_community_context, community_settings, list_community_context, set_community_enabled
+from app.community import add_community_context, clear_community_context, community_settings, delete_community_item, list_community_context, sample_community_context, set_community_enabled
 from app.knowledge import search_evidence
 
 
@@ -49,6 +49,18 @@ class CommunityContextTests(unittest.TestCase):
                 }])
                 self.assertIsNone(stored["items"][0]["timestamp_seconds"])
                 self.assertEqual(stored["items"][0]["source_uri"], "")
+
+    def test_explicit_sample_is_reproducible_and_single_delete_is_scoped(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch("app.community.DATA_DIR", Path(tmp)):
+                set_community_enabled(True)
+                add_community_context("task-sample", [{"kind": "comment", "text": "观点一"}, {"kind": "comment", "text": "观点二"}])
+                first = sample_community_context("task-sample", 1, "fixed")
+                second = sample_community_context("task-sample", 1, "fixed")
+                self.assertEqual(first["items"], second["items"])
+                item_id = first["items"][0]["item_id"]
+                self.assertTrue(delete_community_item("task-sample", item_id))
+                self.assertFalse(delete_community_item("other-task", item_id))
 
 
 if __name__ == "__main__":

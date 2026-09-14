@@ -29,6 +29,21 @@ class PersonalNotesTests(unittest.TestCase):
                 save_annotation("material", "first", "保留原文之外的个人补充。")
                 self.assertEqual(len(list_annotations("material", "same-file-reimported")), 1)
 
+    def test_annotation_anchor_is_bounded_and_survives_reloading(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with patch("app.personal_notes.DATA_DIR", Path(directory)), patch("app.personal_notes.get_material", return_value={"sha256": "b" * 64}):
+                saved = save_annotation(
+                    "material",
+                    "source",
+                    "我的批注",
+                    "原文片段",
+                    anchor={"source_revision": "rev-1", "selected_text": "原文片段", "ignored": "drop"},
+                )
+                loaded = list_annotations("material", "source")
+        self.assertEqual(saved["anchor"]["source_revision"], "rev-1")
+        self.assertEqual(loaded[0]["anchor"]["selected_text"], "原文片段")
+        self.assertNotIn("ignored", loaded[0]["anchor"])
+
 
 if __name__ == "__main__":
     unittest.main()

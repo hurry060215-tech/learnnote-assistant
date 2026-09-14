@@ -6,13 +6,13 @@ from urllib.parse import quote
 from fastapi import APIRouter, Body, File, HTTPException, UploadFile
 from fastapi.responses import Response
 
-from ..community import add_community_context, clear_all_community_context, clear_community_context, community_settings, list_community_context, set_community_enabled
+from ..community import add_community_context, clear_all_community_context, clear_community_context, community_settings, delete_community_item, list_community_context, sample_community_context, set_community_enabled
 from ..document_exports import DocumentExportUnavailable, build_docx_export, build_pdf_export
 from ..embeddings import embedding_status
-from ..knowledge import add_evidence, answer_from_evidence, evidence_by_ids, evidence_for_task, extract_import_text, remove_evidence, search_evidence
+from ..knowledge import add_evidence, answer_from_evidence, evidence_by_ids, evidence_for_task, extract_import_text, preserve_raw_import, remove_evidence, search_evidence
 from ..models import SourceEvidence, StudyCard, StudyCardPositionRequest, StudyCardStatusRequest, StudyPlanUpdateRequest, StudyReviewRequest
 from ..note_document import normalize_note_markdown
-from ..study import clear_study_data, due_cards, export_study_data, get_study_plan, list_cards, propose_cards, review_card, review_history, save_cards, set_card_position, set_card_status, study_dashboard, study_summary, update_study_plan
+from ..study import activity_summary, clear_study_data, due_cards, export_study_data, get_study_plan, list_cards, propose_cards, record_activity, review_card, review_history, save_cards, set_card_position, set_card_status, study_dashboard, study_summary, update_study_plan
 from ..storage import get_task
 from ..study import initialize_study_timezone
 from ..study import rebuild_study_schedules
@@ -44,7 +44,7 @@ def api_knowledge_evidence(evidence: SourceEvidence) -> dict:
 
 
 @knowledge_router.post("/import-file")
-async def api_knowledge_import_file(file: UploadFile = File(...)) -> dict:
+async def api_knowledge_import_file(file: UploadFile = File(...), encoding: str = "") -> dict:
     filename = Path(file.filename or "evidence.txt").name
     content = bytearray()
     while True:
@@ -55,14 +55,15 @@ async def api_knowledge_import_file(file: UploadFile = File(...)) -> dict:
         if len(content) > 20 * 1024 * 1024:
             raise HTTPException(status_code=413, detail={"code": "evidence_file_too_large", "message": "导入文件不能超过 20 MB。"})
     try:
-        text, source_type = extract_import_text(filename, bytes(content), file.content_type or "")
+        text, source_type = extract_import_text(filename, bytes(content), file.content_type or "", encoding=encoding)
+        raw_info = preserve_raw_import(bytes(content), filename)
         stored = add_evidence(SourceEvidence(
             source_type=source_type,
             title=Path(filename).stem[:500],
             source_uri=f"local://{filename}",
             locator="file",
             text=text,
-            metadata={"filename": filename, "content_type": file.content_type or ""},
+            metadata={"filename": filename, "content_type": file.content_type or "", "raw_sha256": raw_info["sha256"], "raw_byte_count": raw_info["byte_count"], "decoding_hint": encoding.strip()[:40]},
         ))
     except ValueError as exc:
         raise HTTPException(status_code=422, detail={"code": str(exc), "message": "无法从该文件提取可检索文本。"}) from exc
@@ -197,6 +198,23 @@ def api_study_summary() -> dict:
     return study_summary()
 
 
+@study_router.get("/activity")
+def api_study_activity(days: int = 30) -> dict:
+    return activity_summary(days)
+
+
+@study_router.post("/activity")
+def api_record_study_activity(payload: dict | None = Body(default=None)) -> dict:
+    body = payload or {}
+    try:
+        return {"ok": True, "activity": record_activity(str(body.get("kind") or ""), str(body.get("source_id") or ""))}
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": str(exc), "message": "活动类型必须是 reading、answer、self_assessment 或 review。"},
+        ) from exc
+
+
 @study_router.get("/dashboard")
 def api_study_dashboard(limit: int = 12, activity_days: int = 14, course_id: str = "") -> dict:
     result = study_dashboard(limit, activity_days)
@@ -301,6 +319,15 @@ def api_task_community_context(task_id: str, limit: int = 500) -> dict:
     return list_community_context(task_id, limit)
 
 
+@task_study_router.get("/{task_id}/community-context/sample")
+def api_sample_task_community_context(task_id: str, limit: int = 20, seed: str = "") -> dict:
+    try:
+        get_task(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail={"code": "task_not_found", "message": "任务不存在。"}) from exc
+    return sample_community_context(task_id, limit, seed)
+
+
 @task_study_router.post("/{task_id}/community-context")
 def api_add_task_community_context(task_id: str, payload: dict | None = Body(default=None)) -> dict:
     try:
@@ -337,6 +364,17 @@ def api_clear_task_community_context(task_id: str, confirm: str = "") -> dict:
             detail={"code": "confirmation_required", "message": "清空社区观点前需要明确确认。"},
         )
     return {"ok": True, "task_id": task_id, "deleted_count": clear_community_context(task_id)}
+
+
+@task_study_router.delete("/{task_id}/community-context/{item_id}")
+def api_delete_task_community_item(task_id: str, item_id: str) -> dict:
+    try:
+        get_task(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail={"code": "task_not_found", "message": "任务不存在。"}) from exc
+    if not delete_community_item(task_id, item_id):
+        raise HTTPException(status_code=404, detail={"code": "community_item_not_found", "message": "这条社区观点不存在。"})
+    return {"ok": True, "task_id": task_id, "item_id": item_id, "deleted": True}
 
 
 def _document_export_response(task_id: str, export_type: str, include_annotations: bool = False) -> Response:

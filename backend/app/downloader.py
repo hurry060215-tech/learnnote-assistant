@@ -53,6 +53,33 @@ DownloadProgressCallback = Callable[[int, Optional[int], ResourceCandidate], Non
 DownloadStatusCallback = Callable[[str, int, Optional[ResourceCandidate]], None]
 
 
+def _preserve_raw_text_artifact(path: Path, raw: bytes, decoded) -> None:
+    """Keep exact subtitle bytes beside the canonical text for re-decoding."""
+    raw_path = path.with_name(path.name + ".raw")
+    metadata_path = path.with_name(path.name + ".decode.json")
+    temporary = raw_path.with_name(f".{raw_path.name}.tmp")
+    try:
+        temporary.write_bytes(bytes(raw))
+        temporary.replace(raw_path)
+        metadata_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "encoding": decoded.encoding,
+                    "raw_sha256": decoded.raw_sha256,
+                    "byte_count": decoded.byte_count,
+                    "canonicalized": True,
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+    except OSError as exc:
+        temporary.unlink(missing_ok=True)
+        raise DownloadError("download_forbidden", "字幕已获取但无法保留原始字节，未继续处理。") from exc
+
+
 MEDIA_EXT_RE = re.compile(r"\.(mp4|m4v|webm|mov|mkv|flv|avi)(\?|#|$)", re.I)
 AUDIO_EXT_RE = re.compile(r"\.(m4a|mp3|aac|opus|ogg|oga|wav)(\?|#|$)", re.I)
 MANIFEST_EXT_RE = re.compile(r"\.(m3u8|mpd)(\?|#|$)", re.I)
@@ -3008,13 +3035,16 @@ class MediaDownloader:
 
         subtitle = max(subtitles, key=lambda path: path.stat().st_size)
         try:
-            text = read_canonical_text(subtitle).text
+            raw_subtitle = subtitle.read_bytes()
+            decoded_subtitle = read_canonical_text(subtitle)
+            text = decoded_subtitle.text
         except TextDecodingError as exc:
             raise DownloadError("download_forbidden", "yt-dlp 下载的平台字幕编码无效或包含疑似乱码。") from exc
         text = re.sub(r"\r+\n", "\n", text)
         text = re.sub(r"\r+", "\n", text).strip()
         if not text:
             raise DownloadError("download_forbidden", "yt-dlp 下载的平台字幕为空。")
+        _preserve_raw_text_artifact(subtitle, raw_subtitle, decoded_subtitle)
         with subtitle.open("w", encoding="utf-8", newline="\n") as file:
             file.write(text + "\n")
         return subtitle
@@ -3407,7 +3437,9 @@ class MediaDownloader:
                 raise DownloadError("auth_required", f"字幕资源返回 HTTP {response.status_code}。")
             if response.status_code >= 400:
                 raise DownloadError("download_forbidden", f"字幕资源返回 HTTP {response.status_code}。")
-            text = decode_text_bytes(response.content, source="downloaded-subtitle").text
+            raw_subtitle = response.content
+            decoded_subtitle = decode_text_bytes(raw_subtitle, source="downloaded-subtitle")
+            text = decoded_subtitle.text
             text = re.sub(r"\r+\n", "\n", text)
             text = re.sub(r"\r+", "\n", text).strip()
         except DownloadError:
@@ -3418,6 +3450,7 @@ class MediaDownloader:
             raise DownloadError("download_forbidden", f"字幕下载失败：{exc}") from exc
         if not text:
             raise DownloadError("download_forbidden", "字幕文件为空。")
+        _preserve_raw_text_artifact(output, raw_subtitle, decoded_subtitle)
         with output.open("w", encoding="utf-8", newline="\n") as file:
             file.write(text + "\n")
         return output

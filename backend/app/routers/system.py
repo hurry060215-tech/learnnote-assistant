@@ -4,6 +4,8 @@ from ..token_usage import tracked_completion
 import json
 import re
 import time
+import secrets
+import threading
 from typing import Literal
 from urllib.parse import urlsplit
 
@@ -11,6 +13,10 @@ from fastapi import APIRouter, Body, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from ..config import DATA_DIR
+from ..update_service import get_preferences as get_update_preferences
+from ..update_service import save_preferences as save_update_preferences
+from ..update_service import status as update_status
+from ..model_route import plan_route
 from ..integrations import integration_manifest
 from ..models import TaskOptions
 from ..storage import atomic_write_text, get_task
@@ -18,6 +24,132 @@ from ..summarizer import chat_completion_provider_kwargs, llm_model_supports_vis
 
 
 system_router = APIRouter(tags=["system"])
+_update_intents_lock = threading.Lock()
+
+
+class UpdateAction(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    component: Literal["client", "extension"] = "client"
+    action: Literal["download", "cancel", "apply"]
+    version: str = Field(pattern=r"^\d+\.\d+\.\d+$", max_length=32)
+
+
+def _update_controller(request: Request):
+    from .connections import _local_origin
+    from ..config import DEPLOYMENT_MODE
+    _local_origin(request, write=True)
+    controller = getattr(request.app.state, "desktop_update_api", None)
+    if DEPLOYMENT_MODE != "desktop" or controller is None:
+        raise HTTPException(403, "需要在本机桌面客户端运行时更新。")
+    return controller
+
+
+@system_router.post("/api/update/intent")
+def api_update_intent(request: Request, payload: UpdateAction):
+    _update_controller(request)
+    with _update_intents_lock:
+        intents = getattr(request.app.state, "update_intents", {})
+        now = time.monotonic()
+        intents = {key:value for key,value in intents.items() if value[0] > now}
+        if len(intents) >= 16:
+            raise HTTPException(429, "更新请求过多，请稍后再试。")
+        token = secrets.token_urlsafe(32)
+        intents[token] = (now + 90, payload.model_dump())
+        request.app.state.update_intents = intents
+    return {"token":token}
+
+
+@system_router.post("/api/update/action")
+def api_update_action(request: Request, payload: UpdateAction):
+    controller = _update_controller(request)
+    with _update_intents_lock:
+        intent = getattr(request.app.state, "update_intents", {}).pop(request.headers.get("X-LearnNote-Update-Intent", ""), None)
+    if not intent or intent[0] <= time.monotonic() or intent[1] != payload.model_dump():
+        raise HTTPException(403, "更新操作凭证已失效，请重新点击操作。")
+    if payload.action == "cancel":
+        return controller.cancel_update_download() if payload.component == "client" else controller.cancel_extension_update_download()
+    latest = update_status().get("latest") or {}
+    asset = latest.get(payload.component) or {}
+    if latest.get("version") != payload.version or not asset.get("sha256") or not asset.get("url"):
+        raise HTTPException(409, "请重新检查官方版本后再更新。")
+    try:
+        if payload.action == "download":
+            method = controller.start_update_download if payload.component == "client" else controller.start_extension_update_download
+            return method(payload.version, asset["url"], asset["sha256"])
+        with controller._update_lock:
+            state = dict(controller._update_state if payload.component == "client" else controller._extension_update_state)
+        if state.get("phase") != "ready" or state.get("version") != payload.version:
+            raise HTTPException(409, "更新包尚未准备好。")
+        method = controller.apply_update if payload.component == "client" else controller.apply_extension_update
+        return method(payload.version, state["path"], asset["sha256"])
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+class UpdatePreferences(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    auto_check: bool = True
+    auto_download: bool = True
+    last_checked_at: float = Field(default=0, ge=0)
+
+
+@system_router.get("/api/update/status")
+def api_update_status(request: Request, force: bool = False) -> dict:
+    from .connections import _local_origin
+    from ..config import DEPLOYMENT_MODE
+    _local_origin(request)
+    result = update_status(force=force)
+    controller = getattr(request.app.state, "desktop_update_api", None) if DEPLOYMENT_MODE == "desktop" else None
+    result["capabilities"]["desktop_controller"] = controller is not None
+    if controller is not None:
+        _, extension_version = controller._current_update_versions()
+        if extension_version:
+            result["current"]["extension_version"] = extension_version
+        with controller._update_lock:
+            result["download"] = dict(controller._update_state)
+            result["extension_download"] = dict(controller._extension_update_state)
+    return result
+
+
+@system_router.post("/api/update/check")
+def api_update_check() -> dict:
+    return update_status(force=True)
+
+
+@system_router.get("/api/update/preferences")
+def api_get_update_preferences() -> dict:
+    return {"ok": True, "preferences": get_update_preferences()}
+
+
+@system_router.put("/api/update/preferences")
+def api_put_update_preferences(payload: UpdatePreferences) -> dict:
+    return {"ok": True, "preferences": save_update_preferences(payload.model_dump())}
+
+
+@system_router.get("/api/model/route")
+def api_model_route() -> dict:
+    from ..config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
+    from ..local_models import model_status
+    from ..model_connections import selected_connection_status
+    from ..summarizer import llm_model_supports_vision
+    from importlib.util import find_spec
+    local_asr = find_spec("faster_whisper") is not None
+    try:
+        local_model_ready = model_status("small").get("status") == "ready"
+    except Exception:
+        local_model_ready = False
+    connection = selected_connection_status()
+    model = connection.get("model") or {}
+    configured = bool(connection.get("configured") or LLM_API_KEY)
+    base_url = model.get("base_url") or LLM_BASE_URL
+    model_name = model.get("model") or LLM_MODEL
+    return plan_route(
+        TaskOptions(llm_base_url=base_url, llm_model=model_name),
+        local_asr_available=local_asr and local_model_ready,
+        model_configured=configured,
+        vision_configured=bool(configured and llm_model_supports_vision(base_url, model_name)),
+    )
 
 
 @system_router.get("/api/local-models/{model}")

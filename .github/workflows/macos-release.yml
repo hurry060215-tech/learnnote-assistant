@@ -30,7 +30,11 @@ jobs:
       - name: Install macOS build dependencies
         run: |
           python -m pip install -r backend/requirements.test.txt
-          python -m pip install pyinstaller
+          python -m pip install pyinstaller==6.22.2 pyinstaller-hooks-contrib==2026.7
+      - name: Verify macOS checkout freshness
+        run: |
+          mkdir -p build/macos
+          python scripts/reliability-freshness.py --commit "$GITHUB_SHA" --require-current-ref --output build/macos/freshness.json
       - name: Run macOS contract and desktop tests
         env:
           PYTHONPATH: backend
@@ -45,6 +49,10 @@ jobs:
           mkdir -p dist/LearnNote.app/Contents/Resources/LearnNote
           cp README.md LICENSE NOTICE THIRD_PARTY_NOTICES.md PRIVACY.md SECURITY.md SUPPORT.md dist/LearnNote.app/Contents/Resources/LearnNote/
           cp -R third_party dist/LearnNote.app/Contents/Resources/LearnNote/third_party
+          mkdir -p dist/LearnNote.app/Contents/Resources/LearnNote/extension/_locales
+          cp extension/manifest.json extension/background.js extension/content.js extension/page_hook.js extension/sidepanel.html extension/sidepanel.css extension/sidepanel.js extension/i18n.js extension/INSTALL.txt dist/LearnNote.app/Contents/Resources/LearnNote/extension/
+          cp -R extension/icons dist/LearnNote.app/Contents/Resources/LearnNote/extension/icons
+          cp -R extension/_locales/* dist/LearnNote.app/Contents/Resources/LearnNote/extension/_locales/
       - name: Sign and notarize macOS bundle when credentials are configured
         if: env.APPLE_SIGNING_IDENTITY != '' && env.APPLE_CERTIFICATE_BASE64 != '' && env.APPLE_NOTARY_APPLE_ID != '' && env.APPLE_NOTARY_PASSWORD != '' && env.APPLE_TEAM_ID != ''
         run: |
@@ -66,7 +74,9 @@ jobs:
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: LearnNote-macOS-${{ github.run_id }}
-          path: LearnNote-macOS*.zip
+          path: |
+            LearnNote-macOS*.zip
+            build/macos/freshness.json
           if-no-files-found: error
           retention-days: 14
       - name: Publish signed macOS asset

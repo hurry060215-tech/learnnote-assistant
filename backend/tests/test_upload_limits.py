@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from app.upload_limits import UploadBudgetMiddleware, UploadBudgetExceeded, write_video_upload
+from app.upload_limits import UploadBudgetMiddleware, UploadBudgetExceeded, UploadReservation, write_video_upload
 
 
 class UploadLimitTests(unittest.TestCase):
@@ -49,6 +49,17 @@ class UploadLimitTests(unittest.TestCase):
                 with self.assertRaises(UploadBudgetExceeded):
                     asyncio.run(write_video_upload(File(), path))
             self.assertFalse(path.exists())
+
+    def test_concurrent_upload_reservation_is_cumulative_and_released(self):
+        first = UploadReservation()
+        second = UploadReservation()
+        with patch("app.upload_limits.MAX_CONCURRENT_UPLOAD_BYTES", 10):
+            first.reserve(8)
+            with self.assertRaisesRegex(UploadBudgetExceeded, "暂存空间"):
+                second.reserve(3)
+            first.release()
+            second.reserve(10)
+            second.release()
 
 
 if __name__ == "__main__":

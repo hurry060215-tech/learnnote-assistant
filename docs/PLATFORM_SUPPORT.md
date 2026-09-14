@@ -21,7 +21,9 @@
 
 macOS 进入实现前，Windows v0.2–v0.4 的任务恢复、来源适配、资料库、引用检索和导出 manifest 必须保持稳定；Linux/ARM 只有在 ffmpeg、模型缓存、磁盘预算和取消响应有实测数据后，才从“预览/计划”升级。
 
-The macOS workflow always produces an unsigned preview artifact when Apple
+The macOS workflow packages the same local extension runtime under the app
+Resources/LearnNote directory, so the client can keep one fixed managed
+extension path across Windows and macOS. The macOS workflow always produces an unsigned preview artifact when Apple
 signing and notarization secrets are absent. It only publishes a signed asset
 after `codesign`, `notarytool`, and `stapler` verification succeed; missing
 secrets are never replaced with fake signatures or an implicit trust claim.

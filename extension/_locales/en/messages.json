@@ -1,0 +1,19 @@
+{
+  "extensionName": { "message": "LearnNote Current Video Assistant" },
+  "extensionDescription": { "message": "Identify the video playing in the current tab and hand it off safely to the local LearnNote client." },
+  "actionTitle": { "message": "Open the LearnNote current video assistant" },
+  "openClient": { "message": "Open workspace" },
+  "refreshTitle": { "message": "Reconnect and identify video" },
+  "refreshLabel": { "message": "Reconnect and identify the current video" },
+  "currentPage": { "message": "Current page" },
+  "playing": { "message": "Playing" },
+  "sendToClient": { "message": "Send to client" },
+  "openTask": { "message": "View task in client" },
+  "sourceInfo": { "message": "View source information" },
+  "processingMode": { "message": "How should this video be processed?" },
+  "chooseProcessingMode": { "message": "Choose a processing mode" },
+  "subtitleOnly": { "message": "Save transcript" },
+  "summaryNote": { "message": "Generate study note" },
+  "visualNote": { "message": "Visual note" },
+  "clientFeatures": { "message": "Client features" }
+}

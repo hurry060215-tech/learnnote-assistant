@@ -124,6 +124,7 @@ const assert = require("node:assert/strict"),
         markdown,
       });
     }
+    if (p === "/api/study/activity") return json({ recorded: true });
     if (req.method() !== "GET") {
       mutations.push(p);
       assert.equal(p, "/api/assistant/route", "Unexpected real API mutation");

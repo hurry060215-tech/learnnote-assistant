@@ -856,11 +856,45 @@ function pageSwitchMessage() {
   return "页面或播放内容已切换，已丢弃旧预检结果。请确认当前视频后重新发送。";
 }
 
+function learningRange() {
+  const startValue = document.querySelector("#learningRangeStart")?.value || "";
+  const endValue = document.querySelector("#learningRangeEnd")?.value || "";
+  if (!startValue && !endValue) return {};
+  const start = Number(startValue || 0);
+  const end = Number(endValue);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end <= start) {
+    throw new Error("范围无效：结束秒数必须大于开始秒数。");
+  }
+  return { start, end };
+}
+
+async function ensureSitePermission(pageUrl = "") {
+  if (!globalThis.chrome?.permissions?.request) return true;
+  let url;
+  try {
+    url = new URL(pageUrl);
+  } catch {
+    return true;
+  }
+  if (!["http:", "https:"].includes(url.protocol)) return true;
+  const origin = url.protocol + "//" + url.host + "/*";
+  if (await chrome.permissions.contains?.({ origins: [origin] })) return true;
+  return chrome.permissions.request({ origins: [origin] });
+}
+
 async function sendToClient(modeOverride = "") {
   if (sending || !displayedIdentity) return false;
   if (typeof modeOverride !== "string") modeOverride = "";
   const requestedMode = modeOverride === "video" ? "deep" : (modeOverride || selectedProcessingMode);
   const selectedOptions = processingOptions(requestedMode);
+  let selectedRange;
+  try {
+    selectedRange = learningRange();
+  } catch (error) {
+    const status = document.querySelector("#learningRangeStatus");
+    if (status) status.textContent = error.message;
+    return false;
+  }
   sending = true;
   document.querySelectorAll?.("[data-processing-mode]").forEach(button => { button.disabled = true; });
   els.sendButton.disabled = true;
@@ -874,6 +908,7 @@ async function sendToClient(modeOverride = "") {
     }
     setProgress(8, "正在连接 LearnNote...");
     if (!(await checkClient())) throw new Error("客户端未运行，请先打开 LearnNote");
+    if (!(await ensureSitePermission(expectedIdentity.canonical_page_url))) throw new Error("未获得当前站点权限，未读取或发送页面媒体；如需继续请再次点击发送并允许访问。");
     if (requestedMode !== "quick" && modelReadiness.configured === false) throw new Error("工作台尚未配置可用模型，请先设置模型，或改为仅提取字幕。本次没有开始处理视频。");
     if (requestedMode === "deep" && modelReadiness.supportsVision === false) throw new Error("当前模型不支持图片，请更换视觉模型或选择文字笔记。本次没有开始处理视频。");
 
@@ -904,6 +939,7 @@ async function sendToClient(modeOverride = "") {
         handoffId: handoffId(freshIdentity),
         defer: false,
         mode: "subtitle_only",
+        learning_range: selectedRange,
         options: selectedOptions
       }), REQUEST_TIMEOUT_MS, "创建字幕速记任务");
       if (response?.error) throw new Error(response.error);
@@ -940,6 +976,7 @@ async function sendToClient(modeOverride = "") {
       handoffId: videoHandoffId,
       defer: true,
       mode: "video",
+      learning_range: selectedRange,
       options: selectedOptions
     }), REQUEST_TIMEOUT_MS, "发送到客户端");
     if (response?.error) throw new Error(response.error);
@@ -1142,6 +1179,19 @@ function bindEvents() {
 }
 
 function bindProductActions(){
+  const rangeEndButton = document.querySelector("#useCurrentPositionAsRangeEnd");
+  rangeEndButton?.addEventListener?.("click", () => {
+    const current = Number(currentContext?.page?.active_video?.current_time || 0);
+    const status = document.querySelector("#learningRangeStatus");
+    if (!Number.isFinite(current) || current <= 0) {
+      if (status) status.textContent = "当前播放位置暂不可用，请先播放视频几秒。";
+      return;
+    }
+    const end = Math.floor(current);
+    const input = document.querySelector("#learningRangeEnd");
+    if (input) input.value = String(end);
+    if (status) status.textContent = "已填入当前播放位置：" + end + " 秒";
+  });
   const find=id=>document.querySelector?.("#"+id);
   find("subtitleSearch")?.addEventListener?.("input",renderSourcePreview);
   find("copyQuickSummary")?.addEventListener?.("click",async()=>{try{if(!quickNoteText)throw new Error("总结尚未生成");await navigator.clipboard.writeText(quickNoteText);els.quickResultStatus.textContent="总结已复制";}catch(e){els.quickResultStatus.textContent=e.message;}});
@@ -1150,6 +1200,7 @@ function bindProductActions(){
   find("useClientPreferences")?.addEventListener?.("click",async()=>{const status=find("extensionOptionsStatus");try{const response=await fetchWithTimeout(`${backendUrl}/api/preferences`);if(!response.ok)throw new Error("请先连接客户端");const p=(await response.json()).task_options||{};for(const [id,key] of [["extensionStyle","note_style"],["extensionTemplate","note_template"]]){const el=find(id);if(el&&[...el.options].some(o=>o.value===p[key]))el.value=p[key];}if(find("extensionPrompt"))find("extensionPrompt").value=p.note_profile_prompt||"";if(status)status.textContent="已载入客户端的笔记风格、格式和额外要求。";}catch(e){if(status)status.textContent=e.message;}});
 }
 async function initialize() {
+  globalThis.LearnNoteI18n?.apply?.(document);
   bindEvents();
   bindProductActions();
   await loadBackendUrl();

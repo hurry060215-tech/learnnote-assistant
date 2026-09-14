@@ -33,7 +33,7 @@ async def task_event_stream(task_id: str, cursor: int = 0) -> AsyncIterator[str]
         for event_id, item in events:
             next_index = event_id
             idle_ticks = 0
-            yield sse_frame(event_id, str(item.get("event") or "task_event"), item)
+            yield sse_frame(event_id, str(item.get("event") or "task_event"), {**item, "event_id": event_id})
 
         try:
             task = get_task(task_id)
@@ -46,6 +46,7 @@ async def task_event_stream(task_id: str, cursor: int = 0) -> AsyncIterator[str]
                 "status": task.status,
                 "phase": task.phase,
                 "progress": task.progress,
+                "event_id": next_index,
             })
             return
 

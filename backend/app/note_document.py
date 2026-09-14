@@ -39,6 +39,11 @@ _MOJIBAKE_MARKERS = (
     "ï»¿",
 )
 _UTF8_MOJIBAKE_RE = re.compile(r"(?:Ã[\u0080-\u00bf]|Â(?:[\u0080-\u00bf]|\s)|â(?:€|™|œ|“|”|…)|ðŸ)")
+_INTERNAL_PROMPT_RE = re.compile(
+    r"system prompt|developer message|ignore (?:the )?(?:previous|above) instructions|"
+    r"do not reveal (?:the )?prompt|内部提示|系统提示|开发者指令|不要输出(?:json|markdown)",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -193,6 +198,24 @@ def lint_note_markdown(markdown: str) -> list[dict[str, str]]:
             "code": "missing_visible_evidence",
             "severity": "warning",
             "message": "笔记没有可见时间戳或证据说明。",
+        })
+    if _INTERNAL_PROMPT_RE.search(text):
+        issues.append({
+            "code": "internal_prompt_leak",
+            "severity": "error",
+            "message": "笔记包含疑似内部提示或系统指令，已阻止发布。",
+        })
+    paragraphs = [
+        re.sub(r"\s+", " ", value).strip().casefold()
+        for value in re.split(r"\n\s*\n", prose_text(text))
+        if len(re.sub(r"\s+", " ", value).strip()) >= 24
+    ]
+    duplicates = len(paragraphs) - len(set(paragraphs))
+    if duplicates:
+        issues.append({
+            "code": "duplicate_content",
+            "severity": "warning",
+            "message": f"检测到 {duplicates} 段重复正文，请检查是否重复拼接了同一来源。",
         })
     return issues
 

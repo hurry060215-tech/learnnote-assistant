@@ -37,7 +37,7 @@ class ReleaseHardeningContractTests(unittest.TestCase):
         self.assertIn("CurrentInstallerPath", source)
         self.assertIn("user-data-must-survive.txt", source)
         self.assertIn("learnnote-config.json", source)
-        self.assertIn("Current extension version", source)
+        self.assertIn("Current client version", source)
         self.assertIn("Uninstall removed the configured external data directory", source)
         self.assertNotIn("Remove-Item -LiteralPath $safeBase", source)
 
@@ -78,8 +78,9 @@ class ReleaseHardeningContractTests(unittest.TestCase):
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["mode"], "offline-grounding-fixtures")
         self.assertFalse(report["network_attempted"])
-        self.assertEqual(report["case_count"], 3)
-        self.assertEqual(report["passed_count"], 3)
+        self.assertGreaterEqual(report["case_count"], 50)
+        self.assertEqual(report["passed_count"], report["case_count"])
+        self.assertGreaterEqual(report["quality_metrics"]["recall"], 0.95)
 
     def test_long_video_gate_defaults_to_one_hour_without_asr_or_llm(self) -> None:
         source = (ROOT / "scripts" / "long-video-reliability.py").read_text(encoding="utf-8")
@@ -110,6 +111,23 @@ class ReleaseHardeningContractTests(unittest.TestCase):
         self.assertNotIn("runner.temp", workflow)
         self.assertNotIn("secrets.", workflow)
         self.assertNotIn("interactive-login", workflow)
+
+    def test_reliability_freshness_gate_is_required_by_workflows(self) -> None:
+        script = (ROOT / "scripts" / "reliability-freshness.py").read_text(encoding="utf-8")
+        reliability = (ROOT / ".github" / "workflows" / "reliability.yml").read_text(encoding="utf-8")
+        release = (ROOT / ".github" / "workflows" / "desktop-release.yml").read_text(encoding="utf-8")
+        self.assertIn("matches_expected_commit", script)
+        self.assertIn("clean_checkout", script)
+        self.assertIn("reliability-freshness.py", reliability)
+        self.assertIn("--require-current-ref", reliability)
+        self.assertIn("reliability-freshness.py", release)
+        self.assertIn("--require-current-ref", release)
+
+    def test_windows_release_pins_installer_compiler(self) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "desktop-release.yml").read_text(encoding="utf-8")
+        self.assertIn("JRSoftware.InnoSetup.7", workflow)
+        self.assertIn("--version 7.1.0", workflow)
+        self.assertIn("LEARNNOTE_ISCC", workflow)
 
     def test_release_matrix_documents_manual_upgrade_and_credential_boundaries(self) -> None:
         matrix = (ROOT / "docs" / "RELEASE_TEST_MATRIX.md").read_text(encoding="utf-8")

@@ -18,6 +18,13 @@ This checklist is for maintainers publishing a desktop, extension, container, or
 6. Open a pull request. `main` requires the `checks` status and resolved review conversations.
 7. After merge, create an annotated `vX.Y.Z` tag. The Desktop Release workflow publishes the installer, portable ZIP, extension ZIP, and checksums.
 
+The desktop Update Center downloads complete official assets in the background.
+Applying an installed-client update is deferred until active tasks are gone;
+the updater snapshots only application files, runs `LearnNote.exe --health-check`
+after Inno Setup exits, and restores the snapshot on installer or health-check
+failure. Portable and source-development directories are never overwritten by
+the bridge.
+
 ## Windows signing
 
 发布前还应执行 `python scripts/check-workflow-shells.py` 和 UI visual acceptance。
@@ -37,6 +44,10 @@ The release workflow supports Authenticode signing for both `LearnNote.exe` and 
 Without the certificate, builds remain checksum-verified but Windows can display an unknown-publisher warning. The current dependency ranges and hosted build tools do not provide bit-for-bit reproducible binaries.
 
 ## Browser stores
+
+The Windows release workflow pins Inno Setup 7.1.0 and checks the resolved ISCC
+path before compiling. Verify the compiler version against the official Inno
+Setup download page before changing the pinned build tool.
 
 Store publishing requires maintainer-owned Chrome Web Store and Microsoft Edge Add-ons accounts. The reviewed listing copy and permission rationale live in:
 

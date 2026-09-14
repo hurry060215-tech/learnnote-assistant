@@ -74,6 +74,10 @@ function Get-InstalledVersion {
   }
   $manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
   $versionText = [string]$manifest.version
+  $releaseNotes = Join-Path $InstallDir "_internal\web\release-notes.json"
+  if (Test-Path -LiteralPath $releaseNotes -PathType Leaf) {
+    $versionText = [string](Get-Content -LiteralPath $releaseNotes -Raw -Encoding UTF8 | ConvertFrom-Json).current
+  }
   if (-not $versionText) {
     throw "Installed extension manifest has no version: $manifestPath"
   }
@@ -131,7 +135,7 @@ try {
   Invoke-Installer $currentInstaller $installDir "Current"
   $currentVersion = Get-InstalledVersion $installDir
   if ($currentVersion -le $previousVersion) {
-    throw "Current extension version $currentVersion must be newer than previous version $previousVersion."
+    throw "Current client version $currentVersion must be newer than previous version $previousVersion."
   }
 
   if (-not (Test-Path -LiteralPath $configPath -PathType Leaf)) {
@@ -150,10 +154,10 @@ try {
   }
 
   $executable = Join-Path $installDir "LearnNote.exe"
-  $startup = Start-Process -FilePath $executable -ArgumentList "--help" `
+  $startup = Start-Process -FilePath $executable -ArgumentList "--health-check" `
     -WindowStyle Hidden -Wait -PassThru
   if ($startup.ExitCode -ne 0) {
-    throw "Upgraded LearnNote executable failed its startup check with code $($startup.ExitCode)."
+    throw "Upgraded LearnNote executable failed its post-install health check with code $($startup.ExitCode)."
   }
 
   $uninstaller = Join-Path $installDir "unins000.exe"

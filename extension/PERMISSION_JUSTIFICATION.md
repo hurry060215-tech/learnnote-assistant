@@ -68,3 +68,14 @@ Data is transferred only to the local LearnNote service or to a user-selected
 video/model provider when required by an explicit user action. It is not used
 for advertising, profiling, creditworthiness, or unrelated purposes, and it
 is not sold or transferred to human reviewers.
+# Progressive site permission
+
+The extension requests the current page origin only after the user clicks
+Send to client. The permission is used to read media/subtitle evidence from
+that page, observe requests for the active handoff, and read cookies only when
+the selected site requires the user's existing login session. It is not used
+for background browsing, tab recording, advertising, or sending data to a
+LearnNote service.
+
+The local client origins remain in the required host permission list so the
+side panel can connect to the user's explicitly running local workbench.

@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse, Response
 from ..config import DATA_DIR, TEMP_DIR
 from ..library import (
     MATERIAL_IMPORT_MAX_BYTES,
+    apply_material_ocr,
     backup_library,
     delete_material,
     duplicate_groups,
@@ -101,6 +102,24 @@ async def api_library_material_import(file: UploadFile = File(...)) -> dict:
             detail={"code": code, "message": messages.get(code, "无法导入该学习资料。"), "recovery": recovery},
         ) from exc
     return {"ok": True, "material": material}
+
+
+@library_router.post("/materials/{material_id}/ocr")
+def api_library_material_ocr(material_id: str) -> dict:
+    try:
+        material = get_material(material_id)
+        source = material_source_path(material_id)
+        from ..pdf_ocr import ocr_pdf
+        result = ocr_pdf(source)
+        if result.get("status") != "ready":
+            raise HTTPException(status_code=503, detail={"code": "pdf_ocr_unavailable", "message": result.get("warning", "扫描 PDF OCR 组件不可用。")})
+        return {"ok": True, "material": apply_material_ocr(material_id, result), "ocr": result}
+    except HTTPException:
+        raise
+    except (ValueError, OSError) as exc:
+        code = str(exc)
+        message = "扫描 PDF OCR 只支持 PDF 资料。" if code == "material_ocr_requires_pdf" else "扫描 PDF OCR 未能完成，请检查文件和可选组件。"
+        raise HTTPException(status_code=422, detail={"code": code, "message": message}) from exc
 
 
 @library_router.post("/materials/register-task/{task_id}")

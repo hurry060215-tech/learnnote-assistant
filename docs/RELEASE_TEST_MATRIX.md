@@ -9,7 +9,7 @@ not require user accounts, browser login state, or API keys.
 | Gate | Command | Default scope | Network or credentials | Pass criteria |
 | --- | --- | --- | --- | --- |
 | Installer smoke | `.\scripts\test-release-installer.ps1 -InstallerPath .\LearnNote-Setup-x64.exe` | Clean install, startup, extension files, uninstall | None | App starts and external data survives uninstall |
-| Cover upgrade | `.\scripts\test-upgrade-installer.ps1 -PreviousInstallerPath <old.exe> -CurrentInstallerPath <new.exe>` | Previous-to-current upgrade under `D:\LearnNoteUpgradeSmoke` | None | Configuration and external data survive, extension version increases, upgraded app starts |
+| Cover upgrade | `.\scripts\test-upgrade-installer.ps1 -PreviousInstallerPath <old.exe> -CurrentInstallerPath <new.exe>` | Previous-to-current upgrade under `D:\LearnNoteUpgradeSmoke` | None | Configuration and external data survive, extension version increases, upgraded app passes the headless health check |
 | Long-video media | `python scripts/long-video-reliability.py` | Synthetic 60-minute MP4, media integrity, adaptive frames, 3x3 grids | None | Audio/video tracks, duration, timeline coverage, frames, and grids are valid |
 | Long-video resource matrix | `python scripts/long-video-reliability.py --duration-seconds 1800/3600/10800 --memory-budget-mb 512 --min-free-disk-mb 512` | Real 30, 60 and 180-minute synthetic media/frame coverage plus process RSS, CPU and free-disk samples | None | Each duration reaches the first frame, tail, valid grids, records resource counters, and stops when an explicit safety budget is exceeded |
 | Local-task cancellation | `python scripts/cancel-reliability.py --duration-seconds 180` | Real local processing task, cancellation request, durable cancelled state and task resource report | None | Cancellation reaches `cancelled` within the gate timeout, leaves the resource report, and makes zero remote calls |
@@ -31,8 +31,13 @@ and installs the current version over the same application directory. It verifie
 1. The current extension manifest version is greater than the previous version.
 2. The configuration file remains byte-for-byte unchanged.
 3. The external data path and both sentinels remain unchanged.
-4. The upgraded `LearnNote.exe --help` startup check succeeds.
+4. The upgraded `LearnNote.exe --health-check` local service check succeeds.
 5. The current uninstaller succeeds without deleting external data.
+
+The in-client update path creates one application-only rollback snapshot under
+the local data directory before launching Inno Setup. Installer errors and a
+failed post-update health check restore that snapshot, preserve the configured
+data directory, and write `install.log` plus `update-result.json`.
 
 Use disposable release installers only. The gate rejects any path that escapes
 the dedicated D-drive smoke directory.

@@ -37,9 +37,10 @@ try {
 
   $manifestData = Get-Content -LiteralPath $manifest -Raw -Encoding UTF8 | ConvertFrom-Json
   $releaseData = Get-Content -LiteralPath $releaseNotes -Raw -Encoding UTF8 | ConvertFrom-Json
-  $version = [string]$manifestData.version
-  if ([string]$releaseData.current -ne $version) {
-    throw "Installed release notes version $($releaseData.current) does not match extension version $version."
+  $version = [string]$releaseData.current
+  $expectedExtension = if ($releaseData.component_versions) { [string]$releaseData.component_versions.extension } else { $version }
+  if ([string]$manifestData.version -ne $expectedExtension) {
+    throw "Installed extension does not match the declared component version."
   }
   $currentNote = @($releaseData.releases | Where-Object { [string]$_.version -eq $version }) | Select-Object -First 1
   if (-not $currentNote -or -not [string]$currentNote.title -or -not [string]$currentNote.summary) {

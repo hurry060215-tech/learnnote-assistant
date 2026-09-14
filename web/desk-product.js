@@ -270,16 +270,11 @@ export function installProductWorkspace(ctx) {
   $("aiQuestion").addEventListener("input", saveDraft);
   window.addEventListener("pagehide", saveDraft);
   $("aiQuestion").addEventListener("keydown", (event) => {
-    if (
-      event.key === "Enter" &&
-      (event.ctrlKey || event.metaKey) &&
-      !event.isComposing
-    ) {
-      event.preventDefault();
-      if (!pending) $("aiForm").requestSubmit();
-    }
+    if (event.key !== "Enter" || event.shiftKey || event.isComposing || event.keyCode === 229) return;
+    event.preventDefault();
+    if (!pending) $("aiForm").requestSubmit();
   });
-  $("aiSend").title = "发送 · Ctrl / ⌘ + Enter";
+  $("aiSend").title = "发送 · Enter；换行 Shift + Enter；Ctrl / ⌘ + Enter 兼容";
   function renderMessage(question, result, originalSource = state.selected) {
     const messageSource =
       result.skill && !result.skill.requires_source
@@ -297,18 +292,54 @@ export function installProductWorkspace(ctx) {
     const block = document.createElement("section");
     block.className = "assistant-turn";
     block.innerHTML = `<div class="assistant-question">${esc(question)}</div><details class="skill-trace"><summary>来源与处理方式</summary><strong>${esc(usedSkill.name)}</strong><code>${esc(usedSkill.id)}</code><em>${esc({ completed: "已完成", needs_source: "等待来源", needs_configuration: "需要配置", failed: "失败", local_extract: "摘录模式" }[result.execution?.state] || "对话记录")}</em><span>${usedSkill.requires_source ? esc(messageSource?.title || "当前内容") : usedSkill.scope === "library" ? "本地资料库 · 按关键词检索" : usedSkill.scope === "conversation" ? "通用对话 · 未自动读取资料" : "软件功能与状态 · 未读取笔记正文"} · ${result.source === "llm" ? "文字模型" : "本地执行 / 摘录"}</span></details><div class="assistant-answer">${LearnNoteMarkdown.markdownToHtml(result.answer || result.message || "没有返回回答。")}</div>${result.warning ? `<p class="muted">${esc(result.warning)}</p>` : ""}<div class="assistant-citations">${(result.citations || []).map((c, i) => `<button data-citation="${i}">${esc(c.label || c.time_range || "出处 " + (i + 1))}</button>`).join("")}</div><button class="save-ai-note">保存为我的补充</button>`;
-    block.querySelectorAll("[data-citation]").forEach(
-      (b) =>
-        (b.onclick = async () => {
-          const c = result.citations[Number(b.dataset.citation)];
-          if (typeof c.start === "number") await openSource(c.start);
-          else {
-            const p = document.createElement("blockquote");
-            p.textContent = c.text || "暂无可用的原文定位";
-            b.after(p);
+    const citationPreviews = document.createElement("div");
+    citationPreviews.className = "assistant-citation-previews";
+    block.querySelector(".assistant-citations")?.after(citationPreviews);
+    if (result.created_at && Number.isFinite(Date.parse(result.created_at))) {
+      const time = document.createElement("time");
+      time.className = "assistant-message-time";
+      time.dateTime = result.created_at;
+      time.textContent = "历史对话 · " + new Date(result.created_at).toLocaleString();
+      block.querySelector(".assistant-question").after(time);
+    }
+    block.querySelectorAll("[data-citation]").forEach((b) => {
+      b.type = "button";
+      b.setAttribute("aria-expanded", "false");
+      b.onclick = () => {
+        const index = Number(b.dataset.citation);
+        const citation = result.citations[index] || {};
+        let preview = citationPreviews.querySelector('[data-citation-preview="' + index + '"]');
+        const expanded = b.getAttribute("aria-expanded") === "true";
+        block.querySelectorAll("[data-citation]").forEach((button) => {
+          if (button !== b) button.setAttribute("aria-expanded", "false");
+        });
+        citationPreviews.querySelectorAll("[data-citation-preview]").forEach((item) => {
+          if (item !== preview) item.hidden = true;
+        });
+        if (expanded) {
+          b.setAttribute("aria-expanded", "false");
+          if (preview) preview.hidden = true;
+          return;
+        }
+        if (!preview) {
+          preview = document.createElement("blockquote");
+          preview.dataset.citationPreview = String(index);
+          const text = document.createElement("p");
+          text.textContent = citation.text || citation.locator || "暂无可直接展开的原文摘录。";
+          preview.append(text);
+          if (typeof citation.start === "number" && messageSource) {
+            const locate = document.createElement("button");
+            locate.type = "button";
+            locate.textContent = "定位到原文";
+            locate.onclick = () => openSource(citation.start, messageSource);
+            preview.append(locate);
           }
-        }),
-    );
+          citationPreviews.append(preview);
+        }
+        preview.hidden = false;
+        b.setAttribute("aria-expanded", "true");
+      };
+    });
     block.querySelector(".save-ai-note").onclick = async (e) => {
       const s = messageSource;
       if (!s) return;
@@ -322,6 +353,7 @@ export function installProductWorkspace(ctx) {
               0,
               8000,
             ),
+            anchor: { source_revision: state.revision || "" },
           }),
         });
         notice("已保存到当前笔记的个人补充。");
@@ -377,14 +409,23 @@ export function installProductWorkspace(ctx) {
           : s
             ? localThreads.get(s.id) || []
             : [];
-      const items = [...globalItems, ...sourceItems].sort((a, b) =>
-        (a.created_at || "").localeCompare(b.created_at || ""),
+      const items = [
+        ...globalItems.map((item) => ({ item, source: null })),
+        ...sourceItems.map((item) => ({ item, source: s })),
+      ].sort((a, b) =>
+        (a.item.created_at || "").localeCompare(b.item.created_at || ""),
       );
       if (epoch !== assistantEpoch) return;
       if (!previousSkill && visibleSource === "global")
         previousSkill = items.at(-1)?.skill?.id || "";
-      for (const item of items)
-        $("assistantHistory").append(renderMessage(item.question, item));
+      const olderCount = Math.max(0, items.length - 6);
+      let older = null;
+      if (olderCount) {
+        older = document.createElement("details"); older.className = "assistant-older";
+        const label = document.createElement("summary"); label.textContent = `较早对话 · ${olderCount} 条`;
+        older.append(label); $("assistantHistory").append(older);
+      }
+      items.forEach((entry,index) => (index < olderCount ? older : $("assistantHistory")).append(renderMessage(entry.item.question, entry.item, entry.source)));
       if (!items.length)
         $("assistantHistory").innerHTML =
           '<div class="assistant-empty"><strong>有什么想问的？</strong><p>直接提问，或围绕当前内容继续聊。</p></div>';
