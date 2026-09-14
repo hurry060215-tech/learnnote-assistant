@@ -127,7 +127,11 @@ class ReleaseHardeningContractTests(unittest.TestCase):
         workflow = (ROOT / ".github" / "workflows" / "desktop-release.yml").read_text(encoding="utf-8")
         self.assertIn("JRSoftware.InnoSetup.7", workflow)
         self.assertIn("--version 7.1.0", workflow)
+        self.assertIn("--scope machine --architecture x64", workflow)
         self.assertIn("LEARNNOTE_ISCC", workflow)
+        self.assertIn('ref: ${{ inputs.release_tag || github.ref }}', workflow)
+        self.assertIn('Checkout does not match the requested release tag', workflow)
+        self.assertIn('if: env.RELEASE_TAG !=', workflow)
 
     def test_release_matrix_documents_manual_upgrade_and_credential_boundaries(self) -> None:
         matrix = (ROOT / "docs" / "RELEASE_TEST_MATRIX.md").read_text(encoding="utf-8")
