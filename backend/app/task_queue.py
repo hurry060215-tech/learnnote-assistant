@@ -185,7 +185,7 @@ def queue_status(root: Path, task_id: str) -> dict[str, object]:
             "running_count": sum(row["state"] == "running" for row in active),
             "kind": next((row["kind"] for row in entries if row["task_id"] == task_id), ""),
         }
-    position = sum(row["state"] == "queued" for row in active if row["sequence"] < current["sequence"])
+    position = (1 + sum(row["state"] == "queued" for row in active if row["sequence"] < current["sequence"])) if current["state"] == "queued" else 0
     return {
         "state": current["state"],
         "position": position,

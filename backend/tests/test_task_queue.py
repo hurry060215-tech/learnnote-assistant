@@ -134,16 +134,25 @@ class TaskQueueTests(unittest.TestCase):
     def test_queue_status_reports_durable_position_and_kind(self):
         with tempfile.TemporaryDirectory() as directory:
             queue = LocalTaskQueue(Path(directory))
-            release = threading.Event()
-            first = queue.enqueue("first", "local", lambda: release.wait(3))
-            second = queue.enqueue("second", "light", lambda: None)
-            snapshot = __import__("app.task_queue", fromlist=["queue_status"]).queue_status(Path(directory), "second")
-            self.assertEqual(snapshot["kind"], "light")
-            self.assertEqual(snapshot["position"], 1)
-            release.set()
-            first.result(5)
-            second.result(5)
-            queue.stop()
+            started, release = threading.Event(), threading.Event()
+            def hold():
+                started.set()
+                release.wait(15)
+            first = queue.enqueue("first", "local", hold)
+            try:
+                self.assertTrue(started.wait(5))
+                second = queue.enqueue("second", "light", lambda: None)
+                third = queue.enqueue("third", "local", lambda: None)
+                from app.task_queue import queue_status
+                snapshot = queue_status(Path(directory), "second")
+                self.assertEqual(snapshot["kind"], "light")
+                self.assertEqual(snapshot["position"], 1)
+                self.assertEqual(queue_status(Path(directory), "third")["position"], 2)
+                self.assertEqual(queue_status(Path(directory), "first")["position"], 0)
+            finally:
+                release.set()
+                first.result(5)
+                queue.stop()
 
     def test_backpressure_and_failed_job_do_not_stall_queue(self):
         with tempfile.TemporaryDirectory() as directory:
