@@ -2,6 +2,11 @@ name: Desktop Release
 
 on:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing version tag to rebuild and publish after validation
+        required: false
+        type: string
   push:
     tags:
       - "v*"
@@ -12,8 +17,11 @@ permissions:
   attestations: write
 
 concurrency:
-  group: desktop-release-${{ github.ref }}
+  group: desktop-release-${{ inputs.release_tag || github.ref }}
   cancel-in-progress: false
+
+env:
+  RELEASE_TAG: ${{ inputs.release_tag || (github.ref_type == 'tag' && github.ref_name) || '' }}
 
 jobs:
   build-windows:
@@ -27,6 +35,18 @@ jobs:
       SIGNING_TIMESTAMP_URL: ${{ secrets.WINDOWS_SIGNING_TIMESTAMP_URL }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.release_tag || github.ref }}
+      - name: Validate release source
+        shell: pwsh
+        run: |
+          if ($env:RELEASE_TAG -and $env:RELEASE_TAG -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') { throw "Invalid release tag" }
+          $commit = git rev-parse HEAD
+          if ($env:RELEASE_TAG) {
+            $expected = git rev-parse "$env:RELEASE_TAG^{commit}"
+            if ($LASTEXITCODE -ne 0 -or $expected -ne $commit) { throw "Checkout does not match the requested release tag" }
+          }
+          "BUILD_COMMIT=$commit" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
@@ -41,7 +61,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Pinned Windows dependency installation failed" }
           python -c "import faster_whisper, ctranslate2, av, rapidocr_onnxruntime, webview"
           if ($LASTEXITCODE -ne 0) { throw "Desktop ASR/OCR runtime import failed" }
-          winget install --id JRSoftware.InnoSetup.7 -e --version 7.1.0 --source winget --accept-source-agreements --accept-package-agreements
+          winget install --id JRSoftware.InnoSetup.7 -e --version 7.1.0 --scope machine --architecture x64 --source winget --accept-source-agreements --accept-package-agreements
           if ($LASTEXITCODE -ne 0) { throw "Pinned Inno Setup installation failed" }
           $compiler = @(
             (Join-Path $env:ProgramFiles "Inno Setup 7\ISCC.exe"),
@@ -53,7 +73,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force build/release | Out-Null
-          python scripts/reliability-freshness.py --commit "${{ github.sha }}" --require-current-ref --output build/release/freshness.json
+          python scripts/reliability-freshness.py --commit "$env:BUILD_COMMIT" --require-current-ref --output build/release/freshness.json
           $env:PYTHONPATH = "backend"
           python -m unittest discover backend/tests
           if ($LASTEXITCODE -ne 0) { throw "Backend release gate failed" }
@@ -120,12 +140,12 @@ jobs:
         shell: pwsh
         run: ./scripts/test-release-installer.ps1 -InstallerPath LearnNote-Setup-x64.exe
       - name: Smoke-test upgrade from previous release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: env.RELEASE_TAG != ''
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $currentTag = "${{ github.ref_name }}"
+          $currentTag = $env:RELEASE_TAG
           $previous = gh release list --repo "${{ github.repository }}" --limit 20 --json tagName,isDraft,isPrerelease,publishedAt |
             ConvertFrom-Json |
             Where-Object { -not $_.isDraft -and -not $_.isPrerelease -and $_.tagName -ne $currentTag } |
@@ -149,8 +169,8 @@ jobs:
         run: |
           $manifest = Get-Content extension/manifest.json -Raw -Encoding UTF8 | ConvertFrom-Json
           $clientVersion = (Get-Content web/release-notes.json -Raw -Encoding UTF8 | ConvertFrom-Json).current
-          if ("v$clientVersion" -ne "${{ github.ref_name }}" -and "${{ github.ref_type }}" -eq "tag") {
-            throw "Tag ${{ github.ref_name }} does not match client version v$clientVersion."
+          if ($env:RELEASE_TAG -and "v$clientVersion" -ne $env:RELEASE_TAG) {
+            throw "Requested tag does not match client version v$clientVersion."
           }
           $extensionAsset = "LearnNote-Browser-Extension-v$($manifest.version).zip"
           ./scripts/package-extension.ps1 -OutputPath "$PWD/$extensionAsset"
@@ -163,7 +183,7 @@ jobs:
           }
           $lines | Set-Content -LiteralPath SHA256SUMS.txt -Encoding ascii
       - name: Attest release build provenance
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: env.RELEASE_TAG != ''
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-checksums: SHA256SUMS.txt
@@ -180,7 +200,7 @@ jobs:
             LearnNote-Resolved-Requirements.txt
             build/release/freshness.json
       - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: env.RELEASE_TAG != ''
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -190,4 +210,4 @@ jobs:
           if (-not $extensionAsset) {
             throw "Versioned browser extension asset was not found."
           }
-          ./scripts/publish-release.ps1 -Tag "${{ github.ref_name }}" -Repository "${{ github.repository }}"
+          ./scripts/publish-release.ps1 -Tag "$env:RELEASE_TAG" -Repository "${{ github.repository }}"

@@ -113,7 +113,7 @@ class DeploymentContractTests(unittest.TestCase):
         self.assertIn("test-upgrade-installer.ps1", workflow)
         self.assertIn("THIRD_PARTY_NOTICES.md", workflow)
         self.assertIn("Copy-Item third_party", workflow)
-        self.assertIn('./scripts/publish-release.ps1 -Tag "${{ github.ref_name }}"', workflow)
+        self.assertIn('./scripts/publish-release.ps1 -Tag "$env:RELEASE_TAG"', workflow)
         publisher = (ROOT / "scripts/publish-release.ps1").read_text(encoding="utf-8")
         self.assertIn("--draft --verify-tag", publisher)
         self.assertIn("--draft=false", publisher)
