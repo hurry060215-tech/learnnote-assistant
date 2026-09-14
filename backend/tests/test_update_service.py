@@ -22,6 +22,17 @@ class Response:
 
 
 class UpdateServiceTests(unittest.TestCase):
+    def test_api_rate_limit_falls_back_to_official_checksum(self):
+        from types import SimpleNamespace
+        api = SimpleNamespace(status_code=403)
+        page = SimpleNamespace(url=update_service.RELEASE_BASE+"/tag/v9.8.7", raise_for_status=lambda:None)
+        checksums = SimpleNamespace(text="a"*64+"  LearnNote-Setup-x64.exe\n", raise_for_status=lambda:None)
+        with tempfile.TemporaryDirectory() as root, patch.object(update_service,"DATA_DIR",Path(root)), patch.object(update_service.requests,"get",side_effect=[api,page,checksums]):
+            result=update_service.fetch_latest_release(force=True)
+        self.assertEqual(result["version"],"9.8.7")
+        self.assertTrue(result["client"]["installable"])
+        self.assertEqual(result["client"]["sha256"],"a"*64)
+
     def setUp(self):
         update_service._release_cache = None
         update_service._release_cache_at = 0

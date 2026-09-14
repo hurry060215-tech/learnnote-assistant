@@ -64,6 +64,8 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Reader timeline and navigation gate failed" }
             node scripts/workspace-ux-acceptance.cjs http://127.0.0.1:8765 build/workspace-ux
             if ($LASTEXITCODE -ne 0) { throw "Workspace settings and assistant continuity gate failed" }
+            node scripts/ui-readability-acceptance.cjs http://127.0.0.1:8765 build/readability-ui
+            if ($LASTEXITCODE -ne 0) { throw "Reading typography and navigation gate failed" }
             node scripts/workspace-recovery-acceptance.cjs http://127.0.0.1:8765 build/workspace-recovery
             if ($LASTEXITCODE -ne 0) { throw "Draft, history and connection recovery gate failed" }
             node scripts/core-output-acceptance.cjs http://127.0.0.1:8765 build/core-output
@@ -92,6 +94,7 @@ jobs:
             build/chat-stream-ui
             build/layout-ui
             build/workspace-ux
+            build/readability-ui
             build/workspace-recovery
             build/core-output
             build/reader-ui

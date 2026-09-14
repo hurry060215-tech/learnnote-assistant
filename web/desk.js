@@ -1413,4 +1413,5 @@ window.addEventListener("learnnote:annotations", () =>
 
 installInteractions({ state, drawList, showHome, navigateBack });
 installLayout();
-installProfile({state, notice});
+installProfile({state, notice, startReview});
+$("review").onclick = () => workspaceTools.studySettings();

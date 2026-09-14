@@ -131,6 +131,7 @@ def api_put_update_preferences(payload: UpdatePreferences) -> dict:
 def api_model_route() -> dict:
     from ..config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
     from ..local_models import model_status
+    from ..model_connections import selected_connection_status
     from ..summarizer import llm_model_supports_vision
     from importlib.util import find_spec
     local_asr = find_spec("faster_whisper") is not None
@@ -138,11 +139,16 @@ def api_model_route() -> dict:
         local_model_ready = model_status("small").get("status") == "ready"
     except Exception:
         local_model_ready = False
+    connection = selected_connection_status()
+    model = connection.get("model") or {}
+    configured = bool(connection.get("configured") or LLM_API_KEY)
+    base_url = model.get("base_url") or LLM_BASE_URL
+    model_name = model.get("model") or LLM_MODEL
     return plan_route(
-        TaskOptions(),
+        TaskOptions(llm_base_url=base_url, llm_model=model_name),
         local_asr_available=local_asr and local_model_ready,
-        model_configured=bool(LLM_API_KEY),
-        vision_configured=bool(LLM_API_KEY and llm_model_supports_vision(LLM_BASE_URL, LLM_MODEL)),
+        model_configured=configured,
+        vision_configured=bool(configured and llm_model_supports_vision(base_url, model_name)),
     )
 
 

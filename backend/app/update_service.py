@@ -120,6 +120,28 @@ def _release_payload(payload: dict) -> dict:
     }
 
 
+def _release_from_web() -> dict:
+    """Read the same official release and checksums when the API is throttled."""
+    page = requests.get(RELEASE_PAGE, timeout=8.0, allow_redirects=True)
+    page.raise_for_status()
+    match = re.fullmatch(re.escape(RELEASE_BASE) + r"/tag/v(\d+\.\d+\.\d+)/?", str(page.url))
+    if not match:
+        raise ValueError("Invalid official release redirect")
+    version = match[1]
+    base = f"{RELEASE_BASE}/download/v{version}"
+    checksums = requests.get(f"{base}/SHA256SUMS.txt", timeout=8.0)
+    checksums.raise_for_status()
+    if len(checksums.text) > 65536:
+        raise ValueError("Invalid release checksum manifest")
+    assets = []
+    for digest, name in re.findall(r"(?m)^([a-fA-F0-9]{64})\s{2}([A-Za-z0-9_.-]+)\s*$", checksums.text):
+        if name == INSTALLER_NAME or name == EXTENSION_ASSET_TEMPLATE.format(version=version):
+            assets.append({"name":name,"browser_download_url":f"{base}/{name}","digest":"sha256:"+digest.lower(),"size":0})
+    if not any(item["name"] == INSTALLER_NAME for item in assets):
+        raise ValueError("Release checksum missing installer")
+    return {"tag_name":"v"+version,"html_url":f"{RELEASE_BASE}/tag/v{version}","assets":assets,"prerelease":False}
+
+
 def fetch_latest_release(*, force: bool = False) -> dict:
     global _release_cache, _release_cache_at
     now = time.time()
@@ -131,8 +153,11 @@ def fetch_latest_release(*, force: bool = False) -> dict:
         timeout=8.0,
         headers={"Accept": "application/vnd.github+json", "User-Agent": "LearnNote-Updater"},
     )
-    response.raise_for_status()
-    raw = response.json()
+    if getattr(response, "status_code", 200) in {403, 429}:
+        raw = _release_from_web()
+    else:
+        response.raise_for_status()
+        raw = response.json()
     result = _release_payload(raw)
     with _cache_lock:
         _release_cache = result
@@ -204,7 +229,7 @@ def status(*, force: bool = False) -> dict:
             latest = fetch_latest_release(force=True)
             preferences = save_preferences({**preferences, "last_checked_at": latest["checked_at"]})
         except (requests.RequestException, ValueError) as exc:
-            error = str(exc)
+            error = "暂时无法连接官方更新服务，请稍后重试。已下载并校验的更新仍然保留。"
     if latest is not None and DEPLOYMENT_MODE != "desktop":
         latest = {
             **latest,

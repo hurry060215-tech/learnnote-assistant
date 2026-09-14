@@ -36,7 +36,7 @@ export function installProductWorkspace(ctx) {
   for (const [id, icon, label] of [
     ["newNote", "plus", "新建笔记"],
     ["settings", "settings", "设置"],
-    ["review", "review", "学习工作室"],
+    ["review", "review", "复习"],
     ["courses", "folder", "课程"],
 
     ["refresh", "refresh", ""],
@@ -295,6 +295,13 @@ export function installProductWorkspace(ctx) {
     const citationPreviews = document.createElement("div");
     citationPreviews.className = "assistant-citation-previews";
     block.querySelector(".assistant-citations")?.after(citationPreviews);
+    if (result.created_at && Number.isFinite(Date.parse(result.created_at))) {
+      const time = document.createElement("time");
+      time.className = "assistant-message-time";
+      time.dateTime = result.created_at;
+      time.textContent = "历史对话 · " + new Date(result.created_at).toLocaleString();
+      block.querySelector(".assistant-question").after(time);
+    }
     block.querySelectorAll("[data-citation]").forEach((b) => {
       b.type = "button";
       b.setAttribute("aria-expanded", "false");
@@ -411,8 +418,14 @@ export function installProductWorkspace(ctx) {
       if (epoch !== assistantEpoch) return;
       if (!previousSkill && visibleSource === "global")
         previousSkill = items.at(-1)?.skill?.id || "";
-      for (const entry of items)
-        $("assistantHistory").append(renderMessage(entry.item.question, entry.item, entry.source));
+      const olderCount = Math.max(0, items.length - 6);
+      let older = null;
+      if (olderCount) {
+        older = document.createElement("details"); older.className = "assistant-older";
+        const label = document.createElement("summary"); label.textContent = `较早对话 · ${olderCount} 条`;
+        older.append(label); $("assistantHistory").append(older);
+      }
+      items.forEach((entry,index) => (index < olderCount ? older : $("assistantHistory")).append(renderMessage(entry.item.question, entry.item, entry.source)));
       if (!items.length)
         $("assistantHistory").innerHTML =
           '<div class="assistant-empty"><strong>有什么想问的？</strong><p>直接提问，或围绕当前内容继续聊。</p></div>';

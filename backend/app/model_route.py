@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import urlparse
 
 from .models import TaskOptions
 
@@ -17,6 +18,7 @@ def plan_route(
     vision_configured: bool = False,
 ) -> dict[str, Any]:
     selected = options or TaskOptions()
+    local_model = urlparse(selected.llm_base_url or "").hostname in {"localhost", "127.0.0.1", "::1"}
     text_routes = [
         {
             "id": "platform_or_embedded_subtitles",
@@ -37,9 +39,9 @@ def plan_route(
         {
             "id": "remote_text_model",
             "label": "配置的文字模型",
-            "kind": "remote",
+            "kind": "local" if local_model else "remote",
             "ready": bool(model_configured),
-            "network": "required",
+            "network": "none" if local_model else "required",
             "detail": "仅发送当前任务所需的文字材料和明确要求。",
         },
     ]
@@ -69,7 +71,7 @@ def plan_route(
         "content_mode": selected.content_mode,
         "selected_route": selected.content_mode,
         "routes": requested_routes,
-        "offline_ready": selected.content_mode != "visual" and all(item["ready"] for item in requested_routes if item["kind"] == "local"),
+        "offline_ready": selected.content_mode != "visual" and all(item["ready"] and item["network"] != "required" for item in requested_routes),
         "blocking_reasons": blocking,
         "policy": "local-first; remote calls require explicit configured provider; no account is required",
     }

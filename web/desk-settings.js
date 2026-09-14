@@ -314,11 +314,11 @@ export function installSettings(ctx) {
     '<button type="button" id="discoverModelList">发现模型</button><button type="button" id="providerConsole">获取 API Key</button><button type="button" id="forgetModelKey">清除已保存 Key</button><datalist id="availableModels"></datalist>';
   $("model").setAttribute("list", "availableModels");
   $("settingsStatus").before(modelActions);
-  const routePanel = document.createElement("section");
+  const routePanel = document.createElement("details");
   routePanel.className = "model-route-panel";
   routePanel.setAttribute("aria-labelledby", "modelRouteHeading");
   routePanel.innerHTML =
-    '<div class="settings-section-heading"><h4 id="modelRouteHeading">本地优先处理路线</h4><button type="button" id="refreshModelRoute">刷新</button></div><p id="modelRouteSummary" class="muted" role="status">正在读取字幕、模型和离线就绪度…</p><div id="modelRouteList" class="model-route-list"></div>';
+    '<summary id="modelRouteHeading">查看字幕与模型处理路线</summary><button type="button" id="refreshModelRoute">刷新路线</button><p id="modelRouteSummary" class="muted" role="status">正在读取字幕、模型和离线就绪度…</p><div id="modelRouteList" class="model-route-list"></div>';
   panes.model.querySelector("h3").after(routePanel);
   async function loadModelRoute() {
     const summary = $("modelRouteSummary"), list = $("modelRouteList");
@@ -326,10 +326,10 @@ export function installSettings(ctx) {
     summary.textContent = "正在读取字幕、模型和离线就绪度…";
     try {
       const route = await api("/api/model/route");
-      summary.textContent = route.offline_ready
-        ? "当前路线可在本机完成，不要求 LearnNote 账号。"
-        : "当前路线会优先使用字幕；缺字幕时请准备本地语音模型或配置远程模型。";
-      list.innerHTML = (route.routes || []).map((item) => `<article class="model-route-item ${item.ready ? "ready" : "waiting"}"><div><strong>${esc(item.label)}</strong><span>${item.ready ? "已就绪" : "待准备"}</span></div><p>${esc(item.detail)}</p><small>${item.network === "required" ? "需要网络" : item.network === "offline_after_model_ready" ? "模型准备后可离线" : "不调用模型"}</small></article>`).join("");
+      summary.textContent = route.routes?.some(item => item.network === "required")
+        ? "总结会调用你配置的模型；优先读取字幕，缺少字幕时再转写。"
+        : "此路线不调用远程模型；平台字幕仍需连接视频站点获取。";
+      list.innerHTML = (route.routes || []).map((item) => `<article class="model-route-item ${item.ready ? "ready" : "waiting"}"><div><strong>${esc(item.label)}</strong><span>${item.id === "platform_or_embedded_subtitles" ? "按需检测" : item.ready ? "已就绪" : "待准备"}</span></div><p>${esc(item.detail)}</p><small>${item.network === "required" ? "需要网络" : item.network === "offline_after_model_ready" ? "模型准备后可离线" : "不调用模型"}</small></article>`).join("");
       if (route.blocking_reasons?.length) {
         summary.textContent += " " + route.blocking_reasons.join(" ");
       }
@@ -360,7 +360,7 @@ export function installSettings(ctx) {
   $("checkLocalAsr").onclick = () => checkLocalAsr();
   $("prepareLocalAsr").onclick = () => checkLocalAsr(true);
   panes.notes.innerHTML +=
-    '<p class="muted">风格控制内容组织，格式控制呈现方式。保留全部配置入口，不用单个“深度”代替它们。</p><label for="prefStyle">笔记风格</label><select id="prefStyle">' +
+    '<p class="muted">选择适合内容的笔记风格和版式，可补充具体整理要求。</p><label for="prefStyle">笔记风格</label><select id="prefStyle">' +
     Object.entries({
       study: "学习笔记",
       lecture: "课程讲义",
@@ -390,7 +390,7 @@ export function installSettings(ctx) {
       .join("") +
     '</select><label for="prefCustom">额外整理要求</label><textarea id="prefCustom" maxlength="4000" placeholder="例如：重点保留推导步骤，代码使用原文，不扩写课程外的知识。"></textarea><div class="settings-inline-actions"><button type="button" id="exportProfile">导出模板</button><label class="file-action">导入 JSON 模板<input id="importProfile" type="file" accept=".json,application/json"></label></div>';
   panes.processing.innerHTML +=
-    '<p class="muted">保留画面密度、OCR 和资源预算的控制，处理速度与覆盖度由你权衡。</p>' +
+    '<p class="muted">调整画面采样和资源用量；采样更密集时，处理时间也会增加。</p>' +
     field("prefInterval", "抽帧间隔（秒）", "number", 20, 'min="1" max="600"') +
     field("prefFrames", "最大帧数", "number", 900, 'min="60" max="2400"') +
     field(
@@ -538,18 +538,41 @@ export function installSettings(ctx) {
     "beforeend",
     '<label for="prefFont">阅读字体</label><select id="prefFont"><option value="sans">清晰黑体</option><option value="serif">书页宋体</option><option value="mono">等宽字体</option></select><label for="prefWidth">阅读宽度</label><select id="prefWidth"><option value="760">专注 · 760 px</option><option value="940">标准 · 940 px</option><option value="1120">宽屏 · 1120 px</option></select><label for="prefLeading">正文行距</label><select id="prefLeading"><option value="1.65">紧凑 · 1.65</option><option value="1.85">舒适 · 1.85</option><option value="2.1">宽松 · 2.1</option></select><label for="prefAccent">强调色</label><select id="prefAccent"><option value="neutral">石墨</option><option value="teal">青绿</option><option value="blue">靛蓝</option><option value="plum">梅紫</option></select><p class="muted">外观保存在当前浏览器或客户端；不会修改笔记内容。深浅主题可用侧栏底部按钮切换。</p>',
   );
+  panes.appearance.insertAdjacentHTML("beforeend", '<label for="prefWeight">正文字重</label><select id="prefWeight"><option value="400">常规</option><option value="500">清晰</option><option value="600">加粗</option></select>');
   const preview = document.createElement("div");
   preview.className = "settings-status";
   preview.setAttribute("aria-label", "阅读效果预览");
   preview.innerHTML =
     "<strong>阅读效果预览</strong><p>清楚的层级、适合的字号与行距，让每一份笔记更容易阅读。</p><small>改变选项即可预览；点击保存后保留。</small>";
   panes.appearance.querySelector("h3").after(preview);
+  const presets = document.createElement("div");
+  presets.className = "reading-preset";
+  presets.innerHTML = '<button type="button" id="clearReadingPreset">清晰紧凑</button><button type="button" id="boldReadingPreset">大字加粗</button>';
+  preview.after(presets);
+  const appearanceGrid = document.createElement("div");
+  appearanceGrid.className = "appearance-grid";
+  for (const id of ["prefReaderSize", "prefWeight", "prefFont", "prefLeading", "prefWidth", "prefDensity", "prefAccent"]) {
+    const field = document.createElement("div");
+    field.append(panes.appearance.querySelector(`label[for="${id}"]`), $(id));
+    appearanceGrid.append(field);
+  }
+  presets.after(appearanceGrid);
+
+  const preset = (large) => {
+    $("prefFont").value = "sans"; $("prefLeading").value = "1.65";
+    $("prefReaderSize").value = large ? "18" : "17";
+    $("prefWeight").value = large ? "600" : "500";
+    $("prefReaderSize").dispatchEvent(new Event("change", {bubbles:true}));
+  };
+  $("clearReadingPreset").onclick = () => preset(false);
+  $("boldReadingPreset").onclick = () => preset(true);
   const readingDefaults = {
     size: 17,
     density: "comfortable",
     font: "sans",
     width: "940",
-    leading: "1.85",
+    leading: "1.65",
+    weight: "500",
     accent: "neutral",
     autoOpen: false,
     notify: false,
@@ -562,6 +585,7 @@ export function installSettings(ctx) {
       font: ["sans", "serif", "mono"],
       width: ["760", "940", "1120"],
       leading: ["1.65", "1.85", "2.1"],
+      weight: ["400", "500", "600"],
       accent: ["neutral", "teal", "blue", "plum"],
     };
     return Object.fromEntries(
@@ -614,6 +638,7 @@ export function installSettings(ctx) {
     style.setProperty("--reader-font", fonts[p.font]);
     style.setProperty("--reader-width", p.width + "px");
     style.setProperty("--reader-leading", p.leading);
+    style.setProperty("--reader-weight", p.weight);
     style.setProperty("--chosen-accent", colors[p.accent]);
     style.setProperty("--chosen-accent-dark", darkColors[p.accent]);
     document.body.classList.toggle("compact-density", p.density === "compact");
@@ -621,6 +646,7 @@ export function installSettings(ctx) {
       fontFamily: fonts[p.font],
       fontSize: p.size + "px",
       lineHeight: p.leading,
+      fontWeight: p.weight,
     });
   }
   function appearance() {
@@ -631,6 +657,7 @@ export function installSettings(ctx) {
       prefFont: "font",
       prefWidth: "width",
       prefLeading: "leading",
+      prefWeight: "weight",
       prefAccent: "accent",
     }))
       $(id).value = p[key];
@@ -646,6 +673,7 @@ export function installSettings(ctx) {
       font: $("prefFont").value,
       width: $("prefWidth").value,
       leading: $("prefLeading").value,
+      weight: $("prefWeight").value,
       accent: $("prefAccent").value,
       autoOpen: $("prefAutoOpen").checked,
       notify: $("prefNotify").checked,

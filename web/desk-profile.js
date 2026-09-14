@@ -1,6 +1,6 @@
 import { api, escapeHtml as esc } from "/web/desk-api.js";
 
-export function installProfile({ state, notice }) {
+export function installProfile({ state, notice, startReview }) {
   const button = document.createElement("button");
   button.id = "profile";
   button.textContent = "我的";
@@ -38,7 +38,7 @@ export function installProfile({ state, notice }) {
       body.querySelector(".profile-section:last-child")?.append(activityLine);
     }
     body.querySelector("#profileRefresh").onclick = openProfile;
-    body.querySelector("#profileReview").onclick = () => { dialog.close(); document.getElementById("review").click(); };
+    body.querySelector("#profileReview").onclick = () => { dialog.close(); startReview(); };
     body.querySelector("#profileNameForm").onsubmit = event => {
       event.preventDefault();
       const value = body.querySelector("#profileNickname").value.trim();

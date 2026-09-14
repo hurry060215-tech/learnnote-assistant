@@ -2,7 +2,11 @@
 
 All notable changes to LearnNote are documented here. The project follows semantic versioning while the `0.x` series is under active development.
 
-## 0.2.9 - Local acceptance fixes
+## 0.2.9 - Clearer reading and reliable updates
+
+- Tighten reading and dialog spacing, increase text contrast, and expose regular, clear and bold text weights with two reading presets.
+- Keep settings routes collapsed, make review navigation consistent, group older assistant messages and label their dates.
+- Report saved model connections and remote model requirements correctly; recover update checks from GitHub API rate limits using the official release and checksum manifest.
 
 - Repair update buttons and unsaved-settings protection; retain verified download metadata across restart and honor disabled automatic checks.
 - Protect nested data folders during rollback, reverify packages before execution, and preserve the active port in all restart paths.
@@ -10,7 +14,7 @@ All notable changes to LearnNote are documented here. The project follows semant
 - Clip selected subtitle ranges once and map remote playback back to the original video offset.
 - Treat timestamps as location hints rather than support verification; flag ungrounded quantities and mark legacy claim mappings for review.
 - Keep the Google-review extension source and version at 0.2.8. Client, installer and extension versions are independently validated.
-- Add real browser update-control checks and a Windows rollback test with nested data sentinels. This is a local candidate, not a new public release.
+- Add real browser update-control and typography checks, plus a Windows rollback test with nested data sentinels.
 
 ## 0.2.8 - Reliable summaries and source navigation
 

@@ -12,7 +12,7 @@ const tools = fs.readFileSync(path.join(root, "web", "desk-tools.js"), "utf8");
 test("settings exposes the explainable local-first model route", () => {
   assert.match(settings, /model-route-panel/);
   assert.match(settings, /\/api\/model\/route/);
-  assert.match(settings, /offline_ready/);
+  assert.match(settings, /item.network === "required"/);
   assert.match(settings, /blocking_reasons/);
   assert.match(css, /\.model-route-list/);
 });
