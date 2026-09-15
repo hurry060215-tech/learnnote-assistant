@@ -62,6 +62,12 @@ class UpdateServiceTests(unittest.TestCase):
         self.assertTrue(result["client"]["installable"])
         self.assertEqual(checksum, result["client"]["sha256"])
         self.assertTrue(result["extension"]["available"])
+        payload["assets"][1]["name"] = "LearnNote-Browser-Extension-v9.8.6.zip"
+        payload["assets"][1]["browser_download_url"] = update_service.RELEASE_BASE + "/download/v9.8.7/LearnNote-Browser-Extension-v9.8.6.zip"
+        result = update_service._release_payload(payload)
+        self.assertTrue(result["extension"]["available"], "independent extension versions must remain downloadable")
+        payload["assets"][1]["browser_download_url"] = "https://example.com/extension.zip"
+        self.assertFalse(update_service._release_payload(payload)["extension"]["available"])
 
     def test_missing_cache_is_rechecked_even_with_recent_timestamp(self):
         with tempfile.TemporaryDirectory() as directory:

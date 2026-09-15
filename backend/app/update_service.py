@@ -92,6 +92,10 @@ def _release_payload(payload: dict) -> dict:
     }
     installer = _asset(assets.get(INSTALLER_NAME, {}), version=version, name=INSTALLER_NAME)
     extension_name = EXTENSION_ASSET_TEMPLATE.format(version=version)
+    if extension_name not in assets:
+        candidates = [name for name in assets if re.fullmatch(r"LearnNote-Browser-Extension-v\d+\.\d+\.\d+\.zip", name)]
+        if len(candidates) == 1:
+            extension_name = candidates[0]
     extension = assets.get(extension_name, {})
     extension_url = str(extension.get("browser_download_url") or "")
     extension_digest = str(extension.get("digest") or "")
