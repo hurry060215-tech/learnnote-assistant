@@ -3,7 +3,7 @@
   "minimum_chrome_version": "116",
   "default_locale": "zh_CN",
   "name": "__MSG_extensionName__",
-  "version": "0.2.9",
+  "version": "0.2.10",
   "description": "__MSG_extensionDescription__",
   "homepage_url": "https://hurry060215-tech.github.io/learnnote-assistant/",
   "permissions": [

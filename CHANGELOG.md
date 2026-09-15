@@ -7,7 +7,7 @@ All notable changes to LearnNote are documented here. The project follows semant
 - Read platform captions independently of local client discovery; skip unrelated Bilibili page frames and coalesce repeated probes.
 - Reuse matching player video metadata and player request URLs; cache exact video/part captions in memory and recheck the source before handoff.
 - Show query duration or cache state. Put searchable, collapsible original text before generation options and align client/extension visual hierarchy.
-- Bundle extension 0.2.9; store distribution is independent. Authenticated live Bilibili latency remains unverified; no seconds-level guarantee is made.
+- Bundle extension 0.2.10; store distribution is independent. Authenticated live Bilibili latency remains unverified; no seconds-level guarantee is made.
 - Stabilize the study activity test clock and update browser acceptance for collapsed subtitle preview.
 
 ## 0.2.9 - Clearer reading and reliable updates
