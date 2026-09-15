@@ -6,7 +6,7 @@
 
 [下载 Windows 版](https://github.com/hurry060215-tech/learnnote-assistant/releases/latest) · [产品与使用流程](https://hurry060215-tech.github.io/learnnote-assistant/) · [安装浏览器扩展](docs/EXTENSION_CONNECTION.md) · [使用帮助](SUPPORT.md)
 
-> **客户端 v0.2.9：** 阅读排版更紧凑，文字对比度更清晰，支持独立调整字重。浏览器扩展继续使用送审的 v0.2.8；两者独立更新，以 [Release 的版本和更新说明](https://github.com/hurry060215-tech/learnnote-assistant/releases)为准。
+> **客户端 v0.2.10 / 扩展 v0.2.9：** 字幕读取与客户端连接并行，减少重复查询，支持原文预览与搜索。商店版本可能滞后于 GitHub；真实 B 站登录态的提取耗时仍待实测，不保证秒提取。
 
 ![LearnNote 阅读工作台](site/assets/learnnote-reader-current.png)
 

@@ -52,6 +52,7 @@ const fs=require('node:fs'), path=require('node:path'), os=require('node:os'), a
     try { await ext.locator('#sourcePreviewCard:not([hidden])').waitFor(); }
     catch(e) { console.error(errors,await ext.locator('body').innerText()); throw e; }
     assert(await ext.locator('.subtitle-paragraph').count()>1);
+    await ext.locator('#sourcePreviewCard > summary').click();
     await ext.locator('#subtitleSearch').fill('关键词');
     const cue=ext.locator('#sourcePreviewContent [data-seek-time]');
     await cue.waitFor();assert.equal(await cue.count(),1);await cue.click();

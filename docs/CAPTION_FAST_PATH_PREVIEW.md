@@ -1,6 +1,6 @@
 # Caption fast-path preview (2026-09-15)
 
-Extension preview 0.2.9; the published client and submitted store extension are not replaced by this preview.
+Originally prepared as extension preview 0.2.9. The user subsequently requested release as client 0.2.10 with extension 0.2.9. Google store submission remains separate, and the live validation limitation below remains applicable.
 
 The previous panel initialized local discovery before reading captions. Collection waited for every frame before querying Bilibili, and successful captions expired after 30 seconds. Concurrent refresh/send calls could duplicate the request.
 
