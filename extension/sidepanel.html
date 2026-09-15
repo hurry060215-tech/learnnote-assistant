@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>LearnNote</title>
     <link rel="icon" type="image/png" sizes="32x32" href="icons/icon32.png">
-    <link rel="stylesheet" href="sidepanel.css?v=0.2.8">
+    <link rel="stylesheet" href="sidepanel.css?v=0.2.10">
   </head>
   <body>
     <header class="app-header">
@@ -50,6 +50,15 @@
         </details>
       </section>
 
+      <details id="sourcePreviewCard" class="quick-result-card source-preview" hidden>
+        <summary>原文预览 <span id="sourcePreviewCount"></span></summary>
+        <label class="subtitle-search" for="subtitleSearch">搜索字幕</label>
+        <input id="subtitleSearch" type="search" placeholder="输入关键词，点击原文回到视频" maxlength="200">
+        <p class="preview-caption">按停顿与段落长度分组，保留每句原始时间；分组不代表 AI 章节。</p>
+        <p id="sourceSeekStatus" role="status"></p>
+        <div id="sourcePreviewContent" class="subtitle-sections"></div>
+      </details>
+
       <section class="handoff-card">
         <h2 class="section-title" data-i18n="processingMode">如何整理这个视频</h2>
         <div class="processing-mode-choices" role="radiogroup" aria-label="选择处理方式" data-i18n-aria="chooseProcessingMode">
@@ -85,14 +94,7 @@
         <button id="openTaskButton" class="secondary-button" type="button" hidden>在客户端查看任务</button>
       </section>
 
-      <details id="sourcePreviewCard" class="quick-result-card source-preview" hidden open>
-        <summary>原文预览 <span id="sourcePreviewCount"></span></summary>
-        <label class="subtitle-search" for="subtitleSearch">搜索字幕</label>
-        <input id="subtitleSearch" type="search" placeholder="输入关键词，点击原文回到视频" maxlength="200">
-        <p class="preview-caption">按停顿与段落长度分组，保留每句原始时间；分组不代表 AI 章节。</p>
-        <p id="sourceSeekStatus" role="status"></p>
-        <div id="sourcePreviewContent" class="subtitle-sections"></div>
-      </details>
+
 
       <section id="quickResultCard" class="quick-result-card" hidden aria-label="快速学习结果">
         <header class="quick-result-header">

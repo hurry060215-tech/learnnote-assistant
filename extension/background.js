@@ -2100,11 +2100,24 @@ async function readBilibiliCaptions(expectedUrl) {
     } finally {clearTimeout(timer);}
   }
   try {
-    const view = await get(`https://api.bilibili.com/x/web-interface/view?${query}`,"include");
     const part = Number(new URL(expectedUrl).searchParams.get("p") || 1);
+    // Reuse the current player's verified video identity, never a previous SPA page.
+    const initial = globalThis.__INITIAL_STATE__?.videoData;
+    const matches = initial && (videoId.startsWith("av") ? String(initial.aid) === videoId.slice(2) : initial.bvid === videoId);
+    const view = matches && initial.pages?.some(item => item.page === part && item.cid)
+      ? {code:0,data:initial}
+      : await get(`https://api.bilibili.com/x/web-interface/view?${query}`,"include");
     const page = view.data?.pages?.find(item => item.page === part);
     if (view.code !== 0 || !page?.cid) return {status:"unavailable",cues:[]};
-    let info = await get(`https://api.bilibili.com/x/player/wbi/v2?${query}&cid=${page.cid}`,"include");
+    const playerRequest = (globalThis.performance?.getEntriesByType?.("resource") || []).slice().reverse().find(item => {
+      try {
+        const u = new URL(item.name);
+        return u.origin === "https://api.bilibili.com" && /^\/x\/player\/(?:wbi\/)?v2$/.test(u.pathname)
+          && u.searchParams.get("cid") === String(page.cid)
+          && (u.searchParams.get("bvid") === videoId || (view.data.aid && u.searchParams.get("aid") === String(view.data.aid)));
+      } catch { return false; }
+    });
+    let info = await get(playerRequest?.name || `https://api.bilibili.com/x/player/wbi/v2?${query}&cid=${page.cid}`,"include");
     if (info.code !== 0 && info.code !== -101) {
       info = await get(`https://api.bilibili.com/x/player/v2?${query}&cid=${page.cid}`,"include");
     }
@@ -2125,24 +2138,35 @@ async function readBilibiliCaptions(expectedUrl) {
   } catch {return {status:"unavailable",cues:[]};}
 }
 const biliSubtitleCache = new Map();
+const biliSubtitleRequests = new Map();
 async function addBilibiliCaptions(tab, page) {
   if (!/^https:\/\/(?:www\.)?bilibili\.com\/video\/(?:BV[0-9A-Za-z]+|av[0-9]+)/.test(tab.url || "") || !captureActive(tab.id)) return page;
-  const key = String(tab.url).split("#")[0];
+  const url = new URL(tab.url);
+  const key = `${url.origin}${url.pathname.replace(/\/$/, "")}?p=${url.searchParams.get("p") || "1"}`;
+  const requestKey = `${tab.id}:${key}`;
   let cached = biliSubtitleCache.get(tab.id);
-  if (!cached || cached.url !== key || Date.now()-cached.at > (cached.result.status === "ready" ? 30000 : 3000)) {
+  const cacheHit = Boolean(cached && cached.url === key && Date.now()-cached.at <= (cached.result.status === "ready" ? 300000 : 3000));
+  if (!cached || cached.url !== key || Date.now()-cached.at > (cached.result.status === "ready" ? 300000 : 3000)) {
     try {
-      const response = await chrome.scripting.executeScript({target:{tabId:tab.id,frameIds:[0]},world:"MAIN",func:readBilibiliCaptions,args:[key]});
-      cached = {url:key,at:Date.now(),result:response[0]?.result || {status:"unavailable",cues:[]}};
+      if (!biliSubtitleRequests.has(requestKey)) {
+        const started = Date.now();
+        const pending = chrome.scripting.executeScript({target:{tabId:tab.id,frameIds:[0]},world:"MAIN",func:readBilibiliCaptions,args:[key]})
+          .then(response => ({url:key,at:Date.now(),elapsed_ms:Date.now()-started,result:response[0]?.result || {status:"unavailable",cues:[]}}))
+          .finally(() => biliSubtitleRequests.delete(requestKey));
+        biliSubtitleRequests.set(requestKey,pending);
+      }
+      cached = await biliSubtitleRequests.get(requestKey);
       biliSubtitleCache.set(tab.id,cached);
       if (biliSubtitleCache.size > 16) biliSubtitleCache.delete(biliSubtitleCache.keys().next().value);
     } catch {return {...page,subtitle_probe:{status:"unavailable"}};}
   }
   const result = cached.result;
-  return {...page,subtitle_probe:{status:result.status,language:result.language || "",cue_count:result.cues?.length || 0},
+  return {...page,subtitle_probe:{status:result.status,language:result.language || "",cue_count:result.cues?.length || 0,elapsed_ms:cached.elapsed_ms,cache_hit:cacheHit},
     ...(result.status === "ready" ? {browser_subtitles:normalizeBrowserSubtitles(result.cues), active_video:page.active_video ? {...page.active_video,duration:page.active_video.duration || result.duration} : {duration:result.duration}} : {})};
 }
 
 async function collectPageData(tab) {
+  const captions = addBilibiliCaptions(tab, {});
   const rememberedBeforeCollect = [...(pageStateByTab.get(tab.id)?.values() || [])];
   const rememberedTop = rememberedBeforeCollect.find(page => (page.frame_id ?? 0) === 0) || rememberedBeforeCollect[0];
   const rememberedUrl = String(rememberedTop?.page_url || "").split("#")[0];
@@ -2153,11 +2177,19 @@ async function collectPageData(tab) {
     resourceByTab.delete(tab.id);
     clearCaptureLog(tab.id);
   }
-  const frameInfos = await getAllFrameInfos(tab.id);
+  const directBilibili = /^https:\/\/(?:www\.)?bilibili\.com\/video\/(?:BV[0-9A-Za-z]+|av[0-9]+)/.test(tab.url || "");
+  const frameInfos = directBilibili ? [{frameId:0}] : await getAllFrameInfos(tab.id);
   const frameIds = [...new Set([0, ...(frameInfos || []).map(frame => frame.frameId).filter(frameId => frameId !== undefined)])];
   await Promise.all(frameIds.map(frameId => collectFramePageData(tab, frameId)));
   const remembered = [...(pageStateByTab.get(tab.id)?.values() || [])];
-  return addBilibiliCaptions(tab, { ...mergePageContexts(tab, remembered), context_reset: contextReset });
+  const page = { ...mergePageContexts(tab, remembered), context_reset: contextReset };
+  const captured = await captions;
+  if (captured.subtitle_probe) {
+    const latest = await chrome.tabs.get(tab.id);
+    const partKey = value => { const u = new URL(value); return `${u.origin}${u.pathname.replace(/\/$/, "")}?p=${u.searchParams.get("p") || "1"}`; };
+    if (partKey(latest.url) !== partKey(tab.url)) throw new Error("视频已切换，请重新读取当前视频字幕。");
+  }
+  return {...page,...captured,...(captured.active_video ? {active_video:{...page.active_video,...captured.active_video}} : {})};
 }
 
 globalThis.__learnnoteE2E = {

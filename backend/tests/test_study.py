@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tempfile
+from datetime import datetime
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -89,7 +90,9 @@ class StudyLoopTests(unittest.TestCase):
             update_study_plan("学习", 10, False, "Asia/Shanghai")
             record_activity("reading", "task:one", "2026-09-12T15:59:00+00:00")
             record_activity("answer", "task:one", "2026-09-12T16:01:00+00:00")
-            result = activity_summary(3)
+            with patch("app.study.datetime", wraps=datetime) as clock:
+                clock.now.return_value = datetime.fromisoformat("2026-09-14T08:00:00+00:00")
+                result = activity_summary(3)
             summary = study_summary()
         self.assertEqual(result["timezone"], "Asia/Shanghai")
         self.assertEqual(result["by_kind"]["reading"], 1)

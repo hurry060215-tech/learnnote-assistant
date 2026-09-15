@@ -2,13 +2,13 @@
 :root {
   color-scheme: light;
   --bg: #ffffff;
-  --panel: #f5f5f5;
+  --panel: #f5f6f3;
   --paper: #fff;
-  --ink: #20252b;
-  --muted: #505965;
-  --line: #e7e7e7;
+  --ink: #26332c;
+  --muted: #58635d;
+  --line: #e3e7e2;
   --accent: var(--chosen-accent, #303832);
-  --tint: #ededed;
+  --tint: #edf2eb;
   --danger: #a13a2c;
   font-family:
     "Noto Sans SC", "Segoe UI", "PingFang SC", "Microsoft YaHei UI",
@@ -223,6 +223,7 @@ small,
 }
 #notes button[aria-current="true"] {
   background: var(--tint);
+  box-shadow: inset 2px 0 var(--accent);
 }
 #notes strong {
   font-size: 14px;
@@ -235,7 +236,7 @@ small,
 #notes small {
   display: block;
   font-size: 12px;
-  margin-top: 6px;
+  margin-top: 4px;
 }
 .workspace {
   min-width: 0;
