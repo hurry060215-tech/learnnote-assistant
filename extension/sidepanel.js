@@ -653,7 +653,9 @@ function renderContext(message = "") {
   } else if (!hasPage) {
     els.preflightMessage.textContent = "请切换到正在播放视频的页面。";
   } else if (subtitleReady) {
-    els.preflightMessage.textContent = `已取得 ${subtitleCues().length} 段播放器字幕。`;
+    const elapsed = currentContext?.page?.subtitle_probe?.elapsed_ms;
+    const timing = currentContext?.page?.subtitle_probe?.cache_hit ? " · 已缓存" : Number.isFinite(elapsed) ? ` · 查询 ${(elapsed / 1000).toFixed(1)} 秒` : "";
+    els.preflightMessage.textContent = `字幕已就绪 · ${subtitleCues().length} 段${timing}`;
   } else if (currentContext?.page?.subtitle_probe?.status === "auth_required") {
     els.preflightMessage.textContent = "字幕接口需要有效的 B 站登录状态。请确认已登录并刷新视频，再点重新识别。";
   } else if (selectedProcessingMode === "quick") {
@@ -846,7 +848,7 @@ async function runPreflight(identity = displayedIdentity) {
 
 async function refreshAndPreflight({ force = true } = {}) {
   els.preflightMessage.dataset.state = "info";
-  els.preflightMessage.textContent = "正在读取播放器和媒体请求...";
+  els.preflightMessage.textContent = "正在读取现成字幕…";
   const context = await collectContext(force);
   if (context && clientConnected) await runPreflight(displayedIdentity);
   return context;
@@ -1204,8 +1206,9 @@ async function initialize() {
   bindEvents();
   bindProductActions();
   await loadBackendUrl();
-  await checkClient();
-  await refreshAndPreflight({ force: true });
+  // Reading platform captions does not depend on finding the local client.
+  const [, context] = await Promise.all([checkClient(), collectContext(true)]);
+  if (context && clientConnected) await runPreflight(displayedIdentity);
 }
 
 initialize();
