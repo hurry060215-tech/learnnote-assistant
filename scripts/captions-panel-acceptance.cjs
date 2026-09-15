@@ -12,10 +12,12 @@ const fs=require('node:fs'),path=require('node:path'),http=require('node:http'),
    const context={tab:{id:1,url,title:'如何把视频变成有用的学习笔记'},page:{page_url:url,title:'如何把视频变成有用的学习笔记',active_video:{duration:120,current_time:0},subtitle_probe:{status:'ready',elapsed_ms:380},browser_subtitles:Array.from({length:24},(_,i)=>({start:i*5,end:i*5+5,text:`第 ${i+1} 句：先理解核心观点，再回到原文核对。`}))},resources:[]};
    window.chrome={storage:{local:{get:async defaults=>({...defaults}),set:async()=>{}}},tabs:{query:async()=>[]},runtime:{onMessage:{addListener(){}},sendMessage:async msg=>msg.type==='get-current-context'?context:{ok:true}},i18n:{getMessage:()=>''}};
   });
-  await page.route('http://127.0.0.1:8765/**',async route=>{const u=route.request().url();if(u.endsWith('/health'))await new Promise(r=>setTimeout(r,1600));return route.fulfill({json:u.endsWith('/health')?{service:'learnnote',app_version:'0.2.9',protocol_version:1}:{configured:true,model:{model:'fixture'}}});});
+  let releaseConnection;const connection=new Promise(resolve=>{releaseConnection=resolve});
+  await page.route('http://127.0.0.1:8765/**',async route=>{const u=route.request().url();if(u.endsWith('/health'))await connection;return route.fulfill({json:u.endsWith('/health')?{service:'learnnote',app_version:'0.2.10',protocol_version:1}:{configured:true,model:{model:'fixture'}}});});
   await page.goto(`http://127.0.0.1:${port}/extension/sidepanel.html`);
-  await page.locator('#sourcePreviewCard').waitFor({state:'visible',timeout:1200});
+  await page.locator('#sourcePreviewCard').waitFor({state:'visible',timeout:12000});
   assert(!await page.locator('#connectionTitle').innerText().then(t=>t.includes('已连接')),'subtitle preview must appear before slow backend discovery');
+  releaseConnection();
   assert.match(await page.locator('#preflightMessage').innerText(),/24.*0.4/);
   const order=await page.evaluate(()=>document.querySelector('#sourcePreviewCard').compareDocumentPosition(document.querySelector('.handoff-card')));
   assert(order & 4,'transcript preview should precede generation choices');
