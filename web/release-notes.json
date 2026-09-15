@@ -405,7 +405,7 @@
     }
   ],
   "component_versions": {
-    "client": "0.2.9",
+    "client": "0.2.10",
     "extension": "0.2.9",
     "protocol": 1
   }
