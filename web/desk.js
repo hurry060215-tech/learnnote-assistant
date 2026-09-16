@@ -37,7 +37,7 @@ const state = {
   health: {},
 };
 const presets = {
-  deepseek: ["https://api.deepseek.com/v1", "deepseek-chat"],
+  deepseek: ["https://api.deepseek.com", "deepseek-flash"],
   kimi: ["https://api.moonshot.cn/v1", "moonshot-v1-8k"],
   openai: ["https://api.openai.com/v1", ""],
   local: ["http://127.0.0.1:1234/v1", ""],

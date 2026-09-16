@@ -41,7 +41,9 @@ def load_runtime_helpers():
     if {node.name for node in helpers} != helper_names:
         raise RuntimeError("Provider classifier helpers were not found in backend/app/summarizer.py.")
     module = ast.Module(body=helpers, type_ignores=[])
-    namespace = {"re": re, "urlparse": urlparse}
+    if str(BACKEND) not in sys.path:
+        sys.path.insert(0, str(BACKEND))
+    namespace = {"re": re, "urlparse": urlparse, "__name__": "app.summarizer", "__package__": "app"}
     exec(compile(module, str(source_path), "exec"), namespace)
     return namespace["llm_provider_name"], namespace["llm_model_supports_vision"]
 

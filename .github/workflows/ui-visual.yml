@@ -72,6 +72,8 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Reading typography and navigation gate failed" }
             node scripts/captions-panel-acceptance.cjs
             if ($LASTEXITCODE -ne 0) { throw "Caption fast-path panel gate failed" }
+            node scripts/model-catalog-acceptance.cjs http://127.0.0.1:8765
+            if ($LASTEXITCODE -ne 0) { throw "Model catalog and vision controls gate failed" }
             node scripts/workspace-recovery-acceptance.cjs http://127.0.0.1:8765 build/workspace-recovery
             if ($LASTEXITCODE -ne 0) { throw "Draft, history and connection recovery gate failed" }
             node scripts/core-output-acceptance.cjs http://127.0.0.1:8765 build/core-output
@@ -102,6 +104,7 @@ jobs:
             build/workspace-ux
             build/readability-ui
             build/captions-panel
+            build/model-catalog
             build/workspace-recovery
             build/core-output
             build/reader-ui

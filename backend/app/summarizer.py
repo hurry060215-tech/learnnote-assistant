@@ -101,7 +101,12 @@ def chat_completion_provider_kwargs(base_url: str) -> dict:
 def llm_model_supports_vision(base_url: str, model: str) -> bool:
     provider = llm_provider_name(base_url)
     normalized = str(model or "").strip().lower()
-    if provider in {"deepseek", "minimax"}:
+    from .model_capabilities import image_probe_verified, model_description
+    if image_probe_verified(base_url, model):
+        return True
+    if provider == "deepseek":
+        return model_description(provider, base_url, model)["vision"] is True
+    if provider == "minimax":
         return False
     if provider == "dashscope":
         return any(token in normalized for token in ("-vl", "omni", "qvq"))
@@ -532,6 +537,7 @@ def _repair_grounded_note(
                     "外文专有名称只能使用证据原文，禁止自行补写英文译名。"
                     "对检测问题 unsupported_terms 中逐个列出的外文项，必须删除该外文写法（包括括号译名和标题），"
                     "保留材料支持的对应中文解释；不得因为你知道某个酒店、品牌或人名的英文名称就继续保留。"
+                    "字幕可能有识别错字；即使某个缩写像熟悉的名称，也不能擅自纠正。无法确认时改用原文支持的普通描述，或省略该句。"
                     "可以保留自测题，但必须明确写“自测题”，且答案可由证据直接推出。\n"
                     f"{_evidence_contract(transcript, grids)}\n"
                     f"标题：{title}\n"
@@ -581,6 +587,14 @@ def _validated_generated_note(
     if repaired and not remaining:
         _record_llm_event(events, "grounding_validation", "repaired", model=model)
         return repaired
+    from .grounding_recovery import omit_unsupported_name_passages
+    recovered, omitted = omit_unsupported_name_passages(repaired, remaining)
+    if recovered and not note_grounding_issues(recovered, transcript, grids, visual_evidence, title):
+        if artifact_dir is not None:
+            artifact_dir.mkdir(parents=True, exist_ok=True)
+            (artifact_dir / "omitted-summary-passages.json").write_text(json.dumps({"issues": remaining, "passages": omitted, "published": False}, ensure_ascii=False, indent=2), encoding="utf-8")
+        _record_llm_event(events, "grounding_validation", "partial_recovery", omitted_passages=len(omitted), issues=remaining, model=model)
+        return recovered
     _record_llm_event(
         events,
         "grounding_validation",

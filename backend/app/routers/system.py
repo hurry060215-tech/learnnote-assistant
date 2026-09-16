@@ -210,7 +210,7 @@ class ModelSetupCheckRequest(BaseModel):
     model: str = Field(min_length=1, max_length=256)
     api_key: str = Field(default="", max_length=8192)
     use_saved_connection: bool = False
-    mode: Literal["chat", "models"] = "chat"
+    mode: Literal["chat", "models", "vision"] = "chat"
 
 
 class ModelConnectionSaveRequest(BaseModel):
@@ -300,6 +300,7 @@ def check_model_setup(payload: ModelSetupCheckRequest) -> dict:
 
         client = OpenAI(api_key=key or "local-no-key", base_url=base_url, timeout=18.0, max_retries=0)
         if payload.mode == "models":
+            from ..model_capabilities import model_description
             response = client.models.list()
             model_ids = sorted({
                 str(item.id).strip()
@@ -313,11 +314,29 @@ def check_model_setup(payload: ModelSetupCheckRequest) -> dict:
                 "provider_name": llm_provider_name(base_url),
                 "model": payload.model,
                 "models": model_ids,
+                "model_details": [model_description(llm_provider_name(base_url), base_url, name) for name in model_ids],
                 "latency_ms": round((time.monotonic() - started) * 1000),
                 "message": f"已发现 {len(model_ids)} 个模型。",
             }
         provider_kwargs = chat_completion_provider_kwargs(base_url)
         provider_kwargs["temperature"] = 0
+        if payload.mode == "vision":
+            import base64
+            import io
+            from PIL import Image
+            from ..model_capabilities import save_image_probe
+            picture = Image.new("RGB", (96, 48), "red")
+            picture.paste("blue", (48, 0, 96, 48))
+            buffer = io.BytesIO()
+            picture.save(buffer, format="PNG")
+            data_url = "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()
+            response = tracked_completion(client, purpose="vision_connection_test", model=payload.model,
+                messages=[{"role":"user", "content":[{"type":"text", "text":"Name the left color then the right color. English color names only."}, {"type":"image_url", "image_url":{"url":data_url}}]}], max_tokens=32, **provider_kwargs)
+            answer = str(response.choices[0].message.content or "").strip().lower()
+            passed = bool(re.search(r"\bred\b.*\bblue\b", answer, re.S))
+            if passed:
+                save_image_probe(base_url, payload.model)
+            return {"ok":passed,"mode":"vision","model":payload.model,"supports_vision":passed,"latency_ms":round((time.monotonic()-started)*1000),"message":"图片识别测试通过，已记住此接口与模型的视觉能力。" if passed else "接口接受了请求，但测试图未识别正确，暂不标记为已验证。"}
         response = tracked_completion(client, purpose="connection_test",
             model=payload.model,
             messages=[{"role": "user", "content": "Reply with OK only."}],

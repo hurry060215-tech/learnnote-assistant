@@ -1,3 +1,4 @@
+import { installModelCatalog } from "/web/desk-model-catalog.js";
 import { api, escapeHtml as esc } from "/web/desk-api.js";
 export function installSettings(ctx) {
   const { state, notice, loadKey } = ctx,
@@ -831,37 +832,7 @@ export function installSettings(ctx) {
       button.disabled = false;
     }
   };
-  $("discoverModelList").onclick = async () => {
-    const b = $("discoverModelList");
-    b.disabled = true;
-    try {
-      const r = await api("/api/model/setup/check", {
-        method: "POST",
-        body: JSON.stringify({
-          provider: $("provider").value,
-          base_url: $("baseUrl").value,
-          model: $("model").value || "auto",
-          api_key: $("apiKey").value,
-          use_saved_connection:
-            Boolean(state.model.use_saved_connection) &&
-            $("baseUrl").value.trim() === state.model.base_url &&
-            !$("apiKey").value.trim(),
-          mode: "models",
-        }),
-      });
-      $("availableModels").replaceChildren(
-        ...(r.models || []).map((value) =>
-          Object.assign(document.createElement("option"), { value }),
-        ),
-      );
-      $("settingsStatus").textContent =
-        r.message || `发现 ${(r.models || []).length} 个模型`;
-    } catch (e) {
-      $("settingsStatus").textContent = e.message;
-    } finally {
-      b.disabled = false;
-    }
-  };
+  installModelCatalog(state);
   const consoles = {
     deepseek: "https://platform.deepseek.com/api_keys",
     kimi: "https://platform.kimi.com/console/api-keys",
