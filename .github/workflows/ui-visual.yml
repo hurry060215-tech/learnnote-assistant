@@ -3,6 +3,8 @@ name: UI visual acceptance
 on:
   pull_request:
     paths:
+      - "package.json"
+      - "package-lock.json"
       - "web/**"
       - "backend/app/**"
       - "scripts/*visual*.cjs"
@@ -11,6 +13,8 @@ on:
   push:
     branches: [main]
     paths:
+      - "package.json"
+      - "package-lock.json"
       - "web/**"
       - "scripts/accessibility-visual-acceptance.cjs"
       - ".github/workflows/ui-visual.yml"

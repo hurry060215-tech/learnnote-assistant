@@ -12,6 +12,10 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: deps(python)
+    groups:
+      python-runtime:
+        patterns: ["*"]
+        update-types: [minor, patch]
 
   - package-ecosystem: npm
     directory: /
@@ -46,3 +50,6 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: deps(actions)
+    groups:
+      codeql:
+        patterns: ["github/codeql-action/*"]
