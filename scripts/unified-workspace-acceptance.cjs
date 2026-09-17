@@ -73,6 +73,20 @@ const fs = require("node:fs");
       document.querySelector("#toolStatus").textContent.includes("已加入"),
     );
     await p.locator("[data-close-tool]").click();
+    await p.route("**/api/assistant/execute/stream", async (route) => {
+      await route.fulfill({
+        contentType: "text/event-stream",
+        body:
+          "event: result\ndata: " +
+          JSON.stringify({
+            answer: "学习率控制参数更新步长，并影响训练过程的稳定性。",
+            source: "local",
+            skill: { id: "note.qa", name: "内容问答", scope: "task", requires_source: true },
+            execution: { state: "completed" },
+          }) +
+          "\n\n",
+      });
+    });
     await p.locator("#moreTools").click();
     await p.locator('[data-action="ask"]').click();
     await p.locator("#aiQuestion").fill("学习率");
