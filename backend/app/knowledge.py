@@ -88,6 +88,17 @@ def preserve_raw_import(content: bytes, filename: str = "") -> dict[str, object]
     return {"sha256": digest, "byte_count": len(raw)}
 
 
+def _raw_import_path(raw_sha256: str) -> Path:
+    digest = str(raw_sha256 or "").strip().lower()
+    if not re.fullmatch(r"[0-9a-f]{64}", digest):
+        raise ValueError("raw_import_missing")
+    root = (DATA_DIR / "raw-imports").resolve()
+    candidates = [path for path in root.glob(f"{digest}*") if path.is_file()]
+    if len(candidates) != 1 or candidates[0].resolve().parent != root:
+        raise ValueError("raw_import_missing")
+    return candidates[0]
+
+
 def _connect() -> sqlite3.Connection:
     ensure_dirs()
     connection = sqlite3.connect(_db_path(), timeout=30)
@@ -372,7 +383,7 @@ def answer_from_evidence(question: str, limit: int = 6, mode: str = "lexical") -
     }
 
 
-def extract_import_text(filename: str, content: bytes, content_type: str = "", encoding: str = "") -> tuple[str, str]:
+def extract_import_text_with_metadata(filename: str, content: bytes, content_type: str = "", encoding: str = "") -> tuple[str, str, dict[str, object]]:
     suffix = Path(filename or "").suffix.lower()
     if suffix == ".pdf" or "pdf" in content_type.lower():
         try:
@@ -389,20 +400,87 @@ def extract_import_text(filename: str, content: bytes, content_type: str = "", e
                 if extracted_chars > MAX_EXTRACTED_TEXT_CHARS:
                     raise ValueError("extracted_text_too_large")
                 pages.append(f"[第 {index} 页]\n{page_text}")
-            return "\n\n".join(pages), "pdf"
+            return "\n\n".join(pages), "pdf", {
+                "encoding": "pdf-text",
+                "decoding_source": "pypdf",
+                "page_count": len(reader.pages),
+                "extracted_page_count": len(pages),
+                "ocr_required": not any(page.strip() for page in pages),
+            }
         except ValueError:
             raise
         except Exception as exc:
             raise ValueError("pdf_text_extraction_unavailable") from exc
     try:
-        decoded = decode_text_bytes(content, source=Path(filename or "document").name, encoding=encoding).text
+        decoded_info = decode_text_bytes(content, source=Path(filename or "document").name, encoding=encoding)
     except TextDecodingError as exc:
         raise ValueError("text_encoding_unsupported") from exc
-    if len(decoded) > MAX_EXTRACTED_TEXT_CHARS:
+    if len(decoded_info.text) > MAX_EXTRACTED_TEXT_CHARS:
         raise ValueError("extracted_text_too_large")
     if suffix in {".html", ".htm"} or "html" in content_type.lower():
         parser = _VisibleTextParser()
-        parser.feed(decoded)
+        parser.feed(decoded_info.text)
         parser.close()
-        return "".join(parser.parts).strip(), "webpage"
-    return decoded, "markdown" if suffix in {".md", ".markdown"} else "task"
+        return "".join(parser.parts).strip(), "webpage", {
+            "encoding": decoded_info.encoding,
+            "decoding_source": "charset-normalizer-or-fallback",
+            "encoding_repaired": decoded_info.repaired,
+            "mojibake_score": decoded_info.mojibake_score,
+        }
+    return decoded_info.text, "markdown" if suffix in {".md", ".markdown"} else "task", {
+        "encoding": decoded_info.encoding,
+        "decoding_source": "charset-normalizer-or-fallback",
+        "encoding_repaired": decoded_info.repaired,
+        "mojibake_score": decoded_info.mojibake_score,
+    }
+
+
+def extract_import_text(filename: str, content: bytes, content_type: str = "", encoding: str = "") -> tuple[str, str]:
+    text, source_type, _metadata = extract_import_text_with_metadata(filename, content, content_type, encoding)
+    return text, source_type
+
+
+def redecode_evidence(evidence_id: str, encoding: str = "") -> dict[str, object]:
+    """Re-decode an imported text evidence item from its preserved raw bytes."""
+
+    items = evidence_by_ids([evidence_id], limit=1)
+    if not items:
+        raise ValueError("evidence_not_found")
+    item = items[0]
+    metadata = dict(item.get("metadata") or {})
+    if item.get("source_type") == "pdf":
+        raise ValueError("pdf_redecode_not_supported")
+    raw_path = _raw_import_path(str(metadata.get("raw_sha256") or ""))
+    raw = raw_path.read_bytes()
+    filename = str(metadata.get("filename") or raw_path.name)
+    content_type = str(metadata.get("content_type") or "")
+    text, _source_type, decode_metadata = extract_import_text_with_metadata(filename, raw, content_type, encoding=encoding)
+    if not str(text or "").strip():
+        raise ValueError("evidence_text_required")
+    metadata.update(decode_metadata)
+    metadata.update({
+        "decoding_hint": str(encoding or "")[:40],
+        "source_revision": hashlib.sha256(str(text).encode("utf-8")).hexdigest(),
+        "redecoded": True,
+        "raw_sha256": hashlib.sha256(raw).hexdigest(),
+        "raw_byte_count": len(raw),
+    })
+    connection = _connect()
+    try:
+        connection.execute(
+            "UPDATE source_evidence SET text=?, metadata_json=? WHERE evidence_id=?",
+            (str(text)[:2_000_000], json.dumps(metadata, ensure_ascii=False)[:20_000], str(evidence_id)[:128]),
+        )
+        if _fts_available(connection):
+            connection.execute("DELETE FROM source_evidence_fts WHERE evidence_id=?", (str(evidence_id)[:128],))
+            connection.execute(
+                "INSERT INTO source_evidence_fts(evidence_id,title,source_uri,locator,text) VALUES (?,?,?,?,?)",
+                (str(evidence_id)[:128], item.get("title", ""), item.get("source_uri", ""), item.get("locator", ""), str(text)[:2_000_000]),
+            )
+        connection.commit()
+    finally:
+        connection.close()
+    refreshed = evidence_by_ids([evidence_id], limit=1)
+    if not refreshed:
+        raise ValueError("evidence_not_found")
+    return refreshed[0]

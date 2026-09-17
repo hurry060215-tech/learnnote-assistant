@@ -7,16 +7,22 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..learning_spaces import (
     delete_learning_space,
+    delete_space_practice,
+    export_learning_space_data,
     get_learning_space,
     list_learning_spaces,
     list_space_practice,
     migrate_courses_to_learning_spaces,
     propose_space_practice,
+    preview_space_sources,
+    refresh_space_sources,
+    restore_learning_space_data,
     save_learning_space,
     save_space_practice,
     source_refresh_status,
     space_evidence,
     space_summary,
+    update_space_practice,
 )
 from ..models import StudyCard
 from ..study import assign_cards_to_space, due_cards, save_cards_unique, unassigned_cards
@@ -42,6 +48,7 @@ class LearningSpaceRequest(BaseModel):
     sources: list[LearningSpaceSource] = Field(default_factory=list, max_length=200)
     paused: bool = False
     revision: int = Field(default=0, ge=0)
+    refresh_source_ids: list[str] = Field(default_factory=list, max_length=200)
 
 
 def _space_or_404(space_id: str) -> dict:
@@ -67,9 +74,23 @@ def api_create_learning_space(request: LearningSpaceRequest) -> dict:
             daily_review_limit=request.daily_review_limit,
             question_types=request.question_types,
             paused=request.paused,
+            refresh_source_ids=request.refresh_source_ids,
         )}
     except (ValueError, OSError) as exc:
         raise HTTPException(422, {"code": str(exc), "message": "学习空间或来源无效。"}) from exc
+
+
+@learning_space_router.get("/backup")
+def api_learning_space_backup() -> dict:
+    return export_learning_space_data()
+
+
+@learning_space_router.post("/restore")
+def api_learning_space_restore(payload: dict | None = Body(default=None)) -> dict:
+    try:
+        return {"ok": True, **restore_learning_space_data(payload or {})}
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail={"code": str(exc), "message": "学习空间备份无效，未覆盖现有资料。"}) from exc
 
 
 @learning_space_router.get("/{space_id}")
@@ -90,6 +111,7 @@ def api_save_learning_space(space_id: str, request: LearningSpaceRequest) -> dic
             paused=request.paused,
             space_id=space_id,
             revision=request.revision,
+            refresh_source_ids=request.refresh_source_ids,
         )}
     except ValueError as exc:
         code = str(exc)
@@ -122,6 +144,26 @@ def api_learning_space_summary(space_id: str) -> dict:
 def api_learning_space_sources(space_id: str) -> dict:
     _space_or_404(space_id)
     return {"sources": source_refresh_status(space_id), "evidence": space_evidence(space_id, 1000)}
+
+
+@learning_space_router.post("/{space_id}/sources/preview")
+def api_learning_space_sources_preview(space_id: str, payload: dict | None = Body(default=None)) -> dict:
+    _space_or_404(space_id)
+    raw = (payload or {}).get("sources") if isinstance((payload or {}).get("sources"), list) else []
+    try:
+        return preview_space_sources(space_id, raw)
+    except (ValueError, OSError) as exc:
+        raise HTTPException(status_code=422, detail={"code": str(exc), "message": "来源预览失败，请检查资料是否仍在本机。"}) from exc
+
+
+@learning_space_router.post("/{space_id}/sources/refresh")
+def api_learning_space_sources_refresh(space_id: str, payload: dict | None = Body(default=None)) -> dict:
+    _space_or_404(space_id)
+    raw = (payload or {}).get("source_keys") if isinstance((payload or {}).get("source_keys"), list) else []
+    try:
+        return refresh_space_sources(space_id, [str(value)[:256] for value in raw])
+    except (ValueError, OSError) as exc:
+        raise HTTPException(status_code=422, detail={"code": str(exc), "message": "来源刷新失败，已有练习和复习记录未改变。"}) from exc
 
 
 @learning_space_router.get("/{space_id}/due")
@@ -164,6 +206,26 @@ def api_save_learning_space_practice(space_id: str, payload: dict | None = Body(
     except (ValueError, OSError) as exc:
         raise HTTPException(422, {"code": str(exc), "message": "练习题必须绑定当前学习空间中的来源。"}) from exc
     return {"space_id": space_id, "items": saved}
+
+
+@learning_space_router.put("/{space_id}/practice/{practice_id}")
+def api_update_learning_space_practice(space_id: str, practice_id: str, payload: dict | None = Body(default=None)) -> dict:
+    _space_or_404(space_id)
+    body = payload or {}
+    try:
+        item = update_space_practice(space_id, practice_id, str(body.get("question") or ""), str(body.get("answer") or ""), list(body.get("source_evidence_ids") or []))
+        return {"space_id": space_id, "item": item}
+    except ValueError as exc:
+        code = str(exc)
+        raise HTTPException(status_code=404 if code == "practice_item_not_found" else 422, detail={"code": code, "message": "练习不存在或没有绑定当前空间的来源。"}) from exc
+
+
+@learning_space_router.delete("/{space_id}/practice/{practice_id}")
+def api_delete_learning_space_practice(space_id: str, practice_id: str) -> dict:
+    _space_or_404(space_id)
+    if not delete_space_practice(space_id, practice_id):
+        raise HTTPException(status_code=404, detail={"code": "practice_item_not_found", "message": "练习不存在。"})
+    return {"space_id": space_id, "practice_id": practice_id, "deleted": True, "fsrs_history_preserved": True}
 
 
 @learning_space_router.post("/{space_id}/review-cards")

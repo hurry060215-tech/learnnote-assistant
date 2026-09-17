@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import re
 from pathlib import Path
 import threading
@@ -9,7 +10,7 @@ from uuid import uuid4
 
 from .config import DATA_DIR
 from .storage import atomic_write_text, get_task
-from .library import get_material
+from .library import get_material, material_content
 
 _lock = threading.RLock()
 
@@ -37,17 +38,55 @@ def _path(kind: str, source_id: str) -> Path:
     return DATA_DIR / "personal-notes" / f"{key}.json"
 
 
+def _current_edition_revision(kind: str, source_id: str) -> str:
+    """Read the current local edition revision without importing the router."""
+
+    original = ""
+    if kind == "task":
+        task = get_task(source_id)
+        source = Path(task.note_path or task.transcript_path or "")
+        if source.is_file():
+            original = source.read_text(encoding="utf-8")
+    elif kind == "material":
+        get_material(source_id)
+        try:
+            original = material_content(source_id)
+        except (ValueError, FileNotFoundError, OSError):
+            original = str(get_material(source_id).get("sha256") or "")
+    edition = DATA_DIR / "user-editions" / f"{hashlib.sha256(f'{kind}:{source_id}'.encode()).hexdigest()}.json"
+    if edition.is_file():
+        try:
+            value = json.loads(edition.read_text(encoding="utf-8"))
+            if str(value.get("revision") or "").strip():
+                return str(value["revision"])
+        except (OSError, TypeError, ValueError, json.JSONDecodeError):
+            pass
+    return hashlib.sha256(original.encode("utf-8")).hexdigest() if original else ""
+
+
 def list_annotations(kind: str, source_id: str) -> list[dict]:
     with _lock:
         path = _path(kind, source_id)
         if not path.is_file():
             return []
         items = json.loads(path.read_text(encoding="utf-8")).get("annotations", [])
-        return [
+        current_revision = _current_edition_revision(kind, source_id)
+        result = [
             {**item, "anchor": item.get("anchor") if isinstance(item.get("anchor"), dict) else {}}
             for item in items
             if isinstance(item, dict)
         ]
+        for item in result:
+            anchor = item["anchor"]
+            stored_revision = str(anchor.get("source_revision") or "")
+            quote = str(item.get("quote") or anchor.get("selected_text") or "")
+            if stored_revision or anchor:
+                item["anchor_status"] = {
+                    "stale": bool(stored_revision and current_revision and stored_revision != current_revision),
+                    "repairable": bool(quote),
+                    "current_revision": current_revision,
+                }
+        return result
 
 
 def save_annotation(kind: str, source_id: str, text: str, quote: str = "", annotation_id: str = "", anchor: dict | None = None) -> dict:

@@ -129,7 +129,7 @@ def api_library_material_ocr(material_id: str) -> dict:
         source = material_source_path(material_id)
         from ..pdf_ocr import ocr_pdf
         result = ocr_pdf(source)
-        if result.get("status") != "ready":
+        if result.get("status") not in {"ready", "partial"}:
             raise HTTPException(status_code=503, detail={"code": "pdf_ocr_unavailable", "message": result.get("warning", "扫描 PDF OCR 组件不可用。")})
         return {"ok": True, "material": apply_material_ocr(material_id, result), "ocr": result}
     except HTTPException:

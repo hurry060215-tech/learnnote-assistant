@@ -8,8 +8,8 @@ import { installLayout } from "/web/desk-layout.js";
 import { installProfile } from "/web/desk-profile.js";
 import { sourceVideoEmbed } from "/web/source-video.js";
 import { installSettings } from "/web/desk-settings.js";
-import { installProductWorkspace } from "/web/desk-product.js?v=0.2.12";
-import { installTools } from "/web/desk-tools.js?v=0.2.12";
+import { installProductWorkspace } from "/web/desk-product.js?v=0.2.13";
+import { installTools } from "/web/desk-tools.js?v=0.2.13";
 import {
   api,
   escapeHtml as esc,
@@ -393,6 +393,10 @@ async function loadEdition(epoch) {
   renderNote();
 }
 function renderNote() {
+  // Keep the edition hash alongside the rendered document so annotations and
+  // source repair can distinguish a stable anchor from an outdated selection.
+  $("document").dataset.sourceRevision = state.revision || "";
+  $("annotations").dataset.sourceRevision = state.revision || "";
   LearnNoteMarkdown.configure({
     safeNoteMediaUrl: (value) =>
       state.selected?.kind === "task"
@@ -626,7 +630,7 @@ async function loadAnnotations(epoch) {
   const value = await api(`/api/personal/${s.kind}/${s.id}`);
   if (epoch !== state.epoch) return;
   $("annotationList").innerHTML = value.annotations
-    .map((a) => `<div class="annotation">${esc(a.text)}</div>`)
+    .map((a) => `<div class="annotation${a.anchor_status?.stale ? " annotation-stale" : ""}"><span>${esc(a.text)}</span>${a.anchor_status?.stale ? '<small>原文已变化；请重新选择出处后保存。</small>' : ""}</div>`)
     .join("");
 }
 let sourceRequest = 0;
@@ -639,7 +643,7 @@ function closeSource() {
   sourceCueRender = null;
 }
 
-async function openInlineSource(seconds, sourceOverride = null) {
+async function openInlineSource(seconds, sourceOverride = null, endSeconds = undefined) {
   let source = sourceOverride || state.selected;
   if (!source) return;
   if (!state.selected || source.id !== state.selected.id || source.kind !== state.selected.kind) {
@@ -678,7 +682,8 @@ async function openInlineSource(seconds, sourceOverride = null) {
         const time = document.createElement("time");
         time.textContent = timestamp(cue.start);
         button.append(time, document.createTextNode(String(cue.text || "")));
-        if (typeof seconds === "number" && Number(cue.start) <= seconds && Number(cue.end ?? cue.start) >= seconds) {
+        const rangeEnd = typeof endSeconds === "number" ? endSeconds : seconds;
+        if (typeof seconds === "number" && Number(cue.start) <= rangeEnd && Number(cue.end ?? cue.start) >= seconds) {
           button.classList.add("active");
           matched = true;
         }
@@ -690,7 +695,7 @@ async function openInlineSource(seconds, sourceOverride = null) {
         content.append(button);
       }
       meta.textContent = matched
-        ? `${source.title} · 已定位到 ${timestamp(seconds)}`
+        ? `${source.title} · 已定位到 ${timestamp(seconds)}${typeof endSeconds === "number" && endSeconds > seconds ? `–${timestamp(endSeconds)}` : ""}`
         : `${source.title} · 没有与引用时间范围精确匹配的字幕段，未猜测高亮位置`;
       if (!cues.length) content.textContent = "暂无可用字幕。";
       content.querySelector(".inline-cue.active")?.scrollIntoView({ block: "center", behavior: "instant" });

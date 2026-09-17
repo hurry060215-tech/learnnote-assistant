@@ -2,6 +2,15 @@
 
 All notable changes to LearnNote are documented here. The project follows semantic versioning while the `0.x` series is under active development.
 
+## 0.2.13 - Evidence, learning-space and browser closeout
+
+- Preserve imported source bytes and decoding metadata; allow an explicit, safe re-decode without replacing the raw input.
+- Add versioned claim verification boundaries, source-revision status, progressive artifact status and checkpoint recovery details.
+- Add batch learning-space source preview, explicit source refresh, reference-only backup/restore, practice edit/delete, and export presets with local font availability warnings.
+- Report partial scanned-PDF OCR coverage instead of presenting processed pages as a complete document.
+- Keep assistant citations in the main reader, including cross-source time ranges; do not expand a duplicate excerpt under the answer.
+- Tighten Bilibili DOM subtitle fallback to leaf caption nodes and reject settings/menu values such as opacity percentages and translation controls.
+
 ## 0.2.12 - Learning spaces, reliable captions and unified exports
 
 - Make ordinary video summaries use a short overview, core points and natural content sections without forcing self-test questions; depth now controls detail only, while explicit practice is opt-in.
