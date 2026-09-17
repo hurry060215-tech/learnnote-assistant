@@ -197,12 +197,6 @@ const os = require("node:os");
       }) + "\n\n"});
     });
     await p.locator("#aiAssistant").click();
-    await p.waitForSelector('#assistantSkill option[value="product.help"]', {
-      state: "attached",
-    });
-    await p.locator(".assistant-options > summary").click();
-    await p.locator("#assistantSkill").selectOption("product.help");
-    await p.locator(".assistant-options > summary").click();
     await p.locator("#aiQuestion").fill("怎么导出？");
     await p.locator("#aiSend").click();
     await waitUntil(() => releaseAnswer);

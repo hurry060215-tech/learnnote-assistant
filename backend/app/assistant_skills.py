@@ -24,6 +24,28 @@ SKILLS = [
 BY_ID={skill["id"]:skill for skill in SKILLS}
 _lock=threading.RLock()
 
+
+def _source_related_question(question: str) -> bool:
+    """Return whether a question explicitly asks us to read the selected source.
+
+    A selected note is context available to the user, not an instruction to
+    ground every turn in it.  Keep this deliberately conservative so ordinary
+    knowledge questions remain ordinary chat.
+    """
+    q = re.sub(r"\s+", "", str(question or "").casefold())
+    if not q:
+        return False
+    return bool(re.search(
+        r"这(?:段|篇|份|个)(?:内容|视频|笔记|资料|课|课程)?|"
+        r"当前(?:笔记|内容|资料|视频)|本文|原文|字幕|转写|"
+        r"材料中|根据(?:这份|当前|上面|原文)|"
+        r"讲了什么|主要讲什么|核心内容|重点是什么|"
+        r"解释(?:一下)?(?:这|该|当前)|"
+        r"从(?:这份|当前|原文)|"
+        r"(?:这|该)(?:一节|一课|个视频)的",
+        q,
+    ))
+
 def resolve_skill(question: str, requested: str, has_source: bool, previous_skill: str = "") -> dict:
     if requested != "auto":
         if requested not in BY_ID: raise ValueError("unknown_skill")
@@ -33,16 +55,22 @@ def resolve_skill(question: str, requested: str, has_source: bool, previous_skil
         q=question.lower()
         if re.search(r"检查环境|当前环境|运行状态|多少任务|当前版本|队列状态",q): chosen="product.status"
         elif re.search(r"界面|弹窗|关闭|工作台|主题|夜间|深色|字号|字体|外观|按钮|打不开|找不到|报错|卡住|没反应|连接不上|删除|清理|导出|导入|怎么用|如何使用|怎么操作|如何操作|在哪里|在哪[里儿]?|设置|配置|软件|客户端|功能|skill|怎么导出|如何导出|怎么导入|怎么删除|如何清理|返回|登录|账号",q): chosen="product.help"
-        elif re.search(r"检查环境|当前环境|运行状态|多少任务|当前版本|队列状态",q): chosen="product.status"
         elif re.search(r"搜索资料|搜索笔记|资料库搜索|查找资料",q): chosen="library.search"
         elif previous_skill in BY_ID and re.fullmatch(r"(那|然后|接下来|下一步|继续|为什么|怎么弄|怎么做|再详细一点|说详细点)[呢啊吗？?！!。 .]*",q.strip()): chosen=previous_skill
-        elif has_source and re.search(r"总结|概括|摘要",q): chosen="note.summary"
-        elif has_source and re.search(r"自测|测验|出题|考考",q): chosen="study.quiz"
-        elif has_source: chosen="note.qa"
+        elif has_source and _source_related_question(q) and re.search(r"总结|概括|摘要|主要讲|核心内容",q): chosen="note.summary"
+        elif has_source and _source_related_question(q) and re.search(r"自测|测验|出题|考考",q): chosen="study.quiz"
+        elif has_source and _source_related_question(q): chosen="note.qa"
         else: chosen="general.chat"
         reason="根据问题和可用上下文自动选择"
     skill=BY_ID[chosen]
-    return {"skill":skill,"reason":reason,"needs_source":skill["requires_source"] and not has_source,"reads_notes":skill["scope"] in {"source","library"},"automatic_actions":False}
+    return {
+        "skill":skill,
+        "reason":reason,
+        "needs_source":skill["requires_source"] and not has_source,
+        "reads_notes":skill["scope"] in {"source","library"},
+        "source_scope": "source" if skill["scope"] == "source" else "library" if skill["scope"] == "library" else "none",
+        "automatic_actions":False,
+    }
 
 def history() -> list[dict]:
     path=DATA_DIR/"assistant-history.json"

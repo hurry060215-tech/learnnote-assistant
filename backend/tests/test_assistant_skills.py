@@ -9,7 +9,8 @@ class AssistantSkillTests(unittest.TestCase):
         self.assertEqual(skills.resolve_skill("怎么导出当前笔记为 Word？","auto",True)["skill"]["id"],"product.help")
         self.assertEqual(skills.resolve_skill("总结当前视频","auto",True)["skill"]["id"],"note.summary")
         self.assertEqual(skills.resolve_skill("软件当前版本是什么","auto",False)["skill"]["id"],"product.status")
-        self.assertEqual(skills.resolve_skill("为什么学习率影响收敛","auto",True)["skill"]["id"],"note.qa")
+        self.assertEqual(skills.resolve_skill("为什么学习率影响收敛","auto",True)["skill"]["id"],"general.chat")
+        self.assertEqual(skills.resolve_skill("为什么这份内容中学习率影响收敛","auto",True)["skill"]["id"],"note.qa")
         self.assertTrue(skills.resolve_skill("解释这段内容","note.qa",False)["needs_source"])
         self.assertEqual(skills.resolve_skill("解释贝叶斯定理","auto",False)["skill"]["id"],"general.chat")
 

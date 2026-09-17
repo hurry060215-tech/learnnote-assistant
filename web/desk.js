@@ -8,8 +8,8 @@ import { installLayout } from "/web/desk-layout.js";
 import { installProfile } from "/web/desk-profile.js";
 import { sourceVideoEmbed } from "/web/source-video.js";
 import { installSettings } from "/web/desk-settings.js";
-import { installProductWorkspace } from "/web/desk-product.js";
-import { installTools } from "/web/desk-tools.js";
+import { installProductWorkspace } from "/web/desk-product.js?v=0.2.12";
+import { installTools } from "/web/desk-tools.js?v=0.2.12";
 import {
   api,
   escapeHtml as esc,
@@ -37,7 +37,7 @@ const state = {
   health: {},
 };
 const presets = {
-  deepseek: ["https://api.deepseek.com/v1", "deepseek-chat"],
+  deepseek: ["https://api.deepseek.com", "deepseek-flash"],
   kimi: ["https://api.moonshot.cn/v1", "moonshot-v1-8k"],
   openai: ["https://api.openai.com/v1", ""],
   local: ["http://127.0.0.1:1234/v1", ""],
@@ -125,6 +125,7 @@ function options() {
     content_mode: mode,
     use_saved_connection: Boolean(state.model.use_saved_connection),
     summary_depth: $("depth").value,
+    generate_questions: Boolean($("generateQuestions")?.checked),
     note_style:
       ($("createDialog").open ? $("taskStyle")?.value : "") ||
       state.processing?.note_style ||
@@ -637,6 +638,75 @@ function closeSource() {
   $("onlinePlayer")?.removeAttribute("src");
   sourceCueRender = null;
 }
+
+async function openInlineSource(seconds, sourceOverride = null) {
+  let source = sourceOverride || state.selected;
+  if (!source) return;
+  if (!state.selected || source.id !== state.selected.id || source.kind !== state.selected.kind) {
+    const item = state.items.find((candidate) => candidate.id === source.id && candidate.kind === source.kind);
+    if (!item) {
+      notice("引用来源已不在当前资料库，无法可靠定位。");
+      return;
+    }
+    await openItem(item, { remember: true, check: false });
+    source = state.selected;
+  }
+  const view = $("inlineSourceView"), content = $("inlineSourceContent"), meta = $("inlineSourceMeta");
+  state.summaryScrollY = window.scrollY;
+  view.hidden = false;
+  $("document").hidden = true;
+  content.replaceChildren();
+  meta.textContent = "正在读取原文…";
+  try {
+    if (source.kind === "material") {
+      const data = await api(`/api/library/materials/${encodeURIComponent(source.id)}/content`);
+      meta.textContent = `${source.title} · 文档原文`;
+      for (const paragraph of String(data.text || "").split(/\n{2,}/).filter(Boolean)) {
+        const node = document.createElement("p");
+        node.textContent = paragraph;
+        content.append(node);
+      }
+    } else {
+      const data = await api(`/api/tasks/${encodeURIComponent(source.id)}/transcript`);
+      const cues = (data.segments || []).filter((cue) => String(cue.text || "").trim());
+      let matched = false;
+      for (const cue of cues) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "inline-cue";
+        button.dataset.time = String(Number(cue.start) || 0);
+        const time = document.createElement("time");
+        time.textContent = timestamp(cue.start);
+        button.append(time, document.createTextNode(String(cue.text || "")));
+        if (typeof seconds === "number" && Number(cue.start) <= seconds && Number(cue.end ?? cue.start) >= seconds) {
+          button.classList.add("active");
+          matched = true;
+        }
+        button.onclick = () => {
+          // Location is independent from playback. The video controls remain
+          // available in the source panel when the learner explicitly opens it.
+          button.scrollIntoView({ block: "center", behavior: "instant" });
+        };
+        content.append(button);
+      }
+      meta.textContent = matched
+        ? `${source.title} · 已定位到 ${timestamp(seconds)}`
+        : `${source.title} · 没有与引用时间范围精确匹配的字幕段，未猜测高亮位置`;
+      if (!cues.length) content.textContent = "暂无可用字幕。";
+      content.querySelector(".inline-cue.active")?.scrollIntoView({ block: "center", behavior: "instant" });
+    }
+    view.scrollIntoView({ block: "start", behavior: "instant" });
+  } catch (error) {
+    meta.textContent = error.message || "原文暂时无法读取。";
+  }
+}
+
+$("backToSummary").onclick = () => {
+  $("inlineSourceView").hidden = true;
+  $("document").hidden = false;
+  window.scrollTo({ top: Number(state.summaryScrollY || 0), behavior: "instant" });
+};
+
 async function openSource(seconds, sourceOverride = null) {
   const s = sourceOverride || state.selected;
   if (!s) return;
@@ -656,7 +726,6 @@ async function openSource(seconds, sourceOverride = null) {
     if (transcript) transcript.open = true;
     if (!player.hidden) {
       player.currentTime = seconds;
-      player.play().catch(() => {});
     }
     if (renderedCues.length) {
       const cue =
@@ -819,9 +888,6 @@ $("sourceContent").onclick = (e) => {
   const cue = e.target.closest("[data-time]");
   if (cue && !$("player").hidden) {
     $("player").currentTime = Number(cue.dataset.time);
-    $("player")
-      .play()
-      .catch(() => {});
   } else if (cue) {
     openSource(Number(cue.dataset.time));
   }
@@ -1398,6 +1464,7 @@ installProductWorkspace({
   options,
   openItem,
   openSource,
+  openInlineSource,
   refresh,
   notice,
   guard,

@@ -2,6 +2,17 @@
 
 All notable changes to LearnNote are documented here. The project follows semantic versioning while the `0.x` series is under active development.
 
+## 0.2.12 - Learning spaces, reliable captions and unified exports
+
+- Make ordinary video summaries use a short overview, core points and natural content sections without forcing self-test questions; depth now controls detail only, while explicit practice is opt-in.
+- Add independent learning spaces with source references, learning goals, focus, daily review limits, question types, practice preview, and separate materials/practice/review-plan views.
+- Migrate legacy course manifests idempotently and keep one shared FSRS card and review history when a card belongs to multiple spaces; unassigned cards appear under existing review.
+- Route the assistant by actual intent instead of treating every question as a question about the selected note; hide the permanent Skill selector and make source scope/model/Skill details expandable.
+- Locate citations in the main reading area by source ID and time range, restore the previous summary position, and keep playback as an explicit action.
+- Add a shared HTML/DOCX/PDF export contract with selectable content and typography, offline HTML preview, tables, links, bold/code runs, images, transcript and practice exports.
+- Filter Bilibili subtitle-settings UI from DOM subtitle fallback, background normalization and backend evidence so controls such as opacity and subtitle size cannot become transcript cues.
+- Make local launcher scripts honor the ignored `learnnote-config.json`, preventing a configured data directory from being replaced by the repository's empty default data directory.
+
 ## 0.2.10 - Captions first and source preview
 
 - Read platform captions independently of local client discovery; skip unrelated Bilibili page frames and coalesce repeated probes.

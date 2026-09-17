@@ -57,6 +57,17 @@ const STATIC_MEDIA_KEY_RE = /(url|uri|path|src|address|file|fileid|objectid|dtok
 const STATIC_ATTRIBUTE_KEY_RE = /(url|uri|path|src|address|file|objectid|dtoken|download|httpmd|play|playlist|player|config|option|param|media|video|audio|stream|source|sourcelist|main|master|manifest|backup|backups|cdn|baseurl|base_url|host|domain|video.?list|audio.?list|quality|qualities|definition|definitions|format|formats|profile|profiles|variant|variants|rendition|renditions|level|levels|track|tracks|hls|m3u8|dash|mpd|segment|fragment|chunk|subtitle|caption)/i;
 const VISIBLE_SUBTITLE_HINT_RE = /(subtitle|subtitles|caption|captions|closed.?caption|text[-_ ]?track|texttrack|\bcue(?:s)?\b|vtt|\bcc\b|字幕|ytp-caption|vjs-text-track|jw-text-track|plyr__captions|shaka-text-container|xgplayer[-_ ].*(text|subtitle|caption)|dplayer[-_ ].*subtitle|bilibili.*subtitle|bpx.*subtitle|ananas.*(subtitle|caption|texttrack)|chaoxing.*(subtitle|caption|texttrack))/i;
 const VISIBLE_NON_SUBTITLE_HINT_RE = /(danmaku|bullet[-_ ]?comment|comment[-_ ]?(?:list|item|content)|reply[-_ ]?(?:list|item|content)|live[-_ ]?chat|弹幕|评论区|评论列表)/i;
+// A player can expose a subtitle-settings menu whose class/id contains
+// "subtitle".  It is UI text, not a timed caption.  Keep this list narrow:
+// ordinary spoken content is still allowed to mention captions or settings.
+const VISIBLE_SUBTITLE_CONTROL_HINT_RE = /(?:player[-_ ]?(?:ctrl|control)|subtitle[-_ ]?(?:setting|settings|menu|panel|popup)|caption[-_ ]?(?:setting|settings|menu|panel|popup)|(?:^|[-_ ])(?:setting|settings|menu|panel|popup|popover|dropdown|option|select|button)(?:[-_ ]|$)|bpx-player-ctrl)/i;
+const PLAYER_UI_SUBTITLE_MARKERS = [
+  "字幕设置", "字幕大小", "字幕颜色", "描边方式", "默认位置", "背景不透明度",
+  "恢复默认设置", "关闭弹幕", "登录可享", "原声翻译体验反馈", "添加字幕",
+  "暂无字幕", "主字幕 中文", "副字幕", "弹幕设置", "弹幕列表", "发送弹幕",
+  "屏蔽设定", "按类型屏蔽", "等比缩放", "淡入淡出", "无描边 重墨 描边",
+  "左下角 底部居中 右下角"
+];
 const VISIBLE_SUBTITLE_ATTR_RE = /^(data-|aria-|role$|lang$|srclang$|class$|id$|title$)/i;
 const VISIBLE_SUBTITLE_ROLE_RE = /^(log|status|marquee)$/i;
 const B64ISH_RE = /^[A-Za-z0-9+/_=-]{16,}$/;
@@ -1624,6 +1635,43 @@ function elementHintText(element) {
   return values.filter(Boolean).join(" ");
 }
 
+function looksLikePlayerSubtitleUi(text = "") {
+  const normalized = String(text || "").replace(/\s+/g, " ").trim();
+  if (!normalized) return false;
+  const trimmed = normalized.replace(/^[\s,，。:：;；!?！？()[\]【】]+|[\s,，。:：;；!?！？()[\]【】]+$/g, "");
+  const exact = new Set(["字幕", "主字幕", "副字幕", "添加字幕", "暂无字幕", "字幕 添加字幕", "主字幕 中文", "关闭", "其它设置", "等比缩放", "淡入淡出", "默认位置", "背景不透明度", "弹幕", "弹幕设置", "弹幕列表", "关闭弹幕", "发送弹幕", "屏蔽设定", "按类型屏蔽"]);
+  if (exact.has(trimmed)) return true;
+  if (PLAYER_UI_SUBTITLE_MARKERS.some(marker => normalized.includes(marker) && (normalized.includes(marker + " ") || normalized.indexOf(marker) !== normalized.lastIndexOf(marker)))) return true;
+  const markerHits = PLAYER_UI_SUBTITLE_MARKERS.filter(marker => normalized.includes(marker)).length;
+  if (markerHits >= 2) return true;
+  if (/背景不透明度\s*\d+%|字幕大小\s*(?:最小|较小|适中|较大|最大)|(?:红色|白色|紫色|蓝色).{0,30}(?:描边|位置)/.test(normalized)) return true;
+  return false;
+}
+
+function isRenderedSubtitleCandidate(element) {
+  // The lightweight test DOM and older embedded players do not expose layout
+  // APIs.  In that case retain the existing hint-based route and rely on the
+  // content filter above; real pages take the stricter geometry path.
+  if (!element?.getBoundingClientRect) return true;
+  try {
+    const rect = element.getBoundingClientRect();
+    const style = globalThis.getComputedStyle?.(element);
+    if (!rect || rect.width < 2 || rect.height < 2 || style?.display === "none" || style?.visibility === "hidden" || Number(style?.opacity || 1) < 0.05) return false;
+    const video = pickMainVideo(collectVideos())?.video;
+    const videoRect = video?.getBoundingClientRect?.();
+    if (!videoRect || videoRect.width < 2 || videoRect.height < 2) return true;
+    const overlap = Math.max(0, Math.min(rect.right, videoRect.right) - Math.max(rect.left, videoRect.left)) * Math.max(0, Math.min(rect.bottom, videoRect.bottom) - Math.max(rect.top, videoRect.top));
+    // Captions must be rendered over the active video.  Settings panels often
+    // sit beside the video or in a separate control popover.
+    if (overlap <= 0) return false;
+    const center = rect.left + rect.width / 2;
+    const videoCenter = videoRect.left + videoRect.width / 2;
+    return Math.abs(center - videoCenter) <= videoRect.width * 0.48 && rect.top >= videoRect.top + videoRect.height * 0.45;
+  } catch {
+    return true;
+  }
+}
+
 function looksLikeVisibleSubtitleElement(element) {
   const tag = String(element?.tagName || "").toLowerCase();
   if (!element || ["script", "style", "video", "audio", "source", "track", "iframe"].includes(tag)) return false;
@@ -1631,6 +1679,12 @@ function looksLikeVisibleSubtitleElement(element) {
   if (text.length < 2 || text.length > 260) return false;
   const hint = elementHintText(element);
   if (VISIBLE_NON_SUBTITLE_HINT_RE.test(hint)) return false;
+  if (VISIBLE_SUBTITLE_CONTROL_HINT_RE.test(hint)) return false;
+  if (looksLikePlayerSubtitleUi(text)) return false;
+  // Do not promote a subtitle/settings container containing many child labels
+  // to one synthetic cue. Leaf text nodes are the only reliable DOM fallback.
+  if (element.children?.length && deepQuerySelectorAll("*", element, 8).some(child => child !== element && elementText(child) === text)) return false;
+  if (!isRenderedSubtitleCandidate(element)) return false;
   if (VISIBLE_SUBTITLE_HINT_RE.test(hint)) return true;
   const role = readAttribute(element, "role");
   const ariaLive = readAttribute(element, "aria-live");

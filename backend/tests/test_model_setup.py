@@ -99,6 +99,20 @@ class ModelSetupTests(unittest.TestCase):
             ))
         self.assertTrue(result["ok"])
         self.assertEqual(result["models"], ["model-a", "model-b"])
+        self.assertEqual(result["model_details"][0]["capability_source"], "unknown")
+
+    def test_vision_check_sends_image_and_only_saves_correct_result(self):
+        fake_module = types.SimpleNamespace(OpenAI=_FakeOpenAI)
+        for answer, expected in [("red blue", True), ("I cannot see images", False)]:
+            response = types.SimpleNamespace(choices=[types.SimpleNamespace(message=types.SimpleNamespace(content=answer))])
+            with patch.dict(sys.modules, {"openai":fake_module}), patch("app.routers.system.tracked_completion",return_value=response) as completion, patch("app.model_capabilities.save_image_probe") as save:
+                result = check_model_setup(ModelSetupCheckRequest(provider="deepseek",base_url="https://api.deepseek.com",model="deepseek-flash",api_key="test-secret",mode="vision"))
+                self.assertEqual(result["ok"], expected)
+                self.assertEqual(save.called, expected)
+                content = completion.call_args.kwargs["messages"][0]["content"]
+                self.assertEqual(content[1]["type"], "image_url")
+                self.assertTrue(content[1]["image_url"]["url"].startswith("data:image/png;base64,"))
+                self.assertNotIn("test-secret", repr(result))
 
 
 if __name__ == "__main__":

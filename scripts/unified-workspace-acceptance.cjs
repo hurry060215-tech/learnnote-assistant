@@ -38,40 +38,33 @@ const fs = require("node:fs");
     await p.waitForSelector("#editor", { state: "hidden" });
     await p.locator("#moreTools").click();
     await p.locator('[data-action="exports"]').click();
-    for (const format of ["markdown", "docx", "pdf"]) {
-      const download = p.waitForEvent("download");
-      await p.locator(`[data-export="${format}"]`).click();
-      await (await download).saveAs(`${out}/edition.${format}`);
+    await p.locator("#previewUnifiedExport").click();
+    await p.waitForFunction(() => document.querySelector("#unifiedExportStatus").textContent.includes("预览已更新"));
+    for (const format of ["html", "docx", "pdf"]) {
+      await p.locator("#unifiedExportFormat").selectOption(format);
+      await p.locator("#downloadUnifiedExport").click();
+      await p.waitForFunction(() => document.querySelector("#unifiedExportStatus").textContent.includes("文件已生成"));
     }
-    assert(
-      fs
-        .readFileSync(`${out}/edition.markdown`, "utf8")
-        .includes("EXPORT_EDIT_MARKER"),
-    );
+    assert(await p.locator("#unifiedExportPreview").getAttribute("srcdoc"));
     await p.locator("[data-close-tool]").click();
     await p.locator("#courses").click();
-    await p.locator('[data-action="new-course"]').click();
-    await p.locator("#courseTitle").fill("学习方法验收");
-    await p
-      .locator('.source-picker input[data-kind="material"]')
-      .last()
-      .check();
-    await p.locator("#courseForm button.primary").click();
-    await p.waitForSelector('[data-action="edit-course"]');
-    await p.locator('[data-action="pause-course"]').click();
-    await p.waitForFunction(() =>
-      document
-        .querySelector('[data-action="pause-course"]')
-        .textContent.includes("继续"),
-    );
-    await p.locator('[data-action="pause-course"]').click();
-    await p.waitForFunction(() =>
-      document
-        .querySelector('[data-action="pause-course"]')
-        .textContent.includes("暂停"),
-    );
-    await p.screenshot({ path: `${out}/course.png` });
-    await p.locator("[data-close-tool]").click();
+    await p.locator(".learning-space-dialog").waitFor({ state: "visible" });
+    await p.getByRole("button", { name: "＋ 新建学习空间", exact: true }).click();
+    await p.locator('.learning-space-form input[name="title"]').fill("学习方法验收");
+    await p.getByRole("button", { name: "保存学习空间", exact: true }).click();
+    await p.getByRole("heading", { name: "学习方法验收", exact: true }).waitFor({ state: "visible" });
+    await p.getByRole("button", { name: "加入当前资料", exact: true }).click();
+    await p.waitForFunction(() => document.querySelector(".learning-space-sources")?.textContent.includes("完整工作台验收"));
+    await p.getByRole("button", { name: "练习", exact: true }).click();
+    await p.getByText("生成练习预览", { exact: true }).waitFor();
+    await p.getByRole("button", { name: "复习计划", exact: true }).click();
+    await p.getByText("每日复习量", { exact: true }).waitFor();
+    await p.getByRole("button", { name: "暂停计划", exact: true }).click();
+    await p.getByRole("button", { name: "继续计划", exact: true }).waitFor();
+    await p.getByRole("button", { name: "继续计划", exact: true }).click();
+    await p.getByRole("button", { name: "暂停计划", exact: true }).waitFor();
+    await p.screenshot({ path: `${out}/learning-space.png` });
+    await p.getByRole("button", { name: "关闭学习空间", exact: true }).click();
     await p.locator("#moreTools").click();
     await p.locator('[data-action="propose"]').click();
     await p.waitForSelector("#cardsForm input[data-card-index]");
@@ -80,6 +73,20 @@ const fs = require("node:fs");
       document.querySelector("#toolStatus").textContent.includes("已加入"),
     );
     await p.locator("[data-close-tool]").click();
+    await p.route("**/api/assistant/execute/stream", async (route) => {
+      await route.fulfill({
+        contentType: "text/event-stream",
+        body:
+          "event: result\ndata: " +
+          JSON.stringify({
+            answer: "学习率控制参数更新步长，并影响训练过程的稳定性。",
+            source: "local",
+            skill: { id: "note.qa", name: "内容问答", scope: "task", requires_source: true },
+            execution: { state: "completed" },
+          }) +
+          "\n\n",
+      });
+    });
     await p.locator("#moreTools").click();
     await p.locator('[data-action="ask"]').click();
     await p.locator("#aiQuestion").fill("学习率");

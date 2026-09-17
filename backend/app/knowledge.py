@@ -358,6 +358,10 @@ def answer_from_evidence(question: str, limit: int = 6, mode: str = "lexical") -
             "source_type": item["source_type"],
             "locator": item["locator"],
             "source_uri": item["source_uri"],
+            "source_kind": "task" if item.get("task_id") else "material" if item.get("metadata", {}).get("material_id") else "",
+            "source_id": item.get("task_id") or item.get("metadata", {}).get("material_id") or "",
+            "start": item.get("metadata", {}).get("start") if isinstance(item.get("metadata"), dict) and isinstance(item.get("metadata", {}).get("start"), (int, float)) else None,
+            "end": item.get("metadata", {}).get("end") if isinstance(item.get("metadata"), dict) and isinstance(item.get("metadata", {}).get("end"), (int, float)) else None,
         })
     return {
         "answer": "根据资料库中的可追溯证据：\n" + "\n".join(snippets),

@@ -52,6 +52,7 @@ from .routers.notes import notes_router
 from .routers.events import events_router
 from .routers.personal import personal_router
 from .routers.courses import course_router
+from .routers.learning_spaces import learning_space_router
 from .routers.ranges import range_router
 from .summarizer import chat_completion_provider_kwargs, llm_base_host, llm_model_supports_vision, llm_provider_name, visual_window_review_question_lines
 
@@ -80,6 +81,7 @@ app.include_router(notes_router)
 app.include_router(events_router)
 app.include_router(personal_router)
 app.include_router(course_router)
+app.include_router(learning_space_router)
 app.include_router(range_router)
 _extension_heartbeat_at = 0.0
 _extension_version = ""
@@ -2505,12 +2507,12 @@ MODEL_PROVIDER_PRESETS = [
         "key": "deepseek",
         "label": "DeepSeek",
         "base_url": "https://api.deepseek.com",
-        "model": "deepseek-v4-flash",
+        "model": "deepseek-flash",
         "transcriber": "faster-whisper",
         "whisper_model": "small",
         "tier": "mainstream",
         "recommended": True,
-        "capabilities": ["text"],
+        "capabilities": ["text", "vision"],
     },
     {
         "key": "kimi",
@@ -2756,7 +2758,7 @@ def _sanitize_note_markdown_for_qa(note: str) -> str:
     return "\n".join(cleaned)
 
 
-def _note_evidence_chunks(note: str, limit: int = 80) -> list[dict]:
+def _note_evidence_chunks(note: str, limit: int = 80, source_id: str = "") -> list[dict]:
     chunks: list[dict] = []
     heading = ""
     clean_note = _sanitize_note_markdown_for_qa(note)
@@ -2774,6 +2776,8 @@ def _note_evidence_chunks(note: str, limit: int = 80) -> list[dict]:
             continue
         chunks.append({
             "source": "note",
+            "source_kind": "task" if source_id else "",
+            "source_id": source_id,
             "label": heading or f"笔记片段 {len(chunks) + 1}",
             "text": text,
             "target_tab": "note",
@@ -2783,7 +2787,12 @@ def _note_evidence_chunks(note: str, limit: int = 80) -> list[dict]:
     return chunks
 
 
-def _transcript_window_chunks(segments: list[dict], window_seconds: int = 120, step_seconds: int = 60) -> list[dict]:
+def _transcript_window_chunks(
+    segments: list[dict],
+    window_seconds: int = 120,
+    step_seconds: int = 60,
+    task_id: str = "",
+) -> list[dict]:
     valid_segments = []
     for segment in segments:
         if not isinstance(segment, dict):
@@ -2805,7 +2814,8 @@ def _transcript_window_chunks(segments: list[dict], window_seconds: int = 120, s
         start_seconds = members[0]["start"]
         end_seconds = max(item["end"] for item in members)
         start, end = _format_timestamp(start_seconds), _format_timestamp(end_seconds)
-        chunks.append({"source": "transcript", "granularity": "window", "segmentation": "caption_boundaries",
+        chunks.append({"source": "transcript", "source_kind": "task", "granularity": "window", "segmentation": "caption_boundaries",
+            "source_id": task_id,
             "label": f"字幕片段 {start}-{end}", "text": " ".join(item["text"] for item in members),
             "start": start_seconds, "end": end_seconds, "time_range": f"{start}-{end}", "target_tab": "transcript"})
     return chunks
@@ -2818,7 +2828,7 @@ def _task_qa_context(task: TaskRecord) -> tuple[str, list[dict]]:
     except Exception:
         note = ""
     if note.strip():
-        citations.extend(_note_evidence_chunks(note))
+        citations.extend(_note_evidence_chunks(note, source_id=task.id))
 
     try:
         transcript = read_transcript(task.id)
@@ -2826,7 +2836,7 @@ def _task_qa_context(task: TaskRecord) -> tuple[str, list[dict]]:
         transcript = {}
     segments = transcript.get("segments") if isinstance(transcript, dict) else []
     if isinstance(segments, list) and segments:
-        citations.extend(_transcript_window_chunks(segments))
+        citations.extend(_transcript_window_chunks(segments, task_id=task.id))
         for segment in segments[:3000]:
             if not isinstance(segment, dict):
                 continue
@@ -2839,6 +2849,8 @@ def _task_qa_context(task: TaskRecord) -> tuple[str, list[dict]]:
             end = _format_timestamp(end_seconds)
             citations.append({
                 "source": "transcript",
+                "source_kind": "task",
+                "source_id": task.id,
                 "label": f"字幕 {start}",
                 "text": text,
                 "start": start_seconds,
@@ -2864,6 +2876,8 @@ def _task_qa_context(task: TaskRecord) -> tuple[str, list[dict]]:
             excerpt = _clip_text(window.get("transcript_excerpt", ""), 260)
             citations.append({
                 "source": "visual_window",
+                "source_kind": "task",
+                "source_id": task.id,
                 "label": window_id,
                 "text": _clip_text(excerpt or f"{window_id} {start}-{end}", 500),
                 "window_id": window_id,
@@ -3093,6 +3107,8 @@ def append_task_qa_history(task: TaskRecord, request: TaskQuestionRequest, resul
                 "time_range": _clip_text(str(citation.get("time_range") or ""), 80),
                 "grid_url": _clip_text(str(citation.get("grid_url") or ""), 500),
                 "target_tab": _clip_text(str(citation.get("target_tab") or ""), 40),
+                "source_kind": _clip_text(str(citation.get("source_kind") or "task"), 40),
+                "source_id": _clip_text(str(citation.get("source_id") or task.id), 128),
                 "start": citation.get("start") if isinstance(citation.get("start"), (int, float)) else None,
                 "end": citation.get("end") if isinstance(citation.get("end"), (int, float)) else None,
             }

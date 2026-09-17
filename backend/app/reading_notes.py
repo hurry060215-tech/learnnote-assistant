@@ -25,14 +25,28 @@ def source_blocks(transcript: TranscriptResult, budget: int = 16000):
     return blocks
 
 def readable_extract(title, transcript, grids, page_url=""):
-    lines = [f"# {title or '学习笔记'}", "", "> 字幕摘录：尚未使用文字模型整理。以下保留原话和定位，不代表提炼后的知识点。", ""]
+    lines = [
+        f"# {title or '学习笔记'}",
+        "",
+        "> 字幕摘录：未使用文字模型。以下内容只来自已取得的字幕或转写，并保留原文定位。",
+        "",
+    ]
     if page_url:
         lines += [f"来源：{page_url}", ""]
     if transcript.warning:
         lines += [f"> 转写提示：{transcript.warning}", ""]
     if transcript.segments:
+        usable = [segment for segment in transcript.segments if segment.text.strip()]
+        if usable:
+            start = stamp(usable[0].start)
+            end = stamp(usable[-1].end)
+            lines += ["## 概述", "", f"已取得 {len(usable)} 段带时间点的字幕，覆盖 {start}–{end}；以下按原文停顿分节。", ""]
+        lines += ["## 核心要点", ""]
+        for segment in usable[: min(8, len(usable))]:
+            lines.append(f"- `{stamp(segment.start)}` 原文段落，见下方定位。")
+        lines.append("")
         group, length, start = [], 0, None
-        for segment in transcript.segments:
+        for segment in usable:
             text = segment.text.strip()
             if not text:
                 continue

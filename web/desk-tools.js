@@ -223,23 +223,21 @@ export function installTools(ctx) {
   }
   function exports() {
     const s = current();
-    show(
-      "导出笔记与来源",
-      `<p>导出使用已保存的个人修订稿。先保存正文中的修改，再导出。</p><label class="check"><input id="exportAnnotations" type="checkbox" checked>附上我的补充</label><div class="tool-actions">${["markdown", "docx", "pdf"].map((format) => `<button data-export="${format}">${{ markdown: "Markdown", docx: "Word 文档", pdf: "PDF" }[format]}</button>`).join("")}</div>${
-        s.kind === "task"
-          ? `<details><summary>原始资料与集成</summary>${links([
-              ["原始生成稿", `/api/tasks/${s.id}/exports/markdown`],
-              ["字幕", `/api/tasks/${s.id}/exports/subtitles`],
-              ["视频", `/api/tasks/${s.id}/exports/media`],
-              ["完整资料包", `/api/tasks/${s.id}/exports/bundle`],
-              ["Notion 数据", `/api/tasks/${s.id}/exports/notion`],
-              ["集成清单", `/api/tasks/${s.id}/exports/manifest`],
-            ])}<p class="muted">资料包和集成清单保留生成稿；个人修订稿请用上方按钮另存。</p></details>`
-          : links([["原始文件", `/api/library/materials/${s.id}/source`]])
-      }`,
-    );
+    const exportBase = s.kind === "task" ? `/api/tasks/${s.id}/exports` : `/api/library/materials/${s.id}/exports`;
+    show("统一导出", `<p class="muted">笔记和学习资料共享同一份结构化正文。预览会使用个人补充、出处、时间点、图片与练习的当前选择。</p><div class="unified-export-grid"><label>格式<select id="unifiedExportFormat"><option value="html">HTML（离线预览）</option><option value="docx">Word</option><option value="pdf">PDF</option></select></label><label>字体<select id="unifiedExportFont"><option>Microsoft YaHei</option><option>Noto Sans SC</option><option>SimSun</option><option>Arial</option></select></label><label>字号<input id="unifiedExportSize" type="number" min="8" max="36" step="0.5" value="10.5"></label><label>行距<input id="unifiedExportLeading" type="number" min="1" max="3" step="0.1" value="1.6"></label><label>方向<select id="unifiedExportOrientation"><option value="portrait">纵向</option><option value="landscape">横向</option></select></label></div><div class="unified-export-options"><label class="check"><input id="exportIncludeNote" type="checkbox" checked>笔记正文</label><label class="check"><input id="exportAnnotations" type="checkbox" checked>个人补充</label><label class="check"><input id="exportSourceLink" type="checkbox" checked>来源链接</label><label class="check"><input id="exportTimestamps" type="checkbox" checked>时间点</label><label class="check"><input id="exportImages" type="checkbox" checked>图片</label><label class="check"><input id="exportToc" type="checkbox">目录</label><label class="check"><input id="exportTranscript" type="checkbox">完整字幕</label><label class="check"><input id="exportPractice" type="checkbox">学习空间练习</label></div><div class="unified-export-actions"><button id="previewUnifiedExport" class="primary">更新预览</button><button id="downloadUnifiedExport">导出文件</button></div><p id="unifiedExportStatus" class="muted" role="status"></p><iframe id="unifiedExportPreview" title="导出预览"></iframe>`);
     dialog.dataset.sourceId = s.id;
     dialog.dataset.sourceKind = s.kind;
+    const collect = () => ({ format: $("unifiedExportFormat").value, options: { include_note: $("exportIncludeNote").checked, include_annotations: $("exportAnnotations").checked, include_source_link: $("exportSourceLink").checked, include_timestamps: $("exportTimestamps").checked, include_images: $("exportImages").checked, include_toc: $("exportToc").checked, include_transcript: $("exportTranscript").checked, include_practice: $("exportPractice").checked, font_family: $("unifiedExportFont").value, font_size: Number($("unifiedExportSize").value), line_height: Number($("unifiedExportLeading").value), orientation: $("unifiedExportOrientation").value } });
+    const preview = async () => {
+      const status = $("unifiedExportStatus"); status.textContent = "正在整理预览…";
+      try { const result = await api(`${exportBase}/preview`, { method: "POST", body: JSON.stringify(collect()) }); $("unifiedExportPreview").srcdoc = result.html; status.textContent = result.warnings?.length ? `预览已生成：${result.warnings.join("、")}` : "预览已更新；HTML 可离线打开。"; } catch (error) { status.textContent = error.message; }
+    };
+    $("previewUnifiedExport").onclick = preview;
+    $("downloadUnifiedExport").onclick = async () => {
+      const settings = collect(), status = $("unifiedExportStatus"); status.textContent = "正在生成文件…";
+      try { const response = await fetch(`${exportBase}/${settings.format}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(settings) }); if (!response.ok) throw new Error((await response.text()) || "导出失败"); const blob = await response.blob(); const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = `${s.title || "笔记"}.${settings.format === "html" ? "html" : settings.format}`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); status.textContent = "文件已生成。"; } catch (error) { status.textContent = error.message; }
+    };
+    preview();
   }
   async function annotations() {
     const s = current(),
@@ -919,9 +917,17 @@ export function installTools(ctx) {
   });
   const courseButton = document.createElement("button");
   courseButton.id = "courses";
-  courseButton.textContent = "课程";
+  courseButton.textContent = "学习空间";
   document.querySelector(".sidebar footer").prepend(courseButton);
-  courseButton.onclick = () => listCourses().catch((e) => notice(e.message));
+  courseButton.onclick = () => {
+    if (window.LearnNoteLearningSpaces) {
+      window.LearnNoteLearningSpaces.open({
+        currentSource: () => state.selected ? { kind: state.selected.kind, id: state.selected.id, title: state.selected.title } : null,
+        onOpenSource: (source) => openItem(source).catch((e) => notice(e.message)),
+      }).catch((e) => notice(e.message));
+    } else listCourses().catch((e) => notice(e.message));
+  };
+  $("review").hidden = true;
   const moreButton = document.createElement("button");
   moreButton.id = "moreTools";
   moreButton.textContent = "更多";
@@ -968,5 +974,9 @@ export function installTools(ctx) {
   prefs.innerHTML =
     '<input id="localOcr" type="checkbox">本地识别画面文字（OCR）';
   $("generationOptions").append(prefs);
+  const questionPreference = document.createElement("label");
+  questionPreference.className = "check";
+  questionPreference.innerHTML = '<input id="generateQuestions" type="checkbox">本次明确生成自测题（题目独立于笔记正文）';
+  $("generationOptions").append(questionPreference);
   return { listCourses, studySettings, storage, diagnostics, ocr };
 }
