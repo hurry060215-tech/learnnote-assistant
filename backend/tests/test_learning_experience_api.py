@@ -46,6 +46,30 @@ class LearningExperienceApiTests(unittest.TestCase):
             material_id = imported.json()["material"]["material_id"]
             evidence_id = imported.json()["material"]["evidence_ids"][0]
             self.assertEqual(client.get(f"/api/library/materials/{material_id}/anchors").status_code, 200)
+            material_preview = client.post(
+                f"/api/library/materials/{material_id}/exports/preview",
+                json={"format": "html", "options": {"include_toc": True}},
+            )
+            self.assertEqual(material_preview.status_code, 200)
+            self.assertIn("本地资料", material_preview.json()["html"])
+            material_html = client.post(
+                f"/api/library/materials/{material_id}/exports/html",
+                json={"format": "html"},
+            )
+            material_docx = client.post(
+                f"/api/library/materials/{material_id}/exports/docx",
+                json={"format": "docx"},
+            )
+            material_pdf = client.post(
+                f"/api/library/materials/{material_id}/exports/pdf",
+                json={"format": "pdf"},
+            )
+            self.assertEqual(material_html.status_code, 200)
+            self.assertIn("可追溯学习内容", material_html.text)
+            self.assertEqual(material_docx.status_code, 200)
+            self.assertTrue(material_docx.content.startswith(b"PK"))
+            self.assertEqual(material_pdf.status_code, 200)
+            self.assertTrue(material_pdf.content.startswith(b"%PDF"))
 
             rejected = client.post("/api/study/cards", json={"cards": [{"front": "问题", "back": "答案", "source_evidence_ids": ["not-canonical"]}]})
             self.assertEqual(rejected.status_code, 422)

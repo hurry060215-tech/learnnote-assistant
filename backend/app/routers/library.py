@@ -5,8 +5,9 @@ import re
 from types import SimpleNamespace
 from uuid import uuid4
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, Body, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
+from pydantic import BaseModel, ConfigDict, Field
 
 from ..config import DATA_DIR, TEMP_DIR
 from ..library import (
@@ -29,10 +30,27 @@ from ..library import (
     search_library,
 )
 from ..storage import get_task
-from ..document_exports import build_docx_export, build_pdf_export, DocumentExportUnavailable
+from ..document_exports import (
+    DocumentExportUnavailable,
+    build_docx_export,
+    build_html_export,
+    build_pdf_export,
+    build_structured_export,
+    normalize_export_options,
+    sanitize_export_text,
+)
 
 
 library_router = APIRouter(prefix="/api/library", tags=["library"])
+
+
+class MaterialUnifiedExportRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    format: str = Field(default="html", pattern=r"^(html|docx|pdf|markdown)$")
+    options: dict = Field(default_factory=dict)
+    annotations: str = Field(default="", max_length=100000)
+    practice: list[dict] = Field(default_factory=list, max_length=200)
+    space_id: str = Field(default="", max_length=64)
 
 
 @library_router.get("/status")
@@ -186,6 +204,90 @@ def api_material_source(material_id: str) -> FileResponse:
         return FileResponse(path, filename=path.name, media_type="application/octet-stream")
     except ValueError as exc:
         raise HTTPException(status_code=404, detail="Original source unavailable") from exc
+
+
+def _material_unified_export_inputs(material_id: str, request: MaterialUnifiedExportRequest):
+    material = get_material(material_id)
+    note = material_content(material_id)
+    from ..personal_notes import annotation_markdown
+
+    annotations = request.annotations
+    options = normalize_export_options(request.options)
+    if not annotations and options["include_annotations"]:
+        annotations = annotation_markdown("material", material_id)
+    practice = list(request.practice or [])
+    if request.space_id and not practice and options["include_practice"]:
+        from ..learning_spaces import list_space_practice
+        practice = list_space_practice(request.space_id)
+    source = SimpleNamespace(
+        id=material_id,
+        title=str(material.get("title") or material_id),
+        page_url="",
+        frame_grids=[],
+    )
+    return source, note, {}, annotations, practice, options
+
+
+def _material_unified_export_response(material_id: str, export_format: str, request: MaterialUnifiedExportRequest) -> Response:
+    if export_format not in {"html", "docx", "pdf", "markdown"}:
+        raise HTTPException(status_code=404, detail={"code": "unsupported_export_format", "message": "支持 HTML、Word、PDF 或 Markdown。"})
+    try:
+        source, note, transcript, annotations, practice, options = _material_unified_export_inputs(
+            material_id, request.model_copy(update={"format": export_format})
+        )
+        if export_format == "html":
+            artifact = build_html_export(source, note, transcript, annotations=annotations, practice=practice, export_options=options)
+        elif export_format == "docx":
+            artifact = build_docx_export(source, note, transcript, annotations=annotations, practice=practice, export_options=options)
+        elif export_format == "pdf":
+            artifact = build_pdf_export(source, note, transcript, annotations=annotations, practice=practice, export_options=options)
+        else:
+            content = sanitize_export_text(
+                build_structured_export(source, note, transcript, annotations=annotations, practice=practice, options=options)["markdown"]
+            ).encode("utf-8")
+            artifact = SimpleNamespace(
+                content=content,
+                media_type="text/markdown; charset=utf-8",
+                suffix="md",
+                font_name="UTF-8",
+                warnings=[],
+                schema_version=1,
+            )
+    except (ValueError, FileNotFoundError, OSError) as exc:
+        raise HTTPException(status_code=404, detail={"code": "material_export_unavailable", "message": "学习资料或原文不可用。"}) from exc
+    except DocumentExportUnavailable as exc:
+        raise HTTPException(status_code=503, detail={"code": str(exc), "message": "导出组件不可用，请检查安装包。"}) from exc
+    filename = f"learnnote-material-{material_id}.{artifact.suffix}"
+    headers = {
+        "Content-Disposition": f'attachment; filename="{filename}"',
+        "X-LearnNote-Export-Schema": str(artifact.schema_version),
+        "X-LearnNote-Font": artifact.font_name,
+    }
+    if artifact.warnings:
+        headers["X-LearnNote-Export-Warning"] = ",".join(artifact.warnings)
+    return Response(artifact.content, media_type=artifact.media_type, headers=headers)
+
+
+@library_router.post("/materials/{material_id}/exports/preview")
+def api_material_unified_export_preview(material_id: str, request: MaterialUnifiedExportRequest) -> dict:
+    try:
+        source, note, transcript, annotations, practice, options = _material_unified_export_inputs(material_id, request)
+        artifact = build_html_export(source, note, transcript, annotations=annotations, practice=practice, export_options=options)
+    except (ValueError, FileNotFoundError, OSError) as exc:
+        raise HTTPException(status_code=404, detail={"code": "material_export_unavailable", "message": "学习资料或原文不可用。"}) from exc
+    return {
+        "format": request.format,
+        "schema_version": artifact.schema_version,
+        "html": artifact.content.decode("utf-8"),
+        "warnings": artifact.warnings,
+        "font": artifact.font_name,
+        "options": options,
+    }
+
+
+@library_router.post("/materials/{material_id}/exports/{export_format}")
+def api_material_unified_export(material_id: str, export_format: str, request: MaterialUnifiedExportRequest) -> Response:
+    return _material_unified_export_response(material_id, export_format, request)
 
 
 @library_router.get("/materials/{material_id}/exports/{kind}")
