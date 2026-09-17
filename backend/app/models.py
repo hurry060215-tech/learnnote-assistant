@@ -106,6 +106,10 @@ class TaskOptions(BaseModel):
     note_style: str = "study"
     note_template: str = "standard"
     summary_depth: str = "standard"
+    # Questions belong to the independent study space by default.  Keeping
+    # this opt-in also makes the legacy task API safe: changing depth never
+    # silently adds a quiz to an existing note.
+    generate_questions: bool = False
     note_profile_name: str = Field(default="", max_length=80)
     note_profile_prompt: str = Field(default="", max_length=4000)
     note_profile_sections: list[str] = Field(default_factory=list, max_length=16)

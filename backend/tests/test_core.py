@@ -3946,16 +3946,10 @@ class SummaryFallbackTests(unittest.TestCase):
         standard = summary_depth_instruction(TaskOptions(summary_depth="standard"))
         deep = summary_depth_instruction(TaskOptions(summary_depth="deep"))
 
-        self.assertIn("至少 60%", brief)
-        self.assertIn("500-900", brief)
-        self.assertIn("材料本身出现例题时最多保留 1 个", brief)
-        self.assertIn("恰好 2 题", brief)
-        self.assertIn("至少 80%", standard)
-        self.assertIn("材料本身出现例题时保留 1-2 个", standard)
-        self.assertIn("恰好 4 题", standard)
-        self.assertIn("至少 95%", deep)
-        self.assertIn("材料本身出现例题时最多保留 2-4 个", deep)
-        self.assertIn("6-8 题", deep)
+        self.assertIn("只保留高价值结论", brief)
+        self.assertIn("保留核心解释", standard)
+        self.assertIn("保留材料明确给出的推导", deep)
+        self.assertNotIn("恰好", brief + standard + deep)
 
     def test_local_learning_goals_do_not_share_the_same_forced_sections(self) -> None:
         transcript = TranscriptResult(
@@ -3972,8 +3966,8 @@ class SummaryFallbackTests(unittest.TestCase):
         self.assertIn("## 一页速览", quick)
         self.assertNotIn("## 例题 / 演示步骤", quick)
         self.assertNotIn("## 易错点", quick)
-        self.assertIn("## 闭卷自测题", exam)
-        self.assertIn("## 答案与评分点", exam)
+        self.assertNotIn("## 闭卷自测题", exam)
+        self.assertNotIn("## 答案与评分点", exam)
         self.assertNotIn("## 课程主题", deep + quick + exam)
 
     def test_text_llm_prompt_uses_goal_and_depth_contract(self) -> None:
@@ -4010,9 +4004,9 @@ class SummaryFallbackTests(unittest.TestCase):
         self.assertEqual(source, "text-llm")
         self.assertEqual(note, "# Quick note")
         self.assertIn("一页速览 → 关键结论 → 回看定位 → 下一步复习", prompt)
-        self.assertIn("至少 95%", prompt)
-        self.assertIn("2-4 个", prompt)
-        self.assertIn("6-8 题", prompt)
+        self.assertIn("保留材料明确给出的推导", prompt)
+        self.assertNotIn("恰好", prompt)
+        self.assertNotIn("6-8 题", prompt)
         self.assertNotIn("结构必须包含：课程主题", prompt)
         self.assertEqual(transcript.full_text, "timestamped source")
         self.assertEqual(client_kwargs[0]["timeout"], LLM_REQUEST_TIMEOUT_SECONDS)

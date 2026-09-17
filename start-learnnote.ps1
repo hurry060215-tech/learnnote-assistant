@@ -11,7 +11,18 @@ param(
 $ErrorActionPreference = "Stop"
 
 $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$dataDir = Join-Path $projectRoot "data"
+$dataDir = if ($env:LEARNNOTE_DATA_DIR) { [System.IO.Path]::GetFullPath($env:LEARNNOTE_DATA_DIR) } else { Join-Path $projectRoot "data" }
+$configPath = Join-Path $projectRoot "learnnote-config.json"
+if (-not $env:LEARNNOTE_DATA_DIR -and (Test-Path -LiteralPath $configPath)) {
+  try {
+    $configuredDataDir = [string](Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json).data_dir
+    if ($configuredDataDir) {
+      $dataDir = if ([System.IO.Path]::IsPathRooted($configuredDataDir)) { [System.IO.Path]::GetFullPath($configuredDataDir) } else { [System.IO.Path]::GetFullPath((Join-Path $projectRoot $configuredDataDir)) }
+    }
+  } catch {
+    Write-Host "WARN: learnnote-config.json 无法读取，继续使用默认数据目录 $dataDir" -ForegroundColor Yellow
+  }
+}
 $extensionDir = Join-Path $projectRoot "extension"
 $doctorScript = Join-Path $projectRoot "scripts\doctor.ps1"
 $backendScript = Join-Path $projectRoot "start-backend.ps1"
@@ -112,6 +123,7 @@ if ($rootDrive -like "C:\*") {
 }
 
 New-Item -ItemType Directory -Force -Path $dataDir | Out-Null
+$env:LEARNNOTE_DATA_DIR = $dataDir
 $previousBackendOrigin = $env:LEARNNOTE_BACKEND_ORIGIN
 $env:LEARNNOTE_BACKEND_ORIGIN = $backendUrl
 

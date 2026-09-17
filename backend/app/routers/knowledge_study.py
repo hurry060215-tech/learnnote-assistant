@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from pathlib import Path
 from urllib.parse import quote
+from uuid import uuid4
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Body, File, HTTPException, UploadFile
 from fastapi.responses import Response
 
 from ..community import add_community_context, clear_all_community_context, clear_community_context, community_settings, delete_community_item, list_community_context, sample_community_context, set_community_enabled
-from ..document_exports import DocumentExportUnavailable, build_docx_export, build_pdf_export
+from ..document_exports import DocumentExportUnavailable, build_docx_export, build_html_export, build_pdf_export, build_structured_export, normalize_export_options
 from ..embeddings import embedding_status
 from ..knowledge import add_evidence, answer_from_evidence, evidence_by_ids, evidence_for_task, extract_import_text, preserve_raw_import, remove_evidence, search_evidence
 from ..models import SourceEvidence, StudyCard, StudyCardPositionRequest, StudyCardStatusRequest, StudyPlanUpdateRequest, StudyReviewRequest
@@ -18,11 +20,29 @@ from ..study import initialize_study_timezone
 from ..study import rebuild_study_schedules
 from ..courses import course_evidence_ids
 from ..task_artifacts import read_task_note, read_task_transcript
+from ..learning_spaces import list_space_practice
+from ..config import DATA_DIR
+from ..storage import atomic_write_text
+import json
+from pydantic import BaseModel, ConfigDict, Field
 
 
 knowledge_router = APIRouter(prefix="/api/knowledge", tags=["knowledge"])
 study_router = APIRouter(prefix="/api/study", tags=["study"])
 task_study_router = APIRouter(prefix="/api/tasks", tags=["study"])
+
+
+class UnifiedExportRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    format: str = Field(default="html", pattern=r"^(html|docx|pdf|markdown)$")
+    options: dict = Field(default_factory=dict)
+    annotations: str = Field(default="", max_length=100000)
+    practice: list[dict] = Field(default_factory=list, max_length=200)
+    space_id: str = Field(default="", max_length=64)
+
+
+def _export_presets_path():
+    return DATA_DIR / "export-presets.json"
 
 
 @study_router.get("/cards/{card_id}/schedule-preview")
@@ -425,3 +445,103 @@ def api_export_docx(task_id: str, include_annotations: bool = False) -> Response
 @task_study_router.get("/{task_id}/exports/pdf")
 def api_export_pdf(task_id: str, include_annotations: bool = False) -> Response:
     return _document_export_response(task_id, "pdf", include_annotations)
+
+
+def _unified_export_inputs(task_id: str, request: UnifiedExportRequest):
+    try:
+        task = get_task(task_id)
+        note = read_task_note(task_id)
+        transcript = read_task_transcript(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(404, {"code": "task_not_found", "message": "任务或笔记不存在。"}) from exc
+    if not note.strip() and not request.options.get("include_note"):
+        raise HTTPException(404, {"code": "note_not_found", "message": "任务还没有可导出的笔记。"})
+    from ..personal_notes import annotation_markdown
+    annotations = request.annotations
+    if not annotations and request.options.get("include_annotations", True):
+        annotations = annotation_markdown("task", task_id)
+    practice = list(request.practice or [])
+    if request.space_id and not practice and request.options.get("include_practice", False):
+        try:
+            practice = list_space_practice(request.space_id)
+        except (FileNotFoundError, ValueError, OSError) as exc:
+            raise HTTPException(404, {"code": "learning_space_not_found", "message": "学习空间不存在。"}) from exc
+    return task, note, transcript, annotations, practice, normalize_export_options(request.options)
+
+
+@task_study_router.post("/{task_id}/exports/preview")
+def api_unified_export_preview(task_id: str, request: UnifiedExportRequest) -> dict:
+    task, note, transcript, annotations, practice, options = _unified_export_inputs(task_id, request)
+    artifact = build_html_export(task, note, transcript, annotations=annotations, practice=practice, export_options=options)
+    return {
+        "format": request.format,
+        "schema_version": artifact.schema_version,
+        "html": artifact.content.decode("utf-8"),
+        "warnings": artifact.warnings,
+        "font": artifact.font_name,
+        "options": options,
+    }
+
+
+@task_study_router.post("/{task_id}/exports/{export_format}")
+def api_unified_export(task_id: str, export_format: str, request: UnifiedExportRequest) -> Response:
+    if export_format not in {"html", "docx", "pdf", "markdown"}:
+        raise HTTPException(404, {"code": "unsupported_export_format", "message": "支持 HTML、Word、PDF 或 Markdown。"})
+    task, note, transcript, annotations, practice, options = _unified_export_inputs(task_id, request.model_copy(update={"format": export_format}))
+    try:
+        if export_format == "html":
+            artifact = build_html_export(task, note, transcript, annotations=annotations, practice=practice, export_options=options)
+        elif export_format == "docx":
+            artifact = build_docx_export(task, note, transcript, annotations=annotations, practice=practice, export_options=options)
+        elif export_format == "pdf":
+            artifact = build_pdf_export(task, note, transcript, annotations=annotations, practice=practice, export_options=options)
+        else:
+            from ..document_exports import sanitize_export_text
+            artifact = type("MarkdownArtifact", (), {
+                "content": sanitize_export_text(build_structured_export(task, note, transcript, annotations=annotations, practice=practice, options=options)["markdown"]),
+                "media_type": "text/markdown; charset=utf-8",
+                "suffix": "md",
+                "font_name": "UTF-8",
+                "warnings": [],
+                "schema_version": 1,
+            })()
+            artifact.content = str(artifact.content).encode("utf-8")
+    except DocumentExportUnavailable as exc:
+        raise HTTPException(503, {"code": str(exc), "message": "导出组件不可用，请检查安装包。"}) from exc
+    filename = f"learnnote-{task.id}.{artifact.suffix}"
+    headers = {
+        "Content-Disposition": f'attachment; filename="{filename}"; filename*=UTF-8\'\'{quote(filename)}',
+        "X-LearnNote-Export-Schema": str(artifact.schema_version),
+        "X-LearnNote-Font": artifact.font_name,
+    }
+    if artifact.warnings:
+        headers["X-LearnNote-Export-Warning"] = ",".join(artifact.warnings)
+    return Response(artifact.content, media_type=artifact.media_type, headers=headers)
+
+
+@study_router.get("/export-presets")
+def api_export_presets() -> dict:
+    path = _export_presets_path()
+    if not path.is_file():
+        return {"presets": []}
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+        return {"presets": value.get("presets", []) if isinstance(value, dict) else []}
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        return {"presets": []}
+
+
+@study_router.post("/export-presets")
+def api_save_export_preset(payload: dict | None = Body(default=None)) -> dict:
+    body = payload or {}
+    name = str(body.get("name") or "").strip()[:120]
+    if not name:
+        raise HTTPException(422, {"code": "preset_name_required", "message": "请填写预设名称。"})
+    options = normalize_export_options(body.get("options") if isinstance(body.get("options"), dict) else {})
+    current = api_export_presets()["presets"]
+    item = {"id": str(body.get("id") or uuid4().hex), "name": name, "options": options, "updated_at": datetime.now(timezone.utc).isoformat()}
+    current = [item if str(existing.get("id")) == item["id"] else existing for existing in current if isinstance(existing, dict)]
+    if not any(str(existing.get("id")) == item["id"] for existing in current):
+        current.append(item)
+    atomic_write_text(_export_presets_path(), json.dumps({"schema_version": 1, "presets": current[-30:]}, ensure_ascii=False, indent=2))
+    return {"preset": item, "presets": current[-30:]}

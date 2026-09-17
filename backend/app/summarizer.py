@@ -347,8 +347,9 @@ def learning_goal_instruction(options: TaskOptions) -> str:
     goal = learning_goal(options)
     instructions = {
         "auto": (
-            "默认阅读笔记：先用一段话交代材料的具体问题和主要结论，再按主题或操作顺序展开；"
-            "标题必须说明实际内容。每节写清结论、解释、材料中的例子或推导及适用条件；同一内容只讲一次。不要在正文解释整理策略，不要为了凑模板生成材料中不存在的章节。"
+            "默认阅读笔记：先用一段简短概述交代内容的具体问题和主要结论，再列出核心要点，"
+            "随后按材料自身的主题或操作顺序自然分节。标题必须说明实际内容；每节写清结论、解释、"
+            "材料中的例子或推导及适用条件。同一内容只讲一次，不补空章节，不把整理策略写进正文。"
         ),
         "deep": (
             "深入理解：严格按“知识地图 → 概念精讲（直觉、定义、机制）→ 证据与应用 → "
@@ -372,17 +373,14 @@ def summary_depth_instruction(options: TaskOptions) -> str:
     depth = aliases.get(depth, depth)
     constraints = {
         "brief": (
-            "简洁深度：覆盖字幕中至少 60% 的高价值知识点；正文目标 500-900 个中文字符；"
-            "材料本身出现例题时最多保留 1 个；复习或自测题恰好 2 题，答案只能由材料推出。"
+            "简洁深度：只保留高价值结论、必要前提和少量原文例子，省略次要展开。"
         ),
         "standard": (
-            "标准深度：覆盖字幕中至少 80% 的高价值知识点；正文目标 1000-1800 个中文字符；"
-            "材料本身出现例题时保留 1-2 个；复习或自测题恰好 4 题，答案只能由材料推出。"
+            "标准深度：保留核心解释、材料中的例子和因果步骤，篇幅随材料自然变化。"
         ),
         "deep": (
-            "深入深度：覆盖字幕中至少 95% 的高价值知识点及材料明确给出的前提和联系；"
-            "篇幅随证据量自然增长，不为了达到字数扩写外部知识；材料本身出现例题时最多保留 2-4 个；"
-            "复习或自测题 6-8 题，答案只能由材料推出。"
+            "深入深度：保留材料明确给出的推导、操作步骤、例子、前提和概念联系，"
+            "篇幅随证据量自然增长，不扩写材料外的知识。"
         ),
     }
     return constraints.get(depth, constraints["standard"])
@@ -418,8 +416,13 @@ def note_generation_contract(options: TaskOptions) -> str:
         f"深度约束：{summary_depth_instruction(options) if learning_goal(options) != 'auto' else {'brief': '精简：保留核心结论和必要前提，省略次要例子。', 'standard': '标准：保留核心解释、原有例子和因果步骤；篇幅随材料，不设最低字数。', 'deep': '详细：保留推导、操作步骤、例子和条件；不扩写材料外的知识。'}.get(options.summary_depth, '篇幅随材料。')}\n"
         "共同约束：时间戳只能来自字幕段或画面窗口；不要编造时长、画面、例题、公式、工具、事实或课程没有给出的通用建议。"
         "外文专有名称只按字幕或画面证据原文书写；字幕只有中文名时保留中文名，禁止自行补写英文译名、品牌或人名。"
-        "自拟问题必须标为“自测题”，答案只能由材料直接推出，不能伪装成老师讲过的例题。"
-        "没有对应内容时省略可选章节，不要用空章节或套话补齐。"
+        + (
+            "用户已明确要求练习：可以生成与材料匹配的自测题，数量由内容决定，不设固定题数；"
+            "题目必须标为“自测题”，答案只能由材料直接推出，不能伪装成老师讲过的例题。"
+            if options.generate_questions
+            else "默认不生成自测题、复习问题或答案章节；题目由学习空间单独生成，或仅在用户明确要求时生成。"
+        )
+        + "没有对应内容时省略可选章节，不要用空章节或套话补齐。"
     )
 
 
@@ -618,10 +621,13 @@ def _validated_generated_note(
 def _depth_counts(options: TaskOptions) -> tuple[int, int]:
     depth = str(options.summary_depth or "standard").strip().lower()
     if depth in {"brief", "concise", "short"}:
-        return 1, 2
-    if depth in {"deep", "detailed", "long"}:
-        return 3, 6
-    return 2, 4
+        examples = 1
+    elif depth in {"deep", "detailed", "long"}:
+        examples = 3
+    else:
+        examples = 2
+    # Depth controls detail only.  It never opts a normal note into a quiz.
+    return examples, (3 if options.generate_questions else 0)
 
 
 def _context_topic_lines(title: str, transcript: TranscriptResult, limit: int = 3) -> list[str]:
@@ -965,7 +971,12 @@ def _grid_window_prompt(transcript: TranscriptResult, entries: list[VisionGridEn
     return "\n\n".join(sections)
 
 
-def _visual_appendix_markdown(transcript: TranscriptResult, grids: list[FrameGrid]) -> str:
+def _visual_appendix_markdown(
+    transcript: TranscriptResult,
+    grids: list[FrameGrid],
+    *,
+    include_questions: bool = True,
+) -> str:
     windows = build_visual_windows(transcript, grids)
     if not windows:
         return ""
@@ -987,16 +998,22 @@ def _visual_appendix_markdown(transcript: TranscriptResult, grids: list[FrameGri
             f"- 字幕线索：{window.transcript_excerpt or '本窗口没有匹配到字幕。'}",
             "- 回看检查点：",
             *_window_checkpoint_lines(window),
-            "- 自测问题：",
-            *visual_window_review_question_lines(window),
-            "",
         ])
+        if include_questions:
+            lines.extend(["- 自测问题：", *visual_window_review_question_lines(window)])
+        lines.append("")
     return "\n".join(lines).rstrip()
 
 
-def ensure_visual_appendix(markdown: str, transcript: TranscriptResult, grids: list[FrameGrid]) -> str:
+def ensure_visual_appendix(
+    markdown: str,
+    transcript: TranscriptResult,
+    grids: list[FrameGrid],
+    *,
+    include_questions: bool = True,
+) -> str:
     note = (markdown or "").strip()
-    appendix = _visual_appendix_markdown(transcript, grids)
+    appendix = _visual_appendix_markdown(transcript, grids, include_questions=include_questions)
     if not appendix:
         return note
     if re.search(r"^##\s+画面切片附录\b", note, re.M):
@@ -1160,7 +1177,12 @@ def _local_goal_note(
     use_case = str(options.note_style or "").strip().lower().replace("_", "-")
     if use_case == "operation-tutorial":
         lines.extend(_operation_tutorial_sections(transcript, grids))
-        return ensure_visual_appendix("\n".join(lines).rstrip() + "\n", transcript, grids)
+        return ensure_visual_appendix(
+            "\n".join(lines).rstrip() + "\n",
+            transcript,
+            grids,
+            include_questions=bool(options.generate_questions),
+        )
 
     lines.extend(_learning_context_lines(title, transcript, windows, page_url, page_context))
     depth_labels = {"brief": "简洁", "standard": "标准", "deep": "详细"}
@@ -1202,10 +1224,16 @@ def _local_goal_note(
             lines.append(f"- 应用练习 {index + 1}：解释“{topic}”成立的前提，并给出一个适用场景。")
         lines += ["", "## 概念联系、边界与迁移", ""]
         lines.append("- 对照上下文检查各概念的前提、因果关系和适用边界；转写未明确的关系保持为待确认项。")
-        lines += ["", "## 理解检验", ""]
-        for index in range(question_count):
-            topic = key_sentences[index % len(key_sentences)] if key_sentences else "本节核心概念"
-            lines.append(f"{index + 1}. 如何解释并应用：{topic}")
+        if question_count:
+            lines += ["", "## 理解检验", ""]
+            for index in range(question_count):
+                topic = key_sentences[index % len(key_sentences)] if key_sentences else "本节核心概念"
+                lines.append(f"{index + 1}. 如何解释并应用：{topic}")
+    elif goal == "exam" and not question_count:
+        # Legacy exam style can still describe examinable facts without
+        # silently publishing a quiz in a normal note.
+        lines += ["## 考点清单", ""]
+        lines.extend(f"- {item}" for item in key_sentences[: max(4, example_count)])
     else:
         lines += ["## 考点清单", ""]
         for item in key_sentences[: max(4, question_count)]:
@@ -1221,7 +1249,12 @@ def _local_goal_note(
         lines += ["", "## 题型 / 陷阱复盘", ""]
         lines.append("- 作答时区分原始材料明确给出的结论与需要自行推导的内容，并核对条件和术语。")
 
-    return ensure_visual_appendix("\n".join(lines).rstrip() + "\n", transcript, grids)
+    return ensure_visual_appendix(
+        "\n".join(lines).rstrip() + "\n",
+        transcript,
+        grids,
+        include_questions=bool(options.generate_questions),
+    )
 
 
 def local_markdown_note(title: str, transcript: TranscriptResult, grids: list[FrameGrid], page_url: str = "", options: TaskOptions | None = None, page_context: str = "") -> str:
@@ -1461,7 +1494,12 @@ def summarize_with_llm(
                 if not grounded:
                     return None
                 check_cancel()
-                note = ensure_visual_appendix(grounded, transcript, grids) or ""
+                note = ensure_visual_appendix(
+                    grounded,
+                    transcript,
+                    grids,
+                    include_questions=bool(options.generate_questions),
+                ) or ""
                 return (note, "vision-llm") if note else None
             except SummarizationCancelled:
                 raise
@@ -1536,7 +1574,12 @@ def summarize_with_llm(
         if not grounded:
             return None
         check_cancel()
-        note = ensure_visual_appendix(grounded, transcript, grids) or ""
+        note = ensure_visual_appendix(
+            grounded,
+            transcript,
+            grids,
+            include_questions=bool(options.generate_questions),
+        ) or ""
         return (note, "text-llm") if note else None
     except SummarizationCancelled:
         raise

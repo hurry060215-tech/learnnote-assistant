@@ -9,7 +9,7 @@ from zipfile import ZipFile
 
 from pypdf import PdfReader
 
-from app.document_exports import build_docx_export, build_pdf_export
+from app.document_exports import build_docx_export, build_html_export, build_pdf_export, build_structured_export
 from app.models import TaskRecord, FrameGrid
 from app.note_document import normalize_note_markdown
 
@@ -133,6 +133,31 @@ rate = 0.1
         payload_text = "\n".join(page.extract_text() or "" for page in reader.pages)
         for secret in ("SUPERSECRET", "sid=ONE", "csrf=TWO", "192.168.1.5", "example.com:bad"):
             self.assertNotIn(secret, payload_text)
+
+    def test_unified_export_keeps_content_and_layout_options_across_formats(self) -> None:
+        note = self.note + "\n\n## 关键点\n\n**粗体结论**，代码是 `rate = 0.1`，并见 [来源](https://example.com/lesson?t=31)。\n\n| 项目 | 值 |\n| --- | --- |\n| 学习率 | 0.1 |"
+        options = {"include_toc": True, "include_transcript": True, "include_practice": True, "font_size": 12, "line_height": 1.8, "orientation": "landscape"}
+        structured = build_structured_export(self.task, note, self.transcript, annotations="我的补充", practice=[{"question": "问题", "answer": "答案"}], options=options)
+        self.assertIn("## 目录", structured["markdown"])
+        html_artifact = build_html_export(self.task, note, self.transcript, annotations="我的补充", practice=[{"question": "问题", "answer": "答案"}], export_options=options)
+        html_text = html_artifact.content.decode("utf-8")
+        self.assertIn("粗体结论", html_text)
+        self.assertIn("<strong>", html_text)
+        self.assertIn("完整字幕", html_text)
+        self.assertIn("练习", html_text)
+        docx_artifact = build_docx_export(self.task, note, self.transcript, annotations="我的补充", practice=[{"question": "问题", "answer": "答案"}], export_options=options)
+        with ZipFile(BytesIO(docx_artifact.content)) as archive:
+            document_xml = archive.read("word/document.xml").decode("utf-8")
+        self.assertIn("粗体结论", document_xml)
+        self.assertIn("w:b", document_xml)
+        self.assertIn("我的补充", document_xml)
+        self.assertIn("目录", document_xml)
+        self.assertIn("答案", document_xml)
+        pdf_artifact = build_pdf_export(self.task, note, self.transcript, annotations="我的补充", practice=[{"question": "问题", "answer": "答案"}], export_options=options)
+        pdf_text = "\n".join(page.extract_text() or "" for page in PdfReader(BytesIO(pdf_artifact.content)).pages)
+        self.assertIn("粗体结论", pdf_text)
+        self.assertIn("我的补充", pdf_text)
+        self.assertIn("答案", pdf_text)
 
 
 if __name__ == "__main__":

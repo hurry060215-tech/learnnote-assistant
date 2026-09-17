@@ -540,6 +540,12 @@ export function installSettings(ctx) {
     '<label for="prefFont">阅读字体</label><select id="prefFont"><option value="sans">清晰黑体</option><option value="serif">书页宋体</option><option value="mono">等宽字体</option></select><label for="prefWidth">阅读宽度</label><select id="prefWidth"><option value="760">专注 · 760 px</option><option value="940">标准 · 940 px</option><option value="1120">宽屏 · 1120 px</option></select><label for="prefLeading">正文行距</label><select id="prefLeading"><option value="1.65">紧凑 · 1.65</option><option value="1.85">舒适 · 1.85</option><option value="2.1">宽松 · 2.1</option></select><label for="prefAccent">强调色</label><select id="prefAccent"><option value="neutral">石墨</option><option value="teal">青绿</option><option value="blue">靛蓝</option><option value="plum">梅紫</option></select><p class="muted">外观保存在当前浏览器或客户端；不会修改笔记内容。深浅主题可用侧栏底部按钮切换。</p>',
   );
   panes.appearance.insertAdjacentHTML("beforeend", '<label for="prefWeight">正文字重</label><select id="prefWeight"><option value="400">常规</option><option value="500">清晰</option><option value="600">加粗</option></select>');
+  panes.appearance.insertAdjacentHTML("beforeend", '<div class="settings-inline-actions"><button type="button" id="restoreAssistantPrompts">恢复助手快捷建议</button></div><p class="muted">快捷建议只在空会话显示；可在助手中关闭单条或整组。</p>');
+  $("restoreAssistantPrompts").onclick = () => {
+    try { localStorage.removeItem("learnnote.assistant.prompts"); } catch {}
+    window.dispatchEvent(new CustomEvent("learnnote:assistant-prompts"));
+    notice("助手快捷建议已恢复");
+  };
   const preview = document.createElement("div");
   preview.className = "settings-status";
   preview.setAttribute("aria-label", "阅读效果预览");

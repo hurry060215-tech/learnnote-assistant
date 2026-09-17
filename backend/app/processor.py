@@ -498,6 +498,14 @@ def browser_subtitle_text_is_player_ui(text: str) -> bool:
         return True
     if any(signature in normalized for signature in PLAYER_DANMAKU_COMMENT_SIGNATURES):
         return True
+    # Bilibili's settings panel is frequently split into many short cues, for
+    # example ``背景不透明度 87%`` or ``字幕大小 适中 最小 …``.  These may not
+    # contain two of the longer historical signatures, but they are still
+    # controls rather than speech.
+    if re.search(r"背景不透明度\s*\d+%|字幕大小\s*(?:最小|较小|适中|较大|最大)|(?:红色|白色|紫色|蓝色).{0,40}(?:描边|位置)", normalized):
+        return True
+    if re.search(r"(?:字幕|弹幕|设置|位置|颜色|大小|描边).{0,12}\b(?:关闭|恢复默认|添加|暂无|默认)\b", normalized):
+        return True
     if re.search(r"哈{3,}|(?:^|\s)6{3,}(?:\s|$)", normalized, flags=re.I):
         return True
     marker_hits = sum(marker in normalized for marker in PLAYER_UI_SUBTITLE_MARKERS)

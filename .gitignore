@@ -29,6 +29,7 @@ data/static/
 data/
 extension/.DS_Store
 build/
+learnnote-config.json
 dist/
 dist-installer/
 LearnNote-*.zip

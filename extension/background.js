@@ -1226,11 +1226,26 @@ function frameStates(tabId) {
 }
 
 function normalizeBrowserSubtitles(items = []) {
+  const uiMarkers = [
+    "字幕设置", "字幕大小", "字幕颜色", "描边方式", "默认位置", "背景不透明度",
+    "恢复默认设置", "关闭弹幕", "登录可享", "原声翻译体验反馈", "添加字幕",
+    "暂无字幕", "主字幕 中文", "副字幕", "弹幕设置", "弹幕列表", "发送弹幕",
+    "屏蔽设定", "按类型屏蔽", "等比缩放", "淡入淡出", "无描边 重墨 描边",
+    "左下角 底部居中 右下角"
+  ];
+  const exactUi = new Set(["字幕", "主字幕", "副字幕", "字幕设置", "字幕大小", "字幕颜色", "描边方式", "默认位置", "背景不透明度", "添加字幕", "暂无字幕", "主字幕 中文", "关闭", "其它设置", "等比缩放", "淡入淡出", "弹幕", "弹幕设置", "弹幕列表", "关闭弹幕", "发送弹幕", "屏蔽设定", "按类型屏蔽"]);
+  const looksLikeUi = value => {
+    const normalized = String(value || "").replace(/\s+/g, " ").trim();
+    if (!normalized) return false;
+    if (exactUi.has(normalized)) return true;
+    const hits = uiMarkers.filter(marker => normalized.includes(marker));
+    return hits.length >= 2 || /背景不透明度\s*\d+%|字幕大小\s*(?:最小|较小|适中|较大|最大)|(?:红色|白色|紫色|蓝色).{0,30}(?:描边|位置)/.test(normalized);
+  };
   const normalized = [];
   const seen = new Set();
   for (const item of items || []) {
     const text = String(item?.text || "").replace(/\s+/g, " ").trim();
-    if (!text) continue;
+    if (!text || looksLikeUi(text)) continue;
     const start = Number(item.start ?? 0);
     const end = Number(item.end ?? start);
     if (!Number.isFinite(start) || !Number.isFinite(end)) continue;

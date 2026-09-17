@@ -86,7 +86,11 @@ const liveCaption = new FakeElement("div", {
     "data-caption-layer": "true"
   }
 });
-const html = new FakeElement("html", {}, [video, overlay, liveCaption]);
+const settingsPanel = new FakeElement("div", {
+  className: "bpx-player-ctrl-subtitle-setting",
+  textContent: "字幕设置 字幕大小 适中 最小 较小 背景不透明度 87% 恢复默认设置"
+});
+const html = new FakeElement("html", {}, [video, overlay, liveCaption, settingsPanel]);
 
 let messageListener = null;
 const context = {

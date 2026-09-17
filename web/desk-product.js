@@ -27,6 +27,7 @@ export function installProductWorkspace(ctx) {
       options,
       openItem,
       openSource,
+      openInlineSource,
       refresh,
       notice,
       guard,
@@ -37,7 +38,7 @@ export function installProductWorkspace(ctx) {
     ["newNote", "plus", "新建笔记"],
     ["settings", "settings", "设置"],
     ["review", "review", "复习"],
-    ["courses", "folder", "课程"],
+    ["courses", "folder", "学习空间"],
 
     ["refresh", "refresh", ""],
     ["theme", "theme", ""],
@@ -88,15 +89,15 @@ export function installProductWorkspace(ctx) {
   pane.id = "assistantPanel";
   pane.className = "assistant-panel";
   pane.hidden = true;
-  pane.innerHTML = `<header><strong>${icons.ai} 全局助手</strong><div><button id="fullAssistant" title="铺满工作区">全屏</button><button id="closeAssistant" aria-label="关闭 全局助手">×</button></div></header><div class="assistant-context"><small>当前上下文</small><strong id="assistantContext">尚未选择笔记</strong><span id="assistantModel"></span></div><div id="assistantHistory" class="assistant-history" role="log" aria-live="polite"></div><div class="assistant-prompts"><button data-prompt="你有哪些功能？怎么使用？">使用帮助</button><button data-prompt="总结这份内容的核心观点，并给出对应出处">总结要点</button><button data-prompt="解释这份内容中最重要的概念和它们的关系">解释概念</button><button data-prompt="根据原文给出三道自测问题，并附上参考答案和出处">帮我自测</button></div><form id="aiForm"><label class="sr-only" for="aiQuestion">向全局助手提问</label><textarea id="aiQuestion" maxlength="1000" rows="3" required placeholder="问操作方法、查资料，或围绕当前内容提问…"></textarea><footer><small id="aiStatus" role="status"></small><button id="aiStop" type="button" hidden>停止</button><button id="aiSend" class="primary">发送</button></footer></form>`;
+  pane.innerHTML = `<header><strong>${icons.ai} 全局助手</strong><span id="assistantSourceTag" class="assistant-source-tag">自由提问</span><div><button id="fullAssistant" title="铺满工作区">全屏</button><button id="closeAssistant" aria-label="关闭 全局助手">×</button></div></header><div id="assistantHistory" class="assistant-history" role="log" aria-live="polite"></div><div class="assistant-prompts"><header><span>可以试试</span><button id="hideAssistantPrompts" type="button" title="隐藏快捷建议">隐藏</button></header><div class="assistant-prompt-items"><span class="assistant-prompt-item"><button data-prompt="你有哪些功能？怎么使用？" data-prompt-key="help">使用帮助</button><button data-dismiss-prompt="help" aria-label="关闭使用帮助建议">×</button></span><span class="assistant-prompt-item"><button data-prompt="总结这份内容的核心观点，并给出对应出处" data-prompt-key="summary">总结要点</button><button data-dismiss-prompt="summary" aria-label="关闭总结要点建议">×</button></span><span class="assistant-prompt-item"><button data-prompt="解释这份内容中最重要的概念和它们的关系" data-prompt-key="explain">解释概念</button><button data-dismiss-prompt="explain" aria-label="关闭解释概念建议">×</button></span><span class="assistant-prompt-item"><button data-prompt="根据原文给出三道自测问题，并附上参考答案和出处" data-prompt-key="quiz">帮我自测</button><button data-dismiss-prompt="quiz" aria-label="关闭帮我自测建议">×</button></span></div></div><form id="aiForm"><label class="sr-only" for="aiQuestion">向全局助手提问</label><textarea id="aiQuestion" maxlength="1000" rows="3" required placeholder="问操作方法、查资料，或围绕当前内容提问…"></textarea><footer><small id="aiStatus" role="status"></small><button id="aiStop" type="button" hidden>停止</button><button id="aiSend" class="primary">发送</button></footer></form>`;
   document.body.append(pane);
   const skillControls = document.createElement("div");
   skillControls.className = "assistant-skill-controls";
   skillControls.innerHTML =
-    '<label for="assistantSkill">选择能力</label><div><select id="assistantSkill" aria-label="选择助理 Skill"><option value="auto">自动选择 Skill（本地匹配）</option></select><button id="skillCatalog">功能目录</button></div><p id="skillExecution" role="status">每次调用会显示 Skill 与上下文范围</p>';
+    '<p id="skillExecution" role="status">发送后显示实际读取范围与处理方式</p><button id="skillCatalog" type="button">查看能力目录</button>';
   const assistantOptions = document.createElement("details");
   assistantOptions.className = "assistant-options";
-  assistantOptions.innerHTML = "<summary>回答选项</summary>";
+  assistantOptions.innerHTML = "<summary>处理详情</summary>";
   assistantOptions.append(
     skillControls,
     pane.querySelector(".assistant-context"),
@@ -106,9 +107,6 @@ export function installProductWorkspace(ctx) {
   scopeLabel.id = "assistantScope";
   scopeLabel.className = "assistant-scope";
   pane.querySelector("#aiForm").prepend(scopeLabel);
-  pane.querySelectorAll("[data-prompt]").forEach((button, index) => {
-    if (index > 1) button.hidden = true;
-  });
   let skills = [],
     features = [];
   async function loadSkills() {
@@ -116,13 +114,6 @@ export function installProductWorkspace(ctx) {
       const catalog = await api("/api/assistant/skills");
       skills = catalog.skills;
       features = catalog.features || [];
-      for (const skill of skills)
-        $("assistantSkill").append(
-          Object.assign(document.createElement("option"), {
-            value: skill.id,
-            textContent: `${skill.name} · ${skill.requires_source ? "当前内容" : "全局"}`,
-          }),
-        );
     } catch (error) {
       $("skillExecution").textContent = "能力目录暂不可用：" + error.message;
     }
@@ -213,8 +204,6 @@ export function installProductWorkspace(ctx) {
     modal.querySelectorAll("[data-pick-skill]").forEach(
       (b) =>
         (b.onclick = () => {
-          $("assistantSkill").value = b.dataset.pickSkill;
-          $("assistantSkill").dispatchEvent(new Event("change"));
           modal.close();
           $("aiQuestion").focus();
         }),
@@ -232,21 +221,11 @@ export function installProductWorkspace(ctx) {
     };
     modal.showModal();
   };
-  $("assistantSkill").onchange = () => {
-    const selected = skills.find((s) => s.id === $("assistantSkill").value);
-    $("skillExecution").textContent = selected
-      ? `${selected.name} · ${selected.id}：${selected.description}`
-      : "根据问题选择 Skill；回复中显示实际调用。";
-    $("assistantContext").textContent = selected
-      ? selected.requires_source
-        ? state.selected?.title || "等待选择来源"
-        : selected.scope === "library"
-          ? "本地资料库"
-          : selected.scope === "conversation"
-            ? "通用对话 · 不自动读资料"
-            : "软件功能与状态 · 全局范围"
-      : state.selected?.title || "全局范围 · 可直接提问";
-  };
+  function updateAssistantSourceTag() {
+    const source = state.selected;
+    $("assistantSourceTag").textContent = source ? `来源：${source.title}` : "自由提问";
+    $("assistantSourceTag").title = source ? `${source.kind}:${source.id}` : "不自动读取笔记或资料";
+  }
 
   let assistantEpoch = 0,
     pending = false,
@@ -259,6 +238,41 @@ export function installProductWorkspace(ctx) {
     drafts = createDraftStore(draftStorage);
   let visibleSource = "",
     previousSkill = "";
+  function promptPreferences() {
+    try {
+      return JSON.parse(localStorage.getItem("learnnote.assistant.prompts") || "{}");
+    } catch {
+      return {};
+    }
+  }
+  function renderPromptVisibility(historyCount = 0) {
+    const group = pane.querySelector(".assistant-prompts");
+    if (!group) return;
+    const preferences = promptPreferences();
+    const hiddenGroup = preferences.hidden === true || historyCount > 0;
+    group.hidden = hiddenGroup;
+    group.querySelectorAll("[data-prompt-key]").forEach((button) => {
+      const dismissed = Array.isArray(preferences.dismissed) && preferences.dismissed.includes(button.dataset.promptKey);
+      button.closest(".assistant-prompt-item").hidden = dismissed;
+    });
+  }
+  function savePromptPreferences(value) {
+    try { localStorage.setItem("learnnote.assistant.prompts", JSON.stringify(value)); } catch {}
+    renderPromptVisibility(0);
+  }
+  window.addEventListener("learnnote:assistant-prompts", () => {
+    renderPromptVisibility($('assistantHistory')?.querySelectorAll('.assistant-turn').length || 0);
+  });
+  $("hideAssistantPrompts").onclick = () => savePromptPreferences({ ...promptPreferences(), hidden: true });
+  pane.querySelectorAll("[data-dismiss-prompt]").forEach((button) => {
+    button.onclick = () => {
+      const preferences = promptPreferences();
+      const dismissed = new Set(preferences.dismissed || []);
+      dismissed.add(button.dataset.dismissPrompt);
+      savePromptPreferences({ ...preferences, dismissed: [...dismissed] });
+    };
+  });
+  renderPromptVisibility(0);
   const saveDraft = () => {
     if (
       visibleSource &&
@@ -308,6 +322,14 @@ export function installProductWorkspace(ctx) {
       b.onclick = () => {
         const index = Number(b.dataset.citation);
         const citation = result.citations[index] || {};
+        const targetSource = citation.source_id && citation.source_kind
+          ? { ...(messageSource || {}), id: citation.source_id, kind: citation.source_kind, title: citation.title || messageSource?.title || "来源" }
+          : messageSource;
+        if (targetSource && (typeof citation.start === "number" || citation.source_kind === "material")) {
+          b.setAttribute("aria-expanded", "false");
+          openInlineSource?.(typeof citation.start === "number" ? citation.start : undefined, targetSource);
+          return;
+        }
         let preview = citationPreviews.querySelector('[data-citation-preview="' + index + '"]');
         const expanded = b.getAttribute("aria-expanded") === "true";
         block.querySelectorAll("[data-citation]").forEach((button) => {
@@ -331,7 +353,10 @@ export function installProductWorkspace(ctx) {
             const locate = document.createElement("button");
             locate.type = "button";
             locate.textContent = "定位到原文";
-            locate.onclick = () => openSource(citation.start, messageSource);
+            const citationSource = citation.source_id && citation.source_kind
+              ? { ...messageSource, id: citation.source_id, kind: citation.source_kind }
+              : messageSource;
+            locate.onclick = () => openInlineSource?.(citation.start, citationSource);
             preview.append(locate);
           }
           citationPreviews.append(preview);
@@ -394,13 +419,8 @@ export function installProductWorkspace(ctx) {
     pending = false;
     $("aiSend").disabled = false;
     $("assistantHistory").replaceChildren();
-    $("assistantScope").textContent = s ? `当前内容 · ${s.title}` : "自由提问";
-    $("assistantContext").textContent = s?.title || "全局范围 · 不需要选择笔记";
-    $("assistantModel").textContent = !s
-      ? "使用帮助与工作环境可在本机直接使用"
-      : s?.kind === "material"
-        ? "当前文档 · 本地原文检索"
-        : state.model.model || state.health.default_llm_model || "本地证据回答";
+    updateAssistantSourceTag();
+    $("skillExecution").textContent = s ? "问题会根据措辞决定是否读取这份来源" : "自由提问不会自动读取笔记或资料";
     try {
       const globalItems = (await api("/api/assistant/history")).items;
       const sourceItems =
@@ -429,6 +449,7 @@ export function installProductWorkspace(ctx) {
       if (!items.length)
         $("assistantHistory").innerHTML =
           '<div class="assistant-empty"><strong>有什么想问的？</strong><p>直接提问，或围绕当前内容继续聊。</p></div>';
+      renderPromptVisibility(items.length);
       $("assistantHistory").scrollTop = $("assistantHistory").scrollHeight;
     } catch (e) {
       if (epoch === assistantEpoch) {
@@ -507,13 +528,14 @@ export function installProductWorkspace(ctx) {
     activeRequest = controller;
     const timeout = setTimeout(() => controller.abort("timeout"), 185000);
     $("aiStop").hidden = false;
-    $("aiStatus").textContent = "正在准备回答…";
+    $("aiStatus").textContent = "正在判断问题范围…";
     const streamBlock = document.createElement("section");
     streamBlock.className = "assistant-turn streaming-turn";
     streamBlock.setAttribute("aria-live", "off");
-    streamBlock.innerHTML = `<div class="assistant-question">${esc(question)}</div><div class="assistant-thinking"><span class="thinking-dots" aria-hidden="true"><i></i><i></i><i></i></span><span>正在准备回答…</span></div><div class="assistant-answer"></div>`;
+    streamBlock.innerHTML = `<div class="assistant-question">${esc(question)}</div><div class="assistant-thinking"><span class="thinking-dots" aria-hidden="true"><i></i><i></i><i></i></span><span>正在判断问题范围…</span></div><div class="assistant-answer"></div>`;
     $("assistantHistory").querySelector(".assistant-empty")?.remove();
     $("assistantHistory").append(streamBlock);
+    renderPromptVisibility(1);
     $("assistantHistory").scrollTop = $("assistantHistory").scrollHeight;
     let streamedText = "",
       paintTimer = 0;
@@ -548,37 +570,28 @@ export function installProductWorkspace(ctx) {
       },
     };
     try {
-      $("skillExecution").textContent = "正在选择 Skill…";
+      $("skillExecution").textContent = "正在判断问题范围…";
       const plan = await api("/api/assistant/route", {
         method: "POST",
         signal: controller.signal,
         body: JSON.stringify({
           question,
-          skill: $("assistantSkill").value,
+          skill: "auto",
           has_source: Boolean(s),
           previous_skill: previousSkill,
         }),
       });
       if (epoch !== assistantEpoch) return;
       previousSkill = plan.skill.id;
-      $("skillExecution").textContent =
-        `${plan.skill.name} · ${plan.skill.id} → ${plan.needs_source ? "等待选择来源" : plan.skill.requires_source ? "读取选中的内容" : plan.skill.execution === "local" ? "本地能力" : "调用配置的文字模型"}`;
-      $("assistantContext").textContent = plan.skill.requires_source
-        ? s?.title || "等待选择来源"
-        : {
-            "product.help": "软件功能说明",
-            "product.status": "本机工作状态",
-            "library.search": "本地资料库",
-            "general.chat": "通用对话 · 不自动读取笔记",
-          }[plan.skill.id] || "全局范围";
-      $("assistantModel").textContent =
-        plan.skill.execution === "local"
-          ? "本地执行 · 无需模型 Key"
-          : plan.skill.requires_source && s?.kind === "material"
-            ? "当前文档 · 原文检索"
-            : state.model.model ||
-              state.health.default_llm_model ||
-              "需要配置文字模型";
+      $("skillExecution").textContent = plan.needs_source
+        ? `${plan.skill.name} · 需要先选择来源`
+        : plan.skill.id === "library.search"
+          ? `${plan.skill.name} · 正在检索本地资料`
+          : plan.skill.requires_source
+            ? `${plan.skill.name} · 正在读取当前${s?.kind === "material" ? "资料" : "笔记与字幕"}`
+            : plan.skill.execution === "local"
+              ? `${plan.skill.name} · 正在读取本机说明`
+              : `${plan.skill.name} · 正在整理回答`;
       let result;
       if (plan.needs_source) {
         result = {
@@ -717,6 +730,7 @@ export function installProductWorkspace(ctx) {
   window.addEventListener("learnnote:document", drawContents);
   window.addEventListener("learnnote:settings", drawContents);
   window.addEventListener("learnnote:selection", () => {
+    updateAssistantSourceTag();
     pageContents.hidden = true;
   });
   const outline = document.createElement("dialog");

@@ -62,6 +62,9 @@ def _connect() -> sqlite3.Connection:
     connection.execute(
         "CREATE TABLE IF NOT EXISTS study_activity (activity_id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, source_id TEXT NOT NULL, occurred_at TEXT NOT NULL)"
     )
+    connection.execute(
+        "CREATE TABLE IF NOT EXISTS study_card_spaces (card_id TEXT NOT NULL, space_id TEXT NOT NULL, assigned_at TEXT NOT NULL, PRIMARY KEY (card_id, space_id))"
+    )
     columns = {row[1] for row in connection.execute("PRAGMA table_info(study_cards)").fetchall()}
     if "fsrs_state" not in columns:
         connection.execute("ALTER TABLE study_cards ADD COLUMN fsrs_state TEXT NOT NULL DEFAULT 'Learning'")
@@ -157,6 +160,97 @@ def save_cards(cards: list[StudyCard]) -> list[StudyCard]:
     return stored
 
 
+def save_cards_unique(cards: list[StudyCard]) -> list[StudyCard]:
+    """Save confirmed cards without duplicating a card shared by spaces.
+
+    The legacy ``save_cards`` function remains append-only for API
+    compatibility.  New learning-space flows use this identity check so a
+    card referenced by two spaces still has one FSRS schedule and one review
+    history.
+    """
+    if not cards:
+        return []
+    connection = _connect()
+    try:
+        existing = connection.execute("SELECT card_id, front, back, source_evidence_ids FROM study_cards WHERE status != 'deleted'").fetchall()
+    finally:
+        connection.close()
+    keys = {
+        (str(row["front"]).strip(), str(row["back"]).strip(), tuple(sorted(json.loads(row["source_evidence_ids"] or "[]")))): str(row["card_id"])
+        for row in existing
+    }
+    unique: list[StudyCard] = []
+    for card in cards:
+        key = (card.front.strip(), card.back.strip(), tuple(sorted(card.source_evidence_ids)))
+        if key in keys:
+            continue
+        keys[key] = card.card_id
+        unique.append(card)
+    return save_cards(unique)
+
+
+def assign_cards_to_space(
+    space_id: str,
+    *,
+    cards: list[StudyCard] | None = None,
+    card_ids: list[str] | None = None,
+    evidence_ids: set[str] | None = None,
+) -> list[str]:
+    """Record membership without copying or changing FSRS scheduling fields."""
+    value = str(space_id or "").strip()[:128]
+    if not value or value == "existing-review":
+        return []
+    connection = _connect()
+    try:
+        rows = []
+        ids = {str(item) for item in (card_ids or []) if str(item)}
+        if ids:
+            marks = ",".join("?" for _ in ids)
+            rows.extend(connection.execute(f"SELECT card_id FROM study_cards WHERE card_id IN ({marks}) AND status != 'deleted'", tuple(ids)).fetchall())
+        for card in cards or []:
+            row = connection.execute(
+                "SELECT card_id FROM study_cards WHERE front = ? AND back = ? AND source_evidence_ids = ? AND status != 'deleted' LIMIT 1",
+                (card.front, card.back, json.dumps(card.source_evidence_ids, ensure_ascii=False)),
+            ).fetchone()
+            if row:
+                rows.append(row)
+        if evidence_ids:
+            for row in connection.execute("SELECT card_id, source_evidence_ids FROM study_cards WHERE status != 'deleted'"):
+                try:
+                    stored = set(json.loads(row["source_evidence_ids"] or "[]"))
+                except (TypeError, ValueError):
+                    stored = set()
+                if stored.intersection(evidence_ids):
+                    rows.append(row)
+        now = datetime.now(timezone.utc).isoformat()
+        unique = list(dict.fromkeys(str(row["card_id"]) for row in rows))
+        connection.executemany("INSERT OR IGNORE INTO study_card_spaces(card_id, space_id, assigned_at) VALUES (?, ?, ?)", [(card_id, value, now) for card_id in unique])
+        connection.commit()
+        return unique
+    finally:
+        connection.close()
+
+
+def card_space_ids(card_id: str) -> set[str]:
+    connection = _connect()
+    try:
+        return {str(row[0]) for row in connection.execute("SELECT space_id FROM study_card_spaces WHERE card_id = ?", (str(card_id),))}
+    finally:
+        connection.close()
+
+
+def unassigned_cards(limit: int = 500) -> list[StudyCard]:
+    connection = _connect()
+    try:
+        rows = connection.execute(
+            "SELECT c.* FROM study_cards c LEFT JOIN study_card_spaces s ON s.card_id = c.card_id WHERE c.status != 'deleted' AND s.card_id IS NULL ORDER BY c.position ASC, c.due_at ASC LIMIT ?",
+            (max(1, min(int(limit or 500), 1000)),),
+        ).fetchall()
+    finally:
+        connection.close()
+    return [_row_to_card(row) for row in rows]
+
+
 def due_cards(limit: int = 50, evidence_ids: set[str] | None = None) -> list[StudyCard]:
     if get_study_plan().paused:
         return []
@@ -233,6 +327,7 @@ def clear_study_data() -> dict[str, int]:
         plan_count = int(connection.execute("SELECT COUNT(*) FROM study_plans").fetchone()[0])
         connection.execute("DELETE FROM study_reviews")
         connection.execute("DELETE FROM study_activity")
+        connection.execute("DELETE FROM study_card_spaces")
         connection.execute("DELETE FROM study_cards")
         connection.execute("DELETE FROM study_plans")
         backup_root = (DATA_DIR / "study-schedule-backups").resolve()

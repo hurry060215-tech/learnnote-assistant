@@ -11,7 +11,18 @@ $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $backendDir = Join-Path $projectRoot "backend"
 $venvDir = if ($env:LEARNNOTE_VENV_DIR) { $env:LEARNNOTE_VENV_DIR } else { Join-Path $projectRoot ".venv" }
 $venvPython = Join-Path $venvDir "Scripts\python.exe"
-$dataDir = Join-Path $projectRoot "data"
+$dataDir = if ($env:LEARNNOTE_DATA_DIR) { [System.IO.Path]::GetFullPath($env:LEARNNOTE_DATA_DIR) } else { Join-Path $projectRoot "data" }
+$configPath = Join-Path $projectRoot "learnnote-config.json"
+if (-not $env:LEARNNOTE_DATA_DIR -and (Test-Path -LiteralPath $configPath)) {
+  try {
+    $configuredDataDir = [string](Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json).data_dir
+    if ($configuredDataDir) {
+      $dataDir = if ([System.IO.Path]::IsPathRooted($configuredDataDir)) { [System.IO.Path]::GetFullPath($configuredDataDir) } else { [System.IO.Path]::GetFullPath((Join-Path $projectRoot $configuredDataDir)) }
+    }
+  } catch {
+    Write-Host "WARN: learnnote-config.json 无法读取，继续使用默认数据目录 $dataDir" -ForegroundColor Yellow
+  }
+}
 $modelCacheDir = Join-Path $dataDir "model-cache"
 $pipCacheDir = Join-Path $dataDir "pip-cache"
 $tempDir = Join-Path $dataDir "temp"
@@ -33,6 +44,7 @@ $env:TEMP = $tempDir
 $env:TMPDIR = $tempDir
 $previousBackendOrigin = $env:LEARNNOTE_BACKEND_ORIGIN
 $env:LEARNNOTE_BACKEND_ORIGIN = $backendUrl
+$env:LEARNNOTE_DATA_DIR = $dataDir
 
 function Test-SupportedPython {
   param([string]$Command, [string[]]$PrefixArgs = @())
