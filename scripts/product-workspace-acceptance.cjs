@@ -74,6 +74,20 @@ const fs = require("fs");
     await p.waitForFunction(() =>
       document.querySelector("#document").textContent.includes("学习率"),
     );
+    await p.route("**/api/assistant/execute/stream", async (route) => {
+      await route.fulfill({
+        contentType: "text/event-stream",
+        body:
+          "event: result\ndata: " +
+          JSON.stringify({
+            answer: "学习率控制参数更新步长，并影响训练过程的稳定性。",
+            source: "local",
+            skill: { id: "note.qa", name: "内容问答", scope: "task" },
+            execution: { state: "completed" },
+          }) +
+          "\n\n",
+      });
+    });
     await p.locator("#aiAssistant").click();
     await p.locator("#aiQuestion").fill("学习率控制什么？");
     await p.locator("#aiSend").click();
