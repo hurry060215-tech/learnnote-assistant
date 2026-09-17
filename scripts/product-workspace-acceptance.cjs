@@ -82,7 +82,7 @@ const fs = require("fs");
           JSON.stringify({
             answer: "学习率控制参数更新步长，并影响训练过程的稳定性。",
             source: "local",
-            skill: { id: "note.qa", name: "内容问答", scope: "task" },
+            skill: { id: "note.qa", name: "内容问答", scope: "task", requires_source: true },
             execution: { state: "completed" },
           }) +
           "\n\n",
