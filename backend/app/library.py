@@ -13,7 +13,7 @@ from uuid import uuid4
 
 from .config import DATA_DIR, TASK_DIR, TEMP_DIR, ensure_dirs
 from .models import TaskRecord
-from .knowledge import add_evidence, clear_task_evidence, evidence_for_task, extract_import_text, remove_evidence, remove_task_evidence
+from .knowledge import add_evidence, clear_task_evidence, evidence_for_task, extract_import_text, extract_import_text_with_metadata, preserve_raw_import, remove_evidence, remove_task_evidence
 from .text_cleanup import TextDecodingError, read_canonical_text
 
 
@@ -223,7 +223,7 @@ def record_to_evidence(record: TaskRecord, text: str, kind: str):
         locator="transcript" if kind == "transcript" else "note",
         text=text,
         task_id=record.id,
-        metadata={"kind": kind, "checkpoint": record.checkpoint},
+        metadata={"kind": kind, "checkpoint": record.checkpoint, "source_revision": hashlib.sha256(str(text).encode("utf-8")).hexdigest()},
     )
 
 
@@ -249,7 +249,7 @@ def transcript_evidence(record: TaskRecord, raw: str):
             locator=f"{start:.1f}-{end:.1f}s",
             text=str(segment.get("text") or ""),
             task_id=record.id,
-            metadata={"kind": "transcript", "start": start, "end": end},
+            metadata={"kind": "transcript", "start": start, "end": end, "source_revision": hashlib.sha256(str(segment.get("text") or "").encode("utf-8")).hexdigest()},
         ))
     return items or [record_to_evidence(record, raw, "transcript")]
 
@@ -762,10 +762,20 @@ def _split_long_section(text: str, max_chars: int = 6000) -> list[str]:
 
 
 def _material_sections(filename: str, content: bytes, content_type: str) -> tuple[str, list[tuple[str, str]], dict[str, object]]:
-    text, evidence_source_type = extract_import_text(filename, content, content_type)
+    text, evidence_source_type, decoding = extract_import_text_with_metadata(filename, content, content_type)
     suffix = Path(filename).suffix.lower()
     sections: list[tuple[str, str]] = []
-    metadata: dict[str, object] = {"extraction": "local", "ocr_performed": False}
+    raw_info = preserve_raw_import(content, filename)
+    metadata: dict[str, object] = {
+        "extraction": "local",
+        "ocr_performed": False,
+        **decoding,
+        "raw_sha256": raw_info["sha256"],
+        "raw_byte_count": raw_info["byte_count"],
+        "source_revision": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+        "filename": filename,
+        "content_type": content_type,
+    }
     if suffix == ".pdf" or evidence_source_type == "pdf":
         pieces = re.split(r"(?m)^\[第\s+(\d+)\s+页\]\s*$", text)
         if len(pieces) > 1:
@@ -955,7 +965,12 @@ def record_to_material_evidence(
         source_uri=source_uri,
         locator=locator,
         text=text,
-        metadata={"kind": "material", "material_id": material_id, "filename": filename},
+        metadata={
+            "kind": "material",
+            "material_id": material_id,
+            "filename": filename,
+            "source_revision": hashlib.sha256(str(text).encode("utf-8")).hexdigest(),
+        },
     )
 
 
@@ -1136,12 +1151,21 @@ def apply_material_ocr(material_id: str, ocr_result: dict[str, object]) -> dict[
     ocr_path = root / "ocr.json"
     _atomic_text(ocr_path, json.dumps(ocr_result, ensure_ascii=False, indent=2))
     metadata = dict(material.get("metadata") or {})
-    metadata.update({"ocr_performed": True, "ocr_engine": ocr_result.get("engine", ""), "ocr_path": str(ocr_path), "ocr_verified": False})
+    metadata.update({
+        "ocr_performed": True,
+        "ocr_engine": ocr_result.get("engine", ""),
+        "ocr_path": str(ocr_path),
+        "ocr_verified": False,
+        "ocr_page_count": int(ocr_result.get("page_count") or len(pages)),
+        "ocr_processed_page_count": int(ocr_result.get("processed_page_count") or len(pages)),
+        "ocr_missing_page_range": ocr_result.get("missing_page_range") or [],
+        "source_revision": hashlib.sha256(json.dumps(ocr_result, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest(),
+    })
     connection, _ = _connect()
     try:
         connection.execute(
             "UPDATE library_materials SET status=?, anchor_count=?, evidence_ids_json=?, owns_evidence=1, metadata_json=?, updated_at=? WHERE material_id=?",
-            ("ready" if evidence_ids else "ocr_required", len(evidence_ids), json.dumps(evidence_ids, ensure_ascii=False), json.dumps(metadata, ensure_ascii=False), datetime.now(timezone.utc).isoformat(), str(material_id)),
+            ("ready" if evidence_ids and not ocr_result.get("missing_page_range") else ("ocr_partial" if evidence_ids else "ocr_required"), len(evidence_ids), json.dumps(evidence_ids, ensure_ascii=False), json.dumps(metadata, ensure_ascii=False), datetime.now(timezone.utc).isoformat(), str(material_id)),
         )
         connection.commit()
     finally:

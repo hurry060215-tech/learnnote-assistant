@@ -12,7 +12,7 @@
     if (lines.length) chunks.push(lines.join("\n"));
     return chunks;
   }
-  function renderMaterial({container, material, text, markdownToHtml, apiUrl, onStudy}) {
+  function renderMaterial({container, material, text, markdownToHtml, apiUrl, onStudy, onOcr}) {
     container.replaceChildren();
     const article = document.createElement("article"); article.className = "material-reader markdown-note";
     const toolbar = document.createElement("nav"); toolbar.className = "material-actions"; toolbar.setAttribute("aria-label", "资料操作");
@@ -22,7 +22,13 @@
       toolbar.append(link);
     }
     const study = document.createElement("button"); study.type = "button"; study.textContent = "生成复习卡片"; study.onclick = onStudy;
-    toolbar.append(study); container.append(toolbar, article);
+    toolbar.append(study);
+    if (material.source_type === "pdf" && ["ocr_required", "ocr_partial"].includes(material.status)) {
+      const ocr = document.createElement("button"); ocr.type = "button"; ocr.textContent = material.status === "ocr_partial" ? "继续识别未完成页面" : "识别扫描 PDF"; ocr.onclick = onOcr; toolbar.append(ocr);
+      const meta = material.metadata || {};
+      const coverage = document.createElement("small"); coverage.className = "material-ocr-status"; coverage.textContent = `OCR 页面：${Number(meta.ocr_processed_page_count || 0)} / ${Number(meta.ocr_page_count || 0)}，结果需逐页核对。`; toolbar.append(coverage);
+    }
+    container.append(toolbar, article);
     const chunks = markdownChunks(text); let offset = 0;
     const more = document.createElement("button"); more.type = "button"; more.className = "secondary action-button material-load-more";
     const renderNext = () => {

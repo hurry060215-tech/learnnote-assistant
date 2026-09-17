@@ -29,8 +29,11 @@ def ocr_pdf(path: Path, *, page_limit: int = 24, engine=None) -> dict[str, Any]:
     except ImportError:
         return {"schema_version": OCR_SCHEMA_VERSION, "status": "unavailable", "engine": OCR_ENGINE, "pages": [], "warning": "扫描 PDF OCR 需要可选的 PyMuPDF、Pillow 和 NumPy 组件。"}
     pages = []
+    total_pages = 0
     with fitz.open(str(path)) as document:
-        for page_index in range(min(max(1, int(page_limit)), len(document))):
+        total_pages = len(document)
+        processed_pages = min(max(1, int(page_limit)), total_pages)
+        for page_index in range(processed_pages):
             page = document.load_page(page_index)
             pixmap = page.get_pixmap(matrix=fitz.Matrix(1.6, 1.6), alpha=False)
             image = Image.frombytes("RGB", (pixmap.width, pixmap.height), pixmap.samples)
@@ -43,7 +46,8 @@ def ocr_pdf(path: Path, *, page_limit: int = 24, engine=None) -> dict[str, Any]:
                 score = round(float(confidence), 4)
                 lines.append({"text": value[:2000], "confidence": score, "bbox": [[float(x), float(y)] for x, y in bbox], "verification": "unreviewed", "uncertain": score < 0.85})
             pages.append({"page": page_index + 1, "lines": lines, "text": "\n".join(line["text"] for line in lines)})
-    return {"schema_version": OCR_SCHEMA_VERSION, "status": "ready", "engine": OCR_ENGINE, "pages": pages, "page_count": len(pages), "warning": "OCR 结果仅供核对，不等于 PDF 原始文字或已验证结论。"}
+    partial = processed_pages < total_pages
+    return {"schema_version": OCR_SCHEMA_VERSION, "status": "partial" if partial else "ready", "engine": OCR_ENGINE, "pages": pages, "page_count": total_pages, "processed_page_count": len(pages), "processed_page_range": [1, len(pages)] if pages else [], "missing_page_range": [len(pages) + 1, total_pages] if partial else [], "warning": (f"仅完成前 {len(pages)} / {total_pages} 页 OCR；其余页面未识别。" if partial else "") + " OCR 结果仅供核对，不等于 PDF 原始文字或已验证结论。"}
 
 
 __all__ = ["OCR_ENGINE", "OCR_SCHEMA_VERSION", "ocr_available", "ocr_pdf"]

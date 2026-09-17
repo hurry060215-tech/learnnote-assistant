@@ -137,6 +137,28 @@ DEFAULT_EXPORT_OPTIONS = {
 }
 
 
+def available_export_fonts() -> list[dict[str, object]]:
+    """Report selectable fonts and whether the local generators can embed them."""
+
+    candidates = {
+        "Microsoft YaHei": [Path("C:/Windows/Fonts/msyh.ttc"), Path("C:/Windows/Fonts/msyh.ttf")],
+        "SimSun": [Path("C:/Windows/Fonts/simsun.ttc"), Path("C:/Windows/Fonts/simsun.ttf")],
+        "Noto Sans SC": [Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"), Path(__file__).resolve().parents[2] / "site" / "assets" / "fonts" / "learnnote-site-sans.woff2"],
+        "Noto Serif SC": [Path("/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc")],
+        "Arial": [Path("C:/Windows/Fonts/arial.ttf"), Path("/usr/share/fonts/truetype/msttcorefonts/Arial.ttf")],
+        "Consolas": [Path("C:/Windows/Fonts/consola.ttf")],
+    }
+    return [{
+        "name": name,
+        "available": any(path.is_file() for path in paths),
+        "embedding": "pdf-or-web" if name.startswith("Noto") else "host-fallback",
+    } for name, paths in candidates.items()]
+
+
+def _font_available(name: str) -> bool:
+    return any(item["name"] == name and item["available"] for item in available_export_fonts())
+
+
 def normalize_export_options(value: dict | None = None) -> dict:
     """Normalize the shared export contract without trusting client values."""
     incoming = value if isinstance(value, dict) else {}
@@ -595,11 +617,13 @@ def build_docx_export(
     document.add_paragraph("由 LearnNote 在本机生成；原视频、Cookie 与诊断秘密未嵌入此文档。")
     buffer = BytesIO()
     document.save(buffer)
+    warnings = [] if _font_available(settings["font_family"]) else ["requested_docx_font_unavailable_using_host_fallback"]
     return DocumentExport(
         content=buffer.getvalue(),
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         suffix="docx",
         font_name=f"{settings['font_family']} (document preference with host fallback)",
+        warnings=warnings,
     )
 
 

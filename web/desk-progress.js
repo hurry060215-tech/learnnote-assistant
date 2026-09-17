@@ -135,7 +135,11 @@ export function timelineHtml(
   events,
   expanded = task.status !== "success",
 ) {
-  return `<details class="task-progress-details" data-task-progress="${esc(task.id)}" ${expanded ? "open" : ""}><summary>处理步骤</summary><ol class="task-timeline" aria-label="实际处理步骤">${taskTimeline(
+  const artifacts = task.artifact_status || {};
+  const checkpoint = artifacts.checkpoint || task.checkpoint;
+  const artifactHint = artifacts.draft_available ? " · 字幕草稿已保留" : artifacts.transcript_ready ? " · 字幕已就绪" : "";
+  const failureHint = artifacts.failure_phase ? ` · 失败阶段：${phaseName(artifacts.failure_phase)}` : "";
+  return `<details class="task-progress-details" data-task-progress="${esc(task.id)}" ${expanded ? "open" : ""}><summary>处理步骤${checkpoint ? ` · 检查点 ${esc(checkpoint)}` : ""}${artifactHint}${failureHint}</summary><ol class="task-timeline" aria-label="实际处理步骤">${taskTimeline(
     task,
     events,
   )

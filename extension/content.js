@@ -66,7 +66,8 @@ const PLAYER_UI_SUBTITLE_MARKERS = [
   "恢复默认设置", "关闭弹幕", "登录可享", "原声翻译体验反馈", "添加字幕",
   "暂无字幕", "主字幕 中文", "副字幕", "弹幕设置", "弹幕列表", "发送弹幕",
   "屏蔽设定", "按类型屏蔽", "等比缩放", "淡入淡出", "无描边 重墨 描边",
-  "左下角 底部居中 右下角"
+  "左下角 底部居中 右下角", "B站自研的AI原声翻译功能",
+  "本视频开启原声翻译时不支持关闭字幕"
 ];
 const VISIBLE_SUBTITLE_ATTR_RE = /^(data-|aria-|role$|lang$|srclang$|class$|id$|title$)/i;
 const VISIBLE_SUBTITLE_ROLE_RE = /^(log|status|marquee)$/i;
@@ -1635,9 +1636,22 @@ function elementHintText(element) {
   return values.filter(Boolean).join(" ");
 }
 
+function subtitleAncestorHint(element) {
+  const values = [];
+  let current = element?.parentElement;
+  let depth = 0;
+  while (current && depth < 5) {
+    values.push(elementHintText(current));
+    current = current.parentElement;
+    depth += 1;
+  }
+  return values.filter(Boolean).join(" ");
+}
+
 function looksLikePlayerSubtitleUi(text = "") {
   const normalized = String(text || "").replace(/\s+/g, " ").trim();
   if (!normalized) return false;
+  if (/^\d{1,3}%$/.test(normalized)) return true;
   const trimmed = normalized.replace(/^[\s,，。:：;；!?！？()[\]【】]+|[\s,，。:：;；!?！？()[\]【】]+$/g, "");
   const exact = new Set(["字幕", "主字幕", "副字幕", "添加字幕", "暂无字幕", "字幕 添加字幕", "主字幕 中文", "关闭", "其它设置", "等比缩放", "淡入淡出", "默认位置", "背景不透明度", "弹幕", "弹幕设置", "弹幕列表", "关闭弹幕", "发送弹幕", "屏蔽设定", "按类型屏蔽"]);
   if (exact.has(trimmed)) return true;
@@ -1677,13 +1691,15 @@ function looksLikeVisibleSubtitleElement(element) {
   if (!element || ["script", "style", "video", "audio", "source", "track", "iframe"].includes(tag)) return false;
   const text = elementText(element);
   if (text.length < 2 || text.length > 260) return false;
-  const hint = elementHintText(element);
+  // Only leaf nodes are eligible for the DOM fallback. A settings panel or
+  // menu container can carry a subtitle-related class while concatenating all
+  // of its labels into one false cue.
+  if (element.children?.length) return false;
+  const hint = `${elementHintText(element)} ${subtitleAncestorHint(element)}`;
   if (VISIBLE_NON_SUBTITLE_HINT_RE.test(hint)) return false;
   if (VISIBLE_SUBTITLE_CONTROL_HINT_RE.test(hint)) return false;
   if (looksLikePlayerSubtitleUi(text)) return false;
-  // Do not promote a subtitle/settings container containing many child labels
-  // to one synthetic cue. Leaf text nodes are the only reliable DOM fallback.
-  if (element.children?.length && deepQuerySelectorAll("*", element, 8).some(child => child !== element && elementText(child) === text)) return false;
+  if (element.closest?.("button,[role=button],[role=menu],[role=menuitem],[role=listbox],[role=option],select,[aria-haspopup='menu'],[aria-haspopup='listbox']")) return false;
   if (!isRenderedSubtitleCandidate(element)) return false;
   if (VISIBLE_SUBTITLE_HINT_RE.test(hint)) return true;
   const role = readAttribute(element, "role");

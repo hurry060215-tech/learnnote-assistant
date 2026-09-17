@@ -2142,6 +2142,7 @@ def task_payload(task: TaskRecord) -> dict:
     payload["reuse"] = task_reuse_evidence(task)
     payload["resume_available"] = task_media_file_exists(task)
     payload["next_actions"] = task_next_actions(task)
+    payload["artifact_status"] = task_artifact_status(task)
     qa_history = read_task_qa_history(task.id)
     payload["qa"] = {
         "history_count": len(qa_history),
@@ -2151,6 +2152,32 @@ def task_payload(task: TaskRecord) -> dict:
         "suggestions": task_qa_suggestions(task),
     }
     return payload
+
+
+def task_artifact_status(task: TaskRecord) -> dict[str, object]:
+    """Expose progressive artifacts without claiming that a draft is final."""
+
+    def exists(value: str) -> bool:
+        try:
+            return bool(value) and Path(value).is_file()
+        except (OSError, TypeError, ValueError):
+            return False
+
+    transcript = exists(task.transcript_path)
+    note = exists(task.note_path)
+    visual = exists(task.visual_index_path) or bool(task.visual_windows)
+    draft = bool(task.summary_source == "transcript-draft" or (task.checkpoint == "transcript_ready" and transcript and not note))
+    return {
+        "checkpoint": task.checkpoint,
+        "draft_available": draft,
+        "transcript_ready": transcript,
+        "visual_index_ready": visual,
+        "note_ready": note,
+        "final": task.status == "success" and note,
+        "failure_phase": task.failed_phase if task.status == "failed" else "",
+        "summary_source": task.summary_source,
+        "recovery": "retry_summary" if transcript and not note else "resume_or_retry" if task.status in {"failed", "cancelled"} else "",
+    }
 
 
 def render_diagnostics_markdown(task: TaskRecord) -> str:
@@ -4458,6 +4485,15 @@ def api_task_claims(task_id: str) -> dict:
         claim_map = safe_claim_projection(read_json(task_id, "claim_evidence_map.json", {}))
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Task not found") from exc
+
+
+@app.get("/api/tasks/{task_id}/pipeline-status")
+def api_task_pipeline_status(task_id: str) -> dict:
+    try:
+        task = get_task(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail={"code": "task_not_found", "message": "任务不存在。"}) from exc
+    return {"task_id": task.id, "status": task.status, "phase": task.phase, "progress": task.progress, "checkpoint": task.checkpoint, "artifacts": task_artifact_status(task), "privacy": {"local_only": True, "remote_calls": int(task.summary_diagnostics.get("llm_event_count") or 0) if isinstance(task.summary_diagnostics, dict) else 0}}
     if not isinstance(claim_map, dict) or not claim_map:
         raise HTTPException(status_code=404, detail={"code": "claim_map_not_ready", "message": "这份任务尚未生成逐条来源映射。"})
     return claim_map

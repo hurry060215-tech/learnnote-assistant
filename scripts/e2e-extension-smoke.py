@@ -466,6 +466,11 @@ async () => {{
         ready: dict = {}
         while time.time() < deadline:
             ready = eval_page(panel_cdp, """(() => {
+  // The isolated smoke backend intentionally has no model credential. Select
+  // the explicit subtitle-only path so this check verifies extension handoff,
+  // not an unrelated remote-model configuration.
+  const quick = document.querySelector('[data-processing-mode="quick"]');
+  if (quick && quick.getAttribute('aria-checked') !== 'true') quick.click();
   const button = document.querySelector("#sendButton");
   const status = document.querySelector("#connectionCard");
   return { ready: Boolean(button && !button.disabled), connection: status?.dataset?.state || "" };

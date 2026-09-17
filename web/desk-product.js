@@ -306,9 +306,6 @@ export function installProductWorkspace(ctx) {
     const block = document.createElement("section");
     block.className = "assistant-turn";
     block.innerHTML = `<div class="assistant-question">${esc(question)}</div><details class="skill-trace"><summary>来源与处理方式</summary><strong>${esc(usedSkill.name)}</strong><code>${esc(usedSkill.id)}</code><em>${esc({ completed: "已完成", needs_source: "等待来源", needs_configuration: "需要配置", failed: "失败", local_extract: "摘录模式" }[result.execution?.state] || "对话记录")}</em><span>${usedSkill.requires_source ? esc(messageSource?.title || "当前内容") : usedSkill.scope === "library" ? "本地资料库 · 按关键词检索" : usedSkill.scope === "conversation" ? "通用对话 · 未自动读取资料" : "软件功能与状态 · 未读取笔记正文"} · ${result.source === "llm" ? "文字模型" : "本地执行 / 摘录"}</span></details><div class="assistant-answer">${LearnNoteMarkdown.markdownToHtml(result.answer || result.message || "没有返回回答。")}</div>${result.warning ? `<p class="muted">${esc(result.warning)}</p>` : ""}<div class="assistant-citations">${(result.citations || []).map((c, i) => `<button data-citation="${i}">${esc(c.label || c.time_range || "出处 " + (i + 1))}</button>`).join("")}</div><button class="save-ai-note">保存为我的补充</button>`;
-    const citationPreviews = document.createElement("div");
-    citationPreviews.className = "assistant-citation-previews";
-    block.querySelector(".assistant-citations")?.after(citationPreviews);
     if (result.created_at && Number.isFinite(Date.parse(result.created_at))) {
       const time = document.createElement("time");
       time.className = "assistant-message-time";
@@ -318,7 +315,6 @@ export function installProductWorkspace(ctx) {
     }
     block.querySelectorAll("[data-citation]").forEach((b) => {
       b.type = "button";
-      b.setAttribute("aria-expanded", "false");
       b.onclick = () => {
         const index = Number(b.dataset.citation);
         const citation = result.citations[index] || {};
@@ -326,43 +322,12 @@ export function installProductWorkspace(ctx) {
           ? { ...(messageSource || {}), id: citation.source_id, kind: citation.source_kind, title: citation.title || messageSource?.title || "来源" }
           : messageSource;
         if (targetSource && (typeof citation.start === "number" || citation.source_kind === "material")) {
-          b.setAttribute("aria-expanded", "false");
-          openInlineSource?.(typeof citation.start === "number" ? citation.start : undefined, targetSource);
-          return;
+          // Citations locate in the main reader; the assistant answer stays
+          // compact and never expands a second copy of the source excerpt.
+          openInlineSource?.(typeof citation.start === "number" ? citation.start : undefined, targetSource, typeof citation.end === "number" ? citation.end : undefined);
+        } else {
+          notice("这条回答没有可靠的来源定位，未猜测高亮位置。");
         }
-        let preview = citationPreviews.querySelector('[data-citation-preview="' + index + '"]');
-        const expanded = b.getAttribute("aria-expanded") === "true";
-        block.querySelectorAll("[data-citation]").forEach((button) => {
-          if (button !== b) button.setAttribute("aria-expanded", "false");
-        });
-        citationPreviews.querySelectorAll("[data-citation-preview]").forEach((item) => {
-          if (item !== preview) item.hidden = true;
-        });
-        if (expanded) {
-          b.setAttribute("aria-expanded", "false");
-          if (preview) preview.hidden = true;
-          return;
-        }
-        if (!preview) {
-          preview = document.createElement("blockquote");
-          preview.dataset.citationPreview = String(index);
-          const text = document.createElement("p");
-          text.textContent = citation.text || citation.locator || "暂无可直接展开的原文摘录。";
-          preview.append(text);
-          if (typeof citation.start === "number" && messageSource) {
-            const locate = document.createElement("button");
-            locate.type = "button";
-            locate.textContent = "定位到原文";
-            const citationSource = citation.source_id && citation.source_kind
-              ? { ...messageSource, id: citation.source_id, kind: citation.source_kind }
-              : messageSource;
-            locate.onclick = () => openInlineSource?.(citation.start, citationSource);
-            preview.append(locate);
-          }
-          citationPreviews.append(preview);
-        }
-        preview.hidden = false;
-        b.setAttribute("aria-expanded", "true");
       };
     });
     block.querySelector(".save-ai-note").onclick = async (e) => {

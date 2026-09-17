@@ -11,7 +11,7 @@ from fastapi.responses import Response
 from ..community import add_community_context, clear_all_community_context, clear_community_context, community_settings, delete_community_item, list_community_context, sample_community_context, set_community_enabled
 from ..document_exports import DocumentExportUnavailable, build_docx_export, build_html_export, build_pdf_export, build_structured_export, normalize_export_options
 from ..embeddings import embedding_status
-from ..knowledge import add_evidence, answer_from_evidence, evidence_by_ids, evidence_for_task, extract_import_text, preserve_raw_import, remove_evidence, search_evidence
+from ..knowledge import add_evidence, answer_from_evidence, evidence_by_ids, evidence_for_task, extract_import_text_with_metadata, preserve_raw_import, redecode_evidence, remove_evidence, search_evidence
 from ..models import SourceEvidence, StudyCard, StudyCardPositionRequest, StudyCardStatusRequest, StudyPlanUpdateRequest, StudyReviewRequest
 from ..note_document import normalize_note_markdown
 from ..study import activity_summary, clear_study_data, due_cards, export_study_data, get_study_plan, list_cards, propose_cards, record_activity, review_card, review_history, save_cards, set_card_position, set_card_status, study_dashboard, study_summary, update_study_plan
@@ -24,6 +24,7 @@ from ..learning_spaces import list_space_practice
 from ..config import DATA_DIR
 from ..storage import atomic_write_text
 import json
+import re
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -43,6 +44,47 @@ class UnifiedExportRequest(BaseModel):
 
 def _export_presets_path():
     return DATA_DIR / "export-presets.json"
+
+
+def _read_export_presets() -> dict[str, dict]:
+    path = _export_presets_path()
+    if not path.is_file():
+        return {}
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+        return value if isinstance(value, dict) else {}
+    except (OSError, TypeError, ValueError, json.JSONDecodeError):
+        return {}
+
+
+@study_router.get("/export-fonts")
+def api_export_fonts() -> dict:
+    from ..document_exports import available_export_fonts
+    return {"fonts": available_export_fonts()}
+
+
+@study_router.get("/export-presets")
+def api_export_presets() -> dict:
+    return {"presets": [{"name": name, "options": normalize_export_options(value)} for name, value in _read_export_presets().items() if isinstance(name, str) and isinstance(value, dict)]}
+
+
+@study_router.put("/export-presets/{name}")
+def api_save_export_preset(name: str, payload: dict | None = Body(default=None)) -> dict:
+    safe_name = str(name or "").strip()[:80]
+    if not safe_name or not re.fullmatch(r"[\w\-\u4e00-\u9fff ]+", safe_name):
+        raise HTTPException(status_code=422, detail={"code": "export_preset_name_invalid", "message": "预设名称只能包含中文、字母、数字、空格、下划线或短横线。"})
+    presets = _read_export_presets(); presets[safe_name] = normalize_export_options((payload or {}).get("options") if isinstance((payload or {}).get("options"), dict) else payload or {})
+    atomic_write_text(_export_presets_path(), json.dumps(presets, ensure_ascii=False, indent=2))
+    return {"name": safe_name, "options": presets[safe_name]}
+
+
+@study_router.delete("/export-presets/{name}")
+def api_delete_export_preset(name: str) -> dict:
+    presets = _read_export_presets(); safe_name = str(name or "")
+    if safe_name not in presets:
+        raise HTTPException(status_code=404, detail={"code": "export_preset_not_found", "message": "导出预设不存在。"})
+    del presets[safe_name]; atomic_write_text(_export_presets_path(), json.dumps(presets, ensure_ascii=False, indent=2))
+    return {"name": safe_name, "deleted": True}
 
 
 @study_router.get("/cards/{card_id}/schedule-preview")
@@ -75,15 +117,24 @@ async def api_knowledge_import_file(file: UploadFile = File(...), encoding: str 
         if len(content) > 20 * 1024 * 1024:
             raise HTTPException(status_code=413, detail={"code": "evidence_file_too_large", "message": "导入文件不能超过 20 MB。"})
     try:
-        text, source_type = extract_import_text(filename, bytes(content), file.content_type or "", encoding=encoding)
+        text, source_type, decoding = extract_import_text_with_metadata(filename, bytes(content), file.content_type or "", encoding=encoding)
         raw_info = preserve_raw_import(bytes(content), filename)
+        import hashlib
+        decoding.update({
+            "raw_sha256": raw_info["sha256"],
+            "raw_byte_count": raw_info["byte_count"],
+            "source_revision": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+            "filename": filename,
+            "content_type": file.content_type or "",
+            "decoding_hint": encoding.strip()[:40],
+        })
         stored = add_evidence(SourceEvidence(
             source_type=source_type,
             title=Path(filename).stem[:500],
             source_uri=f"local://{filename}",
             locator="file",
             text=text,
-            metadata={"filename": filename, "content_type": file.content_type or "", "raw_sha256": raw_info["sha256"], "raw_byte_count": raw_info["byte_count"], "decoding_hint": encoding.strip()[:40]},
+            metadata=decoding,
         ))
     except ValueError as exc:
         raise HTTPException(status_code=422, detail={"code": str(exc), "message": "无法从该文件提取可检索文本。"}) from exc
@@ -96,6 +147,25 @@ def api_evidence_source(evidence_id: str) -> dict:
     if not items:
         raise HTTPException(status_code=404, detail={"code": "evidence_missing", "message": "出处已删除或不可用，请重新关联原文。"})
     return {"evidence": items[0]}
+
+
+@knowledge_router.post("/evidence/{evidence_id}/redecode")
+def api_redecode_evidence(evidence_id: str, payload: dict | None = Body(default=None)) -> dict:
+    """Re-decode preserved local bytes without fetching or replacing raw input."""
+
+    encoding = str((payload or {}).get("encoding") or "").strip()[:40]
+    try:
+        return {"ok": True, "evidence": redecode_evidence(evidence_id, encoding)}
+    except ValueError as exc:
+        code = str(exc)
+        messages = {
+            "evidence_not_found": "证据不存在。",
+            "raw_import_missing": "没有找到该证据保存的原始字节，无法安全重解码。",
+            "pdf_redecode_not_supported": "PDF 不是字符编码问题，请使用扫描 PDF OCR 或重新导入。",
+            "text_encoding_unsupported": "指定编码无法无损解码这份原文。",
+            "text_mojibake_detected": "指定编码会产生高置信度乱码，已拒绝覆盖当前文本。",
+        }
+        raise HTTPException(status_code=422 if code != "evidence_not_found" else 404, detail={"code": code, "message": messages.get(code, "原文无法重解码。")}) from exc
 
 
 @knowledge_router.get("/search")

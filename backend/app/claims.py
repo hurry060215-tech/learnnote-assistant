@@ -9,7 +9,7 @@ from .models import TranscriptResult, VisualWindow
 from .text_cleanup import canonicalize_unicode_text
 
 
-CLAIM_SCHEMA_VERSION = 2
+CLAIM_SCHEMA_VERSION = 3
 _TIMESTAMP = r"\d{1,3}:\d{2}(?::\d{2})?"
 _RANGE_RE = re.compile(rf"(?P<start>{_TIMESTAMP})\s*(?:-|–|—|~|～)\s*(?P<end>{_TIMESTAMP})")
 _POINT_RE = re.compile(rf"(?<![\d:])(?P<point>{_TIMESTAMP})(?![\d:])")
@@ -129,6 +129,14 @@ def build_claim_evidence_map(
             claim_type = "transcript"
         else:
             claim_type = "unsupported"
+        if inference:
+            verification = "inference"
+        elif matched:
+            verification = "direct"
+        elif candidates:
+            verification = "located_only"
+        else:
+            verification = "pending_review"
         claims.append({
             "claim_id": _claim_id(task_id, index, text),
             "index": index,
@@ -137,14 +145,20 @@ def build_claim_evidence_map(
             "evidence_ids": [item["evidence_id"] for item in matched[:8]],
             "candidate_evidence_ids": [item["evidence_id"] for item in candidates[:8]],
             "source_ranges": ranges,
+            "verification": verification,
             "review_required": claim_type in {"inference", "unsupported"},
         })
     counts = {kind: sum(claim["claim_type"] == kind for claim in claims) for kind in ("transcript", "visual", "inference", "unsupported")}
+    evidence_revision = hashlib.sha256("\n".join(
+        f"{item['evidence_id']}|{item['locator']}|{item['text']}" for item in evidence
+    ).encode("utf-8")).hexdigest()
     return {
         "schema_version": CLAIM_SCHEMA_VERSION,
         "task_id": str(task_id),
         "title": str(title or "学习笔记"),
         "source_revision": hashlib.sha256(canonicalize_unicode_text(markdown).encode("utf-8")).hexdigest(),
+        "source_revision_kind": "normalized_note_utf8_sha256",
+        "evidence_revision": evidence_revision,
         "claims": claims,
         "evidence": evidence,
         "counts": counts,
@@ -154,6 +168,9 @@ def build_claim_evidence_map(
             "unsupported_count": counts["unsupported"],
             "inference_count": counts["inference"],
             "coverage_ratio": (counts["transcript"] + counts["visual"]) / len(claims) if claims else 0.0,
+            "direct_count": sum(item.get("verification") == "direct" for item in claims),
+            "located_only_count": sum(item.get("verification") == "located_only" for item in claims),
+            "pending_review_count": sum(item.get("verification") == "pending_review" for item in claims),
             "contract": "links are navigable evidence, not factual truth verification",
         },
     }
@@ -164,7 +181,8 @@ def safe_claim_projection(value: dict) -> dict:
     if not isinstance(value, dict) or not value or value.get("schema_version", 1) >= CLAIM_SCHEMA_VERSION:
         return value
     claims = [{**c, "candidate_evidence_ids": c.get("evidence_ids", []), "evidence_ids": [],
-               "claim_type": "inference" if c.get("claim_type") == "inference" else "unsupported", "review_required": True} for c in value.get("claims", [])]
+               "claim_type": "inference" if c.get("claim_type") == "inference" else "unsupported",
+               "verification": "pending_review", "review_required": True} for c in value.get("claims", [])]
     return {**value, "claims": claims, "requires_rebuild": True,
             "quality": {**value.get("quality", {}), "supported_count": 0, "unsupported_count": len(claims), "coverage_ratio": 0.0}}
 

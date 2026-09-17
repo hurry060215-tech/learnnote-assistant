@@ -28,5 +28,5 @@ assert.deepEqual(new Set(manifest.optional_host_permissions), new Set(["http://*
 assert.equal(manifest.side_panel.default_path, "sidepanel.html");
 assert.deepEqual(manifest.content_scripts || [], []);
 const sidepanel = await readFile(new URL("../sidepanel.html", import.meta.url), "utf8");
-assert.match(sidepanel, /sidepanel\.css\?v=0\.2\.12/);
-assert.match(sidepanel, /sidepanel\.js\?v=0\.2\.12/);
+assert.match(sidepanel, new RegExp(`sidepanel\\.css\\?v=${manifest.version}`));
+assert.match(sidepanel, new RegExp(`sidepanel\\.js\\?v=${manifest.version}`));
