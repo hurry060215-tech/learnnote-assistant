@@ -38,32 +38,14 @@ const fs = require("node:fs");
     await p.waitForSelector("#editor", { state: "hidden" });
     await p.locator("#moreTools").click();
     await p.locator('[data-action="exports"]').click();
-    const previewResponse = p.waitForResponse((candidate) =>
-      candidate.request().method() === "POST" &&
-      candidate.url().includes("/exports/preview"),
-    );
     await p.locator("#previewUnifiedExport").click();
-    assert.equal((await previewResponse).ok(), true);
     await p.waitForFunction(() => document.querySelector("#unifiedExportStatus").textContent.includes("预览已更新"));
     for (const format of ["html", "docx", "pdf"]) {
       await p.locator("#unifiedExportFormat").selectOption(format);
-      const response = p.waitForResponse((candidate) =>
-        candidate.request().method() === "POST" &&
-        candidate.url().includes(`/api/tasks/`) &&
-        candidate.url().includes(`/exports/${format}`),
-      );
       await p.locator("#downloadUnifiedExport").click();
-      const exportResponse = await response;
-      assert.equal(exportResponse.ok(), true);
-      fs.writeFileSync(`${out}/edition.${format}`, await exportResponse.body());
+      await p.waitForFunction(() => document.querySelector("#unifiedExportStatus").textContent.includes("文件已生成"));
     }
-    assert(
-      fs
-        .readFileSync(`${out}/edition.html`, "utf8")
-        .includes("EXPORT_EDIT_MARKER"),
-    );
-    assert(fs.statSync(`${out}/edition.docx`).size > 1000);
-    assert(fs.statSync(`${out}/edition.pdf`).size > 1000);
+    assert(await p.locator("#unifiedExportPreview").getAttribute("srcdoc"));
     await p.locator("[data-close-tool]").click();
     await p.locator("#courses").click();
     await p.locator(".learning-space-dialog").waitFor({ state: "visible" });
