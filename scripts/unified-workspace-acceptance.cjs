@@ -38,7 +38,13 @@ const fs = require("node:fs");
     await p.waitForSelector("#editor", { state: "hidden" });
     await p.locator("#moreTools").click();
     await p.locator('[data-action="exports"]').click();
-    await p.locator("#unifiedExportStatus").filter({ hasText: "预览已更新" }).waitFor();
+    const previewResponse = p.waitForResponse((candidate) =>
+      candidate.request().method() === "POST" &&
+      candidate.url().endsWith("/exports/preview"),
+    );
+    await p.locator("#previewUnifiedExport").click();
+    assert.equal((await previewResponse).ok(), true);
+    await p.waitForFunction(() => document.querySelector("#unifiedExportStatus").textContent.includes("预览已更新"));
     for (const format of ["html", "docx", "pdf"]) {
       await p.locator("#unifiedExportFormat").selectOption(format);
       const response = p.waitForResponse((candidate) =>
