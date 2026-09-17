@@ -45,6 +45,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
   await page.locator('#edit').click();assert(await page.locator('#noteText').isVisible());await page.locator('#discard').click();
   await page.locator('#settings').click();
   await page.locator('[data-settings-section="storage"]').click();
+  await page.locator('[data-settings-page="storage"] summary').click();
   await page.locator('#studyTools').click();
   await page.getByText('调整每日目标与时区',{exact:true}).waitFor();
   await page.getByText('调整每日目标与时区',{exact:true}).click();assert(await page.locator('#dailyTarget').isVisible());await page.locator('[data-close-tool]').click();
