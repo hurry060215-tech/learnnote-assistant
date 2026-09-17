@@ -12,9 +12,8 @@ const fs = require("fs");
   });
   const errors = [];
   p.on("pageerror", (e) => errors.push(e.message));
-  async function send(text, skill = "auto") {
+  async function send(text) {
     if (!await p.locator(".assistant-options").evaluate(el => el.open)) await p.locator(".assistant-options > summary").click();
-    await p.locator("#assistantSkill").selectOption(skill);
     await p.locator(".assistant-options > summary").click();
     await p.locator("#aiQuestion").fill(text);
     await p.locator("#aiSend").click();
@@ -23,9 +22,6 @@ const fs = require("fs");
   try {
     await p.goto(base);
     await p.locator("#aiAssistant").click();
-    await p.waitForSelector('#assistantSkill option[value="product.help"]', {
-      state: "attached",
-    });
     await send("怎么导出 Word？");
     assert.match(
       await p.locator(".assistant-turn").last().textContent(),
@@ -57,7 +53,7 @@ const fs = require("fs");
     p.once("dialog", (d) => d.accept());
     await p.keyboard.press("Escape");
     await p.waitForSelector("#settingsDialog", { state: "hidden" });
-    await send("帮我总结", "note.summary");
+    await send("总结这份内容");
     assert.match(
       await p.locator(".assistant-turn").last().innerText(),
       /先选择/,
@@ -88,7 +84,7 @@ const fs = require("fs");
       "true",
     );
     await p.locator("#aiAssistant").click();
-    await send("学习率控制什么？");
+    await send("这份内容中学习率控制什么？");
     assert.match(
       await p.locator(".assistant-turn").last().textContent(),
       /note.qa/,
@@ -102,9 +98,14 @@ const fs = require("fs");
     await p.locator("#navigateBack").click();
     await p.waitForSelector("#welcome:not([hidden])");
     await p.locator("#courses").click();
-    await p.locator('[data-action="new-course"]').click();
-    await p.locator("[data-tool-back]").click();
-    await p.waitForSelector('[data-action="new-course"]');
+    await p.locator(".learning-space-dialog").waitFor({ state: "visible" });
+    await p.getByRole("button", { name: "＋ 新建学习空间", exact: true }).click();
+    await p.locator('.learning-space-form input[name="title"]').fill("助手验收空间");
+    await p.getByRole("button", { name: "保存学习空间", exact: true }).click();
+    await p.getByRole("button", { name: /助手验收空间/ }).click();
+    await p.getByRole("button", { name: "练习", exact: true }).click();
+    await p.getByRole("button", { name: "复习计划", exact: true }).click();
+    await p.locator(".learning-space-dialog").getByRole("button", { name: "关闭学习空间", exact: true }).click();
     await p.keyboard.press("Escape");
     await p.reload();
     await p.locator("#aiAssistant").click();
