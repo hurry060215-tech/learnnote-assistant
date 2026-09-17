@@ -38,16 +38,26 @@ const fs = require("node:fs");
     await p.waitForSelector("#editor", { state: "hidden" });
     await p.locator("#moreTools").click();
     await p.locator('[data-action="exports"]').click();
-    for (const format of ["markdown", "docx", "pdf"]) {
-      const download = p.waitForEvent("download");
-      await p.locator(`[data-export="${format}"]`).click();
-      await (await download).saveAs(`${out}/edition.${format}`);
+    await p.locator("#unifiedExportStatus").filter({ hasText: "预览已更新" }).waitFor();
+    for (const format of ["html", "docx", "pdf"]) {
+      await p.locator("#unifiedExportFormat").selectOption(format);
+      const response = p.waitForResponse((candidate) =>
+        candidate.request().method() === "POST" &&
+        candidate.url().includes(`/api/tasks/`) &&
+        candidate.url().endsWith(`/exports/${format}`),
+      );
+      await p.locator("#downloadUnifiedExport").click();
+      const exportResponse = await response;
+      assert.equal(exportResponse.ok(), true);
+      fs.writeFileSync(`${out}/edition.${format}`, await exportResponse.body());
     }
     assert(
       fs
-        .readFileSync(`${out}/edition.markdown`, "utf8")
+        .readFileSync(`${out}/edition.html`, "utf8")
         .includes("EXPORT_EDIT_MARKER"),
     );
+    assert(fs.statSync(`${out}/edition.docx`).size > 1000);
+    assert(fs.statSync(`${out}/edition.pdf`).size > 1000);
     await p.locator("[data-close-tool]").click();
     await p.locator("#courses").click();
     await p.locator(".learning-space-dialog").waitFor({ state: "visible" });
