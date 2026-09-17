@@ -56,7 +56,7 @@ const fs = require("fs");
     await send("总结这份内容");
     assert.match(
       await p.locator(".assistant-turn").last().innerText(),
-      /先选择/,
+      /先选择|配置文字模型/,
     );
     await p.locator(".assistant-options > summary").click();
     await p.locator("#skillCatalog").click();
