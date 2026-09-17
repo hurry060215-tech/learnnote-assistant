@@ -50,28 +50,23 @@ const fs = require("node:fs");
     );
     await p.locator("[data-close-tool]").click();
     await p.locator("#courses").click();
-    await p.locator('[data-action="new-course"]').click();
-    await p.locator("#courseTitle").fill("学习方法验收");
-    await p
-      .locator('.source-picker input[data-kind="material"]')
-      .last()
-      .check();
-    await p.locator("#courseForm button.primary").click();
-    await p.waitForSelector('[data-action="edit-course"]');
-    await p.locator('[data-action="pause-course"]').click();
-    await p.waitForFunction(() =>
-      document
-        .querySelector('[data-action="pause-course"]')
-        .textContent.includes("继续"),
-    );
-    await p.locator('[data-action="pause-course"]').click();
-    await p.waitForFunction(() =>
-      document
-        .querySelector('[data-action="pause-course"]')
-        .textContent.includes("暂停"),
-    );
-    await p.screenshot({ path: `${out}/course.png` });
-    await p.locator("[data-close-tool]").click();
+    await p.locator(".learning-space-dialog").waitFor({ state: "visible" });
+    await p.getByRole("button", { name: "＋ 新建学习空间", exact: true }).click();
+    await p.locator('.learning-space-form input[name="title"]').fill("学习方法验收");
+    await p.getByRole("button", { name: "保存学习空间", exact: true }).click();
+    await p.getByRole("heading", { name: "学习方法验收", exact: true }).waitFor({ state: "visible" });
+    await p.getByRole("button", { name: "加入当前资料", exact: true }).click();
+    await p.waitForFunction(() => document.querySelector(".learning-space-sources")?.textContent.includes("完整工作台验收"));
+    await p.getByRole("button", { name: "练习", exact: true }).click();
+    await p.getByText("生成练习预览", { exact: true }).waitFor();
+    await p.getByRole("button", { name: "复习计划", exact: true }).click();
+    await p.getByText("每日复习量", { exact: true }).waitFor();
+    await p.getByRole("button", { name: "暂停计划", exact: true }).click();
+    await p.getByRole("button", { name: "继续计划", exact: true }).waitFor();
+    await p.getByRole("button", { name: "继续计划", exact: true }).click();
+    await p.getByRole("button", { name: "暂停计划", exact: true }).waitFor();
+    await p.screenshot({ path: `${out}/learning-space.png` });
+    await p.getByRole("button", { name: "关闭学习空间", exact: true }).click();
     await p.locator("#moreTools").click();
     await p.locator('[data-action="propose"]').click();
     await p.waitForSelector("#cardsForm input[data-card-index]");

@@ -43,7 +43,10 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
   await page.screenshot({path:path.join(out,'reader-dark.png')});await page.locator('#theme').click();
   await page.locator('#openOutline').click();await page.locator('.outline-tree button').first().click();
   await page.locator('#edit').click();assert(await page.locator('#noteText').isVisible());await page.locator('#discard').click();
-  await page.locator('#review').click();await page.getByText('调整每日目标与时区',{exact:true}).waitFor();
+  await page.locator('#settings').click();
+  await page.locator('[data-settings-section="storage"]').click();
+  await page.locator('#studyTools').click();
+  await page.getByText('调整每日目标与时区',{exact:true}).waitFor();
   await page.getByText('调整每日目标与时区',{exact:true}).click();assert(await page.locator('#dailyTarget').isVisible());await page.locator('[data-close-tool]').click();
   await page.setViewportSize({width:390,height:844});
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
