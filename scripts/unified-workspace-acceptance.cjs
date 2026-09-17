@@ -40,7 +40,7 @@ const fs = require("node:fs");
     await p.locator('[data-action="exports"]').click();
     const previewResponse = p.waitForResponse((candidate) =>
       candidate.request().method() === "POST" &&
-      candidate.url().endsWith("/exports/preview"),
+      candidate.url().includes("/exports/preview"),
     );
     await p.locator("#previewUnifiedExport").click();
     assert.equal((await previewResponse).ok(), true);
@@ -50,7 +50,7 @@ const fs = require("node:fs");
       const response = p.waitForResponse((candidate) =>
         candidate.request().method() === "POST" &&
         candidate.url().includes(`/api/tasks/`) &&
-        candidate.url().endsWith(`/exports/${format}`),
+        candidate.url().includes(`/exports/${format}`),
       );
       await p.locator("#downloadUnifiedExport").click();
       const exportResponse = await response;
