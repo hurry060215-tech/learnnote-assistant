@@ -135,6 +135,7 @@ class SubtitlesFirstTests(unittest.TestCase):
         self.assertEqual(record.error_code, "summary_unavailable")
         self.assertEqual(record.status, "failed")
         self.assertEqual(record.checkpoint, "transcript_ready")
+        self.assertEqual(record.failed_phase, "summarizing")
         self.assertIn("额度不足", record.message)
         self.assertNotIn("private000", Path(record.summary_diagnostics_path).read_text(encoding="utf-8"))
         with patch("app.processor.summarize_with_diagnostics", return_value=("# 课程\n\n## 核心结论\n\n重新总结后的内容。", "text-llm", "", [])):

@@ -13,7 +13,7 @@ LearnNote 是面向个人学习者的本地优先视频知识助手。扩展只�
 | `activeTab`, `tabs`, `scripting` | 读取用户当前明确选择的页面与播放器上下文 | 不扫描后台标签页，不自动录屏 |
 | `webRequest`, `webNavigation` | 在用户触发采集时识别媒体请求、导航和播放状态 | 不上传请求体，不绕过 DRM |
 | `cookies` | 用户创建任务时读取相关来源的授权 Cookie，以便本机后端重放 | 不持久化 Cookie，不发送到 LearnNote 云 |
-| `storage`, `alarms` | 保存本地服务地址/短期配对 token，维持本地心跳 | 不建立账号或云同步 |
+| `storage`, `alarms` | 保存本地服务地址/短期配对 token、可过期的媒体候选缓存，维持本地心跳并显示已授权站点 | 不建立账号或云同步；撤销站点时清理该站点缓存 |
 | `sidePanel`, `downloads` | 显示当前视频助手和用户主动下载扩展包 | 不后台下载课程 |
 
 ## 审核证据
@@ -21,6 +21,7 @@ LearnNote 是面向个人学习者的本地优先视频知识助手。扩展只�
 - `scripts/e2e-extension-smoke.py --browser edge --debug-port 0`：真实 Edge、MP4/HLS/接口播放器、Blob iframe、学习通 mock。
 - `scripts/package-extension.ps1`：只打包 manifest、background/content/page hook、side panel、图标和安装说明。
 - 扩展写请求需要本机短期 `X-LearnNote-Pairing` token；未配对请求返回 401。
+- 侧栏“站点权限与数据流”列出额外授权的具体站点，并可撤销；撤销会清理该站点的页面状态、媒体候选和活动捕获 TTL。
 - 公开隐私边界见 `PRIVACY.md`、`SECURITY.md` 和 `docs/PLATFORM_SUPPORT.md`。
 
 ## 提交前清单

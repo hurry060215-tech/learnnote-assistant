@@ -85,7 +85,7 @@ def finish_note_task(
         diagnostics_path = write_json(task_id, "summary_diagnostics.json", diagnostics)
         update_task(task_id, status="failed", phase="failed", progress=100,
             message=detail, error_code="summary_unavailable", error_detail=detail,
-            checkpoint="transcript_ready", summary_source=summary_source, summary_warning=detail,
+            checkpoint="transcript_ready", failed_phase="summarizing", summary_source=summary_source, summary_warning=detail,
             summary_diagnostics=diagnostics, summary_diagnostics_path=str(diagnostics_path))
         return
     evidence_section = evidence_coverage_markdown(integrity, evidence_coverage)
@@ -122,6 +122,7 @@ def finish_note_task(
             message="笔记输出检查未通过，已有资料保留，可直接重试总结。",
             error_code="note_quality_failed",
             error_detail="；".join(item["message"] for item in normalized_note.report["issues"] if item["severity"] == "error"),
+            failed_phase="summarizing",
             summary_warning="笔记未发布：输出检查未通过",
         )
         return

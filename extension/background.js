@@ -2493,6 +2493,47 @@ function cookieUrlsForContext(page = {}, tab = {}, resources = []) {
   return urls;
 }
 
+function normalizePermissionOrigin(value = "") {
+  const raw = String(value || "").trim();
+  if (!/^https?:\/\/(?:\*|[^/*]+)\/\*$/i.test(raw)) return "";
+  if (/^https?:\/\/\*\/\*$/i.test(raw)) return raw.toLowerCase();
+  try {
+    const url = new URL(raw.slice(0, -1));
+    return `${url.protocol}//${url.host}/*`;
+  } catch {
+    return "";
+  }
+}
+
+async function revokeSitePermissionCaches(origin = "") {
+  const normalized = normalizePermissionOrigin(origin);
+  if (!normalized || !chrome.tabs?.query) return { ok: false, error: "无效的站点权限。" };
+  const tabs = await chrome.tabs.query({});
+  let clearedTabs = 0;
+  for (const tab of tabs || []) {
+    if (tab?.id === undefined) continue;
+    let tabOrigin = "";
+    try {
+      const url = new URL(String(tab.url || ""));
+      tabOrigin = `${url.protocol}//${url.host}/*`;
+    } catch {
+      continue;
+    }
+    const wildcard = /^https?:\/\/\*\/\*$/i.test(normalized);
+    if (wildcard ? !tabOrigin.startsWith(normalized.replace("*/*", "")) : tabOrigin !== normalized) continue;
+    resourceByTab.delete(tab.id);
+    pageStateByTab.delete(tab.id);
+    activeCaptureUntilByTab.delete(tab.id);
+    clearCaptureLog(tab.id);
+    clearedTabs += 1;
+  }
+  return { ok: true, origin: normalized, cleared_tabs: clearedTabs };
+}
+
+chrome.permissions?.onRemoved?.addListener?.(details => {
+  for (const origin of details?.origins || []) revokeSitePermissionCaches(origin).catch(() => {});
+});
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   (async () => {
     if (message.type === "page-media-detected" && sender.tab?.id !== undefined) {
@@ -2508,6 +2549,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
       notifyContextUpdated(tabId, "page");
       sendResponse({ ok: true });
+      return;
+    }
+
+    if (message.type === "revoke-site-permission") {
+      sendResponse(await revokeSitePermissionCaches(message.origin));
       return;
     }
 

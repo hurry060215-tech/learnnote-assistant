@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from app.upload_limits import UploadBudgetMiddleware, UploadBudgetExceeded, UploadReservation, write_video_upload
+from app.upload_limits import UploadBudgetMiddleware, UploadBudgetExceeded, UploadReservation, upload_policy_snapshot, write_video_upload
 
 
 class UploadLimitTests(unittest.TestCase):
@@ -32,10 +32,12 @@ class UploadLimitTests(unittest.TestCase):
             file = File()
             path = Path(directory) / "partial.mp4"
             with patch("app.upload_limits.MAX_VIDEO_BYTES", 20), patch("app.upload_limits.check_upload_space"):
-                with self.assertRaises(UploadBudgetExceeded):
+                with self.assertRaises(UploadBudgetExceeded) as caught:
                     asyncio.run(write_video_upload(file, path))
             self.assertFalse(path.exists())
             self.assertTrue(file.closed)
+            self.assertEqual(caught.exception.written_bytes, 12)
+            self.assertEqual(caught.exception.received_bytes, 24)
 
     def test_low_disk_does_not_create_pending_file(self):
         class File:
@@ -60,6 +62,17 @@ class UploadLimitTests(unittest.TestCase):
             first.release()
             second.reserve(10)
             second.release()
+
+    def test_policy_snapshot_reports_budget_without_content_or_paths(self):
+        class Usage:
+            free = 9 * 1024**3
+
+        with patch("app.upload_limits.shutil.disk_usage", return_value=Usage()):
+            snapshot = upload_policy_snapshot()
+        self.assertEqual(snapshot["free_disk_bytes"], Usage.free)
+        self.assertIn("available_upload_budget_bytes", snapshot)
+        self.assertNotIn("path", snapshot)
+        self.assertNotIn("content", snapshot)
 
 
 if __name__ == "__main__":

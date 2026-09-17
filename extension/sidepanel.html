@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>LearnNote</title>
     <link rel="icon" type="image/png" sizes="32x32" href="icons/icon32.png">
-    <link rel="stylesheet" href="sidepanel.css?v=0.2.10">
+    <link rel="stylesheet" href="sidepanel.css?v=0.2.12">
   </head>
   <body>
     <header class="app-header">
@@ -74,6 +74,12 @@
           <p id="learningRangeStatus" role="status"></p>
         </details>
         <div id="modelReadiness" class="model-readiness" hidden><span id="modelReadinessText"></span><button type="button" id="configureModelButton" data-client-view="settings" hidden>设置模型</button></div>
+        <details id="permissionDetails" class="extension-options">
+          <summary>站点权限与数据流</summary>
+          <p class="muted">仅在你点击发送并允许当前站点时读取；撤销后会停止该站点的候选缓存与捕获。</p>
+          <div id="permissionList" class="permission-list" aria-live="polite"></div>
+          <p id="permissionStatus" role="status"></p>
+        </details>
         <details id="extensionOptions" class="extension-options"><summary>笔记偏好</summary>
         <div class="generation-fields">
           <label>总结风格<select id="extensionStyle"><option value="">跟随上方模式</option><option value="study">学习笔记</option><option value="lecture">课程讲义</option><option value="concise">重点速记</option><option value="code">代码教程</option><option value="academic">论文导读</option><option value="exam">考点复习</option></select></label>
@@ -125,6 +131,6 @@
     </main>
 
     <script src="i18n.js"></script>
-    <script src="sidepanel.js?v=0.2.8"></script>
+    <script src="sidepanel.js?v=0.2.12"></script>
   </body>
 </html>

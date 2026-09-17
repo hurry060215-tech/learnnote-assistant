@@ -6,7 +6,7 @@ import re
 
 
 def has_generated_summary(source: str) -> bool:
-    return str(source or "") in {"text-llm", "vision-llm", "page-text-llm"}
+    return str(source or "") in {"text-llm", "vision-llm", "page-text-llm", "offline-fixture"}
 
 
 def safe_summary_text(value: str) -> str:

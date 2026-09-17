@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 
 from app import main as main_module
 from app.config import DATA_DIR, UPLOAD_DIR
-from app.main import STAGED_UPLOAD_MAX_AGE_SECONDS, app, build_handoff_integrity, cleanup_expired_staged_uploads, local_upload_filename
+from app.main import PENDING_UPLOAD_MAX_AGE_SECONDS, STAGED_UPLOAD_MAX_AGE_SECONDS, app, build_handoff_integrity, cleanup_expired_staged_uploads, local_upload_filename
 from app.media import _adaptive_frame_plan, _integrity_from_ffmpeg, probe_media_integrity
 from app.models import CurrentPageTaskRequest, EvidenceCoverage, FrameSample, MediaIntegrity, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment
 from app.processor import ContentMismatchError, _process_video_file
@@ -292,16 +292,22 @@ class LocalMediaContractTests(unittest.TestCase):
 
     def test_expired_staged_upload_is_removed(self) -> None:
         staged = UPLOAD_DIR / "staged_00000000000000000000000000000000_expired.m4s"
+        pending = UPLOAD_DIR / "pending_00000000000000000000000000000000_expired.m4s"
         staged.write_bytes(b"expired")
+        pending.write_bytes(b"expired")
         old = time.time() - STAGED_UPLOAD_MAX_AGE_SECONDS - 60
         staged.touch()
+        pending.touch()
         os.utime(staged, (old, old))
+        os.utime(pending, (time.time() - PENDING_UPLOAD_MAX_AGE_SECONDS - 60,) * 2)
         try:
             removed = cleanup_expired_staged_uploads(now=time.time())
-            self.assertEqual(removed, 1)
+            self.assertEqual(removed, 2)
             self.assertFalse(staged.exists())
+            self.assertFalse(pending.exists())
         finally:
             staged.unlink(missing_ok=True)
+            pending.unlink(missing_ok=True)
 
 
 class DeferredHandoffTests(unittest.TestCase):

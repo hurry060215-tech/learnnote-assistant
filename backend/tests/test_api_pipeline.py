@@ -459,6 +459,40 @@ class LocalUploadValidationTests(unittest.TestCase):
             source_media_path.unlink(missing_ok=True)
             shutil.rmtree(task_dir(task_id), ignore_errors=True)
 
+    def test_duplicate_local_upload_reuses_existing_task_and_cleans_new_pending_file(self) -> None:
+        integrity = MediaIntegrity(
+            status="ready",
+            duration=60,
+            has_video=True,
+            has_audio=True,
+            sha256="b" * 64,
+        )
+        with patch("app.main.validate_local_upload_file", return_value=integrity), \
+            patch("app.main.process_local_video_task") as process_task:
+            first = self.client.post(
+                "/api/tasks/from-local",
+                files={"file": ("duplicate.mp4", io.BytesIO(b"same local video"), "video/mp4")},
+                data={"title": "同一媒体"},
+            )
+            second = self.client.post(
+                "/api/tasks/from-local",
+                files={"file": ("duplicate-again.mp4", io.BytesIO(b"same local video"), "video/mp4")},
+                data={"title": "同一媒体再次提交"},
+            )
+
+        self.assertEqual(first.status_code, 200, first.text)
+        self.assertEqual(second.status_code, 200, second.text)
+        self.assertFalse(second.json()["task_id"] == "")
+        self.assertTrue(second.json()["deduplicated"])
+        self.assertTrue(second.json()["source_media_reused"])
+        self.assertEqual(second.json()["task_id"], first.json()["task_id"])
+        self.assertEqual(process_task.call_count, 1)
+        self.assertFalse(list((DATA_DIR / "uploads").glob("pending_*duplicate-again.mp4")))
+        task_id = first.json()["task_id"]
+        source = Path(first.json()["task"]["source_media_path"])
+        source.unlink(missing_ok=True)
+        shutil.rmtree(task_dir(task_id), ignore_errors=True)
+
     def test_media_preview_endpoint_streams_inline_video(self) -> None:
         task = create_task("local", "Preview media")
         media = task_dir(task.id) / "media.mp4"
