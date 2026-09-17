@@ -17,9 +17,6 @@ from .config import TASK_DIR
 
 DOCUMENT_EXPORT_SCHEMA_VERSION = 1
 _MARKDOWN_LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
-_HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
-_BULLET_RE = re.compile(r"^\s*[-*+]\s+(.+?)\s*$")
-_ORDERED_RE = re.compile(r"^\s*\d+[.)]\s+(.+?)\s*$")
 _RAW_URL_RE = re.compile(r"https?://[^\s<>\]\[\"']+", re.IGNORECASE)
 _SECRET_ASSIGNMENT_RE = re.compile(
     r"(?im)\b(cookie|set-cookie|authorization|proxy-authorization|password|secret|"
@@ -49,6 +46,73 @@ class _Block:
     kind: str
     text: str
     level: int = 0
+
+
+def _image_line(line: str) -> str | None:
+    """Return the image source for one conservative Markdown image line."""
+    value = line.strip()
+    if not value.startswith("![") or not value.endswith(")"):
+        return None
+    marker = value.find("](", 2)
+    if marker <= 2:
+        return None
+    source = value[marker + 2:-1]
+    return source if source else None
+
+
+def _is_horizontal_rule(line: str) -> bool:
+    """Recognize Markdown horizontal rules with a linear scan."""
+    value = line.strip()
+    if len(value) < 3:
+        return False
+    marker = ""
+    count = 0
+    for char in value:
+        if char.isspace():
+            continue
+        if char not in "-*_":
+            return False
+        if not marker:
+            marker = char
+        elif char != marker:
+            return False
+        count += 1
+    return count >= 3
+
+
+def _heading_line(line: str) -> tuple[int, str] | None:
+    """Parse a heading without a backtracking expression over note content."""
+    if not line.startswith("#"):
+        return None
+    level = 0
+    while level < len(line) and line[level] == "#":
+        level += 1
+    if level > 6 or level >= len(line) or not line[level].isspace():
+        return None
+    text = line[level:].strip()
+    return (level, text) if text else None
+
+
+def _bullet_line(line: str) -> str | None:
+    value = line.lstrip()
+    if len(value) < 3 or value[0] not in "-*+" or not value[1].isspace():
+        return None
+    text = value[2:].strip()
+    return text if text else None
+
+
+def _ordered_line(line: str) -> str | None:
+    value = line.lstrip()
+    index = 0
+    while index < len(value) and value[index].isdigit():
+        index += 1
+    if index == 0 or index >= len(value) or value[index] not in ".)":
+        return None
+    index += 1
+    if index >= len(value) or not value[index].isspace():
+        return None
+    text = value[index:].strip()
+    return text if text else None
 
 
 DEFAULT_EXPORT_OPTIONS = {
@@ -222,30 +286,31 @@ def _blocks(markdown: str) -> list[_Block]:
             table.append(line)
             continue
         flush_table()
-        if re.fullmatch(r"!\[[^\]]*\]\([^\n]+\)", line.strip()):
+        image_source = _image_line(line)
+        if image_source is not None:
             flush_paragraph()
             result.append(_Block("image", line.strip()))
             continue
         if not line.strip():
             flush_paragraph()
             continue
-        if re.fullmatch(r"\s*([-*_])(?:\s*\1){2,}\s*", line):
+        if _is_horizontal_rule(line):
             flush_paragraph()
             continue
-        heading = _HEADING_RE.match(line)
-        if heading:
+        heading = _heading_line(line)
+        if heading is not None:
             flush_paragraph()
-            result.append(_Block("heading", heading.group(2).strip(), len(heading.group(1))))
+            result.append(_Block("heading", heading[1], heading[0]))
             continue
-        bullet = _BULLET_RE.match(line)
-        if bullet:
+        bullet = _bullet_line(line)
+        if bullet is not None:
             flush_paragraph()
-            result.append(_Block("bullet", bullet.group(1).strip()))
+            result.append(_Block("bullet", bullet))
             continue
-        ordered = _ORDERED_RE.match(line)
-        if ordered:
+        ordered = _ordered_line(line)
+        if ordered is not None:
             flush_paragraph()
-            result.append(_Block("ordered", ordered.group(1).strip()))
+            result.append(_Block("ordered", ordered))
             continue
         paragraph.append(line)
     flush_paragraph()
