@@ -43,7 +43,10 @@ const els = {
   quickAskPanel: document.querySelector("#quickAskPanel"),
   quickAskConversation: document.querySelector("#quickAskConversation"),
   quickAskForm: document.querySelector("#quickAskForm"),
-  quickAskQuestion: document.querySelector("#quickAskQuestion")
+  quickAskQuestion: document.querySelector("#quickAskQuestion"),
+  permissionDetails: document.querySelector("#permissionDetails"),
+  permissionList: document.querySelector("#permissionList"),
+  permissionStatus: document.querySelector("#permissionStatus")
 };
 
 let backendUrl = DEFAULT_BACKEND_URL;
@@ -870,18 +873,83 @@ function learningRange() {
   return { start, end };
 }
 
+function sitePermissionPattern(pageUrl = "") {
+  try {
+    const url = new URL(pageUrl);
+    if (!["http:", "https:"].includes(url.protocol) || !url.host) return "";
+    return `${url.protocol}//${url.host}/*`;
+  } catch {
+    return "";
+  }
+}
+
+function sitePermissionLabel(pattern = "") {
+  return String(pattern).replace(/:\/\/([^/]+)\/\*$/, "$1");
+}
+
+async function loadSitePermissions() {
+  const list = els.permissionList;
+  if (!list) return;
+  list.replaceChildren();
+  if (!globalThis.chrome?.permissions?.getAll) {
+    list.textContent = "当前环境不支持读取站点授权列表。";
+    return;
+  }
+  try {
+    const granted = await chrome.permissions.getAll();
+    const origins = (granted?.origins || [])
+      .map(value => String(value || ""))
+      .filter(value => /^https?:\/\/[^/]+\/\*$/i.test(value));
+    if (!origins.length) {
+      list.textContent = "尚未额外授权站点；本地工作台权限不需要额外申请。";
+      return;
+    }
+    for (const origin of origins.sort()) {
+      const row = document.createElement("article");
+      row.className = "permission-item";
+      const label = document.createElement("strong");
+      label.textContent = sitePermissionLabel(origin);
+      const detail = document.createElement("small");
+      detail.textContent = "可读取当前页字幕、播放器候选；需要时才读取相关 Cookie，并按所选模式发送到本机工作台或配置的模型。";
+      const revoke = document.createElement("button");
+      revoke.type = "button";
+      revoke.className = "secondary-button compact-button";
+      revoke.textContent = "撤销";
+      revoke.setAttribute("aria-label", `撤销 ${sitePermissionLabel(origin)} 权限`);
+      revoke.onclick = async () => {
+        revoke.disabled = true;
+        if (els.permissionStatus) els.permissionStatus.textContent = `正在撤销 ${sitePermissionLabel(origin)}…`;
+        try {
+          const removed = await chrome.permissions.remove({ origins: [origin] });
+          if (!removed) throw new Error("浏览器未接受撤销请求。");
+          try {
+            await chrome.runtime.sendMessage({ type: "revoke-site-permission", origin });
+          } catch {
+            // The permission is already revoked; cache cleanup is best effort.
+          }
+          if (els.permissionStatus) els.permissionStatus.textContent = `已撤销 ${sitePermissionLabel(origin)}；相关捕获缓存已清理。`;
+          await loadSitePermissions();
+        } catch (error) {
+          revoke.disabled = false;
+          if (els.permissionStatus) els.permissionStatus.textContent = error?.message || "撤销失败，请在浏览器扩展管理页重试。";
+        }
+      };
+      row.append(label, detail, revoke);
+      list.append(row);
+    }
+  } catch (error) {
+    list.textContent = `无法读取站点授权列表：${error?.message || "请稍后重试"}`;
+  }
+}
+
 async function ensureSitePermission(pageUrl = "") {
   if (!globalThis.chrome?.permissions?.request) return true;
-  let url;
-  try {
-    url = new URL(pageUrl);
-  } catch {
-    return true;
-  }
-  if (!["http:", "https:"].includes(url.protocol)) return true;
-  const origin = url.protocol + "//" + url.host + "/*";
+  const origin = sitePermissionPattern(pageUrl);
+  if (!origin) return true;
   if (await chrome.permissions.contains?.({ origins: [origin] })) return true;
-  return chrome.permissions.request({ origins: [origin] });
+  const granted = await chrome.permissions.request({ origins: [origin] });
+  await loadSitePermissions();
+  return granted;
 }
 
 async function sendToClient(modeOverride = "") {
@@ -1082,6 +1150,9 @@ function scheduleRefresh(reason = "media", targetTabId = null) {
 }
 
 function bindEvents() {
+  els.permissionDetails?.addEventListener("toggle", () => {
+    if (els.permissionDetails.open) loadSitePermissions();
+  });
   els.refreshButton?.addEventListener("click", async () => {
     await checkClient();
     return refreshAndPreflight({ force: true });
@@ -1205,6 +1276,7 @@ async function initialize() {
   globalThis.LearnNoteI18n?.apply?.(document);
   bindEvents();
   bindProductActions();
+  await loadSitePermissions();
   await loadBackendUrl();
   // Reading platform captions does not depend on finding the local client.
   const [, context] = await Promise.all([checkClient(), collectContext(true)]);

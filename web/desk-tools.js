@@ -289,8 +289,17 @@ export function installTools(ctx) {
     const token = show("存储与诊断", '<p class="muted">正在检查本地存储…</p>');
     const result = await api("/api/storage");
     if (token !== generation) return;
+    const formatBytes = (bytes) => {
+      const value = Number(bytes || 0);
+      if (value >= 1024 ** 3) return `${(value / 1024 ** 3).toFixed(1)} GB`;
+      return `${(value / 1024 ** 2).toFixed(1)} MB`;
+    };
+    const upload = result.upload_policy || {};
+    const uploadNotice = upload.free_disk_bytes
+      ? `上传保护：单个文件 ≤ ${formatBytes(upload.max_video_bytes)}；当前并发预算剩余 ${formatBytes(upload.available_upload_budget_bytes)}；磁盘剩余 ${formatBytes(upload.free_disk_bytes)}（至少保留 ${formatBytes(upload.required_free_disk_bytes)}）。`
+      : "上传保护状态暂不可用；提交文件前仍会执行大小和磁盘检查。";
     $("toolBody").innerHTML =
-      `<p class="muted">清理前先预览范围。学习资料保存在本机，不会因关闭窗口而删除。</p><details><summary>查看本地存储信息</summary><pre>${esc(JSON.stringify(result, null, 2))}</pre></details><div class="tool-actions"><button data-action="open-folder">打开数据文件夹</button><button data-action="backup">备份任务索引</button></div><p class="muted">索引备份不包含视频、文档正文、个人修订或复习数据库；完整备份请复制数据文件夹。</p><details><summary>恢复任务索引</summary><form id="restoreForm"><input id="restoreFile" type="file" accept=".sqlite3" required><button>选择备份并恢复</button></form></details><details><summary>清理旧任务</summary><form id="cleanupForm"><label for="retention">保留最近多少天</label><input id="retention" type="number" min="1" max="3650" value="30"><label for="keepRecent">至少保留最近多少个任务</label><input id="keepRecent" type="number" min="0" max="1000" value="10"><button>预览清理范围</button></form><pre id="cleanupPreview"></pre><button id="executeCleanup" hidden class="danger" data-action="cleanup">确认执行清理</button></details>`;
+      `<p class="muted">${uploadNotice}</p><p class="muted">清理前先预览范围。学习资料保存在本机，不会因关闭窗口而删除。</p><details><summary>查看本地存储信息</summary><pre>${esc(JSON.stringify(result, null, 2))}</pre></details><div class="tool-actions"><button data-action="open-folder">打开数据文件夹</button><button data-action="backup">备份任务索引</button></div><p class="muted">索引备份不包含视频、文档正文、个人修订或复习数据库；完整备份请复制数据文件夹。</p><details><summary>恢复任务索引</summary><form id="restoreForm"><input id="restoreFile" type="file" accept=".sqlite3" required><button>选择备份并恢复</button></form></details><details><summary>清理旧任务</summary><form id="cleanupForm"><label for="retention">保留最近多少天</label><input id="retention" type="number" min="1" max="3650" value="30"><label for="keepRecent">至少保留最近多少个任务</label><input id="keepRecent" type="number" min="0" max="1000" value="10"><button>预览清理范围</button></form><pre id="cleanupPreview"></pre><button id="executeCleanup" hidden class="danger" data-action="cleanup">确认执行清理</button></details>`;
     backAction = () => {
       dialog.close();
       $("settings").click();

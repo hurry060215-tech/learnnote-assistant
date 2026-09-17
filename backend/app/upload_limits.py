@@ -18,8 +18,10 @@ _active_upload_bytes = 0
 
 
 class UploadBudgetExceeded(ValueError):
-    def __init__(self, code: str, status: int, message: str):
+    def __init__(self, code: str, status: int, message: str, written_bytes: int = 0, received_bytes: int = 0):
         self.code, self.status, self.message = code, status, message
+        self.written_bytes = max(0, int(written_bytes or 0))
+        self.received_bytes = max(0, int(received_bytes or 0))
         super().__init__(message)
 
 
@@ -59,16 +61,23 @@ def check_upload_space(path: Path, incoming: int = 0) -> None:
 
 async def write_video_upload(file, path: Path) -> int:
     total = 0
+    written = 0
     reservation = UploadReservation()
     try:
         with path.open("wb") as output:
             while chunk := await file.read(1024**2):
                 total += len(chunk)
                 if total > MAX_VIDEO_BYTES:
-                    raise UploadBudgetExceeded("video_too_large", 413, "单个视频不能超过 4 GB，请拆分后导入。")
-                check_upload_space(path.parent, len(chunk))
-                reservation.reserve(len(chunk))
+                    raise UploadBudgetExceeded("video_too_large", 413, "单个视频不能超过 4 GB，请拆分后导入。", written, total)
+                try:
+                    check_upload_space(path.parent, len(chunk))
+                    reservation.reserve(len(chunk))
+                except UploadBudgetExceeded as exc:
+                    exc.written_bytes = written
+                    exc.received_bytes = total
+                    raise
                 output.write(chunk)
+                written += len(chunk)
         return total
     except BaseException:
         path.unlink(missing_ok=True)
@@ -105,9 +114,10 @@ class UploadBudgetMiddleware:
                 total += len(message.get("body", b""))
                 try:
                     if total > limit:
-                        raise UploadBudgetExceeded("upload_too_large", 413, "上传超过大小限制，请拆分文件。")
+                        raise UploadBudgetExceeded("upload_too_large", 413, "上传超过大小限制，请拆分文件。", 0, total)
                     check_upload_space(TEMP_DIR, len(message.get("body", b"")))
                 except UploadBudgetExceeded as exc:
+                    exc.received_bytes = total
                     rejection = exc
                     raise
             return message
@@ -132,4 +142,29 @@ class UploadBudgetMiddleware:
             if rejection is None:
                 raise
         if rejection:
-            await JSONResponse({"detail": {"code": rejection.code, "message": rejection.message}}, status_code=rejection.status)(scope, receive, send)
+            await JSONResponse({"detail": {
+                "code": rejection.code,
+                "message": rejection.message,
+                "written_bytes": rejection.written_bytes,
+                "received_bytes": rejection.received_bytes,
+                "recovery": "临时上传已清理；释放磁盘或等待其他上传完成后重试。",
+            }}, status_code=rejection.status)(scope, receive, send)
+
+
+def upload_policy_snapshot() -> dict[str, int]:
+    """Expose bounded upload state without retaining file contents."""
+    with _upload_budget_lock:
+        active = int(_active_upload_bytes)
+    try:
+        free = int(shutil.disk_usage(TEMP_DIR).free)
+    except OSError:
+        free = 0
+    return {
+        "schema_version": 1,
+        "max_video_bytes": MAX_VIDEO_BYTES,
+        "max_concurrent_upload_bytes": MAX_CONCURRENT_UPLOAD_BYTES,
+        "active_upload_bytes": active,
+        "available_upload_budget_bytes": max(0, MAX_CONCURRENT_UPLOAD_BYTES - active),
+        "free_disk_bytes": free,
+        "required_free_disk_bytes": MIN_FREE_BYTES,
+    }

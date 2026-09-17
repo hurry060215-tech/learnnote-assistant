@@ -63,7 +63,7 @@ def finish_transcript_note(task_id: str, title: str, page_url: str, transcript: 
             diag_path = write_json(task_id, "summary_diagnostics.json", diagnostics)
             update_task(task_id, status="failed", phase="failed", progress=100,
                 message=detail, error_code="summary_unavailable", error_detail=detail,
-                checkpoint="transcript_ready", summary_diagnostics=diagnostics,
+                checkpoint="transcript_ready", failed_phase="summarizing", summary_diagnostics=diagnostics,
                 summary_diagnostics_path=str(diag_path), **{**fields, "summary_warning": detail})
             return
         source_label = "浏览器平台字幕" if transcript.source == "browser-subtitle" else "平台字幕" if "subtitle" in transcript.source else "已保存的音频转写"
@@ -78,7 +78,7 @@ def finish_transcript_note(task_id: str, title: str, page_url: str, transcript: 
             stage_status = "failed"
             update_task(task_id, status="failed", phase="failed", progress=100,
                 message="总结质量检查未通过；字幕已保留，可以重新总结。", error_code="note_quality_failed",
-                error_detail="；".join(item["message"] for item in normalized.report["issues"] if item["severity"] == "error") + " 原始输出已保留，可直接重试总结。", checkpoint="transcript_ready")
+                error_detail="；".join(item["message"] for item in normalized.report["issues"] if item["severity"] == "error") + " 原始输出已保留，可直接重试总结。", checkpoint="transcript_ready", failed_phase="summarizing")
             return
         check_cancel(task_id)
         note_path = work_dir / "note.md"

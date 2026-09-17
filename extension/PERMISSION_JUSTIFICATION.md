@@ -10,7 +10,7 @@ LearnNote requests only permissions used by its current-video handoff purpose. T
 | `webRequest` | Observe media manifests, video/audio segments, subtitle requests, and player API responses that are not exposed in the DOM. |
 | `webNavigation` | Reset cached media evidence when the page or frame navigation changes. |
 | `cookies` | On an explicit preflight/send action, read cookies for the page and selected media domains so the local downloader can access media already available to the user's session. |
-| `storage` | Keep settings, handoff state, and a bounded 30-minute media-candidate recovery cache. Cookie and Authorization values are not stored in the candidate cache. |
+| `storage` | Keep settings, handoff state, a bounded 30-minute media-candidate recovery cache, and the visible site-permission state. Cookie and Authorization values are not stored in the candidate cache. |
 | `alarms` | Expire old candidate and handoff state even when the side panel is closed. |
 | `sidePanel` | Provide the current-video review and handoff interface without covering the video page. |
 | `downloads` | Save an explicit diagnostic selected by the user. It is not used to download videos in the background. |
@@ -23,7 +23,7 @@ Depending on the page and user action, the extension can process page URLs and t
 
 This data is used only to identify and retrieve the video selected by the user. It is sent to the local LearnNote backend when the user opens or reruns preflight, selects a resource, or sends the task. It is not sent to a LearnNote-operated cloud service.
 
-The desktop client may contact video hosts or user-configured transcription and model providers. Those transfers are described in the public privacy policy.
+The desktop client may contact video hosts or user-configured transcription and model providers. Those transfers are described in the public privacy policy. The side panel lists additional granted site origins and lets the user revoke one; revocation also clears that origin's in-memory page/resource state, persisted candidate cache, and active-capture TTL.
 
 ## Chrome Web Store Privacy practices answers
 

@@ -40,7 +40,7 @@ from .processor import browser_subtitle_text_is_player_ui, process_current_page_
 from .media_preflight import page_preflight_report
 from .reliability import current_page_source_identity, local_source_identity
 from .runtime import ffmpeg_bin, ffprobe_bin
-from .upload_limits import MAX_CONCURRENT_UPLOAD_BYTES, MAX_VIDEO_BYTES, MIN_FREE_BYTES, UploadBudgetMiddleware, UploadBudgetExceeded, write_video_upload
+from .upload_limits import MAX_CONCURRENT_UPLOAD_BYTES, MAX_VIDEO_BYTES, MIN_FREE_BYTES, UploadBudgetMiddleware, UploadBudgetExceeded, upload_policy_snapshot, write_video_upload
 from .source_input import SourceInputError, clean_task_title, normalize_source_input
 from .storage import cleanup_tasks, create_task, delete_all_tasks, delete_task, get_task, list_tasks, read_json, request_task_cancel, storage_summary, task_dir, update_task, write_json
 from .routers.knowledge_study import knowledge_router, study_router, task_study_router
@@ -197,6 +197,7 @@ LOCAL_VIDEO_MIME_EXTENSIONS = {
 }
 LOCAL_UPLOAD_CHUNK_SIZE = 1024 * 1024
 STAGED_UPLOAD_MAX_AGE_SECONDS = 24 * 60 * 60
+PENDING_UPLOAD_MAX_AGE_SECONDS = 24 * 60 * 60
 QA_HISTORY_FILE = "qa_history.json"
 
 
@@ -224,6 +225,19 @@ def local_upload_error(code: str, message: str, status_code: int = 400) -> HTTPE
     return HTTPException(status_code=status_code, detail={"code": code, "message": message})
 
 
+def local_upload_budget_error(error: UploadBudgetExceeded) -> HTTPException:
+    return HTTPException(
+        status_code=error.status,
+        detail={
+            "code": error.code,
+            "message": error.message,
+            "written_bytes": error.written_bytes,
+            "received_bytes": error.received_bytes,
+            "recovery": "临时上传已清理；释放磁盘或等待其他上传完成后重试。",
+        },
+    )
+
+
 def validate_local_upload_file(path: Path) -> MediaIntegrity:
     if not path.exists() or path.stat().st_size <= 0:
         raise local_upload_error("empty_local_file", "本地视频文件为空，请重新选择有效的视频文件。")
@@ -233,16 +247,31 @@ def validate_local_upload_file(path: Path) -> MediaIntegrity:
     return integrity
 
 
-def cleanup_expired_staged_uploads(now: float | None = None) -> int:
-    cutoff = float(now if now is not None else time.time()) - STAGED_UPLOAD_MAX_AGE_SECONDS
-    removed = 0
-    for path in UPLOAD_DIR.glob("staged_*"):
-        try:
-            if path.is_file() and path.stat().st_mtime < cutoff:
-                path.unlink()
-                removed += 1
-        except OSError:
+def _existing_local_task_for_fingerprint(fingerprint: str) -> TaskRecord | None:
+    value = str(fingerprint or "").strip().lower()
+    if len(value) != 64:
+        return None
+    for record in list_tasks():
+        if record.status in {"cancelled", "failed"}:
             continue
+        known = str(record.source_identity.media_sha256 or record.media_integrity.sha256 or "").strip().lower()
+        if known == value:
+            return record
+    return None
+
+
+def cleanup_expired_staged_uploads(now: float | None = None) -> int:
+    current = float(now if now is not None else time.time())
+    removed = 0
+    for prefix, retention in (("staged_", STAGED_UPLOAD_MAX_AGE_SECONDS), ("pending_", PENDING_UPLOAD_MAX_AGE_SECONDS)):
+        cutoff = current - retention
+        for path in UPLOAD_DIR.glob(prefix + "*"):
+            try:
+                if path.is_file() and path.stat().st_mtime < cutoff:
+                    path.unlink()
+                    removed += 1
+            except OSError:
+                continue
     return removed
 
 
@@ -2669,6 +2698,7 @@ def health_payload() -> dict:
             "max_concurrent_upload_bytes": MAX_CONCURRENT_UPLOAD_BYTES,
             "min_free_bytes": MIN_FREE_BYTES,
             "staged_retention_seconds": STAGED_UPLOAD_MAX_AGE_SECONDS,
+            "pending_retention_seconds": PENDING_UPLOAD_MAX_AGE_SECONDS,
         },
         "model_provider_presets": MODEL_PROVIDER_PRESETS,
         "assistant_capabilities": ASSISTANT_CAPABILITIES,
@@ -3820,7 +3850,7 @@ async def api_preflight_local(file: UploadFile = File(...)) -> dict:
         integrity = validate_local_upload_file(staged_path)
     except UploadBudgetExceeded as exc:
         staged_path.unlink(missing_ok=True)
-        raise local_upload_error(exc.code, exc.message, status_code=exc.status) from exc
+        raise local_upload_budget_error(exc) from exc
     except HTTPException:
         staged_path.unlink(missing_ok=True)
         raise
@@ -3874,7 +3904,7 @@ async def create_from_local(
             integrity = validate_local_upload_file(pending_path)
         except UploadBudgetExceeded as exc:
             pending_path.unlink(missing_ok=True)
-            raise local_upload_error(exc.code, exc.message, status_code=exc.status) from exc
+            raise local_upload_budget_error(exc) from exc
         except HTTPException:
             pending_path.unlink(missing_ok=True)
             raise
@@ -3882,6 +3912,15 @@ async def create_from_local(
             pending_path.unlink(missing_ok=True)
             raise local_upload_error("local_upload_failed", f"保存本地视频失败：{exc}", status_code=500) from exc
 
+    duplicate = _existing_local_task_for_fingerprint(integrity.sha256)
+    if duplicate is not None:
+        pending_path.unlink(missing_ok=True)
+        return {
+            "task_id": duplicate.id,
+            "task": task_payload(duplicate),
+            "deduplicated": True,
+            "source_media_reused": True,
+        }
     effective_title = title or Path(safe_name).stem
     task = create_task(source_type="local", title=effective_title, options=parsed_options, mode="local")
     upload_path = UPLOAD_DIR / f"{task.id}_{safe_name}"
@@ -4148,7 +4187,7 @@ def api_list_tasks() -> dict:
 
 @app.get("/api/storage")
 def api_storage_summary() -> dict:
-    return storage_summary()
+    return {**storage_summary(), "upload_policy": upload_policy_snapshot()}
 
 
 def api_knowledge_evidence(evidence: SourceEvidence) -> dict:

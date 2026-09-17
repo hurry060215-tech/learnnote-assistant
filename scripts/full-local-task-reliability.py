@@ -43,8 +43,28 @@ def main() -> int:
 
     long_video = load_long_video_helpers()
     from app.models import TaskOptions  # noqa: E402
-    from app.processor import process_local_video_task  # noqa: E402
+    import app.processor as processor  # noqa: E402
     from app.storage import create_task, get_task, task_dir  # noqa: E402
+
+    def offline_summary(title, transcript, grids, options, page_url="", page_context="", **_kwargs):
+        points = [segment.text.strip() for segment in transcript.segments if segment.text.strip()][:6]
+        body = "\n".join([
+            f"# {title}",
+            "",
+            "## 本地完整任务验收摘要",
+            "",
+            "本次使用本地合成媒体和带时间字幕，验证媒体、转写、抽帧、视觉索引、草稿和最终笔记可以连续完成。",
+            "",
+            "## 字幕证据要点",
+            "",
+            *[f"- {point}" for point in points],
+        ])
+        return body, "offline-fixture", "", [{"stage": "summary", "code": "offline_fixture"}]
+
+    # The reliability gate must exercise the complete pipeline without
+    # contacting a provider. A deterministic summary fixture keeps this
+    # contract distinct from the user-facing missing-model failure path.
+    processor.summarize_with_diagnostics = offline_summary
 
     media_path = output_dir / "media" / f"synthetic-{args.duration_seconds}s.mp4"
     if not media_path.is_file():
@@ -74,15 +94,18 @@ def main() -> int:
     )
     task = create_task(source_type="local", title="Full local reliability", options=options, mode="local")
     started = time.monotonic()
-    process_local_video_task(task.id, media_path, task.title, options, subtitle_path=subtitle_path, subtitle_source="synthetic-fixture")
+    processor.process_local_video_task(task.id, media_path, task.title, options, subtitle_path=subtitle_path, subtitle_source="synthetic-fixture")
     final = get_task(task.id)
     resource_path = task_dir(task.id) / "resource_usage.json"
     report = {
-        "status": "pass" if final.status == "success" and bool(final.note_path) and resource_path.is_file() else "fail",
+        "status": "pass" if final.status == "success" and final.summary_source == "offline-fixture" and bool(final.note_path) and resource_path.is_file() else "fail",
         "task_id": task.id,
         "duration_seconds": args.duration_seconds,
         "final_status": final.status,
         "final_phase": final.phase,
+        "failed_phase": final.failed_phase,
+        "checkpoint": final.checkpoint,
+        "summary_source": final.summary_source,
         "note_path": final.note_path,
         "transcript_path": final.transcript_path,
         "subtitle_path": str(subtitle_path),
