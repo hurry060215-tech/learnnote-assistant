@@ -6,6 +6,7 @@ import { timelineHtml, taskExplanation } from "/web/desk-progress.js";
 import { installInteractions } from "/web/desk-interactions.js";
 import { installLayout } from "/web/desk-layout.js";
 import { installProfile } from "/web/desk-profile.js";
+import { createTaskEventHub } from "/web/desk-events.js";
 import { sourceVideoEmbed } from "/web/source-video.js";
 import { installSettings } from "/web/desk-settings.js";
 import { installProductWorkspace } from "/web/desk-product.js?v=0.2.13";
@@ -468,45 +469,21 @@ function renderNote() {
   window.dispatchEvent(new Event("learnnote:document"));
 }
 const taskEvents = new Map();
-const taskEventStreams = new Map();
-const taskEventCursors = new Map();
+const taskEventHub = createTaskEventHub({
+  connect: url => new EventSource(url),
+  onUpdate: () => refresh(),
+  onInvalidate: taskId => taskEvents.delete(taskId),
+});
 function syncTaskEventStreams(items = state.items) {
-  if (typeof EventSource !== "function" || document.hidden) return;
-  const active = new Set(items.filter((item) => item.kind === "task" && ["queued", "running", "cancelling"].includes(item.status)).slice(0, 6).map((item) => item.id));
-  for (const [taskId, source] of taskEventStreams) {
-    if (!active.has(taskId)) {
-      source.close();
-      taskEventStreams.delete(taskId);
-      taskEventCursors.delete(taskId);
-    }
-  }
-  for (const taskId of active) {
-    if (taskEventStreams.has(taskId)) continue;
-    const cursor = Math.max(0, Number(taskEventCursors.get(taskId) || 0));
-    const source = new EventSource("/api/tasks/" + encodeURIComponent(taskId) + "/events/stream?after=" + cursor);
-    const receive = (event) => {
-      const next = Number(event.lastEventId || 0);
-      if (next > Number(taskEventCursors.get(taskId) || 0)) taskEventCursors.set(taskId, next);
-      taskEvents.delete(taskId);
-      refresh().catch(() => {});
-    };
-    ["task_created", "task_updated", "task_terminal", "task_missing"].forEach((name) => source.addEventListener(name, receive));
-    source.onerror = () => {
-      source.close();
-      taskEventStreams.delete(taskId);
-    };
-    taskEventStreams.set(taskId, source);
-  }
+  if (typeof EventSource !== "function") return;
+  taskEventHub.sync(items, document.hidden);
 }
 window.addEventListener("visibilitychange", () => {
-  if (document.hidden) {
-    for (const source of taskEventStreams.values()) source.close();
-    taskEventStreams.clear();
-  } else syncTaskEventStreams();
+  if (document.hidden) taskEventHub.disconnect();
+  else syncTaskEventStreams();
 });
 window.addEventListener("pagehide", () => {
-  for (const source of taskEventStreams.values()) source.close();
-  taskEventStreams.clear();
+  taskEventHub.disconnect();
 });
 async function loadTaskEvents(task) {
   const cached = taskEvents.get(task.id);
