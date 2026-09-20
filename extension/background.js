@@ -2161,6 +2161,7 @@ async function addBilibiliCaptions(tab, page) {
   const url = new URL(tab.url);
   const key = `${url.origin}${url.pathname.replace(/\/$/, "")}?p=${url.searchParams.get("p") || "1"}`;
   const requestKey = `${tab.id}:${key}`;
+  const epoch = captureEpoch(tab.id);
   let cached = biliSubtitleCache.get(tab.id);
   const cacheHit = Boolean(cached && cached.url === key && Date.now()-cached.at <= (cached.result.status === "ready" ? 300000 : 3000));
   if (!cached || cached.url !== key || Date.now()-cached.at > (cached.result.status === "ready" ? 300000 : 3000)) {
@@ -2169,10 +2170,13 @@ async function addBilibiliCaptions(tab, page) {
         const started = Date.now();
         const pending = chrome.scripting.executeScript({target:{tabId:tab.id,frameIds:[0]},world:"MAIN",func:readBilibiliCaptions,args:[key]})
           .then(response => ({url:key,at:Date.now(),elapsed_ms:Date.now()-started,result:response[0]?.result || {status:"unavailable",cues:[]}}))
-          .finally(() => biliSubtitleRequests.delete(requestKey));
+          .finally(() => {
+            if (biliSubtitleRequests.get(requestKey) === pending) biliSubtitleRequests.delete(requestKey);
+          });
         biliSubtitleRequests.set(requestKey,pending);
       }
       cached = await biliSubtitleRequests.get(requestKey);
+      if (captureEpoch(tab.id) !== epoch || !captureActive(tab.id)) return page;
       biliSubtitleCache.set(tab.id,cached);
       if (biliSubtitleCache.size > 16) biliSubtitleCache.delete(biliSubtitleCache.keys().next().value);
     } catch {return {...page,subtitle_probe:{status:"unavailable"}};}
@@ -2526,6 +2530,10 @@ async function revokeSitePermissionCaches(origin = "") {
     resourceByTab.delete(tab.id);
     pageStateByTab.delete(tab.id);
     activeCaptureUntilByTab.delete(tab.id);
+    biliSubtitleCache.delete(tab.id);
+    for (const key of biliSubtitleRequests.keys()) {
+      if (key.startsWith(`${tab.id}:`)) biliSubtitleRequests.delete(key);
+    }
     clearCaptureLog(tab.id);
     clearedTabs += 1;
   }

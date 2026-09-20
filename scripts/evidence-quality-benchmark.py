@@ -70,7 +70,7 @@ def run_benchmark() -> dict[str, object]:
     for case in CASES:
         issues = note_grounding_issues(case["note"], transcript, grids)
         required = tuple(case["required"])
-        passed = (not required and not issues) or all(any(issue.startswith(prefix) for issue in issues) for prefix in required)
+        passed = (not issues) if not required else all(any(issue.startswith(prefix) for issue in issues) for prefix in required)
         results.append({"id": case["id"], "passed": passed, "issues": issues})
     passed_count = sum(bool(item["passed"]) for item in results)
     expected_positive = sum(bool(case["required"]) for case in CASES)
@@ -85,6 +85,8 @@ def run_benchmark() -> dict[str, object]:
             "expected_issue_cases": expected_positive,
             "predicted_issue_cases": predicted_positive,
             "true_positive_cases": true_positive,
+            "false_positive_cases": predicted_positive - true_positive,
+            "false_negative_cases": expected_positive - true_positive,
             "precision": true_positive / predicted_positive if predicted_positive else 1.0,
             "recall": true_positive / expected_positive if expected_positive else 1.0,
         },
