@@ -93,7 +93,7 @@ def normalize_note_markdown(title: str, markdown: str, *, generate_questions: bo
                 level, label = len(heading.group(1)), _plain_heading(heading.group(2))
                 if skipped_level is not None and level <= skipped_level:
                     skipped_level = None
-                if label in question_headings and not (level == 1 and label == _plain_heading(title)):
+                if skipped_level is None and label in question_headings and not (level == 1 and label == _plain_heading(title)):
                     skipped_level = level
                     removed_question_sections += 1
             if skipped_level is None:
