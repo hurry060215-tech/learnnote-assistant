@@ -170,6 +170,15 @@ def transcribe_audio(
         )
 
     try:
+        from .asr_chunks import wav_duration, transcribe_windows
+        if wav_duration(audio_path) > 600:
+            resolved = resolve_whisper_model(model_size)
+            model_file = Path(resolved) / 'model.bin'
+            stamp = f'{model_file.stat().st_size}:{model_file.stat().st_mtime_ns}' if model_file.is_file() else ''
+            identity = f'{resolved}|{stamp}|{DEFAULT_WHISPER_DEVICE}|{DEFAULT_WHISPER_COMPUTE_TYPE}'
+            return transcribe_windows(audio_path,
+                lambda: WhisperModel(resolved, device=DEFAULT_WHISPER_DEVICE, compute_type=DEFAULT_WHISPER_COMPUTE_TYPE),
+                identity, progress_callback)
         model = WhisperModel(resolve_whisper_model(model_size), device=DEFAULT_WHISPER_DEVICE, compute_type=DEFAULT_WHISPER_COMPUTE_TYPE)
         if progress_callback:
             progress_callback(0, "model_ready")
