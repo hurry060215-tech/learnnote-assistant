@@ -222,6 +222,8 @@ def build_structured_export(
     title = str(getattr(task, "title", "LearnNote 学习笔记")) or "LearnNote 学习笔记"
     parts: list[str] = []
     if settings["include_note"]:
+        if "llm" in str(getattr(task, "summary_source", "")).lower():
+            parts.append("**来源核对提示**：本笔记包含 AI 生成内容，尚未逐条人工核对。请结合字幕与原视频检查数字、名称和推断。")
         value = str(note or "")
         if not settings["include_images"]:
             value = re.sub(r"(?m)^!\[[^\]]*\]\([^\n]+\)\s*$", "", value)

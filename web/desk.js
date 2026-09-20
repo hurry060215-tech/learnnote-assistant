@@ -412,12 +412,16 @@ function renderNote() {
       ? ""
       : `<h1>${esc(state.selected.title)}</h1>`;
   $("document").innerHTML =
+    (state.selected.kind === "task" && /llm/i.test(state.selected.summary_source || "")
+      ? '<p class="muted" role="status">AI 草稿：生成完成不代表逐条事实已验证。请结合字幕与原视频核对数字、名称和推断。<button id="reviewNoteSources" type="button">查看字幕与原视频</button></p>'
+      : "") +
     heading +
     (state.text.trim()
       ? excerptOnly
         ? `<p class="muted">这里暂时保留的是字幕摘录。上方可以重新生成总结，原始字幕也可随时核对。</p><details class="transcript-draft"><summary>查看已保留的字幕摘录</summary>${LearnNoteMarkdown.markdownToHtml(state.text.replace(/^# .+\n/, ""))}</details>`
         : LearnNoteMarkdown.markdownToHtml(state.text)
       : '<p class="muted">笔记准备好后会显示在这里，你可以先查看处理进度。</p>');
+  $("reviewNoteSources")?.addEventListener("click", () => openSource().catch(failure));
   if (state.selected.kind === "task")
     for (const code of $("document").querySelectorAll("code")) {
       if (code.closest("pre")) continue;
