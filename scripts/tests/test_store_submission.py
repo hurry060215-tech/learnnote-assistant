@@ -24,6 +24,35 @@ def load_module():
 
 
 class StoreSubmissionTests(unittest.TestCase):
+    def test_chrome_waits_for_upload_success_before_staged_submission(self):
+        module = load_module()
+        values = {'access_token':'fixture', 'publisher_id':'publisher', 'item_id':'item'}
+        pending = mock.Mock(ok=True, status_code=200, headers={})
+        pending.json.return_value = {'uploadState':'IN_PROGRESS'}
+        ready = mock.Mock(ok=True)
+        ready.json.return_value = {'lastAsyncUploadState':'SUCCEEDED'}
+        published = mock.Mock(ok=True, status_code=200, headers={})
+        with tempfile.TemporaryDirectory() as directory:
+            package = Path(directory) / 'extension.zip'
+            package.write_bytes(b'fixture')
+            with mock.patch.object(module.requests, 'post', side_effect=[pending, published]) as post, mock.patch.object(module.requests, 'get', return_value=ready) as get, mock.patch.object(module.time, 'sleep'):
+                result = module.submit('chrome', package, values, publish=True, edge_notes='')
+            self.assertEqual(result['status'], 'submitted')
+            get.assert_called_once()
+            self.assertEqual(json.loads(post.call_args.kwargs['data'])['publishType'], 'STAGED_PUBLISH')
+
+    def test_http_success_with_failed_upload_never_submits(self):
+        module = load_module()
+        response = mock.Mock(ok=True, status_code=200, headers={})
+        response.json.return_value = {'uploadState':'FAILED'}
+        with tempfile.TemporaryDirectory() as directory:
+            package = Path(directory) / 'extension.zip'
+            package.write_bytes(b'fixture')
+            with mock.patch.object(module.requests, 'post', return_value=response) as post:
+                result = module.submit('chrome', package, {'access_token':'fixture','publisher_id':'p','item_id':'i'}, publish=True, edge_notes='')
+            self.assertEqual(result['status'], 'failed')
+            self.assertEqual(post.call_count, 1)
+
     def test_preflight_never_calls_network_when_credentials_are_missing(self) -> None:
         module = load_module()
         with tempfile.TemporaryDirectory() as temporary:

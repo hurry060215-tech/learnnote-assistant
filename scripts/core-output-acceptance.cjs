@@ -30,7 +30,7 @@ const fs=require('node:fs'), path=require('node:path'), os=require('node:os'), a
     const ext=await browser.newPage({viewport:{width:390,height:1000}});
     ext.setDefaultTimeout(8000);
     ext.on('pageerror',e=>errors.push(e.message));
-    await ext.route('**/__extension/*',route=>{
+    await ext.route('**/__extension/**',route=>{
       const file=path.basename(new URL(route.request().url()).pathname);
       const icon=/^icon(?:16|32|48|128|256|512)\.png$/.test(file);
       assert(icon || ['sidepanel.html','sidepanel.css','sidepanel.js','i18n.js'].includes(file));
@@ -58,6 +58,7 @@ const fs=require('node:fs'), path=require('node:path'), os=require('node:os'), a
     await cue.waitFor();assert.equal(await cue.count(),1);await cue.click();
     assert.equal((await ext.evaluate(()=>window.testSeeks))[0].seconds,200);
     assert.match((await ext.evaluate(()=>window.testSeeks))[0].expectedUrl,/av117233128837493/);
+    assert(await ext.locator('.brand-mark').evaluate(image => image.complete && image.naturalWidth > 0));
     await ext.screenshot({path:path.join(out,'extension-preview.png'),fullPage:true});
     assert.deepEqual(errors,[]);console.log(JSON.stringify({passed:true,checks:['profile stats and mobile layout','no automatic model downloads','explicit model prepare','subtitle paragraphs and search','source-bound timestamp seek','no page errors'],out},null,2));
   } finally {await browser.close();}
