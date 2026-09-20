@@ -1,4 +1,4 @@
-"""Bounded single-worker task execution with a local durable intent journal.
+"""Independent bounded heavy/light lanes with a local durable intent journal.
 
 Credentials and browser request bodies stay in memory. After a restart, jobs
 requiring that context are offered for explicit resume, never silently retried
@@ -17,7 +17,12 @@ from typing import Callable
 from .worker_lease import worker_lease
 
 MAX_PENDING_TASKS = 24
-LIGHT_TASK_KINDS = {"light", "summary"}
+LIGHT_TASK_KINDS = {"light", "summary", "local_light", "page_light", "page_download"}
+LANE_PENDING_LIMIT = 12
+
+
+def task_lane(kind: str) -> str:
+    return "light" if kind in LIGHT_TASK_KINDS else "heavy"
 
 
 class QueueFull(ValueError):
@@ -31,9 +36,9 @@ class LocalTaskQueue:
         self.path = self.root / "task-queue.sqlite3"
         self.condition = threading.Condition(threading.RLock())
         self.jobs: dict[str, tuple[Callable, Future]] = {}
-        self.worker: threading.Thread | None = None
+        self.observers: dict[str, Future] = {}
+        self.workers: dict[str, threading.Thread] = {}
         self.stopping = False
-        self.last_kind = ""
         with closing(self.connect()) as db:
             db.execute("CREATE TABLE IF NOT EXISTS jobs (sequence INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT UNIQUE NOT NULL, kind TEXT NOT NULL, requires_context INTEGER NOT NULL, state TEXT NOT NULL, updated_at REAL NOT NULL)")
             db.commit()
@@ -52,18 +57,34 @@ class LocalTaskQueue:
                 raise RuntimeError("Task queue is stopping")
             if task_id in self.jobs:
                 return self.jobs[task_id][1]
+            if task_id in self.observers:
+                return self.observers[task_id]
             with closing(self.connect()) as db:
+                db.execute("BEGIN IMMEDIATE")
+                existing = db.execute("SELECT state FROM jobs WHERE task_id=?", (task_id,)).fetchone()
+                if existing and existing[0] in {"queued", "running"}:
+                    # Another process owns this intent. Observe it, never replace it.
+                    future = Future()
+                    self.observers[task_id] = future
+                    threading.Thread(target=self._observe, args=(task_id, future), daemon=True).start()
+                    return future
                 count = db.execute("SELECT COUNT(*) FROM jobs WHERE state IN ('queued','running')").fetchone()[0]
                 if count >= MAX_PENDING_TASKS:
                     raise QueueFull("任务队列已满，请等待任务完成后再提交。")
+                kinds = db.execute("SELECT kind FROM jobs WHERE state IN ('queued','running')").fetchall()
+                lane = task_lane(kind)
+                if sum(task_lane(row[0]) == lane for row in kinds) >= LANE_PENDING_LIMIT:
+                    raise QueueFull("此类任务的队列已满，其他类型任务仍可提交。")
                 db.execute("INSERT INTO jobs(task_id,kind,requires_context,state,updated_at) VALUES (?,?,?,'queued',?) ON CONFLICT(task_id) DO UPDATE SET kind=excluded.kind, requires_context=excluded.requires_context, state='queued', updated_at=excluded.updated_at", (task_id, kind, int(requires_context), time.time()))
                 db.execute("DELETE FROM jobs WHERE state IN ('done','failed','cancelled') AND sequence NOT IN (SELECT sequence FROM jobs ORDER BY sequence DESC LIMIT 1000)")
                 db.commit()
             future = Future()
             self.jobs[task_id] = (callback, future)
-            if self.worker is None or not self.worker.is_alive():
-                self.worker = threading.Thread(target=self.run, name="learnnote-task-queue", daemon=True)
-                self.worker.start()
+            worker = self.workers.get(lane)
+            if worker is None or not worker.is_alive():
+                worker = threading.Thread(target=self.run, args=(lane,), name=f"learnnote-task-queue-{lane}", daemon=True)
+                self.workers[lane] = worker
+                worker.start()
             self.condition.notify_all()
             return future
 
@@ -72,16 +93,36 @@ class LocalTaskQueue:
             db.execute("UPDATE jobs SET state=?,updated_at=? WHERE task_id=?", (state, time.time(), task_id))
             db.commit()
 
-    def run(self):
+    def _observe(self, task_id, future):
+        # Cancelling an observer must not cancel another process's task.
+        try:
+            if not future.set_running_or_notify_cancel():
+                return
+            while not self.stopping:
+                row = self._job_row(task_id)
+                if not row or row["state"] in {"done", "cancelled"}:
+                    future.set_result(None)
+                    return
+                if row["state"] in {"failed", "waiting_context"}:
+                    raise RuntimeError("Existing task requires recovery")
+                time.sleep(.05)
+            raise RuntimeError("Task queue is stopping")
+        except Exception as exc:
+            if not future.done():
+                future.set_exception(exc)
+        finally:
+            with self.condition:
+                self.observers.pop(task_id, None)
+
+    def run(self, lane):
         while True:
             with self.condition:
-                if not self.jobs or self.stopping:
-                    self.worker = None
+                eligible = [key for key in self.jobs if task_lane((self._job_row(key) or {}).get("kind", "")) == lane]
+                if not eligible or self.stopping:
+                    self.workers.pop(lane, None)
                     return
-                task_id = self._next_task_id()
+                task_id = eligible[0]
                 callback, future = self.jobs[task_id]
-                row = self._job_row(task_id)
-                self.last_kind = str(row["kind"] if row else "")
                 if not future.set_running_or_notify_cancel():
                     self.jobs.pop(task_id, None)
                     self.set_state(task_id, "cancelled")
@@ -93,7 +134,7 @@ class LocalTaskQueue:
                     future.set_exception(exc)
                     continue
             try:
-                with worker_lease(self.root):
+                with worker_lease(self.root, lane=lane):
                     callback()
                 self.set_state(task_id, "done")
             except Exception as exc:
@@ -118,25 +159,13 @@ class LocalTaskQueue:
             row = db.execute("SELECT * FROM jobs WHERE task_id=?", (task_id,)).fetchone()
             return dict(row) if row else None
 
-    def _next_task_id(self) -> str:
-        """Alternate light and heavy work while preserving FIFO within a kind."""
-
-        task_ids = list(self.jobs)
-        if not self.last_kind:
-            return task_ids[0]
-        rows = {task_id: self._job_row(task_id) for task_id in task_ids}
-        for task_id in task_ids:
-            kind = str((rows.get(task_id) or {}).get("kind") or "")
-            if (kind in LIGHT_TASK_KINDS) != (self.last_kind in LIGHT_TASK_KINDS):
-                return task_id
-        return task_ids[0]
-
     def stop(self, timeout: float = 10):
         with self.condition:
             self.stopping = True
-            worker = self.worker
-        if worker:
-            worker.join(timeout)
+            workers = list(self.workers.values())
+        deadline = time.monotonic() + timeout
+        for worker in workers:
+            worker.join(max(0, deadline - time.monotonic()))
 
     def cancel_pending(self, task_id: str) -> bool:
         with self.condition:
@@ -185,13 +214,15 @@ def queue_status(root: Path, task_id: str) -> dict[str, object]:
             "running_count": sum(row["state"] == "running" for row in active),
             "kind": next((row["kind"] for row in entries if row["task_id"] == task_id), ""),
         }
-    position = (1 + sum(row["state"] == "queued" for row in active if row["sequence"] < current["sequence"])) if current["state"] == "queued" else 0
+    position = (1 + sum(row["state"] == "queued" and task_lane(row["kind"]) == task_lane(current["kind"]) for row in active if row["sequence"] < current["sequence"])) if current["state"] == "queued" else 0
     return {
         "state": current["state"],
         "position": position,
         "queued_count": sum(row["state"] == "queued" for row in active),
         "running_count": sum(row["state"] == "running" for row in active),
         "kind": current["kind"],
+        "lane": task_lane(current["kind"]),
+        "lane_pending_limit": LANE_PENDING_LIMIT,
     }
 
 
@@ -206,11 +237,14 @@ def schedule_processing(background_tasks, function, task_id: str, *args, **kwarg
     explicit_kind = kwargs.pop("_queue_kind", "")
     kind = explicit_kind or ("page" if isinstance(source, CurrentPageTaskRequest) else "local")
     options = source.options if kind == "page" else next((value for value in args if isinstance(value, TaskOptions)), None)
-    if not explicit_kind and not isinstance(source, CurrentPageTaskRequest) and options and options.content_mode == "subtitles":
-        kind = "light"
     needs_context = bool(options and options.llm_api_key)
     if kind == "page":
         needs_context = needs_context or bool(source.cookies or source.resources or source.page_text)
+    if not explicit_kind:
+        if isinstance(source, CurrentPageTaskRequest) and source.mode == "download_only":
+            kind = "page_download"
+        elif options and options.content_mode == "subtitles":
+            kind = "page_light" if isinstance(source, CurrentPageTaskRequest) else "local_light"
 
     def work():
         try:
@@ -252,7 +286,10 @@ def recover_processing(root: Path) -> dict[str, int]:
     with worker_lease(root, blocking=False) as acquired:
         if not acquired:
             return {"recovered": 0, "waiting_for_context": 0, "another_worker_active": 1}
-        return _recover_processing(root)
+        with worker_lease(root, blocking=False, lane="light") as light_acquired:
+            if not light_acquired:
+                return {"recovered": 0, "waiting_for_context": 0, "another_worker_active": 1}
+            return _recover_processing(root)
 
 
 def _recover_processing(root: Path) -> dict[str, int]:
@@ -287,7 +324,7 @@ def _recover_processing(root: Path) -> dict[str, int]:
         if row["kind"] == "summary":
             from .processor import process_saved_transcript_task
             callback = lambda task=task: process_saved_transcript_task(task.id, task.options)
-        elif row["kind"] in {"local", "range"}:
+        elif row["kind"] in {"local", "range", "local_light"} or (row["kind"] == "light" and task.source_type == "local"):
             path = Path(task.source_media_path or task.media_path or "")
             if not path.is_file() or not path.resolve().is_relative_to(Path(root).resolve()):
                 queue.set_state(task.id, "waiting_context")
