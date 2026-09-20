@@ -15,6 +15,17 @@ from app.note_document import normalize_note_markdown
 
 
 class DocumentExportTests(unittest.TestCase):
+    def test_generated_notes_retain_review_notice_in_word_pdf_and_shared_structure(self):
+        task = self.task.model_copy(update={'summary_source':'text-llm'})
+        self.assertIn('来源核对提示', build_structured_export(task,self.note)['markdown'])
+        docx = build_docx_export(task,self.note)
+        with ZipFile(BytesIO(docx.content)) as package:
+            xml = package.read('word/document.xml').decode('utf-8')
+            self.assertIn('来源核对提示', xml)
+            self.assertEqual(xml.count(task.title),1)
+        pdf = build_pdf_export(task,self.note)
+        self.assertIn('来源核对提示', ''.join(page.extract_text() for page in PdfReader(BytesIO(pdf.content)).pages))
+
     def test_incomplete_table_separator_does_not_break_export(self) -> None:
         note = self.note + "\n\n| --- | --- |\n"
         self.assertTrue(build_docx_export(self.task, note).content.startswith(b"PK"))

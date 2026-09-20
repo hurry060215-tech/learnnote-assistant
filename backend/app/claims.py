@@ -37,7 +37,10 @@ def _ranges(text: str) -> list[tuple[float, float]]:
 
 
 def _tokens(text: str) -> set[str]:
-    return {value.casefold() for value in _TOKEN_RE.findall(text) if value not in {"本节", "内容", "视频", "课程"}}
+    words = {value.casefold() for value in re.findall(r'[A-Za-z0-9_]{2,}', text)}
+    for span in re.findall(r'[\u4e00-\u9fff]+', text):
+        words.update(span[index:index + 2] for index in range(len(span) - 1))
+    return words - {"本节", "内容", "视频", "课程", "这个", "我们", "他们", "一个", "可以", "然后", "the", "and", "that", "this", "with"}
 
 
 def _overlap(left_start: float, left_end: float, right_start: float, right_end: float) -> bool:
@@ -120,9 +123,11 @@ def build_claim_evidence_map(
         candidates = []
         for item in evidence:
             range_match = any(_overlap(start, end, item["start"], item["end"]) for start, end in ranges)
-            lexical_match = len(words & _tokens(item["text"])) >= (2 if len(words) >= 4 else 1)
+            shared = len(words & _tokens(item["text"]))
+            overlap = shared / max(1, len(words))
+            lexical_match = shared >= 2 and overlap >= .18
             if range_match or lexical_match and len(item["text"]) >= 8:
-                candidates.append(item)
+                candidates.append((2 * int(range_match) + overlap, item))
             if _supports_quotation(text, item["text"]):
                 matched.append(item)
         inference = bool(_INFERENCE_RE.search(text))
@@ -149,7 +154,7 @@ def build_claim_evidence_map(
             "text": text,
             "claim_type": claim_type,
             "evidence_ids": [item["evidence_id"] for item in matched[:8]],
-            "candidate_evidence_ids": [item["evidence_id"] for item in candidates[:8]],
+            "candidate_evidence_ids": [item["evidence_id"] for _, item in sorted(candidates, key=lambda pair: pair[0], reverse=True)[:8]],
             "source_ranges": ranges,
             "verification": verification,
             "review_required": claim_type in {"inference", "unsupported"},

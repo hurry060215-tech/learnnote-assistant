@@ -208,6 +208,12 @@ def _practice_markdown(practice: list[dict] | None) -> str:
     return "\n".join(lines).rstrip() if len(lines) > 2 else ""
 
 
+def evidence_review_notice(task) -> str:
+    if "llm" in str(getattr(task, "summary_source", "")).lower():
+        return "**来源核对提示**：本笔记包含 AI 生成内容，尚未逐条人工核对。请结合字幕与原视频检查数字、名称和推断。"
+    return ""
+
+
 def build_structured_export(
     task,
     note: str,
@@ -222,6 +228,9 @@ def build_structured_export(
     title = str(getattr(task, "title", "LearnNote 学习笔记")) or "LearnNote 学习笔记"
     parts: list[str] = []
     if settings["include_note"]:
+        notice = evidence_review_notice(task)
+        if notice:
+            parts.append(notice)
         value = str(note or "")
         if not settings["include_images"]:
             value = re.sub(r"(?m)^!\[[^\]]*\]\([^\n]+\)\s*$", "", value)
@@ -432,13 +441,11 @@ def _content_blocks(markdown: str, title: str) -> list[_Block]:
     blocks = _blocks(markdown)
     if not blocks:
         return blocks
-    first = blocks[0]
     def normalize(value: str) -> str:
         return re.sub(r"\s+", " ", _clean_inline_markdown(value)).strip().casefold()
 
-    if first.kind == "heading" and first.level == 1 and normalize(first.text) == normalize(title):
-        return blocks[1:]
-    return blocks
+    return [block for block in blocks if not (
+        block.kind == "heading" and block.level == 1 and normalize(block.text) == normalize(title))]
 
 
 def _add_docx_hyperlink(paragraph, text: str, url: str) -> None:

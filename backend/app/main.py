@@ -4479,12 +4479,21 @@ def api_task_audit(task_id: str) -> dict:
 
 
 @app.get("/api/tasks/{task_id}/claims")
-def api_task_claims(task_id: str) -> dict:
+def api_task_claims(task_id: str, rebuild: bool = False) -> dict:
     try:
-        get_task(task_id)
-        claim_map = safe_claim_projection(read_json(task_id, "claim_evidence_map.json", {}))
+        task = get_task(task_id)
+        if rebuild:
+            from .claims import build_claim_evidence_map
+            from .models import TranscriptResult
+            claim_map = build_claim_evidence_map(task_id, task.title, read_note(task_id),
+                TranscriptResult.model_validate(read_transcript(task_id)), read_visual_index(task_id).get("windows", []))
+        else:
+            claim_map = safe_claim_projection(read_json(task_id, "claim_evidence_map.json", {}))
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Task not found") from exc
+    if not isinstance(claim_map, dict) or not claim_map:
+        raise HTTPException(status_code=404, detail={"code": "claim_map_not_ready", "message": "这份任务尚未生成逐条来源映射。"})
+    return claim_map
 
 
 @app.get("/api/tasks/{task_id}/pipeline-status")
@@ -4494,9 +4503,6 @@ def api_task_pipeline_status(task_id: str) -> dict:
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail={"code": "task_not_found", "message": "任务不存在。"}) from exc
     return {"task_id": task.id, "status": task.status, "phase": task.phase, "progress": task.progress, "checkpoint": task.checkpoint, "artifacts": task_artifact_status(task), "privacy": {"local_only": True, "remote_calls": int(task.summary_diagnostics.get("llm_event_count") or 0) if isinstance(task.summary_diagnostics, dict) else 0}}
-    if not isinstance(claim_map, dict) or not claim_map:
-        raise HTTPException(status_code=404, detail={"code": "claim_map_not_ready", "message": "这份任务尚未生成逐条来源映射。"})
-    return claim_map
 
 
 @app.get("/api/tasks/{task_id}/transcript")
@@ -4581,6 +4587,10 @@ def api_export_markdown(task_id: str, include_annotations: bool = False) -> Plai
     if not note.strip():
         raise HTTPException(status_code=404, detail="Note not found")
     filename = markdown_filename(task.id, task.title)
+    from .document_exports import evidence_review_notice
+    notice = evidence_review_notice(task)
+    if notice:
+        note = notice + "\n\n" + note
     if include_annotations:
         from .personal_notes import annotation_markdown
         note += annotation_markdown("task", task_id)

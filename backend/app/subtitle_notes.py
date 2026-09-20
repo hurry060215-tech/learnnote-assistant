@@ -71,7 +71,7 @@ def finish_transcript_note(task_id: str, title: str, page_url: str, transcript: 
         if provenance not in note:
             first, sep, rest = note.lstrip().partition("\n")
             note = f"{first}\n\n{provenance}\n\n{rest.lstrip()}" if first.startswith("# ") and sep else f"{provenance}\n\n{note}"
-        normalized = normalize_note_markdown(title, note)
+        normalized = normalize_note_markdown(title, note, generate_questions=options.generate_questions)
         quality_path = write_json(task_id, "note_quality.json", normalized.report)
         if normalized.report.get("blocking"):
             (work_dir / "note.quarantine.md").write_text(note, encoding="utf-8")
