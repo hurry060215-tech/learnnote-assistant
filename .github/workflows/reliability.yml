@@ -20,7 +20,7 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements.test.txt
       - name: Install test dependencies
-        run: python -m pip install -r backend/requirements.test.txt
+        run: python -m pip install -r backend/requirements.windows-py312.lock.txt -r backend/requirements.test.txt
       - name: Verify reliability checkout freshness
         shell: pwsh
         run: |
@@ -43,7 +43,7 @@ jobs:
       - name: Synthetic 30/60/180-minute resource matrix
         shell: pwsh
         run: |
-          $durations = @(1800, 3600, 10800)
+          $durations = @(300, 1800, 3600, 10800)
           foreach ($duration in $durations) {
             $target = "build/reliability/long-video-matrix/$duration-seconds"
             $interval = [Math]::Max(30, [Math]::Floor($duration / 40))

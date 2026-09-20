@@ -77,7 +77,7 @@ def main() -> int:
             start = index * segment_length
             end = args.duration_seconds if index == 3 else min(args.duration_seconds, (index + 1) * segment_length)
             def stamp(seconds: int) -> str:
-                return f"00:{seconds // 60:02d}:{seconds % 60:02d},000"
+                return f"{seconds // 3600:02d}:{seconds // 60 % 60:02d}:{seconds % 60:02d},000"
             lines.extend([
                 str(index + 1),
                 f"{stamp(start)} --> {stamp(end)}",

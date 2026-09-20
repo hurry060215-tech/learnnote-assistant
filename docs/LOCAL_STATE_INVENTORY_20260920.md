@@ -28,7 +28,7 @@
 | `build/release-verify-0213-small/` | extension ZIP、resolved requirements、SBOM、build source、SHA256 | 保留，作为发布验收来源；不把历史资产改写为当前发布证据 |
 | `build/pr186-pip-resolution-20260920.json` | 1,056,105 bytes；兼容 lock 的 pip dry-run 解析报告 | 保留为本批依赖证据；SHA-256 `668D18F71AA8A41F29603F2F5136B2D07F59165CD3F8309D9CD4610DF1E3C118` |
 | `build/extension-verify-0213-20260920.zip` | 146,622 bytes；当前分支重新打包的 v0.2.13 扩展 | 保留为本批打包证据；17 files，SHA-256 `0F8DC7FD474AB10CBF33EA6CA8246AC12854689E21C2A79C2B06085FFF50CACF` |
-| `build/learnnote-local-refs-20260920-final.bundle` | 12,036,913 bytes；包含本批提交在内的本地 refs 可恢复 Git bundle | 保留为分支历史归档；SHA-256 `4FDFF58EAD5D3F7027AC01AB8019F0FAED2ADD7DC17B217C58FB38FA84B53108` |
+| `build/learnnote-local-refs-20260920-final.bundle` | 12,036,913 bytes；归档截至 66cf011（amend 前），不含后续 0eb6f8c 和之后提交 | 保留为旧分支历史归档；SHA-256 `4FDFF58EAD5D3F7027AC01AB8019F0FAED2ADD7DC17B217C58FB38FA84B53108` |
 | `build/reliability-ad-local/` | 本地可靠性报告、synthetic subtitle、media、task data | 保留，标注为旧提交/旧时长证据 |
 | `build/reliability-ad-local-3600/` | 3600 秒可靠性报告、media、task data | 保留；当前提交未重跑前不得称为当前 60 分钟通过 |
 | `build/scheduler-reliability-ad-local/` | scheduler 可靠性报告和独立 data | 保留；供 #130/#132 复核，不覆盖当前失败门禁 |

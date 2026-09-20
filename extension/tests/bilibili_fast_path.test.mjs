@@ -18,7 +18,7 @@ assert.equal(calls[1].credentials,'omit');
 
 let count=0,release;
 const pending=new Promise(resolve=>{release=resolve});
-const cacheContext={URL,Date,Map,readBilibiliCaptions(){},captureActive:()=>true,normalizeBrowserSubtitles:x=>x,
+const cacheContext={URL,Date,Map,readBilibiliCaptions(){},captureEpoch:()=>0,captureActive:()=>true,normalizeBrowserSubtitles:x=>x,
  chrome:{scripting:{executeScript:async()=>{count++;await pending;return [{result:{status:'ready',cues:[{start:0,end:80,text:'完整字幕'}],duration:80}}]}}}};
 vm.runInNewContext(source.slice(source.indexOf('const biliSubtitleCache'),source.indexOf('async function collectPageData(')),cacheContext);
 const first=cacheContext.addBilibiliCaptions({id:1,url},{});

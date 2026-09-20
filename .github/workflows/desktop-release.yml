@@ -74,6 +74,9 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force build/release | Out-Null
           python scripts/reliability-freshness.py --commit "$env:BUILD_COMMIT" --require-current-ref --output build/release/freshness.json
+          if ($LASTEXITCODE -ne 0) { throw "Release source freshness failed" }
+          python scripts/reliability-suite.py --output-dir build/release/reliability
+          if ($LASTEXITCODE -ne 0) { throw "Commit-bound reliability gate failed" }
           $env:PYTHONPATH = "backend"
           python -m unittest discover backend/tests
           if ($LASTEXITCODE -ne 0) { throw "Backend release gate failed" }
@@ -83,6 +86,16 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Desktop release gate failed" }
           Get-ChildItem extension/tests/*.test.mjs | ForEach-Object { node $_.FullName; if ($LASTEXITCODE -ne 0) { throw "Extension release gate failed" } }
           Get-ChildItem web/tests/*.test.mjs | ForEach-Object { node $_.FullName; if ($LASTEXITCODE -ne 0) { throw "Web release gate failed" } }
+      - name: Preserve reliability evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-reliability-${{ github.run_id }}
+          path: |
+            build/release/freshness.json
+            build/release/reliability/**/report.json
+            build/release/reliability/*.log
+          if-no-files-found: warn
       - name: Build portable desktop client
         shell: pwsh
         run: |
@@ -199,6 +212,8 @@ jobs:
             LearnNote-Build-Source.json
             LearnNote-Resolved-Requirements.txt
             build/release/freshness.json
+            build/release/reliability/**/report.json
+            build/release/reliability/*.log
       - name: Publish GitHub Release
         if: env.RELEASE_TAG != ''
         shell: pwsh
