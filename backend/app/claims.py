@@ -10,7 +10,7 @@ from .text_cleanup import canonicalize_unicode_text
 from .markdown_structure import structural_lines
 
 
-CLAIM_SCHEMA_VERSION = 3
+CLAIM_SCHEMA_VERSION = 4
 _TIMESTAMP = r"\d{1,3}:\d{2}(?::\d{2})?"
 _RANGE_RE = re.compile(rf"(?P<start>{_TIMESTAMP})\s*(?:-|–|—|~|～)\s*(?P<end>{_TIMESTAMP})")
 _POINT_RE = re.compile(rf"(?<![\d:])(?P<point>{_TIMESTAMP})(?![\d:])")
@@ -183,7 +183,7 @@ def build_claim_evidence_map(
 
 
 def safe_claim_projection(value: dict) -> dict:
-    """Old time-only matches remain navigable, but are never treated as verified."""
+    """Old time-only/substring matches stay navigable and require revalidation."""
     if not isinstance(value, dict) or not value or value.get("schema_version", 1) >= CLAIM_SCHEMA_VERSION:
         return value
     claims = [{**c, "candidate_evidence_ids": c.get("evidence_ids", []), "evidence_ids": [],

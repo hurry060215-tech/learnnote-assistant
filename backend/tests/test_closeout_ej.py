@@ -42,7 +42,7 @@ class CloseoutEvidenceTests(unittest.TestCase):
     def test_claims_expose_direct_located_and_review_boundaries(self):
         transcript = TranscriptResult(segments=[TranscriptSegment(start=0, end=10, text="梯度下降通过学习率控制更新步长。")], full_text="梯度下降通过学习率控制更新步长。")
         result = build_claim_evidence_map("ej", "证据", "# 证据\n\n[00:00-00:10] 梯度下降通过学习率控制更新步长。\n\n这一现象可能意味着模型一定收敛。", transcript)
-        self.assertEqual(result["schema_version"], 3)
+        self.assertEqual(result["schema_version"], 4)
         self.assertEqual(result["claims"][0]["verification"], "direct")
         self.assertEqual(result["claims"][1]["verification"], "inference")
         self.assertEqual(result["source_revision_kind"], "normalized_note_utf8_sha256")
