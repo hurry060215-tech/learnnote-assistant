@@ -43,3 +43,5 @@ Chrome 需要 `LEARNNOTE_CHROME_ACCESS_TOKEN`、
 `blocked_missing_credentials`，不会尝试上传，也不会打印 secret 值。
 
 2026-09-20 检查：仓库 secret 名称清单未配置上述 Chrome 凭据，也没有已核验的正式 listing URL。实际上传、审核和普通用户商店安装需先取得这些外部条件；现有开发者模式验收不计作商店安装成功。
+
+Chrome v2 上传按 [UploadState](https://developer.chrome.com/docs/webstore/api/reference/rest/v2/UploadState) 检查 SUCCEEDED；HTTP 200 不等于处理完成。异步上传通过 fetchStatus 有界等待，失败或未知状态不提交审核。审核提交使用 [STAGED_PUBLISH](https://developer.chrome.com/docs/webstore/api/reference/rest/v2/publishers.items/publish)，通过审核后仍等待单独正式发布，不自动公开。

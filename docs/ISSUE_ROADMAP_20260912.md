@@ -10,6 +10,8 @@
 
 本地状态与分支归档清单：[LOCAL_STATE_INVENTORY_20260920.md](LOCAL_STATE_INVENTORY_20260920.md)
 
+最新推进：[PROGRESS_20260920.md](PROGRESS_20260920.md)。需要用户完成的条件：[USER_ACTIONS_20260920.md](USER_ACTIONS_20260920.md)。商店范围仅 Google Chrome Web Store。
+
 这是 #52 的唯一当前状态入口。历史验收记录仍然保留，但只适用于其记录的提交、依赖和输入；历史报告不能直接证明当前提交通过。#172 已关闭，不再列为开放 issue；旧的 #166、#167、#168 依赖 PR 也不再作为当前开放清单，#186 以当前 GitHub PR 和本批重新解析结果为准。
 
 ## 状态定义

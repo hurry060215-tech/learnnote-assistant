@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import os
+import time
 from pathlib import Path
 
 import requests
@@ -12,6 +13,15 @@ import requests
 CHROME_UPLOAD = "https://chromewebstore.googleapis.com/upload/v2/publishers/{publisher}/items/{item}:upload"
 CHROME_PUBLISH = "https://chromewebstore.googleapis.com/v2/publishers/{publisher}/items/{item}:publish"
 EDGE_ROOT = "https://api.addons.microsoftedge.microsoft.com/v1.1"
+CHROME_STATUS = "https://chromewebstore.googleapis.com/v2/publishers/{publisher}/items/{item}:fetchStatus"
+
+
+def chrome_upload_state(response) -> str:
+    try:
+        payload = response.json()
+        return str(payload.get("uploadState") or payload.get("lastAsyncUploadState") or "UNKNOWN") if isinstance(payload, dict) else "UNKNOWN"
+    except ValueError:
+        return "UNKNOWN"
 
 
 def env_value(name: str) -> str:
@@ -75,8 +85,24 @@ def submit(provider: str, package: Path, values: dict[str, str], *, publish: boo
         result["status"] = "failed"
         result["error"] = "upload_failed"
         return result
+    if provider == "chrome":
+        state = chrome_upload_state(upload_response)
+        for _ in range(12):
+            if state not in {"IN_PROGRESS", "UPLOAD_IN_PROGRESS"}:
+                break
+            time.sleep(2)
+            response = requests.get(CHROME_STATUS.format(publisher=values['publisher_id'], item=values['item_id']),
+                                    headers=request_headers(provider, values), timeout=10)
+            if not response.ok:
+                state = "STATUS_REQUEST_FAILED"
+                break
+            state = chrome_upload_state(response)
+        result['upload_state'] = state
+        if state != "SUCCEEDED":
+            result.update(status="failed", error="upload_not_confirmed")
+            return result
     if publish:
-        body = edge_notes.encode("utf-8") if provider == "edge" else b"{}"
+        body = edge_notes.encode("utf-8") if provider == "edge" else b'{"publishType":"STAGED_PUBLISH","blockOnWarnings":true}'
         publish_response = requests.post(
             endpoint(provider, values, "publish"),
             headers={**request_headers(provider, values), "Content-Type": "text/plain" if provider == "edge" else "application/json"},
