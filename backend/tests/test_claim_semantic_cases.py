@@ -1,6 +1,6 @@
 """Distinct bilingual statements and material changes, not numbered templates."""
 import unittest
-from app.claims import build_claim_evidence_map
+from app.claims import build_claim_evidence_map, safe_claim_projection
 from app.models import TranscriptResult, TranscriptSegment
 
 # Each row defines an independent source, contradiction and honest inference.
@@ -29,6 +29,14 @@ CASES = [
 
 
 class SemanticClaimCorpus(unittest.TestCase):
+    def test_cached_substring_verifications_are_downgraded_without_losing_navigation(self):
+        old = {'schema_version':3, 'claims':[{'claim_type':'transcript','verification':'direct','evidence_ids':['old-source']}], 'quality':{'supported_count':1}}
+        safe = safe_claim_projection(old)
+        self.assertTrue(safe['requires_rebuild'])
+        self.assertEqual(safe['claims'][0]['evidence_ids'], [])
+        self.assertEqual(safe['claims'][0]['candidate_evidence_ids'], ['old-source'])
+        self.assertEqual(old['claims'][0]['evidence_ids'], ['old-source'])
+
     def test_code_block_is_not_projected_as_a_course_claim(self):
         transcript = TranscriptResult(full_text='An example source sentence.', segments=[])
         claims = build_claim_evidence_map('code', 'fixture', '```python\nprint("This string is not a claim.")\n```', transcript)['claims']
