@@ -26,6 +26,7 @@ def main() -> int:
     data_dir.mkdir(parents=True, exist_ok=True)
     os.environ["LEARNNOTE_DATA_DIR"] = str(data_dir)
     os.environ["LEARNNOTE_DEPLOYMENT_MODE"] = "desktop"
+    os.environ["LEARNNOTE_LLM_API_KEY"] = ""
     backend = ROOT / "backend"
     if str(backend) not in sys.path:
         sys.path.insert(0, str(backend))
@@ -113,24 +114,34 @@ def main() -> int:
         if record.status == "running" or record.phase not in {"queued", "cancelling"}:
             break
         time.sleep(0.05)
+    cancel_started = None
+    late_phases = []
     if worker.is_alive():
+        cancel_started = time.monotonic()
         request_task_cancel(task.id)
     while worker.is_alive() and time.monotonic() < deadline:
         record = get_task(task.id)
+        if cancel_started is not None and time.monotonic() - cancel_started > 2 and record.phase not in {"cancelling", "cancelled"}:
+            late_phases.append(record.phase)
         if record.phase and record.phase not in observed_phases:
             observed_phases.append(record.phase)
         time.sleep(0.05)
     worker.join(timeout=30)
     final = get_task(task.id)
     resource_path = task_dir(task.id) / "resource_usage.json"
+    latency = time.monotonic() - cancel_started if cancel_started is not None else None
     report = {
-        "status": "pass" if final.status == "cancelled" and resource_path.is_file() else "fail",
+        "status": "pass" if final.status == "cancelled" and resource_path.is_file() and latency is not None and latency <= 2 and not late_phases and not worker.is_alive() else "fail",
         "task_id": task.id,
         "duration_seconds": args.duration_seconds,
         "final_status": final.status,
         "final_phase": final.phase,
         "observed_phases": observed_phases,
-        "cancel_latency_seconds": round(max(0.0, time.monotonic() - started), 3),
+        "cancel_latency_seconds": round(latency, 3) if latency is not None else None,
+        "task_elapsed_seconds": round(time.monotonic() - started, 3),
+        "cancel_budget_seconds": 2,
+        "late_processing_phases": late_phases,
+        "worker_stopped": not worker.is_alive(),
         "resource_usage_path": str(resource_path),
         "data_dir": str(DATA_DIR),
         "remote_calls": 0,

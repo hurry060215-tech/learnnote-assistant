@@ -8,6 +8,7 @@ from pathlib import Path
 from starlette.responses import JSONResponse
 
 from .config import TEMP_DIR, UPLOAD_DIR
+from .upload_reservations import ByteReservation, reserved_bytes
 
 MAX_VIDEO_BYTES = 4 * 1024**3
 MIN_FREE_BYTES = 512 * 1024**2
@@ -31,12 +32,13 @@ class UploadReservation:
     def __init__(self) -> None:
         self.reserved = 0
         self.released = False
+        self.journal = ByteReservation(TEMP_DIR)
 
     def reserve(self, amount: int) -> None:
         global _active_upload_bytes
         amount = max(0, int(amount or 0))
         with _upload_budget_lock:
-            if _active_upload_bytes + amount > MAX_CONCURRENT_UPLOAD_BYTES:
+            if not self.journal.reserve(amount, MAX_CONCURRENT_UPLOAD_BYTES):
                 raise UploadBudgetExceeded(
                     "concurrent_upload_budget",
                     429,
@@ -50,6 +52,7 @@ class UploadReservation:
         if self.released:
             return
         with _upload_budget_lock:
+            self.journal.release()
             _active_upload_bytes = max(0, _active_upload_bytes - self.reserved)
         self.released = True
 
@@ -107,6 +110,7 @@ class UploadBudgetMiddleware:
         limit += MULTIPART_OVERHEAD_BYTES
         rejection = None
         total = 0
+        reservation = UploadReservation()
         async def bounded_receive():
             nonlocal total, rejection
             message = await receive()
@@ -116,6 +120,7 @@ class UploadBudgetMiddleware:
                     if total > limit:
                         raise UploadBudgetExceeded("upload_too_large", 413, "上传超过大小限制，请拆分文件。", 0, total)
                     check_upload_space(TEMP_DIR, len(message.get("body", b"")))
+                    reservation.reserve(len(message.get("body", b"")))
                 except UploadBudgetExceeded as exc:
                     exc.received_bytes = total
                     rejection = exc
@@ -141,6 +146,8 @@ class UploadBudgetMiddleware:
                 rejection = exc
             if rejection is None:
                 raise
+        finally:
+            reservation.release()
         if rejection:
             await JSONResponse({"detail": {
                 "code": rejection.code,
@@ -154,7 +161,7 @@ class UploadBudgetMiddleware:
 def upload_policy_snapshot() -> dict[str, int]:
     """Expose bounded upload state without retaining file contents."""
     with _upload_budget_lock:
-        active = int(_active_upload_bytes)
+        active = int(reserved_bytes(TEMP_DIR))
     try:
         free = int(shutil.disk_usage(TEMP_DIR).free)
     except OSError:

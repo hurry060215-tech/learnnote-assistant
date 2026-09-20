@@ -7,6 +7,8 @@ import math
 import re
 import subprocess
 import time
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont, ImageOps
@@ -23,10 +25,40 @@ class MediaProcessingError(RuntimeError):
 
 FRAME_CACHE_SCHEMA_VERSION = 1
 DEFAULT_FRAME_EXTRACT_BATCH_SIZE = 12
+_cancel_check = ContextVar("media_cancel_check", default=None)
+
+
+@contextmanager
+def media_cancellation(check):
+    """Bind cancellation to this task/thread only, including subprocess cleanup."""
+    token = _cancel_check.set(check)
+    try:
+        check()
+        yield
+    finally:
+        _cancel_check.reset(token)
 
 
 def _run(cmd: list[str], message: str) -> None:
-    result = subprocess.run(cmd, capture_output=True, **text_subprocess_kwargs())
+    check = _cancel_check.get()
+    if check is None:
+        result = subprocess.run(cmd, capture_output=True, **text_subprocess_kwargs())
+    else:
+        check()
+        with subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **text_subprocess_kwargs()) as process:
+            try:
+                while True:
+                    check()
+                    try:
+                        stdout, stderr = process.communicate(timeout=.1)
+                        break
+                    except subprocess.TimeoutExpired:
+                        continue
+            except BaseException:
+                process.kill()
+                process.communicate()
+                raise
+            result = subprocess.CompletedProcess(cmd, process.returncode, stdout, stderr)
     if result.returncode != 0:
         raise MediaProcessingError(f"{message}: {result.stderr[:500]}")
 

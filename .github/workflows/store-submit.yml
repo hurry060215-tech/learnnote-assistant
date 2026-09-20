@@ -7,7 +7,7 @@ on:
         description: Store provider
         required: true
         type: choice
-        options: [chrome, edge]
+        options: [chrome]
       apply:
         description: Upload the validated draft package (requires store secrets)
         required: true
@@ -42,9 +42,6 @@ jobs:
           LEARNNOTE_CHROME_ACCESS_TOKEN: ${{ secrets.LEARNNOTE_CHROME_ACCESS_TOKEN }}
           LEARNNOTE_CHROME_PUBLISHER_ID: ${{ secrets.LEARNNOTE_CHROME_PUBLISHER_ID }}
           LEARNNOTE_CHROME_ITEM_ID: ${{ secrets.LEARNNOTE_CHROME_ITEM_ID }}
-          LEARNNOTE_EDGE_API_KEY: ${{ secrets.LEARNNOTE_EDGE_API_KEY }}
-          LEARNNOTE_EDGE_CLIENT_ID: ${{ secrets.LEARNNOTE_EDGE_CLIENT_ID }}
-          LEARNNOTE_EDGE_PRODUCT_ID: ${{ secrets.LEARNNOTE_EDGE_PRODUCT_ID }}
         shell: pwsh
         run: |
           $apply = if ('${{ inputs.apply }}' -eq 'true') { '--apply' } else { '' }

@@ -6,7 +6,9 @@ from pathlib import Path
 
 
 @contextmanager
-def worker_lease(root: Path, blocking: bool = True):
+def worker_lease(root: Path, blocking: bool = True, *, lane: str = "heavy"):
+    if lane not in {"heavy", "light"}:
+        raise ValueError("Unknown worker lane")
     if os.name == "nt":
         import ctypes
         from ctypes import wintypes
@@ -18,6 +20,8 @@ def worker_lease(root: Path, blocking: bool = True):
         api.ReleaseMutex.argtypes = [wintypes.HANDLE]
         api.CloseHandle.argtypes = [wintypes.HANDLE]
         name = "Local\\LearnNoteWorker-" + hashlib.sha256(os.path.normcase(str(root.resolve())).encode()).hexdigest()
+        if lane != "heavy":
+            name += "-" + lane
         handle = api.CreateMutexW(None, False, name)
         if not handle:
             raise ctypes.WinError(ctypes.get_last_error())
@@ -34,7 +38,7 @@ def worker_lease(root: Path, blocking: bool = True):
             api.CloseHandle(handle)
     else:
         import fcntl
-        with (root / "worker.lock").open("a") as handle:
+        with (root / ("worker.lock" if lane == "heavy" else "worker-light.lock")).open("a") as handle:
             acquired = False
             try:
                 try:

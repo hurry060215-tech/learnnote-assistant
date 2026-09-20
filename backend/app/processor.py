@@ -12,6 +12,7 @@ from .asr_pipeline import asr_failure_detail, transcribe_with_task_progress as _
 from .config import LLM_BASE_URL, LLM_MODEL
 from .downloader import DownloadError, MediaDownloader, classify_resource, effective_resource_kind, infer_manifest_url_from_fragment
 from .media import build_frame_grids, extract_audio, extract_embedded_subtitle, extract_frames_adaptive, normalize_video, probe_media_integrity
+from .media import media_cancellation
 from .models import ActiveVideoInfo, BrowserSubtitleCue, CurrentPageTaskRequest, DownloadAttempt, EvidenceCoverage, EvidenceGate, ResourceCandidate, TaskOptions, TranscriptResult, TranscriptSegment, now_iso
 from .local_video_task import run_local_video_task
 from .page_text_pipeline import PageTextArtifacts, build_page_text_artifacts as _build_page_text_artifacts
@@ -941,7 +942,8 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
             update_task(task_id, download_attempts=downloader.attempts)
             update_task(task_id, phase="processing_video", progress=80, message="正在保存可导出的本地视频")
             normalized = work_dir / "media.mp4"
-            normalize_video(media_path, normalized)
+            with media_cancellation(lambda: _check_cancel(task_id)):
+                normalize_video(media_path, normalized)
             _check_cancel(task_id)
             integrity = probe_media_integrity(normalized)
             integrity_path = write_json(task_id, "media_integrity.json", integrity.model_dump(mode="json"))
@@ -1218,7 +1220,8 @@ def _process_video_file(
 
     normalized = work_dir / "media.mp4"
     remember_reusable_media(task_id, input_path)
-    normalize_video(input_path, normalized)
+    with media_cancellation(lambda: _check_cancel(task_id)):
+        normalize_video(input_path, normalized)
     _check_cancel(task_id)
     update_task(task_id, media_path=str(normalized))
     mark_checkpoint(task_id, "media_ready")

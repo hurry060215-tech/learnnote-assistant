@@ -6,7 +6,7 @@ LearnNote Current Video Assistant
 
 ## Short description
 
-Send the video currently playing in Chrome or Edge to the local LearnNote desktop client for transcription, visual slicing, and evidence-grounded study notes.
+Send your current Chrome video to the local LearnNote app for source-linked notes and review.
 
 ## Detailed description
 
@@ -59,3 +59,13 @@ translated or uploaded by the extension.
 6. The local client creates the task and performs the remaining processing.
 
 Authenticated-page testing requires a reviewer-owned account. LearnNote does not include test credentials or attempt to bypass site authorization.
+
+## 简体中文商店文案
+
+名称：LearnNote 当前视频学习助手
+
+短描述：把当前 Chrome 视频交给本机 LearnNote，整理可回查来源的笔记与复习资料。
+
+详细描述：在用户主动操作时读取当前页面的视频、字幕和媒体线索，并交给本机 LearnNote 客户端。可访问的视频由本机客户端下载，字幕、画面和笔记保存在本地。转写与模型生成的可用能力取决于用户安装的本地模型或主动配置的服务；外部模型调用遵循客户端配置。扩展不录制标签页，不绕过 DRM、付费墙或站点权限，不修改课程学习进度。
+
+本轮只准备 Google Chrome Web Store 上架。正式 listing URL 在审核完成后填写，不以仓库链接冒充已上架地址。截图使用合成课程，避免真实标题、Cookie、签名 URL 或个人资料。

@@ -124,12 +124,14 @@ class TaskQueueTests(unittest.TestCase):
             self.assertTrue(first_started.wait(2))
             light = queue.enqueue("light", "light", lambda: order.append("light"))
             heavy = queue.enqueue("heavy-2", "local", lambda: order.append("heavy-2"))
+            light.result(2)
+            self.assertEqual(order, ["light"], "light work must finish while heavy work is blocked")
             release.set()
             first_future.result(5)
             light.result(5)
             heavy.result(5)
             queue.stop()
-            self.assertEqual(order, ["heavy-1", "light", "heavy-2"])
+            self.assertEqual(order, ["light", "heavy-1", "heavy-2"])
 
     def test_queue_status_reports_durable_position_and_kind(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -141,11 +143,11 @@ class TaskQueueTests(unittest.TestCase):
             first = queue.enqueue("first", "local", hold)
             try:
                 self.assertTrue(started.wait(5))
-                second = queue.enqueue("second", "light", lambda: None)
+                second = queue.enqueue("second", "local", lambda: None)
                 third = queue.enqueue("third", "local", lambda: None)
                 from app.task_queue import queue_status
                 snapshot = queue_status(Path(directory), "second")
-                self.assertEqual(snapshot["kind"], "light")
+                self.assertEqual(snapshot["kind"], "local")
                 self.assertEqual(snapshot["position"], 1)
                 self.assertEqual(queue_status(Path(directory), "third")["position"], 2)
                 self.assertEqual(queue_status(Path(directory), "first")["position"], 0)
