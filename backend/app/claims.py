@@ -7,13 +7,14 @@ from typing import Any
 
 from .models import TranscriptResult, VisualWindow
 from .text_cleanup import canonicalize_unicode_text
+from .markdown_structure import structural_lines
 
 
 CLAIM_SCHEMA_VERSION = 3
 _TIMESTAMP = r"\d{1,3}:\d{2}(?::\d{2})?"
 _RANGE_RE = re.compile(rf"(?P<start>{_TIMESTAMP})\s*(?:-|–|—|~|～)\s*(?P<end>{_TIMESTAMP})")
 _POINT_RE = re.compile(rf"(?<![\d:])(?P<point>{_TIMESTAMP})(?![\d:])")
-_SENTENCE_RE = re.compile(r"[^。！？.!?\n]+(?:[。！？.!?]|$)")
+_SENTENCE_RE = re.compile(r"(?:[^。！？.!?\n]|\.(?<=\d\.)(?=\d))+(?:[。！？.!?]|$)")
 _INFERENCE_RE = re.compile(r"可能|推测|推断|意味着|提示|似乎|倾向于|may\b|might\b|suggest(?:s|ed)?\b|likely\b|inference\b", re.I)
 _VISUAL_RE = re.compile(r"画面|截图|图表|表格|代码|公式|演示|界面|板书|frame|visual|screen|chart|table|code|formula", re.I)
 _TOKEN_RE = re.compile(r"[A-Za-z0-9_\u4e00-\u9fff]{2,}")
@@ -44,15 +45,19 @@ def _overlap(left_start: float, left_end: float, right_start: float, right_end: 
 
 
 def _quotation_text(text: str) -> str:
-    text = _RANGE_RE.sub("", text)
-    text = _POINT_RE.sub("", text)
+    # Only bracketed citation syntax is removable. A ratio such as 1:20 or
+    # a time in the actual sentence is evidence content, not a free citation.
+    text = re.sub(rf"\[{_TIMESTAMP}(?:\s*[-–—~～]\s*{_TIMESTAMP})?\]", "", text)
     return re.sub(r"[\s\[\]*_`\"“”]+", "", text).strip("。.!！?？").casefold()
 
 
 def _supports_quotation(claim: str, evidence: str) -> bool:
     """Only literal source quotations can skip review. Timestamps just locate."""
     value, source = _quotation_text(claim), _quotation_text(evidence)
-    return len(value) >= 8 and value in source
+    clauses = {_quotation_text(part) for part in re.split(r"[。！？!?；;，,]|\.(?!\d)", evidence)}
+    # A substring of a negated statement ("not ...") is not a quotation that
+    # supports its positive form. Only whole sentences/clauses skip review.
+    return len(value) >= 8 and (value == source or value in clauses)
 
 
 def _claim_id(task_id: str, index: int, text: str) -> str:
@@ -63,7 +68,8 @@ def _claim_id(task_id: str, index: int, text: str) -> str:
 def _claim_texts(markdown: str) -> list[str]:
     text = canonicalize_unicode_text(markdown, reject_mojibake=True)
     result = []
-    for match in _SENTENCE_RE.finditer(text):
+    prose = "\n".join(line for line, is_prose in structural_lines(text.splitlines()) if is_prose)
+    for match in _SENTENCE_RE.finditer(prose):
         value = re.sub(r"^\s*(?:[-*+]|\d+[.)])\s+", "", match.group(0)).strip()
         if len(value) >= 8 and not value.startswith(("#", ">", "|", "\x60\x60\x60", "http://", "https://")):
             result.append(value)
