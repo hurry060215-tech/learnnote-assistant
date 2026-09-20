@@ -441,13 +441,11 @@ def _content_blocks(markdown: str, title: str) -> list[_Block]:
     blocks = _blocks(markdown)
     if not blocks:
         return blocks
-    first = blocks[0]
     def normalize(value: str) -> str:
         return re.sub(r"\s+", " ", _clean_inline_markdown(value)).strip().casefold()
 
-    if first.kind == "heading" and first.level == 1 and normalize(first.text) == normalize(title):
-        return blocks[1:]
-    return blocks
+    return [block for block in blocks if not (
+        block.kind == "heading" and block.level == 1 and normalize(block.text) == normalize(title))]
 
 
 def _add_docx_hyperlink(paragraph, text: str, url: str) -> None:

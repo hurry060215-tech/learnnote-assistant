@@ -108,7 +108,7 @@ def finish_note_task(
         frame_extraction_warning=frame_extraction_warning,
         frame_anchor_timestamps=frame_anchor_timestamps,
     )
-    normalized_note = normalize_note_markdown(title, note)
+    normalized_note = normalize_note_markdown(title, note, generate_questions=options.generate_questions)
     note = normalized_note.markdown
     note_quality_path = write_json(task_id, "note_quality.json", normalized_note.report)
     if normalized_note.report["blocking"]:

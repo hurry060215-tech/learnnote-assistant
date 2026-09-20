@@ -20,7 +20,9 @@ class DocumentExportTests(unittest.TestCase):
         self.assertIn('来源核对提示', build_structured_export(task,self.note)['markdown'])
         docx = build_docx_export(task,self.note)
         with ZipFile(BytesIO(docx.content)) as package:
-            self.assertIn('来源核对提示', package.read('word/document.xml').decode('utf-8'))
+            xml = package.read('word/document.xml').decode('utf-8')
+            self.assertIn('来源核对提示', xml)
+            self.assertEqual(xml.count(task.title),1)
         pdf = build_pdf_export(task,self.note)
         self.assertIn('来源核对提示', ''.join(page.extract_text() for page in PdfReader(BytesIO(pdf.content)).pages))
 

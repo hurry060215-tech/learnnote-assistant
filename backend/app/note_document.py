@@ -73,7 +73,7 @@ def _split_frontmatter(lines: list[str]) -> tuple[list[str], list[str]]:
     return [], lines
 
 
-def normalize_note_markdown(title: str, markdown: str) -> NoteNormalizationResult:
+def normalize_note_markdown(title: str, markdown: str, *, generate_questions: bool | None = None) -> NoteNormalizationResult:
     """Return stable UTF-8-friendly Markdown and a non-destructive lint report."""
 
     raw = str(markdown or "").replace("\r\n", "\n").replace("\r", "\n")
@@ -82,6 +82,23 @@ def normalize_note_markdown(title: str, markdown: str) -> NoteNormalizationResul
     raw, removed_wrapper = _strip_wrapping_fence(raw)
     lines = [line.rstrip() for line in raw.split("\n")]
     frontmatter, body = _split_frontmatter(lines)
+    removed_question_sections = 0
+    if generate_questions is False:
+        filtered = []
+        skipped_level = None
+        question_headings = {"自测题", "闭卷自测题", "自测问题", "复习问题", "练习题", "quiz", "self-test", "practice questions", "review questions"}
+        for line, prose in structural_lines(body):
+            heading = _HEADING_RE.match(line) if prose else None
+            if heading:
+                level, label = len(heading.group(1)), _plain_heading(heading.group(2))
+                if skipped_level is not None and level <= skipped_level:
+                    skipped_level = None
+                if label in question_headings and not (level == 1 and label == _plain_heading(title)):
+                    skipped_level = level
+                    removed_question_sections += 1
+            if skipped_level is None:
+                filtered.append(line)
+        body = filtered
 
     clean_title = re.sub(r"\s+", " ", str(title or "学习笔记")).strip() or "学习笔记"
     title_key = _plain_heading(clean_title)
@@ -143,6 +160,7 @@ def normalize_note_markdown(title: str, markdown: str) -> NoteNormalizationResul
         "removed_markdown_wrapper": removed_wrapper,
         "duplicate_title_count": duplicate_h1,
         "collapsed_rule_count": collapsed_rules,
+        "removed_question_sections": removed_question_sections,
         "issues": issues,
         "blocking": any(item["severity"] == "error" for item in issues),
     }
