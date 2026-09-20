@@ -1,6 +1,6 @@
 # 浏览器商店提交材料
 
-这份材料用于 Chrome Web Store 与 Microsoft Edge Add-ons 提交，版本号必须与 `extension/manifest.json` 和桌面客户端一致。
+当前分发范围仅为 Google Chrome Web Store（2026-09-20 用户决定）。不安排 Microsoft Edge Add-ons 上架；Edge 的已有兼容代码可以保留。版本号必须与 `extension/manifest.json` 和桌面客户端一致。
 
 ## 产品说明
 
@@ -39,7 +39,7 @@ LearnNote 是面向个人学习者的本地优先视频知识助手。扩展只�
 和配置相应 secrets 才会上传草稿，`publish=true` 才会提交审核。
 
 Chrome 需要 `LEARNNOTE_CHROME_ACCESS_TOKEN`、
-`LEARNNOTE_CHROME_PUBLISHER_ID`、`LEARNNOTE_CHROME_ITEM_ID`；Edge 需要
-`LEARNNOTE_EDGE_API_KEY`、`LEARNNOTE_EDGE_CLIENT_ID`、
-`LEARNNOTE_EDGE_PRODUCT_ID`。缺少任意凭据时，CLI 返回
+`LEARNNOTE_CHROME_PUBLISHER_ID`、`LEARNNOTE_CHROME_ITEM_ID`。当前工作流仅允许 Chrome。缺少任意凭据时，CLI 返回
 `blocked_missing_credentials`，不会尝试上传，也不会打印 secret 值。
+
+2026-09-20 检查：仓库 secret 名称清单未配置上述 Chrome 凭据，也没有已核验的正式 listing URL。实际上传、审核和普通用户商店安装需先取得这些外部条件；现有开发者模式验收不计作商店安装成功。
