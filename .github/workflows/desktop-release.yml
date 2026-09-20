@@ -74,6 +74,9 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force build/release | Out-Null
           python scripts/reliability-freshness.py --commit "$env:BUILD_COMMIT" --require-current-ref --output build/release/freshness.json
+          if ($LASTEXITCODE -ne 0) { throw "Release source freshness failed" }
+          python scripts/reliability-suite.py --output-dir build/release/reliability
+          if ($LASTEXITCODE -ne 0) { throw "Commit-bound reliability gate failed" }
           $env:PYTHONPATH = "backend"
           python -m unittest discover backend/tests
           if ($LASTEXITCODE -ne 0) { throw "Backend release gate failed" }
@@ -199,6 +202,8 @@ jobs:
             LearnNote-Build-Source.json
             LearnNote-Resolved-Requirements.txt
             build/release/freshness.json
+            build/release/reliability/**/report.json
+            build/release/reliability/*.log
       - name: Publish GitHub Release
         if: env.RELEASE_TAG != ''
         shell: pwsh

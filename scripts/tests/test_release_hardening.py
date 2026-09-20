@@ -101,7 +101,7 @@ class ReleaseHardeningContractTests(unittest.TestCase):
         self.assertIn("model-provider-contract.py", workflow)
         self.assertIn("long-video-reliability.py", workflow)
         self.assertIn("30/60/180-minute resource matrix", workflow)
-        self.assertIn("$durations = @(1800, 3600, 10800)", workflow)
+        self.assertIn("$durations = @(300, 1800, 3600, 10800)", workflow)
         self.assertIn("--duration-seconds $duration", workflow)
         self.assertIn("test_release_hardening.py", workflow)
         self.assertIn("samplelib.com/sample-mp4.html", workflow)
@@ -122,6 +122,9 @@ class ReleaseHardeningContractTests(unittest.TestCase):
         self.assertIn("--require-current-ref", reliability)
         self.assertIn("reliability-freshness.py", release)
         self.assertIn("--require-current-ref", release)
+        self.assertIn("python scripts/reliability-suite.py --output-dir build/release/reliability", release)
+        self.assertLess(release.index("python scripts/reliability-suite.py"), release.index("- name: Build portable"))
+        self.assertIn('throw "Commit-bound reliability gate failed"', release)
 
     def test_windows_release_pins_installer_compiler(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "desktop-release.yml").read_text(encoding="utf-8")
