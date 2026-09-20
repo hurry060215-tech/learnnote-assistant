@@ -6,6 +6,14 @@ from app.main import app
 
 
 class ClaimRouteTests(unittest.TestCase):
+    def test_legacy_markdown_export_keeps_review_notice(self):
+        task = SimpleNamespace(id='fixture',title='fixture',summary_source='text-llm')
+        with patch('app.main.get_task',return_value=task), patch('app.main.read_note',return_value='# fixture\n\nA generated statement.'):
+            response = TestClient(app).get('/api/tasks/fixture/exports/markdown')
+        self.assertEqual(response.status_code,200)
+        self.assertIn('来源核对提示',response.text)
+        self.assertIn('A generated statement.',response.text)
+
     def test_rebuild_locates_chinese_paraphrase_without_claiming_verification(self):
         transcript = {'full_text':'旅行最大的支出在酒店上。', 'segments':[{'start':20,'end':30,'text':'旅行最大的支出在酒店上。'}]}
         with patch('app.main.get_task',return_value=SimpleNamespace(id='fixture',title='fixture')), patch('app.main.read_note',return_value='本次旅行的最大支出是酒店住宿。'), patch('app.main.read_transcript',return_value=transcript), patch('app.main.read_visual_index',return_value={}):
