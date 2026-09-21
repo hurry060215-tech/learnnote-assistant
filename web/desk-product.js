@@ -46,7 +46,7 @@ export function installProductWorkspace(ctx) {
     if ($(id))
       $(id).innerHTML = icons[icon] + (label ? `<span>${label}</span>` : "");
   document.querySelector(".brand").innerHTML =
-    icons.book + "<strong>LearnNote</strong>";
+    '<img class="brand-mark" src="/web/learnnote-mark-128.png" width="32" height="32" alt=""><strong>LearnNote</strong>';
   for (const [id, path, label] of [
     ["edit", '<path d="m4 16 11-11 4 4L8 20H4zM13 7l4 4"/>', "编辑"],
     [

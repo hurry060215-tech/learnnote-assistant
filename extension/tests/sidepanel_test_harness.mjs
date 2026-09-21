@@ -40,7 +40,7 @@ function element() {
 
 export async function createSidepanelHarness({ contexts = [], preflight = null, start = null, starts = [], startDelayMs = 0, health = null, focus = null, tabs = [], healthByUrl = null, healthDelayMs = 0, fetchOverride = null, stored = {} } = {}) {
   const selectors = [
-    "#connectionCard", "#connectionTitle", "#connectionDetail", "#openClientButton", "#openClientBrand",
+    "#connectionCard", "#connectionTitle", "#connectionDetail", "#openClientButton", "#openClientBrand", "#clientInstallHelp",
     "#refreshButton", "#platformLabel", "#playingBadge", "#videoTitle", "#videoMeta", "#integrityGrid",
     "#candidateCount", "#durationValue", "#estimateValue", "#preflightMessage", "#modeDescription", "#sendButton", "#sendButtonLabel",
     "#handoffProgress", "#handoffStatus", "#handoffPercent", "#openTaskButton", "#quickResultStatus",
@@ -102,8 +102,11 @@ export async function createSidepanelHarness({ contexts = [], preflight = null, 
         if (health instanceof Error) throw health;
         return { ok: true, json: async () => health || ({ service: "learnnote", app_version: "0.2.3", backend_version: "0.2.3", protocol_version: 1 }) };
       }
+      if (String(url).endsWith("/api/pairing/issue")) {
+        return { ok: true, json: async () => ({token:'test-pair',expires_at:Date.now()/1000+300}) };
+      }
       if (String(url).endsWith("/api/desktop/focus")) {
-        return { ok: true, json: async () => focus || ({ ok: true, available: true, focused: true }) };
+        return { ok: true, json: async () => focus || ({ ok: false, available: false, focused: false }) };
       }
       if (/\/api\/tasks\/[^/]+\/note$/.test(String(url))) {
         return { ok: true, text: async () => "# 快速速记\n\n- 关键知识点" };

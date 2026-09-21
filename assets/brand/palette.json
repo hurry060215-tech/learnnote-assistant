@@ -3,11 +3,11 @@
   "style": "flat",
   "gradient": false,
   "colors": {
-    "ink": "#123B43",
-    "teal": "#0B8583",
-    "teal_dark": "#075F62",
-    "mint": "#BDEDE4",
-    "paper": "#FFFFFF"
+    "ink": "#173E3A",
+    "teal": "#173E3A",
+    "teal_dark": "#173E3A",
+    "mint": "#B6D6C8",
+    "paper": "#F5F7EF"
   },
   "concept": [
     "open book",
