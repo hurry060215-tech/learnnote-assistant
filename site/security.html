@@ -13,13 +13,13 @@
     <main class="legal-document">
       <p class="eyebrow">SECURITY</p>
       <h1>安全说明</h1>
-      <p class="legal-lead">LearnNote 的默认安全边界是本机桌面客户端。公开服务器部署会改变这一边界，部署者需要自行负责 HTTPS、认证、防火墙、备份和访问日志。</p>
+      <p class="legal-lead">LearnNote 的默认安全边界是由启动脚本运行的本机服务，并通过浏览器工作台访问。公开服务器部署会改变这一边界，部署者需要自行负责 HTTPS、认证、防火墙、备份和访问日志。</p>
 
       <h2>已经实现的保护</h2>
       <ul>
-        <li>桌面后端默认只监听 <code>127.0.0.1</code>。</li>
+        <li>本机后端默认只监听 <code>127.0.0.1</code>。</li>
         <li>更新器只接受官方 GitHub Release 路径，并验证 SHA-256。</li>
-        <li>保存的模型密钥使用 Windows 凭据管理器。</li>
+        <li>保存的模型密钥使用 Windows 凭据管理器或 macOS Keychain。</li>
         <li>任务快照、诊断和导出会隐藏 Cookie、Authorization、API Key 及敏感请求字段。</li>
         <li>下载任务结束后会清理临时 Cookie 文件。</li>
       </ul>

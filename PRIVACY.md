@@ -6,10 +6,10 @@ leave the computer.
 
 ## Local backend and data directory
 
-The installed Windows client starts a FastAPI service on `127.0.0.1` by
-default. The desktop interface, browser extension, and processing pipeline use
-that local service. No LearnNote account or project-operated cloud backend is
-required for the normal desktop workflow.
+The Windows `.bat` and macOS `.command` launchers start a FastAPI service on
+`127.0.0.1` by default and open the browser workspace. The browser workspace,
+browser extension, and processing pipeline use that local service. No LearnNote
+account or project-operated cloud backend is required for the normal workflow.
 
 Videos, uploads, downloaded media, subtitles, audio, frame images, visual
 grids, notes, task metadata, model caches, update installers, exports, and the

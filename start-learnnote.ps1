@@ -5,6 +5,7 @@ param(
   [switch]$InstallAsr,
   [switch]$SkipDoctor,
   [switch]$StrictDoctor,
+  [switch]$OpenBrowser,
   [string]$ModelProfile = ""
 )
 
@@ -117,11 +118,6 @@ function Start-SampleServer {
   return $process
 }
 
-$rootDrive = ([System.IO.DirectoryInfo]$projectRoot).Root.FullName
-if ($rootDrive -like "C:\*") {
-  throw "LearnNote must run from a non-C drive project path. Move this project to D:\Projects\learnnote-assistant before starting."
-}
-
 New-Item -ItemType Directory -Force -Path $dataDir | Out-Null
 $env:LEARNNOTE_DATA_DIR = $dataDir
 $previousBackendOrigin = $env:LEARNNOTE_BACKEND_ORIGIN
@@ -222,8 +218,41 @@ try {
   if ($InstallAsr) {
     $backendArgs.InstallAsr = $true
   }
-  & $backendScript @backendArgs
+  if (-not $OpenBrowser) {
+    & $backendScript @backendArgs
+  } else {
+    Write-Host "Browser workspace mode: starting the local backend, then opening the default browser." -ForegroundColor Green
+    $powershell = Get-Command powershell.exe -ErrorAction SilentlyContinue
+    if (-not $powershell) {
+      $powershell = Get-Command pwsh.exe -ErrorAction SilentlyContinue
+    }
+    if (-not $powershell) {
+      throw "PowerShell executable was not found."
+    }
+    $browserScript = Join-Path $projectRoot "scripts\open-browser-after-health.ps1"
+    $browserOpener = Start-Process `
+      -FilePath $powershell.Source `
+      -ArgumentList @(
+        "-NoLogo",
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        $browserScript,
+        "-Url",
+        $backendUrl
+      ) `
+      -WorkingDirectory $projectRoot `
+      -WindowStyle Hidden `
+      -PassThru
+    Write-Host "Browser opener is waiting for $backendUrl/health."
+    Write-Host "Keep this launcher open. Press Ctrl+C to stop LearnNote."
+    & $backendScript @backendArgs
+  }
 } finally {
+  if ($browserOpener -and -not $browserOpener.HasExited) {
+    Stop-Process -Id $browserOpener.Id -Force -ErrorAction SilentlyContinue
+  }
   if ($sampleProcess -and -not $sampleProcess.HasExited) {
     Write-Host ""
     Write-Host "Stopping sample server on $samplesUrl"

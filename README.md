@@ -2,25 +2,25 @@
 
 ### 看过的内容，变成自己的笔记。
 
-字幕优先的视频笔记、本地学习资料、可追问的 AI 助手。双击启动 App，在网页工作台里阅读、编辑、回到来源；不用注册 LearnNote 账号。
+字幕优先的视频笔记、本地学习资料、可追问的 AI 助手。双击启动脚本，在浏览器工作台里阅读、编辑、回到来源；不用注册 LearnNote 账号。
 
-[下载 Windows 版](https://github.com/hurry060215-tech/learnnote-assistant/releases/latest) · [产品与使用流程](https://hurry060215-tech.github.io/learnnote-assistant/) · [安装浏览器扩展](docs/EXTENSION_CONNECTION.md) · [使用帮助](SUPPORT.md)
+[下载启动脚本](https://github.com/hurry060215-tech/learnnote-assistant) · [产品与使用流程](https://hurry060215-tech.github.io/learnnote-assistant/) · [安装浏览器扩展](docs/EXTENSION_CONNECTION.md) · [使用帮助](SUPPORT.md)
 
-> **客户端 v0.2.14 / 扩展 v0.2.14：** 长音频分段转写与检查点恢复，改进任务调度、来源核对和导出。商店版本可能滞后于 GitHub；真实 B 站登录态的提取耗时仍待实测，不保证秒提取。AI 笔记仍需核对数字、名称与推断。
+> **本机后端 v0.2.14 / 扩展 v0.2.14：** 长音频分段转写与检查点恢复，改进任务调度、来源核对和导出。商店版本可能滞后于 GitHub；真实 B 站登录态的提取耗时仍待实测，不保证秒提取。AI 笔记仍需核对数字、名称与推断。
 
 ![LearnNote 阅读工作台](site/assets/learnnote-reader-current.png)
 
 _工作台的界面验收截图，使用演示资料。界面展示不代表真实模型效果。_
 
-## 三步开始，不用命令行
+## 双击启动，不用命令行
 
-1. **启动 App。** 下载 Windows 安装包，或解压便携 ZIP 后双击 `LearnNote.exe`。网页工作台连接本机服务，笔记保存在本机。
+1. **启动本机服务。** Windows 双击 `start-learnnote.bat`；macOS 双击 `start-learnnote.command`。脚本会准备 Python 环境，启动只监听 `127.0.0.1` 的服务，并在健康检查通过后打开默认浏览器工作台。
 2. **添加内容。** 粘贴视频网址、选择本地视频，或导入 PDF、Markdown、TXT、HTML。普通链接不要求安装扩展。
-3. **选择模型并整理。** 在设置中保存一次模型连接，网页、App 和扩展任务共用；Key 留在本机服务或系统凭据库。确认来源和处理方式后开始，任务页展示进度和记录，完成后阅读总结、编辑正文或导出。
+3. **选择模型并整理。** 在浏览器设置中保存一次模型连接，工作台和扩展任务共用；Key 只交给本机服务或系统凭据库。确认来源和处理方式后开始，任务页展示进度和记录，完成后阅读总结、编辑正文或导出。
 
 已登录的 B 站或课程页面，可以使用浏览器扩展交接当前页面可访问的字幕与资源。在扩展里查看连接和字幕状态，再发送到本机工作台。**只粘贴网址不会自动获取另一个浏览器的登录态。**
 
-[Chrome 商店](https://chromewebstore.google.com/detail/learnnote-%E5%BD%93%E5%89%8D%E8%A7%86%E9%A2%91%E5%8A%A9%E6%89%8B/mncdchpkpikhacmkbanedpppcddapppe) · [离线安装、唤起 App 与连接排查](docs/EXTENSION_CONNECTION.md)
+[Chrome 商店](https://chromewebstore.google.com/detail/learnnote-%E5%BD%93%E5%89%8D%E8%A7%86%E9%A2%91%E5%8A%A9%E6%89%8B/mncdchpkpikhacmkbanedpppcddapppe) · [离线安装、启动脚本与连接排查](docs/EXTENSION_CONNECTION.md)
 
 ## 从字幕到笔记，每一步清楚可见
 
@@ -61,7 +61,7 @@ _工作台的界面验收截图，使用演示资料。界面展示不代表真�
 
 视频、字幕、笔记、补充和复习记录默认放在本机。LearnNote 没有自有云任务、产品遥测，也不要求产品账号。
 
-下载内容会访问来源网站；选择远程文字、视觉或转写服务时，该服务会接收完成任务所需的内容。本地转写不向模型 API 上传音频，但首次需要下载模型权重。桌面端可用系统凭据库保存 API Key；不要把密钥写入仓库、公开 Issue 或截图。
+下载内容会访问来源网站；选择远程文字、视觉或转写服务时，该服务会接收完成任务所需的内容。本地转写不向模型 API 上传音频，但首次需要下载模型权重。Windows/macOS 的本机服务可用系统凭据库保存 API Key；不要把密钥写入仓库、公开 Issue 或截图。
 
 浏览器扩展在用户触发的工作流中交接当前会话可访问的内容，不录制标签页，不绕过 DRM、账号权限或课程进度。手机窄屏可阅读网页，但默认服务只供本机访问；跨设备同步和独立手机 App 不在当前承诺内。
 
@@ -69,9 +69,7 @@ _工作台的界面验收截图，使用演示资料。界面展示不代表真�
 
 ## 支持与反馈
 
-Windows 10 / 11 x64 是主要桌面平台。支持本地视频、Bilibili、YouTube 和当前会话有权访问的常见媒体资源。站点更新、登录失效或加密播放可能影响获取；可用本地文件继续。
-
-macOS / Linux 的基础合约检查不等于已完成原生桌面签名、安装和升级验收。
+Windows 10 / 11 x64 与 macOS 可通过平台启动脚本运行浏览器工作台。支持本地视频、Bilibili、YouTube 和当前会话有权访问的常见媒体资源。站点更新、登录失效或加密播放可能影响获取；可用本地文件继续。
 
 [来源兼容矩阵](docs/SOURCE_COMPATIBILITY_MATRIX.md) · [平台支持](docs/PLATFORM_SUPPORT.md) · [提交问题](https://github.com/hurry060215-tech/learnnote-assistant/issues)
 
@@ -79,13 +77,13 @@ macOS / Linux 的基础合约检查不等于已完成原生桌面签名、安装
 
 ## 参与开发
 
-普通使用请选择安装包。开发环境可运行：
+普通使用双击平台启动脚本即可。开发环境也可以直接运行浏览器工作台：
 
 ```powershell
 git clone https://github.com/hurry060215-tech/learnnote-assistant.git D:\Projects\learnnote-assistant
 cd D:\Projects\learnnote-assistant
 .\scripts\first-run-checklist.ps1
-.\start-learnnote.ps1
+.\start-learnnote.bat
 ```
 
 后端回归：

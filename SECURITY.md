@@ -1,6 +1,6 @@
 # LearnNote Security
 
-LearnNote is a local-first desktop application. This document describes the
+LearnNote is a local-first browser workspace backed by a local service. This document describes the
 security properties that are implemented today, the limits of those
 properties, and how to report a problem.
 
@@ -14,8 +14,9 @@ no longer receive fixes.
 
 ## Implemented security boundaries
 
-- The Windows desktop client starts its FastAPI backend on `127.0.0.1` by
-  default. It is not intended to accept connections from other machines.
+- The Windows `.bat` and macOS `.command` launchers start the FastAPI backend
+  on `127.0.0.1` by default and then open the browser workspace. It is not
+  intended to accept connections from other machines.
 - A custom Docker or server deployment changes that boundary. Operators are
   responsible for authentication, HTTPS termination, firewall rules, access
   logs, backups, and host security. Do not expose the service directly over
@@ -25,10 +26,10 @@ no longer receive fixes.
   evidence locally, then sends cookies and page evidence to the local backend
   when the user opens/runs preflight in the side panel or clicks the send
   action.
-- Model API keys saved by the installed Windows client use Windows Credential
-  Manager under a `LearnNote/model/<provider>` target. They are loaded into the
-  running application when needed and are not intentionally written to task
-  JSON, diagnostics, or export bundles.
+- Model API keys saved by the local service use the Windows Credential Manager
+  or macOS Keychain when available. They are loaded into the local backend when
+  needed and are not intentionally written to task JSON, diagnostics, or
+  export bundles.
 - Persisted task snapshots and generated diagnostics redact cookie values,
   authorization headers, API keys, request bodies, and sensitive URL
   parameters where supported.
@@ -75,7 +76,7 @@ technical details.
 Reports should include:
 
 - affected LearnNote and extension versions;
-- whether the desktop client or a custom Docker/server deployment was used;
+- whether the browser-first launcher, optional native package, or a custom Docker/server deployment was used;
 - the expected and observed behavior;
 - minimal, redacted reproduction steps;
 - the potential impact;

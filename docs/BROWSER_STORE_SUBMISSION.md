@@ -1,10 +1,10 @@
 # 浏览器商店提交材料
 
-当前分发范围仅为 Google Chrome Web Store（2026-09-20 用户决定）。不安排 Microsoft Edge Add-ons 上架；Edge 的已有兼容代码可以保留。版本号必须与 `extension/manifest.json` 和桌面客户端一致。
+当前分发范围仅为 Google Chrome Web Store（2026-09-20 用户决定）。不安排 Microsoft Edge Add-ons 上架；Edge 的已有兼容代码可以保留。版本号必须与 `extension/manifest.json` 和本机后端一致。
 
 ## 产品说明
 
-LearnNote 是面向个人学习者的本地优先视频知识助手。扩展只在用户打开侧栏并点击交接时读取当前页面媒体线索；视频下载、转写和笔记生成在用户本机客户端完成。
+LearnNote 是面向个人学习者的本地优先视频知识助手。扩展只在用户打开侧栏并点击交接时读取当前页面媒体线索；视频下载、转写和笔记生成在用户本机后端完成，结果在浏览器工作台中展示。
 
 ## 权限用途
 

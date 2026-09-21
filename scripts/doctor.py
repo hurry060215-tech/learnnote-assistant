@@ -175,8 +175,6 @@ def llm_check() -> Check:
 
 def project_location_check() -> Check:
     root = ROOT.resolve()
-    if root.drive.upper().startswith("C:"):
-        return Check("project location", "FAIL", str(root), "move the project to D:\\Projects\\learnnote-assistant")
     return Check("project location", "PASS", str(root))
 
 
@@ -206,13 +204,16 @@ def venv_check() -> Check:
         return Check("Python environment", "FAIL", f"{override_python} does not exist", "run .\\start-learnnote.ps1 after setting LEARNNOTE_VENV_DIR")
     if venv_python.exists():
         return Check("Python environment", "PASS", f"{venv_python}{version_suffix}")
-    return Check("Python environment", "WARN", f"project venv missing; using {python}", "run .\\start-learnnote.ps1 to create .venv under the D-drive project")
+    return Check("Python environment", "WARN", f"project venv missing; using {python}", "run .\\start-learnnote.bat or start-learnnote.command to create the project .venv")
 
 
 def script_check() -> Check:
     required = [
+        ROOT / "start-learnnote.bat",
+        ROOT / "start-learnnote.command",
         ROOT / "start-learnnote.ps1",
         ROOT / "start-backend.ps1",
+        ROOT / "scripts" / "open-browser-after-health.ps1",
         ROOT / "scripts" / "serve-samples.ps1",
         ROOT / "scripts" / "first-run-checklist.ps1",
         ROOT / "scripts" / "verify-product.ps1",
@@ -226,7 +227,7 @@ def script_check() -> Check:
     missing = [str(path.relative_to(ROOT)) for path in required if not path.exists()]
     if missing:
         return Check("local scripts", "FAIL", f"missing: {', '.join(missing)}")
-    return Check("local scripts", "PASS", "launcher, first-run checklist, sample server, product verifier, acceptance gate, smoke gates, real-site/learning-platform audit, and product-readiness audit scripts are present")
+    return Check("local scripts", "PASS", "browser launchers, first-run checklist, sample server, product verifier, acceptance gate, smoke gates, real-site/learning-platform audit, and product-readiness audit scripts are present")
 
 
 def collect_checks() -> list[Check]:
@@ -250,7 +251,7 @@ def collect_checks() -> list[Check]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Check whether LearnNote can run locally from the D-drive project.")
+    parser = argparse.ArgumentParser(description="Check whether LearnNote can run locally from this project.")
     parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     parser.add_argument("--strict", action="store_true", help="Treat WARN as a non-zero exit.")
     args = parser.parse_args()

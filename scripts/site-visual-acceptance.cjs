@@ -32,7 +32,7 @@ const path = require("node:path");
       assert(await page.locator("h1").isVisible());
       assert.equal(
         await page.locator("a.button").first().getAttribute("href"),
-        "https://github.com/hurry060215-tech/learnnote-assistant/releases/latest",
+        "https://github.com/hurry060215-tech/learnnote-assistant",
       );
       assert(
         await page.evaluate(
@@ -71,7 +71,7 @@ const path = require("node:path");
       await page.close();
     }
     console.log(
-      "Site layout, typography, example tabs, keyboard navigation, processing routes, install links and privacy navigation passed",
+      "Site layout, typography, example tabs, keyboard navigation, processing routes, browser launcher links and privacy navigation passed",
     );
   } finally {
     await browser.close();

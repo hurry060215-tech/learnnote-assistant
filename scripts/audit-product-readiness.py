@@ -508,11 +508,13 @@ def build_matrix(*, include_acceptance_gate: bool = True) -> list[ReadinessItem]
         or
         has_all(public_site_html, ["查看来源", "修改正文", "字幕摘录", "/releases/latest", "隐私说明"])
         or
+        has_all(public_site_html, ["LearnNote", "下载启动脚本", "浏览器扩展", "双击启动脚本", "start-learnnote.bat", "start-learnnote.command", "privacy.html"])
+        or
         has_all(public_site_html + public_site_css, ["LearnNote", "下载 Windows 版", "浏览器扩展", "听懂每一段内容", "从任何来源到结构化笔记", "三种输入", "可复现的真实案例", "梯度下降与学习率", "96.2%", "可信度保护", "数据边界清楚可见", "learnnote-workspace-v0126.png", "learnnote-case-gradient.png", "learnnote-case-grid.jpg"])
         or has_all(public_site_html + public_site_css, ["LearnNote", "下载 Windows 版", "浏览器扩展", "把正在看的视频", "三步，把视频变成可复习的知识", "从你已经在看的地方开始", "可复现的真实案例", "梯度下降与学习率", "96.2%", "可信度保护", "数据边界清楚可见", "learnnote-workspace-v0126.png", "learnnote-case-gradient.png", "learnnote-case-grid.jpg"])
     )
     public_site_audit_contract = (
-        has_all(public_site_audit, ["1440, 390", "scrollWidth", "/releases/latest", "privacy.html"])
+        has_all(public_site_audit, ["1440, 390", "scrollWidth", "https://github.com/hurry060215-tech/learnnote-assistant", "privacy.html"])
         or
         has_all(public_site_audit, ["proofsVisible", "backgroundReady", "privacyLink", "Installer link is not a release asset", "Mobile menu did not open"])
         or has_all(public_site_audit, ["contentVisible", "imagesReady", "caseReady", "privacyReady", "Installer link is not a release asset", "Mobile navigation did not open"])
