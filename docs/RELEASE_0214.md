@@ -2,6 +2,15 @@
 
 本次为已经完成的可靠性和来源核对修复发布，不代表全部开放 issue 收口。
 
+## 发布结果
+
+- [GitHub 正式版 v0.2.14](https://github.com/hurry060215-tech/learnnote-assistant/releases/tag/v0.2.14) 于 2026-09-21 10:03（北京时间）公开，非 draft、非 prerelease。
+- 标签和构建来源：`5a1db274f68df792149658ff2bb27894870eb608`，干净源码，Windows / Python 3.12.10。
+- [发布工作流 35551966635](https://github.com/hurry060215-tech/learnnote-assistant/actions/runs/35551966635) 成功：同提交调度/取消及 5/30/60/180 分钟合成媒体和完整任务检查共 10 项通过；完整回归、安装与从 v0.2.13 升级检查通过。
+- 七项资产：Windows x64 安装器、便携包、0.2.14 扩展包、SHA256SUMS、SBOM、构建来源和实际依赖清单。发布流程上传后重新下载校验才公开，没有覆盖历史公开资产。
+- 未配置 Authenticode 签名，签名步骤跳过；Google 商店没有随本次 GitHub 发布自动提交。
+- 本地证据保留在 `build/release-0214-evidence`。版本视频预览位于 `build/promo-v0214`：40 秒、1080×1920、30 fps，含真实浏览器来源查看片段，未录齐镜头保持空位，未公开上传。
+
 ## 更新
 
 - 长音频分段转写和检查点：修复真实 38 分 31 秒输入的整段 ASR 内存分配失败。
