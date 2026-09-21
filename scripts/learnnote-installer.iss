@@ -1,6 +1,6 @@
 #define MyAppName "LearnNote"
 #ifndef MyAppVersion
-#define MyAppVersion "0.2.13"
+#define MyAppVersion "0.2.14"
 #endif
 
 [Setup]
