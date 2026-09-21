@@ -21,7 +21,7 @@ import requests
 import uvicorn
 
 from desktop.credentials import delete_secret, read_secret, write_secret
-from desktop.startup import DesktopSession, backend_ready, protocol_port, wait_for_process_exit
+from desktop.startup import DesktopSession, backend_ready, focus_running_desktop, protocol_port, wait_for_process_exit
 
 MODEL_PROVIDER_KEY_URLS = {
     "openai": "https://platform.openai.com/api-keys",
@@ -1269,6 +1269,8 @@ def _run() -> int:
 
 
 def open_workspace(url: str) -> None:
+    if focus_running_desktop(url):
+        return
     if not webbrowser.open(url):
         raise RuntimeError(f"LearnNote 已启动。默认浏览器未能打开，请在浏览器访问 {url}。")
 

@@ -5,6 +5,7 @@ const REQUEST_TIMEOUT_MS = 20000;
 const PASSIVE_REFRESH_DELAY_MS = 450;
 const PREFLIGHT_TTL_MS = 30000;
 const CLIENT_TAB_ACTIVATION_SUPPRESS_MS = 3000;
+const CLIENT_START_TIMEOUT_MS = 45000;
 const LOCAL_BACKEND_RE = /^http:\/\/(?:127\.0\.0\.1|localhost)(?::\d{1,5})?\/?$/i;
 const MEDIA_KIND_RE = /^(?:video|media|mp4|hls|dash|manifest|playlist)$/i;
 const AUDIO_KIND_RE = /audio/i;
@@ -16,6 +17,7 @@ const els = {
   connectionTitle: document.querySelector("#connectionTitle"),
   connectionDetail: document.querySelector("#connectionDetail"),
   openClientButton: document.querySelector("#openClientButton"),
+  clientInstallHelp: document.querySelector("#clientInstallHelp"),
   openClientBrand: document.querySelector("#openClientBrand"),
   refreshButton: document.querySelector("#refreshButton"),
   platformLabel: document.querySelector("#platformLabel"),
@@ -712,10 +714,10 @@ async function loadBackendUrl() {
   setProcessingMode(stored.processingMode, false);
 }
 
-async function checkClient() {
+async function checkClient({ quiet = false } = {}) {
   if (connectionRequest) return connectionRequest;
   connectionRequest = (async () => {
-    if (!clientConnected) setConnection("checking", "正在连接 LearnNote", "正在寻找已运行的本机工作台…");
+    if (!clientConnected && !quiet) setConnection("checking", "正在连接 LearnNote", "正在寻找已运行的本机工作台…");
     const probe = async candidate => {
       try {
         const response = await fetchWithTimeout(`${candidate}/health`, {}, HEALTH_TIMEOUT_MS);
@@ -747,13 +749,16 @@ async function checkClient() {
       backendUrl = match.candidate;
       modelReadiness = { configured: typeof match.health.llm_model_configured === "boolean" ? match.health.llm_model_configured : null, model: match.health.default_llm_model || "", supportsVision: match.health.default_llm_supports_vision === false ? false : null };
       if (HAS_EXTENSION_API) await chrome.storage.local.set({ backendUrl }).catch(() => {});
+      if (els.clientInstallHelp) els.clientInstallHelp.hidden = true;
       setConnection("connected", "本地工作台已连接", `LearnNote ${match.health.app_version} · ${backendUrl}`);
       return true;
     }
     modelReadiness = { configured: null, model: "", supportsVision: null };
+    if (quiet) { clientConnected = false; renderContext(); return false; }
+    if (els.clientInstallHelp) els.clientInstallHelp.hidden = false;
     setConnection("offline", currentTaskId ? "任务所在的工作台已断开" : "本地工作台尚未启动", currentTaskId
       ? `请重新打开 ${backendUrl} 对应的 LearnNote，再点右上角重新连接。`
-      : "点击打开客户端启动 App；已启动时可点击右上角重新连接。");
+      : "点击“打开工作台”即可唤起已安装的 LearnNote，无需运行命令行。");
     return false;
   })();
   try { return await connectionRequest; }
@@ -1084,36 +1089,83 @@ async function openClient(view = "workspace", taskId = "", tab = "note") {
   if (clientOpenRequest) return clientOpenRequest;
   els.openClientButton.disabled = true;
   els.openClientButton.setAttribute("aria-busy", "true");
+  els.openClientButton.textContent = "正在打开…";
+  if (els.clientInstallHelp) els.clientInstallHelp.hidden = true;
   clientOpenRequest = openClientNow(view, taskId, tab);
   try { return await clientOpenRequest; }
   finally {
     clientOpenRequest = null;
     els.openClientButton.disabled = false;
     els.openClientButton.setAttribute("aria-busy", "false");
+    els.openClientButton.textContent = globalThis.LearnNoteI18n?.message?.("openClient", "打开工作台") || "打开工作台";
+  }
+}
+
+async function focusClientWindow(view, taskId, tab) {
+  // Share the background worker's short-lived pairing cache. Re-pair once
+  // after a server restart instead of dropping the native focus on a 401.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const headers = { "Content-Type": "application/json" };
+    if (HAS_EXTENSION_API) {
+      const stored = await chrome.storage.local.get({ pairingTokens: {} });
+      let pair = stored.pairingTokens?.[backendUrl];
+      if (attempt || !pair || Number(pair.expiresAt || 0) <= Date.now() + 15000) {
+        const reply = await fetchWithTimeout(`${backendUrl}/api/pairing/issue`, { redirect: "error" }, HEALTH_TIMEOUT_MS);
+        const payload = reply.ok ? await reply.json() : null;
+        if (payload?.token) {
+          pair = { token: String(payload.token), expiresAt: Number(payload.expires_at || 0) * 1000 };
+          await chrome.storage.local.set({ pairingTokens: { ...stored.pairingTokens, [backendUrl]: pair } });
+        }
+      }
+      if (pair?.token) headers["X-LearnNote-Pairing"] = pair.token;
+    }
+    const response = await fetchWithTimeout(`${backendUrl}/api/desktop/focus`, {
+      method: "POST", redirect: "error", headers, body: JSON.stringify({ view, task_id: taskId, tab })
+    }, HEALTH_TIMEOUT_MS);
+    if (response.status === 401 && attempt === 0 && HAS_EXTENSION_API) continue;
+    return response.ok ? await response.json() : null;
   }
 }
 
 async function openClientNow(view, taskId, tab) {
+  let launched = false;
   if (!await checkClient()) {
-    setConnection("checking", "正在启动本地 App", "首次使用请允许浏览器打开 LearnNote。尚未安装时，请先运行本地 LearnNote App。");
+    setConnection("launching", "正在启动 LearnNote", "如浏览器询问，请确认打开 LearnNote；启动完成后会自动进入工作台。");
+    els.openClientButton.textContent = "等待客户端启动…";
     try {
-      suppressTabActivationUntil = Date.now() + 30000;
+      suppressTabActivationUntil = Date.now() + CLIENT_START_TIMEOUT_MS + HEALTH_TIMEOUT_MS * 2;
       const launchUrl = `learnnote://open?port=${new URL(backendUrl).port || "8765"}`;
       if (HAS_EXTENSION_API && chrome.tabs?.create) await chrome.tabs.create({url: launchUrl});
       else window.open?.(launchUrl, "_blank");
+      launched = true;
     } catch {
-      setConnection("offline", "需要先启动 LearnNote App", "双击 LearnNote 后，再点右上角重新连接。");
+      suppressTabActivationUntil = 0;
+      if (els.clientInstallHelp) els.clientInstallHelp.hidden = false;
+      setConnection("offline", "未能发起启动", "请确认浏览器允许打开 LearnNote。首次使用需安装客户端；便携版需先手动打开。");
       return false;
     }
-    for (let attempt = 0; attempt < 6; attempt++) {
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      if (await checkClient()) break;
+    const deadline = Date.now() + CLIENT_START_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      if (await checkClient({ quiet: true })) break;
     }
     if (!clientConnected) {
       suppressTabActivationUntil = 0;
-      setConnection("offline", "尚未连接本地 App", "请确认已安装并打开 LearnNote；浏览器弹出启动确认时请选择允许。");
+      if (els.clientInstallHelp) els.clientInstallHelp.hidden = false;
+      setConnection("offline", "暂未收到客户端响应", "可能尚未安装、未确认浏览器提示，或仍在启动。确认后再次点击；不会自动重复启动。");
       return false;
     }
+  }
+  // Prefer the native window. Headless/source servers retain the browser fallback.
+  for (let attempt = 0; attempt < (launched ? 6 : 1); attempt++) {
+    try {
+      const result = await focusClientWindow(view, taskId, tab);
+      if (result?.ok === true && result?.focused === true) {
+        suppressTabActivationUntil = Date.now() + CLIENT_TAB_ACTIVATION_SUPPRESS_MS;
+        return true;
+      }
+    } catch { /* Older clients may not expose native focus. */ }
+    if (launched && attempt < 5) await new Promise(resolve => setTimeout(resolve, 250));
   }
   const targetUrl = clientUrl(view, taskId, tab);
   try {

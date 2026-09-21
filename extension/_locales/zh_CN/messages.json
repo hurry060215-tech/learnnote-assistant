@@ -3,6 +3,7 @@
   "extensionDescription": { "message": "识别当前正在播放的视频，并安全交接到本机 LearnNote 客户端。" },
   "actionTitle": { "message": "打开 LearnNote 当前视频助手" },
   "openClient": { "message": "打开工作台" },
+  "installClient": { "message": "首次使用？下载客户端安装包" },
   "refreshTitle": { "message": "重新连接并识别视频" },
   "refreshLabel": { "message": "重新连接并识别当前视频" },
   "currentPage": { "message": "当前页面" },

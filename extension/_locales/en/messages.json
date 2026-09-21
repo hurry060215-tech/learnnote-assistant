@@ -3,6 +3,7 @@
   "extensionDescription": { "message": "Identify the video playing in the current tab and hand it off safely to the local LearnNote client." },
   "actionTitle": { "message": "Open the LearnNote current video assistant" },
   "openClient": { "message": "Open workspace" },
+  "installClient": { "message": "First time? Download the desktop installer" },
   "refreshTitle": { "message": "Reconnect and identify video" },
   "refreshLabel": { "message": "Reconnect and identify the current video" },
   "currentPage": { "message": "Current page" },

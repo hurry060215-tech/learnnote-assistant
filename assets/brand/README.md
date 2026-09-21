@@ -1,8 +1,13 @@
 # LearnNote brand assets
 
 The LearnNote mark combines an open book, a play symbol, and two note lines.
-It uses a flat blue-green palette without gradients so that it remains legible
+It uses a flat ink-green, sage and warm-paper palette without gradients so that it remains legible
 from a 16 px browser icon to a 512 px application asset.
+
+The refreshed mark has two clean page silhouettes, a wider negative-space spine
+and a solid play symbol. The 16 px toolbar variant omits the two note strokes
+to avoid noise. The existing programmatic source remains canonical: no AI-made
+application screenshots or non-reproducible raster replacements are used.
 
 Run `python scripts/generate-brand-assets.py` from the repository root whenever
 the generated PNG or ICO files need to be refreshed.

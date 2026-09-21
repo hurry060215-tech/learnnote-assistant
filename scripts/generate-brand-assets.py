@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import base64
 import json
-import re
 from pathlib import Path
 
 from PIL import Image, ImageDraw
@@ -15,11 +13,11 @@ SITE_ASSET_DIR = ROOT / "site" / "assets"
 SIZES = (16, 32, 48, 128, 256, 512)
 
 COLORS = {
-    "ink": "#123B43",
-    "teal": "#0B8583",
-    "teal_dark": "#075F62",
-    "mint": "#BDEDE4",
-    "paper": "#FFFFFF",
+    "ink": "#173E3A",
+    "teal": "#173E3A",
+    "teal_dark": "#173E3A",
+    "mint": "#B6D6C8",
+    "paper": "#F5F7EF",
 }
 LANCZOS = getattr(Image, "Resampling", Image).LANCZOS
 
@@ -49,49 +47,38 @@ def render_mark(size: int) -> Image.Image:
     draw = ImageDraw.Draw(image)
 
     margin = round(work_size * 0.055)
-    radius = round(work_size * 0.205)
+    radius = round(work_size * 0.225)
     draw.rounded_rectangle(
         (margin, margin, work_size - margin, work_size - margin),
         radius=radius,
         fill=COLORS["teal"],
     )
 
-    # The open book is also a note surface. The play symbol sits on the right
-    # page, while the two short strokes on the left page read as note lines.
+    # Quiet ink-and-sage open book. A generous spine gap and solid play glyph
+    # remain distinct at toolbar sizes; note strokes are omitted at 16 px.
     left_page = [
-        (0.185, 0.265),
-        (0.315, 0.225),
-        (0.425, 0.245),
-        (0.500, 0.310),
-        (0.500, 0.750),
-        (0.425, 0.700),
-        (0.315, 0.680),
-        (0.185, 0.720),
+        (0.205, 0.250),
+        (0.375, 0.250),
+        (0.475, 0.310),
+        (0.475, 0.750),
+        (0.375, 0.695),
+        (0.205, 0.695),
     ]
     right_page = [
-        (0.500, 0.310),
-        (0.575, 0.245),
-        (0.685, 0.225),
-        (0.815, 0.265),
-        (0.815, 0.720),
-        (0.685, 0.680),
-        (0.575, 0.700),
-        (0.500, 0.750),
+        (0.525, 0.310),
+        (0.625, 0.250),
+        (0.795, 0.250),
+        (0.795, 0.695),
+        (0.625, 0.695),
+        (0.525, 0.750),
     ]
-    draw.polygon(_scaled_points(left_page, work_size), fill=COLORS["mint"])
-    draw.polygon(_scaled_points(right_page, work_size), fill=COLORS["paper"])
-
-    spine_width = max(2, round(work_size * 0.018))
-    draw.line(
-        (round(work_size * 0.5), round(work_size * 0.31), round(work_size * 0.5), round(work_size * 0.75)),
-        fill=COLORS["teal_dark"],
-        width=spine_width,
-    )
-
-    _rounded_line(draw, (0.270, 0.420, 0.410, 0.400), work_size, COLORS["teal_dark"], 0.022)
-    _rounded_line(draw, (0.270, 0.505, 0.390, 0.490), work_size, COLORS["teal_dark"], 0.022)
+    draw.polygon(_scaled_points(left_page, work_size), fill=COLORS["paper"])
+    draw.polygon(_scaled_points(right_page, work_size), fill=COLORS["mint"])
+    if size >= 32:
+        _rounded_line(draw, (0.275, 0.405, 0.400, 0.405), work_size, COLORS["teal_dark"], 0.026)
+        _rounded_line(draw, (0.275, 0.485, 0.365, 0.485), work_size, COLORS["teal_dark"], 0.026)
     draw.polygon(
-        _scaled_points([(0.590, 0.385), (0.590, 0.575), (0.745, 0.480)], work_size),
+        _scaled_points([(0.605, 0.380), (0.605, 0.595), (0.745, 0.4875)], work_size),
         fill=COLORS["teal_dark"],
     )
 
@@ -110,23 +97,13 @@ def validate_png(path: Path, expected_size: int) -> None:
             raise RuntimeError(f"{path} must preserve transparent corners")
 
 
-def synchronize_embedded_html_assets(png_bytes: bytes) -> None:
-    encoded = base64.b64encode(png_bytes).decode("ascii")
-    pattern = re.compile(r"data:image/png;base64,[A-Za-z0-9+/=]+")
-    replacement = f"data:image/png;base64,{encoded}"
-
-    expected_counts = {
-        ROOT / "site" / "index.html": 3,
-        ROOT / "web" / "index.html": 2,
-    }
-    for path, expected_count in expected_counts.items():
-        source = path.read_text(encoding="utf-8")
-        updated, count = pattern.subn(replacement, source)
-        if count != expected_count:
-            raise RuntimeError(
-                f"Expected {expected_count} embedded LearnNote marks in {path}, found {count}"
-            )
-        path.write_text(updated, encoding="utf-8")
+def synchronize_web_assets() -> None:
+    # Current UI references files instead of the old embedded data URLs.
+    for directory in (ROOT / "web", SITE_ASSET_DIR):
+        for size in (32, 128):
+            target = directory / f"learnnote-mark-{size}.png"
+            target.write_bytes((BRAND_DIR / target.name).read_bytes())
+            validate_png(target, size)
 
 
 def main() -> None:
@@ -177,7 +154,7 @@ def main() -> None:
     site_icon = SITE_ASSET_DIR / "learnnote-mark-32.png"
     site_icon.write_bytes((BRAND_DIR / "learnnote-mark-32.png").read_bytes())
     validate_png(site_icon, 32)
-    synchronize_embedded_html_assets((BRAND_DIR / "learnnote-mark-32.png").read_bytes())
+    synchronize_web_assets()
 
     print(f"Generated {len(SIZES) * 2 + 3} LearnNote brand files.")
     print(f"Brand assets: {BRAND_DIR}")

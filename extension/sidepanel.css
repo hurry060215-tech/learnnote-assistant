@@ -51,6 +51,11 @@ main { display: grid; gap: 14px; padding: 14px 14px 22px; }
 .connection-card[data-state="connected"] .status-dot { background: #19a28e; box-shadow: 0 0 0 4px #ddf5ef; }
 .connection-card[data-state="offline"] .status-dot { background: #dc655f; box-shadow: 0 0 0 4px #fae8e6; }
 .connection-card button { border: 0; background: #e6f4f3; color: #0b706d; border-radius: 6px; padding: 8px 10px; font-weight: 600; font-size: 12px; white-space: nowrap; }
+.connection-card .client-install-help { grid-column: 2 / -1; color: #176459; font-size: 12px; line-height: 1.6; text-underline-offset: 3px; }
+.connection-card[data-state="launching"] { background: #edf5ef; border-color: #b9d8c6; }
+.connection-card[data-state="launching"] .status-dot { background: #167a65; box-shadow: 0 0 0 4px #d8eade; animation: pulse 1.5s ease-in-out infinite; }
+.connection-card button[aria-busy="true"] { opacity: 1; color: #385a48; }
+@media (prefers-reduced-motion: reduce) { .connection-card[data-state="launching"] .status-dot { animation: none; } }
 
 .video-card, .handoff-card { padding: 16px; }
 .eyebrow-row { display: flex; justify-content: space-between; align-items: center; min-height: 22px; color: #668086; font-size: 12px; font-weight: 600; }

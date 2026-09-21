@@ -857,6 +857,7 @@ button:has(svg) {
   height: 30px;
   color: var(--accent);
 }
+.brand .brand-mark { width: 32px; height: 32px; object-fit: contain; flex-shrink: 0; }
 .sidebar {
   gap: 10px;
 }

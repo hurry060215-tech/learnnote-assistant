@@ -44,6 +44,21 @@ def backend_ready(url: str) -> bool:
         return False
 
 
+def focus_running_desktop(url: str) -> bool:
+    """Ask only a validated loopback origin to restore its existing window."""
+    if not local_origin(url):
+        return False
+    try:
+        response = requests.post(url + "/api/desktop/focus", json={"view": "workspace"},
+                                 timeout=2, allow_redirects=False)
+        if response.status_code != 200:
+            return False
+        result = response.json()
+        return isinstance(result, dict) and result.get("ok") is True and result.get("focused") is True
+    except (requests.RequestException, ValueError):
+        return False
+
+
 def protocol_port(value: str) -> int | None:
     """Only navigation to the local app is supported; never execute URI content."""
     if not value:

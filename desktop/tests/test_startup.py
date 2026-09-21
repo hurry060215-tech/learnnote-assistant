@@ -12,6 +12,29 @@ from desktop import main, startup
 
 
 class StartupTests(unittest.TestCase):
+    def test_existing_native_window_is_focused_without_browser(self):
+        with patch.object(main, "focus_running_desktop", return_value=True), patch.object(main.webbrowser, "open") as browser:
+            main.open_workspace("http://127.0.0.1:8765")
+            browser.assert_not_called()
+        with patch.object(main, "focus_running_desktop", return_value=False), patch.object(main.webbrowser, "open", return_value=True) as browser:
+            main.open_workspace("http://127.0.0.1:8765")
+            browser.assert_called_once()
+
+    def test_focus_rejects_remote_redirect_and_false_success(self):
+        with patch.object(startup.requests, "post") as post:
+            self.assertFalse(startup.focus_running_desktop("https://example.com"))
+            post.assert_not_called()
+        for status, body in [(302, {}), (200, []), (200, {"ok": True}), (200, {"ok": False, "focused": True})]:
+            response = Mock(status_code=status)
+            response.json.return_value = body
+            with patch.object(startup.requests, "post", return_value=response):
+                self.assertFalse(startup.focus_running_desktop("http://127.0.0.1:8765"))
+        response = Mock(status_code=200)
+        response.json.return_value = {"ok": True, "focused": True}
+        with patch.object(startup.requests, "post", return_value=response) as post:
+            self.assertTrue(startup.focus_running_desktop("http://127.0.0.1:8765"))
+            self.assertFalse(post.call_args.kwargs["allow_redirects"])
+
     def test_windowless_server_configuration_does_not_probe_missing_streams(self):
         with patch.object(main.sys,"stdout",None), patch.object(main.sys,"stderr",None):
             config=main.server_config(lambda *args:None,18898)
