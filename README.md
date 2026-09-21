@@ -6,7 +6,7 @@
 
 [下载 Windows 版](https://github.com/hurry060215-tech/learnnote-assistant/releases/latest) · [产品与使用流程](https://hurry060215-tech.github.io/learnnote-assistant/) · [安装浏览器扩展](docs/EXTENSION_CONNECTION.md) · [使用帮助](SUPPORT.md)
 
-> **客户端 v0.2.13 / 扩展 v0.2.13：** 字幕读取与客户端连接并行，减少重复查询，支持原文预览与搜索。商店版本可能滞后于 GitHub；真实 B 站登录态的提取耗时仍待实测，不保证秒提取。
+> **客户端 v0.2.14 / 扩展 v0.2.14：** 长音频分段转写与检查点恢复，改进任务调度、来源核对和导出。商店版本可能滞后于 GitHub；真实 B 站登录态的提取耗时仍待实测，不保证秒提取。AI 笔记仍需核对数字、名称与推断。
 
 ![LearnNote 阅读工作台](site/assets/learnnote-reader-current.png)
 

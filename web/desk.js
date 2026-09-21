@@ -9,8 +9,8 @@ import { installProfile } from "/web/desk-profile.js";
 import { createTaskEventHub } from "/web/desk-events.js";
 import { sourceVideoEmbed } from "/web/source-video.js";
 import { installSettings } from "/web/desk-settings.js";
-import { installProductWorkspace } from "/web/desk-product.js?v=0.2.13";
-import { installTools } from "/web/desk-tools.js?v=0.2.13";
+import { installProductWorkspace } from "/web/desk-product.js?v=0.2.14";
+import { installTools } from "/web/desk-tools.js?v=0.2.14";
 import {
   api,
   escapeHtml as esc,

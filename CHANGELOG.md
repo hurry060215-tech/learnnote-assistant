@@ -2,6 +2,16 @@
 
 All notable changes to LearnNote are documented here. The project follows semantic versioning while the `0.x` series is under active development.
 
+## 0.2.14 - Bounded transcription and honest evidence review
+
+- Bound long-audio ASR to five-minute windows with identity-checked atomic checkpoints; recover completed windows instead of requiring an all-at-once allocation.
+- Separate heavy/light task budgets, improve cross-process upload leases, cancellation, event replay deduplication and reconnect lifecycle handling.
+- Fix the claims HTTP response, improve Chinese candidate retrieval, and downgrade outdated cached verification states without treating candidate matches as verified facts.
+- Show AI-draft review notices in the reader and exports; respect the question opt-out and remove duplicate exported titles.
+- Repair caption revocation races and compatible Pydantic/Core dependency locks; require commit-bound reliability evidence before release packaging.
+- Validate one 38-minute real video with the existing DS configuration; this is not a universal speed or semantic-accuracy benchmark.
+- Known limits: native Chrome permission/store installation, Word/WPS layout, macOS acceptance and the broader issue acceptance matrix remain incomplete. Windows builds are unsigned unless release signing credentials are configured.
+
 ## 0.2.13 - Evidence, learning-space and browser closeout
 
 - Preserve imported source bytes and decoding metadata; allow an explicit, safe re-decode without replacing the raw input.
