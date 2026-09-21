@@ -4,7 +4,7 @@
 
 初始代码基线：`48a0741`。第 1 批 PR #190 已合并为 `e8b16b8`；第 2–3 批证据与剩余条件见 [BATCH23_VERIFICATION_20260920.md](BATCH23_VERIFICATION_20260920.md)。
 
-当前正式版本：`v0.2.13`，tag 指向 `e93ac3d`；`48a0741` 是发布后的台账收口提交
+当前正式版本：[v0.2.14](https://github.com/hurry060215-tech/learnnote-assistant/releases/tag/v0.2.14)，tag 指向 `5a1db27`，于 2026-09-21 10:03（北京时间）公开。发布说明与证据见 [RELEASE_0214.md](RELEASE_0214.md)。上一正式版为 `v0.2.13`（`e93ac3d`）；`48a0741` 为其后台账提交。
 
 产品 issue 初始快照：31 个非 PR issue；依赖 PR #186 已由合并的 #190 替代并关闭。
 
