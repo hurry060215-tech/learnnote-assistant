@@ -1,6 +1,6 @@
 # LearnNote 开放 Issue 分期台账
 
-更新时间：2026-09-21
+更新时间：2026-09-24
 
 初始代码基线：`48a0741`。第 1 批 PR #190 已合并为 `e8b16b8`；第 2–3 批证据与剩余条件见 [BATCH23_VERIFICATION_20260920.md](BATCH23_VERIFICATION_20260920.md)。
 
@@ -10,7 +10,7 @@
 
 本地状态与分支归档清单：[LOCAL_STATE_INVENTORY_20260920.md](LOCAL_STATE_INVENTORY_20260920.md)
 
-最新推进：[PROGRESS_20260920.md](PROGRESS_20260920.md)。需要用户完成的条件：[USER_ACTIONS_20260920.md](USER_ACTIONS_20260920.md)。商店范围仅 Google Chrome Web Store。
+最新推进：[首次使用闭环第 1 轮验收](FIRST_RUN_20260923.md)（仅工作包 0–1；Issue 保持开放）；此前批次记录见 [PROGRESS_20260920.md](PROGRESS_20260920.md)。需要用户完成的条件：[USER_ACTIONS_20260920.md](USER_ACTIONS_20260920.md)。商店范围仅 Google Chrome Web Store。
 
 真实视频与 DS 结果：[LIVE_ACCEPTANCE_20260921.md](LIVE_ACCEPTANCE_20260921.md)。代码收口包含 PR #192–#198；完整转写成功与内容仍需核对分别记录，未因此批量关闭产品 issue。
 
