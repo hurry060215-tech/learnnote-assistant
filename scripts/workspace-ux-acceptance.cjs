@@ -40,6 +40,23 @@ const os = require("node:os");
       });
     return route.fulfill({ json: { task_options: persisted } });
   });
+  await p.route("**/api/model/connection", async (route) => {
+    if (route.request().method() !== "PUT") return route.continue();
+    const draft = route.request().postDataJSON();
+    return route.fulfill({
+      json: {
+        model: {
+          provider: draft.provider,
+          base_url: draft.base_url,
+          model: draft.model,
+          use_saved_connection: false,
+        },
+        configured: false,
+        storage: "memory",
+        message: "验收模拟：模型信息已保存，未配置 Key。",
+      },
+    });
+  });
   const section = (key) =>
     p.locator(`[data-settings-section="${key}"]`).click();
   const status = () => p.locator("#preferencesStatus").innerText();
