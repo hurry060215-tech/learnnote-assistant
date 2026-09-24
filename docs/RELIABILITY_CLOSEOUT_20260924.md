@@ -49,6 +49,26 @@ MP4 音频用与 `backend/app/media.py::extract_audio` 相同参数提取为 16 
 | `tiny` / CPU / int8（缓存已存在） | 2.562 秒 | 133.453 秒 | 36.09× | 564,482,048 B（约 538.3 MiB） | 994 / 60,870 | 4,810.94 秒 |
 | `small` / CPU / int8（首次隔离缓存运行） | 133.469 秒 | 723.391 秒 | 6.66× | 916,529,152 B（约 874.1 MiB） | 1,064 / 60,112 | 4,810.76 秒 |
 
+另从同一 16 kHz 单声道公开视频 WAV 裁出三个互不重叠的 300 秒区间（起点 300、1500、3000 秒），同时启动三个独立 LearnNote 转写进程，均用已缓存 `tiny` / CPU / int8。三路均返回 `faster-whisper` 实际字幕、无远程 API 调用，最后段时间分别到 300.50、299.92、299.31 秒；首段耗时 2.984–3.125 秒，总耗时 12.640–13.172 秒，实时倍速 22.776–23.734×。各进程峰值 RSS 分别 293,949,440、305,745,920、283,308,032 字节（约 280.3、291.6、270.2 MiB）；峰值之和约 842.1 MiB，只是逐进程峰值相加的保守界限，不是同步采样得到的系统进程树峰值。三个输入 WAV、逐任务报告和日志均在忽略目录 `build/package4/concurrent-public-asr-20260924-a/`。
+
+可复现方式：用 Python `wave` 从上述公开 WAV 裁出三个 300 秒 WAV（起点 300、1500、3000）；在相同 `LEARNNOTE_DATA_DIR` 模型缓存下并行启动三次现有 helper：
+
+```powershell
+$env:PYTHONPATH = 'backend'
+$env:LEARNNOTE_DATA_DIR = 'build/package4/real-asr/data'
+$python = 'D:\learnnote-assistant\.venv\Scripts\python.exe'
+$jobs = @()
+1..3 | ForEach-Object {
+  $index = $_
+  $input = "build/package4/concurrent-public-asr-20260924-a/public-lecture-worker-$index.wav"
+  $output = "build/package4/concurrent-public-asr-20260924-a/worker-$index-report.json"
+  $stdout = "build/package4/concurrent-public-asr-20260924-a/worker-$index.stdout.log"
+  $stderr = "build/package4/concurrent-public-asr-20260924-a/worker-$index.stderr.log"
+  $jobs += Start-Process -FilePath $python -ArgumentList @('scripts/benchmark-public-media-asr.py', $input, '--model', 'tiny', '--output', $output) -WorkingDirectory $PWD -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru -WindowStyle Hidden
+}
+Wait-Process -Id $jobs.Id
+```
+
 两种模型都覆盖到视频结尾附近、输出英文转写、远程 ASR/API 调用为 0。`small` 的时间包含首次模型缓存准备，报告没有将下载与推理分开；首段时间从 ASR 进程开始计，不等价于模型已经就绪后的首段延迟。最小剩余磁盘分别为 45,410,312,192 B 和 44,923,740,160 B；窗口 WAV/checkpoint 留在忽略目录。RSS 由 ASR 进程在解码/推理期间采样，不覆盖单独运行的媒体下载与 FFmpeg 提取进程树。
 
 另做了一个诊断对照：直接将完整 MP4 交给 `WhisperModel.transcribe`、绕过 LearnNote 的窗口处理，52.656 秒完成但峰值 RSS 为 3,912,962,048 B（约 3.64 GiB）。这是非应用调用路径，不作为用户路径性能结论；同一输入通过 LearnNote 分窗路径时峰值为 538 MiB（`tiny`）或 874 MiB（`small`），可以看到 checkpoint 分窗把整段音轨解码峰值显著压低。`small` 的 874 MiB 仍高于合成帧抽取预算 512 MiB，这两项衡量的是不同路径。
@@ -74,7 +94,7 @@ Python 3.12.10 / Windows 的完整后端套件 608 项通过（96.0 秒），脚
 
 - #130：当前 `main` 手动工作流已全绿，但合并后的 candidate SHA 仍需刷新一遍工作流再作为关闭依据。
 - #131：上传限额/低磁盘/残留文件目前有隔离自动化回归，没有在真实低磁盘 Windows 盘和迁移数据目录做人工安装路径验收。
-- #132：已验证队列 lane、5 项混合调度、取消和 journal 恢复；一个真实 80 分钟 ASR 单任务通过分窗处理，但尚未在 3–5 个真实视频任务同时运行时测完整进程树资源上限。
+- #132：队列 lane、5 项混合调度、取消和 journal 恢复通过；真实 80 分钟单任务分窗 ASR 通过；三个真实 5 分钟公开视频音频片段同时运行 LearnNote ASR 也通过。仍未测 3–5 个完整视频任务的下载/解码/抽帧/转写总进程树、长短任务公平性与低资源降级；此次单测 ASR 阶段并发不能替代完整队列验收。
 - #148：公开课 80 分钟媒体已通过 LearnNote 分窗 ASR（`tiny` 与默认 `small` 均报告），但未运行远程总结，也没有 5/30/60/180 分钟真实媒体矩阵；首 ASR 段不等于第一份可读笔记。
 - #151：HTTP SSE 游标/终态有集成回归，仍需桌面工作台真实断线重连、可见/隐藏资源行为、章节不跳顶及取消后的动态 UI 验收。
 

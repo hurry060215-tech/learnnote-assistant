@@ -31,7 +31,7 @@
 | 1 整理台账（已关闭 PR） | #186 | 已证明 | 替代 PR #190 的 Windows CI、CodeQL 与依赖审查通过，已合并为 e8b16b8。 | #186 已关闭；完整新依赖安装由远端 Windows CI 验证。本地旧环境回归与 pip dry-run 不充当新环境安装证据。 |
 | 2 可靠性与安全发布 | #130 | 待验收 | [2026-09-24 main 手动工作流](https://github.com/hurry060215-tech/learnnote-assistant/actions/runs/35960376745) 在 `e585b7f` freshness 通过，两个 job 全绿；公开 Samplelib 零 cookie download-only 保存媒体成功。candidate 新增首结果门禁与本机矩阵见 [RELIABILITY_CLOSEOUT_20260924.md](RELIABILITY_CLOSEOUT_20260924.md)。 | 合并 candidate 后需用新的 main SHA 再跑一次 freshness/workflow；真实 ASR 长视频仍非这条合成媒体门禁覆盖范围。 |
 | 2 可靠性与安全发布 | #131 | 待验收 | `backend/app/upload_limits.py` 现有测试覆盖 Content-Length/流式限额、累计并发预留、低磁盘预检与失败清理；本轮 608 项后端回归全绿。 | 真实低磁盘 Windows 盘、数据目录迁移和并发视频上传的人工恢复路径尚未实测。 |
-| 2 可靠性与安全发布 | #132 | 待验收 | [五任务混合队列报告](RELIABILITY_CLOSEOUT_20260924.md) 证明重/轻 lane 各单并发、轻任务不被重任务阻塞、重复请求复用 future、journal 重开后状态完成；另有一条真实 80 分钟 Stanford CS224N 公共视频单任务通过 LearnNote 分窗 ASR。 | 仍需 3–5 个真实媒体任务同时运行的进程树资源上限、ASR 公平性及低资源模式降级验收。 |
+| 2 可靠性与安全发布 | #132 | 待验收 | [五任务混合队列报告](RELIABILITY_CLOSEOUT_20260924.md) 记录了 lane/fairness/journal 自动回归、真实 80 分钟公开视频 LearnNote 分窗 ASR，以及三个独立 LearnNote ASR 进程同时转写不同公开音频片段。 | 仍需 3–5 个完整真实视频任务同时运行时的下载/解码/抽帧/转写进程树资源、长短任务公平性与低资源降级验收。 |
 | 2 可靠性与安全发布 | #134 | 外部阻塞 | 发布脚本、draft release 复用、校验和、更新回退和安装健康检查已有基础。 | 需在候选包完成损坏包/断网/磁盘不足/文件占用/失败回退/同 tag 重跑；签名凭据和真实 Release 操作单列外部条件。 |
 | 3 权限、编码与证据 | #135 | 待验收 | `extension/manifest.json`、`extension/PERMISSION_JUSTIFICATION.md` 和按需捕获路径记录了权限边界。 | Chrome/Edge 允许、拒绝、撤销、重新授权与缓存失效必须有实机矩阵；验证不默认扩大权限。 |
 | 3 权限、编码与证据 | #150 | 待验收 | `backend/app/text_cleanup.py`、`source_input.py`、字幕/转写管线已有 Unicode 归一化和测试。 | 全部输入/导出入口需保留原始字节、解码选择和失败状态；补中英文乱码正负样本和阻断证据。 |
