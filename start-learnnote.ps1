@@ -1,4 +1,5 @@
 param(
+  [ValidateRange(1, 65535)]
   [int]$Port = 8765,
   [switch]$WithSamples,
   [int]$SamplesPort = 8777,
@@ -58,6 +59,27 @@ function Test-LocalPortOpen {
     if ($client) {
       $client.Close()
     }
+  }
+}
+
+function Get-LearnNoteHealthState {
+  param([string]$Url)
+
+  try {
+    $response = Invoke-WebRequest -Uri "$Url/health" -TimeoutSec 2 -UseBasicParsing
+    if ($response.StatusCode -ne 200) {
+      return "other"
+    }
+    $health = $response.Content | ConvertFrom-Json
+    if ($health.ok -eq $true -and $health.service -eq "learnnote" -and $health.protocol_version -eq 1) {
+      return "ready"
+    }
+    return "other"
+  } catch {
+    if ($_.Exception.Response) {
+      return "other"
+    }
+    return "starting"
   }
 }
 
@@ -136,6 +158,30 @@ if ($previousBackendOrigin -and $previousBackendOrigin -ne $backendUrl) {
   Write-Host "Origin note: replaced previous LEARNNOTE_BACKEND_ORIGIN=$previousBackendOrigin for this session." -ForegroundColor DarkYellow
 }
 
+if (Test-LocalPortOpen -PortNumber $Port) {
+  $healthState = Get-LearnNoteHealthState -Url $backendUrl
+  $readyDeadline = (Get-Date).AddSeconds(15)
+  while ($healthState -eq "starting" -and (Get-Date) -lt $readyDeadline) {
+    Start-Sleep -Seconds 1
+    $healthState = Get-LearnNoteHealthState -Url $backendUrl
+  }
+
+  if ($healthState -eq "ready") {
+    Write-Host "An existing LearnNote service is ready at $backendUrl. Reusing it; no second backend will be started." -ForegroundColor Green
+    if ($OpenBrowser) {
+      Start-Process $backendUrl | Out-Null
+      Write-Host "Browser workspace opened at $backendUrl."
+    }
+    return
+  }
+
+  $nextPort = if ($Port -lt 65535) { $Port + 1 } else { 8765 }
+  if ($healthState -eq "other") {
+    throw "Port $Port is in use, but /health did not identify a ready LearnNote service. No second backend was started. Retry with -Port $nextPort after confirming that port is free."
+  }
+  throw "A process is listening on port $Port, but LearnNote did not become ready within 15 seconds. No second backend was started. Retry with -Port $nextPort after confirming that port is free."
+}
+
 Write-Step "Preparing local runtime"
 $bootstrapArgs = @{ BootstrapOnly = $true; Port = $Port; ModelProfile = $ModelProfile }
 if ($InstallAsr) {
@@ -178,8 +224,7 @@ Write-Host "  3. Open a sample or real video page, play it for a few seconds, th
 Write-Host "  4. Expected result: task artifacts under data\tasks plus note, transcript, slices, frame grids, and diagnostics tabs."
 
 if (Test-LocalPortOpen -PortNumber $Port) {
-  Write-Host ""
-  Write-Host "WARN: $backendUrl is already accepting connections. If this is another service, restart with -Port 8766." -ForegroundColor Yellow
+  throw "Port $Port became occupied during startup. No LearnNote backend was started. Retry with another free port."
 }
 
 $sampleProcess = $null
@@ -248,6 +293,10 @@ try {
     Write-Host "Browser opener is waiting for $backendUrl/health."
     Write-Host "Keep this launcher open. Press Ctrl+C to stop LearnNote."
     & $backendScript @backendArgs
+  }
+  $backendExitCode = $LASTEXITCODE
+  if ($backendExitCode -ne 0) {
+    throw "LearnNote backend exited with code $backendExitCode. The browser opener will be stopped; check the backend error above."
   }
 } finally {
   if ($browserOpener -and -not $browserOpener.HasExited) {
