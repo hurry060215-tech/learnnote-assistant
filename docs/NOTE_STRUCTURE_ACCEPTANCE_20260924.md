@@ -2,6 +2,7 @@
 
 - Date: 2026-09-24
 - Baseline: `origin/main` `e585b7fbf3067d19f19d68760ff4614ad2757efa`
+- Validated code commit: `f0f2a263615d89d06ff30f836ef377903ae3e1e2`
 - Issue: [#152](https://github.com/hurry060215-tech/learnnote-assistant/issues/152)
 - Scope: fix structural regressions found in the existing normalizer, shared export structure, and linter. This is a bounded acceptance increment; it does not claim arbitrary Markdown AST completeness.
 
@@ -27,7 +28,7 @@ node web\tests\markdown_render.test.mjs
 node --check web\desk.js
 ```
 
-The focused note/export/pipeline tests exercise 6 fixture shapes, same-pipeline model/offline outputs, quarantine behavior, DOCX/PDF/HTML content, front matter removal, code whitespace retention, and stable anchors. Full suite totals and the validated commit SHA are recorded after the final run below.
+The focused note/export/pipeline tests exercise 6 fixture shapes, same-pipeline model/offline outputs, quarantine behavior, DOCX/PDF/HTML content, front matter removal, code whitespace retention, and stable anchors. The full backend suite passed 616 tests in 92.5 seconds; all 70 script tests passed. Architecture boundaries, i18n audit, the existing Markdown renderer suite, `node --check web/desk.js`, and `git diff --check` passed.
 
 ## Remaining boundaries
 
