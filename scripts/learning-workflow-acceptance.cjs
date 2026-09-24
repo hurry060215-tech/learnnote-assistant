@@ -3,12 +3,32 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 
+function overrideReportedTimezone(timezone) {
+  const NativeDateTimeFormat = Intl.DateTimeFormat;
+  let controlled;
+  const withTimezone = (formatter) => {
+    const resolvedOptions = formatter.resolvedOptions.bind(formatter);
+    formatter.resolvedOptions = () => ({ ...resolvedOptions(), timeZone: timezone });
+    return formatter;
+  };
+  controlled = new Proxy(NativeDateTimeFormat, {
+    apply(target, thisArg, args) {
+      return withTimezone(Reflect.apply(target, thisArg, args));
+    },
+    construct(target, args, newTarget) {
+      return withTimezone(Reflect.construct(target, args, newTarget === controlled ? target : newTarget));
+    },
+  });
+  Intl.DateTimeFormat = controlled;
+}
+
 async function main() {
   const base = process.argv[2] || "http://127.0.0.1:8765/";
   const output = path.resolve(process.argv[3] || "build/learning-ui");
   fs.mkdirSync(output, { recursive: true });
   const browser = await chromium.launch({ executablePath: "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe", headless: true });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, timezoneId: "Asia/Tokyo" });
+  await page.addInitScript(overrideReportedTimezone, "Asia/Tokyo");
   const errors = [];
   page.on("pageerror", error => errors.push(error.message));
   try {
@@ -172,6 +192,7 @@ async function main() {
     assert(restoredCards.length > 0 && restoredReviews.length > 0, "Browser backup restore lost study cards or rating history");
     assert.equal((await (await page.request.get(new URL("/api/study/plan", base).href)).json()).plan.timezone, "Asia/Shanghai");
     const crossTimezonePage = await browser.newPage({ viewport: { width: 1440, height: 900 }, timezoneId: "America/New_York" });
+    await crossTimezonePage.addInitScript(overrideReportedTimezone, "America/New_York");
     crossTimezonePage.on("pageerror", error => errors.push(error.message));
     await crossTimezonePage.goto(base, { waitUntil: "networkidle" });
     if (await crossTimezonePage.locator("#skipOnboardingButton").isVisible()) await crossTimezonePage.locator("#skipOnboardingButton").click();
