@@ -9,7 +9,7 @@ import { installProfile } from "/web/desk-profile.js";
 import { createTaskEventHub } from "/web/desk-events.js";
 import { sourceVideoEmbed } from "/web/source-video.js";
 import { installSettings } from "/web/desk-settings.js";
-import { installProductWorkspace } from "/web/desk-product.js?v=0.2.14";
+import { installProductWorkspace } from "/web/desk-product.js?v=first-run-20260923";
 import { installTools } from "/web/desk-tools.js?v=0.2.14";
 import {
   api,
@@ -164,7 +164,10 @@ function updateContentMode() {
 for (const choice of document.querySelectorAll('[name="contentMode"]'))
   choice.addEventListener("change", updateContentMode);
 $("createDialog").addEventListener("toggle", () => {
-  if ($("createDialog").open) updateContentMode();
+  if ($("createDialog").open) {
+    updateContentMode();
+    updateCreateInputPresentation();
+  }
 });
 function sourcePath(s = state.selected) {
   return `/api/tasks/editions/${s.kind}/${encodeURIComponent(s.id)}`;
@@ -983,6 +986,26 @@ $("newNote").onclick = create;
 $("welcomeNew").onclick = create;
 for (const button of document.querySelectorAll("[data-close]"))
   button.onclick = () => button.closest("dialog").close();
+function updateCreateInputPresentation() {
+  const file = $("file").files?.[0];
+  const isDocument =
+    state.input === "file" && file && /\.(pdf|md|txt|html?)$/i.test(file.name);
+  const hideVideoOptions =
+    state.input === "browser" || (state.input === "file" && (!file || isDocument));
+  $("contentModeChoices").hidden = hideVideoOptions;
+  $("contentModeExplanation").hidden = hideVideoOptions;
+  $("generationOptions").hidden = hideVideoOptions;
+  const needsFile = state.input === "file" && !file;
+  $("createSubmit").disabled = needsFile;
+  if (needsFile) {
+    $("createSubmit").textContent = "先选择文件";
+  } else if (isDocument) {
+    $("createSubmit").textContent = "导入并阅读资料";
+  } else {
+    updateContentMode();
+  }
+}
+$("file").addEventListener("change", updateCreateInputPresentation);
 for (const button of document.querySelectorAll("[data-input]"))
   button.onclick = () => {
     state.input = button.dataset.input;
@@ -991,9 +1014,7 @@ for (const button of document.querySelectorAll("[data-input]"))
     for (const kind of ["url", "file", "browser"])
       $(kind + "Input").hidden = kind !== state.input;
     $("createSubmit").hidden = state.input === "browser";
-    $("generationOptions").hidden = state.input === "browser";
-    $("contentModeChoices").hidden = state.input === "browser";
-    $("contentModeExplanation").hidden = state.input === "browser";
+    updateCreateInputPresentation();
     $("createStatus").textContent = "";
   };
 $("createForm").onsubmit = async (e) => {
