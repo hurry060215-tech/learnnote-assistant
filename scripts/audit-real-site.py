@@ -3,6 +3,8 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -154,6 +156,18 @@ def task_probe_report(task_probe: dict | None) -> dict:
         "error_detail": task.get("error_detail") or task_probe.get("error_detail") or "",
         "download_strategies": strategies,
     }
+
+
+def isolated_backend_environment(data_dir: Path, inherited: dict[str, str] | None = None) -> dict[str, str]:
+    """Use a throwaway local data root and explicitly disable inherited model credentials."""
+
+    environment = dict(os.environ if inherited is None else inherited)
+    environment.update({
+        "LEARNNOTE_DATA_DIR": str(data_dir.resolve()),
+        "LEARNNOTE_DEPLOYMENT_MODE": "desktop",
+        "LEARNNOTE_LLM_API_KEY": "",
+    })
+    return environment
 
 
 def derive_failure_reason(profile: dict) -> str:
@@ -987,6 +1001,7 @@ def main() -> None:
     parser.add_argument("--debug-port", type=int, default=0)
     parser.add_argument("--browser", choices=["chrome", "edge"], default="edge")
     parser.add_argument("--profile-dir", default="", help="Optional D-drive browser profile for logged-in audits.")
+    parser.add_argument("--output-dir", default="", help="Optional isolated directory for redacted report and logs.")
     parser.add_argument("--wait-ms", type=int, default=3500, help="Wait after page load before collecting evidence.")
     parser.add_argument("--interactive-login", action="store_true", help="Pause so you can log in/play video before collection.")
     parser.add_argument("--preflight", action="store_true", help="Run backend preflight with extension-collected cookies.")
@@ -1028,13 +1043,13 @@ def main() -> None:
         args.backend_port = replacement
     backend = f"http://127.0.0.1:{args.backend_port}"
     python = helpers.project_python()
-    out_dir = ROOT / "data" / "test-runs" / "site-audits" / datetime.now().strftime("%Y%m%d-%H%M%S")
+    out_dir = Path(args.output_dir).expanduser().resolve() if args.output_dir else ROOT / "data" / "test-runs" / "site-audits" / datetime.now().strftime("%Y%m%d-%H%M%S")
     log_dir = out_dir / "logs"
     out_dir.mkdir(parents=True, exist_ok=True)
-    profile_root = ROOT / "data" / "browser-profiles" / "site-audits"
-    profile_root.mkdir(parents=True, exist_ok=True)
-    profile_dir = Path(args.profile_dir).resolve() if args.profile_dir else Path(tempfile.mkdtemp(prefix="learnnote-site-audit-", dir=str(profile_root)))
+    owns_profile = not bool(args.profile_dir)
+    profile_dir = Path(args.profile_dir).expanduser().resolve() if args.profile_dir else Path(tempfile.mkdtemp(prefix="learnnote-site-audit-profile-"))
     profile_dir.mkdir(parents=True, exist_ok=True)
+    backend_data_dir = Path(tempfile.mkdtemp(prefix="learnnote-site-audit-data-"))
     print(f"Browser profile: {profile_dir}")
 
     backend_process: subprocess.Popen | None = None
@@ -1045,6 +1060,7 @@ def main() -> None:
             [python, "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", str(args.backend_port)],
             cwd=ROOT / "backend",
             log_path=log_dir / "backend.log",
+            env=isolated_backend_environment(backend_data_dir),
         )
         helpers.wait_for_json(f"{backend}/health")
 
@@ -1154,6 +1170,9 @@ def main() -> None:
         if not args.keep_browser:
             helpers.stop_process(browser_process)
         helpers.stop_process(backend_process)
+        shutil.rmtree(backend_data_dir, ignore_errors=True)
+        if owns_profile and not args.keep_browser:
+            shutil.rmtree(profile_dir, ignore_errors=True)
 
 
 if __name__ == "__main__":
