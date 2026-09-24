@@ -5,13 +5,9 @@ const http = require("node:http");
 const path = require("node:path");
 
 async function main() {
-  const backendPortText = process.argv[2] || "8765";
-  if (!/^[1-9]\d{0,4}$/.test(backendPortText) || Number(backendPortText) > 65535) {
-    throw new Error("Backend port must be an integer from 1 to 65535");
-  }
-  const backendOrigin = `http://127.0.0.1:${Number(backendPortText)}`;
-  const output = path.resolve(process.argv[3] || "build/task-stream-reconnect-ui");
+  const output = path.resolve(process.argv[2] || "build/task-stream-reconnect-ui");
   fs.mkdirSync(output, { recursive: true });
+  const webRoot = path.resolve(__dirname, "..", "web");
   const browser = await chromium.launch({ executablePath: "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe", headless: true });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   const errors = [];
@@ -40,39 +36,74 @@ async function main() {
   page.on("pageerror", error => errors.push(error.message));
 
   const proxy = http.createServer((request, response) => {
-    const url = new URL(request.url || "/", "http://127.0.0.1");
+    let url;
+    try {
+      url = new URL(request.url || "/", "http://127.0.0.1");
+    } catch {
+      response.writeHead(400).end();
+      return;
+    }
     const taskRoot = `/api/tasks/${taskId}`;
+    if (request.method === "GET" && url.pathname.startsWith("/web/")) {
+      let relativePath;
+      try {
+        relativePath = decodeURIComponent(url.pathname.slice("/web/".length));
+      } catch {
+        response.writeHead(400).end();
+        return;
+      }
+      const filePath = path.resolve(webRoot, relativePath);
+      if (filePath !== webRoot && !filePath.startsWith(`${webRoot}${path.sep}`)) {
+        response.writeHead(403).end();
+        return;
+      }
+      fs.readFile(filePath, (error, body) => {
+        if (error) {
+          response.writeHead(404).end();
+          return;
+        }
+        const extension = path.extname(filePath).toLowerCase();
+        const contentType = extension === ".html" ? "text/html; charset=utf-8"
+          : extension === ".js" ? "text/javascript; charset=utf-8"
+            : extension === ".css" ? "text/css; charset=utf-8"
+              : extension === ".svg" ? "image/svg+xml"
+                : "application/octet-stream";
+        response.writeHead(200, { "Content-Type": contentType, "Cache-Control": "no-store" });
+        response.end(body);
+      });
+      return;
+    }
+    if (request.method === "GET" && ["/health", "/api/health"].includes(url.pathname)) {
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(JSON.stringify({ ok: true, status: "healthy" }));
+      return;
+    }
     if (request.method === "GET" && url.pathname === "/api/tasks") {
       response.writeHead(200, { "Content-Type": "application/json" });
-      return response.end(JSON.stringify({ tasks: [task] }));
+      response.end(JSON.stringify({ tasks: [task] }));
+      return;
     }
     if (url.pathname === `${taskRoot}/events/stream`) {
       requests.push({ after: url.searchParams.get("after"), lastEventId: request.headers["last-event-id"] || "" });
       const frame = frames[requests.length - 1];
       if (!frame) {
-        response.writeHead(404);
-        return response.end();
+        response.writeHead(404).end();
+        return;
       }
       task = { ...task, status: frame.status, phase: frame.phase, progress: frame.progress, message: frame.message, updated_at: now() };
       const payload = JSON.stringify({ task_id: taskId, timestamp: task.updated_at, status: frame.status, phase: frame.phase, progress: frame.progress, message: frame.message, details: { progress: frame.progress }, event_id: frame.id });
       response.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" });
       response.write(`${requests.length === 1 ? "retry: 120\n\n" : ""}id: ${frame.id}\nevent: ${frame.event}\ndata: ${payload}\n\n`);
-      return setTimeout(() => response.end(), 40);
+      setTimeout(() => response.end(), 40);
+      return;
     }
     if (request.method === "GET" && url.pathname === taskRoot) {
       response.writeHead(200, { "Content-Type": "application/json" });
-      return response.end(JSON.stringify({ task }));
+      response.end(JSON.stringify({ task }));
+      return;
     }
-    const target = new URL(`${url.pathname}${url.search}`, backendOrigin);
-    const proxied = http.request(target, { method: request.method, headers: request.headers }, upstreamResponse => {
-      response.writeHead(upstreamResponse.statusCode || 502, upstreamResponse.headers);
-      upstreamResponse.pipe(response);
-    });
-    proxied.on("error", () => {
-      if (!response.headersSent) response.writeHead(502);
-      response.end();
-    });
-    request.pipe(proxied);
+    response.writeHead(404, { "Content-Type": "application/json" });
+    response.end(JSON.stringify({ detail: "unimplemented isolated acceptance route" }));
   });
 
   await new Promise(resolve => proxy.listen(0, "127.0.0.1", resolve));

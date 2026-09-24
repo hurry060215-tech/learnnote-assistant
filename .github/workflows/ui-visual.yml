@@ -92,7 +92,7 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Learning interaction gate failed" }
             node scripts/encoding-redecode-acceptance.cjs http://127.0.0.1:8765/web/classic.html build/encoding-redecode-ui
             if ($LASTEXITCODE -ne 0) { throw "Existing material re-decode gate failed" }
-            node scripts/task-stream-reconnect-acceptance.cjs 8765 build/task-stream-reconnect-ui
+            node scripts/task-stream-reconnect-acceptance.cjs build/task-stream-reconnect-ui
             if ($LASTEXITCODE -ne 0) { throw "Task stream reconnect gate failed" }
           } finally {
             if ($server -and -not $server.HasExited) { Stop-Process -Id $server.Id -Force }

@@ -7,7 +7,7 @@
 
 ## Browser path
 
-`scripts/task-stream-reconnect-acceptance.cjs` opens the actual LearnNote web app in Microsoft Edge and uses an isolated local HTTP proxy. Static files and non-task API calls go to the local FastAPI backend. The proxy supplies only the task list/detail and a three-frame SSE stream so it can close each response deliberately and test the browser's native `EventSource` reconnection behavior.
+`scripts/task-stream-reconnect-acceptance.cjs` opens the actual LearnNote web app in Microsoft Edge using static files from the repository and an isolated local HTTP fixture server. The fixture supplies the task list/detail and a three-frame SSE stream; all other API paths return 404. It never forwards browser-controlled requests to another host. This lets the test close each response deliberately and exercise the browser's native `EventSource` reconnection behavior.
 
 The first connection sends event ID 1 and ends. The next request carries `Last-Event-ID: 1`; the second sends event ID 2 and ends. The third carries `Last-Event-ID: 2`, sends a terminal event, and the UI closes the stream. The task card reaches 100% and displays its completed state. All three URLs retain `after=0`, demonstrating that browser-managed `Last-Event-ID` carries the resume cursor when the original URL is unchanged. The browser reported no page errors.
 
@@ -22,8 +22,8 @@ The FastAPI stream route's persisted event replay and cursor handling have separ
 ## Reproduction
 
 - Windows / Microsoft Edge; backend launched with `LEARNNOTE_DATA_DIR` set to an isolated `build/` directory.
-- `node scripts/task-stream-reconnect-acceptance.cjs 8765 build/task-stream-reconnect-ui`
-- Verified against the local backend on port 18784; screenshots and task payloads remain in ignored `build/` output.
+- `node scripts/task-stream-reconnect-acceptance.cjs build/task-stream-reconnect-ui`
+- Verified on Windows / Edge; screenshots and task payloads remain in ignored `build/` output.
 
 ## Remaining issue boundary
 
