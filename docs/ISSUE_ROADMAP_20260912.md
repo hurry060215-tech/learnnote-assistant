@@ -40,7 +40,7 @@
 | 4 模型、渐进结果与 OCR | #146 | 待验收 | `backend/app/model_route.py` 和 `/api/model/route` 能描述字幕、本地 ASR、远程文字/视觉路线及阻塞原因。 | 验证无 Key、本地模型未准备、图片不支持和离线切换的明确降级；路线存在不等于模型质量已证明。 |
 | 4 模型、渐进结果与 OCR | #148 | 待验收 | [可靠性验收报告](RELIABILITY_CLOSEOUT_20260924.md)：公开 CS224N 媒体真实 30/60/80 分钟音频分窗 ASR 与 3×5 分钟并发 ASR 均完成并记录时延、RSS、磁盘；80 分钟测 `tiny` 和 `small`。 | 尚无真实 180 分钟 ASR；实际转写不包含笔记总结或从视频导入到首份可读笔记流程，视频字幕路径 p95 与真实 end-to-end 首结果仍需测。 |
 | 4 模型、渐进结果与 OCR | #149 | 待验收 | `backend/app/visual_pipeline.py`、`local_ocr.py`、批量视觉窗口和视觉索引已有基础。 | 同时证明视觉调用减少 ≥50% 与证据覆盖不下降；验证抽帧缓存、OCR 失败恢复和资源消耗。 |
-| 4 模型、渐进结果与 OCR | #151 | 待验收 | `backend/app/routers/events.py` 的 SSE 端点有 `after`/`Last-Event-ID` HTTP 回归；Edge 原生 EventSource 另有隔离 UI 重连验收，详见 [可靠性报告](RELIABILITY_CLOSEOUT_20260924.md) 和 [PR #213 浏览器重连报告](https://github.com/hurry060215-tech/learnnote-assistant/pull/213)。 | 真实处理中任务的后端断线恢复、隐藏页节流、章节稳定不跳顶与取消后 UI 动态状态仍待端到端验收。 |
+| 4 模型、渐进结果与 OCR | #151 | 待验收 | `backend/app/routers/events.py` 的 SSE 端点有 `after`/`Last-Event-ID` HTTP 回归；[Edge 重连浏览器报告](TASK_STREAM_RECONNECT_ACCEPTANCE_20260924.md)记录原生 EventSource 自动重连并携带游标 1、2，任务卡更新到终态。 | UI 验收使用隔离页面和模拟任务/SSE 响应；真实处理中任务的后端断线恢复、隐藏页节流、章节稳定不跳顶、逐节草稿和取消后的动态 UI 仍待验收。 |
 | 贯穿架构拆分 | #143 | 待验收 | backend 已按 downloader、pipeline、storage、study、routers 分出模块；`web/desk*`、扩展入口和真实 SSE 路由可分别定位。 | 继续按真实运行链路补输入/输出契约、依赖边界、预算和循环依赖检查；每次拆分独立可回滚，完成独立架构验收后才建议关闭。 |
 | 5 范围学习、定位与批注 | #137 | 待验收 | `backend/app/range_learning.py`、range API、学习范围字段和播放器定位已有基础。 | 扩展当前位置/章节/自定义区间贯通后端与结果；分 P/标签页身份不符时必须阻断错误定位。 |
 | 5 范围学习、定位与批注 | #139 | 待验收 | `web/desk.js` 已有播放器、字幕 cue、时间定位和来源面板。 | 长字幕虚拟化；字幕、画面、笔记、问答和卡片共享来源锚点，且不跨任务/章节串源。 |
