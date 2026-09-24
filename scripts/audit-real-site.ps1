@@ -6,6 +6,7 @@ param(
   [ValidateSet("chrome", "edge")]
   [string]$Browser = "edge",
   [string]$ProfileDir = "",
+  [string]$OutputDir = "",
   [int]$WaitMs = 3500,
   [switch]$InteractiveLogin,
   [switch]$Preflight,
@@ -44,6 +45,9 @@ $argsList += @(
 )
 if ($ProfileDir) {
   $argsList += @("--profile-dir", $ProfileDir)
+}
+if ($OutputDir) {
+  $argsList += @("--output-dir", $OutputDir)
 }
 if ($InteractiveLogin) {
   $argsList += "--interactive-login"
