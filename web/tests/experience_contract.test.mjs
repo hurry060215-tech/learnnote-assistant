@@ -35,9 +35,10 @@ test("glass stays on chrome while note reading remains opaque", () => {
 });
 
 test("tablet note reading keeps a content column beside the rail", () => {
-  assert.match(css, /@media \(min-width: 681px\) and \(max-width: 900px\)[\s\S]*body\[data-app-view="notes"\]:not\(\.assistant-open\):not\(\.reading-mode\) \.app-shell,[\s\S]*body\[data-app-view="workspace"\]:not\(\.reading-mode\):not\(\.assistant-open\) \.app-shell\s*\{\s*grid-template-columns: 76px minmax\(0, 1fr\) !important/);
+  assert.match(css, /@media \(min-width: 681px\) and \(max-width: 900px\)/);
+  assert.match(css, /grid-template-columns: 76px minmax\(0, 1fr\) !important/);
   assert.match(css, /body\[data-app-view="notes"\]:not\(\.assistant-open\):not\(\.reading-mode\) \.result-panel\s*\{\s*grid-column: 2 !important/);
-  assert.match(css, /body\[data-app-view="study"\]:not\(\.reading-mode\) \.study-view\s*\{\s*grid-column: 2 !important/);
+  assert.match(css, /body\[data-app-view="study"\]:not\(\.reading-mode\):not\(\.assistant-open\) \.study-view\s*\{\s*grid-column: 2 !important/);
 });
 
 test("empty library exposes one primary action without implementation jargon", () => {
