@@ -13,6 +13,7 @@ from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from .config import TASK_DIR
+from .note_document import section_anchor_id, strip_note_frontmatter
 
 
 DOCUMENT_EXPORT_SCHEMA_VERSION = 1
@@ -231,7 +232,7 @@ def build_structured_export(
         notice = evidence_review_notice(task)
         if notice:
             parts.append(notice)
-        value = str(note or "")
+        value = strip_note_frontmatter(str(note or ""))
         if not settings["include_images"]:
             value = re.sub(r"(?m)^!\[[^\]]*\]\([^\n]+\)\s*$", "", value)
         if not settings["include_timestamps"]:
@@ -248,7 +249,9 @@ def build_structured_export(
         value = _practice_markdown(practice)
         if value:
             parts.append(value)
-    body = "\n\n".join(part for part in parts if str(part).strip()).strip()
+    # Only trim document-boundary line breaks.  Whitespace inside code blocks
+    # and Markdown hard-breaks is content and must survive export.
+    body = "\n\n".join(part for part in parts if str(part).strip()).strip("\n")
     if settings["include_toc"] and body:
         headings = []
         for block in _blocks(body):
@@ -278,6 +281,7 @@ def _blocks(markdown: str) -> list[_Block]:
     code: list[str] = []
     table: list[str] = []
     in_code = False
+    indented_code = False
     fence_character = ""
     fence_length = 0
 
@@ -297,7 +301,15 @@ def _blocks(markdown: str) -> list[_Block]:
             table.clear()
 
     for raw_line in str(markdown or "").replace("\r\n", "\n").replace("\r", "\n").split("\n"):
-        line = raw_line.rstrip()
+        # Keep code-block contents and Markdown hard-break spaces intact.
+        line = raw_line
+        if in_code and indented_code:
+            if not line.strip() or line.startswith("    ") or line.startswith("\t"):
+                code.append(line[4:] if line.startswith("    ") else line[1:] if line.startswith("\t") else "")
+                continue
+            flush_code()
+            in_code = False
+            indented_code = False
         fence = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)$", line)
         if fence and (not in_code or fence.group(1)[0] == fence_character and len(fence.group(1)) >= fence_length and not fence.group(2).strip()):
             if in_code:
@@ -311,6 +323,14 @@ def _blocks(markdown: str) -> list[_Block]:
             continue
         if in_code:
             code.append(line)
+            continue
+        if line.startswith("    ") or line.startswith("\t"):
+            flush_paragraph()
+            flush_table()
+            in_code = True
+            indented_code = True
+            fence_character = ""
+            code.append(line[4:] if line.startswith("    ") else line[1:])
             continue
         if line.strip().startswith("|") and line.strip().endswith("|"):
             flush_paragraph()
@@ -858,7 +878,7 @@ def build_html_export(
     title = html.escape(structured["title"])
     body: list[str] = []
     toc: list[str] = []
-    heading_index = 0
+    heading_occurrences: dict[str, int] = {}
     list_kind = ""
     def close_list() -> None:
         nonlocal list_kind
@@ -868,8 +888,9 @@ def build_html_export(
     for block in _content_blocks(structured["markdown"], structured["title"]):
         if block.kind == "heading":
             close_list()
-            heading_index += 1
-            anchor = f"section-{heading_index}"
+            stable_base = section_anchor_id(block.text)
+            heading_occurrences[stable_base] = heading_occurrences.get(stable_base, 0) + 1
+            anchor = section_anchor_id(block.text, heading_occurrences[stable_base])
             level = max(1, min(int(block.level), 4))
             text = html.escape(_clean_inline_markdown(block.text))
             body.append(f'<h{level} id="{anchor}">{text}</h{level}>')
