@@ -134,7 +134,7 @@
       }
     } catch (error) { body.textContent = error?.message || "原文不可用，请重新关联。"; }
   }
-  function renderStudy({els, cards, summary, plan, onReview, onSource, onCreate, onPlan}) {
+  function renderStudy({els, cards, summary, plan, onReview, onSelfAssessment, onSource, onCreate, onPlan}) {
     const reviewed = Number(summary.reviewed_today || 0), target = Math.max(1, Number(plan.daily_target || 10));
     const paused = Boolean(plan.paused), due = Number(summary.due_count || 0);
     els.studyViewSummary.innerHTML = `<span><b>${due}</b><small>${summary.course_scope?'本次课程卡片':'张到期卡片'}</small></span><span><b>${reviewed}</b><small>今日已复习（全部资料）</small></span><span><b>${target}</b><small>每日目标</small></span>`;

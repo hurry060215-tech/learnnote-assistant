@@ -11,6 +11,7 @@ assert.match(html, /今天的证据测验与复习/);
 assert.match(html, /自我解释只记录复习动作，不保存回答文本/);
 assert.match(learning, /回答不会发送给模型/);
 assert.match(learning, /onSelfAssessment\?\./);
+assert.match(learning, /onReview, onSelfAssessment, onSource/);
 assert.match(desk, /id="reviewReflection"/);
 assert.match(desk, /kind: "self_assessment"/);
 assert.match(desk, /anchor_status\?\.stale/);

@@ -43,8 +43,9 @@ class WebAccessibilityContractTests(unittest.TestCase):
 
     def test_learning_browser_acceptance_records_the_self_assessment_step(self) -> None:
         source = (ROOT / "scripts" / "learning-workflow-acceptance.cjs").read_text(encoding="utf-8")
-        self.assertIn('page.locator("#reviewReflection").fill', source)
-        self.assertIn('name: "记录解释并显示答案"', source)
+        self.assertIn('const reflection = page.getByRole("textbox", { name: "自我解释", exact: true });', source)
+        self.assertIn('await reflection.fill(', source)
+        self.assertIn('name: "记录解释并显示出处答案"', source)
         self.assertIn("self_assessment_count > 0", source)
 
 

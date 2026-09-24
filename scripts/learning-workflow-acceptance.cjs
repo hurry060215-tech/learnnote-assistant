@@ -42,8 +42,11 @@ async function main() {
     await page.locator("#confirmStudyProposalButton").click();
     await page.locator('.nav-rail [data-app-view="study"]').click();
     await page.waitForSelector(".study-card");
-    await page.locator("#reviewReflection").fill("学习率改变每一步参数更新的幅度。");
-    await page.getByRole("button", { name: "记录解释并显示答案", exact: true }).click();
+    const reflection = page.getByRole("textbox", { name: "自我解释", exact: true });
+    await reflection.fill("学习率改变每一步参数更新的幅度。");
+    assert.equal(await reflection.inputValue(), "学习率改变每一步参数更新的幅度。");
+    await page.getByRole("button", { name: "记录解释并显示出处答案", exact: true }).click();
+    await page.getByText("已记录自我解释动作；解释文本未保存。", { exact: true }).waitFor();
     const studyDashboard = await (await page.request.get(new URL("/api/study/dashboard", base).href)).json();
     assert((studyDashboard.progress.activity || []).some(day => day.self_assessment_count > 0), "Self-assessment was not recorded locally");
     assert((await page.locator(".study-answer").innerText()).length <= 360);
