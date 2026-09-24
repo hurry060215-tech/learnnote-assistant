@@ -24,6 +24,7 @@ from ..library import (
     material_capabilities,
     material_content,
     material_source_path,
+    redecode_document_material,
     rebuild_index,
     register_task_material,
     restore_library,
@@ -173,6 +174,27 @@ def api_library_delete_material(material_id: str, confirm: str = "") -> dict:
         code = str(exc)
         status = 404 if code == "material_not_found" else 422
         raise HTTPException(status_code=status, detail={"code": code, "message": "学习资料无法安全删除。"}) from exc
+
+
+@library_router.post("/materials/{material_id}/redecode")
+def api_library_material_redecode(material_id: str, payload: dict | None = Body(default=None)) -> dict:
+    encoding = str((payload or {}).get("encoding") or "").strip()[:40]
+    try:
+        return {"ok": True, "material": redecode_document_material(material_id, encoding)}
+    except ValueError as exc:
+        code = str(exc)
+        status = 404 if code == "material_not_found" else 422
+        messages = {
+            "material_redecode_encoding_required": "请先选择原文编码。",
+            "material_redecode_pdf_unsupported": "PDF 请使用本地 OCR；字符集重解码仅适用于 TXT、Markdown 和 HTML。",
+            "material_source_integrity_mismatch": "原始文件校验失败，未覆盖当前资料。",
+            "material_redecode_empty": "所选编码没有提取出有效文本，当前资料未改变。",
+            "material_redecode_evidence_missing": "原始出处索引不完整，当前资料未改变。",
+            "text_encoding_unsupported": "所选编码无法无损解码原始字节，当前资料未改变。",
+            "text_mojibake_detected": "所选编码仍会产生高置信度乱码，当前资料未改变。",
+            "material_anchor_limit_exceeded": "解码结果包含过多段落，当前资料未改变。",
+        }
+        raise HTTPException(status_code=status, detail={"code": code, "message": messages.get(code, "资料重解码失败，当前内容未改变。")}) from exc
 
 
 @library_router.get("/materials/{material_id}/anchors")

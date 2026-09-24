@@ -4814,6 +4814,11 @@ async function openLibraryMaterial(materialId) {
         method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({evidence_ids: material.evidence_ids.slice(0, 100), limit: 12})
       });
       if (!openStudyProposalDialog(result.proposals || [])) els.exportStatus.textContent = "当前资料没有适合提炼的文字，请先选择一个知识点。";
+    }, onRedecode: async encoding => {
+      await fetchJson(apiUrl(`/api/library/materials/${encodeURIComponent(materialId)}/redecode`), {
+        method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({encoding})
+      });
+      await openLibraryMaterial(materialId);
     }});
     lastDetailFingerprint = `material:${materialId}:${material.updated_at || ""}`;
     globalThis.LearnNotePersonal.attach({container: els.detail, kind: "material", id: materialId, apiUrl, fetchJson});
