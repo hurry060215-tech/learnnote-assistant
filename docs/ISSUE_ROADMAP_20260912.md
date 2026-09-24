@@ -40,16 +40,16 @@
 | 4 模型、渐进结果与 OCR | #146 | 待验收 | `backend/app/model_route.py` 和 `/api/model/route` 能描述字幕、本地 ASR、远程文字/视觉路线及阻塞原因。 | 验证无 Key、本地模型未准备、图片不支持和离线切换的明确降级；路线存在不等于模型质量已证明。 |
 | 4 模型、渐进结果与 OCR | #148 | 待验收 | [可靠性验收报告](RELIABILITY_CLOSEOUT_20260924.md)：公开 CS224N 媒体真实 30/60/80 分钟音频分窗 ASR 与 3×5 分钟并发 ASR 均完成并记录时延、RSS、磁盘；80 分钟测 `tiny` 和 `small`。 | 尚无真实 180 分钟 ASR；实际转写不包含笔记总结或从视频导入到首份可读笔记流程，视频字幕路径 p95 与真实 end-to-end 首结果仍需测。 |
 | 4 模型、渐进结果与 OCR | #149 | 待验收 | `backend/app/visual_pipeline.py`、`local_ocr.py`、批量视觉窗口和视觉索引已有基础。 | 同时证明视觉调用减少 ≥50% 与证据覆盖不下降；验证抽帧缓存、OCR 失败恢复和资源消耗。 |
-| 4 模型、渐进结果与 OCR | #151 | 待验收 | `backend/app/routers/events.py` 的 SSE 端点有 `after`/`Last-Event-ID` HTTP 回归；Edge 原生 EventSource 另有隔离 UI 重连验收，详见 [可靠性报告](RELIABILITY_CLOSEOUT_20260924.md) 和 [PR #213 浏览器重连报告](https://github.com/hurry060215-tech/learnnote-assistant/pull/213)。 | 真实处理中任务的后端断线恢复、隐藏页节流、章节稳定不跳顶与取消后 UI 动态状态仍待端到端验收。 |
+| 4 模型、渐进结果与 OCR | #151 | 待验收 | `backend/app/routers/events.py` 的 SSE 端点有 `after`/`Last-Event-ID` HTTP 回归；[Edge 重连浏览器报告](TASK_STREAM_RECONNECT_ACCEPTANCE_20260924.md)记录原生 EventSource 自动重连并携带游标 1、2，任务卡更新到终态。 | UI 验收使用隔离页面和模拟任务/SSE 响应；真实处理中任务的后端断线恢复、隐藏页节流、章节稳定不跳顶、逐节草稿和取消后的动态 UI 仍待验收。 |
 | 贯穿架构拆分 | #143 | 待验收 | backend 已按 downloader、pipeline、storage、study、routers 分出模块；`web/desk*`、扩展入口和真实 SSE 路由可分别定位。 | 继续按真实运行链路补输入/输出契约、依赖边界、预算和循环依赖检查；每次拆分独立可回滚，完成独立架构验收后才建议关闭。 |
 | 5 范围学习、定位与批注 | #137 | 待验收 | `backend/app/range_learning.py`、range API、学习范围字段和播放器定位已有基础。 | 扩展当前位置/章节/自定义区间贯通后端与结果；分 P/标签页身份不符时必须阻断错误定位。 |
 | 5 范围学习、定位与批注 | #139 | 待验收 | `web/desk.js` 已有播放器、字幕 cue、时间定位和来源面板。 | 长字幕虚拟化；字幕、画面、笔记、问答和卡片共享来源锚点，且不跨任务/章节串源。 |
-| 5 范围学习、定位与批注 | #140 | 待验收 | `backend/app/personal_notes.py` 和 annotations API 已独立保存个人补充。 | 重生成、备份恢复、同步和删除原文后保持批注；失效锚点必须给出明确修复入口。 |
+| 5 范围学习、定位与批注 | #140 | 待验收 | 默认阅读器与传统工作台均保存独立个人批注；新版本会显式提示失效锚点，只有用户重选正文才迁移 revision；学习备份可合并还原个人批注与编辑稿。详见 [STUDY_LOOP_ACCEPTANCE_20260924.md](STUDY_LOOP_ACCEPTANCE_20260924.md)。 | 本地重生成、同资料重导入、备份恢复路径已隔离验证；Obsidian 双向同步和含源媒体完整恢复仍待验收。 |
 | 6 资料、课程与学习闭环 | #138 | 待验收 | `backend/app/courses.py`、`playlists.py` 和课程页面已有分 P/播放列表基础。 | 批量确认、逐集重排/暂停/失败重试/去重和逐集恢复需副本数据矩阵。 |
 | 6 资料、课程与学习闭环 | #157 | 待验收 | `backend/app/library.py`、资料导入路由和 PDF/Markdown/TXT/HTML 输入已存在。 | 统一资料/视频入口、页码/段落定位、扫描 PDF OCR 覆盖与缺失、导入失败恢复需实测。 |
-| 6 资料、课程与学习闭环 | #136 | 待验收 | `backend/app/study.py` 已有 FSRS 评分、计划、暂停和复习历史。 | 时区、DST、跨日、暂停/恢复和共享 FSRS 历史需真实用户时区回归；统计区分阅读、答题、自评和复习。 |
-| 6 资料、课程与学习闭环 | #141 | 待验收 | `backend/app/study_content.py`、`study.py` 和助手 study.quiz 已有卡片/自测基础。 | 每题证据、错题回看、掌握度、删除/重生成后的历史一致性需闭环验收。 |
-| 6 资料、课程与学习闭环 | #159 | 待验收 | 复习入口、study API、FSRS 和学习统计已分散存在。 | 统一今日学习入口，串起到期卡、证据测验、错题、进度和来源锚点；每个动作可回源。 |
+| 6 资料、课程与学习闭环 | #136 | 待验收 | 隔离浏览器从 Asia/Tokyo 首次建议时区开始，手动改为 Asia/Shanghai 并完成学习备份恢复；以 America/New_York 浏览器环境重新打开后仍保留手选 Asia/Shanghai。DST、UTC 边界由后端测试覆盖，详见 [STUDY_LOOP_ACCEPTANCE_20260924.md](STUDY_LOOP_ACCEPTANCE_20260924.md)。 | 未覆盖真实操作系统时区变更、旅行/DST 提醒边界及旧资料区时区迁移；保持开放。 |
+| 6 资料、课程与学习闭环 | #141 | 待验收 | 有据卡片、答案隐藏的 quiz queue、出处、错题、评分历史和仅记录动作的 self-assessment 在隔离 API 流程中通过；[公开视频字幕探针](STUDY_LOOP_ACCEPTANCE_20260924.md)发现并拦截了残句/泛问，不足证据时返回零卡。 | 自我解释文本不存储/不评分；模型笔记结论与真实字幕/画面 anchors 的关联、人工标注正负例、复杂题型和错误题多媒体定位仍待验收。 |
+| 6 资料、课程与学习闭环 | #159 | 待验收 | 复习入口提供今日目标/到期/主操作、近14天本地活动、卡片掌握概览、错题回源和学习备份恢复；隔离 Playwright 完成 390/768/1440px 下阅读及复习、键盘操作、课程筛选和浏览器备份恢复。详见 [STUDY_LOOP_ACCEPTANCE_20260924.md](STUDY_LOOP_ACCEPTANCE_20260924.md)。 | 建议 PR 合并并经人工审阅后关闭；自我解释文本不持久化/不评分。 |
 | 7 导出、界面与双语 | #156 | 待验收 | `backend/app/document_exports.py` 已有 DOCX/PDF/Markdown/bundle 路径；`build/export-qa-0213` 保留了 v0.2.13 导出证据。 | 用 30 页以上中英文混排样例核验 Word/WPS、PDF、代码、公式、图片、表格、长链接、目录、来源链接、结构编辑和分页。 |
 | 7 导出、界面与双语 | #153 | 待验收 | `web/desk.css`、`product.css`、`experience.css` 与已有 UI visual workflow 覆盖响应式、主题和部分无障碍门禁。 | 重新运行 390/768/1024/1440、200%、键盘、对比度、减少动效和实际工作台截图验收。 |
 | 7 导出、界面与双语 | #144 | 待验收 | `web/i18n.js` 和部分中英文资源已存在。 | 补桌面、网页、扩展、动态状态、错误、无障碍文案和中英文商店素材；保持现有视觉方向。 |

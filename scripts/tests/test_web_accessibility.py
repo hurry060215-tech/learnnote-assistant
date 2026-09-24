@@ -19,12 +19,53 @@ class WebAccessibilityContractTests(unittest.TestCase):
 
     def test_new_local_tools_are_keyboard_discoverable(self) -> None:
         html = (ROOT / "web" / "classic.html").read_text(encoding="utf-8")
-        for element_id in ("knowledgeImportButton", "knowledgeSearchInput", "studyDueButton", "supportPackageButton"):
+        for element_id in ("knowledgeImportButton", "knowledgeSearchInput", "studyDueButton", "studyExportButton", "studyRestoreButton", "studyBackupInput", "supportPackageButton"):
             self.assertIn(f'id="{element_id}"', html)
         self.assertIn('id="settingLocale"', html)
         self.assertIn('value="en-US"', html)
         self.assertIn('aria-label="本地资料库检索结果"', html)
         self.assertIn('aria-label="到期复习卡片"', html)
+        self.assertIn('setAttribute("aria-label", "自我解释")', (ROOT / "web" / "learning.js").read_text(encoding="utf-8"))
+
+    def test_stale_personal_note_anchors_have_an_explicit_repair_path(self) -> None:
+        source = (ROOT / "web" / "personal-notes.js").read_text(encoding="utf-8")
+        self.assertIn("Boolean(item.anchor_status?.stale)", source)
+        self.assertIn("stale?'修复出处':'编辑'", source)
+        self.assertIn("quoteReanchored&&selected", source)
+        self.assertIn("item.anchor_status?.repairable", source)
+
+    def test_default_workspace_acceptance_targets_the_named_annotation_submitter(self) -> None:
+        for filename in ("unified-workspace-acceptance.cjs", "redesign-acceptance.cjs"):
+            source = (ROOT / "scripts" / filename).read_text(encoding="utf-8")
+            with self.subTest(script=filename):
+                self.assertIn('locator("#saveAnnotation")', source)
+        self.assertNotIn('locator("#annotationForm button")', source)
+
+    def test_learning_browser_acceptance_records_the_self_assessment_step(self) -> None:
+        source = (ROOT / "scripts" / "learning-workflow-acceptance.cjs").read_text(encoding="utf-8")
+        self.assertIn('const reflection = page.getByRole("textbox", { name: "自我解释", exact: true });', source)
+        self.assertIn('await reflection.focus();', source)
+        self.assertIn('page.keyboard.type("学习率改变每一步参数更新的幅度。")', source)
+        self.assertIn('"记录解释并显示出处答案"', source)
+        self.assertIn("self_assessment_count > 0", source)
+
+    def test_learning_browser_acceptance_covers_tablet_keyboard_course_and_backup_restore(self) -> None:
+        source = (ROOT / "scripts" / "learning-workflow-acceptance.cjs").read_text(encoding="utf-8")
+        for required in (
+            'await page.keyboard.press("Enter")',
+            '"tablet", 768, 1024',
+            '"mobile", 390, 844',
+            '"desktop", 1440, 900',
+            'studyGeometry[name]',
+            'cardWidth >= (name === "tablet" ? 500 : 280)',
+            '"#studyCourseSelect"',
+            'page.waitForEvent("download")',
+            'page.waitForEvent("filechooser")',
+            '/api/study/data?confirm=delete_all_study_data',
+            'restoredReviews.length > 0',
+        ):
+            with self.subTest(required=required):
+                self.assertIn(required, source)
 
 
 if __name__ == "__main__":

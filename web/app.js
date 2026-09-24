@@ -433,6 +433,8 @@ const els = {
   knowledgeSearchResults: document.querySelector("#knowledgeSearchResults"),
   studyDueButton: document.querySelector("#studyDueButton"),
   studyExportButton: document.querySelector("#studyExportButton"),
+  studyRestoreButton: document.querySelector("#studyRestoreButton"),
+  studyBackupInput: document.querySelector("#studyBackupInput"),
   studyPlanTarget: document.querySelector("#studyPlanTarget"),
   studyPlanPaused: document.querySelector("#studyPlanPaused"),
   studyPlanSaveButton: document.querySelector("#studyPlanSaveButton"),
@@ -5880,11 +5882,11 @@ async function exportStudyData() {
   if (!els.studyExportButton) return;
   els.studyExportButton.disabled = true;
   try {
-    const payload = await fetchJson(apiUrl("/api/study/export"));
+    const payload = await fetchJson(apiUrl("/api/study/backup"));
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `learnnote-study-${new Date().toISOString().slice(0, 10)}.json`;
+    link.download = `learnnote-learning-backup-${new Date().toISOString().slice(0, 10)}.json`;
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -5893,6 +5895,33 @@ async function exportStudyData() {
     if (els.studyDueList) els.studyDueList.textContent = error?.message || "复习记录导出失败。";
   } finally {
     els.studyExportButton.disabled = false;
+  }
+}
+
+async function restoreStudyBackup(file) {
+  if (!file || !els.studyRestoreButton) return;
+  if (!confirm("将把备份中的复习评分、学习计划、个人批注和笔记修改合并到本机；已有内容不会被覆盖。若资料尚未恢复，相关批注会在资料可用后显示。继续？")) {
+    if (els.studyBackupInput) els.studyBackupInput.value = "";
+    return;
+  }
+  els.studyRestoreButton.disabled = true;
+  try {
+    const backup = JSON.parse(await file.text());
+    const result = await fetchJson(apiUrl("/api/study/backup/restore"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(backup),
+    });
+    const merge = result.merge || {};
+    if (els.studyDueList) {
+      els.studyDueList.textContent = `已合并 ${merge.restored_reviews || 0} 条复习记录、${merge.restored_annotations || 0} 条个人批注和 ${merge.restored_editions || 0} 份笔记修改；当前已有内容保留。`;
+    }
+    await loadStudyView();
+  } catch (error) {
+    if (els.studyDueList) els.studyDueList.textContent = error?.message || "学习备份无效或无法读取。";
+  } finally {
+    els.studyRestoreButton.disabled = false;
+    if (els.studyBackupInput) els.studyBackupInput.value = "";
   }
 }
 
@@ -6021,6 +6050,11 @@ async function loadStudyView() {
         if (generation !== studyViewRequestGeneration) { if (document.body.dataset.appView === "study") loadStudyView(); return {view_changed: true}; }
         return courseId ? {...fresh, due_count: remaining} : fresh;
       },
+      onSelfAssessment: async (cardId) => fetchJson(apiUrl("/api/study/activity"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind: "self_assessment", source_id: `card:${cardId}` }),
+      }),
       onSource: openLearningEvidence,
       onCreate: () => showAppView("notes"),
       onPlan: () => { showAppView("settings"); showSettingsPane("connection"); els.studyPlanTarget?.scrollIntoView?.({block: "center"}); }
@@ -9702,6 +9736,8 @@ els.knowledgeSearchInput?.addEventListener?.("keydown", event => {
 });
 els.studyDueButton?.addEventListener?.("click", loadStudyDue);
 els.studyExportButton?.addEventListener?.("click", exportStudyData);
+els.studyRestoreButton?.addEventListener?.("click", () => els.studyBackupInput?.click?.());
+els.studyBackupInput?.addEventListener?.("change", () => restoreStudyBackup(els.studyBackupInput.files?.[0]));
 els.studyPlanSaveButton?.addEventListener?.("click", saveStudyPlan);
 els.studyViewRefreshButton?.addEventListener?.("click", loadStudyView);
 loadStudyPlan();

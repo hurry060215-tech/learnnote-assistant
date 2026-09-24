@@ -1666,3 +1666,78 @@ body.theme-dark .source-dialog, body.theme-dark .material-reader.markdown-note {
 #editorialKnowledgeImportStatus:empty { display: none; }
 .queue-tools > [data-open-courses] { border: 1px solid var(--ux-line); border-radius: 7px; padding: 8px 12px; color: var(--ux-accent-strong); background: var(--ux-surface); }
 @media(max-width:680px) { .course-dialog-header { top: -16px; } }
+
+@media (min-width: 681px) and (max-width: 900px) {
+  body:not(.reading-mode):not(.assistant-open) .app-shell,
+  body[data-app-view="notes"]:not(.assistant-open):not(.reading-mode) .app-shell,
+  body[data-app-view="study"]:not(.reading-mode) .app-shell,
+  body[data-app-view="settings"]:not(.reading-mode) .app-shell,
+  body[data-app-view="workspace"]:not(.reading-mode) .app-shell {
+    grid-template-columns: 76px minmax(0, 1fr) !important;
+  }
+
+  body:not(.reading-mode):not(.assistant-open) .nav-rail {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch;
+    gap: 12px;
+    position: fixed !important;
+    top: 68px !important;
+    right: auto !important;
+    bottom: auto !important;
+    left: 0 !important;
+    width: 76px !important;
+    min-width: 76px !important;
+    max-width: 76px !important;
+    height: calc(100vh - 68px) !important;
+    min-height: calc(100vh - 68px) !important;
+    padding: 18px 10px !important;
+  }
+
+  body:not(.reading-mode):not(.assistant-open) .nav-item,
+  body:not(.reading-mode):not(.assistant-open)[data-app-view] .nav-item {
+    display: grid !important;
+    grid-template-columns: 20px;
+    justify-content: center;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    padding: 0;
+  }
+
+  body:not(.reading-mode):not(.assistant-open) .nav-item span {
+    display: none !important;
+  }
+
+  body[data-app-view="notes"]:not(.assistant-open):not(.reading-mode) .queue-panel {
+    display: none !important;
+  }
+
+  body[data-app-view="notes"]:not(.assistant-open):not(.reading-mode) .result-panel {
+    grid-column: 2 !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none;
+    margin: 0;
+    padding-right: 20px !important;
+    padding-left: 20px !important;
+  }
+
+  body[data-app-view="study"]:not(.reading-mode):not(.assistant-open) .study-view {
+    grid-column: 2 !important;
+    width: 100%;
+    min-width: 0;
+  }
+
+  body[data-app-view="settings"]:not(.reading-mode):not(.assistant-open) .settings-view,
+  body[data-app-view="workspace"]:not(.reading-mode):not(.assistant-open) .workspace-panel {
+    grid-column: 2 !important;
+    width: 100%;
+    min-width: 0;
+  }
+
+  body[data-app-view="notes"]:not(.assistant-open):not(.reading-mode) .material-reader.markdown-note {
+    width: min(78ch, 100%);
+    margin-inline: auto;
+  }
+}

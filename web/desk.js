@@ -29,6 +29,10 @@ const state = {
   text: "",
   revision: "",
   editing: false,
+  annotationEditingId: "",
+  annotationEditingAnchor: {},
+  annotationQuote: "",
+  annotationQuoteReanchored: false,
   input: "url",
   busy: false,
   refreshing: false,
@@ -369,6 +373,12 @@ async function openItem(item, { remember = true, check = true } = {}) {
   $("document").innerHTML = '<p class="muted">正在打开…</p>';
   $("annotationList").replaceChildren();
   $("annotationText").value = "";
+  state.annotationEditingId = "";
+  state.annotationEditingAnchor = {};
+  state.annotationQuote = "";
+  state.annotationQuoteReanchored = false;
+  $("annotationQuote").textContent = "";
+  $("cancelAnnotationEdit").hidden = true;
   closeSource();
   document.body.classList.remove("menu-open");
   $("menu").setAttribute("aria-expanded", "false");
@@ -673,8 +683,28 @@ async function loadAnnotations(epoch) {
   const value = await api(`/api/personal/${s.kind}/${s.id}`);
   if (epoch !== state.epoch) return;
   $("annotationList").innerHTML = value.annotations
-    .map((a) => `<div class="annotation${a.anchor_status?.stale ? " annotation-stale" : ""}"><span>${esc(a.text)}</span>${a.anchor_status?.stale ? '<small>原文已变化；请重新选择出处后保存。</small>' : ""}</div>`)
+    .map((a) => `<div class="annotation${a.anchor_status?.stale ? " annotation-stale" : ""}">${a.quote ? `<blockquote>${esc(a.quote)}</blockquote>` : ""}<span>${esc(a.text)}</span>${a.anchor_status?.stale ? `<small>${a.anchor_status.repairable ? "原文版本已变化；重新选择当前正文以修复出处。" : "原文版本已变化；没有可恢复的引用片段。"}</small>` : ""}<button type="button" data-annotation-edit="${esc(a.id)}">${a.anchor_status?.stale ? "修复出处" : "编辑"}</button><button type="button" class="danger" data-annotation-delete="${esc(a.id)}">删除</button></div>`)
     .join("");
+  for (const button of $("annotationList").querySelectorAll("[data-annotation-edit]")) button.onclick = () => {
+    const item = value.annotations.find((annotation) => annotation.id === button.dataset.annotationEdit);
+    if (!item) return;
+    state.annotationEditingId = item.id;
+    state.annotationEditingAnchor = item.anchor && typeof item.anchor === "object" ? item.anchor : {};
+    state.annotationQuote = String(item.quote || "");
+    state.annotationQuoteReanchored = false;
+    $("annotationText").value = item.text;
+    $("annotationQuote").textContent = state.annotationQuote ? `引用：${state.annotationQuote}` : "尚未关联原文。";
+    $("saveAnnotation").textContent = item.anchor_status?.stale ? "修复出处并保存" : "保存修改";
+    $("cancelAnnotationEdit").hidden = false;
+    $("annotationText").focus();
+  };
+  for (const button of $("annotationList").querySelectorAll("[data-annotation-delete]")) button.onclick = async () => {
+    if (!confirm("删除这条个人补充？")) return;
+    try {
+      await api(`/api/personal/${state.selected.kind}/${state.selected.id}/${encodeURIComponent(button.dataset.annotationDelete)}`, { method: "DELETE" });
+      await loadAnnotations(epoch);
+    } catch (error) { failure(error); }
+  };
 }
 let sourceRequest = 0;
 function closeSource() {
@@ -1016,25 +1046,57 @@ $("annotationForm").onsubmit = async (e) => {
   const button = e.submitter;
   button.disabled = true;
   try {
+    const quote = state.annotationQuote;
+    const anchor = state.annotationQuoteReanchored && quote
+      ? { source_revision: state.revision, selected_text: quote }
+      : state.annotationEditingAnchor;
     await api(`/api/personal/${s.kind}/${s.id}`, {
       method: "POST",
       body: JSON.stringify({
         text,
-        quote: String(window.getSelection?.() || "").trim().slice(0, 1000),
-        anchor: {
-          source_revision: state.revision,
-          selected_text: String(window.getSelection?.() || "").trim().slice(0, 1000),
-        },
+        quote: quote.slice(0, 1000),
+        id: state.annotationEditingId,
+        anchor,
       }),
     });
     if (epoch !== state.epoch) return;
     $("annotationText").value = "";
+    $("annotationQuote").textContent = "";
+    $("saveAnnotation").textContent = "保存补充";
+    $("cancelAnnotationEdit").hidden = true;
+    state.annotationEditingId = "";
+    state.annotationEditingAnchor = {};
+    state.annotationQuote = "";
+    state.annotationQuoteReanchored = false;
     await loadAnnotations(epoch);
   } catch (error) {
     failure(error);
   } finally {
     button.disabled = false;
   }
+};
+$("captureAnnotationQuote").onclick = () => {
+  const selection = window.getSelection?.();
+  if (!selection?.anchorNode || !$("document").contains(selection.anchorNode)) {
+    notice("先在笔记正文中选中一段文字，再关联出处。");
+    return;
+  }
+  const quote = String(selection).trim().slice(0, 1000);
+  if (!quote) { notice("所选文字为空，请重新选择。"); return; }
+  state.annotationQuote = quote;
+  state.annotationQuoteReanchored = true;
+  $("annotationQuote").textContent = `引用：${quote}`;
+};
+$("captureAnnotationQuote").onmousedown = (event) => event.preventDefault();
+$("cancelAnnotationEdit").onclick = () => {
+  state.annotationEditingId = "";
+  state.annotationEditingAnchor = {};
+  state.annotationQuote = "";
+  state.annotationQuoteReanchored = false;
+  $("annotationText").value = "";
+  $("annotationQuote").textContent = "";
+  $("saveAnnotation").textContent = "保存补充";
+  $("cancelAnnotationEdit").hidden = true;
 };
 function create() {
   updateContentMode();
@@ -1288,17 +1350,35 @@ $("theme").onclick = () => {
 async function drawReview() {
   const card = state.cards[0];
   $("reviewContent").innerHTML = card
-    ? `<p class="muted">待复习 ${state.cards.length} 张</p><h3>${esc(card.front)}</h3><button id="reveal" class="primary">显示答案</button><div id="answer" hidden><p class="review-answer">${esc(card.back)}</p><div id="reviewSources"></div><div class="rating">${["忘记了", "有些困难", "记住了", "很轻松"].map((label, i) => `<button data-rating="${i + 1}">${label}</button>`).join("")}</div></div>`
+    ? `<p class="muted">待复习 ${state.cards.length} 张</p><h3>${esc(card.front)}</h3><label for="reviewReflection">先用自己的话解释要点；回答不会发送给模型</label><textarea id="reviewReflection" rows="3" maxlength="2000"></textarea><button id="recordReflection" class="primary">记录解释并显示答案</button><button id="skipReflection">跳过解释</button><p id="reviewReflectionStatus" role="status"></p><button id="reveal" class="primary" hidden>显示答案</button><div id="answer" hidden><p class="review-answer">${esc(card.back)}</p><div id="reviewSources"></div><div class="rating">${["忘记了", "有些困难", "记住了", "很轻松"].map((label, i) => `<button data-rating="${i + 1}">${label}</button>`).join("")}</div></div>`
     : '<p>今天的复习已完成。</p><p class="muted">你可以回到笔记，继续阅读和整理。</p>';
   if (card) {
-    const hint = document.createElement("p");
-    hint.className = "muted";
-    hint.textContent = "先尝试回忆，再显示答案。下一次复习会按本次评分与历史记忆情况调整。";
-    $("reviewContent").prepend(hint);
-    $("reveal").onclick = () => {
+    const revealAnswer = () => {
       $("answer").hidden = false;
       $("reveal").hidden = true;
+      $("recordReflection").hidden = true;
+      $("skipReflection").hidden = true;
+      $("reviewReflection").hidden = true;
     };
+    $("reveal").onclick = revealAnswer;
+    $("recordReflection").onclick = async () => {
+      if (!$("reviewReflection").value.trim()) {
+        $("reviewReflectionStatus").textContent = "写一句解释，或选择跳过本次解释。";
+        return;
+      }
+      $("recordReflection").disabled = true;
+      $("skipReflection").disabled = true;
+      try {
+        await api("/api/study/activity", { method: "POST", body: JSON.stringify({ kind: "self_assessment", source_id: `card:${card.card_id}` }) });
+        $("reviewReflectionStatus").textContent = "自我解释动作已保存在本机；解释文本未保存。";
+        revealAnswer();
+      } catch (error) {
+        $("reviewReflectionStatus").textContent = error.message || "无法保存自我解释记录。";
+        $("recordReflection").disabled = false;
+        $("skipReflection").disabled = false;
+      }
+    };
+    $("skipReflection").onclick = revealAnswer;
     $("reviewSources").innerHTML = (card.source_evidence_ids || [])
       .map((id) => `<button data-evidence="${esc(id)}">查看出处</button>`)
       .join("");
