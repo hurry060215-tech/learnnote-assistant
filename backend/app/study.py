@@ -4,6 +4,7 @@ import json
 import hashlib
 import sqlite3
 import re
+import math
 from .storage import atomic_write_text
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from datetime import datetime, timedelta, timezone
@@ -614,6 +615,7 @@ def export_study_data() -> dict[str, object]:
     try:
         cards = [_row_to_card(row) for row in connection.execute("SELECT * FROM study_cards WHERE status!='deleted' ORDER BY position,card_id")]
         reviews = [dict(row) for row in connection.execute("SELECT r.review_id,r.card_id,r.rating,r.reviewed_at,r.due_at,r.stability,r.difficulty,r.idempotency_key FROM study_reviews r JOIN study_cards c ON c.card_id=r.card_id WHERE c.status!='deleted' ORDER BY r.review_id")]
+        activity_events = [dict(row) for row in connection.execute("SELECT kind,source_id,occurred_at FROM study_activity ORDER BY activity_id")]
     finally:
         connection.close()
     return {
@@ -623,8 +625,180 @@ def export_study_data() -> dict[str, object]:
         "cards": [card.model_dump(mode="json") for card in cards],
         "reviews": reviews,
         "activity": activity_summary(365)["days"],
+        "activity_events": activity_events,
         "plan": get_study_plan().model_dump(mode="json"),
     }
+
+
+def validate_study_backup(payload: dict) -> dict[str, object]:
+    """Validate a portable study snapshot before any local merge is written."""
+
+    if not isinstance(payload, dict) or payload.get("algorithm") != FSRS_ALGORITHM:
+        raise ValueError("study_backup_algorithm_unsupported")
+    if int(payload.get("schema_version") or 0) != STUDY_SCHEMA_VERSION:
+        raise ValueError("study_backup_schema_unsupported")
+    raw_cards = payload.get("cards")
+    raw_reviews = payload.get("reviews")
+    raw_events = payload.get("activity_events", [])
+    if not isinstance(raw_cards, list) or not isinstance(raw_reviews, list) or not isinstance(raw_events, list):
+        raise ValueError("study_backup_shape_invalid")
+    if len(raw_cards) > 100_000 or len(raw_reviews) > 500_000 or len(raw_events) > 1_000_000:
+        raise ValueError("study_backup_limit_exceeded")
+
+    cards: list[dict[str, object]] = []
+    card_ids: set[str] = set()
+    for raw in raw_cards:
+        if not isinstance(raw, dict):
+            raise ValueError("study_backup_card_invalid")
+        card = StudyCard.model_validate(raw)
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", card.card_id) or card.status not in {"active", "suspended"}:
+            raise ValueError("study_backup_card_invalid")
+        if card.card_id in card_ids or _parse_datetime(card.due_at) is None:
+            raise ValueError("study_backup_card_invalid")
+        card_ids.add(card.card_id)
+        cards.append(card.model_dump(mode="json"))
+
+    reviews: list[dict[str, object]] = []
+    for raw in raw_reviews:
+        if not isinstance(raw, dict):
+            raise ValueError("study_backup_review_invalid")
+        card_id = str(raw.get("card_id") or "")
+        raw_rating = raw.get("rating")
+        rating = int(raw_rating) if isinstance(raw_rating, int) and not isinstance(raw_rating, bool) else 0
+        reviewed_at = _parse_datetime(raw.get("reviewed_at"))
+        due_at = _parse_datetime(raw.get("due_at"))
+        stability = float(raw.get("stability") or 0)
+        difficulty = float(raw.get("difficulty") or 0)
+        idempotency_key = str(raw.get("idempotency_key") or "")
+        if (
+            card_id not in card_ids or rating not in {1, 2, 3, 4}
+            or reviewed_at is None or due_at is None
+            or not math.isfinite(stability) or stability < 0 or stability > 36500
+            or not math.isfinite(difficulty) or not 1 <= difficulty <= 10
+            or len(idempotency_key) > 128 or idempotency_key and not re.fullmatch(r"[A-Za-z0-9._:-]+", idempotency_key)
+        ):
+            raise ValueError("study_backup_review_invalid")
+        reviews.append({
+            "card_id": card_id,
+            "rating": rating,
+            "reviewed_at": reviewed_at.isoformat(),
+            "due_at": due_at.isoformat(),
+            "stability": stability,
+            "difficulty": difficulty,
+            "idempotency_key": idempotency_key,
+        })
+
+    events: list[dict[str, str]] = []
+    for raw in raw_events:
+        if not isinstance(raw, dict):
+            raise ValueError("study_backup_activity_invalid")
+        kind = str(raw.get("kind") or "")
+        source_id = str(raw.get("source_id") or "")[:128]
+        occurred_at = _parse_datetime(raw.get("occurred_at"))
+        if kind not in ACTIVITY_KINDS or occurred_at is None:
+            raise ValueError("study_backup_activity_invalid")
+        events.append({"kind": kind, "source_id": source_id, "occurred_at": occurred_at.isoformat()})
+
+    plan = payload.get("plan")
+    if not isinstance(plan, dict):
+        raise ValueError("study_backup_plan_invalid")
+    validated_plan = StudyPlan.model_validate(plan)
+    study_timezone(validated_plan.timezone)
+    return {
+        "schema_version": STUDY_SCHEMA_VERSION,
+        "algorithm": FSRS_ALGORITHM,
+        "cards": cards,
+        "reviews": reviews,
+        "activity_events": events,
+        "plan": validated_plan.model_dump(mode="json"),
+    }
+
+
+def restore_study_data(payload: dict) -> dict[str, int]:
+    """Idempotently merge validated cards, review history, activity and plan."""
+
+    snapshot = validate_study_backup(payload)
+    connection = _connect()
+    restored_cards = restored_reviews = restored_activity = 0
+    plan_restored = 0
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        existing_cards = {str(row[0]) for row in connection.execute("SELECT card_id FROM study_cards")}
+        for raw in snapshot["cards"]:
+            card = StudyCard.model_validate(raw)
+            if card.card_id in existing_cards:
+                continue
+            connection.execute(
+                """INSERT INTO study_cards
+                   (card_id, schema_version, front, back, source_evidence_ids, status, due_at,
+                    stability, difficulty, reps, lapses, last_reviewed_at, fsrs_state, step, position)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (card.card_id, STUDY_SCHEMA_VERSION, card.front, card.back,
+                 json.dumps(card.source_evidence_ids, ensure_ascii=False), card.status, card.due_at,
+                 card.stability, card.difficulty, card.reps, card.lapses, card.last_reviewed_at,
+                 card.fsrs_state, int(card.step or 0), int(card.position)),
+            )
+            existing_cards.add(card.card_id)
+            restored_cards += 1
+
+        for item in snapshot["reviews"]:
+            identity = json.dumps(item, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+            key = str(item["idempotency_key"] or "restore-" + hashlib.sha256(identity.encode("utf-8")).hexdigest()[:40])
+            duplicate = connection.execute(
+                """SELECT 1 FROM study_reviews WHERE card_id=? AND (
+                     (idempotency_key!='' AND idempotency_key=?) OR
+                     (rating=? AND reviewed_at=? AND due_at=? AND stability=? AND difficulty=?)) LIMIT 1""",
+                (item["card_id"], key, item["rating"], item["reviewed_at"], item["due_at"], item["stability"], item["difficulty"]),
+            ).fetchone()
+            if duplicate:
+                continue
+            connection.execute(
+                "INSERT INTO study_reviews(card_id,rating,reviewed_at,due_at,stability,difficulty,idempotency_key) VALUES (?,?,?,?,?,?,?)",
+                (item["card_id"], item["rating"], item["reviewed_at"], item["due_at"], item["stability"], item["difficulty"], key),
+            )
+            restored_reviews += 1
+
+        for item in snapshot["activity_events"]:
+            duplicate = connection.execute(
+                "SELECT 1 FROM study_activity WHERE kind=? AND source_id=? AND occurred_at=? LIMIT 1",
+                (item["kind"], item["source_id"], item["occurred_at"]),
+            ).fetchone()
+            if duplicate:
+                continue
+            connection.execute(
+                "INSERT INTO study_activity(kind,source_id,occurred_at) VALUES (?,?,?)",
+                (item["kind"], item["source_id"], item["occurred_at"]),
+            )
+            restored_activity += 1
+
+        imported_plan = StudyPlan.model_validate(snapshot["plan"])
+        current_plan = connection.execute("SELECT * FROM study_plans WHERE plan_id='default'").fetchone()
+        current_is_uninitialized = current_plan is None or (
+            not bool(current_plan["timezone_initialized"])
+            and current_plan["title"] == "本地学习计划"
+            and int(current_plan["daily_target"]) == 10
+            and not bool(current_plan["paused"])
+        )
+        imported_time = _parse_datetime(imported_plan.updated_at)
+        current_time = _parse_datetime(current_plan["updated_at"]) if current_plan else None
+        if current_is_uninitialized or imported_time and (current_time is None or imported_time > current_time):
+            connection.execute(
+                """INSERT INTO study_plans(plan_id,schema_version,title,daily_target,paused,timezone,created_at,updated_at,timezone_initialized)
+                   VALUES ('default',?,?,?,?,?,?,?,?)
+                   ON CONFLICT(plan_id) DO UPDATE SET schema_version=excluded.schema_version,title=excluded.title,
+                   daily_target=excluded.daily_target,paused=excluded.paused,timezone=excluded.timezone,
+                   created_at=excluded.created_at,updated_at=excluded.updated_at,timezone_initialized=excluded.timezone_initialized""",
+                (STUDY_SCHEMA_VERSION, imported_plan.title, imported_plan.daily_target, int(imported_plan.paused),
+                 imported_plan.timezone, imported_plan.created_at, imported_plan.updated_at, int(imported_plan.timezone_initialized)),
+            )
+            plan_restored = 1
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+    return {"restored_cards": restored_cards, "restored_reviews": restored_reviews, "restored_activity": restored_activity, "restored_plan": plan_restored}
 
 
 def get_study_plan() -> StudyPlan:
@@ -736,11 +910,10 @@ def study_dashboard(limit: int = 12, activity_days: int = 14) -> dict[str, objec
                       WHEN latest.rating=1 OR c.fsrs_state='Relearning' THEN 'needs_attention'
                       WHEN c.stability>=21 THEN 'retained' ELSE 'learning' END AS bucket,
                       COUNT(*) AS count
-               FROM study_cards c LEFT JOIN (
-                 SELECT r.card_id, r.rating FROM study_reviews r JOIN
-                 (SELECT card_id, MAX(review_id) AS last_id FROM study_reviews GROUP BY card_id) ids
-                 ON r.review_id=ids.last_id
-               ) latest ON latest.card_id=c.card_id
+               FROM study_cards c LEFT JOIN study_reviews latest ON latest.review_id=(
+                 SELECT r.review_id FROM study_reviews r WHERE r.card_id=c.card_id
+                 ORDER BY r.reviewed_at DESC, r.review_id DESC LIMIT 1
+               )
                WHERE c.status='active' GROUP BY bucket"""
         ).fetchall()
     finally:

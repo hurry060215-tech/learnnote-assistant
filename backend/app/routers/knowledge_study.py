@@ -12,6 +12,7 @@ from ..community import add_community_context, clear_all_community_context, clea
 from ..document_exports import DocumentExportUnavailable, build_docx_export, build_html_export, build_pdf_export, build_structured_export, normalize_export_options
 from ..embeddings import embedding_status
 from ..knowledge import add_evidence, answer_from_evidence, evidence_by_ids, evidence_for_task, extract_import_text_with_metadata, preserve_raw_import, redecode_evidence, remove_evidence, search_evidence
+from ..learning_backup import export_learning_backup, restore_learning_backup
 from ..models import SourceEvidence, StudyCard, StudyCardPositionRequest, StudyCardStatusRequest, StudyPlanUpdateRequest, StudyReviewRequest
 from ..note_document import normalize_note_markdown
 from ..study import activity_summary, clear_study_data, due_cards, export_study_data, get_study_plan, list_cards, propose_cards, record_activity, review_card, review_history, save_cards, set_card_position, set_card_status, study_dashboard, study_summary, update_study_plan
@@ -342,6 +343,29 @@ def api_rebuild_study_schedule(confirm: str = ""):
 @study_router.get("/export")
 def api_study_export() -> dict:
     return export_study_data()
+
+
+@study_router.get("/backup")
+def api_learning_backup() -> dict:
+    backup = export_learning_backup()
+    if len(json.dumps(backup, ensure_ascii=False).encode("utf-8")) > 100_000_000:
+        raise HTTPException(status_code=413, detail={"code": "learning_backup_too_large", "message": "学习备份超过 100 MB，无法导出为单个文件。"})
+    return backup
+
+
+@study_router.post("/backup/restore")
+def api_restore_learning_backup(payload: dict | None = Body(default=None)) -> dict:
+    value = payload or {}
+    if len(json.dumps(value, ensure_ascii=False).encode("utf-8")) > 100_000_000:
+        raise HTTPException(status_code=413, detail={"code": "learning_backup_too_large", "message": "学习备份超过 100 MB，未写入任何数据。"})
+    try:
+        return {"ok": True, "merge": restore_learning_backup(value)}
+    except ValueError as exc:
+        code = str(exc)
+        raise HTTPException(
+            status_code=422,
+            detail={"code": code, "message": "学习备份无效或版本不兼容，现有学习资料未覆盖。"},
+        ) from exc
 
 
 @study_router.delete("/data")

@@ -225,7 +225,7 @@
                 <div id="knowledgeSearchResults" class="knowledge-results" role="region" aria-live="polite" aria-label="本地资料库检索结果"></div>
                 <div class="setting-row">
                   <div><strong>本地复习卡片</strong><small>只读取你确认过的卡片和复习记录，不读取课程平台进度。</small></div>
-                  <div class="setting-inline-actions"><button id="studyDueButton" class="secondary action-button" type="button">查看到期卡片</button><button id="studyExportButton" class="secondary action-button" type="button">导出复习记录</button></div>
+                  <div class="setting-inline-actions"><button id="studyDueButton" class="secondary action-button" type="button">查看到期卡片</button><button id="studyExportButton" class="secondary action-button" type="button">导出学习备份</button><button id="studyRestoreButton" class="secondary action-button" type="button">恢复学习备份</button><input id="studyBackupInput" type="file" accept="application/json,.json" hidden></div>
                 </div>
                 <div class="setting-row study-plan-row">
                   <div><strong>本地学习计划</strong><small>设置每天目标；暂停只影响本地提醒和复习视图，不读取课程平台进度。</small></div>
@@ -283,7 +283,7 @@
           <div class="study-view-progress-track" role="progressbar" aria-label="今日复习目标" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="studyViewProgressBar"></i></div>
           <small id="studyViewProgressHint">复习记录只保存在本机</small>
         </section>
-        <section class="study-view-due-section"><header><h2>今天需要复习</h2><small>完成一张卡片后，间隔会按本地复习记录更新。</small></header><div id="studyViewDueList" class="study-due-list"></div></section>
+        <section class="study-view-due-section"><header><h2>今天的证据测验与复习</h2><small>每题都能回到出处；自我解释只记录复习动作，不保存回答文本。</small></header><div id="studyViewDueList" class="study-due-list"></div></section>
       </section>
 
       <aside id="workspace" class="workspace-panel">

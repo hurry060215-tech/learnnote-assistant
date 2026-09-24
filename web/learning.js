@@ -156,10 +156,19 @@
       const article = document.createElement("article"); article.className = "study-card";
       const count = document.createElement("small"); count.textContent = `第 ${index + 1} / ${cards.length} 张`;
       const front = document.createElement("h3"); front.textContent = card.front;
+      const reflection = document.createElement("textarea"); reflection.rows = 3; reflection.maxLength = 2000; reflection.placeholder = "先用自己的话解释要点；回答不会发送给模型。"; reflection.setAttribute("aria-label", "自我解释");
       const answer = document.createElement("p"); answer.textContent = card.back; answer.hidden = true; answer.className = "study-answer";
-      const reveal = document.createElement("button"); reveal.type = "button"; reveal.textContent = "显示答案"; reveal.className = "primary action-button";
+      const reveal = document.createElement("button"); reveal.type = "button"; reveal.textContent = "记录解释并显示出处答案"; reveal.className = "primary action-button";
+      const skipReflection = document.createElement("button"); skipReflection.type = "button"; skipReflection.textContent = "跳过解释";
       const controls = document.createElement("div"); controls.className = "study-card-actions"; controls.hidden = true;
-      reveal.onclick = () => { answer.hidden = false; controls.hidden = false; reveal.hidden = true; answer.tabIndex = -1; answer.focus(); };
+      const showAnswer = () => { answer.hidden = false; controls.hidden = false; reveal.hidden = true; skipReflection.hidden = true; reflection.hidden = true; answer.tabIndex = -1; answer.focus(); };
+      reveal.onclick = async () => {
+        if (!reflection.value.trim()) { status.textContent = "请写下一句解释，或跳过本次解释。"; return; }
+        reveal.disabled = true; skipReflection.disabled = true;
+        try { await onSelfAssessment?.(card.card_id); status.textContent = "已记录自我解释动作；解释文本未保存。"; showAnswer(); }
+        catch (error) { status.textContent = error?.message || "自我解释记录失败，请重试。"; reveal.disabled = false; skipReflection.disabled = false; }
+      };
+      skipReflection.onclick = () => { status.textContent = "本次未记录自我解释。"; showAnswer(); };
       for (const [rating, label] of [[1,"重来"],[2,"困难"],[3,"记住"],[4,"简单"]]) {
         const button = document.createElement("button"); button.type = "button"; button.textContent = label;
         // Retrying after an uncertain response reuses this logical submission.
@@ -186,7 +195,7 @@
       const sources = document.createElement("div"); sources.className = "study-card-sources";
       for (const id of card.source_evidence_ids || []) { const b = document.createElement("button"); b.type = "button"; b.textContent = "查看原文出处"; b.onclick = () => onSource(id); sources.append(b); }
       const status = document.createElement("p"); status.setAttribute("role", "status");
-      article.append(count, front, reveal, answer, controls, sources, status); container.append(article);
+      article.append(count, front, reflection, reveal, skipReflection, answer, controls, sources, status); container.append(article);
     }; show();
   }
   function renderStudyHistory({dashboard,onSource}) {
