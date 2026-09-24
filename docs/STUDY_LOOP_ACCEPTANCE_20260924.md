@@ -2,7 +2,7 @@
 
 - 日期：2026-09-24
 - 基线：`origin/main` `e585b7fbf3067d19f19d68760ff4614ad2757efa`
-- 本次验收代码 commit：`8db15ed`
+- 本次验收代码 commit：`ce83f9e`
 - 关联 Issue：[#136](https://github.com/hurry060215-tech/learnnote-assistant/issues/136)、[#140](https://github.com/hurry060215-tech/learnnote-assistant/issues/140)、[#141](https://github.com/hurry060215-tech/learnnote-assistant/issues/141)、[#159](https://github.com/hurry060215-tech/learnnote-assistant/issues/159)
 
 ## 改动
@@ -29,7 +29,7 @@
 
 这条连续路径真实调用本地 HTTP API；输入是构造的 Markdown，无登录资料、远程模型或云服务。
 
-另有隔离的 Playwright 浏览器验收：Windows / Edge，浏览器初始时区模拟为 `Asia/Tokyo`，首次建议自动显示该时区；用户随后手动设为 `Asia/Shanghai`。从设置和构造 Markdown 导入开始，连续完成全文阅读、课程筛选、生成并确认复习卡、键盘输入自我解释、查看原文出处、评分、导出备份、清空隔离学习库后从设置页恢复备份。恢复后 12 张卡片、1 条评分和 `Asia/Shanghai` 计划均保留。随后以 `America/New_York` 浏览器时区重新启动应用，计划仍保持 `Asia/Shanghai`。课程选择、自我解释、来源打开、评分、计划保存、备份导出/恢复均走键盘激活。
+另有隔离的 Playwright 浏览器验收：Windows / Edge，页面内将 `Intl.DateTimeFormat().resolvedOptions().timeZone` 模拟为 `Asia/Tokyo`，首次建议自动显示该时区；用户随后手动设为 `Asia/Shanghai`。模拟只影响测试页面，不改变 Windows 时区。从设置和构造 Markdown 导入开始，连续完成全文阅读、课程筛选、生成并确认复习卡、键盘输入自我解释、查看原文出处、评分、导出备份、清空隔离学习库后从设置页恢复备份。恢复后 12 张卡片、1 条评分和 `Asia/Shanghai` 计划均保留。随后以 `America/New_York` 浏览器时区模拟重新启动应用，计划仍保持 `Asia/Shanghai`。课程选择、自我解释、来源打开、评分、计划保存、备份导出/恢复均走键盘激活。
 
 复习页与阅读页均在 390/768/1440px 视口检查。复习卡宽度分别为 296/553/1054px；阅读器宽度分别为 302/584/715px；三个尺寸均无横向溢出，浏览器无页面异常。代码对比度为 10.9989:1。平板截图曾发现笔记布局落在窄导航栏下方；已修正 681–900px 的网格布局，并加入宽度回归门禁。后台使用独立 `build/study-expanded10-data` 目录和 18777 端口，无用户资料、Cookie 或模型凭据。
 
