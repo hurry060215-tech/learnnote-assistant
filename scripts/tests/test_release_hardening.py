@@ -94,6 +94,14 @@ class ReleaseHardeningContractTests(unittest.TestCase):
         self.assertNotIn("transcribe_audio(", source)
         self.assertNotIn("OpenAI(", source)
 
+    def test_full_local_task_reports_transcript_to_first_draft_latency(self) -> None:
+        source = (ROOT / "scripts" / "full-local-task-reliability.py").read_text(encoding="utf-8")
+        self.assertIn('"ready_after_transcript_seconds"', source)
+        self.assertIn('"target_seconds_after_transcript": 5', source)
+        self.assertIn('"input_kind": "prebuilt synthetic subtitle fixture"', source)
+        self.assertIn('"asr_attempted": False', source)
+        self.assertIn('"model_call_attempted": False', source)
+
     def test_weekly_workflow_has_offline_and_public_sample_gates(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "reliability.yml").read_text(encoding="utf-8")
 

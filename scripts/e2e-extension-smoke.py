@@ -53,10 +53,10 @@ def wait_for_json(url: str, timeout_seconds: float = 45) -> dict:
     raise RuntimeError(f"Timed out waiting for {url}: {last_error}")
 
 
-def start_process(command: list[str], *, cwd: Path, log_path: Path) -> subprocess.Popen:
+def start_process(command: list[str], *, cwd: Path, log_path: Path, env: dict[str, str] | None = None) -> subprocess.Popen:
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log = log_path.open("w", encoding="utf-8")
-    return subprocess.Popen(command, cwd=str(cwd), stdout=log, stderr=subprocess.STDOUT, text=True)
+    return subprocess.Popen(command, cwd=str(cwd), stdout=log, stderr=subprocess.STDOUT, text=True, env=env)
 
 
 def stop_process(process: subprocess.Popen | None) -> None:
