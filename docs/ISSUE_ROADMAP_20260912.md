@@ -35,7 +35,7 @@
 | 2 可靠性与安全发布 | #134 | 外部阻塞 | 发布脚本、draft release 复用、校验和、更新回退和安装健康检查已有基础。 | 需在候选包完成损坏包/断网/磁盘不足/文件占用/失败回退/同 tag 重跑；签名凭据和真实 Release 操作单列外部条件。 |
 | 3 权限、编码与证据 | #135 | 待验收 | `extension/manifest.json`、`extension/PERMISSION_JUSTIFICATION.md` 和按需捕获路径记录了权限边界。 | Chrome/Edge 允许、拒绝、撤销、重新授权与缓存失效必须有实机矩阵；验证不默认扩大权限。 |
 | 3 权限、编码与证据 | #150 | 待验收 | [编码工作包 3A 报告](ENCODING_PROVENANCE_20260924.md)：导入保存编码来源、confidence 类别、原字节校验；默认工作台 GB18030 导入通过；[现有资料重解码报告](ENCODING_REDECODE_ACCEPTANCE_20260924.md)记录了错误 Big5 导入后在阅读页选择 GB18030、更新出处并保持原始 SHA 的隔离浏览器验收。 | PDF/OCR 与字幕/转写/模型输出等其它来源仍需统一回归；个人批注锚点与 Word/PDF/Obsidian 导出矩阵仍待审。保持开放。 |
-| 3 权限、编码与证据 | #129 | 待验收 | `backend/app/knowledge.py`、`transcript_passages.py`、`evidence_for_task` 和助手 citations 已提供字幕/文本证据。 | 至少 50 个中英文正负样本，逐条区分有依据、仅定位、推断和待核实；不得把固定夹具质量当真实课程事实。 |
+| 3 权限、编码与证据 | #129 | 待验收 | 除字幕/文本证据外，现有 claim map v5 可投影文档来源；[60 条公开来源状态基准](CLAIM_EVIDENCE_BENCHMARK_20260924.md)（EN30/ZH30、12 个官方来源）给出混淆矩阵、直接支持 precision/recall 和 review gate 指标，CI 离线运行。 | 固定语料直接支持 precision 1.00、recall 0.50，12 条可支持释义被保守降级；这不是一般语义准确率。生产文档 claim 生成链、真实课程标注集及 UI 到原文的完整闭环仍待验收，Issue 保持开放。 |
 | 3 权限、编码与证据 | #152 | 待验收 | `backend/app/note_document.py`、`markdown_structure.py`、`summary_diagnostics.py` 已有语义结构和质量报告。 | 正文、目录、导出共用语义树；补重复内容、内部提示泄露、失控 Markdown、空证据和失败草稿门禁。 |
 | 4 模型、渐进结果与 OCR | #146 | 待验收 | `backend/app/model_route.py` 和 `/api/model/route` 能描述字幕、本地 ASR、远程文字/视觉路线及阻塞原因。 | 验证无 Key、本地模型未准备、图片不支持和离线切换的明确降级；路线存在不等于模型质量已证明。 |
 | 4 模型、渐进结果与 OCR | #148 | 待验收 | `backend/app/pipeline_progress.py`、`task_queue.py` 和字幕优先阶段状态已存在。 | 受控基准记录字幕提纲 p95 ≤10 秒、转写首章节 ≤5 秒；补断线重放、章节草稿、取消恢复和 5/30/60/180 分钟资源证据。 |

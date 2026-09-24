@@ -1,0 +1,200 @@
+{
+  "schema_version": 1,
+  "corpus_id": "public-doc-claim-status-20260924",
+  "annotation_note": "Evidence snippets are manual paraphrases of the linked public primary sources, not copied transcript text. Gold labels are human judgments for this fixed regression set and do not measure general semantic accuracy.",
+  "label_order": ["direct", "located_only", "inference", "pending_review"],
+  "sources": [
+    {
+      "id": "python-list-sort",
+      "language": "en",
+      "title": "Python 3.12 Tutorial: Data Structures",
+      "url": "https://docs.python.org/3.12/tutorial/datastructures.html#more-on-lists",
+      "locator": "Python 3.12 Tutorial section 5.1",
+      "risk_tags": ["mutation", "return_value"],
+      "evidence": "Calling list.sort changes that list in place and returns no new list.",
+      "claims": [
+        {"id":"py-sort-direct","text":"Calling list.sort changes that list in place and returns no new list.","gold":"direct"},
+        {"id":"py-sort-paraphrase","text":"Sorting with list.sort mutates the original list instead of creating a separate result.","gold":"direct"},
+        {"id":"py-sort-conflict","text":"A list.sort call returns a new list and leaves the original untouched.","gold":"located_only"},
+        {"id":"py-sort-inference","text":"Because list.sort mutates the receiver, callers may need to copy the list first.","gold":"inference"},
+        {"id":"py-sort-unrelated","text":"Saturn has prominent rings made of ice and dust.","gold":"pending_review"}
+      ]
+    },
+    {
+      "id": "python-sorted",
+      "language": "en",
+      "title": "Python 3.12 Tutorial: Data Structures",
+      "url": "https://docs.python.org/3.12/tutorial/datastructures.html#looping-techniques",
+      "locator": "Python 3.12 Tutorial section 5.6",
+      "risk_tags": ["mutation", "return_value"],
+      "evidence": "The sorted function returns a new ordered list and leaves the input sequence unchanged.",
+      "claims": [
+        {"id":"python-sorted-direct","text":"The sorted function returns a new ordered list and leaves the input sequence unchanged.","gold":"direct"},
+        {"id":"python-sorted-paraphrase","text":"Calling sorted creates a separate ordered list and preserves the original iterable.","gold":"direct"},
+        {"id":"python-sorted-conflict","text":"The sorted function mutates the input sequence and returns no separate list.","gold":"located_only"},
+        {"id":"python-sorted-inference","text":"A separate sorted result may be safer when a caller needs to retain the original order.","gold":"inference"},
+        {"id":"python-sorted-unrelated","text":"The Moon completes one orbit around Earth in about twenty-seven days.","gold":"pending_review"}
+      ]
+    },
+    {
+      "id": "python-bool-int",
+      "language": "en",
+      "title": "Python 3.12 Built-in Types",
+      "url": "https://docs.python.org/3.12/library/stdtypes.html#boolean-type-bool",
+      "locator": "Python 3.12 Built-in Types: Boolean Type",
+      "risk_tags": ["entity", "numeric", "negation"],
+      "evidence": "bool is a subclass of int, and True and False act like one and zero in many numeric contexts.",
+      "claims": [
+        {"id":"bool-int-direct","text":"bool is a subclass of int, and True and False act like one and zero in many numeric contexts.","gold":"direct"},
+        {"id":"bool-int-paraphrase","text":"Boolean values inherit from int and can behave as zero or one in numeric operations.","gold":"direct"},
+        {"id":"bool-int-conflict","text":"bool is not a subclass of int, and True and False never act like zero or one.","gold":"located_only"},
+        {"id":"bool-int-inference","text":"This relationship may surprise code that expects only numeric values.","gold":"inference"},
+        {"id":"bool-int-unrelated","text":"Whales breathe air through lungs.","gold":"pending_review"}
+      ]
+    },
+    {
+      "id": "python-tuple",
+      "language": "en",
+      "title": "Python 3.12 Built-in Types",
+      "url": "https://docs.python.org/3.12/library/stdtypes.html#tuples",
+      "locator": "Python 3.12 Built-in Types: Tuples",
+      "risk_tags": ["entity", "negation", "mutation"],
+      "evidence": "Tuple objects are immutable sequences whose elements cannot be assigned after construction.",
+      "claims": [
+        {"id":"tuple-direct","text":"Tuple objects are immutable sequences whose elements cannot be assigned after construction.","gold":"direct"},
+        {"id":"tuple-paraphrase","text":"A tuple is a sequence whose items cannot be reassigned once created.","gold":"direct"},
+        {"id":"tuple-conflict","text":"Tuple objects are mutable sequences that allow item assignment after construction.","gold":"located_only"},
+        {"id":"tuple-inference","text":"That immutability may make tuples useful for fixed records.","gold":"inference"},
+        {"id":"tuple-unrelated","text":"A rainbow forms when sunlight interacts with water droplets.","gold":"pending_review"}
+      ]
+    },
+    {
+      "id": "python-dict-order",
+      "language": "en",
+      "title": "Python 3.12 Tutorial: Data Structures",
+      "url": "https://docs.python.org/3.12/tutorial/datastructures.html#dictionaries",
+      "locator": "Python 3.12 Tutorial section 5.5",
+      "risk_tags": ["order", "sequence"],
+      "evidence": "Listing a dictionary exposes its keys in insertion order.",
+      "claims": [
+        {"id":"dict-order-direct","text":"Listing a dictionary exposes its keys in insertion order.","gold":"direct"},
+        {"id":"dict-order-paraphrase","text":"Dictionary keys follow the order in which entries were inserted.","gold":"direct"},
+        {"id":"dict-order-conflict","text":"Listing dictionary keys returns them alphabetically rather than in insertion order.","gold":"located_only"},
+        {"id":"dict-order-inference","text":"Stable key order may simplify reproducible output.","gold":"inference"},
+        {"id":"dict-order-unrelated","text":"Water boils near one hundred degrees Celsius at sea level.","gold":"pending_review"}
+      ]
+    },
+    {
+      "id": "python-zip",
+      "language": "en",
+      "title": "Python 3.12 Built-in Functions",
+      "url": "https://docs.python.org/3.12/library/functions.html#zip",
+      "locator": "Python 3.12 Built-in Functions: zip",
+      "risk_tags": ["cardinality", "operation"],
+      "evidence": "zip pairs items from several iterables in parallel and produces tuples.",
+      "claims": [
+        {"id":"zip-direct","text":"zip pairs items from several iterables in parallel and produces tuples.","gold":"direct"},
+        {"id":"zip-paraphrase","text":"The zip function combines corresponding values from multiple iterables into tuples.","gold":"direct"},
+        {"id":"zip-conflict","text":"zip produces one item for every value in the longest iterable.","gold":"located_only"},
+        {"id":"zip-inference","text":"A caller may need to check input lengths before pairing iterables.","gold":"inference"},
+        {"id":"zip-unrelated","text":"Mars is commonly called the red planet.","gold":"pending_review"}
+      ]
+    },
+    {
+      "id": "unicode-nfc",
+      "language": "zh",
+      "title": "Unicode Standard Annex #15: Unicode Normalization Forms",
+      "url": "https://www.unicode.org/reports/tr15/tr15-58.html#Normalization_Forms",
+      "locator": "UAX #15 section 1.3",
+      "risk_tags": ["entity", "normalization"],
+      "evidence": "NFC 将规范等价的字符序列转换为统一的规范化表示。",
+      "claims": [
+        {"id":"nfc-direct","text":"NFC 将规范等价的字符序列转换为统一的规范化表示。","gold":"direct"},
+        {"id":"nfc-paraphrase","text":"经过 NFC 组合后，规范等价的文本可以具有一致的表示。","gold":"direct"},
+        {"id":"nfc-conflict","text":"NFC 会让规范等价的字符序列保持不同的组合形式。","gold":"located_only"},
+        {"id":"nfc-inference","text":"统一规范化可能减少字符串比较时的误匹配。","gold":"inference"},
+        {"id":"nfc-unrelated","text":"海豚通过肺部呼吸空气。","gold":"pending_review"}
+      ]
+    },
+    {
+      "id": "unicode-concat",
+      "language": "zh",
+      "title": "Unicode Standard Annex #15: Unicode Normalization Forms",
+      "url": "https://www.unicode.org/reports/tr15/tr15-58.html#Concatenation_of_Normalized_Strings",
+      "locator": "UAX #15 section 1.4",
+      "risk_tags": ["order", "normalization", "negative"],
+      "evidence": "两段分别规范化的字符串连接后，不保证结果仍然规范化。",
+      "claims": [
+        {"id":"concat-direct","text":"两段分别规范化的字符串连接后，不保证结果仍然规范化。","gold":"direct"},
+        {"id":"concat-paraphrase","text":"即使两个字符串各自已经规范化，拼接结果也可能需要再次规范化。","gold":"direct"},
+        {"id":"concat-conflict","text":"两个已经规范化的字符串拼接后必然仍是规范化结果。","gold":"located_only"},
+        {"id":"concat-inference","text":"应用程序可能需要在拼接文本后再次规范化。","gold":"inference"},
+        {"id":"concat-unrelated","text":"北极熊主要分布在北极地区。","gold":"pending_review"}
+      ]
+    },
+    {
+      "id": "http-404",
+      "language": "zh",
+      "title": "RFC 9110: HTTP Semantics",
+      "url": "https://www.rfc-editor.org/rfc/rfc9110.html#name-404-not-found",
+      "locator": "RFC 9110 section 15.5.5",
+      "risk_tags": ["number", "negation", "time"],
+      "evidence": "404 响应不能说明当前表示缺失是暂时的还是永久的。",
+      "claims": [
+        {"id":"404-direct","text":"404 响应不能说明当前表示缺失是暂时的还是永久的。","gold":"direct"},
+        {"id":"404-paraphrase","text":"收到 404 并不能据此判断资源缺失会永久持续。","gold":"direct"},
+        {"id":"404-conflict","text":"404 响应证明该表示已经永久删除。","gold":"located_only"},
+        {"id":"404-inference","text":"客户端可能需要更多信息后再决定是否重试 404 请求。","gold":"inference"},
+        {"id":"404-unrelated","text":"树木通过光合作用把光能转化为化学能。","gold":"pending_review"}
+      ]
+    },
+    {
+      "id": "http-410",
+      "language": "zh",
+      "title": "RFC 9110: HTTP Semantics",
+      "url": "https://www.rfc-editor.org/rfc/rfc9110.html#name-410-gone",
+      "locator": "RFC 9110 section 15.5.11",
+      "risk_tags": ["number", "time", "certainty"],
+      "evidence": "410 表示资源已不可用，且该情况很可能是永久的。",
+      "claims": [
+        {"id":"410-direct","text":"410 表示资源已不可用，且该情况很可能是永久的。","gold":"direct"},
+        {"id":"410-paraphrase","text":"服务器用 410 表明内容已消失，并认为这种状态可能长期持续。","gold":"direct"},
+        {"id":"410-conflict","text":"410 表示资源只是暂时不可用，预计很快恢复。","gold":"located_only"},
+        {"id":"410-inference","text":"收到 410 后，客户端可能移除失效链接。","gold":"inference"},
+        {"id":"410-unrelated","text":"珠穆朗玛峰位于喜马拉雅山脉。","gold":"pending_review"}
+      ]
+    },
+    {
+      "id": "http-auth-status",
+      "language": "zh",
+      "title": "RFC 9110: HTTP Semantics",
+      "url": "https://www.rfc-editor.org/rfc/rfc9110.html#name-401-unauthorized",
+      "locator": "RFC 9110 sections 15.5.2–15.5.3",
+      "risk_tags": ["number", "negation", "contrast"],
+      "evidence": "401 表示认证凭据缺失或无效；403 表示服务器理解请求但拒绝履行。",
+      "claims": [
+        {"id":"auth-status-direct","text":"401 表示认证凭据缺失或无效；403 表示服务器理解请求但拒绝履行。","gold":"direct"},
+        {"id":"auth-status-paraphrase","text":"缺少有效登录凭据对应 401，而 403 是服务器理解后仍拒绝请求。","gold":"direct"},
+        {"id":"auth-status-conflict","text":"401 表示服务器已经认证后拒绝请求，而 403 表示凭据缺失。","gold":"located_only"},
+        {"id":"auth-status-inference","text":"遇到 401 时，客户端可能需要申请新的凭据。","gold":"inference"},
+        {"id":"auth-status-unrelated","text":"太平洋是地球上面积最大的海洋。","gold":"pending_review"}
+      ]
+    },
+    {
+      "id": "http-409",
+      "language": "zh",
+      "title": "RFC 9110: HTTP Semantics",
+      "url": "https://www.rfc-editor.org/rfc/rfc9110.html#name-409-conflict",
+      "locator": "RFC 9110 section 15.5.10",
+      "risk_tags": ["number", "causality", "recovery"],
+      "evidence": "409 表示请求与目标资源的当前状态冲突，响应应帮助客户端识别冲突来源。",
+      "claims": [
+        {"id":"409-direct","text":"409 表示请求与目标资源的当前状态冲突，响应应帮助客户端识别冲突来源。","gold":"direct"},
+        {"id":"409-paraphrase","text":"服务器用 409 表明当前资源状态不允许该操作，并应提供冲突原因。","gold":"direct"},
+        {"id":"409-conflict","text":"409 表示当前资源状态没有冲突，操作已经成功。","gold":"located_only"},
+        {"id":"409-inference","text":"客户端可能根据冲突信息修正请求并重新提交。","gold":"inference"},
+        {"id":"409-unrelated","text":"木星是太阳系中体积最大的行星。","gold":"pending_review"}
+      ]
+    }
+  ]
+}

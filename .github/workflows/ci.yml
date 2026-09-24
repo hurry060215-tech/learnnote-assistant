@@ -32,6 +32,9 @@ jobs:
           python -m unittest discover backend/tests
           if ($LASTEXITCODE -ne 0) { throw "Backend tests failed" }
           python scripts/evidence-quality-benchmark.py
+          if ($LASTEXITCODE -ne 0) { throw "Grounding rule smoke benchmark failed" }
+          python scripts/claim-evidence-benchmark.py
+          if ($LASTEXITCODE -ne 0) { throw "Public claim evidence benchmark failed" }
       - name: Extension and web checks
         shell: pwsh
         run: |

@@ -579,11 +579,14 @@ function renderStatus(reload = true) {
     details.className = "claim-evidence-details";
     const summary = document.createElement("summary");
     const quality = t.claim_evidence.quality || {};
-    summary.textContent = "逐条来源映射 · " + (quality.claim_count || 0) + " 条 · 原文匹配 " + (quality.supported_count || 0) + " 条";
-    if (quality.unsupported_count || quality.inference_count) {
+    const locatedOnlyCount = Number(quality.located_only_count || 0);
+    const inferenceCount = Number(quality.inference_count || 0);
+    const pendingReviewCount = Number(quality.pending_review_count || 0);
+    summary.textContent = `逐条来源映射 · ${Number(quality.claim_count || 0)} 条 · 直接支持 ${Number(quality.direct_count || 0)} · 仅定位 ${locatedOnlyCount} · 推断 ${inferenceCount} · 待核对 ${pendingReviewCount}`;
+    if (locatedOnlyCount || inferenceCount || pendingReviewCount || quality.unsupported_count) {
       const warning = document.createElement("p");
       warning.className = "muted";
-      warning.textContent = "部分总结或推断尚未获得逐条核对，请展开来源映射检查。时间戳只用于定位，不代表结论已经验证。";
+      warning.textContent = "逐条状态中的“仅定位”“推断”“待核对”均需要人工检查。时间戳只用于定位，不代表结论已经验证。";
       panel.append(warning);
     }
     details.append(summary);
@@ -600,10 +603,50 @@ function renderStatus(reload = true) {
         for (const claim of mapped.claims || []) {
           const item = document.createElement("li");
           const text = document.createElement("span");
-          text.textContent = ({"transcript": "字幕", "visual": "画面", "inference": "推断", "unsupported": "未支持"}[claim.claim_type] || "待核对") + " · " + claim.text;
+          const verificationLabel = ({
+            "direct": "直接支持",
+            "located_only": "仅定位",
+            "inference": "推断",
+            "pending_review": "待核对",
+          })[claim.verification] || "待核对";
+          const sourceLabel = ({
+            "transcript": "字幕",
+            "visual": "画面",
+            "document": "文档",
+          })[claim.claim_type] || "";
+          text.textContent = `${verificationLabel}${sourceLabel ? ` · ${sourceLabel}` : ""} · ${claim.text}`;
           item.append(text);
           const evidence = (mapped.evidence || []).filter((candidate) => [...(claim.evidence_ids || []), ...(claim.candidate_evidence_ids || [])].includes(candidate.evidence_id));
           for (const candidate of evidence.slice(0, 3)) {
+            if (candidate.kind === "document" && candidate.material_id) {
+              const locate = document.createElement("button");
+              locate.type = "button";
+              locate.textContent = `打开文档 ${candidate.locator || "出处"}`;
+              locate.onclick = async () => {
+                const material = state.items.find((entry) => entry.kind === "material" && entry.id === candidate.material_id);
+                if (!material) {
+                  notice("这份文档不在当前资料库中，无法打开出处。");
+                  return;
+                }
+                await openItem(material).catch(failure);
+                const locator = String(candidate.locator || "");
+                const page = /page\s+(\d+)/i.exec(locator)?.[1];
+                const excerpt = String(candidate.text || "").replace(/\s+/g, " ").trim().slice(0, 80);
+                const normalize = (value) => String(value || "").replace(/\s+/g, " ").trim();
+                const blocks = Array.from(document.querySelectorAll("#document h1, #document h2, #document h3, #document p, #document li, #document blockquote, #document pre, #document td, #document th"));
+                const target = (page && blocks.find((block) => normalize(block.textContent).includes(`[第 ${page} 页]`))) ||
+                  (excerpt.length >= 16 && blocks.find((block) => normalize(block.textContent).includes(excerpt)));
+                document.querySelectorAll("#document .source-evidence-target").forEach((block) => block.classList.remove("source-evidence-target"));
+                if (target) {
+                  target.classList.add("source-evidence-target");
+                  target.scrollIntoView({ block: "center", behavior: "instant" });
+                } else {
+                  notice(`已打开文档，但无法精确高亮 ${locator || "该出处"}。`);
+                }
+              };
+              item.append(locate);
+              continue;
+            }
             const match = String(candidate.locator || "").match(/^([0-9.]+)-/);
             if (!match || t.kind !== "task") continue;
             const locate = document.createElement("button");
