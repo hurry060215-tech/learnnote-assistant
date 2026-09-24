@@ -5,8 +5,11 @@ const http = require("node:http");
 const path = require("node:path");
 
 async function main() {
-  const upstream = new URL(process.argv[2] || "http://127.0.0.1:8765");
-  const backendOrigin = `${upstream.protocol}//${upstream.host}`;
+  const backendPortText = process.argv[2] || "8765";
+  if (!/^[1-9]\d{0,4}$/.test(backendPortText) || Number(backendPortText) > 65535) {
+    throw new Error("Backend port must be an integer from 1 to 65535");
+  }
+  const backendOrigin = `http://127.0.0.1:${Number(backendPortText)}`;
   const output = path.resolve(process.argv[3] || "build/task-stream-reconnect-ui");
   fs.mkdirSync(output, { recursive: true });
   const browser = await chromium.launch({ executablePath: "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe", headless: true });

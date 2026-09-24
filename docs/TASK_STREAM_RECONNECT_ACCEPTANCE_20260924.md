@@ -22,7 +22,7 @@ The FastAPI stream route's persisted event replay and cursor handling have separ
 ## Reproduction
 
 - Windows / Microsoft Edge; backend launched with `LEARNNOTE_DATA_DIR` set to an isolated `build/` directory.
-- `node scripts/task-stream-reconnect-acceptance.cjs http://127.0.0.1:8765 build/task-stream-reconnect-ui`
+- `node scripts/task-stream-reconnect-acceptance.cjs 8765 build/task-stream-reconnect-ui`
 - Verified against the local backend on port 18784; screenshots and task payloads remain in ignored `build/` output.
 
 ## Remaining issue boundary
