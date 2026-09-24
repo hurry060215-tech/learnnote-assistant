@@ -90,6 +90,8 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Accessibility visual gate failed" }
             node scripts/learning-workflow-acceptance.cjs http://127.0.0.1:8765/web/classic.html build/learning-ui
             if ($LASTEXITCODE -ne 0) { throw "Learning interaction gate failed" }
+            node scripts/encoding-redecode-acceptance.cjs http://127.0.0.1:8765/web/classic.html build/encoding-redecode-ui
+            if ($LASTEXITCODE -ne 0) { throw "Existing material re-decode gate failed" }
           } finally {
             if ($server -and -not $server.HasExited) { Stop-Process -Id $server.Id -Force }
           }
@@ -113,5 +115,6 @@ jobs:
             build/redesign-ui
             build/ui-visual
             build/learning-ui
+            build/encoding-redecode-ui
           if-no-files-found: warn
           retention-days: 14

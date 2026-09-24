@@ -424,6 +424,7 @@ const els = {
   libraryDuplicateStatus: document.querySelector("#libraryDuplicateStatus"),
   knowledgeImportButton: document.querySelector("#knowledgeImportButton"),
   knowledgeImportInput: document.querySelector("#knowledgeImportInput"),
+  knowledgeImportEncoding: document.querySelector("#knowledgeImportEncoding"),
   knowledgeImportStatus: document.querySelector("#knowledgeImportStatus"),
   editorialKnowledgeImport: document.querySelector("#editorialKnowledgeImport"),
   editorialKnowledgeImportStatus: document.querySelector("#editorialKnowledgeImportStatus"),
@@ -4813,6 +4814,11 @@ async function openLibraryMaterial(materialId) {
         method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({evidence_ids: material.evidence_ids.slice(0, 100), limit: 12})
       });
       if (!openStudyProposalDialog(result.proposals || [])) els.exportStatus.textContent = "当前资料没有适合提炼的文字，请先选择一个知识点。";
+    }, onRedecode: async encoding => {
+      await fetchJson(apiUrl(`/api/library/materials/${encodeURIComponent(materialId)}/redecode`), {
+        method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({encoding})
+      });
+      await openLibraryMaterial(materialId);
     }});
     lastDetailFingerprint = `material:${materialId}:${material.updated_at || ""}`;
     globalThis.LearnNotePersonal.attach({container: els.detail, kind: "material", id: materialId, apiUrl, fetchJson});
@@ -5687,9 +5693,19 @@ async function importKnowledgeFile(file) {
   try {
     const form = new FormData();
     form.append("file", file, file.name);
+    const requestedEncoding = /\.pdf$/i.test(file.name) ? "" : String(els.knowledgeImportEncoding?.value || "").trim();
+    form.append("encoding", requestedEncoding);
     const result = await fetchJson(apiUrl("/api/library/materials/import"), { method: "POST", body: form });
     const material = result?.material || {};
-    setStatus(`已导入：${material.title || file.name}；${Number(material.anchor_count || 0)} 个出处已进入本地资料库。`);
+    const metadata = material.metadata || {};
+    if (material.deduplicated && requestedEncoding && String(metadata.encoding || "").toLowerCase() !== requestedEncoding.toLowerCase()) {
+      setStatus(`资料已存在，现有版本使用 ${metadata.encoding || "未知编码"}；本次选择未覆盖原资料。`);
+      return;
+    }
+    const encodingSummary = /\.pdf$/i.test(file.name)
+      ? "PDF 文字由本地解析器提取。"
+      : `编码 ${metadata.encoding || "未知"}（${metadata.encoding_source || "待确认"}）。`;
+    setStatus(`已导入：${material.title || file.name}；${Number(material.anchor_count || 0)} 个出处已进入本地资料库；${encodingSummary}`);
     await loadLibraryMaterials();
     if (material.material_id) await openLibraryMaterial(material.material_id);
   } catch (error) {

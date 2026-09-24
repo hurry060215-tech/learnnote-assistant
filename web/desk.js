@@ -414,7 +414,23 @@ function renderNote() {
     state.text.trim().startsWith("# ") && !excerptOnly
       ? ""
       : `<h1>${esc(state.selected.title)}</h1>`;
+  const decode = state.selected.kind === "material" ? state.selected.metadata || {} : {};
+  const decodeSource = ({
+    "bom": "BOM",
+    "declared-charset": "文件声明字符集",
+    "strict-utf8": "严格 UTF-8",
+    "charset-normalizer": "自动识别",
+    "fallback": "编码候选",
+    "user-selected": "手动选择",
+    "pypdf": "PDF 文本提取",
+  })[decode.encoding_source] || "未知来源";
+  const decodeConfidence = ({ high: "高", medium: "中", low: "低", user_selected: "手动指定", not_applicable: "不适用" })[decode.encoding_confidence] || "未知";
+  const rawStatus = state.selected.stored_locally ? "原始文件已保留。" : "原始文件当前不可用。";
+  const decodeNotice = decode.encoding
+    ? `<p class="encoding-provenance-note" role="status">原文解码：${esc(decode.encoding)} · ${esc(decodeSource)} · 选择依据${esc(decodeConfidence)}。${decode.encoding_confidence === "low" ? "自动识别把握较低，请核对原文。" : rawStatus}</p>`
+    : "";
   $("document").innerHTML =
+    decodeNotice +
     (state.selected.kind === "task" && /llm/i.test(state.selected.summary_source || "")
       ? '<p class="muted" role="status">AI 草稿：生成完成不代表逐条事实已验证。请结合字幕与原视频核对数字、名称和推断。<button id="reviewNoteSources" type="button">查看字幕与原视频</button></p>'
       : "") +
@@ -1017,6 +1033,13 @@ for (const button of document.querySelectorAll("[data-input]"))
     updateCreateInputPresentation();
     $("createStatus").textContent = "";
   };
+function updateMaterialEncodingChoice() {
+  const file = $("file").files?.[0];
+  const isMaterial = Boolean(file && /\.(md|markdown|txt|html?)$/i.test(file.name));
+  $("materialEncodingChoice").hidden = !isMaterial;
+  if (!isMaterial) $("materialEncoding").value = "";
+}
+$("file").addEventListener("change", updateMaterialEncodingChoice);
 $("createForm").onsubmit = async (e) => {
   e.preventDefault();
   if (state.busy) return;
@@ -1041,6 +1064,8 @@ $("createForm").onsubmit = async (e) => {
       const data = new FormData();
       data.append("file", file);
       kind = /\.(pdf|md|txt|html?)$/i.test(file.name) ? "material" : "task";
+      const requestedEncoding = kind === "material" ? String($("materialEncoding").value || "") : "";
+      if (kind === "material") data.append("encoding", requestedEncoding);
       if (kind === "task") data.append("options", JSON.stringify(options()));
       result = await api(
         kind === "task"
@@ -1048,6 +1073,10 @@ $("createForm").onsubmit = async (e) => {
           : "/api/library/materials/import",
         { method: "POST", body: data },
       );
+      const metadata = result?.material?.metadata || {};
+      if (kind === "material" && result?.material?.deduplicated && requestedEncoding && String(metadata.encoding || "").toLowerCase() !== requestedEncoding.toLowerCase()) {
+        throw new Error(`这份资料已经导入，当前版本按 ${metadata.encoding || "未知编码"} 解码；本次没有覆盖原资料。`);
+      }
     }
     await refresh();
     const id = result.task_id || result.material?.material_id;
@@ -1060,6 +1089,8 @@ $("createForm").onsubmit = async (e) => {
     if (item) await openItem(item);
     $("url").value = "";
     $("file").value = "";
+    $("materialEncoding").value = "";
+    updateMaterialEncodingChoice();
     $("createStatus").textContent = "";
   } catch (error) {
     $("createStatus").textContent = error.message;

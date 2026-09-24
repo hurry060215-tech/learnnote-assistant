@@ -129,6 +129,18 @@
               >视频生成笔记；PDF / Markdown / TXT / HTML 保留原文阅读。</small
             ></label
           >
+          <label id="materialEncodingChoice" class="material-encoding-choice" for="materialEncoding" hidden>
+            <span><strong>导入文本编码</strong><small>TXT、Markdown 和 HTML 优先使用 BOM 或文件声明；必要时手动选择。PDF 由本地解析器处理。</small></span>
+            <select id="materialEncoding">
+              <option value="">自动识别</option>
+              <option value="utf-8">UTF-8</option>
+              <option value="gb18030">GB18030 / GBK</option>
+              <option value="big5">Big5</option>
+              <option value="shift_jis">Shift_JIS</option>
+              <option value="utf-16-le">UTF-16 LE</option>
+              <option value="utf-16-be">UTF-16 BE</option>
+            </select>
+          </label>
         </div>
         <div id="browserInput" hidden>
           <p>
