@@ -11,10 +11,49 @@ from pypdf import PdfReader
 
 from app.document_exports import build_docx_export, build_html_export, build_pdf_export, build_structured_export
 from app.models import TaskRecord, FrameGrid
-from app.note_document import normalize_note_markdown
+from app.note_document import build_note_document, normalize_note_markdown
 
 
 class DocumentExportTests(unittest.TestCase):
+    def test_html_toc_uses_the_same_stable_anchor_as_note_document(self):
+        note = normalize_note_markdown(
+            self.task.title,
+            "## 核心结论\n\n更新步长由学习率控制。[00:31]\n\n## 复习\n\n回忆关键定义。[01:05]",
+        ).markdown
+        document = build_note_document(self.task.title, note)
+        expected = next(item["section_id"] for item in document["sections"] if item["heading"] == "核心结论")
+        html = build_html_export(
+            self.task,
+            note,
+            export_options={"include_toc": True, "include_source_link": False},
+        ).content.decode("utf-8")
+        self.assertIn(f'id="{expected}"', html)
+        self.assertIn(f'href="#{expected}"', html)
+
+        inserted = normalize_note_markdown(
+            self.task.title,
+            "## 新增背景\n\n新增内容。[00:10]\n\n" + note.split("# ", 1)[1].split("\n", 1)[1],
+        ).markdown
+        inserted_document = build_note_document(self.task.title, inserted)
+        actual = next(item["section_id"] for item in inserted_document["sections"] if item["heading"] == "核心结论")
+        self.assertEqual(expected, actual)
+
+    def test_structured_export_preserves_code_trailing_spaces(self):
+        note = self.note + "\n\n```python\nvalue = 1  \nprint(value)\n```\n\n    print('indented')  \n"
+        payload = build_structured_export(self.task, note)
+        code_blocks = [block["text"] for block in payload["blocks"] if block["kind"] == "code"]
+        code = next(block for block in code_blocks if "value = 1" in block)
+        self.assertIn("value = 1  \nprint(value)", code)
+        self.assertTrue(any("print('indented')  " in block for block in code_blocks))
+
+    def test_frontmatter_is_metadata_and_not_rendered_as_note_content(self):
+        note = "---\ntitle: export fixture\nsource: local lesson\n---\n\n## Findings\n\nEvidence is available at 00:10."
+        payload = build_structured_export(self.task, note)
+        self.assertNotIn("source: local lesson", payload["markdown"])
+        self.assertNotIn("title: export fixture", payload["markdown"])
+        self.assertNotIn("---", payload["markdown"])
+        self.assertIn("Findings", payload["markdown"])
+
     def test_generated_notes_retain_review_notice_in_word_pdf_and_shared_structure(self):
         task = self.task.model_copy(update={'summary_source':'text-llm'})
         self.assertIn('来源核对提示', build_structured_export(task,self.note)['markdown'])
