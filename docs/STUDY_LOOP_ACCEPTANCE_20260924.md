@@ -2,7 +2,7 @@
 
 - 日期：2026-09-24
 - 基线：`origin/main` `e585b7fbf3067d19f19d68760ff4614ad2757efa`
-- 本次验收代码 commit：`615494d84ea230bb53cf127ed1685a338aed9861`
+- 本次验收代码 commit：`06dd146bfba1080f9113500b8c0e97495f88197f`
 - 关联 Issue：[#136](https://github.com/hurry060215-tech/learnnote-assistant/issues/136)、[#140](https://github.com/hurry060215-tech/learnnote-assistant/issues/140)、[#141](https://github.com/hurry060215-tech/learnnote-assistant/issues/141)、[#159](https://github.com/hurry060215-tech/learnnote-assistant/issues/159)
 
 ## 改动
@@ -27,14 +27,17 @@
 6. 重复导入同一备份，确认没有重复评分/活动/批注，且之后修改的本地批注与编辑不会被旧备份覆盖。
 7. 将 FSRS 算法篡改为未知版本，确认恢复返回 422 且已恢复数据保持不变。
 
-这条连续路径真实调用本地 HTTP API；输入是构造的 Markdown，无登录资料、远程模型或云服务。它不是浏览器指针自动化，也没有使用远程模型。
+这条连续路径真实调用本地 HTTP API；输入是构造的 Markdown，无登录资料、远程模型或云服务。
+
+另有隔离的 Playwright 浏览器验收：Windows / Edge，从导入构造 Markdown 开始，完成全文读取、生成并确认复习卡、填写自我解释、检查动作已记录、打开原文出处、提交评分，再切到 390px 手机视口检查阅读页无横向溢出。后台使用独立 `build/study-e2e-final-data` 目录与 18766 端口，代码和浏览器无用户资料、Cookie 或模型凭据。实测代码对比度为 10.9989:1，无页面异常。该次真实浏览器操作发现并修复了 `renderStudy` 未接收 `onSelfAssessment` 的回调绑定问题。
 
 ## 验证
 
 - Python 3.12.10 / Windows：完整后端套件 610 项通过（98.7 秒）。
-- `scripts/tests`：71 项通过。
+- `scripts/tests`：73 项通过。
 - `web/tests/*.test.mjs` 全部通过；`web/desk.js`、`web/desk-tools.js`、`web/learning.js`、`web/personal-notes.js` Node 语法检查通过。
 - 架构检查、i18n 审计和 `git diff --check` 通过。
+- 学习闭环 Playwright 浏览器脚本通过，读者移动端横向溢出为 false，页面异常为空。
 
 详细日志存于忽略目录 `build/package5`，没有复制或读取用户原有资料。
 
@@ -43,6 +46,6 @@
 - #136：时区/DST/恢复自动回归通过；浏览器首次时区建议和实际跨时区交互仍需指针验收。
 - #140：批注/编辑稿的本地备份恢复已验证；Obsidian 双向同步、含原媒体的完整恢复和大量孤立 anchor 修复仍未验收。
 - #141：卡片由本地来源片段生成，当前没有自由文本答案评分，也不持久化自我解释文本；真实课程人工标注题库仍需独立验收。
-- #159：今日目标、复习、错题、掌握、证据回源、学习备份入口均已接通；390/768/1440、键盘和浏览器完整操作验收仍待完成。
+- #159：今日目标、复习、错题、掌握、证据回源、学习备份入口均已接通；1440 桌面和 390 手机视口下的导入—阅读—复习—回源—评分路径已通过浏览器验收。768 平板布局、键盘独立操作、课程筛选，以及在浏览器中完成备份恢复的连续验收仍待完成。
 
-因此四个 Issue 继续开放。此包证明了本地学习闭环的数据和 API 可连续工作，但不替代浏览器视觉验收、Obsidian 同步或真实课程题目质量评估。
+因此四个 Issue 继续开放。此包证明了隔离 API 数据路径和桌面/手机浏览器主要学习路径可连续工作，但不替代平板与键盘验收、Obsidian 同步或真实课程题目质量评估。
