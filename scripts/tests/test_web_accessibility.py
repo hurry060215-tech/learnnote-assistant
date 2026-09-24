@@ -39,7 +39,13 @@ class WebAccessibilityContractTests(unittest.TestCase):
             source = (ROOT / "scripts" / filename).read_text(encoding="utf-8")
             with self.subTest(script=filename):
                 self.assertIn('locator("#saveAnnotation")', source)
-                self.assertNotIn('locator("#annotationForm button")', source)
+        self.assertNotIn('locator("#annotationForm button")', source)
+
+    def test_learning_browser_acceptance_records_the_self_assessment_step(self) -> None:
+        source = (ROOT / "scripts" / "learning-workflow-acceptance.cjs").read_text(encoding="utf-8")
+        self.assertIn('page.locator("#reviewReflection").fill', source)
+        self.assertIn('name: "记录解释并显示答案"', source)
+        self.assertIn("self_assessment_count > 0", source)
 
 
 if __name__ == "__main__":

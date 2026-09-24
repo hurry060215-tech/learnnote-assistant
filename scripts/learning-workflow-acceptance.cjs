@@ -42,7 +42,10 @@ async function main() {
     await page.locator("#confirmStudyProposalButton").click();
     await page.locator('.nav-rail [data-app-view="study"]').click();
     await page.waitForSelector(".study-card");
-    await page.getByRole("button", { name: "显示答案", exact: true }).click();
+    await page.locator("#reviewReflection").fill("学习率改变每一步参数更新的幅度。");
+    await page.getByRole("button", { name: "记录解释并显示答案", exact: true }).click();
+    const studyDashboard = await (await page.request.get(new URL("/api/study/dashboard", base).href)).json();
+    assert((studyDashboard.progress.activity || []).some(day => day.self_assessment_count > 0), "Self-assessment was not recorded locally");
     assert((await page.locator(".study-answer").innerText()).length <= 360);
     await page.getByRole("button", { name: "查看原文出处", exact: true }).first().click();
     await page.waitForSelector(".source-dialog");
