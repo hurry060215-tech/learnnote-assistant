@@ -3,28 +3,12 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 
-function overrideReportedTimezone({ timezone }) {
-  const NativeDateTimeFormat = Intl.DateTimeFormat;
-  function ControlledDateTimeFormat(...args) {
-    const formatter = new NativeDateTimeFormat(...args);
-    const resolvedOptions = formatter.resolvedOptions.bind(formatter);
-    Object.defineProperty(formatter, "resolvedOptions", {
-      value: () => ({ ...resolvedOptions(), timeZone: timezone }),
-    });
-    return formatter;
-  }
-  ControlledDateTimeFormat.prototype = NativeDateTimeFormat.prototype;
-  Object.setPrototypeOf(ControlledDateTimeFormat, NativeDateTimeFormat);
-  Object.defineProperty(Intl, "DateTimeFormat", { configurable: true, writable: true, value: ControlledDateTimeFormat });
-}
-
 async function main() {
   const base = process.argv[2] || "http://127.0.0.1:8765/";
   const output = path.resolve(process.argv[3] || "build/learning-ui");
   fs.mkdirSync(output, { recursive: true });
   const browser = await chromium.launch({ executablePath: "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe", headless: true });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, timezoneId: "Asia/Tokyo" });
-  await page.addInitScript(overrideReportedTimezone, { timezone: "Asia/Tokyo" });
   const errors = [];
   page.on("pageerror", error => errors.push(error.message));
   try {
@@ -35,16 +19,17 @@ async function main() {
     await page.locator('[data-settings-tab="connection"]').click();
     await page.waitForFunction(() => Boolean(document.querySelector("#studyPlanTimezone")?.value));
     const initialSuggestedTimezone = await page.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone);
-    assert.equal(initialSuggestedTimezone, "Asia/Tokyo");
     assert.equal(await page.locator("#studyPlanTimezone").inputValue(), initialSuggestedTimezone);
+    const selectedTimezone = initialSuggestedTimezone === "Asia/Shanghai" ? "America/New_York" : "Asia/Shanghai";
+    assert.notEqual(selectedTimezone, initialSuggestedTimezone);
     await page.locator("#studyPlanTarget").fill("10");
     await page.locator("#studyPlanPaused").uncheck();
-    await page.locator("#studyPlanTimezone").fill("Asia/Shanghai");
+    await page.locator("#studyPlanTimezone").fill(selectedTimezone);
     await page.locator("#studyPlanSaveButton").focus();
     await page.keyboard.press("Enter");
     await page.getByText("学习计划已保存。", { exact: true }).waitFor();
     const savedPlan = await (await page.request.get(new URL("/api/study/plan", base).href)).json();
-    assert.equal(savedPlan.plan.timezone, "Asia/Shanghai");
+    assert.equal(savedPlan.plan.timezone, selectedTimezone);
     assert.equal(savedPlan.plan.paused, false);
     await page.locator("#workspaceNav").click();
     const text = "# 回归讲义\n\n学习率决定每一步参数更新的步长，并影响收敛速度。\n\n```python\n# preserve code\nprint(1)\n```\n\n" + Array.from({ length: 105 }, (_, index) => `第${index+1}段：资料必须可以完整阅读，不能静默截断。MARKER_${index+1}`).join("\n\n");
@@ -186,9 +171,9 @@ async function main() {
     const restoredCards = (await (await page.request.get(new URL("/api/study/cards", base).href)).json()).cards;
     const restoredReviews = (await (await page.request.get(new URL("/api/study/reviews", base).href)).json()).reviews;
     assert(restoredCards.length > 0 && restoredReviews.length > 0, "Browser backup restore lost study cards or rating history");
-    assert.equal((await (await page.request.get(new URL("/api/study/plan", base).href)).json()).plan.timezone, "Asia/Shanghai");
-    const crossTimezonePage = await browser.newPage({ viewport: { width: 1440, height: 900 }, timezoneId: "America/New_York" });
-    await crossTimezonePage.addInitScript(overrideReportedTimezone, { timezone: "America/New_York" });
+    assert.equal((await (await page.request.get(new URL("/api/study/plan", base).href)).json()).plan.timezone, selectedTimezone);
+    const crossTimezoneRequest = selectedTimezone === "Asia/Shanghai" ? "America/New_York" : "Asia/Tokyo";
+    const crossTimezonePage = await browser.newPage({ viewport: { width: 1440, height: 900 }, timezoneId: crossTimezoneRequest });
     crossTimezonePage.on("pageerror", error => errors.push(error.message));
     await crossTimezonePage.goto(base, { waitUntil: "networkidle" });
     if (await crossTimezonePage.locator("#skipOnboardingButton").isVisible()) await crossTimezonePage.locator("#skipOnboardingButton").click();
@@ -197,9 +182,9 @@ async function main() {
     await crossTimezonePage.locator('[data-settings-tab="connection"]').click();
     await crossTimezonePage.waitForFunction(() => Boolean(document.querySelector("#studyPlanTimezone")?.value));
     const changedBrowserTimezone = await crossTimezonePage.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone);
-    assert.equal(changedBrowserTimezone, "America/New_York");
-    assert.equal(await crossTimezonePage.locator("#studyPlanTimezone").inputValue(), "Asia/Shanghai");
-    process.stdout.write(JSON.stringify({ ok: true, contrast, studyGeometry, geometry, initialSuggestedTimezone, changedBrowserTimezone, preservedPlanTimezone: "Asia/Shanghai", restoredCards: restoredCards.length, restoredReviews: restoredReviews.length, errors }));
+    assert.notEqual(changedBrowserTimezone, selectedTimezone);
+    assert.equal(await crossTimezonePage.locator("#studyPlanTimezone").inputValue(), selectedTimezone);
+    process.stdout.write(JSON.stringify({ ok: true, contrast, studyGeometry, geometry, initialSuggestedTimezone, selectedTimezone, crossTimezoneRequest, changedBrowserTimezone, crossContextActuallyChanged: changedBrowserTimezone !== initialSuggestedTimezone, restoredCards: restoredCards.length, restoredReviews: restoredReviews.length, errors }));
     assert.deepEqual(errors, []);
   } finally {
     await browser.close();

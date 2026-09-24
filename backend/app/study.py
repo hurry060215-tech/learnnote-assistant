@@ -111,15 +111,35 @@ def propose_cards(evidence: list[SourceEvidence], limit: int = 20) -> list[Study
         if not item.evidence_id or item.metadata.get("kind") == "community":
             continue
         for heading, paragraph in review_points(item.text):
+            transcript_source = item.metadata.get("kind") == "transcript"
+            if transcript_source:
+                duration = _transcript_evidence_duration(item)
+                if (
+                    not math.isfinite(duration)
+                    or duration < 4.0
+                    or duration > 120.0
+                    or len(paragraph) < 40
+                    or not re.search(r"[。！？.!?][\"'’”)]*$", paragraph)
+                ):
+                    continue
             key = re.sub(r"\s+", "", paragraph).casefold()
             if key in seen:
                 continue
-            seen.add(key)
             cue = re.split(r"[，,：:]", paragraph, maxsplit=1)[0]
             if len(cue) > 45:
                 cue = cue[:42] + "…"
             relation = re.match(r"(.{2,24}?)(决定|影响|表示|用于|提供|包含|意味着)(.+)", paragraph)
-            prompt = f"{relation[1]}{relation[2]}什么？" if relation else f"围绕“{heading or item.title or cue[:18]}”，原文在 {item.locator or '这一段'} 说明了什么？"
+            transcript_prompt = _transcript_card_prompt(paragraph) if transcript_source else ""
+            if transcript_source and not (relation or transcript_prompt):
+                continue
+            seen.add(key)
+            prompt = (
+                f"{relation[1]}{relation[2]}什么？"
+                if relation
+                else transcript_prompt
+                if transcript_source
+                else f"围绕“{heading or item.title or cue[:18]}”，原文在 {item.locator or '这一段'} 说明了什么？"
+            )
             proposals.append(StudyCard(
                 card_id=uuid4().hex,
                 front=f"{heading or item.title or '这份资料'} · {item.locator or '原文'}\n{prompt}",
@@ -129,6 +149,57 @@ def propose_cards(evidence: list[SourceEvidence], limit: int = 20) -> list[Study
             if len(proposals) >= cap:
                 return proposals
     return proposals
+
+
+def _transcript_evidence_duration(item: SourceEvidence) -> float:
+    try:
+        start = float(item.metadata.get("start"))
+        end = float(item.metadata.get("end"))
+    except (TypeError, ValueError):
+        match = re.fullmatch(r"\s*(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)s\s*", item.locator)
+        if not match:
+            return math.nan
+        start, end = float(match.group(1)), float(match.group(2))
+    return end - start if math.isfinite(start) and math.isfinite(end) else math.nan
+
+
+def _transcript_card_prompt(sentence: str) -> str:
+    chinese = re.match(r"^(.{2,32}?)(决定|影响|表示|用于|提供|包含|意味着)(.+)[。！？.!?]$", sentence)
+    if chinese:
+        return f"{chinese[1]}{chinese[2]}什么？"
+    match = re.match(
+        r"^([A-Za-z][A-Za-z0-9][A-Za-z0-9 '\-]{1,60}?)\s+"
+        r"(is|are|means|refers to|represents|requires|depends on|causes|allows|contains|includes)\s+"
+        r"([^.!?。！？]{8,220})[.!?。！？]$",
+        sentence,
+        re.IGNORECASE,
+    )
+    if not match:
+        return ""
+    subject, verb = match.group(1).strip(), match.group(2).lower()
+    if re.match(r"^(this|that|it|they|we|you|he|she|there)\b", subject, re.IGNORECASE):
+        return ""
+    if verb in {"is", "are"}:
+        return f"What {verb} {subject}?"
+    if verb == "means":
+        return f"What does {subject} mean?"
+    if verb == "refers to":
+        return f"What does {subject} refer to?"
+    if verb == "represents":
+        return f"What does {subject} represent?"
+    if verb == "requires":
+        return f"What does {subject} require?"
+    if verb == "depends on":
+        return f"What does {subject} depend on?"
+    if verb == "causes":
+        return f"What does {subject} cause?"
+    if verb == "allows":
+        return f"What does {subject} allow?"
+    if verb == "contains":
+        return f"What does {subject} contain?"
+    if verb == "includes":
+        return f"What does {subject} include?"
+    return ""
 
 
 def save_cards(cards: list[StudyCard]) -> list[StudyCard]:
