@@ -3,6 +3,7 @@
 * 日期：2026-09-24
 * 代码基线：`origin/main` `e585b7fbf3067d19f19d68760ff4614ad2757efa`
 * 验收实现提交：`c88cfbc166a469661d0e7474758cbed1c188a19c`
+* PR head / CSS 架构预算收口提交：`2e0d86422de78a9ac6734e0a15dfb43097b717df`
 * 对应 Issue：[#150](https://github.com/hurry060215-tech/learnnote-assistant/issues/150)
 * 分期：工作包 3A（编码导入链路）；#129 claim 证据评估和 #152 笔记结构规范另列后续 PR
 
