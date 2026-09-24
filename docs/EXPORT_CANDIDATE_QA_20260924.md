@@ -2,7 +2,7 @@
 
 - Date: 2026-09-24
 - Baseline: `origin/main` `e585b7fbf3067d19f19d68760ff4614ad2757efa`
-- Candidate code commit: `a929642`
+- Candidate code commit: `69d2691`
 - Related issues: [#156](https://github.com/hurry060215-tech/learnnote-assistant/issues/156), [#134](https://github.com/hurry060215-tech/learnnote-assistant/issues/134), [#55](https://github.com/hurry060215-tech/learnnote-assistant/issues/55)
 - Samples and extension package are under ignored `build/package6/`; no user content was used.
 
