@@ -54,14 +54,30 @@ class DocumentExportTests(unittest.TestCase):
         self.assertNotIn("---", payload["markdown"])
         self.assertIn("Findings", payload["markdown"])
 
+    def test_non_bmp_symbols_have_a_word_font_and_readable_pdf_fallback(self):
+        note = normalize_note_markdown(self.task.title, "## Compass\n\nThe navigation symbol is 🧭. [00:10]").markdown
+        docx = build_docx_export(self.task, note)
+        with ZipFile(BytesIO(docx.content)) as package:
+            xml = package.read("word/document.xml").decode("utf-8")
+        self.assertIn("🧭", xml)
+        self.assertIn("Segoe UI Emoji", xml)
+
+        pdf = build_pdf_export(self.task, note)
+        extracted = "\n".join(page.extract_text() or "" for page in PdfReader(BytesIO(pdf.content)).pages)
+        self.assertIn("[compass]", extracted)
+        self.assertIn("non_bmp_symbols_rendered_as_unicode_names", pdf.warnings)
+
     def test_generated_notes_retain_review_notice_in_word_pdf_and_shared_structure(self):
         task = self.task.model_copy(update={'summary_source':'text-llm'})
-        self.assertIn('来源核对提示', build_structured_export(task,self.note)['markdown'])
+        structured = build_structured_export(task,self.note)
+        self.assertIn('来源核对提示', structured['markdown'])
+        self.assertIn('[00:31–00:45](https://example.com/video?t=31)', structured['markdown'])
         docx = build_docx_export(task,self.note)
         with ZipFile(BytesIO(docx.content)) as package:
             xml = package.read('word/document.xml').decode('utf-8')
             self.assertIn('来源核对提示', xml)
             self.assertEqual(xml.count(task.title),1)
+            self.assertGreaterEqual(xml.count('<w:hyperlink'), 2)
         pdf = build_pdf_export(task,self.note)
         self.assertIn('来源核对提示', ''.join(page.extract_text() for page in PdfReader(BytesIO(pdf.content)).pages))
 
@@ -120,9 +136,12 @@ rate = 0.1
         with ZipFile(BytesIO(artifact.content)) as archive:
             document_xml = archive.read("word/document.xml").decode("utf-8")
             relations = archive.read("word/_rels/document.xml.rels").decode("utf-8")
+            footer_xml = archive.read("word/footer1.xml").decode("utf-8")
         self.assertEqual(document_xml.count("梯度下降课程"), 1)
         self.assertIn("核心结论", document_xml)
         self.assertIn("https://example.com/video?t=31", relations)
+        self.assertIn("PAGE", footer_xml)
+        self.assertIn("NUMPAGES", footer_xml)
 
     def test_pdf_has_pages_and_clickable_evidence_link(self) -> None:
         long_note = self.note + "\n" + "\n\n".join(f"段落 {index}：这是用于分页验证的中文学习内容。" for index in range(120))
@@ -138,6 +157,7 @@ rate = 0.1
                 if action and action.get("/URI"):
                     links.append(str(action.get("/URI")))
         self.assertIn("https://example.com/video?t=31", links)
+        self.assertGreaterEqual(len(links), 2)
 
     def test_exports_redact_signed_urls_cookies_and_media_paths(self) -> None:
         task = self.task.model_copy(update={"source_media_path": "C:/private/course.mp4"})
