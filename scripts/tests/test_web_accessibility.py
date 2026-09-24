@@ -34,6 +34,11 @@ class WebAccessibilityContractTests(unittest.TestCase):
         self.assertIn("quoteReanchored&&selected", source)
         self.assertIn("item.anchor_status?.repairable", source)
 
+    def test_default_workspace_acceptance_targets_the_named_annotation_submitter(self) -> None:
+        source = (ROOT / "scripts" / "unified-workspace-acceptance.cjs").read_text(encoding="utf-8")
+        self.assertIn('p.locator("#saveAnnotation")', source)
+        self.assertNotIn('p.locator("#annotationForm button")', source)
+
 
 if __name__ == "__main__":
     unittest.main()
