@@ -2,11 +2,78 @@ from __future__ import annotations
 
 import unittest
 
-from app.claims import build_claim_evidence_map
+from app.claims import build_claim_evidence_map, safe_claim_projection
 from app.models import TranscriptResult, TranscriptSegment, VisualWindow
 
 
 class ClaimEvidenceTests(unittest.TestCase):
+    def test_document_evidence_supports_direct_claims_and_keeps_locator_metadata(self):
+        document_source = {
+            "evidence_id": "material-doc-001",
+            "source_type": "markdown",
+            "source_uri": "https://docs.example/reference?token=private",
+            "locator": "page 12 · sorting",
+            "text": "A list.sort call mutates the list in place and returns no new list.",
+            "metadata": {"material_id": "doc-001"},
+        }
+        transcript = TranscriptResult(full_text="", segments=[])
+        result = build_claim_evidence_map(
+            "document-task",
+            "Public reference",
+            document_source["text"],
+            transcript,
+            document_evidence=[document_source],
+        )
+
+        claim = result["claims"][0]
+        self.assertEqual(result["schema_version"], 5)
+        self.assertEqual(claim["claim_type"], "document")
+        self.assertEqual(claim["verification"], "direct")
+        self.assertEqual(claim["evidence_ids"], ["material-doc-001"])
+        self.assertEqual(result["counts"]["document"], 1)
+        self.assertEqual(result["evidence"][0]["locator"], "page 12 · sorting")
+        self.assertEqual(result["evidence"][0]["material_id"], "doc-001")
+        self.assertIn("token=<redacted>", result["evidence"][0]["source_uri"])
+
+    def test_source_supported_hedged_statement_is_not_mislabeled_as_author_inference(self):
+        sentence = "压力变化可能与温度有关。"
+        transcript = TranscriptResult(segments=[TranscriptSegment(start=0, end=5, text=sentence)], full_text=sentence)
+        claim = build_claim_evidence_map("hedged", "fixture", sentence, transcript)["claims"][0]
+        self.assertEqual(claim["verification"], "direct")
+        self.assertEqual(claim["claim_type"], "transcript")
+        self.assertFalse(claim["review_required"])
+
+    def test_document_lexical_match_only_locates_a_conflict_and_v4_maps_migrate(self):
+        source = {
+            "evidence_id": "material-doc-002",
+            "source_type": "pdf",
+            "locator": "page 3",
+            "text": "A list.sort call mutates the list in place and returns no new list.",
+        }
+        transcript = TranscriptResult(full_text="", segments=[])
+        result = build_claim_evidence_map(
+            "document-conflict",
+            "Public reference",
+            "A list.sort call returns a new list and leaves the original unchanged.",
+            transcript,
+            document_evidence=[source],
+        )
+        claim = result["claims"][0]
+        self.assertEqual(claim["verification"], "located_only")
+        self.assertEqual(claim["evidence_ids"], [])
+        self.assertEqual(claim["candidate_evidence_ids"], ["material-doc-002"])
+        self.assertTrue(claim["review_required"])
+
+        previous = {
+            "schema_version": 4,
+            "claims": [{"claim_type": "transcript", "verification": "direct", "evidence_ids": ["cue-1"]}],
+            "quality": {"supported_count": 1},
+        }
+        migrated = safe_claim_projection(previous)
+        self.assertEqual(migrated["schema_version"], 5)
+        self.assertEqual(migrated["claims"][0]["verification"], "direct")
+        self.assertEqual(migrated["claims"][0]["evidence_ids"], ["cue-1"])
+
     def test_timestamp_does_not_verify_contradictory_quantities_or_new_claims(self):
         from app.summarizer import note_grounding_issues
         transcript = TranscriptResult(segments=[TranscriptSegment(start=0,end=15,text="水在标准大气压下的沸点是100摄氏度。")],full_text="水在标准大气压下的沸点是100摄氏度。")

@@ -287,6 +287,7 @@ small,
   font-weight: var(--reader-weight, 500);
 }
 .encoding-provenance-note { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 6px; padding: 9px 12px; color: var(--muted); font-size: .88rem; }
+.document .source-evidence-target { outline: 2px solid var(--accent); outline-offset: 3px; background: var(--panel); }
 .document h1 {
   font-size: clamp(24px, 2.1vw, 30px);
   font-weight: 700;
