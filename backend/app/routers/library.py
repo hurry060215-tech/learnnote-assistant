@@ -5,7 +5,7 @@ import re
 from types import SimpleNamespace
 from uuid import uuid4
 
-from fastapi import APIRouter, Body, File, HTTPException, UploadFile
+from fastapi import APIRouter, Body, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -79,7 +79,7 @@ def api_library_materials(limit: int = 100, source_type: str = "") -> dict:
 
 
 @library_router.post("/materials/import")
-async def api_library_material_import(file: UploadFile = File(...)) -> dict:
+async def api_library_material_import(file: UploadFile = File(...), encoding: str = Form(default="", max_length=40)) -> dict:
     filename = Path(file.filename or "material").name
     content = bytearray()
     while True:
@@ -93,7 +93,7 @@ async def api_library_material_import(file: UploadFile = File(...)) -> dict:
                 detail={"code": "material_file_too_large", "message": "学习资料不能超过 32 MB。"},
             )
     try:
-        material = import_document_material(filename, bytes(content), file.content_type or "")
+        material = import_document_material(filename, bytes(content), file.content_type or "", encoding=encoding.strip())
     except ValueError as exc:
         code = str(exc)
         messages = {
@@ -106,7 +106,8 @@ async def api_library_material_import(file: UploadFile = File(...)) -> dict:
             "pdf_page_limit_exceeded": "PDF 页数超过 500 页，请拆分后再导入。",
             "extracted_text_too_large": "资料解压后的文本超过 500 万字，请拆分后再导入。",
             "material_anchor_limit_exceeded": "资料章节过多，请拆分为较小文件后导入。",
-            "text_encoding_unsupported": "无法可靠识别资料编码，请转换为 UTF-8 后重试。",
+            "text_encoding_unsupported": "无法可靠识别资料编码；请选择文字编码后重试。",
+            "text_mojibake_detected": "检测到高置信度乱码；请选择原文编码后重试。",
             "material_storage_failed": "无法安全保存本地资料，请检查磁盘空间和数据目录权限。",
         }
         status = 409 if code == "local_video_use_task_upload" else 422

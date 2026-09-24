@@ -761,8 +761,8 @@ def _split_long_section(text: str, max_chars: int = 6000) -> list[str]:
     return chunks
 
 
-def _material_sections(filename: str, content: bytes, content_type: str) -> tuple[str, list[tuple[str, str]], dict[str, object]]:
-    text, evidence_source_type, decoding = extract_import_text_with_metadata(filename, content, content_type)
+def _material_sections(filename: str, content: bytes, content_type: str, encoding: str = "") -> tuple[str, list[tuple[str, str]], dict[str, object]]:
+    text, evidence_source_type, decoding = extract_import_text_with_metadata(filename, content, content_type, encoding=encoding)
     suffix = Path(filename).suffix.lower()
     sections: list[tuple[str, str]] = []
     raw_info = preserve_raw_import(content, filename)
@@ -819,7 +819,7 @@ def _find_material_by_sha(connection: sqlite3.Connection, digest: str) -> sqlite
     return connection.execute("SELECT * FROM library_materials WHERE sha256 = ?", (digest,)).fetchone()
 
 
-def import_document_material(filename: str, content: bytes, content_type: str = "") -> dict[str, object]:
+def import_document_material(filename: str, content: bytes, content_type: str = "", encoding: str = "") -> dict[str, object]:
     safe_name = _safe_material_filename(filename)
     suffix = Path(safe_name).suffix.lower()
     if suffix not in SUPPORTED_DOCUMENT_SUFFIXES:
@@ -840,7 +840,9 @@ def import_document_material(filename: str, content: bytes, content_type: str = 
     if existing is not None:
         return _material_row(existing, deduplicated=True)
 
-    evidence_source_type, sections, metadata = _material_sections(safe_name, content, content_type)
+    evidence_source_type, sections, metadata = _material_sections(safe_name, content, content_type, encoding=encoding)
+    if encoding:
+        metadata["decoding_hint"] = str(encoding).strip()[:40]
     material_id = uuid4().hex
     source_uri = f"local://materials/{material_id}"
     title = Path(safe_name).stem[:500] or "本地学习资料"
@@ -872,6 +874,7 @@ def import_document_material(filename: str, content: bytes, content_type: str = 
                 text=text,
                 material_id=material_id,
                 filename=safe_name,
+                decoding_metadata=metadata,
             ))
             evidence_ids.append(stored.evidence_id)
     except Exception:
@@ -954,6 +957,7 @@ def record_to_material_evidence(
     text: str,
     material_id: str,
     filename: str,
+    decoding_metadata: dict[str, object] | None = None,
 ):
     from .models import SourceEvidence
 
@@ -970,6 +974,24 @@ def record_to_material_evidence(
             "material_id": material_id,
             "filename": filename,
             "source_revision": hashlib.sha256(str(text).encode("utf-8")).hexdigest(),
+            **{
+                key: (decoding_metadata or {}).get(key)
+                for key in (
+                    "raw_sha256",
+                    "raw_byte_count",
+                    "content_type",
+                    "encoding",
+                    "encoding_source",
+                    "encoding_confidence",
+                    "declared_encoding",
+                    "decoding_hint",
+                    "replacement_character_count",
+                    "normalization_version",
+                    "encoding_repaired",
+                    "mojibake_score",
+                )
+                if (decoding_metadata or {}).get(key) not in (None, "")
+            },
         },
     )
 
@@ -1104,7 +1126,8 @@ def material_content(material_id: str) -> str:
         source = material_source_path(material_id)
         if source.stat().st_size > MATERIAL_IMPORT_MAX_BYTES:
             raise ValueError("material_file_too_large")
-        text, _ = extract_import_text(source.name, source.read_bytes(), material["content_type"])
+        encoding = str((material.get("metadata") or {}).get("decoding_hint") or "")
+        text, _ = extract_import_text(source.name, source.read_bytes(), material["content_type"], encoding=encoding)
         if material.get("status") == "ocr_required" or (material.get("metadata") or {}).get("ocr_performed"):
             raise ValueError("material_no_extractable_text")
         return text

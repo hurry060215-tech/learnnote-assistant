@@ -14,7 +14,13 @@ from uuid import uuid4
 from .config import DATA_DIR, ensure_dirs
 from .embeddings import semantic_rank
 from .models import SourceEvidence
-from .text_cleanup import TextDecodingError, decode_text_bytes
+from .text_cleanup import (
+    TEXT_NORMALIZATION_VERSION,
+    TextDecodingError,
+    canonicalize_unicode_text,
+    decode_text_bytes,
+    declared_text_encoding,
+)
 
 
 KNOWLEDGE_SCHEMA_VERSION = 1
@@ -385,6 +391,11 @@ def answer_from_evidence(question: str, limit: int = 6, mode: str = "lexical") -
 
 def extract_import_text_with_metadata(filename: str, content: bytes, content_type: str = "", encoding: str = "") -> tuple[str, str, dict[str, object]]:
     suffix = Path(filename or "").suffix.lower()
+    declared_encoding = declared_text_encoding(
+        content_type,
+        content,
+        html_hint=suffix in {".html", ".htm"},
+    )
     if suffix == ".pdf" or "pdf" in content_type.lower():
         try:
             from pypdf import PdfReader
@@ -394,8 +405,14 @@ def extract_import_text_with_metadata(filename: str, content: bytes, content_typ
                 raise ValueError("pdf_page_limit_exceeded")
             pages = []
             extracted_chars = 0
+            replacement_character_count = 0
             for index, page in enumerate(reader.pages, start=1):
                 page_text = page.extract_text() or ""
+                replacement_character_count += page_text.count("\ufffd")
+                try:
+                    page_text = canonicalize_unicode_text(page_text)
+                except TextDecodingError as exc:
+                    raise ValueError("text_mojibake_detected") from exc
                 extracted_chars += len(page_text)
                 if extracted_chars > MAX_EXTRACTED_TEXT_CHARS:
                     raise ValueError("extracted_text_too_large")
@@ -403,6 +420,11 @@ def extract_import_text_with_metadata(filename: str, content: bytes, content_typ
             return "\n\n".join(pages), "pdf", {
                 "encoding": "pdf-text",
                 "decoding_source": "pypdf",
+                "encoding_source": "pypdf",
+                "encoding_confidence": "not_applicable",
+                "declared_encoding": "",
+                "replacement_character_count": replacement_character_count,
+                "normalization_version": TEXT_NORMALIZATION_VERSION,
                 "page_count": len(reader.pages),
                 "extracted_page_count": len(pages),
                 "ocr_required": not any(page.strip() for page in pages),
@@ -412,9 +434,15 @@ def extract_import_text_with_metadata(filename: str, content: bytes, content_typ
         except Exception as exc:
             raise ValueError("pdf_text_extraction_unavailable") from exc
     try:
-        decoded_info = decode_text_bytes(content, source=Path(filename or "document").name, encoding=encoding)
+        decoded_info = decode_text_bytes(
+            content,
+            source=Path(filename or "document").name,
+            encoding=encoding,
+            declared_encoding=declared_encoding,
+        )
     except TextDecodingError as exc:
-        raise ValueError("text_encoding_unsupported") from exc
+        code = "text_mojibake_detected" if str(exc).startswith("text_mojibake_detected") else "text_encoding_unsupported"
+        raise ValueError(code) from exc
     if len(decoded_info.text) > MAX_EXTRACTED_TEXT_CHARS:
         raise ValueError("extracted_text_too_large")
     if suffix in {".html", ".htm"} or "html" in content_type.lower():
@@ -423,13 +451,23 @@ def extract_import_text_with_metadata(filename: str, content: bytes, content_typ
         parser.close()
         return "".join(parser.parts).strip(), "webpage", {
             "encoding": decoded_info.encoding,
-            "decoding_source": "charset-normalizer-or-fallback",
+            "decoding_source": "strict-lossless",
+            "encoding_source": decoded_info.encoding_source,
+            "encoding_confidence": decoded_info.encoding_confidence,
+            "declared_encoding": declared_encoding,
+            "replacement_character_count": decoded_info.replacement_character_count,
+            "normalization_version": decoded_info.normalization_version,
             "encoding_repaired": decoded_info.repaired,
             "mojibake_score": decoded_info.mojibake_score,
         }
     return decoded_info.text, "markdown" if suffix in {".md", ".markdown"} else "task", {
         "encoding": decoded_info.encoding,
-        "decoding_source": "charset-normalizer-or-fallback",
+        "decoding_source": "strict-lossless",
+        "encoding_source": decoded_info.encoding_source,
+        "encoding_confidence": decoded_info.encoding_confidence,
+        "declared_encoding": declared_encoding,
+        "replacement_character_count": decoded_info.replacement_character_count,
+        "normalization_version": decoded_info.normalization_version,
         "encoding_repaired": decoded_info.repaired,
         "mojibake_score": decoded_info.mojibake_score,
     }
