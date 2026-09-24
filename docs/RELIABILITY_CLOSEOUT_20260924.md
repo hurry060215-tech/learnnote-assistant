@@ -9,6 +9,8 @@
 
 2026-09-24 手动运行 [Reliability gates #35960376745](https://github.com/hurry060215-tech/learnnote-assistant/actions/runs/35960376745)，目标为 `main` SHA `e585b7fbf3067d19f19d68760ff4614ad2757efa`，两项 job 和全部步骤通过。Freshness 报告确认 checkout 与预期 SHA 一致、工作区干净。离线 job 实际执行模型提供者无凭据合同、合成媒体/帧门禁、300/1800/3600/10800 秒矩阵、取消门禁、混合队列门禁及 3600 秒完整本地任务门禁；公共样例 job 使用无登录 Edge profile 探测 Samplelib MP4。
 
+Candidate 分支也已手动运行 [Reliability gates #35961618086](https://github.com/hurry060215-tech/learnnote-assistant/actions/runs/35961618086)，head `3b528834a89b6770fb6dcf2ccd2dd0fc92a93615`，两项 job、freshness、更新后的首草稿门禁、完整 60 分钟本地 fixture 与隔离公共审计全部成功。
+
 CI 归档：[离线可靠性报告](build/package4/remote-run-35960376745/offline/)，[公共样例报告](build/package4/remote-run-35960376745/public-audit/)。工作流完整步骤结论与检查时间保留在该 run 页面。
 
 公共浏览器样例确认 cookie 数为 0，download-only task 成功在本机保存 2,848,208 字节 MP4，SHA-256 `8e68f504b0dbff5738741a1a377faa84baeb68b869ea52eaf7ec3d8154bb11ca`。`yt-dlp` metadata-only 探测也通过。这个路径证明了真实公开媒体下载和本地落盘；它没有运行 ASR。
@@ -29,7 +31,7 @@ CI 归档：[离线可靠性报告](build/package4/remote-run-35960376745/offlin
 ## 首个结果、取消与队列
 
 - 隔离目录运行 60 分钟合成完整任务：总耗时 46.953 秒；`draft.md` 在字幕阶段完成后 0.015 秒可读；最终状态 `success`，checkpoint `note_ready`。输入是预制合成 SRT，summary 使用 `offline-fixture`，ASR 和模型调用都关闭。脚本现将转录结束到首个草稿 ≤5 秒作为可靠性门禁并把指标写进报告。
-- 单独用 [Open Speech Repository American English 样本](https://www.voiptroubleshooter.com/open_speech/american.html) 的 `OSR_us_000_0010_8k.wav` 实测本机 faster-whisper `tiny` / CPU / int8：33.623 秒、8 kHz 输入，得到 10 段、407 字符，14.516 秒完成，远程 provider API 调用数为 0。该站要求引用 Open Speech Repository；本次只在隔离 build 缓存处理，未分发音频或模型。
+- 单独用 [Open Speech Repository American English 样本](https://www.voiptroubleshooter.com/open_speech/american.html) 的 `OSR_us_000_0010_8k.wav` 实测本机 faster-whisper `tiny` / CPU / int8：33.623 秒、8 kHz 输入，得到 10 段、407 字符；首次载入模型为 14.516 秒。warm rerun 2.156 秒，进程峰值 RSS 244,760,576 字节（约 233.5 MiB），远程 provider API 调用数为 0。该站要求引用 Open Speech Repository；本次只在隔离 build 缓存处理，未分发音频或模型。
 - 180 秒合成媒体取消场景通过：取消延迟 0.063 秒，worker 退出，无取消后新增阶段。
 - 本地 scheduler reliability 脚本通过 5 项混合任务：重型和轻量 lane 各最多 1 个并行任务，轻任务不被重任务阻塞，重复 enqueue 返回同一 future，journal 重开后状态保留。
 - SSE 路由新增 HTTP 集成回归：组合 `Last-Event-ID` 与 `after` 游标只重放后续事件，保持单调 ID/中文消息，并在任务终态发出 `task_terminal`。
