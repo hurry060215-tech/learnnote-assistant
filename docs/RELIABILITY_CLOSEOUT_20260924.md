@@ -2,6 +2,7 @@
 
 - 日期：2026-09-24
 - 本地代码基线：`origin/main` `e585b7fbf3067d19f19d68760ff4614ad2757efa`
+- 本次 candidate 代码 commit：`84a16cb97663ad9e4e7e974b0fe84620bd87eb74`
 - 关联 Issue：[#130](https://github.com/hurry060215-tech/learnnote-assistant/issues/130)、[#131](https://github.com/hurry060215-tech/learnnote-assistant/issues/131)、[#132](https://github.com/hurry060215-tech/learnnote-assistant/issues/132)、[#148](https://github.com/hurry060215-tech/learnnote-assistant/issues/148)、[#151](https://github.com/hurry060215-tech/learnnote-assistant/issues/151)
 
 ## 当前主线可靠性工作流
