@@ -44,9 +44,28 @@ class WebAccessibilityContractTests(unittest.TestCase):
     def test_learning_browser_acceptance_records_the_self_assessment_step(self) -> None:
         source = (ROOT / "scripts" / "learning-workflow-acceptance.cjs").read_text(encoding="utf-8")
         self.assertIn('const reflection = page.getByRole("textbox", { name: "自我解释", exact: true });', source)
-        self.assertIn('await reflection.fill(', source)
-        self.assertIn('name: "记录解释并显示出处答案"', source)
+        self.assertIn('await reflection.focus();', source)
+        self.assertIn('page.keyboard.type("学习率改变每一步参数更新的幅度。")', source)
+        self.assertIn('"记录解释并显示出处答案"', source)
         self.assertIn("self_assessment_count > 0", source)
+
+    def test_learning_browser_acceptance_covers_tablet_keyboard_course_and_backup_restore(self) -> None:
+        source = (ROOT / "scripts" / "learning-workflow-acceptance.cjs").read_text(encoding="utf-8")
+        for required in (
+            'await page.keyboard.press("Enter")',
+            '"tablet", 768, 1024',
+            '"mobile", 390, 844',
+            '"desktop", 1440, 900',
+            'studyGeometry[name]',
+            'cardWidth >= (name === "tablet" ? 500 : 280)',
+            '"#studyCourseSelect"',
+            'page.waitForEvent("download")',
+            'page.waitForEvent("filechooser")',
+            '/api/study/data?confirm=delete_all_study_data',
+            'restoredReviews.length > 0',
+        ):
+            with self.subTest(required=required):
+                self.assertIn(required, source)
 
 
 if __name__ == "__main__":
