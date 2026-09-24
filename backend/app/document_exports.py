@@ -14,6 +14,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from .config import TASK_DIR
 from .note_document import section_anchor_id, strip_note_frontmatter
+from .markdown_structure import structural_lines
 
 
 DOCUMENT_EXPORT_SCHEMA_VERSION = 1
@@ -24,6 +25,7 @@ _SECRET_ASSIGNMENT_RE = re.compile(
     r"access[_-]?token|refresh[_-]?token|auth[_-]?token|session(?:id)?|api[_-]?key)"
     r"\b(\s*[:=]\s*)[^\r\n]*"
 )
+_NON_BMP_RE = re.compile(r"([\U00010000-\U0010FFFF])")
 _BEARER_RE = re.compile(r"(?i)\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+")
 _SAFE_URL_QUERY_KEYS = {"v", "p", "list", "index", "t", "start", "page", "bvid", "aid", "cid"}
 
@@ -148,6 +150,7 @@ def available_export_fonts() -> list[dict[str, object]]:
         "Noto Serif SC": [Path("/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc")],
         "Arial": [Path("C:/Windows/Fonts/arial.ttf"), Path("/usr/share/fonts/truetype/msttcorefonts/Arial.ttf")],
         "Consolas": [Path("C:/Windows/Fonts/consola.ttf")],
+        "Segoe UI Emoji": [Path("C:/Windows/Fonts/seguiemj.ttf")],
     }
     return [{
         "name": name,
@@ -227,6 +230,7 @@ def build_structured_export(
     """Build one portable content tree consumed by HTML, DOCX and PDF."""
     settings = normalize_export_options(options)
     title = str(getattr(task, "title", "LearnNote 学习笔记")) or "LearnNote 学习笔记"
+    source_url = _safe_hyperlink(str(getattr(task, "page_url", ""))) if settings["include_source_link"] else ""
     parts: list[str] = []
     if settings["include_note"]:
         notice = evidence_review_notice(task)
@@ -237,6 +241,8 @@ def build_structured_export(
             value = re.sub(r"(?m)^!\[[^\]]*\]\([^\n]+\)\s*$", "", value)
         if not settings["include_timestamps"]:
             value = re.sub(r"(?<!\d)(?:\d{1,2}:)?\d{1,2}:\d{2}(?:\s*(?:-|–|—|~|至)\s*(?:\d{1,2}:)?\d{1,2}:\d{2})?", "", value)
+        elif source_url:
+            value = _linkify_video_timestamps(value, source_url)
         parts.append(value)
     if settings["include_annotations"] and str(annotations or "").strip():
         annotation_text = str(annotations).strip()
@@ -263,7 +269,6 @@ def build_structured_export(
                 indent = "  " * max(0, level - 1)
                 toc.append(f"{indent}- {_clean_inline_markdown(heading)}")
             body = "\n".join(toc) + "\n\n" + body
-    source_url = _safe_hyperlink(str(getattr(task, "page_url", ""))) if settings["include_source_link"] else ""
     return {
         "schema_version": DOCUMENT_EXPORT_SCHEMA_VERSION,
         "title": sanitize_export_text(title),
@@ -433,6 +438,61 @@ def _safe_hyperlink(value: str) -> str:
         return ""
 
 
+_EXPORT_TIMESTAMP_RE = re.compile(
+    r"(?<![\d:])(?P<start>(?:\d{1,2}:)?\d{1,2}:\d{2})"
+    r"(?:\s*(?:-|–|—|~|至)\s*(?:\d{1,2}:)?\d{1,2}:\d{2})?(?![\d:])"
+)
+_TIMESTAMP_EXCLUSIONS_RE = re.compile(r"`[^`]*`|!?\[[^\]]+\]\([^)]+\)|https?://[^\s]+", re.I)
+
+
+def _timestamp_to_seconds(value: str) -> int:
+    start = re.split(r"\s*(?:-|–|—|~|至)\s*", str(value), maxsplit=1)[0]
+    parts = [int(item) for item in start.split(":")]
+    if len(parts) == 2:
+        return parts[0] * 60 + parts[1]
+    return parts[-3] * 3600 + parts[-2] * 60 + parts[-1]
+
+
+def _timestamp_source_url(source_url: str, timestamp: str) -> str:
+    try:
+        parsed = urlsplit(source_url)
+        query = [(key, value) for key, value in parse_qsl(parsed.query, keep_blank_values=True) if key.lower() not in {"t", "start"}]
+        query.append(("t", str(_timestamp_to_seconds(timestamp))))
+        return _safe_hyperlink(urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(query), parsed.fragment)))
+    except (TypeError, ValueError):
+        return ""
+
+
+def _linkify_video_timestamps(markdown: str, source_url: str) -> str:
+    """Make visible prose timecodes return to the source video position."""
+
+    output = []
+    for line, prose in structural_lines(str(markdown or "").splitlines()):
+        if not prose or not line:
+            output.append(line)
+            continue
+        excluded = [match.span() for match in _TIMESTAMP_EXCLUSIONS_RE.finditer(line)]
+        pieces = []
+        cursor = 0
+        linked = False
+        for match in _EXPORT_TIMESTAMP_RE.finditer(line):
+            if any(start <= match.start() < end for start, end in excluded):
+                continue
+            target = _timestamp_source_url(source_url, match.group(0))
+            if not target:
+                continue
+            pieces.append(line[cursor:match.start()])
+            pieces.append(f"[{match.group(0)}]({target})")
+            cursor = match.end()
+            linked = True
+        if linked:
+            pieces.append(line[cursor:])
+            output.append("".join(pieces))
+        else:
+            output.append(line)
+    return "\n".join(output)
+
+
 def sanitize_export_text(value: str) -> str:
     text = unicodedata.normalize("NFC", str(value or "").replace("\r\n", "\n").replace("\r", "\n"))
     text = "".join(character for character in text if character in "\n\t" or ord(character) >= 0x20)
@@ -494,13 +554,35 @@ def _add_docx_hyperlink(paragraph, text: str, url: str) -> None:
     paragraph._p.append(hyperlink)
 
 
+def _add_docx_text(paragraph, value: str, *, bold: bool = False, font_name: str = "") -> None:
+    """Use a dedicated host emoji font for non-BMP runs in editable Word output."""
+
+    from docx.oxml.ns import qn
+
+    for part in _NON_BMP_RE.split(str(value or "")):
+        if not part:
+            continue
+        run = paragraph.add_run(part)
+        if bold:
+            run.bold = True
+        if font_name:
+            run.font.name = font_name
+        if _NON_BMP_RE.search(part):
+            run.font.name = "Segoe UI Emoji"
+            properties = run._element.get_or_add_rPr()
+            fonts = properties.rFonts
+            if fonts is not None:
+                for script in ("ascii", "hAnsi", "eastAsia", "cs"):
+                    fonts.set(qn(f"w:{script}"), "Segoe UI Emoji")
+
+
 def _add_docx_inline(paragraph, value: str) -> None:
     cursor = 0
     text = str(value or "")
     token_re = re.compile(r"\[([^\]]+)\]\(([^)]+)\)|\*\*([^*]+)\*\*|__([^_]+)__|`([^`]+)`")
     for match in token_re.finditer(text):
         if match.start() > cursor:
-            paragraph.add_run(_sanitize_export_text(text[cursor:match.start()]))
+            _add_docx_text(paragraph, _sanitize_export_text(text[cursor:match.start()]))
         if match.group(1) is not None:
             label, raw_url = match.group(1), match.group(2)
             url = _safe_hyperlink(raw_url)
@@ -508,16 +590,14 @@ def _add_docx_inline(paragraph, value: str) -> None:
                 display_label = url if "://" in label else _sanitize_export_text(label)
                 _add_docx_hyperlink(paragraph, display_label, url)
             else:
-                paragraph.add_run(f"{_sanitize_export_text(label)}（链接已移除）")
+                _add_docx_text(paragraph, f"{_sanitize_export_text(label)}（链接已移除）")
         elif match.group(3) is not None or match.group(4) is not None:
-            run = paragraph.add_run(_sanitize_export_text(match.group(3) or match.group(4)))
-            run.bold = True
+            _add_docx_text(paragraph, _sanitize_export_text(match.group(3) or match.group(4)), bold=True)
         else:
-            run = paragraph.add_run(_sanitize_export_text(match.group(5) or ""))
-            run.font.name = "Consolas"
+            _add_docx_text(paragraph, _sanitize_export_text(match.group(5) or ""), font_name="Consolas")
         cursor = match.end()
     if cursor < len(text):
-        paragraph.add_run(_sanitize_export_text(text[cursor:]))
+        _add_docx_text(paragraph, _sanitize_export_text(text[cursor:]))
 
 
 def build_docx_export(
@@ -557,6 +637,25 @@ def build_docx_export(
         from docx.enum.section import WD_ORIENT
         section.orientation = WD_ORIENT.LANDSCAPE
         section.page_width, section.page_height = section.page_height, section.page_width
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    footer = section.footer.paragraphs[0]
+    footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    footer.add_run("LearnNote · ")
+
+    def add_word_field(paragraph, instruction: str) -> None:
+        begin = OxmlElement("w:fldChar"); begin.set(qn("w:fldCharType"), "begin")
+        command = OxmlElement("w:instrText"); command.set(qn("xml:space"), "preserve"); command.text = f" {instruction} "
+        separate = OxmlElement("w:fldChar"); separate.set(qn("w:fldCharType"), "separate")
+        value = OxmlElement("w:t"); value.text = "1"
+        end = OxmlElement("w:fldChar"); end.set(qn("w:fldCharType"), "end")
+        run = OxmlElement("w:r")
+        for item in (begin, command, separate, value, end):
+            run.append(item)
+        paragraph._p.append(run)
+
+    add_word_field(footer, "PAGE")
+    footer.add_run(" / ")
+    add_word_field(footer, "NUMPAGES")
     normal = document.styles["Normal"]
     normal.font.name = settings["font_family"]
     normal.font.size = Pt(settings["font_size"])
@@ -578,7 +677,8 @@ def build_docx_export(
     document.core_properties.title = safe_title
     document.core_properties.subject = "LearnNote evidence-grounded local export"
     document.core_properties.author = "LearnNote"
-    document.add_heading(safe_title, 0)
+    title_paragraph = document.add_heading("", 0)
+    _add_docx_text(title_paragraph, safe_title)
 
     source_url = structured["source"]["url"]
     if settings["include_source_link"] or settings["include_timestamps"]:
@@ -620,7 +720,8 @@ def build_docx_export(
                     width, height = image.size
                 scale = min(16 / max(1, width), 18 / max(1, height))
                 document.add_picture(str(path), width=Cm(width * scale), height=Cm(height * scale))
-            document.add_paragraph(caption or "画面出处；请回原资料核对")
+                caption_paragraph = document.add_paragraph()
+                _add_docx_text(caption_paragraph, caption or "画面出处；请回原资料核对")
         elif block.kind == "heading":
             paragraph = document.add_heading(level=max(1, min(block.level, 3)))
             _add_docx_inline(paragraph, block.text)
@@ -632,9 +733,9 @@ def build_docx_export(
             _add_docx_inline(paragraph, block.text)
         elif block.kind == "code":
             paragraph = document.add_paragraph()
-            run = paragraph.add_run(_sanitize_export_text(block.text))
-            run.font.name = "Consolas"
-            run.font.size = Pt(9)
+            _add_docx_text(paragraph, _sanitize_export_text(block.text), font_name="Consolas")
+            for run in paragraph.runs:
+                run.font.size = Pt(9)
         else:
             paragraph = document.add_paragraph()
             _add_docx_inline(paragraph, block.text)
@@ -645,6 +746,8 @@ def build_docx_export(
     buffer = BytesIO()
     document.save(buffer)
     warnings = [] if _font_available(settings["font_family"]) else ["requested_docx_font_unavailable_using_host_fallback"]
+    if _NON_BMP_RE.search(note + raw_title) and not _font_available("Segoe UI Emoji"):
+        warnings.append("emoji_font_unavailable_using_host_fallback")
     return DocumentExport(
         content=buffer.getvalue(),
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -689,27 +792,44 @@ def _pdf_font(preferred: str = "") -> tuple[str, list[str]]:
     return "STSong-Light", ["embedded_system_cjk_font_unavailable_using_pdf_cid_fallback"]
 
 
+def _pdf_compatible_text(value: str) -> str:
+    """Keep PDF output legible when ReportLab cannot encode non-BMP glyphs."""
+
+    source = str(value or "").replace("\uFE0F", "").replace("\u200D", "")
+    pieces = []
+    for character in source:
+        if ord(character) <= 0xFFFF:
+            pieces.append(character)
+            continue
+        name = unicodedata.name(character, "")
+        if name and (unicodedata.category(character) == "So" or "EMOJI" in name):
+            pieces.append(f"[{name.lower().replace('_', ' ')}]")
+        else:
+            pieces.append(f"[U+{ord(character):04X}]")
+    return "".join(pieces)
+
+
 def _pdf_inline(value: str) -> str:
     source = str(value or "")
     parts: list[str] = []
     cursor = 0
     token_re = re.compile(r"\[([^\]]+)\]\(([^)]+)\)|\*\*([^*]+)\*\*|__([^_]+)__|`([^`]+)`")
     for match in token_re.finditer(source):
-        parts.append(html.escape(_sanitize_export_text(source[cursor:match.start()])))
+        parts.append(html.escape(_pdf_compatible_text(_sanitize_export_text(source[cursor:match.start()]))))
         if match.group(1) is not None:
             label, raw_url = match.group(1), match.group(2)
             url = _safe_hyperlink(raw_url)
             if url:
-                display_label = url if "://" in label else _sanitize_export_text(label)
+                display_label = url if "://" in label else _pdf_compatible_text(_sanitize_export_text(label))
                 parts.append(f'<a href="{html.escape(url, quote=True)}" color="#0f766e"><u>{html.escape(display_label)}</u></a>')
             else:
-                parts.append(html.escape(f"{_sanitize_export_text(label)}（链接已移除）"))
+                parts.append(html.escape(f"{_pdf_compatible_text(_sanitize_export_text(label))}（链接已移除）"))
         elif match.group(3) is not None or match.group(4) is not None:
-            parts.append(f"<strong>{html.escape(_sanitize_export_text(match.group(3) or match.group(4)))}</strong>")
+            parts.append(f"<strong>{html.escape(_pdf_compatible_text(_sanitize_export_text(match.group(3) or match.group(4))))}</strong>")
         else:
-            parts.append(f'<font name="Courier">{html.escape(_sanitize_export_text(match.group(5) or ""))}</font>')
+            parts.append(f'<font name="Courier">{html.escape(_pdf_compatible_text(_sanitize_export_text(match.group(5) or "")))}</font>')
         cursor = match.end()
-    parts.append(html.escape(_sanitize_export_text(source[cursor:])))
+    parts.append(html.escape(_pdf_compatible_text(_sanitize_export_text(source[cursor:]))))
     return "".join(parts)
 
 
@@ -743,6 +863,11 @@ def build_pdf_export(
     )
     note = structured["markdown"]
     font_name, warnings = _pdf_font(settings["font_family"])
+    raw_title = str(getattr(task, "title", "LearnNote 学习笔记")) or "LearnNote 学习笔记"
+    safe_title = _pdf_compatible_text(_sanitize_export_text(raw_title))
+    has_non_bmp_text = bool(_NON_BMP_RE.search(str(note or "") + raw_title))
+    if has_non_bmp_text:
+        warnings.append("non_bmp_symbols_rendered_as_unicode_names")
     buffer = BytesIO()
     from reportlab.lib.pagesizes import landscape
     document = SimpleDocTemplate(
@@ -752,7 +877,7 @@ def build_pdf_export(
         leftMargin=settings["margin_left"] * mm,
         topMargin=settings["margin_top"] * mm,
         bottomMargin=settings["margin_bottom"] * mm,
-        title=_sanitize_export_text(str(getattr(task, "title", "LearnNote 学习笔记"))),
+        title=safe_title,
         author="LearnNote",
     )
     sample = getSampleStyleSheet()
@@ -786,8 +911,6 @@ def build_pdf_export(
     code = ParagraphStyle("LearnNoteCode", parent=body, fontName=font_name, fontSize=8.5, leading=12, backColor=colors.HexColor("#F2F6F5"), borderPadding=7)
     bullet = ParagraphStyle("LearnNoteBullet", parent=body, leftIndent=10, firstLineIndent=-8, bulletIndent=0)
 
-    raw_title = str(getattr(task, "title", "LearnNote 学习笔记")) or "LearnNote 学习笔记"
-    safe_title = _sanitize_export_text(raw_title)
     story = [Paragraph(html.escape(safe_title), title_style)]
     source_url = structured["source"]["url"]
     source = f'<a href="{html.escape(source_url, quote=True)}" color="#0f766e">{html.escape(source_url)}</a>' if source_url else "本地资料"
@@ -805,7 +928,7 @@ def build_pdf_export(
         if block.kind == "table":
             rows = [[Paragraph(_pdf_inline(cell), body) for cell in row] for row in _table_rows(block.text)]
             if not rows:
-                story.append(Paragraph(html.escape(_sanitize_export_text(block.text)), body))
+                story.append(Paragraph(html.escape(_pdf_compatible_text(_sanitize_export_text(block.text))), body))
                 continue
             table = LongTable(rows, colWidths=[document.width / len(rows[0])] * len(rows[0]), repeatRows=1, splitInRow=1)
             table.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), .4, colors.HexColor("#ccd9db")), ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#edf4f3")), ("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 7), ("RIGHTPADDING", (0, 0), (-1, -1), 7)]))
@@ -817,7 +940,7 @@ def build_pdf_export(
                 scale = min(document.width / image.imageWidth, 180 * mm / image.imageHeight)
                 image.drawWidth, image.drawHeight = image.imageWidth * scale, image.imageHeight * scale
                 story.append(image)
-            story.append(Paragraph(html.escape(caption or "画面出处；请回原资料核对"), meta))
+            story.append(Paragraph(html.escape(_pdf_compatible_text(_sanitize_export_text(caption or "画面出处；请回原资料核对"))), meta))
         elif block.kind == "heading":
             story.append(Paragraph(_pdf_inline(block.text), heading_styles[max(1, min(block.level, 3))]))
         elif block.kind == "bullet":
@@ -825,7 +948,7 @@ def build_pdf_export(
         elif block.kind == "ordered":
             story.append(Paragraph("• " + _pdf_inline(block.text), bullet))
         elif block.kind == "code":
-            story.append(Preformatted(_sanitize_export_text(block.text), code, maxLineLength=88))
+            story.append(Preformatted(_pdf_compatible_text(_sanitize_export_text(block.text)), code, maxLineLength=88))
         else:
             story.append(Paragraph(_pdf_inline(block.text), body))
     story.extend((Spacer(1, 4 * mm), Paragraph("由 LearnNote 在本机生成；原视频、Cookie 与诊断秘密未嵌入此文档。", meta)))
