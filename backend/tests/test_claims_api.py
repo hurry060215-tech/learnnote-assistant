@@ -25,7 +25,7 @@ class ClaimRouteTests(unittest.TestCase):
         self.assertEqual(claim['evidence_ids'],[])
 
     def test_claim_endpoint_returns_projection_instead_of_null(self):
-        payload = {'schema_version':4, 'task_id':'fixture', 'claims':[], 'quality':{}}
+        payload = {'schema_version':5, 'task_id':'fixture', 'claims':[], 'quality':{}}
         with patch('app.main.get_task',return_value=SimpleNamespace(id='fixture')), patch('app.main.read_json',return_value=payload):
             response = TestClient(app).get('/api/tasks/fixture/claims')
         self.assertEqual(response.status_code,200)
