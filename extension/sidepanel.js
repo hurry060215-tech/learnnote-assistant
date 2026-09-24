@@ -63,6 +63,7 @@ let sending = false;
 let refreshTimer = 0;
 let contextGeneration = 0;
 let collectRequest = null;
+let sitePermissionEpoch = 0;
 let preflightRequest = null;
 let preflightAt = 0;
 let preflightFingerprint = "";
@@ -718,13 +719,18 @@ async function checkClient({ quiet = false } = {}) {
   if (connectionRequest) return connectionRequest;
   connectionRequest = (async () => {
     if (!clientConnected && !quiet) setConnection("checking", "正在连接 LearnNote", "正在寻找已运行的本机工作台…");
+    let incompatibleClient = null;
     const probe = async candidate => {
       try {
         const response = await fetchWithTimeout(`${candidate}/health`, {}, HEALTH_TIMEOUT_MS);
         if (!response.ok) return null;
         const health = await response.json();
         const isLearnNote = health.service === "learnnote" || (!health.service && health.task_schema_version && typeof health.local_asr_available === "boolean");
-        if (!isLearnNote || !health.app_version || health.protocol_version !== PROTOCOL_VERSION || !health.backend_version) return null;
+        if (!isLearnNote || !health.app_version || !health.backend_version) return null;
+        if (health.protocol_version !== PROTOCOL_VERSION) {
+          incompatibleClient ||= { candidate, health };
+          return null;
+        }
         return { candidate, health };
       } catch { return null; }
     };
@@ -754,6 +760,24 @@ async function checkClient({ quiet = false } = {}) {
       return true;
     }
     modelReadiness = { configured: null, model: "", supportsVision: null };
+    if (incompatibleClient) {
+      const health = incompatibleClient.health;
+      const detectedProtocol = health.protocol_version !== null && health.protocol_version !== undefined && health.protocol_version !== "" && Number.isFinite(Number(health.protocol_version))
+        ? health.protocol_version
+        : "未知";
+      const message = globalThis.LearnNoteI18n?.message;
+      const detail = message?.(
+        "incompatible_client_detail",
+        "扩展协议 {extension}；本机 LearnNote {version} 使用协议 {protocol}。请更新扩展或客户端后重新连接。"
+      ) || "扩展协议 {extension}；本机 LearnNote {version} 使用协议 {protocol}。请更新扩展或客户端后重新连接。";
+      if (els.clientInstallHelp) els.clientInstallHelp.hidden = false;
+      setConnection(
+        "offline",
+        message?.("incompatible_client_title", "扩展与客户端协议不兼容") || "扩展与客户端协议不兼容",
+        detail.replace("{extension}", String(PROTOCOL_VERSION)).replace("{version}", String(health.app_version)).replace("{protocol}", String(detectedProtocol))
+      );
+      return false;
+    }
     if (quiet) { clientConnected = false; renderContext(); return false; }
     if (els.clientInstallHelp) els.clientInstallHelp.hidden = false;
     setConnection("offline", currentTaskId ? "任务所在的工作台已断开" : "本地工作台尚未启动", currentTaskId
@@ -817,6 +841,13 @@ async function runPreflight(identity = displayedIdentity) {
   if (selectedProcessingMode === "quick" || (selectedProcessingMode === "study" && hasReliableBrowserSubtitles(currentContext))) return null;
   const candidates = mediaCandidates(currentContext);
   if (!candidates.length && !currentContext.page?.active_video) return null;
+  if (!(await sitePermissionGranted(identity.canonical_page_url))) {
+    if (sameSourceIdentity(identity, displayedIdentity)) {
+      els.preflightMessage.dataset.state = "info";
+      renderContext("请先点击发送并允许当前站点；媒体候选与 Cookie 授权后才会发送给本机工作台预检。");
+    }
+    return null;
+  }
   if (hasFreshPreflight(identity)) return preflightReport;
   const requestKey = preflightCacheKey(identity);
   if (preflightRequest?.key === requestKey) return preflightRequest.promise;
@@ -882,10 +913,70 @@ function sitePermissionPattern(pageUrl = "") {
   try {
     const url = new URL(pageUrl);
     if (!["http:", "https:"].includes(url.protocol) || !url.host) return "";
-    return `${url.protocol}//${url.host}/*`;
+    return `${url.protocol}//${url.hostname}/*`;
   } catch {
     return "";
   }
+}
+
+function permissionPatternMatchesPage(pattern = "", pageUrl = "") {
+  const requested = String(pattern || "").trim().toLowerCase();
+  const current = sitePermissionPattern(pageUrl).toLowerCase();
+  if (!requested || !current) return false;
+  if (requested === current) return true;
+  const match = /^(https?):\/\/([^/]+)\/\*$/i.exec(requested);
+  if (!match) return false;
+  let page;
+  try { page = new URL(pageUrl); } catch { return false; }
+  if (page.protocol !== `${match[1].toLowerCase()}:`) return false;
+  const host = match[2].toLowerCase();
+  if (host === "*") return true;
+  if (host.startsWith("*.")) {
+    const suffix = host.slice(2);
+    return page.hostname.toLowerCase() === suffix || page.hostname.toLowerCase().endsWith(`.${suffix}`);
+  }
+  return page.hostname.toLowerCase() === host;
+}
+
+async function sitePermissionGranted(pageUrl = "") {
+  const origin = sitePermissionPattern(pageUrl);
+  if (!origin || !globalThis.chrome?.permissions?.contains) return true;
+  try {
+    return await chrome.permissions.contains({ origins: [origin] });
+  } catch {
+    return false;
+  }
+}
+
+function clearPageContextAfterPermissionRevocation(origin = "") {
+  const pageUrl = displayedIdentity?.canonical_page_url || currentContext?.page?.page_url || currentContext?.tab?.url || "";
+  if (!permissionPatternMatchesPage(origin, pageUrl)) return false;
+  sitePermissionEpoch += 1;
+  contextGeneration += 1;
+  collectRequest = null;
+  currentContext = null;
+  displayedIdentity = null;
+  preflightReport = null;
+  preflightIdentity = null;
+  preflightAt = 0;
+  preflightFingerprint = "";
+  preflightRequest = null;
+  stopQuickPolling();
+  quickTranscript = [];
+  quickNoteText = "";
+  if (els.quickAskConversation) els.quickAskConversation.innerHTML = "<p>回答只引用当前视频的字幕证据。</p>";
+  if (els.quickAskQuestion) els.quickAskQuestion.value = "";
+  if (els.quickResultCard) els.quickResultCard.hidden = true;
+  if (!currentTaskId) resetSourceState();
+  else {
+    els.openTaskButton.hidden = false;
+    els.handoffStatus.textContent = "授权已撤销；已交给本机的任务仍可在工作台查看或取消。";
+  }
+  renderContext(currentTaskId
+    ? "站点授权已撤销，当前页面线索与捕获缓存已清除；已交给本机的任务仍保存在工作台中。"
+    : "站点授权已撤销，当前页面线索与捕获缓存已清除。再次授权后可重新读取。"
+  );
+  return true;
 }
 
 function sitePermissionLabel(pattern = "") {
@@ -915,7 +1006,10 @@ async function loadSitePermissions() {
       const label = document.createElement("strong");
       label.textContent = sitePermissionLabel(origin);
       const detail = document.createElement("small");
-      detail.textContent = "可读取当前页字幕、播放器候选；需要时才读取相关 Cookie，并按所选模式发送到本机工作台或配置的模型。";
+      detail.textContent = globalThis.LearnNoteI18n?.message?.(
+        "site_permission_data_flow",
+        "点击发送后，字幕和播放器候选会交给本机工作台。视频处理可能读取相关 Cookie，但 Cookie 只发送给本机工作台；远程模型不会收到 Cookie。"
+      ) || "点击发送后，字幕和播放器候选会交给本机工作台。视频处理可能读取相关 Cookie，但 Cookie 只发送给本机工作台；远程模型不会收到 Cookie。";
       const revoke = document.createElement("button");
       revoke.type = "button";
       revoke.className = "secondary-button compact-button";
@@ -927,6 +1021,7 @@ async function loadSitePermissions() {
         try {
           const removed = await chrome.permissions.remove({ origins: [origin] });
           if (!removed) throw new Error("浏览器未接受撤销请求。");
+          clearPageContextAfterPermissionRevocation(origin);
           try {
             await chrome.runtime.sendMessage({ type: "revoke-site-permission", origin });
           } catch {
@@ -951,9 +1046,18 @@ async function ensureSitePermission(pageUrl = "") {
   if (!globalThis.chrome?.permissions?.request) return true;
   const origin = sitePermissionPattern(pageUrl);
   if (!origin) return true;
-  if (await chrome.permissions.contains?.({ origins: [origin] })) return true;
+  if (await sitePermissionGranted(pageUrl)) return true;
+  if (els.permissionDetails) els.permissionDetails.open = true;
+  if (els.permissionStatus) {
+    els.permissionStatus.textContent = `等待浏览器授权：${sitePermissionLabel(origin)}。授权后，视频处理的相关 Cookie 只发送给本机工作台，不发送给模型。`;
+  }
   const granted = await chrome.permissions.request({ origins: [origin] });
   await loadSitePermissions();
+  if (els.permissionStatus) {
+    els.permissionStatus.textContent = granted
+      ? `已获准访问 ${sitePermissionLabel(origin)}；可查看上方数据流说明。`
+      : `未获准访问 ${sitePermissionLabel(origin)}；本次任务未创建。`;
+  }
   return granted;
 }
 
@@ -970,6 +1074,7 @@ async function sendToClient(modeOverride = "") {
     if (status) status.textContent = error.message;
     return false;
   }
+  const permissionEpoch = sitePermissionEpoch;
   sending = true;
   document.querySelectorAll?.("[data-processing-mode]").forEach(button => { button.disabled = true; });
   els.sendButton.disabled = true;
@@ -983,13 +1088,17 @@ async function sendToClient(modeOverride = "") {
     }
     setProgress(8, "正在连接 LearnNote...");
     if (!(await checkClient())) throw new Error("客户端未运行，请先打开 LearnNote");
-    if (!(await ensureSitePermission(expectedIdentity.canonical_page_url))) throw new Error("未获得当前站点权限，未读取或发送页面媒体；如需继续请再次点击发送并允许访问。");
     if (requestedMode !== "quick" && modelReadiness.configured === false) throw new Error("工作台尚未配置可用模型，请先设置模型，或改为仅提取字幕。本次没有开始处理视频。");
     if (requestedMode === "deep" && modelReadiness.supportsVision === false) throw new Error("当前模型不支持图片，请更换视觉模型或选择文字笔记。本次没有开始处理视频。");
+    if (!(await ensureSitePermission(expectedIdentity.canonical_page_url))) throw new Error("未获得当前站点授权；本次任务未创建。再次点击发送并允许访问后可继续。");
+    if (permissionEpoch !== sitePermissionEpoch) throw new Error("站点授权已撤销，本次发送已停止。请重新确认后再试。");
 
     setProgress(24, "正在重新读取当前页面...");
     const fresh = await collectContext(true);
     if (!fresh) throw new Error("无法读取当前页面");
+    if (permissionEpoch !== sitePermissionEpoch || !(await sitePermissionGranted(expectedIdentity.canonical_page_url))) {
+      throw new Error("站点授权已撤销，本次发送已停止。请重新授权并重新识别当前页面。");
+    }
     const freshIdentity = buildSourceIdentity(fresh);
     if (!sameSourceIdentity(expectedIdentity, freshIdentity)) {
       displayedIdentity = freshIdentity;
@@ -1004,6 +1113,9 @@ async function sendToClient(modeOverride = "") {
     if (quick) {
       currentTaskMode = "subtitle_only";
       setProgress(48, "已取得完整字幕，跳过媒体预检和视频处理...");
+      if (permissionEpoch !== sitePermissionEpoch || !(await sitePermissionGranted(expectedIdentity.canonical_page_url))) {
+        throw new Error("站点授权已撤销，本次字幕任务未发送。请重新授权后再试。");
+      }
       const response = await withTimeout(chrome.runtime.sendMessage({
         type: "start-current-task",
         backendUrl,
@@ -1033,6 +1145,10 @@ async function sendToClient(modeOverride = "") {
     if (!sameSourceIdentity(freshIdentity, displayedIdentity)) {
       setProgress(0, pageSwitchMessage(), "error");
       return false;
+    }
+
+    if (permissionEpoch !== sitePermissionEpoch || !(await sitePermissionGranted(expectedIdentity.canonical_page_url))) {
+      throw new Error("站点授权已撤销，本次任务未发送。请重新授权并重新识别当前页面。");
     }
 
     currentTaskMode = "video";
@@ -1283,6 +1399,11 @@ function bindEvents() {
     button.addEventListener("click", () => openClient(button.dataset.clientView || "workspace", currentTaskId, button.dataset.clientView === "diagnostics" && currentTaskId ? "diagnostics" : "note"));
   });
   if (HAS_EXTENSION_API) chrome.runtime?.onMessage?.addListener?.(message => {
+    if (message?.type === "site-permission-revoked") {
+      clearPageContextAfterPermissionRevocation(message.origin);
+      loadSitePermissions();
+      return;
+    }
     if (message?.type !== "current-context-updated") return;
     if (message.reason === "tab-activated" && chrome.tabs?.get) {
       const generation = ++activationGeneration;
@@ -1349,6 +1470,8 @@ globalThis.__learnnoteSidepanel = {
   renderQuickMarkdown,
   renderQuickTranscript,
   groupSubtitleParagraphs,
+  sitePermissionPattern,
+  permissionPatternMatchesPage,
   sourceIdentityKey,
   sourceContinuityKey,
   sameSourceIdentity,
@@ -1360,5 +1483,5 @@ globalThis.__learnnoteSidepanel = {
   sendToClient,
   openClient,
   checkClient,
-  getState: () => ({ backendUrl, clientConnected, currentContext, displayedIdentity, preflightReport, currentTaskId, currentTaskMode, currentTaskContentMode, selectedProcessingMode, sending })
+  getState: () => ({ backendUrl, clientConnected, currentContext, displayedIdentity, preflightReport, currentTaskId, currentTaskMode, currentTaskContentMode, selectedProcessingMode, sending, sitePermissionEpoch })
 };

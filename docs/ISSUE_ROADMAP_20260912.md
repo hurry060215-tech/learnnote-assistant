@@ -12,6 +12,8 @@
 
 最新推进：[PROGRESS_20260920.md](PROGRESS_20260920.md)。需要用户完成的条件：[USER_ACTIONS_20260920.md](USER_ACTIONS_20260920.md)。商店范围仅 Google Chrome Web Store。
 
+2026-09-24 权限工作包实测：[EXTENSION_PERMISSION_20260924.md](EXTENSION_PERMISSION_20260924.md)。
+
 真实视频与 DS 结果：[LIVE_ACCEPTANCE_20260921.md](LIVE_ACCEPTANCE_20260921.md)。代码收口包含 PR #192–#198；完整转写成功与内容仍需核对分别记录，未因此批量关闭产品 issue。
 
 这是 #52 的唯一当前状态入口。历史验收记录仍然保留，但只适用于其记录的提交、依赖和输入；历史报告不能直接证明当前提交通过。#172 已关闭，不再列为开放 issue；旧的 #166、#167、#168 依赖 PR 也不再作为当前开放清单，#186 以当前 GitHub PR 和本批重新解析结果为准。
@@ -33,7 +35,7 @@
 | 2 可靠性与安全发布 | #131 | 待验收 | `backend/app/upload_limits.py`、上传中间件和磁盘余量检查已存在。 | 并发上传总预算、低磁盘中断/恢复、残留文件清理和重启场景需有隔离数据证据。 |
 | 2 可靠性与安全发布 | #132 | 待验收 | `backend/app/task_queue.py` 已有持久化队列、取消和重启恢复基础。 | 重型任务与下载/字幕任务独立预算、公平排队、背压、lease 清理、幂等和重启后不重复执行需当前提交实测。 |
 | 2 可靠性与安全发布 | #134 | 外部阻塞 | 发布脚本、draft release 复用、校验和、更新回退和安装健康检查已有基础。 | 需在候选包完成损坏包/断网/磁盘不足/文件占用/失败回退/同 tag 重跑；签名凭据和真实 Release 操作单列外部条件。 |
-| 3 权限、编码与证据 | #135 | 待验收 | `extension/manifest.json`、`extension/PERMISSION_JUSTIFICATION.md` 和按需捕获路径记录了权限边界。 | Chrome/Edge 允许、拒绝、撤销、重新授权与缓存失效必须有实机矩阵；验证不默认扩大权限。 |
+| 3 权限、编码与证据 | #135 | 待验收 | `extension/manifest.json` 保持按需站点授权；拒绝、允许、撤销、缓存清理和异步竞态有扩展回归；Chrome for Testing 与 Edge 当前 smoke 的本机配对、协议和页面到任务链路通过。详见 [权限工作包报告](EXTENSION_PERMISSION_20260924.md)。 | Chrome 原生授权弹窗的允许/拒绝/撤销/重新授权矩阵、普通商店安装与更新仍未实测；当前不建议关闭。 |
 | 3 权限、编码与证据 | #150 | 待验收 | `backend/app/text_cleanup.py`、`source_input.py`、字幕/转写管线已有 Unicode 归一化和测试。 | 全部输入/导出入口需保留原始字节、解码选择和失败状态；补中英文乱码正负样本和阻断证据。 |
 | 3 权限、编码与证据 | #129 | 待验收 | `backend/app/knowledge.py`、`transcript_passages.py`、`evidence_for_task` 和助手 citations 已提供字幕/文本证据。 | 至少 50 个中英文正负样本，逐条区分有依据、仅定位、推断和待核实；不得把固定夹具质量当真实课程事实。 |
 | 3 权限、编码与证据 | #152 | 待验收 | `backend/app/note_document.py`、`markdown_structure.py`、`summary_diagnostics.py` 已有语义结构和质量报告。 | 正文、目录、导出共用语义树；补重复内容、内部提示泄露、失控 Markdown、空证据和失败草稿门禁。 |

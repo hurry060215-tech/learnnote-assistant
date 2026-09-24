@@ -16,5 +16,8 @@
   "subtitleOnly": { "message": "保存字幕原文" },
   "summaryNote": { "message": "生成总结笔记" },
   "visualNote": { "message": "图文笔记" },
-  "clientFeatures": { "message": "客户端功能" }
+  "clientFeatures": { "message": "客户端功能" },
+  "site_permission_data_flow": { "message": "已授权站点在需要来源预检时，页面候选会交给本机工作台。视频处理可能读取页面和媒体候选域的相关 Cookie，并只发送给本机工作台；仅字幕模式不读取 Cookie。选择远程模型后，字幕或画面可能按任务模式发给模型，Cookie 不会发送给模型。" },
+  "incompatible_client_title": { "message": "扩展与客户端协议不兼容" },
+  "incompatible_client_detail": { "message": "扩展协议 {extension}；本机 LearnNote {version} 使用协议 {protocol}。请更新扩展或客户端后重新连接。" }
 }

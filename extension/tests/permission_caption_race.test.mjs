@@ -19,10 +19,13 @@ const context = {URL, Date, Map, readBilibiliCaptions(){},
 };
 vm.createContext(context);
 vm.runInContext(source.slice(source.indexOf('const biliSubtitleCache'), source.indexOf('async function collectPageData(')), context);
+vm.runInContext(source.slice(source.indexOf('function normalizePermissionOrigin('), source.indexOf('async function revokeSitePermissionCaches(')), context);
 vm.runInContext(source.slice(source.indexOf('async function revokeSitePermissionCaches('), source.indexOf('chrome.permissions?.onRemoved')), context);
 const response = text => [{result:{status:'ready', cues:[{start:0,end:10,text}],duration:10}}];
 const old = context.addBilibiliCaptions(tab, {});
+tab.url = 'https://www.bilibili.com:8443/video/BV1ABCDEF123?p=1';
 await context.revokeSitePermissionCaches('https://www.bilibili.com/*');
+tab.url = 'https://www.bilibili.com/video/BV1ABCDEF123?p=1';
 active = true;
 const fresh = context.addBilibiliCaptions(tab, {});
 assert.equal(calls, 2);
@@ -33,7 +36,9 @@ assert.equal(calls, 2, 'old completion must not remove the new pending request')
 pending[1](response('new grant captions'));
 assert.equal((await fresh).browser_subtitles[0].text, 'new grant captions');
 await coalesced;
+tab.url = 'https://www.bilibili.com:8443/video/BV1ABCDEF123?p=1';
 await context.revokeSitePermissionCaches('https://www.bilibili.com/*');
+tab.url = 'https://www.bilibili.com/video/BV1ABCDEF123?p=1';
 active = true;
 const again = context.addBilibiliCaptions(tab, {});
 assert.equal(calls, 3, 'revocation must also clear already completed subtitle cache');

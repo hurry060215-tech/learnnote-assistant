@@ -38,7 +38,7 @@ function element() {
   };
 }
 
-export async function createSidepanelHarness({ contexts = [], preflight = null, start = null, starts = [], startDelayMs = 0, health = null, focus = null, tabs = [], healthByUrl = null, healthDelayMs = 0, fetchOverride = null, stored = {} } = {}) {
+export async function createSidepanelHarness({ contexts = [], preflight = null, start = null, starts = [], startDelayMs = 0, health = null, focus = null, tabs = [], healthByUrl = null, healthDelayMs = 0, fetchOverride = null, stored = {}, permissions = {} } = {}) {
   const selectors = [
     "#connectionCard", "#connectionTitle", "#connectionDetail", "#openClientButton", "#openClientBrand", "#clientInstallHelp",
     "#refreshButton", "#platformLabel", "#playingBadge", "#videoTitle", "#videoMeta", "#integrityGrid",
@@ -73,6 +73,8 @@ export async function createSidepanelHarness({ contexts = [], preflight = null, 
   let runtimeListener = null;
   const fetchCalls = [];
   const storageWrites = [];
+  const permissionRequests = [];
+  let sitePermissionGranted = permissions.granted ?? true;
   const documentStub = {
     createElement() { return element(); },
     querySelector(selector) { return elements.get(selector) || null; },
@@ -122,6 +124,24 @@ export async function createSidepanelHarness({ contexts = [], preflight = null, 
     chrome: {
       storage: { local: { async get(defaults) { return { ...defaults, ...stored }; }, async set(value) { storageWrites.push(value); } } },
       tabs: { async query() { return tabs; }, async create(options) { openedTabs.push(options); return options; }, async update(id, options) { updatedTabs.push({id, ...options}); return options; } },
+      permissions: {
+        async getAll() { return { origins: permissions.origins || [] }; },
+        async contains(details) {
+          if (typeof permissions.contains === "function") return permissions.contains(details);
+          return sitePermissionGranted;
+        },
+        async request(details) {
+          permissionRequests.push(structuredClone(details));
+          const granted = typeof permissions.request === "function"
+            ? await permissions.request(details)
+            : Boolean(permissions.requestResult ?? true);
+          if (granted) sitePermissionGranted = true;
+          return granted;
+        },
+        async remove(details) {
+          return typeof permissions.remove === "function" ? permissions.remove(details) : true;
+        }
+      },
       runtime: {
         onMessage: { addListener(listener) { runtimeListener = listener; } },
         async sendMessage(message) {
@@ -163,6 +183,7 @@ export async function createSidepanelHarness({ contexts = [], preflight = null, 
     updatedTabs,
     fetchCalls,
     storageWrites,
+    permissionRequests,
     emit(message) { runtimeListener?.(message); }
   };
 }
