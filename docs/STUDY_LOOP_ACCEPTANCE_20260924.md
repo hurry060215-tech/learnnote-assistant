@@ -2,7 +2,7 @@
 
 - 日期：2026-09-24
 - 基线：`origin/main` `e585b7fbf3067d19f19d68760ff4614ad2757efa`
-- 本次验收代码 commit：`ce83f9e`
+- 本次验收代码 commit：`966b332`
 - 关联 Issue：[#136](https://github.com/hurry060215-tech/learnnote-assistant/issues/136)、[#140](https://github.com/hurry060215-tech/learnnote-assistant/issues/140)、[#141](https://github.com/hurry060215-tech/learnnote-assistant/issues/141)、[#159](https://github.com/hurry060215-tech/learnnote-assistant/issues/159)
 
 ## 改动
