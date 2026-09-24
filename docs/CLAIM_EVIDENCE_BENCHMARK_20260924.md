@@ -2,6 +2,7 @@
 
 * 日期：2026-09-24
 * 代码基线：`origin/main` `e585b7fbf3067d19f19d68760ff4614ad2757efa`
+* 本次验收代码 commit：`fc7357b66382cd4d3535ea900c9ae17f472e1b4d`
 * 对应 Issue：[#129](https://github.com/hurry060215-tech/learnnote-assistant/issues/129)
 * 数据文件：`backend/tests/fixtures/claim_evidence_public_gold_20260924.json`
 * 评估入口：`scripts/claim-evidence-benchmark.py`
