@@ -2,7 +2,7 @@
 
 - 日期：2026-09-24
 - 本地代码基线：`origin/main` `e585b7fbf3067d19f19d68760ff4614ad2757efa`
-- 本次 candidate 代码 commit：`84a16cb97663ad9e4e7e974b0fe84620bd87eb74`
+- 本次 candidate 代码 commit：`26dbce41588ce892c14a123b67b4a498346924ac`
 - 关联 Issue：[#130](https://github.com/hurry060215-tech/learnnote-assistant/issues/130)、[#131](https://github.com/hurry060215-tech/learnnote-assistant/issues/131)、[#132](https://github.com/hurry060215-tech/learnnote-assistant/issues/132)、[#148](https://github.com/hurry060215-tech/learnnote-assistant/issues/148)、[#151](https://github.com/hurry060215-tech/learnnote-assistant/issues/151)
 
 ## 当前主线可靠性工作流
@@ -38,6 +38,34 @@ CI 归档：[离线可靠性报告](build/package4/remote-run-35960376745/offlin
 
 上述 ASR 样本是独立 WAV 解码，不是对 Samplelib 视频的识别，也不是 38 分钟 ASR 内存压力测试。ASR 测试报告、矩阵 JSON、资源报告和临时模型缓存都位于本地忽略目录 `build/package4`。
 
+## 真实公开视频的 LearnNote 长 ASR 路径
+
+另用 Stanford Online 公开的 [CS224N Spring 2024 Lecture 1](https://www.youtube.com/watch?v=DzpHeXVSC5I) 复测。Stanford [课程页](https://web.stanford.edu/class/cs224n/)列出公开 YouTube 视频。`yt-dlp` 以 `--no-cookies` 下载 640×360 H.264 + AAC 的 MP4（105,920,359 bytes，4,816.887 秒，SHA-256 `968fd983fcd96e879215ccac3b25660d939417325611a2e58271d1b5c20cb4de`）；另保存英文原字幕轨用于独立证据审计。该媒体与字幕均留在忽略目录，不提交或分发。
+
+MP4 音频用与 `backend/app/media.py::extract_audio` 相同参数提取为 16 kHz 单声道 PCM WAV；随后实际调用 LearnNote 的 `backend/app/transcriber.py::transcribe_audio`。该路径针对超过 10 分钟的 WAV 自动调用 `backend/app/asr_chunks.py::transcribe_windows`，分 17 个 300 秒窗口保存 checkpoint。新增 `scripts/benchmark-public-media-asr.py` 用 Windows `GetProcessMemoryInfo` 和进程 CPU 时间采样，只将汇总指标写入 JSON，不保存转写正文。
+
+| 模型 | 首段转写进度 | 总耗时 | 实时倍速 | 峰值 RSS | 转写段数/字符数 | 最后段结束时间 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `tiny` / CPU / int8（缓存已存在） | 2.562 秒 | 133.453 秒 | 36.09× | 564,482,048 B（约 538.3 MiB） | 994 / 60,870 | 4,810.94 秒 |
+| `small` / CPU / int8（首次隔离缓存运行） | 133.469 秒 | 723.391 秒 | 6.66× | 916,529,152 B（约 874.1 MiB） | 1,064 / 60,112 | 4,810.76 秒 |
+
+两种模型都覆盖到视频结尾附近、输出英文转写、远程 ASR/API 调用为 0。`small` 的时间包含首次模型缓存准备，报告没有将下载与推理分开；首段时间从 ASR 进程开始计，不等价于模型已经就绪后的首段延迟。最小剩余磁盘分别为 45,410,312,192 B 和 44,923,740,160 B；窗口 WAV/checkpoint 留在忽略目录。RSS 由 ASR 进程在解码/推理期间采样，不覆盖单独运行的媒体下载与 FFmpeg 提取进程树。
+
+另做了一个诊断对照：直接将完整 MP4 交给 `WhisperModel.transcribe`、绕过 LearnNote 的窗口处理，52.656 秒完成但峰值 RSS 为 3,912,962,048 B（约 3.64 GiB）。这是非应用调用路径，不作为用户路径性能结论；同一输入通过 LearnNote 分窗路径时峰值为 538 MiB（`tiny`）或 874 MiB（`small`），可以看到 checkpoint 分窗把整段音轨解码峰值显著压低。`small` 的 874 MiB 仍高于合成帧抽取预算 512 MiB，这两项衡量的是不同路径。
+
+复现实测命令（先用 FFmpeg 按 `media.extract_audio` 的参数从下载的 MP4 提取 16 kHz 单声道 PCM WAV；数据目录与模型缓存均在忽略的 `build/package4`）：
+
+```powershell
+$env:PYTHONPATH = 'backend'
+$env:LEARNNOTE_DATA_DIR = 'build/package4/real-asr/data'
+& 'D:\learnnote-assistant\.venv\Scripts\python.exe' scripts/benchmark-public-media-asr.py `
+  build/package4/public-course/stanford-cs224n-lecture1_16k_mono.wav --model tiny `
+  --output build/package4/public-course/learnnote-app-asr-report.json
+& 'D:\learnnote-assistant\.venv\Scripts\python.exe' scripts/benchmark-public-media-asr.py `
+  build/package4/public-course/stanford-cs224n-lecture1_16k_mono.wav --model small `
+  --output build/package4/public-course/learnnote-app-asr-small-report.json
+```
+
 ## 回归检查
 
 Python 3.12.10 / Windows 的完整后端套件 608 项通过（96.0 秒），脚本套件 73 项通过。架构检查、i18n 审计、Markdown renderer、`node --check web/desk.js`、Python `py_compile` 与 `git diff --check` 通过。
@@ -46,8 +74,8 @@ Python 3.12.10 / Windows 的完整后端套件 608 项通过（96.0 秒），脚
 
 - #130：当前 `main` 手动工作流已全绿，但合并后的 candidate SHA 仍需刷新一遍工作流再作为关闭依据。
 - #131：上传限额/低磁盘/残留文件目前有隔离自动化回归，没有在真实低磁盘 Windows 盘和迁移数据目录做人工安装路径验收。
-- #132：已验证队列 lane、5 项混合调度、取消和 journal 恢复；尚未在 3–5 个真实视频任务同时运行时测完整进程树资源上限。
-- #148：5 秒首个草稿门禁只用预存合成字幕测量；公开媒体 download-only 和短 WAV ASR 单独通过，尚无带真实公开视频字幕的完整 5/30/60/180 分钟转写曲线。
+- #132：已验证队列 lane、5 项混合调度、取消和 journal 恢复；一个真实 80 分钟 ASR 单任务通过分窗处理，但尚未在 3–5 个真实视频任务同时运行时测完整进程树资源上限。
+- #148：公开课 80 分钟媒体已通过 LearnNote 分窗 ASR（`tiny` 与默认 `small` 均报告），但未运行远程总结，也没有 5/30/60/180 分钟真实媒体矩阵；首 ASR 段不等于第一份可读笔记。
 - #151：HTTP SSE 游标/终态有集成回归，仍需桌面工作台真实断线重连、可见/隐藏资源行为、章节不跳顶及取消后的动态 UI 验收。
 
 因此建议保留 #131、#132、#148、#151；#130 可在这条实现合并并对合并后的 main SHA 重新运行后关闭。不要把此报告里的合成媒体矩阵或离线 summary fixture 写成真实长视频 ASR 成功。
