@@ -286,6 +286,7 @@ small,
   overflow-wrap: anywhere;
   font-weight: var(--reader-weight, 500);
 }
+.encoding-provenance-note { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 6px; padding: 9px 12px; color: var(--muted); font-size: .88rem; }
 .document h1 {
   font-size: clamp(24px, 2.1vw, 30px);
   font-weight: 700;
@@ -575,6 +576,10 @@ dialog footer {
 .file-drop small {
   display: block;
 }
+.material-encoding-choice { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; }
+.material-encoding-choice span { display: grid; gap: 3px; }
+.material-encoding-choice small { color: var(--muted); }
+.material-encoding-choice[hidden] { display: none; }
 details {
   border-top: 1px solid var(--line);
   margin-top: 18px;

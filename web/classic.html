@@ -205,6 +205,18 @@
                   <div><strong>导入学习资料</strong><small>PDF、Markdown 和网页 HTML 只在本机提取文本，保留可追溯来源。</small></div>
                   <div class="setting-inline-actions"><button id="knowledgeImportButton" class="secondary action-button" type="button">选择文件</button><input id="knowledgeImportInput" type="file" accept=".pdf,.md,.markdown,.html,.htm,.txt" hidden></div>
                 </div>
+                <div class="setting-row">
+                  <div><strong>导入文本编码</strong><small>只对 TXT、Markdown 和 HTML 生效；PDF 由本地解析器处理。检测到乱码会拒绝导入。</small></div>
+                  <select id="knowledgeImportEncoding" aria-label="资料文字编码">
+                    <option value="">自动识别</option>
+                    <option value="utf-8">UTF-8</option>
+                    <option value="gb18030">GB18030 / GBK</option>
+                    <option value="big5">Big5</option>
+                    <option value="shift_jis">Shift_JIS</option>
+                    <option value="utf-16-le">UTF-16 LE</option>
+                    <option value="utf-16-be">UTF-16 BE</option>
+                  </select>
+                </div>
                 <p id="knowledgeImportStatus" class="settings-inline-status" role="status" aria-live="polite"></p>
                 <div class="setting-row knowledge-search-setting">
                   <div><strong>本地资料库检索</strong><small>回答只使用已索引的本地证据；没有证据时不会编造。</small></div>

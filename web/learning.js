@@ -12,7 +12,8 @@
     if (lines.length) chunks.push(lines.join("\n"));
     return chunks;
   }
-  function renderMaterial({container, material, text, markdownToHtml, apiUrl, onStudy, onOcr}) {
+  function renderMaterial({container, material, text, markdownToHtml, apiUrl, onStudy, onOcr, onRedecode}) {
+    const copy = (english, chinese) => document.documentElement.lang === "en-US" ? english : chinese;
     container.replaceChildren();
     const article = document.createElement("article"); article.className = "material-reader markdown-note";
     const toolbar = document.createElement("nav"); toolbar.className = "material-actions"; toolbar.setAttribute("aria-label", "资料操作");
@@ -28,7 +29,38 @@
       const meta = material.metadata || {};
       const coverage = document.createElement("small"); coverage.className = "material-ocr-status"; coverage.textContent = `OCR 页面：${Number(meta.ocr_processed_page_count || 0)} / ${Number(meta.ocr_page_count || 0)}，结果需逐页核对。`; toolbar.append(coverage);
     }
-    container.append(toolbar, article);
+    const metadata = material.metadata || {};
+    let redecodePanel = null;
+    if (metadata.raw_sha256 && material.source_type !== "pdf" && onRedecode) {
+      redecodePanel = document.createElement("details");
+      redecodePanel.className = "material-redecode-panel";
+      redecodePanel.open = Boolean(metadata.redecoded || metadata.encoding_confidence === "low");
+      const summary = document.createElement("summary"); summary.textContent = copy("Source encoding and re-decode", "原文编码与重解码");
+      const status = document.createElement("p"); status.className = "material-redecode-status"; status.setAttribute("role", "status");
+      status.textContent = metadata.redecoded
+        ? copy("Re-decoded using the selected encoding; the original file is unchanged.", "此资料已按所选编码重新解码；原始文件未修改。")
+        : copy("Original bytes are kept locally. Re-decoding updates extracted text and evidence anchors without replacing the source file.", "原始字节保留在本机；重解码会更新资料文本和出处锚点，不会覆盖原文件。");
+      const current = document.createElement("small"); current.textContent = `${copy("Current encoding: ", "当前编码：")}${metadata.encoding || copy("unknown", "未知")} · ${metadata.encoding_source || copy("source not recorded", "来源不明")}`;
+      const label = document.createElement("label"); label.textContent = copy("Re-decode with", "重新解码使用的编码");
+      const encoding = document.createElement("select"); encoding.id = "materialRedecodeEncoding"; encoding.setAttribute("aria-label", copy("Re-decode with", "重新解码使用的编码"));
+      for (const [value, labelText] of [["utf-8", "UTF-8"], ["gb18030", "GB18030 / GBK"], ["big5", "Big5"], ["shift_jis", "Shift_JIS"], ["utf-16-le", "UTF-16 LE"], ["utf-16-be", "UTF-16 BE"]]) {
+        const option = document.createElement("option"); option.value = value; option.textContent = labelText; encoding.append(option);
+      }
+      const currentEncoding = String(metadata.decoding_hint || metadata.encoding || "").toLowerCase();
+      if ([...encoding.options].some(option => option.value === currentEncoding)) encoding.value = currentEncoding;
+      label.append(encoding);
+      const button = document.createElement("button"); button.id = "materialRedecodeButton"; button.type = "button"; button.className = "secondary action-button"; button.textContent = copy("Re-decode original", "按所选编码重新解码");
+      button.onclick = async () => {
+        button.disabled = true; encoding.disabled = true; status.textContent = copy("Re-decoding from preserved source bytes…", "正在使用保留的原始字节重新解码…");
+        try { await onRedecode(encoding.value); }
+        catch (error) { status.textContent = error?.message || copy("Re-decode failed; the material was not changed.", "重解码失败，当前资料未改变。"); }
+        finally { if (button.isConnected) button.disabled = false; if (encoding.isConnected) encoding.disabled = false; }
+      };
+      redecodePanel.append(summary, status, current, label, button);
+    }
+    container.append(toolbar);
+    if (redecodePanel) container.append(redecodePanel);
+    container.append(article);
     const chunks = markdownChunks(text); let offset = 0;
     const more = document.createElement("button"); more.type = "button"; more.className = "secondary action-button material-load-more";
     const renderNext = () => {

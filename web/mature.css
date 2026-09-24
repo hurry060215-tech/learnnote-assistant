@@ -1317,3 +1317,21 @@ body[data-app-view="notes"].reading-mode:not(.assistant-open) .result-panel {
     min-width: 0;
   }
 }
+
+.material-redecode-panel {
+  display: grid;
+  max-width: 78ch;
+  margin: 0 auto 16px;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--ux-line);
+  border-radius: 9px;
+  color: var(--ux-ink);
+  background: var(--ux-surface);
+}
+.material-redecode-panel > summary { cursor: pointer; color: var(--ux-accent-strong); font-weight: 700; }
+.material-redecode-panel > p { margin: 0; color: var(--ux-muted); font-size: 13px; line-height: 1.6; }
+.material-redecode-panel > label { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 13px; font-weight: 650; }
+.material-redecode-panel select { min-height: 40px; border: 1px solid var(--ux-line); border-radius: 7px; padding: 0 10px; color: var(--ux-ink); background: var(--ux-surface); font: inherit; }
+.material-redecode-panel button { justify-self: start; }
+body.theme-dark .material-redecode-panel { color: var(--ux-ink); background: #102226; }

@@ -137,7 +137,14 @@ async def api_knowledge_import_file(file: UploadFile = File(...), encoding: str 
             metadata=decoding,
         ))
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail={"code": str(exc), "message": "无法从该文件提取可检索文本。"}) from exc
+        code = str(exc)
+        message = {
+            "text_encoding_unsupported": "无法可靠识别资料编码；请通过 encoding 参数选择文字编码后重试。",
+            "text_mojibake_detected": "检测到高置信度乱码；请检查或重新选择文字编码后重试。",
+            "extracted_text_too_large": "资料解压后的文本超过 500 万字，请拆分后再导入。",
+            "pdf_page_limit_exceeded": "PDF 页数超过 500 页，请拆分后再导入。",
+        }.get(code, "无法从该文件提取可检索文本。")
+        raise HTTPException(status_code=422, detail={"code": code, "message": message}) from exc
     return {"ok": True, "evidence": stored.model_dump(mode="json")}
 
 

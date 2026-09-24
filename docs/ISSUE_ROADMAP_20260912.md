@@ -34,7 +34,7 @@
 | 2 可靠性与安全发布 | #132 | 待验收 | [五任务混合队列报告](RELIABILITY_CLOSEOUT_20260924.md) 记录 lane/fairness/journal 自动回归、真实 30/60/80 分钟分窗 ASR，以及三个独立 LearnNote ASR 进程同时转写不同公开音频片段。 | 仍需 3–5 个完整真实视频任务同时运行时的下载/解码/抽帧/转写进程树资源、长短任务公平性与低资源降级验收。 |
 | 2 可靠性与安全发布 | #134 | 外部阻塞 | 发布脚本、draft release 复用、校验和、更新回退和安装健康检查已有基础。 | 需在候选包完成损坏包/断网/磁盘不足/文件占用/失败回退/同 tag 重跑；签名凭据和真实 Release 操作单列外部条件。 |
 | 3 权限、编码与证据 | #135 | 待验收 | `extension/manifest.json`、`extension/PERMISSION_JUSTIFICATION.md` 和按需捕获路径记录了权限边界。 | Chrome/Edge 允许、拒绝、撤销、重新授权与缓存失效必须有实机矩阵；验证不默认扩大权限。 |
-| 3 权限、编码与证据 | #150 | 待验收 | `backend/app/text_cleanup.py`、`source_input.py`、字幕/转写管线已有 Unicode 归一化和测试。 | 全部输入/导出入口需保留原始字节、解码选择和失败状态；补中英文乱码正负样本和阻断证据。 |
+| 3 权限、编码与证据 | #150 | 待验收 | [编码工作包 3A 报告](ENCODING_PROVENANCE_20260924.md)：导入保存编码来源、confidence 类别、原字节校验；默认工作台 GB18030 导入通过；[现有资料重解码报告](ENCODING_REDECODE_ACCEPTANCE_20260924.md)记录了错误 Big5 导入后在阅读页选择 GB18030、更新出处并保持原始 SHA 的隔离浏览器验收。 | PDF/OCR 与字幕/转写/模型输出等其它来源仍需统一回归；个人批注锚点与 Word/PDF/Obsidian 导出矩阵仍待审。保持开放。 |
 | 3 权限、编码与证据 | #129 | 待验收 | `backend/app/knowledge.py`、`transcript_passages.py`、`evidence_for_task` 和助手 citations 已提供字幕/文本证据。 | 至少 50 个中英文正负样本，逐条区分有依据、仅定位、推断和待核实；不得把固定夹具质量当真实课程事实。 |
 | 3 权限、编码与证据 | #152 | 待验收 | `backend/app/note_document.py`、`markdown_structure.py`、`summary_diagnostics.py` 已有语义结构和质量报告。 | 正文、目录、导出共用语义树；补重复内容、内部提示泄露、失控 Markdown、空证据和失败草稿门禁。 |
 | 4 模型、渐进结果与 OCR | #146 | 待验收 | `backend/app/model_route.py` 和 `/api/model/route` 能描述字幕、本地 ASR、远程文字/视觉路线及阻塞原因。 | 验证无 Key、本地模型未准备、图片不支持和离线切换的明确降级；路线存在不等于模型质量已证明。 |
