@@ -19,6 +19,8 @@ LearnNote 是面向个人学习者的本地优先视频知识助手。扩展只�
 ## 审核证据
 
 - `scripts/e2e-extension-smoke.py --browser edge --debug-port 0`：真实 Edge、MP4/HLS/接口播放器、Blob iframe、学习通 mock。
+- Chrome 自动化使用 Chrome for Testing，并通过 `LEARNNOTE_E2E_BROWSER` 指向其 `chrome.exe`；Chrome 品牌版自 M137 移除 `--load-extension`，M139 移除 `--disable-extensions-except`，不能再把旧命令行加载方式当作 Chrome Stable 回归入口。[Chrome 扩展开发说明](https://developer.chrome.com/blog/extension-news-june-2025)
+- 自动 smoke 使用临时浏览器 profile 和本地 mock。它证明开发测试包的扩展/本机服务配对与页面到任务链路，不证明 Chrome Web Store 安装、商店审核或普通用户升级路径。
 - `scripts/package-extension.ps1`：只打包 manifest、background/content/page hook、side panel、图标和安装说明。
 - 扩展写请求需要本机短期 `X-LearnNote-Pairing` token；未配对请求返回 401。
 - 侧栏“站点权限与数据流”列出额外授权的具体站点，并可撤销；撤销会清理该站点的页面状态、媒体候选和活动捕获 TTL。

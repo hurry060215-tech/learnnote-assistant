@@ -5,7 +5,9 @@ import base64
 import hashlib
 import json
 import os
+import re
 import socket
+import shutil
 import struct
 import subprocess
 import sys
@@ -666,16 +668,18 @@ def main() -> None:
         raise RuntimeError(f"Debug port {args.debug_port} is already in use. Pass -DebugPort 0 or choose another port.")
 
     python = project_python()
-    log_dir = ROOT / "data" / "test-runs" / "e2e-logs"
+    data_root = Path(os.getenv("LEARNNOTE_DATA_DIR", str(ROOT / "data"))).expanduser().resolve()
+    log_dir = data_root / "test-runs" / "e2e-logs"
     backend = f"http://127.0.0.1:{args.backend_port}"
     samples = f"http://127.0.0.1:{args.samples_port}"
-    profile_root = ROOT / "data" / "browser-profiles" / "e2e"
+    profile_root = data_root / "browser-profiles" / "e2e"
     profile_root.mkdir(parents=True, exist_ok=True)
     profile_dir = Path(tempfile.mkdtemp(prefix="learnnote-extension-e2e-", dir=str(profile_root)))
     backend_process: subprocess.Popen | None = None
     samples_process: subprocess.Popen | None = None
     browser_process: subprocess.Popen | None = None
     cdp: CdpWebSocket | None = None
+    browser_log = log_dir / f"{args.browser}-extension-browser.log"
 
     try:
         backend_process = start_process(
@@ -696,7 +700,7 @@ def main() -> None:
 
         extension_path = (ROOT / "extension").resolve()
         extension_arg = str(extension_path).replace("\\", "/")
-        browser_process = subprocess.Popen([
+        browser_process = start_process([
             str(browser),
             f"--user-data-dir={profile_dir}",
             f"--remote-debugging-port={args.debug_port}",
@@ -705,11 +709,24 @@ def main() -> None:
             f"--load-extension={extension_arg}",
             "--no-first-run",
             "--disable-first-run-ui",
+            "--enable-logging=stderr",
+            "--v=0",
             "--new-window",
             f"{samples}/mp4.html",
-        ])
+        ], cwd=ROOT, log_path=browser_log)
         wait_for_debug(args.debug_port)
-        service_worker = wait_for_service_worker(args.debug_port)
+        try:
+            service_worker = wait_for_service_worker(args.debug_port)
+        except RuntimeError as exc:
+            browser_output = browser_log.read_text(encoding="utf-8", errors="replace") if browser_log.exists() else ""
+            if re.search(r"--(?:load-extension|disable-extensions-except).*?(?:not allowed|removed|unrecognized)", browser_output, re.I | re.S):
+                raise RuntimeError(
+                    "This Chrome branded build rejected the unpacked-extension command-line flags. "
+                    "Use Chrome for Testing by setting LEARNNOTE_E2E_BROWSER to its chrome.exe path, "
+                    "or run the Edge smoke. This is a test-launch limitation, not an extension test result. "
+                    "See https://developer.chrome.com/blog/extension-news-june-2025."
+                ) from exc
+            raise
         cdp = CdpWebSocket(service_worker["webSocketDebuggerUrl"])
         cdp.call("Runtime.enable")
         print(f"PASS extension service worker: {service_worker.get('url')}")
@@ -732,9 +749,16 @@ async () => {{
             time.sleep(0.25)
         if not heartbeat_health.get("extension_connected"):
             raise RuntimeError(f"Background extension heartbeat did not reach the backend: {heartbeat_health}")
+        if (
+            not heartbeat_health.get("protocol_version")
+            or heartbeat_health.get("extension_protocol_version") != heartbeat_health.get("protocol_version")
+            or heartbeat_health.get("extension_compatible") is False
+        ):
+            raise RuntimeError(f"Extension/client protocol mismatch: {heartbeat_health}")
         print(
             "PASS background extension heartbeat without opening Side Panel: "
-            f"version={heartbeat_health.get('extension_version')}"
+            f"extension={heartbeat_health.get('extension_version')} "
+            f"protocol={heartbeat_health.get('extension_protocol_version')}"
         )
 
         run_browser_checks(cdp, args.debug_port, backend, samples)
@@ -744,6 +768,7 @@ async () => {{
             cdp.close()
         if not args.keep_browser:
             stop_process(browser_process)
+            shutil.rmtree(profile_dir, ignore_errors=True)
         stop_process(samples_process)
         stop_process(backend_process)
 
