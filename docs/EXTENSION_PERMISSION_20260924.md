@@ -2,6 +2,7 @@
 
 * 日期：2026-09-24
 * 代码基线：`origin/main` `e585b7fbf3067d19f19d68760ff4614ad2757efa`
+* 验收代码提交：`62eabcb1aac3ddbfab07f0be022b8d2fc57b45d7`
 * 对应 Issue：[#135](https://github.com/hurry060215-tech/learnnote-assistant/issues/135)、[#55](https://github.com/hurry060215-tech/learnnote-assistant/issues/55)
 * 正式版本基准：扩展和本机后端 `0.2.14`；扩展协议 `1`
 
