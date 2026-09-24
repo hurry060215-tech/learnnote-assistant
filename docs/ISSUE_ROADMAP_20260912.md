@@ -47,7 +47,7 @@
 | 5 范围学习、定位与批注 | #140 | 待验收 | 默认阅读器与传统工作台均保存独立个人批注；新版本会显式提示失效锚点，只有用户重选正文才迁移 revision；学习备份可合并还原个人批注与编辑稿。详见 [STUDY_LOOP_ACCEPTANCE_20260924.md](STUDY_LOOP_ACCEPTANCE_20260924.md)。 | 本地重生成、同资料重导入、备份恢复路径已隔离验证；Obsidian 双向同步和含源媒体完整恢复仍待验收。 |
 | 6 资料、课程与学习闭环 | #138 | 待验收 | `backend/app/courses.py`、`playlists.py` 和课程页面已有分 P/播放列表基础。 | 批量确认、逐集重排/暂停/失败重试/去重和逐集恢复需副本数据矩阵。 |
 | 6 资料、课程与学习闭环 | #157 | 待验收 | `backend/app/library.py`、资料导入路由和 PDF/Markdown/TXT/HTML 输入已存在。 | 统一资料/视频入口、页码/段落定位、扫描 PDF OCR 覆盖与缺失、导入失败恢复需实测。 |
-| 6 资料、课程与学习闭环 | #136 | 待验收 | Full backup/restore 连同计划时区完成隔离往返；Asia/Shanghai、纽约 DST 与 UTC 边界回归通过，设置页保存及学习备份恢复也经键盘浏览器验收。详见 [STUDY_LOOP_ACCEPTANCE_20260924.md](STUDY_LOOP_ACCEPTANCE_20260924.md)。 | 浏览器首次时区建议与实际跨时区手工切换仍待验收。 |
+| 6 资料、课程与学习闭环 | #136 | 待验收 | 隔离浏览器从 Asia/Tokyo 首次建议时区开始，手动改为 Asia/Shanghai 并完成学习备份恢复；以 America/New_York 浏览器环境重新打开后仍保留手选 Asia/Shanghai。DST、UTC 边界由后端测试覆盖，详见 [STUDY_LOOP_ACCEPTANCE_20260924.md](STUDY_LOOP_ACCEPTANCE_20260924.md)。 | 未覆盖真实操作系统时区变更、旅行/DST 提醒边界及旧资料区时区迁移；保持开放。 |
 | 6 资料、课程与学习闭环 | #141 | 待验收 | 有据卡片、答案隐藏的 quiz queue、出处、错题、评分历史和仅记录动作的 self-assessment 在隔离 API 流程中通过；备份往返保留评分。 | 自我解释文本不存储/不评分；真实课程人工真值题库、复杂题型和错误题多媒体定位仍待验收。 |
 | 6 资料、课程与学习闭环 | #159 | 待验收 | 复习入口提供今日目标/到期/主操作、近14天本地活动、卡片掌握概览、错题回源和学习备份恢复；隔离 Playwright 完成 390/768/1440px 下阅读及复习、键盘操作、课程筛选和浏览器备份恢复。详见 [STUDY_LOOP_ACCEPTANCE_20260924.md](STUDY_LOOP_ACCEPTANCE_20260924.md)。 | 建议 PR 合并并经人工审阅后关闭；自我解释文本不持久化/不评分。 |
 | 7 导出、界面与双语 | #156 | 待验收 | `backend/app/document_exports.py` 已有 DOCX/PDF/Markdown/bundle 路径；`build/export-qa-0213` 保留了 v0.2.13 导出证据。 | 用 30 页以上中英文混排样例核验 Word/WPS、PDF、代码、公式、图片、表格、长链接、目录、来源链接、结构编辑和分页。 |

@@ -8,7 +8,7 @@ async function main() {
   const output = path.resolve(process.argv[3] || "build/learning-ui");
   fs.mkdirSync(output, { recursive: true });
   const browser = await chromium.launch({ executablePath: "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe", headless: true });
-  const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, timezoneId: "Asia/Shanghai" });
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, timezoneId: "Asia/Tokyo" });
   const errors = [];
   page.on("pageerror", error => errors.push(error.message));
   try {
@@ -18,6 +18,9 @@ async function main() {
     await page.locator("#settingsNav").click();
     await page.locator('[data-settings-tab="connection"]').click();
     await page.waitForFunction(() => Boolean(document.querySelector("#studyPlanTimezone")?.value));
+    const initialSuggestedTimezone = await page.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone);
+    assert.equal(initialSuggestedTimezone, "Asia/Tokyo");
+    assert.equal(await page.locator("#studyPlanTimezone").inputValue(), initialSuggestedTimezone);
     await page.locator("#studyPlanTarget").fill("10");
     await page.locator("#studyPlanPaused").uncheck();
     await page.locator("#studyPlanTimezone").fill("Asia/Shanghai");
@@ -168,7 +171,18 @@ async function main() {
     const restoredReviews = (await (await page.request.get(new URL("/api/study/reviews", base).href)).json()).reviews;
     assert(restoredCards.length > 0 && restoredReviews.length > 0, "Browser backup restore lost study cards or rating history");
     assert.equal((await (await page.request.get(new URL("/api/study/plan", base).href)).json()).plan.timezone, "Asia/Shanghai");
-    process.stdout.write(JSON.stringify({ ok: true, contrast, studyGeometry, geometry, restoredCards: restoredCards.length, restoredReviews: restoredReviews.length, errors }));
+    const crossTimezonePage = await browser.newPage({ viewport: { width: 1440, height: 900 }, timezoneId: "America/New_York" });
+    crossTimezonePage.on("pageerror", error => errors.push(error.message));
+    await crossTimezonePage.goto(base, { waitUntil: "networkidle" });
+    if (await crossTimezonePage.locator("#skipOnboardingButton").isVisible()) await crossTimezonePage.locator("#skipOnboardingButton").click();
+    if (await crossTimezonePage.locator("#confirmReleaseNotesButton").isVisible()) await crossTimezonePage.locator("#confirmReleaseNotesButton").click();
+    await crossTimezonePage.locator("#settingsNav").click();
+    await crossTimezonePage.locator('[data-settings-tab="connection"]').click();
+    await crossTimezonePage.waitForFunction(() => Boolean(document.querySelector("#studyPlanTimezone")?.value));
+    const changedBrowserTimezone = await crossTimezonePage.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone);
+    assert.equal(changedBrowserTimezone, "America/New_York");
+    assert.equal(await crossTimezonePage.locator("#studyPlanTimezone").inputValue(), "Asia/Shanghai");
+    process.stdout.write(JSON.stringify({ ok: true, contrast, studyGeometry, geometry, initialSuggestedTimezone, changedBrowserTimezone, preservedPlanTimezone: "Asia/Shanghai", restoredCards: restoredCards.length, restoredReviews: restoredReviews.length, errors }));
     assert.deepEqual(errors, []);
   } finally {
     await browser.close();
