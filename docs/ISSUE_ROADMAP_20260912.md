@@ -1,6 +1,6 @@
 # LearnNote 开放 Issue 分期台账
 
-更新时间：2026-09-21
+更新时间：2026-09-24
 
 初始代码基线：`48a0741`。第 1 批 PR #190 已合并为 `e8b16b8`；第 2–3 批证据与剩余条件见 [BATCH23_VERIFICATION_20260920.md](BATCH23_VERIFICATION_20260920.md)。
 
@@ -10,7 +10,7 @@
 
 本地状态与分支归档清单：[LOCAL_STATE_INVENTORY_20260920.md](LOCAL_STATE_INVENTORY_20260920.md)
 
-最新推进：[PROGRESS_20260920.md](PROGRESS_20260920.md)。需要用户完成的条件：[USER_ACTIONS_20260920.md](USER_ACTIONS_20260920.md)。商店范围仅 Google Chrome Web Store。
+最新推进：[首次使用闭环第 1 轮验收](FIRST_RUN_20260923.md)（仅工作包 0–1；Issue 保持开放）；此前批次记录见 [PROGRESS_20260920.md](PROGRESS_20260920.md)。需要用户完成的条件：[USER_ACTIONS_20260920.md](USER_ACTIONS_20260920.md)。商店范围仅 Google Chrome Web Store。
 
 2026-09-24 权限工作包实测：[EXTENSION_PERMISSION_20260924.md](EXTENSION_PERMISSION_20260924.md)。
 
@@ -31,35 +31,35 @@
 | --- | --- | --- | --- | --- |
 | 1 整理台账 | #52 | 已证明 | 本台账、发布记录和本地保留清单已建立；当前基线已从旧的 `e93ac3d` 修正为 `48a0741`。 | 每批更新提交、依赖、输入、运行方式和结果；不把路线图文字当成产品完成证明。 |
 | 1 整理台账（已关闭 PR） | #186 | 已证明 | 替代 PR #190 的 Windows CI、CodeQL 与依赖审查通过，已合并为 e8b16b8。 | #186 已关闭；完整新依赖安装由远端 Windows CI 验证。本地旧环境回归与 pip dry-run 不充当新环境安装证据。 |
-| 2 可靠性与安全发布 | #130 | 待验收 | `.github/workflows/reliability.yml`、`scripts/long-video-reliability.py`、`scripts/cancel-reliability.py` 已存在；历史报告来自旧提交。 | 在当前提交重跑 5/30/60/180 分钟、混合任务、断连/取消/退出/重启恢复，并证明周期门禁引用当前 SHA。 |
-| 2 可靠性与安全发布 | #131 | 待验收 | `backend/app/upload_limits.py`、上传中间件和磁盘余量检查已存在。 | 并发上传总预算、低磁盘中断/恢复、残留文件清理和重启场景需有隔离数据证据。 |
-| 2 可靠性与安全发布 | #132 | 待验收 | `backend/app/task_queue.py` 已有持久化队列、取消和重启恢复基础。 | 重型任务与下载/字幕任务独立预算、公平排队、背压、lease 清理、幂等和重启后不重复执行需当前提交实测。 |
-| 2 可靠性与安全发布 | #134 | 外部阻塞 | 发布脚本、draft release 复用、校验和、更新回退和安装健康检查已有基础。 | 需在候选包完成损坏包/断网/磁盘不足/文件占用/失败回退/同 tag 重跑；签名凭据和真实 Release 操作单列外部条件。 |
+| 2 可靠性与安全发布 | #130 | 待验收 | [2026-09-24 main 手动工作流](https://github.com/hurry060215-tech/learnnote-assistant/actions/runs/35960376745) 在 `e585b7f` freshness 通过，两个 job 全绿；公开 Samplelib 零 cookie download-only 保存媒体成功。candidate 新增首结果门禁与本机矩阵见 [RELIABILITY_CLOSEOUT_20260924.md](RELIABILITY_CLOSEOUT_20260924.md)。 | 合并 candidate 后需用新的 main SHA 再跑一次 freshness/workflow；真实 ASR 长视频仍非这条合成媒体门禁覆盖范围。 |
+| 2 可靠性与安全发布 | #131 | 待验收 | `backend/app/upload_limits.py` 现有测试覆盖 Content-Length/流式限额、累计并发预留、低磁盘预检与失败清理；本轮 608 项后端回归全绿。 | 真实低磁盘 Windows 盘、数据目录迁移和并发视频上传的人工恢复路径尚未实测。 |
+| 2 可靠性与安全发布 | #132 | 待验收 | [五任务混合队列报告](RELIABILITY_CLOSEOUT_20260924.md) 记录 lane/fairness/journal 自动回归、真实 30/60/80 分钟分窗 ASR，以及三个独立 LearnNote ASR 进程同时转写不同公开音频片段。 | 仍需 3–5 个完整真实视频任务同时运行时的下载/解码/抽帧/转写进程树资源、长短任务公平性与低资源降级验收。 |
+| 2 可靠性与安全发布 | #134 | 外部阻塞 | 发布脚本、draft release 复用、校验和、更新回退和安装健康检查已有基础；[候选包与导出 QA](EXPORT_CANDIDATE_QA_20260924.md)只做了本机校验，没有修改公开 Release。 | 仍需损坏/断网/磁盘不足/占用/失败回退、同 tag 事务测试，以及真实签名和发布凭据。 |
 | 3 权限、编码与证据 | #135 | 待验收 | `extension/manifest.json` 保持按需站点授权；拒绝、允许、撤销、缓存清理和异步竞态有扩展回归；Chrome for Testing 与 Edge 当前 smoke 的本机配对、协议和页面到任务链路通过。详见 [权限工作包报告](EXTENSION_PERMISSION_20260924.md)。 | Chrome 原生授权弹窗的允许/拒绝/撤销/重新授权矩阵、普通商店安装与更新仍未实测；当前不建议关闭。 |
-| 3 权限、编码与证据 | #150 | 待验收 | `backend/app/text_cleanup.py`、`source_input.py`、字幕/转写管线已有 Unicode 归一化和测试。 | 全部输入/导出入口需保留原始字节、解码选择和失败状态；补中英文乱码正负样本和阻断证据。 |
-| 3 权限、编码与证据 | #129 | 待验收 | `backend/app/knowledge.py`、`transcript_passages.py`、`evidence_for_task` 和助手 citations 已提供字幕/文本证据。 | 至少 50 个中英文正负样本，逐条区分有依据、仅定位、推断和待核实；不得把固定夹具质量当真实课程事实。 |
-| 3 权限、编码与证据 | #152 | 待验收 | `backend/app/note_document.py`、`markdown_structure.py`、`summary_diagnostics.py` 已有语义结构和质量报告。 | 正文、目录、导出共用语义树；补重复内容、内部提示泄露、失控 Markdown、空证据和失败草稿门禁。 |
+| 3 权限、编码与证据 | #150 | 待验收 | [编码工作包 3A 报告](ENCODING_PROVENANCE_20260924.md)：导入保存编码来源、confidence 类别、原字节校验；默认工作台 GB18030 导入通过；[现有资料重解码报告](ENCODING_REDECODE_ACCEPTANCE_20260924.md)记录了错误 Big5 导入后在阅读页选择 GB18030、更新出处并保持原始 SHA 的隔离浏览器验收。 | PDF/OCR 与字幕/转写/模型输出等其它来源仍需统一回归；个人批注锚点与 Word/PDF/Obsidian 导出矩阵仍待审。保持开放。 |
+| 3 权限、编码与证据 | #129 | 待验收 | 除字幕/文本证据外，现有 claim map v5 可投影文档来源；[60 条公开来源状态基准](CLAIM_EVIDENCE_BENCHMARK_20260924.md)（EN30/ZH30、12 个官方来源）有离线混淆矩阵；另在 80 分钟 Stanford CS224N 公共课上对 YouTube 原始英文自动字幕审计 11 条人工 claim。详见 [REAL_COURSE_CLAIM_AUDIT_20260924.md](REAL_COURSE_CLAIM_AUDIT_20260924.md)。 | 固定文档语料 direct precision 1.00/recall 0.50；单课样本 5 条语义支持释义全部降级为 located-only，review gate recall 1.00/precision 0.545。两组都是固定小样本，不代表一般语义准确率。生产任务 claim map 生成与 UI 一键回字幕/关键帧仍待实测，Issue 保持开放。 |
+| 3 权限、编码与证据 | #152 | 待验收 | 现有归一化与本次改动提供 sentence-boundary 长段落处理、代码感知提示/乱码门禁、版本化质量报告；六种中英文样本覆盖代码、重复标题、目录锚点、空证据和失败草稿；DOCX/PDF/HTML 共用导出 block 投影，HTML 与 note-document section 使用稳定锚点。详见 [NOTE_STRUCTURE_ACCEPTANCE_20260924.md](NOTE_STRUCTURE_ACCEPTANCE_20260924.md)。 | 仍需对复杂嵌套 Markdown、真实模型/真实课程输出及 30 页以上中英文 Word/WPS 排版做端到端检查；不可安全按句切分的超长单句只警告并保留。当前证据不足以关闭 Issue。 |
 | 4 模型、渐进结果与 OCR | #146 | 待验收 | `backend/app/model_route.py` 和 `/api/model/route` 能描述字幕、本地 ASR、远程文字/视觉路线及阻塞原因。 | 验证无 Key、本地模型未准备、图片不支持和离线切换的明确降级；路线存在不等于模型质量已证明。 |
-| 4 模型、渐进结果与 OCR | #148 | 待验收 | `backend/app/pipeline_progress.py`、`task_queue.py` 和字幕优先阶段状态已存在。 | 受控基准记录字幕提纲 p95 ≤10 秒、转写首章节 ≤5 秒；补断线重放、章节草稿、取消恢复和 5/30/60/180 分钟资源证据。 |
+| 4 模型、渐进结果与 OCR | #148 | 待验收 | [可靠性验收报告](RELIABILITY_CLOSEOUT_20260924.md)：公开 CS224N 媒体真实 30/60/80 分钟音频分窗 ASR 与 3×5 分钟并发 ASR 均完成并记录时延、RSS、磁盘；80 分钟测 `tiny` 和 `small`。 | 尚无真实 180 分钟 ASR；实际转写不包含笔记总结或从视频导入到首份可读笔记流程，视频字幕路径 p95 与真实 end-to-end 首结果仍需测。 |
 | 4 模型、渐进结果与 OCR | #149 | 待验收 | `backend/app/visual_pipeline.py`、`local_ocr.py`、批量视觉窗口和视觉索引已有基础。 | 同时证明视觉调用减少 ≥50% 与证据覆盖不下降；验证抽帧缓存、OCR 失败恢复和资源消耗。 |
-| 4 模型、渐进结果与 OCR | #151 | 待验收 | 事件持久化在 `backend/app/observability.py`；实际 SSE 路由为 `backend/app/routers/events.py` 的 `/api/tasks/{task_id}/events/stream`；前端消费在 `web/app.js`。 | 事件 ID、`after` 游标、断线重连、去重、逐节草稿、旧任务读取、刷新不重复渲染和取消后 ≤2 秒停止新增阶段需当前实测。 |
+| 4 模型、渐进结果与 OCR | #151 | 待验收 | `backend/app/routers/events.py` 的 SSE 端点有 `after`/`Last-Event-ID` HTTP 回归；[Edge 重连浏览器报告](TASK_STREAM_RECONNECT_ACCEPTANCE_20260924.md)记录原生 EventSource 自动重连并携带游标 1、2，任务卡更新到终态。 | UI 验收使用隔离页面和模拟任务/SSE 响应；真实处理中任务的后端断线恢复、隐藏页节流、章节稳定不跳顶、逐节草稿和取消后的动态 UI 仍待验收。 |
 | 贯穿架构拆分 | #143 | 待验收 | backend 已按 downloader、pipeline、storage、study、routers 分出模块；`web/desk*`、扩展入口和真实 SSE 路由可分别定位。 | 继续按真实运行链路补输入/输出契约、依赖边界、预算和循环依赖检查；每次拆分独立可回滚，完成独立架构验收后才建议关闭。 |
 | 5 范围学习、定位与批注 | #137 | 待验收 | `backend/app/range_learning.py`、range API、学习范围字段和播放器定位已有基础。 | 扩展当前位置/章节/自定义区间贯通后端与结果；分 P/标签页身份不符时必须阻断错误定位。 |
 | 5 范围学习、定位与批注 | #139 | 待验收 | `web/desk.js` 已有播放器、字幕 cue、时间定位和来源面板。 | 长字幕虚拟化；字幕、画面、笔记、问答和卡片共享来源锚点，且不跨任务/章节串源。 |
-| 5 范围学习、定位与批注 | #140 | 待验收 | `backend/app/personal_notes.py` 和 annotations API 已独立保存个人补充。 | 重生成、备份恢复、同步和删除原文后保持批注；失效锚点必须给出明确修复入口。 |
+| 5 范围学习、定位与批注 | #140 | 待验收 | 默认阅读器与传统工作台均保存独立个人批注；新版本会显式提示失效锚点，只有用户重选正文才迁移 revision；学习备份可合并还原个人批注与编辑稿。详见 [STUDY_LOOP_ACCEPTANCE_20260924.md](STUDY_LOOP_ACCEPTANCE_20260924.md)。 | 本地重生成、同资料重导入、备份恢复路径已隔离验证；Obsidian 双向同步和含源媒体完整恢复仍待验收。 |
 | 6 资料、课程与学习闭环 | #138 | 待验收 | `backend/app/courses.py`、`playlists.py` 和课程页面已有分 P/播放列表基础。 | 批量确认、逐集重排/暂停/失败重试/去重和逐集恢复需副本数据矩阵。 |
 | 6 资料、课程与学习闭环 | #157 | 待验收 | `backend/app/library.py`、资料导入路由和 PDF/Markdown/TXT/HTML 输入已存在。 | 统一资料/视频入口、页码/段落定位、扫描 PDF OCR 覆盖与缺失、导入失败恢复需实测。 |
-| 6 资料、课程与学习闭环 | #136 | 待验收 | `backend/app/study.py` 已有 FSRS 评分、计划、暂停和复习历史。 | 时区、DST、跨日、暂停/恢复和共享 FSRS 历史需真实用户时区回归；统计区分阅读、答题、自评和复习。 |
-| 6 资料、课程与学习闭环 | #141 | 待验收 | `backend/app/study_content.py`、`study.py` 和助手 study.quiz 已有卡片/自测基础。 | 每题证据、错题回看、掌握度、删除/重生成后的历史一致性需闭环验收。 |
-| 6 资料、课程与学习闭环 | #159 | 待验收 | 复习入口、study API、FSRS 和学习统计已分散存在。 | 统一今日学习入口，串起到期卡、证据测验、错题、进度和来源锚点；每个动作可回源。 |
-| 7 导出、界面与双语 | #156 | 待验收 | `backend/app/document_exports.py` 已有 DOCX/PDF/Markdown/bundle 路径；`build/export-qa-0213` 保留了 v0.2.13 导出证据。 | 用 30 页以上中英文混排样例核验 Word/WPS、PDF、代码、公式、图片、表格、长链接、目录、来源链接、结构编辑和分页。 |
+| 6 资料、课程与学习闭环 | #136 | 待验收 | 隔离浏览器从 Asia/Tokyo 首次建议时区开始，手动改为 Asia/Shanghai 并完成学习备份恢复；以 America/New_York 浏览器环境重新打开后仍保留手选 Asia/Shanghai。DST、UTC 边界由后端测试覆盖，详见 [STUDY_LOOP_ACCEPTANCE_20260924.md](STUDY_LOOP_ACCEPTANCE_20260924.md)。 | 未覆盖真实操作系统时区变更、旅行/DST 提醒边界及旧资料区时区迁移；保持开放。 |
+| 6 资料、课程与学习闭环 | #141 | 待验收 | 有据卡片、答案隐藏的 quiz queue、出处、错题、评分历史和仅记录动作的 self-assessment 在隔离 API 流程中通过；[公开视频字幕探针](STUDY_LOOP_ACCEPTANCE_20260924.md)发现并拦截了残句/泛问，不足证据时返回零卡。 | 自我解释文本不存储/不评分；模型笔记结论与真实字幕/画面 anchors 的关联、人工标注正负例、复杂题型和错误题多媒体定位仍待验收。 |
+| 6 资料、课程与学习闭环 | #159 | 待验收 | 复习入口提供今日目标/到期/主操作、近14天本地活动、卡片掌握概览、错题回源和学习备份恢复；隔离 Playwright 完成 390/768/1440px 下阅读及复习、键盘操作、课程筛选和浏览器备份恢复。详见 [STUDY_LOOP_ACCEPTANCE_20260924.md](STUDY_LOOP_ACCEPTANCE_20260924.md)。 | 建议 PR 合并并经人工审阅后关闭；自我解释文本不持久化/不评分。 |
+| 7 导出、界面与双语 | #156 | 待验收 | 本轮 500 段中英混排夹具在 app PDF 渲染为 52 页 A4、DOCX 经 Word 渲染为 89 页 Letter；50 个表格、代码、长链接、emoji、公式与 500 时间码都做了目视检查，且 PDF/DOCX 来源与时间链接可点击。详见 [EXPORT_CANDIDATE_QA_20260924.md](EXPORT_CANDIDATE_QA_20260924.md)。 | Word COM 统计值和其导出 PDF 页数不一致；WPS 未安装；TOC 是链接列表但无页码。仍需核对分页统计、带页码目录、WPS 与更丰富的数学/图片样例。 |
 | 7 导出、界面与双语 | #153 | 待验收 | `web/desk.css`、`product.css`、`experience.css` 与已有 UI visual workflow 覆盖响应式、主题和部分无障碍门禁。 | 重新运行 390/768/1024/1440、200%、键盘、对比度、减少动效和实际工作台截图验收。 |
 | 7 导出、界面与双语 | #144 | 待验收 | `web/i18n.js` 和部分中英文资源已存在。 | 补桌面、网页、扩展、动态状态、错误、无障碍文案和中英文商店素材；保持现有视觉方向。 |
 | 8 跨来源能力与用户支持 | #142 | 待验收 | 课程对照返回 `evidence_ids`，工作台提供可折叠关系图和列表替代视图。 | 概念关系必须有可回查跨来源证据；支持过滤、同名拆合、索引重建，并明确不代表因果/同义/观点一致。 |
 | 8 跨来源能力与用户支持 | #158 | 待验收 | `backend/app/community.py`、社区设置和独立任务存储已有基础；默认不自动抓取。 | 首期只做 B 站显式采样、去重、独立展示/导出/删除；事实与观点隔离，不能混入课程事实。 |
 | 8 跨来源能力与用户支持 | #145 | 待验收 | `scripts/doctor.py`、support-package、diagnostics 和本地数据边界已有基础。 | 支持信息默认本地、发送前逐字段预览；完成首次诊断和主动导出的脱敏支持包实机验证。 |
 | 8 跨来源能力与用户支持 | #147 | 外部阻塞 | README、官网、`docs/RELEASING.md` 和 readiness/audit 脚本已有宣传与证据入口。 | 官网、README、商店素材和公开基准只宣传已验证能力；真实公开基准和商店审核条件仍待外部配合。 |
-| 9 分发与平台 | #55 | 外部阻塞 | 更新中心、官方资产校验、安装前快照、健康检查和回退基础已在主线。 | 普通用户 Chrome/Edge 商店安装、扩展版本匹配、Windows 安装/升级/失败回退；商店账号、审核和签名凭据单列。 |
+| 9 分发与平台 | #55 | 外部阻塞 | v0.2.14 扩展候选 ZIP 通过 manifest/包体验证，哈希与验证路径见 [EXPORT_CANDIDATE_QA_20260924.md](EXPORT_CANDIDATE_QA_20260924.md)；没有上传或提交商店。 | 普通用户商店安装/升级、Edge listing、商店账号/审核、Windows 签名与 SmartScreen 仍外部阻塞；本轮没有候选 Windows installer。 |
 | 9 分发与平台 | #70 | 外部阻塞 | `LearnNote.macos.spec`、macOS workflow 和平台文档已有构建基础。 | 核心流程稳定后完成 macOS 原生安装、凭据、迁移、升级回滚、扩展连接；Linux/ARM 只发布真实验证范围。 |
 
 ## 贯穿 #143：架构拆分

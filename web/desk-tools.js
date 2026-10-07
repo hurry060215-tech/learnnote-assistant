@@ -136,6 +136,45 @@ export function installTools(ctx) {
     const p = plan.plan;
     $("toolBody").innerHTML =
       `<div class="study-overview"><p><span>当前到期</span><strong>${dashboard.today?.due_count ?? 0}</strong></p><p><span>今日已复习</span><strong>${dashboard.today?.reviewed_count ?? 0}</strong></p><p><span>每日目标</span><strong>${p.daily_target}</strong></p></div><div class="tool-actions"><button class="primary" data-action="start-review" data-course-id="${esc(courseId)}">开始复习</button></div><details class="study-plan"><summary>调整每日目标与时区</summary><form id="planForm"><label for="dailyTarget">每日目标</label><input id="dailyTarget" type="number" min="1" max="200" value="${p.daily_target}"><label for="studyTimezone">复习时区</label><input id="studyTimezone" value="${esc(p.timezone)}" required><label class="check"><input id="studyPaused" type="checkbox" ${p.paused ? "checked" : ""}>暂停复习提醒与评分</label><button class="primary">保存计划</button></form></details><div class="tool-actions">${links([["导出学习记录", "/api/study/export"]])}</div><details><summary>最近评分记录</summary><div>${history.reviews.map((r) => `<p class="record">${esc(r.reviewed_at || r.created_at || "")} · 评分 ${esc(r.rating)}</p>`).join("") || '<p class="muted">还没有评分记录。</p>'}</div></details><details><summary>修复旧版复习调度</summary><p class="muted">根据完整评分历史重新计算计划，并在本地保存原调度备份。</p><button data-action="rebuild-study">按历史重建</button></details>`;
+    const recentActivity = (dashboard.progress?.activity || []).reduce((sum, day) => ({
+      reading: sum.reading + Number(day.reading_count || 0),
+      answer: sum.answer + Number(day.answer_count || 0),
+      selfAssessment: sum.selfAssessment + Number(day.self_assessment_count || 0),
+      review: sum.review + Number(day.review_count || 0),
+    }), { reading: 0, answer: 0, selfAssessment: 0, review: 0 });
+    const progress = document.createElement("section"); progress.className = "study-progress-summary";
+    const progressTitle = document.createElement("h3"); progressTitle.textContent = "近 14 天的本地学习活动";
+    const activityText = document.createElement("p"); activityText.textContent = `阅读 ${recentActivity.reading} 次 · 作答 ${recentActivity.answer} 次 · 自我解释 ${recentActivity.selfAssessment} 次 · 复习 ${recentActivity.review} 张`;
+    const mastery = dashboard.progress?.mastery || {};
+    const masteryText = document.createElement("p"); masteryText.textContent = `全部资料卡片：新卡 ${Number(mastery.new || 0)} · 学习中 ${Number(mastery.learning || 0)} · 需重温 ${Number(mastery.needs_attention || 0)} · 已稳定 ${Number(mastery.retained || 0)}`;
+    progress.append(progressTitle, activityText, masteryText); $("toolBody").append(progress);
+    const backupPanel = document.createElement("details");
+    backupPanel.className = "study-backup";
+    const backupSummary = document.createElement("summary"); backupSummary.textContent = "备份与恢复";
+    const backupHint = document.createElement("p"); backupHint.className = "muted";
+    backupHint.textContent = "包含评分历史、计划、个人批注和笔记修改。恢复只合并缺失内容，不覆盖本机现有记录；原始资料需要先恢复到本机。";
+    const backupActions = document.createElement("div"); backupActions.className = "tool-actions";
+    const exportBackup = document.createElement("a"); exportBackup.textContent = "导出学习备份"; exportBackup.href = "/api/study/backup"; exportBackup.download = `learnnote-learning-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    const restoreButton = document.createElement("button"); restoreButton.type = "button"; restoreButton.textContent = "选择备份并恢复";
+    const backupFile = document.createElement("input"); backupFile.type = "file"; backupFile.accept = "application/json,.json"; backupFile.hidden = true; backupFile.setAttribute("aria-label", "选择 LearnNote 学习备份");
+    restoreButton.onclick = () => backupFile.click();
+    backupFile.onchange = async () => {
+      const file = backupFile.files?.[0];
+      if (!file) return;
+      if (file.size > 100_000_000) { status("学习备份超过 100 MB，未写入任何数据。"); backupFile.value = ""; return; }
+      if (!confirm("将评分、计划、个人批注和笔记修改合并到本机；现有条目不会被覆盖。原始资料需要先恢复，继续吗？")) { backupFile.value = ""; return; }
+      try {
+        const payload = JSON.parse(await file.text());
+        const result = await api("/api/study/backup/restore", { method: "POST", body: JSON.stringify(payload) });
+        const merge = result.merge || {};
+        status(`已恢复 ${merge.restored_reviews || 0} 条评分、${merge.restored_annotations || 0} 条批注和 ${merge.restored_editions || 0} 份修改。`);
+        await studySettings(courseId);
+      } catch (error) { status(error.message || "备份无效或无法恢复。"); }
+      finally { backupFile.value = ""; }
+    };
+    backupActions.append(exportBackup, restoreButton, backupFile);
+    backupPanel.append(backupSummary, backupHint, backupActions);
+    $("toolBody").append(backupPanel);
     if (dashboard?.mistakes?.length) {
       const details = document.createElement("details");
       const summary = document.createElement("summary");

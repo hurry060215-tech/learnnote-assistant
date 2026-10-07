@@ -1471,6 +1471,27 @@ class LocalUploadValidationTests(unittest.TestCase):
         self.assertEqual(report["candidates"][0]["preflight"]["strategy"], "not-probed")
         self.assertTrue(any(item["resource"]["source"] in {"inferred-manifest", "manifest-guess"} for item in report["candidates"]))
 
+    def test_ytdlp_first_page_preflight_skips_unbounded_site_source_scan(self) -> None:
+        with patch("app.media_preflight.MediaDownloader._discover_page_resources") as discover:
+            response = self.client.post(
+                "/api/media/preflight-current-page",
+                json={
+                    "page_url": "https://www.youtube.com/watch?v=aircAruvnKk",
+                    "resources": [],
+                    "cookies": [],
+                    "probe_limit": 3,
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        report = response.json()["report"]
+        self.assertFalse(report["ready"])
+        self.assertEqual(report["code"], "page_resolver_available")
+        self.assertEqual(report["candidate_count"], 0)
+        self.assertFalse(report["page_scan"]["attempted"])
+        self.assertIn("\u53ef\u4ee5\u76f4\u63a5\u5f00\u59cb\u4efb\u52a1", report["message"])
+        discover.assert_not_called()
+
     def test_page_preflight_selects_first_downloadable_candidate_after_failed_probe(self) -> None:
         server = ThreadingHTTPServer(("127.0.0.1", 0), PagePreflightGateHandler)
         thread = threading.Thread(target=server.serve_forever, daemon=True)

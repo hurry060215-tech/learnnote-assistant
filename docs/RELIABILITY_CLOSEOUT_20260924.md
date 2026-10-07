@@ -1,0 +1,123 @@
+# 长任务、首个结果与恢复验收
+
+- 日期：2026-09-24
+- 本地代码基线：`origin/main` `e585b7fbf3067d19f19d68760ff4614ad2757efa`
+- 本次 candidate 代码 commit：`26dbce41588ce892c14a123b67b4a498346924ac`
+- 关联 Issue：[#130](https://github.com/hurry060215-tech/learnnote-assistant/issues/130)、[#131](https://github.com/hurry060215-tech/learnnote-assistant/issues/131)、[#132](https://github.com/hurry060215-tech/learnnote-assistant/issues/132)、[#148](https://github.com/hurry060215-tech/learnnote-assistant/issues/148)、[#151](https://github.com/hurry060215-tech/learnnote-assistant/issues/151)
+
+## 当前主线可靠性工作流
+
+2026-09-24 手动运行 [Reliability gates #35960376745](https://github.com/hurry060215-tech/learnnote-assistant/actions/runs/35960376745)，目标为 `main` SHA `e585b7fbf3067d19f19d68760ff4614ad2757efa`，两项 job 和全部步骤通过。Freshness 报告确认 checkout 与预期 SHA 一致、工作区干净。离线 job 实际执行模型提供者无凭据合同、合成媒体/帧门禁、300/1800/3600/10800 秒矩阵、取消门禁、混合队列门禁及 3600 秒完整本地任务门禁；公共样例 job 使用无登录 Edge profile 探测 Samplelib MP4。
+
+Candidate 分支也已手动运行 [Reliability gates #35961618086](https://github.com/hurry060215-tech/learnnote-assistant/actions/runs/35961618086)，head `3b528834a89b6770fb6dcf2ccd2dd0fc92a93615`，两项 job、freshness、更新后的首草稿门禁、完整 60 分钟本地 fixture 与隔离公共审计全部成功。
+
+CI 归档：[离线可靠性报告](build/package4/remote-run-35960376745/offline/)，[公共样例报告](build/package4/remote-run-35960376745/public-audit/)。工作流完整步骤结论与检查时间保留在该 run 页面。
+
+公共浏览器样例确认 cookie 数为 0，download-only task 成功在本机保存 2,848,208 字节 MP4，SHA-256 `8e68f504b0dbff5738741a1a377faa84baeb68b869ea52eaf7ec3d8154bb11ca`。`yt-dlp` metadata-only 探测也通过。这个路径证明了真实公开媒体下载和本地落盘；它没有运行 ASR。
+
+## 当前 Windows checkout 的受控矩阵
+
+在隔离目录 `build/package4`，用 FFmpeg 生成合成媒体并测媒体探测、抽帧和网格，不调用 ASR 或模型。每项均通过，资源预算为 RSS ≤512 MiB、剩余磁盘 ≥512 MiB。
+
+| 时长 | 结果 | 峰值 RSS | 最小剩余磁盘 | 脚本耗时 |
+| ---: | --- | ---: | ---: | ---: |
+| 5 分钟 | 通过 | 39.5 MiB | 44,244 MiB | 1.312 秒 |
+| 30 分钟 | 通过 | 39.4 MiB | 44,229 MiB | 5.735 秒 |
+| 60 分钟 | 通过 | 39.7 MiB | 44,200 MiB | 10.391 秒 |
+| 180 分钟 | 通过 | 39.9 MiB | 44,115 MiB | 28.750 秒 |
+
+全部都是合成视频和帧抽取结果，**不是 5/30/60/180 分钟真实 ASR 转写通过**。
+
+## 首个结果、取消与队列
+
+- 隔离目录运行 60 分钟合成完整任务：总耗时 46.953 秒；`draft.md` 在字幕阶段完成后 0.015 秒可读；最终状态 `success`，checkpoint `note_ready`。输入是预制合成 SRT，summary 使用 `offline-fixture`，ASR 和模型调用都关闭。脚本现将转录结束到首个草稿 ≤5 秒作为可靠性门禁并把指标写进报告。
+- 单独用 [Open Speech Repository American English 样本](https://www.voiptroubleshooter.com/open_speech/american.html) 的 `OSR_us_000_0010_8k.wav` 实测本机 faster-whisper `tiny` / CPU / int8：33.623 秒、8 kHz 输入，得到 10 段、407 字符；首次载入模型为 14.516 秒。warm rerun 2.156 秒，进程峰值 RSS 244,760,576 字节（约 233.5 MiB），远程 provider API 调用数为 0。该站要求引用 Open Speech Repository；本次只在隔离 build 缓存处理，未分发音频或模型。
+- 180 秒合成媒体取消场景通过：取消延迟 0.063 秒，worker 退出，无取消后新增阶段。
+- 本地 scheduler reliability 脚本通过 5 项混合任务：重型和轻量 lane 各最多 1 个并行任务，轻任务不被重任务阻塞，重复 enqueue 返回同一 future，journal 重开后状态保留。
+- SSE 路由新增 HTTP 集成回归：组合 `Last-Event-ID` 与 `after` 游标只重放后续事件，保持单调 ID/中文消息，并在任务终态发出 `task_terminal`。
+
+上述 ASR 样本是独立 WAV 解码，不是对 Samplelib 视频的识别，也不是 38 分钟 ASR 内存压力测试。ASR 测试报告、矩阵 JSON、资源报告和临时模型缓存都位于本地忽略目录 `build/package4`。
+
+## 真实公开视频的 LearnNote 长 ASR 路径
+
+另用 Stanford Online 公开的 [CS224N Spring 2024 Lecture 1](https://www.youtube.com/watch?v=DzpHeXVSC5I) 复测。Stanford [课程页](https://web.stanford.edu/class/cs224n/)列出公开 YouTube 视频。`yt-dlp` 以 `--no-cookies` 下载 640×360 H.264 + AAC 的 MP4（105,920,359 bytes，4,816.887 秒，SHA-256 `968fd983fcd96e879215ccac3b25660d939417325611a2e58271d1b5c20cb4de`）；另保存英文原字幕轨用于独立证据审计。该媒体与字幕均留在忽略目录，不提交或分发。
+
+MP4 音频用与 `backend/app/media.py::extract_audio` 相同参数提取为 16 kHz 单声道 PCM WAV；随后实际调用 LearnNote 的 `backend/app/transcriber.py::transcribe_audio`。该路径针对超过 10 分钟的 WAV 自动调用 `backend/app/asr_chunks.py::transcribe_windows`，分 17 个 300 秒窗口保存 checkpoint。新增 `scripts/benchmark-public-media-asr.py` 用 Windows `GetProcessMemoryInfo` 和进程 CPU 时间采样，只将汇总指标写入 JSON，不保存转写正文。
+
+| 模型 | 首段转写进度 | 总耗时 | 实时倍速 | 峰值 RSS | 转写段数/字符数 | 最后段结束时间 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `tiny` / CPU / int8（缓存已存在） | 2.562 秒 | 133.453 秒 | 36.09× | 564,482,048 B（约 538.3 MiB） | 994 / 60,870 | 4,810.94 秒 |
+| `small` / CPU / int8（首次隔离缓存运行） | 133.469 秒 | 723.391 秒 | 6.66× | 916,529,152 B（约 874.1 MiB） | 1,064 / 60,112 | 4,810.76 秒 |
+
+随后从同一真实音轨裁出 30 分钟和 60 分钟 WAV，分别顺序运行 LearnNote `tiny` / CPU / int8 转写，均经过 300 秒窗口 checkpoint：
+
+| 输入 | 来源区间 | 窗口数 | 首段耗时 | 总耗时 | 实时倍速 | 峰值 RSS | 转写段/字符 | 末段结束 | 最小剩余磁盘 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 30 分钟 | 00:00–30:00 | 6 | 2.469 秒 | 51.063 秒 | 35.251× | 367,304,704 B（350.3 MiB） | 379 / 24,676 | 1,799.92 秒 | 44,636,246,016 B |
+| 60 分钟 | 10:00–70:00 | 12 | 2.532 秒 | 99.344 秒 | 36.238× | 552,341,504 B（526.7 MiB） | 747 / 46,609 | 3,599.67 秒 | 44,578,574,336 B |
+
+30 分钟输入 SHA-256 `4c9e5108fce17072e2341691cf2247222a13e34695b456dfe577b37543646aad`；60 分钟输入 SHA-256 `c8adf1e5db100efd2f3fbbc2bdf37206d9ab79cd488307e4f2a6806e77750297`。两个报告均为 `pass`，远程模型 API 调用为 0。数据、300 秒分窗 checkpoint 和汇总指标位于忽略目录 `build/package4/real-asr-duration-matrix-20260924-a/`，未提交转写文本。
+
+复现转写时，先从 `build/package4/public-course/stanford-cs224n-lecture1_16k_mono.wav` 用 Python `wave` 裁出起点 0 秒、长度 1,800 秒及起点 600 秒、长度 3,600 秒的 PCM WAV，再运行：
+
+```powershell
+$env:PYTHONPATH = 'backend'
+$env:LEARNNOTE_DATA_DIR = 'build/package4/real-asr/data'
+& 'D:\learnnote-assistant\.venv\Scripts\python.exe' scripts/benchmark-public-media-asr.py `
+  build/package4/real-asr-duration-matrix-20260924-a/lecture-30m.wav --model tiny `
+  --output build/package4/real-asr-duration-matrix-20260924-a/lecture-30m-report.json
+& 'D:\learnnote-assistant\.venv\Scripts\python.exe' scripts/benchmark-public-media-asr.py `
+  build/package4/real-asr-duration-matrix-20260924-a/lecture-60m.wav --model tiny `
+  --output build/package4/real-asr-duration-matrix-20260924-a/lecture-60m-report.json
+```
+
+另从同一 16 kHz 单声道公开视频 WAV 裁出三个互不重叠的 300 秒区间（起点 300、1500、3000 秒），同时启动三个独立 LearnNote 转写进程，均用已缓存 `tiny` / CPU / int8。三路均返回 `faster-whisper` 实际字幕、无远程 API 调用，最后段时间分别到 300.50、299.92、299.31 秒；首段耗时 2.984–3.125 秒，总耗时 12.640–13.172 秒，实时倍速 22.776–23.734×。各进程峰值 RSS 分别 293,949,440、305,745,920、283,308,032 字节（约 280.3、291.6、270.2 MiB）；峰值之和约 842.1 MiB，只是逐进程峰值相加的保守界限，不是同步采样得到的系统进程树峰值。三个输入 WAV、逐任务报告和日志均在忽略目录 `build/package4/concurrent-public-asr-20260924-a/`。
+
+可复现方式：用 Python `wave` 从上述公开 WAV 裁出三个 300 秒 WAV（起点 300、1500、3000）；在相同 `LEARNNOTE_DATA_DIR` 模型缓存下并行启动三次现有 helper：
+
+```powershell
+$env:PYTHONPATH = 'backend'
+$env:LEARNNOTE_DATA_DIR = 'build/package4/real-asr/data'
+$python = 'D:\learnnote-assistant\.venv\Scripts\python.exe'
+$jobs = @()
+1..3 | ForEach-Object {
+  $index = $_
+  $input = "build/package4/concurrent-public-asr-20260924-a/public-lecture-worker-$index.wav"
+  $output = "build/package4/concurrent-public-asr-20260924-a/worker-$index-report.json"
+  $stdout = "build/package4/concurrent-public-asr-20260924-a/worker-$index.stdout.log"
+  $stderr = "build/package4/concurrent-public-asr-20260924-a/worker-$index.stderr.log"
+  $jobs += Start-Process -FilePath $python -ArgumentList @('scripts/benchmark-public-media-asr.py', $input, '--model', 'tiny', '--output', $output) -WorkingDirectory $PWD -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru -WindowStyle Hidden
+}
+Wait-Process -Id $jobs.Id
+```
+
+两种模型都覆盖到视频结尾附近、输出英文转写、远程 ASR/API 调用为 0。`small` 的时间包含首次模型缓存准备，报告没有将下载与推理分开；首段时间从 ASR 进程开始计，不等价于模型已经就绪后的首段延迟。最小剩余磁盘分别为 45,410,312,192 B 和 44,923,740,160 B；窗口 WAV/checkpoint 留在忽略目录。RSS 由 ASR 进程在解码/推理期间采样，不覆盖单独运行的媒体下载与 FFmpeg 提取进程树。
+
+另做了一个诊断对照：直接将完整 MP4 交给 `WhisperModel.transcribe`、绕过 LearnNote 的窗口处理，52.656 秒完成但峰值 RSS 为 3,912,962,048 B（约 3.64 GiB）。这是非应用调用路径，不作为用户路径性能结论；同一输入通过 LearnNote 分窗路径时峰值为 538 MiB（`tiny`）或 874 MiB（`small`），可以看到 checkpoint 分窗把整段音轨解码峰值显著压低。`small` 的 874 MiB 仍高于合成帧抽取预算 512 MiB，这两项衡量的是不同路径。
+
+复现实测命令（先用 FFmpeg 按 `media.extract_audio` 的参数从下载的 MP4 提取 16 kHz 单声道 PCM WAV；数据目录与模型缓存均在忽略的 `build/package4`）：
+
+```powershell
+$env:PYTHONPATH = 'backend'
+$env:LEARNNOTE_DATA_DIR = 'build/package4/real-asr/data'
+& 'D:\learnnote-assistant\.venv\Scripts\python.exe' scripts/benchmark-public-media-asr.py `
+  build/package4/public-course/stanford-cs224n-lecture1_16k_mono.wav --model tiny `
+  --output build/package4/public-course/learnnote-app-asr-report.json
+& 'D:\learnnote-assistant\.venv\Scripts\python.exe' scripts/benchmark-public-media-asr.py `
+  build/package4/public-course/stanford-cs224n-lecture1_16k_mono.wav --model small `
+  --output build/package4/public-course/learnnote-app-asr-small-report.json
+```
+
+## 回归检查
+
+Python 3.12.10 / Windows 的完整后端套件 608 项通过（96.0 秒），脚本套件 73 项通过。架构检查、i18n 审计、Markdown renderer、`node --check web/desk.js`、Python `py_compile` 与 `git diff --check` 通过。
+
+## 仍需完成
+
+- #130：当前 `main` 手动工作流已全绿，但合并后的 candidate SHA 仍需刷新一遍工作流再作为关闭依据。
+- #131：上传限额/低磁盘/残留文件目前有隔离自动化回归，没有在真实低磁盘 Windows 盘和迁移数据目录做人工安装路径验收。
+- #132：队列 lane、5 项混合调度、取消和 journal 恢复通过；真实 30/60/80 分钟 ASR 通过；三个真实 5 分钟公开视频音频片段同时运行 LearnNote ASR 也通过。仍未测 3–5 个完整视频任务的下载/解码/抽帧/转写总进程树、长短任务公平性与低资源降级；此次单测 ASR 阶段并发不能替代完整队列验收。
+- #148：公开课真实 5/30/60/80 分钟音频均通过 LearnNote ASR（80 分钟含 `tiny` 和默认 `small`）；未运行真实 180 分钟 ASR、远程总结或从视频到首份可读笔记的端到端流程。首 ASR 段不等于第一份可读笔记。
+- #151：HTTP SSE 游标/终态集成回归通过；Edge 原生 EventSource 在隔离浏览器中自动重连并将 UI 更新至终态，另见 [PR #213 的浏览器重连报告](https://github.com/hurry060215-tech/learnnote-assistant/pull/213)。真实媒体任务与实际后端中途断线、可见/隐藏资源行为、章节不跳顶及取消后的动态 UI 仍待验收。
+
+因此建议保留 #131、#132、#148、#151；#130 可在这条实现合并并对合并后的 main SHA 重新运行后关闭。不要把此报告里的合成媒体矩阵或离线 summary fixture 写成真实长视频 ASR 成功。

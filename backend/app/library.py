@@ -12,7 +12,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from uuid import uuid4
 
 from .config import DATA_DIR, TASK_DIR, TEMP_DIR, ensure_dirs
-from .models import TaskRecord
+from .models import SourceEvidence, TaskRecord
 from .knowledge import add_evidence, clear_task_evidence, evidence_for_task, extract_import_text, extract_import_text_with_metadata, preserve_raw_import, remove_evidence, remove_task_evidence
 from .text_cleanup import TextDecodingError, read_canonical_text
 
@@ -761,8 +761,8 @@ def _split_long_section(text: str, max_chars: int = 6000) -> list[str]:
     return chunks
 
 
-def _material_sections(filename: str, content: bytes, content_type: str) -> tuple[str, list[tuple[str, str]], dict[str, object]]:
-    text, evidence_source_type, decoding = extract_import_text_with_metadata(filename, content, content_type)
+def _material_sections(filename: str, content: bytes, content_type: str, encoding: str = "") -> tuple[str, list[tuple[str, str]], dict[str, object]]:
+    text, evidence_source_type, decoding = extract_import_text_with_metadata(filename, content, content_type, encoding=encoding)
     suffix = Path(filename).suffix.lower()
     sections: list[tuple[str, str]] = []
     raw_info = preserve_raw_import(content, filename)
@@ -819,7 +819,7 @@ def _find_material_by_sha(connection: sqlite3.Connection, digest: str) -> sqlite
     return connection.execute("SELECT * FROM library_materials WHERE sha256 = ?", (digest,)).fetchone()
 
 
-def import_document_material(filename: str, content: bytes, content_type: str = "") -> dict[str, object]:
+def import_document_material(filename: str, content: bytes, content_type: str = "", encoding: str = "") -> dict[str, object]:
     safe_name = _safe_material_filename(filename)
     suffix = Path(safe_name).suffix.lower()
     if suffix not in SUPPORTED_DOCUMENT_SUFFIXES:
@@ -840,7 +840,9 @@ def import_document_material(filename: str, content: bytes, content_type: str = 
     if existing is not None:
         return _material_row(existing, deduplicated=True)
 
-    evidence_source_type, sections, metadata = _material_sections(safe_name, content, content_type)
+    evidence_source_type, sections, metadata = _material_sections(safe_name, content, content_type, encoding=encoding)
+    if encoding:
+        metadata["decoding_hint"] = str(encoding).strip()[:40]
     material_id = uuid4().hex
     source_uri = f"local://materials/{material_id}"
     title = Path(safe_name).stem[:500] or "本地学习资料"
@@ -872,6 +874,7 @@ def import_document_material(filename: str, content: bytes, content_type: str = 
                 text=text,
                 material_id=material_id,
                 filename=safe_name,
+                decoding_metadata=metadata,
             ))
             evidence_ids.append(stored.evidence_id)
     except Exception:
@@ -954,6 +957,7 @@ def record_to_material_evidence(
     text: str,
     material_id: str,
     filename: str,
+    decoding_metadata: dict[str, object] | None = None,
 ):
     from .models import SourceEvidence
 
@@ -970,6 +974,24 @@ def record_to_material_evidence(
             "material_id": material_id,
             "filename": filename,
             "source_revision": hashlib.sha256(str(text).encode("utf-8")).hexdigest(),
+            **{
+                key: (decoding_metadata or {}).get(key)
+                for key in (
+                    "raw_sha256",
+                    "raw_byte_count",
+                    "content_type",
+                    "encoding",
+                    "encoding_source",
+                    "encoding_confidence",
+                    "declared_encoding",
+                    "decoding_hint",
+                    "replacement_character_count",
+                    "normalization_version",
+                    "encoding_repaired",
+                    "mojibake_score",
+                )
+                if (decoding_metadata or {}).get(key) not in (None, "")
+            },
         },
     )
 
@@ -1104,7 +1126,8 @@ def material_content(material_id: str) -> str:
         source = material_source_path(material_id)
         if source.stat().st_size > MATERIAL_IMPORT_MAX_BYTES:
             raise ValueError("material_file_too_large")
-        text, _ = extract_import_text(source.name, source.read_bytes(), material["content_type"])
+        encoding = str((material.get("metadata") or {}).get("decoding_hint") or "")
+        text, _ = extract_import_text(source.name, source.read_bytes(), material["content_type"], encoding=encoding)
         if material.get("status") == "ocr_required" or (material.get("metadata") or {}).get("ocr_performed"):
             raise ValueError("material_no_extractable_text")
         return text
@@ -1116,6 +1139,125 @@ def material_content(material_id: str) -> str:
         if not anchors:
             raise
         return "\n\n".join(str(item["text"]) for item in anchors)
+
+
+def redecode_document_material(material_id: str, encoding: str) -> dict[str, object]:
+    """Re-parse one stored text document from its unchanged original bytes."""
+    requested = str(encoding or "").strip()[:40]
+    if not requested:
+        raise ValueError("material_redecode_encoding_required")
+    with _lock:
+        material = get_material(material_id)
+        if str(material.get("source_type") or "") == "pdf" or Path(str(material.get("filename") or "")).suffix.lower() == ".pdf":
+            raise ValueError("material_redecode_pdf_unsupported")
+        source = material_source_path(material_id)
+        raw = source.read_bytes()
+        raw_sha256 = hashlib.sha256(raw).hexdigest()
+        if raw_sha256 != str(material.get("sha256") or ""):
+            raise ValueError("material_source_integrity_mismatch")
+
+        filename = str(material.get("filename") or source.name)
+        content_type = str(material.get("content_type") or "")
+        source_type, sections, decoding = _material_sections(filename, raw, content_type, encoding=requested)
+        if not sections:
+            raise ValueError("material_redecode_empty")
+        if len(sections) > MATERIAL_MAX_ANCHORS:
+            raise ValueError("material_anchor_limit_exceeded")
+
+        current_ids = [str(value) for value in material.get("evidence_ids") or [] if str(value)]
+        if not current_ids:
+            raise ValueError("material_redecode_evidence_missing")
+        updated_at = datetime.now(timezone.utc).isoformat()
+        new_ids: list[str] = []
+        items: list[SourceEvidence] = []
+        for index, (locator, text) in enumerate(sections, start=1):
+            evidence_id = current_ids[index - 1] if index <= len(current_ids) else f"material-{material_id}-redecoded-{decoding['source_revision'][:12]}-{index:04d}"
+            new_ids.append(evidence_id)
+            items.append(record_to_material_evidence(
+                evidence_id=evidence_id,
+                source_type=source_type,
+                title=str(material.get("title") or filename),
+                source_uri=str(material.get("source_uri") or f"local://materials/{material_id}"),
+                locator=locator,
+                text=text,
+                material_id=material_id,
+                filename=filename,
+                decoding_metadata=decoding,
+            ))
+
+        metadata = dict(material.get("metadata") or {})
+        previous_revision = str(metadata.get("source_revision") or "")
+        metadata.update(decoding)
+        metadata.update({
+            "decoding_hint": requested,
+            "raw_sha256": raw_sha256,
+            "raw_byte_count": len(raw),
+            "source_revision": str(decoding.get("source_revision") or ""),
+            "redecoded": True,
+            "redecoded_at": updated_at,
+            "redecoded_from_revision": previous_revision,
+            "suffix": Path(filename).suffix.lower(),
+            "original_filename": filename,
+        })
+
+        # Evidence rows and the material's current anchor list share the same
+        # SQLite file. Commit both together; on failure the old anchors remain.
+        connection, _ = _connect()
+        try:
+            connection.commit()
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT created_at FROM source_evidence WHERE evidence_id=?",
+                (current_ids[0],),
+            ).fetchone()
+            if row is None:
+                raise ValueError("material_redecode_evidence_missing")
+            evidence_fts = bool(connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='source_evidence_fts'"
+            ).fetchone())
+            for item in items:
+                existing = connection.execute(
+                    "SELECT created_at FROM source_evidence WHERE evidence_id=?",
+                    (item.evidence_id,),
+                ).fetchone()
+                if existing is None and item.evidence_id in current_ids:
+                    raise ValueError("material_redecode_evidence_missing")
+                evidence_metadata = dict(item.metadata or {})
+                evidence_metadata.update({
+                    "redecoded": True,
+                    "redecoded_at": updated_at,
+                    "redecoded_from_revision": previous_revision,
+                })
+                created_at = str(existing["created_at"]) if existing is not None else updated_at
+                connection.execute(
+                    """INSERT OR REPLACE INTO source_evidence
+                       (evidence_id,schema_version,source_type,title,source_uri,locator,text,task_id,metadata_json,created_at)
+                       VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                    (item.evidence_id,item.schema_version,item.source_type,item.title[:500],item.source_uri[:1000],
+                     item.locator[:300],item.text[:2_000_000],item.task_id[:128],json.dumps(evidence_metadata,ensure_ascii=False)[:20_000],created_at),
+                )
+                if evidence_fts:
+                    connection.execute("DELETE FROM source_evidence_fts WHERE evidence_id=?", (item.evidence_id,))
+                    connection.execute(
+                        "INSERT INTO source_evidence_fts(evidence_id,title,source_uri,locator,text) VALUES (?,?,?,?,?)",
+                        (item.evidence_id,item.title[:500],item.source_uri[:1000],item.locator[:300],item.text[:2_000_000]),
+                    )
+            material_update = connection.execute(
+                """UPDATE library_materials
+                   SET anchor_count=?, evidence_ids_json=?, status=?, metadata_json=?, updated_at=?
+                   WHERE material_id=?""",
+                (len(new_ids),json.dumps(new_ids,ensure_ascii=False),str(metadata.get("status") or "ready"),
+                 json.dumps(metadata,ensure_ascii=False),updated_at,str(material_id)),
+            )
+            if material_update.rowcount != 1:
+                raise ValueError("material_not_found")
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+        return get_material(material_id)
 
 
 def apply_material_ocr(material_id: str, ocr_result: dict[str, object]) -> dict[str, object]:

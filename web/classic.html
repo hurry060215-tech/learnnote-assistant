@@ -205,6 +205,18 @@
                   <div><strong>导入学习资料</strong><small>PDF、Markdown 和网页 HTML 只在本机提取文本，保留可追溯来源。</small></div>
                   <div class="setting-inline-actions"><button id="knowledgeImportButton" class="secondary action-button" type="button">选择文件</button><input id="knowledgeImportInput" type="file" accept=".pdf,.md,.markdown,.html,.htm,.txt" hidden></div>
                 </div>
+                <div class="setting-row">
+                  <div><strong>导入文本编码</strong><small>只对 TXT、Markdown 和 HTML 生效；PDF 由本地解析器处理。检测到乱码会拒绝导入。</small></div>
+                  <select id="knowledgeImportEncoding" aria-label="资料文字编码">
+                    <option value="">自动识别</option>
+                    <option value="utf-8">UTF-8</option>
+                    <option value="gb18030">GB18030 / GBK</option>
+                    <option value="big5">Big5</option>
+                    <option value="shift_jis">Shift_JIS</option>
+                    <option value="utf-16-le">UTF-16 LE</option>
+                    <option value="utf-16-be">UTF-16 BE</option>
+                  </select>
+                </div>
                 <p id="knowledgeImportStatus" class="settings-inline-status" role="status" aria-live="polite"></p>
                 <div class="setting-row knowledge-search-setting">
                   <div><strong>本地资料库检索</strong><small>回答只使用已索引的本地证据；没有证据时不会编造。</small></div>
@@ -213,7 +225,7 @@
                 <div id="knowledgeSearchResults" class="knowledge-results" role="region" aria-live="polite" aria-label="本地资料库检索结果"></div>
                 <div class="setting-row">
                   <div><strong>本地复习卡片</strong><small>只读取你确认过的卡片和复习记录，不读取课程平台进度。</small></div>
-                  <div class="setting-inline-actions"><button id="studyDueButton" class="secondary action-button" type="button">查看到期卡片</button><button id="studyExportButton" class="secondary action-button" type="button">导出复习记录</button></div>
+                  <div class="setting-inline-actions"><button id="studyDueButton" class="secondary action-button" type="button">查看到期卡片</button><button id="studyExportButton" class="secondary action-button" type="button">导出学习备份</button><button id="studyRestoreButton" class="secondary action-button" type="button">恢复学习备份</button><input id="studyBackupInput" type="file" accept="application/json,.json" hidden></div>
                 </div>
                 <div class="setting-row study-plan-row">
                   <div><strong>本地学习计划</strong><small>设置每天目标；暂停只影响本地提醒和复习视图，不读取课程平台进度。</small></div>
@@ -271,7 +283,7 @@
           <div class="study-view-progress-track" role="progressbar" aria-label="今日复习目标" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="studyViewProgressBar"></i></div>
           <small id="studyViewProgressHint">复习记录只保存在本机</small>
         </section>
-        <section class="study-view-due-section"><header><h2>今天需要复习</h2><small>完成一张卡片后，间隔会按本地复习记录更新。</small></header><div id="studyViewDueList" class="study-due-list"></div></section>
+        <section class="study-view-due-section"><header><h2>今天的证据测验与复习</h2><small>每题都能回到出处；自我解释只记录复习动作，不保存回答文本。</small></header><div id="studyViewDueList" class="study-due-list"></div></section>
       </section>
 
       <aside id="workspace" class="workspace-panel">

@@ -46,6 +46,31 @@ def main() -> int:
     import app.processor as processor  # noqa: E402
     from app.storage import create_task, get_task, task_dir  # noqa: E402
 
+    first_result: dict[str, float | str] = {}
+    transcript_completed_at: float | None = None
+    original_record_stage_duration = processor.record_stage_duration
+    original_write_progressive_draft = processor.write_progressive_draft
+
+    def record_stage_duration(*args, **kwargs):
+        nonlocal transcript_completed_at
+        result = original_record_stage_duration(*args, **kwargs)
+        if len(args) > 1 and args[1] == "transcript" and kwargs.get("status", "completed") == "completed":
+            transcript_completed_at = time.monotonic()
+        return result
+
+    def write_progressive_draft(*args, **kwargs):
+        result = original_write_progressive_draft(*args, **kwargs)
+        if result and "ready_after_transcript_seconds" not in first_result:
+            ready_at = time.monotonic()
+            first_result["artifact"] = str(result)
+            first_result["ready_after_task_start_seconds"] = round(ready_at - started, 3)
+            if transcript_completed_at is not None:
+                first_result["ready_after_transcript_seconds"] = round(ready_at - transcript_completed_at, 3)
+        return result
+
+    processor.record_stage_duration = record_stage_duration
+    processor.write_progressive_draft = write_progressive_draft
+
     def offline_summary(title, transcript, grids, options, page_url="", page_context="", **_kwargs):
         points = [segment.text.strip() for segment in transcript.segments if segment.text.strip()][:6]
         body = "\n".join([
@@ -98,7 +123,7 @@ def main() -> int:
     final = get_task(task.id)
     resource_path = task_dir(task.id) / "resource_usage.json"
     report = {
-        "status": "pass" if final.status == "success" and final.summary_source == "offline-fixture" and bool(final.note_path) and resource_path.is_file() else "fail",
+        "status": "pass" if final.status == "success" and final.summary_source == "offline-fixture" and bool(final.note_path) and resource_path.is_file() and first_result.get("ready_after_transcript_seconds", 999999) <= 5 else "fail",
         "task_id": task.id,
         "duration_seconds": args.duration_seconds,
         "final_status": final.status,
@@ -112,6 +137,13 @@ def main() -> int:
         "visual_index_path": final.visual_index_path,
         "resource_usage_path": str(resource_path),
         "elapsed_seconds": round(time.monotonic() - started, 3),
+        "first_result": {
+            **first_result,
+            "target_seconds_after_transcript": 5,
+            "input_kind": "prebuilt synthetic subtitle fixture",
+            "asr_attempted": False,
+            "model_call_attempted": False,
+        },
         "remote_calls": 0,
         "api_key_configured": False,
     }

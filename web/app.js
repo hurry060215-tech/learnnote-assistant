@@ -424,6 +424,7 @@ const els = {
   libraryDuplicateStatus: document.querySelector("#libraryDuplicateStatus"),
   knowledgeImportButton: document.querySelector("#knowledgeImportButton"),
   knowledgeImportInput: document.querySelector("#knowledgeImportInput"),
+  knowledgeImportEncoding: document.querySelector("#knowledgeImportEncoding"),
   knowledgeImportStatus: document.querySelector("#knowledgeImportStatus"),
   editorialKnowledgeImport: document.querySelector("#editorialKnowledgeImport"),
   editorialKnowledgeImportStatus: document.querySelector("#editorialKnowledgeImportStatus"),
@@ -432,6 +433,8 @@ const els = {
   knowledgeSearchResults: document.querySelector("#knowledgeSearchResults"),
   studyDueButton: document.querySelector("#studyDueButton"),
   studyExportButton: document.querySelector("#studyExportButton"),
+  studyRestoreButton: document.querySelector("#studyRestoreButton"),
+  studyBackupInput: document.querySelector("#studyBackupInput"),
   studyPlanTarget: document.querySelector("#studyPlanTarget"),
   studyPlanPaused: document.querySelector("#studyPlanPaused"),
   studyPlanSaveButton: document.querySelector("#studyPlanSaveButton"),
@@ -4813,6 +4816,11 @@ async function openLibraryMaterial(materialId) {
         method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({evidence_ids: material.evidence_ids.slice(0, 100), limit: 12})
       });
       if (!openStudyProposalDialog(result.proposals || [])) els.exportStatus.textContent = "当前资料没有适合提炼的文字，请先选择一个知识点。";
+    }, onRedecode: async encoding => {
+      await fetchJson(apiUrl(`/api/library/materials/${encodeURIComponent(materialId)}/redecode`), {
+        method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({encoding})
+      });
+      await openLibraryMaterial(materialId);
     }});
     lastDetailFingerprint = `material:${materialId}:${material.updated_at || ""}`;
     globalThis.LearnNotePersonal.attach({container: els.detail, kind: "material", id: materialId, apiUrl, fetchJson});
@@ -5687,9 +5695,19 @@ async function importKnowledgeFile(file) {
   try {
     const form = new FormData();
     form.append("file", file, file.name);
+    const requestedEncoding = /\.pdf$/i.test(file.name) ? "" : String(els.knowledgeImportEncoding?.value || "").trim();
+    form.append("encoding", requestedEncoding);
     const result = await fetchJson(apiUrl("/api/library/materials/import"), { method: "POST", body: form });
     const material = result?.material || {};
-    setStatus(`已导入：${material.title || file.name}；${Number(material.anchor_count || 0)} 个出处已进入本地资料库。`);
+    const metadata = material.metadata || {};
+    if (material.deduplicated && requestedEncoding && String(metadata.encoding || "").toLowerCase() !== requestedEncoding.toLowerCase()) {
+      setStatus(`资料已存在，现有版本使用 ${metadata.encoding || "未知编码"}；本次选择未覆盖原资料。`);
+      return;
+    }
+    const encodingSummary = /\.pdf$/i.test(file.name)
+      ? "PDF 文字由本地解析器提取。"
+      : `编码 ${metadata.encoding || "未知"}（${metadata.encoding_source || "待确认"}）。`;
+    setStatus(`已导入：${material.title || file.name}；${Number(material.anchor_count || 0)} 个出处已进入本地资料库；${encodingSummary}`);
     await loadLibraryMaterials();
     if (material.material_id) await openLibraryMaterial(material.material_id);
   } catch (error) {
@@ -5864,11 +5882,11 @@ async function exportStudyData() {
   if (!els.studyExportButton) return;
   els.studyExportButton.disabled = true;
   try {
-    const payload = await fetchJson(apiUrl("/api/study/export"));
+    const payload = await fetchJson(apiUrl("/api/study/backup"));
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `learnnote-study-${new Date().toISOString().slice(0, 10)}.json`;
+    link.download = `learnnote-learning-backup-${new Date().toISOString().slice(0, 10)}.json`;
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -5877,6 +5895,33 @@ async function exportStudyData() {
     if (els.studyDueList) els.studyDueList.textContent = error?.message || "复习记录导出失败。";
   } finally {
     els.studyExportButton.disabled = false;
+  }
+}
+
+async function restoreStudyBackup(file) {
+  if (!file || !els.studyRestoreButton) return;
+  if (!confirm("将把备份中的复习评分、学习计划、个人批注和笔记修改合并到本机；已有内容不会被覆盖。若资料尚未恢复，相关批注会在资料可用后显示。继续？")) {
+    if (els.studyBackupInput) els.studyBackupInput.value = "";
+    return;
+  }
+  els.studyRestoreButton.disabled = true;
+  try {
+    const backup = JSON.parse(await file.text());
+    const result = await fetchJson(apiUrl("/api/study/backup/restore"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(backup),
+    });
+    const merge = result.merge || {};
+    if (els.studyDueList) {
+      els.studyDueList.textContent = `已合并 ${merge.restored_reviews || 0} 条复习记录、${merge.restored_annotations || 0} 条个人批注和 ${merge.restored_editions || 0} 份笔记修改；当前已有内容保留。`;
+    }
+    await loadStudyView();
+  } catch (error) {
+    if (els.studyDueList) els.studyDueList.textContent = error?.message || "学习备份无效或无法读取。";
+  } finally {
+    els.studyRestoreButton.disabled = false;
+    if (els.studyBackupInput) els.studyBackupInput.value = "";
   }
 }
 
@@ -6005,6 +6050,11 @@ async function loadStudyView() {
         if (generation !== studyViewRequestGeneration) { if (document.body.dataset.appView === "study") loadStudyView(); return {view_changed: true}; }
         return courseId ? {...fresh, due_count: remaining} : fresh;
       },
+      onSelfAssessment: async (cardId) => fetchJson(apiUrl("/api/study/activity"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind: "self_assessment", source_id: `card:${cardId}` }),
+      }),
       onSource: openLearningEvidence,
       onCreate: () => showAppView("notes"),
       onPlan: () => { showAppView("settings"); showSettingsPane("connection"); els.studyPlanTarget?.scrollIntoView?.({block: "center"}); }
@@ -9686,6 +9736,8 @@ els.knowledgeSearchInput?.addEventListener?.("keydown", event => {
 });
 els.studyDueButton?.addEventListener?.("click", loadStudyDue);
 els.studyExportButton?.addEventListener?.("click", exportStudyData);
+els.studyRestoreButton?.addEventListener?.("click", () => els.studyBackupInput?.click?.());
+els.studyBackupInput?.addEventListener?.("change", () => restoreStudyBackup(els.studyBackupInput.files?.[0]));
 els.studyPlanSaveButton?.addEventListener?.("click", saveStudyPlan);
 els.studyViewRefreshButton?.addEventListener?.("click", loadStudyView);
 loadStudyPlan();

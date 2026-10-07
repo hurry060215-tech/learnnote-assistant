@@ -5,12 +5,16 @@ import codecs
 import hashlib
 import re
 import unicodedata
+from email.message import Message
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from charset_normalizer import from_bytes
 
 from .models import TranscriptResult
+
+
+TEXT_NORMALIZATION_VERSION = "nfc-newlines-controls-v1"
 
 
 # Only exact, high-confidence Chinese ASR confusions belong here. This avoids
@@ -39,6 +43,12 @@ class DecodedText:
     mojibake_score: int = 0
     raw_sha256: str = ""
     byte_count: int = 0
+    encoding_source: str = "unknown"
+    # A provenance category, not a calibrated probability.
+    encoding_confidence: str = "low"
+    declared_encoding: str = ""
+    replacement_character_count: int = 0
+    normalization_version: str = TEXT_NORMALIZATION_VERSION
 
 
 _MOJIBAKE_MARKERS = (
@@ -73,6 +83,11 @@ _ALLOWED_DETECTED_ENCODINGS = {
     "utf_32", "utf_32_le", "utf_32_be", "gb18030", "gbk", "big5",
     "cp932", "shift_jis", "shift_jis_2004", "cp1252", "latin_1", "iso8859_1",
 }
+_HTML_CHARSET_RE = re.compile(r"<meta\b[^>]*charset\s*=\s*['\"]?\s*([a-zA-Z0-9._-]+)", re.I)
+_HTML_CONTENT_CHARSET_RE = re.compile(
+    r"<meta\b(?=[^>]*http-equiv\s*=\s*['\"]?content-type)[^>]*content\s*=\s*['\"][^'\"]*?charset\s*=\s*([a-zA-Z0-9._-]+)",
+    re.I,
+)
 
 
 def mojibake_score(value: str) -> int:
@@ -147,30 +162,76 @@ def canonicalize_unicode_text(value: str, *, reject_mojibake: bool = True) -> st
     return text
 
 
-def _decode_candidates(content: bytes, requested_encoding: str = "") -> list[tuple[str, str]]:
+def _encoding_name(value: str) -> str:
+    normalized = str(value or "").strip().lower().replace("-", "_").replace(" ", "")
+    aliases = {
+        "utf8": "utf_8",
+        "utf8sig": "utf_8_sig",
+        "gb2312": "gb18030",
+        "gb_2312": "gb18030",
+        "cp936": "gb18030",
+        "ms936": "gb18030",
+        "big5hkscs": "big5hkscs",
+    }
+    normalized = aliases.get(normalized, normalized)
+    try:
+        canonical = codecs.lookup(normalized).name
+    except LookupError:
+        return ""
+    return canonical if canonical.replace("-", "_") in _ALLOWED_DETECTED_ENCODINGS else ""
+
+
+def declared_text_encoding(content_type: str = "", content: bytes = b"", *, html_hint: bool = False) -> str:
+    """Read a bounded MIME charset or HTML meta charset without decoding body text."""
+
+    try:
+        mime = Message()
+        mime["content-type"] = str(content_type or "")
+        charset = str(mime.get_content_charset() or "").strip()
+    except (TypeError, ValueError):
+        charset = ""
+    is_html = html_hint or "html" in str(content_type or "").lower()
+    if not charset and is_html:
+        # Latin-1 maps every byte one-to-one and is used only to parse ASCII
+        # charset declarations in the document header.
+        header = bytes(content or b"")[:8192].decode("latin-1")
+        match = _HTML_CHARSET_RE.search(header) or _HTML_CONTENT_CHARSET_RE.search(header)
+        charset = match.group(1) if match else ""
+    return str(charset or "").strip()[:40]
+
+
+def _decode_candidates(
+    content: bytes,
+    requested_encoding: str = "",
+    declared_encoding: str = "",
+) -> list[tuple[str, str, str]]:
     if not content:
-        return [("utf-8", "")]
+        return [("utf_8", "", "empty-input")]
     if requested_encoding:
-        normalized = str(requested_encoding).strip().lower().replace("-", "_")
-        aliases = {"utf8": "utf_8", "utf8_sig": "utf_8_sig", "gb2312": "gb18030"}
-        normalized = aliases.get(normalized, normalized)
-        try:
-            canonical = codecs.lookup(normalized).name.replace("-", "_")
-        except LookupError:
-            return []
-        if canonical not in _ALLOWED_DETECTED_ENCODINGS:
+        normalized = _encoding_name(requested_encoding)
+        if not normalized:
             return []
         try:
-            return [(normalized, content.decode(normalized, errors="strict"))]
+            return [(normalized, content.decode(normalized, errors="strict"), "user-selected")]
         except (UnicodeDecodeError, UnicodeError):
             return []
-    candidates: list[tuple[str, str]] = []
+    candidates: list[tuple[str, str, str]] = []
     if content.startswith((b"\xff\xfe\x00\x00", b"\x00\x00\xfe\xff")):
         encodings = ("utf-32",)
     elif content.startswith((b"\xff\xfe", b"\xfe\xff")):
         encodings = ("utf-16",)
     elif content.startswith(b"\xef\xbb\xbf"):
         encodings = ("utf-8-sig",)
+    elif declared_encoding:
+        declared = _encoding_name(declared_encoding)
+        if not declared:
+            return []
+        try:
+            return [(declared, content.decode(declared, errors="strict"), "declared-charset")]
+        except (UnicodeDecodeError, UnicodeError):
+            # A declared charset is authoritative. Do not silently switch to
+            # a lossy legacy fallback; ask the user to choose another encoding.
+            return []
     else:
         detected = ""
         try:
@@ -181,24 +242,45 @@ def _decode_candidates(content: bytes, requested_encoding: str = "") -> list[tup
         except Exception:
             detected = ""
         preferred_detected = detected if detected not in {"utf_16", "utf_16_le", "utf_16_be", "utf_32", "utf_32_le", "utf_32_be"} else ""
-        encodings = tuple(dict.fromkeys(
-            encoding
+        encodings: list[tuple[str, str]] = []
+        encodings.append(("utf_8", "strict-utf8"))
+        if preferred_detected:
+            encodings.append((preferred_detected, "charset-normalizer"))
+        if detected:
+            encodings.append((detected, "charset-normalizer"))
+        encodings.extend(
+            (encoding, "fallback")
             for encoding in (
-                "utf-8",
-                preferred_detected,
                 "gb18030",
-                detected,
-                "utf-16-le" if len(content) % 2 == 0 else "",
-                "utf-16-be" if len(content) % 2 == 0 else "",
+                "utf_16_le" if len(content) % 2 == 0 else "",
+                "utf_16_be" if len(content) % 2 == 0 else "",
                 "cp932",
                 "shift_jis",
                 "cp1252",
             )
             if encoding
-        ))
+        )
+        # Keep the first provenance path for an encoding so declared charsets
+        # and strict UTF-8 are not relabeled as generic fallbacks.
+        unique: dict[str, str] = {}
+        for encoding, source in encodings:
+            canonical = _encoding_name(encoding)
+            if canonical:
+                unique.setdefault(canonical, source)
+        encodings = list(unique.items())
+    if content.startswith((b"\xff\xfe\x00\x00", b"\x00\x00\xfe\xff")):
+        source = "bom"
+    elif content.startswith((b"\xff\xfe", b"\xfe\xff", b"\xef\xbb\xbf")):
+        source = "bom"
+    else:
+        source = ""
     for encoding in encodings:
+        if source:
+            candidate_encoding, candidate_source = _encoding_name(encoding), source
+        else:
+            candidate_encoding, candidate_source = encoding
         try:
-            candidates.append((encoding, content.decode(encoding, errors="strict")))
+            candidates.append((candidate_encoding, content.decode(candidate_encoding, errors="strict"), candidate_source))
         except (UnicodeDecodeError, UnicodeError):
             continue
     return candidates
@@ -227,11 +309,21 @@ def _decode_quality_penalty(text: str) -> int:
     return penalty
 
 
-def decode_text_bytes(content: bytes, *, source: str = "", reject_mojibake: bool = True, encoding: str = "") -> DecodedText:
+def decode_text_bytes(
+    content: bytes,
+    *,
+    source: str = "",
+    reject_mojibake: bool = True,
+    encoding: str = "",
+    declared_encoding: str = "",
+) -> DecodedText:
     """Decode common subtitle encodings strictly; never discard invalid bytes."""
 
     decoded: list[tuple[int, int, DecodedText]] = []
-    for priority, (candidate_encoding, raw_text) in enumerate(_decode_candidates(bytes(content or b""), encoding)):
+    declared = _encoding_name(declared_encoding)
+    for priority, (candidate_encoding, raw_text, encoding_source) in enumerate(
+        _decode_candidates(bytes(content or b""), encoding, declared_encoding)
+    ):
         try:
             repaired_text, repaired = _repair_utf8_mojibake(raw_text)
             text = canonicalize_unicode_text(repaired_text, reject_mojibake=False)
@@ -246,6 +338,18 @@ def decode_text_bytes(content: bytes, *, source: str = "", reject_mojibake: bool
                 encoding=candidate_encoding,
                 repaired=repaired,
                 mojibake_score=mojibake_score(text),
+                encoding_source=encoding_source,
+                encoding_confidence={
+                    "bom": "high",
+                    "declared-charset": "high",
+                    "strict-utf8": "high",
+                    "charset-normalizer": "medium",
+                    "fallback": "low",
+                    "user-selected": "user_selected",
+                    "empty-input": "high",
+                }.get(encoding_source, "low"),
+                declared_encoding=declared,
+                replacement_character_count=text.count("\ufffd"),
             ))
         )
     if not decoded:
@@ -268,6 +372,11 @@ def decode_text_bytes(content: bytes, *, source: str = "", reject_mojibake: bool
         mojibake_score=best.mojibake_score,
         raw_sha256=hashlib.sha256(bytes(content or b"")).hexdigest(),
         byte_count=len(content or b""),
+        encoding_source=best.encoding_source,
+        encoding_confidence=best.encoding_confidence,
+        declared_encoding=best.declared_encoding,
+        replacement_character_count=best.replacement_character_count,
+        normalization_version=best.normalization_version,
     )
 
 
@@ -308,11 +417,13 @@ def correct_transcript_terms(transcript: TranscriptResult) -> TranscriptResult:
 
 __all__ = [
     "DecodedText",
+    "TEXT_NORMALIZATION_VERSION",
     "TextDecodingError",
     "canonicalize_unicode_text",
     "correct_common_zh_asr_text",
     "correct_transcript_terms",
     "decode_text_bytes",
+    "declared_text_encoding",
     "mojibake_score",
     "read_canonical_text",
     "redact_sensitive_url_values",

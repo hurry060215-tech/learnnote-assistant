@@ -9,7 +9,7 @@ import { installProfile } from "/web/desk-profile.js";
 import { createTaskEventHub } from "/web/desk-events.js";
 import { sourceVideoEmbed } from "/web/source-video.js";
 import { installSettings } from "/web/desk-settings.js";
-import { installProductWorkspace } from "/web/desk-product.js?v=0.2.14";
+import { installProductWorkspace } from "/web/desk-product.js?v=first-run-20260923";
 import { installTools } from "/web/desk-tools.js?v=0.2.14";
 import {
   api,
@@ -29,6 +29,10 @@ const state = {
   text: "",
   revision: "",
   editing: false,
+  annotationEditingId: "",
+  annotationEditingAnchor: {},
+  annotationQuote: "",
+  annotationQuoteReanchored: false,
   input: "url",
   busy: false,
   refreshing: false,
@@ -164,7 +168,10 @@ function updateContentMode() {
 for (const choice of document.querySelectorAll('[name="contentMode"]'))
   choice.addEventListener("change", updateContentMode);
 $("createDialog").addEventListener("toggle", () => {
-  if ($("createDialog").open) updateContentMode();
+  if ($("createDialog").open) {
+    updateContentMode();
+    updateCreateInputPresentation();
+  }
 });
 function sourcePath(s = state.selected) {
   return `/api/tasks/editions/${s.kind}/${encodeURIComponent(s.id)}`;
@@ -366,6 +373,12 @@ async function openItem(item, { remember = true, check = true } = {}) {
   $("document").innerHTML = '<p class="muted">正在打开…</p>';
   $("annotationList").replaceChildren();
   $("annotationText").value = "";
+  state.annotationEditingId = "";
+  state.annotationEditingAnchor = {};
+  state.annotationQuote = "";
+  state.annotationQuoteReanchored = false;
+  $("annotationQuote").textContent = "";
+  $("cancelAnnotationEdit").hidden = true;
   closeSource();
   document.body.classList.remove("menu-open");
   $("menu").setAttribute("aria-expanded", "false");
@@ -411,7 +424,23 @@ function renderNote() {
     state.text.trim().startsWith("# ") && !excerptOnly
       ? ""
       : `<h1>${esc(state.selected.title)}</h1>`;
+  const decode = state.selected.kind === "material" ? state.selected.metadata || {} : {};
+  const decodeSource = ({
+    "bom": "BOM",
+    "declared-charset": "文件声明字符集",
+    "strict-utf8": "严格 UTF-8",
+    "charset-normalizer": "自动识别",
+    "fallback": "编码候选",
+    "user-selected": "手动选择",
+    "pypdf": "PDF 文本提取",
+  })[decode.encoding_source] || "未知来源";
+  const decodeConfidence = ({ high: "高", medium: "中", low: "低", user_selected: "手动指定", not_applicable: "不适用" })[decode.encoding_confidence] || "未知";
+  const rawStatus = state.selected.stored_locally ? "原始文件已保留。" : "原始文件当前不可用。";
+  const decodeNotice = decode.encoding
+    ? `<p class="encoding-provenance-note" role="status">原文解码：${esc(decode.encoding)} · ${esc(decodeSource)} · 选择依据${esc(decodeConfidence)}。${decode.encoding_confidence === "low" ? "自动识别把握较低，请核对原文。" : rawStatus}</p>`
+    : "";
   $("document").innerHTML =
+    decodeNotice +
     (state.selected.kind === "task" && /llm/i.test(state.selected.summary_source || "")
       ? '<p class="muted" role="status">AI 草稿：生成完成不代表逐条事实已验证。请结合字幕与原视频核对数字、名称和推断。<button id="reviewNoteSources" type="button">查看字幕与原视频</button></p>'
       : "") +
@@ -560,11 +589,14 @@ function renderStatus(reload = true) {
     details.className = "claim-evidence-details";
     const summary = document.createElement("summary");
     const quality = t.claim_evidence.quality || {};
-    summary.textContent = "逐条来源映射 · " + (quality.claim_count || 0) + " 条 · 原文匹配 " + (quality.supported_count || 0) + " 条";
-    if (quality.unsupported_count || quality.inference_count) {
+    const locatedOnlyCount = Number(quality.located_only_count || 0);
+    const inferenceCount = Number(quality.inference_count || 0);
+    const pendingReviewCount = Number(quality.pending_review_count || 0);
+    summary.textContent = `逐条来源映射 · ${Number(quality.claim_count || 0)} 条 · 直接支持 ${Number(quality.direct_count || 0)} · 仅定位 ${locatedOnlyCount} · 推断 ${inferenceCount} · 待核对 ${pendingReviewCount}`;
+    if (locatedOnlyCount || inferenceCount || pendingReviewCount || quality.unsupported_count) {
       const warning = document.createElement("p");
       warning.className = "muted";
-      warning.textContent = "部分总结或推断尚未获得逐条核对，请展开来源映射检查。时间戳只用于定位，不代表结论已经验证。";
+      warning.textContent = "逐条状态中的“仅定位”“推断”“待核对”均需要人工检查。时间戳只用于定位，不代表结论已经验证。";
       panel.append(warning);
     }
     details.append(summary);
@@ -581,10 +613,50 @@ function renderStatus(reload = true) {
         for (const claim of mapped.claims || []) {
           const item = document.createElement("li");
           const text = document.createElement("span");
-          text.textContent = ({"transcript": "字幕", "visual": "画面", "inference": "推断", "unsupported": "未支持"}[claim.claim_type] || "待核对") + " · " + claim.text;
+          const verificationLabel = ({
+            "direct": "直接支持",
+            "located_only": "仅定位",
+            "inference": "推断",
+            "pending_review": "待核对",
+          })[claim.verification] || "待核对";
+          const sourceLabel = ({
+            "transcript": "字幕",
+            "visual": "画面",
+            "document": "文档",
+          })[claim.claim_type] || "";
+          text.textContent = `${verificationLabel}${sourceLabel ? ` · ${sourceLabel}` : ""} · ${claim.text}`;
           item.append(text);
           const evidence = (mapped.evidence || []).filter((candidate) => [...(claim.evidence_ids || []), ...(claim.candidate_evidence_ids || [])].includes(candidate.evidence_id));
           for (const candidate of evidence.slice(0, 3)) {
+            if (candidate.kind === "document" && candidate.material_id) {
+              const locate = document.createElement("button");
+              locate.type = "button";
+              locate.textContent = `打开文档 ${candidate.locator || "出处"}`;
+              locate.onclick = async () => {
+                const material = state.items.find((entry) => entry.kind === "material" && entry.id === candidate.material_id);
+                if (!material) {
+                  notice("这份文档不在当前资料库中，无法打开出处。");
+                  return;
+                }
+                await openItem(material).catch(failure);
+                const locator = String(candidate.locator || "");
+                const page = /page\s+(\d+)/i.exec(locator)?.[1];
+                const excerpt = String(candidate.text || "").replace(/\s+/g, " ").trim().slice(0, 80);
+                const normalize = (value) => String(value || "").replace(/\s+/g, " ").trim();
+                const blocks = Array.from(document.querySelectorAll("#document h1, #document h2, #document h3, #document p, #document li, #document blockquote, #document pre, #document td, #document th"));
+                const target = (page && blocks.find((block) => normalize(block.textContent).includes(`[第 ${page} 页]`))) ||
+                  (excerpt.length >= 16 && blocks.find((block) => normalize(block.textContent).includes(excerpt)));
+                document.querySelectorAll("#document .source-evidence-target").forEach((block) => block.classList.remove("source-evidence-target"));
+                if (target) {
+                  target.classList.add("source-evidence-target");
+                  target.scrollIntoView({ block: "center", behavior: "instant" });
+                } else {
+                  notice(`已打开文档，但无法精确高亮 ${locator || "该出处"}。`);
+                }
+              };
+              item.append(locate);
+              continue;
+            }
             const match = String(candidate.locator || "").match(/^([0-9.]+)-/);
             if (!match || t.kind !== "task") continue;
             const locate = document.createElement("button");
@@ -611,8 +683,28 @@ async function loadAnnotations(epoch) {
   const value = await api(`/api/personal/${s.kind}/${s.id}`);
   if (epoch !== state.epoch) return;
   $("annotationList").innerHTML = value.annotations
-    .map((a) => `<div class="annotation${a.anchor_status?.stale ? " annotation-stale" : ""}"><span>${esc(a.text)}</span>${a.anchor_status?.stale ? '<small>原文已变化；请重新选择出处后保存。</small>' : ""}</div>`)
+    .map((a) => `<div class="annotation${a.anchor_status?.stale ? " annotation-stale" : ""}">${a.quote ? `<blockquote>${esc(a.quote)}</blockquote>` : ""}<span>${esc(a.text)}</span>${a.anchor_status?.stale ? `<small>${a.anchor_status.repairable ? "原文版本已变化；重新选择当前正文以修复出处。" : "原文版本已变化；没有可恢复的引用片段。"}</small>` : ""}<button type="button" data-annotation-edit="${esc(a.id)}">${a.anchor_status?.stale ? "修复出处" : "编辑"}</button><button type="button" class="danger" data-annotation-delete="${esc(a.id)}">删除</button></div>`)
     .join("");
+  for (const button of $("annotationList").querySelectorAll("[data-annotation-edit]")) button.onclick = () => {
+    const item = value.annotations.find((annotation) => annotation.id === button.dataset.annotationEdit);
+    if (!item) return;
+    state.annotationEditingId = item.id;
+    state.annotationEditingAnchor = item.anchor && typeof item.anchor === "object" ? item.anchor : {};
+    state.annotationQuote = String(item.quote || "");
+    state.annotationQuoteReanchored = false;
+    $("annotationText").value = item.text;
+    $("annotationQuote").textContent = state.annotationQuote ? `引用：${state.annotationQuote}` : "尚未关联原文。";
+    $("saveAnnotation").textContent = item.anchor_status?.stale ? "修复出处并保存" : "保存修改";
+    $("cancelAnnotationEdit").hidden = false;
+    $("annotationText").focus();
+  };
+  for (const button of $("annotationList").querySelectorAll("[data-annotation-delete]")) button.onclick = async () => {
+    if (!confirm("删除这条个人补充？")) return;
+    try {
+      await api(`/api/personal/${state.selected.kind}/${state.selected.id}/${encodeURIComponent(button.dataset.annotationDelete)}`, { method: "DELETE" });
+      await loadAnnotations(epoch);
+    } catch (error) { failure(error); }
+  };
 }
 let sourceRequest = 0;
 function closeSource() {
@@ -954,25 +1046,57 @@ $("annotationForm").onsubmit = async (e) => {
   const button = e.submitter;
   button.disabled = true;
   try {
+    const quote = state.annotationQuote;
+    const anchor = state.annotationQuoteReanchored && quote
+      ? { source_revision: state.revision, selected_text: quote }
+      : state.annotationEditingAnchor;
     await api(`/api/personal/${s.kind}/${s.id}`, {
       method: "POST",
       body: JSON.stringify({
         text,
-        quote: String(window.getSelection?.() || "").trim().slice(0, 1000),
-        anchor: {
-          source_revision: state.revision,
-          selected_text: String(window.getSelection?.() || "").trim().slice(0, 1000),
-        },
+        quote: quote.slice(0, 1000),
+        id: state.annotationEditingId,
+        anchor,
       }),
     });
     if (epoch !== state.epoch) return;
     $("annotationText").value = "";
+    $("annotationQuote").textContent = "";
+    $("saveAnnotation").textContent = "保存补充";
+    $("cancelAnnotationEdit").hidden = true;
+    state.annotationEditingId = "";
+    state.annotationEditingAnchor = {};
+    state.annotationQuote = "";
+    state.annotationQuoteReanchored = false;
     await loadAnnotations(epoch);
   } catch (error) {
     failure(error);
   } finally {
     button.disabled = false;
   }
+};
+$("captureAnnotationQuote").onclick = () => {
+  const selection = window.getSelection?.();
+  if (!selection?.anchorNode || !$("document").contains(selection.anchorNode)) {
+    notice("先在笔记正文中选中一段文字，再关联出处。");
+    return;
+  }
+  const quote = String(selection).trim().slice(0, 1000);
+  if (!quote) { notice("所选文字为空，请重新选择。"); return; }
+  state.annotationQuote = quote;
+  state.annotationQuoteReanchored = true;
+  $("annotationQuote").textContent = `引用：${quote}`;
+};
+$("captureAnnotationQuote").onmousedown = (event) => event.preventDefault();
+$("cancelAnnotationEdit").onclick = () => {
+  state.annotationEditingId = "";
+  state.annotationEditingAnchor = {};
+  state.annotationQuote = "";
+  state.annotationQuoteReanchored = false;
+  $("annotationText").value = "";
+  $("annotationQuote").textContent = "";
+  $("saveAnnotation").textContent = "保存补充";
+  $("cancelAnnotationEdit").hidden = true;
 };
 function create() {
   updateContentMode();
@@ -983,6 +1107,26 @@ $("newNote").onclick = create;
 $("welcomeNew").onclick = create;
 for (const button of document.querySelectorAll("[data-close]"))
   button.onclick = () => button.closest("dialog").close();
+function updateCreateInputPresentation() {
+  const file = $("file").files?.[0];
+  const isDocument =
+    state.input === "file" && file && /\.(pdf|md|txt|html?)$/i.test(file.name);
+  const hideVideoOptions =
+    state.input === "browser" || (state.input === "file" && (!file || isDocument));
+  $("contentModeChoices").hidden = hideVideoOptions;
+  $("contentModeExplanation").hidden = hideVideoOptions;
+  $("generationOptions").hidden = hideVideoOptions;
+  const needsFile = state.input === "file" && !file;
+  $("createSubmit").disabled = needsFile;
+  if (needsFile) {
+    $("createSubmit").textContent = "先选择文件";
+  } else if (isDocument) {
+    $("createSubmit").textContent = "导入并阅读资料";
+  } else {
+    updateContentMode();
+  }
+}
+$("file").addEventListener("change", updateCreateInputPresentation);
 for (const button of document.querySelectorAll("[data-input]"))
   button.onclick = () => {
     state.input = button.dataset.input;
@@ -991,11 +1135,16 @@ for (const button of document.querySelectorAll("[data-input]"))
     for (const kind of ["url", "file", "browser"])
       $(kind + "Input").hidden = kind !== state.input;
     $("createSubmit").hidden = state.input === "browser";
-    $("generationOptions").hidden = state.input === "browser";
-    $("contentModeChoices").hidden = state.input === "browser";
-    $("contentModeExplanation").hidden = state.input === "browser";
+    updateCreateInputPresentation();
     $("createStatus").textContent = "";
   };
+function updateMaterialEncodingChoice() {
+  const file = $("file").files?.[0];
+  const isMaterial = Boolean(file && /\.(md|markdown|txt|html?)$/i.test(file.name));
+  $("materialEncodingChoice").hidden = !isMaterial;
+  if (!isMaterial) $("materialEncoding").value = "";
+}
+$("file").addEventListener("change", updateMaterialEncodingChoice);
 $("createForm").onsubmit = async (e) => {
   e.preventDefault();
   if (state.busy) return;
@@ -1020,6 +1169,8 @@ $("createForm").onsubmit = async (e) => {
       const data = new FormData();
       data.append("file", file);
       kind = /\.(pdf|md|txt|html?)$/i.test(file.name) ? "material" : "task";
+      const requestedEncoding = kind === "material" ? String($("materialEncoding").value || "") : "";
+      if (kind === "material") data.append("encoding", requestedEncoding);
       if (kind === "task") data.append("options", JSON.stringify(options()));
       result = await api(
         kind === "task"
@@ -1027,6 +1178,10 @@ $("createForm").onsubmit = async (e) => {
           : "/api/library/materials/import",
         { method: "POST", body: data },
       );
+      const metadata = result?.material?.metadata || {};
+      if (kind === "material" && result?.material?.deduplicated && requestedEncoding && String(metadata.encoding || "").toLowerCase() !== requestedEncoding.toLowerCase()) {
+        throw new Error(`这份资料已经导入，当前版本按 ${metadata.encoding || "未知编码"} 解码；本次没有覆盖原资料。`);
+      }
     }
     await refresh();
     const id = result.task_id || result.material?.material_id;
@@ -1039,6 +1194,8 @@ $("createForm").onsubmit = async (e) => {
     if (item) await openItem(item);
     $("url").value = "";
     $("file").value = "";
+    $("materialEncoding").value = "";
+    updateMaterialEncodingChoice();
     $("createStatus").textContent = "";
   } catch (error) {
     $("createStatus").textContent = error.message;
@@ -1193,17 +1350,35 @@ $("theme").onclick = () => {
 async function drawReview() {
   const card = state.cards[0];
   $("reviewContent").innerHTML = card
-    ? `<p class="muted">待复习 ${state.cards.length} 张</p><h3>${esc(card.front)}</h3><button id="reveal" class="primary">显示答案</button><div id="answer" hidden><p class="review-answer">${esc(card.back)}</p><div id="reviewSources"></div><div class="rating">${["忘记了", "有些困难", "记住了", "很轻松"].map((label, i) => `<button data-rating="${i + 1}">${label}</button>`).join("")}</div></div>`
+    ? `<p class="muted">待复习 ${state.cards.length} 张</p><h3>${esc(card.front)}</h3><label for="reviewReflection">先用自己的话解释要点；回答不会发送给模型</label><textarea id="reviewReflection" rows="3" maxlength="2000"></textarea><button id="recordReflection" class="primary">记录解释并显示答案</button><button id="skipReflection">跳过解释</button><p id="reviewReflectionStatus" role="status"></p><button id="reveal" class="primary" hidden>显示答案</button><div id="answer" hidden><p class="review-answer">${esc(card.back)}</p><div id="reviewSources"></div><div class="rating">${["忘记了", "有些困难", "记住了", "很轻松"].map((label, i) => `<button data-rating="${i + 1}">${label}</button>`).join("")}</div></div>`
     : '<p>今天的复习已完成。</p><p class="muted">你可以回到笔记，继续阅读和整理。</p>';
   if (card) {
-    const hint = document.createElement("p");
-    hint.className = "muted";
-    hint.textContent = "先尝试回忆，再显示答案。下一次复习会按本次评分与历史记忆情况调整。";
-    $("reviewContent").prepend(hint);
-    $("reveal").onclick = () => {
+    const revealAnswer = () => {
       $("answer").hidden = false;
       $("reveal").hidden = true;
+      $("recordReflection").hidden = true;
+      $("skipReflection").hidden = true;
+      $("reviewReflection").hidden = true;
     };
+    $("reveal").onclick = revealAnswer;
+    $("recordReflection").onclick = async () => {
+      if (!$("reviewReflection").value.trim()) {
+        $("reviewReflectionStatus").textContent = "写一句解释，或选择跳过本次解释。";
+        return;
+      }
+      $("recordReflection").disabled = true;
+      $("skipReflection").disabled = true;
+      try {
+        await api("/api/study/activity", { method: "POST", body: JSON.stringify({ kind: "self_assessment", source_id: `card:${card.card_id}` }) });
+        $("reviewReflectionStatus").textContent = "自我解释动作已保存在本机；解释文本未保存。";
+        revealAnswer();
+      } catch (error) {
+        $("reviewReflectionStatus").textContent = error.message || "无法保存自我解释记录。";
+        $("recordReflection").disabled = false;
+        $("skipReflection").disabled = false;
+      }
+    };
+    $("skipReflection").onclick = revealAnswer;
     $("reviewSources").innerHTML = (card.source_evidence_ids || [])
       .map((id) => `<button data-evidence="${esc(id)}">查看出处</button>`)
       .join("");

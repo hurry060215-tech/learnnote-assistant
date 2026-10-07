@@ -797,7 +797,7 @@ export function installProductWorkspace(ctx) {
         method: "POST",
         body: JSON.stringify({ value: $("homeUrl").value }),
       });
-      $("url").value = result.source.url;
+      $("url").value = result.source.normalized_url || result.source.url || "";
       $("newNote").click();
       document.querySelector('[data-input="url"]').click();
       $("createStatus").textContent =

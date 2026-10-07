@@ -44,6 +44,44 @@ class PersonalNotesTests(unittest.TestCase):
         self.assertEqual(loaded[0]["anchor"]["selected_text"], "原文片段")
         self.assertNotIn("ignored", loaded[0]["anchor"])
 
+    def test_changed_note_revision_marks_personal_anchor_stale_even_when_quote_remains(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            note = root / "note.md"
+            note.write_text("# Lesson\n\nA sentence kept across generated revisions.", encoding="utf-8")
+            task = TaskRecord(
+                id="task-stale-anchor",
+                title="Lesson",
+                source_type="local",
+                note_path=str(note),
+                created_at="2026-09-24T00:00:00+00:00",
+                updated_at="2026-09-24T00:00:00+00:00",
+            )
+            with patch("app.personal_notes.DATA_DIR", root), patch("app.personal_notes.get_task", return_value=task):
+                save_annotation(
+                    "task",
+                    task.id,
+                    "My own correction",
+                    "A sentence kept across generated revisions.",
+                    anchor={"source_revision": "previous-revision", "selected_text": "A sentence kept across generated revisions."},
+                )
+                annotation = list_annotations("task", task.id)[0]
+        self.assertTrue(annotation["anchor_status"]["stale"])
+        self.assertTrue(annotation["anchor_status"]["repairable"])
+
+    def test_editing_text_without_a_new_selection_preserves_existing_anchor(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with patch("app.personal_notes.DATA_DIR", Path(directory)), patch("app.personal_notes.get_material", return_value={"sha256": "c" * 64}):
+                saved = save_annotation(
+                    "material", "one", "First note", "Quoted passage",
+                    anchor={"source_revision": "rev-1", "selected_text": "Quoted passage"},
+                )
+                save_annotation("material", "renamed", "Updated text", saved["quote"], saved["id"])
+                current = list_annotations("material", "same-by-hash")[0]
+        self.assertEqual(current["text"], "Updated text")
+        self.assertEqual(current["anchor"]["source_revision"], "rev-1")
+        self.assertEqual(current["anchor"]["selected_text"], "Quoted passage")
+
 
 if __name__ == "__main__":
     unittest.main()

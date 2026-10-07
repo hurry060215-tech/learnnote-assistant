@@ -6,15 +6,15 @@ import re
 from typing import Any
 
 from .models import TranscriptResult, VisualWindow
-from .text_cleanup import canonicalize_unicode_text
+from .text_cleanup import canonicalize_unicode_text, redact_sensitive_url_values
 from .markdown_structure import structural_lines
 
 
-CLAIM_SCHEMA_VERSION = 4
+CLAIM_SCHEMA_VERSION = 5
 _TIMESTAMP = r"\d{1,3}:\d{2}(?::\d{2})?"
 _RANGE_RE = re.compile(rf"(?P<start>{_TIMESTAMP})\s*(?:-|–|—|~|～)\s*(?P<end>{_TIMESTAMP})")
 _POINT_RE = re.compile(rf"(?<![\d:])(?P<point>{_TIMESTAMP})(?![\d:])")
-_SENTENCE_RE = re.compile(r"(?:[^。！？.!?\n]|\.(?<=\d\.)(?=\d))+(?:[。！？.!?]|$)")
+_SENTENCE_RE = re.compile(r"(?:[^。！？.!?\n]|(?<=\w)\.(?=\w))+(?:[。！？.!?]|$)")
 _INFERENCE_RE = re.compile(r"可能|推测|推断|意味着|提示|似乎|倾向于|may\b|might\b|suggest(?:s|ed)?\b|likely\b|inference\b", re.I)
 _VISUAL_RE = re.compile(r"画面|截图|图表|表格|代码|公式|演示|界面|板书|frame|visual|screen|chart|table|code|formula", re.I)
 _TOKEN_RE = re.compile(r"[A-Za-z0-9_\u4e00-\u9fff]{2,}")
@@ -85,6 +85,7 @@ def build_claim_evidence_map(
     markdown: str,
     transcript: TranscriptResult,
     visual_windows: list[VisualWindow] | list[dict[str, Any]] | None = None,
+    document_evidence: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     transcript_items = [
         {
@@ -114,7 +115,28 @@ def build_claim_evidence_map(
             "window_id": str(value.get("id") or ""),
             "grid_url": str(value.get("grid_url") or ""),
         })
-    evidence = transcript_items + visual_items
+    document_items = []
+    seen_document_ids: set[str] = set()
+    for index, item in enumerate(document_evidence or []):
+        value = item.model_dump(mode="json") if hasattr(item, "model_dump") else dict(item)
+        evidence_id = str(value.get("evidence_id") or f"task-{task_id}-document-{index:05d}")[:128]
+        text_value = canonicalize_unicode_text(str(value.get("text") or ""), reject_mojibake=True).strip()
+        if not text_value or evidence_id in seen_document_ids:
+            continue
+        seen_document_ids.add(evidence_id)
+        metadata = value.get("metadata") if isinstance(value.get("metadata"), dict) else {}
+        document_items.append({
+            "evidence_id": evidence_id,
+            "kind": "document",
+            "source_type": str(value.get("source_type") or "document")[:40],
+            "locator": str(value.get("locator") or value.get("label") or f"document section {index + 1}")[:300],
+            "start": -1.0,
+            "end": -1.0,
+            "text": text_value,
+            "source_uri": redact_sensitive_url_values(str(value.get("source_uri") or ""))[:1000],
+            "material_id": str(value.get("material_id") or metadata.get("material_id") or "")[:128],
+        })
+    evidence = transcript_items + visual_items + document_items
     claims = []
     for index, text in enumerate(_claim_texts(markdown)):
         ranges = _ranges(text)
@@ -122,7 +144,9 @@ def build_claim_evidence_map(
         matched = []
         candidates = []
         for item in evidence:
-            range_match = any(_overlap(start, end, item["start"], item["end"]) for start, end in ranges)
+            range_match = item["kind"] != "document" and any(
+                _overlap(start, end, item["start"], item["end"]) for start, end in ranges
+            )
             shared = len(words & _tokens(item["text"]))
             overlap = shared / max(1, len(words))
             lexical_match = shared >= 2 and overlap >= .18
@@ -132,15 +156,17 @@ def build_claim_evidence_map(
                 matched.append(item)
         inference = bool(_INFERENCE_RE.search(text))
         visual_intent = bool(_VISUAL_RE.search(text))
-        if inference:
+        if inference and not matched:
             claim_type = "inference"
         elif visual_intent and any(item["kind"] == "visual" for item in matched):
             claim_type = "visual"
         elif any(item["kind"] == "transcript" for item in matched):
             claim_type = "transcript"
+        elif any(item["kind"] == "document" for item in matched):
+            claim_type = "document"
         else:
             claim_type = "unsupported"
-        if inference:
+        if inference and not matched:
             verification = "inference"
         elif matched:
             verification = "direct"
@@ -159,9 +185,13 @@ def build_claim_evidence_map(
             "verification": verification,
             "review_required": claim_type in {"inference", "unsupported"},
         })
-    counts = {kind: sum(claim["claim_type"] == kind for claim in claims) for kind in ("transcript", "visual", "inference", "unsupported")}
+    counts = {
+        kind: sum(claim["claim_type"] == kind for claim in claims)
+        for kind in ("transcript", "visual", "document", "inference", "unsupported")
+    }
     evidence_revision = hashlib.sha256("\n".join(
-        f"{item['evidence_id']}|{item['locator']}|{item['text']}" for item in evidence
+        f"{item['evidence_id']}|{item['kind']}|{item['source_type']}|{item['locator']}|{item.get('source_uri', '')}|{item['text']}"
+        for item in evidence
     ).encode("utf-8")).hexdigest()
     return {
         "schema_version": CLAIM_SCHEMA_VERSION,
@@ -175,10 +205,10 @@ def build_claim_evidence_map(
         "counts": counts,
         "quality": {
             "claim_count": len(claims),
-            "supported_count": counts["transcript"] + counts["visual"],
+            "supported_count": counts["transcript"] + counts["visual"] + counts["document"],
             "unsupported_count": counts["unsupported"],
             "inference_count": counts["inference"],
-            "coverage_ratio": (counts["transcript"] + counts["visual"]) / len(claims) if claims else 0.0,
+            "coverage_ratio": (counts["transcript"] + counts["visual"] + counts["document"]) / len(claims) if claims else 0.0,
             "direct_count": sum(item.get("verification") == "direct" for item in claims),
             "located_only_count": sum(item.get("verification") == "located_only" for item in claims),
             "pending_review_count": sum(item.get("verification") == "pending_review" for item in claims),
@@ -189,8 +219,18 @@ def build_claim_evidence_map(
 
 def safe_claim_projection(value: dict) -> dict:
     """Old time-only/substring matches stay navigable and require revalidation."""
-    if not isinstance(value, dict) or not value or value.get("schema_version", 1) >= CLAIM_SCHEMA_VERSION:
+    if not isinstance(value, dict) or not value:
         return value
+    try:
+        schema_version = int(value.get("schema_version", 1) or 1)
+    except (TypeError, ValueError):
+        schema_version = 1
+    if schema_version >= CLAIM_SCHEMA_VERSION:
+        return value
+    if schema_version == 4:
+        # Version 5 only adds document-source mappings; older video mappings
+        # already used exact-clause verification and remain safe to project.
+        return {**value, "schema_version": CLAIM_SCHEMA_VERSION}
     claims = [{**c, "candidate_evidence_ids": c.get("evidence_ids", []), "evidence_ids": [],
                "claim_type": "inference" if c.get("claim_type") == "inference" else "unsupported",
                "verification": "pending_review", "review_required": True} for c in value.get("claims", [])]

@@ -12,7 +12,8 @@
     if (lines.length) chunks.push(lines.join("\n"));
     return chunks;
   }
-  function renderMaterial({container, material, text, markdownToHtml, apiUrl, onStudy, onOcr}) {
+  function renderMaterial({container, material, text, markdownToHtml, apiUrl, onStudy, onOcr, onRedecode}) {
+    const copy = (english, chinese) => document.documentElement.lang === "en-US" ? english : chinese;
     container.replaceChildren();
     const article = document.createElement("article"); article.className = "material-reader markdown-note";
     const toolbar = document.createElement("nav"); toolbar.className = "material-actions"; toolbar.setAttribute("aria-label", "资料操作");
@@ -28,7 +29,38 @@
       const meta = material.metadata || {};
       const coverage = document.createElement("small"); coverage.className = "material-ocr-status"; coverage.textContent = `OCR 页面：${Number(meta.ocr_processed_page_count || 0)} / ${Number(meta.ocr_page_count || 0)}，结果需逐页核对。`; toolbar.append(coverage);
     }
-    container.append(toolbar, article);
+    const metadata = material.metadata || {};
+    let redecodePanel = null;
+    if (metadata.raw_sha256 && material.source_type !== "pdf" && onRedecode) {
+      redecodePanel = document.createElement("details");
+      redecodePanel.className = "material-redecode-panel";
+      redecodePanel.open = Boolean(metadata.redecoded || metadata.encoding_confidence === "low");
+      const summary = document.createElement("summary"); summary.textContent = copy("Source encoding and re-decode", "原文编码与重解码");
+      const status = document.createElement("p"); status.className = "material-redecode-status"; status.setAttribute("role", "status");
+      status.textContent = metadata.redecoded
+        ? copy("Re-decoded using the selected encoding; the original file is unchanged.", "此资料已按所选编码重新解码；原始文件未修改。")
+        : copy("Original bytes are kept locally. Re-decoding updates extracted text and evidence anchors without replacing the source file.", "原始字节保留在本机；重解码会更新资料文本和出处锚点，不会覆盖原文件。");
+      const current = document.createElement("small"); current.textContent = `${copy("Current encoding: ", "当前编码：")}${metadata.encoding || copy("unknown", "未知")} · ${metadata.encoding_source || copy("source not recorded", "来源不明")}`;
+      const label = document.createElement("label"); label.textContent = copy("Re-decode with", "重新解码使用的编码");
+      const encoding = document.createElement("select"); encoding.id = "materialRedecodeEncoding"; encoding.setAttribute("aria-label", copy("Re-decode with", "重新解码使用的编码"));
+      for (const [value, labelText] of [["utf-8", "UTF-8"], ["gb18030", "GB18030 / GBK"], ["big5", "Big5"], ["shift_jis", "Shift_JIS"], ["utf-16-le", "UTF-16 LE"], ["utf-16-be", "UTF-16 BE"]]) {
+        const option = document.createElement("option"); option.value = value; option.textContent = labelText; encoding.append(option);
+      }
+      const currentEncoding = String(metadata.decoding_hint || metadata.encoding || "").toLowerCase();
+      if ([...encoding.options].some(option => option.value === currentEncoding)) encoding.value = currentEncoding;
+      label.append(encoding);
+      const button = document.createElement("button"); button.id = "materialRedecodeButton"; button.type = "button"; button.className = "secondary action-button"; button.textContent = copy("Re-decode original", "按所选编码重新解码");
+      button.onclick = async () => {
+        button.disabled = true; encoding.disabled = true; status.textContent = copy("Re-decoding from preserved source bytes…", "正在使用保留的原始字节重新解码…");
+        try { await onRedecode(encoding.value); }
+        catch (error) { status.textContent = error?.message || copy("Re-decode failed; the material was not changed.", "重解码失败，当前资料未改变。"); }
+        finally { if (button.isConnected) button.disabled = false; if (encoding.isConnected) encoding.disabled = false; }
+      };
+      redecodePanel.append(summary, status, current, label, button);
+    }
+    container.append(toolbar);
+    if (redecodePanel) container.append(redecodePanel);
+    container.append(article);
     const chunks = markdownChunks(text); let offset = 0;
     const more = document.createElement("button"); more.type = "button"; more.className = "secondary action-button material-load-more";
     const renderNext = () => {
@@ -102,7 +134,7 @@
       }
     } catch (error) { body.textContent = error?.message || "原文不可用，请重新关联。"; }
   }
-  function renderStudy({els, cards, summary, plan, onReview, onSource, onCreate, onPlan}) {
+  function renderStudy({els, cards, summary, plan, onReview, onSelfAssessment, onSource, onCreate, onPlan}) {
     const reviewed = Number(summary.reviewed_today || 0), target = Math.max(1, Number(plan.daily_target || 10));
     const paused = Boolean(plan.paused), due = Number(summary.due_count || 0);
     els.studyViewSummary.innerHTML = `<span><b>${due}</b><small>${summary.course_scope?'本次课程卡片':'张到期卡片'}</small></span><span><b>${reviewed}</b><small>今日已复习（全部资料）</small></span><span><b>${target}</b><small>每日目标</small></span>`;
@@ -124,10 +156,19 @@
       const article = document.createElement("article"); article.className = "study-card";
       const count = document.createElement("small"); count.textContent = `第 ${index + 1} / ${cards.length} 张`;
       const front = document.createElement("h3"); front.textContent = card.front;
+      const reflection = document.createElement("textarea"); reflection.rows = 3; reflection.maxLength = 2000; reflection.placeholder = "先用自己的话解释要点；回答不会发送给模型。"; reflection.setAttribute("aria-label", "自我解释");
       const answer = document.createElement("p"); answer.textContent = card.back; answer.hidden = true; answer.className = "study-answer";
-      const reveal = document.createElement("button"); reveal.type = "button"; reveal.textContent = "显示答案"; reveal.className = "primary action-button";
+      const reveal = document.createElement("button"); reveal.type = "button"; reveal.textContent = "记录解释并显示出处答案"; reveal.className = "primary action-button";
+      const skipReflection = document.createElement("button"); skipReflection.type = "button"; skipReflection.textContent = "跳过解释";
       const controls = document.createElement("div"); controls.className = "study-card-actions"; controls.hidden = true;
-      reveal.onclick = () => { answer.hidden = false; controls.hidden = false; reveal.hidden = true; answer.tabIndex = -1; answer.focus(); };
+      const showAnswer = () => { answer.hidden = false; controls.hidden = false; reveal.hidden = true; skipReflection.hidden = true; reflection.hidden = true; answer.tabIndex = -1; answer.focus(); };
+      reveal.onclick = async () => {
+        if (!reflection.value.trim()) { status.textContent = "请写下一句解释，或跳过本次解释。"; return; }
+        reveal.disabled = true; skipReflection.disabled = true;
+        try { await onSelfAssessment?.(card.card_id); status.textContent = "已记录自我解释动作；解释文本未保存。"; showAnswer(); }
+        catch (error) { status.textContent = error?.message || "自我解释记录失败，请重试。"; reveal.disabled = false; skipReflection.disabled = false; }
+      };
+      skipReflection.onclick = () => { status.textContent = "本次未记录自我解释。"; showAnswer(); };
       for (const [rating, label] of [[1,"重来"],[2,"困难"],[3,"记住"],[4,"简单"]]) {
         const button = document.createElement("button"); button.type = "button"; button.textContent = label;
         // Retrying after an uncertain response reuses this logical submission.
@@ -154,7 +195,7 @@
       const sources = document.createElement("div"); sources.className = "study-card-sources";
       for (const id of card.source_evidence_ids || []) { const b = document.createElement("button"); b.type = "button"; b.textContent = "查看原文出处"; b.onclick = () => onSource(id); sources.append(b); }
       const status = document.createElement("p"); status.setAttribute("role", "status");
-      article.append(count, front, reveal, answer, controls, sources, status); container.append(article);
+      article.append(count, front, reflection, reveal, skipReflection, answer, controls, sources, status); container.append(article);
     }; show();
   }
   function renderStudyHistory({dashboard,onSource}) {

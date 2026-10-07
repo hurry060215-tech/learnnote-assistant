@@ -5,6 +5,7 @@ from pathlib import Path
 
 from .config import TEMP_DIR
 from .downloader import MediaDownloader, effective_resource_kind, fallback_page_contexts, preflight_media_resource, rank_media_candidates
+from .downloader_policy import prefer_ytdlp_before_page_scan
 from .models import MediaPreflightResult, PagePreflightRequest, ResourceCandidate
 from .processor import enrich_resource_candidates_with_active_video
 
@@ -26,6 +27,8 @@ def resource_with_preflight_result(candidate: ResourceCandidate, result: MediaPr
 
 def _should_scan_page_for_preflight(request: PagePreflightRequest, ranked: list[ResourceCandidate], *, after_failed_probe: bool = False) -> bool:
     if request.probe_limit <= 0 or not request.page_url:
+        return False
+    if not request.resources and prefer_ytdlp_before_page_scan(request.page_url):
         return False
     if len(ranked) >= request.probe_limit and not after_failed_probe:
         return False
@@ -149,6 +152,9 @@ def page_preflight_report(request: PagePreflightRequest) -> dict:
     elif has_drm_boundary:
         code = "drm_or_encrypted"
         message = "页面只暴露 blob/DRM 播放线索，没有可交给后端下载的 mp4、m3u8 或 mpd。"
+    elif not request.resources and prefer_ytdlp_before_page_scan(request.page_url):
+        code = "page_resolver_available"
+        message = "该视频站点可由 yt-dlp 按页面地址解析；此预检不会扫描站点源码或下载视频。可以直接开始任务；若站点要求登录或受 DRM 限制，任务会显示失败原因。"
     else:
         code = "no_media_found"
         message = "当前页没有发现可预检的 mp4、m3u8 或 mpd 候选。"

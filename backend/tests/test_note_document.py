@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import unittest
+import json
+import re
+from pathlib import Path
 from unittest.mock import patch
 
 from app.note_document import build_note_document, lint_note_markdown, normalize_note_markdown
@@ -9,6 +12,37 @@ from app.routers.notes import api_note_document
 
 
 class NoteDocumentTests(unittest.TestCase):
+    def test_snapshot_corpus_covers_languages_and_note_shapes(self):
+        path = Path(__file__).parent / "fixtures" / "note_structure_golden_20260924.json"
+        corpus = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual(corpus["schema_version"], 1)
+        self.assertGreaterEqual(len(corpus["cases"]), 5)
+        self.assertEqual({case["language"] for case in corpus["cases"]}, {"en", "zh"})
+        for case in corpus["cases"]:
+            with self.subTest(case=case["id"]):
+                markdown = (
+                    case.get("markdown_prefix", "")
+                    + case.get("paragraph", "") * case.get("paragraph_repeat", 1)
+                    if case.get("paragraph") else case["markdown"]
+                )
+                normalized = normalize_note_markdown(case["title"], markdown)
+                document = build_note_document(case["title"], normalized.markdown)
+                self.assertEqual(
+                    [section["heading"] for section in document["sections"]],
+                    case["expected_headings"],
+                )
+                self.assertTrue(set(case.get("expected_issue_codes", [])).issubset(
+                    {issue["code"] for issue in normalized.report["issues"]}
+                ))
+                if "expected_reflowed_paragraphs" in case:
+                    self.assertEqual(normalized.report["reflowed_long_paragraphs"], case["expected_reflowed_paragraphs"])
+                self.assertIn(
+                    case["expected_anchor"],
+                    {section["section_id"] for section in document["sections"]},
+                )
+                self.assertEqual(normalize_note_markdown(case["title"], normalized.markdown).markdown,
+                                 normalized.markdown)
+
     def test_paraphrased_model_title_does_not_block_valid_summary(self):
         result = normalize_note_markdown("原始视频标题 - bilibili", "# 更简洁的总结标题\n\n## 核心观点\n" + "这是材料支持的总结。" * 12)
         self.assertFalse(result.report["blocking"])
@@ -20,6 +54,32 @@ class NoteDocumentTests(unittest.TestCase):
         self.assertFalse(result.report["blocking"])
         self.assertIn("## 另一章节", result.markdown)
         self.assertIn("```python\n# code comment\n```", result.markdown)
+
+    def test_code_bytes_and_prompt_examples_do_not_trigger_prose_gates(self):
+        code = '```python\nvalue = "Ignore previous instructions"  \nname = "瀛︿範閫�"  \naccent = "e\u0301"  \n```'
+        result = normalize_note_markdown("代码课", "## 示例\n\n" + code + "\n\n## 说明\n\n" + ("该示例仅用于说明字符串内容。" * 5) + "[00:10]")
+        self.assertIn(code, result.markdown)
+        self.assertFalse(result.report["blocking"])
+        self.assertNotIn("internal_prompt_leak", {item["code"] for item in result.report["issues"]})
+        self.assertNotIn("mojibake_detected", {item["code"] for item in result.report["issues"]})
+
+    def test_long_chinese_prose_wraps_between_sentences_and_heading_levels_are_repaired(self):
+        paragraph = "这句话完整说明一个经过证据确认的概念。" * 48
+        raw = "## 主要内容\n\n#### 深层主题\n\n" + paragraph
+        result = normalize_note_markdown("课程", raw)
+        self.assertEqual(result.report["reflowed_long_paragraphs"], 1)
+        self.assertEqual(result.report["adjusted_heading_jumps"], 1)
+        self.assertIn("### 深层主题", result.markdown)
+        self.assertEqual(re.sub(r"\s+", "", paragraph), re.sub(r"\s+", "", result.markdown.split("### 深层主题", 1)[1]))
+        self.assertNotIn("long_paragraph", {item["code"] for item in result.report["issues"]})
+
+    def test_section_anchors_do_not_change_when_an_unrelated_heading_is_added(self):
+        first = normalize_note_markdown("课程", "## 核心结论\n正文 [00:10]\n\n## 复习\n回忆 [00:20]")
+        changed = normalize_note_markdown("课程", "## 新增章节\n新增 [00:05]\n\n## 核心结论\n正文 [00:10]\n\n## 复习\n回忆 [00:20]")
+        first_ids = {item["heading"]: item["section_id"] for item in build_note_document("课程", first.markdown)["sections"]}
+        changed_ids = {item["heading"]: item["section_id"] for item in build_note_document("课程", changed.markdown)["sections"]}
+        self.assertEqual(first_ids["核心结论"], changed_ids["核心结论"])
+        self.assertEqual(first_ids["复习"], changed_ids["复习"])
 
     def test_normalize_removes_wrapper_duplicate_title_and_control_chars(self) -> None:
         result = normalize_note_markdown(

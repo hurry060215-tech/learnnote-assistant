@@ -15,6 +15,31 @@ from app.study import rebuild_study_schedules, clear_study_data
 
 
 class StudyLoopTests(unittest.TestCase):
+    def test_video_transcript_cards_reject_caption_fragments_and_use_specific_questions(self):
+        fragment = SourceEvidence(
+            evidence_id="caption-fragment",
+            source_type="video",
+            title="Public lecture",
+            locator="422.1-425.0s",
+            text="build that I can build that system because I did",
+            metadata={"kind": "transcript", "start": 422.1, "end": 425.0},
+        )
+        definition = SourceEvidence(
+            evidence_id="complete-definition",
+            source_type="video",
+            title="Public lecture",
+            locator="120.0-132.0s",
+            text="Word vectors are numerical representations of words in a learned vector space.",
+            metadata={"kind": "transcript", "start": 120.0, "end": 132.0},
+        )
+
+        cards = propose_cards([fragment, definition])
+
+        self.assertEqual(len(cards), 1)
+        self.assertIn("What are Word vectors?", cards[0].front)
+        self.assertEqual(cards[0].back, definition.text)
+        self.assertEqual(cards[0].source_evidence_ids, [definition.evidence_id])
+
     def test_schedule_preview_does_not_record_review(self):
         from app.study import review_schedule_preview
         with tempfile.TemporaryDirectory() as root, patch("app.study.DATA_DIR", Path(root)):

@@ -31,7 +31,7 @@ from .downloader_policy import (
     truncate_process_output as _truncate_process_output,
 )
 from .media_kinds import classify_resource, effective_resource_kind
-from .text_cleanup import TextDecodingError, decode_text_bytes, read_canonical_text
+from .text_cleanup import TextDecodingError, decode_text_bytes, declared_text_encoding, read_canonical_text
 from .media_candidate_ranking import (
     candidate_rank_key,
     kind_rank,
@@ -220,12 +220,15 @@ def _filename_from_content_disposition(value: str) -> str:
         if key == "filename*":
             charset, marker, encoded = raw.partition("''")
             try:
-                filename = unquote(encoded if marker else raw, encoding=charset or "utf-8", errors="replace")
-            except LookupError:
-                filename = unquote(encoded if marker else raw, errors="replace")
+                filename = unquote(encoded if marker else raw, encoding=charset or "utf-8", errors="strict")
+            except (LookupError, UnicodeDecodeError):
+                filename = ""
             break
         if key == "filename" and raw:
-            filename = unquote(raw, errors="replace")
+            try:
+                filename = unquote(raw, encoding="utf-8", errors="strict")
+            except UnicodeDecodeError:
+                filename = ""
     if not filename:
         return ""
     return Path(filename.replace("\\", "/")).name
@@ -619,7 +622,7 @@ def _decoded_media_values(value: str) -> list[str]:
         padded = compact + "=" * (-len(compact) % 4)
         for decoder in (urlsafe_b64decode, b64decode):
             try:
-                decoded = decoder(padded).decode("utf-8", errors="ignore").strip()
+                decoded = decoder(padded).decode("utf-8", errors="strict").strip()
             except Exception:
                 continue
             if decoded and decoded not in values and not re.search(r"[\x00-\x08\x0e-\x1f]", decoded):
@@ -1729,10 +1732,40 @@ def _is_untrusted_page_scan_candidate(candidate: ResourceCandidate) -> bool:
     return suspicious_context or third_party_frame
 
 
+def _decode_response_text(
+    body: bytes,
+    content_type: str = "",
+    *,
+    source: str = "",
+    reject_mojibake: bool = True,
+    html_hint: bool = False,
+) -> str:
+    return decode_text_bytes(
+        body,
+        source=source,
+        declared_encoding=declared_text_encoding(
+            content_type,
+            body,
+            html_hint=html_hint or "html" in str(content_type or "").lower(),
+        ),
+        reject_mojibake=reject_mojibake,
+    ).text
+
+
+def _decode_detection_snippet(body: bytes) -> str:
+    sample = bytes(body or b"")[:8192]
+    try:
+        return decode_text_bytes(sample, source="response-snippet", reject_mojibake=False).text
+    except TextDecodingError:
+        # Detection only: Latin-1 maps each byte to one code point and keeps
+        # ASCII protocol markers intact without silently dropping bytes.
+        return sample.decode("latin-1")
+
+
 def _looks_like_login_or_error(body: bytes) -> bool:
     if not body:
         return False
-    text = body[:8192].decode("utf-8", errors="ignore").lower()
+    text = _decode_detection_snippet(body).lower()
     return any(marker in text for marker in ["login", "signin", "sign in", "请登录", "登录", "unauthorized", "forbidden"])
 
 
@@ -1742,7 +1775,7 @@ def _disguised_text_failure_code(body: bytes) -> str:
     sample = body[:8192]
     if b"\x00" in sample[:512]:
         return ""
-    text = sample.decode("utf-8", errors="ignore").lstrip("\ufeff\r\n\t ").lower()
+    text = _decode_detection_snippet(sample).lstrip("\ufeff\r\n\t ").lower()
     if not text:
         return ""
     if text.startswith("#extm3u") or re.match(r"<mpd(?:\s|>)", text, re.I):
@@ -1770,8 +1803,12 @@ def _embedded_media_candidates_from_text_response(
     body: bytes,
     base_url: str,
     referer: str,
+    content_type: str = "",
 ) -> list[ResourceCandidate]:
-    text = body.decode("utf-8-sig", errors="replace")
+    try:
+        text = _decode_response_text(body, content_type, source="embedded-media-response")
+    except TextDecodingError:
+        return []
     resources = extract_media_resources_from_text(text, base_url, "direct-response")
     if not resources:
         return []
@@ -1970,7 +2007,13 @@ def preflight_media_resource(
                     code="download_forbidden",
                     message=f"媒体预检返回 HTTP {response.status_code}。",
                 )
-            manifest_kind, manifest_mime = _manifest_kind_from_body(body.decode("utf-8", errors="ignore"), content_type)
+            try:
+                manifest_probe_text = _decode_response_text(
+                    body[:8192], content_type, source="media-preflight", reject_mojibake=False
+                )
+            except TextDecodingError:
+                manifest_probe_text = ""
+            manifest_kind, manifest_mime = _manifest_kind_from_body(manifest_probe_text, content_type)
             if _non_media_content_type(content_type) and not _textish_content_type(content_type):
                 return MediaPreflightResult(
                     **base,
@@ -1980,7 +2023,7 @@ def preflight_media_resource(
                     message=f"Candidate resolved to non-media content ({content_type}); it was not accepted as video.",
                 )
             embedded_candidates = (
-                _embedded_media_candidates_from_text_response(candidate, body, final_url, referer)
+                _embedded_media_candidates_from_text_response(candidate, body, final_url, referer, content_type)
                 if _textish_content_type(content_type) and manifest_kind == "unknown"
                 else []
             )
@@ -2086,7 +2129,16 @@ def preflight_media_resource(
                 )
 
             if probe_kind == "hls":
-                text = body.decode("utf-8", errors="ignore")
+                try:
+                    text = _decode_response_text(body, content_type, source="hls-manifest")
+                except TextDecodingError:
+                    return MediaPreflightResult(
+                        **{**base, "warnings": attempt_warnings},
+                        ok=True,
+                        downloadable=False,
+                        code="text_encoding_unsupported",
+                        message="HLS manifest 不是可无损读取的文字编码，已停止解析。",
+                    )
                 if "#EXTM3U" not in text and "mpegurl" not in content_type.lower():
                     attempt_warnings.append("响应不像标准 HLS manifest，实际下载可能失败。")
                 drm_like_key, aes_128_key = _hls_encryption_flags(text)
@@ -2102,7 +2154,16 @@ def preflight_media_resource(
                     attempt_warnings.append("HLS 使用 AES-128 key，ffmpeg 仍可能因 key 权限失败。")
 
             if probe_kind == "dash":
-                text = body.decode("utf-8", errors="ignore")
+                try:
+                    text = _decode_response_text(body, content_type, source="dash-manifest")
+                except TextDecodingError:
+                    return MediaPreflightResult(
+                        **{**base, "warnings": attempt_warnings},
+                        ok=True,
+                        downloadable=False,
+                        code="text_encoding_unsupported",
+                        message="DASH manifest 不是可无损读取的文字编码，已停止解析。",
+                    )
                 if "<MPD" not in text and "dash+xml" not in content_type.lower():
                     attempt_warnings.append("响应不像标准 DASH manifest，实际下载可能失败。")
                 if re.search(r"ContentProtection|widevine|playready|urn:uuid", text, re.I):
@@ -2789,7 +2850,23 @@ class MediaDownloader:
                         )
                         return apply_context_headers(url_resources, final_url)
                     chunks.append(chunk)
-                text = b"".join(chunks).decode(response.encoding or "utf-8-sig", errors="replace")
+                page_body = b"".join(chunks)
+                html_prefix = page_body.lstrip(b"\xef\xbb\xbf\r\n\t ").lower()
+                html_hint = "html" in content_type.lower() or html_prefix.startswith(
+                    (b"<!doctype html", b"<html", b"<head", b"<meta")
+                )
+                try:
+                    text = _decode_response_text(page_body, content_type, source="page-scan", html_hint=html_hint)
+                except TextDecodingError as exc:
+                    code = "text_mojibake_detected" if str(exc).startswith("text_mojibake_detected") else "text_encoding_unsupported"
+                    self._record_attempt(
+                        strategy="page-scan",
+                        url=page_url,
+                        status="skipped",
+                        code=code,
+                        message="页面文字无法无损解码，已跳过嵌入媒体地址扫描。",
+                    )
+                    return apply_context_headers(url_resources, final_url)
                 base_url = final_url
                 resources = [*url_resources]
                 seen = {item.url for item in resources}
@@ -3310,7 +3387,11 @@ class MediaDownloader:
                     body = _read_text_response_body(first_chunk, chunks)
                     if _looks_like_login_or_error(body):
                         raise DownloadError("auth_required", "Media endpoint returned a login/error page instead of a video file.")
-                    manifest_kind, manifest_mime = _manifest_kind_from_body(body.decode("utf-8", errors="ignore"), content_type)
+                    try:
+                        response_text = _decode_response_text(body, content_type, source="media-text-response")
+                    except TextDecodingError as exc:
+                        raise DownloadError("text_encoding_unsupported", "Media endpoint text could not be decoded losslessly.") from exc
+                    manifest_kind, manifest_mime = _manifest_kind_from_body(response_text, content_type)
                     if manifest_kind in {"hls", "dash"}:
                         raise ManifestEndpointDetected(manifest_kind, manifest_mime)
                     resolved = self._download_embedded_media_response(candidate, body, response.url or url, cookies, referer, title)
@@ -3320,7 +3401,11 @@ class MediaDownloader:
                             setattr(candidate, field, getattr(resolved_candidate, field))
                         return output
                     raise DownloadError("download_forbidden", "Media endpoint returned text/JSON but no downloadable video or manifest URL was found.")
-                manifest_kind, manifest_mime = _manifest_kind_from_body(first_chunk.decode("utf-8", errors="ignore"), content_type)
+                try:
+                    manifest_probe_text = first_chunk.decode("utf-8-sig", errors="strict")
+                except UnicodeDecodeError:
+                    manifest_probe_text = ""
+                manifest_kind, manifest_mime = _manifest_kind_from_body(manifest_probe_text, content_type)
                 if manifest_kind in {"hls", "dash"}:
                     raise ManifestEndpointDetected(manifest_kind, manifest_mime)
                 mismatch = _binary_video_mismatch(first_chunk, content_type)
@@ -3483,7 +3568,10 @@ class MediaDownloader:
                     raise DownloadError("auth_required", "manifest URL returned a login/error page instead of an HLS/DASH manifest.")
                 _raise_disguised_text_failure(body, "Manifest URL")
 
-                text = body.decode("utf-8", errors="ignore")
+                try:
+                    text = _decode_response_text(body, content_type, source="manifest-preflight")
+                except TextDecodingError as exc:
+                    raise DownloadError("text_encoding_unsupported", "Manifest response could not be decoded losslessly.") from exc
                 manifest_kind, manifest_mime = _manifest_kind_from_body(text, content_type)
                 if manifest_kind == kind:
                     candidate.kind = manifest_kind
@@ -3532,7 +3620,10 @@ class MediaDownloader:
                     raise DownloadError("auth_required", "manifest replay returned a login/error page instead of an HLS/DASH manifest.")
                 _raise_disguised_text_failure(body, "Manifest replay")
 
-                text = body.decode("utf-8", errors="ignore")
+                try:
+                    text = _decode_response_text(body, content_type, source="manifest-replay")
+                except TextDecodingError as exc:
+                    raise DownloadError("text_encoding_unsupported", "Replayed manifest could not be decoded losslessly.") from exc
                 manifest_kind, manifest_mime = _manifest_kind_from_body(text, content_type)
                 if manifest_kind not in {"hls", "dash"}:
                     raise DownloadError("unsupported_manifest", "Replayed playback request did not return an HLS/DASH manifest.")

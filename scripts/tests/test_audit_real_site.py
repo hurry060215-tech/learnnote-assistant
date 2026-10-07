@@ -40,6 +40,24 @@ def audit_from_profile(profile):
 
 
 class AuditRealSiteSignalProfileTest(unittest.TestCase):
+    def test_public_audit_backend_uses_isolated_data_and_no_inherited_key(self):
+        output = ROOT / "build" / "site-audit-isolation"
+        environment = audit_real_site.isolated_backend_environment(
+            output,
+            {"LEARNNOTE_DATA_DIR": "D:/private/user-data", "LEARNNOTE_LLM_API_KEY": "sk-private-value"},
+        )
+        self.assertEqual(Path(environment["LEARNNOTE_DATA_DIR"]), output.resolve())
+        self.assertEqual(environment["LEARNNOTE_LLM_API_KEY"], "")
+        self.assertEqual(environment["LEARNNOTE_DEPLOYMENT_MODE"], "desktop")
+
+    def test_public_audit_accepts_an_output_dir_outside_repo_data(self):
+        source = SCRIPT.read_text(encoding="utf-8")
+        wrapper = (ROOT / "scripts" / "audit-real-site.ps1").read_text(encoding="utf-8")
+        self.assertIn('parser.add_argument("--output-dir"', source)
+        self.assertIn('out_dir = Path(args.output_dir)', source)
+        self.assertIn('[string]$OutputDir = ""', wrapper)
+        self.assertIn('"--output-dir", $OutputDir', wrapper)
+
     def test_learning_platform_post_api_without_cookie_needs_auth_context(self):
         profile = audit_real_site.signal_profile(context([
             {

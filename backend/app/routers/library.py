@@ -5,7 +5,7 @@ import re
 from types import SimpleNamespace
 from uuid import uuid4
 
-from fastapi import APIRouter, Body, File, HTTPException, UploadFile
+from fastapi import APIRouter, Body, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -24,6 +24,7 @@ from ..library import (
     material_capabilities,
     material_content,
     material_source_path,
+    redecode_document_material,
     rebuild_index,
     register_task_material,
     restore_library,
@@ -79,7 +80,7 @@ def api_library_materials(limit: int = 100, source_type: str = "") -> dict:
 
 
 @library_router.post("/materials/import")
-async def api_library_material_import(file: UploadFile = File(...)) -> dict:
+async def api_library_material_import(file: UploadFile = File(...), encoding: str = Form(default="", max_length=40)) -> dict:
     filename = Path(file.filename or "material").name
     content = bytearray()
     while True:
@@ -93,7 +94,7 @@ async def api_library_material_import(file: UploadFile = File(...)) -> dict:
                 detail={"code": "material_file_too_large", "message": "学习资料不能超过 32 MB。"},
             )
     try:
-        material = import_document_material(filename, bytes(content), file.content_type or "")
+        material = import_document_material(filename, bytes(content), file.content_type or "", encoding=encoding.strip())
     except ValueError as exc:
         code = str(exc)
         messages = {
@@ -106,7 +107,8 @@ async def api_library_material_import(file: UploadFile = File(...)) -> dict:
             "pdf_page_limit_exceeded": "PDF 页数超过 500 页，请拆分后再导入。",
             "extracted_text_too_large": "资料解压后的文本超过 500 万字，请拆分后再导入。",
             "material_anchor_limit_exceeded": "资料章节过多，请拆分为较小文件后导入。",
-            "text_encoding_unsupported": "无法可靠识别资料编码，请转换为 UTF-8 后重试。",
+            "text_encoding_unsupported": "无法可靠识别资料编码；请选择文字编码后重试。",
+            "text_mojibake_detected": "检测到高置信度乱码；请选择原文编码后重试。",
             "material_storage_failed": "无法安全保存本地资料，请检查磁盘空间和数据目录权限。",
         }
         status = 409 if code == "local_video_use_task_upload" else 422
@@ -172,6 +174,27 @@ def api_library_delete_material(material_id: str, confirm: str = "") -> dict:
         code = str(exc)
         status = 404 if code == "material_not_found" else 422
         raise HTTPException(status_code=status, detail={"code": code, "message": "学习资料无法安全删除。"}) from exc
+
+
+@library_router.post("/materials/{material_id}/redecode")
+def api_library_material_redecode(material_id: str, payload: dict | None = Body(default=None)) -> dict:
+    encoding = str((payload or {}).get("encoding") or "").strip()[:40]
+    try:
+        return {"ok": True, "material": redecode_document_material(material_id, encoding)}
+    except ValueError as exc:
+        code = str(exc)
+        status = 404 if code == "material_not_found" else 422
+        messages = {
+            "material_redecode_encoding_required": "请先选择原文编码。",
+            "material_redecode_pdf_unsupported": "PDF 请使用本地 OCR；字符集重解码仅适用于 TXT、Markdown 和 HTML。",
+            "material_source_integrity_mismatch": "原始文件校验失败，未覆盖当前资料。",
+            "material_redecode_empty": "所选编码没有提取出有效文本，当前资料未改变。",
+            "material_redecode_evidence_missing": "原始出处索引不完整，当前资料未改变。",
+            "text_encoding_unsupported": "所选编码无法无损解码原始字节，当前资料未改变。",
+            "text_mojibake_detected": "所选编码仍会产生高置信度乱码，当前资料未改变。",
+            "material_anchor_limit_exceeded": "解码结果包含过多段落，当前资料未改变。",
+        }
+        raise HTTPException(status_code=status, detail={"code": code, "message": messages.get(code, "资料重解码失败，当前内容未改变。")}) from exc
 
 
 @library_router.get("/materials/{material_id}/anchors")

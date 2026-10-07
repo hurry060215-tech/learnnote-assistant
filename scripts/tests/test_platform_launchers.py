@@ -32,6 +32,19 @@ class PlatformLauncherContractTests(unittest.TestCase):
         self.assertIn("open-browser-after-health.ps1", powershell)
         self.assertIn("start-macos.sh", command)
 
+    def test_windows_browser_launcher_reuses_ready_service_and_rejects_port_conflicts(self) -> None:
+        source = (ROOT / "start-learnnote.ps1").read_text(encoding="utf-8")
+
+        self.assertIn("[ValidateRange(1, 65535)]", source)
+        self.assertIn("function Get-LearnNoteHealthState", source)
+        self.assertIn('health.service -eq "learnnote"', source)
+        self.assertIn("Reusing it; no second backend will be started.", source)
+        self.assertIn("No second backend was started.", source)
+        self.assertIn("$backendExitCode = $LASTEXITCODE", source)
+        port_check = source.index("if (Test-LocalPortOpen -PortNumber $Port)")
+        runtime_step = source.index('Write-Step "Preparing local runtime"')
+        self.assertLess(port_check, runtime_step)
+
     def test_windows_launcher_keeps_project_root_on_python_path(self) -> None:
         source = (ROOT / "start-desktop.ps1").read_text(encoding="utf-8")
         self.assertIn("PYTHONPATH", source)

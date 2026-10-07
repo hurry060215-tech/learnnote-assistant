@@ -98,7 +98,7 @@ const fs = require("node:fs");
     );
     await p.locator("#closeAssistant").click();
     await p.locator("#annotationText").fill("需要编辑的个人补充");
-    await p.locator("#annotationForm button").click();
+    await p.locator("#saveAnnotation").click();
     await p.waitForFunction(() =>
       document
         .querySelector("#annotationList")

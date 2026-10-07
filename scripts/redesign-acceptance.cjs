@@ -46,7 +46,7 @@ const path = require("node:path");
       document.querySelector("#document").textContent.includes("我的修订"),
     );
     await page.locator("#annotationText").fill("下次核对课程中的例子。");
-    await page.locator("#annotationForm button").click();
+    await page.locator("#saveAnnotation").click();
     await page.waitForFunction(() =>
       document
         .querySelector("#annotationList")

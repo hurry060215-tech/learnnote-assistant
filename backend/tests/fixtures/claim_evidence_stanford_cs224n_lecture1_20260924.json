@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "corpus_id": "stanford-cs224n-sp24-lecture1-human-audit",
+  "source": {
+    "title": "Stanford CS224N Spring 2024 Lecture 1: Intro and Word Vectors",
+    "course_url": "https://web.stanford.edu/class/cs224n/",
+    "video_url": "https://www.youtube.com/watch?v=DzpHeXVSC5I",
+    "publisher": "Stanford Online",
+    "video_id": "DzpHeXVSC5I",
+    "transcript_kind": "YouTube English original auto-captions"
+  },
+  "annotation_note": "Claims and gold labels are manually written paraphrases of the linked public lecture at the listed time ranges. The raw auto-captions are downloaded for each run and are not committed. This small audit is not a general semantic-accuracy benchmark.",
+  "label_order": ["direct", "located_only", "inference", "pending_review"],
+  "cases": [
+    {"id":"cs224n-onehot-coordinate","start_seconds":1930,"end_seconds":1990,"text":"The lecture describes a one-hot code as assigning a separate coordinate to each vocabulary item.","gold":"direct","risk_tags":["entity","definition"]},
+    {"id":"cs224n-onehot-length","start_seconds":1930,"end_seconds":1990,"text":"A large vocabulary can lead to long one-hot vectors.","gold":"direct","risk_tags":["quantity","cause"]},
+    {"id":"cs224n-onehot-meaning","start_seconds":1950,"end_seconds":2015,"text":"The lecture says one-hot word codes do not inherently represent semantic meaning or similarity.","gold":"direct","risk_tags":["negation","semantics"]},
+    {"id":"cs224n-hotel-motel-contradiction","start_seconds":1975,"end_seconds":2020,"text":"The lecture says distinct one-hot codes make hotel and motel appear semantically similar.","gold":"located_only","risk_tags":["entity","contradiction"]},
+    {"id":"cs224n-onehot-storage-inference","start_seconds":1930,"end_seconds":1990,"text":"A larger vocabulary may increase the storage cost of one-hot word codes.","gold":"inference","risk_tags":["quantity","inference"]},
+    {"id":"cs224n-embedding-width","start_seconds":1930,"end_seconds":2020,"text":"The lecture fixes every learned word vector at exactly 300 dimensions.","gold":"pending_review","risk_tags":["number","unsupported"]},
+    {"id":"cs224n-softmax-probability","start_seconds":3480,"end_seconds":3550,"text":"The lecture describes softmax as converting scores into a probability distribution over context words.","gold":"direct","risk_tags":["definition","probability"]},
+    {"id":"cs224n-softmax-all-contexts","start_seconds":3480,"end_seconds":3550,"text":"The probability calculation considers each possible context word before normalization.","gold":"direct","risk_tags":["scope","process"]},
+    {"id":"cs224n-softmax-unnormalized","start_seconds":3480,"end_seconds":3550,"text":"After softmax, the outputs remain unnormalized real-valued logits.","gold":"located_only","risk_tags":["contradiction","definition"]},
+    {"id":"cs224n-softmax-compute-inference","start_seconds":3480,"end_seconds":3550,"text":"Normalizing over a large set of possible context words may increase computation.","gold":"inference","risk_tags":["cause","inference"]},
+    {"id":"cs224n-softmax-calibration","start_seconds":3480,"end_seconds":3550,"text":"The lecture guarantees that its softmax probabilities are perfectly calibrated.","gold":"pending_review","risk_tags":["unsupported","certainty"]}
+  ]
+}

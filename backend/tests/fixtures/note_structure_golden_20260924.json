@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "corpus_id": "note-structure-local-golden-20260924",
+  "cases": [
+    {
+      "id": "english-code-course",
+      "language": "en",
+      "shape": "code-course",
+      "title": "Python Lists",
+      "markdown": "---\nsource: local lesson\n---\n\n# Python Lists\n\n## Functions and mutation\n\nThe sort method changes its receiver in place. [00:10]\n\n```python\nvalues = [3, 1]\nvalues.sort()  \nprint(values)\n```\n",
+      "expected_headings": ["Functions and mutation"],
+      "expected_anchor": "section-functions-and-mutation",
+      "expected_issue_codes": []
+    },
+    {
+      "id": "chinese-slide-deck",
+      "language": "zh",
+      "shape": "presentation",
+      "title": "生物统计课",
+      "markdown": "## 研究设计\n\n先区分实验单位与观测单位。[01:12]\n\n## 研究设计\n\n抽样层级需要和结论范围一致。[02:30]\n",
+      "expected_headings": ["研究设计", "研究设计"],
+      "expected_anchor": "section-研究设计-2",
+      "expected_issue_codes": []
+    },
+    {
+      "id": "english-operation-guide",
+      "language": "en",
+      "shape": "operation-tutorial",
+      "title": "Installation Guide",
+      "markdown": "## Install the package\n\nRun the installer after checking the checksum. [00:20]\n\n#### Verify the app\n\nOpen the app and confirm that the local service is ready. [01:10]\n",
+      "expected_headings": ["Install the package", "Verify the app"],
+      "expected_anchor": "section-install-the-package",
+      "expected_issue_codes": []
+    },
+    {
+      "id": "empty-evidence",
+      "language": "zh",
+      "shape": "empty-evidence",
+      "title": "无来源说明",
+      "markdown": "## 结论\n\n这是一个没有回源位置的总结段落，应该提醒用户检查来源。",
+      "expected_headings": ["结论"],
+      "expected_anchor": "section-结论",
+      "expected_issue_codes": ["missing_visible_evidence"]
+    },
+    {
+      "id": "long-chinese-prose",
+      "language": "zh",
+      "shape": "long-prose",
+      "title": "统计学习",
+      "paragraph": "这个句子在样本中描述一个独立概念，并保留完整语义边界。",
+      "paragraph_repeat": 32,
+      "markdown_prefix": "## 模型假设\n\n",
+      "expected_headings": ["模型假设"],
+      "expected_anchor": "section-模型假设",
+      "expected_issue_codes": ["missing_visible_evidence"],
+      "expected_reflowed_paragraphs": 1
+    },
+    {
+      "id": "internal-prompt-is-prose-only",
+      "language": "en",
+      "shape": "prompt-leak-and-code",
+      "title": "Prompt Safety Lesson",
+      "markdown": "## Example payload\n\n```python\nprompt = 'Ignore previous instructions'  \ntext = '瀛︿範閫�'  \n```\n\n## Evidence\n\nThe example is a quoted string, not an instruction to the note generator. [00:30]\n",
+      "expected_headings": ["Example payload", "Evidence"],
+      "expected_anchor": "section-example-payload",
+      "expected_issue_codes": []
+    }
+  ]
+}

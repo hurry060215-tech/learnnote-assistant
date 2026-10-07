@@ -20,7 +20,9 @@ from typing import Any, Iterable
 from .markdown_structure import prose_text, structural_lines
 
 
-DOCUMENT_SCHEMA_VERSION = 1
+DOCUMENT_SCHEMA_VERSION = 2
+MAX_LONG_PARAGRAPH_CHARS = 800
+TARGET_PARAGRAPH_CHARS = 640
 
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
 _FENCE_RE = re.compile(r"\A\s*```(?:markdown|md)?\s*\n(?P<body>.*)\n```\s*\Z", re.IGNORECASE | re.DOTALL)
@@ -73,14 +75,133 @@ def _split_frontmatter(lines: list[str]) -> tuple[list[str], list[str]]:
     return [], lines
 
 
+def strip_note_frontmatter(markdown: str) -> str:
+    """Return reader/export Markdown without machine-only YAML metadata."""
+
+    _, body = _split_frontmatter(str(markdown or "").splitlines())
+    return "\n".join(body)
+
+
+def _is_plain_paragraph(lines: list[str], prose_flags: list[bool]) -> bool:
+    if not lines or not all(prose_flags):
+        return False
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if (
+            _HEADING_RE.match(line)
+            or _is_list_or_quote_or_rule(line)
+            or stripped.startswith(("|", "<"))
+            or "`" in line
+            or "[" in line
+            or "]" in line
+            or "  " == line[-2:]
+            or line.endswith("\\")
+        ):
+            return False
+    return True
+
+
+def _is_list_or_quote_or_rule(line: str) -> bool:
+    value = line.lstrip()
+    return (
+        value.startswith(">")
+        or bool(re.match(r"(?:[-*+]\s+|\d+[.)]\s+)", value))
+        or value in {"---", "***", "___"}
+    )
+
+
+def _split_long_prose_paragraphs(lines: list[str]) -> tuple[list[str], int]:
+    """Wrap long plain prose at sentence boundaries; never cut a sentence."""
+
+    line_info = list(structural_lines(lines))
+    output: list[str] = []
+    block: list[str] = []
+    flags: list[bool] = []
+    reflowed = 0
+
+    def flush() -> None:
+        nonlocal reflowed
+        if not block:
+            return
+        paragraph = " ".join(line.strip() for line in block if line.strip())
+        if len(paragraph) <= MAX_LONG_PARAGRAPH_CHARS or not _is_plain_paragraph(block, flags):
+            output.extend(block)
+            block.clear()
+            flags.clear()
+            return
+        sentences = [
+            value.strip()
+            for value in re.split(r"(?<=[。！？；])\s*|(?<=[.!?])\s+(?=[A-Z0-9\"'])", paragraph)
+            if value.strip()
+        ]
+        if len(sentences) < 2:
+            output.extend(block)
+            block.clear()
+            flags.clear()
+            return
+        chunks: list[str] = []
+        current = ""
+        for sentence in sentences:
+            candidate = f"{current} {sentence}".strip() if current else sentence
+            if current and len(candidate) > TARGET_PARAGRAPH_CHARS:
+                chunks.append(current)
+                current = sentence
+            else:
+                current = candidate
+        if current:
+            chunks.append(current)
+        if len(chunks) < 2:
+            output.extend(block)
+        else:
+            if output and output[-1].strip():
+                output.append("")
+            for index, chunk in enumerate(chunks):
+                if index:
+                    output.append("")
+                output.append(chunk)
+            reflowed += 1
+        block.clear()
+        flags.clear()
+
+    for line, prose in line_info:
+        if prose and not line.strip():
+            flush()
+            if output and output[-1].strip():
+                output.append("")
+            continue
+        block.append(line)
+        flags.append(prose)
+    flush()
+    while output and not output[-1].strip():
+        output.pop()
+    return output, reflowed
+
+
+def section_anchor_id(value: str, occurrence: int = 1) -> str:
+    """Build a heading anchor that stays stable when other sections are added."""
+
+    slug = re.sub(r"[^0-9A-Za-z\u4e00-\u9fff]+", "-", str(value or "")).strip("-").lower()
+    base = f"section-{slug[:48] or 'note'}"
+    return base if occurrence <= 1 else f"{base}-{occurrence}"
+
+
 def normalize_note_markdown(title: str, markdown: str, *, generate_questions: bool | None = None) -> NoteNormalizationResult:
     """Return stable UTF-8-friendly Markdown and a non-destructive lint report."""
 
-    raw = str(markdown or "").replace("\r\n", "\n").replace("\r", "\n")
-    raw = unicodedata.normalize("NFC", raw.lstrip("\ufeff"))
-    raw = _CONTROL_RE.sub("", raw)
+    raw = str(markdown or "").replace("\r\n", "\n").replace("\r", "\n").lstrip("\ufeff")
     raw, removed_wrapper = _strip_wrapping_fence(raw)
-    lines = [line.rstrip() for line in raw.split("\n")]
+    normalized_lines = []
+    for line, prose in structural_lines(raw.split("\n")):
+        if prose:
+            line = unicodedata.normalize("NFC", line)
+            line = _CONTROL_RE.sub("", line)
+        normalized_lines.append(line)
+    raw = "\n".join(normalized_lines)
+    # Keep trailing Markdown hard-break spaces and code bytes; only line endings
+    # are canonicalized above.
+    lines = raw.split("\n")
     frontmatter, body = _split_frontmatter(lines)
     removed_question_sections = 0
     if generate_questions is False:
@@ -133,6 +254,21 @@ def normalize_note_markdown(title: str, markdown: str, *, generate_questions: bo
     while body_without_duplicate_title and not body_without_duplicate_title[-1].strip():
         body_without_duplicate_title.pop()
 
+    last_heading_level = 1
+    adjusted_heading_jumps = 0
+    continuous_headings: list[str] = []
+    for line, prose in structural_lines(body_without_duplicate_title):
+        heading = _HEADING_RE.match(line) if prose else None
+        if heading:
+            level = len(heading.group(1))
+            if level > last_heading_level + 1:
+                level = last_heading_level + 1
+                line = f"{'#' * level} {heading.group(2)}"
+                adjusted_heading_jumps += 1
+            last_heading_level = level
+        continuous_headings.append(line)
+    body_without_duplicate_title = continuous_headings
+
     # Consecutive rules are usually raw model scaffolding, not meaningful
     # document structure.  Keep one rule so author intent is preserved.
     compact: list[str] = []
@@ -150,8 +286,9 @@ def normalize_note_markdown(title: str, markdown: str, *, generate_questions: bo
     if output:
         output.append("")
     output.extend([f"# {clean_title}", ""])
+    compact, reflowed_long_paragraphs = _split_long_prose_paragraphs(compact)
     output.extend(compact)
-    normalized = "\n".join(output).strip() + "\n"
+    normalized = "\n".join(output).strip("\n") + "\n"
 
     issues = lint_note_markdown(normalized)
     report = {
@@ -159,7 +296,9 @@ def normalize_note_markdown(title: str, markdown: str, *, generate_questions: bo
         "changed": normalized != str(markdown or ""),
         "removed_markdown_wrapper": removed_wrapper,
         "duplicate_title_count": duplicate_h1,
+        "adjusted_heading_jumps": adjusted_heading_jumps,
         "collapsed_rule_count": collapsed_rules,
+        "reflowed_long_paragraphs": reflowed_long_paragraphs,
         "removed_question_sections": removed_question_sections,
         "issues": issues,
         "blocking": any(item["severity"] == "error" for item in issues),
@@ -172,11 +311,13 @@ def lint_note_markdown(markdown: str) -> list[dict[str, str]]:
 
     text = str(markdown or "")
     issues: list[dict[str, str]] = []
+    _, content_lines = _split_frontmatter(text.splitlines())
+    prose = prose_text("\n".join(content_lines))
     mojibake_score = sum(
-        text.count(marker) * (10 if marker == "�" else 4)
+        prose.count(marker) * (10 if marker == "�" else 4)
         for marker in _MOJIBAKE_MARKERS
     )
-    mojibake_score += len(_UTF8_MOJIBAKE_RE.findall(text)) * 2
+    mojibake_score += len(_UTF8_MOJIBAKE_RE.findall(prose)) * 2
     if mojibake_score >= 4:
         issues.append({
             "code": "mojibake_detected",
@@ -186,8 +327,8 @@ def lint_note_markdown(markdown: str) -> list[dict[str, str]]:
 
     headings: list[tuple[int, str]] = []
     _, body = _split_frontmatter(text.splitlines())
-    for line, prose in structural_lines(body):
-        match = _HEADING_RE.match(line) if prose else None
+    for line, in_prose in structural_lines(body):
+        match = _HEADING_RE.match(line) if in_prose else None
         if match:
             headings.append((len(match.group(1)), match.group(2).strip()))
     h1_count = sum(1 for level, _ in headings if level == 1)
@@ -205,19 +346,19 @@ def lint_note_markdown(markdown: str) -> list[dict[str, str]]:
                 "message": f"标题层级从 H{previous[0]} 跳到 H{current[0]}：{current[1]}",
             })
 
-    if len(text.strip()) < 80:
+    if len(prose.strip()) < 80:
         issues.append({
             "code": "note_too_short",
             "severity": "warning",
             "message": "笔记内容过短，请检查字幕覆盖或总结阶段是否完整。",
         })
-    if not _TIMESTAMP_RE.search(text) and "依据与覆盖" not in text and "证据来源" not in text:
+    if not _TIMESTAMP_RE.search(prose) and "依据与覆盖" not in prose and "证据来源" not in prose:
         issues.append({
             "code": "missing_visible_evidence",
             "severity": "warning",
             "message": "笔记没有可见时间戳或证据说明。",
         })
-    if _INTERNAL_PROMPT_RE.search(text):
+    if _INTERNAL_PROMPT_RE.search(prose):
         issues.append({
             "code": "internal_prompt_leak",
             "severity": "error",
@@ -225,7 +366,7 @@ def lint_note_markdown(markdown: str) -> list[dict[str, str]]:
         })
     paragraphs = [
         re.sub(r"\s+", " ", value).strip().casefold()
-        for value in re.split(r"\n\s*\n", prose_text(text))
+        for value in re.split(r"\n\s*\n", prose)
         if len(re.sub(r"\s+", " ", value).strip()) >= 24
     ]
     duplicates = len(paragraphs) - len(set(paragraphs))
@@ -234,6 +375,13 @@ def lint_note_markdown(markdown: str) -> list[dict[str, str]]:
             "code": "duplicate_content",
             "severity": "warning",
             "message": f"检测到 {duplicates} 段重复正文，请检查是否重复拼接了同一来源。",
+        })
+    long_paragraphs = sum(len(value) > MAX_LONG_PARAGRAPH_CHARS for value in paragraphs)
+    if long_paragraphs:
+        issues.append({
+            "code": "long_paragraph",
+            "severity": "warning",
+            "message": f"有 {long_paragraphs} 段长于 {MAX_LONG_PARAGRAPH_CHARS} 字符的正文无法安全按句拆分，请人工检查。",
         })
     return issues
 
@@ -245,11 +393,6 @@ def _timestamp_seconds(value: str) -> float:
     if len(parts) == 3:
         return float(parts[0] * 3600 + parts[1] * 60 + parts[2])
     return 0.0
-
-
-def _slug(value: str, index: int) -> str:
-    slug = re.sub(r"[^0-9A-Za-z\u4e00-\u9fff]+", "-", value).strip("-").lower()
-    return f"section-{index:02d}-{slug[:48] or 'note'}"
 
 
 def _citations(markdown: str) -> list[dict[str, Any]]:
@@ -280,6 +423,7 @@ def build_note_document(
 
     evidence_items = [dict(item) for item in (evidence or []) if isinstance(item, dict)]
     sections: list[dict[str, Any]] = []
+    heading_occurrences: dict[str, int] = {}
     current_heading = str(title or "学习笔记")
     current_level = 1
     current_lines: list[str] = []
@@ -307,8 +451,10 @@ def build_note_document(
                 for anchor in ranges for citation in citations
             ):
                 matched_ids.append(evidence_id)
+        normalized_heading = section_anchor_id(current_heading)
+        heading_occurrences[normalized_heading] = heading_occurrences.get(normalized_heading, 0) + 1
         sections.append({
-            "section_id": _slug(current_heading, len(sections) + 1),
+            "section_id": section_anchor_id(current_heading, heading_occurrences[normalized_heading]),
             "heading": current_heading,
             "level": current_level,
             "markdown": body,
@@ -335,7 +481,7 @@ def build_note_document(
 
     if not sections:
         sections.append({
-            "section_id": _slug(current_heading, 1),
+            "section_id": section_anchor_id(current_heading),
             "heading": current_heading,
             "level": current_level,
             "markdown": "",
@@ -370,4 +516,6 @@ __all__ = [
     "build_note_document",
     "lint_note_markdown",
     "normalize_note_markdown",
+    "section_anchor_id",
+    "strip_note_frontmatter",
 ]
