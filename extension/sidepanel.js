@@ -839,6 +839,7 @@ async function collectContext(force = true, targetTabId = null) {
 async function runPreflight(identity = displayedIdentity) {
   if (!clientConnected || !currentContext || !identity) return null;
   if (selectedProcessingMode === "quick" || (selectedProcessingMode === "study" && hasReliableBrowserSubtitles(currentContext))) return null;
+  const permissionEpoch = sitePermissionEpoch;
   const candidates = mediaCandidates(currentContext);
   if (!candidates.length && !currentContext.page?.active_video) return null;
   if (!(await sitePermissionGranted(identity.canonical_page_url))) {
@@ -848,6 +849,7 @@ async function runPreflight(identity = displayedIdentity) {
     }
     return null;
   }
+  if (permissionEpoch !== sitePermissionEpoch || !sameSourceIdentity(identity, displayedIdentity)) return null;
   if (hasFreshPreflight(identity)) return preflightReport;
   const requestKey = preflightCacheKey(identity);
   if (preflightRequest?.key === requestKey) return preflightRequest.promise;
@@ -863,7 +865,7 @@ async function runPreflight(identity = displayedIdentity) {
       probeLimit: 3
     }), REQUEST_TIMEOUT_MS, "媒体预检");
     if (response?.error) throw new Error(response.error);
-    if (!sameSourceIdentity(identity, displayedIdentity)) return null;
+    if (permissionEpoch !== sitePermissionEpoch || !sameSourceIdentity(identity, displayedIdentity)) return null;
     preflightReport = response?.report || null;
     preflightIdentity = identity;
     preflightAt = Date.now();
@@ -872,13 +874,13 @@ async function runPreflight(identity = displayedIdentity) {
     renderContext();
     return preflightReport;
   } catch (error) {
-    if (sameSourceIdentity(identity, displayedIdentity)) {
+    if (permissionEpoch === sitePermissionEpoch && sameSourceIdentity(identity, displayedIdentity)) {
       els.preflightMessage.dataset.state = "error";
       renderContext(`已检测到媒体候选，但下载预检暂不可用：${error?.message || "客户端将继续检查"}`);
     }
     return null;
   } finally {
-    if (preflightRequest?.key === requestKey) preflightRequest = null;
+    if (preflightRequest?.promise === promise) preflightRequest = null;
   }
   })();
   preflightRequest = { key: requestKey, promise };
@@ -954,6 +956,7 @@ function clearPageContextAfterPermissionRevocation(origin = "") {
   sitePermissionEpoch += 1;
   contextGeneration += 1;
   collectRequest = null;
+  els.refreshButton.disabled = false;
   currentContext = null;
   displayedIdentity = null;
   preflightReport = null;

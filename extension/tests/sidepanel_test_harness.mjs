@@ -149,9 +149,10 @@ export async function createSidepanelHarness({ contexts = [], preflight = null, 
           if (message.type === "get-current-context") {
             const value = contexts[Math.min(contextIndex, Math.max(0, contexts.length - 1))] || {};
             contextIndex += 1;
-            return structuredClone(value);
+            return structuredClone(typeof value === "function" ? await value(message) : value);
           }
           if (message.type === "preflight-current-page") {
+            if (typeof preflight === "function") return preflight(message);
             return structuredClone(preflight || { report: { ok: true, ready: true, message: "预检通过" } });
           }
           if (message.type === "start-current-task") {

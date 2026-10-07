@@ -61,3 +61,29 @@ assert.equal(
 );
 
 console.log("Permission denial blocks preflight and task creation; grants send the task; revocation clears active cues.");
+
+// Revoking while a refresh is pending must clear its result and unlock Refresh.
+let finishRefresh;
+const refreshRace = await createSidepanelHarness({
+  contexts: [page, () => new Promise(resolve => { finishRefresh = resolve; })]
+});
+const refresh = refreshRace.api.collectContext(true);
+assert.equal(refreshRace.elements.get("#refreshButton").disabled, true);
+refreshRace.emit({ type: "site-permission-revoked", origin: "https://www.bilibili.com/*" });
+assert.equal(refreshRace.elements.get("#refreshButton").disabled, false);
+finishRefresh(page);
+assert.equal(await refresh, null);
+assert.equal(refreshRace.api.getState().currentContext, null);
+
+// An old preflight cannot repopulate the panel after revoke and re-read of the same video.
+let finishPreflight;
+const preflightRace = await createSidepanelHarness({
+  contexts: [page],
+  preflight: () => new Promise(resolve => { finishPreflight = resolve; })
+});
+preflightRace.emit({ type: "site-permission-revoked", origin: "https://www.bilibili.com/*" });
+await preflightRace.api.collectContext(true);
+finishPreflight({ report: { ready: true, message: "stale preflight" } });
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.equal(preflightRace.api.getState().preflightReport, null);
+console.log("Revocation releases a pending Refresh and rejects stale preflights after re-grant");
