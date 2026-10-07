@@ -35,6 +35,7 @@ numpy==2.5.3
 onnxruntime==1.30.0
 openai==3.22.1
 opencv-python==5.0.0.93
+opentelemetry-api==1.45.1
 packaging==26.3
 pefile==2024.8.26
 pillow==12.3.0
@@ -44,7 +45,7 @@ pyclipper==1.4.0
 pycparser==3.0
 pymupdf==1.28.2
 pydantic==2.13.5
-pydantic_core==2.49.0
+pydantic_core==2.46.5
 pyinstaller==6.22.3
 pyinstaller-hooks-contrib==2026.8
 pypdf==6.19.0
