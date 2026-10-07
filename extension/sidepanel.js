@@ -853,7 +853,9 @@ async function runPreflight(identity = displayedIdentity) {
   if (hasFreshPreflight(identity)) return preflightReport;
   const requestKey = preflightCacheKey(identity);
   if (preflightRequest?.key === requestKey) return preflightRequest.promise;
-  const promise = (async () => {
+  const request = { key: requestKey, promise: null };
+  preflightRequest = request;
+  request.promise = (async () => {
    try {
     const response = await withTimeout(chrome.runtime.sendMessage({
       type: "preflight-current-page",
@@ -880,11 +882,10 @@ async function runPreflight(identity = displayedIdentity) {
     }
     return null;
   } finally {
-    if (preflightRequest?.promise === promise) preflightRequest = null;
+    if (preflightRequest === request) preflightRequest = null;
   }
   })();
-  preflightRequest = { key: requestKey, promise };
-  return promise;
+  return request.promise;
 }
 
 async function refreshAndPreflight({ force = true } = {}) {

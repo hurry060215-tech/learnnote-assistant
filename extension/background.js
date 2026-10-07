@@ -1960,6 +1960,8 @@ chrome.webRequest.onErrorOccurred.addListener(
 );
 
 chrome.tabs.onRemoved.addListener(tabId => {
+  sitePermissionEpochByTab.delete(tabId);
+  sitePermissionUrlByTab.delete(tabId);
   resourceByTab.delete(tabId);
   pageStateByTab.delete(tabId);
   clearCaptureLog(tabId);
@@ -2515,9 +2517,18 @@ function normalizePermissionOrigin(value = "") {
 }
 
 const sitePermissionEpochByTab = new Map();
+const sitePermissionUrlByTab = new Map();
 
-function sitePermissionEpoch(tabId) {
-  return Number(sitePermissionEpochByTab.get(tabId) || 0);
+function sitePermissionEpoch(tabId, pageUrl = "") {
+  if (pageUrl) {
+    const previousUrl = sitePermissionUrlByTab.get(tabId);
+    if (previousUrl && previousUrl !== pageUrl) {
+      sitePermissionEpochByTab.set(tabId, sitePermissionEpoch(tabId) + 1);
+    }
+    sitePermissionUrlByTab.set(tabId, pageUrl);
+    if (!sitePermissionEpochByTab.has(tabId)) sitePermissionEpochByTab.set(tabId, 0);
+  }
+  return sitePermissionEpochByTab.get(tabId) ?? -1;
 }
 
 function sitePermissionPatternForUrl(value = "") {
@@ -2573,12 +2584,22 @@ function notifySitePermissionRevoked(origin, clearedTabs) {
 async function revokeSitePermissionCaches(origin = "") {
   const normalized = normalizePermissionOrigin(origin);
   if (!normalized || !chrome.tabs?.query) return { ok: false, error: "无效的站点权限。" };
+  // Invalidate known handoffs before querying tabs: Chrome may resolve that
+  // query after the user has already re-authorized this site.
+  const invalidatedTabs = new Set();
+  for (const [tabId, pageUrl] of sitePermissionUrlByTab) {
+    if (!permissionPatternMatchesUrl(normalized, pageUrl)) continue;
+    sitePermissionEpochByTab.set(tabId, sitePermissionEpoch(tabId) + 1);
+    invalidatedTabs.add(tabId);
+  }
   const tabs = await chrome.tabs.query({});
   let clearedTabs = 0;
   for (const tab of tabs || []) {
     if (tab?.id === undefined) continue;
     if (!permissionPatternMatchesUrl(normalized, tab.url || "")) continue;
-    sitePermissionEpochByTab.set(tab.id, sitePermissionEpoch(tab.id) + 1);
+    if (!invalidatedTabs.has(tab.id)) {
+      sitePermissionEpochByTab.set(tab.id, sitePermissionEpoch(tab.id) + 1);
+    }
     resourceByTab.delete(tab.id);
     pageStateByTab.delete(tab.id);
     activeCaptureUntilByTab.delete(tab.id);
@@ -2674,7 +2695,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     if (message.type === "start-current-task") {
       const tab = await tabForMessage(message);
-      const permissionEpoch = sitePermissionEpoch(tab.id);
+      const permissionEpoch = sitePermissionEpoch(tab.id, tab.url || "");
       const permissionCurrent = async () => {
         const granted = await sitePermissionGrantedForUrl(tab.url || "");
         return granted && sitePermissionEpoch(tab.id) === permissionEpoch;
@@ -2764,7 +2785,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     if (message.type === "preflight-current-resource") {
       const tab = await tabForMessage(message);
-      const permissionEpoch = sitePermissionEpoch(tab.id);
+      const permissionEpoch = sitePermissionEpoch(tab.id, tab.url || "");
       const permissionCurrent = async () => {
         const granted = await sitePermissionGrantedForUrl(tab.url || "");
         return granted && sitePermissionEpoch(tab.id) === permissionEpoch;
@@ -2807,7 +2828,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     if (message.type === "preflight-current-page") {
       const tab = await tabForMessage(message);
-      const permissionEpoch = sitePermissionEpoch(tab.id);
+      const permissionEpoch = sitePermissionEpoch(tab.id, tab.url || "");
       const permissionCurrent = async () => {
         const granted = await sitePermissionGrantedForUrl(tab.url || "");
         return granted && sitePermissionEpoch(tab.id) === permissionEpoch;

@@ -87,3 +87,12 @@ finishPreflight({ report: { ready: true, message: "stale preflight" } });
 await new Promise(resolve => setTimeout(resolve, 0));
 assert.equal(preflightRace.api.getState().preflightReport, null);
 console.log("Revocation releases a pending Refresh and rejects stale preflights after re-grant");
+
+// Extension APIs can throw before returning a promise (for example after reload).
+const syncFailure = await createSidepanelHarness({ contexts: [page] });
+syncFailure.context.resetSourceState();
+syncFailure.context.chrome.runtime.sendMessage = () => { throw new Error("Extension context invalidated"); };
+assert.equal(await syncFailure.context.runPreflight(), null);
+assert.match(syncFailure.elements.get("#preflightMessage").textContent, /Extension context invalidated/);
+assert.equal(await syncFailure.context.runPreflight(), null, "a synchronous failure must not leave a pending request");
+console.log("Synchronous preflight API failures remain recoverable");
