@@ -1,0 +1,268 @@
+{
+  "base": "01e10aa99ce56e6b769a95f992efd4e9bcd6f5e0",
+  "artifacts": {
+    "nested-final.pdf": {
+      "sha256": "c1e2284ae578e51c071029bef9e744c4e5f9e94958e8e43a58e7344924bd521c",
+      "bytes": 25667
+    },
+    "nested-final.docx": {
+      "sha256": "d1d574160c0db41e3b2cbcd372983a56e7ee372107441b1cc915dd1418104aae",
+      "bytes": 38907
+    },
+    "nested-final-pdf-1.png": {
+      "sha256": "e8bdc1af31160229ad3e6d4eb3e8765d723ff97a2cde8f460ae5015c9d582280",
+      "bytes": 59375
+    },
+    "nested-final-word/page-1.png": {
+      "sha256": "d3a6a0cb8f0849e828a614da68feb7260a0a33ae61757a73ba13f3caa208d615",
+      "bytes": 114622
+    },
+    "long-print/long-note.pdf": {
+      "sha256": "c741307a5439d8ff2f7cc50283334a430bdc57338ea5c3c2196cfee5aefdc1df",
+      "bytes": 135776
+    },
+    "long-academic/long-note.pdf": {
+      "sha256": "3eedd4d69c11815123ccb2afd2278e809b2c29c386879a845bc087a039396924",
+      "bytes": 160627
+    },
+    "long-academic/long-note.docx": {
+      "sha256": "45edaf58caa34b3e657d3c40b60eb3e6e7600a4f68ef77656ce90ada86a62914",
+      "bytes": 52683
+    },
+    "long-compact/long-note.pdf": {
+      "sha256": "814b1331950b1f720806f1c3c9ed72102479e4a6d44edc658fc135d8c436acee",
+      "bytes": 149488
+    },
+    "long-academic/word-render/long-note.pdf": {
+      "sha256": "4f386dd42a9d3e278fd24bbde9db1cb9ce7d4cb3ada78db147f1ea9dcfbdd201",
+      "bytes": 870109
+    }
+  },
+  "page_checks": {
+    "print": {
+      "pages": 36,
+      "blank_pages": [],
+      "out_of_bounds_characters": 0
+    },
+    "academic": {
+      "pages": 44,
+      "blank_pages": [],
+      "out_of_bounds_characters": 0
+    },
+    "compact": {
+      "pages": 41,
+      "blank_pages": [],
+      "out_of_bounds_characters": 0
+    },
+    "docx-libreoffice": {
+      "pages": 83,
+      "blank_pages": [],
+      "out_of_bounds_characters": 0
+    }
+  },
+  "schema_version": 1,
+  "environment": "Linux cloud; local ReportLab/LibreOffice/Poppler; synthetic content only",
+  "tested_code_commit": "1fc5511085ec327b6a513de913ed795bd5e46ce6",
+  "tests": {
+    "backend": {
+      "run": 747,
+      "skipped": 0,
+      "status": "pass"
+    },
+    "scripts": {
+      "run": 117,
+      "skipped": 3,
+      "status": "pass"
+    },
+    "desktop": {
+      "run": 28,
+      "skipped": 0,
+      "status": "pass"
+    },
+    "export_panel": {
+      "run": 11,
+      "status": "pass"
+    },
+    "obsidian_plugin": {
+      "run": 10,
+      "status": "pass",
+      "build": "pass"
+    },
+    "obsidian_importer": {
+      "status": "pass",
+      "actual_importer": true,
+      "in_memory_vault": true,
+      "network_called": false,
+      "harness_modifies_plugin": false,
+      "checks": 10,
+      "extracted_files": 7
+    }
+  },
+  "native_process_environment": {
+    "ORT_DISABLE_TELEMETRY": "1",
+    "HF_HUB_DISABLE_TELEMETRY": "1"
+  },
+  "long_fixture": {
+    "print": {
+      "paragraphs_per_chapter": 4,
+      "structural_status": "pass",
+      "checks": {
+        "at_least_30_pdf_pages": true,
+        "pdf_first_and_last_chapter": true,
+        "docx_editable_tables": true,
+        "docx_code_retained": true,
+        "source_links_retained": true,
+        "pdf_no_replacement_char": true,
+        "emoji_preserved_or_explicit_fallback": true,
+        "docx_frame_alt": true,
+        "pdf_frames_embedded": true
+      },
+      "warnings": {
+        "docx": [
+          "requested_docx_font_unavailable_using_host_fallback",
+          "emoji_font_unavailable_using_host_fallback"
+        ],
+        "pdf": [
+          "embedded_system_cjk_font_unavailable_using_pdf_cid_fallback",
+          "non_bmp_symbols_rendered_as_unicode_names"
+        ]
+      }
+    },
+    "academic": {
+      "paragraphs_per_chapter": 4,
+      "structural_status": "pass",
+      "checks": {
+        "at_least_30_pdf_pages": true,
+        "pdf_first_and_last_chapter": true,
+        "docx_editable_tables": true,
+        "docx_code_retained": true,
+        "source_links_retained": true,
+        "pdf_no_replacement_char": true,
+        "emoji_preserved_or_explicit_fallback": true,
+        "docx_frame_alt": true,
+        "pdf_frames_embedded": true,
+        "pdf_toc_destinations": true,
+        "docx_native_toc": true
+      },
+      "warnings": {
+        "docx": [
+          "requested_docx_font_unavailable_using_host_fallback",
+          "docx_toc_page_numbers_require_field_update",
+          "emoji_font_unavailable_using_host_fallback"
+        ],
+        "pdf": [
+          "embedded_system_cjk_font_unavailable_using_pdf_cid_fallback",
+          "non_bmp_symbols_rendered_as_unicode_names"
+        ]
+      }
+    },
+    "compact": {
+      "paragraphs_per_chapter": 10,
+      "structural_status": "pass",
+      "checks": {
+        "at_least_30_pdf_pages": true,
+        "pdf_first_and_last_chapter": true,
+        "docx_editable_tables": true,
+        "docx_code_retained": true,
+        "source_links_retained": true,
+        "pdf_no_replacement_char": true,
+        "emoji_preserved_or_explicit_fallback": true,
+        "docx_frame_alt": true,
+        "pdf_frames_embedded": true
+      },
+      "warnings": {
+        "docx": [
+          "requested_docx_font_unavailable_using_host_fallback",
+          "emoji_font_unavailable_using_host_fallback"
+        ],
+        "pdf": [
+          "embedded_system_cjk_font_unavailable_using_pdf_cid_fallback",
+          "non_bmp_symbols_rendered_as_unicode_names"
+        ]
+      }
+    }
+  },
+  "visual_review": {
+    "small_pdf": "page 1 inspected",
+    "small_docx_via_libreoffice": "page 1 inspected",
+    "academic_pdf": "pages 1, 13 and 44 inspected",
+    "all_page_geometry": "all PDF characters checked against page media boxes; this does not detect every overlap or widow",
+    "native_word_or_wps": "not run; not an original named viewer requirement"
+  },
+  "claim_benchmark": {
+    "schema_version": 1,
+    "corpus_id": "public-doc-claim-status-20260924",
+    "status": "pass",
+    "case_count": 60,
+    "source_count": 12,
+    "language_counts": {
+      "en": 30,
+      "zh": 30
+    },
+    "label_order": [
+      "direct",
+      "located_only",
+      "inference",
+      "pending_review"
+    ],
+    "confusion_matrix": {
+      "direct": {
+        "direct": 12,
+        "located_only": 10,
+        "inference": 2,
+        "pending_review": 0
+      },
+      "located_only": {
+        "direct": 0,
+        "located_only": 12,
+        "inference": 0,
+        "pending_review": 0
+      },
+      "inference": {
+        "direct": 0,
+        "located_only": 0,
+        "inference": 12,
+        "pending_review": 0
+      },
+      "pending_review": {
+        "direct": 0,
+        "located_only": 0,
+        "inference": 0,
+        "pending_review": 12
+      }
+    },
+    "fixed_corpus_status_accuracy": 0.8,
+    "direct_support": {
+      "precision": 1.0,
+      "recall": 0.5,
+      "false_direct_support_count": 0,
+      "contract": "fixed-corpus matching only; not general semantic accuracy"
+    },
+    "review_gate": {
+      "precision": 0.75,
+      "recall": 1.0,
+      "false_negative_count": 0,
+      "contract": "gold non-direct claims should remain visibly reviewable"
+    },
+    "pending_review_class": {
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "interpretation": "See confusion_matrix and per-case results. A located_only or inference status for a supported paraphrase is a direct-support false negative, not an unsupported-fact false positive.",
+    "network_attempted": false
+  },
+  "committed_previews": {
+    "nested-docx-libreoffice.png": {
+      "sha256": "d3a6a0cb8f0849e828a614da68feb7260a0a33ae61757a73ba13f3caa208d615",
+      "bytes": 114622
+    },
+    "academic-pdf-page-13.png": {
+      "sha256": "aa86f5f6e53e729fe0a14e92082282e54235ed47f9cb412021ebca673ef8eb12",
+      "bytes": 168088
+    },
+    "nested-pdf.png": {
+      "sha256": "e8bdc1af31160229ad3e6d4eb3e8765d723ff97a2cde8f460ae5015c9d582280",
+      "bytes": 59375
+    }
+  }
+}

@@ -9,6 +9,7 @@ from pathlib import Path
 from .models import EvidenceCoverage, EvidenceGate, TranscriptResult
 from .note_document import build_note_document, normalize_note_markdown
 from .claims import build_claim_evidence_map, mark_claims_for_review
+from .transcript_quality import preserve_transcript_review_draft
 from .pipeline_progress import record_stage_duration, write_progressive_draft
 from .storage import get_task, task_dir, update_task, write_json
 from .summary_outcome import has_generated_summary, safe_summary_events, safe_summary_text, summary_failure_message
@@ -18,6 +19,9 @@ def finish_transcript_note(task_id: str, title: str, page_url: str, transcript: 
                            *, duration: float, media_skipped: bool, summarize: Callable,
                            build_diagnostics: Callable, check_cancel: Callable) -> None:
     check_cancel(task_id)
+    if preserve_transcript_review_draft(task_id, title, transcript,
+            task_dir=task_dir, write_json=write_json, update_task=update_task):
+        return
     work_dir = task_dir(task_id)
     previous = get_task(task_id)
     if not previous.note_path or not Path(previous.note_path).is_file():

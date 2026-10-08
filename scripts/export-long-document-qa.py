@@ -40,10 +40,11 @@ def main():
         picture.save(frame)
         frames = [FrameGrid(path=str(frame), start=5, end=5, frame_count=1,
                             url='/api/tasks/long-export-qa/assets/fixture.png')]
+    paragraphs_per_chapter = 10 if args.template == 'compact' else 4
     sections = ['# ' + title]
     for index in range(1, 41):
         sections.append(f'## 第 {index} 章 Chapter {index}')
-        for paragraph in range(4):
+        for paragraph in range(paragraphs_per_chapter):
             sections.append((f'章节 {index} 段落 {paragraph}。检查中文标点、英文换行、分页与完整性。Source evidence must remain traceable after exporting. ' * 4).strip())
         sections.append('| 项目 Item | 数值 Value |\n| --- | --- |\n| 精度 Precision | 3.5 |\n| 来源 Evidence | 00:05 |')
         sections.append('```python\n# 可编辑代码 Editable code\nlearning_rate = 0.01\nfor step in range(3):\n    value = step * learning_rate\n    print(value)\n```')
@@ -81,6 +82,7 @@ def main():
     report = {'commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),
               'dirty':bool(subprocess.check_output(['git','status','--porcelain'],cwd=ROOT,text=True).strip()),
               'template':args.template, 'keyframes':args.include_keyframes,
+              'paragraphs_per_chapter':paragraphs_per_chapter,
               'pages':len(reader.pages), 'checks':checks,
               'warnings':{'docx':docx.warnings, 'pdf':pdf.warnings},
               'structural_status':'pass' if all(checks.values()) else 'fail',

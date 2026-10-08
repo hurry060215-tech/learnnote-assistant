@@ -20,14 +20,29 @@ export function normalizeBackendUrl(value) {
   return parsed.toString().replace(/\/$/, "");
 }
 
-export function sanitizeVaultSegment(value, fallback = "LearnNote") {
-  const cleaned = String(value || "")
+function utf8Bytes(value) {
+  let bytes = 0;
+  for (const character of value) {
+    const point = character.codePointAt(0);
+    bytes += point <= 0x7f ? 1 : point <= 0x7ff ? 2 : point <= 0xffff ? 3 : 4;
+  }
+  return bytes;
+}
+
+export function sanitizeVaultSegment(value, fallback = "LearnNote", maxBytes = 180) {
+  const cleaned = String(value || "").normalize("NFC")
     .replace(/[\\/:*?"<>|#^[\]]+/g, " ")
     .replace(/[\u0000-\u001f]/g, " ")
     .replace(/\s+/g, " ")
     .replace(/[. ]+$/g, "")
     .trim();
-  return (cleaned || fallback).slice(0, 90);
+  let result = "", count = 0, bytes = 0;
+  for (const character of cleaned || fallback) {
+    const size = utf8Bytes(character);
+    if (count >= 90 || bytes + size > maxBytes) break;
+    result += character; count++; bytes += size;
+  }
+  return result || fallback;
 }
 
 export function taskFolderPath(root, title, taskId) {
@@ -37,7 +52,21 @@ export function taskFolderPath(root, title, taskId) {
     .filter(part => part && part !== "." && part !== "..")
     .map(part => sanitizeVaultSegment(part))
     .join("/") || "LearnNote";
-  return `${base}/${sanitizeVaultSegment(title)}--${sanitizeVaultSegment(taskId, "task")}`;
+  const identity = sanitizeVaultSegment(taskId, "task");
+  return `${base}/${sanitizeVaultSegment(title, "LearnNote", 240 - utf8Bytes(identity) - 2)}--${identity}`;
+}
+
+export function taskFolderCandidates(root, title, taskId) {
+  const current = taskFolderPath(root, title, taskId);
+  // Read existing old names without renaming or stranding personal annotations.
+  // This legacy path is only adopted when its LearnNote.md already exists.
+  const legacySegment = (value, fallback = "LearnNote") => (String(value || "")
+    .replace(/[\\/:*?"<>|#^[\]]+/g, " ").replace(/[\u0000-\u001f]/g, " ")
+    .replace(/\s+/g, " ").replace(/[. ]+$/g, "").trim() || fallback).slice(0, 90);
+  const base = String(root || "LearnNote").replace(/\\/g, "/").split("/")
+    .filter(part => part && part !== "." && part !== "..").map(part => legacySegment(part)).join("/") || "LearnNote";
+  const legacy = `${base}/${legacySegment(title)}--${legacySegment(taskId, "task")}`;
+  return [...new Set([current, legacy])];
 }
 
 export function yamlString(value) {

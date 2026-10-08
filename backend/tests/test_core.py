@@ -2532,7 +2532,7 @@ class ProcessorBoundaryTests(unittest.TestCase):
             self.assertIn("## 兜底学习笔记", note)
             self.assertIn("不能视为视频字幕或完整视频笔记", note)
             self.assertIn("直取视频不可用时", note)
-            self.assertIn("哪些步骤只靠文本还不够", note)
+            self.assertNotIn("哪些步骤只靠文本还不够", note)
             report = render_diagnostics_markdown(record)
             self.assertIn("页面文本字符", report)
             self.assertIn("浏览器字幕条数：2", report)

@@ -6,7 +6,8 @@ import {
   mergeGeneratedNote,
   noteFrontmatter,
   safeArchivePath,
-  taskFolderPath
+  taskFolderPath,
+  taskFolderCandidates
 } from "./core.mjs";
 import type { LearnNoteApi } from "./api";
 import type { ImportResult, LearnNoteSettings, LearnNoteTask } from "./types";
@@ -49,7 +50,7 @@ function transcriptMarkdown(raw: string): string {
 
 function allowedArchiveEntry(path: string, settings: LearnNoteSettings): boolean {
   if (path === "note.md") return true;
-  if (settings.includeManifest && ["manifest.json", "audit.md"].includes(path)) return true;
+  if (settings.includeManifest && ["manifest.json", "audit.md", "claim_evidence_map.json"].includes(path)) return true;
   if (settings.includeTranscript && (path === "transcript.json" || path.startsWith("subtitles/"))) return true;
   if (settings.includeVisualWindows && (path === "visual_windows.md" || path === "visual_index.json" || path.startsWith("grids/"))) return true;
   if (settings.includeQaHistory && (path === "qa.md" || path === "qa_history.json")) return true;
@@ -103,8 +104,14 @@ export class LearnNoteImporter {
     return this.app.vault.createBinary(normalized, bytes);
   }
 
+  private taskFolder(task: LearnNoteTask): string {
+    const candidates = taskFolderCandidates(this.settings().targetFolder, task.title, task.id);
+    return candidates.find((folder: string) => this.app.vault.getAbstractFileByPath(normalizePath(`${folder}/LearnNote.md`)) instanceof TFile)
+      || taskFolderPath(this.settings().targetFolder, task.title, task.id);
+  }
+
   importedNote(task: LearnNoteTask): TFile | null {
-    const path = normalizePath(`${taskFolderPath(this.settings().targetFolder, task.title, task.id)}/LearnNote.md`);
+    const path = normalizePath(`${this.taskFolder(task)}/LearnNote.md`);
     const file = this.app.vault.getAbstractFileByPath(path);
     return file instanceof TFile ? file : null;
   }
@@ -117,7 +124,7 @@ export class LearnNoteImporter {
 
   async importTask(task: LearnNoteTask): Promise<ImportResult> {
     const settings = this.settings();
-    const folderPath = normalizePath(taskFolderPath(settings.targetFolder, task.title, task.id));
+    const folderPath = normalizePath(this.taskFolder(task));
     const notePath = normalizePath(`${folderPath}/LearnNote.md`);
     const bundle = new Uint8Array(await this.api.bundle(task.id));
     if (bundle.byteLength > MAX_ARCHIVE_COMPRESSED_BYTES) {
@@ -156,6 +163,7 @@ export class LearnNoteImporter {
     if (settings.includeVisualWindows && files["visual_windows.md"]) related.push("[[visual_windows|画面与时间轴]]");
     if (settings.includeQaHistory && files["qa.md"]) related.push("[[qa|课程问答记录]]");
     if (settings.includeManifest && files["manifest.json"]) related.push("[[manifest.json|资料清单]]");
+    if (settings.includeManifest && files["claim_evidence_map.json"]) related.push("[[claim_evidence_map.json|逐条来源映射]]");
 
     const generated = [
       stripFrontmatter(note),
