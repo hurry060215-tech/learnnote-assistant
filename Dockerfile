@@ -24,6 +24,8 @@ RUN python -m pip install --upgrade pip \
 
 COPY backend /app/backend
 COPY web /app/web
+# Validate the actual image dependencies before any registry publication.
+RUN HF_HUB_OFFLINE=1 python /app/backend/check_asr_decoder.py
 RUN mkdir -p /app/data \
     && chown -R learnnote:learnnote /app
 

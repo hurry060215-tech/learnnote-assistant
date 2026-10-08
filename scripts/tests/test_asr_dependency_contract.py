@@ -16,3 +16,10 @@ class AsrDependencyContractTests(unittest.TestCase):
         for filename in ("LearnNote.spec", "LearnNote.macos.spec"):
             self.assertIn("backend/requirements.asr.txt", (ROOT / filename).read_text())
         self.assertIn('"local_asr_install_hint": "python -m pip install -r backend/requirements.asr.txt"', (ROOT / "backend/app/main.py").read_text(encoding="utf-8"))
+
+    def test_container_checks_actual_decoder_after_backend_copy(self):
+        docker = (ROOT / "Dockerfile").read_text()
+        copied = docker.index("COPY backend /app/backend")
+        smoke = docker.index("RUN HF_HUB_OFFLINE=1 python /app/backend/check_asr_decoder.py")
+        self.assertLess(copied, smoke)
+        self.assertTrue((ROOT / "backend/check_asr_decoder.py").is_file())
