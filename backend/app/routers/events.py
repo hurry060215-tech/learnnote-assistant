@@ -35,6 +35,11 @@ async def task_event_stream(task_id: str, cursor: int = 0) -> AsyncIterator[str]
             idle_ticks = 0
             yield sse_frame(event_id, str(item.get("event") or "task_event"), {**item, "event_id": event_id})
 
+        # A completed task can still have multiple pages waiting for replay.
+        # Drain them before emitting terminal, keeping absolute cursor IDs.
+        if len(events) == 2000:
+            continue
+
         try:
             task = get_task(task_id)
         except FileNotFoundError:
