@@ -7,7 +7,7 @@ import base64
 import mimetypes
 import re
 import unicodedata
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
@@ -16,6 +16,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from .config import TASK_DIR
 from .note_document import section_anchor_id, strip_note_frontmatter
 from .markdown_structure import structural_lines
+from .math_text import inline_math_expressions, math_source_requires_fallback, render_math_text
 
 
 DOCUMENT_EXPORT_SCHEMA_VERSION = 1
@@ -98,26 +99,44 @@ def _heading_line(line: str) -> tuple[int, str] | None:
     return (level, text) if text else None
 
 
-def _bullet_line(line: str) -> str | None:
-    value = line.lstrip()
-    if len(value) < 3 or value[0] not in "-*+" or not value[1].isspace():
+def _list_item(line: str) -> tuple[str, str, int, int] | None:
+    """Scan a bounded Markdown marker once; preserve invalid input as prose.
+
+    Like CommonMark, ordered markers have 1-9 ASCII digits. This avoids both
+    backtracking on uncontrolled note text and unbounded integer conversion.
+    The returned body offset also drives continuation indentation.
+    """
+    value = line.lstrip(" \t")
+    offset = len(line) - len(value)
+    if not value:
         return None
-    text = value[2:].strip()
-    return text if text else None
+    ordinal = 0
+    if value[0] in "-*+":
+        kind, end = "bullet", 1
+    else:
+        kind, end = "ordered", 0
+        while end < min(9, len(value)) and "0" <= value[end] <= "9":
+            ordinal = ordinal * 10 + ord(value[end]) - ord("0")
+            end += 1
+        if not end or end >= len(value) or value[end] not in ".)":
+            return None
+        end += 1
+    if end >= len(value) or not value[end].isspace():
+        return None
+    while end < len(value) and value[end].isspace():
+        end += 1
+    text = value[end:].rstrip()
+    return (kind, text, ordinal, offset + end) if text else None
+
+
+def _bullet_line(line: str) -> str | None:
+    item = _list_item(line)
+    return item[1] if item and item[0] == "bullet" else None
 
 
 def _ordered_line(line: str) -> str | None:
-    value = line.lstrip()
-    index = 0
-    while index < len(value) and value[index].isdigit():
-        index += 1
-    if index == 0 or index >= len(value) or value[index] not in ".)":
-        return None
-    index += 1
-    if index >= len(value) or not value[index].isspace():
-        return None
-    text = value[index:].strip()
-    return text if text else None
+    item = _list_item(line)
+    return item[1] if item and item[0] == "ordered" else None
 
 
 DEFAULT_EXPORT_OPTIONS = {
@@ -129,6 +148,7 @@ DEFAULT_EXPORT_OPTIONS = {
     "include_toc": False,
     "include_transcript": False,
     "include_practice": False,
+    "include_diagnostics": False,
     "font_family": "Microsoft YaHei",
     "font_size": 10.5,
     "line_height": 1.6,
@@ -181,7 +201,7 @@ def normalize_export_options(value: dict | None = None) -> dict:
     if template not in EXPORT_TEMPLATES:
         template = "print"
     result = {**DEFAULT_EXPORT_OPTIONS, **EXPORT_TEMPLATES[template], "template": template}
-    for key in ("include_note", "include_annotations", "include_source_link", "include_timestamps", "include_images", "include_toc", "include_transcript", "include_practice"):
+    for key in ("include_note", "include_annotations", "include_source_link", "include_timestamps", "include_images", "include_toc", "include_transcript", "include_practice", "include_diagnostics"):
         if key in incoming:
             result[key] = bool(incoming[key])
     for key, low, high in (("font_size", 8, 36), ("line_height", 1.0, 3.0), ("paragraph_before", 0, 60), ("paragraph_after", 0, 60), ("margin_top", 5, 50), ("margin_bottom", 5, 50), ("margin_left", 5, 50), ("margin_right", 5, 50)):
@@ -232,6 +252,23 @@ def evidence_review_notice(task) -> str:
     return ""
 
 
+
+def _diagnostic_summary_markdown(task) -> str:
+    """Opt-in machine-status summary; never export raw provider text or paths."""
+    lines = ["## 诊断摘要", ""]
+    for label, key in (("任务状态", "status"), ("处理阶段", "phase"), ("总结路线", "summary_source"), ("错误代码", "error_code")):
+        value = str(getattr(task, key, "") or "")
+        if re.fullmatch(r"[A-Za-z0-9_-]{1,120}", value):
+            lines.append(f"- {label}：{value}")
+    diagnostics = getattr(task, "summary_diagnostics", {})
+    quality = diagnostics.get("note_quality", {}) if isinstance(diagnostics, dict) else {}
+    if isinstance(quality, dict):
+        codes = [str(item.get("code") or "") for item in quality.get("issues", []) if isinstance(item, dict)]
+        codes = [value for value in codes if re.fullmatch(r"[a-z][a-z0-9_]{0,79}", value)]
+        if codes: lines.append("- 结构检查：" + "、".join(codes[:20]))
+    if len(lines) == 2: lines.append("当前资料没有可导出的诊断摘要。")
+    return "\n".join(lines)
+
 def build_structured_export(
     task,
     note: str,
@@ -269,6 +306,8 @@ def build_structured_export(
         value = _practice_markdown(practice)
         if value:
             parts.append(value)
+    if settings["include_diagnostics"]:
+        parts.append(_diagnostic_summary_markdown(task))
     # Only trim document-boundary line breaks.  Whitespace inside code blocks
     # and Markdown hard-breaks is content and must survive export.
     body = "\n\n".join(part for part in parts if str(part).strip()).strip("\n")
@@ -283,120 +322,126 @@ def build_structured_export(
                 indent = "  " * max(0, level - 1)
                 toc.append(f"{indent}- {_clean_inline_markdown(heading)}")
             body = "\n".join(toc) + "\n\n" + body
+    content_blocks = _content_blocks(body, title)
+    expressions = [block.text for block in content_blocks if block.kind == "math"]
+    expressions += [expression for block in content_blocks if block.kind != "code" for expression in inline_math_expressions(block.text)]
+    warnings = ["unrecognized_math_commands_preserved_as_source"] if any(math_source_requires_fallback(value) for value in expressions) else []
     return {
         "schema_version": DOCUMENT_EXPORT_SCHEMA_VERSION,
         "title": sanitize_export_text(title),
         "source": {"url": source_url, "label": source_url or "本地资料"},
-        "blocks": [block.__dict__ for block in _content_blocks(body, title)],
+        "blocks": [block.__dict__ for block in content_blocks],
+        "warnings": warnings,
         "markdown": body,
         "options": settings,
     }
 
 
 def _blocks(markdown: str) -> list[_Block]:
-    """Parse a conservative Markdown subset while preserving unknown content."""
+    """Parse the lesson-note subset, retaining list depth and code/math data."""
     result: list[_Block] = []
     paragraph: list[str] = []
-    code: list[str] = []
     table: list[str] = []
-    in_code = False
-    indented_code = False
-    fence_character = ""
-    fence_length = 0
+    list_indents: list[int] = []
+    content_indents: dict[int, int] = {}
+    lines = str(markdown or "").replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    index = 0
 
     def flush_paragraph() -> None:
         if paragraph:
-            text = ""
-            for index, item in enumerate(paragraph):
+            pieces = []
+            for position, item in enumerate(paragraph):
                 hard_break = item.endswith("  ") or item.endswith("\\")
-                value = item[:-1] if item.endswith("\\") else item
-                text += value.strip()
-                if index < len(paragraph) - 1:
-                    text += "\n" if hard_break else " "
-            result.append(_Block("paragraph", text))
+                pieces.append((item[:-1] if item.endswith("\\") else item).strip())
+                if position < len(paragraph) - 1:
+                    pieces.append("\n" if hard_break else " ")
+            result.append(_Block("paragraph", "".join(pieces)))
             paragraph.clear()
-
-    def flush_code() -> None:
-        if code:
-            result.append(_Block("code", "\n".join(code)))
-            code.clear()
 
     def flush_table() -> None:
         if table:
             result.append(_Block("table", "\n".join(table)))
             table.clear()
 
-    for raw_line in str(markdown or "").replace("\r\n", "\n").replace("\r", "\n").split("\n"):
-        # Keep code-block contents and Markdown hard-break spaces intact.
-        line = raw_line
-        if in_code and indented_code:
-            if not line.strip() or line.startswith("    ") or line.startswith("\t"):
-                code.append(line[4:] if line.startswith("    ") else line[1:] if line.startswith("\t") else "")
+    while index < len(lines):
+        line = lines[index]
+        stripped = line.lstrip(" \t")
+        indent = len(line) - len(stripped)
+        child_level = len(list_indents) if list_indents and indent > list_indents[-1] else 0
+        fence = re.match(r"^(`{3,}|~{3,})(.*)$", stripped)
+        if fence and (indent <= 3 or list_indents):
+            flush_paragraph(); flush_table()
+            character, length, code = fence[1][0], len(fence[1]), []
+            index += 1
+            while index < len(lines):
+                current = lines[index]
+                closing = re.match(r"^\s*([`~]+)\s*$", current)
+                if closing and set(closing[1]) == {character} and len(closing[1]) >= length:
+                    index += 1
+                    break
+                code.append(current[indent:] if current[:indent].isspace() else current)
+                index += 1
+            result.append(_Block("code", "\n".join(code), child_level))
+            continue
+        if stripped in {"$$", r"\["}:
+            closing = "$$" if stripped == "$$" else r"\]"
+            end = next((pos for pos in range(index + 1, len(lines)) if lines[pos].strip() == closing), None)
+            if end is not None:
+                flush_paragraph(); flush_table()
+                result.append(_Block("math", "\n".join(lines[index + 1:end]), child_level))
+                index = end + 1
                 continue
-            flush_code()
-            in_code = False
-            indented_code = False
-        fence = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)$", line)
-        if fence and (not in_code or fence.group(1)[0] == fence_character and len(fence.group(1)) >= fence_length and not fence.group(2).strip()):
-            if in_code:
-                flush_code()
-                in_code = False
-            else:
-                flush_paragraph()
-                flush_table()
-                in_code = True
-                fence_character, fence_length = fence.group(1)[0], len(fence.group(1))
+        if stripped.startswith("$$") and stripped.endswith("$$") and len(stripped) > 4:
+            flush_paragraph(); flush_table()
+            result.append(_Block("math", stripped[2:-2].strip(), child_level))
+            index += 1
             continue
-        if in_code:
-            code.append(line)
+        item = _list_item(line)
+        if item is not None and (indent < 4 or list_indents):
+            flush_paragraph(); flush_table()
+            while list_indents and list_indents[-1] > indent: list_indents.pop()
+            if not list_indents or list_indents[-1] < indent: list_indents.append(indent)
+            content_indents[indent] = item[3]
+            level = min(8, len(list_indents) - 1)
+            result.append(_Block(item[0], item[1], level, item[2]))
+            index += 1
             continue
-        if line.startswith("    ") or line.startswith("\t"):
-            flush_paragraph()
-            flush_table()
-            in_code = True
-            indented_code = True
-            fence_character = ""
-            code.append(line[4:] if line.startswith("    ") else line[1:])
+        if (child_level and result and result[-1].kind in {"bullet", "ordered"}
+                and indent < content_indents.get(list_indents[-1],list_indents[-1]+2) + 4
+                and stripped and not stripped.startswith(("|", ">"))):
+            result[-1] = replace(result[-1], text=result[-1].text + " " + stripped)
+            index += 1
             continue
-        if line.strip().startswith("|") and line.strip().endswith("|"):
-            flush_paragraph()
-            table.append(line)
+        if line.startswith(("    ", "\t")):
+            flush_paragraph(); flush_table()
+            code = []
+            while index < len(lines):
+                current = lines[index]
+                if current and not current.startswith(("    ", "\t")): break
+                code.append(current[4:] if current.startswith("    ") else current[1:] if current.startswith("\t") else "")
+                index += 1
+            while code and not code[-1]: code.pop()
+            result.append(_Block("code", "\n".join(code), child_level))
+            continue
+        if stripped.startswith("|") and stripped.endswith("|"):
+            flush_paragraph(); table.append(line); index += 1
             continue
         flush_table()
-        image_source = _image_line(line)
+        if not stripped or _is_horizontal_rule(line):
+            flush_paragraph(); index += 1
+            continue
+        image_source, heading = _image_line(line), _heading_line(line)
         if image_source is not None:
-            flush_paragraph()
-            result.append(_Block("image", line.strip()))
-            continue
-        if not line.strip():
-            flush_paragraph()
-            continue
-        if _is_horizontal_rule(line):
-            flush_paragraph()
-            continue
-        heading = _heading_line(line)
-        if heading is not None:
-            flush_paragraph()
-            result.append(_Block("heading", heading[1], heading[0]))
-            continue
-        if line.lstrip().startswith(">"):
-            flush_paragraph()
-            result.append(_Block("quote", line.lstrip()[1:].lstrip()))
-            continue
-        bullet = _bullet_line(line)
-        if bullet is not None:
-            flush_paragraph()
-            result.append(_Block("bullet", bullet))
-            continue
-        ordered = _ordered_line(line)
-        if ordered is not None:
-            flush_paragraph()
-            result.append(_Block("ordered", ordered, ordinal=int(re.match(r"\s*(\d+)", line).group(1))))
-            continue
-        paragraph.append(line)
-    flush_paragraph()
-    flush_code()
-    flush_table()
+            flush_paragraph(); result.append(_Block("image", stripped, child_level))
+        elif heading is not None:
+            flush_paragraph(); result.append(_Block("heading", heading[1], heading[0])); list_indents = []
+        elif stripped.startswith(">"):
+            flush_paragraph(); result.append(_Block("quote", stripped[1:].lstrip(), child_level))
+        else:
+            paragraph.append(line)
+            if not indent: list_indents = []
+        index += 1
+    flush_paragraph(); flush_table()
     return [block for block in result if block.text.strip()]
 
 
@@ -614,7 +659,8 @@ def _wrap_pdf_code(text: str, font_name: str, font_size: float, width: float) ->
             low, high = 1, len(line)
             while low < high:
                 middle = (low + high + 1) // 2
-                if stringWidth(line[:middle], font_name, font_size) <= width:
+                measured = sum(stringWidth(part, selected, font_size) for part, selected in _pdf_text_runs(line[:middle], font_name))
+                if measured <= width:
                     low = middle
                 else:
                     high = middle - 1
@@ -683,7 +729,7 @@ def _add_docx_text(paragraph, value: str, *, bold: bool = False, font_name: str 
 
     from docx.oxml.ns import qn
 
-    for part in _NON_BMP_RE.split(str(value or "")):
+    for part in re.split(r"([\U00010000-\U0010FFFF]|[\u2e80-\u9fff\uac00-\ud7af\uff00-\uffef]+)", str(value or "")):
         if not part:
             continue
         run = paragraph.add_run(part)
@@ -691,6 +737,23 @@ def _add_docx_text(paragraph, value: str, *, bold: bool = False, font_name: str 
             run.bold = True
         if font_name:
             run.font.name = font_name
+        if re.search(r"[\u2e80-\u9fff\uac00-\ud7af\uff00-\uffef]", part):
+            style = paragraph.style
+            for _ in range(8):
+                if style is None or style.font.name:
+                    break
+                style = style.base_style
+            preferred = style.font.name if style is not None else ""
+            if preferred in {"Noto Serif SC", "Noto Serif CJK SC"}:
+                family = "Noto Serif CJK SC"
+            elif preferred == "SimSun" and _font_available("SimSun"):
+                family = "SimSun"
+            else:
+                family = "Microsoft YaHei" if _font_available("Microsoft YaHei") else "Noto Sans CJK SC"
+            run.font.name = family
+            fonts = run._element.get_or_add_rPr().rFonts
+            for script in ("ascii", "hAnsi", "eastAsia", "cs"):
+                fonts.set(qn(f"w:{script}"), family)
         if _NON_BMP_RE.search(part):
             run.font.name = "Segoe UI Emoji"
             properties = run._element.get_or_add_rPr()
@@ -703,7 +766,7 @@ def _add_docx_text(paragraph, value: str, *, bold: bool = False, font_name: str 
 def _add_docx_inline(paragraph, value: str) -> None:
     cursor = 0
     text = str(value or "")
-    token_re = re.compile(r"\[([^\]]+)\]\(([^)]+)\)|\*\*([^*]+)\*\*|__([^_]+)__|`([^`]+)`")
+    token_re = re.compile(r"\[([^\]]+)\]\(([^)]+)\)|\*\*([^*]+)\*\*|__([^_]+)__|`([^`]+)`|(?<!\\)\$(?!\$)([^$\n]+)\$(?!\$)")
     for match in token_re.finditer(text):
         if match.start() > cursor:
             _add_docx_text(paragraph, _sanitize_export_text(text[cursor:match.start()]))
@@ -717,6 +780,8 @@ def _add_docx_inline(paragraph, value: str) -> None:
                 _add_docx_text(paragraph, f"{_sanitize_export_text(label)}（链接已移除）")
         elif match.group(3) is not None or match.group(4) is not None:
             _add_docx_text(paragraph, _sanitize_export_text(match.group(3) or match.group(4)), bold=True)
+        elif match.group(6) is not None:
+            _add_docx_text(paragraph, render_math_text(_sanitize_export_text(match.group(6))))
         else:
             _add_docx_text(paragraph, _sanitize_export_text(match.group(5) or ""), font_name="Consolas")
         cursor = match.end()
@@ -800,6 +865,12 @@ def build_docx_export(
 
     raw_title = str(getattr(task, "title", "LearnNote 学习笔记")) or "LearnNote 学习笔记"
     safe_title = _sanitize_export_text(raw_title)[:250]
+    header = section.header.paragraphs[0]
+    header_budget = max(8, int((section.page_width - section.left_margin - section.right_margin) / Pt(9)))
+    header_text = safe_title if len(safe_title) <= header_budget else safe_title[:max(1, header_budget - 3)] + "..."
+    _add_docx_text(header, header_text)
+    for run in header.runs:
+        run.font.size = Pt(8)
     document.core_properties.title = safe_title
     document.core_properties.subject = "LearnNote evidence-grounded local export"
     document.core_properties.author = "LearnNote"
@@ -852,8 +923,7 @@ def build_docx_export(
         update_fields.set(qn("w:val"), "true")
         document.settings.element.append(update_fields)
 
-    sequence_id = None
-    previous_ordinal = None
+    numbering_sequences: dict[int, tuple[int, int]] = {}
     for block_index, block in enumerate(blocks):
         if block.kind == "table":
             rows = _table_rows(block.text)
@@ -897,22 +967,30 @@ def build_docx_export(
             paragraph._p.append(end)
         elif block.kind == "bullet":
             paragraph = document.add_paragraph(style="List Bullet")
+            paragraph.paragraph_format.left_indent = Cm(.6 + .6 * block.level)
             _add_docx_inline(paragraph, block.text)
         elif block.kind == "ordered":
             paragraph = document.add_paragraph(style="List Number")
-            if (block_index == 0 or blocks[block_index - 1].kind != "ordered"
-                    or block.ordinal != previous_ordinal + 1):
-                sequence_id = _docx_numbering_sequence(document, block.ordinal)
+            paragraph.paragraph_format.left_indent = Cm(.6 + .6 * block.level)
+            prior = numbering_sequences.get(block.level)
+            previous = blocks[block_index - 1] if block_index else None
+            continued = prior and block.ordinal == prior[1] + 1 and previous and (previous.kind in {"ordered", "bullet"} or previous.level > block.level)
+            sequence_id = prior[0] if continued else _docx_numbering_sequence(document, block.ordinal)
             numbering = paragraph._p.get_or_add_pPr().get_or_add_numPr()
             numbering.get_or_add_ilvl().val = 0
             numbering.get_or_add_numId().val = sequence_id
-            previous_ordinal = block.ordinal
+            numbering_sequences[block.level] = (sequence_id, block.ordinal)
             _add_docx_inline(paragraph, block.text)
         elif block.kind == "quote":
             paragraph = document.add_paragraph(style="Quote")
             _add_docx_inline(paragraph, block.text)
+        elif block.kind == "math":
+            paragraph = document.add_paragraph()
+            paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            _add_docx_text(paragraph, render_math_text(_sanitize_export_text(block.text)))
         elif block.kind == "code":
             paragraph = document.add_paragraph()
+            paragraph.paragraph_format.left_indent = Cm(.6 * block.level)
             _add_docx_text(paragraph, _sanitize_export_text(block.text), font_name="Consolas")
             for run in paragraph.runs:
                 run.font.size = Pt(9)
@@ -926,6 +1004,7 @@ def build_docx_export(
     buffer = BytesIO()
     document.save(buffer)
     warnings = [] if _font_available(settings["font_family"]) else ["requested_docx_font_unavailable_using_host_fallback"]
+    warnings.extend(structured["warnings"])
     if settings["include_toc"] and heading_anchors:
         warnings.append("docx_toc_page_numbers_require_field_update")
     if _NON_BMP_RE.search(note + raw_title) and not _font_available("Segoe UI Emoji"):
@@ -992,15 +1071,38 @@ def _pdf_compatible_text(value: str) -> str:
 
 
 
+def _pdf_symbol_font() -> str:
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    name = "LearnNoteSymbols"
+    if name in pdfmetrics.getRegisteredFontNames():
+        return name
+    for path in (Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+                 Path("/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf"),
+                 Path("C:/Windows/Fonts/arial.ttf"),
+                 Path("/System/Library/Fonts/Supplemental/Arial.ttf")):
+        if path.is_file():
+            try:
+                pdfmetrics.registerFont(TTFont(name, str(path)))
+                return name
+            except Exception:
+                continue
+    return "Symbol"
+
+
+def _pdf_text_runs(value: str, base_font: str = "") -> list[tuple[str, str]]:
+    symbols = "αβγδθλμπστφωΔΣΩ∂≤≥≠→←≈≡∑∫√∞"
+    result = []
+    for part in re.split(r"([\u00a0-\u00ff]+|[" + re.escape(symbols) + r"]+)", str(value or "")):
+        font = "Helvetica" if part and all(0xA0 <= ord(c) <= 0xFF for c in part) else _pdf_symbol_font() if part and all(c in symbols for c in part) else base_font
+        result.append((part, font))
+    return result
+
+
 def _pdf_escape_text(value: str) -> str:
-    # The portable STSong CID fallback lacks some Latin-1 glyphs (for example
-    # superscript two). The built-in Helvetica font reliably covers that set.
-    return "".join(
-        f'<font name="Helvetica">{html.escape(part)}</font>'
-        if part and all(0xA0 <= ord(character) <= 0xFF for character in part)
-        else html.escape(part)
-        for part in re.split(r"([\u00a0-\u00ff]+)", str(value or ""))
-    )
+    return "".join(f'<font name="{font}">{html.escape(part)}</font>' if font else html.escape(part)
+                   for part, font in _pdf_text_runs(value))
+
 
 def _pdf_inline(value: str, *, pdf_safe: bool = True) -> str:
     compatible = _pdf_compatible_text if pdf_safe else str
@@ -1008,7 +1110,7 @@ def _pdf_inline(value: str, *, pdf_safe: bool = True) -> str:
     source = str(value or "")
     parts: list[str] = []
     cursor = 0
-    token_re = re.compile(r"\[([^\]]+)\]\(([^)]+)\)|\*\*([^*]+)\*\*|__([^_]+)__|`([^`]+)`")
+    token_re = re.compile(r"\[([^\]]+)\]\(([^)]+)\)|\*\*([^*]+)\*\*|__([^_]+)__|`([^`]+)`|(?<!\\)\$(?!\$)([^$\n]+)\$(?!\$)")
     for match in token_re.finditer(source):
         parts.append(escape_text(compatible(_sanitize_export_text(source[cursor:match.start()]))))
         if match.group(1) is not None:
@@ -1021,6 +1123,8 @@ def _pdf_inline(value: str, *, pdf_safe: bool = True) -> str:
                 parts.append(escape_text(f"{compatible(_sanitize_export_text(label))}（链接已移除）"))
         elif match.group(3) is not None or match.group(4) is not None:
             parts.append(f"<strong>{escape_text(compatible(_sanitize_export_text(match.group(3) or match.group(4))))}</strong>")
+        elif match.group(6) is not None:
+            parts.append(escape_text(compatible(render_math_text(_sanitize_export_text(match.group(6))))))
         else:
             code_text = compatible(_sanitize_export_text(match.group(5) or ""))
             escaped = escape_text(code_text)
@@ -1066,6 +1170,7 @@ def build_pdf_export(
     )
     note = structured["markdown"]
     font_name, warnings = _pdf_font(settings["font_family"])
+    warnings.extend(structured["warnings"])
     raw_title = str(getattr(task, "title", "LearnNote 学习笔记")) or "LearnNote 学习笔记"
     safe_title = _pdf_compatible_text(_sanitize_export_text(raw_title))
     has_non_bmp_text = bool(_NON_BMP_RE.search(str(note or "") + raw_title))
@@ -1171,23 +1276,40 @@ def build_pdf_export(
                     heading_anchors[block_index])
             story.append(paragraph)
         elif block.kind == "bullet":
-            story.append(Paragraph(_pdf_inline(block.text), bullet, bulletText="•"))
+            style = ParagraphStyle("NestedBullet", parent=bullet, leftIndent=10+12*block.level, bulletIndent=12*block.level)
+            story.append(Paragraph(_pdf_inline(block.text), style, bulletText="•"))
         elif block.kind == "ordered":
-            story.append(Paragraph(_pdf_inline(block.text), bullet, bulletText=f"{block.ordinal}."))
+            style = ParagraphStyle("NestedNumber", parent=bullet, leftIndent=10+12*block.level, bulletIndent=12*block.level)
+            story.append(Paragraph(_pdf_inline(block.text), style, bulletText=f"{block.ordinal}."))
         elif block.kind == "quote":
             quote = ParagraphStyle("LearnNoteQuote", parent=body, leftIndent=14,
                 borderColor=colors.HexColor("#ccd9db"), borderWidth=.5, borderPadding=6)
             story.append(Paragraph(_pdf_inline(block.text), quote))
+        elif block.kind == "math":
+            style = ParagraphStyle("LessonMath", parent=body, alignment=TA_CENTER)
+            story.append(Paragraph(_pdf_escape_text(_pdf_compatible_text(render_math_text(_sanitize_export_text(block.text)))), style))
         elif block.kind == "code":
+            style = ParagraphStyle("NestedCode", parent=code, leftIndent=12*block.level)
             wrapped_code = _wrap_pdf_code(_pdf_compatible_text(_sanitize_export_text(block.text)),
-                font_name, code.fontSize, max(1, document.width - 14))
-            story.append(XPreformatted(_pdf_escape_text(wrapped_code), code))
+                font_name, code.fontSize, max(1, document.width - 14 - 12*block.level))
+            story.append(XPreformatted(_pdf_escape_text(wrapped_code), style))
         else:
             story.append(Paragraph(_pdf_inline(block.text).replace("\n", "<br/>"), body))
     story.extend((Spacer(1, 4 * mm), Paragraph("由 LearnNote 在本机生成；原视频、Cookie 与诊断秘密未嵌入此文档。", meta)))
 
     def draw_footer(canvas, doc) -> None:
         canvas.saveState()
+        from reportlab.pdfbase.pdfmetrics import stringWidth
+        label = safe_title
+        while label and stringWidth(label, font_name, 7) > doc.width:
+            label = label[:-1]
+        if label != safe_title:
+            label = label[:-3] + "..."
+        header_style = ParagraphStyle("LearnNotePageHeader", parent=meta, fontSize=7, leading=8)
+        header = Paragraph(_pdf_escape_text(label), header_style)
+        _width, height = header.wrap(doc.width, 15 * mm)
+        page_height = landscape(A4)[1] if settings["orientation"] == "landscape" else A4[1]
+        header.drawOn(canvas, doc.leftMargin, page_height - 7 * mm - height)
         canvas.setFont(font_name, 8)
         canvas.setFillColor(colors.HexColor("#71807E"))
         page_width = landscape(A4)[0] if settings["orientation"] == "landscape" else A4[0]
@@ -1235,12 +1357,20 @@ def build_html_export(
     body: list[str] = []
     toc: list[str] = []
     heading_occurrences: dict[str, int] = {}
-    list_kind = ""
+    list_stack: list[str] = []
     def close_list() -> None:
-        nonlocal list_kind
-        if list_kind:
-            body.append(f"</{list_kind}>")
-            list_kind = ""
+        while list_stack: body.append(f"</li></{list_stack.pop()}>")
+    def list_item(block: _Block) -> None:
+        kind = "ul" if block.kind == "bullet" else "ol"
+        target = min(block.level, len(list_stack))
+        while len(list_stack) > target + 1: body.append(f"</li></{list_stack.pop()}>")
+        if len(list_stack) == target + 1:
+            body.append("</li>")
+            if list_stack[-1] != kind: body.append(f"</{list_stack.pop()}>")
+        if len(list_stack) <= target:
+            body.append(f"<{kind}>"); list_stack.append(kind)
+        ordinal = f' value="{block.ordinal}"' if kind == "ol" else ""
+        body.append(f"<li{ordinal}>{_pdf_inline(block.text, pdf_safe=False)}")
     for block in _content_blocks(structured["markdown"], structured["title"]):
         if block.kind == "heading":
             close_list()
@@ -1268,23 +1398,17 @@ def build_html_export(
                 body.append(f'<figure><img src="{_html_image_data(path)}" alt="{html.escape(caption)}"><figcaption>{html.escape(caption)}</figcaption></figure>')
             elif caption:
                 body.append(f"<p class=\"image-note\">{html.escape(caption)}（图片未嵌入）</p>")
-        elif block.kind == "bullet":
-            if list_kind != "ul":
-                close_list()
-                list_kind = "ul"
-                body.append("<ul>")
-            body.append(f"<li>{_pdf_inline(block.text, pdf_safe=False)}</li>")
-        elif block.kind == "ordered":
-            if list_kind != "ol":
-                close_list()
-                list_kind = "ol"
-                body.append("<ol>")
-            body.append(f"<li>{_pdf_inline(block.text, pdf_safe=False)}</li>")
+        elif block.kind in {"bullet", "ordered"}:
+            list_item(block)
         elif block.kind == "quote":
             close_list()
             body.append(f"<blockquote>{_pdf_inline(block.text, pdf_safe=False)}</blockquote>")
+        elif block.kind == "math":
+            if not block.level: close_list()
+            expression = html.escape(render_math_text(_sanitize_export_text(block.text)))
+            body.append(f'<div class="math" role="math">{expression}</div>')
         elif block.kind == "code":
-            close_list()
+            if not block.level: close_list()
             body.append(f"<pre><code>{html.escape(_sanitize_export_text(block.text))}</code></pre>")
         else:
             close_list()
@@ -1295,7 +1419,7 @@ def build_html_export(
     font_path = Path(__file__).resolve().parents[2] / "site" / "assets" / "fonts" / "learnnote-site-sans.woff2"
     font_face = ""
     font_name = "system Chinese fallback"
-    warnings: list[str] = []
+    warnings: list[str] = list(structured["warnings"])
     if font_path.is_file():
         font_face = f"@font-face{{font-family:LearnNoteEmbedded;src:url(data:font/woff2;base64,{base64.b64encode(font_path.read_bytes()).decode('ascii')}) format('woff2');font-display:swap;}}"
         font_name = "LearnNote Embedded (with system fallback)"
@@ -1310,7 +1434,7 @@ def build_html_export(
 :root{{--ink:#24302d;--muted:#66736f;--line:#dfe7e3;--paper:#fff;--accent:#0f766e;}}
 *{{box-sizing:border-box}}body{{margin:0;background:#f4f7f5;color:var(--ink);font-family:LearnNoteEmbedded,"Microsoft YaHei","Noto Sans SC",sans-serif;font-size:{settings['font_size']}pt;line-height:{settings['line_height']};}}
 main{{max-width:860px;margin:0 auto;background:var(--paper);min-height:100vh;padding:{settings['margin_top']}mm {settings['margin_right']}mm {settings['margin_bottom']}mm {settings['margin_left']}mm;}}
-h1{{font-size:2em;line-height:1.3;margin:0 0 1.2em}}h2{{font-size:1.45em;margin:1.5em 0 .55em}}h3,h4{{margin:1.2em 0 .45em}}p{{margin:{settings['paragraph_before']}pt 0 {settings['paragraph_after']}pt}}.meta{{color:var(--muted);font-size:.85em}}a{{color:var(--accent)}}blockquote{{border-left:3px solid var(--line);padding:.2em 1em;color:var(--muted)}}pre{{background:#f1f5f3;border:1px solid var(--line);padding:1em;overflow:auto;font-family:Consolas,monospace}}code{{font-family:Consolas,monospace}}table{{width:100%;border-collapse:collapse;margin:1em 0}}th,td{{border:1px solid var(--line);padding:.55em;text-align:left;vertical-align:top}}th{{background:#edf4f1}}img{{max-width:100%;height:auto}}figure{{margin:1.1em 0}}figcaption,.image-note{{color:var(--muted);font-size:.82em}}.toc{{border:1px solid var(--line);padding:1em;margin:1em 0}}.toc ol{{margin:.5em 0 0;padding-left:1.5em}}.toc-level-3{{margin-left:1em}}footer{{margin-top:2em;color:var(--muted);font-size:.8em;border-top:1px solid var(--line);padding-top:1em}}"""
+h1{{font-size:2em;line-height:1.3;margin:0 0 1.2em}}h2{{font-size:1.45em;margin:1.5em 0 .55em}}h3,h4{{margin:1.2em 0 .45em}}p{{margin:{settings['paragraph_before']}pt 0 {settings['paragraph_after']}pt}}.meta{{color:var(--muted);font-size:.85em}}a{{color:var(--accent)}}blockquote{{border-left:3px solid var(--line);padding:.2em 1em;color:var(--muted)}}.math{{text-align:center;white-space:pre-wrap;margin:1em 0}}pre{{background:#f1f5f3;border:1px solid var(--line);padding:1em;overflow:auto;font-family:Consolas,monospace}}code{{font-family:Consolas,monospace}}table{{width:100%;border-collapse:collapse;margin:1em 0}}th,td{{border:1px solid var(--line);padding:.55em;text-align:left;vertical-align:top}}th{{background:#edf4f1}}img{{max-width:100%;height:auto}}figure{{margin:1.1em 0}}figcaption,.image-note{{color:var(--muted);font-size:.82em}}.toc{{border:1px solid var(--line);padding:1em;margin:1em 0}}.toc ol{{margin:.5em 0 0;padding-left:1.5em}}.toc-level-3{{margin-left:1em}}footer{{margin-top:2em;color:var(--muted);font-size:.8em;border-top:1px solid var(--line);padding-top:1em}}"""
     document = f'<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{title}</title><style>{css}</style></head><body><main><h1>{title}</h1>{source_html}{toc_html}{"".join(rendered)}<footer>由 LearnNote 在本机生成；原视频、Cookie 与诊断秘密未嵌入此文档。</footer></main></body></html>'
     return DocumentExport(
         content=document.encode("utf-8"),

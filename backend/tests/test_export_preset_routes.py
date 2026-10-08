@@ -39,3 +39,44 @@ class ExportPresetContractTests(unittest.TestCase):
                 self.assertEqual({item["name"] for item in client.get("/api/study/export-presets").json()["presets"]}, {"My preset","Renamed"})
                 self.assertEqual(client.delete("/api/study/export-presets/My%20preset").status_code, 200)
                 self.assertEqual(client.get("/api/study/export-presets").json()["presets"][0]["name"], "Renamed")
+
+    def test_built_ins_are_separate_read_only_normalized_and_do_not_create_storage(self):
+        from app.document_exports import normalize_export_options
+        app = FastAPI(); app.include_router(study_router)
+        client = TestClient(app)
+        with tempfile.TemporaryDirectory() as tmp, patch("app.routers.knowledge_study.DATA_DIR", Path(tmp)):
+            response = client.get("/api/study/export-presets")
+            self.assertEqual(response.status_code, 200)
+            result = response.json()
+            self.assertEqual(result["presets"], [])
+            built_ins = result["built_in_presets"]
+            self.assertEqual([item["id"] for item in built_ins], ["print", "academic", "compact"])
+            for item in built_ins:
+                self.assertTrue(item["read_only"])
+                self.assertRegex(item["name"], r"[一-龥]")
+                self.assertIn(item["id"].title(), item["name"])
+                self.assertEqual(item["options"], normalize_export_options({"template": item["id"]}))
+                self.assertEqual(client.delete(f"/api/study/export-presets/{item['id']}").status_code, 404)
+            self.assertFalse((Path(tmp) / "export-presets.json").exists())
+            self.assertEqual(built_ins[1]["options"]["margin_left"], 25)
+            self.assertTrue(built_ins[1]["options"]["include_toc"])
+            self.assertEqual(built_ins[2]["options"]["font_size"], 9.5)
+
+    def test_personal_preset_named_after_template_remains_editable_without_changing_built_ins(self):
+        app = FastAPI(); app.include_router(study_router)
+        client = TestClient(app)
+        with tempfile.TemporaryDirectory() as tmp, patch("app.routers.knowledge_study.DATA_DIR", Path(tmp)):
+            original = client.get("/api/study/export-presets").json()["built_in_presets"]
+            saved = client.put("/api/study/export-presets/academic", json={"options": {
+                "template": "academic", "font_size": 16, "margin_left": 30,
+            }})
+            self.assertEqual(saved.status_code, 200)
+            result = client.get("/api/study/export-presets").json()
+            self.assertEqual(result["built_in_presets"], original)
+            self.assertEqual(result["presets"][0]["name"], "academic")
+            self.assertEqual(result["presets"][0]["options"]["font_size"], 16)
+            self.assertEqual(result["presets"][0]["options"]["template"], "academic")
+            self.assertEqual(client.delete("/api/study/export-presets/academic").status_code, 200)
+            result = client.get("/api/study/export-presets").json()
+            self.assertEqual(result["built_in_presets"], original)
+            self.assertEqual(result["presets"], [])

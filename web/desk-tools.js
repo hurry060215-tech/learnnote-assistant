@@ -284,33 +284,203 @@ export function installTools(ctx) {
   function exports() {
     const s = current();
     const exportBase = s.kind === "task" ? `/api/tasks/${s.id}/exports` : `/api/library/materials/${s.id}/exports`;
-    show("统一导出", `<p class="muted">笔记和学习资料共享同一份结构化正文。预览会使用个人补充、出处、时间点、图片与练习的当前选择。</p><div class="unified-export-grid"><label>格式<select id="unifiedExportFormat"><option value="html">HTML（离线预览）</option><option value="docx">Word</option><option value="pdf">PDF</option></select></label><label>字体<select id="unifiedExportFont"><option>Microsoft YaHei</option><option>Noto Sans SC</option><option>SimSun</option><option>Arial</option></select></label><label>字号<input id="unifiedExportSize" type="number" min="8" max="36" step="0.5" value="10.5"></label><label>行距<input id="unifiedExportLeading" type="number" min="1" max="3" step="0.1" value="1.6"></label><label>方向<select id="unifiedExportOrientation"><option value="portrait">纵向</option><option value="landscape">横向</option></select></label></div><div class="unified-export-options"><label class="check"><input id="exportIncludeNote" type="checkbox" checked>笔记正文</label><label class="check"><input id="exportAnnotations" type="checkbox" checked>个人补充</label><label class="check"><input id="exportSourceLink" type="checkbox" checked>来源链接</label><label class="check"><input id="exportTimestamps" type="checkbox" checked>时间点</label><label class="check"><input id="exportImages" type="checkbox" checked>图片</label><label class="check"><input id="exportToc" type="checkbox">目录</label><label class="check"><input id="exportTranscript" type="checkbox">完整字幕</label><label class="check"><input id="exportPractice" type="checkbox">学习空间练习</label></div><div class="unified-export-actions"><button id="previewUnifiedExport" class="primary">更新预览</button><button id="downloadUnifiedExport">导出文件</button></div><p id="unifiedExportStatus" class="muted" role="status"></p><iframe id="unifiedExportPreview" title="导出预览"></iframe>`);
+    const token = show("统一导出", `<p class="muted">笔记和学习资料共享同一份结构化正文。预览会使用个人补充、出处、时间点、图片与练习的当前选择。</p><div class="unified-export-grid"><label>格式<select id="unifiedExportFormat"><option value="html">HTML（离线预览）</option><option value="docx">Word</option><option value="pdf">PDF</option></select></label><label>字体<select id="unifiedExportFont"><option>Microsoft YaHei</option><option>Noto Sans SC</option><option>SimSun</option><option>Arial</option></select></label><label>字号<input id="unifiedExportSize" type="number" min="8" max="36" step="0.5" value="10.5"></label><label>行距<input id="unifiedExportLeading" type="number" min="1" max="3" step="0.1" value="1.6"></label><label>方向<select id="unifiedExportOrientation"><option value="portrait">纵向</option><option value="landscape">横向</option></select></label></div><div class="unified-export-options"><label class="check"><input id="exportIncludeNote" type="checkbox" checked>笔记正文</label><label class="check"><input id="exportAnnotations" type="checkbox" checked>个人补充</label><label class="check"><input id="exportSourceLink" type="checkbox" checked>来源链接</label><label class="check"><input id="exportTimestamps" type="checkbox" checked>时间点</label><label class="check"><input id="exportImages" type="checkbox" checked>图片</label><label class="check"><input id="exportToc" type="checkbox">目录</label><label class="check"><input id="exportTranscript" type="checkbox">完整字幕</label><label class="check"><input id="exportPractice" type="checkbox">学习空间练习</label><label class="check"><input id="exportDiagnostics" type="checkbox">脱敏诊断（Sanitized diagnostics）</label></div><div class="unified-export-actions"><button id="previewUnifiedExport" class="primary">更新预览</button><button id="downloadUnifiedExport">导出文件</button></div><p id="unifiedExportStatus" class="muted" role="status"></p><iframe id="unifiedExportPreview" title="导出预览"></iframe>`);
     dialog.dataset.sourceId = s.id;
     dialog.dataset.sourceKind = s.kind;
     const formatGrid = $("unifiedExportFormat")?.closest(".unified-export-grid");
     const presetBar = document.createElement("div"); presetBar.className = "unified-export-presets";
-    presetBar.innerHTML = '<label>导出预设<select id="unifiedExportPreset"><option value="">不使用预设</option></select></label><label>预设名称<input id="unifiedExportPresetName" maxlength="80" placeholder="例如：打印讲义"></label><button type="button" id="saveUnifiedExportPreset">保存当前排版</button><button type="button" id="deleteUnifiedExportPreset">删除预设</button>';
+    presetBar.innerHTML = '<label>导出预设<select id="unifiedExportPreset"><option value="">不使用预设</option></select></label><label>预设名称<input id="unifiedExportPresetName" maxlength="80" placeholder="例如：打印讲义"></label><button type="button" id="saveUnifiedExportPreset">保存当前排版</button><button type="button" id="deleteUnifiedExportPreset" disabled>删除预设</button>';
     formatGrid?.before(presetBar);
     const spacing = document.createElement("div"); spacing.className = "unified-export-spacing";
     spacing.innerHTML = '<label>段前距（pt）<input id="unifiedExportBefore" type="number" min="0" max="60" step="1" value="0"></label><label>段后距（pt）<input id="unifiedExportAfter" type="number" min="0" max="60" step="1" value="7"></label><label>上边距（mm）<input id="unifiedExportTop" type="number" min="5" max="50" step="1" value="18"></label><label>下边距（mm）<input id="unifiedExportBottom" type="number" min="5" max="50" step="1" value="18"></label><label>左边距（mm）<input id="unifiedExportLeft" type="number" min="5" max="50" step="1" value="18"></label><label>右边距（mm）<input id="unifiedExportRight" type="number" min="5" max="50" step="1" value="18"></label>';
     formatGrid?.after(spacing);
-    const collect = () => ({ format: $("unifiedExportFormat").value, options: { include_note: $("exportIncludeNote").checked, include_annotations: $("exportAnnotations").checked, include_source_link: $("exportSourceLink").checked, include_timestamps: $("exportTimestamps").checked, include_images: $("exportImages").checked, include_toc: $("exportToc").checked, include_transcript: $("exportTranscript").checked, include_practice: $("exportPractice").checked, font_family: $("unifiedExportFont").value, font_size: Number($("unifiedExportSize").value), line_height: Number($("unifiedExportLeading").value), paragraph_before: Number($("unifiedExportBefore").value), paragraph_after: Number($("unifiedExportAfter").value), margin_top: Number($("unifiedExportTop").value), margin_bottom: Number($("unifiedExportBottom").value), margin_left: Number($("unifiedExportLeft").value), margin_right: Number($("unifiedExportRight").value), orientation: $("unifiedExportOrientation").value } });
-    const setOptions = (options = {}) => { const values = { unifiedExportFont: options.font_family, unifiedExportSize: options.font_size, unifiedExportLeading: options.line_height, unifiedExportBefore: options.paragraph_before, unifiedExportAfter: options.paragraph_after, unifiedExportTop: options.margin_top, unifiedExportBottom: options.margin_bottom, unifiedExportLeft: options.margin_left, unifiedExportRight: options.margin_right, unifiedExportOrientation: options.orientation }; Object.entries(values).forEach(([id, value]) => { if (value !== undefined && $(id)) $(id).value = value; }); const checks = { exportIncludeNote: "include_note", exportAnnotations: "include_annotations", exportSourceLink: "include_source_link", exportTimestamps: "include_timestamps", exportImages: "include_images", exportToc: "include_toc", exportTranscript: "include_transcript", exportPractice: "include_practice" }; Object.entries(checks).forEach(([id, key]) => { if (options[key] !== undefined && $(id)) $(id).checked = Boolean(options[key]); }); };
     const presetSelect = $("unifiedExportPreset");
-    api("/api/study/export-presets").then(result => { for (const item of result.presets || []) { const option = document.createElement("option"); option.value = item.name; option.textContent = item.name; option.dataset.options = JSON.stringify(item.options || {}); presetSelect?.append(option); } }).catch(() => {});
-    api("/api/study/export-fonts").then(result => { const select = $("unifiedExportFont"); if (!select) return; const fonts = (result.fonts || []).filter(item => item.available); if (!fonts.length) return; select.replaceChildren(...fonts.map(item => Object.assign(document.createElement("option"), { value: item.name, textContent: item.name }))); }).catch(() => {});
-    presetSelect?.addEventListener("change", () => { const selected = presetSelect.selectedOptions?.[0]; if (selected?.dataset.options) setOptions(JSON.parse(selected.dataset.options)); });
-    $("saveUnifiedExportPreset")?.addEventListener("click", async () => { const name = $("unifiedExportPresetName")?.value.trim(); if (!name) { statusText("请先填写预设名称。"); return; } try { await api(`/api/study/export-presets/${encodeURIComponent(name)}`, { method: "PUT", body: JSON.stringify(collect()) }); statusText(`已保存导出预设“${name}”。`); } catch (error) { statusText(error.message); } });
-    $("deleteUnifiedExportPreset")?.addEventListener("click", async () => { const name = presetSelect?.value; if (!name) { statusText("请先选择要删除的预设。"); return; } try { await api(`/api/study/export-presets/${encodeURIComponent(name)}`, { method: "DELETE" }); [...(presetSelect?.options || [])].find(option => option.value === name)?.remove(); statusText(`已删除导出预设“${name}”。`); } catch (error) { statusText(error.message); } });
-    const statusText = (message) => { const node = $("unifiedExportStatus"); if (node) node.textContent = message; };
+    const downloadButton = $("downloadUnifiedExport");
+    const statusNode = $("unifiedExportStatus");
+    const previewFrame = $("unifiedExportPreview");
+    let selectedTemplate = "print", previewSequence = 0, statusSequence = 0, downloading = false;
+    const changedPresets = new Set();
+    const active = () => token === generation && dialog.open &&
+      state.selected?.id === s.id && state.selected?.kind === s.kind;
+    const statusText = (message) => { if (active()) statusNode.textContent = message; };
+    const warningText = (warnings = []) => {
+      const messages = {
+        non_bmp_symbols_rendered_as_unicode_names: "PDF 中的部分表情与特殊符号已替换为可读名称，以免显示为空白。",
+        docx_toc_page_numbers_require_field_update: "Word 目录页码需要在打开文件后右键目录，选择“更新域/更新整个目录”。",
+        unrecognized_math_commands_preserved_as_source: "少量公式命令已保留原文，请核对。",
+        requested_docx_font_unavailable_using_host_fallback: "所选 Word 字体未安装，将使用打开文件设备上的替代字体；排版可能变化。",
+        emoji_font_unavailable_using_host_fallback: "表情字体未安装，将使用打开文件设备上的替代字体。",
+        requested_pdf_font_unavailable_using_cjk_fallback: "所选 PDF 字体未安装，已使用中文替代字体；排版可能变化。",
+        embedded_system_cjk_font_unavailable_using_pdf_cid_fallback: "未找到可嵌入的中文字体，PDF 已使用兼容字体；请检查中文显示。",
+        embedded_html_font_unavailable_using_system_fallback: "离线 HTML 字体无法嵌入，将使用设备上的替代字体。",
+      };
+      return [...new Set(warnings.map(code => String(code).trim()).filter(Boolean))]
+        .map(code => messages[code] || `导出提示：${code}`).join(" ");
+    };
+    const collect = () => ({
+      format: $("unifiedExportFormat").value,
+      options: {
+        template: selectedTemplate,
+        include_note: $("exportIncludeNote").checked,
+        include_annotations: $("exportAnnotations").checked,
+        include_source_link: $("exportSourceLink").checked,
+        include_timestamps: $("exportTimestamps").checked,
+        include_images: $("exportImages").checked,
+        include_toc: $("exportToc").checked,
+        include_transcript: $("exportTranscript").checked,
+        include_practice: $("exportPractice").checked,
+        include_diagnostics: $("exportDiagnostics").checked,
+        font_family: $("unifiedExportFont").value,
+        font_size: Number($("unifiedExportSize").value),
+        line_height: Number($("unifiedExportLeading").value),
+        paragraph_before: Number($("unifiedExportBefore").value),
+        paragraph_after: Number($("unifiedExportAfter").value),
+        margin_top: Number($("unifiedExportTop").value),
+        margin_bottom: Number($("unifiedExportBottom").value),
+        margin_left: Number($("unifiedExportLeft").value),
+        margin_right: Number($("unifiedExportRight").value),
+        orientation: $("unifiedExportOrientation").value,
+      },
+    });
+    const ensureFont = (name) => {
+      const select = $("unifiedExportFont");
+      if (name && ![...select.options].some(option => option.value === name)) {
+        select.append(Object.assign(document.createElement("option"), { value: name, textContent: name }));
+      }
+    };
+    const setOptions = (options = {}) => {
+      selectedTemplate = ["print", "academic", "compact"].includes(options.template) ? options.template : "print";
+      ensureFont(options.font_family);
+      const values = {
+        unifiedExportFont: options.font_family, unifiedExportSize: options.font_size,
+        unifiedExportLeading: options.line_height, unifiedExportBefore: options.paragraph_before,
+        unifiedExportAfter: options.paragraph_after, unifiedExportTop: options.margin_top,
+        unifiedExportBottom: options.margin_bottom, unifiedExportLeft: options.margin_left,
+        unifiedExportRight: options.margin_right, unifiedExportOrientation: options.orientation,
+      };
+      Object.entries(values).forEach(([id, value]) => { if (value !== undefined) $(id).value = value; });
+      const checks = {
+        exportIncludeNote: "include_note", exportAnnotations: "include_annotations",
+        exportSourceLink: "include_source_link", exportTimestamps: "include_timestamps",
+        exportImages: "include_images", exportToc: "include_toc",
+        exportTranscript: "include_transcript", exportPractice: "include_practice",
+        exportDiagnostics: "include_diagnostics",
+      };
+      Object.entries(checks).forEach(([id, key]) => { $(id).checked = Boolean(options[key]); });
+    };
+    const updateDelete = () => {
+      const selected = presetSelect.selectedOptions[0];
+      $("deleteUnifiedExportPreset").disabled = !selected?.dataset.name || selected.dataset.readOnly === "true";
+    };
+    const upsertPreset = (item, builtIn = false) => {
+      const value = `${builtIn ? "builtin" : "user"}:${builtIn ? item.id : item.name}`;
+      let option = [...presetSelect.options].find(option => option.value === value);
+      if (!option) { option = document.createElement("option"); presetSelect.append(option); }
+      option.value = value;
+      option.textContent = builtIn ? `${item.name}（内置）` : item.name;
+      option.dataset.name = item.name;
+      option.dataset.readOnly = String(builtIn || item.read_only === true);
+      option.dataset.options = JSON.stringify(item.options || {});
+      return option;
+    };
+    api("/api/study/export-presets").then(result => {
+      if (!active()) return;
+      for (const item of result.built_in_presets || []) upsertPreset(item, true);
+      for (const item of result.presets || []) if (!changedPresets.has(item.name)) upsertPreset(item);
+      updateDelete();
+    }).catch(() => {});
+    api("/api/study/export-fonts").then(result => {
+      if (!active()) return;
+      // Keep a preset's chosen font even when this host lacks it. Export warnings
+      // explain fallback rather than silently changing the saved preference.
+      for (const item of result.fonts || []) if (item.available) ensureFont(item.name);
+    }).catch(() => {});
+    presetSelect.addEventListener("change", () => {
+      const selected = presetSelect.selectedOptions[0];
+      if (selected?.dataset.options) setOptions(JSON.parse(selected.dataset.options));
+      else selectedTemplate = "print";
+      updateDelete();
+    });
+    $("saveUnifiedExportPreset").addEventListener("click", async (event) => {
+      if (!active() || event.currentTarget.disabled) return;
+      const name = $("unifiedExportPresetName").value.trim();
+      if (!name) { statusText("请先填写预设名称。"); return; }
+      const button = event.currentTarget, settings = collect(), statusToken = ++statusSequence;
+      button.disabled = true;
+      try {
+        const result = await api(`/api/study/export-presets/${encodeURIComponent(name)}`, { method: "PUT", body: JSON.stringify(settings) });
+        if (!active()) return;
+        const item = { name: result.name || name, options: result.options || settings.options };
+        changedPresets.add(item.name);
+        presetSelect.value = upsertPreset(item).value;
+        setOptions(item.options);
+        updateDelete();
+        if (statusToken === statusSequence) statusText(`已保存导出预设“${item.name}”。`);
+      } catch (error) {
+        if (statusToken === statusSequence) statusText(error.message);
+      } finally { if (active()) button.disabled = false; }
+    });
+    $("deleteUnifiedExportPreset").addEventListener("click", async (event) => {
+      if (!active() || event.currentTarget.disabled) return;
+      const selected = presetSelect.selectedOptions[0];
+      if (!selected?.dataset.name || selected.dataset.readOnly === "true") {
+        statusText("内置预设只读，不能删除；可另存为个人预设。");
+        return;
+      }
+      const name = selected.dataset.name, statusToken = ++statusSequence, button = event.currentTarget;
+      button.disabled = true;
+      try {
+        await api(`/api/study/export-presets/${encodeURIComponent(name)}`, { method: "DELETE" });
+        if (!active()) return;
+        changedPresets.add(name);
+        const wasSelected = presetSelect.value === selected.value;
+        selected.remove();
+        if (wasSelected) { presetSelect.value = ""; selectedTemplate = "print"; }
+        if (statusToken === statusSequence) statusText(`已删除导出预设“${name}”。`);
+      } catch (error) {
+        if (statusToken === statusSequence) statusText(error.message);
+      } finally { if (active()) updateDelete(); }
+    });
     const preview = async () => {
-      const status = $("unifiedExportStatus"); status.textContent = "正在整理预览…";
-      try { const result = await api(`${exportBase}/preview`, { method: "POST", body: JSON.stringify(collect()) }); $("unifiedExportPreview").srcdoc = result.html; status.textContent = result.warnings?.length ? `预览已生成：${result.warnings.join("、")}` : "预览已更新；HTML 可离线打开。"; } catch (error) { status.textContent = error.message; }
+      if (!active()) return;
+      const sequence = ++previewSequence, statusToken = ++statusSequence;
+      statusText("正在整理预览…");
+      try {
+        const result = await api(`${exportBase}/preview`, { method: "POST", body: JSON.stringify(collect()) });
+        if (!active() || sequence !== previewSequence) return;
+        previewFrame.srcdoc = result.html;
+        if (statusToken === statusSequence) statusText(result.warnings?.length ? `预览已生成。${warningText(result.warnings)}` : "预览已更新；HTML 可离线打开。");
+      } catch (error) {
+        if (sequence === previewSequence && statusToken === statusSequence) statusText(error.message);
+      }
     };
     $("previewUnifiedExport").onclick = preview;
-    $("downloadUnifiedExport").onclick = async () => {
-      const settings = collect(), status = $("unifiedExportStatus"); status.textContent = "正在生成文件…";
-      try { const response = await fetch(`${exportBase}/${settings.format}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(settings) }); if (!response.ok) throw new Error((await response.text()) || "导出失败"); const blob = await response.blob(); const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = `${s.title || "笔记"}.${settings.format === "html" ? "html" : settings.format}`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); status.textContent = "文件已生成。"; } catch (error) { status.textContent = error.message; }
+    downloadButton.onclick = async () => {
+      if (!active() || downloading) return;
+      const settings = collect(), statusToken = ++statusSequence;
+      downloading = true;
+      downloadButton.disabled = true;
+      statusText("正在生成文件…");
+      try {
+        const response = await fetch(`${exportBase}/${settings.format}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(settings) });
+        if (!active()) return;
+        if (!response.ok) throw new Error((await response.text()) || "导出失败");
+        const blob = await response.blob();
+        if (!active()) return;
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `${s.title || "笔记"}.${settings.format}`;
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        const warnings = warningText((response.headers.get("X-LearnNote-Export-Warning") || "").split(","));
+        if (statusToken === statusSequence) statusText(warnings ? `文件已生成。${warnings}` : "文件已生成。");
+      } catch (error) {
+        if (statusToken === statusSequence) statusText(error.message);
+      } finally {
+        downloading = false;
+        if (active()) downloadButton.disabled = false;
+      }
     };
     preview();
   }

@@ -91,7 +91,16 @@ def api_export_fonts() -> dict:
 
 @study_router.get("/export-presets")
 def api_export_presets() -> dict:
-    return {"presets": _read_export_preset_records()}
+    # Built-ins never enter the personal preset store. A personal preset may
+    # retain any historical name, including "print", without colliding with one.
+    built_in_presets = [
+        {"id": template, "name": name, "read_only": True,
+         "options": normalize_export_options({"template": template})}
+        for template, name in (("print", "打印 / Print"),
+                               ("academic", "学术 / Academic"),
+                               ("compact", "紧凑 / Compact"))
+    ]
+    return {"presets": _read_export_preset_records(), "built_in_presets": built_in_presets}
 
 
 @study_router.put("/export-presets/{name}")

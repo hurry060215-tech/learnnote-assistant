@@ -1,100 +1,119 @@
-# Evidence, Unicode, note structure and document export verification
+# Evidence, Unicode, semantic notes and export acceptance
 
-Date: 2026-10-08. Issues: [#129](https://github.com/hurry060215-tech/learnnote-assistant/issues/129), [#150](https://github.com/hurry060215-tech/learnnote-assistant/issues/150), [#152](https://github.com/hurry060215-tech/learnnote-assistant/issues/152), [#156](https://github.com/hurry060215-tech/learnnote-assistant/issues/156).
+Date: 2026-10-08. Related: [#129](https://github.com/hurry060215-tech/learnnote-assistant/issues/129), [#150](https://github.com/hurry060215-tech/learnnote-assistant/issues/150), [#152](https://github.com/hurry060215-tech/learnnote-assistant/issues/152), [#156](https://github.com/hurry060215-tech/learnnote-assistant/issues/156).
 
-## Result and revision
+## Result and tested revision
 
-This package fixes reproducible defects and adds current regression evidence. **None of these four epics is eligible for full closure from this package.** Implementation gaps and unperformed acceptance checks are distinguished below. Earlier reports are background, not evidence for this revision.
+This followthrough fixes reproducible publication, Unicode propagation, nested-formatting and export-panel gaps. **#152 is a closure candidate against its original bounded-parser acceptance scope after CI/review. #129, #150 and #156 retain the specific gaps below.** WPS and unrestricted LaTeX are historical extra checks, not requirements named in the original issues. This report does not close issues.
 
-- Starting revision: `768c46c47db44492f6c7283b7ed7f18f43de6073`.
-- Unicode/filename fix: `69e4f4e`; claim publication fix: `a2b9cdf`; structure/export fix: `8817397`.
-- Integration revision: `6cb4758`, incorporating main `dc257c83fc939582ca86c7cf3f7bc9b06cffb72c` without conflicts.
-- Long-document artifacts were generated from clean `8817397d8d3fd4667585e5d73299ab3b0d454344`. The integrated revision does not change the note/export implementation.
-- Environment: Linux cloud executor, Python 3.12.14, reportlab 5.0.1, python-docx 1.2.0, pypdf 6.19.0, Pillow 12.3.0, charset-normalizer 3.5.2. DOCX visual review used LibreOfficeDev 26.8.0.0.alpha0, not Microsoft Word or WPS.
-- No new dependency, permission, model call, telemetry, third-party document conversion, or account change. Test-generated material is synthetic and local. No user annotations or original source bytes were overwritten.
+- Tested code: `1fc5511085ec327b6a513de913ed795bd5e46ce6`, incorporating privacy baseline `01e10aa99ce56e6b769a95f992efd4e9bcd6f5e0` (#230).
+- Followthrough commits: `0c5eac9` panel/presets, `8916d8e` Unicode/Notion, `3b8efec` publication/structure. The first increment was merged in #224; its earlier test counts are historical, not current proof.
+- Linux cloud, Python 3.12.14, ReportLab 5.0.1, python-docx 1.2.0, pypdf 6.19.0, Pillow 12.3.0, charset-normalizer 3.5.2. DOCX rendering used local LibreOfficeDev 26.8.0.0.alpha0 and Poppler.
+- Synthetic fixtures and the existing recorded public-source corpus only. No paid model, account change, remote document conversion or Notion send. Native processes launched with both telemetry opt-outs before initialization. Earlier blocked runs are excluded.
 
-## Current validation
+## Current regression evidence
 
-On integrated `6cb4758`:
-
-- `PYTHONPATH=backend:. python scripts/test-backend-offline.py`: **684 tests, pass, one existing platform skip**, 60.053 seconds. External DNS, HTTP and model-download attempts are denied locally by the runner.
-- `PYTHONPATH=backend:. python -m unittest discover -s scripts/tests -p 'test_*.py'`: **100 tests, pass, two platform skips**.
-- `python -m compileall -q backend/app`, `python scripts/check-architecture.py`, `node web/tests/markdown_render.test.mjs`, and `git diff --check`: pass.
-- Before main integration, the same package passed 673 backend tests; these counts are separate runs, not additive.
-- An initial invocation of an external runner with only `PYTHONPATH=backend` produced 13 import errors for the desktop package. Re-running with the repository root on the import path passed. The checked-in runner now configures parent and child import paths itself.
-
-Reproducible focused checks:
+| Check | Accepted result |
+| --- | --- |
+| Full offline backend | **747 passed, no skips**, 81.297 s |
+| Scripts discovery | **117 tests, pass, 3 platform skips**, 2.805 s |
+| Desktop discovery | **28 passed**, 0.166 s |
+| Export panel runtime DOM | **11 passed** |
+| Obsidian `npm run verify` | **10 passed**, TypeScript and production bundle pass; Moment remains host-provided |
+| Actual TypeScript Obsidian importer/backend ZIP/in-memory vault | **10 checks passed**, no network |
+| Architecture, compileall, i18n, Markdown renderer, diff whitespace | All pass; 22 boundary modules, 10 routers, 2 state modules, 21 size guards; extension 263 keys per locale / 241 referenced |
 
 ```sh
-PYTHONPATH=backend:. python -m unittest discover -s backend/tests -p 'test_claim*.py'
-PYTHONPATH=backend:. python -m unittest discover -s backend/tests -p 'test_note*.py'
-PYTHONPATH=backend:. python -m unittest discover -s backend/tests -p 'test_subtitles_first.py'
-PYTHONPATH=backend:. python -m unittest discover -s backend/tests -p 'test_encoding_provenance.py'
-PYTHONPATH=backend:. python -m unittest discover -s backend/tests -p 'test_document_exports.py'
-PYTHONPATH=backend:. python scripts/claim-evidence-benchmark.py --output build/claim-report.json
-PYTHONPATH=backend:. python scripts/export-long-document-qa.py \
-  --output-dir build/export-qa --template academic --include-keyframes
+export ORT_DISABLE_TELEMETRY=1 HF_HUB_DISABLE_TELEMETRY=1
+export PYTHONPATH=backend:.
+python scripts/test-backend-offline.py
+python -m unittest discover -s scripts/tests -p 'test_*.py'
+python -m unittest discover -s desktop/tests -p 'test_*.py'
+node web/tests/export_panel_behavior.test.mjs
+node web/tests/markdown_render.test.mjs
+npm --prefix integrations/obsidian-learnnote run verify
+python scripts/claim-evidence-benchmark.py --output build/claim-report.json
+python scripts/export-long-document-qa.py --output-dir build/export-qa \
+  --template academic --include-keyframes
 ```
 
-The document export suite now has 21 tests. Generated PDFs, DOCX files, render images and run logs stay in ignored build directories; they are not committed as new source assets.
+New focused suites: `test_unicode_export_matrix.py`, `test_transcript_publication_quality.py`, `test_nested_note_exports.py`, `test_page_text_note_contract.py`, and expanded `test_export_preset_routes.py`. They run within the full guarded backend suite. Cloud browser localhost access was unavailable. Panel tests execute real JavaScript against DOM/fetch mocks; they do not claim native browser visual acceptance.
 
 ## #129 Claim-level evidence
 
-| Acceptance condition | Current evidence and remaining boundary |
+| Original criterion | Current result |
 | --- | --- |
-| Chinese entities, numbers, causes, steps and visual descriptions enter the gate | Existing bilingual/semantic fixtures and the 60-case public-source corpus pass their conservative review contract. Added short Chinese numeric claims, exact source spans and source/code/YAML exclusion tests. This is still a restricted prose projection, not exhaustive semantic extraction from tables, quotations, formulas or all Markdown. |
-| Every factual claim has timed or visual evidence | Direct matches retain transcript/visual IDs and locators; document claims retain document locators. Unmatched claims remain review-required with no invented evidence IDs. An arbitrary paraphrase is not promoted merely because it has a timestamp. Full semantic support for every factual statement is not proved. |
-| Click a claim to open subtitle/keyframe | Existing API/source-range contracts remain intact and the full backend suite passes. Claim map v6 adds exact Unicode-codepoint spans. A real browser click-through against a production task was not run here. |
-| Unsupported claims cannot silently enter a formal note | Fixed production video and saved/subtitle-only persistence: pending, located-only and inference prose receives an explicit visible review marker before note.md is written. The final map is rebuilt against the published text. Verbatim evidence, source metadata, source-only notes and empty claim sets do not acquire invented unsupported claims. The page-text fallback path still needs the same publication contract. |
-| Markdown, Obsidian and bundle references stay stable | Claim IDs now derive from task/text/duplicate occurrence rather than absolute list index, and survive unrelated preceding insertions. Review markers are portable Markdown. v4/v5 maps retain conservative verification but request a rebuild; no old offsets are fabricated. Current Obsidian client round-trip and all claim-specific document anchor navigation were not proved by this package. |
-| Legitimate paraphrases are not removed by exact-string matching | Paraphrases are retained and visibly require review, rather than deleted or asserted false. Accurate automatic paraphrase support remains an implementation gap. |
+| Chinese entities/numbers/causes/steps/visual descriptions enter the gate | Bilingual fixtures and 60-case benchmark run. Extraction remains a restricted prose projection, not exhaustive factual table/quotation extraction. |
+| Every fact has timed/visual evidence | Direct claims retain stable evidence IDs/locators; documents retain document locators. Unmatched/merely located statements explicitly require review. Timestamps are not semantic proof. |
+| Click claim to open subtitle/frame | API/source-range contracts pass; no current production-task browser click-through evidence here. |
+| Unsupported facts cannot silently enter formal notes | Video, saved/subtitle-only and now **page-text** use visible review markers and final-map rebuild. Verbatim evidence, source-only/empty notes and review-action prompts avoid spurious warnings. |
+| Stable Markdown/Obsidian/bundle references | v6 IDs use task/text/occurrence and Unicode-codepoint spans. The actual Obsidian importer now retains and links `claim_evidence_map.json`; ZIP/import/re-import preserves the ID. Old maps request rebuild. |
+| Legitimate paraphrases not broadly rejected | Content is retained for review; automatic direct-support recall remains insufficient for complete semantic verification. |
 
-The fixed public corpus contains 60 cases (30 English, 30 Chinese) from 12 recorded public sources. Current direct-support precision is **1.00**, recall **0.50**; review precision is **0.75**, recall **1.00**; false direct support is **0**. These are fixed-corpus status metrics, not general truth-verification accuracy. Twelve supported paraphrases still receive located-only/inference status. Do not describe this result as complete semantic verification.
+Current fixed corpus: **60 cases, EN30/ZH30, 12 sources**. Direct precision **1.00**, recall **0.50**, false direct support **0**; review precision **0.75**, recall **1.00**. Twelve supported paraphrases are downgraded. These are fixed-corpus classification metrics, not general factual accuracy. **Keep #129 open** for semantic support/extraction and real claim-to-source UI acceptance.
 
-## #150 Unicode and provenance
+## #150 Unicode and publication
 
-| Acceptance condition | Current evidence and remaining boundary |
+| Original criterion | Current result |
 | --- | --- |
-| BOM, declared charset, strict UTF-8, bounded detection/user choice | BOM/declaration tests pass. Fixed valid strict UTF-8 being ranked against legacy guesses; it now wins before detection. An explicit user encoding remains an intentional override. |
-| No unrecorded errors=ignore in user text paths | Removed the two filename truncation sites in library.py and main.py, replacing them with an NFC, complete-codepoint UTF-8 byte-budget helper. Remaining errors=replace in downloader_policy.py is bounded subprocess diagnostic decoding, not subtitle/note body ingestion. |
-| Encoding, replacements, normalization version and confidence | Existing import metadata/raw digest tests pass, including explicit choice and HTTP/HTML declarations. UTF-8 replacement characters can no longer escape quarantine through another decoder. End-to-end manifests for every OCR/ASR/model-output source are still not fully unified. |
-| Corrupt prose blocks publication | Canonical decoder and note-quality gates pass existing corruption fixtures. Code examples containing corruption strings remain literal code rather than being rejected as factual prose. |
-| Chinese, Japanese, English, emoji, UTF-16, GB18030 and CRLF | Existing subtitle fixtures plus new mixed Han/kana/Hangul/Arabic/Latin/emoji authoritative-encoding tests pass. Filename tests exercise every byte budget from 0 through 219 without split codepoints or decomposed NFC output. |
-| Markdown, ZIP, Obsidian, Notion, PDF/Word consistency | Current backend regressions pass. HTML now retains full Unicode and native inline code rather than inheriting PDF emoji substitutions. PDF CJK inline code avoids Courier, and Latin-1 symbols use a compatible font. A complete source-by-output import/export matrix, including a current Notion/Obsidian client round-trip, is still missing. PDF emoji remains an explicitly reported readable name fallback. |
-| Original input retained and can be redecoded | Existing raw-subtitle and import/redecode API tests pass. The original-byte storage contract is unchanged. Current real UI reselect/redecode was not exercised in a browser. |
+| BOM → charset → strict UTF-8 → bounded detection/user choice | Priority/provenance and explicit-override fixtures pass. Authoritative strict UTF-8 no longer competes with legacy guesses. |
+| No unrecorded `errors=ignore` in user content | Previously fixed filename sites remain covered. Replacement decoding in downloader diagnostics does not feed subtitle/note bodies. |
+| Encoding/replacement/normalization/confidence | Decoder tests verify fields/raw digests. Transcript diagnostics now count U+FFFD/recognition markers and distinguish byte/Unicode corruption from sparse ASR uncertainty. Neither is called repaired encoding. |
+| Corruption stops formal notes | Video/saved transcript gates preserve raw transcript plus `draft.review.md`, set `transcript_review_required` and `summary_generated=false`, and do not invoke the summarizer/create `note.md`. Usable text remains with `【识别不清】`. Model/page output uses the shared blocking gate/quarantine; code literals are not treated as prose corruption. |
+| CJK/English/emoji, UTF-16/GB18030/CRLF/filenames | Five authoritative encodings yield one NFC note; existing CRLF/subtitle tests pass. Obsidian covers exactly 89 ASCII + compass, NFC, empty/path titles, identity, complete codepoints and UTF-8 budgets; legacy decomposed folders preserve annotations. |
+| Markdown/ZIP/Obsidian/Notion/PDF/DOCX consistency | Mixed Chinese/Japanese/English/decomposed-accent/emoji/formula content passes actual Markdown/both ZIP handlers, Notion local payload, HTML/DOCX/PDF and actual Obsidian import. **PDF still substitutes Unicode names for emoji**; readability is not original glyph/text fidelity. |
+| Raw input retained/redecode possible | Raw bytes/digests/re-decode API tests pass; new gates prove untouched transcript bytes. Current browser encoding-reselect flow was not repeated. |
 
-## #152 Semantic note normalization
+Notion payload v2 removes silent truncation: 2,000 UTF-16-unit pieces, up to eight pieces/block, 100 blocks/request and conservative 450 KB request budget. A **1,205-block** fixture retains order across **13 batches**. Boundary emoji/large titles are tested; unrepresentable titles fail explicitly. Redaction precedes chunking. This validates local draft payloads, not a live Notion send.
 
-| Acceptance condition | Current evidence and remaining boundary |
+**Keep #150 open:** literal PDF emoji fidelity still needs work; current browser re-decode and every source's provenance integration are not claimed by this package. The deterministic matrix and formal-publication gate are verified without calling recognition markers repaired text.
+
+## #152 Semantic note structure
+
+| Original criterion | Evidence |
 | --- | --- |
-| Single title/source/learning objectives | Title tests remain green. Added exact repeated source/objective block removal, with changed sources, nested metadata and personal-note sections preserved. This does not remove semantically similar but differently worded duplicates. |
-| Front matter and separators are metadata | Existing canonicalization and export tests pass. Fenced/indented code bytes remain preserved. |
-| Continuous headings and stable anchors | Existing heading and anchor fixtures pass; PDF/Word heading projections now share the stable section identity used by HTML. |
-| Semantic long-paragraph splitting | Existing sentence-boundary fixtures pass. Oversized indivisible sentences remain warned, not cut by arbitrary character count. |
-| Code, math, tables, images, quotations and punctuation | Fixed code-span pipes inside table cells, escaped pipes, hard line breaks and blockquote adapters. Added editable ordered-list start/restart numbering and local-frame alt/caption coverage. Unicode formula characters render in the reviewed sample; arbitrary nested Markdown and native LaTeX/OMML remain implementation gaps. |
-| Prompt/diagnostic leakage and mojibake | Existing prose-only blocking fixtures pass; code examples are not mistaken for instructions or course facts. Broad real-course/real-model false-positive evaluation is not included. |
-| Same model/offline semantic structure | Both model/offline fixtures use note_pipeline, and saved/subtitle-only notes use the same normalizer and claim-publication marker contract. Page-text fallback still requires the unified structure/gate. |
-| Multishape snapshots | Current six-case bilingual corpus and added focused regression shapes pass, including code, slide-like content, operation guides and absent evidence. These remain constructed fixtures, not a replacement for real lesson outputs. |
+| Single title/source/objectives | Exact duplicate-block tests, preserving different sources/nested metadata/personal notes. Semantic paraphrase deduplication is not claimed. |
+| Front matter/separators as metadata | Shared canonicalization/export fixtures; code content preserved. |
+| Continuous headings/stable anchors | Existing heading/stable-ID tests; HTML/PDF/DOCX share section identity. |
+| Semantic long-paragraph splitting | Sentence-boundary tests; indivisible sentences and formula-containing paragraphs preserved, not arbitrarily cut. |
+| Correct code/math/tables/images/quotes/CJK punctuation | Nested ordered/bullet lists, wrapped items, nested fences/indented code, escaped/code-span table pipes, quotes and grouped math in `test_nested_note_exports`; code indentation/trailing spaces and formula source retained. Existing image/alt/caption fixtures pass. |
+| Prompt/internal-diagnostic leak detection | Prose-only gate fixtures; opt-in diagnostics limited to safe bounded machine statuses/issue codes. |
+| #150 gate integration | Corrupt generated prose quarantined; unresolved transcript does not become a formal note. |
+| Same model/local structure | Video/saved/subtitle-only/page-text model/local paths share normalizer, quality report, claim markers and note-document schema; `test_page_text_note_contract` verifies parity. Page text retains `can_claim_video_content=false`. |
+| Bilingual/code/PPT/operation/empty snapshots | Existing six-shape corpus and new nested/page-text fixtures pass within 747-test run. No new live-model claim. |
 
-## #156 Word and PDF
+Common grouped TeX becomes readable linear math: fractions, roots, sub/superscripts, Greek/operators. Original expressions stay in semantic blocks. Unknown commands remain literal with a warning. This is the bounded-parser approach allowed by the issue, not a native equation engine. **Recommend #152 for original-scope closure after CI/review.** Broader real-course evaluation remains follow-up, not an unlimited parser requirement.
 
-| Acceptance condition | Current evidence and remaining boundary |
+## #156 Editable Word and print-ready PDF
+
+| Original criterion | Current result |
 | --- | --- |
-| Chinese/English/emoji/formulas/code without garbling | Fixed CJK inline code and the superscript-two/Latin-1 CID-font defect caught during visual inspection. PDF non-BMP emoji has an explicit name fallback warning; DOCX/HTML retain Unicode. Arbitrary LaTeX equations and universal emoji font fidelity remain unimplemented/unverified. |
-| Editable Word headings/lists/tables | OOXML tests verify headings, native decimal-list sequences (including non-1 starts/restarts), and editable tables. No screenshot is substituted for Word content. |
-| Reliable CJK font | Local font selection/CID fallback remains explicit. This Linux host uses STSong-Light plus Helvetica for affected Latin-1 glyphs, and rendered CJK was inspected with Poppler. Cross-viewer font reliability and embedded CJK coverage on every supported host are not proved. |
-| TOC/page numbers/pagination/orphans | PDF now uses a multipass linked TOC with actual destinations/page numbers, and long TOCs start on the first page. Word gets a real TOC field, linked cached headings, stable bookmarks, updateFields and explicit refresh warning; page numbers require the host's field update. A4 and widow control are explicit. Native Word/WPS field refresh is still pending. |
-| Clickable times/claims/source | Source/timestamp links and PDF TOC destinations are structurally tested. Embedded frame captions now link their timestamp to the sanitized source. A complete claim-anchor navigation matrix is still pending. |
-| Keyframe time/alt/caption | Four local synthetic frames are embedded in the long fixture. DOCX alt descriptions and readable time captions are checked. Images honor the available landscape/portrait frame dimensions. No arbitrary external/local Markdown image is fetched. |
-| Content inclusion choices | Existing note/transcript/image/annotation/practice/source options continue to pass. Backend print/academic/compact templates were added; no new UI template picker or diagnostic inclusion selector was added. Diagnostics and raw media remain excluded. |
-| 30+ pages without clipping/blank anomalies | Clean code generated a 44-page PDF and a DOCX rendered by LibreOffice to 65 A4 pages. All-page character bounds found zero out-of-page characters and no empty pages; representative TOC, code/table, frame and final pages were visually reviewed. This is not a 100%-zoom visual sign-off on every page, and is not Word/WPS acceptance. |
-| All conversion local | Confirmed by the local renderer calls and network-denied test suite. |
+| Chinese/English/emoji/math/code without garbling | Actual rendering exposed invisible Greek in PDF Type1 Symbol and missing Japanese glyphs inside DOCX code. Fixed using a local embedded symbol font and explicit split CJK runs. Actual screenshots show α, ∂, ≤ and 日本語. PDF emoji-name fallback remains a fidelity gap. |
+| Editable headings/lists/tables | OOXML native headings, depth-specific numbering/start/restart/outer sequence, editable code/table text. No screenshot body substitution. |
+| Embedded/reliable CJK font | Local embedding preferred; this host uses explicit STSong-Light CID fallback, rendered with Poppler. Host warnings surface. |
+| TOC/header/footer/pages/pagination/widows | PDF linked multipass TOC with actual pages. DOCX native TOC/bookmarks/cached linked headings/updateFields and explicit host-refresh warning. Header title, A4, footer pages and widow control. Native Word refresh unperformed. |
+| Clickable timestamps/claims/source | Source/time/TOC and keyframe links pass. **Claim-map-to-DOCX/PDF citation projection is absent**; ordinary timestamps do not prove stable claim citations are clickable. |
+| Keyframe time/alt/caption | Four synthetic local frames/fixture; alt, caption/time links checked. No untrusted image fetch. |
+| Inclusion options | Note/transcript/images/annotations/practice/sources/diagnostics choices; diagnostics default off. Built-in print/academic/compact are immutable/separate from custom names. Save selects custom preset; duplicate export/stale preview/source change/dismiss/reopen tested. |
+| 30+ pages without overflow/blank anomalies | Exact matrix below. All-page text bounds and representative actual render review; not exhaustive overlap/widow visual proof. |
+| Local conversion | App/LibreOffice/Poppler/import harness run locally; no third-party conversion. |
 
-The long fixture checks 40 editable tables, first/last chapter presence, code, source links, emoji preservation/explicit fallback, four keyframes with alt metadata, at least 40 PDF internal TOC destinations and the native Word TOC field. All 11 structural assertions pass. The PDF and Word page counts are deliberately reported separately; no equality is implied across layout engines.
+### Actual long-document matrix
 
-## Next closure work
+| Output | Exact pages | Synthetic frame pages | Structural assertions |
+| --- | ---: | --- | --- |
+| print PDF | **36** | 9, 18, 27, 36 | 9/9 |
+| academic PDF | **44** | 13, 23, 34, 44 | 11/11, including TOC |
+| compact PDF | **41** | 11, 21, 31, 41 | 9/9 |
+| academic DOCX → local LibreOffice PDF | **83** | Image/alt checked in OOXML | 40 editable tables and native TOC |
 
-1. Bring page-text fallback into the same semantic/claim publication path; extend span extraction to remaining factual Markdown structures and evaluate real paraphrases before calling #129 complete.
-2. Build the full source/encoding/output matrix, including raw OCR/ASR/model provenance and current client re-decode/export checks for #150.
-3. Complete nested Markdown and native equation adapters and genuine note-output fixtures for #152/#156.
-4. Verify the live claim-to-subtitle/keyframe UI and Word/WPS TOC refresh, then inspect every page of the final long golden matrix. Browser UI and native Word/WPS acceptance are unperformed checks, not evidence that the existing code failed them.
+Print/academic use four paragraphs per each of 40 chapters; compact uses ten to exercise 30+ pages. This is not a same-input size comparison. All four outputs have zero out-of-media-box characters and no entirely empty text pages. Final academic PDF page has a short normal source/footer remainder. Small sample page 1 and academic PDF pages 1, 13, 44 were inspected. No every-page visual sign-off is claimed.
+
+Committed nonprivate evidence:
+
+- [PDF nested sample, actual page 1](qa/evidence-exports-20261008/nested-pdf.png)
+- [DOCX nested sample, actual LibreOffice page 1](qa/evidence-exports-20261008/nested-docx-libreoffice.png)
+- [Academic PDF, actual page 13](qa/evidence-exports-20261008/academic-pdf-page-13.png)
+- [Revision/tests/pages/warnings/hashes/benchmark JSON](qa/evidence-exports-20261008/verification.json)
+
+Complete synthetic files/renders/logs remain in ignored `build/evidence-followthrough`; their SHA-256 hashes are recorded. **Keep #156 open** for claim citations and PDF emoji fidelity, with host-field behavior explicitly documented. Unavailable WPS and unrestricted LaTeX are not extra closure requirements.
