@@ -16,6 +16,7 @@ from typing import Callable
 
 from .worker_lease import worker_lease
 from .queue_policy import LANES, lane_budgets
+from .queue_controls import initialize_queue_schema, ordered_entries, queue_candidates, queue_is_paused
 
 MAX_PENDING_TASKS = 24
 LIGHT_TASK_KINDS = {"light", "summary", "local_light", "page_light"}
@@ -45,7 +46,7 @@ class LocalTaskQueue:
         self.closing = False
         self.concurrency = lane_budgets()
         with closing(self.connect()) as db:
-            db.execute("CREATE TABLE IF NOT EXISTS jobs (sequence INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT UNIQUE NOT NULL, kind TEXT NOT NULL, requires_context INTEGER NOT NULL, state TEXT NOT NULL, updated_at REAL NOT NULL)")
+            initialize_queue_schema(db)
             db.commit()
 
     def connect(self):
@@ -124,7 +125,7 @@ class LocalTaskQueue:
     def _claim(self, task_id, lane):
         with closing(self.connect()) as db:
             db.execute("BEGIN IMMEDIATE")
-            waiting = db.execute("SELECT task_id,kind FROM jobs WHERE state='queued' ORDER BY sequence").fetchall()
+            waiting = queue_candidates(db)
             first = next((row[0] for row in waiting if task_lane(row[1]) == lane), None)
             if first != task_id:
                 return False
@@ -147,6 +148,8 @@ class LocalTaskQueue:
                         self.jobs.pop(key, None)
                         if not future.done():
                             future.set_result(None)
+                rank = {row["task_id"]: index for index, row in enumerate(ordered_entries(self.entries()))}
+                eligible.sort(key=lambda key: rank.get(key, len(rank)))
                 if not eligible or self.stopping:
                     self.workers.pop(worker_key, None)
                     return
@@ -238,7 +241,7 @@ def cancel_queued_processing(root: Path, task_id: str) -> bool:
 def queue_status(root: Path, task_id: str) -> dict[str, object]:
     """Return a durable, privacy-safe queue snapshot for one task."""
 
-    entries = queue_for(root).entries()
+    entries = ordered_entries(queue_for(root).entries())
     active = [row for row in entries if row["state"] in {"queued", "running", "recovering"}]
     current = next((row for row in active if row["task_id"] == task_id), None)
     if current is None:
@@ -249,7 +252,7 @@ def queue_status(root: Path, task_id: str) -> dict[str, object]:
             "running_count": sum(row["state"] == "running" for row in active),
             "kind": next((row["kind"] for row in entries if row["task_id"] == task_id), ""),
         }
-    position = (1 + sum(row["state"] == "queued" and task_lane(row["kind"]) == task_lane(current["kind"]) for row in active if row["sequence"] < current["sequence"])) if current["state"] == "queued" else 0
+    position = (1 + sum(row["state"] == "queued" and task_lane(row["kind"]) == task_lane(current["kind"]) for row in active[:active.index(current)])) if current["state"] == "queued" else 0
     return {
         "state": current["state"],
         "position": position,
@@ -260,6 +263,8 @@ def queue_status(root: Path, task_id: str) -> dict[str, object]:
         "lane_pending_limit": LANE_PENDING_LIMIT,
         "lane_concurrency": queue_for(root).concurrency[task_lane(current["kind"])],
         "lane_budgets": dict(queue_for(root).concurrency),
+        "paused": queue_is_paused(root),
+        "priority": current.get("priority", 0),
     }
 
 
@@ -280,7 +285,7 @@ def schedule_processing(background_tasks, function, task_id: str, *args, **kwarg
     if not explicit_kind:
         if isinstance(source, CurrentPageTaskRequest) and source.mode == "download_only":
             kind = "page_download"
-        elif options and options.content_mode == "subtitles":
+        elif (isinstance(source, CurrentPageTaskRequest) and source.mode == "subtitle_only") or (options and options.content_mode == "subtitles"):
             kind = "page_light" if isinstance(source, CurrentPageTaskRequest) else "local_light"
 
     def work():

@@ -1,3 +1,4 @@
+import { mountQueueControls } from "/web/queue-controls.js";
 import { renderEditionStable } from "/web/reader-progress.js";
 import {
   installConnections,
@@ -593,6 +594,7 @@ function renderStatus(reload = true) {
       ? priorProgress.open
       : t.status !== "success";
   panel.innerHTML = `<div class="task-status-heading"><strong>${esc(title)}</strong><button data-task-action="diagnostics">查看处理记录</button></div><p>${esc(taskExplanation(t))}</p>${timelineHtml(t, taskEvents.get(t.id)?.events || [], progressExpanded)}${t.awaiting_confirmation ? `<p class="task-plan">${t.options?.content_mode === "subtitles" ? "仅提取字幕 · 不调用模型" : `${t.options?.visual_understanding ? "图文笔记 · 视觉理解已启用" : "文字笔记 · 视觉理解关闭"} · ${esc(state.model.model || state.health.default_llm_model || "尚未配置模型")}`}</p>` : ""}<div class="task-status-actions">${action}</div>${raw}`;
+  mountQueueControls(panel, t, api, refresh);
   if (t.claim_evidence?.path) {
     const details = document.createElement("details");
     details.className = "claim-evidence-details";
