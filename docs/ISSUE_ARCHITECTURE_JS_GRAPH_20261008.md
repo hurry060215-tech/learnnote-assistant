@@ -32,4 +32,11 @@ classic presentation modules. No future helper file is required on main.
 Validation: 774 backend tests and 28 desktop tests passed; all extension/Web
 test programs passed. Backend/application sources are unchanged by the final
 workflow-only main rebase. Full scripts and architecture checks were repeated
-after that rebase; 19 focused dependency/budget contracts passed.
+after that rebase; 20 focused dependency/budget contracts passed.
+
+PR #241 head `30eef3224e96ebb14a17f00d34360a4106fdc6a2` uses
+`content-study-evidence.js` and `LearnNoteStudyEvidence`, exporting only
+`collectChapterEvidence`. Its exact provider/pure rules are covered, including
+reversed injection order, missing helper in the injected realm and a forbidden
+import back into background orchestration. No Study application source is part
+of this checks-only change.

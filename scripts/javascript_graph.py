@@ -167,6 +167,7 @@ def local_specifiers(tokens):
 CLASSIC_PROVIDERS = {
     "LearnNoteCaptureClassification": "extension/capture-classification.js",
     "LearnNoteCaptureRanking": "extension/capture-ranking.js",
+    # Chapter-only API in PR #241 retains this filename and namespace.
     "LearnNoteStudyEvidence": "extension/content-study-evidence.js",
     "LearnNoteTaskFormat": "web/task-format.js",
     "LearnNoteTaskDisplay": "web/task-display.js",

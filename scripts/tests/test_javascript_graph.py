@@ -68,19 +68,34 @@ class JavaScriptArchitectureTests(unittest.TestCase):
         (root / "extension/background.js").write_text('importScripts("capture-ranking.js", "capture-classification.js");', encoding="utf-8")
         self.assertTrue(any("before its classic script is loaded" in error for error in javascript_violations(root)))
 
-    def test_injected_content_loads_its_helper_in_its_own_realm(self):
+    def test_injected_chapter_only_helper_loads_in_its_own_realm(self):
         root = self.repository({
             "extension/background.js": 'chrome.scripting.executeScript({target: {tabId: 1}, files: ["content-study-evidence.js", "content.js"]});',
-            "extension/content-study-evidence.js": 'globalThis.LearnNoteStudyEvidence = {};',
-            "extension/content.js": 'const evidence = globalThis.LearnNoteStudyEvidence;',
+            "extension/content-study-evidence.js": 'globalThis.LearnNoteStudyEvidence = Object.freeze({collectChapterEvidence: () => []});',
+            "extension/content.js": 'globalThis.LearnNoteStudyEvidence.collectChapterEvidence({});',
         })
         self.assertEqual(javascript_violations(root), [])
+        (root / "extension/background.js").write_text(
+            'chrome.scripting.executeScript({target: {tabId: 1}, files: ["content.js", "content-study-evidence.js"]});',
+            encoding="utf-8",
+        )
+        self.assertTrue(any("content.js reads" in error for error in javascript_violations(root)))
         (root / "extension/background.js").write_text(
             'importScripts("content-study-evidence.js"); chrome.scripting.executeScript({target: {tabId: 1}, files: ["content.js"]});',
             encoding="utf-8",
         )
         errors = javascript_violations(root)
         self.assertTrue(any("content.js reads" in error for error in errors), errors)
+
+    def test_chapter_helper_cannot_import_background_orchestration(self):
+        root = self.repository({
+            "extension/background.js": 'chrome.scripting.executeScript({files: ["content-study-evidence.js", "content.js"]});',
+            "extension/content-study-evidence.js": 'importScripts("background.js"); globalThis.LearnNoteStudyEvidence = Object.freeze({collectChapterEvidence: () => []});',
+            "extension/content.js": 'globalThis.LearnNoteStudyEvidence.collectChapterEvidence({});',
+        })
+        errors = javascript_violations(root)
+        self.assertTrue(any("content-study-evidence.js crosses pure-module boundary" in error for error in errors))
+        self.assertTrue(any("dependency cycle" in error for error in errors))
 
     def test_injection_cannot_use_computed_file_lists(self):
         root = self.repository({"extension/background.js": "chrome.scripting.executeScript({files: dynamicFiles});"})
