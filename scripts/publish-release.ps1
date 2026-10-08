@@ -9,6 +9,7 @@ if ($Tag -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+(?:[-.][A-Za-z0-9.-]+)?$') { throw "
 if ($Repository -notmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') { throw "Invalid repository" }
 $root = (Get-Location).Path
 $expected = @{}
+$expectedSizes = @{}
 foreach ($line in Get-Content -LiteralPath $ChecksumFile) {
     if ($line -notmatch '^([a-fA-F0-9]{64})\s{2}([A-Za-z0-9_.-]+)$') { throw "Invalid checksum entry" }
     $name = $Matches[2]
@@ -16,6 +17,8 @@ foreach ($line in Get-Content -LiteralPath $ChecksumFile) {
     $expected[$name] = $Matches[1].ToLowerInvariant()
     $asset = Join-Path $root $name
     if (-not (Test-Path -LiteralPath $asset -PathType Leaf)) { throw "Missing asset: $name" }
+    $expectedSizes[$name] = (Get-Item -LiteralPath $asset).Length
+    if ($expectedSizes[$name] -le 0) { throw "Empty release asset: $name" }
     if ((Get-FileHash -LiteralPath $asset -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected[$name]) { throw "Checksum mismatch: $name" }
 }
 if ($expected.Count -lt 3) { throw "Release manifest is incomplete" }
@@ -38,6 +41,27 @@ if ($release.isDraft) {
     }
     & gh release upload $Tag $ChecksumFile --repo $Repository --clobber
     if ($LASTEXITCODE -ne 0) { throw "Draft checksum upload failed" }
+}
+$inventoryRaw = & gh release view $Tag --repo $Repository --json isDraft,tagName,assets 2>&1
+if ($LASTEXITCODE -ne 0) { throw "Could not inspect uploaded asset inventory; draft remains unpublished, rerun to resume" }
+$inventory = ($inventoryRaw -join "`n") | ConvertFrom-Json
+if ($inventory.tagName -ne $Tag -or $inventory.isDraft -ne $release.isDraft) {
+    throw "Release identity/state changed during verification; inspect the release before retrying"
+}
+$checksumName = [IO.Path]::GetFileName($ChecksumFile)
+$expectedNames = @($expected.Keys) + @($checksumName)
+$remoteNames = @($inventory.assets | ForEach-Object { $_.name })
+if ($remoteNames.Count -ne $expectedNames.Count) {
+    throw "Release asset inventory differs from the reviewed manifest; inspect missing/unexpected draft assets before retrying"
+}
+if (Compare-Object -ReferenceObject @($expectedNames | Sort-Object) -DifferenceObject @($remoteNames | Sort-Object) -CaseSensitive) {
+    throw "Release asset names differ from the reviewed manifest; unexpected files must not be published"
+}
+$expectedSizes[$checksumName] = (Get-Item -LiteralPath $ChecksumFile).Length
+foreach ($remoteAsset in $inventory.assets) {
+    if ($remoteAsset.size -ne $expectedSizes[$remoteAsset.name]) {
+        throw "Release asset size differs from the reviewed local file; draft remains unpublished, rerun to resume"
+    }
 }
 $verifyDir = Join-Path ([IO.Path]::GetTempPath()) ("learnnote-release-verify-" + [guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Path $verifyDir | Out-Null

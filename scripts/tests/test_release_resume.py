@@ -15,7 +15,18 @@ function global:gh {
     $op = $args[1]
     Add-Content -LiteralPath operations.log -Value $op
     switch ($op) {
-        'view' { Write-Output (Get-Content remote/state.json -Raw) }
+        'view' {
+            if (-not (Test-Path remote/state.json)) {
+                $global:LASTEXITCODE = 1
+                Write-Output 'release not found'
+                return
+            }
+            $state = Get-Content remote/state.json -Raw | ConvertFrom-Json
+            $assets = @(Get-ChildItem remote -File | Where-Object { $_.Name -ne 'state.json' } | ForEach-Object { @{ name = $_.Name; size = $_.Length } })
+            if (Test-Path corrupt-size) { $assets | ForEach-Object { if ($_.name -eq 'b.exe') { $_.size += 1 } } }
+            @{ isDraft = $state.isDraft; tagName = 'v0.0.0'; assets = $assets } | ConvertTo-Json -Depth 5 -Compress | Write-Output
+        }
+        'create' { Set-Content -LiteralPath remote/state.json -Value '{"isDraft":true,"tagName":"v0.0.0"}' }
         'upload' {
             $name = Split-Path $args[3] -Leaf
             if ((Get-Content remote/state.json -Raw | ConvertFrom-Json).isDraft -eq $false) { throw 'Published asset upload attempted' }
@@ -27,6 +38,11 @@ function global:gh {
             Copy-Item -LiteralPath $args[3] -Destination (Join-Path remote $name) -Force
         }
         'download' {
+            if (Test-Path fail-download) {
+                Move-Item -LiteralPath fail-download -Destination failed-download
+                $global:LASTEXITCODE = 1
+                return
+            }
             $name = $args[([array]::IndexOf($args, '--pattern') + 1)]
             $destination = $args[([array]::IndexOf($args, '--dir') + 1)]
             Copy-Item -LiteralPath (Join-Path remote $name) -Destination (Join-Path $destination $name)
@@ -48,7 +64,6 @@ class ReleaseResumeTests(unittest.TestCase):
             root = Path(directory)
             remote = root / 'remote'
             remote.mkdir()
-            (remote / 'state.json').write_text(json.dumps({'isDraft': True}))
             (root / 'harness.ps1').write_text(HARNESS, encoding='utf-8')
             entries = []
             for name in ('a.zip', 'b.exe', 'c.json'):
@@ -62,6 +77,24 @@ class ReleaseResumeTests(unittest.TestCase):
                 return subprocess.run(command, cwd=root, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=60)
             failed = run()
             self.assertNotEqual(failed.returncode, 0)
+            self.assertTrue(json.loads((remote / 'state.json').read_text())['isDraft'])
+            (remote / 'unexpected-private-file.txt').write_text('must not become public')
+            unexpected = run()
+            self.assertNotEqual(unexpected.returncode, 0)
+            self.assertIn('inventory differs', unexpected.stderr)
+            self.assertTrue(json.loads((remote / 'state.json').read_text())['isDraft'])
+            # The publisher never deletes an unexpected asset itself.
+            self.assertTrue((remote / 'unexpected-private-file.txt').exists())
+            (remote / 'unexpected-private-file.txt').unlink()
+            (root / 'corrupt-size').touch()
+            wrong_size = run()
+            self.assertNotEqual(wrong_size.returncode, 0)
+            self.assertIn('size differs', wrong_size.stderr)
+            self.assertTrue(json.loads((remote / 'state.json').read_text())['isDraft'])
+            (root / 'corrupt-size').unlink()
+            (root / 'fail-download').touch()
+            download_failure = run()
+            self.assertNotEqual(download_failure.returncode, 0)
             self.assertTrue(json.loads((remote / 'state.json').read_text())['isDraft'])
             resumed = run()
             self.assertEqual(resumed.returncode, 0, resumed.stderr)
@@ -80,3 +113,4 @@ class ReleaseResumeTests(unittest.TestCase):
             self.assertNotIn('upload', after)
             self.assertNotIn('edit', after)
             self.assertEqual((remote / 'a.zip').read_bytes(), b'corrupted-public-asset')
+            self.assertEqual((root / 'operations.log').read_text().splitlines().count('create'), 1)

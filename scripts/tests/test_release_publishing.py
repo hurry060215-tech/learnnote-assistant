@@ -34,6 +34,21 @@ class ReleasePublishingTests(unittest.TestCase):
             self.assertNotEqual(invalid.returncode, 0)
             self.assertNotIn("unexpected github call", invalid.stdout)
 
+    def test_empty_asset_fails_before_any_github_operation(self):
+        pwsh = shutil.which("pwsh")
+        if not pwsh:
+            self.skipTest("PowerShell is required for the Windows publishing script")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            names = ["a.zip", "b.exe", "c.json"]
+            for name in names:
+                (root / name).write_bytes(b"")
+            digest = hashlib.sha256(b"").hexdigest()
+            (root / "SHA256SUMS.txt").write_text("\n".join(f"{digest}  {name}" for name in names), encoding="ascii")
+            result = subprocess.run([pwsh, "-NoProfile", "-File", str(ROOT / "scripts/publish-release.ps1"), "-Tag", "v0.0.0", "-Repository", "fixture/example", "-ValidateOnly"], cwd=root, capture_output=True, text=True, timeout=30)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("Empty release asset", result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()
