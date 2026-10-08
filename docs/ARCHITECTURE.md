@@ -68,3 +68,47 @@ API routers (routers/*.py)
 ## 拆分验收
 
 新模块必须拥有：公开输入/输出 schema、至少一个离线测试、失败恢复动作、隐私说明和迁移/重建路径。大型单体的进一步拆分应保持旧 API、任务文件和导出路径兼容。CI 现在同时检查依赖方向和 `main.py`、`downloader.py`、`processor.py`、`web/app.js`、`web/styles.css` 的行数上限，防止重构后继续膨胀。当前已完成知识/学习与系统路由的第一阶段拆分；下载器、处理器和前端仍按同一策略继续拆分。
+
+## 第二阶段：媒体发现与问答边界（2026-10-08，#143）
+
+本阶段保留调用者可见的 `main.py` / `downloader.py` 函数入口，不更改 API、
+`ResourceCandidate`、任务 JSON、问答历史版本 1 或导出路径。
+
+```text
+downloader (network / preflight / download orchestration)
+  -> media_discovery (HTML, text, page-frame candidates)
+       -> media_json_discovery (JSON, embedded fields, encoded URLs)
+            -> media_url_parsing (decoding, lexical hints, normalization)
+       -> media_candidate_ranking / media_kinds / models
+  -> media_manifests (HLS/DASH recognition, DRM flags, relative URI rewrite)
+
+main (routes, model access, storage adapters, existing patch points)
+  -> qa_evidence (citation selection, transcript windows, prompt text)
+  -> qa_history (v1 history serialization / Markdown rendering)
+       -> qa_evidence
+```
+
+- 媒体发现模块只接收字符串、基础 URL 和来源标签，返回既有候选 schema；不做 DNS、
+  HTTP、磁盘写入或凭据收集。找到 URL 不代表允许获取，SSRF/DRM/请求策略仍在原边界。
+- `qa_evidence` 的输入/输出为现有 citation 字典及字符串；可信度、时间格式等策略由调用者
+  显式传入。`qa_history` 显式接收读写、时钟、ID 回调，不选择数据路径。
+- `main` 继续在调用时解析 `read_json`、`write_json`、`read_task_qa_history` 和字幕可信度
+  回调，保留已有测试的替换点；下载/网络适配器继续由 `downloader` 编排。
+- 失败行为不变：解析失败保留空候选/原有回退，清理后的空证据不能变成可信事实；不会新增
+  持久化、遥测、权限或自动网络访问。本次无需数据迁移/重建，回滚代码即可读取旧产物。
+
+`check-architecture.py` 现在解析所有 Python 相对/绝对/别名导入，包括函数内延迟导入，
+并检测强连通分量及纯模块依赖方向。仅保留三条明确的既有延迟生命周期接线：
+`library -> study`（删除来源时清理卡片）、`storage -> task_queue`（删除任务时取消队列）、
+`task_queue -> range_learning`（恢复片段任务）。这些不是整模块/循环豁免；改成顶层导入或
+新增循环依赖仍失败。彻底消除这三处反向接线仍是后续工作。
+
+行数预算收紧到 `main <= 4800`、`downloader <= 2800`、`processor <= 1450`；
+新模块各自有 130–440 行上限，已迁移的后端模块组另有 9250 行总预算。扩展三大脚本新增
+逐文件上限及 335000 字节合计预算；历史 `app.js` / `styles.css` 上限也收紧，但本阶段
+没有声称完成它们的实质拆分。现有 CI 的架构检查无需新 workflow 即可执行这些规则。
+
+离线行为快照位于 `backend/tests/fixtures/architecture_extraction_v1.json`，取自拆分前的
+`632b6076e847b3b1baa256c760e18f81a4821183`，覆盖媒体发现、HLS/DASH、问答证据与 QA/导出
+OpenAPI 路径。独立测试覆盖模块无需导入主应用、可替换适配器、版本 1 历史兼容和新循环拒绝。
+本阶段可独立合并/回滚；#143 的 Web/扩展拆分、JavaScript 依赖图、真实扩展与视觉验收仍需后续阶段。

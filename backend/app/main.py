@@ -1,5 +1,21 @@
 from __future__ import annotations
 from .claims import safe_claim_projection
+from . import qa_evidence, qa_history
+from .qa_evidence import (
+    clip_text as _clip_text,
+    question_terms as _question_terms,
+    score_excerpt as _score_excerpt,
+    strict_transcript_evidence_requested as _strict_transcript_evidence_requested,
+    sanitize_note_markdown_for_qa as _sanitize_note_markdown_for_qa,
+    note_evidence_chunks as _note_evidence_chunks,
+    is_broad_summary_question as _is_broad_summary_question,
+    is_follow_up_question as _is_follow_up_question,
+    qa_history_terms as _qa_history_terms,
+    qa_history_messages as _qa_history_messages,
+    qa_evidence_prompt as _qa_evidence_prompt,
+    local_task_answer as _local_task_answer,
+    qa_history_preview,
+)
 
 from importlib.util import find_spec
 from io import BytesIO
@@ -2737,149 +2753,54 @@ def health_payload() -> dict:
     }
 
 
-def _clip_text(value: str, limit: int) -> str:
-    text = re.sub(r"\s+", " ", str(value or "")).strip()
-    if len(text) <= limit:
-        return text
-    return text[:limit].rstrip() + "..."
-
-
-def _question_terms(question: str) -> set[str]:
-    text = str(question or "").lower()
-    focus_text = re.split(r"(?:不要|别再?|无需|不必|避免|排除|不讨论)", text, maxsplit=1)[0].strip() or text
-    terms = {item for item in re.findall(r"[a-z0-9_]{2,}", focus_text, re.I) if item.strip()}
-    for phrase in re.findall(r"[\u4e00-\u9fff]+", focus_text):
-        if len(phrase) <= 8:
-            terms.add(phrase)
-        for size in range(2, min(4, len(phrase)) + 1):
-            terms.update(phrase[index:index + size] for index in range(len(phrase) - size + 1))
-    if re.search(r"原话|说话|讲了|讲的|字幕|转写|台词|transcript", text):
-        terms.add("__source_transcript__")
-    if re.search(r"画面|截图|视觉|演示|操作|界面|切片|ppt|slide", text):
-        terms.add("__source_visual__")
-    terms.difference_update({
-        "什么", "怎么", "如何", "一下", "这个", "那个", "哪些", "是否", "可以", "请问",
-        "视频", "回答", "根据", "只根", "只根据", "介绍", "说话人",
-        "the", "and", "what", "how", "this", "that", "with", "from",
-    })
-    if not terms:
-        terms.update(char for char in focus_text if char.strip())
-    return terms
-
-
-def _score_excerpt(text: str, terms: set[str]) -> int:
-    lowered = str(text or "").lower()
-    return sum(lowered.count(term.lower()) * min(4, max(1, len(term))) for term in terms)
-
-
-def _strict_transcript_evidence_requested(question: str) -> bool:
-    text = re.sub(r"\s+", "", str(question or "").lower())
-    transcript_source = r"(?:字幕|转写|原话|台词|transcript)"
-    return bool(
-        re.search(rf"(?:只|仅|必须|务必).{{0,8}}{transcript_source}", text)
-        or re.search(rf"{transcript_source}(?:证据|为准|回答)", text)
-        or (
-            re.search(transcript_source, text)
-            and re.search(r"不要(?:使用|依据|根据|看|用)?.{0,4}(?:笔记|总结|画面)", text)
-        )
-    )
-
-
 def _citation_is_trusted(citation: dict) -> bool:
-    if not isinstance(citation, dict):
-        return False
-    text = _clip_text(str(citation.get("text") or ""), 1800)
-    if not text:
-        return False
-    return not browser_subtitle_text_is_player_ui(text)
+    return qa_evidence.citation_is_trusted(citation, is_player_ui=browser_subtitle_text_is_player_ui)
 
 
 def _sanitize_citations(citations: list[dict]) -> list[dict]:
-    return [citation for citation in citations if _citation_is_trusted(citation)]
+    return qa_evidence.sanitize_citations(citations, is_trusted=_citation_is_trusted)
 
 
-def _sanitize_note_markdown_for_qa(note: str) -> str:
-    """Remove legacy browser-page context that was never course evidence."""
-    lines = str(note or "").replace("\r\n", "\n").replace("\r", "\n").split("\n")
-    cleaned: list[str] = []
-    index = 0
-    while index < len(lines):
-        line = lines[index]
-        if re.match(
-            r"^\s*-\s*Page context:\s*captured from the current browser page\b",
-            line,
-            flags=re.I,
-        ):
-            index += 1
-            while index < len(lines) and re.match(r"^(?: {2,}|\t)\S", lines[index]):
-                index += 1
-            continue
-        cleaned.append(line)
-        index += 1
-    return "\n".join(cleaned)
+def _transcript_window_chunks(segments: list[dict], window_seconds: int = 120, step_seconds: int = 60, task_id: str = "") -> list[dict]:
+    return qa_evidence.transcript_window_chunks(
+        segments, window_seconds, step_seconds, task_id,
+        is_player_ui=browser_subtitle_text_is_player_ui,
+        safe_seconds=_safe_seconds, format_timestamp=_format_timestamp,
+    )
 
 
-def _note_evidence_chunks(note: str, limit: int = 80, source_id: str = "") -> list[dict]:
-    chunks: list[dict] = []
-    heading = ""
-    clean_note = _sanitize_note_markdown_for_qa(note)
-    for raw_block in re.split(r"\n{2,}|(?=^#{1,6}\s)", clean_note, flags=re.M):
-        block = raw_block.strip()
-        if not block:
-            continue
-        heading_match = re.match(r"^#{1,6}\s+(.+)", block)
-        if heading_match:
-            heading = _clip_text(heading_match.group(1), 100)
-            if "\n" not in block:
-                continue
-        text = _clip_text(block, 900)
-        if len(text) < 2:
-            continue
-        chunks.append({
-            "source": "note",
-            "source_kind": "task" if source_id else "",
-            "source_id": source_id,
-            "label": heading or f"笔记片段 {len(chunks) + 1}",
-            "text": text,
-            "target_tab": "note",
-        })
-        if len(chunks) >= limit:
-            break
-    return chunks
+def _rank_citations_for_question(citations: list[dict], terms: set[str], related_terms: set[str] | None = None, limit: int = 6) -> list[dict]:
+    return qa_evidence.rank_citations_for_question(
+        citations, terms, related_terms, limit, sanitize_citations=_sanitize_citations,
+    )
 
 
-def _transcript_window_chunks(
-    segments: list[dict],
-    window_seconds: int = 120,
-    step_seconds: int = 60,
-    task_id: str = "",
-) -> list[dict]:
-    valid_segments = []
-    for segment in segments:
-        if not isinstance(segment, dict):
-            continue
-        text = _clip_text(str(segment.get("text") or ""), 700)
-        if not text or browser_subtitle_text_is_player_ui(text):
-            continue
-        valid_segments.append({
-            "start": _safe_seconds(segment.get("start")),
-            "end": _safe_seconds(segment.get("end")),
-            "text": text,
-        })
-    if not valid_segments:
-        return []
+def _summary_citations(citations: list[dict], limit: int = 6) -> list[dict]:
+    return qa_evidence.summary_citations(
+        citations, limit, sanitize_citations=_sanitize_citations, rank_citations=_rank_citations_for_question,
+    )
 
-    from .transcript_passages import caption_passages
-    chunks = []
-    for members in caption_passages(valid_segments, max_seconds=window_seconds):
-        start_seconds = members[0]["start"]
-        end_seconds = max(item["end"] for item in members)
-        start, end = _format_timestamp(start_seconds), _format_timestamp(end_seconds)
-        chunks.append({"source": "transcript", "source_kind": "task", "granularity": "window", "segmentation": "caption_boundaries",
-            "source_id": task_id,
-            "label": f"字幕片段 {start}-{end}", "text": " ".join(item["text"] for item in members),
-            "start": start_seconds, "end": end_seconds, "time_range": f"{start}-{end}", "target_tab": "transcript"})
-    return chunks
+
+def task_qa_suggestions(task: TaskRecord, limit: int = 7) -> list[dict]:
+    return qa_evidence.task_qa_suggestions(task, limit, format_timestamp=_format_timestamp)
+
+
+def read_task_qa_history(task_id: str) -> list[dict]:
+    return qa_history.read_task_qa_history(
+        task_id, read_json=read_json, filename=QA_HISTORY_FILE, sanitize_citations=_sanitize_citations,
+    )
+
+
+def append_task_qa_history(task: TaskRecord, request: TaskQuestionRequest, result: dict) -> tuple[dict, list[dict]]:
+    return qa_history.append_task_qa_history(
+        task, request, result, read_history=read_task_qa_history, write_json=write_json,
+        filename=QA_HISTORY_FILE, sanitize_citations=_sanitize_citations,
+        new_id=lambda: uuid4().hex[:10], now=now_iso,
+    )
+
+
+def render_qa_history_markdown(task: TaskRecord, history: list[dict] | None = None) -> str:
+    return qa_history.render_qa_history_markdown(task, history, read_history=read_task_qa_history)
 
 
 def _task_qa_context(task: TaskRecord) -> tuple[str, list[dict]]:
@@ -2957,289 +2878,8 @@ def _task_qa_context(task: TaskRecord) -> tuple[str, list[dict]]:
     return context, citations
 
 
-def _rank_citations_for_question(
-    citations: list[dict],
-    terms: set[str],
-    related_terms: set[str] | None = None,
-    limit: int = 6,
-) -> list[dict]:
-    ranked = []
-    related_terms = related_terms or set()
-    citations = _sanitize_citations(citations)
-    for index, citation in enumerate(citations):
-        if not isinstance(citation, dict):
-            continue
-        text = " ".join([
-            str(citation.get("label") or ""),
-            str(citation.get("text") or ""),
-            str(citation.get("window_id") or ""),
-        ])
-        current_score = _score_excerpt(text, terms)
-        history_score = _score_excerpt(text, related_terms)
-        score = current_score * 6 + history_score
-        source = str(citation.get("source") or "")
-        if "__source_transcript__" in terms and source == "transcript":
-            score += 10000
-        if "__source_visual__" in terms and source.startswith("visual"):
-            score += 10000
-        ranked.append((score, -index, citation))
-    ranked.sort(key=lambda item: (item[0], item[1]), reverse=True)
-    top_score = ranked[0][0] if ranked else 0
-    relevance_floor = max(1, int(top_score * 0.2))
-    relevant = [citation for score, _index, citation in ranked if score >= relevance_floor][:limit]
-    if relevant:
-        if "__source_transcript__" in terms:
-            windows = sorted(
-                (item for item in citations if item.get("source") == "transcript" and item.get("granularity") == "window"),
-                key=lambda item: float(item.get("start") or 0),
-            )
-            expanded: list[dict] = []
-            seen_ids: set[int] = set()
-            for citation in relevant:
-                start = float(citation.get("start") or 0)
-                following = [item for item in windows if start < float(item.get("start") or 0) <= start + 120][:2]
-                for item in (citation, *following):
-                    if not item or id(item) in seen_ids:
-                        continue
-                    expanded.append(item)
-                    seen_ids.add(id(item))
-                    if len(expanded) >= limit:
-                        return expanded
-            if expanded:
-                return expanded
-        return relevant
-
-    # Broad requests such as “总结一下” still need a small, source-diverse sample.
-    fallback: list[dict] = []
-    seen_sources: set[str] = set()
-    for _score, _index, citation in ranked:
-        source = str(citation.get("source") or "")
-        if source in seen_sources and len(fallback) < 3:
-            continue
-        fallback.append(citation)
-        seen_sources.add(source)
-        if len(fallback) >= min(3, limit):
-            break
-    return fallback
-
-
-def _is_broad_summary_question(question: str) -> bool:
-    text = re.sub(r"\s+", "", str(question or "").lower())
-    return bool(re.search(
-        r"总结|概括|核心内容|主要内容|主要讲|讲了(?:什么|啥)|内容是什么|"
-        r"summar(?:y|ize)|overview|keypoints|mainpoints",
-        text,
-    ))
-
-
-def _summary_citations(citations: list[dict], limit: int = 6) -> list[dict]:
-    """Prefer non-overlapping transcript windows spanning the full timeline."""
-    trusted = _sanitize_citations(citations)
-    windows = sorted(
-        (
-            item for item in trusted
-            if item.get("source") == "transcript" and item.get("granularity") == "window"
-        ),
-        key=lambda item: float(item.get("start") or 0),
-    )
-    selected: list[dict] = []
-    last_end = -1.0
-    for item in windows:
-        start = float(item.get("start") or 0)
-        if selected and start < last_end:
-            continue
-        selected.append(item)
-        last_end = float(item.get("end") or start)
-        if len(selected) >= limit:
-            return selected
-    if selected:
-        selected_ids = {id(item) for item in selected}
-        for item in windows:
-            if id(item) in selected_ids:
-                continue
-            selected.append(item)
-            if len(selected) >= limit:
-                break
-        return sorted(selected, key=lambda item: float(item.get("start") or 0))
-    return _rank_citations_for_question(trusted, set(), limit=limit)
-
-
 def _recent_qa_history(task_id: str, limit: int = 4) -> list[dict]:
     return read_task_qa_history(task_id)[-limit:]
-
-
-def _is_follow_up_question(question: str) -> bool:
-    text = re.sub(r"\s+", "", str(question or "").lower())
-    return bool(re.search(
-        r"^(那|那么|所以|然后|还有|另外|刚才|前面|上面)|"
-        r"(它|这个|那个|上述|前述|前面提到|刚才提到|继续说|展开说|为什么必须有它)",
-        text,
-    ))
-
-
-def _qa_history_terms(history: list[dict]) -> set[str]:
-    terms: set[str] = set()
-    for item in history:
-        terms.update(_question_terms(str(item.get("question") or "")))
-        for citation in item.get("citations") or []:
-            if isinstance(citation, dict):
-                terms.update(_question_terms(str(citation.get("text") or "")))
-    return terms
-
-
-def _qa_history_messages(history: list[dict]) -> list[dict]:
-    messages: list[dict] = []
-    for item in history[-4:]:
-        question = _clip_text(str(item.get("question") or ""), 600)
-        if question:
-            messages.append({"role": "user", "content": question})
-    return messages
-
-
-def _qa_evidence_prompt(citations: list[dict]) -> str:
-    lines = []
-    for index, citation in enumerate(citations, start=1):
-        metadata = " · ".join(
-            str(citation.get(key) or "") for key in ("window_id", "time_range") if citation.get(key)
-        )
-        suffix = f" ({metadata})" if metadata else ""
-        lines.append(
-            f"[E{index}] {citation.get('label') or citation.get('source')}{suffix}: "
-            f"{_clip_text(str(citation.get('text') or ''), 900)}"
-        )
-    return "\n".join(lines)
-
-
-def _local_task_answer(question: str, citations: list[dict]) -> tuple[str, list[dict]]:
-    if not citations:
-        return "现有笔记、字幕和画面索引中没有找到与这个问题相关的内容。", []
-    excerpts = []
-    for citation in citations[:3]:
-        text = _clip_text(str(citation.get("text") or ""), 360)
-        if text:
-            excerpts.append(f"- {text}")
-    if not excerpts:
-        return "现有证据不足，暂时无法回答这个问题。", citations
-    return "根据现有内容：\n" + "\n".join(excerpts), citations
-
-
-def read_task_qa_history(task_id: str) -> list[dict]:
-    data = read_json(task_id, QA_HISTORY_FILE, {"items": []})
-    if isinstance(data, list):
-        items = data
-    elif isinstance(data, dict):
-        items = data.get("items", [])
-    else:
-        items = []
-    sanitized_items: list[dict] = []
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        sanitized = dict(item)
-        citations = item.get("citations") if isinstance(item.get("citations"), list) else []
-        trusted_citations = _sanitize_citations(citations)
-        # A historical answer whose entire evidence trail is player chrome or
-        # danmaku should not remain visible after the evidence is rejected.
-        if citations and not trusted_citations:
-            continue
-        sanitized["citations"] = trusted_citations
-        sanitized_items.append(sanitized)
-    return sanitized_items
-
-
-def append_task_qa_history(task: TaskRecord, request: TaskQuestionRequest, result: dict) -> tuple[dict, list[dict]]:
-    history = read_task_qa_history(task.id)
-    item = {
-        "id": uuid4().hex[:10],
-        "created_at": now_iso(),
-        "skill_id": request.skill_id,
-        "question": _clip_text(request.question, 1000),
-        "answer": str(result.get("answer") or ""),
-        "source": str(result.get("source") or ""),
-        "warning": _clip_text(str(result.get("warning") or ""), 500),
-        "provider": str(result.get("provider") or ""),
-        "model": str(result.get("model") or ""),
-        "citations": [
-            {
-                "source": _clip_text(str(citation.get("source") or ""), 120),
-                "label": _clip_text(str(citation.get("label") or ""), 120),
-                "text": _clip_text(str(citation.get("text") or ""), 800),
-                "window_id": _clip_text(str(citation.get("window_id") or ""), 80),
-                "time_range": _clip_text(str(citation.get("time_range") or ""), 80),
-                "grid_url": _clip_text(str(citation.get("grid_url") or ""), 500),
-                "target_tab": _clip_text(str(citation.get("target_tab") or ""), 40),
-                "source_kind": _clip_text(str(citation.get("source_kind") or "task"), 40),
-                "source_id": _clip_text(str(citation.get("source_id") or task.id), 128),
-                "start": citation.get("start") if isinstance(citation.get("start"), (int, float)) else None,
-                "end": citation.get("end") if isinstance(citation.get("end"), (int, float)) else None,
-            }
-            for citation in _sanitize_citations(result.get("citations") or [])[:12]
-            if isinstance(citation, dict)
-        ],
-    }
-    history.append(item)
-    write_json(task.id, QA_HISTORY_FILE, {"schema_version": 1, "items": history})
-    return item, history
-
-
-def render_qa_history_markdown(task: TaskRecord, history: list[dict] | None = None) -> str:
-    items = history if history is not None else read_task_qa_history(task.id)
-    lines = [
-        "# LearnNote 问答记录",
-        "",
-        f"- 任务：{task.title}",
-        f"- ID：{task.id}",
-        f"- 页面：{task.page_url or '-'}",
-        f"- 问答数：{len(items)}",
-        "",
-    ]
-    if not items:
-        lines.append("暂无问答记录。")
-        return "\n".join(lines)
-    for index, item in enumerate(items, start=1):
-        lines.extend([
-            f"## Q{index}. {item.get('question') or '-'}",
-            "",
-            f"- 时间：{item.get('created_at') or '-'}",
-            f"- 来源：{item.get('source') or '-'}",
-            f"- 模型：{item.get('provider') or '-'} / {item.get('model') or '-'}",
-        ])
-        if item.get("warning"):
-            lines.append(f"- 提示：{item.get('warning')}")
-        lines.extend(["", str(item.get("answer") or "-"), ""])
-        citations = item.get("citations") if isinstance(item.get("citations"), list) else []
-        if citations:
-            lines.append("### 证据")
-            for citation in citations:
-                if not isinstance(citation, dict):
-                    continue
-                label = citation.get("label") or citation.get("source") or "证据"
-                text = citation.get("text") or ""
-                meta = " · ".join(str(citation.get(key) or "") for key in ("window_id", "time_range") if citation.get(key))
-                grid = citation.get("grid_url") or ""
-                suffix = f"（{meta}）" if meta else ""
-                lines.append(f"- **{label}**{suffix}：{text}")
-                if grid:
-                    lines.append(f"  - 画面网格：{grid}")
-            lines.append("")
-    return "\n".join(lines).strip() + "\n"
-
-
-def qa_history_preview(history: list[dict], limit: int = 5) -> list[dict]:
-    preview = []
-    for item in history[-limit:]:
-        preview.append({
-            "id": item.get("id", ""),
-            "created_at": item.get("created_at", ""),
-            "question": _clip_text(str(item.get("question") or ""), 180),
-            "answer_excerpt": _clip_text(str(item.get("answer") or ""), 420),
-            "source": item.get("source", ""),
-            "warning": _clip_text(str(item.get("warning") or ""), 220),
-            "provider": item.get("provider", ""),
-            "model": item.get("model", ""),
-            "citation_count": len(item.get("citations") or []) if isinstance(item.get("citations"), list) else 0,
-        })
-    return list(reversed(preview))
 
 
 def task_next_actions(task: TaskRecord, limit: int = 9) -> list[dict]:
@@ -3301,43 +2941,6 @@ def task_next_actions(task: TaskRecord, limit: int = 9) -> list[dict]:
     if not actions:
         add("wait_for_task", "等待任务产物", "任务完成后这里会出现继续学习、导出和诊断动作。", "status")
     return actions
-
-
-def task_qa_suggestions(task: TaskRecord, limit: int = 7) -> list[dict]:
-    suggestions: list[dict] = []
-    seen: set[str] = set()
-
-    def add(label: str, question: str, source: str) -> None:
-        normalized = " ".join(question.split())
-        if not normalized or normalized in seen or len(suggestions) >= limit:
-            return
-        seen.add(normalized)
-        suggestions.append({"label": label, "question": normalized, "source": source})
-
-    has_note = bool(task.note_path)
-    has_transcript = bool(task.transcript_path or task.browser_subtitles)
-    has_visual = bool(task.visual_index_path or task.visual_windows or task.frame_grids)
-
-    if has_note:
-        add("核心概念", "这节课最重要的 3 个概念是什么？请用适合复习的方式解释。", "note")
-        add("时间轴重点", "按时间顺序列出这节课的重点、例题和操作步骤。", "note")
-        add("易错点", "这节课有哪些容易混淆或考试容易错的地方？", "note")
-    if has_transcript:
-        add("字幕梳理", "根据字幕提取老师反复强调的关键词，并说明它们之间的关系。", "transcript")
-        add("自测题", "基于这节课生成 5 道复习自测题，并附简短答案。", "transcript")
-    if has_visual:
-        add("画面线索", "结合画面索引，哪些 PPT、代码或演示步骤最值得回看？", "visual")
-        first_window = task.visual_windows[0] if task.visual_windows else None
-        if first_window:
-            label = first_window.id or f"W{first_window.index + 1:03d}"
-            add(
-                label,
-                f"请解释 {label}（{_format_timestamp(first_window.start)}-{_format_timestamp(first_window.end)}）这一段画面和字幕对应的学习重点。",
-                "visual",
-            )
-    if not suggestions:
-        add("页面文本", "如果当前任务没有视频结果，请先总结当前页面文本的主要内容。", "page")
-    return suggestions
 
 
 def _answer_task_question(task: TaskRecord, request: TaskQuestionRequest, *, emit=None, control=None) -> dict:
