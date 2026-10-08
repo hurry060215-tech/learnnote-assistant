@@ -8,6 +8,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from .models import TranscriptResult
+from .draft_sections import draft_sections_document, temporal_outline_markdown
 from .observability import read_task_events, record_task_event
 from .storage import atomic_write_text, read_json, task_dir, write_json
 from .text_cleanup import canonicalize_unicode_text, redact_sensitive_url_values
@@ -169,7 +170,7 @@ def write_progressive_draft(task_id: str, title: str, transcript: TranscriptResu
     lines = [
         f"# {clean_title}",
         "",
-        "> 字幕摘录：原始文字已保存。这里是部分原句预览，不是 AI 总结或章节大纲。",
+        "> 字幕摘录草稿：原始文字已保存。以下提供时间段阅读提纲和原句预览，尚未生成 AI 主题总结或完成事实校验。",
         "",
         "## 原文预览",
         "",
@@ -184,6 +185,9 @@ def write_progressive_draft(task_id: str, title: str, transcript: TranscriptResu
             text = redact_sensitive_url_values(re.sub(r"\s+", " ", line).strip())
             if text:
                 lines.append(f"- {text[:280]}")
+    section_document = draft_sections_document(transcript)
+    write_json(task_id, "draft_sections.json", section_document)
+    lines.extend(["", *temporal_outline_markdown(section_document, _format_timestamp)])
     lines.extend([
         "",
         "## 当前状态",
@@ -202,6 +206,9 @@ def write_progressive_draft(task_id: str, title: str, transcript: TranscriptResu
             "artifact": "draft.md",
             "segment_count": len(transcript.segments),
             "transcript_char_count": len(transcript_text),
+            "section_count": len(section_document["sections"]),
+            "sections_artifact": "draft_sections.json",
+            "summary_generated": False,
         }
         payload["draft"] = draft
         _sync_current_attempt(payload)
