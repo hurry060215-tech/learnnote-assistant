@@ -1,3 +1,4 @@
+import { mountSupportSummary } from "/web/support-summary.js";
 import { eventLogHtml, timelineHtml } from "/web/desk-progress.js";
 import { fullVideoSource } from "/web/range-source.js";
 import {
@@ -374,6 +375,7 @@ export function installTools(ctx) {
       : "上传保护状态暂不可用；提交文件前仍会执行大小和磁盘检查。";
     $("toolBody").innerHTML =
       `<p class="muted">${uploadNotice}</p><p class="muted">清理前先预览范围。学习资料保存在本机，不会因关闭窗口而删除。</p><details><summary>查看本地存储信息</summary><pre>${esc(JSON.stringify(result, null, 2))}</pre></details><div class="tool-actions"><button data-action="open-folder">打开数据文件夹</button><button data-action="backup">备份任务索引</button></div><p class="muted">索引备份不包含视频、文档正文、个人修订或复习数据库；完整备份请复制数据文件夹。</p><details><summary>恢复任务索引</summary><form id="restoreForm"><input id="restoreFile" type="file" accept=".sqlite3" required><button>选择备份并恢复</button></form></details><details><summary>清理旧任务</summary><form id="cleanupForm"><label for="retention">保留最近多少天</label><input id="retention" type="number" min="1" max="3650" value="30"><label for="keepRecent">至少保留最近多少个任务</label><input id="keepRecent" type="number" min="0" max="1000" value="10"><button>预览清理范围</button></form><pre id="cleanupPreview"></pre><button id="executeCleanup" hidden class="danger" data-action="cleanup">确认执行清理</button></details>`;
+    await mountSupportSummary($("toolBody"), api);
     backAction = () => {
       dialog.close();
       $("settings").click();
