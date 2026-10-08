@@ -10,11 +10,22 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.queue_controls import ordered_entries, queue_is_paused, set_queue_paused, set_task_priority
-from app.task_queue import LocalTaskQueue, queue_status
+from app.task_queue import LocalTaskQueue, queue_status, schedule_processing
 from app.routers import queue as routes
 
 
 class QueueControlTests(unittest.TestCase):
+    def test_explicit_caption_summary_uses_light_lane_without_asr_fallback(self):
+        from app.models import CurrentPageTaskRequest, TaskOptions
+        from fastapi import BackgroundTasks
+        from unittest.mock import MagicMock
+        request = CurrentPageTaskRequest(mode="subtitle_only", page_url="https://example.test/reference",
+                                         options=TaskOptions(content_mode="text", visual_understanding=False))
+        queue = MagicMock()
+        with patch("app.task_queue.queue_for", return_value=queue), patch("app.storage.task_dir", return_value=self.root / "tasks" / "caption"):
+            schedule_processing(BackgroundTasks(), lambda *args: None, "caption", request)
+        self.assertEqual(queue.enqueue.call_args.args[1], "page_light")
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name); self.queues = []

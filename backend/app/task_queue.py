@@ -285,7 +285,7 @@ def schedule_processing(background_tasks, function, task_id: str, *args, **kwarg
     if not explicit_kind:
         if isinstance(source, CurrentPageTaskRequest) and source.mode == "download_only":
             kind = "page_download"
-        elif options and options.content_mode == "subtitles":
+        elif (isinstance(source, CurrentPageTaskRequest) and source.mode == "subtitle_only") or (options and options.content_mode == "subtitles"):
             kind = "page_light" if isinstance(source, CurrentPageTaskRequest) else "local_light"
 
     def work():
