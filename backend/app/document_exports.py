@@ -99,26 +99,44 @@ def _heading_line(line: str) -> tuple[int, str] | None:
     return (level, text) if text else None
 
 
-def _bullet_line(line: str) -> str | None:
-    value = line.lstrip()
-    if len(value) < 3 or value[0] not in "-*+" or not value[1].isspace():
+def _list_item(line: str) -> tuple[str, str, int, int] | None:
+    """Scan a bounded Markdown marker once; preserve invalid input as prose.
+
+    Like CommonMark, ordered markers have 1-9 ASCII digits. This avoids both
+    backtracking on uncontrolled note text and unbounded integer conversion.
+    The returned body offset also drives continuation indentation.
+    """
+    value = line.lstrip(" \t")
+    offset = len(line) - len(value)
+    if not value:
         return None
-    text = value[2:].strip()
-    return text if text else None
+    ordinal = 0
+    if value[0] in "-*+":
+        kind, end = "bullet", 1
+    else:
+        kind, end = "ordered", 0
+        while end < min(9, len(value)) and "0" <= value[end] <= "9":
+            ordinal = ordinal * 10 + ord(value[end]) - ord("0")
+            end += 1
+        if not end or end >= len(value) or value[end] not in ".)":
+            return None
+        end += 1
+    if end >= len(value) or not value[end].isspace():
+        return None
+    while end < len(value) and value[end].isspace():
+        end += 1
+    text = value[end:].rstrip()
+    return (kind, text, ordinal, offset + end) if text else None
+
+
+def _bullet_line(line: str) -> str | None:
+    item = _list_item(line)
+    return item[1] if item and item[0] == "bullet" else None
 
 
 def _ordered_line(line: str) -> str | None:
-    value = line.lstrip()
-    index = 0
-    while index < len(value) and value[index].isdigit():
-        index += 1
-    if index == 0 or index >= len(value) or value[index] not in ".)":
-        return None
-    index += 1
-    if index >= len(value) or not value[index].isspace():
-        return None
-    text = value[index:].strip()
-    return text if text else None
+    item = _list_item(line)
+    return item[1] if item and item[0] == "ordered" else None
 
 
 DEFAULT_EXPORT_OPTIONS = {
@@ -378,15 +396,14 @@ def _blocks(markdown: str) -> list[_Block]:
             result.append(_Block("math", stripped[2:-2].strip(), child_level))
             index += 1
             continue
-        bullet, ordered = _bullet_line(line), _ordered_line(line)
-        if (bullet is not None or ordered is not None) and (indent < 4 or list_indents):
+        item = _list_item(line)
+        if item is not None and (indent < 4 or list_indents):
             flush_paragraph(); flush_table()
             while list_indents and list_indents[-1] > indent: list_indents.pop()
             if not list_indents or list_indents[-1] < indent: list_indents.append(indent)
-            content_indents[indent] = re.match(r"\s*(?:[-*+]|\d+[.)])\s+",line).end()
+            content_indents[indent] = item[3]
             level = min(8, len(list_indents) - 1)
-            result.append(_Block("bullet", bullet, level) if bullet is not None else
-                          _Block("ordered", ordered, level, int(re.match(r"\s*(\d+)",line)[1])))
+            result.append(_Block(item[0], item[1], level, item[2]))
             index += 1
             continue
         if (child_level and result and result[-1].kind in {"bullet", "ordered"}
