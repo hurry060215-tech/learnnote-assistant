@@ -4,6 +4,7 @@ import re
 from pathlib import Path
 
 from architecture_graph import dependency_cycles, python_import_edges
+from javascript_graph import javascript_violations
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -133,12 +134,12 @@ def module_size_violations() -> list[str]:
 
 
 def main() -> int:
-    violations = import_violations() + module_size_violations() + aggregate_size_violations()
+    violations = import_violations() + javascript_violations(ROOT, EXTENSION_CAPTURE_SCRIPTS) + module_size_violations() + aggregate_size_violations()
     if violations:
         print("Architecture boundary violations:")
         print("\n".join(violations))
         return 1
-    print(f"Architecture boundaries pass: {len(BOUNDARY_MODULES)} boundary modules, {len(ROUTER_MODULES)} routers, {len(STATE_MODULES)} state modules, all-import cycle graph, and {len(MODULE_SIZE_LIMITS)} size guards checked")
+    print(f"Architecture boundaries pass: {len(BOUNDARY_MODULES)} boundary modules, {len(ROUTER_MODULES)} routers, {len(STATE_MODULES)} state modules, Python/JavaScript cycle graphs, classic load order, and {len(MODULE_SIZE_LIMITS)} size guards checked")
     return 0
 
 

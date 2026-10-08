@@ -122,7 +122,13 @@
     const title = document.createElement("h2"); title.textContent = "原文出处";
     const body = document.createElement("pre"); body.textContent = "正在读取本地原文…";
     const close = document.createElement("button"); close.textContent = "关闭"; close.type = "button";
-    close.onclick = () => dialog.close(); dialog.addEventListener("close", () => { dialog.remove(); before?.focus?.(); });
+    close.onclick = () => dialog.close();
+    dialog.addEventListener("close", () => {
+      const active = document.activeElement;
+      const restore = !active || active === document.body || dialog.contains(active);
+      dialog.remove();
+      if (restore) before?.focus?.();
+    });
     dialog.append(title, close, body); document.body.append(dialog); dialog.showModal();
     try {
       const {evidence} = await fetchJson(apiUrl(`/api/knowledge/evidence/${encodeURIComponent(id)}`));

@@ -896,6 +896,7 @@ button:has(svg) {
   display: flex;
   gap: 5px;
   flex-shrink: 0;
+  max-width: 100%;
 }
 .reader-strip button {
   font-size: 12px;
@@ -1580,6 +1581,9 @@ body.assistant-full .assistant-panel form {
   .toolbar {
     padding-inline: 10px;
     gap: 6px;
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 62px;
   }
   .toolbar .actions button span {
     display: none;
@@ -2003,10 +2007,6 @@ body.sidebar-collapsed {
 .task-status[data-status="success"] > p {
   display: none;
 }
-.task-status[data-status="success"] {
-  padding-top: 12px;
-  padding-bottom: 16px;
-}
 .task-status[data-status="success"] .task-timeline {
   margin-top: 10px;
 }
@@ -2221,11 +2221,11 @@ small, .muted, .settings-status { color: var(--muted); font-weight: 500; }
 .reading-preset button { border-color: var(--line); }
 @media (max-width:600px) {
   .settings-content { padding: 16px; }
-  .settings-sections button, .tools-dialog button { min-height: 42px; }
+  .settings-sections button, .tools-dialog button { min-height: 42px; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 }
 
-.tools-dialog .tool-link { display:inline-flex; margin:4px 8px 4px 0; padding:8px 10px; border:1px solid var(--line); border-radius:7px; font-weight:600; }
-.study-overview { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-bottom:16px; }
+.tools-dialog .tool-link { display:inline-flex; max-width:100%; white-space:normal; overflow-wrap:anywhere; margin:4px 8px 4px 0; padding:8px 10px; border:1px solid var(--line); border-radius:7px; font-weight:600; }
+.study-overview { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(120px,100%),1fr)); gap:12px; margin-bottom:16px; }
 .study-overview p { padding:12px; background:var(--panel); border-radius:8px; }
 .study-overview span { display:block; font-size:13px; color:var(--muted); }
 .study-overview strong { display:block; font-size:24px; margin-top:6px; }

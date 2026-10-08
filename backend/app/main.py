@@ -74,6 +74,7 @@ from .summarizer import chat_completion_provider_kwargs, llm_base_host, llm_mode
 
 from .task_queue import queue_status, schedule_processing, recover_processing, queue_for
 from .routers.support import router as support_router
+from .routers.queue import router as queue_router
 from .activation import record as record_activation
 
 ensure_dirs()
@@ -103,6 +104,7 @@ app.include_router(course_router)
 app.include_router(learning_space_router)
 app.include_router(range_router)
 app.include_router(support_router)
+app.include_router(queue_router)
 _extension_heartbeat_at = 0.0
 _extension_version = ""
 _extension_protocol_version = 0

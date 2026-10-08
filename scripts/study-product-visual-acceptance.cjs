@@ -12,7 +12,8 @@ async function geometry(page,selector){return page.locator(selector).evaluate(ro
   bg ||= [255,255,255];const fg=rgb(getComputedStyle(root).color);
   const luminance=channels=>channels.slice(0,3).map(v=>{v/=255;return v<=.04045?v/12.92:((v+.055)/1.055)**2.4;}).reduce((s,v,i)=>s+v*[.2126,.7152,.0722][i],0);
   const a=luminance(fg),c=luminance(bg);
-  return {viewport:width,scrollWidth:document.documentElement.scrollWidth,left:b.left,right:b.right,clipped,contrast:(Math.max(a,c)+.05)/(Math.min(a,c)+.05),backdrop:getComputedStyle(root).backdropFilter};
+  const overflowing=document.documentElement.scrollWidth>width+1?[...document.querySelectorAll("body *")].filter(el=>el.getClientRects().length&&el.checkVisibility?.()!==false&&el.getBoundingClientRect().right>width+1).slice(0,24).map(el=>({tag:el.tagName,id:el.id,className:String(el.className),left:el.getBoundingClientRect().left,right:el.getBoundingClientRect().right,width:el.getBoundingClientRect().width})):[];
+  return {overflowing,viewport:width,scrollWidth:document.documentElement.scrollWidth,left:b.left,right:b.right,clipped,contrast:(Math.max(a,c)+.05)/(Math.min(a,c)+.05),backdrop:getComputedStyle(root).backdropFilter};
 });}
 async function main(){
   const {chromium}=require("playwright"),base=process.argv[2]||"http://127.0.0.1:8765",out=path.resolve(process.argv[3]||"build/study-product-ui");fs.mkdirSync(out,{recursive:true});
@@ -35,7 +36,7 @@ async function main(){
       if(await page.locator("#toolsDialog").evaluate(el=>el.open))await page.locator("[data-close-tool]").click();
       await page.locator("#moreTools").click();await page.locator('[data-action="add-to-course"]').click();await page.locator(`[data-add-course="${course.id}"]`).click();await page.locator('[data-action="course-review"]').click();await page.locator("#studyVideoFilter").waitFor();
     };
-    const capture=async(name,selector)=>{const g=await geometry(page,selector);await page.screenshot({path:path.join(out,name+".png"),fullPage:true});assert(g.scrollWidth<=g.viewport+1,`${name} page overflow`);assert(g.left>=-1&&g.right<=g.viewport+1,`${name} clipped surface`);assert.deepEqual(g.clipped,[],`${name} clipped controls`);assert(g.contrast>=4.5,`${name} contrast ${g.contrast}`);return g;};
+    const capture=async(name,selector)=>{const g=await geometry(page,selector);await page.screenshot({path:path.join(out,name+".png"),fullPage:true});assert(g.scrollWidth<=g.viewport+1,`${name} page overflow: ${JSON.stringify(g)}`);assert(g.left>=-1&&g.right<=g.viewport+1,`${name} clipped surface`);assert.deepEqual(g.clipped,[],`${name} clipped controls`);assert(g.contrast>=4.5,`${name} contrast ${g.contrast}`);return g;};
     for(const item of cases()){
       await page.setViewportSize({width:item.cssWidth,height:item.cssHeight});await cdp.send("Emulation.setDeviceMetricsOverride",{width:item.cssWidth,height:item.cssHeight,deviceScaleFactor:item.zoom/100,mobile:false});
       for(const theme of ["light","dark"]){

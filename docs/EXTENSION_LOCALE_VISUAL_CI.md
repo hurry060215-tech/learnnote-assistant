@@ -28,8 +28,8 @@ model call, installed-extension claim, or private course screenshot.
 
 `build/extension-locales/report.json` records the exact source SHA, browser
 version, viewport/effective zoom, layout measurements, errors and stub boundary.
-Each condition asserts no horizontal document/body overflow and no clipped
-visible controls before writing PNGs. Four 1280×800 English/Chinese summary and
+Each condition records a diagnostic PNG and asserts no horizontal document/body
+overflow and no clipped visible controls. Four 1280×800 English/Chinese summary and
 transcript screenshots are named `store-*.png`. They are truthful **candidate
 store assets** from the current shipped UI and synthetic content, not a claim
 that a store listing was uploaded. Both support documents and listing text
