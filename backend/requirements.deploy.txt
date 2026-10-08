@@ -1,2 +1,2 @@
 -r requirements.txt
-faster-whisper>=1.1.1
+-r requirements.asr.txt

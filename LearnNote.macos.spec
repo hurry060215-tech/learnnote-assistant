@@ -14,6 +14,7 @@ datas = [
     ("backend/requirements.txt", "backend"),
     ("backend/requirements.desktop.txt", "backend"),
     ("backend/requirements.deploy.txt", "backend"),
+    ("backend/requirements.asr.txt", "backend"),
 ]
 binaries = []
 hiddenimports = ["app.main"]

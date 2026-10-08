@@ -130,10 +130,10 @@ if (-not (Test-PythonImports "import fastapi, uvicorn, requests, PIL, yt_dlp, op
 }
 
 if ($InstallAsr) {
-  if (-not (Test-PythonImports "import faster_whisper")) {
+  if (-not (Test-PythonImports "import faster_whisper, av; assert int(av.__version__.split('.')[0]) < 19")) {
     Write-Host "Installing optional faster-whisper ASR dependency." -ForegroundColor Cyan
     Write-Host "This is a large first-time download and may take several minutes; pip progress will remain visible." -ForegroundColor DarkYellow
-    & $python -m pip install --timeout 30 --retries 2 --progress-bar on "faster-whisper>=1.1.1"
+    & $python -m pip install --timeout 30 --retries 2 --progress-bar on -r requirements.asr.txt
     if ($LASTEXITCODE -ne 0) { throw "Failed to install faster-whisper in $venvDir" }
   }
 }

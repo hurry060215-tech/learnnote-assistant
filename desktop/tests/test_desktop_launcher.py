@@ -28,6 +28,12 @@ desktop = load_module()
 
 
 class DesktopLauncherTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        # Preserve the checkout drive on Windows: system-drive paths are
+        # intentionally rejected by the app, and TEMP may use an 8.3 alias.
+        (ROOT / "data").mkdir(parents=True, exist_ok=True)
+
     def test_focus_routes_include_requested_product_section(self):
         target = desktop.desktop_focus_target("http://127.0.0.1:8765", "", "note", "settings")
         self.assertEqual(target,"http://127.0.0.1:8765/?view=settings")
@@ -53,12 +59,15 @@ class DesktopLauncherTests(unittest.TestCase):
         try:
             with tempfile.TemporaryDirectory(dir=ROOT / "data") as temp_dir:
                 root = Path(temp_dir)
-                data_dir = desktop.configure_runtime(root, 18766)
-                expected = (root / "data") if os.name == "nt" else desktop.default_data_directory(root)
-                self.assertEqual(expected, data_dir)
-                self.assertEqual(str(data_dir), os.environ["LEARNNOTE_DATA_DIR"])
-                self.assertEqual("http://127.0.0.1:18766", os.environ["LEARNNOTE_BACKEND_ORIGIN"])
-                self.assertEqual("desktop", os.environ["LEARNNOTE_DEPLOYMENT_MODE"])
+                # Tests must not write to the real user profile.
+                with patch("pathlib.Path.home", return_value=root), patch.dict(os.environ, {"XDG_DATA_HOME": str(root / "share")}):
+                    os.environ.pop("LEARNNOTE_DATA_DIR", None)
+                    data_dir = desktop.configure_runtime(root, 18766)
+                    expected = (root / "data") if os.name == "nt" else desktop.default_data_directory(root)
+                    self.assertEqual(expected, data_dir)
+                    self.assertEqual(str(data_dir), os.environ["LEARNNOTE_DATA_DIR"])
+                    self.assertEqual("http://127.0.0.1:18766", os.environ["LEARNNOTE_BACKEND_ORIGIN"])
+                    self.assertEqual("desktop", os.environ["LEARNNOTE_DEPLOYMENT_MODE"])
         finally:
             for key, value in previous.items():
                 if value is None:

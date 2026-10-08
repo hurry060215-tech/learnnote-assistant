@@ -243,7 +243,7 @@ class LocalUploadValidationTests(unittest.TestCase):
         self.assertIsInstance(payload["local_asr_available"], bool)
         self.assertEqual(payload["local_asr_package"], "faster-whisper")
         if not payload["local_asr_available"]:
-            self.assertIn("faster-whisper", payload["local_asr_install_hint"])
+            self.assertIn("backend/requirements.asr.txt", payload["local_asr_install_hint"])
         self.assertTrue(payload["default_llm_model"])
         self.assertTrue(payload["default_llm_base_url"])
         self.assertTrue(payload["default_llm_base_host"])

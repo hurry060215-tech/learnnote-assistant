@@ -78,7 +78,17 @@ def _edition_state(kind: str, source_id: str):
     original = _edition_source(kind, source_id)
     path = _edition_path(kind, source_id)
     if path.is_file():
-        return json.loads(path.read_text(encoding="utf-8"))
+        try:
+            state = json.loads(path.read_text(encoding="utf-8"))
+            if (not isinstance(state, dict) or not isinstance(state.get("text"), str)
+                    or not isinstance(state.get("revision"), str)
+                    or state["revision"] != hashlib.sha256(state["text"].encode()).hexdigest()
+                    or state.get("edited") is not True):
+                raise ValueError("Invalid saved edition")
+            return state
+        except (OSError, ValueError, TypeError) as exc:
+            # Preserve unreadable personal work instead of overwriting it.
+            raise HTTPException(409, "已保存的个人修改暂时无法读取，原文件未改动。请先复制当前编辑内容，并从备份恢复后重试。") from exc
     return {"text": original, "revision": hashlib.sha256(original.encode()).hexdigest(), "edited": False}
 
 @notes_router.get("/editions/{kind}/{source_id}")

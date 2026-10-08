@@ -4,19 +4,35 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   checks:
     runs-on: windows-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements*.txt
+            backend/constraints*.txt
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: "24"
       - name: Install backend dependencies
-        run: python -m pip install -r backend/requirements.windows-py312.lock.txt -r backend/requirements.test.txt
+        run: |
+          python -m pip install -r backend/requirements.windows-py312.lock.txt -r backend/requirements.test.txt
+          if ($LASTEXITCODE -ne 0) { throw "Pinned dependency installation failed" }
+          python -m pip check
+          if ($LASTEXITCODE -ne 0) { throw "Dependency consistency check failed" }
       - name: Python checks
         env:
           PYTHONPATH: backend
@@ -38,11 +54,10 @@ jobs:
       - name: Extension and web checks
         shell: pwsh
         run: |
-          node --check extension/background.js
-          node --check extension/content.js
-          node --check extension/page_hook.js
-          node --check extension/sidepanel.js
-          node --check web/app.js
+          @("extension/background.js", "extension/content.js", "extension/page_hook.js", "extension/sidepanel.js", "web/app.js") | ForEach-Object {
+            node --check $_
+            if ($LASTEXITCODE -ne 0) { throw "JavaScript syntax check failed: $_" }
+          }
           Get-ChildItem extension/tests/*.test.mjs | ForEach-Object { node $_.FullName; if ($LASTEXITCODE -ne 0) { throw "Extension test failed: $($_.Name)" } }
           Get-ChildItem web/tests/*.test.mjs | ForEach-Object { node $_.FullName; if ($LASTEXITCODE -ne 0) { throw "Web test failed: $($_.Name)" } }
       - name: Desktop and release checks
@@ -60,3 +75,34 @@ jobs:
           }
           $manifestVersion = (Get-Content extension/manifest.json -Raw | ConvertFrom-Json).version
           python scripts/validate-store-package.py "$env:RUNNER_TEMP/LearnNote-Browser-Extension.zip" --version $manifestVersion
+
+  portable-asr:
+    name: Portable ASR regression (Python 3.12)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PYTHONPATH: backend
+      LEARNNOTE_DATA_DIR: build/ci-data
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements*.txt
+            backend/constraints*.txt
+      - name: Install constrained backend and optional ASR
+        # Use the shared runtime pins as constraints, not Windows-only packages.
+        run: |
+          python -m pip install -r backend/requirements.test.txt -r backend/requirements.asr.txt -c backend/requirements.windows-py312.lock.txt -c backend/constraints.linux-py312.txt
+          python -m pip check
+      - name: Require the real audio decoder
+        # Fail before optional tests can skip an absent ASR runtime. No model load.
+        run: python -c "import av; from faster_whisper.audio import decode_audio; print('PyAV', av.__version__)"
+      - name: Decode generated audio and run portable regressions
+        run: |
+          python -m unittest backend.tests.test_cloud_qa_regressions
+          python -m unittest backend.tests.test_migrations backend.tests.test_integrations backend.tests.test_knowledge

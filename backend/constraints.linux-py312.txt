@@ -1,0 +1,3 @@
+# Extra CPython 3.12 Linux CI dependency absent from the Windows runtime lock.
+# Use alongside requirements.windows-py312.lock.txt as pip constraints (-c).
+uvloop==0.23.0

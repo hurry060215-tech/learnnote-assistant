@@ -381,7 +381,7 @@ class ResourceDetectionTests(unittest.TestCase):
             stderr = ""
 
         def fake_run(cmd, capture_output=True, text=True, **kwargs):
-            self.assertIn("creationflags", kwargs)
+            self.assertEqual("creationflags" in kwargs, sys.platform == "win32")
             Path(cmd[-1]).write_bytes(b"\x00\x00\x00\x18ftypmp42" + (b"hls-video" * 512))
             return FakeCompleted()
 
@@ -2796,7 +2796,9 @@ class ProcessorBoundaryTests(unittest.TestCase):
 
 
 class DownloaderBoundaryTests(unittest.TestCase):
-    def test_blob_only_resources_fail_as_no_media_without_drm_signal(self) -> None:
+    @patch("app.downloader.requests.request", side_effect=OSError("offline page fixture"))
+    @patch.object(MediaDownloader, "_download_with_ytdlp", side_effect=DownloadError("no_media_found", "offline yt-dlp fixture"))
+    def test_blob_only_resources_fail_as_no_media_without_drm_signal(self, _download, _request) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             downloader = MediaDownloader(Path(tmp))
             with self.assertRaises(DownloadError) as ctx:
@@ -2811,7 +2813,9 @@ class DownloaderBoundaryTests(unittest.TestCase):
             self.assertEqual(downloader.attempts[0].status, "skipped")
             self.assertEqual(downloader.attempts[0].code, "no_media_found")
 
-    def test_blob_with_fragments_keeps_fragment_diagnostics(self) -> None:
+    @patch("app.downloader.requests.request", side_effect=OSError("offline page fixture"))
+    @patch.object(MediaDownloader, "_download_with_ytdlp", side_effect=DownloadError("no_media_found", "offline yt-dlp fixture"))
+    def test_blob_with_fragments_keeps_fragment_diagnostics(self, _download, _request) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             downloader = MediaDownloader(Path(tmp))
             with self.assertRaises(DownloadError) as ctx:
@@ -3469,7 +3473,7 @@ class DownloaderBoundaryTests(unittest.TestCase):
         fake_module.__file__ = "D:/tools/yt_dlp/__init__.py"
 
         def fake_run(cmd, capture_output, text, timeout, **kwargs):
-            self.assertIn("creationflags", kwargs)
+            self.assertEqual("creationflags" in kwargs, sys.platform == "win32")
             raise subprocess.TimeoutExpired(cmd, timeout, stderr="waiting for video data")
 
         with tempfile.TemporaryDirectory() as tmp, patch.dict(sys.modules, {"yt_dlp": fake_module}):

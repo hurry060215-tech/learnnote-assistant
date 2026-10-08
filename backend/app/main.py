@@ -218,6 +218,8 @@ def local_upload_filename(filename: str | None, content_type: str | None = "") -
             },
         )
     stem = Path(safe_name).stem[:120].strip(" ._") or "local-video"
+    # Leave room for staged/pending UUID prefixes on byte-limited filesystems.
+    stem = stem.encode("utf-8")[:180].decode("utf-8", errors="ignore").rstrip(" ._") or "local-video"
     return f"{stem}{suffix}"
 
 
@@ -247,12 +249,14 @@ def validate_local_upload_file(path: Path) -> MediaIntegrity:
     return integrity
 
 
-def _existing_local_task_for_fingerprint(fingerprint: str) -> TaskRecord | None:
+def _existing_local_task_for_fingerprint(fingerprint: str, options: TaskOptions | None = None) -> TaskRecord | None:
     value = str(fingerprint or "").strip().lower()
     if len(value) != 64:
         return None
     for record in list_tasks():
-        if record.status in {"cancelled", "failed"}:
+        if record.status in {"cancelled", "failed"} or record.source_type != "local":
+            continue
+        if options is not None and record.options.model_dump(exclude={"llm_api_key"}) != options.model_dump(exclude={"llm_api_key"}):
             continue
         known = str(record.source_identity.media_sha256 or record.media_integrity.sha256 or "").strip().lower()
         if known == value:
@@ -2705,7 +2709,7 @@ def health_payload() -> dict:
         "extension_connected": bool(_extension_heartbeat_at and time.monotonic() - _extension_heartbeat_at <= EXTENSION_HEARTBEAT_TTL_SECONDS),
         "local_asr_available": local_asr_available,
         "local_asr_package": "faster-whisper",
-        "local_asr_install_hint": "pip install faster-whisper" if not local_asr_available else "",
+        "local_asr_install_hint": "python -m pip install -r backend/requirements.asr.txt" if not local_asr_available else "",
         "yt_dlp_available": ytdlp_package_available or bool(ytdlp_cli),
         "yt_dlp_package_available": ytdlp_package_available,
         "yt_dlp_cli_path": ytdlp_cli,
@@ -3939,7 +3943,7 @@ async def create_from_local(
             pending_path.unlink(missing_ok=True)
             raise local_upload_error("local_upload_failed", f"保存本地视频失败：{exc}", status_code=500) from exc
 
-    duplicate = _existing_local_task_for_fingerprint(integrity.sha256)
+    duplicate = _existing_local_task_for_fingerprint(integrity.sha256, parsed_options)
     if duplicate is not None:
         pending_path.unlink(missing_ok=True)
         return {
@@ -4502,7 +4506,8 @@ def api_task_pipeline_status(task_id: str) -> dict:
         task = get_task(task_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail={"code": "task_not_found", "message": "任务不存在。"}) from exc
-    return {"task_id": task.id, "status": task.status, "phase": task.phase, "progress": task.progress, "checkpoint": task.checkpoint, "artifacts": task_artifact_status(task), "privacy": {"local_only": True, "remote_calls": int(task.summary_diagnostics.get("llm_event_count") or 0) if isinstance(task.summary_diagnostics, dict) else 0}}
+    from .summary_diagnostics import pipeline_privacy_status
+    return {"task_id": task.id, "status": task.status, "phase": task.phase, "progress": task.progress, "checkpoint": task.checkpoint, "artifacts": task_artifact_status(task), "privacy": pipeline_privacy_status(task.summary_diagnostics)}
 
 
 @app.get("/api/tasks/{task_id}/transcript")

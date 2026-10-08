@@ -125,13 +125,20 @@ def transcript_from_subtitle(path: Path, source: str = "page-subtitle") -> Trans
         if not cue_text:
             continue
         cue_text = re.sub(r"\s+", " ", cue_text)
-        if segments and segments[-1].text == cue_text:
-            segments[-1].end = _parse_timestamp(match.group("end"))
+        start = _parse_timestamp(match.group("start"))
+        end = _parse_timestamp(match.group("end"))
+        if end < start:
+            continue
+        # Only rolling captions overlap. Repetitions after a pause retain
+        # their separate source locations, and overlaps never shorten a cue.
+        if (segments and segments[-1].text == cue_text
+                and segments[-1].start <= start <= segments[-1].end):
+            segments[-1].end = max(segments[-1].end, end)
             continue
         segments.append(
             TranscriptSegment(
-                start=_parse_timestamp(match.group("start")),
-                end=_parse_timestamp(match.group("end")),
+                start=start,
+                end=end,
                 text=cue_text,
             )
         )
@@ -158,7 +165,7 @@ def transcribe_audio(
         return TranscriptResult(
             language="unknown",
             source="missing-faster-whisper",
-            warning="未安装 faster-whisper；请执行 `pip install faster-whisper` 后重试以获得真实转写。",
+            warning="未安装 faster-whisper；请在项目目录执行 `python -m pip install -r backend/requirements.asr.txt` 后重试以获得真实转写。",
             segments=[
                 TranscriptSegment(
                     start=0,
