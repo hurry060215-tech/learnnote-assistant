@@ -63,5 +63,54 @@ class CommunityContextTests(unittest.TestCase):
                 self.assertFalse(delete_community_item("other-task", item_id))
 
 
+class CommunityPrivacyAcceptanceTests(unittest.TestCase):
+    def test_contact_details_and_authors_are_not_stored_and_noise_is_dropped(self):
+        with tempfile.TemporaryDirectory() as tmp, patch("app.community.DATA_DIR", Path(tmp)):
+            set_community_enabled(True)
+            result = add_community_context("task-safe", [
+                {"text": "这个解释很好，联系 learner@example.com 或 +1 (415) 555-0123", "author_label": "Real Person"},
+                {"text": "暂停"}, {"text": "加群领取优惠券"},
+                {"text": "为什么选择这个参数？", "kind": "danmaku", "timestamp_seconds": 10},
+                {"text": "为什么选择这个参数？", "kind": "danmaku", "timestamp_seconds": 15},
+                {"text": "我不同意这个结论"},
+            ])
+            self.assertEqual(result["stored_count"], 3)
+            self.assertEqual(result["filtered_count"], 2)
+            self.assertEqual(result["deduplicated_count"], 1)
+            self.assertTrue(all(item["author_label"] == "" for item in result["items"]))
+            stored = list_community_context("task-safe")
+            self.assertEqual(len(stored["groups"]["questions"]), 1)
+            self.assertEqual(len(stored["groups"]["disagreements"]), 1)
+            raw = (Path(tmp) / "community.sqlite3").read_bytes()
+            self.assertNotIn(b"learner@example.com", raw)
+            self.assertNotIn(b"415", raw)
+            self.assertNotIn(b"Real Person", raw)
+            self.assertFalse(stored["evidence_eligible"])
+
+    def test_duplicate_retry_at_quota_does_not_fail_or_store_new_content(self):
+        with tempfile.TemporaryDirectory() as tmp, patch("app.community.DATA_DIR", Path(tmp)), patch("app.community.COMMUNITY_CONTEXT_MAX_ITEMS_PER_TASK", 1):
+            set_community_enabled(True)
+            add_community_context("limited", [{"text": "Useful point"}])
+            result = add_community_context("limited", [{"text": "USEFUL POINT"}])
+            self.assertEqual(result["deduplicated_count"], 1)
+            with self.assertRaisesRegex(ValueError, "community_storage_quota_exceeded"):
+                add_community_context("limited", [{"text": "Different point"}])
+            self.assertEqual(len(list_community_context("limited")["items"]), 1)
+
+    def test_independent_export_is_not_limited_to_the_ui_page(self):
+        import json
+        from app.routers.knowledge_study import api_export_task_community_context
+        with tempfile.TemporaryDirectory() as tmp, patch("app.community.DATA_DIR", Path(tmp)), patch("app.routers.knowledge_study.get_task"):
+            set_community_enabled(True)
+            for offset in range(0, 2001, 500):
+                add_community_context("export", [{"text": f"Audience perspective item {index}"} for index in range(offset, min(offset + 500, 2001))])
+            response = api_export_task_community_context("export")
+            payload = json.loads(response.body)
+            self.assertEqual(len(payload["items"]), 2001)
+            self.assertFalse(payload["evidence_eligible"])
+            self.assertIn("attachment", response.headers["content-disposition"])
+            self.assertTrue(all(not item["author_label"] for item in payload["items"]))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -17,7 +17,7 @@ from ..models import SourceEvidence, StudyCard, StudyCardPositionRequest, StudyC
 from ..note_document import normalize_note_markdown
 from ..study import activity_summary, clear_study_data, due_cards, export_study_data, get_study_plan, list_cards, propose_cards, record_activity, review_card, review_history, save_cards, set_card_position, set_card_status, study_dashboard, study_summary, update_study_plan
 from ..storage import get_task
-from ..study import initialize_study_timezone
+from ..study import initialize_study_timezone, quiz_evidence_eligible, edit_card_content, delete_study_card
 from ..study import rebuild_study_schedules
 from ..courses import course_evidence_ids
 from ..task_artifacts import read_task_note, read_task_transcript
@@ -47,15 +47,40 @@ def _export_presets_path():
     return DATA_DIR / "export-presets.json"
 
 
-def _read_export_presets() -> dict[str, dict]:
+def _read_export_preset_records() -> list[dict]:
     path = _export_presets_path()
     if not path.is_file():
-        return {}
+        return []
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
-        return value if isinstance(value, dict) else {}
     except (OSError, TypeError, ValueError, json.JSONDecodeError):
-        return {}
+        return []
+    if not isinstance(value, dict):
+        return []
+    # Both historical storage formats remain readable. One canonical writer
+    # prevents POST and named PUT from erasing each other's presets.
+    if isinstance(value.get("presets"), list):
+        records = value["presets"]
+    else:
+        records = [{"name": name, "options": options} for name, options in value.items() if isinstance(options, dict)]
+    import hashlib
+    normalized = {}
+    for record in records:
+        if not isinstance(record, dict) or not isinstance(record.get("options"), dict):
+            continue
+        name = str(record.get("name") or "").strip()[:120]
+        if name:
+            normalized[name] = {
+                "id": str(record.get("id") or hashlib.sha256(name.encode("utf-8")).hexdigest()[:32])[:128],
+                "name": name,
+                "options": normalize_export_options(record["options"]),
+                "updated_at": str(record.get("updated_at") or "")[:64],
+            }
+    return list(normalized.values())
+
+
+def _write_export_preset_records(records: list[dict]) -> None:
+    atomic_write_text(_export_presets_path(), json.dumps({"schema_version": 1, "presets": records}, ensure_ascii=False, indent=2))
 
 
 @study_router.get("/export-fonts")
@@ -66,7 +91,7 @@ def api_export_fonts() -> dict:
 
 @study_router.get("/export-presets")
 def api_export_presets() -> dict:
-    return {"presets": [{"name": name, "options": normalize_export_options(value)} for name, value in _read_export_presets().items() if isinstance(name, str) and isinstance(value, dict)]}
+    return {"presets": _read_export_preset_records()}
 
 
 @study_router.put("/export-presets/{name}")
@@ -74,17 +99,21 @@ def api_save_export_preset(name: str, payload: dict | None = Body(default=None))
     safe_name = str(name or "").strip()[:80]
     if not safe_name or not re.fullmatch(r"[\w\-\u4e00-\u9fff ]+", safe_name):
         raise HTTPException(status_code=422, detail={"code": "export_preset_name_invalid", "message": "预设名称只能包含中文、字母、数字、空格、下划线或短横线。"})
-    presets = _read_export_presets(); presets[safe_name] = normalize_export_options((payload or {}).get("options") if isinstance((payload or {}).get("options"), dict) else payload or {})
-    atomic_write_text(_export_presets_path(), json.dumps(presets, ensure_ascii=False, indent=2))
-    return {"name": safe_name, "options": presets[safe_name]}
+    records = _read_export_preset_records()
+    options = normalize_export_options((payload or {}).get("options") if isinstance((payload or {}).get("options"), dict) else payload or {})
+    previous = next((item for item in records if item["name"] == safe_name), None)
+    item = {"id": previous["id"] if previous else uuid4().hex, "name": safe_name, "options": options, "updated_at": datetime.now(timezone.utc).isoformat()}
+    _write_export_preset_records([existing for existing in records if existing["name"] != safe_name] + [item])
+    return {"name": safe_name, "options": options}
 
 
 @study_router.delete("/export-presets/{name}")
 def api_delete_export_preset(name: str) -> dict:
-    presets = _read_export_presets(); safe_name = str(name or "")
-    if safe_name not in presets:
+    records = _read_export_preset_records()
+    safe_name = str(name or "")
+    if not any(item["name"] == safe_name for item in records):
         raise HTTPException(status_code=404, detail={"code": "export_preset_not_found", "message": "导出预设不存在。"})
-    del presets[safe_name]; atomic_write_text(_export_presets_path(), json.dumps(presets, ensure_ascii=False, indent=2))
+    _write_export_preset_records([item for item in records if item["name"] != safe_name])
     return {"name": safe_name, "deleted": True}
 
 
@@ -248,7 +277,7 @@ def api_study_cards(payload: dict | None = Body(default=None)) -> dict:
         back = str(item.get("back") or "").strip()[:4000]
         evidence_ids = [str(value)[:128] for value in (item.get("source_evidence_ids") or [])[:8] if str(value).strip()]
         canonical = evidence_by_ids(evidence_ids, limit=8)
-        canonical_ids = [str(value["evidence_id"]) for value in canonical]
+        canonical_ids = [str(value["evidence_id"]) for value in canonical if quiz_evidence_eligible(value)]
         if not front or not back or not evidence_ids or set(canonical_ids) != set(evidence_ids):
             continue
         cards.append(StudyCard(front=front, back=back, source_evidence_ids=canonical_ids))
@@ -282,6 +311,30 @@ def api_study_card_status(card_id: str, request: StudyCardStatusRequest) -> dict
     return {"card": card.model_dump(mode="json")}
 
 
+class StudyCardContentRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    front: str = Field(min_length=1, max_length=1000)
+    back: str = Field(min_length=1, max_length=4000)
+
+
+@study_router.put("/cards/{card_id}/content")
+def api_edit_study_card(card_id: str, request: StudyCardContentRequest) -> dict:
+    try:
+        return {"card": edit_card_content(card_id, request.front, request.back).model_dump(mode="json")}
+    except ValueError as exc:
+        raise HTTPException(status_code=404 if str(exc) == "card_not_found" else 422, detail=str(exc)) from exc
+
+
+@study_router.delete("/cards/{card_id}")
+def api_delete_study_card(card_id: str, confirm: str = "") -> dict:
+    if confirm != "delete_card":
+        raise HTTPException(status_code=400, detail="请确认永久删除卡片及其复习记录。")
+    try:
+        return delete_study_card(card_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @study_router.post("/cards/{card_id}/reorder")
 def api_study_card_reorder(card_id: str, request: StudyCardPositionRequest) -> dict:
     try:
@@ -308,21 +361,18 @@ def api_record_study_activity(payload: dict | None = Body(default=None)) -> dict
         return {"ok": True, "activity": record_activity(str(body.get("kind") or ""), str(body.get("source_id") or ""))}
     except ValueError as exc:
         raise HTTPException(
-            status_code=422,
-            detail={"code": str(exc), "message": "活动类型必须是 reading、answer、self_assessment 或 review。"},
+            status_code=409 if str(exc) == "study_plan_paused" else 422,
+            detail={"code": str(exc), "message": "学习计划已暂停，未记录本次学习动作。" if str(exc) == "study_plan_paused" else "活动类型必须是 reading、answer、self_assessment 或 review。"},
         ) from exc
 
 
 @study_router.get("/dashboard")
 def api_study_dashboard(limit: int = 12, activity_days: int = 14, course_id: str = "") -> dict:
-    result = study_dashboard(limit, activity_days)
-    if course_id:
-        try:
-            ids = course_evidence_ids(course_id)
-        except (ValueError, OSError) as exc:
-            raise HTTPException(status_code=404, detail="课程不可用，请重新选择。") from exc
-        for key in ("mistakes", "quiz_queue", "due_cards"):
-            result[key] = [item for item in result[key] if ids.intersection(item.get("source_evidence_ids", []))]
+    try:
+        ids = course_evidence_ids(course_id) if course_id else None
+    except (ValueError, OSError) as exc:
+        raise HTTPException(status_code=404, detail="课程不可用，请重新选择。") from exc
+    result = study_dashboard(limit, activity_days, ids)
     result["course_id"] = course_id
     result["activity_scope"] = "all_sources"
     return result
@@ -437,7 +487,19 @@ def api_task_community_context(task_id: str, limit: int = 500) -> dict:
         get_task(task_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail={"code": "task_not_found", "message": "任务不存在。"}) from exc
-    return list_community_context(task_id, limit)
+    return list_community_context(task_id, min(limit, 2000))
+
+
+@task_study_router.get("/{task_id}/community-context/export")
+def api_export_task_community_context(task_id: str) -> Response:
+    api_task_community_context(task_id, limit=1)  # Validate the task before exporting.
+    from ..community import COMMUNITY_CONTEXT_MAX_ITEMS_PER_TASK
+    result = list_community_context(task_id, COMMUNITY_CONTEXT_MAX_ITEMS_PER_TASK)
+    return Response(
+        content=json.dumps(result, ensure_ascii=False, indent=2),
+        media_type="application/json",
+        headers={"Content-Disposition": "attachment; filename=learnnote-community-perspectives.json"},
+    )
 
 
 @task_study_router.get("/{task_id}/community-context/sample")
@@ -620,29 +682,17 @@ def api_unified_export(task_id: str, export_format: str, request: UnifiedExportR
     return Response(artifact.content, media_type=artifact.media_type, headers=headers)
 
 
-@study_router.get("/export-presets")
-def api_export_presets() -> dict:
-    path = _export_presets_path()
-    if not path.is_file():
-        return {"presets": []}
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-        return {"presets": value.get("presets", []) if isinstance(value, dict) else []}
-    except (OSError, ValueError, TypeError, json.JSONDecodeError):
-        return {"presets": []}
-
-
 @study_router.post("/export-presets")
-def api_save_export_preset(payload: dict | None = Body(default=None)) -> dict:
+def api_create_export_preset(payload: dict | None = Body(default=None)) -> dict:
     body = payload or {}
     name = str(body.get("name") or "").strip()[:120]
     if not name:
         raise HTTPException(422, {"code": "preset_name_required", "message": "请填写预设名称。"})
     options = normalize_export_options(body.get("options") if isinstance(body.get("options"), dict) else {})
-    current = api_export_presets()["presets"]
-    item = {"id": str(body.get("id") or uuid4().hex), "name": name, "options": options, "updated_at": datetime.now(timezone.utc).isoformat()}
-    current = [item if str(existing.get("id")) == item["id"] else existing for existing in current if isinstance(existing, dict)]
-    if not any(str(existing.get("id")) == item["id"] for existing in current):
-        current.append(item)
-    atomic_write_text(_export_presets_path(), json.dumps({"schema_version": 1, "presets": current[-30:]}, ensure_ascii=False, indent=2))
-    return {"preset": item, "presets": current[-30:]}
+    current = _read_export_preset_records()
+    requested_id = str(body.get("id") or "")[:128]
+    previous = next((item for item in current if (requested_id and item["id"] == requested_id) or item["name"] == name), None)
+    item = {"id": previous["id"] if previous else requested_id or uuid4().hex, "name": name, "options": options, "updated_at": datetime.now(timezone.utc).isoformat()}
+    current = [existing for existing in current if existing["id"] != item["id"] and existing["name"] != name] + [item]
+    _write_export_preset_records(current)
+    return {"preset": item, "presets": current}

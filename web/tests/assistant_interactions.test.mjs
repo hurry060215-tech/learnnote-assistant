@@ -17,7 +17,10 @@ assert.match(product, /globalItems\.map\(\(item\) => \(\{ item, source: null \}\
 assert.match(product, /sourceItems\.map\(\(item\) => \(\{ item, source: s \}\)\)/);
 assert.match(workspace, /async function openSource\(seconds, sourceOverride = null\)/);
 assert.match(workspace, /cues\.length > 160/);
-assert.match(workspace, /aria-setsize/);
+assert.match(workspace, /createTranscriptWindow/);
+const transcriptWindow = readFileSync(new URL("../transcript-window.js", import.meta.url), "utf8");
+assert.match(transcriptWindow, /setAttribute\("aria-label"/);
+assert.match(transcriptWindow, /cues\.length/);
 assert.match(workspace, /createTaskEventHub/);
 assert.match(workspace, /taskEventHub\.sync/);
 assert.match(settings, /id='updateClientVersion'/);

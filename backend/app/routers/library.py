@@ -22,6 +22,7 @@ from ..library import (
     list_materials,
     material_anchors,
     material_capabilities,
+    preview_document_material,
     material_content,
     material_source_path,
     redecode_document_material,
@@ -77,6 +78,19 @@ def api_library_material_capabilities() -> dict:
 @library_router.get("/materials")
 def api_library_materials(limit: int = 100, source_type: str = "") -> dict:
     return {"schema_version": 1, "materials": list_materials(limit, source_type)}
+
+
+@library_router.post("/materials/preview")
+async def api_library_material_preview(file: UploadFile = File(...), encoding: str = Form(default="", max_length=40)) -> dict:
+    content = bytearray()
+    while chunk := await file.read(1024 * 1024):
+        content.extend(chunk)
+        if len(content) > MATERIAL_IMPORT_MAX_BYTES:
+            raise HTTPException(status_code=413, detail="学习资料不能超过 32 MB。")
+    try:
+        return preview_document_material(file.filename or "material", bytes(content), file.content_type or "", encoding.strip())
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail={"code": str(exc), "message": "资料预检未通过，请检查文件格式、PDF 密码或文字编码；尚未保存原文。"}) from exc
 
 
 @library_router.post("/materials/import")

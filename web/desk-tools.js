@@ -1,4 +1,5 @@
 import { eventLogHtml, timelineHtml } from "/web/desk-progress.js";
+import { fullVideoSource } from "/web/range-source.js";
 import {
   api as request,
   escapeHtml as esc,
@@ -115,7 +116,7 @@ export function installTools(ctx) {
   function courseView() {
     show(
       course.title,
-      `<div class="tool-actions"><button data-action="courses">所有课程</button><button data-action="edit-course">编辑来源</button><button data-action="pause-course">${course.paused ? "继续课程" : "暂停课程"}</button><button data-action="batch" ${course.paused ? "disabled" : ""}>整理待处理链接</button></div><div class="tool-list">${course.sources.map((s, i) => `<div class="tool-row"><button class="grow" data-open-source="${i}"><strong>${esc(s.title || s.url || s.id)}</strong><small>${s.kind === "url" ? "待整理链接" : s.kind === "task" ? "视频笔记" : "学习资料"}</small></button><button data-move="${i}" data-direction="-1" aria-label="上移" ${i === 0 ? "disabled" : ""}>↑</button><button data-move="${i}" data-direction="1" aria-label="下移" ${i === course.sources.length - 1 ? "disabled" : ""}>↓</button></div>`).join("")}</div><details><summary>对照不同来源</summary><form id="compareForm"><label for="compareQuery">查找共同讨论的内容</label><input id="compareQuery" required placeholder="输入关键词"><button>查找出处</button></form><div id="compareResults"></div></details><footer><button data-action="course-review">复习这门课程</button><button class="danger" data-action="delete-course">删除课程分组</button></footer>`,
+      `<div class="tool-actions"><button data-action="courses">所有课程</button><button data-action="edit-course">编辑来源</button><button data-action="pause-course">${course.paused ? "继续课程" : "暂停课程"}</button><button data-action="batch" ${course.paused ? "disabled" : ""}>整理待处理链接</button></div><div class="tool-list">${course.sources.map((s, i) => `<div class="tool-row"><button class="grow" data-open-source="${i}"><strong>${esc(s.title || s.url || s.id)}</strong><small>${s.kind === "url" ? "待整理链接" : s.kind === "task" ? "视频笔记" : "学习资料"}</small></button><button data-move="${i}" data-direction="-1" aria-label="上移" ${i === 0 ? "disabled" : ""}>↑</button><button data-move="${i}" data-direction="1" aria-label="下移" ${i === course.sources.length - 1 ? "disabled" : ""}>↓</button></div>`).join("")}</div><details><summary>对照不同来源</summary><form id="compareForm"><label for="compareQuery">查找共同讨论的内容</label><input id="compareQuery" required placeholder="输入关键词"><label for="compareSourceKind">来源类型</label><select id="compareSourceKind"><option value="">全部来源</option><option value="task">视频</option><option value="material">文档</option></select><label for="compareSourceId">具体来源</label><select id="compareSourceId"><option value="">全部来源</option>${course.sources.filter(item => item.kind !== "url").map(item => `<option value="${esc(item.id)}">${esc(item.title || item.id)}</option>`).join("")}</select><label for="compareStart">起点（秒，可留空）</label><input id="compareStart" type="number" min="0" step="0.1"><label for="compareEnd">终点（秒，可留空）</label><input id="compareEnd" type="number" min="0" step="0.1"><button>查找出处</button></form><div id="compareResults"></div></details><footer><button data-action="course-review">复习这门课程</button><button class="danger" data-action="delete-course">删除课程分组</button></footer>`,
     );
     backAction = listCourses;
   }
@@ -135,7 +136,7 @@ export function installTools(ctx) {
     if (token !== generation) return;
     const p = plan.plan;
     $("toolBody").innerHTML =
-      `<div class="study-overview"><p><span>当前到期</span><strong>${dashboard.today?.due_count ?? 0}</strong></p><p><span>今日已复习</span><strong>${dashboard.today?.reviewed_count ?? 0}</strong></p><p><span>每日目标</span><strong>${p.daily_target}</strong></p></div><div class="tool-actions"><button class="primary" data-action="start-review" data-course-id="${esc(courseId)}">开始复习</button></div><details class="study-plan"><summary>调整每日目标与时区</summary><form id="planForm"><label for="dailyTarget">每日目标</label><input id="dailyTarget" type="number" min="1" max="200" value="${p.daily_target}"><label for="studyTimezone">复习时区</label><input id="studyTimezone" value="${esc(p.timezone)}" required><label class="check"><input id="studyPaused" type="checkbox" ${p.paused ? "checked" : ""}>暂停复习提醒与评分</label><button class="primary">保存计划</button></form></details><div class="tool-actions">${links([["导出学习记录", "/api/study/export"]])}</div><details><summary>最近评分记录</summary><div>${history.reviews.map((r) => `<p class="record">${esc(r.reviewed_at || r.created_at || "")} · 评分 ${esc(r.rating)}</p>`).join("") || '<p class="muted">还没有评分记录。</p>'}</div></details><details><summary>修复旧版复习调度</summary><p class="muted">根据完整评分历史重新计算计划，并在本地保存原调度备份。</p><button data-action="rebuild-study">按历史重建</button></details>`;
+      `<div class="study-overview"><p><span>当前到期</span><strong>${dashboard.today?.due_count ?? 0}</strong></p><p><span>今日已复习</span><strong>${dashboard.today?.reviewed_count ?? 0}</strong></p><p><span>每日目标</span><strong>${p.daily_target}</strong></p></div><div class="tool-actions"><button class="primary" data-action="${p.paused ? "resume-study" : "start-review"}" data-course-id="${esc(courseId)}">${p.paused ? "继续计划" : "开始复习"}</button></div><details class="study-plan"><summary>调整每日目标与时区</summary><form id="planForm"><label for="dailyTarget">每日目标</label><input id="dailyTarget" type="number" min="1" max="200" value="${p.daily_target}"><label for="studyTimezone">复习时区</label><input id="studyTimezone" value="${esc(p.timezone)}" required><label class="check"><input id="studyPaused" type="checkbox" ${p.paused ? "checked" : ""}>暂停学习记录、提醒与评分</label><button class="primary">保存计划</button></form></details><div class="tool-actions">${links([["导出学习记录", "/api/study/export"]])}</div><details><summary>最近评分记录</summary><div>${history.reviews.map((r) => `<p class="record">${esc(r.reviewed_at || r.created_at || "")} · 评分 ${esc(r.rating)}</p>`).join("") || '<p class="muted">还没有评分记录。</p>'}</div></details><details><summary>修复旧版复习调度</summary><p class="muted">根据完整评分历史重新计算计划，并在本地保存原调度备份。</p><button data-action="rebuild-study">按历史重建</button></details>`;
     const recentActivity = (dashboard.progress?.activity || []).reduce((sum, day) => ({
       reading: sum.reading + Number(day.reading_count || 0),
       answer: sum.answer + Number(day.answer_count || 0),
@@ -147,7 +148,17 @@ export function installTools(ctx) {
     const activityText = document.createElement("p"); activityText.textContent = `阅读 ${recentActivity.reading} 次 · 作答 ${recentActivity.answer} 次 · 自我解释 ${recentActivity.selfAssessment} 次 · 复习 ${recentActivity.review} 张`;
     const mastery = dashboard.progress?.mastery || {};
     const masteryText = document.createElement("p"); masteryText.textContent = `全部资料卡片：新卡 ${Number(mastery.new || 0)} · 学习中 ${Number(mastery.learning || 0)} · 需重温 ${Number(mastery.needs_attention || 0)} · 已稳定 ${Number(mastery.retained || 0)}`;
-    progress.append(progressTitle, activityText, masteryText); $("toolBody").append(progress);
+    const heatmap = document.createElement("ol"); heatmap.className = "study-activity-grid";
+    heatmap.setAttribute("aria-label", "近 14 天本地复习记录，按计划时区统计");
+    for (const day of dashboard.progress?.activity || []) {
+      const cell = document.createElement("li"), count = Number(day.review_count || 0);
+      cell.dataset.level = String(Math.min(3, count));
+      cell.setAttribute("aria-label", `${day.date} · 复习 ${count} 张`);
+      const date = document.createElement("small"); date.textContent = String(day.date).slice(5);
+      const value = document.createElement("strong"); value.textContent = String(count);
+      cell.append(date, value); heatmap.append(cell);
+    }
+    progress.append(progressTitle, activityText, masteryText, heatmap); $("toolBody").append(progress);
     const backupPanel = document.createElement("details");
     backupPanel.className = "study-backup";
     const backupSummary = document.createElement("summary"); backupSummary.textContent = "备份与恢复";
@@ -174,6 +185,15 @@ export function installTools(ctx) {
     };
     backupActions.append(exportBackup, restoreButton, backupFile);
     backupPanel.append(backupSummary, backupHint, backupActions);
+    const deleteStudy = document.createElement("button"); deleteStudy.type = "button"; deleteStudy.className = "danger";
+    deleteStudy.textContent = "永久删除学习记录";
+    deleteStudy.onclick = async () => {
+      if (!confirm("永久删除全部卡片、评分、自评动作、计划和调度备份？原始资料、正文及个人批注保留。此操作不能撤销。")) return;
+      deleteStudy.disabled = true;
+      try { await api("/api/study/data?confirm=delete_all_study_data", { method: "DELETE" }); await studySettings(courseId); }
+      catch (error) { status(error.message); deleteStudy.disabled = false; }
+    };
+    backupPanel.append(deleteStudy);
     $("toolBody").append(backupPanel);
     if (dashboard?.mistakes?.length) {
       const details = document.createElement("details");
@@ -196,8 +216,8 @@ export function installTools(ctx) {
           source.type = "button";
           source.textContent = "查看依据";
           source.onclick = async () => {
-            const evidence = await api("/api/knowledge/evidence/" + encodeURIComponent(mistake.source_evidence_ids[0]));
-            item.append(document.createTextNode("\n" + (evidence.evidence?.locator || "") + " · " + (evidence.evidence?.text || "")));
+            dialog.close();
+            await ctx.openEvidence(mistake.source_evidence_ids[0]);
           };
           item.append(source);
         }
@@ -244,7 +264,7 @@ export function installTools(ctx) {
     if (s.kind !== "task") throw new Error("片段学习需要本地视频。");
     show(
       "只整理一段视频",
-      `<p class="muted">起止位置以当前视频的秒数计算。新片段会创建独立笔记。</p><form id="rangeForm"><label for="rangeStart">开始（秒）</label><input id="rangeStart" type="number" min="0" step="0.1" required value="${Math.floor($("player").currentTime || 0)}"><label for="rangeEnd">结束（秒）</label><input id="rangeEnd" type="number" min="0.1" step="0.1" required><button type="button" data-action="range-position">用当前播放位置填入开始</button><footer><button class="primary">整理此片段</button></footer></form>`,
+      `<p class="muted">起止位置以当前视频的秒数计算。新片段会创建独立笔记。${Object.keys(s.learning_range || {}).length ? ` 当前片段边界：${Number(s.learning_range.original_start ?? s.learning_range.start)}–${Number(s.learning_range.original_end ?? s.learning_range.end)} 秒。` : ""}</p>${Object.keys(s.learning_range || {}).length ? '<button data-action="learn-full-source">整理完整原视频（复用已保存媒体）</button>' : ""}<form id="rangeForm"><label for="rangeStart">开始（秒）</label><input id="rangeStart" type="number" min="0" step="0.1" required value="${Math.floor($("player").currentTime || 0)}"><label for="rangeEnd">结束（秒）</label><input id="rangeEnd" type="number" min="0.1" step="0.1" required><button type="button" data-action="range-position">用当前播放位置填入开始</button><footer><button class="primary">整理此片段</button></footer></form>`,
     );
     dialog.dataset.sourceId = s.id;
   }
@@ -436,7 +456,7 @@ export function installTools(ctx) {
             page_url: source.url,
             title: source.title,
             handoff_id: handoff,
-            options: options(),
+            options: { ...options(), content_mode: "text", visual_understanding: false },
           }),
         });
         fresh.sources[index] = {
@@ -468,9 +488,12 @@ export function installTools(ctx) {
     const r = await api(`/api/tasks/${s.id}/community-context`);
     if (token !== generation) return;
     dialog.dataset.sourceId = s.id;
+    const category = (id) => (r.groups?.questions || []).includes(id) ? "观众问题"
+      : (r.groups?.disagreements || []).includes(id) ? "可能存在分歧" : "观众观点";
     $("toolBody").innerHTML =
-      `<p class="muted">评论与弹幕是独立观点，不作为课程事实或复习证据。不会自动抓取网站内容。</p><button data-action="toggle-community" data-enabled="${r.enabled}">${r.enabled ? "关闭观点层" : "启用观点层"}</button>${r.enabled ? '<form id="communityForm"><label for="communityText">粘贴要保留的观点 · 每行一条</label><textarea id="communityText" required maxlength="20000"></textarea><button>保存观点</button></form>' : ""}<div class="tool-list">${r.items.map((item) => `<blockquote><small>${esc(item.kind)}</small><p>${esc(item.text)}</p></blockquote>`).join("")}</div><button class="danger" data-action="clear-community">清空本任务观点</button>`;
+      `<p class="muted">评论与弹幕是独立观点，不作为课程事实或复习证据。分类仅按关键词提示，不代表事实判断。不会自动抓取网站内容；作者身份默认省略，明显联系方式与推广内容会过滤。</p><button data-action="toggle-community" data-enabled="${r.enabled}">${r.enabled ? "关闭观点层" : "启用观点层"}</button>${r.enabled ? '<form id="communityForm"><label for="communityText">粘贴要保留的观点 · 每行一条</label><textarea id="communityText" required maxlength="20000"></textarea><button>保存观点</button></form>' : ""}<div class="tool-actions">${links([["单独导出社区观点", `/api/tasks/${encodeURIComponent(s.id)}/community-context/export`]])}</div><div class="tool-list">${r.items.map((item) => `<blockquote><small>${category(item.item_id)} · ${item.kind === "danmaku" ? "弹幕" : "评论"}${item.timestamp_seconds === null ? "" : " · " + Number(item.timestamp_seconds) + " 秒"}</small><p>${esc(item.text)}</p><button data-action="delete-community-item" data-item-id="${esc(item.item_id)}">删除这条观点</button></blockquote>`).join("")}</div><button class="danger" data-action="clear-community">清空本任务观点</button>`;
   }
+
   function relationshipGraph(result) {
     const nodes = (result.nodes || []).slice(0, 24);
     const edges = (result.edges || []).filter((edge) => nodes.some((node) => node.id === edge.from) && nodes.some((node) => node.id === edge.to));
@@ -545,6 +568,11 @@ export function installTools(ctx) {
       });
       await community();
     },
+    "delete-community-item": async (button) => {
+      if (!confirm("删除这条社区观点？")) return;
+      await api(`/api/tasks/${encodeURIComponent(dialog.dataset.sourceId)}/community-context/${encodeURIComponent(button.dataset.itemId)}`, { method: "DELETE" });
+      await community();
+    },
     "clear-community": async () => {
       if (confirm("清空当前任务的社区观点？")) {
         await api(
@@ -588,6 +616,11 @@ export function installTools(ctx) {
     },
     batch,
     "course-review": () => studySettings(course.id),
+    "resume-study": async (button) => {
+      const { plan } = await api("/api/study/plan");
+      await api("/api/study/plan", { method: "PUT", body: JSON.stringify({ title: plan.title, daily_target: plan.daily_target, timezone: plan.timezone, paused: false }) });
+      await studySettings(button.dataset.courseId || "");
+    },
     "start-review": async (button) => {
       dialog.close();
       await ctx.startReview(button.dataset.courseId || "");
@@ -659,6 +692,14 @@ export function installTools(ctx) {
       ]
         .filter(Boolean)
         .join("\n");
+    },
+    "learn-full-source": async () => {
+      const source = await fullVideoSource(dialog.dataset.sourceId, id => api(`/api/tasks/${encodeURIComponent(id)}`));
+      if (!confirm(`使用已保存的完整原视频“${source.title}”和当前模型设置创建全片笔记？`)) return;
+      const result = await api(`/api/tasks/${encodeURIComponent(source.id)}/rerun-from-media`, { method: "POST", body: JSON.stringify(options()) });
+      dialog.close();
+      await refresh();
+      await openItem({ ...result.task, id: result.task_id, kind: "task" });
     },
     "add-to-course": async () => {
       const s = current();
@@ -745,11 +786,8 @@ export function installTools(ctx) {
       });
     else if (b.dataset.evidence)
       run(b, async () => {
-        const r = await api(`/api/knowledge/evidence/${b.dataset.evidence}`);
-        const p = document.createElement("p");
-        p.className = "source-excerpt";
-        p.textContent = `${r.evidence.title} · ${r.evidence.locator}\n${r.evidence.text}`;
-        b.after(p);
+        dialog.close();
+        await ctx.openEvidence(b.dataset.evidence);
       });
     else if (b.dataset.addCourse)
       run(b, async () => {
@@ -841,12 +879,13 @@ export function installTools(ctx) {
         });
         courseView();
       } else if (form.id === "compareForm") {
-        const r = await api(
-          `/api/courses/${course.id}/compare?q=${encodeURIComponent($("compareQuery").value)}`,
-        );
+        const filters = new URLSearchParams({ q: $("compareQuery").value, source_kind: $("compareSourceKind").value, source_id: $("compareSourceId").value });
+        if ($("compareStart").value !== "") filters.set("start", $("compareStart").value);
+        if ($("compareEnd").value !== "") filters.set("end", $("compareEnd").value);
+        const r = await api(`/api/courses/${course.id}/compare?${filters}`);
         if (token !== generation) return;
         $("compareResults").innerHTML =
-          `<p class="muted">${esc(r.warning)}</p>${r.matches.map((m) => `<blockquote><strong>${esc(m.title)}</strong><small>${esc(m.locator)}</small><p>${esc(m.excerpt)}</p></blockquote>`).join("") || "没有匹配出处。"}`;
+          `<p class="muted">${esc(r.warning)}</p>${r.matches.map((m) => `<blockquote><strong>${esc(m.title)}</strong><small>${esc(m.locator)}</small><p>${esc(m.excerpt)}</p><button data-evidence="${esc(m.evidence_id)}">核对出处</button></blockquote>`).join("") || "没有匹配出处。"}`;
         if (form.id === "compareForm" && r.edges?.length) {
           const graphView = relationshipGraph(r);
           if (graphView) $("compareResults").append(graphView);

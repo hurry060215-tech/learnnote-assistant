@@ -45,5 +45,26 @@ class CourseTests(unittest.TestCase):
                     save_course("课程", [{"kind":"task","id":"fake","title":"伪造来源"}])
 
 
+class CourseComparisonAcceptanceTests(unittest.TestCase):
+    def test_same_evidence_registered_twice_is_not_a_cross_source_relation(self):
+        evidence = {"evidence_id":"shared", "locator":"0-10s", "text":"gradient descent"}
+        with patch("app.courses.get_course", return_value={"sources":[{"kind":"task","id":"one","title":"Video"},{"kind":"material","id":"registered-video","title":"Video"}]}), patch("app.courses.evidence_for_task", return_value=[evidence]), patch("app.courses.material_anchors", return_value=[evidence]):
+            result = compare_course("fixture", "gradient")
+        self.assertEqual(result["edges"], [])
+        self.assertEqual(len(result["matches"]), 1)
+
+    def test_comparison_filters_keep_correct_source_and_temporal_anchors(self):
+        sources = [{"kind":"task","id":"one","title":"First"},{"kind":"task","id":"two","title":"Second"}]
+        evidence = {"one":[{"evidence_id":"a","locator":"0-5s","text":"gradient early"},{"evidence_id":"b","locator":"15-20s","text":"gradient late"}], "two":[{"evidence_id":"c","locator":"15-20s","text":"gradient second"}]}
+        with patch("app.courses.get_course", return_value={"sources":sources}), patch("app.courses.evidence_for_task", side_effect=lambda key, **kw:evidence[key]):
+            result = compare_course("fixture", "gradient", start=10, end=30)
+            self.assertEqual([item["evidence_id"] for item in result["matches"]], ["b", "c"])
+            self.assertEqual(result["edges"][0]["evidence_ids"], ["b", "c"])
+            self.assertEqual(len(compare_course("fixture", "gradient", source_id="two")["matches"]), 1)
+            self.assertEqual(compare_course("fixture", "gradient", source_kind="material")["matches"], [])
+            with self.assertRaisesRegex(ValueError, "invalid_comparison_filter"):
+                compare_course("fixture", "gradient", start=20, end=10)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -75,8 +75,8 @@ def api_delete_course(course_id: str):
 
 
 @course_router.get("/{course_id}/compare")
-def api_compare_course(course_id: str, q: str = Query(min_length=1, max_length=200)):
+def api_compare_course(course_id: str, q: str = Query(min_length=1, max_length=200), source_id: str = Query(default="", max_length=128), source_kind: Literal["", "task", "material"] = "", start: float | None = Query(default=None, ge=0), end: float | None = Query(default=None, ge=0)):
     try:
-        return compare_course(course_id, q)
+        return compare_course(course_id, q, source_id=source_id, source_kind=source_kind, start=start, end=end)
     except (ValueError, OSError) as exc:
         raise HTTPException(status_code=404, detail="Course unavailable") from exc

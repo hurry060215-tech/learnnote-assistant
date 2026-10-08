@@ -2248,3 +2248,11 @@ small, .muted, .settings-status { color: var(--muted); font-weight: 500; }
 @media(max-width:600px) { .appearance-grid { grid-template-columns:1fr; } }
 
 .editor textarea { font-family:var(--reader-font,inherit); font-size:var(--reader-size,17px); line-height:var(--reader-leading,1.65); font-weight:var(--reader-weight,500); }
+
+/* Local review activity, using the existing opaque reading-surface tokens. */
+.study-activity-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(48px,1fr)); gap:6px; padding:0; list-style:none; }
+.study-activity-grid li { display:grid; gap:4px; padding:8px 4px; text-align:center; border:1px solid var(--line); border-radius:6px; background:var(--panel); color:var(--ink); }
+.study-activity-grid li[data-level="1"], .study-activity-grid li[data-level="2"], .study-activity-grid li[data-level="3"] { background:var(--tint); }
+.study-activity-grid li[data-level="2"] { border-bottom:3px solid var(--accent); }
+.study-activity-grid li[data-level="3"] { border-bottom:5px solid var(--accent); }
+@media (forced-colors: active) { .study-activity-grid li { border-color:CanvasText; } }

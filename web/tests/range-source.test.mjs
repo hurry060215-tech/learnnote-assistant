@@ -1,0 +1,11 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+const source = readFileSync(new URL("../range-source.js", import.meta.url), "utf8");
+const { fullVideoSource } = await import("data:text/javascript;base64,"+Buffer.from(source).toString("base64"));
+const original = {id:"original",title:"Complete video",learning_range:{}};
+const tasks = { original, clip:{id:"clip",source_task_id:"original",learning_range:{start:5,end:15}}, nested:{id:"nested",source_task_id:"clip",learning_range:{start:1,end:4}} };
+assert.equal(await fullVideoSource("nested", async id => ({task:tasks[id]})), original);
+await assert.rejects(fullVideoSource("wrong", async () => original), /身份不匹配/);
+await assert.rejects(fullVideoSource("clip", async id => ({id,source_task_id:id,learning_range:{start:5,end:15}})), /循环/);
+await assert.rejects(fullVideoSource("clip", async id => ({id,learning_range:{start:5,end:15}})), /没有保留完整原视频/);
+console.log("Full-video upgrades follow canonical ancestry and reject missing or cyclic sources");

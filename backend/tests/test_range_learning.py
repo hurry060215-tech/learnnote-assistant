@@ -47,5 +47,23 @@ class RangeLearningTests(unittest.TestCase):
         self.assertIsNone(_learning_range_bounds({"start": 20, "end": 10}))
 
 
-if __name__=='__main__':
+class RangeSourceIdentityTests(unittest.TestCase):
+    def test_reused_range_preserves_page_identity_and_original_offsets(self):
+        from app.models import TaskOptions, TaskRecord, SourceIdentity, MediaIntegrity
+        from app.range_learning import create_range_task
+        with tempfile.TemporaryDirectory() as tmp:
+            media = Path(tmp) / "source.mp4"; media.write_bytes(b"fixture")
+            source = TaskRecord(id="source", source_type="local", title="Part 2", page_url="https://www.bilibili.com/video/BV1xx?p=2", created_at="", updated_at="", media_path=str(media), media_integrity=MediaIntegrity(duration=100), learning_range={"original_start":60}, source_identity=SourceIdentity(media_sha256="original-hash"))
+            created = source.model_copy(update={"id":"new"})
+            with patch("app.range_learning.DATA_DIR", Path(tmp)), patch("app.range_learning.get_task", return_value=source), patch("app.range_learning.create_task", return_value=created) as create, patch("app.range_learning.update_task", side_effect=lambda key, **kw:created.model_copy(update=kw)), patch("app.range_learning.schedule_processing") as schedule:
+                result = create_range_task("source", 10, 20, TaskOptions(), None)
+            self.assertEqual(create.call_args.kwargs["page_url"], source.page_url)
+            self.assertEqual(result.learning_range["original_start"], 70)
+            self.assertEqual(result.learning_range["original_end"], 80)
+            self.assertEqual(result.source_task_id, source.id)
+            self.assertEqual(result.source_identity.media_sha256, "")
+            self.assertEqual(schedule.call_count, 1)
+
+
+if __name__ == "__main__":
     unittest.main()
