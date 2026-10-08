@@ -82,7 +82,7 @@ jobs:
     timeout-minutes: 15
     env:
       PYTHONPATH: backend
-      LEARNNOTE_DATA_DIR: ${{ runner.temp }}/learnnote-ci
+      LEARNNOTE_DATA_DIR: build/ci-data
       HF_HUB_OFFLINE: "1"
       TRANSFORMERS_OFFLINE: "1"
     steps:

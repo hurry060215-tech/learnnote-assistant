@@ -23,6 +23,13 @@ class PortableAsrCiTests(unittest.TestCase):
         self.assertEqual(self.job["env"]["HF_HUB_OFFLINE"], "1")
         self.assertEqual(self.job["env"]["TRANSFORMERS_OFFLINE"], "1")
 
+    def test_job_environment_does_not_use_unavailable_runner_context(self) -> None:
+        # runner is allowed at step scope, not jobs.<job_id>.env.
+        for job in self.workflow["jobs"].values():
+            for value in job.get("env", {}).values():
+                self.assertNotIn("runner.", str(value))
+        self.assertEqual(self.job["env"]["LEARNNOTE_DATA_DIR"], "build/ci-data")
+
     def test_portable_lane_installs_and_checks_constrained_asr_runtime(self) -> None:
         for requirement in ("test", "asr"):
             self.assertIn(f"-r backend/requirements.{requirement}.txt", self.commands)
