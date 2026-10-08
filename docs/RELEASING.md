@@ -31,6 +31,12 @@ the bridge.
 `scripts/publish-release.ps1` 会复用未公开的 draft，补齐资产，下载后与 `SHA256SUMS.txt` 逐项比较，再公开。
 可先使用 `-ValidateOnly` 验证本地资产；此模式不调用 GitHub。已公开版本只允许验证，不允许用重跑覆盖二进制。
 
+发布前还必须核对远端完整资产清单与本地审核清单一致，包括文件名、大小和校验和。
+空文件、意外文件、缺失文件、大小/摘要不符或中途状态改变都会阻止公开。
+若 draft 存在意外文件，先人工检查并决定保留或移除；脚本不会自动删除这些文件，也不会把它们一并公开。
+上传或下载复核失败后可以重跑同一 tag：复用原 draft、补齐资产、重新核验，再公开一次。
+已经 published 的 tag 重跑只有读取/下载核验，不上传、不替换、不重新发布。
+
 每次构建额外输出 `LearnNote-SBOM.json`、`LearnNote-Resolved-Requirements.txt` 和 `LearnNote-Build-Source.json`。
 Windows x64/Python 3.12 构建使用 `backend/requirements.windows-py312.lock.txt` 的固定版本（含桌面、OCR和构建工具）。这些文件描述实际构建环境与源码，不等同于逐字节可复现的二进制承诺。tag 工作流会生成 GitHub provenance attestation；需要仓库支持对应 Actions 权限。
 建议将相关 PR 的 UI visual acceptance 也配置为仓库 required check；工作流文件本身不会自动更改分支保护规则。
