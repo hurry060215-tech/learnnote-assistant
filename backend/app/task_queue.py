@@ -1,4 +1,4 @@
-"""Independent bounded heavy/light lanes with a local durable intent journal.
+"""Independent bounded heavy/light/download lanes with a local durable intent journal.
 
 Credentials and browser request bodies stay in memory. After a restart, jobs
 requiring that context are offered for explicit resume, never silently retried
@@ -7,7 +7,7 @@ without authentication or with a different model route.
 from __future__ import annotations
 
 from concurrent.futures import Future
-from contextlib import closing
+from contextlib import closing, ExitStack
 from pathlib import Path
 import sqlite3
 import threading
@@ -15,13 +15,16 @@ import time
 from typing import Callable
 
 from .worker_lease import worker_lease
+from .queue_policy import LANES, lane_budgets
 
 MAX_PENDING_TASKS = 24
-LIGHT_TASK_KINDS = {"light", "summary", "local_light", "page_light", "page_download"}
+LIGHT_TASK_KINDS = {"light", "summary", "local_light", "page_light"}
 LANE_PENDING_LIMIT = 12
 
 
 def task_lane(kind: str) -> str:
+    if kind == "page_download":
+        return "download"
     return "light" if kind in LIGHT_TASK_KINDS else "heavy"
 
 
@@ -39,6 +42,8 @@ class LocalTaskQueue:
         self.observers: dict[str, Future] = {}
         self.workers: dict[str, threading.Thread] = {}
         self.stopping = False
+        self.closing = False
+        self.concurrency = lane_budgets()
         with closing(self.connect()) as db:
             db.execute("CREATE TABLE IF NOT EXISTS jobs (sequence INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT UNIQUE NOT NULL, kind TEXT NOT NULL, requires_context INTEGER NOT NULL, state TEXT NOT NULL, updated_at REAL NOT NULL)")
             db.commit()
@@ -53,7 +58,7 @@ class LocalTaskQueue:
 
     def enqueue(self, task_id: str, kind: str, callback: Callable, *, requires_context: bool = False) -> Future:
         with self.condition:
-            if self.stopping:
+            if self.stopping or self.closing:
                 raise RuntimeError("Task queue is stopping")
             if task_id in self.jobs:
                 return self.jobs[task_id][1]
@@ -80,11 +85,13 @@ class LocalTaskQueue:
                 db.commit()
             future = Future()
             self.jobs[task_id] = (callback, future)
-            worker = self.workers.get(lane)
-            if worker is None or not worker.is_alive():
-                worker = threading.Thread(target=self.run, args=(lane,), name=f"learnnote-task-queue-{lane}", daemon=True)
-                self.workers[lane] = worker
-                worker.start()
+            for slot in range(self.concurrency[lane]):
+                worker_key = f"{lane}:{slot}"
+                worker = self.workers.get(worker_key)
+                if worker is None or not worker.is_alive():
+                    worker = threading.Thread(target=self.run, args=(lane, slot), name=f"learnnote-task-queue-{worker_key}", daemon=True)
+                    self.workers[worker_key] = worker
+                    worker.start()
             self.condition.notify_all()
             return future
 
@@ -114,40 +121,61 @@ class LocalTaskQueue:
             with self.condition:
                 self.observers.pop(task_id, None)
 
-    def run(self, lane):
+    def _claim(self, task_id, lane):
+        with closing(self.connect()) as db:
+            db.execute("BEGIN IMMEDIATE")
+            waiting = db.execute("SELECT task_id,kind FROM jobs WHERE state='queued' ORDER BY sequence").fetchall()
+            first = next((row[0] for row in waiting if task_lane(row[1]) == lane), None)
+            if first != task_id:
+                return False
+            changed = db.execute("UPDATE jobs SET state='running',updated_at=? WHERE task_id=? AND state='queued'", (time.time(), task_id)).rowcount
+            db.commit()
+            return bool(changed)
+
+    def run(self, lane, slot=0):
+        worker_key = f"{lane}:{slot}"
         while True:
             with self.condition:
-                eligible = [key for key in self.jobs if task_lane((self._job_row(key) or {}).get("kind", "")) == lane]
+                eligible = []
+                for key, (_, future) in list(self.jobs.items()):
+                    row = self._job_row(key) or {}
+                    if task_lane(row.get("kind", "")) != lane:
+                        continue
+                    if row.get("state") == "queued":
+                        eligible.append(key)
+                    elif row.get("state") != "running" and not future.running():
+                        self.jobs.pop(key, None)
+                        if not future.done():
+                            future.set_result(None)
                 if not eligible or self.stopping:
-                    self.workers.pop(lane, None)
+                    self.workers.pop(worker_key, None)
                     return
-                task_id = eligible[0]
-                callback, future = self.jobs[task_id]
-                if not future.set_running_or_notify_cancel():
-                    self.jobs.pop(task_id, None)
-                    self.set_state(task_id, "cancelled")
-                    continue
-                try:
-                    self.set_state(task_id, "running")
-                except Exception as exc:
-                    self.jobs.pop(task_id, None)
-                    future.set_exception(exc)
-                    continue
-            try:
-                with worker_lease(self.root, lane=lane):
-                    callback()
-                self.set_state(task_id, "done")
-            except Exception as exc:
-                try:
-                    self.set_state(task_id, "failed")
-                except sqlite3.Error:
-                    pass
-                failure = exc
-            else:
-                failure = None
-            finally:
+            # Waiting on another process is still queued and immediately cancellable.
+            with worker_lease(self.root, blocking=False, lane=lane, slot=slot) as acquired:
                 with self.condition:
-                    self.jobs.pop(task_id, None)
+                    task_id = next((key for key in eligible if key in self.jobs), None)
+                    if not acquired or not task_id or not self._claim(task_id, lane):
+                        self.condition.wait(.05)
+                        continue
+                    callback, future = self.jobs[task_id]
+                    if not future.set_running_or_notify_cancel():
+                        self.jobs.pop(task_id, None)
+                        self.set_state(task_id, "cancelled")
+                        continue
+                try:
+                    callback()
+                    self.set_state(task_id, "done")
+                except Exception as exc:
+                    try:
+                        self.set_state(task_id, "failed")
+                    except sqlite3.Error:
+                        pass
+                    failure = exc
+                else:
+                    failure = None
+                finally:
+                    with self.condition:
+                        self.jobs.pop(task_id, None)
             if failure is not None:
                 future.set_exception(failure)
             else:
@@ -161,19 +189,20 @@ class LocalTaskQueue:
 
     def stop(self, timeout: float = 10):
         with self.condition:
-            self.stopping = True
+            self.closing = True
             workers = list(self.workers.values())
         deadline = time.monotonic() + timeout
         for worker in workers:
             worker.join(max(0, deadline - time.monotonic()))
+        self.stopping = True
 
     def cancel_pending(self, task_id: str) -> bool:
         with self.condition:
             with closing(self.connect()) as db:
-                row = db.execute("SELECT state FROM jobs WHERE task_id=?", (task_id,)).fetchone()
-            if row is None or row[0] != "queued":
+                changed = db.execute("UPDATE jobs SET state='cancelled',updated_at=? WHERE task_id=? AND state='queued'", (time.time(), task_id)).rowcount
+                db.commit()
+            if not changed:
                 return False
-            self.set_state(task_id, "cancelled")
             job = self.jobs.pop(task_id, None)
             if job:
                 if not job[1].done():
@@ -223,6 +252,8 @@ def queue_status(root: Path, task_id: str) -> dict[str, object]:
         "kind": current["kind"],
         "lane": task_lane(current["kind"]),
         "lane_pending_limit": LANE_PENDING_LIMIT,
+        "lane_concurrency": queue_for(root).concurrency[task_lane(current["kind"])],
+        "lane_budgets": dict(queue_for(root).concurrency),
     }
 
 
@@ -283,13 +314,12 @@ def schedule_processing(background_tasks, function, task_id: str, *args, **kwarg
 
 
 def recover_processing(root: Path) -> dict[str, int]:
-    with worker_lease(root, blocking=False) as acquired:
-        if not acquired:
-            return {"recovered": 0, "waiting_for_context": 0, "another_worker_active": 1}
-        with worker_lease(root, blocking=False, lane="light") as light_acquired:
-            if not light_acquired:
-                return {"recovered": 0, "waiting_for_context": 0, "another_worker_active": 1}
-            return _recover_processing(root)
+    with ExitStack() as stack:
+        for lane in LANES:
+            for slot in range(4):
+                if not stack.enter_context(worker_lease(root, blocking=False, lane=lane, slot=slot)):
+                    return {"recovered": 0, "waiting_for_context": 0, "another_worker_active": 1}
+        return _recover_processing(root)
 
 
 def _recover_processing(root: Path) -> dict[str, int]:

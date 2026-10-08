@@ -901,7 +901,9 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
                 fallback = "字幕需要网站登录态；本次继续获取媒体并转写，原因已记录"
             update_task(task_id, phase="downloading", progress=10, message=fallback)
         download_started = time.monotonic()
-        media_path, selected = downloader.download(request.page_url, request.resources, request.cookies, request.title)
+        from .stage_budget import stage_budget
+        with stage_budget(work_dir.parent.parent, "download", cancel_check=lambda: _check_cancel(task_id)):
+            media_path, selected = downloader.download(request.page_url, request.resources, request.cookies, request.title)
         record_stage_duration(task_id, "download", download_started)
         _check_cancel(task_id)
         try:
