@@ -72,7 +72,7 @@ async function run() {
       const catalog=JSON.parse(fs.readFileSync(path.join(ROOT,"extension","_locales",item.locale.startsWith("en")?"en":"zh_CN","messages.json"),"utf8"));
       await page.addInitScript(installFixtures,{locale:item.locale,catalog,fixture:FIXTURE});
       const prefix=`${item.locale}-${item.width}-${item.zoom}`;
-      const capture=async state=>{const g=await geometry(page);assert.equal(g.scrollWidth<=g.width+1,true,`${prefix}/${state} page overflow`);assert.equal(g.bodyScrollWidth<=g.width+1,true,`${prefix}/${state} hidden body overflow`);assert.deepEqual(g.overflow,[],`${prefix}/${state} clipped controls`);await page.screenshot({path:path.join(out,`${prefix}-${state}.png`),fullPage:true});return g;};
+      const capture=async state=>{const g=await geometry(page);await page.screenshot({path:path.join(out,`${prefix}-${state}.png`),fullPage:true});assert.equal(g.scrollWidth<=g.width+1,true,`${prefix}/${state} page overflow`);assert.equal(g.bodyScrollWidth<=g.width+1,true,`${prefix}/${state} hidden body overflow`);assert.deepEqual(g.overflow,[],`${prefix}/${state} clipped controls`);return g;};
       await page.goto(`http://127.0.0.1:${server.address().port}/extension/sidepanel.html`,{waitUntil:"domcontentloaded"});
       await page.locator("#sourcePreviewCard").waitFor({state:"visible"});await capture("loading");
       await page.evaluate(()=>__localeFixture.connect());await page.waitForFunction(()=>__learnnoteSidepanel.getState().clientConnected);

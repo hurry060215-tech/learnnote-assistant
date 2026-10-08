@@ -35,7 +35,7 @@ async function main(){
       if(await page.locator("#toolsDialog").evaluate(el=>el.open))await page.locator("[data-close-tool]").click();
       await page.locator("#moreTools").click();await page.locator('[data-action="add-to-course"]').click();await page.locator(`[data-add-course="${course.id}"]`).click();await page.locator('[data-action="course-review"]').click();await page.locator("#studyVideoFilter").waitFor();
     };
-    const capture=async(name,selector)=>{const g=await geometry(page,selector);assert(g.scrollWidth<=g.viewport+1,`${name} page overflow`);assert(g.left>=-1&&g.right<=g.viewport+1,`${name} clipped surface`);assert.deepEqual(g.clipped,[],`${name} clipped controls`);assert(g.contrast>=4.5,`${name} contrast ${g.contrast}`);await page.screenshot({path:path.join(out,name+".png"),fullPage:true});return g;};
+    const capture=async(name,selector)=>{const g=await geometry(page,selector);await page.screenshot({path:path.join(out,name+".png"),fullPage:true});assert(g.scrollWidth<=g.viewport+1,`${name} page overflow`);assert(g.left>=-1&&g.right<=g.viewport+1,`${name} clipped surface`);assert.deepEqual(g.clipped,[],`${name} clipped controls`);assert(g.contrast>=4.5,`${name} contrast ${g.contrast}`);return g;};
     for(const item of cases()){
       await page.setViewportSize({width:item.cssWidth,height:item.cssHeight});await cdp.send("Emulation.setDeviceMetricsOverride",{width:item.cssWidth,height:item.cssHeight,deviceScaleFactor:item.zoom/100,mobile:false});
       for(const theme of ["light","dark"]){
