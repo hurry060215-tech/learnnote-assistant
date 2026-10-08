@@ -1,3 +1,4 @@
+import { installExtensionScriptLoader } from "./helpers/script-loader.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import vm from "node:vm";
@@ -53,6 +54,7 @@ const context = {
 };
 
 vm.createContext(context);
+installExtensionScriptLoader(context);
 const backgroundCode = await readFile(new URL("../background.js", import.meta.url), "utf8");
 vm.runInContext(backgroundCode, context);
 

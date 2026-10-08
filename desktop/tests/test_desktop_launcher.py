@@ -390,6 +390,8 @@ class DesktopLauncherTests(unittest.TestCase):
         with desktop.ZipFile(archive, "w") as package:
             package.writestr("manifest.json", '{"manifest_version":3,"version":"9.8.7"}')
             package.writestr("background.js", "/* updated */")
+            package.writestr("capture-classification.js", "/* pure classification */")
+            package.writestr("capture-ranking.js", "/* pure ranking */")
             package.writestr("i18n.js", "/* localized */")
             package.writestr("_locales/zh_CN/messages.json", '{}')
             package.writestr("_locales/en/messages.json", '{}')
@@ -425,6 +427,8 @@ class DesktopLauncherTests(unittest.TestCase):
             self.assertTrue(result["ok"])
             self.assertEqual("9.8.7", json.loads((target / "manifest.json").read_text(encoding="utf-8"))["version"])
             self.assertTrue((target / "i18n.js").is_file())
+            self.assertEqual("/* pure classification */", (target / "capture-classification.js").read_text(encoding="utf-8"))
+            self.assertEqual("/* pure ranking */", (target / "capture-ranking.js").read_text(encoding="utf-8"))
             self.assertTrue((target / "_locales" / "en" / "messages.json").is_file())
             backup = Path(result["backup"])
             self.assertEqual("0.2.8", json.loads((backup / "manifest.json").read_text(encoding="utf-8"))["version"])
