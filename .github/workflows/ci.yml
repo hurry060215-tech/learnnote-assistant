@@ -12,6 +12,38 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  portable-ocr:
+    name: Local OCR regression (Python 3.12)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PYTHONPATH: backend
+      LEARNNOTE_DATA_DIR: build/ocr-data
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+      - name: Install constrained local OCR runtime
+        run: |
+          python -m pip install -r backend/requirements.test.txt -r backend/requirements.ocr.txt -c backend/requirements.windows-py312.lock.txt -c backend/constraints.linux-py312.txt
+          python -m pip check
+      - name: Require OCR and exercise actual image recognition
+        run: |
+          python -c "from app.local_ocr import create_ocr_engine; create_ocr_engine()"
+          python -m unittest backend.tests.test_local_ocr backend.tests.test_ocr_cache_integrity
+          python scripts/ocr-fixture-benchmark.py --output-dir build/ocr-fixtures
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: local-ocr-${{ github.run_id }}
+          path: build/ocr-fixtures/report.json
+          if-no-files-found: warn
+
   checks:
     runs-on: windows-latest
     timeout-minutes: 30

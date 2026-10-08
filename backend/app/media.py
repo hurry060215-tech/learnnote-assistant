@@ -23,7 +23,7 @@ class MediaProcessingError(RuntimeError):
     pass
 
 
-FRAME_CACHE_SCHEMA_VERSION = 1
+FRAME_CACHE_SCHEMA_VERSION = 2
 DEFAULT_FRAME_EXTRACT_BATCH_SIZE = 12
 _cancel_check = ContextVar("media_cancel_check", default=None)
 
@@ -641,6 +641,8 @@ def _frame_cache_payload(
     stat = video_path.stat()
     return {
         "schema_version": FRAME_CACHE_SCHEMA_VERSION,
+        "extractor_version": "adaptive-batch-v2",
+        "source_sha256": file_sha256(video_path),
         "source_size": stat.st_size,
         "source_mtime_ns": stat.st_mtime_ns,
         "interval": int(interval),
