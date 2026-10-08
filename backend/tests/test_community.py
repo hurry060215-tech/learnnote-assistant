@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import closing
 import sqlite3
 import tempfile
 from datetime import datetime, timezone
@@ -93,8 +94,10 @@ class CommunityPrivacyAcceptanceTests(unittest.TestCase):
             self.assertNotIn(b"4155550123", raw)
             # Inspect persisted content, not only the API's output projection,
             # so a future read-time redactor cannot hide an at-rest leak.
-            with sqlite3.connect(Path(tmp) / "community.sqlite3") as connection:
+            with closing(sqlite3.connect(Path(tmp) / "community.sqlite3")) as connection:
                 rows = connection.execute("SELECT text, author_label, source_uri FROM community_context_items").fetchall()
+            with self.assertRaises(sqlite3.ProgrammingError):
+                connection.execute("SELECT 1")
             self.assertEqual(len(rows), 3)
             for row in rows:
                 for value in row:
