@@ -63,7 +63,7 @@ def create_range_task(source_id: str, start: float, end: float, options: TaskOpt
     base = source.learning_range.get("original_start", 0.0)
     original_start, original_end = base + start, base + end
     title = f"{source.title} · 片段 {original_start:g}–{original_end:g}秒"
-    task = create_task("local", title, options=options, mode="rerun_from_media")
-    task = update_task(task.id, source_task_id=source.id, source_media_path=str(path), learning_range={"start": start, "end": end, "original_start": original_start, "original_end": original_end})
+    task = create_task("local", title, page_url=source.page_url, options=options, mode="rerun_from_media")
+    task = update_task(task.id, source_task_id=source.id, source_media_path=str(path), source_identity=source.source_identity.model_copy(update={"media_sha256": "", "resource_fingerprint": ""}), learning_range={"start": start, "end": end, "original_start": original_start, "original_end": original_end})
     schedule_processing(background_tasks, process_range_task, task.id, path, title, options, _queue_kind="range")
     return task

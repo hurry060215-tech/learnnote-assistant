@@ -1,0 +1,14 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+const source = readFileSync(new URL("../evidence-anchor.js", import.meta.url), "utf8");
+const { evidenceAnchor } = await import("data:text/javascript;base64," + Buffer.from(source).toString("base64"));
+const sources = [{kind:"task",id:"episode-2",title:"Same title"},{kind:"material",id:"handout",title:"Same title"}];
+assert.equal(evidenceAnchor({ task_id:"episode-1", title:"Same title",locator:"1-2s" }, sources),null);
+assert.deepEqual(evidenceAnchor({ task_id:"episode-2",locator:"15.2-20.5s" }, sources),{source:sources[0],start:15.2,end:20.5,locator:"15.2-20.5s"});
+assert.equal(evidenceAnchor({ metadata:{material_id:"handout"},locator:"page 3" },sources).source,sources[1]);
+assert.equal(evidenceAnchor({ task_id:"episode-2",metadata:{start:"Infinity"} },sources).start,undefined);
+const desk = readFileSync(new URL("../desk.js", import.meta.url), "utf8");
+assert.match(desk, /await openEvidence\(button.dataset.evidence\)/);
+assert.match(desk, /confirm=delete_card/);
+assert.match(desk, /\/content`, \{ method: "PUT"/);
+console.log("Card and mistake citations resolve by source identity, with editable/deletable cards");

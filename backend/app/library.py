@@ -549,6 +549,35 @@ def restore_library(backup_path: Path) -> dict[str, object]:
     return status
 
 
+def preview_document_material(filename: str, content: bytes, content_type: str = "", encoding: str = "") -> dict[str, object]:
+    """Inspect an explicitly selected file without saving raw bytes or an index."""
+    safe_name = _safe_material_filename(filename)
+    if Path(safe_name).suffix.lower() not in SUPPORTED_DOCUMENT_SUFFIXES:
+        raise ValueError("material_type_unsupported")
+    if not content:
+        raise ValueError("material_file_empty")
+    if len(content) > MATERIAL_IMPORT_MAX_BYTES:
+        raise ValueError("material_file_too_large")
+    text, source_type, metadata = extract_import_text_with_metadata(safe_name, content, content_type, encoding=encoding)
+    source_text = re.sub(r"(?m)^\[第\s+\d+\s+页\]\s*$", "", text).strip()
+    ocr_required = source_type == "pdf" and not source_text
+    return {
+        "schema_version": 1,
+        "filename": filename,
+        "source_type": source_type,
+        "byte_size": len(content),
+        "page_count": metadata.get("page_count"),
+        "estimated_storage_bytes": 2 * len(content) + 3 * len(text.encode("utf-8")),
+        "estimate_scope": "original_copy_raw_recovery_and_text_index_excludes_optional_ocr",
+        "route": "local_pdf_ocr_optional" if ocr_required else "local_text_extraction",
+        "ocr_required": ocr_required,
+        "encoding": metadata.get("encoding", ""),
+        "preview": source_text[:1200],
+        "saved": False,
+        "external_transmission": False,
+    }
+
+
 def material_capabilities() -> dict[str, object]:
     from .pdf_ocr import ocr_available
     return {

@@ -8,6 +8,8 @@ import { installLayout } from "/web/desk-layout.js";
 import { installProfile } from "/web/desk-profile.js";
 import { createTaskEventHub } from "/web/desk-events.js";
 import { sourceVideoEmbed } from "/web/source-video.js";
+import { createTranscriptWindow } from "/web/transcript-window.js";
+import { evidenceAnchor } from "/web/evidence-anchor.js";
 import { installSettings } from "/web/desk-settings.js";
 import { installProductWorkspace } from "/web/desk-product.js?v=first-run-20260923";
 import { installTools } from "/web/desk-tools.js?v=0.2.14";
@@ -21,7 +23,8 @@ import {
 const $ = (id) => document.getElementById(id);
 let renderedCues = [],
   activeCueIndex = -1,
-  sourceCueRender = null;
+  sourceCueRender = null,
+  sourceCueCleanup = null;
 const state = {
   items: [],
   selected: null,
@@ -713,7 +716,10 @@ function closeSource() {
   document.body.classList.remove("source-open");
   $("player").pause();
   $("onlinePlayer")?.removeAttribute("src");
+  sourceCueCleanup?.();
+  sourceCueCleanup = null;
   sourceCueRender = null;
+  delete $("sourcePanel").dataset.sourceKey;
 }
 
 async function openInlineSource(seconds, sourceOverride = null, endSeconds = undefined) {
@@ -826,6 +832,9 @@ async function openSource(seconds, sourceOverride = null) {
     return;
   }
   const request = ++sourceRequest;
+  sourceCueCleanup?.();
+  sourceCueCleanup = null;
+  sourceCueRender = null;
   delete panel.dataset.sourceKey;
   panel.dataset.contentMode = "loading";
   renderedCues = [];
@@ -877,31 +886,12 @@ async function openSource(seconds, sourceOverride = null) {
       const viewport = document.createElement("div");
       viewport.className = "virtual-cues";
       content.append(viewport);
-      sourceCueRender = (focusSeconds) => {
-        if (typeof focusSeconds === "number") {
-          const focusIndex = cues.findLastIndex((cue) => Number(cue.start) <= focusSeconds);
-          if (focusIndex >= 0) content.scrollTop = Math.max(0, focusIndex * 72 - 80);
-        }
-        const estimatedHeight = 72;
-        const visibleStart = Math.max(0, Math.floor(content.scrollTop / estimatedHeight) - 8);
-        const visibleEnd = Math.min(cues.length, visibleStart + Math.ceil(Math.max(content.clientHeight, 280) / estimatedHeight) + 16);
-        viewport.style.paddingTop = visibleStart * estimatedHeight + "px";
-        viewport.style.paddingBottom = Math.max(0, cues.length - visibleEnd) * estimatedHeight + "px";
-        viewport.replaceChildren(...cues.slice(visibleStart, visibleEnd).map((cue, index) => {
-          const button = document.createElement("button");
-          button.className = "cue";
-          button.dataset.time = String(Number(cue.start) || 0);
-          button.setAttribute("aria-setsize", String(cues.length));
-          button.setAttribute("aria-posinset", String(visibleStart + index + 1));
-          const time = document.createElement("small");
-          time.textContent = timestamp(cue.start);
-          button.append(time, document.createTextNode(String(cue.text || "")));
-          return button;
-        }));
-        renderedCues = [...viewport.querySelectorAll(".cue")];
-      };
-      content.addEventListener("scroll", () => sourceCueRender(), { passive: true });
-      sourceCueRender();
+      const cueWindow = createTranscriptWindow({
+        content, viewport, cues, timestamp,
+        onRender: (buttons) => { renderedCues = buttons; activeCueIndex = -1; },
+      });
+      sourceCueRender = cueWindow.render;
+      sourceCueCleanup = cueWindow.destroy;
       panel.dataset.sourceKey = sourceKey;
       panel.dataset.contentMode = "transcript";
       if (transcript) {
@@ -942,6 +932,7 @@ async function openSource(seconds, sourceOverride = null) {
 }
 $("player").addEventListener("timeupdate", () => {
   const time = $("player").currentTime;
+  if (sourceCueRender && $("followTranscript")?.checked) sourceCueRender(time);
   const index = renderedCues.findLastIndex(
     (c) => Number(c.dataset.time) <= time,
   );
@@ -1110,7 +1101,7 @@ for (const button of document.querySelectorAll("[data-close]"))
 function updateCreateInputPresentation() {
   const file = $("file").files?.[0];
   const isDocument =
-    state.input === "file" && file && /\.(pdf|md|txt|html?)$/i.test(file.name);
+    state.input === "file" && file && /\.(pdf|md|markdown|txt|html?)$/i.test(file.name);
   const hideVideoOptions =
     state.input === "browser" || (state.input === "file" && (!file || isDocument));
   $("contentModeChoices").hidden = hideVideoOptions;
@@ -1124,6 +1115,49 @@ function updateCreateInputPresentation() {
     $("createSubmit").textContent = "导入并阅读资料";
   } else {
     updateContentMode();
+  }
+}
+let materialPreviewGeneration = 0, materialPreview = null;
+async function previewSelectedFile() {
+  const generation = ++materialPreviewGeneration;
+  const file = $("file").files?.[0];
+  let panel = $("selectedFilePreview");
+  if (!panel) {
+    panel = document.createElement("p"); panel.id = "selectedFilePreview";
+    panel.className = "muted"; panel.setAttribute("role", "status");
+    $("fileInput").append(panel);
+  }
+  panel.textContent = "";
+  materialPreview = null;
+  if (!file) return;
+  const size = (bytes) => `${(Number(bytes) / 1024 / 1024).toFixed(2)} MB`;
+  panel.textContent = `${file.name} · ${size(file.size)} · 正在本地预检…`;
+  const isDocument = /\.(pdf|md|markdown|txt|html?)$/i.test(file.name);
+  if (!isDocument) {
+    panel.textContent = `${file.name} · ${size(file.size)} · 本地视频，优先字幕；转写和模型路线使用当前设置。至少需要 ${size(file.size)} 上传空间，解码缓存另计。`;
+    const video = document.createElement("video"), url = URL.createObjectURL(file);
+    let timeout;
+    const finish = () => { clearTimeout(timeout); video.onloadedmetadata = null; video.onerror = null; URL.revokeObjectURL(url); video.removeAttribute("src"); video.load(); };
+    timeout = setTimeout(finish, 10000);
+    video.preload = "metadata";
+    video.onloadedmetadata = () => { if (generation === materialPreviewGeneration && Number.isFinite(video.duration)) panel.textContent += ` 时长 ${timestamp(video.duration)}。`; finish(); };
+    video.onerror = finish;
+    video.src = url;
+    return;
+  }
+  materialPreview = { file, encoding: $("materialEncoding").value || "", ready: false };
+  $("createSubmit").disabled = true;
+  try {
+    const data = new FormData(); data.append("file", file); data.append("encoding", $("materialEncoding").value || "");
+    const result = await api("/api/library/materials/preview", { method: "POST", body: data });
+    if (generation !== materialPreviewGeneration) return;
+    panel.textContent = `${result.filename} · ${size(result.byte_size)}${result.page_count ? ` · ${result.page_count} 页` : ""} · 预计本地空间 ${size(result.estimated_storage_bytes)}（可选 OCR 另计）。${result.ocr_required ? "扫描 PDF：导入后可选择本地 OCR，识别结果需核验。" : "本地提取文字，不发送给模型。"}`;
+    materialPreview.ready = true;
+    $("createSubmit").disabled = false;
+  } catch (error) {
+    if (generation !== materialPreviewGeneration) return;
+    panel.textContent = error.message;
+    $("createSubmit").disabled = true;
   }
 }
 $("file").addEventListener("change", updateCreateInputPresentation);
@@ -1145,6 +1179,8 @@ function updateMaterialEncodingChoice() {
   if (!isMaterial) $("materialEncoding").value = "";
 }
 $("file").addEventListener("change", updateMaterialEncodingChoice);
+$("file").addEventListener("change", () => previewSelectedFile().catch(failure));
+$("materialEncoding").addEventListener("change", () => previewSelectedFile().catch(failure));
 $("createForm").onsubmit = async (e) => {
   e.preventDefault();
   if (state.busy) return;
@@ -1168,9 +1204,12 @@ $("createForm").onsubmit = async (e) => {
       if (!file) throw new Error("请先选择文件。");
       const data = new FormData();
       data.append("file", file);
-      kind = /\.(pdf|md|txt|html?)$/i.test(file.name) ? "material" : "task";
+      kind = /\.(pdf|md|markdown|txt|html?)$/i.test(file.name) ? "material" : "task";
       const requestedEncoding = kind === "material" ? String($("materialEncoding").value || "") : "";
-      if (kind === "material") data.append("encoding", requestedEncoding);
+      if (kind === "material") {
+        if (!materialPreview?.ready || materialPreview.file !== file || materialPreview.encoding !== requestedEncoding) throw new Error("请等待所选文件预检完成；预检失败时请调整文件或编码。");
+        data.append("encoding", requestedEncoding);
+      }
       if (kind === "task") data.append("options", JSON.stringify(options()));
       result = await api(
         kind === "task"
@@ -1194,6 +1233,8 @@ $("createForm").onsubmit = async (e) => {
     if (item) await openItem(item);
     $("url").value = "";
     $("file").value = "";
+    materialPreview = null;
+    if ($("selectedFilePreview")) $("selectedFilePreview").textContent = "";
     $("materialEncoding").value = "";
     updateMaterialEncodingChoice();
     $("createStatus").textContent = "";
@@ -1347,10 +1388,27 @@ $("theme").onclick = () => {
   const dark = document.body.classList.toggle("dark");
   localStorage.setItem("learnnote.desk.theme", dark ? "dark" : "light");
 };
+async function openEvidence(evidenceId) {
+  const epoch = state.epoch;
+  const result = await api(`/api/knowledge/evidence/${encodeURIComponent(evidenceId)}`);
+  if (epoch !== state.epoch) return;
+  const anchor = evidenceAnchor(result.evidence, state.items);
+  if (!anchor) throw new Error("引用来源已不在当前资料库，无法可靠定位。");
+  await openItem(anchor.source);
+  if (state.selected?.kind !== anchor.source.kind || state.selected?.id !== anchor.source.id) return;
+  await openSource(anchor.start, anchor.source);
+  if (anchor.source.kind === "material") {
+    const excerpt = document.createElement("p");
+    excerpt.className = "source-excerpt";
+    excerpt.textContent = `${anchor.locator} · ${result.evidence.text || ""}`;
+    $("sourceContent").prepend(excerpt);
+  }
+}
+
 async function drawReview() {
   const card = state.cards[0];
   $("reviewContent").innerHTML = card
-    ? `<p class="muted">待复习 ${state.cards.length} 张</p><h3>${esc(card.front)}</h3><label for="reviewReflection">先用自己的话解释要点；回答不会发送给模型</label><textarea id="reviewReflection" rows="3" maxlength="2000"></textarea><button id="recordReflection" class="primary">记录解释并显示答案</button><button id="skipReflection">跳过解释</button><p id="reviewReflectionStatus" role="status"></p><button id="reveal" class="primary" hidden>显示答案</button><div id="answer" hidden><p class="review-answer">${esc(card.back)}</p><div id="reviewSources"></div><div class="rating">${["忘记了", "有些困难", "记住了", "很轻松"].map((label, i) => `<button data-rating="${i + 1}">${label}</button>`).join("")}</div></div>`
+    ? `<p class="muted">待复习 ${state.cards.length} 张</p><h3>${esc(card.front)}</h3><label for="reviewReflection">先用自己的话解释要点；回答不会发送给模型</label><textarea id="reviewReflection" rows="3" maxlength="2000"></textarea><button id="recordReflection" class="primary">记录解释并显示答案</button><button id="skipReflection">跳过解释</button><p id="reviewReflectionStatus" role="status"></p><button id="reveal" class="primary" hidden>显示答案</button><div id="answer" hidden><p class="review-answer">${esc(card.back)}</p><div id="reviewSources"></div><div class="rating">${["忘记了", "有些困难", "记住了", "很轻松"].map((label, i) => `<button data-rating="${i + 1}">${label}</button>`).join("")}</div><div class="tool-actions"><button id="editReviewCard">修改问题与答案</button><button id="deleteReviewCard" class="danger">永久删除卡片</button></div><div id="reviewCardEditor"></div></div>`
     : '<p>今天的复习已完成。</p><p class="muted">你可以回到笔记，继续阅读和整理。</p>';
   if (card) {
     const revealAnswer = () => {
@@ -1359,6 +1417,29 @@ async function drawReview() {
       $("recordReflection").hidden = true;
       $("skipReflection").hidden = true;
       $("reviewReflection").hidden = true;
+    };
+    $("editReviewCard").onclick = () => {
+      $("reviewCardEditor").innerHTML = `<form id="reviewCardForm"><label for="reviewCardFront">问题</label><textarea id="reviewCardFront" required maxlength="1000">${esc(card.front)}</textarea><label for="reviewCardBack">答案</label><textarea id="reviewCardBack" required maxlength="4000">${esc(card.back)}</textarea><p class="muted">个人修改会保留原始出处和复习记录；请先核对依据。</p><button class="primary">保存修改</button></form>`;
+      $("reviewCardForm").onsubmit = async (event) => {
+        event.preventDefault();
+        const submit = event.submitter; if (submit) submit.disabled = true;
+        try {
+          const result = await api(`/api/study/cards/${encodeURIComponent(card.card_id)}/content`, { method: "PUT", body: JSON.stringify({ front: $("reviewCardFront").value, back: $("reviewCardBack").value }) });
+          if (state.cards[0]?.card_id !== card.card_id) return;
+          state.cards[0] = result.card;
+          await drawReview();
+        } catch (error) { failure(error); if (submit) submit.disabled = false; }
+      };
+      $("reviewCardFront").focus();
+    };
+    $("deleteReviewCard").onclick = async () => {
+      if (!confirm("永久删除这张卡片及其评分和自评记录？原始资料不会删除。")) return;
+      $("deleteReviewCard").disabled = true;
+      try {
+        await api(`/api/study/cards/${encodeURIComponent(card.card_id)}?confirm=delete_card`, { method: "DELETE" });
+        state.cards = state.cards.filter(item => item.card_id !== card.card_id);
+        await drawReview();
+      } catch (error) { failure(error); if ($("deleteReviewCard")) $("deleteReviewCard").disabled = false; }
     };
     $("reveal").onclick = revealAnswer;
     $("recordReflection").onclick = async () => {
@@ -1399,12 +1480,17 @@ async function startReview(courseId = "") {
   $("reviewDialog").showModal();
   $("reviewContent").textContent = "正在读取…";
   try {
-    await api("/api/study/plan/initialize", {
+    const initialized = await api("/api/study/plan/initialize", {
       method: "POST",
       body: JSON.stringify({
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       }),
     });
+    if (initialized.plan?.paused) {
+      state.cards = [];
+      $("reviewContent").textContent = "学习计划已暂停；在学习工作室恢复计划后可继续复习。";
+      return;
+    }
     state.cards = (
       await api(`/api/study/due?course_id=${encodeURIComponent(courseId)}`)
     ).cards;
@@ -1421,13 +1507,8 @@ $("reviewContent").onclick = async (e) => {
   button.disabled = true;
   try {
     if (button.dataset.evidence) {
-      const data = await api(
-        `/api/knowledge/evidence/${button.dataset.evidence}`,
-      );
-      const p = document.createElement("p");
-      p.className = "review-answer";
-      p.textContent = `${data.evidence.title || "出处"} · ${data.evidence.locator || ""}\n${data.evidence.text}`;
-      button.replaceWith(p);
+      $("reviewDialog").close();
+      await openEvidence(button.dataset.evidence);
       return;
     }
     for (const b of $("reviewContent").querySelectorAll("[data-rating]"))
@@ -1615,6 +1696,7 @@ const workspaceTools = installTools({
   notice,
   guard,
   startReview,
+  openEvidence,
   reloadAnnotations: () => loadAnnotations(state.epoch).catch(failure),
 });
 

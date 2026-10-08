@@ -3,6 +3,8 @@ from __future__ import annotations
 import hashlib
 import ipaddress
 import math
+import re
+import unicodedata
 import sqlite3
 import threading
 from datetime import datetime, timezone
@@ -114,6 +116,32 @@ def set_community_enabled(enabled: bool) -> dict[str, object]:
     return community_settings()
 
 
+def _filter_community_text(value: str) -> str:
+    """Conservative local filtering, never used to rewrite transcript evidence."""
+    text = " ".join(str(value or "")[:8000].split()).strip()[:2000]
+    if not text:
+        return ""
+    normalized = unicodedata.normalize("NFKC", text).casefold()
+    if re.fullmatch(r"(?:播放|暂停|全屏|退出全屏|倍速|清晰度|发送弹幕|play|pause|fullscreen|send danmaku|[!！?？。\d ])+", normalized):
+        return ""
+    if re.search(r"(?:加[微vV]|加群|扫码|代写|刷单|返利|优惠券|推广链接|buy now|promo code|earn money|subscribe to my)", normalized):
+        return ""
+    text = re.sub(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", "[邮箱已省略]", text)
+    text = re.sub(r"(?<!\w)(?:\+?\d[\d ()-]{7,}\d)(?!\w)", "[联系方式已省略]", text)
+    text = re.sub(r"(?i)(?:https?://|www\.)\S+", "[链接已省略]", text)
+    text = re.sub(r"(?<!\w)@[\w.\-]{2,}", "[用户已省略]", text)
+    return text
+
+
+def _perspective_groups(items: list[dict]) -> dict[str, list[str]]:
+    groups: dict[str, list[str]] = {"questions": [], "disagreements": [], "perspectives": []}
+    for item in items:
+        text = str(item.get("text") or "")
+        category = "questions" if re.search(r"[?？]|为什么|如何|怎么|what |why |how ", text, re.I) else "disagreements" if re.search(r"不同意|有争议|错误|不正确|disagree|incorrect|not correct", text, re.I) else "perspectives"
+        groups[category].append(str(item["item_id"]))
+    return groups
+
+
 def add_community_context(task_id: str, raw_items: list[dict]) -> dict[str, object]:
     settings = community_settings()
     if not settings["enabled"]:
@@ -131,21 +159,21 @@ def add_community_context(task_id: str, raw_items: list[dict]) -> dict[str, obje
     now = datetime.now(timezone.utc).isoformat()
     created: list[dict[str, object]] = []
     deduplicated = 0
+    filtered = 0
     with _lock:
         connection = _connect()
         try:
             task_count = int(connection.execute("SELECT COUNT(*) FROM community_context_items WHERE task_id = ?", (str(task_id)[:128],)).fetchone()[0])
             total_count = int(connection.execute("SELECT COUNT(*) FROM community_context_items").fetchone()[0])
-            if task_count + len(raw_items) > COMMUNITY_CONTEXT_MAX_ITEMS_PER_TASK or total_count + len(raw_items) > COMMUNITY_CONTEXT_MAX_ITEMS_TOTAL:
-                raise ValueError("community_storage_quota_exceeded")
             for raw in raw_items:
                 if not isinstance(raw, dict):
                     continue
                 kind = str(raw.get("kind") or "comment")[:32].strip().lower()
                 if kind not in {"comment", "danmaku"}:
                     continue
-                text = " ".join(str(raw.get("text") or "")[:8000].split()).strip()[:2000]
+                text = _filter_community_text(raw.get("text"))
                 if not text:
+                    filtered += 1
                     continue
                 timestamp = raw.get("timestamp_seconds")
                 try:
@@ -153,11 +181,20 @@ def add_community_context(task_id: str, raw_items: list[dict]) -> dict[str, obje
                     timestamp_seconds = min(604800.0, max(0.0, timestamp_value)) if timestamp_value is not None and math.isfinite(timestamp_value) else None
                 except (TypeError, ValueError):
                     timestamp_seconds = None
-                author_label = " ".join(str(raw.get("author_label") or "")[:1000].split()).strip()[:120]
+                # Author identity is unnecessary for a learning perspective.
+                author_label = ""
                 source_uri = _safe_source_uri(str(raw.get("source_uri") or "")[:2000])
                 fingerprint = hashlib.sha256(
-                    f"{kind}\0{text}\0{timestamp_seconds if timestamp_seconds is not None else ''}".encode("utf-8")
+                    f"{kind}\0{unicodedata.normalize('NFKC', text).casefold()}".encode("utf-8")
                 ).hexdigest()
+                if connection.execute(
+                    "SELECT 1 FROM community_context_items WHERE task_id=? AND (fingerprint=? OR (kind=? AND text=?)) LIMIT 1",
+                    (str(task_id)[:128], fingerprint, kind, text),
+                ).fetchone():
+                    deduplicated += 1
+                    continue
+                if task_count + len(created) >= COMMUNITY_CONTEXT_MAX_ITEMS_PER_TASK or total_count + len(created) >= COMMUNITY_CONTEXT_MAX_ITEMS_TOTAL:
+                    raise ValueError("community_storage_quota_exceeded")
                 item_id = uuid4().hex
                 cursor = connection.execute(
                     """INSERT OR IGNORE INTO community_context_items
@@ -202,13 +239,15 @@ def add_community_context(task_id: str, raw_items: list[dict]) -> dict[str, obje
         "items": created,
         "stored_count": len(created),
         "deduplicated_count": deduplicated,
+        "filtered_count": filtered,
+        "author_identity_stored": False,
         "evidence_eligible": False,
         "epistemic_role": "community_perspective_not_source_evidence",
     }
 
 
 def list_community_context(task_id: str, limit: int = 500) -> dict[str, object]:
-    cap = max(1, min(int(limit or 500), 2000))
+    cap = max(1, min(int(limit or 500), COMMUNITY_CONTEXT_MAX_ITEMS_PER_TASK))
     with _lock:
         connection = _connect()
         try:
@@ -218,10 +257,14 @@ def list_community_context(task_id: str, limit: int = 500) -> dict[str, object]:
             ).fetchall()
         finally:
             connection.close()
+    groups = _perspective_groups([dict(row) for row in rows])
     return {
         "schema_version": COMMUNITY_CONTEXT_SCHEMA_VERSION,
         "task_id": str(task_id or "")[:128],
         "enabled": bool(community_settings()["enabled"]),
+        "groups": groups,
+        "grouping": "local_keyword_hints_not_factual_classification",
+        "author_identity_exposed": False,
         "items": [
             {
                 "item_id": row["item_id"],
@@ -230,7 +273,7 @@ def list_community_context(task_id: str, limit: int = 500) -> dict[str, object]:
                 "kind": row["kind"],
                 "text": row["text"],
                 "timestamp_seconds": row["timestamp_seconds"],
-                "author_label": row["author_label"],
+                "author_label": "",
                 "source_uri": row["source_uri"],
                 "created_at": row["created_at"],
             }

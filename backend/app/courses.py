@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import re
+import math
 import threading
 from uuid import uuid4
 
@@ -87,6 +88,7 @@ def delete_course(course_id: str) -> None:
 
 def course_evidence(course_id: str) -> list[dict]:
     evidence = []
+    seen_ids: set[str] = set()
     for source in get_course(course_id)["sources"]:
         try:
             items = evidence_for_task(source["id"], limit=500) if source["kind"] == "task" else material_anchors(source["id"], 1000) if source["kind"] == "material" else []
@@ -95,6 +97,10 @@ def course_evidence(course_id: str) -> list[dict]:
         for item in items:
             if item.get("metadata", {}).get("kind") in {"note", "community"}:
                 continue
+            evidence_id = str(item.get("evidence_id") or "")
+            if not evidence_id or evidence_id in seen_ids:
+                continue
+            seen_ids.add(evidence_id)
             evidence.append({**item, "course_source": {"kind": source["kind"], "id": source["id"], "title": source["title"]}})
     return evidence
 
@@ -112,11 +118,30 @@ def course_evidence_ids(course_id: str) -> set[str]:
     return ids
 
 
-def compare_course(course_id: str, query: str) -> dict:
+def compare_course(course_id: str, query: str, *, source_id: str = "", source_kind: str = "", start: float | None = None, end: float | None = None) -> dict:
+    if source_kind not in {"", "task", "material"} or any(value is not None and (not math.isfinite(value) or value < 0) for value in (start, end)) or (start is not None and end is not None and end < start):
+        raise ValueError("invalid_comparison_filter")
     terms = list(dict.fromkeys(term.casefold() for term in query.split() if term.strip()))[:8]
     matches = []
     groups: dict[str, dict] = {}
     for item in course_evidence(course_id):
+        source = item["course_source"]
+        if (source_id and source["id"] != source_id) or (source_kind and source["kind"] != source_kind):
+            continue
+        if start is not None or end is not None:
+            metadata = item.get("metadata") or {}
+            located = re.match(r"^(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)s$", str(item.get("locator") or ""))
+            left, right = metadata.get("start"), metadata.get("end")
+            if left is None or right is None:
+                if not located:
+                    continue
+                left, right = map(float, located.groups())
+            try:
+                left, right = float(left), float(right)
+            except (TypeError, ValueError):
+                continue
+            if not math.isfinite(left) or not math.isfinite(right) or (start is not None and right < start) or (end is not None and left > end):
+                continue
         text = str(item.get("text") or "")
         hits = [term for term in terms if term in text.casefold()]
         if not hits:
@@ -138,4 +163,4 @@ def compare_course(course_id: str, query: str) -> dict:
             shared = sorted(set(left["terms"]) & set(right["terms"]))
             if shared:
                 edges.append({"from": left["id"], "to": right["id"], "kind": "keyword_cooccurrence", "terms": shared, "evidence_ids": [left["term_evidence"][shared[0]], right["term_evidence"][shared[0]]]})
-    return {"mode": "local_cited_comparison", "query": query, "matches": matches[:100], "total_matches": len(matches), "nodes": nodes, "edges": edges[:100], "inference": False, "warning": "共同关键词不代表同义、因果或观点一致，请核对各自原文。"}
+    return {"mode": "local_cited_comparison", "query": query, "matches": matches[:100], "total_matches": len(matches), "nodes": nodes, "edges": edges[:100], "inference": False, "filters": {"source_id": source_id, "source_kind": source_kind, "start": start, "end": end}, "warning": "共同关键词不代表同义、因果或观点一致，请核对各自原文。"}

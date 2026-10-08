@@ -33,7 +33,7 @@ class UiVisualContractTests(unittest.TestCase):
     def test_local_document_import_is_not_presented_as_video_ai_generation(self) -> None:
         script = (ROOT / "web" / "desk.js").read_text(encoding="utf-8")
         self.assertIn(
-            'state.input === "file" && file && /\\.(pdf|md|txt|html?)$/i.test(file.name)',
+            'state.input === "file" && file && /\\.(pdf|md|markdown|txt|html?)$/i.test(file.name)',
             script,
         )
         self.assertIn('$("createSubmit").disabled = needsFile;', script)

@@ -9,6 +9,7 @@ from .storage import atomic_write_text
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
+from itertools import islice
 
 from fsrs import Card as FsrsCard
 from fsrs import Rating as FsrsRating
@@ -82,6 +83,9 @@ def _connect() -> sqlite3.Connection:
     plan_columns = {row[1] for row in connection.execute("PRAGMA table_info(study_plans)")}
     if "timezone_initialized" not in plan_columns:
         connection.execute("ALTER TABLE study_plans ADD COLUMN timezone_initialized INTEGER NOT NULL DEFAULT 0")
+        # Legacy non-UTC values were explicitly selected, never the old UTC
+        # default. A browser suggestion must not overwrite them on migration.
+        connection.execute("UPDATE study_plans SET timezone_initialized=1 WHERE timezone != 'UTC'")
     connection.commit()
     return connection
 
@@ -98,15 +102,24 @@ def _row_to_card(row: sqlite3.Row) -> StudyCard:
     )
 
 
+def quiz_evidence_eligible(item: SourceEvidence | dict) -> bool:
+    value = item.model_dump() if isinstance(item, SourceEvidence) else item
+    metadata = value.get("metadata") or {}
+    return (
+        bool(value.get("evidence_id"))
+        and metadata.get("kind") not in {"community", "note", "generated-note"}
+        and value.get("source_type") != "community"
+        and value.get("locator") not in {"note", "generated-note"}
+    )
+
+
 def propose_cards(evidence: list[SourceEvidence], limit: int = 20) -> list[StudyCard]:
     proposals: list[StudyCard] = []
     seen: set[str] = set()
     cap = max(1, min(int(limit), 100))
     # A full generated note repeats its transcript and includes scaffolding.
     # Prefer the underlying source anchors whenever available.
-    sources = [item for item in evidence if item.locator not in {"note", "generated-note"}]
-    if not sources:
-        sources = evidence
+    sources = [item for item in evidence if quiz_evidence_eligible(item)]
     for item in sources:
         if not item.evidence_id or item.metadata.get("kind") == "community":
             continue
@@ -357,6 +370,45 @@ def list_cards(status: str = "", limit: int = 200) -> list[StudyCard]:
     finally:
         connection.close()
     return [_row_to_card(row) for row in rows]
+
+
+def edit_card_content(card_id: str, front: str, back: str) -> StudyCard:
+    if not front.strip() or not back.strip() or len(front) > 1000 or len(back) > 4000:
+        raise ValueError("invalid_card_content")
+    connection = _connect()
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        row = connection.execute("SELECT * FROM study_cards WHERE card_id=? AND status != 'deleted'", (card_id,)).fetchone()
+        if row is None:
+            raise ValueError("card_not_found")
+        connection.execute("UPDATE study_cards SET front=?,back=? WHERE card_id=?", (front, back, card_id))
+        edited = _row_to_card(connection.execute("SELECT * FROM study_cards WHERE card_id=?", (card_id,)).fetchone())
+        connection.commit()
+        return edited
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+def delete_study_card(card_id: str) -> dict[str, int]:
+    connection = _connect()
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        if not connection.execute("SELECT 1 FROM study_cards WHERE card_id=?", (card_id,)).fetchone():
+            raise ValueError("card_not_found")
+        reviews = connection.execute("DELETE FROM study_reviews WHERE card_id=?", (card_id,)).rowcount
+        connection.execute("DELETE FROM study_activity WHERE source_id IN (?, ?)", (card_id, f"card:{card_id}"))
+        connection.execute("DELETE FROM study_card_spaces WHERE card_id=?", (card_id,))
+        connection.execute("DELETE FROM study_cards WHERE card_id=?", (card_id,))
+        connection.commit()
+        return {"deleted_cards": 1, "deleted_reviews": max(0, reviews)}
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
 
 
 def remove_cards_for_evidence(evidence_ids: list[str]) -> dict[str, int]:
@@ -631,8 +683,12 @@ def record_activity(kind: str, source_id: str = "", occurred_at: str | None = No
     if normalized not in ACTIVITY_KINDS:
         raise ValueError("invalid_activity_kind")
     when = _parse_datetime(occurred_at or "") or datetime.now(timezone.utc)
+    get_study_plan()
     connection = _connect()
     try:
+        connection.execute("BEGIN IMMEDIATE")
+        if connection.execute("SELECT paused FROM study_plans WHERE plan_id='default'").fetchone()[0]:
+            raise ValueError("study_plan_paused")
         cursor = connection.execute(
             "INSERT INTO study_activity(kind, source_id, occurred_at) VALUES (?, ?, ?)",
             (normalized, str(source_id or "")[:128], when.astimezone(timezone.utc).isoformat()),
@@ -650,10 +706,11 @@ def activity_summary(days: int = 30) -> dict[str, object]:
     zone = study_timezone(plan.timezone)
     start_date = now.astimezone(zone).date() - timedelta(days=cap - 1)
     start = datetime.combine(start_date, datetime.min.time(), tzinfo=zone).astimezone(timezone.utc)
+    end = datetime.combine(start_date + timedelta(days=cap), datetime.min.time(), tzinfo=zone).astimezone(timezone.utc)
     connection = _connect()
     try:
-        rows = connection.execute("SELECT kind, source_id, occurred_at FROM study_activity WHERE kind != 'review' AND occurred_at >= ? ORDER BY occurred_at DESC", (start.isoformat(),)).fetchall()
-        review_rows = connection.execute("SELECT card_id, reviewed_at FROM study_reviews WHERE reviewed_at >= ? ORDER BY reviewed_at DESC", (start.isoformat(),)).fetchall()
+        rows = connection.execute("SELECT kind, source_id, occurred_at FROM study_activity WHERE kind != 'review' AND occurred_at >= ? AND occurred_at < ? ORDER BY occurred_at DESC", (start.isoformat(), end.isoformat())).fetchall()
+        review_rows = connection.execute("SELECT card_id, reviewed_at FROM study_reviews WHERE reviewed_at >= ? AND reviewed_at < ? ORDER BY reviewed_at DESC", (start.isoformat(), end.isoformat())).fetchall()
     finally:
         connection.close()
     by_kind = {kind: 0 for kind in sorted(ACTIVITY_KINDS)}
@@ -927,7 +984,7 @@ def update_study_plan(title: str, daily_target: int, paused: bool, timezone_name
         if timezone_name is not None:
             connection.execute("UPDATE study_plans SET timezone_initialized=1 WHERE plan_id='default'")
         connection.commit()
-        return current.model_copy(update={"schema_version": STUDY_SCHEMA_VERSION, "title": str(title or "本地学习计划")[:120], "daily_target": max(1, min(int(daily_target), 200)), "paused": bool(paused), "timezone": selected_timezone, "updated_at": now})
+        return current.model_copy(update={"schema_version": STUDY_SCHEMA_VERSION, "title": str(title or "本地学习计划")[:120], "daily_target": max(1, min(int(daily_target), 200)), "paused": bool(paused), "timezone": selected_timezone, "timezone_initialized": timezone_name is not None or current.timezone_initialized, "updated_at": now})
     except Exception:
         connection.rollback()
         raise
@@ -935,7 +992,7 @@ def update_study_plan(title: str, daily_target: int, paused: bool, timezone_name
         connection.close()
 
 
-def study_dashboard(limit: int = 12, activity_days: int = 14) -> dict[str, object]:
+def study_dashboard(limit: int = 12, activity_days: int = 14, evidence_ids: set[str] | None = None) -> dict[str, object]:
     """Build one local-only learning workspace from the existing FSRS data.
 
     Quiz prompts are projections of due evidence-grounded cards; answers stay
@@ -949,7 +1006,7 @@ def study_dashboard(limit: int = 12, activity_days: int = 14) -> dict[str, objec
     zone = study_timezone(plan.timezone)
     start_date = now.astimezone(zone).date() - timedelta(days=days - 1)
     summary = study_summary()
-    due = due_cards(cap)
+    due = due_cards(cap, evidence_ids)
     has_cards = any(value for key, value in (summary.get("counts") or {}).items() if key != "deleted")
     connection = _connect()
     try:
@@ -968,9 +1025,9 @@ def study_dashboard(limit: int = 12, activity_days: int = 14) -> dict[str, objec
                       c.front, c.back, c.source_evidence_ids
                FROM study_reviews r JOIN study_cards c ON c.card_id = r.card_id
                WHERE r.rating = 1 AND c.status != 'deleted'
-               ORDER BY r.reviewed_at DESC LIMIT ?""",
-            (cap,),
-        ).fetchall()
+               ORDER BY r.reviewed_at DESC""",
+        )
+        mistake_rows = list(islice((row for row in mistake_rows if evidence_ids is None or evidence_ids.intersection(json.loads(row["source_evidence_ids"] or "[]"))), cap))
         recent_rows = connection.execute(
             """SELECT review_id, card_id, rating, reviewed_at, due_at, stability, difficulty
                FROM study_reviews ORDER BY reviewed_at DESC LIMIT ?""",
@@ -1011,6 +1068,16 @@ def study_dashboard(limit: int = 12, activity_days: int = 14) -> dict[str, objec
     mastery = {"new": 0, "learning": 0, "needs_attention": 0, "retained": 0}
     mastery.update({row["bucket"]: int(row["count"]) for row in mastery_rows})
 
+    selected_due_count = int(summary.get("due_count") or 0)
+    if evidence_ids is not None:
+        connection = _connect()
+        try:
+            selected_due_count = 0 if plan.paused else sum(
+                1 for row in connection.execute("SELECT source_evidence_ids FROM study_cards WHERE status='active' AND (due_at='' OR due_at<=?)", (now.isoformat(),))
+                if evidence_ids.intersection(json.loads(row["source_evidence_ids"] or "[]"))
+            )
+        finally:
+            connection.close()
     reviewed_today = int(summary.get("reviewed_today") or 0)
     daily_target = int(plan.daily_target)
     remaining = max(0, daily_target - reviewed_today)
@@ -1025,7 +1092,7 @@ def study_dashboard(limit: int = 12, activity_days: int = 14) -> dict[str, objec
         },
         "plan": plan.model_dump(mode="json"),
         "today": {
-            "due_count": int(summary.get("due_count") or 0),
+            "due_count": selected_due_count,
             "reviewed_count": reviewed_today,
             "daily_target": daily_target,
             "remaining_target": remaining,

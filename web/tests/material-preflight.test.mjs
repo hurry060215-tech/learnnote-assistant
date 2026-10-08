@@ -1,0 +1,18 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+const desk = readFileSync(new URL("../desk.js", import.meta.url), "utf8");
+assert.match(desk, /\/api\/library\/materials\/preview/);
+assert.match(desk, /generation !== materialPreviewGeneration/);
+assert.match(desk, /materialPreview\.file !== file/);
+assert.match(desk, /materialPreview\.encoding !== requestedEncoding/);
+assert.match(desk, /!materialPreview\?\.ready/);
+assert.match(desk, /estimated_storage_bytes/);
+assert.match(desk, /result\.page_count/);
+assert.match(desk, /URL\.revokeObjectURL\(url\)/);
+assert.match(desk, /video\.onerror = null/);
+const tools = readFileSync(new URL("../desk-tools.js", import.meta.url), "utf8");
+assert.match(tools, /study-activity-grid/);
+assert.match(tools, /resume-study/);
+assert.match(tools, /delete_all_study_data/);
+assert.match(desk, /initialized\.plan\?\.paused/);
+console.log("Preflight has stale-file guards and study controls preserve paused/clear-data semantics");
