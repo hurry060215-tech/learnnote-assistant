@@ -1,0 +1,821 @@
+{
+  "schema_version": 1,
+  "baseline_commit": "632b6076e847b3b1baa256c760e18f81a4821183",
+  "discovery": {
+    "empty": [],
+    "html": [
+      {
+        "url": "https://course.example.test/video.mp4",
+        "source": "page-scan",
+        "kind": "video",
+        "mime": "video/mp4",
+        "score": 85,
+        "label": "html video src",
+        "user_selected": false,
+        "is_main_video": false,
+        "playback_match": "",
+        "blob_url": "",
+        "frame_url": "",
+        "page_url": "",
+        "tab_id": null,
+        "frame_id": null,
+        "current_time": null,
+        "duration": null,
+        "width": null,
+        "height": null,
+        "request_type": "",
+        "method": "",
+        "status_code": null,
+        "content_length": null,
+        "mse_append_bytes": null,
+        "mse_append_total_bytes": null,
+        "mse_append_count": null,
+        "mse_append_magic": "",
+        "mse_append_mime": "",
+        "mse_append_detected_kind": "",
+        "audio_url": "",
+        "audio_mime": "",
+        "initiator": "",
+        "time_stamp": null,
+        "resolved_url": "",
+        "headers": {},
+        "request_headers": {
+          "Referer": "https://course.example.test/lessons/index.html"
+        },
+        "request_body": {}
+      },
+      {
+        "url": "https://course.example.test/lessons/captions.vtt",
+        "source": "page-scan",
+        "kind": "subtitle",
+        "mime": "text/vtt",
+        "score": 60,
+        "label": "page scan",
+        "user_selected": false,
+        "is_main_video": false,
+        "playback_match": "",
+        "blob_url": "",
+        "frame_url": "",
+        "page_url": "",
+        "tab_id": null,
+        "frame_id": null,
+        "current_time": null,
+        "duration": null,
+        "width": null,
+        "height": null,
+        "request_type": "",
+        "method": "",
+        "status_code": null,
+        "content_length": null,
+        "mse_append_bytes": null,
+        "mse_append_total_bytes": null,
+        "mse_append_count": null,
+        "mse_append_magic": "",
+        "mse_append_mime": "",
+        "mse_append_detected_kind": "",
+        "audio_url": "",
+        "audio_mime": "",
+        "initiator": "",
+        "time_stamp": null,
+        "resolved_url": "",
+        "headers": {},
+        "request_headers": {
+          "Referer": "https://course.example.test/lessons/index.html"
+        },
+        "request_body": {}
+      }
+    ],
+    "encoded": [
+      {
+        "url": "https://cdn.example.test/lecture.mp4?id=fixture",
+        "source": "page-scan",
+        "kind": "video",
+        "mime": "video/mp4",
+        "score": 85,
+        "label": "field playUrl",
+        "user_selected": false,
+        "is_main_video": false,
+        "playback_match": "",
+        "blob_url": "",
+        "frame_url": "",
+        "page_url": "",
+        "tab_id": null,
+        "frame_id": null,
+        "current_time": null,
+        "duration": null,
+        "width": null,
+        "height": null,
+        "request_type": "",
+        "method": "",
+        "status_code": null,
+        "content_length": null,
+        "mse_append_bytes": null,
+        "mse_append_total_bytes": null,
+        "mse_append_count": null,
+        "mse_append_magic": "",
+        "mse_append_mime": "",
+        "mse_append_detected_kind": "",
+        "audio_url": "",
+        "audio_mime": "",
+        "initiator": "",
+        "time_stamp": null,
+        "resolved_url": "",
+        "headers": {},
+        "request_headers": {
+          "Referer": "https://course.example.test/lessons/index.html"
+        },
+        "request_body": {}
+      }
+    ],
+    "json": [
+      {
+        "url": "https://cdn.example.test/master.m3u8",
+        "source": "page-scan",
+        "kind": "hls",
+        "mime": "application/vnd.apple.mpegurl",
+        "score": 95,
+        "label": "json sources/0/url",
+        "user_selected": false,
+        "is_main_video": false,
+        "playback_match": "",
+        "blob_url": "",
+        "frame_url": "",
+        "page_url": "",
+        "tab_id": null,
+        "frame_id": null,
+        "current_time": null,
+        "duration": null,
+        "width": null,
+        "height": null,
+        "request_type": "",
+        "method": "",
+        "status_code": null,
+        "content_length": null,
+        "mse_append_bytes": null,
+        "mse_append_total_bytes": null,
+        "mse_append_count": null,
+        "mse_append_magic": "",
+        "mse_append_mime": "",
+        "mse_append_detected_kind": "",
+        "audio_url": "",
+        "audio_mime": "",
+        "initiator": "",
+        "time_stamp": null,
+        "resolved_url": "",
+        "headers": {},
+        "request_headers": {
+          "Referer": "https://course.example.test/lessons/index.html"
+        },
+        "request_body": {}
+      },
+      {
+        "url": "https://course.example.test/clip.webm",
+        "source": "page-scan",
+        "kind": "video",
+        "mime": "video/mp4",
+        "score": 85,
+        "label": "page scan",
+        "user_selected": false,
+        "is_main_video": false,
+        "playback_match": "",
+        "blob_url": "",
+        "frame_url": "",
+        "page_url": "",
+        "tab_id": null,
+        "frame_id": null,
+        "current_time": null,
+        "duration": null,
+        "width": null,
+        "height": null,
+        "request_type": "",
+        "method": "",
+        "status_code": null,
+        "content_length": null,
+        "mse_append_bytes": null,
+        "mse_append_total_bytes": null,
+        "mse_append_count": null,
+        "mse_append_magic": "",
+        "mse_append_mime": "",
+        "mse_append_detected_kind": "",
+        "audio_url": "",
+        "audio_mime": "",
+        "initiator": "",
+        "time_stamp": null,
+        "resolved_url": "",
+        "headers": {},
+        "request_headers": {
+          "Referer": "https://course.example.test/lessons/index.html"
+        },
+        "request_body": {}
+      }
+    ],
+    "split_json": [
+      {
+        "url": "https://cdn.example.test/media/part.mp4",
+        "source": "page-scan",
+        "kind": "video",
+        "mime": "video/mp4",
+        "score": 100,
+        "label": "json combined videos/0/path",
+        "user_selected": false,
+        "is_main_video": false,
+        "playback_match": "",
+        "blob_url": "",
+        "frame_url": "",
+        "page_url": "",
+        "tab_id": null,
+        "frame_id": null,
+        "current_time": null,
+        "duration": null,
+        "width": null,
+        "height": null,
+        "request_type": "",
+        "method": "",
+        "status_code": null,
+        "content_length": null,
+        "mse_append_bytes": null,
+        "mse_append_total_bytes": null,
+        "mse_append_count": null,
+        "mse_append_magic": "",
+        "mse_append_mime": "",
+        "mse_append_detected_kind": "",
+        "audio_url": "",
+        "audio_mime": "",
+        "initiator": "",
+        "time_stamp": null,
+        "resolved_url": "",
+        "headers": {},
+        "request_headers": {
+          "Referer": "https://course.example.test/lessons/index.html"
+        },
+        "request_body": {}
+      },
+      {
+        "url": "https://course.example.test/lessons/part.mp4",
+        "source": "page-scan",
+        "kind": "video",
+        "mime": "video/mp4",
+        "score": 85,
+        "label": "page scan",
+        "user_selected": false,
+        "is_main_video": false,
+        "playback_match": "",
+        "blob_url": "",
+        "frame_url": "",
+        "page_url": "",
+        "tab_id": null,
+        "frame_id": null,
+        "current_time": null,
+        "duration": null,
+        "width": null,
+        "height": null,
+        "request_type": "",
+        "method": "",
+        "status_code": null,
+        "content_length": null,
+        "mse_append_bytes": null,
+        "mse_append_total_bytes": null,
+        "mse_append_count": null,
+        "mse_append_magic": "",
+        "mse_append_mime": "",
+        "mse_append_detected_kind": "",
+        "audio_url": "",
+        "audio_mime": "",
+        "initiator": "",
+        "time_stamp": null,
+        "resolved_url": "",
+        "headers": {},
+        "request_headers": {
+          "Referer": "https://course.example.test/lessons/index.html"
+        },
+        "request_body": {}
+      }
+    ],
+    "malformed_json": [
+      {
+        "url": "https://course.example.test/clip.mp4",
+        "source": "page-scan",
+        "kind": "video",
+        "mime": "video/mp4",
+        "score": 85,
+        "label": "page scan",
+        "user_selected": false,
+        "is_main_video": false,
+        "playback_match": "",
+        "blob_url": "",
+        "frame_url": "",
+        "page_url": "",
+        "tab_id": null,
+        "frame_id": null,
+        "current_time": null,
+        "duration": null,
+        "width": null,
+        "height": null,
+        "request_type": "",
+        "method": "",
+        "status_code": null,
+        "content_length": null,
+        "mse_append_bytes": null,
+        "mse_append_total_bytes": null,
+        "mse_append_count": null,
+        "mse_append_magic": "",
+        "mse_append_mime": "",
+        "mse_append_detected_kind": "",
+        "audio_url": "",
+        "audio_mime": "",
+        "initiator": "",
+        "time_stamp": null,
+        "resolved_url": "",
+        "headers": {},
+        "request_headers": {
+          "Referer": "https://course.example.test/lessons/index.html"
+        },
+        "request_body": {}
+      }
+    ],
+    "escaped": [
+      {
+        "url": "https://cdn.example.test/lesson.mp4?x=1&y=2",
+        "source": "page-scan",
+        "kind": "video",
+        "mime": "video/mp4",
+        "score": 85,
+        "label": "field src",
+        "user_selected": false,
+        "is_main_video": false,
+        "playback_match": "",
+        "blob_url": "",
+        "frame_url": "",
+        "page_url": "",
+        "tab_id": null,
+        "frame_id": null,
+        "current_time": null,
+        "duration": null,
+        "width": null,
+        "height": null,
+        "request_type": "",
+        "method": "",
+        "status_code": null,
+        "content_length": null,
+        "mse_append_bytes": null,
+        "mse_append_total_bytes": null,
+        "mse_append_count": null,
+        "mse_append_magic": "",
+        "mse_append_mime": "",
+        "mse_append_detected_kind": "",
+        "audio_url": "",
+        "audio_mime": "",
+        "initiator": "",
+        "time_stamp": null,
+        "resolved_url": "",
+        "headers": {},
+        "request_headers": {
+          "Referer": "https://course.example.test/lessons/index.html"
+        },
+        "request_body": {}
+      },
+      {
+        "url": "https://course.example.test/lesson.mp4?x=1",
+        "source": "page-scan",
+        "kind": "video",
+        "mime": "video/mp4",
+        "score": 85,
+        "label": "page scan",
+        "user_selected": false,
+        "is_main_video": false,
+        "playback_match": "",
+        "blob_url": "",
+        "frame_url": "",
+        "page_url": "",
+        "tab_id": null,
+        "frame_id": null,
+        "current_time": null,
+        "duration": null,
+        "width": null,
+        "height": null,
+        "request_type": "",
+        "method": "",
+        "status_code": null,
+        "content_length": null,
+        "mse_append_bytes": null,
+        "mse_append_total_bytes": null,
+        "mse_append_count": null,
+        "mse_append_magic": "",
+        "mse_append_mime": "",
+        "mse_append_detected_kind": "",
+        "audio_url": "",
+        "audio_mime": "",
+        "initiator": "",
+        "time_stamp": null,
+        "resolved_url": "",
+        "headers": {},
+        "request_headers": {
+          "Referer": "https://course.example.test/lessons/index.html"
+        },
+        "request_body": {}
+      }
+    ],
+    "noise": []
+  },
+  "manifests": {
+    "hls": "#EXTM3U\n#EXT-X-KEY:METHOD=AES-128,URI=\"https://cdn.example.test/course/keys/key.bin\"\n#EXTINF:2\nhttps://cdn.example.test/course/part.ts\n",
+    "dash": "<MPD xmlns=\"urn:mpeg:dash:schema:mpd:2011\"><BaseURL>https://cdn.example.test/course/media/</BaseURL><Period><SegmentTemplate media=\"https://cdn.example.test/course/media/seg-$Number$.m4s\" initialization=\"https://cdn.example.test/course/media/init.mp4\" /></Period></MPD>\n",
+    "malformed_dash": "<MPD><BaseURL>https://cdn.example.test/course/media/</BaseURL><SegmentURL media=\"https://cdn.example.test/course/p.m4s\">\n",
+    "aes": [
+      false,
+      true
+    ],
+    "drm": [
+      true,
+      false
+    ],
+    "html_is_not_manifest": [
+      "unknown",
+      ""
+    ]
+  },
+  "qa": {
+    "terms": [
+      "__source_transcript__",
+      "习率",
+      "只根据字",
+      "字幕",
+      "字幕解",
+      "字幕解释",
+      "学习",
+      "学习率",
+      "幕解",
+      "幕解释",
+      "幕解释学",
+      "据字",
+      "据字幕",
+      "据字幕解",
+      "根据字",
+      "根据字幕",
+      "解释",
+      "解释学",
+      "解释学习",
+      "释学",
+      "释学习",
+      "释学习率"
+    ],
+    "strict": true,
+    "note": [
+      {
+        "source": "note",
+        "source_kind": "task",
+        "source_id": "fixture-task",
+        "label": "梯度",
+        "text": "更新参数。",
+        "target_tab": "note"
+      },
+      {
+        "source": "note",
+        "source_kind": "task",
+        "source_id": "fixture-task",
+        "label": "检查",
+        "text": "核对收敛。",
+        "target_tab": "note"
+      }
+    ],
+    "windows": [
+      {
+        "source": "transcript",
+        "source_kind": "task",
+        "granularity": "window",
+        "segmentation": "caption_boundaries",
+        "source_id": "fixture-task",
+        "label": "字幕片段 00:00-00:20",
+        "text": "梯度下降 更新学习率",
+        "start": 0.0,
+        "end": 20.0,
+        "time_range": "00:00-00:20",
+        "target_tab": "transcript"
+      },
+      {
+        "source": "transcript",
+        "source_kind": "task",
+        "granularity": "window",
+        "segmentation": "caption_boundaries",
+        "source_id": "fixture-task",
+        "label": "字幕片段 02:10-02:20",
+        "text": "检查收敛",
+        "start": 130.0,
+        "end": 140.0,
+        "time_range": "02:10-02:20",
+        "target_tab": "transcript"
+      }
+    ],
+    "ranked": [
+      {
+        "source": "transcript",
+        "label": "字幕 00:10",
+        "text": "这里把学习率设为 0.01",
+        "start": 10,
+        "end": 40,
+        "granularity": "window"
+      },
+      {
+        "source": "transcript",
+        "label": "字幕 01:00",
+        "text": "下一步检查梯度",
+        "start": 60,
+        "end": 90,
+        "granularity": "window"
+      }
+    ],
+    "summary": [
+      {
+        "source": "transcript",
+        "label": "字幕 00:10",
+        "text": "这里把学习率设为 0.01",
+        "start": 10,
+        "end": 40,
+        "granularity": "window"
+      },
+      {
+        "source": "transcript",
+        "label": "字幕 01:00",
+        "text": "下一步检查梯度",
+        "start": 60,
+        "end": 90,
+        "granularity": "window"
+      }
+    ],
+    "local_answer": [
+      "根据现有内容：\n- 梯度下降每次更新参数。\n- 这里把学习率设为 0.01",
+      [
+        {
+          "source": "note",
+          "label": "开头",
+          "text": "梯度下降每次更新参数。"
+        },
+        {
+          "source": "transcript",
+          "label": "字幕 00:10",
+          "text": "这里把学习率设为 0.01",
+          "start": 10,
+          "end": 40,
+          "granularity": "window"
+        }
+      ]
+    ],
+    "prompt": "[E1] 开头: 梯度下降每次更新参数。\n[E2] 字幕 00:10: 这里把学习率设为 0.01\n[E3] 字幕 01:00: 下一步检查梯度",
+    "history_messages": [
+      {
+        "role": "user",
+        "content": "参数 怎么更新？"
+      }
+    ]
+  },
+  "api_paths": {
+    "/api/tasks/{task_id}/qa": {
+      "post": {
+        "summary": "Api Task Question",
+        "operationId": "api_task_question_api_tasks__task_id__qa_post",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskQuestionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Api Task Question Api Tasks  Task Id  Qa Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "Api Task Question History",
+        "operationId": "api_task_question_history_api_tasks__task_id__qa_get",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Api Task Question History Api Tasks  Task Id  Qa Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tasks/{task_id}/qa/stream": {
+      "post": {
+        "summary": "Api Task Question Stream",
+        "operationId": "api_task_question_stream_api_tasks__task_id__qa_stream_post",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskQuestionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tasks/{task_id}/exports/qa": {
+      "get": {
+        "summary": "Api Export Qa",
+        "operationId": "api_export_qa_api_tasks__task_id__exports_qa_get",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tasks/{task_id}/exports/manifest": {
+      "get": {
+        "summary": "Api Export Manifest",
+        "operationId": "api_export_manifest_api_tasks__task_id__exports_manifest_get",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tasks/{task_id}/exports/bundle": {
+      "get": {
+        "summary": "Api Export Bundle",
+        "operationId": "api_export_bundle_api_tasks__task_id__exports_bundle_get",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
