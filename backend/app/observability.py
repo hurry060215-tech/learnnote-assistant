@@ -95,15 +95,17 @@ def read_task_events_after(task_id: str, after: int = 0, limit: int = 500) -> li
     except (OSError, TextDecodingError):
         return []
     start = max(0, min(int(after or 0), len(lines)))
-    stop = min(len(lines), start + max(1, min(int(limit or 500), 2000)))
+    count = max(1, min(int(limit or 500), 2000))
     rows: list[tuple[int, dict[str, Any]]] = []
-    for index in range(start, stop):
+    for index in range(start, len(lines)):
         try:
             value = json.loads(lines[index])
         except ValueError:
             continue
         if isinstance(value, dict):
             rows.append((index + 1, value))
+            if len(rows) >= count:
+                break
     return rows
 
 
