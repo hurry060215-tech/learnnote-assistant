@@ -12,6 +12,8 @@
 
 最新推进：[首次使用闭环第 1 轮验收](FIRST_RUN_20260923.md)（仅工作包 0–1；Issue 保持开放）；此前批次记录见 [PROGRESS_20260920.md](PROGRESS_20260920.md)。需要用户完成的条件：[USER_ACTIONS_20260920.md](USER_ACTIONS_20260920.md)。商店范围仅 Google Chrome Web Store。
 
+2026-09-24 权限工作包实测：[EXTENSION_PERMISSION_20260924.md](EXTENSION_PERMISSION_20260924.md)。
+
 真实视频与 DS 结果：[LIVE_ACCEPTANCE_20260921.md](LIVE_ACCEPTANCE_20260921.md)。代码收口包含 PR #192–#198；完整转写成功与内容仍需核对分别记录，未因此批量关闭产品 issue。
 
 这是 #52 的唯一当前状态入口。历史验收记录仍然保留，但只适用于其记录的提交、依赖和输入；历史报告不能直接证明当前提交通过。#172 已关闭，不再列为开放 issue；旧的 #166、#167、#168 依赖 PR 也不再作为当前开放清单，#186 以当前 GitHub PR 和本批重新解析结果为准。
@@ -33,7 +35,7 @@
 | 2 可靠性与安全发布 | #131 | 待验收 | `backend/app/upload_limits.py` 现有测试覆盖 Content-Length/流式限额、累计并发预留、低磁盘预检与失败清理；本轮 608 项后端回归全绿。 | 真实低磁盘 Windows 盘、数据目录迁移和并发视频上传的人工恢复路径尚未实测。 |
 | 2 可靠性与安全发布 | #132 | 待验收 | [五任务混合队列报告](RELIABILITY_CLOSEOUT_20260924.md) 记录 lane/fairness/journal 自动回归、真实 30/60/80 分钟分窗 ASR，以及三个独立 LearnNote ASR 进程同时转写不同公开音频片段。 | 仍需 3–5 个完整真实视频任务同时运行时的下载/解码/抽帧/转写进程树资源、长短任务公平性与低资源降级验收。 |
 | 2 可靠性与安全发布 | #134 | 外部阻塞 | 发布脚本、draft release 复用、校验和、更新回退和安装健康检查已有基础；[候选包与导出 QA](EXPORT_CANDIDATE_QA_20260924.md)只做了本机校验，没有修改公开 Release。 | 仍需损坏/断网/磁盘不足/占用/失败回退、同 tag 事务测试，以及真实签名和发布凭据。 |
-| 3 权限、编码与证据 | #135 | 待验收 | `extension/manifest.json`、`extension/PERMISSION_JUSTIFICATION.md` 和按需捕获路径记录了权限边界。 | Chrome/Edge 允许、拒绝、撤销、重新授权与缓存失效必须有实机矩阵；验证不默认扩大权限。 |
+| 3 权限、编码与证据 | #135 | 待验收 | `extension/manifest.json` 保持按需站点授权；拒绝、允许、撤销、缓存清理和异步竞态有扩展回归；Chrome for Testing 与 Edge 当前 smoke 的本机配对、协议和页面到任务链路通过。详见 [权限工作包报告](EXTENSION_PERMISSION_20260924.md)。 | Chrome 原生授权弹窗的允许/拒绝/撤销/重新授权矩阵、普通商店安装与更新仍未实测；当前不建议关闭。 |
 | 3 权限、编码与证据 | #150 | 待验收 | [编码工作包 3A 报告](ENCODING_PROVENANCE_20260924.md)：导入保存编码来源、confidence 类别、原字节校验；默认工作台 GB18030 导入通过；[现有资料重解码报告](ENCODING_REDECODE_ACCEPTANCE_20260924.md)记录了错误 Big5 导入后在阅读页选择 GB18030、更新出处并保持原始 SHA 的隔离浏览器验收。 | PDF/OCR 与字幕/转写/模型输出等其它来源仍需统一回归；个人批注锚点与 Word/PDF/Obsidian 导出矩阵仍待审。保持开放。 |
 | 3 权限、编码与证据 | #129 | 待验收 | 除字幕/文本证据外，现有 claim map v5 可投影文档来源；[60 条公开来源状态基准](CLAIM_EVIDENCE_BENCHMARK_20260924.md)（EN30/ZH30、12 个官方来源）有离线混淆矩阵；另在 80 分钟 Stanford CS224N 公共课上对 YouTube 原始英文自动字幕审计 11 条人工 claim。详见 [REAL_COURSE_CLAIM_AUDIT_20260924.md](REAL_COURSE_CLAIM_AUDIT_20260924.md)。 | 固定文档语料 direct precision 1.00/recall 0.50；单课样本 5 条语义支持释义全部降级为 located-only，review gate recall 1.00/precision 0.545。两组都是固定小样本，不代表一般语义准确率。生产任务 claim map 生成与 UI 一键回字幕/关键帧仍待实测，Issue 保持开放。 |
 | 3 权限、编码与证据 | #152 | 待验收 | 现有归一化与本次改动提供 sentence-boundary 长段落处理、代码感知提示/乱码门禁、版本化质量报告；六种中英文样本覆盖代码、重复标题、目录锚点、空证据和失败草稿；DOCX/PDF/HTML 共用导出 block 投影，HTML 与 note-document section 使用稳定锚点。详见 [NOTE_STRUCTURE_ACCEPTANCE_20260924.md](NOTE_STRUCTURE_ACCEPTANCE_20260924.md)。 | 仍需对复杂嵌套 Markdown、真实模型/真实课程输出及 30 页以上中英文 Word/WPS 排版做端到端检查；不可安全按句切分的超长单句只警告并保留。当前证据不足以关闭 Issue。 |

@@ -16,5 +16,8 @@
   "subtitleOnly": { "message": "Save transcript" },
   "summaryNote": { "message": "Generate study note" },
   "visualNote": { "message": "Visual note" },
-  "clientFeatures": { "message": "Client features" }
+  "clientFeatures": { "message": "Client features" },
+  "site_permission_data_flow": { "message": "For an authorized site, a source preflight may send page candidates to the local workbench. Video processing may read relevant cookies for the page and media-candidate hosts; those cookies go only to the local workbench, never to a model. Subtitle-only mode does not read cookies. If you choose a remote model, it may receive subtitles or frames for the selected task mode." },
+  "incompatible_client_title": { "message": "Extension and workbench are incompatible" },
+  "incompatible_client_detail": { "message": "Extension protocol {extension}; LearnNote {version} uses protocol {protocol}. Update the extension or desktop app, then reconnect." }
 }

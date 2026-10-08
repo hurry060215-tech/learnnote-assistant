@@ -183,13 +183,16 @@ async function backendJsonResponse(res, fallback) {
   return payload;
 }
 
-async function postJsonWithRetry(url, body, fallback, attempts = 2) {
+async function postJsonWithRetry(url, body, fallback, attempts = 2, beforeSend = null) {
   let lastError = null;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
+      const headers = await pairingHeaders(new URL(url).origin, { "Content-Type": "application/json" });
+      const blocked = beforeSend ? await beforeSend() : null;
+      if (blocked) return blocked;
       const response = await fetch(url, {
         method: "POST",
-        headers: await pairingHeaders(new URL(url).origin, { "Content-Type": "application/json" }),
+        headers,
         body: JSON.stringify(body)
       });
       if (response.ok !== false || response.status < 500 || attempt === attempts - 1) {
@@ -1957,6 +1960,8 @@ chrome.webRequest.onErrorOccurred.addListener(
 );
 
 chrome.tabs.onRemoved.addListener(tabId => {
+  sitePermissionEpochByTab.delete(tabId);
+  sitePermissionUrlByTab.delete(tabId);
   resourceByTab.delete(tabId);
   pageStateByTab.delete(tabId);
   clearCaptureLog(tabId);
@@ -2501,32 +2506,100 @@ function cookieUrlsForContext(page = {}, tab = {}, resources = []) {
 
 function normalizePermissionOrigin(value = "") {
   const raw = String(value || "").trim();
-  if (!/^https?:\/\/(?:\*|[^/*]+)\/\*$/i.test(raw)) return "";
+  if (!/^https?:\/\/(?:\*|(?:\*\.)?[^/*]+)\/\*$/i.test(raw)) return "";
   if (/^https?:\/\/\*\/\*$/i.test(raw)) return raw.toLowerCase();
   try {
     const url = new URL(raw.slice(0, -1));
-    return `${url.protocol}//${url.host}/*`;
+    return `${url.protocol}//${url.hostname}/*`;
   } catch {
     return "";
+  }
+}
+
+const sitePermissionEpochByTab = new Map();
+const sitePermissionUrlByTab = new Map();
+
+function sitePermissionEpoch(tabId, pageUrl = "") {
+  if (pageUrl) {
+    const previousUrl = sitePermissionUrlByTab.get(tabId);
+    if (previousUrl && previousUrl !== pageUrl) {
+      sitePermissionEpochByTab.set(tabId, sitePermissionEpoch(tabId) + 1);
+    }
+    sitePermissionUrlByTab.set(tabId, pageUrl);
+    if (!sitePermissionEpochByTab.has(tabId)) sitePermissionEpochByTab.set(tabId, 0);
+  }
+  return sitePermissionEpochByTab.get(tabId) ?? -1;
+}
+
+function sitePermissionPatternForUrl(value = "") {
+  try {
+    const url = new URL(String(value || ""));
+    if (!["http:", "https:"].includes(url.protocol) || !url.hostname) return "";
+    return `${url.protocol}//${url.hostname}/*`;
+  } catch {
+    return "";
+  }
+}
+
+function permissionPatternMatchesUrl(pattern = "", value = "") {
+  const normalized = normalizePermissionOrigin(pattern);
+  if (!normalized) return false;
+  let url;
+  try { url = new URL(String(value || "")); } catch { return false; }
+  const match = /^(https?):\/\/([^/]+)\/\*$/i.exec(normalized);
+  if (!match || url.protocol !== `${match[1].toLowerCase()}:`) return false;
+  const host = match[2].toLowerCase();
+  const hostname = url.hostname.toLowerCase();
+  if (host === "*") return true;
+  if (host.startsWith("*.")) {
+    const suffix = host.slice(2);
+    return hostname === suffix || hostname.endsWith(`.${suffix}`);
+  }
+  return hostname === host;
+}
+
+async function sitePermissionGrantedForUrl(value = "") {
+  const origin = sitePermissionPatternForUrl(value);
+  if (!origin || !chrome.permissions?.contains) return true;
+  try {
+    return await chrome.permissions.contains({ origins: [origin] });
+  } catch {
+    return false;
+  }
+}
+
+function notifySitePermissionRevoked(origin, clearedTabs) {
+  try {
+    const sent = chrome.runtime?.sendMessage?.({
+      type: "site-permission-revoked",
+      origin,
+      cleared_tabs: clearedTabs
+    });
+    if (sent?.catch) sent.catch(() => {});
+  } catch {
+    // The side panel may be closed; the next user-triggered read starts fresh.
   }
 }
 
 async function revokeSitePermissionCaches(origin = "") {
   const normalized = normalizePermissionOrigin(origin);
   if (!normalized || !chrome.tabs?.query) return { ok: false, error: "无效的站点权限。" };
+  // Invalidate known handoffs before querying tabs: Chrome may resolve that
+  // query after the user has already re-authorized this site.
+  const invalidatedTabs = new Set();
+  for (const [tabId, pageUrl] of sitePermissionUrlByTab) {
+    if (!permissionPatternMatchesUrl(normalized, pageUrl)) continue;
+    sitePermissionEpochByTab.set(tabId, sitePermissionEpoch(tabId) + 1);
+    invalidatedTabs.add(tabId);
+  }
   const tabs = await chrome.tabs.query({});
   let clearedTabs = 0;
   for (const tab of tabs || []) {
     if (tab?.id === undefined) continue;
-    let tabOrigin = "";
-    try {
-      const url = new URL(String(tab.url || ""));
-      tabOrigin = `${url.protocol}//${url.host}/*`;
-    } catch {
-      continue;
+    if (!permissionPatternMatchesUrl(normalized, tab.url || "")) continue;
+    if (!invalidatedTabs.has(tab.id)) {
+      sitePermissionEpochByTab.set(tab.id, sitePermissionEpoch(tab.id) + 1);
     }
-    const wildcard = /^https?:\/\/\*\/\*$/i.test(normalized);
-    if (wildcard ? !tabOrigin.startsWith(normalized.replace("*/*", "")) : tabOrigin !== normalized) continue;
     resourceByTab.delete(tab.id);
     pageStateByTab.delete(tab.id);
     activeCaptureUntilByTab.delete(tab.id);
@@ -2537,6 +2610,7 @@ async function revokeSitePermissionCaches(origin = "") {
     clearCaptureLog(tab.id);
     clearedTabs += 1;
   }
+  notifySitePermissionRevoked(normalized, clearedTabs);
   return { ok: true, origin: normalized, cleared_tabs: clearedTabs };
 }
 
@@ -2548,6 +2622,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   (async () => {
     if (message.type === "page-media-detected" && sender.tab?.id !== undefined) {
       const tabId = sender.tab.id;
+      if (!captureActive(tabId)) {
+        sendResponse({ ok: true, stale: true, ignored: true });
+        return;
+      }
       const frameId = sender.frameId ?? 0;
       if (frameId === 0 && message.page?.page_url && sender.tab?.url && String(message.page.page_url) !== String(sender.tab.url)) {
         sendResponse({ ok: true, stale: true });
@@ -2598,6 +2676,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     if (message.type === "inspect-cookie-context") {
       const tab = await tabForMessage(message);
+      if (!(await sitePermissionGrantedForUrl(tab.url || ""))) {
+        sendResponse({ ok: false, error: "当前站点权限已撤销，请先重新授权。", code: "site_permission_required" });
+        return;
+      }
       activateCapture(tab.id);
       const page = message.page || await collectPageData(tab);
       const resources = mergeAndRankResources(message.resources, page, tab, { preserveOrder: Array.isArray(message.resources) });
@@ -2613,6 +2695,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     if (message.type === "start-current-task") {
       const tab = await tabForMessage(message);
+      const permissionEpoch = sitePermissionEpoch(tab.id, tab.url || "");
+      const permissionCurrent = async () => {
+        const granted = await sitePermissionGrantedForUrl(tab.url || "");
+        return granted && sitePermissionEpoch(tab.id) === permissionEpoch;
+      };
+      if (!(await permissionCurrent())) {
+        sendResponse({ error: "当前站点权限已撤销，本次任务未创建。", code: "site_permission_required" });
+        return;
+      }
       activateCapture(tab.id);
       const expectedIdentity = message.sourceIdentity || message.source_identity || null;
       const page = expectedIdentity ? await collectPageData(tab) : (message.page || await collectPageData(tab));
@@ -2638,6 +2729,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const cookies = message.mode === "subtitle_only"
         ? []
         : await cookiesForUrls(cookieUrlsForContext(page, tab, resources), partitionKeys);
+      if (!(await permissionCurrent())) {
+        sendResponse({ error: "当前站点权限已撤销，本次任务未创建。", code: "site_permission_required" });
+        return;
+      }
       const backendUrl = message.backendUrl || "http://127.0.0.1:8765";
       const taskEndpoint = `${backendUrl}/api/tasks/from-current-page${message.defer === true ? "?defer=true" : ""}`;
       const payload = await postJsonWithRetry(taskEndpoint, {
@@ -2655,7 +2750,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           resources,
           cookies,
           options: message.options || {}
-        }, "创建当前页任务失败。");
+        }, "创建当前页任务失败。", 2, async () => (await permissionCurrent()) ? null : {
+          ok: false,
+          error: "当前站点权限已撤销，本次任务发送已停止。",
+          code: "site_permission_required"
+        });
       if (!payload?.error && !payload?.task_id) {
         sendResponse({ ok: false, error: "客户端未确认任务创建，请重试。", code: "task_creation_unconfirmed" });
         return;
@@ -2686,6 +2785,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     if (message.type === "preflight-current-resource") {
       const tab = await tabForMessage(message);
+      const permissionEpoch = sitePermissionEpoch(tab.id, tab.url || "");
+      const permissionCurrent = async () => {
+        const granted = await sitePermissionGrantedForUrl(tab.url || "");
+        return granted && sitePermissionEpoch(tab.id) === permissionEpoch;
+      };
+      if (!(await permissionCurrent())) {
+        sendResponse({ error: "当前站点权限已撤销，未将媒体候选发送给本机预检。", code: "site_permission_required" });
+        return;
+      }
       activateCapture(tab.id);
       const page = message.page || await collectPageData(tab);
       const resource = mergeAndRankResources(message.resource ? [message.resource] : [], page, tab, { preserveOrder: true })[0];
@@ -2695,10 +2803,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
       const partitionKeys = await cookiePartitionKeysForContext(page, tab, [resource]);
       const cookies = await cookiesForUrls(cookieUrlsForContext(page, tab, [resource]), partitionKeys);
+      if (!(await permissionCurrent())) {
+        sendResponse({ error: "当前站点权限已撤销，未将媒体候选发送给本机预检。", code: "site_permission_required" });
+        return;
+      }
       const backendUrl = message.backendUrl || "http://127.0.0.1:8765";
+      const headers = await pairingHeaders(backendUrl, { "Content-Type": "application/json" });
+      if (!(await permissionCurrent())) {
+        sendResponse({ error: "当前站点权限已撤销，未将页面候选发送给本机预检。", code: "site_permission_required" });
+        return;
+      }
       const res = await fetch(`${backendUrl}/api/media/preflight`, {
         method: "POST",
-        headers: await pairingHeaders(backendUrl, { "Content-Type": "application/json" }),
+        headers,
         body: JSON.stringify({
           page_url: page.page_url || tab.url,
           resource,
@@ -2711,16 +2828,34 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     if (message.type === "preflight-current-page") {
       const tab = await tabForMessage(message);
+      const permissionEpoch = sitePermissionEpoch(tab.id, tab.url || "");
+      const permissionCurrent = async () => {
+        const granted = await sitePermissionGrantedForUrl(tab.url || "");
+        return granted && sitePermissionEpoch(tab.id) === permissionEpoch;
+      };
+      if (!(await permissionCurrent())) {
+        sendResponse({ error: "当前站点权限已撤销，未将页面候选发送给本机预检。", code: "site_permission_required" });
+        return;
+      }
       activateCapture(tab.id);
       const page = message.page || await collectPageData(tab);
       const resources = mergeAndRankResources(message.resources, page, tab, { preserveOrder: Array.isArray(message.resources) });
       const sourceIdentity = message.sourceIdentity || message.source_identity || buildSourceIdentity(tab, page, resources);
       const partitionKeys = await cookiePartitionKeysForContext(page, tab, resources);
       const cookies = await cookiesForUrls(cookieUrlsForContext(page, tab, resources), partitionKeys);
+      if (!(await permissionCurrent())) {
+        sendResponse({ error: "当前站点权限已撤销，未将页面候选发送给本机预检。", code: "site_permission_required" });
+        return;
+      }
       const backendUrl = message.backendUrl || "http://127.0.0.1:8765";
+      const headers = await pairingHeaders(backendUrl, { "Content-Type": "application/json" });
+      if (!(await permissionCurrent())) {
+        sendResponse({ error: "当前站点权限已撤销，未将页面候选发送给本机预检。", code: "site_permission_required" });
+        return;
+      }
       const res = await fetch(`${backendUrl}/api/media/preflight-current-page`, {
         method: "POST",
-        headers: await pairingHeaders(backendUrl, { "Content-Type": "application/json" }),
+        headers,
         body: JSON.stringify({
           page_url: page.page_url || tab.url,
           active_video: page.active_video || null,
