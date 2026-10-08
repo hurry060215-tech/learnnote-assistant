@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import sqlite3
 import tempfile
+from datetime import datetime, timezone
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -65,7 +67,10 @@ class CommunityContextTests(unittest.TestCase):
 
 class CommunityPrivacyAcceptanceTests(unittest.TestCase):
     def test_contact_details_and_authors_are_not_stored_and_noise_is_dropped(self):
-        with tempfile.TemporaryDirectory() as tmp, patch("app.community.DATA_DIR", Path(tmp)):
+        with tempfile.TemporaryDirectory() as tmp, patch("app.community.DATA_DIR", Path(tmp)), patch("app.community.datetime") as clock:
+            # Reproduce the CI timestamp whose microseconds contain the phone
+            # area-code digits. Metadata is not a contact-information leak.
+            clock.now.return_value = datetime(2026, 10, 8, 14, 6, 24, 574153, tzinfo=timezone.utc)
             set_community_enabled(True)
             result = add_community_context("task-safe", [
                 {"text": "这个解释很好，联系 learner@example.com 或 +1 (415) 555-0123", "author_label": "Real Person"},
@@ -83,7 +88,19 @@ class CommunityPrivacyAcceptanceTests(unittest.TestCase):
             self.assertEqual(len(stored["groups"]["disagreements"]), 1)
             raw = (Path(tmp) / "community.sqlite3").read_bytes()
             self.assertNotIn(b"learner@example.com", raw)
-            self.assertNotIn(b"415", raw)
+            self.assertIn(b"574153", raw)
+            self.assertNotIn(b"+1 (415) 555-0123", raw)
+            self.assertNotIn(b"4155550123", raw)
+            # Inspect persisted content, not only the API's output projection,
+            # so a future read-time redactor cannot hide an at-rest leak.
+            with sqlite3.connect(Path(tmp) / "community.sqlite3") as connection:
+                rows = connection.execute("SELECT text, author_label, source_uri FROM community_context_items").fetchall()
+            self.assertEqual(len(rows), 3)
+            for row in rows:
+                for value in row:
+                    for secret in ("learner@example.com", "415", "555-0123", "Real Person"):
+                        self.assertNotIn(secret, value)
+            self.assertTrue(any("[联系方式已省略]" in row[0] for row in rows))
             self.assertNotIn(b"Real Person", raw)
             self.assertFalse(stored["evidence_eligible"])
 
