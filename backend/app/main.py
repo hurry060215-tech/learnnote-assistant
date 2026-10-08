@@ -235,7 +235,8 @@ def local_upload_filename(filename: str | None, content_type: str | None = "") -
         )
     stem = Path(safe_name).stem[:120].strip(" ._") or "local-video"
     # Leave room for staged/pending UUID prefixes on byte-limited filesystems.
-    stem = stem.encode("utf-8")[:180].decode("utf-8", errors="ignore").rstrip(" ._") or "local-video"
+    from .text_cleanup import truncate_utf8_text
+    stem = truncate_utf8_text(stem, 180).rstrip(" ._") or "local-video"
     return f"{stem}{suffix}"
 
 

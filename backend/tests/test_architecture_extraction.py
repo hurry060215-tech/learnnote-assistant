@@ -68,18 +68,18 @@ def qa_snapshot(module):
 
 class ExtractionSnapshotTests(unittest.TestCase):
     def test_page_discovery_matches_pre_split_snapshot(self):
-        self.assertEqual(discovery_snapshot(media_discovery), json.loads(FIXTURE.read_text())["discovery"])
+        self.assertEqual(discovery_snapshot(media_discovery), json.loads(FIXTURE.read_text(encoding="utf-8"))["discovery"])
 
     def test_manifest_rewriting_matches_pre_split_snapshot(self):
-        self.assertEqual(manifest_snapshot(media_manifests), json.loads(FIXTURE.read_text())["manifests"])
+        self.assertEqual(manifest_snapshot(media_manifests), json.loads(FIXTURE.read_text(encoding="utf-8"))["manifests"])
 
     def test_main_qa_compatibility_matches_pre_split_snapshot(self):
         from app import main
-        self.assertEqual(qa_snapshot(main), json.loads(FIXTURE.read_text())["qa"])
+        self.assertEqual(qa_snapshot(main), json.loads(FIXTURE.read_text(encoding="utf-8"))["qa"])
 
     def test_qa_and_export_api_contracts_match_pre_split_snapshot(self):
         from app import main
-        snapshot = json.loads(FIXTURE.read_text())["api_paths"]
+        snapshot = json.loads(FIXTURE.read_text(encoding="utf-8"))["api_paths"]
         self.assertEqual({path: main.app.openapi()["paths"][path] for path in snapshot}, snapshot)
 
     def test_pure_modules_import_without_api_downloader_or_processor(self):
