@@ -14,6 +14,44 @@ from app.text_cleanup import TextDecodingError, decode_text_bytes
 
 
 class TextDecoderProvenanceTests(unittest.TestCase):
+    def test_utf8_filename_budget_keeps_complete_nfc_characters(self) -> None:
+        import unicodedata
+        from app.text_cleanup import truncate_utf8_text
+        from app.library import _safe_material_filename
+        source = "中文_日本語_🧭_cafe\u0301_" * 40
+        for budget in range(0, 220):
+            shortened = truncate_utf8_text(source, budget)
+            self.assertLessEqual(len(shortened.encode("utf-8")), budget)
+            self.assertTrue(unicodedata.is_normalized("NFC", shortened))
+            self.assertTrue(unicodedata.normalize("NFC", source).startswith(shortened))
+        filename = _safe_material_filename(source + ".md")
+        self.assertTrue(filename.endswith(".md"))
+        self.assertTrue(unicodedata.is_normalized("NFC", filename))
+        self.assertLessEqual(len(filename.encode("utf-8")), 200)
+
+    def test_valid_utf8_never_enters_heuristic_detection(self) -> None:
+        source = "中文 日本語 한국어 العربية English café 🧭\r\n第二行。"
+        with patch("app.text_cleanup.from_bytes", side_effect=AssertionError("UTF-8 must win")):
+            decoded = decode_text_bytes(source.encode("utf-8"))
+        self.assertEqual(decoded.text, source.replace("\r\n", "\n"))
+        self.assertEqual(decoded.encoding_source, "strict-utf8")
+        self.assertEqual(decoded.encoding_confidence, "high")
+        self.assertEqual(decoded.replacement_character_count, 0)
+
+    def test_authoritative_multiscript_encodings_do_not_use_language_penalty(self) -> None:
+        source = "中文 日本語 한국어 العربية English café 🧭"
+        for kwargs, codec in (({}, "utf-16"), ({"declared_encoding": "gb18030"}, "gb18030"),
+                              ({"encoding": "utf-8"}, "utf-8")):
+            with self.subTest(codec=codec, kwargs=kwargs):
+                self.assertEqual(decode_text_bytes(source.encode(codec), **kwargs).text, source)
+
+    def test_utf8_replacement_character_cannot_escape_through_legacy_detection(self) -> None:
+        with self.assertRaises(TextDecodingError):
+            decode_text_bytes("正文包含 � 不可发布。".encode("utf-8"))
+        decoded = decode_text_bytes("正文包含 � 不可发布。".encode("utf-8"), reject_mojibake=False)
+        self.assertEqual(decoded.replacement_character_count, 1)
+        self.assertEqual(decoded.encoding_source, "strict-utf8")
+
     def test_declared_charset_is_used_before_automatic_detection(self) -> None:
         source = "第一节\n\n课程介绍中文文本。"
         text, source_type, metadata = extract_import_text_with_metadata(

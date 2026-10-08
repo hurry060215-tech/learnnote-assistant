@@ -2,11 +2,42 @@ from __future__ import annotations
 
 import unittest
 
-from app.claims import build_claim_evidence_map, safe_claim_projection
+from app.claims import build_claim_evidence_map, mark_claims_for_review, safe_claim_projection
 from app.models import TranscriptResult, TranscriptSegment, VisualWindow
 
 
 class ClaimEvidenceTests(unittest.TestCase):
+    def test_claim_ids_survive_unrelated_insertions_and_duplicate_claims_are_distinct(self):
+        transcript = TranscriptResult()
+        original = "第一条没有支持来源。\n\n第二条也需要人工核对。\n\n第一条没有支持来源。"
+        first = build_claim_evidence_map("stable", "课程", original, transcript)
+        later = build_claim_evidence_map("stable", "课程", "新增无关内容。\n\n" + original, transcript)
+        self.assertEqual([c["claim_id"] for c in first["claims"]], [c["claim_id"] for c in later["claims"]][1:])
+        self.assertEqual(len(set(c["claim_id"] for c in first["claims"])), 3)
+
+    def test_visible_claim_review_is_idempotent_and_keeps_exact_offsets(self):
+        original = "# 课程\n\n- 水温100℃。\n\nThis is an unsupported statement. Another statement requires review."
+        transcript = TranscriptResult()
+        first = build_claim_evidence_map("marked", "课程", original, transcript)
+        marked = mark_claims_for_review(original, first)
+        rebuilt = build_claim_evidence_map("marked", "课程", marked, transcript)
+        self.assertEqual([c["claim_id"] for c in first["claims"]], [c["claim_id"] for c in rebuilt["claims"]])
+        self.assertEqual(mark_claims_for_review(marked, rebuilt), marked)
+        self.assertEqual(marked.count("【待核对：未找到支持来源】"), 3)
+        for claim in rebuilt["claims"]:
+            span = claim["source_span"]
+            self.assertEqual(marked[span["start"]:span["end"]], claim["text"])
+        with self.assertRaises(ValueError):
+            mark_claims_for_review("different source", first)
+
+    def test_metadata_code_and_standalone_citations_are_not_claims(self):
+        note = "---\ntitle: metadata is not a course fact\n---\n# Heading\n\n```text\nExample mojibake: � and 锟斤拷.\n```\n\n[00:10]\n\n水温100℃。"
+        transcript = TranscriptResult(segments=[TranscriptSegment(start=0, end=10, text="水温100℃。")])
+        result = build_claim_evidence_map("short", "课程", note, transcript)
+        self.assertEqual(len(result["claims"]), 1)
+        self.assertEqual(result["claims"][0]["verification"], "direct")
+        self.assertEqual(mark_claims_for_review(note, result), note)
+
     def test_document_evidence_supports_direct_claims_and_keeps_locator_metadata(self):
         document_source = {
             "evidence_id": "material-doc-001",
@@ -26,7 +57,7 @@ class ClaimEvidenceTests(unittest.TestCase):
         )
 
         claim = result["claims"][0]
-        self.assertEqual(result["schema_version"], 5)
+        self.assertEqual(result["schema_version"], 6)
         self.assertEqual(claim["claim_type"], "document")
         self.assertEqual(claim["verification"], "direct")
         self.assertEqual(claim["evidence_ids"], ["material-doc-001"])
@@ -70,7 +101,7 @@ class ClaimEvidenceTests(unittest.TestCase):
             "quality": {"supported_count": 1},
         }
         migrated = safe_claim_projection(previous)
-        self.assertEqual(migrated["schema_version"], 5)
+        self.assertEqual(migrated["schema_version"], 6)
         self.assertEqual(migrated["claims"][0]["verification"], "direct")
         self.assertEqual(migrated["claims"][0]["evidence_ids"], ["cue-1"])
 

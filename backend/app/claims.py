@@ -10,7 +10,7 @@ from .text_cleanup import canonicalize_unicode_text, redact_sensitive_url_values
 from .markdown_structure import structural_lines
 
 
-CLAIM_SCHEMA_VERSION = 5
+CLAIM_SCHEMA_VERSION = 6
 _TIMESTAMP = r"\d{1,3}:\d{2}(?::\d{2})?"
 _RANGE_RE = re.compile(rf"(?P<start>{_TIMESTAMP})\s*(?:-|–|—|~|～)\s*(?P<end>{_TIMESTAMP})")
 _POINT_RE = re.compile(rf"(?<![\d:])(?P<point>{_TIMESTAMP})(?![\d:])")
@@ -60,23 +60,82 @@ def _supports_quotation(claim: str, evidence: str) -> bool:
     clauses = {_quotation_text(part) for part in re.split(r"[。！？!?；;，,]|\.(?!\d)", evidence)}
     # A substring of a negated statement ("not ...") is not a quotation that
     # supports its positive form. Only whole sentences/clauses skip review.
-    return len(value) >= 8 and (value == source or value in clauses)
+    return len(value) >= 4 and (value == source or value in clauses)
 
 
-def _claim_id(task_id: str, index: int, text: str) -> str:
-    digest = hashlib.sha256(f"{task_id}|{index}|{text}".encode("utf-8")).hexdigest()[:20]
+# Visible review markers are part of the portable note, not evidence. Rebuilds
+# strip them for matching while retaining exact source spans in the saved note.
+_REVIEW_MARKERS = {"located_only": "**【待核对：仅定位到来源】** ",
+                   "pending_review": "**【待核对：未找到支持来源】** ",
+                   "inference": "**【推断：需回源核对】** "}
+
+
+def _claim_id(task_id: str, occurrence: int, text: str) -> str:
+    digest = hashlib.sha256(f"{task_id}|{text}|{occurrence}".encode("utf-8")).hexdigest()[:20]
     return f"claim-{digest}"
 
 
-def _claim_texts(markdown: str) -> list[str]:
-    text = canonicalize_unicode_text(markdown, reject_mojibake=True)
+def _claim_spans(markdown: str) -> list[tuple[str, int, int]]:
+    """Locate prose claims without treating code or YAML as course facts."""
     result = []
-    prose = "\n".join(line for line, is_prose in structural_lines(text.splitlines()) if is_prose)
-    for match in _SENTENCE_RE.finditer(prose):
-        value = re.sub(r"^\s*(?:[-*+]|\d+[.)])\s+", "", match.group(0)).strip()
-        if len(value) >= 8 and not value.startswith(("#", ">", "|", "\x60\x60\x60", "http://", "https://")):
-            result.append(value)
+    lines = str(markdown or "").splitlines(keepends=True)
+    frontmatter_end = -1
+    if lines and lines[0].strip() == "---":
+        frontmatter_end = next((i for i in range(1, min(len(lines), 80)) if lines[i].strip() == "---"), -1)
+    offset = 0
+    metadata_level = 0
+    for line_index, (line, is_prose) in enumerate(structural_lines(lines)):
+        heading = re.match(r"^(#{1,6})\s+(.+?)\s*$", line) if is_prose else None
+        if heading:
+            if metadata_level and len(heading.group(1)) <= metadata_level:
+                metadata_level = 0
+            if heading.group(2).strip().casefold() in {"来源", "来源信息", "证据来源", "依据与覆盖",
+                                                     "source", "sources", "source information", "evidence coverage"}:
+                metadata_level = len(heading.group(1))
+        if is_prose and not metadata_level and line_index > frontmatter_end:
+            # Replacing markers with spaces keeps offsets in the published note.
+            value = line
+            for marker in _REVIEW_MARKERS.values():
+                value = value.replace(marker, " " * len(marker))
+            if not value.lstrip().startswith(("#", ">", "|", "http://", "https://")):
+                for match in _SENTENCE_RE.finditer(value):
+                    raw = match.group(0)
+                    prefix = re.match(r"^\s*(?:(?:[-*+]|\d+[.)])\s+)?", raw).end()
+                    start = match.start() + prefix
+                    end = match.end() - len(raw) + len(raw.rstrip())
+                    text = value[start:end]
+                    if len(text) >= 4 and not text.endswith(("?", "？")) and not re.fullmatch(rf"[\[\]`\s]*{_TIMESTAMP}(?:\s*[-–—~～]\s*{_TIMESTAMP})?[\[\]`\s。.!?！？]*", text):
+                        canonicalize_unicode_text(text, reject_mojibake=True)
+                        result.append((text, offset + start, offset + end))
+        offset += len(line)
     return result
+
+
+def mark_claims_for_review(markdown: str, claim_map: dict[str, Any]) -> str:
+    """Retain paraphrases but explicitly downgrade unverified published prose.
+
+    This never rewrites evidence or calls an unverified statement false. Review
+    markers survive Markdown, Obsidian, ZIP and document export projections.
+    """
+    text = str(markdown or "")
+    pieces: list[str] = []
+    cursor = 0
+    marker_width = max(map(len, _REVIEW_MARKERS.values()))
+    for claim in claim_map.get("claims", []):
+        marker = _REVIEW_MARKERS.get(claim.get("verification"))
+        span = claim.get("source_span") or {}
+        start, end = span.get("start"), span.get("end")
+        if not marker or not isinstance(start, int) or not isinstance(end, int):
+            continue
+        if start < cursor or end < start or end > len(text) or text[start:end] != claim.get("text"):
+            raise ValueError("claim_source_span_mismatch")
+        prefix = text[max(0, start - marker_width):start]
+        if any(prefix.endswith(existing) for existing in _REVIEW_MARKERS.values()):
+            continue
+        pieces.extend((text[cursor:start], marker))
+        cursor = start
+    pieces.append(text[cursor:])
+    return "".join(pieces)
 
 
 def build_claim_evidence_map(
@@ -138,7 +197,9 @@ def build_claim_evidence_map(
         })
     evidence = transcript_items + visual_items + document_items
     claims = []
-    for index, text in enumerate(_claim_texts(markdown)):
+    occurrences: dict[str, int] = {}
+    for index, (text, span_start, span_end) in enumerate(_claim_spans(markdown)):
+        occurrences[text] = occurrences.get(text, 0) + 1
         ranges = _ranges(text)
         words = _tokens(text)
         matched = []
@@ -175,7 +236,8 @@ def build_claim_evidence_map(
         else:
             verification = "pending_review"
         claims.append({
-            "claim_id": _claim_id(task_id, index, text),
+            "claim_id": _claim_id(task_id, occurrences[text], text),
+            "source_span": {"start": span_start, "end": span_end, "unit": "unicode_codepoints"},
             "index": index,
             "text": text,
             "claim_type": claim_type,
@@ -197,7 +259,7 @@ def build_claim_evidence_map(
         "schema_version": CLAIM_SCHEMA_VERSION,
         "task_id": str(task_id),
         "title": str(title or "学习笔记"),
-        "source_revision": hashlib.sha256(canonicalize_unicode_text(markdown).encode("utf-8")).hexdigest(),
+        "source_revision": hashlib.sha256(str(markdown or "").encode("utf-8")).hexdigest(),
         "source_revision_kind": "normalized_note_utf8_sha256",
         "evidence_revision": evidence_revision,
         "claims": claims,
@@ -227,10 +289,10 @@ def safe_claim_projection(value: dict) -> dict:
         schema_version = 1
     if schema_version >= CLAIM_SCHEMA_VERSION:
         return value
-    if schema_version == 4:
-        # Version 5 only adds document-source mappings; older video mappings
-        # already used exact-clause verification and remain safe to project.
-        return {**value, "schema_version": CLAIM_SCHEMA_VERSION}
+    if schema_version in {4, 5}:
+        # Exact-clause results remain safe, but stable IDs and source spans need
+        # a rebuild. Never manufacture offsets for a prior note revision.
+        return {**value, "schema_version": CLAIM_SCHEMA_VERSION, "requires_rebuild": True}
     claims = [{**c, "candidate_evidence_ids": c.get("evidence_ids", []), "evidence_ids": [],
                "claim_type": "inference" if c.get("claim_type") == "inference" else "unsupported",
                "verification": "pending_review", "review_required": True} for c in value.get("claims", [])]
@@ -238,4 +300,4 @@ def safe_claim_projection(value: dict) -> dict:
             "quality": {**value.get("quality", {}), "supported_count": 0, "unsupported_count": len(claims), "coverage_ratio": 0.0}}
 
 
-__all__ = ["CLAIM_SCHEMA_VERSION", "build_claim_evidence_map", "safe_claim_projection"]
+__all__ = ["CLAIM_SCHEMA_VERSION", "build_claim_evidence_map", "mark_claims_for_review", "safe_claim_projection"]

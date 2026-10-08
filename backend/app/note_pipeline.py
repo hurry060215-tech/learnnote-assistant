@@ -9,7 +9,7 @@ from .processor_state import ContentMismatchError
 from .note_document import build_note_document, normalize_note_markdown
 from .storage import task_dir, update_task, write_json
 from .summary_outcome import has_generated_summary, safe_summary_events, safe_summary_text, summary_failure_message
-from .claims import build_claim_evidence_map
+from .claims import build_claim_evidence_map, mark_claims_for_review
 
 
 def finish_note_task(
@@ -127,6 +127,14 @@ def finish_note_task(
         )
         return
     claim_evidence = build_claim_evidence_map(task_id, title, note, transcript, visual_windows)
+    reviewed_note = mark_claims_for_review(note, claim_evidence)
+    if reviewed_note != note:
+        note = reviewed_note
+        # Rebuild against the actual persisted bytes so source spans, revisions
+        # and click targets cannot drift after adding visible review markers.
+        claim_evidence = build_claim_evidence_map(task_id, title, note, transcript, visual_windows)
+        review_count = sum(claim["review_required"] for claim in claim_evidence["claims"])
+        summary_warning = "；".join(filter(None, [summary_warning, f"{review_count} 条内容待回源核对，已在正文标记"]))
     claim_evidence_path = write_json(task_id, "claim_evidence_map.json", claim_evidence)
     note_document = build_note_document(title, note, evidence=claim_evidence["evidence"])
     note_document_path = write_json(task_id, "note_document.json", note_document)

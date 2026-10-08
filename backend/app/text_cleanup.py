@@ -233,6 +233,13 @@ def _decode_candidates(
             # a lossy legacy fallback; ask the user to choose another encoding.
             return []
     else:
+        # Strict UTF-8 is authoritative once it decodes. Heuristic scores must
+        # never reinterpret valid multilingual Unicode as a legacy encoding,
+        # or hide replacement characters by decoding their bytes differently.
+        try:
+            return [("utf-8", content.decode("utf-8", errors="strict"), "strict-utf8")]
+        except UnicodeDecodeError:
+            pass
         detected = ""
         try:
             match = from_bytes(content).best()
@@ -329,7 +336,11 @@ def decode_text_bytes(
             text = canonicalize_unicode_text(repaired_text, reject_mojibake=False)
         except (UnicodeError, ValueError):
             continue
-        raw_penalty = _decode_quality_penalty(raw_text) + sum(
+        # Script diversity is a detection heuristic, not corruption evidence.
+        # Mixed Arabic/CJK/Japanese/English is legitimate with an authoritative
+        # encoding. Apply the heuristic only to inferred legacy candidates.
+        inferred = encoding_source in {"charset-normalizer", "fallback"}
+        raw_penalty = (_decode_quality_penalty(raw_text) if inferred else 0) + sum(
             8 for char in raw_text if ord(char) < 0x20 and char not in "\n\r\t"
         )
         decoded.append(
@@ -384,6 +395,18 @@ def read_canonical_text(path: Path, *, reject_mojibake: bool = True) -> DecodedT
     return decode_text_bytes(path.read_bytes(), source=path.name, reject_mojibake=reject_mojibake)
 
 
+
+def truncate_utf8_text(value: str, max_bytes: int) -> str:
+    """Normalize a filename part and truncate only at Unicode boundaries."""
+    text = unicodedata.normalize("NFC", str(value or ""))
+    budget = max(0, int(max_bytes))
+    used = 0
+    for index, character in enumerate(text):
+        used += len(character.encode("utf-8"))
+        if used > budget:
+            return text[:index]
+    return text
+
 def correct_common_zh_asr_text(value: str) -> str:
     text = canonicalize_unicode_text(value)
     for wrong, correct in COMMON_ZH_ASR_REPLACEMENTS.items():
@@ -426,5 +449,6 @@ __all__ = [
     "declared_text_encoding",
     "mojibake_score",
     "read_canonical_text",
+    "truncate_utf8_text",
     "redact_sensitive_url_values",
 ]

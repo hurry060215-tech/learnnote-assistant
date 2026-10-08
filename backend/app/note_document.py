@@ -187,6 +187,35 @@ def section_anchor_id(value: str, occurrence: int = 1) -> str:
     return base if occurrence <= 1 else f"{base}-{occurrence}"
 
 
+
+def _deduplicate_metadata_sections(lines: list[str]) -> tuple[list[str], int]:
+    """Remove only byte-identical repeated source/objective scaffolding.
+
+    Ordinary sections, code and personal-note sections are never deduplicated;
+    source sections with different content remain intact for review.
+    """
+    labels = {"来源", "来源信息", "学习目标", "source", "sources", "source information",
+              "learning objectives", "learning goals"}
+    starts = [(index, match) for index, (line, prose) in enumerate(structural_lines(lines))
+              if prose and (match := _HEADING_RE.match(line))]
+    remove: set[int] = set()
+    seen: set[tuple[int, str, str]] = set()
+    for position, (start, heading) in enumerate(starts):
+        label = _plain_heading(heading.group(2))
+        if label not in labels:
+            continue
+        end = starts[position + 1][0] if position + 1 < len(starts) else len(lines)
+        # A parent section with nested children is not a self-contained block.
+        if position + 1 < len(starts) and len(starts[position + 1][1].group(1)) > len(heading.group(1)):
+            continue
+        body = "\n".join(lines[start + 1:end]).strip("\n")
+        key = (len(heading.group(1)), label, body)
+        if body and key in seen:
+            remove.update(range(start, end))
+        else:
+            seen.add(key)
+    return [line for index, line in enumerate(lines) if index not in remove], sum(start in remove for start, _ in starts)
+
 def normalize_note_markdown(title: str, markdown: str, *, generate_questions: bool | None = None) -> NoteNormalizationResult:
     """Return stable UTF-8-friendly Markdown and a non-destructive lint report."""
 
@@ -267,7 +296,7 @@ def normalize_note_markdown(title: str, markdown: str, *, generate_questions: bo
                 adjusted_heading_jumps += 1
             last_heading_level = level
         continuous_headings.append(line)
-    body_without_duplicate_title = continuous_headings
+    body_without_duplicate_title, duplicate_metadata_sections = _deduplicate_metadata_sections(continuous_headings)
 
     # Consecutive rules are usually raw model scaffolding, not meaningful
     # document structure.  Keep one rule so author intent is preserved.
@@ -296,6 +325,7 @@ def normalize_note_markdown(title: str, markdown: str, *, generate_questions: bo
         "changed": normalized != str(markdown or ""),
         "removed_markdown_wrapper": removed_wrapper,
         "duplicate_title_count": duplicate_h1,
+        "duplicate_metadata_sections": duplicate_metadata_sections,
         "adjusted_heading_jumps": adjusted_heading_jumps,
         "collapsed_rule_count": collapsed_rules,
         "reflowed_long_paragraphs": reflowed_long_paragraphs,
