@@ -21,6 +21,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  ORT_DISABLE_TELEMETRY: "1"
+  HF_HUB_DISABLE_TELEMETRY: "1"
   RELEASE_TAG: ${{ inputs.release_tag || (github.ref_type == 'tag' && github.ref_name) || '' }}
 
 jobs:

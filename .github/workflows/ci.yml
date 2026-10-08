@@ -7,6 +7,10 @@ on:
 permissions:
   contents: read
 
+env:
+  ORT_DISABLE_TELEMETRY: "1"
+  HF_HUB_DISABLE_TELEMETRY: "1"
+
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true

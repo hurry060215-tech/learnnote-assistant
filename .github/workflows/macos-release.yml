@@ -9,6 +9,10 @@ on:
 permissions:
   contents: write
 
+env:
+  ORT_DISABLE_TELEMETRY: "1"
+  HF_HUB_DISABLE_TELEMETRY: "1"
+
 jobs:
   build-macos:
     runs-on: macos-latest
