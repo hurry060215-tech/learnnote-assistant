@@ -12,6 +12,7 @@ import threading
 from .config import DATA_DIR
 from .storage import atomic_write_text
 from .text_cleanup import canonicalize_unicode_text
+from .ocr_runtime import create_ocr_engine
 
 ENGINE_VERSION = "rapidocr-onnxruntime-1.4.4-v2"
 _engine = None
@@ -20,14 +21,6 @@ _lock = threading.RLock()
 
 def ocr_available() -> bool:
     return importlib.util.find_spec("rapidocr_onnxruntime") is not None
-
-
-def create_ocr_engine():
-    import onnxruntime
-    # Local OCR must not opt the user's learning workflow into SDK telemetry.
-    onnxruntime.disable_telemetry_events()
-    from rapidocr_onnxruntime import RapidOCR
-    return RapidOCR(intra_op_num_threads=2, inter_op_num_threads=1)
 
 
 def _language_hint(text: str) -> str:

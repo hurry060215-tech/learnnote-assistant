@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from contextlib import ExitStack, contextmanager
 import os
+os.environ["ORT_DISABLE_TELEMETRY"] = "1"
+os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
 from pathlib import Path
 import socket
 import subprocess
@@ -21,6 +23,14 @@ LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
 
 @contextmanager
 def offline_network():
+    # Python socket/HTTP patches cannot intercept native SDK transports. Opt
+    # out before any optional OCR test creates a native inference session.
+    try:
+        import onnxruntime
+    except ImportError:
+        pass
+    else:
+        onnxruntime.disable_telemetry_events()
     import requests
     # yt-dlp subclasses Popen at import time; load it before applying the guard.
     import yt_dlp  # noqa: F401

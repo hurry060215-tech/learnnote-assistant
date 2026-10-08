@@ -4,6 +4,7 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 from typing import Any
+from .ocr_runtime import create_ocr_engine
 
 
 OCR_SCHEMA_VERSION = 1
@@ -20,8 +21,7 @@ def ocr_pdf(path: Path, *, page_limit: int = 24, engine=None) -> dict[str, Any]:
     if engine is None:
         if not ocr_available():
             return {"schema_version": OCR_SCHEMA_VERSION, "status": "unavailable", "engine": OCR_ENGINE, "pages": [], "warning": "扫描 PDF OCR 需要可选的 PyMuPDF 和 RapidOCR 组件。"}
-        from rapidocr_onnxruntime import RapidOCR
-        engine = RapidOCR(intra_op_num_threads=2, inter_op_num_threads=1)
+        engine = create_ocr_engine()
     try:
         import fitz
         from PIL import Image
