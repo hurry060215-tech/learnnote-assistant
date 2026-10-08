@@ -10,7 +10,7 @@ from unittest.mock import patch
 from app.queue_policy import lane_budgets
 from app.stage_budget import stage_budget
 from app.task_queue import LocalTaskQueue, queue_status
-from app.worker_lease import worker_lease
+from app.worker_lease import has_worker_lease, worker_lease
 
 
 class QueueAdmissionTests(unittest.TestCase):
@@ -96,6 +96,25 @@ class QueueAdmissionTests(unittest.TestCase):
         for future in futures:
             future.result(5)
         self.assertEqual(order, list(range(5)))
+
+    def test_failed_fifo_claim_releases_os_slot_before_backoff(self):
+        queue = self.queue()
+        original_claim, original_wait = queue._claim, queue.condition.wait
+        claimed = False
+        waits = []
+        def claim(task_id, lane):
+            nonlocal claimed
+            if not claimed:
+                claimed = True
+                return False
+            return original_claim(task_id, lane)
+        def wait(timeout=None):
+            waits.append(timeout)
+            self.assertFalse(has_worker_lease(self.root, "heavy"), "FIFO backoff retained an OS slot")
+            return original_wait(timeout)
+        with patch.object(queue, "_claim", side_effect=claim), patch.object(queue.condition, "wait", side_effect=wait):
+            queue.enqueue("after-older-intent", "local", lambda: None).result(3)
+        self.assertTrue(waits)
 
     def test_low_resource_mode_caps_all_lanes_without_losing_work(self):
         with patch.dict(os.environ, {"LEARNNOTE_LOW_RESOURCE_MODE": "1", "LEARNNOTE_HEAVY_CONCURRENCY": "4",

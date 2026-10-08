@@ -154,28 +154,34 @@ class LocalTaskQueue:
             with worker_lease(self.root, blocking=False, lane=lane, slot=slot) as acquired:
                 with self.condition:
                     task_id = next((key for key in eligible if key in self.jobs), None)
-                    if not acquired or not task_id or not self._claim(task_id, lane):
-                        self.condition.wait(.05)
-                        continue
-                    callback, future = self.jobs[task_id]
-                    if not future.set_running_or_notify_cancel():
-                        self.jobs.pop(task_id, None)
-                        self.set_state(task_id, "cancelled")
-                        continue
-                try:
-                    callback()
-                    self.set_state(task_id, "done")
-                except Exception as exc:
+                    claimed = acquired and task_id and self._claim(task_id, lane)
+                    if claimed:
+                        callback, future = self.jobs[task_id]
+                        if not future.set_running_or_notify_cancel():
+                            self.jobs.pop(task_id, None)
+                            self.set_state(task_id, "cancelled")
+                            continue
+                if claimed:
                     try:
-                        self.set_state(task_id, "failed")
-                    except sqlite3.Error:
-                        pass
-                    failure = exc
-                else:
-                    failure = None
-                finally:
-                    with self.condition:
-                        self.jobs.pop(task_id, None)
+                        callback()
+                        self.set_state(task_id, "done")
+                    except Exception as exc:
+                        try:
+                            self.set_state(task_id, "failed")
+                        except sqlite3.Error:
+                            pass
+                        failure = exc
+                    else:
+                        failure = None
+                    finally:
+                        with self.condition:
+                            self.jobs.pop(task_id, None)
+            if not claimed:
+                # Never sleep while holding a slot needed by an older intent
+                # in another process. Windows mutex reacquisition can starve it.
+                with self.condition:
+                    self.condition.wait(.05)
+                continue
             if failure is not None:
                 future.set_exception(failure)
             else:
