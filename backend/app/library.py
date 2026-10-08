@@ -741,7 +741,8 @@ def _safe_material_filename(filename: str) -> str:
         suffix = ""
     stem = name[:-len(suffix)] if suffix else name
     stem = stem[:180 - len(suffix)]
-    stem = stem.encode("utf-8")[:200 - len(suffix.encode("utf-8"))].decode("utf-8", errors="ignore")
+    from .text_cleanup import truncate_utf8_text
+    stem = truncate_utf8_text(stem, 200 - len(suffix.encode("utf-8")))
     name = (stem.rstrip(" ._") or "material") + suffix
     reserved = {"CON", "PRN", "AUX", "NUL", *(f"COM{index}" for index in range(1, 10)), *(f"LPT{index}" for index in range(1, 10))}
     if Path(name).stem.upper() in reserved:
