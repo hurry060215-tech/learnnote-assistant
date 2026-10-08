@@ -1,9 +1,10 @@
+import { contentScriptSource } from "./content_script_loader.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const manifest = JSON.parse(await readFile(new URL("../manifest.json", import.meta.url), "utf8"));
 const background = await readFile(new URL("../background.js", import.meta.url), "utf8");
-const content = await readFile(new URL("../content.js", import.meta.url), "utf8");
+const content = await contentScriptSource();
 
 assert.equal(
   (manifest.content_scripts || []).length,

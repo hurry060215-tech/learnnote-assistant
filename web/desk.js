@@ -1482,7 +1482,7 @@ async function drawReview() {
     } catch { /* Review remains usable if only the preview request fails. */ }
   }
 }
-async function startReview(courseId = "") {
+async function startReview(courseId = "", taskId = "") {
   $("reviewDialog").showModal();
   $("reviewContent").textContent = "正在读取…";
   try {
@@ -1498,7 +1498,7 @@ async function startReview(courseId = "") {
       return;
     }
     state.cards = (
-      await api(`/api/study/due?course_id=${encodeURIComponent(courseId)}`)
+      await api(`/api/study/due?course_id=${encodeURIComponent(courseId)}&task_id=${encodeURIComponent(taskId)}`)
     ).cards;
     drawReview();
   } catch (error) {

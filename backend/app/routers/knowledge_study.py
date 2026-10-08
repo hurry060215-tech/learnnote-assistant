@@ -295,11 +295,21 @@ def api_study_cards(payload: dict | None = Body(default=None)) -> dict:
     return {"cards": [card.model_dump(mode="json") for card in save_cards(cards)]}
 
 
+def _study_scope_evidence_ids(course_id: str = "", task_id: str = "") -> set[str] | None:
+    ids = course_evidence_ids(course_id) if course_id else None
+    if task_id:
+        get_task(task_id)
+        from ..knowledge import evidence_ids_for_task
+        task_ids = evidence_ids_for_task(task_id)
+        ids = task_ids if ids is None else ids.intersection(task_ids)
+    return ids
+
+
 @study_router.get("/due")
-def api_study_due(limit: int = 50, course_id: str = "") -> dict:
+def api_study_due(limit: int = 50, course_id: str = "", task_id: str = "") -> dict:
     try:
-        ids = course_evidence_ids(course_id) if course_id else None
-        return {"cards": [card.model_dump(mode="json") for card in due_cards(limit, ids)], "course_id": course_id}
+        ids = _study_scope_evidence_ids(course_id, task_id)
+        return {"cards": [card.model_dump(mode="json") for card in due_cards(limit, ids)], "course_id": course_id, "task_id": task_id}
     except (ValueError, OSError) as exc:
         raise HTTPException(status_code=404, detail="课程不可用，请重新选择。") from exc
 
@@ -376,13 +386,14 @@ def api_record_study_activity(payload: dict | None = Body(default=None)) -> dict
 
 
 @study_router.get("/dashboard")
-def api_study_dashboard(limit: int = 12, activity_days: int = 14, course_id: str = "") -> dict:
+def api_study_dashboard(limit: int = 12, activity_days: int = 14, course_id: str = "", task_id: str = "") -> dict:
     try:
-        ids = course_evidence_ids(course_id) if course_id else None
+        ids = _study_scope_evidence_ids(course_id, task_id)
     except (ValueError, OSError) as exc:
         raise HTTPException(status_code=404, detail="课程不可用，请重新选择。") from exc
     result = study_dashboard(limit, activity_days, ids)
     result["course_id"] = course_id
+    result["task_id"] = task_id
     result["activity_scope"] = "all_sources"
     return result
 

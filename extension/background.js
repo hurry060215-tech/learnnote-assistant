@@ -993,6 +993,7 @@ function normalizePageForFrame(page = {}, frameId = 0, tab = {}) {
     page_text: page.page_text || "",
     active_video: page.active_video || null,
     browser_subtitles: normalizeBrowserSubtitles(page.browser_subtitles),
+    chapters: Array.isArray(page.chapters) ? page.chapters.slice(0, 200) : [],
     resources: Array.isArray(page.resources) ? page.resources : [],
     frame_elements: Array.isArray(page.frame_elements) ? page.frame_elements : [],
     drm_detected: Boolean(page.drm_detected),
@@ -1168,6 +1169,7 @@ function mergePageContexts(tab = {}, pages = []) {
     page_text: textParts.join("\n\n--- iframe ---\n\n").slice(0, 60000),
     active_video: activePage?.active_video || null,
     browser_subtitles: browserSubtitles.sort((a, b) => a.start - b.start || a.end - b.end),
+    chapters: activePage?.chapters || top.chapters || [],
     drm_detected: ordered.some(page => page.drm_detected || page.active_video?.drm_detected) || drmSignals.length > 0,
     drm_signals: drmSignals.slice(0, 20),
     resources: ordered.flatMap(page => page.resources || []),
@@ -1621,7 +1623,7 @@ async function collectFramePageData(tab, frameId) {
     try {
       await chrome.scripting.executeScript({
         target: { tabId: tab.id, frameIds: [frameId] },
-        files: ["content.js"]
+        files: ["content-study-evidence.js", "content.js"]
       });
       const response = await chrome.tabs.sendMessage(tab.id, { type: "collect-page-data" }, { frameId });
       const page = rememberFramePage(tab.id, frameId, response, tab);
@@ -2291,6 +2293,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const payload = await postJsonWithRetry(taskEndpoint, {
           handoff_id: String(message.handoffId || message.handoff_id || ""),
           mode: message.mode || "video",
+          learning_range: message.learning_range || {},
           page_url: page.page_url || tab.url,
           title: bestPageTitle(page.title, tab.title),
           page_text: page.page_text || "",

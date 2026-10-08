@@ -123,9 +123,10 @@ if (Test-Any @("extension/sidepanel.js", "extension/sidepanel.css", "extension/s
   }
 }
 
-if (Test-Any @("extension/content.js", "extension/page_hook.js", "extension/tests/content_*.test.mjs", "extension/tests/page_hook_*.test.mjs")) {
+if (Test-Any @("extension/content.js", "extension/content-study-evidence.js", "extension/page_hook.js", "extension/tests/content_*.test.mjs", "extension/tests/page_hook_*.test.mjs")) {
   $ran = $true
   Invoke-Step "Content script syntax" { node --check extension\content.js }
+  Invoke-Step "Study evidence helper syntax" { node --check extension\content-study-evidence.js }
   Invoke-Step "Page hook syntax" { node --check extension\page_hook.js }
   foreach ($test in @(
     Get-ChildItem extension\tests\content_*.test.mjs

@@ -32,6 +32,11 @@ class ExtensionI18nAuditTests(unittest.TestCase):
         path = self.module.ROOT / "extension" / name
         path.write_text(path.read_text(encoding="utf-8") + source, encoding="utf-8")
 
+    def test_extracted_helper_errors_remain_in_locale_audit(self):
+        self.append("content-study-evidence.js", '\nconst example = {error: "New helper failure"};')
+        result = self.module.extension_audit()
+        self.assertTrue(any("content-study-evidence.js" in item for item in result["extension_unlocalized_service_errors"]))
+
     def test_repo_extension_contract_passes(self):
         result = self.module.extension_audit()
         self.assertTrue(result["extension_passed"], result)

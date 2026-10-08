@@ -1,3 +1,4 @@
+import { contentScriptSource } from "./content_script_loader.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import vm from "node:vm";
@@ -218,7 +219,7 @@ context.window.addEventListener = (name, listener) => {
 context.window.postMessage = () => {};
 
 vm.createContext(context);
-const contentCode = await readFile(new URL("../content.js", import.meta.url), "utf8");
+const contentCode = await contentScriptSource();
 vm.runInContext(contentCode, context);
 
 context.__learnNoteHookEventData = {
