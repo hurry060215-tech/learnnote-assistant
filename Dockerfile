@@ -18,7 +18,7 @@ RUN apt-get update \
     && useradd --create-home --uid 10001 learnnote
 
 WORKDIR /app
-COPY backend/requirements.txt backend/requirements.deploy.txt /app/backend/
+COPY backend/requirements.txt backend/requirements.deploy.txt backend/requirements.asr.txt /app/backend/
 RUN python -m pip install --upgrade pip \
     && python -m pip install -r /app/backend/requirements.deploy.txt
 

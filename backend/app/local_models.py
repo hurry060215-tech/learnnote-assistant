@@ -9,7 +9,10 @@ _states = {}
 
 
 def _complete(folder):
-    return all((folder / name).is_file() and (folder / name).stat().st_size > 0 for name in ("config.json", "model.bin", "tokenizer.json"))
+    try:
+        return all((folder / name).is_file() and (folder / name).stat().st_size > 0 for name in ("config.json", "model.bin", "tokenizer.json"))
+    except OSError:
+        return False
 
 
 def _ready(model):
@@ -19,7 +22,10 @@ def _ready(model):
     hub = MODEL_CACHE_DIR / "huggingface" / "hub" / f"models--Systran--faster-whisper-{model}"
     ref = hub / "refs" / "main"
     if ref.is_file():
-        revision = ref.read_text(encoding="utf-8").strip()
+        try:
+            revision = ref.read_text(encoding="utf-8").strip()
+        except (OSError, ValueError):
+            return False
         if re.fullmatch(r"[a-f0-9]{40,64}", revision):
             return _complete(hub / "snapshots" / revision)
     return False
@@ -33,6 +39,8 @@ def model_status(model):
         state = dict(_states.get(model, {}))
     if state.get("status") != "downloading" and ready:
         state = {"status": "ready", "message": "模型文件已就绪；实际转写时会检查能否加载。"}
+    elif not ready and state.get("status") == "ready":
+        state = {"status": "not_downloaded", "message": "模型文件缺失或无法读取，请重新准备本地模型。"}
     return {"model":model, "optional":True, **(state or {"status":"not_downloaded", "message":"尚未准备。已有字幕或使用远程转写时不需要本地模型。"})}
 
 

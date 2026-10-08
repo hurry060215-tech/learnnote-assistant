@@ -19,6 +19,27 @@ from .summarizer import (
 )
 
 
+def pipeline_privacy_status(diagnostics: object) -> dict:
+    """Diagnostic events are not an outbound-request ledger.
+
+    Configuration errors and cache hits can generate events without a call;
+    provider retries and earlier pipeline stages can make additional calls.
+    Preserve the legacy keys as unknown rather than making a privacy claim.
+    """
+    value = diagnostics if isinstance(diagnostics, dict) else {}
+    count = value.get("llm_event_count")
+    if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+        count = None
+    return {
+        "local_only": None,
+        "remote_calls": None,
+        "remote_call_count_available": False,
+        "diagnostic_event_count": count,
+        "scope": "task_network_activity",
+        "message": "诊断事件不等于远程调用次数；当前未记录完整网络调用计数。",
+    }
+
+
 def _warning_field(summary_warning: str, key: str) -> str:
     marker = f"{key}="
     if marker not in (summary_warning or ""):

@@ -733,7 +733,16 @@ def delete_material(material_id: str) -> dict[str, object]:
 def _safe_material_filename(filename: str) -> str:
     name = Path(str(filename or "material")).name
     name = re.sub(r"[<>:\"/\\|?*\x00-\x1f]+", "_", name).strip(" ._")
-    name = (name or "material")[:180]
+    name = name or "material"
+    # Keep the extension and leave room for atomic-write suffixes on
+    # filesystems whose filename limit is measured in UTF-8 bytes.
+    suffix = Path(name).suffix
+    if len(suffix) > 20:
+        suffix = ""
+    stem = name[:-len(suffix)] if suffix else name
+    stem = stem[:180 - len(suffix)]
+    stem = stem.encode("utf-8")[:200 - len(suffix.encode("utf-8"))].decode("utf-8", errors="ignore")
+    name = (stem.rstrip(" ._") or "material") + suffix
     reserved = {"CON", "PRN", "AUX", "NUL", *(f"COM{index}" for index in range(1, 10)), *(f"LPT{index}" for index in range(1, 10))}
     if Path(name).stem.upper() in reserved:
         name = f"_{name}"

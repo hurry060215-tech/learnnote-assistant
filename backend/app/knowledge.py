@@ -399,8 +399,13 @@ def extract_import_text_with_metadata(filename: str, content: bytes, content_typ
     if suffix == ".pdf" or "pdf" in content_type.lower():
         try:
             from pypdf import PdfReader
+        except ImportError as exc:
+            raise ValueError("pdf_text_extraction_unavailable") from exc
 
+        try:
             reader = PdfReader(BytesIO(content))
+            if reader.is_encrypted and not reader.decrypt(""):
+                raise ValueError("pdf_password_required")
             if len(reader.pages) > MAX_IMPORTED_PDF_PAGES:
                 raise ValueError("pdf_page_limit_exceeded")
             pages = []
@@ -432,7 +437,7 @@ def extract_import_text_with_metadata(filename: str, content: bytes, content_typ
         except ValueError:
             raise
         except Exception as exc:
-            raise ValueError("pdf_text_extraction_unavailable") from exc
+            raise ValueError("pdf_file_invalid") from exc
     try:
         decoded_info = decode_text_bytes(
             content,

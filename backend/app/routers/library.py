@@ -104,6 +104,8 @@ async def api_library_material_import(file: UploadFile = File(...), encoding: st
             "material_file_too_large": "学习资料不能超过 32 MB。",
             "material_no_extractable_text": "资料中没有可提取文本；扫描 PDF 需要先完成本地 OCR。",
             "pdf_text_extraction_unavailable": "PDF 文本提取组件不可用，请安装后端完整依赖。",
+            "pdf_password_required": "PDF 需要密码。请先在本机解锁并另存为不加密的副本，再导入。",
+            "pdf_file_invalid": "PDF 文件损坏或无法读取，请重新导出或选择有效的 PDF 文件。",
             "pdf_page_limit_exceeded": "PDF 页数超过 500 页，请拆分后再导入。",
             "extracted_text_too_large": "资料解压后的文本超过 500 万字，请拆分后再导入。",
             "material_anchor_limit_exceeded": "资料章节过多，请拆分为较小文件后导入。",

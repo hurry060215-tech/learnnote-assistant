@@ -37,7 +37,7 @@ class ReleaseTreeAuditTests(unittest.TestCase):
             target.write_text("{}", encoding="utf-8")
 
     def test_clean_runtime_tree_passes(self):
-        with tempfile.TemporaryDirectory(dir=ROOT / "data") as temp_dir:
+        with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             self.populate_extension(root)
             self.populate_legal_files(root)
@@ -46,7 +46,7 @@ class ReleaseTreeAuditTests(unittest.TestCase):
             self.assertTrue(MODULE.audit_release_tree(root)["passed"])
 
     def test_test_and_cache_files_fail(self):
-        with tempfile.TemporaryDirectory(dir=ROOT / "data") as temp_dir:
+        with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             self.populate_extension(root)
             self.populate_legal_files(root)
@@ -59,7 +59,7 @@ class ReleaseTreeAuditTests(unittest.TestCase):
             self.assertEqual(1, len(result["forbidden"]))
 
     def test_missing_release_notes_fail(self):
-        with tempfile.TemporaryDirectory(dir=ROOT / "data") as temp_dir:
+        with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             self.populate_extension(root)
             self.populate_legal_files(root)

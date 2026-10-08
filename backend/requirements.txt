@@ -16,4 +16,4 @@ fsrs==6.3.2
 tzdata>=2025.2
 
 # Installed by start-backend.ps1 -InstallAsr for real local transcription:
-# faster-whisper>=1.1.1
+# python -m pip install -r backend/requirements.asr.txt

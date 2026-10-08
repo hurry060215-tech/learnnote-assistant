@@ -51,14 +51,17 @@ class DesktopLauncherTests(unittest.TestCase):
             "LEARNNOTE_DEPLOYMENT_MODE",
         )}
         try:
-            with tempfile.TemporaryDirectory(dir=ROOT / "data") as temp_dir:
+            with tempfile.TemporaryDirectory() as temp_dir:
                 root = Path(temp_dir)
-                data_dir = desktop.configure_runtime(root, 18766)
-                expected = (root / "data") if os.name == "nt" else desktop.default_data_directory(root)
-                self.assertEqual(expected, data_dir)
-                self.assertEqual(str(data_dir), os.environ["LEARNNOTE_DATA_DIR"])
-                self.assertEqual("http://127.0.0.1:18766", os.environ["LEARNNOTE_BACKEND_ORIGIN"])
-                self.assertEqual("desktop", os.environ["LEARNNOTE_DEPLOYMENT_MODE"])
+                # Tests must not write to the real user profile.
+                with patch("pathlib.Path.home", return_value=root), patch.dict(os.environ, {"XDG_DATA_HOME": str(root / "share")}):
+                    os.environ.pop("LEARNNOTE_DATA_DIR", None)
+                    data_dir = desktop.configure_runtime(root, 18766)
+                    expected = (root / "data") if os.name == "nt" else desktop.default_data_directory(root)
+                    self.assertEqual(expected, data_dir)
+                    self.assertEqual(str(data_dir), os.environ["LEARNNOTE_DATA_DIR"])
+                    self.assertEqual("http://127.0.0.1:18766", os.environ["LEARNNOTE_BACKEND_ORIGIN"])
+                    self.assertEqual("desktop", os.environ["LEARNNOTE_DEPLOYMENT_MODE"])
         finally:
             for key, value in previous.items():
                 if value is None:
@@ -67,7 +70,7 @@ class DesktopLauncherTests(unittest.TestCase):
                     os.environ[key] = value
 
     def test_configure_runtime_uses_saved_custom_data_directory(self):
-        with tempfile.TemporaryDirectory(dir=ROOT / "data") as root_dir, tempfile.TemporaryDirectory(dir=ROOT / "data") as custom_dir:
+        with tempfile.TemporaryDirectory() as root_dir, tempfile.TemporaryDirectory() as custom_dir:
             root = Path(root_dir)
             custom = Path(custom_dir).resolve()
             (root / "learnnote-config.json").write_text(json.dumps({"data_dir": str(custom)}), encoding="utf-8")
@@ -85,7 +88,7 @@ class DesktopLauncherTests(unittest.TestCase):
             def json():
                 return {"tasks": []}
 
-        with tempfile.TemporaryDirectory(dir=ROOT / "data") as root_dir, tempfile.TemporaryDirectory(dir=ROOT / "data") as source_dir, tempfile.TemporaryDirectory(dir=ROOT / "data") as target_dir:
+        with tempfile.TemporaryDirectory() as root_dir, tempfile.TemporaryDirectory() as source_dir, tempfile.TemporaryDirectory() as target_dir:
             root = Path(root_dir)
             source = Path(source_dir)
             target = Path(target_dir)
@@ -113,7 +116,7 @@ class DesktopLauncherTests(unittest.TestCase):
             def json():
                 return {"tasks": [{"id": "active-task", "status": "running"}]}
 
-        with tempfile.TemporaryDirectory(dir=ROOT / "data") as root_dir, tempfile.TemporaryDirectory(dir=ROOT / "data") as source_dir, tempfile.TemporaryDirectory(dir=ROOT / "data") as target_dir:
+        with tempfile.TemporaryDirectory() as root_dir, tempfile.TemporaryDirectory() as source_dir, tempfile.TemporaryDirectory() as target_dir:
             root = Path(root_dir)
             source = Path(source_dir)
             target = Path(target_dir)
@@ -142,7 +145,7 @@ class DesktopLauncherTests(unittest.TestCase):
             self.assertNotIn("LEARNNOTE_LLM_API_KEY", os.environ)
 
     def test_open_model_provider_uses_allowlisted_official_url(self):
-        with tempfile.TemporaryDirectory(dir=ROOT / "data") as temp_dir:
+        with tempfile.TemporaryDirectory() as temp_dir:
             api = desktop.DesktopApi(Path(temp_dir))
             with patch.object(desktop.webbrowser, "open") as open_url:
                 result = api.open_model_provider("kimi")
@@ -151,7 +154,7 @@ class DesktopLauncherTests(unittest.TestCase):
             open_url.assert_called_once_with(result["url"])
 
     def test_open_model_provider_rejects_arbitrary_url_or_provider(self):
-        with tempfile.TemporaryDirectory(dir=ROOT / "data") as temp_dir:
+        with tempfile.TemporaryDirectory() as temp_dir:
             api = desktop.DesktopApi(Path(temp_dir))
             with patch.object(desktop.webbrowser, "open") as open_url:
                 with self.assertRaises(ValueError):
@@ -167,7 +170,7 @@ class DesktopLauncherTests(unittest.TestCase):
         self.assertIn("--remote-debugging-port=19223", debug_arguments)
 
     def test_setup_browser_extension_opens_management_page_and_exact_folder(self):
-        with tempfile.TemporaryDirectory(dir=ROOT / "data") as temp_dir:
+        with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             extension = root / "extension"
             extension.mkdir()
@@ -199,7 +202,7 @@ class DesktopLauncherTests(unittest.TestCase):
                 self.assertEqual(str(extension.resolve()), calls[1].args[0][1])
 
     def test_webview_profile_stays_under_data_directory(self):
-        with tempfile.TemporaryDirectory(dir=ROOT / "data") as temp_dir:
+        with tempfile.TemporaryDirectory() as temp_dir:
             data_dir = Path(temp_dir).resolve()
             profile = desktop.webview_storage_path(data_dir)
             self.assertEqual(data_dir / "webview-profile", profile)
@@ -239,7 +242,7 @@ class DesktopLauncherTests(unittest.TestCase):
                 self.chunk_size = chunk_size
                 return iter((b"# Course\n", b"notes\n"))
 
-        with tempfile.TemporaryDirectory(dir=ROOT / "data") as temp_dir:
+        with tempfile.TemporaryDirectory() as temp_dir:
             api = desktop.DesktopApi(Path(temp_dir), "http://127.0.0.1:18766")
             with patch.object(desktop.requests, "get", return_value=Response()) as request:
                 result = api.export_task("abcdef123456", "markdown")
@@ -256,7 +259,7 @@ class DesktopLauncherTests(unittest.TestCase):
     def test_native_export_rejects_unknown_task_or_type(self):
         self.assertEqual(desktop.DesktopApi.EXPORT_TYPES["docx"], ".docx")
         self.assertEqual(desktop.DesktopApi.EXPORT_TYPES["pdf"], ".pdf")
-        with tempfile.TemporaryDirectory(dir=ROOT / "data") as temp_dir:
+        with tempfile.TemporaryDirectory() as temp_dir:
             api = desktop.DesktopApi(Path(temp_dir), "http://127.0.0.1:18766")
             with self.assertRaises(ValueError):
                 api.export_task("../secrets", "markdown")
@@ -285,7 +288,7 @@ class DesktopLauncherTests(unittest.TestCase):
                     }],
                 }
 
-        with tempfile.TemporaryDirectory(dir=ROOT / "data") as temp_dir:
+        with tempfile.TemporaryDirectory() as temp_dir:
             api = desktop.DesktopApi(Path(temp_dir))
             with patch.object(desktop.requests, "get", return_value=Response()):
                 result = api.check_update()
@@ -312,7 +315,7 @@ class DesktopLauncherTests(unittest.TestCase):
                 self.chunk_size = chunk_size
                 return iter((content[:10], content[10:]))
 
-        with tempfile.TemporaryDirectory(dir=ROOT / "data") as temp_dir:
+        with tempfile.TemporaryDirectory() as temp_dir:
             api = desktop.DesktopApi(Path(temp_dir))
             with patch.object(desktop.requests, "get", return_value=Response()):
                 result = api.download_update("9.8.7", installer_url, checksum)
@@ -337,7 +340,7 @@ class DesktopLauncherTests(unittest.TestCase):
             def iter_content(self, chunk_size):
                 return iter((content[:8], content[8:]))
 
-        with tempfile.TemporaryDirectory(dir=ROOT / "data") as temp_dir:
+        with tempfile.TemporaryDirectory() as temp_dir:
             api = desktop.DesktopApi(Path(temp_dir))
             with patch.object(desktop.requests, "get", return_value=Response()):
                 accepted = api.start_update_download("9.8.7", installer_url, checksum)
@@ -368,7 +371,7 @@ class DesktopLauncherTests(unittest.TestCase):
             def iter_content(self, chunk_size):
                 return iter((content,))
 
-        with tempfile.TemporaryDirectory(dir=ROOT / "data") as temp_dir:
+        with tempfile.TemporaryDirectory() as temp_dir:
             api = desktop.DesktopApi(Path(temp_dir))
             with patch.object(desktop.requests, "get", return_value=Response()):
                 result = api.download_extension_update("9.8.7", extension_url, checksum)
@@ -400,7 +403,7 @@ class DesktopLauncherTests(unittest.TestCase):
             def iter_content(self, chunk_size):
                 return iter((content,))
 
-        with tempfile.TemporaryDirectory(dir=ROOT / "data") as temp_dir:
+        with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             data_dir = root / "data"
             target = root / "extension"
@@ -439,7 +442,7 @@ class DesktopLauncherTests(unittest.TestCase):
             def raise_for_status(self):
                 return None
 
-        with tempfile.TemporaryDirectory(dir=ROOT / "data") as temp_dir:
+        with tempfile.TemporaryDirectory() as temp_dir:
             api = desktop.DesktopApi(Path(temp_dir))
             with patch.object(
                 desktop.requests,
@@ -452,7 +455,7 @@ class DesktopLauncherTests(unittest.TestCase):
         self.assertEqual(checksum, result["installer_sha256"])
 
     def test_update_rejects_untrusted_url_and_arbitrary_installer_path(self):
-        with tempfile.TemporaryDirectory(dir=ROOT / "data") as temp_dir:
+        with tempfile.TemporaryDirectory() as temp_dir:
             api = desktop.DesktopApi(Path(temp_dir))
             with self.assertRaises(ValueError):
                 api.download_update("9.8.7", "https://example.com/LearnNote-Setup-x64.exe", "a" * 64)
@@ -462,7 +465,7 @@ class DesktopLauncherTests(unittest.TestCase):
                 api.install_update("9.8.7", str(unrelated))
 
     def test_release_notes_are_bundled_and_seen_state_stays_in_data_directory(self):
-        with tempfile.TemporaryDirectory(dir=ROOT / "data") as temp_dir:
+        with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             notes_dir = root / "web"
             notes_dir.mkdir()
@@ -490,7 +493,7 @@ class DesktopLauncherTests(unittest.TestCase):
             def destroy(self):
                 return None
 
-        with tempfile.TemporaryDirectory(dir=ROOT / "data") as temp_dir:
+        with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             data_dir = root / "data"
             installer = data_dir / "installers" / "v9.8.7" / "LearnNote-Setup-x64.exe"
