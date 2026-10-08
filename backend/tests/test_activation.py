@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
 import json
 from pathlib import Path
 import sqlite3
@@ -49,14 +50,15 @@ class ActivationTests(unittest.TestCase):
 
     def test_thirty_day_retention_expires_facts(self):
         activation.record(self.root, "first_task_succeeded")
-        with sqlite3.connect(self.root / "activation.sqlite3") as db:
+        with closing(sqlite3.connect(self.root / "activation.sqlite3")) as db:
             db.execute("UPDATE facts SET recorded=?", (time.time() - 31 * 86400,))
+            db.commit()
         self.assertFalse(activation.snapshot(self.root)["fields"]["first_task_succeeded"])
 
     def test_concurrent_records_are_idempotent(self):
         with ThreadPoolExecutor(max_workers=5) as pool:
             list(pool.map(lambda _: activation.record(self.root, "first_task_started"), range(20)))
-        with sqlite3.connect(self.root / "activation.sqlite3") as db:
+        with closing(sqlite3.connect(self.root / "activation.sqlite3")) as db:
             self.assertEqual(db.execute("SELECT COUNT(*) FROM facts").fetchone()[0], 2)
 
     def test_full_disk_diagnostics_do_not_break_processing(self):
