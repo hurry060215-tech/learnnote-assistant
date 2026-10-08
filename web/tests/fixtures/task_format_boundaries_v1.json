@@ -1,0 +1,58 @@
+{
+  "baseline_commit": "01e10aa99ce56e6b769a95f992efd4e9bcd6f5e0",
+  "result": {
+    "escaped": "&lt;script title=&quot;x&quot;&gt;A&amp;B&lt;/script&gt;",
+    "clocks": [
+      "00:00:00",
+      "00:00:00",
+      "00:00:01",
+      "00:59:59",
+      "01:00:00",
+      "24:00:01"
+    ],
+    "seek": [
+      "0.000",
+      "0.000",
+      "1.235"
+    ],
+    "button": "<button type=\"button\" class=\"time-seek&quot; onclick=&quot;bad\" data-media-seek-time=\"65.125\" title=\"跳到 00:01:05\"><time>00:01:05</time></button>",
+    "bytes": [
+      "",
+      "1 B",
+      "1.0 KB",
+      "1.0 MB",
+      "1.0 GB"
+    ],
+    "compact": "https://example.test/longlongl...onglonglonglonglonglonglonglonglonglong",
+    "titles": [
+      true,
+      true,
+      false,
+      true,
+      false
+    ],
+    "disposition": "课程.mp4",
+    "headers": "Accept, Range",
+    "body": "POST form body 已捕获",
+    "semver": [
+      true,
+      false,
+      false
+    ],
+    "sources": [
+      "直取 · HLS",
+      "直取 · DASH",
+      "直取 · 字幕",
+      "直取 · unexpected"
+    ],
+    "active": "播放中 · 00:01:05 / 00:02:00 · 1920x1080 · frame 0 · blob:https://example.test/fixture",
+    "playback": [
+      "当前 src",
+      "Blob/MSE 来源映射",
+      "播放进度附近 Range 请求",
+      "unknown"
+    ],
+    "diagnostic": "已使用文本 LLM · 模型 fixture-model · 视觉窗口 3 · 画面网格 2 · 送入视觉 0/2 · 缺图 W001 · 视觉批次失败 1",
+    "options": "30 秒切片 · OpenAI-compatible ASR · small · 未开启视觉理解"
+  }
+}

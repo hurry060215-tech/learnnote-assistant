@@ -78,7 +78,7 @@ def audit_release_tree(root: Path) -> dict:
     root_files = {path.name for path in root.iterdir() if path.is_file()}
     missing_root = sorted(REQUIRED_ROOT_FILES - root_files)
     missing_bundled = sorted(path.as_posix() for path in REQUIRED_BUNDLED_FILES if not (root / path).is_file())
-    legacy_ui = [str(path.relative_to(root)) for path in files if path.parent == root / "_internal/web" and path.name in {'model-setup.js', 'experience.css', 'editorial.js', 'product.css', 'app.js', 'personal-notes.js', 'learning.js', 'styles.css', 'courses.js', 'workspace.css', 'editorial.css', 'i18n.js', 'task-links.js', 'classic.html', 'mature.css'}]
+    legacy_ui = [str(path.relative_to(root)) for path in files if path.parent == root / "_internal/web" and path.name in {'model-setup.js', 'experience.css', 'editorial.js', 'product.css', 'app.js', 'personal-notes.js', 'learning.js', 'styles.css', 'courses.js', 'workspace.css', 'editorial.css', 'i18n.js', 'task-links.js', 'task-format.js', 'task-display.js', 'classic.html', 'mature.css'}]
     license_errors: list[str] = []
     ffmpeg_builds: list[dict] = []
     for executable in files:

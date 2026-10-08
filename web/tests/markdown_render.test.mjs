@@ -197,6 +197,8 @@ assert.doesNotMatch(matureCss, /body\[data-app-view="notes"\]\s+\.task-controls\
 assert.match(matureCss, /body\[data-app-view="notes"\]\s+\.task-controls\s*\{[^}]*display:\s*flex\s*!important/);
 assert.match(webCode, /task\.awaiting_confirmation\s*\?\s*"放弃并删除"\s*:\s*"删除"/);
 vm.runInContext(markdownCode, context);
+vm.runInContext(await readFile(new URL("../task-format.js", import.meta.url), "utf8"), context);
+vm.runInContext(await readFile(new URL("../task-display.js", import.meta.url), "utf8"), context);
 vm.runInContext(webCode, context);
 vm.runInContext(editorialCode, context);
 
