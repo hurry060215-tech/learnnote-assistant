@@ -2,6 +2,8 @@ name: Platform contracts
 
 on:
   push:
+    branches: [main]
+    tags: ["v*"]
     paths:
       - "backend/app/**"
       - "docs/PLATFORM_SUPPORT.md"
