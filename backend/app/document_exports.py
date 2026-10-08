@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import hashlib
 import ipaddress
 import base64
 import mimetypes
@@ -49,6 +50,7 @@ class _Block:
     kind: str
     text: str
     level: int = 0
+    ordinal: int = 0
 
 
 def _image_line(line: str) -> str | None:
@@ -140,6 +142,15 @@ DEFAULT_EXPORT_OPTIONS = {
 }
 
 
+
+EXPORT_TEMPLATES = {
+    "print": {},
+    "academic": {"font_size": 11, "line_height": 1.8, "margin_top": 25,
+                 "margin_bottom": 25, "margin_left": 25, "margin_right": 25, "include_toc": True},
+    "compact": {"font_size": 9.5, "line_height": 1.25, "paragraph_after": 4,
+                "margin_top": 12, "margin_bottom": 12, "margin_left": 12, "margin_right": 12},
+}
+
 def available_export_fonts() -> list[dict[str, object]]:
     """Report selectable fonts and whether the local generators can embed them."""
 
@@ -166,7 +177,10 @@ def _font_available(name: str) -> bool:
 def normalize_export_options(value: dict | None = None) -> dict:
     """Normalize the shared export contract without trusting client values."""
     incoming = value if isinstance(value, dict) else {}
-    result = dict(DEFAULT_EXPORT_OPTIONS)
+    template = str(incoming.get("template") or "print")
+    if template not in EXPORT_TEMPLATES:
+        template = "print"
+    result = {**DEFAULT_EXPORT_OPTIONS, **EXPORT_TEMPLATES[template], "template": template}
     for key in ("include_note", "include_annotations", "include_source_link", "include_timestamps", "include_images", "include_toc", "include_transcript", "include_practice"):
         if key in incoming:
             result[key] = bool(incoming[key])
@@ -292,7 +306,14 @@ def _blocks(markdown: str) -> list[_Block]:
 
     def flush_paragraph() -> None:
         if paragraph:
-            result.append(_Block("paragraph", " ".join(item.strip() for item in paragraph if item.strip())))
+            text = ""
+            for index, item in enumerate(paragraph):
+                hard_break = item.endswith("  ") or item.endswith("\\")
+                value = item[:-1] if item.endswith("\\") else item
+                text += value.strip()
+                if index < len(paragraph) - 1:
+                    text += "\n" if hard_break else " "
+            result.append(_Block("paragraph", text))
             paragraph.clear()
 
     def flush_code() -> None:
@@ -358,6 +379,10 @@ def _blocks(markdown: str) -> list[_Block]:
             flush_paragraph()
             result.append(_Block("heading", heading[1], heading[0]))
             continue
+        if line.lstrip().startswith(">"):
+            flush_paragraph()
+            result.append(_Block("quote", line.lstrip()[1:].lstrip()))
+            continue
         bullet = _bullet_line(line)
         if bullet is not None:
             flush_paragraph()
@@ -366,7 +391,7 @@ def _blocks(markdown: str) -> list[_Block]:
         ordered = _ordered_line(line)
         if ordered is not None:
             flush_paragraph()
-            result.append(_Block("ordered", ordered))
+            result.append(_Block("ordered", ordered, ordinal=int(re.match(r"\s*(\d+)", line).group(1))))
             continue
         paragraph.append(line)
     flush_paragraph()
@@ -378,7 +403,39 @@ def _blocks(markdown: str) -> list[_Block]:
 def _table_rows(text: str) -> list[list[str]]:
     rows = []
     for line in text.splitlines():
-        cells = [cell.strip().replace("\\|", "|") for cell in re.split(r"(?<!\\)\|", line.strip().strip("|"))]
+        value = line.strip()
+        cells, cell = [], []
+        code_delimiter = 0
+        index = 0
+        while index < len(value):
+            character = value[index]
+            if character == "\\" and index + 1 < len(value) and value[index + 1] in "|\\":
+                cell.append(value[index + 1])
+                index += 2
+                continue
+            if character == "`":
+                end = index + 1
+                while end < len(value) and value[end] == "`":
+                    end += 1
+                count = end - index
+                if not code_delimiter:
+                    code_delimiter = count
+                elif count == code_delimiter:
+                    code_delimiter = 0
+                cell.append(value[index:end])
+                index = end
+                continue
+            if character == "|" and not code_delimiter:
+                cells.append("".join(cell).strip())
+                cell = []
+            else:
+                cell.append(character)
+            index += 1
+        cells.append("".join(cell).strip())
+        if value.startswith("|") and cells and cells[0] == "":
+            cells.pop(0)
+        if value.endswith("|") and cells and cells[-1] == "":
+            cells.pop()
         if cells and all(re.fullmatch(r":?-{3,}:?", cell) for cell in cells):
             continue
         rows.append(cells)
@@ -528,17 +585,84 @@ def _content_blocks(markdown: str, title: str) -> list[_Block]:
         block.kind == "heading" and block.level == 1 and normalize(block.text) == normalize(title))]
 
 
+
+def _heading_anchors(blocks: list[_Block]) -> dict[int, str]:
+    occurrences: dict[str, int] = {}
+    anchors = {}
+    for index, block in enumerate(blocks):
+        if block.kind == "heading":
+            base = section_anchor_id(block.text)
+            occurrences[base] = occurrences.get(base, 0) + 1
+            anchors[index] = section_anchor_id(block.text, occurrences[base])
+    return anchors
+
+
+def _word_bookmark_name(anchor: str) -> str:
+    # Word bookmark names must begin with a letter and fit in 40 characters.
+    return "ln_" + hashlib.sha256(anchor.encode("utf-8")).hexdigest()[:32]
+
+
+def _wrap_pdf_code(text: str, font_name: str, font_size: float, width: float) -> str:
+    """Wrap code for the physical frame width, including wide CJK characters."""
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+    lines = []
+    for line in text.expandtabs(4).split("\n"):
+        if not line:
+            lines.append("")
+            continue
+        while line:
+            low, high = 1, len(line)
+            while low < high:
+                middle = (low + high + 1) // 2
+                if stringWidth(line[:middle], font_name, font_size) <= width:
+                    low = middle
+                else:
+                    high = middle - 1
+            lines.append(line[:low])
+            line = line[low:]
+    return "\n".join(lines)
+
+
+def _docx_numbering_sequence(document, start: int) -> int:
+    """Create an editable decimal list with the source's starting ordinal."""
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+    numbering = document.part.numbering_part.element
+    abstract_id = max([int(node.get(qn("w:abstractNumId"))) for node in numbering.findall(qn("w:abstractNum"))] or [-1]) + 1
+    num_id = max([int(node.get(qn("w:numId"))) for node in numbering.findall(qn("w:num"))] or [0]) + 1
+    abstract = OxmlElement("w:abstractNum")
+    abstract.set(qn("w:abstractNumId"), str(abstract_id))
+    level = OxmlElement("w:lvl")
+    level.set(qn("w:ilvl"), "0")
+    for tag, value in (("start", str(start)), ("numFmt", "decimal"), ("lvlText", "%1."), ("lvlJc", "left")):
+        item = OxmlElement(f"w:{tag}")
+        item.set(qn("w:val"), value)
+        level.append(item)
+    abstract.append(level)
+    first_num = numbering.find(qn("w:num"))
+    numbering.insert(list(numbering).index(first_num) if first_num is not None else len(numbering), abstract)
+    num = OxmlElement("w:num")
+    num.set(qn("w:numId"), str(num_id))
+    abstract_reference = OxmlElement("w:abstractNumId")
+    abstract_reference.set(qn("w:val"), str(abstract_id))
+    num.append(abstract_reference)
+    numbering.append(num)
+    return num_id
+
 def _add_docx_hyperlink(paragraph, text: str, url: str) -> None:
     from docx.oxml import OxmlElement
     from docx.oxml.ns import qn
 
-    relation_id = paragraph.part.relate_to(
-        url,
-        "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink",
-        is_external=True,
-    )
     hyperlink = OxmlElement("w:hyperlink")
-    hyperlink.set(qn("r:id"), relation_id)
+    if url.startswith("#"):
+        hyperlink.set(qn("w:anchor"), url[1:])
+    else:
+        relation_id = paragraph.part.relate_to(
+            url,
+            "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink",
+            is_external=True,
+        )
+        hyperlink.set(qn("r:id"), relation_id)
     run = OxmlElement("w:r")
     properties = OxmlElement("w:rPr")
     color = OxmlElement("w:color")
@@ -624,11 +748,12 @@ def build_docx_export(
         transcript,
         annotations=annotations,
         practice=practice,
-        options=settings,
+        options={**settings, "include_toc": False},
     )
     note = structured["markdown"]
     document = Document()
     section = document.sections[0]
+    section.page_width, section.page_height = Cm(21), Cm(29.7)
     section.top_margin = Cm(settings["margin_top"] / 10)
     section.bottom_margin = Cm(settings["margin_bottom"] / 10)
     section.left_margin = Cm(settings["margin_left"] / 10)
@@ -640,13 +765,13 @@ def build_docx_export(
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     footer = section.footer.paragraphs[0]
     footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    footer.add_run("LearnNote · ")
+    footer.add_run("LearnNote | ")
 
-    def add_word_field(paragraph, instruction: str) -> None:
+    def add_word_field(paragraph, instruction: str, cached: str = "1") -> None:
         begin = OxmlElement("w:fldChar"); begin.set(qn("w:fldCharType"), "begin")
         command = OxmlElement("w:instrText"); command.set(qn("xml:space"), "preserve"); command.text = f" {instruction} "
         separate = OxmlElement("w:fldChar"); separate.set(qn("w:fldCharType"), "separate")
-        value = OxmlElement("w:t"); value.text = "1"
+        value = OxmlElement("w:t"); value.text = cached
         end = OxmlElement("w:fldChar"); end.set(qn("w:fldCharType"), "end")
         run = OxmlElement("w:r")
         for item in (begin, command, separate, value, end):
@@ -662,6 +787,7 @@ def build_docx_export(
     normal.paragraph_format.space_before = Pt(settings["paragraph_before"])
     normal.paragraph_format.space_after = Pt(settings["paragraph_after"])
     normal.paragraph_format.line_spacing = settings["line_height"]
+    normal.paragraph_format.widow_control = True
     normal._element.rPr.rFonts.set(qn("w:eastAsia"), settings["font_family"])
     normal._element.rPr.rFonts.set(qn("w:ascii"), settings["font_family"])
     normal._element.rPr.rFonts.set(qn("w:hAnsi"), settings["font_family"])
@@ -696,7 +822,39 @@ def build_docx_export(
         source_line = locals().get("source_line") or document.add_paragraph()
         source_line.add_run(f"\n可追溯字幕片段：{len(segments)} 段")
 
-    for block in _content_blocks(note, raw_title):
+    blocks = _content_blocks(note, raw_title)
+    heading_anchors = _heading_anchors(blocks)
+    if settings["include_toc"] and heading_anchors:
+        document.add_paragraph("目录", style="TOC Heading")
+        document.add_paragraph("页码由 Word/WPS 排版后更新目录生成。")
+        toc_paragraph = document.add_paragraph()
+        begin = OxmlElement("w:fldChar"); begin.set(qn("w:fldCharType"), "begin")
+        command = OxmlElement("w:instrText"); command.set(qn("xml:space"), "preserve")
+        command.text = ' TOC \\o "1-3" \\h \\z \\u '
+        separate = OxmlElement("w:fldChar"); separate.set(qn("w:fldCharType"), "separate")
+        run = OxmlElement("w:r")
+        for item in (begin, command, separate):
+            run.append(item)
+        toc_paragraph._p.append(run)
+        # A useful linked cached result remains visible in viewers which do
+        # not update TOC fields, without inventing pagination for another host.
+        entries = [(index, block) for index, block in enumerate(blocks) if block.kind == "heading" and block.level <= 3]
+        for entry_index, (index, block) in enumerate(entries):
+            if entry_index:
+                toc_paragraph.add_run().add_break()
+            _add_docx_hyperlink(toc_paragraph, _sanitize_export_text(_clean_inline_markdown(block.text)),
+                "#" + _word_bookmark_name(heading_anchors[index]))
+        end_run = OxmlElement("w:r")
+        end = OxmlElement("w:fldChar"); end.set(qn("w:fldCharType"), "end")
+        end_run.append(end)
+        toc_paragraph._p.append(end_run)
+        update_fields = OxmlElement("w:updateFields")
+        update_fields.set(qn("w:val"), "true")
+        document.settings.element.append(update_fields)
+
+    sequence_id = None
+    previous_ordinal = None
+    for block_index, block in enumerate(blocks):
         if block.kind == "table":
             rows = _table_rows(block.text)
             if not rows:
@@ -718,18 +876,40 @@ def build_docx_export(
                 from PIL import Image
                 with Image.open(path) as image:
                     width, height = image.size
-                scale = min(16 / max(1, width), 18 / max(1, height))
-                document.add_picture(str(path), width=Cm(width * scale), height=Cm(height * scale))
+                available_width = (section.page_width - section.left_margin - section.right_margin) / Cm(1)
+                available_height = (section.page_height - section.top_margin - section.bottom_margin) / Cm(1) - 2
+                scale = min(available_width / max(1, width), available_height / max(1, height))
+                picture = document.add_picture(str(path), width=Cm(width * scale), height=Cm(height * scale))
+                document.paragraphs[-1].paragraph_format.keep_with_next = True
+                picture._inline.docPr.set("descr", caption or "画面出处；请回原资料核对")
                 caption_paragraph = document.add_paragraph()
-                _add_docx_text(caption_paragraph, caption or "画面出处；请回原资料核对")
+                caption_text = caption or "画面出处；请回原资料核对"
+                _add_docx_inline(caption_paragraph, _linkify_video_timestamps(caption_text, source_url) if source_url else caption_text)
         elif block.kind == "heading":
             paragraph = document.add_heading(level=max(1, min(block.level, 3)))
             _add_docx_inline(paragraph, block.text)
+            bookmark = OxmlElement("w:bookmarkStart")
+            bookmark.set(qn("w:id"), str(block_index + 1))
+            bookmark.set(qn("w:name"), _word_bookmark_name(heading_anchors[block_index]))
+            end = OxmlElement("w:bookmarkEnd")
+            end.set(qn("w:id"), str(block_index + 1))
+            paragraph._p.insert(0, bookmark)
+            paragraph._p.append(end)
         elif block.kind == "bullet":
             paragraph = document.add_paragraph(style="List Bullet")
             _add_docx_inline(paragraph, block.text)
         elif block.kind == "ordered":
             paragraph = document.add_paragraph(style="List Number")
+            if (block_index == 0 or blocks[block_index - 1].kind != "ordered"
+                    or block.ordinal != previous_ordinal + 1):
+                sequence_id = _docx_numbering_sequence(document, block.ordinal)
+            numbering = paragraph._p.get_or_add_pPr().get_or_add_numPr()
+            numbering.get_or_add_ilvl().val = 0
+            numbering.get_or_add_numId().val = sequence_id
+            previous_ordinal = block.ordinal
+            _add_docx_inline(paragraph, block.text)
+        elif block.kind == "quote":
+            paragraph = document.add_paragraph(style="Quote")
             _add_docx_inline(paragraph, block.text)
         elif block.kind == "code":
             paragraph = document.add_paragraph()
@@ -746,6 +926,8 @@ def build_docx_export(
     buffer = BytesIO()
     document.save(buffer)
     warnings = [] if _font_available(settings["font_family"]) else ["requested_docx_font_unavailable_using_host_fallback"]
+    if settings["include_toc"] and heading_anchors:
+        warnings.append("docx_toc_page_numbers_require_field_update")
     if _NON_BMP_RE.search(note + raw_title) and not _font_available("Segoe UI Emoji"):
         warnings.append("emoji_font_unavailable_using_host_fallback")
     return DocumentExport(
@@ -809,27 +991,48 @@ def _pdf_compatible_text(value: str) -> str:
     return "".join(pieces)
 
 
-def _pdf_inline(value: str) -> str:
+
+def _pdf_escape_text(value: str) -> str:
+    # The portable STSong CID fallback lacks some Latin-1 glyphs (for example
+    # superscript two). The built-in Helvetica font reliably covers that set.
+    return "".join(
+        f'<font name="Helvetica">{html.escape(part)}</font>'
+        if part and all(0xA0 <= ord(character) <= 0xFF for character in part)
+        else html.escape(part)
+        for part in re.split(r"([\u00a0-\u00ff]+)", str(value or ""))
+    )
+
+def _pdf_inline(value: str, *, pdf_safe: bool = True) -> str:
+    compatible = _pdf_compatible_text if pdf_safe else str
+    escape_text = _pdf_escape_text if pdf_safe else html.escape
     source = str(value or "")
     parts: list[str] = []
     cursor = 0
     token_re = re.compile(r"\[([^\]]+)\]\(([^)]+)\)|\*\*([^*]+)\*\*|__([^_]+)__|`([^`]+)`")
     for match in token_re.finditer(source):
-        parts.append(html.escape(_pdf_compatible_text(_sanitize_export_text(source[cursor:match.start()]))))
+        parts.append(escape_text(compatible(_sanitize_export_text(source[cursor:match.start()]))))
         if match.group(1) is not None:
             label, raw_url = match.group(1), match.group(2)
             url = _safe_hyperlink(raw_url)
             if url:
-                display_label = url if "://" in label else _pdf_compatible_text(_sanitize_export_text(label))
-                parts.append(f'<a href="{html.escape(url, quote=True)}" color="#0f766e"><u>{html.escape(display_label)}</u></a>')
+                display_label = url if "://" in label else compatible(_sanitize_export_text(label))
+                parts.append(f'<a href="{html.escape(url, quote=True)}" color="#0f766e"><u>{escape_text(display_label)}</u></a>')
             else:
-                parts.append(html.escape(f"{_pdf_compatible_text(_sanitize_export_text(label))}（链接已移除）"))
+                parts.append(escape_text(f"{compatible(_sanitize_export_text(label))}（链接已移除）"))
         elif match.group(3) is not None or match.group(4) is not None:
-            parts.append(f"<strong>{html.escape(_pdf_compatible_text(_sanitize_export_text(match.group(3) or match.group(4))))}</strong>")
+            parts.append(f"<strong>{escape_text(compatible(_sanitize_export_text(match.group(3) or match.group(4))))}</strong>")
         else:
-            parts.append(f'<font name="Courier">{html.escape(_pdf_compatible_text(_sanitize_export_text(match.group(5) or "")))}</font>')
+            code_text = compatible(_sanitize_export_text(match.group(5) or ""))
+            escaped = escape_text(code_text)
+            if not pdf_safe:
+                parts.append(f"<code>{escaped}</code>")
+            elif code_text.isascii():
+                parts.append(f'<font name="Courier">{escaped}</font>')
+            else:
+                # Courier cannot render CJK. Inherit the selected CJK font.
+                parts.append(escaped)
         cursor = match.end()
-    parts.append(html.escape(_pdf_compatible_text(_sanitize_export_text(source[cursor:]))))
+    parts.append(escape_text(compatible(_sanitize_export_text(source[cursor:]))))
     return "".join(parts)
 
 
@@ -848,7 +1051,7 @@ def build_pdf_export(
         from reportlab.lib.pagesizes import A4
         from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
         from reportlab.lib.units import mm
-        from reportlab.platypus import Paragraph, Preformatted, SimpleDocTemplate, Spacer, LongTable, TableStyle, Image as PdfImage
+        from reportlab.platypus import Paragraph, XPreformatted, SimpleDocTemplate, Spacer, LongTable, TableStyle, Image as PdfImage
     except ImportError as exc:
         raise DocumentExportUnavailable("pdf_export_dependency_missing") from exc
 
@@ -859,7 +1062,7 @@ def build_pdf_export(
         transcript,
         annotations=annotations,
         practice=practice,
-        options=settings,
+        options={**settings, "include_toc": False},
     )
     note = structured["markdown"]
     font_name, warnings = _pdf_font(settings["font_family"])
@@ -870,7 +1073,15 @@ def build_pdf_export(
         warnings.append("non_bmp_symbols_rendered_as_unicode_names")
     buffer = BytesIO()
     from reportlab.lib.pagesizes import landscape
-    document = SimpleDocTemplate(
+    class EvidenceDocTemplate(SimpleDocTemplate):
+        def afterFlowable(self, flowable):
+            heading = getattr(flowable, "learnnote_heading", None)
+            if heading:
+                level, label, anchor = heading
+                self.canv.bookmarkPage(anchor)
+                self.notify("TOCEntry", (level, label, self.page, anchor))
+
+    document = EvidenceDocTemplate(
         buffer,
         pagesize=landscape(A4) if settings["orientation"] == "landscape" else A4,
         rightMargin=settings["margin_right"] * mm,
@@ -911,7 +1122,7 @@ def build_pdf_export(
     code = ParagraphStyle("LearnNoteCode", parent=body, fontName=font_name, fontSize=8.5, leading=12, backColor=colors.HexColor("#F2F6F5"), borderPadding=7)
     bullet = ParagraphStyle("LearnNoteBullet", parent=body, leftIndent=10, firstLineIndent=-8, bulletIndent=0)
 
-    story = [Paragraph(html.escape(safe_title), title_style)]
+    story = [Paragraph(_pdf_escape_text(safe_title), title_style)]
     source_url = structured["source"]["url"]
     source = f'<a href="{html.escape(source_url, quote=True)}" color="#0f766e">{html.escape(source_url)}</a>' if source_url else "本地资料"
     segments = (transcript or {}).get("segments") if isinstance(transcript, dict) else []
@@ -924,7 +1135,17 @@ def build_pdf_export(
             meta_parts.append(f"可追溯字幕片段：{len(segments)} 段")
     if meta_parts:
         story.extend((Paragraph("<br/>".join(meta_parts), meta), Spacer(1, 5 * mm)))
-    for block in _content_blocks(note, raw_title):
+    blocks = _content_blocks(note, raw_title)
+    heading_anchors = _heading_anchors(blocks)
+    if settings["include_toc"] and heading_anchors:
+        from reportlab.platypus.tableofcontents import TableOfContents
+        toc = TableOfContents()
+        toc.levelStyles = [ParagraphStyle(f"LearnNoteTOC{level}", parent=body,
+            leftIndent=level * 12, firstLineIndent=0, spaceBefore=3, spaceAfter=3)
+            for level in range(3)]
+        toc_heading = ParagraphStyle("LearnNoteTOCHeading", parent=heading_styles[2], keepWithNext=False)
+        story.extend([Paragraph("目录", toc_heading), toc, Spacer(1, 8 * mm)])
+    for block_index, block in enumerate(blocks):
         if block.kind == "table":
             rows = [[Paragraph(_pdf_inline(cell), body) for cell in row] for row in _table_rows(block.text)]
             if not rows:
@@ -937,20 +1158,32 @@ def build_pdf_export(
             path, caption = _task_image(task, block.text)
             if path:
                 image = PdfImage(str(path))
-                scale = min(document.width / image.imageWidth, 180 * mm / image.imageHeight)
+                scale = min(document.width / image.imageWidth, max(1, document.height - 25 * mm) / image.imageHeight)
                 image.drawWidth, image.drawHeight = image.imageWidth * scale, image.imageHeight * scale
                 story.append(image)
-            story.append(Paragraph(html.escape(_pdf_compatible_text(_sanitize_export_text(caption or "画面出处；请回原资料核对"))), meta))
+            caption_text = caption or "画面出处；请回原资料核对"
+            story.append(Paragraph(_pdf_inline(_linkify_video_timestamps(caption_text, source_url) if source_url else caption_text), meta))
         elif block.kind == "heading":
-            story.append(Paragraph(_pdf_inline(block.text), heading_styles[max(1, min(block.level, 3))]))
+            paragraph = Paragraph(_pdf_inline(block.text), heading_styles[max(1, min(block.level, 3))])
+            if block.level <= 3:
+                paragraph.learnnote_heading = (max(0, block.level - 1),
+                    _pdf_escape_text(_pdf_compatible_text(_sanitize_export_text(_clean_inline_markdown(block.text)))),
+                    heading_anchors[block_index])
+            story.append(paragraph)
         elif block.kind == "bullet":
             story.append(Paragraph(_pdf_inline(block.text), bullet, bulletText="•"))
         elif block.kind == "ordered":
-            story.append(Paragraph("• " + _pdf_inline(block.text), bullet))
+            story.append(Paragraph(_pdf_inline(block.text), bullet, bulletText=f"{block.ordinal}."))
+        elif block.kind == "quote":
+            quote = ParagraphStyle("LearnNoteQuote", parent=body, leftIndent=14,
+                borderColor=colors.HexColor("#ccd9db"), borderWidth=.5, borderPadding=6)
+            story.append(Paragraph(_pdf_inline(block.text), quote))
         elif block.kind == "code":
-            story.append(Preformatted(_pdf_compatible_text(_sanitize_export_text(block.text)), code, maxLineLength=88))
+            wrapped_code = _wrap_pdf_code(_pdf_compatible_text(_sanitize_export_text(block.text)),
+                font_name, code.fontSize, max(1, document.width - 14))
+            story.append(XPreformatted(_pdf_escape_text(wrapped_code), code))
         else:
-            story.append(Paragraph(_pdf_inline(block.text), body))
+            story.append(Paragraph(_pdf_inline(block.text).replace("\n", "<br/>"), body))
     story.extend((Spacer(1, 4 * mm), Paragraph("由 LearnNote 在本机生成；原视频、Cookie 与诊断秘密未嵌入此文档。", meta)))
 
     def draw_footer(canvas, doc) -> None:
@@ -958,10 +1191,10 @@ def build_pdf_export(
         canvas.setFont(font_name, 8)
         canvas.setFillColor(colors.HexColor("#71807E"))
         page_width = landscape(A4)[0] if settings["orientation"] == "landscape" else A4[0]
-        canvas.drawCentredString(page_width / 2, 9 * mm, f"LearnNote · {doc.page}")
+        canvas.drawCentredString(page_width / 2, 9 * mm, f"LearnNote | {doc.page}")
         canvas.restoreState()
 
-    document.build(story, onFirstPage=draw_footer, onLaterPages=draw_footer)
+    document.multiBuild(story, onFirstPage=draw_footer, onLaterPages=draw_footer)
     return DocumentExport(
         content=buffer.getvalue(),
         media_type="application/pdf",
@@ -1026,7 +1259,7 @@ def build_html_export(
                 rendered_rows = []
                 for row_index, row in enumerate(rows):
                     tag = "th" if row_index == 0 else "td"
-                    rendered_rows.append("<tr>" + "".join(f"<{tag}>{_pdf_inline(cell)}</{tag}>" for cell in row) + "</tr>")
+                    rendered_rows.append("<tr>" + "".join(f"<{tag}>{_pdf_inline(cell, pdf_safe=False)}</{tag}>" for cell in row) + "</tr>")
                 body.append("<table>" + "".join(rendered_rows) + "</table>")
         elif block.kind == "image":
             close_list()
@@ -1040,19 +1273,22 @@ def build_html_export(
                 close_list()
                 list_kind = "ul"
                 body.append("<ul>")
-            body.append(f"<li>{_pdf_inline(block.text)}</li>")
+            body.append(f"<li>{_pdf_inline(block.text, pdf_safe=False)}</li>")
         elif block.kind == "ordered":
             if list_kind != "ol":
                 close_list()
                 list_kind = "ol"
                 body.append("<ol>")
-            body.append(f"<li>{_pdf_inline(block.text)}</li>")
+            body.append(f"<li>{_pdf_inline(block.text, pdf_safe=False)}</li>")
+        elif block.kind == "quote":
+            close_list()
+            body.append(f"<blockquote>{_pdf_inline(block.text, pdf_safe=False)}</blockquote>")
         elif block.kind == "code":
             close_list()
             body.append(f"<pre><code>{html.escape(_sanitize_export_text(block.text))}</code></pre>")
         else:
             close_list()
-            body.append(f"<p>{_pdf_inline(block.text).replace(chr(10), '<br>')}</p>")
+            body.append(f"<p>{_pdf_inline(block.text, pdf_safe=False).replace(chr(10), '<br>')}</p>")
     close_list()
     rendered = body
 

@@ -12,6 +12,25 @@ from app.routers.notes import api_note_document
 
 
 class NoteDocumentTests(unittest.TestCase):
+    def test_duplicate_generated_metadata_is_removed_without_touching_personal_notes(self):
+        source = "## 来源\n\n[课程](https://example.com/lesson)\n\n"
+        goals = "## 学习目标\n\n- 解释证据与结论的关系。\n\n"
+        personal = "## 我的补充\n\n我会在周末复习这一章。\n\n"
+        normalized = normalize_note_markdown("课程", source + goals + source + goals + personal + personal)
+        self.assertEqual(normalized.markdown.count("## 来源\n"), 1)
+        self.assertEqual(normalized.markdown.count("## 学习目标\n"), 1)
+        self.assertEqual(normalized.markdown.count("## 我的补充\n"), 2)
+        self.assertEqual(normalized.report["duplicate_metadata_sections"], 2)
+        self.assertEqual(normalize_note_markdown("课程", normalized.markdown).markdown, normalized.markdown)
+
+    def test_different_source_blocks_and_nested_metadata_are_preserved(self):
+        raw = "## Sources\n\nFirst source.\n\n## Sources\n\nSecond source.\n\n## Learning goals\n### Part one\nLearn first.\n\n## Learning goals\n### Part two\nLearn second."
+        result = normalize_note_markdown("Course", raw)
+        self.assertEqual(result.report["duplicate_metadata_sections"], 0)
+        self.assertEqual(result.markdown.count("## Sources"), 2)
+        self.assertIn("Learn first.", result.markdown)
+        self.assertIn("Learn second.", result.markdown)
+
     def test_snapshot_corpus_covers_languages_and_note_shapes(self):
         path = Path(__file__).parent / "fixtures" / "note_structure_golden_20260924.json"
         corpus = json.loads(path.read_text(encoding="utf-8"))
