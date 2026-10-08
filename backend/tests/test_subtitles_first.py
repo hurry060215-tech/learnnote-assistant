@@ -16,6 +16,33 @@ from app.summary_outcome import summary_failure_message
 
 
 class SubtitlesFirstTests(unittest.TestCase):
+    def test_subtitle_publication_marks_unsupported_claims_but_not_verbatim_or_source_metadata(self):
+        for suffix, note, expected_count in (
+            ("direct", "# 课程\n\n水温100℃。", 0),
+            ("unverified", "# 课程\n\n水温900℃。", 1),
+            ("source-only", "# 课程\n\n## 依据与覆盖\n\n已保留完整字幕和来源。", 0),
+            ("empty", "", 0),
+        ):
+            with self.subTest(case=suffix):
+                task = create_task("local", "课程")
+                transcript = TranscriptResult(source="page-subtitle", full_text="水温100℃。",
+                    segments=[TranscriptSegment(start=0, end=10, text="水温100℃。")])
+                path = write_json(task.id, "transcript.json", transcript.model_dump(mode="json"))
+                update_task(task.id, transcript_path=str(path))
+                with patch("app.processor.summarize_with_diagnostics", return_value=(note, "text-llm", "", [])):
+                    process_saved_transcript_task(task.id, TaskOptions())
+                record = get_task(task.id)
+                self.assertEqual(record.status, "success")
+                published = Path(record.note_path).read_text(encoding="utf-8")
+                self.assertEqual(published.count("【待核对"), expected_count)
+                claim_map = json.loads((task_dir(task.id) / "claim_evidence_map.json").read_text(encoding="utf-8"))
+                self.assertEqual(claim_map["quality"]["unsupported_count"], expected_count)
+                for claim in claim_map["claims"]:
+                    span = claim["source_span"]
+                    self.assertEqual(published[span["start"]:span["end"]], claim["text"])
+                if not expected_count:
+                    self.assertNotIn("条内容待回源核对", record.summary_warning)
+
     def test_nonzero_range_is_clipped_once_end_to_end(self):
         cues=[BrowserSubtitleCue(start=300+i*10,end=309+i*10,text=f"第{i}句选中内容") for i in range(12)]
         request=self.request(browser_subtitles=cues,active_video=ActiveVideoInfo(duration=600),learning_range={"start":300,"end":420})

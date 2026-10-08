@@ -15,6 +15,121 @@ from app.note_document import build_note_document, normalize_note_markdown
 
 
 class DocumentExportTests(unittest.TestCase):
+    def test_pdf_toc_has_real_page_numbers_and_destinations(self):
+        note = "## Beginning\n\n" + "\n\n".join("中英混排段落 English words " * 12 for _ in range(120)) + "\n\n## Final section\n\n末尾验收内容。"
+        artifact = build_pdf_export(self.task, note, export_options={"include_toc": True})
+        reader = PdfReader(BytesIO(artifact.content))
+        last_page_number = next(index for index, page in enumerate(reader.pages, 1)
+                                if "Final section" in page.extract_text() and index > 1)
+        toc = reader.pages[0].extract_text()
+        self.assertIn("目录", toc)
+        self.assertRegex(toc, rf"{last_page_number}\nFinal section")
+        destinations = [annotation.get_object().get("/Dest") for annotation in reader.pages[0].get("/Annots", [])]
+        self.assertTrue(any(destination and destination[0] == reader.pages[last_page_number - 1].indirect_reference
+                            for destination in destinations))
+
+    def test_long_pdf_toc_starts_on_first_page_instead_of_leaving_a_blank_cover(self):
+        note = "\n\n".join(f"## Chapter {index}\n\nShort section content." for index in range(1, 41))
+        artifact = build_pdf_export(self.task, note, export_options={"template": "academic"})
+        reader = PdfReader(BytesIO(artifact.content))
+        first_page = reader.pages[0].extract_text()
+        self.assertIn("目录", first_page)
+        self.assertIn("Chapter 1", first_page)
+        self.assertGreater(len(reader.pages[0].get("/Annots", [])), 5)
+
+    def test_word_toc_is_a_real_updateable_field_and_has_bookmarks(self):
+        artifact = build_docx_export(self.task, self.note, export_options={"include_toc": True})
+        with ZipFile(BytesIO(artifact.content)) as package:
+            xml = package.read("word/document.xml").decode("utf-8")
+            settings = package.read("word/settings.xml").decode("utf-8")
+            styles = package.read("word/styles.xml").decode("utf-8")
+        self.assertIn('TOC \\o "1-3" \\h', xml)
+        self.assertIn("w:bookmarkStart", xml)
+        self.assertIn('w:updateFields w:val="true"', settings)
+        self.assertIn("w:widowControl", styles)
+        self.assertIn("docx_toc_page_numbers_require_field_update", artifact.warnings)
+
+    def test_word_numbered_steps_preserve_start_and_restart_as_editable_lists(self):
+        from lxml import etree
+        note = "7. First step\n8. Second step\n\nA paragraph ends the first list.\n\n1. Restarted step"
+        artifact = build_docx_export(self.task, note)
+        ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+        with ZipFile(BytesIO(artifact.content)) as package:
+            document = etree.fromstring(package.read("word/document.xml"))
+            numbering = etree.fromstring(package.read("word/numbering.xml"))
+        ids = document.xpath("//w:pPr/w:numPr/w:numId/@w:val", namespaces=ns)
+        self.assertEqual(ids[0], ids[1])
+        self.assertNotEqual(ids[1], ids[2])
+        first_abstract = numbering.xpath(f'//w:num[@w:numId="{ids[0]}"]/w:abstractNumId/@w:val', namespaces=ns)[0]
+        start = numbering.xpath(f'//w:abstractNum[@w:abstractNumId="{first_abstract}"]/w:lvl/w:start/@w:val', namespaces=ns)
+        self.assertEqual(start, ["7"])
+
+    def test_wide_cjk_code_wraps_to_pdf_frame_width_and_numbered_steps_stay_numbered(self):
+        from app.document_exports import _pdf_font, _wrap_pdf_code
+        from reportlab.pdfbase.pdfmetrics import stringWidth
+        font_name, _ = _pdf_font()
+        original = "变量名称" * 80
+        wrapped = _wrap_pdf_code(original, font_name, 9, 220)
+        self.assertEqual(wrapped.replace("\n", ""), original)
+        self.assertTrue(all(stringWidth(line, font_name, 9) <= 220 for line in wrapped.splitlines()))
+        pdf = build_pdf_export(self.task, "7. First step\n8. Second step\n\n```text\n" + original + "\n```", export_options={"orientation": "landscape", "margin_left": 50, "margin_right": 50})
+        text = "\n".join(page.extract_text() for page in PdfReader(BytesIO(pdf.content)).pages)
+        self.assertIn("7.", text)
+        self.assertIn("8.", text)
+        self.assertIn("First step", text)
+        self.assertIn("Second step", text)
+
+    def test_tables_keep_code_pipes_quotes_and_hard_breaks_across_renderers(self):
+        from app.document_exports import _table_rows
+        note = "## Syntax\n\n| Expression | Meaning |\n| --- | --- |\n| `a|b` | choice |\n| left\\|right | escaped |\n\n> A quoted source statement.\n\nFirst line  \nSecond line\n"
+        rows = _table_rows(note.split("## Syntax\n\n", 1)[1].split("\n\n", 1)[0])
+        self.assertEqual(rows, [["Expression", "Meaning"], ["`a|b`", "choice"], ["left|right", "escaped"]])
+        projection = build_structured_export(self.task, note)
+        self.assertTrue(any(block["kind"] == "quote" for block in projection["blocks"]))
+        self.assertTrue(any(block["text"] == "First line\nSecond line" for block in projection["blocks"]))
+        html = build_html_export(self.task, note).content.decode("utf-8")
+        self.assertIn("<blockquote>A quoted source statement.</blockquote>", html)
+        self.assertIn("First line<br>Second line", html)
+        docx = build_docx_export(self.task, note)
+        with ZipFile(BytesIO(docx.content)) as package:
+            xml = package.read("word/document.xml").decode("utf-8")
+        self.assertIn('w:pStyle w:val="Quote"', xml)
+        self.assertIn("<w:br/>", xml)
+        self.assertIn("a|b", xml)
+
+    def test_pdf_cid_fallback_uses_latin_font_for_superscripts_and_accents(self):
+        from app.document_exports import _pdf_inline
+        self.assertIn('<font name="Helvetica">²</font>', _pdf_inline("E = mc²"))
+        note = "## 公式\n\nE = mc²；café；± 2。\n\n```text\n面积 = 2²\n```"
+        artifact = build_pdf_export(self.task, note)
+        text = "\n".join(page.extract_text() for page in PdfReader(BytesIO(artifact.content)).pages)
+        self.assertIn("²", text)
+        self.assertIn("café", text)
+        self.assertIn("面积", text)
+
+    def test_html_retains_full_unicode_and_pdf_inline_cjk_uses_cjk_font(self):
+        from app.document_exports import _pdf_inline
+        note = "## 示例\n\n导航 🧭 使用 `中文变量` 与 `café`。"
+        html_text = build_html_export(self.task, note).content.decode("utf-8")
+        self.assertIn("🧭", html_text)
+        self.assertIn("<code>中文变量</code>", html_text)
+        self.assertIn("<code>café</code>", html_text)
+        self.assertNotIn("Courier", _pdf_inline("`中文变量`"))
+        self.assertIn("Courier", _pdf_inline("`variable`"))
+        pdf = build_pdf_export(self.task, note)
+        text = "\n".join(page.extract_text() for page in PdfReader(BytesIO(pdf.content)).pages)
+        self.assertIn("中文变量", text)
+
+    def test_named_templates_are_bounded_and_explicit_overrides_win(self):
+        from app.document_exports import normalize_export_options
+        academic = normalize_export_options({"template": "academic"})
+        compact = normalize_export_options({"template": "compact", "font_size": 12})
+        self.assertTrue(academic["include_toc"])
+        self.assertEqual(academic["margin_left"], 25)
+        self.assertEqual(compact["font_size"], 12)
+        self.assertEqual(compact["margin_left"], 12)
+        self.assertEqual(normalize_export_options({"template": "unknown"})["template"], "print")
+
     def test_html_toc_uses_the_same_stable_anchor_as_note_document(self):
         note = normalize_note_markdown(
             self.task.title,
@@ -97,9 +212,11 @@ class DocumentExportTests(unittest.TestCase):
             note = self.note + "\n| 概念 | 含义 |\n| --- | --- |\n| 学习率 | 更新步长 |\n\n![00:10 关键画面](/api/tasks/export-task/assets/grid.jpg)\n"
             with patch("app.document_exports.TASK_DIR", root):
                 docx = build_docx_export(task, note)
-                pdf = build_pdf_export(task, note)
+                pdf = build_pdf_export(task, note, export_options={"orientation": "landscape", "margin_top": 50, "margin_bottom": 50})
             with ZipFile(BytesIO(docx.content)) as archive:
-                self.assertIn("<w:tbl>", archive.read("word/document.xml").decode())
+                xml = archive.read("word/document.xml").decode()
+                self.assertIn("<w:tbl>", xml)
+                self.assertIn('descr="00:10 关键画面"', xml)
                 self.assertTrue(any(name.startswith("word/media/") for name in archive.namelist()))
             reader = PdfReader(BytesIO(pdf.content))
             self.assertIn("更新步长", "".join(page.extract_text() for page in reader.pages))
