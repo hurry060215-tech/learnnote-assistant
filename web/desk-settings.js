@@ -326,7 +326,12 @@ export function installSettings(ctx) {
     if (!summary || !list) return;
     summary.textContent = "正在读取字幕、模型和离线就绪度…";
     try {
-      const route = await api("/api/model/route");
+      const query = new URLSearchParams({
+        transcriber: $("prefTranscriber")?.value || "faster-whisper",
+        whisper_model: $("prefWhisper")?.value || "small",
+        visual_understanding: String(pref.visual_understanding !== false),
+      });
+      const route = await api("/api/model/route?" + query);
       summary.textContent = route.routes?.some(item => item.network === "required")
         ? "总结会调用你配置的模型；优先读取字幕，缺少字幕时再转写。"
         : "此路线不调用远程模型；平台字幕仍需连接视频站点获取。";
@@ -334,6 +339,10 @@ export function installSettings(ctx) {
       if (route.blocking_reasons?.length) {
         summary.textContent += " " + route.blocking_reasons.join(" ");
       }
+      const dataLabels = { audio: "音频", selected_frames: "选定画面", transcript: "字幕文字", instructions: "整理要求" };
+      if (route.data_leaving_device?.length) summary.textContent += " 所选路线可能发送到模型服务：" + route.data_leaving_device.map(value => dataLabels[value] || value).join("、") + "。";
+      if (route.local_fallback?.detail) summary.textContent += " " + route.local_fallback.detail;
+      if (!route.offline_source_confirmed) summary.textContent += " 尚未确认资料已在本机；平台字幕仍可能需要联网。";
     } catch (error) {
       summary.textContent = "模型路线暂时无法读取：" + (error.message || "请稍后重试");
       list.replaceChildren();

@@ -1,6 +1,8 @@
 """Bound request spooling and final upload writes, including chunked bodies."""
 from __future__ import annotations
 
+import errno
+import os
 import shutil
 import threading
 from pathlib import Path
@@ -10,10 +12,21 @@ from starlette.responses import JSONResponse
 from .config import TEMP_DIR, UPLOAD_DIR
 from .upload_reservations import ByteReservation, reserved_bytes
 
-MAX_VIDEO_BYTES = 4 * 1024**3
-MIN_FREE_BYTES = 512 * 1024**2
+def _positive_byte_setting(name: str, default: int) -> int:
+    """Explicit local limits are configured at startup, never guessed or disabled."""
+    try:
+        value = int(os.getenv(name, str(default)))
+    except ValueError:
+        raise ValueError(f"{name} must be a positive integer number of bytes") from None
+    if value <= 0:
+        raise ValueError(f"{name} must be a positive integer number of bytes")
+    return value
+
+
+MAX_VIDEO_BYTES = _positive_byte_setting("LEARNNOTE_MAX_VIDEO_BYTES", 4 * 1024**3)
+MIN_FREE_BYTES = _positive_byte_setting("LEARNNOTE_UPLOAD_RESERVE_BYTES", 512 * 1024**2)
 MULTIPART_OVERHEAD_BYTES = 1024**2
-MAX_CONCURRENT_UPLOAD_BYTES = 8 * MAX_VIDEO_BYTES
+MAX_CONCURRENT_UPLOAD_BYTES = _positive_byte_setting("LEARNNOTE_MAX_CONCURRENT_UPLOAD_BYTES", 8 * MAX_VIDEO_BYTES)
 _upload_budget_lock = threading.RLock()
 _active_upload_bytes = 0
 
@@ -58,8 +71,12 @@ class UploadReservation:
 
 
 def check_upload_space(path: Path, incoming: int = 0) -> None:
-    if shutil.disk_usage(path).free < MIN_FREE_BYTES + max(0, incoming):
-        raise UploadBudgetExceeded("insufficient_storage", 507, "磁盘空间不足：请至少保留 512 MB，清理后重试。")
+    try:
+        free = shutil.disk_usage(path).free
+    except OSError:
+        raise UploadBudgetExceeded("storage_unavailable", 503, "无法检查保存位置的可用空间，请确认数据目录可访问后重试。") from None
+    if free < MIN_FREE_BYTES + max(0, incoming):
+        raise UploadBudgetExceeded("insufficient_storage", 507, f"磁盘空间不足：请至少保留 {MIN_FREE_BYTES:,} 字节，清理后重试。")
 
 
 async def write_video_upload(file, path: Path) -> int:
@@ -71,7 +88,7 @@ async def write_video_upload(file, path: Path) -> int:
             while chunk := await file.read(1024**2):
                 total += len(chunk)
                 if total > MAX_VIDEO_BYTES:
-                    raise UploadBudgetExceeded("video_too_large", 413, "单个视频不能超过 4 GB，请拆分后导入。", written, total)
+                    raise UploadBudgetExceeded("video_too_large", 413, f"单个视频不能超过 {MAX_VIDEO_BYTES:,} 字节，请拆分文件或调整本地容量配置后导入。", written, total)
                 try:
                     check_upload_space(path.parent, len(chunk))
                     reservation.reserve(len(chunk))
@@ -82,6 +99,11 @@ async def write_video_upload(file, path: Path) -> int:
                 output.write(chunk)
                 written += len(chunk)
         return total
+    except OSError as exc:
+        path.unlink(missing_ok=True)
+        if exc.errno in {errno.ENOSPC, errno.EDQUOT}:
+            raise UploadBudgetExceeded("insufficient_storage", 507, "写入时磁盘空间或配额不足，临时文件已清理；释放空间后重试。", written, total) from None
+        raise
     except BaseException:
         path.unlink(missing_ok=True)
         raise

@@ -128,7 +128,7 @@ def api_put_update_preferences(payload: UpdatePreferences) -> dict:
 
 
 @system_router.get("/api/model/route")
-def api_model_route() -> dict:
+def api_model_route(content_mode: Literal["auto", "subtitles", "text", "visual"] = "auto", transcriber: str = "faster-whisper", whisper_model: str = "small", visual_understanding: bool = True) -> dict:
     from ..config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
     from ..local_models import model_status
     from ..model_connections import selected_connection_status
@@ -136,7 +136,7 @@ def api_model_route() -> dict:
     from importlib.util import find_spec
     local_asr = find_spec("faster_whisper") is not None
     try:
-        local_model_ready = model_status("small").get("status") == "ready"
+        local_model_ready = model_status(whisper_model).get("status") == "ready"
     except Exception:
         local_model_ready = False
     connection = selected_connection_status()
@@ -145,7 +145,7 @@ def api_model_route() -> dict:
     base_url = model.get("base_url") or LLM_BASE_URL
     model_name = model.get("model") or LLM_MODEL
     return plan_route(
-        TaskOptions(llm_base_url=base_url, llm_model=model_name),
+        TaskOptions(llm_base_url=base_url, llm_model=model_name, content_mode=content_mode, transcriber=transcriber, whisper_model=whisper_model, visual_understanding=visual_understanding),
         local_asr_available=local_asr and local_model_ready,
         model_configured=configured,
         vision_configured=bool(configured and llm_model_supports_vision(base_url, model_name)),
