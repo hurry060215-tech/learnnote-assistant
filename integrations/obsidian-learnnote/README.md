@@ -59,3 +59,20 @@ npm run verify
 ```
 
 当前插件以源码随 LearnNote 仓库发布，尚未进入 Obsidian 官方社区插件目录。
+
+### Moment 开发依赖修复
+
+Obsidian API 类型包 1.13.1 固定依赖 Moment 2.29.4，受
+[GHSA-4p3w-j4w9-5jqw](https://github.com/moment/moment/security/advisories/GHSA-4p3w-j4w9-5jqw)
+影响：在 Node.js 中把攻击者控制的非字符串值传给 `moment.locale()` 时可能加载非预期路径。
+最低修复版本是 2.31.0。
+
+截至 2026-10-08，本次检查的 npm 注册表仍只发布到 Obsidian 1.13.1；
+[上游 API 源码](https://github.com/obsidianmd/obsidian-api/blob/master/package.json)
+已经采用 Moment 2.31.0，但相应新版尚不能从注册表安装。因此这里保留已验证的
+Obsidian 1.13.1，只对该版本的 Moment 子依赖做 2.31.0 覆盖，不升级插件 API 或 CodeMirror。
+上游发布可安装的修复版本后，应优先更新 Obsidian 类型包并移除该覆盖，再运行 `npm run verify`。
+
+这是开发依赖修复。插件源码不调用 Moment，生产打包保留宿主提供的 `obsidian`，
+不会打包 Moment，也不会外部引入它。测试会检查实际依赖解析及生产构建的输入/导入清单。
+此修复不更新用户已安装的 Obsidian 应用或其内部 Moment，也不代表宿主已通过安全审计。

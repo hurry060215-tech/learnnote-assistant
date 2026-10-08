@@ -23,7 +23,12 @@
   "devDependencies": {
     "@types/node": "^22.15.17",
     "esbuild": "0.25.5",
-    "obsidian": "latest",
+    "obsidian": "1.13.1",
     "typescript": "^5.8.3"
+  },
+  "overrides": {
+    "obsidian@1.13.1": {
+      "moment": "2.31.0"
+    }
   }
 }
