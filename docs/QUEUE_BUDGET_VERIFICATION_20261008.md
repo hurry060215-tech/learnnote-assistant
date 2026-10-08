@@ -51,9 +51,9 @@ Cloud proof on 2026-10-08: public `Systran/faster-whisper-tiny` plus OpenAI
 Whisper's public `tests/jfk.flac`, converted to a 12-second generated video.
 Five tasks submitted: three real ASR tasks and one prebuilt-subtitle task
 completed the media/transcript/draft/note pipeline; one pending task cancelled.
-Heavy and light lane peaks were each 1. Cancellation took 0.0004 seconds; all
-four completed in 7.04 seconds. Process RSS peak was 383,004,672 bytes; measured
-CPU peak was 194.723% across CPU cores. Resource reports were written for all
+Heavy and light lane peaks were each 1. Cancellation took 0.0031 seconds through the normal task-cancellation path; all
+four completed in 6.796 seconds. Process RSS peak was 386,703,360 bytes; measured
+CPU peak was 202.061% across CPU cores. Resource reports were written for all
 four completed tasks. The summarizer was explicitly a deterministic reference
 adapter, not a paid/remote model or model-quality benchmark. No remote calls.
 

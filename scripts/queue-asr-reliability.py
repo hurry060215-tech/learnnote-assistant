@@ -45,8 +45,8 @@ def main():
 def exercise(args, output, model, speech):
     from app.models import TaskOptions
     from app import processor
-    from app.storage import create_task, get_task, task_dir
-    from app.task_queue import LocalTaskQueue
+    from app.storage import create_task, get_task, task_dir, request_task_cancel
+    from app.task_queue import queue_for
     from app.resource_monitor import ResourceMonitor
 
     media = output / "public-speech.mp4"
@@ -58,7 +58,7 @@ def exercise(args, output, model, speech):
     def reference_summary(title, transcript, *unused, **kwargs):
         return "# " + title + "\n\n## Transcript evidence\n\n" + transcript.full_text, "offline-fixture", "", []
     processor.summarize_with_diagnostics = reference_summary
-    queue = LocalTaskQueue(output / "data")
+    queue = queue_for(output / "data")
     monitor = ResourceMonitor(output, interval_seconds=.05).start()
     lock = threading.Lock()
     release = threading.Event()
@@ -98,7 +98,7 @@ def exercise(args, output, model, speech):
             futures.append(queue.enqueue(task.id, "local_light" if light else "local",
                 lambda task=task, lane=lane, light=light: run(task, lane, light)))
         cancel_start = time.monotonic()
-        cancelled = queue.cancel_pending(tasks[-1].id)
+        cancelled = request_task_cancel(tasks[-1].id).status == "cancelled"
         futures[-1].result(2)
         cancel_seconds = time.monotonic() - cancel_start
         release.set()
