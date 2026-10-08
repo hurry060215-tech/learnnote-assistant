@@ -14,6 +14,8 @@ $OutputPath = [System.IO.Path]::GetFullPath($OutputPath)
 $files = @(
   "manifest.json",
   "background.js",
+  "capture-classification.js",
+  "capture-ranking.js",
   "content.js",
   "page_hook.js",
   "sidepanel.html",

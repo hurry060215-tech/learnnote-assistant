@@ -60,7 +60,7 @@ function harness({ revokeDuringPairing = false, revokeBeforeRetry = false, grant
     }
   };
   vm.createContext(context);
-  vm.runInContext(source.slice(source.indexOf("function backendErrorMessage("), source.indexOf("function mediaKindFromMime(")), context);
+  vm.runInContext(source.slice(source.indexOf("function backendErrorMessage("), source.indexOf("function mergeAndRankResources(")), context);
   vm.runInContext(source.slice(source.indexOf("function normalizePermissionOrigin("), source.indexOf("chrome.permissions?.onRemoved")), context);
   vm.runInContext(source.slice(source.indexOf("chrome.runtime.onMessage.addListener((message, sender, sendResponse)")), context);
   return {

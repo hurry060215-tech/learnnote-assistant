@@ -29,8 +29,10 @@ MODULE_SIZE_LIMITS = {
     "backend/app/qa_evidence.py": 400,
     "backend/app/qa_history.py": 130,
     "extension/page_hook.js": 2850,
-    "extension/background.js": 2950,
+    "extension/background.js": 2500,
     "extension/content.js": 2200,
+    "extension/capture-classification.js": 290,
+    "extension/capture-ranking.js": 320,
     "web/learning.js": 600,
     "web/personal-notes.js": 300,
     "web/courses.js": 500,
@@ -90,6 +92,7 @@ EXTRACTED_BACKEND_MODULES = (
     "media_discovery", "media_manifests", "qa_evidence", "qa_history",
 )
 EXTENSION_SCRIPT_BUDGET_BYTES = 335000
+EXTENSION_CAPTURE_SCRIPTS = ("background.js", "content.js", "page_hook.js", "capture-classification.js", "capture-ranking.js")
 
 
 def aggregate_size_violations() -> list[str]:
@@ -97,8 +100,7 @@ def aggregate_size_violations() -> list[str]:
     violations = []
     if lines > EXTRACTED_BACKEND_BUDGET:
         violations.append(f"Extracted backend modules have {lines} lines; combined budget is {EXTRACTED_BACKEND_BUDGET}")
-    scripts = ("background.js", "content.js", "page_hook.js")
-    size = sum((ROOT / "extension" / name).stat().st_size for name in scripts)
+    size = sum((ROOT / "extension" / name).stat().st_size for name in EXTENSION_CAPTURE_SCRIPTS)
     if size > EXTENSION_SCRIPT_BUDGET_BYTES:
         violations.append(f"Extension capture scripts have {size} bytes; bundle budget is {EXTENSION_SCRIPT_BUDGET_BYTES}")
     return violations

@@ -1,9 +1,57 @@
-const VIDEO_RE = /\.(mp4|m4v|webm|mov|mkv|flv|avi)(\?|#|$)/i;
-const AUDIO_RE = /\.(m4a|mp3|aac|opus|ogg|oga|wav)(\?|#|$)/i;
+// Load pure helpers before registering browser event handlers.
+importScripts("capture-classification.js", "capture-ranking.js");
+// var preserves historical global helper names for integrations and tests.
+var {
+  VIDEO_RE,
+  AUDIO_RE,
+  FRAGMENT_RE,
+  SUBTITLE_RE,
+  PLAYBACK_ENDPOINT_RE,
+  mediaKindFromMime,
+  isSubtitleEndpointUrl,
+  classify,
+  isClearlyNonMediaAssetUrl,
+  filenameFromContentDisposition,
+  classifyContentDisposition,
+  hasRangeEvidence,
+  requestHasMediaDestination,
+  requestHeaderArrayHasMediaDestination,
+  responseContentLength,
+  looksLikeLargeBinaryMediaEndpoint,
+  looksLikeSmallBinaryPlaybackEndpoint,
+  looksLikeTextPlayEndpoint,
+  classifyCompletedRequest,
+  inferManifestUrl,
+  inferSiblingManifestUrls,
+  urlHost,
+  normalizedFrameUrl,
+} = globalThis.LearnNoteCaptureClassification;
+var {
+  scoreKind,
+  scoreResource,
+  isDownloadableKind,
+  hasReplayableRequestBody,
+  playableEndpointRank,
+  isDirectResourceCandidate,
+  isPlayableMediaEvidenceKind,
+  kindRank,
+  effectiveKindRank,
+  playableEndpointScore,
+  isImageResource,
+  isLearningFrameUrl,
+  isActivityOrAdUrl,
+  resourceContextUrl,
+  resourceVisibilityRank,
+  isShortDecorativeVideo,
+  resourceContextRank,
+  playbackSessionRank,
+  sourceRank,
+  playbackMatchRank,
+  compareResourceCandidates,
+  mergeResource,
+} = globalThis.LearnNoteCaptureRanking;
+
 const MEDIA_RE = /\.(mp4|m4v|webm|mov|mkv|flv|avi|m4a|mp3|aac|opus|ogg|oga|wav|m3u8|mpd)(\?|#|$)/i;
-const FRAGMENT_RE = /\.(m4s|ts)(\?|#|$)/i;
-const SUBTITLE_RE = /\.(vtt|srt|ass|ssa)(\?|#|$)/i;
-const PLAYBACK_ENDPOINT_RE = /m3u8|mpd|video|audio|media|subtitle|caption|stream|hls|dash|manifest|playlist|master|playback|player|download|attachment|ananas|objectid|dtoken|fileid|httpmd|vod|quality|qualities|definition|definitions|format|formats|profile|profiles|variant|variants|rendition|renditions|level|levels|track|tracks|(?:^|[/?&=._-])(?:source|sources|sourcelist|backup|backups|cdn|baseurl|base_url|base-url|host|domain)(?:[/?&=._-]|$)|\/play(?:[/?#]|$)/i;
 const LOCAL_EXPORT_KIND_RE = /(?:(?:markdown|visual-windows|bundle|diagnostics|media|manifest|audit|subtitles|qa|resource-inventory|page-preflight-report)|clips\/[^/?#]+)/;
 const LOCAL_TASK_FILE_RE = new RegExp(`^https?:\\/\\/(?:127\\.0\\.0\\.1|localhost)(?::\\d+)?\\/api\\/tasks\\/[^/]+(?:\\/media|\\/exports\\/${LOCAL_EXPORT_KIND_RE.source})(?:[?#].*)?$`, "i");
 const LOCAL_EXPORT_RE = new RegExp(`^https?:\\/\\/(?:127\\.0\\.0\\.1|localhost)(?::\\d+)?\\/api\\/tasks\\/[^/]+\\/exports\\/${LOCAL_EXPORT_KIND_RE.source}(?:[?#].*)?$`, "i");
@@ -207,443 +255,6 @@ async function postJsonWithRetry(url, body, fallback, attempts = 2, beforeSend =
   return { ok: false, error: lastError?.message || fallback };
 }
 
-function mediaKindFromMime(mime = "") {
-  const type = String(mime || "").toLowerCase();
-  if (type.includes("mpegurl") || type.includes("application/x-mpegurl")) return "hls";
-  if (type.includes("dash+xml")) return "dash";
-  if (type.includes("video/") || type.includes("application/mp4")) return "video";
-  if (type.includes("audio/") || type.includes("application/ogg")) return "audio";
-  if (type.includes("text/vtt") || type.includes("subrip")) return "subtitle";
-  return "unknown";
-}
-
-function isSubtitleEndpointUrl(url = "") {
-  try {
-    const parsed = new URL(String(url || ""));
-    return /(?:^|[/?&=._-])(?:subtitle|subtitles|caption|captions)(?:[/?&=._-]|$)/i.test(parsed.pathname);
-  } catch {
-    return /(?:^|[/?&=._-])(?:subtitle|subtitles|caption|captions)(?:[/?&=._-]|$)/i.test(String(url || ""));
-  }
-}
-
-function classify(url, mime = "") {
-  const lower = url.toLowerCase();
-  const mimeKind = mediaKindFromMime(mime);
-  if (lower.startsWith("blob:")) return "blob";
-  if (String(mime || "").toLowerCase().startsWith("image/") || isClearlyNonMediaAssetUrl(lower)) return "unknown";
-  if (!FRAGMENT_RE.test(lower) && lower.includes(".m3u8")) return "hls";
-  if (!FRAGMENT_RE.test(lower) && lower.includes(".mpd")) return "dash";
-  if (mimeKind !== "unknown") return mimeKind;
-  if (isSubtitleEndpointUrl(lower)) return "subtitle";
-  if (FRAGMENT_RE.test(lower)) return "fragment";
-  if (VIDEO_RE.test(lower)) return "video";
-  if (AUDIO_RE.test(lower)) return "audio";
-  if (SUBTITLE_RE.test(lower)) return "subtitle";
-  return "unknown";
-}
-
-function isClearlyNonMediaAssetUrl(url = "") {
-  let pathname = String(url || "").toLowerCase();
-  try {
-    pathname = new URL(String(url || "")).pathname.toLowerCase();
-  } catch {
-    // Keep the raw value for malformed URLs.
-  }
-  if (/\.(?:css|js|mjs|map|wasm|woff2?|ttf|otf|eot)(?:$|[?#])/i.test(pathname)) return true;
-  if (/\.(?:jpe?g|png|gif|webp|avif|svg|ico)(?:$|[?#])/i.test(pathname)) return true;
-  return /\.(?:jpe?g|png|gif|webp)(?:@|%40)[^/?#]*\.(?:avi|avif|webp)(?:$|[?#])/i.test(pathname);
-}
-
-function filenameFromContentDisposition(value = "") {
-  let filename = "";
-  for (const part of String(value || "").split(";")) {
-    const [rawKey, ...rest] = part.trim().split("=");
-    if (!rawKey || !rest.length) continue;
-    const key = rawKey.toLowerCase();
-    let raw = rest.join("=").trim().replace(/^"|"$/g, "");
-    if (key === "filename*") {
-      const marker = raw.indexOf("''");
-      raw = marker >= 0 ? raw.slice(marker + 2) : raw;
-      try {
-        filename = decodeURIComponent(raw);
-      } catch {
-        filename = raw;
-      }
-      break;
-    }
-    if (key === "filename" && raw) {
-      try {
-        filename = decodeURIComponent(raw);
-      } catch {
-        filename = raw;
-      }
-    }
-  }
-  return filename.split(/[\\/]/).pop() || "";
-}
-
-function classifyContentDisposition(contentDisposition = "", mime = "") {
-  const filename = filenameFromContentDisposition(contentDisposition);
-  return filename ? classify(filename, mime) : "unknown";
-}
-
-function hasRangeEvidence(requestHeaders = {}, responseHeaders = {}) {
-  const requestRange = Object.entries(requestHeaders || {}).some(([name, value]) =>
-    String(name).toLowerCase() === "range" && /^bytes=/i.test(String(value || "").trim())
-  );
-  const responseRange = Boolean(responseHeaders["content-range"]) ||
-    String(responseHeaders["accept-ranges"] || "").toLowerCase().includes("bytes");
-  return requestRange && responseRange;
-}
-
-function requestHasMediaDestination(requestHeaders = {}) {
-  const headers = Object.fromEntries(
-    Object.entries(requestHeaders || {}).map(([name, value]) => [String(name).toLowerCase(), String(value || "").toLowerCase()])
-  );
-  return /^(video|audio)$/i.test(headers["sec-fetch-dest"] || "") ||
-    /(?:^|[,;\s])(?:video|audio)\//i.test(headers.accept || "") ||
-    /mpegurl|dash\+xml|mp4|webm|x-matroska|m4a|mp3|aac|opus|ogg/i.test(headers.accept || "");
-}
-
-function requestHeaderArrayHasMediaDestination(requestHeaders = []) {
-  const headers = {};
-  for (const header of requestHeaders || []) {
-    const name = String(header.name || "").toLowerCase();
-    if (!name) continue;
-    headers[name] = String(header.value || "");
-  }
-  return requestHasMediaDestination(headers);
-}
-
-function responseContentLength(responseHeaders = {}) {
-  const value = Number(responseHeaders["content-length"] || 0);
-  return Number.isFinite(value) && value > 0 ? value : 0;
-}
-
-function looksLikeLargeBinaryMediaEndpoint(details = {}, mime = "", responseHeaders = {}) {
-  const type = String(details.type || "").toLowerCase();
-  if (!/^(xmlhttprequest|fetch|media)$/.test(type)) return false;
-  const binaryMime = /octet-stream|binary|application\/x-mpegurl/i.test(String(mime || ""));
-  if (!binaryMime) return false;
-  if (!PLAYBACK_ENDPOINT_RE.test(details.url || "")) return false;
-  return responseContentLength(responseHeaders) >= 1024 * 1024;
-}
-
-function looksLikeSmallBinaryPlaybackEndpoint(details = {}, mime = "", responseHeaders = {}) {
-  const type = String(details.type || "").toLowerCase();
-  if (!/^(xmlhttprequest|fetch)$/.test(type)) return false;
-  if (!/octet-stream|binary/i.test(String(mime || ""))) return false;
-  if (!PLAYBACK_ENDPOINT_RE.test(details.url || "")) return false;
-  const length = responseContentLength(responseHeaders);
-  return length > 0 && length <= 512 * 1024;
-}
-
-function looksLikeTextPlayEndpoint(details = {}, mime = "") {
-  const type = String(details.type || "").toLowerCase();
-  if (!/^(xmlhttprequest|fetch)$/.test(type)) return false;
-  if (!/json|text|javascript|xml/i.test(String(mime || ""))) return false;
-  return PLAYBACK_ENDPOINT_RE.test(details.url || "");
-}
-
-function classifyCompletedRequest(details = {}, mime = "", requestHeaders = {}, responseHeaders = {}) {
-  const kind = classify(details.url || "", mime);
-  if (kind !== "unknown") return kind;
-  const headerKind = classifyContentDisposition(responseHeaders["content-disposition"] || "", mime);
-  if (headerKind !== "unknown") return headerKind;
-  if (details.type === "media") return String(mime || "").toLowerCase().includes("audio/") ? "audio" : "video";
-  const type = String(details.type || "").toLowerCase();
-  const binaryMime = /octet-stream|binary|application\/x-mpegurl/i.test(String(mime || ""));
-  if ((type === "xmlhttprequest" || type === "fetch") && binaryMime && hasRangeEvidence(requestHeaders, responseHeaders)) {
-    return "video";
-  }
-  if ((type === "xmlhttprequest" || type === "fetch") && binaryMime && requestHasMediaDestination(requestHeaders) && responseContentLength(responseHeaders) >= 1024 * 1024) {
-    return "video";
-  }
-  if (looksLikeSmallBinaryPlaybackEndpoint(details, mime, responseHeaders)) return "video";
-  if (looksLikeTextPlayEndpoint(details, mime)) return "video";
-  if (looksLikeLargeBinaryMediaEndpoint(details, mime, responseHeaders)) return "video";
-  return "unknown";
-}
-
-function inferManifestUrl(url) {
-  try {
-    const parsed = new URL(url);
-    const lowerPath = parsed.pathname.toLowerCase();
-    for (const ext of [".m3u8", ".mpd"]) {
-      const index = lowerPath.indexOf(ext);
-      if (index < 0) continue;
-      const manifestPath = parsed.pathname.slice(0, index + ext.length);
-      if (manifestPath === parsed.pathname) return "";
-      parsed.pathname = manifestPath;
-      parsed.hash = "";
-      return parsed.href;
-    }
-  } catch {
-    return "";
-  }
-  return "";
-}
-
-function inferSiblingManifestUrls(url) {
-  try {
-    const parsed = new URL(url);
-    const lowerPath = parsed.pathname.toLowerCase();
-    if (!FRAGMENT_RE.test(parsed.pathname) || lowerPath.includes(".m3u8") || lowerPath.includes(".mpd")) return [];
-    const slash = parsed.pathname.lastIndexOf("/");
-    const directory = slash >= 0 ? parsed.pathname.slice(0, slash + 1) : "/";
-    const names = lowerPath.endsWith(".ts")
-      ? ["index.m3u8", "playlist.m3u8", "master.m3u8"]
-      : ["manifest.mpd", "index.mpd", "master.m3u8", "index.m3u8"];
-    const directories = [directory];
-    const parent = directory.replace(/\/$/, "");
-    const parentName = parent.split("/").pop().toLowerCase();
-    const parentDirectory = parent.includes("/") ? `${parent.slice(0, parent.lastIndexOf("/") + 1)}` : "/";
-    if (
-      parentDirectory &&
-      parentDirectory !== "/" &&
-      !directories.includes(parentDirectory) &&
-      /^(segments?|chunks?|fragments?|video|audio|v\d+|\d{3,4}p|[a-z]{2,4}_?\d{3,4}p|avc|h26[45]|dash|hls)$/.test(parentName)
-    ) {
-      directories.push(parentDirectory);
-    }
-    const results = [];
-    for (const candidateDirectory of directories) {
-      for (const name of names) {
-        parsed.pathname = candidateDirectory + name;
-        parsed.hash = "";
-        const href = parsed.href;
-        if (!results.includes(href)) results.push(href);
-      }
-    }
-    return results;
-  } catch {
-    return [];
-  }
-}
-
-function scoreKind(url, source, kind) {
-  let score = 0;
-  if (kind === "hls" || kind === "dash") score += 95;
-  else if (kind === "video") score += 85;
-  else if (kind === "audio") score += 35;
-  else if (kind === "fragment") score += 15;
-  else if (kind === "subtitle") score += 60;
-  else if (kind === "blob") score += 5;
-  if (source === "webRequest") score += 10;
-  if (String(source || "").startsWith("pageHook")) score += 10;
-  if (source === "pageHookBlobSource" || source === "pageHookMediaSource") score += 8;
-  if (/chaoxing|xuexitong/i.test(url)) score += 8;
-  if (PLAYBACK_ENDPOINT_RE.test(url)) score += 6;
-  return Math.min(score, 100);
-}
-
-function scoreResource(url, mime, source) {
-  return scoreKind(url, source, classify(url, mime));
-}
-
-function isDownloadableKind(kind) {
-  return kind === "hls" || kind === "dash" || kind === "video";
-}
-
-function hasReplayableRequestBody(resource = {}) {
-  const method = String(resource.method || "").toUpperCase();
-  if (!["POST", "PUT", "PATCH"].includes(method)) return false;
-  const body = resource.request_body || {};
-  return Boolean(body.content || body.raw || body.formData || body.form_data || body.bytes);
-}
-
-function playableEndpointRank(resource = {}) {
-  if (resource.kind === "subtitle" || isSubtitleEndpointUrl(resource.url || "")) return 0;
-  if (!PLAYBACK_ENDPOINT_RE.test(resource.url || "")) return 0;
-  const requestType = String(resource.request_type || "").toLowerCase();
-  const source = String(resource.source || "").toLowerCase();
-  const method = String(resource.method || "").toUpperCase();
-  let rank = 1;
-  if (["xmlhttprequest", "fetch", "media"].includes(requestType)) rank += 2;
-  if (source.startsWith("pagehook")) rank += 1;
-  if (["POST", "PUT", "PATCH"].includes(method) || hasReplayableRequestBody(resource)) rank += 3;
-  if (resource.playback_match || resource.is_main_video) rank += 2;
-  return rank;
-}
-
-function isDirectResourceCandidate(resource = {}) {
-  return isDownloadableKind(resource.kind) || playableEndpointRank(resource) > 0;
-}
-
-function isPlayableMediaEvidenceKind(kind) {
-  return isDownloadableKind(kind) || kind === "fragment";
-}
-
-function kindRank(kind) {
-  return ({
-    hls: 6,
-    dash: 6,
-    video: 5,
-    fragment: 3,
-    audio: 2,
-    subtitle: 2,
-    blob: 1
-  })[kind] || 0;
-}
-
-function effectiveKindRank(resource = {}) {
-  const rank = kindRank(resource.kind);
-  if (rank) return rank;
-  return playableEndpointRank(resource) > 0 ? 4 : 0;
-}
-
-function playableEndpointScore(resource = {}) {
-  const rank = playableEndpointRank(resource);
-  if (!rank) return 0;
-  const hostBoost = /chaoxing|xuexitong/i.test(resource.url || "") ? 8 : 0;
-  return Math.min(100, 38 + rank * 8 + hostBoost);
-}
-
-function isImageResource(resource = {}) {
-  return /^image\//i.test(String(resource.mime || resource.headers?.["content-type"] || "")) ||
-    resource.kind === "image" ||
-    /\.(?:avif|webp|jpe?g|png|gif|bmp|svg)(?:@[^/?#]*)?(?:[?#]|$)/i.test(String(resource.url || ""));
-}
-
-function isLearningFrameUrl(value = "") {
-  return /(?:^|\.)chaoxing\.com$|(?:^|\.)xuexitong\.com$/i.test(urlHost(value));
-}
-
-function isActivityOrAdUrl(value = "") {
-  const url = String(value || "");
-  if (!url || isLearningFrameUrl(url)) return false;
-  let host = "";
-  let path = "";
-  try {
-    const parsed = new URL(url);
-    host = parsed.hostname;
-    path = parsed.pathname;
-  } catch {
-    return false;
-  }
-  return /(?:^|\.)obeebee\.com$/i.test(host) ||
-    /(?:^|\.)activity\.hdslb\.com$/i.test(host) ||
-    (/(?:^|\.)bilibili\.com$/i.test(host) && /\/(?:blackboard|activity|festival)(?:\/|$)/i.test(path)) ||
-    /(?:^|[._-])ads?(?:[._-]|$)|advert/i.test(host) ||
-    /\/(?:ads?|advert(?:isement)?|promo)(?:\/|$)/i.test(path);
-}
-
-function resourceContextUrl(resource = {}) {
-  return resource.frame_url || resource.page_url || resource.initiator || resource.url || "";
-}
-
-function resourceVisibilityRank(resource = {}) {
-  if (resource.frame_visible === false || resource.is_visible === false || ["hidden", "offscreen"].includes(resource.visibility)) return 0;
-  if (resource.is_visible === true || resource.frame_visible === true || resource.visibility === "visible") return 2;
-  return 1;
-}
-
-function isShortDecorativeVideo(resource = {}) {
-  const duration = Number(resource.duration || 0);
-  const area = Number(resource.visible_area || resource.frame_visible_area || 0);
-  return duration > 0 && duration <= 45 && area > 0 && area <= 640 * 360;
-}
-
-function resourceContextRank(resource = {}) {
-  if (isActivityOrAdUrl(resourceContextUrl(resource))) return 0;
-  if (isShortDecorativeVideo(resource)) return 1;
-  return 2;
-}
-
-function playbackSessionRank(resource = {}, page = {}, tab = {}) {
-  if (resource.source === "activeVideo") return 3;
-  const contextUrls = new Set([
-    tab.url,
-    page.page_url,
-    page.active_video?.frame_url,
-    ...(page.frames || []).map(frame => frame.page_url)
-  ].map(normalizedFrameUrl).filter(Boolean));
-  const resourceUrls = [resource.frame_url, resource.page_url]
-    .map(normalizedFrameUrl)
-    .filter(Boolean);
-  if (resourceUrls.some(url => contextUrls.has(url))) return 3;
-
-  const sameOriginButDifferentDocument = resourceUrls.some(resourceUrl => {
-    try {
-      const resourceOrigin = new URL(resourceUrl).origin;
-      return [...contextUrls].some(contextUrl => new URL(contextUrl).origin === resourceOrigin);
-    } catch {
-      return false;
-    }
-  });
-  if (sameOriginButDifferentDocument) return 0;
-
-  const activeFrameId = page.active_video?.frame_id;
-  if (activeFrameId !== null && activeFrameId !== undefined && resource.frame_id === activeFrameId) return 2;
-  return 1;
-}
-
-function sourceRank(source = "") {
-  if (source === "pageHookMediaSource" || source === "pageHookBlobSource") return 7;
-  if (String(source || "").startsWith("pageHookPlayer")) return 6;
-  if (source === "webRequestResolved") return 6;
-  if (source === "webRequest") return 5;
-  if (source === "activeVideo") return 4;
-  if (String(source || "").startsWith("pageHook")) return 3;
-  if (source === "scriptHint" || source === "domHint" || source === "locationHint" || source === "iframeHint") return 3;
-  if (source === "dom") return 2;
-  return 0;
-}
-
-function playbackMatchRank(match = "") {
-  return ({
-    "exact-src": 9,
-    "source-element": 8,
-    "blob-source": 8,
-    "range-near-playhead": 7,
-    "fragment-near-playhead": 6,
-    "manifest-near-playhead": 6,
-    "resolved-final-url": 6,
-    "blob-same-frame": 5,
-    "same-frame": 4,
-    "recent-media-request": 3,
-    "same-site-request": 2,
-    "inferred-from-fragment": 1
-  })[match] || 0;
-}
-
-function compareResourceCandidates(a = {}, b = {}) {
-  const left = [
-    a.user_selected ? 1 : 0,
-    Number(a.playback_session_rank || 0),
-    resourceContextRank(a),
-    resourceVisibilityRank(a),
-    a.is_main_video ? 1 : 0,
-    playbackMatchRank(a.playback_match),
-    isDirectResourceCandidate(a) ? 1 : 0,
-    effectiveKindRank(a),
-    playableEndpointRank(a),
-    sourceRank(a.source),
-    Number(a.score || 0),
-    Number(a.time_stamp || 0),
-    Number(a.content_length || 0)
-  ];
-  const right = [
-    b.user_selected ? 1 : 0,
-    Number(b.playback_session_rank || 0),
-    resourceContextRank(b),
-    resourceVisibilityRank(b),
-    b.is_main_video ? 1 : 0,
-    playbackMatchRank(b.playback_match),
-    isDirectResourceCandidate(b) ? 1 : 0,
-    effectiveKindRank(b),
-    playableEndpointRank(b),
-    sourceRank(b.source),
-    Number(b.score || 0),
-    Number(b.time_stamp || 0),
-    Number(b.content_length || 0)
-  ];
-  for (let index = 0; index < left.length; index += 1) {
-    if (right[index] !== left[index]) return right[index] - left[index];
-  }
-  return String(a.url || "").localeCompare(String(b.url || ""));
-}
-
 function mergeAndRankResources(resources, page = {}, tab = {}, { preserveOrder = false } = {}) {
   const baseResources = Array.isArray(resources) ? resources : resourceByTab.get(tab?.id) || [];
   const hinted = (baseResources || []).filter(item => !isImageResource(item)).map(item => withPlaybackHints(item, page, tab));
@@ -666,14 +277,6 @@ function requestRangeHeader(resource = {}) {
 
 function hasByteRangeRequest(resource = {}) {
   return /^bytes=\d*-\d*$/i.test(requestRangeHeader(resource).trim());
-}
-
-function urlHost(url) {
-  try {
-    return new URL(url).hostname;
-  } catch {
-    return "";
-  }
 }
 
 function sameSite(urlA, urlB) {
@@ -861,46 +464,6 @@ function withPlaybackHints(resource, page = {}, tab = {}) {
   if (match) hinted.playback_match = match;
   hinted.score = Math.min(100, Math.max(hinted.score || 0, scoreKind(hinted.url || "", hinted.source || "", kind)) + boost);
   return hinted;
-}
-
-function mergeResource(previous, incoming) {
-  if (!previous) return incoming;
-  const merged = { ...previous, ...incoming };
-  merged.score = Math.max(previous.score || 0, incoming.score || 0);
-  merged.user_selected = Boolean(previous.user_selected || incoming.user_selected);
-  merged.is_main_video = Boolean(previous.is_main_video || incoming.is_main_video);
-  merged.playback_match = previous.playback_match || incoming.playback_match || "";
-  merged.blob_url = incoming.blob_url || previous.blob_url || "";
-  merged.frame_url = incoming.frame_url || previous.frame_url || "";
-  merged.page_url = incoming.page_url || previous.page_url || "";
-  merged.headers = { ...(previous.headers || {}), ...(incoming.headers || {}) };
-  merged.request_headers = { ...(previous.request_headers || {}), ...(incoming.request_headers || {}) };
-  merged.request_body = { ...(previous.request_body || {}), ...(incoming.request_body || {}) };
-  merged.audio_url = incoming.audio_url || previous.audio_url || "";
-  merged.audio_mime = incoming.audio_mime || previous.audio_mime || "";
-  merged.current_time = incoming.current_time ?? previous.current_time ?? null;
-  merged.duration = incoming.duration ?? previous.duration ?? null;
-  merged.width = incoming.width ?? previous.width ?? null;
-  merged.height = incoming.height ?? previous.height ?? null;
-  merged.visibility = incoming.visibility !== "unknown" ? incoming.visibility : previous.visibility || "unknown";
-  merged.is_visible = incoming.is_visible ?? previous.is_visible ?? null;
-  merged.visible_area = incoming.visible_area ?? previous.visible_area ?? null;
-  merged.rendered_width = incoming.rendered_width ?? previous.rendered_width ?? null;
-  merged.rendered_height = incoming.rendered_height ?? previous.rendered_height ?? null;
-  merged.frame_visible = incoming.frame_visible ?? previous.frame_visible ?? null;
-  merged.frame_visibility = incoming.frame_visibility !== "unknown" ? incoming.frame_visibility : previous.frame_visibility || "unknown";
-  merged.frame_visible_area = incoming.frame_visible_area ?? previous.frame_visible_area ?? null;
-  merged.status_code = incoming.status_code ?? previous.status_code ?? null;
-  merged.content_length = incoming.content_length ?? previous.content_length ?? null;
-  merged.mse_append_bytes = incoming.mse_append_bytes ?? previous.mse_append_bytes ?? null;
-  merged.mse_append_total_bytes = incoming.mse_append_total_bytes ?? previous.mse_append_total_bytes ?? null;
-  merged.mse_append_count = incoming.mse_append_count ?? previous.mse_append_count ?? null;
-  merged.mse_append_magic = incoming.mse_append_magic || previous.mse_append_magic || "";
-  merged.mse_append_mime = incoming.mse_append_mime || previous.mse_append_mime || "";
-  merged.mse_append_detected_kind = incoming.mse_append_detected_kind || previous.mse_append_detected_kind || "";
-  merged.resolved_url = incoming.resolved_url || previous.resolved_url || "";
-  merged.time_stamp = Math.max(previous.time_stamp || 0, incoming.time_stamp || 0) || null;
-  return merged;
 }
 
 function captureLogStorageKey(tabId) {
@@ -1468,16 +1031,6 @@ function rememberFramePage(tabId, frameId, page, tab = {}) {
 function hasActiveVideoSignal(page = {}) {
   const active = page.active_video || null;
   return Boolean(active?.src || active?.src_object);
-}
-
-function normalizedFrameUrl(value = "") {
-  try {
-    const parsed = new URL(value);
-    parsed.hash = "";
-    return parsed.href;
-  } catch {
-    return String(value || "").split("#")[0];
-  }
 }
 
 function playbackSessionId(page = {}, tab = {}) {

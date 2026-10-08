@@ -1,3 +1,4 @@
+import { installExtensionScriptLoader } from "./helpers/script-loader.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import vm from "node:vm";
@@ -58,6 +59,7 @@ const context = {
 };
 
 vm.createContext(context);
+installExtensionScriptLoader(context);
 vm.runInContext(await readFile(new URL("../background.js", import.meta.url), "utf8"), context);
 
 const collect = () => new Promise(resolve => listeners.runtimeMessage({ type: "get-current-context", targetTabId: 9 }, {}, resolve));
