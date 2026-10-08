@@ -16,6 +16,7 @@ from .models import TaskOptions, TaskRecord, now_iso
 from .migrations import migrate_task_record, migrate_task_payload
 from .observability import record_task_event
 from .source_input import clean_task_title
+from .activation import record_status
 
 _lock = threading.RLock()
 STALE_TASK_AFTER = timedelta(hours=6)
@@ -110,6 +111,8 @@ def update_task(task_id: str, **changes: Any) -> TaskRecord:
         for key, value in changes.items():
             setattr(record, key, value)
         save_task(record)
+        if record.status != previous_status:
+            record_status(TASK_DIR.parent, record.status, record.error_code)
         if (
             record.phase != previous_phase
             or record.status != previous_status

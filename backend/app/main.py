@@ -73,11 +73,14 @@ from .routers.ranges import range_router
 from .summarizer import chat_completion_provider_kwargs, llm_base_host, llm_model_supports_vision, llm_provider_name, visual_window_review_question_lines
 
 from .task_queue import queue_status, schedule_processing, recover_processing, queue_for
+from .routers.support import router as support_router
+from .activation import record as record_activation
 
 ensure_dirs()
 
 @asynccontextmanager
 async def lifespan(application):
+    record_activation(DATA_DIR, "installed")
     await asyncio.to_thread(cleanup_expired_staged_uploads)
     await asyncio.to_thread(recover_processing, DATA_DIR)
     try:
@@ -99,6 +102,7 @@ app.include_router(personal_router)
 app.include_router(course_router)
 app.include_router(learning_space_router)
 app.include_router(range_router)
+app.include_router(support_router)
 _extension_heartbeat_at = 0.0
 _extension_version = ""
 _extension_protocol_version = 0
@@ -3250,6 +3254,7 @@ def api_pairing_issue(request: Request) -> dict:
 @app.post("/api/extension/heartbeat")
 def extension_heartbeat(payload: dict | None = Body(default=None)) -> dict:
     global _extension_heartbeat_at, _extension_version, _extension_protocol_version
+    record_activation(DATA_DIR, "desktop_connected")
     _extension_heartbeat_at = time.monotonic()
     body = payload or {}
     _extension_version = str(body.get("extension_version") or _extension_version or "")[:32]

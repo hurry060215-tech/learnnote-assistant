@@ -180,3 +180,15 @@ are organizational hints, not factual conclusions. The lane supports removing
 one item, clearing a task, and a separate JSON export. Disabling it does not
 silently erase previously saved samples. No Bilibili API crawl or authenticated
 comment collection is enabled by this implementation.
+
+## Local activation checklist and support summary
+
+LearnNote keeps a bounded local checklist for 30 days: service started,
+extension connected, first task started/succeeded, coarse error categories,
+and application version. It records no learning content, URL, title, task ID,
+key or unique device identifier. There is no remote analytics or support
+sender. Settings → Storage and diagnostics lets you turn recording off,
+delete and disable it, preview each export field, cancel, or save exactly the
+reviewed JSON locally. Sharing that file is a separate manual choice. Deleted
+facts do not repopulate until recording is explicitly enabled again.
+See [the data dictionary and retention controls](docs/LOCAL_SUPPORT_DATA_DICTIONARY.md).

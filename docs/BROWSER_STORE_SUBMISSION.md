@@ -47,3 +47,12 @@ Chrome 需要 `LEARNNOTE_CHROME_ACCESS_TOKEN`、
 2026-09-21 核对：README/官网已有条目 `mncdchpkpikhacmkbanedpppcddapppe`，不是要求新建条目。公开 listing 在当前网络工具中不可访问，实际审核状态与版本需从开发者后台确认。仓库 secret 名称清单未配置上述 Chrome 凭据；缺少的是自动上传配置及当前状态证据，不能据此判断用户没有商店账号。现有开发者模式验收不计作普通用户商店安装成功。
 
 Chrome v2 上传按 [UploadState](https://developer.chrome.com/docs/webstore/api/reference/rest/v2/UploadState) 检查 SUCCEEDED；HTTP 200 不等于处理完成。异步上传通过 fetchStatus 有界等待，失败或未知状态不提交审核。审核提交使用 [STAGED_PUBLISH](https://developer.chrome.com/docs/webstore/api/reference/rest/v2/publishers.items/publish)，通过审核后仍等待单独正式发布，不自动公开。
+
+### Local activation disclosure
+
+The application records only local 30-day activation booleans, coarse error
+categories and app version. It does not transmit this data automatically or
+identify devices. Users can disable/delete records and select, preview and
+explicitly export a local JSON summary. The support link carries no payload.
+Keep store disclosures aligned with PRIVACY.md and
+LOCAL_SUPPORT_DATA_DICTIONARY.md; no store submission was made by this change.
