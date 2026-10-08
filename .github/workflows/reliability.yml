@@ -1,6 +1,19 @@
 name: Reliability gates
 
 on:
+  pull_request:
+    paths:
+      - "backend/**"
+      - "scripts/*reliability*.py"
+      - "scripts/test-backend-offline.py"
+      - ".github/workflows/reliability.yml"
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "scripts/*reliability*.py"
+      - "scripts/test-backend-offline.py"
+      - ".github/workflows/reliability.yml"
   schedule:
     - cron: "23 18 * * 1"
   workflow_dispatch:
@@ -95,6 +108,9 @@ jobs:
           retention-days: 14
 
   public-sample-audit:
+    # Fork/PR contracts are offline. The established public-source audit remains
+    # an explicit main/scheduled/dispatch check and never uses login state.
+    if: github.event_name != 'pull_request'
     runs-on: windows-latest
     timeout-minutes: 20
     steps:

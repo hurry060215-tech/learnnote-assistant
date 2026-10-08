@@ -71,7 +71,7 @@ same core checks as CI:
 ```powershell
 $env:PYTHONPATH = "backend"
 python -m compileall backend\app
-python -m unittest discover backend\tests
+python scripts/test-backend-offline.py
 python -m unittest discover scripts\tests -p "test_*.py"
 python -m unittest desktop.tests.test_desktop_launcher
 
@@ -83,6 +83,11 @@ node --check web\app.js
 Get-ChildItem extension\tests\*.test.mjs | ForEach-Object { node $_.FullName }
 node web\tests\markdown_render.test.mjs
 ```
+
+The backend runner rejects external DNS, HTTP, sockets and yt-dlp URLs locally
+while retaining loopback API fixtures. Missed mocks must not fetch real course
+sites or call model providers. Live integration checks are separate and require
+an explicitly selected public/authorized input.
 
 For website changes:
 
