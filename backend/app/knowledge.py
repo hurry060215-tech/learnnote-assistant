@@ -150,7 +150,7 @@ def _fts_query(value: str) -> str:
     return " AND ".join(f'"{token.replace(chr(34), "")}"' for token in _tokens(value))
 
 
-def add_evidence(evidence: SourceEvidence) -> SourceEvidence:
+def _prepare_evidence(evidence: SourceEvidence) -> SourceEvidence:
     item = evidence.model_copy(update={
         "schema_version": KNOWLEDGE_SCHEMA_VERSION,
         "evidence_id": evidence.evidence_id or uuid4().hex,
@@ -161,36 +161,74 @@ def add_evidence(evidence: SourceEvidence) -> SourceEvidence:
     if not text:
         raise ValueError("evidence_text_required")
     item = item.model_copy(update={"text": text[:2_000_000]})
+    return item
+
+
+def _write_evidence(connection, item: SourceEvidence, fts_available: bool, *, replace_existing: bool = True):
+    connection.execute(
+        """INSERT OR REPLACE INTO source_evidence
+           (evidence_id, schema_version, source_type, title, source_uri, locator, text,
+            task_id, metadata_json, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            item.evidence_id,
+            item.schema_version,
+            item.source_type,
+            item.title[:500],
+            item.source_uri[:1000],
+            item.locator[:300],
+            item.text,
+            item.task_id[:128],
+            json.dumps(item.metadata, ensure_ascii=False)[:20_000],
+            datetime.now(timezone.utc).isoformat(),
+        ),
+    )
+    if fts_available:
+        if replace_existing:
+            connection.execute("DELETE FROM source_evidence_fts WHERE evidence_id = ?", (item.evidence_id,))
+        connection.execute(
+            "INSERT INTO source_evidence_fts(evidence_id, title, source_uri, locator, text) VALUES (?, ?, ?, ?, ?)",
+            (item.evidence_id, item.title, item.source_uri, item.locator, item.text),
+        )
+
+
+def add_evidence(evidence: SourceEvidence) -> SourceEvidence:
+    item = _prepare_evidence(evidence)
     connection = _connect()
     try:
-        connection.execute(
-            """INSERT OR REPLACE INTO source_evidence
-               (evidence_id, schema_version, source_type, title, source_uri, locator, text,
-                task_id, metadata_json, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                item.evidence_id,
-                item.schema_version,
-                item.source_type,
-                item.title[:500],
-                item.source_uri[:1000],
-                item.locator[:300],
-                item.text,
-                item.task_id[:128],
-                json.dumps(item.metadata, ensure_ascii=False)[:20_000],
-                datetime.now(timezone.utc).isoformat(),
-            ),
-        )
-        if _fts_available(connection):
-            connection.execute("DELETE FROM source_evidence_fts WHERE evidence_id = ?", (item.evidence_id,))
-            connection.execute(
-                "INSERT INTO source_evidence_fts(evidence_id, title, source_uri, locator, text) VALUES (?, ?, ?, ?, ?)",
-                (item.evidence_id, item.title, item.source_uri, item.locator, item.text),
-            )
+        _write_evidence(connection, item, _fts_available(connection))
         connection.commit()
     finally:
         connection.close()
     return item
+
+
+def replace_task_evidence(task_id: str, evidence: list[SourceEvidence]) -> None:
+    """Replace one task projection atomically with one connection/commit."""
+    if not task_id or len(task_id) > 128:
+        raise ValueError("invalid_evidence_task")
+    items = [_prepare_evidence(item) for item in evidence]
+    if any(item.task_id != task_id for item in items) or len({item.evidence_id for item in items}) != len(items):
+        raise ValueError("evidence_task_mismatch")
+    connection = _connect()
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        for item in items:
+            owner = connection.execute("SELECT task_id FROM source_evidence WHERE evidence_id=?", (item.evidence_id,)).fetchone()
+            if owner is not None and owner[0] != task_id:
+                raise ValueError("evidence_id_owned_by_another_source")
+        fts = _fts_available(connection)
+        if fts:
+            connection.execute("DELETE FROM source_evidence_fts WHERE evidence_id IN (SELECT evidence_id FROM source_evidence WHERE task_id=?)", (task_id,))
+        connection.execute("DELETE FROM source_evidence WHERE task_id=?", (task_id,))
+        for item in items:
+            _write_evidence(connection, item, fts, replace_existing=False)
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
 
 
 def remove_task_evidence(task_id: str) -> None:

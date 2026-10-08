@@ -26,6 +26,7 @@ def main() -> int:
         parser.error('Commit the source before recording reliability evidence.')
     env = dict(os.environ, LEARNNOTE_DATA_DIR=str(output / 'data'), LEARNNOTE_LLM_API_KEY='', PYTHONIOENCODING='utf-8')
     jobs = [('scheduler', 'scheduler-reliability.py', []), ('cancel', 'cancel-reliability.py', [])]
+    jobs.append(('progressive-outline', 'progressive-slo.py', ['--repetitions', '20']))
     for duration in (300, 1800, 3600, 10800):
         jobs.append((f'media-{duration}', 'long-video-reliability.py', [
             '--duration-seconds', str(duration), '--frame-interval', str(max(30, duration // 40)),

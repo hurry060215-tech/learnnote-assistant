@@ -1,3 +1,4 @@
+import { renderEditionStable } from "/web/reader-progress.js";
 import {
   installConnections,
   loadModelConnection,
@@ -374,6 +375,7 @@ async function openItem(item, { remember = true, check = true } = {}) {
   $("breadcrumb").textContent = item.title;
   $("regenerate").hidden = item.kind !== "task" || item.status !== "success";
   $("document").innerHTML = '<p class="muted">正在打开…</p>';
+  delete $("document").dataset.readerSource;
   $("annotationList").replaceChildren();
   $("annotationText").value = "";
   state.annotationEditingId = "";
@@ -407,7 +409,8 @@ async function loadEdition(epoch) {
   state.text = edition.text;
   state.revision = edition.revision;
   state.edition = edition;
-  renderNote();
+  renderEditionStable($("document"), document.scrollingElement, `${selected.kind}:${selected.id}`,
+    `${edition.revision}:${selected.summary_source || ""}`, renderNote);
 }
 function renderNote() {
   // Keep the edition hash alongside the rendered document so annotations and
