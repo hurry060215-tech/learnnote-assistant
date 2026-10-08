@@ -215,3 +215,20 @@ footer { padding: 2px 22px 20px; color: #7a8e93; font-size: 12px; line-height: 1
 .source-preview > summary { padding:0; min-height:28px; }
 .source-preview[open] > summary { padding-bottom:10px; }
 .source-preview > summary::after { content:'⌄'; color:#58635d; }
+
+/* Localized labels and range controls must be able to shrink and wrap. */
+.generation-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.generation-fields label, .generation-fields input, .generation-fields select,
+.model-readiness > span, .quick-result-header > * { min-width: 0; }
+.generation-fields input { width: 100%; max-width: 100%; }
+.connection-card button { max-width: 42vw; white-space: normal; overflow-wrap: anywhere; }
+.integrity-grid strong, .preflight-summary strong, .processing-mode-choices strong {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.model-readiness, .quick-result-header, .source-preview > summary { flex-wrap: wrap; }
+.model-readiness > span { flex-basis: 180px; overflow-wrap: anywhere; }
+.model-readiness button { max-width: 100%; white-space: normal; }
+.source-preview > summary > [data-i18n] { font-size: inherit; font-weight: inherit; color: inherit; }
+.primary-button, .secondary-button, .result-actions button { overflow-wrap: anywhere; }
+@media (max-width: 330px) { .connection-card button { max-width: 100%; } }

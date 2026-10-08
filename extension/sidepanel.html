@@ -9,7 +9,7 @@
   </head>
   <body>
     <header class="app-header">
-      <a class="brand" href="#" id="openClientBrand" aria-label="打开 LearnNote 客户端">
+      <a class="brand" href="#" id="openClientBrand" aria-label="打开 LearnNote 客户端" data-i18n-aria="ui_open_the_learnnote_client">
         <img class="brand-mark" src="icons/icon48.png" width="36" height="36" alt="">
         <span><strong>LearnNote</strong></span>
       </a>
@@ -21,7 +21,7 @@
     <main>
       <section id="connectionCard" class="connection-card" data-state="checking" aria-live="polite">
         <span class="status-dot" aria-hidden="true"></span>
-        <div><strong id="connectionTitle">正在连接客户端</strong><small id="connectionDetail">LearnNote 需要在本机运行</small></div>
+        <div><strong id="connectionTitle"><span data-i18n="ui_connecting_to_the_client">正在连接客户端</span></strong><small id="connectionDetail"><span data-i18n="ui_learnnote_must_be_running_on_this_computer">LearnNote 需要在本机运行</span></small></div>
         <button id="openClientButton" type="button" data-i18n="openClient">打开工作台</button>
         <a id="clientInstallHelp" class="client-install-help" href="https://github.com/hurry060215-tech/learnnote-assistant/releases/latest" target="_blank" rel="noopener noreferrer" data-i18n="installClient">首次使用？下载客户端安装包</a>
       </section>
@@ -31,31 +31,31 @@
           <span id="platformLabel" data-i18n="currentPage">当前页面</span>
           <span id="playingBadge" class="playing-badge" hidden><i></i><span data-i18n="playing">正在播放</span></span>
         </div>
-        <h1 id="videoTitle">正在识别当前视频...</h1>
-        <p id="videoMeta" class="video-meta">请在视频页面开始播放</p>
+        <h1 id="videoTitle"><span data-i18n="ui_identifying_the_current_video">正在识别当前视频...</span></h1>
+        <p id="videoMeta" class="video-meta"><span data-i18n="ui_start_playback_on_the_video_page">请在视频页面开始播放</span></p>
 
-        <p id="preflightMessage" class="preflight-message" role="status" aria-live="polite">正在读取播放器字幕…</p>
-        <details class="source-details"><summary>查看来源信息</summary>
-        <div id="integrityGrid" class="integrity-grid" aria-label="媒体完整性预检">
-          <article data-kind="video" data-state="checking"><span>画面</span><strong>检测中</strong></article>
-          <article data-kind="audio" data-state="unknown"><span>声音</span><strong>未确认</strong></article>
-          <article data-kind="subtitle" data-state="unknown"><span>字幕</span><strong>未确认</strong></article>
+        <p id="preflightMessage" class="preflight-message" role="status" aria-live="polite"><span data-i18n="ui_reading_player_subtitles">正在读取播放器字幕…</span></p>
+        <details class="source-details"><summary><span data-i18n="sourceInfo">查看来源信息</span></summary>
+        <div id="integrityGrid" class="integrity-grid" aria-label="媒体完整性预检" data-i18n-aria="ui_media_integrity_preflight">
+          <article data-kind="video" data-state="checking"><span data-i18n="ui_video">画面</span><strong><span data-i18n="ui_checking">检测中</span></strong></article>
+          <article data-kind="audio" data-state="unknown"><span data-i18n="ui_audio">声音</span><strong><span data-i18n="ui_unconfirmed">未确认</span></strong></article>
+          <article data-kind="subtitle" data-state="unknown"><span data-i18n="ui_subtitles">字幕</span><strong><span data-i18n="ui_unconfirmed">未确认</span></strong></article>
         </div>
 
         <div class="preflight-summary">
-          <div><span>媒体来源</span><strong id="candidateCount">0</strong></div>
-          <div><span>播放器时长</span><strong id="durationValue">--</strong></div>
-          <div><span>文字来源</span><strong id="estimateValue">--</strong></div>
+          <div><span data-i18n="ui_media_sources">媒体来源</span><strong id="candidateCount">0</strong></div>
+          <div><span data-i18n="ui_player_duration">播放器时长</span><strong id="durationValue">--</strong></div>
+          <div><span data-i18n="ui_text_source">文字来源</span><strong id="estimateValue">--</strong></div>
         </div>
 
         </details>
       </section>
 
       <details id="sourcePreviewCard" class="quick-result-card source-preview" hidden>
-        <summary>原文预览 <span id="sourcePreviewCount"></span></summary>
-        <label class="subtitle-search" for="subtitleSearch">搜索字幕</label>
-        <input id="subtitleSearch" type="search" placeholder="输入关键词，点击原文回到视频" maxlength="200">
-        <p class="preview-caption">按停顿与段落长度分组，保留每句原始时间；分组不代表 AI 章节。</p>
+        <summary><span data-i18n="ui_transcript_preview">原文预览</span> <span id="sourcePreviewCount"></span></summary>
+        <label class="subtitle-search" for="subtitleSearch"><span data-i18n="ui_search_subtitles">搜索字幕</span></label>
+        <input id="subtitleSearch" type="search" placeholder="输入关键词，点击原文回到视频" maxlength="200" data-i18n-placeholder="ui_search_keywords_click_the_transcript_to_revisit_the_video">
+        <p class="preview-caption"><span data-i18n="ui_grouped_by_pauses_and_paragraph_length_keeping_each_original_t">按停顿与段落长度分组，保留每句原始时间；分组不代表 AI 章节。</span></p>
         <p id="sourceSeekStatus" role="status"></p>
         <div id="sourcePreviewContent" class="subtitle-sections"></div>
       </details>
@@ -63,71 +63,71 @@
       <section class="handoff-card">
         <h2 class="section-title" data-i18n="processingMode">如何整理这个视频</h2>
         <div class="processing-mode-choices" role="radiogroup" aria-label="选择处理方式" data-i18n-aria="chooseProcessingMode">
-          <button type="button" data-processing-mode="quick" role="radio" aria-checked="false" tabindex="-1"><strong data-i18n="subtitleOnly">保存字幕原文</strong><small>只保存逐字内容，不生成总结</small></button>
-          <button type="button" data-processing-mode="study" role="radio" class="active" aria-checked="true" tabindex="0"><strong data-i18n="summaryNote">生成总结笔记</strong><small>提炼要点、大纲与结论，保留视频出处</small></button>
-          <button type="button" data-processing-mode="deep" role="radio" aria-checked="false" tabindex="-1"><strong data-i18n="visualNote">图文笔记</strong><small>结合字幕与画面，需要视觉模型</small></button>
+          <button type="button" data-processing-mode="quick" role="radio" aria-checked="false" tabindex="-1"><strong data-i18n="subtitleOnly">保存字幕原文</strong><small><span data-i18n="ui_save_the_verbatim_transcript_without_a_summary">只保存逐字内容，不生成总结</span></small></button>
+          <button type="button" data-processing-mode="study" role="radio" class="active" aria-checked="true" tabindex="0"><strong data-i18n="summaryNote">生成总结笔记</strong><small><span data-i18n="ui_summarize_key_points_outline_and_conclusions_with_source_links">提炼要点、大纲与结论，保留视频出处</span></small></button>
+          <button type="button" data-processing-mode="deep" role="radio" aria-checked="false" tabindex="-1"><strong data-i18n="visualNote">图文笔记</strong><small><span data-i18n="ui_combine_subtitles_and_frames_requires_a_vision_model">结合字幕与画面，需要视觉模型</span></small></button>
         </div>
-        <p id="modeDescription" class="mode-description">优先读取已有字幕；缺少字幕时，在工作台确认后使用本地语音识别。不分析画面。</p>
-        <details id="learningRangeOptions" class="extension-options"><summary>只学习一段（可选）</summary>
-          <div class="generation-fields"><label for="learningRangeStart">开始（秒）<input id="learningRangeStart" type="number" min="0" step="0.1" placeholder="0"></label><label for="learningRangeEnd">结束（秒）<input id="learningRangeEnd" type="number" min="0.1" step="0.1" placeholder="当前视频末尾"></label></div>
-          <button id="useCurrentPositionAsRangeEnd" class="secondary-button" type="button">用当前播放位置填结束</button>
-          <p class="muted">只在点击发送时读取当前播放位置；范围外的字幕不会进入这次任务，原视频仍保留。</p>
+        <p id="modeDescription" class="mode-description"><span data-i18n="ui_uses_existing_subtitles_first_if_unavailable_confirm_local_spe_2">优先读取已有字幕；缺少字幕时，在工作台确认后使用本地语音识别。不分析画面。</span></p>
+        <details id="learningRangeOptions" class="extension-options"><summary><span data-i18n="ui_study_a_section_optional">只学习一段（可选）</span></summary>
+          <div class="generation-fields"><label for="learningRangeStart"><span data-i18n="ui_start_seconds">开始（秒）</span><input id="learningRangeStart" type="number" min="0" step="0.1" placeholder="0"></label><label for="learningRangeEnd"><span data-i18n="ui_end_seconds">结束（秒）</span><input id="learningRangeEnd" type="number" min="0.1" step="0.1" placeholder="当前视频末尾" data-i18n-placeholder="ui_end_of_the_current_video"></label></div>
+          <button id="useCurrentPositionAsRangeEnd" class="secondary-button" type="button"><span data-i18n="ui_use_current_playback_position_as_the_end">用当前播放位置填结束</span></button>
+          <p class="muted"><span data-i18n="ui_the_range_is_applied_when_you_click_send_subtitles_outside_it_">点击发送时应用所选范围；范围外的字幕不会进入这次任务，原视频仍保留。</span></p>
           <p id="learningRangeStatus" role="status"></p>
         </details>
-        <div id="modelReadiness" class="model-readiness" hidden><span id="modelReadinessText"></span><button type="button" id="configureModelButton" data-client-view="settings" hidden>设置模型</button></div>
+        <div id="modelReadiness" class="model-readiness" hidden><span id="modelReadinessText"></span><button type="button" id="configureModelButton" data-client-view="settings" hidden><span data-i18n="ui_set_up_model">设置模型</span></button></div>
         <details id="permissionDetails" class="extension-options">
-          <summary>站点权限与数据流</summary>
-          <p class="muted">打开侧栏时读取当前标签的字幕与播放器线索；媒体预检和任务发送只对已授权站点进行。撤销后会清除该站点缓存并停止后续捕获。</p>
+          <summary><span data-i18n="ui_site_permissions_and_data_flow">站点权限与数据流</span></summary>
+          <p class="muted"><span data-i18n="ui_opening_the_panel_reads_subtitle_and_player_evidence_from_the_">打开侧栏时读取当前标签的字幕与播放器线索；媒体预检和任务发送只对已授权站点进行。撤销后会清除该站点缓存并停止后续捕获。</span></p>
           <div id="permissionList" class="permission-list" aria-live="polite"></div>
           <p id="permissionStatus" role="status"></p>
         </details>
-        <details id="extensionOptions" class="extension-options"><summary>笔记偏好</summary>
+        <details id="extensionOptions" class="extension-options"><summary><span data-i18n="ui_note_preferences">笔记偏好</span></summary>
         <div class="generation-fields">
-          <label>总结风格<select id="extensionStyle"><option value="">跟随上方模式</option><option value="study">学习笔记</option><option value="lecture">课程讲义</option><option value="concise">重点速记</option><option value="code">代码教程</option><option value="academic">论文导读</option><option value="exam">考点复习</option></select></label>
-          <label>笔记格式<select id="extensionTemplate"><option value="">跟随上方模式</option><option value="standard">结构化笔记</option><option value="timeline">时间轴</option><option value="cornell">康奈尔笔记</option><option value="qa">问答复习</option><option value="mindmap">层级导图</option></select></label>
+          <label><span data-i18n="ui_summary_style">总结风格</span><select id="extensionStyle"><option value="" data-i18n="ui_use_selected_mode">跟随上方模式</option><option value="study" data-i18n="ui_study_notes">学习笔记</option><option value="lecture" data-i18n="ui_lecture_handout">课程讲义</option><option value="concise" data-i18n="ui_key_points">重点速记</option><option value="code" data-i18n="ui_code_tutorial">代码教程</option><option value="academic" data-i18n="ui_paper_guide">论文导读</option><option value="exam" data-i18n="ui_exam_revision">考点复习</option></select></label>
+          <label><span data-i18n="ui_note_format">笔记格式</span><select id="extensionTemplate"><option value="" data-i18n="ui_use_selected_mode">跟随上方模式</option><option value="standard" data-i18n="ui_structured_notes">结构化笔记</option><option value="timeline" data-i18n="ui_timeline">时间轴</option><option value="cornell" data-i18n="ui_cornell_notes">康奈尔笔记</option><option value="qa" data-i18n="ui_q_a_review">问答复习</option><option value="mindmap" data-i18n="ui_hierarchical_outline">层级导图</option></select></label>
         </div>
-        <label for="extensionPrompt">额外整理要求</label><textarea id="extensionPrompt" maxlength="4000" rows="3" placeholder="例如：保留关键代码、操作顺序与原文中的例子"></textarea><button id="useClientPreferences" class="secondary-button" type="button">载入工作台笔记偏好</button><p id="extensionOptionsStatus" role="status"></p></details>
+        <label for="extensionPrompt"><span data-i18n="ui_additional_instructions">额外整理要求</span></label><textarea id="extensionPrompt" maxlength="4000" rows="3" placeholder="例如：保留关键代码、操作顺序与原文中的例子" data-i18n-placeholder="ui_for_example_keep_key_code_step_order_and_examples_from_the_sou"></textarea><button id="useClientPreferences" class="secondary-button" type="button"><span data-i18n="ui_load_workspace_note_preferences">载入工作台笔记偏好</span></button><p id="extensionOptionsStatus" role="status"></p></details>
         <button id="sendButton" class="primary-button" type="button" disabled>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
-          <span id="sendButtonLabel">发送到客户端</span>
+          <span id="sendButtonLabel"><span data-i18n="sendToClient">发送到客户端</span></span>
         </button>
-        <div id="handoffProgress" class="handoff-progress" role="progressbar" aria-label="交接进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden>
+        <div id="handoffProgress" class="handoff-progress" role="progressbar" aria-label="交接进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden data-i18n-aria="ui_handoff_progress">
           <span></span>
         </div>
         <div class="handoff-row">
-          <p id="handoffStatus" class="handoff-status" role="status" aria-live="polite">识别完成后即可发送</p>
+          <p id="handoffStatus" class="handoff-status" role="status" aria-live="polite"><span data-i18n="ui_ready_to_send_after_identification">识别完成后即可发送</span></p>
           <span id="handoffPercent" hidden>0%</span>
         </div>
-        <button id="openTaskButton" class="secondary-button" type="button" hidden>在客户端查看任务</button>
+        <button id="openTaskButton" class="secondary-button" type="button" hidden><span data-i18n="openTask">在客户端查看任务</span></button>
       </section>
 
 
 
-      <section id="quickResultCard" class="quick-result-card" hidden aria-label="快速学习结果">
+      <section id="quickResultCard" class="quick-result-card" hidden aria-label="快速学习结果" data-i18n-aria="ui_quick_study_result">
         <header class="quick-result-header">
-          <div><strong id="quickResultStatus">正在读取字幕</strong></div>
-          <button id="quickDeepButton" class="secondary-button compact-button" type="button">其他整理方式</button>
+          <div><strong id="quickResultStatus"><span data-i18n="ui_reading_subtitles_2">正在读取字幕</span></strong></div>
+          <button id="quickDeepButton" class="secondary-button compact-button" type="button"><span data-i18n="ui_other_processing_modes">其他整理方式</span></button>
         </header>
-        <nav class="quick-tabs" role="tablist" aria-label="快速学习结果">
-          <button type="button" class="active" data-quick-tab="summary" role="tab" aria-selected="true">笔记</button>
-          <button type="button" data-quick-tab="transcript" role="tab" aria-selected="false">字幕</button>
-          <button type="button" data-quick-tab="ask" role="tab" aria-selected="false">提问</button>
+        <nav class="quick-tabs" role="tablist" aria-label="快速学习结果" data-i18n-aria="ui_quick_study_result">
+          <button type="button" class="active" data-quick-tab="summary" role="tab" aria-selected="true"><span data-i18n="ui_notes">笔记</span></button>
+          <button type="button" data-quick-tab="transcript" role="tab" aria-selected="false"><span data-i18n="ui_subtitles">字幕</span></button>
+          <button type="button" data-quick-tab="ask" role="tab" aria-selected="false"><span data-i18n="ui_ask">提问</span></button>
         </nav>
-        <div class="result-actions" aria-label="保存当前结果"><button id="copyQuickSummary" type="button">复制总结</button><button id="saveQuickSummary" type="button">保存 Markdown</button><button id="saveQuickSubtitles" type="button">保存字幕 SRT</button></div>
+        <div class="result-actions" aria-label="保存当前结果" data-i18n-aria="ui_save_current_result"><button id="copyQuickSummary" type="button"><span data-i18n="ui_copy_summary">复制总结</span></button><button id="saveQuickSummary" type="button"><span data-i18n="ui_save_markdown">保存 Markdown</span></button><button id="saveQuickSubtitles" type="button"><span data-i18n="ui_save_subtitles_as_srt">保存字幕 SRT</span></button></div>
         <div id="quickSummaryPanel" class="quick-panel" data-quick-panel="summary"></div>
         <div id="quickTranscriptPanel" class="quick-panel" data-quick-panel="transcript" hidden></div>
         <div id="quickAskPanel" class="quick-panel" data-quick-panel="ask" hidden>
-          <div id="quickAskConversation" class="quick-ask-conversation"><p>回答只引用当前视频的字幕证据。</p></div>
+          <div id="quickAskConversation" class="quick-ask-conversation"><p><span data-i18n="ui_answers_cite_only_subtitle_evidence_from_this_video">回答只引用当前视频的字幕证据。</span></p></div>
           <form id="quickAskForm" class="quick-ask-form">
-            <textarea id="quickAskQuestion" rows="2" maxlength="1000" placeholder="针对这段视频提问…"></textarea>
-            <button class="primary-button compact-button" type="submit">发送问题</button>
+            <textarea id="quickAskQuestion" aria-label="针对这段视频提问…" data-i18n-aria="ui_ask_a_question_about_this_video" rows="2" maxlength="1000" placeholder="针对这段视频提问…" data-i18n-placeholder="ui_ask_a_question_about_this_video"></textarea>
+            <button class="primary-button compact-button" type="submit"><span data-i18n="ui_send_question">发送问题</span></button>
           </form>
         </div>
       </section>
 
-      <nav class="client-links" aria-label="客户端功能">
-        <button type="button" data-client-view="settings"><span>模型与偏好</span><b>›</b></button>
-        <button type="button" data-client-view="diagnostics"><span>连接与诊断</span><b>›</b></button>
+      <nav class="client-links" aria-label="客户端功能" data-i18n-aria="clientFeatures">
+        <button type="button" data-client-view="settings"><span data-i18n="ui_models_and_preferences">模型与偏好</span><b>›</b></button>
+        <button type="button" data-client-view="diagnostics"><span data-i18n="ui_connection_and_diagnostics">连接与诊断</span><b>›</b></button>
       </nav>
     </main>
 

@@ -38,8 +38,19 @@ Productivity
 - Secondary: English (runtime strings and manifest metadata)
 
 The extension includes Chrome locale resources in _locales/zh_CN and
-_locales/en. User video titles, subtitles, notes, and imported text are never
-translated or uploaded by the extension.
+_locales/en. Product UI follows the browser display language. Course titles,
+subtitles, notes, questions, and imported text remain in their original language.
+The extension hands authorized task evidence to the local workspace; remote
+model use is explicitly configured in the client, not enabled by localization.
+Unknown provider diagnostics retain their original wording.
+
+- English support: [HELP.en.md](HELP.en.md)
+- 简体中文帮助：[HELP.zh-CN.md](HELP.zh-CN.md)
+
+The bilingual runtime and support text are prepared. Matching English/Chinese
+store screenshots and the 390/768/desktop visual acceptance matrix are still
+pending; do not claim the store-asset acceptance criterion has passed. See the
+[localization acceptance checklist](../docs/EXTENSION_LOCALIZATION.md).
 
 ## Support and policy URLs
 
