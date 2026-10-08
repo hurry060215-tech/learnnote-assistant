@@ -9,7 +9,7 @@ yt-dlp>=2026.7.4
 Pillow>=10.4
 python-docx==1.2.0
 reportlab==5.0.1
-pypdf==6.18.1
+pypdf==6.19.0
 openai>=1.40
 imageio-ffmpeg>=0.5.1
 fsrs==6.3.2
