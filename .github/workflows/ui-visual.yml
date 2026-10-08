@@ -6,6 +6,7 @@ on:
       - "package.json"
       - "package-lock.json"
       - "web/**"
+      - "extension/**"
       - "backend/app/**"
       - "scripts/*visual*.cjs"
       - ".github/workflows/ui-visual.yml"
@@ -16,7 +17,8 @@ on:
       - "package.json"
       - "package-lock.json"
       - "web/**"
-      - "scripts/accessibility-visual-acceptance.cjs"
+      - "extension/**"
+      - "scripts/*visual*.cjs"
       - ".github/workflows/ui-visual.yml"
 
 permissions:
@@ -92,6 +94,10 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Learning interaction gate failed" }
             node scripts/encoding-redecode-acceptance.cjs http://127.0.0.1:8765/web/classic.html build/encoding-redecode-ui
             if ($LASTEXITCODE -ne 0) { throw "Existing material re-decode gate failed" }
+            node scripts/extension-locale-visual-acceptance.cjs build/extension-locales
+            if ($LASTEXITCODE -ne 0) { throw "Extension locale/layout matrix failed" }
+            node scripts/study-product-visual-acceptance.cjs http://127.0.0.1:8765 build/study-product-ui
+            if ($LASTEXITCODE -ne 0) { throw "Default reader/studio accessibility matrix failed" }
             node scripts/task-stream-reconnect-acceptance.cjs build/task-stream-reconnect-ui
             if ($LASTEXITCODE -ne 0) { throw "Task stream reconnect gate failed" }
           } finally {
@@ -119,5 +125,7 @@ jobs:
             build/learning-ui
             build/encoding-redecode-ui
             build/task-stream-reconnect-ui
+            build/extension-locales
+            build/study-product-ui
           if-no-files-found: warn
           retention-days: 14

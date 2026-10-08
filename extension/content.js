@@ -1967,6 +1967,10 @@ function mergePageResource(previous, incoming) {
   };
 }
 
+function collectChapterEvidence(video = pickMainVideo(collectVideos())?.video) {
+  return globalThis.LearnNoteStudyEvidence.collectChapterEvidence({video, pageUrl:location.href, document, safeQueryAll});
+}
+
 function collectPageData(forceFullScan = false) {
   const all = [...collectDomResources(forceFullScan), ...collectPerformanceResources(), ...collectHookResources()];
   const byUrl = new Map();
@@ -1982,6 +1986,7 @@ function collectPageData(forceFullScan = false) {
     page_text: collectCourseText(forceFullScan),
     active_video: active,
     browser_subtitles: browserSubtitles,
+    chapters: collectChapterEvidence(),
     drm_detected: Boolean(active?.drm_detected || drm.length),
     drm_signals: drm,
     resources: [...byUrl.values()]

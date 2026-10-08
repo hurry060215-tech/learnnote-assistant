@@ -1,0 +1,3 @@
+# Ship byte-identical capture scripts on Windows and POSIX. The architecture
+# budget measures actual package bytes, so checkout line endings must be stable.
+extension/*.js text eol=lf

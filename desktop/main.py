@@ -801,7 +801,7 @@ class DesktopApi:
         if stage.exists():
             shutil.rmtree(stage)
         stage.mkdir(parents=True)
-        allowed = {"manifest.json", "background.js", "capture-classification.js", "capture-ranking.js", "content.js", "page_hook.js", "sidepanel.html", "sidepanel.css", "sidepanel.js", "i18n.js", "INSTALL.txt", "icons", "_locales"}
+        allowed = {"manifest.json", "background.js", "capture-classification.js", "capture-ranking.js", "content.js", "content-study-evidence.js", "page_hook.js", "sidepanel.html", "sidepanel.css", "sidepanel.js", "i18n.js", "INSTALL.txt", "icons", "_locales"}
         with ZipFile(archive) as package:
             for info in package.infolist():
                 name = Path(info.filename.replace("/", os.sep))

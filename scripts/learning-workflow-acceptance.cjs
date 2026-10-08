@@ -94,11 +94,21 @@ async function main() {
     await page.keyboard.press("Enter");
     await page.waitForSelector(".source-dialog");
     await page.keyboard.press("Escape");
-    const before = await page.locator("#studyViewProgressLabel").innerText();
+    // A queued dialog close listener can restore the old source-button focus.
+    await page.locator(".source-dialog").waitFor({state:"detached"});
     const remembered = page.getByRole("button", { name: "记住", exact: true });
     await remembered.focus();
+    assert(await remembered.evaluate(button => document.activeElement === button));
+    const savedReview = page.waitForResponse(response => response.request().method() === "POST" && /\/api\/study\/cards\/[^/]+\/review$/.test(new URL(response.url()).pathname));
     await page.keyboard.press("Enter");
-    await page.waitForFunction(value => document.querySelector("#studyViewProgressLabel").innerText !== value, before);
+    const reviewResponse = await savedReview;
+    assert.equal(reviewResponse.status(),200);
+    const submission = reviewResponse.request().postDataJSON(), reviewedCard = (await reviewResponse.json()).card;
+    assert.equal(submission.rating,3); assert(submission.idempotency_key); assert(reviewedCard.reps > 0);
+    const persisted = await (await page.request.get(new URL(`/api/study/reviews?card_id=${reviewedCard.card_id}`,base).href)).json();
+    assert.equal(persisted.reviews.filter(row => row.idempotency_key === submission.idempotency_key && row.rating === 3).length,1);
+    const actualSummary = await (await page.request.get(new URL("/api/study/summary",base).href)).json();
+    await page.waitForFunction(value => document.querySelector("#studyViewProgressLabel").innerText === value, `${actualSummary.reviewed_today} / 10`);
     await page.screenshot({ path: path.join(output, "study-desktop.png") });
 
     const studyGeometry = {};

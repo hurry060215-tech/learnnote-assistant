@@ -32,6 +32,7 @@ MODULE_SIZE_LIMITS = {
     "extension/page_hook.js": 2850,
     "extension/background.js": 2500,
     "extension/content.js": 2200,
+    "extension/content-study-evidence.js": 110,
     "extension/capture-classification.js": 290,
     "extension/capture-ranking.js": 320,
     "web/task-format.js": 210,
@@ -95,7 +96,7 @@ EXTRACTED_BACKEND_MODULES = (
     "media_discovery", "media_manifests", "qa_evidence", "qa_history",
 )
 EXTENSION_SCRIPT_BUDGET_BYTES = 335000
-EXTENSION_CAPTURE_SCRIPTS = ("background.js", "content.js", "page_hook.js", "capture-classification.js", "capture-ranking.js")
+EXTENSION_CAPTURE_SCRIPTS = ("background.js", "content.js", "content-study-evidence.js", "page_hook.js", "capture-classification.js", "capture-ranking.js")
 
 
 def aggregate_size_violations() -> list[str]:

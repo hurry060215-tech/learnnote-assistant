@@ -174,7 +174,7 @@ def hardcoded_extension_copy(source):
 def unlocalized_service_errors(catalogs):
     known = {item["message"] for key, item in catalogs["zh_CN"].items() if key.startswith("service_")}
     findings = []
-    for filename in ("background.js", "content.js"):
+    for filename in ("background.js", "content.js", "content-study-evidence.js"):
         source = (ROOT / "extension" / filename).read_text(encoding="utf-8")
         for value, offset, kind in javascript_literals(source):
             before = source[max(0, offset - 120):offset]

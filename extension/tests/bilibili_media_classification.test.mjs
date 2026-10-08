@@ -1,3 +1,4 @@
+import { contentScriptSource } from "./content_script_loader.mjs";
 import { installExtensionScriptLoader } from "./helpers/script-loader.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -87,7 +88,7 @@ contentContext.window.postMessage = () => {};
 
 vm.createContext(contentContext);
 vm.runInContext(
-  await readFile(new URL("../content.js", import.meta.url), "utf8"),
+  await contentScriptSource(),
   contentContext,
 );
 

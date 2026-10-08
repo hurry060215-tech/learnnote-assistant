@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field, ConfigDict
 
 from ..courses import list_courses, get_course, save_course, delete_course, compare_course
 from ..playlists import preview_playlist
+from ..course_episodes import course_episodes, prepare_course_episode, bind_course_episode
 
 course_router = APIRouter(prefix="/api/courses", tags=["courses"])
 
@@ -44,7 +45,8 @@ def api_courses():
 @course_router.post("")
 def api_create_course(request: CourseRequest):
     try:
-        return {"course": save_course(request.title, [item.model_dump() for item in request.sources], request.paused)}
+        course = save_course(request.title, [item.model_dump() for item in request.sources], request.paused)
+        return {"course": course, "episodes": course_episodes(course)}
     except (ValueError, OSError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -52,7 +54,8 @@ def api_create_course(request: CourseRequest):
 @course_router.get("/{course_id}")
 def api_course(course_id: str):
     try:
-        return {"course": get_course(course_id)}
+        course = get_course(course_id)
+        return {"course": course, "episodes": course_episodes(course)}
     except (ValueError, OSError) as exc:
         raise HTTPException(status_code=404, detail="Course unavailable") from exc
 
@@ -60,7 +63,8 @@ def api_course(course_id: str):
 @course_router.put("/{course_id}")
 def api_save_course(course_id: str, request: CourseRequest):
     try:
-        return {"course": save_course(request.title, [item.model_dump() for item in request.sources], request.paused, course_id, request.revision)}
+        course = save_course(request.title, [item.model_dump() for item in request.sources], request.paused, course_id, request.revision)
+        return {"course": course, "episodes": course_episodes(course)}
     except (ValueError, OSError) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
@@ -80,3 +84,24 @@ def api_compare_course(course_id: str, q: str = Query(min_length=1, max_length=2
         return compare_course(course_id, q, source_id=source_id, source_kind=source_kind, start=start, end=end)
     except (ValueError, OSError) as exc:
         raise HTTPException(status_code=404, detail="Course unavailable") from exc
+
+
+class EpisodeBinding(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    task_id: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")
+
+
+@course_router.post("/{course_id}/episodes/{episode_id}/prepare")
+def api_prepare_course_episode(course_id: str, episode_id: str):
+    try:
+        return {"episode": prepare_course_episode(get_course(course_id), episode_id)}
+    except (ValueError, OSError) as exc:
+        raise HTTPException(status_code=409, detail={"code":str(exc), "message":"课程已暂停、来源失效或任务身份冲突，请刷新课程后重试。"}) from exc
+
+
+@course_router.post("/{course_id}/episodes/{episode_id}/bind")
+def api_bind_course_episode(course_id: str, episode_id: str, request: EpisodeBinding):
+    try:
+        return {"episode": bind_course_episode(get_course(course_id), episode_id, request.task_id)}
+    except (ValueError, OSError) as exc:
+        raise HTTPException(status_code=409, detail={"code":str(exc), "message":"任务与该课程分集不匹配，未修改已有绑定。"}) from exc

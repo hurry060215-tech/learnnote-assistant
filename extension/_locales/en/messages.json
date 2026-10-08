@@ -787,5 +787,35 @@
   },
   "service_service_detail": {
     "message": "Original service message: {detail}"
+  },
+  "range_mode_label": {
+    "message": "Study range"
+  },
+  "range_whole": {
+    "message": "Whole video"
+  },
+  "range_current_5": {
+    "message": "5 minutes from current position"
+  },
+  "range_current_15": {
+    "message": "15 minutes from current position"
+  },
+  "range_current_30": {
+    "message": "30 minutes from current position"
+  },
+  "range_current_chapter": {
+    "message": "Current chapter (requires source chapter data)"
+  },
+  "range_custom": {
+    "message": "Custom start and end"
+  },
+  "range_position_unavailable": {
+    "message": "The current position is unavailable or at the end. Play the video and try again."
+  },
+  "range_chapter_unavailable": {
+    "message": "No reliable source chapter covers this position. Choose a time window or custom range."
+  },
+  "range_selected_bounds": {
+    "message": "Selected {start}–{end} seconds. Position and video identity are rechecked when sending."
   }
 }

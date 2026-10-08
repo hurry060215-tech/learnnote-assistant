@@ -65,3 +65,15 @@ class StudyProductAcceptanceTests(unittest.TestCase):
             self.assertEqual(study_dashboard()["mistakes"], [])
             clear_study_data()
             self.assertTrue(all(not day["review_count"] for day in study_dashboard()["progress"]["activity"]))
+
+
+class StudyVideoScopeTests(unittest.TestCase):
+    def test_video_scope_intersects_course_before_pagination(self):
+        with tempfile.TemporaryDirectory() as tmp,patch("app.study.DATA_DIR",Path(tmp)),patch("app.routers.knowledge_study.get_task"),patch("app.knowledge.evidence_ids_for_task",return_value={"video-cue"}),patch("app.routers.knowledge_study.course_evidence_ids",return_value={"video-cue","document-cue"}):
+            save_cards([StudyCard(front="Other",back="Answer",source_evidence_ids=["document-cue"]) for _ in range(20)])
+            card=save_cards([StudyCard(front="Selected",back="Answer",source_evidence_ids=["video-cue"])])[0];client=TestClient(app)
+            due=client.get("/api/study/due?limit=1&course_id=course&task_id=video")
+            self.assertEqual(due.status_code,200,due.text);self.assertEqual([item["card_id"] for item in due.json()["cards"]],[card.card_id])
+            dashboard=client.get("/api/study/dashboard?limit=1&course_id=course&task_id=video").json()
+            self.assertEqual(dashboard["today"]["due_count"],1);self.assertEqual(dashboard["task_id"],"video")
+            with patch("app.routers.knowledge_study.course_evidence_ids",return_value={"different-course"}):self.assertEqual(client.get("/api/study/due?course_id=other&task_id=video").json()["cards"],[])

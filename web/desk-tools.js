@@ -18,6 +18,7 @@ export function installTools(ctx) {
   let generation = 0,
     course = null,
     courses = [],
+    courseEpisodes = [],
     proposals = [],
     batchRunning = false,
     cleanupPolicy = null,
@@ -83,6 +84,7 @@ export function installTools(ctx) {
       }),
     });
     course = result.course;
+    courseEpisodes = result.episodes || [];
     window.LearnNoteDialogs?.markSaved(dialog);
     return course;
   }
@@ -112,16 +114,23 @@ export function installTools(ctx) {
     const result = await api(`/api/courses/${id}`);
     if (token !== generation) return;
     course = result.course;
+    courseEpisodes = result.episodes || [];
     courseView();
+  }
+  function episodeLabel(source, position) {
+    const episode = courseEpisodes.find(item => item.position === position);
+    if (!episode) return source.kind === "url" ? "待整理链接" : source.kind === "task" ? "视频笔记" : "学习资料";
+    const label = { pending:"待提交", queued:"排队中", running:"处理中", success:"已完成", failed:"处理失败", cancelled:"已取消", interrupted:"等待恢复", source_missing:"任务已移除，可重新提交", identity_conflict:"来源冲突，请核对" }[episode.status] || episode.status;
+    return `${label}${episode.checkpoint ? ` · ${episode.checkpoint}` : ""}${episode.resource_budget_mb ? ` · 预算 ${episode.resource_budget_mb} MB` : ""}`;
   }
   function courseView() {
     show(
       course.title,
-      `<div class="tool-actions"><button data-action="courses">所有课程</button><button data-action="edit-course">编辑来源</button><button data-action="pause-course">${course.paused ? "继续课程" : "暂停课程"}</button><button data-action="batch" ${course.paused ? "disabled" : ""}>整理待处理链接</button></div><div class="tool-list">${course.sources.map((s, i) => `<div class="tool-row"><button class="grow" data-open-source="${i}"><strong>${esc(s.title || s.url || s.id)}</strong><small>${s.kind === "url" ? "待整理链接" : s.kind === "task" ? "视频笔记" : "学习资料"}</small></button><button data-move="${i}" data-direction="-1" aria-label="上移" ${i === 0 ? "disabled" : ""}>↑</button><button data-move="${i}" data-direction="1" aria-label="下移" ${i === course.sources.length - 1 ? "disabled" : ""}>↓</button></div>`).join("")}</div><details><summary>对照不同来源</summary><form id="compareForm"><label for="compareQuery">查找共同讨论的内容</label><input id="compareQuery" required placeholder="输入关键词"><label for="compareSourceKind">来源类型</label><select id="compareSourceKind"><option value="">全部来源</option><option value="task">视频</option><option value="material">文档</option></select><label for="compareSourceId">具体来源</label><select id="compareSourceId"><option value="">全部来源</option>${course.sources.filter(item => item.kind !== "url").map(item => `<option value="${esc(item.id)}">${esc(item.title || item.id)}</option>`).join("")}</select><label for="compareStart">起点（秒，可留空）</label><input id="compareStart" type="number" min="0" step="0.1"><label for="compareEnd">终点（秒，可留空）</label><input id="compareEnd" type="number" min="0" step="0.1"><button>查找出处</button></form><div id="compareResults"></div></details><footer><button data-action="course-review">复习这门课程</button><button class="danger" data-action="delete-course">删除课程分组</button></footer>`,
+      `<div class="tool-actions"><button data-action="courses">所有课程</button><button data-action="refresh-course">刷新分集状态</button><button data-action="edit-course">编辑来源</button><button data-action="pause-course">${course.paused ? "继续课程" : "暂停课程"}</button><button data-action="batch" ${course.paused ? "disabled" : ""}>整理待处理链接</button></div><div class="tool-list">${course.sources.map((s, i) => `<div class="tool-row"><button class="grow" data-open-source="${i}"><strong>${esc(s.title || s.url || s.id)}</strong><small>${esc(episodeLabel(s, i))}</small></button>${courseEpisodes.find(item => item.position === i)?.retryable ? `<button data-retry-episode="${esc(courseEpisodes.find(item => item.position === i).episode_id)}" ${course.paused ? "disabled" : ""}>恢复此集</button>` : ""}<button data-move="${i}" data-direction="-1" aria-label="上移" ${i === 0 ? "disabled" : ""}>↑</button><button data-move="${i}" data-direction="1" aria-label="下移" ${i === course.sources.length - 1 ? "disabled" : ""}>↓</button></div>`).join("")}</div><details><summary>对照不同来源</summary><form id="compareForm"><label for="compareQuery">查找共同讨论的内容</label><input id="compareQuery" required placeholder="输入关键词"><label for="compareSourceKind">来源类型</label><select id="compareSourceKind"><option value="">全部来源</option><option value="task">视频</option><option value="material">文档</option></select><label for="compareSourceId">具体来源</label><select id="compareSourceId"><option value="">全部来源</option>${course.sources.filter(item => item.kind !== "url").map(item => `<option value="${esc(item.id)}">${esc(item.title || item.id)}</option>`).join("")}</select><label for="compareStart">起点（秒，可留空）</label><input id="compareStart" type="number" min="0" step="0.1"><label for="compareEnd">终点（秒，可留空）</label><input id="compareEnd" type="number" min="0" step="0.1"><button>查找出处</button></form><div id="compareResults"></div></details><footer><button data-action="course-review">复习这门课程</button><button class="danger" data-action="delete-course">删除课程分组</button></footer>`,
     );
     backAction = listCourses;
   }
-  async function studySettings(courseId = "") {
+  async function studySettings(courseId = "", taskId = "") {
     const token = show("复习与计划", '<p class="muted">正在读取…</p>');
     await api("/api/study/plan/initialize", {
       method: "POST",
@@ -132,12 +141,19 @@ export function installTools(ctx) {
     const [plan, history, dashboard] = await Promise.all([
       api("/api/study/plan"),
       api("/api/study/reviews?limit=20"),
-      api("/api/study/dashboard?limit=12&course_id=" + encodeURIComponent(courseId)),
+      api("/api/study/dashboard?limit=12&course_id=" + encodeURIComponent(courseId) + "&task_id=" + encodeURIComponent(taskId)),
     ]);
     if (token !== generation) return;
     const p = plan.plan;
     $("toolBody").innerHTML =
-      `<div class="study-overview"><p><span>当前到期</span><strong>${dashboard.today?.due_count ?? 0}</strong></p><p><span>今日已复习</span><strong>${dashboard.today?.reviewed_count ?? 0}</strong></p><p><span>每日目标</span><strong>${p.daily_target}</strong></p></div><div class="tool-actions"><button class="primary" data-action="${p.paused ? "resume-study" : "start-review"}" data-course-id="${esc(courseId)}">${p.paused ? "继续计划" : "开始复习"}</button></div><details class="study-plan"><summary>调整每日目标与时区</summary><form id="planForm"><label for="dailyTarget">每日目标</label><input id="dailyTarget" type="number" min="1" max="200" value="${p.daily_target}"><label for="studyTimezone">复习时区</label><input id="studyTimezone" value="${esc(p.timezone)}" required><label class="check"><input id="studyPaused" type="checkbox" ${p.paused ? "checked" : ""}>暂停学习记录、提醒与评分</label><button class="primary">保存计划</button></form></details><div class="tool-actions">${links([["导出学习记录", "/api/study/export"]])}</div><details><summary>最近评分记录</summary><div>${history.reviews.map((r) => `<p class="record">${esc(r.reviewed_at || r.created_at || "")} · 评分 ${esc(r.rating)}</p>`).join("") || '<p class="muted">还没有评分记录。</p>'}</div></details><details><summary>修复旧版复习调度</summary><p class="muted">根据完整评分历史重新计算计划，并在本地保存原调度备份。</p><button data-action="rebuild-study">按历史重建</button></details>`;
+      `<div class="study-overview"><p><span>当前到期</span><strong>${dashboard.today?.due_count ?? 0}</strong></p><p><span>今日已复习</span><strong>${dashboard.today?.reviewed_count ?? 0}</strong></p><p><span>每日目标</span><strong>${p.daily_target}</strong></p></div><div class="tool-actions"><button class="primary" data-action="${p.paused ? "resume-study" : "start-review"}" data-course-id="${esc(courseId)}" data-task-id="${esc(taskId)}">${p.paused ? "继续计划" : "开始复习"}</button></div><details class="study-plan"><summary>调整每日目标与时区</summary><form id="planForm"><label for="dailyTarget">每日目标</label><input id="dailyTarget" type="number" min="1" max="200" value="${p.daily_target}"><label for="studyTimezone">复习时区</label><input id="studyTimezone" value="${esc(p.timezone)}" required><label class="check"><input id="studyPaused" type="checkbox" ${p.paused ? "checked" : ""}>暂停学习记录、提醒与评分</label><button class="primary">保存计划</button></form></details><div class="tool-actions">${links([["导出学习记录", "/api/study/export"]])}</div><details><summary>最近评分记录</summary><div>${history.reviews.map((r) => `<p class="record">${esc(r.reviewed_at || r.created_at || "")} · 评分 ${esc(r.rating)}</p>`).join("") || '<p class="muted">还没有评分记录。</p>'}</div></details><details><summary>修复旧版复习调度</summary><p class="muted">根据完整评分历史重新计算计划，并在本地保存原调度备份。</p><button data-action="rebuild-study">按历史重建</button></details>`;
+    const videoLabel=document.createElement("label");videoLabel.htmlFor="studyVideoFilter";videoLabel.textContent="视频范围";
+    const videoFilter=document.createElement("select");videoFilter.id="studyVideoFilter";
+    videoFilter.append(Object.assign(document.createElement("option"),{value:"",textContent:"全部视频与资料"}));
+    for(const source of state.items.filter(item=>item.kind === "task"))videoFilter.append(Object.assign(document.createElement("option"),{value:source.id,textContent:source.title}));
+    videoFilter.value=taskId;videoFilter.onchange=()=>studySettings(courseId,videoFilter.value).catch(error=>status(error.message));
+    const scopeHint=document.createElement("p");scopeHint.className="muted";scopeHint.textContent="到期和题目使用所选范围；每日目标与活动统计仍覆盖全部本地资料。";
+    $("toolBody").append(videoLabel,videoFilter,scopeHint);
     const recentActivity = (dashboard.progress?.activity || []).reduce((sum, day) => ({
       reading: sum.reading + Number(day.reading_count || 0),
       answer: sum.answer + Number(day.answer_count || 0),
@@ -180,7 +196,7 @@ export function installTools(ctx) {
         const result = await api("/api/study/backup/restore", { method: "POST", body: JSON.stringify(payload) });
         const merge = result.merge || {};
         status(`已恢复 ${merge.restored_reviews || 0} 条评分、${merge.restored_annotations || 0} 条批注和 ${merge.restored_editions || 0} 份修改。`);
-        await studySettings(courseId);
+        await studySettings(courseId,taskId);
       } catch (error) { status(error.message || "备份无效或无法恢复。"); }
       finally { backupFile.value = ""; }
     };
@@ -191,7 +207,7 @@ export function installTools(ctx) {
     deleteStudy.onclick = async () => {
       if (!confirm("永久删除全部卡片、评分、自评动作、计划和调度备份？原始资料、正文及个人批注保留。此操作不能撤销。")) return;
       deleteStudy.disabled = true;
-      try { await api("/api/study/data?confirm=delete_all_study_data", { method: "DELETE" }); await studySettings(courseId); }
+      try { await api("/api/study/data?confirm=delete_all_study_data", { method: "DELETE" }); await studySettings(courseId,taskId); }
       catch (error) { status(error.message); deleteStudy.disabled = false; }
     };
     backupPanel.append(deleteStudy);
@@ -588,71 +604,27 @@ export function installTools(ctx) {
   async function batch() {
     if (batchRunning) return;
     if (course.paused) throw new Error("请先继续课程。");
-    const urls = course.sources.filter((s) => s.kind === "url");
-    if (!urls.length) {
-      status("没有待整理链接。");
-      return;
-    }
-    if (
-      !confirm(
-        `将提交前 ${Math.min(24, urls.length)} 个链接，并使用当前模型设置。继续？`,
-      )
-    )
-      return;
+    const snapshot = await api(`/api/courses/${course.id}`);
+    const pending = (snapshot.episodes || []).filter(item => item.source_kind === "url" && !item.task_id && item.status !== "identity_conflict").slice(0, 24);
+    if (!pending.length) { status("没有待提交分集；失败或中断的分集可单独恢复。"); return; }
+    if (!confirm(`将提交 ${pending.length} 个分集，字幕优先且不分析画面。每集使用当前资源预算；重复点击会复用已有任务。继续？`)) return;
     batchRunning = true;
-    const id = course.id;
+    const id = course.id, allowedIds = new Set(pending.map(item=>item.episode_id));
     try {
-      for (const source of urls.slice(0, 24)) {
-        const fresh = (await api(`/api/courses/${id}`)).course;
-        if (fresh.paused) {
-          status("课程已暂停，剩余链接未提交。");
-          break;
-        }
-        const index = fresh.sources.findIndex(
-          (s) => s.kind === "url" && s.url === source.url,
-        );
-        if (index < 0) continue;
-        const digest = await crypto.subtle.digest(
-          "SHA-256",
-          new TextEncoder().encode(id + ":" + source.url),
-        );
-        const handoff =
-          "course-" +
-          [...new Uint8Array(digest)]
-            .map((x) => x.toString(16).padStart(2, "0"))
-            .join("")
-            .slice(0, 40);
-        const task = await api("/api/tasks/from-current-page", {
-          method: "POST",
-          body: JSON.stringify({
-            page_url: source.url,
-            title: source.title,
-            handoff_id: handoff,
-            options: { ...options(), content_mode: "text", visual_understanding: false },
-          }),
-        });
-        fresh.sources[index] = {
-          kind: "task",
-          id: task.task_id,
-          title: source.title,
-        };
-        const saved = await api(`/api/courses/${id}`, {
-          method: "PUT",
-          body: JSON.stringify({
-            title: fresh.title,
-            sources: fresh.sources,
-            paused: fresh.paused,
-            revision: fresh.revision,
-          }),
-        });
-        if (course?.id === id) course = saved.course;
-        if (dialog.open && generation) status("已提交：" + source.title);
+      for (let submitted=0;submitted<pending.length;submitted++) {
+        const fresh = await api(`/api/courses/${id}`);
+        if (fresh.course.paused) { status("课程已暂停，剩余分集未提交。"); break; }
+        const candidate=(fresh.episodes || []).find(item=>allowedIds.has(item.episode_id)&&!item.task_id&&item.status!=="identity_conflict");
+        if(!candidate)break;
+        const { episode } = await api(`/api/courses/${id}/episodes/${candidate.episode_id}/prepare`, { method:"POST" });
+        if (episode.task_id) continue;
+        const task = await api("/api/tasks/from-current-page", { method:"POST", body:JSON.stringify({ page_url:episode.url, title:episode.title, handoff_id:episode.handoff_id, options:{ ...options(), content_mode:"text", visual_understanding:false } }) });
+        await api(`/api/courses/${id}/episodes/${candidate.episode_id}/bind`, { method:"POST", body:JSON.stringify({task_id:task.task_id}) });
+        status("已提交：" + episode.title);
       }
       await refresh();
-      if (course?.id === id && dialog.open) courseView();
-    } finally {
-      batchRunning = false;
-    }
+      if (course?.id === id && dialog.open) await openCourse(id);
+    } finally { batchRunning = false; }
   }
   async function community() {
     const s = current(),
@@ -788,14 +760,15 @@ export function installTools(ctx) {
     },
     batch,
     "course-review": () => studySettings(course.id),
+    "refresh-course": () => openCourse(course.id),
     "resume-study": async (button) => {
       const { plan } = await api("/api/study/plan");
       await api("/api/study/plan", { method: "PUT", body: JSON.stringify({ title: plan.title, daily_target: plan.daily_target, timezone: plan.timezone, paused: false }) });
-      await studySettings(button.dataset.courseId || "");
+      await studySettings(button.dataset.courseId || "",button.dataset.taskId || "");
     },
     "start-review": async (button) => {
       dialog.close();
-      await ctx.startReview(button.dataset.courseId || "");
+      await ctx.startReview(button.dataset.courseId || "",button.dataset.taskId || "");
     },
     "range-position": () => {
       $("rangeStart").value = Math.floor($("player").currentTime || 0);
@@ -942,16 +915,23 @@ export function installTools(ctx) {
         await saveCourse({ ...course, sources });
         courseView();
       });
+    else if (b.dataset.retryEpisode)
+      run(b, async () => {
+        if (!confirm("从此分集已有媒体和检查点恢复？使用当前模型设置，不创建重复分集。")) return;
+        const { episode } = await api(`/api/courses/${course.id}/episodes/${b.dataset.retryEpisode}/prepare`, { method:"POST" });
+        if (!episode.retryable || !episode.task_id) { await openCourse(course.id); return; }
+        await api(episode.resume_endpoint, { method:"POST", body:JSON.stringify(options()) });
+        await openCourse(course.id);
+        await refresh();
+      });
     else if (b.dataset.openSource !== undefined)
       run(b, async () => {
         const source = course.sources[Number(b.dataset.openSource)];
-        if (source.kind === "url") {
-          status("点击“整理待处理链接”开始生成笔记。");
-          return;
-        }
-        const item = state.items.find(
-          (i) => i.id === source.id && i.kind === source.kind,
-        );
+        const episode = courseEpisodes.find(item => item.position === Number(b.dataset.openSource));
+        const sourceId = source.kind === "url" ? episode?.task_id : source.id;
+        const sourceKind = source.kind === "url" ? "task" : source.kind;
+        if (!sourceId) { status("点击“整理待处理链接”开始生成笔记。"); return; }
+        const item = state.items.find(i => i.id === sourceId && i.kind === sourceKind);
         if (!item) throw new Error("来源已被删除或不在当前资料库。");
         dialog.close();
         await openItem(item);

@@ -27,6 +27,19 @@ class StorePackageTests(unittest.TestCase):
             result = MODULE.validate(path, "0.1.54")
             self.assertEqual(result["status"], "pass")
 
+    def test_missing_content_helper_fails_and_distribution_lists_include_it(self):
+        helper = "content-study-evidence.js"
+        self.assertIn(helper, MODULE.REQUIRED)
+        for relative in ("scripts/package-extension.ps1", "scripts/audit-release-tree.py", "desktop/main.py", ".github/workflows/macos-release.yml"):
+            self.assertIn(helper, (ROOT / relative).read_text(encoding="utf-8"), relative)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "extension.zip"
+            with ZipFile(path, "w", ZIP_DEFLATED) as archive:
+                for name in MODULE.REQUIRED - {helper}:
+                    archive.writestr(name, "fixture")
+            with self.assertRaisesRegex(ValueError, helper):
+                MODULE.validate(path)
+
     def test_secret_like_package_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "extension.zip"

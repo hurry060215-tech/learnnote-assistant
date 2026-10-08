@@ -488,6 +488,19 @@ class DeferredHandoffTests(unittest.TestCase):
             finally:
                 self._cleanup(task_id)
 
+    def test_handoff_range_is_idempotent_but_changed_range_or_part_conflicts(self):
+        payload={**self.payload,"handoff_id":"ln-range-handoff-0001","learning_range":{"start":10,"end":60}}
+        first=self.client.post("/api/tasks/from-current-page?defer=true",json=payload)
+        self.assertEqual(first.status_code,200,first.text);task_id=first.json()["task_id"]
+        try:
+            repeated=self.client.post("/api/tasks/from-current-page?defer=true",json=payload)
+            self.assertEqual(repeated.status_code,200,repeated.text);self.assertEqual(repeated.json()["task_id"],task_id);self.assertTrue(repeated.json()["deduplicated"])
+            for changed in ({"learning_range":{"start":60,"end":120}},{"learning_range":{}},{"page_url":"https://www.bilibili.com/video/BV1xx411c7mD?p=2"}):
+                response=self.client.post("/api/tasks/from-current-page?defer=true",json={**payload,**changed})
+                self.assertEqual(response.status_code,409,response.text);self.assertEqual(response.json()["detail"]["code"],"handoff_id_conflict")
+            self.assertEqual(get_task(task_id).learning_range,{"start":10,"end":60})
+        finally:self._cleanup(task_id)
+
     def test_handoff_id_cannot_be_reused_for_a_different_source(self) -> None:
         payload = {**self.payload, "handoff_id": "ln-conflict-handoff-0001"}
         created = self.client.post("/api/tasks/from-current-page?defer=true", json=payload)
