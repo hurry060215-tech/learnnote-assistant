@@ -13,6 +13,7 @@ export async function mountSupportSummary(host, api) {
   const legend = document.createElement("legend"); legend.textContent = "选择要导出的字段"; fields.append(legend);
   const preview = document.createElement("pre"); preview.setAttribute("aria-label", "支持摘要逐字段预览");
   const consentLabel = document.createElement("label");
+  consentLabel.className = "check";
   const consent = document.createElement("input"); consent.type = "checkbox";
   consentLabel.append(consent, document.createTextNode("我已检查以下字段，仅保存这个摘要文件"));
   const save = document.createElement("button"); save.type = "button"; save.textContent = "保存已预览摘要"; save.disabled = true;
@@ -42,6 +43,7 @@ export async function mountSupportSummary(host, api) {
     checked = new Set(Object.keys(labels));
     for (const [key, label] of Object.entries(labels)) {
       const row = document.createElement("label"), input = document.createElement("input");
+      row.className = "check";
       input.type = "checkbox"; input.checked = true;
       input.addEventListener("change", () => { if (input.checked) checked.add(key); else checked.delete(key); safely(renderPreview); });
       row.append(input, document.createTextNode(label)); fields.append(row);
