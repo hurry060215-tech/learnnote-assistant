@@ -38,7 +38,7 @@ function element() {
   };
 }
 
-export async function createSidepanelHarness({ contexts = [], preflight = null, start = null, starts = [], startDelayMs = 0, health = null, focus = null, tabs = [], healthByUrl = null, healthDelayMs = 0, fetchOverride = null, stored = {}, permissions = {} } = {}) {
+export async function createSidepanelHarness({ contexts = [], preflight = null, start = null, starts = [], startDelayMs = 0, health = null, focus = null, tabs = [], healthByUrl = null, healthDelayMs = 0, fetchOverride = null, stored = {}, permissions = {}, locale = "zh-CN", missingMessages = [] } = {}) {
   const selectors = [
     "#connectionCard", "#connectionTitle", "#connectionDetail", "#openClientButton", "#openClientBrand", "#clientInstallHelp",
     "#refreshButton", "#platformLabel", "#playingBadge", "#videoTitle", "#videoMeta", "#integrityGrid",
@@ -80,6 +80,7 @@ export async function createSidepanelHarness({ contexts = [], preflight = null, 
     querySelector(selector) { return elements.get(selector) || null; },
     querySelectorAll(selector) { return selector === "[data-client-view]" ? clientLinks : []; }
   };
+  const catalog = JSON.parse(await readFile(new URL(`../_locales/${locale.startsWith("en") ? "en" : "zh_CN"}/messages.json`, import.meta.url), "utf8"));
   const context = {
     console,
     Date,
@@ -122,6 +123,7 @@ export async function createSidepanelHarness({ contexts = [], preflight = null, 
       throw new Error(`Unexpected fetch: ${url}`);
     },
     chrome: {
+      i18n: { getUILanguage: () => locale, getMessage: key => missingMessages.includes(key) ? "" : catalog[key]?.message || "" },
       storage: { local: { async get(defaults) { return { ...defaults, ...stored }; }, async set(value) { storageWrites.push(value); } } },
       tabs: { async query() { return tabs; }, async create(options) { openedTabs.push(options); return options; }, async update(id, options) { updatedTabs.push({id, ...options}); return options; } },
       permissions: {
@@ -169,6 +171,7 @@ export async function createSidepanelHarness({ contexts = [], preflight = null, 
     }
   };
   vm.createContext(context);
+  vm.runInContext(await readFile(new URL("../i18n.js", import.meta.url), "utf8"), context);
   const code = await readFile(new URL("../sidepanel.js", import.meta.url), "utf8");
   vm.runInContext(code, context);
   await new Promise(resolve => setTimeout(resolve, 20));
